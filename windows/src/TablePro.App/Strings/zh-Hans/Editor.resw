@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="CloseFind" xml:space="preserve">
+    <value>关闭 (Esc)</value>
+  </data>
+  <data name="CompletionColumn" xml:space="preserve">
+    <value>列</value>
+  </data>
+  <data name="CompletionFunction" xml:space="preserve">
+    <value>函数</value>
+  </data>
+  <data name="CompletionKeyword" xml:space="preserve">
+    <value>关键字</value>
+  </data>
+  <data name="CompletionSchema" xml:space="preserve">
+    <value>Schema</value>
+  </data>
+  <data name="CompletionSnippet" xml:space="preserve">
+    <value>代码片段</value>
+  </data>
+  <data name="CompletionTable" xml:space="preserve">
+    <value>表</value>
+  </data>
+  <data name="CompletionView" xml:space="preserve">
+    <value>视图</value>
+  </data>
+  <data name="ErrorAnnouncement" xml:space="preserve">
+    <value>错误：{0}</value>
+  </data>
+  <data name="Explain" xml:space="preserve">
+    <value>解释</value>
+  </data>
+  <data name="Find" xml:space="preserve">
+    <value>查找</value>
+  </data>
+  <data name="FindMatches_One" xml:space="preserve">
+    <value>{0} 个匹配</value>
+  </data>
+  <data name="FindMatches_Other" xml:space="preserve">
+    <value>{0} 个匹配</value>
+  </data>
+  <data name="FindNoResults" xml:space="preserve">
+    <value>无结果</value>
+  </data>
+  <data name="FindPlaceholder" xml:space="preserve">
+    <value>查找</value>
+  </data>
+  <data name="FormatSql" xml:space="preserve">
+    <value>格式化 SQL</value>
+  </data>
+  <data name="GoToDefinition" xml:space="preserve">
+    <value>转到定义</value>
+  </data>
+  <data name="MatchCase" xml:space="preserve">
+    <value>区分大小写</value>
+  </data>
+  <data name="NextMatch" xml:space="preserve">
+    <value>下一个匹配 (F3)</value>
+  </data>
+  <data name="NoDefinitionFound" xml:space="preserve">
+    <value>找不到“{0}”的定义。</value>
+  </data>
+  <data name="NoProblems" xml:space="preserve">
+    <value>没有问题。</value>
+  </data>
+  <data name="NoSymbolAtCaret" xml:space="preserve">
+    <value>光标处没有符号。</value>
+  </data>
+  <data name="NothingAtCaret" xml:space="preserve">
+    <value>光标处没有可显示的内容。</value>
+  </data>
+  <data name="PreviousMatch" xml:space="preserve">
+    <value>上一个匹配 (Shift+F3)</value>
+  </data>
+  <data name="ReferencesSelected_One" xml:space="preserve">
+    <value>已选择 1 个引用</value>
+  </data>
+  <data name="ReferencesSelected_Other" xml:space="preserve">
+    <value>已选择 {0} 个引用</value>
+  </data>
+  <data name="RenameNeedsInsertMode" xml:space="preserve">
+    <value>重命名仅在插入模式下可用。</value>
+  </data>
+  <data name="RenameSymbol" xml:space="preserve">
+    <value>重命名符号</value>
+  </data>
+  <data name="Replace" xml:space="preserve">
+    <value>替换</value>
+  </data>
+  <data name="ReplaceAllButton" xml:space="preserve">
+    <value>全部替换</value>
+  </data>
+  <data name="ReplaceButton" xml:space="preserve">
+    <value>替换</value>
+  </data>
+  <data name="ReplacePlaceholder" xml:space="preserve">
+    <value>替换</value>
+  </data>
+  <data name="ReplacedCount_One" xml:space="preserve">
+    <value>已替换 {0} 处</value>
+  </data>
+  <data name="ReplacedCount_Other" xml:space="preserve">
+    <value>已替换 {0} 处</value>
+  </data>
+  <data name="RunAll" xml:space="preserve">
+    <value>全部运行</value>
+  </data>
+  <data name="RunCurrent" xml:space="preserve">
+    <value>运行当前语句</value>
+  </data>
+  <data name="SuggestionAcceptHint" xml:space="preserve">
+    <value>按 Tab 接受</value>
+  </data>
+  <data name="ToggleComment" xml:space="preserve">
+    <value>切换注释</value>
+  </data>
+  <data name="WarningAnnouncement" xml:space="preserve">
+    <value>警告：{0}</value>
+  </data>
+  <data name="WentTo" xml:space="preserve">
+    <value>已转到 {0}</value>
+  </data>
+</root>

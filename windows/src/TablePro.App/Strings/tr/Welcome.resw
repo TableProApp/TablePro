@@ -1,0 +1,180 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="CancelConnect.Content" xml:space="preserve">
+    <value>İptal</value>
+  </data>
+  <data name="ConnectFailedTitle" xml:space="preserve">
+    <value>{0} bağlantısı kurulamadı</value>
+  </data>
+  <data name="ConnectNowMessage" xml:space="preserve">
+    <value>{0} bağlantısına şimdi bağlanılsın mı?</value>
+  </data>
+  <data name="ConnectToTitle" xml:space="preserve">
+    <value>{0} bağlantısına bağlan</value>
+  </data>
+  <data name="ConnectingThroughProxy" xml:space="preserve">
+    <value>Proxy üzerinden bağlanılıyor…</value>
+  </data>
+  <data name="ConnectingTo" xml:space="preserve">
+    <value>{0} bağlantısı kuruluyor…</value>
+  </data>
+  <data name="ConnectionAnnouncement" xml:space="preserve">
+    <value>{0}, {1}</value>
+  </data>
+  <data name="ConnectionSavedTitle" xml:space="preserve">
+    <value>Bağlantı kaydedildi</value>
+  </data>
+  <data name="CreateGroup" xml:space="preserve">
+    <value>Oluştur</value>
+  </data>
+  <data name="DaysAgo_One" xml:space="preserve">
+    <value>{0} g önce</value>
+  </data>
+  <data name="DaysAgo_Other" xml:space="preserve">
+    <value>{0} g önce</value>
+  </data>
+  <data name="DeleteConfirmMessage" xml:space="preserve">
+    <value>Kayıtlı bağlantı ve saklanan parolaları kaldırılır. Veritabanının kendisine dokunulmaz.</value>
+  </data>
+  <data name="DeleteConfirmTitle" xml:space="preserve">
+    <value>{0} silinsin mi?</value>
+  </data>
+  <data name="EmptyMessage.Text" xml:space="preserve">
+    <value>Yeni bir bağlantı oluşturun veya bir SQLite ya da DuckDB dosyası açın.</value>
+  </data>
+  <data name="EmptyTitle.Text" xml:space="preserve">
+    <value>Kayıtlı bağlantı yok</value>
+  </data>
+  <data name="EncryptedImportMessage" xml:space="preserve">
+    <value>Bu dosya şifreli. Dışa aktarılırken kullanılan parolayı girin.</value>
+  </data>
+  <data name="EncryptedImportTitle" xml:space="preserve">
+    <value>Şifreli bağlantılar</value>
+  </data>
+  <data name="ExportFileType" xml:space="preserve">
+    <value>TablePro bağlantıları</value>
+  </data>
+  <data name="ExportMessage" xml:space="preserve">
+    <value>Dosyayı şifrelemek ve kayıtlı parolaları dahil etmek için bir parola girin. Parolalar olmadan dışa aktarmak için boş bırakın.</value>
+  </data>
+  <data name="ExportTitle" xml:space="preserve">
+    <value>Bağlantıları Dışa Aktar</value>
+  </data>
+  <data name="HoursAgo_One" xml:space="preserve">
+    <value>{0} sa önce</value>
+  </data>
+  <data name="HoursAgo_Other" xml:space="preserve">
+    <value>{0} sa önce</value>
+  </data>
+  <data name="ImportConnections.Text" xml:space="preserve">
+    <value>Bağlantıları İçe Aktar</value>
+  </data>
+  <data name="ImportFailedTitle" xml:space="preserve">
+    <value>İçe aktarma başarısız</value>
+  </data>
+  <data name="ImportFinishedTitle" xml:space="preserve">
+    <value>İçe aktarma bitti</value>
+  </data>
+  <data name="ImportWrongPassphrase" xml:space="preserve">
+    <value>Parola yanlış veya dosya bozuk.</value>
+  </data>
+  <data name="ImportedConnections_One" xml:space="preserve">
+    <value>{0} bağlantı içe aktarıldı.</value>
+  </data>
+  <data name="ImportedConnections_Other" xml:space="preserve">
+    <value>{0} bağlantı içe aktarıldı.</value>
+  </data>
+  <data name="ImportedSavedQueries_One" xml:space="preserve">
+    <value>{0} kayıtlı sorgu Sık Kullanılanlar'a eklendi.</value>
+  </data>
+  <data name="ImportedSavedQueries_Other" xml:space="preserve">
+    <value>{0} kayıtlı sorgu Sık Kullanılanlar'a eklendi.</value>
+  </data>
+  <data name="JustNow" xml:space="preserve">
+    <value>az önce</value>
+  </data>
+  <data name="MinutesAgo_One" xml:space="preserve">
+    <value>{0} dk önce</value>
+  </data>
+  <data name="MinutesAgo_Other" xml:space="preserve">
+    <value>{0} dk önce</value>
+  </data>
+  <data name="MoveToGroup" xml:space="preserve">
+    <value>Gruba Taşı</value>
+  </data>
+  <data name="NewConnection.Text" xml:space="preserve">
+    <value>Yeni Bağlantı</value>
+  </data>
+  <data name="NewGroup.Text" xml:space="preserve">
+    <value>Yeni Grup</value>
+  </data>
+  <data name="NewGroupTitle" xml:space="preserve">
+    <value>Yeni Grup</value>
+  </data>
+  <data name="NoGroup" xml:space="preserve">
+    <value>Grup yok</value>
+  </data>
+  <data name="OpenDatabaseFile.Text" xml:space="preserve">
+    <value>Veritabanı Dosyası Aç</value>
+  </data>
+  <data name="OpeningCloudflareTunnel" xml:space="preserve">
+    <value>Cloudflare tüneli açılıyor…</value>
+  </data>
+  <data name="OpeningSshTunnel" xml:space="preserve">
+    <value>{0} sunucusuna SSH tüneli açılıyor…</value>
+  </data>
+  <data name="PasswordForHeader" xml:space="preserve">
+    <value>{0}@{1} için parola</value>
+  </data>
+  <data name="RunningTunnelCommand" xml:space="preserve">
+    <value>Tünel komutu çalıştırılıyor…</value>
+  </data>
+  <data name="SearchConnections.PlaceholderText" xml:space="preserve">
+    <value>Bağlantı ara</value>
+  </data>
+  <data name="Settings.Content" xml:space="preserve">
+    <value>Ayarlar</value>
+  </data>
+  <data name="SignInAndRetry" xml:space="preserve">
+    <value>{0} adresinde oturum açın ve yeniden bağlanın.</value>
+  </data>
+  <data name="SkippedConnections_One" xml:space="preserve">
+    <value>Bu derlemenin açamadığı {0} bağlantı atlandı.</value>
+  </data>
+  <data name="SkippedConnections_Other" xml:space="preserve">
+    <value>Bu derlemenin açamadığı {0} bağlantı atlandı.</value>
+  </data>
+  <data name="Sort.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Sırala</value>
+  </data>
+  <data name="SortLastConnected.Content" xml:space="preserve">
+    <value>Son bağlanılan</value>
+  </data>
+  <data name="SortManual.Content" xml:space="preserve">
+    <value>Elle sıralama</value>
+  </data>
+  <data name="SortName.Content" xml:space="preserve">
+    <value>Ad</value>
+  </data>
+  <data name="StartingCloudSqlProxy" xml:space="preserve">
+    <value>Cloud SQL Auth Proxy başlatılıyor…</value>
+  </data>
+  <data name="TunnelCommandsTurnedOff" xml:space="preserve">
+    <value>Tünel komutları siz gözden geçirene kadar kapatıldı: {0}.</value>
+  </data>
+  <data name="Version" xml:space="preserve">
+    <value>Sürüm {0}</value>
+  </data>
+</root>

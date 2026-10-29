@@ -1,4 +1,3 @@
-using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using TablePro.App.Services;
 using TablePro.Core.Browse;
@@ -49,7 +48,7 @@ public sealed partial class CompareTabViewModel : TabViewModel
         ArgumentNullException.ThrowIfNull(context);
         _context = context;
         _open = open;
-        Title = "Compare";
+        Title = Strings.Get("Compare/TabTitle");
         Subtitle = context.Session.Profile.Name;
         Profiles = profiles.Any(p => p.Id == context.Session.Profile.Id) ? profiles : [context.Session.Profile, .. profiles];
         SourceTables = [.. context.Session.Objects.Where(o => o.Kind == ObjectKind.Table).OrderBy(o => o.Name.Name, StringComparer.OrdinalIgnoreCase)];
@@ -171,7 +170,7 @@ public sealed partial class CompareTabViewModel : TabViewModel
         }
 
         IsBusy = true;
-        StatusText = $"Connecting to {profile.Name}…";
+        StatusText = Strings.Format("Compare/ConnectingTo", profile.Name);
         try
         {
             var opened = await _open(profile, CancellationToken.None);
@@ -190,14 +189,14 @@ public sealed partial class CompareTabViewModel : TabViewModel
             TargetTables = [.. opened.Session.Objects.Where(o => o.Kind == ObjectKind.Table).OrderBy(o => o.Name.Name, StringComparer.OrdinalIgnoreCase)];
             MatchTargetTable();
             ClearResults();
-            StatusText = $"Comparing with {profile.Name}";
+            StatusText = Strings.Format("Compare/ComparingWith", profile.Name);
             return true;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             CrashLog.Write($"Compare: connect to {profile.Name}", ex);
             StatusText = ex.Message;
-            await _context.Dialogs.ShowErrorAsync($"Could not connect to {profile.Name}", ex.Message);
+            await _context.Dialogs.ShowErrorAsync(Strings.Format("Compare/CouldNotConnectTitle", profile.Name), ex.Message);
             return false;
         }
         finally
@@ -226,14 +225,14 @@ public sealed partial class CompareTabViewModel : TabViewModel
 
         if (SelectedSourceTable is not { } sourceTable || SelectedTargetTable is not { } targetTable || _target is not { } target)
         {
-            StatusText = "Choose a table on both sides.";
+            StatusText = Strings.Get("Compare/ChooseTables");
             return;
         }
 
         using var run = Begin();
         try
         {
-            StatusText = "Reading structure…";
+            StatusText = Strings.Get("Compare/ReadingStructure");
             var sourceStructure = await Source.GetStructureAsync(sourceTable.Name, run.Token, refresh: true);
             var targetStructure = await target.Session.GetStructureAsync(targetTable.Name, run.Token, refresh: true);
             var setup = DataCompareSetup.Create(sourceStructure, targetStructure, SplitList(KeyColumns), SplitList(ExcludedColumns));
@@ -247,7 +246,7 @@ public sealed partial class CompareTabViewModel : TabViewModel
             var spec = baseSpec with { SourceFilter = Filter(SourceWhere), TargetFilter = Filter(TargetWhere) };
             var options = Options;
             var progress = new Progress<DataCompareProgress>(p =>
-                StatusText = string.Create(CultureInfo.CurrentCulture, $"Compared {p.SourceRows:N0} source and {p.TargetRows:N0} target rows, {p.Differences:N0} differences…"));
+                StatusText = Strings.Plural("Compare/DataProgress", p.Differences, p.SourceRows, p.TargetRows));
             var result = await Task.Run(
                 () => new DataDiffEngine(spec, options).CompareAsync(
                     SessionRowSource.Source(Source.Database, spec, options, run.Token),
@@ -259,11 +258,11 @@ public sealed partial class CompareTabViewModel : TabViewModel
             _excluded.Clear();
             Result = result;
             Summary = Describe(result);
-            StatusText = string.Create(CultureInfo.CurrentCulture, $"Compared in {result.Elapsed.TotalSeconds:N1} s");
+            StatusText = Strings.Format("Compare/ComparedIn", result.Elapsed.TotalSeconds);
         }
         catch (OperationCanceledException)
         {
-            StatusText = "Comparison stopped.";
+            StatusText = Strings.Get("Compare/ComparisonStopped");
         }
         catch (Exception ex)
         {
@@ -273,7 +272,7 @@ public sealed partial class CompareTabViewModel : TabViewModel
                 CrashLog.Write("Compare data", ex);
             }
 
-            await _context.Dialogs.ShowErrorAsync("Could not compare", ex.Message);
+            await _context.Dialogs.ShowErrorAsync(Strings.Get("Compare/CouldNotCompareTitle"), ex.Message);
         }
     }
 
@@ -306,7 +305,7 @@ public sealed partial class CompareTabViewModel : TabViewModel
 
         if (target.Profile.IsReadOnly)
         {
-            await _context.Dialogs.ShowErrorAsync("Read-only target", $"{target.Profile.Name} is read-only, so it cannot be synced.");
+            await _context.Dialogs.ShowErrorAsync(Strings.Get("Compare/ReadOnlyTargetTitle"), Strings.Format("Compare/ReadOnlyTargetMessage", target.Profile.Name));
             return;
         }
 
@@ -317,13 +316,13 @@ public sealed partial class CompareTabViewModel : TabViewModel
         }
         catch (CompareException ex)
         {
-            await _context.Dialogs.ShowErrorAsync("Cannot sync", ex.Message);
+            await _context.Dialogs.ShowErrorAsync(Strings.Get("Compare/CannotSyncTitle"), ex.Message);
             return;
         }
 
         if (plan.IsEmpty)
         {
-            await _context.Dialogs.ShowErrorAsync("Nothing to sync", "No difference is selected for writing. Turn on inserts, updates or deletes, or include skipped rows.");
+            await _context.Dialogs.ShowErrorAsync(Strings.Get("Compare/NothingToSyncTitle"), Strings.Get("Compare/NothingToSyncMessage"));
             return;
         }
 
@@ -332,22 +331,22 @@ public sealed partial class CompareTabViewModel : TabViewModel
         var notes = new List<string>(plan.Warnings);
         if (!DataSyncTransactionality.CanRollBack(target.Profile.Engine))
         {
-            notes.Add($"{target.Profile.Descriptor.DisplayName} cannot roll back, so a failure leaves the statements before it applied.");
+            notes.Add(Strings.Format("Compare/CannotRollBackNote", target.Profile.Descriptor.DisplayName));
         }
         else if (batches)
         {
-            notes.Add("Batches commit as they go, so a failure keeps the batches before it.");
+            notes.Add(Strings.Get("Compare/BatchesCommitNote"));
         }
 
-        var title = string.Create(CultureInfo.CurrentCulture, $"Sync {plan.Table}: {plan.InsertCount:N0} inserts, {plan.UpdateCount:N0} updates, {plan.DeleteCount:N0} deletes");
-        if (!await _context.Dialogs.ReviewSqlAsync(title, Reviewed(preview, notes, target.Session.Dialect), "Sync"))
+        var title = Strings.Format("Compare/SyncReviewTitle", plan.Table, plan.InsertCount, plan.UpdateCount, plan.DeleteCount);
+        if (!await _context.Dialogs.ReviewSqlAsync(title, Reviewed(preview, notes, target.Session.Dialect), Strings.Get("Compare/SyncButton")))
         {
             return;
         }
 
         using var run = Begin();
         var started = DateTime.UtcNow;
-        var progress = new Progress<DataSyncProgress>(p => StatusText = string.Create(CultureInfo.CurrentCulture, $"Applied {p.Applied:N0} of {p.Total:N0}…"));
+        var progress = new Progress<DataSyncProgress>(p => StatusText = Strings.Format("Compare/SyncProgress", p.Applied, p.Total));
         var applied = await DataSyncApplier.ApplyAsync(target.Session.Database, plan, new DataSyncApplyOptions(SingleTransaction: !batches), progress, run.Token);
         foreach (var statement in preview.Take(applied.AppliedSteps).Take(MaxReviewedStatements))
         {
@@ -357,14 +356,14 @@ public sealed partial class CompareTabViewModel : TabViewModel
         if (applied.Error is { } error)
         {
             StatusText = error.Message;
-            var kept = applied.CommittedBatches > 0 && batches
-                ? string.Create(CultureInfo.CurrentCulture, $" {applied.CommittedBatches:N0} of {applied.TotalBatches:N0} batches were committed before it.")
-                : " Nothing was changed.";
-            await _context.Dialogs.ShowErrorAsync("The sync stopped", error.Message + kept);
+            var message = applied.CommittedBatches > 0 && batches
+                ? Strings.Plural("Compare/SyncStoppedBatchesKept", applied.CommittedBatches, error.Message, applied.TotalBatches)
+                : Strings.Format("Compare/SyncStoppedNothingChanged", error.Message);
+            await _context.Dialogs.ShowErrorAsync(Strings.Get("Compare/SyncStoppedTitle"), message);
             return;
         }
 
-        _context.Notify(string.Create(CultureInfo.CurrentCulture, $"Synced {plan.Table}: {applied.RowsAffected:N0} rows."));
+        _context.Notify(Strings.Plural("Compare/Synced", applied.RowsAffected, plan.Table));
         await CompareDataAsync();
     }
 
@@ -398,23 +397,28 @@ public sealed partial class CompareTabViewModel : TabViewModel
         using var run = Begin();
         try
         {
-            var source = await LoadStructuresAsync(Source, "source", run.Token);
-            var targetStructures = await LoadStructuresAsync(target.Session, "target", run.Token);
+            var source = await LoadStructuresAsync(Source, isTarget: false, run.Token);
+            var targetStructures = await LoadStructuresAsync(target.Session, isTarget: true, run.Token);
             var diffs = SchemaDiffEngine.Compare(source, targetStructures, SchemaOptions);
             SchemaDiffs = diffs;
             var changed = diffs.Count(d => d.Kind != SchemaDiffKind.Identical);
-            Summary = string.Create(CultureInfo.CurrentCulture, $"{diffs.Count(d => d.Kind == SchemaDiffKind.OnlyInSource):N0} only in source · {diffs.Count(d => d.Kind == SchemaDiffKind.OnlyInTarget):N0} only in target · {diffs.Count(d => d.Kind == SchemaDiffKind.Changed):N0} changed · {diffs.Count(d => d.Kind == SchemaDiffKind.Identical):N0} identical");
-            StatusText = changed == 0 ? "The structures match." : string.Create(CultureInfo.CurrentCulture, $"{changed:N0} tables differ");
+            Summary = Strings.Format(
+                "Compare/DiffSummary",
+                diffs.Count(d => d.Kind == SchemaDiffKind.OnlyInSource),
+                diffs.Count(d => d.Kind == SchemaDiffKind.OnlyInTarget),
+                diffs.Count(d => d.Kind == SchemaDiffKind.Changed),
+                diffs.Count(d => d.Kind == SchemaDiffKind.Identical));
+            StatusText = changed == 0 ? Strings.Get("Compare/StructuresMatch") : Strings.Plural("Compare/TablesDiffer", changed);
         }
         catch (OperationCanceledException)
         {
-            StatusText = "Comparison stopped.";
+            StatusText = Strings.Get("Compare/ComparisonStopped");
         }
         catch (Exception ex)
         {
             CrashLog.Write("Compare structure", ex);
             StatusText = ex.Message;
-            await _context.Dialogs.ShowErrorAsync("Could not compare structure", ex.Message);
+            await _context.Dialogs.ShowErrorAsync(Strings.Get("Compare/CouldNotCompareStructureTitle"), ex.Message);
         }
     }
 
@@ -432,25 +436,27 @@ public sealed partial class CompareTabViewModel : TabViewModel
 
         if (target.Profile.IsReadOnly || BuildMigration() is not { } script)
         {
-            await _context.Dialogs.ShowErrorAsync("Cannot migrate", $"{target.Profile.Name} is read-only or cannot change structure from the app.");
+            await _context.Dialogs.ShowErrorAsync(Strings.Get("Compare/CannotMigrateTitle"), Strings.Format("Compare/CannotMigrateMessage", target.Profile.Name));
             return;
         }
 
         if (script.Statements.Count == 0)
         {
-            await _context.Dialogs.ShowErrorAsync("Nothing to migrate", script.Unsupported.Count > 0 ? "The target cannot express: " + string.Join("; ", script.Unsupported) : "The structures already match.");
+            await _context.Dialogs.ShowErrorAsync(
+                Strings.Get("Compare/NothingToMigrateTitle"),
+                script.Unsupported.Count > 0 ? Strings.Format("Compare/TargetCannotExpress", string.Join("; ", script.Unsupported)) : Strings.Get("Compare/StructuresAlreadyMatch"));
             return;
         }
 
         var notes = new List<string>();
         if (script.Statements.Any(s => s.IsDestructive))
         {
-            notes.Add("Some statements drop tables or columns, and the data in them is lost.");
+            notes.Add(Strings.Get("Compare/DestructiveNote"));
         }
 
-        notes.AddRange(script.Unsupported.Select(u => "Not scripted: " + u));
+        notes.AddRange(script.Unsupported.Select(u => Strings.Format("Compare/NotScripted", u)));
         notes.AddRange(SchemaDiffs.SelectMany(d => d.Notes.Select(n => $"{d.Name}: {n}")));
-        if (!await _context.Dialogs.ReviewSqlAsync($"Migrate {target.Profile.Name}", Reviewed([.. script.Statements.Select(s => s.Sql)], notes, target.Session.Dialect), "Migrate"))
+        if (!await _context.Dialogs.ReviewSqlAsync(Strings.Format("Compare/MigrateReviewTitle", target.Profile.Name), Reviewed([.. script.Statements.Select(s => s.Sql)], notes, target.Session.Dialect), Strings.Get("Compare/MigrateButton")))
         {
             return;
         }
@@ -465,7 +471,7 @@ public sealed partial class CompareTabViewModel : TabViewModel
                 _context.History.Record(target.Profile, target.Session.Database.CurrentDatabase, result, StatementKind.Ddl, "sync");
                 if (!result.Succeeded)
                 {
-                    await _context.Dialogs.ShowErrorAsync("The migration stopped", string.Create(CultureInfo.CurrentCulture, $"{result.Error}\n\n{ran:N0} statements ran before it. Engines without transactional DDL keep them."));
+                    await _context.Dialogs.ShowErrorAsync(Strings.Get("Compare/MigrationStoppedTitle"), Strings.Plural("Compare/MigrationStoppedMessage", ran, result.Error));
                     break;
                 }
 
@@ -474,7 +480,7 @@ public sealed partial class CompareTabViewModel : TabViewModel
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            await _context.Dialogs.ShowErrorAsync("The migration stopped", ex.Message);
+            await _context.Dialogs.ShowErrorAsync(Strings.Get("Compare/MigrationStoppedTitle"), ex.Message);
         }
         finally
         {
@@ -487,7 +493,7 @@ public sealed partial class CompareTabViewModel : TabViewModel
 
         if (ran == script.Statements.Count)
         {
-            _context.Notify(string.Create(CultureInfo.CurrentCulture, $"Migrated {target.Profile.Name}: {ran:N0} statements."));
+            _context.Notify(Strings.Plural("Compare/Migrated", ran, target.Profile.Name));
             await CompareStructureAsync();
         }
     }
@@ -507,20 +513,20 @@ public sealed partial class CompareTabViewModel : TabViewModel
 
     private static string Describe(DataDiffResult result)
     {
-        var text = string.Create(CultureInfo.CurrentCulture, $"{result.OnlyInSourceCount:N0} only in source · {result.OnlyInTargetCount:N0} only in target · {result.ChangedCount:N0} changed · {result.IdenticalCount:N0} identical");
+        var text = Strings.Format("Compare/DiffSummary", result.OnlyInSourceCount, result.OnlyInTargetCount, result.ChangedCount, result.IdenticalCount);
         if (result.SkippedNullKeyCount > 0)
         {
-            text += string.Create(CultureInfo.CurrentCulture, $" · {result.SkippedNullKeyCount:N0} skipped for a NULL key");
+            text += " · " + Strings.Plural("Compare/SkippedNullKey", result.SkippedNullKeyCount);
         }
 
         if (result.StoppedAtRowLimit)
         {
-            text += " · stopped at the row limit";
+            text += " · " + Strings.Get("Compare/StoppedAtRowLimit");
         }
 
         if (result.IsTruncated)
         {
-            text += string.Create(CultureInfo.CurrentCulture, $" · showing the first {result.Differences.Count:N0} differences");
+            text += " · " + Strings.Plural("Compare/ShowingFirstDifferences", result.Differences.Count);
         }
 
         return text;
@@ -531,12 +537,12 @@ public sealed partial class CompareTabViewModel : TabViewModel
         var notes = new List<string>();
         if (setup.SourceOnlyColumns.Count > 0)
         {
-            notes.Add("Only in the source, not compared: " + string.Join(", ", setup.SourceOnlyColumns));
+            notes.Add(Strings.Format("Compare/SourceOnlyColumns", string.Join(", ", setup.SourceOnlyColumns)));
         }
 
         if (setup.TargetOnlyColumns.Count > 0)
         {
-            notes.Add("Only in the target, left as they are: " + string.Join(", ", setup.TargetOnlyColumns));
+            notes.Add(Strings.Format("Compare/TargetOnlyColumns", string.Join(", ", setup.TargetOnlyColumns)));
         }
 
         return notes;
@@ -554,13 +560,13 @@ public sealed partial class CompareTabViewModel : TabViewModel
         lines.AddRange(statements.Take(MaxReviewedStatements));
         if (statements.Count > MaxReviewedStatements)
         {
-            lines.Add(string.Create(CultureInfo.CurrentCulture, $"{dialect.LineComment} and {statements.Count - MaxReviewedStatements:N0} more statements like these"));
+            lines.Add(Strings.Plural("Compare/MoreStatements", statements.Count - MaxReviewedStatements, dialect.LineComment));
         }
 
         return lines;
     }
 
-    private async Task<List<TableStructure>> LoadStructuresAsync(ConnectionSession session, string side, CancellationToken cancellationToken)
+    private async Task<List<TableStructure>> LoadStructuresAsync(ConnectionSession session, bool isTarget, CancellationToken cancellationToken)
     {
         var tables = session.Objects.Where(o => o.Kind == ObjectKind.Table).Take(MaxStructureTables).ToArray();
         var structures = new List<TableStructure>(tables.Length);
@@ -568,7 +574,9 @@ public sealed partial class CompareTabViewModel : TabViewModel
         {
             cancellationToken.ThrowIfCancellationRequested();
             structures.Add(await session.GetStructureAsync(table.Name, cancellationToken, refresh: true));
-            StatusText = string.Create(CultureInfo.CurrentCulture, $"Reading {side} structure… {structures.Count:N0}/{tables.Length:N0}");
+            StatusText = isTarget
+                ? Strings.Format("Compare/ReadingTargetStructure", structures.Count, tables.Length)
+                : Strings.Format("Compare/ReadingSourceStructure", structures.Count, tables.Length);
         }
 
         return structures;

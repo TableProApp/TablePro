@@ -43,7 +43,7 @@ public sealed partial class QueryPlanDiagram : UserControl
             HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
         };
-        AutomationProperties.SetName(_canvas, "Plan diagram");
+        AutomationProperties.SetName(_canvas, Strings.Get("Plan/DiagramName"));
         Content = _scroller;
         ActualThemeChanged += (_, _) => Build();
 
@@ -211,7 +211,7 @@ public sealed partial class QueryPlanDiagram : UserControl
 
             if (node.EstimatedRows is { } rows)
             {
-                parts.Add(rows == 1 ? "1 row" : rows.ToString("N0", CultureInfo.CurrentCulture) + " rows");
+                parts.Add(Strings.Plural("Plan/DiagramRows", rows));
             }
 
             lines.Children.Add(Detail(string.Join("   ", parts), "TextFillColorTertiaryBrush", mono: true));
@@ -227,7 +227,7 @@ public sealed partial class QueryPlanDiagram : UserControl
 
             if (node.ActualRows is { } actualRows)
             {
-                parts.Add("actual " + actualRows.ToString("N0", CultureInfo.CurrentCulture));
+                parts.Add(Strings.Format("Plan/DiagramActualRows", actualRows));
             }
 
             lines.Children.Add(Detail(string.Join("   ", parts), "TextFillColorSecondaryBrush", mono: true));
@@ -244,8 +244,8 @@ public sealed partial class QueryPlanDiagram : UserControl
             CornerRadius = new CornerRadius(6),
             Tag = node,
         };
-        AutomationProperties.SetName(card, QueryPlanLabels.AccessibleName(node));
-        ToolTipService.SetToolTip(card, QueryPlanLabels.Text(node));
+        AutomationProperties.SetName(card, PlanNames.AccessibleName(node));
+        ToolTipService.SetToolTip(card, PlanNames.Text(node));
         card.Click += (_, _) => NodeSelected?.Invoke(this, node);
         card.ContextFlyout = ContextMenu(node);
         Paint(card, node);
@@ -262,8 +262,8 @@ public sealed partial class QueryPlanDiagram : UserControl
     private static MenuFlyout ContextMenu(QueryPlanNode node)
     {
         var menu = new MenuFlyout();
-        menu.Items.Add(CopyItem("Copy Operation", node.Operation));
-        menu.Items.Add(CopyItem("Copy Step Details", QueryPlanLabels.Text(node)));
+        menu.Items.Add(CopyItem(Strings.Get("Plan/CopyOperation"), node.Operation));
+        menu.Items.Add(CopyItem(Strings.Get("Plan/CopyStepDetails"), PlanNames.Text(node)));
         return menu;
     }
 

@@ -34,26 +34,26 @@
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
             <StackPanel Orientation="Horizontal" Spacing="4">
-                <Button Style="{StaticResource ToolbarButtonStyle}" Command="{x:Bind ViewModel.ContinueCommand}" AutomationProperties.Name="Continue" ToolTipService.ToolTip="Continue (F5)">
+                <Button x:Uid="/Debugger/ContinueButton" Style="{StaticResource ToolbarButtonStyle}" Command="{x:Bind ViewModel.ContinueCommand}">
                     <FontIcon FontSize="14" Glyph="&#xE768;" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
                 </Button>
-                <Button Style="{StaticResource ToolbarButtonStyle}" Command="{x:Bind ViewModel.StepOverCommand}" AutomationProperties.Name="Step Over" ToolTipService.ToolTip="Step Over (F10)">
+                <Button x:Uid="/Debugger/StepOverButton" Style="{StaticResource ToolbarButtonStyle}" Command="{x:Bind ViewModel.StepOverCommand}">
                     <FontIcon FontSize="14" Glyph="&#xE7A6;" />
                 </Button>
-                <Button Style="{StaticResource ToolbarButtonStyle}" Command="{x:Bind ViewModel.StepIntoCommand}" AutomationProperties.Name="Step Into" ToolTipService.ToolTip="Step Into (F11)">
+                <Button x:Uid="/Debugger/StepIntoButton" Style="{StaticResource ToolbarButtonStyle}" Command="{x:Bind ViewModel.StepIntoCommand}">
                     <FontIcon FontSize="14" Glyph="&#xE74B;" />
                 </Button>
-                <Button Style="{StaticResource ToolbarButtonStyle}" Command="{x:Bind ViewModel.StepOutCommand}" Visibility="{x:Bind ViewModel.SupportsStepOut, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" AutomationProperties.Name="Step Out" ToolTipService.ToolTip="Step Out (Shift+F11)">
+                <Button x:Uid="/Debugger/StepOutButton" Style="{StaticResource ToolbarButtonStyle}" Command="{x:Bind ViewModel.StepOutCommand}" Visibility="{x:Bind ViewModel.SupportsStepOut, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
                     <FontIcon FontSize="14" Glyph="&#xE74A;" />
                 </Button>
-                <Button Style="{StaticResource ToolbarButtonStyle}" Command="{x:Bind ViewModel.StopCommand}" AutomationProperties.Name="Stop Debugging" ToolTipService.ToolTip="Stop Debugging (Shift+F5)">
+                <Button x:Uid="/Debugger/StopButton" Style="{StaticResource ToolbarButtonStyle}" Command="{x:Bind ViewModel.StopCommand}">
                     <FontIcon FontSize="14" Glyph="&#xE71A;" />
                 </Button>
                 <AppBarSeparator />
-                <Button Style="{StaticResource ToolbarButtonStyle}" Command="{x:Bind ViewModel.ToggleBreakpointCommand}" AutomationProperties.Name="Toggle Breakpoint" ToolTipService.ToolTip="Toggle Breakpoint on the selected line (F9)">
+                <Button x:Uid="/Debugger/ToggleBreakpointButton" Style="{StaticResource ToolbarButtonStyle}" Command="{x:Bind ViewModel.ToggleBreakpointCommand}">
                     <FontIcon FontSize="14" Glyph="&#xEA3B;" />
                 </Button>
-                <Button Style="{StaticResource ToolbarButtonStyle}" Command="{x:Bind ViewModel.RemoveAllBreakpointsCommand}" AutomationProperties.Name="Remove All Breakpoints" ToolTipService.ToolTip="Remove All Breakpoints (Ctrl+Shift+F9)">
+                <Button x:Uid="/Debugger/RemoveAllBreakpointsButton" Style="{StaticResource ToolbarButtonStyle}" Command="{x:Bind ViewModel.RemoveAllBreakpointsCommand}">
                     <FontIcon FontSize="14" Glyph="&#xE74D;" />
                 </Button>
             </StackPanel>
@@ -76,14 +76,14 @@
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
-                <TextBlock Style="{StaticResource PaneHeaderStyle}" Text="Call Stack" />
+                <TextBlock x:Uid="/Debugger/CallStackHeader" Style="{StaticResource PaneHeaderStyle}" />
                 <ListView
                     x:Name="StackList"
+                    x:Uid="/Debugger/StackList"
                     Grid.Row="1"
                     ItemsSource="{x:Bind ViewModel.Frames}"
                     SelectionMode="Single"
-                    SelectionChanged="OnFrameSelected"
-                    AutomationProperties.Name="Call stack">
+                    SelectionChanged="OnFrameSelected">
                     <ListView.ItemTemplate>
                         <DataTemplate x:DataType="vm:DebugFrameItem">
                             <StackPanel Padding="0,4">
@@ -113,12 +113,12 @@
                     Message="{x:Bind ViewModel.Message, Mode=OneWay}" />
                 <ListView
                     x:Name="SourceList"
+                    x:Uid="/Debugger/SourceList"
                     Grid.Row="2"
                     ItemsSource="{x:Bind ViewModel.Lines}"
                     ItemContainerStyle="{StaticResource CompactListItemStyle}"
                     SelectionMode="Single"
-                    SelectionChanged="OnSourceLineSelected"
-                    AutomationProperties.Name="Routine source">
+                    SelectionChanged="OnSourceLineSelected">
                     <ListView.ItemTemplate>
                         <DataTemplate x:DataType="vm:DebugSourceLine">
                             <Grid Height="20">
@@ -128,7 +128,7 @@
                                     <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
                                 <Border Grid.ColumnSpan="3" Background="{ThemeResource SystemFillColorCautionBackgroundBrush}" Visibility="{x:Bind IsCurrent, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
-                                <Border Background="Transparent" Tapped="OnGutterTapped" ToolTipService.ToolTip="Toggle breakpoint">
+                                <Border x:Uid="/Debugger/BreakpointGutter" Background="Transparent" Tapped="OnGutterTapped">
                                     <Grid>
                                         <Ellipse Width="10" Height="10" Fill="{ThemeResource SystemFillColorCriticalBrush}" Visibility="{x:Bind HasBreakpoint, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
                                         <FontIcon FontSize="10" Glyph="&#xE76C;" Foreground="{ThemeResource SystemFillColorCautionBrush}" Visibility="{x:Bind IsCurrent, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
@@ -177,11 +177,11 @@
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="2*" />
                     </Grid.ColumnDefinitions>
-                    <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Variable" />
-                    <TextBlock Grid.Column="1" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Type" />
-                    <TextBlock Grid.Column="2" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Value" />
+                    <TextBlock x:Uid="/Debugger/VariableColumn" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    <TextBlock x:Uid="/Debugger/TypeColumn" Grid.Column="1" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    <TextBlock x:Uid="/Debugger/ValueColumn" Grid.Column="2" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                 </Grid>
-                <ListView Grid.Row="1" ItemsSource="{x:Bind ViewModel.Variables}" SelectionMode="Single" AutomationProperties.Name="Variables">
+                <ListView x:Uid="/Debugger/VariablesList" Grid.Row="1" ItemsSource="{x:Bind ViewModel.Variables}" SelectionMode="Single">
                     <ListView.ItemTemplate>
                         <DataTemplate x:DataType="vm:DebugVariableItem">
                             <Grid ColumnSpacing="8" Padding="0,2" ToolTipService.ToolTip="{x:Bind Kind}">
@@ -207,11 +207,12 @@
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
                 <SelectorBar x:Name="OutputTabs" SelectionChanged="OnOutputTabChanged">
-                    <SelectorBarItem Text="Output" Tag="Output" IsSelected="True" />
-                    <SelectorBarItem x:Name="ResultTab" Text="Result" Tag="Result" Visibility="Collapsed" />
+                    <SelectorBarItem x:Uid="/Debugger/OutputTab" Tag="Output" IsSelected="True" />
+                    <SelectorBarItem x:Name="ResultTab" x:Uid="/Debugger/ResultTab" Tag="Result" Visibility="Collapsed" />
                 </SelectorBar>
                 <TextBox
                     x:Name="OutputBox"
+                    x:Uid="/Debugger/OutputBox"
                     Grid.Row="1"
                     IsReadOnly="True"
                     AcceptsReturn="True"
@@ -221,8 +222,6 @@
                     FontSize="12"
                     ScrollViewer.HorizontalScrollBarVisibility="Auto"
                     ScrollViewer.VerticalScrollBarVisibility="Auto"
-                    PlaceholderText="Notices and DBMS_OUTPUT lines appear here"
-                    AutomationProperties.Name="Debug output"
                     Text="{x:Bind ViewModel.OutputText, Mode=OneWay}" />
                 <grid:DataGridView x:Name="ResultGrid" Grid.Row="1" Visibility="Collapsed" />
             </Grid>

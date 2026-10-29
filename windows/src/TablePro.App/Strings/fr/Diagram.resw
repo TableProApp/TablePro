@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="Fit" xml:space="preserve">
+    <value>Ajuster</value>
+  </data>
+  <data name="ReadingStructure" xml:space="preserve">
+    <value>Lecture de la structure…</value>
+  </data>
+  <data name="ReadingStructureProgress" xml:space="preserve">
+    <value>Lecture de la structure… {0}/{1}</value>
+  </data>
+  <data name="Reload" xml:space="preserve">
+    <value>Recharger</value>
+  </data>
+  <data name="ShowingTables_One" xml:space="preserve">
+    <value>Affichage de {1} table sur {0}</value>
+  </data>
+  <data name="ShowingTables_Other" xml:space="preserve">
+    <value>Affichage de {1} tables sur {0}</value>
+  </data>
+  <data name="TabTitle" xml:space="preserve">
+    <value>Diagramme</value>
+  </data>
+  <data name="TableCount_One" xml:space="preserve">
+    <value>{0} table</value>
+  </data>
+  <data name="TableCount_Other" xml:space="preserve">
+    <value>{0} tables</value>
+  </data>
+  <data name="ZoomIn" xml:space="preserve">
+    <value>Zoom avant</value>
+  </data>
+  <data name="ZoomOut" xml:space="preserve">
+    <value>Zoom arrière</value>
+  </data>
+</root>

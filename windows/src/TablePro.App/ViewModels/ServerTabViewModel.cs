@@ -28,7 +28,7 @@ public sealed partial class ServerTabViewModel : TabViewModel
     public ServerTabViewModel(WorkspaceContext context)
     {
         _context = context;
-        Title = "Server";
+        Title = Strings.Get("Server/TabTitle");
         Subtitle = context.Session.Profile.Name;
     }
 
@@ -108,8 +108,8 @@ public sealed partial class ServerTabViewModel : TabViewModel
                 _ => null,
             };
             Grid = result is null ? null : new ResultGridSource(result);
-            Message = result is null ? $"{_context.Session.Profile.Descriptor.DisplayName} has no {Section.ToString().ToLowerInvariant()} view." : null;
-            StatusText = result is null ? null : $"{result.RowCount:N0} rows · {DateTime.Now:T}";
+            Message = result is null ? NoViewMessage(_context.Session.Profile.Descriptor.DisplayName) : null;
+            StatusText = result is null ? null : Strings.Plural("Server/StatusRows", result.RowCount, DateTime.Now);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -121,6 +121,13 @@ public sealed partial class ServerTabViewModel : TabViewModel
             IsBusy = false;
         }
     }
+
+    private string NoViewMessage(string engine) => Section switch
+    {
+        ServerSection.Activity => Strings.Format("Server/NoActivityView", engine),
+        ServerSection.Variables => Strings.Format("Server/NoVariablesView", engine),
+        _ => Strings.Format("Server/NoUsersView", engine),
+    };
 
     /// <summary>Ends the server session on the selected row, after asking.</summary>
     public async Task TerminateAsync(int row)
@@ -146,7 +153,7 @@ public sealed partial class ServerTabViewModel : TabViewModel
         }
 
         if (_context.Session.Profile.SafeMode.BlocksAllWrites()
-            || !await _context.Dialogs.ConfirmAsync("End session?", $"Terminate server session {id}? Its running statement is cancelled and its connection closed.", "Terminate", destructive: true))
+            || !await _context.Dialogs.ConfirmAsync(Strings.Get("Server/EndSessionTitle"), Strings.Format("Server/EndSessionMessage", id), Strings.Get("Server/Terminate"), destructive: true))
         {
             return;
         }
@@ -158,7 +165,7 @@ public sealed partial class ServerTabViewModel : TabViewModel
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            await _context.Dialogs.ShowErrorAsync("Could not end the session", ex.Message);
+            await _context.Dialogs.ShowErrorAsync(Strings.Get("Server/EndSessionFailed"), ex.Message);
         }
     }
 

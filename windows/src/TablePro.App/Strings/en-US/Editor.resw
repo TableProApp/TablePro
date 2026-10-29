@@ -1,0 +1,170 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="CloseFind" xml:space="preserve">
+    <value>Close (Esc)</value>
+    <comment>Tooltip of the find bar's close button. The key name Esc stays as it is.</comment>
+  </data>
+  <data name="CompletionColumn" xml:space="preserve">
+    <value>Column</value>
+    <comment>Kind of a completion suggestion, shown in a narrow column at the right of the list (noun).</comment>
+  </data>
+  <data name="CompletionFunction" xml:space="preserve">
+    <value>Function</value>
+    <comment>Kind of a completion suggestion, shown in a narrow column at the right of the list (noun).</comment>
+  </data>
+  <data name="CompletionKeyword" xml:space="preserve">
+    <value>Keyword</value>
+    <comment>Kind of a completion suggestion, shown in a narrow column at the right of the list (noun).</comment>
+  </data>
+  <data name="CompletionSchema" xml:space="preserve">
+    <value>Schema</value>
+    <comment>Kind of a completion suggestion, shown in a narrow column at the right of the list (noun).</comment>
+  </data>
+  <data name="CompletionSnippet" xml:space="preserve">
+    <value>Snippet</value>
+    <comment>Kind of a completion suggestion, shown in a narrow column at the right of the list (noun).</comment>
+  </data>
+  <data name="CompletionTable" xml:space="preserve">
+    <value>Table</value>
+    <comment>Kind of a completion suggestion, shown in a narrow column at the right of the list (noun).</comment>
+  </data>
+  <data name="CompletionView" xml:space="preserve">
+    <value>View</value>
+    <comment>Kind of a completion suggestion: a database view (noun), shown in a narrow column at the right of the list.</comment>
+  </data>
+  <data name="ErrorAnnouncement" xml:space="preserve">
+    <value>Error: {0}</value>
+    <comment>Read by the screen reader when moving to a problem in the SQL. {0} is the problem's description.</comment>
+  </data>
+  <data name="Explain" xml:space="preserve">
+    <value>Explain</value>
+    <comment>Editor context menu command (verb) that shows the query plan, after the SQL EXPLAIN.</comment>
+  </data>
+  <data name="Find" xml:space="preserve">
+    <value>Find</value>
+    <comment>Editor context menu command (verb) that opens the find bar.</comment>
+  </data>
+  <data name="FindMatches_One" xml:space="preserve">
+    <value>{0} match</value>
+    <comment>Find bar status. {0} is the number of matches in the text.</comment>
+  </data>
+  <data name="FindMatches_Other" xml:space="preserve">
+    <value>{0} matches</value>
+    <comment>Find bar status. {0} is the number of matches in the text.</comment>
+  </data>
+  <data name="FindNoResults" xml:space="preserve">
+    <value>No results</value>
+    <comment>Find bar status when the text does not occur.</comment>
+  </data>
+  <data name="FindPlaceholder" xml:space="preserve">
+    <value>Find</value>
+    <comment>Placeholder of the find bar's search box.</comment>
+  </data>
+  <data name="FormatSql" xml:space="preserve">
+    <value>Format SQL</value>
+  </data>
+  <data name="GoToDefinition" xml:space="preserve">
+    <value>Go to Definition</value>
+  </data>
+  <data name="MatchCase" xml:space="preserve">
+    <value>Match case</value>
+  </data>
+  <data name="NextMatch" xml:space="preserve">
+    <value>Next match (F3)</value>
+    <comment>The key name F3 stays as it is.</comment>
+  </data>
+  <data name="NoDefinitionFound" xml:space="preserve">
+    <value>No definition found for '{0}'.</value>
+    <comment>{0} is the name of a table, column or alias in the SQL.</comment>
+  </data>
+  <data name="NoProblems" xml:space="preserve">
+    <value>No problems.</value>
+    <comment>Shown when there is no SQL error or warning to move to.</comment>
+  </data>
+  <data name="NoSymbolAtCaret" xml:space="preserve">
+    <value>No symbol at the caret.</value>
+    <comment>A symbol is a table, column or alias name in the SQL; the caret is the text cursor.</comment>
+  </data>
+  <data name="NothingAtCaret" xml:space="preserve">
+    <value>Nothing to show at the caret.</value>
+    <comment>The caret is the text cursor.</comment>
+  </data>
+  <data name="PreviousMatch" xml:space="preserve">
+    <value>Previous match (Shift+F3)</value>
+    <comment>The shortcut Shift+F3 stays as it is.</comment>
+  </data>
+  <data name="ReferencesSelected_One" xml:space="preserve">
+    <value>1 reference selected</value>
+    <comment>Read by the screen reader after Rename Symbol. {0} is the number of places the name occurs.</comment>
+  </data>
+  <data name="ReferencesSelected_Other" xml:space="preserve">
+    <value>{0} references selected</value>
+    <comment>Read by the screen reader after Rename Symbol. {0} is the number of places the name occurs.</comment>
+  </data>
+  <data name="RenameNeedsInsertMode" xml:space="preserve">
+    <value>Rename works in insert mode.</value>
+    <comment>Shown when Vim keys are on and the editor is not in Vim's insert mode.</comment>
+  </data>
+  <data name="RenameSymbol" xml:space="preserve">
+    <value>Rename Symbol</value>
+    <comment>Editor context menu command that selects every occurrence of the name at the caret for renaming.</comment>
+  </data>
+  <data name="Replace" xml:space="preserve">
+    <value>Replace</value>
+    <comment>Editor context menu command (verb) that opens the find and replace bar.</comment>
+  </data>
+  <data name="ReplaceAllButton" xml:space="preserve">
+    <value>Replace All</value>
+  </data>
+  <data name="ReplaceButton" xml:space="preserve">
+    <value>Replace</value>
+    <comment>Find bar button (verb) that replaces the current match.</comment>
+  </data>
+  <data name="ReplacePlaceholder" xml:space="preserve">
+    <value>Replace</value>
+    <comment>Placeholder of the find bar's replacement text box.</comment>
+  </data>
+  <data name="ReplacedCount_One" xml:space="preserve">
+    <value>Replaced {0}</value>
+    <comment>Find bar status after Replace All. {0} is the number of matches replaced.</comment>
+  </data>
+  <data name="ReplacedCount_Other" xml:space="preserve">
+    <value>Replaced {0}</value>
+    <comment>Find bar status after Replace All. {0} is the number of matches replaced.</comment>
+  </data>
+  <data name="RunAll" xml:space="preserve">
+    <value>Run All</value>
+  </data>
+  <data name="RunCurrent" xml:space="preserve">
+    <value>Run Current</value>
+    <comment>Editor context menu command that runs the statement at the caret.</comment>
+  </data>
+  <data name="SuggestionAcceptHint" xml:space="preserve">
+    <value>Tab to accept</value>
+    <comment>Small hint under an inline AI suggestion. Tab is the key name.</comment>
+  </data>
+  <data name="ToggleComment" xml:space="preserve">
+    <value>Toggle Comment</value>
+    <comment>Editor context menu command that comments or uncomments the selected lines.</comment>
+  </data>
+  <data name="WarningAnnouncement" xml:space="preserve">
+    <value>Warning: {0}</value>
+    <comment>Read by the screen reader when moving to a problem in the SQL. {0} is the problem's description.</comment>
+  </data>
+  <data name="WentTo" xml:space="preserve">
+    <value>Went to {0}</value>
+    <comment>Read by the screen reader after Go to Definition. {0} is the text of the definition it moved to.</comment>
+  </data>
+</root>

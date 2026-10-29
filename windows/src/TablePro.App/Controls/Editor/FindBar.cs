@@ -18,15 +18,15 @@ public sealed class FindEventArgs(string query, string replacement, bool matchCa
 /// <summary>The editor's find and replace strip, laid out like the Fluent find bars in Windows apps.</summary>
 internal sealed partial class FindBar : UserControl
 {
-    private readonly TextBox _query = new() { PlaceholderText = "Find", Width = 240, IsSpellCheckEnabled = false };
-    private readonly TextBox _replacement = new() { PlaceholderText = "Replace", Width = 240, IsSpellCheckEnabled = false };
+    private readonly TextBox _query = new() { PlaceholderText = Strings.Get("Editor/FindPlaceholder"), Width = 240, IsSpellCheckEnabled = false };
+    private readonly TextBox _replacement = new() { PlaceholderText = Strings.Get("Editor/ReplacePlaceholder"), Width = 240, IsSpellCheckEnabled = false };
     private readonly ToggleButton _matchCase = new() { Content = new FontIcon { Glyph = "", FontSize = 14 }, Padding = new Thickness(8, 6, 8, 6) };
     private readonly TextBlock _status = new() { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0) };
     private readonly StackPanel _replaceRow;
 
     public FindBar()
     {
-        ToolTipService.SetToolTip(_matchCase, "Match case");
+        ToolTipService.SetToolTip(_matchCase, Strings.Get("Editor/MatchCase"));
         _query.KeyDown += OnQueryKeyDown;
         _replacement.KeyDown += OnQueryKeyDown;
         _status.Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"];
@@ -34,14 +34,14 @@ internal sealed partial class FindBar : UserControl
         var findRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
         findRow.Children.Add(_query);
         findRow.Children.Add(_matchCase);
-        findRow.Children.Add(IconButton("", "Previous match (Shift+F3)", () => FindPrevious?.Invoke(this, Args())));
-        findRow.Children.Add(IconButton("", "Next match (F3)", () => FindNext?.Invoke(this, Args())));
+        findRow.Children.Add(IconButton("", Strings.Get("Editor/PreviousMatch"), () => FindPrevious?.Invoke(this, Args())));
+        findRow.Children.Add(IconButton("", Strings.Get("Editor/NextMatch"), () => FindNext?.Invoke(this, Args())));
         findRow.Children.Add(_status);
 
         _replaceRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
         _replaceRow.Children.Add(_replacement);
-        _replaceRow.Children.Add(new Button { Content = "Replace", Command = new Relay(() => Replace?.Invoke(this, Args())) });
-        _replaceRow.Children.Add(new Button { Content = "Replace All", Command = new Relay(() => ReplaceAll?.Invoke(this, Args())) });
+        _replaceRow.Children.Add(new Button { Content = Strings.Get("Editor/ReplaceButton"), Command = new Relay(() => Replace?.Invoke(this, Args())) });
+        _replaceRow.Children.Add(new Button { Content = Strings.Get("Editor/ReplaceAllButton"), Command = new Relay(() => ReplaceAll?.Invoke(this, Args())) });
 
         var rows = new StackPanel { Spacing = 6 };
         rows.Children.Add(findRow);
@@ -51,7 +51,7 @@ internal sealed partial class FindBar : UserControl
         layout.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         layout.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         layout.Children.Add(rows);
-        var close = IconButton("", "Close (Esc)", () => Closed?.Invoke(this, EventArgs.Empty));
+        var close = IconButton("", Strings.Get("Editor/CloseFind"), () => Closed?.Invoke(this, EventArgs.Empty));
         close.VerticalAlignment = VerticalAlignment.Top;
         Grid.SetColumn(close, 1);
         layout.Children.Add(close);

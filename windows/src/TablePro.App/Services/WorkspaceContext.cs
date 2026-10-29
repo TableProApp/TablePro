@@ -51,7 +51,7 @@ public sealed class WorkspaceContext(ConnectionSession session, DialogService di
         {
             var catalog = Session.Catalog;
             var snippets = Snippets();
-            return snippets.Count == 0 ? catalog : new CompletionCatalog(catalog.Schemas, catalog.Tables, catalog.Columns) { Snippets = [("Favorites", snippets)] };
+            return snippets.Count == 0 ? catalog : new CompletionCatalog(catalog.Schemas, catalog.Tables, catalog.Columns) { Snippets = [(Strings.Get("Workspace/Favorites"), snippets)] };
         }
     }
 

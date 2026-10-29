@@ -33,9 +33,26 @@ public sealed class SidebarEntry
     public bool IsHeader => Object is null;
 
     // ListView announces an item by its ToString, so screen readers read the object's name.
-    public override string ToString() => Object is null ? Text : $"{Object.Kind} {Text}";
+    public override string ToString() => Object is null ? Text : Strings.Format("Workspace/SidebarItemAccessibleName", KindName(Object.Kind), Text);
 
-    public static SidebarEntry Header(string text, int count) => new(text.ToUpperInvariant(), string.Empty, null, count.ToString(CultureInfo.CurrentCulture));
+    // Upper-cased in the UI language, so a Turkish "i" becomes its dotted capital.
+    public static SidebarEntry Header(string text, int count) => new(text.ToUpper(CultureInfo.CurrentUICulture), string.Empty, null, count.ToString(CultureInfo.CurrentCulture));
+
+    /// <summary>The name of one object of a kind, as the quick switcher and screen readers show it.</summary>
+    public static string KindName(ObjectKind kind) => kind switch
+    {
+        ObjectKind.Table => Strings.Get("Workspace/KindTable"),
+        ObjectKind.View => Strings.Get("Workspace/KindView"),
+        ObjectKind.MaterializedView => Strings.Get("Workspace/KindMaterializedView"),
+        ObjectKind.Function => Strings.Get("Workspace/KindFunction"),
+        ObjectKind.Procedure => Strings.Get("Workspace/KindProcedure"),
+        ObjectKind.Sequence => Strings.Get("Workspace/KindSequence"),
+        ObjectKind.Trigger => Strings.Get("Workspace/KindTrigger"),
+        ObjectKind.Collection => Strings.Get("Workspace/KindCollection"),
+        ObjectKind.Key => Strings.Get("Workspace/KindKey"),
+        ObjectKind.Topic => Strings.Get("Workspace/KindTopic"),
+        _ => kind.ToString(),
+    };
 
     public static SidebarEntry For(DatabaseObject obj) => new(obj.Name.Name, GlyphFor(obj.Kind), obj, obj.RowEstimate is > 0 ? FormatCount(obj.RowEstimate.Value) : null);
 
@@ -53,9 +70,9 @@ public sealed class SidebarEntry
 
     private static string FormatCount(long count) => count switch
     {
-        >= 1_000_000_000 => string.Create(CultureInfo.CurrentCulture, $"{count / 1e9:0.#}B"),
-        >= 1_000_000 => string.Create(CultureInfo.CurrentCulture, $"{count / 1e6:0.#}M"),
-        >= 10_000 => string.Create(CultureInfo.CurrentCulture, $"{count / 1e3:0.#}K"),
+        >= 1_000_000_000 => Strings.Format("Workspace/CountBillions", count / 1e9),
+        >= 1_000_000 => Strings.Format("Workspace/CountMillions", count / 1e6),
+        >= 10_000 => Strings.Format("Workspace/CountThousands", count / 1e3),
         _ => count.ToString("N0", CultureInfo.CurrentCulture),
     };
 }
@@ -108,8 +125,8 @@ public sealed partial class WorkspaceViewModel : ObservableObject, IAsyncDisposa
     public string SafeModeText => Profile.SafeMode switch
     {
         SafeModeLevel.Silent => string.Empty,
-        SafeModeLevel.ReadOnly => "Read-only",
-        _ => "Safe Mode",
+        SafeModeLevel.ReadOnly => Strings.Get("Workspace/BadgeReadOnly"),
+        _ => Strings.Get("Workspace/BadgeSafeMode"),
     };
 
     [ObservableProperty]
@@ -290,7 +307,7 @@ public sealed partial class WorkspaceViewModel : ObservableObject, IAsyncDisposa
 
     public async Task<bool> CloseTabAsync(TabViewModel tab)
     {
-        if (tab.UnsavedWork is { } unsaved && !await Context.Dialogs.ConfirmAsync("Close tab?", unsaved + " Closing discards them.", "Close", destructive: true))
+        if (tab.UnsavedWork is { } unsaved && !await Context.Dialogs.ConfirmAsync(Strings.Get("Workspace/CloseTabTitle"), Strings.Format("Workspace/CloseTabMessage", unsaved), Strings.Get("Common/Close"), destructive: true))
         {
             return false;
         }
@@ -356,7 +373,7 @@ public sealed partial class WorkspaceViewModel : ObservableObject, IAsyncDisposa
         }
 
         var statements = ddl.BuildDdl(obj.Name, new DropObject(obj));
-        if (statements.Count == 0 || Profile.IsReadOnly || !await Context.Dialogs.ReviewSqlAsync($"Drop {obj.Name.Name}?", statements, "Drop"))
+        if (statements.Count == 0 || Profile.IsReadOnly || !await Context.Dialogs.ReviewSqlAsync(Strings.Format("Workspace/DropTitle", obj.Name.Name), statements, Strings.Get("Workspace/Drop")))
         {
             return false;
         }
@@ -372,7 +389,7 @@ public sealed partial class WorkspaceViewModel : ObservableObject, IAsyncDisposa
         }
 
         var statements = ddl.BuildDdl(obj.Name, new TruncateTable());
-        if (statements.Count == 0 || Profile.IsReadOnly || !await Context.Dialogs.ReviewSqlAsync($"Empty {obj.Name.Name}?", statements, "Truncate"))
+        if (statements.Count == 0 || Profile.IsReadOnly || !await Context.Dialogs.ReviewSqlAsync(Strings.Format("Workspace/TruncateTitle", obj.Name.Name), statements, Strings.Get("Workspace/Truncate")))
         {
             return false;
         }
@@ -387,14 +404,14 @@ public sealed partial class WorkspaceViewModel : ObservableObject, IAsyncDisposa
             return false;
         }
 
-        var name = await Context.Dialogs.PromptAsync($"Rename {obj.Name.Name}", "New name", obj.Name.Name, "Rename");
+        var name = await Context.Dialogs.PromptAsync(Strings.Format("Workspace/RenameTitle", obj.Name.Name), Strings.Get("Workspace/RenameNewName"), obj.Name.Name, Strings.Get("Common/Rename"));
         if (string.IsNullOrWhiteSpace(name) || name == obj.Name.Name)
         {
             return false;
         }
 
         var statements = ddl.BuildDdl(obj.Name, new RenameTable(name.Trim()));
-        return statements.Count > 0 && !Profile.IsReadOnly && await Context.Dialogs.ReviewSqlAsync("Rename", statements, "Rename") && await RunDdlAsync(statements);
+        return statements.Count > 0 && !Profile.IsReadOnly && await Context.Dialogs.ReviewSqlAsync(Strings.Get("Common/Rename"), statements, Strings.Get("Common/Rename")) && await RunDdlAsync(statements);
     }
 
     public async Task<bool> CreateTableAsync(ObjectName name, IReadOnlyList<ColumnDefinition> columns)
@@ -405,7 +422,7 @@ public sealed partial class WorkspaceViewModel : ObservableObject, IAsyncDisposa
         }
 
         var statements = ddl.BuildDdl(name, new CreateTable(name, columns));
-        return statements.Count > 0 && !Profile.IsReadOnly && await Context.Dialogs.ReviewSqlAsync("Create table", statements, "Create") && await RunDdlAsync(statements);
+        return statements.Count > 0 && !Profile.IsReadOnly && await Context.Dialogs.ReviewSqlAsync(Strings.Get("Workspace/CreateTableReviewTitle"), statements, Strings.Get("Workspace/Create")) && await RunDdlAsync(statements);
     }
 
     public async ValueTask DisposeAsync()
@@ -493,7 +510,7 @@ public sealed partial class WorkspaceViewModel : ObservableObject, IAsyncDisposa
             return;
         }
 
-        if (Tabs.Any(t => t.UnsavedWork is not null) && !await Context.Dialogs.ConfirmAsync("Switch database?", "Open tabs with unsaved changes will be closed.", "Switch", destructive: true))
+        if (Tabs.Any(t => t.UnsavedWork is not null) && !await Context.Dialogs.ConfirmAsync(Strings.Get("Workspace/SwitchDatabaseTitle"), Strings.Get("Workspace/SwitchDatabaseMessage"), Strings.Get("Workspace/SwitchDatabaseButton"), destructive: true))
         {
             _switching = true;
             SelectedDatabase = Session.Database.CurrentDatabase;
@@ -518,7 +535,7 @@ public sealed partial class WorkspaceViewModel : ObservableObject, IAsyncDisposa
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            await Context.Dialogs.ShowErrorAsync("Could not switch database", ex.Message);
+            await Context.Dialogs.ShowErrorAsync(Strings.Get("Workspace/SwitchDatabaseFailed"), ex.Message);
         }
         finally
         {
@@ -534,7 +551,7 @@ public sealed partial class WorkspaceViewModel : ObservableObject, IAsyncDisposa
             Context.History.Record(Profile, Session.Database.CurrentDatabase, result, Core.Sql.StatementKind.Ddl, "sidebar");
             if (!result.Succeeded)
             {
-                await Context.Dialogs.ShowErrorAsync("The statement failed", result.Error!);
+                await Context.Dialogs.ShowErrorAsync(Strings.Get("Workspace/StatementFailed"), result.Error!);
                 await RefreshAsync();
                 return false;
             }
@@ -569,16 +586,16 @@ public sealed partial class WorkspaceViewModel : ObservableObject, IAsyncDisposa
 
     internal static string SectionName(ObjectKind kind) => kind switch
     {
-        ObjectKind.Table => "Tables",
-        ObjectKind.View => "Views",
-        ObjectKind.MaterializedView => "Materialized Views",
-        ObjectKind.Function => "Functions",
-        ObjectKind.Procedure => "Procedures",
-        ObjectKind.Sequence => "Sequences",
-        ObjectKind.Trigger => "Triggers",
-        ObjectKind.Collection => "Collections",
-        ObjectKind.Key => "Keys",
-        ObjectKind.Topic => "Topics",
+        ObjectKind.Table => Strings.Get("Workspace/SectionTables"),
+        ObjectKind.View => Strings.Get("Workspace/SectionViews"),
+        ObjectKind.MaterializedView => Strings.Get("Workspace/SectionMaterializedViews"),
+        ObjectKind.Function => Strings.Get("Workspace/SectionFunctions"),
+        ObjectKind.Procedure => Strings.Get("Workspace/SectionProcedures"),
+        ObjectKind.Sequence => Strings.Get("Workspace/SectionSequences"),
+        ObjectKind.Trigger => Strings.Get("Workspace/SectionTriggers"),
+        ObjectKind.Collection => Strings.Get("Workspace/SectionCollections"),
+        ObjectKind.Key => Strings.Get("Workspace/SectionKeys"),
+        ObjectKind.Topic => Strings.Get("Workspace/SectionTopics"),
         _ => kind.ToString(),
     };
 }

@@ -27,7 +27,9 @@ public sealed class ResultItemViewModel
 
     public bool IsError => !Statement.Succeeded;
 
-    public string Title => IsError ? "Error" : Result is null ? $"Statement {Index}" : $"Result {Index}";
+    public string Title => IsError
+        ? Strings.Get("Common/Error")
+        : Result is null ? Strings.Format("Query/StatementTabTitle", Index) : Strings.Format("Query/ResultTabTitle", Index);
 
     public string Summary
     {
@@ -36,26 +38,27 @@ public sealed class ResultItemViewModel
             var elapsed = FormatElapsed(Statement.Elapsed);
             if (IsError)
             {
-                return $"Failed after {elapsed}";
+                return Strings.Format("Query/FailedAfter", elapsed);
             }
 
             if (Result is null)
             {
                 return Statement.RecordsAffected >= 0
-                    ? string.Create(CultureInfo.CurrentCulture, $"{Statement.RecordsAffected:N0} rows affected · {elapsed}")
-                    : $"Done · {elapsed}";
+                    ? Strings.Plural("Query/RowsAffected", Statement.RecordsAffected, elapsed)
+                    : Strings.Format("Query/DoneAfter", elapsed);
             }
 
-            var rows = string.Create(CultureInfo.CurrentCulture, $"{Result.RowCount:N0} rows");
-            return Result.IsTruncated ? $"{rows} (limit reached, more on the server) · {elapsed}" : $"{rows} · {elapsed}";
+            return Result.IsTruncated
+                ? Strings.Plural("Query/RowsTruncated", Result.RowCount, elapsed)
+                : Strings.Plural("Query/RowsReturned", Result.RowCount, elapsed);
         }
     }
 
     public static string FormatElapsed(TimeSpan elapsed) => elapsed.TotalMilliseconds switch
     {
-        < 1 => "<1 ms",
-        < 1000 => string.Create(CultureInfo.CurrentCulture, $"{elapsed.TotalMilliseconds:N0} ms"),
-        < 60_000 => string.Create(CultureInfo.CurrentCulture, $"{elapsed.TotalSeconds:N2} s"),
+        < 1 => Strings.Get("Query/ElapsedUnderOneMillisecond"),
+        < 1000 => Strings.Format("Query/ElapsedMilliseconds", elapsed.TotalMilliseconds),
+        < 60_000 => Strings.Format("Query/ElapsedSeconds", elapsed.TotalSeconds),
         _ => elapsed.ToString(@"m\:ss", CultureInfo.CurrentCulture),
     };
 }

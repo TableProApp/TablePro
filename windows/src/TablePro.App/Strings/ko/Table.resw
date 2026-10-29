@@ -1,0 +1,483 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AddCheckNote" xml:space="preserve">
+    <value>체크 제약 조건을 추가하면 모든 행을 읽으며, 통과하지 못하는 행이 있으면 실패합니다.</value>
+  </data>
+  <data name="AddCheckTitle" xml:space="preserve">
+    <value>체크 제약 조건 추가</value>
+  </data>
+  <data name="AddColumnTitle" xml:space="preserve">
+    <value>열 추가</value>
+  </data>
+  <data name="AddForeignKeyTitle" xml:space="preserve">
+    <value>외래 키 추가</value>
+  </data>
+  <data name="AddIndexTitle" xml:space="preserve">
+    <value>인덱스 추가</value>
+  </data>
+  <data name="AddPartitionTitle" xml:space="preserve">
+    <value>파티션 추가</value>
+  </data>
+  <data name="AllowsNull" xml:space="preserve">
+    <value>NULL 허용</value>
+  </data>
+  <data name="AnyColumn" xml:space="preserve">
+    <value>어느 열이든</value>
+  </data>
+  <data name="CannotChangeStructure" xml:space="preserve">
+    <value>이 엔진은 앱에서 구조를 변경할 수 없습니다.</value>
+  </data>
+  <data name="CannotExpressChange" xml:space="preserve">
+    <value>이 엔진에서는 해당 변경을 표현할 수 없습니다.</value>
+  </data>
+  <data name="CannotMakeChangeTitle" xml:space="preserve">
+    <value>이 변경을 수행할 수 없음</value>
+  </data>
+  <data name="CellNo" xml:space="preserve">
+    <value>NO</value>
+  </data>
+  <data name="CellYes" xml:space="preserve">
+    <value>YES</value>
+  </data>
+  <data name="ChangeFailedTitle" xml:space="preserve">
+    <value>변경하지 못했습니다</value>
+  </data>
+  <data name="CheckExpressionHeader" xml:space="preserve">
+    <value>표현식</value>
+  </data>
+  <data name="CheckExpressionPlaceholder" xml:space="preserve">
+    <value>예: price &gt; 0 AND quantity &gt;= 0</value>
+  </data>
+  <data name="CheckIncomplete" xml:space="preserve">
+    <value>체크 제약 조건에는 이름과 표현식이 모두 필요합니다.</value>
+  </data>
+  <data name="CheckNotSavedTitle" xml:space="preserve">
+    <value>체크 제약 조건이 저장되지 않음</value>
+  </data>
+  <data name="ChecksNotEditable" xml:space="preserve">
+    <value>이 서버에서는 여기에서 체크 제약 조건을 추가하거나 변경할 수 없습니다.</value>
+  </data>
+  <data name="CommentHeader" xml:space="preserve">
+    <value>주석</value>
+  </data>
+  <data name="DataAddRow.Label" xml:space="preserve">
+    <value>행 추가</value>
+  </data>
+  <data name="DataDelete.Label" xml:space="preserve">
+    <value>삭제</value>
+  </data>
+  <data name="DataDiscard.Label" xml:space="preserve">
+    <value>폐기</value>
+  </data>
+  <data name="DataExport.Label" xml:space="preserve">
+    <value>내보내기</value>
+  </data>
+  <data name="DataFilter.Label" xml:space="preserve">
+    <value>필터</value>
+  </data>
+  <data name="DataImport.Label" xml:space="preserve">
+    <value>가져오기</value>
+  </data>
+  <data name="DataRedo.Label" xml:space="preserve">
+    <value>다시 실행</value>
+  </data>
+  <data name="DataRefresh.Label" xml:space="preserve">
+    <value>새로 고침</value>
+  </data>
+  <data name="DataUndo.Label" xml:space="preserve">
+    <value>실행 취소</value>
+  </data>
+  <data name="DefaultExpressionHeader" xml:space="preserve">
+    <value>기본값 표현식</value>
+  </data>
+  <data name="DefaultExpressionPlaceholder" xml:space="preserve">
+    <value>예: 0, 'text' 또는 now()</value>
+  </data>
+  <data name="DefinitionCopy.Label" xml:space="preserve">
+    <value>복사</value>
+  </data>
+  <data name="DefinitionOpenInQueryTab.Label" xml:space="preserve">
+    <value>쿼리 탭에서 열기</value>
+  </data>
+  <data name="DeleteRows" xml:space="preserve">
+    <value>행 삭제</value>
+  </data>
+  <data name="DetailsReadFailed" xml:space="preserve">
+    <value>체크 제약 조건, 파티션 및 옵션을 읽을 수 없습니다: {0}</value>
+  </data>
+  <data name="DiscardChangesTitle" xml:space="preserve">
+    <value>변경 사항을 폐기하시겠습니까?</value>
+  </data>
+  <data name="DuplicateRow" xml:space="preserve">
+    <value>행 복제</value>
+  </data>
+  <data name="EditCell" xml:space="preserve">
+    <value>셀 편집</value>
+  </data>
+  <data name="EditCheckNote" xml:space="preserve">
+    <value>표현식을 바꾸면 체크 제약 조건을 삭제했다가 다시 추가하므로 모든 행을 읽습니다. 이름만 바꾸면 그렇지 않습니다.</value>
+  </data>
+  <data name="EditCheckTitle" xml:space="preserve">
+    <value>CHECK 제약 조건 편집</value>
+  </data>
+  <data name="EditColumnTitle" xml:space="preserve">
+    <value>열 편집</value>
+  </data>
+  <data name="EngineReadOnly" xml:space="preserve">
+    <value>{0} 연결은 읽기 전용입니다.</value>
+  </data>
+  <data name="ExcludeValue" xml:space="preserve">
+    <value>이 값 제외</value>
+  </data>
+  <data name="FilterAddCondition.Content" xml:space="preserve">
+    <value>조건 추가</value>
+  </data>
+  <data name="FilterApply.Content" xml:space="preserve">
+    <value>적용</value>
+  </data>
+  <data name="FilterByValue" xml:space="preserve">
+    <value>이 값으로 필터링</value>
+  </data>
+  <data name="FilterClear.Content" xml:space="preserve">
+    <value>지우기</value>
+  </data>
+  <data name="FilterMatchMode.OffContent" xml:space="preserve">
+    <value>하나라도 일치</value>
+  </data>
+  <data name="FilterMatchMode.OnContent" xml:space="preserve">
+    <value>모두 일치</value>
+  </data>
+  <data name="FilterRawWhere.PlaceholderText" xml:space="preserve">
+    <value>원시 WHERE 절, 예: price &gt; 10 AND status = 'open'</value>
+  </data>
+  <data name="FilterRemoveCondition.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>조건 제거</value>
+  </data>
+  <data name="FilterRemoveCondition.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>조건 제거</value>
+  </data>
+  <data name="FilterValue.PlaceholderText" xml:space="preserve">
+    <value>값</value>
+  </data>
+  <data name="ForeignKeyColumnHeader" xml:space="preserve">
+    <value>열</value>
+  </data>
+  <data name="ForeignKeyOnDeleteHeader" xml:space="preserve">
+    <value>삭제 시</value>
+  </data>
+  <data name="ForeignKeyTargetColumnHeader" xml:space="preserve">
+    <value>참조 열</value>
+  </data>
+  <data name="ForeignKeyTargetTableHeader" xml:space="preserve">
+    <value>참조 테이블</value>
+  </data>
+  <data name="HeaderBound" xml:space="preserve">
+    <value>경계</value>
+  </data>
+  <data name="HeaderColumns" xml:space="preserve">
+    <value>열</value>
+  </data>
+  <data name="HeaderComment" xml:space="preserve">
+    <value>주석</value>
+  </data>
+  <data name="HeaderDefault" xml:space="preserve">
+    <value>기본값</value>
+  </data>
+  <data name="HeaderDefinition" xml:space="preserve">
+    <value>정의</value>
+  </data>
+  <data name="HeaderEditable" xml:space="preserve">
+    <value>편집 가능</value>
+  </data>
+  <data name="HeaderEvent" xml:space="preserve">
+    <value>이벤트</value>
+  </data>
+  <data name="HeaderExpression" xml:space="preserve">
+    <value>표현식</value>
+  </data>
+  <data name="HeaderIdentity" xml:space="preserve">
+    <value>식별 정보</value>
+  </data>
+  <data name="HeaderKey" xml:space="preserve">
+    <value>키</value>
+  </data>
+  <data name="HeaderMethod" xml:space="preserve">
+    <value>메서드</value>
+  </data>
+  <data name="HeaderNullable" xml:space="preserve">
+    <value>NULL 허용</value>
+  </data>
+  <data name="HeaderOnDelete" xml:space="preserve">
+    <value>삭제 시</value>
+  </data>
+  <data name="HeaderOnUpdate" xml:space="preserve">
+    <value>업데이트 시</value>
+  </data>
+  <data name="HeaderOption" xml:space="preserve">
+    <value>옵션</value>
+  </data>
+  <data name="HeaderPrimary" xml:space="preserve">
+    <value>Primary</value>
+  </data>
+  <data name="HeaderReferencedColumns" xml:space="preserve">
+    <value>참조 열</value>
+  </data>
+  <data name="HeaderReferences" xml:space="preserve">
+    <value>참조 테이블</value>
+  </data>
+  <data name="HeaderRows" xml:space="preserve">
+    <value>행</value>
+  </data>
+  <data name="HeaderSize" xml:space="preserve">
+    <value>크기</value>
+  </data>
+  <data name="HeaderSubpartitionOf" xml:space="preserve">
+    <value>상위 파티션</value>
+  </data>
+  <data name="HeaderTiming" xml:space="preserve">
+    <value>타이밍</value>
+  </data>
+  <data name="HeaderUnique" xml:space="preserve">
+    <value>고유</value>
+  </data>
+  <data name="HeaderValidated" xml:space="preserve">
+    <value>검증됨</value>
+  </data>
+  <data name="IndexColumnsHeader" xml:space="preserve">
+    <value>열(키 순서대로)</value>
+  </data>
+  <data name="IndexUnique" xml:space="preserve">
+    <value>고유</value>
+  </data>
+  <data name="InspectValue" xml:space="preserve">
+    <value>값 검사</value>
+  </data>
+  <data name="LoadFailedTitle" xml:space="preserve">
+    <value>{0}을(를) 불러올 수 없습니다</value>
+  </data>
+  <data name="Loading" xml:space="preserve">
+    <value>불러오는 중…</value>
+  </data>
+  <data name="NoPrimaryKey" xml:space="preserve">
+    <value>기본 키 없음: 모든 열을 기준으로 행을 찾으며, 중복 행에 해당하는 저장은 거부됩니다.</value>
+  </data>
+  <data name="NoRows" xml:space="preserve">
+    <value>행 없음</value>
+  </data>
+  <data name="NoRowsOnPage" xml:space="preserve">
+    <value>이 페이지에 행 없음</value>
+  </data>
+  <data name="NotSupportedTitle" xml:space="preserve">
+    <value>지원되지 않음</value>
+  </data>
+  <data name="NothingSavedTitle" xml:space="preserve">
+    <value>아무것도 저장되지 않았습니다</value>
+  </data>
+  <data name="ObjectReadOnly" xml:space="preserve">
+    <value>이 객체는 읽기 전용입니다.</value>
+  </data>
+  <data name="OpenReferencedTable" xml:space="preserve">
+    <value>{0} 열기</value>
+  </data>
+  <data name="OperatorBetween" xml:space="preserve">
+    <value>사이</value>
+  </data>
+  <data name="OperatorContains" xml:space="preserve">
+    <value>포함</value>
+  </data>
+  <data name="OperatorEndsWith" xml:space="preserve">
+    <value>다음으로 끝남</value>
+  </data>
+  <data name="OperatorIn" xml:space="preserve">
+    <value>목록에 있음</value>
+  </data>
+  <data name="OperatorIsEmpty" xml:space="preserve">
+    <value>비어 있음</value>
+  </data>
+  <data name="OperatorIsNotEmpty" xml:space="preserve">
+    <value>비어 있지 않음</value>
+  </data>
+  <data name="OperatorIsNotNull" xml:space="preserve">
+    <value>NULL이 아님</value>
+  </data>
+  <data name="OperatorIsNull" xml:space="preserve">
+    <value>NULL임</value>
+  </data>
+  <data name="OperatorNotContains" xml:space="preserve">
+    <value>포함하지 않음</value>
+  </data>
+  <data name="OperatorNotIn" xml:space="preserve">
+    <value>목록에 없음</value>
+  </data>
+  <data name="OperatorStartsWith" xml:space="preserve">
+    <value>다음으로 시작</value>
+  </data>
+  <data name="PageRangeOfTotal_One" xml:space="preserve">
+    <value>{1:N0}–{2:N0} / {0:N0}</value>
+  </data>
+  <data name="PageRangeOfTotal_Other" xml:space="preserve">
+    <value>{1:N0}–{2:N0} / {0:N0}</value>
+  </data>
+  <data name="PagerFirst.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>첫 페이지</value>
+  </data>
+  <data name="PagerFirst.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>첫 페이지</value>
+  </data>
+  <data name="PagerLast.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>마지막 페이지</value>
+  </data>
+  <data name="PagerLast.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>마지막 페이지</value>
+  </data>
+  <data name="PagerNext.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>다음 페이지</value>
+  </data>
+  <data name="PagerNext.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>다음 페이지</value>
+  </data>
+  <data name="PagerPageSize.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>페이지당 행 수</value>
+  </data>
+  <data name="PagerPrevious.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>이전 페이지</value>
+  </data>
+  <data name="PagerPrevious.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>이전 페이지</value>
+  </data>
+  <data name="PartitionBoundHeader" xml:space="preserve">
+    <value>경계</value>
+  </data>
+  <data name="PartitionBoundNote" xml:space="preserve">
+    <value>경계 열에 표시되는 형식으로 경계를 입력하세요. HASH 또는 KEY 파티션이면 비워 두세요.</value>
+  </data>
+  <data name="PartitionBoundPlaceholder" xml:space="preserve">
+    <value>예: VALUES LESS THAN (2026) 또는 FOR VALUES FROM ('2026-01-01') TO ('2027-01-01')</value>
+  </data>
+  <data name="PartitionedBy" xml:space="preserve">
+    <value>{0} 기준으로 파티션됨.</value>
+  </data>
+  <data name="PartitionedBySubpartitioned" xml:space="preserve">
+    <value>{0} 기준으로 파티션되고 {1} 기준으로 하위 파티션됨.</value>
+  </data>
+  <data name="ReadOnlyCannotSave" xml:space="preserve">
+    <value>이 연결의 안전 모드가 읽기 전용이므로 편집 내용을 저장할 수 없습니다.</value>
+  </data>
+  <data name="ReadOnlyConnectionTitle" xml:space="preserve">
+    <value>읽기 전용 연결</value>
+  </data>
+  <data name="ReloadDropsChanges_One" xml:space="preserve">
+    <value>다시 불러오면 저장되지 않은 변경 사항 {0}개가 삭제됩니다.</value>
+  </data>
+  <data name="ReloadDropsChanges_Other" xml:space="preserve">
+    <value>다시 불러오면 저장되지 않은 변경 사항 {0}개가 삭제됩니다.</value>
+  </data>
+  <data name="ReviewStructureChangeTitle" xml:space="preserve">
+    <value>구조 변경 검토</value>
+  </data>
+  <data name="RowCount_One" xml:space="preserve">
+    <value>{0:N0}행</value>
+  </data>
+  <data name="RowCount_Other" xml:space="preserve">
+    <value>{0:N0}행</value>
+  </data>
+  <data name="RowsSelected_One" xml:space="preserve">
+    <value>{0:N0}행 선택됨</value>
+  </data>
+  <data name="RowsSelected_Other" xml:space="preserve">
+    <value>{0:N0}행 선택됨</value>
+  </data>
+  <data name="SafeModeReadOnly" xml:space="preserve">
+    <value>이 연결의 안전 모드가 읽기 전용입니다.</value>
+  </data>
+  <data name="SaveChangesButton_One" xml:space="preserve">
+    <value>{0:N0}개 저장</value>
+  </data>
+  <data name="SaveChangesButton_Other" xml:space="preserve">
+    <value>{0:N0}개 저장</value>
+  </data>
+  <data name="SaveChangesReviewTitle" xml:space="preserve">
+    <value>변경 사항 저장</value>
+  </data>
+  <data name="SavedChanges_One" xml:space="preserve">
+    <value>변경 사항 {0:N0}개를 저장했습니다({1}).</value>
+  </data>
+  <data name="SavedChanges_Other" xml:space="preserve">
+    <value>변경 사항 {0:N0}개를 저장했습니다({1}).</value>
+  </data>
+  <data name="Saving" xml:space="preserve">
+    <value>저장하는 중…</value>
+  </data>
+  <data name="SectionData.Text" xml:space="preserve">
+    <value>데이터</value>
+  </data>
+  <data name="SectionDefinition.Text" xml:space="preserve">
+    <value>정의</value>
+  </data>
+  <data name="SectionStructure.Text" xml:space="preserve">
+    <value>구조</value>
+  </data>
+  <data name="SetToNull" xml:space="preserve">
+    <value>NULL로 설정</value>
+  </data>
+  <data name="StructureAdd.Label" xml:space="preserve">
+    <value>추가</value>
+  </data>
+  <data name="StructureChecks.Text" xml:space="preserve">
+    <value>체크 제약 조건</value>
+  </data>
+  <data name="StructureColumns.Text" xml:space="preserve">
+    <value>열</value>
+  </data>
+  <data name="StructureDrop.Label" xml:space="preserve">
+    <value>삭제</value>
+  </data>
+  <data name="StructureEdit.Label" xml:space="preserve">
+    <value>편집</value>
+  </data>
+  <data name="StructureForeignKeys.Text" xml:space="preserve">
+    <value>외래 키</value>
+  </data>
+  <data name="StructureIndexes.Text" xml:space="preserve">
+    <value>인덱스</value>
+  </data>
+  <data name="StructureOptions.Text" xml:space="preserve">
+    <value>옵션</value>
+  </data>
+  <data name="StructurePartitions.Text" xml:space="preserve">
+    <value>파티션</value>
+  </data>
+  <data name="StructureRefresh.Label" xml:space="preserve">
+    <value>새로 고침</value>
+  </data>
+  <data name="StructureTriggers.Text" xml:space="preserve">
+    <value>트리거</value>
+  </data>
+  <data name="StructureTruncate.Label" xml:space="preserve">
+    <value>비우기</value>
+  </data>
+  <data name="TableOptionsTitle" xml:space="preserve">
+    <value>테이블 옵션</value>
+  </data>
+  <data name="UnsavedChanges_One" xml:space="preserve">
+    <value>{1}에 저장되지 않은 변경 사항이 {0}개 있습니다.</value>
+  </data>
+  <data name="UnsavedChanges_Other" xml:space="preserve">
+    <value>{1}에 저장되지 않은 변경 사항이 {0}개 있습니다.</value>
+  </data>
+  <data name="ViewsReadOnly" xml:space="preserve">
+    <value>뷰는 읽기 전용입니다.</value>
+  </data>
+</root>

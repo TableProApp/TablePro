@@ -1,0 +1,216 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="CancelConnect.Content" xml:space="preserve">
+    <value>Cancel</value>
+  </data>
+  <data name="ConnectFailedTitle" xml:space="preserve">
+    <value>Could not connect to {0}</value>
+    <comment>Error dialog title. {0} is the connection name.</comment>
+  </data>
+  <data name="ConnectNowMessage" xml:space="preserve">
+    <value>Connect to {0} now?</value>
+    <comment>Asked after a new connection is saved. {0} is the connection name.</comment>
+  </data>
+  <data name="ConnectToTitle" xml:space="preserve">
+    <value>Connect to {0}</value>
+    <comment>Title of the dialog that asks for a password before connecting. {0} is the connection name.</comment>
+  </data>
+  <data name="ConnectingThroughProxy" xml:space="preserve">
+    <value>Connecting through the proxy…</value>
+    <comment>Progress text while connecting.</comment>
+  </data>
+  <data name="ConnectingTo" xml:space="preserve">
+    <value>Connecting to {0}…</value>
+    <comment>Progress text while connecting. {0} is the connection name.</comment>
+  </data>
+  <data name="ConnectionAnnouncement" xml:space="preserve">
+    <value>{0}, {1}</value>
+    <comment>What a screen reader says for a saved connection. {0} is the connection name, {1} the engine and host.</comment>
+  </data>
+  <data name="ConnectionSavedTitle" xml:space="preserve">
+    <value>Connection saved</value>
+    <comment>Dialog title after a new connection is saved.</comment>
+  </data>
+  <data name="CreateGroup" xml:space="preserve">
+    <value>Create</value>
+    <comment>Button (verb) that creates a new connection group.</comment>
+  </data>
+  <data name="DaysAgo_One" xml:space="preserve">
+    <value>{0} d ago</value>
+    <comment>When a connection was last used, abbreviated for a narrow list. {0} is the number of days.</comment>
+  </data>
+  <data name="DaysAgo_Other" xml:space="preserve">
+    <value>{0} d ago</value>
+    <comment>When a connection was last used, abbreviated for a narrow list. {0} is the number of days.</comment>
+  </data>
+  <data name="DeleteConfirmMessage" xml:space="preserve">
+    <value>The saved connection and its stored passwords are removed. The database itself is not touched.</value>
+  </data>
+  <data name="DeleteConfirmTitle" xml:space="preserve">
+    <value>Delete {0}?</value>
+    <comment>{0} is the connection name.</comment>
+  </data>
+  <data name="EmptyMessage.Text" xml:space="preserve">
+    <value>Create one, or open a SQLite or DuckDB file.</value>
+  </data>
+  <data name="EmptyTitle.Text" xml:space="preserve">
+    <value>No saved connections</value>
+  </data>
+  <data name="EncryptedImportMessage" xml:space="preserve">
+    <value>This file is encrypted. Enter the passphrase it was exported with.</value>
+  </data>
+  <data name="EncryptedImportTitle" xml:space="preserve">
+    <value>Encrypted connections</value>
+    <comment>Dialog title when importing an encrypted connections file.</comment>
+  </data>
+  <data name="ExportFileType" xml:space="preserve">
+    <value>TablePro connections</value>
+    <comment>File type name in the save dialog for an exported connections file.</comment>
+  </data>
+  <data name="ExportMessage" xml:space="preserve">
+    <value>Enter a passphrase to encrypt the file and include saved passwords. Leave it empty to export without passwords.</value>
+  </data>
+  <data name="ExportTitle" xml:space="preserve">
+    <value>Export connections</value>
+    <comment>Dialog title.</comment>
+  </data>
+  <data name="HoursAgo_One" xml:space="preserve">
+    <value>{0} h ago</value>
+    <comment>When a connection was last used, abbreviated for a narrow list. {0} is the number of hours.</comment>
+  </data>
+  <data name="HoursAgo_Other" xml:space="preserve">
+    <value>{0} h ago</value>
+    <comment>When a connection was last used, abbreviated for a narrow list. {0} is the number of hours.</comment>
+  </data>
+  <data name="ImportConnections.Text" xml:space="preserve">
+    <value>Import Connections</value>
+  </data>
+  <data name="ImportFailedTitle" xml:space="preserve">
+    <value>Import failed</value>
+  </data>
+  <data name="ImportFinishedTitle" xml:space="preserve">
+    <value>Import finished</value>
+  </data>
+  <data name="ImportWrongPassphrase" xml:space="preserve">
+    <value>The passphrase is wrong, or the file is damaged.</value>
+  </data>
+  <data name="ImportedConnections_One" xml:space="preserve">
+    <value>Imported {0} connection.</value>
+    <comment>First sentence of the import summary. {0} is the number of connections.</comment>
+  </data>
+  <data name="ImportedConnections_Other" xml:space="preserve">
+    <value>Imported {0} connections.</value>
+    <comment>First sentence of the import summary. {0} is the number of connections.</comment>
+  </data>
+  <data name="ImportedSavedQueries_One" xml:space="preserve">
+    <value>Added {0} saved query to Favorites.</value>
+    <comment>Sentence of the import summary. {0} is the number of saved queries. Favorites is the name of the app's saved queries panel.</comment>
+  </data>
+  <data name="ImportedSavedQueries_Other" xml:space="preserve">
+    <value>Added {0} saved queries to Favorites.</value>
+    <comment>Sentence of the import summary. {0} is the number of saved queries. Favorites is the name of the app's saved queries panel.</comment>
+  </data>
+  <data name="JustNow" xml:space="preserve">
+    <value>just now</value>
+    <comment>When a connection was last used, in a list.</comment>
+  </data>
+  <data name="MinutesAgo_One" xml:space="preserve">
+    <value>{0} min ago</value>
+    <comment>When a connection was last used, abbreviated for a narrow list. {0} is the number of minutes.</comment>
+  </data>
+  <data name="MinutesAgo_Other" xml:space="preserve">
+    <value>{0} min ago</value>
+    <comment>When a connection was last used, abbreviated for a narrow list. {0} is the number of minutes.</comment>
+  </data>
+  <data name="MoveToGroup" xml:space="preserve">
+    <value>Move to Group</value>
+    <comment>Context menu item that opens a submenu of connection groups.</comment>
+  </data>
+  <data name="NewConnection.Text" xml:space="preserve">
+    <value>New Connection</value>
+  </data>
+  <data name="NewGroup.Text" xml:space="preserve">
+    <value>New Group</value>
+  </data>
+  <data name="NewGroupTitle" xml:space="preserve">
+    <value>New Group</value>
+    <comment>Title of the dialog that names a new connection group.</comment>
+  </data>
+  <data name="NoGroup" xml:space="preserve">
+    <value>No group</value>
+    <comment>Submenu item that takes a connection out of its group.</comment>
+  </data>
+  <data name="OpenDatabaseFile.Text" xml:space="preserve">
+    <value>Open Database File</value>
+  </data>
+  <data name="OpeningCloudflareTunnel" xml:space="preserve">
+    <value>Opening Cloudflare tunnel…</value>
+    <comment>Progress text while connecting.</comment>
+  </data>
+  <data name="OpeningSshTunnel" xml:space="preserve">
+    <value>Opening SSH tunnel to {0}…</value>
+    <comment>Progress text while connecting. {0} is the SSH server's host name.</comment>
+  </data>
+  <data name="PasswordForHeader" xml:space="preserve">
+    <value>Password for {0}@{1}</value>
+    <comment>Label of a password field. {0} is the database user name, {1} the host name; keep the @ between them.</comment>
+  </data>
+  <data name="RunningTunnelCommand" xml:space="preserve">
+    <value>Running the tunnel command…</value>
+    <comment>Progress text while connecting.</comment>
+  </data>
+  <data name="SearchConnections.PlaceholderText" xml:space="preserve">
+    <value>Search connections</value>
+  </data>
+  <data name="Settings.Content" xml:space="preserve">
+    <value>Settings</value>
+  </data>
+  <data name="SignInAndRetry" xml:space="preserve">
+    <value>Sign in at {0} and connect again.</value>
+    <comment>Shown under a connection error. {0} is a web address.</comment>
+  </data>
+  <data name="SkippedConnections_One" xml:space="preserve">
+    <value>Skipped {0} that this build cannot open.</value>
+    <comment>Sentence of the import summary, after "Imported N connections." {0} is the number of connections skipped.</comment>
+  </data>
+  <data name="SkippedConnections_Other" xml:space="preserve">
+    <value>Skipped {0} that this build cannot open.</value>
+    <comment>Sentence of the import summary, after "Imported N connections." {0} is the number of connections skipped.</comment>
+  </data>
+  <data name="Sort.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Sort</value>
+  </data>
+  <data name="SortLastConnected.Content" xml:space="preserve">
+    <value>Last connected</value>
+  </data>
+  <data name="SortManual.Content" xml:space="preserve">
+    <value>Manual order</value>
+  </data>
+  <data name="SortName.Content" xml:space="preserve">
+    <value>Name</value>
+  </data>
+  <data name="StartingCloudSqlProxy" xml:space="preserve">
+    <value>Starting Cloud SQL Auth Proxy…</value>
+    <comment>Progress text while connecting. Cloud SQL Auth Proxy is a Google product name.</comment>
+  </data>
+  <data name="TunnelCommandsTurnedOff" xml:space="preserve">
+    <value>Tunnel commands were turned off until you review them: {0}.</value>
+    <comment>Sentence of the import summary. {0} is a comma-separated list of connection names.</comment>
+  </data>
+  <data name="Version" xml:space="preserve">
+    <value>Version {0}</value>
+    <comment>{0} is the app version number, such as 0.1.0.</comment>
+  </data>
+</root>

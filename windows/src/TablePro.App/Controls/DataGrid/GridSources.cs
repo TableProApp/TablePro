@@ -42,7 +42,7 @@ public sealed class ResultGridSource(ResultSet result) : IGridSource
 
     public bool TrySetValue(int row, int column, string? text, out string? error)
     {
-        error = "This result is read-only.";
+        error = Strings.Get("Grid/ResultReadOnly");
         return false;
     }
 
@@ -82,13 +82,13 @@ public sealed class EditableGridSource : IGridSource
     {
         if (!IsEditable)
         {
-            error = "This table is read-only.";
+            error = Strings.Get("Grid/TableReadOnly");
             return false;
         }
 
         if (!ValueParser.TryParse(text, Columns[column].ClrType, out var value))
         {
-            error = $"'{text}' is not a valid {Columns[column].DataType}.";
+            error = Strings.Format("Grid/InvalidValueForType", text, Columns[column].DataType);
             return false;
         }
 

@@ -18,11 +18,11 @@ internal sealed partial class HistoryPane : UserControl
     private readonly ConnectionProfile _profile;
     private readonly Action<string> _insert;
     private readonly Action<string> _run;
-    private readonly AutoSuggestBox _search = new() { PlaceholderText = "Search history", QueryIcon = new SymbolIcon(Symbol.Find) };
+    private readonly AutoSuggestBox _search = new() { PlaceholderText = Strings.Get("Panes/HistorySearch"), QueryIcon = new SymbolIcon(Symbol.Find) };
     private readonly ComboBox _scope = new() { MinWidth = 140 };
     private readonly ComboBox _outcome = new() { MinWidth = 120 };
     private readonly ListView _list = new() { SelectionMode = ListViewSelectionMode.Single, IsItemClickEnabled = true };
-    private readonly Button _more = new() { Content = "Load more", HorizontalAlignment = HorizontalAlignment.Center, Visibility = Visibility.Collapsed };
+    private readonly Button _more = new() { Content = Strings.Get("Panes/HistoryLoadMore"),HorizontalAlignment = HorizontalAlignment.Center, Visibility = Visibility.Collapsed };
     private readonly DispatcherQueueTimerHolder _debounce;
     private QueryHistoryCursor? _cursor;
     private int _generation;
@@ -33,12 +33,12 @@ internal sealed partial class HistoryPane : UserControl
         _profile = profile;
         _insert = insert;
         _run = run;
-        _scope.Items.Add("This connection");
-        _scope.Items.Add("All connections");
+        _scope.Items.Add(Strings.Get("Panes/HistoryScopeThisConnection"));
+        _scope.Items.Add(Strings.Get("Panes/HistoryScopeAllConnections"));
         _scope.SelectedIndex = 0;
-        _outcome.Items.Add("All");
-        _outcome.Items.Add("Succeeded");
-        _outcome.Items.Add("Failed");
+        _outcome.Items.Add(Strings.Get("Panes/HistoryOutcomeAll"));
+        _outcome.Items.Add(Strings.Get("Panes/HistoryOutcomeSucceeded"));
+        _outcome.Items.Add(Strings.Get("Panes/HistoryOutcomeFailed"));
         _outcome.SelectedIndex = 0;
 
         _debounce = new DispatcherQueueTimerHolder(this, TimeSpan.FromMilliseconds(250), async () => await ReloadAsync());
@@ -63,7 +63,7 @@ internal sealed partial class HistoryPane : UserControl
         _scope.HorizontalAlignment = HorizontalAlignment.Stretch;
         _outcome.HorizontalAlignment = HorizontalAlignment.Stretch;
 
-        var clear = new HyperlinkButton { Content = "Clear history for this connection", HorizontalAlignment = HorizontalAlignment.Left };
+        var clear = new HyperlinkButton { Content = Strings.Get("Panes/HistoryClear"),HorizontalAlignment = HorizontalAlignment.Left };
         clear.Click += async (_, _) =>
         {
             await _store.ClearAsync(_profile.Id);
@@ -133,7 +133,7 @@ internal sealed partial class HistoryPane : UserControl
         };
         var meta = new TextBlock
         {
-            Text = string.Create(CultureInfo.CurrentCulture, $"{entry.ExecutedAt.ToLocalTime():g} · {Controls.FormatElapsed(entry.Elapsed)}{(entry.RowCount >= 0 ? $" · {entry.RowCount:N0} rows" : string.Empty)}"),
+            Text = string.Create(CultureInfo.CurrentCulture, $"{entry.ExecutedAt.ToLocalTime():g} · {Controls.FormatElapsed(entry.Elapsed)}{(entry.RowCount >= 0 ? " · " + Strings.Plural("Panes/HistoryRows", entry.RowCount) : string.Empty)}"),
             Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
             Foreground = (Brush)Application.Current.Resources["TextFillColorTertiaryBrush"],
         };
@@ -162,11 +162,11 @@ internal sealed partial class HistoryPane : UserControl
         ToolTipService.SetToolTip(grid, entry.Query.Length > 2000 ? entry.Query[..2000] + "…" : entry.Query);
 
         var menu = new MenuFlyout();
-        menu.Items.Add(GridCommands.Item("Insert into Editor", "", () => _insert(entry.Query)));
-        menu.Items.Add(GridCommands.Item("Run in New Tab", "", () => _run(entry.Query)));
-        menu.Items.Add(GridCommands.Item("Copy", "", () => GridCommands.SetClipboard(entry.Query)));
+        menu.Items.Add(GridCommands.Item(Strings.Get("Panes/InsertIntoEditor"),"", () => _insert(entry.Query)));
+        menu.Items.Add(GridCommands.Item(Strings.Get("Panes/HistoryRunInNewTab"),"", () => _run(entry.Query)));
+        menu.Items.Add(GridCommands.Item(Strings.Get("Common/Copy"),"", () => GridCommands.SetClipboard(entry.Query)));
         menu.Items.Add(new MenuFlyoutSeparator());
-        menu.Items.Add(GridCommands.Item("Delete", "", async () =>
+        menu.Items.Add(GridCommands.Item(Strings.Get("Common/Delete"),"", async () =>
         {
             await _store.DeleteAsync(entry.Id);
             await ReloadAsync();

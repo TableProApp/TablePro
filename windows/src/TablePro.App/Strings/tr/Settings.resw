@@ -1,0 +1,303 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AiConsentAllow" xml:space="preserve">
+    <value>İzin Ver</value>
+  </data>
+  <data name="AiConsentMessage" xml:space="preserve">
+    <value>Asistan sorunuzu, üzerinde işlem yaptığı SQL'i ve ilgili tabloların yapısını {0} bağlantısından {1} ({2}) sağlayıcısına gönderir. Hiçbir satırı okumaz.</value>
+  </data>
+  <data name="AiConsentTitle" xml:space="preserve">
+    <value>AI sağlayıcısına gönderilsin mi?</value>
+  </data>
+  <data name="AiEndpointDescription" xml:space="preserve">
+    <value>Sağlayıcının genel adresi için boş bırakın. Ollama varsayılan olarak http://localhost:11434/v1 kullanır.</value>
+  </data>
+  <data name="AiEndpointTitle" xml:space="preserve">
+    <value>Uç Nokta</value>
+  </data>
+  <data name="AiIntro" xml:space="preserve">
+    <value>Asistan sorularınızı, üzerinde işlem yaptığı SQL'i ve ilgili tabloların yapısını seçtiğiniz sağlayıcıya gönderir. Hiçbir zaman satır göndermez. Her bağlantının AI ayarı, asistanın o bağlantıda kullanılıp kullanılamayacağını belirler.</value>
+  </data>
+  <data name="AiKeyDescription" xml:space="preserve">
+    <value>Windows Kimlik Bilgileri Yöneticisi'nde saklanır.</value>
+  </data>
+  <data name="AiKeyNotNeeded" xml:space="preserve">
+    <value>Ollama için gerekmez</value>
+  </data>
+  <data name="AiKeyTitle" xml:space="preserve">
+    <value>API anahtarı</value>
+  </data>
+  <data name="AiLoadModels" xml:space="preserve">
+    <value>Modelleri yükle</value>
+  </data>
+  <data name="AiModelDefault" xml:space="preserve">
+    <value>Sağlayıcı varsayılanı</value>
+  </data>
+  <data name="AiModelTitle" xml:space="preserve">
+    <value>Model</value>
+  </data>
+  <data name="AiNoKey" xml:space="preserve">
+    <value>Asistanı kullanmak için Ayarlar &gt; AI bölümünde {0} için bir API anahtarı ekleyin.</value>
+  </data>
+  <data name="AiNotSetUp" xml:space="preserve">
+    <value>Ayarlanmadı</value>
+  </data>
+  <data name="AiProviderOpenAICompatible" xml:space="preserve">
+    <value>OpenAI uyumlu sunucu</value>
+  </data>
+  <data name="AiProviderTitle" xml:space="preserve">
+    <value>Sağlayıcı</value>
+  </data>
+  <data name="AiSuggestDescription" xml:space="preserve">
+    <value>Bir satırın sonunda duraksadığınızda tamamlama ister. Her duraksama, imlecin çevresindeki metni gönderir.</value>
+  </data>
+  <data name="AiSuggestTitle" xml:space="preserve">
+    <value>Yazarken öner</value>
+  </data>
+  <data name="AutocompleteDescription" xml:space="preserve">
+    <value>Yazarken anahtar sözcükleri, tabloları ve sütunları öner.</value>
+  </data>
+  <data name="AutocompleteTitle" xml:space="preserve">
+    <value>Otomatik tamamlama</value>
+  </data>
+  <data name="BackdropAcrylic" xml:space="preserve">
+    <value>Akrilik</value>
+  </data>
+  <data name="BackdropDescription" xml:space="preserve">
+    <value>Akrilik masaüstünü pencerenin arkasından gösterir, Mica ise pencereyi duvar kâğıdının rengiyle renklendirir.</value>
+  </data>
+  <data name="BackdropMica" xml:space="preserve">
+    <value>Mica</value>
+  </data>
+  <data name="BackdropMicaAlt" xml:space="preserve">
+    <value>Mica Alt</value>
+  </data>
+  <data name="BackdropTitle" xml:space="preserve">
+    <value>Pencere malzemesi</value>
+  </data>
+  <data name="ClearAllHistory" xml:space="preserve">
+    <value>Tüm geçmişi temizle</value>
+  </data>
+  <data name="ClearHistoryConfirmMessage" xml:space="preserve">
+    <value>Tüm bağlantıların sorgu geçmişi silinir.</value>
+  </data>
+  <data name="ClearHistoryConfirmTitle" xml:space="preserve">
+    <value>Geçmiş temizlensin mi?</value>
+  </data>
+  <data name="ClearRewindConfirmMessage" xml:space="preserve">
+    <value>Veri Geri Sarma, şu andan önce yapılan kayıtları artık geri alamaz.</value>
+  </data>
+  <data name="ClearRewindConfirmTitle" xml:space="preserve">
+    <value>Kaydedilen değişiklikler silinsin mi?</value>
+  </data>
+  <data name="ConfirmCloseTitle" xml:space="preserve">
+    <value>Kaydedilmemiş sekmeleri kapatmadan önce sor</value>
+  </data>
+  <data name="DataFolderTitle" xml:space="preserve">
+    <value>Veri klasörü</value>
+  </data>
+  <data name="DateFormatDescription" xml:space="preserve">
+    <value>Dışa aktarmalardaki tarihler için .NET biçim dizesi.</value>
+  </data>
+  <data name="DateFormatTitle" xml:space="preserve">
+    <value>Tarih biçimi</value>
+  </data>
+  <data name="EmacsDescription" xml:space="preserve">
+    <value>Ctrl+F, B, N, P, A, E imleci taşır, Alt+F ve Alt+B sözcük sözcük taşır, Ctrl+K, Alt+D ve Ctrl+W keser (kill), Ctrl+Y ve Alt+Y geri yapıştırır (yank), Ctrl+Space işaret koyar. Bu tuşlar düzenleyicide Windows'taki anlamlarını yitirir: yinelemek için Ctrl+Shift+Z, bulmak için Ctrl+H veya bağlam menüsünü kullanın.</value>
+  </data>
+  <data name="EmacsTitle" xml:space="preserve">
+    <value>Emacs tuş atamaları</value>
+  </data>
+  <data name="FontDescription" xml:space="preserve">
+    <value>Bu bilgisayarda yüklü, eş aralıklı bir yazı tipi.</value>
+  </data>
+  <data name="FontSizeTitle" xml:space="preserve">
+    <value>Yazı tipi boyutu</value>
+  </data>
+  <data name="FontTitle" xml:space="preserve">
+    <value>Yazı Tipi</value>
+  </data>
+  <data name="KeyboardConflictMessage" xml:space="preserve">
+    <value>{0} Yeniden atamak, kısayolu o komuttan kaldırır.</value>
+  </data>
+  <data name="KeyboardConflictTitle" xml:space="preserve">
+    <value>Kısayol çakışması</value>
+  </data>
+  <data name="KeyboardIntro" xml:space="preserve">
+    <value>Bir kısayola tıklayın, ardından kullanılacak tuşlara basın. Esc iptal eder, Backspace kısayolu kaldırır. Düzenleyici komutları SQL düzenleyicisi odaktayken, diğerleri bağlantı penceresinin her yerinde çalışır.</value>
+  </data>
+  <data name="KeyboardModifierRequired" xml:space="preserve">
+    <value>Değiştirici tuş gerekli</value>
+  </data>
+  <data name="KeyboardNoMatches" xml:space="preserve">
+    <value>Eşleşen kısayol yok.</value>
+  </data>
+  <data name="KeyboardReassign" xml:space="preserve">
+    <value>Yeniden Ata</value>
+  </data>
+  <data name="KeyboardReservedShortcut" xml:space="preserve">
+    <value>Ayrılmış kısayol</value>
+  </data>
+  <data name="KeyboardResetAll" xml:space="preserve">
+    <value>Tümünü Varsayılana Sıfırla</value>
+  </data>
+  <data name="KeyboardResetToDefault" xml:space="preserve">
+    <value>Varsayılana sıfırla ({0})</value>
+  </data>
+  <data name="KeyboardResetToDefaultNone" xml:space="preserve">
+    <value>Varsayılana sıfırla (yok)</value>
+  </data>
+  <data name="KeyboardSearch" xml:space="preserve">
+    <value>Kısayollarda ara</value>
+  </data>
+  <data name="KeyboardShortcutFor" xml:space="preserve">
+    <value>{0} için kısayol</value>
+  </data>
+  <data name="LanguageDescription" xml:space="preserve">
+    <value>TablePro'nun kullandığı dil. Değişiklik yeniden başlatmanın ardından uygulanır.</value>
+  </data>
+  <data name="LanguageRestartMessage" xml:space="preserve">
+    <value>TablePro yeni dili yeniden başladıktan sonra gösterir. Şimdi yeniden başlatılsın mı?</value>
+  </data>
+  <data name="LanguageRestartTitle" xml:space="preserve">
+    <value>TablePro yeniden başlatılsın mı?</value>
+  </data>
+  <data name="LanguageTitle" xml:space="preserve">
+    <value>Dil</value>
+  </data>
+  <data name="McpCopyCommand" xml:space="preserve">
+    <value>Komutu kopyala</value>
+  </data>
+  <data name="McpEnableTitle" xml:space="preserve">
+    <value>MCP sunucusunu etkinleştir</value>
+  </data>
+  <data name="McpIntro" xml:space="preserve">
+    <value>Bu bilgisayardaki Claude Code veya Cursor gibi MCP istemcileri, kayıtlı bağlantılarınızı TablePro aracılığıyla kullanabilir. Sunucu yalnızca TablePro çalışırken ve yalnızca 127.0.0.1 üzerinde dinler. Her bağlantının Harici İstemciler düzeyi, bir istemcinin neler yapabileceğini belirler.</value>
+  </data>
+  <data name="McpPortTitle" xml:space="preserve">
+    <value>Port</value>
+  </data>
+  <data name="McpRegenerateToken" xml:space="preserve">
+    <value>Erişim belirtecini yeniden oluştur</value>
+  </data>
+  <data name="McpRunningAt" xml:space="preserve">
+    <value>{0} adresinde çalışıyor</value>
+  </data>
+  <data name="McpStatusTitle" xml:space="preserve">
+    <value>Durum</value>
+  </data>
+  <data name="McpStopped" xml:space="preserve">
+    <value>Durduruldu</value>
+  </data>
+  <data name="NullDisplayDescription" xml:space="preserve">
+    <value>Boş hücrelerde ne gösterileceği.</value>
+  </data>
+  <data name="NullDisplayTitle" xml:space="preserve">
+    <value>NULL görünümü</value>
+  </data>
+  <data name="OpenFolder" xml:space="preserve">
+    <value>Klasörü aç</value>
+  </data>
+  <data name="PageAI" xml:space="preserve">
+    <value>AI</value>
+  </data>
+  <data name="PageData" xml:space="preserve">
+    <value>Veri</value>
+  </data>
+  <data name="PageEditor" xml:space="preserve">
+    <value>Düzenleyici</value>
+  </data>
+  <data name="PageGeneral" xml:space="preserve">
+    <value>Genel</value>
+  </data>
+  <data name="PageKeyboard" xml:space="preserve">
+    <value>Klavye</value>
+  </data>
+  <data name="PageMCP" xml:space="preserve">
+    <value>MCP</value>
+  </data>
+  <data name="PageSizeDescription" xml:space="preserve">
+    <value>Bir tablo sekmesinin sayfa başına gösterdiği satır sayısı.</value>
+  </data>
+  <data name="PageSizeTitle" xml:space="preserve">
+    <value>Tablo sayfa boyutu</value>
+  </data>
+  <data name="QueryHistoryDescription" xml:space="preserve">
+    <value>Yerel bir SQLite veritabanında saklanır.</value>
+  </data>
+  <data name="QueryHistoryTitle" xml:space="preserve">
+    <value>Sorgu geçmişi</value>
+  </data>
+  <data name="RestartLater" xml:space="preserve">
+    <value>Daha sonra</value>
+  </data>
+  <data name="RestartNow" xml:space="preserve">
+    <value>Şimdi yeniden başlat</value>
+  </data>
+  <data name="RestoreTabsDescription" xml:space="preserve">
+    <value>Her bağlantının açık sekmelerini bir sonraki bağlanışında geri yükle.</value>
+  </data>
+  <data name="RestoreTabsTitle" xml:space="preserve">
+    <value>Başlangıçta sekmeleri yeniden aç</value>
+  </data>
+  <data name="RewindJournalDescription" xml:space="preserve">
+    <value>Her ızgara kaydı, geri alınabilmesi için bu bilgisayarda şifrelenmiş olarak 7 gün boyunca günlüğe kaydedilir.</value>
+  </data>
+  <data name="RewindJournalTitle" xml:space="preserve">
+    <value>Veri Geri Sarma için kaydedilen değişiklikleri sakla</value>
+  </data>
+  <data name="RowLimitDescription" xml:space="preserve">
+    <value>Bir düzenleyici sorgusunun durmadan önce okuduğu satır sayısı. Bir sonuç kesildiğinde durum çubuğu bunu belirtir.</value>
+  </data>
+  <data name="RowLimitTitle" xml:space="preserve">
+    <value>Sorgu sonucu sınırı</value>
+  </data>
+  <data name="SavedChangesDescription" xml:space="preserve">
+    <value>Günlüğe kaydedilen tüm kayıtları ve anahtarlarını kaldırır.</value>
+  </data>
+  <data name="SavedChangesTitle" xml:space="preserve">
+    <value>Kaydedilen değişiklikler</value>
+  </data>
+  <data name="TabSizeTitle" xml:space="preserve">
+    <value>Sekme boyutu</value>
+  </data>
+  <data name="ThemeDark" xml:space="preserve">
+    <value>Koyu</value>
+  </data>
+  <data name="ThemeDescription" xml:space="preserve">
+    <value>Açık, koyu veya Windows'u izle.</value>
+  </data>
+  <data name="ThemeLight" xml:space="preserve">
+    <value>Açık</value>
+  </data>
+  <data name="ThemeTitle" xml:space="preserve">
+    <value>Uygulama teması</value>
+  </data>
+  <data name="UseSystemSetting" xml:space="preserve">
+    <value>Sistem ayarını kullan</value>
+  </data>
+  <data name="VimDescription" xml:space="preserve">
+    <value>Vim'in modları, hareketleri, işleçleri, yazmaçları ve makrolarıyla düzenleyin. Ctrl+C, Ctrl+V, Ctrl+Z ve diğer Windows kısayolları çalışmaya devam eder.</value>
+  </data>
+  <data name="VimTitle" xml:space="preserve">
+    <value>Vim tuş atamaları</value>
+  </data>
+  <data name="WindowTitle" xml:space="preserve">
+    <value>Ayarlar - TablePro</value>
+  </data>
+  <data name="WordWrapTitle" xml:space="preserve">
+    <value>Sözcük kaydırma</value>
+  </data>
+</root>

@@ -17,6 +17,7 @@ public sealed class SettingsAndWorkspaceTests : IDisposable
     {
         var settings = AppSettings.Default;
         Assert.Equal(AppTheme.System, settings.Theme);
+        Assert.Equal(string.Empty, settings.Language);
         Assert.Equal(10_000, settings.Data.EditorRowLimit);
         Assert.Equal(500, settings.Data.TablePageSize);
         Assert.Equal("NULL", settings.Data.NullDisplayText);
@@ -45,6 +46,7 @@ public sealed class SettingsAndWorkspaceTests : IDisposable
         {
             Theme = AppTheme.Dark,
             Backdrop = WindowBackdrop.Mica,
+            Language = "zh-Hant",
             Editor = new EditorSettings { FontFamily = "Consolas", FontSize = 15, TabSize = 2, WordWrap = true, VimMode = true },
             Ai = new AiSettings { Provider = AiProvider.Ollama, Endpoint = "http://localhost:11434", Model = "qwen", InlineSuggestions = true },
             Mcp = new McpSettings { Enabled = true, Port = 24000 },
@@ -62,6 +64,7 @@ public sealed class SettingsAndWorkspaceTests : IDisposable
         var json = await File.ReadAllTextAsync(_temp.Paths.SettingsFile, Token);
         using var document = JsonDocument.Parse(json);
         Assert.Equal("Dark", document.RootElement.GetProperty("theme").GetString());
+        Assert.Equal("zh-Hant", document.RootElement.GetProperty("language").GetString());
         Assert.Equal("Ollama", document.RootElement.GetProperty("ai").GetProperty("provider").GetString());
     }
 

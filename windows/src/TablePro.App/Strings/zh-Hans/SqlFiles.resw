@@ -1,0 +1,408 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AlreadyLinked" xml:space="preserve">
+    <value>“{0}”已链接</value>
+  </data>
+  <data name="ChangedFilesIn" xml:space="preserve">
+    <value>“{0}”中已更改的文件</value>
+  </data>
+  <data name="ChangesMode" xml:space="preserve">
+    <value>更改</value>
+  </data>
+  <data name="Collapsed" xml:space="preserve">
+    <value>已折叠</value>
+  </data>
+  <data name="CommitButton" xml:space="preserve">
+    <value>提交</value>
+  </data>
+  <data name="CommitDialogTitle" xml:space="preserve">
+    <value>提交</value>
+  </data>
+  <data name="CommitFailedInline" xml:space="preserve">
+    <value>无法提交</value>
+  </data>
+  <data name="CommitFailedTitle" xml:space="preserve">
+    <value>无法提交</value>
+  </data>
+  <data name="CommitMenu" xml:space="preserve">
+    <value>提交…</value>
+  </data>
+  <data name="CommitMessageHeader" xml:space="preserve">
+    <value>消息</value>
+  </data>
+  <data name="CommitMessagePlaceholder" xml:space="preserve">
+    <value>描述此更改</value>
+  </data>
+  <data name="CommitVersion" xml:space="preserve">
+    <value>提交 {0}</value>
+  </data>
+  <data name="Committed" xml:space="preserve">
+    <value>已提交</value>
+  </data>
+  <data name="ContentMode" xml:space="preserve">
+    <value>内容</value>
+  </data>
+  <data name="CopyPath" xml:space="preserve">
+    <value>复制路径</value>
+  </data>
+  <data name="CopyQuery" xml:space="preserve">
+    <value>复制查询</value>
+  </data>
+  <data name="CopyRelativePath" xml:space="preserve">
+    <value>复制相对路径</value>
+  </data>
+  <data name="CreateButton" xml:space="preserve">
+    <value>创建</value>
+  </data>
+  <data name="CreateFailedTitle" xml:space="preserve">
+    <value>无法创建文件</value>
+  </data>
+  <data name="CurrentVersion" xml:space="preserve">
+    <value>当前版本</value>
+  </data>
+  <data name="DeleteButton" xml:space="preserve">
+    <value>移到回收站</value>
+  </data>
+  <data name="DeleteFailedTitle" xml:space="preserve">
+    <value>无法移到回收站</value>
+  </data>
+  <data name="DeleteMessage" xml:space="preserve">
+    <value>“{0}”将被移到回收站。其已保存的版本会保留。</value>
+  </data>
+  <data name="DeleteTitle" xml:space="preserve">
+    <value>移到回收站？</value>
+  </data>
+  <data name="Description" xml:space="preserve">
+    <value>描述</value>
+  </data>
+  <data name="DetailsExplanation" xml:space="preserve">
+    <value>以 -- @name、-- @keyword 和 -- @description 行的形式保存在文件头部，macOS 应用也能读取这些信息。</value>
+  </data>
+  <data name="DiffLayout" xml:space="preserve">
+    <value>差异布局</value>
+  </data>
+  <data name="DiffSideBySide" xml:space="preserve">
+    <value>并排</value>
+  </data>
+  <data name="DiffUnified" xml:space="preserve">
+    <value>统一视图</value>
+  </data>
+  <data name="DiscardChangesMenu" xml:space="preserve">
+    <value>丢弃更改…</value>
+  </data>
+  <data name="DiscardFailedTitle" xml:space="preserve">
+    <value>无法丢弃更改</value>
+  </data>
+  <data name="DiscardMessage" xml:space="preserve">
+    <value>对“{0}”所做的未暂存更改将会丢失。其版本历史记录中会保留一份副本。</value>
+  </data>
+  <data name="DiscardTitle" xml:space="preserve">
+    <value>丢弃更改？</value>
+  </data>
+  <data name="EditDetailsMenu" xml:space="preserve">
+    <value>编辑详细信息…</value>
+  </data>
+  <data name="EditDetailsTitle" xml:space="preserve">
+    <value>编辑详细信息</value>
+  </data>
+  <data name="EmptyState" xml:space="preserve">
+    <value>链接一个包含 .sql 文件的文件夹，即可在此打开、重命名和跟踪这些文件。文件会保留在原位置。</value>
+  </data>
+  <data name="Expanded" xml:space="preserve">
+    <value>已展开</value>
+  </data>
+  <data name="GitAdded" xml:space="preserve">
+    <value>新增</value>
+  </data>
+  <data name="GitCommandFailed" xml:space="preserve">
+    <value>Git 已停止，消息如下。</value>
+  </data>
+  <data name="GitConflicted" xml:space="preserve">
+    <value>有冲突</value>
+  </data>
+  <data name="GitModified" xml:space="preserve">
+    <value>已修改</value>
+  </data>
+  <data name="GitOutputTooLarge" xml:space="preserve">
+    <value>Git 输出的内容超出了 TablePro 能够读取的范围。</value>
+  </data>
+  <data name="GitPartlyStaged" xml:space="preserve">
+    <value>{0}，部分已暂存</value>
+  </data>
+  <data name="GitPullDiverged" xml:space="preserve">
+    <value>当前分支与其上游分支各自包含对方没有的提交。请在 Git 客户端中完成此次拉取。</value>
+  </data>
+  <data name="GitRenamed" xml:space="preserve">
+    <value>已重命名</value>
+  </data>
+  <data name="GitStaged" xml:space="preserve">
+    <value>{0}，已暂存</value>
+  </data>
+  <data name="GitTimedOut" xml:space="preserve">
+    <value>Git 未及时响应。</value>
+  </data>
+  <data name="GitUnavailable" xml:space="preserve">
+    <value>未安装 Git。请安装 Git for Windows，以便在链接的文件夹中使用 Git。</value>
+  </data>
+  <data name="GitUntracked" xml:space="preserve">
+    <value>未跟踪</value>
+  </data>
+  <data name="HistoryTitle" xml:space="preserve">
+    <value>{0} 历史记录</value>
+  </data>
+  <data name="HistoryWindowTitle" xml:space="preserve">
+    <value>{0} 历史记录 - TablePro</value>
+  </data>
+  <data name="InsertIntoEditor" xml:space="preserve">
+    <value>插入到编辑器</value>
+  </data>
+  <data name="KeepsLatestSnapshots_One" xml:space="preserve">
+    <value>TablePro 会保留文件最近的 {0} 个已保存版本。</value>
+  </data>
+  <data name="KeepsLatestSnapshots_Other" xml:space="preserve">
+    <value>TablePro 会保留文件最近的 {0} 个已保存版本。</value>
+  </data>
+  <data name="Keyword" xml:space="preserve">
+    <value>关键字</value>
+  </data>
+  <data name="KeywordPlaceholder" xml:space="preserve">
+    <value>在编辑器中键入即可插入此查询</value>
+  </data>
+  <data name="LinkFolder" xml:space="preserve">
+    <value>链接包含 SQL 文件的文件夹</value>
+  </data>
+  <data name="ListName" xml:space="preserve">
+    <value>SQL 文件</value>
+  </data>
+  <data name="LoadingVersions" xml:space="preserve">
+    <value>正在加载版本…</value>
+  </data>
+  <data name="MoveToRecycleBinMenu" xml:space="preserve">
+    <value>移到回收站…</value>
+  </data>
+  <data name="NameAlreadyExists" xml:space="preserve">
+    <value>此处已存在同名文件。</value>
+  </data>
+  <data name="NameEmpty" xml:space="preserve">
+    <value>请输入名称。</value>
+  </data>
+  <data name="NameInvalidCharacters" xml:space="preserve">
+    <value>文件名不能包含 \ / : * ? " &lt; &gt; 或 |。</value>
+  </data>
+  <data name="NameReserved" xml:space="preserve">
+    <value>此名称已被 Windows 保留给设备使用。</value>
+  </data>
+  <data name="NewFileMenu" xml:space="preserve">
+    <value>新建文件</value>
+  </data>
+  <data name="NewFileTitle" xml:space="preserve">
+    <value>新建 SQL 文件</value>
+  </data>
+  <data name="NoChangesFrom" xml:space="preserve">
+    <value>与 {0} 相比没有更改。</value>
+  </data>
+  <data name="NoSearchMatch" xml:space="preserve">
+    <value>没有与搜索匹配的 SQL 文件。</value>
+  </data>
+  <data name="NotARepository" xml:space="preserve">
+    <value>此文件夹不在 Git 仓库中。</value>
+  </data>
+  <data name="NothingToCommitMessage" xml:space="preserve">
+    <value>“{0}”中没有已更改的文件。</value>
+  </data>
+  <data name="NothingToCommitTitle" xml:space="preserve">
+    <value>没有可提交的内容</value>
+  </data>
+  <data name="NothingToPublishMessage" xml:space="preserve">
+    <value>你没有可发布的已保存查询。</value>
+  </data>
+  <data name="NothingToPublishTitle" xml:space="preserve">
+    <value>没有可发布的内容</value>
+  </data>
+  <data name="OnlyInConnection" xml:space="preserve">
+    <value>仅在 {0} 中</value>
+  </data>
+  <data name="OnlyVersion" xml:space="preserve">
+    <value>这是唯一的版本，没有可与之比较的版本。</value>
+  </data>
+  <data name="OpenFailedTitle" xml:space="preserve">
+    <value>无法打开文件</value>
+  </data>
+  <data name="OpenInEditor" xml:space="preserve">
+    <value>在编辑器中打开</value>
+  </data>
+  <data name="OpenInFileExplorer" xml:space="preserve">
+    <value>在文件资源管理器中打开</value>
+  </data>
+  <data name="OpenInNewTab" xml:space="preserve">
+    <value>在新标签页中打开</value>
+  </data>
+  <data name="PublishButton" xml:space="preserve">
+    <value>发布</value>
+  </data>
+  <data name="PublishFailedTitle" xml:space="preserve">
+    <value>无法发布到团队库</value>
+  </data>
+  <data name="PublishMessage_One" xml:space="preserve">
+    <value>团队中的每个人都将看到你的 {0} 条已保存查询。这会替换你之前发布的已保存查询。</value>
+  </data>
+  <data name="PublishMessage_Other" xml:space="preserve">
+    <value>团队中的每个人都将看到你的 {0} 条已保存查询。这会替换你之前发布的已保存查询。</value>
+  </data>
+  <data name="PublishTitle" xml:space="preserve">
+    <value>要将已保存的查询发布给团队吗？</value>
+  </data>
+  <data name="PublishToTeamMenu" xml:space="preserve">
+    <value>将已保存的查询发布到团队…</value>
+  </data>
+  <data name="PublishedBy" xml:space="preserve">
+    <value>由 {0} 发布</value>
+  </data>
+  <data name="Published_One" xml:space="preserve">
+    <value>已将 {0} 条保存的查询发布给团队</value>
+  </data>
+  <data name="Published_Other" xml:space="preserve">
+    <value>已将 {0} 条保存的查询发布给团队</value>
+  </data>
+  <data name="Publishing" xml:space="preserve">
+    <value>正在发布…</value>
+  </data>
+  <data name="PullFailedTitle" xml:space="preserve">
+    <value>无法拉取“{0}”</value>
+  </data>
+  <data name="PullMenu" xml:space="preserve">
+    <value>拉取</value>
+  </data>
+  <data name="Pulled" xml:space="preserve">
+    <value>已拉取“{0}”</value>
+  </data>
+  <data name="PushFailedTitle" xml:space="preserve">
+    <value>无法推送“{0}”</value>
+  </data>
+  <data name="PushMenu" xml:space="preserve">
+    <value>推送</value>
+  </data>
+  <data name="Pushed" xml:space="preserve">
+    <value>已推送“{0}”</value>
+  </data>
+  <data name="RefreshTeamLibrary" xml:space="preserve">
+    <value>刷新团队库</value>
+  </data>
+  <data name="RenameFailedTitle" xml:space="preserve">
+    <value>无法重命名</value>
+  </data>
+  <data name="RenameMenu" xml:space="preserve">
+    <value>重命名…</value>
+  </data>
+  <data name="ResolveConflictFirst" xml:space="preserve">
+    <value>提交此文件前，请先在 Git 客户端中解决冲突。</value>
+  </data>
+  <data name="RestoreButton" xml:space="preserve">
+    <value>恢复</value>
+  </data>
+  <data name="RestoreConfirmMessage" xml:space="preserve">
+    <value>该文件包含不在任何已保存版本或提交中的更改。恢复会替换这些更改；替换前会先将它们保存为一个版本。</value>
+  </data>
+  <data name="RestoreConfirmTitle" xml:space="preserve">
+    <value>替换当前文本？</value>
+  </data>
+  <data name="RestoreFailed" xml:space="preserve">
+    <value>无法恢复该版本。</value>
+  </data>
+  <data name="RestoreFailedTitle" xml:space="preserve">
+    <value>无法恢复</value>
+  </data>
+  <data name="SaveDetailsFailedTitle" xml:space="preserve">
+    <value>无法保存详细信息</value>
+  </data>
+  <data name="SavedVersion" xml:space="preserve">
+    <value>已保存的版本</value>
+  </data>
+  <data name="SearchPlaceholder" xml:space="preserve">
+    <value>搜索 SQL 文件</value>
+  </data>
+  <data name="SelectVersion" xml:space="preserve">
+    <value>请选择一个版本。</value>
+  </data>
+  <data name="ShowInFileExplorer" xml:space="preserve">
+    <value>在文件资源管理器中显示</value>
+  </data>
+  <data name="ShowsLatestCommits_One" xml:space="preserve">
+    <value>显示最近的 {0} 次提交。</value>
+  </data>
+  <data name="ShowsLatestCommits_Other" xml:space="preserve">
+    <value>显示最近的 {0} 次提交。</value>
+  </data>
+  <data name="StatusCommitting" xml:space="preserve">
+    <value>正在提交…</value>
+  </data>
+  <data name="StatusNotFound" xml:space="preserve">
+    <value>未找到</value>
+  </data>
+  <data name="StatusPulling" xml:space="preserve">
+    <value>正在拉取…</value>
+  </data>
+  <data name="StatusPushing" xml:space="preserve">
+    <value>正在推送…</value>
+  </data>
+  <data name="TeamEmpty" xml:space="preserve">
+    <value>你的团队尚未发布任何已保存的查询。</value>
+  </data>
+  <data name="TeamLibraryHeader" xml:space="preserve">
+    <value>团队库</value>
+  </data>
+  <data name="TeamRefreshFailedTitle" xml:space="preserve">
+    <value>无法刷新团队库</value>
+  </data>
+  <data name="TooLargeToCompare_One" xml:space="preserve">
+    <value>此文件超过 {0} 行，因此不显示其更改。请切换到“内容”查看。</value>
+  </data>
+  <data name="TooLargeToCompare_Other" xml:space="preserve">
+    <value>此文件超过 {0} 行，因此不显示其更改。请切换到“内容”查看。</value>
+  </data>
+  <data name="TurnOff" xml:space="preserve">
+    <value>关闭</value>
+  </data>
+  <data name="TurnOn" xml:space="preserve">
+    <value>开启</value>
+  </data>
+  <data name="TurnedBackOn" xml:space="preserve">
+    <value>已重新开启“{0}”</value>
+  </data>
+  <data name="UncommittedChanges" xml:space="preserve">
+    <value>未提交的更改</value>
+  </data>
+  <data name="UnlinkButton" xml:space="preserve">
+    <value>取消链接</value>
+  </data>
+  <data name="UnlinkFolderMenu" xml:space="preserve">
+    <value>取消链接文件夹…</value>
+  </data>
+  <data name="UnlinkMessage" xml:space="preserve">
+    <value>“{0}”将不再显示在列表中。其文件仍保留在磁盘上。</value>
+  </data>
+  <data name="UnlinkTitle" xml:space="preserve">
+    <value>取消链接文件夹？</value>
+  </data>
+  <data name="VersionHistoryMenu" xml:space="preserve">
+    <value>版本历史记录…</value>
+  </data>
+  <data name="VersionReadFailed" xml:space="preserve">
+    <value>无法读取此版本。</value>
+  </data>
+  <data name="VersionsReadFailed" xml:space="preserve">
+    <value>无法读取这些版本。</value>
+  </data>
+</root>

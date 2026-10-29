@@ -18,11 +18,11 @@ internal sealed partial class VersionHistoryWindow : Window
 
     private VersionHistoryWindow(string path, IVersionHistoryProvider provider, BackdropKind backdrop, ElementTheme theme, Action<string> openInEditor, Action restored)
     {
-        Title = Path.GetFileName(path) + " History - TablePro";
+        Title = Strings.Format("SqlFiles/HistoryWindowTitle", Path.GetFileName(path));
         var titleBar = new Grid { Height = 48, Padding = new Thickness(16, 0, 140, 0) };
         titleBar.Children.Add(new TextBlock
         {
-            Text = Path.GetFileName(path) + " History",
+            Text = Strings.Format("SqlFiles/HistoryTitle", Path.GetFileName(path)),
             VerticalAlignment = VerticalAlignment.Center,
             Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
         });

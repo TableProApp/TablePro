@@ -1,0 +1,346 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="BatchesCommitNote" xml:space="preserve">
+    <value>Les lots sont validés au fur et à mesure&#160;: en cas d’échec, les lots précédents sont conservés.</value>
+  </data>
+  <data name="CannotMigrateMessage" xml:space="preserve">
+    <value>{0} est en lecture seule ou ne peut pas modifier sa structure depuis l’application.</value>
+  </data>
+  <data name="CannotMigrateTitle" xml:space="preserve">
+    <value>Migration impossible</value>
+  </data>
+  <data name="CannotRollBackNote" xml:space="preserve">
+    <value>{0} ne peut pas annuler la transaction&#160;: en cas d’échec, les instructions précédentes restent appliquées.</value>
+  </data>
+  <data name="CannotSyncTitle" xml:space="preserve">
+    <value>Synchronisation impossible</value>
+  </data>
+  <data name="ChooseTables" xml:space="preserve">
+    <value>Choisissez une table de chaque côté.</value>
+  </data>
+  <data name="CommitInBatches" xml:space="preserve">
+    <value>Valider par lots</value>
+  </data>
+  <data name="CompareButton" xml:space="preserve">
+    <value>Comparer</value>
+  </data>
+  <data name="CompareStructureButton" xml:space="preserve">
+    <value>Comparer la structure</value>
+  </data>
+  <data name="ComparedIn" xml:space="preserve">
+    <value>Comparé en {0:N1} s</value>
+  </data>
+  <data name="ComparingWith" xml:space="preserve">
+    <value>Comparaison avec {0}</value>
+  </data>
+  <data name="ComparisonStopped" xml:space="preserve">
+    <value>Comparaison arrêtée.</value>
+  </data>
+  <data name="ConnectingTo" xml:space="preserve">
+    <value>Connexion à {0}…</value>
+  </data>
+  <data name="CopyMigrationScript" xml:space="preserve">
+    <value>Copier le script de migration</value>
+  </data>
+  <data name="CopySyncScript" xml:space="preserve">
+    <value>Copier le script de synchronisation</value>
+  </data>
+  <data name="CouldNotCompareStructureTitle" xml:space="preserve">
+    <value>Impossible de comparer la structure</value>
+  </data>
+  <data name="CouldNotCompareTitle" xml:space="preserve">
+    <value>Comparaison impossible</value>
+  </data>
+  <data name="CouldNotConnectTitle" xml:space="preserve">
+    <value>Impossible de se connecter à {0}</value>
+  </data>
+  <data name="DataProgress_One" xml:space="preserve">
+    <value>{1:N0} lignes source et {2:N0} lignes cible comparées, {0:N0} différence…</value>
+  </data>
+  <data name="DataProgress_Other" xml:space="preserve">
+    <value>{1:N0} lignes source et {2:N0} lignes cible comparées, {0:N0} différences…</value>
+  </data>
+  <data name="DeleteExtraRows" xml:space="preserve">
+    <value>Supprimer les lignes en trop</value>
+  </data>
+  <data name="DestructiveNote" xml:space="preserve">
+    <value>Certaines instructions suppriment des tables ou des colonnes, et les données qu’elles contiennent sont perdues.</value>
+  </data>
+  <data name="DiffSummary" xml:space="preserve">
+    <value>{0:N0} uniquement dans la source · {1:N0} uniquement dans la cible · {2:N0} modifiées · {3:N0} identiques</value>
+  </data>
+  <data name="DropExtraColumns" xml:space="preserve">
+    <value>Supprimer les colonnes présentes uniquement dans la cible</value>
+  </data>
+  <data name="DropExtraTables" xml:space="preserve">
+    <value>Supprimer les tables présentes uniquement dans la cible</value>
+  </data>
+  <data name="FloatTolerance" xml:space="preserve">
+    <value>Tolérance (virgule flottante)</value>
+  </data>
+  <data name="GridDelete" xml:space="preserve">
+    <value>Supprimer</value>
+  </data>
+  <data name="GridInsert" xml:space="preserve">
+    <value>Insérer</value>
+  </data>
+  <data name="GridKeyColumn" xml:space="preserve">
+    <value>{0} (clé)</value>
+  </data>
+  <data name="GridReadOnly" xml:space="preserve">
+    <value>Une comparaison est en lecture seule. Modifiez la table elle-même, puis relancez la comparaison.</value>
+  </data>
+  <data name="GridSame" xml:space="preserve">
+    <value>Identique</value>
+  </data>
+  <data name="GridSkipped" xml:space="preserve">
+    <value>Ignoré</value>
+  </data>
+  <data name="GridSyncColumn" xml:space="preserve">
+    <value>Synchronisation</value>
+  </data>
+  <data name="GridUpdate" xml:space="preserve">
+    <value>Mettre à jour</value>
+  </data>
+  <data name="InsertMissingRows" xml:space="preserve">
+    <value>Insérer les lignes manquantes</value>
+  </data>
+  <data name="KeyColumns" xml:space="preserve">
+    <value>Colonnes clés</value>
+  </data>
+  <data name="KeyColumnsPlaceholder" xml:space="preserve">
+    <value>Clé primaire</value>
+  </data>
+  <data name="KeysIgnoreCase" xml:space="preserve">
+    <value>Clés insensibles à la casse</value>
+  </data>
+  <data name="LeaveOutColumns" xml:space="preserve">
+    <value>Colonnes exclues</value>
+  </data>
+  <data name="MigrateButton" xml:space="preserve">
+    <value>Migrer</value>
+  </data>
+  <data name="MigrateReviewTitle" xml:space="preserve">
+    <value>Migrer {0}</value>
+  </data>
+  <data name="Migrated_One" xml:space="preserve">
+    <value>{1} migré&#160;: {0:N0} instruction.</value>
+  </data>
+  <data name="Migrated_Other" xml:space="preserve">
+    <value>{1} migré&#160;: {0:N0} instructions.</value>
+  </data>
+  <data name="MigrationStoppedMessage_One" xml:space="preserve">
+    <value>{1}
+
+{0:N0} instruction a été exécutée avant. Les moteurs sans DDL transactionnel la conservent.</value>
+  </data>
+  <data name="MigrationStoppedMessage_Other" xml:space="preserve">
+    <value>{1}
+
+{0:N0} instructions ont été exécutées avant. Les moteurs sans DDL transactionnel les conservent.</value>
+  </data>
+  <data name="MigrationStoppedTitle" xml:space="preserve">
+    <value>La migration s’est arrêtée</value>
+  </data>
+  <data name="ModeData" xml:space="preserve">
+    <value>Données</value>
+  </data>
+  <data name="ModeStructure" xml:space="preserve">
+    <value>Structure</value>
+  </data>
+  <data name="MoreStatements_One" xml:space="preserve">
+    <value>{1} et {0:N0} autre instruction similaire</value>
+  </data>
+  <data name="MoreStatements_Other" xml:space="preserve">
+    <value>{1} et {0:N0} autres instructions similaires</value>
+  </data>
+  <data name="NotScripted" xml:space="preserve">
+    <value>Non scripté&#160;: {0}</value>
+  </data>
+  <data name="NothingToMigrateTitle" xml:space="preserve">
+    <value>Rien à migrer</value>
+  </data>
+  <data name="NothingToSyncMessage" xml:space="preserve">
+    <value>Aucune différence n’est sélectionnée pour l’écriture. Activez les insertions, les mises à jour ou les suppressions, ou incluez les lignes ignorées.</value>
+  </data>
+  <data name="NothingToSyncTitle" xml:space="preserve">
+    <value>Rien à synchroniser</value>
+  </data>
+  <data name="Options" xml:space="preserve">
+    <value>Options</value>
+  </data>
+  <data name="PasswordHeader" xml:space="preserve">
+    <value>Mot de passe</value>
+  </data>
+  <data name="PasswordPrompt" xml:space="preserve">
+    <value>Saisissez le mot de passe de {0} pour effectuer la comparaison.</value>
+  </data>
+  <data name="ReadOnlyTargetMessage" xml:space="preserve">
+    <value>{0} est en lecture seule et ne peut donc pas être synchronisé.</value>
+  </data>
+  <data name="ReadOnlyTargetTitle" xml:space="preserve">
+    <value>Cible en lecture seule</value>
+  </data>
+  <data name="ReadingSourceStructure" xml:space="preserve">
+    <value>Lecture de la structure source… {0:N0}/{1:N0}</value>
+  </data>
+  <data name="ReadingStructure" xml:space="preserve">
+    <value>Lecture de la structure…</value>
+  </data>
+  <data name="ReadingTargetStructure" xml:space="preserve">
+    <value>Lecture de la structure cible… {0:N0}/{1:N0}</value>
+  </data>
+  <data name="ReviewAndMigrate" xml:space="preserve">
+    <value>Vérifier et migrer…</value>
+  </data>
+  <data name="ReviewAndSync" xml:space="preserve">
+    <value>Vérifier et synchroniser…</value>
+  </data>
+  <data name="RowLimit" xml:space="preserve">
+    <value>Limite de lignes</value>
+  </data>
+  <data name="RowLimitPlaceholder" xml:space="preserve">
+    <value>Toutes les lignes</value>
+  </data>
+  <data name="ShowChanged" xml:space="preserve">
+    <value>Modifié</value>
+  </data>
+  <data name="ShowChangedCount" xml:space="preserve">
+    <value>Modifié ({0:N0})</value>
+  </data>
+  <data name="ShowOnlyInSource" xml:space="preserve">
+    <value>Uniquement dans la source</value>
+  </data>
+  <data name="ShowOnlyInSourceCount" xml:space="preserve">
+    <value>Uniquement dans la source ({0:N0})</value>
+  </data>
+  <data name="ShowOnlyInTarget" xml:space="preserve">
+    <value>Uniquement dans la cible</value>
+  </data>
+  <data name="ShowOnlyInTargetCount" xml:space="preserve">
+    <value>Uniquement dans la cible ({0:N0})</value>
+  </data>
+  <data name="ShowingFirstDifferences_One" xml:space="preserve">
+    <value>affichage de la première différence</value>
+  </data>
+  <data name="ShowingFirstDifferences_Other" xml:space="preserve">
+    <value>affichage des {0:N0} premières différences</value>
+  </data>
+  <data name="SkipOrIncludeRows" xml:space="preserve">
+    <value>Ignorer ou inclure les lignes sélectionnées</value>
+  </data>
+  <data name="SkippedNullKey_One" xml:space="preserve">
+    <value>{0:N0} ignorée pour une clé NULL</value>
+  </data>
+  <data name="SkippedNullKey_Other" xml:space="preserve">
+    <value>{0:N0} ignorées pour une clé NULL</value>
+  </data>
+  <data name="SourceLabel" xml:space="preserve">
+    <value>Source</value>
+  </data>
+  <data name="SourceOnlyColumns" xml:space="preserve">
+    <value>Uniquement dans la source, non comparées&#160;: {0}</value>
+  </data>
+  <data name="SourceTable" xml:space="preserve">
+    <value>Table source</value>
+  </data>
+  <data name="SourceWhere" xml:space="preserve">
+    <value>WHERE source</value>
+  </data>
+  <data name="StoppedAtRowLimit" xml:space="preserve">
+    <value>arrêté à la limite de lignes</value>
+  </data>
+  <data name="StructuresAlreadyMatch" xml:space="preserve">
+    <value>Les structures correspondent déjà.</value>
+  </data>
+  <data name="StructuresMatch" xml:space="preserve">
+    <value>Les structures correspondent.</value>
+  </data>
+  <data name="SyncButton" xml:space="preserve">
+    <value>Synchroniser</value>
+  </data>
+  <data name="SyncProgress" xml:space="preserve">
+    <value>{0:N0} sur {1:N0} appliquées…</value>
+  </data>
+  <data name="SyncReviewTitle" xml:space="preserve">
+    <value>Synchroniser {0}&#160;: {1:N0} insertions, {2:N0} mises à jour, {3:N0} suppressions</value>
+  </data>
+  <data name="SyncStoppedBatchesKept_One" xml:space="preserve">
+    <value>{1} {0:N0} lot sur {2:N0} a été validé avant.</value>
+  </data>
+  <data name="SyncStoppedBatchesKept_Other" xml:space="preserve">
+    <value>{1} {0:N0} lots sur {2:N0} ont été validés avant.</value>
+  </data>
+  <data name="SyncStoppedNothingChanged" xml:space="preserve">
+    <value>{0} Aucune modification n’a été effectuée.</value>
+  </data>
+  <data name="SyncStoppedTitle" xml:space="preserve">
+    <value>La synchronisation s’est arrêtée</value>
+  </data>
+  <data name="Synced_One" xml:space="preserve">
+    <value>{1} synchronisée&#160;: {0:N0} ligne.</value>
+  </data>
+  <data name="Synced_Other" xml:space="preserve">
+    <value>{1} synchronisée&#160;: {0:N0} lignes.</value>
+  </data>
+  <data name="TabTitle" xml:space="preserve">
+    <value>Comparaison</value>
+  </data>
+  <data name="TableChanges_One" xml:space="preserve">
+    <value>{0:N0} modification</value>
+  </data>
+  <data name="TableChanges_Other" xml:space="preserve">
+    <value>{0:N0} modifications</value>
+  </data>
+  <data name="TableIdentical" xml:space="preserve">
+    <value>identique</value>
+  </data>
+  <data name="TableOnlyInSourceCreated" xml:space="preserve">
+    <value>uniquement dans la source, sera créée</value>
+  </data>
+  <data name="TableOnlyInTarget" xml:space="preserve">
+    <value>uniquement dans la cible</value>
+  </data>
+  <data name="TableOnlyInTargetDropped" xml:space="preserve">
+    <value>uniquement dans la cible, sera supprimée</value>
+  </data>
+  <data name="TablesDiffer_One" xml:space="preserve">
+    <value>{0:N0} table diffère</value>
+  </data>
+  <data name="TablesDiffer_Other" xml:space="preserve">
+    <value>{0:N0} tables diffèrent</value>
+  </data>
+  <data name="TargetCannotExpress" xml:space="preserve">
+    <value>La cible ne peut pas exprimer&#160;: {0}</value>
+  </data>
+  <data name="TargetConnection" xml:space="preserve">
+    <value>Connexion cible</value>
+  </data>
+  <data name="TargetLabel" xml:space="preserve">
+    <value>Cible</value>
+  </data>
+  <data name="TargetOnlyColumns" xml:space="preserve">
+    <value>Uniquement dans la cible, laissées telles quelles&#160;: {0}</value>
+  </data>
+  <data name="TargetTable" xml:space="preserve">
+    <value>Table cible</value>
+  </data>
+  <data name="TargetWhere" xml:space="preserve">
+    <value>WHERE cible</value>
+  </data>
+  <data name="UpdateChangedRows" xml:space="preserve">
+    <value>Mettre à jour les lignes modifiées</value>
+  </data>
+</root>

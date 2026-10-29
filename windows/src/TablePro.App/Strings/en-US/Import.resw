@@ -1,0 +1,389 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AcceptsNullFieldName" xml:space="preserve">
+    <value>{0} accepts null</value>
+    <comment>Screen readers only: the name of the checkbox that lets a new column hold null. {0} is the file field's name.</comment>
+  </data>
+  <data name="CannotCreateTable" xml:space="preserve">
+    <value>This engine cannot create that table from the app.</value>
+    <comment>Error message when the database cannot create the new table an import asked for.</comment>
+  </data>
+  <data name="CannotImportYetTitle" xml:space="preserve">
+    <value>Cannot import yet</value>
+    <comment>Title of the warning in the import dialog that says what to fix before importing.</comment>
+  </data>
+  <data name="CannotReadFileTitle" xml:space="preserve">
+    <value>Cannot read this file</value>
+    <comment>Error title when an import file cannot be opened or parsed; the system's reason follows.</comment>
+  </data>
+  <data name="ColumnForFieldName" xml:space="preserve">
+    <value>Column for {0}</value>
+    <comment>Screen readers only: the name of the list that picks the table column a file field goes into. {0} is the file field's name.</comment>
+  </data>
+  <data name="ColumnNameForFieldName" xml:space="preserve">
+    <value>Column name for {0}</value>
+    <comment>Screen readers only: the name of the box for a new column's name. {0} is the file field's name.</comment>
+  </data>
+  <data name="CreateAllColumns" xml:space="preserve">
+    <value>Create all columns</value>
+    <comment>Checkbox above the field list when importing into a new table.</comment>
+  </data>
+  <data name="CreateAndImport" xml:space="preserve">
+    <value>Create and Import</value>
+    <comment>Button that runs the reviewed CREATE TABLE statement and then imports the file.</comment>
+  </data>
+  <data name="CreateFieldName" xml:space="preserve">
+    <value>Create {0}</value>
+    <comment>Screen readers only: the name of the checkbox that includes a field as a column of the new table. "Create" is a verb. {0} is the file field's name.</comment>
+  </data>
+  <data name="CreateTableFailedTitle" xml:space="preserve">
+    <value>Could not create the table</value>
+    <comment>Error title when the CREATE TABLE statement for an import fails; the server's message follows.</comment>
+  </data>
+  <data name="CreateTableReviewTitle" xml:space="preserve">
+    <value>Create table for import</value>
+    <comment>Title of the dialog that shows the CREATE TABLE statement before it runs.</comment>
+  </data>
+  <data name="DefaultSqlFieldName" xml:space="preserve">
+    <value>Default SQL for {0}</value>
+    <comment>Screen readers only: the name of the box for a new column's default. {0} is the file field's name.</comment>
+  </data>
+  <data name="DefaultSqlPlaceholder" xml:space="preserve">
+    <value>Default SQL</value>
+    <comment>Placeholder of the box that holds a new column's DEFAULT expression. Narrow box (about 140 pixels).</comment>
+  </data>
+  <data name="DefaultSqlToolTip" xml:space="preserve">
+    <value>The SQL after DEFAULT. A text value needs its own quotes.</value>
+    <comment>DEFAULT is the SQL keyword and stays untranslated.</comment>
+  </data>
+  <data name="DelimiterComma" xml:space="preserve">
+    <value>Comma</value>
+    <comment>Delimiter choice: the , character.</comment>
+  </data>
+  <data name="DelimiterDetect" xml:space="preserve">
+    <value>Detect</value>
+    <comment>Delimiter choice: work the delimiter out from the file. A verb used as an option.</comment>
+  </data>
+  <data name="DelimiterHeader" xml:space="preserve">
+    <value>Delimiter</value>
+    <comment>Header of the list that picks the character separating fields in a delimited file.</comment>
+  </data>
+  <data name="DelimiterPipe" xml:space="preserve">
+    <value>Pipe</value>
+    <comment>Delimiter choice: the | character.</comment>
+  </data>
+  <data name="DelimiterSemicolon" xml:space="preserve">
+    <value>Semicolon</value>
+    <comment>Delimiter choice: the ; character.</comment>
+  </data>
+  <data name="DelimiterTab" xml:space="preserve">
+    <value>Tab</value>
+    <comment>Delimiter choice: the tab character.</comment>
+  </data>
+  <data name="DisableForeignKeyChecks" xml:space="preserve">
+    <value>Disable foreign key checks</value>
+  </data>
+  <data name="DisableForeignKeyChecksToolTip" xml:space="preserve">
+    <value>Temporarily disable foreign key constraints during import. Useful for importing data with circular dependencies.</value>
+  </data>
+  <data name="EnterNewTableName" xml:space="preserve">
+    <value>Enter a name for the new table.</value>
+  </data>
+  <data name="ErrorLine" xml:space="preserve">
+    <value>Line {0}: {1}</value>
+    <comment>One failed statement of a SQL import. {0} is the line number in the file, {1} the server's error message.</comment>
+  </data>
+  <data name="ExistingTable" xml:space="preserve">
+    <value>Existing table {0}</value>
+    <comment>Import destination choice. {0} is the table name.</comment>
+  </data>
+  <data name="FieldTypeBoolean" xml:space="preserve">
+    <value>Boolean</value>
+    <comment>Kind of values an import field holds: true or false.</comment>
+  </data>
+  <data name="FieldTypeInteger" xml:space="preserve">
+    <value>Integer</value>
+    <comment>Kind of values an import field holds: whole numbers.</comment>
+  </data>
+  <data name="FieldTypeJson" xml:space="preserve">
+    <value>Json</value>
+    <comment>Kind of values an import field holds: JSON objects or arrays. JSON is a format name.</comment>
+  </data>
+  <data name="FieldTypeReal" xml:space="preserve">
+    <value>Real</value>
+    <comment>Kind of values an import field holds: decimal numbers.</comment>
+  </data>
+  <data name="FieldTypeText" xml:space="preserve">
+    <value>Text</value>
+    <comment>Kind of values an import field holds: any text.</comment>
+  </data>
+  <data name="FirstRowIsHeader" xml:space="preserve">
+    <value>First row is a header</value>
+    <comment>Checkbox: the first line of a delimited file holds the field names.</comment>
+  </data>
+  <data name="FirstRows" xml:space="preserve">
+    <value>First rows</value>
+    <comment>Heading above the preview of the file's first rows.</comment>
+  </data>
+  <data name="HeaderColumn" xml:space="preserve">
+    <value>Column</value>
+    <comment>Column heading of the import field list: the table column a field goes into. Narrow.</comment>
+  </data>
+  <data name="HeaderDefault" xml:space="preserve">
+    <value>Default</value>
+    <comment>Column heading of the import field list: a new column's default value. Narrow (about 140 pixels).</comment>
+  </data>
+  <data name="HeaderField" xml:space="preserve">
+    <value>Field</value>
+    <comment>Column heading of the import field list: a field (CSV column or JSON key) of the file.</comment>
+  </data>
+  <data name="HeaderKey" xml:space="preserve">
+    <value>Key</value>
+    <comment>Column heading of the import field list: whether a new column is in the primary key. Very narrow (about 48 pixels).</comment>
+  </data>
+  <data name="HeaderNull" xml:space="preserve">
+    <value>Null</value>
+    <comment>Column heading of the import field list: whether a new column accepts null. Very narrow (about 48 pixels).</comment>
+  </data>
+  <data name="ImportAllFields" xml:space="preserve">
+    <value>Import all fields</value>
+    <comment>Checkbox above the field list when importing into an existing table.</comment>
+  </data>
+  <data name="ImportFailedTitle" xml:space="preserve">
+    <value>Import failed</value>
+    <comment>Error title when a SQL import could not run; the reason follows.</comment>
+  </data>
+  <data name="ImportFieldName" xml:space="preserve">
+    <value>Import {0}</value>
+    <comment>Screen readers only: the name of the checkbox that includes a file field in the import. "Import" is a verb. {0} is the file field's name.</comment>
+  </data>
+  <data name="ImportFileTitle" xml:space="preserve">
+    <value>Import {0}</value>
+    <comment>Title of the import dialog. "Import" is a verb. {0} is the file name.</comment>
+  </data>
+  <data name="ImportIntoHeader" xml:space="preserve">
+    <value>Import into</value>
+    <comment>Header of the choice between an existing table and a new table.</comment>
+  </data>
+  <data name="ImportSqlFileTitle" xml:space="preserve">
+    <value>Import SQL File</value>
+    <comment>Title of the dialog with the options of a SQL file import.</comment>
+  </data>
+  <data name="ImportStoppedRowsKept" xml:space="preserve">
+    <value>{0}
+
+Rows saved before this point stay in the table.</value>
+    <comment>Error message when a row import fails part way. {0} is the error's own message.</comment>
+  </data>
+  <data name="ImportStoppedTitle" xml:space="preserve">
+    <value>Import stopped</value>
+    <comment>Error title when an import stops at an error.</comment>
+  </data>
+  <data name="ImportedRows_One" xml:space="preserve">
+    <value>Imported {0:N0} row into {1}.</value>
+    <comment>Notification after an import. {0} is the number of rows, {1} the table name.</comment>
+  </data>
+  <data name="ImportedRows_Other" xml:space="preserve">
+    <value>Imported {0:N0} rows into {1}.</value>
+    <comment>Notification after an import. {0} is the number of rows, {1} the table name.</comment>
+  </data>
+  <data name="ImportedWithSkipped" xml:space="preserve">
+    <value>{0} {1}</value>
+    <comment>Notification after an import that skipped records. {0} is the sentence saying how many rows were imported, {1} the sentence saying how many records were skipped.</comment>
+  </data>
+  <data name="Importing" xml:space="preserve">
+    <value>Importing…</value>
+    <comment>Status text while an import starts.</comment>
+  </data>
+  <data name="ImportingRows_One" xml:space="preserve">
+    <value>Importing… {0:N0} row</value>
+    <comment>Status text while an import runs. {0} is the number of rows imported so far.</comment>
+  </data>
+  <data name="ImportingRows_Other" xml:space="preserve">
+    <value>Importing… {0:N0} rows</value>
+    <comment>Status text while an import runs. {0} is the number of rows imported so far.</comment>
+  </data>
+  <data name="ImportingSqlTitle" xml:space="preserve">
+    <value>Importing SQL</value>
+    <comment>Title of the progress dialog of a SQL file import.</comment>
+  </data>
+  <data name="MatchByName" xml:space="preserve">
+    <value>Match by Name</value>
+    <comment>Menu command: map each file field to the table column of the same name.</comment>
+  </data>
+  <data name="MatchByPosition" xml:space="preserve">
+    <value>Match by Position</value>
+    <comment>Menu command: map the file's fields to the table's columns in order.</comment>
+  </data>
+  <data name="MatchColumns" xml:space="preserve">
+    <value>Match Columns</value>
+    <comment>Drop-down button holding the Match by Name and Match by Position commands. "Match" is a verb.</comment>
+  </data>
+  <data name="NewTable" xml:space="preserve">
+    <value>New table</value>
+    <comment>Import destination choice: create a table for the file.</comment>
+  </data>
+  <data name="NewTableName" xml:space="preserve">
+    <value>New table name</value>
+    <comment>Screen readers only: the name of the box for the new table's name.</comment>
+  </data>
+  <data name="NoFields" xml:space="preserve">
+    <value>The file has no fields to import.</value>
+  </data>
+  <data name="NoTransactionsToolTip" xml:space="preserve">
+    <value>This database runs each statement on its own.</value>
+    <comment>Tooltip of the disabled "Wrap in transaction" checkbox, for databases without transactions.</comment>
+  </data>
+  <data name="NullTextHeader" xml:space="preserve">
+    <value>Null text</value>
+    <comment>Header of the box for the text that imports as null. Narrow box (about 110 pixels).</comment>
+  </data>
+  <data name="NullTextToolTip" xml:space="preserve">
+    <value>A value that imports as null, such as NULL or \N. Empty fields always import as null.</value>
+    <comment>NULL and \N are literal file values and stay untranslated.</comment>
+  </data>
+  <data name="OnErrorHeader" xml:space="preserve">
+    <value>On error</value>
+    <comment>Header of the list that picks what a SQL import does when a statement fails.</comment>
+  </data>
+  <data name="OnErrorSkipAndContinue" xml:space="preserve">
+    <value>Skip and Continue</value>
+    <comment>SQL import error choice: skip the failing statement and run the rest.</comment>
+  </data>
+  <data name="OnErrorStopAndCommit" xml:space="preserve">
+    <value>Stop and Commit</value>
+    <comment>SQL import error choice: stop and keep the statements that already ran.</comment>
+  </data>
+  <data name="OnErrorStopAndRollback" xml:space="preserve">
+    <value>Stop and Rollback</value>
+    <comment>SQL import error choice: stop and undo the statements that already ran.</comment>
+  </data>
+  <data name="PreviewNote" xml:space="preserve">
+    <value>{0}; {1}</value>
+    <comment>Note beside the preview heading. {0} says how many rows are shown ("20 shown"), {1} how many rows the types were read from ("types from the first 100 rows").</comment>
+  </data>
+  <data name="PrimaryKeyFieldName" xml:space="preserve">
+    <value>{0} is a primary key</value>
+    <comment>Screen readers only: the name of the checkbox that puts a new column in the primary key. {0} is the file field's name.</comment>
+  </data>
+  <data name="ReadOnlyCannotImportSql" xml:space="preserve">
+    <value>Safe Mode is Read-Only on this connection, so a SQL file cannot be imported.</value>
+    <comment>"Safe Mode" and "Read-Only" are the names of a connection setting and its level; translate them as the connection settings do.</comment>
+  </data>
+  <data name="RecordsSkipped_One" xml:space="preserve">
+    <value>{0:N0} record held no mapped field and was skipped.</value>
+    <comment>Second sentence of the import notification. {0} is the number of records skipped.</comment>
+  </data>
+  <data name="RecordsSkipped_Other" xml:space="preserve">
+    <value>{0:N0} records held no mapped field and were skipped.</value>
+    <comment>Second sentence of the import notification. {0} is the number of records skipped.</comment>
+  </data>
+  <data name="RowsShown_One" xml:space="preserve">
+    <value>{0:N0} shown</value>
+    <comment>Part of the preview note. {0} is the number of preview rows shown.</comment>
+  </data>
+  <data name="RowsShown_Other" xml:space="preserve">
+    <value>{0:N0} shown</value>
+    <comment>Part of the preview note. {0} is the number of preview rows shown.</comment>
+  </data>
+  <data name="Skip" xml:space="preserve">
+    <value>Skip</value>
+    <comment>Choice in a field's column list: do not import this field. A verb.</comment>
+  </data>
+  <data name="SqlFileSummary" xml:space="preserve">
+    <value>Runs every statement in {0} ({1:N0} KB) on {2}.</value>
+    <comment>{0} is the file name, {1} its size in kilobytes, {2} the connection name.</comment>
+  </data>
+  <data name="SqlImportedSkipped_One" xml:space="preserve">
+    <value>Imported {1}: {0:N0} statement in {2:N1} s, {3:N0} skipped.</value>
+    <comment>{0} is the number of statements run, {1} the file name, {2} the seconds taken, {3} the number of statements skipped. "s" is the symbol for seconds.</comment>
+  </data>
+  <data name="SqlImportedSkipped_Other" xml:space="preserve">
+    <value>Imported {1}: {0:N0} statements in {2:N1} s, {3:N0} skipped.</value>
+    <comment>{0} is the number of statements run, {1} the file name, {2} the seconds taken, {3} the number of statements skipped. "s" is the symbol for seconds.</comment>
+  </data>
+  <data name="SqlImported_One" xml:space="preserve">
+    <value>Imported {1}: {0:N0} statement in {2:N1} s.</value>
+    <comment>Notification after a SQL import. {0} is the number of statements run, {1} the file name, {2} the seconds taken. "s" is the symbol for seconds.</comment>
+  </data>
+  <data name="SqlImported_Other" xml:space="preserve">
+    <value>Imported {1}: {0:N0} statements in {2:N1} s.</value>
+    <comment>Notification after a SQL import. {0} is the number of statements run, {1} the file name, {2} the seconds taken. "s" is the symbol for seconds.</comment>
+  </data>
+  <data name="Starting" xml:space="preserve">
+    <value>Starting…</value>
+    <comment>Progress text before the first statement of a SQL import runs.</comment>
+  </data>
+  <data name="StatementsFailedTitle_One" xml:space="preserve">
+    <value>{0:N0} statement failed</value>
+    <comment>Dialog title after a SQL import that skipped failing statements. {0} is the number that failed.</comment>
+  </data>
+  <data name="StatementsFailedTitle_Other" xml:space="preserve">
+    <value>{0:N0} statements failed</value>
+    <comment>Dialog title after a SQL import that skipped failing statements. {0} is the number that failed.</comment>
+  </data>
+  <data name="StatementsKept_One" xml:space="preserve">
+    <value>The statement before it was kept.</value>
+    <comment>Added to the error when a SQL import stops. {0} is the number of statements that ran before the failing one.</comment>
+  </data>
+  <data name="StatementsKept_Other" xml:space="preserve">
+    <value>The {0:N0} statements before it were kept.</value>
+    <comment>Added to the error when a SQL import stops. {0} is the number of statements that ran before the failing one.</comment>
+  </data>
+  <data name="StatementsRunSkipped_One" xml:space="preserve">
+    <value>{0:N0} statement run, {1:N0} skipped</value>
+    <comment>Progress of a SQL import. {0} is the number of statements run, {1} the number skipped.</comment>
+  </data>
+  <data name="StatementsRunSkipped_Other" xml:space="preserve">
+    <value>{0:N0} statements run, {1:N0} skipped</value>
+    <comment>Progress of a SQL import. {0} is the number of statements run, {1} the number skipped.</comment>
+  </data>
+  <data name="StatementsRun_One" xml:space="preserve">
+    <value>{0:N0} statement run</value>
+    <comment>Progress of a SQL import. {0} is the number of statements run.</comment>
+  </data>
+  <data name="StatementsRun_Other" xml:space="preserve">
+    <value>{0:N0} statements run</value>
+    <comment>Progress of a SQL import. {0} is the number of statements run.</comment>
+  </data>
+  <data name="StoppedImporting" xml:space="preserve">
+    <value>Stopped importing {0}.</value>
+    <comment>Notification after the user stops a SQL import. {0} is the file name.</comment>
+  </data>
+  <data name="TrimSpaces" xml:space="preserve">
+    <value>Trim spaces</value>
+    <comment>Checkbox: remove spaces around each field value.</comment>
+  </data>
+  <data name="TypeOfFieldName" xml:space="preserve">
+    <value>Type of {0}</value>
+    <comment>Screen readers only: the name of the box for a new column's data type. {0} is the file field's name.</comment>
+  </data>
+  <data name="TypesFromRows_One" xml:space="preserve">
+    <value>types from the first row</value>
+    <comment>Part of the preview note, after a semicolon. {0} is the number of rows the field types were read from.</comment>
+  </data>
+  <data name="TypesFromRows_Other" xml:space="preserve">
+    <value>types from the first {0:N0} rows</value>
+    <comment>Part of the preview note, after a semicolon. {0} is the number of rows the field types were read from.</comment>
+  </data>
+  <data name="WrapInTransaction" xml:space="preserve">
+    <value>Wrap in transaction (BEGIN/COMMIT)</value>
+    <comment>BEGIN and COMMIT are SQL keywords and stay untranslated.</comment>
+  </data>
+  <data name="WrapInTransactionToolTip" xml:space="preserve">
+    <value>Runs every statement in one transaction, so a failure rolls back what the import changed. A database that commits CREATE, ALTER and DROP as they run, such as MySQL, keeps those statements and everything before them.</value>
+    <comment>CREATE, ALTER and DROP are SQL keywords and stay untranslated.</comment>
+  </data>
+</root>

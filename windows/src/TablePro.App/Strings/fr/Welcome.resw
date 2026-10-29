@@ -1,0 +1,180 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="CancelConnect.Content" xml:space="preserve">
+    <value>Annuler</value>
+  </data>
+  <data name="ConnectFailedTitle" xml:space="preserve">
+    <value>Impossible de se connecter à {0}</value>
+  </data>
+  <data name="ConnectNowMessage" xml:space="preserve">
+    <value>Se connecter à {0} maintenant&#160;?</value>
+  </data>
+  <data name="ConnectToTitle" xml:space="preserve">
+    <value>Se connecter à {0}</value>
+  </data>
+  <data name="ConnectingThroughProxy" xml:space="preserve">
+    <value>Connexion via le proxy…</value>
+  </data>
+  <data name="ConnectingTo" xml:space="preserve">
+    <value>Connexion à {0}…</value>
+  </data>
+  <data name="ConnectionAnnouncement" xml:space="preserve">
+    <value>{0}, {1}</value>
+  </data>
+  <data name="ConnectionSavedTitle" xml:space="preserve">
+    <value>Connexion enregistrée</value>
+  </data>
+  <data name="CreateGroup" xml:space="preserve">
+    <value>Créer</value>
+  </data>
+  <data name="DaysAgo_One" xml:space="preserve">
+    <value>il y a {0} j</value>
+  </data>
+  <data name="DaysAgo_Other" xml:space="preserve">
+    <value>il y a {0} j</value>
+  </data>
+  <data name="DeleteConfirmMessage" xml:space="preserve">
+    <value>La connexion enregistrée et ses mots de passe stockés sont supprimés. La base de données elle-même n’est pas modifiée.</value>
+  </data>
+  <data name="DeleteConfirmTitle" xml:space="preserve">
+    <value>Supprimer {0}&#160;?</value>
+  </data>
+  <data name="EmptyMessage.Text" xml:space="preserve">
+    <value>Créez-en une, ou ouvrez un fichier SQLite ou DuckDB.</value>
+  </data>
+  <data name="EmptyTitle.Text" xml:space="preserve">
+    <value>Aucune connexion enregistrée</value>
+  </data>
+  <data name="EncryptedImportMessage" xml:space="preserve">
+    <value>Ce fichier est chiffré. Saisissez la phrase secrète utilisée lors de son exportation.</value>
+  </data>
+  <data name="EncryptedImportTitle" xml:space="preserve">
+    <value>Connexions chiffrées</value>
+  </data>
+  <data name="ExportFileType" xml:space="preserve">
+    <value>Connexions TablePro</value>
+  </data>
+  <data name="ExportMessage" xml:space="preserve">
+    <value>Saisissez une phrase secrète pour chiffrer le fichier et inclure les mots de passe enregistrés. Laissez vide pour exporter sans les mots de passe.</value>
+  </data>
+  <data name="ExportTitle" xml:space="preserve">
+    <value>Exporter les connexions</value>
+  </data>
+  <data name="HoursAgo_One" xml:space="preserve">
+    <value>il y a {0} h</value>
+  </data>
+  <data name="HoursAgo_Other" xml:space="preserve">
+    <value>il y a {0} h</value>
+  </data>
+  <data name="ImportConnections.Text" xml:space="preserve">
+    <value>Importer des connexions</value>
+  </data>
+  <data name="ImportFailedTitle" xml:space="preserve">
+    <value>Échec de l’importation</value>
+  </data>
+  <data name="ImportFinishedTitle" xml:space="preserve">
+    <value>Importation terminée</value>
+  </data>
+  <data name="ImportWrongPassphrase" xml:space="preserve">
+    <value>La phrase secrète est incorrecte, ou le fichier est endommagé.</value>
+  </data>
+  <data name="ImportedConnections_One" xml:space="preserve">
+    <value>{0} connexion importée.</value>
+  </data>
+  <data name="ImportedConnections_Other" xml:space="preserve">
+    <value>{0} connexions importées.</value>
+  </data>
+  <data name="ImportedSavedQueries_One" xml:space="preserve">
+    <value>{0} requête enregistrée ajoutée aux Favoris.</value>
+  </data>
+  <data name="ImportedSavedQueries_Other" xml:space="preserve">
+    <value>{0} requêtes enregistrées ajoutées aux Favoris.</value>
+  </data>
+  <data name="JustNow" xml:space="preserve">
+    <value>à l’instant</value>
+  </data>
+  <data name="MinutesAgo_One" xml:space="preserve">
+    <value>il y a {0} min</value>
+  </data>
+  <data name="MinutesAgo_Other" xml:space="preserve">
+    <value>il y a {0} min</value>
+  </data>
+  <data name="MoveToGroup" xml:space="preserve">
+    <value>Déplacer vers un groupe</value>
+  </data>
+  <data name="NewConnection.Text" xml:space="preserve">
+    <value>Nouvelle connexion</value>
+  </data>
+  <data name="NewGroup.Text" xml:space="preserve">
+    <value>Nouveau groupe</value>
+  </data>
+  <data name="NewGroupTitle" xml:space="preserve">
+    <value>Nouveau groupe</value>
+  </data>
+  <data name="NoGroup" xml:space="preserve">
+    <value>Aucun groupe</value>
+  </data>
+  <data name="OpenDatabaseFile.Text" xml:space="preserve">
+    <value>Ouvrir un fichier de base de données</value>
+  </data>
+  <data name="OpeningCloudflareTunnel" xml:space="preserve">
+    <value>Ouverture du tunnel Cloudflare…</value>
+  </data>
+  <data name="OpeningSshTunnel" xml:space="preserve">
+    <value>Ouverture du tunnel SSH vers {0}…</value>
+  </data>
+  <data name="PasswordForHeader" xml:space="preserve">
+    <value>Mot de passe pour {0}@{1}</value>
+  </data>
+  <data name="RunningTunnelCommand" xml:space="preserve">
+    <value>Exécution de la commande de tunnel…</value>
+  </data>
+  <data name="SearchConnections.PlaceholderText" xml:space="preserve">
+    <value>Rechercher des connexions</value>
+  </data>
+  <data name="Settings.Content" xml:space="preserve">
+    <value>Paramètres</value>
+  </data>
+  <data name="SignInAndRetry" xml:space="preserve">
+    <value>Identifiez-vous sur {0}, puis reconnectez-vous.</value>
+  </data>
+  <data name="SkippedConnections_One" xml:space="preserve">
+    <value>{0} connexion ignorée, car cette version ne peut pas l’ouvrir.</value>
+  </data>
+  <data name="SkippedConnections_Other" xml:space="preserve">
+    <value>{0} connexions ignorées, car cette version ne peut pas les ouvrir.</value>
+  </data>
+  <data name="Sort.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Trier</value>
+  </data>
+  <data name="SortLastConnected.Content" xml:space="preserve">
+    <value>Dernière connexion</value>
+  </data>
+  <data name="SortManual.Content" xml:space="preserve">
+    <value>Ordre manuel</value>
+  </data>
+  <data name="SortName.Content" xml:space="preserve">
+    <value>Nom</value>
+  </data>
+  <data name="StartingCloudSqlProxy" xml:space="preserve">
+    <value>Démarrage de Cloud SQL Auth Proxy…</value>
+  </data>
+  <data name="TunnelCommandsTurnedOff" xml:space="preserve">
+    <value>Les commandes de tunnel ont été désactivées jusqu’à ce que vous les vérifiiez&#160;: {0}.</value>
+  </data>
+  <data name="Version" xml:space="preserve">
+    <value>Version {0}</value>
+  </data>
+</root>

@@ -31,7 +31,7 @@ public sealed class ConnectionListItem
     public bool IsHeader => Profile is null;
 
     // ListView announces an item by its ToString, so screen readers read the connection's name.
-    public override string ToString() => Subtitle is null ? Title : $"{Title}, {Subtitle}";
+    public override string ToString() => Subtitle is null ? Title : Strings.Format("Welcome/ConnectionAnnouncement", Title, Subtitle);
 
     public string Initials => Profile is null ? string.Empty : EngineBadge(Profile.Engine);
 
@@ -59,10 +59,10 @@ public sealed class ConnectionListItem
         var span = DateTimeOffset.Now - at;
         return span.TotalMinutes switch
         {
-            < 1 => "just now",
-            < 60 => string.Create(CultureInfo.CurrentCulture, $"{(int)span.TotalMinutes} min ago"),
-            < 1440 => string.Create(CultureInfo.CurrentCulture, $"{(int)span.TotalHours} h ago"),
-            < 43200 => string.Create(CultureInfo.CurrentCulture, $"{(int)span.TotalDays} d ago"),
+            < 1 => Strings.Get("Welcome/JustNow"),
+            < 60 => Strings.Plural("Welcome/MinutesAgo", (int)span.TotalMinutes),
+            < 1440 => Strings.Plural("Welcome/HoursAgo", (int)span.TotalHours),
+            < 43200 => Strings.Plural("Welcome/DaysAgo", (int)span.TotalDays),
             _ => at.ToLocalTime().ToString("d", CultureInfo.CurrentCulture),
         };
     }
@@ -88,7 +88,7 @@ public sealed partial class WelcomeViewModel : ObservableObject
 
     public ObservableCollection<ConnectionListItem> Items { get; } = [];
 
-    public string Version { get; } = "Version " + (typeof(WelcomeViewModel).Assembly.GetName().Version?.ToString(3) ?? "0.1.0");
+    public string Version { get; } = Strings.Format("Welcome/Version", typeof(WelcomeViewModel).Assembly.GetName().Version?.ToString(3) ?? "0.1.0");
 
     public bool IsEmpty => Items.Count == 0;
 
@@ -150,12 +150,12 @@ public sealed partial class WelcomeViewModel : ObservableObject
         IsConnecting = true;
         ConnectingText = profile.ActiveTransport() switch
         {
-            ConnectionTransport.Ssh => $"Opening SSH tunnel to {profile.Ssh!.Host}…",
-            ConnectionTransport.Proxy => "Connecting through the proxy…",
-            ConnectionTransport.CloudSqlProxy => "Starting Cloud SQL Auth Proxy…",
-            ConnectionTransport.CloudflareTunnel => "Opening Cloudflare tunnel…",
-            ConnectionTransport.TunnelCommand => "Running the tunnel command…",
-            _ => $"Connecting to {profile.Name}…",
+            ConnectionTransport.Ssh => Strings.Format("Welcome/OpeningSshTunnel", profile.Ssh!.Host),
+            ConnectionTransport.Proxy => Strings.Get("Welcome/ConnectingThroughProxy"),
+            ConnectionTransport.CloudSqlProxy => Strings.Get("Welcome/StartingCloudSqlProxy"),
+            ConnectionTransport.CloudflareTunnel => Strings.Get("Welcome/OpeningCloudflareTunnel"),
+            ConnectionTransport.TunnelCommand => Strings.Get("Welcome/RunningTunnelCommand"),
+            _ => Strings.Format("Welcome/ConnectingTo", profile.Name),
         };
         try
         {
@@ -171,13 +171,13 @@ public sealed partial class WelcomeViewModel : ObservableObject
             var message = ex switch
             {
                 SshTunnelException ssh when !string.IsNullOrWhiteSpace(ssh.StandardError) => $"{ex.Message}\n\n{ssh.StandardError}",
-                TunnelException { SignInUri: { } signIn } => $"{ex.Message}\n\nSign in at {signIn} and connect again.",
+                TunnelException { SignInUri: { } signIn } => $"{ex.Message}\n\n{Strings.Format("Welcome/SignInAndRetry", signIn)}",
                 TunnelException tunnel when !string.IsNullOrWhiteSpace(tunnel.Diagnostics) => $"{ex.Message}\n\n{tunnel.Diagnostics}",
                 _ => ex.Message,
             };
             if (Dialogs is not null)
             {
-                await Dialogs.ShowErrorAsync($"Could not connect to {profile.Name}", message);
+                await Dialogs.ShowErrorAsync(Strings.Format("Welcome/ConnectFailedTitle", profile.Name), message);
             }
         }
         finally
@@ -202,7 +202,7 @@ public sealed partial class WelcomeViewModel : ObservableObject
 
     public async Task DeleteAsync(ConnectionProfile profile)
     {
-        if (Dialogs is not null && await Dialogs.ConfirmAsync($"Delete {profile.Name}?", "The saved connection and its stored passwords are removed. The database itself is not touched.", "Delete", destructive: true))
+        if (Dialogs is not null && await Dialogs.ConfirmAsync(Strings.Format("Welcome/DeleteConfirmTitle", profile.Name), Strings.Get("Welcome/DeleteConfirmMessage"), Strings.Get("Common/Delete"), destructive: true))
         {
             Host.Connector.ForgetSecrets(profile);
             await Host.Connections.DeleteAsync(profile.Id);
@@ -247,8 +247,8 @@ public sealed partial class WelcomeViewModel : ObservableObject
 
     private async Task<string?> PromptPasswordAsync(ConnectionProfile profile)
     {
-        var box = new Microsoft.UI.Xaml.Controls.PasswordBox { Header = $"Password for {profile.Username}@{profile.Host}", MinWidth = 360 };
-        var dialog = Dialogs!.Create($"Connect to {profile.Name}", box, "Connect", "Cancel");
+        var box = new Microsoft.UI.Xaml.Controls.PasswordBox { Header = Strings.Format("Welcome/PasswordForHeader", profile.Username, profile.Host), MinWidth = 360 };
+        var dialog = Dialogs!.Create(Strings.Format("Welcome/ConnectToTitle", profile.Name), box, Strings.Get("Common/Connect"), Strings.Get("Common/Cancel"));
         return await Dialogs.ShowAsync(dialog) == Microsoft.UI.Xaml.Controls.ContentDialogResult.Primary ? box.Password : null;
     }
 }

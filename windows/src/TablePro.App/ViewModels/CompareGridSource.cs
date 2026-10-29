@@ -37,7 +37,7 @@ public sealed class CompareGridSource : IGridSource
         }
 
         _rows = [.. rows];
-        Columns = [new ResultColumn("Sync", "text", typeof(string)), .. result.Spec.Columns.Select(c => new ResultColumn(c.IsKey ? c.Source + " (key)" : c.Source, c.TargetDataType ?? string.Empty, typeof(object)))];
+        Columns = [new ResultColumn(Strings.Get("Compare/GridSyncColumn"), "text", typeof(string)), .. result.Spec.Columns.Select(c => new ResultColumn(c.IsKey ? Strings.Format("Compare/GridKeyColumn", c.Source) : c.Source, c.TargetDataType ?? string.Empty, typeof(object)))];
     }
 
     public event EventHandler? Changed;
@@ -55,12 +55,12 @@ public sealed class CompareGridSource : IGridSource
         var diff = Diff(row);
         if (column == 0)
         {
-            return _excluded.Contains(_result.Spec.KeyIdentity(diff.KeyRow)) ? "Skipped" : diff.Kind switch
+            return _excluded.Contains(_result.Spec.KeyIdentity(diff.KeyRow)) ? Strings.Get("Compare/GridSkipped") : diff.Kind switch
             {
-                RowDiffKind.OnlyInSource => "Insert",
-                RowDiffKind.OnlyInTarget => "Delete",
-                RowDiffKind.Changed => "Update",
-                _ => "Same",
+                RowDiffKind.OnlyInSource => Strings.Get("Compare/GridInsert"),
+                RowDiffKind.OnlyInTarget => Strings.Get("Compare/GridDelete"),
+                RowDiffKind.Changed => Strings.Get("Compare/GridUpdate"),
+                _ => Strings.Get("Compare/GridSame"),
             };
         }
 
@@ -85,7 +85,7 @@ public sealed class CompareGridSource : IGridSource
 
     public bool TrySetValue(int row, int column, string? text, out string? error)
     {
-        error = "A comparison is read-only. Edit the table itself, then compare again.";
+        error = Strings.Get("Compare/GridReadOnly");
         return false;
     }
 

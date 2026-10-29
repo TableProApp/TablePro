@@ -1,0 +1,627 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AccessKeyIdHeader" xml:space="preserve">
+    <value>Access Key ID</value>
+  </data>
+  <data name="AccessKeyIdOptionalHeader" xml:space="preserve">
+    <value>Access Key ID（可选）</value>
+  </data>
+  <data name="AccessKeyRequired" xml:space="preserve">
+    <value>请输入 Access Key ID。</value>
+  </data>
+  <data name="AccountHeader" xml:space="preserve">
+    <value>账户</value>
+  </data>
+  <data name="AccountIdHeader" xml:space="preserve">
+    <value>账户 ID</value>
+  </data>
+  <data name="AclUserHeader" xml:space="preserve">
+    <value>ACL 用户（可选）</value>
+  </data>
+  <data name="AiAllow" xml:space="preserve">
+    <value>允许</value>
+  </data>
+  <data name="AiAsk" xml:space="preserve">
+    <value>每次询问</value>
+  </data>
+  <data name="AiHeader" xml:space="preserve">
+    <value>AI 助手</value>
+  </data>
+  <data name="AiNever" xml:space="preserve">
+    <value>从不</value>
+  </data>
+  <data name="ApiKeyHeader" xml:space="preserve">
+    <value>API Key</value>
+  </data>
+  <data name="ApiTokenHeader" xml:space="preserve">
+    <value>API 令牌</value>
+  </data>
+  <data name="AuthTokenHeader" xml:space="preserve">
+    <value>身份验证令牌</value>
+  </data>
+  <data name="AuthenticationHeader" xml:space="preserve">
+    <value>身份验证</value>
+  </data>
+  <data name="AutomaticPlaceholder" xml:space="preserve">
+    <value>自动</value>
+  </data>
+  <data name="AwsAccessKeyNote" xml:space="preserve">
+    <value>每次建立新连接时，使用该密钥签发一个有效期为 15 分钟的 RDS 令牌。密钥存储在 Windows 凭据管理器中。</value>
+  </data>
+  <data name="AwsEndpointHeader" xml:space="preserve">
+    <value>RDS 终端节点（可选）</value>
+  </data>
+  <data name="AwsExecutablePlaceholder" xml:space="preserve">
+    <value>留空时使用 PATH 中的 aws.exe</value>
+  </data>
+  <data name="AwsProfileHeader" xml:space="preserve">
+    <value>配置名称</value>
+  </data>
+  <data name="AwsProfileNote" xml:space="preserve">
+    <value>从 %USERPROFILE%\.aws\config 和 credentials 读取配置，包括代入的角色和 credential_process。</value>
+  </data>
+  <data name="AwsRegionHeader" xml:space="preserve">
+    <value>AWS 区域</value>
+  </data>
+  <data name="AwsRegionPlaceholder" xml:space="preserve">
+    <value>留空时从 RDS 主机名读取</value>
+  </data>
+  <data name="AwsSsoNote" xml:space="preserve">
+    <value>使用 “aws sso login” 留在缓存中的 IAM Identity Center 会话。</value>
+  </data>
+  <data name="BigQueryKeyFileHeader" xml:space="preserve">
+    <value>服务账号 JSON（留空则使用 gcloud 登录）</value>
+  </data>
+  <data name="BootstrapServerHeader" xml:space="preserve">
+    <value>引导服务器</value>
+  </data>
+  <data name="BrowseButton" xml:space="preserve">
+    <value>浏览…</value>
+  </data>
+  <data name="CatalogHeader" xml:space="preserve">
+    <value>目录</value>
+  </data>
+  <data name="ClientIdHeader" xml:space="preserve">
+    <value>客户端ID</value>
+  </data>
+  <data name="ClientSecretHeader" xml:space="preserve">
+    <value>客户端密钥</value>
+  </data>
+  <data name="CloudSqlAdcNote" xml:space="preserve">
+    <value>请先运行 “gcloud auth application-default login”，或设置 GOOGLE_APPLICATION_CREDENTIALS。</value>
+  </data>
+  <data name="CloudSqlAuthAdc" xml:space="preserve">
+    <value>Application Default Credentials</value>
+  </data>
+  <data name="CloudSqlAuthHeader" xml:space="preserve">
+    <value>凭据</value>
+  </data>
+  <data name="CloudSqlAuthKey" xml:space="preserve">
+    <value>服务账号密钥</value>
+  </data>
+  <data name="CloudSqlIam" xml:space="preserve">
+    <value>使用 IAM 数据库认证</value>
+  </data>
+  <data name="CloudSqlIamNote" xml:space="preserve">
+    <value>启用 IAM 数据库认证后，请将用户设置为 IAM 主体；不会使用密码。代理仅监听 127.0.0.1。</value>
+  </data>
+  <data name="CloudSqlInstanceHeader" xml:space="preserve">
+    <value>实例连接名称</value>
+  </data>
+  <data name="CloudSqlInstanceNote" xml:space="preserve">
+    <value>可在 Google Cloud 控制台中该实例的概览页面找到。</value>
+  </data>
+  <data name="CloudSqlKeyHeader" xml:space="preserve">
+    <value>服务账号密钥（JSON）</value>
+  </data>
+  <data name="CloudSqlPrivateIp" xml:space="preserve">
+    <value>通过专用 IP 连接</value>
+  </data>
+  <data name="CloudflareAuthBrowser" xml:space="preserve">
+    <value>浏览器登录</value>
+  </data>
+  <data name="CloudflareAuthToken" xml:space="preserve">
+    <value>服务令牌</value>
+  </data>
+  <data name="CloudflareHostHeader" xml:space="preserve">
+    <value>Access 应用程序主机名</value>
+  </data>
+  <data name="CloudflareHostRequired" xml:space="preserve">
+    <value>请先输入 Access 应用程序的主机名。</value>
+  </data>
+  <data name="CloudflareLan" xml:space="preserve">
+    <value>向本地网络公开（监听 0.0.0.0）</value>
+  </data>
+  <data name="CloudflareLoginFailed" xml:space="preserve">
+    <value>cloudflared access login 失败：{0}</value>
+  </data>
+  <data name="CloudflareNote" xml:space="preserve">
+    <value>服务令牌需要一个包含 Service Auth 规则的 Access 策略，否则 Cloudflare 仍会要求通过浏览器登录。</value>
+  </data>
+  <data name="CloudflareSignInButton" xml:space="preserve">
+    <value>通过浏览器登录…</value>
+  </data>
+  <data name="CloudflareSignedIn" xml:space="preserve">
+    <value>已登录 Cloudflare Access。</value>
+  </data>
+  <data name="CloudflareSigningIn" xml:space="preserve">
+    <value>请在浏览器中完成登录…</value>
+  </data>
+  <data name="CloudflaredDidNotStart" xml:space="preserve">
+    <value>cloudflared 未能启动。</value>
+  </data>
+  <data name="CloudflaredNotFound" xml:space="preserve">
+    <value>找不到 cloudflared。请使用 “winget install Cloudflare.cloudflared” 安装，或设置其路径。</value>
+  </data>
+  <data name="ColorBlue" xml:space="preserve">
+    <value>蓝色</value>
+  </data>
+  <data name="ColorGray" xml:space="preserve">
+    <value>灰色</value>
+  </data>
+  <data name="ColorGreen" xml:space="preserve">
+    <value>绿色</value>
+  </data>
+  <data name="ColorLabel" xml:space="preserve">
+    <value>颜色</value>
+  </data>
+  <data name="ColorOrange" xml:space="preserve">
+    <value>橙色</value>
+  </data>
+  <data name="ColorPink" xml:space="preserve">
+    <value>粉色</value>
+  </data>
+  <data name="ColorPurple" xml:space="preserve">
+    <value>紫色</value>
+  </data>
+  <data name="ColorRed" xml:space="preserve">
+    <value>红色</value>
+  </data>
+  <data name="ColorYellow" xml:space="preserve">
+    <value>黄色</value>
+  </data>
+  <data name="CommandHeader" xml:space="preserve">
+    <value>命令</value>
+  </data>
+  <data name="CommandMethodCustom" xml:space="preserve">
+    <value>自定义命令</value>
+  </data>
+  <data name="CommandMethodSsm" xml:space="preserve">
+    <value>AWS SSM 会话</value>
+  </data>
+  <data name="CommandNote" xml:space="preserve">
+    <value>{port} 是 TablePro 选择的本地端口；{host} 和 {remotePort} 是数据库的主机和端口。该命令作为程序及其参数直接运行，绝不通过 shell 运行。</value>
+  </data>
+  <data name="DatabaseHeader" xml:space="preserve">
+    <value>数据库</value>
+  </data>
+  <data name="DatabaseIdHeader" xml:space="preserve">
+    <value>数据库 ID 或名称</value>
+  </data>
+  <data name="DatabaseIndexHeader" xml:space="preserve">
+    <value>数据库索引</value>
+  </data>
+  <data name="DatabasePathHeader" xml:space="preserve">
+    <value>数据库路径</value>
+  </data>
+  <data name="DatabaseUserHeader" xml:space="preserve">
+    <value>数据库用户</value>
+  </data>
+  <data name="DefaultDatabaseHeader" xml:space="preserve">
+    <value>默认数据库</value>
+  </data>
+  <data name="EditConnectionTitle" xml:space="preserve">
+    <value>编辑 {0}</value>
+  </data>
+  <data name="EngineHeader" xml:space="preserve">
+    <value>数据库</value>
+  </data>
+  <data name="EntraClientHeader" xml:space="preserve">
+    <value>应用程序(客户端) ID</value>
+  </data>
+  <data name="EntraClientOptionalHeader" xml:space="preserve">
+    <value>应用程序(客户端) ID（可选）</value>
+  </data>
+  <data name="EntraClientRequired" xml:space="preserve">
+    <value>请输入服务主体的应用程序(客户端) ID。</value>
+  </data>
+  <data name="EntraDefault" xml:space="preserve">
+    <value>默认（Azure CLI、Visual Studio、环境变量）</value>
+  </data>
+  <data name="EntraDeviceCode" xml:space="preserve">
+    <value>设备代码</value>
+  </data>
+  <data name="EntraDeviceCodeNote" xml:space="preserve">
+    <value>代码会被复制到剪贴板，并打开登录页面；请将代码粘贴到该页面。</value>
+  </data>
+  <data name="EntraIntegrated" xml:space="preserve">
+    <value>集成（Windows 账户）</value>
+  </data>
+  <data name="EntraInteractive" xml:space="preserve">
+    <value>交互式（浏览器）</value>
+  </data>
+  <data name="EntraLoginHintHeader" xml:space="preserve">
+    <value>账户（登录提示，可选）</value>
+  </data>
+  <data name="EntraManagedIdentity" xml:space="preserve">
+    <value>托管标识</value>
+  </data>
+  <data name="EntraModeHeader" xml:space="preserve">
+    <value>Entra 凭据</value>
+  </data>
+  <data name="EntraNote" xml:space="preserve">
+    <value>使用 Microsoft Entra ID 登录，并在打开连接时刷新令牌。</value>
+  </data>
+  <data name="EntraServicePrincipal" xml:space="preserve">
+    <value>服务主体</value>
+  </data>
+  <data name="EntraTenantHeader" xml:space="preserve">
+    <value>目录(租户) ID</value>
+  </data>
+  <data name="EntraTenantPlaceholder" xml:space="preserve">
+    <value>可选，用于单租户目录</value>
+  </data>
+  <data name="EntraTenantRequired" xml:space="preserve">
+    <value>请输入服务主体的目录(租户) ID。</value>
+  </data>
+  <data name="EntraUserHeader" xml:space="preserve">
+    <value>Entra 用户或组</value>
+  </data>
+  <data name="ExecutablePathHeader" xml:space="preserve">
+    <value>可执行文件路径</value>
+  </data>
+  <data name="ExecutablePathPlaceholder" xml:space="preserve">
+    <value>留空时在 PATH 中查找</value>
+  </data>
+  <data name="FileHeader" xml:space="preserve">
+    <value>文件</value>
+  </data>
+  <data name="FileRequired" xml:space="preserve">
+    <value>请选择数据库文件。</value>
+  </data>
+  <data name="GroupHeader" xml:space="preserve">
+    <value>分组</value>
+  </data>
+  <data name="GssDisabled" xml:space="preserve">
+    <value>已禁用</value>
+  </data>
+  <data name="GssEncryptionHeader" xml:space="preserve">
+    <value>GSS 加密</value>
+  </data>
+  <data name="GssPreferred" xml:space="preserve">
+    <value>首选</value>
+  </data>
+  <data name="GssRequired" xml:space="preserve">
+    <value>必需</value>
+  </data>
+  <data name="HostHeader" xml:space="preserve">
+    <value>主机</value>
+  </data>
+  <data name="HostRequired" xml:space="preserve">
+    <value>请输入服务器的主机名。</value>
+  </data>
+  <data name="IamUserRequired" xml:space="preserve">
+    <value>请输入 IAM 令牌用于登录的数据库用户。</value>
+  </data>
+  <data name="JumpHostsHeader" xml:space="preserve">
+    <value>Jump Host</value>
+  </data>
+  <data name="JumpHostsPlaceholder" xml:space="preserve">
+    <value>user@bastion:22，可选</value>
+  </data>
+  <data name="KerberosNote" xml:space="preserve">
+    <value>使用 Windows 登录的 Kerberos 票据进行登录。主机必须是服务器名称而非 IP 地址，才能找到票据。</value>
+  </data>
+  <data name="KerberosServiceHeader" xml:space="preserve">
+    <value>Kerberos 服务名称</value>
+  </data>
+  <data name="KerberosSpnHeader" xml:space="preserve">
+    <value>服务器主体 (SPN)</value>
+  </data>
+  <data name="KerberosSpnPlaceholder" xml:space="preserve">
+    <value>可选，服务器的 gssapi_principal_name</value>
+  </data>
+  <data name="KeyspaceHeader" xml:space="preserve">
+    <value>Keyspace</value>
+  </data>
+  <data name="KubeContextHeader" xml:space="preserve">
+    <value>上下文</value>
+  </data>
+  <data name="KubeNamespaceHeader" xml:space="preserve">
+    <value>命名空间</value>
+  </data>
+  <data name="KubeResourceHeader" xml:space="preserve">
+    <value>资源</value>
+  </data>
+  <data name="KubectlExecutablePlaceholder" xml:space="preserve">
+    <value>留空时使用 PATH 中的 kubectl.exe</value>
+  </data>
+  <data name="LocalPortHeader" xml:space="preserve">
+    <value>本地端口</value>
+  </data>
+  <data name="ManagedIdentityClientHeader" xml:space="preserve">
+    <value>托管标识客户端 ID（可选）</value>
+  </data>
+  <data name="McpBlocked" xml:space="preserve">
+    <value>已阻止</value>
+  </data>
+  <data name="McpHeader" xml:space="preserve">
+    <value>外部客户端 (MCP)</value>
+  </data>
+  <data name="McpReadOnly" xml:space="preserve">
+    <value>只读</value>
+  </data>
+  <data name="McpReadWrite" xml:space="preserve">
+    <value>读写，每次写入需批准</value>
+  </data>
+  <data name="MethodHeader" xml:space="preserve">
+    <value>方法</value>
+  </data>
+  <data name="NamePlaceholder" xml:space="preserve">
+    <value>生产</value>
+  </data>
+  <data name="NameRequired" xml:space="preserve">
+    <value>请为连接命名。</value>
+  </data>
+  <data name="NamespaceDatabaseHeader" xml:space="preserve">
+    <value>命名空间/数据库</value>
+  </data>
+  <data name="NewConnectionTitle" xml:space="preserve">
+    <value>新建连接</value>
+  </data>
+  <data name="NoGroup" xml:space="preserve">
+    <value>无分组</value>
+  </data>
+  <data name="OptionalPlaceholder" xml:space="preserve">
+    <value>可选</value>
+  </data>
+  <data name="OptionsHeader" xml:space="preserve">
+    <value>其他连接字符串选项</value>
+  </data>
+  <data name="OptionsPlaceholder" xml:space="preserve">
+    <value>每行一个 key=value</value>
+  </data>
+  <data name="PasswordHeader" xml:space="preserve">
+    <value>密码</value>
+  </data>
+  <data name="PasswordOrApiKeyHeader" xml:space="preserve">
+    <value>密码或 API Key</value>
+  </data>
+  <data name="PasswordUnusedHeader" xml:space="preserve">
+    <value>密码（未使用）</value>
+  </data>
+  <data name="PortHeader" xml:space="preserve">
+    <value>端口</value>
+  </data>
+  <data name="ProjectHeader" xml:space="preserve">
+    <value>项目</value>
+  </data>
+  <data name="ProxyHostHeader" xml:space="preserve">
+    <value>代理主机</value>
+  </data>
+  <data name="ProxyNote" xml:space="preserve">
+    <value>将用户留空可在不进行身份验证的情况下连接。代理负责解析数据库主机名。密码存储在 Windows 凭据管理器中。</value>
+  </data>
+  <data name="ProxyPasswordHeader" xml:space="preserve">
+    <value>代理密码</value>
+  </data>
+  <data name="ProxyTypeHeader" xml:space="preserve">
+    <value>代理类型</value>
+  </data>
+  <data name="ProxyUserHeader" xml:space="preserve">
+    <value>代理用户</value>
+  </data>
+  <data name="RegionHeader" xml:space="preserve">
+    <value>区域</value>
+  </data>
+  <data name="SafeModeAlert" xml:space="preserve">
+    <value>警告</value>
+  </data>
+  <data name="SafeModeAlertFull" xml:space="preserve">
+    <value>警告（完整）</value>
+  </data>
+  <data name="SafeModeHeader" xml:space="preserve">
+    <value>安全模式</value>
+  </data>
+  <data name="SafeModeReadOnly" xml:space="preserve">
+    <value>只读</value>
+  </data>
+  <data name="SafeModeSafe" xml:space="preserve">
+    <value>安全模式</value>
+  </data>
+  <data name="SafeModeSafeFull" xml:space="preserve">
+    <value>安全模式（完整）</value>
+  </data>
+  <data name="SafeModeSilent" xml:space="preserve">
+    <value>静默</value>
+  </data>
+  <data name="SaslPasswordHeader" xml:space="preserve">
+    <value>SASL 密码</value>
+  </data>
+  <data name="SaslUserHeader" xml:space="preserve">
+    <value>SASL 用户（可选）</value>
+  </data>
+  <data name="SavePassword" xml:space="preserve">
+    <value>将密码保存到 Windows 凭据管理器</value>
+  </data>
+  <data name="SecretAccessKeyHeader" xml:space="preserve">
+    <value>Secret Access Key</value>
+  </data>
+  <data name="SectionAdvanced" xml:space="preserve">
+    <value>高级</value>
+  </data>
+  <data name="SectionGeneral" xml:space="preserve">
+    <value>通用</value>
+  </data>
+  <data name="SectionNetwork" xml:space="preserve">
+    <value>网络</value>
+  </data>
+  <data name="SectionSsl" xml:space="preserve">
+    <value>SSL</value>
+  </data>
+  <data name="ServiceAccountJsonHeader" xml:space="preserve">
+    <value>服务账号 JSON</value>
+  </data>
+  <data name="ServiceNameHeader" xml:space="preserve">
+    <value>服务名称</value>
+  </data>
+  <data name="SignInAwsAccessKey" xml:space="preserve">
+    <value>AWS IAM（Access Key）</value>
+  </data>
+  <data name="SignInAwsProfile" xml:space="preserve">
+    <value>AWS IAM（配置）</value>
+  </data>
+  <data name="SignInAwsSso" xml:space="preserve">
+    <value>AWS IAM（SSO）</value>
+  </data>
+  <data name="SignInEntra" xml:space="preserve">
+    <value>Microsoft Entra ID</value>
+  </data>
+  <data name="SignInKerberos" xml:space="preserve">
+    <value>Kerberos (GSSAPI)</value>
+  </data>
+  <data name="SignInPassword" xml:space="preserve">
+    <value>密码</value>
+  </data>
+  <data name="SignInSqlServer" xml:space="preserve">
+    <value>SQL Server 身份验证</value>
+  </data>
+  <data name="SignInWindows" xml:space="preserve">
+    <value>Windows 身份验证</value>
+  </data>
+  <data name="SnowflakeKeyFileHeader" xml:space="preserve">
+    <value>私钥文件（密钥对登录）</value>
+  </data>
+  <data name="SshAuthAgent" xml:space="preserve">
+    <value>SSH Agent</value>
+  </data>
+  <data name="SshAuthPassword" xml:space="preserve">
+    <value>密码</value>
+  </data>
+  <data name="SshAuthPrivateKey" xml:space="preserve">
+    <value>私钥</value>
+  </data>
+  <data name="SshHostHeader" xml:space="preserve">
+    <value>SSH 主机</value>
+  </data>
+  <data name="SshKeyHeader" xml:space="preserve">
+    <value>私钥</value>
+  </data>
+  <data name="SshNote" xml:space="preserve">
+    <value>TablePro 运行 Windows 自带的 OpenSSH 客户端，因此你的 ~/.ssh/config、known_hosts 和代理设置都会生效。</value>
+  </data>
+  <data name="SshSecretHeader" xml:space="preserve">
+    <value>密码或密钥密码短语</value>
+  </data>
+  <data name="SshUserHeader" xml:space="preserve">
+    <value>SSH 用户</value>
+  </data>
+  <data name="SslDisabled" xml:space="preserve">
+    <value>已禁用</value>
+  </data>
+  <data name="SslModeHeader" xml:space="preserve">
+    <value>SSL 模式</value>
+  </data>
+  <data name="SslNote" xml:space="preserve">
+    <value>“首选”会在服务器支持时加密。“验证”模式会根据 Windows 证书存储检查服务器证书，“验证身份”还会检查主机名。IAM 和 Entra 登录始终加密。</value>
+  </data>
+  <data name="SslPreferred" xml:space="preserve">
+    <value>首选</value>
+  </data>
+  <data name="SslRequired" xml:space="preserve">
+    <value>必需（跳过验证）</value>
+  </data>
+  <data name="SslVerifyCa" xml:space="preserve">
+    <value>验证 CA</value>
+  </data>
+  <data name="SslVerifyIdentity" xml:space="preserve">
+    <value>验证身份</value>
+  </data>
+  <data name="SsmProfileHeader" xml:space="preserve">
+    <value>配置</value>
+  </data>
+  <data name="SsmTargetHeader" xml:space="preserve">
+    <value>目标</value>
+  </data>
+  <data name="StartupHeader" xml:space="preserve">
+    <value>连接时运行</value>
+  </data>
+  <data name="TestButton" xml:space="preserve">
+    <value>测试</value>
+  </data>
+  <data name="TestSucceeded" xml:space="preserve">
+    <value>已连接到 {0} {1}</value>
+  </data>
+  <data name="Testing" xml:space="preserve">
+    <value>正在测试…</value>
+  </data>
+  <data name="TimeoutHeader" xml:space="preserve">
+    <value>连接超时（秒）</value>
+  </data>
+  <data name="TransportCloudSql" xml:space="preserve">
+    <value>Cloud SQL Auth Proxy</value>
+  </data>
+  <data name="TransportCloudSqlSummary" xml:space="preserve">
+    <value>针对实例连接名称运行 Google Cloud SQL Auth Proxy。</value>
+  </data>
+  <data name="TransportCloudflare" xml:space="preserve">
+    <value>Cloudflare隧道</value>
+  </data>
+  <data name="TransportCloudflareSummary" xml:space="preserve">
+    <value>针对 Cloudflare Access 应用程序运行 cloudflared。</value>
+  </data>
+  <data name="TransportCommand" xml:space="preserve">
+    <value>隧道命令</value>
+  </data>
+  <data name="TransportCommandSummary" xml:space="preserve">
+    <value>运行一个转发本地端口的命令，例如 kubectl port-forward。</value>
+  </data>
+  <data name="TransportDirect" xml:space="preserve">
+    <value>直接连接</value>
+  </data>
+  <data name="TransportDirectSummary" xml:space="preserve">
+    <value>直接连接到主机和端口。</value>
+  </data>
+  <data name="TransportHeader" xml:space="preserve">
+    <value>连接方式</value>
+  </data>
+  <data name="TransportProxy" xml:space="preserve">
+    <value>代理</value>
+  </data>
+  <data name="TransportProxySummary" xml:space="preserve">
+    <value>通过 SOCKS5 或 HTTP 代理路由，代理同时负责解析数据库主机名。</value>
+  </data>
+  <data name="TransportSsh" xml:space="preserve">
+    <value>SSH 隧道</value>
+  </data>
+  <data name="TransportSshSummary" xml:space="preserve">
+    <value>使用 Windows 自带的 OpenSSH 客户端，通过 SSH 服务器转发本地端口。</value>
+  </data>
+  <data name="UrlHeader" xml:space="preserve">
+    <value>URL</value>
+  </data>
+  <data name="UserHeader" xml:space="preserve">
+    <value>用户</value>
+  </data>
+  <data name="UserOptionalHeader" xml:space="preserve">
+    <value>用户（可选）</value>
+  </data>
+  <data name="WillRunLabel" xml:space="preserve">
+    <value>将运行</value>
+  </data>
+  <data name="WindowsAuthNote" xml:space="preserve">
+    <value>以你的 Windows 账户登录，域支持时使用 Kerberos。</value>
+  </data>
+</root>

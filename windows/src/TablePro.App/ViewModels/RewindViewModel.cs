@@ -1,5 +1,4 @@
 using System.Collections.ObjectModel;
-using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using TablePro.App.Services;
 using TablePro.Core.Editing;
@@ -63,7 +62,7 @@ public sealed partial class RewindViewModel : ObservableObject
             }
 
             StatusText = entries.Count == 0
-                ? (IsEnabled ? "No saved changes yet. Saves from the table grid appear here for 7 days." : "Keeping saved changes is turned off.")
+                ? (IsEnabled ? Strings.Get("Rewind/EmptyEnabled") : Strings.Get("Rewind/EmptyDisabled"))
                 : null;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -81,41 +80,42 @@ public sealed partial class RewindViewModel : ObservableObject
         var dialogs = _context.Dialogs;
         if (session.Profile.IsReadOnly)
         {
-            await dialogs.ShowErrorAsync("Read-only connection", "Safe Mode is Read-Only on this connection, so a save cannot be restored.");
+            await dialogs.ShowErrorAsync(Strings.Get("Rewind/ReadOnlyTitle"), Strings.Get("Rewind/ReadOnlyMessage"));
             return false;
         }
 
         if (await _journal.GetAsync(entry.Id) is not { } record)
         {
-            await dialogs.ShowErrorAsync("Cannot restore", "This save can no longer be read. Its record was cleared, or the key that protects saved changes is gone.");
+            await dialogs.ShowErrorAsync(Strings.Get("Rewind/CannotRestoreTitle"), Strings.Get("Rewind/CannotRestoreMessage"));
             return false;
         }
 
         if (record.Database is { } database && !string.Equals(database, session.Database.CurrentDatabase, StringComparison.OrdinalIgnoreCase))
         {
-            await dialogs.ShowErrorAsync("Different database", $"This save was made in {database}. Switch to it, then restore.");
+            await dialogs.ShowErrorAsync(Strings.Get("Rewind/DifferentDatabaseTitle"), Strings.Format("Rewind/DifferentDatabaseMessage", database));
             return false;
         }
 
         var plan = RewindPlanner.Plan(record);
         if (!plan.CanApply)
         {
-            var reasons = plan.Refused.Select(o => o.Refusal).OfType<RewindRefusal>().Distinct().Select(RewindOperation.Explain);
-            await dialogs.ShowErrorAsync("Nothing can be restored", string.Join("\n", reasons.DefaultIfEmpty("The save holds no row that can be put back.")));
+            var reasons = plan.Refused.Select(o => o.Refusal).OfType<RewindRefusal>().Distinct().Select(ToolsNames.RewindRefusalText);
+            await dialogs.ShowErrorAsync(Strings.Get("Rewind/NothingCanBeRestoredTitle"), string.Join("\n", reasons.DefaultIfEmpty(Strings.Get("Rewind/NoRowToPutBack"))));
             return false;
         }
 
         var preview = plan.Preview(session.Database);
         var lines = new List<string>(preview.Count + 2);
         var comment = session.Dialect.LineComment;
-        lines.Add($"{comment} If any of these rows changed since the save, nothing is restored.");
+        lines.Add(Strings.Format("Rewind/ReviewNothingIfChanged", comment));
         if (plan.Refused.Count > 0)
         {
-            lines.Add(string.Create(CultureInfo.CurrentCulture, $"{comment} {plan.Refused.Count:N0} rows are skipped: ") + string.Join(" ", plan.Refused.Select(o => o.Refusal).OfType<RewindRefusal>().Distinct().Select(RewindOperation.Explain)));
+            var skipped = string.Join(" ", plan.Refused.Select(o => o.Refusal).OfType<RewindRefusal>().Distinct().Select(ToolsNames.RewindRefusalText));
+            lines.Add(Strings.Plural("Rewind/ReviewRowsSkipped", plan.Refused.Count, comment, skipped));
         }
 
         lines.AddRange(preview);
-        if (!await dialogs.ReviewSqlAsync($"Restore {record.Table.Name} to before the save", lines, "Restore"))
+        if (!await dialogs.ReviewSqlAsync(Strings.Format("Rewind/RestoreReviewTitle", record.Table.Name), lines, Strings.Get("Rewind/RestoreButton")))
         {
             return false;
         }
@@ -128,12 +128,12 @@ public sealed partial class RewindViewModel : ObservableObject
         }
         catch (RowCountMismatchException)
         {
-            await dialogs.ShowErrorAsync("Nothing was restored", "A row changed or disappeared since this save, so restoring it would overwrite someone else's work. Nothing was changed.");
+            await dialogs.ShowErrorAsync(Strings.Get("Rewind/NothingRestoredTitle"), Strings.Get("Rewind/RowChangedMessage"));
             return false;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            await dialogs.ShowErrorAsync("Nothing was restored", ex.Message);
+            await dialogs.ShowErrorAsync(Strings.Get("Rewind/NothingRestoredTitle"), ex.Message);
             return false;
         }
         finally
@@ -160,7 +160,7 @@ public sealed partial class RewindViewModel : ObservableObject
             CrashLog.Write("Data Rewind: journal a restore", ex);
         }
 
-        _context.Notify(string.Create(CultureInfo.CurrentCulture, $"Restored {plan.Steps.Count:N0} rows in {record.Table.Name}."));
+        _context.Notify(Strings.Plural("Rewind/Restored", plan.Steps.Count, record.Table.Name));
         Restored?.Invoke(this, record.Table);
         await RefreshAsync();
         return true;
@@ -168,7 +168,7 @@ public sealed partial class RewindViewModel : ObservableObject
 
     public async Task ClearAsync()
     {
-        if (!await _context.Dialogs.ConfirmAsync("Clear saved changes?", "Saves already committed stay committed. You will not be able to restore their previous values.", "Clear", destructive: true))
+        if (!await _context.Dialogs.ConfirmAsync(Strings.Get("Rewind/ClearConfirmTitle"), Strings.Get("Rewind/ClearConfirmMessage"), Strings.Get("Common/Clear"), destructive: true))
         {
             return;
         }

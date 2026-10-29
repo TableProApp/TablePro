@@ -22,7 +22,7 @@ public sealed partial class ShortcutRecorder : Button
     {
         MinWidth = 168;
         HorizontalContentAlignment = HorizontalAlignment.Center;
-        AutomationProperties.SetHelpText(this, "Press to record a shortcut. Esc cancels, Backspace clears.");
+        AutomationProperties.SetHelpText(this, Strings.Get("Shortcuts/RecorderHelpText"));
         Click += (_, _) => StartRecording();
         PreviewKeyDown += OnPreviewKeyDown;
         PreviewKeyUp += OnPreviewKeyUp;
@@ -132,14 +132,14 @@ public sealed partial class ShortcutRecorder : Button
         if (_recording)
         {
             var modifiers = ShortcutKeys.ModifierText(held);
-            text = modifiers.Length == 0 ? "Press a shortcut" : modifiers;
+            text = modifiers.Length == 0 ? Strings.Get("Shortcuts/RecorderPrompt") : modifiers;
         }
         else
         {
-            text = _chord.IsEmpty ? "None" : _chord.ToString();
+            text = _chord.IsEmpty ? Strings.Get("Common/None") : _chord.ToString();
         }
 
         Content = text;
-        AutomationProperties.SetItemStatus(this, _recording ? "Recording" : string.Empty);
+        AutomationProperties.SetItemStatus(this, _recording ? Strings.Get("Shortcuts/RecorderRecording") : string.Empty);
     }
 }

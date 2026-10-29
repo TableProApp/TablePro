@@ -226,7 +226,7 @@ public sealed class AppHost : IWorkspaceHost, IMcpHost, IAsyncDisposable
         var key = Secrets.Get(SecretKeys.Ai(ai.Provider.ToString()));
         if (kind is not AiProviderKind.OpenAICompatible && string.IsNullOrEmpty(key))
         {
-            return (null, $"Add an API key for {ai.Provider} in Settings > AI to use the assistant.");
+            return (null, Strings.Format("Settings/AiNoKey", ai.Provider));
         }
 
         try
@@ -241,9 +241,9 @@ public sealed class AppHost : IWorkspaceHost, IMcpHost, IAsyncDisposable
             var service = new AiAssistantService(
                 provider,
                 async (request, _) => await dialogs.ConfirmAsync(
-                    "Send to the AI provider?",
-                    $"The assistant sends your question, the SQL it acts on and the structure of the tables involved from {request.Profile.Name} to {request.ProviderName} ({request.ProviderAddress.Host}). It reads no rows.",
-                    "Allow"),
+                    Strings.Get("Settings/AiConsentTitle"),
+                    Strings.Format("Settings/AiConsentMessage", request.Profile.Name, request.ProviderName, request.ProviderAddress.Host),
+                    Strings.Get("Settings/AiConsentAllow")),
                 new AiAssistantOptions { Model = ai.Model });
             return (service, null);
         }
@@ -345,9 +345,11 @@ public sealed class AppHost : IWorkspaceHost, IMcpHost, IAsyncDisposable
 
             window.Activate();
             var approved = await window.ViewModel.Context.Dialogs.ConfirmAsync(
-                "An MCP client wants to run a statement",
-                $"{(request.ClientName is { Length: > 0 } client ? $"\"{client}\"" : "A client")}, connected to TablePro's MCP server, asks to run this on {request.Profile.Name}.",
-                "Run",
+                Strings.Get("Mcp/WriteApprovalTitle"),
+                request.ClientName is { Length: > 0 } client
+                    ? Strings.Format("Mcp/WriteApprovalMessage", client, request.Profile.Name)
+                    : Strings.Format("Mcp/WriteApprovalMessageUnnamed", request.Profile.Name),
+                Strings.Get("Common/Run"),
                 destructive: request.IsDestructive,
                 detail: request.Sql);
             source.TrySetResult(approved && !cancellationToken.IsCancellationRequested);
@@ -380,7 +382,7 @@ public sealed class AppHost : IWorkspaceHost, IMcpHost, IAsyncDisposable
 
             var dialogs = window is WorkspaceWindow workspace ? workspace.ViewModel.Context.Dialogs : new DialogService(window);
             var form = new McpPairingForm(request, Connections.Connections.Where(c => c.ExternalAccess != ExternalAccessLevel.Blocked).ToList());
-            var dialog = dialogs.Create("Allow an MCP client?", form.Content, "Allow", "Deny");
+            var dialog = dialogs.Create(Strings.Get("Mcp/PairingApprovalTitle"), form.Content, Strings.Get("Mcp/Allow"), Strings.Get("Mcp/Deny"));
             using var hide = cancellationToken.Register(() => _dispatcher.TryEnqueue(dialog.Hide));
             window.Activate();
             try

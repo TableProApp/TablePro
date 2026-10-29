@@ -1,0 +1,635 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AddCheckNote" xml:space="preserve">
+    <value>Adding a check reads every row, and fails if one does not pass.</value>
+    <comment>Note in the Add Check Constraint dialog.</comment>
+  </data>
+  <data name="AddCheckTitle" xml:space="preserve">
+    <value>Add Check Constraint</value>
+    <comment>Dialog title.</comment>
+  </data>
+  <data name="AddColumnTitle" xml:space="preserve">
+    <value>Add Column</value>
+    <comment>Dialog title.</comment>
+  </data>
+  <data name="AddForeignKeyTitle" xml:space="preserve">
+    <value>Add Foreign Key</value>
+    <comment>Dialog title.</comment>
+  </data>
+  <data name="AddIndexTitle" xml:space="preserve">
+    <value>Add Index</value>
+    <comment>Dialog title.</comment>
+  </data>
+  <data name="AddPartitionTitle" xml:space="preserve">
+    <value>Add Partition</value>
+    <comment>Dialog title.</comment>
+  </data>
+  <data name="AllowsNull" xml:space="preserve">
+    <value>Allows NULL</value>
+    <comment>Checkbox in the column dialog. NULL is the SQL keyword and stays untranslated.</comment>
+  </data>
+  <data name="AnyColumn" xml:space="preserve">
+    <value>Any column</value>
+    <comment>First entry of a filter condition's column list: the condition searches every column.</comment>
+  </data>
+  <data name="CannotChangeStructure" xml:space="preserve">
+    <value>This engine cannot change structure from the app.</value>
+  </data>
+  <data name="CannotExpressChange" xml:space="preserve">
+    <value>This engine cannot express that change.</value>
+    <comment>The database's SQL has no statement for the structure change the user asked for.</comment>
+  </data>
+  <data name="CannotMakeChangeTitle" xml:space="preserve">
+    <value>Cannot make this change</value>
+    <comment>Error title; the reason follows.</comment>
+  </data>
+  <data name="CellNo" xml:space="preserve">
+    <value>NO</value>
+    <comment>Value in a structure grid cell for a flag that is off, such as Nullable or Unique. Uppercase, as database catalogs show flags.</comment>
+  </data>
+  <data name="CellYes" xml:space="preserve">
+    <value>YES</value>
+    <comment>Value in a structure grid cell for a flag that is on, such as Nullable or Unique. Uppercase, as database catalogs show flags.</comment>
+  </data>
+  <data name="ChangeFailedTitle" xml:space="preserve">
+    <value>The change failed</value>
+    <comment>Error title when a structure change statement fails; the server's message follows.</comment>
+  </data>
+  <data name="CheckExpressionHeader" xml:space="preserve">
+    <value>Expression</value>
+    <comment>Header of the box for a check constraint's condition.</comment>
+  </data>
+  <data name="CheckExpressionPlaceholder" xml:space="preserve">
+    <value>for example price &gt; 0 AND quantity &gt;= 0</value>
+    <comment>Translate only "for example"; the SQL after it stays as is.</comment>
+  </data>
+  <data name="CheckIncomplete" xml:space="preserve">
+    <value>A check needs both a name and an expression.</value>
+  </data>
+  <data name="CheckNotSavedTitle" xml:space="preserve">
+    <value>Check constraint not saved</value>
+    <comment>Error title.</comment>
+  </data>
+  <data name="ChecksNotEditable" xml:space="preserve">
+    <value>This server cannot add or change check constraints here.</value>
+    <comment>Caption above the Checks grid of a table's structure.</comment>
+  </data>
+  <data name="CommentHeader" xml:space="preserve">
+    <value>Comment</value>
+    <comment>Header of the box for a column's comment (its description stored in the database). A noun.</comment>
+  </data>
+  <data name="DataAddRow.Label" xml:space="preserve">
+    <value>Add Row</value>
+    <comment>Toolbar button of a table's data.</comment>
+  </data>
+  <data name="DataDelete.Label" xml:space="preserve">
+    <value>Delete</value>
+    <comment>Toolbar button that marks the selected rows for deletion. A verb.</comment>
+  </data>
+  <data name="DataDiscard.Label" xml:space="preserve">
+    <value>Discard</value>
+    <comment>Toolbar button that drops the unsaved edits. A verb.</comment>
+  </data>
+  <data name="DataExport.Label" xml:space="preserve">
+    <value>Export</value>
+    <comment>Toolbar button. A verb.</comment>
+  </data>
+  <data name="DataFilter.Label" xml:space="preserve">
+    <value>Filter</value>
+    <comment>Toolbar button that adds a filter condition. A verb.</comment>
+  </data>
+  <data name="DataImport.Label" xml:space="preserve">
+    <value>Import</value>
+    <comment>Toolbar button. A verb.</comment>
+  </data>
+  <data name="DataRedo.Label" xml:space="preserve">
+    <value>Redo</value>
+    <comment>Icon-only toolbar button; the label is its tooltip and screen reader name.</comment>
+  </data>
+  <data name="DataRefresh.Label" xml:space="preserve">
+    <value>Refresh</value>
+    <comment>Toolbar button that reloads the rows. A verb.</comment>
+  </data>
+  <data name="DataUndo.Label" xml:space="preserve">
+    <value>Undo</value>
+    <comment>Icon-only toolbar button; the label is its tooltip and screen reader name.</comment>
+  </data>
+  <data name="DefaultExpressionHeader" xml:space="preserve">
+    <value>Default expression</value>
+    <comment>Header of the box for a column's DEFAULT value, written as SQL.</comment>
+  </data>
+  <data name="DefaultExpressionPlaceholder" xml:space="preserve">
+    <value>for example 0, 'text' or now()</value>
+    <comment>Translate "for example" and "or"; 0, 'text' and now() are SQL values and stay as they are.</comment>
+  </data>
+  <data name="DefinitionCopy.Label" xml:space="preserve">
+    <value>Copy</value>
+    <comment>Toolbar button that copies the object's SQL definition. A verb.</comment>
+  </data>
+  <data name="DefinitionOpenInQueryTab.Label" xml:space="preserve">
+    <value>Open in Query Tab</value>
+    <comment>Toolbar button that opens the object's SQL definition in a new query editor tab.</comment>
+  </data>
+  <data name="DeleteRows" xml:space="preserve">
+    <value>Delete Rows</value>
+    <comment>Context menu command on a grid cell.</comment>
+  </data>
+  <data name="DetailsReadFailed" xml:space="preserve">
+    <value>Could not read the checks, partitions and options: {0}</value>
+    <comment>{0} is the server's error message.</comment>
+  </data>
+  <data name="DiscardChangesTitle" xml:space="preserve">
+    <value>Discard changes?</value>
+    <comment>Title of the confirmation before reloading drops unsaved edits.</comment>
+  </data>
+  <data name="DuplicateRow" xml:space="preserve">
+    <value>Duplicate Row</value>
+    <comment>Context menu command on a grid cell. "Duplicate" is a verb.</comment>
+  </data>
+  <data name="EditCell" xml:space="preserve">
+    <value>Edit Cell</value>
+    <comment>Context menu command on a grid cell.</comment>
+  </data>
+  <data name="EditCheckNote" xml:space="preserve">
+    <value>A new expression drops the check and adds it again, which reads every row. A new name alone does not.</value>
+    <comment>Note in the Edit Check Constraint dialog.</comment>
+  </data>
+  <data name="EditCheckTitle" xml:space="preserve">
+    <value>Edit Check Constraint</value>
+    <comment>Dialog title.</comment>
+  </data>
+  <data name="EditColumnTitle" xml:space="preserve">
+    <value>Edit Column</value>
+    <comment>Dialog title.</comment>
+  </data>
+  <data name="EngineReadOnly" xml:space="preserve">
+    <value>{0} connections are read-only.</value>
+    <comment>{0} is the database product name, such as Prometheus.</comment>
+  </data>
+  <data name="ExcludeValue" xml:space="preserve">
+    <value>Exclude This Value</value>
+    <comment>Context menu command on a grid cell: filter out rows holding this cell's value.</comment>
+  </data>
+  <data name="FilterAddCondition.Content" xml:space="preserve">
+    <value>Add Condition</value>
+    <comment>Button of the filter strip.</comment>
+  </data>
+  <data name="FilterApply.Content" xml:space="preserve">
+    <value>Apply</value>
+    <comment>Button of the filter strip that runs the filter. A verb.</comment>
+  </data>
+  <data name="FilterByValue" xml:space="preserve">
+    <value>Filter by This Value</value>
+    <comment>Context menu command on a grid cell: show only rows holding this cell's value.</comment>
+  </data>
+  <data name="FilterClear.Content" xml:space="preserve">
+    <value>Clear</value>
+    <comment>Button of the filter strip that removes every condition. A verb.</comment>
+  </data>
+  <data name="FilterMatchMode.OffContent" xml:space="preserve">
+    <value>Match any</value>
+    <comment>Switch state of the filter strip: a row shows when any condition holds.</comment>
+  </data>
+  <data name="FilterMatchMode.OnContent" xml:space="preserve">
+    <value>Match all</value>
+    <comment>Switch state of the filter strip: a row shows when every condition holds.</comment>
+  </data>
+  <data name="FilterRawWhere.PlaceholderText" xml:space="preserve">
+    <value>Raw WHERE clause, for example: price &gt; 10 AND status = 'open'</value>
+    <comment>WHERE is the SQL keyword; the SQL after the colon stays as is.</comment>
+  </data>
+  <data name="FilterRemoveCondition.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Remove condition</value>
+    <comment>Screen reader name of the icon button that removes one filter condition.</comment>
+  </data>
+  <data name="FilterRemoveCondition.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Remove condition</value>
+    <comment>Tooltip of the icon button that removes one filter condition.</comment>
+  </data>
+  <data name="FilterValue.PlaceholderText" xml:space="preserve">
+    <value>Value</value>
+    <comment>Placeholder of a filter condition's value box. A noun.</comment>
+  </data>
+  <data name="ForeignKeyColumnHeader" xml:space="preserve">
+    <value>Column</value>
+    <comment>Header of the list that picks the column of this table a foreign key starts from.</comment>
+  </data>
+  <data name="ForeignKeyOnDeleteHeader" xml:space="preserve">
+    <value>On delete</value>
+    <comment>Header of the list of SQL ON DELETE actions (NO ACTION, CASCADE...), which stay untranslated.</comment>
+  </data>
+  <data name="ForeignKeyTargetColumnHeader" xml:space="preserve">
+    <value>References column</value>
+    <comment>Header of the list that picks the column a foreign key points at.</comment>
+  </data>
+  <data name="ForeignKeyTargetTableHeader" xml:space="preserve">
+    <value>References table</value>
+    <comment>Header of the list that picks the table a foreign key points at.</comment>
+  </data>
+  <data name="HeaderBound" xml:space="preserve">
+    <value>Bound</value>
+    <comment>Column heading of the Partitions grid: the values a partition holds, in the engine's SQL.</comment>
+  </data>
+  <data name="HeaderColumns" xml:space="preserve">
+    <value>Columns</value>
+    <comment>Column heading of the Indexes, Foreign Keys and Checks grids: the table columns involved.</comment>
+  </data>
+  <data name="HeaderComment" xml:space="preserve">
+    <value>Comment</value>
+    <comment>Column heading of the Columns grid: the column's description stored in the database. A noun.</comment>
+  </data>
+  <data name="HeaderDefault" xml:space="preserve">
+    <value>Default</value>
+    <comment>Column heading of the Columns grid: the column's default value.</comment>
+  </data>
+  <data name="HeaderDefinition" xml:space="preserve">
+    <value>Definition</value>
+    <comment>Column heading of the Triggers grid: the trigger's SQL.</comment>
+  </data>
+  <data name="HeaderEditable" xml:space="preserve">
+    <value>Editable</value>
+    <comment>Column heading of the Options grid: whether the app can change the option.</comment>
+  </data>
+  <data name="HeaderEvent" xml:space="preserve">
+    <value>Event</value>
+    <comment>Column heading of the Triggers grid: INSERT, UPDATE or DELETE.</comment>
+  </data>
+  <data name="HeaderExpression" xml:space="preserve">
+    <value>Expression</value>
+    <comment>Column heading of the Checks grid: the check's SQL condition.</comment>
+  </data>
+  <data name="HeaderIdentity" xml:space="preserve">
+    <value>Identity</value>
+    <comment>Column heading of the Columns grid: whether the column numbers itself (auto increment).</comment>
+  </data>
+  <data name="HeaderKey" xml:space="preserve">
+    <value>Key</value>
+    <comment>Column heading of the Columns grid: whether the column is in the primary key.</comment>
+  </data>
+  <data name="HeaderMethod" xml:space="preserve">
+    <value>Method</value>
+    <comment>Column heading of the Indexes grid: the index type, such as btree or hash.</comment>
+  </data>
+  <data name="HeaderNullable" xml:space="preserve">
+    <value>Nullable</value>
+    <comment>Column heading of the Columns grid: whether the column accepts NULL.</comment>
+  </data>
+  <data name="HeaderOnDelete" xml:space="preserve">
+    <value>On Delete</value>
+    <comment>Column heading of the Foreign Keys grid: the SQL ON DELETE action.</comment>
+  </data>
+  <data name="HeaderOnUpdate" xml:space="preserve">
+    <value>On Update</value>
+    <comment>Column heading of the Foreign Keys grid: the SQL ON UPDATE action.</comment>
+  </data>
+  <data name="HeaderOption" xml:space="preserve">
+    <value>Option</value>
+    <comment>Column heading of the Options grid: a table option's name.</comment>
+  </data>
+  <data name="HeaderPrimary" xml:space="preserve">
+    <value>Primary</value>
+    <comment>Column heading of the Indexes grid: whether the index is the primary key.</comment>
+  </data>
+  <data name="HeaderReferencedColumns" xml:space="preserve">
+    <value>Referenced Columns</value>
+    <comment>Column heading of the Foreign Keys grid: the columns the key points at.</comment>
+  </data>
+  <data name="HeaderReferences" xml:space="preserve">
+    <value>References</value>
+    <comment>Column heading of the Foreign Keys grid: the table the key points at.</comment>
+  </data>
+  <data name="HeaderRows" xml:space="preserve">
+    <value>Rows</value>
+    <comment>Column heading of the Partitions grid: the estimated number of rows.</comment>
+  </data>
+  <data name="HeaderSize" xml:space="preserve">
+    <value>Size</value>
+    <comment>Column heading of the Partitions grid: the space the partition takes.</comment>
+  </data>
+  <data name="HeaderSubpartitionOf" xml:space="preserve">
+    <value>Subpartition Of</value>
+    <comment>Column heading of the Partitions grid: the parent partition of a subpartition.</comment>
+  </data>
+  <data name="HeaderTiming" xml:space="preserve">
+    <value>Timing</value>
+    <comment>Column heading of the Triggers grid: BEFORE, AFTER or INSTEAD OF.</comment>
+  </data>
+  <data name="HeaderUnique" xml:space="preserve">
+    <value>Unique</value>
+    <comment>Column heading of the Indexes grid: whether the index is unique.</comment>
+  </data>
+  <data name="HeaderValidated" xml:space="preserve">
+    <value>Validated</value>
+    <comment>Column heading of the Checks grid: whether existing rows were checked.</comment>
+  </data>
+  <data name="IndexColumnsHeader" xml:space="preserve">
+    <value>Columns, in key order</value>
+    <comment>Header of the column list in the Add Index dialog.</comment>
+  </data>
+  <data name="IndexUnique" xml:space="preserve">
+    <value>Unique</value>
+    <comment>Checkbox in the Add Index dialog.</comment>
+  </data>
+  <data name="InspectValue" xml:space="preserve">
+    <value>Inspect Value</value>
+    <comment>Context menu command on a grid cell: show the whole value in the inspector.</comment>
+  </data>
+  <data name="LoadFailedTitle" xml:space="preserve">
+    <value>Could not load {0}</value>
+    <comment>Error title. {0} is the table or view name.</comment>
+  </data>
+  <data name="Loading" xml:space="preserve">
+    <value>Loading…</value>
+    <comment>Status text while rows load.</comment>
+  </data>
+  <data name="NoPrimaryKey" xml:space="preserve">
+    <value>No primary key: rows are matched on every column, and a save that hits duplicates is refused.</value>
+    <comment>Warning above the rows of a table without a primary key.</comment>
+  </data>
+  <data name="NoRows" xml:space="preserve">
+    <value>No rows</value>
+    <comment>Pager text when the table or filter has no rows.</comment>
+  </data>
+  <data name="NoRowsOnPage" xml:space="preserve">
+    <value>No rows on this page</value>
+    <comment>Pager text when the current page is past the last row.</comment>
+  </data>
+  <data name="NotSupportedTitle" xml:space="preserve">
+    <value>Not supported</value>
+    <comment>Error title; the reason follows.</comment>
+  </data>
+  <data name="NothingSavedTitle" xml:space="preserve">
+    <value>Nothing was saved</value>
+    <comment>Error title when saving edits fails; the server's message follows.</comment>
+  </data>
+  <data name="ObjectReadOnly" xml:space="preserve">
+    <value>This object is read-only.</value>
+  </data>
+  <data name="OpenReferencedTable" xml:space="preserve">
+    <value>Open {0}</value>
+    <comment>Context menu command on a foreign key cell. {0} is the table the key points at.</comment>
+  </data>
+  <data name="OperatorBetween" xml:space="preserve">
+    <value>between</value>
+    <comment>Filter operator, read after a column name ("price between 1 and 5"). Lowercase.</comment>
+  </data>
+  <data name="OperatorContains" xml:space="preserve">
+    <value>contains</value>
+    <comment>Filter operator, read after a column name. Lowercase.</comment>
+  </data>
+  <data name="OperatorEndsWith" xml:space="preserve">
+    <value>ends with</value>
+    <comment>Filter operator, read after a column name. Lowercase.</comment>
+  </data>
+  <data name="OperatorIn" xml:space="preserve">
+    <value>in list</value>
+    <comment>Filter operator: the value is one of a comma-separated list. Lowercase.</comment>
+  </data>
+  <data name="OperatorIsEmpty" xml:space="preserve">
+    <value>is empty</value>
+    <comment>Filter operator, read after a column name. Lowercase.</comment>
+  </data>
+  <data name="OperatorIsNotEmpty" xml:space="preserve">
+    <value>is not empty</value>
+    <comment>Filter operator, read after a column name. Lowercase.</comment>
+  </data>
+  <data name="OperatorIsNotNull" xml:space="preserve">
+    <value>is not NULL</value>
+    <comment>Filter operator. NULL is the SQL keyword and stays untranslated.</comment>
+  </data>
+  <data name="OperatorIsNull" xml:space="preserve">
+    <value>is NULL</value>
+    <comment>Filter operator. NULL is the SQL keyword and stays untranslated.</comment>
+  </data>
+  <data name="OperatorNotContains" xml:space="preserve">
+    <value>does not contain</value>
+    <comment>Filter operator, read after a column name. Lowercase.</comment>
+  </data>
+  <data name="OperatorNotIn" xml:space="preserve">
+    <value>not in list</value>
+    <comment>Filter operator: the value is none of a comma-separated list. Lowercase.</comment>
+  </data>
+  <data name="OperatorStartsWith" xml:space="preserve">
+    <value>starts with</value>
+    <comment>Filter operator, read after a column name. Lowercase.</comment>
+  </data>
+  <data name="PageRangeOfTotal_One" xml:space="preserve">
+    <value>{1:N0}–{2:N0} of {0:N0}</value>
+    <comment>Pager text. {1} is the first row shown, {2} the last row shown, {0} the total number of rows.</comment>
+  </data>
+  <data name="PageRangeOfTotal_Other" xml:space="preserve">
+    <value>{1:N0}–{2:N0} of {0:N0}</value>
+    <comment>Pager text. {1} is the first row shown, {2} the last row shown, {0} the total number of rows.</comment>
+  </data>
+  <data name="PagerFirst.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>First page</value>
+    <comment>Screen reader name of the pager's icon button.</comment>
+  </data>
+  <data name="PagerFirst.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>First page</value>
+    <comment>Tooltip of the pager's icon button.</comment>
+  </data>
+  <data name="PagerLast.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Last page</value>
+    <comment>Screen reader name of the pager's icon button.</comment>
+  </data>
+  <data name="PagerLast.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Last page</value>
+    <comment>Tooltip of the pager's icon button.</comment>
+  </data>
+  <data name="PagerNext.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Next page</value>
+    <comment>Screen reader name of the pager's icon button.</comment>
+  </data>
+  <data name="PagerNext.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Next page</value>
+    <comment>Tooltip of the pager's icon button.</comment>
+  </data>
+  <data name="PagerPageSize.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Rows per page</value>
+    <comment>Tooltip of the list that picks how many rows a page holds.</comment>
+  </data>
+  <data name="PagerPrevious.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Previous page</value>
+    <comment>Screen reader name of the pager's icon button.</comment>
+  </data>
+  <data name="PagerPrevious.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Previous page</value>
+    <comment>Tooltip of the pager's icon button.</comment>
+  </data>
+  <data name="PartitionBoundHeader" xml:space="preserve">
+    <value>Bound</value>
+    <comment>Header of the box for a new partition's bound. Use the same word as the Bound column heading (HeaderBound), which the note in this dialog refers to.</comment>
+  </data>
+  <data name="PartitionBoundNote" xml:space="preserve">
+    <value>Write the bound as the Bound column shows it. Leave it empty for a HASH or KEY partition.</value>
+    <comment>"Bound" is the Bound column heading (HeaderBound). HASH and KEY are SQL keywords and stay untranslated.</comment>
+  </data>
+  <data name="PartitionBoundPlaceholder" xml:space="preserve">
+    <value>for example VALUES LESS THAN (2026), or FOR VALUES FROM ('2026-01-01') TO ('2027-01-01')</value>
+    <comment>Translate only "for example" and "or"; the SQL stays as is.</comment>
+  </data>
+  <data name="PartitionedBy" xml:space="preserve">
+    <value>Partitioned by {0}.</value>
+    <comment>{0} is the partitioning scheme in SQL, such as RANGE (created_at).</comment>
+  </data>
+  <data name="PartitionedBySubpartitioned" xml:space="preserve">
+    <value>Partitioned by {0}, subpartitioned by {1}.</value>
+    <comment>{0} is the partitioning scheme and {1} the subpartitioning scheme, both in SQL, such as RANGE (created_at).</comment>
+  </data>
+  <data name="ReadOnlyCannotSave" xml:space="preserve">
+    <value>Safe Mode is Read-Only on this connection, so edits cannot be saved.</value>
+    <comment>"Safe Mode" and "Read-Only" are the names of a connection setting and its level; translate them as the connection settings do.</comment>
+  </data>
+  <data name="ReadOnlyConnectionTitle" xml:space="preserve">
+    <value>Read-only connection</value>
+    <comment>Error title.</comment>
+  </data>
+  <data name="ReloadDropsChanges_One" xml:space="preserve">
+    <value>Reloading drops {0} unsaved change.</value>
+    <comment>{0} is the number of unsaved edits.</comment>
+  </data>
+  <data name="ReloadDropsChanges_Other" xml:space="preserve">
+    <value>Reloading drops {0} unsaved changes.</value>
+    <comment>{0} is the number of unsaved edits.</comment>
+  </data>
+  <data name="ReviewStructureChangeTitle" xml:space="preserve">
+    <value>Review structure change</value>
+    <comment>Title of the dialog that shows the DDL of a structure change before it runs.</comment>
+  </data>
+  <data name="RowCount_One" xml:space="preserve">
+    <value>{0:N0} row</value>
+    <comment>Part of the saved-changes notification, inside parentheses. {0} is the number of rows.</comment>
+  </data>
+  <data name="RowCount_Other" xml:space="preserve">
+    <value>{0:N0} rows</value>
+    <comment>Part of the saved-changes notification, inside parentheses. {0} is the number of rows.</comment>
+  </data>
+  <data name="RowsSelected_One" xml:space="preserve">
+    <value>{0:N0} row selected</value>
+    <comment>Status below the grid. {0} is the number of selected rows.</comment>
+  </data>
+  <data name="RowsSelected_Other" xml:space="preserve">
+    <value>{0:N0} rows selected</value>
+    <comment>Status below the grid. {0} is the number of selected rows.</comment>
+  </data>
+  <data name="SafeModeReadOnly" xml:space="preserve">
+    <value>Safe Mode is Read-Only on this connection.</value>
+    <comment>"Safe Mode" and "Read-Only" are the names of a connection setting and its level; translate them as the connection settings do.</comment>
+  </data>
+  <data name="SaveChangesButton_One" xml:space="preserve">
+    <value>Save {0:N0}</value>
+    <comment>Toolbar button label when there are unsaved edits. "Save" is a verb; {0} is the number of edits. Keep it short.</comment>
+  </data>
+  <data name="SaveChangesButton_Other" xml:space="preserve">
+    <value>Save {0:N0}</value>
+    <comment>Toolbar button label when there are unsaved edits. "Save" is a verb; {0} is the number of edits. Keep it short.</comment>
+  </data>
+  <data name="SaveChangesReviewTitle" xml:space="preserve">
+    <value>Save changes</value>
+    <comment>Title of the dialog that shows the SQL of the edits before they are saved.</comment>
+  </data>
+  <data name="SavedChanges_One" xml:space="preserve">
+    <value>Saved {0:N0} change ({1}).</value>
+    <comment>Notification after saving. {0} is the number of edits, {1} the row count text ("3 rows").</comment>
+  </data>
+  <data name="SavedChanges_Other" xml:space="preserve">
+    <value>Saved {0:N0} changes ({1}).</value>
+    <comment>Notification after saving. {0} is the number of edits, {1} the row count text ("3 rows").</comment>
+  </data>
+  <data name="Saving" xml:space="preserve">
+    <value>Saving…</value>
+    <comment>Status text while edits are saved.</comment>
+  </data>
+  <data name="SectionData.Text" xml:space="preserve">
+    <value>Data</value>
+    <comment>Tab of a table: its rows.</comment>
+  </data>
+  <data name="SectionDefinition.Text" xml:space="preserve">
+    <value>Definition</value>
+    <comment>Tab of a table: its CREATE statement.</comment>
+  </data>
+  <data name="SectionStructure.Text" xml:space="preserve">
+    <value>Structure</value>
+    <comment>Tab of a table: its columns, indexes, keys and triggers.</comment>
+  </data>
+  <data name="SetToNull" xml:space="preserve">
+    <value>Set to NULL</value>
+    <comment>Context menu command on a grid cell. NULL is the SQL keyword and stays untranslated.</comment>
+  </data>
+  <data name="StructureAdd.Label" xml:space="preserve">
+    <value>Add</value>
+    <comment>Toolbar button of the structure view. A verb.</comment>
+  </data>
+  <data name="StructureChecks.Text" xml:space="preserve">
+    <value>Checks</value>
+    <comment>Structure section: the table's check constraints.</comment>
+  </data>
+  <data name="StructureColumns.Text" xml:space="preserve">
+    <value>Columns</value>
+    <comment>Structure section.</comment>
+  </data>
+  <data name="StructureDrop.Label" xml:space="preserve">
+    <value>Drop</value>
+    <comment>Toolbar button that removes the selected column, index, key, check or partition, as SQL DROP does. A verb.</comment>
+  </data>
+  <data name="StructureEdit.Label" xml:space="preserve">
+    <value>Edit</value>
+    <comment>Toolbar button of the structure view. A verb.</comment>
+  </data>
+  <data name="StructureForeignKeys.Text" xml:space="preserve">
+    <value>Foreign Keys</value>
+    <comment>Structure section.</comment>
+  </data>
+  <data name="StructureIndexes.Text" xml:space="preserve">
+    <value>Indexes</value>
+    <comment>Structure section.</comment>
+  </data>
+  <data name="StructureOptions.Text" xml:space="preserve">
+    <value>Options</value>
+    <comment>Structure section: the table's storage options.</comment>
+  </data>
+  <data name="StructurePartitions.Text" xml:space="preserve">
+    <value>Partitions</value>
+    <comment>Structure section.</comment>
+  </data>
+  <data name="StructureRefresh.Label" xml:space="preserve">
+    <value>Refresh</value>
+    <comment>Toolbar button that reloads the structure. A verb.</comment>
+  </data>
+  <data name="StructureTriggers.Text" xml:space="preserve">
+    <value>Triggers</value>
+    <comment>Structure section.</comment>
+  </data>
+  <data name="StructureTruncate.Label" xml:space="preserve">
+    <value>Truncate</value>
+    <comment>Toolbar button that empties the selected partition, as SQL TRUNCATE does. A verb.</comment>
+  </data>
+  <data name="TableOptionsTitle" xml:space="preserve">
+    <value>Table Options</value>
+    <comment>Dialog title.</comment>
+  </data>
+  <data name="UnsavedChanges_One" xml:space="preserve">
+    <value>{1} has {0} unsaved change.</value>
+    <comment>Shown when closing with unsaved edits. {0} is the number of edits, {1} the table name.</comment>
+  </data>
+  <data name="UnsavedChanges_Other" xml:space="preserve">
+    <value>{1} has {0} unsaved changes.</value>
+    <comment>Shown when closing with unsaved edits. {0} is the number of edits, {1} the table name.</comment>
+  </data>
+  <data name="ViewsReadOnly" xml:space="preserve">
+    <value>Views are read-only.</value>
+  </data>
+</root>

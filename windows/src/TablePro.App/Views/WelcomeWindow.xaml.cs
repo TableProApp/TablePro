@@ -84,20 +84,20 @@ public sealed partial class WelcomeWindow : Window
 
         ConnectionList.SelectedItem = item;
         var menu = new MenuFlyout();
-        menu.Items.Add(GridCommands.Item("Connect", "", async () => await ViewModel.ConnectAsync(profile), "Enter"));
-        menu.Items.Add(GridCommands.Item("Edit", "", async () => await EditAsync(profile), "F2"));
-        menu.Items.Add(GridCommands.Item("Duplicate", "", async () => await ViewModel.DuplicateAsync(profile)));
-        var move = new MenuFlyoutSubItem { Text = "Move to Group", Icon = new FontIcon { Glyph = "" } };
-        move.Items.Add(GridCommands.Item("No group", null, async () => await _host.Connections.UpsertAsync(profile with { Group = null })));
+        menu.Items.Add(GridCommands.Item(Strings.Get("Common/Connect"), "", async () => await ViewModel.ConnectAsync(profile), "Enter"));
+        menu.Items.Add(GridCommands.Item(Strings.Get("Common/Edit"), "", async () => await EditAsync(profile), "F2"));
+        menu.Items.Add(GridCommands.Item(Strings.Get("Common/Duplicate"), "", async () => await ViewModel.DuplicateAsync(profile)));
+        var move = new MenuFlyoutSubItem { Text = Strings.Get("Welcome/MoveToGroup"), Icon = new FontIcon { Glyph = "" } };
+        move.Items.Add(GridCommands.Item(Strings.Get("Welcome/NoGroup"), null, async () => await _host.Connections.UpsertAsync(profile with { Group = null })));
         foreach (var group in _host.Connections.Groups)
         {
             move.Items.Add(GridCommands.Item(group.Name, null, async () => await _host.Connections.UpsertAsync(profile with { Group = group.Key })));
         }
 
         menu.Items.Add(move);
-        menu.Items.Add(GridCommands.Item("Export", "", async () => await ExportAsync([profile.Id])));
+        menu.Items.Add(GridCommands.Item(Strings.Get("Common/Export"), "", async () => await ExportAsync([profile.Id])));
         menu.Items.Add(new MenuFlyoutSeparator());
-        menu.Items.Add(GridCommands.Item("Delete", "", async () => await ViewModel.DeleteAsync(profile), "Delete"));
+        menu.Items.Add(GridCommands.Item(Strings.Get("Common/Delete"), "", async () => await ViewModel.DeleteAsync(profile), "Delete"));
         menu.ShowAt((FrameworkElement)e.OriginalSource, e.GetPosition((FrameworkElement)e.OriginalSource));
         e.Handled = true;
     }
@@ -105,7 +105,7 @@ public sealed partial class WelcomeWindow : Window
     private async void OnNewConnection(object sender, RoutedEventArgs e)
     {
         var profile = await ConnectionEditor.ShowAsync(_dialogs, _host, null);
-        if (profile is not null && await _dialogs.ConfirmAsync("Connection saved", $"Connect to {profile.Name} now?", "Connect"))
+        if (profile is not null && await _dialogs.ConfirmAsync(Strings.Get("Welcome/ConnectionSavedTitle"), Strings.Format("Welcome/ConnectNowMessage", profile.Name), Strings.Get("Common/Connect")))
         {
             await ViewModel.ConnectAsync(profile);
         }
@@ -133,7 +133,7 @@ public sealed partial class WelcomeWindow : Window
         string? passphrase = null;
         if (ConnectionStore.IsEncryptedExport(file.Path))
         {
-            passphrase = await _dialogs.PromptPassphraseAsync("Encrypted connections", "This file is encrypted. Enter the passphrase it was exported with.", confirm: false, primary: "Import");
+            passphrase = await _dialogs.PromptPassphraseAsync(Strings.Get("Welcome/EncryptedImportTitle"), Strings.Get("Welcome/EncryptedImportMessage"), confirm: false, primary: Strings.Get("Common/Import"));
             if (passphrase is null)
             {
                 return;
@@ -145,32 +145,32 @@ public sealed partial class WelcomeWindow : Window
             var result = await _host.Connections.ImportAsync(file.Path, passphrase);
             _host.Connector.SaveImportedSecrets(result);
             var queries = await ImportSavedQueriesAsync(result.SavedQueries);
-            var summary = new List<string> { $"Imported {result.Imported.Count} connections." };
+            var summary = new List<string> { Strings.Plural("Welcome/ImportedConnections", result.Imported.Count) };
             if (result.Skipped.Count > 0)
             {
-                summary.Add($"Skipped {result.Skipped.Count} that this build cannot open.");
+                summary.Add(Strings.Plural("Welcome/SkippedConnections", result.Skipped.Count));
             }
 
             if (queries > 0)
             {
-                summary.Add($"Added {queries} saved queries to Favorites.");
+                summary.Add(Strings.Plural("Welcome/ImportedSavedQueries", queries));
             }
 
             if (result.TunnelCommandsToReview.Count > 0)
             {
                 // Imported commands start turned off: a file from elsewhere must not run programs before the user reads them.
-                summary.Add("Tunnel commands were turned off until you review them: " + string.Join(", ", result.TunnelCommandsToReview) + ".");
+                summary.Add(Strings.Format("Welcome/TunnelCommandsTurnedOff", string.Join(", ", result.TunnelCommandsToReview)));
             }
 
-            await _dialogs.ShowErrorAsync("Import finished", string.Join(' ', summary));
+            await _dialogs.ShowErrorAsync(Strings.Get("Welcome/ImportFinishedTitle"), string.Join(' ', summary));
         }
         catch (ConnectionExportPassphraseException)
         {
-            await _dialogs.ShowErrorAsync("Import failed", "The passphrase is wrong, or the file is damaged.");
+            await _dialogs.ShowErrorAsync(Strings.Get("Welcome/ImportFailedTitle"), Strings.Get("Welcome/ImportWrongPassphrase"));
         }
         catch (Exception ex)
         {
-            await _dialogs.ShowErrorAsync("Import failed", ex.Message);
+            await _dialogs.ShowErrorAsync(Strings.Get("Welcome/ImportFailedTitle"), ex.Message);
         }
     }
 
@@ -202,16 +202,16 @@ public sealed partial class WelcomeWindow : Window
     private async Task ExportAsync(IEnumerable<Guid>? ids)
     {
         var passphrase = await _dialogs.PromptPassphraseAsync(
-            "Export connections",
-            "Enter a passphrase to encrypt the file and include saved passwords. Leave it empty to export without passwords.",
+            Strings.Get("Welcome/ExportTitle"),
+            Strings.Get("Welcome/ExportMessage"),
             confirm: true,
-            primary: "Export");
+            primary: Strings.Get("Common/Export"));
         if (passphrase is null)
         {
             return;
         }
 
-        var file = await _dialogs.PickSaveFileAsync("connections", "TablePro connections", ".json");
+        var file = await _dialogs.PickSaveFileAsync("connections", Strings.Get("Welcome/ExportFileType"), ".json");
         if (file is null)
         {
             return;
@@ -228,7 +228,7 @@ public sealed partial class WelcomeWindow : Window
 
     private async void OnNewGroup(object sender, RoutedEventArgs e)
     {
-        var name = await _dialogs.PromptAsync("New Group", "Name", primary: "Create");
+        var name = await _dialogs.PromptAsync(Strings.Get("Welcome/NewGroupTitle"), Strings.Get("Common/Name"), primary: Strings.Get("Welcome/CreateGroup"));
         if (!string.IsNullOrWhiteSpace(name))
         {
             await _host.Connections.UpsertGroupAsync(new ConnectionGroup { Name = name.Trim() });

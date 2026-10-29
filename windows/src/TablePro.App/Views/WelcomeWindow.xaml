@@ -55,31 +55,31 @@
                 <Button Style="{StaticResource AccentButtonStyle}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Click="OnNewConnection" Padding="12,8">
                     <StackPanel Orientation="Horizontal" Spacing="10">
                         <FontIcon FontSize="16" Glyph="&#xE710;" />
-                        <TextBlock Text="New Connection" />
+                        <TextBlock x:Uid="/Welcome/NewConnection" />
                     </StackPanel>
                     <Button.KeyboardAccelerators><KeyboardAccelerator Key="N" Modifiers="Control" /></Button.KeyboardAccelerators>
                 </Button>
                 <Button HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Click="OnOpenFile" Padding="12,8">
                     <StackPanel Orientation="Horizontal" Spacing="10">
                         <FontIcon FontSize="16" Glyph="&#xE8E5;" />
-                        <TextBlock Text="Open Database File" />
+                        <TextBlock x:Uid="/Welcome/OpenDatabaseFile" />
                     </StackPanel>
                     <Button.KeyboardAccelerators><KeyboardAccelerator Key="O" Modifiers="Control" /></Button.KeyboardAccelerators>
                 </Button>
                 <Button HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Click="OnImport" Padding="12,8">
                     <StackPanel Orientation="Horizontal" Spacing="10">
                         <FontIcon FontSize="16" Glyph="&#xE8B5;" />
-                        <TextBlock Text="Import Connections" />
+                        <TextBlock x:Uid="/Welcome/ImportConnections" />
                     </StackPanel>
                 </Button>
                 <Button HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Click="OnNewGroup" Padding="12,8">
                     <StackPanel Orientation="Horizontal" Spacing="10">
                         <FontIcon FontSize="16" Glyph="&#xE8F4;" />
-                        <TextBlock Text="New Group" />
+                        <TextBlock x:Uid="/Welcome/NewGroup" />
                     </StackPanel>
                 </Button>
             </StackPanel>
-            <HyperlinkButton Grid.Row="3" Content="Settings" Click="OnSettings" Padding="0" />
+            <HyperlinkButton x:Uid="/Welcome/Settings" Grid.Row="3" Click="OnSettings" Padding="0" />
         </Grid>
 
         <!--  Right: saved connections on a Fluent layer  -->
@@ -94,11 +94,11 @@
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
-                    <AutoSuggestBox x:Name="SearchBox" PlaceholderText="Search connections" QueryIcon="Find" Text="{x:Bind ViewModel.SearchText, Mode=TwoWay}" />
-                    <ComboBox Grid.Column="1" x:Name="SortBox" SelectionChanged="OnSortChanged" MinWidth="150" ToolTipService.ToolTip="Sort">
-                        <x:String>Manual order</x:String>
-                        <x:String>Name</x:String>
-                        <x:String>Last connected</x:String>
+                    <AutoSuggestBox x:Uid="/Welcome/SearchConnections" x:Name="SearchBox" QueryIcon="Find" Text="{x:Bind ViewModel.SearchText, Mode=TwoWay}" />
+                    <ComboBox x:Uid="/Welcome/Sort" Grid.Column="1" x:Name="SortBox" SelectionChanged="OnSortChanged" MinWidth="150">
+                        <ComboBoxItem x:Uid="/Welcome/SortManual" />
+                        <ComboBoxItem x:Uid="/Welcome/SortName" />
+                        <ComboBoxItem x:Uid="/Welcome/SortLastConnected" />
                     </ComboBox>
                 </Grid>
                 <ListView
@@ -113,8 +113,8 @@
                     KeyDown="OnConnectionKeyDown" />
                 <StackPanel Grid.Row="1" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8" Visibility="{x:Bind ViewModel.IsEmpty, Mode=OneWay}">
                     <FontIcon FontSize="40" Glyph="&#xE968;" Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
-                    <TextBlock Text="No saved connections" Style="{StaticResource SubtitleTextBlockStyle}" HorizontalAlignment="Center" />
-                    <TextBlock Text="Create one, or open a SQLite or DuckDB file." Style="{StaticResource BodyTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" HorizontalAlignment="Center" />
+                    <TextBlock x:Uid="/Welcome/EmptyTitle" Style="{StaticResource SubtitleTextBlockStyle}" HorizontalAlignment="Center" />
+                    <TextBlock x:Uid="/Welcome/EmptyMessage" Style="{StaticResource BodyTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" HorizontalAlignment="Center" />
                 </StackPanel>
 
                 <!--  Connecting overlay  -->
@@ -123,7 +123,7 @@
                         <StackPanel Spacing="16" HorizontalAlignment="Center">
                             <ProgressRing IsActive="{x:Bind ViewModel.IsConnecting, Mode=OneWay}" Width="32" Height="32" />
                             <TextBlock Text="{x:Bind ViewModel.ConnectingText, Mode=OneWay}" HorizontalAlignment="Center" />
-                            <Button Content="Cancel" HorizontalAlignment="Center" Command="{x:Bind ViewModel.CancelConnectCommand}" />
+                            <Button x:Uid="/Welcome/CancelConnect" HorizontalAlignment="Center" Command="{x:Bind ViewModel.CancelConnectCommand}" />
                         </StackPanel>
                     </Border>
                 </Border>

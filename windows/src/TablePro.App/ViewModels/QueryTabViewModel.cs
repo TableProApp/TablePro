@@ -33,7 +33,7 @@ public sealed partial class QueryTabViewModel : TabViewModel
         FilePath = filePath;
         Text = initialText ?? string.Empty;
         _savedText = filePath is null ? string.Empty : Text;
-        Title = filePath is null ? $"Query {number}" : Path.GetFileName(filePath);
+        Title = filePath is null ? Strings.Format("Query/TabTitle", number) : Path.GetFileName(filePath);
     }
 
     public int Number { get; }
@@ -81,7 +81,7 @@ public sealed partial class QueryTabViewModel : TabViewModel
     public override string Glyph => "";
 
     public override string? UnsavedWork => FilePath is not null && !string.Equals(Text, _savedText, StringComparison.Ordinal)
-        ? $"{Title} has unsaved changes."
+        ? Strings.Format("Query/UnsavedChanges", Title)
         : null;
 
     /// <summary>Runs from the editor. Offsets are in the editor's raw text, where line ends are '\r'.</summary>
@@ -136,8 +136,8 @@ public sealed partial class QueryTabViewModel : TabViewModel
         if (parameters.Count > 0)
         {
             var values = await _context.Dialogs.PromptValuesAsync(
-                "Parameters",
-                parameters.Count == 1 ? "The statement has a placeholder. Enter its value." : $"The statements have {parameters.Count} placeholders. Enter their values.",
+                Strings.Get("Query/ParametersTitle"),
+                Strings.Plural("Query/ParametersMessage", parameters.Count),
                 parameters,
                 _parameterValues);
             if (values is null)
@@ -224,7 +224,7 @@ public sealed partial class QueryTabViewModel : TabViewModel
         ErrorText = null;
         IsRunning = true;
         IsBusy = true;
-        StatusText = statements.Count == 1 ? "Running…" : $"Running {statements.Count} statements…";
+        StatusText = Strings.Plural("Query/RunningStatements", statements.Count);
         _run = new CancellationTokenSource();
         var stopwatch = Stopwatch.StartNew();
         var index = 0;
@@ -274,7 +274,7 @@ public sealed partial class QueryTabViewModel : TabViewModel
         catch (Exception ex) when (ex is not OperationCanceledException || _run.IsCancellationRequested)
         {
             failed = true;
-            ErrorText = ex is OperationCanceledException ? "Query cancelled." : ex.Message;
+            ErrorText = ex is OperationCanceledException ? Strings.Get("Query/QueryCancelled") : ex.Message;
 
             // A failed open leaves no channel; a broken one is dropped so the next run reconnects.
             await DropChannelAsync();
@@ -289,7 +289,7 @@ public sealed partial class QueryTabViewModel : TabViewModel
 
         SelectedResult = Results.FirstOrDefault(r => r.HasRows) ?? Results.LastOrDefault();
         var elapsed = ResultItemViewModel.FormatElapsed(stopwatch.Elapsed);
-        StatusText = failed ? $"Stopped with an error · {elapsed}" : SelectedResult?.Summary ?? $"Done · {elapsed}";
+        StatusText = failed ? Strings.Format("Query/StoppedWithError", elapsed) : SelectedResult?.Summary ?? Strings.Format("Query/DoneAfter", elapsed);
         return collected;
     }
 
@@ -356,8 +356,8 @@ public sealed partial class QueryTabViewModel : TabViewModel
         if (level.BlocksAllWrites() && writes.Count > 0)
         {
             await _context.Dialogs.ShowErrorAsync(
-                "Read-only connection",
-                "This connection's Safe Mode is Read-Only, so statements that change data or structure do not run.");
+                Strings.Get("Query/ReadOnlyTitle"),
+                Strings.Get("Query/ReadOnlyMessage"));
             return false;
         }
 
@@ -365,9 +365,9 @@ public sealed partial class QueryTabViewModel : TabViewModel
         {
             var shown = level.ConfirmsReads() ? statements : writes;
             return await _context.Dialogs.ConfirmAsync(
-                "Run these statements?",
-                $"Safe Mode asks before running statements on {_context.Session.Profile.Name}.",
-                "Run",
+                Strings.Get("Query/ConfirmRunTitle"),
+                Strings.Format("Query/ConfirmRunMessage", _context.Session.Profile.Name),
+                Strings.Get("Common/Run"),
                 destructive: writes.Count > 0,
                 detail: string.Join(";\n\n", shown));
         }

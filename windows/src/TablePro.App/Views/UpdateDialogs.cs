@@ -13,7 +13,7 @@ internal static class UpdateDialogs
         var offer = await updates.CheckAsync(userInitiated: true);
         if (offer is null)
         {
-            await dialogs.ShowErrorAsync("Check for Updates", updates.LastError ?? updates.StatusText);
+            await dialogs.ShowErrorAsync(Strings.Get("Updates/CheckTitle"), updates.LastError ?? updates.StatusText);
             return;
         }
 
@@ -25,7 +25,7 @@ internal static class UpdateDialogs
         var body = new StackPanel { Spacing = 12, MaxWidth = 520 };
         body.Children.Add(new TextBlock
         {
-            Text = $"TablePro {offer.Version} is available. You have {updates.CurrentVersion}.",
+            Text = Strings.Format("Updates/AvailableVersion", offer.Version, updates.CurrentVersion),
             TextWrapping = TextWrapping.Wrap,
         });
         if (!string.IsNullOrWhiteSpace(offer.Item.Notes))
@@ -37,10 +37,15 @@ internal static class UpdateDialogs
             });
         }
 
-        var primary = updates.Mode == UpdateInstallMode.AppInstaller ? "Restart to Update" : "Install and Restart";
+        var primary = updates.Mode == UpdateInstallMode.AppInstaller ? Strings.Get("Updates/RestartToUpdate") : Strings.Get("Updates/InstallAndRestart");
 
         // A critical release cannot be skipped, as on macOS: it fixes something the installed build gets wrong.
-        var dialog = dialogs.Create(offer.IsCritical ? "Important Update" : "Update Available", body, primary, "Later", offer.IsCritical ? null : "Skip This Version");
+        var dialog = dialogs.Create(
+            offer.IsCritical ? Strings.Get("Updates/ImportantUpdateTitle") : Strings.Get("Updates/UpdateAvailableTitle"),
+            body,
+            primary,
+            Strings.Get("Updates/Later"),
+            offer.IsCritical ? null : Strings.Get("Updates/SkipThisVersion"));
         switch (await dialogs.ShowAsync(dialog))
         {
             case ContentDialogResult.Primary:
@@ -50,7 +55,7 @@ internal static class UpdateDialogs
                 }
                 catch (Exception ex) when (ex is HttpRequestException or IOException or InvalidOperationException or InvalidDataException)
                 {
-                    await dialogs.ShowErrorAsync("Could not install the update", ex.Message);
+                    await dialogs.ShowErrorAsync(Strings.Get("Updates/InstallFailedTitle"), ex.Message);
                 }
 
                 break;

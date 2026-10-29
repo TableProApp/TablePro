@@ -1,4 +1,3 @@
-using System.Globalization;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
@@ -22,7 +21,7 @@ public sealed partial class QueryPlanComparisonView : UserControl
     public QueryPlanComparisonView()
     {
         Content = new ScrollViewer { Content = _content };
-        AutomationProperties.SetName(this, "Plan comparison");
+        AutomationProperties.SetName(this, Strings.Get("Plan/ComparisonName"));
         ActualThemeChanged += (_, _) => Build();
     }
 
@@ -43,14 +42,14 @@ public sealed partial class QueryPlanComparisonView : UserControl
 
         if (_baseline is not { } baseline)
         {
-            _content.Children.Add(new InfoBar { IsOpen = true, IsClosable = false, Severity = InfoBarSeverity.Informational, Title = "Nothing to compare yet", Message = "Explain again after changing the query or the schema, and this run becomes the baseline." });
+            _content.Children.Add(new InfoBar { IsOpen = true, IsClosable = false, Severity = InfoBarSeverity.Informational, Title = Strings.Get("Plan/NothingToCompareTitle"), Message = Strings.Get("Plan/NothingToCompareMessage") });
             return;
         }
 
-        _content.Children.Add(Caption(string.Create(CultureInfo.CurrentCulture, $"Baseline from {baseline.CapturedAt.ToLocalTime():T}{(baseline.Analyze ? ", analyzed" : string.Empty)}, current from {current.CapturedAt.ToLocalTime():T}{(current.Analyze ? ", analyzed" : string.Empty)}")));
+        _content.Children.Add(Caption(Strings.Format("Plan/ComparisonCaption", CaptureTime(baseline), CaptureTime(current))));
         if (!string.Equals(Squash(baseline.Subject), Squash(current.Subject), StringComparison.Ordinal))
         {
-            _content.Children.Add(new InfoBar { IsOpen = true, IsClosable = false, Severity = InfoBarSeverity.Informational, Title = "The baseline explained a different statement", Message = Squash(baseline.Subject) });
+            _content.Children.Add(new InfoBar { IsOpen = true, IsClosable = false, Severity = InfoBarSeverity.Informational, Title = Strings.Get("Plan/DifferentStatementTitle"), Message = Squash(baseline.Subject) });
         }
 
         if (baseline.Plan is { } before && current.Plan is { } after)
@@ -70,7 +69,7 @@ public sealed partial class QueryPlanComparisonView : UserControl
         {
             IsOpen = true,
             IsClosable = false,
-            Title = verdict.Headline,
+            Title = PlanNames.Headline(verdict),
             Severity = verdict.Kind switch
             {
                 QueryPlanVerdictKind.Slower => InfoBarSeverity.Error,
@@ -86,7 +85,7 @@ public sealed partial class QueryPlanComparisonView : UserControl
             summary.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(width) });
         }
 
-        AddRow(summary, 0, true, "Metric", "Baseline", "Current", "Change");
+        AddRow(summary, 0, true, Strings.Get("Plan/ColumnMetric"), Strings.Get("Plan/Baseline"), Strings.Get("Plan/Current"), Strings.Get("Plan/ColumnChange"));
         for (var i = 0; i < diff.Summary.Count; i++)
         {
             var change = diff.Summary[i];
@@ -94,19 +93,19 @@ public sealed partial class QueryPlanComparisonView : UserControl
                 summary,
                 i + 1,
                 false,
-                change.Field.Title,
+                PlanNames.Title(change.Field),
                 QueryPlanValueFormatter.Format(change.Before, change.Field.Unit),
                 QueryPlanValueFormatter.Format(change.After, change.Field.Unit),
-                QueryPlanValueFormatter.Change(change) ?? QueryPlanValueFormatter.Absent);
+                PlanNames.Change(change) ?? QueryPlanValueFormatter.Absent);
         }
 
-        AutomationProperties.SetName(summary, "Plan summary");
+        AutomationProperties.SetName(summary, Strings.Get("Plan/SummaryName"));
         _content.Children.Add(summary);
 
-        _content.Children.Add(new TextBlock { Text = "Step changes", Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"] });
+        _content.Children.Add(new TextBlock { Text = Strings.Get("Plan/StepChangesHeading"), Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"] });
         if (diff.NodeChanges.Count == 0)
         {
-            _content.Children.Add(Caption("No step changed."));
+            _content.Children.Add(Caption(Strings.Get("Plan/NoStepChanged")));
             return;
         }
 
@@ -142,7 +141,7 @@ public sealed partial class QueryPlanComparisonView : UserControl
         {
             body.Children.Add(new TextBlock
             {
-                Text = $"{field.Field.Title}: {QueryPlanValueFormatter.Format(field.Before, field.Field.Unit)} → {QueryPlanValueFormatter.Format(field.After, field.Field.Unit)}",
+                Text = Strings.Format("Plan/FieldChange", PlanNames.Title(field.Field), QueryPlanValueFormatter.Format(field.Before, field.Field.Unit), QueryPlanValueFormatter.Format(field.After, field.Field.Unit)),
                 FontSize = 12,
                 TextWrapping = TextWrapping.Wrap,
                 IsTextSelectionEnabled = true,
@@ -154,18 +153,18 @@ public sealed partial class QueryPlanComparisonView : UserControl
         Grid.SetColumn(body, 1);
         row.Children.Add(body);
         var border = new Border { Child = row, Padding = new Thickness(0, 6, 0, 6), BorderBrush = ThemeResources.Brush(this, "DividerStrokeColorDefaultBrush"), BorderThickness = new Thickness(0, 0, 0, 1) };
-        AutomationProperties.SetName(border, $"{label}: {change.Title}");
+        AutomationProperties.SetName(border, Strings.Format("Plan/ChangeRowName", label, change.Title));
         return border;
     }
 
     private void ShowText(string baseline, string current)
     {
-        _content.Children.Add(new InfoBar { IsOpen = true, IsClosable = false, Severity = InfoBarSeverity.Informational, Title = "Compared as text", Message = "One of the plans could not be read as a tree, so the two runs are compared line by line." });
+        _content.Children.Add(new InfoBar { IsOpen = true, IsClosable = false, Severity = InfoBarSeverity.Informational, Title = Strings.Get("Plan/ComparedAsTextTitle"), Message = Strings.Get("Plan/ComparedAsTextMessage") });
         var lines = PlanTextDiff.Lines(baseline, current);
         var text = new TextBlock { FontSize = 12, IsTextSelectionEnabled = true, FontFamily = (FontFamily)Application.Current.Resources["CodeFontFamily"] };
         if (lines is null)
         {
-            text.Text = "Baseline\n" + baseline + "\n\nCurrent\n" + current;
+            text.Text = Strings.Get("Plan/Baseline") + "\n" + baseline + "\n\n" + Strings.Get("Plan/Current") + "\n" + current;
         }
         else
         {
@@ -216,6 +215,9 @@ public sealed partial class QueryPlanComparisonView : UserControl
         Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
         Foreground = ThemeResources.Brush(this, "TextFillColorSecondaryBrush"),
     };
+
+    private static string CaptureTime(QueryPlanCapture capture) =>
+        Strings.Format(capture.Analyze ? "Plan/CaptureTimeAnalyzed" : "Plan/CaptureTime", capture.CapturedAt.ToLocalTime());
 
     private static string Squash(string sql) => string.Join(' ', sql.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
 }

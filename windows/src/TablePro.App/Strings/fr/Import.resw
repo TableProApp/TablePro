@@ -1,0 +1,299 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AcceptsNullFieldName" xml:space="preserve">
+    <value>{0} accepte null</value>
+  </data>
+  <data name="CannotCreateTable" xml:space="preserve">
+    <value>Ce moteur ne peut pas créer cette table depuis l’application.</value>
+  </data>
+  <data name="CannotImportYetTitle" xml:space="preserve">
+    <value>Importation impossible pour le moment</value>
+  </data>
+  <data name="CannotReadFileTitle" xml:space="preserve">
+    <value>Impossible de lire ce fichier</value>
+  </data>
+  <data name="ColumnForFieldName" xml:space="preserve">
+    <value>Colonne pour {0}</value>
+  </data>
+  <data name="ColumnNameForFieldName" xml:space="preserve">
+    <value>Nom de colonne pour {0}</value>
+  </data>
+  <data name="CreateAllColumns" xml:space="preserve">
+    <value>Créer toutes les colonnes</value>
+  </data>
+  <data name="CreateAndImport" xml:space="preserve">
+    <value>Créer et importer</value>
+  </data>
+  <data name="CreateFieldName" xml:space="preserve">
+    <value>Créer {0}</value>
+  </data>
+  <data name="CreateTableFailedTitle" xml:space="preserve">
+    <value>Impossible de créer la table</value>
+  </data>
+  <data name="CreateTableReviewTitle" xml:space="preserve">
+    <value>Créer une table pour l’importation</value>
+  </data>
+  <data name="DefaultSqlFieldName" xml:space="preserve">
+    <value>SQL par défaut pour {0}</value>
+  </data>
+  <data name="DefaultSqlPlaceholder" xml:space="preserve">
+    <value>SQL par défaut</value>
+  </data>
+  <data name="DefaultSqlToolTip" xml:space="preserve">
+    <value>Le SQL qui suit DEFAULT. Une valeur texte doit avoir ses propres guillemets.</value>
+  </data>
+  <data name="DelimiterComma" xml:space="preserve">
+    <value>Virgule</value>
+  </data>
+  <data name="DelimiterDetect" xml:space="preserve">
+    <value>Détecter</value>
+  </data>
+  <data name="DelimiterHeader" xml:space="preserve">
+    <value>Délimiteur</value>
+  </data>
+  <data name="DelimiterPipe" xml:space="preserve">
+    <value>Barre verticale</value>
+  </data>
+  <data name="DelimiterSemicolon" xml:space="preserve">
+    <value>Point-virgule</value>
+  </data>
+  <data name="DelimiterTab" xml:space="preserve">
+    <value>Tabulation</value>
+  </data>
+  <data name="DisableForeignKeyChecks" xml:space="preserve">
+    <value>Désactiver la vérification des clés étrangères</value>
+  </data>
+  <data name="DisableForeignKeyChecksToolTip" xml:space="preserve">
+    <value>Désactive temporairement les contraintes de clé étrangère pendant l’importation. Utile pour importer des données comportant des dépendances circulaires.</value>
+  </data>
+  <data name="EnterNewTableName" xml:space="preserve">
+    <value>Saisissez un nom pour la nouvelle table.</value>
+  </data>
+  <data name="ErrorLine" xml:space="preserve">
+    <value>Ligne {0}&#160;: {1}</value>
+  </data>
+  <data name="ExistingTable" xml:space="preserve">
+    <value>Table existante {0}</value>
+  </data>
+  <data name="FieldTypeBoolean" xml:space="preserve">
+    <value>Booléen</value>
+  </data>
+  <data name="FieldTypeInteger" xml:space="preserve">
+    <value>Entier</value>
+  </data>
+  <data name="FieldTypeJson" xml:space="preserve">
+    <value>JSON</value>
+  </data>
+  <data name="FieldTypeReal" xml:space="preserve">
+    <value>Réel</value>
+  </data>
+  <data name="FieldTypeText" xml:space="preserve">
+    <value>Texte</value>
+  </data>
+  <data name="FirstRowIsHeader" xml:space="preserve">
+    <value>La première ligne est un en-tête</value>
+  </data>
+  <data name="FirstRows" xml:space="preserve">
+    <value>Premières lignes</value>
+  </data>
+  <data name="HeaderColumn" xml:space="preserve">
+    <value>Colonne</value>
+  </data>
+  <data name="HeaderDefault" xml:space="preserve">
+    <value>Par défaut</value>
+  </data>
+  <data name="HeaderField" xml:space="preserve">
+    <value>Champ</value>
+  </data>
+  <data name="HeaderKey" xml:space="preserve">
+    <value>Clé</value>
+  </data>
+  <data name="HeaderNull" xml:space="preserve">
+    <value>Null</value>
+  </data>
+  <data name="ImportAllFields" xml:space="preserve">
+    <value>Importer tous les champs</value>
+  </data>
+  <data name="ImportFailedTitle" xml:space="preserve">
+    <value>Échec de l’importation</value>
+  </data>
+  <data name="ImportFieldName" xml:space="preserve">
+    <value>Importer {0}</value>
+  </data>
+  <data name="ImportFileTitle" xml:space="preserve">
+    <value>Importer {0}</value>
+  </data>
+  <data name="ImportIntoHeader" xml:space="preserve">
+    <value>Importer dans</value>
+  </data>
+  <data name="ImportSqlFileTitle" xml:space="preserve">
+    <value>Importer un fichier SQL</value>
+  </data>
+  <data name="ImportStoppedRowsKept" xml:space="preserve">
+    <value>{0}
+
+Les lignes enregistrées avant ce point restent dans la table.</value>
+  </data>
+  <data name="ImportStoppedTitle" xml:space="preserve">
+    <value>Importation arrêtée</value>
+  </data>
+  <data name="ImportedRows_One" xml:space="preserve">
+    <value>{0:N0} ligne importée dans {1}.</value>
+  </data>
+  <data name="ImportedRows_Other" xml:space="preserve">
+    <value>{0:N0} lignes importées dans {1}.</value>
+  </data>
+  <data name="ImportedWithSkipped" xml:space="preserve">
+    <value>{0} {1}</value>
+  </data>
+  <data name="Importing" xml:space="preserve">
+    <value>Importation…</value>
+  </data>
+  <data name="ImportingRows_One" xml:space="preserve">
+    <value>Importation… {0:N0} ligne</value>
+  </data>
+  <data name="ImportingRows_Other" xml:space="preserve">
+    <value>Importation… {0:N0} lignes</value>
+  </data>
+  <data name="ImportingSqlTitle" xml:space="preserve">
+    <value>Importation SQL</value>
+  </data>
+  <data name="MatchByName" xml:space="preserve">
+    <value>Associer par nom</value>
+  </data>
+  <data name="MatchByPosition" xml:space="preserve">
+    <value>Associer par position</value>
+  </data>
+  <data name="MatchColumns" xml:space="preserve">
+    <value>Associer les colonnes</value>
+  </data>
+  <data name="NewTable" xml:space="preserve">
+    <value>Nouvelle table</value>
+  </data>
+  <data name="NewTableName" xml:space="preserve">
+    <value>Nom de la nouvelle table</value>
+  </data>
+  <data name="NoFields" xml:space="preserve">
+    <value>Le fichier ne contient aucun champ à importer.</value>
+  </data>
+  <data name="NoTransactionsToolTip" xml:space="preserve">
+    <value>Cette base de données exécute chaque instruction séparément.</value>
+  </data>
+  <data name="NullTextHeader" xml:space="preserve">
+    <value>Texte pour null</value>
+  </data>
+  <data name="NullTextToolTip" xml:space="preserve">
+    <value>Une valeur importée comme null, par exemple NULL ou \N. Les champs vides sont toujours importés comme null.</value>
+  </data>
+  <data name="OnErrorHeader" xml:space="preserve">
+    <value>En cas d’erreur</value>
+  </data>
+  <data name="OnErrorSkipAndContinue" xml:space="preserve">
+    <value>Ignorer et continuer</value>
+  </data>
+  <data name="OnErrorStopAndCommit" xml:space="preserve">
+    <value>Arrêter et valider</value>
+  </data>
+  <data name="OnErrorStopAndRollback" xml:space="preserve">
+    <value>Arrêter et annuler</value>
+  </data>
+  <data name="PreviewNote" xml:space="preserve">
+    <value>{0}&#160;; {1}</value>
+  </data>
+  <data name="PrimaryKeyFieldName" xml:space="preserve">
+    <value>{0} est une clé primaire</value>
+  </data>
+  <data name="ReadOnlyCannotImportSql" xml:space="preserve">
+    <value>Le mode sécurisé de cette connexion est réglé sur Lecture seule&#160;: impossible d’importer un fichier SQL.</value>
+  </data>
+  <data name="RecordsSkipped_One" xml:space="preserve">
+    <value>{0:N0} enregistrement ne contenait aucun champ associé et a été ignoré.</value>
+  </data>
+  <data name="RecordsSkipped_Other" xml:space="preserve">
+    <value>{0:N0} enregistrements ne contenaient aucun champ associé et ont été ignorés.</value>
+  </data>
+  <data name="RowsShown_One" xml:space="preserve">
+    <value>{0:N0} affichée</value>
+  </data>
+  <data name="RowsShown_Other" xml:space="preserve">
+    <value>{0:N0} affichées</value>
+  </data>
+  <data name="Skip" xml:space="preserve">
+    <value>Ignorer</value>
+  </data>
+  <data name="SqlFileSummary" xml:space="preserve">
+    <value>Exécute toutes les instructions de {0} ({1:N0} Ko) sur {2}.</value>
+  </data>
+  <data name="SqlImportedSkipped_One" xml:space="preserve">
+    <value>{1} importé&#160;: {0:N0} instruction en {2:N1} s, {3:N0} ignorée(s).</value>
+  </data>
+  <data name="SqlImportedSkipped_Other" xml:space="preserve">
+    <value>{1} importé&#160;: {0:N0} instructions en {2:N1} s, {3:N0} ignorée(s).</value>
+  </data>
+  <data name="SqlImported_One" xml:space="preserve">
+    <value>{1} importé&#160;: {0:N0} instruction en {2:N1} s.</value>
+  </data>
+  <data name="SqlImported_Other" xml:space="preserve">
+    <value>{1} importé&#160;: {0:N0} instructions en {2:N1} s.</value>
+  </data>
+  <data name="Starting" xml:space="preserve">
+    <value>Démarrage…</value>
+  </data>
+  <data name="StatementsFailedTitle_One" xml:space="preserve">
+    <value>{0:N0} instruction a échoué</value>
+  </data>
+  <data name="StatementsFailedTitle_Other" xml:space="preserve">
+    <value>{0:N0} instructions ont échoué</value>
+  </data>
+  <data name="StatementsKept_One" xml:space="preserve">
+    <value>L’instruction précédente a été conservée.</value>
+  </data>
+  <data name="StatementsKept_Other" xml:space="preserve">
+    <value>Les {0:N0} instructions précédentes ont été conservées.</value>
+  </data>
+  <data name="StatementsRunSkipped_One" xml:space="preserve">
+    <value>{0:N0} instruction exécutée, {1:N0} ignorée(s)</value>
+  </data>
+  <data name="StatementsRunSkipped_Other" xml:space="preserve">
+    <value>{0:N0} instructions exécutées, {1:N0} ignorée(s)</value>
+  </data>
+  <data name="StatementsRun_One" xml:space="preserve">
+    <value>{0:N0} instruction exécutée</value>
+  </data>
+  <data name="StatementsRun_Other" xml:space="preserve">
+    <value>{0:N0} instructions exécutées</value>
+  </data>
+  <data name="StoppedImporting" xml:space="preserve">
+    <value>Importation de {0} arrêtée.</value>
+  </data>
+  <data name="TrimSpaces" xml:space="preserve">
+    <value>Supprimer les espaces</value>
+  </data>
+  <data name="TypeOfFieldName" xml:space="preserve">
+    <value>Type de {0}</value>
+  </data>
+  <data name="TypesFromRows_One" xml:space="preserve">
+    <value>types déduits de la première ligne</value>
+  </data>
+  <data name="TypesFromRows_Other" xml:space="preserve">
+    <value>types déduits des {0:N0} premières lignes</value>
+  </data>
+  <data name="WrapInTransaction" xml:space="preserve">
+    <value>Encapsuler dans une transaction (BEGIN/COMMIT)</value>
+  </data>
+  <data name="WrapInTransactionToolTip" xml:space="preserve">
+    <value>Exécute toutes les instructions dans une seule transaction&#160;: en cas d’échec, les modifications de l’importation sont annulées. Une base de données qui valide CREATE, ALTER et DROP à leur exécution, comme MySQL, conserve ces instructions et tout ce qui les précède.</value>
+  </data>
+</root>

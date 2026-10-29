@@ -15,9 +15,9 @@
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <TextBox x:Name="QueryBox" PlaceholderText="Find a value in every table of this schema" Text="{x:Bind ViewModel.Query, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" KeyDown="OnQueryKeyDown" />
-            <Button Grid.Column="1" Style="{StaticResource AccentButtonStyle}" Content="Search" Command="{x:Bind ViewModel.SearchCommand}" />
-            <Button Grid.Column="2" Content="Stop" Command="{x:Bind ViewModel.StopCommand}" />
+            <TextBox x:Uid="/Server/SearchQueryBox" x:Name="QueryBox" Text="{x:Bind ViewModel.Query, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" KeyDown="OnQueryKeyDown" />
+            <Button x:Uid="/Server/SearchButton" Grid.Column="1" Style="{StaticResource AccentButtonStyle}" Command="{x:Bind ViewModel.SearchCommand}" />
+            <Button x:Uid="/Server/SearchStopButton" Grid.Column="2" Command="{x:Bind ViewModel.StopCommand}" />
         </Grid>
         <StackPanel Grid.Row="1" Spacing="4">
             <ProgressBar Value="{x:Bind ViewModel.Progress, Mode=OneWay}" Visibility="{x:Bind ViewModel.IsSearching, Mode=OneWay}" />

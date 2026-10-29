@@ -148,7 +148,7 @@ public sealed partial class DebuggerTabView : UserControl
         {
             var entryPoints = new ComboBox
             {
-                Header = "Entry point",
+                Header = Strings.Get("Debugger/EntryPoint"),
                 ItemsSource = plan.EntryPoints.Select(e => e.DisplayName).ToList(),
                 SelectedIndex = 0,
                 HorizontalAlignment = HorizontalAlignment.Stretch,
@@ -176,7 +176,11 @@ public sealed partial class DebuggerTabView : UserControl
             });
         }
 
-        var dialog = Dialogs.Create("Debug " + plan.Target.DisplayName, new ScrollViewer { Content = panel, MaxHeight = 480 }, "Debug", "Cancel");
+        var dialog = Dialogs.Create(
+            Strings.Format("Debugger/StartDialogTitle", plan.Target.DisplayName),
+            new ScrollViewer { Content = panel, MaxHeight = 480 },
+            Strings.Get("Debugger/DebugButton"),
+            Strings.Get("Common/Cancel"));
         return await Dialogs.ShowAsync(dialog) == ContentDialogResult.Primary ? form.ToChoice() : null;
     }
 
@@ -185,7 +189,7 @@ public sealed partial class DebuggerTabView : UserControl
         host.Children.Clear();
         if (form.Arguments.Count == 0)
         {
-            host.Children.Add(new TextBlock { Text = "This routine takes no arguments.", Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["TextFillColorSecondaryBrush"] });
+            host.Children.Add(new TextBlock { Text = Strings.Get("Debugger/NoArguments"),Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["TextFillColorSecondaryBrush"] });
             return;
         }
 
@@ -200,10 +204,10 @@ public sealed partial class DebuggerTabView : UserControl
             {
                 Header = $"{input.Parameter.Name} ({input.Parameter.TypeName})",
                 Text = input.Text,
-                PlaceholderText = input.TakesValue ? "Value" : "Output",
+                PlaceholderText = input.TakesValue ? Strings.Get("Common/Value") : Strings.Get("Debugger/OutputParameter"),
             };
             var isNull = new CheckBox { Content = "NULL", IsChecked = input.IsNull, IsEnabled = input.TakesValue, MinWidth = 0, VerticalAlignment = VerticalAlignment.Bottom };
-            var useDefault = new CheckBox { Content = "Default", IsChecked = input.UsesDefault, IsEnabled = input.CanUseDefault, MinWidth = 0, VerticalAlignment = VerticalAlignment.Bottom };
+            var useDefault = new CheckBox { Content = Strings.Get("Common/Default"),IsChecked = input.UsesDefault, IsEnabled = input.CanUseDefault, MinWidth = 0, VerticalAlignment = VerticalAlignment.Bottom };
 
             void Sync()
             {
@@ -244,7 +248,7 @@ public sealed partial class DebuggerTabView : UserControl
         }
 
         body.Children.Add(DialogService.CodeBlock(string.Join(";\n", preparation.Statements), 160));
-        var dialog = Dialogs.Create(preparation.Message, body, preparation.ActionTitle, "Cancel");
+        var dialog = Dialogs.Create(preparation.Message, body, preparation.ActionTitle, Strings.Get("Common/Cancel"));
         await using var registration = cancellationToken.Register(() => DispatcherQueue.TryEnqueue(dialog.Hide));
         return await Dialogs.ShowAsync(dialog) == ContentDialogResult.Primary && !cancellationToken.IsCancellationRequested;
     }

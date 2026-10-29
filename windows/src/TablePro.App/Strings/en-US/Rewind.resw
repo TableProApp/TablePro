@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="CannotRestoreMessage" xml:space="preserve">
+    <value>This save can no longer be read. Its record was cleared, or the key that protects saved changes is gone.</value>
+  </data>
+  <data name="CannotRestoreTitle" xml:space="preserve">
+    <value>Cannot restore</value>
+  </data>
+  <data name="ClearConfirmMessage" xml:space="preserve">
+    <value>Saves already committed stay committed. You will not be able to restore their previous values.</value>
+  </data>
+  <data name="ClearConfirmTitle" xml:space="preserve">
+    <value>Clear saved changes?</value>
+  </data>
+  <data name="ClearSavedChanges" xml:space="preserve">
+    <value>Clear saved changes…</value>
+    <comment>Link at the bottom of the Data Rewind pane; opens a confirmation.</comment>
+  </data>
+  <data name="DifferentDatabaseMessage" xml:space="preserve">
+    <value>This save was made in {0}. Switch to it, then restore.</value>
+    <comment>{0} is the database name.</comment>
+  </data>
+  <data name="DifferentDatabaseTitle" xml:space="preserve">
+    <value>Different database</value>
+  </data>
+  <data name="EmptyDisabled" xml:space="preserve">
+    <value>Keeping saved changes is turned off.</value>
+    <comment>Empty state of the Data Rewind pane when the feature is off in Settings.</comment>
+  </data>
+  <data name="EmptyEnabled" xml:space="preserve">
+    <value>No saved changes yet. Saves from the table grid appear here for 7 days.</value>
+    <comment>Empty state of the Data Rewind pane.</comment>
+  </data>
+  <data name="Explanation" xml:space="preserve">
+    <value>Keeps what rows looked like before each grid save, on this PC only, for 7 days. It is encrypted and never synced.</value>
+    <comment>Caption explaining Data Rewind at the bottom of its pane.</comment>
+  </data>
+  <data name="IsRestore" xml:space="preserve">
+    <value>a restore</value>
+    <comment>Tag after a save's summary, lowercase, after " · ": this save was itself a restore.</comment>
+  </data>
+  <data name="NoRowToPutBack" xml:space="preserve">
+    <value>The save holds no row that can be put back.</value>
+  </data>
+  <data name="NothingCanBeRestoredTitle" xml:space="preserve">
+    <value>Nothing can be restored</value>
+  </data>
+  <data name="NothingRestoredTitle" xml:space="preserve">
+    <value>Nothing was restored</value>
+  </data>
+  <data name="ReadOnlyMessage" xml:space="preserve">
+    <value>Safe Mode is Read-Only on this connection, so a save cannot be restored.</value>
+    <comment>"Safe Mode" and "Read-Only" are the names of the setting and its level elsewhere in the app; translate them the same way.</comment>
+  </data>
+  <data name="ReadOnlyTitle" xml:space="preserve">
+    <value>Read-only connection</value>
+  </data>
+  <data name="RefusalNoPrimaryKey" xml:space="preserve">
+    <value>The table has no primary key, so this row cannot be identified.</value>
+    <comment>Why a saved row cannot be restored.</comment>
+  </data>
+  <data name="RefusalServerAssignedKey" xml:space="preserve">
+    <value>The server chose this row's key.</value>
+    <comment>Why a saved row cannot be restored.</comment>
+  </data>
+  <data name="RefusalValueTooLarge" xml:space="preserve">
+    <value>A value was too large to keep.</value>
+    <comment>Why a saved row cannot be restored.</comment>
+  </data>
+  <data name="RestoreButton" xml:space="preserve">
+    <value>Restore</value>
+    <comment>Primary button (verb) of the restore review sheet.</comment>
+  </data>
+  <data name="RestoreButtonName" xml:space="preserve">
+    <value>Restore {0} to before this save</value>
+    <comment>Screen reader name of the restore button. {0} is the table name.</comment>
+  </data>
+  <data name="RestoreButtonTip" xml:space="preserve">
+    <value>Restore previous values</value>
+    <comment>Tooltip of the restore button.</comment>
+  </data>
+  <data name="RestoreReviewTitle" xml:space="preserve">
+    <value>Restore {0} to before the save</value>
+    <comment>Title of the restore review sheet. {0} is the table name.</comment>
+  </data>
+  <data name="RestoredAt" xml:space="preserve">
+    <value>restored {0}</value>
+    <comment>Tag after a save's summary, lowercase, after " · ". {0} is the time it was restored.</comment>
+  </data>
+  <data name="Restored_One" xml:space="preserve">
+    <value>Restored {0:N0} row in {1}.</value>
+    <comment>{0} is the number of rows restored, {1} the table name.</comment>
+  </data>
+  <data name="Restored_Other" xml:space="preserve">
+    <value>Restored {0:N0} rows in {1}.</value>
+    <comment>{0} is the number of rows restored, {1} the table name.</comment>
+  </data>
+  <data name="ReviewNothingIfChanged" xml:space="preserve">
+    <value>{0} If any of these rows changed since the save, nothing is restored.</value>
+    <comment>First line of the review sheet, written as a SQL comment. {0} is the SQL comment marker such as "--" and must stay first.</comment>
+  </data>
+  <data name="ReviewRowsSkipped_One" xml:space="preserve">
+    <value>{1} {0:N0} row is skipped: {2}</value>
+    <comment>Line of the review sheet, written as a SQL comment. {1} is the SQL comment marker such as "--" and must stay first; {0} is the number of rows skipped; {2} the reasons.</comment>
+  </data>
+  <data name="ReviewRowsSkipped_Other" xml:space="preserve">
+    <value>{1} {0:N0} rows are skipped: {2}</value>
+    <comment>Line of the review sheet, written as a SQL comment. {1} is the SQL comment marker such as "--" and must stay first; {0} is the number of rows skipped; {2} the reasons.</comment>
+  </data>
+  <data name="RowChangedMessage" xml:space="preserve">
+    <value>A row changed or disappeared since this save, so restoring it would overwrite someone else's work. Nothing was changed.</value>
+  </data>
+  <data name="RowsCannotBeRestored_One" xml:space="preserve">
+    <value>{0:N0} row cannot be restored</value>
+    <comment>{0} is the number of rows in a save that cannot be restored.</comment>
+  </data>
+  <data name="RowsCannotBeRestored_Other" xml:space="preserve">
+    <value>{0:N0} rows cannot be restored</value>
+    <comment>{0} is the number of rows in a save that cannot be restored.</comment>
+  </data>
+  <data name="ThisTableOnly" xml:space="preserve">
+    <value>This table only</value>
+    <comment>Header of a toggle switch that narrows the list to the selected tab's table.</comment>
+  </data>
+</root>

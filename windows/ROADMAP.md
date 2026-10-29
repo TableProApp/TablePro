@@ -154,7 +154,7 @@ What the Windows app has, compared with the macOS app feature by feature, and wh
 | Settings | Built | |
 | Crash log on disk | Built | `%LOCALAPPDATA%\TablePro\logs\errors.log` |
 | Keyboard shortcut customization | Built | Settings > Keyboard records chords, warns about conflicts and applies at once; grid keys are fixed |
-| Translations | Not built | English only |
+| Translations | Partial | English, French, Korean, Turkish, Vietnamese, Simplified and Traditional Chinese, as on macOS, with a language picker in Settings > General. Text composed in Core, Storage and the drivers (validation messages, plan and analyzer notes, engine errors) is still English, and translations made for Windows alone await native review |
 | Installer, MSIX package, winget, updates | Built | MSIX, a per-user zip installer, a windows-v* release workflow, a winget template and update checks with a beta channel. Signing needs the release certificate secret |
 | Arm64 builds | Partial | The project builds for win-arm64; not tested on hardware |
 

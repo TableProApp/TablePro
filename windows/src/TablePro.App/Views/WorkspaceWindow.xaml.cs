@@ -41,14 +41,14 @@ public sealed partial class WorkspaceWindow : Window
         // The settings store reaches the window through the app host; IWorkspaceHost does not carry it yet.
         _settings = (host as AppHost)?.Settings;
         InitializeComponent();
-        Title = $"{viewModel.Title} - TablePro";
+        Title = Strings.Format("Workspace/WindowTitle", viewModel.Title);
         WindowChrome.Apply(this, AppTitleBar, host.Backdrop, host.Theme, 1440, 900);
         CaptionButtonsColumn.Width = new GridLength(Math.Max(140, AppWindow.TitleBar.RightInset / (Root.XamlRoot?.RasterizationScale ?? 1)));
 
         ColorDot.Fill = ConnectionColors.Brush(viewModel.Profile.Color);
         ColorDot.Visibility = viewModel.Profile.Color == ConnectionColor.None ? Visibility.Collapsed : Visibility.Visible;
         SafeModeBadge.Visibility = string.IsNullOrEmpty(viewModel.SafeModeText) ? Visibility.Collapsed : Visibility.Visible;
-        ConnectionStatus.Text = $"Connected to {viewModel.Profile.Subtitle}";
+        ConnectionStatus.Text = Strings.Format("Workspace/ConnectedTo", viewModel.Profile.Subtitle);
         SidePane.Visibility = Visibility.Collapsed;
 
         viewModel.Tabs.CollectionChanged += OnTabsChanged;
@@ -149,11 +149,11 @@ public sealed partial class WorkspaceWindow : Window
         RunSqlFileItem.KeyboardAcceleratorTextOverride = _shortcuts.TextFor(ShortcutIds.RunSqlFile);
         SettingsItem.KeyboardAcceleratorTextOverride = _shortcuts.TextFor(ShortcutIds.OpenSettings);
         DisconnectItem.KeyboardAcceleratorTextOverride = _shortcuts.TextFor(ShortcutIds.Disconnect);
-        ToolTipService.SetToolTip(NewQueryButton, _shortcuts.Hint("New query", ShortcutIds.NewTab));
-        ToolTipService.SetToolTip(HistoryButton, _shortcuts.Hint("Query history", ShortcutIds.ToggleHistory));
-        ToolTipService.SetToolTip(FavoritesButton, _shortcuts.Hint("Favorites", ShortcutIds.ShowFavoritesList));
-        ToolTipService.SetToolTip(AssistantButton, _shortcuts.Hint("AI assistant", ShortcutIds.ToggleAssistant));
-        SearchBox.PlaceholderText = _shortcuts.Hint("Search tables", ShortcutIds.FocusSidebarSearch);
+        ToolTipService.SetToolTip(NewQueryButton, _shortcuts.Hint(Strings.Get("Workspace/NewQuery"), ShortcutIds.NewTab));
+        ToolTipService.SetToolTip(HistoryButton, _shortcuts.Hint(Strings.Get("Workspace/QueryHistory"), ShortcutIds.ToggleHistory));
+        ToolTipService.SetToolTip(FavoritesButton, _shortcuts.Hint(Strings.Get("Workspace/Favorites"), ShortcutIds.ShowFavoritesList));
+        ToolTipService.SetToolTip(AssistantButton, _shortcuts.Hint(Strings.Get("Workspace/AiAssistant"), ShortcutIds.ToggleAssistant));
+        SearchBox.PlaceholderText = _shortcuts.Hint(Strings.Get("Workspace/SearchTables"), ShortcutIds.FocusSidebarSearch);
         ShortcutsChanged?.Invoke(this, EventArgs.Empty);
     }
 
@@ -523,15 +523,15 @@ public sealed partial class WorkspaceWindow : Window
         var menu = new MenuFlyout();
         if (obj.HasRows)
         {
-            menu.Items.Add(GridCommands.Item("Open", "", () => ViewModel.OpenTable(obj), "Enter"));
-            menu.Items.Add(GridCommands.Item("Structure", "", () => ViewModel.OpenTable(obj, TableTabSection.Structure)));
-            menu.Items.Add(GridCommands.Item("Query in New Tab", "", () => ViewModel.QueryObject(obj)));
+            menu.Items.Add(GridCommands.Item(Strings.Get("Common/Open"),"", () => ViewModel.OpenTable(obj), "Enter"));
+            menu.Items.Add(GridCommands.Item(Strings.Get("Workspace/MenuStructure"),"", () => ViewModel.OpenTable(obj, TableTabSection.Structure)));
+            menu.Items.Add(GridCommands.Item(Strings.Get("Workspace/MenuQueryInNewTab"),"", () => ViewModel.QueryObject(obj)));
         }
 
-        menu.Items.Add(GridCommands.Item("Show Definition", "", () => ViewModel.OpenTable(obj, TableTabSection.Definition)));
+        menu.Items.Add(GridCommands.Item(Strings.Get("Workspace/MenuShowDefinition"),"", () => ViewModel.OpenTable(obj, TableTabSection.Definition)));
         if (ViewModel.Session.Database is IRoutineDebugger debugger && debugger.GetDebugTarget(obj) is { } target)
         {
-            menu.Items.Add(GridCommands.Item("Debug", "\xEBE8", () =>
+            menu.Items.Add(GridCommands.Item(Strings.Get("Workspace/MenuDebug"), "\xEBE8", () =>
             {
                 var tab = new DebuggerTabViewModel(ViewModel.Context, debugger, target);
                 ViewModel.Tabs.Add(tab);
@@ -541,10 +541,10 @@ public sealed partial class WorkspaceWindow : Window
 
         if (obj.Kind == ObjectKind.Table && ViewModel.IsSql)
         {
-            menu.Items.Add(GridCommands.Item("Build Join Query", "\xE71B", () => JoinBuilderTabViewModel.Open(ViewModel, [obj])));
+            menu.Items.Add(GridCommands.Item(Strings.Get("Workspace/MenuBuildJoinQuery"),"\xE71B", () => JoinBuilderTabViewModel.Open(ViewModel, [obj])));
             if (!ViewModel.Profile.IsReadOnly)
             {
-                menu.Items.Add(GridCommands.Item("Generate Rows…", "\xE8A5", async () =>
+                menu.Items.Add(GridCommands.Item(Strings.Get("Workspace/MenuGenerateRows"),"\xE8A5", async () =>
                 {
                     if (await RowGeneratorDialog.ShowAsync(ViewModel.Context, obj, sql => ViewModel.NewQuery(sql))
                         && ViewModel.Tabs.OfType<TableTabViewModel>().FirstOrDefault(t => t.Table.Name == obj.Name) is { } open)
@@ -557,15 +557,15 @@ public sealed partial class WorkspaceWindow : Window
 
         if (ViewModel.IsSql && _host is AppHost app)
         {
-            menu.Items.Add(GridCommands.Item("Copy to Connection…", "\xE8C8", async () => await CopyObjectsDialog.ShowAsync(ViewModel.Context, [obj], CopyTargets.From(app, ViewModel.Context))));
+            menu.Items.Add(GridCommands.Item(Strings.Get("Workspace/MenuCopyToConnection"),"\xE8C8", async () => await CopyObjectsDialog.ShowAsync(ViewModel.Context, [obj], CopyTargets.From(app, ViewModel.Context))));
         }
 
         menu.Items.Add(new MenuFlyoutSeparator());
-        menu.Items.Add(GridCommands.Item("Copy Name", "", () => GridCommands.SetClipboard(obj.Name.Name)));
-        menu.Items.Add(GridCommands.Item("Copy Qualified Name", "", () => GridCommands.SetClipboard(dialect.Qualify(obj.Name))));
+        menu.Items.Add(GridCommands.Item(Strings.Get("Workspace/MenuCopyName"),"", () => GridCommands.SetClipboard(obj.Name.Name)));
+        menu.Items.Add(GridCommands.Item(Strings.Get("Workspace/MenuCopyQualifiedName"),"", () => GridCommands.SetClipboard(dialect.Qualify(obj.Name))));
         if (obj.Kind == ObjectKind.Table && ViewModel.IsSql)
         {
-            var generate = new MenuFlyoutSubItem { Text = "Generate SQL", Icon = new FontIcon { Glyph = "" } };
+            var generate = new MenuFlyoutSubItem { Text = Strings.Get("Workspace/MenuGenerateSql"),Icon = new FontIcon { Glyph = "" } };
             generate.Items.Add(GridCommands.Item("SELECT", null, async () => ViewModel.NewQuery(await SqlTemplates.SelectAsync(ViewModel.Session, obj))));
             generate.Items.Add(GridCommands.Item("INSERT", null, async () => ViewModel.NewQuery(await SqlTemplates.InsertAsync(ViewModel.Session, obj))));
             generate.Items.Add(GridCommands.Item("UPDATE", null, async () => ViewModel.NewQuery(await SqlTemplates.UpdateAsync(ViewModel.Session, obj))));
@@ -575,19 +575,19 @@ public sealed partial class WorkspaceWindow : Window
 
         if (obj.HasRows)
         {
-            menu.Items.Add(GridCommands.Item("Export Data", "", async () => await ExportTableAsync(obj)));
+            menu.Items.Add(GridCommands.Item(Strings.Get("Workspace/MenuExportData"),"", async () => await ExportTableAsync(obj)));
         }
 
         if (obj.Kind == ObjectKind.Table && ViewModel.CanEditStructure)
         {
             menu.Items.Add(new MenuFlyoutSeparator());
-            menu.Items.Add(GridCommands.Item("Rename", "", async () => await ViewModel.RenameAsync(obj), "F2"));
-            menu.Items.Add(GridCommands.Item("Truncate", "", async () => await ViewModel.TruncateAsync(obj)));
+            menu.Items.Add(GridCommands.Item(Strings.Get("Common/Rename"),"", async () => await ViewModel.RenameAsync(obj), "F2"));
+            menu.Items.Add(GridCommands.Item(Strings.Get("Workspace/Truncate"),"", async () => await ViewModel.TruncateAsync(obj)));
         }
 
         if (ViewModel.CanEditStructure)
         {
-            menu.Items.Add(GridCommands.Item("Drop", "", async () => await ViewModel.DropObjectAsync(obj), "Delete"));
+            menu.Items.Add(GridCommands.Item(Strings.Get("Workspace/Drop"),"", async () => await ViewModel.DropObjectAsync(obj), "Delete"));
         }
 
         menu.ShowAt(element, e.GetPosition(element));
@@ -604,7 +604,7 @@ public sealed partial class WorkspaceWindow : Window
         }
         catch (Exception ex)
         {
-            await ViewModel.Context.Dialogs.ShowErrorAsync("Export failed", ex.Message);
+            await ViewModel.Context.Dialogs.ShowErrorAsync(Strings.Get("Workspace/ExportFailed"), ex.Message);
         }
     }
 
@@ -655,16 +655,16 @@ public sealed partial class WorkspaceWindow : Window
 
     private void OnShowHistory(object sender, RoutedEventArgs e) => ShowHistory();
 
-    private void ShowHistory() => ShowSidePane("History", _host.CreateHistoryPane(ViewModel, InsertIntoEditor, RunInNewTab), 420);
+    private void ShowHistory() => ShowSidePane(Strings.Get("Workspace/SidePaneHistory"), _host.CreateHistoryPane(ViewModel, InsertIntoEditor, RunInNewTab), 420);
 
     private void OnShowSqlFiles(object sender, RoutedEventArgs e) =>
-        ToggleSidePane<Views.SqlFiles.SqlFilesPane>(() => ShowSidePane("SQL Files", new Views.SqlFiles.SqlFilesPane(ViewModel, _host, InsertIntoEditor), 380));
+        ToggleSidePane<Views.SqlFiles.SqlFilesPane>(() => ShowSidePane(Strings.Get("Workspace/SidePaneSqlFiles"), new Views.SqlFiles.SqlFilesPane(ViewModel, _host, InsertIntoEditor), 380));
 
-    private void OnShowFavorites(object sender, RoutedEventArgs e) => ShowSidePane("Favorites", _host.CreateFavoritesPane(ViewModel, InsertIntoEditor), 360);
+    private void OnShowFavorites(object sender, RoutedEventArgs e) => ShowSidePane(Strings.Get("Workspace/Favorites"), _host.CreateFavoritesPane(ViewModel, InsertIntoEditor), 360);
 
     private void OnShowAssistant(object sender, RoutedEventArgs e) => ShowAssistant();
 
-    private void ShowAssistant() => ShowSidePane("Assistant", _host.CreateAssistantPane(ViewModel, CurrentSql, InsertIntoEditor), 420);
+    private void ShowAssistant() => ShowSidePane(Strings.Get("Workspace/SidePaneAssistant"), _host.CreateAssistantPane(ViewModel, CurrentSql, InsertIntoEditor), 420);
 
     private string CurrentSql() =>
         ViewModel.SelectedTab is QueryTabViewModel query && _items.TryGetValue(query, out var item) && item.Content is QueryTabView view
@@ -766,7 +766,7 @@ public sealed partial class WorkspaceWindow : Window
                 await tab.LoadAsync();
             }
         };
-        ShowSidePane("Data Rewind", pane, 380);
+        ShowSidePane(Strings.Get("Workspace/SidePaneDataRewind"), pane, 380);
     }
 
     private void OnDiagram(object sender, RoutedEventArgs e)
@@ -779,16 +779,16 @@ public sealed partial class WorkspaceWindow : Window
     private async void OnDumpDatabase(object sender, RoutedEventArgs e)
     {
         var dialogs = ViewModel.Context.Dialogs;
-        var includeData = new CheckBox { Content = "Include data", IsChecked = true };
+        var includeData = new CheckBox { Content = Strings.Get("Workspace/DumpIncludeData"), IsChecked = true };
         var panel = new StackPanel { Spacing = 12 };
-        panel.Children.Add(new TextBlock { Text = $"Writes the structure of every table and view in {ViewModel.Session.CurrentSchema ?? ViewModel.Profile.Name} to a SQL file.", TextWrapping = TextWrapping.Wrap, MaxWidth = 420 });
+        panel.Children.Add(new TextBlock { Text = Strings.Format("Workspace/DumpMessage", ViewModel.Session.CurrentSchema ?? ViewModel.Profile.Name), TextWrapping = TextWrapping.Wrap, MaxWidth = 420 });
         panel.Children.Add(includeData);
-        if (await dialogs.ShowAsync(dialogs.Create("Export Database", panel, "Export…", "Cancel")) != ContentDialogResult.Primary)
+        if (await dialogs.ShowAsync(dialogs.Create(Strings.Get("Workspace/DumpTitle"), panel, Strings.Get("Workspace/ExportEllipsis"), Strings.Get("Common/Cancel"))) != ContentDialogResult.Primary)
         {
             return;
         }
 
-        var file = await dialogs.PickSaveFileAsync($"{ViewModel.Profile.Name}-dump", "SQL file", ".sql");
+        var file = await dialogs.PickSaveFileAsync($"{ViewModel.Profile.Name}-dump", Strings.Get("Workspace/SqlFileType"), ".sql");
         if (file is null)
         {
             return;
@@ -798,11 +798,11 @@ public sealed partial class WorkspaceWindow : Window
         {
             var progress = new Progress<string>(message => TabStatus.Text = message);
             var tables = await DatabaseDumper.DumpAsync(ViewModel.Session, file.Path, includeData.IsChecked == true, progress, CancellationToken.None);
-            ViewModel.Context.Notify($"Exported {tables} objects to {file.Name}.");
+            ViewModel.Context.Notify(Strings.Plural("Workspace/DumpExported", tables, file.Name));
         }
         catch (Exception ex)
         {
-            await dialogs.ShowErrorAsync("Export failed", ex.Message);
+            await dialogs.ShowErrorAsync(Strings.Get("Workspace/ExportFailed"), ex.Message);
         }
     }
 
@@ -824,7 +824,7 @@ public sealed partial class WorkspaceWindow : Window
     private async void OnCreateTable(object sender, RoutedEventArgs e)
     {
         var types = (ViewModel.Session.Database as ISchemaDdlProvider)?.CommonDataTypes ?? ["integer", "text"];
-        var name = new TextBox { Header = "Table name", PlaceholderText = "new_table" };
+        var name = new TextBox { Header = Strings.Get("Workspace/CreateTableName"), PlaceholderText = "new_table" };
         var rows = new StackPanel { Spacing = 6 };
         void AddRow(string column, string type, bool nullable, bool key)
         {
@@ -833,10 +833,10 @@ public sealed partial class WorkspaceWindow : Window
             row.ColumnDefinitions.Add(new Microsoft.UI.Xaml.Controls.ColumnDefinition { Width = new GridLength(150) });
             row.ColumnDefinitions.Add(new Microsoft.UI.Xaml.Controls.ColumnDefinition { Width = GridLength.Auto });
             row.ColumnDefinitions.Add(new Microsoft.UI.Xaml.Controls.ColumnDefinition { Width = GridLength.Auto });
-            var columnBox = new TextBox { Text = column, PlaceholderText = "column" };
+            var columnBox = new TextBox { Text = column, PlaceholderText = Strings.Get("Workspace/CreateTableColumnPlaceholder") };
             var typeBox = new ComboBox { IsEditable = true, ItemsSource = types.ToList(), Text = type, HorizontalAlignment = HorizontalAlignment.Stretch };
             var nullBox = new CheckBox { Content = "NULL", IsChecked = nullable, MinWidth = 0 };
-            var keyBox = new CheckBox { Content = "Key", IsChecked = key, MinWidth = 0 };
+            var keyBox = new CheckBox { Content = Strings.Get("Workspace/CreateTableKey"), IsChecked = key, MinWidth = 0 };
             Grid.SetColumn(typeBox, 1);
             Grid.SetColumn(nullBox, 2);
             Grid.SetColumn(keyBox, 3);
@@ -849,14 +849,14 @@ public sealed partial class WorkspaceWindow : Window
 
         AddRow("id", types.Count > 0 ? types[0] : "integer", false, true);
         AddRow(string.Empty, types.Count > 1 ? types[1] : "text", true, false);
-        var add = new Button { Content = "Add Column" };
+        var add = new Button { Content = Strings.Get("Workspace/CreateTableAddColumn") };
         add.Click += (_, _) => AddRow(string.Empty, types.Count > 1 ? types[1] : "text", true, false);
         var panel = new StackPanel { Spacing = 12, MinWidth = 480 };
         panel.Children.Add(name);
         panel.Children.Add(new ScrollViewer { Content = rows, MaxHeight = 320 });
         panel.Children.Add(add);
         var dialogs = ViewModel.Context.Dialogs;
-        if (await dialogs.ShowAsync(dialogs.Create("Create Table", panel, "Create", "Cancel")) != ContentDialogResult.Primary || string.IsNullOrWhiteSpace(name.Text))
+        if (await dialogs.ShowAsync(dialogs.Create(Strings.Get("Workspace/CreateTableTitle"), panel, Strings.Get("Workspace/Create"), Strings.Get("Common/Cancel"))) != ContentDialogResult.Primary || string.IsNullOrWhiteSpace(name.Text))
         {
             return;
         }
@@ -908,7 +908,7 @@ public sealed partial class WorkspaceWindow : Window
     public async Task<bool> ConfirmQuitAsync()
     {
         var unsaved = ViewModel.Tabs.Select(t => t.UnsavedWork).OfType<string>().ToArray();
-        if (unsaved.Length > 0 && !await ViewModel.Context.Dialogs.ConfirmAsync("Quit TablePro?", string.Join("\n", unsaved), "Quit Without Saving", destructive: true))
+        if (unsaved.Length > 0 && !await ViewModel.Context.Dialogs.ConfirmAsync(Strings.Get("Workspace/QuitTitle"), string.Join("\n", unsaved), Strings.Get("Workspace/QuitWithoutSaving"), destructive: true))
         {
             return false;
         }
@@ -937,7 +937,7 @@ public sealed partial class WorkspaceWindow : Window
         }
 
         _closing = true;
-        var close = await ViewModel.Context.Dialogs.ConfirmAsync("Close this window?", string.Join("\n", unsaved), "Close Without Saving", destructive: true);
+        var close = await ViewModel.Context.Dialogs.ConfirmAsync(Strings.Get("Workspace/CloseWindowTitle"), string.Join("\n", unsaved), Strings.Get("Workspace/CloseWithoutSaving"), destructive: true);
         _closing = false;
         if (close)
         {

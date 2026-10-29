@@ -1,0 +1,473 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AppliedStatements_One" xml:space="preserve">
+    <value>{0:N0} instruction d’utilisateur et de rôle appliquée.</value>
+  </data>
+  <data name="AppliedStatements_Other" xml:space="preserve">
+    <value>{0:N0} instructions d’utilisateur et de rôle appliquées.</value>
+  </data>
+  <data name="AttributeBypassRls" xml:space="preserve">
+    <value>Contourner la sécurité au niveau des lignes</value>
+  </data>
+  <data name="AttributeCreateDatabases" xml:space="preserve">
+    <value>Créer des bases de données</value>
+  </data>
+  <data name="AttributeCreateRoles" xml:space="preserve">
+    <value>Créer des rôles</value>
+  </data>
+  <data name="AttributeInherit" xml:space="preserve">
+    <value>Hériter des privilèges</value>
+  </data>
+  <data name="AttributeReplication" xml:space="preserve">
+    <value>Réplication</value>
+  </data>
+  <data name="AttributeSuperuser" xml:space="preserve">
+    <value>Superutilisateur</value>
+  </data>
+  <data name="AttributesSegment.Text" xml:space="preserve">
+    <value>Attributs</value>
+  </data>
+  <data name="AuthenticationHeader" xml:space="preserve">
+    <value>Authentification</value>
+  </data>
+  <data name="AvailableAfterSetRole" xml:space="preserve">
+    <value>Disponible après SET ROLE {0}.</value>
+  </data>
+  <data name="BulkActionsButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Actions groupées</value>
+  </data>
+  <data name="BulkActionsButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Actions groupées</value>
+  </data>
+  <data name="CanLogIn" xml:space="preserve">
+    <value>Peut se connecter</value>
+  </data>
+  <data name="CannotApplyTitle" xml:space="preserve">
+    <value>Impossible d’appliquer ces modifications</value>
+  </data>
+  <data name="CategoryAdministration" xml:space="preserve">
+    <value>Administration</value>
+  </data>
+  <data name="CategoryData" xml:space="preserve">
+    <value>Données</value>
+  </data>
+  <data name="CategoryDynamic" xml:space="preserve">
+    <value>Dynamiques</value>
+  </data>
+  <data name="CategoryOther" xml:space="preserve">
+    <value>Autre</value>
+  </data>
+  <data name="CategoryStructure" xml:space="preserve">
+    <value>Structure</value>
+  </data>
+  <data name="ChangePasswordButton" xml:space="preserve">
+    <value>Modifier le mot de passe…</value>
+  </data>
+  <data name="ChangePasswordMenu" xml:space="preserve">
+    <value>Modifier le mot de passe…</value>
+  </data>
+  <data name="ChangePasswordTitle" xml:space="preserve">
+    <value>Modifier le mot de passe</value>
+  </data>
+  <data name="ChangesFailedMessage" xml:space="preserve">
+    <value>{0} {1}
+
+{2}</value>
+  </data>
+  <data name="ChangesFailedTitle" xml:space="preserve">
+    <value>Les modifications ont échoué</value>
+  </data>
+  <data name="CheckOwnedFailedTitle" xml:space="preserve">
+    <value>Impossible de vérifier les objets possédés</value>
+  </data>
+  <data name="ChecklistNoMatch" xml:space="preserve">
+    <value>Aucun privilège ne correspond au filtre.</value>
+  </data>
+  <data name="ChecklistNoScope" xml:space="preserve">
+    <value>Sélectionnez un objet à gauche pour modifier ses privilèges.</value>
+  </data>
+  <data name="ChecklistNoneGrantable" xml:space="preserve">
+    <value>Aucun privilège ne peut être accordé à ce niveau.</value>
+  </data>
+  <data name="ConnectionLimit" xml:space="preserve">
+    <value>Limite de connexions</value>
+  </data>
+  <data name="CopyNameMenu" xml:space="preserve">
+    <value>Copier le nom</value>
+  </data>
+  <data name="CopyPrivilegesFromMenu" xml:space="preserve">
+    <value>Copier les privilèges de…</value>
+  </data>
+  <data name="CopyPrivilegesPrompt" xml:space="preserve">
+    <value>Copier vers {0} les privilèges de&#160;:</value>
+  </data>
+  <data name="CopyPrivilegesTitle" xml:space="preserve">
+    <value>Copier les privilèges</value>
+  </data>
+  <data name="CreateButton" xml:space="preserve">
+    <value>Créer</value>
+  </data>
+  <data name="DiscardButton.Content" xml:space="preserve">
+    <value>Abandonner</value>
+  </data>
+  <data name="DropButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Supprimer</value>
+  </data>
+  <data name="DropButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Supprimer</value>
+  </data>
+  <data name="DropMenu" xml:space="preserve">
+    <value>Supprimer…</value>
+  </data>
+  <data name="DropOwned" xml:space="preserve">
+    <value>Supprimer les objets possédés</value>
+  </data>
+  <data name="DropOwnedPrompt" xml:space="preserve">
+    <value>Choisissez ce qu’il advient de ces objets lorsque le rôle est supprimé.</value>
+  </data>
+  <data name="DropOwnedWarning" xml:space="preserve">
+    <value>Les tables, vues et fonctions appartenant à ce rôle dans la base de données actuelle seront supprimées.</value>
+  </data>
+  <data name="DropRoleButton" xml:space="preserve">
+    <value>Supprimer le rôle</value>
+  </data>
+  <data name="EarlierStatementsApplied_One" xml:space="preserve">
+    <value>L’instruction précédente a été appliquée.</value>
+  </data>
+  <data name="EarlierStatementsApplied_Other" xml:space="preserve">
+    <value>Les {0} instructions précédentes ont été appliquées.</value>
+  </data>
+  <data name="EditMembershipButton" xml:space="preserve">
+    <value>Modifier l’appartenance…</value>
+  </data>
+  <data name="ExecuteButton" xml:space="preserve">
+    <value>Exécuter</value>
+  </data>
+  <data name="FilterRoles" xml:space="preserve">
+    <value>Filtrer les rôles</value>
+  </data>
+  <data name="GenerateButton" xml:space="preserve">
+    <value>Générer</value>
+  </data>
+  <data name="GrantAllItem.Text" xml:space="preserve">
+    <value>Tout accorder</value>
+  </data>
+  <data name="GrantManyAction_One" xml:space="preserve">
+    <value>Accorder {0} privilège sur {1}</value>
+  </data>
+  <data name="GrantManyAction_Other" xml:space="preserve">
+    <value>Accorder {0} privilèges sur {1}</value>
+  </data>
+  <data name="GrantOneAction" xml:space="preserve">
+    <value>Accorder {0} sur {1}</value>
+  </data>
+  <data name="GrantableName" xml:space="preserve">
+    <value>Peut accorder à d’autres</value>
+  </data>
+  <data name="GrantableToolTip" xml:space="preserve">
+    <value>Peut accorder ce privilège à d’autres</value>
+  </data>
+  <data name="GrantedOn" xml:space="preserve">
+    <value>Accordé sur {0}</value>
+  </data>
+  <data name="GrantsErrorBar.Title" xml:space="preserve">
+    <value>Impossible de charger les privilèges</value>
+  </data>
+  <data name="GrantsRetryButton.Content" xml:space="preserve">
+    <value>Réessayer</value>
+  </data>
+  <data name="Host" xml:space="preserve">
+    <value>Hôte</value>
+  </data>
+  <data name="HostDescription" xml:space="preserve">
+    <value>Utilisez % pour autoriser n’importe quel hôte.</value>
+  </data>
+  <data name="HostRequired" xml:space="preserve">
+    <value>Saisissez un hôte, ou % pour n’importe quel hôte.</value>
+  </data>
+  <data name="IdentityHeader" xml:space="preserve">
+    <value>Identité</value>
+  </data>
+  <data name="InheritedAutomatically" xml:space="preserve">
+    <value>Hérité automatiquement.</value>
+  </data>
+  <data name="InheritedFrom" xml:space="preserve">
+    <value>Hérité de {0}</value>
+  </data>
+  <data name="KindHeader" xml:space="preserve">
+    <value>Type</value>
+  </data>
+  <data name="KindRole" xml:space="preserve">
+    <value>Rôle</value>
+  </data>
+  <data name="KindUser" xml:space="preserve">
+    <value>Utilisateur</value>
+  </data>
+  <data name="LimitsHeader" xml:space="preserve">
+    <value>Limites</value>
+  </data>
+  <data name="LoadErrorBar.Title" xml:space="preserve">
+    <value>Impossible de charger les utilisateurs et les rôles</value>
+  </data>
+  <data name="LoadRetryButton.Content" xml:space="preserve">
+    <value>Réessayer</value>
+  </data>
+  <data name="LoadingPrivileges" xml:space="preserve">
+    <value>Chargement des privilèges…</value>
+  </data>
+  <data name="MemberOf" xml:space="preserve">
+    <value>Membre de</value>
+  </data>
+  <data name="MembershipHeader" xml:space="preserve">
+    <value>Appartenance</value>
+  </data>
+  <data name="NameTaken" xml:space="preserve">
+    <value>Un utilisateur ou un rôle portant ce nom existe déjà.</value>
+  </data>
+  <data name="NewPassword" xml:space="preserve">
+    <value>Nouveau mot de passe</value>
+  </data>
+  <data name="NewPrincipalButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Nouvel utilisateur ou rôle</value>
+  </data>
+  <data name="NewPrincipalButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Nouvel utilisateur ou rôle</value>
+  </data>
+  <data name="NewPrincipalTitle" xml:space="preserve">
+    <value>Nouvel utilisateur ou rôle</value>
+  </data>
+  <data name="NoRolesMatch" xml:space="preserve">
+    <value>Aucun rôle ne correspond au filtre.</value>
+  </data>
+  <data name="NoRolesToJoin" xml:space="preserve">
+    <value>Il n’y a aucun rôle à rejoindre.</value>
+  </data>
+  <data name="NoSelection.Text" xml:space="preserve">
+    <value>Sélectionnez un utilisateur ou un rôle pour afficher ses privilèges.</value>
+  </data>
+  <data name="NotCommittedTitle" xml:space="preserve">
+    <value>Les modifications n’ont pas été validées</value>
+  </data>
+  <data name="NothingApplied" xml:space="preserve">
+    <value>Rien n’a été appliqué.</value>
+  </data>
+  <data name="NothingAppliedTitle" xml:space="preserve">
+    <value>Rien n’a été appliqué</value>
+  </data>
+  <data name="OwnsObjectsTitle" xml:space="preserve">
+    <value>«&#160;{0}&#160;» possède des objets de base de données</value>
+  </data>
+  <data name="Password" xml:space="preserve">
+    <value>Mot de passe</value>
+  </data>
+  <data name="PasswordsDoNotMatch" xml:space="preserve">
+    <value>Les mots de passe ne correspondent pas.</value>
+  </data>
+  <data name="PendingChanges_One" xml:space="preserve">
+    <value>{0:N0} modification en attente</value>
+  </data>
+  <data name="PendingChanges_Other" xml:space="preserve">
+    <value>{0:N0} modifications en attente</value>
+  </data>
+  <data name="PendingPasswordNote" xml:space="preserve">
+    <value>Un nouveau mot de passe sera défini lorsque vous appliquerez les modifications.</value>
+  </data>
+  <data name="PrincipalFilterBox.PlaceholderText" xml:space="preserve">
+    <value>Filtrer les utilisateurs et les rôles</value>
+  </data>
+  <data name="PrincipalFilterBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Filtrer les utilisateurs et les rôles</value>
+  </data>
+  <data name="PrincipalList.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Utilisateurs et rôles</value>
+  </data>
+  <data name="PrivilegeFilterBox.PlaceholderText" xml:space="preserve">
+    <value>Filtrer les privilèges</value>
+  </data>
+  <data name="PrivilegeFilterBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Filtrer les privilèges</value>
+  </data>
+  <data name="PrivilegesSegment.Text" xml:space="preserve">
+    <value>Privilèges</value>
+  </data>
+  <data name="ReadOnlyMessage" xml:space="preserve">
+    <value>Le Mode sécurisé est en Lecture seule sur cette connexion&#160;: les utilisateurs et les rôles ne peuvent donc pas être modifiés.</value>
+  </data>
+  <data name="ReadOnlyTitle" xml:space="preserve">
+    <value>Connexion en lecture seule</value>
+  </data>
+  <data name="ReassignOwned" xml:space="preserve">
+    <value>Réattribuer les objets possédés</value>
+  </data>
+  <data name="ReassignTo" xml:space="preserve">
+    <value>Réattribuer à</value>
+  </data>
+  <data name="RedoAction" xml:space="preserve">
+    <value>Rétablir&#160;: {0}</value>
+  </data>
+  <data name="RefreshButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Actualiser</value>
+  </data>
+  <data name="RefreshButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Actualiser</value>
+  </data>
+  <data name="RenameEllipsis" xml:space="preserve">
+    <value>Renommer…</value>
+  </data>
+  <data name="RenameTitle" xml:space="preserve">
+    <value>Renommer {0}</value>
+  </data>
+  <data name="ReviewApplyButton.Content" xml:space="preserve">
+    <value>Examiner et appliquer…</value>
+  </data>
+  <data name="ReviewTitle" xml:space="preserve">
+    <value>Examiner les modifications des utilisateurs et des rôles</value>
+  </data>
+  <data name="ReviewTitlePasswordsHidden" xml:space="preserve">
+    <value>Examiner les modifications des utilisateurs et des rôles (mots de passe masqués)</value>
+  </data>
+  <data name="RevokeAllItem.Text" xml:space="preserve">
+    <value>Tout révoquer</value>
+  </data>
+  <data name="RevokeManyAction_One" xml:space="preserve">
+    <value>Révoquer {0} privilège sur {1}</value>
+  </data>
+  <data name="RevokeManyAction_Other" xml:space="preserve">
+    <value>Révoquer {0} privilèges sur {1}</value>
+  </data>
+  <data name="RevokeOneAction" xml:space="preserve">
+    <value>Révoquer {0} sur {1}</value>
+  </data>
+  <data name="RoleAttributesHeader" xml:space="preserve">
+    <value>Attributs du rôle</value>
+  </data>
+  <data name="RoleCount_One" xml:space="preserve">
+    <value>{0:N0} rôle</value>
+  </data>
+  <data name="RoleCount_Other" xml:space="preserve">
+    <value>{0:N0} rôles</value>
+  </data>
+  <data name="RolledBack" xml:space="preserve">
+    <value>Toutes les modifications ont été annulées.</value>
+  </data>
+  <data name="ScopeModeAll.Content" xml:space="preserve">
+    <value>Tous les objets</value>
+  </data>
+  <data name="ScopeModeGranted.Content" xml:space="preserve">
+    <value>Accordé</value>
+  </data>
+  <data name="ScopeModes.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Afficher</value>
+  </data>
+  <data name="ScopeSearch.PlaceholderText" xml:space="preserve">
+    <value>Rechercher des tables</value>
+  </data>
+  <data name="ScopeSearch.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Rechercher des tables</value>
+  </data>
+  <data name="ScopeSummaryAll" xml:space="preserve">
+    <value>Tous ({0})</value>
+  </data>
+  <data name="ScopeSummaryConnectToBrowse" xml:space="preserve">
+    <value>Connectez-vous à cette base de données pour la parcourir</value>
+  </data>
+  <data name="ScopeSummaryGrantable" xml:space="preserve">
+    <value>{0} (transmissible)</value>
+  </data>
+  <data name="ScopeSummaryGrantsInside_One" xml:space="preserve">
+    <value>{0} attribution interne</value>
+  </data>
+  <data name="ScopeSummaryGrantsInside_Other" xml:space="preserve">
+    <value>{0} attributions internes</value>
+  </data>
+  <data name="ScopeSummaryNone" xml:space="preserve">
+    <value>Aucun</value>
+  </data>
+  <data name="ScopeSummaryOverflow" xml:space="preserve">
+    <value>{0} +{1}</value>
+  </data>
+  <data name="ScopeTree.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Objets</value>
+  </data>
+  <data name="SearchFailedTitle" xml:space="preserve">
+    <value>Impossible de rechercher les objets</value>
+  </data>
+  <data name="SectionGranted" xml:space="preserve">
+    <value>Accordé</value>
+  </data>
+  <data name="SectionNotGranted" xml:space="preserve">
+    <value>Non accordé</value>
+  </data>
+  <data name="SectionPartlyGranted" xml:space="preserve">
+    <value>Partiellement accordé</value>
+  </data>
+  <data name="SelfImpactMessage" xml:space="preserve">
+    <value>{0} Vous risquez de perdre l’accès à ce serveur.</value>
+  </data>
+  <data name="SelfImpactTitle" xml:space="preserve">
+    <value>Cela concerne votre propre compte</value>
+  </data>
+  <data name="SetPasswordButton" xml:space="preserve">
+    <value>Définir le mot de passe</value>
+  </data>
+  <data name="StageCreated" xml:space="preserve">
+    <value>Sera créé lorsque vous appliquerez les modifications</value>
+  </data>
+  <data name="StageDropped" xml:space="preserve">
+    <value>Sera supprimé lorsque vous appliquerez les modifications</value>
+  </data>
+  <data name="StageModified" xml:space="preserve">
+    <value>Contient des modifications non enregistrées</value>
+  </data>
+  <data name="StageModifiedShort" xml:space="preserve">
+    <value>Modifié</value>
+  </data>
+  <data name="StatementDidNotRun" xml:space="preserve">
+    <value>L’instruction ne s’est pas exécutée.</value>
+  </data>
+  <data name="StatementFailed" xml:space="preserve">
+    <value>L’instruction {0} sur {1} a échoué ({2}).</value>
+  </data>
+  <data name="SuperuserNote" xml:space="preserve">
+    <value>Un superutilisateur contourne toutes les vérifications d’autorisations.</value>
+  </data>
+  <data name="UndoAction" xml:space="preserve">
+    <value>Annuler&#160;: {0}</value>
+  </data>
+  <data name="UndoStagedDropMenu" xml:space="preserve">
+    <value>Annuler la suppression en attente</value>
+  </data>
+  <data name="Unlimited" xml:space="preserve">
+    <value>Illimité</value>
+  </data>
+  <data name="UnsavedWork_One" xml:space="preserve">
+    <value>{0:N0} modification en attente pour les utilisateurs et les rôles</value>
+  </data>
+  <data name="UnsavedWork_Other" xml:space="preserve">
+    <value>{0:N0} modifications en attente pour les utilisateurs et les rôles</value>
+  </data>
+  <data name="UserCount_One" xml:space="preserve">
+    <value>{0:N0} utilisateur</value>
+  </data>
+  <data name="UserCount_Other" xml:space="preserve">
+    <value>{0:N0} utilisateurs</value>
+  </data>
+  <data name="UsersAndRoles" xml:space="preserve">
+    <value>{0}, {1}</value>
+  </data>
+  <data name="VerifyPassword" xml:space="preserve">
+    <value>Confirmer</value>
+  </data>
+</root>

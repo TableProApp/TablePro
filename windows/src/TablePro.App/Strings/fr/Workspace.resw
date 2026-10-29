@@ -1,0 +1,405 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AiAssistant" xml:space="preserve">
+    <value>Assistant IA</value>
+  </data>
+  <data name="AssistantButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Assistant IA</value>
+  </data>
+  <data name="BadgeReadOnly" xml:space="preserve">
+    <value>Lecture seule</value>
+  </data>
+  <data name="BadgeSafeMode" xml:space="preserve">
+    <value>Mode sécurisé</value>
+  </data>
+  <data name="CloseSidePaneButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Fermer</value>
+  </data>
+  <data name="CloseSidePaneButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Fermer</value>
+  </data>
+  <data name="CloseTabMessage" xml:space="preserve">
+    <value>{0} Elles seront perdues à la fermeture.</value>
+  </data>
+  <data name="CloseTabTitle" xml:space="preserve">
+    <value>Fermer l’onglet&#160;?</value>
+  </data>
+  <data name="CloseWindowTitle" xml:space="preserve">
+    <value>Fermer cette fenêtre&#160;?</value>
+  </data>
+  <data name="CloseWithoutSaving" xml:space="preserve">
+    <value>Fermer sans enregistrer</value>
+  </data>
+  <data name="ConnectedTo" xml:space="preserve">
+    <value>Connecté à {0}</value>
+  </data>
+  <data name="CopyConnectMessage" xml:space="preserve">
+    <value>Saisissez le mot de passe pour copier vers cette connexion.</value>
+  </data>
+  <data name="CopyConnectTitle" xml:space="preserve">
+    <value>Se connecter à {0}</value>
+  </data>
+  <data name="CountBillions" xml:space="preserve">
+    <value>{0:0.#}&#160;Md</value>
+  </data>
+  <data name="CountMillions" xml:space="preserve">
+    <value>{0:0.#}&#160;M</value>
+  </data>
+  <data name="CountThousands" xml:space="preserve">
+    <value>{0:0.#}&#160;k</value>
+  </data>
+  <data name="Create" xml:space="preserve">
+    <value>Créer</value>
+  </data>
+  <data name="CreateTableAddColumn" xml:space="preserve">
+    <value>Ajouter une colonne</value>
+  </data>
+  <data name="CreateTableButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Créer une table</value>
+  </data>
+  <data name="CreateTableButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Créer une table</value>
+  </data>
+  <data name="CreateTableColumnPlaceholder" xml:space="preserve">
+    <value>colonne</value>
+  </data>
+  <data name="CreateTableKey" xml:space="preserve">
+    <value>Clé</value>
+  </data>
+  <data name="CreateTableName" xml:space="preserve">
+    <value>Nom de la table</value>
+  </data>
+  <data name="CreateTableReviewTitle" xml:space="preserve">
+    <value>Créer une table</value>
+  </data>
+  <data name="CreateTableTitle" xml:space="preserve">
+    <value>Créer une table</value>
+  </data>
+  <data name="DatabaseBox.PlaceholderText" xml:space="preserve">
+    <value>Base de données</value>
+  </data>
+  <data name="DatabaseBox.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Base de données</value>
+  </data>
+  <data name="Drop" xml:space="preserve">
+    <value>Supprimer</value>
+  </data>
+  <data name="DropTitle" xml:space="preserve">
+    <value>Supprimer {0}&#160;?</value>
+  </data>
+  <data name="DumpExported_One" xml:space="preserve">
+    <value>{0} objet exporté vers {1}.</value>
+  </data>
+  <data name="DumpExported_Other" xml:space="preserve">
+    <value>{0} objets exportés vers {1}.</value>
+  </data>
+  <data name="DumpExporting" xml:space="preserve">
+    <value>Exportation de {0}…</value>
+  </data>
+  <data name="DumpIncludeData" xml:space="preserve">
+    <value>Inclure les données</value>
+  </data>
+  <data name="DumpMessage" xml:space="preserve">
+    <value>Écrit la structure de chaque table et vue de {0} dans un fichier SQL.</value>
+  </data>
+  <data name="DumpTitle" xml:space="preserve">
+    <value>Exporter la base de données</value>
+  </data>
+  <data name="ExportColumns_One" xml:space="preserve">
+    <value>{0} colonne</value>
+  </data>
+  <data name="ExportColumns_Other" xml:space="preserve">
+    <value>{0} colonnes</value>
+  </data>
+  <data name="ExportCompression" xml:space="preserve">
+    <value>Compression</value>
+  </data>
+  <data name="ExportCompressionTip" xml:space="preserve">
+    <value>Snappy est pris en charge par tous les lecteurs Parquet. Zstd est plus compact et nécessite un lecteur compilé avec sa prise en charge.</value>
+  </data>
+  <data name="ExportEllipsis" xml:space="preserve">
+    <value>Exporter…</value>
+  </data>
+  <data name="ExportFailed" xml:space="preserve">
+    <value>Échec de l’exportation</value>
+  </data>
+  <data name="ExportFormat" xml:space="preserve">
+    <value>Format</value>
+  </data>
+  <data name="ExportFormatExcel" xml:space="preserve">
+    <value>Classeur Excel</value>
+  </data>
+  <data name="ExportIncludeColumnNames" xml:space="preserve">
+    <value>Inclure les noms de colonnes</value>
+  </data>
+  <data name="ExportRowsPerGroup" xml:space="preserve">
+    <value>Lignes par groupe</value>
+  </data>
+  <data name="ExportRowsPerGroupTip" xml:space="preserve">
+    <value>Des groupes plus grands se compressent mieux, mais demandent plus de mémoire à la lecture</value>
+  </data>
+  <data name="ExportSummary_One" xml:space="preserve">
+    <value>{0:N0} ligne, {1}</value>
+  </data>
+  <data name="ExportSummary_Other" xml:space="preserve">
+    <value>{0:N0} lignes, {1}</value>
+  </data>
+  <data name="Favorites" xml:space="preserve">
+    <value>Favoris</value>
+  </data>
+  <data name="FavoritesButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Favoris</value>
+  </data>
+  <data name="GridCopyAs" xml:space="preserve">
+    <value>Copier en tant que</value>
+  </data>
+  <data name="GridCopyAsInList" xml:space="preserve">
+    <value>Liste IN</value>
+  </data>
+  <data name="GridCopyAsWhereClause" xml:space="preserve">
+    <value>Clause WHERE</value>
+  </data>
+  <data name="GridCopyColumnName" xml:space="preserve">
+    <value>Copier le nom de la colonne</value>
+  </data>
+  <data name="GridCopyWithHeaders" xml:space="preserve">
+    <value>Copier avec les en-têtes</value>
+  </data>
+  <data name="HistoryButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Historique des requêtes</value>
+  </data>
+  <data name="KindCollection" xml:space="preserve">
+    <value>Collection</value>
+  </data>
+  <data name="KindFunction" xml:space="preserve">
+    <value>Fonction</value>
+  </data>
+  <data name="KindKey" xml:space="preserve">
+    <value>Clé</value>
+  </data>
+  <data name="KindMaterializedView" xml:space="preserve">
+    <value>Vue matérialisée</value>
+  </data>
+  <data name="KindProcedure" xml:space="preserve">
+    <value>Procédure</value>
+  </data>
+  <data name="KindSequence" xml:space="preserve">
+    <value>Séquence</value>
+  </data>
+  <data name="KindTable" xml:space="preserve">
+    <value>Table</value>
+  </data>
+  <data name="KindTopic" xml:space="preserve">
+    <value>Topic</value>
+  </data>
+  <data name="KindTrigger" xml:space="preserve">
+    <value>Déclencheur</value>
+  </data>
+  <data name="KindView" xml:space="preserve">
+    <value>Vue</value>
+  </data>
+  <data name="MenuBuildJoinQuery" xml:space="preserve">
+    <value>Créer une requête de jointure</value>
+  </data>
+  <data name="MenuCheckForUpdates.Text" xml:space="preserve">
+    <value>Rechercher les mises à jour…</value>
+  </data>
+  <data name="MenuCompare.Text" xml:space="preserve">
+    <value>Comparer et synchroniser</value>
+  </data>
+  <data name="MenuCopyName" xml:space="preserve">
+    <value>Copier le nom</value>
+  </data>
+  <data name="MenuCopyObjects.Text" xml:space="preserve">
+    <value>Copier des objets…</value>
+  </data>
+  <data name="MenuCopyQualifiedName" xml:space="preserve">
+    <value>Copier le nom qualifié</value>
+  </data>
+  <data name="MenuCopyToConnection" xml:space="preserve">
+    <value>Copier vers une connexion…</value>
+  </data>
+  <data name="MenuDataRewind.Text" xml:space="preserve">
+    <value>Retour arrière des données</value>
+  </data>
+  <data name="MenuDebug" xml:space="preserve">
+    <value>Déboguer</value>
+  </data>
+  <data name="MenuDisconnect.Text" xml:space="preserve">
+    <value>Se déconnecter</value>
+  </data>
+  <data name="MenuErDiagram.Text" xml:space="preserve">
+    <value>Diagramme entité-relation</value>
+  </data>
+  <data name="MenuExportData" xml:space="preserve">
+    <value>Exporter les données</value>
+  </data>
+  <data name="MenuExportDatabase.Text" xml:space="preserve">
+    <value>Exporter la base de données</value>
+  </data>
+  <data name="MenuGenerateRows" xml:space="preserve">
+    <value>Générer des lignes…</value>
+  </data>
+  <data name="MenuGenerateSql" xml:space="preserve">
+    <value>Générer du SQL</value>
+  </data>
+  <data name="MenuJoinBuilder.Text" xml:space="preserve">
+    <value>Générateur de jointures</value>
+  </data>
+  <data name="MenuOpenQuickly.Text" xml:space="preserve">
+    <value>Ouverture rapide</value>
+  </data>
+  <data name="MenuQueryInNewTab" xml:space="preserve">
+    <value>Requête dans un nouvel onglet</value>
+  </data>
+  <data name="MenuRunSqlFile.Text" xml:space="preserve">
+    <value>Exécuter un fichier SQL</value>
+  </data>
+  <data name="MenuSearchDatabase.Text" xml:space="preserve">
+    <value>Rechercher dans la base de données</value>
+  </data>
+  <data name="MenuServerDashboard.Text" xml:space="preserve">
+    <value>Tableau de bord du serveur</value>
+  </data>
+  <data name="MenuSettings.Text" xml:space="preserve">
+    <value>Paramètres</value>
+  </data>
+  <data name="MenuShowDefinition" xml:space="preserve">
+    <value>Afficher la définition</value>
+  </data>
+  <data name="MenuStructure" xml:space="preserve">
+    <value>Structure</value>
+  </data>
+  <data name="MoreButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Plus</value>
+  </data>
+  <data name="MoreButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Plus</value>
+  </data>
+  <data name="NewQuery" xml:space="preserve">
+    <value>Nouvelle requête</value>
+  </data>
+  <data name="NewQueryButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Nouvelle requête</value>
+  </data>
+  <data name="QueryHistory" xml:space="preserve">
+    <value>Historique des requêtes</value>
+  </data>
+  <data name="QuitTitle" xml:space="preserve">
+    <value>Quitter TablePro&#160;?</value>
+  </data>
+  <data name="QuitWithoutSaving" xml:space="preserve">
+    <value>Quitter sans enregistrer</value>
+  </data>
+  <data name="RefreshButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Actualiser</value>
+  </data>
+  <data name="RefreshButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Actualiser (F5 dans la barre latérale)</value>
+  </data>
+  <data name="RenameNewName" xml:space="preserve">
+    <value>Nouveau nom</value>
+  </data>
+  <data name="RenameTitle" xml:space="preserve">
+    <value>Renommer {0}</value>
+  </data>
+  <data name="SchemaBox.PlaceholderText" xml:space="preserve">
+    <value>Schéma</value>
+  </data>
+  <data name="SchemaBox.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Schéma</value>
+  </data>
+  <data name="SearchTables" xml:space="preserve">
+    <value>Rechercher des tables</value>
+  </data>
+  <data name="SectionCollections" xml:space="preserve">
+    <value>Collections</value>
+  </data>
+  <data name="SectionFunctions" xml:space="preserve">
+    <value>Fonctions</value>
+  </data>
+  <data name="SectionKeys" xml:space="preserve">
+    <value>Clés</value>
+  </data>
+  <data name="SectionMaterializedViews" xml:space="preserve">
+    <value>Vues matérialisées</value>
+  </data>
+  <data name="SectionProcedures" xml:space="preserve">
+    <value>Procédures</value>
+  </data>
+  <data name="SectionSequences" xml:space="preserve">
+    <value>Séquences</value>
+  </data>
+  <data name="SectionTables" xml:space="preserve">
+    <value>Tables</value>
+  </data>
+  <data name="SectionTopics" xml:space="preserve">
+    <value>Topics</value>
+  </data>
+  <data name="SectionTriggers" xml:space="preserve">
+    <value>Déclencheurs</value>
+  </data>
+  <data name="SectionViews" xml:space="preserve">
+    <value>Vues</value>
+  </data>
+  <data name="SidePaneAssistant" xml:space="preserve">
+    <value>Assistant</value>
+  </data>
+  <data name="SidePaneDataRewind" xml:space="preserve">
+    <value>Retour arrière des données</value>
+  </data>
+  <data name="SidePaneHistory" xml:space="preserve">
+    <value>Historique</value>
+  </data>
+  <data name="SidePaneSqlFiles" xml:space="preserve">
+    <value>Fichiers SQL</value>
+  </data>
+  <data name="SidebarItemAccessibleName" xml:space="preserve">
+    <value>{0} {1}</value>
+  </data>
+  <data name="SqlFileType" xml:space="preserve">
+    <value>Fichier SQL</value>
+  </data>
+  <data name="SqlFilesButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Fichiers SQL</value>
+  </data>
+  <data name="SqlFilesButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Fichiers SQL</value>
+  </data>
+  <data name="StatementFailed" xml:space="preserve">
+    <value>L’instruction a échoué</value>
+  </data>
+  <data name="SwitchDatabaseButton" xml:space="preserve">
+    <value>Changer</value>
+  </data>
+  <data name="SwitchDatabaseFailed" xml:space="preserve">
+    <value>Impossible de changer de base de données</value>
+  </data>
+  <data name="SwitchDatabaseMessage" xml:space="preserve">
+    <value>Les onglets ouverts contenant des modifications non enregistrées seront fermés.</value>
+  </data>
+  <data name="SwitchDatabaseTitle" xml:space="preserve">
+    <value>Changer de base de données&#160;?</value>
+  </data>
+  <data name="Truncate" xml:space="preserve">
+    <value>Tronquer</value>
+  </data>
+  <data name="TruncateTitle" xml:space="preserve">
+    <value>Vider {0}&#160;?</value>
+  </data>
+  <data name="WindowTitle" xml:space="preserve">
+    <value>{0} - TablePro</value>
+  </data>
+</root>

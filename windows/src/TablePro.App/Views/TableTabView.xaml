@@ -19,13 +19,13 @@
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
             <SelectorBar x:Name="Sections" SelectionChanged="OnSectionChanged">
-                <SelectorBarItem Text="Data" Tag="Data" IsSelected="True">
+                <SelectorBarItem x:Uid="/Table/SectionData" Tag="Data" IsSelected="True">
                     <SelectorBarItem.Icon><FontIcon Glyph="&#xE80A;" /></SelectorBarItem.Icon>
                 </SelectorBarItem>
-                <SelectorBarItem Text="Structure" Tag="Structure">
+                <SelectorBarItem x:Uid="/Table/SectionStructure" Tag="Structure">
                     <SelectorBarItem.Icon><FontIcon Glyph="&#xE8A9;" /></SelectorBarItem.Icon>
                 </SelectorBarItem>
-                <SelectorBarItem Text="Definition" Tag="Definition">
+                <SelectorBarItem x:Uid="/Table/SectionDefinition" Tag="Definition">
                     <SelectorBarItem.Icon><FontIcon Glyph="&#xE943;" /></SelectorBarItem.Icon>
                 </SelectorBarItem>
             </SelectorBar>
@@ -46,31 +46,31 @@
             </Grid.RowDefinitions>
 
             <CommandBar DefaultLabelPosition="Right" HorizontalAlignment="Left" IsDynamicOverflowEnabled="True" Background="Transparent">
-                <AppBarButton Icon="Refresh" Label="Refresh" Command="{x:Bind ViewModel.LoadCommand}">
+                <AppBarButton x:Uid="/Table/DataRefresh" Icon="Refresh" Command="{x:Bind ViewModel.LoadCommand}">
                     <AppBarButton.KeyboardAccelerators><KeyboardAccelerator Key="R" Modifiers="Control" /></AppBarButton.KeyboardAccelerators>
                 </AppBarButton>
-                <AppBarButton Icon="Filter" Label="Filter" Command="{x:Bind ViewModel.AddFilterCommand}" />
+                <AppBarButton x:Uid="/Table/DataFilter" Icon="Filter" Command="{x:Bind ViewModel.AddFilterCommand}" />
                 <AppBarSeparator />
-                <AppBarButton Icon="Add" Label="Add Row" Command="{x:Bind ViewModel.AddRowCommand}" IsEnabled="{x:Bind ViewModel.IsEditable, Mode=OneWay}">
+                <AppBarButton x:Uid="/Table/DataAddRow" Icon="Add" Command="{x:Bind ViewModel.AddRowCommand}" IsEnabled="{x:Bind ViewModel.IsEditable, Mode=OneWay}">
                     <AppBarButton.KeyboardAccelerators><KeyboardAccelerator Key="I" Modifiers="Control" /></AppBarButton.KeyboardAccelerators>
                 </AppBarButton>
-                <AppBarButton Icon="Delete" Label="Delete" Click="OnDeleteRows" IsEnabled="{x:Bind ViewModel.IsEditable, Mode=OneWay}" />
-                <AppBarButton Icon="Undo" Label="Undo" Command="{x:Bind ViewModel.UndoCommand}" LabelPosition="Collapsed">
+                <AppBarButton x:Uid="/Table/DataDelete" Icon="Delete" Click="OnDeleteRows" IsEnabled="{x:Bind ViewModel.IsEditable, Mode=OneWay}" />
+                <AppBarButton x:Uid="/Table/DataUndo" Icon="Undo" Command="{x:Bind ViewModel.UndoCommand}" LabelPosition="Collapsed">
                     <AppBarButton.KeyboardAccelerators><KeyboardAccelerator Key="Z" Modifiers="Control" /></AppBarButton.KeyboardAccelerators>
                 </AppBarButton>
-                <AppBarButton Icon="Redo" Label="Redo" Command="{x:Bind ViewModel.RedoCommand}" LabelPosition="Collapsed">
+                <AppBarButton x:Uid="/Table/DataRedo" Icon="Redo" Command="{x:Bind ViewModel.RedoCommand}" LabelPosition="Collapsed">
                     <AppBarButton.KeyboardAccelerators><KeyboardAccelerator Key="Y" Modifiers="Control" /></AppBarButton.KeyboardAccelerators>
                 </AppBarButton>
                 <AppBarSeparator />
                 <AppBarButton Icon="Save" Label="{x:Bind ViewModel.SaveText, Mode=OneWay}" Command="{x:Bind ViewModel.SaveCommand}">
                     <AppBarButton.KeyboardAccelerators><KeyboardAccelerator Key="S" Modifiers="Control" /></AppBarButton.KeyboardAccelerators>
                 </AppBarButton>
-                <AppBarButton Icon="Cancel" Label="Discard" Command="{x:Bind ViewModel.DiscardCommand}" />
+                <AppBarButton x:Uid="/Table/DataDiscard" Icon="Cancel" Command="{x:Bind ViewModel.DiscardCommand}" />
                 <AppBarSeparator />
-                <AppBarButton Label="Export" Click="OnExport">
+                <AppBarButton x:Uid="/Table/DataExport" Click="OnExport">
                     <AppBarButton.Icon><FontIcon Glyph="&#xEDE1;" /></AppBarButton.Icon>
                 </AppBarButton>
-                <AppBarButton Label="Import" Click="OnImport" IsEnabled="{x:Bind ViewModel.IsEditable, Mode=OneWay}">
+                <AppBarButton x:Uid="/Table/DataImport" Click="OnImport" IsEnabled="{x:Bind ViewModel.IsEditable, Mode=OneWay}">
                     <AppBarButton.Icon><FontIcon Glyph="&#xE8B5;" /></AppBarButton.Icon>
                 </AppBarButton>
             </CommandBar>
@@ -88,8 +88,8 @@
                                 <CheckBox IsChecked="{x:Bind Enabled, Mode=TwoWay}" MinWidth="0" />
                                 <ComboBox Width="180" ItemsSource="{x:Bind Columns}" SelectedItem="{x:Bind ColumnItem, Mode=TwoWay}" />
                                 <ComboBox Width="160" ItemsSource="{x:Bind Operators}" SelectedItem="{x:Bind OperatorItem, Mode=TwoWay}" />
-                                <TextBox Width="220" PlaceholderText="Value" Text="{x:Bind Value, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" KeyDown="OnFilterKeyDown" />
-                                <Button Style="{StaticResource ToolbarButtonStyle}" Click="OnRemoveFilter" Tag="{x:Bind}" AutomationProperties.Name="Remove condition" ToolTipService.ToolTip="Remove condition">
+                                <TextBox x:Uid="/Table/FilterValue" Width="220" Text="{x:Bind Value, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" KeyDown="OnFilterKeyDown" />
+                                <Button x:Uid="/Table/FilterRemoveCondition" Style="{StaticResource ToolbarButtonStyle}" Click="OnRemoveFilter" Tag="{x:Bind}">
                                     <FontIcon FontSize="12" Glyph="&#xE711;" />
                                 </Button>
                             </StackPanel>
@@ -97,11 +97,11 @@
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
                 <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="8">
-                    <TextBox Width="420" PlaceholderText="Raw WHERE clause, for example: price &gt; 10 AND status = 'open'" Text="{x:Bind ViewModel.RawWhere, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" FontFamily="{StaticResource CodeFontFamily}" KeyDown="OnFilterKeyDown" />
-                    <ToggleSwitch OnContent="Match all" OffContent="Match any" IsOn="{x:Bind ViewModel.MatchAllFilters, Mode=TwoWay}" MinWidth="0" />
-                    <Button Style="{StaticResource AccentButtonStyle}" Content="Apply" Command="{x:Bind ViewModel.ApplyFiltersCommand}" />
-                    <Button Content="Clear" Command="{x:Bind ViewModel.ClearFiltersCommand}" />
-                    <Button Content="Add Condition" Command="{x:Bind ViewModel.AddFilterCommand}" />
+                    <TextBox x:Uid="/Table/FilterRawWhere" Width="420" Text="{x:Bind ViewModel.RawWhere, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" FontFamily="{StaticResource CodeFontFamily}" KeyDown="OnFilterKeyDown" />
+                    <ToggleSwitch x:Uid="/Table/FilterMatchMode" IsOn="{x:Bind ViewModel.MatchAllFilters, Mode=TwoWay}" MinWidth="0" />
+                    <Button x:Uid="/Table/FilterApply" Style="{StaticResource AccentButtonStyle}" Command="{x:Bind ViewModel.ApplyFiltersCommand}" />
+                    <Button x:Uid="/Table/FilterClear" Command="{x:Bind ViewModel.ClearFiltersCommand}" />
+                    <Button x:Uid="/Table/FilterAddCondition" Command="{x:Bind ViewModel.AddFilterCommand}" />
                 </StackPanel>
             </Grid>
 
@@ -118,19 +118,19 @@
                 <TextBlock x:Name="SelectionText" Style="{StaticResource StatusTextStyle}" />
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
                     <TextBlock Style="{StaticResource StatusTextStyle}" Text="{x:Bind ViewModel.PageText, Mode=OneWay}" Margin="0,0,8,0" />
-                    <Button Style="{StaticResource ToolbarButtonStyle}" Command="{x:Bind ViewModel.FirstPageCommand}" AutomationProperties.Name="First page" ToolTipService.ToolTip="First page">
+                    <Button x:Uid="/Table/PagerFirst" Style="{StaticResource ToolbarButtonStyle}" Command="{x:Bind ViewModel.FirstPageCommand}">
                         <FontIcon FontSize="12" Glyph="&#xE892;" />
                     </Button>
-                    <Button Style="{StaticResource ToolbarButtonStyle}" Command="{x:Bind ViewModel.PreviousPageCommand}" AutomationProperties.Name="Previous page" ToolTipService.ToolTip="Previous page">
+                    <Button x:Uid="/Table/PagerPrevious" Style="{StaticResource ToolbarButtonStyle}" Command="{x:Bind ViewModel.PreviousPageCommand}">
                         <FontIcon FontSize="12" Glyph="&#xE76B;" />
                     </Button>
-                    <Button Style="{StaticResource ToolbarButtonStyle}" Command="{x:Bind ViewModel.NextPageCommand}" AutomationProperties.Name="Next page" ToolTipService.ToolTip="Next page">
+                    <Button x:Uid="/Table/PagerNext" Style="{StaticResource ToolbarButtonStyle}" Command="{x:Bind ViewModel.NextPageCommand}">
                         <FontIcon FontSize="12" Glyph="&#xE76C;" />
                     </Button>
-                    <Button Style="{StaticResource ToolbarButtonStyle}" Command="{x:Bind ViewModel.LastPageCommand}" AutomationProperties.Name="Last page" ToolTipService.ToolTip="Last page">
+                    <Button x:Uid="/Table/PagerLast" Style="{StaticResource ToolbarButtonStyle}" Command="{x:Bind ViewModel.LastPageCommand}">
                         <FontIcon FontSize="12" Glyph="&#xE893;" />
                     </Button>
-                    <ComboBox x:Name="PageSizeBox" SelectionChanged="OnPageSizeChanged" MinWidth="96" Margin="6,0,0,0" ToolTipService.ToolTip="Rows per page" />
+                    <ComboBox x:Name="PageSizeBox" x:Uid="/Table/PagerPageSize" SelectionChanged="OnPageSizeChanged" MinWidth="96" Margin="6,0,0,0" />
                 </StackPanel>
             </Grid>
         </Grid>
@@ -148,22 +148,22 @@
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
                 <SelectorBar x:Name="StructureSections" SelectionChanged="OnStructureSectionChanged">
-                    <SelectorBarItem Text="Columns" Tag="Columns" IsSelected="True" />
-                    <SelectorBarItem Text="Indexes" Tag="Indexes" />
-                    <SelectorBarItem Text="Foreign Keys" Tag="ForeignKeys" />
-                    <SelectorBarItem x:Name="ChecksSection" Text="Checks" Tag="Checks" Visibility="Collapsed" />
-                    <SelectorBarItem Text="Triggers" Tag="Triggers" />
-                    <SelectorBarItem x:Name="PartitionsSection" Text="Partitions" Tag="Partitions" Visibility="Collapsed" />
-                    <SelectorBarItem x:Name="OptionsSection" Text="Options" Tag="Options" Visibility="Collapsed" />
+                    <SelectorBarItem x:Uid="/Table/StructureColumns" Tag="Columns" IsSelected="True" />
+                    <SelectorBarItem x:Uid="/Table/StructureIndexes" Tag="Indexes" />
+                    <SelectorBarItem x:Uid="/Table/StructureForeignKeys" Tag="ForeignKeys" />
+                    <SelectorBarItem x:Name="ChecksSection" x:Uid="/Table/StructureChecks" Tag="Checks" Visibility="Collapsed" />
+                    <SelectorBarItem x:Uid="/Table/StructureTriggers" Tag="Triggers" />
+                    <SelectorBarItem x:Name="PartitionsSection" x:Uid="/Table/StructurePartitions" Tag="Partitions" Visibility="Collapsed" />
+                    <SelectorBarItem x:Name="OptionsSection" x:Uid="/Table/StructureOptions" Tag="Options" Visibility="Collapsed" />
                 </SelectorBar>
                 <CommandBar Grid.Column="1" DefaultLabelPosition="Right" HorizontalAlignment="Right" Background="Transparent">
-                    <AppBarButton x:Name="StructureAdd" Icon="Add" Label="Add" Click="OnStructureAdd" />
-                    <AppBarButton x:Name="StructureEdit" Icon="Edit" Label="Edit" Click="OnStructureEdit" />
-                    <AppBarButton x:Name="StructureTruncate" Label="Truncate" Click="OnStructureTruncate" Visibility="Collapsed">
+                    <AppBarButton x:Name="StructureAdd" x:Uid="/Table/StructureAdd" Icon="Add" Click="OnStructureAdd" />
+                    <AppBarButton x:Name="StructureEdit" x:Uid="/Table/StructureEdit" Icon="Edit" Click="OnStructureEdit" />
+                    <AppBarButton x:Name="StructureTruncate" x:Uid="/Table/StructureTruncate" Click="OnStructureTruncate" Visibility="Collapsed">
                         <AppBarButton.Icon><FontIcon Glyph="&#xE894;" /></AppBarButton.Icon>
                     </AppBarButton>
-                    <AppBarButton x:Name="StructureDrop" Icon="Delete" Label="Drop" Click="OnStructureDrop" />
-                    <AppBarButton Icon="Refresh" Label="Refresh" Command="{x:Bind ViewModel.RefreshStructureCommand}" />
+                    <AppBarButton x:Name="StructureDrop" x:Uid="/Table/StructureDrop" Icon="Delete" Click="OnStructureDrop" />
+                    <AppBarButton x:Uid="/Table/StructureRefresh" Icon="Refresh" Command="{x:Bind ViewModel.RefreshStructureCommand}" />
                 </CommandBar>
             </Grid>
             <StackPanel Grid.Row="1" Margin="8,0,8,6" Spacing="6">
@@ -180,8 +180,8 @@
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
             <CommandBar DefaultLabelPosition="Right" HorizontalAlignment="Left" Background="Transparent">
-                <AppBarButton Icon="Copy" Label="Copy" Click="OnCopyDefinition" />
-                <AppBarButton Label="Open in Query Tab" Click="OnOpenDefinition">
+                <AppBarButton x:Uid="/Table/DefinitionCopy" Icon="Copy" Click="OnCopyDefinition" />
+                <AppBarButton x:Uid="/Table/DefinitionOpenInQueryTab" Click="OnOpenDefinition">
                     <AppBarButton.Icon><FontIcon Glyph="&#xE8A7;" /></AppBarButton.Icon>
                 </AppBarButton>
             </CommandBar>

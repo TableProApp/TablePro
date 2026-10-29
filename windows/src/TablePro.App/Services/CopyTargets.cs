@@ -56,7 +56,7 @@ public sealed class CopyTargets(
                 var password = host.Connector.SavedPassword(profile);
                 if (password is null && host.Connector.NeedsPasswordPrompt(profile))
                 {
-                    password = await dialogs.PromptPassphraseAsync($"Connect to {profile.Name}", "Enter the password to copy into this connection.", confirm: false, "Connect");
+                    password = await dialogs.PromptPassphraseAsync(Strings.Format("Workspace/CopyConnectTitle", profile.Name), Strings.Get("Workspace/CopyConnectMessage"), confirm: false, Strings.Get("Common/Connect"));
                     if (password is null)
                     {
                         return null;

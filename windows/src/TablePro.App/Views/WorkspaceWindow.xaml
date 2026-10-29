@@ -77,8 +77,8 @@
                     <RowDefinition Height="*" />
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
-                <ComboBox x:Name="DatabaseBox" HorizontalAlignment="Stretch" PlaceholderText="Database" ItemsSource="{x:Bind ViewModel.Databases}" SelectedItem="{x:Bind ViewModel.SelectedDatabaseItem, Mode=TwoWay}" Visibility="{x:Bind ViewModel.ShowDatabaseSwitcher, Mode=OneWay}" ToolTipService.ToolTip="Database" />
-                <ComboBox x:Name="SchemaBox" Grid.Row="1" HorizontalAlignment="Stretch" PlaceholderText="Schema" ItemsSource="{x:Bind ViewModel.Schemas}" SelectedItem="{x:Bind ViewModel.SelectedSchemaItem, Mode=TwoWay}" Visibility="{x:Bind ViewModel.HasSchemas}" ToolTipService.ToolTip="Schema" />
+                <ComboBox x:Uid="/Workspace/DatabaseBox" x:Name="DatabaseBox" HorizontalAlignment="Stretch" ItemsSource="{x:Bind ViewModel.Databases}" SelectedItem="{x:Bind ViewModel.SelectedDatabaseItem, Mode=TwoWay}" Visibility="{x:Bind ViewModel.ShowDatabaseSwitcher, Mode=OneWay}" />
+                <ComboBox x:Uid="/Workspace/SchemaBox" x:Name="SchemaBox" Grid.Row="1" HorizontalAlignment="Stretch" ItemsSource="{x:Bind ViewModel.Schemas}" SelectedItem="{x:Bind ViewModel.SelectedSchemaItem, Mode=TwoWay}" Visibility="{x:Bind ViewModel.HasSchemas}" />
                 <AutoSuggestBox Grid.Row="2" QueryIcon="Find" Text="{x:Bind ViewModel.SearchText, Mode=TwoWay}" x:Name="SearchBox" />
                 <InfoBar Grid.Row="3" Severity="Error" IsClosable="False" IsOpen="{x:Bind ViewModel.HasSidebarError, Mode=OneWay}" Message="{x:Bind ViewModel.SidebarError, Mode=OneWay}" />
                 <ListView
@@ -95,68 +95,68 @@
                     Padding="0,0,4,0" />
                 <ProgressBar Grid.Row="4" VerticalAlignment="Top" IsIndeterminate="True" Visibility="{x:Bind ViewModel.IsLoading, Mode=OneWay}" />
                 <StackPanel Grid.Row="5" Orientation="Horizontal" Spacing="2">
-                    <Button x:Name="NewQueryButton" Style="{StaticResource ToolbarButtonStyle}" Command="{x:Bind ViewModel.NewQueryTabCommand}" AutomationProperties.Name="New query">
+                    <Button x:Uid="/Workspace/NewQueryButton" x:Name="NewQueryButton" Style="{StaticResource ToolbarButtonStyle}" Command="{x:Bind ViewModel.NewQueryTabCommand}">
                         <FontIcon FontSize="16" Glyph="&#xE710;" />
                     </Button>
-                    <Button Style="{StaticResource ToolbarButtonStyle}" Command="{x:Bind ViewModel.RefreshCommand}" AutomationProperties.Name="Refresh" ToolTipService.ToolTip="Refresh (F5 in the sidebar)">
+                    <Button x:Uid="/Workspace/RefreshButton" Style="{StaticResource ToolbarButtonStyle}" Command="{x:Bind ViewModel.RefreshCommand}">
                         <FontIcon FontSize="16" Glyph="&#xE72C;" />
                     </Button>
-                    <Button Style="{StaticResource ToolbarButtonStyle}" Click="OnCreateTable" Visibility="{x:Bind ViewModel.CanEditStructure}" AutomationProperties.Name="Create table" ToolTipService.ToolTip="Create table">
+                    <Button x:Uid="/Workspace/CreateTableButton" Style="{StaticResource ToolbarButtonStyle}" Click="OnCreateTable" Visibility="{x:Bind ViewModel.CanEditStructure}">
                         <FontIcon FontSize="16" Glyph="&#xE8F4;" />
                     </Button>
-                    <Button x:Name="HistoryButton" Style="{StaticResource ToolbarButtonStyle}" Click="OnShowHistory" AutomationProperties.Name="Query history">
+                    <Button x:Uid="/Workspace/HistoryButton" x:Name="HistoryButton" Style="{StaticResource ToolbarButtonStyle}" Click="OnShowHistory">
                         <FontIcon FontSize="16" Glyph="&#xE81C;" />
                     </Button>
-                    <Button x:Name="SqlFilesButton" Style="{StaticResource ToolbarButtonStyle}" Click="OnShowSqlFiles" AutomationProperties.Name="SQL files" ToolTipService.ToolTip="SQL files">
+                    <Button x:Uid="/Workspace/SqlFilesButton" x:Name="SqlFilesButton" Style="{StaticResource ToolbarButtonStyle}" Click="OnShowSqlFiles">
                         <FontIcon FontSize="16" Glyph="&#xE8B7;" />
                     </Button>
-                    <Button x:Name="FavoritesButton" Style="{StaticResource ToolbarButtonStyle}" Click="OnShowFavorites" AutomationProperties.Name="Favorites">
+                    <Button x:Uid="/Workspace/FavoritesButton" x:Name="FavoritesButton" Style="{StaticResource ToolbarButtonStyle}" Click="OnShowFavorites">
                         <FontIcon FontSize="16" Glyph="&#xE734;" />
                     </Button>
-                    <Button x:Name="AssistantButton" Style="{StaticResource ToolbarButtonStyle}" Click="OnShowAssistant" AutomationProperties.Name="AI assistant">
+                    <Button x:Uid="/Workspace/AssistantButton" x:Name="AssistantButton" Style="{StaticResource ToolbarButtonStyle}" Click="OnShowAssistant">
                         <FontIcon FontSize="16" Glyph="&#xE8BD;" />
                     </Button>
-                    <Button Style="{StaticResource ToolbarButtonStyle}" AutomationProperties.Name="More" ToolTipService.ToolTip="More">
+                    <Button x:Uid="/Workspace/MoreButton" Style="{StaticResource ToolbarButtonStyle}">
                         <FontIcon FontSize="16" Glyph="&#xE712;" />
                         <Button.Flyout>
                             <MenuFlyout Placement="TopEdgeAlignedLeft">
-                                <MenuFlyoutItem x:Name="ServerDashboardItem" Text="Server Dashboard" Click="OnServerDashboard">
+                                <MenuFlyoutItem x:Uid="/Workspace/MenuServerDashboard" x:Name="ServerDashboardItem" Click="OnServerDashboard">
                                     <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE9D9;" /></MenuFlyoutItem.Icon>
                                 </MenuFlyoutItem>
-                                <MenuFlyoutItem x:Name="OpenQuicklyItem" Text="Open Quickly" Click="OnOpenQuickly">
+                                <MenuFlyoutItem x:Uid="/Workspace/MenuOpenQuickly" x:Name="OpenQuicklyItem" Click="OnOpenQuickly">
                                     <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8A7;" /></MenuFlyoutItem.Icon>
                                 </MenuFlyoutItem>
-                                <MenuFlyoutItem x:Name="SearchDatabaseItem" Text="Search Database" Click="OnSearchDatabase">
+                                <MenuFlyoutItem x:Uid="/Workspace/MenuSearchDatabase" x:Name="SearchDatabaseItem" Click="OnSearchDatabase">
                                     <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE721;" /></MenuFlyoutItem.Icon>
                                 </MenuFlyoutItem>
-                                <MenuFlyoutItem x:Name="JoinBuilderItem" Text="Join Builder" Click="OnJoinBuilder" Visibility="{x:Bind ViewModel.IsSql}">
+                                <MenuFlyoutItem x:Uid="/Workspace/MenuJoinBuilder" x:Name="JoinBuilderItem" Click="OnJoinBuilder" Visibility="{x:Bind ViewModel.IsSql}">
                                     <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE71B;" /></MenuFlyoutItem.Icon>
                                 </MenuFlyoutItem>
-                                <MenuFlyoutItem x:Name="CopyObjectsItem" Text="Copy Objects…" Click="OnCopyObjects" Visibility="{x:Bind ViewModel.IsSql}">
+                                <MenuFlyoutItem x:Uid="/Workspace/MenuCopyObjects" x:Name="CopyObjectsItem" Click="OnCopyObjects" Visibility="{x:Bind ViewModel.IsSql}">
                                     <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8C8;" /></MenuFlyoutItem.Icon>
-                                </MenuFlyoutItem>                                <MenuFlyoutItem x:Name="CompareItem" Text="Compare and Sync" Click="OnCompare">
+                                </MenuFlyoutItem>                                <MenuFlyoutItem x:Uid="/Workspace/MenuCompare" x:Name="CompareItem" Click="OnCompare">
                                     <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8F1;" /></MenuFlyoutItem.Icon>
                                 </MenuFlyoutItem>
-                                <MenuFlyoutItem x:Name="RewindItem" Text="Data Rewind" Click="OnDataRewind">
+                                <MenuFlyoutItem x:Uid="/Workspace/MenuDataRewind" x:Name="RewindItem" Click="OnDataRewind">
                                     <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE7A7;" /></MenuFlyoutItem.Icon>
                                 </MenuFlyoutItem>
-                                <MenuFlyoutItem x:Name="DiagramItem" Text="ER Diagram" Click="OnDiagram">
+                                <MenuFlyoutItem x:Uid="/Workspace/MenuErDiagram" x:Name="DiagramItem" Click="OnDiagram">
                                     <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8A1;" /></MenuFlyoutItem.Icon>
                                 </MenuFlyoutItem>
-                                <MenuFlyoutItem x:Name="ExportDatabaseItem" Text="Export Database" Click="OnDumpDatabase">
+                                <MenuFlyoutItem x:Uid="/Workspace/MenuExportDatabase" x:Name="ExportDatabaseItem" Click="OnDumpDatabase">
                                     <MenuFlyoutItem.Icon><FontIcon Glyph="&#xEDE1;" /></MenuFlyoutItem.Icon>
                                 </MenuFlyoutItem>
-                                <MenuFlyoutItem x:Name="RunSqlFileItem" Text="Run SQL File" Click="OnRunSqlFile">
+                                <MenuFlyoutItem x:Uid="/Workspace/MenuRunSqlFile" x:Name="RunSqlFileItem" Click="OnRunSqlFile">
                                     <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8E5;" /></MenuFlyoutItem.Icon>
                                 </MenuFlyoutItem>
                                 <MenuFlyoutSeparator />
-                                <MenuFlyoutItem x:Name="UpdatesItem" Text="Check for Updates…" Click="OnCheckForUpdates" Loaded="OnUpdatesItemLoaded">
+                                <MenuFlyoutItem x:Uid="/Workspace/MenuCheckForUpdates" x:Name="UpdatesItem" Click="OnCheckForUpdates" Loaded="OnUpdatesItemLoaded">
                                     <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE895;" /></MenuFlyoutItem.Icon>
                                 </MenuFlyoutItem>
-                                <MenuFlyoutItem x:Name="SettingsItem" Text="Settings" Click="OnSettings">
+                                <MenuFlyoutItem x:Uid="/Workspace/MenuSettings" x:Name="SettingsItem" Click="OnSettings">
                                     <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE713;" /></MenuFlyoutItem.Icon>
                                 </MenuFlyoutItem>
-                                <MenuFlyoutItem x:Name="DisconnectItem" Text="Disconnect" Click="OnDisconnect">
+                                <MenuFlyoutItem x:Uid="/Workspace/MenuDisconnect" x:Name="DisconnectItem" Click="OnDisconnect">
                                     <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8CD;" /></MenuFlyoutItem.Icon>
                                 </MenuFlyoutItem>
                             </MenuFlyout>
@@ -236,7 +236,7 @@
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <TextBlock x:Name="SidePaneTitle" Style="{StaticResource SubtitleTextBlockStyle}" FontSize="16" VerticalAlignment="Center" />
-                        <Button Grid.Column="1" Style="{StaticResource ToolbarButtonStyle}" Click="OnCloseSidePane" AutomationProperties.Name="Close" ToolTipService.ToolTip="Close">
+                        <Button x:Uid="/Workspace/CloseSidePaneButton" Grid.Column="1" Style="{StaticResource ToolbarButtonStyle}" Click="OnCloseSidePane">
                             <FontIcon FontSize="12" Glyph="&#xE711;" />
                         </Button>
                     </Grid>

@@ -1,0 +1,299 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AcceptsNullFieldName" xml:space="preserve">
+    <value>{0} null 허용</value>
+  </data>
+  <data name="CannotCreateTable" xml:space="preserve">
+    <value>이 엔진은 앱에서 해당 테이블을 생성할 수 없습니다.</value>
+  </data>
+  <data name="CannotImportYetTitle" xml:space="preserve">
+    <value>아직 가져올 수 없음</value>
+  </data>
+  <data name="CannotReadFileTitle" xml:space="preserve">
+    <value>이 파일을 읽을 수 없음</value>
+  </data>
+  <data name="ColumnForFieldName" xml:space="preserve">
+    <value>{0}의 열</value>
+  </data>
+  <data name="ColumnNameForFieldName" xml:space="preserve">
+    <value>{0}의 열 이름</value>
+  </data>
+  <data name="CreateAllColumns" xml:space="preserve">
+    <value>모든 열 생성</value>
+  </data>
+  <data name="CreateAndImport" xml:space="preserve">
+    <value>생성 후 가져오기</value>
+  </data>
+  <data name="CreateFieldName" xml:space="preserve">
+    <value>{0} 생성</value>
+  </data>
+  <data name="CreateTableFailedTitle" xml:space="preserve">
+    <value>테이블을 생성할 수 없음</value>
+  </data>
+  <data name="CreateTableReviewTitle" xml:space="preserve">
+    <value>가져올 테이블 생성</value>
+  </data>
+  <data name="DefaultSqlFieldName" xml:space="preserve">
+    <value>{0}의 기본 SQL</value>
+  </data>
+  <data name="DefaultSqlPlaceholder" xml:space="preserve">
+    <value>기본 SQL</value>
+  </data>
+  <data name="DefaultSqlToolTip" xml:space="preserve">
+    <value>DEFAULT 뒤에 오는 SQL입니다. 텍스트 값에는 따옴표가 필요합니다.</value>
+  </data>
+  <data name="DelimiterComma" xml:space="preserve">
+    <value>쉼표</value>
+  </data>
+  <data name="DelimiterDetect" xml:space="preserve">
+    <value>자동 감지</value>
+  </data>
+  <data name="DelimiterHeader" xml:space="preserve">
+    <value>구분자</value>
+  </data>
+  <data name="DelimiterPipe" xml:space="preserve">
+    <value>파이프</value>
+  </data>
+  <data name="DelimiterSemicolon" xml:space="preserve">
+    <value>세미콜론</value>
+  </data>
+  <data name="DelimiterTab" xml:space="preserve">
+    <value>탭</value>
+  </data>
+  <data name="DisableForeignKeyChecks" xml:space="preserve">
+    <value>외래 키 검사 비활성화</value>
+  </data>
+  <data name="DisableForeignKeyChecksToolTip" xml:space="preserve">
+    <value>가져오는 동안 외래 키 제약 조건을 일시적으로 비활성화합니다. 순환 종속성이 있는 데이터를 가져올 때 유용합니다.</value>
+  </data>
+  <data name="EnterNewTableName" xml:space="preserve">
+    <value>새 테이블의 이름을 입력하세요.</value>
+  </data>
+  <data name="ErrorLine" xml:space="preserve">
+    <value>{0}행: {1}</value>
+  </data>
+  <data name="ExistingTable" xml:space="preserve">
+    <value>기존 테이블 {0}</value>
+  </data>
+  <data name="FieldTypeBoolean" xml:space="preserve">
+    <value>불리언</value>
+  </data>
+  <data name="FieldTypeInteger" xml:space="preserve">
+    <value>정수</value>
+  </data>
+  <data name="FieldTypeJson" xml:space="preserve">
+    <value>JSON</value>
+  </data>
+  <data name="FieldTypeReal" xml:space="preserve">
+    <value>실수</value>
+  </data>
+  <data name="FieldTypeText" xml:space="preserve">
+    <value>텍스트</value>
+  </data>
+  <data name="FirstRowIsHeader" xml:space="preserve">
+    <value>첫 행이 머리글임</value>
+  </data>
+  <data name="FirstRows" xml:space="preserve">
+    <value>처음 몇 행</value>
+  </data>
+  <data name="HeaderColumn" xml:space="preserve">
+    <value>열</value>
+  </data>
+  <data name="HeaderDefault" xml:space="preserve">
+    <value>기본값</value>
+  </data>
+  <data name="HeaderField" xml:space="preserve">
+    <value>필드</value>
+  </data>
+  <data name="HeaderKey" xml:space="preserve">
+    <value>키</value>
+  </data>
+  <data name="HeaderNull" xml:space="preserve">
+    <value>NULL</value>
+  </data>
+  <data name="ImportAllFields" xml:space="preserve">
+    <value>모든 필드 가져오기</value>
+  </data>
+  <data name="ImportFailedTitle" xml:space="preserve">
+    <value>가져오기 실패</value>
+  </data>
+  <data name="ImportFieldName" xml:space="preserve">
+    <value>{0} 가져오기</value>
+  </data>
+  <data name="ImportFileTitle" xml:space="preserve">
+    <value>{0} 가져오기</value>
+  </data>
+  <data name="ImportIntoHeader" xml:space="preserve">
+    <value>가져올 위치</value>
+  </data>
+  <data name="ImportSqlFileTitle" xml:space="preserve">
+    <value>SQL 파일 가져오기</value>
+  </data>
+  <data name="ImportStoppedRowsKept" xml:space="preserve">
+    <value>{0}
+
+이 시점 전에 저장된 행은 테이블에 그대로 남습니다.</value>
+  </data>
+  <data name="ImportStoppedTitle" xml:space="preserve">
+    <value>가져오기가 중지되었습니다</value>
+  </data>
+  <data name="ImportedRows_One" xml:space="preserve">
+    <value>{1}에 {0:N0}행을 가져왔습니다.</value>
+  </data>
+  <data name="ImportedRows_Other" xml:space="preserve">
+    <value>{1}에 {0:N0}행을 가져왔습니다.</value>
+  </data>
+  <data name="ImportedWithSkipped" xml:space="preserve">
+    <value>{0} {1}</value>
+  </data>
+  <data name="Importing" xml:space="preserve">
+    <value>가져오는 중…</value>
+  </data>
+  <data name="ImportingRows_One" xml:space="preserve">
+    <value>가져오는 중… {0:N0}행</value>
+  </data>
+  <data name="ImportingRows_Other" xml:space="preserve">
+    <value>가져오는 중… {0:N0}행</value>
+  </data>
+  <data name="ImportingSqlTitle" xml:space="preserve">
+    <value>SQL 가져오는 중</value>
+  </data>
+  <data name="MatchByName" xml:space="preserve">
+    <value>이름으로 일치</value>
+  </data>
+  <data name="MatchByPosition" xml:space="preserve">
+    <value>위치로 일치</value>
+  </data>
+  <data name="MatchColumns" xml:space="preserve">
+    <value>열 일치</value>
+  </data>
+  <data name="NewTable" xml:space="preserve">
+    <value>새 테이블</value>
+  </data>
+  <data name="NewTableName" xml:space="preserve">
+    <value>새 테이블 이름</value>
+  </data>
+  <data name="NoFields" xml:space="preserve">
+    <value>파일에 가져올 필드가 없습니다.</value>
+  </data>
+  <data name="NoTransactionsToolTip" xml:space="preserve">
+    <value>이 데이터베이스는 각 문을 개별적으로 실행합니다.</value>
+  </data>
+  <data name="NullTextHeader" xml:space="preserve">
+    <value>NULL 텍스트</value>
+  </data>
+  <data name="NullTextToolTip" xml:space="preserve">
+    <value>NULL 또는 \N처럼 null로 가져올 값입니다. 빈 필드는 항상 null로 가져옵니다.</value>
+  </data>
+  <data name="OnErrorHeader" xml:space="preserve">
+    <value>오류 발생 시</value>
+  </data>
+  <data name="OnErrorSkipAndContinue" xml:space="preserve">
+    <value>건너뛰고 계속하기</value>
+  </data>
+  <data name="OnErrorStopAndCommit" xml:space="preserve">
+    <value>중지 후 커밋</value>
+  </data>
+  <data name="OnErrorStopAndRollback" xml:space="preserve">
+    <value>중지 후 롤백</value>
+  </data>
+  <data name="PreviewNote" xml:space="preserve">
+    <value>{0}; {1}</value>
+  </data>
+  <data name="PrimaryKeyFieldName" xml:space="preserve">
+    <value>{0}은(는) 기본 키임</value>
+  </data>
+  <data name="ReadOnlyCannotImportSql" xml:space="preserve">
+    <value>이 연결의 안전 모드가 읽기 전용이므로 SQL 파일을 가져올 수 없습니다.</value>
+  </data>
+  <data name="RecordsSkipped_One" xml:space="preserve">
+    <value>매핑된 필드가 없는 레코드 {0:N0}개를 건너뛰었습니다.</value>
+  </data>
+  <data name="RecordsSkipped_Other" xml:space="preserve">
+    <value>매핑된 필드가 없는 레코드 {0:N0}개를 건너뛰었습니다.</value>
+  </data>
+  <data name="RowsShown_One" xml:space="preserve">
+    <value>{0:N0}행 표시</value>
+  </data>
+  <data name="RowsShown_Other" xml:space="preserve">
+    <value>{0:N0}행 표시</value>
+  </data>
+  <data name="Skip" xml:space="preserve">
+    <value>건너뛰기</value>
+  </data>
+  <data name="SqlFileSummary" xml:space="preserve">
+    <value>{0}({1:N0} KB)의 모든 문을 {2}에서 실행합니다.</value>
+  </data>
+  <data name="SqlImportedSkipped_One" xml:space="preserve">
+    <value>{1} 가져옴: {2:N1}초 동안 문 {0:N0}개, {3:N0}개 건너뜀.</value>
+  </data>
+  <data name="SqlImportedSkipped_Other" xml:space="preserve">
+    <value>{1} 가져옴: {2:N1}초 동안 문 {0:N0}개, {3:N0}개 건너뜀.</value>
+  </data>
+  <data name="SqlImported_One" xml:space="preserve">
+    <value>{1} 가져옴: {2:N1}초 동안 문 {0:N0}개.</value>
+  </data>
+  <data name="SqlImported_Other" xml:space="preserve">
+    <value>{1} 가져옴: {2:N1}초 동안 문 {0:N0}개.</value>
+  </data>
+  <data name="Starting" xml:space="preserve">
+    <value>시작 중…</value>
+  </data>
+  <data name="StatementsFailedTitle_One" xml:space="preserve">
+    <value>문 {0:N0}개 실패</value>
+  </data>
+  <data name="StatementsFailedTitle_Other" xml:space="preserve">
+    <value>문 {0:N0}개 실패</value>
+  </data>
+  <data name="StatementsKept_One" xml:space="preserve">
+    <value>그 전의 문은 유지되었습니다.</value>
+  </data>
+  <data name="StatementsKept_Other" xml:space="preserve">
+    <value>그 전의 문 {0:N0}개는 유지되었습니다.</value>
+  </data>
+  <data name="StatementsRunSkipped_One" xml:space="preserve">
+    <value>문 {0:N0}개 실행, {1:N0}개 건너뜀</value>
+  </data>
+  <data name="StatementsRunSkipped_Other" xml:space="preserve">
+    <value>문 {0:N0}개 실행, {1:N0}개 건너뜀</value>
+  </data>
+  <data name="StatementsRun_One" xml:space="preserve">
+    <value>문 {0:N0}개 실행</value>
+  </data>
+  <data name="StatementsRun_Other" xml:space="preserve">
+    <value>문 {0:N0}개 실행</value>
+  </data>
+  <data name="StoppedImporting" xml:space="preserve">
+    <value>{0} 가져오기를 중지했습니다.</value>
+  </data>
+  <data name="TrimSpaces" xml:space="preserve">
+    <value>공백 제거</value>
+  </data>
+  <data name="TypeOfFieldName" xml:space="preserve">
+    <value>{0}의 유형</value>
+  </data>
+  <data name="TypesFromRows_One" xml:space="preserve">
+    <value>첫 행 기준 유형</value>
+  </data>
+  <data name="TypesFromRows_Other" xml:space="preserve">
+    <value>처음 {0:N0}행 기준 유형</value>
+  </data>
+  <data name="WrapInTransaction" xml:space="preserve">
+    <value>트랜잭션으로 감싸기(BEGIN/COMMIT)</value>
+  </data>
+  <data name="WrapInTransactionToolTip" xml:space="preserve">
+    <value>모든 문을 하나의 트랜잭션에서 실행하므로 실패하면 가져오기로 변경된 내용이 롤백됩니다. MySQL처럼 CREATE, ALTER, DROP을 실행 즉시 커밋하는 데이터베이스에서는 해당 문과 그 이전의 모든 내용이 유지됩니다.</value>
+  </data>
+</root>

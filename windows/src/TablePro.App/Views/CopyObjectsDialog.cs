@@ -1,4 +1,3 @@
-using System.Globalization;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
@@ -16,19 +15,9 @@ namespace TablePro.App.Views;
 /// </summary>
 public static class CopyObjectsDialog
 {
-    private static readonly (string Name, CopyContent Value)[] Contents =
-    [
-        ("Structure and data", CopyContent.StructureAndData),
-        ("Structure only", CopyContent.Structure),
-        ("Data only", CopyContent.Data),
-    ];
+    private static readonly CopyContent[] Contents = [CopyContent.StructureAndData, CopyContent.Structure, CopyContent.Data];
 
-    private static readonly (string Name, CopyExistingPolicy Value)[] Policies =
-    [
-        ("Skip it", CopyExistingPolicy.Skip),
-        ("Replace it", CopyExistingPolicy.Replace),
-        ("Add rows to it", CopyExistingPolicy.AppendData),
-    ];
+    private static readonly CopyExistingPolicy[] Policies = [CopyExistingPolicy.Skip, CopyExistingPolicy.Replace, CopyExistingPolicy.AppendData];
 
     /// <summary>Copies <paramref name="objects"/> (and any others the user adds) to a connection <paramref name="targets"/> offers.</summary>
     public static async Task ShowAsync(WorkspaceContext context, IReadOnlyList<DatabaseObject> objects, CopyTargets targets)
@@ -52,7 +41,7 @@ public static class CopyObjectsDialog
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                await context.Dialogs.ShowErrorAsync($"Cannot connect to {model.TargetProfile.Name}", ex.Message);
+                await context.Dialogs.ShowErrorAsync(Strings.Format("Tools/CopyCannotConnect", model.TargetProfile.Name), ex.Message);
                 return;
             }
 
@@ -80,7 +69,7 @@ public static class CopyObjectsDialog
         var boxes = new List<CheckBox>();
         foreach (var obj in model.Objects)
         {
-            var box = new CheckBox { Content = $"{obj.Name.Name}  ({obj.Kind.ToString().ToLowerInvariant()})", IsChecked = model.Selected.Contains((obj.Kind, obj.Name)), MinWidth = 0 };
+            var box = new CheckBox { Content = $"{obj.Name.Name}  ({ToolsNames.CopyObjectKindName(obj.Kind)})", IsChecked = model.Selected.Contains((obj.Kind, obj.Name)), MinWidth = 0 };
             box.Click += (_, _) =>
             {
                 if (box.IsChecked == true)
@@ -96,9 +85,9 @@ public static class CopyObjectsDialog
             list.Children.Add(box);
         }
 
-        var all = new HyperlinkButton { Content = "Select All" };
+        var all = new HyperlinkButton { Content = Strings.Get("Common/SelectAll") };
         all.Click += (_, _) => SetAll(true);
-        var none = new HyperlinkButton { Content = "Select None" };
+        var none = new HyperlinkButton { Content = Strings.Get("Tools/CopySelectNone") };
         none.Click += (_, _) => SetAll(false);
         void SetAll(bool value)
         {
@@ -121,7 +110,13 @@ public static class CopyObjectsDialog
         selection.Children.Add(all);
         selection.Children.Add(none);
 
-        var target = new ComboBox { Header = "Copy to", MinWidth = 320, ItemsSource = model.Targets.Profiles.Select((p, i) => i == 0 ? $"{p.Name} (this connection)" : $"{p.Name}  ·  {p.Descriptor.DisplayName}").ToList(), SelectedIndex = 0 };
+        var target = new ComboBox
+        {
+            Header = Strings.Get("Tools/CopyTo"),
+            MinWidth = 320,
+            ItemsSource = model.Targets.Profiles.Select((p, i) => i == 0 ? Strings.Format("Tools/CopyThisConnection", p.Name) : $"{p.Name}  ·  {p.Descriptor.DisplayName}").ToList(),
+            SelectedIndex = 0,
+        };
         var refusal = new InfoBar { Severity = InfoBarSeverity.Error, IsClosable = false };
         target.SelectionChanged += (_, _) =>
         {
@@ -130,12 +125,18 @@ public static class CopyObjectsDialog
             refusal.IsOpen = model.Refusal is not null;
         };
 
-        var content = new RadioButtons { Header = "Copy", MaxColumns = 3, ItemsSource = Contents.Select(c => c.Name).ToList(), SelectedIndex = 0 };
-        var policy = new RadioButtons { Header = "When the target already has an object of that name", MaxColumns = 3, ItemsSource = Policies.Select(p => p.Name).ToList(), SelectedIndex = 0 };
-        var errors = new ComboBox { Header = "On error", MinWidth = 320, ItemsSource = new List<string> { "Stop at the first failure", "Skip the failed object and continue" }, SelectedIndex = 0 };
+        var content = new RadioButtons { Header = Strings.Get("Tools/CopyContentHeader"), MaxColumns = 3, ItemsSource = Contents.Select(ContentName).ToList(), SelectedIndex = 0 };
+        var policy = new RadioButtons { Header = Strings.Get("Tools/CopyPolicyHeader"), MaxColumns = 3, ItemsSource = Policies.Select(PolicyName).ToList(), SelectedIndex = 0 };
+        var errors = new ComboBox
+        {
+            Header = Strings.Get("Tools/CopyOnError"),
+            MinWidth = 320,
+            ItemsSource = new List<string> { Strings.Get("Tools/CopyOnErrorStop"), Strings.Get("Tools/CopyOnErrorSkip") },
+            SelectedIndex = 0,
+        };
 
         var panel = new StackPanel { Spacing = 12, Width = 560 };
-        panel.Children.Add(new TextBlock { Text = $"Objects from {model.SourceName}", Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"] });
+        panel.Children.Add(new TextBlock { Text = Strings.Format("Tools/CopyObjectsFrom", model.SourceName), Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"] });
         panel.Children.Add(new ScrollViewer { Content = list, MaxHeight = 220 });
         panel.Children.Add(selection);
         panel.Children.Add(target);
@@ -144,7 +145,7 @@ public static class CopyObjectsDialog
         panel.Children.Add(policy);
         panel.Children.Add(errors);
 
-        var dialog = dialogs.Create("Copy Objects", new ScrollViewer { Content = panel, MaxHeight = 640 }, "Next", "Cancel");
+        var dialog = dialogs.Create(Strings.Get("Tools/CopyObjectsTitle"), new ScrollViewer { Content = panel, MaxHeight = 640 }, Strings.Get("Common/Next"), Strings.Get("Common/Cancel"));
         dialog.Resources["ContentDialogMaxWidth"] = 700.0;
         dialog.PrimaryButtonClick += (_, args) => args.Cancel = model.Selected.Count == 0 || model.Refusal is not null;
         if (await dialogs.ShowAsync(dialog) != ContentDialogResult.Primary)
@@ -152,8 +153,8 @@ public static class CopyObjectsDialog
             return false;
         }
 
-        model.Content = Contents[Math.Max(0, content.SelectedIndex)].Value;
-        model.ExistingPolicy = Policies[Math.Max(0, policy.SelectedIndex)].Value;
+        model.Content = Contents[Math.Max(0, content.SelectedIndex)];
+        model.ExistingPolicy = Policies[Math.Max(0, policy.SelectedIndex)];
         model.ErrorHandling = errors.SelectedIndex == 1 ? CopyErrorHandling.SkipAndContinue : CopyErrorHandling.Stop;
         return true;
     }
@@ -166,7 +167,7 @@ public static class CopyObjectsDialog
         ContentDialog? dialog = null;
         if (model.TargetSchemas.Count > 0)
         {
-            var schema = new ComboBox { Header = "Target schema", MinWidth = 260, ItemsSource = model.TargetSchemas.ToList(), SelectedItem = model.TargetSchema };
+            var schema = new ComboBox { Header = Strings.Get("Tools/CopyTargetSchema"), MinWidth = 260, ItemsSource = model.TargetSchemas.ToList(), SelectedItem = model.TargetSchema };
             schema.SelectionChanged += async (_, _) =>
             {
                 model.TargetSchema = schema.SelectedItem as string;
@@ -177,7 +178,7 @@ public static class CopyObjectsDialog
 
         panel.Children.Add(warnings);
         panel.Children.Add(new ScrollViewer { Content = review, MaxHeight = 420 });
-        dialog = dialogs.Create($"Copy to {model.TargetProfile.Name}", panel, "Copy", "Cancel");
+        dialog = dialogs.Create(Strings.Format("Tools/CopyReviewTitle", model.TargetProfile.Name), panel, Strings.Get("Tools/CopyReviewButton"), Strings.Get("Common/Cancel"));
         dialog.Resources["ContentDialogMaxWidth"] = 760.0;
         dialog.IsPrimaryButtonEnabled = false;
         dialog.Opened += async (_, _) => await PlanAsync();
@@ -208,7 +209,7 @@ public static class CopyObjectsDialog
             warnings.IsOpen = plan.Warnings.Count > 0;
             if (plan.CrossesEngines && plan.Warnings.Count == 0)
             {
-                review.Children.Add(Caption($"{model.SourceName} and {model.TargetProfile.Name} are different engines, so column types are translated. Check them before copying."));
+                review.Children.Add(Caption(Strings.Format("Tools/CopyCrossEngineNote", model.SourceName, model.TargetProfile.Name)));
             }
 
             foreach (var table in plan.Tables)
@@ -227,12 +228,26 @@ public static class CopyObjectsDialog
         }
     }
 
+    private static string ContentName(CopyContent content) => content switch
+    {
+        CopyContent.Structure => Strings.Get("Tools/CopyContentStructure"),
+        CopyContent.Data => Strings.Get("Tools/CopyContentData"),
+        _ => Strings.Get("Tools/CopyContentStructureAndData"),
+    };
+
+    private static string PolicyName(CopyExistingPolicy policy) => policy switch
+    {
+        CopyExistingPolicy.Replace => Strings.Get("Tools/CopyPolicyReplace"),
+        CopyExistingPolicy.AppendData => Strings.Get("Tools/CopyPolicyAppend"),
+        _ => Strings.Get("Tools/CopyPolicySkip"),
+    };
+
     private static string ActionText(CopyAction action, CopyContent content) => action switch
     {
-        CopyAction.Create => "Create",
-        CopyAction.Replace => content == CopyContent.Data ? "Empty and fill" : "Replace",
-        CopyAction.Append => "Add rows to",
-        _ => "Skip",
+        CopyAction.Create => Strings.Get("Tools/CopyActionCreate"),
+        CopyAction.Replace => content == CopyContent.Data ? Strings.Get("Tools/CopyActionEmptyAndFill") : Strings.Get("Tools/CopyActionReplace"),
+        CopyAction.Append => Strings.Get("Tools/CopyActionAppend"),
+        _ => Strings.Get("Tools/CopyActionSkip"),
     };
 
     private static StackPanel Entry(string action, string name, IEnumerable<string> notes, IEnumerable<string> types)
@@ -256,27 +271,27 @@ public static class CopyObjectsDialog
     {
         using var cancellation = new CancellationTokenSource();
         var bar = new ProgressBar { MinWidth = 440, IsIndeterminate = true };
-        var phase = new TextBlock { Text = "Starting…", TextTrimming = TextTrimming.CharacterEllipsis };
+        var phase = new TextBlock { Text = Strings.Get("Tools/Starting"), TextTrimming = TextTrimming.CharacterEllipsis };
         var rows = new TextBlock { Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"] };
-        AutomationProperties.SetName(bar, "Copy progress");
+        AutomationProperties.SetName(bar, Strings.Get("Tools/CopyProgressName"));
         var panel = new StackPanel { Spacing = 12 };
         panel.Children.Add(phase);
         panel.Children.Add(bar);
         panel.Children.Add(rows);
-        var progressDialog = dialogs.Create("Copying", panel, null, "Stop");
+        var progressDialog = dialogs.Create(Strings.Get("Tools/CopyProgressTitle"), panel, null, Strings.Get("Common/Stop"));
         progressDialog.CloseButtonClick += (_, _) => cancellation.Cancel();
         var progress = new Progress<CopyProgress>(p =>
         {
             phase.Text = p.Phase switch
             {
-                CopyPhase.Dropping => $"Dropping {p.Object}",
-                CopyPhase.Creating => $"Creating {p.Object}",
-                CopyPhase.CopyingRows => $"Copying rows of {p.Object}",
-                CopyPhase.Indexing => $"Indexing {p.Object}",
-                CopyPhase.LinkingKeys => $"Adding the keys of {p.Object}",
-                CopyPhase.Definitions => $"Creating {p.Object}",
-                CopyPhase.Finished => "Finishing",
-                _ => "Preparing",
+                CopyPhase.Dropping => Strings.Format("Tools/CopyPhaseDropping", p.Object),
+                CopyPhase.Creating => Strings.Format("Tools/CopyPhaseCreating", p.Object),
+                CopyPhase.CopyingRows => Strings.Format("Tools/CopyPhaseCopyingRows", p.Object),
+                CopyPhase.Indexing => Strings.Format("Tools/CopyPhaseIndexing", p.Object),
+                CopyPhase.LinkingKeys => Strings.Format("Tools/CopyPhaseLinkingKeys", p.Object),
+                CopyPhase.Definitions => Strings.Format("Tools/CopyPhaseCreating", p.Object),
+                CopyPhase.Finished => Strings.Get("Tools/CopyPhaseFinishing"),
+                _ => Strings.Get("Tools/CopyPhasePreparing"),
             };
             var counted = p.Phase == CopyPhase.CopyingRows && p.ObjectTotal is > 0;
             bar.IsIndeterminate = !counted;
@@ -286,7 +301,7 @@ public static class CopyObjectsDialog
                 bar.Value = Math.Min(p.ObjectTotal.Value, p.ObjectRows ?? 0);
             }
 
-            rows.Text = string.Create(CultureInfo.CurrentCulture, $"{p.RowsCopied:N0} rows copied");
+            rows.Text = Strings.Plural("Tools/CopyRowsCopied", p.RowsCopied);
         });
 
         // Hide does nothing to a dialog that has not opened yet, so a quick copy waits for it to open before closing it.
@@ -313,7 +328,7 @@ public static class CopyObjectsDialog
 
         if (failure is not null)
         {
-            await dialogs.ShowErrorAsync("Copy failed", failure.Message);
+            await dialogs.ShowErrorAsync(Strings.Get("Tools/CopyFailedTitle"), failure.Message);
         }
 
         return result;
@@ -321,10 +336,10 @@ public static class CopyObjectsDialog
 
     private static async Task ReportAsync(WorkspaceContext context, CopyObjectsViewModel model, CopyResult result)
     {
-        var summary = string.Create(CultureInfo.CurrentCulture, $"{result.RowsCopied:N0} rows copied to {model.TargetProfile.Name}.");
+        var summary = Strings.Plural("Tools/CopyRowsCopiedTo", result.RowsCopied, model.TargetProfile.Name);
         if (result.Succeeded && result.Outcomes.All(o => o.Status == CopyOutcomeStatus.Copied))
         {
-            context.Notify($"Copied {result.Outcomes.Count} objects. {summary}");
+            context.Notify(Strings.Plural("Tools/CopyObjectsCopied", result.Outcomes.Count, summary));
             return;
         }
 
@@ -333,21 +348,21 @@ public static class CopyObjectsDialog
         {
             var status = outcome.Status switch
             {
-                CopyOutcomeStatus.Copied => "Copied",
-                CopyOutcomeStatus.Skipped => "Skipped",
-                CopyOutcomeStatus.Cancelled => "Stopped",
-                _ => "Failed",
+                CopyOutcomeStatus.Copied => Strings.Get("Tools/CopyOutcomeCopied"),
+                CopyOutcomeStatus.Skipped => Strings.Get("Tools/CopyOutcomeSkipped"),
+                CopyOutcomeStatus.Cancelled => Strings.Get("Tools/CopyOutcomeStopped"),
+                _ => Strings.Get("Tools/CopyOutcomeFailed"),
             };
-            var rows = outcome.RowsCopied > 0 ? string.Create(CultureInfo.CurrentCulture, $", {outcome.RowsCopied:N0} rows") : string.Empty;
+            var name = outcome.RowsCopied > 0 ? Strings.Plural("Tools/CopyOutcomeNameRows", outcome.RowsCopied, outcome.Name) : outcome.Name;
             var lines = outcome.Error is null ? outcome.Notes : [outcome.Error, .. outcome.Notes];
-            list.Children.Add(Entry(status, outcome.Name + rows, lines, []));
+            list.Children.Add(Entry(status, name, lines, []));
         }
 
         var panel = new StackPanel { Spacing = 12, Width = 600 };
         panel.Children.Add(new TextBlock { Text = summary, TextWrapping = TextWrapping.Wrap });
         panel.Children.Add(new ScrollViewer { Content = list, MaxHeight = 420 });
-        var title = result.Cancelled ? "Copy stopped" : result.Succeeded ? "Copy finished" : "Copy finished with problems";
-        var dialog = context.Dialogs.Create(title, panel, null, "Close");
+        var title = result.Cancelled ? Strings.Get("Tools/CopyStoppedTitle") : result.Succeeded ? Strings.Get("Tools/CopyFinishedTitle") : Strings.Get("Tools/CopyFinishedWithProblemsTitle");
+        var dialog = context.Dialogs.Create(title, panel, null, Strings.Get("Common/Close"));
         dialog.Resources["ContentDialogMaxWidth"] = 720.0;
         await context.Dialogs.ShowAsync(dialog);
     }

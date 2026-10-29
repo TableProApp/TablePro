@@ -1,0 +1,255 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="CategoryApp" xml:space="preserve">
+    <value>Ứng dụng</value>
+  </data>
+  <data name="CategoryConnections" xml:space="preserve">
+    <value>Kết nối</value>
+  </data>
+  <data name="CategoryDataGrid" xml:space="preserve">
+    <value>Lưới dữ liệu</value>
+  </data>
+  <data name="CategoryEditor" xml:space="preserve">
+    <value>Trình soạn thảo &amp; Truy vấn</value>
+  </data>
+  <data name="CategoryNavigation" xml:space="preserve">
+    <value>Điều hướng</value>
+  </data>
+  <data name="CommandCloseAllTabs" xml:space="preserve">
+    <value>Đóng tất cả tab</value>
+  </data>
+  <data name="CommandCloseOtherTabs" xml:space="preserve">
+    <value>Đóng các tab khác</value>
+  </data>
+  <data name="CommandCloseTab" xml:space="preserve">
+    <value>Đóng tab</value>
+  </data>
+  <data name="CommandDisconnect" xml:space="preserve">
+    <value>Ngắt kết nối</value>
+  </data>
+  <data name="CommandErDiagram" xml:space="preserve">
+    <value>Sơ đồ ER</value>
+  </data>
+  <data name="CommandExecuteAllStatements" xml:space="preserve">
+    <value>Chạy tất cả câu lệnh</value>
+  </data>
+  <data name="CommandExecuteQuery" xml:space="preserve">
+    <value>Chạy câu lệnh hiện tại</value>
+  </data>
+  <data name="CommandExplainQuery" xml:space="preserve">
+    <value>Giải thích truy vấn</value>
+  </data>
+  <data name="CommandExportDatabase" xml:space="preserve">
+    <value>Xuất cơ sở dữ liệu</value>
+  </data>
+  <data name="CommandFind" xml:space="preserve">
+    <value>Tìm</value>
+  </data>
+  <data name="CommandFindAndReplace" xml:space="preserve">
+    <value>Tìm và thay thế</value>
+  </data>
+  <data name="CommandFindNext" xml:space="preserve">
+    <value>Tìm tiếp theo</value>
+  </data>
+  <data name="CommandFindPrevious" xml:space="preserve">
+    <value>Tìm trước đó</value>
+  </data>
+  <data name="CommandFocusObjectList" xml:space="preserve">
+    <value>Chuyển đến danh sách đối tượng</value>
+  </data>
+  <data name="CommandFocusSidebarSearch" xml:space="preserve">
+    <value>Chuyển đến bộ lọc thanh bên</value>
+  </data>
+  <data name="CommandFormatQuery" xml:space="preserve">
+    <value>Định dạng truy vấn</value>
+  </data>
+  <data name="CommandGoToDefinition" xml:space="preserve">
+    <value>Đi tới định nghĩa</value>
+  </data>
+  <data name="CommandManageConnections" xml:space="preserve">
+    <value>Quản lý kết nối</value>
+  </data>
+  <data name="CommandNewTab" xml:space="preserve">
+    <value>Tab mới</value>
+  </data>
+  <data name="CommandNextQueryIssue" xml:space="preserve">
+    <value>Vấn đề tiếp theo trong truy vấn</value>
+  </data>
+  <data name="CommandOpenSettings" xml:space="preserve">
+    <value>Cài đặt</value>
+  </data>
+  <data name="CommandPreviousQueryIssue" xml:space="preserve">
+    <value>Vấn đề trước đó trong truy vấn</value>
+  </data>
+  <data name="CommandQuickSwitcher" xml:space="preserve">
+    <value>Mở nhanh</value>
+  </data>
+  <data name="CommandRenameSymbol" xml:space="preserve">
+    <value>Đổi tên ký hiệu</value>
+  </data>
+  <data name="CommandRunSqlFile" xml:space="preserve">
+    <value>Chạy tệp SQL</value>
+  </data>
+  <data name="CommandSaveFile" xml:space="preserve">
+    <value>Lưu tệp</value>
+  </data>
+  <data name="CommandSearchDatabase" xml:space="preserve">
+    <value>Tìm kiếm trong cơ sở dữ liệu</value>
+  </data>
+  <data name="CommandServerDashboard" xml:space="preserve">
+    <value>Bảng điều khiển máy chủ</value>
+  </data>
+  <data name="CommandShowFavoritesList" xml:space="preserve">
+    <value>Hiện Yêu thích</value>
+  </data>
+  <data name="CommandShowNextTab" xml:space="preserve">
+    <value>Hiện tab tiếp</value>
+  </data>
+  <data name="CommandShowPreviousTab" xml:space="preserve">
+    <value>Hiện tab trước</value>
+  </data>
+  <data name="CommandShowQuickInfo" xml:space="preserve">
+    <value>Hiện thông tin nhanh</value>
+  </data>
+  <data name="CommandToggleAssistant" xml:space="preserve">
+    <value>Bật/tắt trợ lý</value>
+  </data>
+  <data name="CommandToggleComment" xml:space="preserve">
+    <value>Bật/tắt comment</value>
+  </data>
+  <data name="CommandToggleHistory" xml:space="preserve">
+    <value>Bật/tắt lịch sử</value>
+  </data>
+  <data name="CommandToggleSqlFiles" xml:space="preserve">
+    <value>Bật/tắt tệp SQL</value>
+  </data>
+  <data name="CommandToggleTableBrowser" xml:space="preserve">
+    <value>Bật/tắt thanh bên</value>
+  </data>
+  <data name="ConflictCommand" xml:space="preserve">
+    <value>{0} đã được dùng cho “{1}” trong {2}.</value>
+  </data>
+  <data name="ConflictNeedsModifier" xml:space="preserve">
+    <value>Phím tắt cần có Ctrl hoặc Alt, trừ khi đó là phím chức năng. Shift có thể kết hợp cùng nhưng không thể tự tạo thành phím tắt.</value>
+  </data>
+  <data name="ConflictReserved" xml:space="preserve">
+    <value>{0} được dành riêng cho “{1}” và không thể gán.</value>
+  </data>
+  <data name="ConflictSystemReserved" xml:space="preserve">
+    <value>{0} được Windows dành riêng và không thể gán.</value>
+  </data>
+  <data name="RecorderHelpText" xml:space="preserve">
+    <value>Nhấn để ghi phím tắt. Esc để huỷ, Backspace để xoá.</value>
+  </data>
+  <data name="RecorderPrompt" xml:space="preserve">
+    <value>Nhấn phím tắt</value>
+  </data>
+  <data name="RecorderRecording" xml:space="preserve">
+    <value>Đang ghi</value>
+  </data>
+  <data name="ReservedAddRow" xml:space="preserve">
+    <value>Thêm dòng</value>
+  </data>
+  <data name="ReservedCloseWindow" xml:space="preserve">
+    <value>Đóng cửa sổ</value>
+  </data>
+  <data name="ReservedContextMenu" xml:space="preserve">
+    <value>Menu ngữ cảnh</value>
+  </data>
+  <data name="ReservedCopyWithHeaders" xml:space="preserve">
+    <value>Sao chép kèm tiêu đề</value>
+  </data>
+  <data name="ReservedCycleWindows" xml:space="preserve">
+    <value>Chuyển vòng cửa sổ</value>
+  </data>
+  <data name="ReservedDeleteWordBackward" xml:space="preserve">
+    <value>Xoá từ liền trước</value>
+  </data>
+  <data name="ReservedDeleteWordForward" xml:space="preserve">
+    <value>Xoá từ liền sau</value>
+  </data>
+  <data name="ReservedDuplicateLine" xml:space="preserve">
+    <value>Nhân bản dòng</value>
+  </data>
+  <data name="ReservedMenuBar" xml:space="preserve">
+    <value>Thanh menu</value>
+  </data>
+  <data name="ReservedMoveToBeginningOfDocument" xml:space="preserve">
+    <value>Đến đầu tài liệu</value>
+  </data>
+  <data name="ReservedMoveToEndOfDocument" xml:space="preserve">
+    <value>Đến cuối tài liệu</value>
+  </data>
+  <data name="ReservedMoveToNextParagraph" xml:space="preserve">
+    <value>Đến đoạn tiếp theo</value>
+  </data>
+  <data name="ReservedMoveToPreviousParagraph" xml:space="preserve">
+    <value>Đến đoạn trước đó</value>
+  </data>
+  <data name="ReservedMoveWordLeft" xml:space="preserve">
+    <value>Sang trái một từ</value>
+  </data>
+  <data name="ReservedMoveWordRight" xml:space="preserve">
+    <value>Sang phải một từ</value>
+  </data>
+  <data name="ReservedNextProblem" xml:space="preserve">
+    <value>Vấn đề tiếp theo</value>
+  </data>
+  <data name="ReservedPreviousProblem" xml:space="preserve">
+    <value>Vấn đề trước đó</value>
+  </data>
+  <data name="ReservedPrintScreen" xml:space="preserve">
+    <value>Print Screen</value>
+  </data>
+  <data name="ReservedQuickInfo" xml:space="preserve">
+    <value>Thông tin nhanh</value>
+  </data>
+  <data name="ReservedSaveChanges" xml:space="preserve">
+    <value>Lưu thay đổi</value>
+  </data>
+  <data name="ReservedSecurityOptions" xml:space="preserve">
+    <value>Tùy chọn bảo mật</value>
+  </data>
+  <data name="ReservedSelectTab" xml:space="preserve">
+    <value>Chọn tab {0}</value>
+  </data>
+  <data name="ReservedSelectToBeginningOfDocument" xml:space="preserve">
+    <value>Chọn đến đầu tài liệu</value>
+  </data>
+  <data name="ReservedSelectToEndOfDocument" xml:space="preserve">
+    <value>Chọn đến cuối tài liệu</value>
+  </data>
+  <data name="ReservedSelectWordLeft" xml:space="preserve">
+    <value>Chọn sang trái một từ</value>
+  </data>
+  <data name="ReservedSelectWordRight" xml:space="preserve">
+    <value>Chọn sang phải một từ</value>
+  </data>
+  <data name="ReservedShowCompletions" xml:space="preserve">
+    <value>Hiện gợi ý hoàn thành</value>
+  </data>
+  <data name="ReservedStartMenu" xml:space="preserve">
+    <value>Menu Bắt đầu</value>
+  </data>
+  <data name="ReservedSwitchApps" xml:space="preserve">
+    <value>Chuyển ứng dụng</value>
+  </data>
+  <data name="ReservedTaskManager" xml:space="preserve">
+    <value>Trình quản lý Tác vụ</value>
+  </data>
+  <data name="ReservedWindowMenu" xml:space="preserve">
+    <value>Menu cửa sổ</value>
+  </data>
+</root>

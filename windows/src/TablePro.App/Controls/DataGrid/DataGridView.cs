@@ -103,7 +103,7 @@ public sealed partial class DataGridView : UserControl
 
         _corner = new Border { Width = _rowNumberWidth, BorderThickness = new Thickness(0, 0, 1, 1) };
         _corner.Tapped += (_, _) => SelectAll();
-        ToolTipService.SetToolTip(_corner, "Select all");
+        ToolTipService.SetToolTip(_corner, Strings.Get("Grid/SelectAll"));
         _root.Children.Add(_corner);
 
         _headerCanvas.RenderTransform = _headerShift;
@@ -495,7 +495,7 @@ public sealed partial class DataGridView : UserControl
         }
 
         var value = source.GetValue(row, column);
-        return value is null ? CellFormatter.NullText : CellFormatter.Format(value) is { Length: > 0 } text ? text : "empty";
+        return value is null ? CellFormatter.NullText : CellFormatter.Format(value) is { Length: > 0 } text ? text : Strings.Get("Grid/CellEmpty");
     }
 
     /// <summary>What the cell's color and decoration say to a sighted user: changed, a new or deleted row, NULL.</summary>
@@ -510,21 +510,21 @@ public sealed partial class DataGridView : UserControl
         switch (source.GetRowState(row))
         {
             case RowEditState.Inserted:
-                parts.Add("new row");
+                parts.Add(Strings.Get("Grid/StatusNewRow"));
                 break;
             case RowEditState.Deleted:
-                parts.Add("deleted row");
+                parts.Add(Strings.Get("Grid/StatusDeletedRow"));
                 break;
         }
 
         if (source.IsCellModified(row, column))
         {
-            parts.Add("modified");
+            parts.Add(Strings.Get("Grid/StatusModified"));
         }
 
         if (source.GetValue(row, column) is null)
         {
-            parts.Add("null");
+            parts.Add(Strings.Get("Grid/StatusNull"));
         }
 
         return string.Join(", ", parts);
@@ -1322,7 +1322,7 @@ public sealed partial class DataGridView : UserControl
             }
             else
             {
-                EditRejected?.Invoke(this, error ?? "The value was not accepted.");
+                EditRejected?.Invoke(this, error ?? Strings.Get("Grid/ValueNotAccepted"));
             }
         }
 

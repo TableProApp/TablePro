@@ -55,9 +55,9 @@ public sealed partial class DebuggerTabViewModel : TabViewModel
         _debugger = debugger;
         _dispatcher = DispatcherQueue.GetForCurrentThread();
         Target = target;
-        Title = "Debug " + target.Name.Name;
+        Title = Strings.Format("Debugger/TabTitle", target.Name.Name);
         Subtitle = target.Name.Schema ?? context.Session.Profile.Name;
-        StatusText = "Preparing…";
+        StatusText = Strings.Get("Debugger/StatusPreparing");
         ContinueCommand = new RelayCommand(() => Perform(DebugCommand.Continue), () => CanPerform(DebugCommand.Continue));
         StepOverCommand = new RelayCommand(() => Perform(DebugCommand.StepOver), () => CanPerform(DebugCommand.StepOver));
         StepIntoCommand = new RelayCommand(() => Perform(DebugCommand.StepInto), () => CanPerform(DebugCommand.StepInto));
@@ -150,7 +150,7 @@ public sealed partial class DebuggerTabViewModel : TabViewModel
 
         if (plan.MayWrite && _context.Session.Profile.SafeMode.BlocksAllWrites())
         {
-            Fail("Safe Mode blocks writes on this connection, and the routine may change data, so it can't be debugged here.");
+            Fail(Strings.Get("Debugger/SafeModeBlocks"));
             return;
         }
 
@@ -203,7 +203,7 @@ public sealed partial class DebuggerTabViewModel : TabViewModel
     private void Fail(string message)
     {
         Message = message;
-        StatusText = "Can't debug";
+        StatusText = Strings.Get("Debugger/StatusCantDebug");
         IsWorking = false;
         HasEnded = true;
     }
@@ -228,10 +228,10 @@ public sealed partial class DebuggerTabViewModel : TabViewModel
             return;
         }
 
-        StatusText = c.StatusText;
+        StatusText = StatusOf(c);
         IsWorking = c.State is DebugRunState.Preparing or DebugRunState.Starting or DebugRunState.Running || (c.IsStopping && !c.HasEnded);
         HasEnded = c.HasEnded;
-        Message = c.State == DebugRunState.Failed ? c.Message : c.InspectionError;
+        Message = c.State == DebugRunState.Failed ? Translate(c.Message) : c.InspectionError;
         if (c.DisplayedUnit is { } unit)
         {
             UnitName = unit.DisplayName;
@@ -288,7 +288,9 @@ public sealed partial class DebuggerTabViewModel : TabViewModel
             Frames.Clear();
             foreach (var frame in c.Frames)
             {
-                var title = frame.Location is { } location ? $"{location.Unit.DisplayName}  line {location.Line}" : $"Frame {frame.Level}";
+                var title = frame.Location is { } location
+                    ? Strings.Format("Debugger/FrameAtLine", location.Unit.DisplayName, location.Line)
+                    : Strings.Format("Debugger/FrameLevel", frame.Level);
                 Frames.Add(new DebugFrameItem(frame.Level, title, frame.Description));
             }
         }
@@ -309,13 +311,42 @@ public sealed partial class DebuggerTabViewModel : TabViewModel
         {
             var kind = variable.Kind switch
             {
-                DebugVariableKind.Argument => "Argument",
-                DebugVariableKind.Package => "Package",
-                _ => variable.IsConstant ? "Constant" : "Local",
+                DebugVariableKind.Argument => Strings.Get("Debugger/VariableKindArgument"),
+                DebugVariableKind.Package => Strings.Get("Debugger/VariableKindPackage"),
+                _ => variable.IsConstant ? Strings.Get("Debugger/VariableKindConstant") : Strings.Get("Debugger/VariableKindLocal"),
             };
             Variables.Add(new DebugVariableItem(variable.Name, kind, variable.TypeName ?? string.Empty, variable.Value ?? "NULL", variable.Value is null));
         }
     }
+
+    // The controller words its status in English; the same states are described here in the UI language.
+    private static string StatusOf(RoutineDebugController c)
+    {
+        if (c.IsStopping && !c.HasEnded)
+        {
+            return Strings.Get("Debugger/StatusStopping");
+        }
+
+        return c.State switch
+        {
+            DebugRunState.Preparing => Strings.Get("Debugger/StatusPreparing"),
+            DebugRunState.Starting => Strings.Get("Debugger/StatusStarting"),
+            DebugRunState.Running => Strings.Get("Debugger/StatusRunning"),
+            DebugRunState.Paused when c.PausedLocation is { } location => Strings.Format("Debugger/StatusPausedAt", location.Line, location.Unit.DisplayName),
+            DebugRunState.Paused => Strings.Get("Debugger/StatusPaused"),
+            DebugRunState.Finished => Strings.Get("Debugger/StatusFinished"),
+            DebugRunState.Failed => Translate(c.Message) ?? Strings.Get("Debugger/StatusFailed"),
+            _ => Translate(c.Message) ?? Strings.Get("Debugger/StatusStopped"),
+        };
+    }
+
+    // Only the controller's own fixed messages are known here; a driver's or server's message passes through.
+    private static string? Translate(string? message) => message switch
+    {
+        RoutineDebugController.StopNotConfirmed => Strings.Get("Debugger/StopNotConfirmed"),
+        RoutineDebugController.FinishedBeforeStop => Strings.Get("Debugger/FinishedBeforeStop"),
+        _ => message,
+    };
 
     private void RefreshOutput(RoutineDebugController c)
     {

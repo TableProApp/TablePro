@@ -36,7 +36,7 @@ public sealed partial class ResultChart : UserControl
     {
         foreach (var kind in Enum.GetValues<ChartKind>())
         {
-            _kind.Items.Add(kind.ToString());
+            _kind.Items.Add(KindName(kind));
         }
 
         _kind.SelectedIndex = 0;
@@ -45,11 +45,11 @@ public sealed partial class ResultChart : UserControl
         _series.SelectionChanged += (_, _) => Draw();
 
         var toolbar = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Padding = new Thickness(12, 6, 12, 6) };
-        toolbar.Children.Add(new TextBlock { Text = "Chart", VerticalAlignment = VerticalAlignment.Center });
+        toolbar.Children.Add(new TextBlock { Text = Strings.Get("Results/ChartLead"), VerticalAlignment = VerticalAlignment.Center });
         toolbar.Children.Add(_kind);
-        toolbar.Children.Add(new TextBlock { Text = "of", VerticalAlignment = VerticalAlignment.Center });
+        toolbar.Children.Add(new TextBlock { Text = Strings.Get("Results/ChartOf"), VerticalAlignment = VerticalAlignment.Center });
         toolbar.Children.Add(_series);
-        toolbar.Children.Add(new TextBlock { Text = "by", VerticalAlignment = VerticalAlignment.Center });
+        toolbar.Children.Add(new TextBlock { Text = Strings.Get("Results/ChartBy"), VerticalAlignment = VerticalAlignment.Center });
         toolbar.Children.Add(_category);
         toolbar.Children.Add(_note);
 
@@ -88,7 +88,7 @@ public sealed partial class ResultChart : UserControl
                 }
             }
 
-            _series.Items.Add("All numeric columns");
+            _series.Items.Add(Strings.Get("Results/ChartAllNumericColumns"));
             var firstText = value.Columns.ToList().FindIndex(c => !c.IsNumeric);
             _category.SelectedIndex = Math.Max(0, firstText);
             _series.SelectedIndex = _series.Items.Count > 1 ? 0 : -1;
@@ -105,17 +105,18 @@ public sealed partial class ResultChart : UserControl
         var height = ((FrameworkElement)_canvas.Parent).ActualHeight;
         if (_result is null || !CanChart || width < 80 || height < 80 || _category.SelectedIndex < 0 || _series.SelectedIndex < 0)
         {
-            _note.Text = _result is not null && !CanChart ? "This result has no numeric column to chart." : string.Empty;
+            _note.Text = _result is not null && !CanChart ? Strings.Get("Results/ChartNoNumericColumn") : string.Empty;
             return;
         }
 
         var categoryIndex = _category.SelectedIndex;
-        var seriesNames = (string)_series.SelectedItem == "All numeric columns"
+        // The "all numeric columns" entry is always last, so the index tells it from a column that happens to share its text.
+        var seriesNames = _series.SelectedIndex == _series.Items.Count - 1
             ? _result.Columns.Where(c => c.IsNumeric).Select(c => c.Name).Take(3).ToArray()
             : [(string)_series.SelectedItem];
         var seriesIndexes = seriesNames.Select(_result.ColumnIndex).ToArray();
         var count = Math.Min(_result.RowCount, MaxPoints);
-        _note.Text = _result.RowCount > MaxPoints ? string.Create(CultureInfo.CurrentCulture, $"First {MaxPoints:N0} of {_result.RowCount:N0} rows") : string.Empty;
+        _note.Text = _result.RowCount > MaxPoints ? Strings.Plural("Results/ChartFirstRows", _result.RowCount, MaxPoints) : string.Empty;
 
         var values = new double[seriesIndexes.Length][];
         var max = 0d;
@@ -173,7 +174,7 @@ public sealed partial class ResultChart : UserControl
                 {
                     var y = Y(values[s][r]);
                     var bar = new Rectangle { Width = barWidth, Height = Math.Max(1, Math.Abs(zero - y)), Fill = brush, RadiusX = 2, RadiusY = 2 };
-                    ToolTipService.SetToolTip(bar, $"{Label(r, categoryIndex)}: {values[s][r].ToString("N", CultureInfo.CurrentCulture)}");
+                    ToolTipService.SetToolTip(bar, Strings.Format("Results/ChartBarTooltip", Label(r, categoryIndex), values[s][r]));
                     Canvas.SetLeft(bar, left + (r * slot) + (slot * 0.1) + (s * barWidth));
                     Canvas.SetTop(bar, Math.Min(zero, y));
                     _canvas.Children.Add(bar);
@@ -219,6 +220,13 @@ public sealed partial class ResultChart : UserControl
             AddText(seriesNames[s], left + 22 + (s * 140), -4, text, 120, TextAlignment.Left);
         }
     }
+
+    private static string KindName(ChartKind kind) => kind switch
+    {
+        ChartKind.Bar => Strings.Get("Results/ChartKindBar"),
+        ChartKind.Line => Strings.Get("Results/ChartKindLine"),
+        _ => Strings.Get("Results/ChartKindArea"),
+    };
 
     private string Label(int row, int column) => CellFormatter.FormatForCell(_result![row, column]);
 

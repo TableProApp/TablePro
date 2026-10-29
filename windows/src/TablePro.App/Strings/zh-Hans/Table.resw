@@ -1,0 +1,483 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AddCheckNote" xml:space="preserve">
+    <value>添加检查约束会读取每一行，只要有一行未通过就会失败。</value>
+  </data>
+  <data name="AddCheckTitle" xml:space="preserve">
+    <value>添加检查约束</value>
+  </data>
+  <data name="AddColumnTitle" xml:space="preserve">
+    <value>添加列</value>
+  </data>
+  <data name="AddForeignKeyTitle" xml:space="preserve">
+    <value>添加外键</value>
+  </data>
+  <data name="AddIndexTitle" xml:space="preserve">
+    <value>添加索引</value>
+  </data>
+  <data name="AddPartitionTitle" xml:space="preserve">
+    <value>添加分区</value>
+  </data>
+  <data name="AllowsNull" xml:space="preserve">
+    <value>允许 NULL</value>
+  </data>
+  <data name="AnyColumn" xml:space="preserve">
+    <value>任意列</value>
+  </data>
+  <data name="CannotChangeStructure" xml:space="preserve">
+    <value>此引擎无法在应用中更改结构。</value>
+  </data>
+  <data name="CannotExpressChange" xml:space="preserve">
+    <value>此引擎无法表达该更改。</value>
+  </data>
+  <data name="CannotMakeChangeTitle" xml:space="preserve">
+    <value>无法进行此更改</value>
+  </data>
+  <data name="CellNo" xml:space="preserve">
+    <value>否</value>
+  </data>
+  <data name="CellYes" xml:space="preserve">
+    <value>是</value>
+  </data>
+  <data name="ChangeFailedTitle" xml:space="preserve">
+    <value>更改失败</value>
+  </data>
+  <data name="CheckExpressionHeader" xml:space="preserve">
+    <value>表达式</value>
+  </data>
+  <data name="CheckExpressionPlaceholder" xml:space="preserve">
+    <value>例如 price &gt; 0 AND quantity &gt;= 0</value>
+  </data>
+  <data name="CheckIncomplete" xml:space="preserve">
+    <value>检查约束需要同时具有名称和表达式。</value>
+  </data>
+  <data name="CheckNotSavedTitle" xml:space="preserve">
+    <value>检查约束未保存</value>
+  </data>
+  <data name="ChecksNotEditable" xml:space="preserve">
+    <value>此服务器无法在此添加或更改检查约束。</value>
+  </data>
+  <data name="CommentHeader" xml:space="preserve">
+    <value>注释</value>
+  </data>
+  <data name="DataAddRow.Label" xml:space="preserve">
+    <value>添加行</value>
+  </data>
+  <data name="DataDelete.Label" xml:space="preserve">
+    <value>删除</value>
+  </data>
+  <data name="DataDiscard.Label" xml:space="preserve">
+    <value>丢弃</value>
+  </data>
+  <data name="DataExport.Label" xml:space="preserve">
+    <value>导出</value>
+  </data>
+  <data name="DataFilter.Label" xml:space="preserve">
+    <value>筛选</value>
+  </data>
+  <data name="DataImport.Label" xml:space="preserve">
+    <value>导入</value>
+  </data>
+  <data name="DataRedo.Label" xml:space="preserve">
+    <value>重做</value>
+  </data>
+  <data name="DataRefresh.Label" xml:space="preserve">
+    <value>刷新</value>
+  </data>
+  <data name="DataUndo.Label" xml:space="preserve">
+    <value>撤销</value>
+  </data>
+  <data name="DefaultExpressionHeader" xml:space="preserve">
+    <value>默认值表达式</value>
+  </data>
+  <data name="DefaultExpressionPlaceholder" xml:space="preserve">
+    <value>例如 0、'text' 或 now()</value>
+  </data>
+  <data name="DefinitionCopy.Label" xml:space="preserve">
+    <value>复制</value>
+  </data>
+  <data name="DefinitionOpenInQueryTab.Label" xml:space="preserve">
+    <value>在查询标签页中打开</value>
+  </data>
+  <data name="DeleteRows" xml:space="preserve">
+    <value>删除行</value>
+  </data>
+  <data name="DetailsReadFailed" xml:space="preserve">
+    <value>无法读取检查约束、分区和选项：{0}</value>
+  </data>
+  <data name="DiscardChangesTitle" xml:space="preserve">
+    <value>丢弃更改？</value>
+  </data>
+  <data name="DuplicateRow" xml:space="preserve">
+    <value>复制行</value>
+  </data>
+  <data name="EditCell" xml:space="preserve">
+    <value>编辑单元格</value>
+  </data>
+  <data name="EditCheckNote" xml:space="preserve">
+    <value>新的表达式会删除该检查约束并重新添加，这会读取每一行。仅更改名称则不会。</value>
+  </data>
+  <data name="EditCheckTitle" xml:space="preserve">
+    <value>编辑 CHECK 约束</value>
+  </data>
+  <data name="EditColumnTitle" xml:space="preserve">
+    <value>编辑列</value>
+  </data>
+  <data name="EngineReadOnly" xml:space="preserve">
+    <value>{0} 连接为只读。</value>
+  </data>
+  <data name="ExcludeValue" xml:space="preserve">
+    <value>排除此值</value>
+  </data>
+  <data name="FilterAddCondition.Content" xml:space="preserve">
+    <value>添加条件</value>
+  </data>
+  <data name="FilterApply.Content" xml:space="preserve">
+    <value>应用</value>
+  </data>
+  <data name="FilterByValue" xml:space="preserve">
+    <value>按此值筛选</value>
+  </data>
+  <data name="FilterClear.Content" xml:space="preserve">
+    <value>清除</value>
+  </data>
+  <data name="FilterMatchMode.OffContent" xml:space="preserve">
+    <value>匹配任一</value>
+  </data>
+  <data name="FilterMatchMode.OnContent" xml:space="preserve">
+    <value>匹配全部</value>
+  </data>
+  <data name="FilterRawWhere.PlaceholderText" xml:space="preserve">
+    <value>原始 WHERE 子句，例如：price &gt; 10 AND status = 'open'</value>
+  </data>
+  <data name="FilterRemoveCondition.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>移除条件</value>
+  </data>
+  <data name="FilterRemoveCondition.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>移除条件</value>
+  </data>
+  <data name="FilterValue.PlaceholderText" xml:space="preserve">
+    <value>值</value>
+  </data>
+  <data name="ForeignKeyColumnHeader" xml:space="preserve">
+    <value>列</value>
+  </data>
+  <data name="ForeignKeyOnDeleteHeader" xml:space="preserve">
+    <value>删除时</value>
+  </data>
+  <data name="ForeignKeyTargetColumnHeader" xml:space="preserve">
+    <value>引用列</value>
+  </data>
+  <data name="ForeignKeyTargetTableHeader" xml:space="preserve">
+    <value>引用表</value>
+  </data>
+  <data name="HeaderBound" xml:space="preserve">
+    <value>边界</value>
+  </data>
+  <data name="HeaderColumns" xml:space="preserve">
+    <value>列</value>
+  </data>
+  <data name="HeaderComment" xml:space="preserve">
+    <value>注释</value>
+  </data>
+  <data name="HeaderDefault" xml:space="preserve">
+    <value>默认</value>
+  </data>
+  <data name="HeaderDefinition" xml:space="preserve">
+    <value>定义</value>
+  </data>
+  <data name="HeaderEditable" xml:space="preserve">
+    <value>可编辑</value>
+  </data>
+  <data name="HeaderEvent" xml:space="preserve">
+    <value>事件</value>
+  </data>
+  <data name="HeaderExpression" xml:space="preserve">
+    <value>表达式</value>
+  </data>
+  <data name="HeaderIdentity" xml:space="preserve">
+    <value>标识</value>
+  </data>
+  <data name="HeaderKey" xml:space="preserve">
+    <value>键</value>
+  </data>
+  <data name="HeaderMethod" xml:space="preserve">
+    <value>方法</value>
+  </data>
+  <data name="HeaderNullable" xml:space="preserve">
+    <value>允许 NULL</value>
+  </data>
+  <data name="HeaderOnDelete" xml:space="preserve">
+    <value>删除时</value>
+  </data>
+  <data name="HeaderOnUpdate" xml:space="preserve">
+    <value>更新时</value>
+  </data>
+  <data name="HeaderOption" xml:space="preserve">
+    <value>选项</value>
+  </data>
+  <data name="HeaderPrimary" xml:space="preserve">
+    <value>Primary</value>
+  </data>
+  <data name="HeaderReferencedColumns" xml:space="preserve">
+    <value>被引用的列</value>
+  </data>
+  <data name="HeaderReferences" xml:space="preserve">
+    <value>引用</value>
+  </data>
+  <data name="HeaderRows" xml:space="preserve">
+    <value>行</value>
+  </data>
+  <data name="HeaderSize" xml:space="preserve">
+    <value>大小</value>
+  </data>
+  <data name="HeaderSubpartitionOf" xml:space="preserve">
+    <value>所属分区</value>
+  </data>
+  <data name="HeaderTiming" xml:space="preserve">
+    <value>时机</value>
+  </data>
+  <data name="HeaderUnique" xml:space="preserve">
+    <value>唯一</value>
+  </data>
+  <data name="HeaderValidated" xml:space="preserve">
+    <value>已验证</value>
+  </data>
+  <data name="IndexColumnsHeader" xml:space="preserve">
+    <value>列（按键顺序）</value>
+  </data>
+  <data name="IndexUnique" xml:space="preserve">
+    <value>唯一</value>
+  </data>
+  <data name="InspectValue" xml:space="preserve">
+    <value>检查值</value>
+  </data>
+  <data name="LoadFailedTitle" xml:space="preserve">
+    <value>无法加载 {0}</value>
+  </data>
+  <data name="Loading" xml:space="preserve">
+    <value>正在加载…</value>
+  </data>
+  <data name="NoPrimaryKey" xml:space="preserve">
+    <value>无主键：将按所有列匹配行，遇到重复行的保存会被拒绝。</value>
+  </data>
+  <data name="NoRows" xml:space="preserve">
+    <value>无行</value>
+  </data>
+  <data name="NoRowsOnPage" xml:space="preserve">
+    <value>此页没有行</value>
+  </data>
+  <data name="NotSupportedTitle" xml:space="preserve">
+    <value>不支持</value>
+  </data>
+  <data name="NothingSavedTitle" xml:space="preserve">
+    <value>未保存任何内容</value>
+  </data>
+  <data name="ObjectReadOnly" xml:space="preserve">
+    <value>此对象为只读。</value>
+  </data>
+  <data name="OpenReferencedTable" xml:space="preserve">
+    <value>打开 {0}</value>
+  </data>
+  <data name="OperatorBetween" xml:space="preserve">
+    <value>介于</value>
+  </data>
+  <data name="OperatorContains" xml:space="preserve">
+    <value>包含</value>
+  </data>
+  <data name="OperatorEndsWith" xml:space="preserve">
+    <value>以...结尾</value>
+  </data>
+  <data name="OperatorIn" xml:space="preserve">
+    <value>在列表中</value>
+  </data>
+  <data name="OperatorIsEmpty" xml:space="preserve">
+    <value>为空</value>
+  </data>
+  <data name="OperatorIsNotEmpty" xml:space="preserve">
+    <value>不为空</value>
+  </data>
+  <data name="OperatorIsNotNull" xml:space="preserve">
+    <value>不为 NULL</value>
+  </data>
+  <data name="OperatorIsNull" xml:space="preserve">
+    <value>为 NULL</value>
+  </data>
+  <data name="OperatorNotContains" xml:space="preserve">
+    <value>不包含</value>
+  </data>
+  <data name="OperatorNotIn" xml:space="preserve">
+    <value>不在列表中</value>
+  </data>
+  <data name="OperatorStartsWith" xml:space="preserve">
+    <value>以...开头</value>
+  </data>
+  <data name="PageRangeOfTotal_One" xml:space="preserve">
+    <value>{1:N0}–{2:N0}，共 {0:N0}</value>
+  </data>
+  <data name="PageRangeOfTotal_Other" xml:space="preserve">
+    <value>{1:N0}–{2:N0}，共 {0:N0}</value>
+  </data>
+  <data name="PagerFirst.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>第一页</value>
+  </data>
+  <data name="PagerFirst.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>第一页</value>
+  </data>
+  <data name="PagerLast.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>最后一页</value>
+  </data>
+  <data name="PagerLast.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>最后一页</value>
+  </data>
+  <data name="PagerNext.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>下一页</value>
+  </data>
+  <data name="PagerNext.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>下一页</value>
+  </data>
+  <data name="PagerPageSize.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>每页行数</value>
+  </data>
+  <data name="PagerPrevious.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>上一页</value>
+  </data>
+  <data name="PagerPrevious.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>上一页</value>
+  </data>
+  <data name="PartitionBoundHeader" xml:space="preserve">
+    <value>边界</value>
+  </data>
+  <data name="PartitionBoundNote" xml:space="preserve">
+    <value>请按“边界”列显示的格式填写边界。HASH 或 KEY 分区请留空。</value>
+  </data>
+  <data name="PartitionBoundPlaceholder" xml:space="preserve">
+    <value>例如 VALUES LESS THAN (2026)，或 FOR VALUES FROM ('2026-01-01') TO ('2027-01-01')</value>
+  </data>
+  <data name="PartitionedBy" xml:space="preserve">
+    <value>按 {0} 分区。</value>
+  </data>
+  <data name="PartitionedBySubpartitioned" xml:space="preserve">
+    <value>按 {0} 分区，按 {1} 子分区。</value>
+  </data>
+  <data name="ReadOnlyCannotSave" xml:space="preserve">
+    <value>此连接的安全模式为只读，因此无法保存编辑。</value>
+  </data>
+  <data name="ReadOnlyConnectionTitle" xml:space="preserve">
+    <value>只读连接</value>
+  </data>
+  <data name="ReloadDropsChanges_One" xml:space="preserve">
+    <value>重新加载将丢弃 {0} 项未保存的更改。</value>
+  </data>
+  <data name="ReloadDropsChanges_Other" xml:space="preserve">
+    <value>重新加载将丢弃 {0} 项未保存的更改。</value>
+  </data>
+  <data name="ReviewStructureChangeTitle" xml:space="preserve">
+    <value>审查结构更改</value>
+  </data>
+  <data name="RowCount_One" xml:space="preserve">
+    <value>{0:N0} 行</value>
+  </data>
+  <data name="RowCount_Other" xml:space="preserve">
+    <value>{0:N0} 行</value>
+  </data>
+  <data name="RowsSelected_One" xml:space="preserve">
+    <value>已选择 {0:N0} 行</value>
+  </data>
+  <data name="RowsSelected_Other" xml:space="preserve">
+    <value>已选择 {0:N0} 行</value>
+  </data>
+  <data name="SafeModeReadOnly" xml:space="preserve">
+    <value>此连接的安全模式为只读。</value>
+  </data>
+  <data name="SaveChangesButton_One" xml:space="preserve">
+    <value>保存 {0:N0}</value>
+  </data>
+  <data name="SaveChangesButton_Other" xml:space="preserve">
+    <value>保存 {0:N0}</value>
+  </data>
+  <data name="SaveChangesReviewTitle" xml:space="preserve">
+    <value>保存更改</value>
+  </data>
+  <data name="SavedChanges_One" xml:space="preserve">
+    <value>已保存 {0:N0} 项更改（{1}）。</value>
+  </data>
+  <data name="SavedChanges_Other" xml:space="preserve">
+    <value>已保存 {0:N0} 项更改（{1}）。</value>
+  </data>
+  <data name="Saving" xml:space="preserve">
+    <value>正在保存…</value>
+  </data>
+  <data name="SectionData.Text" xml:space="preserve">
+    <value>数据</value>
+  </data>
+  <data name="SectionDefinition.Text" xml:space="preserve">
+    <value>定义</value>
+  </data>
+  <data name="SectionStructure.Text" xml:space="preserve">
+    <value>结构</value>
+  </data>
+  <data name="SetToNull" xml:space="preserve">
+    <value>设为 NULL</value>
+  </data>
+  <data name="StructureAdd.Label" xml:space="preserve">
+    <value>添加</value>
+  </data>
+  <data name="StructureChecks.Text" xml:space="preserve">
+    <value>检查约束</value>
+  </data>
+  <data name="StructureColumns.Text" xml:space="preserve">
+    <value>列</value>
+  </data>
+  <data name="StructureDrop.Label" xml:space="preserve">
+    <value>删除</value>
+  </data>
+  <data name="StructureEdit.Label" xml:space="preserve">
+    <value>编辑</value>
+  </data>
+  <data name="StructureForeignKeys.Text" xml:space="preserve">
+    <value>外键</value>
+  </data>
+  <data name="StructureIndexes.Text" xml:space="preserve">
+    <value>索引</value>
+  </data>
+  <data name="StructureOptions.Text" xml:space="preserve">
+    <value>选项</value>
+  </data>
+  <data name="StructurePartitions.Text" xml:space="preserve">
+    <value>分区</value>
+  </data>
+  <data name="StructureRefresh.Label" xml:space="preserve">
+    <value>刷新</value>
+  </data>
+  <data name="StructureTriggers.Text" xml:space="preserve">
+    <value>触发器</value>
+  </data>
+  <data name="StructureTruncate.Label" xml:space="preserve">
+    <value>清空</value>
+  </data>
+  <data name="TableOptionsTitle" xml:space="preserve">
+    <value>表选项</value>
+  </data>
+  <data name="UnsavedChanges_One" xml:space="preserve">
+    <value>{1} 有 {0} 项未保存的更改。</value>
+  </data>
+  <data name="UnsavedChanges_Other" xml:space="preserve">
+    <value>{1} 有 {0} 项未保存的更改。</value>
+  </data>
+  <data name="ViewsReadOnly" xml:space="preserve">
+    <value>视图为只读。</value>
+  </data>
+</root>

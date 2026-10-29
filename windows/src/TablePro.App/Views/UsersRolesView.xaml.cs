@@ -64,7 +64,7 @@ public sealed partial class UsersRolesView : UserControl
         DetailGlyph.Glyph = info.IsRole ? "" : "";
         DetailTitle.Text = ViewModel.SelectedRow?.Title ?? info.Ref.DisplayName;
         DetailModified.Visibility = ViewModel.Tracker.Stage(info.Ref) == PrincipalStage.Unchanged ? Visibility.Collapsed : Visibility.Visible;
-        DetailModified.Text = ViewModel.SelectedRow?.StageDescription is { Length: > 0 } stage ? stage : "Modified";
+        DetailModified.Text = ViewModel.SelectedRow?.StageDescription is { Length: > 0 } stage ? stage : Strings.Get("Users/StageModifiedShort");
 
         // Every edit redraws the pane, so the control that made it is found again by its tag and keeps the focus.
         var panel = ViewModel.Segment == UsersRolesSegment.Privileges ? (Panel)Checklist : AttributesForm;
@@ -138,7 +138,7 @@ public sealed partial class UsersRolesView : UserControl
         var sections = ViewModel.Sections;
         if (scope is null)
         {
-            placeholder = "Select an object on the left to edit its privileges.";
+            placeholder = Strings.Get("Users/ChecklistNoScope");
         }
         else if (ViewModel.GrantsError is not null)
         {
@@ -146,7 +146,7 @@ public sealed partial class UsersRolesView : UserControl
         }
         else if (sections.Count == 0)
         {
-            placeholder = ViewModel.PrivilegeFilter.Trim().Length > 0 ? "No privileges match the filter." : "No privileges can be granted at this level.";
+            placeholder = ViewModel.PrivilegeFilter.Trim().Length > 0 ? Strings.Get("Users/ChecklistNoMatch") : Strings.Get("Users/ChecklistNoneGrantable");
         }
 
         ChecklistPlaceholder.Text = placeholder ?? string.Empty;
@@ -165,15 +165,21 @@ public sealed partial class UsersRolesView : UserControl
     private Expander SectionView(PrivilegeSection section)
     {
         var state = ViewModel.SectionState(section);
+        var title = UsersNames.CategoryTitle(section.Category);
         var header = new CheckBox
         {
-            Content = section.Category.Title,
+            Content = title,
             IsThreeState = true,
             IsChecked = state,
             FontWeight = FontWeights.SemiBold,
             Tag = "section:" + section.Category.Key,
         };
-        Describe(header, section.Category.Title, state switch { true => "Granted", false => "Not granted", _ => "Partly granted" });
+        Describe(header, title, state switch
+        {
+            true => Strings.Get("Users/SectionGranted"),
+            false => Strings.Get("Users/SectionNotGranted"),
+            _ => Strings.Get("Users/SectionPartlyGranted"),
+        });
 
         // A mixed or empty section grants everything; only a fully granted one revokes.
         header.Click += (_, _) => ViewModel.SetGranted(ViewModel.SectionState(section) != true, section.Privileges.Select(p => p.Name).ToArray());
@@ -226,14 +232,14 @@ public sealed partial class UsersRolesView : UserControl
                 VerticalAlignment = VerticalAlignment.Center,
                 Foreground = ThemeResources.Brush(this, "TextFillColorSecondaryBrush"),
             };
-            ToolTipService.SetToolTip(grantable, "Can grant this privilege to others");
-            AutomationProperties.SetName(grantable, "Can grant to others");
+            ToolTipService.SetToolTip(grantable, Strings.Get("Users/GrantableToolTip"));
+            AutomationProperties.SetName(grantable, Strings.Get("Users/GrantableName"));
             Grid.SetColumn(grantable, 1);
             row.Children.Add(grantable);
         }
 
         var effect = ViewModel.Effectiveness(privilege.Name);
-        if (effect.Description is { } description)
+        if (UsersNames.EffectivenessDescription(effect) is { } description)
         {
             var text = new TextBlock
             {
@@ -243,7 +249,7 @@ public sealed partial class UsersRolesView : UserControl
                 VerticalAlignment = VerticalAlignment.Center,
                 TextTrimming = TextTrimming.CharacterEllipsis,
             };
-            if (effect.Detail is { } detail)
+            if (UsersNames.EffectivenessDetail(effect) is { } detail)
             {
                 ToolTipService.SetToolTip(text, detail);
             }
@@ -265,20 +271,20 @@ public sealed partial class UsersRolesView : UserControl
 
         var features = ViewModel.Features;
 
-        AddHeader("Identity");
-        AddValue("Name", draft.Ref.Name);
+        AddHeader(Strings.Get("Users/IdentityHeader"));
+        AddValue(Strings.Get("Common/Name"), draft.Ref.Name);
         if (features.HostScoping)
         {
-            AddValue("Host", draft.Ref.Host ?? "%");
+            AddValue(Strings.Get("Users/Host"), draft.Ref.Host ?? "%");
         }
 
         if (ViewModel.CanRename(info.Ref))
         {
-            AttributesForm.Children.Add(FormButton("Rename…", "rename", async () => await RenameAsync(info.Ref)));
+            AttributesForm.Children.Add(FormButton(Strings.Get("Users/RenameEllipsis"), "rename", async () => await RenameAsync(info.Ref)));
         }
 
-        AddHeader("Authentication");
-        var login = new ToggleSwitch { Header = "Can log in", IsOn = draft.CanLogin, IsEnabled = ViewModel.AllowsLoginToggle(info), Tag = "login" };
+        AddHeader(Strings.Get("Users/AuthenticationHeader"));
+        var login = new ToggleSwitch { Header = Strings.Get("Users/CanLogIn"), IsOn = draft.CanLogin, IsEnabled = ViewModel.AllowsLoginToggle(info), Tag = "login" };
         login.Toggled += (_, _) =>
         {
             if (login.IsOn != draft.CanLogin)
@@ -289,20 +295,20 @@ public sealed partial class UsersRolesView : UserControl
         AttributesForm.Children.Add(login);
         if (!info.IsRole || features.RoleLogin)
         {
-            AttributesForm.Children.Add(FormButton("Change password…", "password", async () => await ChangePasswordAsync(info.Ref)));
+            AttributesForm.Children.Add(FormButton(Strings.Get("Users/ChangePasswordButton"), "password", async () => await ChangePasswordAsync(info.Ref)));
         }
 
         if (ViewModel.Tracker.HasPendingPassword(info.Ref))
         {
-            AddNote("A new password will be set when you apply changes.");
+            AddNote(Strings.Get("Users/PendingPasswordNote"));
         }
 
         if (draft.Attributes.Count > 0)
         {
-            AddHeader("Role attributes");
+            AddHeader(Strings.Get("Users/RoleAttributesHeader"));
             foreach (var attribute in draft.Attributes)
             {
-                var box = new CheckBox { Content = attribute.Label, IsChecked = attribute.IsEnabled, Tag = "attribute:" + attribute.Key };
+                var box = new CheckBox { Content = UsersNames.AttributeLabel(attribute), IsChecked = attribute.IsEnabled, Tag = "attribute:" + attribute.Key };
                 box.Click += (_, _) => ViewModel.EditSelected(d => d with
                 {
                     Attributes = [.. d.Attributes.Select(a => a.Key == attribute.Key ? a with { IsEnabled = box.IsChecked == true } : a)],
@@ -312,24 +318,24 @@ public sealed partial class UsersRolesView : UserControl
 
             if (draft.Attributes.Any(a => a is { Key: "SUPERUSER", IsEnabled: true }))
             {
-                AddNote("A superuser bypasses all permission checks.");
+                AddNote(Strings.Get("Users/SuperuserNote"));
             }
         }
 
         if (features.RoleMembership)
         {
-            AddHeader("Membership");
-            AddValue("Member of", draft.MemberOf.Count == 0 ? "None" : string.Join(", ", draft.MemberOf));
-            AttributesForm.Children.Add(FormButton("Edit membership…", "membership", async () => await EditMembershipAsync(info.Ref)));
+            AddHeader(Strings.Get("Users/MembershipHeader"));
+            AddValue(Strings.Get("Users/MemberOf"), draft.MemberOf.Count == 0 ? Strings.Get("Common/None") : string.Join(", ", draft.MemberOf));
+            AttributesForm.Children.Add(FormButton(Strings.Get("Users/EditMembershipButton"), "membership", async () => await EditMembershipAsync(info.Ref)));
         }
 
         if (features.ConnectionLimit)
         {
-            AddHeader("Limits");
+            AddHeader(Strings.Get("Users/LimitsHeader"));
             var limit = new NumberBox
             {
-                Header = "Connection limit",
-                PlaceholderText = "Unlimited",
+                Header = Strings.Get("Users/ConnectionLimit"),
+                PlaceholderText = Strings.Get("Users/Unlimited"),
                 Minimum = 0,
                 SmallChange = 1,
                 SpinButtonPlacementMode = NumberBoxSpinButtonPlacementMode.Compact,
@@ -449,24 +455,24 @@ public sealed partial class UsersRolesView : UserControl
         var menu = new MenuFlyout();
         if (!row.IsRole || ViewModel.Features.RoleLogin)
         {
-            menu.Items.Add(GridCommands.Item("Change Password…", "", async () => await ChangePasswordAsync(row.Ref)));
+            menu.Items.Add(GridCommands.Item(Strings.Get("Users/ChangePasswordMenu"),"", async () => await ChangePasswordAsync(row.Ref)));
         }
 
-        menu.Items.Add(GridCommands.Item("Copy Privileges From…", "", async () => await UsersRolesDialogs.CopyPrivilegesAsync(_dialogs, ViewModel, row.Ref)));
+        menu.Items.Add(GridCommands.Item(Strings.Get("Users/CopyPrivilegesFromMenu"),"", async () => await UsersRolesDialogs.CopyPrivilegesAsync(_dialogs, ViewModel, row.Ref)));
         if (ViewModel.CanRename(row.Ref))
         {
-            menu.Items.Add(GridCommands.Item("Rename…", "", async () => await RenameAsync(row.Ref)));
+            menu.Items.Add(GridCommands.Item(Strings.Get("Users/RenameEllipsis"),"", async () => await RenameAsync(row.Ref)));
         }
 
-        menu.Items.Add(GridCommands.Item("Copy Name", "", () => CopyText(row.Ref.DisplayName)));
+        menu.Items.Add(GridCommands.Item(Strings.Get("Users/CopyNameMenu"),"", () => CopyText(row.Ref.DisplayName)));
         menu.Items.Add(new MenuFlyoutSeparator());
         if (row.Stage == PrincipalStage.Dropped)
         {
-            menu.Items.Add(GridCommands.Item("Undo Staged Drop", "", () => ViewModel.KeepPrincipal(row.Ref)));
+            menu.Items.Add(GridCommands.Item(Strings.Get("Users/UndoStagedDropMenu"),"", () => ViewModel.KeepPrincipal(row.Ref)));
         }
         else
         {
-            menu.Items.Add(GridCommands.Item("Drop…", "", async () => await DropAsync(row.Ref)));
+            menu.Items.Add(GridCommands.Item(Strings.Get("Users/DropMenu"),"", async () => await DropAsync(row.Ref)));
         }
 
         menu.ShowAt(PrincipalList, e.GetPosition(PrincipalList));

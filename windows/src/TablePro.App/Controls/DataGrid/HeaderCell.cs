@@ -147,8 +147,8 @@ internal sealed partial class HeaderCell : Grid
 
         protected override string GetItemStatusCore() => owner.Sort switch
         {
-            true => "sorted descending",
-            false => "sorted ascending",
+            true => Strings.Get("Grid/SortedDescending"),
+            false => Strings.Get("Grid/SortedAscending"),
             null => string.Empty,
         };
 

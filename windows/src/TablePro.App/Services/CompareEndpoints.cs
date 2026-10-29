@@ -59,12 +59,12 @@ public sealed class CompareEndpoints(AppHost host, DialogService dialogs)
 
     private async Task<string?> PromptPasswordAsync(ConnectionProfile profile)
     {
-        var box = new PasswordBox { Header = "Password", MinWidth = 320 };
+        var box = new PasswordBox { Header = Strings.Get("Compare/PasswordHeader"), MinWidth = 320 };
         box.Loaded += (_, _) => box.Focus(FocusState.Programmatic);
         var panel = new StackPanel { Spacing = 12 };
-        panel.Children.Add(new TextBlock { Text = $"Enter the password for {profile.Name} to compare against it.", TextWrapping = TextWrapping.Wrap });
+        panel.Children.Add(new TextBlock { Text = Strings.Format("Compare/PasswordPrompt", profile.Name), TextWrapping = TextWrapping.Wrap });
         panel.Children.Add(box);
-        var result = await dialogs.ShowAsync(dialogs.Create("Connect", panel, "Connect", "Cancel"));
+        var result = await dialogs.ShowAsync(dialogs.Create(Strings.Get("Common/Connect"), panel, Strings.Get("Common/Connect"), Strings.Get("Common/Cancel")));
         return result == ContentDialogResult.Primary ? box.Password : null;
     }
 }

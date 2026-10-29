@@ -19,7 +19,7 @@ internal static class GitCommitDialog
     {
         if (draft.Entries.Count == 0)
         {
-            await dialogs.ShowErrorAsync("Nothing to Commit", $"No file in \"{folderName}\" has changes.");
+            await dialogs.ShowErrorAsync(Strings.Get("SqlFiles/NothingToCommitTitle"), Strings.Format("SqlFiles/NothingToCommitMessage", folderName));
             return false;
         }
 
@@ -36,23 +36,31 @@ internal static class GitCommitDialog
             });
             label.Children.Add(new TextBlock { Text = entry.FolderRelativePath, TextTrimming = TextTrimming.CharacterEllipsis });
             var box = new CheckBox { Content = label, IsChecked = draft.IsChecked(entry), IsEnabled = entry.CanCommit };
-            AutomationProperties.SetName(box, entry.FolderRelativePath + ", " + entry.Status.AccessibleDescription);
-            ToolTipService.SetToolTip(box, entry.CanCommit ? entry.Status.AccessibleDescription : "Resolve the conflict in a Git client before committing this file.");
+            var status = SqlFilesNames.GitStatus(entry.Status);
+            AutomationProperties.SetName(box, entry.FolderRelativePath + ", " + status);
+            ToolTipService.SetToolTip(box, entry.CanCommit ? status : Strings.Get("SqlFiles/ResolveConflictFirst"));
             files.Children.Add(box);
         }
 
-        var message = new TextBox { Header = "Message", AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MinHeight = 80, PlaceholderText = "Describe the change" };
+        var message = new TextBox
+        {
+            Header = Strings.Get("SqlFiles/CommitMessageHeader"),
+            AcceptsReturn = true,
+            TextWrapping = TextWrapping.Wrap,
+            MinHeight = 80,
+            PlaceholderText = Strings.Get("SqlFiles/CommitMessagePlaceholder"),
+        };
         var problem = new InfoBar { Severity = InfoBarSeverity.Error, IsClosable = false, IsOpen = false };
         var output = new TextBlock { TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true, FontFamily = (FontFamily)Application.Current.Resources["CodeFontFamily"], FontSize = 12 };
         problem.Content = new ScrollViewer { Content = output, MaxHeight = 160 };
 
         var panel = new StackPanel { Spacing = 12, Width = 480 };
-        panel.Children.Add(new TextBlock { Text = $"Changed files in \"{folderName}\"", Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"] });
+        panel.Children.Add(new TextBlock { Text = Strings.Format("SqlFiles/ChangedFilesIn", folderName), Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"] });
         panel.Children.Add(new ScrollViewer { Content = files, MaxHeight = 240 });
         panel.Children.Add(message);
         panel.Children.Add(problem);
 
-        var dialog = dialogs.Create("Commit", panel, "Commit", "Cancel");
+        var dialog = dialogs.Create(Strings.Get("SqlFiles/CommitDialogTitle"), panel, Strings.Get("SqlFiles/CommitButton"), Strings.Get("Common/Cancel"));
         void Refresh() => dialog.IsPrimaryButtonEnabled = draft.CanCommit;
         for (var i = 0; i < draft.Entries.Count; i++)
         {
@@ -77,8 +85,8 @@ internal static class GitCommitDialog
             }
             catch (Exception ex) when (ex is GitCommandException or GitProcessException or GitUnavailableException or InvalidOperationException)
             {
-                problem.Title = "Couldn't commit";
-                problem.Message = GitErrorText.Describe(ex);
+                problem.Title = Strings.Get("SqlFiles/CommitFailedInline");
+                problem.Message = SqlFilesNames.GitError(ex);
                 output.Text = GitErrorText.Output(ex) ?? string.Empty;
                 problem.IsOpen = true;
                 args.Cancel = true;

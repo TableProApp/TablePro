@@ -53,7 +53,7 @@ public sealed partial class QueryPlanRow : ObservableObject
         {
             SeverityGlyph = QueryPlanStyles.Glyph(severity);
             SeverityBrush = QueryPlanStyles.Foreground(theme, severity);
-            SeverityLabel = severity.Label();
+            SeverityLabel = PlanNames.Label(severity);
         }
     }
 
@@ -94,7 +94,7 @@ public sealed partial class QueryPlanRow : ObservableObject
 
     public string WarningText => (Node.Warnings.Count + Node.MissingIndexes.Count).ToString(CultureInfo.CurrentCulture);
 
-    public string AccessibleName => QueryPlanLabels.AccessibleName(Node);
+    public string AccessibleName => PlanNames.AccessibleName(Node);
 
     [ObservableProperty]
     public partial bool IsExpanded { get; set; }

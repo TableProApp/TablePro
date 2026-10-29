@@ -1,0 +1,185 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AssistantActionBubble" xml:space="preserve">
+    <value>{0}:
+{1}</value>
+    <comment>The user's message in the assistant chat after pressing an action. {0} is the action (Explain, Optimize, Review), {1} is the SQL.</comment>
+  </data>
+  <data name="AssistantExplain" xml:space="preserve">
+    <value>Explain</value>
+    <comment>Verb: button that asks the AI assistant to explain the editor's SQL.</comment>
+  </data>
+  <data name="AssistantFixBubble" xml:space="preserve">
+    <value>Fix:
+{0}
+
+{1}</value>
+    <comment>The user's message in the assistant chat when asking to fix a failed statement. {0} is the SQL, {1} is the server's error message.</comment>
+  </data>
+  <data name="AssistantInputPlaceholder" xml:space="preserve">
+    <value>Ask about this database</value>
+  </data>
+  <data name="AssistantInsert" xml:space="preserve">
+    <value>Insert</value>
+    <comment>Verb: link under a code block that inserts it into the editor.</comment>
+  </data>
+  <data name="AssistantNewConversation" xml:space="preserve">
+    <value>New</value>
+    <comment>Button that starts a new conversation with the assistant. Keep it short.</comment>
+  </data>
+  <data name="AssistantOptimize" xml:space="preserve">
+    <value>Optimize</value>
+    <comment>Verb: button that asks the AI assistant to optimize the editor's SQL.</comment>
+  </data>
+  <data name="AssistantReview" xml:space="preserve">
+    <value>Review</value>
+    <comment>Verb: button that asks the AI assistant to review the editor's SQL.</comment>
+  </data>
+  <data name="AssistantSend" xml:space="preserve">
+    <value>Send (Ctrl+Enter)</value>
+    <comment>Tooltip of the send button. Ctrl+Enter is a keyboard shortcut and stays as is.</comment>
+  </data>
+  <data name="AssistantSetUpTitle" xml:space="preserve">
+    <value>Set up the assistant</value>
+  </data>
+  <data name="AssistantStopped" xml:space="preserve">
+    <value>(stopped)</value>
+    <comment>Appended to an AI reply the user cancelled.</comment>
+  </data>
+  <data name="AssistantUsing" xml:space="preserve">
+    <value>Using {0} ({1}). Questions, your SQL and the structure of the tables involved are sent; rows are not.</value>
+    <comment>{0} is the AI provider name, {1} is the model name.</comment>
+  </data>
+  <data name="FavoriteEditTitle" xml:space="preserve">
+    <value>Edit Favorite</value>
+  </data>
+  <data name="FavoriteFolder" xml:space="preserve">
+    <value>Folder</value>
+  </data>
+  <data name="FavoriteKeyword" xml:space="preserve">
+    <value>Keyword</value>
+    <comment>A short word typed in the editor that expands into the saved query.</comment>
+  </data>
+  <data name="FavoriteKeywordPlaceholder" xml:space="preserve">
+    <value>Typed in the editor to insert this query</value>
+  </data>
+  <data name="FavoriteKeywordSpaces" xml:space="preserve">
+    <value>A keyword cannot contain spaces.</value>
+  </data>
+  <data name="FavoriteKeywordTooLong_One" xml:space="preserve">
+    <value>Keep the keyword under {0} character.</value>
+    <comment>{0} is the maximum keyword length.</comment>
+  </data>
+  <data name="FavoriteKeywordTooLong_Other" xml:space="preserve">
+    <value>Keep the keyword under {0} characters.</value>
+    <comment>{0} is the maximum keyword length.</comment>
+  </data>
+  <data name="FavoriteKeywordUsed" xml:space="preserve">
+    <value>Another favorite already uses this keyword.</value>
+  </data>
+  <data name="FavoriteOnlyFor" xml:space="preserve">
+    <value>Only for {0}</value>
+    <comment>Check box that scopes the favorite to one connection. {0} is the connection name.</comment>
+  </data>
+  <data name="FavoriteQuery" xml:space="preserve">
+    <value>Query</value>
+    <comment>Noun: the SQL text of the favorite.</comment>
+  </data>
+  <data name="FavoriteSaveTitle" xml:space="preserve">
+    <value>Save Favorite</value>
+  </data>
+  <data name="FavoritesCreate" xml:space="preserve">
+    <value>Create</value>
+    <comment>Verb: button that creates the folder.</comment>
+  </data>
+  <data name="FavoritesEmpty" xml:space="preserve">
+    <value>Save a query with the star in the editor's toolbar.</value>
+  </data>
+  <data name="FavoritesNewFolderLink" xml:space="preserve">
+    <value>New folder</value>
+  </data>
+  <data name="FavoritesNewFolderTitle" xml:space="preserve">
+    <value>New Folder</value>
+  </data>
+  <data name="FavoritesSearch" xml:space="preserve">
+    <value>Search favorites</value>
+  </data>
+  <data name="HistoryClear" xml:space="preserve">
+    <value>Clear history for this connection</value>
+  </data>
+  <data name="HistoryLoadMore" xml:space="preserve">
+    <value>Load more</value>
+  </data>
+  <data name="HistoryOutcomeAll" xml:space="preserve">
+    <value>All</value>
+    <comment>History filter: statements that succeeded and failed.</comment>
+  </data>
+  <data name="HistoryOutcomeFailed" xml:space="preserve">
+    <value>Failed</value>
+    <comment>History filter: only statements that failed.</comment>
+  </data>
+  <data name="HistoryOutcomeSucceeded" xml:space="preserve">
+    <value>Succeeded</value>
+    <comment>History filter: only statements that succeeded.</comment>
+  </data>
+  <data name="HistoryRows_One" xml:space="preserve">
+    <value>{0:N0} row</value>
+    <comment>Rows a past statement returned or changed. {0} is the count.</comment>
+  </data>
+  <data name="HistoryRows_Other" xml:space="preserve">
+    <value>{0:N0} rows</value>
+    <comment>Rows a past statement returned or changed. {0} is the count.</comment>
+  </data>
+  <data name="HistoryRunInNewTab" xml:space="preserve">
+    <value>Run in New Tab</value>
+  </data>
+  <data name="HistoryScopeAllConnections" xml:space="preserve">
+    <value>All connections</value>
+  </data>
+  <data name="HistoryScopeThisConnection" xml:space="preserve">
+    <value>This connection</value>
+  </data>
+  <data name="HistorySearch" xml:space="preserve">
+    <value>Search history</value>
+  </data>
+  <data name="InsertIntoEditor" xml:space="preserve">
+    <value>Insert into Editor</value>
+  </data>
+  <data name="QuickSwitcherKindDatabase" xml:space="preserve">
+    <value>Database</value>
+    <comment>Kind column of an Open Quickly row. Keep it short.</comment>
+  </data>
+  <data name="QuickSwitcherKindSchema" xml:space="preserve">
+    <value>Schema</value>
+    <comment>Kind column of an Open Quickly row. Keep it short.</comment>
+  </data>
+  <data name="QuickSwitcherKindTab" xml:space="preserve">
+    <value>Open tab</value>
+    <comment>Kind column of an Open Quickly row: a tab that is already open. Keep it short.</comment>
+  </data>
+  <data name="QuickSwitcherNoMatches" xml:space="preserve">
+    <value>No matches</value>
+  </data>
+  <data name="QuickSwitcherPlaceholder" xml:space="preserve">
+    <value>Open a table, view, routine, database, schema or tab</value>
+  </data>
+  <data name="QuickSwitcherRowName" xml:space="preserve">
+    <value>{0}, {1}</value>
+    <comment>What a screen reader says for an Open Quickly row. {0} is the name, {1} is its kind.</comment>
+  </data>
+  <data name="QuickSwitcherTitle" xml:space="preserve">
+    <value>Open Quickly</value>
+  </data>
+</root>

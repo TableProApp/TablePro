@@ -1,0 +1,627 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AccessKeyIdHeader" xml:space="preserve">
+    <value>Access key ID</value>
+  </data>
+  <data name="AccessKeyIdOptionalHeader" xml:space="preserve">
+    <value>Access key ID (tùy chọn)</value>
+  </data>
+  <data name="AccessKeyRequired" xml:space="preserve">
+    <value>Nhập access key ID.</value>
+  </data>
+  <data name="AccountHeader" xml:space="preserve">
+    <value>Tài khoản</value>
+  </data>
+  <data name="AccountIdHeader" xml:space="preserve">
+    <value>Account ID</value>
+  </data>
+  <data name="AclUserHeader" xml:space="preserve">
+    <value>Người dùng ACL (tùy chọn)</value>
+  </data>
+  <data name="AiAllow" xml:space="preserve">
+    <value>Cho phép</value>
+  </data>
+  <data name="AiAsk" xml:space="preserve">
+    <value>Hỏi mỗi lần</value>
+  </data>
+  <data name="AiHeader" xml:space="preserve">
+    <value>Trợ lý AI</value>
+  </data>
+  <data name="AiNever" xml:space="preserve">
+    <value>Không bao giờ</value>
+  </data>
+  <data name="ApiKeyHeader" xml:space="preserve">
+    <value>API key</value>
+  </data>
+  <data name="ApiTokenHeader" xml:space="preserve">
+    <value>Mã API</value>
+  </data>
+  <data name="AuthTokenHeader" xml:space="preserve">
+    <value>Mã xác thực</value>
+  </data>
+  <data name="AuthenticationHeader" xml:space="preserve">
+    <value>Xác thực</value>
+  </data>
+  <data name="AutomaticPlaceholder" xml:space="preserve">
+    <value>Tự động</value>
+  </data>
+  <data name="AwsAccessKeyNote" xml:space="preserve">
+    <value>Ký một token RDS có hiệu lực 15 phút bằng khóa này cho mỗi kết nối mới. Secret được lưu trong Trình quản lý thông tin xác thực của Windows.</value>
+  </data>
+  <data name="AwsEndpointHeader" xml:space="preserve">
+    <value>Endpoint RDS (tùy chọn)</value>
+  </data>
+  <data name="AwsExecutablePlaceholder" xml:space="preserve">
+    <value>aws.exe trên PATH khi để trống</value>
+  </data>
+  <data name="AwsProfileHeader" xml:space="preserve">
+    <value>Tên hồ sơ</value>
+  </data>
+  <data name="AwsProfileNote" xml:space="preserve">
+    <value>Đọc hồ sơ từ %USERPROFILE%\.aws\config và credentials, bao gồm cả các vai trò được đảm nhận và credential_process.</value>
+  </data>
+  <data name="AwsRegionHeader" xml:space="preserve">
+    <value>AWS region</value>
+  </data>
+  <data name="AwsRegionPlaceholder" xml:space="preserve">
+    <value>Đọc từ tên máy chủ RDS khi để trống</value>
+  </data>
+  <data name="AwsSsoNote" xml:space="preserve">
+    <value>Dùng phiên IAM Identity Center mà “aws sso login” đã lưu trong bộ nhớ đệm.</value>
+  </data>
+  <data name="BigQueryKeyFileHeader" xml:space="preserve">
+    <value>JSON tài khoản dịch vụ (để trống sẽ dùng đăng nhập gcloud)</value>
+  </data>
+  <data name="BootstrapServerHeader" xml:space="preserve">
+    <value>Máy chủ bootstrap</value>
+  </data>
+  <data name="BrowseButton" xml:space="preserve">
+    <value>Duyệt…</value>
+  </data>
+  <data name="CatalogHeader" xml:space="preserve">
+    <value>Catalog</value>
+  </data>
+  <data name="ClientIdHeader" xml:space="preserve">
+    <value>Client ID</value>
+  </data>
+  <data name="ClientSecretHeader" xml:space="preserve">
+    <value>Client secret</value>
+  </data>
+  <data name="CloudSqlAdcNote" xml:space="preserve">
+    <value>Hãy chạy “gcloud auth application-default login” trước, hoặc đặt GOOGLE_APPLICATION_CREDENTIALS.</value>
+  </data>
+  <data name="CloudSqlAuthAdc" xml:space="preserve">
+    <value>Application Default Credentials</value>
+  </data>
+  <data name="CloudSqlAuthHeader" xml:space="preserve">
+    <value>Thông tin đăng nhập</value>
+  </data>
+  <data name="CloudSqlAuthKey" xml:space="preserve">
+    <value>Khóa tài khoản dịch vụ</value>
+  </data>
+  <data name="CloudSqlIam" xml:space="preserve">
+    <value>Dùng xác thực cơ sở dữ liệu IAM</value>
+  </data>
+  <data name="CloudSqlIamNote" xml:space="preserve">
+    <value>Khi bật xác thực cơ sở dữ liệu IAM, hãy đặt người dùng là IAM principal; mật khẩu không được dùng. Proxy chỉ lắng nghe trên 127.0.0.1.</value>
+  </data>
+  <data name="CloudSqlInstanceHeader" xml:space="preserve">
+    <value>Tên kết nối instance</value>
+  </data>
+  <data name="CloudSqlInstanceNote" xml:space="preserve">
+    <value>Bạn tìm thấy giá trị này ở trang tổng quan của instance trong Google Cloud console.</value>
+  </data>
+  <data name="CloudSqlKeyHeader" xml:space="preserve">
+    <value>Khóa tài khoản dịch vụ (JSON)</value>
+  </data>
+  <data name="CloudSqlPrivateIp" xml:space="preserve">
+    <value>Kết nối qua IP riêng</value>
+  </data>
+  <data name="CloudflareAuthBrowser" xml:space="preserve">
+    <value>Đăng nhập bằng trình duyệt</value>
+  </data>
+  <data name="CloudflareAuthToken" xml:space="preserve">
+    <value>Service token</value>
+  </data>
+  <data name="CloudflareHostHeader" xml:space="preserve">
+    <value>Tên máy chủ ứng dụng Access</value>
+  </data>
+  <data name="CloudflareHostRequired" xml:space="preserve">
+    <value>Hãy nhập tên máy chủ của ứng dụng Access trước.</value>
+  </data>
+  <data name="CloudflareLan" xml:space="preserve">
+    <value>Mở cho mạng cục bộ (lắng nghe trên 0.0.0.0)</value>
+  </data>
+  <data name="CloudflareLoginFailed" xml:space="preserve">
+    <value>cloudflared access login thất bại: {0}</value>
+  </data>
+  <data name="CloudflareNote" xml:space="preserve">
+    <value>Service token cần một Access policy có quy tắc Service Auth, nếu không Cloudflare vẫn yêu cầu đăng nhập bằng trình duyệt.</value>
+  </data>
+  <data name="CloudflareSignInButton" xml:space="preserve">
+    <value>Đăng nhập bằng trình duyệt…</value>
+  </data>
+  <data name="CloudflareSignedIn" xml:space="preserve">
+    <value>Đã đăng nhập vào Cloudflare Access.</value>
+  </data>
+  <data name="CloudflareSigningIn" xml:space="preserve">
+    <value>Hãy hoàn tất đăng nhập trong trình duyệt…</value>
+  </data>
+  <data name="CloudflaredDidNotStart" xml:space="preserve">
+    <value>cloudflared không khởi động được.</value>
+  </data>
+  <data name="CloudflaredNotFound" xml:space="preserve">
+    <value>Không tìm thấy cloudflared. Hãy cài đặt bằng “winget install Cloudflare.cloudflared”, hoặc đặt đường dẫn của nó.</value>
+  </data>
+  <data name="ColorBlue" xml:space="preserve">
+    <value>Xanh dương</value>
+  </data>
+  <data name="ColorGray" xml:space="preserve">
+    <value>Xám</value>
+  </data>
+  <data name="ColorGreen" xml:space="preserve">
+    <value>Xanh lá</value>
+  </data>
+  <data name="ColorLabel" xml:space="preserve">
+    <value>Màu sắc</value>
+  </data>
+  <data name="ColorOrange" xml:space="preserve">
+    <value>Cam</value>
+  </data>
+  <data name="ColorPink" xml:space="preserve">
+    <value>Hồng</value>
+  </data>
+  <data name="ColorPurple" xml:space="preserve">
+    <value>Tím</value>
+  </data>
+  <data name="ColorRed" xml:space="preserve">
+    <value>Đỏ</value>
+  </data>
+  <data name="ColorYellow" xml:space="preserve">
+    <value>Vàng</value>
+  </data>
+  <data name="CommandHeader" xml:space="preserve">
+    <value>Lệnh</value>
+  </data>
+  <data name="CommandMethodCustom" xml:space="preserve">
+    <value>Lệnh tùy chỉnh</value>
+  </data>
+  <data name="CommandMethodSsm" xml:space="preserve">
+    <value>Phiên AWS SSM</value>
+  </data>
+  <data name="CommandNote" xml:space="preserve">
+    <value>{port} là cổng cục bộ mà TablePro chọn; {host} và {remotePort} là của cơ sở dữ liệu. Lệnh được chạy như một chương trình cùng các đối số của nó, không bao giờ qua shell.</value>
+  </data>
+  <data name="DatabaseHeader" xml:space="preserve">
+    <value>Cơ sở dữ liệu</value>
+  </data>
+  <data name="DatabaseIdHeader" xml:space="preserve">
+    <value>ID hoặc tên cơ sở dữ liệu</value>
+  </data>
+  <data name="DatabaseIndexHeader" xml:space="preserve">
+    <value>Chỉ mục cơ sở dữ liệu</value>
+  </data>
+  <data name="DatabasePathHeader" xml:space="preserve">
+    <value>Đường dẫn cơ sở dữ liệu</value>
+  </data>
+  <data name="DatabaseUserHeader" xml:space="preserve">
+    <value>Người dùng cơ sở dữ liệu</value>
+  </data>
+  <data name="DefaultDatabaseHeader" xml:space="preserve">
+    <value>Cơ sở dữ liệu mặc định</value>
+  </data>
+  <data name="EditConnectionTitle" xml:space="preserve">
+    <value>Sửa {0}</value>
+  </data>
+  <data name="EngineHeader" xml:space="preserve">
+    <value>Cơ sở dữ liệu</value>
+  </data>
+  <data name="EntraClientHeader" xml:space="preserve">
+    <value>Application (client) ID</value>
+  </data>
+  <data name="EntraClientOptionalHeader" xml:space="preserve">
+    <value>Application (client) ID (tùy chọn)</value>
+  </data>
+  <data name="EntraClientRequired" xml:space="preserve">
+    <value>Nhập application (client) ID của service principal.</value>
+  </data>
+  <data name="EntraDefault" xml:space="preserve">
+    <value>Mặc định (Azure CLI, Visual Studio, biến môi trường)</value>
+  </data>
+  <data name="EntraDeviceCode" xml:space="preserve">
+    <value>Mã thiết bị</value>
+  </data>
+  <data name="EntraDeviceCodeNote" xml:space="preserve">
+    <value>Mã được sao chép vào bảng tạm và trang đăng nhập sẽ mở ra; hãy dán mã vào đó.</value>
+  </data>
+  <data name="EntraIntegrated" xml:space="preserve">
+    <value>Tích hợp (tài khoản Windows)</value>
+  </data>
+  <data name="EntraInteractive" xml:space="preserve">
+    <value>Tương tác (trình duyệt)</value>
+  </data>
+  <data name="EntraLoginHintHeader" xml:space="preserve">
+    <value>Tài khoản (gợi ý đăng nhập, tùy chọn)</value>
+  </data>
+  <data name="EntraManagedIdentity" xml:space="preserve">
+    <value>Managed identity</value>
+  </data>
+  <data name="EntraModeHeader" xml:space="preserve">
+    <value>Thông tin xác thực Entra</value>
+  </data>
+  <data name="EntraNote" xml:space="preserve">
+    <value>Đăng nhập bằng Microsoft Entra ID và làm mới token khi mở kết nối.</value>
+  </data>
+  <data name="EntraServicePrincipal" xml:space="preserve">
+    <value>Service principal</value>
+  </data>
+  <data name="EntraTenantHeader" xml:space="preserve">
+    <value>Directory (tenant) ID</value>
+  </data>
+  <data name="EntraTenantPlaceholder" xml:space="preserve">
+    <value>Tùy chọn, cho thư mục một tenant</value>
+  </data>
+  <data name="EntraTenantRequired" xml:space="preserve">
+    <value>Nhập directory (tenant) ID cho service principal.</value>
+  </data>
+  <data name="EntraUserHeader" xml:space="preserve">
+    <value>Người dùng hoặc nhóm Entra</value>
+  </data>
+  <data name="ExecutablePathHeader" xml:space="preserve">
+    <value>Đường dẫn tệp thực thi</value>
+  </data>
+  <data name="ExecutablePathPlaceholder" xml:space="preserve">
+    <value>Tìm trên PATH khi để trống</value>
+  </data>
+  <data name="FileHeader" xml:space="preserve">
+    <value>Tệp</value>
+  </data>
+  <data name="FileRequired" xml:space="preserve">
+    <value>Hãy chọn một tệp cơ sở dữ liệu.</value>
+  </data>
+  <data name="GroupHeader" xml:space="preserve">
+    <value>Nhóm</value>
+  </data>
+  <data name="GssDisabled" xml:space="preserve">
+    <value>Đã tắt</value>
+  </data>
+  <data name="GssEncryptionHeader" xml:space="preserve">
+    <value>Mã hóa GSS</value>
+  </data>
+  <data name="GssPreferred" xml:space="preserve">
+    <value>Ưu tiên</value>
+  </data>
+  <data name="GssRequired" xml:space="preserve">
+    <value>Bắt buộc</value>
+  </data>
+  <data name="HostHeader" xml:space="preserve">
+    <value>Máy chủ</value>
+  </data>
+  <data name="HostRequired" xml:space="preserve">
+    <value>Nhập tên máy chủ.</value>
+  </data>
+  <data name="IamUserRequired" xml:space="preserve">
+    <value>Nhập người dùng cơ sở dữ liệu mà token IAM dùng để đăng nhập.</value>
+  </data>
+  <data name="JumpHostsHeader" xml:space="preserve">
+    <value>Jump host</value>
+  </data>
+  <data name="JumpHostsPlaceholder" xml:space="preserve">
+    <value>user@bastion:22, tùy chọn</value>
+  </data>
+  <data name="KerberosNote" xml:space="preserve">
+    <value>Đăng nhập bằng vé Kerberos của phiên đăng nhập Windows. Máy chủ phải là tên của máy chủ, không phải địa chỉ IP, để tìm được vé.</value>
+  </data>
+  <data name="KerberosServiceHeader" xml:space="preserve">
+    <value>Tên dịch vụ Kerberos</value>
+  </data>
+  <data name="KerberosSpnHeader" xml:space="preserve">
+    <value>Server principal (SPN)</value>
+  </data>
+  <data name="KerberosSpnPlaceholder" xml:space="preserve">
+    <value>Tùy chọn, gssapi_principal_name của máy chủ</value>
+  </data>
+  <data name="KeyspaceHeader" xml:space="preserve">
+    <value>Keyspace</value>
+  </data>
+  <data name="KubeContextHeader" xml:space="preserve">
+    <value>Ngữ cảnh</value>
+  </data>
+  <data name="KubeNamespaceHeader" xml:space="preserve">
+    <value>Namespace</value>
+  </data>
+  <data name="KubeResourceHeader" xml:space="preserve">
+    <value>Tài nguyên</value>
+  </data>
+  <data name="KubectlExecutablePlaceholder" xml:space="preserve">
+    <value>kubectl.exe trên PATH khi để trống</value>
+  </data>
+  <data name="LocalPortHeader" xml:space="preserve">
+    <value>Cổng cục bộ</value>
+  </data>
+  <data name="ManagedIdentityClientHeader" xml:space="preserve">
+    <value>Client ID của managed identity (tùy chọn)</value>
+  </data>
+  <data name="McpBlocked" xml:space="preserve">
+    <value>Đã chặn</value>
+  </data>
+  <data name="McpHeader" xml:space="preserve">
+    <value>Ứng dụng bên ngoài (MCP)</value>
+  </data>
+  <data name="McpReadOnly" xml:space="preserve">
+    <value>Chỉ đọc</value>
+  </data>
+  <data name="McpReadWrite" xml:space="preserve">
+    <value>Đọc và ghi, mỗi lần ghi cần phê duyệt</value>
+  </data>
+  <data name="MethodHeader" xml:space="preserve">
+    <value>Phương thức</value>
+  </data>
+  <data name="NamePlaceholder" xml:space="preserve">
+    <value>Production</value>
+  </data>
+  <data name="NameRequired" xml:space="preserve">
+    <value>Hãy đặt tên cho kết nối.</value>
+  </data>
+  <data name="NamespaceDatabaseHeader" xml:space="preserve">
+    <value>Namespace/cơ sở dữ liệu</value>
+  </data>
+  <data name="NewConnectionTitle" xml:space="preserve">
+    <value>Kết nối mới</value>
+  </data>
+  <data name="NoGroup" xml:space="preserve">
+    <value>Không có nhóm</value>
+  </data>
+  <data name="OptionalPlaceholder" xml:space="preserve">
+    <value>Tùy chọn</value>
+  </data>
+  <data name="OptionsHeader" xml:space="preserve">
+    <value>Tùy chọn chuỗi kết nối bổ sung</value>
+  </data>
+  <data name="OptionsPlaceholder" xml:space="preserve">
+    <value>mỗi dòng một key=value</value>
+  </data>
+  <data name="PasswordHeader" xml:space="preserve">
+    <value>Mật khẩu</value>
+  </data>
+  <data name="PasswordOrApiKeyHeader" xml:space="preserve">
+    <value>Mật khẩu hoặc API key</value>
+  </data>
+  <data name="PasswordUnusedHeader" xml:space="preserve">
+    <value>Mật khẩu (không dùng)</value>
+  </data>
+  <data name="PortHeader" xml:space="preserve">
+    <value>Cổng</value>
+  </data>
+  <data name="ProjectHeader" xml:space="preserve">
+    <value>Dự án</value>
+  </data>
+  <data name="ProxyHostHeader" xml:space="preserve">
+    <value>Máy chủ proxy</value>
+  </data>
+  <data name="ProxyNote" xml:space="preserve">
+    <value>Để trống người dùng để kết nối không cần xác thực. Proxy sẽ phân giải tên máy chủ cơ sở dữ liệu. Mật khẩu được lưu trong Trình quản lý thông tin xác thực của Windows.</value>
+  </data>
+  <data name="ProxyPasswordHeader" xml:space="preserve">
+    <value>Mật khẩu proxy</value>
+  </data>
+  <data name="ProxyTypeHeader" xml:space="preserve">
+    <value>Loại proxy</value>
+  </data>
+  <data name="ProxyUserHeader" xml:space="preserve">
+    <value>Người dùng proxy</value>
+  </data>
+  <data name="RegionHeader" xml:space="preserve">
+    <value>Region</value>
+  </data>
+  <data name="SafeModeAlert" xml:space="preserve">
+    <value>Cảnh báo</value>
+  </data>
+  <data name="SafeModeAlertFull" xml:space="preserve">
+    <value>Cảnh báo (Đầy đủ)</value>
+  </data>
+  <data name="SafeModeHeader" xml:space="preserve">
+    <value>Chế độ an toàn</value>
+  </data>
+  <data name="SafeModeReadOnly" xml:space="preserve">
+    <value>Chỉ đọc</value>
+  </data>
+  <data name="SafeModeSafe" xml:space="preserve">
+    <value>Chế độ an toàn</value>
+  </data>
+  <data name="SafeModeSafeFull" xml:space="preserve">
+    <value>Chế độ an toàn (Đầy đủ)</value>
+  </data>
+  <data name="SafeModeSilent" xml:space="preserve">
+    <value>Im lặng</value>
+  </data>
+  <data name="SaslPasswordHeader" xml:space="preserve">
+    <value>Mật khẩu SASL</value>
+  </data>
+  <data name="SaslUserHeader" xml:space="preserve">
+    <value>Người dùng SASL (tùy chọn)</value>
+  </data>
+  <data name="SavePassword" xml:space="preserve">
+    <value>Lưu mật khẩu trong Trình quản lý thông tin xác thực của Windows</value>
+  </data>
+  <data name="SecretAccessKeyHeader" xml:space="preserve">
+    <value>Secret access key</value>
+  </data>
+  <data name="SectionAdvanced" xml:space="preserve">
+    <value>Nâng cao</value>
+  </data>
+  <data name="SectionGeneral" xml:space="preserve">
+    <value>Tổng quát</value>
+  </data>
+  <data name="SectionNetwork" xml:space="preserve">
+    <value>Mạng</value>
+  </data>
+  <data name="SectionSsl" xml:space="preserve">
+    <value>SSL</value>
+  </data>
+  <data name="ServiceAccountJsonHeader" xml:space="preserve">
+    <value>JSON tài khoản dịch vụ</value>
+  </data>
+  <data name="ServiceNameHeader" xml:space="preserve">
+    <value>Tên dịch vụ</value>
+  </data>
+  <data name="SignInAwsAccessKey" xml:space="preserve">
+    <value>AWS IAM (Access Key)</value>
+  </data>
+  <data name="SignInAwsProfile" xml:space="preserve">
+    <value>AWS IAM (Hồ sơ)</value>
+  </data>
+  <data name="SignInAwsSso" xml:space="preserve">
+    <value>AWS IAM (SSO)</value>
+  </data>
+  <data name="SignInEntra" xml:space="preserve">
+    <value>Microsoft Entra ID</value>
+  </data>
+  <data name="SignInKerberos" xml:space="preserve">
+    <value>Kerberos (GSSAPI)</value>
+  </data>
+  <data name="SignInPassword" xml:space="preserve">
+    <value>Mật khẩu</value>
+  </data>
+  <data name="SignInSqlServer" xml:space="preserve">
+    <value>Xác thực SQL Server</value>
+  </data>
+  <data name="SignInWindows" xml:space="preserve">
+    <value>Xác thực Windows</value>
+  </data>
+  <data name="SnowflakeKeyFileHeader" xml:space="preserve">
+    <value>Tệp khóa riêng tư (đăng nhập bằng cặp khóa)</value>
+  </data>
+  <data name="SshAuthAgent" xml:space="preserve">
+    <value>SSH agent</value>
+  </data>
+  <data name="SshAuthPassword" xml:space="preserve">
+    <value>Mật khẩu</value>
+  </data>
+  <data name="SshAuthPrivateKey" xml:space="preserve">
+    <value>Khóa riêng tư</value>
+  </data>
+  <data name="SshHostHeader" xml:space="preserve">
+    <value>Máy chủ SSH</value>
+  </data>
+  <data name="SshKeyHeader" xml:space="preserve">
+    <value>Khóa riêng tư</value>
+  </data>
+  <data name="SshNote" xml:space="preserve">
+    <value>TablePro chạy OpenSSH client đi kèm Windows, nên ~/.ssh/config, known_hosts và agent của bạn đều được áp dụng.</value>
+  </data>
+  <data name="SshSecretHeader" xml:space="preserve">
+    <value>Mật khẩu hoặc cụm mật khẩu của khóa</value>
+  </data>
+  <data name="SshUserHeader" xml:space="preserve">
+    <value>Người dùng SSH</value>
+  </data>
+  <data name="SslDisabled" xml:space="preserve">
+    <value>Đã tắt</value>
+  </data>
+  <data name="SslModeHeader" xml:space="preserve">
+    <value>Chế độ SSL</value>
+  </data>
+  <data name="SslNote" xml:space="preserve">
+    <value>Ưu tiên sẽ mã hóa khi máy chủ hỗ trợ. Các chế độ Xác minh kiểm tra chứng chỉ của máy chủ dựa trên kho chứng chỉ Windows, và Xác minh danh tính còn kiểm tra cả tên máy chủ. Đăng nhập IAM và Entra luôn được mã hóa.</value>
+  </data>
+  <data name="SslPreferred" xml:space="preserve">
+    <value>Ưu tiên</value>
+  </data>
+  <data name="SslRequired" xml:space="preserve">
+    <value>Bắt buộc (bỏ qua xác minh)</value>
+  </data>
+  <data name="SslVerifyCa" xml:space="preserve">
+    <value>Xác minh CA</value>
+  </data>
+  <data name="SslVerifyIdentity" xml:space="preserve">
+    <value>Xác minh danh tính</value>
+  </data>
+  <data name="SsmProfileHeader" xml:space="preserve">
+    <value>Hồ sơ</value>
+  </data>
+  <data name="SsmTargetHeader" xml:space="preserve">
+    <value>Đích</value>
+  </data>
+  <data name="StartupHeader" xml:space="preserve">
+    <value>Chạy khi kết nối</value>
+  </data>
+  <data name="TestButton" xml:space="preserve">
+    <value>Kiểm tra</value>
+  </data>
+  <data name="TestSucceeded" xml:space="preserve">
+    <value>Đã kết nối tới {0} {1}</value>
+  </data>
+  <data name="Testing" xml:space="preserve">
+    <value>Đang kiểm tra…</value>
+  </data>
+  <data name="TimeoutHeader" xml:space="preserve">
+    <value>Thời gian chờ kết nối (giây)</value>
+  </data>
+  <data name="TransportCloudSql" xml:space="preserve">
+    <value>Cloud SQL Auth Proxy</value>
+  </data>
+  <data name="TransportCloudSqlSummary" xml:space="preserve">
+    <value>Chạy Google Cloud SQL Auth Proxy tới một tên kết nối instance.</value>
+  </data>
+  <data name="TransportCloudflare" xml:space="preserve">
+    <value>Cloudflare Tunnel</value>
+  </data>
+  <data name="TransportCloudflareSummary" xml:space="preserve">
+    <value>Chạy cloudflared tới một ứng dụng Cloudflare Access.</value>
+  </data>
+  <data name="TransportCommand" xml:space="preserve">
+    <value>Lệnh tạo đường hầm</value>
+  </data>
+  <data name="TransportCommandSummary" xml:space="preserve">
+    <value>Chạy một lệnh chuyển tiếp cổng cục bộ, chẳng hạn kubectl port-forward.</value>
+  </data>
+  <data name="TransportDirect" xml:space="preserve">
+    <value>Trực tiếp</value>
+  </data>
+  <data name="TransportDirectSummary" xml:space="preserve">
+    <value>Kết nối thẳng tới máy chủ và cổng.</value>
+  </data>
+  <data name="TransportHeader" xml:space="preserve">
+    <value>Kết nối qua</value>
+  </data>
+  <data name="TransportProxy" xml:space="preserve">
+    <value>Proxy</value>
+  </data>
+  <data name="TransportProxySummary" xml:space="preserve">
+    <value>Định tuyến qua proxy SOCKS5 hoặc HTTP, proxy này cũng phân giải tên máy chủ cơ sở dữ liệu.</value>
+  </data>
+  <data name="TransportSsh" xml:space="preserve">
+    <value>Đường hầm SSH</value>
+  </data>
+  <data name="TransportSshSummary" xml:space="preserve">
+    <value>Chuyển tiếp một cổng cục bộ qua máy chủ SSH bằng OpenSSH client đi kèm Windows.</value>
+  </data>
+  <data name="UrlHeader" xml:space="preserve">
+    <value>URL</value>
+  </data>
+  <data name="UserHeader" xml:space="preserve">
+    <value>Người dùng</value>
+  </data>
+  <data name="UserOptionalHeader" xml:space="preserve">
+    <value>Người dùng (tùy chọn)</value>
+  </data>
+  <data name="WillRunLabel" xml:space="preserve">
+    <value>Sẽ chạy</value>
+  </data>
+  <data name="WindowsAuthNote" xml:space="preserve">
+    <value>Đăng nhập bằng tài khoản Windows của bạn, qua Kerberos khi miền hỗ trợ.</value>
+  </data>
+</root>

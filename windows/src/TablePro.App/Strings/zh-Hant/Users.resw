@@ -1,0 +1,473 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AppliedStatements_One" xml:space="preserve">
+    <value>已套用 {0:N0} 條使用者與角色陳述式。</value>
+  </data>
+  <data name="AppliedStatements_Other" xml:space="preserve">
+    <value>已套用 {0:N0} 條使用者與角色陳述式。</value>
+  </data>
+  <data name="AttributeBypassRls" xml:space="preserve">
+    <value>略過資料列層級安全性</value>
+  </data>
+  <data name="AttributeCreateDatabases" xml:space="preserve">
+    <value>建立資料庫</value>
+  </data>
+  <data name="AttributeCreateRoles" xml:space="preserve">
+    <value>建立角色</value>
+  </data>
+  <data name="AttributeInherit" xml:space="preserve">
+    <value>繼承權限</value>
+  </data>
+  <data name="AttributeReplication" xml:space="preserve">
+    <value>複寫</value>
+  </data>
+  <data name="AttributeSuperuser" xml:space="preserve">
+    <value>超級使用者</value>
+  </data>
+  <data name="AttributesSegment.Text" xml:space="preserve">
+    <value>屬性</value>
+  </data>
+  <data name="AuthenticationHeader" xml:space="preserve">
+    <value>身分驗證</value>
+  </data>
+  <data name="AvailableAfterSetRole" xml:space="preserve">
+    <value>執行 SET ROLE {0} 後可用。</value>
+  </data>
+  <data name="BulkActionsButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>批次操作</value>
+  </data>
+  <data name="BulkActionsButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>批次操作</value>
+  </data>
+  <data name="CanLogIn" xml:space="preserve">
+    <value>可以登入</value>
+  </data>
+  <data name="CannotApplyTitle" xml:space="preserve">
+    <value>無法套用這些變更</value>
+  </data>
+  <data name="CategoryAdministration" xml:space="preserve">
+    <value>管理</value>
+  </data>
+  <data name="CategoryData" xml:space="preserve">
+    <value>資料</value>
+  </data>
+  <data name="CategoryDynamic" xml:space="preserve">
+    <value>動態</value>
+  </data>
+  <data name="CategoryOther" xml:space="preserve">
+    <value>其他</value>
+  </data>
+  <data name="CategoryStructure" xml:space="preserve">
+    <value>結構</value>
+  </data>
+  <data name="ChangePasswordButton" xml:space="preserve">
+    <value>更改密碼…</value>
+  </data>
+  <data name="ChangePasswordMenu" xml:space="preserve">
+    <value>更改密碼…</value>
+  </data>
+  <data name="ChangePasswordTitle" xml:space="preserve">
+    <value>更改密碼</value>
+  </data>
+  <data name="ChangesFailedMessage" xml:space="preserve">
+    <value>{0}{1}
+
+{2}</value>
+  </data>
+  <data name="ChangesFailedTitle" xml:space="preserve">
+    <value>變更失敗</value>
+  </data>
+  <data name="CheckOwnedFailedTitle" xml:space="preserve">
+    <value>無法檢查擁有的物件</value>
+  </data>
+  <data name="ChecklistNoMatch" xml:space="preserve">
+    <value>沒有符合篩選條件的權限。</value>
+  </data>
+  <data name="ChecklistNoScope" xml:space="preserve">
+    <value>在左側選擇一個物件以編輯其權限。</value>
+  </data>
+  <data name="ChecklistNoneGrantable" xml:space="preserve">
+    <value>此層級無法授予任何權限。</value>
+  </data>
+  <data name="ConnectionLimit" xml:space="preserve">
+    <value>連線數上限</value>
+  </data>
+  <data name="CopyNameMenu" xml:space="preserve">
+    <value>複製名稱</value>
+  </data>
+  <data name="CopyPrivilegesFromMenu" xml:space="preserve">
+    <value>從以下項目複製權限…</value>
+  </data>
+  <data name="CopyPrivilegesPrompt" xml:space="preserve">
+    <value>將權限複製到 {0}，來源：</value>
+  </data>
+  <data name="CopyPrivilegesTitle" xml:space="preserve">
+    <value>複製權限</value>
+  </data>
+  <data name="CreateButton" xml:space="preserve">
+    <value>建立</value>
+  </data>
+  <data name="DiscardButton.Content" xml:space="preserve">
+    <value>捨棄</value>
+  </data>
+  <data name="DropButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>刪除</value>
+  </data>
+  <data name="DropButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>刪除</value>
+  </data>
+  <data name="DropMenu" xml:space="preserve">
+    <value>刪除…</value>
+  </data>
+  <data name="DropOwned" xml:space="preserve">
+    <value>刪除擁有的物件</value>
+  </data>
+  <data name="DropOwnedPrompt" xml:space="preserve">
+    <value>選擇刪除該角色時如何處理它們。</value>
+  </data>
+  <data name="DropOwnedWarning" xml:space="preserve">
+    <value>此角色在目前資料庫中擁有的資料表、檢視表和函式將被刪除。</value>
+  </data>
+  <data name="DropRoleButton" xml:space="preserve">
+    <value>刪除角色</value>
+  </data>
+  <data name="EarlierStatementsApplied_One" xml:space="preserve">
+    <value>其之前的陳述式已套用。</value>
+  </data>
+  <data name="EarlierStatementsApplied_Other" xml:space="preserve">
+    <value>其之前的 {0} 條陳述式已套用。</value>
+  </data>
+  <data name="EditMembershipButton" xml:space="preserve">
+    <value>編輯成員關係…</value>
+  </data>
+  <data name="ExecuteButton" xml:space="preserve">
+    <value>執行</value>
+  </data>
+  <data name="FilterRoles" xml:space="preserve">
+    <value>篩選角色</value>
+  </data>
+  <data name="GenerateButton" xml:space="preserve">
+    <value>產生</value>
+  </data>
+  <data name="GrantAllItem.Text" xml:space="preserve">
+    <value>全部授予</value>
+  </data>
+  <data name="GrantManyAction_One" xml:space="preserve">
+    <value>在 {1} 上授予 {0} 項權限</value>
+  </data>
+  <data name="GrantManyAction_Other" xml:space="preserve">
+    <value>在 {1} 上授予 {0} 項權限</value>
+  </data>
+  <data name="GrantOneAction" xml:space="preserve">
+    <value>在 {1} 上授予 {0}</value>
+  </data>
+  <data name="GrantableName" xml:space="preserve">
+    <value>可授予他人</value>
+  </data>
+  <data name="GrantableToolTip" xml:space="preserve">
+    <value>可將此權限授予他人</value>
+  </data>
+  <data name="GrantedOn" xml:space="preserve">
+    <value>已在 {0} 上授予</value>
+  </data>
+  <data name="GrantsErrorBar.Title" xml:space="preserve">
+    <value>無法載入權限</value>
+  </data>
+  <data name="GrantsRetryButton.Content" xml:space="preserve">
+    <value>重試</value>
+  </data>
+  <data name="Host" xml:space="preserve">
+    <value>主機</value>
+  </data>
+  <data name="HostDescription" xml:space="preserve">
+    <value>使用 % 以允許任何主機。</value>
+  </data>
+  <data name="HostRequired" xml:space="preserve">
+    <value>請輸入主機，或輸入 % 代表任何主機。</value>
+  </data>
+  <data name="IdentityHeader" xml:space="preserve">
+    <value>身分</value>
+  </data>
+  <data name="InheritedAutomatically" xml:space="preserve">
+    <value>自動繼承。</value>
+  </data>
+  <data name="InheritedFrom" xml:space="preserve">
+    <value>繼承自 {0}</value>
+  </data>
+  <data name="KindHeader" xml:space="preserve">
+    <value>類型</value>
+  </data>
+  <data name="KindRole" xml:space="preserve">
+    <value>角色</value>
+  </data>
+  <data name="KindUser" xml:space="preserve">
+    <value>使用者</value>
+  </data>
+  <data name="LimitsHeader" xml:space="preserve">
+    <value>限制</value>
+  </data>
+  <data name="LoadErrorBar.Title" xml:space="preserve">
+    <value>無法載入使用者與角色</value>
+  </data>
+  <data name="LoadRetryButton.Content" xml:space="preserve">
+    <value>重試</value>
+  </data>
+  <data name="LoadingPrivileges" xml:space="preserve">
+    <value>正在載入權限…</value>
+  </data>
+  <data name="MemberOf" xml:space="preserve">
+    <value>隸屬於</value>
+  </data>
+  <data name="MembershipHeader" xml:space="preserve">
+    <value>成員關係</value>
+  </data>
+  <data name="NameTaken" xml:space="preserve">
+    <value>已存在同名的使用者或角色。</value>
+  </data>
+  <data name="NewPassword" xml:space="preserve">
+    <value>新密碼</value>
+  </data>
+  <data name="NewPrincipalButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>新增使用者或角色</value>
+  </data>
+  <data name="NewPrincipalButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>新增使用者或角色</value>
+  </data>
+  <data name="NewPrincipalTitle" xml:space="preserve">
+    <value>新增使用者或角色</value>
+  </data>
+  <data name="NoRolesMatch" xml:space="preserve">
+    <value>沒有符合篩選條件的角色。</value>
+  </data>
+  <data name="NoRolesToJoin" xml:space="preserve">
+    <value>沒有可加入的角色。</value>
+  </data>
+  <data name="NoSelection.Text" xml:space="preserve">
+    <value>選擇一個使用者或角色以檢視其權限。</value>
+  </data>
+  <data name="NotCommittedTitle" xml:space="preserve">
+    <value>變更未提交</value>
+  </data>
+  <data name="NothingApplied" xml:space="preserve">
+    <value>未套用任何內容。</value>
+  </data>
+  <data name="NothingAppliedTitle" xml:space="preserve">
+    <value>未套用任何內容</value>
+  </data>
+  <data name="OwnsObjectsTitle" xml:space="preserve">
+    <value>「{0}」擁有資料庫物件</value>
+  </data>
+  <data name="Password" xml:space="preserve">
+    <value>密碼</value>
+  </data>
+  <data name="PasswordsDoNotMatch" xml:space="preserve">
+    <value>兩次輸入的密碼不一致。</value>
+  </data>
+  <data name="PendingChanges_One" xml:space="preserve">
+    <value>{0:N0} 項待套用的變更</value>
+  </data>
+  <data name="PendingChanges_Other" xml:space="preserve">
+    <value>{0:N0} 項待套用的變更</value>
+  </data>
+  <data name="PendingPasswordNote" xml:space="preserve">
+    <value>套用變更時會設定新密碼。</value>
+  </data>
+  <data name="PrincipalFilterBox.PlaceholderText" xml:space="preserve">
+    <value>篩選使用者與角色</value>
+  </data>
+  <data name="PrincipalFilterBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>篩選使用者與角色</value>
+  </data>
+  <data name="PrincipalList.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>使用者與角色</value>
+  </data>
+  <data name="PrivilegeFilterBox.PlaceholderText" xml:space="preserve">
+    <value>篩選權限</value>
+  </data>
+  <data name="PrivilegeFilterBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>篩選權限</value>
+  </data>
+  <data name="PrivilegesSegment.Text" xml:space="preserve">
+    <value>權限</value>
+  </data>
+  <data name="ReadOnlyMessage" xml:space="preserve">
+    <value>此連線的安全模式為唯讀，因此無法變更使用者與角色。</value>
+  </data>
+  <data name="ReadOnlyTitle" xml:space="preserve">
+    <value>唯讀連線</value>
+  </data>
+  <data name="ReassignOwned" xml:space="preserve">
+    <value>轉移擁有的物件</value>
+  </data>
+  <data name="ReassignTo" xml:space="preserve">
+    <value>轉移給</value>
+  </data>
+  <data name="RedoAction" xml:space="preserve">
+    <value>重做：{0}</value>
+  </data>
+  <data name="RefreshButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>重新整理</value>
+  </data>
+  <data name="RefreshButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>重新整理</value>
+  </data>
+  <data name="RenameEllipsis" xml:space="preserve">
+    <value>重新命名…</value>
+  </data>
+  <data name="RenameTitle" xml:space="preserve">
+    <value>重新命名 {0}</value>
+  </data>
+  <data name="ReviewApplyButton.Content" xml:space="preserve">
+    <value>檢視並套用…</value>
+  </data>
+  <data name="ReviewTitle" xml:space="preserve">
+    <value>檢閱使用者與角色變更</value>
+  </data>
+  <data name="ReviewTitlePasswordsHidden" xml:space="preserve">
+    <value>檢閱使用者與角色變更（密碼已隱藏）</value>
+  </data>
+  <data name="RevokeAllItem.Text" xml:space="preserve">
+    <value>全部撤銷</value>
+  </data>
+  <data name="RevokeManyAction_One" xml:space="preserve">
+    <value>撤銷 {1} 上的 {0} 項權限</value>
+  </data>
+  <data name="RevokeManyAction_Other" xml:space="preserve">
+    <value>撤銷 {1} 上的 {0} 項權限</value>
+  </data>
+  <data name="RevokeOneAction" xml:space="preserve">
+    <value>撤銷 {1} 上的 {0}</value>
+  </data>
+  <data name="RoleAttributesHeader" xml:space="preserve">
+    <value>角色屬性</value>
+  </data>
+  <data name="RoleCount_One" xml:space="preserve">
+    <value>{0:N0} 個角色</value>
+  </data>
+  <data name="RoleCount_Other" xml:space="preserve">
+    <value>{0:N0} 個角色</value>
+  </data>
+  <data name="RolledBack" xml:space="preserve">
+    <value>所有變更皆已回復。</value>
+  </data>
+  <data name="ScopeModeAll.Content" xml:space="preserve">
+    <value>所有物件</value>
+  </data>
+  <data name="ScopeModeGranted.Content" xml:space="preserve">
+    <value>已授予</value>
+  </data>
+  <data name="ScopeModes.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>顯示</value>
+  </data>
+  <data name="ScopeSearch.PlaceholderText" xml:space="preserve">
+    <value>搜尋資料表</value>
+  </data>
+  <data name="ScopeSearch.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>搜尋資料表</value>
+  </data>
+  <data name="ScopeSummaryAll" xml:space="preserve">
+    <value>全部（{0}）</value>
+  </data>
+  <data name="ScopeSummaryConnectToBrowse" xml:space="preserve">
+    <value>連線到此資料庫以瀏覽</value>
+  </data>
+  <data name="ScopeSummaryGrantable" xml:space="preserve">
+    <value>{0}（可授予）</value>
+  </data>
+  <data name="ScopeSummaryGrantsInside_One" xml:space="preserve">
+    <value>內含 {0} 項授權</value>
+  </data>
+  <data name="ScopeSummaryGrantsInside_Other" xml:space="preserve">
+    <value>內含 {0} 項授權</value>
+  </data>
+  <data name="ScopeSummaryNone" xml:space="preserve">
+    <value>無</value>
+  </data>
+  <data name="ScopeSummaryOverflow" xml:space="preserve">
+    <value>{0} +{1}</value>
+  </data>
+  <data name="ScopeTree.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>物件</value>
+  </data>
+  <data name="SearchFailedTitle" xml:space="preserve">
+    <value>無法搜尋物件</value>
+  </data>
+  <data name="SectionGranted" xml:space="preserve">
+    <value>已授予</value>
+  </data>
+  <data name="SectionNotGranted" xml:space="preserve">
+    <value>未授予</value>
+  </data>
+  <data name="SectionPartlyGranted" xml:space="preserve">
+    <value>部分授予</value>
+  </data>
+  <data name="SelfImpactMessage" xml:space="preserve">
+    <value>{0}你可能會失去此伺服器的存取權。</value>
+  </data>
+  <data name="SelfImpactTitle" xml:space="preserve">
+    <value>這會影響你自己的帳戶</value>
+  </data>
+  <data name="SetPasswordButton" xml:space="preserve">
+    <value>設定密碼</value>
+  </data>
+  <data name="StageCreated" xml:space="preserve">
+    <value>套用變更時將會建立</value>
+  </data>
+  <data name="StageDropped" xml:space="preserve">
+    <value>套用變更時將會刪除</value>
+  </data>
+  <data name="StageModified" xml:space="preserve">
+    <value>有未儲存的變更</value>
+  </data>
+  <data name="StageModifiedShort" xml:space="preserve">
+    <value>已修改</value>
+  </data>
+  <data name="StatementDidNotRun" xml:space="preserve">
+    <value>此陳述式未執行。</value>
+  </data>
+  <data name="StatementFailed" xml:space="preserve">
+    <value>第 {0}/{1} 條陳述式失敗（{2}）。</value>
+  </data>
+  <data name="SuperuserNote" xml:space="preserve">
+    <value>超級使用者會略過所有權限檢查。</value>
+  </data>
+  <data name="UndoAction" xml:space="preserve">
+    <value>復原：{0}</value>
+  </data>
+  <data name="UndoStagedDropMenu" xml:space="preserve">
+    <value>復原待執行的刪除</value>
+  </data>
+  <data name="Unlimited" xml:space="preserve">
+    <value>無限制</value>
+  </data>
+  <data name="UnsavedWork_One" xml:space="preserve">
+    <value>使用者與角色有 {0:N0} 項待套用的變更</value>
+  </data>
+  <data name="UnsavedWork_Other" xml:space="preserve">
+    <value>使用者與角色有 {0:N0} 項待套用的變更</value>
+  </data>
+  <data name="UserCount_One" xml:space="preserve">
+    <value>{0:N0} 個使用者</value>
+  </data>
+  <data name="UserCount_Other" xml:space="preserve">
+    <value>{0:N0} 個使用者</value>
+  </data>
+  <data name="UsersAndRoles" xml:space="preserve">
+    <value>{0}, {1}</value>
+  </data>
+  <data name="VerifyPassword" xml:space="preserve">
+    <value>確認</value>
+  </data>
+</root>

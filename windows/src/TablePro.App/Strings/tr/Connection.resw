@@ -1,0 +1,627 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AccessKeyIdHeader" xml:space="preserve">
+    <value>Erişim anahtarı kimliği</value>
+  </data>
+  <data name="AccessKeyIdOptionalHeader" xml:space="preserve">
+    <value>Erişim anahtarı kimliği (isteğe bağlı)</value>
+  </data>
+  <data name="AccessKeyRequired" xml:space="preserve">
+    <value>Erişim anahtarı kimliğini girin.</value>
+  </data>
+  <data name="AccountHeader" xml:space="preserve">
+    <value>Hesap</value>
+  </data>
+  <data name="AccountIdHeader" xml:space="preserve">
+    <value>Hesap kimliği</value>
+  </data>
+  <data name="AclUserHeader" xml:space="preserve">
+    <value>ACL kullanıcısı (isteğe bağlı)</value>
+  </data>
+  <data name="AiAllow" xml:space="preserve">
+    <value>İzin Ver</value>
+  </data>
+  <data name="AiAsk" xml:space="preserve">
+    <value>Her seferinde sor</value>
+  </data>
+  <data name="AiHeader" xml:space="preserve">
+    <value>Yapay zeka asistanı</value>
+  </data>
+  <data name="AiNever" xml:space="preserve">
+    <value>Asla</value>
+  </data>
+  <data name="ApiKeyHeader" xml:space="preserve">
+    <value>API anahtarı</value>
+  </data>
+  <data name="ApiTokenHeader" xml:space="preserve">
+    <value>API anahtarı</value>
+  </data>
+  <data name="AuthTokenHeader" xml:space="preserve">
+    <value>Kimlik doğrulama token'ı</value>
+  </data>
+  <data name="AuthenticationHeader" xml:space="preserve">
+    <value>Kimlik Doğrulama</value>
+  </data>
+  <data name="AutomaticPlaceholder" xml:space="preserve">
+    <value>Otomatik</value>
+  </data>
+  <data name="AwsAccessKeyNote" xml:space="preserve">
+    <value>Her yeni bağlantıda anahtarla 15 dakikalık bir RDS token'ı imzalar. Gizli anahtar Windows Kimlik Bilgileri Yöneticisi'nde saklanır.</value>
+  </data>
+  <data name="AwsEndpointHeader" xml:space="preserve">
+    <value>RDS uç noktası (isteğe bağlı)</value>
+  </data>
+  <data name="AwsExecutablePlaceholder" xml:space="preserve">
+    <value>Boş bırakılırsa PATH üzerindeki aws.exe</value>
+  </data>
+  <data name="AwsProfileHeader" xml:space="preserve">
+    <value>Profil adı</value>
+  </data>
+  <data name="AwsProfileNote" xml:space="preserve">
+    <value>Profili, üstlenilen roller ve credential_process dahil olmak üzere %USERPROFILE%\.aws\config ve credentials dosyalarından okur.</value>
+  </data>
+  <data name="AwsRegionHeader" xml:space="preserve">
+    <value>AWS bölgesi</value>
+  </data>
+  <data name="AwsRegionPlaceholder" xml:space="preserve">
+    <value>Boş bırakılırsa RDS ana bilgisayar adından okunur</value>
+  </data>
+  <data name="AwsSsoNote" xml:space="preserve">
+    <value>“aws sso login” komutunun önbellekte bıraktığı IAM Identity Center oturumunu kullanır.</value>
+  </data>
+  <data name="BigQueryKeyFileHeader" xml:space="preserve">
+    <value>Hizmet hesabı JSON'u (boş bırakılırsa gcloud oturumu kullanılır)</value>
+  </data>
+  <data name="BootstrapServerHeader" xml:space="preserve">
+    <value>Önyükleme sunucusu</value>
+  </data>
+  <data name="BrowseButton" xml:space="preserve">
+    <value>Gözat…</value>
+  </data>
+  <data name="CatalogHeader" xml:space="preserve">
+    <value>Katalog</value>
+  </data>
+  <data name="ClientIdHeader" xml:space="preserve">
+    <value>İstemci kimliği</value>
+  </data>
+  <data name="ClientSecretHeader" xml:space="preserve">
+    <value>İstemci gizli anahtarı</value>
+  </data>
+  <data name="CloudSqlAdcNote" xml:space="preserve">
+    <value>Önce “gcloud auth application-default login” komutunu çalıştırın veya GOOGLE_APPLICATION_CREDENTIALS değişkenini ayarlayın.</value>
+  </data>
+  <data name="CloudSqlAuthAdc" xml:space="preserve">
+    <value>Application Default Credentials</value>
+  </data>
+  <data name="CloudSqlAuthHeader" xml:space="preserve">
+    <value>Kimlik Bilgileri</value>
+  </data>
+  <data name="CloudSqlAuthKey" xml:space="preserve">
+    <value>Hizmet Hesabı Anahtarı</value>
+  </data>
+  <data name="CloudSqlIam" xml:space="preserve">
+    <value>IAM veritabanı kimlik doğrulamasını kullan</value>
+  </data>
+  <data name="CloudSqlIamNote" xml:space="preserve">
+    <value>IAM veritabanı kimlik doğrulaması açıkken kullanıcıyı IAM sorumlusu olarak ayarlayın; parola kullanılmaz. Proxy yalnızca 127.0.0.1 üzerinde dinler.</value>
+  </data>
+  <data name="CloudSqlInstanceHeader" xml:space="preserve">
+    <value>Örnek bağlantı adı</value>
+  </data>
+  <data name="CloudSqlInstanceNote" xml:space="preserve">
+    <value>Bunu Google Cloud konsolunda örneğin genel bakış sayfasında bulabilirsiniz.</value>
+  </data>
+  <data name="CloudSqlKeyHeader" xml:space="preserve">
+    <value>Servis hesabı anahtarı (JSON)</value>
+  </data>
+  <data name="CloudSqlPrivateIp" xml:space="preserve">
+    <value>Özel IP üzerinden bağlan</value>
+  </data>
+  <data name="CloudflareAuthBrowser" xml:space="preserve">
+    <value>Tarayıcıyla oturum açma</value>
+  </data>
+  <data name="CloudflareAuthToken" xml:space="preserve">
+    <value>Hizmet jetonu</value>
+  </data>
+  <data name="CloudflareHostHeader" xml:space="preserve">
+    <value>Access uygulaması ana bilgisayar adı</value>
+  </data>
+  <data name="CloudflareHostRequired" xml:space="preserve">
+    <value>Önce Access uygulamasının ana bilgisayar adını girin.</value>
+  </data>
+  <data name="CloudflareLan" xml:space="preserve">
+    <value>Yerel ağa aç (0.0.0.0 üzerinde dinle)</value>
+  </data>
+  <data name="CloudflareLoginFailed" xml:space="preserve">
+    <value>cloudflared access login başarısız oldu: {0}</value>
+  </data>
+  <data name="CloudflareNote" xml:space="preserve">
+    <value>Hizmet jetonu, Service Auth kuralı içeren bir Access policy gerektirir; aksi halde Cloudflare yine tarayıcıyla oturum açmayı ister.</value>
+  </data>
+  <data name="CloudflareSignInButton" xml:space="preserve">
+    <value>Tarayıcıyla oturum aç…</value>
+  </data>
+  <data name="CloudflareSignedIn" xml:space="preserve">
+    <value>Cloudflare Access oturumu açıldı.</value>
+  </data>
+  <data name="CloudflareSigningIn" xml:space="preserve">
+    <value>Oturum açma işlemini tarayıcınızda tamamlayın…</value>
+  </data>
+  <data name="CloudflaredDidNotStart" xml:space="preserve">
+    <value>cloudflared başlatılamadı.</value>
+  </data>
+  <data name="CloudflaredNotFound" xml:space="preserve">
+    <value>cloudflared bulunamadı. “winget install Cloudflare.cloudflared” ile yükleyin veya yolunu belirtin.</value>
+  </data>
+  <data name="ColorBlue" xml:space="preserve">
+    <value>Mavi</value>
+  </data>
+  <data name="ColorGray" xml:space="preserve">
+    <value>Gri</value>
+  </data>
+  <data name="ColorGreen" xml:space="preserve">
+    <value>Yeşil</value>
+  </data>
+  <data name="ColorLabel" xml:space="preserve">
+    <value>Renk</value>
+  </data>
+  <data name="ColorOrange" xml:space="preserve">
+    <value>Turuncu</value>
+  </data>
+  <data name="ColorPink" xml:space="preserve">
+    <value>Pembe</value>
+  </data>
+  <data name="ColorPurple" xml:space="preserve">
+    <value>Mor</value>
+  </data>
+  <data name="ColorRed" xml:space="preserve">
+    <value>Kırmızı</value>
+  </data>
+  <data name="ColorYellow" xml:space="preserve">
+    <value>Sarı</value>
+  </data>
+  <data name="CommandHeader" xml:space="preserve">
+    <value>Komut</value>
+  </data>
+  <data name="CommandMethodCustom" xml:space="preserve">
+    <value>Özel komut</value>
+  </data>
+  <data name="CommandMethodSsm" xml:space="preserve">
+    <value>AWS SSM oturumu</value>
+  </data>
+  <data name="CommandNote" xml:space="preserve">
+    <value>{port}, TablePro'nun seçtiği yerel porttur; {host} ve {remotePort} veritabanına aittir. Komut hiçbir zaman bir kabuk üzerinden değil, bağımsız değişkenleriyle birlikte bir program olarak çalışır.</value>
+  </data>
+  <data name="DatabaseHeader" xml:space="preserve">
+    <value>Veritabanı</value>
+  </data>
+  <data name="DatabaseIdHeader" xml:space="preserve">
+    <value>Veritabanı kimliği veya adı</value>
+  </data>
+  <data name="DatabaseIndexHeader" xml:space="preserve">
+    <value>Veritabanı indeksi</value>
+  </data>
+  <data name="DatabasePathHeader" xml:space="preserve">
+    <value>Veritabanı yolu</value>
+  </data>
+  <data name="DatabaseUserHeader" xml:space="preserve">
+    <value>Veritabanı kullanıcısı</value>
+  </data>
+  <data name="DefaultDatabaseHeader" xml:space="preserve">
+    <value>Varsayılan veritabanı</value>
+  </data>
+  <data name="EditConnectionTitle" xml:space="preserve">
+    <value>{0} Düzenle</value>
+  </data>
+  <data name="EngineHeader" xml:space="preserve">
+    <value>Veritabanı</value>
+  </data>
+  <data name="EntraClientHeader" xml:space="preserve">
+    <value>Uygulama (istemci) kimliği</value>
+  </data>
+  <data name="EntraClientOptionalHeader" xml:space="preserve">
+    <value>Uygulama (istemci) kimliği (isteğe bağlı)</value>
+  </data>
+  <data name="EntraClientRequired" xml:space="preserve">
+    <value>Hizmet sorumlusunun uygulama (istemci) kimliğini girin.</value>
+  </data>
+  <data name="EntraDefault" xml:space="preserve">
+    <value>Varsayılan (Azure CLI, Visual Studio, ortam)</value>
+  </data>
+  <data name="EntraDeviceCode" xml:space="preserve">
+    <value>Cihaz kodu</value>
+  </data>
+  <data name="EntraDeviceCodeNote" xml:space="preserve">
+    <value>Kod panoya kopyalanır ve oturum açma sayfası açılır; kodu oraya yapıştırın.</value>
+  </data>
+  <data name="EntraIntegrated" xml:space="preserve">
+    <value>Tümleşik (Windows hesabı)</value>
+  </data>
+  <data name="EntraInteractive" xml:space="preserve">
+    <value>Etkileşimli (tarayıcı)</value>
+  </data>
+  <data name="EntraLoginHintHeader" xml:space="preserve">
+    <value>Hesap (oturum açma ipucu, isteğe bağlı)</value>
+  </data>
+  <data name="EntraManagedIdentity" xml:space="preserve">
+    <value>Yönetilen kimlik</value>
+  </data>
+  <data name="EntraModeHeader" xml:space="preserve">
+    <value>Entra kimlik bilgisi</value>
+  </data>
+  <data name="EntraNote" xml:space="preserve">
+    <value>Microsoft Entra ID ile oturum açar ve bağlantılar açıldıkça token'ı yeniler.</value>
+  </data>
+  <data name="EntraServicePrincipal" xml:space="preserve">
+    <value>Hizmet sorumlusu</value>
+  </data>
+  <data name="EntraTenantHeader" xml:space="preserve">
+    <value>Dizin (kiracı) kimliği</value>
+  </data>
+  <data name="EntraTenantPlaceholder" xml:space="preserve">
+    <value>İsteğe bağlı, tek kiracılı bir dizin için</value>
+  </data>
+  <data name="EntraTenantRequired" xml:space="preserve">
+    <value>Hizmet sorumlusu için dizin (kiracı) kimliğini girin.</value>
+  </data>
+  <data name="EntraUserHeader" xml:space="preserve">
+    <value>Entra kullanıcısı veya grubu</value>
+  </data>
+  <data name="ExecutablePathHeader" xml:space="preserve">
+    <value>Yürütülebilir dosya yolu</value>
+  </data>
+  <data name="ExecutablePathPlaceholder" xml:space="preserve">
+    <value>Boş bırakılırsa PATH üzerinde aranır</value>
+  </data>
+  <data name="FileHeader" xml:space="preserve">
+    <value>Dosya</value>
+  </data>
+  <data name="FileRequired" xml:space="preserve">
+    <value>Bir veritabanı dosyası seçin.</value>
+  </data>
+  <data name="GroupHeader" xml:space="preserve">
+    <value>Grup</value>
+  </data>
+  <data name="GssDisabled" xml:space="preserve">
+    <value>Devre Dışı</value>
+  </data>
+  <data name="GssEncryptionHeader" xml:space="preserve">
+    <value>GSS şifrelemesi</value>
+  </data>
+  <data name="GssPreferred" xml:space="preserve">
+    <value>Tercih Edilen</value>
+  </data>
+  <data name="GssRequired" xml:space="preserve">
+    <value>Zorunlu</value>
+  </data>
+  <data name="HostHeader" xml:space="preserve">
+    <value>Sunucu</value>
+  </data>
+  <data name="HostRequired" xml:space="preserve">
+    <value>Sunucunun ana bilgisayar adını girin.</value>
+  </data>
+  <data name="IamUserRequired" xml:space="preserve">
+    <value>IAM token'ının oturum açacağı veritabanı kullanıcısını girin.</value>
+  </data>
+  <data name="JumpHostsHeader" xml:space="preserve">
+    <value>Atlama sunucuları</value>
+  </data>
+  <data name="JumpHostsPlaceholder" xml:space="preserve">
+    <value>user@bastion:22, isteğe bağlı</value>
+  </data>
+  <data name="KerberosNote" xml:space="preserve">
+    <value>Windows oturumunuzun Kerberos biletiyle oturum açar. Biletin bulunabilmesi için ana bilgisayar bir IP adresi değil, sunucunun adı olmalıdır.</value>
+  </data>
+  <data name="KerberosServiceHeader" xml:space="preserve">
+    <value>Kerberos hizmet adı</value>
+  </data>
+  <data name="KerberosSpnHeader" xml:space="preserve">
+    <value>Sunucu sorumlusu (SPN)</value>
+  </data>
+  <data name="KerberosSpnPlaceholder" xml:space="preserve">
+    <value>İsteğe bağlı, sunucunun gssapi_principal_name değeri</value>
+  </data>
+  <data name="KeyspaceHeader" xml:space="preserve">
+    <value>Keyspace</value>
+  </data>
+  <data name="KubeContextHeader" xml:space="preserve">
+    <value>Bağlam</value>
+  </data>
+  <data name="KubeNamespaceHeader" xml:space="preserve">
+    <value>Namespace</value>
+  </data>
+  <data name="KubeResourceHeader" xml:space="preserve">
+    <value>Kaynak</value>
+  </data>
+  <data name="KubectlExecutablePlaceholder" xml:space="preserve">
+    <value>Boş bırakılırsa PATH üzerindeki kubectl.exe</value>
+  </data>
+  <data name="LocalPortHeader" xml:space="preserve">
+    <value>Yerel port</value>
+  </data>
+  <data name="ManagedIdentityClientHeader" xml:space="preserve">
+    <value>Yönetilen kimlik istemci kimliği (isteğe bağlı)</value>
+  </data>
+  <data name="McpBlocked" xml:space="preserve">
+    <value>Engellendi</value>
+  </data>
+  <data name="McpHeader" xml:space="preserve">
+    <value>Harici istemciler (MCP)</value>
+  </data>
+  <data name="McpReadOnly" xml:space="preserve">
+    <value>Salt okunur</value>
+  </data>
+  <data name="McpReadWrite" xml:space="preserve">
+    <value>Okuma ve yazma, her yazma onaylanır</value>
+  </data>
+  <data name="MethodHeader" xml:space="preserve">
+    <value>Yöntem</value>
+  </data>
+  <data name="NamePlaceholder" xml:space="preserve">
+    <value>Üretim</value>
+  </data>
+  <data name="NameRequired" xml:space="preserve">
+    <value>Bağlantıya bir ad verin.</value>
+  </data>
+  <data name="NamespaceDatabaseHeader" xml:space="preserve">
+    <value>Namespace/veritabanı</value>
+  </data>
+  <data name="NewConnectionTitle" xml:space="preserve">
+    <value>Yeni Bağlantı</value>
+  </data>
+  <data name="NoGroup" xml:space="preserve">
+    <value>Grup yok</value>
+  </data>
+  <data name="OptionalPlaceholder" xml:space="preserve">
+    <value>İsteğe bağlı</value>
+  </data>
+  <data name="OptionsHeader" xml:space="preserve">
+    <value>Ek bağlantı dizesi seçenekleri</value>
+  </data>
+  <data name="OptionsPlaceholder" xml:space="preserve">
+    <value>her satıra bir key=value</value>
+  </data>
+  <data name="PasswordHeader" xml:space="preserve">
+    <value>Parola</value>
+  </data>
+  <data name="PasswordOrApiKeyHeader" xml:space="preserve">
+    <value>Parola veya API anahtarı</value>
+  </data>
+  <data name="PasswordUnusedHeader" xml:space="preserve">
+    <value>Parola (kullanılmaz)</value>
+  </data>
+  <data name="PortHeader" xml:space="preserve">
+    <value>Port</value>
+  </data>
+  <data name="ProjectHeader" xml:space="preserve">
+    <value>Proje</value>
+  </data>
+  <data name="ProxyHostHeader" xml:space="preserve">
+    <value>Proxy sunucusu</value>
+  </data>
+  <data name="ProxyNote" xml:space="preserve">
+    <value>Kimlik doğrulaması olmadan bağlanmak için kullanıcıyı boş bırakın. Veritabanı ana bilgisayar adını proxy çözümler. Parola Windows Kimlik Bilgileri Yöneticisi'nde saklanır.</value>
+  </data>
+  <data name="ProxyPasswordHeader" xml:space="preserve">
+    <value>Proxy parolası</value>
+  </data>
+  <data name="ProxyTypeHeader" xml:space="preserve">
+    <value>Proxy türü</value>
+  </data>
+  <data name="ProxyUserHeader" xml:space="preserve">
+    <value>Proxy kullanıcısı</value>
+  </data>
+  <data name="RegionHeader" xml:space="preserve">
+    <value>Bölge</value>
+  </data>
+  <data name="SafeModeAlert" xml:space="preserve">
+    <value>Uyarı</value>
+  </data>
+  <data name="SafeModeAlertFull" xml:space="preserve">
+    <value>Uyarı (Tam)</value>
+  </data>
+  <data name="SafeModeHeader" xml:space="preserve">
+    <value>Güvenli Mod</value>
+  </data>
+  <data name="SafeModeReadOnly" xml:space="preserve">
+    <value>Salt Okunur</value>
+  </data>
+  <data name="SafeModeSafe" xml:space="preserve">
+    <value>Güvenli Mod</value>
+  </data>
+  <data name="SafeModeSafeFull" xml:space="preserve">
+    <value>Güvenli Mod (Tam)</value>
+  </data>
+  <data name="SafeModeSilent" xml:space="preserve">
+    <value>Sessiz</value>
+  </data>
+  <data name="SaslPasswordHeader" xml:space="preserve">
+    <value>SASL parolası</value>
+  </data>
+  <data name="SaslUserHeader" xml:space="preserve">
+    <value>SASL kullanıcısı (isteğe bağlı)</value>
+  </data>
+  <data name="SavePassword" xml:space="preserve">
+    <value>Parolayı Windows Kimlik Bilgileri Yöneticisi'ne kaydet</value>
+  </data>
+  <data name="SecretAccessKeyHeader" xml:space="preserve">
+    <value>Gizli erişim anahtarı</value>
+  </data>
+  <data name="SectionAdvanced" xml:space="preserve">
+    <value>Gelişmiş</value>
+  </data>
+  <data name="SectionGeneral" xml:space="preserve">
+    <value>Genel</value>
+  </data>
+  <data name="SectionNetwork" xml:space="preserve">
+    <value>Ağ</value>
+  </data>
+  <data name="SectionSsl" xml:space="preserve">
+    <value>SSL</value>
+  </data>
+  <data name="ServiceAccountJsonHeader" xml:space="preserve">
+    <value>Hizmet hesabı JSON'u</value>
+  </data>
+  <data name="ServiceNameHeader" xml:space="preserve">
+    <value>Hizmet adı</value>
+  </data>
+  <data name="SignInAwsAccessKey" xml:space="preserve">
+    <value>AWS IAM (Erişim Anahtarı)</value>
+  </data>
+  <data name="SignInAwsProfile" xml:space="preserve">
+    <value>AWS IAM (Profil)</value>
+  </data>
+  <data name="SignInAwsSso" xml:space="preserve">
+    <value>AWS IAM (SSO)</value>
+  </data>
+  <data name="SignInEntra" xml:space="preserve">
+    <value>Microsoft Entra ID</value>
+  </data>
+  <data name="SignInKerberos" xml:space="preserve">
+    <value>Kerberos (GSSAPI)</value>
+  </data>
+  <data name="SignInPassword" xml:space="preserve">
+    <value>Parola</value>
+  </data>
+  <data name="SignInSqlServer" xml:space="preserve">
+    <value>SQL Server Kimlik Doğrulaması</value>
+  </data>
+  <data name="SignInWindows" xml:space="preserve">
+    <value>Windows Kimlik Doğrulaması</value>
+  </data>
+  <data name="SnowflakeKeyFileHeader" xml:space="preserve">
+    <value>Özel anahtar dosyası (anahtar çifti ile oturum açma)</value>
+  </data>
+  <data name="SshAuthAgent" xml:space="preserve">
+    <value>SSH aracısı</value>
+  </data>
+  <data name="SshAuthPassword" xml:space="preserve">
+    <value>Parola</value>
+  </data>
+  <data name="SshAuthPrivateKey" xml:space="preserve">
+    <value>Özel anahtar</value>
+  </data>
+  <data name="SshHostHeader" xml:space="preserve">
+    <value>SSH sunucusu</value>
+  </data>
+  <data name="SshKeyHeader" xml:space="preserve">
+    <value>Özel anahtar</value>
+  </data>
+  <data name="SshNote" xml:space="preserve">
+    <value>TablePro, Windows ile birlikte gelen OpenSSH istemcisini çalıştırır; bu nedenle ~/.ssh/config, known_hosts ve aracı ayarlarınız geçerli olur.</value>
+  </data>
+  <data name="SshSecretHeader" xml:space="preserve">
+    <value>Parola veya anahtar parolası</value>
+  </data>
+  <data name="SshUserHeader" xml:space="preserve">
+    <value>SSH kullanıcısı</value>
+  </data>
+  <data name="SslDisabled" xml:space="preserve">
+    <value>Devre Dışı</value>
+  </data>
+  <data name="SslModeHeader" xml:space="preserve">
+    <value>SSL modu</value>
+  </data>
+  <data name="SslNote" xml:space="preserve">
+    <value>Tercih Edilen, sunucu sunduğunda şifreler. Doğrulama modları sunucunun sertifikasını Windows sertifika deposuna göre denetler; Kimliği doğrula ayrıca ana bilgisayar adını da denetler. IAM ve Entra oturumları her zaman şifrelenir.</value>
+  </data>
+  <data name="SslPreferred" xml:space="preserve">
+    <value>Tercih Edilen</value>
+  </data>
+  <data name="SslRequired" xml:space="preserve">
+    <value>Zorunlu (doğrulamayı atla)</value>
+  </data>
+  <data name="SslVerifyCa" xml:space="preserve">
+    <value>CA Doğrula</value>
+  </data>
+  <data name="SslVerifyIdentity" xml:space="preserve">
+    <value>Kimliği doğrula</value>
+  </data>
+  <data name="SsmProfileHeader" xml:space="preserve">
+    <value>Profil</value>
+  </data>
+  <data name="SsmTargetHeader" xml:space="preserve">
+    <value>Hedef</value>
+  </data>
+  <data name="StartupHeader" xml:space="preserve">
+    <value>Bağlanınca çalıştır</value>
+  </data>
+  <data name="TestButton" xml:space="preserve">
+    <value>Test</value>
+  </data>
+  <data name="TestSucceeded" xml:space="preserve">
+    <value>{0} {1} ile bağlantı kuruldu</value>
+  </data>
+  <data name="Testing" xml:space="preserve">
+    <value>Test ediliyor…</value>
+  </data>
+  <data name="TimeoutHeader" xml:space="preserve">
+    <value>Bağlanma zaman aşımı (saniye)</value>
+  </data>
+  <data name="TransportCloudSql" xml:space="preserve">
+    <value>Cloud SQL Kimlik Doğrulama Proxy'si</value>
+  </data>
+  <data name="TransportCloudSqlSummary" xml:space="preserve">
+    <value>Google Cloud SQL Auth Proxy'yi bir örnek bağlantı adına karşı çalıştırır.</value>
+  </data>
+  <data name="TransportCloudflare" xml:space="preserve">
+    <value>Cloudflare Tüneli</value>
+  </data>
+  <data name="TransportCloudflareSummary" xml:space="preserve">
+    <value>cloudflared'ı bir Cloudflare Access uygulamasına karşı çalıştırır.</value>
+  </data>
+  <data name="TransportCommand" xml:space="preserve">
+    <value>Tünel Komutu</value>
+  </data>
+  <data name="TransportCommandSummary" xml:space="preserve">
+    <value>kubectl port-forward gibi yerel bir portu yönlendiren bir komut çalıştırır.</value>
+  </data>
+  <data name="TransportDirect" xml:space="preserve">
+    <value>Doğrudan</value>
+  </data>
+  <data name="TransportDirectSummary" xml:space="preserve">
+    <value>Doğrudan sunucuya ve porta bağlanır.</value>
+  </data>
+  <data name="TransportHeader" xml:space="preserve">
+    <value>Bağlantı yöntemi</value>
+  </data>
+  <data name="TransportProxy" xml:space="preserve">
+    <value>Proxy</value>
+  </data>
+  <data name="TransportProxySummary" xml:space="preserve">
+    <value>Veritabanı ana bilgisayar adını da çözümleyen bir SOCKS5 veya HTTP proxy üzerinden yönlendirir.</value>
+  </data>
+  <data name="TransportSsh" xml:space="preserve">
+    <value>SSH Tüneli</value>
+  </data>
+  <data name="TransportSshSummary" xml:space="preserve">
+    <value>Windows ile birlikte gelen OpenSSH istemcisiyle yerel bir portu bir SSH sunucusu üzerinden yönlendirir.</value>
+  </data>
+  <data name="UrlHeader" xml:space="preserve">
+    <value>URL</value>
+  </data>
+  <data name="UserHeader" xml:space="preserve">
+    <value>Kullanıcı</value>
+  </data>
+  <data name="UserOptionalHeader" xml:space="preserve">
+    <value>Kullanıcı (isteğe bağlı)</value>
+  </data>
+  <data name="WillRunLabel" xml:space="preserve">
+    <value>Çalışacak</value>
+  </data>
+  <data name="WindowsAuthNote" xml:space="preserve">
+    <value>Windows hesabınızla, etki alanı sunuyorsa Kerberos aracılığıyla oturum açar.</value>
+  </data>
+</root>

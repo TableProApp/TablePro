@@ -1,0 +1,473 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AppliedStatements_One" xml:space="preserve">
+    <value>Đã áp dụng {0:N0} câu lệnh người dùng và vai trò.</value>
+  </data>
+  <data name="AppliedStatements_Other" xml:space="preserve">
+    <value>Đã áp dụng {0:N0} câu lệnh người dùng và vai trò.</value>
+  </data>
+  <data name="AttributeBypassRls" xml:space="preserve">
+    <value>Bỏ qua bảo mật cấp dòng</value>
+  </data>
+  <data name="AttributeCreateDatabases" xml:space="preserve">
+    <value>Tạo cơ sở dữ liệu</value>
+  </data>
+  <data name="AttributeCreateRoles" xml:space="preserve">
+    <value>Tạo vai trò</value>
+  </data>
+  <data name="AttributeInherit" xml:space="preserve">
+    <value>Kế thừa quyền</value>
+  </data>
+  <data name="AttributeReplication" xml:space="preserve">
+    <value>Sao chép (replication)</value>
+  </data>
+  <data name="AttributeSuperuser" xml:space="preserve">
+    <value>Superuser</value>
+  </data>
+  <data name="AttributesSegment.Text" xml:space="preserve">
+    <value>Thuộc tính</value>
+  </data>
+  <data name="AuthenticationHeader" xml:space="preserve">
+    <value>Xác thực</value>
+  </data>
+  <data name="AvailableAfterSetRole" xml:space="preserve">
+    <value>Có sẵn sau khi SET ROLE {0}.</value>
+  </data>
+  <data name="BulkActionsButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Thao tác hàng loạt</value>
+  </data>
+  <data name="BulkActionsButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Thao tác hàng loạt</value>
+  </data>
+  <data name="CanLogIn" xml:space="preserve">
+    <value>Có thể đăng nhập</value>
+  </data>
+  <data name="CannotApplyTitle" xml:space="preserve">
+    <value>Không thể áp dụng các thay đổi này</value>
+  </data>
+  <data name="CategoryAdministration" xml:space="preserve">
+    <value>Quản trị</value>
+  </data>
+  <data name="CategoryData" xml:space="preserve">
+    <value>Dữ liệu</value>
+  </data>
+  <data name="CategoryDynamic" xml:space="preserve">
+    <value>Động</value>
+  </data>
+  <data name="CategoryOther" xml:space="preserve">
+    <value>Khác</value>
+  </data>
+  <data name="CategoryStructure" xml:space="preserve">
+    <value>Cấu trúc</value>
+  </data>
+  <data name="ChangePasswordButton" xml:space="preserve">
+    <value>Đổi mật khẩu…</value>
+  </data>
+  <data name="ChangePasswordMenu" xml:space="preserve">
+    <value>Đổi mật khẩu…</value>
+  </data>
+  <data name="ChangePasswordTitle" xml:space="preserve">
+    <value>Đổi mật khẩu</value>
+  </data>
+  <data name="ChangesFailedMessage" xml:space="preserve">
+    <value>{0} {1}
+
+{2}</value>
+  </data>
+  <data name="ChangesFailedTitle" xml:space="preserve">
+    <value>Các thay đổi không thành công</value>
+  </data>
+  <data name="CheckOwnedFailedTitle" xml:space="preserve">
+    <value>Không thể kiểm tra các đối tượng sở hữu</value>
+  </data>
+  <data name="ChecklistNoMatch" xml:space="preserve">
+    <value>Không có quyền nào khớp với bộ lọc.</value>
+  </data>
+  <data name="ChecklistNoScope" xml:space="preserve">
+    <value>Chọn một đối tượng ở bên trái để sửa quyền của nó.</value>
+  </data>
+  <data name="ChecklistNoneGrantable" xml:space="preserve">
+    <value>Không thể cấp quyền ở cấp này.</value>
+  </data>
+  <data name="ConnectionLimit" xml:space="preserve">
+    <value>Giới hạn kết nối</value>
+  </data>
+  <data name="CopyNameMenu" xml:space="preserve">
+    <value>Sao chép tên</value>
+  </data>
+  <data name="CopyPrivilegesFromMenu" xml:space="preserve">
+    <value>Sao chép quyền từ…</value>
+  </data>
+  <data name="CopyPrivilegesPrompt" xml:space="preserve">
+    <value>Sao chép quyền cho {0} từ:</value>
+  </data>
+  <data name="CopyPrivilegesTitle" xml:space="preserve">
+    <value>Sao chép quyền</value>
+  </data>
+  <data name="CreateButton" xml:space="preserve">
+    <value>Tạo</value>
+  </data>
+  <data name="DiscardButton.Content" xml:space="preserve">
+    <value>Hủy bỏ</value>
+  </data>
+  <data name="DropButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Xóa</value>
+  </data>
+  <data name="DropButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Xóa</value>
+  </data>
+  <data name="DropMenu" xml:space="preserve">
+    <value>Xoá…</value>
+  </data>
+  <data name="DropOwned" xml:space="preserve">
+    <value>Xoá các đối tượng sở hữu</value>
+  </data>
+  <data name="DropOwnedPrompt" xml:space="preserve">
+    <value>Chọn điều xảy ra với chúng khi vai trò bị xoá.</value>
+  </data>
+  <data name="DropOwnedWarning" xml:space="preserve">
+    <value>Các bảng, view và hàm thuộc sở hữu của vai trò này trong cơ sở dữ liệu hiện tại sẽ bị xoá.</value>
+  </data>
+  <data name="DropRoleButton" xml:space="preserve">
+    <value>Xoá vai trò</value>
+  </data>
+  <data name="EarlierStatementsApplied_One" xml:space="preserve">
+    <value>Câu lệnh trước đó đã được áp dụng.</value>
+  </data>
+  <data name="EarlierStatementsApplied_Other" xml:space="preserve">
+    <value>{0} câu lệnh trước đó đã được áp dụng.</value>
+  </data>
+  <data name="EditMembershipButton" xml:space="preserve">
+    <value>Sửa tư cách thành viên…</value>
+  </data>
+  <data name="ExecuteButton" xml:space="preserve">
+    <value>Thực thi</value>
+  </data>
+  <data name="FilterRoles" xml:space="preserve">
+    <value>Lọc vai trò</value>
+  </data>
+  <data name="GenerateButton" xml:space="preserve">
+    <value>Tạo</value>
+  </data>
+  <data name="GrantAllItem.Text" xml:space="preserve">
+    <value>Cấp tất cả</value>
+  </data>
+  <data name="GrantManyAction_One" xml:space="preserve">
+    <value>Cấp {0} quyền trên {1}</value>
+  </data>
+  <data name="GrantManyAction_Other" xml:space="preserve">
+    <value>Cấp {0} quyền trên {1}</value>
+  </data>
+  <data name="GrantOneAction" xml:space="preserve">
+    <value>Cấp {0} trên {1}</value>
+  </data>
+  <data name="GrantableName" xml:space="preserve">
+    <value>Có thể cấp cho người khác</value>
+  </data>
+  <data name="GrantableToolTip" xml:space="preserve">
+    <value>Có thể cấp quyền này cho người khác</value>
+  </data>
+  <data name="GrantedOn" xml:space="preserve">
+    <value>Đã cấp trên {0}</value>
+  </data>
+  <data name="GrantsErrorBar.Title" xml:space="preserve">
+    <value>Không tải được quyền</value>
+  </data>
+  <data name="GrantsRetryButton.Content" xml:space="preserve">
+    <value>Thử lại</value>
+  </data>
+  <data name="Host" xml:space="preserve">
+    <value>Máy chủ</value>
+  </data>
+  <data name="HostDescription" xml:space="preserve">
+    <value>Dùng % để cho phép mọi máy chủ.</value>
+  </data>
+  <data name="HostRequired" xml:space="preserve">
+    <value>Nhập một máy chủ, hoặc % cho mọi máy chủ.</value>
+  </data>
+  <data name="IdentityHeader" xml:space="preserve">
+    <value>Danh tính</value>
+  </data>
+  <data name="InheritedAutomatically" xml:space="preserve">
+    <value>Được kế thừa tự động.</value>
+  </data>
+  <data name="InheritedFrom" xml:space="preserve">
+    <value>Kế thừa từ {0}</value>
+  </data>
+  <data name="KindHeader" xml:space="preserve">
+    <value>Loại</value>
+  </data>
+  <data name="KindRole" xml:space="preserve">
+    <value>Vai trò</value>
+  </data>
+  <data name="KindUser" xml:space="preserve">
+    <value>Người dùng</value>
+  </data>
+  <data name="LimitsHeader" xml:space="preserve">
+    <value>Giới hạn</value>
+  </data>
+  <data name="LoadErrorBar.Title" xml:space="preserve">
+    <value>Không tải được người dùng và vai trò</value>
+  </data>
+  <data name="LoadRetryButton.Content" xml:space="preserve">
+    <value>Thử lại</value>
+  </data>
+  <data name="LoadingPrivileges" xml:space="preserve">
+    <value>Đang tải quyền…</value>
+  </data>
+  <data name="MemberOf" xml:space="preserve">
+    <value>Thành viên của</value>
+  </data>
+  <data name="MembershipHeader" xml:space="preserve">
+    <value>Tư cách thành viên</value>
+  </data>
+  <data name="NameTaken" xml:space="preserve">
+    <value>Đã có người dùng hoặc vai trò trùng tên.</value>
+  </data>
+  <data name="NewPassword" xml:space="preserve">
+    <value>Mật khẩu mới</value>
+  </data>
+  <data name="NewPrincipalButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Người dùng hoặc vai trò mới</value>
+  </data>
+  <data name="NewPrincipalButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Người dùng hoặc vai trò mới</value>
+  </data>
+  <data name="NewPrincipalTitle" xml:space="preserve">
+    <value>Người dùng hoặc vai trò mới</value>
+  </data>
+  <data name="NoRolesMatch" xml:space="preserve">
+    <value>Không có vai trò nào khớp với bộ lọc.</value>
+  </data>
+  <data name="NoRolesToJoin" xml:space="preserve">
+    <value>Không có vai trò nào để tham gia.</value>
+  </data>
+  <data name="NoSelection.Text" xml:space="preserve">
+    <value>Chọn một người dùng hoặc vai trò để xem quyền của họ.</value>
+  </data>
+  <data name="NotCommittedTitle" xml:space="preserve">
+    <value>Các thay đổi chưa được commit</value>
+  </data>
+  <data name="NothingApplied" xml:space="preserve">
+    <value>Không có gì được áp dụng.</value>
+  </data>
+  <data name="NothingAppliedTitle" xml:space="preserve">
+    <value>Không có gì được áp dụng</value>
+  </data>
+  <data name="OwnsObjectsTitle" xml:space="preserve">
+    <value>“{0}” đang sở hữu các đối tượng cơ sở dữ liệu</value>
+  </data>
+  <data name="Password" xml:space="preserve">
+    <value>Mật khẩu</value>
+  </data>
+  <data name="PasswordsDoNotMatch" xml:space="preserve">
+    <value>Mật khẩu không khớp.</value>
+  </data>
+  <data name="PendingChanges_One" xml:space="preserve">
+    <value>{0:N0} thay đổi đang chờ</value>
+  </data>
+  <data name="PendingChanges_Other" xml:space="preserve">
+    <value>{0:N0} thay đổi đang chờ</value>
+  </data>
+  <data name="PendingPasswordNote" xml:space="preserve">
+    <value>Mật khẩu mới sẽ được đặt khi bạn áp dụng thay đổi.</value>
+  </data>
+  <data name="PrincipalFilterBox.PlaceholderText" xml:space="preserve">
+    <value>Lọc người dùng và vai trò</value>
+  </data>
+  <data name="PrincipalFilterBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Lọc người dùng và vai trò</value>
+  </data>
+  <data name="PrincipalList.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Người dùng và vai trò</value>
+  </data>
+  <data name="PrivilegeFilterBox.PlaceholderText" xml:space="preserve">
+    <value>Lọc quyền</value>
+  </data>
+  <data name="PrivilegeFilterBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Lọc quyền</value>
+  </data>
+  <data name="PrivilegesSegment.Text" xml:space="preserve">
+    <value>Quyền</value>
+  </data>
+  <data name="ReadOnlyMessage" xml:space="preserve">
+    <value>Chế độ an toàn đang ở mức Chỉ đọc trên kết nối này, nên không thể thay đổi người dùng và vai trò.</value>
+  </data>
+  <data name="ReadOnlyTitle" xml:space="preserve">
+    <value>Kết nối chỉ đọc</value>
+  </data>
+  <data name="ReassignOwned" xml:space="preserve">
+    <value>Chuyển quyền sở hữu các đối tượng</value>
+  </data>
+  <data name="ReassignTo" xml:space="preserve">
+    <value>Chuyển cho</value>
+  </data>
+  <data name="RedoAction" xml:space="preserve">
+    <value>Làm lại {0}</value>
+  </data>
+  <data name="RefreshButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Làm mới</value>
+  </data>
+  <data name="RefreshButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Làm mới</value>
+  </data>
+  <data name="RenameEllipsis" xml:space="preserve">
+    <value>Đổi tên…</value>
+  </data>
+  <data name="RenameTitle" xml:space="preserve">
+    <value>Đổi tên {0}</value>
+  </data>
+  <data name="ReviewApplyButton.Content" xml:space="preserve">
+    <value>Xem lại và áp dụng…</value>
+  </data>
+  <data name="ReviewTitle" xml:space="preserve">
+    <value>Xem lại thay đổi người dùng và vai trò</value>
+  </data>
+  <data name="ReviewTitlePasswordsHidden" xml:space="preserve">
+    <value>Xem lại thay đổi người dùng và vai trò (đã ẩn mật khẩu)</value>
+  </data>
+  <data name="RevokeAllItem.Text" xml:space="preserve">
+    <value>Thu hồi tất cả</value>
+  </data>
+  <data name="RevokeManyAction_One" xml:space="preserve">
+    <value>Thu hồi {0} quyền trên {1}</value>
+  </data>
+  <data name="RevokeManyAction_Other" xml:space="preserve">
+    <value>Thu hồi {0} quyền trên {1}</value>
+  </data>
+  <data name="RevokeOneAction" xml:space="preserve">
+    <value>Thu hồi {0} trên {1}</value>
+  </data>
+  <data name="RoleAttributesHeader" xml:space="preserve">
+    <value>Thuộc tính vai trò</value>
+  </data>
+  <data name="RoleCount_One" xml:space="preserve">
+    <value>{0:N0} vai trò</value>
+  </data>
+  <data name="RoleCount_Other" xml:space="preserve">
+    <value>{0:N0} vai trò</value>
+  </data>
+  <data name="RolledBack" xml:space="preserve">
+    <value>Mọi thay đổi đã được rollback.</value>
+  </data>
+  <data name="ScopeModeAll.Content" xml:space="preserve">
+    <value>Tất cả đối tượng</value>
+  </data>
+  <data name="ScopeModeGranted.Content" xml:space="preserve">
+    <value>Đã cấp</value>
+  </data>
+  <data name="ScopeModes.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Hiển thị</value>
+  </data>
+  <data name="ScopeSearch.PlaceholderText" xml:space="preserve">
+    <value>Tìm bảng</value>
+  </data>
+  <data name="ScopeSearch.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Tìm bảng</value>
+  </data>
+  <data name="ScopeSummaryAll" xml:space="preserve">
+    <value>Tất cả ({0})</value>
+  </data>
+  <data name="ScopeSummaryConnectToBrowse" xml:space="preserve">
+    <value>Kết nối tới cơ sở dữ liệu này để duyệt</value>
+  </data>
+  <data name="ScopeSummaryGrantable" xml:space="preserve">
+    <value>{0} (có thể cấp lại)</value>
+  </data>
+  <data name="ScopeSummaryGrantsInside_One" xml:space="preserve">
+    <value>{0} quyền được cấp bên trong</value>
+  </data>
+  <data name="ScopeSummaryGrantsInside_Other" xml:space="preserve">
+    <value>{0} quyền được cấp bên trong</value>
+  </data>
+  <data name="ScopeSummaryNone" xml:space="preserve">
+    <value>Không</value>
+  </data>
+  <data name="ScopeSummaryOverflow" xml:space="preserve">
+    <value>{0} +{1}</value>
+  </data>
+  <data name="ScopeTree.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Đối tượng</value>
+  </data>
+  <data name="SearchFailedTitle" xml:space="preserve">
+    <value>Không thể tìm kiếm đối tượng</value>
+  </data>
+  <data name="SectionGranted" xml:space="preserve">
+    <value>Đã cấp</value>
+  </data>
+  <data name="SectionNotGranted" xml:space="preserve">
+    <value>Chưa cấp</value>
+  </data>
+  <data name="SectionPartlyGranted" xml:space="preserve">
+    <value>Cấp một phần</value>
+  </data>
+  <data name="SelfImpactMessage" xml:space="preserve">
+    <value>{0} Bạn có thể mất quyền truy cập vào máy chủ này.</value>
+  </data>
+  <data name="SelfImpactTitle" xml:space="preserve">
+    <value>Thay đổi này ảnh hưởng đến chính tài khoản của bạn</value>
+  </data>
+  <data name="SetPasswordButton" xml:space="preserve">
+    <value>Đặt mật khẩu</value>
+  </data>
+  <data name="StageCreated" xml:space="preserve">
+    <value>Sẽ được tạo khi bạn áp dụng thay đổi</value>
+  </data>
+  <data name="StageDropped" xml:space="preserve">
+    <value>Sẽ bị xoá khi bạn áp dụng thay đổi</value>
+  </data>
+  <data name="StageModified" xml:space="preserve">
+    <value>Có thay đổi chưa lưu</value>
+  </data>
+  <data name="StageModifiedShort" xml:space="preserve">
+    <value>Đã sửa đổi</value>
+  </data>
+  <data name="StatementDidNotRun" xml:space="preserve">
+    <value>Câu lệnh đã không chạy.</value>
+  </data>
+  <data name="StatementFailed" xml:space="preserve">
+    <value>Câu lệnh {0}/{1} không thành công ({2}).</value>
+  </data>
+  <data name="SuperuserNote" xml:space="preserve">
+    <value>Superuser bỏ qua mọi kiểm tra quyền.</value>
+  </data>
+  <data name="UndoAction" xml:space="preserve">
+    <value>Hoàn tác {0}</value>
+  </data>
+  <data name="UndoStagedDropMenu" xml:space="preserve">
+    <value>Hoàn tác thao tác xoá đang chờ</value>
+  </data>
+  <data name="Unlimited" xml:space="preserve">
+    <value>Không giới hạn</value>
+  </data>
+  <data name="UnsavedWork_One" xml:space="preserve">
+    <value>{0:N0} thay đổi đang chờ đối với người dùng và vai trò</value>
+  </data>
+  <data name="UnsavedWork_Other" xml:space="preserve">
+    <value>{0:N0} thay đổi đang chờ đối với người dùng và vai trò</value>
+  </data>
+  <data name="UserCount_One" xml:space="preserve">
+    <value>{0:N0} người dùng</value>
+  </data>
+  <data name="UserCount_Other" xml:space="preserve">
+    <value>{0:N0} người dùng</value>
+  </data>
+  <data name="UsersAndRoles" xml:space="preserve">
+    <value>{0}, {1}</value>
+  </data>
+  <data name="VerifyPassword" xml:space="preserve">
+    <value>Xác nhận</value>
+  </data>
+</root>

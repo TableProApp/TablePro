@@ -143,9 +143,9 @@ public sealed partial class TableTabView : UserControl
         StructureCaption.Text = _structureSection switch
         {
             "Partitions" when ViewModel.Structure?.Partitioning is { } p => p.Subpartitioning is { } sub
-                ? $"Partitioned by {p}, subpartitioned by {sub}."
-                : $"Partitioned by {p}.",
-            "Checks" when !edits.HasFlag(StructureEdits.CheckConstraints) && canEdit => "This server cannot add or change check constraints here.",
+                ? Strings.Format("Table/PartitionedBySubpartitioned", p, sub)
+                : Strings.Format("Table/PartitionedBy", p),
+            "Checks" when !edits.HasFlag(StructureEdits.CheckConstraints) && canEdit => Strings.Get("Table/ChecksNotEditable"),
             _ => string.Empty,
         };
         StructureCaption.Visibility = StructureCaption.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
@@ -187,7 +187,7 @@ public sealed partial class TableTabView : UserControl
     private void UpdateSelectionText()
     {
         var rows = RowsGrid.SelectedRows.Count;
-        SelectionText.Text = rows > 1 ? string.Create(CultureInfo.CurrentCulture, $"{rows:N0} rows selected") : string.Empty;
+        SelectionText.Text = rows > 1 ? Strings.Plural("Table/RowsSelected", rows) : string.Empty;
     }
 
     private async void OnPageSizeChanged(object sender, SelectionChangedEventArgs e)
@@ -225,22 +225,22 @@ public sealed partial class TableTabView : UserControl
         var menu = new MenuFlyout();
         GridCommands.AddCopyItems(menu, RowsGrid, ViewModel.Context.Session.Dialect, ViewModel.Table.Name);
         menu.Items.Add(new MenuFlyoutSeparator());
-        menu.Items.Add(GridCommands.Item("Filter by This Value", "", async () => await ViewModel.FilterByValueAsync(e.Row, e.Column, exclude: false)));
-        menu.Items.Add(GridCommands.Item("Exclude This Value", "", async () => await ViewModel.FilterByValueAsync(e.Row, e.Column, exclude: true)));
+        menu.Items.Add(GridCommands.Item(Strings.Get("Table/FilterByValue"),"", async () => await ViewModel.FilterByValueAsync(e.Row, e.Column, exclude: false)));
+        menu.Items.Add(GridCommands.Item(Strings.Get("Table/ExcludeValue"),"", async () => await ViewModel.FilterByValueAsync(e.Row, e.Column, exclude: true)));
         if (ForeignKeyFor(e.Column) is { } foreignKey)
         {
-            menu.Items.Add(GridCommands.Item($"Open {foreignKey.ReferencedTable.Name}", "", () =>
+            menu.Items.Add(GridCommands.Item(Strings.Format("Table/OpenReferencedTable", foreignKey.ReferencedTable.Name),"", () =>
                 ForeignKeyRequested?.Invoke(this, (foreignKey.ReferencedTable, foreignKey.ReferencedColumns[0], RowsGrid.Source?.GetValue(e.Row, e.Column)))));
         }
 
-        menu.Items.Add(GridCommands.Item("Inspect Value", "", () => Inspect(e.Row, e.Column)));
+        menu.Items.Add(GridCommands.Item(Strings.Get("Table/InspectValue"),"", () => Inspect(e.Row, e.Column)));
         if (ViewModel.IsEditable)
         {
             menu.Items.Add(new MenuFlyoutSeparator());
-            menu.Items.Add(GridCommands.Item("Edit Cell", "", () => RowsGrid.BeginEdit(), "Enter"));
-            menu.Items.Add(GridCommands.Item("Set to NULL", "", RowsGrid.SetActiveCellNull));
-            menu.Items.Add(GridCommands.Item("Duplicate Row", "", () => ViewModel.DuplicateRow(e.Row)));
-            menu.Items.Add(GridCommands.Item("Delete Rows", "", () => ViewModel.ToggleDeleteRows(RowsGrid.SelectedRows), "Delete"));
+            menu.Items.Add(GridCommands.Item(Strings.Get("Table/EditCell"),"", () => RowsGrid.BeginEdit(), "Enter"));
+            menu.Items.Add(GridCommands.Item(Strings.Get("Table/SetToNull"),"", RowsGrid.SetActiveCellNull));
+            menu.Items.Add(GridCommands.Item(Strings.Get("Table/DuplicateRow"),"", () => ViewModel.DuplicateRow(e.Row)));
+            menu.Items.Add(GridCommands.Item(Strings.Get("Table/DeleteRows"),"", () => ViewModel.ToggleDeleteRows(RowsGrid.SelectedRows), "Delete"));
         }
 
         menu.ShowAt(e.Target, e.Position);
@@ -310,7 +310,7 @@ public sealed partial class TableTabView : UserControl
         }
         catch (Exception ex) when (ex is IOException or InvalidDataException or System.Text.Json.JsonException or UnauthorizedAccessException)
         {
-            await dialogs.ShowErrorAsync("Cannot read this file", ex.Message);
+            await dialogs.ShowErrorAsync(Strings.Get("Import/CannotReadFileTitle"), ex.Message);
             return;
         }
 
@@ -335,18 +335,18 @@ public sealed partial class TableTabView : UserControl
         }
 
         ViewModel.IsBusy = true;
-        ViewModel.StatusText = "Importing…";
+        ViewModel.StatusText = Strings.Get("Import/Importing");
         try
         {
-            var progress = new Progress<long>(rows => ViewModel.StatusText = string.Create(CultureInfo.CurrentCulture, $"Importing… {rows:N0} rows"));
+            var progress = new Progress<long>(rows => ViewModel.StatusText = Strings.Plural("Import/ImportingRows", rows));
             var result = await Task.Run(async () =>
             {
                 await using var stream = ImportFile.Open(path);
                 var records = ImportFile.ReadRecordsAsync(stream, format, plan.CsvOptions, CancellationToken.None);
                 return await RowImporter.ImportAsync(session.Database, plan.Table, records, plan.Builder, progress, CancellationToken.None);
             });
-            var skipped = result.Skipped > 0 ? string.Create(CultureInfo.CurrentCulture, $" {result.Skipped:N0} records held no mapped field and were skipped.") : string.Empty;
-            ViewModel.Context.Notify(string.Create(CultureInfo.CurrentCulture, $"Imported {result.Imported:N0} rows into {plan.Table.Name}.{skipped}"));
+            var imported = Strings.Plural("Import/ImportedRows", result.Imported, plan.Table.Name);
+            ViewModel.Context.Notify(result.Skipped > 0 ? Strings.Format("Import/ImportedWithSkipped", imported, Strings.Plural("Import/RecordsSkipped", result.Skipped)) : imported);
             if (plan.Destination == ImportDestination.ExistingTable)
             {
                 await ViewModel.LoadAsync();
@@ -355,7 +355,7 @@ public sealed partial class TableTabView : UserControl
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             // Batches before the failure are already saved, each in its own transaction, so the message says so.
-            await dialogs.ShowErrorAsync("Import stopped", ex.Message + "\n\nRows saved before this point stay in the table.");
+            await dialogs.ShowErrorAsync(Strings.Get("Import/ImportStoppedTitle"), Strings.Format("Import/ImportStoppedRowsKept", ex.Message));
         }
         finally
         {
@@ -376,11 +376,11 @@ public sealed partial class TableTabView : UserControl
         var statements = ddl.BuildDdl(plan.Table, new CreateTable(plan.Table, plan.NewTableColumns));
         if (statements.Count == 0)
         {
-            await context.Dialogs.ShowErrorAsync("Not supported", "This engine cannot create that table from the app.");
+            await context.Dialogs.ShowErrorAsync(Strings.Get("Table/NotSupportedTitle"), Strings.Get("Import/CannotCreateTable"));
             return false;
         }
 
-        if (!await context.Dialogs.ReviewSqlAsync("Create table for import", statements, "Create and Import"))
+        if (!await context.Dialogs.ReviewSqlAsync(Strings.Get("Import/CreateTableReviewTitle"), statements, Strings.Get("Import/CreateAndImport")))
         {
             return false;
         }
@@ -391,7 +391,7 @@ public sealed partial class TableTabView : UserControl
             context.History.Record(context.Session.Profile, context.Session.Database.CurrentDatabase, result, Core.Sql.StatementKind.Ddl, "import");
             if (!result.Succeeded)
             {
-                await context.Dialogs.ShowErrorAsync("Could not create the table", result.Error!);
+                await context.Dialogs.ShowErrorAsync(Strings.Get("Import/CreateTableFailedTitle"), result.Error!);
                 return false;
             }
         }
@@ -507,12 +507,12 @@ public sealed partial class TableTabView : UserControl
     /// <summary>The name and expression of a check; editing one that exists produces the change from it to the new one.</summary>
     private async Task<SchemaChange?> CheckDialogAsync(CheckConstraintDefinition? existing)
     {
-        var name = new TextBox { Header = "Name", Text = existing?.Name ?? $"ck_{ViewModel.Table.Name.Name}_" };
+        var name = new TextBox { Header = Strings.Get("Common/Name"), Text = existing?.Name ?? $"ck_{ViewModel.Table.Name.Name}_" };
         var expression = new TextBox
         {
-            Header = "Expression",
+            Header = Strings.Get("Table/CheckExpressionHeader"),
             Text = existing?.Expression ?? string.Empty,
-            PlaceholderText = "for example price > 0 AND quantity >= 0",
+            PlaceholderText = Strings.Get("Table/CheckExpressionPlaceholder"),
             AcceptsReturn = true,
             TextWrapping = TextWrapping.Wrap,
             MinHeight = 96,
@@ -526,12 +526,16 @@ public sealed partial class TableTabView : UserControl
             Style = (Style)Application.Current.Resources["StatusTextStyle"],
             TextWrapping = TextWrapping.Wrap,
             Text = existing is null
-                ? "Adding a check reads every row, and fails if one does not pass."
-                : "A new expression drops the check and adds it again, which reads every row. A new name alone does not.",
+                ? Strings.Get("Table/AddCheckNote")
+                : Strings.Get("Table/EditCheckNote"),
         });
 
         var dialogs = ViewModel.Context.Dialogs;
-        if (await dialogs.ShowAsync(dialogs.Create(existing is null ? "Add Check Constraint" : "Edit Check Constraint", panel, existing is null ? "Add" : "Save", "Cancel"))
+        if (await dialogs.ShowAsync(dialogs.Create(
+                existing is null ? Strings.Get("Table/AddCheckTitle") : Strings.Get("Table/EditCheckTitle"),
+                panel,
+                existing is null ? Strings.Get("Common/Add") : Strings.Get("Common/Save"),
+                Strings.Get("Common/Cancel")))
             != ContentDialogResult.Primary)
         {
             return null;
@@ -540,7 +544,7 @@ public sealed partial class TableTabView : UserControl
         var check = new CheckConstraintDefinition(name.Text.Trim(), expression.Text.Trim());
         if (!check.IsComplete)
         {
-            await dialogs.ShowErrorAsync("Check constraint not saved", "A check needs both a name and an expression.");
+            await dialogs.ShowErrorAsync(Strings.Get("Table/CheckNotSavedTitle"), Strings.Get("Table/CheckIncomplete"));
             return null;
         }
 
@@ -564,27 +568,27 @@ public sealed partial class TableTabView : UserControl
         }
 
         var last = partitioning.Partitions.LastOrDefault(p => !p.IsSubpartition && !string.IsNullOrEmpty(p.Bound) && !string.Equals(p.Bound, "DEFAULT", StringComparison.OrdinalIgnoreCase));
-        var name = new TextBox { Header = "Name", Text = $"{ViewModel.Table.Name.Name}_" };
+        var name = new TextBox { Header = Strings.Get("Common/Name"), Text = $"{ViewModel.Table.Name.Name}_" };
         var bound = new TextBox
         {
-            Header = "Bound",
+            Header = Strings.Get("Table/PartitionBoundHeader"),
             Text = last?.Bound ?? string.Empty,
-            PlaceholderText = "for example VALUES LESS THAN (2026), or FOR VALUES FROM ('2026-01-01') TO ('2027-01-01')",
+            PlaceholderText = Strings.Get("Table/PartitionBoundPlaceholder"),
             FontFamily = (Microsoft.UI.Xaml.Media.FontFamily)Application.Current.Resources["CodeFontFamily"],
         };
         var panel = new StackPanel { Spacing = 12, MinWidth = 460 };
-        panel.Children.Add(new TextBlock { Text = $"Partitioned by {partitioning}.", TextWrapping = TextWrapping.Wrap });
+        panel.Children.Add(new TextBlock { Text = Strings.Format("Table/PartitionedBy", partitioning), TextWrapping = TextWrapping.Wrap });
         panel.Children.Add(name);
         panel.Children.Add(bound);
         panel.Children.Add(new TextBlock
         {
             Style = (Style)Application.Current.Resources["StatusTextStyle"],
             TextWrapping = TextWrapping.Wrap,
-            Text = "Write the bound as the Bound column shows it. Leave it empty for a HASH or KEY partition.",
+            Text = Strings.Get("Table/PartitionBoundNote"),
         });
 
         var dialogs = ViewModel.Context.Dialogs;
-        if (await dialogs.ShowAsync(dialogs.Create("Add Partition", panel, "Add", "Cancel")) != ContentDialogResult.Primary || string.IsNullOrWhiteSpace(name.Text))
+        if (await dialogs.ShowAsync(dialogs.Create(Strings.Get("Table/AddPartitionTitle"), panel, Strings.Get("Common/Add"), Strings.Get("Common/Cancel"))) != ContentDialogResult.Primary || string.IsNullOrWhiteSpace(name.Text))
         {
             return null;
         }
@@ -635,7 +639,7 @@ public sealed partial class TableTabView : UserControl
 
         var dialogs = ViewModel.Context.Dialogs;
         var content = new ScrollViewer { Content = panel, MaxHeight = 520 };
-        if (await dialogs.ShowAsync(dialogs.Create("Table Options", content, "Save", "Cancel")) != ContentDialogResult.Primary)
+        if (await dialogs.ShowAsync(dialogs.Create(Strings.Get("Table/TableOptionsTitle"), content, Strings.Get("Common/Save"), Strings.Get("Common/Cancel"))) != ContentDialogResult.Primary)
         {
             return null;
         }
@@ -648,11 +652,11 @@ public sealed partial class TableTabView : UserControl
     private async Task<SchemaChange?> ColumnDialogAsync(ColumnDefinition? existing)
     {
         var types = (ViewModel.Context.Session.Database as ISchemaDdlProvider)?.CommonDataTypes ?? [];
-        var name = new TextBox { Header = "Name", Text = existing?.Name ?? string.Empty };
-        var type = new ComboBox { Header = "Type", IsEditable = true, ItemsSource = types.ToList(), Text = existing?.DataType ?? (types.Count > 0 ? types[0] : "text"), HorizontalAlignment = HorizontalAlignment.Stretch };
-        var nullable = new CheckBox { Content = "Allows NULL", IsChecked = existing?.IsNullable ?? true };
-        var defaultValue = new TextBox { Header = "Default expression", Text = existing?.DefaultExpression ?? string.Empty, PlaceholderText = "for example 0, 'text' or now()" };
-        var comment = new TextBox { Header = "Comment", Text = existing?.Comment ?? string.Empty };
+        var name = new TextBox { Header = Strings.Get("Common/Name"), Text = existing?.Name ?? string.Empty };
+        var type = new ComboBox { Header = Strings.Get("Common/Type"), IsEditable = true, ItemsSource = types.ToList(), Text = existing?.DataType ?? (types.Count > 0 ? types[0] : "text"), HorizontalAlignment = HorizontalAlignment.Stretch };
+        var nullable = new CheckBox { Content = Strings.Get("Table/AllowsNull"), IsChecked = existing?.IsNullable ?? true };
+        var defaultValue = new TextBox { Header = Strings.Get("Table/DefaultExpressionHeader"), Text = existing?.DefaultExpression ?? string.Empty, PlaceholderText = Strings.Get("Table/DefaultExpressionPlaceholder") };
+        var comment = new TextBox { Header = Strings.Get("Table/CommentHeader"), Text = existing?.Comment ?? string.Empty };
         var panel = new StackPanel { Spacing = 12, MinWidth = 380 };
         panel.Children.Add(name);
         panel.Children.Add(type);
@@ -660,7 +664,11 @@ public sealed partial class TableTabView : UserControl
         panel.Children.Add(defaultValue);
         panel.Children.Add(comment);
         var dialogs = ViewModel.Context.Dialogs;
-        if (await dialogs.ShowAsync(dialogs.Create(existing is null ? "Add Column" : "Edit Column", panel, existing is null ? "Add" : "Save", "Cancel")) != ContentDialogResult.Primary
+        if (await dialogs.ShowAsync(dialogs.Create(
+                existing is null ? Strings.Get("Table/AddColumnTitle") : Strings.Get("Table/EditColumnTitle"),
+                panel,
+                existing is null ? Strings.Get("Common/Add") : Strings.Get("Common/Save"),
+                Strings.Get("Common/Cancel"))) != ContentDialogResult.Primary
             || string.IsNullOrWhiteSpace(name.Text))
         {
             return null;
@@ -684,15 +692,15 @@ public sealed partial class TableTabView : UserControl
             return null;
         }
 
-        var name = new TextBox { Header = "Name", Text = $"idx_{ViewModel.Table.Name.Name}_" };
-        var columns = new ListView { SelectionMode = ListViewSelectionMode.Multiple, ItemsSource = structure.Columns.Select(c => c.Name).ToList(), MaxHeight = 240, Header = "Columns, in key order" };
-        var unique = new CheckBox { Content = "Unique" };
+        var name = new TextBox { Header = Strings.Get("Common/Name"), Text = $"idx_{ViewModel.Table.Name.Name}_" };
+        var columns = new ListView { SelectionMode = ListViewSelectionMode.Multiple, ItemsSource = structure.Columns.Select(c => c.Name).ToList(), MaxHeight = 240, Header = Strings.Get("Table/IndexColumnsHeader") };
+        var unique = new CheckBox { Content = Strings.Get("Table/IndexUnique") };
         var panel = new StackPanel { Spacing = 12, MinWidth = 380 };
         panel.Children.Add(name);
         panel.Children.Add(columns);
         panel.Children.Add(unique);
         var dialogs = ViewModel.Context.Dialogs;
-        if (await dialogs.ShowAsync(dialogs.Create("Add Index", panel, "Add", "Cancel")) != ContentDialogResult.Primary || columns.SelectedItems.Count == 0)
+        if (await dialogs.ShowAsync(dialogs.Create(Strings.Get("Table/AddIndexTitle"), panel, Strings.Get("Common/Add"), Strings.Get("Common/Cancel"))) != ContentDialogResult.Primary || columns.SelectedItems.Count == 0)
         {
             return null;
         }
@@ -709,10 +717,10 @@ public sealed partial class TableTabView : UserControl
 
         var session = ViewModel.Context.Session;
         var tables = session.Objects.Where(o => o.Kind == ObjectKind.Table).Select(o => o.Name).ToList();
-        var name = new TextBox { Header = "Name", Text = $"fk_{ViewModel.Table.Name.Name}_" };
-        var column = new ComboBox { Header = "Column", ItemsSource = structure.Columns.Select(c => c.Name).ToList(), HorizontalAlignment = HorizontalAlignment.Stretch };
-        var target = new ComboBox { Header = "References table", ItemsSource = tables.Select(t => t.ToString()).ToList(), HorizontalAlignment = HorizontalAlignment.Stretch };
-        var targetColumn = new ComboBox { Header = "References column", HorizontalAlignment = HorizontalAlignment.Stretch };
+        var name = new TextBox { Header = Strings.Get("Common/Name"), Text = $"fk_{ViewModel.Table.Name.Name}_" };
+        var column = new ComboBox { Header = Strings.Get("Table/ForeignKeyColumnHeader"), ItemsSource = structure.Columns.Select(c => c.Name).ToList(), HorizontalAlignment = HorizontalAlignment.Stretch };
+        var target = new ComboBox { Header = Strings.Get("Table/ForeignKeyTargetTableHeader"), ItemsSource = tables.Select(t => t.ToString()).ToList(), HorizontalAlignment = HorizontalAlignment.Stretch };
+        var targetColumn = new ComboBox { Header = Strings.Get("Table/ForeignKeyTargetColumnHeader"), HorizontalAlignment = HorizontalAlignment.Stretch };
         target.SelectionChanged += async (_, _) =>
         {
             if (target.SelectedIndex >= 0)
@@ -722,7 +730,7 @@ public sealed partial class TableTabView : UserControl
                 targetColumn.SelectedItem = referenced.PrimaryKey.Count > 0 ? referenced.PrimaryKey[0] : null;
             }
         };
-        var onDelete = new ComboBox { Header = "On delete", ItemsSource = new[] { "NO ACTION", "CASCADE", "SET NULL", "RESTRICT" }, SelectedIndex = 0 };
+        var onDelete = new ComboBox { Header = Strings.Get("Table/ForeignKeyOnDeleteHeader"), ItemsSource = new[] { "NO ACTION", "CASCADE", "SET NULL", "RESTRICT" }, SelectedIndex = 0 };
         var panel = new StackPanel { Spacing = 12, MinWidth = 380 };
         panel.Children.Add(name);
         panel.Children.Add(column);
@@ -730,7 +738,7 @@ public sealed partial class TableTabView : UserControl
         panel.Children.Add(targetColumn);
         panel.Children.Add(onDelete);
         var dialogs = ViewModel.Context.Dialogs;
-        if (await dialogs.ShowAsync(dialogs.Create("Add Foreign Key", panel, "Add", "Cancel")) != ContentDialogResult.Primary
+        if (await dialogs.ShowAsync(dialogs.Create(Strings.Get("Table/AddForeignKeyTitle"), panel, Strings.Get("Common/Add"), Strings.Get("Common/Cancel"))) != ContentDialogResult.Primary
             || column.SelectedItem is not string from || target.SelectedIndex < 0 || targetColumn.SelectedItem is not string to)
         {
             return null;

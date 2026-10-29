@@ -17,8 +17,8 @@ internal static class QuickSwitcherDialog
     public static async Task ShowAsync(DialogService dialogs, WorkspaceViewModel workspace)
     {
         var viewModel = new QuickSwitcherViewModel(workspace);
-        var box = new TextBox { PlaceholderText = "Open a table, view, routine, database, schema or tab" };
-        AutomationProperties.SetName(box, "Open Quickly");
+        var box = new TextBox { PlaceholderText = Strings.Get("Panes/QuickSwitcherPlaceholder") };
+        AutomationProperties.SetName(box, Strings.Get("Panes/QuickSwitcherTitle"));
         var list = new ListView
         {
             SelectionMode = ListViewSelectionMode.Single,
@@ -29,7 +29,7 @@ internal static class QuickSwitcherDialog
         };
         var empty = new TextBlock
         {
-            Text = "No matches",
+            Text = Strings.Get("Panes/QuickSwitcherNoMatches"),
             Margin = new Thickness(0, 16, 0, 0),
             HorizontalAlignment = HorizontalAlignment.Center,
             Visibility = Visibility.Collapsed,
@@ -43,7 +43,7 @@ internal static class QuickSwitcherDialog
         panel.Children.Add(list);
         panel.Children.Add(empty);
 
-        var dialog = dialogs.Create("Open Quickly", panel, null, "Close");
+        var dialog = dialogs.Create(Strings.Get("Panes/QuickSwitcherTitle"), panel, null, Strings.Get("Common/Close"));
 
         // ContentDialog caps its width at 548 by default, which would clip the kind column.
         dialog.Resources["ContentDialogMaxWidth"] = 640.0;
@@ -151,7 +151,7 @@ internal static class QuickSwitcherDialog
         var kind = new TextBlock { Text = item.KindText, Foreground = secondary, FontSize = 12, VerticalAlignment = VerticalAlignment.Center };
         Grid.SetColumn(kind, 2);
         row.Children.Add(kind);
-        AutomationProperties.SetName(row, $"{item.Name}, {item.KindText}");
+        AutomationProperties.SetName(row, Strings.Format("Panes/QuickSwitcherRowName", item.Name, item.KindText));
         return row;
     }
 

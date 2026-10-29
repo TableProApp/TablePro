@@ -183,7 +183,7 @@ public sealed partial class QueryTabView : UserControl
         ResultTabs.Items.Clear();
         if (ViewModel.Plan is { } plan)
         {
-            ResultTabs.Items.Add(new SelectorBarItem { Text = plan.Analyze ? "Analyzed Plan" : "Plan", Tag = plan, Icon = new FontIcon { Glyph = "" } });
+            ResultTabs.Items.Add(new SelectorBarItem { Text = plan.Analyze ? Strings.Get("Query/AnalyzedPlanTab") : Strings.Get("Query/PlanTab"), Tag = plan, Icon = new FontIcon { Glyph = "" } });
         }
 
         foreach (var result in ViewModel.Results)
@@ -375,7 +375,7 @@ public sealed partial class QueryTabView : UserControl
         var path = ViewModel.FilePath;
         if (saveAs || path is null)
         {
-            var file = await ViewModel.Context.Dialogs.PickSaveFileAsync(ViewModel.Title, "SQL file", ".sql");
+            var file = await ViewModel.Context.Dialogs.PickSaveFileAsync(ViewModel.Title, Strings.Get("Query/SqlFileType"), ".sql");
             if (file is null)
             {
                 return;
@@ -387,7 +387,7 @@ public sealed partial class QueryTabView : UserControl
         await File.WriteAllTextAsync(path, Editor.Text.Replace("\n", Environment.NewLine, StringComparison.Ordinal));
         ViewModel.MarkSaved(path);
         await SqlFiles.SqlLibraryHost.RecordSaveAsync(path);
-        ViewModel.Context.Notify($"Saved {Path.GetFileName(path)}");
+        ViewModel.Context.Notify(Strings.Format("Query/SavedFile", Path.GetFileName(path)));
     }
 
     private void OnSaveFavorite(object sender, RoutedEventArgs e) => SaveFavoriteRequested?.Invoke(this, SelectedOrCurrentSql);
@@ -413,7 +413,7 @@ public sealed partial class QueryTabView : UserControl
         var menu = new MenuFlyout();
         GridCommands.AddCopyItems(menu, ResultGrid, ViewModel.Dialect, null);
         menu.Items.Add(new MenuFlyoutSeparator());
-        menu.Items.Add(GridCommands.Item("Inspect Value", "", () => Inspect(e.Row, e.Column), "Enter"));
+        menu.Items.Add(GridCommands.Item(Strings.Get("Query/InspectValue"),"", () => Inspect(e.Row, e.Column), "Enter"));
         menu.ShowAt(e.Target, e.Position);
     }
 

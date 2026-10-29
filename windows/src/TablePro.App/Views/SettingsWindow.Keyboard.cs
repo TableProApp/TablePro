@@ -23,15 +23,16 @@ public sealed partial class SettingsWindow
     {
         page.Children.Add(new TextBlock
         {
-            Text = "Click a shortcut, then press the keys to use. Esc cancels, Backspace removes the shortcut. Editor commands work while the SQL editor has focus; the others anywhere in a connection window.",
+            Text = Strings.Get("Settings/KeyboardIntro"),
             TextWrapping = TextWrapping.Wrap,
             Margin = new Thickness(0, 0, 0, 12),
             Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
         });
 
-        var search = new AutoSuggestBox { PlaceholderText = "Search shortcuts", QueryIcon = new SymbolIcon(Symbol.Find), MinWidth = 280 };
-        AutomationProperties.SetName(search, "Search shortcuts");
-        var resetAll = new Button { Content = "Reset All to Defaults", HorizontalAlignment = HorizontalAlignment.Right };
+        var searchLabel = Strings.Get("Settings/KeyboardSearch");
+        var search = new AutoSuggestBox { PlaceholderText = searchLabel, QueryIcon = new SymbolIcon(Symbol.Find), MinWidth = 280 };
+        AutomationProperties.SetName(search, searchLabel);
+        var resetAll = new Button { Content = Strings.Get("Settings/KeyboardResetAll"), HorizontalAlignment = HorizontalAlignment.Right };
         var toolbar = new Grid { ColumnSpacing = 12, Margin = new Thickness(0, 0, 0, 8) };
         toolbar.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         toolbar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -57,7 +58,7 @@ public sealed partial class SettingsWindow
                 var header = false;
                 foreach (var command in ShortcutCatalog.InCategory(category))
                 {
-                    if (!map.Matches(command, search.Text))
+                    if (!Matches(map, command, search.Text))
                     {
                         continue;
                     }
@@ -66,7 +67,7 @@ public sealed partial class SettingsWindow
                     {
                         list.Children.Add(new TextBlock
                         {
-                            Text = category.DisplayName(),
+                            Text = ShortcutNames.Category(category),
                             Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"],
                             Margin = new Thickness(0, list.Children.Count == 0 ? 0 : 20, 0, 4),
                         });
@@ -86,7 +87,7 @@ public sealed partial class SettingsWindow
             {
                 list.Children.Add(new TextBlock
                 {
-                    Text = "No shortcuts match.",
+                    Text = Strings.Get("Settings/KeyboardNoMatches"),
                     Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
                 });
             }
@@ -111,8 +112,10 @@ public sealed partial class SettingsWindow
                     var conflict = ShortcutConflictResolver.Resolve(edit.Chord, command, map);
                     if (conflict.IsBlocking)
                     {
-                        message.Title = conflict.Kind == ShortcutConflictKind.NeedsModifier ? "Modifier key required" : "Reserved shortcut";
-                        message.Message = conflict.Describe(edit.Chord);
+                        message.Title = conflict.Kind == ShortcutConflictKind.NeedsModifier
+                            ? Strings.Get("Settings/KeyboardModifierRequired")
+                            : Strings.Get("Settings/KeyboardReservedShortcut");
+                        message.Message = ShortcutNames.Describe(conflict, edit.Chord);
                         message.IsOpen = true;
                         break;
                     }
@@ -120,9 +123,9 @@ public sealed partial class SettingsWindow
                     if (conflict.Command is { } other)
                     {
                         var reassign = await new DialogService(this).ConfirmAsync(
-                            "Shortcut conflict",
-                            $"{conflict.Describe(edit.Chord)} Reassigning removes it from that command.",
-                            "Reassign");
+                            Strings.Get("Settings/KeyboardConflictTitle"),
+                            Strings.Format("Settings/KeyboardConflictMessage", ShortcutNames.Describe(conflict, edit.Chord)),
+                            Strings.Get("Settings/KeyboardReassign"));
                         if (reassign)
                         {
                             await SaveKeymap(m => m.Reassign(command, edit.Chord, other));
@@ -149,13 +152,18 @@ public sealed partial class SettingsWindow
     }
 
     /// <summary>Applies an edit to the latest stored overrides, so a change made elsewhere meanwhile is not undone.</summary>
+    // Core searches the English titles; the translated title is what the user reads, so it is searched as well.
+    private static bool Matches(ShortcutMap map, ShortcutCommand command, string? search) =>
+        map.Matches(command, search) || ShortcutNames.Title(command).Contains(search!.Trim(), StringComparison.CurrentCultureIgnoreCase);
+
     private Task SaveKeymap(Func<ShortcutMap, ShortcutMap> edit) =>
         Update(s => s with { Shortcuts = edit(new ShortcutMap(s.Shortcuts)).Overrides });
 
     private static (Border Row, ShortcutRecorder Recorder) ShortcutRow(ShortcutCommand command, ShortcutMap map, Func<ShortcutCommand, ShortcutEdit, Task> change)
     {
         var text = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Spacing = 2 };
-        text.Children.Add(new TextBlock { Text = command.Title, Style = (Style)Application.Current.Resources["BodyTextBlockStyle"] });
+        var title = ShortcutNames.Title(command);
+        text.Children.Add(new TextBlock { Text = title, Style = (Style)Application.Current.Resources["BodyTextBlockStyle"] });
         var conflict = ShortcutConflictResolver.Current(command, map);
         if (conflict.Kind != ShortcutConflictKind.None)
         {
@@ -164,7 +172,7 @@ public sealed partial class SettingsWindow
             warning.Children.Add(new FontIcon { Glyph = "", FontSize = 12, Foreground = caution });
             warning.Children.Add(new TextBlock
             {
-                Text = conflict.Describe(map.ChordFor(command)),
+                Text = ShortcutNames.Describe(conflict, map.ChordFor(command)),
                 TextWrapping = TextWrapping.Wrap,
                 Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
                 Foreground = caution,
@@ -173,7 +181,7 @@ public sealed partial class SettingsWindow
         }
 
         var recorder = new ShortcutRecorder { Chord = map.ChordFor(command), Tag = command.Id };
-        AutomationProperties.SetName(recorder, $"Shortcut for {command.Title}");
+        AutomationProperties.SetName(recorder, Strings.Format("Settings/KeyboardShortcutFor", title));
         recorder.Recorded += async (_, chord) => await change(command, new ShortcutEdit(ShortcutEditKind.Record, chord));
         recorder.Cleared += async (_, _) => await change(command, new ShortcutEdit(ShortcutEditKind.Clear, KeyChord.None));
 
@@ -185,7 +193,9 @@ public sealed partial class SettingsWindow
                 Content = new FontIcon { Glyph = "", FontSize = 14 },
                 Style = (Style)Application.Current.Resources["ToolbarButtonStyle"],
             };
-            var label = command.DefaultChord.IsEmpty ? "Reset to default (none)" : $"Reset to default ({command.DefaultChord})";
+            var label = command.DefaultChord.IsEmpty
+                ? Strings.Get("Settings/KeyboardResetToDefaultNone")
+                : Strings.Format("Settings/KeyboardResetToDefault", command.DefaultChord);
             AutomationProperties.SetName(reset, label);
             ToolTipService.SetToolTip(reset, label);
             reset.Click += async (_, _) => await change(command, new ShortcutEdit(ShortcutEditKind.Reset, KeyChord.None));

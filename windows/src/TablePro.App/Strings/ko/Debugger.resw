@@ -1,0 +1,168 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="BreakpointGutter.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>중단점 설정/해제</value>
+  </data>
+  <data name="CallStackHeader.Text" xml:space="preserve">
+    <value>호출 스택</value>
+  </data>
+  <data name="ContinueButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>계속</value>
+  </data>
+  <data name="ContinueButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>계속 (F5)</value>
+  </data>
+  <data name="DebugButton" xml:space="preserve">
+    <value>디버그</value>
+  </data>
+  <data name="EntryPoint" xml:space="preserve">
+    <value>진입점</value>
+  </data>
+  <data name="FinishedBeforeStop" xml:space="preserve">
+    <value>중지 지점에 도달하기 전에 루틴이 완료되었습니다.</value>
+  </data>
+  <data name="FrameAtLine" xml:space="preserve">
+    <value>{0}  {1}행</value>
+  </data>
+  <data name="FrameLevel" xml:space="preserve">
+    <value>프레임 {0}</value>
+  </data>
+  <data name="NoArguments" xml:space="preserve">
+    <value>이 루틴은 인수를 사용하지 않습니다.</value>
+  </data>
+  <data name="OutputBox.PlaceholderText" xml:space="preserve">
+    <value>알림 및 DBMS_OUTPUT 줄이 여기에 표시됩니다</value>
+  </data>
+  <data name="OutputBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>디버그 출력</value>
+  </data>
+  <data name="OutputParameter" xml:space="preserve">
+    <value>출력</value>
+  </data>
+  <data name="OutputTab.Text" xml:space="preserve">
+    <value>출력</value>
+  </data>
+  <data name="RemoveAllBreakpointsButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>모든 중단점 제거</value>
+  </data>
+  <data name="RemoveAllBreakpointsButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>모든 중단점 제거 (Ctrl+Shift+F9)</value>
+  </data>
+  <data name="ResultTab.Text" xml:space="preserve">
+    <value>결과</value>
+  </data>
+  <data name="SafeModeBlocks" xml:space="preserve">
+    <value>이 연결에서는 안전 모드가 쓰기를 차단하며 루틴이 데이터를 변경할 수 있으므로 여기서 디버그할 수 없습니다.</value>
+  </data>
+  <data name="SourceList.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>루틴 소스</value>
+  </data>
+  <data name="StackList.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>호출 스택</value>
+  </data>
+  <data name="StartDialogTitle" xml:space="preserve">
+    <value>{0} 디버그</value>
+  </data>
+  <data name="StatusCantDebug" xml:space="preserve">
+    <value>디버그할 수 없음</value>
+  </data>
+  <data name="StatusFailed" xml:space="preserve">
+    <value>실패</value>
+  </data>
+  <data name="StatusFinished" xml:space="preserve">
+    <value>완료됨</value>
+  </data>
+  <data name="StatusPaused" xml:space="preserve">
+    <value>일시 중지됨</value>
+  </data>
+  <data name="StatusPausedAt" xml:space="preserve">
+    <value>{1}의 {0}행에서 일시 중지됨</value>
+  </data>
+  <data name="StatusPreparing" xml:space="preserve">
+    <value>준비 중…</value>
+  </data>
+  <data name="StatusRunning" xml:space="preserve">
+    <value>실행 중…</value>
+  </data>
+  <data name="StatusStarting" xml:space="preserve">
+    <value>시작 중…</value>
+  </data>
+  <data name="StatusStopped" xml:space="preserve">
+    <value>중지됨</value>
+  </data>
+  <data name="StatusStopping" xml:space="preserve">
+    <value>중지하는 중…</value>
+  </data>
+  <data name="StepIntoButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>한 단계씩 코드 실행</value>
+  </data>
+  <data name="StepIntoButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>한 단계씩 코드 실행 (F11)</value>
+  </data>
+  <data name="StepOutButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>프로시저 나가기</value>
+  </data>
+  <data name="StepOutButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>프로시저 나가기 (Shift+F11)</value>
+  </data>
+  <data name="StepOverButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>프로시저 단위 실행</value>
+  </data>
+  <data name="StepOverButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>프로시저 단위 실행 (F10)</value>
+  </data>
+  <data name="StopButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>디버깅 중지</value>
+  </data>
+  <data name="StopButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>디버깅 중지 (Shift+F5)</value>
+  </data>
+  <data name="StopNotConfirmed" xml:space="preserve">
+    <value>디버거가 중지를 확인하지 않았습니다. 루틴이 서버에서 아직 실행 중일 수 있습니다.</value>
+  </data>
+  <data name="TabTitle" xml:space="preserve">
+    <value>{0} 디버그</value>
+  </data>
+  <data name="ToggleBreakpointButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>중단점 설정/해제</value>
+  </data>
+  <data name="ToggleBreakpointButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>선택한 줄에서 중단점 설정/해제 (F9)</value>
+  </data>
+  <data name="TypeColumn.Text" xml:space="preserve">
+    <value>유형</value>
+  </data>
+  <data name="ValueColumn.Text" xml:space="preserve">
+    <value>값</value>
+  </data>
+  <data name="VariableColumn.Text" xml:space="preserve">
+    <value>변수</value>
+  </data>
+  <data name="VariableKindArgument" xml:space="preserve">
+    <value>인수</value>
+  </data>
+  <data name="VariableKindConstant" xml:space="preserve">
+    <value>상수</value>
+  </data>
+  <data name="VariableKindLocal" xml:space="preserve">
+    <value>로컬</value>
+  </data>
+  <data name="VariableKindPackage" xml:space="preserve">
+    <value>패키지</value>
+  </data>
+  <data name="VariablesList.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>변수</value>
+  </data>
+</root>

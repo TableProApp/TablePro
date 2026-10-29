@@ -23,10 +23,10 @@ public sealed record QuickSwitcherItem(string Id, QuickSwitcherKind Kind, string
 
     public string KindText => Kind switch
     {
-        QuickSwitcherKind.Tab => "Open tab",
-        QuickSwitcherKind.Database => "Database",
-        QuickSwitcherKind.Schema => "Schema",
-        _ => Target is DatabaseObject obj ? WorkspaceViewModel.SectionName(obj.Kind).TrimEnd('s') : string.Empty,
+        QuickSwitcherKind.Tab => Strings.Get("Panes/QuickSwitcherKindTab"),
+        QuickSwitcherKind.Database => Strings.Get("Panes/QuickSwitcherKindDatabase"),
+        QuickSwitcherKind.Schema => Strings.Get("Panes/QuickSwitcherKindSchema"),
+        _ => Target is DatabaseObject obj ? SidebarEntry.KindName(obj.Kind) : string.Empty,
     };
 }
 

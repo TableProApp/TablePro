@@ -1,0 +1,168 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="BreakpointGutter.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Kesme noktasını aç/kapat</value>
+  </data>
+  <data name="CallStackHeader.Text" xml:space="preserve">
+    <value>Çağrı Yığını</value>
+  </data>
+  <data name="ContinueButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Devam</value>
+  </data>
+  <data name="ContinueButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Devam (F5)</value>
+  </data>
+  <data name="DebugButton" xml:space="preserve">
+    <value>Hata Ayıkla</value>
+  </data>
+  <data name="EntryPoint" xml:space="preserve">
+    <value>Giriş noktası</value>
+  </data>
+  <data name="FinishedBeforeStop" xml:space="preserve">
+    <value>Yordam, durdurma isteği ulaşmadan önce tamamlandı.</value>
+  </data>
+  <data name="FrameAtLine" xml:space="preserve">
+    <value>{0}  satır {1}</value>
+  </data>
+  <data name="FrameLevel" xml:space="preserve">
+    <value>Çerçeve {0}</value>
+  </data>
+  <data name="NoArguments" xml:space="preserve">
+    <value>Bu yordam bağımsız değişken almıyor.</value>
+  </data>
+  <data name="OutputBox.PlaceholderText" xml:space="preserve">
+    <value>Bildirimler ve DBMS_OUTPUT satırları burada görünür</value>
+  </data>
+  <data name="OutputBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Hata ayıklama çıktısı</value>
+  </data>
+  <data name="OutputParameter" xml:space="preserve">
+    <value>Çıktı</value>
+  </data>
+  <data name="OutputTab.Text" xml:space="preserve">
+    <value>Çıktı</value>
+  </data>
+  <data name="RemoveAllBreakpointsButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Tüm Kesme Noktalarını Kaldır</value>
+  </data>
+  <data name="RemoveAllBreakpointsButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Tüm Kesme Noktalarını Kaldır (Ctrl+Shift+F9)</value>
+  </data>
+  <data name="ResultTab.Text" xml:space="preserve">
+    <value>Sonuç</value>
+  </data>
+  <data name="SafeModeBlocks" xml:space="preserve">
+    <value>Güvenli Mod bu bağlantıda yazma işlemlerini engelliyor ve yordam verileri değiştirebilir; bu nedenle burada hata ayıklanamaz.</value>
+  </data>
+  <data name="SourceList.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Yordam kaynağı</value>
+  </data>
+  <data name="StackList.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Çağrı yığını</value>
+  </data>
+  <data name="StartDialogTitle" xml:space="preserve">
+    <value>{0} Hata Ayıklama</value>
+  </data>
+  <data name="StatusCantDebug" xml:space="preserve">
+    <value>Hata ayıklanamıyor</value>
+  </data>
+  <data name="StatusFailed" xml:space="preserve">
+    <value>Başarısız</value>
+  </data>
+  <data name="StatusFinished" xml:space="preserve">
+    <value>Bitti</value>
+  </data>
+  <data name="StatusPaused" xml:space="preserve">
+    <value>Duraklatıldı</value>
+  </data>
+  <data name="StatusPausedAt" xml:space="preserve">
+    <value>{1} içinde {0}. satırda duraklatıldı</value>
+  </data>
+  <data name="StatusPreparing" xml:space="preserve">
+    <value>Hazırlanıyor…</value>
+  </data>
+  <data name="StatusRunning" xml:space="preserve">
+    <value>Çalışıyor…</value>
+  </data>
+  <data name="StatusStarting" xml:space="preserve">
+    <value>Başlatılıyor…</value>
+  </data>
+  <data name="StatusStopped" xml:space="preserve">
+    <value>Durduruldu</value>
+  </data>
+  <data name="StatusStopping" xml:space="preserve">
+    <value>Durduruluyor…</value>
+  </data>
+  <data name="StepIntoButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>İçine Adımla</value>
+  </data>
+  <data name="StepIntoButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>İçine Adımla (F11)</value>
+  </data>
+  <data name="StepOutButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Dışına Adımla</value>
+  </data>
+  <data name="StepOutButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Dışına Adımla (Shift+F11)</value>
+  </data>
+  <data name="StepOverButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Üzerinden Adımla</value>
+  </data>
+  <data name="StepOverButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Üzerinden Adımla (F10)</value>
+  </data>
+  <data name="StopButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Hata Ayıklamayı Durdur</value>
+  </data>
+  <data name="StopButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Hata Ayıklamayı Durdur (Shift+F5)</value>
+  </data>
+  <data name="StopNotConfirmed" xml:space="preserve">
+    <value>Hata ayıklayıcı durdurmayı onaylamadı. Yordam sunucuda hâlâ çalışıyor olabilir.</value>
+  </data>
+  <data name="TabTitle" xml:space="preserve">
+    <value>{0} Hata Ayıklama</value>
+  </data>
+  <data name="ToggleBreakpointButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Kesme Noktasını Aç/Kapat</value>
+  </data>
+  <data name="ToggleBreakpointButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Seçili satırda kesme noktasını aç/kapat (F9)</value>
+  </data>
+  <data name="TypeColumn.Text" xml:space="preserve">
+    <value>Tür</value>
+  </data>
+  <data name="ValueColumn.Text" xml:space="preserve">
+    <value>Değer</value>
+  </data>
+  <data name="VariableColumn.Text" xml:space="preserve">
+    <value>Değişken</value>
+  </data>
+  <data name="VariableKindArgument" xml:space="preserve">
+    <value>Bağımsız değişken</value>
+  </data>
+  <data name="VariableKindConstant" xml:space="preserve">
+    <value>Sabit</value>
+  </data>
+  <data name="VariableKindLocal" xml:space="preserve">
+    <value>Yerel</value>
+  </data>
+  <data name="VariableKindPackage" xml:space="preserve">
+    <value>Paket</value>
+  </data>
+  <data name="VariablesList.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Değişkenler</value>
+  </data>
+</root>

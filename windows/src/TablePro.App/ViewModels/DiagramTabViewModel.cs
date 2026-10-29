@@ -15,7 +15,7 @@ public sealed partial class DiagramTabViewModel : TabViewModel
     public DiagramTabViewModel(WorkspaceContext context)
     {
         _context = context;
-        Title = "Diagram";
+        Title = Strings.Get("Diagram/TabTitle");
         Subtitle = context.Session.CurrentSchema ?? context.Session.Profile.Name;
     }
 
@@ -27,7 +27,7 @@ public sealed partial class DiagramTabViewModel : TabViewModel
     public async Task LoadAsync()
     {
         IsBusy = true;
-        StatusText = "Reading structure…";
+        StatusText = Strings.Get("Diagram/ReadingStructure");
         try
         {
             var tables = _context.Session.Objects.Where(o => o.Kind == ObjectKind.Table).Take(MaxTables).ToArray();
@@ -35,12 +35,12 @@ public sealed partial class DiagramTabViewModel : TabViewModel
             foreach (var table in tables)
             {
                 loaded.Add((table, await _context.Session.GetStructureAsync(table.Name, CancellationToken.None)));
-                StatusText = $"Reading structure… {loaded.Count}/{tables.Length}";
+                StatusText = Strings.Format("Diagram/ReadingStructureProgress", loaded.Count, tables.Length);
             }
 
             Tables = loaded;
             var total = _context.Session.Objects.Count(o => o.Kind == ObjectKind.Table);
-            StatusText = total > MaxTables ? $"Showing {MaxTables} of {total} tables" : $"{total} tables";
+            StatusText = total > MaxTables ? Strings.Plural("Diagram/ShowingTables", total, MaxTables) : Strings.Plural("Diagram/TableCount", total);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {

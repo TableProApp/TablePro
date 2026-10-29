@@ -1,0 +1,408 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AlreadyLinked" xml:space="preserve">
+    <value>"{0}"은(는) 이미 연결되어 있습니다</value>
+  </data>
+  <data name="ChangedFilesIn" xml:space="preserve">
+    <value>"{0}"의 변경된 파일</value>
+  </data>
+  <data name="ChangesMode" xml:space="preserve">
+    <value>변경 사항</value>
+  </data>
+  <data name="Collapsed" xml:space="preserve">
+    <value>축소됨</value>
+  </data>
+  <data name="CommitButton" xml:space="preserve">
+    <value>커밋</value>
+  </data>
+  <data name="CommitDialogTitle" xml:space="preserve">
+    <value>커밋</value>
+  </data>
+  <data name="CommitFailedInline" xml:space="preserve">
+    <value>커밋할 수 없음</value>
+  </data>
+  <data name="CommitFailedTitle" xml:space="preserve">
+    <value>커밋할 수 없음</value>
+  </data>
+  <data name="CommitMenu" xml:space="preserve">
+    <value>커밋…</value>
+  </data>
+  <data name="CommitMessageHeader" xml:space="preserve">
+    <value>메시지</value>
+  </data>
+  <data name="CommitMessagePlaceholder" xml:space="preserve">
+    <value>변경 내용 설명</value>
+  </data>
+  <data name="CommitVersion" xml:space="preserve">
+    <value>커밋 {0}</value>
+  </data>
+  <data name="Committed" xml:space="preserve">
+    <value>커밋됨</value>
+  </data>
+  <data name="ContentMode" xml:space="preserve">
+    <value>내용</value>
+  </data>
+  <data name="CopyPath" xml:space="preserve">
+    <value>경로 복사</value>
+  </data>
+  <data name="CopyQuery" xml:space="preserve">
+    <value>쿼리 복사</value>
+  </data>
+  <data name="CopyRelativePath" xml:space="preserve">
+    <value>상대 경로 복사</value>
+  </data>
+  <data name="CreateButton" xml:space="preserve">
+    <value>생성</value>
+  </data>
+  <data name="CreateFailedTitle" xml:space="preserve">
+    <value>파일을 만들 수 없음</value>
+  </data>
+  <data name="CurrentVersion" xml:space="preserve">
+    <value>현재 버전</value>
+  </data>
+  <data name="DeleteButton" xml:space="preserve">
+    <value>휴지통으로 이동</value>
+  </data>
+  <data name="DeleteFailedTitle" xml:space="preserve">
+    <value>휴지통으로 이동할 수 없음</value>
+  </data>
+  <data name="DeleteMessage" xml:space="preserve">
+    <value>"{0}"이(가) 휴지통으로 이동됩니다. 저장된 버전은 유지됩니다.</value>
+  </data>
+  <data name="DeleteTitle" xml:space="preserve">
+    <value>휴지통으로 이동하시겠습니까?</value>
+  </data>
+  <data name="Description" xml:space="preserve">
+    <value>설명</value>
+  </data>
+  <data name="DetailsExplanation" xml:space="preserve">
+    <value>파일 헤더에 -- @name, -- @keyword, -- @description 줄로 저장되며, macOS 앱에서도 읽을 수 있습니다.</value>
+  </data>
+  <data name="DiffLayout" xml:space="preserve">
+    <value>차이 비교 레이아웃</value>
+  </data>
+  <data name="DiffSideBySide" xml:space="preserve">
+    <value>나란히</value>
+  </data>
+  <data name="DiffUnified" xml:space="preserve">
+    <value>통합</value>
+  </data>
+  <data name="DiscardChangesMenu" xml:space="preserve">
+    <value>변경 사항 폐기…</value>
+  </data>
+  <data name="DiscardFailedTitle" xml:space="preserve">
+    <value>변경 사항을 폐기할 수 없음</value>
+  </data>
+  <data name="DiscardMessage" xml:space="preserve">
+    <value>"{0}"에서 스테이징되지 않은 변경 사항이 손실됩니다. 사본은 버전 기록에 보관됩니다.</value>
+  </data>
+  <data name="DiscardTitle" xml:space="preserve">
+    <value>변경 사항을 폐기하시겠습니까?</value>
+  </data>
+  <data name="EditDetailsMenu" xml:space="preserve">
+    <value>세부 정보 편집…</value>
+  </data>
+  <data name="EditDetailsTitle" xml:space="preserve">
+    <value>세부 정보 편집</value>
+  </data>
+  <data name="EmptyState" xml:space="preserve">
+    <value>.sql 파일이 있는 폴더를 연결하면 여기에서 파일을 열고, 이름을 바꾸고, 추적할 수 있습니다. 파일은 원래 위치에 그대로 있습니다.</value>
+  </data>
+  <data name="Expanded" xml:space="preserve">
+    <value>확장됨</value>
+  </data>
+  <data name="GitAdded" xml:space="preserve">
+    <value>추가됨</value>
+  </data>
+  <data name="GitCommandFailed" xml:space="preserve">
+    <value>Git이 다음 메시지와 함께 중지되었습니다.</value>
+  </data>
+  <data name="GitConflicted" xml:space="preserve">
+    <value>충돌</value>
+  </data>
+  <data name="GitModified" xml:space="preserve">
+    <value>수정됨</value>
+  </data>
+  <data name="GitOutputTooLarge" xml:space="preserve">
+    <value>Git 출력이 TablePro가 읽을 수 있는 양보다 많습니다.</value>
+  </data>
+  <data name="GitPartlyStaged" xml:space="preserve">
+    <value>{0}, 일부 스테이징됨</value>
+  </data>
+  <data name="GitPullDiverged" xml:space="preserve">
+    <value>브랜치와 업스트림 브랜치에 서로 없는 커밋이 있습니다. Git 클라이언트에서 이 끌어오기를 완료하세요.</value>
+  </data>
+  <data name="GitRenamed" xml:space="preserve">
+    <value>이름 변경됨</value>
+  </data>
+  <data name="GitStaged" xml:space="preserve">
+    <value>{0}, 스테이징됨</value>
+  </data>
+  <data name="GitTimedOut" xml:space="preserve">
+    <value>Git이 제시간에 응답하지 않았습니다.</value>
+  </data>
+  <data name="GitUnavailable" xml:space="preserve">
+    <value>Git이 설치되어 있지 않습니다. 연결된 폴더에서 Git을 사용하려면 Git for Windows를 설치하세요.</value>
+  </data>
+  <data name="GitUntracked" xml:space="preserve">
+    <value>추적되지 않음</value>
+  </data>
+  <data name="HistoryTitle" xml:space="preserve">
+    <value>{0} 기록</value>
+  </data>
+  <data name="HistoryWindowTitle" xml:space="preserve">
+    <value>{0} 기록 - TablePro</value>
+  </data>
+  <data name="InsertIntoEditor" xml:space="preserve">
+    <value>편집기에 삽입</value>
+  </data>
+  <data name="KeepsLatestSnapshots_One" xml:space="preserve">
+    <value>TablePro는 파일마다 최근 저장된 버전 {0}개를 보관합니다.</value>
+  </data>
+  <data name="KeepsLatestSnapshots_Other" xml:space="preserve">
+    <value>TablePro는 파일마다 최근 저장된 버전 {0}개를 보관합니다.</value>
+  </data>
+  <data name="Keyword" xml:space="preserve">
+    <value>키워드</value>
+  </data>
+  <data name="KeywordPlaceholder" xml:space="preserve">
+    <value>편집기에 입력하면 이 쿼리가 삽입됩니다</value>
+  </data>
+  <data name="LinkFolder" xml:space="preserve">
+    <value>SQL 파일 폴더 연결</value>
+  </data>
+  <data name="ListName" xml:space="preserve">
+    <value>SQL 파일</value>
+  </data>
+  <data name="LoadingVersions" xml:space="preserve">
+    <value>버전을 불러오는 중…</value>
+  </data>
+  <data name="MoveToRecycleBinMenu" xml:space="preserve">
+    <value>휴지통으로 이동…</value>
+  </data>
+  <data name="NameAlreadyExists" xml:space="preserve">
+    <value>이 위치에 같은 이름의 파일이 이미 있습니다.</value>
+  </data>
+  <data name="NameEmpty" xml:space="preserve">
+    <value>이름을 입력하세요.</value>
+  </data>
+  <data name="NameInvalidCharacters" xml:space="preserve">
+    <value>파일 이름에는 \ / : * ? " &lt; &gt; | 문자를 사용할 수 없습니다.</value>
+  </data>
+  <data name="NameReserved" xml:space="preserve">
+    <value>Windows에서 장치용으로 예약된 이름입니다.</value>
+  </data>
+  <data name="NewFileMenu" xml:space="preserve">
+    <value>새 파일</value>
+  </data>
+  <data name="NewFileTitle" xml:space="preserve">
+    <value>새 SQL 파일</value>
+  </data>
+  <data name="NoChangesFrom" xml:space="preserve">
+    <value>{0}과(와) 비교해 변경 사항이 없습니다.</value>
+  </data>
+  <data name="NoSearchMatch" xml:space="preserve">
+    <value>검색과 일치하는 SQL 파일이 없습니다.</value>
+  </data>
+  <data name="NotARepository" xml:space="preserve">
+    <value>이 폴더는 Git 리포지토리에 있지 않습니다.</value>
+  </data>
+  <data name="NothingToCommitMessage" xml:space="preserve">
+    <value>"{0}"에 변경된 파일이 없습니다.</value>
+  </data>
+  <data name="NothingToCommitTitle" xml:space="preserve">
+    <value>커밋할 항목 없음</value>
+  </data>
+  <data name="NothingToPublishMessage" xml:space="preserve">
+    <value>게시할 저장된 쿼리가 없습니다.</value>
+  </data>
+  <data name="NothingToPublishTitle" xml:space="preserve">
+    <value>게시할 항목 없음</value>
+  </data>
+  <data name="OnlyInConnection" xml:space="preserve">
+    <value>{0}에서만</value>
+  </data>
+  <data name="OnlyVersion" xml:space="preserve">
+    <value>유일한 버전이므로 비교할 대상이 없습니다.</value>
+  </data>
+  <data name="OpenFailedTitle" xml:space="preserve">
+    <value>파일을 열 수 없음</value>
+  </data>
+  <data name="OpenInEditor" xml:space="preserve">
+    <value>편집기에서 열기</value>
+  </data>
+  <data name="OpenInFileExplorer" xml:space="preserve">
+    <value>파일 탐색기에서 열기</value>
+  </data>
+  <data name="OpenInNewTab" xml:space="preserve">
+    <value>새 탭에서 열기</value>
+  </data>
+  <data name="PublishButton" xml:space="preserve">
+    <value>게시</value>
+  </data>
+  <data name="PublishFailedTitle" xml:space="preserve">
+    <value>팀 라이브러리에 게시할 수 없음</value>
+  </data>
+  <data name="PublishMessage_One" xml:space="preserve">
+    <value>팀의 모든 구성원이 저장된 쿼리 {0}개를 보게 됩니다. 이전에 게시한 저장된 쿼리는 대체됩니다.</value>
+  </data>
+  <data name="PublishMessage_Other" xml:space="preserve">
+    <value>팀의 모든 구성원이 저장된 쿼리 {0}개를 보게 됩니다. 이전에 게시한 저장된 쿼리는 대체됩니다.</value>
+  </data>
+  <data name="PublishTitle" xml:space="preserve">
+    <value>저장된 쿼리를 팀에 게시하시겠습니까?</value>
+  </data>
+  <data name="PublishToTeamMenu" xml:space="preserve">
+    <value>저장된 쿼리를 팀에 게시…</value>
+  </data>
+  <data name="PublishedBy" xml:space="preserve">
+    <value>게시자: {0}</value>
+  </data>
+  <data name="Published_One" xml:space="preserve">
+    <value>저장된 쿼리 {0}개를 팀에 게시했습니다</value>
+  </data>
+  <data name="Published_Other" xml:space="preserve">
+    <value>저장된 쿼리 {0}개를 팀에 게시했습니다</value>
+  </data>
+  <data name="Publishing" xml:space="preserve">
+    <value>게시하는 중…</value>
+  </data>
+  <data name="PullFailedTitle" xml:space="preserve">
+    <value>"{0}"을(를) 끌어올 수 없음</value>
+  </data>
+  <data name="PullMenu" xml:space="preserve">
+    <value>끌어오기</value>
+  </data>
+  <data name="Pulled" xml:space="preserve">
+    <value>"{0}"을(를) 끌어왔습니다</value>
+  </data>
+  <data name="PushFailedTitle" xml:space="preserve">
+    <value>"{0}"을(를) 푸시할 수 없음</value>
+  </data>
+  <data name="PushMenu" xml:space="preserve">
+    <value>푸시</value>
+  </data>
+  <data name="Pushed" xml:space="preserve">
+    <value>"{0}"을(를) 푸시했습니다</value>
+  </data>
+  <data name="RefreshTeamLibrary" xml:space="preserve">
+    <value>팀 라이브러리 새로 고침</value>
+  </data>
+  <data name="RenameFailedTitle" xml:space="preserve">
+    <value>이름을 변경할 수 없음</value>
+  </data>
+  <data name="RenameMenu" xml:space="preserve">
+    <value>이름 변경…</value>
+  </data>
+  <data name="ResolveConflictFirst" xml:space="preserve">
+    <value>이 파일을 커밋하기 전에 Git 클라이언트에서 충돌을 해결하세요.</value>
+  </data>
+  <data name="RestoreButton" xml:space="preserve">
+    <value>복원</value>
+  </data>
+  <data name="RestoreConfirmMessage" xml:space="preserve">
+    <value>파일에 저장된 버전이나 커밋에 없는 변경 사항이 있습니다. 복원하면 이 변경 사항이 대체되며, 그 전에 저장된 버전으로 먼저 보관됩니다.</value>
+  </data>
+  <data name="RestoreConfirmTitle" xml:space="preserve">
+    <value>현재 텍스트를 대체하시겠습니까?</value>
+  </data>
+  <data name="RestoreFailed" xml:space="preserve">
+    <value>버전을 복원할 수 없습니다.</value>
+  </data>
+  <data name="RestoreFailedTitle" xml:space="preserve">
+    <value>복원할 수 없음</value>
+  </data>
+  <data name="SaveDetailsFailedTitle" xml:space="preserve">
+    <value>세부 정보를 저장할 수 없음</value>
+  </data>
+  <data name="SavedVersion" xml:space="preserve">
+    <value>저장된 버전</value>
+  </data>
+  <data name="SearchPlaceholder" xml:space="preserve">
+    <value>SQL 파일 검색</value>
+  </data>
+  <data name="SelectVersion" xml:space="preserve">
+    <value>버전을 선택하세요.</value>
+  </data>
+  <data name="ShowInFileExplorer" xml:space="preserve">
+    <value>파일 탐색기에 표시</value>
+  </data>
+  <data name="ShowsLatestCommits_One" xml:space="preserve">
+    <value>최근 커밋 {0}개를 표시합니다.</value>
+  </data>
+  <data name="ShowsLatestCommits_Other" xml:space="preserve">
+    <value>최근 커밋 {0}개를 표시합니다.</value>
+  </data>
+  <data name="StatusCommitting" xml:space="preserve">
+    <value>커밋하는 중…</value>
+  </data>
+  <data name="StatusNotFound" xml:space="preserve">
+    <value>찾을 수 없음</value>
+  </data>
+  <data name="StatusPulling" xml:space="preserve">
+    <value>끌어오는 중…</value>
+  </data>
+  <data name="StatusPushing" xml:space="preserve">
+    <value>푸시하는 중…</value>
+  </data>
+  <data name="TeamEmpty" xml:space="preserve">
+    <value>팀에서 아직 게시한 저장된 쿼리가 없습니다.</value>
+  </data>
+  <data name="TeamLibraryHeader" xml:space="preserve">
+    <value>팀 라이브러리</value>
+  </data>
+  <data name="TeamRefreshFailedTitle" xml:space="preserve">
+    <value>팀 라이브러리를 새로 고칠 수 없음</value>
+  </data>
+  <data name="TooLargeToCompare_One" xml:space="preserve">
+    <value>이 파일은 {0}줄보다 길어서 변경 사항을 표시하지 않습니다. 읽으려면 내용으로 전환하세요.</value>
+  </data>
+  <data name="TooLargeToCompare_Other" xml:space="preserve">
+    <value>이 파일은 {0}줄보다 길어서 변경 사항을 표시하지 않습니다. 읽으려면 내용으로 전환하세요.</value>
+  </data>
+  <data name="TurnOff" xml:space="preserve">
+    <value>끄기</value>
+  </data>
+  <data name="TurnOn" xml:space="preserve">
+    <value>켜기</value>
+  </data>
+  <data name="TurnedBackOn" xml:space="preserve">
+    <value>"{0}"을(를) 다시 켰습니다</value>
+  </data>
+  <data name="UncommittedChanges" xml:space="preserve">
+    <value>커밋되지 않은 변경 사항</value>
+  </data>
+  <data name="UnlinkButton" xml:space="preserve">
+    <value>연결 해제</value>
+  </data>
+  <data name="UnlinkFolderMenu" xml:space="preserve">
+    <value>폴더 연결 해제…</value>
+  </data>
+  <data name="UnlinkMessage" xml:space="preserve">
+    <value>"{0}"이(가) 더 이상 목록에 표시되지 않습니다. 파일은 디스크에 그대로 남아 있습니다.</value>
+  </data>
+  <data name="UnlinkTitle" xml:space="preserve">
+    <value>폴더 연결을 해제하시겠습니까?</value>
+  </data>
+  <data name="VersionHistoryMenu" xml:space="preserve">
+    <value>버전 기록…</value>
+  </data>
+  <data name="VersionReadFailed" xml:space="preserve">
+    <value>이 버전을 읽을 수 없습니다.</value>
+  </data>
+  <data name="VersionsReadFailed" xml:space="preserve">
+    <value>버전을 읽을 수 없습니다.</value>
+  </data>
+</root>

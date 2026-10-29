@@ -1,0 +1,433 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="BatchesCommitNote" xml:space="preserve">
+    <value>Batches commit as they go, so a failure keeps the batches before it.</value>
+    <comment>Note shown in the sync review sheet when the sync commits in batches.</comment>
+  </data>
+  <data name="CannotMigrateMessage" xml:space="preserve">
+    <value>{0} is read-only or cannot change structure from the app.</value>
+    <comment>{0} is the target connection name.</comment>
+  </data>
+  <data name="CannotMigrateTitle" xml:space="preserve">
+    <value>Cannot migrate</value>
+  </data>
+  <data name="CannotRollBackNote" xml:space="preserve">
+    <value>{0} cannot roll back, so a failure leaves the statements before it applied.</value>
+    <comment>{0} is the database engine name, such as MySQL. Note shown in the sync review sheet.</comment>
+  </data>
+  <data name="CannotSyncTitle" xml:space="preserve">
+    <value>Cannot sync</value>
+  </data>
+  <data name="ChooseTables" xml:space="preserve">
+    <value>Choose a table on both sides.</value>
+    <comment>Status text when the source or target table is not picked.</comment>
+  </data>
+  <data name="CommitInBatches" xml:space="preserve">
+    <value>Commit in batches</value>
+    <comment>Check box in the compare options.</comment>
+  </data>
+  <data name="CompareButton" xml:space="preserve">
+    <value>Compare</value>
+    <comment>Button (verb) that runs a data comparison.</comment>
+  </data>
+  <data name="CompareStructureButton" xml:space="preserve">
+    <value>Compare structure</value>
+    <comment>Button (verb) that compares the two schemas.</comment>
+  </data>
+  <data name="ComparedIn" xml:space="preserve">
+    <value>Compared in {0:N1} s</value>
+    <comment>{0} is the elapsed time in seconds; "s" is the seconds unit.</comment>
+  </data>
+  <data name="ComparingWith" xml:space="preserve">
+    <value>Comparing with {0}</value>
+    <comment>{0} is the target connection name.</comment>
+  </data>
+  <data name="ComparisonStopped" xml:space="preserve">
+    <value>Comparison stopped.</value>
+  </data>
+  <data name="ConnectingTo" xml:space="preserve">
+    <value>Connecting to {0}…</value>
+    <comment>{0} is the target connection name.</comment>
+  </data>
+  <data name="CopyMigrationScript" xml:space="preserve">
+    <value>Copy migration script</value>
+    <comment>Button that copies the DDL script to the clipboard.</comment>
+  </data>
+  <data name="CopySyncScript" xml:space="preserve">
+    <value>Copy sync script</value>
+    <comment>Button that copies the sync statements to the clipboard.</comment>
+  </data>
+  <data name="CouldNotCompareStructureTitle" xml:space="preserve">
+    <value>Could not compare structure</value>
+  </data>
+  <data name="CouldNotCompareTitle" xml:space="preserve">
+    <value>Could not compare</value>
+  </data>
+  <data name="CouldNotConnectTitle" xml:space="preserve">
+    <value>Could not connect to {0}</value>
+    <comment>{0} is the target connection name.</comment>
+  </data>
+  <data name="DataProgress_One" xml:space="preserve">
+    <value>Compared {1:N0} source and {2:N0} target rows, {0:N0} difference…</value>
+    <comment>Progress text. {0} is the number of differences found, {1} the source rows read, {2} the target rows read.</comment>
+  </data>
+  <data name="DataProgress_Other" xml:space="preserve">
+    <value>Compared {1:N0} source and {2:N0} target rows, {0:N0} differences…</value>
+    <comment>Progress text. {0} is the number of differences found, {1} the source rows read, {2} the target rows read.</comment>
+  </data>
+  <data name="DeleteExtraRows" xml:space="preserve">
+    <value>Delete extra rows</value>
+    <comment>Check box in the compare options.</comment>
+  </data>
+  <data name="DestructiveNote" xml:space="preserve">
+    <value>Some statements drop tables or columns, and the data in them is lost.</value>
+  </data>
+  <data name="DiffSummary" xml:space="preserve">
+    <value>{0:N0} only in source · {1:N0} only in target · {2:N0} changed · {3:N0} identical</value>
+    <comment>Summary of a comparison. {0} rows or tables only in the source, {1} only in the target, {2} changed, {3} identical.</comment>
+  </data>
+  <data name="DropExtraColumns" xml:space="preserve">
+    <value>Drop columns only in the target</value>
+    <comment>Check box in the structure compare options.</comment>
+  </data>
+  <data name="DropExtraTables" xml:space="preserve">
+    <value>Drop tables only in the target</value>
+    <comment>Check box in the structure compare options.</comment>
+  </data>
+  <data name="FloatTolerance" xml:space="preserve">
+    <value>Float tolerance</value>
+    <comment>Header of a number box: how far floating-point values may differ and still count as equal.</comment>
+  </data>
+  <data name="GridDelete" xml:space="preserve">
+    <value>Delete</value>
+    <comment>Value in the Sync column: the sync will delete this row. Keep short.</comment>
+  </data>
+  <data name="GridInsert" xml:space="preserve">
+    <value>Insert</value>
+    <comment>Value in the Sync column: the sync will insert this row. Keep short.</comment>
+  </data>
+  <data name="GridKeyColumn" xml:space="preserve">
+    <value>{0} (key)</value>
+    <comment>Column header for a key column. {0} is the database column name.</comment>
+  </data>
+  <data name="GridReadOnly" xml:space="preserve">
+    <value>A comparison is read-only. Edit the table itself, then compare again.</value>
+  </data>
+  <data name="GridSame" xml:space="preserve">
+    <value>Same</value>
+    <comment>Value in the Sync column: the row is identical. Keep short.</comment>
+  </data>
+  <data name="GridSkipped" xml:space="preserve">
+    <value>Skipped</value>
+    <comment>Value in the Sync column: the user left this row out of the sync. Keep short.</comment>
+  </data>
+  <data name="GridSyncColumn" xml:space="preserve">
+    <value>Sync</value>
+    <comment>Header of the grid column that says what the sync will do to each row.</comment>
+  </data>
+  <data name="GridUpdate" xml:space="preserve">
+    <value>Update</value>
+    <comment>Value in the Sync column: the sync will update this row. Keep short.</comment>
+  </data>
+  <data name="InsertMissingRows" xml:space="preserve">
+    <value>Insert missing rows</value>
+    <comment>Check box in the compare options.</comment>
+  </data>
+  <data name="KeyColumns" xml:space="preserve">
+    <value>Key columns</value>
+    <comment>Header of a text box for the columns that identify a row.</comment>
+  </data>
+  <data name="KeyColumnsPlaceholder" xml:space="preserve">
+    <value>Primary key</value>
+    <comment>Placeholder of the Key columns box: empty means the primary key is used.</comment>
+  </data>
+  <data name="KeysIgnoreCase" xml:space="preserve">
+    <value>Keys ignore case</value>
+    <comment>Check box in the compare options.</comment>
+  </data>
+  <data name="LeaveOutColumns" xml:space="preserve">
+    <value>Leave out columns</value>
+    <comment>Header of a text box for columns excluded from the comparison.</comment>
+  </data>
+  <data name="MigrateButton" xml:space="preserve">
+    <value>Migrate</value>
+    <comment>Primary button (verb) of the migration review sheet.</comment>
+  </data>
+  <data name="MigrateReviewTitle" xml:space="preserve">
+    <value>Migrate {0}</value>
+    <comment>{0} is the target connection name.</comment>
+  </data>
+  <data name="Migrated_One" xml:space="preserve">
+    <value>Migrated {1}: {0:N0} statement.</value>
+    <comment>{0} is the number of statements run, {1} the target connection name.</comment>
+  </data>
+  <data name="Migrated_Other" xml:space="preserve">
+    <value>Migrated {1}: {0:N0} statements.</value>
+    <comment>{0} is the number of statements run, {1} the target connection name.</comment>
+  </data>
+  <data name="MigrationStoppedMessage_One" xml:space="preserve">
+    <value>{1}
+
+{0:N0} statement ran before it. Engines without transactional DDL keep it.</value>
+    <comment>{1} is the database error message, {0} the number of statements that ran before the error. DDL stays untranslated.</comment>
+  </data>
+  <data name="MigrationStoppedMessage_Other" xml:space="preserve">
+    <value>{1}
+
+{0:N0} statements ran before it. Engines without transactional DDL keep them.</value>
+    <comment>{1} is the database error message, {0} the number of statements that ran before the error. DDL stays untranslated.</comment>
+  </data>
+  <data name="MigrationStoppedTitle" xml:space="preserve">
+    <value>The migration stopped</value>
+  </data>
+  <data name="ModeData" xml:space="preserve">
+    <value>Data</value>
+    <comment>Tab of the selector bar: compare table rows.</comment>
+  </data>
+  <data name="ModeStructure" xml:space="preserve">
+    <value>Structure</value>
+    <comment>Tab of the selector bar: compare schemas.</comment>
+  </data>
+  <data name="MoreStatements_One" xml:space="preserve">
+    <value>{1} and {0:N0} more statement like these</value>
+    <comment>Last line of the review sheet, written as a SQL comment. {1} is the SQL comment marker such as "--" and must stay first; {0} is the number of statements not listed.</comment>
+  </data>
+  <data name="MoreStatements_Other" xml:space="preserve">
+    <value>{1} and {0:N0} more statements like these</value>
+    <comment>Last line of the review sheet, written as a SQL comment. {1} is the SQL comment marker such as "--" and must stay first; {0} is the number of statements not listed.</comment>
+  </data>
+  <data name="NotScripted" xml:space="preserve">
+    <value>Not scripted: {0}</value>
+    <comment>{0} describes a change the target engine cannot express.</comment>
+  </data>
+  <data name="NothingToMigrateTitle" xml:space="preserve">
+    <value>Nothing to migrate</value>
+  </data>
+  <data name="NothingToSyncMessage" xml:space="preserve">
+    <value>No difference is selected for writing. Turn on inserts, updates or deletes, or include skipped rows.</value>
+  </data>
+  <data name="NothingToSyncTitle" xml:space="preserve">
+    <value>Nothing to sync</value>
+  </data>
+  <data name="Options" xml:space="preserve">
+    <value>Options</value>
+    <comment>Header of the expander holding the compare options.</comment>
+  </data>
+  <data name="PasswordHeader" xml:space="preserve">
+    <value>Password</value>
+  </data>
+  <data name="PasswordPrompt" xml:space="preserve">
+    <value>Enter the password for {0} to compare against it.</value>
+    <comment>{0} is the connection name.</comment>
+  </data>
+  <data name="ReadOnlyTargetMessage" xml:space="preserve">
+    <value>{0} is read-only, so it cannot be synced.</value>
+    <comment>{0} is the target connection name.</comment>
+  </data>
+  <data name="ReadOnlyTargetTitle" xml:space="preserve">
+    <value>Read-only target</value>
+  </data>
+  <data name="ReadingSourceStructure" xml:space="preserve">
+    <value>Reading source structure… {0:N0}/{1:N0}</value>
+    <comment>Progress text. {0} tables read so far, {1} tables in total.</comment>
+  </data>
+  <data name="ReadingStructure" xml:space="preserve">
+    <value>Reading structure…</value>
+  </data>
+  <data name="ReadingTargetStructure" xml:space="preserve">
+    <value>Reading target structure… {0:N0}/{1:N0}</value>
+    <comment>Progress text. {0} tables read so far, {1} tables in total.</comment>
+  </data>
+  <data name="ReviewAndMigrate" xml:space="preserve">
+    <value>Review and migrate…</value>
+    <comment>Button that opens the migration review sheet.</comment>
+  </data>
+  <data name="ReviewAndSync" xml:space="preserve">
+    <value>Review and sync…</value>
+    <comment>Button that opens the sync review sheet.</comment>
+  </data>
+  <data name="RowLimit" xml:space="preserve">
+    <value>Row limit</value>
+  </data>
+  <data name="RowLimitPlaceholder" xml:space="preserve">
+    <value>All rows</value>
+    <comment>Placeholder of the Row limit box: empty reads every row.</comment>
+  </data>
+  <data name="ShowChanged" xml:space="preserve">
+    <value>Changed</value>
+    <comment>Toggle button that shows or hides changed rows.</comment>
+  </data>
+  <data name="ShowChangedCount" xml:space="preserve">
+    <value>Changed ({0:N0})</value>
+    <comment>Toggle button that shows or hides changed rows. {0} is how many there are.</comment>
+  </data>
+  <data name="ShowOnlyInSource" xml:space="preserve">
+    <value>Only in source</value>
+    <comment>Toggle button that shows or hides rows only the source has.</comment>
+  </data>
+  <data name="ShowOnlyInSourceCount" xml:space="preserve">
+    <value>Only in source ({0:N0})</value>
+    <comment>Toggle button that shows or hides rows only the source has. {0} is how many there are.</comment>
+  </data>
+  <data name="ShowOnlyInTarget" xml:space="preserve">
+    <value>Only in target</value>
+    <comment>Toggle button that shows or hides rows only the target has.</comment>
+  </data>
+  <data name="ShowOnlyInTargetCount" xml:space="preserve">
+    <value>Only in target ({0:N0})</value>
+    <comment>Toggle button that shows or hides rows only the target has. {0} is how many there are.</comment>
+  </data>
+  <data name="ShowingFirstDifferences_One" xml:space="preserve">
+    <value>showing the first {0:N0} difference</value>
+    <comment>Clause appended to the summary after " · ", lowercase. {0} is the number of differences shown.</comment>
+  </data>
+  <data name="ShowingFirstDifferences_Other" xml:space="preserve">
+    <value>showing the first {0:N0} differences</value>
+    <comment>Clause appended to the summary after " · ", lowercase. {0} is the number of differences shown.</comment>
+  </data>
+  <data name="SkipOrIncludeRows" xml:space="preserve">
+    <value>Skip or include selected rows</value>
+  </data>
+  <data name="SkippedNullKey_One" xml:space="preserve">
+    <value>{0:N0} skipped for a NULL key</value>
+    <comment>Clause appended to the summary after " · ", lowercase. {0} is the number of rows skipped. NULL stays untranslated.</comment>
+  </data>
+  <data name="SkippedNullKey_Other" xml:space="preserve">
+    <value>{0:N0} skipped for a NULL key</value>
+    <comment>Clause appended to the summary after " · ", lowercase. {0} is the number of rows skipped. NULL stays untranslated.</comment>
+  </data>
+  <data name="SourceLabel" xml:space="preserve">
+    <value>Source</value>
+    <comment>Label before the source table picker.</comment>
+  </data>
+  <data name="SourceOnlyColumns" xml:space="preserve">
+    <value>Only in the source, not compared: {0}</value>
+    <comment>{0} is a comma-separated list of column names.</comment>
+  </data>
+  <data name="SourceTable" xml:space="preserve">
+    <value>Source table</value>
+  </data>
+  <data name="SourceWhere" xml:space="preserve">
+    <value>Source WHERE</value>
+    <comment>Header of a filter box. WHERE is the SQL keyword and stays untranslated.</comment>
+  </data>
+  <data name="StoppedAtRowLimit" xml:space="preserve">
+    <value>stopped at the row limit</value>
+    <comment>Clause appended to the summary after " · ", lowercase.</comment>
+  </data>
+  <data name="StructuresAlreadyMatch" xml:space="preserve">
+    <value>The structures already match.</value>
+  </data>
+  <data name="StructuresMatch" xml:space="preserve">
+    <value>The structures match.</value>
+  </data>
+  <data name="SyncButton" xml:space="preserve">
+    <value>Sync</value>
+    <comment>Primary button (verb) of the sync review sheet.</comment>
+  </data>
+  <data name="SyncProgress" xml:space="preserve">
+    <value>Applied {0:N0} of {1:N0}…</value>
+    <comment>Progress text. {0} statements applied so far, {1} in total.</comment>
+  </data>
+  <data name="SyncReviewTitle" xml:space="preserve">
+    <value>Sync {0}: {1:N0} inserts, {2:N0} updates, {3:N0} deletes</value>
+    <comment>Title of the sync review sheet. {0} is the table name, {1} the number of inserts, {2} updates, {3} deletes.</comment>
+  </data>
+  <data name="SyncStoppedBatchesKept_One" xml:space="preserve">
+    <value>{1} {0:N0} of {2:N0} batches was committed before it.</value>
+    <comment>{1} is the database error message, {0} the number of batches committed, {2} the number of batches in total.</comment>
+  </data>
+  <data name="SyncStoppedBatchesKept_Other" xml:space="preserve">
+    <value>{1} {0:N0} of {2:N0} batches were committed before it.</value>
+    <comment>{1} is the database error message, {0} the number of batches committed, {2} the number of batches in total.</comment>
+  </data>
+  <data name="SyncStoppedNothingChanged" xml:space="preserve">
+    <value>{0} Nothing was changed.</value>
+    <comment>{0} is the database error message.</comment>
+  </data>
+  <data name="SyncStoppedTitle" xml:space="preserve">
+    <value>The sync stopped</value>
+  </data>
+  <data name="Synced_One" xml:space="preserve">
+    <value>Synced {1}: {0:N0} row.</value>
+    <comment>{0} is the number of rows written, {1} the table name.</comment>
+  </data>
+  <data name="Synced_Other" xml:space="preserve">
+    <value>Synced {1}: {0:N0} rows.</value>
+    <comment>{0} is the number of rows written, {1} the table name.</comment>
+  </data>
+  <data name="TabTitle" xml:space="preserve">
+    <value>Compare</value>
+    <comment>Title of the Compare and Sync tab (noun).</comment>
+  </data>
+  <data name="TableChanges_One" xml:space="preserve">
+    <value>{0:N0} change</value>
+    <comment>Under a table name in the structure list. {0} is the number of changes.</comment>
+  </data>
+  <data name="TableChanges_Other" xml:space="preserve">
+    <value>{0:N0} changes</value>
+    <comment>Under a table name in the structure list. {0} is the number of changes.</comment>
+  </data>
+  <data name="TableIdentical" xml:space="preserve">
+    <value>identical</value>
+    <comment>Under a table name in the structure list, lowercase.</comment>
+  </data>
+  <data name="TableOnlyInSourceCreated" xml:space="preserve">
+    <value>only in source, will be created</value>
+    <comment>Under a table name in the structure list, lowercase.</comment>
+  </data>
+  <data name="TableOnlyInTarget" xml:space="preserve">
+    <value>only in target</value>
+    <comment>Under a table name in the structure list, lowercase.</comment>
+  </data>
+  <data name="TableOnlyInTargetDropped" xml:space="preserve">
+    <value>only in target, will be dropped</value>
+    <comment>Under a table name in the structure list, lowercase.</comment>
+  </data>
+  <data name="TablesDiffer_One" xml:space="preserve">
+    <value>{0:N0} table differs</value>
+    <comment>{0} is the number of tables that differ.</comment>
+  </data>
+  <data name="TablesDiffer_Other" xml:space="preserve">
+    <value>{0:N0} tables differ</value>
+    <comment>{0} is the number of tables that differ.</comment>
+  </data>
+  <data name="TargetCannotExpress" xml:space="preserve">
+    <value>The target cannot express: {0}</value>
+    <comment>{0} is a semicolon-separated list of changes the target engine cannot make.</comment>
+  </data>
+  <data name="TargetConnection" xml:space="preserve">
+    <value>Target connection</value>
+  </data>
+  <data name="TargetLabel" xml:space="preserve">
+    <value>Target</value>
+    <comment>Label before the target connection and table pickers.</comment>
+  </data>
+  <data name="TargetOnlyColumns" xml:space="preserve">
+    <value>Only in the target, left as they are: {0}</value>
+    <comment>{0} is a comma-separated list of column names.</comment>
+  </data>
+  <data name="TargetTable" xml:space="preserve">
+    <value>Target table</value>
+  </data>
+  <data name="TargetWhere" xml:space="preserve">
+    <value>Target WHERE</value>
+    <comment>Header of a filter box. WHERE is the SQL keyword and stays untranslated.</comment>
+  </data>
+  <data name="UpdateChangedRows" xml:space="preserve">
+    <value>Update changed rows</value>
+    <comment>Check box in the compare options.</comment>
+  </data>
+</root>

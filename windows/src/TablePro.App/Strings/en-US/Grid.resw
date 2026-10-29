@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="CellControlType" xml:space="preserve">
+    <value>cell</value>
+    <comment>Screen readers only: the kind of element a data grid cell is, said after its name. Lowercase, as Windows says control types.</comment>
+  </data>
+  <data name="CellEmpty" xml:space="preserve">
+    <value>empty</value>
+    <comment>Screen readers only: said for a grid cell that holds an empty text value (not NULL).</comment>
+  </data>
+  <data name="CellName" xml:space="preserve">
+    <value>{0}, row {1}</value>
+    <comment>Screen readers only: a grid cell's name. {0} is the column name, {1} the row number.</comment>
+  </data>
+  <data name="ColumnCount_One" xml:space="preserve">
+    <value>{0} column</value>
+    <comment>Screen readers only: part of the grid's status. {0} is the number of columns.</comment>
+  </data>
+  <data name="ColumnCount_Other" xml:space="preserve">
+    <value>{0} columns</value>
+    <comment>Screen readers only: part of the grid's status. {0} is the number of columns.</comment>
+  </data>
+  <data name="DefaultName" xml:space="preserve">
+    <value>Results</value>
+    <comment>Screen readers only: the name of a data grid that was given no name of its own. A noun: the rows a query returned.</comment>
+  </data>
+  <data name="InvalidValueForType" xml:space="preserve">
+    <value>'{0}' is not a valid {1}.</value>
+    <comment>Shown when an edited cell value cannot be read. {0} is the text typed, {1} the column's database type name, such as integer or timestamp.</comment>
+  </data>
+  <data name="ResultReadOnly" xml:space="preserve">
+    <value>This result is read-only.</value>
+    <comment>Shown when the user tries to edit a cell of a query result.</comment>
+  </data>
+  <data name="RowCount_One" xml:space="preserve">
+    <value>{0:N0} row</value>
+    <comment>Screen readers only: part of the grid's status. {0} is the number of rows.</comment>
+  </data>
+  <data name="RowCount_Other" xml:space="preserve">
+    <value>{0:N0} rows</value>
+    <comment>Screen readers only: part of the grid's status. {0} is the number of rows.</comment>
+  </data>
+  <data name="RowsAndColumns" xml:space="preserve">
+    <value>{0}, {1}</value>
+    <comment>Screen readers only: the grid's status. {0} is the row count text ("12 rows"), {1} the column count text ("3 columns").</comment>
+  </data>
+  <data name="SelectAll" xml:space="preserve">
+    <value>Select all</value>
+    <comment>Tooltip of the grid's top-left corner, which selects every cell.</comment>
+  </data>
+  <data name="SortedAscending" xml:space="preserve">
+    <value>sorted ascending</value>
+    <comment>Screen readers only: the status of a column header whose column sorts ascending. Lowercase.</comment>
+  </data>
+  <data name="SortedDescending" xml:space="preserve">
+    <value>sorted descending</value>
+    <comment>Screen readers only: the status of a column header whose column sorts descending. Lowercase.</comment>
+  </data>
+  <data name="StatusDeletedRow" xml:space="preserve">
+    <value>deleted row</value>
+    <comment>Screen readers only: a cell's status when its row is marked for deletion. Lowercase; joined with other statuses by commas.</comment>
+  </data>
+  <data name="StatusModified" xml:space="preserve">
+    <value>modified</value>
+    <comment>Screen readers only: a cell's status when its value was edited and not yet saved. Lowercase; joined with other statuses by commas.</comment>
+  </data>
+  <data name="StatusNewRow" xml:space="preserve">
+    <value>new row</value>
+    <comment>Screen readers only: a cell's status when its row was added and not yet saved. Lowercase; joined with other statuses by commas.</comment>
+  </data>
+  <data name="StatusNull" xml:space="preserve">
+    <value>null</value>
+    <comment>Screen readers only: a cell's status when its value is SQL NULL. Lowercase; joined with other statuses by commas.</comment>
+  </data>
+  <data name="TableReadOnly" xml:space="preserve">
+    <value>This table is read-only.</value>
+    <comment>Shown when the user tries to edit a cell of a table that cannot be edited.</comment>
+  </data>
+  <data name="ValueNotAccepted" xml:space="preserve">
+    <value>The value was not accepted.</value>
+    <comment>Shown when an edited cell value is refused without a more specific reason.</comment>
+  </data>
+</root>

@@ -1,0 +1,483 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AddCheckNote" xml:space="preserve">
+    <value>Kontrol eklemek her satırı okur ve satırlardan biri koşulu sağlamazsa başarısız olur.</value>
+  </data>
+  <data name="AddCheckTitle" xml:space="preserve">
+    <value>Kontrol Kısıtı Ekle</value>
+  </data>
+  <data name="AddColumnTitle" xml:space="preserve">
+    <value>Sütun Ekle</value>
+  </data>
+  <data name="AddForeignKeyTitle" xml:space="preserve">
+    <value>Yabancı Anahtar Ekle</value>
+  </data>
+  <data name="AddIndexTitle" xml:space="preserve">
+    <value>İndeks Ekle</value>
+  </data>
+  <data name="AddPartitionTitle" xml:space="preserve">
+    <value>Bölüm Ekle</value>
+  </data>
+  <data name="AllowsNull" xml:space="preserve">
+    <value>NULL'a izin ver</value>
+  </data>
+  <data name="AnyColumn" xml:space="preserve">
+    <value>Herhangi bir sütun</value>
+  </data>
+  <data name="CannotChangeStructure" xml:space="preserve">
+    <value>Bu motor yapıyı uygulama içinden değiştiremez.</value>
+  </data>
+  <data name="CannotExpressChange" xml:space="preserve">
+    <value>Bu motor bu değişikliği ifade edemez.</value>
+  </data>
+  <data name="CannotMakeChangeTitle" xml:space="preserve">
+    <value>Bu değişiklik yapılamıyor</value>
+  </data>
+  <data name="CellNo" xml:space="preserve">
+    <value>HAYIR</value>
+  </data>
+  <data name="CellYes" xml:space="preserve">
+    <value>EVET</value>
+  </data>
+  <data name="ChangeFailedTitle" xml:space="preserve">
+    <value>Değişiklik başarısız oldu</value>
+  </data>
+  <data name="CheckExpressionHeader" xml:space="preserve">
+    <value>İfade</value>
+  </data>
+  <data name="CheckExpressionPlaceholder" xml:space="preserve">
+    <value>örneğin price &gt; 0 AND quantity &gt;= 0</value>
+  </data>
+  <data name="CheckIncomplete" xml:space="preserve">
+    <value>Bir kontrol için hem ad hem de ifade gerekir.</value>
+  </data>
+  <data name="CheckNotSavedTitle" xml:space="preserve">
+    <value>Kontrol kısıtı kaydedilmedi</value>
+  </data>
+  <data name="ChecksNotEditable" xml:space="preserve">
+    <value>Bu sunucu burada kontrol kısıtı ekleyemez veya değiştiremez.</value>
+  </data>
+  <data name="CommentHeader" xml:space="preserve">
+    <value>Yorum</value>
+  </data>
+  <data name="DataAddRow.Label" xml:space="preserve">
+    <value>Satır Ekle</value>
+  </data>
+  <data name="DataDelete.Label" xml:space="preserve">
+    <value>Sil</value>
+  </data>
+  <data name="DataDiscard.Label" xml:space="preserve">
+    <value>Vazgeç</value>
+  </data>
+  <data name="DataExport.Label" xml:space="preserve">
+    <value>Dışa Aktar</value>
+  </data>
+  <data name="DataFilter.Label" xml:space="preserve">
+    <value>Filtre</value>
+  </data>
+  <data name="DataImport.Label" xml:space="preserve">
+    <value>İçe Aktar</value>
+  </data>
+  <data name="DataRedo.Label" xml:space="preserve">
+    <value>Yinele</value>
+  </data>
+  <data name="DataRefresh.Label" xml:space="preserve">
+    <value>Yenile</value>
+  </data>
+  <data name="DataUndo.Label" xml:space="preserve">
+    <value>Geri Al</value>
+  </data>
+  <data name="DefaultExpressionHeader" xml:space="preserve">
+    <value>Varsayılan ifade</value>
+  </data>
+  <data name="DefaultExpressionPlaceholder" xml:space="preserve">
+    <value>örneğin 0, 'text' veya now()</value>
+  </data>
+  <data name="DefinitionCopy.Label" xml:space="preserve">
+    <value>Kopyala</value>
+  </data>
+  <data name="DefinitionOpenInQueryTab.Label" xml:space="preserve">
+    <value>Sorgu Sekmesinde Aç</value>
+  </data>
+  <data name="DeleteRows" xml:space="preserve">
+    <value>Satırları Sil</value>
+  </data>
+  <data name="DetailsReadFailed" xml:space="preserve">
+    <value>Kontroller, bölümler ve seçenekler okunamadı: {0}</value>
+  </data>
+  <data name="DiscardChangesTitle" xml:space="preserve">
+    <value>Değişiklikler atılsın mı?</value>
+  </data>
+  <data name="DuplicateRow" xml:space="preserve">
+    <value>Satırı Çoğalt</value>
+  </data>
+  <data name="EditCell" xml:space="preserve">
+    <value>Hücreyi Düzenle</value>
+  </data>
+  <data name="EditCheckNote" xml:space="preserve">
+    <value>Yeni bir ifade kontrolü kaldırıp yeniden ekler; bu da her satırı okur. Yalnızca yeni bir ad vermek bunu yapmaz.</value>
+  </data>
+  <data name="EditCheckTitle" xml:space="preserve">
+    <value>Kontrol Kısıtlamasını Düzenle</value>
+  </data>
+  <data name="EditColumnTitle" xml:space="preserve">
+    <value>Sütunu Düzenle</value>
+  </data>
+  <data name="EngineReadOnly" xml:space="preserve">
+    <value>{0} bağlantıları salt okunurdur.</value>
+  </data>
+  <data name="ExcludeValue" xml:space="preserve">
+    <value>Bu Değeri Hariç Tut</value>
+  </data>
+  <data name="FilterAddCondition.Content" xml:space="preserve">
+    <value>Koşul Ekle</value>
+  </data>
+  <data name="FilterApply.Content" xml:space="preserve">
+    <value>Uygula</value>
+  </data>
+  <data name="FilterByValue" xml:space="preserve">
+    <value>Bu Değere Göre Filtrele</value>
+  </data>
+  <data name="FilterClear.Content" xml:space="preserve">
+    <value>Temizle</value>
+  </data>
+  <data name="FilterMatchMode.OffContent" xml:space="preserve">
+    <value>Herhangi biriyle eşleştir</value>
+  </data>
+  <data name="FilterMatchMode.OnContent" xml:space="preserve">
+    <value>Tümüyle eşleştir</value>
+  </data>
+  <data name="FilterRawWhere.PlaceholderText" xml:space="preserve">
+    <value>Ham WHERE yan tümcesi, örneğin: price &gt; 10 AND status = 'open'</value>
+  </data>
+  <data name="FilterRemoveCondition.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Koşulu kaldır</value>
+  </data>
+  <data name="FilterRemoveCondition.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Koşulu kaldır</value>
+  </data>
+  <data name="FilterValue.PlaceholderText" xml:space="preserve">
+    <value>Değer</value>
+  </data>
+  <data name="ForeignKeyColumnHeader" xml:space="preserve">
+    <value>Sütun</value>
+  </data>
+  <data name="ForeignKeyOnDeleteHeader" xml:space="preserve">
+    <value>Silindiğinde</value>
+  </data>
+  <data name="ForeignKeyTargetColumnHeader" xml:space="preserve">
+    <value>Başvurulan sütun</value>
+  </data>
+  <data name="ForeignKeyTargetTableHeader" xml:space="preserve">
+    <value>Başvurulan tablo</value>
+  </data>
+  <data name="HeaderBound" xml:space="preserve">
+    <value>Sınır</value>
+  </data>
+  <data name="HeaderColumns" xml:space="preserve">
+    <value>Sütunlar</value>
+  </data>
+  <data name="HeaderComment" xml:space="preserve">
+    <value>Yorum</value>
+  </data>
+  <data name="HeaderDefault" xml:space="preserve">
+    <value>Varsayılan</value>
+  </data>
+  <data name="HeaderDefinition" xml:space="preserve">
+    <value>Tanım</value>
+  </data>
+  <data name="HeaderEditable" xml:space="preserve">
+    <value>Düzenlenebilir</value>
+  </data>
+  <data name="HeaderEvent" xml:space="preserve">
+    <value>Olay</value>
+  </data>
+  <data name="HeaderExpression" xml:space="preserve">
+    <value>İfade</value>
+  </data>
+  <data name="HeaderIdentity" xml:space="preserve">
+    <value>Kimlik</value>
+  </data>
+  <data name="HeaderKey" xml:space="preserve">
+    <value>Anahtar</value>
+  </data>
+  <data name="HeaderMethod" xml:space="preserve">
+    <value>Yöntem</value>
+  </data>
+  <data name="HeaderNullable" xml:space="preserve">
+    <value>Nullable</value>
+  </data>
+  <data name="HeaderOnDelete" xml:space="preserve">
+    <value>Silindiğinde</value>
+  </data>
+  <data name="HeaderOnUpdate" xml:space="preserve">
+    <value>Güncellendiğinde</value>
+  </data>
+  <data name="HeaderOption" xml:space="preserve">
+    <value>Seçenek</value>
+  </data>
+  <data name="HeaderPrimary" xml:space="preserve">
+    <value>Primary</value>
+  </data>
+  <data name="HeaderReferencedColumns" xml:space="preserve">
+    <value>Başvurulan Sütunlar</value>
+  </data>
+  <data name="HeaderReferences" xml:space="preserve">
+    <value>Başvurulan Tablo</value>
+  </data>
+  <data name="HeaderRows" xml:space="preserve">
+    <value>Satırlar</value>
+  </data>
+  <data name="HeaderSize" xml:space="preserve">
+    <value>Boyut</value>
+  </data>
+  <data name="HeaderSubpartitionOf" xml:space="preserve">
+    <value>Üst Bölüm</value>
+  </data>
+  <data name="HeaderTiming" xml:space="preserve">
+    <value>Zamanlama</value>
+  </data>
+  <data name="HeaderUnique" xml:space="preserve">
+    <value>Unique</value>
+  </data>
+  <data name="HeaderValidated" xml:space="preserve">
+    <value>Doğrulandı</value>
+  </data>
+  <data name="IndexColumnsHeader" xml:space="preserve">
+    <value>Sütunlar, anahtar sırasıyla</value>
+  </data>
+  <data name="IndexUnique" xml:space="preserve">
+    <value>Unique</value>
+  </data>
+  <data name="InspectValue" xml:space="preserve">
+    <value>Değeri İncele</value>
+  </data>
+  <data name="LoadFailedTitle" xml:space="preserve">
+    <value>{0} yüklenemedi</value>
+  </data>
+  <data name="Loading" xml:space="preserve">
+    <value>Yükleniyor…</value>
+  </data>
+  <data name="NoPrimaryKey" xml:space="preserve">
+    <value>Birincil anahtar yok: satırlar tüm sütunlara göre eşleştirilir ve yinelenen satırlara denk gelen bir kayıt reddedilir.</value>
+  </data>
+  <data name="NoRows" xml:space="preserve">
+    <value>Satır yok</value>
+  </data>
+  <data name="NoRowsOnPage" xml:space="preserve">
+    <value>Bu sayfada satır yok</value>
+  </data>
+  <data name="NotSupportedTitle" xml:space="preserve">
+    <value>Desteklenmiyor</value>
+  </data>
+  <data name="NothingSavedTitle" xml:space="preserve">
+    <value>Hiçbir şey kaydedilmedi</value>
+  </data>
+  <data name="ObjectReadOnly" xml:space="preserve">
+    <value>Bu nesne salt okunurdur.</value>
+  </data>
+  <data name="OpenReferencedTable" xml:space="preserve">
+    <value>{0} Aç</value>
+  </data>
+  <data name="OperatorBetween" xml:space="preserve">
+    <value>between</value>
+  </data>
+  <data name="OperatorContains" xml:space="preserve">
+    <value>içerir</value>
+  </data>
+  <data name="OperatorEndsWith" xml:space="preserve">
+    <value>bununla biter</value>
+  </data>
+  <data name="OperatorIn" xml:space="preserve">
+    <value>listede</value>
+  </data>
+  <data name="OperatorIsEmpty" xml:space="preserve">
+    <value>boş</value>
+  </data>
+  <data name="OperatorIsNotEmpty" xml:space="preserve">
+    <value>boş değil</value>
+  </data>
+  <data name="OperatorIsNotNull" xml:space="preserve">
+    <value>is not NULL</value>
+  </data>
+  <data name="OperatorIsNull" xml:space="preserve">
+    <value>is NULL</value>
+  </data>
+  <data name="OperatorNotContains" xml:space="preserve">
+    <value>içermez</value>
+  </data>
+  <data name="OperatorNotIn" xml:space="preserve">
+    <value>listede değil</value>
+  </data>
+  <data name="OperatorStartsWith" xml:space="preserve">
+    <value>ile başlar</value>
+  </data>
+  <data name="PageRangeOfTotal_One" xml:space="preserve">
+    <value>{1:N0}–{2:N0} / {0:N0}</value>
+  </data>
+  <data name="PageRangeOfTotal_Other" xml:space="preserve">
+    <value>{1:N0}–{2:N0} / {0:N0}</value>
+  </data>
+  <data name="PagerFirst.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>İlk sayfa</value>
+  </data>
+  <data name="PagerFirst.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>İlk sayfa</value>
+  </data>
+  <data name="PagerLast.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Son sayfa</value>
+  </data>
+  <data name="PagerLast.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Son sayfa</value>
+  </data>
+  <data name="PagerNext.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Sonraki sayfa</value>
+  </data>
+  <data name="PagerNext.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Sonraki sayfa</value>
+  </data>
+  <data name="PagerPageSize.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Sayfa başına satır</value>
+  </data>
+  <data name="PagerPrevious.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Önceki sayfa</value>
+  </data>
+  <data name="PagerPrevious.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Önceki sayfa</value>
+  </data>
+  <data name="PartitionBoundHeader" xml:space="preserve">
+    <value>Sınır</value>
+  </data>
+  <data name="PartitionBoundNote" xml:space="preserve">
+    <value>Sınırı, Sınır sütununda gösterildiği gibi yazın. HASH veya KEY bölümü için boş bırakın.</value>
+  </data>
+  <data name="PartitionBoundPlaceholder" xml:space="preserve">
+    <value>örneğin VALUES LESS THAN (2026) veya FOR VALUES FROM ('2026-01-01') TO ('2027-01-01')</value>
+  </data>
+  <data name="PartitionedBy" xml:space="preserve">
+    <value>{0} ile bölümlenmiş.</value>
+  </data>
+  <data name="PartitionedBySubpartitioned" xml:space="preserve">
+    <value>{0} ile bölümlenmiş, {1} ile alt bölümlenmiş.</value>
+  </data>
+  <data name="ReadOnlyCannotSave" xml:space="preserve">
+    <value>Bu bağlantıda Güvenli Mod Salt Okunur olarak ayarlı, bu yüzden düzenlemeler kaydedilemez.</value>
+  </data>
+  <data name="ReadOnlyConnectionTitle" xml:space="preserve">
+    <value>Salt okunur bağlantı</value>
+  </data>
+  <data name="ReloadDropsChanges_One" xml:space="preserve">
+    <value>Yeniden yükleme {0} kaydedilmemiş değişikliği atar.</value>
+  </data>
+  <data name="ReloadDropsChanges_Other" xml:space="preserve">
+    <value>Yeniden yükleme {0} kaydedilmemiş değişikliği atar.</value>
+  </data>
+  <data name="ReviewStructureChangeTitle" xml:space="preserve">
+    <value>Yapı değişikliğini gözden geçir</value>
+  </data>
+  <data name="RowCount_One" xml:space="preserve">
+    <value>{0:N0} satır</value>
+  </data>
+  <data name="RowCount_Other" xml:space="preserve">
+    <value>{0:N0} satır</value>
+  </data>
+  <data name="RowsSelected_One" xml:space="preserve">
+    <value>{0:N0} satır seçildi</value>
+  </data>
+  <data name="RowsSelected_Other" xml:space="preserve">
+    <value>{0:N0} satır seçildi</value>
+  </data>
+  <data name="SafeModeReadOnly" xml:space="preserve">
+    <value>Bu bağlantıda Güvenli Mod Salt Okunur olarak ayarlı.</value>
+  </data>
+  <data name="SaveChangesButton_One" xml:space="preserve">
+    <value>Kaydet ({0:N0})</value>
+  </data>
+  <data name="SaveChangesButton_Other" xml:space="preserve">
+    <value>Kaydet ({0:N0})</value>
+  </data>
+  <data name="SaveChangesReviewTitle" xml:space="preserve">
+    <value>Değişiklikleri kaydet</value>
+  </data>
+  <data name="SavedChanges_One" xml:space="preserve">
+    <value>{0:N0} değişiklik kaydedildi ({1}).</value>
+  </data>
+  <data name="SavedChanges_Other" xml:space="preserve">
+    <value>{0:N0} değişiklik kaydedildi ({1}).</value>
+  </data>
+  <data name="Saving" xml:space="preserve">
+    <value>Kaydediliyor…</value>
+  </data>
+  <data name="SectionData.Text" xml:space="preserve">
+    <value>Veri</value>
+  </data>
+  <data name="SectionDefinition.Text" xml:space="preserve">
+    <value>Tanım</value>
+  </data>
+  <data name="SectionStructure.Text" xml:space="preserve">
+    <value>Yapı</value>
+  </data>
+  <data name="SetToNull" xml:space="preserve">
+    <value>NULL Olarak Ayarla</value>
+  </data>
+  <data name="StructureAdd.Label" xml:space="preserve">
+    <value>Ekle</value>
+  </data>
+  <data name="StructureChecks.Text" xml:space="preserve">
+    <value>Kontroller</value>
+  </data>
+  <data name="StructureColumns.Text" xml:space="preserve">
+    <value>Sütunlar</value>
+  </data>
+  <data name="StructureDrop.Label" xml:space="preserve">
+    <value>Bırak</value>
+  </data>
+  <data name="StructureEdit.Label" xml:space="preserve">
+    <value>Düzenle</value>
+  </data>
+  <data name="StructureForeignKeys.Text" xml:space="preserve">
+    <value>Yabancı Anahtarlar</value>
+  </data>
+  <data name="StructureIndexes.Text" xml:space="preserve">
+    <value>İndeksler</value>
+  </data>
+  <data name="StructureOptions.Text" xml:space="preserve">
+    <value>Seçenekler</value>
+  </data>
+  <data name="StructurePartitions.Text" xml:space="preserve">
+    <value>Bölümler</value>
+  </data>
+  <data name="StructureRefresh.Label" xml:space="preserve">
+    <value>Yenile</value>
+  </data>
+  <data name="StructureTriggers.Text" xml:space="preserve">
+    <value>Tetikleyiciler</value>
+  </data>
+  <data name="StructureTruncate.Label" xml:space="preserve">
+    <value>Truncate</value>
+  </data>
+  <data name="TableOptionsTitle" xml:space="preserve">
+    <value>Tablo Seçenekleri</value>
+  </data>
+  <data name="UnsavedChanges_One" xml:space="preserve">
+    <value>{1} tablosunda kaydedilmemiş {0} değişiklik var.</value>
+  </data>
+  <data name="UnsavedChanges_Other" xml:space="preserve">
+    <value>{1} tablosunda kaydedilmemiş {0} değişiklik var.</value>
+  </data>
+  <data name="ViewsReadOnly" xml:space="preserve">
+    <value>Görünümler salt okunurdur.</value>
+  </data>
+</root>

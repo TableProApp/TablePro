@@ -23,19 +23,19 @@ public sealed partial class SettingsWindow
 
         if (!updates.CanCheck)
         {
-            page.Children.Add(Card("Updates", updates.StatusText, new TextBlock()));
+            page.Children.Add(Card(Strings.Get("Updates/SettingsTitle"), updates.StatusText, new TextBlock()));
             return;
         }
 
-        page.Children.Add(Card("Check for updates automatically", "Looks once a day for a new version.", Toggle(updates.Preferences.AutomaticallyChecks, updates.SetAutomaticallyChecksAsync)));
+        page.Children.Add(Card(Strings.Get("Updates/AutoCheckTitle"), Strings.Get("Updates/AutoCheckDescription"), Toggle(updates.Preferences.AutomaticallyChecks, updates.SetAutomaticallyChecksAsync)));
         if (updates.CanChooseChannel)
         {
-            page.Children.Add(Card("Get beta updates", "Betas come before a stable release and may have rough edges.", Toggle(
+            page.Children.Add(Card(Strings.Get("Updates/BetaTitle"), Strings.Get("Updates/BetaDescription"), Toggle(
                 updates.Preferences.Channel == UpdateChannel.Beta,
                 on => updates.SetChannelAsync(on ? UpdateChannel.Beta : UpdateChannel.Stable))));
         }
 
-        var check = new Button { Content = "Check Now" };
+        var check = new Button { Content = Strings.Get("Updates/CheckNow") };
         check.Click += async (_, _) =>
         {
             check.IsEnabled = false;
@@ -52,6 +52,6 @@ public sealed partial class SettingsWindow
         var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12 };
         row.Children.Add(status);
         row.Children.Add(check);
-        page.Children.Add(Card($"TablePro {updates.CurrentVersion}", null, row));
+        page.Children.Add(Card(Strings.Format("Updates/VersionTitle", updates.CurrentVersion), null, row));
     }
 }

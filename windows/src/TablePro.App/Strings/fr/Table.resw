@@ -1,0 +1,483 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AddCheckNote" xml:space="preserve">
+    <value>L’ajout d’une contrainte de vérification lit toutes les lignes, et échoue si l’une d’elles ne la respecte pas.</value>
+  </data>
+  <data name="AddCheckTitle" xml:space="preserve">
+    <value>Ajouter une contrainte de vérification</value>
+  </data>
+  <data name="AddColumnTitle" xml:space="preserve">
+    <value>Ajouter une colonne</value>
+  </data>
+  <data name="AddForeignKeyTitle" xml:space="preserve">
+    <value>Ajouter une clé étrangère</value>
+  </data>
+  <data name="AddIndexTitle" xml:space="preserve">
+    <value>Ajouter un index</value>
+  </data>
+  <data name="AddPartitionTitle" xml:space="preserve">
+    <value>Ajouter une partition</value>
+  </data>
+  <data name="AllowsNull" xml:space="preserve">
+    <value>NULL autorisé</value>
+  </data>
+  <data name="AnyColumn" xml:space="preserve">
+    <value>N’importe quelle colonne</value>
+  </data>
+  <data name="CannotChangeStructure" xml:space="preserve">
+    <value>Ce moteur ne peut pas modifier la structure depuis l’application.</value>
+  </data>
+  <data name="CannotExpressChange" xml:space="preserve">
+    <value>Ce moteur ne peut pas exprimer cette modification.</value>
+  </data>
+  <data name="CannotMakeChangeTitle" xml:space="preserve">
+    <value>Impossible d’effectuer cette modification</value>
+  </data>
+  <data name="CellNo" xml:space="preserve">
+    <value>NON</value>
+  </data>
+  <data name="CellYes" xml:space="preserve">
+    <value>OUI</value>
+  </data>
+  <data name="ChangeFailedTitle" xml:space="preserve">
+    <value>La modification a échoué</value>
+  </data>
+  <data name="CheckExpressionHeader" xml:space="preserve">
+    <value>Expression</value>
+  </data>
+  <data name="CheckExpressionPlaceholder" xml:space="preserve">
+    <value>par exemple price &gt; 0 AND quantity &gt;= 0</value>
+  </data>
+  <data name="CheckIncomplete" xml:space="preserve">
+    <value>Une contrainte de vérification nécessite un nom et une expression.</value>
+  </data>
+  <data name="CheckNotSavedTitle" xml:space="preserve">
+    <value>Contrainte de vérification non enregistrée</value>
+  </data>
+  <data name="ChecksNotEditable" xml:space="preserve">
+    <value>Ce serveur ne peut pas ajouter ni modifier de contraintes de vérification ici.</value>
+  </data>
+  <data name="CommentHeader" xml:space="preserve">
+    <value>Commentaire</value>
+  </data>
+  <data name="DataAddRow.Label" xml:space="preserve">
+    <value>Ajouter une ligne</value>
+  </data>
+  <data name="DataDelete.Label" xml:space="preserve">
+    <value>Supprimer</value>
+  </data>
+  <data name="DataDiscard.Label" xml:space="preserve">
+    <value>Abandonner</value>
+  </data>
+  <data name="DataExport.Label" xml:space="preserve">
+    <value>Exporter</value>
+  </data>
+  <data name="DataFilter.Label" xml:space="preserve">
+    <value>Filtrer</value>
+  </data>
+  <data name="DataImport.Label" xml:space="preserve">
+    <value>Importer</value>
+  </data>
+  <data name="DataRedo.Label" xml:space="preserve">
+    <value>Rétablir</value>
+  </data>
+  <data name="DataRefresh.Label" xml:space="preserve">
+    <value>Actualiser</value>
+  </data>
+  <data name="DataUndo.Label" xml:space="preserve">
+    <value>Annuler</value>
+  </data>
+  <data name="DefaultExpressionHeader" xml:space="preserve">
+    <value>Expression par défaut</value>
+  </data>
+  <data name="DefaultExpressionPlaceholder" xml:space="preserve">
+    <value>par exemple 0, 'text' ou now()</value>
+  </data>
+  <data name="DefinitionCopy.Label" xml:space="preserve">
+    <value>Copier</value>
+  </data>
+  <data name="DefinitionOpenInQueryTab.Label" xml:space="preserve">
+    <value>Ouvrir dans un onglet de requête</value>
+  </data>
+  <data name="DeleteRows" xml:space="preserve">
+    <value>Supprimer les lignes</value>
+  </data>
+  <data name="DetailsReadFailed" xml:space="preserve">
+    <value>Impossible de lire les contraintes de vérification, les partitions et les options&#160;: {0}</value>
+  </data>
+  <data name="DiscardChangesTitle" xml:space="preserve">
+    <value>Abandonner les modifications&#160;?</value>
+  </data>
+  <data name="DuplicateRow" xml:space="preserve">
+    <value>Dupliquer la ligne</value>
+  </data>
+  <data name="EditCell" xml:space="preserve">
+    <value>Modifier la cellule</value>
+  </data>
+  <data name="EditCheckNote" xml:space="preserve">
+    <value>Une nouvelle expression supprime la contrainte puis l’ajoute à nouveau, ce qui lit toutes les lignes. Un simple changement de nom, non.</value>
+  </data>
+  <data name="EditCheckTitle" xml:space="preserve">
+    <value>Modifier la contrainte de vérification</value>
+  </data>
+  <data name="EditColumnTitle" xml:space="preserve">
+    <value>Modifier la colonne</value>
+  </data>
+  <data name="EngineReadOnly" xml:space="preserve">
+    <value>Les connexions {0} sont en lecture seule.</value>
+  </data>
+  <data name="ExcludeValue" xml:space="preserve">
+    <value>Exclure cette valeur</value>
+  </data>
+  <data name="FilterAddCondition.Content" xml:space="preserve">
+    <value>Ajouter une condition</value>
+  </data>
+  <data name="FilterApply.Content" xml:space="preserve">
+    <value>Appliquer</value>
+  </data>
+  <data name="FilterByValue" xml:space="preserve">
+    <value>Filtrer par cette valeur</value>
+  </data>
+  <data name="FilterClear.Content" xml:space="preserve">
+    <value>Effacer</value>
+  </data>
+  <data name="FilterMatchMode.OffContent" xml:space="preserve">
+    <value>Correspondre à au moins un</value>
+  </data>
+  <data name="FilterMatchMode.OnContent" xml:space="preserve">
+    <value>Correspondre à tous</value>
+  </data>
+  <data name="FilterRawWhere.PlaceholderText" xml:space="preserve">
+    <value>Clause WHERE brute, par exemple&#160;: price &gt; 10 AND status = 'open'</value>
+  </data>
+  <data name="FilterRemoveCondition.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Supprimer la condition</value>
+  </data>
+  <data name="FilterRemoveCondition.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Supprimer la condition</value>
+  </data>
+  <data name="FilterValue.PlaceholderText" xml:space="preserve">
+    <value>Valeur</value>
+  </data>
+  <data name="ForeignKeyColumnHeader" xml:space="preserve">
+    <value>Colonne</value>
+  </data>
+  <data name="ForeignKeyOnDeleteHeader" xml:space="preserve">
+    <value>À la suppression</value>
+  </data>
+  <data name="ForeignKeyTargetColumnHeader" xml:space="preserve">
+    <value>Colonne référencée</value>
+  </data>
+  <data name="ForeignKeyTargetTableHeader" xml:space="preserve">
+    <value>Table référencée</value>
+  </data>
+  <data name="HeaderBound" xml:space="preserve">
+    <value>Limite</value>
+  </data>
+  <data name="HeaderColumns" xml:space="preserve">
+    <value>Colonnes</value>
+  </data>
+  <data name="HeaderComment" xml:space="preserve">
+    <value>Commentaire</value>
+  </data>
+  <data name="HeaderDefault" xml:space="preserve">
+    <value>Par défaut</value>
+  </data>
+  <data name="HeaderDefinition" xml:space="preserve">
+    <value>Définition</value>
+  </data>
+  <data name="HeaderEditable" xml:space="preserve">
+    <value>Modifiable</value>
+  </data>
+  <data name="HeaderEvent" xml:space="preserve">
+    <value>Événement</value>
+  </data>
+  <data name="HeaderExpression" xml:space="preserve">
+    <value>Expression</value>
+  </data>
+  <data name="HeaderIdentity" xml:space="preserve">
+    <value>Identité</value>
+  </data>
+  <data name="HeaderKey" xml:space="preserve">
+    <value>Clé</value>
+  </data>
+  <data name="HeaderMethod" xml:space="preserve">
+    <value>Méthode</value>
+  </data>
+  <data name="HeaderNullable" xml:space="preserve">
+    <value>NULL autorisé</value>
+  </data>
+  <data name="HeaderOnDelete" xml:space="preserve">
+    <value>À la suppression</value>
+  </data>
+  <data name="HeaderOnUpdate" xml:space="preserve">
+    <value>À la mise à jour</value>
+  </data>
+  <data name="HeaderOption" xml:space="preserve">
+    <value>Option</value>
+  </data>
+  <data name="HeaderPrimary" xml:space="preserve">
+    <value>Primaire</value>
+  </data>
+  <data name="HeaderReferencedColumns" xml:space="preserve">
+    <value>Colonnes référencées</value>
+  </data>
+  <data name="HeaderReferences" xml:space="preserve">
+    <value>Références</value>
+  </data>
+  <data name="HeaderRows" xml:space="preserve">
+    <value>Lignes</value>
+  </data>
+  <data name="HeaderSize" xml:space="preserve">
+    <value>Taille</value>
+  </data>
+  <data name="HeaderSubpartitionOf" xml:space="preserve">
+    <value>Sous-partition de</value>
+  </data>
+  <data name="HeaderTiming" xml:space="preserve">
+    <value>Moment</value>
+  </data>
+  <data name="HeaderUnique" xml:space="preserve">
+    <value>Unique</value>
+  </data>
+  <data name="HeaderValidated" xml:space="preserve">
+    <value>Validée</value>
+  </data>
+  <data name="IndexColumnsHeader" xml:space="preserve">
+    <value>Colonnes, dans l’ordre de la clé</value>
+  </data>
+  <data name="IndexUnique" xml:space="preserve">
+    <value>Unique</value>
+  </data>
+  <data name="InspectValue" xml:space="preserve">
+    <value>Inspecter la valeur</value>
+  </data>
+  <data name="LoadFailedTitle" xml:space="preserve">
+    <value>Impossible de charger {0}</value>
+  </data>
+  <data name="Loading" xml:space="preserve">
+    <value>Chargement…</value>
+  </data>
+  <data name="NoPrimaryKey" xml:space="preserve">
+    <value>Aucune clé primaire&#160;: les lignes sont identifiées sur toutes les colonnes, et un enregistrement qui rencontre des doublons est refusé.</value>
+  </data>
+  <data name="NoRows" xml:space="preserve">
+    <value>Aucune ligne</value>
+  </data>
+  <data name="NoRowsOnPage" xml:space="preserve">
+    <value>Aucune ligne sur cette page</value>
+  </data>
+  <data name="NotSupportedTitle" xml:space="preserve">
+    <value>Non pris en charge</value>
+  </data>
+  <data name="NothingSavedTitle" xml:space="preserve">
+    <value>Rien n’a été enregistré</value>
+  </data>
+  <data name="ObjectReadOnly" xml:space="preserve">
+    <value>Cet objet est en lecture seule.</value>
+  </data>
+  <data name="OpenReferencedTable" xml:space="preserve">
+    <value>Ouvrir {0}</value>
+  </data>
+  <data name="OperatorBetween" xml:space="preserve">
+    <value>entre</value>
+  </data>
+  <data name="OperatorContains" xml:space="preserve">
+    <value>contient</value>
+  </data>
+  <data name="OperatorEndsWith" xml:space="preserve">
+    <value>se termine par</value>
+  </data>
+  <data name="OperatorIn" xml:space="preserve">
+    <value>dans la liste</value>
+  </data>
+  <data name="OperatorIsEmpty" xml:space="preserve">
+    <value>est vide</value>
+  </data>
+  <data name="OperatorIsNotEmpty" xml:space="preserve">
+    <value>n’est pas vide</value>
+  </data>
+  <data name="OperatorIsNotNull" xml:space="preserve">
+    <value>n’est pas NULL</value>
+  </data>
+  <data name="OperatorIsNull" xml:space="preserve">
+    <value>est NULL</value>
+  </data>
+  <data name="OperatorNotContains" xml:space="preserve">
+    <value>ne contient pas</value>
+  </data>
+  <data name="OperatorNotIn" xml:space="preserve">
+    <value>n’est pas dans la liste</value>
+  </data>
+  <data name="OperatorStartsWith" xml:space="preserve">
+    <value>commence par</value>
+  </data>
+  <data name="PageRangeOfTotal_One" xml:space="preserve">
+    <value>{1:N0}–{2:N0} sur {0:N0}</value>
+  </data>
+  <data name="PageRangeOfTotal_Other" xml:space="preserve">
+    <value>{1:N0}–{2:N0} sur {0:N0}</value>
+  </data>
+  <data name="PagerFirst.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Première page</value>
+  </data>
+  <data name="PagerFirst.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Première page</value>
+  </data>
+  <data name="PagerLast.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Dernière page</value>
+  </data>
+  <data name="PagerLast.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Dernière page</value>
+  </data>
+  <data name="PagerNext.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Page suivante</value>
+  </data>
+  <data name="PagerNext.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Page suivante</value>
+  </data>
+  <data name="PagerPageSize.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Lignes par page</value>
+  </data>
+  <data name="PagerPrevious.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Page précédente</value>
+  </data>
+  <data name="PagerPrevious.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Page précédente</value>
+  </data>
+  <data name="PartitionBoundHeader" xml:space="preserve">
+    <value>Limite</value>
+  </data>
+  <data name="PartitionBoundNote" xml:space="preserve">
+    <value>Écrivez la limite telle que la colonne Limite l’affiche. Laissez vide pour une partition HASH ou KEY.</value>
+  </data>
+  <data name="PartitionBoundPlaceholder" xml:space="preserve">
+    <value>par exemple VALUES LESS THAN (2026), ou FOR VALUES FROM ('2026-01-01') TO ('2027-01-01')</value>
+  </data>
+  <data name="PartitionedBy" xml:space="preserve">
+    <value>Partitionnée par {0}.</value>
+  </data>
+  <data name="PartitionedBySubpartitioned" xml:space="preserve">
+    <value>Partitionnée par {0}, sous-partitionnée par {1}.</value>
+  </data>
+  <data name="ReadOnlyCannotSave" xml:space="preserve">
+    <value>Le Mode sécurisé est en Lecture seule sur cette connexion&#160;: les modifications ne peuvent donc pas être enregistrées.</value>
+  </data>
+  <data name="ReadOnlyConnectionTitle" xml:space="preserve">
+    <value>Connexion en lecture seule</value>
+  </data>
+  <data name="ReloadDropsChanges_One" xml:space="preserve">
+    <value>Le rechargement abandonne {0} modification non enregistrée.</value>
+  </data>
+  <data name="ReloadDropsChanges_Other" xml:space="preserve">
+    <value>Le rechargement abandonne {0} modifications non enregistrées.</value>
+  </data>
+  <data name="ReviewStructureChangeTitle" xml:space="preserve">
+    <value>Vérifier la modification de structure</value>
+  </data>
+  <data name="RowCount_One" xml:space="preserve">
+    <value>{0:N0} ligne</value>
+  </data>
+  <data name="RowCount_Other" xml:space="preserve">
+    <value>{0:N0} lignes</value>
+  </data>
+  <data name="RowsSelected_One" xml:space="preserve">
+    <value>{0:N0} ligne sélectionnée</value>
+  </data>
+  <data name="RowsSelected_Other" xml:space="preserve">
+    <value>{0:N0} lignes sélectionnées</value>
+  </data>
+  <data name="SafeModeReadOnly" xml:space="preserve">
+    <value>Le Mode sécurisé est en Lecture seule sur cette connexion.</value>
+  </data>
+  <data name="SaveChangesButton_One" xml:space="preserve">
+    <value>Enregistrer {0:N0}</value>
+  </data>
+  <data name="SaveChangesButton_Other" xml:space="preserve">
+    <value>Enregistrer {0:N0}</value>
+  </data>
+  <data name="SaveChangesReviewTitle" xml:space="preserve">
+    <value>Enregistrer les modifications</value>
+  </data>
+  <data name="SavedChanges_One" xml:space="preserve">
+    <value>{0:N0} modification enregistrée ({1}).</value>
+  </data>
+  <data name="SavedChanges_Other" xml:space="preserve">
+    <value>{0:N0} modifications enregistrées ({1}).</value>
+  </data>
+  <data name="Saving" xml:space="preserve">
+    <value>Enregistrement…</value>
+  </data>
+  <data name="SectionData.Text" xml:space="preserve">
+    <value>Données</value>
+  </data>
+  <data name="SectionDefinition.Text" xml:space="preserve">
+    <value>Définition</value>
+  </data>
+  <data name="SectionStructure.Text" xml:space="preserve">
+    <value>Structure</value>
+  </data>
+  <data name="SetToNull" xml:space="preserve">
+    <value>Définir sur NULL</value>
+  </data>
+  <data name="StructureAdd.Label" xml:space="preserve">
+    <value>Ajouter</value>
+  </data>
+  <data name="StructureChecks.Text" xml:space="preserve">
+    <value>Vérifications</value>
+  </data>
+  <data name="StructureColumns.Text" xml:space="preserve">
+    <value>Colonnes</value>
+  </data>
+  <data name="StructureDrop.Label" xml:space="preserve">
+    <value>Supprimer</value>
+  </data>
+  <data name="StructureEdit.Label" xml:space="preserve">
+    <value>Modifier</value>
+  </data>
+  <data name="StructureForeignKeys.Text" xml:space="preserve">
+    <value>Clés étrangères</value>
+  </data>
+  <data name="StructureIndexes.Text" xml:space="preserve">
+    <value>Index</value>
+  </data>
+  <data name="StructureOptions.Text" xml:space="preserve">
+    <value>Options</value>
+  </data>
+  <data name="StructurePartitions.Text" xml:space="preserve">
+    <value>Partitions</value>
+  </data>
+  <data name="StructureRefresh.Label" xml:space="preserve">
+    <value>Actualiser</value>
+  </data>
+  <data name="StructureTriggers.Text" xml:space="preserve">
+    <value>Déclencheurs</value>
+  </data>
+  <data name="StructureTruncate.Label" xml:space="preserve">
+    <value>Tronquer</value>
+  </data>
+  <data name="TableOptionsTitle" xml:space="preserve">
+    <value>Options de la table</value>
+  </data>
+  <data name="UnsavedChanges_One" xml:space="preserve">
+    <value>{1} comporte {0} modification non enregistrée.</value>
+  </data>
+  <data name="UnsavedChanges_Other" xml:space="preserve">
+    <value>{1} comporte {0} modifications non enregistrées.</value>
+  </data>
+  <data name="ViewsReadOnly" xml:space="preserve">
+    <value>Les vues sont en lecture seule.</value>
+  </data>
+</root>

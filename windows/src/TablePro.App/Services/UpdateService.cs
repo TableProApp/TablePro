@@ -127,22 +127,22 @@ public sealed partial class UpdateService : IDisposable
     public bool CanChooseChannel => Mode is UpdateInstallMode.Portable or UpdateInstallMode.ScriptInstall or UpdateInstallMode.Msix;
 
     /// <summary>The menu item's title, which says when an update is waiting, as the macOS app menu does.</summary>
-    public string CheckForUpdatesTitle => State == UpdateState.Available ? "Update Available…" : "Check for Updates…";
+    public string CheckForUpdatesTitle => State == UpdateState.Available ? Strings.Get("Updates/MenuUpdateAvailable") : Strings.Get("Updates/MenuCheckForUpdates");
 
     /// <summary>One line for the Settings page about where updates stand.</summary>
     public string StatusText => State switch
     {
-        _ when Mode == UpdateInstallMode.Disabled => "Updates are off in this build.",
-        _ when Mode == UpdateInstallMode.Store => "The Microsoft Store keeps TablePro up to date.",
-        UpdateState.Checking => "Checking for updates…",
-        UpdateState.Available when Available is { } offer => $"TablePro {offer.Version} is available. You have {CurrentVersion}.",
-        UpdateState.Available => "An update is available.",
-        UpdateState.Downloading => string.Create(CultureInfo.CurrentCulture, $"Downloading the update: {DownloadProgress:P0}"),
-        UpdateState.Installing => "Starting the installer…",
-        UpdateState.Failed => $"The update check failed: {LastError}",
-        UpdateState.UpToDate => $"TablePro {CurrentVersion} is the latest version.",
-        _ when Preferences.LastCheck is { } last => $"Last checked {last.ToLocalTime():g}.",
-        _ => $"TablePro {CurrentVersion}.",
+        _ when Mode == UpdateInstallMode.Disabled => Strings.Get("Updates/StatusDisabled"),
+        _ when Mode == UpdateInstallMode.Store => Strings.Get("Updates/StatusStore"),
+        UpdateState.Checking => Strings.Get("Updates/StatusChecking"),
+        UpdateState.Available when Available is { } offer => Strings.Format("Updates/AvailableVersion", offer.Version, CurrentVersion),
+        UpdateState.Available => Strings.Get("Updates/StatusAvailable"),
+        UpdateState.Downloading => Strings.Format("Updates/StatusDownloading", DownloadProgress),
+        UpdateState.Installing => Strings.Get("Updates/StatusInstalling"),
+        UpdateState.Failed => Strings.Format("Updates/StatusFailed", LastError),
+        UpdateState.UpToDate => Strings.Format("Updates/StatusUpToDate", CurrentVersion),
+        _ when Preferences.LastCheck is { } last => Strings.Format("Updates/StatusLastChecked", last.ToLocalTime()),
+        _ => Strings.Format("Updates/StatusVersion", CurrentVersion),
     };
 
     /// <summary>
@@ -360,7 +360,7 @@ public sealed partial class UpdateService : IDisposable
         response.EnsureSuccessStatusCode();
         if (response.Content.Headers.ContentLength > MaxFeedBytes)
         {
-            throw new InvalidDataException("The update feed is larger than expected.");
+            throw new InvalidDataException(Strings.Get("Updates/ErrorFeedTooLarge"));
         }
 
         await using var stream = await response.Content.ReadAsStreamAsync(timeout.Token);
@@ -418,7 +418,7 @@ public sealed partial class UpdateService : IDisposable
         if (!await FileMatchesAsync(partial, asset, cancellationToken))
         {
             File.Delete(partial);
-            throw new InvalidDataException("The downloaded update does not match the checksum the release published. Nothing was installed.");
+            throw new InvalidDataException(Strings.Get("Updates/ErrorChecksumMismatch"));
         }
 
         File.Move(partial, target, overwrite: true);
@@ -446,7 +446,7 @@ public sealed partial class UpdateService : IDisposable
         // ExtractToDirectory refuses an entry that would land outside the folder.
         ZipFile.ExtractToDirectory(zip, staging);
         var script = Directory.EnumerateFiles(staging, "install.ps1", SearchOption.AllDirectories).FirstOrDefault()
-            ?? throw new InvalidDataException("The update has no install script.");
+            ?? throw new InvalidDataException(Strings.Get("Updates/ErrorNoInstallScript"));
 
         // The full path keeps a powershell.exe earlier on PATH from running instead.
         var powershell = Path.Combine(Environment.SystemDirectory, "WindowsPowerShell", "v1.0", "powershell.exe");
@@ -570,7 +570,7 @@ public sealed partial class UpdateService : IDisposable
     {
         if (response.RequestMessage?.RequestUri?.Scheme != Uri.UriSchemeHttps)
         {
-            throw new HttpRequestException("Updates are only downloaded over HTTPS.");
+            throw new HttpRequestException(Strings.Get("Updates/ErrorHttpsOnly"));
         }
     }
 
@@ -720,7 +720,7 @@ public sealed partial class UpdateService : IDisposable
         private int Count(int read)
         {
             _read += read;
-            return _read > limit ? throw new InvalidDataException("The update feed is larger than expected.") : read;
+            return _read > limit ? throw new InvalidDataException(Strings.Get("Updates/ErrorFeedTooLarge")) : read;
         }
     }
 }

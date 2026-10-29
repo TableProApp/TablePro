@@ -1,0 +1,168 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="BreakpointGutter.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>切換中斷點</value>
+  </data>
+  <data name="CallStackHeader.Text" xml:space="preserve">
+    <value>呼叫堆疊</value>
+  </data>
+  <data name="ContinueButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>繼續</value>
+  </data>
+  <data name="ContinueButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>繼續 (F5)</value>
+  </data>
+  <data name="DebugButton" xml:space="preserve">
+    <value>偵錯</value>
+  </data>
+  <data name="EntryPoint" xml:space="preserve">
+    <value>進入點</value>
+  </data>
+  <data name="FinishedBeforeStop" xml:space="preserve">
+    <value>常式在到達停止點之前就已結束。</value>
+  </data>
+  <data name="FrameAtLine" xml:space="preserve">
+    <value>{0}  第 {1} 行</value>
+  </data>
+  <data name="FrameLevel" xml:space="preserve">
+    <value>框架 {0}</value>
+  </data>
+  <data name="NoArguments" xml:space="preserve">
+    <value>此常式不需要引數。</value>
+  </data>
+  <data name="OutputBox.PlaceholderText" xml:space="preserve">
+    <value>通知與 DBMS_OUTPUT 行會顯示在這裡</value>
+  </data>
+  <data name="OutputBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>偵錯輸出</value>
+  </data>
+  <data name="OutputParameter" xml:space="preserve">
+    <value>輸出</value>
+  </data>
+  <data name="OutputTab.Text" xml:space="preserve">
+    <value>輸出</value>
+  </data>
+  <data name="RemoveAllBreakpointsButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>移除所有中斷點</value>
+  </data>
+  <data name="RemoveAllBreakpointsButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>移除所有中斷點 (Ctrl+Shift+F9)</value>
+  </data>
+  <data name="ResultTab.Text" xml:space="preserve">
+    <value>結果</value>
+  </data>
+  <data name="SafeModeBlocks" xml:space="preserve">
+    <value>安全模式會封鎖此連線上的寫入，而此常式可能會變更資料，因此無法在此偵錯。</value>
+  </data>
+  <data name="SourceList.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>常式原始碼</value>
+  </data>
+  <data name="StackList.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>呼叫堆疊</value>
+  </data>
+  <data name="StartDialogTitle" xml:space="preserve">
+    <value>偵錯 {0}</value>
+  </data>
+  <data name="StatusCantDebug" xml:space="preserve">
+    <value>無法偵錯</value>
+  </data>
+  <data name="StatusFailed" xml:space="preserve">
+    <value>失敗</value>
+  </data>
+  <data name="StatusFinished" xml:space="preserve">
+    <value>已完成</value>
+  </data>
+  <data name="StatusPaused" xml:space="preserve">
+    <value>已暫停</value>
+  </data>
+  <data name="StatusPausedAt" xml:space="preserve">
+    <value>已在 {1} 的第 {0} 行暫停</value>
+  </data>
+  <data name="StatusPreparing" xml:space="preserve">
+    <value>正在準備…</value>
+  </data>
+  <data name="StatusRunning" xml:space="preserve">
+    <value>正在執行…</value>
+  </data>
+  <data name="StatusStarting" xml:space="preserve">
+    <value>正在啟動…</value>
+  </data>
+  <data name="StatusStopped" xml:space="preserve">
+    <value>已停止</value>
+  </data>
+  <data name="StatusStopping" xml:space="preserve">
+    <value>正在停止…</value>
+  </data>
+  <data name="StepIntoButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>逐步執行</value>
+  </data>
+  <data name="StepIntoButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>逐步執行 (F11)</value>
+  </data>
+  <data name="StepOutButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>跳離函式</value>
+  </data>
+  <data name="StepOutButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>跳離函式 (Shift+F11)</value>
+  </data>
+  <data name="StepOverButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>不進入函式</value>
+  </data>
+  <data name="StepOverButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>不進入函式 (F10)</value>
+  </data>
+  <data name="StopButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>停止偵錯</value>
+  </data>
+  <data name="StopButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>停止偵錯 (Shift+F5)</value>
+  </data>
+  <data name="StopNotConfirmed" xml:space="preserve">
+    <value>偵錯工具未確認停止。常式可能仍在伺服器上執行。</value>
+  </data>
+  <data name="TabTitle" xml:space="preserve">
+    <value>偵錯 {0}</value>
+  </data>
+  <data name="ToggleBreakpointButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>切換中斷點</value>
+  </data>
+  <data name="ToggleBreakpointButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>在選取的行上切換中斷點 (F9)</value>
+  </data>
+  <data name="TypeColumn.Text" xml:space="preserve">
+    <value>類型</value>
+  </data>
+  <data name="ValueColumn.Text" xml:space="preserve">
+    <value>值</value>
+  </data>
+  <data name="VariableColumn.Text" xml:space="preserve">
+    <value>變數</value>
+  </data>
+  <data name="VariableKindArgument" xml:space="preserve">
+    <value>引數</value>
+  </data>
+  <data name="VariableKindConstant" xml:space="preserve">
+    <value>常數</value>
+  </data>
+  <data name="VariableKindLocal" xml:space="preserve">
+    <value>區域變數</value>
+  </data>
+  <data name="VariableKindPackage" xml:space="preserve">
+    <value>套件變數</value>
+  </data>
+  <data name="VariablesList.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>變數</value>
+  </data>
+</root>

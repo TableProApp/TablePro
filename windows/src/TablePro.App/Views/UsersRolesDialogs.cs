@@ -18,17 +18,17 @@ internal static class UsersRolesDialogs
         var features = viewModel.Features;
         var panel = new StackPanel { Spacing = 12, MinWidth = 400 };
 
-        var kind = new RadioButtons { Header = "Kind", MaxColumns = 2, SelectedIndex = 0 };
-        kind.Items.Add("User");
-        kind.Items.Add("Role");
+        var kind = new RadioButtons { Header = Strings.Get("Users/KindHeader"), MaxColumns = 2, SelectedIndex = 0 };
+        kind.Items.Add(UsersNames.KindTitle(isRole: false));
+        kind.Items.Add(UsersNames.KindTitle(isRole: true));
         if (features.RoleMembership)
         {
             panel.Children.Add(kind);
         }
 
-        var name = new TextBox { Header = "Name" };
-        var host = new TextBox { Header = "Host", Text = "%", Description = "Use % to allow any host." };
-        var password = new PasswordField("Password");
+        var name = new TextBox { Header = Strings.Get("Common/Name") };
+        var host = new TextBox { Header = Strings.Get("Users/Host"), Text = "%", Description = Strings.Get("Users/HostDescription") };
+        var password = new PasswordField(Strings.Get("Users/Password"));
         var problem = ErrorText();
         panel.Children.Add(name);
         if (features.HostScoping)
@@ -39,7 +39,7 @@ internal static class UsersRolesDialogs
         panel.Children.Add(password.Element);
         panel.Children.Add(problem);
 
-        var dialog = dialogs.Create("New user or role", panel, "Create", "Cancel");
+        var dialog = dialogs.Create(Strings.Get("Users/NewPrincipalTitle"), panel, Strings.Get("Users/CreateButton"), Strings.Get("Common/Cancel"));
         bool IsRole() => features.RoleMembership && kind.SelectedIndex == 1;
         PrincipalRef Reference() => new(name.Text.Trim(), features.HostScoping ? host.Text.Trim() : null);
 
@@ -50,11 +50,11 @@ internal static class UsersRolesDialogs
             string? error = null;
             if (reference.Name.Length > 0 && viewModel.IsNameTaken(reference))
             {
-                error = "A user or role with this name already exists.";
+                error = Strings.Get("Users/NameTaken");
             }
             else if (features.HostScoping && reference.Host!.Length == 0)
             {
-                error = "Enter a host, or % for any host.";
+                error = Strings.Get("Users/HostRequired");
             }
 
             problem.Text = error ?? string.Empty;
@@ -80,8 +80,8 @@ internal static class UsersRolesDialogs
 
     public static async Task ChangePasswordAsync(DialogService dialogs, UsersRolesViewModel viewModel, PrincipalRef principal)
     {
-        var password = new PasswordField("New password");
-        var verify = new PasswordBox { Header = "Verify" };
+        var password = new PasswordField(Strings.Get("Users/NewPassword"));
+        var verify = new PasswordBox { Header = Strings.Get("Users/VerifyPassword") };
         var problem = ErrorText();
         var panel = new StackPanel { Spacing = 12, MinWidth = 400 };
         panel.Children.Add(new TextBlock { Text = principal.DisplayName, Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"] });
@@ -89,11 +89,11 @@ internal static class UsersRolesDialogs
         panel.Children.Add(verify);
         panel.Children.Add(problem);
 
-        var dialog = dialogs.Create("Change password", panel, "Set Password", "Cancel");
+        var dialog = dialogs.Create(Strings.Get("Users/ChangePasswordTitle"), panel, Strings.Get("Users/SetPasswordButton"), Strings.Get("Common/Cancel"));
         void Validate()
         {
             var mismatch = verify.Password.Length > 0 && verify.Password != password.Value;
-            problem.Text = mismatch ? "The passwords do not match." : string.Empty;
+            problem.Text = mismatch ? Strings.Get("Users/PasswordsDoNotMatch") : string.Empty;
             problem.Visibility = mismatch ? Visibility.Visible : Visibility.Collapsed;
             dialog.IsPrimaryButtonEnabled = password.Value.Length > 0 && password.Value == verify.Password;
         }
@@ -113,8 +113,8 @@ internal static class UsersRolesDialogs
     {
         var current = viewModel.Tracker.Draft(principal)?.Ref ?? principal;
         var hostScoping = viewModel.Features.HostScoping;
-        var name = new TextBox { Header = "Name", Text = current.Name };
-        var host = new TextBox { Header = "Host", Text = current.Host ?? "%" };
+        var name = new TextBox { Header = Strings.Get("Common/Name"), Text = current.Name };
+        var host = new TextBox { Header = Strings.Get("Users/Host"), Text = current.Host ?? "%" };
         var problem = ErrorText();
         var panel = new StackPanel { Spacing = 12, MinWidth = 400 };
         panel.Children.Add(name);
@@ -124,14 +124,14 @@ internal static class UsersRolesDialogs
         }
 
         panel.Children.Add(problem);
-        var dialog = dialogs.Create($"Rename {principal.DisplayName}", panel, "Rename", "Cancel");
+        var dialog = dialogs.Create(Strings.Format("Users/RenameTitle", principal.DisplayName), panel, Strings.Get("Common/Rename"), Strings.Get("Common/Cancel"));
         PrincipalRef Reference() => new(name.Text.Trim(), hostScoping ? host.Text.Trim() : null);
 
         void Validate()
         {
             var reference = Reference();
             var taken = reference != principal && viewModel.IsNameTaken(reference);
-            problem.Text = taken ? "A user or role with this name already exists." : string.Empty;
+            problem.Text = taken ? Strings.Get("Users/NameTaken") : string.Empty;
             problem.Visibility = taken ? Visibility.Visible : Visibility.Collapsed;
             dialog.IsPrimaryButtonEnabled = reference.Name.Length > 0 && (!hostScoping || reference.Host!.Length > 0) && !taken && reference != current;
         }
@@ -155,7 +155,7 @@ internal static class UsersRolesDialogs
     {
         var selected = new HashSet<string>(viewModel.Tracker.Draft(principal)?.MemberOf ?? [], StringComparer.Ordinal);
         var roles = viewModel.RoleCandidates(principal);
-        var filter = new TextBox { PlaceholderText = "Filter roles" };
+        var filter = new TextBox { PlaceholderText = Strings.Get("Users/FilterRoles") };
         var list = new StackPanel { Spacing = 2 };
         var panel = new StackPanel { Spacing = 8, MinWidth = 380 };
         panel.Children.Add(new TextBlock { Text = principal.DisplayName, Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"] });
@@ -185,14 +185,14 @@ internal static class UsersRolesDialogs
 
             if (list.Children.Count == 0)
             {
-                list.Children.Add(new TextBlock { Text = roles.Count == 0 ? "There are no roles to join." : "No roles match the filter." });
+                list.Children.Add(new TextBlock { Text = roles.Count == 0 ? Strings.Get("Users/NoRolesToJoin") : Strings.Get("Users/NoRolesMatch") });
             }
         }
 
         filter.TextChanged += (_, _) => Fill();
         Fill();
 
-        if (await dialogs.ShowAsync(dialogs.Create("Member of", panel, "Done", "Cancel")) == ContentDialogResult.Primary)
+        if (await dialogs.ShowAsync(dialogs.Create(Strings.Get("Users/MemberOf"), panel, Strings.Get("Common/Done"), Strings.Get("Common/Cancel"))) == ContentDialogResult.Primary)
         {
             viewModel.Edit(principal, d => d with { MemberOf = [.. selected.Order(StringComparer.Ordinal)] });
         }
@@ -204,11 +204,11 @@ internal static class UsersRolesDialogs
         var list = new ListView { SelectionMode = ListViewSelectionMode.Single, MaxHeight = 320, ItemsSource = candidates.Select(r => r.Title).ToArray() };
         var status = new TextBlock { Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"] };
         var panel = new StackPanel { Spacing = 8, MinWidth = 380 };
-        panel.Children.Add(new TextBlock { Text = $"Copy privileges to {target.DisplayName} from:", TextWrapping = TextWrapping.Wrap });
+        panel.Children.Add(new TextBlock { Text = Strings.Format("Users/CopyPrivilegesPrompt", target.DisplayName), TextWrapping = TextWrapping.Wrap });
         panel.Children.Add(list);
         panel.Children.Add(status);
 
-        var dialog = dialogs.Create("Copy privileges", panel, "Copy", "Cancel");
+        var dialog = dialogs.Create(Strings.Get("Users/CopyPrivilegesTitle"), panel, Strings.Get("Common/Copy"), Strings.Get("Common/Cancel"));
         dialog.IsPrimaryButtonEnabled = false;
         list.SelectionChanged += async (_, _) =>
         {
@@ -219,7 +219,7 @@ internal static class UsersRolesDialogs
             }
 
             var source = candidates[list.SelectedIndex].Ref;
-            status.Text = "Loading privileges…";
+            status.Text = Strings.Get("Users/LoadingPrivileges");
             try
             {
                 await viewModel.EnsureGrantsAsync(source);
@@ -243,25 +243,25 @@ internal static class UsersRolesDialogs
     {
         var candidates = viewModel.ReassignCandidates(principal);
         var choice = new RadioButtons { SelectedIndex = candidates.Count > 0 ? 0 : 1 };
-        choice.Items.Add("Reassign owned objects");
-        choice.Items.Add("Drop owned objects");
-        var target = new ComboBox { Header = "Reassign to", ItemsSource = candidates.Select(c => c.DisplayName).ToArray(), MinWidth = 240 };
+        choice.Items.Add(Strings.Get("Users/ReassignOwned"));
+        choice.Items.Add(Strings.Get("Users/DropOwned"));
+        var target = new ComboBox { Header = Strings.Get("Users/ReassignTo"),ItemsSource = candidates.Select(c => c.DisplayName).ToArray(), MinWidth = 240 };
         var connected = viewModel.ConnectedPrincipal is { } me ? candidates.ToList().IndexOf(me) : -1;
         target.SelectedIndex = connected >= 0 ? connected : candidates.Count > 0 ? 0 : -1;
         var warning = new TextBlock
         {
-            Text = "Tables, views and functions owned by this role in the current database will be deleted.",
+            Text = Strings.Get("Users/DropOwnedWarning"),
             TextWrapping = TextWrapping.Wrap,
             Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
         };
 
         var panel = new StackPanel { Spacing = 12, MaxWidth = 460 };
-        panel.Children.Add(new TextBlock { Text = "Choose what happens to them when the role is dropped.", TextWrapping = TextWrapping.Wrap });
+        panel.Children.Add(new TextBlock { Text = Strings.Get("Users/DropOwnedPrompt"), TextWrapping = TextWrapping.Wrap });
         panel.Children.Add(choice);
         panel.Children.Add(target);
         panel.Children.Add(warning);
 
-        var dialog = dialogs.Create($"“{principal.DisplayName}” owns database objects", panel, "Drop Role", "Cancel");
+        var dialog = dialogs.Create(Strings.Format("Users/OwnsObjectsTitle", principal.DisplayName), panel, Strings.Get("Users/DropRoleButton"), Strings.Get("Common/Cancel"));
         dialog.PrimaryButtonStyle = (Style)Application.Current.Resources["AccentButtonStyle"];
         void Update()
         {
@@ -304,7 +304,7 @@ internal static class UsersRolesDialogs
         public PasswordField(string header)
         {
             _box = new PasswordBox { Header = header };
-            var generate = new Button { Content = "Generate", VerticalAlignment = VerticalAlignment.Bottom };
+            var generate = new Button { Content = Strings.Get("Users/GenerateButton"),VerticalAlignment = VerticalAlignment.Bottom };
             generate.Click += (_, _) =>
             {
                 var password = PasswordGenerator.Generate();

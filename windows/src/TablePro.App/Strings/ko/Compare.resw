@@ -1,0 +1,346 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="BatchesCommitNote" xml:space="preserve">
+    <value>배치는 진행되는 대로 커밋되므로 실패하더라도 그 전의 배치는 유지됩니다.</value>
+  </data>
+  <data name="CannotMigrateMessage" xml:space="preserve">
+    <value>{0}은(는) 읽기 전용이거나 앱에서 구조를 변경할 수 없습니다.</value>
+  </data>
+  <data name="CannotMigrateTitle" xml:space="preserve">
+    <value>마이그레이션할 수 없음</value>
+  </data>
+  <data name="CannotRollBackNote" xml:space="preserve">
+    <value>{0}은(는) 롤백할 수 없으므로 실패하더라도 그 전의 문은 적용된 상태로 남습니다.</value>
+  </data>
+  <data name="CannotSyncTitle" xml:space="preserve">
+    <value>동기화할 수 없음</value>
+  </data>
+  <data name="ChooseTables" xml:space="preserve">
+    <value>양쪽에서 테이블을 선택하세요.</value>
+  </data>
+  <data name="CommitInBatches" xml:space="preserve">
+    <value>배치 단위로 커밋</value>
+  </data>
+  <data name="CompareButton" xml:space="preserve">
+    <value>비교</value>
+  </data>
+  <data name="CompareStructureButton" xml:space="preserve">
+    <value>구조 비교</value>
+  </data>
+  <data name="ComparedIn" xml:space="preserve">
+    <value>{0:N1}초 만에 비교함</value>
+  </data>
+  <data name="ComparingWith" xml:space="preserve">
+    <value>{0}과(와) 비교 중</value>
+  </data>
+  <data name="ComparisonStopped" xml:space="preserve">
+    <value>비교가 중지되었습니다.</value>
+  </data>
+  <data name="ConnectingTo" xml:space="preserve">
+    <value>{0}에 연결 중…</value>
+  </data>
+  <data name="CopyMigrationScript" xml:space="preserve">
+    <value>마이그레이션 스크립트 복사</value>
+  </data>
+  <data name="CopySyncScript" xml:space="preserve">
+    <value>동기화 스크립트 복사</value>
+  </data>
+  <data name="CouldNotCompareStructureTitle" xml:space="preserve">
+    <value>구조를 비교할 수 없음</value>
+  </data>
+  <data name="CouldNotCompareTitle" xml:space="preserve">
+    <value>비교할 수 없음</value>
+  </data>
+  <data name="CouldNotConnectTitle" xml:space="preserve">
+    <value>{0}에 연결할 수 없습니다</value>
+  </data>
+  <data name="DataProgress_One" xml:space="preserve">
+    <value>원본 {1:N0}행과 대상 {2:N0}행 비교함, 차이 {0:N0}개…</value>
+  </data>
+  <data name="DataProgress_Other" xml:space="preserve">
+    <value>원본 {1:N0}행과 대상 {2:N0}행 비교함, 차이 {0:N0}개…</value>
+  </data>
+  <data name="DeleteExtraRows" xml:space="preserve">
+    <value>추가 행 삭제</value>
+  </data>
+  <data name="DestructiveNote" xml:space="preserve">
+    <value>일부 문은 테이블이나 열을 삭제하며, 그 안의 데이터는 손실됩니다.</value>
+  </data>
+  <data name="DiffSummary" xml:space="preserve">
+    <value>원본에만 {0:N0} · 대상에만 {1:N0} · 변경됨 {2:N0} · 동일 {3:N0}</value>
+  </data>
+  <data name="DropExtraColumns" xml:space="preserve">
+    <value>대상에만 있는 열 삭제</value>
+  </data>
+  <data name="DropExtraTables" xml:space="preserve">
+    <value>대상에만 있는 테이블 삭제</value>
+  </data>
+  <data name="FloatTolerance" xml:space="preserve">
+    <value>부동 소수점 허용 오차</value>
+  </data>
+  <data name="GridDelete" xml:space="preserve">
+    <value>삭제</value>
+  </data>
+  <data name="GridInsert" xml:space="preserve">
+    <value>삽입</value>
+  </data>
+  <data name="GridKeyColumn" xml:space="preserve">
+    <value>{0} (키)</value>
+  </data>
+  <data name="GridReadOnly" xml:space="preserve">
+    <value>비교 결과는 읽기 전용입니다. 테이블 자체를 편집한 다음 다시 비교하세요.</value>
+  </data>
+  <data name="GridSame" xml:space="preserve">
+    <value>동일</value>
+  </data>
+  <data name="GridSkipped" xml:space="preserve">
+    <value>건너뜀</value>
+  </data>
+  <data name="GridSyncColumn" xml:space="preserve">
+    <value>동기화</value>
+  </data>
+  <data name="GridUpdate" xml:space="preserve">
+    <value>업데이트</value>
+  </data>
+  <data name="InsertMissingRows" xml:space="preserve">
+    <value>누락된 행 삽입</value>
+  </data>
+  <data name="KeyColumns" xml:space="preserve">
+    <value>키 열</value>
+  </data>
+  <data name="KeyColumnsPlaceholder" xml:space="preserve">
+    <value>기본 키</value>
+  </data>
+  <data name="KeysIgnoreCase" xml:space="preserve">
+    <value>키의 대/소문자 무시</value>
+  </data>
+  <data name="LeaveOutColumns" xml:space="preserve">
+    <value>제외할 열</value>
+  </data>
+  <data name="MigrateButton" xml:space="preserve">
+    <value>마이그레이션</value>
+  </data>
+  <data name="MigrateReviewTitle" xml:space="preserve">
+    <value>{0} 마이그레이션</value>
+  </data>
+  <data name="Migrated_One" xml:space="preserve">
+    <value>{1} 마이그레이션됨: 문 {0:N0}개.</value>
+  </data>
+  <data name="Migrated_Other" xml:space="preserve">
+    <value>{1} 마이그레이션됨: 문 {0:N0}개.</value>
+  </data>
+  <data name="MigrationStoppedMessage_One" xml:space="preserve">
+    <value>{1}
+
+그 전에 문 {0:N0}개가 실행되었습니다. 트랜잭션 DDL을 지원하지 않는 엔진에서는 해당 변경 내용이 유지됩니다.</value>
+  </data>
+  <data name="MigrationStoppedMessage_Other" xml:space="preserve">
+    <value>{1}
+
+그 전에 문 {0:N0}개가 실행되었습니다. 트랜잭션 DDL을 지원하지 않는 엔진에서는 해당 변경 내용이 유지됩니다.</value>
+  </data>
+  <data name="MigrationStoppedTitle" xml:space="preserve">
+    <value>마이그레이션이 중지되었습니다</value>
+  </data>
+  <data name="ModeData" xml:space="preserve">
+    <value>데이터</value>
+  </data>
+  <data name="ModeStructure" xml:space="preserve">
+    <value>구조</value>
+  </data>
+  <data name="MoreStatements_One" xml:space="preserve">
+    <value>{1} 이와 비슷한 문 {0:N0}개 더 있음</value>
+  </data>
+  <data name="MoreStatements_Other" xml:space="preserve">
+    <value>{1} 이와 비슷한 문 {0:N0}개 더 있음</value>
+  </data>
+  <data name="NotScripted" xml:space="preserve">
+    <value>스크립트에 포함되지 않음: {0}</value>
+  </data>
+  <data name="NothingToMigrateTitle" xml:space="preserve">
+    <value>마이그레이션할 항목 없음</value>
+  </data>
+  <data name="NothingToSyncMessage" xml:space="preserve">
+    <value>쓰기로 선택된 차이가 없습니다. 삽입, 업데이트 또는 삭제를 켜거나 건너뛴 행을 포함하세요.</value>
+  </data>
+  <data name="NothingToSyncTitle" xml:space="preserve">
+    <value>동기화할 항목 없음</value>
+  </data>
+  <data name="Options" xml:space="preserve">
+    <value>옵션</value>
+  </data>
+  <data name="PasswordHeader" xml:space="preserve">
+    <value>암호</value>
+  </data>
+  <data name="PasswordPrompt" xml:space="preserve">
+    <value>{0}과(와) 비교하려면 해당 연결의 암호를 입력하세요.</value>
+  </data>
+  <data name="ReadOnlyTargetMessage" xml:space="preserve">
+    <value>{0}은(는) 읽기 전용이므로 동기화할 수 없습니다.</value>
+  </data>
+  <data name="ReadOnlyTargetTitle" xml:space="preserve">
+    <value>읽기 전용 대상</value>
+  </data>
+  <data name="ReadingSourceStructure" xml:space="preserve">
+    <value>원본 구조를 읽는 중… {0:N0}/{1:N0}</value>
+  </data>
+  <data name="ReadingStructure" xml:space="preserve">
+    <value>구조를 읽는 중…</value>
+  </data>
+  <data name="ReadingTargetStructure" xml:space="preserve">
+    <value>대상 구조를 읽는 중… {0:N0}/{1:N0}</value>
+  </data>
+  <data name="ReviewAndMigrate" xml:space="preserve">
+    <value>검토 후 마이그레이션…</value>
+  </data>
+  <data name="ReviewAndSync" xml:space="preserve">
+    <value>검토 후 동기화…</value>
+  </data>
+  <data name="RowLimit" xml:space="preserve">
+    <value>행 제한</value>
+  </data>
+  <data name="RowLimitPlaceholder" xml:space="preserve">
+    <value>모든 행</value>
+  </data>
+  <data name="ShowChanged" xml:space="preserve">
+    <value>변경됨</value>
+  </data>
+  <data name="ShowChangedCount" xml:space="preserve">
+    <value>변경됨 ({0:N0})</value>
+  </data>
+  <data name="ShowOnlyInSource" xml:space="preserve">
+    <value>원본에만 있음</value>
+  </data>
+  <data name="ShowOnlyInSourceCount" xml:space="preserve">
+    <value>원본에만 있음 ({0:N0})</value>
+  </data>
+  <data name="ShowOnlyInTarget" xml:space="preserve">
+    <value>대상에만 있음</value>
+  </data>
+  <data name="ShowOnlyInTargetCount" xml:space="preserve">
+    <value>대상에만 있음 ({0:N0})</value>
+  </data>
+  <data name="ShowingFirstDifferences_One" xml:space="preserve">
+    <value>처음 {0:N0}개 차이 표시</value>
+  </data>
+  <data name="ShowingFirstDifferences_Other" xml:space="preserve">
+    <value>처음 {0:N0}개 차이 표시</value>
+  </data>
+  <data name="SkipOrIncludeRows" xml:space="preserve">
+    <value>선택한 행 건너뛰기 또는 포함</value>
+  </data>
+  <data name="SkippedNullKey_One" xml:space="preserve">
+    <value>NULL 키로 인해 {0:N0}개 건너뜀</value>
+  </data>
+  <data name="SkippedNullKey_Other" xml:space="preserve">
+    <value>NULL 키로 인해 {0:N0}개 건너뜀</value>
+  </data>
+  <data name="SourceLabel" xml:space="preserve">
+    <value>소스</value>
+  </data>
+  <data name="SourceOnlyColumns" xml:space="preserve">
+    <value>원본에만 있어 비교하지 않음: {0}</value>
+  </data>
+  <data name="SourceTable" xml:space="preserve">
+    <value>원본 테이블</value>
+  </data>
+  <data name="SourceWhere" xml:space="preserve">
+    <value>원본 WHERE</value>
+  </data>
+  <data name="StoppedAtRowLimit" xml:space="preserve">
+    <value>행 제한에서 중지됨</value>
+  </data>
+  <data name="StructuresAlreadyMatch" xml:space="preserve">
+    <value>구조가 이미 일치합니다.</value>
+  </data>
+  <data name="StructuresMatch" xml:space="preserve">
+    <value>구조가 일치합니다.</value>
+  </data>
+  <data name="SyncButton" xml:space="preserve">
+    <value>동기화</value>
+  </data>
+  <data name="SyncProgress" xml:space="preserve">
+    <value>{1:N0}개 중 {0:N0}개 적용함…</value>
+  </data>
+  <data name="SyncReviewTitle" xml:space="preserve">
+    <value>{0} 동기화: 삽입 {1:N0}개, 업데이트 {2:N0}개, 삭제 {3:N0}개</value>
+  </data>
+  <data name="SyncStoppedBatchesKept_One" xml:space="preserve">
+    <value>{1} 그 전에 배치 {2:N0}개 중 {0:N0}개가 커밋되었습니다.</value>
+  </data>
+  <data name="SyncStoppedBatchesKept_Other" xml:space="preserve">
+    <value>{1} 그 전에 배치 {2:N0}개 중 {0:N0}개가 커밋되었습니다.</value>
+  </data>
+  <data name="SyncStoppedNothingChanged" xml:space="preserve">
+    <value>{0} 변경된 내용이 없습니다.</value>
+  </data>
+  <data name="SyncStoppedTitle" xml:space="preserve">
+    <value>동기화가 중지되었습니다</value>
+  </data>
+  <data name="Synced_One" xml:space="preserve">
+    <value>{1} 동기화됨: {0:N0}행.</value>
+  </data>
+  <data name="Synced_Other" xml:space="preserve">
+    <value>{1} 동기화됨: {0:N0}행.</value>
+  </data>
+  <data name="TabTitle" xml:space="preserve">
+    <value>비교</value>
+  </data>
+  <data name="TableChanges_One" xml:space="preserve">
+    <value>변경 {0:N0}개</value>
+  </data>
+  <data name="TableChanges_Other" xml:space="preserve">
+    <value>변경 {0:N0}개</value>
+  </data>
+  <data name="TableIdentical" xml:space="preserve">
+    <value>동일</value>
+  </data>
+  <data name="TableOnlyInSourceCreated" xml:space="preserve">
+    <value>원본에만 있음, 생성 예정</value>
+  </data>
+  <data name="TableOnlyInTarget" xml:space="preserve">
+    <value>대상에만 있음</value>
+  </data>
+  <data name="TableOnlyInTargetDropped" xml:space="preserve">
+    <value>대상에만 있음, 삭제 예정</value>
+  </data>
+  <data name="TablesDiffer_One" xml:space="preserve">
+    <value>테이블 {0:N0}개가 다름</value>
+  </data>
+  <data name="TablesDiffer_Other" xml:space="preserve">
+    <value>테이블 {0:N0}개가 다름</value>
+  </data>
+  <data name="TargetCannotExpress" xml:space="preserve">
+    <value>대상에서 표현할 수 없음: {0}</value>
+  </data>
+  <data name="TargetConnection" xml:space="preserve">
+    <value>대상 연결</value>
+  </data>
+  <data name="TargetLabel" xml:space="preserve">
+    <value>대상</value>
+  </data>
+  <data name="TargetOnlyColumns" xml:space="preserve">
+    <value>대상에만 있어 그대로 둠: {0}</value>
+  </data>
+  <data name="TargetTable" xml:space="preserve">
+    <value>대상 테이블</value>
+  </data>
+  <data name="TargetWhere" xml:space="preserve">
+    <value>대상 WHERE</value>
+  </data>
+  <data name="UpdateChangedRows" xml:space="preserve">
+    <value>변경된 행 업데이트</value>
+  </data>
+</root>

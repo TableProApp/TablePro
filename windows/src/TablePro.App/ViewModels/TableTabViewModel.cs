@@ -21,14 +21,23 @@ public enum TableTabSection
     Definition,
 }
 
+/// <summary>A filter operator as the operator list shows it, in the UI language.</summary>
+public sealed record FilterOperatorChoice(FilterOperator Value)
+{
+    public override string ToString() => TableNames.Operator(Value);
+}
+
 /// <summary>One editable filter row of the filter strip.</summary>
 public sealed partial class FilterRuleViewModel(IReadOnlyList<string> columns) : ObservableObject
 {
-    public static IReadOnlyList<FilterOperator> AllOperators { get; } = Enum.GetValues<FilterOperator>();
+    public static IReadOnlyList<FilterOperatorChoice> AllOperators { get; } = [.. Enum.GetValues<FilterOperator>().Select(op => new FilterOperatorChoice(op))];
+
+    /// <summary>The entry that stands for every column; a display text, so it follows the UI language.</summary>
+    public static string AllColumns => Strings.Get("Table/AnyColumn");
 
     public IReadOnlyList<string> Columns { get; } = columns;
 
-    public IReadOnlyList<FilterOperator> Operators => AllOperators;
+    public IReadOnlyList<FilterOperatorChoice> Operators => AllOperators;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ColumnItem))]
@@ -47,12 +56,12 @@ public sealed partial class FilterRuleViewModel(IReadOnlyList<string> columns) :
 
     public object OperatorItem
     {
-        get => Operator;
+        get => AllOperators.First(choice => choice.Value == Operator);
         set
         {
-            if (value is FilterOperator op)
+            if (value is FilterOperatorChoice choice)
             {
-                Operator = op;
+                Operator = choice.Value;
             }
         }
     }
@@ -67,8 +76,6 @@ public sealed partial class FilterRuleViewModel(IReadOnlyList<string> columns) :
     public partial bool Enabled { get; set; } = true;
 
     public FilterRule ToRule() => new(Column == AllColumns ? null : Column, Operator, Value, SecondValue, Enabled);
-
-    public const string AllColumns = "Any column";
 }
 
 /// <summary>
@@ -183,7 +190,7 @@ public sealed partial class TableTabViewModel : TabViewModel
 
     public bool HasPendingChanges => PendingChanges > 0;
 
-    public string SaveText => PendingChanges == 0 ? "Save" : string.Create(CultureInfo.CurrentCulture, $"Save {PendingChanges:N0}");
+    public string SaveText => PendingChanges == 0 ? Strings.Get("Common/Save") : Strings.Plural("Table/SaveChangesButton", PendingChanges);
 
     public string PageText
     {
@@ -191,18 +198,18 @@ public sealed partial class TableTabViewModel : TabViewModel
         {
             if (LoadedRows == 0)
             {
-                return TotalRows is 0 ? "No rows" : "No rows on this page";
+                return TotalRows is 0 ? Strings.Get("Table/NoRows") : Strings.Get("Table/NoRowsOnPage");
             }
 
             var first = Offset + 1;
             var last = Offset + LoadedRows;
             return TotalRows is { } total
-                ? string.Create(CultureInfo.CurrentCulture, $"{first:N0}–{last:N0} of {total:N0}")
+                ? Strings.Plural("Table/PageRangeOfTotal", total, first, last)
                 : string.Create(CultureInfo.CurrentCulture, $"{first:N0}–{last:N0}");
         }
     }
 
-    public override string? UnsavedWork => PendingChanges > 0 ? $"{Title} has {PendingChanges} unsaved changes." : null;
+    public override string? UnsavedWork => PendingChanges > 0 ? Strings.Plural("Table/UnsavedChanges", PendingChanges, Title) : null;
 
     public TableEditBuffer? Buffer => _buffer;
 
@@ -215,7 +222,7 @@ public sealed partial class TableTabViewModel : TabViewModel
     [RelayCommand]
     public async Task LoadAsync()
     {
-        if (PendingChanges > 0 && !await _context.Dialogs.ConfirmAsync("Discard changes?", $"Reloading drops {PendingChanges} unsaved changes.", "Discard", destructive: true))
+        if (PendingChanges > 0 && !await _context.Dialogs.ConfirmAsync(Strings.Get("Table/DiscardChangesTitle"), Strings.Plural("Table/ReloadDropsChanges", PendingChanges), Strings.Get("Common/Discard"), destructive: true))
         {
             return;
         }
@@ -224,7 +231,7 @@ public sealed partial class TableTabViewModel : TabViewModel
         _load = new CancellationTokenSource();
         var token = _load.Token;
         IsBusy = true;
-        StatusText = "Loading…";
+        StatusText = Strings.Get("Table/Loading");
         try
         {
             var filter = BuildFilter();
@@ -256,7 +263,7 @@ public sealed partial class TableTabViewModel : TabViewModel
         catch (Exception ex)
         {
             StatusText = ex.Message;
-            await _context.Dialogs.ShowErrorAsync($"Could not load {Title}", ex.Message);
+            await _context.Dialogs.ShowErrorAsync(Strings.Format("Table/LoadFailedTitle", Title), ex.Message);
         }
         finally
         {
@@ -424,20 +431,20 @@ public sealed partial class TableTabViewModel : TabViewModel
         var profile = _context.Session.Profile;
         if (profile.IsReadOnly)
         {
-            await _context.Dialogs.ShowErrorAsync("Read-only connection", "Safe Mode is Read-Only on this connection, so edits cannot be saved.");
+            await _context.Dialogs.ShowErrorAsync(Strings.Get("Table/ReadOnlyConnectionTitle"), Strings.Get("Table/ReadOnlyCannotSave"));
             return;
         }
 
         var preview = _context.Session.Database is IChangePreviewProvider custom
             ? custom.PreviewChanges(Table.Name, changes)
             : changes.Select(c => ChangeSqlBuilder.Preview(_context.Session.Dialect, Table.Name, c)).ToArray();
-        if (profile.SafeMode.RequiresConfirmation() && !await _context.Dialogs.ReviewSqlAsync("Save changes", preview, "Save"))
+        if (profile.SafeMode.RequiresConfirmation() && !await _context.Dialogs.ReviewSqlAsync(Strings.Get("Table/SaveChangesReviewTitle"), preview, Strings.Get("Common/Save")))
         {
             return;
         }
 
         IsBusy = true;
-        StatusText = "Saving…";
+        StatusText = Strings.Get("Table/Saving");
         var started = DateTime.UtcNow;
         try
         {
@@ -450,13 +457,13 @@ public sealed partial class TableTabViewModel : TabViewModel
             // Journal what the save committed before the buffer forgets it, so Data Rewind can take it back.
             RewindJournalService.Capture(_context.Session, Table.Name, _buffer, Structure?.PrimaryKey ?? []);
             _buffer.Discard();
-            _context.Notify(string.Create(CultureInfo.CurrentCulture, $"Saved {changes.Count:N0} changes ({affected:N0} rows)."));
+            _context.Notify(Strings.Plural("Table/SavedChanges", changes.Count, Strings.Plural("Table/RowCount", affected)));
             await LoadAsync();
         }
         catch (Exception ex)
         {
             StatusText = ex.Message;
-            await _context.Dialogs.ShowErrorAsync("Nothing was saved", ex.Message);
+            await _context.Dialogs.ShowErrorAsync(Strings.Get("Table/NothingSavedTitle"), ex.Message);
         }
         finally
         {
@@ -478,7 +485,7 @@ public sealed partial class TableTabViewModel : TabViewModel
     {
         if (_context.Session.Database is not ISchemaDdlProvider ddl)
         {
-            await _context.Dialogs.ShowErrorAsync("Not supported", "This engine cannot change structure from the app.");
+            await _context.Dialogs.ShowErrorAsync(Strings.Get("Table/NotSupportedTitle"), Strings.Get("Table/CannotChangeStructure"));
             return false;
         }
 
@@ -490,23 +497,23 @@ public sealed partial class TableTabViewModel : TabViewModel
         catch (ArgumentException ex)
         {
             // A value the engine's grammar cannot take, such as a fill factor of 500, is refused before any SQL is shown.
-            await _context.Dialogs.ShowErrorAsync("Cannot make this change", ex.Message);
+            await _context.Dialogs.ShowErrorAsync(Strings.Get("Table/CannotMakeChangeTitle"), ex.Message);
             return false;
         }
 
         if (statements.Count == 0)
         {
-            await _context.Dialogs.ShowErrorAsync("Not supported", "This engine cannot express that change.");
+            await _context.Dialogs.ShowErrorAsync(Strings.Get("Table/NotSupportedTitle"), Strings.Get("Table/CannotExpressChange"));
             return false;
         }
 
         if (_context.Session.Profile.IsReadOnly)
         {
-            await _context.Dialogs.ShowErrorAsync("Read-only connection", "Safe Mode is Read-Only on this connection.");
+            await _context.Dialogs.ShowErrorAsync(Strings.Get("Table/ReadOnlyConnectionTitle"), Strings.Get("Table/SafeModeReadOnly"));
             return false;
         }
 
-        if (!await _context.Dialogs.ReviewSqlAsync("Review structure change", statements, "Apply"))
+        if (!await _context.Dialogs.ReviewSqlAsync(Strings.Get("Table/ReviewStructureChangeTitle"), statements, Strings.Get("Common/Apply")))
         {
             return false;
         }
@@ -520,7 +527,7 @@ public sealed partial class TableTabViewModel : TabViewModel
                 _context.History.Record(_context.Session.Profile, _context.Session.Database.CurrentDatabase, result, StatementKind.Ddl, "structure");
                 if (!result.Succeeded)
                 {
-                    await _context.Dialogs.ShowErrorAsync("The change failed", result.Error!);
+                    await _context.Dialogs.ShowErrorAsync(Strings.Get("Table/ChangeFailedTitle"), result.Error!);
                     return false;
                 }
             }
@@ -614,7 +621,7 @@ public sealed partial class TableTabViewModel : TabViewModel
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            DetailsError = "Could not read the checks, partitions and options: " + ex.Message;
+            DetailsError = Strings.Format("Table/DetailsReadFailed", ex.Message);
             return structure;
         }
     }
@@ -651,13 +658,13 @@ public sealed partial class TableTabViewModel : TabViewModel
         var profile = _context.Session.Profile;
         (IsEditable, ReadOnlyReason) = (Table.Kind, profile.SafeMode, Structure?.PrimaryKey.Count ?? 0) switch
         {
-            _ when profile.Descriptor.IsReadOnly => (false, $"{profile.Descriptor.DisplayName} connections are read-only."),
-            (ObjectKind.View or ObjectKind.MaterializedView, _, _) => (false, "Views are read-only."),
+            _ when profile.Descriptor.IsReadOnly => (false, Strings.Format("Table/EngineReadOnly", profile.Descriptor.DisplayName)),
+            (ObjectKind.View or ObjectKind.MaterializedView, _, _) => (false, Strings.Get("Table/ViewsReadOnly")),
 
             // Documents, keys and messages are rows too; their drivers refuse the edits their engine cannot make.
-            (not (ObjectKind.Table or ObjectKind.Collection or ObjectKind.Key or ObjectKind.Topic), _, _) => (false, "This object is read-only."),
-            (_, SafeModeLevel.ReadOnly, _) => (false, "Safe Mode is Read-Only on this connection."),
-            (_, _, 0) => (true, "No primary key: rows are matched on every column, and a save that hits duplicates is refused."),
+            (not (ObjectKind.Table or ObjectKind.Collection or ObjectKind.Key or ObjectKind.Topic), _, _) => (false, Strings.Get("Table/ObjectReadOnly")),
+            (_, SafeModeLevel.ReadOnly, _) => (false, Strings.Get("Table/SafeModeReadOnly")),
+            (_, _, 0) => (true, Strings.Get("Table/NoPrimaryKey")),
             _ => (true, null),
         };
     }
@@ -668,30 +675,34 @@ internal static class StructureTables
 {
     private static readonly ResultColumn Text = new("x", "text", typeof(string));
 
+    private static string Yes => Strings.Get("Table/CellYes");
+
+    private static string No => Strings.Get("Table/CellNo");
+
     public static ResultSet Columns(TableStructure s) => Build(
-        ["#", "Name", "Type", "Nullable", "Default", "Key", "Identity", "Comment"],
+        ["#", Strings.Get("Common/Name"), Strings.Get("Common/Type"), Strings.Get("Table/HeaderNullable"), Strings.Get("Table/HeaderDefault"), Strings.Get("Table/HeaderKey"), Strings.Get("Table/HeaderIdentity"), Strings.Get("Table/HeaderComment")],
         // Positions count from 1 here whatever the engine's catalog uses, and empty flags stay blank rather than NULL.
-        s.Columns.Select((c, i) => new object?[] { i + 1, c.Name, c.DataType, c.IsNullable ? "YES" : "NO", c.DefaultValue, c.IsPrimaryKey ? "PRI" : string.Empty, c.IsIdentity ? "YES" : string.Empty, c.Comment ?? string.Empty }));
+        s.Columns.Select((c, i) => new object?[] { i + 1, c.Name, c.DataType, c.IsNullable ? Yes : No, c.DefaultValue, c.IsPrimaryKey ? "PRI" : string.Empty, c.IsIdentity ? Yes : string.Empty, c.Comment ?? string.Empty }));
 
     public static ResultSet Indexes(TableStructure s) => Build(
-        ["Name", "Columns", "Unique", "Primary", "Method"],
-        s.Indexes.Select(i => new object?[] { i.Name, string.Join(", ", i.Columns), i.IsUnique ? "YES" : "NO", i.IsPrimary ? "YES" : "NO", i.Method }));
+        [Strings.Get("Common/Name"), Strings.Get("Table/HeaderColumns"), Strings.Get("Table/HeaderUnique"), Strings.Get("Table/HeaderPrimary"), Strings.Get("Table/HeaderMethod")],
+        s.Indexes.Select(i => new object?[] { i.Name, string.Join(", ", i.Columns), i.IsUnique ? Yes : No, i.IsPrimary ? Yes : No, i.Method }));
 
     public static ResultSet ForeignKeys(TableStructure s) => Build(
-        ["Name", "Columns", "References", "Referenced Columns", "On Update", "On Delete"],
+        [Strings.Get("Common/Name"), Strings.Get("Table/HeaderColumns"), Strings.Get("Table/HeaderReferences"), Strings.Get("Table/HeaderReferencedColumns"), Strings.Get("Table/HeaderOnUpdate"), Strings.Get("Table/HeaderOnDelete")],
         s.ForeignKeys.Select(f => new object?[] { f.Name, string.Join(", ", f.Columns), f.ReferencedTable.ToString(), string.Join(", ", f.ReferencedColumns), f.OnUpdate, f.OnDelete }));
 
     public static ResultSet Triggers(TableStructure s) => Build(
-        ["Name", "Timing", "Event", "Definition"],
+        [Strings.Get("Common/Name"), Strings.Get("Table/HeaderTiming"), Strings.Get("Table/HeaderEvent"), Strings.Get("Table/HeaderDefinition")],
         s.Triggers.Select(t => new object?[] { t.Name, t.Timing, t.Event, t.Definition }));
 
     public static ResultSet Checks(TableStructure s) => Build(
-        ["Name", "Expression", "Columns", "Validated"],
-        s.CheckConstraints.Select(c => new object?[] { c.Name, c.Expression, string.Join(", ", c.Columns), c.IsValidated ? "YES" : "NO" }));
+        [Strings.Get("Common/Name"), Strings.Get("Table/HeaderExpression"), Strings.Get("Table/HeaderColumns"), Strings.Get("Table/HeaderValidated")],
+        s.CheckConstraints.Select(c => new object?[] { c.Name, c.Expression, string.Join(", ", c.Columns), c.IsValidated ? Yes : No }));
 
     /// <summary>Rows follow the partition list's order, so row N of the grid is partition N of the structure.</summary>
     public static ResultSet Partitions(TableStructure s) => Build(
-        ["Name", "Subpartition Of", "Bound", "#", "Rows", "Size"],
+        [Strings.Get("Common/Name"), Strings.Get("Table/HeaderSubpartitionOf"), Strings.Get("Table/HeaderBound"), "#", Strings.Get("Table/HeaderRows"), Strings.Get("Table/HeaderSize")],
         (s.Partitioning?.Partitions ?? []).Select(p => new object?[]
         {
             p.Name,
@@ -703,8 +714,8 @@ internal static class StructureTables
         }));
 
     public static ResultSet Options(TableStructure s, IReadOnlyList<TableOptionSpec> editable) => Build(
-        ["Option", "Value", "Editable"],
-        s.Options.Select(o => new object?[] { o.Name, o.Value, editable.Any(e => e.Name == o.Name) ? "YES" : string.Empty }));
+        [Strings.Get("Table/HeaderOption"), Strings.Get("Common/Value"), Strings.Get("Table/HeaderEditable")],
+        s.Options.Select(o => new object?[] { o.Name, o.Value, editable.Any(e => e.Name == o.Name) ? Yes : string.Empty }));
 
     /// <summary>Bytes in the binary units Windows Explorer uses.</summary>
     public static string Size(long bytes)

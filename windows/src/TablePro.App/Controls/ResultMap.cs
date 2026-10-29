@@ -77,7 +77,7 @@ public sealed partial class ResultMap : UserControl
     {
         IsTabStop = true;
         UseSystemFocusVisuals = true;
-        AutomationProperties.SetName(this, "Map");
+        AutomationProperties.SetName(this, Strings.Get("Results/MapName"));
 
         _source.SelectionChanged += (_, _) =>
         {
@@ -88,9 +88,9 @@ public sealed partial class ResultMap : UserControl
             }
         };
 
-        var fit = ToolbarButton("", "Fit to result", (_, _) => FitToResult());
-        var zoomIn = ToolbarButton("", "Zoom in", (_, _) => ZoomBy(1.5));
-        var zoomOut = ToolbarButton("", "Zoom out", (_, _) => ZoomBy(1 / 1.5));
+        var fit = ToolbarButton("", Strings.Get("Results/MapFitToResult"), (_, _) => FitToResult());
+        var zoomIn = ToolbarButton("", Strings.Get("Results/MapZoomIn"), (_, _) => ZoomBy(1.5));
+        var zoomOut = ToolbarButton("", Strings.Get("Results/MapZoomOut"), (_, _) => ZoomBy(1 / 1.5));
 
         var toolbar = new Grid { Padding = new Thickness(12, 6, 12, 6), ColumnSpacing = 8 };
         toolbar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -100,7 +100,7 @@ public sealed partial class ResultMap : UserControl
         buttons.Children.Add(zoomOut);
         buttons.Children.Add(zoomIn);
         buttons.Children.Add(fit);
-        AutomationProperties.SetName(_source, "Map source");
+        AutomationProperties.SetName(_source, Strings.Get("Results/MapSourceName"));
         toolbar.Children.Add(_source);
         Grid.SetColumn(_status, 1);
         toolbar.Children.Add(_status);
@@ -120,7 +120,7 @@ public sealed partial class ResultMap : UserControl
         _canvas.PointerCaptureLost += (_, _) => EndDrag();
         _canvas.PointerWheelChanged += OnPointerWheelChanged;
         _canvas.SizeChanged += OnCanvasSizeChanged;
-        AutomationProperties.SetName(_canvas, "Map");
+        AutomationProperties.SetName(_canvas, Strings.Get("Results/MapName"));
 
         var host = new Border { Child = _canvas, BorderThickness = new Thickness(0, 1, 0, 0) };
         var surface = new Grid();
@@ -248,13 +248,13 @@ public sealed partial class ResultMap : UserControl
         var source = CurrentSource;
         if (result is null || source is null)
         {
-            Show(null, result is null ? string.Empty : "A map needs a geometry column, or latitude and longitude columns. This result has none.");
+            Show(null, result is null ? string.Empty : Strings.Get("Results/MapNoSource"));
             return;
         }
 
         if (result.RowCount == 0)
         {
-            Show(null, "Run a query to map its rows.");
+            Show(null, Strings.Get("Results/MapNoRows"));
             return;
         }
 
@@ -309,8 +309,8 @@ public sealed partial class ResultMap : UserControl
         }
         var diagnostics = scene?.Projection.Diagnostics;
         AutomationProperties.SetName(_canvas, diagnostics is null
-            ? "Map"
-            : string.Create(CultureInfo.CurrentCulture, $"Map of {diagnostics.DrawnShapes:N0} shapes from {diagnostics.DrawnRows:N0} rows"));
+            ? Strings.Get("Results/MapName")
+            : Strings.Format("Results/MapNameWithCounts", Strings.Plural("Results/MapShapes", diagnostics.DrawnShapes), Strings.Plural("Results/MapRows", diagnostics.DrawnRows)));
         if (_viewFollowsFit)
         {
             FitToResult();
@@ -492,7 +492,7 @@ public sealed partial class ResultMap : UserControl
             var longitude = k * lonStep;
             var (x, _) = _view.ToScreen(WebMercator.ToWorld(new GeographicCoordinate(longitude, 0)).X, 0);
             markup.Append(CultureInfo.InvariantCulture, $"M{x:0.#},{yTop:0.#}L{x:0.#},{yBottom:0.#} ");
-            AddLabel(Degrees(longitude, lonStep, 'E', 'W'), x + 3, yBottom - 16, brush);
+            AddLabel(Degrees(longitude, lonStep, Strings.Get("Results/MapEast"), Strings.Get("Results/MapWest")), x + 3, yBottom - 16, brush);
         }
 
         var xLeft = Math.Max(0, x0);
@@ -507,7 +507,7 @@ public sealed partial class ResultMap : UserControl
 
             var (_, y) = _view.ToScreen(0, WebMercator.ToWorld(new GeographicCoordinate(0, latitude)).Y);
             markup.Append(CultureInfo.InvariantCulture, $"M{xLeft:0.#},{y:0.#}L{xRight:0.#},{y:0.#} ");
-            AddLabel(Degrees(latitude, latStep, 'N', 'S'), xLeft + 4, y - 15, brush);
+            AddLabel(Degrees(latitude, latStep, Strings.Get("Results/MapNorth"), Strings.Get("Results/MapSouth")), xLeft + 4, y - 15, brush);
         }
 
         _graticule.Data = ParseGeometry(markup.ToString());
@@ -533,7 +533,7 @@ public sealed partial class ResultMap : UserControl
         return steps[^1];
     }
 
-    private static string Degrees(double value, double step, char positive, char negative)
+    private static string Degrees(double value, double step, string positive, string negative)
     {
         var decimals = step >= 1 ? 0 : (int)Math.Ceiling(-Math.Log10(step));
         var rounded = Math.Round(value, decimals);

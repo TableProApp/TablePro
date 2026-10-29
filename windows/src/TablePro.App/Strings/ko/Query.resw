@@ -1,0 +1,192 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AnalyzedPlanTab" xml:space="preserve">
+    <value>분석된 플랜</value>
+  </data>
+  <data name="ChartToggle.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>차트</value>
+  </data>
+  <data name="ChartToggle.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>차트로 표시</value>
+  </data>
+  <data name="ConfirmRunMessage" xml:space="preserve">
+    <value>안전 모드에서는 {0}에서 문을 실행하기 전에 확인합니다.</value>
+  </data>
+  <data name="ConfirmRunTitle" xml:space="preserve">
+    <value>이 문을 실행하시겠습니까?</value>
+  </data>
+  <data name="DoneAfter" xml:space="preserve">
+    <value>완료 · {0}</value>
+  </data>
+  <data name="ElapsedMilliseconds" xml:space="preserve">
+    <value>{0:N0} ms</value>
+  </data>
+  <data name="ElapsedSeconds" xml:space="preserve">
+    <value>{0:N2}초</value>
+  </data>
+  <data name="ElapsedUnderOneMillisecond" xml:space="preserve">
+    <value>&lt;1 ms</value>
+  </data>
+  <data name="EmptyHint.Text" xml:space="preserve">
+    <value>Ctrl+Enter는 캐럿 위치의 문을 실행하고 F5는 모두 실행합니다</value>
+  </data>
+  <data name="EmptyTitle.Text" xml:space="preserve">
+    <value>결과를 보려면 쿼리를 실행하세요</value>
+  </data>
+  <data name="ErrorBar.Title" xml:space="preserve">
+    <value>문 실행에 실패했습니다</value>
+  </data>
+  <data name="ExplainAnalyzeItem.Text" xml:space="preserve">
+    <value>설명 분석</value>
+  </data>
+  <data name="ExplainAnalyzeItem.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>문을 실행하여 플랜을 측정합니다</value>
+  </data>
+  <data name="ExplainItem.Text" xml:space="preserve">
+    <value>설명</value>
+  </data>
+  <data name="ExportButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>이 결과 내보내기</value>
+  </data>
+  <data name="ExportButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>이 결과 내보내기</value>
+  </data>
+  <data name="FailedAfter" xml:space="preserve">
+    <value>{0} 후 실패</value>
+  </data>
+  <data name="FixWithAiButton.Content" xml:space="preserve">
+    <value>AI로 수정</value>
+  </data>
+  <data name="FormatButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>SQL 서식 지정</value>
+  </data>
+  <data name="FormatButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>SQL 서식 지정 (Ctrl+Shift+F)</value>
+  </data>
+  <data name="InspectValue" xml:space="preserve">
+    <value>값 검사</value>
+  </data>
+  <data name="MapToggle.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>지도</value>
+  </data>
+  <data name="MapToggle.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>지도에 표시</value>
+  </data>
+  <data name="OpenFileButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>SQL 파일 열기</value>
+  </data>
+  <data name="OpenFileButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>SQL 파일 열기</value>
+  </data>
+  <data name="ParametersMessage_One" xml:space="preserve">
+    <value>문에 자리 표시자가 있습니다. 값을 입력하세요.</value>
+  </data>
+  <data name="ParametersMessage_Other" xml:space="preserve">
+    <value>문에 자리 표시자가 {0}개 있습니다. 값을 입력하세요.</value>
+  </data>
+  <data name="ParametersTitle" xml:space="preserve">
+    <value>매개변수</value>
+  </data>
+  <data name="PlanTab" xml:space="preserve">
+    <value>플랜</value>
+  </data>
+  <data name="QueryCancelled" xml:space="preserve">
+    <value>쿼리가 취소되었습니다.</value>
+  </data>
+  <data name="ReadOnlyMessage" xml:space="preserve">
+    <value>이 연결의 안전 모드가 읽기 전용이므로 데이터나 구조를 변경하는 문은 실행되지 않습니다.</value>
+  </data>
+  <data name="ReadOnlyTitle" xml:space="preserve">
+    <value>읽기 전용 연결</value>
+  </data>
+  <data name="ResultTabTitle" xml:space="preserve">
+    <value>결과 {0}</value>
+  </data>
+  <data name="RowsAffected_One" xml:space="preserve">
+    <value>{0:N0}행 영향 받음 · {1}</value>
+  </data>
+  <data name="RowsAffected_Other" xml:space="preserve">
+    <value>{0:N0}행 영향 받음 · {1}</value>
+  </data>
+  <data name="RowsReturned_One" xml:space="preserve">
+    <value>{0:N0}행 · {1}</value>
+  </data>
+  <data name="RowsReturned_Other" xml:space="preserve">
+    <value>{0:N0}행 · {1}</value>
+  </data>
+  <data name="RowsTruncated_One" xml:space="preserve">
+    <value>{0:N0}행(제한에 도달함, 서버에 더 있음) · {1}</value>
+  </data>
+  <data name="RowsTruncated_Other" xml:space="preserve">
+    <value>{0:N0}행(제한에 도달함, 서버에 더 있음) · {1}</value>
+  </data>
+  <data name="RunAllItem.Text" xml:space="preserve">
+    <value>모두 실행</value>
+  </data>
+  <data name="RunButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>선택 영역 또는 캐럿 위치의 문 실행</value>
+  </data>
+  <data name="RunButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>선택 영역 또는 캐럿 위치의 문 실행 (Ctrl+Enter)</value>
+  </data>
+  <data name="RunCurrentItem.Text" xml:space="preserve">
+    <value>현재 문 실행</value>
+  </data>
+  <data name="RunLabel.Text" xml:space="preserve">
+    <value>실행</value>
+  </data>
+  <data name="RunningStatements_One" xml:space="preserve">
+    <value>실행 중…</value>
+  </data>
+  <data name="RunningStatements_Other" xml:space="preserve">
+    <value>문 {0}개 실행 중…</value>
+  </data>
+  <data name="SaveFavoriteButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>즐겨찾기로 저장</value>
+  </data>
+  <data name="SaveFavoriteButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>즐겨찾기로 저장</value>
+  </data>
+  <data name="SaveFileButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>SQL 파일 저장</value>
+  </data>
+  <data name="SaveFileButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>SQL 파일 저장 (Ctrl+S)</value>
+  </data>
+  <data name="SavedFile" xml:space="preserve">
+    <value>{0} 저장됨</value>
+  </data>
+  <data name="SqlFileType" xml:space="preserve">
+    <value>SQL 파일</value>
+  </data>
+  <data name="StatementTabTitle" xml:space="preserve">
+    <value>SQL 문 {0}</value>
+  </data>
+  <data name="StopButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>실행 중인 쿼리 중지</value>
+  </data>
+  <data name="StopButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>실행 중인 쿼리 중지</value>
+  </data>
+  <data name="StoppedWithError" xml:space="preserve">
+    <value>오류로 중지됨 · {0}</value>
+  </data>
+  <data name="TabTitle" xml:space="preserve">
+    <value>쿼리 {0}</value>
+  </data>
+  <data name="UnsavedChanges" xml:space="preserve">
+    <value>{0}에 저장되지 않은 변경 내용이 있습니다.</value>
+  </data>
+</root>

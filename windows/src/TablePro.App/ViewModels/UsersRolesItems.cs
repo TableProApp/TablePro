@@ -66,7 +66,7 @@ public sealed partial class PrincipalRowItem : ObservableObject
         IsRole = row.Info.IsRole;
         Title = renamedTo is null ? row.DisplayName : $"{row.DisplayName} → {renamedTo.DisplayName}";
         Glyph = row.Info.IsRole ? "" : "";
-        Summary = row.AttributeSummary;
+        Summary = UsersNames.AttributeSummary(row.Info);
         SummaryVisibility = Summary.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
         StageGlyph = row.Stage switch
         {
@@ -75,10 +75,10 @@ public sealed partial class PrincipalRowItem : ObservableObject
             PrincipalStage.Dropped => "",
             _ => string.Empty,
         };
-        StageDescription = row.StageDescription ?? string.Empty;
+        StageDescription = UsersNames.StageDescription(row.Stage) ?? string.Empty;
         StageVisibility = row.Stage == PrincipalStage.Unchanged ? Visibility.Collapsed : Visibility.Visible;
         TitleOpacity = row.Stage == PrincipalStage.Dropped ? 0.5 : 1;
-        KindTitle = row.KindTitle;
+        KindTitle = UsersNames.KindTitle(row.Info.IsRole);
     }
 }
 

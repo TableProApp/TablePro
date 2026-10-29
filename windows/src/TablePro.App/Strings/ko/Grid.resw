@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="CellControlType" xml:space="preserve">
+    <value>셀</value>
+  </data>
+  <data name="CellEmpty" xml:space="preserve">
+    <value>비어 있음</value>
+  </data>
+  <data name="CellName" xml:space="preserve">
+    <value>{0}, {1}행</value>
+  </data>
+  <data name="ColumnCount_One" xml:space="preserve">
+    <value>{0}개 열</value>
+  </data>
+  <data name="ColumnCount_Other" xml:space="preserve">
+    <value>{0}개 열</value>
+  </data>
+  <data name="DefaultName" xml:space="preserve">
+    <value>결과</value>
+  </data>
+  <data name="InvalidValueForType" xml:space="preserve">
+    <value>'{0}'은(는) 올바른 {1} 값이 아닙니다.</value>
+  </data>
+  <data name="ResultReadOnly" xml:space="preserve">
+    <value>이 결과는 읽기 전용입니다.</value>
+  </data>
+  <data name="RowCount_One" xml:space="preserve">
+    <value>{0:N0}행</value>
+  </data>
+  <data name="RowCount_Other" xml:space="preserve">
+    <value>{0:N0}행</value>
+  </data>
+  <data name="RowsAndColumns" xml:space="preserve">
+    <value>{0}, {1}</value>
+  </data>
+  <data name="SelectAll" xml:space="preserve">
+    <value>전체 선택</value>
+  </data>
+  <data name="SortedAscending" xml:space="preserve">
+    <value>오름차순으로 정렬됨</value>
+  </data>
+  <data name="SortedDescending" xml:space="preserve">
+    <value>내림차순으로 정렬됨</value>
+  </data>
+  <data name="StatusDeletedRow" xml:space="preserve">
+    <value>삭제된 행</value>
+  </data>
+  <data name="StatusModified" xml:space="preserve">
+    <value>수정됨</value>
+  </data>
+  <data name="StatusNewRow" xml:space="preserve">
+    <value>새 행</value>
+  </data>
+  <data name="StatusNull" xml:space="preserve">
+    <value>null</value>
+  </data>
+  <data name="TableReadOnly" xml:space="preserve">
+    <value>이 테이블은 읽기 전용입니다.</value>
+  </data>
+  <data name="ValueNotAccepted" xml:space="preserve">
+    <value>값이 허용되지 않았습니다.</value>
+  </data>
+</root>

@@ -1,0 +1,335 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="CategoryApp" xml:space="preserve">
+    <value>App</value>
+    <comment>Section heading in Settings &gt; Keyboard for commands that act on the whole app.</comment>
+  </data>
+  <data name="CategoryConnections" xml:space="preserve">
+    <value>Connections</value>
+    <comment>Section heading in Settings &gt; Keyboard.</comment>
+  </data>
+  <data name="CategoryDataGrid" xml:space="preserve">
+    <value>Data Grid</value>
+    <comment>Section heading in Settings &gt; Keyboard for the table data grid's commands.</comment>
+  </data>
+  <data name="CategoryEditor" xml:space="preserve">
+    <value>Editor &amp; Query</value>
+    <comment>Section heading in Settings &gt; Keyboard for the SQL editor's commands.</comment>
+  </data>
+  <data name="CategoryNavigation" xml:space="preserve">
+    <value>Navigation</value>
+    <comment>Section heading in Settings &gt; Keyboard.</comment>
+  </data>
+  <data name="CommandCloseAllTabs" xml:space="preserve">
+    <value>Close All Tabs</value>
+    <comment>Keyboard shortcut command name, shown in Settings &gt; Keyboard.</comment>
+  </data>
+  <data name="CommandCloseOtherTabs" xml:space="preserve">
+    <value>Close Other Tabs</value>
+    <comment>Keyboard shortcut command name, shown in Settings &gt; Keyboard.</comment>
+  </data>
+  <data name="CommandCloseTab" xml:space="preserve">
+    <value>Close Tab</value>
+    <comment>Keyboard shortcut command name, shown in Settings &gt; Keyboard.</comment>
+  </data>
+  <data name="CommandDisconnect" xml:space="preserve">
+    <value>Disconnect</value>
+    <comment>Keyboard shortcut command name (a verb), shown in Settings &gt; Keyboard.</comment>
+  </data>
+  <data name="CommandErDiagram" xml:space="preserve">
+    <value>ER Diagram</value>
+    <comment>Keyboard shortcut command name, shown in Settings &gt; Keyboard. ER stands for entity-relationship.</comment>
+  </data>
+  <data name="CommandExecuteAllStatements" xml:space="preserve">
+    <value>Run All Statements</value>
+    <comment>Keyboard shortcut command name, shown in Settings &gt; Keyboard. Statements are SQL statements.</comment>
+  </data>
+  <data name="CommandExecuteQuery" xml:space="preserve">
+    <value>Run Current Statement</value>
+    <comment>Keyboard shortcut command name, shown in Settings &gt; Keyboard. The SQL statement under the cursor.</comment>
+  </data>
+  <data name="CommandExplainQuery" xml:space="preserve">
+    <value>Explain Query</value>
+    <comment>Keyboard shortcut command name, shown in Settings &gt; Keyboard. Shows the database's query plan (SQL EXPLAIN).</comment>
+  </data>
+  <data name="CommandExportDatabase" xml:space="preserve">
+    <value>Export Database</value>
+    <comment>Keyboard shortcut command name, shown in Settings &gt; Keyboard.</comment>
+  </data>
+  <data name="CommandFind" xml:space="preserve">
+    <value>Find</value>
+    <comment>Keyboard shortcut command name, shown in Settings &gt; Keyboard.</comment>
+  </data>
+  <data name="CommandFindAndReplace" xml:space="preserve">
+    <value>Find and Replace</value>
+    <comment>Keyboard shortcut command name, shown in Settings &gt; Keyboard.</comment>
+  </data>
+  <data name="CommandFindNext" xml:space="preserve">
+    <value>Find Next</value>
+    <comment>Keyboard shortcut command name, shown in Settings &gt; Keyboard.</comment>
+  </data>
+  <data name="CommandFindPrevious" xml:space="preserve">
+    <value>Find Previous</value>
+    <comment>Keyboard shortcut command name, shown in Settings &gt; Keyboard.</comment>
+  </data>
+  <data name="CommandFocusObjectList" xml:space="preserve">
+    <value>Focus Object List</value>
+    <comment>Keyboard shortcut command name, shown in Settings &gt; Keyboard. Moves keyboard focus to the sidebar's list of tables and other objects.</comment>
+  </data>
+  <data name="CommandFocusSidebarSearch" xml:space="preserve">
+    <value>Focus Sidebar Filter</value>
+    <comment>Keyboard shortcut command name, shown in Settings &gt; Keyboard. Moves keyboard focus to the sidebar's filter box.</comment>
+  </data>
+  <data name="CommandFormatQuery" xml:space="preserve">
+    <value>Format Query</value>
+    <comment>Keyboard shortcut command name, shown in Settings &gt; Keyboard.</comment>
+  </data>
+  <data name="CommandGoToDefinition" xml:space="preserve">
+    <value>Go to Definition</value>
+    <comment>Keyboard shortcut command name, shown in Settings &gt; Keyboard. Use the term code editors use in this language.</comment>
+  </data>
+  <data name="CommandManageConnections" xml:space="preserve">
+    <value>Manage Connections</value>
+    <comment>Keyboard shortcut command name, shown in Settings &gt; Keyboard.</comment>
+  </data>
+  <data name="CommandNewTab" xml:space="preserve">
+    <value>New Tab</value>
+    <comment>Keyboard shortcut command name, shown in Settings &gt; Keyboard.</comment>
+  </data>
+  <data name="CommandNextQueryIssue" xml:space="preserve">
+    <value>Next Query Issue</value>
+    <comment>Keyboard shortcut command name, shown in Settings &gt; Keyboard. Jumps to the next problem found in the SQL.</comment>
+  </data>
+  <data name="CommandOpenSettings" xml:space="preserve">
+    <value>Settings</value>
+    <comment>Keyboard shortcut command name, shown in Settings &gt; Keyboard. Opens the Settings window.</comment>
+  </data>
+  <data name="CommandPreviousQueryIssue" xml:space="preserve">
+    <value>Previous Query Issue</value>
+    <comment>Keyboard shortcut command name, shown in Settings &gt; Keyboard. Jumps to the previous problem found in the SQL.</comment>
+  </data>
+  <data name="CommandQuickSwitcher" xml:space="preserve">
+    <value>Open Quickly</value>
+    <comment>Keyboard shortcut command name, shown in Settings &gt; Keyboard. Opens a search box to jump to any table or tab.</comment>
+  </data>
+  <data name="CommandRenameSymbol" xml:space="preserve">
+    <value>Rename Symbol</value>
+    <comment>Keyboard shortcut command name, shown in Settings &gt; Keyboard. Use the term code editors use in this language.</comment>
+  </data>
+  <data name="CommandRunSqlFile" xml:space="preserve">
+    <value>Run SQL File</value>
+    <comment>Keyboard shortcut command name, shown in Settings &gt; Keyboard.</comment>
+  </data>
+  <data name="CommandSaveFile" xml:space="preserve">
+    <value>Save File</value>
+    <comment>Keyboard shortcut command name, shown in Settings &gt; Keyboard.</comment>
+  </data>
+  <data name="CommandSearchDatabase" xml:space="preserve">
+    <value>Search Database</value>
+    <comment>Keyboard shortcut command name, shown in Settings &gt; Keyboard.</comment>
+  </data>
+  <data name="CommandServerDashboard" xml:space="preserve">
+    <value>Server Dashboard</value>
+    <comment>Keyboard shortcut command name, shown in Settings &gt; Keyboard.</comment>
+  </data>
+  <data name="CommandShowFavoritesList" xml:space="preserve">
+    <value>Show Favorites</value>
+    <comment>Keyboard shortcut command name, shown in Settings &gt; Keyboard. Favorites are saved SQL queries.</comment>
+  </data>
+  <data name="CommandShowNextTab" xml:space="preserve">
+    <value>Show Next Tab</value>
+    <comment>Keyboard shortcut command name, shown in Settings &gt; Keyboard.</comment>
+  </data>
+  <data name="CommandShowPreviousTab" xml:space="preserve">
+    <value>Show Previous Tab</value>
+    <comment>Keyboard shortcut command name, shown in Settings &gt; Keyboard.</comment>
+  </data>
+  <data name="CommandShowQuickInfo" xml:space="preserve">
+    <value>Show Quick Info</value>
+    <comment>Keyboard shortcut command name, shown in Settings &gt; Keyboard. Shows a tooltip about the word under the cursor.</comment>
+  </data>
+  <data name="CommandToggleAssistant" xml:space="preserve">
+    <value>Toggle Assistant</value>
+    <comment>Keyboard shortcut command name, shown in Settings &gt; Keyboard. Shows or hides the AI assistant pane.</comment>
+  </data>
+  <data name="CommandToggleComment" xml:space="preserve">
+    <value>Toggle Comment</value>
+    <comment>Keyboard shortcut command name, shown in Settings &gt; Keyboard. Comments or uncomments the selected SQL lines.</comment>
+  </data>
+  <data name="CommandToggleHistory" xml:space="preserve">
+    <value>Toggle History</value>
+    <comment>Keyboard shortcut command name, shown in Settings &gt; Keyboard. Shows or hides the query history pane.</comment>
+  </data>
+  <data name="CommandToggleSqlFiles" xml:space="preserve">
+    <value>Toggle SQL Files</value>
+    <comment>Keyboard shortcut command name, shown in Settings &gt; Keyboard. Shows or hides the SQL files pane.</comment>
+  </data>
+  <data name="CommandToggleTableBrowser" xml:space="preserve">
+    <value>Toggle Sidebar</value>
+    <comment>Keyboard shortcut command name, shown in Settings &gt; Keyboard. Shows or hides the sidebar.</comment>
+  </data>
+  <data name="ConflictCommand" xml:space="preserve">
+    <value>{0} is already used by "{1}" in {2}.</value>
+    <comment>{0} is a key combination such as Ctrl+S (stays as is), {1} is a command name, {2} is a section name such as "Editor &amp; Query".</comment>
+  </data>
+  <data name="ConflictNeedsModifier" xml:space="preserve">
+    <value>A shortcut needs Ctrl or Alt, unless it is a function key. Shift can join them but cannot hold a shortcut on its own.</value>
+    <comment>Ctrl, Alt and Shift are key names; use the names printed on keyboards in this language.</comment>
+  </data>
+  <data name="ConflictReserved" xml:space="preserve">
+    <value>{0} is reserved for "{1}" and cannot be assigned.</value>
+    <comment>{0} is a key combination such as Ctrl+C (stays as is), {1} is the name of the built-in action that owns it, such as "Copy".</comment>
+  </data>
+  <data name="ConflictSystemReserved" xml:space="preserve">
+    <value>{0} is reserved by Windows and cannot be assigned.</value>
+    <comment>{0} is a key combination such as Alt+F4 (stays as is).</comment>
+  </data>
+  <data name="RecorderHelpText" xml:space="preserve">
+    <value>Press to record a shortcut. Esc cancels, Backspace clears.</value>
+    <comment>Screen reader help for the shortcut recorder button. Esc and Backspace are key names.</comment>
+  </data>
+  <data name="RecorderPrompt" xml:space="preserve">
+    <value>Press a shortcut</value>
+    <comment>Shown on the recorder button while it waits for keys. Keep it short (about 20 characters).</comment>
+  </data>
+  <data name="RecorderRecording" xml:space="preserve">
+    <value>Recording</value>
+    <comment>Screen reader status of the shortcut recorder button while it waits for keys.</comment>
+  </data>
+  <data name="ReservedAddRow" xml:space="preserve">
+    <value>Add Row</value>
+    <comment>Name of a built-in data grid action, quoted in a shortcut conflict message.</comment>
+  </data>
+  <data name="ReservedCloseWindow" xml:space="preserve">
+    <value>Close Window</value>
+    <comment>Name of a Windows system action (Alt+F4), quoted in a shortcut conflict message.</comment>
+  </data>
+  <data name="ReservedContextMenu" xml:space="preserve">
+    <value>Context Menu</value>
+    <comment>Name of a Windows system action (Shift+F10), quoted in a shortcut conflict message.</comment>
+  </data>
+  <data name="ReservedCopyWithHeaders" xml:space="preserve">
+    <value>Copy with Headers</value>
+    <comment>Name of a built-in data grid action that copies cells with their column names, quoted in a shortcut conflict message.</comment>
+  </data>
+  <data name="ReservedCycleWindows" xml:space="preserve">
+    <value>Cycle Windows</value>
+    <comment>Name of a Windows system action (Alt+Esc), quoted in a shortcut conflict message.</comment>
+  </data>
+  <data name="ReservedDeleteWordBackward" xml:space="preserve">
+    <value>Delete Word Backward</value>
+    <comment>Name of a built-in text editing action, quoted in a shortcut conflict message.</comment>
+  </data>
+  <data name="ReservedDeleteWordForward" xml:space="preserve">
+    <value>Delete Word Forward</value>
+    <comment>Name of a built-in text editing action, quoted in a shortcut conflict message.</comment>
+  </data>
+  <data name="ReservedDuplicateLine" xml:space="preserve">
+    <value>Duplicate Line</value>
+    <comment>Name of a built-in SQL editor action, quoted in a shortcut conflict message.</comment>
+  </data>
+  <data name="ReservedMenuBar" xml:space="preserve">
+    <value>Menu Bar</value>
+    <comment>Name of a Windows system action (F10), quoted in a shortcut conflict message.</comment>
+  </data>
+  <data name="ReservedMoveToBeginningOfDocument" xml:space="preserve">
+    <value>Move to Beginning of Document</value>
+    <comment>Name of a built-in text editing action, quoted in a shortcut conflict message.</comment>
+  </data>
+  <data name="ReservedMoveToEndOfDocument" xml:space="preserve">
+    <value>Move to End of Document</value>
+    <comment>Name of a built-in text editing action, quoted in a shortcut conflict message.</comment>
+  </data>
+  <data name="ReservedMoveToNextParagraph" xml:space="preserve">
+    <value>Move to Next Paragraph</value>
+    <comment>Name of a built-in text editing action, quoted in a shortcut conflict message.</comment>
+  </data>
+  <data name="ReservedMoveToPreviousParagraph" xml:space="preserve">
+    <value>Move to Previous Paragraph</value>
+    <comment>Name of a built-in text editing action, quoted in a shortcut conflict message.</comment>
+  </data>
+  <data name="ReservedMoveWordLeft" xml:space="preserve">
+    <value>Move Word Left</value>
+    <comment>Name of a built-in text editing action, quoted in a shortcut conflict message.</comment>
+  </data>
+  <data name="ReservedMoveWordRight" xml:space="preserve">
+    <value>Move Word Right</value>
+    <comment>Name of a built-in text editing action, quoted in a shortcut conflict message.</comment>
+  </data>
+  <data name="ReservedNextProblem" xml:space="preserve">
+    <value>Next Problem</value>
+    <comment>Name of a built-in SQL editor action, quoted in a shortcut conflict message.</comment>
+  </data>
+  <data name="ReservedPreviousProblem" xml:space="preserve">
+    <value>Previous Problem</value>
+    <comment>Name of a built-in SQL editor action, quoted in a shortcut conflict message.</comment>
+  </data>
+  <data name="ReservedPrintScreen" xml:space="preserve">
+    <value>Print Screen</value>
+    <comment>Name of a Windows system action, quoted in a shortcut conflict message. Use the name of the key in this language.</comment>
+  </data>
+  <data name="ReservedQuickInfo" xml:space="preserve">
+    <value>Quick Info</value>
+    <comment>Name of a built-in SQL editor action, quoted in a shortcut conflict message.</comment>
+  </data>
+  <data name="ReservedSaveChanges" xml:space="preserve">
+    <value>Save Changes</value>
+    <comment>Name of a built-in data grid action, quoted in a shortcut conflict message.</comment>
+  </data>
+  <data name="ReservedSecurityOptions" xml:space="preserve">
+    <value>Security Options</value>
+    <comment>Name of the Windows screen Ctrl+Alt+Delete opens; use the name Windows uses in this language.</comment>
+  </data>
+  <data name="ReservedSelectTab" xml:space="preserve">
+    <value>Select Tab {0}</value>
+    <comment>Name of a built-in window action, quoted in a shortcut conflict message. {0} is a tab number from 1 to 9.</comment>
+  </data>
+  <data name="ReservedSelectToBeginningOfDocument" xml:space="preserve">
+    <value>Select to Beginning of Document</value>
+    <comment>Name of a built-in text editing action, quoted in a shortcut conflict message.</comment>
+  </data>
+  <data name="ReservedSelectToEndOfDocument" xml:space="preserve">
+    <value>Select to End of Document</value>
+    <comment>Name of a built-in text editing action, quoted in a shortcut conflict message.</comment>
+  </data>
+  <data name="ReservedSelectWordLeft" xml:space="preserve">
+    <value>Select Word Left</value>
+    <comment>Name of a built-in text editing action, quoted in a shortcut conflict message.</comment>
+  </data>
+  <data name="ReservedSelectWordRight" xml:space="preserve">
+    <value>Select Word Right</value>
+    <comment>Name of a built-in text editing action, quoted in a shortcut conflict message.</comment>
+  </data>
+  <data name="ReservedShowCompletions" xml:space="preserve">
+    <value>Show Completions</value>
+    <comment>Name of a built-in SQL editor action that opens the autocomplete list, quoted in a shortcut conflict message.</comment>
+  </data>
+  <data name="ReservedStartMenu" xml:space="preserve">
+    <value>Start Menu</value>
+    <comment>The Windows Start menu; use the name Windows uses in this language.</comment>
+  </data>
+  <data name="ReservedSwitchApps" xml:space="preserve">
+    <value>Switch Apps</value>
+    <comment>Name of a Windows system action (Alt+Tab), quoted in a shortcut conflict message.</comment>
+  </data>
+  <data name="ReservedTaskManager" xml:space="preserve">
+    <value>Task Manager</value>
+    <comment>The Windows Task Manager; use the name Windows uses in this language.</comment>
+  </data>
+  <data name="ReservedWindowMenu" xml:space="preserve">
+    <value>Window Menu</value>
+    <comment>Name of a Windows system action (Alt+Space opens the window's system menu), quoted in a shortcut conflict message.</comment>
+  </data>
+</root>

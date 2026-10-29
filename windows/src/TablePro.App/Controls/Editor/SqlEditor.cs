@@ -155,7 +155,7 @@ public sealed partial class SqlEditor : UserControl
         Content = root;
         _highlightTimer = new DispatcherQueueTimerHolder(this, TimeSpan.FromMilliseconds(80), Highlight);
         _pauseTimer = new DispatcherQueueTimerHolder(this, TimeSpan.FromMilliseconds(900), OnTypingPaused);
-        var hint = new TextBlock { Text = "Tab to accept", FontSize = 10, Opacity = 0.6, Margin = new Thickness(0, 4, 0, 0) };
+        var hint = new TextBlock { Text = Strings.Get("Editor/SuggestionAcceptHint"), FontSize = 10, Opacity = 0.6, Margin = new Thickness(0, 4, 0, 0) };
         var suggestionPanel = new StackPanel();
         suggestionPanel.Children.Add(_suggestionText);
         suggestionPanel.Children.Add(hint);
@@ -442,24 +442,24 @@ public sealed partial class SqlEditor : UserControl
     private MenuFlyout BuildContextMenu()
     {
         var menu = new MenuFlyout();
-        menu.Items.Add(Item("Go to Definition", "\xE8A7", GoToDefinition, VirtualKey.F12, VirtualKeyModifiers.None));
-        menu.Items.Add(Item("Rename Symbol", "\xE8AC", SelectReferences, VirtualKey.F2, VirtualKeyModifiers.None));
+        menu.Items.Add(Item(Strings.Get("Editor/GoToDefinition"),"\xE8A7", GoToDefinition, VirtualKey.F12, VirtualKeyModifiers.None));
+        menu.Items.Add(Item(Strings.Get("Editor/RenameSymbol"),"\xE8AC", SelectReferences, VirtualKey.F2, VirtualKeyModifiers.None));
         menu.Items.Add(new MenuFlyoutSeparator());
-        menu.Items.Add(Item("Run Current", "", () => RunRequested?.Invoke(this, RunScope.Current), VirtualKey.Enter, VirtualKeyModifiers.Control));
-        menu.Items.Add(Item("Run All", "", () => RunRequested?.Invoke(this, RunScope.All), VirtualKey.F5, VirtualKeyModifiers.None));
-        menu.Items.Add(Item("Explain", "", () => RunRequested?.Invoke(this, RunScope.Explain), VirtualKey.E, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift));
+        menu.Items.Add(Item(Strings.Get("Editor/RunCurrent"),"", () => RunRequested?.Invoke(this, RunScope.Current), VirtualKey.Enter, VirtualKeyModifiers.Control));
+        menu.Items.Add(Item(Strings.Get("Editor/RunAll"),"", () => RunRequested?.Invoke(this, RunScope.All), VirtualKey.F5, VirtualKeyModifiers.None));
+        menu.Items.Add(Item(Strings.Get("Editor/Explain"),"", () => RunRequested?.Invoke(this, RunScope.Explain), VirtualKey.E, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift));
         menu.Items.Add(new MenuFlyoutSeparator());
-        menu.Items.Add(Item("Cut", "", CutSelection, VirtualKey.X, VirtualKeyModifiers.Control));
-        menu.Items.Add(Item("Copy", "", CopySelection, VirtualKey.C, VirtualKeyModifiers.Control));
-        menu.Items.Add(Item("Paste", "", PasteAsync, VirtualKey.V, VirtualKeyModifiers.Control));
+        menu.Items.Add(Item(Strings.Get("Common/Cut"),"", CutSelection, VirtualKey.X, VirtualKeyModifiers.Control));
+        menu.Items.Add(Item(Strings.Get("Common/Copy"),"", CopySelection, VirtualKey.C, VirtualKeyModifiers.Control));
+        menu.Items.Add(Item(Strings.Get("Common/Paste"),"", PasteAsync, VirtualKey.V, VirtualKeyModifiers.Control));
         menu.Items.Add(new MenuFlyoutSeparator());
-        menu.Items.Add(Item("Undo", "", Undo, VirtualKey.Z, VirtualKeyModifiers.Control));
-        menu.Items.Add(Item("Redo", "", Redo, VirtualKey.Y, VirtualKeyModifiers.Control));
+        menu.Items.Add(Item(Strings.Get("Common/Undo"),"", Undo, VirtualKey.Z, VirtualKeyModifiers.Control));
+        menu.Items.Add(Item(Strings.Get("Common/Redo"),"", Redo, VirtualKey.Y, VirtualKeyModifiers.Control));
         menu.Items.Add(new MenuFlyoutSeparator());
-        menu.Items.Add(Item("Toggle Comment", "", ToggleComment, (VirtualKey)191, VirtualKeyModifiers.Control));
-        menu.Items.Add(Item("Format SQL", "", () => FormatRequested?.Invoke(this, EventArgs.Empty), VirtualKey.F, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift));
-        menu.Items.Add(Item("Find", "", () => ShowFind(replace: false), VirtualKey.F, VirtualKeyModifiers.Control));
-        menu.Items.Add(Item("Replace", "", () => ShowFind(replace: true), VirtualKey.H, VirtualKeyModifiers.Control));
+        menu.Items.Add(Item(Strings.Get("Editor/ToggleComment"),"", ToggleComment, (VirtualKey)191, VirtualKeyModifiers.Control));
+        menu.Items.Add(Item(Strings.Get("Editor/FormatSql"),"", () => FormatRequested?.Invoke(this, EventArgs.Empty), VirtualKey.F, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift));
+        menu.Items.Add(Item(Strings.Get("Editor/Find"),"", () => ShowFind(replace: false), VirtualKey.F, VirtualKeyModifiers.Control));
+        menu.Items.Add(Item(Strings.Get("Editor/Replace"),"", () => ShowFind(replace: true), VirtualKey.H, VirtualKeyModifiers.Control));
         return menu;
 
         static MenuFlyoutItem Item(string text, string glyph, Action action, VirtualKey key, VirtualKeyModifiers modifiers)
@@ -1213,7 +1213,7 @@ public sealed partial class SqlEditor : UserControl
             }
         }
 
-        _findBar.SetStatus(index < 0 ? "No results" : $"{CountMatches(normalized, comparison)} matches");
+        _findBar.SetStatus(index < 0 ? Strings.Get("Editor/FindNoResults") : Strings.Plural("Editor/FindMatches", CountMatches(normalized, comparison)));
         if (index >= 0)
         {
             Select(index, normalized.Length);
@@ -1254,7 +1254,7 @@ public sealed partial class SqlEditor : UserControl
         var comparison = matchCase ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
         var count = CountMatches(query, comparison);
         SetTextCore(_text.Replace(query, replacement.Replace('\n', '\r'), comparison), 0, 0, recordUndo: true);
-        _findBar.SetStatus($"Replaced {count}");
+        _findBar.SetStatus(Strings.Plural("Editor/ReplacedCount", count));
     }
 
     private readonly record struct Palette(Color Plain, Color Keyword, Color Function, Color String, Color Number, Color Comment, Color Identifier, Color Parameter);
@@ -1279,7 +1279,7 @@ public sealed partial class SqlEditor : UserControl
             grid.Children.Add(label);
             var detail = new TextBlock
             {
-                Text = item.Detail ?? item.Kind.ToString(),
+                Text = item.Detail ?? KindName(item.Kind),
                 FontSize = 11,
                 MaxWidth = 150,
                 TextTrimming = TextTrimming.CharacterEllipsis,
@@ -1299,6 +1299,18 @@ public sealed partial class SqlEditor : UserControl
             CompletionKind.View => "\uE890",
             CompletionKind.Column => "\uE8A9",
             _ => "\uE8C8",
+        };
+
+        private static string KindName(CompletionKind kind) => kind switch
+        {
+            CompletionKind.Keyword => Strings.Get("Editor/CompletionKeyword"),
+            CompletionKind.Function => Strings.Get("Editor/CompletionFunction"),
+            CompletionKind.Schema => Strings.Get("Editor/CompletionSchema"),
+            CompletionKind.Table => Strings.Get("Editor/CompletionTable"),
+            CompletionKind.View => Strings.Get("Editor/CompletionView"),
+            CompletionKind.Column => Strings.Get("Editor/CompletionColumn"),
+            CompletionKind.Snippet => Strings.Get("Editor/CompletionSnippet"),
+            _ => kind.ToString(),
         };
     }
 }

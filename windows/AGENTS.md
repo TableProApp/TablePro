@@ -41,6 +41,7 @@ The XAML compiler fails on paths longer than 260 characters; build from a short 
 - Prefer `x:Bind` over `{Binding}`; a window-level `x:Bind` cannot use a converter, so bind through a typed adapter property instead.
 - Code-built UI uses the Fluent theme brushes (`ThemeResources.Brush`), never literal colors, so light, dark and high contrast follow Windows.
 - An icon-only button carries `AutomationProperties.Name`.
+- User-facing text lives in `src/TablePro.App/Strings/<language>/<Area>.resw`, never in code or XAML: `x:Uid="/Area/Name"` in XAML, `Strings.Get`, `Strings.Format` and `Strings.Plural` in code. A new English key needs a value in every language folder; `LocalizationTests` in `TablePro.Core.Tests` checks keys, placeholders and leftover XAML literals. SQL, engine names, file names and log text stay English.
 
 ## Every change
 

@@ -1,5 +1,4 @@
 using System.Collections.ObjectModel;
-using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using TablePro.App.Services;
@@ -14,8 +13,8 @@ public sealed record SearchHit(DatabaseObject Table, int Matches, bool More, str
     public string Title => Table.Name.ToString();
 
     public string Detail => More
-        ? string.Create(CultureInfo.CurrentCulture, $"{Matches:N0}+ rows")
-        : string.Create(CultureInfo.CurrentCulture, $"{Matches:N0} rows");
+        ? Strings.Plural("Server/SearchHitRowsMore", Matches)
+        : Strings.Plural("Server/SearchHitRows", Matches);
 }
 
 /// <summary>
@@ -34,7 +33,7 @@ public sealed partial class SearchTabViewModel : TabViewModel
     public SearchTabViewModel(WorkspaceContext context)
     {
         _context = context;
-        Title = "Search";
+        Title = Strings.Get("Server/SearchTabTitle");
         Subtitle = context.Session.CurrentSchema ?? context.Session.Profile.Name;
     }
 
@@ -92,14 +91,14 @@ public sealed partial class SearchTabViewModel : TabViewModel
                     gate.Release();
                     done++;
                     Progress = done * 100.0 / tables.Length;
-                    StatusText = string.Create(CultureInfo.CurrentCulture, $"Searched {done:N0} of {tables.Length:N0} tables · {Hits.Count:N0} with matches");
+                    StatusText = Strings.Plural("Server/SearchProgress", tables.Length, done, Hits.Count);
                 }
             });
             await Task.WhenAll(work);
         }
         catch (OperationCanceledException)
         {
-            StatusText = "Search stopped.";
+            StatusText = Strings.Get("Server/SearchStopped");
         }
         finally
         {

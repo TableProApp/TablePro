@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="CannotRestoreMessage" xml:space="preserve">
+    <value>이 저장은 더 이상 읽을 수 없습니다. 기록이 지워졌거나 저장된 변경 사항을 보호하는 키가 없어졌습니다.</value>
+  </data>
+  <data name="CannotRestoreTitle" xml:space="preserve">
+    <value>복원할 수 없음</value>
+  </data>
+  <data name="ClearConfirmMessage" xml:space="preserve">
+    <value>이미 커밋된 저장은 그대로 유지됩니다. 이전 값을 복원할 수 없게 됩니다.</value>
+  </data>
+  <data name="ClearConfirmTitle" xml:space="preserve">
+    <value>저장된 변경 사항을 지우시겠습니까?</value>
+  </data>
+  <data name="ClearSavedChanges" xml:space="preserve">
+    <value>저장된 변경 사항 지우기…</value>
+  </data>
+  <data name="DifferentDatabaseMessage" xml:space="preserve">
+    <value>이 저장은 {0}에서 수행되었습니다. 해당 데이터베이스로 전환한 다음 복원하세요.</value>
+  </data>
+  <data name="DifferentDatabaseTitle" xml:space="preserve">
+    <value>다른 데이터베이스</value>
+  </data>
+  <data name="EmptyDisabled" xml:space="preserve">
+    <value>저장된 변경 사항 보관이 꺼져 있습니다.</value>
+  </data>
+  <data name="EmptyEnabled" xml:space="preserve">
+    <value>아직 저장된 변경 사항이 없습니다. 테이블 그리드에서 저장한 내용이 7일 동안 여기에 표시됩니다.</value>
+  </data>
+  <data name="Explanation" xml:space="preserve">
+    <value>그리드에서 저장할 때마다 저장 전 행의 상태를 이 PC에만 7일 동안 보관합니다. 암호화되며 동기화되지 않습니다.</value>
+  </data>
+  <data name="IsRestore" xml:space="preserve">
+    <value>복원</value>
+  </data>
+  <data name="NoRowToPutBack" xml:space="preserve">
+    <value>이 저장에는 되돌릴 수 있는 행이 없습니다.</value>
+  </data>
+  <data name="NothingCanBeRestoredTitle" xml:space="preserve">
+    <value>복원할 수 있는 항목 없음</value>
+  </data>
+  <data name="NothingRestoredTitle" xml:space="preserve">
+    <value>복원된 항목 없음</value>
+  </data>
+  <data name="ReadOnlyMessage" xml:space="preserve">
+    <value>이 연결의 안전 모드가 읽기 전용이므로 저장을 복원할 수 없습니다.</value>
+  </data>
+  <data name="ReadOnlyTitle" xml:space="preserve">
+    <value>읽기 전용 연결</value>
+  </data>
+  <data name="RefusalNoPrimaryKey" xml:space="preserve">
+    <value>테이블에 기본 키가 없어 이 행을 식별할 수 없습니다.</value>
+  </data>
+  <data name="RefusalServerAssignedKey" xml:space="preserve">
+    <value>서버가 이 행의 키를 정했습니다.</value>
+  </data>
+  <data name="RefusalValueTooLarge" xml:space="preserve">
+    <value>값이 너무 커서 보관할 수 없었습니다.</value>
+  </data>
+  <data name="RestoreButton" xml:space="preserve">
+    <value>복원</value>
+  </data>
+  <data name="RestoreButtonName" xml:space="preserve">
+    <value>{0}을(를) 이 저장 이전으로 복원</value>
+  </data>
+  <data name="RestoreButtonTip" xml:space="preserve">
+    <value>이전 값 복원</value>
+  </data>
+  <data name="RestoreReviewTitle" xml:space="preserve">
+    <value>{0}을(를) 저장 이전으로 복원</value>
+  </data>
+  <data name="RestoredAt" xml:space="preserve">
+    <value>{0}에 복원됨</value>
+  </data>
+  <data name="Restored_One" xml:space="preserve">
+    <value>{1}에서 {0:N0}개 행을 복원했습니다.</value>
+  </data>
+  <data name="Restored_Other" xml:space="preserve">
+    <value>{1}에서 {0:N0}개 행을 복원했습니다.</value>
+  </data>
+  <data name="ReviewNothingIfChanged" xml:space="preserve">
+    <value>{0} 저장 이후 이 행 중 하나라도 변경되었으면 아무것도 복원되지 않습니다.</value>
+  </data>
+  <data name="ReviewRowsSkipped_One" xml:space="preserve">
+    <value>{1} {0:N0}개 행을 건너뜁니다: {2}</value>
+  </data>
+  <data name="ReviewRowsSkipped_Other" xml:space="preserve">
+    <value>{1} {0:N0}개 행을 건너뜁니다: {2}</value>
+  </data>
+  <data name="RowChangedMessage" xml:space="preserve">
+    <value>이 저장 이후 행이 변경되었거나 사라져서, 복원하면 다른 사람의 작업을 덮어쓰게 됩니다. 아무것도 변경되지 않았습니다.</value>
+  </data>
+  <data name="RowsCannotBeRestored_One" xml:space="preserve">
+    <value>{0:N0}개 행을 복원할 수 없음</value>
+  </data>
+  <data name="RowsCannotBeRestored_Other" xml:space="preserve">
+    <value>{0:N0}개 행을 복원할 수 없음</value>
+  </data>
+  <data name="ThisTableOnly" xml:space="preserve">
+    <value>이 테이블만</value>
+  </data>
+</root>

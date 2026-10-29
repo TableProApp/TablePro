@@ -22,42 +22,42 @@
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
             <StackPanel Orientation="Horizontal" Spacing="4">
-                <SplitButton x:Name="RunButton" Click="OnRunClicked" AutomationProperties.Name="Run the selection or the statement at the caret" ToolTipService.ToolTip="Run the selection or the statement at the caret (Ctrl+Enter)">
+                <SplitButton x:Uid="/Query/RunButton" x:Name="RunButton" Click="OnRunClicked">
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <FontIcon FontSize="14" Glyph="&#xE768;" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
-                        <TextBlock Text="Run" />
+                        <TextBlock x:Uid="/Query/RunLabel" />
                     </StackPanel>
                     <SplitButton.Flyout>
                         <MenuFlyout Placement="BottomEdgeAlignedLeft">
-                            <MenuFlyoutItem Text="Run Current" Click="OnRunCurrent" KeyboardAcceleratorTextOverride="Ctrl+Enter">
+                            <MenuFlyoutItem x:Uid="/Query/RunCurrentItem" Click="OnRunCurrent" KeyboardAcceleratorTextOverride="Ctrl+Enter">
                                 <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE768;" /></MenuFlyoutItem.Icon>
                             </MenuFlyoutItem>
-                            <MenuFlyoutItem Text="Run All" Click="OnRunAll" KeyboardAcceleratorTextOverride="F5">
+                            <MenuFlyoutItem x:Uid="/Query/RunAllItem" Click="OnRunAll" KeyboardAcceleratorTextOverride="F5">
                                 <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE7C8;" /></MenuFlyoutItem.Icon>
                             </MenuFlyoutItem>
-                            <MenuFlyoutItem x:Name="ExplainItem" Text="Explain" Click="OnExplain" KeyboardAcceleratorTextOverride="Ctrl+Shift+E">
+                            <MenuFlyoutItem x:Uid="/Query/ExplainItem" x:Name="ExplainItem" Click="OnExplain" KeyboardAcceleratorTextOverride="Ctrl+Shift+E">
                                 <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE9D9;" /></MenuFlyoutItem.Icon>
                             </MenuFlyoutItem>
-                            <MenuFlyoutItem x:Name="ExplainAnalyzeItem" Text="Explain Analyze" Click="OnExplainAnalyze" ToolTipService.ToolTip="Runs the statement to measure its plan">
+                            <MenuFlyoutItem x:Uid="/Query/ExplainAnalyzeItem" x:Name="ExplainAnalyzeItem" Click="OnExplainAnalyze">
                                 <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE916;" /></MenuFlyoutItem.Icon>
                             </MenuFlyoutItem>
                         </MenuFlyout>
                     </SplitButton.Flyout>
                 </SplitButton>
-                <Button Style="{StaticResource ToolbarButtonStyle}" Command="{x:Bind ViewModel.StopCommand}" AutomationProperties.Name="Stop the running query" ToolTipService.ToolTip="Stop the running query">
+                <Button x:Uid="/Query/StopButton" Style="{StaticResource ToolbarButtonStyle}" Command="{x:Bind ViewModel.StopCommand}">
                     <FontIcon FontSize="14" Glyph="&#xE71A;" />
                 </Button>
                 <AppBarSeparator />
-                <Button x:Name="FormatButton" Style="{StaticResource ToolbarButtonStyle}" Click="OnFormat" AutomationProperties.Name="Format SQL" ToolTipService.ToolTip="Format SQL (Ctrl+Shift+F)">
+                <Button x:Uid="/Query/FormatButton" x:Name="FormatButton" Style="{StaticResource ToolbarButtonStyle}" Click="OnFormat">
                     <FontIcon FontSize="14" Glyph="&#xE8E4;" />
                 </Button>
-                <Button Style="{StaticResource ToolbarButtonStyle}" Click="OnOpenFile" AutomationProperties.Name="Open SQL file" ToolTipService.ToolTip="Open SQL file">
+                <Button x:Uid="/Query/OpenFileButton" Style="{StaticResource ToolbarButtonStyle}" Click="OnOpenFile">
                     <FontIcon FontSize="14" Glyph="&#xE8E5;" />
                 </Button>
-                <Button Style="{StaticResource ToolbarButtonStyle}" Click="OnSaveFile" AutomationProperties.Name="Save SQL file" ToolTipService.ToolTip="Save SQL file (Ctrl+S)">
+                <Button x:Uid="/Query/SaveFileButton" Style="{StaticResource ToolbarButtonStyle}" Click="OnSaveFile">
                     <FontIcon FontSize="14" Glyph="&#xE74E;" />
                 </Button>
-                <Button Style="{StaticResource ToolbarButtonStyle}" Click="OnSaveFavorite" AutomationProperties.Name="Save as favorite" ToolTipService.ToolTip="Save as favorite">
+                <Button x:Uid="/Query/SaveFavoriteButton" Style="{StaticResource ToolbarButtonStyle}" Click="OnSaveFavorite">
                     <FontIcon FontSize="14" Glyph="&#xE734;" />
                 </Button>
             </StackPanel>
@@ -86,13 +86,13 @@
                 <SelectorBar x:Name="ResultTabs" SelectionChanged="OnResultTabChanged" />
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
                     <TextBlock x:Name="ResultSummary" Style="{StaticResource StatusTextStyle}" Margin="0,0,8,0" />
-                    <ToggleButton x:Name="ChartToggle" Style="{StaticResource DefaultToggleButtonStyle}" Padding="8,5" Click="OnChartToggled" AutomationProperties.Name="Chart" ToolTipService.ToolTip="Show as chart">
+                    <ToggleButton x:Uid="/Query/ChartToggle" x:Name="ChartToggle" Style="{StaticResource DefaultToggleButtonStyle}" Padding="8,5" Click="OnChartToggled">
                         <FontIcon FontSize="14" Glyph="&#xE9D2;" />
                     </ToggleButton>
-                    <ToggleButton x:Name="MapToggle" Style="{StaticResource DefaultToggleButtonStyle}" Padding="8,5" Click="OnMapToggled" Visibility="Collapsed" AutomationProperties.Name="Map" ToolTipService.ToolTip="Show on a map">
+                    <ToggleButton x:Uid="/Query/MapToggle" x:Name="MapToggle" Style="{StaticResource DefaultToggleButtonStyle}" Padding="8,5" Click="OnMapToggled" Visibility="Collapsed">
                         <FontIcon FontSize="14" Glyph="&#xE707;" />
                     </ToggleButton>
-                    <Button x:Name="ExportButton" Style="{StaticResource ToolbarButtonStyle}" Click="OnExportResult" AutomationProperties.Name="Export this result" ToolTipService.ToolTip="Export this result">
+                    <Button x:Uid="/Query/ExportButton" x:Name="ExportButton" Style="{StaticResource ToolbarButtonStyle}" Click="OnExportResult">
                         <FontIcon FontSize="14" Glyph="&#xEDE1;" />
                     </Button>
                 </StackPanel>
@@ -105,9 +105,9 @@
 
             <ScrollViewer x:Name="MessagePanel" Grid.Row="1" Visibility="Collapsed" Padding="16,12">
                 <StackPanel Spacing="12">
-                    <InfoBar x:Name="ErrorBar" IsOpen="False" IsClosable="False" Severity="Error" Title="The statement failed">
+                    <InfoBar x:Uid="/Query/ErrorBar" x:Name="ErrorBar" IsOpen="False" IsClosable="False" Severity="Error">
                         <InfoBar.ActionButton>
-                            <Button Content="Fix with AI" Click="OnFixWithAi" />
+                            <Button x:Uid="/Query/FixWithAiButton" Click="OnFixWithAi" />
                         </InfoBar.ActionButton>
                     </InfoBar>
                     <TextBlock x:Name="MessageText" TextWrapping="Wrap" IsTextSelectionEnabled="True" FontFamily="{StaticResource CodeFontFamily}" FontSize="12" />
@@ -116,8 +116,8 @@
 
             <StackPanel x:Name="EmptyState" Grid.Row="1" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="6">
                 <FontIcon FontSize="28" Glyph="&#xE9F9;" Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
-                <TextBlock Text="Run a query to see results" Style="{StaticResource BodyStrongTextBlockStyle}" HorizontalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                <TextBlock Text="Ctrl+Enter runs the statement at the caret, F5 runs everything" Style="{StaticResource CaptionTextBlockStyle}" HorizontalAlignment="Center" Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+                <TextBlock x:Uid="/Query/EmptyTitle" Style="{StaticResource BodyStrongTextBlockStyle}" HorizontalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                <TextBlock x:Uid="/Query/EmptyHint" Style="{StaticResource CaptionTextBlockStyle}" HorizontalAlignment="Center" Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
             </StackPanel>
         </Grid>
     </Grid>

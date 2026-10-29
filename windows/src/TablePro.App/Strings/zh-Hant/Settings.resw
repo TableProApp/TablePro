@@ -1,0 +1,303 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AiConsentAllow" xml:space="preserve">
+    <value>允許</value>
+  </data>
+  <data name="AiConsentMessage" xml:space="preserve">
+    <value>助理會將你的問題、它所處理的 SQL，以及相關資料表的結構從 {0} 傳送至 {1}（{2}）。它不會讀取任何列。</value>
+  </data>
+  <data name="AiConsentTitle" xml:space="preserve">
+    <value>要傳送給 AI 供應商嗎？</value>
+  </data>
+  <data name="AiEndpointDescription" xml:space="preserve">
+    <value>留空以使用供應商的公開位址。Ollama 預設為 http://localhost:11434/v1。</value>
+  </data>
+  <data name="AiEndpointTitle" xml:space="preserve">
+    <value>Endpoint</value>
+  </data>
+  <data name="AiIntro" xml:space="preserve">
+    <value>助理會將你的問題、它所處理的 SQL，以及相關資料表的結構傳送給你選擇的供應商，但絕不會傳送資料列。每個連線的 AI 設定決定是否可以使用助理。</value>
+  </data>
+  <data name="AiKeyDescription" xml:space="preserve">
+    <value>儲存在 Windows 認證管理員中。</value>
+  </data>
+  <data name="AiKeyNotNeeded" xml:space="preserve">
+    <value>Ollama 不需要</value>
+  </data>
+  <data name="AiKeyTitle" xml:space="preserve">
+    <value>API Key</value>
+  </data>
+  <data name="AiLoadModels" xml:space="preserve">
+    <value>載入模型</value>
+  </data>
+  <data name="AiModelDefault" xml:space="preserve">
+    <value>供應商預設值</value>
+  </data>
+  <data name="AiModelTitle" xml:space="preserve">
+    <value>Model</value>
+  </data>
+  <data name="AiNoKey" xml:space="preserve">
+    <value>請在「設定 &gt; AI」中為 {0} 新增 API Key 以使用助理。</value>
+  </data>
+  <data name="AiNotSetUp" xml:space="preserve">
+    <value>尚未設定</value>
+  </data>
+  <data name="AiProviderOpenAICompatible" xml:space="preserve">
+    <value>OpenAI 相容伺服器</value>
+  </data>
+  <data name="AiProviderTitle" xml:space="preserve">
+    <value>供應商</value>
+  </data>
+  <data name="AiSuggestDescription" xml:space="preserve">
+    <value>當你在行尾停頓時要求補全。每次停頓都會傳送游標周圍的文字。</value>
+  </data>
+  <data name="AiSuggestTitle" xml:space="preserve">
+    <value>輸入時提供建議</value>
+  </data>
+  <data name="AutocompleteDescription" xml:space="preserve">
+    <value>輸入時建議關鍵字、資料表和欄位。</value>
+  </data>
+  <data name="AutocompleteTitle" xml:space="preserve">
+    <value>自動完成</value>
+  </data>
+  <data name="BackdropAcrylic" xml:space="preserve">
+    <value>壓克力</value>
+  </data>
+  <data name="BackdropDescription" xml:space="preserve">
+    <value>壓克力會透過視窗顯示桌面，雲母則以桌布為視窗染色。</value>
+  </data>
+  <data name="BackdropMica" xml:space="preserve">
+    <value>雲母</value>
+  </data>
+  <data name="BackdropMicaAlt" xml:space="preserve">
+    <value>雲母 Alt</value>
+  </data>
+  <data name="BackdropTitle" xml:space="preserve">
+    <value>視窗材質</value>
+  </data>
+  <data name="ClearAllHistory" xml:space="preserve">
+    <value>清除全部歷程記錄</value>
+  </data>
+  <data name="ClearHistoryConfirmMessage" xml:space="preserve">
+    <value>所有連線的查詢歷史都會被刪除。</value>
+  </data>
+  <data name="ClearHistoryConfirmTitle" xml:space="preserve">
+    <value>清除記錄？</value>
+  </data>
+  <data name="ClearRewindConfirmMessage" xml:space="preserve">
+    <value>資料回溯將無法再復原在此之前進行的儲存。</value>
+  </data>
+  <data name="ClearRewindConfirmTitle" xml:space="preserve">
+    <value>清除已儲存的變更？</value>
+  </data>
+  <data name="ConfirmCloseTitle" xml:space="preserve">
+    <value>關閉未儲存的分頁前先詢問</value>
+  </data>
+  <data name="DataFolderTitle" xml:space="preserve">
+    <value>資料資料夾</value>
+  </data>
+  <data name="DateFormatDescription" xml:space="preserve">
+    <value>匯出中日期使用的 .NET 格式字串。</value>
+  </data>
+  <data name="DateFormatTitle" xml:space="preserve">
+    <value>日期格式</value>
+  </data>
+  <data name="EmacsDescription" xml:space="preserve">
+    <value>Ctrl+F、B、N、P、A、E 移動游標，Alt+F 和 Alt+B 依字移動，Ctrl+K、Alt+D 和 Ctrl+W 刪除（kill），Ctrl+Y 和 Alt+Y 貼回（yank），Ctrl+Space 設定標記。這些按鍵在編輯器中會失去其 Windows 功能：以 Ctrl+Shift+Z 重做，以 Ctrl+H 或操作功能表尋找。</value>
+  </data>
+  <data name="EmacsTitle" xml:space="preserve">
+    <value>Emacs 按鍵繫結</value>
+  </data>
+  <data name="FontDescription" xml:space="preserve">
+    <value>這台電腦上安裝的等寬字型。</value>
+  </data>
+  <data name="FontSizeTitle" xml:space="preserve">
+    <value>字型大小</value>
+  </data>
+  <data name="FontTitle" xml:space="preserve">
+    <value>字型</value>
+  </data>
+  <data name="KeyboardConflictMessage" xml:space="preserve">
+    <value>{0} 重新指派會將它從該命令移除。</value>
+  </data>
+  <data name="KeyboardConflictTitle" xml:space="preserve">
+    <value>快速鍵衝突</value>
+  </data>
+  <data name="KeyboardIntro" xml:space="preserve">
+    <value>按一下快速鍵，然後按下要使用的按鍵。Esc 取消，Backspace 移除快速鍵。編輯器命令在 SQL 編輯器取得焦點時有效；其他命令在連線視窗中的任何位置都有效。</value>
+  </data>
+  <data name="KeyboardModifierRequired" xml:space="preserve">
+    <value>需要修飾鍵</value>
+  </data>
+  <data name="KeyboardNoMatches" xml:space="preserve">
+    <value>沒有符合的快速鍵。</value>
+  </data>
+  <data name="KeyboardReassign" xml:space="preserve">
+    <value>重新指派</value>
+  </data>
+  <data name="KeyboardReservedShortcut" xml:space="preserve">
+    <value>保留的快速鍵</value>
+  </data>
+  <data name="KeyboardResetAll" xml:space="preserve">
+    <value>全部重設為預設值</value>
+  </data>
+  <data name="KeyboardResetToDefault" xml:space="preserve">
+    <value>重設為預設值（{0}）</value>
+  </data>
+  <data name="KeyboardResetToDefaultNone" xml:space="preserve">
+    <value>重設為預設值（無）</value>
+  </data>
+  <data name="KeyboardSearch" xml:space="preserve">
+    <value>搜尋快速鍵</value>
+  </data>
+  <data name="KeyboardShortcutFor" xml:space="preserve">
+    <value>{0} 的快速鍵</value>
+  </data>
+  <data name="LanguageDescription" xml:space="preserve">
+    <value>TablePro 使用的語言。變更會在重新啟動後生效。</value>
+  </data>
+  <data name="LanguageRestartMessage" xml:space="preserve">
+    <value>TablePro 重新啟動後會顯示新的語言。要立即重新啟動嗎？</value>
+  </data>
+  <data name="LanguageRestartTitle" xml:space="preserve">
+    <value>要重新啟動 TablePro 嗎？</value>
+  </data>
+  <data name="LanguageTitle" xml:space="preserve">
+    <value>語言</value>
+  </data>
+  <data name="McpCopyCommand" xml:space="preserve">
+    <value>複製命令</value>
+  </data>
+  <data name="McpEnableTitle" xml:space="preserve">
+    <value>啟用 MCP 伺服器</value>
+  </data>
+  <data name="McpIntro" xml:space="preserve">
+    <value>這台電腦上的 MCP 用戶端（例如 Claude Code 或 Cursor）可以透過 TablePro 使用你已儲存的連線。伺服器僅在 TablePro 執行期間於 127.0.0.1 上接聽。每個連線的外部用戶端層級決定用戶端可執行的操作。</value>
+  </data>
+  <data name="McpPortTitle" xml:space="preserve">
+    <value>連接埠</value>
+  </data>
+  <data name="McpRegenerateToken" xml:space="preserve">
+    <value>重新產生存取權杖</value>
+  </data>
+  <data name="McpRunningAt" xml:space="preserve">
+    <value>執行於 {0}</value>
+  </data>
+  <data name="McpStatusTitle" xml:space="preserve">
+    <value>狀態</value>
+  </data>
+  <data name="McpStopped" xml:space="preserve">
+    <value>已停止</value>
+  </data>
+  <data name="NullDisplayDescription" xml:space="preserve">
+    <value>空白儲存格顯示的內容。</value>
+  </data>
+  <data name="NullDisplayTitle" xml:space="preserve">
+    <value>NULL 顯示</value>
+  </data>
+  <data name="OpenFolder" xml:space="preserve">
+    <value>開啟資料夾</value>
+  </data>
+  <data name="PageAI" xml:space="preserve">
+    <value>AI</value>
+  </data>
+  <data name="PageData" xml:space="preserve">
+    <value>資料</value>
+  </data>
+  <data name="PageEditor" xml:space="preserve">
+    <value>編輯器</value>
+  </data>
+  <data name="PageGeneral" xml:space="preserve">
+    <value>一般</value>
+  </data>
+  <data name="PageKeyboard" xml:space="preserve">
+    <value>鍵盤</value>
+  </data>
+  <data name="PageMCP" xml:space="preserve">
+    <value>MCP</value>
+  </data>
+  <data name="PageSizeDescription" xml:space="preserve">
+    <value>資料表分頁每頁顯示的列數。</value>
+  </data>
+  <data name="PageSizeTitle" xml:space="preserve">
+    <value>資料表頁面大小</value>
+  </data>
+  <data name="QueryHistoryDescription" xml:space="preserve">
+    <value>保存在本機的 SQLite 資料庫中。</value>
+  </data>
+  <data name="QueryHistoryTitle" xml:space="preserve">
+    <value>查詢歷史</value>
+  </data>
+  <data name="RestartLater" xml:space="preserve">
+    <value>稍後</value>
+  </data>
+  <data name="RestartNow" xml:space="preserve">
+    <value>立即重新啟動</value>
+  </data>
+  <data name="RestoreTabsDescription" xml:space="preserve">
+    <value>每個連線下次連線時，還原其已開啟的分頁。</value>
+  </data>
+  <data name="RestoreTabsTitle" xml:space="preserve">
+    <value>啟動時重新開啟分頁</value>
+  </data>
+  <data name="RewindJournalDescription" xml:space="preserve">
+    <value>每次格線儲存都會加密記錄在這台電腦上並保留 7 天，以便復原。</value>
+  </data>
+  <data name="RewindJournalTitle" xml:space="preserve">
+    <value>為資料回溯保留已儲存的變更</value>
+  </data>
+  <data name="RowLimitDescription" xml:space="preserve">
+    <value>編輯器查詢在停止前讀取的列數。結果被截斷時，狀態列會顯示。</value>
+  </data>
+  <data name="RowLimitTitle" xml:space="preserve">
+    <value>查詢結果上限</value>
+  </data>
+  <data name="SavedChangesDescription" xml:space="preserve">
+    <value>移除所有已記錄的儲存及其金鑰。</value>
+  </data>
+  <data name="SavedChangesTitle" xml:space="preserve">
+    <value>已儲存的變更</value>
+  </data>
+  <data name="TabSizeTitle" xml:space="preserve">
+    <value>Tab 寬度</value>
+  </data>
+  <data name="ThemeDark" xml:space="preserve">
+    <value>深色</value>
+  </data>
+  <data name="ThemeDescription" xml:space="preserve">
+    <value>淺色、深色，或依照 Windows 設定。</value>
+  </data>
+  <data name="ThemeLight" xml:space="preserve">
+    <value>淺色</value>
+  </data>
+  <data name="ThemeTitle" xml:space="preserve">
+    <value>應用程式佈景主題</value>
+  </data>
+  <data name="UseSystemSetting" xml:space="preserve">
+    <value>使用系統設定</value>
+  </data>
+  <data name="VimDescription" xml:space="preserve">
+    <value>使用 Vim 的模式、移動、運算子、暫存器和巨集進行編輯。Ctrl+C、Ctrl+V、Ctrl+Z 及其他 Windows 快速鍵仍可正常使用。</value>
+  </data>
+  <data name="VimTitle" xml:space="preserve">
+    <value>Vim 按鍵繫結</value>
+  </data>
+  <data name="WindowTitle" xml:space="preserve">
+    <value>設定 - TablePro</value>
+  </data>
+  <data name="WordWrapTitle" xml:space="preserve">
+    <value>自動換行</value>
+  </data>
+</root>

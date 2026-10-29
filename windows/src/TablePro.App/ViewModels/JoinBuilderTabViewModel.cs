@@ -34,7 +34,7 @@ public sealed partial class JoinBuilderTabViewModel : TabViewModel
         ArgumentNullException.ThrowIfNull(context);
         _context = context;
         _seed = seedTables?.ToArray() ?? [];
-        Title = "Join Builder";
+        Title = Strings.Get("Tools/JoinTabTitle");
         Subtitle = context.Session.CurrentSchema ?? context.Session.Profile.Name;
         Schema = context.Session.CurrentSchema;
         JoinKinds = Core.JoinBuilder.JoinKinds.SupportedBy(context.Session.Profile.Engine);
@@ -86,13 +86,13 @@ public sealed partial class JoinBuilderTabViewModel : TabViewModel
 
             if (Draft.IsEmpty)
             {
-                return "Pick the tables to join. Their foreign keys become the join conditions.";
+                return Strings.Get("Tools/JoinHintStart");
             }
 
             var crossJoined = Draft.CrossJoinedTables.ToArray();
             return crossJoined.Length == 0
                 ? string.Empty
-                : $"No foreign key links {string.Join(", ", crossJoined)} to the tables before it, so it is cross joined.";
+                : Strings.Plural("Tools/JoinHintCrossJoined", crossJoined.Length, string.Join(", ", crossJoined));
         }
     }
 
@@ -133,7 +133,7 @@ public sealed partial class JoinBuilderTabViewModel : TabViewModel
     {
         IsBusy = true;
         LoadError = null;
-        StatusText = "Reading the tables…";
+        StatusText = Strings.Get("Tools/JoinReadingTables");
         try
         {
             var session = _context.Session;
@@ -142,7 +142,7 @@ public sealed partial class JoinBuilderTabViewModel : TabViewModel
             foreach (var table in tables)
             {
                 structures.Add(await session.GetStructureAsync(table.Name, CancellationToken.None));
-                StatusText = $"Reading the tables… {structures.Count}/{tables.Length}";
+                StatusText = Strings.Format("Tools/JoinReadingTablesProgress", structures.Count, tables.Length);
             }
 
             Graph = JoinGraph.FromStructures(structures, Schema);
@@ -155,7 +155,7 @@ public sealed partial class JoinBuilderTabViewModel : TabViewModel
             Draft = seeded;
             IsLoaded = true;
             var total = session.Objects.Count(o => o.Kind == ObjectKind.Table);
-            StatusText = total > MaxTables ? $"Showing {MaxTables} of {total} tables" : $"{total} tables";
+            StatusText = total > MaxTables ? Strings.Plural("Tools/JoinShowingTables", total, MaxTables) : Strings.Plural("Tools/JoinTableCount", total);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {

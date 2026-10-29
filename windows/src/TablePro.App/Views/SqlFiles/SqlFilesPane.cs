@@ -29,7 +29,7 @@ internal sealed partial class SqlFilesPane : UserControl
     private readonly IWorkspaceHost _host;
     private readonly Action<string> _insert;
     private readonly ListView _list = new() { SelectionMode = ListViewSelectionMode.Single, IsItemClickEnabled = true };
-    private readonly AutoSuggestBox _search = new() { PlaceholderText = "Search SQL files", QueryIcon = new SymbolIcon(Symbol.Find) };
+    private readonly AutoSuggestBox _search = new() { PlaceholderText = Strings.Get("SqlFiles/SearchPlaceholder"),QueryIcon = new SymbolIcon(Symbol.Find) };
     private readonly HashSet<string> _collapsed = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _expandedDirectories = new(StringComparer.OrdinalIgnoreCase);
 
@@ -48,10 +48,10 @@ internal sealed partial class SqlFilesPane : UserControl
         _search.TextChanged += (_, _) => Rebuild();
         _list.ItemClick += async (_, e) => await ActivateAsync((e.ClickedItem as FrameworkElement)?.Tag);
         _list.KeyDown += OnListKeyDown;
-        AutomationProperties.SetName(_list, "SQL files");
+        AutomationProperties.SetName(_list, Strings.Get("SqlFiles/ListName"));
 
-        var link = IconButton("", "Link a folder of SQL files", async () => await LinkFolderAsync());
-        var refresh = IconButton("", "Refresh", async () =>
+        var link = IconButton("", Strings.Get("SqlFiles/LinkFolder"),async () => await LinkFolderAsync());
+        var refresh = IconButton("", Strings.Get("Common/Refresh"), async () =>
         {
             await _library.Watcher.RescanAsync();
             await _library.RefreshGitAsync();
@@ -151,8 +151,8 @@ internal sealed partial class SqlFilesPane : UserControl
         if (_list.Items.Count == 0)
         {
             _list.Items.Add(EmptyState(query.Length > 0
-                ? "No SQL file matches the search."
-                : "Link a folder of .sql files to open, rename and track them here. The files stay where they are."));
+                ? Strings.Get("SqlFiles/NoSearchMatch")
+                : Strings.Get("SqlFiles/EmptyState")));
         }
 
         if (selectedTag is not null)
@@ -203,10 +203,10 @@ internal sealed partial class SqlFilesPane : UserControl
         var queries = team.QueriesFor(ConnectionId)
             .Where(q => query.Length == 0 || q.Name.Contains(query, StringComparison.CurrentCultureIgnoreCase) || q.Query.Contains(query, StringComparison.CurrentCultureIgnoreCase))
             .ToList();
-        var header = SectionHeader("TEAM LIBRARY");
+        var header = SectionHeader(Strings.Get("SqlFiles/TeamLibraryHeader"));
         var menu = new MenuFlyout();
-        menu.Items.Add(GridCommands.Item("Refresh Team Library", "", async () => await PullTeamAsync(team)));
-        menu.Items.Add(GridCommands.Item(team.IsPublishing ? "Publishing…" : "Publish Saved Queries to Team…", "", async () => await PublishToTeamAsync(team)));
+        menu.Items.Add(GridCommands.Item(Strings.Get("SqlFiles/RefreshTeamLibrary"),"", async () => await PullTeamAsync(team)));
+        menu.Items.Add(GridCommands.Item(team.IsPublishing ? Strings.Get("SqlFiles/Publishing") : Strings.Get("SqlFiles/PublishToTeamMenu"),"", async () => await PublishToTeamAsync(team)));
         header.ContextFlyout = menu;
         _list.Items.Add(header);
 
@@ -220,11 +220,11 @@ internal sealed partial class SqlFilesPane : UserControl
 
             foreach (var teamQuery in group)
             {
-                var item = Row(teamQuery, group.Key.Length > 0 ? 2 : 1, "", teamQuery.Name, teamQuery.Keyword, teamQuery.PublishedBy is { } by ? "Published by " + by : null, null);
+                var item = Row(teamQuery, group.Key.Length > 0 ? 2 : 1, "", teamQuery.Name, teamQuery.Keyword, teamQuery.PublishedBy is { } by ? Strings.Format("SqlFiles/PublishedBy", by) : null, null);
                 var queryMenu = new MenuFlyout();
-                queryMenu.Items.Add(GridCommands.Item("Open in New Tab", "", () => _workspace.NewQuery(teamQuery.Query)));
-                queryMenu.Items.Add(GridCommands.Item("Insert into Editor", "", () => _insert(teamQuery.Query)));
-                queryMenu.Items.Add(GridCommands.Item("Copy Query", "", () => GridCommands.SetClipboard(teamQuery.Query)));
+                queryMenu.Items.Add(GridCommands.Item(Strings.Get("SqlFiles/OpenInNewTab"),"", () => _workspace.NewQuery(teamQuery.Query)));
+                queryMenu.Items.Add(GridCommands.Item(Strings.Get("SqlFiles/InsertIntoEditor"),"", () => _insert(teamQuery.Query)));
+                queryMenu.Items.Add(GridCommands.Item(Strings.Get("SqlFiles/CopyQuery"),"", () => GridCommands.SetClipboard(teamQuery.Query)));
                 ((FrameworkElement)item.Content).ContextFlyout = queryMenu;
                 _list.Items.Add(item);
             }
@@ -232,7 +232,7 @@ internal sealed partial class SqlFilesPane : UserControl
 
         if (queries.Count == 0)
         {
-            _list.Items.Add(EmptyState("Your team has not published any saved queries yet."));
+            _list.Items.Add(EmptyState(Strings.Get("SqlFiles/TeamEmpty")));
         }
     }
 
@@ -240,11 +240,17 @@ internal sealed partial class SqlFilesPane : UserControl
     {
         var inRepository = _library.GitSnapshots.ContainsKey(folder.Id);
         var operation = _library.OperationFor(folder.Id);
-        string? status = !folder.IsEnabled ? "Off"
-            : scan is { Exists: false } ? "Not found"
-            : operation is { } op ? op switch { GitOperation.Commit => "Committing…", GitOperation.Pull => "Pulling…", _ => "Pushing…" }
+        var notFound = folder.IsEnabled && scan is { Exists: false };
+        string? status = !folder.IsEnabled ? Strings.Get("Common/Off")
+            : notFound ? Strings.Get("SqlFiles/StatusNotFound")
+            : operation is { } op ? op switch
+            {
+                GitOperation.Commit => Strings.Get("SqlFiles/StatusCommitting"),
+                GitOperation.Pull => Strings.Get("SqlFiles/StatusPulling"),
+                _ => Strings.Get("SqlFiles/StatusPushing"),
+            }
             : inRepository ? "Git" : null;
-        var item = Row(folder, 0, "", folder.Name, null, folder.ExpandedPath, status, folder.IsEnabled ? expanded : null, strong: true);
+        var item = Row(folder, 0, "", folder.Name, null, folder.ExpandedPath, status, folder.IsEnabled ? expanded : null, strong: true, statusIsCritical: notFound);
         if (!folder.IsEnabled)
         {
             item.Opacity = 0.6;
@@ -253,29 +259,29 @@ internal sealed partial class SqlFilesPane : UserControl
         var menu = new MenuFlyout();
         if (folder.IsEnabled)
         {
-            menu.Items.Add(GridCommands.Item("New File", "", async () => await NewFileAsync(folder.ExpandedPath)));
+            menu.Items.Add(GridCommands.Item(Strings.Get("SqlFiles/NewFileMenu"),"", async () => await NewFileAsync(folder.ExpandedPath)));
             if (inRepository)
             {
                 menu.Items.Add(new MenuFlyoutSeparator());
-                menu.Items.Add(GridCommands.Item("Commit…", "", async () => await CommitAsync(folder, null)));
-                menu.Items.Add(GridCommands.Item("Pull", "", async () => await PullAsync(folder)));
-                menu.Items.Add(GridCommands.Item("Push", "", async () => await PushAsync(folder)));
+                menu.Items.Add(GridCommands.Item(Strings.Get("SqlFiles/CommitMenu"),"", async () => await CommitAsync(folder, null)));
+                menu.Items.Add(GridCommands.Item(Strings.Get("SqlFiles/PullMenu"),"", async () => await PullAsync(folder)));
+                menu.Items.Add(GridCommands.Item(Strings.Get("SqlFiles/PushMenu"),"", async () => await PushAsync(folder)));
             }
 
             menu.Items.Add(new MenuFlyoutSeparator());
-            menu.Items.Add(GridCommands.Item("Open in File Explorer", "", () => Reveal(folder.ExpandedPath, select: false)));
-            menu.Items.Add(GridCommands.Item("Copy Path", "", () => GridCommands.SetClipboard(folder.ExpandedPath)));
-            var scoped = new ToggleMenuFlyoutItem { Text = "Only in " + _workspace.Profile.Name, IsChecked = folder.ConnectionId is not null };
+            menu.Items.Add(GridCommands.Item(Strings.Get("SqlFiles/OpenInFileExplorer"),"", () => Reveal(folder.ExpandedPath, select: false)));
+            menu.Items.Add(GridCommands.Item(Strings.Get("SqlFiles/CopyPath"),"", () => GridCommands.SetClipboard(folder.ExpandedPath)));
+            var scoped = new ToggleMenuFlyoutItem { Text = Strings.Format("SqlFiles/OnlyInConnection", _workspace.Profile.Name),IsChecked = folder.ConnectionId is not null };
             scoped.Click += async (_, _) => await _library.Folders.UpdateAsync(folder with { ConnectionId = scoped.IsChecked ? ConnectionId : null });
             menu.Items.Add(scoped);
-            menu.Items.Add(GridCommands.Item("Turn Off", "", async () => await _library.Folders.SetEnabledAsync(folder.Id, false)));
+            menu.Items.Add(GridCommands.Item(Strings.Get("SqlFiles/TurnOff"),"", async () => await _library.Folders.SetEnabledAsync(folder.Id, false)));
         }
         else
         {
-            menu.Items.Add(GridCommands.Item("Turn On", "", async () => await _library.Folders.SetEnabledAsync(folder.Id, true)));
+            menu.Items.Add(GridCommands.Item(Strings.Get("SqlFiles/TurnOn"),"", async () => await _library.Folders.SetEnabledAsync(folder.Id, true)));
         }
 
-        menu.Items.Add(GridCommands.Item("Unlink Folder…", "", async () => await UnlinkAsync(folder)));
+        menu.Items.Add(GridCommands.Item(Strings.Get("SqlFiles/UnlinkFolderMenu"),"", async () => await UnlinkAsync(folder)));
         ((FrameworkElement)item.Content).ContextFlyout = menu;
         return item;
     }
@@ -285,9 +291,9 @@ internal sealed partial class SqlFilesPane : UserControl
         var full = Path.Combine(folder.ExpandedPath, relativePath.Replace('/', Path.DirectorySeparatorChar));
         var item = Row(new DirectoryTag(folder.Id, relativePath), depth, "", name, null, full, null, expanded);
         var menu = new MenuFlyout();
-        menu.Items.Add(GridCommands.Item("New File", "", async () => await NewFileAsync(full)));
-        menu.Items.Add(GridCommands.Item("Open in File Explorer", "", () => Reveal(full, select: false)));
-        menu.Items.Add(GridCommands.Item("Copy Path", "", () => GridCommands.SetClipboard(full)));
+        menu.Items.Add(GridCommands.Item(Strings.Get("SqlFiles/NewFileMenu"),"", async () => await NewFileAsync(full)));
+        menu.Items.Add(GridCommands.Item(Strings.Get("SqlFiles/OpenInFileExplorer"),"", () => Reveal(full, select: false)));
+        menu.Items.Add(GridCommands.Item(Strings.Get("SqlFiles/CopyPath"),"", () => GridCommands.SetClipboard(full)));
         ((FrameworkElement)item.Content).ContextFlyout = menu;
         return item;
     }
@@ -301,33 +307,33 @@ internal sealed partial class SqlFilesPane : UserControl
         var item = Row(file, depth, "", file.Name, file.Keyword, tooltip, null, secondary: secondary, badge: badge);
 
         var menu = new MenuFlyout();
-        menu.Items.Add(GridCommands.Item("Open", "", async () => await OpenFileAsync(file.FullPath)));
-        menu.Items.Add(GridCommands.Item("Version History…", "", () => ShowHistory(file.FullPath)));
+        menu.Items.Add(GridCommands.Item(Strings.Get("Common/Open"),"", async () => await OpenFileAsync(file.FullPath)));
+        menu.Items.Add(GridCommands.Item(Strings.Get("SqlFiles/VersionHistoryMenu"),"", () => ShowHistory(file.FullPath)));
         menu.Items.Add(new MenuFlyoutSeparator());
-        menu.Items.Add(GridCommands.Item("Rename…", "", async () => await RenameAsync(file), "F2"));
-        menu.Items.Add(GridCommands.Item("Edit Details…", "", async () => await EditDetailsAsync(file)));
+        menu.Items.Add(GridCommands.Item(Strings.Get("SqlFiles/RenameMenu"),"", async () => await RenameAsync(file), "F2"));
+        menu.Items.Add(GridCommands.Item(Strings.Get("SqlFiles/EditDetailsMenu"),"", async () => await EditDetailsAsync(file)));
         if (badge is not null && _library.Folders.Folders.FirstOrDefault(f => f.Id == file.FolderId) is { } folder)
         {
             menu.Items.Add(new MenuFlyoutSeparator());
-            menu.Items.Add(GridCommands.Item("Commit…", "", async () => await CommitAsync(folder, file)));
+            menu.Items.Add(GridCommands.Item(Strings.Get("SqlFiles/CommitMenu"),"", async () => await CommitAsync(folder, file)));
             if (state?.CanDiscardChanges == true)
             {
-                menu.Items.Add(GridCommands.Item("Discard Changes…", "", async () => await DiscardAsync(file)));
+                menu.Items.Add(GridCommands.Item(Strings.Get("SqlFiles/DiscardChangesMenu"),"", async () => await DiscardAsync(file)));
             }
         }
 
         menu.Items.Add(new MenuFlyoutSeparator());
-        menu.Items.Add(GridCommands.Item("Copy Path", "", () => GridCommands.SetClipboard(file.FullPath)));
-        menu.Items.Add(GridCommands.Item("Copy Relative Path", null, () => GridCommands.SetClipboard(file.RelativePath)));
-        menu.Items.Add(GridCommands.Item("Copy Query", null, async () => GridCommands.SetClipboard((await SqlTextFile.ReadAsync(file.FullPath)).Text)));
-        menu.Items.Add(GridCommands.Item("Show in File Explorer", "", () => Reveal(file.FullPath, select: true)));
+        menu.Items.Add(GridCommands.Item(Strings.Get("SqlFiles/CopyPath"),"", () => GridCommands.SetClipboard(file.FullPath)));
+        menu.Items.Add(GridCommands.Item(Strings.Get("SqlFiles/CopyRelativePath"),null, () => GridCommands.SetClipboard(file.RelativePath)));
+        menu.Items.Add(GridCommands.Item(Strings.Get("SqlFiles/CopyQuery"), null,async () => GridCommands.SetClipboard((await SqlTextFile.ReadAsync(file.FullPath)).Text)));
+        menu.Items.Add(GridCommands.Item(Strings.Get("SqlFiles/ShowInFileExplorer"),"", () => Reveal(file.FullPath, select: true)));
         menu.Items.Add(new MenuFlyoutSeparator());
-        menu.Items.Add(GridCommands.Item("Move to Recycle Bin…", "", async () => await DeleteAsync(file), "Delete"));
+        menu.Items.Add(GridCommands.Item(Strings.Get("SqlFiles/MoveToRecycleBinMenu"),"", async () => await DeleteAsync(file), "Delete"));
         ((FrameworkElement)item.Content).ContextFlyout = menu;
         return item;
     }
 
-    private ListViewItem Row(object tag, int depth, string glyph, string title, string? keyword, string? tooltip, string? status, bool? expanded = null, bool strong = false, string? secondary = null, GitFileStatus? badge = null)
+    private ListViewItem Row(object tag, int depth, string glyph, string title, string? keyword, string? tooltip, string? status, bool? expanded = null, bool strong = false, string? secondary = null, GitFileStatus? badge = null, bool statusIsCritical = false)
     {
         var grid = new Grid { ColumnSpacing = 6, Padding = new Thickness(depth * 16, 5, 0, 5), Tag = tag, Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent) };
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(16) });
@@ -382,14 +388,15 @@ internal sealed partial class SqlFilesPane : UserControl
                     _ => "SystemFillColorCautionBrush",
                 }],
             };
-            ToolTipService.SetToolTip(letter, git.AccessibleDescription);
+            var description = SqlFilesNames.GitStatus(git);
+            ToolTipService.SetToolTip(letter, description);
             Grid.SetColumn(letter, 3);
             grid.Children.Add(letter);
-            accessibleName += ", " + git.AccessibleDescription;
+            accessibleName += ", " + description;
         }
         else if (status is not null)
         {
-            var caption = new TextBlock { Text = status, Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"], VerticalAlignment = VerticalAlignment.Center, Foreground = (Brush)Application.Current.Resources[status == "Not found" ? "SystemFillColorCriticalBrush" : "TextFillColorSecondaryBrush"] };
+            var caption = new TextBlock { Text = status, Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"], VerticalAlignment = VerticalAlignment.Center, Foreground = (Brush)Application.Current.Resources[statusIsCritical ? "SystemFillColorCriticalBrush" : "TextFillColorSecondaryBrush"] };
             Grid.SetColumn(caption, 3);
             grid.Children.Add(caption);
             accessibleName += ", " + status;
@@ -404,7 +411,7 @@ internal sealed partial class SqlFilesPane : UserControl
         AutomationProperties.SetName(item, accessibleName);
         if (expanded is { } isOpen)
         {
-            AutomationProperties.SetHelpText(item, isOpen ? "Expanded" : "Collapsed");
+            AutomationProperties.SetHelpText(item, isOpen ? Strings.Get("SqlFiles/Expanded") : Strings.Get("SqlFiles/Collapsed"));
         }
 
         return item;
@@ -514,7 +521,7 @@ internal sealed partial class SqlFilesPane : UserControl
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            await Dialogs.ShowErrorAsync("Couldn't Open the File", ex.Message);
+            await Dialogs.ShowErrorAsync(Strings.Get("SqlFiles/OpenFailedTitle"), ex.Message);
         }
     }
 
@@ -552,17 +559,17 @@ internal sealed partial class SqlFilesPane : UserControl
         switch (await _library.Folders.AddAsync(folder.Path))
         {
             case LinkFolderOutcome.AlreadyLinked:
-                _workspace.Context.Notify($"\"{folder.Name}\" is already linked");
+                _workspace.Context.Notify(Strings.Format("SqlFiles/AlreadyLinked", folder.Name));
                 break;
             case LinkFolderOutcome.ReEnabled:
-                _workspace.Context.Notify($"Turned \"{folder.Name}\" back on");
+                _workspace.Context.Notify(Strings.Format("SqlFiles/TurnedBackOn", folder.Name));
                 break;
         }
     }
 
     private async Task UnlinkAsync(LinkedSqlFolder folder)
     {
-        if (await Dialogs.ConfirmAsync("Unlink Folder?", $"\"{folder.Name}\" will no longer be listed. Its files stay on disk.", "Unlink"))
+        if (await Dialogs.ConfirmAsync(Strings.Get("SqlFiles/UnlinkTitle"), Strings.Format("SqlFiles/UnlinkMessage", folder.Name), Strings.Get("SqlFiles/UnlinkButton")))
         {
             await _library.Folders.RemoveAsync(folder.Id);
         }
@@ -570,7 +577,7 @@ internal sealed partial class SqlFilesPane : UserControl
 
     private async Task NewFileAsync(string directory)
     {
-        var name = await Dialogs.PromptAsync("New SQL File", "Name", SqlFileOperations.UniqueFileName(directory), "Create");
+        var name = await Dialogs.PromptAsync(Strings.Get("SqlFiles/NewFileTitle"), Strings.Get("Common/Name"), SqlFileOperations.UniqueFileName(directory), Strings.Get("SqlFiles/CreateButton"));
         if (name is null)
         {
             return;
@@ -579,7 +586,7 @@ internal sealed partial class SqlFilesPane : UserControl
         var problem = SqlFileOperations.Validate(directory, name);
         if (problem != SqlFileNameProblem.None)
         {
-            await Dialogs.ShowErrorAsync("Couldn't Create the File", SqlFileOperations.Describe(problem));
+            await Dialogs.ShowErrorAsync(Strings.Get("SqlFiles/CreateFailedTitle"), SqlFilesNames.FileNameProblem(problem));
             return;
         }
 
@@ -589,13 +596,13 @@ internal sealed partial class SqlFilesPane : UserControl
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            await Dialogs.ShowErrorAsync("Couldn't Create the File", ex.Message);
+            await Dialogs.ShowErrorAsync(Strings.Get("SqlFiles/CreateFailedTitle"), ex.Message);
         }
     }
 
     private async Task RenameAsync(LinkedSqlFile file)
     {
-        var name = await Dialogs.PromptAsync("Rename", "Name", file.FileName, "Rename");
+        var name = await Dialogs.PromptAsync(Strings.Get("Common/Rename"), Strings.Get("Common/Name"), file.FileName, Strings.Get("Common/Rename"));
         if (name is null || name == file.FileName)
         {
             return;
@@ -614,21 +621,21 @@ internal sealed partial class SqlFilesPane : UserControl
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            await Dialogs.ShowErrorAsync("Couldn't Rename", ex.Message);
+            await Dialogs.ShowErrorAsync(Strings.Get("SqlFiles/RenameFailedTitle"), ex.Message);
         }
     }
 
     private async Task EditDetailsAsync(LinkedSqlFile file)
     {
-        var name = new TextBox { Header = "Name", Text = file.Name, PlaceholderText = Path.GetFileNameWithoutExtension(file.FileName) };
-        var keyword = new TextBox { Header = "Keyword", Text = file.Keyword ?? string.Empty, PlaceholderText = "Typed in the editor to insert this query" };
-        var description = new TextBox { Header = "Description", Text = file.Description ?? string.Empty, AcceptsReturn = false };
+        var name = new TextBox { Header = Strings.Get("Common/Name"), Text = file.Name, PlaceholderText = Path.GetFileNameWithoutExtension(file.FileName) };
+        var keyword = new TextBox { Header = Strings.Get("SqlFiles/Keyword"), Text = file.Keyword ?? string.Empty, PlaceholderText = Strings.Get("SqlFiles/KeywordPlaceholder") };
+        var description = new TextBox { Header = Strings.Get("SqlFiles/Description"), Text = file.Description ?? string.Empty, AcceptsReturn = false };
         var panel = new StackPanel { Spacing = 12, Width = 420 };
-        panel.Children.Add(new TextBlock { Text = "Saved in the file's header as -- @name, -- @keyword and -- @description lines, which the macOS app reads too.", TextWrapping = TextWrapping.Wrap, Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"] });
+        panel.Children.Add(new TextBlock { Text = Strings.Get("SqlFiles/DetailsExplanation"), TextWrapping = TextWrapping.Wrap, Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"] });
         panel.Children.Add(name);
         panel.Children.Add(keyword);
         panel.Children.Add(description);
-        if (await Dialogs.ShowAsync(Dialogs.Create("Edit Details", panel, "Save", "Cancel")) != ContentDialogResult.Primary)
+        if (await Dialogs.ShowAsync(Dialogs.Create(Strings.Get("SqlFiles/EditDetailsTitle"), panel, Strings.Get("Common/Save"), Strings.Get("Common/Cancel"))) != ContentDialogResult.Primary)
         {
             return;
         }
@@ -643,7 +650,7 @@ internal sealed partial class SqlFilesPane : UserControl
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            await Dialogs.ShowErrorAsync("Couldn't Save the Details", ex.Message);
+            await Dialogs.ShowErrorAsync(Strings.Get("SqlFiles/SaveDetailsFailedTitle"), ex.Message);
         }
 
         static string? NullIfBlank(string text) => string.IsNullOrWhiteSpace(text) ? null : text.Trim();
@@ -651,7 +658,7 @@ internal sealed partial class SqlFilesPane : UserControl
 
     private async Task DeleteAsync(LinkedSqlFile file)
     {
-        if (!await Dialogs.ConfirmAsync("Move to Recycle Bin?", $"\"{file.FileName}\" will be moved to the Recycle Bin. Its saved versions are kept.", "Move to Recycle Bin", destructive: true))
+        if (!await Dialogs.ConfirmAsync(Strings.Get("SqlFiles/DeleteTitle"), Strings.Format("SqlFiles/DeleteMessage", file.FileName), Strings.Get("SqlFiles/DeleteButton"), destructive: true))
         {
             return;
         }
@@ -662,7 +669,7 @@ internal sealed partial class SqlFilesPane : UserControl
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            await Dialogs.ShowErrorAsync("Couldn't Move to the Recycle Bin", ex.Message);
+            await Dialogs.ShowErrorAsync(Strings.Get("SqlFiles/DeleteFailedTitle"), ex.Message);
         }
     }
 
@@ -681,18 +688,18 @@ internal sealed partial class SqlFilesPane : UserControl
         {
             if (await _library.CommitDraftAsync(folder, file) is not { } found)
             {
-                await Dialogs.ShowErrorAsync("Couldn't Commit", "This folder is not in a Git repository.");
+                await Dialogs.ShowErrorAsync(Strings.Get("SqlFiles/CommitFailedTitle"), Strings.Get("SqlFiles/NotARepository"));
                 return;
             }
 
             if (await GitCommitDialog.ShowAsync(Dialogs, _library, found.Draft, found.Repository, folder.Name))
             {
-                _workspace.Context.Notify("Committed");
+                _workspace.Context.Notify(Strings.Get("SqlFiles/Committed"));
             }
         }
         catch (Exception ex) when (ex is GitCommandException or GitProcessException or GitUnavailableException)
         {
-            await ShowGitErrorAsync("Couldn't Commit", ex);
+            await ShowGitErrorAsync(Strings.Get("SqlFiles/CommitFailedTitle"), ex);
         }
     }
 
@@ -706,11 +713,11 @@ internal sealed partial class SqlFilesPane : UserControl
                 await ReloadIfCleanAsync(path);
             }
 
-            _workspace.Context.Notify($"Pulled \"{folder.Name}\"");
+            _workspace.Context.Notify(Strings.Format("SqlFiles/Pulled", folder.Name));
         }
         catch (Exception ex) when (ex is GitCommandException or GitProcessException or GitUnavailableException or InvalidOperationException)
         {
-            await ShowGitErrorAsync($"Couldn't Pull \"{folder.Name}\"", ex);
+            await ShowGitErrorAsync(Strings.Format("SqlFiles/PullFailedTitle", folder.Name), ex);
         }
     }
 
@@ -719,11 +726,11 @@ internal sealed partial class SqlFilesPane : UserControl
         try
         {
             await _library.PushAsync(folder);
-            _workspace.Context.Notify($"Pushed \"{folder.Name}\"");
+            _workspace.Context.Notify(Strings.Format("SqlFiles/Pushed", folder.Name));
         }
         catch (Exception ex) when (ex is GitCommandException or GitProcessException or GitUnavailableException or InvalidOperationException)
         {
-            await ShowGitErrorAsync($"Couldn't Push \"{folder.Name}\"", ex);
+            await ShowGitErrorAsync(Strings.Format("SqlFiles/PushFailedTitle", folder.Name), ex);
         }
     }
 
@@ -732,7 +739,7 @@ internal sealed partial class SqlFilesPane : UserControl
         try
         {
             var plan = await new GitFileHistoryProvider(file.FullPath, _library.Git).PrepareDiscardAsync();
-            if (!await Dialogs.ConfirmAsync("Discard Changes?", $"The changes to \"{file.FileName}\" that are not staged will be lost. A copy is kept in its version history.", "Discard", destructive: true))
+            if (!await Dialogs.ConfirmAsync(Strings.Get("SqlFiles/DiscardTitle"), Strings.Format("SqlFiles/DiscardMessage", file.FileName), Strings.Get("Common/Discard"), destructive: true))
             {
                 return;
             }
@@ -744,7 +751,7 @@ internal sealed partial class SqlFilesPane : UserControl
         }
         catch (VersionHistoryException ex)
         {
-            await Dialogs.ShowErrorAsync("Couldn't Discard Changes", ex.Message);
+            await Dialogs.ShowErrorAsync(Strings.Get("SqlFiles/DiscardFailedTitle"), ex.Message);
         }
     }
 
@@ -752,7 +759,7 @@ internal sealed partial class SqlFilesPane : UserControl
     {
         if (await team.PullAsync() is { } error)
         {
-            await Dialogs.ShowErrorAsync("Couldn't Refresh the Team Library", error);
+            await Dialogs.ShowErrorAsync(Strings.Get("SqlFiles/TeamRefreshFailedTitle"), error);
         }
     }
 
@@ -766,11 +773,11 @@ internal sealed partial class SqlFilesPane : UserControl
         var (folders, queries) = favorites.GetVisible(null);
         if (queries.Count == 0)
         {
-            await Dialogs.ShowErrorAsync("Nothing to Publish", "You have no saved queries to publish.");
+            await Dialogs.ShowErrorAsync(Strings.Get("SqlFiles/NothingToPublishTitle"), Strings.Get("SqlFiles/NothingToPublishMessage"));
             return;
         }
 
-        if (!await Dialogs.ConfirmAsync("Publish Saved Queries to Your Team?", $"Everyone on your team will see your {queries.Count} saved queries. This replaces the saved queries you published before.", "Publish"))
+        if (!await Dialogs.ConfirmAsync(Strings.Get("SqlFiles/PublishTitle"), Strings.Plural("SqlFiles/PublishMessage", queries.Count), Strings.Get("SqlFiles/PublishButton")))
         {
             return;
         }
@@ -778,18 +785,19 @@ internal sealed partial class SqlFilesPane : UserControl
         try
         {
             var response = await team.PublishAsync(queries, folders);
-            _workspace.Context.Notify($"Published {response.QueryCount} saved queries to your team");
+            _workspace.Context.Notify(Strings.Plural("SqlFiles/Published", response.QueryCount));
         }
         catch (TeamLibraryException ex)
         {
-            await Dialogs.ShowErrorAsync("Couldn't Publish to the Team Library", ex.Message);
+            await Dialogs.ShowErrorAsync(Strings.Get("SqlFiles/PublishFailedTitle"), ex.Message);
         }
     }
 
     private async Task ShowGitErrorAsync(string title, Exception error)
     {
         var detail = GitErrorText.Output(error);
-        var body = detail is null ? GitErrorText.Describe(error) : GitErrorText.Describe(error) + "\n\n" + detail;
+        var summary = SqlFilesNames.GitError(error);
+        var body = detail is null ? summary : summary + "\n\n" + detail;
         await Dialogs.ShowErrorAsync(title, body);
     }
 

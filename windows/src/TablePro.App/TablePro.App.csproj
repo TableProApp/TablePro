@@ -36,6 +36,11 @@
     <Manifest Include="$(ApplicationManifest)" />
   </ItemGroup>
 
+  <!-- Strings\<language>\<Area>.resw become PRI resources through the Windows App SDK's default items. -->
+  <ItemGroup>
+    <Using Include="TablePro.App.Localization" />
+  </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="Microsoft.WindowsAppSDK" />
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" />

@@ -1,0 +1,488 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AiAssistant" xml:space="preserve">
+    <value>AI assistant</value>
+    <comment>Tooltip of the sidebar button that opens the AI assistant pane; the app appends the keyboard shortcut.</comment>
+  </data>
+  <data name="AssistantButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>AI assistant</value>
+    <comment>Screen reader name of the sidebar button that opens the AI assistant pane.</comment>
+  </data>
+  <data name="BadgeReadOnly" xml:space="preserve">
+    <value>Read-only</value>
+    <comment>Small badge in the title bar when the connection is read-only. Keep it short.</comment>
+  </data>
+  <data name="BadgeSafeMode" xml:space="preserve">
+    <value>Safe Mode</value>
+    <comment>Small badge in the title bar when the connection asks before writes. Keep it short.</comment>
+  </data>
+  <data name="CloseSidePaneButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Close</value>
+    <comment>Button that closes the side pane (history, favorites, assistant).</comment>
+  </data>
+  <data name="CloseSidePaneButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Close</value>
+    <comment>Button that closes the side pane (history, favorites, assistant).</comment>
+  </data>
+  <data name="CloseTabMessage" xml:space="preserve">
+    <value>{0} Closing discards them.</value>
+    <comment>{0} is a sentence describing the tab's unsaved changes, for example "This query has unsaved edits."</comment>
+  </data>
+  <data name="CloseTabTitle" xml:space="preserve">
+    <value>Close tab?</value>
+  </data>
+  <data name="CloseWindowTitle" xml:space="preserve">
+    <value>Close this window?</value>
+  </data>
+  <data name="CloseWithoutSaving" xml:space="preserve">
+    <value>Close Without Saving</value>
+    <comment>Button that closes the window and discards unsaved tabs.</comment>
+  </data>
+  <data name="ConnectedTo" xml:space="preserve">
+    <value>Connected to {0}</value>
+    <comment>Status bar text. {0} is the server address or file of the connection.</comment>
+  </data>
+  <data name="CopyConnectMessage" xml:space="preserve">
+    <value>Enter the password to copy into this connection.</value>
+  </data>
+  <data name="CopyConnectTitle" xml:space="preserve">
+    <value>Connect to {0}</value>
+    <comment>{0} is the connection name.</comment>
+  </data>
+  <data name="CountBillions" xml:space="preserve">
+    <value>{0:0.#}B</value>
+    <comment>Short row count in billions shown in the sidebar, for example 1.2B. {0} is the number of billions. Keep it very short.</comment>
+  </data>
+  <data name="CountMillions" xml:space="preserve">
+    <value>{0:0.#}M</value>
+    <comment>Short row count in millions shown in the sidebar, for example 3.4M. {0} is the number of millions. Keep it very short.</comment>
+  </data>
+  <data name="CountThousands" xml:space="preserve">
+    <value>{0:0.#}K</value>
+    <comment>Short row count in thousands shown in the sidebar, for example 12.5K. {0} is the number of thousands. Keep it very short.</comment>
+  </data>
+  <data name="Create" xml:space="preserve">
+    <value>Create</value>
+    <comment>Button that creates the table (verb).</comment>
+  </data>
+  <data name="CreateTableAddColumn" xml:space="preserve">
+    <value>Add Column</value>
+  </data>
+  <data name="CreateTableButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Create table</value>
+  </data>
+  <data name="CreateTableButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Create table</value>
+  </data>
+  <data name="CreateTableColumnPlaceholder" xml:space="preserve">
+    <value>column</value>
+    <comment>Placeholder in the column name box of the Create Table dialog; lowercase like a column name.</comment>
+  </data>
+  <data name="CreateTableKey" xml:space="preserve">
+    <value>Key</value>
+    <comment>Check box marking a column as part of the primary key. Keep it short.</comment>
+  </data>
+  <data name="CreateTableName" xml:space="preserve">
+    <value>Table name</value>
+  </data>
+  <data name="CreateTableReviewTitle" xml:space="preserve">
+    <value>Create table</value>
+    <comment>Title of the dialog that reviews the CREATE TABLE statement before it runs.</comment>
+  </data>
+  <data name="CreateTableTitle" xml:space="preserve">
+    <value>Create Table</value>
+    <comment>Title of the dialog where the user names the table and its columns.</comment>
+  </data>
+  <data name="DatabaseBox.PlaceholderText" xml:space="preserve">
+    <value>Database</value>
+  </data>
+  <data name="DatabaseBox.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Database</value>
+  </data>
+  <data name="Drop" xml:space="preserve">
+    <value>Drop</value>
+    <comment>Verb: deletes a table, view or routine from the database (SQL DROP).</comment>
+  </data>
+  <data name="DropTitle" xml:space="preserve">
+    <value>Drop {0}?</value>
+    <comment>{0} is the object name.</comment>
+  </data>
+  <data name="DumpExported_One" xml:space="preserve">
+    <value>Exported {0} object to {1}.</value>
+    <comment>{0} is the number of tables and views, {1} is the file name.</comment>
+  </data>
+  <data name="DumpExported_Other" xml:space="preserve">
+    <value>Exported {0} objects to {1}.</value>
+    <comment>{0} is the number of tables and views, {1} is the file name.</comment>
+  </data>
+  <data name="DumpExporting" xml:space="preserve">
+    <value>Exporting {0}…</value>
+    <comment>Status bar progress. {0} is the table or view being written.</comment>
+  </data>
+  <data name="DumpIncludeData" xml:space="preserve">
+    <value>Include data</value>
+  </data>
+  <data name="DumpMessage" xml:space="preserve">
+    <value>Writes the structure of every table and view in {0} to a SQL file.</value>
+    <comment>{0} is the schema or connection name.</comment>
+  </data>
+  <data name="DumpTitle" xml:space="preserve">
+    <value>Export Database</value>
+  </data>
+  <data name="ExportColumns_One" xml:space="preserve">
+    <value>{0} column</value>
+    <comment>Fills {1} of ExportSummary. {0} is the number of columns.</comment>
+  </data>
+  <data name="ExportColumns_Other" xml:space="preserve">
+    <value>{0} columns</value>
+    <comment>Fills {1} of ExportSummary. {0} is the number of columns.</comment>
+  </data>
+  <data name="ExportCompression" xml:space="preserve">
+    <value>Compression</value>
+  </data>
+  <data name="ExportCompressionTip" xml:space="preserve">
+    <value>Snappy is what every Parquet reader supports. Zstd is smaller and needs a reader built with it.</value>
+    <comment>Snappy, Zstd and Parquet are product names.</comment>
+  </data>
+  <data name="ExportEllipsis" xml:space="preserve">
+    <value>Export…</value>
+    <comment>Button that continues to the save dialog.</comment>
+  </data>
+  <data name="ExportFailed" xml:space="preserve">
+    <value>Export failed</value>
+  </data>
+  <data name="ExportFormat" xml:space="preserve">
+    <value>Format</value>
+    <comment>Header of the file format picker.</comment>
+  </data>
+  <data name="ExportFormatExcel" xml:space="preserve">
+    <value>Excel workbook</value>
+    <comment>File format name; Excel is a product name.</comment>
+  </data>
+  <data name="ExportIncludeColumnNames" xml:space="preserve">
+    <value>Include column names</value>
+  </data>
+  <data name="ExportRowsPerGroup" xml:space="preserve">
+    <value>Rows per group</value>
+    <comment>Parquet row group size.</comment>
+  </data>
+  <data name="ExportRowsPerGroupTip" xml:space="preserve">
+    <value>Larger groups compress better and cost more memory to read</value>
+  </data>
+  <data name="ExportSummary_One" xml:space="preserve">
+    <value>{0:N0} row, {1}</value>
+    <comment>{0} is the number of rows, {1} is the column count text from ExportColumns.</comment>
+  </data>
+  <data name="ExportSummary_Other" xml:space="preserve">
+    <value>{0:N0} rows, {1}</value>
+    <comment>{0} is the number of rows, {1} is the column count text from ExportColumns.</comment>
+  </data>
+  <data name="Favorites" xml:space="preserve">
+    <value>Favorites</value>
+    <comment>Saved SQL queries: the side pane title, the sidebar button tooltip and the group in the completion list.</comment>
+  </data>
+  <data name="FavoritesButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Favorites</value>
+    <comment>Screen reader name of the sidebar button that shows saved SQL queries.</comment>
+  </data>
+  <data name="GridCopyAs" xml:space="preserve">
+    <value>Copy As</value>
+    <comment>Submenu of formats to copy the selected cells in.</comment>
+  </data>
+  <data name="GridCopyAsInList" xml:space="preserve">
+    <value>IN list</value>
+    <comment>Copies the values as a SQL IN list. IN is the SQL keyword and stays untranslated.</comment>
+  </data>
+  <data name="GridCopyAsWhereClause" xml:space="preserve">
+    <value>WHERE clause</value>
+    <comment>Copies the rows as a SQL WHERE condition. WHERE is the SQL keyword and stays untranslated.</comment>
+  </data>
+  <data name="GridCopyColumnName" xml:space="preserve">
+    <value>Copy Column Name</value>
+  </data>
+  <data name="GridCopyWithHeaders" xml:space="preserve">
+    <value>Copy with Headers</value>
+  </data>
+  <data name="HistoryButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Query history</value>
+  </data>
+  <data name="KindCollection" xml:space="preserve">
+    <value>Collection</value>
+    <comment>One document collection (MongoDB) or search index.</comment>
+  </data>
+  <data name="KindFunction" xml:space="preserve">
+    <value>Function</value>
+    <comment>One database function.</comment>
+  </data>
+  <data name="KindKey" xml:space="preserve">
+    <value>Key</value>
+    <comment>One key of a key-value store such as Redis.</comment>
+  </data>
+  <data name="KindMaterializedView" xml:space="preserve">
+    <value>Materialized View</value>
+    <comment>One materialized view.</comment>
+  </data>
+  <data name="KindProcedure" xml:space="preserve">
+    <value>Procedure</value>
+    <comment>One stored procedure.</comment>
+  </data>
+  <data name="KindSequence" xml:space="preserve">
+    <value>Sequence</value>
+    <comment>One database sequence.</comment>
+  </data>
+  <data name="KindTable" xml:space="preserve">
+    <value>Table</value>
+    <comment>One database table.</comment>
+  </data>
+  <data name="KindTopic" xml:space="preserve">
+    <value>Topic</value>
+    <comment>One streaming topic (Kafka).</comment>
+  </data>
+  <data name="KindTrigger" xml:space="preserve">
+    <value>Trigger</value>
+    <comment>One database trigger.</comment>
+  </data>
+  <data name="KindView" xml:space="preserve">
+    <value>View</value>
+    <comment>One database view (noun).</comment>
+  </data>
+  <data name="MenuBuildJoinQuery" xml:space="preserve">
+    <value>Build Join Query</value>
+  </data>
+  <data name="MenuCheckForUpdates.Text" xml:space="preserve">
+    <value>Check for Updates…</value>
+  </data>
+  <data name="MenuCompare.Text" xml:space="preserve">
+    <value>Compare and Sync</value>
+  </data>
+  <data name="MenuCopyName" xml:space="preserve">
+    <value>Copy Name</value>
+  </data>
+  <data name="MenuCopyObjects.Text" xml:space="preserve">
+    <value>Copy Objects…</value>
+    <comment>Copies tables to another connection.</comment>
+  </data>
+  <data name="MenuCopyQualifiedName" xml:space="preserve">
+    <value>Copy Qualified Name</value>
+    <comment>Copies the name with its schema, for example sales.orders.</comment>
+  </data>
+  <data name="MenuCopyToConnection" xml:space="preserve">
+    <value>Copy to Connection…</value>
+  </data>
+  <data name="MenuDataRewind.Text" xml:space="preserve">
+    <value>Data Rewind</value>
+    <comment>Feature name: restores rows from earlier saves.</comment>
+  </data>
+  <data name="MenuDebug" xml:space="preserve">
+    <value>Debug</value>
+    <comment>Verb: opens the routine debugger.</comment>
+  </data>
+  <data name="MenuDisconnect.Text" xml:space="preserve">
+    <value>Disconnect</value>
+  </data>
+  <data name="MenuErDiagram.Text" xml:space="preserve">
+    <value>ER Diagram</value>
+    <comment>Entity-relationship diagram.</comment>
+  </data>
+  <data name="MenuExportData" xml:space="preserve">
+    <value>Export Data</value>
+  </data>
+  <data name="MenuExportDatabase.Text" xml:space="preserve">
+    <value>Export Database</value>
+  </data>
+  <data name="MenuGenerateRows" xml:space="preserve">
+    <value>Generate Rows…</value>
+    <comment>Fills the table with generated test rows.</comment>
+  </data>
+  <data name="MenuGenerateSql" xml:space="preserve">
+    <value>Generate SQL</value>
+    <comment>Submenu of SELECT, INSERT, UPDATE and DELETE templates.</comment>
+  </data>
+  <data name="MenuJoinBuilder.Text" xml:space="preserve">
+    <value>Join Builder</value>
+  </data>
+  <data name="MenuOpenQuickly.Text" xml:space="preserve">
+    <value>Open Quickly</value>
+  </data>
+  <data name="MenuQueryInNewTab" xml:space="preserve">
+    <value>Query in New Tab</value>
+  </data>
+  <data name="MenuRunSqlFile.Text" xml:space="preserve">
+    <value>Run SQL File</value>
+  </data>
+  <data name="MenuSearchDatabase.Text" xml:space="preserve">
+    <value>Search Database</value>
+  </data>
+  <data name="MenuServerDashboard.Text" xml:space="preserve">
+    <value>Server Dashboard</value>
+  </data>
+  <data name="MenuSettings.Text" xml:space="preserve">
+    <value>Settings</value>
+  </data>
+  <data name="MenuShowDefinition" xml:space="preserve">
+    <value>Show Definition</value>
+  </data>
+  <data name="MenuStructure" xml:space="preserve">
+    <value>Structure</value>
+    <comment>Opens the table's columns, indexes and keys.</comment>
+  </data>
+  <data name="MoreButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>More</value>
+    <comment>Button that opens a menu of more commands.</comment>
+  </data>
+  <data name="MoreButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>More</value>
+    <comment>Button that opens a menu of more commands.</comment>
+  </data>
+  <data name="NewQuery" xml:space="preserve">
+    <value>New query</value>
+    <comment>Tooltip of the button that opens a new query tab; the app appends the keyboard shortcut.</comment>
+  </data>
+  <data name="NewQueryButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>New query</value>
+  </data>
+  <data name="QueryHistory" xml:space="preserve">
+    <value>Query history</value>
+    <comment>Tooltip of the history button; the app appends the keyboard shortcut.</comment>
+  </data>
+  <data name="QuitTitle" xml:space="preserve">
+    <value>Quit TablePro?</value>
+  </data>
+  <data name="QuitWithoutSaving" xml:space="preserve">
+    <value>Quit Without Saving</value>
+  </data>
+  <data name="RefreshButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Refresh</value>
+  </data>
+  <data name="RefreshButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Refresh (F5 in the sidebar)</value>
+    <comment>F5 is a key name and stays as is.</comment>
+  </data>
+  <data name="RenameNewName" xml:space="preserve">
+    <value>New name</value>
+  </data>
+  <data name="RenameTitle" xml:space="preserve">
+    <value>Rename {0}</value>
+    <comment>{0} is the table name.</comment>
+  </data>
+  <data name="SchemaBox.PlaceholderText" xml:space="preserve">
+    <value>Schema</value>
+  </data>
+  <data name="SchemaBox.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Schema</value>
+  </data>
+  <data name="SearchTables" xml:space="preserve">
+    <value>Search tables</value>
+    <comment>Placeholder of the sidebar search box; the app appends the keyboard shortcut.</comment>
+  </data>
+  <data name="SectionCollections" xml:space="preserve">
+    <value>Collections</value>
+    <comment>Sidebar section header, shown in capitals.</comment>
+  </data>
+  <data name="SectionFunctions" xml:space="preserve">
+    <value>Functions</value>
+    <comment>Sidebar section header, shown in capitals.</comment>
+  </data>
+  <data name="SectionKeys" xml:space="preserve">
+    <value>Keys</value>
+    <comment>Sidebar section header for the keys of a key-value store, shown in capitals.</comment>
+  </data>
+  <data name="SectionMaterializedViews" xml:space="preserve">
+    <value>Materialized Views</value>
+    <comment>Sidebar section header, shown in capitals.</comment>
+  </data>
+  <data name="SectionProcedures" xml:space="preserve">
+    <value>Procedures</value>
+    <comment>Sidebar section header, shown in capitals.</comment>
+  </data>
+  <data name="SectionSequences" xml:space="preserve">
+    <value>Sequences</value>
+    <comment>Sidebar section header, shown in capitals.</comment>
+  </data>
+  <data name="SectionTables" xml:space="preserve">
+    <value>Tables</value>
+    <comment>Sidebar section header, shown in capitals.</comment>
+  </data>
+  <data name="SectionTopics" xml:space="preserve">
+    <value>Topics</value>
+    <comment>Sidebar section header for streaming topics, shown in capitals.</comment>
+  </data>
+  <data name="SectionTriggers" xml:space="preserve">
+    <value>Triggers</value>
+    <comment>Sidebar section header, shown in capitals.</comment>
+  </data>
+  <data name="SectionViews" xml:space="preserve">
+    <value>Views</value>
+    <comment>Sidebar section header for database views, shown in capitals.</comment>
+  </data>
+  <data name="SidePaneAssistant" xml:space="preserve">
+    <value>Assistant</value>
+    <comment>Title of the AI assistant side pane.</comment>
+  </data>
+  <data name="SidePaneDataRewind" xml:space="preserve">
+    <value>Data Rewind</value>
+    <comment>Title of the Data Rewind side pane; feature name.</comment>
+  </data>
+  <data name="SidePaneHistory" xml:space="preserve">
+    <value>History</value>
+    <comment>Title of the query history side pane.</comment>
+  </data>
+  <data name="SidePaneSqlFiles" xml:space="preserve">
+    <value>SQL Files</value>
+    <comment>Title of the SQL files side pane.</comment>
+  </data>
+  <data name="SidebarItemAccessibleName" xml:space="preserve">
+    <value>{0} {1}</value>
+    <comment>What a screen reader says for a sidebar object. {0} is the kind (Table, View...), {1} is its name.</comment>
+  </data>
+  <data name="SqlFileType" xml:space="preserve">
+    <value>SQL file</value>
+    <comment>File type name in the save dialog.</comment>
+  </data>
+  <data name="SqlFilesButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>SQL files</value>
+  </data>
+  <data name="SqlFilesButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>SQL files</value>
+  </data>
+  <data name="StatementFailed" xml:space="preserve">
+    <value>The statement failed</value>
+  </data>
+  <data name="SwitchDatabaseButton" xml:space="preserve">
+    <value>Switch</value>
+    <comment>Verb: button that switches to the chosen database.</comment>
+  </data>
+  <data name="SwitchDatabaseFailed" xml:space="preserve">
+    <value>Could not switch database</value>
+  </data>
+  <data name="SwitchDatabaseMessage" xml:space="preserve">
+    <value>Open tabs with unsaved changes will be closed.</value>
+  </data>
+  <data name="SwitchDatabaseTitle" xml:space="preserve">
+    <value>Switch database?</value>
+  </data>
+  <data name="Truncate" xml:space="preserve">
+    <value>Truncate</value>
+    <comment>Verb: deletes every row of a table (SQL TRUNCATE).</comment>
+  </data>
+  <data name="TruncateTitle" xml:space="preserve">
+    <value>Empty {0}?</value>
+    <comment>Asks before deleting every row. {0} is the table name.</comment>
+  </data>
+  <data name="WindowTitle" xml:space="preserve">
+    <value>{0} - TablePro</value>
+    <comment>Window title. {0} is the connection name; TablePro is the product name.</comment>
+  </data>
+</root>

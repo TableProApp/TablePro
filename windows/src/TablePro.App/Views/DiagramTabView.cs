@@ -46,10 +46,10 @@ public sealed partial class DiagramTabView : UserControl
         };
 
         var toolbar = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, Padding = new Thickness(8, 4, 8, 4) };
-        toolbar.Children.Add(ToolButton("", "Reload", async () => await ViewModel.LoadAsync()));
-        toolbar.Children.Add(ToolButton("", "Zoom in", () => Zoom(1.25f)));
-        toolbar.Children.Add(ToolButton("", "Zoom out", () => Zoom(0.8f)));
-        toolbar.Children.Add(ToolButton("", "Fit", Fit));
+        toolbar.Children.Add(ToolButton("", Strings.Get("Diagram/Reload"), async () => await ViewModel.LoadAsync()));
+        toolbar.Children.Add(ToolButton("", Strings.Get("Diagram/ZoomIn"), () => Zoom(1.25f)));
+        toolbar.Children.Add(ToolButton("", Strings.Get("Diagram/ZoomOut"), () => Zoom(0.8f)));
+        toolbar.Children.Add(ToolButton("", Strings.Get("Diagram/Fit"), Fit));
         toolbar.Children.Add(_status);
 
         var root = new Grid();
@@ -95,6 +95,7 @@ public sealed partial class DiagramTabView : UserControl
         var button = new Button { Content = new FontIcon { Glyph = glyph, FontSize = 14 }, Style = (Style)Application.Current.Resources["ToolbarButtonStyle"] };
         button.Click += (_, _) => action();
         ToolTipService.SetToolTip(button, tooltip);
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(button, tooltip);
         return button;
     }
 

@@ -227,11 +227,13 @@ internal sealed partial class DataGridAutomationPeer : FrameworkElementAutomatio
     protected override string GetNameCore()
     {
         var name = base.GetNameCore();
-        return string.IsNullOrEmpty(name) ? "Results" : name;
+        return string.IsNullOrEmpty(name) ? Strings.Get("Grid/DefaultName") : name;
     }
 
     protected override string GetItemStatusCore() =>
-        _grid.Source is { } source ? $"{source.RowCount:N0} rows, {source.Columns.Count} columns" : string.Empty;
+        _grid.Source is { } source
+            ? Strings.Format("Grid/RowsAndColumns", Strings.Plural("Grid/RowCount", source.RowCount), Strings.Plural("Grid/ColumnCount", source.Columns.Count))
+            : string.Empty;
 
     protected override object? GetPatternCore(PatternInterface patternInterface) => patternInterface switch
     {
@@ -362,7 +364,7 @@ internal sealed partial class DataGridCellAutomationPeer : AutomationPeer, IGrid
 
         if (!_grid.Source!.TrySetValue(Row, Column, value, out var error))
         {
-            throw new ArgumentException(error ?? "The value was not accepted.", nameof(value));
+            throw new ArgumentException(error ?? Strings.Get("Grid/ValueNotAccepted"), nameof(value));
         }
     }
 
@@ -379,11 +381,11 @@ internal sealed partial class DataGridCellAutomationPeer : AutomationPeer, IGrid
 
     protected override AutomationControlType GetAutomationControlTypeCore() => AutomationControlType.DataItem;
 
-    protected override string GetLocalizedControlTypeCore() => "cell";
+    protected override string GetLocalizedControlTypeCore() => Strings.Get("Grid/CellControlType");
 
     protected override string GetClassNameCore() => "DataGridCell";
 
-    protected override string GetNameCore() => $"{_grid.ColumnName(Column)}, row {Row + 1}";
+    protected override string GetNameCore() => Strings.Format("Grid/CellName", _grid.ColumnName(Column), Row + 1);
 
     protected override string GetAutomationIdCore() => $"Cell_{Row}_{Column}";
 

@@ -30,7 +30,7 @@ public static class DatabaseDumper
         foreach (var obj in objects)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            progress.Report($"Exporting {obj.Name.Name}…");
+            progress.Report(Strings.Format("Workspace/DumpExporting", obj.Name.Name));
             var definition = (await session.Database.GetDefinitionAsync(obj, cancellationToken)).TrimEnd();
             await writer.WriteLineAsync($"-- {obj.Kind} {obj.Name}");
             await writer.WriteAsync(definition);

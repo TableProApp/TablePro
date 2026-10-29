@@ -17,7 +17,7 @@ public sealed partial class QueryPlanDetailPane : UserControl
     public QueryPlanDetailPane()
     {
         Content = new ScrollViewer { Content = _content, HorizontalScrollMode = ScrollMode.Disabled };
-        AutomationProperties.SetName(this, "Plan step details");
+        AutomationProperties.SetName(this, Strings.Get("Plan/StepDetailsName"));
         ActualThemeChanged += (_, _) => Build();
         Build();
     }
@@ -40,8 +40,8 @@ public sealed partial class QueryPlanDetailPane : UserControl
         {
             var empty = new StackPanel { Spacing = 6, Margin = new Thickness(0, 40, 0, 0), HorizontalAlignment = HorizontalAlignment.Center };
             empty.Children.Add(new FontIcon { Glyph = "", FontSize = 24, Foreground = ThemeResources.Brush(this, "TextFillColorTertiaryBrush") });
-            empty.Children.Add(new TextBlock { Text = "No step selected", HorizontalAlignment = HorizontalAlignment.Center, Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"], Foreground = ThemeResources.Brush(this, "TextFillColorSecondaryBrush") });
-            empty.Children.Add(new TextBlock { Text = "Select a step in the plan to see what it does.", TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Center, Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"], Foreground = ThemeResources.Brush(this, "TextFillColorTertiaryBrush") });
+            empty.Children.Add(new TextBlock { Text = Strings.Get("Plan/NoStepSelected"),HorizontalAlignment = HorizontalAlignment.Center, Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"], Foreground = ThemeResources.Brush(this, "TextFillColorSecondaryBrush") });
+            empty.Children.Add(new TextBlock { Text = Strings.Get("Plan/NoStepSelectedHint"),TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Center, Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"], Foreground = ThemeResources.Brush(this, "TextFillColorTertiaryBrush") });
             _content.Children.Add(empty);
             return;
         }
@@ -58,46 +58,46 @@ public sealed partial class QueryPlanDetailPane : UserControl
         var title = new TextBlock { Text = node.Operation, Style = (Style)Application.Current.Resources["SubtitleTextBlockStyle"], FontSize = 16, TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true };
         Grid.SetColumn(title, 1);
         header.Children.Add(title);
-        var copy = CopyButton("Copy step details", () => QueryPlanLabels.Text(node));
+        var copy = CopyButton(Strings.Get("Plan/CopyStepDetailsButton"), () => PlanNames.Text(node));
         Grid.SetColumn(copy, 2);
         header.Children.Add(copy);
         _content.Children.Add(header);
 
         var estimates = Section(null);
-        Row(estimates, "Table", node.Relation);
-        Row(estimates, "Schema", node.Schema);
-        Row(estimates, "Alias", node.Alias is { } alias && alias != node.Relation ? alias : null);
-        Row(estimates, "Cost", node.CostRangeText(2));
-        Row(estimates, "Share", node.CostFraction is { } share ? share.ToString("P1", CultureInfo.CurrentCulture) : null);
-        Row(estimates, "Rows", node.EstimatedRows?.ToString("N0", CultureInfo.CurrentCulture));
-        Row(estimates, "Width", node.EstimatedWidth is > 0 ? node.EstimatedWidth.Value.ToString("N0", CultureInfo.CurrentCulture) : null);
+        Row(estimates, Strings.Get("Plan/LabelTable"), node.Relation);
+        Row(estimates, Strings.Get("Plan/LabelSchema"), node.Schema);
+        Row(estimates, Strings.Get("Plan/LabelAlias"), node.Alias is { } alias && alias != node.Relation ? alias : null);
+        Row(estimates, Strings.Get("Plan/LabelCost"), node.CostRangeText(2));
+        Row(estimates, Strings.Get("Plan/LabelShare"), node.CostFraction is { } share ? share.ToString("P1", CultureInfo.CurrentCulture) : null);
+        Row(estimates, Strings.Get("Plan/LabelRows"), node.EstimatedRows?.ToString("N0", CultureInfo.CurrentCulture));
+        Row(estimates, Strings.Get("Plan/LabelWidth"), node.EstimatedWidth is > 0 ? node.EstimatedWidth.Value.ToString("N0", CultureInfo.CurrentCulture) : null);
         AddIfAny(estimates);
 
         if (node.ActualTotalTime is not null || node.ActualRows is not null)
         {
-            var actual = Section("Actual");
-            Row(actual, "Time", node.ActualTotalTime is { } time ? QueryPlanLabels.Milliseconds(time) : null);
-            Row(actual, "Startup", node.ActualStartupTime is { } startup ? QueryPlanLabels.Milliseconds(startup) : null);
-            Row(actual, "Rows", node.ActualRows?.ToString("N0", CultureInfo.CurrentCulture));
-            Row(actual, "Loops", node.ActualLoops is > 1 ? node.ActualLoops.Value.ToString("N0", CultureInfo.CurrentCulture) : null);
-            Row(actual, "Total rows", node.ActualLoops is > 1 ? node.TotalActualRows?.ToString("N0", CultureInfo.CurrentCulture) : null);
+            var actual = Section(Strings.Get("Plan/ActualSection"));
+            Row(actual, Strings.Get("Plan/LabelTime"), node.ActualTotalTime is { } time ? QueryPlanLabels.Milliseconds(time) : null);
+            Row(actual, Strings.Get("Plan/LabelStartup"), node.ActualStartupTime is { } startup ? QueryPlanLabels.Milliseconds(startup) : null);
+            Row(actual, Strings.Get("Plan/LabelRows"), node.ActualRows?.ToString("N0", CultureInfo.CurrentCulture));
+            Row(actual, Strings.Get("Plan/LabelLoops"), node.ActualLoops is > 1 ? node.ActualLoops.Value.ToString("N0", CultureInfo.CurrentCulture) : null);
+            Row(actual, Strings.Get("Plan/LabelTotalRows"), node.ActualLoops is > 1 ? node.TotalActualRows?.ToString("N0", CultureInfo.CurrentCulture) : null);
             AddIfAny(actual);
         }
 
         if (node.Warnings.Count > 0)
         {
-            var warnings = new InfoBar { IsOpen = true, IsClosable = false, Severity = InfoBarSeverity.Warning, Title = node.Warnings.Count == 1 ? "Warning" : "Warnings", Message = string.Join("\n", node.Warnings) };
+            var warnings = new InfoBar { IsOpen = true, IsClosable = false, Severity = InfoBarSeverity.Warning, Title = Strings.Plural("Plan/WarningsTitle", node.Warnings.Count), Message = string.Join("\n", node.Warnings) };
             _content.Children.Add(warnings);
         }
 
         foreach (var index in node.MissingIndexes)
         {
-            var missing = Section(index.Impact is { } impact ? string.Create(CultureInfo.CurrentCulture, $"Missing index, estimated impact {impact:0.#}%") : "Missing index");
+            var missing = Section(index.Impact is { } impact ? Strings.Format("Plan/MissingIndexImpact", impact) : Strings.Get("Plan/MissingIndex"));
             var line = new Grid { ColumnSpacing = 6 };
             line.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             line.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             line.Children.Add(new TextBlock { Text = index.CreateStatement, TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true, FontSize = 12, FontFamily = (Microsoft.UI.Xaml.Media.FontFamily)Application.Current.Resources["CodeFontFamily"] });
-            var copyIndex = CopyButton("Copy CREATE INDEX", () => index.CreateStatement);
+            var copyIndex = CopyButton(Strings.Get("Plan/CopyCreateIndexButton"), () => index.CreateStatement);
             Grid.SetColumn(copyIndex, 1);
             line.Children.Add(copyIndex);
             missing.Children.Add(line);
@@ -107,7 +107,7 @@ public sealed partial class QueryPlanDetailPane : UserControl
         var properties = QueryPlanLabels.VisibleProperties(node);
         if (properties.Count > 0)
         {
-            var details = Section("Details");
+            var details = Section(Strings.Get("Common/Details"));
             foreach (var (key, value) in properties)
             {
                 Row(details, key, value);

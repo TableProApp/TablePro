@@ -14,19 +14,19 @@ internal static class GridCommands
 {
     public static void AddCopyItems(MenuFlyout menu, DataGridView grid, SqlDialect dialect, ObjectName? table)
     {
-        menu.Items.Add(Item("Copy", "", () => grid.CopySelection(), "Ctrl+C"));
-        menu.Items.Add(Item("Copy with Headers", "", () => grid.CopySelection(includeHeaders: true), "Ctrl+Shift+C"));
-        var copyAs = new MenuFlyoutSubItem { Text = "Copy As", Icon = new FontIcon { Glyph = "" } };
+        menu.Items.Add(Item(Strings.Get("Common/Copy"),"", () => grid.CopySelection(), "Ctrl+C"));
+        menu.Items.Add(Item(Strings.Get("Workspace/GridCopyWithHeaders"),"", () => grid.CopySelection(includeHeaders: true), "Ctrl+Shift+C"));
+        var copyAs = new MenuFlyoutSubItem { Text = Strings.Get("Workspace/GridCopyAs"),Icon = new FontIcon { Glyph = "" } };
         copyAs.Items.Add(Item("CSV", null, () => CopyAs(grid, ExportFormat.Csv, dialect, table)));
         copyAs.Items.Add(Item("JSON", null, () => CopyAs(grid, ExportFormat.Json, dialect, table)));
         copyAs.Items.Add(Item("SQL INSERT", null, () => CopyAs(grid, ExportFormat.SqlInsert, dialect, table)));
         copyAs.Items.Add(Item("Markdown", null, () => CopyAs(grid, ExportFormat.Markdown, dialect, table)));
-        copyAs.Items.Add(Item("WHERE clause", null, () => SetClipboard(WhereClause(grid, dialect))));
-        copyAs.Items.Add(Item("IN list", null, () => SetClipboard(InList(grid, dialect))));
+        copyAs.Items.Add(Item(Strings.Get("Workspace/GridCopyAsWhereClause"), null, () => SetClipboard(WhereClause(grid, dialect))));
+        copyAs.Items.Add(Item(Strings.Get("Workspace/GridCopyAsInList"), null, () => SetClipboard(InList(grid, dialect))));
         menu.Items.Add(copyAs);
         if (grid.ActiveCell is { } cell && grid.Source is { } source)
         {
-            menu.Items.Add(Item("Copy Column Name", "", () => SetClipboard(source.Columns[cell.Column].Name)));
+            menu.Items.Add(Item(Strings.Get("Workspace/GridCopyColumnName"),"", () => SetClipboard(source.Columns[cell.Column].Name)));
         }
     }
 
@@ -59,18 +59,18 @@ internal static class GridCommands
     {
         var formats = new (string Name, ExportFormat Format)[]
         {
-            ("CSV", ExportFormat.Csv), ("TSV", ExportFormat.Tsv), ("JSON", ExportFormat.Json), ("SQL INSERT", ExportFormat.SqlInsert), ("Markdown", ExportFormat.Markdown), ("Excel workbook", ExportFormat.Xlsx), ("Parquet", ExportFormat.Parquet),
+            ("CSV", ExportFormat.Csv), ("TSV", ExportFormat.Tsv), ("JSON", ExportFormat.Json), ("SQL INSERT", ExportFormat.SqlInsert), ("Markdown", ExportFormat.Markdown), (Strings.Get("Workspace/ExportFormatExcel"), ExportFormat.Xlsx), ("Parquet", ExportFormat.Parquet),
         };
-        var picker = new ComboBox { Header = "Format", ItemsSource = formats.Select(f => f.Name).ToList(), SelectedIndex = 0, MinWidth = 240 };
-        var header = new CheckBox { Content = "Include column names", IsChecked = true };
+        var picker = new ComboBox { Header = Strings.Get("Workspace/ExportFormat"), ItemsSource = formats.Select(f => f.Name).ToList(), SelectedIndex = 0, MinWidth = 240 };
+        var header = new CheckBox { Content = Strings.Get("Workspace/ExportIncludeColumnNames"), IsChecked = true };
 
         // The Parquet options are the macOS plugin's: the codec and the rows per group, with its defaults.
-        var compressions = new (string Name, ParquetCompression Value)[] { ("Snappy", ParquetCompression.Snappy), ("Zstd", ParquetCompression.Zstd), ("Gzip", ParquetCompression.Gzip), ("None", ParquetCompression.None) };
-        var compression = new ComboBox { Header = "Compression", ItemsSource = compressions.Select(c => c.Name).ToList(), SelectedIndex = 0, MinWidth = 240 };
-        ToolTipService.SetToolTip(compression, "Snappy is what every Parquet reader supports. Zstd is smaller and needs a reader built with it.");
+        var compressions = new (string Name, ParquetCompression Value)[] { ("Snappy", ParquetCompression.Snappy), ("Zstd", ParquetCompression.Zstd), ("Gzip", ParquetCompression.Gzip), (Strings.Get("Common/None"), ParquetCompression.None) };
+        var compression = new ComboBox { Header = Strings.Get("Workspace/ExportCompression"), ItemsSource = compressions.Select(c => c.Name).ToList(), SelectedIndex = 0, MinWidth = 240 };
+        ToolTipService.SetToolTip(compression, Strings.Get("Workspace/ExportCompressionTip"));
         int[] groupSizes = [10_000, 50_000, ExportOptions.DefaultParquetRowGroupSize, 500_000, 1_000_000];
-        var groupSize = new ComboBox { Header = "Rows per group", ItemsSource = groupSizes.Select(s => s.ToString("N0", System.Globalization.CultureInfo.CurrentCulture)).ToList(), SelectedIndex = 2, MinWidth = 240 };
-        ToolTipService.SetToolTip(groupSize, "Larger groups compress better and cost more memory to read");
+        var groupSize = new ComboBox { Header = Strings.Get("Workspace/ExportRowsPerGroup"),ItemsSource = groupSizes.Select(s => s.ToString("N0", System.Globalization.CultureInfo.CurrentCulture)).ToList(), SelectedIndex = 2, MinWidth = 240 };
+        ToolTipService.SetToolTip(groupSize, Strings.Get("Workspace/ExportRowsPerGroupTip"));
         var parquetOptions = new StackPanel { Spacing = 12, Visibility = Microsoft.UI.Xaml.Visibility.Collapsed };
         parquetOptions.Children.Add(compression);
         parquetOptions.Children.Add(groupSize);
@@ -87,8 +87,8 @@ internal static class GridCommands
         panel.Children.Add(picker);
         panel.Children.Add(header);
         panel.Children.Add(parquetOptions);
-        panel.Children.Add(new TextBlock { Text = $"{result.RowCount:N0} rows, {result.Columns.Count} columns", Style = (Microsoft.UI.Xaml.Style)Microsoft.UI.Xaml.Application.Current.Resources["CaptionTextBlockStyle"] });
-        if (await dialogs.ShowAsync(dialogs.Create("Export", panel, "Export…", "Cancel")) != ContentDialogResult.Primary)
+        panel.Children.Add(new TextBlock { Text = Strings.Plural("Workspace/ExportSummary", result.RowCount, Strings.Plural("Workspace/ExportColumns", result.Columns.Count)),Style = (Microsoft.UI.Xaml.Style)Microsoft.UI.Xaml.Application.Current.Resources["CaptionTextBlockStyle"] });
+        if (await dialogs.ShowAsync(dialogs.Create(Strings.Get("Common/Export"), panel, Strings.Get("Workspace/ExportEllipsis"), Strings.Get("Common/Cancel"))) != ContentDialogResult.Primary)
         {
             return;
         }

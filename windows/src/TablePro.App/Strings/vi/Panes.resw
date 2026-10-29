@@ -1,0 +1,160 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AssistantActionBubble" xml:space="preserve">
+    <value>{0}:
+{1}</value>
+  </data>
+  <data name="AssistantExplain" xml:space="preserve">
+    <value>Giải thích</value>
+  </data>
+  <data name="AssistantFixBubble" xml:space="preserve">
+    <value>Sửa:
+{0}
+
+{1}</value>
+  </data>
+  <data name="AssistantInputPlaceholder" xml:space="preserve">
+    <value>Hỏi về cơ sở dữ liệu này</value>
+  </data>
+  <data name="AssistantInsert" xml:space="preserve">
+    <value>Chèn</value>
+  </data>
+  <data name="AssistantNewConversation" xml:space="preserve">
+    <value>Mới</value>
+  </data>
+  <data name="AssistantOptimize" xml:space="preserve">
+    <value>Tối ưu hoá</value>
+  </data>
+  <data name="AssistantReview" xml:space="preserve">
+    <value>Xem lại</value>
+  </data>
+  <data name="AssistantSend" xml:space="preserve">
+    <value>Gửi (Ctrl+Enter)</value>
+  </data>
+  <data name="AssistantSetUpTitle" xml:space="preserve">
+    <value>Thiết lập trợ lý</value>
+  </data>
+  <data name="AssistantStopped" xml:space="preserve">
+    <value>(đã dừng)</value>
+  </data>
+  <data name="AssistantUsing" xml:space="preserve">
+    <value>Đang dùng {0} ({1}). Câu hỏi, SQL của bạn và cấu trúc của các bảng liên quan sẽ được gửi đi; các dòng dữ liệu thì không.</value>
+  </data>
+  <data name="FavoriteEditTitle" xml:space="preserve">
+    <value>Sửa mục yêu thích</value>
+  </data>
+  <data name="FavoriteFolder" xml:space="preserve">
+    <value>Thư mục</value>
+  </data>
+  <data name="FavoriteKeyword" xml:space="preserve">
+    <value>Từ khoá</value>
+  </data>
+  <data name="FavoriteKeywordPlaceholder" xml:space="preserve">
+    <value>Gõ trong trình soạn thảo để chèn truy vấn này</value>
+  </data>
+  <data name="FavoriteKeywordSpaces" xml:space="preserve">
+    <value>Từ khoá không được chứa dấu cách.</value>
+  </data>
+  <data name="FavoriteKeywordTooLong_One" xml:space="preserve">
+    <value>Từ khoá phải ngắn hơn {0} ký tự.</value>
+  </data>
+  <data name="FavoriteKeywordTooLong_Other" xml:space="preserve">
+    <value>Từ khoá phải ngắn hơn {0} ký tự.</value>
+  </data>
+  <data name="FavoriteKeywordUsed" xml:space="preserve">
+    <value>Một mục yêu thích khác đã dùng từ khoá này.</value>
+  </data>
+  <data name="FavoriteOnlyFor" xml:space="preserve">
+    <value>Chỉ cho {0}</value>
+  </data>
+  <data name="FavoriteQuery" xml:space="preserve">
+    <value>Truy vấn</value>
+  </data>
+  <data name="FavoriteSaveTitle" xml:space="preserve">
+    <value>Lưu mục yêu thích</value>
+  </data>
+  <data name="FavoritesCreate" xml:space="preserve">
+    <value>Tạo</value>
+  </data>
+  <data name="FavoritesEmpty" xml:space="preserve">
+    <value>Lưu truy vấn bằng biểu tượng ngôi sao trên thanh công cụ của trình soạn thảo.</value>
+  </data>
+  <data name="FavoritesNewFolderLink" xml:space="preserve">
+    <value>Thư mục mới</value>
+  </data>
+  <data name="FavoritesNewFolderTitle" xml:space="preserve">
+    <value>Thư mục mới</value>
+  </data>
+  <data name="FavoritesSearch" xml:space="preserve">
+    <value>Tìm kiếm mục yêu thích</value>
+  </data>
+  <data name="HistoryClear" xml:space="preserve">
+    <value>Xóa lịch sử của kết nối này</value>
+  </data>
+  <data name="HistoryLoadMore" xml:space="preserve">
+    <value>Tải thêm</value>
+  </data>
+  <data name="HistoryOutcomeAll" xml:space="preserve">
+    <value>Tất cả</value>
+  </data>
+  <data name="HistoryOutcomeFailed" xml:space="preserve">
+    <value>Thất bại</value>
+  </data>
+  <data name="HistoryOutcomeSucceeded" xml:space="preserve">
+    <value>Thành công</value>
+  </data>
+  <data name="HistoryRows_One" xml:space="preserve">
+    <value>{0:N0} dòng</value>
+  </data>
+  <data name="HistoryRows_Other" xml:space="preserve">
+    <value>{0:N0} dòng</value>
+  </data>
+  <data name="HistoryRunInNewTab" xml:space="preserve">
+    <value>Chạy trong tab mới</value>
+  </data>
+  <data name="HistoryScopeAllConnections" xml:space="preserve">
+    <value>Tất cả kết nối</value>
+  </data>
+  <data name="HistoryScopeThisConnection" xml:space="preserve">
+    <value>Kết nối này</value>
+  </data>
+  <data name="HistorySearch" xml:space="preserve">
+    <value>Tìm kiếm lịch sử</value>
+  </data>
+  <data name="InsertIntoEditor" xml:space="preserve">
+    <value>Chèn vào trình soạn thảo</value>
+  </data>
+  <data name="QuickSwitcherKindDatabase" xml:space="preserve">
+    <value>Cơ sở dữ liệu</value>
+  </data>
+  <data name="QuickSwitcherKindSchema" xml:space="preserve">
+    <value>Schema</value>
+  </data>
+  <data name="QuickSwitcherKindTab" xml:space="preserve">
+    <value>Tab đang mở</value>
+  </data>
+  <data name="QuickSwitcherNoMatches" xml:space="preserve">
+    <value>Không có kết quả khớp</value>
+  </data>
+  <data name="QuickSwitcherPlaceholder" xml:space="preserve">
+    <value>Mở bảng, view, thủ tục, cơ sở dữ liệu, schema hoặc tab</value>
+  </data>
+  <data name="QuickSwitcherRowName" xml:space="preserve">
+    <value>{0}, {1}</value>
+  </data>
+  <data name="QuickSwitcherTitle" xml:space="preserve">
+    <value>Mở nhanh</value>
+  </data>
+</root>

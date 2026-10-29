@@ -34,6 +34,12 @@ public sealed record AppSettings
 
     public AppTheme Theme { get; init; } = AppTheme.System;
     public WindowBackdrop Backdrop { get; init; } = WindowBackdrop.Acrylic;
+
+    /// <summary>
+    /// The UI language as a BCP-47 tag the app ships (<c>fr</c>, <c>zh-Hans</c>), or empty to follow the Windows display
+    /// language. It applies at the next launch.
+    /// </summary>
+    public string Language { get; init; } = string.Empty;
     public EditorSettings Editor { get; init; } = new();
     public DataSettings Data { get; init; } = new();
     public bool ConfirmCloseDirtyTabs { get; init; } = true;
@@ -55,6 +61,7 @@ public sealed record AppSettings
     /// <summary>Pulls every number back into the range the UI accepts, so a hand-edited file cannot break the editor.</summary>
     public AppSettings Normalize() => this with
     {
+        Language = Language?.Trim() ?? string.Empty,
         Editor = (Editor ?? new()).Normalize(),
         Data = (Data ?? new()).Normalize(),
         Ai = Ai ?? new(),

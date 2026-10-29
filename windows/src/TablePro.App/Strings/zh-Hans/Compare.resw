@@ -1,0 +1,346 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="BatchesCommitNote" xml:space="preserve">
+    <value>批次会逐个提交，因此发生失败时，之前的批次会保留。</value>
+  </data>
+  <data name="CannotMigrateMessage" xml:space="preserve">
+    <value>{0} 为只读，或无法在应用中更改结构。</value>
+  </data>
+  <data name="CannotMigrateTitle" xml:space="preserve">
+    <value>无法迁移</value>
+  </data>
+  <data name="CannotRollBackNote" xml:space="preserve">
+    <value>{0} 无法回滚，因此发生失败时，之前的语句仍会生效。</value>
+  </data>
+  <data name="CannotSyncTitle" xml:space="preserve">
+    <value>无法同步</value>
+  </data>
+  <data name="ChooseTables" xml:space="preserve">
+    <value>请在两侧各选择一个表。</value>
+  </data>
+  <data name="CommitInBatches" xml:space="preserve">
+    <value>分批提交</value>
+  </data>
+  <data name="CompareButton" xml:space="preserve">
+    <value>比较</value>
+  </data>
+  <data name="CompareStructureButton" xml:space="preserve">
+    <value>比较结构</value>
+  </data>
+  <data name="ComparedIn" xml:space="preserve">
+    <value>比较用时 {0:N1} 秒</value>
+  </data>
+  <data name="ComparingWith" xml:space="preserve">
+    <value>正在与 {0} 比较</value>
+  </data>
+  <data name="ComparisonStopped" xml:space="preserve">
+    <value>比较已停止。</value>
+  </data>
+  <data name="ConnectingTo" xml:space="preserve">
+    <value>正在连接{0}…</value>
+  </data>
+  <data name="CopyMigrationScript" xml:space="preserve">
+    <value>复制迁移脚本</value>
+  </data>
+  <data name="CopySyncScript" xml:space="preserve">
+    <value>复制同步脚本</value>
+  </data>
+  <data name="CouldNotCompareStructureTitle" xml:space="preserve">
+    <value>无法比较结构</value>
+  </data>
+  <data name="CouldNotCompareTitle" xml:space="preserve">
+    <value>无法比较</value>
+  </data>
+  <data name="CouldNotConnectTitle" xml:space="preserve">
+    <value>无法连接到 {0}</value>
+  </data>
+  <data name="DataProgress_One" xml:space="preserve">
+    <value>已比较 {1:N0} 个来源行和 {2:N0} 个目标行，发现 {0:N0} 处差异…</value>
+  </data>
+  <data name="DataProgress_Other" xml:space="preserve">
+    <value>已比较 {1:N0} 个来源行和 {2:N0} 个目标行，发现 {0:N0} 处差异…</value>
+  </data>
+  <data name="DeleteExtraRows" xml:space="preserve">
+    <value>删除多余的行</value>
+  </data>
+  <data name="DestructiveNote" xml:space="preserve">
+    <value>部分语句会删除表或列，其中的数据将丢失。</value>
+  </data>
+  <data name="DiffSummary" xml:space="preserve">
+    <value>{0:N0} 个仅在来源中 · {1:N0} 个仅在目标中 · {2:N0} 个已更改 · {3:N0} 个相同</value>
+  </data>
+  <data name="DropExtraColumns" xml:space="preserve">
+    <value>删除仅在目标中存在的列</value>
+  </data>
+  <data name="DropExtraTables" xml:space="preserve">
+    <value>删除仅在目标中存在的表</value>
+  </data>
+  <data name="FloatTolerance" xml:space="preserve">
+    <value>浮点容差</value>
+  </data>
+  <data name="GridDelete" xml:space="preserve">
+    <value>删除</value>
+  </data>
+  <data name="GridInsert" xml:space="preserve">
+    <value>插入</value>
+  </data>
+  <data name="GridKeyColumn" xml:space="preserve">
+    <value>{0}（键）</value>
+  </data>
+  <data name="GridReadOnly" xml:space="preserve">
+    <value>比较结果为只读。请编辑表本身，然后重新比较。</value>
+  </data>
+  <data name="GridSame" xml:space="preserve">
+    <value>相同</value>
+  </data>
+  <data name="GridSkipped" xml:space="preserve">
+    <value>已跳过</value>
+  </data>
+  <data name="GridSyncColumn" xml:space="preserve">
+    <value>同步</value>
+  </data>
+  <data name="GridUpdate" xml:space="preserve">
+    <value>更新</value>
+  </data>
+  <data name="InsertMissingRows" xml:space="preserve">
+    <value>插入缺少的行</value>
+  </data>
+  <data name="KeyColumns" xml:space="preserve">
+    <value>键列</value>
+  </data>
+  <data name="KeyColumnsPlaceholder" xml:space="preserve">
+    <value>主键</value>
+  </data>
+  <data name="KeysIgnoreCase" xml:space="preserve">
+    <value>键不区分大小写</value>
+  </data>
+  <data name="LeaveOutColumns" xml:space="preserve">
+    <value>排除的列</value>
+  </data>
+  <data name="MigrateButton" xml:space="preserve">
+    <value>迁移</value>
+  </data>
+  <data name="MigrateReviewTitle" xml:space="preserve">
+    <value>迁移 {0}</value>
+  </data>
+  <data name="Migrated_One" xml:space="preserve">
+    <value>已迁移 {1}：{0:N0} 条语句。</value>
+  </data>
+  <data name="Migrated_Other" xml:space="preserve">
+    <value>已迁移 {1}：{0:N0} 条语句。</value>
+  </data>
+  <data name="MigrationStoppedMessage_One" xml:space="preserve">
+    <value>{1}
+
+在此之前已运行 {0:N0} 条语句。不支持事务性 DDL 的引擎会保留其更改。</value>
+  </data>
+  <data name="MigrationStoppedMessage_Other" xml:space="preserve">
+    <value>{1}
+
+在此之前已运行 {0:N0} 条语句。不支持事务性 DDL 的引擎会保留其更改。</value>
+  </data>
+  <data name="MigrationStoppedTitle" xml:space="preserve">
+    <value>迁移已停止</value>
+  </data>
+  <data name="ModeData" xml:space="preserve">
+    <value>数据</value>
+  </data>
+  <data name="ModeStructure" xml:space="preserve">
+    <value>结构</value>
+  </data>
+  <data name="MoreStatements_One" xml:space="preserve">
+    <value>{1} 以及另外 {0:N0} 条类似语句</value>
+  </data>
+  <data name="MoreStatements_Other" xml:space="preserve">
+    <value>{1} 以及另外 {0:N0} 条类似语句</value>
+  </data>
+  <data name="NotScripted" xml:space="preserve">
+    <value>未生成脚本：{0}</value>
+  </data>
+  <data name="NothingToMigrateTitle" xml:space="preserve">
+    <value>没有需要迁移的内容</value>
+  </data>
+  <data name="NothingToSyncMessage" xml:space="preserve">
+    <value>未选择要写入的差异。请启用插入、更新或删除，或包含已跳过的行。</value>
+  </data>
+  <data name="NothingToSyncTitle" xml:space="preserve">
+    <value>没有需要同步的内容</value>
+  </data>
+  <data name="Options" xml:space="preserve">
+    <value>选项</value>
+  </data>
+  <data name="PasswordHeader" xml:space="preserve">
+    <value>密码</value>
+  </data>
+  <data name="PasswordPrompt" xml:space="preserve">
+    <value>请输入 {0} 的密码以与其进行比较。</value>
+  </data>
+  <data name="ReadOnlyTargetMessage" xml:space="preserve">
+    <value>{0} 为只读，因此无法同步。</value>
+  </data>
+  <data name="ReadOnlyTargetTitle" xml:space="preserve">
+    <value>只读目标</value>
+  </data>
+  <data name="ReadingSourceStructure" xml:space="preserve">
+    <value>正在读取来源结构… {0:N0}/{1:N0}</value>
+  </data>
+  <data name="ReadingStructure" xml:space="preserve">
+    <value>正在读取结构…</value>
+  </data>
+  <data name="ReadingTargetStructure" xml:space="preserve">
+    <value>正在读取目标结构… {0:N0}/{1:N0}</value>
+  </data>
+  <data name="ReviewAndMigrate" xml:space="preserve">
+    <value>检查并迁移…</value>
+  </data>
+  <data name="ReviewAndSync" xml:space="preserve">
+    <value>检查并同步…</value>
+  </data>
+  <data name="RowLimit" xml:space="preserve">
+    <value>行数上限</value>
+  </data>
+  <data name="RowLimitPlaceholder" xml:space="preserve">
+    <value>所有行</value>
+  </data>
+  <data name="ShowChanged" xml:space="preserve">
+    <value>已更改</value>
+  </data>
+  <data name="ShowChangedCount" xml:space="preserve">
+    <value>已更改 ({0:N0})</value>
+  </data>
+  <data name="ShowOnlyInSource" xml:space="preserve">
+    <value>仅在来源中</value>
+  </data>
+  <data name="ShowOnlyInSourceCount" xml:space="preserve">
+    <value>仅在来源中 ({0:N0})</value>
+  </data>
+  <data name="ShowOnlyInTarget" xml:space="preserve">
+    <value>仅在目标中</value>
+  </data>
+  <data name="ShowOnlyInTargetCount" xml:space="preserve">
+    <value>仅在目标中 ({0:N0})</value>
+  </data>
+  <data name="ShowingFirstDifferences_One" xml:space="preserve">
+    <value>显示前 {0:N0} 处差异</value>
+  </data>
+  <data name="ShowingFirstDifferences_Other" xml:space="preserve">
+    <value>显示前 {0:N0} 处差异</value>
+  </data>
+  <data name="SkipOrIncludeRows" xml:space="preserve">
+    <value>跳过或包含所选行</value>
+  </data>
+  <data name="SkippedNullKey_One" xml:space="preserve">
+    <value>{0:N0} 行因 NULL 键被跳过</value>
+  </data>
+  <data name="SkippedNullKey_Other" xml:space="preserve">
+    <value>{0:N0} 行因 NULL 键被跳过</value>
+  </data>
+  <data name="SourceLabel" xml:space="preserve">
+    <value>来源</value>
+  </data>
+  <data name="SourceOnlyColumns" xml:space="preserve">
+    <value>仅在来源中，未比较：{0}</value>
+  </data>
+  <data name="SourceTable" xml:space="preserve">
+    <value>来源表</value>
+  </data>
+  <data name="SourceWhere" xml:space="preserve">
+    <value>来源 WHERE</value>
+  </data>
+  <data name="StoppedAtRowLimit" xml:space="preserve">
+    <value>已在行数上限处停止</value>
+  </data>
+  <data name="StructuresAlreadyMatch" xml:space="preserve">
+    <value>结构已经一致。</value>
+  </data>
+  <data name="StructuresMatch" xml:space="preserve">
+    <value>结构一致。</value>
+  </data>
+  <data name="SyncButton" xml:space="preserve">
+    <value>同步</value>
+  </data>
+  <data name="SyncProgress" xml:space="preserve">
+    <value>已应用 {0:N0}/{1:N0}…</value>
+  </data>
+  <data name="SyncReviewTitle" xml:space="preserve">
+    <value>同步 {0}：{1:N0} 个插入，{2:N0} 个更新，{3:N0} 个删除</value>
+  </data>
+  <data name="SyncStoppedBatchesKept_One" xml:space="preserve">
+    <value>{1} 在此之前已提交 {2:N0} 个批次中的 {0:N0} 个。</value>
+  </data>
+  <data name="SyncStoppedBatchesKept_Other" xml:space="preserve">
+    <value>{1} 在此之前已提交 {2:N0} 个批次中的 {0:N0} 个。</value>
+  </data>
+  <data name="SyncStoppedNothingChanged" xml:space="preserve">
+    <value>{0} 未做任何更改。</value>
+  </data>
+  <data name="SyncStoppedTitle" xml:space="preserve">
+    <value>同步已停止</value>
+  </data>
+  <data name="Synced_One" xml:space="preserve">
+    <value>已同步 {1}：{0:N0} 行。</value>
+  </data>
+  <data name="Synced_Other" xml:space="preserve">
+    <value>已同步 {1}：{0:N0} 行。</value>
+  </data>
+  <data name="TabTitle" xml:space="preserve">
+    <value>比较</value>
+  </data>
+  <data name="TableChanges_One" xml:space="preserve">
+    <value>{0:N0} 处更改</value>
+  </data>
+  <data name="TableChanges_Other" xml:space="preserve">
+    <value>{0:N0} 处更改</value>
+  </data>
+  <data name="TableIdentical" xml:space="preserve">
+    <value>完全相同</value>
+  </data>
+  <data name="TableOnlyInSourceCreated" xml:space="preserve">
+    <value>仅在来源中，将被创建</value>
+  </data>
+  <data name="TableOnlyInTarget" xml:space="preserve">
+    <value>仅在目标中</value>
+  </data>
+  <data name="TableOnlyInTargetDropped" xml:space="preserve">
+    <value>仅在目标中，将被删除</value>
+  </data>
+  <data name="TablesDiffer_One" xml:space="preserve">
+    <value>{0:N0} 个表存在差异</value>
+  </data>
+  <data name="TablesDiffer_Other" xml:space="preserve">
+    <value>{0:N0} 个表存在差异</value>
+  </data>
+  <data name="TargetCannotExpress" xml:space="preserve">
+    <value>目标无法表达：{0}</value>
+  </data>
+  <data name="TargetConnection" xml:space="preserve">
+    <value>目标连接</value>
+  </data>
+  <data name="TargetLabel" xml:space="preserve">
+    <value>目标</value>
+  </data>
+  <data name="TargetOnlyColumns" xml:space="preserve">
+    <value>仅在目标中，保持不变：{0}</value>
+  </data>
+  <data name="TargetTable" xml:space="preserve">
+    <value>目标表</value>
+  </data>
+  <data name="TargetWhere" xml:space="preserve">
+    <value>目标 WHERE</value>
+  </data>
+  <data name="UpdateChangedRows" xml:space="preserve">
+    <value>更新已更改的行</value>
+  </data>
+</root>

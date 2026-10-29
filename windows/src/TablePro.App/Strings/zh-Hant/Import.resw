@@ -1,0 +1,299 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AcceptsNullFieldName" xml:space="preserve">
+    <value>{0} 允許 null</value>
+  </data>
+  <data name="CannotCreateTable" xml:space="preserve">
+    <value>此引擎無法從應用程式建立該資料表。</value>
+  </data>
+  <data name="CannotImportYetTitle" xml:space="preserve">
+    <value>尚無法匯入</value>
+  </data>
+  <data name="CannotReadFileTitle" xml:space="preserve">
+    <value>無法讀取此檔案</value>
+  </data>
+  <data name="ColumnForFieldName" xml:space="preserve">
+    <value>{0} 的欄位</value>
+  </data>
+  <data name="ColumnNameForFieldName" xml:space="preserve">
+    <value>{0} 的欄位名稱</value>
+  </data>
+  <data name="CreateAllColumns" xml:space="preserve">
+    <value>建立所有欄位</value>
+  </data>
+  <data name="CreateAndImport" xml:space="preserve">
+    <value>建立並匯入</value>
+  </data>
+  <data name="CreateFieldName" xml:space="preserve">
+    <value>建立 {0}</value>
+  </data>
+  <data name="CreateTableFailedTitle" xml:space="preserve">
+    <value>無法建立資料表</value>
+  </data>
+  <data name="CreateTableReviewTitle" xml:space="preserve">
+    <value>建立要匯入的資料表</value>
+  </data>
+  <data name="DefaultSqlFieldName" xml:space="preserve">
+    <value>{0} 的預設 SQL</value>
+  </data>
+  <data name="DefaultSqlPlaceholder" xml:space="preserve">
+    <value>預設 SQL</value>
+  </data>
+  <data name="DefaultSqlToolTip" xml:space="preserve">
+    <value>DEFAULT 後面的 SQL。文字值需要自行加上引號。</value>
+  </data>
+  <data name="DelimiterComma" xml:space="preserve">
+    <value>逗號</value>
+  </data>
+  <data name="DelimiterDetect" xml:space="preserve">
+    <value>自動偵測</value>
+  </data>
+  <data name="DelimiterHeader" xml:space="preserve">
+    <value>分隔符號</value>
+  </data>
+  <data name="DelimiterPipe" xml:space="preserve">
+    <value>直線符號</value>
+  </data>
+  <data name="DelimiterSemicolon" xml:space="preserve">
+    <value>分號</value>
+  </data>
+  <data name="DelimiterTab" xml:space="preserve">
+    <value>定位字元</value>
+  </data>
+  <data name="DisableForeignKeyChecks" xml:space="preserve">
+    <value>停用外鍵檢查</value>
+  </data>
+  <data name="DisableForeignKeyChecksToolTip" xml:space="preserve">
+    <value>匯入時暫時停用外鍵限制。適合用於匯入有循環相依關係的資料。</value>
+  </data>
+  <data name="EnterNewTableName" xml:space="preserve">
+    <value>請輸入新資料表的名稱。</value>
+  </data>
+  <data name="ErrorLine" xml:space="preserve">
+    <value>第 {0} 行：{1}</value>
+  </data>
+  <data name="ExistingTable" xml:space="preserve">
+    <value>現有資料表 {0}</value>
+  </data>
+  <data name="FieldTypeBoolean" xml:space="preserve">
+    <value>布林值</value>
+  </data>
+  <data name="FieldTypeInteger" xml:space="preserve">
+    <value>整數</value>
+  </data>
+  <data name="FieldTypeJson" xml:space="preserve">
+    <value>JSON</value>
+  </data>
+  <data name="FieldTypeReal" xml:space="preserve">
+    <value>實數</value>
+  </data>
+  <data name="FieldTypeText" xml:space="preserve">
+    <value>文字</value>
+  </data>
+  <data name="FirstRowIsHeader" xml:space="preserve">
+    <value>第一列為標題</value>
+  </data>
+  <data name="FirstRows" xml:space="preserve">
+    <value>前幾列</value>
+  </data>
+  <data name="HeaderColumn" xml:space="preserve">
+    <value>欄位</value>
+  </data>
+  <data name="HeaderDefault" xml:space="preserve">
+    <value>預設</value>
+  </data>
+  <data name="HeaderField" xml:space="preserve">
+    <value>欄位</value>
+  </data>
+  <data name="HeaderKey" xml:space="preserve">
+    <value>鍵</value>
+  </data>
+  <data name="HeaderNull" xml:space="preserve">
+    <value>Null</value>
+  </data>
+  <data name="ImportAllFields" xml:space="preserve">
+    <value>匯入所有欄位</value>
+  </data>
+  <data name="ImportFailedTitle" xml:space="preserve">
+    <value>匯入失敗</value>
+  </data>
+  <data name="ImportFieldName" xml:space="preserve">
+    <value>匯入 {0}</value>
+  </data>
+  <data name="ImportFileTitle" xml:space="preserve">
+    <value>匯入 {0}</value>
+  </data>
+  <data name="ImportIntoHeader" xml:space="preserve">
+    <value>匯入到</value>
+  </data>
+  <data name="ImportSqlFileTitle" xml:space="preserve">
+    <value>匯入 SQL 檔案</value>
+  </data>
+  <data name="ImportStoppedRowsKept" xml:space="preserve">
+    <value>{0}
+
+在此之前儲存的列會保留在資料表中。</value>
+  </data>
+  <data name="ImportStoppedTitle" xml:space="preserve">
+    <value>匯入已停止</value>
+  </data>
+  <data name="ImportedRows_One" xml:space="preserve">
+    <value>已將 {0:N0} 列匯入 {1}。</value>
+  </data>
+  <data name="ImportedRows_Other" xml:space="preserve">
+    <value>已將 {0:N0} 列匯入 {1}。</value>
+  </data>
+  <data name="ImportedWithSkipped" xml:space="preserve">
+    <value>{0} {1}</value>
+  </data>
+  <data name="Importing" xml:space="preserve">
+    <value>匯入中…</value>
+  </data>
+  <data name="ImportingRows_One" xml:space="preserve">
+    <value>匯入中… {0:N0} 列</value>
+  </data>
+  <data name="ImportingRows_Other" xml:space="preserve">
+    <value>匯入中… {0:N0} 列</value>
+  </data>
+  <data name="ImportingSqlTitle" xml:space="preserve">
+    <value>正在匯入 SQL</value>
+  </data>
+  <data name="MatchByName" xml:space="preserve">
+    <value>依名稱對應</value>
+  </data>
+  <data name="MatchByPosition" xml:space="preserve">
+    <value>依位置對應</value>
+  </data>
+  <data name="MatchColumns" xml:space="preserve">
+    <value>對應欄位</value>
+  </data>
+  <data name="NewTable" xml:space="preserve">
+    <value>新增資料表</value>
+  </data>
+  <data name="NewTableName" xml:space="preserve">
+    <value>新資料表名稱</value>
+  </data>
+  <data name="NoFields" xml:space="preserve">
+    <value>此檔案沒有可匯入的欄位。</value>
+  </data>
+  <data name="NoTransactionsToolTip" xml:space="preserve">
+    <value>此資料庫會個別執行每個陳述式。</value>
+  </data>
+  <data name="NullTextHeader" xml:space="preserve">
+    <value>Null 文字</value>
+  </data>
+  <data name="NullTextToolTip" xml:space="preserve">
+    <value>匯入為 null 的值，例如 NULL 或 \N。空白欄位一律匯入為 null。</value>
+  </data>
+  <data name="OnErrorHeader" xml:space="preserve">
+    <value>發生錯誤時</value>
+  </data>
+  <data name="OnErrorSkipAndContinue" xml:space="preserve">
+    <value>略過並繼續</value>
+  </data>
+  <data name="OnErrorStopAndCommit" xml:space="preserve">
+    <value>停止並認可</value>
+  </data>
+  <data name="OnErrorStopAndRollback" xml:space="preserve">
+    <value>停止並復原</value>
+  </data>
+  <data name="PreviewNote" xml:space="preserve">
+    <value>{0}；{1}</value>
+  </data>
+  <data name="PrimaryKeyFieldName" xml:space="preserve">
+    <value>{0} 為主鍵</value>
+  </data>
+  <data name="ReadOnlyCannotImportSql" xml:space="preserve">
+    <value>此連線的安全模式為「唯讀」，因此無法匯入 SQL 檔案。</value>
+  </data>
+  <data name="RecordsSkipped_One" xml:space="preserve">
+    <value>{0:N0} 筆記錄沒有任何已對應的欄位，已略過。</value>
+  </data>
+  <data name="RecordsSkipped_Other" xml:space="preserve">
+    <value>{0:N0} 筆記錄沒有任何已對應的欄位，已略過。</value>
+  </data>
+  <data name="RowsShown_One" xml:space="preserve">
+    <value>顯示 {0:N0} 列</value>
+  </data>
+  <data name="RowsShown_Other" xml:space="preserve">
+    <value>顯示 {0:N0} 列</value>
+  </data>
+  <data name="Skip" xml:space="preserve">
+    <value>略過</value>
+  </data>
+  <data name="SqlFileSummary" xml:space="preserve">
+    <value>在 {2} 上執行 {0} ({1:N0} KB) 中的每個陳述式。</value>
+  </data>
+  <data name="SqlImportedSkipped_One" xml:space="preserve">
+    <value>已匯入 {1}：{2:N1} 秒內執行 {0:N0} 個陳述式，略過 {3:N0} 個。</value>
+  </data>
+  <data name="SqlImportedSkipped_Other" xml:space="preserve">
+    <value>已匯入 {1}：{2:N1} 秒內執行 {0:N0} 個陳述式，略過 {3:N0} 個。</value>
+  </data>
+  <data name="SqlImported_One" xml:space="preserve">
+    <value>已匯入 {1}：{2:N1} 秒內執行 {0:N0} 個陳述式。</value>
+  </data>
+  <data name="SqlImported_Other" xml:space="preserve">
+    <value>已匯入 {1}：{2:N1} 秒內執行 {0:N0} 個陳述式。</value>
+  </data>
+  <data name="Starting" xml:space="preserve">
+    <value>正在啟動…</value>
+  </data>
+  <data name="StatementsFailedTitle_One" xml:space="preserve">
+    <value>{0:N0} 個陳述式失敗</value>
+  </data>
+  <data name="StatementsFailedTitle_Other" xml:space="preserve">
+    <value>{0:N0} 個陳述式失敗</value>
+  </data>
+  <data name="StatementsKept_One" xml:space="preserve">
+    <value>在此之前的陳述式已保留。</value>
+  </data>
+  <data name="StatementsKept_Other" xml:space="preserve">
+    <value>在此之前的 {0:N0} 個陳述式已保留。</value>
+  </data>
+  <data name="StatementsRunSkipped_One" xml:space="preserve">
+    <value>已執行 {0:N0} 個陳述式，略過 {1:N0} 個</value>
+  </data>
+  <data name="StatementsRunSkipped_Other" xml:space="preserve">
+    <value>已執行 {0:N0} 個陳述式，略過 {1:N0} 個</value>
+  </data>
+  <data name="StatementsRun_One" xml:space="preserve">
+    <value>已執行 {0:N0} 個陳述式</value>
+  </data>
+  <data name="StatementsRun_Other" xml:space="preserve">
+    <value>已執行 {0:N0} 個陳述式</value>
+  </data>
+  <data name="StoppedImporting" xml:space="preserve">
+    <value>已停止匯入 {0}。</value>
+  </data>
+  <data name="TrimSpaces" xml:space="preserve">
+    <value>移除前後空格</value>
+  </data>
+  <data name="TypeOfFieldName" xml:space="preserve">
+    <value>{0} 的類型</value>
+  </data>
+  <data name="TypesFromRows_One" xml:space="preserve">
+    <value>類型取自第一列</value>
+  </data>
+  <data name="TypesFromRows_Other" xml:space="preserve">
+    <value>類型取自前 {0:N0} 列</value>
+  </data>
+  <data name="WrapInTransaction" xml:space="preserve">
+    <value>包覆於交易中 (BEGIN/COMMIT)</value>
+  </data>
+  <data name="WrapInTransactionToolTip" xml:space="preserve">
+    <value>在單一交易中執行所有陳述式，因此發生失敗時，會復原匯入所做的變更。在執行時即認可 CREATE、ALTER 和 DROP 的資料庫 (例如 MySQL)，會保留這些陳述式及其之前的所有變更。</value>
+  </data>
+</root>

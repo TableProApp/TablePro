@@ -29,7 +29,7 @@ public sealed partial class McpClientsPane : UserControl
     private readonly AppHost _host;
     private readonly StackPanel _clients = new() { Spacing = 4 };
     private readonly ListView _activity = new() { SelectionMode = ListViewSelectionMode.None, MaxHeight = 420, IsItemClickEnabled = false };
-    private readonly ComboBox _clientFilter = new() { MinWidth = 200, PlaceholderText = "All clients" };
+    private readonly ComboBox _clientFilter = new() { MinWidth = 200, PlaceholderText = Strings.Get("Mcp/AllClients") };
     private readonly ComboBox _categoryFilter = new() { MinWidth = 200 };
     private readonly TextBlock _integrity = new() { TextWrapping = TextWrapping.Wrap };
     private readonly TextBlock _pairingHint = new() { TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true };
@@ -48,14 +48,14 @@ public sealed partial class McpClientsPane : UserControl
         var root = new StackPanel { Spacing = 4 };
         root.Children.Add(_problem);
 
-        root.Children.Add(Heading("Paired clients"));
-        root.Children.Add(Note("A client pairs by asking TablePro for access; you approve it in a dialog and the client gets a token of its own. Only a SHA-256 of each token is kept, in Windows Credential Manager. Revoking a client turns it away from its next request."));
+        root.Children.Add(Heading(Strings.Get("Mcp/PairedClientsHeading")));
+        root.Children.Add(Note(Strings.Get("Mcp/PairedClientsNote")));
         root.Children.Add(_pairingHint);
 
-        var add = new Button { Content = "Add client" };
-        ToolTipService.SetToolTip(add, "Issue a token by hand, for a client that cannot pair");
+        var add = new Button { Content = Strings.Get("Mcp/AddClient") };
+        ToolTipService.SetToolTip(add, Strings.Get("Mcp/AddClientTooltip"));
         add.Click += async (_, _) => await AddClientAsync();
-        var refresh = IconButton("", "Refresh");
+        var refresh = IconButton("", Strings.Get("Common/Refresh"));
         refresh.Click += async (_, _) => await RefreshAsync();
         var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Margin = new Thickness(0, 4, 0, 4) };
         actions.Children.Add(add);
@@ -63,16 +63,16 @@ public sealed partial class McpClientsPane : UserControl
         root.Children.Add(actions);
         root.Children.Add(_clients);
 
-        root.Children.Add(Heading("Activity"));
-        root.Children.Add(Note($"Every tool call, pairing and client change, kept for {McpAuditStore.DefaultRetention.TotalDays:0} days in mcp-audit.db. Statements are kept as a SHA-256 digest, never as text; the query history has the statements themselves."));
-        foreach (var name in new[] { "All activity", "Tool calls", "Pairing and sign-in", "Client changes" })
+        root.Children.Add(Heading(Strings.Get("Mcp/ActivityHeading")));
+        root.Children.Add(Note(Strings.Plural("Mcp/ActivityNote", (long)McpAuditStore.DefaultRetention.TotalDays)));
+        foreach (var name in new[] { Strings.Get("Mcp/CategoryAll"), Strings.Get("Mcp/CategoryTools"), Strings.Get("Mcp/CategoryAuth"), Strings.Get("Mcp/CategoryAdmin") })
         {
             _categoryFilter.Items.Add(name);
         }
 
         _categoryFilter.SelectedIndex = 0;
-        AutomationProperties.SetName(_categoryFilter, "Kind of activity");
-        AutomationProperties.SetName(_clientFilter, "Client");
+        AutomationProperties.SetName(_categoryFilter, Strings.Get("Mcp/CategoryFilterName"));
+        AutomationProperties.SetName(_clientFilter, Strings.Get("Mcp/ClientFilterName"));
         _categoryFilter.SelectionChanged += async (_, _) => await RefreshActivityAsync();
         _clientFilter.SelectionChanged += async (_, _) =>
         {
@@ -81,7 +81,7 @@ public sealed partial class McpClientsPane : UserControl
                 await RefreshActivityAsync();
             }
         };
-        var clear = new Button { Content = "Clear log" };
+        var clear = new Button { Content = Strings.Get("Mcp/ClearLog") };
         clear.Click += async (_, _) => await ClearLogAsync();
         var filters = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Margin = new Thickness(0, 4, 0, 4) };
         filters.Children.Add(_clientFilter);
@@ -89,7 +89,7 @@ public sealed partial class McpClientsPane : UserControl
         filters.Children.Add(clear);
         root.Children.Add(filters);
         root.Children.Add(_integrity);
-        AutomationProperties.SetName(_activity, "MCP activity");
+        AutomationProperties.SetName(_activity, Strings.Get("Mcp/ActivityListName"));
         root.Children.Add(new Border { Style = (Style)Application.Current.Resources["CardBorderStyle"], Child = _activity, Padding = new Thickness(4) });
 
         Content = root;
@@ -102,8 +102,8 @@ public sealed partial class McpClientsPane : UserControl
     {
         Watch(_host.McpServer);
         _pairingHint.Text = _host.McpServer is { Endpoint: { } endpoint }
-            ? $"Clients start pairing with POST {new Uri(endpoint, "/v1/integrations/pair")} and collect their token from /v1/integrations/exchange."
-            : "Turn the server on to let clients pair.";
+            ? Strings.Format("Mcp/PairingHint", new Uri(endpoint, "/v1/integrations/pair"))
+            : Strings.Get("Mcp/PairingHintServerOff");
         await RefreshClientsAsync();
         await RefreshActivityAsync();
     }
@@ -156,7 +156,7 @@ public sealed partial class McpClientsPane : UserControl
         }
         catch (Exception ex) when (IsStorageFailure(ex))
         {
-            Show("Paired clients could not be read", ex.Message);
+            Show(Strings.Get("Mcp/ReadClientsFailed"), ex.Message);
             return;
         }
 
@@ -164,7 +164,7 @@ public sealed partial class McpClientsPane : UserControl
         var now = DateTimeOffset.Now;
         if (_grants.Count == 0)
         {
-            _clients.Children.Add(Card(new TextBlock { Text = "No client has paired yet.", Foreground = Brush("TextFillColorSecondaryBrush") }));
+            _clients.Children.Add(Card(new TextBlock { Text = Strings.Get("Mcp/NoClients"), Foreground = Brush("TextFillColorSecondaryBrush") }));
         }
 
         foreach (var grant in _grants.OrderByDescending(g => g.IsActive(now)).ThenByDescending(g => g.LastUsedAt ?? g.CreatedAt))
@@ -175,7 +175,7 @@ public sealed partial class McpClientsPane : UserControl
         _filtering = true;
         var selected = (_clientFilter.SelectedItem as ComboBoxItem)?.Tag as Guid?;
         _clientFilter.Items.Clear();
-        _clientFilter.Items.Add(new ComboBoxItem { Content = "All clients" });
+        _clientFilter.Items.Add(new ComboBoxItem { Content = Strings.Get("Mcp/AllClients") });
         foreach (var grant in _grants)
         {
             _clientFilter.Items.Add(new ComboBoxItem { Content = grant.Name, Tag = grant.Id });
@@ -189,10 +189,10 @@ public sealed partial class McpClientsPane : UserControl
     {
         var (status, statusBrush) = grant switch
         {
-            { IsRevoked: true } => ("Revoked", "SystemFillColorCriticalBrush"),
-            { TokenHash: null } => ("Token missing", "SystemFillColorCautionBrush"),
-            _ when grant.IsExpired(now) => ("Expired", "SystemFillColorCautionBrush"),
-            _ => ("Active", "SystemFillColorSuccessBrush"),
+            { IsRevoked: true } => (Strings.Get("Mcp/StatusRevoked"), "SystemFillColorCriticalBrush"),
+            { TokenHash: null } => (Strings.Get("Mcp/StatusTokenMissing"), "SystemFillColorCautionBrush"),
+            _ when grant.IsExpired(now) => (Strings.Get("Mcp/StatusExpired"), "SystemFillColorCautionBrush"),
+            _ => (Strings.Get("Mcp/StatusActive"), "SystemFillColorSuccessBrush"),
         };
 
         var text = new StackPanel { Spacing = 2, VerticalAlignment = VerticalAlignment.Center };
@@ -201,11 +201,14 @@ public sealed partial class McpClientsPane : UserControl
         title.Children.Add(new TextBlock { Text = status, Foreground = Brush(statusBrush), Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"], VerticalAlignment = VerticalAlignment.Center });
         text.Children.Add(title);
 
-        var reach = $"{(grant.Permission == McpClientPermission.ReadWrite ? "Read and write, asking before each write" : "Read only")} · {ConnectionsText(grant.ConnectionIds)}";
-        var expiry = grant.ExpiresAt is { } until ? (grant.IsExpired(now) ? $"expired {until:d}" : $"until {until:d}") : "no expiry";
+        var access = grant.Permission == McpClientPermission.ReadWrite ? Strings.Get("Mcp/AccessReadWrite") : Strings.Get("Mcp/AccessReadOnly");
+        var reach = $"{access} · {ConnectionsText(grant.ConnectionIds)}";
+        var expiry = grant.ExpiresAt is { } until
+            ? (grant.IsExpired(now) ? Strings.Format("Mcp/ExpiredOn", until) : Strings.Format("Mcp/ExpiresOn", until))
+            : Strings.Get("Mcp/NoExpiry");
         text.Children.Add(Caption($"{reach} · {expiry}"));
-        var seen = grant.LastUsedAt is { } used ? $"last used {used:g}" : "never used";
-        text.Children.Add(Caption($"Paired {grant.CreatedAt:g} · {seen} · token {grant.TokenPrefix}…"));
+        var seen = grant.LastUsedAt is { } used ? Strings.Format("Mcp/LastUsed", used) : Strings.Get("Mcp/NeverUsed");
+        text.Children.Add(Caption(Strings.Format("Mcp/PairedSummary", grant.CreatedAt, seen, grant.TokenPrefix)));
 
         var grid = new Grid { ColumnSpacing = 16 };
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -216,8 +219,8 @@ public sealed partial class McpClientsPane : UserControl
         grid.Children.Add(text);
 
         var active = grant.IsActive(now);
-        var action = new Button { Content = active ? "Revoke" : "Remove", VerticalAlignment = VerticalAlignment.Center };
-        AutomationProperties.SetName(action, $"{(active ? "Revoke" : "Remove")} {grant.Name}");
+        var action = new Button { Content = active ? Strings.Get("Mcp/Revoke") : Strings.Get("Common/Remove"), VerticalAlignment = VerticalAlignment.Center };
+        AutomationProperties.SetName(action, active ? Strings.Format("Mcp/RevokeClientName", grant.Name) : Strings.Format("Mcp/RemoveClientName", grant.Name));
         action.Click += async (_, _) => await (active ? RevokeAsync(grant) : RemoveAsync(grant));
         Grid.SetColumn(action, 2);
         grid.Children.Add(action);
@@ -229,7 +232,7 @@ public sealed partial class McpClientsPane : UserControl
 
     private async Task RevokeAsync(McpClientGrant grant)
     {
-        if (!await ConfirmAsync($"Revoke \"{grant.Name}\"?", "The client is turned away from its next request. It stays in the list as revoked; pair it again to give it access back.", "Revoke"))
+        if (!await ConfirmAsync(Strings.Format("Mcp/RevokeConfirmTitle", grant.Name), Strings.Get("Mcp/RevokeConfirmMessage"), Strings.Get("Mcp/Revoke")))
         {
             return;
         }
@@ -239,7 +242,7 @@ public sealed partial class McpClientsPane : UserControl
 
     private async Task RemoveAsync(McpClientGrant grant)
     {
-        if (!await ConfirmAsync($"Remove \"{grant.Name}\"?", "Its grant and the token's hash in Credential Manager are deleted. Its past activity stays in the log.", "Remove"))
+        if (!await ConfirmAsync(Strings.Format("Mcp/RemoveConfirmTitle", grant.Name), Strings.Get("Mcp/RemoveConfirmMessage"), Strings.Get("Common/Remove")))
         {
             return;
         }
@@ -255,7 +258,7 @@ public sealed partial class McpClientsPane : UserControl
         }
         catch (Exception ex) when (IsStorageFailure(ex))
         {
-            Show("The client could not be changed", ex.Message);
+            Show(Strings.Get("Mcp/ChangeClientFailed"), ex.Message);
         }
 
         await RefreshAsync();
@@ -265,7 +268,7 @@ public sealed partial class McpClientsPane : UserControl
     {
         var connections = _host.Connections.Connections.Where(c => c.ExternalAccess != ExternalAccessLevel.Blocked).ToList();
         var form = new McpPairingForm(null, connections);
-        var dialog = Dialog("Add an MCP client", form.Content, "Create token", "Cancel");
+        var dialog = Dialog(Strings.Get("Mcp/AddClientTitle"), form.Content, Strings.Get("Mcp/CreateToken"), Strings.Get("Common/Cancel"));
         if (await ShowAsync(dialog) != ContentDialogResult.Primary || string.IsNullOrWhiteSpace(form.ClientName))
         {
             return;
@@ -279,7 +282,7 @@ public sealed partial class McpClientsPane : UserControl
         }
         catch (Exception ex) when (IsStorageFailure(ex))
         {
-            Show("The token could not be created", ex.Message);
+            Show(Strings.Get("Mcp/CreateTokenFailed"), ex.Message);
             return;
         }
 
@@ -291,8 +294,8 @@ public sealed partial class McpClientsPane : UserControl
     private async Task ShowTokenAsync(McpIssuedToken issued)
     {
         var body = new StackPanel { Spacing = 12, MinWidth = 460 };
-        body.Children.Add(new TextBlock { Text = $"Copy the token for \"{issued.Grant.Name}\" now. TablePro keeps only its hash, so it cannot show it again.", TextWrapping = TextWrapping.Wrap });
-        var token = new TextBox { Text = issued.Token, IsReadOnly = true, Header = "Token" };
+        body.Children.Add(new TextBlock { Text = Strings.Format("Mcp/TokenCopyMessage", issued.Grant.Name), TextWrapping = TextWrapping.Wrap });
+        var token = new TextBox { Text = issued.Token, IsReadOnly = true, Header = Strings.Get("Mcp/TokenHeader") };
         body.Children.Add(token);
         if (_host.McpServer is { Endpoint: { } endpoint })
         {
@@ -300,12 +303,12 @@ public sealed partial class McpClientsPane : UserControl
             body.Children.Add(DialogService.CodeBlock(command, 120));
         }
 
-        var dialog = Dialog("Token created", body, "Copy token", "Done");
+        var dialog = Dialog(Strings.Get("Mcp/TokenCreatedTitle"), body, Strings.Get("Mcp/CopyToken"), Strings.Get("Common/Done"));
         dialog.PrimaryButtonClick += (_, args) =>
         {
             GridCommands.SetClipboard(issued.Token);
             args.Cancel = true;
-            dialog.PrimaryButtonText = "Copied";
+            dialog.PrimaryButtonText = Strings.Get("Mcp/Copied");
         };
         await ShowAsync(dialog);
     }
@@ -330,7 +333,7 @@ public sealed partial class McpClientsPane : UserControl
         }
         catch (Exception ex) when (IsStorageFailure(ex))
         {
-            Show("The MCP activity log could not be read", ex.Message);
+            Show(Strings.Get("Mcp/ReadActivityFailed"), ex.Message);
             return;
         }
 
@@ -342,19 +345,20 @@ public sealed partial class McpClientsPane : UserControl
 
         if (rows.Count == 0)
         {
-            _activity.Items.Add(new TextBlock { Text = "Nothing logged yet.", Margin = new Thickness(8), Foreground = Brush("TextFillColorSecondaryBrush") });
+            _activity.Items.Add(new TextBlock { Text = Strings.Get("Mcp/NothingLogged"), Margin = new Thickness(8), Foreground = Brush("TextFillColorSecondaryBrush") });
         }
 
         if (verification.IsIntact)
         {
             _integrity.Foreground = Brush("TextFillColorSecondaryBrush");
-            _integrity.Text = $"{verification.Count:N0} entries kept. Each entry's hash chains to the one before, and the chain is intact."
-                + (rows.Count == ActivityRows ? $" Showing the latest {ActivityRows}." : string.Empty);
+            _integrity.Text = rows.Count == ActivityRows
+                ? Strings.Plural("Mcp/IntegrityIntactShowingLatest", verification.Count, ActivityRows)
+                : Strings.Plural("Mcp/IntegrityIntact", verification.Count);
         }
         else
         {
             _integrity.Foreground = Brush("SystemFillColorCriticalBrush");
-            _integrity.Text = $"Entry {verification.BrokenAt} was changed or removed outside TablePro; the {verification.Count:N0} entries before it are intact.";
+            _integrity.Text = Strings.Plural("Mcp/IntegrityBroken", verification.Count, verification.BrokenAt);
         }
     }
 
@@ -362,15 +366,15 @@ public sealed partial class McpClientsPane : UserControl
     {
         var (glyph, brush, outcome) = row.Outcome switch
         {
-            "succeeded" => ("", "SystemFillColorSuccessBrush", "Succeeded"),
-            "failed" => ("", "SystemFillColorCriticalBrush", "Failed"),
-            "denied" => ("", "SystemFillColorCautionBrush", "Denied"),
-            "cancelled" => ("", "TextFillColorSecondaryBrush", "Declined"),
-            "unauthorized" => ("", "SystemFillColorCriticalBrush", "Refused"),
+            "succeeded" => ("", "SystemFillColorSuccessBrush", Strings.Get("Mcp/OutcomeSucceeded")),
+            "failed" => ("", "SystemFillColorCriticalBrush", Strings.Get("Mcp/OutcomeFailed")),
+            "denied" => ("", "SystemFillColorCautionBrush", Strings.Get("Mcp/OutcomeDenied")),
+            "cancelled" => ("", "TextFillColorSecondaryBrush", Strings.Get("Mcp/OutcomeDeclined")),
+            "unauthorized" => ("", "SystemFillColorCriticalBrush", Strings.Get("Mcp/OutcomeRefused")),
             _ => ("", "TextFillColorSecondaryBrush", row.Outcome),
         };
 
-        var who = row.ClientName ?? "Unknown caller";
+        var who = row.ClientName ?? Strings.Get("Mcp/UnknownCaller");
         var detail = string.Join(" · ", new[] { who, row.ConnectionName, row.Message }.Where(s => !string.IsNullOrEmpty(s)));
         var grid = new Grid { ColumnSpacing = 12, Padding = new Thickness(4, 6, 4, 6) };
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(20) });
@@ -387,7 +391,7 @@ public sealed partial class McpClientsPane : UserControl
         grid.Children.Add(text);
         if (row.SqlDigest is { } digest)
         {
-            ToolTipService.SetToolTip(grid, $"Statement SHA-256 {digest}");
+            ToolTipService.SetToolTip(grid, Strings.Format("Mcp/StatementDigest", digest));
         }
 
         AutomationProperties.SetName(grid, $"{ActionName(row.Action)}, {outcome}, {row.Timestamp:g}, {detail}");
@@ -396,7 +400,7 @@ public sealed partial class McpClientsPane : UserControl
 
     private async Task ClearLogAsync()
     {
-        if (!await ConfirmAsync("Clear the MCP activity log?", "Every logged call, pairing and client change is deleted. Paired clients keep their access.", "Clear"))
+        if (!await ConfirmAsync(Strings.Get("Mcp/ClearLogConfirmTitle"), Strings.Get("Mcp/ClearLogConfirmMessage"), Strings.Get("Common/Clear")))
         {
             return;
         }
@@ -409,7 +413,7 @@ public sealed partial class McpClientsPane : UserControl
         }
         catch (Exception ex) when (IsStorageFailure(ex))
         {
-            Show("The log could not be cleared", ex.Message);
+            Show(Strings.Get("Mcp/ClearLogFailed"), ex.Message);
         }
 
         await RefreshActivityAsync();
@@ -419,28 +423,28 @@ public sealed partial class McpClientsPane : UserControl
     {
         if (ids is null)
         {
-            return "all connections";
+            return Strings.Get("Mcp/ReachAllConnections");
         }
 
-        var names = ids.Select(id => _host.Connections.Find(id)?.Name ?? "a deleted connection").ToList();
+        var names = ids.Select(id => _host.Connections.Find(id)?.Name ?? Strings.Get("Mcp/ReachDeletedConnection")).ToList();
         return names.Count switch
         {
-            0 => "no connections",
-            <= 3 => string.Join(", ", names),
-            _ => $"{names.Count} connections",
+            0 => Strings.Get("Mcp/ReachNoConnections"),
+            <= 3 => string.Join(Strings.Get("Mcp/ListSeparator"), names),
+            _ => Strings.Plural("Mcp/ReachConnectionCount", names.Count),
         };
     }
 
     private static string ActionName(string action) => action switch
     {
-        "pairing.request" => "Pairing request",
-        "pairing.approved" => "Pairing approved",
-        "pairing.denied" => "Pairing declined",
-        "pairing.exchange" => "Token collected",
-        "auth.failure" => "Sign-in refused",
-        "client.created" => "Client added",
-        "client.revoked" => "Client revoked",
-        "client.deleted" => "Client removed",
+        "pairing.request" => Strings.Get("Mcp/ActionPairingRequest"),
+        "pairing.approved" => Strings.Get("Mcp/ActionPairingApproved"),
+        "pairing.denied" => Strings.Get("Mcp/ActionPairingDenied"),
+        "pairing.exchange" => Strings.Get("Mcp/ActionTokenCollected"),
+        "auth.failure" => Strings.Get("Mcp/ActionSignInRefused"),
+        "client.created" => Strings.Get("Mcp/ActionClientAdded"),
+        "client.revoked" => Strings.Get("Mcp/ActionClientRevoked"),
+        "client.deleted" => Strings.Get("Mcp/ActionClientRemoved"),
         _ => action,
     };
 
@@ -456,7 +460,7 @@ public sealed partial class McpClientsPane : UserControl
 
     private async Task<bool> ConfirmAsync(string title, string message, string primary)
     {
-        var dialog = Dialog(title, new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap, MaxWidth = 460 }, primary, "Cancel");
+        var dialog = Dialog(title, new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap, MaxWidth = 460 }, primary, Strings.Get("Common/Cancel"));
         return await ShowAsync(dialog) == ContentDialogResult.Primary;
     }
 
@@ -520,10 +524,10 @@ public sealed partial class McpClientsPane : UserControl
 internal sealed class McpPairingForm
 {
     private readonly TextBox? _name;
-    private readonly ComboBox _access = new() { Header = "Access", MinWidth = 300 };
-    private readonly RadioButtons _scope = new() { Header = "Connections" };
+    private readonly ComboBox _access = new() { Header = Strings.Get("Mcp/FormAccessHeader"), MinWidth = 300 };
+    private readonly RadioButtons _scope = new() { Header = Strings.Get("Mcp/FormConnectionsHeader") };
     private readonly List<(Guid Id, CheckBox Box)> _boxes = [];
-    private readonly ComboBox _expiry = new() { Header = "Token expires", MinWidth = 300 };
+    private readonly ComboBox _expiry = new() { Header = Strings.Get("Mcp/FormExpiryHeader"), MinWidth = 300 };
 
     // Index order matches the expiry choices; null keeps the token until it is revoked. Ninety days is the macOS default.
     private static readonly TimeSpan?[] Lifetimes = [TimeSpan.FromDays(30), TimeSpan.FromDays(90), TimeSpan.FromDays(365), null];
@@ -535,31 +539,31 @@ internal sealed class McpPairingForm
         var panel = new StackPanel { Spacing = 12, MinWidth = 440, MaxWidth = 520 };
         if (request is null)
         {
-            _name = new TextBox { Header = "Client name", PlaceholderText = "For example, Claude Desktop" };
+            _name = new TextBox { Header = Strings.Get("Mcp/FormClientNameHeader"), PlaceholderText = Strings.Get("Mcp/FormClientNamePlaceholder") };
             panel.Children.Add(_name);
         }
         else
         {
             panel.Children.Add(new TextBlock
             {
-                Text = $"\"{request.ClientName}\" asks to use your saved connections through TablePro's MCP server. Any program on this PC can ask under any name, so allow it only if you just started pairing in that app.",
+                Text = Strings.Format("Mcp/FormRequestMessage", request.ClientName),
                 TextWrapping = TextWrapping.Wrap,
             });
         }
 
-        _access.Items.Add("Read only");
-        _access.Items.Add("Read and write, asking before each write");
+        _access.Items.Add(Strings.Get("Mcp/AccessReadOnly"));
+        _access.Items.Add(Strings.Get("Mcp/AccessReadWrite"));
         _access.SelectedIndex = request?.RequestedPermission == McpClientPermission.ReadWrite ? 1 : 0;
         panel.Children.Add(_access);
         panel.Children.Add(new TextBlock
         {
-            Text = "Each connection's External Clients level still applies; a client never gets more than it allows.",
+            Text = Strings.Get("Mcp/FormAccessNote"),
             TextWrapping = TextWrapping.Wrap,
             Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
         });
 
-        _scope.Items.Add("All connections");
-        _scope.Items.Add("Only the ones ticked below");
+        _scope.Items.Add(Strings.Get("Mcp/FormScopeAll"));
+        _scope.Items.Add(Strings.Get("Mcp/FormScopeTicked"));
         var requested = request?.RequestedConnectionIds;
         _scope.SelectedIndex = requested is null ? 0 : 1;
         panel.Children.Add(_scope);
@@ -574,7 +578,7 @@ internal sealed class McpPairingForm
 
         if (connections.Count == 0)
         {
-            list.Children.Add(new TextBlock { Text = "No connection lets MCP clients in yet.", Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"] });
+            list.Children.Add(new TextBlock { Text = Strings.Get("Mcp/FormNoConnections"), Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"] });
         }
 
         void SyncList() => list.Opacity = _scope.SelectedIndex == 1 ? 1 : 0.5;
@@ -595,7 +599,7 @@ internal sealed class McpPairingForm
         SyncList();
         panel.Children.Add(new ScrollViewer { Content = list, MaxHeight = 180 });
 
-        foreach (var label in new[] { "In 30 days", "In 90 days", "In a year", "Never" })
+        foreach (var label in new[] { Strings.Get("Mcp/ExpiryIn30Days"), Strings.Get("Mcp/ExpiryIn90Days"), Strings.Get("Mcp/ExpiryInAYear"), Strings.Get("Mcp/ExpiryNever") })
         {
             _expiry.Items.Add(label);
         }

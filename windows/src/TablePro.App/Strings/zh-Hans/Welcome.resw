@@ -1,0 +1,180 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="CancelConnect.Content" xml:space="preserve">
+    <value>取消</value>
+  </data>
+  <data name="ConnectFailedTitle" xml:space="preserve">
+    <value>无法连接到 {0}</value>
+  </data>
+  <data name="ConnectNowMessage" xml:space="preserve">
+    <value>要立即连接到 {0} 吗？</value>
+  </data>
+  <data name="ConnectToTitle" xml:space="preserve">
+    <value>连接到 {0}</value>
+  </data>
+  <data name="ConnectingThroughProxy" xml:space="preserve">
+    <value>正在通过代理连接…</value>
+  </data>
+  <data name="ConnectingTo" xml:space="preserve">
+    <value>正在连接{0}…</value>
+  </data>
+  <data name="ConnectionAnnouncement" xml:space="preserve">
+    <value>{0}, {1}</value>
+  </data>
+  <data name="ConnectionSavedTitle" xml:space="preserve">
+    <value>连接已保存</value>
+  </data>
+  <data name="CreateGroup" xml:space="preserve">
+    <value>创建</value>
+  </data>
+  <data name="DaysAgo_One" xml:space="preserve">
+    <value>{0} 天前</value>
+  </data>
+  <data name="DaysAgo_Other" xml:space="preserve">
+    <value>{0} 天前</value>
+  </data>
+  <data name="DeleteConfirmMessage" xml:space="preserve">
+    <value>将删除已保存的连接及其存储的密码。数据库本身不受影响。</value>
+  </data>
+  <data name="DeleteConfirmTitle" xml:space="preserve">
+    <value>删除 {0}？</value>
+  </data>
+  <data name="EmptyMessage.Text" xml:space="preserve">
+    <value>新建一个连接，或打开 SQLite 或 DuckDB 文件。</value>
+  </data>
+  <data name="EmptyTitle.Text" xml:space="preserve">
+    <value>没有已保存的连接</value>
+  </data>
+  <data name="EncryptedImportMessage" xml:space="preserve">
+    <value>此文件已加密。请输入导出时使用的密码短语。</value>
+  </data>
+  <data name="EncryptedImportTitle" xml:space="preserve">
+    <value>加密的连接</value>
+  </data>
+  <data name="ExportFileType" xml:space="preserve">
+    <value>TablePro 连接</value>
+  </data>
+  <data name="ExportMessage" xml:space="preserve">
+    <value>输入密码短语以加密文件并包含已保存的密码。留空则导出时不包含密码。</value>
+  </data>
+  <data name="ExportTitle" xml:space="preserve">
+    <value>导出连接</value>
+  </data>
+  <data name="HoursAgo_One" xml:space="preserve">
+    <value>{0} 小时前</value>
+  </data>
+  <data name="HoursAgo_Other" xml:space="preserve">
+    <value>{0} 小时前</value>
+  </data>
+  <data name="ImportConnections.Text" xml:space="preserve">
+    <value>导入连接</value>
+  </data>
+  <data name="ImportFailedTitle" xml:space="preserve">
+    <value>导入失败</value>
+  </data>
+  <data name="ImportFinishedTitle" xml:space="preserve">
+    <value>导入完成</value>
+  </data>
+  <data name="ImportWrongPassphrase" xml:space="preserve">
+    <value>密码短语错误，或文件已损坏。</value>
+  </data>
+  <data name="ImportedConnections_One" xml:space="preserve">
+    <value>已导入 {0} 个连接。</value>
+  </data>
+  <data name="ImportedConnections_Other" xml:space="preserve">
+    <value>已导入 {0} 个连接。</value>
+  </data>
+  <data name="ImportedSavedQueries_One" xml:space="preserve">
+    <value>已将 {0} 条已保存的查询添加到“收藏”。</value>
+  </data>
+  <data name="ImportedSavedQueries_Other" xml:space="preserve">
+    <value>已将 {0} 条已保存的查询添加到“收藏”。</value>
+  </data>
+  <data name="JustNow" xml:space="preserve">
+    <value>刚刚</value>
+  </data>
+  <data name="MinutesAgo_One" xml:space="preserve">
+    <value>{0} 分钟前</value>
+  </data>
+  <data name="MinutesAgo_Other" xml:space="preserve">
+    <value>{0} 分钟前</value>
+  </data>
+  <data name="MoveToGroup" xml:space="preserve">
+    <value>移动到分组</value>
+  </data>
+  <data name="NewConnection.Text" xml:space="preserve">
+    <value>新建连接</value>
+  </data>
+  <data name="NewGroup.Text" xml:space="preserve">
+    <value>新建分组</value>
+  </data>
+  <data name="NewGroupTitle" xml:space="preserve">
+    <value>新建分组</value>
+  </data>
+  <data name="NoGroup" xml:space="preserve">
+    <value>无分组</value>
+  </data>
+  <data name="OpenDatabaseFile.Text" xml:space="preserve">
+    <value>打开数据库文件</value>
+  </data>
+  <data name="OpeningCloudflareTunnel" xml:space="preserve">
+    <value>正在打开 Cloudflare 隧道…</value>
+  </data>
+  <data name="OpeningSshTunnel" xml:space="preserve">
+    <value>正在打开到 {0} 的 SSH 隧道…</value>
+  </data>
+  <data name="PasswordForHeader" xml:space="preserve">
+    <value>{0}@{1} 的密码</value>
+  </data>
+  <data name="RunningTunnelCommand" xml:space="preserve">
+    <value>正在运行隧道命令…</value>
+  </data>
+  <data name="SearchConnections.PlaceholderText" xml:space="preserve">
+    <value>搜索连接</value>
+  </data>
+  <data name="Settings.Content" xml:space="preserve">
+    <value>设置</value>
+  </data>
+  <data name="SignInAndRetry" xml:space="preserve">
+    <value>请在 {0} 登录，然后重新连接。</value>
+  </data>
+  <data name="SkippedConnections_One" xml:space="preserve">
+    <value>已跳过 {0} 个此版本无法打开的连接。</value>
+  </data>
+  <data name="SkippedConnections_Other" xml:space="preserve">
+    <value>已跳过 {0} 个此版本无法打开的连接。</value>
+  </data>
+  <data name="Sort.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>排序</value>
+  </data>
+  <data name="SortLastConnected.Content" xml:space="preserve">
+    <value>上次连接时间</value>
+  </data>
+  <data name="SortManual.Content" xml:space="preserve">
+    <value>手动排序</value>
+  </data>
+  <data name="SortName.Content" xml:space="preserve">
+    <value>名称</value>
+  </data>
+  <data name="StartingCloudSqlProxy" xml:space="preserve">
+    <value>正在启动 Cloud SQL Auth Proxy…</value>
+  </data>
+  <data name="TunnelCommandsTurnedOff" xml:space="preserve">
+    <value>以下连接的隧道命令已关闭，需你检查后才能重新启用：{0}。</value>
+  </data>
+  <data name="Version" xml:space="preserve">
+    <value>版本 {0}</value>
+  </data>
+</root>

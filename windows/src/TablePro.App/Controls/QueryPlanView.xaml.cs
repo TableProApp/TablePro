@@ -1,4 +1,3 @@
-using System.Globalization;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using TablePro.Core.Plans;
@@ -15,7 +14,7 @@ public sealed partial class QueryPlanView : UserControl
     // Remembered across plans for the session, and honoured only when a plan reports that metric, so one SQLite plan
     // does not lose the metric chosen for PostgreSQL.
     private static QueryPlanBarMetric? _preferredMetric;
-    private static string _preferredMode = "Diagram";
+    private static string _preferredMode = nameof(DiagramMode);
 
     private readonly Dictionary<QueryPlanNode, QueryPlanRow> _rows = [];
     private QueryPlanCapture? _current;
@@ -75,13 +74,13 @@ public sealed partial class QueryPlanView : UserControl
         CostHeaderColumn.Width = columns.CostWidth;
         RowsHeaderColumn.Width = columns.RowsWidth;
         TimeHeaderColumn.Width = columns.TimeWidth;
-        RowsHeader.Text = plan.Contains(n => n.ActualRows is not null) ? "Actual / Est. Rows" : "Rows";
+        RowsHeader.Text = plan.Contains(n => n.ActualRows is not null) ? Strings.Get("Plan/ActualEstimatedRowsHeader") : Strings.Get("Plan/EstimatedRowsHeader");
 
         _syncing = true;
         MetricBox.Items.Clear();
         foreach (var available in _metrics)
         {
-            MetricBox.Items.Add(new ComboBoxItem { Content = available.Title(), Tag = available });
+            MetricBox.Items.Add(new ComboBoxItem { Content = PlanNames.Title(available), Tag = available });
         }
 
         MetricBox.SelectedIndex = metric is { } m ? _metrics.ToList().IndexOf(m) : -1;
@@ -90,34 +89,34 @@ public sealed partial class QueryPlanView : UserControl
         Tree.ItemsSource = new[] { _root };
 
         Timings.Text = Describe(current, plan);
-        SelectMode(_preferredMode == TreeMode.Text ? TreeMode : _preferredMode == RawMode.Text ? RawMode : DiagramMode);
+        SelectMode(_preferredMode == TreeMode.Name ? TreeMode : _preferredMode == RawMode.Name ? RawMode : DiagramMode);
     }
 
     private static string Describe(QueryPlanCapture capture, QueryPlan plan)
     {
-        var parts = new List<string>(4) { plan.NodeCount == 1 ? "1 step" : string.Create(CultureInfo.CurrentCulture, $"{plan.NodeCount:N0} steps") };
+        var parts = new List<string>(4) { Strings.Plural("Plan/TimingsSteps", plan.NodeCount) };
         if (plan.Root.EstimatedTotalCost is { } cost)
         {
-            parts.Add("cost " + QueryPlanValueFormatter.Format(cost, QueryPlanUnit.Cost));
+            parts.Add(Strings.Format("Plan/TimingsCost", QueryPlanValueFormatter.Format(cost, QueryPlanUnit.Cost)));
         }
 
         if (plan.PlanningTime is { } planning)
         {
-            parts.Add("planning " + QueryPlanValueFormatter.Format(planning, QueryPlanUnit.Milliseconds));
+            parts.Add(Strings.Format("Plan/TimingsPlanning", QueryPlanValueFormatter.Format(planning, QueryPlanUnit.Milliseconds)));
         }
 
         if (plan.ExecutionTime is { } execution)
         {
-            parts.Add("execution " + QueryPlanValueFormatter.Format(execution, QueryPlanUnit.Milliseconds));
+            parts.Add(Strings.Format("Plan/TimingsExecution", QueryPlanValueFormatter.Format(execution, QueryPlanUnit.Milliseconds)));
         }
 
-        return (capture.Analyze ? "Analyzed plan · " : "Estimated plan · ") + string.Join(" · ", parts);
+        return Strings.Format(capture.Analyze ? "Plan/TimingsAnalyzed" : "Plan/TimingsEstimated", string.Join(" · ", parts));
     }
 
     private void ApplyMetric(QueryPlanBarMetric? metric)
     {
         var index = metric is { } m && _current?.Plan is { } plan ? QueryPlanMetricIndex.Create(m, plan) : null;
-        MagnitudeHeader.Text = metric?.Title() ?? string.Empty;
+        MagnitudeHeader.Text = metric is { } shown ? PlanNames.Title(shown) : string.Empty;
         _root?.ApplyMetric(index);
     }
 
@@ -138,7 +137,7 @@ public sealed partial class QueryPlanView : UserControl
         // Compare is a step away from the plan rather than a way of reading it, so the next plan opens as before.
         if (sender.SelectedItem is { } item && item != CompareMode && _current?.Plan is not null)
         {
-            _preferredMode = item.Text;
+            _preferredMode = item.Name;
         }
 
         UpdateMode();

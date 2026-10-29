@@ -1,5 +1,4 @@
 using System.ComponentModel;
-using System.Globalization;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
@@ -20,20 +19,20 @@ namespace TablePro.App.Views;
 public sealed partial class CompareTabView : UserControl
 {
     private readonly SelectorBar _modes = new();
-    private readonly ComboBox _sourceTable = new() { MinWidth = 200, PlaceholderText = "Source table" };
-    private readonly ComboBox _targetConnection = new() { MinWidth = 180, PlaceholderText = "Target connection" };
-    private readonly ComboBox _targetTable = new() { MinWidth = 200, PlaceholderText = "Target table" };
-    private readonly Button _compare = new() { Content = "Compare", Style = (Style)Application.Current.Resources["AccentButtonStyle"] };
-    private readonly Button _stop = new() { Content = "Stop", Visibility = Visibility.Collapsed };
+    private readonly ComboBox _sourceTable = new() { MinWidth = 200, PlaceholderText = Strings.Get("Compare/SourceTable") };
+    private readonly ComboBox _targetConnection = new() { MinWidth = 180, PlaceholderText = Strings.Get("Compare/TargetConnection") };
+    private readonly ComboBox _targetTable = new() { MinWidth = 200, PlaceholderText = Strings.Get("Compare/TargetTable") };
+    private readonly Button _compare = new() { Content = Strings.Get("Compare/CompareButton"), Style = (Style)Application.Current.Resources["AccentButtonStyle"] };
+    private readonly Button _stop = new() { Content = Strings.Get("Common/Stop"), Visibility = Visibility.Collapsed };
     private readonly ProgressRing _busy = new() { Width = 18, Height = 18, IsActive = false };
     private readonly TextBlock _summary = new() { TextWrapping = TextWrapping.Wrap, Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"] };
     private readonly TextBlock _status = new() { TextWrapping = TextWrapping.Wrap, Opacity = 0.75 };
     private readonly InfoBar _notes = new() { IsClosable = false, Severity = InfoBarSeverity.Informational };
     private readonly StackPanel _dataOptions = new() { Spacing = 8 };
     private readonly StackPanel _structureOptions = new() { Spacing = 8, Visibility = Visibility.Collapsed };
-    private readonly ToggleButton _showInserts = new() { Content = "Only in source", IsChecked = true };
-    private readonly ToggleButton _showUpdates = new() { Content = "Changed", IsChecked = true };
-    private readonly ToggleButton _showDeletes = new() { Content = "Only in target", IsChecked = true };
+    private readonly ToggleButton _showInserts = new() { Content = Strings.Get("Compare/ShowOnlyInSource"), IsChecked = true };
+    private readonly ToggleButton _showUpdates = new() { Content = Strings.Get("Compare/ShowChanged"), IsChecked = true };
+    private readonly ToggleButton _showDeletes = new() { Content = Strings.Get("Compare/ShowOnlyInTarget"), IsChecked = true };
     private readonly DataGridView _grid = new();
     private readonly Grid _dataPanel = new() { RowSpacing = 8 };
     private readonly Grid _structurePanel = new() { ColumnSpacing = 12, Visibility = Visibility.Collapsed };
@@ -49,8 +48,8 @@ public sealed partial class CompareTabView : UserControl
         ArgumentNullException.ThrowIfNull(viewModel);
         ViewModel = viewModel;
 
-        _modes.Items.Add(new SelectorBarItem { Text = "Data", IsSelected = true });
-        _modes.Items.Add(new SelectorBarItem { Text = "Structure" });
+        _modes.Items.Add(new SelectorBarItem { Text = Strings.Get("Compare/ModeData"), IsSelected = true });
+        _modes.Items.Add(new SelectorBarItem { Text = Strings.Get("Compare/ModeStructure") });
         _modes.SelectionChanged += (_, _) => SetMode(_modes.SelectedItem == _modes.Items[1] ? CompareMode.Structure : CompareMode.Data);
 
         foreach (var table in viewModel.SourceTables)
@@ -169,50 +168,50 @@ public sealed partial class CompareTabView : UserControl
     {
         var vm = ViewModel;
         var keys = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12 };
-        keys.Children.Add(Field("Key columns", "Primary key", vm.KeyColumns, v => vm.KeyColumns = v));
-        keys.Children.Add(Field("Leave out columns", "updated_at, version", vm.ExcludedColumns, v => vm.ExcludedColumns = v));
+        keys.Children.Add(Field(Strings.Get("Compare/KeyColumns"), Strings.Get("Compare/KeyColumnsPlaceholder"), vm.KeyColumns, v => vm.KeyColumns = v));
+        keys.Children.Add(Field(Strings.Get("Compare/LeaveOutColumns"), "updated_at, version", vm.ExcludedColumns, v => vm.ExcludedColumns = v));
         _dataOptions.Children.Add(keys);
 
         var filters = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12 };
-        filters.Children.Add(Field("Source WHERE", "status = 'active'", vm.SourceWhere, v => vm.SourceWhere = v));
-        filters.Children.Add(Field("Target WHERE", "status = 'active'", vm.TargetWhere, v => vm.TargetWhere = v));
-        var tolerance = new NumberBox { Header = "Float tolerance", Value = vm.FloatTolerance, Minimum = 0, SmallChange = 0.001, SpinButtonPlacementMode = NumberBoxSpinButtonPlacementMode.Compact };
+        filters.Children.Add(Field(Strings.Get("Compare/SourceWhere"), "status = 'active'", vm.SourceWhere, v => vm.SourceWhere = v));
+        filters.Children.Add(Field(Strings.Get("Compare/TargetWhere"), "status = 'active'", vm.TargetWhere, v => vm.TargetWhere = v));
+        var tolerance = new NumberBox { Header = Strings.Get("Compare/FloatTolerance"), Value = vm.FloatTolerance, Minimum = 0, SmallChange = 0.001, SpinButtonPlacementMode = NumberBoxSpinButtonPlacementMode.Compact };
         tolerance.ValueChanged += (_, e) => vm.FloatTolerance = double.IsNaN(e.NewValue) ? 0 : e.NewValue;
-        var limit = new NumberBox { Header = "Row limit", PlaceholderText = "All rows", Value = vm.RowLimit, Minimum = 1 };
+        var limit = new NumberBox { Header = Strings.Get("Compare/RowLimit"), PlaceholderText = Strings.Get("Compare/RowLimitPlaceholder"), Value = vm.RowLimit, Minimum = 1 };
         limit.ValueChanged += (_, e) => vm.RowLimit = e.NewValue;
         filters.Children.Add(tolerance);
         filters.Children.Add(limit);
         _dataOptions.Children.Add(filters);
 
         var writes = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 16 };
-        writes.Children.Add(Check("Insert missing rows", vm.InsertMissing, v => vm.InsertMissing = v));
-        writes.Children.Add(Check("Update changed rows", vm.UpdateChanged, v => vm.UpdateChanged = v));
-        writes.Children.Add(Check("Delete extra rows", vm.DeleteExtra, v => vm.DeleteExtra = v));
-        writes.Children.Add(Check("Keys ignore case", vm.KeysIgnoreCase, v => vm.KeysIgnoreCase = v));
-        writes.Children.Add(Check("Commit in batches", vm.ApplyInBatches, v => vm.ApplyInBatches = v));
+        writes.Children.Add(Check(Strings.Get("Compare/InsertMissingRows"), vm.InsertMissing, v => vm.InsertMissing = v));
+        writes.Children.Add(Check(Strings.Get("Compare/UpdateChangedRows"), vm.UpdateChanged, v => vm.UpdateChanged = v));
+        writes.Children.Add(Check(Strings.Get("Compare/DeleteExtraRows"), vm.DeleteExtra, v => vm.DeleteExtra = v));
+        writes.Children.Add(Check(Strings.Get("Compare/KeysIgnoreCase"), vm.KeysIgnoreCase, v => vm.KeysIgnoreCase = v));
+        writes.Children.Add(Check(Strings.Get("Compare/CommitInBatches"), vm.ApplyInBatches, v => vm.ApplyInBatches = v));
         _dataOptions.Children.Add(writes);
 
         var drops = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 16 };
-        drops.Children.Add(Check("Drop tables only in the target", vm.DropExtraTables, v => vm.DropExtraTables = v));
-        drops.Children.Add(Check("Drop columns only in the target", vm.DropExtraColumns, v => vm.DropExtraColumns = v));
+        drops.Children.Add(Check(Strings.Get("Compare/DropExtraTables"), vm.DropExtraTables, v => vm.DropExtraTables = v));
+        drops.Children.Add(Check(Strings.Get("Compare/DropExtraColumns"), vm.DropExtraColumns, v => vm.DropExtraColumns = v));
         _structureOptions.Children.Add(drops);
     }
 
     private void BuildActions()
     {
-        var skip = new Button { Content = "Skip or include selected rows" };
+        var skip = new Button { Content = Strings.Get("Compare/SkipOrIncludeRows") };
         skip.Click += (_, _) => ToggleSelected();
-        var copy = new Button { Content = "Copy sync script" };
+        var copy = new Button { Content = Strings.Get("Compare/CopySyncScript") };
         copy.Click += (_, _) => Copy(ViewModel.SyncScript());
-        var sync = new Button { Content = "Review and sync…", Style = (Style)Application.Current.Resources["AccentButtonStyle"] };
+        var sync = new Button { Content = Strings.Get("Compare/ReviewAndSync"), Style = (Style)Application.Current.Resources["AccentButtonStyle"] };
         sync.Click += async (_, _) => await ViewModel.SyncAsync();
         _dataActions.Children.Add(skip);
         _dataActions.Children.Add(copy);
         _dataActions.Children.Add(sync);
 
-        var copyDdl = new Button { Content = "Copy migration script" };
+        var copyDdl = new Button { Content = Strings.Get("Compare/CopyMigrationScript") };
         copyDdl.Click += (_, _) => Copy(ViewModel.MigrationText());
-        var migrate = new Button { Content = "Review and migrate…", Style = (Style)Application.Current.Resources["AccentButtonStyle"] };
+        var migrate = new Button { Content = Strings.Get("Compare/ReviewAndMigrate"), Style = (Style)Application.Current.Resources["AccentButtonStyle"] };
         migrate.Click += async (_, _) => await ViewModel.MigrateAsync();
         _structureActions.Children.Add(copyDdl);
         _structureActions.Children.Add(migrate);
@@ -221,22 +220,22 @@ public sealed partial class CompareTabView : UserControl
     private Grid BuildLayout()
     {
         var endpoints = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-        endpoints.Children.Add(new TextBlock { Text = "Source", VerticalAlignment = VerticalAlignment.Center });
+        endpoints.Children.Add(new TextBlock { Text = Strings.Get("Compare/SourceLabel"), VerticalAlignment = VerticalAlignment.Center });
         endpoints.Children.Add(_sourceTable);
         endpoints.Children.Add(new FontIcon { Glyph = "", FontSize = 14, Margin = new Thickness(4, 0, 4, 0) });
-        endpoints.Children.Add(new TextBlock { Text = "Target", VerticalAlignment = VerticalAlignment.Center });
+        endpoints.Children.Add(new TextBlock { Text = Strings.Get("Compare/TargetLabel"), VerticalAlignment = VerticalAlignment.Center });
         endpoints.Children.Add(_targetConnection);
         endpoints.Children.Add(_targetTable);
         endpoints.Children.Add(_compare);
         endpoints.Children.Add(_stop);
         endpoints.Children.Add(_busy);
-        AutomationProperties.SetName(_sourceTable, "Source table");
-        AutomationProperties.SetName(_targetConnection, "Target connection");
-        AutomationProperties.SetName(_targetTable, "Target table");
+        AutomationProperties.SetName(_sourceTable, Strings.Get("Compare/SourceTable"));
+        AutomationProperties.SetName(_targetConnection, Strings.Get("Compare/TargetConnection"));
+        AutomationProperties.SetName(_targetTable, Strings.Get("Compare/TargetTable"));
 
         var options = new Expander
         {
-            Header = "Options",
+            Header = Strings.Get("Compare/Options"),
             HorizontalAlignment = HorizontalAlignment.Stretch,
             HorizontalContentAlignment = HorizontalAlignment.Left,
             Content = new StackPanel { Spacing = 8, Children = { _dataOptions, _structureOptions } },
@@ -290,7 +289,7 @@ public sealed partial class CompareTabView : UserControl
         _dataOptions.Visibility = _dataPanel.Visibility = _dataActions.Visibility = data ? Visibility.Visible : Visibility.Collapsed;
         _structureOptions.Visibility = _structurePanel.Visibility = _structureActions.Visibility = data ? Visibility.Collapsed : Visibility.Visible;
         _sourceTable.Visibility = _targetTable.Visibility = data ? Visibility.Visible : Visibility.Collapsed;
-        _compare.Content = data ? "Compare" : "Compare structure";
+        _compare.Content = data ? Strings.Get("Compare/CompareButton") : Strings.Get("Compare/CompareStructureButton");
     }
 
     private void OnViewModelChanged(object? sender, PropertyChangedEventArgs e)
@@ -366,9 +365,9 @@ public sealed partial class CompareTabView : UserControl
             kinds.Add(RowDiffKind.OnlyInTarget);
         }
 
-        _showInserts.Content = string.Create(CultureInfo.CurrentCulture, $"Only in source ({result.OnlyInSourceCount:N0})");
-        _showUpdates.Content = string.Create(CultureInfo.CurrentCulture, $"Changed ({result.ChangedCount:N0})");
-        _showDeletes.Content = string.Create(CultureInfo.CurrentCulture, $"Only in target ({result.OnlyInTargetCount:N0})");
+        _showInserts.Content = Strings.Format("Compare/ShowOnlyInSourceCount", result.OnlyInSourceCount);
+        _showUpdates.Content = Strings.Format("Compare/ShowChangedCount", result.ChangedCount);
+        _showDeletes.Content = Strings.Format("Compare/ShowOnlyInTargetCount", result.OnlyInTargetCount);
         _source = new CompareGridSource(result, kinds, ViewModel.Excluded);
         _grid.Source = _source;
         Refresh();
@@ -396,10 +395,10 @@ public sealed partial class CompareTabView : UserControl
         {
             var label = diff.Kind switch
             {
-                SchemaDiffKind.OnlyInSource => "only in source, will be created",
-                SchemaDiffKind.OnlyInTarget => ViewModel.DropExtraTables ? "only in target, will be dropped" : "only in target",
-                SchemaDiffKind.Changed => string.Create(CultureInfo.CurrentCulture, $"{diff.Changes.Count:N0} changes"),
-                _ => "identical",
+                SchemaDiffKind.OnlyInSource => Strings.Get("Compare/TableOnlyInSourceCreated"),
+                SchemaDiffKind.OnlyInTarget => ViewModel.DropExtraTables ? Strings.Get("Compare/TableOnlyInTargetDropped") : Strings.Get("Compare/TableOnlyInTarget"),
+                SchemaDiffKind.Changed => Strings.Plural("Compare/TableChanges", diff.Changes.Count),
+                _ => Strings.Get("Compare/TableIdentical"),
             };
             var item = new StackPanel { Tag = diff, Padding = new Thickness(0, 4, 0, 4) };
             item.Children.Add(new TextBlock { Text = diff.Name, Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"] });

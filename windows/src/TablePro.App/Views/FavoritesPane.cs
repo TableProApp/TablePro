@@ -19,7 +19,7 @@ internal sealed partial class FavoritesPane : UserControl
     private readonly WorkspaceViewModel _workspace;
     private readonly Action<string> _insert;
     private readonly ListView _list = new() { SelectionMode = ListViewSelectionMode.Single, IsItemClickEnabled = true };
-    private readonly AutoSuggestBox _search = new() { PlaceholderText = "Search favorites", QueryIcon = new SymbolIcon(Symbol.Find) };
+    private readonly AutoSuggestBox _search = new() { PlaceholderText = Strings.Get("Panes/FavoritesSearch"), QueryIcon = new SymbolIcon(Symbol.Find) };
 
     public FavoritesPane(FavoritesStore store, WorkspaceViewModel workspace, Action<string> insert)
     {
@@ -37,10 +37,10 @@ internal sealed partial class FavoritesPane : UserControl
         store.Changed += OnStoreChanged;
         Unloaded += (_, _) => store.Changed -= OnStoreChanged;
 
-        var newFolder = new HyperlinkButton { Content = "New folder" };
+        var newFolder = new HyperlinkButton { Content = Strings.Get("Panes/FavoritesNewFolderLink") };
         newFolder.Click += async (_, _) =>
         {
-            var name = await _workspace.Context.Dialogs.PromptAsync("New Folder", "Name", primary: "Create");
+            var name = await _workspace.Context.Dialogs.PromptAsync(Strings.Get("Panes/FavoritesNewFolderTitle"), Strings.Get("Common/Name"), primary: Strings.Get("Panes/FavoritesCreate"));
             if (!string.IsNullOrWhiteSpace(name))
             {
                 await _store.UpsertFolderAsync(new SqlFavoriteFolder { Name = name.Trim() });
@@ -68,18 +68,18 @@ internal sealed partial class FavoritesPane : UserControl
             return;
         }
 
-        var name = new TextBox { Header = "Name", Text = existing?.Name ?? SqlFavorite.NameFromQuery(sql) };
-        var keyword = new TextBox { Header = "Keyword", Text = existing?.Keyword ?? string.Empty, PlaceholderText = "Typed in the editor to insert this query" };
-        var folder = new ComboBox { Header = "Folder", HorizontalAlignment = HorizontalAlignment.Stretch };
-        folder.Items.Add("None");
+        var name = new TextBox { Header = Strings.Get("Common/Name"), Text = existing?.Name ?? SqlFavorite.NameFromQuery(sql) };
+        var keyword = new TextBox { Header = Strings.Get("Panes/FavoriteKeyword"), Text = existing?.Keyword ?? string.Empty, PlaceholderText = Strings.Get("Panes/FavoriteKeywordPlaceholder") };
+        var folder = new ComboBox { Header = Strings.Get("Panes/FavoriteFolder"), HorizontalAlignment = HorizontalAlignment.Stretch };
+        folder.Items.Add(Strings.Get("Common/None"));
         foreach (var f in store.Folders)
         {
             folder.Items.Add(f.Name);
         }
 
         folder.SelectedIndex = existing?.FolderId is { } folderId ? store.Folders.ToList().FindIndex(f => f.Id == folderId) + 1 : 0;
-        var scoped = new CheckBox { Content = $"Only for {profile.Name}", IsChecked = existing?.ConnectionId is not null };
-        var query = new TextBox { Header = "Query", Text = existing?.Query ?? sql, AcceptsReturn = true, Height = 140, FontFamily = (FontFamily)Application.Current.Resources["CodeFontFamily"] };
+        var scoped = new CheckBox { Content = Strings.Format("Panes/FavoriteOnlyFor", profile.Name), IsChecked = existing?.ConnectionId is not null };
+        var query = new TextBox { Header = Strings.Get("Panes/FavoriteQuery"),Text = existing?.Query ?? sql, AcceptsReturn = true, Height = 140, FontFamily = (FontFamily)Application.Current.Resources["CodeFontFamily"] };
         var problem = new InfoBar { Severity = InfoBarSeverity.Error, IsClosable = false };
         var panel = new StackPanel { Spacing = 12, Width = 440 };
         panel.Children.Add(name);
@@ -89,7 +89,7 @@ internal sealed partial class FavoritesPane : UserControl
         panel.Children.Add(query);
         panel.Children.Add(problem);
 
-        var dialog = dialogs.Create(existing is null ? "Save Favorite" : "Edit Favorite", panel, "Save", "Cancel");
+        var dialog = dialogs.Create(existing is null ? Strings.Get("Panes/FavoriteSaveTitle") : Strings.Get("Panes/FavoriteEditTitle"), panel, Strings.Get("Common/Save"), Strings.Get("Common/Cancel"));
         dialog.PrimaryButtonClick += (_, args) =>
         {
             var connectionId = scoped.IsChecked == true ? profile.Id : (Guid?)null;
@@ -98,9 +98,9 @@ internal sealed partial class FavoritesPane : UserControl
             {
                 problem.Message = check switch
                 {
-                    KeywordProblem.AlreadyUsed => "Another favorite already uses this keyword.",
-                    KeywordProblem.TooLong => $"Keep the keyword under {FavoritesStore.MaxKeywordLength} characters.",
-                    _ => "A keyword cannot contain spaces.",
+                    KeywordProblem.AlreadyUsed => Strings.Get("Panes/FavoriteKeywordUsed"),
+                    KeywordProblem.TooLong => Strings.Plural("Panes/FavoriteKeywordTooLong", FavoritesStore.MaxKeywordLength),
+                    _ => Strings.Get("Panes/FavoriteKeywordSpaces"),
                 };
                 problem.IsOpen = true;
                 args.Cancel = true;
@@ -155,7 +155,7 @@ internal sealed partial class FavoritesPane : UserControl
         {
             _list.Items.Add(new ListViewItem
             {
-                Content = new TextBlock { Text = "Save a query with the star in the editor's toolbar.", TextWrapping = TextWrapping.Wrap, Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"] },
+                Content = new TextBlock { Text = Strings.Get("Panes/FavoritesEmpty"),TextWrapping = TextWrapping.Wrap, Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"] },
                 IsHitTestVisible = false,
             });
         }
@@ -189,11 +189,11 @@ internal sealed partial class FavoritesPane : UserControl
         });
 
         var menu = new MenuFlyout();
-        menu.Items.Add(GridCommands.Item("Insert into Editor", "", () => _insert(favorite.Query)));
-        menu.Items.Add(GridCommands.Item("Edit", "", async () => await SaveAsync(_store, _workspace.Profile, favorite.Query, _workspace.Context.Dialogs, favorite)));
-        menu.Items.Add(GridCommands.Item("Copy", "", () => GridCommands.SetClipboard(favorite.Query)));
+        menu.Items.Add(GridCommands.Item(Strings.Get("Panes/InsertIntoEditor"),"", () => _insert(favorite.Query)));
+        menu.Items.Add(GridCommands.Item(Strings.Get("Common/Edit"),"", async () => await SaveAsync(_store, _workspace.Profile, favorite.Query, _workspace.Context.Dialogs, favorite)));
+        menu.Items.Add(GridCommands.Item(Strings.Get("Common/Copy"),"", () => GridCommands.SetClipboard(favorite.Query)));
         menu.Items.Add(new MenuFlyoutSeparator());
-        menu.Items.Add(GridCommands.Item("Delete", "", async () => await _store.DeleteFavoriteAsync(favorite.Id)));
+        menu.Items.Add(GridCommands.Item(Strings.Get("Common/Delete"),"", async () => await _store.DeleteFavoriteAsync(favorite.Id)));
         panel.ContextFlyout = menu;
         return new ListViewItem { Content = panel, Tag = favorite, Padding = new Thickness(8, 0, 8, 0) };
     }

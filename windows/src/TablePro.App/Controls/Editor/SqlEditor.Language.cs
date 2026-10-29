@@ -245,7 +245,7 @@ public sealed partial class SqlEditor
             return;
         }
 
-        ShowNote(caret, symbol is null ? "No symbol at the caret." : $"No definition found for '{symbol.Name}'.");
+        ShowNote(caret, symbol is null ? Strings.Get("Editor/NoSymbolAtCaret") : Strings.Format("Editor/NoDefinitionFound", symbol.Name));
     }
 
     private void NavigateTo(SqlDefinition definition)
@@ -254,7 +254,7 @@ public sealed partial class SqlEditor
         {
             case SqlTextDefinition text:
                 Select(text.Start, text.Length);
-                Announce($"Went to {_text.Substring(text.Start, Math.Min(text.Length, _text.Length - text.Start))}");
+                Announce(Strings.Format("Editor/WentTo", _text.Substring(text.Start, Math.Min(text.Length, _text.Length - text.Start))));
                 break;
             case SqlCatalogDefinition table:
                 DefinitionRequested?.Invoke(this, table);
@@ -271,7 +271,7 @@ public sealed partial class SqlEditor
         if (IsVimOutsideInsert)
         {
             // Vim's normal mode acts at one caret; the selections would be gone at the next motion.
-            ShowNote(SelectionStart, "Rename works in insert mode.");
+            ShowNote(SelectionStart, Strings.Get("Editor/RenameNeedsInsertMode"));
             return;
         }
 
@@ -280,7 +280,7 @@ public sealed partial class SqlEditor
         var references = CurrentAnalysis().ReferencesAt(caret);
         if (references.Count == 0)
         {
-            ShowNote(caret, "No symbol at the caret.");
+            ShowNote(caret, Strings.Get("Editor/NoSymbolAtCaret"));
             return;
         }
 
@@ -299,7 +299,7 @@ public sealed partial class SqlEditor
         HideCompletion();
         HideSuggestion();
         _carets.SetCarets(carets, primary);
-        Announce(references.Count == 1 ? "1 reference selected" : $"{references.Count} references selected");
+        Announce(Strings.Plural("Editor/ReferencesSelected", references.Count));
     }
 
     private void GoToDiagnostic(bool forward)
@@ -307,7 +307,7 @@ public sealed partial class SqlEditor
         CurrentAnalysis();
         if (SqlAnalysis.Next(_diagnostics, SelectionStart, forward) is not { } diagnostic)
         {
-            ShowNote(SelectionStart, "No problems.");
+            ShowNote(SelectionStart, Strings.Get("Editor/NoProblems"));
             return;
         }
 
@@ -317,7 +317,9 @@ public sealed partial class SqlEditor
             ShowHover(hover.Range, hover.Diagnostics, hover.Title, hover.Detail, note: null, fromKeyboard: true);
         }
 
-        Announce($"{(diagnostic.Severity == SqlDiagnosticSeverity.Error ? "Error" : "Warning")}: {diagnostic.Message}");
+        Announce(diagnostic.Severity == SqlDiagnosticSeverity.Error
+            ? Strings.Format("Editor/ErrorAnnouncement", diagnostic.Message)
+            : Strings.Format("Editor/WarningAnnouncement", diagnostic.Message));
     }
 
     private void ShowQuickInfo()
@@ -325,7 +327,7 @@ public sealed partial class SqlEditor
         var caret = SelectionStart;
         if (CurrentAnalysis().HoverAt(caret, atCaret: true) is not { } hover)
         {
-            ShowNote(caret, "Nothing to show at the caret.");
+            ShowNote(caret, Strings.Get("Editor/NothingAtCaret"));
             return;
         }
 

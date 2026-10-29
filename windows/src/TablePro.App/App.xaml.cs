@@ -137,6 +137,8 @@ public partial class App : Application
             _services.GetRequiredService<FavoritesStore>().LoadAsync());
 
         var host = _services.GetRequiredService<AppHost>();
+        // Before the first window: XAML resolves every x:Uid, and Strings its map, in the language set here.
+        AppLanguages.Apply(host.Settings.Current.Language);
         RewindJournalService.Enabled = host.Settings.Current.KeepRewindJournal;
         host.ShowWelcome();
         host.Updates = new UpdateService(AppPaths.Default.Root, host.ConfirmQuitAsync, Exit);

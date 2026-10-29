@@ -185,19 +185,19 @@ public sealed class ConnectionService
         await using (session)
         {
             await session.Database.PingAsync(cancellationToken);
-            return $"Connected to {profile.Descriptor.DisplayName} {session.Database.ServerVersion}".TrimEnd();
+            return Strings.Format("Connection/TestSucceeded", profile.Descriptor.DisplayName, session.Database.ServerVersion).TrimEnd();
         }
     }
 
     /// <summary>
     /// Runs <c>cloudflared access login</c> for the profile's Access application, which opens the browser and caches
-    /// the token cloudflared then uses on connect.
+    /// the token cloudflared then uses on connect. Returns whether it succeeded, with the message for the form.
     /// </summary>
-    public static async Task<string> SignInToCloudflareAsync(CloudflareTunnelSettings settings, CancellationToken cancellationToken)
+    public static async Task<(bool SignedIn, string Message)> SignInToCloudflareAsync(CloudflareTunnelSettings settings, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(settings);
         var executable = ExecutableLocator.Find(string.IsNullOrWhiteSpace(settings.ExecutablePath) ? HelperArguments.CloudflaredName : settings.ExecutablePath, ExecutableLocator.CloudflaredDirectories())
-            ?? throw new InvalidOperationException("cloudflared was not found. Install it with “winget install Cloudflare.cloudflared”, or set its path.");
+            ?? throw new InvalidOperationException(Strings.Get("Connection/CloudflaredNotFound"));
         var startInfo = new ProcessStartInfo(executable)
         {
             UseShellExecute = false,
@@ -210,12 +210,14 @@ public sealed class ConnectionService
             startInfo.ArgumentList.Add(argument);
         }
 
-        using var process = Process.Start(startInfo) ?? throw new InvalidOperationException("cloudflared did not start.");
+        using var process = Process.Start(startInfo) ?? throw new InvalidOperationException(Strings.Get("Connection/CloudflaredDidNotStart"));
         var output = process.StandardOutput.ReadToEndAsync(cancellationToken);
         var errors = process.StandardError.ReadToEndAsync(cancellationToken);
         await process.WaitForExitAsync(cancellationToken);
         var text = (await output + await errors).Trim();
-        return process.ExitCode == 0 ? "Signed in to Cloudflare Access." : $"cloudflared access login failed: {text}";
+        return process.ExitCode == 0
+            ? (true, Strings.Get("Connection/CloudflareSignedIn"))
+            : (false, Strings.Format("Connection/CloudflareLoginFailed", text));
     }
 
     private NetworkTunnelSecrets TransportSecrets(ConnectionProfile profile, ConnectionTransport transport) => transport switch

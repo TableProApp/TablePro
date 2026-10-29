@@ -1,4 +1,3 @@
-using System.Globalization;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
@@ -27,7 +26,14 @@ internal sealed record ImportPlan(
 /// </summary>
 internal sealed class ImportMappingDialog
 {
-    private static readonly (string Name, char? Value)[] Delimiters = [("Detect", null), ("Comma", ','), ("Semicolon", ';'), ("Tab", '\t'), ("Pipe", '|')];
+    private static readonly (string Name, char? Value)[] Delimiters =
+    [
+        (Strings.Get("Import/DelimiterDetect"), null),
+        (Strings.Get("Import/DelimiterComma"), ','),
+        (Strings.Get("Import/DelimiterSemicolon"), ';'),
+        (Strings.Get("Import/DelimiterTab"), '\t'),
+        (Strings.Get("Import/DelimiterPipe"), '|'),
+    ];
 
     private readonly Func<CsvImportOptions, Task<ImportPreview>> _readPreview;
     private readonly ImportFileFormat _format;
@@ -37,18 +43,18 @@ internal sealed class ImportMappingDialog
     private readonly NewTableDraft _draft = new();
     private readonly ImportMapping _mapping;
 
-    private readonly RadioButtons _destination = new() { Header = "Import into", MaxColumns = 2 };
+    private readonly RadioButtons _destination = new() { Header = Strings.Get("Import/ImportIntoHeader"), MaxColumns = 2 };
     private readonly TextBox _newTableName = new() { PlaceholderText = "table_name", MinWidth = 220, IsEnabled = false };
-    private readonly ComboBox _delimiter = new() { Header = "Delimiter", MinWidth = 140 };
-    private readonly CheckBox _hasHeader = new() { Content = "First row is a header", IsChecked = true };
-    private readonly CheckBox _trim = new() { Content = "Trim spaces" };
-    private readonly TextBox _nullText = new() { Header = "Null text", PlaceholderText = "NULL", Width = 110 };
-    private readonly CheckBox _includeAll = new() { Content = "Import all fields", IsThreeState = false };
+    private readonly ComboBox _delimiter = new() { Header = Strings.Get("Import/DelimiterHeader"), MinWidth = 140 };
+    private readonly CheckBox _hasHeader = new() { Content = Strings.Get("Import/FirstRowIsHeader"), IsChecked = true };
+    private readonly CheckBox _trim = new() { Content = Strings.Get("Import/TrimSpaces") };
+    private readonly TextBox _nullText = new() { Header = Strings.Get("Import/NullTextHeader"), PlaceholderText = "NULL", Width = 110 };
+    private readonly CheckBox _includeAll = new() { Content = Strings.Get("Import/ImportAllFields"), IsThreeState = false };
     private readonly StackPanel _rows = new() { Spacing = 4 };
     private readonly DataGridView _previewGrid = new() { Height = 170 };
     private readonly TextBlock _previewNote = new() { Opacity = 0.7 };
     private readonly InfoBar _problem = new() { Severity = InfoBarSeverity.Warning, IsClosable = false };
-    private readonly DropDownButton _match = new() { Content = "Match Columns" };
+    private readonly DropDownButton _match = new() { Content = Strings.Get("Import/MatchColumns") };
     private ImportPreview _preview;
     private CsvImportOptions? _lastOptions;
     private ContentDialog? _dialog;
@@ -68,12 +74,12 @@ internal sealed class ImportMappingDialog
         _mapping = new ImportMapping(preview.Fields, columns);
         _draft.Load(preview.Fields, proposeType);
 
-        _destination.Items.Add($"Existing table {existingTable.Name}");
-        _destination.Items.Add("New table");
+        _destination.Items.Add(Strings.Format("Import/ExistingTable", existingTable.Name));
+        _destination.Items.Add(Strings.Get("Import/NewTable"));
         _destination.SelectedIndex = 0;
         _destination.Visibility = canCreateTable ? Visibility.Visible : Visibility.Collapsed;
         _newTableName.Text = proposedTableName;
-        AutomationProperties.SetName(_newTableName, "New table name");
+        AutomationProperties.SetName(_newTableName, Strings.Get("Import/NewTableName"));
         _destination.SelectionChanged += (_, _) =>
         {
             _newTableName.IsEnabled = IsNewTable;
@@ -113,13 +119,13 @@ internal sealed class ImportMappingDialog
 
         // One-shot commands rather than a mode, which would stop describing the mapping after one manual edit.
         var matchMenu = new MenuFlyout();
-        var byName = new MenuFlyoutItem { Text = "Match by Name" };
+        var byName = new MenuFlyoutItem { Text = Strings.Get("Import/MatchByName") };
         byName.Click += (_, _) =>
         {
             _mapping.MatchByName();
             BuildRows();
         };
-        var byPosition = new MenuFlyoutItem { Text = "Match by Position" };
+        var byPosition = new MenuFlyoutItem { Text = Strings.Get("Import/MatchByPosition") };
         byPosition.Click += (_, _) =>
         {
             _mapping.MatchByPosition();
@@ -147,7 +153,7 @@ internal sealed class ImportMappingDialog
     {
         var proposed = Path.GetFileNameWithoutExtension(fileName.EndsWith(".gz", StringComparison.OrdinalIgnoreCase) ? fileName[..^3] : fileName);
         var view = new ImportMappingDialog(preview, format, csvOptions, readPreview, existingTable, columns, canCreateTable, proposed, proposeType, commonTypes);
-        var dialog = dialogs.Create($"Import {fileName}", view.BuildContent(), "Import", "Cancel");
+        var dialog = dialogs.Create(Strings.Format("Import/ImportFileTitle", fileName), view.BuildContent(), Strings.Get("Common/Import"), Strings.Get("Common/Cancel"));
 
         // The field list, the new table's settings and the preview need more room than a ContentDialog's default 548 pixels.
         dialog.Resources["ContentDialogMaxWidth"] = 1040.0;
@@ -184,7 +190,7 @@ internal sealed class ImportMappingDialog
             options.Children.Add(_hasHeader);
             options.Children.Add(_trim);
             options.Children.Add(_nullText);
-            ToolTipService.SetToolTip(_nullText, "A value that imports as null, such as NULL or \\N. Empty fields always import as null.");
+            ToolTipService.SetToolTip(_nullText, Strings.Get("Import/NullTextToolTip"));
             root.Children.Add(options);
         }
 
@@ -198,7 +204,7 @@ internal sealed class ImportMappingDialog
         root.Children.Add(new ScrollViewer { Content = _rows, MaxHeight = 260, Padding = new Thickness(0, 0, 12, 0) });
 
         var previewHeader = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-        previewHeader.Children.Add(new TextBlock { Text = "First rows", Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"] });
+        previewHeader.Children.Add(new TextBlock { Text = Strings.Get("Import/FirstRows"), Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"] });
         previewHeader.Children.Add(_previewNote);
         root.Children.Add(previewHeader);
         root.Children.Add(_previewGrid);
@@ -222,7 +228,7 @@ internal sealed class ImportMappingDialog
         }
         catch (Exception ex) when (ex is IOException or InvalidDataException or System.Text.Json.JsonException or UnauthorizedAccessException)
         {
-            _problem.Title = "Cannot read this file";
+            _problem.Title = Strings.Get("Import/CannotReadFileTitle");
             _problem.Message = ex.Message;
             _problem.IsOpen = true;
             return;
@@ -241,7 +247,7 @@ internal sealed class ImportMappingDialog
         {
             _rows.Children.Clear();
             _match.Visibility = IsNewTable ? Visibility.Collapsed : Visibility.Visible;
-            _includeAll.Content = IsNewTable ? "Create all columns" : "Import all fields";
+            _includeAll.Content = IsNewTable ? Strings.Get("Import/CreateAllColumns") : Strings.Get("Import/ImportAllFields");
             _rows.Children.Add(HeaderRow());
             for (var i = 0; i < _preview.Fields.Count; i++)
             {
@@ -272,7 +278,9 @@ internal sealed class ImportMappingDialog
 
     private Grid HeaderRow()
     {
-        string[] labels = IsNewTable ? ["", "Field", "Column", "Type", "Key", "Null", "Default"] : ["", "Field", "Column", "Type"];
+        string[] labels = IsNewTable
+            ? ["", Strings.Get("Import/HeaderField"), Strings.Get("Import/HeaderColumn"), Strings.Get("Common/Type"), Strings.Get("Import/HeaderKey"), Strings.Get("Import/HeaderNull"), Strings.Get("Import/HeaderDefault")]
+            : ["", Strings.Get("Import/HeaderField"), Strings.Get("Import/HeaderColumn"), Strings.Get("Common/Type")];
         var grid = IsNewTable ? RowGrid(32, 0, 170, 170, 48, 48, 140) : RowGrid(32, 0, 240, 160);
         for (var i = 0; i < labels.Length; i++)
         {
@@ -302,10 +310,10 @@ internal sealed class ImportMappingDialog
         var choice = _mapping[index];
         var grid = RowGrid(32, 0, 240, 160);
         var include = new CheckBox { IsChecked = choice.Include, MinWidth = 0, VerticalAlignment = VerticalAlignment.Center };
-        AutomationProperties.SetName(include, $"Import {field.Name}");
+        AutomationProperties.SetName(include, Strings.Format("Import/ImportFieldName", field.Name));
         var target = new ComboBox { HorizontalAlignment = HorizontalAlignment.Stretch };
-        AutomationProperties.SetName(target, $"Column for {field.Name}");
-        target.Items.Add("Skip");
+        AutomationProperties.SetName(target, Strings.Format("Import/ColumnForFieldName", field.Name));
+        target.Items.Add(Strings.Get("Import/Skip"));
         foreach (var column in _mapping.ColumnNames)
         {
             target.Items.Add(column);
@@ -351,18 +359,18 @@ internal sealed class ImportMappingDialog
         var settings = column.Settings;
         var grid = RowGrid(32, 0, 170, 170, 48, 48, 140);
         var include = new CheckBox { IsChecked = settings.Include, MinWidth = 0, VerticalAlignment = VerticalAlignment.Center };
-        AutomationProperties.SetName(include, $"Create {column.Field.Name}");
+        AutomationProperties.SetName(include, Strings.Format("Import/CreateFieldName", column.Field.Name));
         var name = new TextBox { Text = settings.Name };
-        AutomationProperties.SetName(name, $"Column name for {column.Field.Name}");
+        AutomationProperties.SetName(name, Strings.Format("Import/ColumnNameForFieldName", column.Field.Name));
         var type = new ComboBox { IsEditable = true, HorizontalAlignment = HorizontalAlignment.Stretch, ItemsSource = TypeChoices(settings.Type), Text = settings.Type };
-        AutomationProperties.SetName(type, $"Type of {column.Field.Name}");
+        AutomationProperties.SetName(type, Strings.Format("Import/TypeOfFieldName", column.Field.Name));
         var key = new CheckBox { IsChecked = settings.IsPrimaryKey, MinWidth = 0, VerticalAlignment = VerticalAlignment.Center };
-        AutomationProperties.SetName(key, $"{column.Field.Name} is a primary key");
+        AutomationProperties.SetName(key, Strings.Format("Import/PrimaryKeyFieldName", column.Field.Name));
         var nullable = new CheckBox { IsChecked = settings.IsNullable, MinWidth = 0, VerticalAlignment = VerticalAlignment.Center };
-        AutomationProperties.SetName(nullable, $"{column.Field.Name} accepts null");
-        var defaultValue = new TextBox { Text = settings.DefaultValue, PlaceholderText = "Default SQL" };
-        AutomationProperties.SetName(defaultValue, $"Default SQL for {column.Field.Name}");
-        ToolTipService.SetToolTip(defaultValue, "The SQL after DEFAULT. A text value needs its own quotes.");
+        AutomationProperties.SetName(nullable, Strings.Format("Import/AcceptsNullFieldName", column.Field.Name));
+        var defaultValue = new TextBox { Text = settings.DefaultValue, PlaceholderText = Strings.Get("Import/DefaultSqlPlaceholder") };
+        AutomationProperties.SetName(defaultValue, Strings.Format("Import/DefaultSqlFieldName", column.Field.Name));
+        ToolTipService.SetToolTip(defaultValue, Strings.Get("Import/DefaultSqlToolTip"));
 
         include.Click += (_, _) =>
         {
@@ -425,16 +433,16 @@ internal sealed class ImportMappingDialog
 
     private void BuildPreview()
     {
-        var columns = _preview.Fields.Select(f => new ResultColumn(f.Name, f.InferredType.ToString(), typeof(object))).ToArray();
+        var columns = _preview.Fields.Select(f => new ResultColumn(f.Name, TableNames.FieldType(f.InferredType), typeof(object))).ToArray();
         _previewGrid.Source = new ResultGridSource(new ResultSet(columns, [.. _preview.Rows]));
-        _previewNote.Text = string.Create(CultureInfo.CurrentCulture, $"{_preview.Rows.Count:N0} shown; types from the first {_preview.SampledRows:N0} rows");
+        _previewNote.Text = Strings.Format("Import/PreviewNote", Strings.Plural("Import/RowsShown", _preview.Rows.Count), Strings.Plural("Import/TypesFromRows", _preview.SampledRows));
     }
 
     private string? CurrentProblem()
     {
         if (_preview.Fields.Count == 0)
         {
-            return "The file has no fields to import.";
+            return Strings.Get("Import/NoFields");
         }
 
         if (!IsNewTable)
@@ -442,13 +450,13 @@ internal sealed class ImportMappingDialog
             return _mapping.Problem;
         }
 
-        return string.IsNullOrWhiteSpace(_newTableName.Text) ? "Enter a name for the new table." : _draft.Problem;
+        return string.IsNullOrWhiteSpace(_newTableName.Text) ? Strings.Get("Import/EnterNewTableName") : _draft.Problem;
     }
 
     private void Validate()
     {
         var problem = CurrentProblem();
-        _problem.Title = problem is null ? string.Empty : "Cannot import yet";
+        _problem.Title = problem is null ? string.Empty : Strings.Get("Import/CannotImportYetTitle");
         _problem.Message = problem ?? string.Empty;
         _problem.IsOpen = problem is not null;
         if (_dialog is not null)

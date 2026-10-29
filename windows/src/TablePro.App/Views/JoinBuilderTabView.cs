@@ -26,7 +26,7 @@ public sealed partial class JoinBuilderTabView : UserControl
 
     private static readonly FilterOperator[] Operators = Enum.GetValues<FilterOperator>();
 
-    private readonly TextBox _tableFilter = new() { PlaceholderText = "Filter tables", Margin = new Thickness(12, 8, 12, 8) };
+    private readonly TextBox _tableFilter = new() { PlaceholderText = Strings.Get("Tools/JoinFilterTables"), Margin = new Thickness(12, 8, 12, 8) };
     private readonly StackPanel _tableList = new() { Padding = new Thickness(8, 0, 8, 8) };
     private readonly Canvas _canvas = new();
     private readonly ScrollViewer _canvasScroller;
@@ -34,9 +34,9 @@ public sealed partial class JoinBuilderTabView : UserControl
     private readonly TextBlock _sql = new() { IsTextSelectionEnabled = true, TextWrapping = TextWrapping.Wrap, FontSize = 12 };
     private readonly TextBlock _hint = new() { TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center, Opacity = 0.75 };
     private readonly TextBlock _status = new() { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0) };
-    private readonly Button _open = new() { Content = "Open in Query Tab" };
-    private readonly Button _copy = new() { Content = "Copy SQL" };
-    private readonly InfoBar _error = new() { Severity = InfoBarSeverity.Error, Title = "Cannot read the tables", IsClosable = false };
+    private readonly Button _open = new() { Content = Strings.Get("Tools/JoinOpenInQueryTab") };
+    private readonly Button _copy = new() { Content = Strings.Get("Tools/JoinCopySql") };
+    private readonly InfoBar _error = new() { Severity = InfoBarSeverity.Error, Title = Strings.Get("Tools/JoinCannotReadTables"), IsClosable = false };
     private readonly Dictionary<string, Border> _cards = new(StringComparer.Ordinal);
     private readonly Dictionary<string, Point> _positions = new(StringComparer.Ordinal);
     private readonly List<(Path Path, string Child, int ChildRow, string Parent, int ParentRow)> _links = [];
@@ -49,7 +49,7 @@ public sealed partial class JoinBuilderTabView : UserControl
     {
         ArgumentNullException.ThrowIfNull(viewModel);
         ViewModel = viewModel;
-        AutomationProperties.SetName(_tableFilter, "Filter tables");
+        AutomationProperties.SetName(_tableFilter, Strings.Get("Tools/JoinFilterTables"));
         _open.Style = (Style)Application.Current.Resources["AccentButtonStyle"];
         _open.Click += (_, _) =>
         {
@@ -70,7 +70,7 @@ public sealed partial class JoinBuilderTabView : UserControl
             ViewModel.TableFilter = _tableFilter.Text;
             BuildTableList();
         };
-        var retry = new Button { Content = "Try Again" };
+        var retry = new Button { Content = Strings.Get("Tools/JoinTryAgain") };
         retry.Click += async (_, _) => await ViewModel.LoadAsync();
         _error.ActionButton = retry;
 
@@ -131,10 +131,10 @@ public sealed partial class JoinBuilderTabView : UserControl
     private Grid BuildLayout()
     {
         var toolbar = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, Padding = new Thickness(8, 4, 8, 4) };
-        toolbar.Children.Add(ToolButton("", "Reload tables", async () => await ViewModel.LoadAsync()));
-        toolbar.Children.Add(ToolButton("", "Clear the query", ViewModel.Clear));
-        toolbar.Children.Add(ToolButton("", "Zoom in", () => Zoom(1.25f)));
-        toolbar.Children.Add(ToolButton("", "Zoom out", () => Zoom(0.8f)));
+        toolbar.Children.Add(ToolButton("", Strings.Get("Tools/JoinReloadTables"), async () => await ViewModel.LoadAsync()));
+        toolbar.Children.Add(ToolButton("", Strings.Get("Tools/JoinClearQuery"), ViewModel.Clear));
+        toolbar.Children.Add(ToolButton("", Strings.Get("Tools/JoinZoomIn"), () => Zoom(1.25f)));
+        toolbar.Children.Add(ToolButton("", Strings.Get("Tools/JoinZoomOut"), () => Zoom(0.8f)));
         toolbar.Children.Add(_status);
 
         var left = new Grid();
@@ -166,7 +166,7 @@ public sealed partial class JoinBuilderTabView : UserControl
             CornerRadius = new CornerRadius(6),
             Margin = new Thickness(12, 0, 12, 0),
         };
-        AutomationProperties.SetName(sqlBox, "Generated SQL");
+        AutomationProperties.SetName(sqlBox, Strings.Get("Tools/JoinGeneratedSql"));
 
         var footer = new Grid { Padding = new Thickness(12), ColumnSpacing = 8 };
         footer.ColumnDefinitions.Add(new GridColumn { Width = new GridLength(1, GridUnitType.Star) });
@@ -257,7 +257,7 @@ public sealed partial class JoinBuilderTabView : UserControl
     private void UpdateSql()
     {
         var sql = ViewModel.Sql;
-        _sql.Text = sql ?? "-- Pick a table to start.";
+        _sql.Text = sql ?? Strings.Get("Tools/JoinSqlPlaceholder");
         _open.IsEnabled = sql is not null;
         _copy.IsEnabled = sql is not null;
         _hint.Text = ViewModel.Hint;
@@ -276,7 +276,7 @@ public sealed partial class JoinBuilderTabView : UserControl
 
         if (ViewModel.IsLoaded && ViewModel.Graph.IsEmpty)
         {
-            _tableList.Children.Add(new TextBlock { Text = "This schema reports no tables to join.", TextWrapping = TextWrapping.Wrap, Opacity = 0.7 });
+            _tableList.Children.Add(new TextBlock { Text = Strings.Get("Tools/JoinNoTables"), TextWrapping = TextWrapping.Wrap, Opacity = 0.7 });
         }
     }
 
@@ -347,8 +347,8 @@ public sealed partial class JoinBuilderTabView : UserControl
         header.ColumnDefinitions.Add(new GridColumn { Width = GridLength.Auto });
         header.Children.Add(new TextBlock { Text = table, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis });
         var remove = new Button { Content = new FontIcon { Glyph = "", FontSize = 10 }, Style = (Style)Application.Current.Resources["ToolbarButtonStyle"] };
-        AutomationProperties.SetName(remove, $"Remove {table}");
-        ToolTipService.SetToolTip(remove, $"Remove {table}");
+        AutomationProperties.SetName(remove, Strings.Format("Tools/JoinRemoveTable", table));
+        ToolTipService.SetToolTip(remove, Strings.Format("Tools/JoinRemoveTable", table));
         remove.Click += (_, _) => ViewModel.SetIncluded(table, false);
         Grid.SetColumn(remove, 1);
         header.Children.Add(remove);
@@ -367,7 +367,7 @@ public sealed partial class JoinBuilderTabView : UserControl
                 Padding = new Thickness(6, 0, 0, 0),
                 Margin = new Thickness(12, 0, 8, 0),
             };
-            AutomationProperties.SetName(box, $"Select {table}.{column}");
+            AutomationProperties.SetName(box, Strings.Format("Tools/JoinSelectColumn", table, column));
             ToolTipService.SetToolTip(box, ViewModel.Graph.TypeOf(table, column) is { } type ? $"{column} {type}" : column);
             box.Click += (_, _) => ViewModel.SetSelected(reference, box.IsChecked == true);
             stack.Children.Add(box);
@@ -462,11 +462,11 @@ public sealed partial class JoinBuilderTabView : UserControl
             return;
         }
 
-        _details.Children.Add(Section("Joins"));
+        _details.Children.Add(Section(Strings.Get("Tools/JoinSectionJoins")));
         var tables = ViewModel.Draft.Tables;
         if (tables.Count < 2)
         {
-            _details.Children.Add(Note("Pick a second table to join it."));
+            _details.Children.Add(Note(Strings.Get("Tools/JoinPickSecondTable")));
         }
 
         for (var i = 1; i < tables.Count; i++)
@@ -474,21 +474,21 @@ public sealed partial class JoinBuilderTabView : UserControl
             _details.Children.Add(JoinRow(i, tables[i]));
         }
 
-        _details.Children.Add(Section("Filters"));
+        _details.Children.Add(Section(Strings.Get("Tools/JoinSectionFilters")));
         foreach (var filter in ViewModel.Draft.Filters)
         {
             _details.Children.Add(FilterRow(filter));
         }
 
-        _details.Children.Add(AddButton("Add Filter", ViewModel.AddFilter, tables.Count > 0));
+        _details.Children.Add(AddButton(Strings.Get("Tools/JoinAddFilter"), ViewModel.AddFilter, tables.Count > 0));
 
-        _details.Children.Add(Section("Sort"));
+        _details.Children.Add(Section(Strings.Get("Tools/JoinSectionSort")));
         foreach (var sort in ViewModel.Draft.Sorts)
         {
             _details.Children.Add(SortRow(sort));
         }
 
-        _details.Children.Add(AddButton("Add Sort", ViewModel.AddSort, tables.Count > 0));
+        _details.Children.Add(AddButton(Strings.Get("Tools/JoinAddSort"), ViewModel.AddSort, tables.Count > 0));
     }
 
     private static TextBlock Section(string text) => new() { Text = text, Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"] };
@@ -509,13 +509,13 @@ public sealed partial class JoinBuilderTabView : UserControl
 
         var candidates = ViewModel.Candidates(index);
         var condition = new ComboBox { HorizontalAlignment = HorizontalAlignment.Stretch };
-        AutomationProperties.SetName(condition, $"Join condition for {table.Name}");
+        AutomationProperties.SetName(condition, Strings.Format("Tools/JoinConditionFor", table.Name));
         foreach (var candidate in candidates)
         {
             condition.Items.Add(candidate.Title);
         }
 
-        condition.Items.Add("Cross join (no condition)");
+        condition.Items.Add(Strings.Get("Tools/JoinCrossJoin"));
         condition.SelectedIndex = table.Condition is { } current && IndexOf(candidates, current) is var at and >= 0 ? at : candidates.Count;
         condition.SelectionChanged += (_, _) =>
         {
@@ -524,10 +524,10 @@ public sealed partial class JoinBuilderTabView : UserControl
         };
 
         var kind = new ComboBox { MinWidth = 130, IsEnabled = table.Condition is not null };
-        AutomationProperties.SetName(kind, $"Join type for {table.Name}");
+        AutomationProperties.SetName(kind, Strings.Format("Tools/JoinTypeFor", table.Name));
         foreach (var option in ViewModel.JoinKinds)
         {
-            kind.Items.Add(option.DisplayName());
+            kind.Items.Add(ToolsNames.JoinKindName(option));
         }
 
         kind.SelectedIndex = Math.Max(0, IndexOf(ViewModel.JoinKinds, table.Kind));
@@ -566,7 +566,7 @@ public sealed partial class JoinBuilderTabView : UserControl
     {
         var columns = ViewModel.AvailableColumns;
         var picker = new ComboBox { HorizontalAlignment = HorizontalAlignment.Stretch, ItemsSource = columns.Select(c => c.ToString()).ToList() };
-        AutomationProperties.SetName(picker, "Column");
+        AutomationProperties.SetName(picker, Strings.Get("Tools/JoinColumn"));
         picker.SelectedIndex = IndexOf(columns, selected);
         picker.SelectionChanged += (_, _) =>
         {
@@ -588,8 +588,8 @@ public sealed partial class JoinBuilderTabView : UserControl
         grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
         var column = ColumnPicker(filter.Column, c => ViewModel.UpdateFilter(filter, column: c));
-        var op = new ComboBox { HorizontalAlignment = HorizontalAlignment.Stretch, ItemsSource = Operators.Select(o => o.DisplayName()).ToList() };
-        AutomationProperties.SetName(op, "Operator");
+        var op = new ComboBox { HorizontalAlignment = HorizontalAlignment.Stretch, ItemsSource = Operators.Select(TableNames.Operator).ToList() };
+        AutomationProperties.SetName(op, Strings.Get("Tools/JoinOperator"));
         op.SelectedIndex = Array.IndexOf(Operators, filter.Operator);
         op.SelectionChanged += (_, _) =>
         {
@@ -599,8 +599,8 @@ public sealed partial class JoinBuilderTabView : UserControl
             }
         };
         var remove = new Button { Content = new FontIcon { Glyph = "", FontSize = 12 }, Style = (Style)Application.Current.Resources["ToolbarButtonStyle"] };
-        AutomationProperties.SetName(remove, "Remove filter");
-        ToolTipService.SetToolTip(remove, "Remove filter");
+        AutomationProperties.SetName(remove, Strings.Get("Tools/JoinRemoveFilter"));
+        ToolTipService.SetToolTip(remove, Strings.Get("Tools/JoinRemoveFilter"));
         remove.Click += (_, _) => ViewModel.RemoveFilter(filter);
         Grid.SetColumn(op, 1);
         Grid.SetColumn(remove, 2);
@@ -614,17 +614,17 @@ public sealed partial class JoinBuilderTabView : UserControl
             var value = new TextBox
             {
                 Text = filter.Value,
-                PlaceholderText = filter.Operator is FilterOperator.In or FilterOperator.NotIn ? "a, b, c" : between ? "From" : "Value",
+                PlaceholderText = filter.Operator is FilterOperator.In or FilterOperator.NotIn ? "a, b, c" : between ? Strings.Get("Tools/JoinValueFrom") : Strings.Get("Common/Value"),
             };
-            AutomationProperties.SetName(value, "Value");
+            AutomationProperties.SetName(value, Strings.Get("Common/Value"));
             value.TextChanged += (_, _) => ViewModel.UpdateFilter(filter, value: value.Text);
             Grid.SetRow(value, 1);
             Grid.SetColumnSpan(value, between ? 1 : 2);
             grid.Children.Add(value);
             if (between)
             {
-                var second = new TextBox { Text = filter.SecondValue, PlaceholderText = "To" };
-                AutomationProperties.SetName(second, "Second value");
+                var second = new TextBox { Text = filter.SecondValue, PlaceholderText = Strings.Get("Tools/JoinValueTo") };
+                AutomationProperties.SetName(second, Strings.Get("Tools/JoinSecondValue"));
                 second.TextChanged += (_, _) => ViewModel.UpdateFilter(filter, secondValue: second.Text);
                 Grid.SetRow(second, 1);
                 Grid.SetColumn(second, 1);
@@ -642,12 +642,12 @@ public sealed partial class JoinBuilderTabView : UserControl
         grid.ColumnDefinitions.Add(new GridColumn { Width = GridLength.Auto });
         grid.ColumnDefinitions.Add(new GridColumn { Width = GridLength.Auto });
         var column = ColumnPicker(sort.Column, c => ViewModel.UpdateSort(sort, column: c));
-        var direction = new ComboBox { ItemsSource = new List<string> { "Ascending", "Descending" }, SelectedIndex = sort.Descending ? 1 : 0, MinWidth = 120 };
-        AutomationProperties.SetName(direction, "Sort direction");
+        var direction = new ComboBox { ItemsSource = new List<string> { Strings.Get("Tools/JoinAscending"), Strings.Get("Tools/JoinDescending") }, SelectedIndex = sort.Descending ? 1 : 0, MinWidth = 120 };
+        AutomationProperties.SetName(direction, Strings.Get("Tools/JoinSortDirection"));
         direction.SelectionChanged += (_, _) => ViewModel.UpdateSort(sort, descending: direction.SelectedIndex == 1);
         var remove = new Button { Content = new FontIcon { Glyph = "", FontSize = 12 }, Style = (Style)Application.Current.Resources["ToolbarButtonStyle"] };
-        AutomationProperties.SetName(remove, "Remove sort");
-        ToolTipService.SetToolTip(remove, "Remove sort");
+        AutomationProperties.SetName(remove, Strings.Get("Tools/JoinRemoveSort"));
+        ToolTipService.SetToolTip(remove, Strings.Get("Tools/JoinRemoveSort"));
         remove.Click += (_, _) => ViewModel.RemoveSort(sort);
         Grid.SetColumn(direction, 1);
         Grid.SetColumn(remove, 2);

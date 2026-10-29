@@ -16,7 +16,7 @@ public sealed class DialogService(Func<Window> window)
 
     private readonly SemaphoreSlim _gate = new(1, 1);
 
-    public async Task<bool> ConfirmAsync(string title, string message, string primary = "OK", bool destructive = false, string? detail = null)
+    public async Task<bool> ConfirmAsync(string title, string message, string? primary = null, bool destructive = false, string? detail = null)
     {
         var body = new StackPanel { Spacing = 12, MaxWidth = 560 };
         body.Children.Add(new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap });
@@ -25,7 +25,7 @@ public sealed class DialogService(Func<Window> window)
             body.Children.Add(CodeBlock(detail, 260));
         }
 
-        var dialog = Create(title, body, primary, "Cancel");
+        var dialog = Create(title, body, primary ?? Strings.Get("Common/OK"), Strings.Get("Common/Cancel"));
         if (destructive)
         {
             dialog.PrimaryButtonStyle = (Style)Application.Current.Resources["AccentButtonStyle"];
@@ -37,10 +37,10 @@ public sealed class DialogService(Func<Window> window)
     public async Task ShowErrorAsync(string title, string message)
     {
         var body = new ScrollViewer { MaxHeight = 360, Content = new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true } };
-        await ShowAsync(Create(title, body, null, "Close"));
+        await ShowAsync(Create(title, body, null, Strings.Get("Common/Close")));
     }
 
-    public async Task<string?> PromptAsync(string title, string label, string initial = "", string primary = "OK")
+    public async Task<string?> PromptAsync(string title, string label, string initial = "", string? primary = null)
     {
         var box = new TextBox { Header = label, Text = initial, MinWidth = 360 };
         box.Loaded += (_, _) =>
@@ -48,7 +48,7 @@ public sealed class DialogService(Func<Window> window)
             box.Focus(FocusState.Programmatic);
             box.SelectAll();
         };
-        var dialog = Create(title, box, primary, "Cancel");
+        var dialog = Create(title, box, primary ?? Strings.Get("Common/OK"), Strings.Get("Common/Cancel"));
         return await ShowAsync(dialog) == ContentDialogResult.Primary ? box.Text : null;
     }
 
@@ -56,19 +56,19 @@ public sealed class DialogService(Func<Window> window)
     /// A passphrase in a password box, null when cancelled. With <paramref name="confirm"/> it is typed twice and an
     /// empty value is allowed, which callers read as "no encryption".
     /// </summary>
-    public async Task<string?> PromptPassphraseAsync(string title, string message, bool confirm, string primary = "OK")
+    public async Task<string?> PromptPassphraseAsync(string title, string message, bool confirm, string? primary = null)
     {
         var panel = new StackPanel { Spacing = 12, MinWidth = 380 };
         panel.Children.Add(new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap });
-        var first = new PasswordBox { Header = "Passphrase" };
-        var second = new PasswordBox { Header = "Confirm passphrase", Visibility = confirm ? Visibility.Visible : Visibility.Collapsed };
-        var mismatch = new InfoBar { Severity = InfoBarSeverity.Error, Message = "The passphrases do not match.", IsClosable = false };
+        var first = new PasswordBox { Header = Strings.Get("Dialogs/Passphrase") };
+        var second = new PasswordBox { Header = Strings.Get("Dialogs/ConfirmPassphrase"), Visibility = confirm ? Visibility.Visible : Visibility.Collapsed };
+        var mismatch = new InfoBar { Severity = InfoBarSeverity.Error, Message = Strings.Get("Dialogs/PassphrasesDoNotMatch"), IsClosable = false };
         panel.Children.Add(first);
         panel.Children.Add(second);
         panel.Children.Add(mismatch);
         first.Loaded += (_, _) => first.Focus(FocusState.Programmatic);
 
-        var dialog = Create(title, panel, primary, "Cancel");
+        var dialog = Create(title, panel, primary ?? Strings.Get("Common/OK"), Strings.Get("Common/Cancel"));
         dialog.PrimaryButtonClick += (_, args) =>
         {
             var mismatched = confirm && first.Password != second.Password;
@@ -86,7 +86,7 @@ public sealed class DialogService(Func<Window> window)
         var boxes = new List<(string Name, TextBox Box)>();
         foreach (var name in names)
         {
-            var box = new TextBox { Header = name, Text = defaults.TryGetValue(name, out var value) ? value ?? "NULL" : string.Empty, PlaceholderText = "Text, a number, or NULL" };
+            var box = new TextBox { Header = name, Text = defaults.TryGetValue(name, out var value) ? value ?? "NULL" : string.Empty, PlaceholderText = Strings.Get("Dialogs/ParameterValuePlaceholder") };
             boxes.Add((name, box));
             panel.Children.Add(box);
         }
@@ -96,7 +96,7 @@ public sealed class DialogService(Func<Window> window)
             boxes[0].Box.Loaded += (_, _) => boxes[0].Box.Focus(FocusState.Programmatic);
         }
 
-        var dialog = Create(title, new ScrollViewer { Content = panel, MaxHeight = 420 }, "Run", "Cancel");
+        var dialog = Create(title, new ScrollViewer { Content = panel, MaxHeight = 420 }, Strings.Get("Common/Run"), Strings.Get("Common/Cancel"));
         if (await ShowAsync(dialog) != ContentDialogResult.Primary)
         {
             return null;
@@ -106,16 +106,16 @@ public sealed class DialogService(Func<Window> window)
     }
 
     /// <summary>Shows the statements a change will run, the way the macOS app's review sheet does.</summary>
-    public async Task<bool> ReviewSqlAsync(string title, IReadOnlyList<string> statements, string primary = "Run")
+    public async Task<bool> ReviewSqlAsync(string title, IReadOnlyList<string> statements, string? primary = null)
     {
         var body = new StackPanel { Spacing = 12, MinWidth = 520 };
         body.Children.Add(new TextBlock
         {
-            Text = statements.Count == 1 ? "This statement will run:" : $"These {statements.Count} statements will run in order:",
+            Text = Strings.Plural("Dialogs/StatementsWillRun", statements.Count),
             TextWrapping = TextWrapping.Wrap,
         });
         body.Children.Add(CodeBlock(string.Join(";\n\n", statements) + ";", 360));
-        return await ShowAsync(Create(title, body, primary, "Cancel")) == ContentDialogResult.Primary;
+        return await ShowAsync(Create(title, body, primary ?? Strings.Get("Common/Run"), Strings.Get("Common/Cancel"))) == ContentDialogResult.Primary;
     }
 
     public async Task<ContentDialogResult> ShowAsync(ContentDialog dialog)

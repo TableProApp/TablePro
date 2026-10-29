@@ -1,5 +1,4 @@
 using System.Collections.ObjectModel;
-using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using TablePro.App.Services;
@@ -65,9 +64,9 @@ public sealed partial class UsersRolesViewModel : ObservableObject
 
     public bool CanRedo => Tracker.CanRedo;
 
-    public string UndoLabel => Tracker.UndoActionName is { } name ? $"Undo {name}" : "Undo";
+    public string UndoLabel => Tracker.UndoActionName is { } name ? Strings.Format("Users/UndoAction", name) : Strings.Get("Common/Undo");
 
-    public string RedoLabel => Tracker.RedoActionName is { } name ? $"Redo {name}" : "Redo";
+    public string RedoLabel => Tracker.RedoActionName is { } name ? Strings.Format("Users/RedoAction", name) : Strings.Get("Common/Redo");
 
     public string PendingTitle
     {
@@ -75,19 +74,19 @@ public sealed partial class UsersRolesViewModel : ObservableObject
         {
             if (Tracker.ChangeCount > 0)
             {
-                return Tracker.ChangeCount == 1 ? "1 pending change" : string.Create(CultureInfo.CurrentCulture, $"{Tracker.ChangeCount:N0} pending changes");
+                return Strings.Plural("Users/PendingChanges", Tracker.ChangeCount);
             }
 
             var roles = Tracker.Principals.Count(p => p.IsRole);
             var users = Tracker.Principals.Count - roles;
             return Features.RoleMembership
-                ? string.Create(CultureInfo.CurrentCulture, $"{users:N0} users, {roles:N0} roles")
-                : string.Create(CultureInfo.CurrentCulture, $"{users:N0} users");
+                ? Strings.Format("Users/UsersAndRoles", Strings.Plural("Users/UserCount", users), Strings.Plural("Users/RoleCount", roles))
+                : Strings.Plural("Users/UserCount", users);
         }
     }
 
     /// <summary>What closing the tab would lose.</summary>
-    public string? UnsavedWork => Tracker.HasChanges ? $"{PendingTitle} to users and roles" : null;
+    public string? UnsavedWork => Tracker.HasChanges ? Strings.Plural("Users/UnsavedWork", Tracker.ChangeCount) : null;
 
     [ObservableProperty]
     public partial string PrincipalFilter { get; set; } = string.Empty;
@@ -297,7 +296,7 @@ public sealed partial class UsersRolesViewModel : ObservableObject
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                await _context.Dialogs.ShowErrorAsync("Could not check owned objects", ex.Message);
+                await _context.Dialogs.ShowErrorAsync(Strings.Get("Users/CheckOwnedFailedTitle"), ex.Message);
                 return [];
             }
         }
@@ -345,8 +344,11 @@ public sealed partial class UsersRolesViewModel : ObservableObject
             return;
         }
 
-        var what = privileges.Count == 1 ? privileges.First() : $"{privileges.Count} privileges";
-        Tracker.SetGranted(granted, privileges, [node.Scope], principal, $"{(granted ? "Grant" : "Revoke")} {what} on {node.Scope.DisplayName}");
+        var scope = node.Scope.DisplayName;
+        var action = privileges.Count == 1
+            ? Strings.Format(granted ? "Users/GrantOneAction" : "Users/RevokeOneAction", privileges.First(), scope)
+            : Strings.Plural(granted ? "Users/GrantManyAction" : "Users/RevokeManyAction", privileges.Count, scope);
+        Tracker.SetGranted(granted, privileges, [node.Scope], principal, action);
     }
 
     public void SetAllGranted(bool granted) => SetGranted(granted, Sections.SelectMany(s => s.Privileges).Select(p => p.Name).ToArray());
@@ -453,7 +455,7 @@ public sealed partial class UsersRolesViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            await _context.Dialogs.ShowErrorAsync("Could not search objects", ex.Message);
+            await _context.Dialogs.ShowErrorAsync(Strings.Get("Users/SearchFailedTitle"), ex.Message);
         }
     }
 
@@ -486,7 +488,7 @@ public sealed partial class UsersRolesViewModel : ObservableObject
         var profile = _context.Session.Profile;
         if (profile.SafeMode.BlocksAllWrites())
         {
-            await _context.Dialogs.ShowErrorAsync("Read-only connection", "Safe Mode is Read-Only on this connection, so users and roles cannot be changed.");
+            await _context.Dialogs.ShowErrorAsync(Strings.Get("Users/ReadOnlyTitle"), Strings.Get("Users/ReadOnlyMessage"));
             return;
         }
 
@@ -500,7 +502,7 @@ public sealed partial class UsersRolesViewModel : ObservableObject
         }
         catch (UnsupportedPrincipalChangeException ex)
         {
-            await _context.Dialogs.ShowErrorAsync("Cannot apply these changes", ex.Message);
+            await _context.Dialogs.ShowErrorAsync(Strings.Get("Users/CannotApplyTitle"), ex.Message);
             return;
         }
 
@@ -511,14 +513,14 @@ public sealed partial class UsersRolesViewModel : ObservableObject
         }
 
         if (Tracker.SelfImpact(ConnectedPrincipal) is { } warning
-            && !await _context.Dialogs.ConfirmAsync("This affects your own account", warning + " You may lose access to this server.", "Continue", destructive: true))
+            && !await _context.Dialogs.ConfirmAsync(Strings.Get("Users/SelfImpactTitle"), Strings.Format("Users/SelfImpactMessage", warning), Strings.Get("Common/Continue"), destructive: true))
         {
             return;
         }
 
         var hidesPasswords = statements.Any(s => s.CarriesCredentials);
-        var title = hidesPasswords ? "Review user and role changes (passwords hidden)" : "Review user and role changes";
-        if (!await _context.Dialogs.ReviewSqlAsync(title, shown.Select(s => s.Sql).ToArray(), statements.Any(s => s.IsDestructive) ? "Apply" : "Execute"))
+        var title = hidesPasswords ? Strings.Get("Users/ReviewTitlePasswordsHidden") : Strings.Get("Users/ReviewTitle");
+        if (!await _context.Dialogs.ReviewSqlAsync(title, shown.Select(s => s.Sql).ToArray(), statements.Any(s => s.IsDestructive) ? Strings.Get("Common/Apply") : Strings.Get("Users/ExecuteButton")))
         {
             return;
         }
@@ -529,7 +531,7 @@ public sealed partial class UsersRolesViewModel : ObservableObject
             if (await RunAsync(statements, profile))
             {
                 Tracker.Discard();
-                _context.Notify(statements.Count == 1 ? "Applied 1 user and role statement." : string.Create(CultureInfo.CurrentCulture, $"Applied {statements.Count:N0} user and role statements."));
+                _context.Notify(Strings.Plural("Users/AppliedStatements", statements.Count));
             }
 
             await LoadAsync(force: true);
@@ -549,7 +551,7 @@ public sealed partial class UsersRolesViewModel : ObservableObject
         {
             if (transaction is not null && await RunOneAsync(channel, transaction.Begin) is { Succeeded: false } begin)
             {
-                await _context.Dialogs.ShowErrorAsync("Nothing was applied", begin.Error!);
+                await _context.Dialogs.ShowErrorAsync(Strings.Get("Users/NothingAppliedTitle"), begin.Error!);
                 return false;
             }
 
@@ -564,9 +566,11 @@ public sealed partial class UsersRolesViewModel : ObservableObject
                 if (!result.Succeeded)
                 {
                     var rolledBack = transaction is not null && (await RunOneAsync(channel, transaction.Rollback)).Succeeded;
-                    var where = $"Statement {applied + 1} of {statements.Count} failed ({statement.Description}).";
-                    var outcome = rolledBack ? "Every change was rolled back." : applied == 0 ? "Nothing was applied." : $"The {applied} statements before it were applied.";
-                    await _context.Dialogs.ShowErrorAsync("The changes failed", $"{where} {outcome}\n\n{result.Error}");
+                    var where = Strings.Format("Users/StatementFailed", applied + 1, statements.Count, statement.Description);
+                    var outcome = rolledBack ? Strings.Get("Users/RolledBack")
+                        : applied == 0 ? Strings.Get("Users/NothingApplied")
+                        : Strings.Plural("Users/EarlierStatementsApplied", applied);
+                    await _context.Dialogs.ShowErrorAsync(Strings.Get("Users/ChangesFailedTitle"), Strings.Format("Users/ChangesFailedMessage", where, outcome, result.Error));
                     return false;
                 }
 
@@ -575,7 +579,7 @@ public sealed partial class UsersRolesViewModel : ObservableObject
 
             if (transaction is not null && await RunOneAsync(channel, transaction.Commit) is { Succeeded: false } commit)
             {
-                await _context.Dialogs.ShowErrorAsync("The changes were not committed", commit.Error!);
+                await _context.Dialogs.ShowErrorAsync(Strings.Get("Users/NotCommittedTitle"), commit.Error!);
                 return false;
             }
 
@@ -583,7 +587,7 @@ public sealed partial class UsersRolesViewModel : ObservableObject
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            await _context.Dialogs.ShowErrorAsync("The changes failed", ex.Message);
+            await _context.Dialogs.ShowErrorAsync(Strings.Get("Users/ChangesFailedTitle"), ex.Message);
             return false;
         }
     }
@@ -595,7 +599,7 @@ public sealed partial class UsersRolesViewModel : ObservableObject
             return result;
         }
 
-        return new StatementResult(sql, [], -1, TimeSpan.Zero, "The statement did not run.");
+        return new StatementResult(sql, [], -1, TimeSpan.Zero, Strings.Get("Users/StatementDidNotRun"));
     }
 
     // MARK: Bookkeeping
@@ -723,7 +727,7 @@ public sealed partial class UsersRolesViewModel : ObservableObject
         foreach (var node in ScopeRoots.SelectMany(r => r.SelfAndDescendants()))
         {
             node.Summary = Selection is { } principal
-                ? Tracker.Summary(node.Scope, principal, node.ChildrenAvailability == ScopeChildren.RestrictedToCurrentDatabase).Text
+                ? UsersNames.ScopeSummaryText(Tracker.Summary(node.Scope, principal, node.ChildrenAvailability == ScopeChildren.RestrictedToCurrentDatabase))
                 : string.Empty;
         }
     }

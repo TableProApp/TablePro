@@ -28,8 +28,8 @@ internal sealed partial class VersionHistoryView : UserControl
     private readonly TextBlock _subtitle = new() { Style = StyleOf("CaptionTextBlockStyle"), TextTrimming = TextTrimming.CharacterEllipsis };
     private readonly SelectorBar _mode = new();
     private readonly ComboBox _layout = new() { MinWidth = 140 };
-    private readonly Button _restore = new() { Content = "Restore", Style = StyleOf("AccentButtonStyle") };
-    private readonly Button _open = new() { Content = "Open in Editor" };
+    private readonly Button _restore = new() { Content = Strings.Get("SqlFiles/RestoreButton"), Style = StyleOf("AccentButtonStyle") };
+    private readonly Button _open = new() { Content = Strings.Get("SqlFiles/OpenInEditor") };
     private readonly ContentControl _body = new() { HorizontalContentAlignment = HorizontalAlignment.Stretch, VerticalContentAlignment = VerticalAlignment.Stretch };
     private bool _populating;
 
@@ -40,14 +40,14 @@ internal sealed partial class VersionHistoryView : UserControl
         _openInEditor = openInEditor;
         _restored = restored;
 
-        _mode.Items.Add(new SelectorBarItem { Text = "Changes", IsSelected = true });
-        _mode.Items.Add(new SelectorBarItem { Text = "Content" });
+        _mode.Items.Add(new SelectorBarItem { Text = Strings.Get("SqlFiles/ChangesMode"), IsSelected = true });
+        _mode.Items.Add(new SelectorBarItem { Text = Strings.Get("SqlFiles/ContentMode") });
         _mode.SelectionChanged += (_, _) => ShowDetail();
-        _layout.Items.Add("Unified");
-        _layout.Items.Add("Side by side");
+        _layout.Items.Add(Strings.Get("SqlFiles/DiffUnified"));
+        _layout.Items.Add(Strings.Get("SqlFiles/DiffSideBySide"));
         _layout.SelectedIndex = 0;
         _layout.SelectionChanged += (_, _) => ShowDetail();
-        AutomationProperties.SetName(_layout, "Diff layout");
+        AutomationProperties.SetName(_layout, Strings.Get("SqlFiles/DiffLayout"));
 
         _list.SelectionChanged += async (_, _) =>
         {
@@ -144,10 +144,10 @@ internal sealed partial class VersionHistoryView : UserControl
             switch (_browser.ListState)
             {
                 case VersionListState.Loading:
-                    _list.Items.Add(Placeholder("Loading versions…"));
+                    _list.Items.Add(Placeholder(Strings.Get("SqlFiles/LoadingVersions")));
                     break;
                 case VersionListState.Failed:
-                    _list.Items.Add(Placeholder(_browser.ListError ?? "The versions could not be read."));
+                    _list.Items.Add(Placeholder(_browser.ListError ?? Strings.Get("SqlFiles/VersionsReadFailed")));
                     break;
                 default:
                     foreach (var entry in _browser.Page.Entries)
@@ -171,7 +171,7 @@ internal sealed partial class VersionHistoryView : UserControl
         _notices.Children.Clear();
         foreach (var notice in _browser.Page.Notices)
         {
-            _notices.Children.Add(new InfoBar { Message = notice.Text, IsOpen = true, IsClosable = false, Severity = notice is GitHistoryUnavailableNotice ? InfoBarSeverity.Warning : InfoBarSeverity.Informational });
+            _notices.Children.Add(new InfoBar { Message = SqlFilesNames.Notice(notice),IsOpen = true, IsClosable = false, Severity = notice is GitHistoryUnavailableNotice ? InfoBarSeverity.Warning : InfoBarSeverity.Informational });
         }
 
         _restore.IsEnabled = _browser.CanRestoreSelection;
@@ -189,13 +189,13 @@ internal sealed partial class VersionHistoryView : UserControl
         switch (_browser.DetailState)
         {
             case VersionDetailState.Empty:
-                _body.Content = Message(_browser.ListState == VersionListState.Failed ? string.Empty : "Select a version.");
+                _body.Content = Message(_browser.ListState == VersionListState.Failed ? string.Empty : Strings.Get("SqlFiles/SelectVersion"));
                 return;
             case VersionDetailState.Loading:
                 _body.Content = new ProgressRing { IsActive = true, Width = 32, Height = 32, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
                 return;
             case VersionDetailState.Failed:
-                _body.Content = Message(_browser.DetailError ?? "This version could not be read.");
+                _body.Content = Message(_browser.DetailError ?? Strings.Get("SqlFiles/VersionReadFailed"));
                 return;
         }
 
@@ -208,9 +208,9 @@ internal sealed partial class VersionHistoryView : UserControl
 
         _body.Content = detail.Comparison?.Outcome switch
         {
-            null => Message("This is the only version, so there is nothing to compare it with."),
-            IdenticalVersions => Message("No changes from " + Title(Other(detail)) + "."),
-            TooLargeToCompare => Message(FormattableString.Invariant($"This file is longer than {VersionComparison.MaximumLineCount} lines, so its changes are not shown. Switch to Content to read it.")),
+            null => Message(Strings.Get("SqlFiles/OnlyVersion")),
+            IdenticalVersions => Message(Strings.Format("SqlFiles/NoChangesFrom", Title(Other(detail)))),
+            TooLargeToCompare => Message(Strings.Plural("SqlFiles/TooLargeToCompare", VersionComparison.MaximumLineCount)),
             DifferingVersions differs => _layout.SelectedIndex == 1 ? SideBySide(differs.Pairs) : Unified(differs.Pairs),
             _ => Message(string.Empty),
         };
@@ -336,9 +336,9 @@ internal sealed partial class VersionHistoryView : UserControl
 
     private static string Title(VersionEntry entry) => entry.Reference switch
     {
-        CurrentVersion => "Current version",
-        GitRevisionVersion => string.IsNullOrWhiteSpace(entry.Summary) ? "Commit " + entry.Reference.ShortRevision : entry.Summary!,
-        _ => entry.Summary ?? "Saved version",
+        CurrentVersion => Strings.Get("SqlFiles/CurrentVersion"),
+        GitRevisionVersion => string.IsNullOrWhiteSpace(entry.Summary) ? Strings.Format("SqlFiles/CommitVersion", entry.Reference.ShortRevision) : entry.Summary!,
+        _ => entry.Summary ?? Strings.Get("SqlFiles/SavedVersion"),
     };
 
     private static string Subtitle(VersionEntry entry)
@@ -361,7 +361,7 @@ internal sealed partial class VersionHistoryView : UserControl
 
         if (entry.HasUncommittedChanges)
         {
-            parts.Add("Uncommitted changes");
+            parts.Add(Strings.Get("SqlFiles/UncommittedChanges"));
         }
 
         return string.Join(" · ", parts);
@@ -400,9 +400,9 @@ internal sealed partial class VersionHistoryView : UserControl
         }
 
         var (outcome, error) = await _browser.RestoreAsync(entry, () => _dialogs.ConfirmAsync(
-            "Replace the current text?",
-            "The file has changes that are not in any saved version or commit. Restoring replaces them; they are kept as a saved version first.",
-            "Restore",
+            Strings.Get("SqlFiles/RestoreConfirmTitle"),
+            Strings.Get("SqlFiles/RestoreConfirmMessage"),
+            Strings.Get("SqlFiles/RestoreButton"),
             destructive: true));
         switch (outcome)
         {
@@ -410,7 +410,7 @@ internal sealed partial class VersionHistoryView : UserControl
                 _restored();
                 break;
             case VersionRestoreOutcome.Failed:
-                await _dialogs.ShowErrorAsync("Couldn't Restore", error ?? "The version could not be restored.");
+                await _dialogs.ShowErrorAsync(Strings.Get("SqlFiles/RestoreFailedTitle"), error ?? Strings.Get("SqlFiles/RestoreFailed"));
                 break;
         }
     }

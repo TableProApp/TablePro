@@ -29,7 +29,7 @@ public sealed partial class ServerTabView : UserControl
             if (viewModel.Section == ServerSection.Activity && viewModel.SupportsActivity)
             {
                 menu.Items.Add(new MenuFlyoutSeparator());
-                menu.Items.Add(GridCommands.Item("Terminate Session", "", async () => await viewModel.TerminateAsync(e.Row)));
+                menu.Items.Add(GridCommands.Item(Strings.Get("Server/TerminateSession"),"", async () => await viewModel.TerminateAsync(e.Row)));
             }
 
             menu.ShowAt(e.Target, e.Position);

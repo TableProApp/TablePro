@@ -23,9 +23,9 @@ public sealed class RowGeneratorDialog
     private readonly RowGeneratorViewModel _model;
     private readonly ListView _columns = new() { SelectionMode = ListViewSelectionMode.Single };
     private readonly StackPanel _options = new() { Spacing = 12, Padding = new Thickness(16, 0, 8, 0) };
-    private readonly NumberBox _rows = new() { Header = "Rows", Minimum = 1, Maximum = RowGenerationSettings.MaximumRowCount, SpinButtonPlacementMode = NumberBoxSpinButtonPlacementMode.Compact, Width = 160 };
-    private readonly NumberBox _seed = new() { Header = "Seed", Minimum = 0, SpinButtonPlacementMode = NumberBoxSpinButtonPlacementMode.Hidden, Width = 140 };
-    private readonly InfoBar _issues = new() { Severity = InfoBarSeverity.Warning, IsClosable = false, Title = "Fix these before generating" };
+    private readonly NumberBox _rows = new() { Header = Strings.Get("Tools/GenRows"), Minimum = 1, Maximum = RowGenerationSettings.MaximumRowCount, SpinButtonPlacementMode = NumberBoxSpinButtonPlacementMode.Compact, Width = 160 };
+    private readonly NumberBox _seed = new() { Header = Strings.Get("Tools/GenSeed"), Minimum = 0, SpinButtonPlacementMode = NumberBoxSpinButtonPlacementMode.Hidden, Width = 140 };
+    private readonly InfoBar _issues = new() { Severity = InfoBarSeverity.Warning, IsClosable = false, Title = Strings.Get("Tools/GenFixIssues") };
     private readonly DataGridView _preview = new() { Height = 190 };
     private readonly TextBlock _previewNote = new() { Opacity = 0.7, TextWrapping = TextWrapping.Wrap };
     private readonly ProgressRing _loading = new() { IsActive = true, Width = 32, Height = 32 };
@@ -40,8 +40,8 @@ public sealed class RowGeneratorDialog
         _context = context;
         _model = new RowGeneratorViewModel(context, table);
         _model.SettingsChanged += (_, _) => Refresh();
-        AutomationProperties.SetName(_columns, "Columns");
-        AutomationProperties.SetName(_preview, "Preview of the first rows");
+        AutomationProperties.SetName(_columns, Strings.Get("Tools/GenColumns"));
+        AutomationProperties.SetName(_preview, Strings.Get("Tools/GenPreviewName"));
     }
 
     /// <summary>
@@ -55,7 +55,7 @@ public sealed class RowGeneratorDialog
         ArgumentNullException.ThrowIfNull(table);
         if (context.Session.Profile.IsReadOnly)
         {
-            await context.Dialogs.ShowErrorAsync("Read-only connection", "Safe Mode is Read-Only on this connection, so no rows can be inserted.");
+            await context.Dialogs.ShowErrorAsync(Strings.Get("Tools/GenReadOnlyTitle"), Strings.Get("Tools/GenReadOnlyMessage"));
             return false;
         }
 
@@ -73,7 +73,12 @@ public sealed class RowGeneratorDialog
     private async Task<ContentDialogResult> ConfigureAsync(bool offersScript)
     {
         var dialogs = _context.Dialogs;
-        var dialog = dialogs.Create($"Generate Rows for {_model.Table.Name.Name}", BuildContent(), "Generate", "Cancel", offersScript ? "Open as SQL" : null);
+        var dialog = dialogs.Create(
+            Strings.Format("Tools/GenTitle", _model.Table.Name.Name),
+            BuildContent(),
+            Strings.Get("Tools/GenGenerate"),
+            Strings.Get("Common/Cancel"),
+            offersScript ? Strings.Get("Tools/GenOpenAsSql") : null);
         dialog.Resources["ContentDialogMaxWidth"] = 1040.0;
         dialog.Resources["ContentDialogMaxHeight"] = 900.0;
         dialog.IsPrimaryButtonEnabled = false;
@@ -88,8 +93,8 @@ public sealed class RowGeneratorDialog
     {
         var header = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
         var shuffle = new Button { Content = new FontIcon { Glyph = "", FontSize = 14 }, VerticalAlignment = VerticalAlignment.Bottom };
-        AutomationProperties.SetName(shuffle, "New seed");
-        ToolTipService.SetToolTip(shuffle, "New seed: the same seed and settings always give the same rows");
+        AutomationProperties.SetName(shuffle, Strings.Get("Tools/GenNewSeed"));
+        ToolTipService.SetToolTip(shuffle, Strings.Get("Tools/GenNewSeedTip"));
         shuffle.Click += (_, _) => _model.ShuffleSeed();
         header.Children.Add(_rows);
         header.Children.Add(_seed);
@@ -131,7 +136,7 @@ public sealed class RowGeneratorDialog
         Grid.SetColumn(options, 1);
         body.Children.Add(options);
 
-        var previewHeader = new TextBlock { Text = "Preview", Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"] };
+        var previewHeader = new TextBlock { Text = Strings.Get("Tools/GenPreview"), Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"] };
         var root = new Grid { RowSpacing = 12, Width = 960 };
         for (var i = 0; i < 6; i++)
         {
@@ -165,7 +170,7 @@ public sealed class RowGeneratorDialog
         {
             _loading.IsActive = false;
             _loading.Visibility = Visibility.Collapsed;
-            _issues.Title = "Cannot read the table";
+            _issues.Title = Strings.Get("Tools/GenCannotReadTable");
             _issues.Message = ex.Message;
             _issues.Severity = InfoBarSeverity.Error;
             _issues.IsOpen = true;
@@ -211,19 +216,19 @@ public sealed class RowGeneratorDialog
         {
             if (_subtitles.TryGetValue(column.Name, out var subtitle))
             {
-                subtitle.Text = $"{column.TypeName} · {_model.SettingsFor(column.Name).Kind.Title()}";
+                subtitle.Text = $"{column.TypeName} · {ToolsNames.GeneratorKindName(_model.SettingsFor(column.Name).Kind)}";
             }
         }
 
         var issues = _model.Issues;
         _issues.Severity = InfoBarSeverity.Warning;
-        _issues.Title = "Fix these before generating";
+        _issues.Title = Strings.Get("Tools/GenFixIssues");
         _issues.Message = string.Join("\n", issues.Take(6).Select(i => i.Message));
         _issues.IsOpen = issues.Count > 0;
         var (rows, problem) = _model.Preview();
         _preview.Source = rows is null ? null : new ResultGridSource(rows);
         _previewNote.Text = problem
-            ?? (issues.Count > 0 ? "The preview appears once the settings have no problems." : string.Create(CultureInfo.CurrentCulture, $"The first rows of {_model.Settings.RowCount:N0}. Columns left to the server are not shown."));
+            ?? (issues.Count > 0 ? Strings.Get("Tools/GenPreviewWaiting") : Strings.Format("Tools/GenPreviewNote", _model.Settings.RowCount));
         if (_dialog is not null)
         {
             _dialog.IsPrimaryButtonEnabled = _model.CanGenerate && problem is null;
@@ -244,11 +249,11 @@ public sealed class RowGeneratorDialog
         _options.Children.Add(new TextBlock { Text = $"{column.Name}  {column.TypeName}", Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"] });
         if (kinds.Count == 0)
         {
-            _options.Children.Add(Note("No generator can fill this type."));
+            _options.Children.Add(Note(Strings.Get("Tools/GenNoGenerator")));
             return;
         }
 
-        var kind = new ComboBox { Header = "Generator", ItemsSource = kinds.Select(k => k.Title()).ToList(), MinWidth = 240 };
+        var kind = new ComboBox { Header = Strings.Get("Tools/GenGenerator"), ItemsSource = kinds.Select(ToolsNames.GeneratorKindName).ToList(), MinWidth = 240 };
         kind.SelectedIndex = Math.Max(0, IndexOf(kinds, settings.Kind));
         kind.SelectionChanged += (_, _) =>
         {
@@ -263,7 +268,7 @@ public sealed class RowGeneratorDialog
 
         if (settings.Kind != RowGeneratorKind.ServerDefault && column.IsNullable && !column.IsUnique)
         {
-            _options.Children.Add(Percent("NULL values", settings.NullRatio, value => _model.Update(column.Name, s => s with { NullRatio = value })));
+            _options.Children.Add(Percent(Strings.Get("Tools/GenNullValues"), settings.NullRatio, value => _model.Update(column.Name, s => s with { NullRatio = value })));
         }
 
         foreach (var issue in _model.Issues.Where(i => i.Column == column.Name))
@@ -279,60 +284,65 @@ public sealed class RowGeneratorDialog
         {
             case RowGeneratorKind.ServerDefault:
                 _options.Children.Add(Note(column.Ownership == ServerOwnership.None
-                    ? "Left out of every INSERT, so the column takes its default or NULL."
-                    : "The server fills this column itself."));
+                    ? Strings.Get("Tools/GenServerDefaultNote")
+                    : Strings.Get("Tools/GenServerFillsNote")));
                 break;
             case RowGeneratorKind.Reference:
             {
                 var source = column.Reference is { } slot ? _model.Target!.Model.Reference(slot.SourceId) : null;
                 _options.Children.Add(Note(source is null
-                    ? "Takes a value of the referenced key."
-                    : string.Create(CultureInfo.CurrentCulture, $"Takes a value from {source.ReferencedTable}, sampled from {source.Tuples.Count:N0} of its rows. Every column of the key comes from the same row.")));
+                    ? Strings.Get("Tools/GenReferenceNote")
+                    : Strings.Plural("Tools/GenReferenceSampledNote", source.Tuples.Count, source.ReferencedTable)));
                 break;
             }
 
             case RowGeneratorKind.Sequence:
                 _options.Children.Add(Pair(
-                    Number("Start", settings.IntegerMinimum, v => _model.Update(name, s => s with { IntegerMinimum = (long)v })),
-                    Number("Step", settings.SequenceStep, v => _model.Update(name, s => s with { SequenceStep = (long)v }))));
+                    Number(Strings.Get("Tools/GenStart"), settings.IntegerMinimum, v => _model.Update(name, s => s with { IntegerMinimum = (long)v })),
+                    Number(Strings.Get("Tools/GenStep"), settings.SequenceStep, v => _model.Update(name, s => s with { SequenceStep = (long)v }))));
                 break;
             case RowGeneratorKind.IntegerRange:
                 _options.Children.Add(Pair(
-                    Number("Minimum", settings.IntegerMinimum, v => _model.Update(name, s => s with { IntegerMinimum = (long)v })),
-                    Number("Maximum", settings.IntegerMaximum, v => _model.Update(name, s => s with { IntegerMaximum = (long)v }))));
+                    Number(Strings.Get("Tools/GenMinimum"), settings.IntegerMinimum, v => _model.Update(name, s => s with { IntegerMinimum = (long)v })),
+                    Number(Strings.Get("Tools/GenMaximum"), settings.IntegerMaximum, v => _model.Update(name, s => s with { IntegerMaximum = (long)v }))));
                 break;
             case RowGeneratorKind.DecimalRange:
                 _options.Children.Add(Pair(
-                    Number("Minimum", settings.DecimalMinimum, v => _model.Update(name, s => s with { DecimalMinimum = v }), decimals: true),
-                    Number("Maximum", settings.DecimalMaximum, v => _model.Update(name, s => s with { DecimalMaximum = v }), decimals: true)));
-                _options.Children.Add(Number("Decimal places", settings.DecimalScale, v => _model.Update(name, s => s with { DecimalScale = (int)v }), maximum: RowGenerationValidation.MaximumScale));
+                    Number(Strings.Get("Tools/GenMinimum"), settings.DecimalMinimum, v => _model.Update(name, s => s with { DecimalMinimum = v }), decimals: true),
+                    Number(Strings.Get("Tools/GenMaximum"), settings.DecimalMaximum, v => _model.Update(name, s => s with { DecimalMaximum = v }), decimals: true)));
+                _options.Children.Add(Number(Strings.Get("Tools/GenDecimalPlaces"), settings.DecimalScale, v => _model.Update(name, s => s with { DecimalScale = (int)v }), maximum: RowGenerationValidation.MaximumScale));
                 break;
             case RowGeneratorKind.Text:
                 _options.Children.Add(Pair(
-                    Number("Shortest", settings.MinLength, v => _model.Update(name, s => s with { MinLength = (int)v })),
-                    Number("Longest", settings.MaxLength, v => _model.Update(name, s => s with { MaxLength = (int)v }), maximum: column.MaxLength)));
+                    Number(Strings.Get("Tools/GenShortest"), settings.MinLength, v => _model.Update(name, s => s with { MinLength = (int)v })),
+                    Number(Strings.Get("Tools/GenLongest"), settings.MaxLength, v => _model.Update(name, s => s with { MaxLength = (int)v }), maximum: column.MaxLength)));
                 break;
             case RowGeneratorKind.Date or RowGeneratorKind.DateTime:
                 _options.Children.Add(Pair(
-                    Date("From", settings.DateStart, v => _model.Update(name, s => s with { DateStart = v })),
-                    Date("To", settings.DateEnd, v => _model.Update(name, s => s with { DateEnd = v }))));
+                    Date(Strings.Get("Tools/GenDateFrom"), settings.DateStart, v => _model.Update(name, s => s with { DateStart = v })),
+                    Date(Strings.Get("Tools/GenDateTo"), settings.DateEnd, v => _model.Update(name, s => s with { DateEnd = v }))));
                 break;
             case RowGeneratorKind.Uuid:
             {
-                var version = new ComboBox { Header = "Version", ItemsSource = new List<string> { "Version 4 (random)", "Version 7 (time-ordered)" }, SelectedIndex = settings.UuidVersion == UuidVersion.V7 ? 1 : 0 };
+                var version = new ComboBox
+                {
+                    Header = Strings.Get("Tools/GenUuidVersion"),
+                    ItemsSource = new List<string> { Strings.Get("Tools/GenUuidVersion4"), Strings.Get("Tools/GenUuidVersion7") },
+                    SelectedIndex = settings.UuidVersion == UuidVersion.V7 ? 1 : 0,
+                };
                 version.SelectionChanged += (_, _) => _model.Update(name, s => s with { UuidVersion = version.SelectedIndex == 1 ? UuidVersion.V7 : UuidVersion.V4 });
                 _options.Children.Add(version);
                 break;
             }
 
             case RowGeneratorKind.Boolean when !column.IsUnique:
-                _options.Children.Add(Percent("True values", settings.TrueRatio, v => _model.Update(name, s => s with { TrueRatio = v })));
+                _options.Children.Add(Percent(Strings.Get("Tools/GenTrueValues"), settings.TrueRatio, v => _model.Update(name, s => s with { TrueRatio = v })));
                 break;
             case RowGeneratorKind.List:
             {
                 var values = new TextBox
                 {
-                    Header = "Values, one per line",
+                    Header = Strings.Get("Tools/GenListValues"),
                     Text = string.Join("\r", settings.Values),
                     AcceptsReturn = true,
                     TextWrapping = TextWrapping.Wrap,
@@ -345,14 +355,14 @@ public sealed class RowGeneratorDialog
 
             case RowGeneratorKind.Pattern:
             {
-                var pattern = new TextBox { Header = "Pattern", Text = settings.Pattern, Description = "# is a digit, ? a letter, * either, and \\ makes the next character literal." };
+                var pattern = new TextBox { Header = Strings.Get("Tools/GenPattern"), Text = settings.Pattern, Description = Strings.Get("Tools/GenPatternHelp") };
                 pattern.TextChanged += (_, _) => _model.Update(name, s => s with { Pattern = pattern.Text });
                 _options.Children.Add(pattern);
                 break;
             }
 
             default:
-                _options.Children.Add(Note($"Makes {settings.Kind.Title().ToLowerInvariant()} values from a fixed vocabulary, the same for a seed in every version of TablePro."));
+                _options.Children.Add(Note(Strings.Format("Tools/GenVocabularyNote", ToolsNames.GeneratorKindName(settings.Kind).ToLower(CultureInfo.CurrentCulture))));
                 break;
         }
     }
@@ -431,26 +441,26 @@ public sealed class RowGeneratorDialog
         var count = _model.Settings.RowCount;
         var name = _model.Table.Name.ToString();
         if (_context.Session.Profile.SafeMode.RequiresConfirmation()
-            && !await dialogs.ConfirmAsync("Insert rows?", string.Create(CultureInfo.CurrentCulture, $"Insert {count:N0} generated rows into {name}?"), "Insert"))
+            && !await dialogs.ConfirmAsync(Strings.Get("Tools/GenInsertConfirmTitle"), Strings.Plural("Tools/GenInsertConfirmMessage", count, name), Strings.Get("Tools/GenInsert")))
         {
             return false;
         }
 
         using var cancellation = new CancellationTokenSource();
         var bar = new ProgressBar { Maximum = count, MinWidth = 420 };
-        var status = new TextBlock { Text = "Starting…", Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"] };
+        var status = new TextBlock { Text = Strings.Get("Tools/Starting"), Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"] };
         var panel = new StackPanel { Spacing = 12 };
         panel.Children.Add(new TextBlock { Text = name, TextTrimming = TextTrimming.CharacterEllipsis });
         panel.Children.Add(bar);
         panel.Children.Add(status);
-        var progressDialog = dialogs.Create("Generating Rows", panel, null, "Stop");
+        var progressDialog = dialogs.Create(Strings.Get("Tools/GenProgressTitle"), panel, null, Strings.Get("Common/Stop"));
         progressDialog.CloseButtonClick += (_, _) => cancellation.Cancel();
         var written = 0;
         var progress = new Progress<int>(rows =>
         {
             written = rows;
             bar.Value = rows;
-            status.Text = string.Create(CultureInfo.CurrentCulture, $"{rows:N0} of {count:N0} rows");
+            status.Text = Strings.Plural("Tools/GenProgress", count, rows);
         });
 
         // Hide does nothing to a dialog that has not opened yet, so a quick run waits for it to open before closing it.
@@ -480,23 +490,23 @@ public sealed class RowGeneratorDialog
 
         if (failure is RowGenerationWriteException write)
         {
-            await dialogs.ShowErrorAsync("Generate Rows stopped", string.Create(CultureInfo.CurrentCulture, $"{write.Message}\n\n{write.KeptRows:N0} rows were inserted before it and stay in the table."));
+            await dialogs.ShowErrorAsync(Strings.Get("Tools/GenStoppedTitle"), Strings.Plural("Tools/GenStoppedMessage", write.KeptRows, write.Message));
             return write.KeptRows > 0;
         }
 
         if (failure is not null)
         {
-            await dialogs.ShowErrorAsync("Generate Rows stopped", string.Create(CultureInfo.CurrentCulture, $"{failure.Message}\n\n{written:N0} rows were inserted before it and stay in the table."));
+            await dialogs.ShowErrorAsync(Strings.Get("Tools/GenStoppedTitle"), Strings.Plural("Tools/GenStoppedMessage", written, failure.Message));
             return written > 0;
         }
 
         if (inserted == 0)
         {
-            _context.Notify(string.Create(CultureInfo.CurrentCulture, $"Stopped after {written:N0} rows; they stay in {name}."));
+            _context.Notify(Strings.Plural("Tools/GenStoppedAfter", written, name));
             return written > 0;
         }
 
-        _context.Notify(string.Create(CultureInfo.CurrentCulture, $"Inserted {inserted:N0} rows into {name}."));
+        _context.Notify(Strings.Plural("Tools/GenInserted", inserted, name));
         return true;
     }
 }

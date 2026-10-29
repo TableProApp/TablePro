@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AutoRefreshSwitch.OffContent" xml:space="preserve">
+    <value>자동 새로 고침</value>
+  </data>
+  <data name="AutoRefreshSwitch.OnContent" xml:space="preserve">
+    <value>자동 새로 고침</value>
+  </data>
+  <data name="EndSessionFailed" xml:space="preserve">
+    <value>세션을 종료할 수 없습니다</value>
+  </data>
+  <data name="EndSessionMessage" xml:space="preserve">
+    <value>서버 세션 {0}을(를) 종료하시겠습니까? 실행 중인 문이 취소되고 연결이 닫힙니다.</value>
+  </data>
+  <data name="EndSessionTitle" xml:space="preserve">
+    <value>세션을 종료하시겠습니까?</value>
+  </data>
+  <data name="NoActivityView" xml:space="preserve">
+    <value>{0}에는 활동 보기가 없습니다.</value>
+  </data>
+  <data name="NoUsersView" xml:space="preserve">
+    <value>{0}에는 사용자 보기가 없습니다.</value>
+  </data>
+  <data name="NoVariablesView" xml:space="preserve">
+    <value>{0}에는 변수 보기가 없습니다.</value>
+  </data>
+  <data name="RefreshButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>새로 고침</value>
+  </data>
+  <data name="RefreshButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>새로 고침</value>
+  </data>
+  <data name="SearchButton.Content" xml:space="preserve">
+    <value>검색</value>
+  </data>
+  <data name="SearchHitRowsMore_One" xml:space="preserve">
+    <value>{0:N0}+행</value>
+  </data>
+  <data name="SearchHitRowsMore_Other" xml:space="preserve">
+    <value>{0:N0}+행</value>
+  </data>
+  <data name="SearchHitRows_One" xml:space="preserve">
+    <value>{0:N0}행</value>
+  </data>
+  <data name="SearchHitRows_Other" xml:space="preserve">
+    <value>{0:N0}행</value>
+  </data>
+  <data name="SearchProgress_One" xml:space="preserve">
+    <value>테이블 {0:N0}개 중 {1:N0}개 검색 완료 · {2:N0}개 일치</value>
+  </data>
+  <data name="SearchProgress_Other" xml:space="preserve">
+    <value>테이블 {0:N0}개 중 {1:N0}개 검색 완료 · {2:N0}개 일치</value>
+  </data>
+  <data name="SearchQueryBox.PlaceholderText" xml:space="preserve">
+    <value>이 스키마의 모든 테이블에서 값 찾기</value>
+  </data>
+  <data name="SearchStopButton.Content" xml:space="preserve">
+    <value>중지</value>
+  </data>
+  <data name="SearchStopped" xml:space="preserve">
+    <value>검색이 중지되었습니다.</value>
+  </data>
+  <data name="SearchTabTitle" xml:space="preserve">
+    <value>검색</value>
+  </data>
+  <data name="SectionActivity.Text" xml:space="preserve">
+    <value>활동</value>
+  </data>
+  <data name="SectionUsers.Text" xml:space="preserve">
+    <value>사용자</value>
+  </data>
+  <data name="SectionVariables.Text" xml:space="preserve">
+    <value>변수</value>
+  </data>
+  <data name="StatusRows_One" xml:space="preserve">
+    <value>{0:N0}행 · {1:T}</value>
+  </data>
+  <data name="StatusRows_Other" xml:space="preserve">
+    <value>{0:N0}행 · {1:T}</value>
+  </data>
+  <data name="TabTitle" xml:space="preserve">
+    <value>서버</value>
+  </data>
+  <data name="Terminate" xml:space="preserve">
+    <value>종료</value>
+  </data>
+  <data name="TerminateSession" xml:space="preserve">
+    <value>세션 종료</value>
+  </data>
+</root>

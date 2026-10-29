@@ -37,9 +37,9 @@ internal static class QueryPlanStyles
 
     public static (string Glyph, string Label, string BrushKey) Change(QueryPlanChangeKind kind) => kind switch
     {
-        QueryPlanChangeKind.Added => ("+", "Added", "SystemFillColorSuccessBrush"),
-        QueryPlanChangeKind.Removed => ("−", "Removed", "SystemFillColorCriticalBrush"),
-        _ => ("~", "Changed", "SystemFillColorCautionBrush"),
+        QueryPlanChangeKind.Added => ("+", Strings.Get("Plan/ChangeAdded"), "SystemFillColorSuccessBrush"),
+        QueryPlanChangeKind.Removed => ("−", Strings.Get("Plan/ChangeRemoved"), "SystemFillColorCriticalBrush"),
+        _ => ("~", Strings.Get("Plan/ChangeChanged"), "SystemFillColorCautionBrush"),
     };
 
     /// <summary>A severity badge: the shape in the status colour, named for screen readers.</summary>
@@ -53,8 +53,8 @@ internal static class QueryPlanStyles
             Foreground = Foreground(theme, severity),
             VerticalAlignment = VerticalAlignment.Center,
         };
-        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(badge, severity.Label());
-        ToolTipService.SetToolTip(badge, severity.Label());
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(badge, PlanNames.Label(severity));
+        ToolTipService.SetToolTip(badge, PlanNames.Label(severity));
         return badge;
     }
 

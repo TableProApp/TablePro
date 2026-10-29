@@ -1,5 +1,6 @@
 using System.Text;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using TablePro.Ai.Assistant;
@@ -27,7 +28,7 @@ internal sealed partial class AssistantPane : UserControl
     private readonly AiConversation _conversation;
     private readonly StackPanel _messages = new() { Spacing = 12 };
     private readonly ScrollViewer _scroller;
-    private readonly TextBox _input = new() { PlaceholderText = "Ask about this database", AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MaxHeight = 160 };
+    private readonly TextBox _input = new() { PlaceholderText = Strings.Get("Panes/AssistantInputPlaceholder"),AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MaxHeight = 160 };
     private readonly Button _send;
     private CancellationTokenSource? _reply;
 
@@ -41,7 +42,8 @@ internal sealed partial class AssistantPane : UserControl
 
         _scroller = new ScrollViewer { Content = _messages, Padding = new Thickness(12, 0, 12, 12) };
         _send = new Button { Content = new FontIcon { Glyph = "", FontSize = 14 }, Style = (Style)Application.Current.Resources["AccentButtonStyle"], VerticalAlignment = VerticalAlignment.Bottom };
-        ToolTipService.SetToolTip(_send, "Send (Ctrl+Enter)");
+        ToolTipService.SetToolTip(_send, Strings.Get("Panes/AssistantSend"));
+        AutomationProperties.SetName(_send, Strings.Get("Panes/AssistantSend"));
         _send.Click += async (_, _) => await SendAsync(_input.Text);
         _input.KeyDown += async (_, e) =>
         {
@@ -54,10 +56,10 @@ internal sealed partial class AssistantPane : UserControl
         };
 
         var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, Padding = new Thickness(12, 0, 12, 8) };
-        actions.Children.Add(Action("Explain", "", () => RunActionAsync(AiQueryAction.Explain)));
-        actions.Children.Add(Action("Optimize", "", () => RunActionAsync(AiQueryAction.Optimize)));
-        actions.Children.Add(Action("Review", "", () => RunActionAsync(AiQueryAction.Review)));
-        actions.Children.Add(Action("New", "", () =>
+        actions.Children.Add(Action(ActionLabel(AiQueryAction.Explain),"", () => RunActionAsync(AiQueryAction.Explain)));
+        actions.Children.Add(Action(ActionLabel(AiQueryAction.Optimize),"", () => RunActionAsync(AiQueryAction.Optimize)));
+        actions.Children.Add(Action(ActionLabel(AiQueryAction.Review),"", () => RunActionAsync(AiQueryAction.Review)));
+        actions.Children.Add(Action(Strings.Get("Panes/AssistantNewConversation"),"", () =>
         {
             _reply?.Cancel();
             _conversation.Clear();
@@ -85,15 +87,23 @@ internal sealed partial class AssistantPane : UserControl
 
         if (_service is null)
         {
-            _messages.Children.Add(new InfoBar { Severity = InfoBarSeverity.Informational, IsOpen = true, IsClosable = false, Title = "Set up the assistant", Message = problem });
+            _messages.Children.Add(new InfoBar { Severity = InfoBarSeverity.Informational, IsOpen = true, IsClosable = false, Title = Strings.Get("Panes/AssistantSetUpTitle"), Message = problem });
             _input.IsEnabled = false;
             _send.IsEnabled = false;
         }
         else
         {
-            _messages.Children.Add(Bubble($"Using {_service.Provider.DisplayName} ({_service.Model}). Questions, your SQL and the structure of the tables involved are sent; rows are not.", isUser: false, muted: true));
+            _messages.Children.Add(Bubble(Strings.Format("Panes/AssistantUsing", _service.Provider.DisplayName, _service.Model), isUser: false, muted: true));
         }
     }
+
+    private static string ActionLabel(AiQueryAction action) => action switch
+    {
+        AiQueryAction.Explain => Strings.Get("Panes/AssistantExplain"),
+        AiQueryAction.Optimize => Strings.Get("Panes/AssistantOptimize"),
+        AiQueryAction.Review => Strings.Get("Panes/AssistantReview"),
+        _ => action.ToString(),
+    };
 
     private static Button Action(string text, string glyph, Func<Task> run)
     {
@@ -126,7 +136,7 @@ internal sealed partial class AssistantPane : UserControl
             return;
         }
 
-        _messages.Children.Add(Bubble($"{action}:\n{sql}", isUser: true));
+        _messages.Children.Add(Bubble(Strings.Format("Panes/AssistantActionBubble", ActionLabel(action), sql), isUser: true));
         var context = await BuildContextAsync(sql);
         await StreamAsync(token => _service.RunQueryActionAsync(_conversation, action, sql, null, context, token));
     }
@@ -139,7 +149,7 @@ internal sealed partial class AssistantPane : UserControl
             return;
         }
 
-        _messages.Children.Add(Bubble($"Fix:\n{sql}\n\n{error}", isUser: true));
+        _messages.Children.Add(Bubble(Strings.Format("Panes/AssistantFixBubble", sql, error), isUser: true));
         var context = await BuildContextAsync(sql);
         await StreamAsync(token => _service.RunQueryActionAsync(_conversation, AiQueryAction.FixError, sql, error, context, token));
     }
@@ -168,7 +178,7 @@ internal sealed partial class AssistantPane : UserControl
         }
         catch (OperationCanceledException)
         {
-            text.Append("\n\n(stopped)");
+            text.Append("\n\n").Append(Strings.Get("Panes/AssistantStopped"));
         }
         catch (Exception ex) when (ex is HttpRequestException or Ai.AiProviderException or InvalidOperationException)
         {
@@ -249,9 +259,9 @@ internal sealed partial class AssistantPane : UserControl
 
     private Border CodeCard(string code)
     {
-        var insert = new HyperlinkButton { Content = "Insert", Padding = new Thickness(4, 0, 4, 0) };
+        var insert = new HyperlinkButton { Content = Strings.Get("Panes/AssistantInsert"), Padding = new Thickness(4, 0, 4, 0) };
         insert.Click += (_, _) => _insert(code);
-        var copy = new HyperlinkButton { Content = "Copy", Padding = new Thickness(4, 0, 4, 0) };
+        var copy = new HyperlinkButton { Content = Strings.Get("Common/Copy"),Padding = new Thickness(4, 0, 4, 0) };
         copy.Click += (_, _) => GridCommands.SetClipboard(code);
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
         buttons.Children.Add(insert);

@@ -15,20 +15,20 @@
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
             <SelectorBar x:Name="Sections" SelectionChanged="OnSectionChanged">
-                <SelectorBarItem Text="Activity" Tag="Activity" IsSelected="True">
+                <SelectorBarItem x:Uid="/Server/SectionActivity" Tag="Activity" IsSelected="True">
                     <SelectorBarItem.Icon><FontIcon Glyph="&#xE9D9;" /></SelectorBarItem.Icon>
                 </SelectorBarItem>
-                <SelectorBarItem Text="Variables" Tag="Variables">
+                <SelectorBarItem x:Uid="/Server/SectionVariables" Tag="Variables">
                     <SelectorBarItem.Icon><FontIcon Glyph="&#xE713;" /></SelectorBarItem.Icon>
                 </SelectorBarItem>
-                <SelectorBarItem Text="Users" Tag="Users">
+                <SelectorBarItem x:Uid="/Server/SectionUsers" Tag="Users">
                     <SelectorBarItem.Icon><FontIcon Glyph="&#xE716;" /></SelectorBarItem.Icon>
                 </SelectorBarItem>
             </SelectorBar>
             <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                 <TextBlock Style="{StaticResource StatusTextStyle}" Text="{x:Bind ViewModel.StatusText, Mode=OneWay}" />
-                <ToggleSwitch x:Name="AutoRefreshSwitch" OnContent="Auto refresh" OffContent="Auto refresh" IsOn="{x:Bind ViewModel.AutoRefresh, Mode=TwoWay}" MinWidth="0" />
-                <Button Style="{StaticResource ToolbarButtonStyle}" Command="{x:Bind ViewModel.RefreshCommand}" AutomationProperties.Name="Refresh" ToolTipService.ToolTip="Refresh">
+                <ToggleSwitch x:Uid="/Server/AutoRefreshSwitch" x:Name="AutoRefreshSwitch" IsOn="{x:Bind ViewModel.AutoRefresh, Mode=TwoWay}" MinWidth="0" />
+                <Button x:Uid="/Server/RefreshButton" Style="{StaticResource ToolbarButtonStyle}" Command="{x:Bind ViewModel.RefreshCommand}">
                     <FontIcon FontSize="14" Glyph="&#xE72C;" />
                 </Button>
             </StackPanel>

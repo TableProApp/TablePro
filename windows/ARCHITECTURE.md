@@ -92,6 +92,10 @@ Each window draws its own title bar over the backdrop (`WindowChrome`), with acr
 
 `SqlEditor` is a `RichEditBox` colored by the dialect's lexer, debounced after typing. Its built-in undo is off, because every coloring pass would become an undo step; the editor keeps its own stack of text snapshots, grouping keystrokes typed within half a second. Line ends are `\r` inside the document, as RichEdit stores paragraphs, so the lexer's offsets and the caret agree without translation. Completion (`SqlCompletion` in Core) offers columns after an alias, tables after `FROM` and `JOIN`, and keywords, functions and the statement's columns elsewhere.
 
+## Localization
+
+The app ships the languages the macOS app does: English, French, Korean, Turkish, Vietnamese, and Simplified and Traditional Chinese. Text is in `.resw` files under `src/TablePro.App/Strings/<language>/`, one per area (`Connection.resw`, `Table.resw`...), compiled by MRT Core into the app's PRI, which works unpackaged and in the MSIX. Each file is a resource map, so a key is `Area/Name` in code and `x:Uid="/Area/Name"` in XAML. `Strings.Plural` picks `Name_One` or `Name_Other` by the language's plural rule, since resw has no plural forms. Settings > General stores a language override, which `App.OnLaunched` applies through `ApplicationLanguages.PrimaryLanguageOverride` before the first window; XAML and MRT Core read it once, so a change asks for a restart. Core stays free of UI resources: where the app shows a Core enum, a helper in `Localization/` maps it to a key.
+
 ## Storage
 
 `TablePro.Storage` writes JSON through System.Text.Json source generation and replaces each file atomically. Secrets go to Windows Credential Manager through source-generated `LibraryImport` calls. Query history is a SQLite database with an FTS5 table for search. Missing JSON fields keep their declared defaults, so a file written by an older build still loads.

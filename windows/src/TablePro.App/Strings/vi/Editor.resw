@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="CloseFind" xml:space="preserve">
+    <value>Đóng (Esc)</value>
+  </data>
+  <data name="CompletionColumn" xml:space="preserve">
+    <value>Cột</value>
+  </data>
+  <data name="CompletionFunction" xml:space="preserve">
+    <value>Hàm</value>
+  </data>
+  <data name="CompletionKeyword" xml:space="preserve">
+    <value>Từ khoá</value>
+  </data>
+  <data name="CompletionSchema" xml:space="preserve">
+    <value>Schema</value>
+  </data>
+  <data name="CompletionSnippet" xml:space="preserve">
+    <value>Đoạn mã</value>
+  </data>
+  <data name="CompletionTable" xml:space="preserve">
+    <value>Bảng</value>
+  </data>
+  <data name="CompletionView" xml:space="preserve">
+    <value>View</value>
+  </data>
+  <data name="ErrorAnnouncement" xml:space="preserve">
+    <value>Lỗi: {0}</value>
+  </data>
+  <data name="Explain" xml:space="preserve">
+    <value>Giải thích</value>
+  </data>
+  <data name="Find" xml:space="preserve">
+    <value>Tìm</value>
+  </data>
+  <data name="FindMatches_One" xml:space="preserve">
+    <value>{0} kết quả khớp</value>
+  </data>
+  <data name="FindMatches_Other" xml:space="preserve">
+    <value>{0} kết quả khớp</value>
+  </data>
+  <data name="FindNoResults" xml:space="preserve">
+    <value>Không có kết quả</value>
+  </data>
+  <data name="FindPlaceholder" xml:space="preserve">
+    <value>Tìm</value>
+  </data>
+  <data name="FormatSql" xml:space="preserve">
+    <value>Định dạng SQL</value>
+  </data>
+  <data name="GoToDefinition" xml:space="preserve">
+    <value>Đi tới định nghĩa</value>
+  </data>
+  <data name="MatchCase" xml:space="preserve">
+    <value>Phân biệt hoa thường</value>
+  </data>
+  <data name="NextMatch" xml:space="preserve">
+    <value>Kết quả tiếp theo (F3)</value>
+  </data>
+  <data name="NoDefinitionFound" xml:space="preserve">
+    <value>Không tìm thấy định nghĩa cho '{0}'.</value>
+  </data>
+  <data name="NoProblems" xml:space="preserve">
+    <value>Không có vấn đề nào.</value>
+  </data>
+  <data name="NoSymbolAtCaret" xml:space="preserve">
+    <value>Không có ký hiệu nào tại con trỏ.</value>
+  </data>
+  <data name="NothingAtCaret" xml:space="preserve">
+    <value>Không có gì để hiển thị tại con trỏ.</value>
+  </data>
+  <data name="PreviousMatch" xml:space="preserve">
+    <value>Kết quả trước (Shift+F3)</value>
+  </data>
+  <data name="ReferencesSelected_One" xml:space="preserve">
+    <value>Đã chọn 1 tham chiếu</value>
+  </data>
+  <data name="ReferencesSelected_Other" xml:space="preserve">
+    <value>Đã chọn {0} tham chiếu</value>
+  </data>
+  <data name="RenameNeedsInsertMode" xml:space="preserve">
+    <value>Đổi tên chỉ hoạt động ở chế độ chèn.</value>
+  </data>
+  <data name="RenameSymbol" xml:space="preserve">
+    <value>Đổi tên ký hiệu</value>
+  </data>
+  <data name="Replace" xml:space="preserve">
+    <value>Thay thế</value>
+  </data>
+  <data name="ReplaceAllButton" xml:space="preserve">
+    <value>Thay thế tất cả</value>
+  </data>
+  <data name="ReplaceButton" xml:space="preserve">
+    <value>Thay thế</value>
+  </data>
+  <data name="ReplacePlaceholder" xml:space="preserve">
+    <value>Thay thế</value>
+  </data>
+  <data name="ReplacedCount_One" xml:space="preserve">
+    <value>Đã thay thế {0}</value>
+  </data>
+  <data name="ReplacedCount_Other" xml:space="preserve">
+    <value>Đã thay thế {0}</value>
+  </data>
+  <data name="RunAll" xml:space="preserve">
+    <value>Chạy tất cả</value>
+  </data>
+  <data name="RunCurrent" xml:space="preserve">
+    <value>Chạy câu lệnh hiện tại</value>
+  </data>
+  <data name="SuggestionAcceptHint" xml:space="preserve">
+    <value>Nhấn Tab để chấp nhận</value>
+  </data>
+  <data name="ToggleComment" xml:space="preserve">
+    <value>Bật/tắt comment</value>
+  </data>
+  <data name="WarningAnnouncement" xml:space="preserve">
+    <value>Cảnh báo: {0}</value>
+  </data>
+  <data name="WentTo" xml:space="preserve">
+    <value>Đã đi tới {0}</value>
+  </data>
+</root>

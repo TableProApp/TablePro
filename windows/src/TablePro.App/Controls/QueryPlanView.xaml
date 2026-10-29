@@ -117,46 +117,45 @@
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <SelectorBar x:Name="Modes" SelectionChanged="OnModeChanged" AutomationProperties.Name="Plan view">
-                <SelectorBarItem x:Name="DiagramMode" Text="Diagram" />
-                <SelectorBarItem x:Name="TreeMode" Text="Tree" />
-                <SelectorBarItem x:Name="RawMode" Text="Raw" />
-                <SelectorBarItem x:Name="CompareMode" Text="Compare" />
+            <SelectorBar x:Uid="/Plan/Modes" x:Name="Modes" SelectionChanged="OnModeChanged">
+                <SelectorBarItem x:Uid="/Plan/DiagramMode" x:Name="DiagramMode" />
+                <SelectorBarItem x:Uid="/Plan/TreeMode" x:Name="TreeMode" />
+                <SelectorBarItem x:Uid="/Plan/RawMode" x:Name="RawMode" />
+                <SelectorBarItem x:Uid="/Plan/CompareMode" x:Name="CompareMode" />
             </SelectorBar>
             <ComboBox
+                x:Uid="/Plan/MetricBox"
                 x:Name="MetricBox"
                 Grid.Column="1"
                 MinWidth="140"
                 VerticalAlignment="Center"
-                AutomationProperties.Name="Bar metric"
-                SelectionChanged="OnMetricChanged"
-                ToolTipService.ToolTip="What the bars measure" />
+                SelectionChanged="OnMetricChanged" />
             <TextBlock x:Name="Timings" Grid.Column="2" Style="{StaticResource StatusTextStyle}" TextTrimming="CharacterEllipsis" />
             <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
                 <StackPanel x:Name="ZoomButtons" Orientation="Horizontal" Spacing="2">
-                    <Button Style="{StaticResource ToolbarButtonStyle}" Click="OnZoomOut" AutomationProperties.Name="Zoom out" ToolTipService.ToolTip="Zoom out (Ctrl+wheel)">
+                    <Button x:Uid="/Plan/ZoomOutButton" Style="{StaticResource ToolbarButtonStyle}" Click="OnZoomOut">
                         <FontIcon FontSize="14" Glyph="&#xE71F;" />
                     </Button>
-                    <Button Style="{StaticResource ToolbarButtonStyle}" Click="OnZoomIn" AutomationProperties.Name="Zoom in" ToolTipService.ToolTip="Zoom in (Ctrl+wheel)">
+                    <Button x:Uid="/Plan/ZoomInButton" Style="{StaticResource ToolbarButtonStyle}" Click="OnZoomIn">
                         <FontIcon FontSize="14" Glyph="&#xE8A3;" />
                     </Button>
-                    <Button Style="{StaticResource ToolbarButtonStyle}" Click="OnFit" AutomationProperties.Name="Fit the plan" ToolTipService.ToolTip="Fit the plan">
+                    <Button x:Uid="/Plan/FitButton" Style="{StaticResource ToolbarButtonStyle}" Click="OnFit">
                         <FontIcon FontSize="14" Glyph="&#xE9A6;" />
                     </Button>
                     <AppBarSeparator />
                 </StackPanel>
-                <Button Style="{StaticResource ToolbarButtonStyle}" Click="OnCopy" AutomationProperties.Name="Copy the plan text" ToolTipService.ToolTip="Copy the plan text the server returned">
+                <Button x:Uid="/Plan/CopyButton" Style="{StaticResource ToolbarButtonStyle}" Click="OnCopy">
                     <FontIcon FontSize="14" Glyph="&#xE8C8;" />
                 </Button>
             </StackPanel>
         </Grid>
 
         <InfoBar
+            x:Uid="/Plan/UnparsedBar"
             x:Name="UnparsedBar"
             Grid.Row="1"
             IsClosable="False"
             IsOpen="False"
-            Message="This plan could not be read as a tree, so it is shown as the server returned it."
             Severity="Informational" />
 
         <Grid Grid.Row="2">
@@ -182,16 +181,16 @@
                         <ColumnDefinition x:Name="RowsHeaderColumn" />
                         <ColumnDefinition x:Name="TimeHeaderColumn" />
                     </Grid.ColumnDefinitions>
-                    <TextBlock Style="{StaticResource PlanHeaderStyle}" Text="Operation" TextAlignment="Left" />
+                    <TextBlock x:Uid="/Plan/OperationHeader" Style="{StaticResource PlanHeaderStyle}" TextAlignment="Left" />
                     <TextBlock x:Name="MagnitudeHeader" Grid.Column="1" Style="{StaticResource PlanHeaderStyle}" TextAlignment="Left" />
-                    <TextBlock Grid.Column="2" Style="{StaticResource PlanHeaderStyle}" Text="Cost" />
-                    <TextBlock x:Name="RowsHeader" Grid.Column="3" Style="{StaticResource PlanHeaderStyle}" Text="Rows" />
-                    <TextBlock Grid.Column="4" Style="{StaticResource PlanHeaderStyle}" Text="Actual Time" />
+                    <TextBlock x:Uid="/Plan/CostHeader" Grid.Column="2" Style="{StaticResource PlanHeaderStyle}" />
+                    <TextBlock x:Uid="/Plan/RowsHeader" x:Name="RowsHeader" Grid.Column="3" Style="{StaticResource PlanHeaderStyle}" />
+                    <TextBlock x:Uid="/Plan/ActualTimeHeader" Grid.Column="4" Style="{StaticResource PlanHeaderStyle}" />
                 </Grid>
                 <TreeView
+                    x:Uid="/Plan/Tree"
                     x:Name="Tree"
                     Grid.Row="1"
-                    AutomationProperties.Name="Plan steps"
                     ItemTemplate="{StaticResource PlanRowTemplate}"
                     ItemInvoked="OnTreeItemInvoked"
                     SelectionChanged="OnTreeSelectionChanged"
@@ -199,10 +198,10 @@
             </Grid>
 
             <TextBox
+                x:Uid="/Plan/RawText"
                 x:Name="RawText"
                 Visibility="Collapsed"
                 AcceptsReturn="True"
-                AutomationProperties.Name="Plan text"
                 BorderThickness="0"
                 FontFamily="{StaticResource CodeFontFamily}"
                 FontSize="12"
