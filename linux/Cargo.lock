@@ -5984,7 +5984,7 @@ dependencies = [
  "tokio-util",
  "unicode-width",
  "uuid",
- "zip 8.6.0",
+ "zip 9.0.5",
 ]
 
 [[package]]
