@@ -119,6 +119,18 @@ struct StructureDefinitionEditorTests {
         #expect(editor.inspectorTarget == .entity(.columns, added))
     }
 
+    @Test("Revealing a definition the filter hides clears the filter and selects it")
+    func revealClearsAHidingFilter() {
+        let editor = makeEditor()
+        editor.searchText = "stat"
+        let id = id(of: "customer_id", in: editor)
+
+        editor.reveal(section: .columns, entity: id)
+
+        #expect(editor.searchText.isEmpty)
+        #expect(editor.inspectorTarget == .entity(.columns, id))
+    }
+
     @Test("A collapsed section stays collapsed for the next table")
     func collapsedSectionsPersist() {
         let editor = makeEditor()

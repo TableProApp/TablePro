@@ -220,11 +220,17 @@ final class StructureDefinitionEditor: ObservableObject {
         }
     }
 
+    // A filter that hides the definition is cleared first, or the selection would land on nothing.
     func reveal(section: StructureSection, entity id: UUID) {
         if collapsedSections.contains(section) {
             setExpanded(section, true)
         }
-        adapter(for: section).select(entity: id)
+        let adapter = adapter(for: section)
+        if adapter.model.displayIndex(of: adapter.rowID(forEntity: id)) == nil {
+            if !searchText.isEmpty { searchText = "" }
+            if adapter.store.valueFilter.isActive { adapter.model.setValueFilter(GridValueFilterState()) }
+        }
+        adapter.select(entity: id)
     }
 
     // MARK: - Commands

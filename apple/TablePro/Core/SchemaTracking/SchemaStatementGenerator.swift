@@ -175,10 +175,37 @@ struct SchemaStatementGenerator {
 
         let constraintHandoffs = Self.inNameOrder(constraintModifies)
         let indexHandoffs = Self.inNameOrder(indexAdds)
+        let keyHandoff = Self.keyDropsBeforeColumnDrops(pkChanges, columnDeletes: columnDeletes)
 
         return constraintDeletes + constraintHandoffs.drops + constraintHandoffs.ordered + fkDeletes
-            + indexDeletes + indexHandoffs.drops + columnDeletes + characterSetChanges + columnModifies + columnAdds
-            + pkChanges + autoIncrementChanges + indexHandoffs.ordered + fkAdds + constraintAdds + commentChanges
+            + indexDeletes + indexHandoffs.drops + keyHandoff.drops + columnDeletes + characterSetChanges
+            + columnModifies + columnAdds + keyHandoff.adds + autoIncrementChanges + indexHandoffs.ordered + fkAdds
+            + constraintAdds + commentChanges
+    }
+
+    // Dropping a key column takes the key with it on PostgreSQL and MySQL, so the key's own DROP would then fail: a key
+    // that loses a dropped column is dropped before the columns and added back after the columns are added.
+    private static func keyDropsBeforeColumnDrops(
+        _ keyChanges: [SchemaChange],
+        columnDeletes: [SchemaChange]
+    ) -> (drops: [SchemaChange], adds: [SchemaChange]) {
+        let dropped = Set(columnDeletes.compactMap { change -> String? in
+            guard case .deleteColumn(let column) = change else { return nil }
+            return column.name
+        })
+        var drops: [SchemaChange] = []
+        var adds: [SchemaChange] = []
+        for change in keyChanges {
+            guard case .modifyPrimaryKey(let old, let new) = change, !old.isEmpty, old.contains(where: dropped.contains) else {
+                adds.append(change)
+                continue
+            }
+            drops.append(.modifyPrimaryKey(old: old, new: []))
+            if !new.isEmpty {
+                adds.append(.modifyPrimaryKey(old: [], new: new))
+            }
+        }
+        return (drops, adds)
     }
 
     /// Orders changes that each give up one name and take another in a single step, a rename or a

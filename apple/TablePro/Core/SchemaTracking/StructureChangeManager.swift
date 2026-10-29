@@ -31,8 +31,9 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
     @Published var workingIndexes: [EditableIndexDefinition] = []
     @Published var workingForeignKeys: [EditableForeignKeyDefinition] = []
     @Published var workingCheckConstraints: [EditableCheckConstraintDefinition] = []
-    @Published var workingPrimaryKey: [String] = []
-    private var removedKeyPositions: [UUID: Int] = [:]
+    // Derived from the columns after every change: the ones that stay and are marked Primary Key, the loaded members in
+    // the loaded key's order, new ones after them in column order. A key nobody changed follows a rename by itself.
+    @Published private(set) var workingPrimaryKey: [String] = []
 
     @Published var tableName: String?
 
@@ -255,78 +256,12 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
 
     // MARK: - Column Operations
 
-    // The key is the table's, so a Primary Key cell stages the key change the drivers write, not a column change.
     func updateColumn(id: UUID, with newColumn: EditableColumnDefinition) {
-        guard let previous = workingColumns.first(where: { $0.id == id }) else {
-            stageEdit(id: id, with: newColumn, using: Self.columnOperations)
-            return
-        }
-        let togglesKey = previous.isPrimaryKey != newColumn.isPrimaryKey
-        // A staged key names columns by their new names; a key nobody changed follows a rename by itself.
-        let renamesStagedKeyMember = previous.name != newColumn.name
-            && isStaged(.primaryKey) && workingPrimaryKey.contains(previous.name)
-        guard togglesKey || renamesStagedKeyMember else {
-            stageEdit(id: id, with: newColumn, using: Self.columnOperations)
-            return
-        }
-        performAsOneUndoStep {
-            stageEdit(id: id, with: newColumn, using: Self.columnOperations)
-            if togglesKey {
-                let names = Set([previous.name, newColumn.name] + currentColumns.filter { $0.id == id }.map(\.name))
-                stagePrimaryKeyMembership(of: newColumn.name, replacing: names, isMember: newColumn.isPrimaryKey)
-            } else {
-                stagePrimaryKey(workingPrimaryKey.map { $0 == previous.name ? newColumn.name : $0 })
-            }
-        }
+        stageEdit(id: id, with: newColumn, using: Self.columnOperations)
     }
 
-    private func stagePrimaryKeyMembership(of name: String, replacing names: Set<String>, isMember: Bool) {
-        var new = keyInWorkingNames.filter { !names.contains($0) }
-        if isMember { new.append(name) }
-        stagePrimaryKey(new)
-    }
-
-    // The loaded key names columns as they were read; once a change to the key is staged, it names them as they are now.
-    private var keyInWorkingNames: [String] {
-        guard !isStaged(.primaryKey) else { return workingPrimaryKey }
-        return workingPrimaryKey.map { name in
-            guard let id = currentColumns.first(where: { $0.name == name })?.id,
-                  let working = workingColumns.first(where: { $0.id == id }) else { return name }
-            return working.name
-        }
-    }
-
-    private func stagePrimaryKey(_ new: [String]) {
-        let old = workingPrimaryKey
-        guard new != old else { return }
-        registerUndo(String(localized: "Change Primary Key")) { target in
-            target.applySchemaUndo(.primaryKeyChange(old: old, new: new))
-        }
-        workingPrimaryKey = new
-        let key = SchemaChangeIdentifier.primaryKey
-        if new != currentPrimaryKey {
-            pendingChanges[key] = .modifyPrimaryKey(old: currentPrimaryKey, new: new)
-            trackChangeKey(key)
-        } else {
-            pendingChanges.removeValue(forKey: key)
-            untrackChangeKey(key)
-        }
-        workingCopyDidChange()
-    }
-
-
-    // A staged key loses a column that goes, so it never names one Save cannot find.
     func deleteColumn(id: UUID) {
-        guard let column = workingColumns.first(where: { $0.id == id }),
-              isStaged(.primaryKey), workingPrimaryKey.contains(column.name) else {
-            stageDeletion(id: id, using: Self.columnOperations)
-            return
-        }
-        performAsOneUndoStep {
-            stageDeletion(id: id, using: Self.columnOperations)
-            removedKeyPositions[id] = workingPrimaryKey.firstIndex(of: column.name)
-            stagePrimaryKey(workingPrimaryKey.filter { $0 != column.name })
-        }
+        stageDeletion(id: id, using: Self.columnOperations)
     }
 
     // MARK: - Index Operations
@@ -521,23 +456,11 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
     func undoDelete(section: StructureSection, id: UUID) {
         guard !isHeldForSave else { return }
         switch section {
-        case .columns:
-            undoDeletion(id: id, using: Self.columnOperations)
-            restoreKeyMembership(ofColumn: id)
+        case .columns: undoDeletion(id: id, using: Self.columnOperations)
         case .indexes: undoDeletion(id: id, using: Self.indexOperations)
         case .foreignKeys: undoDeletion(id: id, using: Self.foreignKeyOperations)
         case .checkConstraints: undoDeletion(id: id, using: Self.checkConstraintOperations)
         }
-    }
-
-    // A column whose delete took it out of a staged key goes back into that key, at the place it held.
-    private func restoreKeyMembership(ofColumn id: UUID) {
-        guard let position = removedKeyPositions.removeValue(forKey: id),
-              let column = workingColumns.first(where: { $0.id == id }), column.isPrimaryKey,
-              !workingPrimaryKey.contains(column.name) else { return }
-        var key = workingPrimaryKey
-        key.insert(column.name, at: min(position, key.count))
-        stagePrimaryKey(key)
     }
 
     private func undoDeletion<Entity>(id: UUID, using operations: SchemaEntityOperations<Entity>) {
@@ -566,6 +489,7 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
     /// decides for rows it did not touch, then validation.
     private func workingCopyDidChange() {
         settleClusteredAdditions()
+        restagePrimaryKey()
         validate()
     }
 
@@ -1057,8 +981,8 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
             applyAdditionUndo(constraint, using: Self.checkConstraintOperations)
         case .checkConstraintDelete(let constraint, let at):
             applyDeletionUndo(constraint, at: at, using: Self.checkConstraintOperations)
-        case .primaryKeyChange(let old, _):
-            applyPrimaryKeyChangeUndo(old: old)
+        case .primaryKeyChange:
+            restagePrimaryKey()
         case .tableCommentEdit(let old, let new):
             applyTableCommentUndo(old: old, new: new)
         case .tableOptionsEdit(let old, let new):
@@ -1133,19 +1057,28 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
         }
     }
 
-    private func applyPrimaryKeyChangeUndo(old: [String]) {
-        let current = workingPrimaryKey
-        registerUndo(String(localized: "Change Primary Key")) { target in
-            target.applySchemaUndo(.primaryKeyChange(old: current, new: old))
+    // MARK: - Primary key
+
+    private func restagePrimaryKey() {
+        let loadedIDs = currentPrimaryKey.compactMap { name in currentColumns.first { $0.name == name }?.id }
+        let key = SchemaChangeIdentifier.primaryKey
+        // A key naming a column that was not read (a failed read, an expression key) is left as it was loaded.
+        guard loadedIDs.count == currentPrimaryKey.count else {
+            workingPrimaryKey = currentPrimaryKey
+            pendingChanges.removeValue(forKey: key)
+            untrackChangeKey(key)
+            return
         }
-        workingPrimaryKey = old
-        let pkKey = SchemaChangeIdentifier.primaryKey
-        if workingPrimaryKey != currentPrimaryKey {
-            pendingChanges[pkKey] = .modifyPrimaryKey(old: currentPrimaryKey, new: workingPrimaryKey)
-            trackChangeKey(pkKey)
+        let members = workingColumns.filter { $0.isPrimaryKey && !isPendingDeletion(.column($0.id)) }
+        let ordered = loadedIDs.compactMap { id in members.first { $0.id == id } }
+            + members.filter { !loadedIDs.contains($0.id) }
+        workingPrimaryKey = ordered.map(\.name)
+        if ordered.map(\.id) == loadedIDs {
+            pendingChanges.removeValue(forKey: key)
+            untrackChangeKey(key)
         } else {
-            pendingChanges.removeValue(forKey: pkKey)
-            untrackChangeKey(pkKey)
+            pendingChanges[key] = .modifyPrimaryKey(old: currentPrimaryKey, new: workingPrimaryKey)
+            trackChangeKey(key)
         }
     }
 

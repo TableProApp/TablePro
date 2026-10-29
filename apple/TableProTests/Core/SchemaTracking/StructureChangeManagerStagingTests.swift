@@ -236,4 +236,30 @@ struct StructureChangeManagerStagingTests {
 
         #expect(manager.workingPrimaryKey == ["a", "b", "c"])
     }
+
+    @Test("Deleting the old key column, then marking another, stages a key that names only surviving columns")
+    func deleteThenMarkStagesSurvivingKey() {
+        let manager = loadedManager()
+        manager.deleteColumn(id: column("id", in: manager).id)
+        var email = column("email", in: manager)
+        email.isPrimaryKey = true
+        manager.updateColumn(id: email.id, with: email)
+
+        #expect(manager.workingPrimaryKey == ["email"])
+        #expect(manager.getChangesArray().contains(.modifyPrimaryKey(old: ["id"], new: ["email"])))
+        #expect(manager.canCommit)
+    }
+
+    @Test("Renaming a key column without changing the key stages no key change")
+    func renameOfKeyColumnStagesNoKeyChange() {
+        let manager = loadedManager()
+        var id = column("id", in: manager)
+        id.name = "order_id"
+        manager.updateColumn(id: id.id, with: id)
+        manager.deleteColumn(id: id.id)
+        manager.undoDelete(section: .columns, id: id.id)
+
+        #expect(!manager.getChangesArray().contains { if case .modifyPrimaryKey = $0 { true } else { false } })
+        #expect(manager.workingPrimaryKey == ["order_id"])
+    }
 }
