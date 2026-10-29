@@ -21,11 +21,12 @@ struct AccountSettingsContentTests {
         id: String = "lic_1",
         plan: String = "starter",
         cycle: String = "lifetime",
+        source: String = "order",
         status: String = "active",
         endsAt: Date? = nil,
         team: EntitlementLicense.Team? = nil
     ) -> EntitlementLicense {
-        EntitlementLicense(id: id, plan: plan, cycle: cycle, source: "order", status: status, endsAt: endsAt, team: team)
+        EntitlementLicense(id: id, plan: plan, cycle: cycle, source: source, status: status, endsAt: endsAt, team: team)
     }
 
     static func entitlement(
@@ -100,6 +101,47 @@ struct AccountSettingsContentTests {
         let verification = try #require(content.verification)
         #expect(verification.verifiedAt == Self.now.addingTimeInterval(-2 * 60 * 60))
         #expect(!verification.isExpired)
+    }
+
+    @Test("A subscription or an order shows its cycle and Billing…; a granted or migrated license shows neither")
+    func cycleAndBillingBySource() throws {
+        func plan(_ license: EntitlementLicense) throws -> AccountSettingsContent.PlanRow {
+            let content = Self.make(AccountState(
+                isSignedIn: true, entitlement: Self.entitlement([license]), refresh: .succeeded(Self.now)
+            ))
+            return try #require(content.plans.first)
+        }
+        let personalBilling = URL(string: "http://account.localhost:5284/billing")
+        let endsAt = Self.now.addingTimeInterval(90 * Self.day)
+
+        let subscription = try plan(Self.license(cycle: "yearly", source: "subscription"))
+        #expect(subscription.title == "Starter, Yearly")
+        #expect(subscription.status == .active)
+        #expect(subscription.billing == personalBilling)
+
+        let order = try plan(Self.license(cycle: "lifetime", source: "order"))
+        #expect(order.title == "Starter")
+        #expect(order.status == .lifetime)
+        #expect(order.billing == personalBilling)
+
+        let manual = try plan(Self.license(cycle: "lifetime", source: "manual"))
+        #expect(manual.title == "Starter")
+        #expect(manual.status == .active)
+        #expect(manual.billing == nil)
+
+        let manualWithEnd = try plan(Self.license(cycle: "yearly", source: "manual", endsAt: endsAt))
+        #expect(manualWithEnd.title == "Starter")
+        #expect(manualWithEnd.status == .endsOn(endsAt))
+        #expect(manualWithEnd.billing == nil)
+
+        let legacy = try plan(Self.license(plan: "team", cycle: "yearly", source: "legacy"))
+        #expect(legacy.title == "Team")
+        #expect(legacy.status == .active)
+        #expect(legacy.billing == nil)
+
+        let unknown = try plan(Self.license(cycle: "monthly", source: "voucher"))
+        #expect(unknown.title == "Starter")
+        #expect(unknown.billing == nil)
     }
 
     @Test("A signed-in account without licenses is on Free")

@@ -188,11 +188,16 @@ internal struct AccountSettingsContent: Equatable {
         configuration: AccountConfiguration
     ) -> PlanRow {
         let plan = AccountCodes.planName(license.plan)
+        // The claim's cycle is the product's. Like the portal, only a license someone pays for shows it:
+        // nothing bills one an admin granted or the migration brought over.
+        let isBilled = license.source == "subscription" || license.source == "order"
         // A lifetime license says so in its status, so its title names the plan alone.
-        let cycle = license.cycle == "lifetime" ? nil : AccountCodes.cycleName(license.cycle)
+        let cycle = !isBilled || license.cycle == "lifetime" ? nil : AccountCodes.cycleName(license.cycle)
         let title = cycle.map { String(format: String(localized: "%@, %@"), plan, $0) } ?? plan
         let billing: URL?
-        if let team = license.team {
+        if !isBilled {
+            billing = nil
+        } else if let team = license.team {
             billing = ownedTeams.contains(team.id) ? configuration.portalTeamBilling(team.id) : nil
         } else {
             billing = configuration.portalBilling
@@ -201,12 +206,12 @@ internal struct AccountSettingsContent: Equatable {
             id: license.id,
             title: title,
             owner: license.team?.name ?? String(localized: "Personal"),
-            status: status(of: license),
+            status: status(of: license, isBilled: isBilled),
             billing: billing
         )
     }
 
-    private static func status(of license: EntitlementLicense) -> PlanStatus? {
+    private static func status(of license: EntitlementLicense, isBilled: Bool) -> PlanStatus? {
         switch license.status {
         case "past_due":
             return .paymentProblem
@@ -216,7 +221,7 @@ internal struct AccountSettingsContent: Equatable {
             if let endsAt = license.endsAt {
                 return .endsOn(endsAt)
             }
-            return license.cycle == "lifetime" ? .lifetime : .active
+            return isBilled && license.cycle == "lifetime" ? .lifetime : .active
         default:
             return nil
         }
