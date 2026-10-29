@@ -436,6 +436,32 @@ struct AccountServicesTests {
         #expect(!fixture.hasLegacyLicense)
     }
 
+    @Test("Past the device limit the schedule checks again within the hour, and on activation")
+    func deviceLimitRechecks() async throws {
+        let fixture = try AccountFixture()
+        await fixture.server.set { $0.deviceLimitReached = true }
+        try await fixture.signIn()
+        let entitlementPath = "/devices/\(FakeAccountServer.deviceID)/entitlement"
+        defer { fixture.services.stop() }
+
+        fixture.services.start()
+        await fixture.clock.waitUntilSleeping()
+        #expect(await fixture.server.requests(to: entitlementPath).count == 2)
+        #expect(fixture.access.isPastDeviceLimit)
+
+        fixture.clock.advance(by: AccountServices.retryInterval)
+        await fixture.clock.waitUntilSleeping()
+        #expect(await fixture.server.requests(to: entitlementPath).count == 3)
+
+        await fixture.server.set { $0.deviceLimitReached = false }
+        fixture.services.applicationDidBecomeActive()
+        try await waitUntil { fixture.access.isAvailable(.iCloudSync) }
+        #expect(await fixture.server.requests(to: entitlementPath).count == 4)
+
+        fixture.services.applicationDidBecomeActive()
+        #expect(await fixture.server.requests(to: entitlementPath).count == 4, "Activation checks only past the limit")
+    }
+
     @Test("A refresh that answers after a key replaced the session stores nothing from the old session")
     func refreshDuringKeyExchange() async throws {
         let fixture = try AccountFixture()

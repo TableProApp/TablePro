@@ -86,7 +86,8 @@ internal final class AccountServices {
             while !Task.isCancelled {
                 guard let self else { return }
                 let succeeded = await self.checkNow()
-                let delay = succeeded ? Self.refreshInterval : Self.retryInterval
+                // Past the device limit, a slot freed in the portal or on another device unlocks this Mac within the hour.
+                let delay = succeeded && !self.access.isPastDeviceLimit ? Self.refreshInterval : Self.retryInterval
                 do {
                     try await self.clock.sleep(for: delay)
                 } catch {
@@ -99,6 +100,12 @@ internal final class AccountServices {
     func stop() {
         scheduleTask?.cancel()
         scheduleTask = nil
+    }
+
+    // Back from the portal's device page, where the user may have freed a slot.
+    func applicationDidBecomeActive() {
+        guard scheduleTask != nil, access.isPastDeviceLimit else { return }
+        Task { await checkNow() }
     }
 
     func loadStoredState() {

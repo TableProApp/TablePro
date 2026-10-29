@@ -134,6 +134,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         runPostLaunchActivationIfNeeded()
         guard !AppStorageEnvironment.shared.isIsolated else { return }
         SyncCoordinator.shared.syncIfNeeded()
+        AccountServices.shared.applicationDidBecomeActive()
     }
 
     private func runPostLaunchActivationIfNeeded() {
