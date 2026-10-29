@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AddExtension" xml:space="preserve">
+    <value>Uzantı Ekle…</value>
+  </data>
+  <data name="ApprovedTestAgain" xml:space="preserve">
+    <value>Uzantılar onaylandı. Bağlanmak için Test'i yeniden seçin.</value>
+  </data>
+  <data name="ChooseAgainRecovery" xml:space="preserve">
+    <value>Bağlantıyı düzenlerken uzantının dosyasını yeniden seçin.</value>
+  </data>
+  <data name="ControlCharacterInPath" xml:space="preserve">
+    <value>Listedeki bir uzantının yolu satır sonu veya başka bir denetim karakteri içeriyor.</value>
+  </data>
+  <data name="CouldNotLoad" xml:space="preserve">
+    <value>"{0}" uzantısı yüklenemedi.</value>
+  </data>
+  <data name="CouldNotLoadList" xml:space="preserve">
+    <value>Bu bağlantının SQLite uzantıları yüklenemedi.</value>
+  </data>
+  <data name="Duplicate" xml:space="preserve">
+    <value>"{0}" listede birden fazla kez yer alıyor.</value>
+  </data>
+  <data name="DuplicateRecovery" xml:space="preserve">
+    <value>İkinci girişi kaldırın.</value>
+  </data>
+  <data name="EntryPointLabel" xml:space="preserve">
+    <value>Giriş Noktası</value>
+  </data>
+  <data name="EntryPointNotFound" xml:space="preserve">
+    <value>Dosyada {0} adlı bir işlev yok.</value>
+  </data>
+  <data name="EntryPointNotFoundRecovery" xml:space="preserve">
+    <value>Uzantının belgelerinde belirtilen giriş noktasını girin.</value>
+  </data>
+  <data name="EntryPointPlaceholder" xml:space="preserve">
+    <value>Varsayılan giriş noktası</value>
+  </data>
+  <data name="EntryPointTooltip" xml:space="preserve">
+    <value>Çağrılacak başlatma işlevi. SQLite'ın dosya adından türettiğini kullanmak için boş bırakın.</value>
+  </data>
+  <data name="FileLabel" xml:space="preserve">
+    <value>Uzantı Dosyası</value>
+  </data>
+  <data name="FileNotFound" xml:space="preserve">
+    <value>"{0}" konumunda dosya yok.</value>
+  </data>
+  <data name="FileWithEntryPoint" xml:space="preserve">
+    <value>{0} (giriş noktası {1})</value>
+  </data>
+  <data name="Footer" xml:space="preserve">
+    <value>Veritabanı dosyası bu bilgisayarda her açıldığında bu sırayla yüklenir. Bir uzantı bilgisayarınıza tam erişimle çalışır; yalnızca güvendiğiniz dosyaları ekleyin.</value>
+  </data>
+  <data name="Header" xml:space="preserve">
+    <value>Uzantılar</value>
+  </data>
+  <data name="InitializationFailed" xml:space="preserve">
+    <value>Uzantı başlatılamadı: {0}</value>
+  </data>
+  <data name="InvalidEntryPoint" xml:space="preserve">
+    <value>"{0}" geçerli bir giriş noktası adı değil.</value>
+  </data>
+  <data name="InvalidEntryPointRecovery" xml:space="preserve">
+    <value>sqlite3_vec_init gibi bir C işlevinin adını kullanın veya boş bırakın.</value>
+  </data>
+  <data name="LoadingNotClosed" xml:space="preserve">
+    <value>SQLite yüklemeden sonra uzantı yüklemeyi yeniden kapatmadı.</value>
+  </data>
+  <data name="LoadingUnavailable" xml:space="preserve">
+    <value>SQLite bu bağlantıda uzantı yüklemeye izin vermedi.</value>
+  </data>
+  <data name="MalformedList" xml:space="preserve">
+    <value>Kayıtlı uzantı listesi TablePro'nun okuyabileceği bir biçimde değil.</value>
+  </data>
+  <data name="MissingDependencyRecovery" xml:space="preserve">
+    <value>Bu uzantının ihtiyaç duyduğu bir DLL eksik. Onunla gelen DLL'leri uzantıyla aynı klasöre koyun.</value>
+  </data>
+  <data name="MissingPath" xml:space="preserve">
+    <value>Listedeki bir uzantının dosyası yok.</value>
+  </data>
+  <data name="MoveDown" xml:space="preserve">
+    <value>Aşağı Taşı</value>
+  </data>
+  <data name="MoveUp" xml:space="preserve">
+    <value>Yukarı Taşı</value>
+  </data>
+  <data name="NoExtensions" xml:space="preserve">
+    <value>Uzantı Yok</value>
+  </data>
+  <data name="NotAFile" xml:space="preserve">
+    <value>"{0}" bir dosya değil.</value>
+  </data>
+  <data name="NotApproved" xml:space="preserve">
+    <value>Bu bağlantı, bu bilgisayarda onaylanmamış SQLite uzantılarını yüklüyor.</value>
+  </data>
+  <data name="NotApprovedRecovery" xml:space="preserve">
+    <value>Bunları incelemek için TablePro karşılama penceresinden bağlanın.</value>
+  </data>
+  <data name="PathTooLong" xml:space="preserve">
+    <value>"{0}" yolu çok uzun.</value>
+  </data>
+  <data name="PromptConfirm" xml:space="preserve">
+    <value>Uzantıları Yükle</value>
+  </data>
+  <data name="PromptIntro" xml:space="preserve">
+    <value>"{0}" bağlantısı bu bilgisayarda eklenmemiş SQLite uzantılarını yüklüyor:</value>
+  </data>
+  <data name="PromptTitle" xml:space="preserve">
+    <value>Uzantıları Yükle</value>
+  </data>
+  <data name="PromptWarning" xml:space="preserve">
+    <value>Bir uzantı TablePro içinde bilgisayarınıza tam erişimle çalışır. Bunları yalnızca bu dosyalara güveniyorsanız yükleyin.</value>
+  </data>
+  <data name="RelativePath" xml:space="preserve">
+    <value>"{0}" tam bir yol değil.</value>
+  </data>
+  <data name="RelativePathRecovery" xml:space="preserve">
+    <value>Dosyayı yeniden seçin veya C:\Tools\extension.dll gibi tam bir yol yazın.</value>
+  </data>
+  <data name="RemoveExtension" xml:space="preserve">
+    <value>Uzantıyı Kaldır</value>
+  </data>
+  <data name="Unreadable" xml:space="preserve">
+    <value>Kayıtlı liste okunamadı. Bir uzantı eklemek listeyi değiştirir.</value>
+  </data>
+  <data name="WrongArchitectureRecovery" xml:space="preserve">
+    <value>Uzantının bu bilgisayarın işlemcisi için derlenmiş sürümünü kullanın.</value>
+  </data>
+</root>

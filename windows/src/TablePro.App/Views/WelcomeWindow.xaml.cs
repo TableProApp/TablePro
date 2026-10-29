@@ -28,6 +28,7 @@ public sealed partial class WelcomeWindow : Window
         viewModel.Dialogs = _dialogs;
         viewModel.Dispatcher = DispatcherQueue;
         SortBox.SelectedIndex = (int)viewModel.SortOrder;
+        Closed += (_, _) => viewModel.Detach();
     }
 
     public WelcomeViewModel ViewModel { get; }
@@ -41,6 +42,8 @@ public sealed partial class WelcomeWindow : Window
     }
 
     private ConnectionProfile? Selected => (ConnectionList.SelectedItem as ConnectionListItem)?.Profile;
+
+    private bool SelectedIsTeam => ConnectionList.SelectedItem is ConnectionListItem { IsTeam: true };
 
     private async void OnConnectionDoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
     {
@@ -62,10 +65,10 @@ public sealed partial class WelcomeWindow : Window
             case VirtualKey.Enter:
                 await ViewModel.ConnectAsync(profile);
                 break;
-            case VirtualKey.Delete:
+            case VirtualKey.Delete when !SelectedIsTeam:
                 await ViewModel.DeleteAsync(profile);
                 break;
-            case VirtualKey.F2:
+            case VirtualKey.F2 when !SelectedIsTeam:
                 await EditAsync(profile);
                 break;
             default:
@@ -84,6 +87,15 @@ public sealed partial class WelcomeWindow : Window
 
         ConnectionList.SelectedItem = item;
         var menu = new MenuFlyout();
+        if (item.IsTeam)
+        {
+            // A team connection belongs to whoever published it: here it only opens, as on macOS.
+            menu.Items.Add(GridCommands.Item(Strings.Get("Common/Connect"), "", async () => await ViewModel.ConnectAsync(profile), "Enter"));
+            menu.ShowAt((FrameworkElement)e.OriginalSource, e.GetPosition((FrameworkElement)e.OriginalSource));
+            e.Handled = true;
+            return;
+        }
+
         menu.Items.Add(GridCommands.Item(Strings.Get("Common/Connect"), "", async () => await ViewModel.ConnectAsync(profile), "Enter"));
         menu.Items.Add(GridCommands.Item(Strings.Get("Common/Edit"), "", async () => await EditAsync(profile), "F2"));
         menu.Items.Add(GridCommands.Item(Strings.Get("Common/Duplicate"), "", async () => await ViewModel.DuplicateAsync(profile)));
@@ -96,6 +108,11 @@ public sealed partial class WelcomeWindow : Window
 
         menu.Items.Add(move);
         menu.Items.Add(GridCommands.Item(Strings.Get("Common/Export"), "", async () => await ExportAsync([profile.Id])));
+        if (WelcomeViewModel.IsTeamLibraryAvailable)
+        {
+            menu.Items.Add(GridCommands.Item(Strings.Get("Welcome/PublishToTeam"), null, async () => await ViewModel.PublishToTeamAsync(profile)));
+        }
+
         menu.Items.Add(new MenuFlyoutSeparator());
         menu.Items.Add(GridCommands.Item(Strings.Get("Common/Delete"), "", async () => await ViewModel.DeleteAsync(profile), "Delete"));
         menu.ShowAt((FrameworkElement)e.OriginalSource, e.GetPosition((FrameworkElement)e.OriginalSource));

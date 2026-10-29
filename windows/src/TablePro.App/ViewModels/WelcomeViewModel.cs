@@ -3,21 +3,24 @@ using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using TablePro.App.Services;
+using TablePro.App.Views.SqlFiles;
 using TablePro.Core.Connections;
 using TablePro.Ssh;
 using TablePro.Storage.Connections;
+using TablePro.Storage.Library.Team;
 
 namespace TablePro.App.ViewModels;
 
-/// <summary>A row of the connection picker: a group header or a saved connection.</summary>
+/// <summary>A row of the connection picker: a section or group header, a saved connection, or a team connection.</summary>
 public sealed class ConnectionListItem
 {
-    private ConnectionListItem(string title, string? subtitle, ConnectionProfile? profile, string? detail)
+    private ConnectionListItem(string title, string? subtitle, ConnectionProfile? profile, string? detail, bool isTeam = false)
     {
         Title = title;
         Subtitle = subtitle;
         Profile = profile;
         Detail = detail;
+        IsTeam = isTeam;
     }
 
     public string Title { get; }
@@ -29,6 +32,9 @@ public sealed class ConnectionListItem
     public ConnectionProfile? Profile { get; }
 
     public bool IsHeader => Profile is null;
+
+    /// <summary>A connection from the team library: opened, never edited, moved or deleted here.</summary>
+    public bool IsTeam { get; }
 
     // ListView announces an item by its ToString, so screen readers read the connection's name.
     public override string ToString() => Subtitle is null ? Title : Strings.Format("Welcome/ConnectionAnnouncement", Title, Subtitle);
@@ -42,6 +48,13 @@ public sealed class ConnectionListItem
         $"{profile.Descriptor.DisplayName} · {profile.Subtitle}",
         profile,
         profile.LastConnectedAt is { } at ? Relative(at) : null);
+
+    public static ConnectionListItem ForTeam(TeamConnection connection) => new(
+        connection.Profile.Name,
+        $"{connection.Profile.Descriptor.DisplayName} · {connection.Profile.Subtitle}",
+        connection.Profile,
+        null,
+        isTeam: true);
 
     public static string EngineBadge(DatabaseEngine engine) => engine switch
     {
@@ -72,11 +85,14 @@ public sealed class ConnectionListItem
 public sealed partial class WelcomeViewModel : ObservableObject
 {
     private CancellationTokenSource? _connect;
+    private TeamLibraryPullResponse? _teamLibrary;
+    private IReadOnlyList<TeamConnection> _teamConnections = [];
 
     public WelcomeViewModel(AppHost host)
     {
         Host = host;
         host.Connections.Changed += (_, _) => Dispatcher?.TryEnqueue(Rebuild);
+        SqlLibraryHost.TeamChanged += OnTeamChanged;
         Rebuild();
     }
 
@@ -91,6 +107,9 @@ public sealed partial class WelcomeViewModel : ObservableObject
     public string Version { get; } = Strings.Format("Welcome/Version", typeof(WelcomeViewModel).Assembly.GetName().Version?.ToString(3) ?? "0.1.0");
 
     public bool IsEmpty => Items.Count == 0;
+
+    /// <summary>Whether a Team license grants the team library now, which shows its connections and lets saved ones be published.</summary>
+    public static bool IsTeamLibraryAvailable => SqlLibraryHost.IsTeamCreated && SqlLibraryHost.Team.IsAvailable;
 
     [ObservableProperty]
     public partial string SearchText { get; set; } = string.Empty;
@@ -125,14 +144,85 @@ public sealed partial class WelcomeViewModel : ObservableObject
             }
         }
 
+        AddTeamConnections(query);
         OnPropertyChanged(nameof(IsEmpty));
     }
+
+    /// <summary>Stops following the team library, once the window that shows this list has closed.</summary>
+    public void Detach() => SqlLibraryHost.TeamChanged -= OnTeamChanged;
+
+    /// <summary>
+    /// Publishes a saved connection to the team library, after saying what the team will see. As on macOS, a publish
+    /// replaces everything this user published before, saved queries included, and never carries a password.
+    /// </summary>
+    public async Task PublishToTeamAsync(ConnectionProfile profile)
+    {
+        if (Dialogs is null || !IsTeamLibraryAvailable
+            || !await Dialogs.ConfirmAsync(Strings.Format("Welcome/PublishToTeamTitle", profile.Name), Strings.Get("Welcome/PublishToTeamMessage"), Strings.Get("Welcome/PublishButton")))
+        {
+            return;
+        }
+
+        try
+        {
+            var response = await SqlLibraryHost.Team.PublishAsync([], [], [(profile.Id, TeamLibraryConnections.Payload(profile))]);
+            await Dialogs.ShowErrorAsync(Strings.Get("Welcome/PublishedTitle"), Strings.Plural("Welcome/PublishedMessage", response.ConnectionCount));
+        }
+        catch (Exception ex) when (ex is TeamLibraryException or HttpRequestException or TaskCanceledException or IOException)
+        {
+            await Dialogs.ShowErrorAsync(Strings.Get("Welcome/PublishFailedTitle"), ex.Message);
+        }
+    }
+
+    // The team's connections follow the saved ones under a section header, filtered by the same search, as macOS lists
+    // its Team Library section. They are rebuilt from the library only when a pull replaced it.
+    private void AddTeamConnections(string query)
+    {
+        if (!IsTeamLibraryAvailable)
+        {
+            return;
+        }
+
+        var library = SqlLibraryHost.Team.Library;
+        if (!ReferenceEquals(library, _teamLibrary))
+        {
+            _teamLibrary = library;
+            _teamConnections = TeamLibraryConnections.From(library);
+        }
+
+        IEnumerable<TeamConnection> shown = _teamConnections
+            .Where(c => query.Length == 0 || c.Profile.Name.Contains(query, StringComparison.OrdinalIgnoreCase) || c.Profile.Subtitle.Contains(query, StringComparison.OrdinalIgnoreCase));
+        if (SortOrder == ConnectionSortOrder.Name)
+        {
+            shown = shown.OrderBy(c => c.Profile.Name, StringComparer.CurrentCultureIgnoreCase);
+        }
+
+        var header = false;
+        foreach (var connection in shown)
+        {
+            if (!header)
+            {
+                Items.Add(ConnectionListItem.Header(Strings.Get("Welcome/TeamLibraryHeader")));
+                header = true;
+            }
+
+            Items.Add(ConnectionListItem.ForTeam(connection));
+        }
+    }
+
+    private void OnTeamChanged(object? sender, EventArgs e) => Dispatcher?.TryEnqueue(Rebuild);
 
     public async Task ConnectAsync(ConnectionProfile profile)
     {
         if (Host.FindWorkspace(profile.Id) is { } open)
         {
             open.Activate();
+            return;
+        }
+
+        // Asked here, the one place a person connects from; every other route refuses an unapproved list.
+        if (Dialogs is not null && !await LoadableExtensionConsent.ConfirmAsync(Dialogs, Host.Connector.ExtensionApprovals, profile))
+        {
             return;
         }
 
@@ -173,6 +263,7 @@ public sealed partial class WelcomeViewModel : ObservableObject
                 SshTunnelException ssh when !string.IsNullOrWhiteSpace(ssh.StandardError) => $"{ex.Message}\n\n{ssh.StandardError}",
                 TunnelException { SignInUri: { } signIn } => $"{ex.Message}\n\n{Strings.Format("Welcome/SignInAndRetry", signIn)}",
                 TunnelException tunnel when !string.IsNullOrWhiteSpace(tunnel.Diagnostics) => $"{ex.Message}\n\n{tunnel.Diagnostics}",
+                LoadableExtensionException extension => ExtensionNames.Describe(extension),
                 _ => ex.Message,
             };
             if (Dialogs is not null)
@@ -206,6 +297,7 @@ public sealed partial class WelcomeViewModel : ObservableObject
         {
             Host.Connector.ForgetSecrets(profile);
             await Host.Connections.DeleteAsync(profile.Id);
+            await Host.Connector.ExtensionApprovals.RevokeAsync([profile.Id]);
         }
     }
 

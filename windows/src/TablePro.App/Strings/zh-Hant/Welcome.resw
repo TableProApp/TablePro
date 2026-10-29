@@ -177,4 +177,31 @@
   <data name="Version" xml:space="preserve">
     <value>版本 {0}</value>
   </data>
+  <data name="TeamLibraryHeader" xml:space="preserve">
+    <value>團隊庫</value>
+  </data>
+  <data name="PublishToTeam" xml:space="preserve">
+    <value>發佈到團隊庫…</value>
+  </data>
+  <data name="PublishToTeamTitle" xml:space="preserve">
+    <value>要將「{0}」發佈給你的團隊嗎？</value>
+  </data>
+  <data name="PublishToTeamMessage" xml:space="preserve">
+    <value>團隊中的每個人都會看到主機、連接埠、使用者、資料庫和 SSH 設定。這會取代你先前發佈的連線和已儲存的查詢。密碼不包含在內。</value>
+  </data>
+  <data name="PublishButton" xml:space="preserve">
+    <value>發佈</value>
+  </data>
+  <data name="PublishedTitle" xml:space="preserve">
+    <value>已發佈到團隊庫</value>
+  </data>
+  <data name="PublishedMessage_One" xml:space="preserve">
+    <value>你的團隊現在可以看到 {0} 個共享連線。密碼未包含在內。</value>
+  </data>
+  <data name="PublishedMessage_Other" xml:space="preserve">
+    <value>你的團隊現在可以看到 {0} 個共享連線。密碼未包含在內。</value>
+  </data>
+  <data name="PublishFailedTitle" xml:space="preserve">
+    <value>無法發佈到團隊庫</value>
+  </data>
 </root>

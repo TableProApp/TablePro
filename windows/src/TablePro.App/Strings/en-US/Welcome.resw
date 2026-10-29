@@ -213,4 +213,40 @@
     <value>Version {0}</value>
     <comment>{0} is the app version number, such as 0.1.0.</comment>
   </data>
+  <data name="TeamLibraryHeader" xml:space="preserve">
+    <value>Team Library</value>
+    <comment>Section header above the connections the team published.</comment>
+  </data>
+  <data name="PublishToTeam" xml:space="preserve">
+    <value>Publish to Team Library…</value>
+    <comment>Context menu item that publishes a saved connection to the team library.</comment>
+  </data>
+  <data name="PublishToTeamTitle" xml:space="preserve">
+    <value>Publish “{0}” to your team?</value>
+    <comment>Title of the publish confirmation. {0} is the connection name.</comment>
+  </data>
+  <data name="PublishToTeamMessage" xml:space="preserve">
+    <value>Everyone on your team will see the host, port, user, database and SSH settings. This replaces the connections and saved queries you published before. Passwords are not included.</value>
+    <comment>Body of the publish confirmation.</comment>
+  </data>
+  <data name="PublishButton" xml:space="preserve">
+    <value>Publish</value>
+    <comment>Button that confirms publishing to the team library.</comment>
+  </data>
+  <data name="PublishedTitle" xml:space="preserve">
+    <value>Published to the team library</value>
+    <comment>Title shown after publishing to the team library.</comment>
+  </data>
+  <data name="PublishedMessage_One" xml:space="preserve">
+    <value>Your team can now see {0} shared connection. Passwords were not included.</value>
+    <comment>Shown after publishing. {0} is the number of connections the team now shares.</comment>
+  </data>
+  <data name="PublishedMessage_Other" xml:space="preserve">
+    <value>Your team can now see {0} shared connections. Passwords were not included.</value>
+    <comment>Shown after publishing. {0} is the number of connections the team now shares.</comment>
+  </data>
+  <data name="PublishFailedTitle" xml:space="preserve">
+    <value>Couldn't publish to the team library</value>
+    <comment>Title of the error when publishing to the team library failed.</comment>
+  </data>
 </root>

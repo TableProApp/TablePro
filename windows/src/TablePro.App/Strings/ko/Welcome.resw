@@ -177,4 +177,31 @@
   <data name="Version" xml:space="preserve">
     <value>버전 {0}</value>
   </data>
+  <data name="TeamLibraryHeader" xml:space="preserve">
+    <value>팀 라이브러리</value>
+  </data>
+  <data name="PublishToTeam" xml:space="preserve">
+    <value>팀 라이브러리에 게시…</value>
+  </data>
+  <data name="PublishToTeamTitle" xml:space="preserve">
+    <value>“{0}”을(를) 팀에 게시하시겠습니까?</value>
+  </data>
+  <data name="PublishToTeamMessage" xml:space="preserve">
+    <value>팀의 모든 구성원이 호스트, 포트, 사용자, 데이터베이스 및 SSH 설정을 볼 수 있습니다. 이전에 게시한 연결과 저장된 쿼리를 대체합니다. 암호는 포함되지 않습니다.</value>
+  </data>
+  <data name="PublishButton" xml:space="preserve">
+    <value>게시</value>
+  </data>
+  <data name="PublishedTitle" xml:space="preserve">
+    <value>팀 라이브러리에 게시됨</value>
+  </data>
+  <data name="PublishedMessage_One" xml:space="preserve">
+    <value>이제 팀에서 공유 연결 {0}개를 볼 수 있습니다. 암호는 포함되지 않았습니다.</value>
+  </data>
+  <data name="PublishedMessage_Other" xml:space="preserve">
+    <value>이제 팀에서 공유 연결 {0}개를 볼 수 있습니다. 암호는 포함되지 않았습니다.</value>
+  </data>
+  <data name="PublishFailedTitle" xml:space="preserve">
+    <value>팀 라이브러리에 게시할 수 없습니다</value>
+  </data>
 </root>

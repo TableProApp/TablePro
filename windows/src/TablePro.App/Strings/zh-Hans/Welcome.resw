@@ -177,4 +177,31 @@
   <data name="Version" xml:space="preserve">
     <value>版本 {0}</value>
   </data>
+  <data name="TeamLibraryHeader" xml:space="preserve">
+    <value>团队库</value>
+  </data>
+  <data name="PublishToTeam" xml:space="preserve">
+    <value>发布到团队库…</value>
+  </data>
+  <data name="PublishToTeamTitle" xml:space="preserve">
+    <value>要将“{0}”发布给你的团队吗？</value>
+  </data>
+  <data name="PublishToTeamMessage" xml:space="preserve">
+    <value>团队中的每个人都将看到主机、端口、用户、数据库和 SSH 设置。这会替换你之前发布的连接和已保存的查询。密码不包含在内。</value>
+  </data>
+  <data name="PublishButton" xml:space="preserve">
+    <value>发布</value>
+  </data>
+  <data name="PublishedTitle" xml:space="preserve">
+    <value>已发布到团队库</value>
+  </data>
+  <data name="PublishedMessage_One" xml:space="preserve">
+    <value>你的团队现在可以看到 {0} 个共享连接。密码未被包含。</value>
+  </data>
+  <data name="PublishedMessage_Other" xml:space="preserve">
+    <value>你的团队现在可以看到 {0} 个共享连接。密码未被包含。</value>
+  </data>
+  <data name="PublishFailedTitle" xml:space="preserve">
+    <value>无法发布到团队库</value>
+  </data>
 </root>

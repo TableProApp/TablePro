@@ -17,11 +17,25 @@ namespace TablePro.App.Views.SqlFiles;
 internal static class SqlLibraryHost
 {
     private static readonly Lazy<SqlLibrary> Instance = new(Create);
+    private static readonly Lazy<TeamLibrarySync> TeamInstance = new(CreateTeam);
     private static readonly HttpClient TeamHttp = new() { Timeout = TimeSpan.FromSeconds(30) };
     private static Task? _started;
+    private static Task? _teamStarted;
     private static LicenseService? _license;
 
     public static SqlLibrary Shared => Instance.Value;
+
+    /// <summary>
+    /// The team library on its own, which the welcome window reads for the team's connections without paying for the
+    /// folder watchers and the git lookup of the whole library. The SQL files pane shares the same instance.
+    /// </summary>
+    public static TeamLibrarySync Team => TeamInstance.Value;
+
+    /// <summary>Whether the team library exists yet; nothing in it is shown before a Team license starts it.</summary>
+    public static bool IsTeamCreated => TeamInstance.IsValueCreated;
+
+    /// <summary>Raised, on a background thread, whenever the team library or the license that grants it changes.</summary>
+    public static event EventHandler? TeamChanged;
 
     public static Task EnsureStartedAsync() => _started ??= Shared.StartAsync();
 
@@ -32,15 +46,25 @@ internal static class SqlLibraryHost
     public static void UseLicense(LicenseService license)
     {
         _license = license;
-        if (Instance.IsValueCreated)
+        if (TeamInstance.IsValueCreated)
         {
-            Shared.Team?.Follow(license);
+            Team.Follow(license);
         }
+
+        // The welcome window lists the team's connections, so a license that grants the library starts it at launch,
+        // as macOS starts its team library coordinator, instead of waiting for the SQL files pane.
+        license.StatusChanged += (_, _) =>
+        {
+            if (TeamCredentials() is not null)
+            {
+                _ = StartTeamAsync();
+            }
+        };
 
         // A library never opened this session still has last session's cache on disk, which must not outlive the license.
         license.Removed += async (_, _) =>
         {
-            if (Instance.IsValueCreated)
+            if (TeamInstance.IsValueCreated)
             {
                 return;
             }
@@ -82,16 +106,37 @@ internal static class SqlLibraryHost
             ? new TeamLibraryCredentials(held.Key, license.MachineId)
             : null;
 
-    private static SqlLibrary Create()
+    private static async Task StartTeamAsync()
     {
-        var paths = AppPaths.Default;
-        var team = new TeamLibrarySync(new HttpTeamLibraryApiClient(TeamHttp), new TeamLibraryStore(paths), TeamCredentials);
+        var start = _teamStarted ??= Team.StartAsync();
+        try
+        {
+            await start;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or HttpRequestException or TaskCanceledException)
+        {
+            // A start that failed is tried again on the next license change; the cache on disk is untouched.
+            _teamStarted = null;
+            Services.CrashLog.Write("Starting the team library", ex);
+        }
+    }
+
+    private static TeamLibrarySync CreateTeam()
+    {
+        var team = new TeamLibrarySync(new HttpTeamLibraryApiClient(TeamHttp), new TeamLibraryStore(AppPaths.Default), TeamCredentials);
+        team.Changed += (_, _) => TeamChanged?.Invoke(null, EventArgs.Empty);
         if (_license is { } license)
         {
             team.Follow(license);
         }
 
-        return new SqlLibrary(new LinkedSqlFolderStore(paths), new LocalSnapshotStore(paths), GitClient.Create(), team, ShellRecycleBin.Instance);
+        return team;
+    }
+
+    private static SqlLibrary Create()
+    {
+        var paths = AppPaths.Default;
+        return new SqlLibrary(new LinkedSqlFolderStore(paths), new LocalSnapshotStore(paths), GitClient.Create(), Team, ShellRecycleBin.Instance);
     }
 
     private static void CrashLogNote(Exception ex) => Services.CrashLog.Write("Keeping a saved version of a file", ex);

@@ -2,6 +2,8 @@
   <PropertyGroup>
     <TargetFramework>$(TableProTargetFramework)</TargetFramework>
     <RootNamespace>TablePro.Drivers.Sqlite</RootNamespace>
+    <!-- LibraryImport's generated marshalling for LoadLibraryExW, which extension loading uses. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../TablePro.Core/TablePro.Core.csproj" />

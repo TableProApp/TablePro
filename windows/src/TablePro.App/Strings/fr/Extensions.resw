@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AddExtension" xml:space="preserve">
+    <value>Ajouter une extension…</value>
+  </data>
+  <data name="ApprovedTestAgain" xml:space="preserve">
+    <value>Les extensions sont approuvées. Sélectionnez à nouveau Tester pour vous connecter.</value>
+  </data>
+  <data name="ChooseAgainRecovery" xml:space="preserve">
+    <value>Choisissez à nouveau le fichier de l’extension en modifiant la connexion.</value>
+  </data>
+  <data name="ControlCharacterInPath" xml:space="preserve">
+    <value>Le chemin d’une extension de la liste contient un saut de ligne ou un autre caractère de contrôle.</value>
+  </data>
+  <data name="CouldNotLoad" xml:space="preserve">
+    <value>Impossible de charger l’extension « {0} ».</value>
+  </data>
+  <data name="CouldNotLoadList" xml:space="preserve">
+    <value>Impossible de charger les extensions SQLite de cette connexion.</value>
+  </data>
+  <data name="Duplicate" xml:space="preserve">
+    <value>« {0} » figure plusieurs fois dans la liste.</value>
+  </data>
+  <data name="DuplicateRecovery" xml:space="preserve">
+    <value>Supprimez la deuxième entrée.</value>
+  </data>
+  <data name="EntryPointLabel" xml:space="preserve">
+    <value>Point d’entrée</value>
+  </data>
+  <data name="EntryPointNotFound" xml:space="preserve">
+    <value>Le fichier ne contient aucune fonction nommée {0}.</value>
+  </data>
+  <data name="EntryPointNotFoundRecovery" xml:space="preserve">
+    <value>Saisissez le point d’entrée indiqué dans la documentation de l’extension.</value>
+  </data>
+  <data name="EntryPointPlaceholder" xml:space="preserve">
+    <value>Point d’entrée par défaut</value>
+  </data>
+  <data name="EntryPointTooltip" xml:space="preserve">
+    <value>Fonction d’initialisation à appeler. Laissez vide pour utiliser celle que SQLite déduit du nom du fichier.</value>
+  </data>
+  <data name="FileLabel" xml:space="preserve">
+    <value>Fichier d’extension</value>
+  </data>
+  <data name="FileNotFound" xml:space="preserve">
+    <value>Il n’existe aucun fichier à l’emplacement « {0} ».</value>
+  </data>
+  <data name="FileWithEntryPoint" xml:space="preserve">
+    <value>{0} (point d’entrée {1})</value>
+  </data>
+  <data name="Footer" xml:space="preserve">
+    <value>Chargées dans cet ordre chaque fois que le fichier de base de données s’ouvre sur ce PC. Une extension s’exécute avec un accès complet à votre PC : n’ajoutez que des fichiers de confiance.</value>
+  </data>
+  <data name="Header" xml:space="preserve">
+    <value>Extensions</value>
+  </data>
+  <data name="InitializationFailed" xml:space="preserve">
+    <value>Échec du démarrage de l’extension : {0}</value>
+  </data>
+  <data name="InvalidEntryPoint" xml:space="preserve">
+    <value>« {0} » n’est pas un nom de point d’entrée valide.</value>
+  </data>
+  <data name="InvalidEntryPointRecovery" xml:space="preserve">
+    <value>Utilisez le nom d’une fonction C, par exemple sqlite3_vec_init, ou laissez ce champ vide.</value>
+  </data>
+  <data name="LoadingNotClosed" xml:space="preserve">
+    <value>SQLite n’a pas désactivé à nouveau le chargement d’extensions après le chargement.</value>
+  </data>
+  <data name="LoadingUnavailable" xml:space="preserve">
+    <value>SQLite n’a pas autorisé le chargement d’extensions sur cette connexion.</value>
+  </data>
+  <data name="MalformedList" xml:space="preserve">
+    <value>La liste d’extensions enregistrée n’est pas dans un format que TablePro peut lire.</value>
+  </data>
+  <data name="MissingDependencyRecovery" xml:space="preserve">
+    <value>Une DLL nécessaire à cette extension est introuvable. Placez les DLL fournies avec elle dans le même dossier que l’extension.</value>
+  </data>
+  <data name="MissingPath" xml:space="preserve">
+    <value>Une extension de la liste n’a pas de fichier.</value>
+  </data>
+  <data name="MoveDown" xml:space="preserve">
+    <value>Déplacer vers le bas</value>
+  </data>
+  <data name="MoveUp" xml:space="preserve">
+    <value>Déplacer vers le haut</value>
+  </data>
+  <data name="NoExtensions" xml:space="preserve">
+    <value>Aucune extension</value>
+  </data>
+  <data name="NotAFile" xml:space="preserve">
+    <value>« {0} » n’est pas un fichier.</value>
+  </data>
+  <data name="NotApproved" xml:space="preserve">
+    <value>Cette connexion charge des extensions SQLite qui n’ont pas été approuvées sur ce PC.</value>
+  </data>
+  <data name="NotApprovedRecovery" xml:space="preserve">
+    <value>Connectez-vous depuis la fenêtre d’accueil de TablePro pour les examiner.</value>
+  </data>
+  <data name="PathTooLong" xml:space="preserve">
+    <value>Le chemin « {0} » est trop long.</value>
+  </data>
+  <data name="PromptConfirm" xml:space="preserve">
+    <value>Charger les extensions</value>
+  </data>
+  <data name="PromptIntro" xml:space="preserve">
+    <value>La connexion « {0} » charge des extensions SQLite qui n’ont pas été ajoutées sur ce PC :</value>
+  </data>
+  <data name="PromptTitle" xml:space="preserve">
+    <value>Charger les extensions</value>
+  </data>
+  <data name="PromptWarning" xml:space="preserve">
+    <value>Une extension s’exécute au sein de TablePro avec un accès complet à votre PC. Ne les chargez que si vous faites confiance à ces fichiers.</value>
+  </data>
+  <data name="RelativePath" xml:space="preserve">
+    <value>« {0} » n’est pas un chemin complet.</value>
+  </data>
+  <data name="RelativePathRecovery" xml:space="preserve">
+    <value>Choisissez à nouveau le fichier ou saisissez un chemin complet, par exemple C:\Tools\extension.dll.</value>
+  </data>
+  <data name="RemoveExtension" xml:space="preserve">
+    <value>Supprimer l’extension</value>
+  </data>
+  <data name="Unreadable" xml:space="preserve">
+    <value>Impossible de lire la liste enregistrée. L’ajout d’une extension la remplace.</value>
+  </data>
+  <data name="WrongArchitectureRecovery" xml:space="preserve">
+    <value>Utilisez la version de l’extension compilée pour le processeur de ce PC.</value>
+  </data>
+</root>

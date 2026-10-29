@@ -2,6 +2,7 @@ using System.Data.Common;
 using System.Globalization;
 using System.Text;
 using Microsoft.Data.Sqlite;
+using TablePro.Core.Connections;
 using TablePro.Core.Data;
 using TablePro.Core.Drivers;
 using TablePro.Core.Schema;
@@ -13,12 +14,17 @@ public sealed partial class SqliteSession : AdoNetSession, ISchemaDdlProvider
 {
     private readonly string _connectionString;
     private readonly string[] _startupCommands;
+    private readonly IReadOnlyList<LoadableExtension> _extensions;
 
     public SqliteSession(ConnectionRequest request)
         : base(request, SqliteDialect.Instance)
     {
         _connectionString = SqliteConnectionStringFactory.Build(request);
         _startupCommands = StartupCommands.Split(request.Profile.StartupCommands, Dialect);
+
+        // Refused here, before any file is opened, so a bad list fails the connect with nothing loaded.
+        _extensions = LoadableExtensionList.Stored(request.Profile);
+        LoadableExtensionPreflight.Validate(_extensions);
     }
 
     public override string? DefaultSchema => "main";
@@ -29,6 +35,8 @@ public sealed partial class SqliteSession : AdoNetSession, ISchemaDdlProvider
 
     protected override async Task InitializeConnectionAsync(DbConnection connection, CancellationToken cancellationToken)
     {
+        // Before the startup commands, which may call the extensions' functions.
+        SqliteExtensionLoader.Load((SqliteConnection)connection, _extensions);
         foreach (var sql in _startupCommands)
         {
             await using var command = connection.CreateCommand();

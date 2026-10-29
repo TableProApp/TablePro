@@ -177,4 +177,31 @@
   <data name="Version" xml:space="preserve">
     <value>Phiên bản {0}</value>
   </data>
+  <data name="TeamLibraryHeader" xml:space="preserve">
+    <value>Thư viện nhóm</value>
+  </data>
+  <data name="PublishToTeam" xml:space="preserve">
+    <value>Xuất bản lên thư viện nhóm…</value>
+  </data>
+  <data name="PublishToTeamTitle" xml:space="preserve">
+    <value>Xuất bản “{0}” cho nhóm của bạn?</value>
+  </data>
+  <data name="PublishToTeamMessage" xml:space="preserve">
+    <value>Mọi người trong nhóm sẽ thấy máy chủ, cổng, người dùng, cơ sở dữ liệu và cài đặt SSH. Thao tác này thay thế các kết nối và truy vấn đã lưu mà bạn đã xuất bản trước đó. Mật khẩu không được đưa vào.</value>
+  </data>
+  <data name="PublishButton" xml:space="preserve">
+    <value>Xuất bản</value>
+  </data>
+  <data name="PublishedTitle" xml:space="preserve">
+    <value>Đã xuất bản lên thư viện nhóm</value>
+  </data>
+  <data name="PublishedMessage_One" xml:space="preserve">
+    <value>Nhóm của bạn giờ có thể thấy {0} kết nối được chia sẻ. Mật khẩu không được đưa vào.</value>
+  </data>
+  <data name="PublishedMessage_Other" xml:space="preserve">
+    <value>Nhóm của bạn giờ có thể thấy {0} kết nối được chia sẻ. Mật khẩu không được đưa vào.</value>
+  </data>
+  <data name="PublishFailedTitle" xml:space="preserve">
+    <value>Không thể xuất bản lên thư viện nhóm</value>
+  </data>
 </root>

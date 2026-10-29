@@ -1,4 +1,5 @@
 using Microsoft.Data.Sqlite;
+using TablePro.Core.Connections;
 using TablePro.Core.Drivers;
 
 namespace TablePro.Drivers.Sqlite;
@@ -31,7 +32,11 @@ internal static class SqliteConnectionStringFactory
 
         foreach (var (key, value) in profile.AdditionalOptions)
         {
-            builder[key] = value;
+            // The extension list is the session's to load, and the provider refuses a keyword it does not know.
+            if (!string.Equals(key, LoadableExtensionList.OptionKey, StringComparison.OrdinalIgnoreCase))
+            {
+                builder[key] = value;
+            }
         }
 
         return builder.ConnectionString;

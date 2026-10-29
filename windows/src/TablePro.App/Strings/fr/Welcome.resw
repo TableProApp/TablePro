@@ -177,4 +177,31 @@
   <data name="Version" xml:space="preserve">
     <value>Version {0}</value>
   </data>
+  <data name="TeamLibraryHeader" xml:space="preserve">
+    <value>Bibliothèque d’équipe</value>
+  </data>
+  <data name="PublishToTeam" xml:space="preserve">
+    <value>Publier dans la bibliothèque d’équipe…</value>
+  </data>
+  <data name="PublishToTeamTitle" xml:space="preserve">
+    <value>Publier « {0} » pour votre équipe ?</value>
+  </data>
+  <data name="PublishToTeamMessage" xml:space="preserve">
+    <value>Tous les membres de votre équipe verront l’hôte, le port, l’utilisateur, la base de données et les réglages SSH. Cela remplace les connexions et les requêtes enregistrées que vous avez publiées auparavant. Les mots de passe ne sont pas inclus.</value>
+  </data>
+  <data name="PublishButton" xml:space="preserve">
+    <value>Publier</value>
+  </data>
+  <data name="PublishedTitle" xml:space="preserve">
+    <value>Publié dans la bibliothèque de l’équipe</value>
+  </data>
+  <data name="PublishedMessage_One" xml:space="preserve">
+    <value>Votre équipe peut désormais voir {0} connexion partagée. Les mots de passe n’ont pas été inclus.</value>
+  </data>
+  <data name="PublishedMessage_Other" xml:space="preserve">
+    <value>Votre équipe peut désormais voir {0} connexions partagées. Les mots de passe n’ont pas été inclus.</value>
+  </data>
+  <data name="PublishFailedTitle" xml:space="preserve">
+    <value>Impossible de publier dans la bibliothèque de l’équipe</value>
+  </data>
 </root>
