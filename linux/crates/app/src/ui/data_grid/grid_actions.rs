@@ -176,6 +176,7 @@ impl DataGrid {
         self.edit().refresh_actions(self, target.as_ref());
         copy::refresh_actions(self, target.as_ref());
         references::refresh_actions(self, target.as_ref());
+        self.refresh_summary();
         find_bar::refresh_actions(self);
     }
 }

@@ -69,7 +69,10 @@ pub(crate) fn result_set_page(
     let page = gtk::Box::builder().orientation(gtk::Orientation::Vertical).build();
     page.append(banner.widget());
     page.append(&grid);
-    page.append(&row_count_footer(view.row_count() as u64));
+    let footer = gtk::Box::builder().spacing(6).build();
+    footer.append(&row_count_footer(view.row_count() as u64));
+    footer.append(grid.selection_summary().widget());
+    page.append(&footer);
     (page.upcast(), grid)
 }
 

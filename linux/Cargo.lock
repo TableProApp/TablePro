@@ -5551,6 +5551,7 @@ dependencies = [
  "icu_locale_core",
  "libadwaita",
  "log",
+ "num-bigint",
  "proptest",
  "pulldown-cmark",
  "relm4",

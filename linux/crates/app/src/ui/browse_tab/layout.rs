@@ -152,6 +152,8 @@ pub(super) fn grid(tab: &BrowseTab, init: GridInit) -> DataGrid {
     grid.set_hexpand(true);
     let imp = tab.imp();
     imp.grid_holder.append(&grid);
+    // After the selected-row count, which it sums.
+    imp.action_bar.pack_start(grid.selection_summary().widget());
     let _ = imp.grid.set(grid.clone());
     connect_grid(tab, &grid);
     grid

@@ -91,6 +91,7 @@ crates/app/src/services/grid/grid_row_id.rs
 crates/app/src/services/grid/mod.rs
 crates/app/src/services/grid/row_key_builder.rs
 crates/app/src/services/grid/row_snapshot.rs
+crates/app/src/services/grid/selection_summary.rs
 crates/app/src/services/grid/test_columns.rs
 crates/app/src/services/grid/value_order.rs
 crates/app/src/services/history_availability.rs
@@ -268,6 +269,7 @@ crates/app/src/ui/data_grid/row_detail/value_editor.rs
 crates/app/src/ui/data_grid/row_json_dialog.rs
 crates/app/src/ui/data_grid/row_number_column.rs
 crates/app/src/ui/data_grid/selection.rs
+crates/app/src/ui/data_grid/selection_summary.rs
 crates/app/src/ui/data_grid/server_sorter.rs
 crates/app/src/ui/data_grid/table_keys.rs
 crates/app/src/ui/data_grid/test_grid.rs

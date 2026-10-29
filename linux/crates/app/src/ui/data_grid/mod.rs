@@ -24,6 +24,7 @@ mod row_detail;
 mod row_json_dialog;
 mod row_number_column;
 mod selection;
+mod selection_summary;
 mod server_sorter;
 mod table_keys;
 #[cfg(test)]

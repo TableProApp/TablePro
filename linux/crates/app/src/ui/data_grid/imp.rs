@@ -64,6 +64,8 @@ pub struct DataGrid {
     pub columns: RefCell<ColumnSet>,
     pub actions: gio::SimpleActionGroup,
     pub menus: OnceCell<GridMenus>,
+    /// Made when a host first places it in a bar.
+    pub summary: OnceCell<super::selection_summary::SummaryReadout>,
     pub edit: EditController,
     pub find: FindState,
     /// What a menu was opened on, until it closes.
