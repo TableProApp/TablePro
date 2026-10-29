@@ -873,8 +873,19 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
             }
         }
         tableOptions = TableOptionsDraft(original: writtenOptions, isAutoIncrementConfirmed: isAutoIncrementConfirmed)
+        adoptWrittenDefinitions()
         discardChanges()
         return true
+    }
+
+    // The written definitions stand in until the re-read lands, so a renamed or new definition keeps its id, its
+    // selection and the name the re-read is matched by.
+    private func adoptWrittenDefinitions() {
+        currentColumns = workingColumns.filter { !isPendingDeletion(.column($0.id)) }
+        currentIndexes = workingIndexes.filter { !isPendingDeletion(.index($0.id)) }
+        currentForeignKeys = workingForeignKeys.filter { !isPendingDeletion(.foreignKey($0.id)) }
+        currentCheckConstraints = workingCheckConstraints.filter { !isPendingDeletion(.checkConstraint($0.id)) }
+        currentPrimaryKey = workingPrimaryKey
     }
 
     // MARK: - Undo/Redo Operations

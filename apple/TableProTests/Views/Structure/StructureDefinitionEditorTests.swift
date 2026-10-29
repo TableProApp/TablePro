@@ -176,6 +176,38 @@ struct StructureDefinitionEditorTests {
         #expect(editor.inspectorTarget == .entity(.columns, status))
     }
 
+    @Test("A saved rename and a saved new column keep their ids and the selection through the re-read")
+    func saveKeepsRenamedAndNewDefinitions() async throws {
+        let editor = makeEditor()
+        let status = id(of: "status", in: editor)
+        editor.commitInspectorField(section: .columns, id: status, field: 0, value: "phase")
+        editor.manager.addNewColumn()
+        let added = try #require(editor.manager.workingColumns.last).id
+        editor.commitInspectorField(section: .columns, id: added, field: 0, value: "note")
+        editor.adapter(for: .columns).select(entity: added)
+        let hold = try #require(editor.manager.holdForSave())
+
+        #expect(editor.manager.releaseHold(hold, written: true))
+        try await waitUntil { editor.adapter(for: .columns).model.configuration.isEditable }
+        #expect(editor.inspectorTarget == .entity(.columns, added))
+
+        editor.manager.loadSchema(
+            tableName: "orders",
+            columns: ["id", "customer_id", "phase", "note"].map {
+                ColumnInfo(name: $0, dataType: "INT", isNullable: true, isPrimaryKey: $0 == "id",
+                           defaultValue: nil, extra: nil, charset: nil, collation: nil, comment: nil)
+            },
+            indexes: [IndexInfo(name: "orders_pkey", columns: ["id"], isUnique: true, isPrimary: true, type: "BTREE")],
+            foreignKeys: [],
+            primaryKey: ["id"]
+        )
+        try await waitUntil { editor.adapter(for: .columns).rowCount == 4 }
+
+        #expect(id(of: "phase", in: editor) == status)
+        #expect(id(of: "note", in: editor) == added)
+        #expect(editor.inspectorTarget == .entity(.columns, added))
+    }
+
     @Test("A save's hold closes the grids and its end opens them again")
     func saveHoldTogglesEditing() async throws {
         let editor = makeEditor()
