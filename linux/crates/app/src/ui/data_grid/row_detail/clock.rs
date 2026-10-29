@@ -37,52 +37,50 @@ impl ClockField {
     }
 }
 
-// By the text's own form: SQLite keeps any date or time text in a DATE, TIME or DATETIME column.
+// By the text's own form, as chrono reads it for the commit: SQLite keeps any date or time text in a
+// DATE, TIME or DATETIME column, and chrono takes whitespace before a number and one digit for two.
 fn clock_span(text: &str) -> Option<Range<usize>> {
-    let mut start = text.len() - text.trim_start().len();
-    if let Some(day) = day_len(text.as_bytes().get(start..)?) {
-        let rest = text.get(start + day..)?;
-        start = text.len() - rest.strip_prefix('T').unwrap_or(rest).trim_start().len();
-    }
-    Some(start..start + clock_len(text.as_bytes().get(start..)?)?)
+    let bytes = text.as_bytes();
+    let after_day = day_len(bytes).map_or(0, |day| day + usize::from(bytes.get(day) == Some(&b'T')));
+    let start = after_day + spaces(bytes.get(after_day..)?);
+    let minute = number(bytes, literal(bytes, number(bytes, start, 2)?, b':')?, 2)?;
+    let end = literal(bytes, minute, b':').and_then(|second| number(bytes, second, 2));
+    Some(start..end.unwrap_or(minute))
 }
 
-// Each part as chrono reads it: a year of any length and sign, one or two digits for the rest.
+// A year may run past 9999, as PostgreSQL writes one, and carry a sign.
 fn day_len(bytes: &[u8]) -> Option<usize> {
-    let mut at = usize::from(matches!(bytes.first(), Some(b'-' | b'+')));
-    for (most, dash) in [(usize::MAX, true), (2, true), (2, false)] {
-        let run = digits(bytes.get(at..)?, most);
-        at += run + usize::from(dash);
-        if run == 0 || (dash && bytes.get(at - 1) != Some(&b'-')) {
-            return None;
-        }
-    }
-    Some(at)
+    let lead = spaces(bytes);
+    let year = lead + usize::from(matches!(bytes.get(lead), Some(b'-' | b'+')));
+    let month = number(bytes, literal(bytes, number(bytes, year, usize::MAX)?, b'-')?, 2)?;
+    number(bytes, literal(bytes, month, b'-')?, 2)
 }
 
-fn clock_len(bytes: &[u8]) -> Option<usize> {
-    let part = |at: usize| bytes.get(at..).map_or(0, |rest| digits(rest, 2));
-    let colon = |at: usize| bytes.get(at) == Some(&b':');
-    let hour = part(0);
-    let minute = part(hour + 1);
-    if hour == 0 || !colon(hour) || minute == 0 {
-        return None;
-    }
-    let end = hour + 1 + minute;
-    let second = part(end + 1);
-    Some(if colon(end) && second > 0 {
-        end + 1 + second
-    } else {
-        end
-    })
+// The end of the number at `at`, past any whitespace before it.
+fn number(bytes: &[u8], at: usize, most: usize) -> Option<usize> {
+    let start = at + spaces(bytes.get(at..)?);
+    let run = bytes
+        .get(start..)?
+        .iter()
+        .take(most)
+        .take_while(|byte| byte.is_ascii_digit())
+        .count();
+    (run > 0).then_some(start + run)
 }
 
-fn digits(bytes: &[u8], most: usize) -> usize {
-    bytes.iter().take(most).take_while(|byte| byte.is_ascii_digit()).count()
+fn literal(bytes: &[u8], at: usize, byte: u8) -> Option<usize> {
+    (bytes.get(at) == Some(&byte)).then_some(at + 1)
+}
+
+fn spaces(bytes: &[u8]) -> usize {
+    bytes.iter().take_while(|byte| byte.is_ascii_whitespace()).count()
 }
 
 pub fn time_of(text: &str) -> Option<NaiveTime> {
-    let mut parts = text.get(clock_span(text)?)?.split(':').map(str::parse::<u32>);
+    let mut parts = text
+        .get(clock_span(text)?)?
+        .split(':')
+        .map(|part| part.trim().parse::<u32>());
     let (hour, minute) = (parts.next()?.ok()?, parts.next()?.ok()?);
     let second = parts.next().transpose().ok()?.unwrap_or(0);
     NaiveTime::from_hms_opt(hour, minute, second)
@@ -96,9 +94,10 @@ pub fn with_time<Tz: TimeZone>(text: &str, time: NaiveTime, field: ClockField, t
         text.replace_range(span, &clock);
         return text;
     }
-    let lead = text.len() - text.trim_start().len();
-    let day_end = text.as_bytes().get(lead..).and_then(day_len).map(|len| lead + len);
-    let day = day_end.and_then(|end| day_of(text.get(lead..end)?)).unwrap_or(today);
+    let day_end = day_len(text.as_bytes());
+    let day = day_end
+        .and_then(|end| day_of(text.get(..end)?.trim_start()))
+        .unwrap_or(today);
     if field.with_offset {
         clock.push_str(&offset_at(zone, day.and_time(time)).to_string());
     }
