@@ -30,9 +30,10 @@
                     x:Name="PrincipalList"
                     x:Uid="/Users/PrincipalList"
                     Grid.Row="1"
-                    SelectionMode="Single"
+                    SelectionMode="Extended"
                     ItemsSource="{x:Bind ViewModel.Rows}"
-                    SelectedItem="{x:Bind ViewModel.SelectedRow, Mode=TwoWay}"
+                    SelectionChanged="OnPrincipalSelectionChanged"
+                    KeyDown="OnPrincipalKeyDown"
                     RightTapped="OnPrincipalRightTapped">
                     <ListView.ItemTemplate>
                         <DataTemplate x:DataType="vm:PrincipalRowItem">
@@ -83,7 +84,7 @@
                     <Button x:Uid="/Users/NewPrincipalButton" Style="{StaticResource ToolbarButtonStyle}" Click="OnCreateClicked">
                         <FontIcon FontSize="14" Glyph="&#xE710;" />
                     </Button>
-                    <Button x:Uid="/Users/DropButton" Style="{StaticResource ToolbarButtonStyle}" Click="OnDropClicked" IsEnabled="{x:Bind ViewModel.HasSelection, Mode=OneWay}">
+                    <Button x:Uid="/Users/DropButton" Style="{StaticResource ToolbarButtonStyle}" Click="OnDropClicked" IsEnabled="{x:Bind ViewModel.HasAnySelection, Mode=OneWay}">
                         <FontIcon FontSize="14" Glyph="&#xE738;" />
                     </Button>
                     <Button x:Uid="/Users/RefreshButton" Style="{StaticResource ToolbarButtonStyle}" Command="{x:Bind ViewModel.RefreshCommand}">
@@ -138,6 +139,7 @@
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <TextBox
                                 x:Name="ScopeSearch"
@@ -147,6 +149,16 @@
                                 <ComboBoxItem x:Uid="/Users/ScopeModeAll" />
                                 <ComboBoxItem x:Uid="/Users/ScopeModeGranted" />
                             </ComboBox>
+                            <ToggleButton
+                                x:Name="ScopeMultiSelect"
+                                x:Uid="/Users/ScopeMultiSelectButton"
+                                Grid.Column="2"
+                                Padding="8,5"
+                                VerticalAlignment="Stretch"
+                                Checked="OnScopeMultiSelectToggled"
+                                Unchecked="OnScopeMultiSelectToggled">
+                                <FontIcon FontSize="14" Glyph="&#xE762;" />
+                            </ToggleButton>
                         </Grid>
                         <TreeView
                             x:Name="ScopeTree"
@@ -192,13 +204,22 @@
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
                             </Grid.RowDefinitions>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <TextBlock x:Name="ScopeTitle" Style="{StaticResource BodyStrongTextBlockStyle}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
-                            <Button x:Uid="/Users/BulkActionsButton" Grid.Column="1" Style="{StaticResource ToolbarButtonStyle}">
+                            <TextBlock
+                                x:Name="ReadOnlyNote"
+                                Grid.Row="2"
+                                Grid.ColumnSpan="2"
+                                Style="{StaticResource CaptionTextBlockStyle}"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                TextWrapping="Wrap"
+                                Visibility="Collapsed" />
+                            <Button x:Name="BulkActions" x:Uid="/Users/BulkActionsButton" Grid.Column="1" Style="{StaticResource ToolbarButtonStyle}">
                                 <FontIcon FontSize="14" Glyph="&#xE712;" />
                                 <Button.Flyout>
                                     <MenuFlyout Placement="BottomEdgeAlignedRight">

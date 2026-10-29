@@ -88,6 +88,27 @@ public sealed record PrivilegeScope
         return false;
     }
 
+    /// <summary>
+    /// Whether a selection spans more than one level. Each level grants different privileges, so such a selection has
+    /// no checklist to show.
+    /// </summary>
+    public static bool IsMixedLevel(IEnumerable<PrivilegeScope> scopes)
+    {
+        ArgumentNullException.ThrowIfNull(scopes);
+        PrivilegeLevel? level = null;
+        foreach (var scope in scopes)
+        {
+            if (level is { } first && first != scope.Level)
+            {
+                return true;
+            }
+
+            level = scope.Level;
+        }
+
+        return false;
+    }
+
     public override string ToString() => DisplayPath;
 
     private IEnumerable<string> Parts()

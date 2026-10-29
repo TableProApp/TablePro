@@ -587,4 +587,56 @@
     <value>Verify</value>
     <comment>Header of the box where the new password is typed again.</comment>
   </data>
+  <data name="DropOneAction" xml:space="preserve">
+    <value>Drop {0}</value>
+    <comment>Name of an undoable action, shown after "Undo". {0} is the user or role staged to be dropped.</comment>
+  </data>
+  <data name="DropManyAction_One" xml:space="preserve">
+    <value>Drop {0} user or role</value>
+    <comment>Name of an undoable action, shown after "Undo". {0} is how many users and roles are staged to be dropped.</comment>
+  </data>
+  <data name="DropManyAction_Other" xml:space="preserve">
+    <value>Drop {0} users and roles</value>
+    <comment>Name of an undoable action, shown after "Undo". {0} is how many users and roles are staged to be dropped.</comment>
+  </data>
+  <data name="ManyOwnObjectsTitle_One" xml:space="preserve">
+    <value>{0} role owns database objects</value>
+    <comment>Dialog title when several roles being dropped own objects. {0} is the number of roles.</comment>
+  </data>
+  <data name="ManyOwnObjectsTitle_Other" xml:space="preserve">
+    <value>{0} roles own database objects</value>
+    <comment>Dialog title when several roles being dropped own objects. {0} is the number of roles.</comment>
+  </data>
+  <data name="ScopesSelected_One" xml:space="preserve">
+    <value>{0} object selected</value>
+    <comment>Header of the privilege checklist when several objects are selected in the tree. {0} is their number.</comment>
+  </data>
+  <data name="ScopesSelected_Other" xml:space="preserve">
+    <value>{0} objects selected</value>
+    <comment>Header of the privilege checklist when several objects are selected in the tree. {0} is their number.</comment>
+  </data>
+  <data name="ObjectCount_One" xml:space="preserve">
+    <value>{0} object</value>
+    <comment>Used as {1} in "Grant {0} privileges on {1}" when a grant applies to several objects.</comment>
+  </data>
+  <data name="ObjectCount_Other" xml:space="preserve">
+    <value>{0} objects</value>
+    <comment>Used as {1} in "Grant {0} privileges on {1}" when a grant applies to several objects.</comment>
+  </data>
+  <data name="ChecklistMixedSelection" xml:space="preserve">
+    <value>Select objects of the same kind to edit their privileges.</value>
+    <comment>Shown instead of the checklist when the selected objects are of different kinds, such as a schema and a table.</comment>
+  </data>
+  <data name="ScopeMultiSelectButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Select several objects</value>
+    <comment>Toggle button that lets the object tree select several objects, to grant or revoke privileges on all of them at once.</comment>
+  </data>
+  <data name="ScopeMultiSelectButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Select several objects</value>
+    <comment>Toggle button that lets the object tree select several objects, to grant or revoke privileges on all of them at once.</comment>
+  </data>
+  <data name="ImmutableNote" xml:space="preserve">
+    <value>API keys cannot be changed after they are created. To change what a key may do, create a new key and drop the old one.</value>
+    <comment>Note on a Typesense connection, where each API key is shown as a user and its permissions are read-only.</comment>
+  </data>
 </root>

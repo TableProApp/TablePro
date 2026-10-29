@@ -52,6 +52,11 @@ public interface IUserAdministration
 /// <param name="RoleLogin">A role may be allowed to log in, so Can log in is editable on roles too.</param>
 /// <param name="Rename">A principal can be renamed in place, keeping its grants.</param>
 /// <param name="Transaction">How to run an apply atomically, or null where the statements commit on their own.</param>
+/// <param name="Passwords">Users sign in with a password, so creating one asks for it and it can be changed later.</param>
+/// <param name="Immutable">
+/// A principal cannot change once it exists, as a Typesense API key: only create and drop apply, so privileges and
+/// attributes are shown read-only.
+/// </param>
 public sealed record UserAdministrationFeatures(
     bool HostScoping = false,
     bool RoleMembership = false,
@@ -61,7 +66,9 @@ public sealed record UserAdministrationFeatures(
     bool ConnectionLimit = true,
     bool RoleLogin = true,
     bool Rename = false,
-    PrincipalTransaction? Transaction = null);
+    PrincipalTransaction? Transaction = null,
+    bool Passwords = true,
+    bool Immutable = false);
 
 /// <summary>The statements that wrap an apply, so a failure part way leaves the server as it was.</summary>
 public sealed record PrincipalTransaction(string Begin, string Commit, string Rollback);

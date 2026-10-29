@@ -27,7 +27,7 @@ public sealed class TypesenseDriver : IDatabaseDriver
 }
 
 /// <summary>A connected Typesense node: collections are collections, aliases are views, API keys stand in for users.</summary>
-internal sealed class TypesenseSession : IDatabaseSession, IUserListProvider
+internal sealed partial class TypesenseSession : IDatabaseSession, IUserListProvider
 {
     public const string ApiKeyHeader = "X-TYPESENSE-API-KEY";
 

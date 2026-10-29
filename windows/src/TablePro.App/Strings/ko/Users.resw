@@ -470,4 +470,43 @@
   <data name="VerifyPassword" xml:space="preserve">
     <value>확인</value>
   </data>
+  <data name="DropOneAction" xml:space="preserve">
+    <value>{0} 삭제</value>
+  </data>
+  <data name="DropManyAction_One" xml:space="preserve">
+    <value>사용자 또는 역할 {0}개 삭제</value>
+  </data>
+  <data name="DropManyAction_Other" xml:space="preserve">
+    <value>사용자 또는 역할 {0}개 삭제</value>
+  </data>
+  <data name="ManyOwnObjectsTitle_One" xml:space="preserve">
+    <value>{0}개 역할이 데이터베이스 객체를 소유함</value>
+  </data>
+  <data name="ManyOwnObjectsTitle_Other" xml:space="preserve">
+    <value>{0}개 역할이 데이터베이스 객체를 소유함</value>
+  </data>
+  <data name="ScopesSelected_One" xml:space="preserve">
+    <value>{0}개 객체 선택됨</value>
+  </data>
+  <data name="ScopesSelected_Other" xml:space="preserve">
+    <value>{0}개 객체 선택됨</value>
+  </data>
+  <data name="ObjectCount_One" xml:space="preserve">
+    <value>{0}개 객체</value>
+  </data>
+  <data name="ObjectCount_Other" xml:space="preserve">
+    <value>{0}개 객체</value>
+  </data>
+  <data name="ChecklistMixedSelection" xml:space="preserve">
+    <value>권한을 편집할 같은 종류의 객체를 선택하십시오.</value>
+  </data>
+  <data name="ScopeMultiSelectButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>여러 객체 선택</value>
+  </data>
+  <data name="ScopeMultiSelectButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>여러 객체 선택</value>
+  </data>
+  <data name="ImmutableNote" xml:space="preserve">
+    <value>API 키는 생성 후 변경할 수 없습니다. 키가 할 수 있는 작업을 바꾸려면 새 키를 만들고 이전 키를 삭제하십시오.</value>
+  </data>
 </root>

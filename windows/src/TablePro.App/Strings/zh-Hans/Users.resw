@@ -470,4 +470,43 @@
   <data name="VerifyPassword" xml:space="preserve">
     <value>确认</value>
   </data>
+  <data name="DropOneAction" xml:space="preserve">
+    <value>删除 {0}</value>
+  </data>
+  <data name="DropManyAction_One" xml:space="preserve">
+    <value>删除 {0} 个用户或角色</value>
+  </data>
+  <data name="DropManyAction_Other" xml:space="preserve">
+    <value>删除 {0} 个用户或角色</value>
+  </data>
+  <data name="ManyOwnObjectsTitle_One" xml:space="preserve">
+    <value>{0} 个角色拥有数据库对象</value>
+  </data>
+  <data name="ManyOwnObjectsTitle_Other" xml:space="preserve">
+    <value>{0} 个角色拥有数据库对象</value>
+  </data>
+  <data name="ScopesSelected_One" xml:space="preserve">
+    <value>已选择 {0} 个对象</value>
+  </data>
+  <data name="ScopesSelected_Other" xml:space="preserve">
+    <value>已选择 {0} 个对象</value>
+  </data>
+  <data name="ObjectCount_One" xml:space="preserve">
+    <value>{0} 个对象</value>
+  </data>
+  <data name="ObjectCount_Other" xml:space="preserve">
+    <value>{0} 个对象</value>
+  </data>
+  <data name="ChecklistMixedSelection" xml:space="preserve">
+    <value>选择同一类型的对象才能编辑它们的权限。</value>
+  </data>
+  <data name="ScopeMultiSelectButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>选择多个对象</value>
+  </data>
+  <data name="ScopeMultiSelectButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>选择多个对象</value>
+  </data>
+  <data name="ImmutableNote" xml:space="preserve">
+    <value>API 密钥创建后无法更改。要更改密钥可执行的操作，请创建新密钥并删除旧密钥。</value>
+  </data>
 </root>

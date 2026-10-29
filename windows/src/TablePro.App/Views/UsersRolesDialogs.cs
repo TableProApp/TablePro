@@ -41,11 +41,14 @@ internal static class UsersRolesDialogs
 
         var dialog = dialogs.Create(Strings.Get("Users/NewPrincipalTitle"), panel, Strings.Get("Users/CreateButton"), Strings.Get("Common/Cancel"));
         bool IsRole() => features.RoleMembership && kind.SelectedIndex == 1;
+
+        // A role never signs in, and on an engine without passwords (Typesense's API keys) no user does either.
+        bool NeedsPassword() => features.Passwords && !IsRole();
         PrincipalRef Reference() => new(name.Text.Trim(), features.HostScoping ? host.Text.Trim() : null);
 
         void Validate()
         {
-            password.Element.Visibility = IsRole() ? Visibility.Collapsed : Visibility.Visible;
+            password.Element.Visibility = NeedsPassword() ? Visibility.Visible : Visibility.Collapsed;
             var reference = Reference();
             string? error = null;
             if (reference.Name.Length > 0 && viewModel.IsNameTaken(reference))
@@ -59,7 +62,7 @@ internal static class UsersRolesDialogs
 
             problem.Text = error ?? string.Empty;
             problem.Visibility = error is null ? Visibility.Collapsed : Visibility.Visible;
-            dialog.IsPrimaryButtonEnabled = reference.Name.Length > 0 && error is null && (IsRole() || password.Value.Length > 0);
+            dialog.IsPrimaryButtonEnabled = reference.Name.Length > 0 && error is null && (!NeedsPassword() || password.Value.Length > 0);
         }
 
         name.TextChanged += (_, _) => Validate();
@@ -75,7 +78,7 @@ internal static class UsersRolesDialogs
         }
 
         var isRole = IsRole();
-        viewModel.Create(new PrincipalDefinition(Reference(), isRole || password.Value.Length == 0 ? null : password.Value, canLogin: !isRole));
+        viewModel.Create(new PrincipalDefinition(Reference(), !NeedsPassword() || password.Value.Length == 0 ? null : password.Value, canLogin: !isRole));
     }
 
     public static async Task ChangePasswordAsync(DialogService dialogs, UsersRolesViewModel viewModel, PrincipalRef principal)
@@ -238,10 +241,13 @@ internal static class UsersRolesDialogs
         }
     }
 
-    /// <summary>PostgreSQL refuses to drop a role that owns objects until they are reassigned or dropped.</summary>
-    public static async Task<PrincipalDropOptions?> DropOwnedAsync(DialogService dialogs, UsersRolesViewModel viewModel, PrincipalRef principal)
+    /// <summary>
+    /// PostgreSQL refuses to drop a role that owns objects until they are reassigned or dropped. Several roles dropped
+    /// together are asked about once, and the choice applies to all of them.
+    /// </summary>
+    public static async Task<PrincipalDropOptions?> DropOwnedAsync(DialogService dialogs, UsersRolesViewModel viewModel, IReadOnlyList<PrincipalRef> owners)
     {
-        var candidates = viewModel.ReassignCandidates(principal);
+        var candidates = viewModel.ReassignCandidates(owners);
         var choice = new RadioButtons { SelectedIndex = candidates.Count > 0 ? 0 : 1 };
         choice.Items.Add(Strings.Get("Users/ReassignOwned"));
         choice.Items.Add(Strings.Get("Users/DropOwned"));
@@ -261,7 +267,7 @@ internal static class UsersRolesDialogs
         panel.Children.Add(target);
         panel.Children.Add(warning);
 
-        var dialog = dialogs.Create(Strings.Format("Users/OwnsObjectsTitle", principal.DisplayName), panel, Strings.Get("Users/DropRoleButton"), Strings.Get("Common/Cancel"));
+        var dialog = dialogs.Create(owners.Count == 1 ? Strings.Format("Users/OwnsObjectsTitle", owners[0].DisplayName) : Strings.Plural("Users/ManyOwnObjectsTitle", owners.Count), panel, Strings.Get("Users/DropRoleButton"), Strings.Get("Common/Cancel"));
         dialog.PrimaryButtonStyle = (Style)Application.Current.Resources["AccentButtonStyle"];
         void Update()
         {

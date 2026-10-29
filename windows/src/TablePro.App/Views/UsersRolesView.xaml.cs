@@ -1,3 +1,4 @@
+using System.Collections.Specialized;
 using Microsoft.UI.Text;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -21,6 +22,7 @@ public sealed partial class UsersRolesView : UserControl
 {
     private readonly DialogService _dialogs;
     private readonly Dictionary<string, bool> _expandedSections = [];
+    private bool _applyingSelection;
 
     public UsersRolesView(UsersRolesViewModel viewModel, DialogService dialogs)
     {
@@ -33,6 +35,16 @@ public sealed partial class UsersRolesView : UserControl
         AddAccelerator(RedoButton, VirtualKey.Y);
 
         viewModel.DetailChanged += (_, _) => RenderDetail();
+        viewModel.SelectionReset += (_, _) => ApplyPrincipalSelection();
+
+        // A rebuilt tree drops its nodes; in multiple selection the tree would otherwise keep reporting the old ones.
+        viewModel.ScopeRoots.CollectionChanged += (_, e) =>
+        {
+            if (e.Action == NotifyCollectionChangedAction.Reset && ScopeTree.SelectionMode == TreeViewSelectionMode.Multiple)
+            {
+                ScopeTree.SelectedItems.Clear();
+            }
+        };
         ActualThemeChanged += (_, _) => RenderDetail();
         Loaded += async (_, _) =>
         {
@@ -130,15 +142,21 @@ public sealed partial class UsersRolesView : UserControl
         Checklist.Children.Clear();
         GrantsErrorBar.IsOpen = ViewModel.GrantsError is not null;
         GrantsErrorBar.Message = ViewModel.GrantsError ?? string.Empty;
-        var scope = ViewModel.SelectedScope;
-        ScopeTitle.Text = scope?.Scope.DisplayPath ?? string.Empty;
-        ChecklistHeader.Visibility = scope is null ? Visibility.Collapsed : Visibility.Visible;
+        ScopeTitle.Text = ViewModel.ScopeTitle;
+        ChecklistHeader.Visibility = ViewModel.HasScopeSelection ? Visibility.Visible : Visibility.Collapsed;
+        ReadOnlyNote.Text = ViewModel.IsReadOnly ? Strings.Get("Users/ImmutableNote") : string.Empty;
+        ReadOnlyNote.Visibility = ViewModel.IsReadOnly ? Visibility.Visible : Visibility.Collapsed;
 
         string? placeholder = null;
         var sections = ViewModel.Sections;
-        if (scope is null)
+        BulkActions.IsEnabled = !ViewModel.IsReadOnly && sections.Count > 0;
+        if (!ViewModel.HasScopeSelection)
         {
             placeholder = Strings.Get("Users/ChecklistNoScope");
+        }
+        else if (ViewModel.IsMixedScopeSelection)
+        {
+            placeholder = Strings.Get("Users/ChecklistMixedSelection");
         }
         else if (ViewModel.GrantsError is not null)
         {
@@ -172,6 +190,7 @@ public sealed partial class UsersRolesView : UserControl
             IsThreeState = true,
             IsChecked = state,
             FontWeight = FontWeights.SemiBold,
+            IsEnabled = !ViewModel.IsReadOnly,
             Tag = "section:" + section.Category.Key,
         };
         Describe(header, title, state switch
@@ -206,16 +225,19 @@ public sealed partial class UsersRolesView : UserControl
 
     private Grid PrivilegeRow(PrivilegeDescriptor privilege)
     {
-        var granted = ViewModel.IsGranted(privilege.Name);
+        // Across several objects a privilege can be held on some of them; a click then grants it on all, as a section does.
+        var state = ViewModel.GrantState(privilege.Name);
         var box = new CheckBox
         {
             Content = privilege.Label,
-            IsChecked = granted,
+            IsChecked = state,
+            IsThreeState = state is null,
+            IsEnabled = !ViewModel.IsReadOnly,
             FontWeight = ViewModel.IsStaged(privilege.Name) ? FontWeights.SemiBold : FontWeights.Normal,
             MinWidth = 0,
             Tag = "privilege:" + privilege.Name,
         };
-        box.Click += (_, _) => ViewModel.SetGranted(box.IsChecked == true, [privilege.Name]);
+        box.Click += (_, _) => ViewModel.SetGranted(ViewModel.GrantState(privilege.Name) != true, [privilege.Name]);
 
         var row = new Grid { ColumnSpacing = 8 };
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -270,6 +292,10 @@ public sealed partial class UsersRolesView : UserControl
         }
 
         var features = ViewModel.Features;
+        if (ViewModel.IsReadOnly)
+        {
+            AddNote(Strings.Get("Users/ImmutableNote"));
+        }
 
         AddHeader(Strings.Get("Users/IdentityHeader"));
         AddValue(Strings.Get("Common/Name"), draft.Ref.Name);
@@ -293,7 +319,7 @@ public sealed partial class UsersRolesView : UserControl
             }
         };
         AttributesForm.Children.Add(login);
-        if (!info.IsRole || features.RoleLogin)
+        if (CanChangePassword(info.IsRole))
         {
             AttributesForm.Children.Add(FormButton(Strings.Get("Users/ChangePasswordButton"), "password", async () => await ChangePasswordAsync(info.Ref)));
         }
@@ -420,7 +446,68 @@ public sealed partial class UsersRolesView : UserControl
     }
 
     private void OnScopeSelectionChanged(TreeView sender, TreeViewSelectionChangedEventArgs args) =>
-        ViewModel.SelectedScope = sender.SelectedItem as ScopeNodeItem;
+        ViewModel.SelectScopes(sender.SelectionMode == TreeViewSelectionMode.Multiple
+            ? [.. sender.SelectedItems.OfType<ScopeNodeItem>()]
+            : sender.SelectedItem is ScopeNodeItem node ? [node] : []);
+
+    /// <summary>
+    /// TreeView has no Ctrl-click selection, only single or check-box selection, so several objects are picked by
+    /// switching the tree to check boxes, as File Explorer's item check boxes do. Leaving it keeps the first object.
+    /// </summary>
+    private void OnScopeMultiSelectToggled(object sender, RoutedEventArgs e)
+    {
+        var first = ViewModel.SelectedScopes.Count > 0 ? ViewModel.SelectedScopes[0] : null;
+        if (ScopeMultiSelect.IsChecked == true)
+        {
+            ScopeTree.SelectionMode = TreeViewSelectionMode.Multiple;
+            if (first is not null)
+            {
+                ScopeTree.SelectedItems.Add(first);
+            }
+        }
+        else
+        {
+            ScopeTree.SelectionMode = TreeViewSelectionMode.Single;
+            ScopeTree.SelectedItem = first;
+        }
+
+        ViewModel.SelectScopes(first is null ? [] : [first]);
+    }
+
+    private void OnPrincipalSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_applyingSelection)
+        {
+            ViewModel.SelectRows([.. PrincipalList.SelectedItems.OfType<PrincipalRowItem>()]);
+        }
+    }
+
+    /// <summary>Shows the principals the view model selected, after a create or a rebuilt list.</summary>
+    private void ApplyPrincipalSelection()
+    {
+        _applyingSelection = true;
+        try
+        {
+            PrincipalList.SelectedItems.Clear();
+            foreach (var row in ViewModel.Rows.Where(r => ViewModel.SelectedRefs.Contains(r.Ref)))
+            {
+                PrincipalList.SelectedItems.Add(row);
+            }
+        }
+        finally
+        {
+            _applyingSelection = false;
+        }
+    }
+
+    private async void OnPrincipalKeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (e.Key == VirtualKey.Delete && ViewModel.HasAnySelection)
+        {
+            e.Handled = true;
+            await DropAsync(ViewModel.SelectedRefs);
+        }
+    }
 
     private void OnGrantAllClicked(object sender, RoutedEventArgs e) => ViewModel.SetAllGranted(true);
 
@@ -436,14 +523,12 @@ public sealed partial class UsersRolesView : UserControl
 
     private async void OnCreateClicked(object sender, RoutedEventArgs e) => await UsersRolesDialogs.CreateAsync(_dialogs, ViewModel);
 
-    private async void OnDropClicked(object sender, RoutedEventArgs e)
-    {
-        if (ViewModel.Selection is { } selection)
-        {
-            await DropAsync(selection);
-        }
-    }
+    private async void OnDropClicked(object sender, RoutedEventArgs e) => await DropAsync(ViewModel.SelectedRefs);
 
+    /// <summary>
+    /// The menu acts on the selection when the clicked row is part of it, as Explorer's does; on another row it selects
+    /// that row first. Actions on one principal are offered only when one is selected.
+    /// </summary>
     private void OnPrincipalRightTapped(object sender, RightTappedRoutedEventArgs e)
     {
         if ((e.OriginalSource as FrameworkElement)?.DataContext is not PrincipalRowItem row)
@@ -451,28 +536,41 @@ public sealed partial class UsersRolesView : UserControl
             return;
         }
 
-        ViewModel.SelectedRow = row;
+        if (!ViewModel.SelectedRefs.Contains(row.Ref))
+        {
+            PrincipalList.SelectedItem = row;
+        }
+
+        var selected = ViewModel.SelectedRefs;
         var menu = new MenuFlyout();
-        if (!row.IsRole || ViewModel.Features.RoleLogin)
+        if (selected.Count == 1)
         {
-            menu.Items.Add(GridCommands.Item(Strings.Get("Users/ChangePasswordMenu"),"", async () => await ChangePasswordAsync(row.Ref)));
+            if (CanChangePassword(row.IsRole))
+            {
+                menu.Items.Add(GridCommands.Item(Strings.Get("Users/ChangePasswordMenu"), "\xE8D7", async () => await ChangePasswordAsync(row.Ref)));
+            }
+
+            if (!ViewModel.IsReadOnly)
+            {
+                menu.Items.Add(GridCommands.Item(Strings.Get("Users/CopyPrivilegesFromMenu"), "\xE8C8", async () => await UsersRolesDialogs.CopyPrivilegesAsync(_dialogs, ViewModel, row.Ref)));
+            }
+
+            if (ViewModel.CanRename(row.Ref))
+            {
+                menu.Items.Add(GridCommands.Item(Strings.Get("Users/RenameEllipsis"), "\xE8AC", async () => await RenameAsync(row.Ref)));
+            }
+
+            menu.Items.Add(GridCommands.Item(Strings.Get("Users/CopyNameMenu"), "\xE8C8", () => CopyText(row.Ref.DisplayName)));
+            menu.Items.Add(new MenuFlyoutSeparator());
+            if (row.Stage == PrincipalStage.Dropped)
+            {
+                menu.Items.Add(GridCommands.Item(Strings.Get("Users/UndoStagedDropMenu"), "\xE7A7", () => ViewModel.KeepPrincipal(row.Ref)));
+            }
         }
 
-        menu.Items.Add(GridCommands.Item(Strings.Get("Users/CopyPrivilegesFromMenu"),"", async () => await UsersRolesDialogs.CopyPrivilegesAsync(_dialogs, ViewModel, row.Ref)));
-        if (ViewModel.CanRename(row.Ref))
+        if (selected.Count > 1 || row.Stage != PrincipalStage.Dropped)
         {
-            menu.Items.Add(GridCommands.Item(Strings.Get("Users/RenameEllipsis"),"", async () => await RenameAsync(row.Ref)));
-        }
-
-        menu.Items.Add(GridCommands.Item(Strings.Get("Users/CopyNameMenu"),"", () => CopyText(row.Ref.DisplayName)));
-        menu.Items.Add(new MenuFlyoutSeparator());
-        if (row.Stage == PrincipalStage.Dropped)
-        {
-            menu.Items.Add(GridCommands.Item(Strings.Get("Users/UndoStagedDropMenu"),"", () => ViewModel.KeepPrincipal(row.Ref)));
-        }
-        else
-        {
-            menu.Items.Add(GridCommands.Item(Strings.Get("Users/DropMenu"),"", async () => await DropAsync(row.Ref)));
+            menu.Items.Add(GridCommands.Item(Strings.Get("Users/DropMenu"), "\xE738", async () => await DropAsync(selected)));
         }
 
         menu.ShowAt(PrincipalList, e.GetPosition(PrincipalList));
@@ -481,14 +579,21 @@ public sealed partial class UsersRolesView : UserControl
 
     // MARK: Actions
 
-    private async Task DropAsync(PrincipalRef principal)
+    private bool CanChangePassword(bool isRole) =>
+        ViewModel.Features.Passwords && !ViewModel.IsReadOnly && (!isRole || ViewModel.Features.RoleLogin);
+
+    /// <summary>Stages the drops; the roles among them that own objects are asked about together, once.</summary>
+    private async Task DropAsync(IReadOnlyList<PrincipalRef> principals)
     {
-        foreach (var owner in await ViewModel.DropAsync(principal))
+        if (principals.Count == 0)
         {
-            if (await UsersRolesDialogs.DropOwnedAsync(_dialogs, ViewModel, owner) is { } options)
-            {
-                ViewModel.ConfirmDrop(owner, options);
-            }
+            return;
+        }
+
+        var owners = await ViewModel.DropAsync(principals);
+        if (owners.Count > 0 && await UsersRolesDialogs.DropOwnedAsync(_dialogs, ViewModel, owners) is { } options)
+        {
+            ViewModel.ConfirmDrop(owners, options);
         }
     }
 

@@ -470,4 +470,43 @@
   <data name="VerifyPassword" xml:space="preserve">
     <value>Confirmer</value>
   </data>
+  <data name="DropOneAction" xml:space="preserve">
+    <value>Supprimer {0}</value>
+  </data>
+  <data name="DropManyAction_One" xml:space="preserve">
+    <value>Supprimer {0} utilisateur ou rôle</value>
+  </data>
+  <data name="DropManyAction_Other" xml:space="preserve">
+    <value>Supprimer {0} utilisateurs et rôles</value>
+  </data>
+  <data name="ManyOwnObjectsTitle_One" xml:space="preserve">
+    <value>{0} rôle possède des objets de base de données</value>
+  </data>
+  <data name="ManyOwnObjectsTitle_Other" xml:space="preserve">
+    <value>{0} rôles possèdent des objets de base de données</value>
+  </data>
+  <data name="ScopesSelected_One" xml:space="preserve">
+    <value>{0} objet sélectionné</value>
+  </data>
+  <data name="ScopesSelected_Other" xml:space="preserve">
+    <value>{0} objets sélectionnés</value>
+  </data>
+  <data name="ObjectCount_One" xml:space="preserve">
+    <value>{0} objet</value>
+  </data>
+  <data name="ObjectCount_Other" xml:space="preserve">
+    <value>{0} objets</value>
+  </data>
+  <data name="ChecklistMixedSelection" xml:space="preserve">
+    <value>Sélectionnez des objets du même type pour modifier leurs privilèges.</value>
+  </data>
+  <data name="ScopeMultiSelectButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Sélectionner plusieurs objets</value>
+  </data>
+  <data name="ScopeMultiSelectButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Sélectionner plusieurs objets</value>
+  </data>
+  <data name="ImmutableNote" xml:space="preserve">
+    <value>Les clés d’API ne peuvent pas être modifiées après leur création. Pour changer ce qu’une clé peut faire, créez une nouvelle clé et supprimez l’ancienne.</value>
+  </data>
 </root>

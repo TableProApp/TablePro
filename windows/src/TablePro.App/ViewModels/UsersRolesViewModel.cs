@@ -39,6 +39,12 @@ public sealed partial class UsersRolesViewModel : ObservableObject
     /// <summary>Raised when the detail pane must redraw: another principal, another scope, or any staged edit.</summary>
     public event EventHandler? DetailChanged;
 
+    /// <summary>
+    /// Raised when the view model picks the selected principals itself, after a create or a rebuilt list, so the list
+    /// shows them. A list with several selected items has no single bindable selection to carry this.
+    /// </summary>
+    public event EventHandler? SelectionReset;
+
     public PrincipalChangeTracker Tracker { get; } = new();
 
     public UserAdministrationFeatures Features { get; }
@@ -50,7 +56,32 @@ public sealed partial class UsersRolesViewModel : ObservableObject
     /// <summary>The account this connection uses, so the review can warn before it is locked out.</summary>
     public PrincipalRef? ConnectedPrincipal { get; private set; }
 
+    /// <summary>The principal the detail pane shows: only one, since a pane for several would have nothing to edit.</summary>
     public PrincipalRef? Selection => SelectedRow?.Ref;
+
+    /// <summary>Every selected principal, which a Drop acts on together.</summary>
+    public IReadOnlyList<PrincipalRef> SelectedRefs { get; private set; } = [];
+
+    public bool HasAnySelection => SelectedRefs.Count > 0;
+
+    /// <summary>The selected objects of the scope tree; a grant or revoke applies to all of them at once.</summary>
+    public IReadOnlyList<ScopeNodeItem> SelectedScopes { get; private set; } = [];
+
+    public ScopeNodeItem? SingleScope => SelectedScopes.Count == 1 ? SelectedScopes[0] : null;
+
+    public bool HasScopeSelection => SelectedScopes.Count > 0;
+
+    public bool IsMixedScopeSelection => PrivilegeScope.IsMixedLevel(SelectedScopes.Select(n => n.Scope));
+
+    public string ScopeTitle => SelectedScopes.Count switch
+    {
+        0 => string.Empty,
+        1 => SelectedScopes[0].Scope.DisplayPath,
+        var count => Strings.Plural("Users/ScopesSelected", count),
+    };
+
+    /// <summary>Whether privileges and attributes are read-only because the engine cannot change a principal once made.</summary>
+    public bool IsReadOnly => Features.Immutable;
 
     public PrincipalInfo? SelectedInfo => Selection is { } selection ? Tracker.Rows().FirstOrDefault(r => r.Ref == selection)?.Info : null;
 
@@ -112,9 +143,6 @@ public sealed partial class UsersRolesViewModel : ObservableObject
 
     [ObservableProperty]
     public partial string ScopeFilter { get; set; } = string.Empty;
-
-    [ObservableProperty]
-    public partial ScopeNodeItem? SelectedScope { get; set; }
 
     [ObservableProperty]
     public partial string PrivilegeFilter { get; set; } = string.Empty;
@@ -233,7 +261,7 @@ public sealed partial class UsersRolesViewModel : ObservableObject
     /// only on existing users there; where principals are not roles at all, never.
     /// </summary>
     public bool AllowsLoginToggle(PrincipalInfo principal) =>
-        Features.RoleMembership && (Features.RoleLogin || (!principal.IsRole && Tracker.Stage(principal.Ref) != PrincipalStage.Created));
+        !IsReadOnly && Features.RoleMembership && (Features.RoleLogin || (!principal.IsRole && Tracker.Stage(principal.Ref) != PrincipalStage.Created));
 
     public IReadOnlyList<PrincipalRef> RoleCandidates(PrincipalRef principal) =>
         Tracker.Rows().Where(r => r.Info.IsRole && r.Ref != principal).Select(r => r.Ref).ToArray();
@@ -241,7 +269,28 @@ public sealed partial class UsersRolesViewModel : ObservableObject
     public void Create(PrincipalDefinition definition)
     {
         Tracker.StageCreate(definition);
-        SelectedRow = Rows.FirstOrDefault(r => r.Ref == definition.Ref);
+        Select([definition.Ref]);
+    }
+
+    /// <summary>The list's selection as the user left it; only a single principal opens in the detail pane.</summary>
+    public void SelectRows(IReadOnlyList<PrincipalRowItem> rows)
+    {
+        // The list reports its items leaving while it is rebuilt; the rebuild restores the selection itself.
+        if (_syncingRows)
+        {
+            return;
+        }
+
+        SelectedRefs = [.. rows.Select(r => r.Ref)];
+        OnPropertyChanged(nameof(SelectedRefs));
+        OnPropertyChanged(nameof(HasAnySelection));
+        SelectedRow = rows.Count == 1 ? rows[0] : null;
+    }
+
+    private void Select(IReadOnlyList<PrincipalRef> principals)
+    {
+        SelectRows([.. Rows.Where(r => principals.Contains(r.Ref))]);
+        SelectionReset?.Invoke(this, EventArgs.Empty);
     }
 
     public void SetPassword(PrincipalRef principal, string password) => Tracker.StageSetPassword(principal, password);
@@ -257,7 +306,7 @@ public sealed partial class UsersRolesViewModel : ObservableObject
 
     public void Edit(PrincipalRef principal, Func<PrincipalDefinition, PrincipalDefinition> edit)
     {
-        if (Tracker.Draft(principal) is { } draft)
+        if (!IsReadOnly && Tracker.Draft(principal) is { } draft)
         {
             Tracker.StageAlter(principal, edit(draft) with { Password = null });
         }
@@ -271,85 +320,118 @@ public sealed partial class UsersRolesViewModel : ObservableObject
         }
     }
 
-    public void CopyPrivileges(PrincipalRef source, PrincipalRef target) => Tracker.CopyGrants(source, target);
-
-    /// <summary>
-    /// Stages a drop. A principal that exists only as a staged create is simply removed. The principals returned own
-    /// objects and need the caller to choose what happens to those first.
-    /// </summary>
-    public async Task<IReadOnlyList<PrincipalRef>> DropAsync(PrincipalRef principal)
+    public void CopyPrivileges(PrincipalRef source, PrincipalRef target)
     {
-        if (Tracker.Stage(principal) == PrincipalStage.Created)
+        if (!IsReadOnly)
         {
-            Tracker.UnstageCreate(principal);
-            return [];
+            Tracker.CopyGrants(source, target);
         }
-
-        if (Features.OwnedObjectReassignment)
-        {
-            try
-            {
-                if (await _admin.OwnsObjectsAsync(principal, CancellationToken.None))
-                {
-                    return [principal];
-                }
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                await _context.Dialogs.ShowErrorAsync(Strings.Get("Users/CheckOwnedFailedTitle"), ex.Message);
-                return [];
-            }
-        }
-
-        Tracker.StageDrop(principal, PrincipalDropOptions.None);
-        return [];
     }
 
-    public void ConfirmDrop(PrincipalRef principal, PrincipalDropOptions options) => Tracker.StageDrop(principal, options);
+    /// <summary>
+    /// Stages dropping every principal given, as one undo step. A principal that exists only as a staged create is simply
+    /// removed. The principals returned own objects and need the caller to choose what happens to those first; when
+    /// that cannot be checked, nothing is staged.
+    /// </summary>
+    public async Task<IReadOnlyList<PrincipalRef>> DropAsync(IReadOnlyList<PrincipalRef> principals)
+    {
+        var dropping = principals.Where(p => Tracker.Stage(p) != PrincipalStage.Dropped).ToArray();
+        var owners = new List<PrincipalRef>();
+        var staged = new List<PrincipalRef>();
+        foreach (var principal in dropping)
+        {
+            if (Features.OwnedObjectReassignment && Tracker.Stage(principal) != PrincipalStage.Created)
+            {
+                try
+                {
+                    if (await _admin.OwnsObjectsAsync(principal, CancellationToken.None))
+                    {
+                        owners.Add(principal);
+                        continue;
+                    }
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    await _context.Dialogs.ShowErrorAsync(Strings.Get("Users/CheckOwnedFailedTitle"), ex.Message);
+                    return [];
+                }
+            }
+
+            staged.Add(principal);
+        }
+
+        Tracker.StageDrops(staged, PrincipalDropOptions.None, DropActionName(staged));
+        return owners;
+    }
+
+    /// <summary>Stages dropping principals that own objects, once the user chose what happens to those objects.</summary>
+    public void ConfirmDrop(IReadOnlyList<PrincipalRef> owners, PrincipalDropOptions options) =>
+        Tracker.StageDrops(owners, options, DropActionName(owners));
 
     public void KeepPrincipal(PrincipalRef principal) => Tracker.UnstageDrop(principal);
 
-    /// <summary>Principals that could take over a dropped role's objects: every other existing one, by name.</summary>
-    public IReadOnlyList<PrincipalRef> ReassignCandidates(PrincipalRef dropping) =>
-        Tracker.Principals.Select(p => p.Ref).Where(r => r != dropping).OrderBy(r => r.Name, StringComparer.Ordinal).ToArray();
+    /// <summary>Principals that could take over dropped roles' objects: every other existing one, by name.</summary>
+    public IReadOnlyList<PrincipalRef> ReassignCandidates(IReadOnlyCollection<PrincipalRef> dropping) =>
+        Tracker.Principals.Select(p => p.Ref).Where(r => !dropping.Contains(r)).OrderBy(r => r.Name, StringComparer.Ordinal).ToArray();
+
+    private static string DropActionName(IReadOnlyList<PrincipalRef> principals) => principals.Count == 1
+        ? Strings.Format("Users/DropOneAction", principals[0].DisplayName)
+        : Strings.Plural("Users/DropManyAction", principals.Count);
 
     // MARK: Privileges
 
+    /// <summary>The checklist for the selected objects; objects of different kinds grant different privileges, so none.</summary>
     public IReadOnlyList<PrivilegeSection> Sections =>
-        SelectedScope is { } node ? PrivilegeSection.Filter(Tracker.Sections(node.Scope), PrivilegeFilter) : [];
+        SelectedScopes.Count > 0 && !IsMixedScopeSelection ? PrivilegeSection.Filter(Tracker.Sections(SelectedScopes[0].Scope), PrivilegeFilter) : [];
 
-    public bool IsGranted(string privilege) =>
-        Selection is { } principal && SelectedScope is { } node && Tracker.IsGranted(privilege, node.Scope, principal);
+    /// <summary>Held on every selected object, on none, or on some (null), for the privilege's box.</summary>
+    public bool? GrantState(string privilege) =>
+        Selection is { } principal && SelectedScopes.Count > 0 ? Tracker.GrantState(privilege, ScopesOf(SelectedScopes), principal) : false;
 
     public bool IsStaged(string privilege) =>
-        Selection is { } principal && SelectedScope is { } node && Tracker.IsStaged(privilege, node.Scope, principal);
+        Selection is { } principal && SelectedScopes.Any(n => Tracker.IsStaged(privilege, n.Scope, principal));
 
+    // Where a privilege comes from and whether it can be passed on describe one object, so several show neither.
     public bool IsGrantable(string privilege) =>
-        Selection is { } principal && SelectedScope is { } node && Tracker.IsGrantable(privilege, node.Scope, principal);
+        Selection is { } principal && SingleScope is { } node && Tracker.IsGrantable(privilege, node.Scope, principal);
 
     public PrivilegeEffectiveness Effectiveness(string privilege) =>
-        Selection is { } principal && SelectedScope is { } node ? Tracker.Effectiveness(privilege, node.Scope, principal) : PrivilegeEffectiveness.NotEffective;
+        Selection is { } principal && SingleScope is { } node ? Tracker.Effectiveness(privilege, node.Scope, principal) : PrivilegeEffectiveness.NotEffective;
 
     /// <summary>All of a section granted, none, or some, for its header's three-state box.</summary>
     public bool? SectionState(PrivilegeSection section)
     {
-        var granted = section.Privileges.Count(p => IsGranted(p.Name));
-        return granted == 0 ? false : granted == section.Privileges.Count ? true : null;
+        var states = section.Privileges.Select(p => GrantState(p.Name)).ToArray();
+        return states.All(s => s == true) ? true : states.All(s => s == false) ? false : null;
     }
 
+    /// <summary>Grants or revokes on every selected object as one undo step.</summary>
     public void SetGranted(bool granted, IReadOnlyCollection<string> privileges)
     {
-        if (Selection is not { } principal || SelectedScope is not { } node || privileges.Count == 0)
+        if (IsReadOnly || Selection is not { } principal || SelectedScopes.Count == 0 || IsMixedScopeSelection || privileges.Count == 0)
         {
             return;
         }
 
-        var scope = node.Scope.DisplayName;
+        var scope = SingleScope?.Scope.DisplayName ?? Strings.Plural("Users/ObjectCount", SelectedScopes.Count);
         var action = privileges.Count == 1
             ? Strings.Format(granted ? "Users/GrantOneAction" : "Users/RevokeOneAction", privileges.First(), scope)
             : Strings.Plural(granted ? "Users/GrantManyAction" : "Users/RevokeManyAction", privileges.Count, scope);
-        Tracker.SetGranted(granted, privileges, [node.Scope], principal, action);
+        Tracker.SetGranted(granted, privileges, ScopesOf(SelectedScopes), principal, action);
     }
+
+    /// <summary>The tree's selection; the view reads it from the tree, which may hold several items.</summary>
+    public void SelectScopes(IReadOnlyList<ScopeNodeItem> nodes)
+    {
+        SelectedScopes = nodes;
+        OnPropertyChanged(nameof(SelectedScopes));
+        OnPropertyChanged(nameof(SingleScope));
+        OnPropertyChanged(nameof(HasScopeSelection));
+        OnPropertyChanged(nameof(ScopeTitle));
+        RaiseDetailChanged();
+    }
+
+    private static PrivilegeScope[] ScopesOf(IReadOnlyList<ScopeNodeItem> nodes) => [.. nodes.Select(n => n.Scope)];
 
     public void SetAllGranted(bool granted) => SetGranted(granted, Sections.SelectMany(s => s.Privileges).Select(p => p.Name).ToArray());
 
@@ -406,7 +488,7 @@ public sealed partial class UsersRolesViewModel : ObservableObject
             }
         }
 
-        SelectedScope = null;
+        SelectScopes([]);
         RefreshSummaries();
     }
 
@@ -447,7 +529,7 @@ public sealed partial class UsersRolesViewModel : ObservableObject
                 ScopeRoots.Add(node);
             }
 
-            SelectedScope = null;
+            SelectScopes([]);
             RefreshSummaries();
         }
         catch (OperationCanceledException)
@@ -615,17 +697,22 @@ public sealed partial class UsersRolesViewModel : ObservableObject
 
         if (oldValue?.Ref != newValue?.Ref)
         {
-            if (ScopeMode == ScopeViewMode.Granted && ScopeFilter.Length == 0)
-            {
-                ApplyScopeMode();
-            }
+            OnSelectionMoved(newValue);
+        }
+    }
 
-            RefreshSummaries();
-            RaiseDetailChanged();
-            if (newValue is not null)
-            {
-                _ = LoadGrantsAsync(newValue.Ref);
-            }
+    private void OnSelectionMoved(PrincipalRowItem? newValue)
+    {
+        if (ScopeMode == ScopeViewMode.Granted && ScopeFilter.Length == 0)
+        {
+            ApplyScopeMode();
+        }
+
+        RefreshSummaries();
+        RaiseDetailChanged();
+        if (newValue is not null)
+        {
+            _ = LoadGrantsAsync(newValue.Ref);
         }
     }
 
@@ -639,7 +726,6 @@ public sealed partial class UsersRolesViewModel : ObservableObject
 
     partial void OnScopeFilterChanged(string value) => _ = SearchScopesAsync();
 
-    partial void OnSelectedScopeChanged(ScopeNodeItem? value) => RaiseDetailChanged();
 
     partial void OnPrivilegeFilterChanged(string value) => RaiseDetailChanged();
 
@@ -687,6 +773,7 @@ public sealed partial class UsersRolesViewModel : ObservableObject
         }
 
         var selection = Selection;
+        var selected = SelectedRefs;
         _syncingRows = true;
         try
         {
@@ -696,17 +783,21 @@ public sealed partial class UsersRolesViewModel : ObservableObject
                 Rows.Add(new PrincipalRowItem(row, RenamedTo(row)));
             }
 
-            SelectedRow = selection is null ? null : Rows.FirstOrDefault(r => r.Ref == selection);
+            var kept = Rows.Where(r => selected.Contains(r.Ref)).ToArray();
+            SelectedRefs = [.. kept.Select(r => r.Ref)];
+            SelectedRow = kept.Length == 1 ? kept[0] : null;
         }
         finally
         {
             _syncingRows = false;
         }
 
-        if (selection is not null && SelectedRow is null)
+        OnPropertyChanged(nameof(SelectedRefs));
+        OnPropertyChanged(nameof(HasAnySelection));
+        SelectionReset?.Invoke(this, EventArgs.Empty);
+        if (SelectedRow?.Ref != selection)
         {
-            RefreshSummaries();
-            RaiseDetailChanged();
+            OnSelectionMoved(SelectedRow);
         }
     }
 

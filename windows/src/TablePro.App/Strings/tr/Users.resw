@@ -470,4 +470,43 @@
   <data name="VerifyPassword" xml:space="preserve">
     <value>Doğrula</value>
   </data>
+  <data name="DropOneAction" xml:space="preserve">
+    <value>{0} Bırak</value>
+  </data>
+  <data name="DropManyAction_One" xml:space="preserve">
+    <value>{0} kullanıcı veya rolü bırak</value>
+  </data>
+  <data name="DropManyAction_Other" xml:space="preserve">
+    <value>{0} kullanıcı ve rolü bırak</value>
+  </data>
+  <data name="ManyOwnObjectsTitle_One" xml:space="preserve">
+    <value>{0} rol veritabanı nesnelerinin sahibi</value>
+  </data>
+  <data name="ManyOwnObjectsTitle_Other" xml:space="preserve">
+    <value>{0} rol veritabanı nesnelerinin sahibi</value>
+  </data>
+  <data name="ScopesSelected_One" xml:space="preserve">
+    <value>{0} nesne seçildi</value>
+  </data>
+  <data name="ScopesSelected_Other" xml:space="preserve">
+    <value>{0} nesne seçildi</value>
+  </data>
+  <data name="ObjectCount_One" xml:space="preserve">
+    <value>{0} nesne</value>
+  </data>
+  <data name="ObjectCount_Other" xml:space="preserve">
+    <value>{0} nesne</value>
+  </data>
+  <data name="ChecklistMixedSelection" xml:space="preserve">
+    <value>Yetkilerini düzenlemek için aynı türden nesneler seçin.</value>
+  </data>
+  <data name="ScopeMultiSelectButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Birden çok nesne seç</value>
+  </data>
+  <data name="ScopeMultiSelectButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Birden çok nesne seç</value>
+  </data>
+  <data name="ImmutableNote" xml:space="preserve">
+    <value>API anahtarları oluşturulduktan sonra değiştirilemez. Bir anahtarın yapabileceklerini değiştirmek için yeni bir anahtar oluşturun ve eskisini bırakın.</value>
+  </data>
 </root>

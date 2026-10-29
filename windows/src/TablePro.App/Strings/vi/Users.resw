@@ -470,4 +470,43 @@
   <data name="VerifyPassword" xml:space="preserve">
     <value>Xác nhận</value>
   </data>
+  <data name="DropOneAction" xml:space="preserve">
+    <value>Xóa {0}</value>
+  </data>
+  <data name="DropManyAction_One" xml:space="preserve">
+    <value>Xóa {0} người dùng hoặc vai trò</value>
+  </data>
+  <data name="DropManyAction_Other" xml:space="preserve">
+    <value>Xóa {0} người dùng và vai trò</value>
+  </data>
+  <data name="ManyOwnObjectsTitle_One" xml:space="preserve">
+    <value>{0} vai trò đang sở hữu các đối tượng cơ sở dữ liệu</value>
+  </data>
+  <data name="ManyOwnObjectsTitle_Other" xml:space="preserve">
+    <value>{0} vai trò đang sở hữu các đối tượng cơ sở dữ liệu</value>
+  </data>
+  <data name="ScopesSelected_One" xml:space="preserve">
+    <value>Đã chọn {0} đối tượng</value>
+  </data>
+  <data name="ScopesSelected_Other" xml:space="preserve">
+    <value>Đã chọn {0} đối tượng</value>
+  </data>
+  <data name="ObjectCount_One" xml:space="preserve">
+    <value>{0} đối tượng</value>
+  </data>
+  <data name="ObjectCount_Other" xml:space="preserve">
+    <value>{0} đối tượng</value>
+  </data>
+  <data name="ChecklistMixedSelection" xml:space="preserve">
+    <value>Chọn các đối tượng cùng loại để sửa quyền của chúng.</value>
+  </data>
+  <data name="ScopeMultiSelectButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Chọn nhiều đối tượng</value>
+  </data>
+  <data name="ScopeMultiSelectButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Chọn nhiều đối tượng</value>
+  </data>
+  <data name="ImmutableNote" xml:space="preserve">
+    <value>Không thể thay đổi khóa API sau khi đã tạo. Để thay đổi những gì một khóa được phép làm, hãy tạo khóa mới và xóa khóa cũ.</value>
+  </data>
 </root>

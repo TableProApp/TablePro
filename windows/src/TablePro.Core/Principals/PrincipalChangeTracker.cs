@@ -154,6 +154,16 @@ public sealed class PrincipalChangeTracker
         return _state.Deltas.TryGetValue(principal, out var delta) ? delta.Resolves(key, baseline) : baseline;
     }
 
+    /// <summary>
+    /// A privilege across several selected objects: true where every one holds it, false where none does, and null
+    /// for some, so the checklist shows a mixed box and a click grants it on all of them.
+    /// </summary>
+    public bool? GrantState(string privilege, IReadOnlyCollection<PrivilegeScope> scopes, PrincipalRef principal)
+    {
+        var granted = scopes.Count(s => IsGranted(privilege, s, principal));
+        return granted == 0 ? false : granted == scopes.Count ? true : null;
+    }
+
     public bool IsGrantable(string privilege, PrivilegeScope scope, PrincipalRef principal) =>
         _baselineGrants.TryGetValue(principal, out var grants) && grants.Any(g => g.IsGrantable && g.Privilege == privilege && g.Scope == scope);
 
@@ -305,6 +315,37 @@ public sealed class PrincipalChangeTracker
         if (!_state.Drops.ContainsKey(principal))
         {
             Commit($"Drop {principal}", _state with { Drops = _state.Drops.Add(principal, options) });
+        }
+    }
+
+    /// <summary>
+    /// Stages dropping several principals as one undo step, as a multi-row Drop is one action. A principal that exists
+    /// only as a staged create is removed instead, since there is nothing on the server to drop.
+    /// </summary>
+    public void StageDrops(IReadOnlyCollection<PrincipalRef> principals, PrincipalDropOptions options, string? actionName = null)
+    {
+        var next = _state;
+        foreach (var principal in principals)
+        {
+            if (next.Creates.Any(c => c.Ref == principal))
+            {
+                next = next with
+                {
+                    Creates = next.Creates.RemoveAll(c => c.Ref == principal),
+                    Deltas = next.Deltas.Remove(principal),
+                    Passwords = next.Passwords.Remove(principal),
+                    Alters = next.Alters.Remove(principal),
+                };
+            }
+            else if (!next.Drops.ContainsKey(principal) && Principals.Any(p => p.Ref == principal))
+            {
+                next = next with { Drops = next.Drops.Add(principal, options) };
+            }
+        }
+
+        if (!ReferenceEquals(next, _state))
+        {
+            Commit(actionName ?? (principals.Count == 1 ? $"Drop {principals.First()}" : $"Drop {principals.Count} principals"), next);
         }
     }
 
