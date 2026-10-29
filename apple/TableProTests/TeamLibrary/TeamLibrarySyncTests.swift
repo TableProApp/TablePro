@@ -364,6 +364,30 @@ struct TeamLibrarySyncTests {
         #expect(await fixture.server.library.item(Self.team, kind: "query", clientID: clientID)?.deleted == true)
     }
 
+    @Test("Keep Theirs on a query the team edited holds on later publishes until this Mac's copy changes")
+    func keepTheirsHoldsForAnEdit() async throws {
+        let id = try #require(UUID(uuidString: Self.conflictID))
+        let fixture = try await conflicted()
+        let conflict = try #require(fixture.sync.conflicts.first)
+        await fixture.sync.resolve(conflict, keepingMine: false)
+        let pushed = await fixture.pushes().count
+        let unchanged = TeamLibraryFixture.favorite(id, name: "Orders", query: "select mine")
+
+        let again = try await fixture.sync.publishSavedQueries(favorites: [unchanged], folders: [], to: Self.team)
+        await fixture.library {
+            $0.write(Self.team, kind: "query", clientID: Self.conflictID, data: TeamLibraryFixture.queryData("Orders", query: "select newer"))
+        }
+        let afterTheirs = try await fixture.sync.publishSavedQueries(favorites: [unchanged], folders: [], to: Self.team)
+
+        #expect(again == .unchanged)
+        #expect(afterTheirs == .unchanged, "A later edit on the team does not bring the turned-down copy back")
+        #expect(await fixture.pushes().count == pushed)
+        let edited = TeamLibraryFixture.favorite(id, name: "Orders", query: "select edited")
+        #expect(try await fixture.sync.publishSavedQueries(favorites: [edited], folders: [], to: Self.team) == .published(1))
+        let stored = await fixture.server.library.item(Self.team, kind: "query", clientID: Self.conflictID)
+        #expect(stored?.data?["query"] as? String == "select edited")
+    }
+
     nonisolated private static let conflictID = "4c6b1e2a-0d8f-4f43-9a51-7c1b2e3d4f50"
 
     private func conflicted() async throws -> TeamLibraryFixture {

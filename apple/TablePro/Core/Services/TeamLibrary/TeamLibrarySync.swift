@@ -157,25 +157,27 @@ internal final class TeamLibrarySync: ObservableObject {
 
     func resolve(_ conflict: TeamLibraryConflict, keepingMine: Bool) async {
         guard var state = teams[conflict.teamID] else { return }
+        let key = conflict.key
+        let stored = state.items[key]
         state.conflicts.removeAll { $0.id == conflict.id }
         var pushes = false
         if keepingMine {
-            state.declined.remove(conflict.key)
-        } else if state.items[conflict.key]?.deleted != false {
-            state.declined.insert(conflict.key)
-        }
-        if keepingMine, state.canWrite {
-            let stored = state.items[conflict.key]
+            state.declined[key] = nil
             var edit = conflict.edit
             edit.baseVersion = stored.map(\.version)
             edit.clientId = stored?.clientId ?? edit.clientId
-            if edit.op == .upsert || stored?.deleted == false {
+            if state.canWrite, edit.op == .upsert || stored?.deleted == false {
                 state.pending.append(edit)
                 if conflict.isMove {
-                    state.moves.insert(conflict.key)
+                    state.moves.insert(key)
                 }
                 pushes = true
             }
+        } else if conflict.edit.op == .delete {
+            // The team keeps what this Mac removed, so it is no longer this Mac's to remove.
+            state.published.remove(key)
+        } else if let data = conflict.edit.data?.additionalProperties {
+            state.declined[key] = data
         }
         commit(state)
         publishContent()
@@ -415,13 +417,11 @@ internal final class TeamLibrarySync: ObservableObject {
                 updatedAt: now(),
                 version: result.version
             )
+            state.declined[key] = nil
             if edit.op == .delete {
                 state.published.remove(key)
-            } else {
-                if !isMove {
-                    state.published.insert(key)
-                }
-                state.declined.remove(key)
+            } else if !isMove {
+                state.published.insert(key)
             }
         case "conflict":
             state.items[key] = result.current

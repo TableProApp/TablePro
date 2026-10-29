@@ -57,8 +57,8 @@ internal struct TeamLibraryTeamState: Codable, Equatable, Sendable {
     var published: Set<TeamLibraryKey>
     // Pending edits that only move someone else's item out of a folder this Mac deleted: pushing one leaves it theirs.
     var moves: Set<TeamLibraryKey>
-    // Items deleted on the team whose deletion Keep Theirs accepted, so publishing saved queries leaves them deleted.
-    var declined: Set<TeamLibraryKey>
+    // This Mac's copy Keep Theirs turned down: publishing leaves the team's version alone until the copy here changes.
+    var declined: [TeamLibraryKey: TeamLibraryData]
     var syncedAt: Date?
 
     init(teamID: String, teamName: String, canWrite: Bool) {
@@ -71,12 +71,17 @@ internal struct TeamLibraryTeamState: Codable, Equatable, Sendable {
         self.conflicts = []
         self.published = []
         self.moves = []
-        self.declined = []
+        self.declined = [:]
         self.syncedAt = nil
     }
 
     enum CodingKeys: String, CodingKey {
         case teamID, teamName, canWrite, cursor, items, pending, conflicts, published, moves, declined, syncedAt
+    }
+
+    private struct Declined: Codable {
+        let key: TeamLibraryKey
+        let data: TeamLibraryData
     }
 
     init(from decoder: any Decoder) throws {
@@ -91,7 +96,8 @@ internal struct TeamLibraryTeamState: Codable, Equatable, Sendable {
         conflicts = try container.decode([TeamLibraryConflict].self, forKey: .conflicts)
         published = try container.decode(Set<TeamLibraryKey>.self, forKey: .published)
         moves = try container.decodeIfPresent(Set<TeamLibraryKey>.self, forKey: .moves) ?? []
-        declined = try container.decodeIfPresent(Set<TeamLibraryKey>.self, forKey: .declined) ?? []
+        let declinedList = (try? container.decodeIfPresent([Declined].self, forKey: .declined)) ?? []
+        declined = Dictionary(declinedList.map { ($0.key, $0.data) }, uniquingKeysWith: { _, last in last })
         syncedAt = try container.decodeIfPresent(Date.self, forKey: .syncedAt)
     }
 
@@ -106,12 +112,16 @@ internal struct TeamLibraryTeamState: Codable, Equatable, Sendable {
         try container.encode(conflicts, forKey: .conflicts)
         try container.encode(published, forKey: .published)
         try container.encode(moves, forKey: .moves)
-        try container.encode(declined, forKey: .declined)
+        try container.encode(declined.map { Declined(key: $0.key, data: $0.value) }, forKey: .declined)
         try container.encodeIfPresent(syncedAt, forKey: .syncedAt)
     }
 
     var liveItems: [TeamLibraryChange] {
         items.values.filter { !$0.deleted }
+    }
+
+    func declines(_ key: TeamLibraryKey, sending data: TeamLibraryData) -> Bool {
+        declined[key] == data
     }
 
     // The exact client ID the team stores, since /v2 compares them as sent; a new item gets the lowercase one.

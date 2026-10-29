@@ -23,6 +23,7 @@ internal enum TeamLibraryPublishPlan {
                let held = Self.settings(in: stored.dataValues), held == Self.settings(in: data) {
                 return nil
             }
+            if state.declines(key, sending: data) { return nil }
             return upsert(.connection, key: key, data: data, in: state)
         }
     }
@@ -49,8 +50,9 @@ internal enum TeamLibraryPublishPlan {
             )
             touched.insert(key)
             if let stored = state.items[key]?.folder, stored.matches(data) { continue }
-            if state.declined.contains(key), state.items[key]?.deleted == true { continue }
-            edits.append(upsert(.folder, key: key, data: try TeamLibraryPayload.data(from: data), in: state))
+            let payload = try TeamLibraryPayload.data(from: data)
+            if state.declines(key, sending: payload) { continue }
+            edits.append(upsert(.folder, key: key, data: payload, in: state))
         }
 
         for favorite in favorites {
@@ -66,8 +68,9 @@ internal enum TeamLibraryPublishPlan {
             )
             touched.insert(key)
             if let stored = state.items[key]?.query, stored.matches(data) { continue }
-            if state.declined.contains(key), state.items[key]?.deleted == true { continue }
-            edits.append(upsert(.query, key: key, data: try TeamLibraryPayload.data(from: data), in: state))
+            let payload = try TeamLibraryPayload.data(from: data)
+            if state.declines(key, sending: payload) { continue }
+            edits.append(upsert(.query, key: key, data: payload, in: state))
         }
 
         let removed = state.published.filter { key in
