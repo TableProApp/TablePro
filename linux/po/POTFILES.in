@@ -548,6 +548,7 @@ crates/app/src/ui/workspace/imp.rs
 crates/app/src/ui/workspace/import.rs
 crates/app/src/ui/workspace/import_ledger.rs
 crates/app/src/ui/workspace/mod.rs
+crates/app/src/ui/workspace/recent_tabs.rs
 crates/app/src/ui/workspace/references.rs
 crates/app/src/ui/workspace/saves.rs
 crates/app/src/ui/workspace/session_watches.rs

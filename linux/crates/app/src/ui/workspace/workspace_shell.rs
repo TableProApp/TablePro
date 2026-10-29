@@ -453,6 +453,7 @@ impl WorkspaceShell {
         let Some(page) = self.imp().tab_view.selected_page() else {
             return;
         };
+        self.note_shown_tab();
         if let Some((owner, _)) = self.owner_of(&page) {
             self.set_front(Some(&owner));
         }

@@ -87,6 +87,12 @@
           </object>
         </child>
         <child>
+          <object class="AdwShortcutsItem" id="win-switch-recent-tab">
+            <property name="title" translatable="yes">Switch to a Recent Tab</property>
+            <property name="action-name">win.switch-recent-tab</property>
+          </object>
+        </child>
+        <child>
           <object class="AdwShortcutsItem" id="tab-view-select-next">
             <property name="title" translatable="yes">Next Tab</property>
             <property name="accelerator">&lt;Primary&gt;Tab &lt;Primary&gt;Page_Down</property>

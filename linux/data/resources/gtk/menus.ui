@@ -65,6 +65,10 @@
         <attribute name="label" translatable="yes">Reopen Closed Tab</attribute>
         <attribute name="action">win.reopen-closed-tab</attribute>
       </item>
+      <item>
+        <attribute name="label" translatable="yes">Recent Tabs</attribute>
+        <attribute name="action">win.switch-recent-tab</attribute>
+      </item>
     </section>
   </menu>
 </interface>

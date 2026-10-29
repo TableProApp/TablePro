@@ -83,6 +83,9 @@ pub const ACCELERATORS: &[Accelerator] = &[
     application("win.new-editor-tab", &["<Primary>t"], Tabs),
     application("win.close-current", &["<Primary>w"], Tabs),
     application("win.reopen-closed-tab", &["<Primary><Shift>t"], Tabs),
+    // Ctrl+Tab is the tab view's next tab, as across GNOME, so the tabs
+    // in the order they were shown take Ctrl+E.
+    application("win.switch-recent-tab", &["<Primary>e"], Tabs),
     // AdwTabView's own controller, which runs in the capture phase. The
     // workspace removes its Ctrl+Home and Ctrl+End pairs, so the lists
     // and the editor inside the tabs keep those keys.
