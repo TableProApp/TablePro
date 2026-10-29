@@ -220,6 +220,36 @@ struct TelemetryTests {
         #expect(fixture.client?.captured.contains("signed_out") == false)
     }
 
+    @Test("Opted out, a sign-out, a refused refresh token or a revoked device resets only at the next opt-in")
+    func optedOutSignOutResetsOnOptIn() async throws {
+        for cause in [AccountEvent.SignOutCause.user, .refreshRefused, .deviceRevoked] {
+            let fixture = try TelemetryFixture()
+            try await fixture.account.signIn()
+            fixture.start()
+            let client = try #require(fixture.client)
+            fixture.sharesUsageData.send(false)
+
+            switch cause {
+            case .user:
+                await fixture.account.services.signOut()
+            case .refreshRefused:
+                await fixture.account.server.set { $0.refusesRefresh = true }
+                _ = try? await fixture.account.services.session.refreshNow()
+                try await waitUntil { !fixture.account.access.state.isSignedIn }
+            case .deviceRevoked:
+                await fixture.account.server.set { $0.deviceRevoked = true }
+                await fixture.account.services.refreshEntitlement()
+            }
+
+            #expect(!fixture.account.access.state.isSignedIn, "\(cause)")
+            #expect(client.calls == [.optIn, .identify("acct_test", TelemetryFixture.person), .optOut], "\(cause)")
+
+            fixture.sharesUsageData.send(true)
+            #expect(Array(client.calls.dropFirst(3)) == [.optIn, .reset], "\(cause)")
+            #expect(fixture.storage.defaults.string(forKey: Telemetry.Keys.identifiedAccount) == nil, "\(cause)")
+        }
+    }
+
     @Test("Turning the setting off opts out and stops identify; turning it on opts in and identifies")
     func settingStopsIdentify() async throws {
         let fixture = try TelemetryFixture()

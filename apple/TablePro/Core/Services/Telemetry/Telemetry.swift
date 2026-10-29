@@ -29,8 +29,8 @@ internal struct TelemetryEnvironment {
     }
 }
 
-// Usage data for PostHog (clients.md, macOS Telemetry). A build without a project key never makes a client,
-// and while Share Usage Data is off no client is made, so the app contacts PostHog for neither.
+// Usage data for PostHog (clients.md, macOS Telemetry). A build without a project key never makes a client, and while
+// Share Usage Data is off a client made earlier gets no call but optOut().
 @MainActor
 internal final class Telemetry {
     static let shared = Telemetry(
@@ -178,16 +178,16 @@ internal final class Telemetry {
         }
     }
 
-    // Opted out, a sign-out still resets; only identify waits for the setting.
+    // The SDK's reset() reloads feature flags even when opted out, so a sign-out while off resets at the next opt-in.
     private func reconcileIdentity() {
-        guard let client else { return }
+        guard isEnabled, let client else { return }
         let identified = defaults.string(forKey: Keys.identifiedAccount)
         if let identified, identified != accountID {
             client.reset()
             defaults.removeObject(forKey: Keys.identifiedAccount)
             identifiedThisRun = nil
         }
-        guard isEnabled, let accountID, identifiedThisRun != accountID else { return }
+        guard let accountID, identifiedThisRun != accountID else { return }
         client.identify(accountID, personProperties: environment().personProperties)
         defaults.set(accountID, forKey: Keys.identifiedAccount)
         identifiedThisRun = accountID
