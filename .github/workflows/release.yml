@@ -112,7 +112,10 @@ jobs:
       - name: Write Secrets.xcconfig
         env:
           ANALYTICS_HMAC_SECRET: ${{ secrets.ANALYTICS_HMAC_SECRET }}
-        run: printf 'ANALYTICS_HMAC_SECRET = %s\n' "$ANALYTICS_HMAC_SECRET" > Configs/Secrets.xcconfig
+          POSTHOG_PROJECT_KEY: ${{ secrets.POSTHOG_PROJECT_KEY }}
+        run: |
+          printf 'ANALYTICS_HMAC_SECRET = %s\nPOSTHOG_PROJECT_KEY = %s\n' \
+            "$ANALYTICS_HMAC_SECRET" "$POSTHOG_PROJECT_KEY" > Configs/Secrets.xcconfig
 
       - uses: ./.github/actions/prepare-build
 
