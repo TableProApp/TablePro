@@ -102,6 +102,21 @@ struct FavoritesOutlineSelectionTests {
         #expect(selection == .node(id: FavoritesOutlineNode.teamQueryId("abc")))
     }
 
+    @Test("A Team Library row names the query's last writer, and its folder when the pull names no one")
+    func teamQueryRowNamesItsWriter() {
+        let named = TeamLibraryQuery(
+            id: "q1", name: "Orders", query: "select 1", keyword: nil, folderName: "Reports", lastWriter: "Grace Hopper"
+        )
+        let nameless = TeamLibraryQuery(
+            id: "q2", name: "Users", query: "select 1", keyword: nil, folderName: "Reports", lastWriter: nil
+        )
+
+        #expect(FavoritesOutlineTeamQuery(named).detail == "Grace Hopper")
+        #expect(FavoritesOutlineTeamQuery(nameless).detail == "Reports")
+        #expect(FavoritesOutlineTeamQuery(named).id == "q1")
+        #expect(FavoritesOutlineTeamQuery(named).name == "Orders")
+    }
+
     @Test("A header maps to no selection")
     func headerMapsToNothing() {
         #expect(FavoritesOutlineSelection.selection(for: .header("Queries")) == nil)

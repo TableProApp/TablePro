@@ -349,9 +349,7 @@ internal struct FavoritesTabView: View {
                     || sharedSidebarState.favoriteDatabaseEnvironmentFilter != .all,
                 tables: filteredTables,
                 queryNodes: items,
-                teamQueries: teamLibraryQueries.map {
-                    FavoritesOutlineTeamQuery(id: $0.id, name: $0.name, detail: $0.detail)
-                },
+                teamQueries: teamLibraryQueries.map(FavoritesOutlineTeamQuery.init),
                 renamingFolderId: viewModel.renamingFolderId,
                 allFolders: viewModel.nodes.collectFolders(),
                 teamLibraryTeams: featureAccess.isAvailable(.teamLibrary) ? teamLibrarySync.writableTeams : [],

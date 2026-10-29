@@ -30,6 +30,12 @@ internal struct FavoritesOutlineTeamQuery {
     internal let id: String
     internal let name: String
     internal let detail: String?
+
+    internal init(_ query: TeamLibraryQuery) {
+        id = query.id
+        name = query.name
+        detail = query.detail
+    }
 }
 
 /// Both actions carry the row's own kind rather than the persisted `FavoriteSelection`, because a
