@@ -88,6 +88,7 @@ crates/app/src/services/grid/edit_policy.rs
 crates/app/src/services/grid/find_matches.rs
 crates/app/src/services/grid/grid_column.rs
 crates/app/src/services/grid/grid_row_id.rs
+crates/app/src/services/grid/hex_dump.rs
 crates/app/src/services/grid/mod.rs
 crates/app/src/services/grid/row_key_builder.rs
 crates/app/src/services/grid/row_snapshot.rs

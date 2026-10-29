@@ -200,6 +200,19 @@
                               </object>
                             </child>
                             <child>
+                              <!-- A binary value that is an image, above its bytes. -->
+                              <object class="GtkPicture" id="value_picture">
+                                <property name="visible">false</property>
+                                <property name="height-request">160</property>
+                                <property name="content-fit">contain</property>
+                                <property name="can-shrink">true</property>
+                                <property name="margin-top">6</property>
+                                <property name="margin-start">12</property>
+                                <property name="margin-end">12</property>
+                                <property name="alternative-text" translatable="yes">Image preview</property>
+                              </object>
+                            </child>
+                            <child>
                               <!-- A text view has no placeholder of its own, so
                                    one is drawn over it while it is empty. -->
                               <object class="GtkOverlay">

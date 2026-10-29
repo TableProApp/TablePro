@@ -871,3 +871,43 @@ fn alt_return_closes_row_details_from_the_pane() {
     })
     .expect("Alt+Return to close Row Details");
 }
+
+/// A tiny PNG, as a table would hold one.
+fn png_bytes() -> Vec<u8> {
+    let pixels = gtk4::glib::Bytes::from(&[255u8, 0, 0, 255][..]);
+    let texture = gdk::MemoryTexture::new(1, 1, gdk::MemoryFormat::R8g8b8a8, &pixels, 4);
+    texture.save_to_png_bytes().to_vec()
+}
+
+/// A binary value shows its bytes as a hex dump, unwrapped, and an
+/// image above them when it is one.
+#[gtk4::test]
+fn a_binary_value_shows_its_bytes_and_an_image_its_picture() {
+    let (grid, pane) = opened(
+        vec![
+            named("id", "integer", true),
+            named("photo", "bytea", false),
+            named("blob", "bytea", false),
+        ],
+        vec![vec![
+            Value::Int(1),
+            Value::Bytes(png_bytes()),
+            Value::Bytes(b"Hi!\x00".to_vec()),
+        ]],
+    );
+    grid.focus(0, 2);
+    drain_main_context();
+    let text = pane.typed_text();
+    assert!(text.starts_with("00000000  48 69 21 00"), "{text}");
+    assert!(text.ends_with("|Hi!.|"), "{text}");
+    assert_eq!(pane.imp().value_view.wrap_mode(), gtk::WrapMode::None);
+    assert!(
+        !pane.imp().value_picture.is_visible(),
+        "bytes that are no image showed a picture"
+    );
+
+    grid.focus(0, 1);
+    drain_main_context();
+    assert!(pane.imp().value_picture.is_visible(), "an image showed no picture");
+    assert!(pane.typed_text().starts_with("00000000  89 50 4e 47"));
+}
