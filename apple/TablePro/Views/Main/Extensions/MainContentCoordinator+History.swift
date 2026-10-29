@@ -1,9 +1,7 @@
 import Foundation
 
 extension MainContentCoordinator {
-    /// The result-application paths run synchronously inside `MainActor.run`, so they cannot await
-    /// the write. Returning the task keeps it owned and awaitable instead of orphaned, which is
-    /// what tests use to observe the record without polling.
+    // The result paths run inside `MainActor.run` and cannot await the write; tests await the returned task.
     @discardableResult
     func recordHistory(_ request: QueryHistoryRecordRequest) -> Task<Bool, Never> {
         if request.source == .editor {
@@ -11,7 +9,7 @@ extension MainContentCoordinator {
                 FeatureTipSignals.editorQueryRan()
             }
             if request.wasSuccessful {
-                Telemetry.shared.queryExecuted()
+                Telemetry.shared.queryExecuted(databaseType: request.databaseType.rawValue)
             }
         }
         let recorder = services.queryHistoryManager

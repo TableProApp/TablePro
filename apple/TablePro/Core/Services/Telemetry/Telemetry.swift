@@ -147,8 +147,8 @@ internal final class Telemetry {
         captureOnce(Keys.connectionSucceededAt, "connection_succeeded", ["database_type": databaseType])
     }
 
-    func queryExecuted() {
-        captureOnce(Keys.firstQueryExecutedAt, "first_query_executed", [:])
+    func queryExecuted(databaseType: String) {
+        captureOnce(Keys.firstQueryExecutedAt, "first_query_executed", ["database_type": databaseType])
     }
 
     // Once per feature and launch: a gate's view appears again on every layout pass that rebuilds it.

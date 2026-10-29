@@ -119,7 +119,7 @@ struct TelemetryTests {
 
             await fixture.account.services.signOut()
             fixture.telemetry.connectionAttempted(databaseType: "PostgreSQL")
-            fixture.telemetry.queryExecuted()
+            fixture.telemetry.queryExecuted(databaseType: "PostgreSQL")
             fixture.telemetry.featureGateShown(.resultCharts, access: .signedOut)
             fixture.telemetry.upgradeClicked(from: .licenseSettings)
             fixture.clock.advance(by: .seconds(48 * 60 * 60))
@@ -266,7 +266,7 @@ struct TelemetryTests {
 
         fixture.sharesUsageData.send(false)
         try await fixture.account.signIn()
-        fixture.telemetry.queryExecuted()
+        fixture.telemetry.queryExecuted(databaseType: "PostgreSQL")
         #expect(client.calls == [.optIn, .optOut])
 
         fixture.sharesUsageData.send(true)
@@ -317,7 +317,7 @@ struct TelemetryTests {
         ])
     }
 
-    @Test("First connection attempt, first success and first query go once each, never again after the heartbeat's dates")
+    @Test("First connection attempt, first success and first query go once each with their own database type, never again after the heartbeat's dates")
     func firstUseOnce() throws {
         let fixture = try TelemetryFixture()
         fixture.start()
@@ -325,13 +325,13 @@ struct TelemetryTests {
         fixture.telemetry.connectionAttempted(databaseType: "PostgreSQL")
         fixture.telemetry.connectionAttempted(databaseType: "MySQL")
         fixture.telemetry.connectionSucceeded(databaseType: "PostgreSQL")
-        fixture.telemetry.queryExecuted()
-        fixture.telemetry.queryExecuted()
+        fixture.telemetry.queryExecuted(databaseType: "SQL Server")
+        fixture.telemetry.queryExecuted(databaseType: "PostgreSQL")
 
         #expect(Array(fixture.client?.calls.dropFirst() ?? []) == [
             .capture("connection_attempted", ["database_type": "PostgreSQL"]),
             .capture("connection_succeeded", ["database_type": "PostgreSQL"]),
-            .capture("first_query_executed", [:])
+            .capture("first_query_executed", ["database_type": "SQL Server"])
         ])
 
         let updated = try TelemetryFixture()
@@ -346,7 +346,7 @@ struct TelemetryTests {
         let updated = try TelemetryFixture()
         updated.storage.defaults.set(Date(timeIntervalSince1970: 1), forKey: Telemetry.Keys.connectionSucceededAt)
         updated.start()
-        updated.telemetry.queryExecuted()
+        updated.telemetry.queryExecuted(databaseType: "PostgreSQL")
         #expect(updated.client?.captured.isEmpty == true)
 
         let fresh = try TelemetryFixture()
@@ -354,7 +354,7 @@ struct TelemetryTests {
         fresh.telemetry.connectionSucceeded(databaseType: "PostgreSQL")
         fresh.relaunch()
         fresh.start()
-        fresh.telemetry.queryExecuted()
+        fresh.telemetry.queryExecuted(databaseType: "PostgreSQL")
         #expect(fresh.client?.captured == ["first_query_executed"])
     }
 
