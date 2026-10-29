@@ -88,8 +88,15 @@
         </child>
         <child>
           <object class="AdwShortcutsItem" id="win-switch-recent-tab">
-            <property name="title" translatable="yes">Switch to a Recent Tab</property>
+            <property name="title" translatable="yes">Switch to Recent Tab</property>
+            <property name="subtitle" translatable="yes" comments="Ctrl and E are the keys of this shortcut.">Hold Ctrl and press E again to go further back</property>
             <property name="action-name">win.switch-recent-tab</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem" id="win-show-tabs">
+            <property name="title" translatable="yes">View Open Tabs</property>
+            <property name="action-name">win.show-tabs</property>
           </object>
         </child>
         <child>

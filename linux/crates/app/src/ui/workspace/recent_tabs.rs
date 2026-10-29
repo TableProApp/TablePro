@@ -1,57 +1,70 @@
-//! Recent Tabs: the window's tabs in the order they were last shown, the
-//! one shown before the current first, as a list the keys walk. Ctrl+Tab
-//! stays the tab view's next tab, as GNOME has it; Ctrl+E opens this list,
-//! E again with Ctrl held moves down it, and letting go of Ctrl shows the
-//! tab it is on.
+//! Ctrl+E walks back through the tabs in the order they were shown, the
+//! tab bar showing where it is. Ctrl+Tab stays the next tab, as in GNOME.
 
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use gtk4::{self as gtk, gdk, glib};
 use libadwaita as adw;
-use libadwaita::prelude::*;
 
 use super::WorkspaceShell;
-use crate::i18n::gettext;
 
-/// The open list and the tabs it shows, in its rows' order.
-pub(super) struct RecentSwitcher {
-    dialog: adw::Dialog,
-    list: gtk::ListBox,
-    pages: Vec<adw::TabPage>,
+const WALK_KEYS: &str = "tablepro-recent-walk-keys";
+
+pub(super) struct RecentWalk {
+    // Frozen at the first press, so the tabs it passes do not reorder it.
+    order: Vec<glib::WeakRef<adw::TabPage>>,
+    at: usize,
 }
 
-impl RecentSwitcher {
-    fn highlighted(&self) -> Option<usize> {
-        self.list
-            .selected_row()
-            .and_then(|row| usize::try_from(row.index()).ok())
+impl RecentWalk {
+    fn step(&mut self, view: &adw::TabView) -> Option<adw::TabPage> {
+        let count = self.order.len();
+        (1..count).find_map(|offset| {
+            let at = (self.at + offset) % count;
+            let page = self.order[at].upgrade().filter(|page| holds(view, page))?;
+            self.at = at;
+            Some(page)
+        })
     }
 
-    /// Move the highlight `by` rows, round from the last to the first.
-    fn step(&self, by: isize) {
-        let count = self.pages.len().cast_signed();
-        let at = self.highlighted().map_or(0, usize::cast_signed);
-        let next = (at + by).rem_euclid(count.max(1));
-        if let Some(row) = self.list.row_at_index(i32::try_from(next).unwrap_or(0)) {
-            self.list.select_row(Some(&row));
-            row.grab_focus();
+    fn start(&self, view: &adw::TabView) -> Option<adw::TabPage> {
+        self.order
+            .first()
+            .and_then(glib::WeakRef::upgrade)
+            .filter(|page| holds(view, page))
+    }
+}
+
+pub(super) struct WalkHooks {
+    window: glib::WeakRef<adw::ApplicationWindow>,
+    keys: gtk::EventControllerKey,
+    active: glib::SignalHandlerId,
+}
+
+impl WalkHooks {
+    pub(super) fn release(self) {
+        if let Some(window) = self.window.upgrade() {
+            window.remove_controller(&self.keys);
+            window.disconnect(self.active);
         }
     }
 }
 
 impl WorkspaceShell {
-    /// Put the tab shown now first among the recent ones.
     pub(super) fn note_shown_tab(&self) {
-        let Some(page) = self.imp().tab_view.selected_page() else {
+        let imp = self.imp();
+        // A walk records only the tab it ends on.
+        if imp.recent_walk.borrow().is_some() {
+            return;
+        }
+        let Some(page) = imp.tab_view.selected_page() else {
             return;
         };
-        let mut recent = self.imp().recent_tabs.borrow_mut();
+        let mut recent = imp.recent_tabs.borrow_mut();
         recent.retain(|held| held.upgrade().is_some_and(|held| held != page));
         recent.insert(0, page.downgrade());
     }
 
-    /// The window's tabs, the most recently shown first. A tab never shown
-    /// yet comes after them, in the tab bar's order.
     pub(super) fn recent_pages(&self) -> Vec<adw::TabPage> {
         let view = self.imp().tab_view.get();
         let open: Vec<adw::TabPage> = (0..view.n_pages()).map(|at| view.nth_page(at)).collect();
@@ -71,141 +84,85 @@ impl WorkspaceShell {
         pages
     }
 
-    /// Open the list on the tab shown before this one, or move down it
-    /// when it is open already.
     pub(super) fn switch_recent_tab(&self) {
-        if let Some(switcher) = self.imp().recent_switcher.borrow().as_ref() {
-            switcher.step(1);
-            return;
+        let imp = self.imp();
+        if imp.recent_walk.borrow().is_none() {
+            let order = self.recent_pages().iter().map(ObjectExt::downgrade).collect();
+            imp.recent_walk.replace(Some(RecentWalk { order, at: 0 }));
         }
-        let pages = self.recent_pages();
-        if pages.len() < 2 {
-            self.toast_overlay()
-                .add_toast(crate::ui::plain_toast(&gettext("No other tab to switch to")));
-            return;
+        let view = imp.tab_view.get();
+        let next = imp
+            .recent_walk
+            .borrow_mut()
+            .as_mut()
+            .and_then(|walk| walk.step(&view));
+        if let Some(page) = next {
+            view.set_selected_page(&page);
         }
-        let Some(window) = self.imp().window.upgrade() else {
-            return;
-        };
-        let switcher = self.build_switcher(pages);
-        switcher.dialog.present(Some(&window));
-        switcher.step(1);
-        self.imp().recent_switcher.replace(Some(switcher));
+        // No release to wait for, as GNOME Shell's switcher checks.
+        if !control_held(&view) {
+            self.end_recent_walk(true);
+        }
     }
 
-    fn build_switcher(&self, pages: Vec<adw::TabPage>) -> RecentSwitcher {
-        let list = gtk::ListBox::builder()
-            .selection_mode(gtk::SelectionMode::Single)
-            .build();
-        list.add_css_class("navigation-sidebar");
-        for page in &pages {
-            list.append(&tab_row(page));
+    pub(super) fn end_recent_walk(&self, keep: bool) {
+        let Some(walk) = self.imp().recent_walk.take() else {
+            return;
+        };
+        let view = self.imp().tab_view.get();
+        if !keep && let Some(start) = walk.start(&view) {
+            view.set_selected_page(&start);
         }
-        let scrolled = gtk::ScrolledWindow::builder()
-            .hscrollbar_policy(gtk::PolicyType::Never)
-            .propagate_natural_height(true)
-            .max_content_height(420)
-            .child(&list)
-            .build();
-        let header = adw::HeaderBar::builder().show_end_title_buttons(false).build();
-        let toolbar = adw::ToolbarView::new();
-        toolbar.add_top_bar(&header);
-        toolbar.set_content(Some(&scrolled));
-        let dialog = adw::Dialog::builder()
-            .title(gettext("Recent Tabs"))
-            .content_width(420)
-            .child(&toolbar)
-            .build();
-        let shell = self.downgrade();
-        list.connect_row_activated(move |_, row| {
-            if let (Some(shell), Ok(at)) = (shell.upgrade(), usize::try_from(row.index())) {
-                shell.show_recent(at);
-            }
-        });
-        // Opened with Ctrl held, as Ctrl+E does, the list shows its tab
-        // when Ctrl is let go; opened from a menu, it waits for Enter.
-        let held = control_held(&dialog);
+        self.note_shown_tab();
+    }
+
+    pub(super) fn hook_recent_walk(&self, window: &adw::ApplicationWindow) -> WalkHooks {
+        // On the window, so the release reaches it wherever the focus is.
         let keys = gtk::EventControllerKey::new();
+        keys.set_name(Some(WALK_KEYS));
         keys.set_propagation_phase(gtk::PropagationPhase::Capture);
         let shell = self.downgrade();
         keys.connect_key_pressed(move |_, keyval, _, _| {
-            let Some(shell) = shell.upgrade() else {
+            let Some(shell) = shell.upgrade().filter(|_| keyval == gdk::Key::Escape) else {
                 return glib::Propagation::Proceed;
             };
-            // Ctrl+E is the window's accelerator, which runs before this.
-            let by = match keyval {
-                gdk::Key::Down => 1,
-                gdk::Key::Up => -1,
-                _ => return glib::Propagation::Proceed,
-            };
-            if let Some(switcher) = shell.imp().recent_switcher.borrow().as_ref() {
-                switcher.step(by);
+            let walking = shell.imp().recent_walk.borrow().is_some();
+            if !walking {
+                return glib::Propagation::Proceed;
             }
+            shell.end_recent_walk(false);
             glib::Propagation::Stop
         });
         let shell = self.downgrade();
         keys.connect_key_released(move |_, keyval, _, _| {
-            if held
-                && matches!(keyval, gdk::Key::Control_L | gdk::Key::Control_R)
+            if matches!(keyval, gdk::Key::Control_L | gdk::Key::Control_R)
                 && let Some(shell) = shell.upgrade()
             {
-                let at = shell
-                    .imp()
-                    .recent_switcher
-                    .borrow()
-                    .as_ref()
-                    .and_then(RecentSwitcher::highlighted);
-                if let Some(at) = at {
-                    shell.show_recent(at);
-                }
+                shell.end_recent_walk(true);
             }
         });
-        dialog.add_controller(keys);
+        window.add_controller(keys.clone());
+        // The release goes to another window once this one loses the keyboard.
         let shell = self.downgrade();
-        dialog.connect_closed(move |_| {
-            if let Some(shell) = shell.upgrade() {
-                shell.imp().recent_switcher.take();
+        let active = window.connect_is_active_notify(move |window| {
+            if !window.is_active()
+                && let Some(shell) = shell.upgrade()
+            {
+                shell.end_recent_walk(true);
             }
         });
-        RecentSwitcher { dialog, list, pages }
-    }
-
-    /// Show the tab on row `at` and close the list.
-    fn show_recent(&self, at: usize) {
-        let Some(switcher) = self.imp().recent_switcher.take() else {
-            return;
-        };
-        if let Some(page) = switcher.pages.get(at) {
-            self.imp().tab_view.set_selected_page(page);
+        WalkHooks {
+            window: window.downgrade(),
+            keys,
+            active,
         }
-        switcher.dialog.close();
     }
 }
 
-/// A tab's icon and title, as its tab shows them.
-fn tab_row(page: &adw::TabPage) -> gtk::ListBoxRow {
-    let content = gtk::Box::builder().spacing(12).margin_top(6).margin_bottom(6).build();
-    // As its tab: an icon only where the tab has one.
-    if let Some(gicon) = page.icon() {
-        let icon = gtk::Image::builder()
-            .gicon(&gicon)
-            .accessible_role(gtk::AccessibleRole::Presentation)
-            .build();
-        content.append(&icon);
-    }
-    let title = gtk::Label::builder()
-        .label(page.title())
-        .xalign(0.0)
-        .hexpand(true)
-        .ellipsize(gtk::pango::EllipsizeMode::End)
-        .build();
-    content.append(&title);
-    let row = gtk::ListBoxRow::builder().child(&content).build();
-    row.update_property(&[gtk::accessible::Property::Label(&page.title())]);
-    row
+fn holds(view: &adw::TabView, page: &adw::TabPage) -> bool {
+    (0..view.n_pages()).any(|at| &view.nth_page(at) == page)
 }
 
-/// Whether Control is down on the keyboard now.
 fn control_held(widget: &impl IsA<gtk::Widget>) -> bool {
     widget
         .display()
@@ -216,9 +173,10 @@ fn control_held(widget: &impl IsA<gtk::Widget>) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use gtk4::prelude::*;
+    use gtk4::subclass::prelude::*;
     use libadwaita as adw;
 
-    use crate::test_support::drain_main_context;
     use crate::ui::workspace::WorkspaceShell;
 
     fn shell_with_tabs(titles: &[&str]) -> (WorkspaceShell, Vec<adw::TabPage>) {
@@ -236,35 +194,234 @@ mod tests {
         (shell, pages)
     }
 
+    fn titles(pages: &[adw::TabPage]) -> Vec<String> {
+        pages.iter().map(|page| page.title().to_string()).collect()
+    }
+
+    fn selected(shell: &WorkspaceShell) -> String {
+        shell
+            .tab_view()
+            .selected_page()
+            .map(|page| page.title().to_string())
+            .unwrap_or_default()
+    }
+
+    fn show(shell: &WorkspaceShell, pages: &[adw::TabPage], order: &[usize]) {
+        for at in order {
+            shell.tab_view().set_selected_page(&pages[*at]);
+            shell.note_shown_tab();
+        }
+    }
+
     #[gtk4::test]
     fn the_tabs_come_most_recently_shown_first() {
         let (shell, pages) = shell_with_tabs(&["users", "orders", "query"]);
-        let view = shell.tab_view();
-        for at in [0, 2, 1] {
-            view.set_selected_page(&pages[at]);
-            shell.note_shown_tab();
-        }
-        drain_main_context();
+        show(&shell, &pages, &[0, 2, 1]);
 
-        let titles: Vec<String> = shell
-            .recent_pages()
-            .iter()
-            .map(|page| page.title().to_string())
-            .collect();
-        assert_eq!(titles, ["orders", "query", "users"]);
+        assert_eq!(titles(&shell.recent_pages()), ["orders", "query", "users"]);
     }
 
     #[gtk4::test]
     fn a_tab_never_shown_comes_after_the_shown_ones() {
         let (shell, pages) = shell_with_tabs(&["users", "orders", "query"]);
-        shell.tab_view().set_selected_page(&pages[2]);
-        shell.note_shown_tab();
+        show(&shell, &pages, &[2]);
 
-        let titles: Vec<String> = shell
-            .recent_pages()
-            .iter()
-            .map(|page| page.title().to_string())
-            .collect();
-        assert_eq!(titles, ["query", "users", "orders"]);
+        assert_eq!(titles(&shell.recent_pages()), ["query", "users", "orders"]);
+    }
+
+    #[gtk4::test]
+    fn a_closed_tab_leaves_the_order() {
+        let (shell, pages) = shell_with_tabs(&["users", "orders", "query"]);
+        show(&shell, &pages, &[0, 1, 2]);
+
+        shell.tab_view().close_page(&pages[1]);
+
+        assert_eq!(titles(&shell.recent_pages()), ["query", "users"]);
+    }
+
+    #[gtk4::test]
+    fn without_ctrl_held_each_switch_goes_to_the_tab_shown_before() {
+        let (shell, pages) = shell_with_tabs(&["users", "orders", "query"]);
+        show(&shell, &pages, &[0, 1, 2]);
+
+        shell.switch_recent_tab();
+        assert_eq!(selected(&shell), "orders");
+        assert!(shell.imp().recent_walk.borrow().is_none(), "a walk waits for a release");
+        shell.switch_recent_tab();
+        assert_eq!(selected(&shell), "query");
+        assert_eq!(titles(&shell.recent_pages()), ["query", "orders", "users"]);
+    }
+
+    #[gtk4::test]
+    fn a_walk_records_only_the_tab_it_ends_on() {
+        let (shell, pages) = shell_with_tabs(&["users", "orders", "query"]);
+        show(&shell, &pages, &[0, 1, 2]);
+        let imp = shell.imp();
+        imp.recent_walk.replace(Some(super::RecentWalk {
+            order: shell.recent_pages().iter().map(ObjectExt::downgrade).collect(),
+            at: 0,
+        }));
+
+        for _ in 0..2 {
+            let next = imp
+                .recent_walk
+                .borrow_mut()
+                .as_mut()
+                .and_then(|walk| walk.step(&shell.tab_view()));
+            shell.tab_view().set_selected_page(&next.expect("a tab to go to"));
+            shell.note_shown_tab();
+        }
+        assert_eq!(selected(&shell), "users");
+        assert_eq!(titles(&shell.recent_pages()), ["query", "orders", "users"]);
+
+        shell.end_recent_walk(true);
+        assert_eq!(titles(&shell.recent_pages()), ["users", "query", "orders"]);
+    }
+
+    #[gtk4::test]
+    fn a_walk_skips_a_tab_closed_on_the_way_and_escape_returns_to_the_start() {
+        let (shell, pages) = shell_with_tabs(&["users", "orders", "query"]);
+        show(&shell, &pages, &[0, 1, 2]);
+        let imp = shell.imp();
+        imp.recent_walk.replace(Some(super::RecentWalk {
+            order: shell.recent_pages().iter().map(ObjectExt::downgrade).collect(),
+            at: 0,
+        }));
+        shell.tab_view().close_page(&pages[1]);
+
+        let next = imp
+            .recent_walk
+            .borrow_mut()
+            .as_mut()
+            .and_then(|walk| walk.step(&shell.tab_view()));
+        assert_eq!(next.as_ref(), Some(&pages[0]), "the walk went to a closed tab");
+        shell.tab_view().set_selected_page(&pages[0]);
+
+        shell.end_recent_walk(false);
+        assert_eq!(selected(&shell), "query");
+        assert_eq!(titles(&shell.recent_pages()), ["query", "users"]);
+    }
+
+    #[gtk4::test]
+    fn the_window_lets_go_of_the_walk_keys_with_the_shell() {
+        use crate::ui::SessionWindowInput;
+        use crate::ui::session_window::tests::TestWindow;
+        let test = TestWindow::connected("RecentWalkKeys");
+        let walk_keys = || {
+            let controllers = test.window.observe_controllers();
+            (0..controllers.n_items())
+                .filter_map(|at| controllers.item(at).and_downcast::<gtk4::EventController>())
+                .filter(|controller| controller.name().as_deref() == Some(super::WALK_KEYS))
+                .count()
+        };
+        assert_eq!(walk_keys(), 1);
+
+        test.window.send(SessionWindowInput::Disconnect);
+        test.wait_for_page("picker");
+
+        assert_eq!(walk_keys(), 0, "the picker kept the walk's keys");
+    }
+
+    /// These press real keys on the X display every test shares; nextest
+    /// runs them with no other test beside them.
+    mod real_keys {
+        use gtk4::gdk;
+        use gtk4::prelude::*;
+        use gtk4::subclass::prelude::*;
+        use libadwaita as adw;
+
+        use crate::test_support::{KeyInjector, wait_until};
+        use crate::ui::session_window::tests::{TestWindow, WAIT};
+        use crate::ui::workspace::WorkspaceShell;
+        use crate::ui::workspace::tests::{open_editor, shell_of};
+
+        struct Walking {
+            test: TestWindow,
+            shell: WorkspaceShell,
+            pages: Vec<adw::TabPage>,
+            keys: KeyInjector,
+        }
+
+        /// Three editor tabs, opened and so shown in order: the recent
+        /// order is the third, the second, the first.
+        fn walking(name: &str) -> Walking {
+            let test = TestWindow::connected(name);
+            let workspace = test.workspace();
+            let shell = shell_of(&workspace);
+            let pages: Vec<adw::TabPage> = (0..3).map(|_| open_editor(&workspace)).collect();
+            assert_eq!(shell.recent_pages(), [pages[2].clone(), pages[1].clone(), pages[0].clone()]);
+            KeyInjector::focus_only(&test.window);
+            wait_until(WAIT, || test.window.is_active()).expect("the window to take the focus");
+            let keys = KeyInjector::connect().expect("an X11 display");
+            Walking {
+                test,
+                shell,
+                pages,
+                keys,
+            }
+        }
+
+        impl Walking {
+            fn selected(&self) -> Option<adw::TabPage> {
+                self.shell.tab_view().selected_page()
+            }
+
+            fn wait_for(&self, page: usize, what: &str) {
+                wait_until(WAIT, || self.selected().as_ref() == Some(&self.pages[page])).expect(what);
+            }
+
+            fn press_e(&self) {
+                self.keys
+                    .press(gdk::Key::e, gdk::ModifierType::empty())
+                    .expect("the key press");
+            }
+
+            fn is_walking(&self) -> bool {
+                self.shell.imp().recent_walk.borrow().is_some()
+            }
+        }
+
+        #[gtk4::test]
+        fn holding_ctrl_walks_back_and_letting_go_keeps_the_tab() {
+            let walk = walking("RecentWalkKeep");
+            {
+                let _ctrl = walk.keys.hold(gdk::Key::Control_L).expect("Ctrl held");
+                wait_until(WAIT, || super::super::control_held(&walk.test.window)).expect("GDK to see Ctrl down");
+                walk.press_e();
+                walk.wait_for(1, "Ctrl+E to show the tab shown before");
+                walk.press_e();
+                walk.wait_for(0, "E again to go one further back");
+                assert!(walk.is_walking(), "the walk ended with Ctrl still held");
+            }
+            wait_until(WAIT, || !walk.is_walking()).expect("letting go of Ctrl to end the walk");
+
+            assert_eq!(walk.selected().as_ref(), Some(&walk.pages[0]));
+            let order = [walk.pages[0].clone(), walk.pages[2].clone(), walk.pages[1].clone()];
+            assert_eq!(walk.shell.recent_pages(), order, "the tabs passed on the way were recorded");
+
+            walk.keys
+                .press(gdk::Key::e, gdk::ModifierType::CONTROL_MASK)
+                .expect("the key press");
+            walk.wait_for(2, "a tap of Ctrl+E to go back to the tab before");
+        }
+
+        #[gtk4::test]
+        fn escape_ends_a_walk_on_the_tab_it_started_on() {
+            let walk = walking("RecentWalkEscape");
+            {
+                let _ctrl = walk.keys.hold(gdk::Key::Control_L).expect("Ctrl held");
+                wait_until(WAIT, || super::super::control_held(&walk.test.window)).expect("GDK to see Ctrl down");
+                walk.press_e();
+                walk.wait_for(1, "Ctrl+E to show the tab shown before");
+                walk.keys
+                    .press(gdk::Key::Escape, gdk::ModifierType::empty())
+                    .expect("the key press");
+                walk.wait_for(2, "Escape to go back to the start");
+                assert!(!walk.is_walking(), "Escape left the walk on");
+            }
+
+            let order = [walk.pages[2].clone(), walk.pages[1].clone(), walk.pages[0].clone()];
+            assert_eq!(walk.shell.recent_pages(), order);
+        }
     }
 }

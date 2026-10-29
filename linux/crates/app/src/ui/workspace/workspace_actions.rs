@@ -2,11 +2,12 @@
 //! them once and each one goes to the session in front, so a change of
 //! front changes where they go without taking any off the window. Their
 //! keys are application accelerators; a tab's own keys belong to the tab.
-//! Reopen Closed Tab and Recent Tabs are the shell's own: the tabs they
-//! name may be any session's.
+//! Reopen Closed Tab, Switch to Recent Tab and View Open Tabs are the
+//! shell's own: the tabs they name may be any session's.
 
 use gtk4::glib;
 use gtk4::prelude::*;
+use gtk4::subclass::prelude::*;
 use libadwaita as adw;
 
 use super::{WorkspaceInput, WorkspaceShell};
@@ -32,6 +33,7 @@ const ENTRIES: [(&str, ActionInput); 6] = [
 
 const REOPEN_CLOSED_TAB: &str = "reopen-closed-tab";
 const SWITCH_RECENT_TAB: &str = "switch-recent-tab";
+const SHOW_TABS: &str = "show-tabs";
 
 /// Add the actions to the window's own action map, which GTK exports as
 /// `win`. Each sends its input to the session in front when activated;
@@ -68,6 +70,26 @@ pub(super) fn install(window: &adw::ApplicationWindow, shell: &WorkspaceShell) {
             }
         })
         .build()]);
+    let overview = shell.imp().tab_overview.downgrade();
+    window.add_action_entries([gio::ActionEntry::<adw::ApplicationWindow>::builder(SHOW_TABS)
+        .activate(move |_, _, _| {
+            if let Some(overview) = overview.upgrade() {
+                overview.set_open(!overview.is_open());
+            }
+        })
+        .build()]);
+    // The overview refuses to open or close with no tab, and with one tab
+    // Ctrl+E goes on to the tab.
+    for (name, least) in [(SWITCH_RECENT_TAB, 2), (SHOW_TABS, 1)] {
+        if let Some(action) = window.lookup_action(name) {
+            shell
+                .tab_view()
+                .bind_property("n-pages", &action, "enabled")
+                .transform_to(move |_, pages: i32| Some(pages >= least))
+                .sync_create()
+                .build();
+        }
+    }
     // Insensitive until the query database has opened or failed to.
     for name in HISTORY_ACTIONS {
         set_enabled(window, name, false);
@@ -81,6 +103,7 @@ pub(super) fn remove(window: &adw::ApplicationWindow) {
     }
     window.remove_action(REOPEN_CLOSED_TAB);
     window.remove_action(SWITCH_RECENT_TAB);
+    window.remove_action(SHOW_TABS);
 }
 
 fn set_enabled(window: &adw::ApplicationWindow, name: &str, enabled: bool) {
@@ -158,5 +181,7 @@ mod tests {
         remove(&window);
         assert!(window.lookup_action("new-editor-tab").is_none());
         assert!(window.lookup_action(REOPEN_CLOSED_TAB).is_none());
+        assert!(window.lookup_action(SWITCH_RECENT_TAB).is_none());
+        assert!(window.lookup_action(SHOW_TABS).is_none());
     }
 }

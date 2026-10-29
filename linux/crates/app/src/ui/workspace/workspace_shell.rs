@@ -105,6 +105,7 @@ impl WorkspaceShell {
         ));
         follow_sidebar(&imp.split_view, &imp.sidebar_toggle);
         window.add_action(&assistant_action(&shell));
+        imp.walk_hooks.replace(Some(shell.hook_recent_walk(window)));
 
         imp.tab_view
             .bind_property("n-pages", &imp.tab_stack.get(), "visible-child-name")
@@ -631,6 +632,10 @@ impl WorkspaceShell {
             }
         }
         imp.closed_tabs.borrow_mut().clear();
+        imp.recent_walk.take();
+        if let Some(hooks) = imp.walk_hooks.take() {
+            hooks.release();
+        }
         if let Some(window) = imp.window.upgrade() {
             window.remove_action(SHOW_SIDEBAR);
             window.remove_action(SHOW_ASSISTANT);
