@@ -712,9 +712,9 @@ fn a_key_row_shows_its_type_beside_its_name() {
         "a lone database stays folded"
     );
     let row = shown.row_widget("user:1");
-    assert!(row.imp().kind.is_visible());
-    assert_eq!(row.imp().kind.label(), "Hash");
-    assert!(!shown.row_widget("Database 0").imp().kind.is_visible());
+    assert!(row.kind().is_visible());
+    assert_eq!(row.kind().label(), "Hash");
+    assert!(!shown.row_widget("Database 0").kind().is_visible());
 }
 
 #[gtk4::test]
@@ -902,9 +902,9 @@ fn an_open_connection_offers_to_disconnect_from_its_row() {
     let (view, _) = session(&[object("public", "orders")], every_affordance());
     let key = shown.open(&alpha, &view);
 
-    let eject = shown.row_widget("Alpha").imp().eject.clone();
+    let eject = shown.row_widget("Alpha").status().eject.clone();
     assert!(eject.is_visible());
-    assert!(!shown.row_widget("Beta").imp().eject.is_visible());
+    assert!(!shown.row_widget("Beta").status().eject.is_visible());
     crate::test_support::assert_labelled(&eject).expect("the Disconnect button is named");
     eject.emit_clicked();
     drain_main_context();
@@ -925,7 +925,7 @@ fn a_connect_shows_a_spinner_and_offers_to_stop() {
     ]);
 
     assert_eq!(shown.rows(), ["Alpha", "From the Dialog"]);
-    assert!(shown.row_widget("From the Dialog").imp().spinner.is_visible());
+    assert!(shown.row_widget("From the Dialog").status().spinner.is_visible());
     shown.menu("From the Dialog");
     let popover = shown.popover();
     assert!(popover.is_visible());
@@ -942,7 +942,7 @@ fn a_connect_shows_a_spinner_and_offers_to_stop() {
 
     shown.tree.set_connects(&[]);
     assert_eq!(shown.rows(), ["Alpha"], "a stopped connect left its row");
-    assert!(!shown.row_widget("Alpha").imp().spinner.is_visible());
+    assert!(!shown.row_widget("Alpha").status().spinner.is_visible());
 }
 
 #[gtk4::test]
@@ -958,9 +958,9 @@ fn a_failed_connect_leaves_nothing_open_and_says_why() {
     let row = shown.row("Alpha");
     assert!(!row.is_expandable() && !row.is_expanded());
     let widget = shown.row_widget("Alpha");
-    assert!(widget.imp().problem.is_visible());
+    assert!(widget.status().problem.is_visible());
     assert_eq!(
-        widget.imp().problem.tooltip_text().as_deref(),
+        widget.status().problem.tooltip_text().as_deref(),
         Some("Connection refused")
     );
     shown.menu("Alpha");
@@ -973,7 +973,7 @@ fn a_failed_connect_leaves_nothing_open_and_says_why() {
     shown.popover().popdown();
 
     shown.tree.set_failure(&key, None);
-    assert!(!widget.imp().problem.is_visible());
+    assert!(!widget.status().problem.is_visible());
 }
 
 /// A failed connect no saved connection names, a file or one typed in
@@ -1019,17 +1019,17 @@ fn a_lost_session_says_so_on_its_row() {
     let widget = shown.row_widget("Alpha");
 
     shown.tree.set_session_state(&key, SessionRowState::Busy);
-    assert!(widget.imp().spinner.is_visible() && !widget.imp().eject.is_visible());
+    assert!(widget.status().spinner.is_visible() && !widget.status().eject.is_visible());
     shown
         .tree
         .set_session_state(&key, SessionRowState::Trouble("The server went away".to_owned()));
-    assert!(widget.imp().problem.is_visible() && !widget.imp().spinner.is_visible());
+    assert!(widget.status().problem.is_visible() && !widget.status().spinner.is_visible());
     assert_eq!(
-        widget.imp().problem.tooltip_text().as_deref(),
+        widget.status().problem.tooltip_text().as_deref(),
         Some("The server went away")
     );
     shown.tree.set_session_state(&key, SessionRowState::Ready);
-    assert!(widget.imp().eject.is_visible() && !widget.imp().problem.is_visible());
+    assert!(widget.status().eject.is_visible() && !widget.status().problem.is_visible());
 }
 
 #[gtk4::test]
