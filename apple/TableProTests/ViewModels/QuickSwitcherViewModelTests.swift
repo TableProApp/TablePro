@@ -1340,6 +1340,24 @@ struct QuickSwitcherViewModelTests {
         #expect(groups.isEmpty)
     }
 
+    @Test("A released model drops its results and ignores a later search")
+    func releasedModelDropsResults() async {
+        let vm = makeViewModel(items: sampleItems())
+        vm.scope = .tables
+        await vm.flushPendingFilter()
+        #expect(!vm.groups.isEmpty)
+
+        vm.releaseResults()
+        await vm.loadItems(databaseType: .mysql)
+        vm.searchText = "users"
+        await vm.flushPendingFilter()
+
+        #expect(vm.allItems.isEmpty)
+        #expect(vm.groups.isEmpty)
+        #expect(vm.isFiltering == false)
+        #expect(vm.selectedItemId == nil)
+    }
+
     @Test("A scope change the next one superseded stops listing and returns nothing")
     func cancelledBrowseStopsListing() async {
         let items = tableItems((0..<5_000).map { "orders_\($0)" })
