@@ -8,6 +8,7 @@ import ApplicationServices
 import SwiftUI
 @testable import TablePro
 import TableProCloudAPI
+import TableProTestSupport
 import Testing
 
 @MainActor
@@ -79,7 +80,7 @@ struct TeamLibraryConflictSheetTests {
     }
 
     @Test("Keep Mine and Keep Theirs are named buttons that VoiceOver can press")
-    func buttonsPressThroughAccessibility() throws {
+    func buttonsPressThroughAccessibility() async throws {
         var kept: [Bool] = []
         var later = 0
         let view = TeamLibraryConflictContent(
@@ -93,7 +94,7 @@ struct TeamLibraryConflictSheetTests {
             decideLater: { later += 1 },
             keep: { kept.append($0) }
         )
-        let window = Self.host(view)
+        let window = try await Self.host(view, showing: "team-library-conflict-keep-mine")
         defer { window.orderOut(nil) }
 
         let mine = try #require(Self.element("team-library-conflict-keep-mine", in: window))
@@ -105,19 +106,20 @@ struct TeamLibraryConflictSheetTests {
         #expect(Self.element("team-library-conflict-theirs", in: window) != nil)
 
         Self.press(mine)
+        try await waitUntil { kept == [true] }
         Self.press(theirs)
+        try await waitUntil { kept == [true, false] }
         Self.press(decideLater)
-
-        #expect(kept == [true, false])
-        #expect(later == 1)
+        try await waitUntil { later == 1 }
     }
 
     @Test("The header shows a conflict count button, and a failed sync as a labeled symbol")
-    func statusContent() throws {
+    func statusContent() async throws {
         var resolved = 0
-        let window = Self.host(
+        let window = try await Self.host(
             TeamLibrarySyncStatusContent(status: .failed(.offline), conflictCount: 2) { resolved += 1 }
-                .frame(width: 240, height: 24)
+                .frame(width: 240, height: 24),
+            showing: "team-library-resolve-conflicts"
         )
         defer { window.orderOut(nil) }
 
@@ -127,13 +129,13 @@ struct TeamLibraryConflictSheetTests {
         #expect(Self.label(of: failed)?.contains(String(localized: "TablePro couldn't reach the team library.")) == true)
 
         Self.press(button)
-        #expect(resolved == 1)
+        try await waitUntil { resolved == 1 }
     }
 
     // MARK: - Helpers
 
     // Read through the AX API, as VoiceOver does: in process, a hosting view lists no SwiftUI children.
-    private static func host(_ view: some View) -> NSWindow {
+    private static func host(_ view: some View, showing identifier: String) async throws -> NSWindow {
         let hosting = NSHostingView(rootView: view)
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 600, height: 400),
@@ -146,7 +148,12 @@ struct TeamLibraryConflictSheetTests {
         window.contentView = hosting
         window.orderFront(nil)
         hosting.layoutSubtreeIfNeeded()
-        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.3))
+        do {
+            try await waitUntil { element(identifier, in: window) != nil }
+        } catch {
+            window.orderOut(nil)
+            throw error
+        }
         return window
     }
 
@@ -175,7 +182,6 @@ struct TeamLibraryConflictSheetTests {
 
     private static func press(_ element: AXUIElement) {
         AXUIElementPerformAction(element, kAXPressAction as CFString)
-        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
     }
 
     private static func children(_ attribute: String, of element: AXUIElement) -> [AXUIElement] {
