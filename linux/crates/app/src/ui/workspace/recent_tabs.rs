@@ -92,11 +92,7 @@ impl WorkspaceShell {
             imp.recent_walk.replace(Some(RecentWalk { order, at: 0 }));
         }
         let view = imp.tab_view.get();
-        let next = imp
-            .recent_walk
-            .borrow_mut()
-            .as_mut()
-            .and_then(|walk| walk.step(&view));
+        let next = imp.recent_walk.borrow_mut().as_mut().and_then(|walk| walk.step(&view));
         if let Some(page) = next {
             view.set_selected_page(&page);
         }
@@ -125,7 +121,7 @@ impl WorkspaceShell {
         keys.set_propagation_phase(gtk::PropagationPhase::Capture);
         keys.set_propagation_limit(gtk::PropagationLimit::None);
         let shell = self.downgrade();
-        keys.connect_key_pressed(move |controller, keyval, _, state| {
+        keys.connect_key_pressed(move |controller, keyval, _, _| {
             let Some(shell) = shell.upgrade() else {
                 return glib::Propagation::Proceed;
             };
@@ -137,13 +133,18 @@ impl WorkspaceShell {
                 shell.end_recent_walk(false);
                 return glib::Propagation::Stop;
             }
-            let modifier = controller
+            let Some(event) = controller
                 .current_event()
                 .and_then(|event| event.downcast::<gdk::KeyEvent>().ok())
-                .is_some_and(|event| event.is_modifier());
+            else {
+                return glib::Propagation::Proceed;
+            };
+            // GTK's own match, so Ctrl+E steps on a layout without E too.
+            let steps = crate::application::component_trigger(SWITCH_RECENT_TAB)
+                .is_some_and(|trigger| trigger.trigger(&event, false) != gdk::KeyMatch::None);
             // This controller runs before the window's accelerators, so
             // another command acts on the tab the walk reached.
-            if !modifier && !crate::application::component_matches(SWITCH_RECENT_TAB, keyval, state) {
+            if !event.is_modifier() && !steps {
                 shell.end_recent_walk(true);
             }
             glib::Propagation::Proceed
@@ -365,7 +366,10 @@ mod tests {
             let workspace = test.workspace();
             let shell = shell_of(&workspace);
             let pages: Vec<adw::TabPage> = (0..3).map(|_| open_editor(&workspace)).collect();
-            assert_eq!(shell.recent_pages(), [pages[2].clone(), pages[1].clone(), pages[0].clone()]);
+            assert_eq!(
+                shell.recent_pages(),
+                [pages[2].clone(), pages[1].clone(), pages[0].clone()]
+            );
             KeyInjector::focus_only(&test.window);
             wait_until(WAIT, || test.window.is_active()).expect("the window to take the focus");
             let keys = KeyInjector::connect().expect("an X11 display");
@@ -413,7 +417,11 @@ mod tests {
 
             assert_eq!(walk.selected().as_ref(), Some(&walk.pages[0]));
             let order = [walk.pages[0].clone(), walk.pages[2].clone(), walk.pages[1].clone()];
-            assert_eq!(walk.shell.recent_pages(), order, "the tabs passed on the way were recorded");
+            assert_eq!(
+                walk.shell.recent_pages(),
+                order,
+                "the tabs passed on the way were recorded"
+            );
 
             walk.keys
                 .press(gdk::Key::e, gdk::ModifierType::CONTROL_MASK)
@@ -433,15 +441,21 @@ mod tests {
                 walk.keys
                     .press(gdk::Key::t, gdk::ModifierType::empty())
                     .expect("the key press");
-                wait_until(WAIT, || workspace.imp().index.get().map_or(0, |index| index.pages().len()) == 4)
-                    .expect("Ctrl+T to open a tab");
+                wait_until(WAIT, || {
+                    workspace.imp().index.get().map_or(0, |index| index.pages().len()) == 4
+                })
+                .expect("Ctrl+T to open a tab");
                 assert!(!walk.is_walking(), "the walk went on past Ctrl+T");
             }
 
             let new = walk.selected().expect("the new tab in front");
             assert!(!walk.pages.contains(&new));
             let order = [new, walk.pages[1].clone(), walk.pages[2].clone(), walk.pages[0].clone()];
-            assert_eq!(walk.shell.recent_pages(), order, "the tab the walk reached was not recorded");
+            assert_eq!(
+                walk.shell.recent_pages(),
+                order,
+                "the tab the walk reached was not recorded"
+            );
         }
 
         #[gtk4::test]
