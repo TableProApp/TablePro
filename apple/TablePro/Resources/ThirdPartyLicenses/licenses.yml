@@ -795,6 +795,21 @@
   notes: PLAIN Apache-2.0 (11359 bytes, no Runtime Library Exception). NOTICE.txt present; the text file
     is LICENSE.txt then NOTICE.txt. Linked by TableProCloudAPI, the generated /v2 client. The generator
     itself runs only at build time and ships nothing.
+- id: swift-openapi-urlsession
+  name: swift-openapi-urlsession
+  version: 1.4.0
+  spdx: Apache-2.0
+  copyrights:
+  - Copyright 2023 The SwiftOpenAPIGenerator Project
+  - Copyright (c) 2023 Apple Inc. and the SwiftOpenAPIGenerator project authors
+  homepageURL: https://github.com/apple/swift-openapi-urlsession
+  licenseTextURL: https://github.com/apple/swift-openapi-urlsession/blob/1.4.0/LICENSE.txt
+  textFile: texts/swift-openapi-urlsession.txt
+  source: spm:swift-openapi-urlsession
+  patched: false
+  platforms: [macos]
+  notes: PLAIN Apache-2.0 (11359 bytes, no Runtime Library Exception). NOTICE.txt present; the text file
+    is LICENSE.txt then NOTICE.txt. Linked by TableProCloudAPI as the /v2 client's transport.
 - id: swift-service-context
   name: swift-service-context
   version: 1.3.0

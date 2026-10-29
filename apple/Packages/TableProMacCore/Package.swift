@@ -25,9 +25,10 @@ let package = Package(
     ],
     dependencies: [
         .package(path: "../TableProCore"),
-        // Exact: the newest releases were under two weeks old when these were picked (clients.md, macOS).
+        // Exact: the versions clients.md (macOS, Dependencies) names.
         .package(url: "https://github.com/apple/swift-openapi-generator", exact: "1.14.1"),
-        .package(url: "https://github.com/apple/swift-openapi-runtime", exact: "1.13.0")
+        .package(url: "https://github.com/apple/swift-openapi-runtime", exact: "1.13.0"),
+        .package(url: "https://github.com/apple/swift-openapi-urlsession", exact: "1.4.0")
     ],
     targets: [
         .target(
@@ -62,7 +63,8 @@ let package = Package(
         .target(
             name: "TableProCloudAPI",
             dependencies: [
-                .product(name: "OpenAPIRuntime", package: "swift-openapi-runtime")
+                .product(name: "OpenAPIRuntime", package: "swift-openapi-runtime"),
+                .product(name: "OpenAPIURLSession", package: "swift-openapi-urlsession")
             ],
             path: "Sources/TableProCloudAPI",
             swiftSettings: appModuleSettings,

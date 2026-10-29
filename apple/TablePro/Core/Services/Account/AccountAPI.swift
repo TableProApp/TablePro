@@ -19,6 +19,10 @@ internal enum AccountAPI {
             middlewares: [BearerTokenMiddleware(session: session)]
         )
     }
+
+    static func transport(session: URLSession) -> any ClientTransport {
+        URLSessionTransport(configuration: .init(session: session))
+    }
 }
 
 // Sends the session's access token, and on a 401 refreshes once and retries.

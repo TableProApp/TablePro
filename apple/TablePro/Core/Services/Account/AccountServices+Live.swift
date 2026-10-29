@@ -4,8 +4,6 @@
 //
 
 import Foundation
-import SystemConfiguration
-import TableProCloudAPI
 
 extension AccountServices {
     static func live() -> AccountServices {
@@ -15,7 +13,7 @@ extension AccountServices {
         return AccountServices(
             configuration: .current(),
             machine: machine,
-            transport: UnavailableTransport(),
+            transport: AccountAPI.transport(session: session),
             send: { request in try await session.data(for: request) },
             keychain: environment.deviceOnlyKeychain,
             entitlementFile: environment.supportDirectory
@@ -29,18 +27,5 @@ extension AccountServices {
             ),
             access: .shared
         )
-    }
-}
-
-// swift-openapi-urlsession 1.4.0 was under two weeks old when the client landed and waits on the
-// owner's pick, so until a transport is chosen every /v2 call fails the way an offline Mac's does.
-internal struct UnavailableTransport: ClientTransport {
-    func send(
-        _ request: HTTPRequest,
-        body: HTTPBody?,
-        baseURL: URL,
-        operationID: String
-    ) async throws -> (HTTPResponse, HTTPBody?) {
-        throw URLError(.notConnectedToInternet)
     }
 }
