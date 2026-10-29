@@ -115,6 +115,9 @@ impl ObjectImpl for DataGrid {
     }
 
     fn dispose(&self) {
+        // A run still out on the task pool would go on over every row.
+        self.find.stop();
+        self.summary.stop();
         self.obj().stop_watching_focus();
         if let Some(menus) = self.menus.get() {
             menus.unparent();

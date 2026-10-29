@@ -3,6 +3,7 @@ use std::rc::Rc;
 
 use gtk4 as gtk;
 use gtk4::prelude::*;
+use gtk4::subclass::prelude::*;
 use tablepro_core::Value;
 use tablepro_core::value::SqlDecimal;
 
@@ -284,4 +285,20 @@ fn the_readout_goes_with_its_grid() {
 
     assert!(revealer_ref.upgrade().is_none(), "the readout outlived its grid");
     assert!(button_ref.upgrade().is_none(), "the menu button outlived its grid");
+}
+
+#[gtk4::test]
+fn closing_the_grid_stops_the_run_still_out() {
+    let grid = amounts();
+    readout(&grid);
+    grid.focus(0, 1);
+    grid.grid.selection().select_all();
+    let running = || grid.grid.imp().summary.running.borrow().clone();
+    wait_until(WAIT, || running().is_some()).expect("a run starts");
+    let running = running().expect("the run");
+
+    drop(grid);
+    drain_main_context();
+
+    assert!(running.load(std::sync::atomic::Ordering::Relaxed));
 }

@@ -25,12 +25,18 @@ pub struct SummaryState {
     queued: Cell<bool>,
     /// Counts runs, so an answer to an older one is dropped.
     runs: Cell<u64>,
-    running: RefCell<Option<Arc<AtomicBool>>>,
+    pub(super) running: RefCell<Option<Arc<AtomicBool>>>,
 }
 
 impl SummaryState {
     pub(super) fn forget_column(&self) {
         self.column.set(None);
+    }
+
+    pub(super) fn stop(&self) {
+        if let Some(running) = self.running.take() {
+            running.store(true, Ordering::Relaxed);
+        }
     }
 }
 
@@ -326,9 +332,7 @@ impl DataGrid {
         let Some(readout) = state.readout.get() else {
             return;
         };
-        if let Some(running) = state.running.take() {
-            running.store(true, Ordering::Relaxed);
-        }
+        state.stop();
         let run = state.runs.get().wrapping_add(1);
         state.runs.set(run);
         let tasks = self.config().map(|config| config.tasks.clone());

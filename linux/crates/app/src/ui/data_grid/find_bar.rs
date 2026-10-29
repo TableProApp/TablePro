@@ -36,6 +36,14 @@ struct Found {
     answered: bool,
 }
 
+impl FindState {
+    pub(super) fn stop(&self) {
+        if let Some(running) = self.running.take() {
+            running.store(true, Ordering::Relaxed);
+        }
+    }
+}
+
 impl Found {
     fn label(&self) -> String {
         if !self.answered {
@@ -180,9 +188,7 @@ impl DataGrid {
     /// answers.
     fn start_search(&self, query: String, moving: bool) {
         let state = &self.imp().find;
-        if let Some(running) = state.running.take() {
-            running.store(true, Ordering::Relaxed);
-        }
+        state.stop();
         let search = state.searches.get().wrapping_add(1);
         state.searches.set(search);
         state.moving.set(moving);
@@ -386,7 +392,7 @@ mod tests {
     use tablepro_core::Value;
 
     use super::super::test_grid::{Grid, GridSpec, WAIT, focus_in_grid, named, results};
-    use crate::test_support::{KeyInjector, wait_until};
+    use crate::test_support::{KeyInjector, drain_main_context, wait_until};
 
     fn text(value: &str) -> Value {
         Value::Text(value.to_owned())
@@ -556,6 +562,19 @@ mod tests {
         wait_for_label(&grid, "1 of 111");
         assert_eq!(grid.grid.imp().find.found.borrow().matches.len(), 111);
         assert_eq!(on_match(&grid), Some((42, 1)));
+    }
+
+    #[gtk4::test]
+    fn closing_the_grid_stops_the_search_still_running() {
+        let grid = orchard();
+        grid.activate("find");
+        grid.grid.start_search("apple".to_owned(), true);
+        let running = grid.grid.imp().find.running.borrow().clone().expect("the search runs");
+
+        drop(grid);
+        drain_main_context();
+
+        assert!(running.load(std::sync::atomic::Ordering::Relaxed));
     }
 
     #[gtk4::test]
