@@ -14,7 +14,7 @@ use crate::application::component_matches;
 use crate::i18n::{gettext, gettext_f};
 use crate::services::grid::{
     CellLock, CommitResult, EDIT_MAX_BYTES, EditStart, GridColumn, GridRowId, auto_filled_sentinel, display_text,
-    empty_placeholder, hex_dump, previewable_image,
+    empty_placeholder, hex_dump,
 };
 use crate::ui::data_grid::selection::Target;
 use crate::ui::data_grid::{DataGrid, GridRow, PinnedRow};
@@ -79,8 +79,8 @@ pub struct ValueContent {
     pub emptied_placeholder: Option<String>,
     pub language: Option<&'static str>,
     pub calendar: bool,
-    /// A hex dump, which lines up only unwrapped.
-    pub hex: bool,
+    /// A hex dump lines up only unwrapped.
+    pub hex_dump: bool,
 }
 
 pub fn value_content(column: &GridColumn, row: &GridRowId, lock: Option<CellLock>, input: &CellInput) -> ValueContent {
@@ -96,6 +96,10 @@ pub fn value_content(column: &GridColumn, row: &GridRowId, lock: Option<CellLock
         CellInput::Value(Value::Null) => Some("NULL".to_owned()),
         CellInput::Default if column.auto_filled() => Some(auto_filled_sentinel()),
         CellInput::Default => Some("DEFAULT".to_owned()),
+        // An empty dump would read as no value at all.
+        CellInput::Value(value @ Value::Bytes(bytes)) if bytes.is_empty() => {
+            Some(display_text(value, &column.column_type, &mut String::new()).text.to_owned())
+        }
         CellInput::Value(_) => emptied_placeholder.clone(),
     };
     ValueContent {
@@ -108,7 +112,7 @@ pub fn value_content(column: &GridColumn, row: &GridRowId, lock: Option<CellLock
             _ => None,
         },
         calendar: editable && matches!(kind, ColumnKind::Date | ColumnKind::Timestamp { .. }),
-        hex: matches!(input, CellInput::Value(Value::Bytes(_))),
+        hex_dump: matches!(input, CellInput::Value(Value::Bytes(_))),
         message,
     }
 }
@@ -127,7 +131,7 @@ fn typed_form(column: &GridColumn, value: &Value) -> (String, Option<String>) {
     };
     let text = match value {
         Value::Null => String::new(),
-        Value::Bytes(bytes) => hex_dump(bytes, HEX_DUMP_BYTES),
+        Value::Bytes(bytes) => hex_dump(bytes),
         value => {
             let mut scratch = String::new();
             display_text(value, &column.column_type, &mut scratch).text.to_owned()
@@ -135,12 +139,6 @@ fn typed_form(column: &GridColumn, value: &Value) -> (String, Option<String>) {
     };
     (text, Some(refusal))
 }
-
-/// How much of a binary value the pane dumps: a 64 KiB dump is 4,096
-/// lines, which the text view lays out without a stall.
-const HEX_DUMP_BYTES: usize = 64 * 1024;
-/// The largest image the pane decodes, on the main thread as it is.
-const IMAGE_PREVIEW_BYTES: usize = 16 * 1024 * 1024;
 
 fn too_large_to_edit() -> String {
     let size = glib::format_size(EDIT_MAX_BYTES as u64);
@@ -338,7 +336,7 @@ impl RowDetailPane {
         let input = tracked.edit_input(&row, column.index);
         let content = value_content(&column, &row.id(), tracked.lock(&column, &row), &input);
         self.show_value(&column.name, &content);
-        self.show_image(match &input {
+        self.show_picture(match &input {
             CellInput::Value(Value::Bytes(bytes)) => Some(bytes),
             _ => None,
         });
@@ -353,10 +351,10 @@ impl RowDetailPane {
             emptied_placeholder: None,
             language: None,
             calendar: false,
-            hex: false,
+            hex_dump: false,
         };
         self.show_value("", &content);
-        self.show_image(None);
+        self.show_picture(None);
         self.imp().value_view.set_editable(false);
         self.imp().loaded.take();
     }
@@ -389,32 +387,13 @@ impl RowDetailPane {
             .update_property(&[gtk::accessible::Property::Label(name)]);
         self.show_message(content.message.as_deref(), false);
         imp.calendar_button.set_visible(content.calendar);
-        view.set_wrap_mode(match content.hex {
-            true => gtk::WrapMode::None,
-            false => gtk::WrapMode::WordChar,
-        });
-        if let Some(scrolled) = view.parent().and_downcast::<gtk::ScrolledWindow>() {
-            scrolled.set_hscrollbar_policy(match content.hex {
-                true => gtk::PolicyType::Automatic,
-                false => gtk::PolicyType::Never,
-            });
-        }
+        let (wrap, hscroll) = match content.hex_dump {
+            true => (gtk::WrapMode::None, gtk::PolicyType::Automatic),
+            false => (gtk::WrapMode::WordChar, gtk::PolicyType::Never),
+        };
+        view.set_wrap_mode(wrap);
+        imp.value_scroller.set_hscrollbar_policy(hscroll);
         self.update_placeholder();
-    }
-
-    /// A binary value that is an image, drawn above its bytes. One too
-    /// large to decode on the main thread shows its bytes alone.
-    fn show_image(&self, bytes: Option<&Vec<u8>>) {
-        let picture = self.imp().value_picture.get();
-        let texture = bytes
-            .filter(|bytes| bytes.len() <= IMAGE_PREVIEW_BYTES && previewable_image(bytes))
-            .and_then(|bytes| {
-                gdk::Texture::from_bytes(&glib::Bytes::from(bytes.as_slice()))
-                    .inspect_err(|error| tracing::debug!(%error, "the bytes did not decode as an image"))
-                    .ok()
-            });
-        picture.set_paintable(texture.as_ref());
-        picture.set_visible(texture.is_some());
     }
 
     fn update_placeholder(&self) {

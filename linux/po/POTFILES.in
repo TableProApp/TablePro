@@ -264,6 +264,7 @@ crates/app/src/ui/data_grid/row_detail/calendar.rs
 crates/app/src/ui/data_grid/row_detail/fields.rs
 crates/app/src/ui/data_grid/row_detail/imp.rs
 crates/app/src/ui/data_grid/row_detail/mod.rs
+crates/app/src/ui/data_grid/row_detail/picture.rs
 crates/app/src/ui/data_grid/row_detail/tests.rs
 crates/app/src/ui/data_grid/row_detail/value_editor.rs
 crates/app/src/ui/data_grid/row_json_dialog.rs

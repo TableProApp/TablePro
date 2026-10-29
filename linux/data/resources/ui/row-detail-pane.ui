@@ -200,12 +200,9 @@
                               </object>
                             </child>
                             <child>
-                              <!-- A binary value that is an image, above its bytes. -->
                               <object class="GtkPicture" id="value_picture">
                                 <property name="visible">false</property>
-                                <property name="height-request">160</property>
-                                <property name="content-fit">contain</property>
-                                <property name="can-shrink">true</property>
+                                <property name="content-fit">scale-down</property>
                                 <property name="margin-top">6</property>
                                 <property name="margin-start">12</property>
                                 <property name="margin-end">12</property>
@@ -218,7 +215,7 @@
                               <object class="GtkOverlay">
                                 <property name="vexpand">true</property>
                                 <property name="child">
-                                  <object class="GtkScrolledWindow">
+                                  <object class="GtkScrolledWindow" id="value_scroller">
                                     <property name="hscrollbar-policy">never</property>
                                     <property name="min-content-height">120</property>
                                     <property name="child">

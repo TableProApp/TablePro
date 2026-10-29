@@ -76,6 +76,7 @@ A fact the repository keeps elsewhere, such as a workflow trigger, a branch, a v
 | [0026](0026-documents-in-the-table-tab.md) | Document collections open in the table tab, and their statements are shell calls | Accepted | A document engine states `DataModel::Document`, lists collections as tables, opens them in the table tab, and every builder writes a mongosh call with bound values through a document arm chosen by the grammar. |
 | [0027](0027-one-data-grid.md) | One data grid on GtkColumnView, with rows and a focused cell | Accepted | Every surface shows rows in one `DataGrid`: row selection plus a focused cell, stable row slots, a row number column, values as text and a row detail pane. |
 | [0028](0028-sessions-share-a-window.md) | A window holds several sessions in one tab view | Accepted | A `WorkspaceShell` per window shares one tab view among its sessions, each with its own workspace; the sidebar is a tree of the saved connections with each open session's schemas and tables. |
+| [0029](0029-images-decode-in-glycin.md) | Images from the database decode in glycin's sandbox | Accepted | Row Details decodes a value's picture with the glycin crate 3.x, in a sandboxed loader process, never with GTK's in-process loaders. |
 
 0011 is not used. It was reserved for the DDL decision, which was recorded as 0010, and docs cite ADRs by number, so the later ones keep theirs.
 

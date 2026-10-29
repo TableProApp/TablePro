@@ -52,6 +52,8 @@ pub struct RowDetailPane {
     #[template_child]
     pub value_menu_button: TemplateChild<gtk::MenuButton>,
     #[template_child]
+    pub value_scroller: TemplateChild<gtk::ScrolledWindow>,
+    #[template_child]
     pub value_view: TemplateChild<sourceview5::View>,
     #[template_child]
     pub value_buffer: TemplateChild<sourceview5::Buffer>,
@@ -72,6 +74,8 @@ pub struct RowDetailPane {
     pub loaded: RefCell<Option<Loaded>>,
     pub placeholders: RefCell<Placeholders>,
     pub edit: RefCell<Option<OpenEdit>>,
+    /// Stops the decode of a picture the pane no longer shows.
+    pub picture_load: RefCell<Option<gio::Cancellable>>,
     /// Set while the pane writes the buffer itself, which is no edit.
     pub loading: Cell<bool>,
     /// Set while the pane selects a field itself, which moves no focus.
@@ -109,6 +113,9 @@ impl ObjectSubclass for RowDetailPane {
 
 impl ObjectImpl for RowDetailPane {
     fn dispose(&self) {
+        if let Some(load) = self.picture_load.take() {
+            load.cancel();
+        }
         self.guards.take();
         self.obj().stop_watching_columns();
         self.obj().watch_row(None);

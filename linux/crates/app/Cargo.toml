@@ -87,6 +87,7 @@ cairo-rs.workspace = true
 libadwaita.workspace = true
 sourceview5.workspace = true
 glib.workspace = true
+glycin.workspace = true
 relm4.workspace = true
 # CLOCK_BOOTTIME, which std does not expose, tells a suspend apart.
 rustix = { workspace = true, features = ["time"] }
