@@ -39,46 +39,53 @@ impl ClockField {
 
 // By the text's own form: SQLite keeps any date or time text in a DATE, TIME or DATETIME column.
 fn clock_span(text: &str) -> Option<Range<usize>> {
-    let lead = text.len() - text.trim_start().len();
-    let start = match day_len(text.get(lead..)?) {
-        Some(day) => {
-            let rest = text.get(lead + day..)?;
-            let gap = match rest.strip_prefix('T') {
-                Some(_) => 1,
-                None => rest.len() - rest.trim_start().len(),
-            };
-            (gap > 0).then_some(lead + day + gap)?
-        }
-        None => lead,
-    };
-    let digits = |at: usize| {
-        text.get(start + at..start + at + 2)
-            .is_some_and(|pair| pair.bytes().all(|byte| byte.is_ascii_digit()))
-    };
-    let colon = |at: usize| text.as_bytes().get(start + at) == Some(&b':');
-    if !(digits(0) && colon(2) && digits(3)) {
-        return None;
+    let mut start = text.len() - text.trim_start().len();
+    if let Some(day) = day_len(text.as_bytes().get(start..)?) {
+        let rest = text.get(start + day..)?;
+        start = text.len() - rest.strip_prefix('T').unwrap_or(rest).trim_start().len();
     }
-    let len = if colon(5) && digits(6) { 8 } else { 5 };
-    Some(start..start + len)
+    Some(start..start + clock_len(text.as_bytes().get(start..)?)?)
 }
 
-// A year can run past 9999, as PostgreSQL writes one, and carry a sign, as chrono reads one.
-fn day_len(text: &str) -> Option<usize> {
-    let sign = usize::from(matches!(text.as_bytes().first(), Some(b'-' | b'+')));
-    let year = text.bytes().skip(sign).take_while(u8::is_ascii_digit).count();
-    let dated = matches!(
-        text.get(sign + year..sign + year + 6)?.as_bytes(),
-        [b'-', m1, m2, b'-', d1, d2] if [m1, m2, d1, d2].iter().all(|byte| byte.is_ascii_digit())
-    );
-    (year >= 4 && dated).then_some(sign + year + 6)
+// Each part as chrono reads it: a year of any length and sign, one or two digits for the rest.
+fn day_len(bytes: &[u8]) -> Option<usize> {
+    let mut at = usize::from(matches!(bytes.first(), Some(b'-' | b'+')));
+    for (most, dash) in [(usize::MAX, true), (2, true), (2, false)] {
+        let run = digits(bytes.get(at..)?, most);
+        at += run + usize::from(dash);
+        if run == 0 || (dash && bytes.get(at - 1) != Some(&b'-')) {
+            return None;
+        }
+    }
+    Some(at)
+}
+
+fn clock_len(bytes: &[u8]) -> Option<usize> {
+    let part = |at: usize| bytes.get(at..).map_or(0, |rest| digits(rest, 2));
+    let colon = |at: usize| bytes.get(at) == Some(&b':');
+    let hour = part(0);
+    let minute = part(hour + 1);
+    if hour == 0 || !colon(hour) || minute == 0 {
+        return None;
+    }
+    let end = hour + 1 + minute;
+    let second = part(end + 1);
+    Some(if colon(end) && second > 0 {
+        end + 1 + second
+    } else {
+        end
+    })
+}
+
+fn digits(bytes: &[u8], most: usize) -> usize {
+    bytes.iter().take(most).take_while(|byte| byte.is_ascii_digit()).count()
 }
 
 pub fn time_of(text: &str) -> Option<NaiveTime> {
-    let clock = text.get(clock_span(text)?)?;
-    NaiveTime::parse_from_str(clock, "%H:%M:%S")
-        .or_else(|_| NaiveTime::parse_from_str(clock, "%H:%M"))
-        .ok()
+    let mut parts = text.get(clock_span(text)?)?.split(':').map(str::parse::<u32>);
+    let (hour, minute) = (parts.next()?.ok()?, parts.next()?.ok()?);
+    let second = parts.next().transpose().ok()?.unwrap_or(0);
+    NaiveTime::from_hms_opt(hour, minute, second)
 }
 
 // A value with no clock keeps a day it has; a dated column's takes `today`.
@@ -90,7 +97,7 @@ pub fn with_time<Tz: TimeZone>(text: &str, time: NaiveTime, field: ClockField, t
         return text;
     }
     let text = text.trim_start();
-    let day = day_len(text).and_then(|len| text.get(..len));
+    let day = day_len(text.as_bytes()).and_then(|len| text.get(..len));
     let offset = field
         .with_offset
         .then(|| offset_at(zone, day.and_then(day_of).unwrap_or(today).and_time(time)).to_string())

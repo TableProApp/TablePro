@@ -964,6 +964,11 @@ fn the_clock_sets_only_the_time_a_value_shows() {
         "2024-01-01  09:05:30.789+02:00"
     );
     assert_eq!(set_at_nine("-0001-01-01 12:34:56", NAIVE), "-0001-01-01 09:05:30");
+    assert_eq!(
+        set_at_nine("2024-02-29T 12:34:56.125+05:30", ZONED),
+        "2024-02-29T 09:05:30.125+05:30"
+    );
+    assert_eq!(set_at_nine("2024-2-9 9:5:3.5", NAIVE), "2024-2-9 09:05:30.5");
     assert_eq!(set_at_nine("24:00:00+01", TIMETZ), "09:05:30+01");
 }
 
@@ -1023,6 +1028,7 @@ fn the_clock_reads_the_time_a_value_shows() {
     assert_eq!(time_of("2024-02-29 10:30"), Some(a_time(10, 30, 0)));
     assert_eq!(time_of("13:45:07.5+01"), Some(a_time(13, 45, 7)));
     assert_eq!(time_of(" 2024-02-29T10:00:00Z"), Some(a_time(10, 0, 0)));
+    assert_eq!(time_of("2024-2-9 9:5:3"), Some(a_time(9, 5, 3)));
     assert_eq!(time_of("24:00:00"), None);
     assert_eq!(time_of("2024-02-29"), None);
     assert_eq!(time_of("2024-02-2é 10:00:00"), None, "a cut inside a character");
