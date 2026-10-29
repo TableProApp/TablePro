@@ -359,7 +359,7 @@ custom_rules:
     regex: '(?i)anonymous (?:usage|statistics|analytics|report|heartbeat)'
     excluded: ['.*/(Packages|Plugins)/']
     excluded_match_kinds: [comment, doccomment]
-    message: "The usage report carries a hashed machine ID, so it is not anonymous."
+    message: "Usage data names the account once you sign in, so it is not anonymous."
     severity: error
   count_before_inflected_span:
     name: "Count Before Inflected Span"
