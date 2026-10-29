@@ -44,12 +44,23 @@ internal struct TeamLibraryConflictPresentation: Equatable {
             ? TeamLibraryVersionSummary(lines: [], removal: String(localized: "Removed from the team library"))
             : TeamLibraryVersionSummary(lines: Self.lines(kind: kind, data: mineData), removal: nil)
         if let current, !current.deleted {
-            theirs = TeamLibraryVersionSummary(lines: Self.lines(kind: kind, data: current.dataValues), removal: nil)
-        } else if current?.deleted == true {
-            theirs = TeamLibraryVersionSummary(lines: [], removal: String(localized: "Deleted from the team library"))
+            theirs = TeamLibraryVersionSummary(
+                lines: Self.lines(kind: kind, data: current.dataValues) + Self.writer(of: current),
+                removal: nil
+            )
+        } else if let current {
+            theirs = TeamLibraryVersionSummary(
+                lines: Self.writer(of: current),
+                removal: String(localized: "Deleted from the team library")
+            )
         } else {
             theirs = TeamLibraryVersionSummary(lines: [], removal: String(localized: "No longer in the team library"))
         }
+    }
+
+    private static func writer(of current: TeamLibraryChange) -> [TeamLibraryVersionSummary.Line] {
+        guard let writer = current.lastWriter else { return [] }
+        return [TeamLibraryVersionSummary.Line(label: String(localized: "Changed By"), value: writer)]
     }
 
     private static func lines(kind: String, data: TeamLibraryData?) -> [TeamLibraryVersionSummary.Line] {

@@ -24,6 +24,11 @@ internal struct TeamLibraryQuery: Equatable, Identifiable, Sendable {
     let query: String
     let keyword: String?
     let folderName: String?
+    let lastWriter: String?
+
+    var detail: String? {
+        lastWriter ?? folderName
+    }
 }
 
 // What the welcome window and the Favorites sidebar show: every live item of every team this account reads.
@@ -60,7 +65,8 @@ internal struct TeamLibraryContent: Equatable, Sendable {
                     name: query.name,
                     query: query.query,
                     keyword: query.keyword,
-                    folderName: folder?.name
+                    folderName: folder?.name,
+                    lastWriter: item.lastWriter
                 ), query.sortOrder)
             }
             .sorted { lhs, rhs in

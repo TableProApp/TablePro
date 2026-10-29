@@ -79,6 +79,28 @@ struct TeamLibraryConflictSheetTests {
         #expect(gone.theirs.removal == String(localized: "No longer in the team library"))
     }
 
+    @Test("The team's version names who last changed it, a deletion too, and no one when the server names no one")
+    func teamVersionNamesItsWriter() throws {
+        let writer = TeamLibraryVersionSummary.Line(label: String(localized: "Changed By"), value: "Grace Hopper")
+        var edited = try Self.current()
+        edited.updatedByName = "Grace Hopper"
+        let presentation = TeamLibraryConflictPresentation(conflict: try Self.conflict(), current: edited, teamName: "Acme")
+        #expect(presentation.theirs.lines.suffix(2) == [
+            TeamLibraryVersionSummary.Line(label: "SQL", value: "select theirs", isCode: true),
+            writer
+        ])
+
+        var deleted = try Self.current(deleted: true)
+        deleted.updatedByName = "  "
+        let unnamed = TeamLibraryConflictPresentation(conflict: try Self.conflict(), current: deleted, teamName: "Acme")
+        #expect(unnamed.theirs.lines.isEmpty)
+
+        deleted.updatedByName = "Grace Hopper"
+        let removal = TeamLibraryConflictPresentation(conflict: try Self.conflict(), current: deleted, teamName: "Acme")
+        #expect(removal.theirs.removal == String(localized: "Deleted from the team library"))
+        #expect(removal.theirs.lines == [writer])
+    }
+
     @Test("Keep Mine and Keep Theirs are named buttons that VoiceOver can press")
     func buttonsPressThroughAccessibility() async throws {
         var kept: [Bool] = []

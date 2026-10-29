@@ -86,6 +86,32 @@ struct TeamLibrarySyncTests {
         #expect(fixture.sync.content.queries.first?.folderName == "Archive")
     }
 
+    @Test("A team query shows who last changed it, and its folder when the pull names no one")
+    func pulledWriterName() async throws {
+        let fixture = try await TeamLibraryFixture { library in
+            library.names = ["acct_other": "Grace Hopper"]
+            library.write(Self.team, kind: "folder", clientID: "f1", data: TeamLibraryFixture.folderData("Reports"))
+            library.write(Self.team, kind: "query", clientID: "q1", data: TeamLibraryFixture.queryData("Orders", folder: "f1"))
+            library.write(
+                Self.team, kind: "query", clientID: "q2", data: TeamLibraryFixture.queryData("Users", folder: "f1"), by: "acct_unnamed"
+            )
+        }
+        await fixture.sync.sync()
+        #expect(fixture.sync.content.queries.map { $0.detail } == ["Grace Hopper", "Reports"])
+
+        await fixture.library {
+            $0.names["acct_admin"] = "Ada Lovelace"
+            $0.write(
+                Self.team, kind: "query", clientID: "q1",
+                data: TeamLibraryFixture.queryData("Orders", query: "select 2", folder: "f1"), by: "acct_admin"
+            )
+        }
+        await fixture.sync.sync()
+        fixture.relaunch()
+
+        #expect(fixture.sync.content.queries.map { $0.detail } == ["Ada Lovelace", "Reports"], "The stored library keeps the name")
+    }
+
     @Test("An expired cursor pulls a snapshot")
     func expiredCursorPullsSnapshot() async throws {
         let fixture = try await TeamLibraryFixture { library in
@@ -286,6 +312,21 @@ struct TeamLibrarySyncTests {
         #expect(fixture.sync.content.queries.map(\.query) == ["select theirs"])
     }
 
+    @Test("A conflict names who changed the team's copy, under the team's version")
+    func conflictNamesTheWriter() async throws {
+        let fixture = try await conflicted(names: ["acct_other": "Grace Hopper"])
+        let conflict = try #require(fixture.sync.conflicts.first)
+
+        #expect(conflict.current?.lastWriter == "Grace Hopper")
+        let presentation = TeamLibraryConflictPresentation(
+            conflict: conflict,
+            current: fixture.sync.current(for: conflict),
+            teamName: fixture.sync.teamName(of: conflict.teamID)
+        )
+        #expect(presentation.theirs.lines.last == TeamLibraryVersionSummary.Line(label: String(localized: "Changed By"), value: "Grace Hopper"))
+        #expect(!presentation.mine.lines.contains { $0.label == String(localized: "Changed By") })
+    }
+
     @Test("Keep Mine pushes this Mac's copy over the team's current version")
     func keepMine() async throws {
         let fixture = try await conflicted()
@@ -390,9 +431,10 @@ struct TeamLibrarySyncTests {
 
     nonisolated private static let conflictID = "4c6b1e2a-0d8f-4f43-9a51-7c1b2e3d4f50"
 
-    private func conflicted() async throws -> TeamLibraryFixture {
+    private func conflicted(names: [String: String] = [:]) async throws -> TeamLibraryFixture {
         let id = try #require(UUID(uuidString: Self.conflictID))
         let fixture = try await TeamLibraryFixture { library in
+            library.names = names
             library.write(Self.team, kind: "query", clientID: Self.conflictID, data: TeamLibraryFixture.queryData("Orders"))
         }
         await fixture.sync.sync()

@@ -36,6 +36,8 @@ struct FakeTeamLibrary: Sendable {
     // Answered, one per pull or per push, before anything else.
     var faults: [Int] = []
     var pushFaults: [Int] = []
+    // Each writer's updated_by_name, as the server reads it from the accounts at answer time.
+    var names: [String: String] = [:]
     var pushCursorOffset = 0
     // Hold each pull or push until the test opens it.
     var pullGate: AsyncGate?
@@ -121,7 +123,7 @@ struct FakeTeamLibrary: Sendable {
             (page, cursor, hasMore) = snapshot(all, after: 0, end: horizon, limit: limit, horizon: horizon)
         }
         return FakeAccountServer.json(status: .ok, [
-            "changes": page.map(Self.change), "cursor": cursor, "has_more": hasMore
+            "changes": page.map { change($0) }, "cursor": cursor, "has_more": hasMore
         ])
     }
 
@@ -192,7 +194,7 @@ struct FakeTeamLibrary: Sendable {
             result["status"] = "conflict"
             result["version"] = stored?.version ?? 0
             if let stored {
-                result["current"] = Self.change(stored)
+                result["current"] = self.change(stored)
             }
             return result
         }
@@ -204,11 +206,14 @@ struct FakeTeamLibrary: Sendable {
 
     // MARK: - Helpers
 
-    static func change(_ item: Item) -> [String: Any] {
+    func change(_ item: Item) -> [String: Any] {
         var change: [String: Any] = [
             "kind": item.kind, "client_id": item.clientID, "version": item.version, "deleted": item.deleted,
             "updated_at": "2026-10-29T09:00:00Z", "updated_by": item.updatedBy
         ]
+        if let name = names[item.updatedBy] {
+            change["updated_by_name"] = name
+        }
         if let data = item.data, !item.deleted {
             change["data"] = data
         }

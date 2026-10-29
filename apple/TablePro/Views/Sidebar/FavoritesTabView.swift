@@ -350,7 +350,7 @@ internal struct FavoritesTabView: View {
                 tables: filteredTables,
                 queryNodes: items,
                 teamQueries: teamLibraryQueries.map {
-                    FavoritesOutlineTeamQuery(id: $0.id, name: $0.name, detail: $0.folderName)
+                    FavoritesOutlineTeamQuery(id: $0.id, name: $0.name, detail: $0.detail)
                 },
                 renamingFolderId: viewModel.renamingFolderId,
                 allFolders: viewModel.nodes.collectFolders(),

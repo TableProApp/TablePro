@@ -216,6 +216,12 @@ extension TeamLibraryChange {
         return settings.sanitizedForImport().withoutStartupCommands().withoutTunnelCommand()
     }
 
+    // The server leaves updated_by_name out for a writer it does not name to this account.
+    var lastWriter: String? {
+        let name = updatedByName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return name.isEmpty ? nil : name
+    }
+
     // The folder a query is in or a folder is under.
     var containerClientID: String? {
         folder?.parentClientID ?? query?.folderClientID
