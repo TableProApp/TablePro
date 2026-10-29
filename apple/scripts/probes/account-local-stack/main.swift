@@ -360,10 +360,10 @@ private final class Probe {
         legacyKeychain.writeString(config.limitKey, forKey: LegacyLicenseStore.keychainKey)
         let services = services(log: CallLog(), keychain: InMemoryKeychain(), legacyKeychain: legacyKeychain)
 
-        _ = await services.migrateLegacyKeyIfNeeded()
+        let outcome = await services.migrateLegacyKeyIfNeeded()
 
         guard case .deviceLimitReached(let holders) = services.access.state.refresh else {
-            report.expect(false, "a fourth device gets device_limit_reached", "\(services.access.state.refresh)")
+            report.expect(false, "a fourth device gets device_limit_reached", "\(outcome), \(services.access.state.refresh)")
             return
         }
         report.expect(holders.count == 3, "device_limit_reached lists the 3 devices holding the slots", "\(holders.count)")
@@ -375,7 +375,22 @@ private final class Probe {
             "GET /v2/devices lists the holders and this Mac without a slot",
             "\(devices.map { "\($0.name) \($0.holdsLicense)" })"
         )
-        guard let holder = holders.first else { return }
+        let offline = holders.filter { $0.offlineUntil != nil }
+        report.expect(
+            offline.map(\.name) == ["Seeded 2"],
+            "device_limit_reached gives offline_until for the holder with a valid offline file",
+            "\(holders.map { "\($0.name) \($0.offlineUntil.map { "\($0)" } ?? "-")" })"
+        )
+        if let pinned = offline.first {
+            var refusal = "removed"
+            do throws(AccountError) {
+                try await services.removeDevice(pinned.id)
+            } catch {
+                refusal = error.problemCode ?? "\(error)"
+            }
+            report.expect(refusal == "offline_file_active", "a holder with a valid offline file cannot be removed", refusal)
+        }
+        guard let holder = holders.first(where: { $0.offlineUntil == nil }) else { return }
         do throws(AccountError) {
             try await services.removeDevice(holder.id)
         } catch {

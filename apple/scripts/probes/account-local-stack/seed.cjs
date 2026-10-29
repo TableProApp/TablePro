@@ -1,6 +1,7 @@
 // Usage: node seed.cjs <config.json to write> <email domain>
 // Inserts, never deletes: a fresh account with a lifetime Starter license and a legacy key, a second one whose
-// license already has 3 licensed devices, and a random key no license has. Rows are the ones the server's own
+// license already has 3 licensed devices, the second of them with a valid offline file, and a random key no
+// license has. Rows are the ones the server's own
 // import writes (license_keys holds the key's SHA-256). DATABASE_URL names the local stack's database.
 const crypto = require('node:crypto');
 const fs = require('node:fs');
@@ -24,8 +25,8 @@ async function seedAccount(client, email, key, source, licensedDevices) {
   await client.query('insert into license_keys (license_id, key_hash, key_hint) values ($1, $2, $3)', [license.rows[0].id, hash, key.slice(-5)]);
   for (let i = 1; i <= licensedDevices; i++) {
     await client.query(
-      "insert into devices (account_id, machine_id, platform, name, app_version, os_version, licensed_at) values ($1, $2, 'linux', $3, '2.0.0', 'Fedora 43', now() - interval '1 day')",
-      [account.rows[0].id, crypto.randomBytes(32).toString('hex'), `Seeded ${i}`],
+      "insert into devices (account_id, machine_id, platform, name, app_version, os_version, licensed_at, offline_until) values ($1, $2, 'linux', $3, '2.0.0', 'Fedora 43', now() - interval '1 day', $4::timestamptz)",
+      [account.rows[0].id, crypto.randomBytes(32).toString('hex'), `Seeded ${i}`, i === 2 ? new Date(Date.now() + 30 * 86400000).toISOString() : null],
     );
   }
 }
