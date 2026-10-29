@@ -126,7 +126,8 @@ actor FakeAccountServer {
     var refreshCount: Int { refreshCounter }
 
     private func tokens(_ request: URLRequest, device: Bool, method: String) -> (Data, URLResponse) {
-        var claims: [String: Any] = ["sub": "acct_test", "auth_method": method]
+        // Unique like the server's: two tokens with equal claims could serialize alike or not, by dictionary order.
+        var claims: [String: Any] = ["sub": "acct_test", "auth_method": method, "jti": UUID().uuidString]
         if device { claims["dev"] = Self.deviceID }
         return Self.http(request, status: 200, body: [
             "access_token": Self.unsignedJWT(claims),
