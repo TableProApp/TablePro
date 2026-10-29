@@ -1,6 +1,7 @@
 using System.Data.Common;
 using System.Data.Odbc;
 using System.Text;
+using TablePro.Core.Localization;
 
 namespace TablePro.Drivers.Odbc;
 
@@ -86,14 +87,14 @@ internal static class OdbcErrors
         if (HasState(exception, DriverNotFound))
         {
             return new InvalidOperationException(
-                $"The {info.EngineName} ODBC driver \"{driverName}\" is not installed. {info.InstallHint}",
+                CoreStrings.Format("Driver/OdbcDriverNotInstalled", info.EngineName, driverName, info.InstallHint),
                 exception);
         }
 
         if (HasState(exception, DriverNotLoaded))
         {
             return new InvalidOperationException(
-                $"Windows found the {info.EngineName} ODBC driver \"{driverName}\" but could not load it. TablePro is a 64-bit app and needs the 64-bit driver. {info.InstallHint}",
+                CoreStrings.Format("Driver/OdbcDriverNotLoaded", info.EngineName, driverName, info.InstallHint),
                 exception);
         }
 

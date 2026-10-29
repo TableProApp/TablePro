@@ -6,6 +6,7 @@ using Amazon.Runtime.CredentialManagement;
 using Azure.Core;
 using Azure.Identity;
 using TablePro.Core.Connections;
+using TablePro.Ssh.Localization;
 
 namespace TablePro.Ssh.SignIn;
 
@@ -64,7 +65,7 @@ public sealed class CloudSignInTokenProvider : ISignInTokenProvider
             return await EntraTokenAsync(profile, secret, cancellationToken);
         }
 
-        throw new InvalidOperationException($"{method.DisplayName(profile.Engine)} does not use a sign-in token.");
+        throw new InvalidOperationException(SshStrings.Format("SignIn/NoSignInToken", method.DisplayName(profile.Engine)));
     }
 
     public async ValueTask<SignInCredentials> SignInAsync(ConnectionProfile profile, string? secret, CancellationToken cancellationToken)
@@ -80,7 +81,7 @@ public sealed class CloudSignInTokenProvider : ISignInTokenProvider
         var user = profile.Username?.Trim();
         if (string.IsNullOrEmpty(user))
         {
-            throw new InvalidOperationException("Enter the database user the IAM token signs in as.");
+            throw new InvalidOperationException(SshStrings.Get("SignIn/EnterIamUser"));
         }
 
         if (profile.Engine == DatabaseEngine.Redis)
@@ -124,7 +125,7 @@ public sealed class CloudSignInTokenProvider : ISignInTokenProvider
         {
             if (string.IsNullOrWhiteSpace(auth.AwsAccessKeyId) || string.IsNullOrEmpty(secret))
             {
-                throw new InvalidOperationException("Enter the access key ID and the secret access key.");
+                throw new InvalidOperationException(SshStrings.Get("SignIn/EnterAccessKey"));
             }
 
             return (new AwsCredentialSet(auth.AwsAccessKeyId.Trim(), secret), null);
@@ -154,8 +155,8 @@ public sealed class CloudSignInTokenProvider : ISignInTokenProvider
         {
             // A failed SSO or role session must not stay cached; the next connect reads the profile again.
             _awsProfiles.TryRemove(name, out _);
-            var hint = method == SignInMethod.AwsIamSso ? $" Run “aws sso login --profile {name}” and connect again." : string.Empty;
-            throw new InvalidOperationException($"The AWS profile {name} gave no credentials: {ex.Message}{hint}", ex);
+            var message = method == SignInMethod.AwsIamSso ? "SignIn/AwsProfileNoCredentialsSso" : "SignIn/AwsProfileNoCredentials";
+            throw new InvalidOperationException(SshStrings.Format(message, name, ex.Message), ex);
         }
 
         return (new AwsCredentialSet(resolved.AccessKey, resolved.SecretKey, string.IsNullOrEmpty(resolved.Token) ? null : resolved.Token), profileRegion);
@@ -164,7 +165,7 @@ public sealed class CloudSignInTokenProvider : ISignInTokenProvider
     private static AWSCredentials LoadProfile(CredentialProfileStoreChain chain, string name) =>
         chain.TryGetAWSCredentials(name, out var credentials)
             ? credentials
-            : throw new InvalidOperationException($"The AWS profile {name} is not in %USERPROFILE%\\.aws\\config or credentials.");
+            : throw new InvalidOperationException(SshStrings.Format("SignIn/AwsProfileMissing", name));
 
     private async Task<string> EntraTokenAsync(ConnectionProfile profile, string? secret, CancellationToken cancellationToken)
     {
@@ -184,7 +185,7 @@ public sealed class CloudSignInTokenProvider : ISignInTokenProvider
         catch (AuthenticationFailedException ex)
         {
             _entra.TryRemove(key, out _);
-            throw new InvalidOperationException($"Microsoft Entra ID sign-in failed: {ex.Message}", ex);
+            throw new InvalidOperationException(SshStrings.Format("SignIn/EntraFailed", ex.Message), ex);
         }
     }
 
@@ -208,12 +209,12 @@ public sealed class CloudSignInTokenProvider : ISignInTokenProvider
             case EntraAuthMode.ServicePrincipal:
                 if (tenant is null || clientId is null || string.IsNullOrEmpty(secret))
                 {
-                    throw new InvalidOperationException("A service principal needs the directory (tenant) ID, the application (client) ID and the client secret.");
+                    throw new InvalidOperationException(SshStrings.Get("SignIn/ServicePrincipalIncomplete"));
                 }
 
                 return new ClientSecretCredential(tenant, clientId, secret);
             case EntraAuthMode.Integrated:
-                throw new InvalidOperationException("Integrated Entra sign-in is available for SQL Server only.");
+                throw new InvalidOperationException(SshStrings.Get("SignIn/EntraIntegratedSqlServerOnly"));
             default:
                 return new InteractiveBrowserCredential(new InteractiveBrowserCredentialOptions
                 {

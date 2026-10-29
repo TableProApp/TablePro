@@ -1,6 +1,7 @@
 using TablePro.Core.Connections;
 using TablePro.Core.Drivers;
 using TablePro.Core.Editing;
+using TablePro.Core.Localization;
 using TablePro.Core.Schema;
 using TablePro.Core.Sql;
 
@@ -59,7 +60,7 @@ public sealed class DataSyncPlan
         ArgumentNullException.ThrowIfNull(options);
         if (result.IsTruncated)
         {
-            throw new CompareException($"The comparison found {result.DifferenceCount:N0} differences, more than the {result.Differences.Count:N0} a sync can review. Narrow it with a filter or a row limit and compare again.");
+            throw new CompareException(CoreStrings.Format("Compare/TooManyToSync", result.DifferenceCount, result.Differences.Count));
         }
 
         var spec = result.Spec;
@@ -97,17 +98,17 @@ public sealed class DataSyncPlan
         var warnings = new List<string>();
         if (inserts.Count > 0 && spec.Columns.FirstOrDefault(c => c.TargetIsIdentity) is { } identityColumn)
         {
-            warnings.Add($"{identityColumn.Target} is an identity column on the target. Engines such as SQL Server refuse an explicit value there, which rolls the sync back.");
+            warnings.Add(CoreStrings.Format("Compare/IdentityColumnWarning", identityColumn.Target));
         }
 
         if (deletes.Count > 0)
         {
-            warnings.Add($"{deletes.Count:N0} rows will be deleted from {result.Spec.TargetTable} for good.");
+            warnings.Add(CoreStrings.Plural("Compare/RowsDeletedForGood", deletes.Count, result.Spec.TargetTable));
         }
 
         if (result.StoppedAtRowLimit)
         {
-            warnings.Add("The row limit cut the comparison short, so rows past it are left as they are.");
+            warnings.Add(CoreStrings.Get("Compare/RowLimitCutShort"));
         }
 
         return new DataSyncPlan(spec.TargetTable, [.. inserts, .. updates, .. deletes], warnings);

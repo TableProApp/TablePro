@@ -1,6 +1,7 @@
 using TablePro.Core.Browse;
 using TablePro.Core.Connections;
 using TablePro.Core.Editing;
+using TablePro.Core.Localization;
 using TablePro.Core.Results;
 using TablePro.Core.Schema;
 using TablePro.Core.Sql;
@@ -91,5 +92,5 @@ public sealed class DriverRegistry
     public IDatabaseDriver Resolve(DatabaseEngine engine) =>
         _drivers.TryGetValue(engine, out var driver)
             ? driver
-            : throw new NotSupportedException($"No driver is registered for {EngineDescriptor.For(engine).DisplayName}.");
+            : throw new NotSupportedException(CoreStrings.Format("Data/NoDriver", EngineDescriptor.For(engine).DisplayName));
 }

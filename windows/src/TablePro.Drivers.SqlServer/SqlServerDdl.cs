@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using TablePro.Core.Localization;
 using TablePro.Core.Schema;
 using TablePro.Core.Sql;
 
@@ -329,7 +330,7 @@ internal static class SqlServerDdl
         var value = change.After?.Trim().ToUpperInvariant();
         return value is not null && Array.IndexOf(allowed, value) >= 0
             ? value
-            : throw new ArgumentException($"{change.Name} is one of {string.Join(", ", allowed)}.");
+            : throw new ArgumentException(CoreStrings.Format("Driver/OptionIsOneOf", change.Name, string.Join(", ", allowed)));
     }
 
     public static string Kill(object processId) =>

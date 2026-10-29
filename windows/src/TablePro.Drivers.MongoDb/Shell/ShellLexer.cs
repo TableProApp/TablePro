@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using TablePro.Drivers.MongoDb.Localization;
 
 namespace TablePro.Drivers.MongoDb.Shell;
 
@@ -124,7 +125,7 @@ internal sealed class ShellLexer
                 var close = _text.IndexOf("*/", _position + 2, StringComparison.Ordinal);
                 if (close < 0)
                 {
-                    throw new ShellSyntaxException("The comment is not closed", _text, _position);
+                    throw new ShellSyntaxException(MongoStrings.Get("Mongo/CommentNotClosed"), _text, _position);
                 }
 
                 _position = close + 2;
@@ -173,7 +174,7 @@ internal sealed class ShellLexer
                         var close = _text.IndexOf('}', _position);
                         if (close < 0 || !int.TryParse(_text.AsSpan(_position + 1, close - _position - 1), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var codePoint) || codePoint > 0x10FFFF)
                         {
-                            throw new ShellSyntaxException("Invalid Unicode escape", _text, _position - 2);
+                            throw new ShellSyntaxException(MongoStrings.Get("Mongo/InvalidUnicodeEscape"), _text, _position - 2);
                         }
 
                         sb.Append(char.ConvertFromUtf32(codePoint));
@@ -197,13 +198,13 @@ internal sealed class ShellLexer
 
             if (c == '\n' && quote != '`')
             {
-                throw new ShellSyntaxException("The string is not closed before the end of the line", _text, start);
+                throw new ShellSyntaxException(MongoStrings.Get("Mongo/StringNotClosedLine"), _text, start);
             }
 
             sb.Append(c);
         }
 
-        throw new ShellSyntaxException("The string is not closed", _text, start);
+        throw new ShellSyntaxException(MongoStrings.Get("Mongo/StringNotClosed"), _text, start);
     }
 
     private int ReadHex(int digits, int stringStart)
@@ -211,7 +212,7 @@ internal sealed class ShellLexer
         if (_position + digits > _text.Length
             || !int.TryParse(_text.AsSpan(_position, digits), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var value))
         {
-            throw new ShellSyntaxException("Invalid escape sequence in the string", _text, Math.Max(stringStart, _position - 2));
+            throw new ShellSyntaxException(MongoStrings.Get("Mongo/InvalidEscape"), _text, Math.Max(stringStart, _position - 2));
         }
 
         _position += digits;
@@ -257,7 +258,7 @@ internal sealed class ShellLexer
 
         if (_position < _text.Length && IsIdentifierStart(_text[_position]))
         {
-            throw new ShellSyntaxException("A name cannot start right after a number", _text, _position);
+            throw new ShellSyntaxException(MongoStrings.Get("Mongo/NameAfterNumber"), _text, _position);
         }
 
         return _text[start.._position];
@@ -273,7 +274,7 @@ internal sealed class ShellLexer
         {
             if (_position >= _text.Length || _text[_position] == '\n')
             {
-                throw new ShellSyntaxException("The regular expression is not closed", _text, start);
+                throw new ShellSyntaxException(MongoStrings.Get("Mongo/RegexNotClosed"), _text, start);
             }
 
             var c = _text[_position++];
@@ -310,7 +311,7 @@ internal sealed class ShellLexer
         {
             if (flag is not ('i' or 'm' or 's' or 'x' or 'u' or 'g' or 'y'))
             {
-                throw new ShellSyntaxException($"'{flag}' is not a regular expression flag", _text, flagsStart);
+                throw new ShellSyntaxException(MongoStrings.Format("Mongo/NotRegexFlag", flag), _text, flagsStart);
             }
         }
 

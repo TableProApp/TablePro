@@ -1,5 +1,6 @@
 using TablePro.Storage.Library.Folders;
 using TablePro.Storage.Library.Git;
+using TablePro.Storage.Localization;
 
 namespace TablePro.Storage.Library.History;
 
@@ -203,7 +204,7 @@ public sealed class GitFileHistoryProvider(string filePath, GitClient? client) :
         }
         catch (GitProcessException ex)
         {
-            throw new VersionHistoryException(VersionHistoryError.CommandFailed, ex.Failure == GitProcessFailure.OutputTooLarge ? "The file is too large to read from Git." : ex.Message, ex);
+            throw new VersionHistoryException(VersionHistoryError.CommandFailed, ex.Failure == GitProcessFailure.OutputTooLarge ? StorageStrings.Get("Library/FileTooLargeForGit") : ex.Message, ex);
         }
     }
 }

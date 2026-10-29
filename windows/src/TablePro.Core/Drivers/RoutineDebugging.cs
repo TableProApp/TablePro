@@ -1,4 +1,5 @@
 using System.Threading.Channels;
+using TablePro.Core.Localization;
 using TablePro.Core.Results;
 using TablePro.Core.Schema;
 
@@ -180,7 +181,7 @@ public enum DebugVariableKind
 public sealed class RoutineDebugException : Exception
 {
     public RoutineDebugException()
-        : this("The debugger failed.")
+        : this(CoreStrings.Get("Debugger/DebuggerFailed"))
     {
     }
 

@@ -1,6 +1,8 @@
 using System.Globalization;
 using System.Text.Json;
 using TablePro.Core.Editing;
+using TablePro.Core.Localization;
+using TablePro.Drivers.Redis.Localization;
 
 namespace TablePro.Drivers.Redis;
 
@@ -79,9 +81,9 @@ internal static class RedisChangePlanner
                 PlanJson(key, changes, commands);
                 break;
             case RedisKeyType.None:
-                throw new InvalidOperationException($"The key '{key}' no longer exists, so nothing was saved.");
+                throw new InvalidOperationException(CoreStrings.Format("Driver/KeyNoLongerExists", key));
             default:
-                throw new NotSupportedException($"The key '{key}' holds a type the grid cannot edit. Change it with a command in the query editor.");
+                throw new NotSupportedException(RedisStrings.Format("Redis/KeyTypeNotEditable", key));
         }
 
         return new RedisWritePlan(guards, commands);
@@ -117,7 +119,7 @@ internal static class RedisChangePlanner
                     commands.Add(new RedisCommand("DEL", key));
                     break;
                 case RowInsert:
-                    throw new NotSupportedException("A string key holds one value. Edit that value instead of adding a row.");
+                    throw new NotSupportedException(RedisStrings.Get("Redis/StringHoldsOneValue"));
             }
         }
     }
@@ -130,7 +132,7 @@ internal static class RedisChangePlanner
             {
                 case RowUpdate update:
                 {
-                    var field = RequiredKey(update.Key, RedisKeyLayout.Field, "hash field");
+                    var field = RequiredKey(update.Key, RedisKeyLayout.Field, RedisStrings.Get("Redis/WhatHashField"));
                     var renamed = TryGet(update.Values, RedisKeyLayout.Field, out var newFieldValue) ? Text(newFieldValue) ?? throw NullValue() : field;
                     var hasValue = TryGet(update.Values, RedisKeyLayout.Value, out var newValue);
                     if (hasValue && Text(newValue) is null)
@@ -150,7 +152,7 @@ internal static class RedisChangePlanner
                         {
                             value = current.TryGetValue(field, out var read) && read is not null
                                 ? read
-                                : throw new InvalidOperationException($"The hash field '{field}' no longer exists, so nothing was saved.");
+                                : throw new InvalidOperationException(RedisStrings.Format("Redis/HashFieldGone", field));
 
                             // The value was read before the transaction; it must still be the same when it runs.
                             guards.Add(new RedisGuard(RedisGuardKind.HashFieldEquals, key, field, read));
@@ -171,7 +173,7 @@ internal static class RedisChangePlanner
 
                 case RowDelete delete:
                 {
-                    var field = RequiredKey(delete.Key, RedisKeyLayout.Field, "hash field");
+                    var field = RequiredKey(delete.Key, RedisKeyLayout.Field, RedisStrings.Get("Redis/WhatHashField"));
                     guards.Add(new RedisGuard(RedisGuardKind.HashFieldExists, key, field));
                     commands.Add(new RedisCommand("HDEL", key, field));
                     break;
@@ -182,7 +184,7 @@ internal static class RedisChangePlanner
                     var field = Text(Get(insert.Values, RedisKeyLayout.Field));
                     if (string.IsNullOrEmpty(field))
                     {
-                        throw new NotSupportedException("A new hash row needs a field name.");
+                        throw new NotSupportedException(RedisStrings.Get("Redis/HashRowNeedsField"));
                     }
 
                     guards.Add(new RedisGuard(RedisGuardKind.HashFieldMissing, key, field));
@@ -210,7 +212,7 @@ internal static class RedisChangePlanner
                     var index = ListIndex(update.Key);
                     if (TryGet(update.Values, RedisKeyLayout.Index, out var newIndex) && ParseIndex(newIndex) != index)
                     {
-                        throw new NotSupportedException("A list element's position cannot be edited. Delete it and add the value again.");
+                        throw new NotSupportedException(RedisStrings.Get("Redis/ListPositionFixed"));
                     }
 
                     if (!TryGet(update.Values, RedisKeyLayout.Value, out var value))
@@ -255,7 +257,7 @@ internal static class RedisChangePlanner
             {
                 case RowUpdate update:
                 {
-                    var member = RequiredKey(update.Key, RedisKeyLayout.Member, "set member");
+                    var member = RequiredKey(update.Key, RedisKeyLayout.Member, RedisStrings.Get("Redis/WhatSetMember"));
                     if (!TryGet(update.Values, RedisKeyLayout.Member, out var value))
                     {
                         continue;
@@ -275,7 +277,7 @@ internal static class RedisChangePlanner
 
                 case RowDelete delete:
                 {
-                    var member = RequiredKey(delete.Key, RedisKeyLayout.Member, "set member");
+                    var member = RequiredKey(delete.Key, RedisKeyLayout.Member, RedisStrings.Get("Redis/WhatSetMember"));
                     guards.Add(new RedisGuard(RedisGuardKind.SetContains, key, member));
                     commands.Add(new RedisCommand("SREM", key, member));
                     break;
@@ -296,7 +298,7 @@ internal static class RedisChangePlanner
             {
                 case RowUpdate update:
                 {
-                    var member = RequiredKey(update.Key, RedisKeyLayout.Member, "sorted set member");
+                    var member = RequiredKey(update.Key, RedisKeyLayout.Member, RedisStrings.Get("Redis/WhatSortedSetMember"));
                     var renamed = TryGet(update.Values, RedisKeyLayout.Member, out var newMember) ? Text(newMember) ?? throw NullValue() : member;
                     var hasScore = TryGet(update.Values, RedisKeyLayout.Score, out var newScore);
                     guards.Add(new RedisGuard(RedisGuardKind.SortedSetContains, key, member));
@@ -306,7 +308,7 @@ internal static class RedisChangePlanner
                             ? Score(newScore)
                             : current.TryGetValue(member, out var read) && read is not null
                                 ? Score(read)
-                                : throw new InvalidOperationException($"The sorted set member '{member}' no longer exists, so nothing was saved.");
+                                : throw new InvalidOperationException(RedisStrings.Format("Redis/SortedSetMemberGone", member));
                         commands.Add(new RedisCommand("ZREM", key, member));
                         commands.Add(new RedisCommand("ZADD", key, score, renamed));
                     }
@@ -324,7 +326,7 @@ internal static class RedisChangePlanner
 
                 case RowDelete delete:
                 {
-                    var member = RequiredKey(delete.Key, RedisKeyLayout.Member, "sorted set member");
+                    var member = RequiredKey(delete.Key, RedisKeyLayout.Member, RedisStrings.Get("Redis/WhatSortedSetMember"));
                     guards.Add(new RedisGuard(RedisGuardKind.SortedSetContains, key, member));
                     commands.Add(new RedisCommand("ZREM", key, member));
                     break;
@@ -348,9 +350,9 @@ internal static class RedisChangePlanner
             switch (change)
             {
                 case RowUpdate:
-                    throw new NotSupportedException("Stream entries cannot change once added. Delete the entry and add a new one.");
+                    throw new NotSupportedException(RedisStrings.Get("Redis/StreamEntriesFixed"));
                 case RowDelete delete:
-                    commands.Add(new RedisCommand("XDEL", key, RequiredKey(delete.Key, RedisKeyLayout.Id, "stream entry id")));
+                    commands.Add(new RedisCommand("XDEL", key, RequiredKey(delete.Key, RedisKeyLayout.Id, RedisStrings.Get("Redis/WhatStreamId"))));
                     break;
                 case RowInsert insert:
                 {
@@ -358,7 +360,7 @@ internal static class RedisChangePlanner
                     var json = Text(Get(insert.Values, RedisKeyLayout.Fields));
                     if (string.IsNullOrWhiteSpace(json))
                     {
-                        throw new NotSupportedException("A new stream entry needs its fields as a JSON object, such as {\"name\": \"value\"}.");
+                        throw new NotSupportedException(RedisStrings.Get("Redis/StreamNeedsFields"));
                     }
 
                     IReadOnlyList<KeyValuePair<string, string>> fields;
@@ -368,12 +370,12 @@ internal static class RedisChangePlanner
                     }
                     catch (Exception ex) when (ex is JsonException or FormatException)
                     {
-                        throw new NotSupportedException("A stream entry's fields must be a JSON object: " + ex.Message, ex);
+                        throw new NotSupportedException(RedisStrings.Format("Redis/StreamFieldsNotObject", ex.Message), ex);
                     }
 
                     if (fields.Count == 0)
                     {
-                        throw new NotSupportedException("A stream entry needs at least one field.");
+                        throw new NotSupportedException(RedisStrings.Get("Redis/StreamNeedsOneField"));
                     }
 
                     var args = new List<string>(2 + (fields.Count * 2)) { key, string.IsNullOrWhiteSpace(id) ? "*" : id.Trim() };
@@ -398,10 +400,10 @@ internal static class RedisChangePlanner
             {
                 case RowUpdate update:
                 {
-                    var path = RequiredKey(update.Key, RedisKeyLayout.Path, "JSON path");
+                    var path = RequiredKey(update.Key, RedisKeyLayout.Path, RedisStrings.Get("Redis/WhatJsonPath"));
                     if (TryGet(update.Values, RedisKeyLayout.Path, out var newPath) && Text(newPath) != path)
                     {
-                        throw new NotSupportedException("A JSON member's path cannot be edited. Delete it and add the value under the new path.");
+                        throw new NotSupportedException(RedisStrings.Get("Redis/JsonPathFixed"));
                     }
 
                     if (TryGet(update.Values, RedisKeyLayout.Value, out var value))
@@ -413,14 +415,14 @@ internal static class RedisChangePlanner
                 }
 
                 case RowDelete delete:
-                    commands.Add(new RedisCommand("JSON.DEL", key, RequiredKey(delete.Key, RedisKeyLayout.Path, "JSON path")));
+                    commands.Add(new RedisCommand("JSON.DEL", key, RequiredKey(delete.Key, RedisKeyLayout.Path, RedisStrings.Get("Redis/WhatJsonPath"))));
                     break;
                 case RowInsert insert:
                 {
                     var path = Text(Get(insert.Values, RedisKeyLayout.Path));
                     if (string.IsNullOrWhiteSpace(path))
                     {
-                        throw new NotSupportedException("A new JSON member needs a path, such as $.name.");
+                        throw new NotSupportedException(RedisStrings.Get("Redis/JsonNeedsPath"));
                     }
 
                     commands.Add(new RedisCommand("JSON.SET", key, path.Trim(), JsonArgument(Get(insert.Values, RedisKeyLayout.Value))));
@@ -467,7 +469,7 @@ internal static class RedisChangePlanner
         var score = RedisReplyShaper.ParseScore(text);
         return score switch
         {
-            null => throw new NotSupportedException($"'{text}' is not a score. A score is a number, inf or -inf."),
+            null => throw new NotSupportedException(RedisStrings.Format("Redis/NotAScore", text)),
             double.PositiveInfinity => "+inf",
             double.NegativeInfinity => "-inf",
             var s => s.Value.ToString("R", CultureInfo.InvariantCulture),
@@ -475,7 +477,7 @@ internal static class RedisChangePlanner
     }
 
     private static long ListIndex(IReadOnlyDictionary<string, object?> key) =>
-        ParseIndex(Get(key, RedisKeyLayout.Index)) ?? throw new NotSupportedException("The row has no list position, so it cannot be addressed.");
+        ParseIndex(Get(key, RedisKeyLayout.Index)) ?? throw new NotSupportedException(RedisStrings.Get("Redis/NoListPosition"));
 
     private static long? ParseIndex(object? value) => value switch
     {
@@ -487,10 +489,10 @@ internal static class RedisChangePlanner
     private static string Format(long value) => value.ToString(CultureInfo.InvariantCulture);
 
     private static string RequiredKey(IReadOnlyDictionary<string, object?> key, string column, string what) =>
-        Text(Get(key, column)) ?? throw new NotSupportedException($"The row has no {what}, so it cannot be addressed.");
+        Text(Get(key, column)) ?? throw new NotSupportedException(RedisStrings.Format("Redis/RowHasNo", what));
 
     private static NotSupportedException NullValue() =>
-        new("Redis cannot store NULL. Enter an empty value instead.");
+        new(RedisStrings.Get("Redis/CannotStoreNull"));
 
     private static object? Get(IReadOnlyDictionary<string, object?> values, string column) =>
         TryGet(values, column, out var value) ? value : null;

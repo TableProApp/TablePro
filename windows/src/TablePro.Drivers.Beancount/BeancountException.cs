@@ -1,3 +1,5 @@
+using TablePro.Drivers.Beancount.Localization;
+
 namespace TablePro.Drivers.Beancount;
 
 /// <summary>A ledger that cannot be projected or queried, with a message meant for the user.</summary>
@@ -17,7 +19,7 @@ public sealed class BeancountException : Exception
     {
     }
 
-    internal const string ReadOnlyMessage = "Beancount ledgers are exposed as a read-only SQL database.";
+    internal static string ReadOnlyMessage => BeancountStrings.Get("Beancount/ReadOnly");
 
-    internal static BeancountException ConnectionFailed(string message) => new("Failed to open Beancount ledger: " + message);
+    internal static BeancountException ConnectionFailed(string message) => new(BeancountStrings.Format("Beancount/OpenFailed", message));
 }

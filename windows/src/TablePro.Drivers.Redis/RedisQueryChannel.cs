@@ -3,8 +3,10 @@ using System.Globalization;
 using System.Runtime.CompilerServices;
 using StackExchange.Redis;
 using TablePro.Core.Drivers;
+using TablePro.Core.Localization;
 using TablePro.Core.Results;
 using TablePro.Core.Sql;
+using TablePro.Drivers.Redis.Localization;
 
 namespace TablePro.Drivers.Redis;
 
@@ -15,9 +17,6 @@ namespace TablePro.Drivers.Redis;
 /// </summary>
 internal sealed class RedisQueryChannel : IQueryChannel
 {
-    private const string CrossSlotTransaction =
-        "CROSSSLOT The queued commands touch keys in more than one hash slot, which a cluster cannot run in one transaction. Give the keys a shared {hash tag} so they land in one slot.";
-
     private readonly RedisSession _session;
     private readonly bool _readOnly;
     private List<IReadOnlyList<string>>? _queued;
@@ -70,13 +69,13 @@ internal sealed class RedisQueryChannel : IQueryChannel
                     var (error, keys) = await SelectAsync(words, options, cancellationToken);
                     return error is not null
                         ? Fail(error)
-                        : Message(string.Create(CultureInfo.InvariantCulture, $"Database {DatabaseIndex} selected, {keys} keys."));
+                        : Message(RedisStrings.Plural("Redis/DatabaseSelected", keys, DatabaseIndex));
                 }
 
                 case "MULTI":
                     if (_readOnly)
                     {
-                        return Fail("This connection is read-only, so MULTI was not sent.");
+                        return Fail(RedisStrings.Format("Redis/ReadOnlyNotSent", "MULTI"));
                     }
 
                     if (_queued is not null)
@@ -104,7 +103,8 @@ internal sealed class RedisQueryChannel : IQueryChannel
                     _queued = null;
                     if (_session.IsCluster && commands.SelectMany(RedisCommandRouting.Slots).Distinct().Count() > 1)
                     {
-                        return Fail(CrossSlotTransaction);
+                        // The error code stays as Redis would send it; the explanation follows the UI language.
+                        return Fail("CROSSSLOT " + RedisStrings.Get("Redis/CrossSlot"));
                     }
 
                     var replies = await ExecAsync(commands);
@@ -138,7 +138,7 @@ internal sealed class RedisQueryChannel : IQueryChannel
         }
         catch (OperationCanceledException)
         {
-            return Fail("Query cancelled.");
+            return Fail(CoreStrings.Get("Driver/QueryCancelled"));
         }
         catch (RedisTimeoutException ex)
         {
@@ -146,7 +146,7 @@ internal sealed class RedisQueryChannel : IQueryChannel
         }
         catch (TimeoutException)
         {
-            return Fail(string.Create(CultureInfo.InvariantCulture, $"The command did not finish within {options.CommandTimeoutSeconds} seconds."));
+            return Fail(RedisStrings.Format("Redis/CommandNotFinished", options.CommandTimeoutSeconds));
         }
         catch (Exception ex) when (ex is RedisException or RedisCommandException or ArgumentException or InvalidOperationException or NotSupportedException or InvalidCastException)
         {
@@ -188,7 +188,7 @@ internal sealed class RedisQueryChannel : IQueryChannel
                 // Nothing ties the parts together, so a write one slot refused may have run on the others.
                 var ran = replies.Count(r => r.Kind != RedisReplyKind.Error);
                 var note = spec.Value.IsWrite && ran > 0 && ran < replies.Length
-                    ? string.Create(CultureInfo.InvariantCulture, $"{ran} of {replies.Length} hash slots ran their part before another refused; those changes stay applied.")
+                    ? RedisStrings.Format("Redis/PartialSlots", ran, replies.Length)
                     : null;
                 return (combined, note);
             }
@@ -222,7 +222,7 @@ internal sealed class RedisQueryChannel : IQueryChannel
         }
 
         var next = RedisClusterCursor.Advance(position.Node, reply.Items[0].Text ?? RedisClusterCursor.Start, names);
-        var note = position.Restarted ? "The cursor named a node the cluster no longer has, so the scan started again from the first primary." : null;
+        var note = position.Restarted ? RedisStrings.Get("Redis/CursorRestarted") : null;
         return (RedisReply.Array(RedisReply.Bulk(next), reply.Items[1]), note);
     }
 
@@ -243,19 +243,20 @@ internal sealed class RedisQueryChannel : IQueryChannel
     {
         if (words.Count != 2 || !int.TryParse(words[1], NumberStyles.None, CultureInfo.InvariantCulture, out var index))
         {
-            return ("ERR SELECT takes one database number, such as SELECT 1", 0);
+            return ("ERR " + RedisStrings.Get("Redis/SelectOneNumber"), 0);
         }
 
         if (_queued is not null)
         {
-            return ("SELECT cannot be queued inside MULTI here. Select the database before MULTI.", 0);
+            return (RedisStrings.Get("Redis/SelectInMulti"), 0);
         }
 
         if (_session.IsCluster)
         {
             if (index != 0)
             {
-                return ("ERR SELECT is not allowed in cluster mode: Redis Cluster serves database 0 only.", 0);
+                // Redis's own error first, as a server would send it, then why in the UI language.
+                return ("ERR SELECT is not allowed in cluster mode: " + RedisStrings.Get("Redis/ClusterDatabaseZero"), 0);
             }
 
             var sizes = await Task.WhenAll(_session.Primaries().Select(p => PartAsync(p.ExecuteAsync("DBSIZE"))));
@@ -289,7 +290,7 @@ internal sealed class RedisQueryChannel : IQueryChannel
             }
             catch (TaskCanceledException)
             {
-                replies[i] = RedisReply.Error("not run");
+                replies[i] = RedisReply.Error(RedisStrings.Get("Redis/NotRun"));
             }
         }
 

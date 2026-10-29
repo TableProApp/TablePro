@@ -5,9 +5,11 @@ using TablePro.Core.Browse;
 using TablePro.Core.Connections;
 using TablePro.Core.Drivers;
 using TablePro.Core.Editing;
+using TablePro.Core.Localization;
 using TablePro.Core.Results;
 using TablePro.Core.Schema;
 using TablePro.Core.Sql;
+using TablePro.Drivers.LibSql.Localization;
 
 namespace TablePro.Drivers.LibSql;
 
@@ -108,7 +110,7 @@ internal sealed class LibSqlSession : IDatabaseSession, ISchemaDdlProvider
     {
         await Yield();
         var rows = await CatalogAsync(SqliteCatalog.Definition, [obj.Name.Name], cancellationToken);
-        return rows.RowCount > 0 && rows[0, 0] is string sql ? sql : throw new LibSqlException($"The server has no definition for {obj.Name}.");
+        return rows.RowCount > 0 && rows[0, 0] is string sql ? sql : throw new LibSqlException(CoreStrings.Format("Driver/NoDefinitionFor", obj.Name));
     }
 
     public async Task<ResultSet> BrowseAsync(BrowseRequest request, CancellationToken cancellationToken)
@@ -139,7 +141,7 @@ internal sealed class LibSqlSession : IDatabaseSession, ISchemaDdlProvider
         var opened = await _client.PipelineAsync(null, null, requests, 0, cancellationToken);
         if (opened.Baton is null)
         {
-            throw new LibSqlException("The server closed the save's stream before it could commit, so nothing was saved.");
+            throw new LibSqlException(LibSqlStrings.Get("LibSql/StreamClosedBeforeCommit"));
         }
 
         var (total, failure) = Check(Dialect, table, changes, opened.Outcomes);
@@ -160,7 +162,7 @@ internal sealed class LibSqlSession : IDatabaseSession, ISchemaDdlProvider
         }
 
         var commit = finished.Outcomes.Count > 0 ? finished.Outcomes[0] : null;
-        return commit?.Error is { } error ? throw new LibSqlException("The save could not commit: " + error) : total;
+        return commit?.Error is { } error ? throw new LibSqlException(LibSqlStrings.Format("LibSql/CommitFailed", error)) : total;
     }
 
     /// <summary>BEGIN and one statement per change, left open so the next call decides between COMMIT and ROLLBACK.</summary>
@@ -181,7 +183,9 @@ internal sealed class LibSqlSession : IDatabaseSession, ISchemaDdlProvider
     {
         if (outcomes.Count == 0 || outcomes[0].Error is not null)
         {
-            return (0, new LibSqlException("The save could not start a transaction: " + (outcomes.Count == 0 ? "no answer" : outcomes[0].Error)));
+            return (0, new LibSqlException(outcomes.Count == 0
+                ? LibSqlStrings.Get("LibSql/BeginNoAnswer")
+                : LibSqlStrings.Format("LibSql/BeginFailed", outcomes[0].Error)));
         }
 
         var total = 0L;
@@ -190,7 +194,7 @@ internal sealed class LibSqlSession : IDatabaseSession, ISchemaDdlProvider
             var outcome = i + 1 < outcomes.Count ? outcomes[i + 1] : null;
             if (outcome is null)
             {
-                return (0, new LibSqlException("The server answered fewer statements than the save sent."));
+                return (0, new LibSqlException(LibSqlStrings.Get("LibSql/FewerAnswers")));
             }
 
             if (outcome.Error is { } error)
@@ -223,7 +227,7 @@ internal sealed class LibSqlSession : IDatabaseSession, ISchemaDdlProvider
 
     private static ResultSet Single(IReadOnlyList<HranaOutcome> outcomes)
     {
-        var outcome = outcomes.Count > 0 ? outcomes[0] : throw new LibSqlException("The server returned no result for the statement.");
+        var outcome = outcomes.Count > 0 ? outcomes[0] : throw new LibSqlException(CoreStrings.Get("Driver/NoResultForStatement"));
         return outcome.Error is { } error ? throw new LibSqlException(error) : outcome.Rows ?? new ResultSet([], []);
     }
 

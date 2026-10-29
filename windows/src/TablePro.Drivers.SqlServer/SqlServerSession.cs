@@ -3,6 +3,7 @@ using System.Text;
 using Microsoft.Data.SqlClient;
 using TablePro.Core.Data;
 using TablePro.Core.Drivers;
+using TablePro.Core.Localization;
 using TablePro.Core.Results;
 using TablePro.Core.Schema;
 using TablePro.Core.Sql;
@@ -253,5 +254,5 @@ public sealed partial class SqlServerSession
 
     private static string SchemaOrDefault(string? schema) => string.IsNullOrEmpty(schema) ? DefaultSchemaName : schema;
 
-    private static InvalidOperationException NotFound(DatabaseObject obj) => new($"No definition was found for {obj.Name}.");
+    private static InvalidOperationException NotFound(DatabaseObject obj) => new(CoreStrings.Format("Driver/NoDefinitionFor", obj.Name));
 }

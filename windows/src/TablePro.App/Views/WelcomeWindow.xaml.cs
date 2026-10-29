@@ -22,6 +22,7 @@ public sealed partial class WelcomeWindow : Window
         ViewModel = viewModel;
         _host = host;
         InitializeComponent();
+        SearchBox.WithLocalizedQueryButton();
         Title = "TablePro";
         WindowChrome.Apply(this, AppTitleBar, host.Backdrop, host.Theme, 960, 640);
         _dialogs = new DialogService(this);

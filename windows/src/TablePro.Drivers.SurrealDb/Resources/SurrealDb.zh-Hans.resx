@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="BetweenNeedsBothBounds" xml:space="preserve">
+    <value>请输入上下限以使用 BETWEEN 筛选。</value>
+  </data>
+  <data name="HeldForTransaction" xml:space="preserve">
+    <value>已为事务保留；将在 COMMIT 时运行。</value>
+  </data>
+  <data name="IdNotEditable" xml:space="preserve">
+    <value>记录的 ID 无法编辑。</value>
+  </data>
+  <data name="None" xml:space="preserve">
+    <value>（无）</value>
+  </data>
+  <data name="NotCbor" xml:space="preserve">
+    <value>SurrealDB 返回的不是 CBOR。</value>
+  </data>
+  <data name="NotDeclared" xml:space="preserve">
+    <value>未声明</value>
+  </data>
+  <data name="QueryFailed" xml:space="preserve">
+    <value>查询失败。</value>
+  </data>
+  <data name="RecordIdUnknown" xml:space="preserve">
+    <value>记录的 ID 未知，因此无法定位该记录。</value>
+  </data>
+  <data name="RelationFieldNotSaved" xml:space="preserve">
+    <value>无法从网格保存“{0}”。请删除该关系，然后重新执行 RELATE。</value>
+  </data>
+  <data name="TransactionCancelled_One" xml:space="preserve">
+    <value>事务已取消；{0} 条语句未发送。</value>
+  </data>
+  <data name="TransactionCancelled_Other" xml:space="preserve">
+    <value>事务已取消；{0} 条语句未发送。</value>
+  </data>
+  <data name="TransactionCancelledBecause" xml:space="preserve">
+    <value>事务已取消。{0}</value>
+  </data>
+  <data name="TransactionCommitted_One" xml:space="preserve">
+    <value>事务已提交：{0} 条语句。</value>
+  </data>
+  <data name="TransactionCommitted_Other" xml:space="preserve">
+    <value>事务已提交：{0} 条语句。</value>
+  </data>
+  <data name="TransactionStarted" xml:space="preserve">
+    <value>事务已开始。COMMIT 之前的语句会在发送 COMMIT 时一起运行。</value>
+  </data>
+  <data name="UsingNamespace" xml:space="preserve">
+    <value>正在使用命名空间 {0}，数据库 {1}。</value>
+  </data>
+  <data name="VariableKept" xml:space="preserve">
+    <value>此变量会保留给此标签页中后续的语句。</value>
+  </data>
+  <data name="VariableNotReplayed" xml:space="preserve">
+    <value>此变量的值会写入数据，因此不会为后续语句重放。</value>
+  </data>
+</root>

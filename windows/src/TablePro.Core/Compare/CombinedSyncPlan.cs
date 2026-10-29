@@ -1,5 +1,6 @@
 using TablePro.Core.Drivers;
 using TablePro.Core.Editing;
+using TablePro.Core.Localization;
 using TablePro.Core.Schema;
 using TablePro.Core.Sql;
 
@@ -62,7 +63,7 @@ public sealed class CombinedSyncPlan
         {
             if (input.Result.IsTruncated)
             {
-                warnings.Add($"{input.Result.Spec.TargetTable}: {input.Result.DifferenceCount:N0} differences are more than a sync can review, so the table is left out. Narrow it with a filter or a row limit.");
+                warnings.Add(CoreStrings.Format("Compare/TableLeftOutTooMany", input.Result.Spec.TargetTable, input.Result.DifferenceCount));
                 continue;
             }
 
@@ -70,14 +71,14 @@ public sealed class CombinedSyncPlan
             if (!plan.IsEmpty)
             {
                 plans.Add((plan, input));
-                warnings.AddRange(plan.Warnings.Select(w => $"{plan.Table}: {w}"));
+                warnings.AddRange(plan.Warnings.Select(w => CoreStrings.Format("Compare/TableNote", plan.Table, w)));
             }
         }
 
         var (order, cycle) = ParentsFirst(plans.Select(p => p.Input).ToList());
         if (cycle.Count > 0)
         {
-            warnings.Add($"{string.Join(", ", cycle)} reference each other, so no order satisfies every foreign key. A sync that breaks one rolls that table back.");
+            warnings.Add(CoreStrings.Format("Compare/ForeignKeyCycle", string.Join(", ", cycle)));
         }
 
         var ordered = order.Select(i => plans[i].Plan).ToArray();

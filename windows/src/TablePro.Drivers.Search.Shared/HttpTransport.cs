@@ -5,6 +5,7 @@ using System.Security.Authentication;
 using System.Text;
 using System.Text.Json;
 using TablePro.Core.Connections;
+using TablePro.Core.Localization;
 
 // Linked into each HTTP search driver as source rather than referenced as a project, because drivers reference Core
 // only. Each assembly compiles its own internal copy.
@@ -163,7 +164,7 @@ internal sealed class HttpTransport : IDisposable
         var path = pathAndQuery.Trim();
         if (path.StartsWith("//", StringComparison.Ordinal) || path.Contains("://", StringComparison.Ordinal))
         {
-            throw new ServerRequestException($"The path {path} would leave {BaseAddress.Authority}.");
+            throw new ServerRequestException(CoreStrings.Format("Driver/PathLeavesHost", path, BaseAddress.Authority));
         }
 
         if (!path.StartsWith('/'))
@@ -178,14 +179,14 @@ internal sealed class HttpTransport : IDisposable
         {
             if (Uri.UnescapeDataString(segment) is "." or "..")
             {
-                throw new ServerRequestException($"The path {path} has a . or .. segment, which would address a different resource.");
+                throw new ServerRequestException(CoreStrings.Format("Driver/PathHasDotSegment", path));
             }
         }
 
         var uri = new Uri(BaseAddress, path);
         if (!string.Equals(uri.Authority, BaseAddress.Authority, StringComparison.OrdinalIgnoreCase) || uri.Scheme != BaseAddress.Scheme)
         {
-            throw new ServerRequestException($"The path {path} would leave {BaseAddress.Authority}.");
+            throw new ServerRequestException(CoreStrings.Format("Driver/PathLeavesHost", path, BaseAddress.Authority));
         }
 
         return uri;
@@ -222,7 +223,7 @@ internal sealed class HttpTransport : IDisposable
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            throw new TimeoutException($"{BaseAddress.Authority} did not answer within {connectTimeoutSeconds} s.");
+            throw new TimeoutException(CoreStrings.Format("Driver/NoAnswerWithin", BaseAddress.Authority, connectTimeoutSeconds));
         }
     }
 

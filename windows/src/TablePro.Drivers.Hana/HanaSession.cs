@@ -1,8 +1,10 @@
 using System.Data.Common;
 using TablePro.Core.Drivers;
+using TablePro.Core.Localization;
 using TablePro.Core.Results;
 using TablePro.Core.Schema;
 using TablePro.Core.Sql;
+using TablePro.Drivers.Hana.Localization;
 using TablePro.Drivers.Odbc;
 
 namespace TablePro.Drivers.Hana;
@@ -163,9 +165,9 @@ internal sealed class HanaSession
                 };
                 return CatalogValues.NonEmpty(await TextAsync(connection, sql, cancellationToken, schema, name.Name)) is { } definition
                     ? HanaDdl.StoredDefinition(definition)
-                    : throw new InvalidOperationException($"SAP HANA returned no definition for {obj.Name}; the login may lack the privilege to read it.");
+                    : throw new InvalidOperationException(CoreStrings.Format("Driver/DefinitionMissingPrivilege", "SAP HANA", obj.Name));
             default:
-                throw new NotSupportedException($"SAP HANA has no definition for a {obj.Kind}.");
+                throw new NotSupportedException(CoreStrings.Format("Driver/EngineHasNoDefinitionFor", "SAP HANA", obj.Name));
         }
     }
 
@@ -204,7 +206,7 @@ internal sealed class HanaSession
         var columns = await ColumnRowsAsync(connection, table, cancellationToken);
         if (store.Count == 0 || columns.Count == 0)
         {
-            throw new InvalidOperationException($"No definition was found for {table}.");
+            throw new InvalidOperationException(CoreStrings.Format("Driver/NoDefinitionFor", table));
         }
 
         var indexes = await RowsAsync(connection, HanaCatalog.Indexes, cancellationToken, table.Schema, table.Name);
@@ -218,8 +220,8 @@ internal sealed class HanaSession
         return RowsAsync(connection, HanaCatalog.Columns, cancellationToken, schema, table.Name, schema, table.Name);
     }
 
-    private static InvalidOperationException Missing(DatabaseObject obj) => new($"No definition was found for {obj.Name}.");
+    private static InvalidOperationException Missing(DatabaseObject obj) => new(CoreStrings.Format("Driver/NoDefinitionFor", obj.Name));
 
     private string Owner(string? schema) =>
-        !string.IsNullOrEmpty(schema) ? schema : _defaultSchema ?? throw new InvalidOperationException("Choose a SAP HANA schema first.");
+        !string.IsNullOrEmpty(schema) ? schema : _defaultSchema ?? throw new InvalidOperationException(HanaStrings.Get("Hana/ChooseSchema"));
 }

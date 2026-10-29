@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text.Json;
+using TablePro.Ai.Localization;
 using TablePro.Ai.Serialization;
 
 namespace TablePro.Ai;
@@ -57,15 +58,19 @@ public sealed class AiProviderException : Exception
             >= HttpStatusCode.InternalServerError => AiErrorKind.ServerError,
             _ => AiErrorKind.BadRequest,
         };
-        var prefix = kind switch
-        {
-            AiErrorKind.Authentication => $"{providerName} refused the API key",
-            AiErrorKind.RateLimited => $"{providerName} is rate limiting requests",
-            AiErrorKind.ModelNotFound => $"{providerName} does not know that model or address",
-            AiErrorKind.ServerError => $"{providerName} had a server error",
-            _ => $"{providerName} refused the request",
-        };
-        var message = string.IsNullOrWhiteSpace(detail) ? $"{prefix} (HTTP {(int)status})." : $"{prefix} (HTTP {(int)status}): {detail}";
+        var prefix = AiStrings.Format(
+            kind switch
+            {
+                AiErrorKind.Authentication => "Provider/RefusedKey",
+                AiErrorKind.RateLimited => "Provider/RateLimited",
+                AiErrorKind.ModelNotFound => "Provider/ModelNotFound",
+                AiErrorKind.ServerError => "Provider/ServerError",
+                _ => "Provider/RefusedRequest",
+            },
+            providerName);
+        var message = string.IsNullOrWhiteSpace(detail)
+            ? AiStrings.Format("Provider/WithStatus", prefix, (int)status)
+            : AiStrings.Format("Provider/WithStatusDetail", prefix, (int)status, detail);
         return new AiProviderException(kind, message, status);
     }
 
@@ -127,5 +132,5 @@ public sealed class AiProviderException : Exception
     }
 
     internal static AiProviderException FromStreamError(string providerName, ErrorBody? error) =>
-        new(AiErrorKind.ServerError, $"{providerName} stopped the reply: {error?.Message ?? "unknown error"}");
+        new(AiErrorKind.ServerError, AiStrings.Format("Provider/StoppedReply", providerName, error?.Message ?? AiStrings.Get("Provider/UnknownError")));
 }

@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="ChooseSchema" xml:space="preserve">
+    <value>Choose a SAP HANA schema first.</value>
+  </data>
+  <data name="InstallHint" xml:space="preserve">
+    <value>Install the 64-bit SAP HANA Client from SAP Development Tools (tools.hana.ondemand.com), which registers HDBODBC, or name another installed driver with the odbcDriver option.</value>
+  </data>
+  <data name="NotAConnectionId" xml:space="preserve">
+    <value>"{0}" is not a SAP HANA connection id.</value>
+    <comment>{0} is the value given as a connection id.</comment>
+  </data>
+</root>

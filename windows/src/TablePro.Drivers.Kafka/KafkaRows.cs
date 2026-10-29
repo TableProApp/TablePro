@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.Text.Unicode;
 using TablePro.Core.Results;
 using TablePro.Core.Schema;
+using TablePro.Drivers.Kafka.Localization;
 
 namespace TablePro.Drivers.Kafka;
 
@@ -28,13 +29,15 @@ internal static class KafkaRows
     public const string HeadersColumn = "headers";
 
     // The coordinates first, then the payload, as Kafka UIs (kafbat, Redpanda Console, AKHQ) lay messages out.
-    public static IReadOnlyList<ColumnInfo> Columns { get; } =
+    // Built on each read, so the comments are worded in the language of the moment: a list cached on first use could
+    // keep the English an MCP request reads.
+    public static IReadOnlyList<ColumnInfo> Columns =>
     [
         new(PartitionColumn, "INTEGER", false, null, true, false, 0),
         new(OffsetColumn, "BIGINT", false, null, true, false, 1),
-        new(TimestampColumn, "TIMESTAMP", true, null, false, false, 2, "Producer or broker time, in UTC."),
+        new(TimestampColumn, "TIMESTAMP", true, null, false, false, 2, KafkaStrings.Get("Kafka/TimestampComment")),
         new(KeyColumn, "TEXT", true, null, false, false, 3),
-        new(ValueColumn, "TEXT", true, null, false, false, 4, "Null is a tombstone; an empty value is an empty message."),
+        new(ValueColumn, "TEXT", true, null, false, false, 4, KafkaStrings.Get("Kafka/ValueComment")),
         new(HeadersColumn, "JSON", true, null, false, false, 5),
     ];
 

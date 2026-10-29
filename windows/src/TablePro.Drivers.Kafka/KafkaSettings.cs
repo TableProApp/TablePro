@@ -1,6 +1,7 @@
 using System.Globalization;
 using Confluent.Kafka;
 using TablePro.Core.Drivers;
+using TablePro.Drivers.Kafka.Localization;
 using CoreSslMode = TablePro.Core.Connections.SslMode;
 
 namespace TablePro.Drivers.Kafka;
@@ -108,7 +109,7 @@ internal static class KafkaSettings
         "SSL" => SecurityProtocol.Ssl,
         "SASL_PLAINTEXT" => SecurityProtocol.SaslPlaintext,
         "SASL_SSL" => SecurityProtocol.SaslSsl,
-        _ => throw new ArgumentException($"{value} is not a Kafka security protocol. Use PLAINTEXT, SSL, SASL_PLAINTEXT or SASL_SSL."),
+        _ => throw new ArgumentException(KafkaStrings.Format("Kafka/NotSecurityProtocol", value)),
     };
 
     private static SaslMechanism ParseMechanism(string? value) => value?.Trim().ToUpperInvariant().Replace('_', '-') switch
@@ -118,7 +119,7 @@ internal static class KafkaSettings
         "SCRAM-SHA-512" => SaslMechanism.ScramSha512,
         "OAUTHBEARER" => SaslMechanism.OAuthBearer,
         "GSSAPI" => SaslMechanism.Gssapi,
-        _ => throw new ArgumentException($"{value} is not a SASL mechanism. Use PLAIN, SCRAM-SHA-256 or SCRAM-SHA-512."),
+        _ => throw new ArgumentException(KafkaStrings.Format("Kafka/NotSaslMechanism", value)),
     };
 
     private static string? Option(IReadOnlyDictionary<string, string> options, string[] keys)

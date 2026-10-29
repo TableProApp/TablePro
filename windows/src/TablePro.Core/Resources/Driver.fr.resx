@@ -1,0 +1,231 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="Alias" xml:space="preserve">
+    <value>alias</value>
+  </data>
+  <data name="AliasOf" xml:space="preserve">
+    <value>alias de {0}</value>
+  </data>
+  <data name="AnsweredNotJson" xml:space="preserve">
+    <value>{0} a répondu autre chose que du JSON.</value>
+  </data>
+  <data name="AuthenticationFailedWith" xml:space="preserve">
+    <value>L’authentification a échoué : {0}</value>
+  </data>
+  <data name="BetweenNeedsUpperBound" xml:space="preserve">
+    <value>BETWEEN sur {0} nécessite une borne supérieure.</value>
+  </data>
+  <data name="BooleanFieldNotBoolean" xml:space="preserve">
+    <value>{0} est un champ booléen : il ne correspond qu’à true ou false, pas à {1}.</value>
+  </data>
+  <data name="CannotChangeFromGrid" xml:space="preserve">
+    <value>« {0} » ne peut pas être modifié depuis la grille.</value>
+  </data>
+  <data name="CannotFilterWith" xml:space="preserve">
+    <value>{0} ne peut pas filtrer avec {1}.</value>
+  </data>
+  <data name="CannotReadDefinition" xml:space="preserve">
+    <value>Le compte ne peut pas lire la définition de {0}.</value>
+  </data>
+  <data name="ChooseDatasetFirst" xml:space="preserve">
+    <value>Choisissez d’abord un jeu de données.</value>
+  </data>
+  <data name="ChooseNamespaceFirst" xml:space="preserve">
+    <value>Choisissez d’abord un espace de noms.</value>
+  </data>
+  <data name="CommandCancelled" xml:space="preserve">
+    <value>Commande annulée.</value>
+  </data>
+  <data name="CommandNotSupported" xml:space="preserve">
+    <value>Cette commande n’est pas prise en charge.</value>
+  </data>
+  <data name="CommandTimedOutAfter" xml:space="preserve">
+    <value>La commande a expiré après {0} secondes.</value>
+  </data>
+  <data name="Committed" xml:space="preserve">
+    <value>Validée.</value>
+  </data>
+  <data name="ConnectionNeedsDatabaseFile" xml:space="preserve">
+    <value>Une connexion {0} nécessite un fichier de base de données.</value>
+  </data>
+  <data name="ConnectionNotOpen" xml:space="preserve">
+    <value>La connexion n’est pas ouverte.</value>
+  </data>
+  <data name="CredentialsFileType" xml:space="preserve">
+    <value>Le fichier d’identifiants est de type « {0} ». Utilisez une clé de compte de service ou un fichier authorized_user de gcloud.</value>
+  </data>
+  <data name="DefinitionMissingPrivilege" xml:space="preserve">
+    <value>{0} n’a renvoyé aucune définition pour {1} ; la connexion n’a peut-être pas le privilège de la lire.</value>
+  </data>
+  <data name="DocumentIdUnknown" xml:space="preserve">
+    <value>Le champ {0} du document est inconnu, le document ne peut donc pas être ciblé.</value>
+  </data>
+  <data name="EmptyResponse" xml:space="preserve">
+    <value>{0} a renvoyé une réponse vide.</value>
+  </data>
+  <data name="EngineHasNoDefinitionFor" xml:space="preserve">
+    <value>{0} ne peut pas afficher de définition pour {1}.</value>
+  </data>
+  <data name="EnterRequestLike" xml:space="preserve">
+    <value>Saisissez une requête comme : {0}</value>
+  </data>
+  <data name="InsertNeedsValue" xml:space="preserve">
+    <value>{0} a besoin d’au moins une valeur pour insérer une ligne.</value>
+  </data>
+  <data name="InvalidTypedValue" xml:space="preserve">
+    <value>« {0} » n’est pas une valeur {1} valide.</value>
+  </data>
+  <data name="KeyNoLongerExists" xml:space="preserve">
+    <value>La clé « {0} » n’existe plus, rien n’a donc été enregistré.</value>
+  </data>
+  <data name="ListedUnexpected" xml:space="preserve">
+    <value>{0} a répertorié {1} avec un type inattendu, {2}.</value>
+  </data>
+  <data name="NeedsAccountIdentifier" xml:space="preserve">
+    <value>{0} nécessite un identifiant de compte, par exemple {1}.</value>
+  </data>
+  <data name="NoAnswerWithin" xml:space="preserve">
+    <value>{0} n’a pas répondu dans un délai de {1} s.</value>
+  </data>
+  <data name="NoDatabaseGiven" xml:space="preserve">
+    <value>Aucune base de données n’a été indiquée et la connexion n’en a pas par défaut.</value>
+  </data>
+  <data name="NoDefinitionFor" xml:space="preserve">
+    <value>Aucune définition n’a été trouvée pour {0}.</value>
+  </data>
+  <data name="NoResultForStatement" xml:space="preserve">
+    <value>Le serveur n’a renvoyé aucun résultat pour l’instruction.</value>
+  </data>
+  <data name="NoSchemaGiven" xml:space="preserve">
+    <value>Aucun schéma n’a été indiqué et la connexion n’en désigne aucun.</value>
+  </data>
+  <data name="NoTransactionOpen" xml:space="preserve">
+    <value>Aucune transaction n’est ouverte.</value>
+  </data>
+  <data name="NumericFieldNotNumber" xml:space="preserve">
+    <value>{0} est un champ numérique, et {1} n’est pas un nombre.</value>
+  </data>
+  <data name="OdbcDriverNotInstalled" xml:space="preserve">
+    <value>Le pilote ODBC {0} « {1} » n’est pas installé. {2}</value>
+  </data>
+  <data name="OdbcDriverNotLoaded" xml:space="preserve">
+    <value>Windows a trouvé le pilote ODBC {0} « {1} » mais n’a pas pu le charger. TablePro est une application 64 bits et nécessite le pilote 64 bits. {2}</value>
+  </data>
+  <data name="OdbcInvalidKeyword" xml:space="preserve">
+    <value>« {0} » n’est pas un mot-clé de connexion ODBC valide.</value>
+  </data>
+  <data name="OdbcOptionFromForm" xml:space="preserve">
+    <value>L’option « {0} » est définie depuis le formulaire de connexion ; modifiez-la plutôt à cet endroit.</value>
+  </data>
+  <data name="OptionInvalidValue" xml:space="preserve">
+    <value>« {0} » n’est pas une valeur valide pour {1}.</value>
+  </data>
+  <data name="OptionIsOneOf" xml:space="preserve">
+    <value>{0} doit être l’une des valeurs suivantes : {1}.</value>
+  </data>
+  <data name="OptionNeedsValue" xml:space="preserve">
+    <value>{0} nécessite une valeur.</value>
+  </data>
+  <data name="OptionPositiveWholeNumber" xml:space="preserve">
+    <value>{0} doit être un nombre entier supérieur à zéro.</value>
+  </data>
+  <data name="OptionWholeNumberRange" xml:space="preserve">
+    <value>{0} doit être un nombre entier compris entre {1} et {2}.</value>
+  </data>
+  <data name="PartialSaveNoTransaction" xml:space="preserve">
+    <value>{0} modifications sur {1} ont été enregistrées ; {2} n’a pas de transaction pour les annuler. {3}</value>
+  </data>
+  <data name="PathHasDotSegment" xml:space="preserve">
+    <value>Le chemin {0} contient un segment . ou .., qui désignerait une autre ressource.</value>
+  </data>
+  <data name="PathLeavesHost" xml:space="preserve">
+    <value>Le chemin {0} sortirait de {1}.</value>
+  </data>
+  <data name="QueryCancelled" xml:space="preserve">
+    <value>Requête annulée.</value>
+  </data>
+  <data name="QueryTimedOut" xml:space="preserve">
+    <value>La requête a expiré.</value>
+  </data>
+  <data name="QueryTimedOutAfter" xml:space="preserve">
+    <value>La requête a expiré après {0} secondes.</value>
+  </data>
+  <data name="QuotedValueNotClosed" xml:space="preserve">
+    <value>Une valeur entre guillemets n’a jamais été fermée.</value>
+  </data>
+  <data name="RateLimited" xml:space="preserve">
+    <value>Limite de débit atteinte. Réessayez dans un instant.</value>
+  </data>
+  <data name="RateLimitedRetryAfter" xml:space="preserve">
+    <value>Limite de débit atteinte. Réessayez dans {0:0} secondes.</value>
+  </data>
+  <data name="ReadOnlyNothingSaved" xml:space="preserve">
+    <value>Cette connexion est en lecture seule, rien n’a donc été enregistré.</value>
+  </data>
+  <data name="ReadWriteTransactionStarted" xml:space="preserve">
+    <value>Transaction en lecture-écriture démarrée.</value>
+  </data>
+  <data name="RequestTimedOutAfter" xml:space="preserve">
+    <value>La requête a expiré après {0} s.</value>
+  </data>
+  <data name="ReturnedNoResult" xml:space="preserve">
+    <value>{0} n’a renvoyé aucun résultat.</value>
+  </data>
+  <data name="RolledBack" xml:space="preserve">
+    <value>Annulée.</value>
+  </data>
+  <data name="RoutineKindFunction" xml:space="preserve">
+    <value>Fonction</value>
+  </data>
+  <data name="RoutineKindPackage" xml:space="preserve">
+    <value>Package</value>
+  </data>
+  <data name="RoutineKindProcedure" xml:space="preserve">
+    <value>Procédure</value>
+  </data>
+  <data name="RoutineKindTrigger" xml:space="preserve">
+    <value>Déclencheur</value>
+  </data>
+  <data name="RoutineKindType" xml:space="preserve">
+    <value>Type</value>
+  </data>
+  <data name="ServerErrorNoMessage" xml:space="preserve">
+    <value>Le serveur a signalé une erreur sans message.</value>
+  </data>
+  <data name="ServerHttpStatus" xml:space="preserve">
+    <value>Le serveur a renvoyé HTTP {0}.</value>
+  </data>
+  <data name="ServerReportedError" xml:space="preserve">
+    <value>Le serveur a signalé une erreur.</value>
+  </data>
+  <data name="ShowingOfKeys" xml:space="preserve">
+    <value>Affichage de {0:N0} clés sur {1:N0}.</value>
+  </data>
+  <data name="StatementCancelled" xml:space="preserve">
+    <value>Instruction annulée.</value>
+  </data>
+  <data name="StatementNotSupported" xml:space="preserve">
+    <value>Cette instruction n’est pas prise en charge.</value>
+  </data>
+  <data name="TableHasNoColumn" xml:space="preserve">
+    <value>{0} n’a pas de colonne {1}.</value>
+  </data>
+  <data name="TransactionAlreadyOpen" xml:space="preserve">
+    <value>Une transaction est déjà ouverte.</value>
+  </data>
+  <data name="UpdateNeedsChangedColumn" xml:space="preserve">
+    <value>Une mise à jour nécessite au moins une colonne modifiée.</value>
+  </data>
+</root>

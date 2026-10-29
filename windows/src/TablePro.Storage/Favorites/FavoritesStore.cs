@@ -1,4 +1,5 @@
 using System.Text.Json.Nodes;
+using TablePro.Storage.Localization;
 
 namespace TablePro.Storage.Favorites;
 
@@ -112,6 +113,13 @@ public sealed class FavoritesStore : IDisposable
         return clash ? KeywordProblem.AlreadyUsed : KeywordProblem.None;
     }
 
+    private static string Describe(KeywordProblem problem) => problem switch
+    {
+        KeywordProblem.ContainsWhitespace => StorageStrings.Get("Stores/KeywordContainsSpaces"),
+        KeywordProblem.TooLong => StorageStrings.Plural("Stores/KeywordTooLong", MaxKeywordLength),
+        _ => StorageStrings.Get("Stores/KeywordUsed"),
+    };
+
     public async Task LoadAsync(CancellationToken cancellationToken = default)
     {
         await _gate.WaitAsync(cancellationToken);
@@ -140,7 +148,7 @@ public sealed class FavoritesStore : IDisposable
             var problem = ValidateKeyword(document.Favorites, keyword, favorite.ConnectionId, favorite.Id);
             if (problem != KeywordProblem.None)
             {
-                throw new ArgumentException($"The keyword \"{keyword}\" cannot be saved: {problem}.", nameof(favorite));
+                throw new ArgumentException(Describe(problem), nameof(favorite));
             }
 
             var list = document.Favorites.ToList();
@@ -177,7 +185,7 @@ public sealed class FavoritesStore : IDisposable
         ArgumentNullException.ThrowIfNull(folder);
         if (folder.ParentId == folder.Id)
         {
-            throw new ArgumentException("A folder cannot contain itself.", nameof(folder));
+            throw new ArgumentException(StorageStrings.Get("Stores/FolderContainsItself"), nameof(folder));
         }
 
         var saved = folder with { UpdatedAt = DateTimeOffset.UtcNow };
@@ -186,7 +194,7 @@ public sealed class FavoritesStore : IDisposable
             var list = document.Folders.ToList();
             if (saved.ParentId is { } parent && IsWithin(list, parent, saved.Id))
             {
-                throw new InvalidOperationException("A folder cannot move inside one of its own subfolders.");
+                throw new InvalidOperationException(StorageStrings.Get("Stores/FolderIntoSubfolder"));
             }
 
             var index = list.FindIndex(f => f.Id == saved.Id);

@@ -1,6 +1,7 @@
 using System.Data.Common;
 using System.Globalization;
 using TablePro.Core.Drivers;
+using TablePro.Core.Localization;
 
 namespace TablePro.Drivers.Snowflake;
 
@@ -26,7 +27,7 @@ public readonly record struct SnowflakeAccount(string Account, string Host)
         value = value.TrimEnd('/');
         if (value.Length == 0)
         {
-            throw new ArgumentException("Snowflake needs an account identifier, such as xy12345.eu-central-1 or myorg-myaccount.", nameof(text));
+            throw new ArgumentException(CoreStrings.Format("Driver/NeedsAccountIdentifier", "Snowflake", "xy12345.eu-central-1, myorg-myaccount"), nameof(text));
         }
 
         string host;

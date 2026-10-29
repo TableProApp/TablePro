@@ -1,5 +1,6 @@
 using System.Runtime.CompilerServices;
 using TablePro.Core.Drivers;
+using TablePro.Core.Localization;
 using TablePro.Core.Results;
 
 namespace TablePro.Drivers.Beancount;
@@ -75,7 +76,7 @@ internal sealed class BeancountQueryChannel(BeancountSession session) : IQueryCh
         }
         catch (OperationCanceledException)
         {
-            return new StatementResult(sql, [], -1, TimeSpan.Zero, "Query cancelled.");
+            return new StatementResult(sql, [], -1, TimeSpan.Zero, CoreStrings.Get("Driver/QueryCancelled"));
         }
         catch (BeancountException ex)
         {
@@ -89,7 +90,7 @@ internal sealed class BeancountQueryChannel(BeancountSession session) : IQueryCh
             last = result;
         }
 
-        return last ?? new StatementResult(sql, [], -1, TimeSpan.Zero, "Query cancelled.");
+        return last ?? new StatementResult(sql, [], -1, TimeSpan.Zero, CoreStrings.Get("Driver/QueryCancelled"));
     }
 
     private async Task<IQueryChannel> CurrentChannelAsync(CancellationToken cancellationToken)

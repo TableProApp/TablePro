@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using TablePro.Core.Licensing;
+using TablePro.Storage.Localization;
 using TablePro.Storage.Secrets;
 
 namespace TablePro.Storage.Licensing;
@@ -186,7 +187,7 @@ public sealed class LicenseService : IDisposable
         var entry = codeOrKey.Trim();
         if (entry.Length == 0)
         {
-            throw new LicenseException(LicenseErrorKind.InvalidKey, "The license key is empty.");
+            throw new LicenseException(LicenseErrorKind.InvalidKey, StorageStrings.Get("License/KeyEmpty"));
         }
 
         return LicenseRules.IsLicenseKey(entry) ? ActivateKeyAsync(entry.ToUpperInvariant(), cancellationToken) : AcceptInviteAsync(entry, cancellationToken);
@@ -544,7 +545,7 @@ public sealed class LicenseService : IDisposable
             // server still holds it, and their next activation would fail on the seat limit.
             if (!reachedServer)
             {
-                _releaseError = new LicenseException(LicenseErrorKind.SeatReleaseUnconfirmed, "The license server could not be reached, so the seat may stay in use.");
+                _releaseError = new LicenseException(LicenseErrorKind.SeatReleaseUnconfirmed, StorageStrings.Get("License/SeatUnconfirmed"));
             }
 
             _busy--;
@@ -625,7 +626,7 @@ public sealed class LicenseService : IDisposable
         var data = _verifier.Verify(signed);
         if (!LicenseRules.AcceptsMachine(data.MachineId, MachineId))
         {
-            throw new LicenseException(LicenseErrorKind.MachineMismatch, "This license was issued for a different machine.");
+            throw new LicenseException(LicenseErrorKind.MachineMismatch, StorageStrings.Get("License/MachineMismatch"));
         }
 
         return new License { SignedPayload = signed, CachedOnMachineId = MachineId };

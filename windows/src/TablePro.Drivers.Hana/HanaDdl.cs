@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text;
 using TablePro.Core.Schema;
 using TablePro.Core.Sql;
+using TablePro.Drivers.Hana.Localization;
 using TablePro.Drivers.Odbc;
 
 namespace TablePro.Drivers.Hana;
@@ -228,7 +229,7 @@ internal static class HanaDdl
         var id = Convert.ToString(processId, CultureInfo.InvariantCulture)?.Trim() ?? string.Empty;
         if (id.Length == 0 || !id.All(char.IsAsciiDigit))
         {
-            throw new ArgumentException($"\"{processId}\" is not a SAP HANA connection id.", nameof(processId));
+            throw new ArgumentException(HanaStrings.Format("Hana/NotAConnectionId", processId), nameof(processId));
         }
 
         return string.Concat("ALTER SYSTEM DISCONNECT SESSION '", id, "'");

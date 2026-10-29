@@ -1,4 +1,5 @@
 using System.Text.Json;
+using TablePro.Core.Localization;
 
 namespace TablePro.Core.Plans.Parsers;
 
@@ -57,7 +58,7 @@ public static class DuckDbPlanParser
             }
 
             var children = element.Property("children") is { ValueKind: JsonValueKind.Array } nested ? Operators(nested, depth + 1) : [];
-            var name = element.Property("operator_name").String() ?? element.Property("name").String() ?? "Unknown";
+            var name = element.Property("operator_name").String() ?? element.Property("name").String() ?? CoreStrings.Get("Plan/UnknownOperation");
 
             // The profile wraps the query in an operator for the EXPLAIN itself, which did none of the work.
             if (name == "EXPLAIN_ANALYZE")

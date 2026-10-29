@@ -2,6 +2,7 @@ using System.Globalization;
 using Amazon.DynamoDBv2.Model;
 using TablePro.Core.Browse;
 using TablePro.Core.Results;
+using TablePro.Drivers.DynamoDb.Localization;
 
 namespace TablePro.Drivers.DynamoDb;
 
@@ -78,7 +79,7 @@ public static partial class DynamoFilterTranslator
             expression = expression is null ? $"({raw})" : $"{expression} AND ({raw})";
             if (!matchAll && rules.Count > 0)
             {
-                notices.Add("The raw condition must match as well as the rules.");
+                notices.Add(DynamoDbStrings.Get("DynamoDb/RawConditionAnd"));
             }
         }
 
@@ -87,7 +88,7 @@ public static partial class DynamoFilterTranslator
         if (client.Count > 0)
         {
             clientFilter = new DynamoItemFilter(client, matchAll, filter.SearchColumns);
-            notices.Add(string.Create(CultureInfo.InvariantCulture, $"{client.Count} filter rule(s) DynamoDB cannot evaluate were applied to the items read, page by page."));
+            notices.Add(DynamoDbStrings.Plural("DynamoDb/ClientRules", client.Count));
         }
 
         // DynamoDB refuses a placeholder the expression does not use, and a rule that matched nothing or moved to the

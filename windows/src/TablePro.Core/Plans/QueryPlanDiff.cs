@@ -1,5 +1,6 @@
 using System.Collections.Frozen;
 using System.Globalization;
+using TablePro.Core.Localization;
 
 namespace TablePro.Core.Plans;
 
@@ -47,14 +48,12 @@ public readonly record struct QueryPlanVerdict(QueryPlanVerdictKind Kind, double
 {
     public string Headline => Kind switch
     {
-        QueryPlanVerdictKind.Slower => $"{Multiple(Ratio)} slower than the baseline",
-        QueryPlanVerdictKind.Faster => $"{Multiple(Ratio)} faster than the baseline",
-        QueryPlanVerdictKind.ShapeChanged => "The plan shape changed",
-        QueryPlanVerdictKind.ValuesChanged => "Same plan shape, different numbers",
-        _ => "No measurable change",
+        QueryPlanVerdictKind.Slower => CoreStrings.Format("Plan/VerdictSlower", Ratio),
+        QueryPlanVerdictKind.Faster => CoreStrings.Format("Plan/VerdictFaster", Ratio),
+        QueryPlanVerdictKind.ShapeChanged => CoreStrings.Get("Plan/VerdictShapeChanged"),
+        QueryPlanVerdictKind.ValuesChanged => CoreStrings.Get("Plan/VerdictValuesChanged"),
+        _ => CoreStrings.Get("Plan/VerdictUnchanged"),
     };
-
-    private static string Multiple(double ratio) => ratio.ToString("0.#", CultureInfo.CurrentCulture) + "x";
 }
 
 /// <summary>

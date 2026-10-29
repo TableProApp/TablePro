@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="EmptyBody" xml:space="preserve">
+    <value>{0} answered with an empty body.</value>
+    <comment>{0} is the AI provider's name.</comment>
+  </data>
+  <data name="KeyOverHttp" xml:space="preserve">
+    <value>An API key is sent over plain http only to this computer. Use an https address.</value>
+  </data>
+  <data name="ModelNotFound" xml:space="preserve">
+    <value>{0} does not know that model or address</value>
+    <comment>A clause, completed by WithStatus or WithStatusDetail. {0} is the AI provider's name.</comment>
+  </data>
+  <data name="NeedsApiKey" xml:space="preserve">
+    <value>{0} needs an API key.</value>
+    <comment>{0} is the AI provider's name.</comment>
+  </data>
+  <data name="RateLimited" xml:space="preserve">
+    <value>{0} is rate limiting requests</value>
+    <comment>A clause, completed by WithStatus or WithStatusDetail. {0} is the AI provider's name.</comment>
+  </data>
+  <data name="RefusedKey" xml:space="preserve">
+    <value>{0} refused the API key</value>
+    <comment>A clause, completed by WithStatus or WithStatusDetail. {0} is the AI provider's name.</comment>
+  </data>
+  <data name="RefusedRequest" xml:space="preserve">
+    <value>{0} refused the request</value>
+    <comment>A clause, completed by WithStatus or WithStatusDetail. {0} is the AI provider's name.</comment>
+  </data>
+  <data name="ServerError" xml:space="preserve">
+    <value>{0} had a server error</value>
+    <comment>A clause, completed by WithStatus or WithStatusDetail. {0} is the AI provider's name.</comment>
+  </data>
+  <data name="StoppedReply" xml:space="preserve">
+    <value>{0} stopped the reply: {1}</value>
+    <comment>{0} is the AI provider's name, {1} what it said or UnknownError.</comment>
+  </data>
+  <data name="UnknownError" xml:space="preserve">
+    <value>unknown error</value>
+    <comment>Shown in StoppedReply when the provider gives no reason.</comment>
+  </data>
+  <data name="Unreachable" xml:space="preserve">
+    <value>Could not reach {0} at {1}: {2}</value>
+    <comment>{0} is the AI provider's name, {1} its address, {2} the network error.</comment>
+  </data>
+  <data name="UnreadableEvent" xml:space="preserve">
+    <value>{0} sent an event the app cannot read.</value>
+    <comment>{0} is the AI provider's name.</comment>
+  </data>
+  <data name="UnreadableJson" xml:space="preserve">
+    <value>{0} answered with JSON the app cannot read.</value>
+    <comment>{0} is the AI provider's name.</comment>
+  </data>
+  <data name="WithStatus" xml:space="preserve">
+    <value>{0} (HTTP {1}).</value>
+    <comment>{0} is one of the clauses above, {1} the HTTP status code.</comment>
+  </data>
+  <data name="WithStatusDetail" xml:space="preserve">
+    <value>{0} (HTTP {1}): {2}</value>
+    <comment>{0} is one of the clauses above, {1} the HTTP status code, {2} what the provider said.</comment>
+  </data>
+</root>

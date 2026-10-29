@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using TablePro.Core.Localization;
 using TablePro.Core.Schema;
 using TablePro.Core.Sql;
 
@@ -192,7 +193,7 @@ public static class ImportKeyMatchSql
         ArgumentNullException.ThrowIfNull(keys);
         if (keyColumns.Count == 0 || keys.Count == 0 || keys.Any(k => k.Count != keyColumns.Count))
         {
-            throw new ArgumentException("Every key needs one value per key column.", nameof(keys));
+            throw new ArgumentException(CoreStrings.Get("Import/KeyNeedsValuePerColumn"), nameof(keys));
         }
 
         var qualified = dialect.Qualify(table);
@@ -252,7 +253,7 @@ public static class ImportKeyMatchSql
 
         return counts.All(c => c.HasValue)
             ? counts.Select(c => c!.Value).ToArray()
-            : throw new InvalidOperationException("Could not read which rows are already in the table.");
+            : throw new InvalidOperationException(CoreStrings.Get("Import/CouldNotReadExistingRows"));
     }
 
     private static long? Integer(object? value) => value switch

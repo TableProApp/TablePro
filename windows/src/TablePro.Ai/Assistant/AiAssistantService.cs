@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 using System.Text;
 using TablePro.Ai.Conversations;
+using TablePro.Ai.Localization;
 using TablePro.Ai.Prompts;
 using TablePro.Core.Connections;
 
@@ -74,13 +75,13 @@ public sealed class AiAssistantService
                 return;
             case AiPolicy.Never:
                 throw new AiAccessDeniedException(profile.Id, AiAccessDenial.PolicyNever,
-                    $"The AI assistant is turned off for \"{profile.Name}\". Change AI Assistant in the connection's options to use it.");
+                    AiStrings.Format("Assistant/TurnedOff", profile.Name));
         }
 
         if (_approve is null)
         {
             throw new AiAccessDeniedException(profile.Id, AiAccessDenial.NoApprover,
-                $"\"{profile.Name}\" asks before anything is sent to {Provider.DisplayName}, and there is no way to ask.");
+                AiStrings.Format("Assistant/NoWayToAsk", profile.Name, Provider.DisplayName));
         }
 
         var request = new AiApprovalRequest(profile, Provider.DisplayName, Provider.BaseAddress);
@@ -105,7 +106,7 @@ public sealed class AiAssistantService
         if (!allowed)
         {
             throw new AiAccessDeniedException(profile.Id, AiAccessDenial.Declined,
-                $"Nothing from \"{profile.Name}\" was sent to {Provider.DisplayName}.");
+                AiStrings.Format("Assistant/Declined", profile.Name, Provider.DisplayName));
         }
     }
 

@@ -1,6 +1,7 @@
 using System.Globalization;
 using Amazon.DynamoDBv2.Model;
 using TablePro.Core.Editing;
+using TablePro.Drivers.DynamoDb.Localization;
 
 namespace TablePro.Drivers.DynamoDb;
 
@@ -49,7 +50,7 @@ public static class DynamoSaveBuilder
         if (items.Count > MaxTransactionItems)
         {
             throw new InvalidOperationException(
-                string.Create(CultureInfo.InvariantCulture, $"DynamoDB writes at most {MaxTransactionItems} items in one transaction, and this save has {items.Count}. Save fewer rows at once."));
+                DynamoDbStrings.Format("DynamoDb/TooManyItems", MaxTransactionItems, items.Count));
         }
 
         return items;
@@ -62,7 +63,7 @@ public static class DynamoSaveBuilder
         {
             if (!row.TryGetValue(name, out var value) || value is null)
             {
-                throw new InvalidOperationException($"The item's key attribute {name} is not loaded, so the item cannot be found.");
+                throw new InvalidOperationException(DynamoDbStrings.Format("DynamoDb/KeyNotLoaded", name));
             }
 
             key[name] = DynamoAttributeMapper.KeyFromCell(value, type);
@@ -81,7 +82,7 @@ public static class DynamoSaveBuilder
         {
             if (keys.Types.ContainsKey(attribute))
             {
-                throw new InvalidOperationException($"DynamoDB cannot change the key attribute {attribute}. Delete the item and add it again with the new key.");
+                throw new InvalidOperationException(DynamoDbStrings.Format("DynamoDb/CannotChangeKey", attribute));
             }
 
             var name = string.Create(CultureInfo.InvariantCulture, $"#a{names.Count - 1}");

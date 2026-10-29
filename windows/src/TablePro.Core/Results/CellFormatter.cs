@@ -1,6 +1,7 @@
 using System.Buffers;
 using System.Globalization;
 using System.Text;
+using TablePro.Core.Localization;
 
 namespace TablePro.Core.Results;
 
@@ -69,7 +70,7 @@ public static class CellFormatter
     {
         var shown = Math.Min(bytes.Length, maxBytes);
         var hex = Convert.ToHexString(bytes, 0, shown);
-        return shown < bytes.Length ? $"0x{hex}… ({bytes.Length:N0} bytes)" : "0x" + hex;
+        return shown < bytes.Length ? CoreStrings.Plural("Results/TruncatedBytes", bytes.Length, hex) : "0x" + hex;
     }
 
     private static string FormatArray(Array array)

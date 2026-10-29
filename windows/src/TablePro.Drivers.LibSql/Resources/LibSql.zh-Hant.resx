@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AuthFailed" xml:space="preserve">
+    <value>身分驗證失敗。請檢查「密碼」欄位中的驗證權杖。</value>
+  </data>
+  <data name="BeginFailed" xml:space="preserve">
+    <value>儲存無法開始交易：{0}</value>
+  </data>
+  <data name="BeginNoAnswer" xml:space="preserve">
+    <value>儲存無法開始交易：伺服器沒有回應。</value>
+  </data>
+  <data name="CommitFailed" xml:space="preserve">
+    <value>儲存無法認可：{0}</value>
+  </data>
+  <data name="FewerAnswers" xml:space="preserve">
+    <value>伺服器回應的陳述式少於儲存傳送的陳述式。</value>
+  </data>
+  <data name="FileUrlNoFile" xml:space="preserve">
+    <value>file: URL 未指定資料庫檔案。</value>
+  </data>
+  <data name="LocalNeedsFile" xml:space="preserve">
+    <value>本機 libSQL 連線需要資料庫檔案。</value>
+  </data>
+  <data name="NoLocalFiles" xml:space="preserve">
+    <value>此版本無法開啟本機 libSQL 檔案，請改為連線到伺服器 URL。</value>
+  </data>
+  <data name="NoPipeline" xml:space="preserve">
+    <value>伺服器在此 URL 上沒有 Hrana 管線。請檢查資料庫 URL。</value>
+  </data>
+  <data name="NotAUrl" xml:space="preserve">
+    <value>「{0}」不是 libSQL 資料庫 URL。請使用 libsql://、https:// 或 http://。</value>
+  </data>
+  <data name="StreamClosedBeforeCommit" xml:space="preserve">
+    <value>伺服器在認可之前關閉了儲存的串流，因此未儲存任何內容。</value>
+  </data>
+  <data name="StreamEnded" xml:space="preserve">
+    <value>{0} 此索引標籤的串流已結束，因此所有開啟的交易都已復原。</value>
+  </data>
+  <data name="Unreadable" xml:space="preserve">
+    <value>伺服器傳回了 TablePro 無法讀取的回應。</value>
+  </data>
+</root>

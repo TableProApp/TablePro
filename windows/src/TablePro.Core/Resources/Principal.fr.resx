@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AvailableAfterSetRole" xml:space="preserve">
+    <value>Disponible après SET ROLE {0}.</value>
+  </data>
+  <data name="CannotApply" xml:space="preserve">
+    <value>Ce serveur ne peut pas appliquer « {0} » pour {1}.</value>
+  </data>
+  <data name="CategoryAdministration" xml:space="preserve">
+    <value>Administration</value>
+  </data>
+  <data name="CategoryData" xml:space="preserve">
+    <value>Données</value>
+  </data>
+  <data name="CategoryDynamic" xml:space="preserve">
+    <value>Dynamiques</value>
+  </data>
+  <data name="CategoryOther" xml:space="preserve">
+    <value>Autre</value>
+  </data>
+  <data name="CategoryStructure" xml:space="preserve">
+    <value>Structure</value>
+  </data>
+  <data name="ConnectToBrowse" xml:space="preserve">
+    <value>Connectez-vous à cette base de données pour la parcourir</value>
+  </data>
+  <data name="GrantedOn" xml:space="preserve">
+    <value>Accordé sur {0}</value>
+  </data>
+  <data name="GrantsInside_One" xml:space="preserve">
+    <value>{0} attribution interne</value>
+  </data>
+  <data name="GrantsInside_Other" xml:space="preserve">
+    <value>{0} attributions internes</value>
+  </data>
+  <data name="InheritedAutomatically" xml:space="preserve">
+    <value>Hérité automatiquement.</value>
+  </data>
+  <data name="InheritedFrom" xml:space="preserve">
+    <value>Hérité de {0}</value>
+  </data>
+  <data name="KindRole" xml:space="preserve">
+    <value>Rôle</value>
+  </data>
+  <data name="KindUser" xml:space="preserve">
+    <value>Utilisateur</value>
+  </data>
+  <data name="SelfImpactAlter" xml:space="preserve">
+    <value>Ces modifications modifient {0}, le compte utilisé par cette connexion.</value>
+  </data>
+  <data name="SelfImpactDrop" xml:space="preserve">
+    <value>Ces modifications suppriment {0}, le compte utilisé par cette connexion.</value>
+  </data>
+  <data name="SelfImpactRevokeAll" xml:space="preserve">
+    <value>Ces modifications révoquent tous les privilèges de {0}, le compte utilisé par cette connexion.</value>
+  </data>
+  <data name="Server" xml:space="preserve">
+    <value>Serveur</value>
+  </data>
+  <data name="StageCreated" xml:space="preserve">
+    <value>Sera créé lorsque vous appliquerez les modifications</value>
+  </data>
+  <data name="StageDropped" xml:space="preserve">
+    <value>Sera supprimé lorsque vous appliquerez les modifications</value>
+  </data>
+  <data name="StageModified" xml:space="preserve">
+    <value>Contient des modifications non enregistrées</value>
+  </data>
+  <data name="StatementChangePassword" xml:space="preserve">
+    <value>Modifier le mot de passe de {0}</value>
+  </data>
+  <data name="StatementCreate" xml:space="preserve">
+    <value>Créer {0}</value>
+  </data>
+  <data name="StatementDrop" xml:space="preserve">
+    <value>Supprimer {0}</value>
+  </data>
+  <data name="StatementGrant" xml:space="preserve">
+    <value>Accorder des privilèges à {0}</value>
+  </data>
+  <data name="StatementRevoke" xml:space="preserve">
+    <value>Révoquer les privilèges de {0}</value>
+  </data>
+  <data name="StatementUpdate" xml:space="preserve">
+    <value>Mettre à jour {0}</value>
+  </data>
+  <data name="SummaryAll" xml:space="preserve">
+    <value>Tous ({0})</value>
+  </data>
+  <data name="SummaryGrantable" xml:space="preserve">
+    <value>{0} (transmissible)</value>
+  </data>
+  <data name="SummaryNone" xml:space="preserve">
+    <value>Aucun</value>
+  </data>
+  <data name="SummaryOverflow" xml:space="preserve">
+    <value>{0} +{1}</value>
+  </data>
+  <data name="UndoChangeAttributes" xml:space="preserve">
+    <value>Modifier les attributs</value>
+  </data>
+  <data name="UndoChangePassword" xml:space="preserve">
+    <value>Modifier le mot de passe de {0}</value>
+  </data>
+  <data name="UndoCopyPrivileges" xml:space="preserve">
+    <value>Copier les privilèges de {0}</value>
+  </data>
+  <data name="UndoCreate" xml:space="preserve">
+    <value>Créer {0}</value>
+  </data>
+  <data name="UndoDrop" xml:space="preserve">
+    <value>Supprimer {0}</value>
+  </data>
+  <data name="UndoDropMany_One" xml:space="preserve">
+    <value>Supprimer {0} utilisateur ou rôle</value>
+  </data>
+  <data name="UndoDropMany_Other" xml:space="preserve">
+    <value>Supprimer {0} utilisateurs et rôles</value>
+  </data>
+  <data name="UndoGrant" xml:space="preserve">
+    <value>Accorder</value>
+  </data>
+  <data name="UndoKeep" xml:space="preserve">
+    <value>Conserver {0}</value>
+  </data>
+  <data name="UndoRemove" xml:space="preserve">
+    <value>Retirer {0}</value>
+  </data>
+  <data name="UndoRevoke" xml:space="preserve">
+    <value>Révoquer</value>
+  </data>
+  <data name="UnknownChange" xml:space="preserve">
+    <value>Modification inconnue {0}.</value>
+  </data>
+</root>

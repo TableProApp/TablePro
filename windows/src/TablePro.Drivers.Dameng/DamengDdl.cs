@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text;
 using TablePro.Core.Schema;
 using TablePro.Core.Sql;
+using TablePro.Drivers.Dameng.Localization;
 using TablePro.Drivers.Odbc;
 
 namespace TablePro.Drivers.Dameng;
@@ -240,7 +241,7 @@ internal static class DamengDdl
     public static long SessionId(object processId) =>
         long.TryParse(Convert.ToString(processId, CultureInfo.InvariantCulture)?.Trim(), NumberStyles.None, CultureInfo.InvariantCulture, out var id)
             ? id
-            : throw new ArgumentException($"\"{processId}\" is not a Dameng session id.", nameof(processId));
+            : throw new ArgumentException(DamengStrings.Format("Dameng/NotASessionId", processId), nameof(processId));
 
     /// <summary>The type as CREATE TABLE spells it, from ALL_TAB_COLUMNS' parts, as the macOS driver renders it.</summary>
     public static string FormatType(string name, int? length, int? precision, int? scale)

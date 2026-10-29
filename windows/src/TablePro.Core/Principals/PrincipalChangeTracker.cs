@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using TablePro.Core.Localization;
 
 namespace TablePro.Core.Principals;
 
@@ -262,7 +263,7 @@ public sealed class PrincipalChangeTracker
 
         if (!delta.SameAs(previous))
         {
-            Commit(actionName ?? (granted ? "Grant" : "Revoke"), _state with { Deltas = SetDelta(principal, delta) });
+            Commit(actionName ?? CoreStrings.Get(granted ? "Principal/UndoGrant" : "Principal/UndoRevoke"), _state with { Deltas = SetDelta(principal, delta) });
         }
     }
 
@@ -280,7 +281,7 @@ public sealed class PrincipalChangeTracker
 
         if (!delta.SameAs(previous))
         {
-            Commit($"Copy Privileges from {source}", _state with { Deltas = SetDelta(target, delta) });
+            Commit(CoreStrings.Format("Principal/UndoCopyPrivileges", source), _state with { Deltas = SetDelta(target, delta) });
         }
     }
 
@@ -291,7 +292,7 @@ public sealed class PrincipalChangeTracker
             return;
         }
 
-        Commit($"Create {definition.Ref}", _state with { Creates = _state.Creates.Add(definition) });
+        Commit(CoreStrings.Format("Principal/UndoCreate", definition.Ref), _state with { Creates = _state.Creates.Add(definition) });
     }
 
     public void UnstageCreate(PrincipalRef principal)
@@ -301,7 +302,7 @@ public sealed class PrincipalChangeTracker
             return;
         }
 
-        Commit($"Remove {principal}", _state with
+        Commit(CoreStrings.Format("Principal/UndoRemove", principal), _state with
         {
             Creates = _state.Creates.RemoveAll(c => c.Ref == principal),
             Deltas = _state.Deltas.Remove(principal),
@@ -314,7 +315,7 @@ public sealed class PrincipalChangeTracker
     {
         if (!_state.Drops.ContainsKey(principal))
         {
-            Commit($"Drop {principal}", _state with { Drops = _state.Drops.Add(principal, options) });
+            Commit(CoreStrings.Format("Principal/UndoDrop", principal), _state with { Drops = _state.Drops.Add(principal, options) });
         }
     }
 
@@ -345,7 +346,7 @@ public sealed class PrincipalChangeTracker
 
         if (!ReferenceEquals(next, _state))
         {
-            Commit(actionName ?? (principals.Count == 1 ? $"Drop {principals.First()}" : $"Drop {principals.Count} principals"), next);
+            Commit(actionName ?? (principals.Count == 1 ? CoreStrings.Format("Principal/UndoDrop", principals.First()) : CoreStrings.Plural("Principal/UndoDropMany", principals.Count)), next);
         }
     }
 
@@ -353,12 +354,12 @@ public sealed class PrincipalChangeTracker
     {
         if (_state.Drops.ContainsKey(principal))
         {
-            Commit($"Keep {principal}", _state with { Drops = _state.Drops.Remove(principal) });
+            Commit(CoreStrings.Format("Principal/UndoKeep", principal), _state with { Drops = _state.Drops.Remove(principal) });
         }
     }
 
     public void StageSetPassword(PrincipalRef principal, string password) =>
-        Commit($"Change Password for {principal}", _state with { Passwords = _state.Passwords.SetItem(principal, password) });
+        Commit(CoreStrings.Format("Principal/UndoChangePassword", principal), _state with { Passwords = _state.Passwords.SetItem(principal, password) });
 
     /// <summary>
     /// Stages an attributes edit. On a staged create it folds into the CREATE, since there is nothing yet to ALTER; the
@@ -373,7 +374,7 @@ public sealed class PrincipalChangeTracker
             var folded = definition.HasPassword ? definition : definition with { Password = staged.Password };
             if (!folded.Equals(staged))
             {
-                Commit("Change Attributes", _state with { Creates = _state.Creates.SetItem(index, folded) });
+                Commit(CoreStrings.Get("Principal/UndoChangeAttributes"), _state with { Creates = _state.Creates.SetItem(index, folded) });
             }
 
             return;
@@ -387,7 +388,7 @@ public sealed class PrincipalChangeTracker
         alters.TryGetValue(principal, out var after);
         if (!Equals(before, after))
         {
-            Commit("Change Attributes", _state with { Alters = alters });
+            Commit(CoreStrings.Get("Principal/UndoChangeAttributes"), _state with { Alters = alters });
         }
     }
 
@@ -479,16 +480,16 @@ public sealed class PrincipalChangeTracker
 
         if (_state.Drops.Keys.Any(Matches))
         {
-            return $"These changes drop {connected.Name}, the account this connection uses.";
+            return CoreStrings.Format("Principal/SelfImpactDrop", connected.Name);
         }
 
         if (_state.Alters.Keys.Any(Matches))
         {
-            return $"These changes alter {connected.Name}, the account this connection uses.";
+            return CoreStrings.Format("Principal/SelfImpactAlter", connected.Name);
         }
 
         var losesEverything = GrantChanges().Any(c => Matches(c.Principal) && ResolvedGrantKeys(c.Principal).Count == 0 && BaselineKeys(c.Principal).Count > 0);
-        return losesEverything ? $"These changes revoke every privilege from {connected.Name}, the account this connection uses." : null;
+        return losesEverything ? CoreStrings.Format("Principal/SelfImpactRevokeAll", connected.Name) : null;
     }
 
     // MARK: Bookkeeping

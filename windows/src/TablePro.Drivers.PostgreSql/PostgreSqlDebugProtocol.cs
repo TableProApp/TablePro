@@ -1,9 +1,11 @@
 using System.Globalization;
 using System.Text;
 using TablePro.Core.Drivers;
+using TablePro.Core.Localization;
 using TablePro.Core.Results;
 using TablePro.Core.Schema;
 using TablePro.Core.Sql;
+using TablePro.Drivers.PostgreSql.Localization;
 
 namespace TablePro.Drivers.PostgreSql;
 
@@ -125,8 +127,8 @@ internal sealed class PostgreSqlDebugRoutine
     public DebugEntryPoint EntryPoint => new(Identity, DisplayName, Parameters);
 
     public string RunNote => IsProcedure
-        ? "Changes the procedure makes are committed when it commits or finishes. Stop rolls back what it hasn't committed."
-        : "Changes the routine makes are committed when it finishes. Stop rolls them back.";
+        ? PostgreSqlStrings.Get("PostgreSql/RunNoteProcedure")
+        : PostgreSqlStrings.Get("PostgreSql/RunNoteFunction");
 
     /// <summary>
     /// The schema pldbgapi lives in, or why this routine cannot be debugged. It never asks about
@@ -166,15 +168,14 @@ internal static class PostgreSqlDebugProtocol
 {
     public static readonly IReadOnlySet<DebugCommand> SupportedCommands = new HashSet<DebugCommand> { DebugCommand.Continue, DebugCommand.StepOver, DebugCommand.StepInto };
 
-    public const string StoppedMessage = "The routine was stopped, and its uncommitted changes were rolled back.";
+    // Properties rather than constants, so each message is read in the UI language when it is shown.
+    public static string StoppedMessage => PostgreSqlStrings.Get("PostgreSql/Stopped");
 
     // A cancel reaching the proxy does this, and so does a server transaction_timeout on PostgreSQL 17 once a wait
     // outlasts it, even with the session's own set to 0.
-    public const string InterruptedMessage =
-        "The debugger's session was interrupted while it waited, so the routine was stopped and its uncommitted changes were rolled back. "
-        + "A cancel or the server's transaction_timeout can cause this.";
+    public static string InterruptedMessage => PostgreSqlStrings.Get("PostgreSql/Interrupted");
 
-    public const string AbandonedMessage = "The routine couldn't be stopped on the server.";
+    public static string AbandonedMessage => PostgreSqlStrings.Get("PostgreSql/Abandoned");
 
     private const string BreakNoticePrefix = "PLDBGBREAK:";
     private const string TargetEndedState = "08006";
@@ -486,7 +487,7 @@ internal static class PostgreSqlDebugProtocol
             return null;
         }
 
-        return new RoutineDebugTarget(identity, new ObjectName(Cell(row, 2), name), name + Cell(row, 3), Cell(row, 4) == "p" ? "Procedure" : "Function");
+        return new RoutineDebugTarget(identity, new ObjectName(Cell(row, 2), name), name + Cell(row, 3), Cell(row, 4) == "p" ? CoreStrings.Get("Driver/RoutineKindProcedure") : CoreStrings.Get("Driver/RoutineKindFunction"));
     }
 
     /// <summary>
@@ -773,11 +774,10 @@ internal static class PostgreSqlDebugProtocol
     /// </summary>
     public static string AbandonedDetail(int? process, int? port) => (process, port) switch
     {
-        ({ } p, { } q) => string.Create(
-            CultureInfo.InvariantCulture,
-            $"Server process {p} may still be waiting for a debugger and holding its locks. To end it, run SELECT pldbg_attach_to_port({q}) and pass the number it returns to pldbg_abort_target."),
-        ({ } p, null) => string.Create(CultureInfo.InvariantCulture, $"Server process {p} may still be running and holding its locks."),
-        _ => "Its server session may still be running and holding its locks.",
+        // The numbers are pasted into SQL, so they keep invariant digits whatever the user's region is.
+        ({ } p, { } q) => PostgreSqlStrings.Format("PostgreSql/AbandonedWaiting", p.ToString(CultureInfo.InvariantCulture), q.ToString(CultureInfo.InvariantCulture)),
+        ({ } p, null) => PostgreSqlStrings.Format("PostgreSql/AbandonedRunning", p.ToString(CultureInfo.InvariantCulture)),
+        _ => PostgreSqlStrings.Get("PostgreSql/AbandonedSession"),
     };
 
     private static string? Cell(IReadOnlyList<string?> row, int index) => index < row.Count ? row[index] : null;
@@ -796,7 +796,7 @@ internal sealed record PostgreSqlDebugCallOutcome(ResultSet? Result, Exception? 
 internal sealed class PostgreSqlDebugServerException : Exception
 {
     public PostgreSqlDebugServerException()
-        : this("00000", "The server reported an error.")
+        : this("00000", CoreStrings.Get("Driver/ServerReportedError"))
     {
     }
 

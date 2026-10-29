@@ -41,6 +41,7 @@ public sealed partial class WorkspaceWindow : Window
         // The settings store reaches the window through the app host; IWorkspaceHost does not carry it yet.
         _settings = (host as AppHost)?.Settings;
         InitializeComponent();
+        SearchBox.WithLocalizedQueryButton();
         Title = Strings.Format("Workspace/WindowTitle", viewModel.Title);
         WindowChrome.Apply(this, AppTitleBar, host.Backdrop, host.Theme, 1440, 900);
         CaptionButtonsColumn.Width = new GridLength(Math.Max(140, AppWindow.TitleBar.RightInset / (Root.XamlRoot?.RasterizationScale ?? 1)));

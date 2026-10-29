@@ -3,6 +3,7 @@ using System.Text.Json;
 using TablePro.Core.Browse;
 using TablePro.Core.Results;
 using TablePro.Core.Schema;
+using TablePro.Drivers.Redis.Localization;
 
 namespace TablePro.Drivers.Redis;
 
@@ -170,7 +171,7 @@ internal static class RedisKeyLayout
     {
         if (!string.IsNullOrWhiteSpace(filter.RawWhere))
         {
-            throw new NotSupportedException("Redis has no WHERE clause. Use the filter rules, or SCAN with MATCH in the query editor.");
+            throw new NotSupportedException(RedisStrings.Get("Redis/NoWhereElements"));
         }
 
         var rules = filter.Rules.Where(r => r.Enabled).ToArray();
@@ -297,11 +298,11 @@ internal static class RedisKeyLayout
 
     private static string? ColumnComment(RedisKeyType type, string column) => (type, column) switch
     {
-        (RedisKeyType.List, Index) => "Position from the head, starting at 0",
-        (RedisKeyType.Stream, Id) => "Leave empty when adding to let the server assign one",
-        (RedisKeyType.Stream, Fields) => "A JSON object of field names to values",
-        (RedisKeyType.Json, Path) => "JSONPath of the member",
-        (RedisKeyType.Json, Value) => "JSON text",
+        (RedisKeyType.List, Index) => RedisStrings.Get("Redis/IndexComment"),
+        (RedisKeyType.Stream, Id) => RedisStrings.Get("Redis/StreamIdComment"),
+        (RedisKeyType.Stream, Fields) => RedisStrings.Get("Redis/FieldsComment"),
+        (RedisKeyType.Json, Path) => RedisStrings.Get("Redis/PathComment"),
+        (RedisKeyType.Json, Value) => RedisStrings.Get("Redis/JsonTextComment"),
         _ => null,
     };
 }

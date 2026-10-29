@@ -12,6 +12,7 @@ using TablePro.Core.Editing;
 using TablePro.Core.Results;
 using TablePro.Core.Schema;
 using TablePro.Core.Sql;
+using TablePro.Drivers.DynamoDb.Localization;
 
 namespace TablePro.Drivers.DynamoDb;
 
@@ -119,7 +120,7 @@ public sealed class DynamoDbSession : IDatabaseSession
         var notices = new List<string>();
         if (request.Sort.Count > 0)
         {
-            notices.Add("A DynamoDB scan returns items in the table's own order, so the sort was not applied.");
+            notices.Add(DynamoDbStrings.Get("DynamoDb/SortNotApplied"));
         }
 
         var page = await DynamoScanReader.ReadAsync(_api, request.Table.Name, keys.Names, plan, Math.Max(request.Offset, 0), Math.Max(request.Limit, 0), _resumePoints, cancellationToken);
@@ -164,8 +165,9 @@ public sealed class DynamoDbSession : IDatabaseSession
             var failed = reasons.FindIndex(r => r.Code == "ConditionalCheckFailed");
             if (failed >= 0)
             {
-                var action = items[failed].Put is not null ? "An item with this key already exists" : "The item no longer exists";
-                throw new RowCountMismatchException(1, 0, $"{action} (change {failed + 1} of {items.Count}).");
+                throw new RowCountMismatchException(1, 0, items[failed].Put is not null
+                    ? DynamoDbStrings.Format("DynamoDb/ItemExists", failed + 1, items.Count)
+                    : DynamoDbStrings.Format("DynamoDb/ItemGone", failed + 1, items.Count));
             }
 
             throw;
@@ -193,7 +195,7 @@ public sealed class DynamoDbSession : IDatabaseSession
         var schema = (description.KeySchema ?? []).OrderBy(k => k.KeyType == KeyType.HASH ? 0 : 1).ToList();
         if (schema.Count == 0)
         {
-            throw new InvalidOperationException($"DynamoDB did not report the key schema of {description.TableName}.");
+            throw new InvalidOperationException(DynamoDbStrings.Format("DynamoDb/NoKeySchema", description.TableName));
         }
 
         return new DynamoKeySchema([.. schema.Select(k => new KeyValuePair<string, string>(k.AttributeName, types.GetValueOrDefault(k.AttributeName, DynamoAttributeMapper.String)))]);

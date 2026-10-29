@@ -5,6 +5,7 @@ using System.Text.Json;
 using Google.Apis.Auth.OAuth2;
 using Google.Apis.Auth.OAuth2.Responses;
 using TablePro.Core.Connections;
+using TablePro.Ssh.Localization;
 
 namespace TablePro.Ssh.SignIn;
 
@@ -88,7 +89,7 @@ internal sealed class GoogleCloudSqlTokens
         var text = value?.Trim().TrimStart('\xFEFF') ?? string.Empty;
         if (text.Length == 0)
         {
-            throw new InvalidOperationException("Enter the service account key: the path of its JSON file, or the JSON itself.");
+            throw new InvalidOperationException(SshStrings.Get("SignIn/ServiceAccountKeyRequired"));
         }
 
         if (!text.StartsWith('{'))
@@ -96,7 +97,7 @@ internal sealed class GoogleCloudSqlTokens
             var path = Environment.ExpandEnvironmentVariables(text.Trim('"'));
             if (text.StartsWith("-----BEGIN", StringComparison.Ordinal))
             {
-                throw new InvalidOperationException("This is a PEM private key. Use the JSON key file Google Cloud created for the service account.");
+                throw new InvalidOperationException(SshStrings.Get("SignIn/PemKey"));
             }
 
             try
@@ -105,7 +106,7 @@ internal sealed class GoogleCloudSqlTokens
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
             {
-                throw new InvalidOperationException($"The service account key file {path} cannot be read: {ex.Message}", ex);
+                throw new InvalidOperationException(SshStrings.Format("SignIn/KeyFileUnreadable", path, ex.Message), ex);
             }
         }
 
@@ -117,12 +118,12 @@ internal sealed class GoogleCloudSqlTokens
         }
         catch (JsonException ex)
         {
-            throw new InvalidOperationException("The service account key is not valid JSON.", ex);
+            throw new InvalidOperationException(SshStrings.Get("SignIn/KeyNotJson"), ex);
         }
 
         return type == JsonCredentialParameters.ServiceAccountCredentialType
             ? text
-            : throw new InvalidOperationException($"The key is a \"{type ?? "unknown"}\" credential, not a service account key.");
+            : throw new InvalidOperationException(SshStrings.Format("SignIn/KeyWrongType", type ?? SshStrings.Get("SignIn/UnknownCredentialType")));
     }
 
     private GoogleCredential ServiceAccount(string json) =>
@@ -140,12 +141,12 @@ internal sealed class GoogleCloudSqlTokens
     private static string Message(Exception ex) => ex switch
     {
         TokenResponseException { Error.Error: "invalid_scope" } =>
-            "The gcloud login does not allow Cloud SQL sign-in. Run gcloud auth application-default login again, without --scopes.",
+            SshStrings.Get("SignIn/GcloudScope"),
         TokenResponseException { Error.Error: "invalid_grant" } =>
-            $"Google refused the credentials: {ex.Message} Run gcloud auth application-default login, or check the service account key, and connect again.",
+            SshStrings.Format("SignIn/GoogleRefused", ex.Message),
         InvalidOperationException when ex.Message.Contains("Application Default Credentials", StringComparison.OrdinalIgnoreCase) =>
-            "No Google application default credentials were found. Run gcloud auth application-default login and connect again.",
-        _ => $"Google Cloud IAM sign-in failed: {ex.Message}",
+            SshStrings.Get("SignIn/NoAdc"),
+        _ => SshStrings.Format("SignIn/GoogleFailed", ex.Message),
     };
 
     private static string Fingerprint(string text) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(text)));

@@ -1,4 +1,5 @@
 using TablePro.Core.Drivers;
+using TablePro.Drivers.Cloudflare.Localization;
 
 namespace TablePro.Drivers.Cloudflare;
 
@@ -25,22 +26,26 @@ internal sealed record CloudflareSettings(string AccountId, string ApiToken, str
         return new CloudflareSettings(account?.Trim() ?? string.Empty, request.Password?.Trim() ?? string.Empty, database?.Trim() ?? string.Empty);
     }
 
-    /// <summary>Throws with a message naming the missing field, before any request leaves the machine.</summary>
-    public void Validate(string databaseNoun)
+    /// <summary>
+    /// Throws with a message naming the missing field, before any request leaves the machine.
+    /// <paramref name="missingDatabase"/> is the whole sentence for an empty Database field, since what goes there differs
+    /// by service and a noun spliced into a shared sentence cannot be translated.
+    /// </summary>
+    public void Validate(string missingDatabase)
     {
         if (AccountId.Length == 0)
         {
-            throw new CloudflareApiException("Enter the Cloudflare account ID in the Host field.");
+            throw new CloudflareApiException(CloudflareStrings.Get("Cloudflare/EnterAccountId"));
         }
 
         if (ApiToken.Length == 0)
         {
-            throw new CloudflareApiException("Enter a Cloudflare API token in the Password field.");
+            throw new CloudflareApiException(CloudflareStrings.Get("Cloudflare/EnterApiToken"));
         }
 
         if (Database.Length == 0)
         {
-            throw new CloudflareApiException($"Enter the {databaseNoun} in the Database field.");
+            throw new CloudflareApiException(missingDatabase);
         }
     }
 

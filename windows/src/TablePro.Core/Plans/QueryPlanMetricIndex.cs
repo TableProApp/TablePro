@@ -1,4 +1,5 @@
 using System.Collections.Frozen;
+using TablePro.Core.Localization;
 
 namespace TablePro.Core.Plans;
 
@@ -18,8 +19,8 @@ public static class QueryPlanBarMetrics
 {
     public static string Title(this QueryPlanBarMetric metric) => metric switch
     {
-        QueryPlanBarMetric.SelfCost => "Self Cost",
-        QueryPlanBarMetric.SelfTime => "Self Time",
+        QueryPlanBarMetric.SelfCost => CoreStrings.Get("Plan/BarMetricSelfCost"),
+        QueryPlanBarMetric.SelfTime => CoreStrings.Get("Plan/BarMetricSelfTime"),
         QueryPlanBarMetric.EstimatedRows => QueryPlanMetric.EstimatedRows.Title(),
         _ => QueryPlanMetric.ActualRows.Title(),
     };
@@ -39,7 +40,7 @@ public static class QueryPlanBarMetrics
 
     /// <summary>How the weight is phrased, which differs because the denominator differs; a row count is no share.</summary>
     public static string EmphasisDescription(this QueryPlanBarMetric metric, string formatted) =>
-        metric.IsAdditive() ? $"{formatted} of the plan" : $"{formatted} of the largest step";
+        metric.IsAdditive() ? CoreStrings.Format("Plan/ShareOfPlan", formatted) : CoreStrings.Format("Plan/ShareOfLargestStep", formatted);
 }
 
 /// <summary>

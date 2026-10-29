@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AmbiguousOverload" xml:space="preserve">
+    <value>此呼叫符合 {0} 的多個多載，因此 Oracle 無法執行它（PLS-00307）。</value>
+  </data>
+  <data name="BreakpointHasNoCode" xml:space="preserve">
+    <value>{1} 的第 {0} 行沒有可停止的程式碼。</value>
+  </data>
+  <data name="CannotPassType" xml:space="preserve">
+    <value>TablePro 無法向 {1} 傳遞任何 {0} 型別的值。</value>
+  </data>
+  <data name="CannotPassTypeDetail" xml:space="preserve">
+    <value>請從使用該值呼叫它的常式進行偵錯。</value>
+  </data>
+  <data name="CompileForDebug" xml:space="preserve">
+    <value>TablePro 會使用偵錯資訊（PLSQL_OPTIMIZE_LEVEL=1）重新編譯它，並保留其他設定。編譯會認可交易。</value>
+  </data>
+  <data name="CompileForDebugAction" xml:space="preserve">
+    <value>為偵錯編譯</value>
+  </data>
+  <data name="CompileForDebugPackage" xml:space="preserve">
+    <value>TablePro 會使用偵錯資訊（PLSQL_OPTIMIZE_LEVEL=1）重新編譯它，並保留其他設定。編譯會認可交易。使用該套件的其他工作階段會遺失套件狀態，其下一次呼叫會因 ORA-04068 失敗一次。</value>
+  </data>
+  <data name="ConnectionLost" xml:space="preserve">
+    <value>偵錯工作階段的連線已關閉。</value>
+  </data>
+  <data name="CouldNotFinishStep" xml:space="preserve">
+    <value>偵錯工具無法完成此步驟。</value>
+  </data>
+  <data name="CouldNotStart" xml:space="preserve">
+    <value>偵錯工具無法啟動。</value>
+  </data>
+  <data name="DebugFromCallerOverload" xml:space="preserve">
+    <value>請從一個只使用此多載所接受引數來呼叫它的常式進行偵錯。</value>
+  </data>
+  <data name="Ended" xml:space="preserve">
+    <value>偵錯工作階段已結束。</value>
+  </data>
+  <data name="GiveParameterValue" xml:space="preserve">
+    <value>請為 {0} 指定一個值。若保留預設值，此呼叫還會符合 {1} 的另一個多載。</value>
+  </data>
+  <data name="GiveParameterValues" xml:space="preserve">
+    <value>請為 {0} 指定值。若保留預設值，此呼叫還會符合 {1} 的另一個多載。</value>
+  </data>
+  <data name="GrantDebug" xml:space="preserve">
+    <value>DBA 可以使用 GRANT DEBUG ON {0} TO {1} 授與此權限，或授與 DEBUG ANY PROCEDURE。</value>
+  </data>
+  <data name="GrantDebugConnectSession" xml:space="preserve">
+    <value>DBA 可以使用 GRANT DEBUG CONNECT SESSION TO {0} 授與此權限。</value>
+  </data>
+  <data name="HostBadCharacter" xml:space="preserve">
+    <value>主機「{0}」包含 Oracle 連線描述元不允許的字元。</value>
+  </data>
+  <data name="NeedsDebugConnectSession" xml:space="preserve">
+    <value>偵錯需要 DEBUG CONNECT SESSION 權限。</value>
+  </data>
+  <data name="NeedsDebugPrivilege" xml:space="preserve">
+    <value>偵錯 {0} 需要對其擁有 DEBUG 權限。</value>
+  </data>
+  <data name="NoEntryPoints" xml:space="preserve">
+    <value>{0} 沒有可作為起點的公用預存程序或函式。</value>
+  </data>
+  <data name="NotASessionId" xml:space="preserve">
+    <value>「{0}」不是 sid,serial# 格式的 Oracle 工作階段 ID。</value>
+  </data>
+  <data name="NotCompiledForDebug" xml:space="preserve">
+    <value>{0} 未針對偵錯進行編譯。</value>
+  </data>
+  <data name="OverloadDefaultUnreadable" xml:space="preserve">
+    <value>沒有它，Oracle 無法區分這些多載（PLS-00307），而 TablePro 無法讀取預設值來傳遞。</value>
+  </data>
+  <data name="RoutineFailed" xml:space="preserve">
+    <value>常式引發了錯誤。其變更已復原。</value>
+  </data>
+  <data name="RunNote" xml:space="preserve">
+    <value>常式所做的變更會在其結束時認可。停止會復原這些變更。</value>
+  </data>
+  <data name="ServiceNameBadCharacter" xml:space="preserve">
+    <value>服務名稱「{0}」包含 Oracle 連線描述元不允許的字元。</value>
+  </data>
+  <data name="SidBadCharacter" xml:space="preserve">
+    <value>SID「{0}」包含 Oracle 連線描述元不允許的字元。</value>
+  </data>
+  <data name="SourceUnreadable" xml:space="preserve">
+    <value>TablePro 無法讀取此單元的原始碼。</value>
+  </data>
+  <data name="StillRunning" xml:space="preserve">
+    <value>TablePro 無法確認常式已結束。它可能仍在伺服器上執行。</value>
+  </data>
+  <data name="StillRunningNoSession" xml:space="preserve">
+    <value>其未認可的工作會在結束時復原。擁有 ALTER SYSTEM 權限的使用者可以在 V$SESSION 中找到其工作階段，並用 ALTER SYSTEM KILL SESSION 結束它。</value>
+  </data>
+  <data name="StillRunningSid" xml:space="preserve">
+    <value>工作階段 SID {0}。其未認可的工作會在結束時復原。</value>
+  </data>
+  <data name="StillRunningWithKill" xml:space="preserve">
+    <value>工作階段 SID {0}，SERIAL# {1}。其未認可的工作會在結束時復原。擁有 ALTER SYSTEM 權限的使用者現在可以用 {2} 結束它。</value>
+  </data>
+  <data name="Stopped" xml:space="preserve">
+    <value>已停止。常式的變更已復原。</value>
+  </data>
+  <data name="TextToType" xml:space="preserve">
+    <value>TablePro 無法將文字轉換為 {1} 所需的 {0} 值。</value>
+  </data>
+  <data name="TextToTypeDetail" xml:space="preserve">
+    <value>請傳遞 NULL 或保留預設值。</value>
+  </data>
+  <data name="UnitUnreadable" xml:space="preserve">
+    <value>TablePro 無法讀取 {0}。請檢查此帳戶能否看到其原始碼。</value>
+  </data>
+  <data name="Unreadable" xml:space="preserve">
+    <value>資料庫以 TablePro 無法讀取的資料回應了偵錯工具。</value>
+  </data>
+  <data name="UsingDbmsDebug" xml:space="preserve">
+    <value>正在透過 DBMS_DEBUG 偵錯。</value>
+  </data>
+  <data name="ValueCollection" xml:space="preserve">
+    <value>集合</value>
+  </data>
+  <data name="ValueNotReadable" xml:space="preserve">
+    <value>無法讀取</value>
+  </data>
+</root>

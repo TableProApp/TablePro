@@ -1,5 +1,7 @@
 using System.Globalization;
 using System.Text;
+using TablePro.Core.Localization;
+using TablePro.Drivers.Kafka.Localization;
 
 namespace TablePro.Drivers.Kafka;
 
@@ -100,7 +102,7 @@ internal static class KafkaQL
     public static KafkaStatement Parse(string input)
     {
         var tokens = Tokenizer.Tokenize(input);
-        var head = tokens.Next()?.ToUpperInvariant() ?? throw new KafkaQLException("Empty statement.");
+        var head = tokens.Next()?.ToUpperInvariant() ?? throw new KafkaQLException(KafkaStrings.Get("Kafka/EmptyStatement"));
         return head switch
         {
             "CONSUME" or "SELECT" => ParseConsume(tokens, KafkaStart.Oldest),
@@ -110,7 +112,7 @@ internal static class KafkaQL
             "DESCRIBE" or "DESC" => ParseDescribe(tokens),
             "CREATE" => ParseCreate(tokens),
             "DROP" => ParseDrop(tokens),
-            _ => throw new KafkaQLException($"{head} is not a Kafka command. Try CONSUME, TAIL, PRODUCE, SHOW, DESCRIBE, CREATE or DROP."),
+            _ => throw new KafkaQLException(KafkaStrings.Format("Kafka/NotACommand", head)),
         };
     }
 
@@ -172,7 +174,7 @@ internal static class KafkaQL
             tokens.Next();
         }
 
-        var topic = Unquote(tokens.Next() ?? throw new KafkaQLException("CONSUME needs a topic name."));
+        var topic = Unquote(tokens.Next() ?? throw new KafkaQLException(KafkaStrings.Format("Kafka/NeedsTopicName", "CONSUME")));
         var limit = DefaultLimit;
         var skip = 0;
         IReadOnlyList<int>? partitions = null;
@@ -193,7 +195,7 @@ internal static class KafkaQL
                     partitions = PartitionList(tokens);
                     break;
                 default:
-                    throw new KafkaQLException($"Unexpected {keyword} in a CONSUME statement.");
+                    throw new KafkaQLException(KafkaStrings.Format("Kafka/Unexpected", keyword, "CONSUME"));
             }
         }
 
@@ -203,7 +205,7 @@ internal static class KafkaQL
 
     private static KafkaConsume ParseTail(Tokenizer tokens)
     {
-        var topic = Unquote(tokens.Next() ?? throw new KafkaQLException("TAIL needs a topic name."));
+        var topic = Unquote(tokens.Next() ?? throw new KafkaQLException(KafkaStrings.Format("Kafka/NeedsTopicName", "TAIL")));
         var limit = DefaultLimit;
         IReadOnlyList<int>? partitions = null;
         while (tokens.Next()?.ToUpperInvariant() is { } keyword)
@@ -217,7 +219,7 @@ internal static class KafkaQL
                     partitions = PartitionList(tokens);
                     break;
                 default:
-                    throw new KafkaQLException($"Unexpected {keyword} in a TAIL statement. TAIL takes LIMIT and PARTITION.");
+                    throw new KafkaQLException(KafkaStrings.Format("Kafka/UnexpectedInTail", keyword));
             }
         }
 
@@ -229,18 +231,18 @@ internal static class KafkaQL
     {
         if (limit is <= 0 or > MaximumLimit)
         {
-            throw new KafkaQLException(string.Create(CultureInfo.InvariantCulture, $"LIMIT must be between 1 and {MaximumLimit}."));
+            throw new KafkaQLException(KafkaStrings.Format("Kafka/RangeBetween", "LIMIT", 1, MaximumLimit));
         }
 
         if (skip is < 0 or > MaximumLimit)
         {
-            throw new KafkaQLException(string.Create(CultureInfo.InvariantCulture, $"SKIP must be between 0 and {MaximumLimit}."));
+            throw new KafkaQLException(KafkaStrings.Format("Kafka/RangeBetween", "SKIP", 0, MaximumLimit));
         }
     }
 
     private static KafkaStart ParseStart(Tokenizer tokens)
     {
-        var mode = tokens.Next()?.ToUpperInvariant() ?? throw new KafkaQLException("FROM needs NEWEST, OLDEST, OFFSET, TIME, ANCHOR or TAIL.");
+        var mode = tokens.Next()?.ToUpperInvariant() ?? throw new KafkaQLException(KafkaStrings.Get("Kafka/FromNeeds"));
 
         // ANCHOR(0:1,1:2) arrives as one token, since the list sits in parentheses right after the word.
         string? list = null;
@@ -259,7 +261,7 @@ internal static class KafkaQL
             "TIME" or "TIMESTAMP" => new KafkaStart(KafkaStartKind.Timestamp, Timestamp(tokens)),
             "ANCHOR" => new KafkaStart(KafkaStartKind.Anchor, 0, OffsetMap(list ?? tokens.Next(), "ANCHOR")),
             "TAIL" => new KafkaStart(KafkaStartKind.Tail, 0, OffsetMap(list ?? tokens.Next(), "TAIL")),
-            _ => throw new KafkaQLException($"{mode} is not a start position. Use NEWEST, OLDEST, OFFSET, TIME, ANCHOR or TAIL."),
+            _ => throw new KafkaQLException(KafkaStrings.Format("Kafka/NotStartPosition", mode)),
         };
     }
 
@@ -270,7 +272,7 @@ internal static class KafkaQL
             tokens.Next();
         }
 
-        var topic = Unquote(tokens.Next() ?? throw new KafkaQLException("PRODUCE needs a topic name."));
+        var topic = Unquote(tokens.Next() ?? throw new KafkaQLException(KafkaStrings.Format("Kafka/NeedsTopicName", "PRODUCE")));
         int? partition = null;
         string? key = null;
         string? value = null;
@@ -301,13 +303,13 @@ internal static class KafkaQL
 
                     break;
                 default:
-                    throw new KafkaQLException($"Unexpected {keyword} in a PRODUCE statement.");
+                    throw new KafkaQLException(KafkaStrings.Format("Kafka/Unexpected", keyword, "PRODUCE"));
             }
         }
 
         if (key is null && value is null)
         {
-            throw new KafkaQLException("PRODUCE needs at least a VALUE or a KEY.");
+            throw new KafkaQLException(KafkaStrings.Get("Kafka/ProduceNeedsValueOrKey"));
         }
 
         return new KafkaProduce(topic, partition, key, value, headers);
@@ -315,14 +317,14 @@ internal static class KafkaQL
 
     private static KafkaShow ParseShow(Tokenizer tokens)
     {
-        var what = tokens.Next()?.ToUpperInvariant() ?? throw new KafkaQLException("SHOW needs TOPICS, BROKERS, GROUPS or CLUSTER.");
+        var what = tokens.Next()?.ToUpperInvariant() ?? throw new KafkaQLException(KafkaStrings.Get("Kafka/ShowNeeds"));
         var target = what switch
         {
             "TOPICS" => KafkaShowTarget.Topics,
             "BROKERS" => KafkaShowTarget.Brokers,
             "GROUPS" or "CONSUMERS" => KafkaShowTarget.Groups,
             "CLUSTER" => KafkaShowTarget.Cluster,
-            _ => throw new KafkaQLException($"SHOW {what} is not supported. Try TOPICS, BROKERS, GROUPS or CLUSTER."),
+            _ => throw new KafkaQLException(KafkaStrings.Format("Kafka/ShowUnsupported", what)),
         };
         End(tokens, "SHOW " + what);
         return new KafkaShow(target);
@@ -330,13 +332,13 @@ internal static class KafkaQL
 
     private static KafkaStatement ParseDescribe(Tokenizer tokens)
     {
-        var what = tokens.Next()?.ToUpperInvariant() ?? throw new KafkaQLException("DESCRIBE needs GROUP or TOPIC.");
+        var what = tokens.Next()?.ToUpperInvariant() ?? throw new KafkaQLException(KafkaStrings.Get("Kafka/DescribeNeeds"));
         if (what is not ("TOPIC" or "GROUP"))
         {
-            throw new KafkaQLException($"DESCRIBE {what} is not supported. Try GROUP or TOPIC.");
+            throw new KafkaQLException(KafkaStrings.Format("Kafka/DescribeUnsupported", what));
         }
 
-        var name = Unquote(tokens.Next() ?? throw new KafkaQLException("DESCRIBE needs a name."));
+        var name = Unquote(tokens.Next() ?? throw new KafkaQLException(KafkaStrings.Get("Kafka/DescribeNeedsName")));
         End(tokens, "DESCRIBE " + what);
         return what == "TOPIC" ? new KafkaDescribeTopic(name) : new KafkaDescribeGroup(name);
     }
@@ -345,10 +347,10 @@ internal static class KafkaQL
     {
         if (!string.Equals(tokens.Next(), "TOPIC", StringComparison.OrdinalIgnoreCase))
         {
-            throw new KafkaQLException("CREATE needs TOPIC and a topic name.");
+            throw new KafkaQLException(KafkaStrings.Format("Kafka/NeedsTopicKeyword", "CREATE"));
         }
 
-        var topic = Unquote(tokens.Next() ?? throw new KafkaQLException("CREATE TOPIC needs a topic name."));
+        var topic = Unquote(tokens.Next() ?? throw new KafkaQLException(KafkaStrings.Format("Kafka/NeedsTopicName", "CREATE TOPIC")));
         var partitions = -1;
         short replication = -1;
         var config = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -360,20 +362,20 @@ internal static class KafkaQL
                     partitions = Integer(tokens, keyword);
                     if (partitions < 1)
                     {
-                        throw new KafkaQLException("PARTITIONS must be at least 1.");
+                        throw new KafkaQLException(KafkaStrings.Format("Kafka/AtLeastOne", "PARTITIONS"));
                     }
 
                     break;
                 case "REPLICATION" or "REPLICATION_FACTOR" or "REPLICAS":
                     var factor = Integer(tokens, keyword);
-                    replication = factor is >= 1 and <= short.MaxValue ? (short)factor : throw new KafkaQLException("REPLICATION must be at least 1.");
+                    replication = factor is >= 1 and <= short.MaxValue ? (short)factor : throw new KafkaQLException(KafkaStrings.Format("Kafka/AtLeastOne", "REPLICATION"));
                     break;
                 case "CONFIG" or "WITH":
-                    var setting = SplitAssignment(Required(tokens, keyword)) ?? throw new KafkaQLException($"{keyword} needs key=value, such as cleanup.policy=compact.");
+                    var setting = SplitAssignment(Required(tokens, keyword)) ?? throw new KafkaQLException(KafkaStrings.Format("Kafka/NeedsKeyValue", keyword));
                     config[setting.Key] = setting.Value;
                     break;
                 default:
-                    throw new KafkaQLException($"Unexpected {keyword} in a CREATE TOPIC statement.");
+                    throw new KafkaQLException(KafkaStrings.Format("Kafka/Unexpected", keyword, "CREATE TOPIC"));
             }
         }
 
@@ -385,13 +387,13 @@ internal static class KafkaQL
     {
         if (!string.Equals(tokens.Next(), "TOPIC", StringComparison.OrdinalIgnoreCase))
         {
-            throw new KafkaQLException("DROP needs TOPIC and a topic name.");
+            throw new KafkaQLException(KafkaStrings.Format("Kafka/NeedsTopicKeyword", "DROP"));
         }
 
-        var topic = Unquote(tokens.Next() ?? throw new KafkaQLException("DROP TOPIC needs a topic name."));
+        var topic = Unquote(tokens.Next() ?? throw new KafkaQLException(KafkaStrings.Format("Kafka/NeedsTopicName", "DROP TOPIC")));
         if (tokens.Next() is not null)
         {
-            throw new KafkaQLException("DROP TOPIC takes one topic name.");
+            throw new KafkaQLException(KafkaStrings.Get("Kafka/DropTakesOne"));
         }
 
         return new KafkaDropTopic(topic);
@@ -402,18 +404,18 @@ internal static class KafkaQL
     {
         if (tokens.Next() is { } extra)
         {
-            throw new KafkaQLException($"{statement} takes nothing after it, and {extra} was given.");
+            throw new KafkaQLException(KafkaStrings.Format("Kafka/TakesNothingAfter", statement, extra));
         }
     }
 
-    private static string Required(Tokenizer tokens, string keyword) => tokens.Next() ?? throw new KafkaQLException($"{keyword} needs a value.");
+    private static string Required(Tokenizer tokens, string keyword) => tokens.Next() ?? throw new KafkaQLException(KafkaStrings.Format("Kafka/NeedsValue", keyword));
 
     private static int Integer(Tokenizer tokens, string keyword)
     {
         var raw = Required(tokens, keyword);
         return int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var value)
             ? value
-            : throw new KafkaQLException($"{keyword} needs a whole number, not {raw}.");
+            : throw new KafkaQLException(KafkaStrings.Format("Kafka/NeedsWholeNumber", keyword, raw));
     }
 
     private static long LongValue(Tokenizer tokens, string keyword)
@@ -421,7 +423,7 @@ internal static class KafkaQL
         var raw = Required(tokens, keyword);
         return long.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var value) && value >= 0
             ? value
-            : throw new KafkaQLException($"{keyword} needs a whole number, not {raw}.");
+            : throw new KafkaQLException(KafkaStrings.Format("Kafka/NeedsWholeNumber", keyword, raw));
     }
 
     /// <summary>Milliseconds since the epoch or an ISO 8601 instant, since someone reaching for a time has a clock reading.</summary>
@@ -435,12 +437,12 @@ internal static class KafkaQL
 
         return DateTimeOffset.TryParse(raw, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var instant)
             ? instant.ToUnixTimeMilliseconds()
-            : throw new KafkaQLException($"{raw} is not a time. Use milliseconds since the epoch or an ISO 8601 instant.");
+            : throw new KafkaQLException(KafkaStrings.Format("Kafka/NotATimeHint", raw));
     }
 
     private static Dictionary<int, long> OffsetMap(string? token, string keyword)
     {
-        var raw = token ?? throw new KafkaQLException($"{keyword} needs a partition:offset list.");
+        var raw = token ?? throw new KafkaQLException(KafkaStrings.Format("Kafka/NeedsOffsetList", keyword));
         var body = raw.StartsWith('(') ? raw.Trim('(', ')') : raw;
         var map = new Dictionary<int, long>();
         foreach (var pair in body.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
@@ -450,18 +452,18 @@ internal static class KafkaQL
                 || !int.TryParse(parts[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out var partition)
                 || !long.TryParse(parts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out var offset))
             {
-                throw new KafkaQLException($"{pair} is not a partition:offset pair.");
+                throw new KafkaQLException(KafkaStrings.Format("Kafka/NotOffsetPair", pair));
             }
 
             map[partition] = offset;
         }
 
-        return map.Count > 0 ? map : throw new KafkaQLException($"{keyword} needs a partition:offset list.");
+        return map.Count > 0 ? map : throw new KafkaQLException(KafkaStrings.Format("Kafka/NeedsOffsetList", keyword));
     }
 
     private static List<int> PartitionList(Tokenizer tokens)
     {
-        var raw = tokens.Next() ?? throw new KafkaQLException("PARTITION needs at least one partition number.");
+        var raw = tokens.Next() ?? throw new KafkaQLException(KafkaStrings.Get("Kafka/PartitionNeedsNumber"));
         var body = raw.StartsWith('(') ? raw.Trim('(', ')') : raw;
         var values = new List<int>();
         foreach (var entry in body.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
@@ -469,17 +471,17 @@ internal static class KafkaQL
             // Dropping what does not parse would turn a typo into a silently narrower read.
             values.Add(int.TryParse(entry, NumberStyles.Integer, CultureInfo.InvariantCulture, out var value) && value >= 0
                 ? value
-                : throw new KafkaQLException($"{entry} is not a partition number."));
+                : throw new KafkaQLException(KafkaStrings.Format("Kafka/NotPartitionNumber", entry)));
         }
 
         // The tokenizer splits "0,1,2" outside parentheses, so the numbers that follow belong to the list too.
         while (!raw.StartsWith('(') && tokens.Peek() is { } next && int.TryParse(next, NumberStyles.Integer, CultureInfo.InvariantCulture, out var more))
         {
             tokens.Next();
-            values.Add(more >= 0 ? more : throw new KafkaQLException($"{next} is not a partition number."));
+            values.Add(more >= 0 ? more : throw new KafkaQLException(KafkaStrings.Format("Kafka/NotPartitionNumber", next)));
         }
 
-        return values.Count > 0 ? values : throw new KafkaQLException("PARTITION needs at least one partition number.");
+        return values.Count > 0 ? values : throw new KafkaQLException(KafkaStrings.Get("Kafka/PartitionNeedsNumber"));
     }
 
     /// <summary>Splits <c>name=value</c> at the first <c>=</c> outside quotes; null when there is none.</summary>
@@ -602,7 +604,7 @@ internal static class KafkaQL
 
             if (quote is not null)
             {
-                throw new KafkaQLException("A quoted value was never closed.");
+                throw new KafkaQLException(CoreStrings.Get("Driver/QuotedValueNotClosed"));
             }
 
             if (current.Length > 0)

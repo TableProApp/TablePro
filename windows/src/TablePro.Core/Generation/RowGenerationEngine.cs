@@ -1,4 +1,5 @@
 using System.Globalization;
+using TablePro.Core.Localization;
 
 namespace TablePro.Core.Generation;
 
@@ -6,7 +7,7 @@ namespace TablePro.Core.Generation;
 public sealed class RowGenerationException(string message) : InvalidOperationException(message)
 {
     public static RowGenerationException Exhausted(IEnumerable<string> columns) =>
-        new($"Could not make another value for ({string.Join(", ", columns)}) that does not repeat. Widen its range or generate fewer rows.");
+        new(CoreStrings.Format("Generation/ValuesExhausted", string.Join(CoreStrings.Get("Generation/ListSeparator"), columns)));
 }
 
 /// <summary>

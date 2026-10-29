@@ -6,6 +6,7 @@ using TablePro.Core.Browse;
 using TablePro.Core.Connections;
 using TablePro.Core.Drivers;
 using TablePro.Core.Editing;
+using TablePro.Core.Localization;
 using TablePro.Core.Results;
 using TablePro.Core.Schema;
 using TablePro.Core.Sql;
@@ -359,7 +360,7 @@ internal sealed class TrinoQueryChannel : IQueryChannel
         }
         catch (OperationCanceledException) when (timeout.IsCancellationRequested)
         {
-            return new StatementResult(sql, [], -1, stopwatch.Elapsed, cancellationToken.IsCancellationRequested ? "Query cancelled." : "Query timed out.");
+            return new StatementResult(sql, [], -1, stopwatch.Elapsed, cancellationToken.IsCancellationRequested ? CoreStrings.Get("Driver/QueryCancelled") : CoreStrings.Get("Driver/QueryTimedOut"));
         }
         catch (Exception ex) when (ex is TrinoQueryException or TrinoHttpException or HttpRequestException or InvalidOperationException)
         {

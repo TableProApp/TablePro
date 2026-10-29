@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.RegularExpressions;
+using TablePro.Drivers.Beancount.Localization;
 
 namespace TablePro.Drivers.Beancount;
 
@@ -58,7 +59,7 @@ internal sealed class BeancountIncludeResolver
         var normalized = Path.GetFullPath(path);
         if (_activeStack.Contains(normalized))
         {
-            throw new BeancountException("Beancount include cycle detected at " + normalized);
+            throw new BeancountException(BeancountStrings.Format("Beancount/IncludeCycle", normalized));
         }
 
         if (_visited.Contains(normalized))
@@ -76,7 +77,7 @@ internal sealed class BeancountIncludeResolver
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or DecoderFallbackException or NotSupportedException)
             {
-                throw new BeancountException($"Could not read {normalized}: {ex.Message}", ex);
+                throw new BeancountException(BeancountStrings.Format("Beancount/CouldNotRead", normalized, ex.Message), ex);
             }
 
             _visited.Add(normalized);
@@ -100,7 +101,7 @@ internal sealed class BeancountIncludeResolver
                     }
                     catch (ArgumentException ex)
                     {
-                        throw new BeancountException($"Invalid include path \"{quotedValues[0]}\" in {normalized}: {ex.Message}", ex);
+                        throw new BeancountException(BeancountStrings.Format("Beancount/InvalidInclude", quotedValues[0], normalized, ex.Message), ex);
                     }
 
                     foreach (var include in includes)

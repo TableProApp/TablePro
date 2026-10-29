@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="BooleanProperty" xml:space="preserve">
+    <value>{0} est une propriété booléenne : elle ne correspond qu’à true ou false, pas à {1}.</value>
+  </data>
+  <data name="ComparesNumbersAndDates" xml:space="preserve">
+    <value>Weaviate ne compare que des nombres et des dates avec {0}, et {1} n’est ni l’un ni l’autre.</value>
+  </data>
+  <data name="DateProperty" xml:space="preserve">
+    <value>{0} est une propriété de date, et {1} n’est pas un horodatage RFC 3339, tel que 2024-01-31T00:00:00Z.</value>
+  </data>
+  <data name="InNeedsValue" xml:space="preserve">
+    <value>IN sur {0} nécessite au moins une valeur.</value>
+  </data>
+  <data name="MatchesTextOnly" xml:space="preserve">
+    <value>Weaviate compare du texte avec {0}, et {1} n’est pas une propriété de texte.</value>
+  </data>
+  <data name="NotValidName" xml:space="preserve">
+    <value>{0} n’est pas un nom Weaviate valide.</value>
+  </data>
+  <data name="NumericProperty" xml:space="preserve">
+    <value>{0} est une propriété numérique, et {1} n’est pas un nombre.</value>
+  </data>
+  <data name="ObjectIdUnknown" xml:space="preserve">
+    <value>L’ID de l’objet est inconnu, l’objet ne peut donc pas être ciblé.</value>
+  </data>
+  <data name="RawFilterShape" xml:space="preserve">
+    <value>Un filtre Weaviate brut est un objet where, par exemple { path: ["title"] operator: Like valueText: "*a*" }.</value>
+  </data>
+</root>

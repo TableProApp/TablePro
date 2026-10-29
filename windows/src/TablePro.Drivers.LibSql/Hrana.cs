@@ -5,7 +5,9 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using TablePro.Core.Localization;
 using TablePro.Core.Results;
+using TablePro.Drivers.LibSql.Localization;
 
 namespace TablePro.Drivers.LibSql;
 
@@ -324,7 +326,7 @@ internal static class Hrana
         {
             if (item.Type == "error")
             {
-                outcomes.Add(new HranaOutcome(null, 0, item.Error?.Message ?? "The server reported an error without a message."));
+                outcomes.Add(new HranaOutcome(null, 0, item.Error?.Message ?? CoreStrings.Get("Driver/ServerErrorNoMessage")));
                 continue;
             }
 
@@ -436,7 +438,7 @@ internal sealed class HranaClient(HttpClient http, Uri baseUri, string? token)
         }
         catch (JsonException ex)
         {
-            throw new LibSqlException("The server returned a response TablePro could not read.", ex);
+            throw new LibSqlException(LibSqlStrings.Get("LibSql/Unreadable"), ex);
         }
 
         return Hrana.Map(parsed ?? new HranaPipelineResponse(), rowLimit);
@@ -456,7 +458,7 @@ internal sealed class HranaClient(HttpClient http, Uri baseUri, string? token)
     public async Task<ResultSet> QueryAsync(HranaExecute statement, CancellationToken cancellationToken)
     {
         var outcomes = await ExecuteAsync([statement], int.MaxValue, cancellationToken);
-        var outcome = outcomes.Count > 0 ? outcomes[0] : throw new LibSqlException("The server returned no result for the statement.");
+        var outcome = outcomes.Count > 0 ? outcomes[0] : throw new LibSqlException(CoreStrings.Get("Driver/NoResultForStatement"));
         return outcome.Error is { } error ? throw new LibSqlException(error) : outcome.Rows ?? new ResultSet([], []);
     }
 
@@ -498,12 +500,12 @@ internal sealed class HranaClient(HttpClient http, Uri baseUri, string? token)
         var text = detail ?? Encoding.UTF8.GetString(body, 0, Math.Min(body.Length, 300)).Trim();
         var message = status switch
         {
-            HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden => "Authentication failed. Check the auth token in the Password field.",
-            HttpStatusCode.NotFound => "The server has no Hrana pipeline at this URL. Check the database URL.",
+            HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden => LibSqlStrings.Get("LibSql/AuthFailed"),
+            HttpStatusCode.NotFound => LibSqlStrings.Get("LibSql/NoPipeline"),
             HttpStatusCode.TooManyRequests => response.Headers.RetryAfter?.Delta is { } delay
-                ? string.Create(CultureInfo.InvariantCulture, $"Rate limited. Retry after {delay.TotalSeconds:0} seconds.")
-                : "Rate limited. Try again shortly.",
-            _ => text.Length > 0 ? text : $"The server returned HTTP {(int)status}.",
+                ? CoreStrings.Format("Driver/RateLimitedRetryAfter", delay.TotalSeconds)
+                : CoreStrings.Get("Driver/RateLimited"),
+            _ => text.Length > 0 ? text : CoreStrings.Format("Driver/ServerHttpStatus", (int)status),
         };
         return new LibSqlException(message, status);
     }

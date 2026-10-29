@@ -1,3 +1,5 @@
+using TablePro.Storage.Localization;
+
 namespace TablePro.Storage.Library.Folders;
 
 /// <summary>Why a file name was refused.</summary>
@@ -57,17 +59,20 @@ public static class SqlFileOperations
 
     public static string Describe(SqlFileNameProblem problem) => problem switch
     {
-        SqlFileNameProblem.Empty => "Enter a name.",
-        SqlFileNameProblem.InvalidCharacters => "A file name cannot contain \\ / : * ? \" < > or |.",
-        SqlFileNameProblem.Reserved => "Windows reserves this name for a device.",
-        SqlFileNameProblem.AlreadyExists => "A file with this name already exists here.",
+        SqlFileNameProblem.Empty => StorageStrings.Get("Library/NameEmpty"),
+        SqlFileNameProblem.InvalidCharacters => StorageStrings.Get("Library/NameInvalidCharacters"),
+        SqlFileNameProblem.Reserved => StorageStrings.Get("Library/NameReserved"),
+        SqlFileNameProblem.AlreadyExists => StorageStrings.Get("Library/NameAlreadyExists"),
         _ => string.Empty,
     };
 
-    /// <summary>A name in <paramref name="directory"/> no file has yet: <c>Untitled.sql</c>, then <c>Untitled 2.sql</c> and on.</summary>
-    public static string UniqueFileName(string directory, string baseName = "Untitled")
+    /// <summary>
+    /// A name in <paramref name="directory"/> no file has yet: <c>Untitled.sql</c>, then <c>Untitled 2.sql</c> and on, with
+    /// "Untitled" in the UI language unless <paramref name="baseName"/> is given.
+    /// </summary>
+    public static string UniqueFileName(string directory, string? baseName = null)
     {
-        var name = NormalizedFileName(baseName);
+        var name = NormalizedFileName(baseName ?? StorageStrings.Get("Library/UntitledFile"));
         var stem = Path.GetFileNameWithoutExtension(name);
         var extension = Path.GetExtension(name);
         for (var n = 1; ; n++)
@@ -128,7 +133,7 @@ public static class SqlFileOperations
         // Latin-1 turns what it cannot hold into '?'; writing that would silently corrupt the name.
         if (original.Encoding.GetString(original.Encoding.GetBytes(rewritten)) != rewritten)
         {
-            throw new IOException($"The file's encoding ({original.EncodingName}) cannot hold these characters. Nothing was changed.");
+            throw new IOException(StorageStrings.Format("Library/EncodingCannotHold", original.EncodingName));
         }
 
         await SqlTextFile.WriteBytesAsync(path, encoded, cancellationToken);

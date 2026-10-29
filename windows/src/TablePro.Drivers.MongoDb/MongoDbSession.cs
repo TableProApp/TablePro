@@ -9,6 +9,7 @@ using TablePro.Core.Results;
 using TablePro.Core.Schema;
 using TablePro.Core.Sql;
 using TablePro.Drivers.MongoDb.Documents;
+using TablePro.Drivers.MongoDb.Localization;
 
 namespace TablePro.Drivers.MongoDb;
 
@@ -225,7 +226,7 @@ public sealed class MongoDbSession : IDatabaseSession, IServerActivityProvider, 
 
         if (Profile.IsReadOnly)
         {
-            throw new InvalidOperationException("The connection is read-only, so changes cannot be saved.");
+            throw new InvalidOperationException(MongoStrings.Get("Mongo/ReadOnlyCannotSave"));
         }
 
         await Task.CompletedTask.ConfigureAwait(ConfigureAwaitOptions.ForceYielding);

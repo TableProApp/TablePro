@@ -1,4 +1,5 @@
 using System.Globalization;
+using TablePro.Core.Localization;
 
 namespace TablePro.Core.Sql.Analysis;
 
@@ -83,7 +84,7 @@ internal static class ConfusableCharacters
                 buffer[k] = unit is >= FullWidthFirst and <= FullWidthLast ? (char)(unit - FullWidthOffset) : unit;
             }
 
-            output.Add(Warning(firstFullWidth, length, $"Full-width letters or digits. SQL needs the ASCII {(ReadOnlySpan<char>)buffer}."));
+            output.Add(Warning(firstFullWidth, length, CoreStrings.Format("Analysis/FullWidthWord", ((ReadOnlySpan<char>)buffer).ToString())));
         }
 
         return i;
@@ -116,49 +117,49 @@ internal static class ConfusableCharacters
     {
         var ascii = (char)(c - FullWidthOffset);
         return ascii == ';'
-            ? "Full-width semicolon (U+FF1B). SQL reads only ; as a statement separator."
-            : $"Full-width {PunctuationName(ascii)} ({CodePoint(c)}). SQL needs the ASCII {PunctuationName(ascii)} ({CodePoint(ascii)}).";
+            ? CoreStrings.Get("Analysis/FullWidthSemicolon")
+            : CoreStrings.Format("Analysis/FullWidthPunctuation", PunctuationName(ascii), CodePoint(c), CodePoint(ascii));
     }
 
     internal static string CurlyQuoteMessage(char c) =>
-        $"Curly quote ({CodePoint(c)}). SQL needs the straight quote ({CodePoint(c is '\x201C' or '\x201D' ? '"' : '\'')}).";
+        CoreStrings.Format("Analysis/CurlyQuote", CodePoint(c), CodePoint(c is '\x201C' or '\x201D' ? '"' : '\''));
 
-    internal static string SpaceMessage(char c) => $"Non-ASCII space ({CodePoint(c)}). SQL needs an ASCII space (U+0020).";
+    internal static string SpaceMessage(char c) => CoreStrings.Format("Analysis/NonAsciiSpace", CodePoint(c));
 
     private static string CodePoint(char c) => string.Create(CultureInfo.InvariantCulture, $"U+{(int)c:X4}");
 
     private static string PunctuationName(char ascii) => ascii switch
     {
-        '!' => "exclamation mark",
-        '"' => "quotation mark",
-        '#' => "number sign",
-        '$' => "dollar sign",
-        '%' => "percent sign",
-        '&' => "ampersand",
-        '\'' => "apostrophe",
-        '(' => "left parenthesis",
-        ')' => "right parenthesis",
-        '*' => "asterisk",
-        '+' => "plus sign",
-        ',' => "comma",
-        '-' => "hyphen",
-        '.' => "period",
-        '/' => "slash",
-        ':' => "colon",
-        '<' => "less-than sign",
-        '=' => "equals sign",
-        '>' => "greater-than sign",
-        '?' => "question mark",
-        '@' => "at sign",
-        '[' => "left square bracket",
-        '\\' => "backslash",
-        ']' => "right square bracket",
-        '^' => "caret",
-        '`' => "backtick",
-        '{' => "left curly bracket",
-        '|' => "vertical bar",
-        '}' => "right curly bracket",
-        '~' => "tilde",
+        '!' => CoreStrings.Get("Analysis/CharExclamationMark"),
+        '"' => CoreStrings.Get("Analysis/CharQuotationMark"),
+        '#' => CoreStrings.Get("Analysis/CharNumberSign"),
+        '$' => CoreStrings.Get("Analysis/CharDollarSign"),
+        '%' => CoreStrings.Get("Analysis/CharPercentSign"),
+        '&' => CoreStrings.Get("Analysis/CharAmpersand"),
+        '\'' => CoreStrings.Get("Analysis/CharApostrophe"),
+        '(' => CoreStrings.Get("Analysis/CharLeftParenthesis"),
+        ')' => CoreStrings.Get("Analysis/CharRightParenthesis"),
+        '*' => CoreStrings.Get("Analysis/CharAsterisk"),
+        '+' => CoreStrings.Get("Analysis/CharPlusSign"),
+        ',' => CoreStrings.Get("Analysis/CharComma"),
+        '-' => CoreStrings.Get("Analysis/CharHyphen"),
+        '.' => CoreStrings.Get("Analysis/CharPeriod"),
+        '/' => CoreStrings.Get("Analysis/CharSlash"),
+        ':' => CoreStrings.Get("Analysis/CharColon"),
+        '<' => CoreStrings.Get("Analysis/CharLessThanSign"),
+        '=' => CoreStrings.Get("Analysis/CharEqualsSign"),
+        '>' => CoreStrings.Get("Analysis/CharGreaterThanSign"),
+        '?' => CoreStrings.Get("Analysis/CharQuestionMark"),
+        '@' => CoreStrings.Get("Analysis/CharAtSign"),
+        '[' => CoreStrings.Get("Analysis/CharLeftSquareBracket"),
+        '\\' => CoreStrings.Get("Analysis/CharBackslash"),
+        ']' => CoreStrings.Get("Analysis/CharRightSquareBracket"),
+        '^' => CoreStrings.Get("Analysis/CharCaret"),
+        '`' => CoreStrings.Get("Analysis/CharBacktick"),
+        '{' => CoreStrings.Get("Analysis/CharLeftCurlyBracket"),
+        '|' => CoreStrings.Get("Analysis/CharVerticalBar"),
+        '}' => CoreStrings.Get("Analysis/CharRightCurlyBracket"),
+        '~' => CoreStrings.Get("Analysis/CharTilde"),
         _ => ascii.ToString(),
     };
 }

@@ -1,17 +1,20 @@
+using TablePro.Core.Localization;
+
 namespace TablePro.Core.Principals;
 
 /// <summary>A group of the privilege checklist. Administration and engine-specific groups start collapsed, being rarely granted.</summary>
 public sealed record PrivilegeCategory(string Key, string Title, int SortOrder, bool IsCollapsedByDefault)
 {
-    public static PrivilegeCategory Other { get; } = new("other", "Other", 4, false);
+    // Built on each read, so the title is in the UI language of the moment rather than whichever ran first.
+    public static PrivilegeCategory Other => new("other", CoreStrings.Get("Principal/CategoryOther"), 4, false);
 
     public static PrivilegeCategory Resolve(string? key) => key switch
     {
         null or "" => Other,
-        PrivilegeCategoryKeys.Data => new(key, "Data", 0, false),
-        PrivilegeCategoryKeys.Structure => new(key, "Structure", 1, false),
-        PrivilegeCategoryKeys.Administration => new(key, "Administration", 2, true),
-        PrivilegeCategoryKeys.Dynamic => new(key, "Dynamic", 3, true),
+        PrivilegeCategoryKeys.Data => new(key, CoreStrings.Get("Principal/CategoryData"), 0, false),
+        PrivilegeCategoryKeys.Structure => new(key, CoreStrings.Get("Principal/CategoryStructure"), 1, false),
+        PrivilegeCategoryKeys.Administration => new(key, CoreStrings.Get("Principal/CategoryAdministration"), 2, true),
+        PrivilegeCategoryKeys.Dynamic => new(key, CoreStrings.Get("Principal/CategoryDynamic"), 3, true),
         _ => new(key, key, 5, true),
     };
 }
@@ -101,27 +104,39 @@ public abstract record ScopeSummary
 
     public sealed record NoneGranted : ScopeSummary
     {
-        public override string Text => "None";
+        public override string Text => CoreStrings.Get("Principal/SummaryNone");
     }
 
     public sealed record AllGranted(int Count) : ScopeSummary
     {
-        public override string Text => $"All ({Count})";
+        public override string Text => CoreStrings.Format("Principal/SummaryAll", Count);
     }
 
     public sealed record SomeGranted(IReadOnlyList<string> Names, int Overflow, bool HasGrantOption) : ScopeSummary
     {
-        public override string Text => string.Join(", ", Names) + (Overflow > 0 ? $" +{Overflow}" : string.Empty) + (HasGrantOption ? " (grantable)" : string.Empty);
+        public override string Text
+        {
+            get
+            {
+                var text = string.Join(", ", Names);
+                if (Overflow > 0)
+                {
+                    text = CoreStrings.Format("Principal/SummaryOverflow", text, Overflow);
+                }
+
+                return HasGrantOption ? CoreStrings.Format("Principal/SummaryGrantable", text) : text;
+            }
+        }
     }
 
     public sealed record DescendantsOnly(int Count) : ScopeSummary
     {
-        public override string Text => Count == 1 ? "1 grant inside" : $"{Count} grants inside";
+        public override string Text => CoreStrings.Plural("Principal/GrantsInside", Count);
     }
 
     /// <summary>A database other than the connected one on an engine that reads grants only where it is connected.</summary>
     public sealed record BrowsingRestricted(IReadOnlyList<string> Direct) : ScopeSummary
     {
-        public override string Text => Direct.Count == 0 ? "Connect to this database to browse it" : string.Join(", ", Direct);
+        public override string Text => Direct.Count == 0 ? CoreStrings.Get("Principal/ConnectToBrowse") : string.Join(", ", Direct);
     }
 }

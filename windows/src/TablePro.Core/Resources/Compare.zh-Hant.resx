@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="ChangeAddColumn" xml:space="preserve">
+    <value>新增欄位 {0} {1}</value>
+  </data>
+  <data name="ChangeAddForeignKey" xml:space="preserve">
+    <value>新增指向 {1} 的外部索引鍵 {0}</value>
+  </data>
+  <data name="ChangeAlterColumn" xml:space="preserve">
+    <value>將欄位 {0} 變更為 {1}</value>
+  </data>
+  <data name="ChangeCreateIndex" xml:space="preserve">
+    <value>建立索引 {0}</value>
+  </data>
+  <data name="ChangeCreateTable" xml:space="preserve">
+    <value>建立資料表 {0}</value>
+  </data>
+  <data name="ChangeCreateUniqueIndex" xml:space="preserve">
+    <value>建立唯一索引 {0}</value>
+  </data>
+  <data name="ChangeDropColumn" xml:space="preserve">
+    <value>捨棄欄位 {0}</value>
+  </data>
+  <data name="ChangeDropForeignKey" xml:space="preserve">
+    <value>捨棄外部索引鍵 {0}</value>
+  </data>
+  <data name="ChangeDropFunction" xml:space="preserve">
+    <value>捨棄函式 {0}</value>
+  </data>
+  <data name="ChangeDropIndex" xml:space="preserve">
+    <value>捨棄索引 {0}</value>
+  </data>
+  <data name="ChangeDropMaterializedView" xml:space="preserve">
+    <value>捨棄具體化檢視表 {0}</value>
+  </data>
+  <data name="ChangeDropObject" xml:space="preserve">
+    <value>捨棄 {0}</value>
+  </data>
+  <data name="ChangeDropProcedure" xml:space="preserve">
+    <value>捨棄預存程序 {0}</value>
+  </data>
+  <data name="ChangeDropSequence" xml:space="preserve">
+    <value>捨棄序列 {0}</value>
+  </data>
+  <data name="ChangeDropTable" xml:space="preserve">
+    <value>捨棄資料表 {0}</value>
+  </data>
+  <data name="ChangeDropTrigger" xml:space="preserve">
+    <value>捨棄觸發程序 {0}</value>
+  </data>
+  <data name="ChangeDropView" xml:space="preserve">
+    <value>捨棄檢視表 {0}</value>
+  </data>
+  <data name="ChangeRenameColumn" xml:space="preserve">
+    <value>將欄位 {0} 重新命名為 {1}</value>
+  </data>
+  <data name="ChangeRenameTable" xml:space="preserve">
+    <value>將資料表重新命名為 {0}</value>
+  </data>
+  <data name="ChangeTruncateTable" xml:space="preserve">
+    <value>清空資料表</value>
+  </data>
+  <data name="ChooseKeyColumn" xml:space="preserve">
+    <value>請至少選擇一個能在兩側識別列的鍵欄位。</value>
+  </data>
+  <data name="ColumnGone" xml:space="preserve">
+    <value>{0} 已不再有欄位 {1}。請再比較一次以讀取其目前的欄位。</value>
+  </data>
+  <data name="ColumnOnlyInTarget" xml:space="preserve">
+    <value>欄位 {0} 僅存在於目標中，將會保留。</value>
+  </data>
+  <data name="DuplicateKeyInSource" xml:space="preserve">
+    <value>鍵 {0} 在來源中符合多個列。請選擇能識別單一列的鍵欄位。</value>
+  </data>
+  <data name="DuplicateKeyInTarget" xml:space="preserve">
+    <value>鍵 {0} 在目標中符合多個列。請選擇能識別單一列的鍵欄位。</value>
+  </data>
+  <data name="ForeignKeyCycle" xml:space="preserve">
+    <value>{0} 互相參照，因此沒有任何順序能滿足所有外部索引鍵。違反其中一個外部索引鍵的同步會復原該資料表。</value>
+  </data>
+  <data name="IdentityColumnWarning" xml:space="preserve">
+    <value>{0} 是目標上的識別欄位。SQL Server 等引擎會拒絕在此寫入明確值，進而導致同步復原。</value>
+  </data>
+  <data name="KeyColumnNotOnBoth" xml:space="preserve">
+    <value>鍵欄位 {0} 並未同時存在於兩個資料表中。</value>
+  </data>
+  <data name="NoPrimaryKey" xml:space="preserve">
+    <value>{0} 沒有主鍵。請選擇用於識別列的欄位。</value>
+  </data>
+  <data name="PrimaryKeyDiffers" xml:space="preserve">
+    <value>主鍵不同：({0}) 對比 ({1})。請手動變更。</value>
+  </data>
+  <data name="RowLimitCutShort" xml:space="preserve">
+    <value>列數上限使比較提前結束，因此超出上限的列維持不變。</value>
+  </data>
+  <data name="RowsDeletedForGood_One" xml:space="preserve">
+    <value>將從 {1} 中永久刪除 {0:N0} 列。</value>
+  </data>
+  <data name="RowsDeletedForGood_Other" xml:space="preserve">
+    <value>將從 {1} 中永久刪除 {0:N0} 列。</value>
+  </data>
+  <data name="SortOrderSource" xml:space="preserve">
+    <value>來源在鍵 {0} 附近的列排序與比較預期的不同。請選擇數值鍵，或定序依位元組值排序的鍵。</value>
+  </data>
+  <data name="SortOrderSourceHint" xml:space="preserve">
+    <value>來源在鍵 {0} 附近的列排序與比較預期的不同。請選擇數值鍵，或定序依位元組值排序的鍵，或開啟不區分大小寫的鍵。</value>
+  </data>
+  <data name="SortOrderTarget" xml:space="preserve">
+    <value>目標在鍵 {0} 附近的列排序與比較預期的不同。請選擇數值鍵，或定序依位元組值排序的鍵。</value>
+  </data>
+  <data name="SortOrderTargetHint" xml:space="preserve">
+    <value>目標在鍵 {0} 附近的列排序與比較預期的不同。請選擇數值鍵，或定序依位元組值排序的鍵，或開啟不區分大小寫的鍵。</value>
+  </data>
+  <data name="SourceColumnCount" xml:space="preserve">
+    <value>來源傳回了 {0} 個欄位，而預期為 {1} 個。</value>
+  </data>
+  <data name="TableLeftOutTooMany" xml:space="preserve">
+    <value>{0}：{1:N0} 處差異超出同步可以檢閱的數量，因此該資料表被排除。請使用篩選條件或列數上限縮小範圍。</value>
+  </data>
+  <data name="TableNote" xml:space="preserve">
+    <value>{0}：{1}</value>
+  </data>
+  <data name="TargetColumnCount" xml:space="preserve">
+    <value>目標傳回了 {0} 個欄位，而預期為 {1} 個。</value>
+  </data>
+  <data name="TooManyToSync" xml:space="preserve">
+    <value>比較發現了 {0:N0} 處差異，超出同步可以檢閱的 {1:N0} 處。請使用篩選條件或列數上限縮小範圍，然後再比較一次。</value>
+  </data>
+</root>

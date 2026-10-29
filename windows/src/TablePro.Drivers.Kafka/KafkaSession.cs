@@ -10,6 +10,7 @@ using TablePro.Core.Editing;
 using TablePro.Core.Results;
 using TablePro.Core.Schema;
 using TablePro.Core.Sql;
+using TablePro.Drivers.Kafka.Localization;
 
 namespace TablePro.Drivers.Kafka;
 
@@ -57,7 +58,7 @@ internal sealed class KafkaSession : IDatabaseSession, IServerActivityProvider, 
 
             // Metadata proves the bootstrap servers answer and the credentials are accepted.
             var metadata = cluster.Metadata();
-            var version = string.Create(CultureInfo.InvariantCulture, $"Apache Kafka, {metadata.Brokers.Count} brokers (librdkafka {Library.VersionString})");
+            var version = KafkaStrings.Plural("Kafka/ServerVersion", metadata.Brokers.Count, Library.VersionString);
             return new KafkaSession(request, cluster, version);
         }
         catch
@@ -255,7 +256,7 @@ internal sealed class KafkaSession : IDatabaseSession, IServerActivityProvider, 
         await Yield();
         var group = Convert.ToString(processId, CultureInfo.InvariantCulture) ?? throw new ArgumentNullException(nameof(processId));
         var described = await Cluster.Admin.DescribeConsumerGroupsAsync([group], new DescribeConsumerGroupsOptions { RequestTimeout = Cluster.RequestTimeout }).WaitAsync(cancellationToken);
-        var description = described.ConsumerGroupDescriptions.FirstOrDefault() ?? throw new InvalidOperationException($"There is no consumer group named {group}.");
+        var description = described.ConsumerGroupDescriptions.FirstOrDefault() ?? throw new InvalidOperationException(KafkaStrings.Format("Kafka/NoConsumerGroup", group));
         KafkaActivity.EnsureDeletable(description.GroupId, description.State, description.Members.Count);
         await Cluster.Admin.DeleteGroupsAsync([group], new DeleteGroupsOptions { RequestTimeout = Cluster.RequestTimeout }).WaitAsync(cancellationToken);
     }
@@ -315,8 +316,7 @@ internal static class KafkaActivity
     {
         if (members > 0 || state is not (ConsumerGroupState.Empty or ConsumerGroupState.Dead))
         {
-            throw new InvalidOperationException(
-                $"Consumer group {group} is {state} with {members} member(s). Kafka only deletes a group with no members; stop its consumers first.");
+            throw new InvalidOperationException(KafkaStrings.Plural("Kafka/GroupNotDeletable", members, group, state));
         }
     }
 }

@@ -1,5 +1,6 @@
 using TablePro.Core.Browse;
 using TablePro.Core.Connections;
+using TablePro.Core.Localization;
 
 namespace TablePro.Core.JoinBuilder;
 
@@ -23,10 +24,10 @@ public static class JoinKinds
 
     public static string DisplayName(this JoinKind kind) => kind switch
     {
-        JoinKind.Left => "Left Join",
-        JoinKind.Right => "Right Join",
-        JoinKind.Full => "Full Join",
-        _ => "Inner Join",
+        JoinKind.Left => CoreStrings.Get("Join/KindLeft"),
+        JoinKind.Right => CoreStrings.Get("Join/KindRight"),
+        JoinKind.Full => CoreStrings.Get("Join/KindFull"),
+        _ => CoreStrings.Get("Join/KindInner"),
     };
 
     /// <summary>The join types an engine runs. MySQL and its relatives have no FULL JOIN.</summary>

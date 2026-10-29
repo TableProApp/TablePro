@@ -5,6 +5,7 @@ using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Amazon.DynamoDBv2.Model;
+using TablePro.Drivers.DynamoDb.Localization;
 
 namespace TablePro.Drivers.DynamoDb;
 
@@ -113,7 +114,7 @@ public static partial class DynamoAttributeMapper
     {
         if (value is null)
         {
-            throw new InvalidOperationException("A key attribute cannot be empty.");
+            throw new InvalidOperationException(DynamoDbStrings.Get("DynamoDb/EmptyKeyAttribute"));
         }
 
         return keyType switch
@@ -182,7 +183,7 @@ public static partial class DynamoAttributeMapper
                 {
                     var parsed = FromJson(document.RootElement, type);
                     return type == Map && parsed.M is null
-                        ? throw new FormatException("A map attribute takes a JSON object.")
+                        ? throw new FormatException(DynamoDbStrings.Get("DynamoDb/MapTakesObject"))
                         : parsed;
                 }
 
@@ -192,7 +193,7 @@ public static partial class DynamoAttributeMapper
     }
 
     private static string RequireNumber(string text) =>
-        IsNumber(text.Trim()) ? text.Trim() : throw new FormatException($"\"{text}\" is not a number.");
+        IsNumber(text.Trim()) ? text.Trim() : throw new FormatException(DynamoDbStrings.Format("DynamoDb/NotANumber", text));
 
     private static string FormatNumber(object value) => value switch
     {

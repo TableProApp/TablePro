@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="ChooseAGenerator" xml:space="preserve">
+    <value>Choisissez un générateur pour au moins une colonne.</value>
+  </data>
+  <data name="DecimalPlacesRange" xml:space="preserve">
+    <value>{0} : le nombre de décimales va de 0 à {1}.</value>
+  </data>
+  <data name="EnterAPattern" xml:space="preserve">
+    <value>Saisissez un modèle pour {0}.</value>
+  </data>
+  <data name="EnterAValue" xml:space="preserve">
+    <value>Saisissez au moins une valeur pour {0}.</value>
+  </data>
+  <data name="FirstDateAfterLast" xml:space="preserve">
+    <value>{0} : la première date est postérieure à la dernière.</value>
+  </data>
+  <data name="GeneratorNotAllowed" xml:space="preserve">
+    <value>{0} ne peut pas utiliser ce générateur.</value>
+  </data>
+  <data name="HoldsNumbersFromTo" xml:space="preserve">
+    <value>{0} accepte des nombres de {1:N0} à {2:N0}.</value>
+  </data>
+  <data name="HoldsValuesUpTo" xml:space="preserve">
+    <value>{0} accepte des valeurs jusqu’à {1:N0}.</value>
+  </data>
+  <data name="KeepsDecimalPlaces" xml:space="preserve">
+    <value>{0} conserve {1} décimales.</value>
+  </data>
+  <data name="KeyLeftToDefault" xml:space="preserve">
+    <value>({0}) ne doit pas contenir de doublons, mais toutes ses colonnes gardent leur valeur par défaut.</value>
+  </data>
+  <data name="KindBoolean" xml:space="preserve">
+    <value>Booléen</value>
+  </data>
+  <data name="KindCity" xml:space="preserve">
+    <value>Ville</value>
+  </data>
+  <data name="KindCountry" xml:space="preserve">
+    <value>Pays</value>
+  </data>
+  <data name="KindDate" xml:space="preserve">
+    <value>Date</value>
+  </data>
+  <data name="KindDateTime" xml:space="preserve">
+    <value>Date et heure</value>
+  </data>
+  <data name="KindDecimalRange" xml:space="preserve">
+    <value>Plage décimale</value>
+  </data>
+  <data name="KindEmail" xml:space="preserve">
+    <value>E-mail</value>
+  </data>
+  <data name="KindFirstName" xml:space="preserve">
+    <value>Prénom</value>
+  </data>
+  <data name="KindFullName" xml:space="preserve">
+    <value>Nom complet</value>
+  </data>
+  <data name="KindIntegerRange" xml:space="preserve">
+    <value>Plage de nombres</value>
+  </data>
+  <data name="KindJson" xml:space="preserve">
+    <value>JSON</value>
+  </data>
+  <data name="KindLastName" xml:space="preserve">
+    <value>Nom de famille</value>
+  </data>
+  <data name="KindList" xml:space="preserve">
+    <value>Liste de valeurs</value>
+  </data>
+  <data name="KindPattern" xml:space="preserve">
+    <value>Modèle</value>
+  </data>
+  <data name="KindPhone" xml:space="preserve">
+    <value>Numéro de téléphone</value>
+  </data>
+  <data name="KindReference" xml:space="preserve">
+    <value>Valeur référencée</value>
+  </data>
+  <data name="KindSequence" xml:space="preserve">
+    <value>Séquence</value>
+  </data>
+  <data name="KindServerDefault" xml:space="preserve">
+    <value>Valeur par défaut du serveur</value>
+  </data>
+  <data name="KindStreetAddress" xml:space="preserve">
+    <value>Adresse postale</value>
+  </data>
+  <data name="KindText" xml:space="preserve">
+    <value>Texte</value>
+  </data>
+  <data name="KindTime" xml:space="preserve">
+    <value>Heure</value>
+  </data>
+  <data name="KindUuid" xml:space="preserve">
+    <value>UUID</value>
+  </data>
+  <data name="ListSeparator" xml:space="preserve">
+    <value>, </value>
+  </data>
+  <data name="MinimumAboveMaximum" xml:space="preserve">
+    <value>{0} : le minimum est supérieur au maximum.</value>
+  </data>
+  <data name="NoGeneratorFits" xml:space="preserve">
+    <value>Aucun générateur ne peut remplir {0} ({1}), et cette colonne ne peut pas rester vide.</value>
+  </data>
+  <data name="RangeTooWide" xml:space="preserve">
+    <value>{0} : la plage est trop large pour autant de décimales.</value>
+  </data>
+  <data name="ReferencedTableEmpty" xml:space="preserve">
+    <value>{0} fait référence à {1}, qui ne contient aucune ligne.</value>
+  </data>
+  <data name="RowCountRange" xml:space="preserve">
+    <value>Saisissez un nombre de lignes compris entre 1 et {0:N0}.</value>
+  </data>
+  <data name="SequenceOverflows" xml:space="preserve">
+    <value>La séquence de {0} dépasse le plus grand nombre qu’elle peut contenir.</value>
+  </data>
+  <data name="ShortestAboveLongest" xml:space="preserve">
+    <value>{0} : la longueur minimale dépasse la longueur maximale.</value>
+  </data>
+  <data name="StepIsZero" xml:space="preserve">
+    <value>{0} : le pas ne peut pas être 0.</value>
+  </data>
+  <data name="TooFewCombinations" xml:space="preserve">
+    <value>({0}) ne doit pas contenir de doublons, mais les générateurs ne produisent que {1:N0} combinaisons.</value>
+  </data>
+  <data name="TooFewDistinctValues" xml:space="preserve">
+    <value>{0} ne doit pas contenir de doublons, mais son générateur ne produit que {1:N0} valeurs différentes.</value>
+  </data>
+  <data name="ValuesExhausted" xml:space="preserve">
+    <value>Impossible de générer une autre valeur non répétée pour ({0}). Élargissez sa plage ou générez moins de lignes.</value>
+  </data>
+</root>

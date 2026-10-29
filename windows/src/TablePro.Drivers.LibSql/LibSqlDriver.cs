@@ -1,5 +1,6 @@
 using TablePro.Core.Connections;
 using TablePro.Core.Drivers;
+using TablePro.Drivers.LibSql.Localization;
 
 namespace TablePro.Drivers.LibSql;
 
@@ -34,7 +35,7 @@ public sealed class LibSqlDriver : IDatabaseDriver
         await Task.CompletedTask.ConfigureAwait(ConfigureAwaitOptions.ForceYielding);
         if (LibSqlSettings.LocalFile(request.Profile) is { } path)
         {
-            var local = _localFiles ?? throw new LibSqlException("This build cannot open local libSQL files; connect to a server URL instead.");
+            var local = _localFiles ?? throw new LibSqlException(LibSqlStrings.Get("LibSql/NoLocalFiles"));
             return await local.ConnectAsync(LocalRequest(request.Profile, path), cancellationToken);
         }
 

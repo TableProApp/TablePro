@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="BulkNotJson" xml:space="preserve">
+    <value>bulk 响应不是 JSON。</value>
+  </data>
+  <data name="CloudIdInvalid" xml:space="preserve">
+    <value>云 ID 无效。</value>
+  </data>
+  <data name="DataStream" xml:space="preserve">
+    <value>数据流</value>
+  </data>
+  <data name="IdColumnComment" xml:space="preserve">
+    <value>文档 ID</value>
+  </data>
+  <data name="IndexColumnComment" xml:space="preserve">
+    <value>包含该文档的索引</value>
+  </data>
+  <data name="KeywordSubField" xml:space="preserve">
+    <value>带 keyword 子字段</value>
+  </data>
+  <data name="NoPointInTime" xml:space="preserve">
+    <value>集群未打开时间点（point in time）。</value>
+  </data>
+  <data name="NoTaskId" xml:space="preserve">
+    <value>没有任务 ID。</value>
+  </data>
+</root>

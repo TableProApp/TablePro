@@ -61,7 +61,8 @@ if (-not $SkipZip) {
         Copy-Item (Join-Path $PSScriptRoot "installer/$file") $app
     }
     # TablePro's own binaries and the scripts; the bundled runtime and Windows App SDK files carry Microsoft's signatures.
-    $ownFiles = Get-ChildItem $app -File | Where-Object { $_.Name -like 'TablePro*.exe' -or $_.Name -like 'TablePro*.dll' -or $_.Extension -eq '.ps1' }
+    # Recursive, so the libraries' translations in fr\, ko\ and the other language folders are signed as well.
+    $ownFiles = Get-ChildItem $app -File -Recurse | Where-Object { $_.Name -like 'TablePro*.exe' -or $_.Name -like 'TablePro*.dll' -or $_.Extension -eq '.ps1' }
     Invoke-CodeSign -Thumbprint $CertificateThumbprint -Path $ownFiles.FullName
 
     $zip = Join-Path $OutputDirectory "$baseName.zip"

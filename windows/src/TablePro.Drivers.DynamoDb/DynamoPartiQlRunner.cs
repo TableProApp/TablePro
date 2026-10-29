@@ -1,10 +1,11 @@
 using System.Diagnostics;
-using System.Globalization;
 using Amazon.DynamoDBv2;
 using Amazon.DynamoDBv2.Model;
 using Amazon.Runtime;
+using TablePro.Core.Localization;
 using TablePro.Core.Results;
 using TablePro.Core.Sql;
+using TablePro.Drivers.DynamoDb.Localization;
 
 namespace TablePro.Drivers.DynamoDb;
 
@@ -58,7 +59,7 @@ public static class DynamoPartiQlRunner
             }
             while (!truncated && nextToken is not null);
 
-            messages.Add(string.Create(CultureInfo.InvariantCulture, $"Consumed capacity: {capacity:0.##} units over {requests} request(s)."));
+            messages.Add(DynamoDbStrings.Plural("DynamoDb/ConsumedCapacity", requests, capacity));
             var isRead = PartiQlDialect.Instance.Classify(text) == StatementKind.Read;
             if (!isRead && items.Count == 0)
             {
@@ -71,7 +72,7 @@ public static class DynamoPartiQlRunner
         }
         catch (OperationCanceledException)
         {
-            return new StatementResult(statement, [], -1, stopwatch.Elapsed, "Query cancelled.", messages);
+            return new StatementResult(statement, [], -1, stopwatch.Elapsed, CoreStrings.Get("Driver/QueryCancelled"), messages);
         }
         catch (AmazonServiceException ex)
         {

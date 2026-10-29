@@ -1,0 +1,159 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AppendOnly" xml:space="preserve">
+    <value>Les topics Kafka sont en ajout seul : un message ne peut être ni modifié ni supprimé. Ajoutez une ligne pour produire un nouveau message, ou produisez une pierre tombale (valeur null) pour sa clé sur un topic compacté.</value>
+  </data>
+  <data name="AtLeastOne" xml:space="preserve">
+    <value>{0} doit valoir au moins 1.</value>
+  </data>
+  <data name="DescribeNeeds" xml:space="preserve">
+    <value>DESCRIBE nécessite GROUP ou TOPIC.</value>
+  </data>
+  <data name="DescribeNeedsName" xml:space="preserve">
+    <value>DESCRIBE nécessite un nom.</value>
+  </data>
+  <data name="DescribeUnsupported" xml:space="preserve">
+    <value>DESCRIBE {0} n’est pas pris en charge. Essayez GROUP ou TOPIC.</value>
+  </data>
+  <data name="DropTakesOne" xml:space="preserve">
+    <value>DROP TOPIC accepte un seul nom de topic.</value>
+  </data>
+  <data name="EmptyStatement" xml:space="preserve">
+    <value>Instruction vide.</value>
+  </data>
+  <data name="FromNeeds" xml:space="preserve">
+    <value>FROM nécessite NEWEST, OLDEST, OFFSET, TIME, ANCHOR ou TAIL.</value>
+  </data>
+  <data name="GroupNotDeletable_One" xml:space="preserve">
+    <value>Le groupe de consommateurs {1} est {2} avec {0} membre. Kafka ne supprime qu’un groupe sans membres ; arrêtez d’abord ses consommateurs.</value>
+  </data>
+  <data name="GroupNotDeletable_Other" xml:space="preserve">
+    <value>Le groupe de consommateurs {1} est {2} avec {0} membres. Kafka ne supprime qu’un groupe sans membres ; arrêtez d’abord ses consommateurs.</value>
+  </data>
+  <data name="GroupNote_One" xml:space="preserve">
+    <value>Le groupe {1} est {2} avec {0} membre.</value>
+  </data>
+  <data name="GroupNote_Other" xml:space="preserve">
+    <value>Le groupe {1} est {2} avec {0} membres.</value>
+  </data>
+  <data name="HeadersJson" xml:space="preserve">
+    <value>Les en-têtes doivent être un objet JSON, par exemple {"trace":"abc"}.</value>
+  </data>
+  <data name="NeedsKeyValue" xml:space="preserve">
+    <value>{0} nécessite clé=valeur, par exemple cleanup.policy=compact.</value>
+  </data>
+  <data name="NeedsOffsetList" xml:space="preserve">
+    <value>{0} nécessite une liste partition:offset.</value>
+  </data>
+  <data name="NeedsTopicKeyword" xml:space="preserve">
+    <value>{0} nécessite TOPIC et un nom de topic.</value>
+  </data>
+  <data name="NeedsTopicName" xml:space="preserve">
+    <value>{0} nécessite un nom de topic.</value>
+  </data>
+  <data name="NeedsValue" xml:space="preserve">
+    <value>{0} nécessite une valeur.</value>
+  </data>
+  <data name="NeedsWholeNumber" xml:space="preserve">
+    <value>{0} nécessite un nombre entier, et non {1}.</value>
+  </data>
+  <data name="NoConsumerGroup" xml:space="preserve">
+    <value>Aucun groupe de consommateurs ne s’appelle {0}.</value>
+  </data>
+  <data name="NoPartition" xml:space="preserve">
+    <value>Le topic {0} n’a pas de partition {1}.</value>
+  </data>
+  <data name="NoSuchColumn" xml:space="preserve">
+    <value>Un message Kafka n’a pas de colonne {0}.</value>
+  </data>
+  <data name="NotACommand" xml:space="preserve">
+    <value>{0} n’est pas une commande Kafka. Essayez CONSUME, TAIL, PRODUCE, SHOW, DESCRIBE, CREATE ou DROP.</value>
+  </data>
+  <data name="NotATime" xml:space="preserve">
+    <value>{0} n’est pas une heure.</value>
+  </data>
+  <data name="NotATimeHint" xml:space="preserve">
+    <value>{0} n’est pas une heure. Utilisez des millisecondes depuis l’époque Unix ou un instant ISO 8601.</value>
+  </data>
+  <data name="NotOffsetPair" xml:space="preserve">
+    <value>{0} n’est pas une paire partition:offset.</value>
+  </data>
+  <data name="NoTopic" xml:space="preserve">
+    <value>Aucun topic ne s’appelle {0}.</value>
+  </data>
+  <data name="NotPartitionNumber" xml:space="preserve">
+    <value>{0} n’est pas un numéro de partition.</value>
+  </data>
+  <data name="NotSaslMechanism" xml:space="preserve">
+    <value>{0} n’est pas un mécanisme SASL. Utilisez PLAIN, SCRAM-SHA-256 ou SCRAM-SHA-512.</value>
+  </data>
+  <data name="NotSecurityProtocol" xml:space="preserve">
+    <value>{0} n’est pas un protocole de sécurité Kafka. Utilisez PLAINTEXT, SSL, SASL_PLAINTEXT ou SASL_SSL.</value>
+  </data>
+  <data name="NotStartPosition" xml:space="preserve">
+    <value>{0} n’est pas une position de départ. Utilisez NEWEST, OLDEST, OFFSET, TIME, ANCHOR ou TAIL.</value>
+  </data>
+  <data name="OffsetAssigned" xml:space="preserve">
+    <value>Le broker attribue l’offset d’un message ; laissez l’offset vide.</value>
+  </data>
+  <data name="PageTooLarge" xml:space="preserve">
+    <value>Cette page nécessite de lire plus de {0:N0} messages sur {1} partitions. Lisez moins de partitions, ou commencez plus près des lignes avec FROM OFFSET ou FROM TIME.</value>
+  </data>
+  <data name="PartitionNeedsNumber" xml:space="preserve">
+    <value>PARTITION nécessite au moins un numéro de partition.</value>
+  </data>
+  <data name="ProduceNeedsValueOrKey" xml:space="preserve">
+    <value>PRODUCE nécessite au moins une VALUE ou une KEY.</value>
+  </data>
+  <data name="RangeBetween" xml:space="preserve">
+    <value>{0} doit être compris entre {1} et {2}.</value>
+  </data>
+  <data name="ServerVersion_One" xml:space="preserve">
+    <value>Apache Kafka, {0} broker (librdkafka {1})</value>
+  </data>
+  <data name="ServerVersion_Other" xml:space="preserve">
+    <value>Apache Kafka, {0} brokers (librdkafka {1})</value>
+  </data>
+  <data name="ShowNeeds" xml:space="preserve">
+    <value>SHOW nécessite TOPICS, BROKERS, GROUPS ou CLUSTER.</value>
+  </data>
+  <data name="ShowUnsupported" xml:space="preserve">
+    <value>SHOW {0} n’est pas pris en charge. Essayez TOPICS, BROKERS, GROUPS ou CLUSTER.</value>
+  </data>
+  <data name="StoppedPartial" xml:space="preserve">
+    <value>Arrêt après {0:0} secondes alors que certaines partitions n’étaient pas entièrement lues ; les lignes affichées sont celles qui sont arrivées.</value>
+  </data>
+  <data name="TakesNothingAfter" xml:space="preserve">
+    <value>{0} n’accepte rien après lui, or {1} a été indiqué.</value>
+  </data>
+  <data name="TimestampComment" xml:space="preserve">
+    <value>Heure du producteur ou du broker, en UTC.</value>
+  </data>
+  <data name="TopicCreated" xml:space="preserve">
+    <value>Topic {0} créé.</value>
+  </data>
+  <data name="TopicDeleted" xml:space="preserve">
+    <value>Topic {0} supprimé.</value>
+  </data>
+  <data name="Unexpected" xml:space="preserve">
+    <value>{0} inattendu dans une instruction {1}.</value>
+  </data>
+  <data name="UnexpectedInTail" xml:space="preserve">
+    <value>{0} inattendu dans une instruction TAIL. TAIL accepte LIMIT et PARTITION.</value>
+  </data>
+  <data name="ValueComment" xml:space="preserve">
+    <value>Null est une pierre tombale (tombstone) ; une valeur vide est un message vide.</value>
+  </data>
+</root>

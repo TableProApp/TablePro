@@ -1,3 +1,5 @@
+using TablePro.Core.Localization;
+
 namespace TablePro.Core.Generation;
 
 /// <summary>How one column's values are made, as the macOS row generator offers them.</summary>
@@ -42,28 +44,28 @@ public static class RowGeneratorKinds
 {
     public static string Title(this RowGeneratorKind kind) => kind switch
     {
-        RowGeneratorKind.ServerDefault => "Server Default",
-        RowGeneratorKind.Reference => "Referenced Value",
-        RowGeneratorKind.Sequence => "Sequence",
-        RowGeneratorKind.IntegerRange => "Number Range",
-        RowGeneratorKind.DecimalRange => "Decimal Range",
-        RowGeneratorKind.Text => "Text",
-        RowGeneratorKind.FirstName => "First Name",
-        RowGeneratorKind.LastName => "Last Name",
-        RowGeneratorKind.FullName => "Full Name",
-        RowGeneratorKind.Email => "Email",
-        RowGeneratorKind.Phone => "Phone Number",
-        RowGeneratorKind.StreetAddress => "Street Address",
-        RowGeneratorKind.City => "City",
-        RowGeneratorKind.Country => "Country",
-        RowGeneratorKind.Date => "Date",
-        RowGeneratorKind.DateTime => "Date and Time",
-        RowGeneratorKind.Time => "Time",
-        RowGeneratorKind.Uuid => "UUID",
-        RowGeneratorKind.Boolean => "Boolean",
-        RowGeneratorKind.List => "List of Values",
-        RowGeneratorKind.Pattern => "Pattern",
-        RowGeneratorKind.Json => "JSON",
+        RowGeneratorKind.ServerDefault => CoreStrings.Get("Generation/KindServerDefault"),
+        RowGeneratorKind.Reference => CoreStrings.Get("Generation/KindReference"),
+        RowGeneratorKind.Sequence => CoreStrings.Get("Generation/KindSequence"),
+        RowGeneratorKind.IntegerRange => CoreStrings.Get("Generation/KindIntegerRange"),
+        RowGeneratorKind.DecimalRange => CoreStrings.Get("Generation/KindDecimalRange"),
+        RowGeneratorKind.Text => CoreStrings.Get("Generation/KindText"),
+        RowGeneratorKind.FirstName => CoreStrings.Get("Generation/KindFirstName"),
+        RowGeneratorKind.LastName => CoreStrings.Get("Generation/KindLastName"),
+        RowGeneratorKind.FullName => CoreStrings.Get("Generation/KindFullName"),
+        RowGeneratorKind.Email => CoreStrings.Get("Generation/KindEmail"),
+        RowGeneratorKind.Phone => CoreStrings.Get("Generation/KindPhone"),
+        RowGeneratorKind.StreetAddress => CoreStrings.Get("Generation/KindStreetAddress"),
+        RowGeneratorKind.City => CoreStrings.Get("Generation/KindCity"),
+        RowGeneratorKind.Country => CoreStrings.Get("Generation/KindCountry"),
+        RowGeneratorKind.Date => CoreStrings.Get("Generation/KindDate"),
+        RowGeneratorKind.DateTime => CoreStrings.Get("Generation/KindDateTime"),
+        RowGeneratorKind.Time => CoreStrings.Get("Generation/KindTime"),
+        RowGeneratorKind.Uuid => CoreStrings.Get("Generation/KindUuid"),
+        RowGeneratorKind.Boolean => CoreStrings.Get("Generation/KindBoolean"),
+        RowGeneratorKind.List => CoreStrings.Get("Generation/KindList"),
+        RowGeneratorKind.Pattern => CoreStrings.Get("Generation/KindPattern"),
+        RowGeneratorKind.Json => CoreStrings.Get("Generation/KindJson"),
         _ => kind.ToString(),
     };
 

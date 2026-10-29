@@ -8,6 +8,7 @@ using TablePro.Core.Editing;
 using TablePro.Core.Results;
 using TablePro.Core.Schema;
 using TablePro.Core.Sql;
+using TablePro.Drivers.Etcd.Localization;
 
 namespace TablePro.Drivers.Etcd;
 
@@ -347,15 +348,15 @@ internal sealed class EtcdSession : IDatabaseSession, IKeySearchProvider
             switch (compare.Target, compare.Result)
             {
                 case ("VERSION", "GREATER") when kv is null:
-                    return new RowCountMismatchException(1, 0, $"the key {name}, which no longer exists");
+                    return new RowCountMismatchException(1, 0, EtcdStrings.Format("Etcd/KeyGoneStatement", name));
                 case ("VERSION", "EQUAL") when kv is not null:
-                    return new InvalidOperationException($"The key {name} already exists, so nothing was saved. Edit that row instead.");
+                    return new InvalidOperationException(EtcdStrings.Format("Etcd/KeyAlreadyExists", name));
                 case ("MOD", _) when kv is null || kv.ModRevision != compare.ModRevision:
-                    return new InvalidOperationException($"The key {name} changed since it was read, so nothing was saved. Refresh and try again.");
+                    return new InvalidOperationException(EtcdStrings.Format("Etcd/KeyChangedSinceRead", name));
             }
         }
 
-        return new InvalidOperationException("Another client changed these keys while the save ran, so nothing was saved. Refresh and try again.");
+        return new InvalidOperationException(EtcdStrings.Get("Etcd/ConcurrentChange"));
     }
 
     private static DatabaseObject ToObject(EtcdKeyValue kv) =>

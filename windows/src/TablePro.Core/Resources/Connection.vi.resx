@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="ChooseTunnelMethod" xml:space="preserve">
+    <value>Hãy chọn cách mở đường hầm.</value>
+  </data>
+  <data name="CloudflareHostRequired" xml:space="preserve">
+    <value>Cần nhập hostname Cloudflare.</value>
+  </data>
+  <data name="CommandNeedsLocalPort" xml:space="preserve">
+    <value>Lệnh phải chứa {0} ở vị trí của cổng cục bộ.</value>
+  </data>
+  <data name="CommandRequired" xml:space="preserve">
+    <value>Cần nhập một lệnh.</value>
+  </data>
+  <data name="CommandUnclosedQuote" xml:space="preserve">
+    <value>Lệnh có dấu ngoặc kép chưa đóng.</value>
+  </data>
+  <data name="InstanceConnectionNameFormat" xml:space="preserve">
+    <value>Tên kết nối instance phải theo dạng project:region:instance.</value>
+  </data>
+  <data name="KubernetesResourceRequired" xml:space="preserve">
+    <value>Cần một tài nguyên Kubernetes, ví dụ service/postgres.</value>
+  </data>
+  <data name="ListSeparator" xml:space="preserve">
+    <value>, </value>
+  </data>
+  <data name="LocalPortRange" xml:space="preserve">
+    <value>Cổng cục bộ phải nằm trong khoảng 1 đến 65535.</value>
+  </data>
+  <data name="OnlyOneTransport" xml:space="preserve">
+    <value>Mỗi kết nối chỉ dùng được một phương thức kết nối tại một thời điểm. Đang bật: {0}.</value>
+  </data>
+  <data name="ProxyHostRequired" xml:space="preserve">
+    <value>Cần nhập máy chủ proxy.</value>
+  </data>
+  <data name="ProxyPortRange" xml:space="preserve">
+    <value>Cổng proxy phải nằm trong khoảng 1 đến 65535.</value>
+  </data>
+  <data name="SshHostRequired" xml:space="preserve">
+    <value>Hãy nhập máy chủ SSH hoặc tắt đường hầm.</value>
+  </data>
+  <data name="SsmTargetRequired" xml:space="preserve">
+    <value>Cần một đích SSM, ví dụ i-0123456789abcdef0.</value>
+  </data>
+  <data name="TransportCloudflare" xml:space="preserve">
+    <value>Cloudflare Tunnel</value>
+  </data>
+  <data name="TransportCloudSql" xml:space="preserve">
+    <value>Cloud SQL Auth Proxy</value>
+  </data>
+  <data name="TransportCommand" xml:space="preserve">
+    <value>Lệnh tạo đường hầm</value>
+  </data>
+  <data name="TransportDirect" xml:space="preserve">
+    <value>Trực tiếp</value>
+  </data>
+  <data name="TransportProxy" xml:space="preserve">
+    <value>Proxy</value>
+  </data>
+  <data name="TransportSsh" xml:space="preserve">
+    <value>Đường hầm SSH</value>
+  </data>
+  <data name="TransportUnavailable" xml:space="preserve">
+    <value>{0} không thể kết nối qua {1}.</value>
+  </data>
+  <data name="TunnelFieldContext" xml:space="preserve">
+    <value>Ngữ cảnh</value>
+  </data>
+  <data name="TunnelFieldInvalid" xml:space="preserve">
+    <value>{0} không được bắt đầu bằng dấu gạch ngang hoặc chứa khoảng trắng.</value>
+  </data>
+  <data name="TunnelFieldNamespace" xml:space="preserve">
+    <value>Namespace</value>
+  </data>
+  <data name="TunnelFieldProfile" xml:space="preserve">
+    <value>Hồ sơ</value>
+  </data>
+  <data name="TunnelFieldRegion" xml:space="preserve">
+    <value>Region</value>
+  </data>
+  <data name="TunnelFieldResource" xml:space="preserve">
+    <value>Tài nguyên</value>
+  </data>
+  <data name="TunnelFieldTarget" xml:space="preserve">
+    <value>Đích</value>
+  </data>
+</root>

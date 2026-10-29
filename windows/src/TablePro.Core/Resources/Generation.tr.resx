@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="ChooseAGenerator" xml:space="preserve">
+    <value>En az bir sütun için bir üreteç seçin.</value>
+  </data>
+  <data name="DecimalPlacesRange" xml:space="preserve">
+    <value>{0}: ondalık basamak sayısı 0 ile {1} arasındadır.</value>
+  </data>
+  <data name="EnterAPattern" xml:space="preserve">
+    <value>{0} için bir desen girin.</value>
+  </data>
+  <data name="EnterAValue" xml:space="preserve">
+    <value>{0} için en az bir değer girin.</value>
+  </data>
+  <data name="FirstDateAfterLast" xml:space="preserve">
+    <value>{0}: ilk tarih son tarihten sonra.</value>
+  </data>
+  <data name="GeneratorNotAllowed" xml:space="preserve">
+    <value>{0} bu üreteci kullanamaz.</value>
+  </data>
+  <data name="HoldsNumbersFromTo" xml:space="preserve">
+    <value>{0}, {1:N0} ile {2:N0} arasındaki sayıları tutar.</value>
+  </data>
+  <data name="HoldsValuesUpTo" xml:space="preserve">
+    <value>{0} en fazla {1:N0} değerini tutar.</value>
+  </data>
+  <data name="KeepsDecimalPlaces" xml:space="preserve">
+    <value>{0}, {1} ondalık basamak tutar.</value>
+  </data>
+  <data name="KeyLeftToDefault" xml:space="preserve">
+    <value>({0}) tekrarlanmamalı, ancak tüm sütunları varsayılan değerine bırakılmış.</value>
+  </data>
+  <data name="KindBoolean" xml:space="preserve">
+    <value>Boolean</value>
+  </data>
+  <data name="KindCity" xml:space="preserve">
+    <value>Şehir</value>
+  </data>
+  <data name="KindCountry" xml:space="preserve">
+    <value>Ülke</value>
+  </data>
+  <data name="KindDate" xml:space="preserve">
+    <value>Tarih</value>
+  </data>
+  <data name="KindDateTime" xml:space="preserve">
+    <value>Tarih ve Saat</value>
+  </data>
+  <data name="KindDecimalRange" xml:space="preserve">
+    <value>Ondalık Aralık</value>
+  </data>
+  <data name="KindEmail" xml:space="preserve">
+    <value>E-posta</value>
+  </data>
+  <data name="KindFirstName" xml:space="preserve">
+    <value>Ad</value>
+  </data>
+  <data name="KindFullName" xml:space="preserve">
+    <value>Ad Soyad</value>
+  </data>
+  <data name="KindIntegerRange" xml:space="preserve">
+    <value>Sayı Aralığı</value>
+  </data>
+  <data name="KindJson" xml:space="preserve">
+    <value>JSON</value>
+  </data>
+  <data name="KindLastName" xml:space="preserve">
+    <value>Soyad</value>
+  </data>
+  <data name="KindList" xml:space="preserve">
+    <value>Değer Listesi</value>
+  </data>
+  <data name="KindPattern" xml:space="preserve">
+    <value>Desen</value>
+  </data>
+  <data name="KindPhone" xml:space="preserve">
+    <value>Telefon Numarası</value>
+  </data>
+  <data name="KindReference" xml:space="preserve">
+    <value>Başvurulan Değer</value>
+  </data>
+  <data name="KindSequence" xml:space="preserve">
+    <value>Sequence</value>
+  </data>
+  <data name="KindServerDefault" xml:space="preserve">
+    <value>Sunucu Varsayılanı</value>
+  </data>
+  <data name="KindStreetAddress" xml:space="preserve">
+    <value>Sokak Adresi</value>
+  </data>
+  <data name="KindText" xml:space="preserve">
+    <value>Metin</value>
+  </data>
+  <data name="KindTime" xml:space="preserve">
+    <value>Zaman</value>
+  </data>
+  <data name="KindUuid" xml:space="preserve">
+    <value>UUID</value>
+  </data>
+  <data name="ListSeparator" xml:space="preserve">
+    <value>, </value>
+  </data>
+  <data name="MinimumAboveMaximum" xml:space="preserve">
+    <value>{0}: en küçük değer en büyük değerden büyük.</value>
+  </data>
+  <data name="NoGeneratorFits" xml:space="preserve">
+    <value>{0} ({1}) sütununu dolduracak bir üreteç yok ve boş bırakılamaz.</value>
+  </data>
+  <data name="RangeTooWide" xml:space="preserve">
+    <value>{0}: aralık bu kadar ondalık basamak için çok geniş.</value>
+  </data>
+  <data name="ReferencedTableEmpty" xml:space="preserve">
+    <value>{0}, hiç satırı olmayan {1} tablosuna başvuruyor.</value>
+  </data>
+  <data name="RowCountRange" xml:space="preserve">
+    <value>1 ile {0:N0} arasında bir satır sayısı girin.</value>
+  </data>
+  <data name="SequenceOverflows" xml:space="preserve">
+    <value>{0} için dizi, tutabileceği en büyük sayıyı aşıyor.</value>
+  </data>
+  <data name="ShortestAboveLongest" xml:space="preserve">
+    <value>{0}: en kısa uzunluk en uzundan daha uzun.</value>
+  </data>
+  <data name="StepIsZero" xml:space="preserve">
+    <value>{0}: adım 0 olamaz.</value>
+  </data>
+  <data name="TooFewCombinations" xml:space="preserve">
+    <value>({0}) tekrarlanmamalı, ancak üreteçler yalnızca {1:N0} kombinasyon üretiyor.</value>
+  </data>
+  <data name="TooFewDistinctValues" xml:space="preserve">
+    <value>{0} tekrarlanmamalı, ancak üreteci yalnızca {1:N0} farklı değer üretiyor.</value>
+  </data>
+  <data name="ValuesExhausted" xml:space="preserve">
+    <value>({0}) için tekrarlanmayan başka bir değer üretilemedi. Aralığını genişletin veya daha az satır üretin.</value>
+  </data>
+</root>

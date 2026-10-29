@@ -1,3 +1,5 @@
+using TablePro.Ssh.Localization;
+
 namespace TablePro.Ssh;
 
 /// <summary>
@@ -13,7 +15,7 @@ public sealed class LocalPortPolicy
     {
         if (fixedPort is { } port && port is <= 0 or > 65535)
         {
-            throw new ArgumentOutOfRangeException(nameof(fixedPort), port, "A port is between 1 and 65535.");
+            throw new ArgumentOutOfRangeException(nameof(fixedPort), port, SshStrings.Get("Tunnel/PortOutOfRange"));
         }
 
         FixedPort = fixedPort;

@@ -1,6 +1,7 @@
 using System.Globalization;
 using Google.Cloud.Spanner.Data;
 using TablePro.Core.Drivers;
+using TablePro.Drivers.Spanner.Localization;
 
 namespace TablePro.Drivers.Spanner;
 
@@ -42,15 +43,15 @@ public sealed record SpannerSettings(string DatabasePath, string? CredentialsFil
         }
         else
         {
-            var project = Option(options, ProjectOption) ?? throw Missing("project");
-            var instance = Option(options, InstanceOption) ?? throw Missing("instance");
-            path = $"projects/{project}/instances/{instance}/databases/{database ?? throw Missing("database")}";
+            var project = Option(options, ProjectOption) ?? throw new ArgumentException(SpannerStrings.Get("Spanner/MissingProject"));
+            var instance = Option(options, InstanceOption) ?? throw new ArgumentException(SpannerStrings.Get("Spanner/MissingInstance"));
+            path = $"projects/{project}/instances/{instance}/databases/{database ?? throw new ArgumentException(SpannerStrings.Get("Spanner/MissingDatabase"))}";
         }
 
         var segments = path.Split('/');
         if (segments.Length != 6 || segments[0] != "projects" || segments[2] != "instances" || segments[4] != "databases" || segments.Any(string.IsNullOrWhiteSpace))
         {
-            throw new ArgumentException($"\"{path}\" is not a Spanner database path such as projects/my-project/instances/my-instance/databases/my-db.", nameof(request));
+            throw new ArgumentException(SpannerStrings.Format("Spanner/NotADatabasePath", path), nameof(request));
         }
 
         string? emulatorHost = null;
@@ -100,8 +101,6 @@ public sealed record SpannerSettings(string DatabasePath, string? CredentialsFil
         return builder;
     }
 
-    private static ArgumentException Missing(string what) =>
-        new($"Spanner needs the {what}: enter projects/p/instances/i/databases/d as the host, or set the project and instance options and the database.");
 
     private static string? Option(IReadOnlyDictionary<string, string> options, string key)
     {

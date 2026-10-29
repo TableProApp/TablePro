@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using System.Xml;
+using TablePro.Core.Localization;
 
 namespace TablePro.Core.Plans.Parsers;
 
@@ -189,7 +190,7 @@ public static class SqlServerShowplanParser
             _path.Add(name);
             if (_path.Count >= MaximumDepth)
             {
-                throw new XmlException("The showplan nests too deeply.");
+                throw new XmlException(CoreStrings.Get("Plan/ShowplanTooDeep"));
             }
 
             switch (name)
@@ -307,9 +308,13 @@ public static class SqlServerShowplanParser
 
     private static string WarningText(string name, Dictionary<string, string> attributes) => name switch
     {
-        "PlanAffectingConvert" => $"Implicit conversion{(attributes.TryGetValue("ConvertIssue", out var issue) ? $" ({issue})" : string.Empty)}: {attributes.GetValueOrDefault("Expression") ?? string.Empty}",
-        "SpillToTempDb" => $"Spill to tempdb{(attributes.TryGetValue("SpillLevel", out var level) ? $", level {level}" : string.Empty)}",
-        "ColumnsWithNoStatistics" => "Columns with no statistics",
+        "PlanAffectingConvert" => attributes.TryGetValue("ConvertIssue", out var issue)
+            ? CoreStrings.Format("Plan/ImplicitConversionIssue", issue, attributes.GetValueOrDefault("Expression") ?? string.Empty)
+            : CoreStrings.Format("Plan/ImplicitConversion", attributes.GetValueOrDefault("Expression") ?? string.Empty),
+        "SpillToTempDb" => attributes.TryGetValue("SpillLevel", out var level)
+            ? CoreStrings.Format("Plan/SpillToTempDbLevel", level)
+            : CoreStrings.Get("Plan/SpillToTempDb"),
+        "ColumnsWithNoStatistics" => CoreStrings.Get("Plan/ColumnsWithNoStatistics"),
         _ => Words(name),
     };
 
@@ -352,7 +357,7 @@ public static class SqlServerShowplanParser
     {
         var attributes = source.Attributes;
         var properties = new Dictionary<string, string>(StringComparer.Ordinal);
-        var physical = attributes.GetValueOrDefault("PhysicalOp") ?? "Unknown";
+        var physical = attributes.GetValueOrDefault("PhysicalOp") ?? CoreStrings.Get("Plan/UnknownOperation");
         if (attributes.TryGetValue("LogicalOp", out var logical) && logical != physical)
         {
             properties["Logical Operation"] = logical;
@@ -392,7 +397,7 @@ public static class SqlServerShowplanParser
             }
             else
             {
-                properties["Execution"] = "Never executed";
+                properties["Execution"] = CoreStrings.Get("Plan/NeverExecuted");
             }
 
             if (counters.LogicalReads is { } reads && QueryPlanTreeBuilder.BoundedInteger(reads) is { } bounded)

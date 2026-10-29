@@ -1,0 +1,279 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="Alias" xml:space="preserve">
+    <value>alias</value>
+  </data>
+  <data name="AliasOf" xml:space="preserve">
+    <value>alias of {0}</value>
+    <comment>Shown as the comment of an alias; {0} is the name, or comma-separated names, it points to.</comment>
+  </data>
+  <data name="AnsweredNotJson" xml:space="preserve">
+    <value>{0} answered something other than JSON.</value>
+    <comment>{0} is a service or engine name.</comment>
+  </data>
+  <data name="AuthenticationFailedWith" xml:space="preserve">
+    <value>Authentication failed: {0}</value>
+    <comment>{0} is the server's own message, in its language.</comment>
+  </data>
+  <data name="BetweenNeedsUpperBound" xml:space="preserve">
+    <value>BETWEEN on {0} needs an upper bound.</value>
+    <comment>{0} is a column name. BETWEEN is a filter operator.</comment>
+  </data>
+  <data name="BooleanFieldNotBoolean" xml:space="preserve">
+    <value>{0} is a boolean field, so it matches only true or false, not {1}.</value>
+    <comment>{0} is a field name, {1} the value typed. true and false are literal values.</comment>
+  </data>
+  <data name="CannotChangeFromGrid" xml:space="preserve">
+    <value>'{0}' cannot be changed from the grid.</value>
+    <comment>{0} is a column name.</comment>
+  </data>
+  <data name="CannotFilterWith" xml:space="preserve">
+    <value>{0} cannot filter with {1}.</value>
+    <comment>{0} is an engine name, {1} a filter operator.</comment>
+  </data>
+  <data name="CannotReadDefinition" xml:space="preserve">
+    <value>The account cannot read the definition of {0}.</value>
+    <comment>{0} is an object name.</comment>
+  </data>
+  <data name="ChooseDatasetFirst" xml:space="preserve">
+    <value>Pick a dataset first.</value>
+  </data>
+  <data name="ChooseNamespaceFirst" xml:space="preserve">
+    <value>Choose a namespace first.</value>
+  </data>
+  <data name="CommandCancelled" xml:space="preserve">
+    <value>Command cancelled.</value>
+  </data>
+  <data name="CommandNotSupported" xml:space="preserve">
+    <value>That command is not supported.</value>
+  </data>
+  <data name="CommandTimedOutAfter" xml:space="preserve">
+    <value>The command timed out after {0} seconds.</value>
+    <comment>{0} is a number of seconds.</comment>
+  </data>
+  <data name="Committed" xml:space="preserve">
+    <value>Committed.</value>
+  </data>
+  <data name="ConnectionNeedsDatabaseFile" xml:space="preserve">
+    <value>A {0} connection needs a database file.</value>
+    <comment>{0} is an engine name, such as SQLite.</comment>
+  </data>
+  <data name="ConnectionNotOpen" xml:space="preserve">
+    <value>The connection is not open.</value>
+  </data>
+  <data name="CredentialsFileType" xml:space="preserve">
+    <value>The credentials file is of type "{0}". Use a service account key or a gcloud authorized_user file.</value>
+    <comment>{0} is the type field of a Google credentials file.</comment>
+  </data>
+  <data name="DefinitionMissingPrivilege" xml:space="preserve">
+    <value>{0} returned no definition for {1}; the login may lack the privilege to read it.</value>
+    <comment>{0} is an engine name, {1} an object name.</comment>
+  </data>
+  <data name="DocumentIdUnknown" xml:space="preserve">
+    <value>The document's {0} is unknown, so it cannot be addressed.</value>
+    <comment>{0} is the name of the document's id field, such as id or _id.</comment>
+  </data>
+  <data name="EmptyResponse" xml:space="preserve">
+    <value>{0} returned an empty response.</value>
+    <comment>{0} is a service name.</comment>
+  </data>
+  <data name="EngineHasNoDefinitionFor" xml:space="preserve">
+    <value>{0} cannot show a definition for {1}.</value>
+    <comment>{0} is an engine name, {1} an object name.</comment>
+  </data>
+  <data name="EnterRequestLike" xml:space="preserve">
+    <value>Enter a request like: {0}</value>
+    <comment>{0} is an example HTTP request, such as GET /collections.</comment>
+  </data>
+  <data name="InsertNeedsValue" xml:space="preserve">
+    <value>{0} needs at least one value to insert a row.</value>
+    <comment>{0} is an engine name.</comment>
+  </data>
+  <data name="InvalidTypedValue" xml:space="preserve">
+    <value>"{0}" is not a valid {1} value.</value>
+    <comment>{0} is the value the user typed, {1} a SQL type name.</comment>
+  </data>
+  <data name="KeyNoLongerExists" xml:space="preserve">
+    <value>The key '{0}' no longer exists, so nothing was saved.</value>
+    <comment>{0} is a key name.</comment>
+  </data>
+  <data name="ListedUnexpected" xml:space="preserve">
+    <value>{0} listed {1} as an unexpected {2}.</value>
+    <comment>{0} is an engine name, {1} an object name, {2} the object type the server reported.</comment>
+  </data>
+  <data name="NeedsAccountIdentifier" xml:space="preserve">
+    <value>{0} needs an account identifier, such as {1}.</value>
+    <comment>{0} is an engine name, {1} example identifiers.</comment>
+  </data>
+  <data name="NoAnswerWithin" xml:space="preserve">
+    <value>{0} did not answer within {1} s.</value>
+    <comment>{0} is a host, {1} a number of seconds.</comment>
+  </data>
+  <data name="NoDatabaseGiven" xml:space="preserve">
+    <value>No database was given and the login has no default.</value>
+  </data>
+  <data name="NoDefinitionFor" xml:space="preserve">
+    <value>No definition was found for {0}.</value>
+    <comment>{0} is an object name.</comment>
+  </data>
+  <data name="NoResultForStatement" xml:space="preserve">
+    <value>The server returned no result for the statement.</value>
+  </data>
+  <data name="NoSchemaGiven" xml:space="preserve">
+    <value>No schema was given and the login names none.</value>
+  </data>
+  <data name="NoTransactionOpen" xml:space="preserve">
+    <value>No transaction is open.</value>
+  </data>
+  <data name="NumericFieldNotNumber" xml:space="preserve">
+    <value>{0} is a numeric field, and {1} is not a number.</value>
+    <comment>{0} is a field name, {1} the value typed.</comment>
+  </data>
+  <data name="OdbcDriverNotInstalled" xml:space="preserve">
+    <value>The {0} ODBC driver "{1}" is not installed. {2}</value>
+    <comment>{0} is an engine name, {1} an ODBC driver name, {2} a sentence on how to install it.</comment>
+  </data>
+  <data name="OdbcDriverNotLoaded" xml:space="preserve">
+    <value>Windows found the {0} ODBC driver "{1}" but could not load it. TablePro is a 64-bit app and needs the 64-bit driver. {2}</value>
+    <comment>{0} is an engine name, {1} an ODBC driver name, {2} a sentence on how to install it.</comment>
+  </data>
+  <data name="OdbcInvalidKeyword" xml:space="preserve">
+    <value>"{0}" is not a valid ODBC connection keyword.</value>
+    <comment>{0} is an option name the user entered.</comment>
+  </data>
+  <data name="OdbcOptionFromForm" xml:space="preserve">
+    <value>The option "{0}" is set from the connection form; change it there instead.</value>
+    <comment>{0} is an option name the user entered.</comment>
+  </data>
+  <data name="OptionInvalidValue" xml:space="preserve">
+    <value>"{0}" is not a valid value for {1}.</value>
+    <comment>{0} is the value typed, {1} a table option name, such as Engine.</comment>
+  </data>
+  <data name="OptionIsOneOf" xml:space="preserve">
+    <value>{0} is one of {1}.</value>
+    <comment>{0} is a table option name, {1} a comma-separated list of SQL keywords.</comment>
+  </data>
+  <data name="OptionNeedsValue" xml:space="preserve">
+    <value>{0} needs a value.</value>
+    <comment>{0} is a table option name, such as Engine.</comment>
+  </data>
+  <data name="OptionPositiveWholeNumber" xml:space="preserve">
+    <value>{0} is a whole number above zero.</value>
+    <comment>{0} is a table option name.</comment>
+  </data>
+  <data name="OptionWholeNumberRange" xml:space="preserve">
+    <value>{0} is a whole number from {1} to {2}.</value>
+    <comment>{0} is a table option name, {1} and {2} the bounds.</comment>
+  </data>
+  <data name="PartialSaveNoTransaction" xml:space="preserve">
+    <value>{0} of {1} changes were saved; {2} has no transaction to undo them. {3}</value>
+    <comment>{0} saved count, {1} total, {2} engine name, {3} the server's first error.</comment>
+  </data>
+  <data name="PathHasDotSegment" xml:space="preserve">
+    <value>The path {0} has a . or .. segment, which would address a different resource.</value>
+    <comment>{0} is a URL path. The . and .. are literal path segments.</comment>
+  </data>
+  <data name="PathLeavesHost" xml:space="preserve">
+    <value>The path {0} would leave {1}.</value>
+    <comment>{0} is a URL path, {1} the server's host.</comment>
+  </data>
+  <data name="QueryCancelled" xml:space="preserve">
+    <value>Query cancelled.</value>
+  </data>
+  <data name="QueryTimedOut" xml:space="preserve">
+    <value>Query timed out.</value>
+  </data>
+  <data name="QueryTimedOutAfter" xml:space="preserve">
+    <value>The query timed out after {0} seconds.</value>
+    <comment>{0} is a number of seconds.</comment>
+  </data>
+  <data name="QuotedValueNotClosed" xml:space="preserve">
+    <value>A quoted value was never closed.</value>
+  </data>
+  <data name="RateLimited" xml:space="preserve">
+    <value>Rate limited. Try again shortly.</value>
+  </data>
+  <data name="RateLimitedRetryAfter" xml:space="preserve">
+    <value>Rate limited. Retry after {0:0} seconds.</value>
+    <comment>{0} is a number of seconds.</comment>
+  </data>
+  <data name="ReadOnlyNothingSaved" xml:space="preserve">
+    <value>This connection is read-only, so nothing was saved.</value>
+  </data>
+  <data name="ReadWriteTransactionStarted" xml:space="preserve">
+    <value>Read-write transaction started.</value>
+  </data>
+  <data name="RequestTimedOutAfter" xml:space="preserve">
+    <value>The request timed out after {0} s.</value>
+    <comment>{0} is a number of seconds.</comment>
+  </data>
+  <data name="ReturnedNoResult" xml:space="preserve">
+    <value>{0} returned no result.</value>
+    <comment>{0} is a service or engine name.</comment>
+  </data>
+  <data name="RolledBack" xml:space="preserve">
+    <value>Rolled back.</value>
+  </data>
+  <data name="RoutineKindFunction" xml:space="preserve">
+    <value>Function</value>
+    <comment>The kind of routine the debugger runs.</comment>
+  </data>
+  <data name="RoutineKindPackage" xml:space="preserve">
+    <value>Package</value>
+    <comment>The kind of routine the debugger runs: an Oracle package.</comment>
+  </data>
+  <data name="RoutineKindProcedure" xml:space="preserve">
+    <value>Procedure</value>
+    <comment>The kind of routine the debugger runs.</comment>
+  </data>
+  <data name="RoutineKindTrigger" xml:space="preserve">
+    <value>Trigger</value>
+    <comment>The kind of routine the debugger runs.</comment>
+  </data>
+  <data name="RoutineKindType" xml:space="preserve">
+    <value>Type</value>
+    <comment>The kind of routine the debugger runs: an Oracle object type.</comment>
+  </data>
+  <data name="ServerErrorNoMessage" xml:space="preserve">
+    <value>The server reported an error without a message.</value>
+  </data>
+  <data name="ServerHttpStatus" xml:space="preserve">
+    <value>The server returned HTTP {0}.</value>
+    <comment>{0} is an HTTP status code.</comment>
+  </data>
+  <data name="ServerReportedError" xml:space="preserve">
+    <value>The server reported an error.</value>
+  </data>
+  <data name="ShowingOfKeys" xml:space="preserve">
+    <value>Showing {0:N0} of {1:N0} keys.</value>
+    <comment>{0} keys shown, {1} keys in all.</comment>
+  </data>
+  <data name="StatementCancelled" xml:space="preserve">
+    <value>Statement cancelled.</value>
+  </data>
+  <data name="StatementNotSupported" xml:space="preserve">
+    <value>That statement is not supported.</value>
+  </data>
+  <data name="TableHasNoColumn" xml:space="preserve">
+    <value>{0} has no column {1}.</value>
+    <comment>{0} is a table name, {1} a column name.</comment>
+  </data>
+  <data name="TransactionAlreadyOpen" xml:space="preserve">
+    <value>A transaction is already open.</value>
+  </data>
+  <data name="UpdateNeedsChangedColumn" xml:space="preserve">
+    <value>An update needs at least one changed column.</value>
+  </data>
+</root>

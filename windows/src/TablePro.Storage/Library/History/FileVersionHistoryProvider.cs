@@ -1,5 +1,6 @@
 using TablePro.Storage.Library.Folders;
 using TablePro.Storage.Library.Git;
+using TablePro.Storage.Localization;
 
 namespace TablePro.Storage.Library.History;
 
@@ -29,7 +30,7 @@ public sealed class FileVersionHistoryProvider(string filePath, LocalSnapshotSto
         // The newest copy is usually the text on disk, saved a moment ago; listing it again would be a version
         // identical to Current.
         var past = kept.SkipWhile((s, i) => i == 0 && string.Equals(s.Content, currentText, StringComparison.Ordinal))
-            .Select(s => new VersionEntry(new SnapshotVersion(s.Id), s.SavedAt, "Saved in TablePro"))
+            .Select(s => new VersionEntry(new SnapshotVersion(s.Id), s.SavedAt, StorageStrings.Get("Library/SavedInTablePro")))
             .ToList();
         var notices = new List<VersionHistoryNotice>();
         if (kept.Count >= LocalSnapshotStore.RetainedCount)
@@ -50,7 +51,7 @@ public sealed class FileVersionHistoryProvider(string filePath, LocalSnapshotSto
         }
         catch (VersionHistoryException ex) when (ex.Error == VersionHistoryError.CommandFailed)
         {
-            notices.Add(new GitHistoryUnavailableNotice("Git history is unavailable: " + ex.Message));
+            notices.Add(new GitHistoryUnavailableNotice(StorageStrings.Format("Library/GitHistoryUnavailable", ex.Message)));
         }
 
         var ordered = past.OrderByDescending(e => e.Date ?? DateTimeOffset.MinValue).ToList();

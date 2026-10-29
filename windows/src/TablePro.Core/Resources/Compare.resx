@@ -1,0 +1,180 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="ChangeAddColumn" xml:space="preserve">
+    <value>Add column {0} {1}</value>
+    <comment>{0} is a column name, {1} its data type.</comment>
+  </data>
+  <data name="ChangeAddForeignKey" xml:space="preserve">
+    <value>Add foreign key {0} to {1}</value>
+    <comment>{0} is a foreign key name, {1} the table it references.</comment>
+  </data>
+  <data name="ChangeAlterColumn" xml:space="preserve">
+    <value>Change column {0} to {1}</value>
+    <comment>{0} is a column name, {1} its new data type.</comment>
+  </data>
+  <data name="ChangeCreateIndex" xml:space="preserve">
+    <value>Create index {0}</value>
+    <comment>{0} is an index name.</comment>
+  </data>
+  <data name="ChangeCreateTable" xml:space="preserve">
+    <value>Create table {0}</value>
+    <comment>{0} is a table name.</comment>
+  </data>
+  <data name="ChangeCreateUniqueIndex" xml:space="preserve">
+    <value>Create unique index {0}</value>
+    <comment>{0} is an index name.</comment>
+  </data>
+  <data name="ChangeDropColumn" xml:space="preserve">
+    <value>Drop column {0}</value>
+    <comment>{0} is a column name.</comment>
+  </data>
+  <data name="ChangeDropForeignKey" xml:space="preserve">
+    <value>Drop foreign key {0}</value>
+    <comment>{0} is a foreign key name.</comment>
+  </data>
+  <data name="ChangeDropFunction" xml:space="preserve">
+    <value>Drop function {0}</value>
+    <comment>{0} is a function name.</comment>
+  </data>
+  <data name="ChangeDropIndex" xml:space="preserve">
+    <value>Drop index {0}</value>
+    <comment>{0} is an index name.</comment>
+  </data>
+  <data name="ChangeDropMaterializedView" xml:space="preserve">
+    <value>Drop materialized view {0}</value>
+    <comment>{0} is a materialized view name.</comment>
+  </data>
+  <data name="ChangeDropObject" xml:space="preserve">
+    <value>Drop {0}</value>
+    <comment>{0} is an object name whose kind has no line of its own.</comment>
+  </data>
+  <data name="ChangeDropProcedure" xml:space="preserve">
+    <value>Drop procedure {0}</value>
+    <comment>{0} is a procedure name.</comment>
+  </data>
+  <data name="ChangeDropSequence" xml:space="preserve">
+    <value>Drop sequence {0}</value>
+    <comment>{0} is a sequence name.</comment>
+  </data>
+  <data name="ChangeDropTable" xml:space="preserve">
+    <value>Drop table {0}</value>
+    <comment>{0} is a table name.</comment>
+  </data>
+  <data name="ChangeDropTrigger" xml:space="preserve">
+    <value>Drop trigger {0}</value>
+    <comment>{0} is a trigger name.</comment>
+  </data>
+  <data name="ChangeDropView" xml:space="preserve">
+    <value>Drop view {0}</value>
+    <comment>{0} is a view name.</comment>
+  </data>
+  <data name="ChangeRenameColumn" xml:space="preserve">
+    <value>Rename column {0} to {1}</value>
+    <comment>{0} is the old column name, {1} the new one.</comment>
+  </data>
+  <data name="ChangeRenameTable" xml:space="preserve">
+    <value>Rename table to {0}</value>
+    <comment>{0} is the new table name.</comment>
+  </data>
+  <data name="ChangeTruncateTable" xml:space="preserve">
+    <value>Truncate table</value>
+  </data>
+  <data name="ChooseKeyColumn" xml:space="preserve">
+    <value>Choose at least one key column that identifies a row on both sides.</value>
+  </data>
+  <data name="ColumnGone" xml:space="preserve">
+    <value>{0} has no column {1} any more. Compare again to read its current columns.</value>
+    <comment>{0} is a table name, {1} a column name.</comment>
+  </data>
+  <data name="ColumnOnlyInTarget" xml:space="preserve">
+    <value>Column {0} is only in the target and is kept.</value>
+    <comment>{0} is a column name.</comment>
+  </data>
+  <data name="DuplicateKeyInSource" xml:space="preserve">
+    <value>Key {0} matches more than one row in the source. Choose key columns that identify a single row.</value>
+    <comment>{0} is a key value.</comment>
+  </data>
+  <data name="DuplicateKeyInTarget" xml:space="preserve">
+    <value>Key {0} matches more than one row in the target. Choose key columns that identify a single row.</value>
+    <comment>{0} is a key value.</comment>
+  </data>
+  <data name="ForeignKeyCycle" xml:space="preserve">
+    <value>{0} reference each other, so no order satisfies every foreign key. A sync that breaks one rolls that table back.</value>
+    <comment>{0} is a comma-separated list of table names.</comment>
+  </data>
+  <data name="IdentityColumnWarning" xml:space="preserve">
+    <value>{0} is an identity column on the target. Engines such as SQL Server refuse an explicit value there, which rolls the sync back.</value>
+    <comment>{0} is a column name.</comment>
+  </data>
+  <data name="KeyColumnNotOnBoth" xml:space="preserve">
+    <value>Key column {0} is not on both tables.</value>
+    <comment>{0} is a comma-separated list of column names.</comment>
+  </data>
+  <data name="NoPrimaryKey" xml:space="preserve">
+    <value>{0} has no primary key. Choose the columns that identify a row.</value>
+    <comment>{0} is a table name.</comment>
+  </data>
+  <data name="PrimaryKeyDiffers" xml:space="preserve">
+    <value>Primary key differs: ({0}) against ({1}). Change it by hand.</value>
+    <comment>{0} and {1} are comma-separated column lists of the source and target primary keys.</comment>
+  </data>
+  <data name="RowLimitCutShort" xml:space="preserve">
+    <value>The row limit cut the comparison short, so rows past it are left as they are.</value>
+  </data>
+  <data name="RowsDeletedForGood_One" xml:space="preserve">
+    <value>{0:N0} row will be deleted from {1} for good.</value>
+    <comment>{0} is a row count, {1} a table name.</comment>
+  </data>
+  <data name="RowsDeletedForGood_Other" xml:space="preserve">
+    <value>{0:N0} rows will be deleted from {1} for good.</value>
+    <comment>{0} is a row count, {1} a table name.</comment>
+  </data>
+  <data name="SortOrderSource" xml:space="preserve">
+    <value>The source sorted rows differently than the comparison expects, near key {0}. Pick a numeric key, or one whose collation sorts by byte value.</value>
+    <comment>{0} is a key value. Shown when case-insensitive keys are already on.</comment>
+  </data>
+  <data name="SortOrderSourceHint" xml:space="preserve">
+    <value>The source sorted rows differently than the comparison expects, near key {0}. Pick a numeric key, or one whose collation sorts by byte value, or turn on case-insensitive keys.</value>
+    <comment>{0} is a key value.</comment>
+  </data>
+  <data name="SortOrderTarget" xml:space="preserve">
+    <value>The target sorted rows differently than the comparison expects, near key {0}. Pick a numeric key, or one whose collation sorts by byte value.</value>
+    <comment>{0} is a key value. Shown when case-insensitive keys are already on.</comment>
+  </data>
+  <data name="SortOrderTargetHint" xml:space="preserve">
+    <value>The target sorted rows differently than the comparison expects, near key {0}. Pick a numeric key, or one whose collation sorts by byte value, or turn on case-insensitive keys.</value>
+    <comment>{0} is a key value.</comment>
+  </data>
+  <data name="SourceColumnCount" xml:space="preserve">
+    <value>The source returned {0} columns where {1} were expected.</value>
+    <comment>{0} is the number of columns returned, {1} the number expected.</comment>
+  </data>
+  <data name="TableLeftOutTooMany" xml:space="preserve">
+    <value>{0}: {1:N0} differences are more than a sync can review, so the table is left out. Narrow it with a filter or a row limit.</value>
+    <comment>{0} is a table name, {1} a number of differences.</comment>
+  </data>
+  <data name="TableNote" xml:space="preserve">
+    <value>{0}: {1}</value>
+    <comment>{0} is a table name, {1} a note about it.</comment>
+  </data>
+  <data name="TargetColumnCount" xml:space="preserve">
+    <value>The target returned {0} columns where {1} were expected.</value>
+    <comment>{0} is the number of columns returned, {1} the number expected.</comment>
+  </data>
+  <data name="TooManyToSync" xml:space="preserve">
+    <value>The comparison found {0:N0} differences, more than the {1:N0} a sync can review. Narrow it with a filter or a row limit and compare again.</value>
+    <comment>{0} is the number of differences found, {1} the number a sync can review.</comment>
+  </data>
+</root>

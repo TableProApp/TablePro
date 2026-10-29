@@ -1,6 +1,7 @@
 using System.Globalization;
 using StackExchange.Redis;
 using TablePro.Core.Editing;
+using TablePro.Drivers.Redis.Localization;
 
 namespace TablePro.Drivers.Redis;
 
@@ -49,7 +50,7 @@ internal static class RedisTransactionRunner
         if (failures.Count > 0)
         {
             // Redis has no rollback: EXEC runs every queued command even after one fails.
-            throw new InvalidOperationException("Redis ran the save, but some commands failed and the rest stayed applied: " + string.Join(" | ", failures));
+            throw new InvalidOperationException(RedisStrings.Format("Redis/SaveSomeFailed", string.Join(" | ", failures)));
         }
     }
 

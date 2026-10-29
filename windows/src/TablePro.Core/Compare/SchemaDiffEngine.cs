@@ -1,4 +1,5 @@
 using System.Text;
+using TablePro.Core.Localization;
 using TablePro.Core.Schema;
 
 namespace TablePro.Core.Compare;
@@ -167,7 +168,7 @@ public static class SchemaDiffEngine
 
         if (!source.PrimaryKey.SequenceEqual(target.PrimaryKey, options.NameComparer))
         {
-            notes.Add($"Primary key differs: ({string.Join(", ", source.PrimaryKey)}) against ({string.Join(", ", target.PrimaryKey)}). Change it by hand.");
+            notes.Add(CoreStrings.Format("Compare/PrimaryKeyDiffers", string.Join(", ", source.PrimaryKey), string.Join(", ", target.PrimaryKey)));
         }
 
         if (options.CompareIndexes)
@@ -215,7 +216,7 @@ public static class SchemaDiffEngine
             }
             else
             {
-                notes.Add($"Column {extra.Name} is only in the target and is kept.");
+                notes.Add(CoreStrings.Format("Compare/ColumnOnlyInTarget", extra.Name));
             }
         }
     }

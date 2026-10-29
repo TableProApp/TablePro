@@ -715,7 +715,7 @@ internal static class StructureTables
 
     public static ResultSet Options(TableStructure s, IReadOnlyList<TableOptionSpec> editable) => Build(
         [Strings.Get("Table/HeaderOption"), Strings.Get("Common/Value"), Strings.Get("Table/HeaderEditable")],
-        s.Options.Select(o => new object?[] { o.Name, o.Value, editable.Any(e => e.Name == o.Name) ? Yes : string.Empty }));
+        s.Options.Select(o => new object?[] { TableOptionNames.DisplayName(o.Name), o.Value, editable.Any(e => e.Name == o.Name) ? Yes : string.Empty }));
 
     /// <summary>Bytes in the binary units Windows Explorer uses.</summary>
     public static string Size(long bytes)

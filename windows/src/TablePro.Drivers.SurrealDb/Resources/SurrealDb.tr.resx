@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="BetweenNeedsBothBounds" xml:space="preserve">
+    <value>BETWEEN ile filtrelemek için iki sınırı da girin.</value>
+  </data>
+  <data name="HeldForTransaction" xml:space="preserve">
+    <value>İşlem için bekletiliyor; COMMIT sırasında çalışır.</value>
+  </data>
+  <data name="IdNotEditable" xml:space="preserve">
+    <value>Bir kaydın kimliği düzenlenemez.</value>
+  </data>
+  <data name="None" xml:space="preserve">
+    <value>(yok)</value>
+  </data>
+  <data name="NotCbor" xml:space="preserve">
+    <value>SurrealDB, CBOR dışında bir yanıt verdi.</value>
+  </data>
+  <data name="NotDeclared" xml:space="preserve">
+    <value>bildirilmemiş</value>
+  </data>
+  <data name="QueryFailed" xml:space="preserve">
+    <value>Sorgu başarısız oldu.</value>
+  </data>
+  <data name="RecordIdUnknown" xml:space="preserve">
+    <value>Kaydın kimliği bilinmediğinden kayda erişilemiyor.</value>
+  </data>
+  <data name="RelationFieldNotSaved" xml:space="preserve">
+    <value>'{0}' ızgaradan kaydedilemez. İlişkiyi silin ve yeniden RELATE edin.</value>
+  </data>
+  <data name="TransactionCancelled_One" xml:space="preserve">
+    <value>İşlem iptal edildi; {0} deyim gönderilmedi.</value>
+  </data>
+  <data name="TransactionCancelled_Other" xml:space="preserve">
+    <value>İşlem iptal edildi; {0} deyim gönderilmedi.</value>
+  </data>
+  <data name="TransactionCancelledBecause" xml:space="preserve">
+    <value>İşlem iptal edildi. {0}</value>
+  </data>
+  <data name="TransactionCommitted_One" xml:space="preserve">
+    <value>İşlem işlendi: {0} deyim.</value>
+  </data>
+  <data name="TransactionCommitted_Other" xml:space="preserve">
+    <value>İşlem işlendi: {0} deyim.</value>
+  </data>
+  <data name="TransactionStarted" xml:space="preserve">
+    <value>İşlem başlatıldı. COMMIT'e kadarki deyimler, COMMIT gönderildiğinde birlikte çalışır.</value>
+  </data>
+  <data name="UsingNamespace" xml:space="preserve">
+    <value>{0} ad alanı, {1} veritabanı kullanılıyor.</value>
+  </data>
+  <data name="VariableKept" xml:space="preserve">
+    <value>Değişken, bu sekmede sonraki deyimler için saklanır.</value>
+  </data>
+  <data name="VariableNotReplayed" xml:space="preserve">
+    <value>Değişkenin değeri veri yazdığından sonraki deyimler için yeniden çalıştırılmaz.</value>
+  </data>
+</root>

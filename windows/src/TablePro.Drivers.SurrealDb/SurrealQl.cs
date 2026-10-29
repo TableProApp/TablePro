@@ -2,7 +2,9 @@ using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using TablePro.Core.Browse;
+using TablePro.Core.Localization;
 using TablePro.Drivers.Http;
+using TablePro.Drivers.SurrealDb.Localization;
 
 namespace TablePro.Drivers.SurrealDb;
 
@@ -378,7 +380,7 @@ internal static class SurrealFilter
             FilterOperator.In => $"{column} INSIDE {List(value, kind, table, parameters)}",
             FilterOperator.NotIn => $"{column} NOTINSIDE {List(value, kind, table, parameters)}",
             FilterOperator.Between => Between(rule, column, Bind),
-            _ => throw new NotSupportedException($"SurrealDB cannot filter rows with {rule.Operator.DisplayName()}."),
+            _ => throw new NotSupportedException(CoreStrings.Format("Driver/CannotFilterWith", "SurrealDB", rule.Operator.DisplayName())),
         };
     }
 
@@ -401,7 +403,7 @@ internal static class SurrealFilter
             var comma = value.IndexOf(',', StringComparison.Ordinal);
             if (comma < 0)
             {
-                throw new ArgumentException("Enter both bounds to filter with BETWEEN.");
+                throw new ArgumentException(SurrealDbStrings.Get("SurrealDb/BetweenNeedsBothBounds"));
             }
 
             (low, high) = (value[..comma], value[(comma + 1)..]);

@@ -1,6 +1,7 @@
 using System.Collections.Frozen;
 using System.Globalization;
 using TablePro.Core.Results;
+using TablePro.Drivers.Redis.Localization;
 
 namespace TablePro.Drivers.Redis;
 
@@ -73,7 +74,7 @@ internal static class RedisReplyShaper
                 "ZSCAN" => Pairs(page, MemberColumn, ScoreColumn, limit),
                 _ => Indexed(page, limit),
             };
-            var note = cursor == "0" ? "Cursor 0: the scan is complete." : $"Next cursor: {cursor}";
+            var note = cursor == "0" ? RedisStrings.Get("Redis/ScanComplete") : RedisStrings.Format("Redis/NextCursor", cursor);
             return ShapedReply.Of(set, note);
         }
 

@@ -1,4 +1,5 @@
 using System.Collections.Frozen;
+using TablePro.Core.Localization;
 
 namespace TablePro.Core.Shortcuts;
 
@@ -110,7 +111,7 @@ public static class ShortcutCatalog
     public static ShortcutCommand? Find(string id) => ById.GetValueOrDefault(id);
 
     public static ShortcutCommand Get(string id) =>
-        ById.TryGetValue(id, out var command) ? command : throw new KeyNotFoundException($"No shortcut command '{id}'.");
+        ById.TryGetValue(id, out var command) ? command : throw new KeyNotFoundException(CoreStrings.Format("Shortcuts/UnknownCommand", id));
 
     public static IEnumerable<ShortcutCommand> InCategory(ShortcutCategory category) => Commands.Where(c => c.Category == category);
 

@@ -1,6 +1,7 @@
 using MongoDB.Bson;
 using TablePro.Core.Results;
 using TablePro.Drivers.MongoDb.Documents;
+using TablePro.Drivers.MongoDb.Localization;
 
 namespace TablePro.Drivers.MongoDb.Shell;
 
@@ -38,13 +39,13 @@ internal sealed class WriteTally
         {
             var first = list[0] as BsonDocument;
             throw new ShellWriteException(
-                $"{first?.GetValue("errmsg", "The write failed")} (code {first?.GetValue("code", BsonNull.Value)})",
+                MongoStrings.Format("Mongo/ErrorWithCode", first?.GetValue("errmsg", BsonNull.Value) is { IsString: true } errmsg ? errmsg.AsString : MongoStrings.Get("Mongo/WriteFailed"), first?.GetValue("code", BsonNull.Value)),
                 first?.GetValue("index", 0).ToInt32() ?? 0);
         }
 
         if (reply.TryGetValue("writeConcernError", out var concern) && concern is BsonDocument concernError)
         {
-            throw new ShellWriteException($"The write ran but its write concern was not met: {concernError.GetValue("errmsg", "unknown error")}", 0);
+            throw new ShellWriteException(MongoStrings.Format("Mongo/ConcernNotMet", ReplyResults.ServerMessage(concernError)), 0);
         }
 
         var n = reply.GetValue("n", 0).ToInt64();
@@ -132,6 +133,10 @@ public sealed class ShellWriteException : InvalidOperationException
 /// <summary>Turns a command's reply into what the editor shows, as its <see cref="ReplyShape"/> says.</summary>
 internal static class ReplyResults
 {
+    /// <summary>The server's own <c>errmsg</c>, passed through as sent, or a translated stand-in when it gave none.</summary>
+    public static string ServerMessage(BsonDocument error) =>
+        error.GetValue("errmsg", BsonNull.Value) is { IsString: true } message ? message.AsString : MongoStrings.Get("Mongo/UnknownError");
+
     public static ShellOutcome FromReply(CommandPlan plan, BsonDocument reply, int rowLimit)
     {
         switch (plan.Shape)
@@ -155,13 +160,13 @@ internal static class ReplyResults
                 var affected = reply.GetValue("lastErrorObject", new BsonDocument()) is BsonDocument last ? last.GetValue("n", 0).ToInt32() : 0;
                 return reply.GetValue("value", BsonNull.Value) is BsonDocument value
                     ? ShellOutcome.Of(DocumentResults.Build([value], truncated: false), affected)
-                    : new ShellOutcome([], affected, ["No document matched."]);
+                    : new ShellOutcome([], affected, [MongoStrings.Get("Mongo/NoDocumentMatched")]);
             case ReplyShape.Auto when reply.GetValue("cursor", BsonNull.Value) is BsonDocument cursor && cursor.GetValue("firstBatch", BsonNull.Value) is BsonArray batch:
                 // Only the first batch is shown: a command's cursor is read through its own method, such as find().
                 var documents = batch.OfType<BsonDocument>().ToList();
                 var more = cursor.GetValue("id", 0).ToInt64() != 0;
                 var shown = Limit(documents, rowLimit, list => DocumentResults.Build(list, more));
-                return more ? new ShellOutcome([shown], 0, ["The command returned more documents than its first batch; run the matching method, such as find(), to read them all."]) : ShellOutcome.Of(shown);
+                return more ? new ShellOutcome([shown], 0, [MongoStrings.Get("Mongo/MoreThanFirstBatch")]) : ShellOutcome.Of(shown);
             default:
                 return ShellOutcome.Of(DocumentResults.Build([reply], truncated: false));
         }

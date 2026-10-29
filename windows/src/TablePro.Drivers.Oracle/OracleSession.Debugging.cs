@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using Oracle.ManagedDataAccess.Client;
 using TablePro.Core.Drivers;
 using TablePro.Core.Schema;
+using TablePro.Drivers.Oracle.Localization;
 
 namespace TablePro.Drivers.Oracle;
 
@@ -56,9 +57,9 @@ public sealed partial class OracleSession : IRoutineDebugger
         {
             OracleDebugReadiness.NotVisible => throw new RoutineDebugException(OracleDebugText.UnitUnreadable(target.DisplayName), (string?)null),
             OracleDebugReadiness.NeedsDebugCompile => new RoutineDebugPreparation(
-                $"{target.DisplayName} isn't compiled for debugging.",
+                OracleStrings.Format("Oracle/NotCompiledForDebug", target.DisplayName),
                 OracleDebugText.CompileForDebug(unit.Kind),
-                "Compile for Debug",
+                OracleStrings.Get("Oracle/CompileForDebugAction"),
                 [unit.Kind.CompileForDebugStatement(unit.Owner, unit.Name)]),
             _ => null,
         };

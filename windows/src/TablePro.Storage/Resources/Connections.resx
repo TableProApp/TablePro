@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="BundleCycle" xml:space="preserve">
+    <value>the reference “{0}” is inside itself</value>
+    <comment>A clause after "This file is not a valid TablePro export:". {0} is a reference inside the file.</comment>
+  </data>
+  <data name="BundleDuplicateReference" xml:space="preserve">
+    <value>the reference “{0}” is used more than once</value>
+    <comment>A clause after "This file is not a valid TablePro export:". {0} is a reference inside the file.</comment>
+  </data>
+  <data name="BundleEmptyReference" xml:space="preserve">
+    <value>an item has an empty reference</value>
+    <comment>A clause after "This file is not a valid TablePro export:".</comment>
+  </data>
+  <data name="BundleMissingTarget" xml:space="preserve">
+    <value>“{0}” refers to “{1}”, which is not in the file</value>
+    <comment>A clause after "This file is not a valid TablePro export:". {0} and {1} are references inside the file.</comment>
+  </data>
+  <data name="BundleOrphanCredentials" xml:space="preserve">
+    <value>the passwords for “{0}” belong to no connection in the file</value>
+    <comment>A clause after "This file is not a valid TablePro export:". {0} is a reference inside the file.</comment>
+  </data>
+  <data name="BundleTooDeep" xml:space="preserve">
+    <value>the reference “{0}” is nested too deeply</value>
+    <comment>A clause after "This file is not a valid TablePro export:". {0} is a reference inside the file.</comment>
+  </data>
+  <data name="EncryptedCorrupt" xml:space="preserve">
+    <value>The encrypted file is corrupt or incomplete.</value>
+  </data>
+  <data name="EncryptionVersionUnsupported" xml:space="preserve">
+    <value>Unsupported encryption version {0}. Update TablePro to open this file.</value>
+    <comment>{0} is a version number.</comment>
+  </data>
+  <data name="GroupContainsItself" xml:space="preserve">
+    <value>A group cannot contain itself.</value>
+  </data>
+  <data name="GroupIntoSubgroup" xml:space="preserve">
+    <value>A group cannot move inside one of its own subgroups.</value>
+  </data>
+  <data name="ImportedConnectionName" xml:space="preserve">
+    <value>Imported connection</value>
+    <comment>The name given to an imported connection that has none.</comment>
+  </data>
+  <data name="ImportedGroupName" xml:space="preserve">
+    <value>Imported</value>
+    <comment>The name given to an imported group that has none.</comment>
+  </data>
+  <data name="IncorrectPassphrase" xml:space="preserve">
+    <value>Incorrect passphrase.</value>
+  </data>
+  <data name="NewerFormat" xml:space="preserve">
+    <value>This file requires a newer version of TablePro (format version {0}).</value>
+    <comment>{0} is a format version number.</comment>
+  </data>
+  <data name="NoDriverFor" xml:space="preserve">
+    <value>TablePro for Windows has no driver for {0}.</value>
+    <comment>{0} is the database type the file names.</comment>
+  </data>
+  <data name="NotAnExport" xml:space="preserve">
+    <value>This file is not a valid TablePro export.</value>
+  </data>
+  <data name="NotAnExportBecause" xml:space="preserve">
+    <value>This file is not a valid TablePro export: {0}.</value>
+    <comment>{0} is one of the Bundle* clauses.</comment>
+  </data>
+  <data name="ParseFailed" xml:space="preserve">
+    <value>Failed to parse connection file: {0}</value>
+    <comment>{0} is the JSON reader's own message.</comment>
+  </data>
+  <data name="PassphraseRequired" xml:space="preserve">
+    <value>This file is encrypted and requires a passphrase.</value>
+  </data>
+  <data name="PasswordsNeedEncryption" xml:space="preserve">
+    <value>Saved passwords can only be exported to an encrypted file.</value>
+  </data>
+</root>

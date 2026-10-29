@@ -1,4 +1,5 @@
 using System.Globalization;
+using TablePro.Core.Localization;
 
 namespace TablePro.Core.Plans.Parsers;
 
@@ -212,7 +213,7 @@ public static class CockroachDbPlanParser
 
         return new QueryPlanNode
         {
-            Operation = operation.Length == 0 ? "Unknown" : operation,
+            Operation = operation.Length == 0 ? CoreStrings.Get("Plan/UnknownOperation") : operation,
             Relation = relation,
             EstimatedRows = RowCount(raw.GetValueOrDefault("estimated row count")),
             ActualRows = RowCount(raw.GetValueOrDefault("actual row count")),

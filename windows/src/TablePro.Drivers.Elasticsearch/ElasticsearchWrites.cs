@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text;
 using System.Text.Json.Nodes;
 using TablePro.Core.Editing;
+using TablePro.Core.Localization;
 using TablePro.Drivers.Http;
 
 namespace TablePro.Drivers.Elasticsearch;
@@ -133,7 +134,7 @@ internal static class EsWrites
     private static string Id(IReadOnlyDictionary<string, object?> key) =>
         key.TryGetValue(EsMapping.IdColumn, out var id) && Convert.ToString(id, CultureInfo.InvariantCulture) is { Length: > 0 } text
             ? text
-            : throw new InvalidOperationException("The document's _id is unknown, so it cannot be addressed.");
+            : throw new InvalidOperationException(CoreStrings.Format("Driver/DocumentIdUnknown", "_id"));
 
     private static JsonObject Target(string index, string? id)
     {

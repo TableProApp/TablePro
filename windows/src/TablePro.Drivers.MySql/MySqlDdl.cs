@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using TablePro.Core.Localization;
 using TablePro.Core.Schema;
 using TablePro.Core.Sql;
 
@@ -402,14 +403,14 @@ internal static class MySqlDdl
         var value = change.After?.Trim();
         if (string.IsNullOrEmpty(value))
         {
-            throw new ArgumentException($"{name} needs a value.");
+            throw new ArgumentException(CoreStrings.Format("Driver/OptionNeedsValue", name));
         }
 
         foreach (var c in value)
         {
             if (!char.IsAsciiLetterOrDigit(c) && c != '_')
             {
-                throw new ArgumentException($"\"{value}\" is not a valid {name.ToLowerInvariant()}.");
+                throw new ArgumentException(CoreStrings.Format("Driver/OptionInvalidValue", value, name));
             }
         }
 
@@ -419,7 +420,7 @@ internal static class MySqlDdl
     private static string PositiveNumber(TableOptionChange change, string name) =>
         ulong.TryParse(change.After?.Trim(), NumberStyles.None, CultureInfo.InvariantCulture, out var value) && value > 0
             ? value.ToString(CultureInfo.InvariantCulture)
-            : throw new ArgumentException($"{name} is a whole number above zero.");
+            : throw new ArgumentException(CoreStrings.Format("Driver/OptionPositiveWholeNumber", name));
 
     public static string CreateDatabase(string name) => "CREATE DATABASE " + Q(name);
 

@@ -1,3 +1,5 @@
+using TablePro.Core.Localization;
+
 namespace TablePro.Core.Plans;
 
 /// <summary>How expensive a plan node is relative to the whole plan, so every plan view grades a node the same way.</summary>
@@ -36,9 +38,9 @@ public static class QueryPlanSeverities
     /// <summary>What a screen reader says for the badge, since the glyph and colour carry the meaning visually.</summary>
     public static string Label(this QueryPlanSeverity severity) => severity switch
     {
-        QueryPlanSeverity.Low => "Low cost",
-        QueryPlanSeverity.Moderate => "Moderate cost",
-        QueryPlanSeverity.High => "High cost",
-        _ => "Critical cost",
+        QueryPlanSeverity.Low => CoreStrings.Get("Plan/SeverityLow"),
+        QueryPlanSeverity.Moderate => CoreStrings.Get("Plan/SeverityModerate"),
+        QueryPlanSeverity.High => CoreStrings.Get("Plan/SeverityHigh"),
+         _ => CoreStrings.Get("Plan/SeverityCritical"),
     };
 }

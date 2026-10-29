@@ -1,0 +1,196 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AccessibleActualTime" xml:space="preserve">
+    <value>Actual Time {0}</value>
+    <comment>Part of a plan step's spoken name. {0} is a duration.</comment>
+  </data>
+  <data name="AccessibleCost" xml:space="preserve">
+    <value>Cost {0}</value>
+    <comment>Part of a plan step's spoken name. {0} is a cost.</comment>
+  </data>
+  <data name="AccessibleOnRelation" xml:space="preserve">
+    <value>on {0}</value>
+    <comment>Part of a plan step's spoken name. {0} is a table.</comment>
+  </data>
+  <data name="AccessibleRows_One" xml:space="preserve">
+    <value>{0} Row</value>
+  </data>
+  <data name="AccessibleRows_Other" xml:space="preserve">
+    <value>{0} Rows</value>
+  </data>
+  <data name="AccessibleSeparator" xml:space="preserve">
+    <value>, </value>
+    <comment>Joins the parts of a plan step's spoken name; keep the trailing space where the language uses one.</comment>
+  </data>
+  <data name="AccessibleWarnings_One" xml:space="preserve">
+    <value>Warnings: {0}</value>
+  </data>
+  <data name="AccessibleWarnings_Other" xml:space="preserve">
+    <value>Warnings: {0}</value>
+  </data>
+  <data name="BarMetricSelfCost" xml:space="preserve">
+    <value>Self Cost</value>
+  </data>
+  <data name="BarMetricSelfTime" xml:space="preserve">
+    <value>Self Time</value>
+  </data>
+  <data name="ColumnsWithNoStatistics" xml:space="preserve">
+    <value>Columns with no statistics</value>
+    <comment>SQL Server plan warning.</comment>
+  </data>
+  <data name="ImplicitConversion" xml:space="preserve">
+    <value>Implicit conversion: {0}</value>
+    <comment>SQL Server plan warning. {0} is the expression.</comment>
+  </data>
+  <data name="ImplicitConversionIssue" xml:space="preserve">
+    <value>Implicit conversion ({0}): {1}</value>
+    <comment>SQL Server plan warning. {0} is the issue SQL Server names, {1} the expression.</comment>
+  </data>
+  <data name="LabelActualRows" xml:space="preserve">
+    <value>Actual Rows</value>
+  </data>
+  <data name="LabelActualTime" xml:space="preserve">
+    <value>Actual Time</value>
+  </data>
+  <data name="LabelCost" xml:space="preserve">
+    <value>Cost</value>
+  </data>
+  <data name="LabelLoops" xml:space="preserve">
+    <value>Loops</value>
+  </data>
+  <data name="LabelMissingIndex" xml:space="preserve">
+    <value>Missing Index</value>
+  </data>
+  <data name="LabelRows" xml:space="preserve">
+    <value>Rows</value>
+  </data>
+  <data name="LabelTable" xml:space="preserve">
+    <value>Table</value>
+  </data>
+  <data name="LabelValue" xml:space="preserve">
+    <value>{0}: {1}</value>
+    <comment>One line of a plan step's details. {0} is the label, {1} the value.</comment>
+  </data>
+  <data name="LabelWarning" xml:space="preserve">
+    <value>Warning</value>
+  </data>
+  <data name="LabelWidth" xml:space="preserve">
+    <value>Width</value>
+  </data>
+  <data name="MetricActualLoops" xml:space="preserve">
+    <value>Actual Loops</value>
+  </data>
+  <data name="MetricActualRows" xml:space="preserve">
+    <value>Actual Rows</value>
+  </data>
+  <data name="MetricActualStartupTime" xml:space="preserve">
+    <value>Actual Startup Time</value>
+  </data>
+  <data name="MetricActualTotalTime" xml:space="preserve">
+    <value>Actual Total Time</value>
+  </data>
+  <data name="MetricEstimatedRows" xml:space="preserve">
+    <value>Estimated Rows</value>
+  </data>
+  <data name="MetricEstimatedStartupCost" xml:space="preserve">
+    <value>Estimated Startup Cost</value>
+  </data>
+  <data name="MetricEstimatedTotalCost" xml:space="preserve">
+    <value>Estimated Total Cost</value>
+  </data>
+  <data name="MetricEstimatedWidth" xml:space="preserve">
+    <value>Estimated Width</value>
+  </data>
+  <data name="NeverExecuted" xml:space="preserve">
+    <value>Never executed</value>
+    <comment>Value of a plan step's Execution property when the engine never ran that step.</comment>
+  </data>
+  <data name="PlanRoot" xml:space="preserve">
+    <value>Query Plan</value>
+    <comment>Name of the step TablePro adds above a plan that has several top-level steps.</comment>
+  </data>
+  <data name="SeverityCritical" xml:space="preserve">
+    <value>Critical cost</value>
+  </data>
+  <data name="SeverityHigh" xml:space="preserve">
+    <value>High cost</value>
+  </data>
+  <data name="SeverityLow" xml:space="preserve">
+    <value>Low cost</value>
+    <comment>What a screen reader says for a plan step's cost badge.</comment>
+  </data>
+  <data name="SeverityModerate" xml:space="preserve">
+    <value>Moderate cost</value>
+  </data>
+  <data name="ShareOfLargestStep" xml:space="preserve">
+    <value>{0} of the largest step</value>
+    <comment>{0} is a share such as 42%, measured against the largest step.</comment>
+  </data>
+  <data name="ShareOfPlan" xml:space="preserve">
+    <value>{0} of the plan</value>
+    <comment>{0} is a share such as 42%.</comment>
+  </data>
+  <data name="ShowplanTooDeep" xml:space="preserve">
+    <value>The showplan nests too deeply.</value>
+  </data>
+  <data name="SpillToTempDb" xml:space="preserve">
+    <value>Spill to tempdb</value>
+    <comment>SQL Server plan warning.</comment>
+  </data>
+  <data name="SpillToTempDbLevel" xml:space="preserve">
+    <value>Spill to tempdb, level {0}</value>
+    <comment>SQL Server plan warning. {0} is the spill level.</comment>
+  </data>
+  <data name="SummaryEstimatedRows" xml:space="preserve">
+    <value>Estimated rows</value>
+  </data>
+  <data name="SummaryExecutionTime" xml:space="preserve">
+    <value>Execution time</value>
+  </data>
+  <data name="SummaryNodeCount" xml:space="preserve">
+    <value>Node count</value>
+  </data>
+  <data name="SummaryPlanningTime" xml:space="preserve">
+    <value>Planning time</value>
+  </data>
+  <data name="SummaryTotalCost" xml:space="preserve">
+    <value>Cost</value>
+  </data>
+  <data name="UnknownOperation" xml:space="preserve">
+    <value>Unknown</value>
+    <comment>Name of a plan step whose operation the engine did not report.</comment>
+  </data>
+  <data name="ValueChanged" xml:space="preserve">
+    <value>Changed</value>
+    <comment>A plan value changed but has no number to show the difference.</comment>
+  </data>
+  <data name="VerdictFaster" xml:space="preserve">
+    <value>{0:0.#}x faster than the baseline</value>
+    <comment>{0} is how many times faster, such as 2.5.</comment>
+  </data>
+  <data name="VerdictShapeChanged" xml:space="preserve">
+    <value>The plan shape changed</value>
+  </data>
+  <data name="VerdictSlower" xml:space="preserve">
+    <value>{0:0.#}x slower than the baseline</value>
+    <comment>{0} is how many times slower, such as 2.5.</comment>
+  </data>
+  <data name="VerdictUnchanged" xml:space="preserve">
+    <value>No measurable change</value>
+  </data>
+  <data name="VerdictValuesChanged" xml:space="preserve">
+    <value>Same plan shape, different numbers</value>
+  </data>
+</root>

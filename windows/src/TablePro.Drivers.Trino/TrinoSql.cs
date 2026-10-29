@@ -2,6 +2,8 @@ using System.Globalization;
 using System.Text;
 using TablePro.Core.Browse;
 using TablePro.Core.Editing;
+using TablePro.Core.Localization;
+using TablePro.Drivers.Trino.Localization;
 
 namespace TablePro.Drivers.Trino;
 
@@ -197,7 +199,7 @@ internal static class TrinoSql
     /// <summary>The write for one grid change, with each value a literal of its column's type.</summary>
     public static string Change(string qualifiedTable, RowChange change, IReadOnlyDictionary<string, string> columnTypes) => change switch
     {
-        RowInsert insert when insert.Values.Count == 0 => throw new InvalidOperationException("Trino needs at least one value to insert a row."),
+        RowInsert insert when insert.Values.Count == 0 => throw new InvalidOperationException(CoreStrings.Format("Driver/InsertNeedsValue", "Trino")),
         RowInsert insert =>
             $"INSERT INTO {qualifiedTable} ({string.Join(", ", insert.Values.Keys.Select(TrinoTypes.QuoteIdentifier))}) "
             + $"VALUES ({string.Join(", ", insert.Values.Select(p => TrinoTypes.Literal(p.Value, TypeOf(columnTypes, p.Key))))})",
@@ -228,6 +230,6 @@ internal static class TrinoSql
             terms.Add(value is null ? $"{quoted} IS NULL" : $"{quoted} = {TrinoTypes.Literal(value, type)}");
         }
 
-        return terms.Count > 0 ? string.Join(" AND ", terms) : throw new InvalidOperationException("A row needs at least one comparable key column to be changed safely.");
+        return terms.Count > 0 ? string.Join(" AND ", terms) : throw new InvalidOperationException(TrinoStrings.Get("Trino/NeedsComparableKey"));
     }
 }

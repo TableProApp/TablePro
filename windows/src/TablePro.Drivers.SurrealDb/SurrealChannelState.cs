@@ -3,6 +3,7 @@ using System.Text.RegularExpressions;
 using TablePro.Core.Results;
 using TablePro.Core.Sql;
 using TablePro.Drivers.Http;
+using TablePro.Drivers.SurrealDb.Localization;
 
 namespace TablePro.Drivers.SurrealDb;
 
@@ -35,7 +36,7 @@ internal sealed partial class SurrealChannelState
         if (kind == StatementKind.Transaction && verb == "BEGIN")
         {
             _transaction = [];
-            return new StatementOutcome([], -1, ["Transaction started. The statements up to COMMIT run together when it is sent."]);
+            return new StatementOutcome([], -1, [SurrealDbStrings.Get("SurrealDb/TransactionStarted")]);
         }
 
         if (_transaction is not null)
@@ -45,18 +46,19 @@ internal sealed partial class SurrealChannelState
                 var held = _transaction;
                 _transaction = null;
                 return verb == "CANCEL"
-                    ? new StatementOutcome([], -1, [$"Transaction cancelled; {held.Count} statement(s) were not sent."])
+                    ? new StatementOutcome([], -1, [SurrealDbStrings.Plural("SurrealDb/TransactionCancelled", held.Count)])
                     : await CommitAsync(held, options, cancellationToken);
             }
 
             _transaction.Add(trimmed);
-            return new StatementOutcome([], -1, ["Held for the transaction; it runs at COMMIT."]);
+            return new StatementOutcome([], -1, [SurrealDbStrings.Get("SurrealDb/HeldForTransaction")]);
         }
 
         if (verb == "USE")
         {
             ApplyUse(trimmed);
-            return new StatementOutcome([], -1, [$"Using namespace {_namespace ?? "(none)"}, database {_database ?? "(none)"}."]);
+            var none = SurrealDbStrings.Get("SurrealDb/None");
+            return new StatementOutcome([], -1, [SurrealDbStrings.Format("SurrealDb/UsingNamespace", _namespace ?? none, _database ?? none)]);
         }
 
         using var response = await _session.QueryAsync(Script([trimmed]), _database, cancellationToken, throwOnError: false, namespaceOverride: _namespace);
@@ -72,10 +74,10 @@ internal sealed partial class SurrealChannelState
             if (!HasWrite(trimmed))
             {
                 _carried.Add(trimmed);
-                return new StatementOutcome([], -1, ["The variable is kept for the statements that follow in this tab."]);
+                return new StatementOutcome([], -1, [SurrealDbStrings.Get("SurrealDb/VariableKept")]);
             }
 
-            return new StatementOutcome([], -1, ["The variable's value writes data, so it is not replayed for later statements."]);
+            return new StatementOutcome([], -1, [SurrealDbStrings.Get("SurrealDb/VariableNotReplayed")]);
         }
 
         if (kind is StatementKind.Ddl or StatementKind.Write)
@@ -105,12 +107,12 @@ internal sealed partial class SurrealChannelState
         var errors = results.Where(r => !r.Ok).Select(r => r.Error ?? string.Empty).ToArray();
         if (errors.Length > 0)
         {
-            throw new ServerRequestException("The transaction was cancelled. " + SurrealDbSession.RootCause(errors));
+            throw new ServerRequestException(SurrealDbStrings.Format("SurrealDb/TransactionCancelledBecause", SurrealDbSession.RootCause(errors)));
         }
 
         _session.ForgetKinds();
         var outcome = Render(results, StatementKind.Write, options.RowLimit);
-        return outcome with { Messages = [$"Transaction committed: {held.Count} statement(s)."] };
+        return outcome with { Messages = [SurrealDbStrings.Plural("SurrealDb/TransactionCommitted", held.Count)] };
     }
 
     private string Script(IEnumerable<string> statements)

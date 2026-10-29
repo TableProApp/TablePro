@@ -2,6 +2,7 @@ using MongoDB.Bson;
 using MongoDB.Driver;
 using TablePro.Core.Results;
 using TablePro.Drivers.MongoDb.Documents;
+using TablePro.Drivers.MongoDb.Localization;
 
 namespace TablePro.Drivers.MongoDb.Shell;
 
@@ -21,7 +22,7 @@ internal sealed class ShellRunner(IMongoClient client)
         ListIndexesPlan indexes => await ListIndexesAsync(indexes, options, cancellationToken),
         CommandPlan command => await CommandAsync(command, options, cancellationToken),
         BatchPlan batch => await BatchAsync(batch, cancellationToken),
-        _ => throw new ShellUnsupportedException("The statement is not supported."),
+        _ => throw new ShellUnsupportedException(MongoStrings.Get("Mongo/StatementUnsupported")),
     };
 
     public static async Task<(List<BsonDocument> Documents, bool Truncated)> ReadAsync(IAsyncCursor<BsonDocument> cursor, int rowLimit, CancellationToken cancellationToken)
@@ -188,7 +189,7 @@ internal sealed class ShellRunner(IMongoClient client)
 
         if (errors.Count > 0)
         {
-            throw new ShellWriteException($"{errors.Count} of {plan.Steps.Count} operations failed: {string.Join("; ", errors)}");
+            throw new ShellWriteException(MongoStrings.Format("Mongo/OperationsFailed", errors.Count, plan.Steps.Count, string.Join("; ", errors)));
         }
 
         return ShellOutcome.Of(tally.ToResult(), tally.Affected);

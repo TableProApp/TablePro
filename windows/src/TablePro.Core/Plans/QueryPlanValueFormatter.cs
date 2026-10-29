@@ -1,4 +1,5 @@
 using System.Globalization;
+using TablePro.Core.Localization;
 
 namespace TablePro.Core.Plans;
 
@@ -65,7 +66,7 @@ public static class QueryPlanValueFormatter
 
         if (change.Delta is not { } delta || change.Field.Unit is not { } unit)
         {
-            return "Changed";
+            return CoreStrings.Get("Plan/ValueChanged");
         }
 
         var magnitude = Format(Math.Abs(delta), unit, provider);

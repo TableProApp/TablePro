@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AvailableAfterSetRole" xml:space="preserve">
+    <value>SET ROLE {0} sonrasında kullanılabilir.</value>
+  </data>
+  <data name="CannotApply" xml:space="preserve">
+    <value>Bu sunucu {1} için "{0}" işlemini uygulayamaz.</value>
+  </data>
+  <data name="CategoryAdministration" xml:space="preserve">
+    <value>Yönetim</value>
+  </data>
+  <data name="CategoryData" xml:space="preserve">
+    <value>Veri</value>
+  </data>
+  <data name="CategoryDynamic" xml:space="preserve">
+    <value>Dinamik</value>
+  </data>
+  <data name="CategoryOther" xml:space="preserve">
+    <value>Diğer</value>
+  </data>
+  <data name="CategoryStructure" xml:space="preserve">
+    <value>Yapı</value>
+  </data>
+  <data name="ConnectToBrowse" xml:space="preserve">
+    <value>Göz atmak için bu veritabanına bağlanın</value>
+  </data>
+  <data name="GrantedOn" xml:space="preserve">
+    <value>{0} üzerinde verildi</value>
+  </data>
+  <data name="GrantsInside_One" xml:space="preserve">
+    <value>İçeride {0} yetki</value>
+  </data>
+  <data name="GrantsInside_Other" xml:space="preserve">
+    <value>İçeride {0} yetki</value>
+  </data>
+  <data name="InheritedAutomatically" xml:space="preserve">
+    <value>Otomatik olarak devralındı.</value>
+  </data>
+  <data name="InheritedFrom" xml:space="preserve">
+    <value>{0} kaynağından devralındı</value>
+  </data>
+  <data name="KindRole" xml:space="preserve">
+    <value>Rol</value>
+  </data>
+  <data name="KindUser" xml:space="preserve">
+    <value>Kullanıcı</value>
+  </data>
+  <data name="SelfImpactAlter" xml:space="preserve">
+    <value>Bu değişiklikler, bu bağlantının kullandığı hesap olan {0} hesabını değiştirir.</value>
+  </data>
+  <data name="SelfImpactDrop" xml:space="preserve">
+    <value>Bu değişiklikler, bu bağlantının kullandığı hesap olan {0} hesabını siler.</value>
+  </data>
+  <data name="SelfImpactRevokeAll" xml:space="preserve">
+    <value>Bu değişiklikler, bu bağlantının kullandığı hesap olan {0} hesabından tüm yetkileri geri alır.</value>
+  </data>
+  <data name="Server" xml:space="preserve">
+    <value>Sunucu</value>
+  </data>
+  <data name="StageCreated" xml:space="preserve">
+    <value>Değişiklikleri uyguladığınızda oluşturulacak</value>
+  </data>
+  <data name="StageDropped" xml:space="preserve">
+    <value>Değişiklikleri uyguladığınızda silinecek</value>
+  </data>
+  <data name="StageModified" xml:space="preserve">
+    <value>Kaydedilmemiş değişiklikler var</value>
+  </data>
+  <data name="StatementChangePassword" xml:space="preserve">
+    <value>{0} için parolayı değiştir</value>
+  </data>
+  <data name="StatementCreate" xml:space="preserve">
+    <value>{0} oluştur</value>
+  </data>
+  <data name="StatementDrop" xml:space="preserve">
+    <value>{0} bırak</value>
+  </data>
+  <data name="StatementGrant" xml:space="preserve">
+    <value>{0} hesabına yetki ver</value>
+  </data>
+  <data name="StatementRevoke" xml:space="preserve">
+    <value>{0} hesabından yetkileri geri al</value>
+  </data>
+  <data name="StatementUpdate" xml:space="preserve">
+    <value>{0} güncelle</value>
+  </data>
+  <data name="SummaryAll" xml:space="preserve">
+    <value>Tümü ({0})</value>
+  </data>
+  <data name="SummaryGrantable" xml:space="preserve">
+    <value>{0} (verilebilir)</value>
+  </data>
+  <data name="SummaryNone" xml:space="preserve">
+    <value>Yok</value>
+  </data>
+  <data name="SummaryOverflow" xml:space="preserve">
+    <value>{0} +{1}</value>
+  </data>
+  <data name="UndoChangeAttributes" xml:space="preserve">
+    <value>Öznitelikleri Değiştir</value>
+  </data>
+  <data name="UndoChangePassword" xml:space="preserve">
+    <value>{0} İçin Parolayı Değiştir</value>
+  </data>
+  <data name="UndoCopyPrivileges" xml:space="preserve">
+    <value>Yetkileri {0} Kaynağından Kopyala</value>
+  </data>
+  <data name="UndoCreate" xml:space="preserve">
+    <value>{0} Oluştur</value>
+  </data>
+  <data name="UndoDrop" xml:space="preserve">
+    <value>{0} Bırak</value>
+  </data>
+  <data name="UndoDropMany_One" xml:space="preserve">
+    <value>{0} kullanıcı veya rolü bırak</value>
+  </data>
+  <data name="UndoDropMany_Other" xml:space="preserve">
+    <value>{0} kullanıcı ve rolü bırak</value>
+  </data>
+  <data name="UndoGrant" xml:space="preserve">
+    <value>Yetki ver</value>
+  </data>
+  <data name="UndoKeep" xml:space="preserve">
+    <value>{0} Koru</value>
+  </data>
+  <data name="UndoRemove" xml:space="preserve">
+    <value>{0} Öğesini Kaldır</value>
+  </data>
+  <data name="UndoRevoke" xml:space="preserve">
+    <value>Yetkiyi geri al</value>
+  </data>
+  <data name="UnknownChange" xml:space="preserve">
+    <value>Bilinmeyen değişiklik: {0}.</value>
+  </data>
+</root>

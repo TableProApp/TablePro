@@ -1,8 +1,8 @@
-using System.Globalization;
 using System.Text;
 using System.Text.Unicode;
 using TablePro.Core.Results;
 using TablePro.Core.Schema;
+using TablePro.Drivers.Etcd.Localization;
 
 namespace TablePro.Drivers.Etcd;
 
@@ -16,14 +16,16 @@ internal static class EtcdRows
     public const string ModRevisionColumn = "mod_revision";
     public const string LeaseColumn = "lease";
 
-    public static IReadOnlyList<ColumnInfo> Columns { get; } =
+    // Built on each read, so the comments are worded in the language of the moment: a list cached on first use could
+    // keep the English an MCP request reads.
+    public static IReadOnlyList<ColumnInfo> Columns =>
     [
         new(KeyColumn, "TEXT", false, null, true, false, 0),
         new(ValueColumn, "TEXT", true, null, false, false, 1),
-        new(VersionColumn, "BIGINT", false, null, false, false, 2, "How many times the key changed since it was created."),
+        new(VersionColumn, "BIGINT", false, null, false, false, 2, EtcdStrings.Get("Etcd/VersionComment")),
         new(CreateRevisionColumn, "BIGINT", false, null, false, false, 3),
         new(ModRevisionColumn, "BIGINT", false, null, false, false, 4),
-        new(LeaseColumn, "TEXT", true, null, false, false, 5, "The lease the key is attached to, in hex as etcdctl prints it."),
+        new(LeaseColumn, "TEXT", true, null, false, false, 5, EtcdStrings.Get("Etcd/LeaseComment")),
     ];
 
     /// <summary>
@@ -68,8 +70,9 @@ internal static class EtcdRows
     /// <summary>What the sidebar shows beside a key.</summary>
     public static string Describe(EtcdKeyValue kv)
     {
-        var text = string.Create(CultureInfo.InvariantCulture, $"version {kv.Version}, revision {kv.ModRevision}");
-        return kv.Lease == 0 ? text : $"{text}, lease {EtcdCommandParser.LeaseHex(kv.Lease)}";
+        return kv.Lease == 0
+            ? EtcdStrings.Format("Etcd/DescribeKey", kv.Version, kv.ModRevision)
+            : EtcdStrings.Format("Etcd/DescribeKeyWithLease", kv.Version, kv.ModRevision, EtcdCommandParser.LeaseHex(kv.Lease));
     }
 
     /// <summary>

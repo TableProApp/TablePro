@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using TablePro.Core.Localization;
 
 namespace TablePro.Core.Compare;
 
@@ -40,8 +41,8 @@ public sealed class DataDiffEngine
 
         var stopwatch = Stopwatch.StartNew();
         var accumulator = new Accumulator(_options.MaxRetainedDifferences);
-        await using var left = new Reader(this, source, "source", accumulator, cancellationToken);
-        await using var right = new Reader(this, target, "target", accumulator, cancellationToken);
+        await using var left = new Reader(this, source, isSource: true, accumulator, cancellationToken);
+        await using var right = new Reader(this, target, isSource: false, accumulator, cancellationToken);
 
         var sourceRow = await left.NextAsync();
         var targetRow = await right.NextAsync();
@@ -204,7 +205,7 @@ public sealed class DataDiffEngine
     }
 
     /// <summary>One side's stream, checked for order and duplicates as it is read, and cut at the row limit.</summary>
-    private sealed class Reader(DataDiffEngine engine, IAsyncEnumerable<object?[]> rows, string side, Accumulator accumulator, CancellationToken cancellationToken)
+    private sealed class Reader(DataDiffEngine engine, IAsyncEnumerable<object?[]> rows, bool isSource, Accumulator accumulator, CancellationToken cancellationToken)
         : IAsyncDisposable
     {
         private readonly IAsyncEnumerator<object?[]> _rows = rows.GetAsyncEnumerator(cancellationToken);
@@ -241,7 +242,7 @@ public sealed class DataDiffEngine
                 var row = _rows.Current;
                 if (row.Length < engine._spec.Columns.Count)
                 {
-                    throw new CompareException($"The {side} returned {row.Length} columns where {engine._spec.Columns.Count} were expected.");
+                    throw new CompareException(CoreStrings.Format(isSource ? "Compare/SourceColumnCount" : "Compare/TargetColumnCount", row.Length, engine._spec.Columns.Count));
                 }
 
                 Count++;
@@ -259,6 +260,15 @@ public sealed class DataDiffEngine
 
         public ValueTask DisposeAsync() => _rows.DisposeAsync();
 
+        // Case-insensitive keys are a way out only while they are off, so the hint is left out once they are on.
+        private string SortOrderKey() => (isSource, engine._options.KeysIgnoreCase) switch
+        {
+            (true, true) => "Compare/SortOrderSource",
+            (true, false) => "Compare/SortOrderSourceHint",
+            (false, true) => "Compare/SortOrderTarget",
+            (false, false) => "Compare/SortOrderTargetHint",
+        };
+
         private void CheckOrder(object?[] row)
         {
             if (_previous is null)
@@ -274,8 +284,8 @@ public sealed class DataDiffEngine
 
             var key = engine._spec.DescribeKey(row);
             throw order == 0
-                ? new CompareException($"Key {key} matches more than one row in the {side}. Choose key columns that identify a single row.")
-                : new CompareException($"The {side} sorted rows differently than the comparison expects, near key {key}. Pick a numeric key, or one whose collation sorts by byte value{(engine._options.KeysIgnoreCase ? string.Empty : ", or turn on case-insensitive keys")}.");
+                ? new CompareException(CoreStrings.Format(isSource ? "Compare/DuplicateKeyInSource" : "Compare/DuplicateKeyInTarget", key))
+                : new CompareException(CoreStrings.Format(SortOrderKey(), key));
         }
     }
 }

@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="EstimatedScan" xml:space="preserve">
+    <value>Analyse estimée : {0}.</value>
+  </data>
+  <data name="EstimatedScanWithLimit" xml:space="preserve">
+    <value>Analyse estimée : {0} (limite {1}).</value>
+  </data>
+  <data name="NeedsProjectId" xml:space="preserve">
+    <value>BigQuery a besoin d’un ID de projet. Saisissez-le comme base de données.</value>
+  </data>
+  <data name="NoComparableColumn" xml:space="preserve">
+    <value>La ligne n’a aucune colonne que BigQuery peut comparer, elle ne peut donc pas être modifiée en toute sécurité. Indiquez les colonnes clés dans l’option keyColumns.</value>
+  </data>
+  <data name="NotAByteCount" xml:space="preserve">
+    <value>La valeur maxBytesBilled « {0} » n’est pas un nombre d’octets, tel que 10000000000 ou 10GB.</value>
+  </data>
+  <data name="NotConnected" xml:space="preserve">
+    <value>La session BigQuery n’est pas connectée.</value>
+  </data>
+  <data name="OverLimit" xml:space="preserve">
+    <value>Non exécutée : la requête analyserait {0}, au-delà de la limite maxBytesBilled de {1}.</value>
+  </data>
+</root>

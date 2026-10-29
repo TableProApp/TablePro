@@ -1,3 +1,4 @@
+using System.Globalization;
 using TablePro.Core.Sql;
 
 namespace TablePro.Drivers.Redis.Tests;
@@ -69,4 +70,20 @@ public sealed class RedisCommandPolicyTests
     [InlineData("SELECT 2", false)]
     [InlineData("UNKNOWNCMD", true)]
     public void ClassifiesWrites(string command, bool write) => Assert.Equal(write, RedisCommandPolicy.IsWrite(command));
+
+    [Fact]
+    public void ARefusalFollowsTheUiLanguage()
+    {
+        var saved = CultureInfo.CurrentUICulture;
+        try
+        {
+            CultureInfo.CurrentUICulture = CultureInfo.GetCultureInfo("fr");
+
+            Assert.Equal("Cette connexion est en lecture seule, SET n\x2019a donc pas été envoyé.", Refusal("set a 1", readOnly: true));
+        }
+        finally
+        {
+            CultureInfo.CurrentUICulture = saved;
+        }
+    }
 }

@@ -1,3 +1,5 @@
+using TablePro.Core.Localization;
+
 namespace TablePro.Core.Connections;
 
 /// <summary>
@@ -43,7 +45,7 @@ public static class ElastiCacheAuthToken
         }
 
         return string.IsNullOrWhiteSpace(profileRegion)
-            ? throw new InvalidOperationException("Enter the AWS region the ElastiCache cache runs in.")
+            ? throw new InvalidOperationException(CoreStrings.Get("SignIn/ElastiCacheRegionRequired"))
             : profileRegion.Trim();
     }
 
@@ -54,6 +56,6 @@ public static class ElastiCacheAuthToken
         ArgumentNullException.ThrowIfNull(profile);
         return profile.Auth?.AwsElastiCacheName is { } name && !string.IsNullOrWhiteSpace(name)
             ? name.Trim()
-            : throw new InvalidOperationException("Enter the ElastiCache cache name (replication group ID) to use IAM authentication.");
+            : throw new InvalidOperationException(CoreStrings.Get("SignIn/ElastiCacheNameRequired"));
     }
 }

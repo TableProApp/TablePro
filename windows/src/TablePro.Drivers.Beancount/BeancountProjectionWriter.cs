@@ -1,5 +1,6 @@
 using System.Globalization;
 using Microsoft.Data.Sqlite;
+using TablePro.Drivers.Beancount.Localization;
 
 namespace TablePro.Drivers.Beancount;
 
@@ -328,7 +329,7 @@ internal sealed class BeancountProjectionWriter : IDisposable
 
             if (!transactionIds.Contains(transactionId))
             {
-                throw new BeancountException(string.Create(CultureInfo.InvariantCulture, $"Beancount posting references missing transaction ID {transactionId}"));
+                throw new BeancountException(BeancountStrings.Format("Beancount/MissingTransaction", transactionId));
             }
 
             postingId++;

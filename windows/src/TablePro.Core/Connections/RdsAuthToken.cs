@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
+using TablePro.Core.Localization;
 
 namespace TablePro.Core.Connections;
 
@@ -75,7 +76,7 @@ public static class RdsAuthToken
 
         if (colon == 0 || !int.TryParse(endpoint.AsSpan(colon + 1), NumberStyles.None, CultureInfo.InvariantCulture, out var port) || !ConnectionTransports.IsValidPort(port))
         {
-            throw new FormatException("The RDS endpoint must be host or host:port.");
+            throw new FormatException(CoreStrings.Get("SignIn/RdsEndpointFormat"));
         }
 
         return (endpoint[..colon], port);
@@ -92,7 +93,7 @@ public static class RdsAuthToken
         }
 
         return RegionFromHost(signingHost)
-            ?? throw new InvalidOperationException("Enter the AWS region, since the host is not an RDS endpoint that names one.");
+            ?? throw new InvalidOperationException(CoreStrings.Get("SignIn/RdsRegionRequired"));
     }
 }
 

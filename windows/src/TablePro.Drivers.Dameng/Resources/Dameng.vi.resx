@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="InstallHint" xml:space="preserve">
+    <value>Hãy cài đặt máy khách DM8 64-bit của Dameng (eco.dameng.com), vốn đăng ký trình điều khiển ODBC, hoặc chỉ định một trình điều khiển đã cài khác bằng tùy chọn odbcDriver.</value>
+  </data>
+  <data name="NoSourcePrivilege" xml:space="preserve">
+    <value>Dameng không trả về mã nguồn cho {0}; tài khoản đăng nhập có thể thiếu quyền đọc nó.</value>
+  </data>
+  <data name="NotASessionId" xml:space="preserve">
+    <value>"{0}" không phải là mã phiên Dameng.</value>
+  </data>
+  <data name="SslPathRequired" xml:space="preserve">
+    <value>Dameng mã hóa bằng chứng chỉ máy khách: hãy đặt tùy chọn SSL_PATH là thư mục chứa chúng (và SSL_PWD nếu chúng được bảo vệ).</value>
+  </data>
+  <data name="VerifyIdentityUnsupported" xml:space="preserve">
+    <value>TLS của Dameng kiểm tra chứng chỉ máy chủ theo CA trong SSL_PATH nhưng không bao giờ đối chiếu với tên máy chủ. Hãy chọn Xác minh CA, hoặc dùng đường hầm SSH.</value>
+  </data>
+</root>

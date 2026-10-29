@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="BadConsistencyLevel" xml:space="preserve">
+    <value>{0} 不是連線可用的一致性層級。請使用 LOCAL_ONE、ONE、QUORUM、LOCAL_QUORUM、EACH_QUORUM、ALL、TWO、THREE 或 ANY。</value>
+  </data>
+  <data name="CannotChangePrimaryKey" xml:space="preserve">
+    <value>Cassandra 無法變更主索引鍵欄 {0}。請刪除該列，然後用新索引鍵重新新增。</value>
+  </data>
+  <data name="ChooseKeyspace" xml:space="preserve">
+    <value>請為 {0} 選擇一個鍵空間。</value>
+  </data>
+  <data name="ClientRules_One" xml:space="preserve">
+    <value>CQL 無法評估的 {0} 條篩選規則已逐頁套用到讀取的列。</value>
+  </data>
+  <data name="ClientRules_Other" xml:space="preserve">
+    <value>CQL 無法評估的 {0} 條篩選規則已逐頁套用到讀取的列。</value>
+  </data>
+  <data name="ClientRulesNoAllowFiltering_One" xml:space="preserve">
+    <value>由於 CQL 只有在使用 ALLOW FILTERING 時才篩選其他欄，{0} 條篩選規則已逐頁套用到讀取的列。若要在伺服器上篩選，請在連線選項中設定 allowFiltering=true。</value>
+  </data>
+  <data name="ClientRulesNoAllowFiltering_Other" xml:space="preserve">
+    <value>由於 CQL 只有在使用 ALLOW FILTERING 時才篩選其他欄，{0} 條篩選規則已逐頁套用到讀取的列。若要在伺服器上篩選，請在連線選項中設定 allowFiltering=true。</value>
+  </data>
+  <data name="CounterColumns" xml:space="preserve">
+    <value>計數器欄只能透過增量變更。請在編輯器中執行 UPDATE ... SET c = c + n。</value>
+  </data>
+  <data name="EnterPrimaryKeyValue" xml:space="preserve">
+    <value>請為主索引鍵欄 {0} 輸入一個值。</value>
+  </data>
+  <data name="KeyspacesNeedsAccessKey" xml:space="preserve">
+    <value>Amazon Keyspaces 需要存取金鑰 ID（使用者名稱）和祕密存取金鑰（密碼）。</value>
+  </data>
+  <data name="KeyspacesNeedsRegion" xml:space="preserve">
+    <value>請在連線選項（awsRegion）中設定 Amazon Keyspaces 的 AWS 區域。</value>
+  </data>
+  <data name="KeyspacesNeedsTls" xml:space="preserve">
+    <value>Amazon Keyspaces 僅透過 TLS 對登入進行簽署。請將 SSL 設為「必要」或更嚴格的模式。</value>
+  </data>
+  <data name="KeyspacesSignInUnavailable" xml:space="preserve">
+    <value>Amazon Keyspaces 登入方式「{0}」在 Windows 上尚不可用。請使用存取金鑰。</value>
+  </data>
+  <data name="NoKeyspace" xml:space="preserve">
+    <value>找不到名為 {0} 的鍵空間。</value>
+  </data>
+  <data name="NoOffset" xml:space="preserve">
+    <value>CQL 沒有 OFFSET，要到達第 {0:N0} 列需要先讀取 {1:N0} 列。請從頭開始翻頁，或依分割區索引鍵篩選。</value>
+  </data>
+  <data name="NoTableOrView" xml:space="preserve">
+    <value>找不到名為 {0} 的資料表或檢視。</value>
+  </data>
+  <data name="PrimaryKeyNotLoaded" xml:space="preserve">
+    <value>該列主索引鍵欄 {0} 的值未載入，因此找不到該列。</value>
+  </data>
+  <data name="PrimaryKeyUnreadable" xml:space="preserve">
+    <value>無法讀取 {0} 的主索引鍵，因此無法變更其列。</value>
+  </data>
+  <data name="QueryCancelledServerMayFinish" xml:space="preserve">
+    <value>查詢已取消。伺服器可能仍會完成該查詢。</value>
+  </data>
+  <data name="RawConditionAnd" xml:space="preserve">
+    <value>CQL 只用 AND 連接條件，因此原始條件必須與規則同時符合。</value>
+  </data>
+  <data name="SigV4NoNonce" xml:space="preserve">
+    <value>Amazon Keyspaces 傳送了不含 nonce 的 SigV4 挑戰。</value>
+  </data>
+  <data name="SortNotApplied" xml:space="preserve">
+    <value>Cassandra 依權杖順序傳回列，且只在單一分割區內排序，因此未套用排序。</value>
+  </data>
+  <data name="StoppedAfterScanning" xml:space="preserve">
+    <value>為填滿本頁讀取 {0:N0} 列後已停止。請依分割區索引鍵篩選以搜尋整個資料表。</value>
+  </data>
+  <data name="UdtAsJson" xml:space="preserve">
+    <value>使用者定義型別的值透過 fromJson() 以 JSON 寫入，而不是作為物件繫結。</value>
+  </data>
+</root>

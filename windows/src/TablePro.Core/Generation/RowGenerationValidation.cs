@@ -1,4 +1,4 @@
-using System.Globalization;
+using TablePro.Core.Localization;
 
 namespace TablePro.Core.Generation;
 
@@ -39,7 +39,7 @@ public static class RowGenerationValidation
         var issues = new List<RowGenerationIssue>();
         if (settings.RowCount is < 1 or > RowGenerationSettings.MaximumRowCount)
         {
-            issues.Add(new RowGenerationIssue(null, string.Create(CultureInfo.CurrentCulture, $"Enter a number of rows from 1 to {RowGenerationSettings.MaximumRowCount:N0}.")));
+            issues.Add(new RowGenerationIssue(null, CoreStrings.Format("Generation/RowCountRange", RowGenerationSettings.MaximumRowCount)));
         }
 
         var writesAnyColumn = false;
@@ -59,7 +59,7 @@ public static class RowGenerationValidation
 
         if (!writesAnyColumn)
         {
-            issues.Add(new RowGenerationIssue(null, "Choose a generator for at least one column."));
+            issues.Add(new RowGenerationIssue(null, CoreStrings.Get("Generation/ChooseAGenerator")));
         }
 
         issues.AddRange(GroupIssues(settings, table));
@@ -131,12 +131,12 @@ public static class RowGenerationValidation
         var kinds = column.AvailableKinds;
         if (kinds.Count == 0)
         {
-            return $"No generator can fill {name} ({column.TypeName}), and it cannot be left empty.";
+            return CoreStrings.Format("Generation/NoGeneratorFits", name, column.TypeName);
         }
 
         if (!kinds.Contains(settings.Kind))
         {
-            return $"{name} cannot use this generator.";
+            return CoreStrings.Format("Generation/GeneratorNotAllowed", name);
         }
 
         if (RangeIssue(column, settings, rowCount, table) is { } range)
@@ -146,7 +146,7 @@ public static class RowGenerationValidation
 
         if (column.IsUnique && DomainSize(settings, column, table) is { } size && size < rowCount)
         {
-            return string.Create(CultureInfo.CurrentCulture, $"{name} must not repeat, but its generator makes only {size:N0} different values.");
+            return CoreStrings.Format("Generation/TooFewDistinctValues", name, size);
         }
 
         return null;
@@ -159,19 +159,19 @@ public static class RowGenerationValidation
         {
             case RowGeneratorKind.IntegerRange:
                 return settings.IntegerMinimum > settings.IntegerMaximum
-                    ? $"{name}: the minimum is larger than the maximum."
+                    ? CoreStrings.Format("Generation/MinimumAboveMaximum", name)
                     : IntegerBoundsIssue(column, settings.IntegerMinimum, settings.IntegerMaximum);
             case RowGeneratorKind.Sequence:
             {
                 if (settings.SequenceStep == 0)
                 {
-                    return $"{name}: the step cannot be 0.";
+                    return CoreStrings.Format("Generation/StepIsZero", name);
                 }
 
                 var last = (Int128)settings.IntegerMinimum + ((Int128)settings.SequenceStep * Math.Max(0, rowCount - 1));
                 if (last > long.MaxValue || last < long.MinValue)
                 {
-                    return $"The sequence for {name} runs past the largest number it can hold.";
+                    return CoreStrings.Format("Generation/SequenceOverflows", name);
                 }
 
                 return IntegerBoundsIssue(column, Math.Min(settings.IntegerMinimum, (long)last), Math.Max(settings.IntegerMinimum, (long)last));
@@ -181,19 +181,19 @@ public static class RowGenerationValidation
             {
                 if (settings.DecimalScale is < 0 or > MaximumScale)
                 {
-                    return $"{name}: decimal places run from 0 to {MaximumScale}.";
+                    return CoreStrings.Format("Generation/DecimalPlacesRange", name, MaximumScale);
                 }
 
                 if (settings.DecimalMinimum > settings.DecimalMaximum)
                 {
-                    return $"{name}: the minimum is larger than the maximum.";
+                    return CoreStrings.Format("Generation/MinimumAboveMaximum", name);
                 }
 
                 // Values are counted in steps of the last decimal place, which have to fit a 64-bit integer.
                 var stepLimit = Math.Pow(10, 18 - settings.DecimalScale);
                 if (Math.Abs(settings.DecimalMinimum) >= stepLimit || Math.Abs(settings.DecimalMaximum) >= stepLimit)
                 {
-                    return $"{name}: the range is too wide for that many decimal places.";
+                    return CoreStrings.Format("Generation/RangeTooWide", name);
                 }
 
                 if (column.ValueClass == RowValueClass.Decimal)
@@ -201,13 +201,13 @@ public static class RowGenerationValidation
                     // A value with more places than the column keeps is rounded on the way in, and can then repeat.
                     if (column.Scale is { } scale && settings.DecimalScale > scale)
                     {
-                        return string.Create(CultureInfo.CurrentCulture, $"{name} keeps {scale} decimal places.");
+                        return CoreStrings.Format("Generation/KeepsDecimalPlaces", name, scale);
                     }
 
                     var limit = DecimalLimit(column.Precision, column.Scale);
                     if (Math.Abs(settings.DecimalMinimum) > limit || Math.Abs(settings.DecimalMaximum) > limit)
                     {
-                        return string.Create(CultureInfo.CurrentCulture, $"{name} holds values up to {limit:N0}.");
+                        return CoreStrings.Format("Generation/HoldsValuesUpTo", name, limit);
                     }
                 }
 
@@ -215,16 +215,16 @@ public static class RowGenerationValidation
             }
 
             case RowGeneratorKind.Text:
-                return settings.MinLength < 0 || settings.MinLength > settings.MaxLength ? $"{name}: the shortest length is longer than the longest." : null;
+                return settings.MinLength < 0 || settings.MinLength > settings.MaxLength ? CoreStrings.Format("Generation/ShortestAboveLongest", name) : null;
             case RowGeneratorKind.Date or RowGeneratorKind.DateTime:
-                return DayCount(settings) <= 0 ? $"{name}: the first date is after the last." : null;
+                return DayCount(settings) <= 0 ? CoreStrings.Format("Generation/FirstDateAfterLast", name) : null;
             case RowGeneratorKind.List:
-                return settings.Values.Any(v => v.Length > 0) ? null : $"Enter at least one value for {name}.";
+                return settings.Values.Any(v => v.Length > 0) ? null : CoreStrings.Format("Generation/EnterAValue", name);
             case RowGeneratorKind.Pattern:
-                return settings.Pattern.Length == 0 ? $"Enter a pattern for {name}." : null;
+                return settings.Pattern.Length == 0 ? CoreStrings.Format("Generation/EnterAPattern", name) : null;
             case RowGeneratorKind.Reference:
                 return column.Reference is { } slot && table.Reference(slot.SourceId) is { Tuples.Count: 0 } source && !column.IsNullable
-                    ? $"{name} references {source.ReferencedTable}, which has no rows."
+                    ? CoreStrings.Format("Generation/ReferencedTableEmpty", name, source.ReferencedTable)
                     : null;
             default:
                 return null;
@@ -238,7 +238,7 @@ public static class RowGenerationValidation
             return null;
         }
 
-        return string.Create(CultureInfo.CurrentCulture, $"{column.Name} holds numbers from {column.IntegerMinimum:N0} to {column.IntegerMaximum:N0}.");
+        return CoreStrings.Format("Generation/HoldsNumbersFromTo", column.Name, column.IntegerMinimum, column.IntegerMaximum);
     }
 
     private static IEnumerable<RowGenerationIssue> GroupIssues(RowGenerationSettings settings, RowGenerationTable table)
@@ -285,7 +285,7 @@ public static class RowGenerationValidation
                 combinations *= size;
             }
 
-            var key = string.Join(", ", group);
+            var key = string.Join(CoreStrings.Get("Generation/ListSeparator"), group);
             if (settled)
             {
                 continue;
@@ -295,7 +295,7 @@ public static class RowGenerationValidation
             {
                 if (settings.RowCount > 1)
                 {
-                    yield return new RowGenerationIssue(null, $"({key}) must not repeat, but every column of it is left to its default.");
+                    yield return new RowGenerationIssue(null, CoreStrings.Format("Generation/KeyLeftToDefault", key));
                 }
 
                 continue;
@@ -303,7 +303,7 @@ public static class RowGenerationValidation
 
             if (combinations < settings.RowCount)
             {
-                yield return new RowGenerationIssue(null, string.Create(CultureInfo.CurrentCulture, $"({key}) must not repeat, but the generators make only {combinations:N0} combinations."));
+                yield return new RowGenerationIssue(null, CoreStrings.Format("Generation/TooFewCombinations", key, combinations));
             }
         }
     }

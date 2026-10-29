@@ -4,8 +4,10 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using TablePro.Core.Browse;
+using TablePro.Core.Localization;
 using TablePro.Core.Schema;
 using TablePro.Drivers.Http;
+using TablePro.Drivers.Weaviate.Localization;
 
 namespace TablePro.Drivers.Weaviate;
 
@@ -104,7 +106,7 @@ internal sealed partial record WvClass(string Name, IReadOnlyList<WvProperty> Pr
     /// anyway. Anything else is refused rather than spliced.
     /// </summary>
     public static string CheckedName(string name) =>
-        GraphQlName().IsMatch(name) ? name : throw new ArgumentException($"{name} is not a valid Weaviate name.");
+        GraphQlName().IsMatch(name) ? name : throw new ArgumentException(WeaviateStrings.Format("Weaviate/NotValidName", name));
 
     public static bool IsName(string name) => GraphQlName().IsMatch(name);
 
@@ -190,7 +192,7 @@ internal static class WvGraphQl
         if (!string.IsNullOrWhiteSpace(filter.RawWhere))
         {
             var raw = filter.RawWhere.Trim();
-            operands.Add(raw.StartsWith('{') ? raw : throw new ArgumentException("A raw Weaviate filter is a where object, such as { path: [\"title\"] operator: Like valueText: \"*a*\" }."));
+            operands.Add(raw.StartsWith('{') ? raw : throw new ArgumentException(WeaviateStrings.Get("Weaviate/RawFilterShape")));
         }
 
         return operands.Count switch
@@ -247,7 +249,7 @@ internal static class WvGraphQl
             // Weaviate counts length with len(prop), which needs indexPropertyLength; there is no length of an id.
             FilterOperator.IsEmpty => column != WvClass.IdColumn && kind == WvKind.Text ? $"{{ path: [{Quote($"len({column})")}] operator: Equal valueInt: 0 }}" : throw TextNeeded(column, rule.Operator),
             FilterOperator.IsNotEmpty => column != WvClass.IdColumn && kind == WvKind.Text ? $"{{ path: [{Quote($"len({column})")}] operator: GreaterThan valueInt: 0 }}" : throw TextNeeded(column, rule.Operator),
-            _ => throw new NotSupportedException($"Weaviate cannot filter with {rule.Operator.DisplayName()}."),
+            _ => throw new NotSupportedException(CoreStrings.Format("Driver/CannotFilterWith", "Weaviate", rule.Operator.DisplayName())),
         };
     }
 
@@ -264,7 +266,7 @@ internal static class WvGraphQl
         var items = csv.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
         if (items.Length == 0)
         {
-            throw new ArgumentException($"IN on {column} needs at least one value.");
+            throw new ArgumentException(WeaviateStrings.Format("Weaviate/InNeedsValue", column));
         }
 
         return $"{{ path: [{Quote(column)}] operator: {op} {ValueField(kind)}: [{string.Join(", ", items.Select(i => Literal(i, column, kind)))}] }}";
@@ -283,7 +285,7 @@ internal static class WvGraphQl
             var comma = value.IndexOf(',', StringComparison.Ordinal);
             if (comma < 0)
             {
-                throw new ArgumentException($"BETWEEN on {column} needs an upper bound.");
+                throw new ArgumentException(CoreStrings.Format("Driver/BetweenNeedsUpperBound", column));
             }
 
             (low, high) = (value[..comma], value[(comma + 1)..]);
@@ -309,21 +311,21 @@ internal static class WvGraphQl
         {
             WvKind.Int => long.TryParse(trimmed, NumberStyles.Integer, CultureInfo.InvariantCulture, out var i)
                 ? i.ToString(CultureInfo.InvariantCulture)
-                : throw new ArgumentException($"{column} is a numeric property, and {value} is not a number."),
+                : throw new ArgumentException(WeaviateStrings.Format("Weaviate/NumericProperty", column, value)),
             WvKind.Number => double.TryParse(trimmed, NumberStyles.Float, CultureInfo.InvariantCulture, out var d)
                 ? d.ToString("R", CultureInfo.InvariantCulture)
-                : throw new ArgumentException($"{column} is a numeric property, and {value} is not a number."),
+                : throw new ArgumentException(WeaviateStrings.Format("Weaviate/NumericProperty", column, value)),
             WvKind.Boolean => trimmed.ToLowerInvariant() switch
             {
                 "true" or "1" => "true",
                 "false" or "0" => "false",
-                _ => throw new ArgumentException($"{column} is a boolean property, so it matches only true or false, not {value}."),
+                _ => throw new ArgumentException(WeaviateStrings.Format("Weaviate/BooleanProperty", column, value)),
             },
 
             // Weaviate parses valueDate with Go's RFC 3339 layout and refuses a bare date.
             WvKind.Date => DateTimeOffset.TryParseExact(trimmed, ["yyyy-MM-dd'T'HH:mm:ssK", "yyyy-MM-dd'T'HH:mm:ss.FFFFFFFFFK"], CultureInfo.InvariantCulture, DateTimeStyles.None, out _)
                 ? Quote(trimmed)
-                : throw new ArgumentException($"{column} is a date property, and {value} is not an RFC 3339 timestamp such as 2024-01-31T00:00:00Z."),
+                : throw new ArgumentException(WeaviateStrings.Format("Weaviate/DateProperty", column, value)),
             _ => Quote(value),
         };
     }
@@ -357,9 +359,9 @@ internal static class WvGraphQl
         return sb.Append('"').ToString();
     }
 
-    private static ArgumentException Unordered(string column, string op) => new($"Weaviate compares only numbers and dates with {op}, and {column} is neither.");
+    private static ArgumentException Unordered(string column, string op) => new(WeaviateStrings.Format("Weaviate/ComparesNumbersAndDates", op, column));
 
-    private static ArgumentException TextNeeded(string column, FilterOperator op) => new($"Weaviate matches text with {op.DisplayName()}, and {column} is not a text property.");
+    private static ArgumentException TextNeeded(string column, FilterOperator op) => new(WeaviateStrings.Format("Weaviate/MatchesTextOnly", op.DisplayName(), column));
 }
 
 /// <summary>Grid values into the property JSON a write sends.</summary>

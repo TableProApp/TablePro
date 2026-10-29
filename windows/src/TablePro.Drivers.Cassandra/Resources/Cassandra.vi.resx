@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="BadConsistencyLevel" xml:space="preserve">
+    <value>{0} không phải là mức nhất quán mà kết nối có thể dùng. Hãy dùng LOCAL_ONE, ONE, QUORUM, LOCAL_QUORUM, EACH_QUORUM, ALL, TWO, THREE hoặc ANY.</value>
+  </data>
+  <data name="CannotChangePrimaryKey" xml:space="preserve">
+    <value>Cassandra không thể thay đổi cột khóa chính {0}. Hãy xóa hàng rồi thêm lại với khóa mới.</value>
+  </data>
+  <data name="ChooseKeyspace" xml:space="preserve">
+    <value>Hãy chọn một keyspace cho {0}.</value>
+  </data>
+  <data name="ClientRules_One" xml:space="preserve">
+    <value>{0} quy tắc lọc mà CQL không đánh giá được đã được áp dụng cho các hàng đã đọc, từng trang một.</value>
+  </data>
+  <data name="ClientRules_Other" xml:space="preserve">
+    <value>{0} quy tắc lọc mà CQL không đánh giá được đã được áp dụng cho các hàng đã đọc, từng trang một.</value>
+  </data>
+  <data name="ClientRulesNoAllowFiltering_One" xml:space="preserve">
+    <value>{0} quy tắc lọc đã được áp dụng cho các hàng đã đọc, từng trang một, vì CQL chỉ lọc các cột khác với ALLOW FILTERING. Hãy đặt allowFiltering=true trong tùy chọn của kết nối để lọc trên máy chủ.</value>
+  </data>
+  <data name="ClientRulesNoAllowFiltering_Other" xml:space="preserve">
+    <value>{0} quy tắc lọc đã được áp dụng cho các hàng đã đọc, từng trang một, vì CQL chỉ lọc các cột khác với ALLOW FILTERING. Hãy đặt allowFiltering=true trong tùy chọn của kết nối để lọc trên máy chủ.</value>
+  </data>
+  <data name="CounterColumns" xml:space="preserve">
+    <value>Cột counter chỉ thay đổi bằng cách tăng dần. Hãy chạy UPDATE ... SET c = c + n trong trình soạn thảo.</value>
+  </data>
+  <data name="EnterPrimaryKeyValue" xml:space="preserve">
+    <value>Hãy nhập giá trị cho cột khóa chính {0}.</value>
+  </data>
+  <data name="KeyspacesNeedsAccessKey" xml:space="preserve">
+    <value>Amazon Keyspaces cần ID khóa truy cập (tên người dùng) và khóa truy cập bí mật (mật khẩu).</value>
+  </data>
+  <data name="KeyspacesNeedsRegion" xml:space="preserve">
+    <value>Hãy đặt vùng AWS cho Amazon Keyspaces trong tùy chọn của kết nối (awsRegion).</value>
+  </data>
+  <data name="KeyspacesNeedsTls" xml:space="preserve">
+    <value>Amazon Keyspaces chỉ ký đăng nhập qua TLS. Hãy đặt SSL thành Bắt buộc hoặc chặt chẽ hơn.</value>
+  </data>
+  <data name="KeyspacesSignInUnavailable" xml:space="preserve">
+    <value>Phương thức đăng nhập Amazon Keyspaces "{0}" chưa có trên Windows. Hãy dùng khóa truy cập.</value>
+  </data>
+  <data name="NoKeyspace" xml:space="preserve">
+    <value>Không tìm thấy keyspace nào tên {0}.</value>
+  </data>
+  <data name="NoOffset" xml:space="preserve">
+    <value>CQL không có OFFSET, và để tới hàng {0:N0} phải đọc trước {1:N0} hàng. Hãy chuyển trang từ đầu hoặc lọc theo khóa phân vùng.</value>
+  </data>
+  <data name="NoTableOrView" xml:space="preserve">
+    <value>Không tìm thấy bảng hoặc view nào tên {0}.</value>
+  </data>
+  <data name="PrimaryKeyNotLoaded" xml:space="preserve">
+    <value>Giá trị của hàng cho cột khóa chính {0} chưa được tải, nên không thể tìm thấy hàng.</value>
+  </data>
+  <data name="PrimaryKeyUnreadable" xml:space="preserve">
+    <value>Không đọc được khóa chính của {0}, nên không thể thay đổi các hàng của nó.</value>
+  </data>
+  <data name="QueryCancelledServerMayFinish" xml:space="preserve">
+    <value>Đã hủy truy vấn. Máy chủ vẫn có thể hoàn tất nó.</value>
+  </data>
+  <data name="RawConditionAnd" xml:space="preserve">
+    <value>CQL chỉ nối các điều kiện bằng AND, nên điều kiện thô phải khớp cùng với các quy tắc.</value>
+  </data>
+  <data name="SigV4NoNonce" xml:space="preserve">
+    <value>Amazon Keyspaces đã gửi thử thách SigV4 không có nonce.</value>
+  </data>
+  <data name="SortNotApplied" xml:space="preserve">
+    <value>Cassandra trả về hàng theo thứ tự token và chỉ sắp xếp trong một phân vùng, nên thứ tự sắp xếp chưa được áp dụng.</value>
+  </data>
+  <data name="StoppedAfterScanning" xml:space="preserve">
+    <value>Đã dừng sau khi đọc {0:N0} hàng để lấp đầy trang. Hãy lọc theo khóa phân vùng để tìm trong toàn bộ bảng.</value>
+  </data>
+  <data name="UdtAsJson" xml:space="preserve">
+    <value>Giá trị kiểu do người dùng định nghĩa được ghi dưới dạng JSON qua fromJson(), không được gắn như đối tượng.</value>
+  </data>
+</root>

@@ -1,3 +1,4 @@
+using TablePro.Core.Localization;
 using TablePro.Core.Schema;
 using TablePro.Drivers.Odbc;
 
@@ -184,7 +185,7 @@ internal static class DamengCatalog
             "FUNCTION" => new DatabaseObject(name, ObjectKind.Function),
             "SEQUENCE" => new DatabaseObject(name, ObjectKind.Sequence),
             "TRIGGER" => new DatabaseObject(name, ObjectKind.Trigger),
-            var other => throw new InvalidOperationException($"Dameng listed {name} as an unexpected {other}."),
+            var other => throw new InvalidOperationException(CoreStrings.Format("Driver/ListedUnexpected", "Dameng", name, other)),
         };
     }
 

@@ -3,6 +3,8 @@ using System.Text;
 using Google.Cloud.BigQuery.V2;
 using TablePro.Core.Browse;
 using TablePro.Core.Editing;
+using TablePro.Core.Localization;
+using TablePro.Drivers.BigQuery.Localization;
 
 namespace TablePro.Drivers.BigQuery;
 
@@ -182,7 +184,7 @@ public static class BigQuerySql
             switch (changes[i])
             {
                 case RowInsert insert when insert.Values.Count == 0:
-                    throw new InvalidOperationException("BigQuery needs at least one value to insert a row.");
+                    throw new InvalidOperationException(CoreStrings.Format("Driver/InsertNeedsValue", "BigQuery"));
                 case RowInsert insert:
                     sql.Append("INSERT INTO ").Append(qualifiedTable).Append(" (")
                         .AppendJoin(", ", insert.Values.Keys.Select(Quote)).Append(") VALUES (")
@@ -223,7 +225,7 @@ public static class BigQuerySql
 
         return terms.Count > 0
             ? string.Join(" AND ", terms)
-            : throw new InvalidOperationException("The row has no column BigQuery can compare, so it cannot be changed safely. Name key columns in the keyColumns option.");
+            : throw new InvalidOperationException(BigQueryStrings.Get("BigQuery/NoComparableColumn"));
     }
 
     /// <summary>Reads the change index and row count from a failed row check, or null for any other error.</summary>

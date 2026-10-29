@@ -3,6 +3,7 @@ using TablePro.Core.Browse;
 using TablePro.Core.Connections;
 using TablePro.Core.Drivers;
 using TablePro.Core.Editing;
+using TablePro.Core.Localization;
 using TablePro.Core.Results;
 using TablePro.Core.Schema;
 using TablePro.Core.Sql;
@@ -179,7 +180,7 @@ internal sealed class BeancountSession : IDatabaseSession
         }
         catch (OperationCanceledException)
         {
-            return new StatementResult(statement, [], -1, stopwatch.Elapsed, cancellationToken.IsCancellationRequested ? "Query cancelled." : "Query timed out.");
+            return new StatementResult(statement, [], -1, stopwatch.Elapsed, CoreStrings.Get(cancellationToken.IsCancellationRequested ? "Driver/QueryCancelled" : "Driver/QueryTimedOut"));
         }
         catch (BeancountException ex)
         {

@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using TablePro.Storage.Localization;
 
 namespace TablePro.Storage.Connections;
 
@@ -55,13 +56,13 @@ internal static class ConnectionExportCrypto
         ArgumentNullException.ThrowIfNull(passphrase);
         if (!IsEncrypted(data) || data.Length <= HeaderLength + TagLength)
         {
-            throw new InvalidDataException("The encrypted file is corrupt or incomplete.");
+            throw new InvalidDataException(StorageStrings.Get("Connections/EncryptedCorrupt"));
         }
 
         var version = data[4];
         if (version > CurrentVersion)
         {
-            throw new InvalidDataException($"Unsupported encryption version {version}. Update TablePro to open this file.");
+            throw new InvalidDataException(StorageStrings.Format("Connections/EncryptionVersionUnsupported", version));
         }
 
         var salt = data.Slice(5, SaltLength);
@@ -78,7 +79,7 @@ internal static class ConnectionExportCrypto
         }
         catch (AuthenticationTagMismatchException ex)
         {
-            throw new ConnectionExportPassphraseException("Incorrect passphrase.", ex);
+            throw new ConnectionExportPassphraseException(StorageStrings.Get("Connections/IncorrectPassphrase"), ex);
         }
         finally
         {
@@ -94,7 +95,7 @@ internal static class ConnectionExportCrypto
 public sealed class ConnectionExportPassphraseException : IOException
 {
     public ConnectionExportPassphraseException()
-        : base("This file is encrypted and requires a passphrase.")
+        : base(StorageStrings.Get("Connections/PassphraseRequired"))
     {
     }
 

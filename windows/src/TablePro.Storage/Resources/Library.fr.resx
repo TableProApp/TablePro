@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="EncodingCannotHold" xml:space="preserve">
+    <value>L’encodage du fichier ({0}) ne peut pas contenir ces caractères. Rien n’a été modifié.</value>
+  </data>
+  <data name="FileNoLongerExists" xml:space="preserve">
+    <value>Le fichier n’existe plus.</value>
+  </data>
+  <data name="FileTooLargeForGit" xml:space="preserve">
+    <value>Le fichier est trop volumineux pour être lu depuis Git.</value>
+  </data>
+  <data name="FolderNotInRepository" xml:space="preserve">
+    <value>Ce dossier n’est pas dans un dépôt Git.</value>
+  </data>
+  <data name="GitAdded" xml:space="preserve">
+    <value>Ajouté</value>
+  </data>
+  <data name="GitBusy" xml:space="preserve">
+    <value>Une autre commande Git est toujours en cours dans ce dépôt.</value>
+  </data>
+  <data name="GitConflicted" xml:space="preserve">
+    <value>En conflit</value>
+  </data>
+  <data name="GitCouldNotStart" xml:space="preserve">
+    <value>Git n’a pas pu être démarré.</value>
+  </data>
+  <data name="GitExitStatus" xml:space="preserve">
+    <value>Git s’est arrêté avec le code {0}.</value>
+  </data>
+  <data name="GitHistoryUnavailable" xml:space="preserve">
+    <value>L’historique Git n’est pas disponible : {0}</value>
+  </data>
+  <data name="GitModified" xml:space="preserve">
+    <value>Modifié</value>
+  </data>
+  <data name="GitNotInstalled" xml:space="preserve">
+    <value>Git n’est pas installé.</value>
+  </data>
+  <data name="GitOutputTooLarge" xml:space="preserve">
+    <value>Git a produit plus de sortie que TablePro ne peut en lire.</value>
+  </data>
+  <data name="GitPartlyStaged" xml:space="preserve">
+    <value>{0}, partiellement indexé</value>
+  </data>
+  <data name="GitRenamed" xml:space="preserve">
+    <value>Renommé</value>
+  </data>
+  <data name="GitStaged" xml:space="preserve">
+    <value>{0}, indexé</value>
+  </data>
+  <data name="GitTimedOut" xml:space="preserve">
+    <value>Git n’a pas répondu à temps.</value>
+  </data>
+  <data name="GitUntracked" xml:space="preserve">
+    <value>Non suivi</value>
+  </data>
+  <data name="HistoryChangedBeforeWriting" xml:space="preserve">
+    <value>Le fichier ou sa version indexée a changé avant de pouvoir être écrit. Rien n’a été remplacé.</value>
+  </data>
+  <data name="HistoryFileGone" xml:space="preserve">
+    <value>Ce fichier n’existe plus.</value>
+  </data>
+  <data name="HistoryGitFailed" xml:space="preserve">
+    <value>Git a échoué.</value>
+  </data>
+  <data name="HistoryGitUnavailable" xml:space="preserve">
+    <value>Git n’est pas installé. Installez Git for Windows pour voir les commits du fichier.</value>
+  </data>
+  <data name="HistoryInLfs" xml:space="preserve">
+    <value>Ce fichier est stocké avec Git LFS. Restaurez-le avec votre client Git.</value>
+  </data>
+  <data name="HistoryNotInRepository" xml:space="preserve">
+    <value>Ce fichier n’est pas dans un dépôt Git.</value>
+  </data>
+  <data name="HistoryNotText" xml:space="preserve">
+    <value>Cette version ne peut pas être lue comme du texte.</value>
+  </data>
+  <data name="HistoryRestoreFailed" xml:space="preserve">
+    <value>La version n’a pas pu être restaurée : {0}</value>
+  </data>
+  <data name="HistoryVersionGone" xml:space="preserve">
+    <value>Cette version n’est plus disponible.</value>
+  </data>
+  <data name="KeepsLatestSnapshots_One" xml:space="preserve">
+    <value>TablePro conserve la dernière version enregistrée d’un fichier.</value>
+  </data>
+  <data name="KeepsLatestSnapshots_Other" xml:space="preserve">
+    <value>TablePro conserve les {0} dernières versions enregistrées d’un fichier.</value>
+  </data>
+  <data name="NameAlreadyExists" xml:space="preserve">
+    <value>Un fichier portant ce nom existe déjà ici.</value>
+  </data>
+  <data name="NameEmpty" xml:space="preserve">
+    <value>Saisissez un nom.</value>
+  </data>
+  <data name="NameInvalidCharacters" xml:space="preserve">
+    <value>Un nom de fichier ne peut pas contenir \ / : * ? " &lt; &gt; ou |.</value>
+  </data>
+  <data name="NameReserved" xml:space="preserve">
+    <value>Windows réserve ce nom à un périphérique.</value>
+  </data>
+  <data name="RecycleBinFailed" xml:space="preserve">
+    <value>Le fichier n’a pas pu être déplacé vers la Corbeille.</value>
+  </data>
+  <data name="RequestFailed" xml:space="preserve">
+    <value>La requête a échoué.</value>
+  </data>
+  <data name="SavedInTablePro" xml:space="preserve">
+    <value>Enregistré dans TablePro</value>
+  </data>
+  <data name="ShowsLatestCommits_One" xml:space="preserve">
+    <value>Affichage du dernier commit.</value>
+  </data>
+  <data name="ShowsLatestCommits_Other" xml:space="preserve">
+    <value>Affichage des {0} derniers commits.</value>
+  </data>
+  <data name="TeamEmptyResponse" xml:space="preserve">
+    <value>La bibliothèque d’équipe a renvoyé une réponse vide.</value>
+  </data>
+  <data name="TeamNeedsLicense" xml:space="preserve">
+    <value>Activez une licence Team pour publier dans la bibliothèque d’équipe.</value>
+  </data>
+  <data name="TeamTimedOut" xml:space="preserve">
+    <value>La bibliothèque d’équipe n’a pas répondu à temps.</value>
+  </data>
+  <data name="TeamUnreachable" xml:space="preserve">
+    <value>Impossible de joindre la bibliothèque d’équipe : {0}</value>
+  </data>
+  <data name="TeamUnreadable" xml:space="preserve">
+    <value>La bibliothèque d’équipe a renvoyé une réponse que TablePro ne peut pas lire.</value>
+  </data>
+  <data name="UntitledFile" xml:space="preserve">
+    <value>Sans titre</value>
+  </data>
+</root>

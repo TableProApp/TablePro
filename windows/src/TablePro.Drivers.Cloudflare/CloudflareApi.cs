@@ -1,10 +1,10 @@
-using System.Globalization;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
+using TablePro.Drivers.Cloudflare.Localization;
 
 namespace TablePro.Drivers.Cloudflare;
 
@@ -180,12 +180,12 @@ internal static class CloudflareHttp
         }
         catch (JsonException ex)
         {
-            throw new CloudflareApiException($"Cloudflare returned a response TablePro could not read (HTTP {(int)response.StatusCode}): {Snippet(bytes)}", ex);
+            throw new CloudflareApiException(CloudflareStrings.Format("Cloudflare/Unreadable", (int)response.StatusCode, Snippet(bytes)), ex);
         }
 
         if (response.IsSuccessStatusCode && envelope is { Success: true })
         {
-            return envelope.Result ?? throw new CloudflareApiException("Cloudflare returned an empty result.");
+            return envelope.Result ?? throw new CloudflareApiException(CloudflareStrings.Get("Cloudflare/EmptyResult"));
         }
 
         throw Failure(response, envelope?.Errors, bytes, authHint);
@@ -198,12 +198,13 @@ internal static class CloudflareHttp
         var detail = messages.Length > 0 ? string.Join("\n", messages) : null;
         var message = status switch
         {
-            HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden =>
-                $"{detail ?? "Authentication failed"}. {authHint ?? "Check the API token and account ID."}",
+            HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden => detail is null
+                ? CloudflareStrings.Format("Cloudflare/AuthFailed", authHint ?? CloudflareStrings.Get("Cloudflare/CheckTokenAndAccount"))
+                : CloudflareStrings.Format("Cloudflare/AuthFailedWith", detail, authHint ?? CloudflareStrings.Get("Cloudflare/CheckTokenAndAccount")),
             HttpStatusCode.TooManyRequests => response.Headers.RetryAfter?.Delta is { } delay
-                ? string.Create(CultureInfo.InvariantCulture, $"Cloudflare is rate limiting this token. Retry after {delay.TotalSeconds:0} seconds.")
-                : "Cloudflare is rate limiting this token. Try again shortly.",
-            _ => detail ?? $"Cloudflare returned HTTP {(int)status}: {Snippet(body)}",
+                ? CloudflareStrings.Format("Cloudflare/RateLimitedRetryAfter", delay.TotalSeconds)
+                : CloudflareStrings.Get("Cloudflare/RateLimited"),
+            _ => detail ?? CloudflareStrings.Format("Cloudflare/HttpStatus", (int)status, Snippet(body)),
         };
         return new CloudflareApiException(message, status);
     }
@@ -211,6 +212,6 @@ internal static class CloudflareHttp
     public static string Snippet(byte[] body)
     {
         var text = Encoding.UTF8.GetString(body, 0, Math.Min(body.Length, 300)).Trim();
-        return text.Length == 0 ? "empty body" : text;
+        return text.Length == 0 ? CloudflareStrings.Get("Cloudflare/EmptyBody") : text;
     }
 }

@@ -18,7 +18,7 @@ internal sealed partial class HistoryPane : UserControl
     private readonly ConnectionProfile _profile;
     private readonly Action<string> _insert;
     private readonly Action<string> _run;
-    private readonly AutoSuggestBox _search = new() { PlaceholderText = Strings.Get("Panes/HistorySearch"), QueryIcon = new SymbolIcon(Symbol.Find) };
+    private readonly AutoSuggestBox _search = new AutoSuggestBox { PlaceholderText = Strings.Get("Panes/HistorySearch"), QueryIcon = new SymbolIcon(Symbol.Find) }.WithLocalizedQueryButton();
     private readonly ComboBox _scope = new() { MinWidth = 140 };
     private readonly ComboBox _outcome = new() { MinWidth = 120 };
     private readonly ListView _list = new() { SelectionMode = ListViewSelectionMode.Single, IsItemClickEnabled = true };

@@ -1,4 +1,5 @@
 using TablePro.Core.Drivers;
+using TablePro.Drivers.Beancount.Localization;
 
 namespace TablePro.Drivers.Beancount;
 
@@ -29,7 +30,7 @@ internal sealed record BeancountOptions(
         var path = !string.IsNullOrWhiteSpace(profile.FilePath) ? profile.FilePath : request.Database;
         if (string.IsNullOrWhiteSpace(path))
         {
-            throw new BeancountException("A Beancount connection needs a ledger file.");
+            throw new BeancountException(BeancountStrings.Get("Beancount/NeedsLedger"));
         }
 
         var options = profile.AdditionalOptions;

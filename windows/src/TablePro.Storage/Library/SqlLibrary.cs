@@ -2,6 +2,7 @@ using TablePro.Storage.Library.Folders;
 using TablePro.Storage.Library.Git;
 using TablePro.Storage.Library.History;
 using TablePro.Storage.Library.Team;
+using TablePro.Storage.Localization;
 
 namespace TablePro.Storage.Library;
 
@@ -206,7 +207,7 @@ public sealed class SqlLibrary : IAsyncDisposable
     private GitRepositoryInfo RepositoryOf(LinkedSqlFolder folder) =>
         GitSnapshots.TryGetValue(folder.Id, out var snapshot)
             ? snapshot.Repository
-            : throw new InvalidOperationException("This folder is not in a Git repository.");
+            : throw new InvalidOperationException(StorageStrings.Get("Library/FolderNotInRepository"));
 
     private async Task PerformAsync(GitOperation operation, GitRepositoryInfo repository, Func<GitClient, Task> body)
     {
@@ -215,7 +216,7 @@ public sealed class SqlLibrary : IAsyncDisposable
         {
             if (!_operations.TryAdd(repository.TopLevel, operation))
             {
-                throw new InvalidOperationException("Another Git command is still running in this repository.");
+                throw new InvalidOperationException(StorageStrings.Get("Library/GitBusy"));
             }
         }
 

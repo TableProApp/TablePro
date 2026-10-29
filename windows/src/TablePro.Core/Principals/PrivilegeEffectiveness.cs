@@ -1,3 +1,5 @@
+using TablePro.Core.Localization;
+
 namespace TablePro.Core.Principals;
 
 /// <summary>A privilege as one grant on one scope, without the grant option, which does not decide whether it is held.</summary>
@@ -26,13 +28,13 @@ public sealed record PrivilegeEffectiveness(EffectivenessKind Kind, PrivilegeSco
 
     public string? Description => Kind switch
     {
-        EffectivenessKind.ViaScope => $"Granted on {Scope!.DisplayName}",
-        EffectivenessKind.ViaRole => $"Inherited from {Role}",
+        EffectivenessKind.ViaScope => CoreStrings.Format("Principal/GrantedOn", Scope!.DisplayName),
+        EffectivenessKind.ViaRole => CoreStrings.Format("Principal/InheritedFrom", Role),
         _ => null,
     };
 
     public string? Detail => Kind == EffectivenessKind.ViaRole
-        ? InheritsAutomatically ? "Inherited automatically." : $"Available after SET ROLE {Role}."
+        ? InheritsAutomatically ? CoreStrings.Get("Principal/InheritedAutomatically") : CoreStrings.Format("Principal/AvailableAfterSetRole", Role)
         : null;
 }
 

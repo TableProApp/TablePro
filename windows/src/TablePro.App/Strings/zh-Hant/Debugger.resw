@@ -30,9 +30,6 @@
   <data name="EntryPoint" xml:space="preserve">
     <value>進入點</value>
   </data>
-  <data name="FinishedBeforeStop" xml:space="preserve">
-    <value>常式在到達停止點之前就已結束。</value>
-  </data>
   <data name="FrameAtLine" xml:space="preserve">
     <value>{0}  第 {1} 行</value>
   </data>
@@ -78,32 +75,8 @@
   <data name="StatusCantDebug" xml:space="preserve">
     <value>無法偵錯</value>
   </data>
-  <data name="StatusFailed" xml:space="preserve">
-    <value>失敗</value>
-  </data>
-  <data name="StatusFinished" xml:space="preserve">
-    <value>已完成</value>
-  </data>
-  <data name="StatusPaused" xml:space="preserve">
-    <value>已暫停</value>
-  </data>
-  <data name="StatusPausedAt" xml:space="preserve">
-    <value>已在 {1} 的第 {0} 行暫停</value>
-  </data>
   <data name="StatusPreparing" xml:space="preserve">
     <value>正在準備…</value>
-  </data>
-  <data name="StatusRunning" xml:space="preserve">
-    <value>正在執行…</value>
-  </data>
-  <data name="StatusStarting" xml:space="preserve">
-    <value>正在啟動…</value>
-  </data>
-  <data name="StatusStopped" xml:space="preserve">
-    <value>已停止</value>
-  </data>
-  <data name="StatusStopping" xml:space="preserve">
-    <value>正在停止…</value>
   </data>
   <data name="StepIntoButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>逐步執行</value>
@@ -128,9 +101,6 @@
   </data>
   <data name="StopButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
     <value>停止偵錯 (Shift+F5)</value>
-  </data>
-  <data name="StopNotConfirmed" xml:space="preserve">
-    <value>偵錯工具未確認停止。常式可能仍在伺服器上執行。</value>
   </data>
   <data name="TabTitle" xml:space="preserve">
     <value>偵錯 {0}</value>

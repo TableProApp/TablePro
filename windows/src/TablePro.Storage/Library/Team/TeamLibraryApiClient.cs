@@ -1,6 +1,7 @@
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
+using TablePro.Storage.Localization;
 
 namespace TablePro.Storage.Library.Team;
 
@@ -79,11 +80,11 @@ public sealed class HttpTeamLibraryApiClient(HttpClient http) : ITeamLibraryApiC
         try
         {
             return await response.Content.ReadFromJsonAsync(responseType, cancellationToken)
-                ?? throw new TeamLibraryException("The team library returned an empty response.");
+                ?? throw new TeamLibraryException(StorageStrings.Get("Library/TeamEmptyResponse"));
         }
         catch (JsonException ex)
         {
-            throw new TeamLibraryException("The team library returned a response TablePro cannot read.", ex);
+            throw new TeamLibraryException(StorageStrings.Get("Library/TeamUnreadable"), ex);
         }
     }
 
@@ -101,12 +102,12 @@ public sealed class HttpTeamLibraryApiClient(HttpClient http) : ITeamLibraryApiC
         }
         catch (HttpRequestException ex)
         {
-            throw new TeamLibraryException("The team library could not be reached: " + ex.Message, ex);
+            throw new TeamLibraryException(StorageStrings.Format("Library/TeamUnreachable", ex.Message), ex);
         }
         catch (TaskCanceledException ex) when (!cancellationToken.IsCancellationRequested)
         {
             // HttpClient reports its own timeout as a cancellation; only the caller's token is a real one.
-            throw new TeamLibraryException("The team library did not answer in time.", ex);
+            throw new TeamLibraryException(StorageStrings.Get("Library/TeamTimedOut"), ex);
         }
 
         if (response.IsSuccessStatusCode)
@@ -119,11 +120,11 @@ public sealed class HttpTeamLibraryApiClient(HttpClient http) : ITeamLibraryApiC
             string message;
             try
             {
-                message = (await response.Content.ReadFromJsonAsync(LibraryJson.Error, cancellationToken))?.Message ?? response.ReasonPhrase ?? "The request failed.";
+                message = (await response.Content.ReadFromJsonAsync(LibraryJson.Error, cancellationToken))?.Message ?? response.ReasonPhrase ?? StorageStrings.Get("Library/RequestFailed");
             }
             catch (JsonException)
             {
-                message = response.ReasonPhrase ?? "The request failed.";
+                message = response.ReasonPhrase ?? StorageStrings.Get("Library/RequestFailed");
             }
 
             throw new TeamLibraryException((int)response.StatusCode, message);

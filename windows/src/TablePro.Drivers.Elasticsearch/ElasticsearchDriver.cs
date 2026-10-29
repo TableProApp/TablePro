@@ -2,6 +2,7 @@ using System.Net.Http.Headers;
 using System.Text;
 using TablePro.Core.Connections;
 using TablePro.Core.Drivers;
+using TablePro.Drivers.Elasticsearch.Localization;
 using TablePro.Drivers.Http;
 
 namespace TablePro.Drivers.Elasticsearch;
@@ -61,13 +62,13 @@ internal static class ElasticsearchSettings
         }
         catch (FormatException ex)
         {
-            throw new ArgumentException("The cloud id is not valid.", nameof(cloudId), ex);
+            throw new ArgumentException(ElasticsearchStrings.Get("Elasticsearch/CloudIdInvalid"), nameof(cloudId), ex);
         }
 
         var parts = decoded.Split('$');
         if (parts.Length < 2 || parts[0].Length == 0 || parts[1].Length == 0)
         {
-            throw new ArgumentException("The cloud id is not valid.", nameof(cloudId));
+            throw new ArgumentException(ElasticsearchStrings.Get("Elasticsearch/CloudIdInvalid"), nameof(cloudId));
         }
 
         var host = parts[0];

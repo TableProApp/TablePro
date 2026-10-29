@@ -5,6 +5,7 @@ using Microsoft.Data.Sqlite;
 using TablePro.Core.Connections;
 using TablePro.Core.Data;
 using TablePro.Core.Drivers;
+using TablePro.Core.Localization;
 using TablePro.Core.Schema;
 using TablePro.Core.Sql;
 
@@ -218,7 +219,7 @@ public sealed partial class SqliteSession : AdoNetSession, ISchemaDdlProvider
             ("@name", obj.Name.Name));
         if (rows.Count == 0 || rows[0].Sql is not { } sql)
         {
-            throw new InvalidOperationException($"No definition was found for {obj.Name}.");
+            throw new InvalidOperationException(CoreStrings.Format("Driver/NoDefinitionFor", obj.Name));
         }
 
         if (rows[0].Type != "table")

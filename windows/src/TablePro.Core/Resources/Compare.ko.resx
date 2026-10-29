@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="ChangeAddColumn" xml:space="preserve">
+    <value>열 {0} {1} 추가</value>
+  </data>
+  <data name="ChangeAddForeignKey" xml:space="preserve">
+    <value>{1}을(를) 참조하는 외래 키 {0} 추가</value>
+  </data>
+  <data name="ChangeAlterColumn" xml:space="preserve">
+    <value>열 {0}을(를) {1}(으)로 변경</value>
+  </data>
+  <data name="ChangeCreateIndex" xml:space="preserve">
+    <value>인덱스 {0} 생성</value>
+  </data>
+  <data name="ChangeCreateTable" xml:space="preserve">
+    <value>테이블 {0} 생성</value>
+  </data>
+  <data name="ChangeCreateUniqueIndex" xml:space="preserve">
+    <value>고유 인덱스 {0} 생성</value>
+  </data>
+  <data name="ChangeDropColumn" xml:space="preserve">
+    <value>열 {0} 삭제</value>
+  </data>
+  <data name="ChangeDropForeignKey" xml:space="preserve">
+    <value>외래 키 {0} 삭제</value>
+  </data>
+  <data name="ChangeDropFunction" xml:space="preserve">
+    <value>함수 {0} 삭제</value>
+  </data>
+  <data name="ChangeDropIndex" xml:space="preserve">
+    <value>인덱스 {0} 삭제</value>
+  </data>
+  <data name="ChangeDropMaterializedView" xml:space="preserve">
+    <value>구체화된 뷰 {0} 삭제</value>
+  </data>
+  <data name="ChangeDropObject" xml:space="preserve">
+    <value>{0} 삭제</value>
+  </data>
+  <data name="ChangeDropProcedure" xml:space="preserve">
+    <value>프로시저 {0} 삭제</value>
+  </data>
+  <data name="ChangeDropSequence" xml:space="preserve">
+    <value>시퀀스 {0} 삭제</value>
+  </data>
+  <data name="ChangeDropTable" xml:space="preserve">
+    <value>테이블 {0} 삭제</value>
+  </data>
+  <data name="ChangeDropTrigger" xml:space="preserve">
+    <value>트리거 {0} 삭제</value>
+  </data>
+  <data name="ChangeDropView" xml:space="preserve">
+    <value>뷰 {0} 삭제</value>
+  </data>
+  <data name="ChangeRenameColumn" xml:space="preserve">
+    <value>열 {0}의 이름을 {1}(으)로 변경</value>
+  </data>
+  <data name="ChangeRenameTable" xml:space="preserve">
+    <value>테이블 이름을 {0}(으)로 변경</value>
+  </data>
+  <data name="ChangeTruncateTable" xml:space="preserve">
+    <value>테이블 비우기</value>
+  </data>
+  <data name="ChooseKeyColumn" xml:space="preserve">
+    <value>양쪽에서 행을 식별하는 키 열을 하나 이상 선택하세요.</value>
+  </data>
+  <data name="ColumnGone" xml:space="preserve">
+    <value>{0}에 더 이상 {1} 열이 없습니다. 현재 열을 읽으려면 다시 비교하세요.</value>
+  </data>
+  <data name="ColumnOnlyInTarget" xml:space="preserve">
+    <value>열 {0}은(는) 대상에만 있으며 유지됩니다.</value>
+  </data>
+  <data name="DuplicateKeyInSource" xml:space="preserve">
+    <value>키 {0}이(가) 원본에서 둘 이상의 행과 일치합니다. 하나의 행을 식별하는 키 열을 선택하세요.</value>
+  </data>
+  <data name="DuplicateKeyInTarget" xml:space="preserve">
+    <value>키 {0}이(가) 대상에서 둘 이상의 행과 일치합니다. 하나의 행을 식별하는 키 열을 선택하세요.</value>
+  </data>
+  <data name="ForeignKeyCycle" xml:space="preserve">
+    <value>{0}이(가) 서로를 참조하므로 모든 외래 키를 만족하는 순서가 없습니다. 외래 키를 위반하는 동기화는 해당 테이블을 롤백합니다.</value>
+  </data>
+  <data name="IdentityColumnWarning" xml:space="preserve">
+    <value>{0}은(는) 대상의 ID 열입니다. SQL Server 같은 엔진은 여기에 명시적인 값을 거부하므로 동기화가 롤백됩니다.</value>
+  </data>
+  <data name="KeyColumnNotOnBoth" xml:space="preserve">
+    <value>키 열 {0}이(가) 두 테이블 모두에 있지 않습니다.</value>
+  </data>
+  <data name="NoPrimaryKey" xml:space="preserve">
+    <value>{0}에 기본 키가 없습니다. 행을 식별하는 열을 선택하세요.</value>
+  </data>
+  <data name="PrimaryKeyDiffers" xml:space="preserve">
+    <value>기본 키가 다릅니다: ({0}) 대 ({1}). 직접 변경하세요.</value>
+  </data>
+  <data name="RowLimitCutShort" xml:space="preserve">
+    <value>행 제한 때문에 비교가 중간에 끝났으므로 그 이후의 행은 그대로 유지됩니다.</value>
+  </data>
+  <data name="RowsDeletedForGood_One" xml:space="preserve">
+    <value>{1}에서 {0:N0}개 행이 영구적으로 삭제됩니다.</value>
+  </data>
+  <data name="RowsDeletedForGood_Other" xml:space="preserve">
+    <value>{1}에서 {0:N0}개 행이 영구적으로 삭제됩니다.</value>
+  </data>
+  <data name="SortOrderSource" xml:space="preserve">
+    <value>원본이 키 {0} 근처에서 비교가 예상한 것과 다르게 행을 정렬했습니다. 숫자 키나 바이트 값으로 정렬하는 데이터 정렬의 키를 선택하세요.</value>
+  </data>
+  <data name="SortOrderSourceHint" xml:space="preserve">
+    <value>원본이 키 {0} 근처에서 비교가 예상한 것과 다르게 행을 정렬했습니다. 숫자 키나 바이트 값으로 정렬하는 데이터 정렬의 키를 선택하거나, 대소문자를 구분하지 않는 키를 켜세요.</value>
+  </data>
+  <data name="SortOrderTarget" xml:space="preserve">
+    <value>대상이 키 {0} 근처에서 비교가 예상한 것과 다르게 행을 정렬했습니다. 숫자 키나 바이트 값으로 정렬하는 데이터 정렬의 키를 선택하세요.</value>
+  </data>
+  <data name="SortOrderTargetHint" xml:space="preserve">
+    <value>대상이 키 {0} 근처에서 비교가 예상한 것과 다르게 행을 정렬했습니다. 숫자 키나 바이트 값으로 정렬하는 데이터 정렬의 키를 선택하거나, 대소문자를 구분하지 않는 키를 켜세요.</value>
+  </data>
+  <data name="SourceColumnCount" xml:space="preserve">
+    <value>원본이 {1}개 열이 필요한 곳에서 {0}개 열을 반환했습니다.</value>
+  </data>
+  <data name="TableLeftOutTooMany" xml:space="preserve">
+    <value>{0}: 차이 {1:N0}개는 동기화에서 검토할 수 있는 수보다 많아 이 테이블은 제외됩니다. 필터나 행 제한으로 범위를 좁히세요.</value>
+  </data>
+  <data name="TableNote" xml:space="preserve">
+    <value>{0}: {1}</value>
+  </data>
+  <data name="TargetColumnCount" xml:space="preserve">
+    <value>대상이 {1}개 열이 필요한 곳에서 {0}개 열을 반환했습니다.</value>
+  </data>
+  <data name="TooManyToSync" xml:space="preserve">
+    <value>비교에서 차이 {0:N0}개를 찾았으며, 이는 동기화에서 검토할 수 있는 {1:N0}개보다 많습니다. 필터나 행 제한으로 범위를 좁힌 다음 다시 비교하세요.</value>
+  </data>
+</root>

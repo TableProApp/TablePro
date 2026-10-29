@@ -1,4 +1,5 @@
 using System.Globalization;
+using TablePro.Core.Localization;
 using TablePro.Core.Results;
 
 namespace TablePro.Core.Geometry;
@@ -98,52 +99,47 @@ public sealed class ResultMapDiagnostics
     {
         get
         {
-            var culture = CultureInfo.CurrentCulture;
             var parts = new List<string>();
             if (FromCoordinateColumns)
             {
-                parts.Add(string.Create(culture, $"Drawing {DrawnShapes:N0} points from latitude and longitude columns."));
+                parts.Add(CoreStrings.Plural("Geometry/DrawingPoints", DrawnShapes));
             }
             else if (DrawnSrid is { } srid)
             {
-                parts.Add(string.Create(culture, $"Drawing {DrawnShapes:N0} shapes in SRID {srid.ToString(CultureInfo.InvariantCulture)}."));
+                parts.Add(CoreStrings.Plural("Geometry/DrawingShapesInSrid", DrawnShapes, srid.ToString(CultureInfo.InvariantCulture)));
             }
             else if (Projectability.Kind == ProjectabilityKind.AssumedGeographic)
             {
-                parts.Add(string.Create(culture, $"Drawing {DrawnShapes:N0} shapes with no SRID, read as longitude and latitude."));
+                parts.Add(CoreStrings.Plural("Geometry/DrawingShapesNoSrid", DrawnShapes));
             }
             else
             {
-                parts.Add(string.Create(culture, $"Drawing {DrawnShapes:N0} shapes."));
+                parts.Add(CoreStrings.Plural("Geometry/DrawingShapes", DrawnShapes));
             }
 
             if (OtherSridRows > 0)
             {
-                parts.Add(string.Create(culture, $"{OtherSridRows:N0} rows in other coordinate systems are not drawn."));
+                parts.Add(CoreStrings.Plural("Geometry/OtherSridRows", OtherSridRows));
             }
 
             if (CappedRows is { } capped)
             {
-                parts.Add(string.Create(culture, $"{capped:N0} rows are past the drawing limit."));
+                parts.Add(CoreStrings.Plural("Geometry/CappedRows", capped));
             }
 
-            if (DroppedParts == 1)
+            if (DroppedParts > 0)
             {
-                parts.Add("1 part of a multi-part geometry cannot be drawn and is left out.");
-            }
-            else if (DroppedParts > 1)
-            {
-                parts.Add(string.Create(culture, $"{DroppedParts:N0} parts of multi-part geometries cannot be drawn and are left out."));
+                parts.Add(CoreStrings.Plural("Geometry/DroppedParts", DroppedParts));
             }
 
             foreach (var (keyword, count) in _unsupportedTypes.OrderBy(p => p.Key, StringComparer.Ordinal))
             {
-                parts.Add(string.Create(culture, $"{count:N0} rows use {keyword}, which cannot be drawn."));
+                parts.Add(CoreStrings.Plural("Geometry/UnsupportedTypeRows", count, keyword));
             }
 
             if (UnreadableRows > 0)
             {
-                parts.Add(string.Create(culture, $"{UnreadableRows:N0} rows could not be read."));
+                parts.Add(CoreStrings.Plural("Geometry/UnreadableRows", UnreadableRows));
             }
 
             return string.Join(' ', parts);
@@ -159,27 +155,25 @@ public sealed class ResultMapDiagnostics
             {
                 if (_unsupportedTypes.Count > 0)
                 {
-                    return $"This column holds {string.Join(", ", _unsupportedTypes.Keys.Order(StringComparer.Ordinal))}, which the map cannot draw.";
+                    return CoreStrings.Format("Geometry/EmptyUnsupportedTypes", string.Join(", ", _unsupportedTypes.Keys.Order(StringComparer.Ordinal)));
                 }
 
                 if (UnreadableRows > 0)
                 {
-                    return string.Create(CultureInfo.CurrentCulture,
-                        $"{UnreadableRows:N0} values in this column are not in a format the map can read. The grid still shows them as the database returned them.");
+                    return CoreStrings.Plural("Geometry/EmptyUnreadable", UnreadableRows);
                 }
 
-                return FromCoordinateColumns ? "Every latitude or longitude in these columns is null." : "Every geometry in this column is empty or null.";
+                return FromCoordinateColumns ? CoreStrings.Get("Geometry/EmptyCoordinatesNull") : CoreStrings.Get("Geometry/EmptyGeometriesNull");
             }
 
             if (Projectability.Kind == ProjectabilityKind.Unsupported)
             {
                 return Projectability.Srid is { } srid
-                    ? string.Create(CultureInfo.InvariantCulture,
-                        $"The map cannot place SRID {srid}. It reads longitude and latitude, such as SRID 4326, and Web Mercator. Query ST_Transform(geom, 4326) to see these shapes.")
-                    : "This column carries no SRID and its coordinates are outside the range of longitude and latitude, so the map cannot place them.";
+                    ? CoreStrings.Format("Geometry/EmptyUnsupportedSrid", srid.ToString(CultureInfo.InvariantCulture))
+                    : CoreStrings.Get("Geometry/EmptyNoSridOutOfRange");
             }
 
-            return "Nothing in this column can be drawn. The coordinates are out of range for their coordinate system, or a line or ring has too few points.";
+            return CoreStrings.Get("Geometry/EmptyNothingDrawable");
         }
     }
 }

@@ -1,5 +1,6 @@
 using System.Buffers;
 using System.Diagnostics;
+using System.Globalization;
 using System.Text.Json;
 using TablePro.Mcp.Audit;
 using TablePro.Mcp.Auth;
@@ -35,6 +36,10 @@ internal sealed class McpProtocolHandler(McpTools tools, McpAuditLog audit, McpS
     /// <summary>The bytes of the response, or null for a notification or a client's response, which get none.</summary>
     public async Task<byte[]?> HandleAsync(ReadOnlyMemory<byte> body, McpPrincipal principal, CancellationToken cancellationToken)
     {
+        // AI clients read tool results, errors included, in English whatever language the app shows. Core and the
+        // drivers word their messages in the UI culture, so this request's flow reads their English resources. An
+        // async method's culture change stays with its own flow and never reaches its caller.
+        CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
         JsonDocument document;
         try
         {

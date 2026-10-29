@@ -1,3 +1,4 @@
+using System.Globalization;
 using TablePro.Core.Connections;
 using TablePro.Core.Drivers;
 
@@ -55,6 +56,32 @@ public sealed class TransportAndSignInTests
         var profile = Profile() with { Proxy = new ProxySettings { Enabled = true, Host = host, Port = port } };
 
         Assert.Equal(expected, profile.Validate());
+    }
+
+    [Fact]
+    public void ValidationMessagesFollowTheUiLanguage()
+    {
+        var noHost = Profile() with { Proxy = new ProxySettings { Enabled = true, Host = "", Port = 1080 } };
+        var twoTransports = Profile() with
+        {
+            Ssh = new SshTunnelSettings { Enabled = true, Host = "bastion" },
+            Proxy = new ProxySettings { Enabled = true, Host = "proxy" },
+        };
+        var badNamespace = new TunnelCommandSettings { Method = TunnelCommandMethod.Kubectl, KubernetesResource = "svc/db", KubernetesNamespace = "-n x" };
+        var saved = CultureInfo.CurrentUICulture;
+        try
+        {
+            CultureInfo.CurrentUICulture = CultureInfo.GetCultureInfo("fr");
+
+            Assert.Equal("L\x2019hôte du proxy est requis.", noHost.Validate());
+            // The transport names inside the sentence are translated too, and French puts a no-break space before a colon.
+            Assert.Equal("Une connexion ne peut utiliser qu\x2019une seule méthode de connexion à la fois. Activées\x00A0: Tunnel SSH, Proxy.", twoTransports.Validate());
+            Assert.Equal("Espace de noms ne peut pas commencer par un tiret ni contenir d\x2019espaces.", TunnelCommandLine.Validate(badNamespace));
+        }
+        finally
+        {
+            CultureInfo.CurrentUICulture = saved;
+        }
     }
 
     [Theory]

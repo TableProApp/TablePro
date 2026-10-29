@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using TablePro.Core.Localization;
 
 namespace TablePro.Core.Connections;
 
@@ -98,7 +99,7 @@ public static class TunnelCommandLine
 
         if (quote is not null)
         {
-            throw new FormatException("The command has an unclosed quote.");
+            throw new FormatException(CoreStrings.Get("Connection/CommandUnclosedQuote"));
         }
 
         if (inToken)
@@ -118,7 +119,7 @@ public static class TunnelCommandLine
             case TunnelCommandMethod.Custom:
                 if (string.IsNullOrWhiteSpace(settings.Command))
                 {
-                    return "A command is required.";
+                    return CoreStrings.Get("Connection/CommandRequired");
                 }
 
                 IReadOnlyList<string> tokens;
@@ -128,38 +129,38 @@ public static class TunnelCommandLine
                 }
                 catch (FormatException)
                 {
-                    return "The command has an unclosed quote.";
+                    return CoreStrings.Get("Connection/CommandUnclosedQuote");
                 }
 
                 if (tokens.Count == 0)
                 {
-                    return "A command is required.";
+                    return CoreStrings.Get("Connection/CommandRequired");
                 }
 
-                return tokens.Skip(1).Any(ContainsLocalPort) ? null : $"The command must contain {LocalPortPlaceholder}, where the local port goes.";
+                return tokens.Skip(1).Any(ContainsLocalPort) ? null : CoreStrings.Format("Connection/CommandNeedsLocalPort", LocalPortPlaceholder);
 
             case TunnelCommandMethod.Kubectl:
                 if (string.IsNullOrWhiteSpace(settings.KubernetesResource))
                 {
-                    return "A Kubernetes resource is required, such as service/postgres.";
+                    return CoreStrings.Get("Connection/KubernetesResourceRequired");
                 }
 
-                return PresetFieldProblem("Resource", settings.KubernetesResource)
-                    ?? PresetFieldProblem("Namespace", settings.KubernetesNamespace)
-                    ?? PresetFieldProblem("Context", settings.KubernetesContext);
+                return PresetFieldProblem(TunnelField.Resource, settings.KubernetesResource)
+                    ?? PresetFieldProblem(TunnelField.Namespace, settings.KubernetesNamespace)
+                    ?? PresetFieldProblem(TunnelField.Context, settings.KubernetesContext);
 
             case TunnelCommandMethod.AwsSsm:
                 if (string.IsNullOrWhiteSpace(settings.AwsTarget))
                 {
-                    return "An SSM target is required, such as i-0123456789abcdef0.";
+                    return CoreStrings.Get("Connection/SsmTargetRequired");
                 }
 
-                return PresetFieldProblem("Target", settings.AwsTarget)
-                    ?? PresetFieldProblem("Profile", settings.AwsProfile)
-                    ?? PresetFieldProblem("Region", settings.AwsRegion);
+                return PresetFieldProblem(TunnelField.Target, settings.AwsTarget)
+                    ?? PresetFieldProblem(TunnelField.Profile, settings.AwsProfile)
+                    ?? PresetFieldProblem(TunnelField.Region, settings.AwsRegion);
 
             default:
-                return "Choose how the tunnel is opened.";
+                return CoreStrings.Get("Connection/ChooseTunnelMethod");
         }
     }
 
@@ -257,7 +258,7 @@ public static class TunnelCommandLine
         string.IsNullOrWhiteSpace(settings.ExecutablePath) ? fallback : ExpandHome(settings.ExecutablePath.Trim());
 
     /// <summary>A preset value becomes part of one argument; a leading dash or a space would let it act as another.</summary>
-    private static string? PresetFieldProblem(string label, string? value)
+    private static string? PresetFieldProblem(TunnelField field, string? value)
     {
         if (string.IsNullOrWhiteSpace(value))
         {
@@ -265,7 +266,28 @@ public static class TunnelCommandLine
         }
 
         var trimmed = value.Trim();
-        return trimmed.StartsWith('-') || trimmed.Any(char.IsWhiteSpace) ? $"{label} cannot start with a dash or contain spaces." : null;
+        return trimmed.StartsWith('-') || trimmed.Any(char.IsWhiteSpace) ? CoreStrings.Format("Connection/TunnelFieldInvalid", FieldName(field)) : null;
+    }
+
+    // The field is named as the form labels it, in the UI language, so the message points at the box to fix.
+    private static string FieldName(TunnelField field) => field switch
+    {
+        TunnelField.Resource => CoreStrings.Get("Connection/TunnelFieldResource"),
+        TunnelField.Namespace => CoreStrings.Get("Connection/TunnelFieldNamespace"),
+        TunnelField.Context => CoreStrings.Get("Connection/TunnelFieldContext"),
+        TunnelField.Target => CoreStrings.Get("Connection/TunnelFieldTarget"),
+        TunnelField.Profile => CoreStrings.Get("Connection/TunnelFieldProfile"),
+        _ => CoreStrings.Get("Connection/TunnelFieldRegion"),
+    };
+
+    private enum TunnelField
+    {
+        Resource,
+        Namespace,
+        Context,
+        Target,
+        Profile,
+        Region,
     }
 
     private static string ExpandHome(string path)

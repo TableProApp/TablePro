@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="Abandoned" xml:space="preserve">
+    <value>无法在服务器上停止该例程。</value>
+  </data>
+  <data name="AbandonedRunning" xml:space="preserve">
+    <value>服务器进程 {0} 可能仍在运行并持有锁。</value>
+  </data>
+  <data name="AbandonedSession" xml:space="preserve">
+    <value>其服务器会话可能仍在运行并持有锁。</value>
+  </data>
+  <data name="AbandonedWaiting" xml:space="preserve">
+    <value>服务器进程 {0} 可能仍在等待调试器并持有锁。要结束它，请运行 SELECT pldbg_attach_to_port({1})，然后将返回的数字传给 pldbg_abort_target。</value>
+  </data>
+  <data name="CannotStepOut" xml:space="preserve">
+    <value>PL/pgSQL 调试器无法跳出例程。</value>
+  </data>
+  <data name="DefaultNotReadable" xml:space="preserve">
+    <value>此服务器无法显示 {0} 的默认值，请为其输入一个值。</value>
+  </data>
+  <data name="ExtensionMissing" xml:space="preserve">
+    <value>“{0}”中未安装 PL/pgSQL 调试器。</value>
+  </data>
+  <data name="ExtensionMissingDetail" xml:space="preserve">
+    <value>请让超级用户在此数据库中运行 CREATE EXTENSION pldbgapi。</value>
+  </data>
+  <data name="HidesDebuggerNotice" xml:space="preserve">
+    <value>此例程将 client_min_messages 设为 {0}，这会隐藏调试器启动时依赖的通知。</value>
+  </data>
+  <data name="HidesDebuggerNoticeDetail" xml:space="preserve">
+    <value>请从例程中删除 SET client_min_messages 后再调试。</value>
+  </data>
+  <data name="Interrupted" xml:space="preserve">
+    <value>调试器会话在等待时被中断，因此例程已停止，其未提交的更改已回滚。取消操作或服务器的 transaction_timeout 都可能导致这种情况。</value>
+  </data>
+  <data name="LimitsTransactionTime" xml:space="preserve">
+    <value>此例程将 transaction_timeout 设为 {0}，这会在它于断点处等待时将其结束。</value>
+  </data>
+  <data name="LimitsTransactionTimeDetail" xml:space="preserve">
+    <value>请从例程中删除 SET transaction_timeout 后再调试。</value>
+  </data>
+  <data name="NoDefault" xml:space="preserve">
+    <value>{0} 没有默认值。</value>
+  </data>
+  <data name="NoOverloads" xml:space="preserve">
+    <value>{0} 没有可调试的 PL/pgSQL 重载。</value>
+  </data>
+  <data name="NoOverloadsDetail" xml:space="preserve">
+    <value>只能调试不带多态、record 或 trigger 签名的 PL/pgSQL 函数和存储过程。</value>
+  </data>
+  <data name="NotAStorageParameter" xml:space="preserve">
+    <value>“{0}”不是存储参数。请将每个参数写成 name=value。</value>
+  </data>
+  <data name="NotDebuggable" xml:space="preserve">
+    <value>只能调试 PL/pgSQL 函数和存储过程。</value>
+  </data>
+  <data name="NotOwner" xml:space="preserve">
+    <value>只有 {0} 的所有者或超级用户才能调试它。</value>
+  </data>
+  <data name="NotPaused" xml:space="preserve">
+    <value>例程未暂停。</value>
+  </data>
+  <data name="PseudoTypeParameter" xml:space="preserve">
+    <value>无法调试带有多态或 record 参数的例程。</value>
+  </data>
+  <data name="RoutineNotFound" xml:space="preserve">
+    <value>{0} 已不存在。</value>
+  </data>
+  <data name="RunNoteFunction" xml:space="preserve">
+    <value>例程所做的更改会在其结束时提交。停止会回滚这些更改。</value>
+  </data>
+  <data name="RunNoteProcedure" xml:space="preserve">
+    <value>存储过程所做的更改会在其提交或结束时提交。停止会回滚尚未提交的内容。</value>
+  </data>
+  <data name="ServerPackageMissing" xml:space="preserve">
+    <value>此服务器没有 PL/pgSQL 调试器。</value>
+  </data>
+  <data name="ServerPackageMissingDetail" xml:space="preserve">
+    <value>请在服务器上安装适用于此 PostgreSQL 版本的 pldebugger 软件包，然后在此数据库中运行 CREATE EXTENSION pldbgapi。</value>
+  </data>
+  <data name="SharedMemoryUnavailable" xml:space="preserve">
+    <value>服务器无法启动调试器。</value>
+  </data>
+  <data name="SharedMemoryUnavailableDetail" xml:space="preserve">
+    <value>请将 plugin_debugger 添加到 shared_preload_libraries 并重启服务器。</value>
+  </data>
+  <data name="Stopped" xml:space="preserve">
+    <value>例程已停止，其未提交的更改已回滚。</value>
+  </data>
+  <data name="Unavailable" xml:space="preserve">
+    <value>此连接无法运行 PL/pgSQL 调试器。</value>
+  </data>
+</root>

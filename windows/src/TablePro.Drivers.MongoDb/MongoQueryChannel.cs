@@ -4,6 +4,7 @@ using MongoDB.Driver;
 using TablePro.Core.Drivers;
 using TablePro.Core.Results;
 using TablePro.Core.Sql;
+using TablePro.Drivers.MongoDb.Localization;
 using TablePro.Drivers.MongoDb.Shell;
 
 namespace TablePro.Drivers.MongoDb;
@@ -52,7 +53,7 @@ internal sealed class MongoQueryChannel : IQueryChannel
         }
 
         return MongoDialect.Instance.Classify(statement).IsWrite()
-            ? "The connection is read-only, and this statement may change data. Only reads run on a read-only connection."
+            ? MongoStrings.Get("Mongo/ReadOnlyStatement")
             : null;
     }
 

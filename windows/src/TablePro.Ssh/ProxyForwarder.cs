@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Sockets;
 using TablePro.Core.Connections;
 using TablePro.Core.Drivers;
+using TablePro.Ssh.Localization;
 
 namespace TablePro.Ssh;
 
@@ -61,7 +62,7 @@ public sealed class ProxyForwarder : IConnectionTunnel
         ArgumentNullException.ThrowIfNull(settings);
         if (string.IsNullOrWhiteSpace(settings.Host) || !ConnectionTransports.IsValidPort(settings.Port))
         {
-            throw new TunnelException(TunnelFailureKind.InvalidSettings, "The proxy configuration is incomplete. Enter a proxy host and port.");
+            throw new TunnelException(TunnelFailureKind.InvalidSettings, SshStrings.Get("Tunnel/ProxyIncomplete"));
         }
 
         var probe = await ConnectThroughProxyAsync(settings, password, request.Host, request.Port, connectTimeout, cancellationToken);
@@ -75,7 +76,7 @@ public sealed class ProxyForwarder : IConnectionTunnel
         catch (SocketException ex)
         {
             listener.Dispose();
-            throw new TunnelException(TunnelFailureKind.LocalPortUnavailable, $"Could not open a local port for the proxy: {ex.Message}", innerException: ex);
+            throw new TunnelException(TunnelFailureKind.LocalPortUnavailable, SshStrings.Format("Tunnel/ProxyLocalPortFailed", ex.Message), innerException: ex);
         }
 
         return new ProxyForwarder(listener, settings, password, request.Host, request.Port, connectTimeout, request);
@@ -116,7 +117,7 @@ public sealed class ProxyForwarder : IConnectionTunnel
             }
             catch (SocketException ex)
             {
-                throw new TunnelException(TunnelFailureKind.ProxyUnreachable, $"Could not reach the proxy at {proxy}. {ex.Message}", innerException: ex);
+                throw new TunnelException(TunnelFailureKind.ProxyUnreachable, SshStrings.Format("Tunnel/ProxyUnreachable", proxy, ex.Message), innerException: ex);
             }
 
             var stream = new NetworkStream(socket, ownsSocket: false);
@@ -132,12 +133,12 @@ public sealed class ProxyForwarder : IConnectionTunnel
             socket.Dispose();
             throw new TunnelException(
                 TunnelFailureKind.ProxyUnreachable,
-                $"Timed out connecting through the proxy at {proxy}. Check that the proxy is reachable and the credentials are correct.");
+                SshStrings.Format("Tunnel/ProxyTimedOut", proxy));
         }
         catch (IOException ex)
         {
             socket.Dispose();
-            throw new TunnelException(TunnelFailureKind.ProxyRefused, $"Could not connect through the proxy at {proxy}. {ex.Message}", innerException: ex);
+            throw new TunnelException(TunnelFailureKind.ProxyRefused, SshStrings.Format("Tunnel/ProxyConnectFailed", proxy, ex.Message), innerException: ex);
         }
         catch
         {

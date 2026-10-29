@@ -1,3 +1,5 @@
+using TablePro.Drivers.MongoDb.Localization;
+
 namespace TablePro.Drivers.MongoDb.Shell;
 
 /// <summary>A statement the shell reader refused, with the place it stopped so the editor can point at it.</summary>
@@ -40,7 +42,7 @@ public sealed class ShellSyntaxException : FormatException
     private static string Describe(string reason, string text, int position)
     {
         var (line, column) = LineAndColumn(text, Math.Clamp(position, 0, text.Length));
-        return $"SyntaxError: {reason} (line {line}, column {column})";
+        return MongoStrings.Format("Mongo/SyntaxAt", reason, line, column);
     }
 
     private static (int Line, int Column) LineAndColumn(string text, int position)

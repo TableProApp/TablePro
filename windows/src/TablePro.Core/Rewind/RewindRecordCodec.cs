@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Numerics;
 using System.Text.Json;
 using TablePro.Core.Connections;
+using TablePro.Core.Localization;
 using TablePro.Core.Schema;
 
 namespace TablePro.Core.Rewind;
@@ -69,7 +70,7 @@ public static class RewindRecordCodec
         var root = document.RootElement;
         if (root.GetProperty("v").GetInt32() > Version)
         {
-            throw new JsonException("The save was recorded by a newer TablePro.");
+            throw new JsonException(CoreStrings.Get("Rewind/RecordedByNewerVersion"));
         }
 
         var operations = root.GetProperty("ops").EnumerateArray().Select(op => new RewindOperation(

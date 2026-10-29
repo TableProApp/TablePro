@@ -3,6 +3,7 @@ using System.Numerics;
 using System.Text;
 using Parquet;
 using Parquet.Schema;
+using TablePro.Core.Localization;
 using TablePro.Core.Results;
 
 namespace TablePro.Core.Export;
@@ -31,7 +32,7 @@ internal static class ParquetExporter
     {
         if (result.Columns.Count == 0)
         {
-            throw new InvalidOperationException("A result with no columns cannot be written as Parquet.");
+            throw new InvalidOperationException(CoreStrings.Get("Export/ParquetNoColumns"));
         }
 
         var types = new ParquetColumnType[result.Columns.Count];

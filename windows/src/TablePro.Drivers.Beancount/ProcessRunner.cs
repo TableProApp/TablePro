@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Text;
+using TablePro.Drivers.Beancount.Localization;
 
 namespace TablePro.Drivers.Beancount;
 
@@ -66,7 +67,7 @@ internal sealed class SystemProcessRunner : IProcessRunner
         }
         catch (Win32Exception ex)
         {
-            throw new BeancountException($"Could not start {spec.Executable}: {ex.Message}", ex);
+            throw new BeancountException(BeancountStrings.Format("Beancount/CouldNotStart", spec.Executable, ex.Message), ex);
         }
 
         // Read both pipes while the process runs: a backend that fills one pipe while we wait on the other never exits.

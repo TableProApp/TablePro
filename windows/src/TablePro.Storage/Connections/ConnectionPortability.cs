@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using TablePro.Core.Connections;
+using TablePro.Storage.Localization;
 
 namespace TablePro.Storage.Connections;
 
@@ -138,19 +139,18 @@ internal static class ConnectionPortability
     {
         if (file.FormatVersion < 1)
         {
-            throw new InvalidDataException("This file is not a valid TablePro export.");
+            throw new InvalidDataException(StorageStrings.Get("Connections/NotAnExport"));
         }
 
         if (file.FormatVersion > SupportedFormatVersion)
         {
-            throw new InvalidDataException(
-                string.Create(CultureInfo.InvariantCulture, $"This file requires a newer version of TablePro (format version {file.FormatVersion})."));
+            throw new InvalidDataException(StorageStrings.Format("Connections/NewerFormat", file.FormatVersion));
         }
 
         var isFormat2 = file.FormatVersion >= 2;
         if (isFormat2 && ConnectionBundleValidation.FirstViolation(file) is { } violation)
         {
-            throw new InvalidDataException("This file is not a valid TablePro export: " + violation + ".");
+            throw new InvalidDataException(StorageStrings.Format("Connections/NotAnExportBecause", violation));
         }
 
         var groups = new GroupResolver(existingGroups);
@@ -176,10 +176,10 @@ internal static class ConnectionPortability
         for (var index = 0; index < file.Connections.Count; index++)
         {
             var connection = file.Connections[index];
-            var name = string.IsNullOrWhiteSpace(connection.Name) ? "Imported connection" : connection.Name.Trim();
+            var name = string.IsNullOrWhiteSpace(connection.Name) ? StorageStrings.Get("Connections/ImportedConnectionName") : connection.Name.Trim();
             if (ParseEngine(connection.Type) is not { } engine)
             {
-                skipped.Add(new SkippedConnection(name, $"TablePro for Windows has no driver for {connection.Type}."));
+                skipped.Add(new SkippedConnection(name, StorageStrings.Format("Connections/NoDriverFor", connection.Type)));
                 continue;
             }
 
@@ -270,7 +270,7 @@ internal static class ConnectionPortability
             var path = new List<(string, ConnectionColor)>();
             for (var current = byRef[start]; ; current = byRef[current.ParentRef!])
             {
-                path.Insert(0, (string.IsNullOrWhiteSpace(current.Name) ? "Imported" : current.Name.Trim(), ParseColor(current.Color)));
+                path.Insert(0, (string.IsNullOrWhiteSpace(current.Name) ? StorageStrings.Get("Connections/ImportedGroupName") : current.Name.Trim(), ParseColor(current.Color)));
                 if (current.ParentRef is null)
                 {
                     break;

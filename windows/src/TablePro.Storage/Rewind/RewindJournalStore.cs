@@ -15,7 +15,11 @@ public sealed record RewindRetention(TimeSpan MaxAge, int MaxPerTable = 50, long
     public static readonly RewindRetention Default = new(TimeSpan.FromDays(7));
 }
 
-/// <summary>A saved change as the list shows it, read without decrypting its rows.</summary>
+/// <summary>
+/// A saved change as the list shows it, read without decrypting its rows. <see cref="Counts"/> lets the summary be worded
+/// in the current language; a record from before counts were kept has none, only the <see cref="SavedSummary"/> worded
+/// when the save was made.
+/// </summary>
 public sealed record RewindJournalEntry(
     Guid Id,
     Guid ConnectionId,
@@ -24,9 +28,14 @@ public sealed record RewindJournalEntry(
     DateTimeOffset CapturedAt,
     int OperationCount,
     int ReversibleCount,
-    string Summary,
+    string SavedSummary,
     Guid? Restores,
-    DateTimeOffset? RestoredAt);
+    DateTimeOffset? RestoredAt,
+    RewindCounts? Counts = null)
+{
+    /// <summary>"2 edited, 1 added", in the UI language when the counts are known.</summary>
+    public string Summary => Counts?.Describe() ?? SavedSummary;
+}
 
 /// <summary>
 /// The Data Rewind journal: what each committed grid save looked like before it ran, in <c>rewind.db</c> under
@@ -81,8 +90,10 @@ public sealed class RewindJournalStore : IDisposable
             using var command = connection.CreateCommand();
             command.CommandText = """
                 INSERT INTO rewind (id, connection_id, database_name, schema_name, table_name, engine, captured_at,
-                                    operation_count, reversible_count, summary, restores_id, byte_count, payload)
-                VALUES ($id, $connection, $database, $schema, $table, $engine, $at, $ops, $reversible, $summary, $restores, $bytes, $payload);
+                                    operation_count, reversible_count, summary, edited_count, added_count, deleted_count,
+                                    restores_id, byte_count, payload)
+                VALUES ($id, $connection, $database, $schema, $table, $engine, $at, $ops, $reversible, $summary, $edited, $added,
+                        $deleted, $restores, $bytes, $payload);
                 """;
             command.Parameters.AddWithValue("$id", Key(record.Id));
             command.Parameters.AddWithValue("$connection", Key(record.ConnectionId));
@@ -93,7 +104,13 @@ public sealed class RewindJournalStore : IDisposable
             command.Parameters.AddWithValue("$at", record.CapturedAt.ToUnixTimeMilliseconds());
             command.Parameters.AddWithValue("$ops", record.Operations.Count);
             command.Parameters.AddWithValue("$reversible", record.ReversibleCount);
-            command.Parameters.AddWithValue("$summary", record.Summary);
+            var counts = record.Counts;
+
+            // The text stays for builds that predate the counts; this build words the summary from the counts.
+            command.Parameters.AddWithValue("$summary", counts.Describe());
+            command.Parameters.AddWithValue("$edited", counts.Edited);
+            command.Parameters.AddWithValue("$added", counts.Added);
+            command.Parameters.AddWithValue("$deleted", counts.Deleted);
             command.Parameters.AddWithValue("$restores", record.Restores is { } restores ? Key(restores) : DBNull.Value);
             command.Parameters.AddWithValue("$bytes", payload.Length);
             command.Parameters.AddWithValue("$payload", payload);
@@ -115,7 +132,7 @@ public sealed class RewindJournalStore : IDisposable
             using var command = connection.CreateCommand();
             var sql = """
                 SELECT id, connection_id, database_name, schema_name, table_name, captured_at, operation_count,
-                       reversible_count, summary, restores_id, restored_at
+                       reversible_count, summary, restores_id, restored_at, edited_count, added_count, deleted_count
                   FROM rewind WHERE connection_id = $connection
                 """;
             command.Parameters.AddWithValue("$connection", Key(connectionId));
@@ -145,7 +162,8 @@ public sealed class RewindJournalStore : IDisposable
                     reader.GetInt32(7),
                     reader.GetString(8),
                     reader.IsDBNull(9) ? null : Guid.Parse(reader.GetString(9)),
-                    reader.IsDBNull(10) ? null : DateTimeOffset.FromUnixTimeMilliseconds(reader.GetInt64(10))));
+                    reader.IsDBNull(10) ? null : DateTimeOffset.FromUnixTimeMilliseconds(reader.GetInt64(10)),
+                    reader.IsDBNull(11) ? null : new RewindCounts(reader.GetInt32(11), reader.GetInt32(12), reader.GetInt32(13))));
             }
 
             return entries;
@@ -365,6 +383,9 @@ public sealed class RewindJournalStore : IDisposable
                 operation_count INTEGER NOT NULL,
                 reversible_count INTEGER NOT NULL,
                 summary TEXT NOT NULL,
+                edited_count INTEGER,
+                added_count INTEGER,
+                deleted_count INTEGER,
                 restores_id TEXT,
                 restored_at INTEGER,
                 byte_count INTEGER NOT NULL,
@@ -374,6 +395,19 @@ public sealed class RewindJournalStore : IDisposable
             CREATE INDEX IF NOT EXISTS rewind_age ON rewind (captured_at DESC);
             """;
         command.ExecuteNonQuery();
+
+        // A journal written before the counts were kept gains their columns; its rows keep null counts and show the
+        // summary text they were saved with.
+        command.CommandText = "SELECT COUNT(*) FROM pragma_table_info('rewind') WHERE name = 'edited_count';";
+        if (Convert.ToInt64(command.ExecuteScalar(), System.Globalization.CultureInfo.InvariantCulture) == 0)
+        {
+            command.CommandText = """
+                ALTER TABLE rewind ADD COLUMN edited_count INTEGER;
+                ALTER TABLE rewind ADD COLUMN added_count INTEGER;
+                ALTER TABLE rewind ADD COLUMN deleted_count INTEGER;
+                """;
+            command.ExecuteNonQuery();
+        }
     }
 
     private async Task<T> RunAsync<T>(Func<SqliteConnection, T> work, CancellationToken cancellationToken)

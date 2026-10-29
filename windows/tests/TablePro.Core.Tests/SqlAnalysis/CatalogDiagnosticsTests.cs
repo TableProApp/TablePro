@@ -1,3 +1,4 @@
+using System.Globalization;
 using TablePro.Core.Sql;
 using TablePro.Core.Sql.Analysis;
 using static TablePro.Core.Tests.SqlAnalysis.Analysis;
@@ -19,6 +20,23 @@ public sealed class CatalogDiagnosticsTests
         Assert.Equal(SqlDiagnosticSeverity.Warning, diagnostic.Severity);
         Assert.Equal(Range(text, "userz"), diagnostic.Range);
         Assert.Equal("Unknown table 'userz'.", diagnostic.Message);
+    }
+
+    [Fact]
+    public void DiagnosticsFollowTheUiLanguage()
+    {
+        var saved = CultureInfo.CurrentUICulture;
+        try
+        {
+            CultureInfo.CurrentUICulture = CultureInfo.GetCultureInfo("fr");
+            var diagnostic = Assert.Single(Diagnose("SELECT * FROM userz", caret: 0));
+
+            Assert.Equal("Table «\x00A0userz\x00A0» inconnue.", diagnostic.Message);
+        }
+        finally
+        {
+            CultureInfo.CurrentUICulture = saved;
+        }
     }
 
     [Fact]

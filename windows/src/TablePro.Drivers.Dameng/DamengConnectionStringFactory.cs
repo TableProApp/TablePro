@@ -1,5 +1,6 @@
 using System.Globalization;
 using TablePro.Core.Drivers;
+using TablePro.Drivers.Dameng.Localization;
 using TablePro.Drivers.Odbc;
 using CoreSslMode = TablePro.Core.Connections.SslMode;
 
@@ -22,10 +23,8 @@ internal static class DamengConnectionStringFactory
     public const string SslPathOption = "SSL_PATH";
     public const string SslPasswordOption = "SSL_PWD";
 
-    public static readonly OdbcDriverInfo Driver = new(
-        "Dameng",
-        DefaultDriver,
-        "Install the 64-bit DM8 client from Dameng (eco.dameng.com), which registers the ODBC driver, or name another installed driver with the odbcDriver option.");
+    // Built per session rather than once, so the install hint is in the language of the session that may need it.
+    public static OdbcDriverInfo Driver => new("Dameng", DefaultDriver, DamengStrings.Get("Dameng/InstallHint"));
 
     private static readonly string[] ConsumedOptions = [OdbcConnectionString.DriverOption, SslPathOption, SslPasswordOption];
 
@@ -63,11 +62,9 @@ internal static class DamengConnectionStringFactory
             case CoreSslMode.Preferred when path is null:
                 return;
             case CoreSslMode.VerifyIdentity:
-                throw new ArgumentException(
-                    "Dameng's TLS checks the server certificate against the CA in SSL_PATH but never matches it to the host name. Choose Verify CA, or use an SSH tunnel.");
+                throw new ArgumentException(DamengStrings.Get("Dameng/VerifyIdentityUnsupported"));
             case CoreSslMode.Required or CoreSslMode.VerifyCa when path is null:
-                throw new ArgumentException(
-                    "Dameng encrypts with client certificates: set the SSL_PATH option to the directory holding them (and SSL_PWD if they are protected).");
+                throw new ArgumentException(DamengStrings.Get("Dameng/SslPathRequired"));
         }
 
         connection.Set(SslPathOption, path!);

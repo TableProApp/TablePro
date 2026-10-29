@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="BetweenNeedsBothBounds" xml:space="preserve">
+    <value>Enter both bounds to filter with BETWEEN.</value>
+  </data>
+  <data name="HeldForTransaction" xml:space="preserve">
+    <value>Held for the transaction; it runs at COMMIT.</value>
+  </data>
+  <data name="IdNotEditable" xml:space="preserve">
+    <value>A record's id cannot be edited.</value>
+  </data>
+  <data name="None" xml:space="preserve">
+    <value>(none)</value>
+    <comment>Shown in place of a namespace or database that is not set.</comment>
+  </data>
+  <data name="NotCbor" xml:space="preserve">
+    <value>SurrealDB answered something other than CBOR.</value>
+  </data>
+  <data name="NotDeclared" xml:space="preserve">
+    <value>not declared</value>
+    <comment>Shown as the comment of a field the table's schema does not declare.</comment>
+  </data>
+  <data name="QueryFailed" xml:space="preserve">
+    <value>The query failed.</value>
+  </data>
+  <data name="RecordIdUnknown" xml:space="preserve">
+    <value>The record's id is unknown, so it cannot be addressed.</value>
+  </data>
+  <data name="RelationFieldNotSaved" xml:space="preserve">
+    <value>'{0}' cannot be saved from the grid. Delete the relation and RELATE it again.</value>
+    <comment>{0} is in or out, a relation's endpoint field. RELATE is a SurrealQL statement.</comment>
+  </data>
+  <data name="TransactionCancelled_One" xml:space="preserve">
+    <value>Transaction cancelled; {0} statement was not sent.</value>
+    <comment>{0} is the number of statements held for the transaction.</comment>
+  </data>
+  <data name="TransactionCancelled_Other" xml:space="preserve">
+    <value>Transaction cancelled; {0} statements were not sent.</value>
+    <comment>{0} is the number of statements held for the transaction.</comment>
+  </data>
+  <data name="TransactionCancelledBecause" xml:space="preserve">
+    <value>The transaction was cancelled. {0}</value>
+    <comment>{0} is the server's own error message.</comment>
+  </data>
+  <data name="TransactionCommitted_One" xml:space="preserve">
+    <value>Transaction committed: {0} statement.</value>
+    <comment>{0} is the number of statements committed.</comment>
+  </data>
+  <data name="TransactionCommitted_Other" xml:space="preserve">
+    <value>Transaction committed: {0} statements.</value>
+    <comment>{0} is the number of statements committed.</comment>
+  </data>
+  <data name="TransactionStarted" xml:space="preserve">
+    <value>Transaction started. The statements up to COMMIT run together when it is sent.</value>
+  </data>
+  <data name="UsingNamespace" xml:space="preserve">
+    <value>Using namespace {0}, database {1}.</value>
+    <comment>{0} is a namespace name, {1} a database name.</comment>
+  </data>
+  <data name="VariableKept" xml:space="preserve">
+    <value>The variable is kept for the statements that follow in this tab.</value>
+  </data>
+  <data name="VariableNotReplayed" xml:space="preserve">
+    <value>The variable's value writes data, so it is not replayed for later statements.</value>
+  </data>
+</root>

@@ -1,0 +1,177 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AccessibleActualTime" xml:space="preserve">
+    <value>실제 시간 {0}</value>
+  </data>
+  <data name="AccessibleCost" xml:space="preserve">
+    <value>비용 {0}</value>
+  </data>
+  <data name="AccessibleOnRelation" xml:space="preserve">
+    <value>{0}에서</value>
+  </data>
+  <data name="AccessibleRows_One" xml:space="preserve">
+    <value>{0}행</value>
+  </data>
+  <data name="AccessibleRows_Other" xml:space="preserve">
+    <value>{0}행</value>
+  </data>
+  <data name="AccessibleSeparator" xml:space="preserve">
+    <value>, </value>
+  </data>
+  <data name="AccessibleWarnings_One" xml:space="preserve">
+    <value>경고: {0}</value>
+  </data>
+  <data name="AccessibleWarnings_Other" xml:space="preserve">
+    <value>경고: {0}</value>
+  </data>
+  <data name="BarMetricSelfCost" xml:space="preserve">
+    <value>자체 비용</value>
+  </data>
+  <data name="BarMetricSelfTime" xml:space="preserve">
+    <value>자체 시간</value>
+  </data>
+  <data name="ColumnsWithNoStatistics" xml:space="preserve">
+    <value>통계가 없는 열</value>
+  </data>
+  <data name="ImplicitConversion" xml:space="preserve">
+    <value>암시적 변환: {0}</value>
+  </data>
+  <data name="ImplicitConversionIssue" xml:space="preserve">
+    <value>암시적 변환({0}): {1}</value>
+  </data>
+  <data name="LabelActualRows" xml:space="preserve">
+    <value>실제 행</value>
+  </data>
+  <data name="LabelActualTime" xml:space="preserve">
+    <value>실제 시간</value>
+  </data>
+  <data name="LabelCost" xml:space="preserve">
+    <value>비용</value>
+  </data>
+  <data name="LabelLoops" xml:space="preserve">
+    <value>반복 횟수</value>
+  </data>
+  <data name="LabelMissingIndex" xml:space="preserve">
+    <value>누락된 인덱스</value>
+  </data>
+  <data name="LabelRows" xml:space="preserve">
+    <value>행</value>
+  </data>
+  <data name="LabelTable" xml:space="preserve">
+    <value>테이블</value>
+  </data>
+  <data name="LabelValue" xml:space="preserve">
+    <value>{0}: {1}</value>
+  </data>
+  <data name="LabelWarning" xml:space="preserve">
+    <value>경고</value>
+  </data>
+  <data name="LabelWidth" xml:space="preserve">
+    <value>너비</value>
+  </data>
+  <data name="MetricActualLoops" xml:space="preserve">
+    <value>실제 루프</value>
+  </data>
+  <data name="MetricActualRows" xml:space="preserve">
+    <value>실제 행</value>
+  </data>
+  <data name="MetricActualStartupTime" xml:space="preserve">
+    <value>실제 시작 시간</value>
+  </data>
+  <data name="MetricActualTotalTime" xml:space="preserve">
+    <value>실제 총 시간</value>
+  </data>
+  <data name="MetricEstimatedRows" xml:space="preserve">
+    <value>예상 행</value>
+  </data>
+  <data name="MetricEstimatedStartupCost" xml:space="preserve">
+    <value>예상 시작 비용</value>
+  </data>
+  <data name="MetricEstimatedTotalCost" xml:space="preserve">
+    <value>예상 총 비용</value>
+  </data>
+  <data name="MetricEstimatedWidth" xml:space="preserve">
+    <value>예상 너비</value>
+  </data>
+  <data name="NeverExecuted" xml:space="preserve">
+    <value>실행한 적 없음</value>
+  </data>
+  <data name="PlanRoot" xml:space="preserve">
+    <value>쿼리 플랜</value>
+  </data>
+  <data name="SeverityCritical" xml:space="preserve">
+    <value>심각한 비용</value>
+  </data>
+  <data name="SeverityHigh" xml:space="preserve">
+    <value>높은 비용</value>
+  </data>
+  <data name="SeverityLow" xml:space="preserve">
+    <value>낮은 비용</value>
+  </data>
+  <data name="SeverityModerate" xml:space="preserve">
+    <value>중간 비용</value>
+  </data>
+  <data name="ShareOfLargestStep" xml:space="preserve">
+    <value>가장 큰 단계의 {0}</value>
+  </data>
+  <data name="ShareOfPlan" xml:space="preserve">
+    <value>플랜의 {0}</value>
+  </data>
+  <data name="ShowplanTooDeep" xml:space="preserve">
+    <value>실행 계획(showplan)의 중첩이 너무 깊습니다.</value>
+  </data>
+  <data name="SpillToTempDb" xml:space="preserve">
+    <value>tempdb로 유출</value>
+  </data>
+  <data name="SpillToTempDbLevel" xml:space="preserve">
+    <value>tempdb로 유출, 수준 {0}</value>
+  </data>
+  <data name="SummaryEstimatedRows" xml:space="preserve">
+    <value>예상 행</value>
+  </data>
+  <data name="SummaryExecutionTime" xml:space="preserve">
+    <value>실행 시간</value>
+  </data>
+  <data name="SummaryNodeCount" xml:space="preserve">
+    <value>노드 수</value>
+  </data>
+  <data name="SummaryPlanningTime" xml:space="preserve">
+    <value>계획 수립 시간</value>
+  </data>
+  <data name="SummaryTotalCost" xml:space="preserve">
+    <value>비용</value>
+  </data>
+  <data name="UnknownOperation" xml:space="preserve">
+    <value>알 수 없음</value>
+  </data>
+  <data name="ValueChanged" xml:space="preserve">
+    <value>변경됨</value>
+  </data>
+  <data name="VerdictFaster" xml:space="preserve">
+    <value>기준보다 {0:0.#}배 빠름</value>
+  </data>
+  <data name="VerdictShapeChanged" xml:space="preserve">
+    <value>플랜 구조가 변경됨</value>
+  </data>
+  <data name="VerdictSlower" xml:space="preserve">
+    <value>기준보다 {0:0.#}배 느림</value>
+  </data>
+  <data name="VerdictUnchanged" xml:space="preserve">
+    <value>측정 가능한 변화 없음</value>
+  </data>
+  <data name="VerdictValuesChanged" xml:space="preserve">
+    <value>플랜 구조는 같고 수치만 다름</value>
+  </data>
+</root>

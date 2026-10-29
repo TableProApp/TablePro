@@ -6,6 +6,7 @@ using System.Text.RegularExpressions;
 using Cassandra;
 using Cassandra.Serialization;
 using TablePro.Core.Drivers;
+using TablePro.Drivers.Cassandra.Localization;
 using CoreSslMode = TablePro.Core.Connections.SslMode;
 
 namespace TablePro.Drivers.Cassandra;
@@ -93,7 +94,7 @@ public sealed partial record CassandraConnectionSettings
 
         if (sigV4 is not null && !useTls)
         {
-            throw new InvalidOperationException("Amazon Keyspaces signs logins only over TLS. Set SSL to Required or stricter.");
+            throw new InvalidOperationException(CassandraStrings.Get("Cassandra/KeyspacesNeedsTls"));
         }
 
         return new CassandraConnectionSettings
@@ -133,7 +134,7 @@ public sealed partial record CassandraConnectionSettings
             return level;
         }
 
-        throw new ArgumentException($"{name} is not a consistency level a connection can use. Use LOCAL_ONE, ONE, QUORUM, LOCAL_QUORUM, EACH_QUORUM, ALL, TWO, THREE or ANY.");
+        throw new ArgumentException(CassandraStrings.Format("Cassandra/BadConsistencyLevel", name));
     }
 
     public static string CqlName(ConsistencyLevel level) => level switch
@@ -217,16 +218,16 @@ public sealed partial record CassandraConnectionSettings
 
         if (!mode.Equals("accessKey", StringComparison.OrdinalIgnoreCase) && !mode.Equals("sigv4", StringComparison.OrdinalIgnoreCase))
         {
-            throw new NotSupportedException($"Amazon Keyspaces sign-in \"{mode}\" is not available on Windows yet. Use an access key.");
+            throw new NotSupportedException(CassandraStrings.Format("Cassandra/KeyspacesSignInUnavailable", mode));
         }
 
         var region = Option(options, AwsRegionOption) ?? RegionFromHost(request.Profile.Host)
-            ?? throw new InvalidOperationException("Set the AWS region for Amazon Keyspaces in the connection's options (awsRegion).");
+            ?? throw new InvalidOperationException(CassandraStrings.Get("Cassandra/KeyspacesNeedsRegion"));
         var accessKey = Option(options, AwsAccessKeyIdOption) ?? request.Profile.Username;
         var secret = Option(options, AwsSecretAccessKeyOption) ?? request.Password;
         if (string.IsNullOrEmpty(accessKey) || string.IsNullOrEmpty(secret))
         {
-            throw new InvalidOperationException("Amazon Keyspaces needs an access key ID (user name) and a secret access key (password).");
+            throw new InvalidOperationException(CassandraStrings.Get("Cassandra/KeyspacesNeedsAccessKey"));
         }
 
         return new KeyspacesCredentials(accessKey, secret, Option(options, AwsSessionTokenOption), region);

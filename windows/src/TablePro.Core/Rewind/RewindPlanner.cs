@@ -1,6 +1,7 @@
 using System.Globalization;
 using TablePro.Core.Drivers;
 using TablePro.Core.Editing;
+using TablePro.Core.Localization;
 using TablePro.Core.Sql;
 
 namespace TablePro.Core.Rewind;
@@ -110,7 +111,7 @@ public static class RewindPlanner
                     }
 
                     var change = new RowUpdate(Guard(record, keyIndexes, after, operation.Written), values);
-                    steps.Add(new RewindStep(operation, change, Describe(record, keyIndexes, after), "Restore previous values"));
+                    steps.Add(new RewindStep(operation, change, Describe(record, keyIndexes, after), CoreStrings.Get("Rewind/StepRestoreValues")));
                     break;
                 }
 
@@ -126,12 +127,12 @@ public static class RewindPlanner
                         }
                     }
 
-                    steps.Add(new RewindStep(operation, new RowInsert(values), Describe(record, keyIndexes, before), "Put the row back"));
+                    steps.Add(new RewindStep(operation, new RowInsert(values), Describe(record, keyIndexes, before), CoreStrings.Get("Rewind/StepPutRowBack")));
                     break;
                 }
 
                 case RewindOperationKind.Insert when operation.After is { } after:
-                    steps.Add(new RewindStep(operation, new RowDelete(Guard(record, keyIndexes, after, operation.Written)), Describe(record, keyIndexes, after), "Remove the added row"));
+                    steps.Add(new RewindStep(operation, new RowDelete(Guard(record, keyIndexes, after, operation.Written)), Describe(record, keyIndexes, after), CoreStrings.Get("Rewind/StepRemoveAddedRow")));
                     break;
 
                 default:

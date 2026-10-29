@@ -1,3 +1,4 @@
+using TablePro.Core.Localization;
 using TablePro.Core.Schema;
 
 namespace TablePro.Core.Browse;
@@ -39,17 +40,17 @@ public static class FilterOperatorExtensions
         FilterOperator.GreaterOrEqual => "≥",
         FilterOperator.LessThan => "<",
         FilterOperator.LessOrEqual => "≤",
-        FilterOperator.Contains => "contains",
-        FilterOperator.NotContains => "does not contain",
-        FilterOperator.StartsWith => "starts with",
-        FilterOperator.EndsWith => "ends with",
-        FilterOperator.IsNull => "is NULL",
-        FilterOperator.IsNotNull => "is not NULL",
-        FilterOperator.IsEmpty => "is empty",
-        FilterOperator.IsNotEmpty => "is not empty",
-        FilterOperator.In => "in list",
-        FilterOperator.NotIn => "not in list",
-        FilterOperator.Between => "between",
+        FilterOperator.Contains => CoreStrings.Get("Browse/OperatorContains"),
+        FilterOperator.NotContains => CoreStrings.Get("Browse/OperatorNotContains"),
+        FilterOperator.StartsWith => CoreStrings.Get("Browse/OperatorStartsWith"),
+        FilterOperator.EndsWith => CoreStrings.Get("Browse/OperatorEndsWith"),
+        FilterOperator.IsNull => CoreStrings.Get("Browse/OperatorIsNull"),
+        FilterOperator.IsNotNull => CoreStrings.Get("Browse/OperatorIsNotNull"),
+        FilterOperator.IsEmpty => CoreStrings.Get("Browse/OperatorIsEmpty"),
+        FilterOperator.IsNotEmpty => CoreStrings.Get("Browse/OperatorIsNotEmpty"),
+        FilterOperator.In => CoreStrings.Get("Browse/OperatorIn"),
+        FilterOperator.NotIn => CoreStrings.Get("Browse/OperatorNotIn"),
+        FilterOperator.Between => CoreStrings.Get("Browse/OperatorBetween"),
         _ => op.ToString(),
     };
 }

@@ -1,3 +1,5 @@
+using TablePro.Storage.Localization;
+
 namespace TablePro.Storage.Library.Git;
 
 /// <summary>One side of a porcelain v2 <c>XY</c> code.</summary>
@@ -78,8 +80,8 @@ public readonly record struct GitFileStatus(GitChange Staged, GitChange Unstaged
 
             return (HasStagedChanges, Unstaged != GitChange.Unmodified) switch
             {
-                (true, false) => label + ", staged",
-                (true, true) => label + ", partly staged",
+                (true, false) => StorageStrings.Format("Library/GitStaged", label),
+                (true, true) => StorageStrings.Format("Library/GitPartlyStaged", label),
                 _ => label,
             };
         }
@@ -113,10 +115,10 @@ public readonly record struct GitFileStatus(GitChange Staged, GitChange Unstaged
 
     public static string BadgeLabel(GitBadge badge) => badge switch
     {
-        GitBadge.Modified => "Modified",
-        GitBadge.Added => "Added",
-        GitBadge.Renamed => "Renamed",
-        GitBadge.Untracked => "Untracked",
-        _ => "Conflicted",
+        GitBadge.Modified => StorageStrings.Get("Library/GitModified"),
+        GitBadge.Added => StorageStrings.Get("Library/GitAdded"),
+        GitBadge.Renamed => StorageStrings.Get("Library/GitRenamed"),
+        GitBadge.Untracked => StorageStrings.Get("Library/GitUntracked"),
+        _ => StorageStrings.Get("Library/GitConflicted"),
     };
 }

@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AvailableAfterSetRole" xml:space="preserve">
+    <value>执行 SET ROLE {0} 后可用。</value>
+  </data>
+  <data name="CannotApply" xml:space="preserve">
+    <value>此服务器无法为 {1} 应用“{0}”。</value>
+  </data>
+  <data name="CategoryAdministration" xml:space="preserve">
+    <value>管理</value>
+  </data>
+  <data name="CategoryData" xml:space="preserve">
+    <value>数据</value>
+  </data>
+  <data name="CategoryDynamic" xml:space="preserve">
+    <value>动态</value>
+  </data>
+  <data name="CategoryOther" xml:space="preserve">
+    <value>其他</value>
+  </data>
+  <data name="CategoryStructure" xml:space="preserve">
+    <value>结构</value>
+  </data>
+  <data name="ConnectToBrowse" xml:space="preserve">
+    <value>连接到此数据库以浏览</value>
+  </data>
+  <data name="GrantedOn" xml:space="preserve">
+    <value>已在 {0} 上授予</value>
+  </data>
+  <data name="GrantsInside_One" xml:space="preserve">
+    <value>内含 {0} 项授权</value>
+  </data>
+  <data name="GrantsInside_Other" xml:space="preserve">
+    <value>内含 {0} 项授权</value>
+  </data>
+  <data name="InheritedAutomatically" xml:space="preserve">
+    <value>自动继承。</value>
+  </data>
+  <data name="InheritedFrom" xml:space="preserve">
+    <value>继承自 {0}</value>
+  </data>
+  <data name="KindRole" xml:space="preserve">
+    <value>角色</value>
+  </data>
+  <data name="KindUser" xml:space="preserve">
+    <value>用户</value>
+  </data>
+  <data name="SelfImpactAlter" xml:space="preserve">
+    <value>这些更改会修改 {0}，也就是此连接使用的账户。</value>
+  </data>
+  <data name="SelfImpactDrop" xml:space="preserve">
+    <value>这些更改会删除 {0}，也就是此连接使用的账户。</value>
+  </data>
+  <data name="SelfImpactRevokeAll" xml:space="preserve">
+    <value>这些更改会撤销 {0} 的所有权限，也就是此连接使用的账户。</value>
+  </data>
+  <data name="Server" xml:space="preserve">
+    <value>服务器</value>
+  </data>
+  <data name="StageCreated" xml:space="preserve">
+    <value>应用更改时将会创建</value>
+  </data>
+  <data name="StageDropped" xml:space="preserve">
+    <value>应用更改时将会删除</value>
+  </data>
+  <data name="StageModified" xml:space="preserve">
+    <value>有未保存的更改</value>
+  </data>
+  <data name="StatementChangePassword" xml:space="preserve">
+    <value>更改 {0} 的密码</value>
+  </data>
+  <data name="StatementCreate" xml:space="preserve">
+    <value>创建 {0}</value>
+  </data>
+  <data name="StatementDrop" xml:space="preserve">
+    <value>删除 {0}</value>
+  </data>
+  <data name="StatementGrant" xml:space="preserve">
+    <value>向 {0} 授予权限</value>
+  </data>
+  <data name="StatementRevoke" xml:space="preserve">
+    <value>撤销 {0} 的权限</value>
+  </data>
+  <data name="StatementUpdate" xml:space="preserve">
+    <value>更新 {0}</value>
+  </data>
+  <data name="SummaryAll" xml:space="preserve">
+    <value>全部（{0}）</value>
+  </data>
+  <data name="SummaryGrantable" xml:space="preserve">
+    <value>{0}（可授予）</value>
+  </data>
+  <data name="SummaryNone" xml:space="preserve">
+    <value>无</value>
+  </data>
+  <data name="SummaryOverflow" xml:space="preserve">
+    <value>{0} +{1}</value>
+  </data>
+  <data name="UndoChangeAttributes" xml:space="preserve">
+    <value>更改属性</value>
+  </data>
+  <data name="UndoChangePassword" xml:space="preserve">
+    <value>更改 {0} 的密码</value>
+  </data>
+  <data name="UndoCopyPrivileges" xml:space="preserve">
+    <value>从 {0} 复制权限</value>
+  </data>
+  <data name="UndoCreate" xml:space="preserve">
+    <value>创建 {0}</value>
+  </data>
+  <data name="UndoDrop" xml:space="preserve">
+    <value>删除 {0}</value>
+  </data>
+  <data name="UndoDropMany_One" xml:space="preserve">
+    <value>删除 {0} 个用户或角色</value>
+  </data>
+  <data name="UndoDropMany_Other" xml:space="preserve">
+    <value>删除 {0} 个用户或角色</value>
+  </data>
+  <data name="UndoGrant" xml:space="preserve">
+    <value>授予</value>
+  </data>
+  <data name="UndoKeep" xml:space="preserve">
+    <value>保留 {0}</value>
+  </data>
+  <data name="UndoRemove" xml:space="preserve">
+    <value>移除 {0}</value>
+  </data>
+  <data name="UndoRevoke" xml:space="preserve">
+    <value>撤销授权</value>
+  </data>
+  <data name="UnknownChange" xml:space="preserve">
+    <value>未知的更改 {0}。</value>
+  </data>
+</root>

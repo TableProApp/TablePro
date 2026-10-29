@@ -5,6 +5,7 @@ using TablePro.Core.Browse;
 using TablePro.Core.Data;
 using TablePro.Core.Drivers;
 using TablePro.Core.Editing;
+using TablePro.Core.Localization;
 using TablePro.Core.Results;
 using TablePro.Core.Schema;
 using TablePro.Core.Sql;
@@ -204,7 +205,7 @@ internal abstract class OdbcSession : AdoNetSession, IDatabaseSession, IChangePr
     {
         if (Profile.IsReadOnly)
         {
-            throw new InvalidOperationException("This connection is read-only, so nothing was saved.");
+            throw new InvalidOperationException(CoreStrings.Get("Driver/ReadOnlyNothingSaved"));
         }
     }
 

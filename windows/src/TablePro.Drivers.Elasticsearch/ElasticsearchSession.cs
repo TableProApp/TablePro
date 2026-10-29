@@ -7,9 +7,11 @@ using TablePro.Core.Browse;
 using TablePro.Core.Connections;
 using TablePro.Core.Drivers;
 using TablePro.Core.Editing;
+using TablePro.Core.Localization;
 using TablePro.Core.Results;
 using TablePro.Core.Schema;
 using TablePro.Core.Sql;
+using TablePro.Drivers.Elasticsearch.Localization;
 using TablePro.Drivers.Http;
 
 namespace TablePro.Drivers.Elasticsearch;
@@ -161,7 +163,7 @@ internal sealed class ElasticsearchSession : IDatabaseSession, IServerActivityPr
                     }
                 }
 
-                objects.Add(new DatabaseObject(new ObjectName(null, name), ObjectKind.Collection, docs, "data stream"));
+                objects.Add(new DatabaseObject(new ObjectName(null, name), ObjectKind.Collection, docs, ElasticsearchStrings.Get("Elasticsearch/DataStream")));
             }
         }
 
@@ -174,7 +176,7 @@ internal sealed class ElasticsearchSession : IDatabaseSession, IServerActivityPr
                 .Where(row => row.Alias is not null && (showHidden || !row.Alias.StartsWith('.')))
                 .GroupBy(row => row.Alias!, StringComparer.Ordinal))
             {
-                objects.Add(new DatabaseObject(new ObjectName(null, group.Key), ObjectKind.View, null, "alias of " + string.Join(", ", group.Select(g => g.Index))));
+                objects.Add(new DatabaseObject(new ObjectName(null, group.Key), ObjectKind.View, null, CoreStrings.Format("Driver/AliasOf", string.Join(", ", group.Select(g => g.Index)))));
             }
         }
 
@@ -187,13 +189,13 @@ internal sealed class ElasticsearchSession : IDatabaseSession, IServerActivityPr
         var fields = await MappingAsync(table.Name, cancellationToken);
         var columns = new List<ColumnInfo>(fields.Count + 2)
         {
-            new(EsMapping.IdColumn, "keyword", false, null, true, false, 0, "document id"),
-            new(EsMapping.IndexColumn, "keyword", false, null, false, false, 1, "the index holding the document"),
+            new(EsMapping.IdColumn, "keyword", false, null, true, false, 0, ElasticsearchStrings.Get("Elasticsearch/IdColumnComment")),
+            new(EsMapping.IndexColumn, "keyword", false, null, false, false, 1, ElasticsearchStrings.Get("Elasticsearch/IndexColumnComment")),
         };
 
         foreach (var field in fields.Values.OrderBy(f => f.Name, StringComparer.OrdinalIgnoreCase))
         {
-            columns.Add(new ColumnInfo(field.Name, field.Type, true, null, false, false, columns.Count, field.HasKeyword ? "with keyword sub-field" : null));
+            columns.Add(new ColumnInfo(field.Name, field.Type, true, null, false, false, columns.Count, field.HasKeyword ? ElasticsearchStrings.Get("Elasticsearch/KeywordSubField") : null));
         }
 
         return new TableStructure(table, columns, [new IndexInfo(EsMapping.IdColumn, [EsMapping.IdColumn], true, true)], [], []);
@@ -322,7 +324,7 @@ internal sealed class ElasticsearchSession : IDatabaseSession, IServerActivityPr
         string pit;
         using (var opened = await RequestAsync(HttpMethod.Post, $"/{EsWrites.Segment(index)}/_pit?keep_alive={PitKeepAlive}", null, cancellationToken))
         {
-            pit = Text(opened.RootElement, "id") ?? throw new ServerRequestException("The cluster did not open a point in time.");
+            pit = Text(opened.RootElement, "id") ?? throw new ServerRequestException(ElasticsearchStrings.Get("Elasticsearch/NoPointInTime"));
         }
 
         try
@@ -435,7 +437,7 @@ internal sealed class ElasticsearchSession : IDatabaseSession, IServerActivityPr
             throw new ServerRequestException(EsErrors.Reason(bulk), bulk.StatusCode);
         }
 
-        using var result = bulk.TryParseJson() ?? throw new ServerRequestException("The bulk response was not JSON.");
+        using var result = bulk.TryParseJson() ?? throw new ServerRequestException(ElasticsearchStrings.Get("Elasticsearch/BulkNotJson"));
         var saved = 0;
         string? firstError = null;
         var missing = 0;
@@ -467,7 +469,7 @@ internal sealed class ElasticsearchSession : IDatabaseSession, IServerActivityPr
             throw new RowCountMismatchException(changes.Count, saved, "POST /_bulk");
         }
 
-        throw new ServerRequestException($"{saved} of {changes.Count} changes were saved; Elasticsearch has no transaction to undo them. {firstError}");
+        throw new ServerRequestException(CoreStrings.Format("Driver/PartialSaveNoTransaction", saved, changes.Count, "Elasticsearch", firstError));
     }
 
     public Task<IQueryChannel> OpenChannelAsync(CancellationToken cancellationToken) => Task.FromResult<IQueryChannel>(new HttpQueryChannel(RunStatementAsync));
@@ -543,7 +545,7 @@ internal sealed class ElasticsearchSession : IDatabaseSession, IServerActivityPr
     public async Task TerminateAsync(object processId, CancellationToken cancellationToken)
     {
         await Yield();
-        var id = Convert.ToString(processId, CultureInfo.InvariantCulture) ?? throw new ArgumentException("No task id.", nameof(processId));
+        var id = Convert.ToString(processId, CultureInfo.InvariantCulture) ?? throw new ArgumentException(ElasticsearchStrings.Get("Elasticsearch/NoTaskId"), nameof(processId));
         using var _ = await RequestAsync(HttpMethod.Post, $"/_tasks/{EsWrites.Segment(id)}/_cancel", null, cancellationToken);
     }
 
@@ -592,7 +594,7 @@ internal sealed class ElasticsearchSession : IDatabaseSession, IServerActivityPr
     {
         if (!RequestBlock.TryParse(statement, out var block))
         {
-            throw new ArgumentException("Enter a request like: GET /my-index/_search");
+            throw new ArgumentException(CoreStrings.Format("Driver/EnterRequestLike", "GET /my-index/_search"));
         }
 
         // A body on GET is legal for Elasticsearch, but proxies drop it, so a search with a body goes as POST.

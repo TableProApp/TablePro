@@ -1,6 +1,7 @@
 using TablePro.Core.Browse;
 using TablePro.Core.Drivers;
 using TablePro.Core.Editing;
+using TablePro.Core.Localization;
 using TablePro.Core.Results;
 using TablePro.Core.Schema;
 
@@ -105,7 +106,7 @@ public static class CopyRunner
             {
                 foreach (var index in table.Indexes)
                 {
-                    await StepAsync(table.Source, CopyPhase.Indexing, table.Target.ToString(), () => DdlAsync(new CreateIndex(index), table.Target), note: $"index {index.Name}");
+                    await StepAsync(table.Source, CopyPhase.Indexing, table.Target.ToString(), () => DdlAsync(new CreateIndex(index), table.Target), error => CoreStrings.Format("Copy/IndexFailed", index.Name, error));
                 }
             }
 
@@ -116,11 +117,11 @@ public static class CopyRunner
                 {
                     if (!Succeeded(key.ReferencedTable, recreated))
                     {
-                        Note(table.Source, $"The foreign key {key.Name} was not added, since {key.ReferencedTable} was not copied.");
+                        Note(table.Source, CoreStrings.Format("Copy/ForeignKeyNotAdded", key.Name, key.ReferencedTable));
                         continue;
                     }
 
-                    await StepAsync(table.Source, CopyPhase.LinkingKeys, table.Target.ToString(), () => DdlAsync(new AddForeignKey(key), table.Target), note: $"foreign key {key.Name}");
+                    await StepAsync(table.Source, CopyPhase.LinkingKeys, table.Target.ToString(), () => DdlAsync(new AddForeignKey(key), table.Target), error => CoreStrings.Format("Copy/ForeignKeyFailed", key.Name, error));
                 }
             }
 
@@ -145,7 +146,7 @@ public static class CopyRunner
                 foreach (var outcome in _outcomes.Values.Where(o => o.Status == CopyOutcomeStatus.Copied && o.Reached < o.Final))
                 {
                     outcome.Status = Cancelled ? CopyOutcomeStatus.Cancelled : CopyOutcomeStatus.Skipped;
-                    outcome.Error ??= Cancelled ? "Stopped before it was finished." : "Not finished, since the copy stopped at an earlier failure.";
+                    outcome.Error ??= Cancelled ? CoreStrings.Get("Copy/StoppedBeforeFinished") : CoreStrings.Get("Copy/NotFinished");
                 }
             }
 
@@ -206,7 +207,7 @@ public static class CopyRunner
         /// Runs one step for one object unless the run has stopped or the object already failed. A failure marks the
         /// object and, under <see cref="CopyErrorHandling.Stop"/>, ends the run.
         /// </summary>
-        private async Task StepAsync(DatabaseObject obj, CopyPhase phase, string name, Func<Task> step, string? note = null)
+        private async Task StepAsync(DatabaseObject obj, CopyPhase phase, string name, Func<Task> step, Func<string, string>? failure = null)
         {
             var outcome = _outcomes[Key(obj)];
             if (_stopped || outcome.Status != CopyOutcomeStatus.Copied)
@@ -229,7 +230,7 @@ public static class CopyRunner
             catch (Exception ex)
             {
                 outcome.Status = CopyOutcomeStatus.Failed;
-                outcome.Error = note is null ? ex.Message : $"Could not create the {note}: {ex.Message}";
+                outcome.Error = failure is null ? ex.Message : failure(ex.Message);
                 if (request.ErrorHandling == CopyErrorHandling.Stop)
                 {
                     _stopped = true;
@@ -244,14 +245,14 @@ public static class CopyRunner
         {
             if (_ddl is null)
             {
-                throw new CopyStepException("The target cannot change its structure from TablePro.");
+                throw new CopyStepException(CoreStrings.Get("Copy/TargetCannotChangeStructure"));
             }
 
             // Built just before it runs: SQLite reads the live table to write a rebuild.
             var statements = _ddl.BuildDdl(table, change);
             if (statements.Count == 0)
             {
-                throw new CopyStepException($"{request.Target.Profile.Descriptor.DisplayName} cannot express this change.");
+                throw new CopyStepException(CoreStrings.Format("Copy/CannotExpressChange", request.Target.Profile.Descriptor.DisplayName));
             }
 
             await ExecuteAsync(statements);
@@ -355,7 +356,7 @@ public static class CopyRunner
             var statements = request.Target.Dialect.Split(retargeted).Select(s => s.Text).Where(s => !string.IsNullOrWhiteSpace(s)).ToArray();
             if (statements.Length == 0)
             {
-                throw new CopyStepException($"The source returned no definition for {definition.Source.Name}.");
+                throw new CopyStepException(CoreStrings.Format("Copy/NoSourceDefinition", definition.Source.Name));
             }
 
             await ExecuteAsync(statements);

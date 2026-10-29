@@ -1,6 +1,7 @@
 using System.Collections.Frozen;
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
+using TablePro.Core.Localization;
 
 namespace TablePro.Core.Shortcuts;
 
@@ -178,10 +179,10 @@ public readonly record struct KeyChord(ShortcutKey Key, ShortcutModifiers Modifi
     public static KeyChord Parse(string s) => Parse(s, null);
 
     public static KeyChord Parse(string s, IFormatProvider? provider) =>
-        TryParse(s.AsSpan(), out var chord) ? chord : throw new FormatException($"'{s}' is not a keyboard shortcut.");
+        TryParse(s.AsSpan(), out var chord) ? chord : throw new FormatException(CoreStrings.Format("Shortcuts/NotAShortcut", s));
 
     public static KeyChord Parse(ReadOnlySpan<char> s, IFormatProvider? provider) =>
-        TryParse(s, out var chord) ? chord : throw new FormatException($"'{s}' is not a keyboard shortcut.");
+        TryParse(s, out var chord) ? chord : throw new FormatException(CoreStrings.Format("Shortcuts/NotAShortcut", s.ToString()));
 
     public static bool TryParse([NotNullWhen(true)] string? s, IFormatProvider? provider, out KeyChord result) =>
         TryParse(s.AsSpan(), out result);

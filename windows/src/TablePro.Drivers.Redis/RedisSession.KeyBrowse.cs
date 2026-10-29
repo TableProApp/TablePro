@@ -6,6 +6,7 @@ using TablePro.Core.Drivers;
 using TablePro.Core.Editing;
 using TablePro.Core.Results;
 using TablePro.Core.Schema;
+using TablePro.Drivers.Redis.Localization;
 
 namespace TablePro.Drivers.Redis;
 
@@ -38,7 +39,7 @@ public sealed partial class RedisSession
 
             var index = ResolveDatabase(table.Schema);
             var type = _browsedTypes.GetValueOrDefault((index, table.Name), RedisKeyType.None);
-            var current = RedisChangePlanner.RequiredLookups(type, changes).ToDictionary(l => l, _ => (string?)"(current value)", StringComparer.Ordinal);
+            var current = RedisChangePlanner.RequiredLookups(type, changes).ToDictionary(l => l, _ => (string?)RedisStrings.Get("Redis/CurrentValue"), StringComparer.Ordinal);
             var planned = RedisChangePlanner.Plan(type, table.Name, changes, current).Commands.Select(c => c.ToString()).ToList();
             if (index != DatabaseIndex && planned.Count > 0)
             {
@@ -93,9 +94,9 @@ public sealed partial class RedisSession
     internal static string DescribeDatabase(int index, long? keyCount, IReadOnlyList<string?> sampledTypes)
     {
         var builder = new StringBuilder();
-        builder.Append("# Redis database: ").AppendLine(RedisConnectionOptions.SchemaName(index));
-        builder.Append("# Keys: ").AppendLine(keyCount?.ToString(CultureInfo.InvariantCulture) ?? "unknown");
-        builder.AppendLine("# Browse with: SCAN 0 MATCH * COUNT 200");
+        builder.AppendLine(RedisStrings.Format("Redis/DbHeader", RedisConnectionOptions.SchemaName(index)));
+        builder.AppendLine(RedisStrings.Format("Redis/DbKeys", keyCount?.ToString(CultureInfo.InvariantCulture) ?? RedisStrings.Get("Redis/Unknown")));
+        builder.AppendLine(RedisStrings.Format("Redis/DbBrowseWith", "SCAN 0 MATCH * COUNT 200"));
         var counts = sampledTypes
             .OfType<string>()
             .Where(t => t != "none")
@@ -105,7 +106,7 @@ public sealed partial class RedisSession
         if (counts.Length > 0)
         {
             builder.AppendLine("#");
-            builder.Append(CultureInfo.InvariantCulture, $"# Type distribution (sampled {sampledTypes.Count} keys):").AppendLine();
+            builder.AppendLine(RedisStrings.Plural("Redis/DbTypes", sampledTypes.Count));
             foreach (var group in counts)
             {
                 builder.Append(CultureInfo.InvariantCulture, $"#   {group.Key}: {group.Count()}").AppendLine();
@@ -139,7 +140,7 @@ public sealed partial class RedisSession
         var scope = RedisKeyBrowse.Scope(filter);
         if (!scope.IsServerSide)
         {
-            throw new NotSupportedException("Only the key and type filters are counted on the server.");
+            throw new NotSupportedException(RedisStrings.Get("Redis/OnlyKeyTypeCounted"));
         }
 
         if (scope.Pattern is null && scope.Type is null)
@@ -312,7 +313,7 @@ public sealed partial class RedisSession
         }
         catch (Exception ex) when (committed > 0 && ex is RowCountMismatchException or RedisException or InvalidOperationException)
         {
-            throw new InvalidOperationException($"{committed} of {groups.Count} hash slots were saved and stay applied; the next failed: {ex.Message}", ex);
+            throw new InvalidOperationException(RedisStrings.Format("Redis/SlotsPartiallySaved", committed, groups.Count, ex.Message), ex);
         }
         finally
         {

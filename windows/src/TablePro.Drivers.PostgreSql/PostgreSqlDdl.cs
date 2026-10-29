@@ -1,7 +1,9 @@
 using System.Globalization;
 using System.Text;
+using TablePro.Core.Localization;
 using TablePro.Core.Schema;
 using TablePro.Core.Sql;
+using TablePro.Drivers.PostgreSql.Localization;
 
 namespace TablePro.Drivers.PostgreSql;
 
@@ -134,7 +136,7 @@ internal static class PostgreSqlDdl
                     var persistence = change.After?.Trim().ToUpperInvariant();
                     statements.Add(persistence is "LOGGED" or "UNLOGGED"
                         ? string.Concat(AlterTable(table), " SET ", persistence)
-                        : throw new ArgumentException("Persistence is LOGGED or UNLOGGED."));
+                        : throw new ArgumentException(CoreStrings.Format("Driver/OptionIsOneOf", TableOptionNames.Persistence, "LOGGED, UNLOGGED")));
                     break;
                 case TableOptionNames.Comment:
                     statements.Add(string.Concat(
@@ -229,7 +231,7 @@ internal static class PostgreSqlDdl
             var key = equals > 0 ? part[..equals].Trim() : string.Empty;
             if (key.Length == 0 || !IsParameterName(key))
             {
-                throw new ArgumentException($"\"{part}\" is not a storage parameter. Write each as name=value.");
+                throw new ArgumentException(PostgreSqlStrings.Format("PostgreSql/NotAStorageParameter", part));
             }
 
             pairs.Add((key.ToLowerInvariant(), part[(equals + 1)..].Trim()));
@@ -268,7 +270,7 @@ internal static class PostgreSqlDdl
     private static string Number(string text, int min, int max, string name) =>
         int.TryParse(text.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var value) && value >= min && value <= max
             ? value.ToString(CultureInfo.InvariantCulture)
-            : throw new ArgumentException($"{name} is a whole number from {min} to {max}.");
+            : throw new ArgumentException(CoreStrings.Format("Driver/OptionWholeNumberRange", name, min, max));
 
     public static string ColumnSql(ColumnDefinition column, bool inlinePrimaryKey)
     {

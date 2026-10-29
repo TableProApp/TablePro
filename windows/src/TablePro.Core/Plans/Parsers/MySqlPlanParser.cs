@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using TablePro.Core.Localization;
 
 namespace TablePro.Core.Plans.Parsers;
 
@@ -296,7 +297,7 @@ public static partial class MySqlTreePlanParser
         var (operation, relation, properties) = AccessPresentation(text);
         if (!executed)
         {
-            properties["Execution"] = "Never executed";
+            properties["Execution"] = CoreStrings.Get("Plan/NeverExecuted");
         }
 
         return new QueryPlanNode

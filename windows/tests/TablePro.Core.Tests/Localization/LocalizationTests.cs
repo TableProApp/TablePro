@@ -288,7 +288,9 @@ public sealed partial class LocalizationTests
     [GeneratedRegex(@"\{(\d+)(?:[:,][^}]*)?\}")]
     private static partial Regex Placeholder();
 
-    [GeneratedRegex(@"Strings\.(?<method>Get|Format|Plural)\(\s*""(?<area>[A-Za-z]+)/(?<name>[A-Za-z0-9_]+)""\s*[,)]")]
+    // Only the app's own Strings class: CoreStrings and the other library accessors read .resx files, which
+    // LibraryLocalizationTests checks.
+    [GeneratedRegex(@"(?<!\w)Strings\.(?<method>Get|Format|Plural)\(\s*""(?<area>[A-Za-z]+)/(?<name>[A-Za-z0-9_]+)""\s*[,)]")]
     private static partial Regex CodeKey();
 
     [GeneratedRegex(@"x:Uid=""/(?<area>[A-Za-z]+)/(?<name>[A-Za-z0-9_]+)""")]

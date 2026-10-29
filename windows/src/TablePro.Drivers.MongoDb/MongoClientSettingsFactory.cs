@@ -5,6 +5,7 @@ using MongoDB.Driver;
 using MongoDB.Driver.Core.Configuration;
 using TablePro.Core.Connections;
 using TablePro.Core.Drivers;
+using TablePro.Drivers.MongoDb.Localization;
 
 namespace TablePro.Drivers.MongoDb;
 
@@ -28,7 +29,7 @@ internal static class MongoClientSettingsFactory
         var tunneled = profile.Ssh?.Enabled == true || !string.Equals(request.Host, profile.Host, StringComparison.OrdinalIgnoreCase);
         if (useSrv && tunneled)
         {
-            throw new InvalidOperationException("A DNS seed list (mongodb+srv) cannot run through an SSH tunnel: the tunnel carries one host, and the seed list names the servers by DNS. Turn off the seed list and connect to one member's host and port.");
+            throw new InvalidOperationException(MongoStrings.Get("Mongo/SrvThroughTunnel"));
         }
 
         var timeout = TimeSpan.FromSeconds(Math.Max(1, profile.ConnectTimeoutSeconds));

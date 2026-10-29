@@ -1,3 +1,5 @@
+using TablePro.Ssh.Localization;
+
 namespace TablePro.Ssh;
 
 /// <summary>Why a tunnel failed, read from OpenSSH's exit and its stderr so the UI can say what to fix.</summary>
@@ -96,15 +98,15 @@ internal static class SshFailureClassifier
 
     public static string Describe(SshFailureKind kind, string host) => kind switch
     {
-        SshFailureKind.SshNotFound => "ssh.exe was not found. Install the OpenSSH Client from Settings > System > Optional features.",
-        SshFailureKind.AuthenticationFailed => $"The SSH server {host} rejected the login.",
-        SshFailureKind.HostKeyRejected => $"The host key of {host} does not match the one in known_hosts. Check it with the server's administrator, then remove the old entry.",
-        SshFailureKind.HostNotFound => $"The SSH host {host} could not be found.",
-        SshFailureKind.ConnectionFailed => $"Could not reach the SSH server {host}.",
-        SshFailureKind.LocalPortUnavailable => "ssh could not listen on the local end of the tunnel.",
-        SshFailureKind.Timeout => $"The SSH tunnel through {host} did not open in time.",
-        SshFailureKind.Closed => $"The SSH tunnel through {host} closed.",
-        _ => $"ssh could not open a tunnel through {host}.",
+        SshFailureKind.SshNotFound => SshStrings.Get("Tunnel/SshNotFound"),
+        SshFailureKind.AuthenticationFailed => SshStrings.Format("Tunnel/SshLoginRejected", host),
+        SshFailureKind.HostKeyRejected => SshStrings.Format("Tunnel/SshHostKeyMismatch", host),
+        SshFailureKind.HostNotFound => SshStrings.Format("Tunnel/SshHostNotFound", host),
+        SshFailureKind.ConnectionFailed => SshStrings.Format("Tunnel/SshUnreachable", host),
+        SshFailureKind.LocalPortUnavailable => SshStrings.Get("Tunnel/SshLocalPort"),
+        SshFailureKind.Timeout => SshStrings.Format("Tunnel/SshTimedOut", host),
+        SshFailureKind.Closed => SshStrings.Format("Tunnel/SshClosed", host),
+        _ => SshStrings.Format("Tunnel/SshFailed", host),
     };
 
     /// <summary>The last lines of stderr, which is where OpenSSH puts the reason it gave up.</summary>

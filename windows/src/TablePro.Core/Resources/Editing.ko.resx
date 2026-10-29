@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="NoKeyColumn" xml:space="preserve">
+    <value>행을 안전하게 변경하려면 키 열이 하나 이상 있어야 합니다.</value>
+  </data>
+  <data name="RowCountMismatch" xml:space="preserve">
+    <value>변경이 {1}개 행 대신 {0}개 행에 영향을 주므로 아무것도 저장되지 않았습니다. 문: {2}</value>
+  </data>
+</root>

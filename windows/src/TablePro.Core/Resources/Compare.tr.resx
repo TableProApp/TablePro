@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="ChangeAddColumn" xml:space="preserve">
+    <value>{0} {1} sütununu ekle</value>
+  </data>
+  <data name="ChangeAddForeignKey" xml:space="preserve">
+    <value>{1} tablosuna {0} yabancı anahtarını ekle</value>
+  </data>
+  <data name="ChangeAlterColumn" xml:space="preserve">
+    <value>{0} sütununu {1} olarak değiştir</value>
+  </data>
+  <data name="ChangeCreateIndex" xml:space="preserve">
+    <value>{0} dizinini oluştur</value>
+  </data>
+  <data name="ChangeCreateTable" xml:space="preserve">
+    <value>{0} tablosunu oluştur</value>
+  </data>
+  <data name="ChangeCreateUniqueIndex" xml:space="preserve">
+    <value>{0} benzersiz dizinini oluştur</value>
+  </data>
+  <data name="ChangeDropColumn" xml:space="preserve">
+    <value>{0} sütununu kaldır</value>
+  </data>
+  <data name="ChangeDropForeignKey" xml:space="preserve">
+    <value>{0} yabancı anahtarını kaldır</value>
+  </data>
+  <data name="ChangeDropFunction" xml:space="preserve">
+    <value>{0} fonksiyonunu kaldır</value>
+  </data>
+  <data name="ChangeDropIndex" xml:space="preserve">
+    <value>{0} dizinini kaldır</value>
+  </data>
+  <data name="ChangeDropMaterializedView" xml:space="preserve">
+    <value>{0} gerçekleştirilmiş görünümünü kaldır</value>
+  </data>
+  <data name="ChangeDropObject" xml:space="preserve">
+    <value>{0} öğesini kaldır</value>
+  </data>
+  <data name="ChangeDropProcedure" xml:space="preserve">
+    <value>{0} yordamını kaldır</value>
+  </data>
+  <data name="ChangeDropSequence" xml:space="preserve">
+    <value>{0} dizisini kaldır</value>
+  </data>
+  <data name="ChangeDropTable" xml:space="preserve">
+    <value>{0} tablosunu kaldır</value>
+  </data>
+  <data name="ChangeDropTrigger" xml:space="preserve">
+    <value>{0} tetikleyicisini kaldır</value>
+  </data>
+  <data name="ChangeDropView" xml:space="preserve">
+    <value>{0} görünümünü kaldır</value>
+  </data>
+  <data name="ChangeRenameColumn" xml:space="preserve">
+    <value>{0} sütununu {1} olarak yeniden adlandır</value>
+  </data>
+  <data name="ChangeRenameTable" xml:space="preserve">
+    <value>Tabloyu {0} olarak yeniden adlandır</value>
+  </data>
+  <data name="ChangeTruncateTable" xml:space="preserve">
+    <value>Tabloyu boşalt</value>
+  </data>
+  <data name="ChooseKeyColumn" xml:space="preserve">
+    <value>Her iki tarafta da bir satırı tanımlayan en az bir anahtar sütun seçin.</value>
+  </data>
+  <data name="ColumnGone" xml:space="preserve">
+    <value>{0} tablosunda artık {1} sütunu yok. Güncel sütunlarını okumak için yeniden karşılaştırın.</value>
+  </data>
+  <data name="ColumnOnlyInTarget" xml:space="preserve">
+    <value>{0} sütunu yalnızca hedefte var ve korunuyor.</value>
+  </data>
+  <data name="DuplicateKeyInSource" xml:space="preserve">
+    <value>{0} anahtarı kaynakta birden fazla satırla eşleşiyor. Tek bir satırı tanımlayan anahtar sütunlar seçin.</value>
+  </data>
+  <data name="DuplicateKeyInTarget" xml:space="preserve">
+    <value>{0} anahtarı hedefte birden fazla satırla eşleşiyor. Tek bir satırı tanımlayan anahtar sütunlar seçin.</value>
+  </data>
+  <data name="ForeignKeyCycle" xml:space="preserve">
+    <value>{0} birbirine başvurduğundan hiçbir sıra tüm yabancı anahtarları karşılamıyor. Bunlardan birini bozan eşitleme o tabloyu geri alır.</value>
+  </data>
+  <data name="IdentityColumnWarning" xml:space="preserve">
+    <value>{0}, hedefte bir kimlik sütunudur. SQL Server gibi motorlar buraya açık bir değer yazılmasını reddeder ve bu da eşitlemeyi geri alır.</value>
+  </data>
+  <data name="KeyColumnNotOnBoth" xml:space="preserve">
+    <value>{0} anahtar sütunu her iki tabloda da yok.</value>
+  </data>
+  <data name="NoPrimaryKey" xml:space="preserve">
+    <value>{0} tablosunun birincil anahtarı yok. Bir satırı tanımlayan sütunları seçin.</value>
+  </data>
+  <data name="PrimaryKeyDiffers" xml:space="preserve">
+    <value>Birincil anahtar farklı: ({0}) ile ({1}). Elle değiştirin.</value>
+  </data>
+  <data name="RowLimitCutShort" xml:space="preserve">
+    <value>Satır sınırı karşılaştırmayı erken kesti, bu yüzden sınırın ötesindeki satırlar olduğu gibi bırakıldı.</value>
+  </data>
+  <data name="RowsDeletedForGood_One" xml:space="preserve">
+    <value>{1} tablosundan {0:N0} satır kalıcı olarak silinecek.</value>
+  </data>
+  <data name="RowsDeletedForGood_Other" xml:space="preserve">
+    <value>{1} tablosundan {0:N0} satır kalıcı olarak silinecek.</value>
+  </data>
+  <data name="SortOrderSource" xml:space="preserve">
+    <value>Kaynak, {0} anahtarı yakınında satırları karşılaştırmanın beklediğinden farklı sıraladı. Sayısal bir anahtar ya da harmanlaması bayt değerine göre sıralayan bir anahtar seçin.</value>
+  </data>
+  <data name="SortOrderSourceHint" xml:space="preserve">
+    <value>Kaynak, {0} anahtarı yakınında satırları karşılaştırmanın beklediğinden farklı sıraladı. Sayısal bir anahtar ya da harmanlaması bayt değerine göre sıralayan bir anahtar seçin veya büyük/küçük harfe duyarsız anahtarları açın.</value>
+  </data>
+  <data name="SortOrderTarget" xml:space="preserve">
+    <value>Hedef, {0} anahtarı yakınında satırları karşılaştırmanın beklediğinden farklı sıraladı. Sayısal bir anahtar ya da harmanlaması bayt değerine göre sıralayan bir anahtar seçin.</value>
+  </data>
+  <data name="SortOrderTargetHint" xml:space="preserve">
+    <value>Hedef, {0} anahtarı yakınında satırları karşılaştırmanın beklediğinden farklı sıraladı. Sayısal bir anahtar ya da harmanlaması bayt değerine göre sıralayan bir anahtar seçin veya büyük/küçük harfe duyarsız anahtarları açın.</value>
+  </data>
+  <data name="SourceColumnCount" xml:space="preserve">
+    <value>Kaynak, {1} sütun beklenirken {0} sütun döndürdü.</value>
+  </data>
+  <data name="TableLeftOutTooMany" xml:space="preserve">
+    <value>{0}: {1:N0} fark, bir eşitlemenin inceleyebileceğinden fazla olduğundan tablo dışarıda bırakıldı. Bir filtre veya satır sınırıyla daraltın.</value>
+  </data>
+  <data name="TableNote" xml:space="preserve">
+    <value>{0}: {1}</value>
+  </data>
+  <data name="TargetColumnCount" xml:space="preserve">
+    <value>Hedef, {1} sütun beklenirken {0} sütun döndürdü.</value>
+  </data>
+  <data name="TooManyToSync" xml:space="preserve">
+    <value>Karşılaştırma {0:N0} fark buldu; bu, bir eşitlemenin inceleyebileceği {1:N0} farktan fazla. Bir filtre veya satır sınırıyla daraltıp yeniden karşılaştırın.</value>
+  </data>
+</root>

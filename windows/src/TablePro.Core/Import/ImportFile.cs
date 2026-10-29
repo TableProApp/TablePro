@@ -1,5 +1,6 @@
 using System.IO.Compression;
 using System.Runtime.CompilerServices;
+using TablePro.Core.Localization;
 
 namespace TablePro.Core.Import;
 
@@ -128,7 +129,7 @@ public static class ImportFile
 
         if (format != ImportFileFormat.Csv)
         {
-            throw new NotSupportedException("A SQL file is run as a script, not read as rows.");
+            throw new NotSupportedException(CoreStrings.Get("Import/SqlFileIsScript"));
         }
 
         var options = csvOptions ?? CsvImportOptions.Default;

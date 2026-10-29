@@ -1,6 +1,7 @@
 using System.Buffers;
 using System.Text;
 using System.Text.Json;
+using TablePro.Core.Localization;
 
 namespace TablePro.Core.Connections;
 
@@ -362,27 +363,27 @@ public sealed class LoadableExtensionException : Exception
     /// <summary>ERROR_MOD_NOT_FOUND for a file that exists: a DLL the library depends on is missing.</summary>
     public bool IsMissingDependency => WindowsError == 126;
 
-    // English for logs and for callers without the app's resources; the app words each failure itself.
+    // The app adds advice on what to do next to its own wording; this message serves every other caller.
     private static string Describe(LoadableExtensionFailure failure, LoadableExtension? item, string? detail)
     {
         var head = item is null
-            ? "The SQLite extensions for this connection could not be loaded."
-            : $"Could not load the extension \"{item.FileName}\".";
+            ? CoreStrings.Get("Extension/CouldNotLoadList")
+            : CoreStrings.Format("Extension/CouldNotLoad", item.FileName);
         var reason = failure switch
         {
-            LoadableExtensionFailure.MalformedList => "The saved extension list is not in a format TablePro can read.",
-            LoadableExtensionFailure.MissingPath => "An extension in the list has no file.",
-            LoadableExtensionFailure.ControlCharacterInPath => "The path of an extension in the list contains a line break or another control character.",
-            LoadableExtensionFailure.RelativePath => $"\"{item?.Path}\" is not a full path.",
-            LoadableExtensionFailure.PathTooLong => $"The path \"{item?.Path}\" is too long.",
-            LoadableExtensionFailure.InvalidEntryPoint => $"\"{item?.EntryPoint}\" is not a valid entry point name.",
-            LoadableExtensionFailure.Duplicate => $"\"{item?.Path}\" is in the list more than once.",
-            LoadableExtensionFailure.FileNotFound => $"There is no file at \"{item?.Path}\".",
-            LoadableExtensionFailure.NotAFile => $"\"{item?.Path}\" is not a file.",
-            LoadableExtensionFailure.EntryPointNotFound => $"The file has no function named {detail}.",
-            LoadableExtensionFailure.InitializationFailed => $"The extension failed to start: {detail}",
-            LoadableExtensionFailure.LoadingUnavailable => "SQLite did not allow extension loading on this connection.",
-            LoadableExtensionFailure.LoadingNotClosed => "SQLite did not turn extension loading off again after loading.",
+            LoadableExtensionFailure.MalformedList => CoreStrings.Get("Extension/MalformedList"),
+            LoadableExtensionFailure.MissingPath => CoreStrings.Get("Extension/MissingPath"),
+            LoadableExtensionFailure.ControlCharacterInPath => CoreStrings.Get("Extension/ControlCharacterInPath"),
+            LoadableExtensionFailure.RelativePath => CoreStrings.Format("Extension/RelativePath", item?.Path),
+            LoadableExtensionFailure.PathTooLong => CoreStrings.Format("Extension/PathTooLong", item?.Path),
+            LoadableExtensionFailure.InvalidEntryPoint => CoreStrings.Format("Extension/InvalidEntryPoint", item?.EntryPoint),
+            LoadableExtensionFailure.Duplicate => CoreStrings.Format("Extension/Duplicate", item?.Path),
+            LoadableExtensionFailure.FileNotFound => CoreStrings.Format("Extension/FileNotFound", item?.Path),
+            LoadableExtensionFailure.NotAFile => CoreStrings.Format("Extension/NotAFile", item?.Path),
+            LoadableExtensionFailure.EntryPointNotFound => CoreStrings.Format("Extension/EntryPointNotFound", detail),
+            LoadableExtensionFailure.InitializationFailed => CoreStrings.Format("Extension/InitializationFailed", detail),
+            LoadableExtensionFailure.LoadingUnavailable => CoreStrings.Get("Extension/LoadingUnavailable"),
+            LoadableExtensionFailure.LoadingNotClosed => CoreStrings.Get("Extension/LoadingNotClosed"),
             _ => detail,
         };
         return string.IsNullOrEmpty(reason) ? head : head + " " + reason;

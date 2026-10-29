@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="BulkNotJson" xml:space="preserve">
+    <value>bulk 응답이 JSON이 아니었습니다.</value>
+  </data>
+  <data name="CloudIdInvalid" xml:space="preserve">
+    <value>클라우드 ID가 올바르지 않습니다.</value>
+  </data>
+  <data name="DataStream" xml:space="preserve">
+    <value>데이터 스트림</value>
+  </data>
+  <data name="IdColumnComment" xml:space="preserve">
+    <value>문서 ID</value>
+  </data>
+  <data name="IndexColumnComment" xml:space="preserve">
+    <value>문서가 들어 있는 인덱스</value>
+  </data>
+  <data name="KeywordSubField" xml:space="preserve">
+    <value>keyword 하위 필드 포함</value>
+  </data>
+  <data name="NoPointInTime" xml:space="preserve">
+    <value>클러스터가 특정 시점(point in time)을 열지 않았습니다.</value>
+  </data>
+  <data name="NoTaskId" xml:space="preserve">
+    <value>작업 ID가 없습니다.</value>
+  </data>
+</root>

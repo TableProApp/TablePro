@@ -1,3 +1,5 @@
+using TablePro.Core.Localization;
+
 namespace TablePro.Core.Plans;
 
 /// <summary>What a plan number measures, which decides how it is spelled.</summary>
@@ -43,14 +45,14 @@ public static class QueryPlanMetrics
 {
     public static string Title(this QueryPlanMetric metric) => metric switch
     {
-        QueryPlanMetric.EstimatedStartupCost => "Estimated Startup Cost",
-        QueryPlanMetric.EstimatedTotalCost => "Estimated Total Cost",
-        QueryPlanMetric.EstimatedRows => "Estimated Rows",
-        QueryPlanMetric.EstimatedWidth => "Estimated Width",
-        QueryPlanMetric.ActualStartupTime => "Actual Startup Time",
-        QueryPlanMetric.ActualTotalTime => "Actual Total Time",
-        QueryPlanMetric.ActualRows => "Actual Rows",
-        _ => "Actual Loops",
+        QueryPlanMetric.EstimatedStartupCost => CoreStrings.Get("Plan/MetricEstimatedStartupCost"),
+        QueryPlanMetric.EstimatedTotalCost => CoreStrings.Get("Plan/MetricEstimatedTotalCost"),
+        QueryPlanMetric.EstimatedRows => CoreStrings.Get("Plan/MetricEstimatedRows"),
+        QueryPlanMetric.EstimatedWidth => CoreStrings.Get("Plan/MetricEstimatedWidth"),
+        QueryPlanMetric.ActualStartupTime => CoreStrings.Get("Plan/MetricActualStartupTime"),
+        QueryPlanMetric.ActualTotalTime => CoreStrings.Get("Plan/MetricActualTotalTime"),
+        QueryPlanMetric.ActualRows => CoreStrings.Get("Plan/MetricActualRows"),
+        _ => CoreStrings.Get("Plan/MetricActualLoops"),
     };
 
     public static QueryPlanUnit Unit(this QueryPlanMetric metric) => metric switch
@@ -79,11 +81,11 @@ public static class QueryPlanMetrics
 
     public static string Title(this QueryPlanSummaryMetric metric) => metric switch
     {
-        QueryPlanSummaryMetric.TotalCost => "Cost",
-        QueryPlanSummaryMetric.EstimatedRows => "Estimated rows",
-        QueryPlanSummaryMetric.PlanningTime => "Planning time",
-        QueryPlanSummaryMetric.ExecutionTime => "Execution time",
-        _ => "Node count",
+        QueryPlanSummaryMetric.TotalCost => CoreStrings.Get("Plan/SummaryTotalCost"),
+        QueryPlanSummaryMetric.EstimatedRows => CoreStrings.Get("Plan/SummaryEstimatedRows"),
+        QueryPlanSummaryMetric.PlanningTime => CoreStrings.Get("Plan/SummaryPlanningTime"),
+        QueryPlanSummaryMetric.ExecutionTime => CoreStrings.Get("Plan/SummaryExecutionTime"),
+        _ => CoreStrings.Get("Plan/SummaryNodeCount"),
     };
 
     public static QueryPlanUnit Unit(this QueryPlanSummaryMetric metric) => metric switch

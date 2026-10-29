@@ -4,6 +4,7 @@ using MySqlConnector;
 using TablePro.Core.Connections;
 using TablePro.Core.Data;
 using TablePro.Core.Drivers;
+using TablePro.Core.Localization;
 using TablePro.Core.Results;
 using TablePro.Core.Schema;
 using TablePro.Core.Sql;
@@ -212,7 +213,7 @@ public sealed partial class MySqlSession
     {
         if (MySqlDdl.ShowCreate(obj) is not var (sql, ordinal))
         {
-            throw new NotSupportedException($"MySQL has no {obj.Kind} objects.");
+            throw new NotSupportedException(CoreStrings.Format("Driver/EngineHasNoDefinitionFor", "MySQL", obj.Name));
         }
 
         await using var command = connection.CreateCommand();
@@ -220,12 +221,12 @@ public sealed partial class MySqlSession
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         if (!await reader.ReadAsync(cancellationToken))
         {
-            throw new InvalidOperationException($"No definition was found for {obj.Name}.");
+            throw new InvalidOperationException(CoreStrings.Format("Driver/NoDefinitionFor", obj.Name));
         }
 
         // The server answers NULL rather than an error when the account may run the routine but not read it.
         return reader.IsDBNull(ordinal)
-            ? throw new InvalidOperationException($"The account cannot read the definition of {obj.Name}.")
+            ? throw new InvalidOperationException(CoreStrings.Format("Driver/CannotReadDefinition", obj.Name))
             : reader.GetString(ordinal) + ";";
     }
 

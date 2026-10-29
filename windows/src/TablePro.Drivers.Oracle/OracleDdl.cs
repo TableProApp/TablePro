@@ -1,7 +1,9 @@
 using System.Globalization;
 using System.Text;
+using TablePro.Core.Localization;
 using TablePro.Core.Schema;
 using TablePro.Core.Sql;
+using TablePro.Drivers.Oracle.Localization;
 
 namespace TablePro.Drivers.Oracle;
 
@@ -111,14 +113,14 @@ internal static class OracleDdl
                 case TableOptionNames.PctFree:
                     statements.Add(int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out var percent) && percent <= 99
                         ? string.Concat(AlterTable(table), " PCTFREE ", percent.ToString(CultureInfo.InvariantCulture))
-                        : throw new ArgumentException("Percent free is a whole number from 0 to 99."));
+                        : throw new ArgumentException(CoreStrings.Format("Driver/OptionWholeNumberRange", TableOptionNames.PctFree, 0, 99)));
                     break;
                 case TableOptionNames.Logging:
                     statements.Add(string.Concat(AlterTable(table), value?.ToUpperInvariant() switch
                     {
                         "YES" or "LOGGING" => " LOGGING",
                         "NO" or "NOLOGGING" => " NOLOGGING",
-                        _ => throw new ArgumentException("Logging is YES or NO."),
+                        _ => throw new ArgumentException(CoreStrings.Format("Driver/OptionIsOneOf", TableOptionNames.Logging, "YES, NO")),
                     }));
                     break;
                 case TableOptionNames.RowMovement:
@@ -126,7 +128,7 @@ internal static class OracleDdl
                     {
                         "ENABLED" or "ENABLE" => " ENABLE ROW MOVEMENT",
                         "DISABLED" or "DISABLE" => " DISABLE ROW MOVEMENT",
-                        _ => throw new ArgumentException("Row movement is ENABLED or DISABLED."),
+                        _ => throw new ArgumentException(CoreStrings.Format("Driver/OptionIsOneOf", TableOptionNames.RowMovement, "ENABLED, DISABLED")),
                     }));
                     break;
             }
@@ -377,7 +379,7 @@ internal static class OracleDdl
         var comma = id.IndexOf(',', StringComparison.Ordinal);
         if (comma <= 0 || comma == id.Length - 1 || !IsDigits(id.AsSpan(0, comma)) || !IsDigits(id.AsSpan(comma + 1)))
         {
-            throw new ArgumentException($"\"{processId}\" is not an Oracle session id of the form sid,serial#.", nameof(processId));
+            throw new ArgumentException(OracleStrings.Format("Oracle/NotASessionId", processId), nameof(processId));
         }
 
         return string.Concat("ALTER SYSTEM KILL SESSION '", id, "' IMMEDIATE");

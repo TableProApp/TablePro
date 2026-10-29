@@ -4,6 +4,7 @@ using System.Text;
 using Oracle.ManagedDataAccess.Client;
 using TablePro.Core.Data;
 using TablePro.Core.Drivers;
+using TablePro.Core.Localization;
 using TablePro.Core.Results;
 using TablePro.Core.Schema;
 using TablePro.Core.Sql;
@@ -275,7 +276,7 @@ public sealed partial class OracleSession
             ObjectKind.Function => ["FUNCTION"],
             ObjectKind.Sequence => ["SEQUENCE"],
             ObjectKind.Trigger => ["TRIGGER"],
-            _ => throw new NotSupportedException($"Oracle has no definition for a {obj.Kind}."),
+            _ => throw new NotSupportedException(CoreStrings.Format("Driver/EngineHasNoDefinitionFor", "Oracle", obj.Name)),
         };
 
         if (candidates.Length == 1)
@@ -284,7 +285,7 @@ public sealed partial class OracleSession
         }
 
         var types = await OracleQueryAsync(connection, OracleCatalog.ObjectTypes, static r => r.GetString(0), cancellationToken, ("owner", owner), ("tbl", obj.Name.Name));
-        return candidates.FirstOrDefault(types.Contains) ?? throw new InvalidOperationException($"No definition was found for {obj.Name}.");
+        return candidates.FirstOrDefault(types.Contains) ?? throw new InvalidOperationException(CoreStrings.Format("Driver/NoDefinitionFor", obj.Name));
     }
 
     private static async Task<string> SourceDefinitionAsync(DbConnection connection, DatabaseObject obj, string owner, string type, CancellationToken cancellationToken)
@@ -294,7 +295,7 @@ public sealed partial class OracleSession
             var text = await OracleQueryAsync(connection, OracleCatalog.ViewText, static r => NullableString(r, 0), cancellationToken, ("owner", owner), ("tbl", obj.Name.Name));
             return text.Count > 0 && text[0] is { } body
                 ? string.Concat("CREATE OR REPLACE VIEW ", OracleDialect.Instance.Qualify(obj.Name with { Schema = owner }), " AS\n", body.Trim())
-                : throw new InvalidOperationException($"No definition was found for {obj.Name}.");
+                : throw new InvalidOperationException(CoreStrings.Format("Driver/NoDefinitionFor", obj.Name));
         }
 
         var sql = new StringBuilder();
@@ -314,7 +315,7 @@ public sealed partial class OracleSession
             sql.Append("CREATE OR REPLACE ").AppendJoin(string.Empty, lines);
         }
 
-        return sql.Length > 0 ? sql.ToString().TrimEnd() : throw new InvalidOperationException($"No definition was found for {obj.Name}.");
+        return sql.Length > 0 ? sql.ToString().TrimEnd() : throw new InvalidOperationException(CoreStrings.Format("Driver/NoDefinitionFor", obj.Name));
     }
 
     private Task<ResultSet> ReadResultAsync(string sql, CancellationToken cancellationToken) =>
@@ -368,7 +369,7 @@ public sealed partial class OracleSession
     private (string, object?)[] Bind(ObjectName table) => [("owner", Owner(table.Schema)), ("tbl", table.Name)];
 
     private string Owner(string? schema) =>
-        !string.IsNullOrEmpty(schema) ? schema : _defaultSchema ?? throw new InvalidOperationException("No schema was given and the login names none.");
+        !string.IsNullOrEmpty(schema) ? schema : _defaultSchema ?? throw new InvalidOperationException(CoreStrings.Get("Driver/NoSchemaGiven"));
 
     private static long? Int64(DbDataReader reader, int ordinal) =>
         reader.IsDBNull(ordinal) ? null : Convert.ToInt64(reader.GetValue(ordinal), CultureInfo.InvariantCulture);

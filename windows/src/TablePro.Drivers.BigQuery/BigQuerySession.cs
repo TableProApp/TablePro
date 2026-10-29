@@ -11,9 +11,11 @@ using TablePro.Core.Browse;
 using TablePro.Core.Connections;
 using TablePro.Core.Drivers;
 using TablePro.Core.Editing;
+using TablePro.Core.Localization;
 using TablePro.Core.Results;
 using TablePro.Core.Schema;
 using TablePro.Core.Sql;
+using TablePro.Drivers.BigQuery.Localization;
 
 namespace TablePro.Drivers.BigQuery;
 
@@ -46,7 +48,7 @@ public sealed class BigQuerySession : IDatabaseSession
 
     internal BigQuerySettings Settings => _settings;
 
-    private BigQueryClient Client => _client ?? throw new InvalidOperationException("The BigQuery session is not connected.");
+    private BigQueryClient Client => _client ?? throw new InvalidOperationException(BigQueryStrings.Get("BigQuery/NotConnected"));
 
     public async Task InitializeAsync(CancellationToken cancellationToken)
     {
@@ -84,7 +86,7 @@ public sealed class BigQuerySession : IDatabaseSession
                 (await CredentialFactory.FromFileAsync<ServiceAccountCredential>(path, cancellationToken)).ToGoogleCredential(),
             JsonCredentialParameters.AuthorizedUserCredentialType =>
                 (await CredentialFactory.FromFileAsync<UserCredential>(path, cancellationToken)).ToGoogleCredential(),
-            _ => throw new NotSupportedException($"The credentials file is of type \"{type}\". Use a service account key or a gcloud authorized_user file."),
+            _ => throw new NotSupportedException(CoreStrings.Format("Driver/CredentialsFileType", type)),
         };
     }
 
@@ -160,7 +162,7 @@ public sealed class BigQuerySession : IDatabaseSession
             }
         }
 
-        throw new InvalidOperationException($"No definition was found for {obj.Name}.");
+        throw new InvalidOperationException(CoreStrings.Format("Driver/NoDefinitionFor", obj.Name));
     }
 
     public async Task<ResultSet> BrowseAsync(BrowseRequest request, CancellationToken cancellationToken)
@@ -257,7 +259,7 @@ public sealed class BigQuerySession : IDatabaseSession
     };
 
     private string Dataset(ObjectName name) =>
-        name.Schema ?? _settings.DefaultDataset ?? throw new InvalidOperationException("Pick a dataset first.");
+        name.Schema ?? _settings.DefaultDataset ?? throw new InvalidOperationException(CoreStrings.Get("Driver/ChooseDatasetFirst"));
 
     private string Qualify(ObjectName table) => BigQuerySql.Table(_settings.ProjectId, Dataset(table), table.Name);
 
@@ -379,7 +381,7 @@ internal sealed class BigQueryQueryChannel : IQueryChannel
                 await CancelJobAsync(job);
             }
 
-            return new StatementResult(sql, [], -1, stopwatch.Elapsed, cancellationToken.IsCancellationRequested ? "Query cancelled." : "Query timed out.", messages);
+            return new StatementResult(sql, [], -1, stopwatch.Elapsed, cancellationToken.IsCancellationRequested ? CoreStrings.Get("Driver/QueryCancelled") : CoreStrings.Get("Driver/QueryTimedOut"), messages);
         }
         catch (GoogleApiException ex)
         {

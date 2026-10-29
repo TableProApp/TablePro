@@ -1,3 +1,5 @@
+using TablePro.Storage.Localization;
+
 namespace TablePro.Storage.Connections;
 
 /// <summary>
@@ -9,7 +11,7 @@ internal static class ConnectionBundleValidation
 {
     public const int MaximumNestingDepth = 32;
 
-    /// <summary>The first problem, worded for "This file is not a valid TablePro export: ...", or null.</summary>
+    /// <summary>The first problem, worded as a clause for <c>Connections/NotAnExportBecause</c>, or null.</summary>
     public static string? FirstViolation(PortableConnectionFile file)
     {
         var connections = file.Connections.Select(c => c.Ref).ToList();
@@ -58,25 +60,25 @@ internal static class ConnectionBundleValidation
         {
             if (target is not null && !targets.Contains(target))
             {
-                return $"“{referrer}” refers to “{target}”, which is not in the file";
+                return StorageStrings.Format("Connections/BundleMissingTarget", referrer, target);
             }
         }
 
         if ((file.Credentials ?? []).Keys.Order(StringComparer.Ordinal).FirstOrDefault(k => !connectionRefs.Contains(k)) is { } orphan)
         {
-            return $"the passwords for “{orphan}” belong to no connection in the file";
+            return StorageStrings.Format("Connections/BundleOrphanCredentials", orphan);
         }
 
         var groupParents = ParentMap((file.Groups ?? []).Select(g => (g.Ref!, g.ParentRef)));
         var folderParents = ParentMap((file.QueryFolders ?? []).Select(f => (f.Ref, f.ParentRef)));
         if ((FirstCycle(groupParents) ?? FirstCycle(folderParents)) is { } cycle)
         {
-            return $"the reference “{cycle}” is inside itself";
+            return StorageStrings.Format("Connections/BundleCycle", cycle);
         }
 
         if ((FirstTooDeep(groupParents) ?? FirstTooDeep(folderParents)) is { } deep)
         {
-            return $"the reference “{deep}” is nested too deeply";
+            return StorageStrings.Format("Connections/BundleTooDeep", deep);
         }
 
         return null;
@@ -89,12 +91,12 @@ internal static class ConnectionBundleValidation
         {
             if (string.IsNullOrWhiteSpace(value))
             {
-                return "an item has an empty reference";
+                return StorageStrings.Get("Connections/BundleEmptyReference");
             }
 
             if (!seen.Add(value))
             {
-                return $"the reference “{value}” is used more than once";
+                return StorageStrings.Format("Connections/BundleDuplicateReference", value);
             }
         }
 

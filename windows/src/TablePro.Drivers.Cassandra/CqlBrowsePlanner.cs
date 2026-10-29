@@ -2,6 +2,7 @@ using System.Globalization;
 using TablePro.Core.Browse;
 using TablePro.Core.Results;
 using TablePro.Core.Sql;
+using TablePro.Drivers.Cassandra.Localization;
 
 namespace TablePro.Drivers.Cassandra;
 
@@ -26,7 +27,7 @@ public static class CqlBrowsePlanner
         var notices = new List<string>();
         if (request.Sort.Count > 0)
         {
-            notices.Add("Cassandra returns rows in token order and sorts only within one partition, so the sort was not applied.");
+            notices.Add(CassandraStrings.Get("Cassandra/SortNotApplied"));
         }
 
         var filter = request.Filter;
@@ -69,7 +70,7 @@ public static class CqlBrowsePlanner
             where.Add(raw);
             if (!filter.MatchAll && rules.Count > 0)
             {
-                notices.Add("CQL joins conditions only with AND, so the raw condition must match as well as the rules.");
+                notices.Add(CassandraStrings.Get("Cassandra/RawConditionAnd"));
             }
         }
 
@@ -85,8 +86,8 @@ public static class CqlBrowsePlanner
         {
             clientFilter = new CqlRowFilter(client, filter.MatchAll || rules.Count <= 1, filter.SearchColumns);
             notices.Add(allowFiltering
-                ? string.Create(CultureInfo.InvariantCulture, $"{client.Count} filter rule(s) CQL cannot evaluate were applied to the rows read, page by page.")
-                : string.Create(CultureInfo.InvariantCulture, $"{client.Count} filter rule(s) were applied to the rows read, page by page, because CQL filters other columns only with ALLOW FILTERING. Set allowFiltering=true in the connection's options to filter on the server."));
+                ? CassandraStrings.Plural("Cassandra/ClientRules", client.Count)
+                : CassandraStrings.Plural("Cassandra/ClientRulesNoAllowFiltering", client.Count));
         }
 
         return new CqlBrowsePlan($"SELECT * FROM {table}{whereText}", $"SELECT COUNT(*) FROM {table}{whereText}", [.. values], clientFilter, notices);

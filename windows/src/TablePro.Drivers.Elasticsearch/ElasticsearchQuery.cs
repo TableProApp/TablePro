@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using TablePro.Core.Browse;
+using TablePro.Core.Localization;
 
 namespace TablePro.Drivers.Elasticsearch;
 
@@ -106,7 +107,7 @@ internal static class EsQuery
             FilterOperator.IsNotEmpty => Present(column, keyword),
             FilterOperator.In => Terms(keyword, value, field),
             FilterOperator.NotIn => Not(Terms(keyword, value, field)),
-            _ => throw new NotSupportedException($"Elasticsearch cannot filter with {rule.Operator.DisplayName()}."),
+            _ => throw new NotSupportedException(CoreStrings.Format("Driver/CannotFilterWith", "Elasticsearch", rule.Operator.DisplayName())),
         };
     }
 
@@ -213,7 +214,7 @@ internal static class EsQuery
         var comma = value.IndexOf(',', StringComparison.Ordinal);
         if (comma < 0)
         {
-            throw new ArgumentException($"BETWEEN on {rule.Column} needs an upper bound.");
+            throw new ArgumentException(CoreStrings.Format("Driver/BetweenNeedsUpperBound", rule.Column));
         }
 
         return (value[..comma].Trim(), value[(comma + 1)..].Trim());

@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AnsweredHttp" xml:space="preserve">
+    <value>Trino đã trả lời HTTP {0} {1}</value>
+  </data>
+  <data name="AnsweredHttpWith" xml:space="preserve">
+    <value>Trino đã trả lời HTTP {0} {1}: {2}</value>
+  </data>
+  <data name="CredentialsRefused" xml:space="preserve">
+    <value>Trino đã từ chối thông tin xác thực.</value>
+  </data>
+  <data name="CredentialsRefusedWith" xml:space="preserve">
+    <value>Trino đã từ chối thông tin xác thực: {0}</value>
+  </data>
+  <data name="NeedsComparableKey" xml:space="preserve">
+    <value>Một hàng cần ít nhất một cột khóa có thể so sánh để được thay đổi an toàn.</value>
+  </data>
+  <data name="NotClientProtocol" xml:space="preserve">
+    <value>Trino đã trả về phản hồi không theo giao thức máy khách: {0}</value>
+  </data>
+  <data name="PasswordNeedsHttps" xml:space="preserve">
+    <value>Trino chỉ chấp nhận mật khẩu hoặc token qua HTTPS. Hãy đặt chế độ SSL thành Bắt buộc hoặc dùng URL https:// cho {0}.</value>
+  </data>
+  <data name="PlainHttpRedirect" xml:space="preserve">
+    <value>Trino đã trả lời một yêu cầu HTTPS bằng địa chỉ http:// không mã hóa, nên địa chỉ đó không được theo. Coordinator đặt sau proxy TLS cần http-server.process-forwarded=true.</value>
+  </data>
+</root>

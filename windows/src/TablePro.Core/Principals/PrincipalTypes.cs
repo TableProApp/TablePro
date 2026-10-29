@@ -1,3 +1,5 @@
+using TablePro.Core.Localization;
+
 namespace TablePro.Core.Principals;
 
 /// <summary>A login, user or role. MySQL names an account by user and host together; other engines leave the host null.</summary>
@@ -93,16 +95,16 @@ public sealed record PrincipalRow(PrincipalInfo Info, PrincipalStage Stage)
 
     public string DisplayName => Info.Ref.DisplayName;
 
-    public string KindTitle => Info.IsRole ? "Role" : "User";
+    public string KindTitle => CoreStrings.Get(Info.IsRole ? "Principal/KindRole" : "Principal/KindUser");
 
     /// <summary>The enabled attributes, so a superuser stands out in the list without opening it.</summary>
     public string AttributeSummary => string.Join(", ", Info.Attributes.Where(a => a.IsEnabled).Select(a => a.Label));
 
     public string? StageDescription => Stage switch
     {
-        PrincipalStage.Created => "Will be created when you apply changes",
-        PrincipalStage.Modified => "Has unsaved changes",
-        PrincipalStage.Dropped => "Will be dropped when you apply changes",
+        PrincipalStage.Created => CoreStrings.Get("Principal/StageCreated"),
+        PrincipalStage.Modified => CoreStrings.Get("Principal/StageModified"),
+        PrincipalStage.Dropped => CoreStrings.Get("Principal/StageDropped"),
         _ => null,
     };
 }

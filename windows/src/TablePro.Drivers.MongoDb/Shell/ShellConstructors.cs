@@ -1,5 +1,6 @@
 using System.Globalization;
 using MongoDB.Bson;
+using TablePro.Drivers.MongoDb.Localization;
 
 namespace TablePro.Drivers.MongoDb.Shell;
 
@@ -60,7 +61,7 @@ internal static class ShellConstructors
         var hex = Text(args, 0);
         return ObjectId.TryParse(hex, out var id)
             ? new BsonObjectId(id)
-            : throw new FormatException($"\"{hex}\" is not 24 hexadecimal digits");
+            : throw new FormatException(MongoStrings.Format("Mongo/NotObjectIdHex", Quoted(hex)));
     }
 
     private static BsonDateTime DateValue(IReadOnlyList<BsonValue> args)
@@ -72,7 +73,7 @@ internal static class ShellConstructors
 
         if (args.Count > 1)
         {
-            throw new FormatException("takes one argument: an ISO date or milliseconds since 1970");
+            throw new FormatException(MongoStrings.Get("Mongo/DateArgs"));
         }
 
         var arg = args[0];
@@ -86,7 +87,7 @@ internal static class ShellConstructors
             return new BsonDateTime(utc);
         }
 
-        throw new FormatException($"{arg} is not a date");
+        throw new FormatException(MongoStrings.Format("Mongo/NotADate", arg));
     }
 
     private static long WholeNumber(IReadOnlyList<BsonValue> args, long min, long max)
@@ -97,7 +98,7 @@ internal static class ShellConstructors
         {
             if (!long.TryParse(arg.AsString.Trim(), NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out value))
             {
-                throw new FormatException($"\"{arg.AsString}\" is not a whole number");
+                throw new FormatException(MongoStrings.Format("Mongo/NotWholeNumber", Quoted(arg.AsString)));
             }
         }
         else if (arg.IsInt32 || arg.IsInt64)
@@ -110,22 +111,22 @@ internal static class ShellConstructors
         }
         else
         {
-            throw new FormatException($"{arg} is not a whole number");
+            throw new FormatException(MongoStrings.Format("Mongo/NotWholeNumber", arg));
         }
 
-        return value < min || value > max ? throw new OverflowException($"{value} is out of range") : value;
+        return value < min || value > max ? throw new OverflowException(MongoStrings.Format("Mongo/OutOfRange", value)) : value;
     }
 
     private static BsonDecimal128 DecimalValue(IReadOnlyList<BsonValue> args)
     {
         var arg = One(args);
-        var text = arg.IsString ? arg.AsString : arg.IsNumeric ? arg.ToString()! : throw new FormatException($"{arg} is not a number");
-        return Decimal128.TryParse(text.Trim(), out var value) ? new BsonDecimal128(value) : throw new FormatException($"\"{text}\" is not a decimal number");
+        var text = arg.IsString ? arg.AsString : arg.IsNumeric ? arg.ToString()! : throw new FormatException(MongoStrings.Format("Mongo/NotANumber", arg));
+        return Decimal128.TryParse(text.Trim(), out var value) ? new BsonDecimal128(value) : throw new FormatException(MongoStrings.Format("Mongo/NotDecimal", Quoted(text)));
     }
 
     private static BsonBinaryData UuidValue(IReadOnlyList<BsonValue> args)
     {
-        var guid = args.Count == 0 ? Guid.NewGuid() : Guid.TryParse(Text(args, 0), out var parsed) ? parsed : throw new FormatException($"\"{Text(args, 0)}\" is not a UUID");
+        var guid = args.Count == 0 ? Guid.NewGuid() : Guid.TryParse(Text(args, 0), out var parsed) ? parsed : throw new FormatException(MongoStrings.Format("Mongo/NotUuid", Quoted(Text(args, 0))));
         return new BsonBinaryData(guid, GuidRepresentation.Standard);
     }
 
@@ -133,13 +134,13 @@ internal static class ShellConstructors
     {
         if (args.Count != 2 || !args[0].IsNumeric || !args[1].IsString)
         {
-            throw new FormatException("takes a subtype number and a string");
+            throw new FormatException(MongoStrings.Get("Mongo/BinaryArgs"));
         }
 
         var subType = args[0].ToInt32();
         if (subType is < 0 or > 255)
         {
-            throw new OverflowException($"subtype {subType} is out of range");
+            throw new OverflowException(MongoStrings.Format("Mongo/SubtypeOutOfRange", subType));
         }
 
         var bytes = hex ? Convert.FromHexString(args[1].AsString) : Convert.FromBase64String(args[1].AsString);
@@ -163,14 +164,14 @@ internal static class ShellConstructors
             return new BsonTimestamp(unchecked((int)(uint)args[0].ToInt64()), unchecked((int)(uint)args[1].ToInt64()));
         }
 
-        throw new FormatException("takes the seconds and the increment, or {t, i}");
+        throw new FormatException(MongoStrings.Get("Mongo/TimestampArgs"));
     }
 
     private static BsonRegularExpression RegexValue(IReadOnlyList<BsonValue> args)
     {
         if (args.Count is < 1 or > 2)
         {
-            throw new FormatException("takes a pattern and optional flags");
+            throw new FormatException(MongoStrings.Get("Mongo/RegexArgs"));
         }
 
         var flags = args.Count == 2 ? Text(args, 1) : string.Empty;
@@ -178,8 +179,11 @@ internal static class ShellConstructors
     }
 
     private static BsonValue One(IReadOnlyList<BsonValue> args) =>
-        args.Count == 1 ? args[0] : throw new FormatException("takes one argument");
+        args.Count == 1 ? args[0] : throw new FormatException(MongoStrings.Get("Mongo/OneArgument"));
 
     private static string Text(IReadOnlyList<BsonValue> args, int index) =>
-        index < args.Count && args[index].IsString ? args[index].AsString : throw new FormatException("expects a quoted string");
+        index < args.Count && args[index].IsString ? args[index].AsString : throw new FormatException(MongoStrings.Get("Mongo/QuotedStringExpected"));
+
+    // The text the user wrote, quoted as they would quote it in the shell.
+    private static string Quoted(string text) => "\"" + text + "\"";
 }

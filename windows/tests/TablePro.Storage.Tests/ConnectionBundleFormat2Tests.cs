@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using TablePro.Core.Connections;
@@ -217,6 +218,25 @@ public sealed class ConnectionBundleFormat2Tests : IDisposable
         var error = Assert.Throws<InvalidDataException>(() => ConnectionExportCrypto.Decrypt(sealedBytes, "pass"));
 
         Assert.Contains("version 2", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AWrongPassphraseIsReportedInTheUiLanguage()
+    {
+        var sealedBytes = ConnectionExportCrypto.Encrypt("{}"u8, "pass");
+        var saved = CultureInfo.CurrentUICulture;
+        try
+        {
+            CultureInfo.CurrentUICulture = CultureInfo.GetCultureInfo("fr");
+
+            var error = Assert.Throws<ConnectionExportPassphraseException>(() => ConnectionExportCrypto.Decrypt(sealedBytes, "Pass"));
+
+            Assert.Equal("Phrase secrète incorrecte.", error.Message);
+        }
+        finally
+        {
+            CultureInfo.CurrentUICulture = saved;
+        }
     }
 
     [Fact]

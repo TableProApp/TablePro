@@ -1,5 +1,6 @@
 using TablePro.Core.Connections;
 using TablePro.Core.Drivers;
+using TablePro.Ssh.Localization;
 
 namespace TablePro.Ssh;
 
@@ -61,12 +62,12 @@ public sealed class NetworkTunnelFactory(NetworkTunnelOptions? options = null) :
             case ConnectionTransport.CloudSqlProxy:
             {
                 var settings = profile.CloudSqlProxy!;
-                var executable = Locate(settings.ExecutablePath, HelperArguments.CloudSqlProxyName, ExecutableLocator.GoogleCloudSdkDirectories(), "cloud-sql-proxy was not found. Install it with “gcloud components install cloud-sql-proxy”, or set its path in the connection's Cloud SQL settings.");
+                var executable = Locate(settings.ExecutablePath, HelperArguments.CloudSqlProxyName, ExecutableLocator.GoogleCloudSdkDirectories(), SshStrings.Get("Tunnel/CloudSqlProxyNotFound"));
                 var environment = HelperArguments.CloudSqlProxyEnvironment(settings, secrets.CloudSqlServiceAccountKey);
                 return await StartHelperAsync(
                     request,
                     new LocalPortPolicy(settings.LocalPort, _options.PortAttempts),
-                    port => new HelperLaunch("The Cloud SQL Auth Proxy", executable, HelperArguments.CloudSqlProxy(settings, port), environment),
+                    port => new HelperLaunch(SshStrings.Get("Tunnel/CloudSqlProxyName"), executable, HelperArguments.CloudSqlProxy(settings, port), environment),
                     readyTimeout,
                     inspect: null,
                     cancellationToken);
@@ -75,7 +76,7 @@ public sealed class NetworkTunnelFactory(NetworkTunnelOptions? options = null) :
             case ConnectionTransport.CloudflareTunnel:
             {
                 var settings = profile.CloudflareTunnel!;
-                var executable = Locate(settings.ExecutablePath, HelperArguments.CloudflaredName, ExecutableLocator.CloudflaredDirectories(), "cloudflared was not found. Install it with “winget install Cloudflare.cloudflared”, or set its path in the connection's Cloudflare Tunnel settings.");
+                var executable = Locate(settings.ExecutablePath, HelperArguments.CloudflaredName, ExecutableLocator.CloudflaredDirectories(), SshStrings.Get("Tunnel/CloudflaredNotFound"));
                 var environment = HelperArguments.CloudflaredEnvironment(settings, secrets.CloudflareTokenId, secrets.CloudflareTokenSecret);
                 return await StartHelperAsync(
                     request,
@@ -95,8 +96,8 @@ public sealed class NetworkTunnelFactory(NetworkTunnelOptions? options = null) :
                     port =>
                     {
                         var invocation = TunnelCommandLine.Build(settings, port, request.Host, request.Port);
-                        var executable = Locate(invocation.Executable, invocation.Executable, ExecutableLocator.PackageManagerDirectories(), $"{invocation.Executable} was not found. Give its full path in the connection.");
-                        return new HelperLaunch("The tunnel command", executable, invocation.Arguments, new Dictionary<string, string>());
+                        var executable = Locate(invocation.Executable, invocation.Executable, ExecutableLocator.PackageManagerDirectories(), SshStrings.Format("Tunnel/CommandNotFound", invocation.Executable));
+                        return new HelperLaunch(SshStrings.Get("Tunnel/TunnelCommandName"), executable, invocation.Arguments, new Dictionary<string, string>());
                     },
                     readyTimeout,
                     inspect: null,
@@ -104,13 +105,13 @@ public sealed class NetworkTunnelFactory(NetworkTunnelOptions? options = null) :
             }
 
             default:
-                throw new ArgumentException("The connection does not use a proxy or a tunnel helper.", nameof(request));
+                throw new ArgumentException(SshStrings.Get("Tunnel/NotAProxyOrHelper"), nameof(request));
         }
     }
 
     private static TunnelException? CloudflaredSignInRequired(string output) =>
         HelperArguments.CloudflaredSignInUri(output) is { } uri
-            ? new TunnelException(TunnelFailureKind.BrowserSignInRequired, $"Cloudflare Access needs a browser sign-in. Sign in at {uri}, then connect again.", output) { SignInUri = uri }
+            ? new TunnelException(TunnelFailureKind.BrowserSignInRequired, SshStrings.Format("Tunnel/CloudflareSignIn", uri), output) { SignInUri = uri }
             : null;
 
     private static async Task<IConnectionTunnel> StartHelperAsync(
@@ -128,7 +129,7 @@ public sealed class NetworkTunnelFactory(NetworkTunnelOptions? options = null) :
             // A fixed port another program already answers on would have the driver talk to that program.
             if (!ports.IsAutomatic && await FreePort.AcceptsConnectionsAsync(port, TimeSpan.FromMilliseconds(300), cancellationToken))
             {
-                throw new TunnelException(TunnelFailureKind.LocalPortUnavailable, $"Another program is already listening on local port {port}. Choose another port, or leave it empty.");
+                throw new TunnelException(TunnelFailureKind.LocalPortUnavailable, SshStrings.Format("Tunnel/FixedPortInUse", port));
             }
 
             if (ports.IsAutomatic && await FreePort.AcceptsConnectionsAsync(port, TimeSpan.FromMilliseconds(300), cancellationToken))
@@ -138,7 +139,7 @@ public sealed class NetworkTunnelFactory(NetworkTunnelOptions? options = null) :
                     continue;
                 }
 
-                throw new TunnelException(TunnelFailureKind.LocalPortUnavailable, "No local port was free for the tunnel.");
+                throw new TunnelException(TunnelFailureKind.LocalPortUnavailable, SshStrings.Get("Tunnel/NoFreePort"));
             }
 
             var tunneled = TunneledRequest(request, port);

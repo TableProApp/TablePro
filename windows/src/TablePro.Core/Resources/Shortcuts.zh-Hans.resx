@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="CategoryApp" xml:space="preserve">
+    <value>应用</value>
+  </data>
+  <data name="CategoryConnections" xml:space="preserve">
+    <value>连接</value>
+  </data>
+  <data name="CategoryDataGrid" xml:space="preserve">
+    <value>数据网格</value>
+  </data>
+  <data name="CategoryEditor" xml:space="preserve">
+    <value>编辑器与查询</value>
+  </data>
+  <data name="CategoryNavigation" xml:space="preserve">
+    <value>导航</value>
+  </data>
+  <data name="ConflictCommand" xml:space="preserve">
+    <value>{0} 已被“{2}”中的“{1}”使用。</value>
+  </data>
+  <data name="ConflictNeedsModifier" xml:space="preserve">
+    <value>快捷键必须包含 Ctrl 或 Alt，功能键除外。Shift 可以与它们组合使用，但不能单独构成快捷键。</value>
+  </data>
+  <data name="ConflictReserved" xml:space="preserve">
+    <value>{0} 已保留给“{1}”，无法分配。</value>
+  </data>
+  <data name="ConflictSystemReserved" xml:space="preserve">
+    <value>{0} 已被 Windows 保留，无法分配。</value>
+  </data>
+  <data name="NotAShortcut" xml:space="preserve">
+    <value>“{0}”不是键盘快捷键。</value>
+  </data>
+  <data name="UnknownCommand" xml:space="preserve">
+    <value>没有快捷键命令“{0}”。</value>
+  </data>
+</root>

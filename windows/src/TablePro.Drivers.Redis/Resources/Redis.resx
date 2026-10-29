@@ -1,0 +1,334 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="Blocking" xml:space="preserve">
+    <value>{0} blocks the shared connection until data arrives. Use the non-blocking form, such as LPOP or XREAD without BLOCK.</value>
+    <comment>{0} is a Redis command such as BLPOP.</comment>
+  </data>
+  <data name="Bytes_One" xml:space="preserve">
+    <value>{0} byte</value>
+    <comment>{0} is a number of bytes.</comment>
+  </data>
+  <data name="Bytes_Other" xml:space="preserve">
+    <value>{0} bytes</value>
+    <comment>{0} is a number of bytes.</comment>
+  </data>
+  <data name="CannotStoreNull" xml:space="preserve">
+    <value>Redis cannot store NULL. Enter an empty value instead.</value>
+  </data>
+  <data name="CannotStoreNullValue" xml:space="preserve">
+    <value>Redis cannot store NULL as a value. Enter an empty value instead.</value>
+  </data>
+  <data name="ClientReply" xml:space="preserve">
+    <value>CLIENT REPLY would stop the replies every tab waits for.</value>
+  </data>
+  <data name="ClusterDatabaseOption" xml:space="preserve">
+    <value>Redis Cluster serves database 0 only. Clear the database number, or use standalone mode.</value>
+  </data>
+  <data name="ClusterDatabaseZero" xml:space="preserve">
+    <value>Redis Cluster serves database 0 only.</value>
+  </data>
+  <data name="CommandNotFinished" xml:space="preserve">
+    <value>The command did not finish within {0} seconds.</value>
+    <comment>{0} is a number of seconds.</comment>
+  </data>
+  <data name="ConnectionState" xml:space="preserve">
+    <value>{0} changes the shared connection's login or state. Change the connection's settings instead.</value>
+    <comment>{0} is a Redis command such as AUTH.</comment>
+  </data>
+  <data name="CrossSlot" xml:space="preserve">
+    <value>The queued commands touch keys in more than one hash slot, which a cluster cannot run in one transaction. Give the keys a shared {hash tag} so they land in one slot.</value>
+    <comment>Follows the CROSSSLOT error code. Read with Get, so {hash tag} is literal.</comment>
+  </data>
+  <data name="CurrentValue" xml:space="preserve">
+    <value>(current value)</value>
+    <comment>Stands in for a value in a preview of the commands a save will send.</comment>
+  </data>
+  <data name="CursorRestarted" xml:space="preserve">
+    <value>The cursor named a node the cluster no longer has, so the scan started again from the first primary.</value>
+  </data>
+  <data name="DatabaseSelected_One" xml:space="preserve">
+    <value>Database {1} selected, {0} key.</value>
+    <comment>{0} key count, {1} database number.</comment>
+  </data>
+  <data name="DatabaseSelected_Other" xml:space="preserve">
+    <value>Database {1} selected, {0} keys.</value>
+    <comment>{0} key count, {1} database number.</comment>
+  </data>
+  <data name="DbBrowseWith" xml:space="preserve">
+    <value># Browse with: {0}</value>
+    <comment>A comment line. {0} is a command.</comment>
+  </data>
+  <data name="DbHeader" xml:space="preserve">
+    <value># Redis database: {0}</value>
+    <comment>A comment line in a database's description. {0} is a database name such as db0.</comment>
+  </data>
+  <data name="DbKeys" xml:space="preserve">
+    <value># Keys: {0}</value>
+    <comment>A comment line. {0} is a key count or the word unknown.</comment>
+  </data>
+  <data name="DbTypes_One" xml:space="preserve">
+    <value># Type distribution (sampled {0} key):</value>
+    <comment>A comment line. {0} is how many keys were sampled.</comment>
+  </data>
+  <data name="DbTypes_Other" xml:space="preserve">
+    <value># Type distribution (sampled {0} keys):</value>
+    <comment>A comment line. {0} is how many keys were sampled.</comment>
+  </data>
+  <data name="EmptyCommand" xml:space="preserve">
+    <value>Empty command.</value>
+  </data>
+  <data name="FieldsComment" xml:space="preserve">
+    <value>A JSON object of field names to values</value>
+  </data>
+  <data name="HashFieldGone" xml:space="preserve">
+    <value>The hash field '{0}' no longer exists, so nothing was saved.</value>
+    <comment>{0} is a hash field name.</comment>
+  </data>
+  <data name="HashRowNeedsField" xml:space="preserve">
+    <value>A new hash row needs a field name.</value>
+  </data>
+  <data name="IndexComment" xml:space="preserve">
+    <value>Position from the head, starting at 0</value>
+  </data>
+  <data name="IsSentinel" xml:space="preserve">
+    <value>This is a Redis Sentinel, not a data node, so it only answers SENTINEL commands. Set the connection mode to sentinel and list this address among the Sentinel nodes.</value>
+    <comment>SENTINEL is a command name and stays English.</comment>
+  </data>
+  <data name="JsonNeedsPath" xml:space="preserve">
+    <value>A new JSON member needs a path, such as $.name.</value>
+  </data>
+  <data name="JsonPathFixed" xml:space="preserve">
+    <value>A JSON member's path cannot be edited. Delete it and add the value under the new path.</value>
+  </data>
+  <data name="JsonTextComment" xml:space="preserve">
+    <value>JSON text</value>
+  </data>
+  <data name="KeyGone" xml:space="preserve">
+    <value>The key '{0}' no longer exists.</value>
+    <comment>{0} is a key name.</comment>
+  </data>
+  <data name="KeyNameComment" xml:space="preserve">
+    <value>The key's name</value>
+  </data>
+  <data name="KeyNameNotText" xml:space="preserve">
+    <value>This key's name is not text, so it cannot be addressed from the grid.</value>
+  </data>
+  <data name="KeyTypeNotEditable" xml:space="preserve">
+    <value>The key '{0}' holds a type the grid cannot edit. Change it with a command in the query editor.</value>
+    <comment>{0} is a key name.</comment>
+  </data>
+  <data name="KeyTypeNotShown" xml:space="preserve">
+    <value>The key '{0}' holds a type the grid cannot show. Read it with a command in the query editor.</value>
+    <comment>{0} is a key name.</comment>
+  </data>
+  <data name="LengthComment" xml:space="preserve">
+    <value>Bytes of a string, or elements of a collection</value>
+  </data>
+  <data name="ListOneNode" xml:space="preserve">
+    <value>List at least one node to connect to, as host:port.</value>
+  </data>
+  <data name="ListPositionFixed" xml:space="preserve">
+    <value>A list element's position cannot be edited. Delete it and add the value again.</value>
+  </data>
+  <data name="NewKeyNeedsName" xml:space="preserve">
+    <value>A new key needs a name.</value>
+  </data>
+  <data name="NextCursor" xml:space="preserve">
+    <value>Next cursor: {0}</value>
+    <comment>{0} is the cursor value.</comment>
+  </data>
+  <data name="NoListPosition" xml:space="preserve">
+    <value>The row has no list position, so it cannot be addressed.</value>
+  </data>
+  <data name="NoServer" xml:space="preserve">
+    <value>No Redis server is connected.</value>
+  </data>
+  <data name="NotACluster" xml:space="preserve">
+    <value>This server is not running in cluster mode. Set the connection mode to standalone, or point cluster mode at a node started with cluster-enabled yes.</value>
+    <comment>cluster-enabled yes is a server setting and stays English.</comment>
+  </data>
+  <data name="NotAScore" xml:space="preserve">
+    <value>'{0}' is not a score. A score is a number, inf or -inf.</value>
+    <comment>{0} is what the user typed. inf and -inf stay English.</comment>
+  </data>
+  <data name="NotClientId" xml:space="preserve">
+    <value>'{0}' is not a Redis client id.</value>
+    <comment>{0} is what was given.</comment>
+  </data>
+  <data name="NotDatabaseNumber" xml:space="preserve">
+    <value>'{0}' is not a Redis database number. Use a number such as 0 or a name such as db0.</value>
+    <comment>{0} is what the user entered. db0 stays as is.</comment>
+  </data>
+  <data name="NotHost" xml:space="preserve">
+    <value>'{0}' is not a host or host:port.</value>
+    <comment>{0} is what was entered.</comment>
+  </data>
+  <data name="NotMode" xml:space="preserve">
+    <value>'{0}' is not a Redis connection mode. Use standalone, sentinel or cluster.</value>
+    <comment>{0} is what was entered. standalone, sentinel and cluster stay English.</comment>
+  </data>
+  <data name="NotRun" xml:space="preserve">
+    <value>not run</value>
+    <comment>Shown in place of a reply for a queued command that never ran.</comment>
+  </data>
+  <data name="NoWhereElements" xml:space="preserve">
+    <value>Redis has no WHERE clause. Use the filter rules, or SCAN with MATCH in the query editor.</value>
+  </data>
+  <data name="NoWhereKeys" xml:space="preserve">
+    <value>Redis has no WHERE clause. Filter on the Key column with a pattern such as user:*, or on Type.</value>
+    <comment>Key and Type are column names; user:* is a pattern.</comment>
+  </data>
+  <data name="OnlyKeyTypeCounted" xml:space="preserve">
+    <value>Only the key and type filters are counted on the server.</value>
+  </data>
+  <data name="PartialSlots" xml:space="preserve">
+    <value>{0} of {1} hash slots ran their part before another refused; those changes stay applied.</value>
+    <comment>{0} slots that ran, {1} slots in all.</comment>
+  </data>
+  <data name="PartOfCluster" xml:space="preserve">
+    <value>This server is part of a Redis Cluster, so requests for keys it does not own would fail. Set the connection mode to cluster and list this address among the cluster nodes.</value>
+  </data>
+  <data name="PathComment" xml:space="preserve">
+    <value>JSONPath of the member</value>
+  </data>
+  <data name="ReadOnlyNoDisconnect" xml:space="preserve">
+    <value>This connection is read-only, so the client was not disconnected.</value>
+  </data>
+  <data name="ReadOnlyNotSent" xml:space="preserve">
+    <value>This connection is read-only, so {0} was not sent.</value>
+    <comment>{0} is a Redis command.</comment>
+  </data>
+  <data name="RenameEmpty" xml:space="preserve">
+    <value>A key can only be renamed to text that is not empty.</value>
+  </data>
+  <data name="RowHasNo" xml:space="preserve">
+    <value>The row has no {0}, so it cannot be addressed.</value>
+    <comment>{0} is one of the What* phrases, such as hash field.</comment>
+  </data>
+  <data name="SaveSomeFailed" xml:space="preserve">
+    <value>Redis ran the save, but some commands failed and the rest stayed applied: {0}</value>
+    <comment>{0} lists each failed command with the server's reply.</comment>
+  </data>
+  <data name="ScanComplete" xml:space="preserve">
+    <value>Cursor 0: the scan is complete.</value>
+  </data>
+  <data name="Seconds_One" xml:space="preserve">
+    <value>{0} second</value>
+    <comment>{0} is a number of seconds.</comment>
+  </data>
+  <data name="Seconds_Other" xml:space="preserve">
+    <value>{0} seconds</value>
+    <comment>{0} is a number of seconds.</comment>
+  </data>
+  <data name="SelectInMulti" xml:space="preserve">
+    <value>SELECT cannot be queued inside MULTI here. Select the database before MULTI.</value>
+  </data>
+  <data name="SelectOneNumber" xml:space="preserve">
+    <value>SELECT takes one database number, such as SELECT 1</value>
+    <comment>Follows the ERR error code. SELECT stays English.</comment>
+  </data>
+  <data name="SentinelThroughTunnel" xml:space="preserve">
+    <value>A tunnel forwards one address, and the node Sentinel names is on the server's own network, so Sentinel mode cannot run through one. Connect to a data node directly, or turn the tunnel off.</value>
+  </data>
+  <data name="SentinelToSentinel" xml:space="preserve">
+    <value>Sentinel resolved to another Sentinel rather than a data node. Check the primary group name in your Sentinel configuration.</value>
+  </data>
+  <data name="SlotsPartiallySaved" xml:space="preserve">
+    <value>{0} of {1} hash slots were saved and stay applied; the next failed: {2}</value>
+    <comment>{0} slots saved, {1} slots in all, {2} the error.</comment>
+  </data>
+  <data name="SortedSetMemberGone" xml:space="preserve">
+    <value>The sorted set member '{0}' no longer exists, so nothing was saved.</value>
+    <comment>{0} is a member.</comment>
+  </data>
+  <data name="StreamEntriesFixed" xml:space="preserve">
+    <value>Stream entries cannot change once added. Delete the entry and add a new one.</value>
+  </data>
+  <data name="StreamFieldsNotObject" xml:space="preserve">
+    <value>A stream entry's fields must be a JSON object: {0}</value>
+    <comment>{0} is the JSON parser's message.</comment>
+  </data>
+  <data name="StreamFieldsObject" xml:space="preserve">
+    <value>Stream fields must be a JSON object such as {"field": "value"}.</value>
+    <comment>Read with Get, so the JSON braces are literal.</comment>
+  </data>
+  <data name="StreamIdComment" xml:space="preserve">
+    <value>Leave empty when adding to let the server assign one</value>
+  </data>
+  <data name="StreamNeedsFields" xml:space="preserve">
+    <value>A new stream entry needs its fields as a JSON object, such as {"name": "value"}.</value>
+    <comment>Read with Get, so the JSON braces are literal.</comment>
+  </data>
+  <data name="StreamNeedsOneField" xml:space="preserve">
+    <value>A stream entry needs at least one field.</value>
+  </data>
+  <data name="StringHoldsOneValue" xml:space="preserve">
+    <value>A string key holds one value. Edit that value instead of adding a row.</value>
+  </data>
+  <data name="Subscription" xml:space="preserve">
+    <value>{0} turns the connection into a message stream, which the editor cannot show. Use redis-cli for it.</value>
+    <comment>{0} is a Redis command such as SUBSCRIBE.</comment>
+  </data>
+  <data name="TtlComment" xml:space="preserve">
+    <value>Seconds until the key expires; -1 or NULL for none</value>
+  </data>
+  <data name="TtlInvalid" xml:space="preserve">
+    <value>TTL has to be a whole number of seconds above 0, or -1 or NULL for no expiry.</value>
+  </data>
+  <data name="TtlNoExpiry" xml:space="preserve">
+    <value>-1 (no expiry)</value>
+  </data>
+  <data name="TtlNoKey" xml:space="preserve">
+    <value>-2 (the key does not exist)</value>
+  </data>
+  <data name="TypeComment" xml:space="preserve">
+    <value>string, hash, list, set or zset when adding a key</value>
+    <comment>The type names stay English.</comment>
+  </data>
+  <data name="TypeNotAddable" xml:space="preserve">
+    <value>A {0} key cannot be added from the grid. Add it with a command in the query editor.</value>
+    <comment>{0} is a Redis type name such as stream.</comment>
+  </data>
+  <data name="Unknown" xml:space="preserve">
+    <value>unknown</value>
+  </data>
+  <data name="ValueComment" xml:space="preserve">
+    <value>A string's value, or a preview of a collection's first elements</value>
+  </data>
+  <data name="ValueInListNotEditable" xml:space="preserve">
+    <value>The value of a {0} key cannot be edited in the list of keys. Open the key to edit its elements.</value>
+    <comment>{0} is a Redis type name such as hash.</comment>
+  </data>
+  <data name="WhatHashField" xml:space="preserve">
+    <value>hash field</value>
+    <comment>Fills RowHasNo.</comment>
+  </data>
+  <data name="WhatJsonPath" xml:space="preserve">
+    <value>JSON path</value>
+    <comment>Fills RowHasNo.</comment>
+  </data>
+  <data name="WhatSetMember" xml:space="preserve">
+    <value>set member</value>
+    <comment>Fills RowHasNo.</comment>
+  </data>
+  <data name="WhatSortedSetMember" xml:space="preserve">
+    <value>sorted set member</value>
+    <comment>Fills RowHasNo.</comment>
+  </data>
+  <data name="WhatStreamId" xml:space="preserve">
+    <value>stream entry id</value>
+    <comment>Fills RowHasNo.</comment>
+  </data>
+</root>

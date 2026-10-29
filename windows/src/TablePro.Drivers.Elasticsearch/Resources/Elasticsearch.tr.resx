@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="BulkNotJson" xml:space="preserve">
+    <value>Bulk yanıtı JSON değildi.</value>
+  </data>
+  <data name="CloudIdInvalid" xml:space="preserve">
+    <value>Bulut kimliği geçerli değil.</value>
+  </data>
+  <data name="DataStream" xml:space="preserve">
+    <value>veri akışı</value>
+  </data>
+  <data name="IdColumnComment" xml:space="preserve">
+    <value>belge kimliği</value>
+  </data>
+  <data name="IndexColumnComment" xml:space="preserve">
+    <value>belgeyi içeren dizin</value>
+  </data>
+  <data name="KeywordSubField" xml:space="preserve">
+    <value>keyword alt alanıyla</value>
+  </data>
+  <data name="NoPointInTime" xml:space="preserve">
+    <value>Küme bir zaman noktası (point in time) açmadı.</value>
+  </data>
+  <data name="NoTaskId" xml:space="preserve">
+    <value>Görev kimliği yok.</value>
+  </data>
+</root>

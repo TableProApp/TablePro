@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="ControlCharacterInPath" xml:space="preserve">
+    <value>Đường dẫn của một tiện ích mở rộng trong danh sách chứa ký tự xuống dòng hoặc ký tự điều khiển khác.</value>
+  </data>
+  <data name="CouldNotLoad" xml:space="preserve">
+    <value>Không thể tải tiện ích mở rộng "{0}".</value>
+  </data>
+  <data name="CouldNotLoadList" xml:space="preserve">
+    <value>Không thể tải các tiện ích mở rộng SQLite của kết nối này.</value>
+  </data>
+  <data name="Duplicate" xml:space="preserve">
+    <value>"{0}" xuất hiện trong danh sách nhiều lần.</value>
+  </data>
+  <data name="EntryPointNotFound" xml:space="preserve">
+    <value>Tệp không có hàm nào tên là {0}.</value>
+  </data>
+  <data name="FileNotFound" xml:space="preserve">
+    <value>Không có tệp nào tại "{0}".</value>
+  </data>
+  <data name="InitializationFailed" xml:space="preserve">
+    <value>Tiện ích mở rộng không khởi động được: {0}</value>
+  </data>
+  <data name="InvalidEntryPoint" xml:space="preserve">
+    <value>"{0}" không phải là tên điểm vào hợp lệ.</value>
+  </data>
+  <data name="LoadingNotClosed" xml:space="preserve">
+    <value>SQLite không tắt lại việc tải tiện ích mở rộng sau khi tải.</value>
+  </data>
+  <data name="LoadingUnavailable" xml:space="preserve">
+    <value>SQLite không cho phép tải tiện ích mở rộng trên kết nối này.</value>
+  </data>
+  <data name="MalformedList" xml:space="preserve">
+    <value>Danh sách tiện ích mở rộng đã lưu không ở định dạng TablePro có thể đọc.</value>
+  </data>
+  <data name="MissingPath" xml:space="preserve">
+    <value>Một tiện ích mở rộng trong danh sách không có tệp.</value>
+  </data>
+  <data name="NotAFile" xml:space="preserve">
+    <value>"{0}" không phải là tệp.</value>
+  </data>
+  <data name="PathTooLong" xml:space="preserve">
+    <value>Đường dẫn "{0}" quá dài.</value>
+  </data>
+  <data name="RelativePath" xml:space="preserve">
+    <value>"{0}" không phải là đường dẫn đầy đủ.</value>
+  </data>
+</root>

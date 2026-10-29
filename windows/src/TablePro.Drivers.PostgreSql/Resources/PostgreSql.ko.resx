@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="Abandoned" xml:space="preserve">
+    <value>서버에서 루틴을 중지할 수 없습니다.</value>
+  </data>
+  <data name="AbandonedRunning" xml:space="preserve">
+    <value>서버 프로세스 {0}이(가) 아직 실행 중이며 잠금을 유지하고 있을 수 있습니다.</value>
+  </data>
+  <data name="AbandonedSession" xml:space="preserve">
+    <value>서버 세션이 아직 실행 중이며 잠금을 유지하고 있을 수 있습니다.</value>
+  </data>
+  <data name="AbandonedWaiting" xml:space="preserve">
+    <value>서버 프로세스 {0}이(가) 아직 디버거를 기다리며 잠금을 유지하고 있을 수 있습니다. 종료하려면 SELECT pldbg_attach_to_port({1})를 실행하고 반환된 숫자를 pldbg_abort_target에 전달하세요.</value>
+  </data>
+  <data name="CannotStepOut" xml:space="preserve">
+    <value>PL/pgSQL 디버거는 루틴 밖으로 나가는 단계 실행을 할 수 없습니다.</value>
+  </data>
+  <data name="DefaultNotReadable" xml:space="preserve">
+    <value>이 서버는 {0}의 기본값을 표시할 수 없으므로 값을 입력하세요.</value>
+  </data>
+  <data name="ExtensionMissing" xml:space="preserve">
+    <value>"{0}"에 PL/pgSQL 디버거가 설치되어 있지 않습니다.</value>
+  </data>
+  <data name="ExtensionMissingDetail" xml:space="preserve">
+    <value>슈퍼유저에게 이 데이터베이스에서 CREATE EXTENSION pldbgapi를 실행해 달라고 요청하세요.</value>
+  </data>
+  <data name="HidesDebuggerNotice" xml:space="preserve">
+    <value>이 루틴은 client_min_messages를 {0}(으)로 설정하여 디버거가 시작할 때 사용하는 알림을 숨깁니다.</value>
+  </data>
+  <data name="HidesDebuggerNoticeDetail" xml:space="preserve">
+    <value>디버깅하려면 루틴에서 SET client_min_messages를 제거하세요.</value>
+  </data>
+  <data name="Interrupted" xml:space="preserve">
+    <value>디버거 세션이 대기 중에 중단되어 루틴이 중지되고 커밋되지 않은 변경 내용이 롤백되었습니다. 취소 또는 서버의 transaction_timeout으로 인해 발생할 수 있습니다.</value>
+  </data>
+  <data name="LimitsTransactionTime" xml:space="preserve">
+    <value>이 루틴은 transaction_timeout을 {0}(으)로 설정하므로 중단점에서 대기하는 동안 종료됩니다.</value>
+  </data>
+  <data name="LimitsTransactionTimeDetail" xml:space="preserve">
+    <value>디버깅하려면 루틴에서 SET transaction_timeout을 제거하세요.</value>
+  </data>
+  <data name="NoDefault" xml:space="preserve">
+    <value>{0}에는 기본값이 없습니다.</value>
+  </data>
+  <data name="NoOverloads" xml:space="preserve">
+    <value>{0}에는 디버깅할 수 있는 PL/pgSQL 오버로드가 없습니다.</value>
+  </data>
+  <data name="NoOverloadsDetail" xml:space="preserve">
+    <value>다형성, record 또는 trigger 시그니처가 없는 PL/pgSQL 함수와 프로시저만 디버깅할 수 있습니다.</value>
+  </data>
+  <data name="NotAStorageParameter" xml:space="preserve">
+    <value>"{0}"은(는) 저장소 매개 변수가 아닙니다. 각각 name=value 형식으로 작성하세요.</value>
+  </data>
+  <data name="NotDebuggable" xml:space="preserve">
+    <value>PL/pgSQL 함수와 프로시저만 디버깅할 수 있습니다.</value>
+  </data>
+  <data name="NotOwner" xml:space="preserve">
+    <value>{0}의 소유자 또는 슈퍼유저만 디버깅할 수 있습니다.</value>
+  </data>
+  <data name="NotPaused" xml:space="preserve">
+    <value>루틴이 일시 중지되지 않았습니다.</value>
+  </data>
+  <data name="PseudoTypeParameter" xml:space="preserve">
+    <value>다형성 또는 record 매개 변수가 있는 루틴은 디버깅할 수 없습니다.</value>
+  </data>
+  <data name="RoutineNotFound" xml:space="preserve">
+    <value>{0}이(가) 더 이상 존재하지 않습니다.</value>
+  </data>
+  <data name="RunNoteFunction" xml:space="preserve">
+    <value>루틴이 변경한 내용은 루틴이 끝날 때 커밋됩니다. 중지하면 롤백됩니다.</value>
+  </data>
+  <data name="RunNoteProcedure" xml:space="preserve">
+    <value>프로시저가 변경한 내용은 프로시저가 커밋하거나 끝날 때 커밋됩니다. 중지하면 커밋되지 않은 내용이 롤백됩니다.</value>
+  </data>
+  <data name="ServerPackageMissing" xml:space="preserve">
+    <value>이 서버에는 PL/pgSQL 디버거가 없습니다.</value>
+  </data>
+  <data name="ServerPackageMissingDetail" xml:space="preserve">
+    <value>서버에 이 PostgreSQL 버전용 pldebugger 패키지를 설치한 다음 이 데이터베이스에서 CREATE EXTENSION pldbgapi를 실행하세요.</value>
+  </data>
+  <data name="SharedMemoryUnavailable" xml:space="preserve">
+    <value>서버에서 디버거를 시작할 수 없습니다.</value>
+  </data>
+  <data name="SharedMemoryUnavailableDetail" xml:space="preserve">
+    <value>shared_preload_libraries에 plugin_debugger를 추가하고 서버를 다시 시작하세요.</value>
+  </data>
+  <data name="Stopped" xml:space="preserve">
+    <value>루틴이 중지되었고 커밋되지 않은 변경 내용이 롤백되었습니다.</value>
+  </data>
+  <data name="Unavailable" xml:space="preserve">
+    <value>이 연결에서는 PL/pgSQL 디버거를 실행할 수 없습니다.</value>
+  </data>
+</root>

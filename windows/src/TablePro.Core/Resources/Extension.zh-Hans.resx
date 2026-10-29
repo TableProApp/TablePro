@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="ControlCharacterInPath" xml:space="preserve">
+    <value>列表中某个扩展的路径包含换行符或其他控制字符。</value>
+  </data>
+  <data name="CouldNotLoad" xml:space="preserve">
+    <value>无法加载扩展“{0}”。</value>
+  </data>
+  <data name="CouldNotLoadList" xml:space="preserve">
+    <value>无法加载此连接的 SQLite 扩展。</value>
+  </data>
+  <data name="Duplicate" xml:space="preserve">
+    <value>“{0}”在列表中出现了多次。</value>
+  </data>
+  <data name="EntryPointNotFound" xml:space="preserve">
+    <value>该文件没有名为 {0} 的函数。</value>
+  </data>
+  <data name="FileNotFound" xml:space="preserve">
+    <value>“{0}”处没有文件。</value>
+  </data>
+  <data name="InitializationFailed" xml:space="preserve">
+    <value>扩展启动失败：{0}</value>
+  </data>
+  <data name="InvalidEntryPoint" xml:space="preserve">
+    <value>“{0}”不是有效的入口点名称。</value>
+  </data>
+  <data name="LoadingNotClosed" xml:space="preserve">
+    <value>SQLite 在加载后没有再次关闭扩展加载。</value>
+  </data>
+  <data name="LoadingUnavailable" xml:space="preserve">
+    <value>SQLite 不允许在此连接上加载扩展。</value>
+  </data>
+  <data name="MalformedList" xml:space="preserve">
+    <value>已保存的扩展列表不是 TablePro 可读取的格式。</value>
+  </data>
+  <data name="MissingPath" xml:space="preserve">
+    <value>列表中的某个扩展没有文件。</value>
+  </data>
+  <data name="NotAFile" xml:space="preserve">
+    <value>“{0}”不是文件。</value>
+  </data>
+  <data name="PathTooLong" xml:space="preserve">
+    <value>路径“{0}”太长。</value>
+  </data>
+  <data name="RelativePath" xml:space="preserve">
+    <value>“{0}”不是完整路径。</value>
+  </data>
+</root>

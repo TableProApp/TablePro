@@ -1,6 +1,7 @@
 using Microsoft.Data.Sqlite;
 using TablePro.Core.Connections;
 using TablePro.Core.Drivers;
+using TablePro.Core.Localization;
 
 namespace TablePro.Drivers.Sqlite;
 
@@ -12,7 +13,7 @@ internal static class SqliteConnectionStringFactory
         var path = !string.IsNullOrWhiteSpace(profile.FilePath) ? profile.FilePath : request.Database;
         if (string.IsNullOrWhiteSpace(path))
         {
-            throw new InvalidOperationException("A SQLite connection needs a database file.");
+            throw new InvalidOperationException(CoreStrings.Format("Driver/ConnectionNeedsDatabaseFile", "SQLite"));
         }
 
         var builder = new SqliteConnectionStringBuilder

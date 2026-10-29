@@ -7,9 +7,11 @@ using TablePro.Core.Browse;
 using TablePro.Core.Connections;
 using TablePro.Core.Drivers;
 using TablePro.Core.Editing;
+using TablePro.Core.Localization;
 using TablePro.Core.Results;
 using TablePro.Core.Schema;
 using TablePro.Core.Sql;
+using TablePro.Drivers.Cassandra.Localization;
 using CqlSession = Cassandra.ISession;
 
 namespace TablePro.Drivers.Cassandra;
@@ -220,7 +222,7 @@ public sealed class CassandraSession : IDatabaseSession, ISchemaDdlProvider, IUs
         }
 
         var rows = await ReadAllAsync("SELECT replication, durable_writes FROM system_schema.keyspaces WHERE keyspace_name = ?", cancellationToken, keyspace);
-        var row = rows.FirstOrDefault() ?? throw new InvalidOperationException($"No keyspace named {keyspace} was found.");
+        var row = rows.FirstOrDefault() ?? throw new InvalidOperationException(CassandraStrings.Format("Cassandra/NoKeyspace", keyspace));
         var replication = row.GetValue<IDictionary<string, string>>(0) ?? new Dictionary<string, string>();
         return CqlDdl.KeyspaceDefinition(keyspace, replication.ToDictionary(), row.GetValue<bool>(1));
     }
@@ -243,7 +245,7 @@ public sealed class CassandraSession : IDatabaseSession, ISchemaDdlProvider, IUs
 
         if (toSkip > MaxSkippedRows)
         {
-            notices.Add(string.Create(CultureInfo.InvariantCulture, $"CQL has no OFFSET, and reaching row {request.Offset:N0} would read {toSkip:N0} rows first. Page forward from the start or filter by the partition key."));
+            notices.Add(CassandraStrings.Format("Cassandra/NoOffset", request.Offset, toSkip));
             var empty = await ReadColumnsOnlyAsync(plan, cancellationToken);
             return new ResultSet(empty.Columns, [], empty.IsTruncated) { Notices = notices };
         }
@@ -311,7 +313,7 @@ public sealed class CassandraSession : IDatabaseSession, ISchemaDdlProvider, IUs
             if (scanned >= MaxScannedRows && plan.ClientFilter is not null)
             {
                 more = true;
-                notices.Add(string.Create(CultureInfo.InvariantCulture, $"Stopped after reading {scanned:N0} rows to fill the page. Filter by the partition key to search the whole table."));
+                notices.Add(CassandraStrings.Format("Cassandra/StoppedAfterScanning", scanned));
                 break;
             }
 
@@ -528,7 +530,7 @@ public sealed class CassandraSession : IDatabaseSession, ISchemaDdlProvider, IUs
             table.Name);
         if (rows.Count == 0)
         {
-            throw new InvalidOperationException($"No table or view named {table} was found.");
+            throw new InvalidOperationException(CassandraStrings.Format("Cassandra/NoTableOrView", table));
         }
 
         var shape = new CqlTableShape(table, rows.Select(r => new CqlColumnRow(
@@ -572,7 +574,7 @@ public sealed class CassandraSession : IDatabaseSession, ISchemaDdlProvider, IUs
     {
         var keyspace = string.IsNullOrEmpty(name.Schema) ? DefaultSchema : name.Schema;
         return string.IsNullOrEmpty(keyspace)
-            ? throw new InvalidOperationException($"Choose a keyspace for {name.Name}.")
+            ? throw new InvalidOperationException(CassandraStrings.Format("Cassandra/ChooseKeyspace", name.Name))
             : name with { Schema = keyspace };
     }
 
@@ -586,5 +588,5 @@ public sealed class CassandraSession : IDatabaseSession, ISchemaDdlProvider, IUs
 
     private static string? NullIfEmpty(string? text) => string.IsNullOrWhiteSpace(text) ? null : text;
 
-    private static InvalidOperationException NotFound(DatabaseObject obj) => new($"No definition was found for {obj.Name}.");
+    private static InvalidOperationException NotFound(DatabaseObject obj) => new(CoreStrings.Format("Driver/NoDefinitionFor", obj.Name));
 }

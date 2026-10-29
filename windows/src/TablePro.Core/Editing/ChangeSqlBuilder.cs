@@ -1,4 +1,5 @@
 using System.Text;
+using TablePro.Core.Localization;
 using TablePro.Core.Schema;
 using TablePro.Core.Sql;
 
@@ -101,7 +102,7 @@ public static class ChangeSqlBuilder
     {
         if (key.Count == 0)
         {
-            throw new InvalidOperationException("A row needs at least one key column to be changed safely.");
+            throw new InvalidOperationException(CoreStrings.Get("Editing/NoKeyColumn"));
         }
 
         sql.Append(" WHERE ");

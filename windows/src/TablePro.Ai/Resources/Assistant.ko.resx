@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="Declined" xml:space="preserve">
+    <value>"{0}"의 어떤 내용도 {1}(으)로 전송되지 않았습니다.</value>
+  </data>
+  <data name="NoWayToAsk" xml:space="preserve">
+    <value>"{0}"은(는) {1}(으)로 무엇이든 보내기 전에 확인하도록 설정되어 있지만, 확인할 방법이 없습니다.</value>
+  </data>
+  <data name="TurnedOff" xml:space="preserve">
+    <value>"{0}"에 대해 AI 어시스턴트가 꺼져 있습니다. 사용하려면 연결 옵션에서 AI 어시스턴트 설정을 변경하세요.</value>
+  </data>
+</root>

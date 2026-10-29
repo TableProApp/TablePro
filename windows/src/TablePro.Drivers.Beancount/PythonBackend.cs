@@ -1,4 +1,5 @@
 using System.Text.Json;
+using TablePro.Drivers.Beancount.Localization;
 
 namespace TablePro.Drivers.Beancount;
 
@@ -34,7 +35,7 @@ internal sealed class PythonBackend(BeancountBackend backend, IProcessRunner run
         if (output.ExitCode != 0)
         {
             var message = output.StandardError.Trim();
-            throw new BeancountException(message.Length > 0 ? message : "Python Beancount projection failed");
+            throw new BeancountException(message.Length > 0 ? message : BeancountStrings.Get("Beancount/PythonFailed"));
         }
 
         var tables = Parse(output.StandardOutput);
@@ -67,11 +68,11 @@ internal sealed class PythonBackend(BeancountBackend backend, IProcessRunner run
         {
             using var document = JsonDocument.Parse(json);
             return LedgerValues.FromJson(document.RootElement) as LedgerRow
-                ?? throw new BeancountException("Invalid Python Beancount JSON output");
+                ?? throw new BeancountException(BeancountStrings.Get("Beancount/InvalidPythonOutput"));
         }
         catch (JsonException ex)
         {
-            throw new BeancountException("Invalid Python Beancount JSON output", ex);
+            throw new BeancountException(BeancountStrings.Get("Beancount/InvalidPythonOutput"), ex);
         }
     }
 

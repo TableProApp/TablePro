@@ -4,6 +4,7 @@ using System.Runtime.InteropServices;
 using Microsoft.Data.Sqlite;
 using SQLitePCL;
 using TablePro.Core.Connections;
+using TablePro.Core.Localization;
 
 namespace TablePro.Drivers.Sqlite;
 
@@ -35,7 +36,7 @@ internal static partial class SqliteExtensionLoader
             return;
         }
 
-        var handle = connection.Handle ?? throw new InvalidOperationException("The connection is not open.");
+        var handle = connection.Handle ?? throw new InvalidOperationException(CoreStrings.Get("Driver/ConnectionNotOpen"));
         var held = Loaded.GetValue(handle, static _ => new HashSet<string>(StringComparer.Ordinal));
         var pending = new List<(LoadableExtension Item, string File, string Key)>(extensions.Count);
         var listed = new HashSet<string>(StringComparer.Ordinal);

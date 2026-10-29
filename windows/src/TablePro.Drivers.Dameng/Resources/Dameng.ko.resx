@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="InstallHint" xml:space="preserve">
+    <value>ODBC 드라이버를 등록하는 Dameng의 64비트 DM8 클라이언트(eco.dameng.com)를 설치하거나, odbcDriver 옵션으로 설치된 다른 드라이버를 지정하세요.</value>
+  </data>
+  <data name="NoSourcePrivilege" xml:space="preserve">
+    <value>Dameng이 {0}의 소스를 반환하지 않았습니다. 로그인에 읽기 권한이 없을 수 있습니다.</value>
+  </data>
+  <data name="NotASessionId" xml:space="preserve">
+    <value>"{0}"은(는) Dameng 세션 ID가 아닙니다.</value>
+  </data>
+  <data name="SslPathRequired" xml:space="preserve">
+    <value>Dameng은 클라이언트 인증서로 암호화합니다. SSL_PATH 옵션을 인증서가 있는 디렉터리로 설정하세요(보호된 경우 SSL_PWD도 설정).</value>
+  </data>
+  <data name="VerifyIdentityUnsupported" xml:space="preserve">
+    <value>Dameng의 TLS는 SSL_PATH의 CA로 서버 인증서를 확인하지만 호스트 이름과는 대조하지 않습니다. CA 확인을 선택하거나 SSH 터널을 사용하세요.</value>
+  </data>
+</root>

@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using TablePro.Drivers.Beancount.Localization;
 
 namespace TablePro.Drivers.Beancount;
 
@@ -34,9 +35,6 @@ internal sealed class BeancountBackendLocator
 
     // Importing beancount proves the package works; the version is printed on the same run so connecting costs one launch.
     internal const string PythonProbeScript = "import beancount; from importlib.metadata import version; print(version('beancount'))";
-
-    private const string InstallHint =
-        "Install the Python package with \"py -3 -m pip install beancount\" (or \"pip install beancount\"), or install rustledger so rledger.exe is on PATH";
 
     // A Python that imports beancount keeps doing so; one that cannot is asked again, since the user may install it meanwhile.
     private static readonly ConcurrentDictionary<string, string> PythonVersions = new(StringComparer.OrdinalIgnoreCase);
@@ -78,15 +76,13 @@ internal sealed class BeancountBackendLocator
                 }
 
                 return await PythonOnPathAsync(cancellationToken)
-                    ?? throw new BeancountException(
-                        "The Python Beancount backend needs Python 3 with the beancount package. Run \"py -3 -m pip install beancount\", "
-                        + "or set the connection's python option to a Python that has it.");
+                    ?? throw new BeancountException(BeancountStrings.Get("Beancount/PythonNeedsPackage"));
             case "rledger" or "rustledger":
                 return Rledger(rledgerPath);
             case null:
                 break;
             default:
-                throw new BeancountException($"Unknown Beancount backend \"{preference}\". Use \"python\" or \"rledger\".");
+                throw new BeancountException(BeancountStrings.Format("Beancount/UnknownBackend", preference));
         }
 
         if (pythonPath is not null)
@@ -109,7 +105,7 @@ internal sealed class BeancountBackendLocator
             return BeancountBackend.Rledger(rledger);
         }
 
-        throw new BeancountException($"Beancount needs Python Beancount or rledger, and neither was found. {InstallHint}, or set the connection's python or rledger option to its path.");
+        throw new BeancountException(BeancountStrings.Get("Beancount/NoBackend"));
     }
 
     /// <summary>The rledger that answers BQL, whichever backend built the projection.</summary>
@@ -123,7 +119,7 @@ internal sealed class BeancountBackendLocator
 
         return FindOnPath("rledger") is { } rledger
             ? BeancountBackend.Rledger(rledger)
-            : throw new BeancountException("BQL queries need rledger. Install rustledger so rledger.exe is on PATH, or set the connection's rledger option to its path.");
+            : throw new BeancountException(BeancountStrings.Get("Beancount/BqlNeedsRledger"));
     }
 
     /// <summary>The version a Python reported when it proved it imports beancount.</summary>
@@ -166,21 +162,21 @@ internal sealed class BeancountBackendLocator
         {
             return FindOnPath("rledger") is { } found
                 ? BeancountBackend.Rledger(found)
-                : throw new BeancountException("The rledger backend needs rustledger. Install it so rledger.exe is on PATH, or set the connection's rledger option to its path.");
+                : throw new BeancountException(BeancountStrings.Get("Beancount/RledgerNeedsRustledger"));
         }
 
         return ResolveExecutable(configured) is { } path
             ? BeancountBackend.Rledger(path)
-            : throw new BeancountException($"The rledger option points to a missing rledger at {configured}.");
+            : throw new BeancountException(BeancountStrings.Format("Beancount/RledgerMissing", configured));
     }
 
     private async Task<BeancountBackend> ConfiguredPythonAsync(string configured, CancellationToken cancellationToken)
     {
-        var path = ResolveExecutable(configured) ?? throw new BeancountException($"The python option points to a missing Python at {configured}.");
+        var path = ResolveExecutable(configured) ?? throw new BeancountException(BeancountStrings.Format("Beancount/PythonMissing", configured));
         var backend = BeancountBackend.Python(path);
         return await ImportsBeancountAsync(backend, cancellationToken)
             ? backend
-            : throw new BeancountException($"{path} cannot import beancount. Run \"{path}\" -m pip install beancount, or set the python option to a Python that has it.");
+            : throw new BeancountException(BeancountStrings.Format("Beancount/CannotImport", path));
     }
 
     private async Task<BeancountBackend?> PythonOnPathAsync(CancellationToken cancellationToken)

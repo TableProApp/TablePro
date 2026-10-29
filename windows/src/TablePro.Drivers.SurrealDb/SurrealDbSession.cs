@@ -8,10 +8,12 @@ using TablePro.Core.Browse;
 using TablePro.Core.Connections;
 using TablePro.Core.Drivers;
 using TablePro.Core.Editing;
+using TablePro.Core.Localization;
 using TablePro.Core.Results;
 using TablePro.Core.Schema;
 using TablePro.Core.Sql;
 using TablePro.Drivers.Http;
+using TablePro.Drivers.SurrealDb.Localization;
 
 namespace TablePro.Drivers.SurrealDb;
 
@@ -368,7 +370,7 @@ internal sealed class SurrealDbSession : IDatabaseSession
                 {
                     var inferred = SurrealValues.KindName(value);
                     kinds[name] = new SurrealKind(inferred, true, null, inferred);
-                    columns.Add(new ColumnInfo(name, inferred, true, null, false, false, columns.Count, "not declared"));
+                    columns.Add(new ColumnInfo(name, inferred, true, null, false, false, columns.Count, SurrealDbStrings.Get("SurrealDb/NotDeclared")));
                 }
             }
         }
@@ -538,8 +540,8 @@ internal sealed class SurrealDbSession : IDatabaseSession
                     if (update.Values.Keys.FirstOrDefault(k => k is "id" or "in" or "out") is { } reserved)
                     {
                         throw new InvalidOperationException(reserved == "id"
-                            ? "A record's id cannot be edited."
-                            : $"'{reserved}' cannot be saved from the grid. Delete the relation and RELATE it again.");
+                            ? SurrealDbStrings.Get("SurrealDb/IdNotEditable")
+                            : SurrealDbStrings.Format("SurrealDb/RelationFieldNotSaved", reserved));
                     }
 
                     var record = parameters.Add(Record(update.Key, table));
@@ -583,7 +585,7 @@ internal sealed class SurrealDbSession : IDatabaseSession
         var text = key.TryGetValue("id", out var id) ? Convert.ToString(id, CultureInfo.InvariantCulture) : null;
         return text is not null && SurrealRecordId.Parse(text, table) is { } record
             ? record.Expression(text)
-            : throw new InvalidOperationException("The record's id is unknown, so it cannot be addressed.");
+            : throw new InvalidOperationException(SurrealDbStrings.Get("SurrealDb/RecordIdUnknown"));
     }
 
     /// <summary>An object literal whose values are the fields' typed expressions.</summary>
@@ -684,7 +686,7 @@ internal sealed class SurrealDbSession : IDatabaseSession
         if (results.Count == 0)
         {
             response.Dispose();
-            throw new ServerRequestException("SurrealDB returned no result.");
+            throw new ServerRequestException(CoreStrings.Format("Driver/ReturnedNoResult", "SurrealDB"));
         }
 
         return response;
@@ -698,7 +700,7 @@ internal sealed class SurrealDbSession : IDatabaseSession
             throw new ServerRequestException(SurrealErrors.Reason(reply), reply.StatusCode);
         }
 
-        var document = reply.TryParseJson() ?? throw new ServerRequestException("SurrealDB answered something other than JSON.");
+        var document = reply.TryParseJson() ?? throw new ServerRequestException(CoreStrings.Format("Driver/AnsweredNotJson", "SurrealDB"));
         documents.Add(document);
         var results = new List<SurrealResult>();
         if (document.RootElement.ValueKind == JsonValueKind.Array)
@@ -744,14 +746,14 @@ internal sealed class SurrealDbSession : IDatabaseSession
         catch (FormatException)
         {
             // A proxy or an auth failure can answer in text before SurrealDB ever sees the request.
-            throw new ServerRequestException(reply.IsSuccess ? "SurrealDB answered something other than CBOR." : SurrealErrors.Reason(reply), reply.StatusCode);
+            throw new ServerRequestException(reply.IsSuccess ? SurrealDbStrings.Get("SurrealDb/NotCbor") : SurrealErrors.Reason(reply), reply.StatusCode);
         }
 
         var fields = envelope as SurrealObject;
         if (fields is not null && fields.TryGetValue("error", out var error) && error is not null)
         {
             var message = error is SurrealObject details && details.TryGetValue("message", out var text) && text is string reason ? reason : SurrealValues.Text(error);
-            throw new ServerRequestException(reply.StatusCode is 401 or 403 ? "Authentication failed: " + message : message, reply.StatusCode);
+            throw new ServerRequestException(reply.StatusCode is 401 or 403 ? CoreStrings.Format("Driver/AuthenticationFailedWith", message) : message, reply.StatusCode);
         }
 
         if (!reply.IsSuccess)
@@ -791,7 +793,7 @@ internal sealed class SurrealDbSession : IDatabaseSession
     internal static string RootCause(IReadOnlyList<string> errors) =>
         errors.FirstOrDefault(e => !e.Contains("not executed due to a failed transaction", StringComparison.OrdinalIgnoreCase)
             && !e.Contains("cancelled transaction", StringComparison.OrdinalIgnoreCase))
-        ?? (errors.Count > 0 ? errors[0] : "The query failed.");
+        ?? (errors.Count > 0 ? errors[0] : SurrealDbStrings.Get("SurrealDb/QueryFailed"));
 
     private static JsonElement SingleValue(IReadOnlyList<SurrealResult> results) => results[^1].Value;
 
@@ -931,6 +933,6 @@ internal static class SurrealErrors
         }
 
         reason ??= reply.Body.Length > 0 ? reply.Text.Trim() : $"HTTP {reply.StatusCode}";
-        return reply.StatusCode is 401 or 403 ? "Authentication failed: " + reason : reason;
+        return reply.StatusCode is 401 or 403 ? CoreStrings.Format("Driver/AuthenticationFailedWith", reason) : reason;
     }
 }

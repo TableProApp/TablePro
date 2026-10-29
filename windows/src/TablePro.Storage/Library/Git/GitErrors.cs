@@ -1,3 +1,5 @@
+using TablePro.Storage.Localization;
+
 namespace TablePro.Storage.Library.Git;
 
 public enum GitProcessFailure
@@ -11,7 +13,7 @@ public enum GitProcessFailure
 public sealed class GitProcessException : Exception
 {
     public GitProcessException()
-        : this(GitProcessFailure.LaunchFailed, "Git could not be started.")
+        : this(GitProcessFailure.LaunchFailed, StorageStrings.Get("Library/GitCouldNotStart"))
     {
     }
 
@@ -55,7 +57,7 @@ public class GitCommandException : Exception
     }
 
     public GitCommandException(int exitCode, string output)
-        : base(output.Length == 0 ? FormattableString.Invariant($"Git exited with status {exitCode}.") : output)
+        : base(output.Length == 0 ? StorageStrings.Format("Library/GitExitStatus", exitCode) : output)
     {
         ExitCode = exitCode;
         Output = output;
@@ -90,20 +92,10 @@ public sealed class GitPullDivergedException : GitCommandException
     }
 }
 
-/// <summary>Why a linked folder's Git action failed, worded for the person who asked for it.</summary>
+/// <summary>What a failed Git action has to show besides its summary, which the app words per exception type.</summary>
 public static class GitErrorText
 {
-    public static string Describe(Exception error) => error switch
-    {
-        GitPullDivergedException => "The branch and its upstream branch each have commits the other lacks. Finish this pull in a Git client.",
-        GitCommandException => "Git stopped with the message below.",
-        GitProcessException { Failure: GitProcessFailure.TimedOut } => "Git did not respond in time.",
-        GitProcessException { Failure: GitProcessFailure.OutputTooLarge } => "Git printed more output than TablePro can read.",
-        GitUnavailableException => "Git is not installed. Install Git for Windows to use Git in linked folders.",
-        _ => error.Message,
-    };
-
-    /// <summary>What git printed, to show under <see cref="Describe"/>, or null.</summary>
+    /// <summary>What git printed, to show under the summary, or null.</summary>
     public static string? Output(Exception error) =>
         error is GitCommandException { Output.Length: > 0 } failure ? failure.Output : null;
 }
@@ -112,7 +104,7 @@ public static class GitErrorText
 public sealed class GitUnavailableException : Exception
 {
     public GitUnavailableException()
-        : base("Git is not installed.")
+        : base(StorageStrings.Get("Library/GitNotInstalled"))
     {
     }
 

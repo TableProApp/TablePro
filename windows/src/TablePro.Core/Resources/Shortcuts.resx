@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="CategoryApp" xml:space="preserve">
+    <value>App</value>
+  </data>
+  <data name="CategoryConnections" xml:space="preserve">
+    <value>Connections</value>
+  </data>
+  <data name="CategoryDataGrid" xml:space="preserve">
+    <value>Data Grid</value>
+  </data>
+  <data name="CategoryEditor" xml:space="preserve">
+    <value>Editor &amp; Query</value>
+  </data>
+  <data name="CategoryNavigation" xml:space="preserve">
+    <value>Navigation</value>
+  </data>
+  <data name="ConflictCommand" xml:space="preserve">
+    <value>{0} is already used by "{1}" in {2}.</value>
+    <comment>{0} is a key combination, {1} the command using it, {2} that command's category.</comment>
+  </data>
+  <data name="ConflictNeedsModifier" xml:space="preserve">
+    <value>A shortcut needs Ctrl or Alt, unless it is a function key. Shift can join them but cannot hold a shortcut on its own.</value>
+  </data>
+  <data name="ConflictReserved" xml:space="preserve">
+    <value>{0} is reserved for "{1}" and cannot be assigned.</value>
+    <comment>{0} is a key combination, {1} the built-in action it belongs to.</comment>
+  </data>
+  <data name="ConflictSystemReserved" xml:space="preserve">
+    <value>{0} is reserved by Windows and cannot be assigned.</value>
+    <comment>{0} is a key combination such as Ctrl+Alt+Delete.</comment>
+  </data>
+  <data name="NotAShortcut" xml:space="preserve">
+    <value>'{0}' is not a keyboard shortcut.</value>
+    <comment>{0} is the text that was read.</comment>
+  </data>
+  <data name="UnknownCommand" xml:space="preserve">
+    <value>No shortcut command '{0}'.</value>
+    <comment>{0} is a command id.</comment>
+  </data>
+</root>

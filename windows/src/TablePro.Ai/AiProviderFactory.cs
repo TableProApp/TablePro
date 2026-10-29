@@ -1,3 +1,4 @@
+using TablePro.Ai.Localization;
 using TablePro.Ai.Providers;
 
 namespace TablePro.Ai;
@@ -20,6 +21,6 @@ public static class AiProviderFactory
 
     private static string RequireKey(AiProviderSettings settings) =>
         string.IsNullOrWhiteSpace(settings.ApiKey)
-            ? throw new ArgumentException($"{settings.Kind} needs an API key.", nameof(settings))
+            ? throw new ArgumentException(AiStrings.Format("Provider/NeedsApiKey", settings.Kind), nameof(settings))
             : settings.ApiKey;
 }

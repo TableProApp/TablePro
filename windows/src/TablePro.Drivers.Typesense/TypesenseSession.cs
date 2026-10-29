@@ -7,10 +7,12 @@ using TablePro.Core.Browse;
 using TablePro.Core.Connections;
 using TablePro.Core.Drivers;
 using TablePro.Core.Editing;
+using TablePro.Core.Localization;
 using TablePro.Core.Results;
 using TablePro.Core.Schema;
 using TablePro.Core.Sql;
 using TablePro.Drivers.Http;
+using TablePro.Drivers.Typesense.Localization;
 
 namespace TablePro.Drivers.Typesense;
 
@@ -124,7 +126,7 @@ internal sealed partial class TypesenseSession : IDatabaseSession, IUserListProv
             {
                 var name = alias.GetProperty("name").GetString() ?? string.Empty;
                 var target = alias.TryGetProperty("collection_name", out var c) ? c.GetString() : null;
-                objects.Add(new DatabaseObject(new ObjectName(null, name), ObjectKind.View, null, target is null ? "alias" : "alias of " + target));
+                objects.Add(new DatabaseObject(new ObjectName(null, name), ObjectKind.View, null, target is null ? CoreStrings.Get("Driver/Alias") : CoreStrings.Format("Driver/AliasOf", target)));
             }
         }
 
@@ -349,7 +351,7 @@ internal sealed partial class TypesenseSession : IDatabaseSession, IUserListProv
 
         return firstError is null
             ? ok
-            : throw new ServerRequestException($"{savedBefore + ok} of {total} changes were saved; Typesense has no transaction to undo them. {firstError}");
+            : throw new ServerRequestException(CoreStrings.Format("Driver/PartialSaveNoTransaction", savedBefore + ok, total, "Typesense", firstError));
     }
 
     public Task<IQueryChannel> OpenChannelAsync(CancellationToken cancellationToken) => Task.FromResult<IQueryChannel>(new HttpQueryChannel(RunStatementAsync));
@@ -400,7 +402,7 @@ internal sealed partial class TypesenseSession : IDatabaseSession, IUserListProv
     {
         if (!RequestBlock.TryParse(statement, out var block))
         {
-            throw new ArgumentException("Enter a request like: GET /collections");
+            throw new ArgumentException(CoreStrings.Format("Driver/EnterRequestLike", "GET /collections"));
         }
 
         var import = block.Path.Contains("/import", StringComparison.OrdinalIgnoreCase);
@@ -447,7 +449,7 @@ internal sealed partial class TypesenseSession : IDatabaseSession, IUserListProv
     {
         if (result.TryGetProperty("error", out var error))
         {
-            throw new ServerRequestException(error.GetString() ?? "The search failed.", result.TryGetProperty("code", out var code) ? code.GetInt32() : 0);
+            throw new ServerRequestException(error.GetString() ?? TypesenseStrings.Get("Typesense/SearchFailed"), result.TryGetProperty("code", out var code) ? code.GetInt32() : 0);
         }
 
         var added = 0;
@@ -521,7 +523,7 @@ internal sealed partial class TypesenseSession : IDatabaseSession, IUserListProv
     private static string Id(IReadOnlyDictionary<string, object?> key) =>
         key.TryGetValue(TsCollection.IdColumn, out var id) && Convert.ToString(id, CultureInfo.InvariantCulture) is { Length: > 0 } text
             ? text
-            : throw new InvalidOperationException("The document's id is unknown, so it cannot be addressed.");
+            : throw new InvalidOperationException(CoreStrings.Format("Driver/DocumentIdUnknown", "id"));
 
     private static ConfiguredTaskAwaitable Yield() => Task.CompletedTask.ConfigureAwait(ConfigureAwaitOptions.ForceYielding);
 }
@@ -548,7 +550,7 @@ internal static class TsErrors
         }
 
         reason ??= reply.Body.Length > 0 ? reply.Text.Trim() : $"HTTP {reply.StatusCode}";
-        return reply.StatusCode is 401 or 403 ? "Authentication failed: " + reason : reason;
+        return reply.StatusCode is 401 or 403 ? CoreStrings.Format("Driver/AuthenticationFailedWith", reason) : reason;
     }
 }
 

@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using TablePro.Drivers.Oracle.Localization;
 
 namespace TablePro.Drivers.Oracle;
 
@@ -51,7 +52,7 @@ internal sealed class OracleDebugArgumentException : Exception
     }
 
     public OracleDebugArgumentException(string name, string typeName, bool declarable)
-        : base(declarable ? $"Text can't become a {typeName} value for {name}." : $"No value of type {typeName} can be passed to {name}.")
+        : base(declarable ? OracleStrings.Format("Oracle/TextToType", typeName, name) : OracleStrings.Format("Oracle/CannotPassType", typeName, name))
     {
         Name = name;
         TypeName = typeName;

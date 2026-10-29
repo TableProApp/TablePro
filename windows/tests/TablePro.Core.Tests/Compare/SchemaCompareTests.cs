@@ -1,3 +1,4 @@
+using System.Globalization;
 using TablePro.Core.Compare;
 using TablePro.Core.Drivers;
 using TablePro.Core.Schema;
@@ -158,6 +159,25 @@ public sealed class SchemaCompareTests
         var script = SchemaMigrationBuilder.Build(diffs, new RecordingDdl { Refuse = typeof(AddForeignKey) }, null);
 
         Assert.Contains(script.Unsupported, u => u.Contains("orders_user", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void ChangesAreDescribedInTheUiLanguage()
+    {
+        var saved = CultureInfo.CurrentUICulture;
+        try
+        {
+            CultureInfo.CurrentUICulture = CultureInfo.GetCultureInfo("fr");
+
+            Assert.Equal("Supprimer la colonne email", SchemaMigrationBuilder.Describe(new DropColumn("email")));
+
+            // Each kind has its own sentence, so no English kind name lands inside the French one.
+            Assert.Equal("Supprimer la vue active_users", SchemaMigrationBuilder.Describe(new DropObject(new DatabaseObject(new ObjectName("dev", "active_users"), ObjectKind.View))));
+        }
+        finally
+        {
+            CultureInfo.CurrentUICulture = saved;
+        }
     }
 
     private sealed class RecordingDdl : ISchemaDdlProvider

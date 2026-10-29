@@ -15,9 +15,11 @@ using TablePro.Core.Browse;
 using TablePro.Core.Data;
 using TablePro.Core.Drivers;
 using TablePro.Core.Editing;
+using TablePro.Core.Localization;
 using TablePro.Core.Results;
 using TablePro.Core.Schema;
 using TablePro.Core.Sql;
+using TablePro.Drivers.Spanner.Localization;
 
 namespace TablePro.Drivers.Spanner;
 
@@ -62,7 +64,7 @@ public sealed class SpannerSession : AdoNetSession, IDatabaseSession, ISchemaDdl
                 var dialect = await ScalarAsync(connection, SpannerSql.Dialect, ct) as string;
                 if (string.Equals(dialect, "POSTGRESQL", StringComparison.OrdinalIgnoreCase))
                 {
-                    throw new NotSupportedException("This Spanner database uses the PostgreSQL dialect, which TablePro for Windows does not support yet. GoogleSQL databases work.");
+                    throw new NotSupportedException(SpannerStrings.Get("Spanner/PostgreSqlDialect"));
                 }
 
                 return dialect;
@@ -300,7 +302,7 @@ public sealed class SpannerSession : AdoNetSession, IDatabaseSession, ISchemaDdl
         var views = await ReadAsync((SpannerConnection)connection, SpannerSql.ViewDefinition, Bind(obj.Name), r => Text(r, 0), cancellationToken);
         return views.Count > 0 && views[0] is { } body
             ? $"CREATE VIEW {SpannerSql.Qualify(obj.Name)} SQL SECURITY INVOKER AS\n{body};"
-            : throw new InvalidOperationException($"No definition was found for {obj.Name}.");
+            : throw new InvalidOperationException(CoreStrings.Format("Driver/NoDefinitionFor", obj.Name));
     }
 
     /// <summary>The admin API serves GetDatabaseDdl, which the data API has no equivalent for.</summary>
@@ -336,7 +338,7 @@ public sealed class SpannerSession : AdoNetSession, IDatabaseSession, ISchemaDdl
                 (await CredentialFactory.FromFileAsync<ServiceAccountCredential>(path, cancellationToken)).ToGoogleCredential(),
             JsonCredentialParameters.AuthorizedUserCredentialType =>
                 (await CredentialFactory.FromFileAsync<UserCredential>(path, cancellationToken)).ToGoogleCredential(),
-            _ => throw new NotSupportedException($"The credentials file is of type \"{type}\". Use a service account key or a gcloud authorized_user file."),
+            _ => throw new NotSupportedException(CoreStrings.Format("Driver/CredentialsFileType", type)),
         };
     }
 
@@ -544,7 +546,7 @@ internal sealed class SpannerQueryChannel : IQueryChannel
                 case SpannerStatementKind.Ddl:
                     if (_transaction is not null)
                     {
-                        return Fail(sql, stopwatch, "Spanner cannot change the schema inside a transaction. COMMIT or ROLLBACK first.");
+                        return Fail(sql, stopwatch, SpannerStrings.Get("Spanner/NoSchemaChangeInTransaction"));
                     }
 
                     await using (var ddl = _connection.CreateDdlCommand(statement))
@@ -552,21 +554,21 @@ internal sealed class SpannerQueryChannel : IQueryChannel
                         await ddl.ExecuteNonQueryAsync(timeout.Token);
                     }
 
-                    return new StatementResult(sql, [], -1, stopwatch.Elapsed, Messages: ["Schema change applied through UpdateDatabaseDdl."]);
+                    return new StatementResult(sql, [], -1, stopwatch.Elapsed, Messages: [SpannerStrings.Get("Spanner/SchemaChangeApplied")]);
 
                 case SpannerStatementKind.Begin:
                     if (_transaction is not null)
                     {
-                        return Fail(sql, stopwatch, "A transaction is already open.");
+                        return Fail(sql, stopwatch, CoreStrings.Get("Driver/TransactionAlreadyOpen"));
                     }
 
                     _transaction = await _connection.BeginTransactionAsync(timeout.Token);
-                    return new StatementResult(sql, [], -1, stopwatch.Elapsed, Messages: ["Read-write transaction started."]);
+                    return new StatementResult(sql, [], -1, stopwatch.Elapsed, Messages: [CoreStrings.Get("Driver/ReadWriteTransactionStarted")]);
 
                 case SpannerStatementKind.Commit:
                     if (_transaction is not { } open)
                     {
-                        return Fail(sql, stopwatch, "No transaction is open.");
+                        return Fail(sql, stopwatch, CoreStrings.Get("Driver/NoTransactionOpen"));
                     }
 
                     _transaction = null;
@@ -575,12 +577,12 @@ internal sealed class SpannerQueryChannel : IQueryChannel
                         await open.CommitAsync(timeout.Token);
                     }
 
-                    return new StatementResult(sql, [], -1, stopwatch.Elapsed, Messages: ["Committed."]);
+                    return new StatementResult(sql, [], -1, stopwatch.Elapsed, Messages: [CoreStrings.Get("Driver/Committed")]);
 
                 case SpannerStatementKind.Rollback:
                     if (_transaction is not { } rollingBack)
                     {
-                        return Fail(sql, stopwatch, "No transaction is open.");
+                        return Fail(sql, stopwatch, CoreStrings.Get("Driver/NoTransactionOpen"));
                     }
 
                     _transaction = null;
@@ -589,7 +591,7 @@ internal sealed class SpannerQueryChannel : IQueryChannel
                         await rollingBack.RollbackAsync(timeout.Token);
                     }
 
-                    return new StatementResult(sql, [], -1, stopwatch.Elapsed, Messages: ["Rolled back."]);
+                    return new StatementResult(sql, [], -1, stopwatch.Elapsed, Messages: [CoreStrings.Get("Driver/RolledBack")]);
 
                 case SpannerStatementKind.Dml when !statement.Contains("THEN RETURN", StringComparison.OrdinalIgnoreCase):
                     await using (var dml = _connection.CreateDmlCommand(statement))
@@ -612,7 +614,7 @@ internal sealed class SpannerQueryChannel : IQueryChannel
         }
         catch (OperationCanceledException) when (timeout.IsCancellationRequested)
         {
-            return Fail(sql, stopwatch, cancellationToken.IsCancellationRequested ? "Query cancelled." : "Query timed out.");
+            return Fail(sql, stopwatch, cancellationToken.IsCancellationRequested ? CoreStrings.Get("Driver/QueryCancelled") : CoreStrings.Get("Driver/QueryTimedOut"));
         }
         catch (Exception ex) when (ex is SpannerException or RpcException or InvalidOperationException or NotSupportedException or ArgumentException or FormatException)
         {

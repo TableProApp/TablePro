@@ -1,6 +1,8 @@
 using System.Text;
 using TablePro.Core.Editing;
+using TablePro.Core.Localization;
 using TablePro.Core.Sql;
+using TablePro.Drivers.Cassandra.Localization;
 
 namespace TablePro.Drivers.Cassandra;
 
@@ -20,13 +22,13 @@ public static class CqlSaveBuilder
     {
         if (shape.PrimaryKey.Count == 0)
         {
-            throw new InvalidOperationException($"The primary key of {shape.Table} could not be read, so its rows cannot be changed.");
+            throw new InvalidOperationException(CassandraStrings.Format("Cassandra/PrimaryKeyUnreadable", shape.Table));
         }
 
         // A counter changes only by increments, and counter updates may not share a logged batch with anything.
         if (shape.HasCounters)
         {
-            throw new InvalidOperationException("Counter columns change only by increments. Run UPDATE ... SET c = c + n in the editor.");
+            throw new InvalidOperationException(CassandraStrings.Get("Cassandra/CounterColumns"));
         }
 
         var writes = new List<CqlWrite>(changes.Count);
@@ -61,10 +63,10 @@ public static class CqlSaveBuilder
         var onlyStatic = true;
         foreach (var (column, value) in update.Values)
         {
-            var row = shape.Column(column) ?? throw new InvalidOperationException($"{shape.Table} has no column {column}.");
+            var row = shape.Column(column) ?? throw new InvalidOperationException(CoreStrings.Format("Driver/TableHasNoColumn", shape.Table, column));
             if (row.IsPrimaryKey)
             {
-                throw new InvalidOperationException($"Cassandra cannot change the primary key column {column}. Delete the row and add it again with the new key.");
+                throw new InvalidOperationException(CassandraStrings.Format("Cassandra/CannotChangePrimaryKey", column));
             }
 
             onlyStatic &= row.IsStatic;
@@ -93,7 +95,7 @@ public static class CqlSaveBuilder
         {
             if (!insert.Values.TryGetValue(key, out var value) || value is null)
             {
-                throw new InvalidOperationException($"Enter a value for the primary key column {key}.");
+                throw new InvalidOperationException(CassandraStrings.Format("Cassandra/EnterPrimaryKeyValue", key));
             }
         }
 
@@ -109,7 +111,7 @@ public static class CqlSaveBuilder
 
             if (shape.Column(column) is null)
             {
-                throw new InvalidOperationException($"{shape.Table} has no column {column}.");
+                throw new InvalidOperationException(CoreStrings.Format("Driver/TableHasNoColumn", shape.Table, column));
             }
 
             names.Add(Dialect.QuoteIdentifier(column));
@@ -138,7 +140,7 @@ public static class CqlSaveBuilder
             var column = keyColumns[i];
             if (!key.TryGetValue(column, out var value) || value is null)
             {
-                throw new InvalidOperationException($"The row's value for the primary key column {column} is not loaded, so the row cannot be found.");
+                throw new InvalidOperationException(CassandraStrings.Format("Cassandra/PrimaryKeyNotLoaded", column));
             }
 
             sql.Append(i == 0 ? string.Empty : " AND ").Append(Dialect.QuoteIdentifier(column)).Append(" = fromJson(?)");

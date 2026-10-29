@@ -7,9 +7,11 @@ using TablePro.Core.Browse;
 using TablePro.Core.Connections;
 using TablePro.Core.Drivers;
 using TablePro.Core.Editing;
+using TablePro.Core.Localization;
 using TablePro.Core.Results;
 using TablePro.Core.Schema;
 using TablePro.Core.Sql;
+using TablePro.Drivers.Redis.Localization;
 
 namespace TablePro.Drivers.Redis;
 
@@ -219,7 +221,7 @@ public sealed partial class RedisSession : IDatabaseSession, IKeySearchProvider,
         }
 
         var servers = connection.GetServers();
-        return servers.Length > 0 ? servers[0] : throw new InvalidOperationException("No Redis server is connected.");
+        return servers.Length > 0 ? servers[0] : throw new InvalidOperationException(RedisStrings.Get("Redis/NoServer"));
     }
 
     public async Task PingAsync(CancellationToken cancellationToken)
@@ -428,7 +430,7 @@ public sealed partial class RedisSession : IDatabaseSession, IKeySearchProvider,
         var type = await KeyTypeAsync(ResolveDatabase(table.Schema), table.Name, cancellationToken);
         if (type == RedisKeyType.None)
         {
-            throw new InvalidOperationException($"The key '{table.Name}' no longer exists.");
+            throw new InvalidOperationException(RedisStrings.Format("Redis/KeyGone", table.Name));
         }
 
         var columns = RedisKeyLayout.StructureColumns(type);
@@ -470,14 +472,14 @@ public sealed partial class RedisSession : IDatabaseSession, IKeySearchProvider,
     {
         var builder = new StringBuilder();
         builder.Append("KEY ").AppendLine(RedisCommand.Quote(key));
-        builder.Append("TYPE ").AppendLine(type ?? "unknown");
+        builder.Append("TYPE ").AppendLine(type ?? RedisStrings.Get("Redis/Unknown"));
         if (ttl is not null)
         {
             builder.Append("TTL ").AppendLine(ttl switch
             {
-                "-1" => "-1 (no expiry)",
-                "-2" => "-2 (the key does not exist)",
-                _ => ttl + " seconds",
+                "-1" => RedisStrings.Get("Redis/TtlNoExpiry"),
+                "-2" => RedisStrings.Get("Redis/TtlNoKey"),
+                _ => Seconds(ttl),
             });
         }
 
@@ -488,7 +490,7 @@ public sealed partial class RedisSession : IDatabaseSession, IKeySearchProvider,
 
         if (memory is not null)
         {
-            builder.Append("MEMORY USAGE ").Append(memory).AppendLine(" bytes");
+            builder.Append("MEMORY USAGE ").AppendLine(Bytes(memory));
         }
 
         if (length is not null)
@@ -498,10 +500,17 @@ public sealed partial class RedisSession : IDatabaseSession, IKeySearchProvider,
 
         if (byteLength is not null)
         {
-            builder.Append("STRLEN ").Append(byteLength).AppendLine(" bytes");
+            builder.Append("STRLEN ").AppendLine(Bytes(byteLength));
         }
 
         return builder.ToString().TrimEnd();
+
+        // The server sends counts as text; one that is not a number is shown as it came.
+        static string Seconds(string text) =>
+            long.TryParse(text, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var n) ? RedisStrings.Plural("Redis/Seconds", n) : text;
+
+        static string Bytes(string text) =>
+            long.TryParse(text, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var n) ? RedisStrings.Plural("Redis/Bytes", n) : text;
     }
 
     public async Task<ResultSet> BrowseAsync(BrowseRequest request, CancellationToken cancellationToken)
@@ -575,7 +584,7 @@ public sealed partial class RedisSession : IDatabaseSession, IKeySearchProvider,
             }
 
             default:
-                throw new NotSupportedException($"The key '{key}' holds a type the grid cannot show. Read it with a command in the query editor.");
+                throw new NotSupportedException(RedisStrings.Format("Redis/KeyTypeNotShown", key));
         }
 
         return RedisKeyLayout.ApplySort(RedisKeyLayout.ApplyFilter(page, request.Filter), request.Sort);
@@ -639,7 +648,7 @@ public sealed partial class RedisSession : IDatabaseSession, IKeySearchProvider,
         await Task.CompletedTask.ConfigureAwait(ConfigureAwaitOptions.ForceYielding);
         if (Profile.IsReadOnly)
         {
-            throw new InvalidOperationException("This connection is read-only, so nothing was saved.");
+            throw new InvalidOperationException(CoreStrings.Get("Driver/ReadOnlyNothingSaved"));
         }
 
         if (changes.Count == 0)
@@ -742,13 +751,13 @@ public sealed partial class RedisSession : IDatabaseSession, IKeySearchProvider,
         await Task.CompletedTask.ConfigureAwait(ConfigureAwaitOptions.ForceYielding);
         if (Profile.IsReadOnly)
         {
-            throw new InvalidOperationException("This connection is read-only, so the client was not disconnected.");
+            throw new InvalidOperationException(RedisStrings.Get("Redis/ReadOnlyNoDisconnect"));
         }
 
         var id = Convert.ToString(processId, CultureInfo.InvariantCulture);
         if (!long.TryParse(id, NumberStyles.None, CultureInfo.InvariantCulture, out _))
         {
-            throw new ArgumentException($"'{id}' is not a Redis client id.", nameof(processId));
+            throw new ArgumentException(RedisStrings.Format("Redis/NotClientId", id), nameof(processId));
         }
 
         await OnHomeAsync("CLIENT", "KILL", "ID", id).WaitAsync(cancellationToken);

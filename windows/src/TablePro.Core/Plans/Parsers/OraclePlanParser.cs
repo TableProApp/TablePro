@@ -1,4 +1,5 @@
 using System.Text.Json;
+using TablePro.Core.Localization;
 
 namespace TablePro.Core.Plans.Parsers;
 
@@ -132,12 +133,12 @@ public static class OraclePlanParser
         }
         else if (starts == 0)
         {
-            properties["Execution"] = "Never executed";
+            properties["Execution"] = CoreStrings.Get("Plan/NeverExecuted");
         }
 
         return new QueryPlanNode
         {
-            Operation = operation.Length == 0 ? "Unknown" : operation,
+            Operation = operation.Length == 0 ? CoreStrings.Get("Plan/UnknownOperation") : operation,
             Relation = isIndex ? null : Text("OBJECT_NAME"),
             Schema = Text("OBJECT_OWNER"),
             Alias = Text("OBJECT_ALIAS"),

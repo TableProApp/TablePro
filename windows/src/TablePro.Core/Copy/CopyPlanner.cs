@@ -1,5 +1,6 @@
 using TablePro.Core.Connections;
 using TablePro.Core.Drivers;
+using TablePro.Core.Localization;
 using TablePro.Core.Schema;
 
 namespace TablePro.Core.Copy;
@@ -34,12 +35,12 @@ public static class CopyPlanner
         var canCreate = request.Target is ISchemaDdlProvider;
         if (request.IncludesStructure && !canCreate)
         {
-            warnings.Add($"{EngineDescriptor.For(targetEngine).DisplayName} cannot create tables from TablePro, so only tables that already exist receive rows.");
+            warnings.Add(CoreStrings.Format("Copy/CannotCreateTables", EngineDescriptor.For(targetEngine).DisplayName));
         }
 
         if (request.Target.Profile.IsReadOnly)
         {
-            warnings.Add("The target connection is read-only, so nothing can be written to it.");
+            warnings.Add(CoreStrings.Get("Copy/TargetReadOnly"));
         }
 
         var existing = new Dictionary<string, DatabaseObject>(StringComparer.OrdinalIgnoreCase);
@@ -92,14 +93,14 @@ public static class CopyPlanner
         if (exists && found!.Kind != ObjectKind.Table)
         {
             action = CopyAction.Skip;
-            notes.Add($"The target already has a {found.Kind.ToString().ToLowerInvariant()} named {target.Name}.");
+            notes.Add(CoreStrings.Format("Copy/TargetHasOtherObject", target.Name));
         }
         else if (!exists)
         {
             action = request.IncludesStructure && canCreate ? CopyAction.Create : CopyAction.Skip;
             if (action == CopyAction.Skip)
             {
-                notes.Add(request.IncludesStructure ? "The target cannot create it." : $"The target has no table named {target.Name} to add rows to.");
+                notes.Add(request.IncludesStructure ? CoreStrings.Get("Copy/TargetCannotCreate") : CoreStrings.Format("Copy/NoTableToAddRows", target.Name));
             }
         }
         else
@@ -113,7 +114,7 @@ public static class CopyPlanner
             };
             if (action == CopyAction.Skip)
             {
-                notes.Add($"{target.Name} already exists in the target.");
+                notes.Add(CoreStrings.Format("Copy/AlreadyExists", target.Name));
             }
         }
 
@@ -156,7 +157,7 @@ public static class CopyPlanner
             {
                 if (!byName.TryGetValue(column.Name, out var targetColumn))
                 {
-                    notes.Add($"{column.Name}: the target table has no such column, so it is not copied.");
+                    notes.Add(CoreStrings.Format("Copy/ColumnNotInTarget", column.Name));
                     continue;
                 }
 
@@ -168,7 +169,7 @@ public static class CopyPlanner
 
                 if (targetColumn.IsIdentity && targetEngine == DatabaseEngine.SqlServer)
                 {
-                    notes.Add($"{column.Name}: SQL Server numbers its identity column itself, so the source's values are left out.");
+                    notes.Add(CoreStrings.Format("Copy/SqlServerIdentityLeftOut", column.Name));
                     continue;
                 }
 
@@ -228,7 +229,7 @@ public static class CopyPlanner
 
             if (target is not { } name)
             {
-                notes.Add($"The foreign key {key.Name} points at {referenced}, which the target does not have, so it is left out.");
+                notes.Add(CoreStrings.Format("Copy/ForeignKeyLeftOut", key.Name, referenced));
                 continue;
             }
 
@@ -292,17 +293,16 @@ public static class CopyPlanner
     private static CopyDefinitionPlan PlanDefinition(CopyRequest request, DatabaseObject obj, Dictionary<string, DatabaseObject> existing, bool shares)
     {
         var target = new ObjectName(request.TargetSchema, obj.Name.Name);
-        var kind = obj.Kind.ToString().ToLowerInvariant();
         if (!request.IncludesStructure)
         {
-            return new CopyDefinitionPlan(obj, target, CopyAction.Skip) { Notes = [$"A {kind} has no rows to copy."] };
+            return new CopyDefinitionPlan(obj, target, CopyAction.Skip) { Notes = [CoreStrings.Format("Copy/DefinitionHasNoRows", obj.Name)] };
         }
 
         if (!shares)
         {
             var from = EngineDescriptor.For(request.Source.Profile.Engine).DisplayName;
             var to = EngineDescriptor.For(request.Target.Profile.Engine).DisplayName;
-            return new CopyDefinitionPlan(obj, target, CopyAction.Skip) { Notes = [$"A {kind} is SQL written for {from}, which {to} cannot run as it is."] };
+            return new CopyDefinitionPlan(obj, target, CopyAction.Skip) { Notes = [CoreStrings.Format("Copy/DefinitionOtherEngine", obj.Name, from, to)] };
         }
 
         if (!existing.TryGetValue(target.Name, out var present))
@@ -312,7 +312,7 @@ public static class CopyPlanner
 
         return request.ExistingPolicy == CopyExistingPolicy.Replace && present.Kind == obj.Kind && request.Target is ISchemaDdlProvider
             ? new CopyDefinitionPlan(obj, present.Name, CopyAction.Replace)
-            : new CopyDefinitionPlan(obj, present.Name, CopyAction.Skip) { Notes = [$"{target.Name} already exists in the target."] };
+            : new CopyDefinitionPlan(obj, present.Name, CopyAction.Skip) { Notes = [CoreStrings.Format("Copy/AlreadyExists", target.Name)] };
     }
 
     // Parents first, so a table's rows can check against keys already there when the target cannot add its keys

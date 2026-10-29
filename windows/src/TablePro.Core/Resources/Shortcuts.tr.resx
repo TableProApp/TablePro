@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="CategoryApp" xml:space="preserve">
+    <value>Uygulama</value>
+  </data>
+  <data name="CategoryConnections" xml:space="preserve">
+    <value>Bağlantılar</value>
+  </data>
+  <data name="CategoryDataGrid" xml:space="preserve">
+    <value>Veri Tablosu</value>
+  </data>
+  <data name="CategoryEditor" xml:space="preserve">
+    <value>Düzenleyici ve Sorgu</value>
+  </data>
+  <data name="CategoryNavigation" xml:space="preserve">
+    <value>Gezinme</value>
+  </data>
+  <data name="ConflictCommand" xml:space="preserve">
+    <value>{0} zaten {2} bölümünde "{1}" tarafından kullanılıyor.</value>
+  </data>
+  <data name="ConflictNeedsModifier" xml:space="preserve">
+    <value>Bir kısayol, işlev tuşu değilse Ctrl veya Alt içermelidir. Shift bunlara eklenebilir ancak tek başına kısayol oluşturamaz.</value>
+  </data>
+  <data name="ConflictReserved" xml:space="preserve">
+    <value>{0}, "{1}" için ayrılmıştır ve atanamaz.</value>
+  </data>
+  <data name="ConflictSystemReserved" xml:space="preserve">
+    <value>{0} Windows tarafından ayrılmıştır ve atanamaz.</value>
+  </data>
+  <data name="NotAShortcut" xml:space="preserve">
+    <value>'{0}' bir klavye kısayolu değil.</value>
+  </data>
+  <data name="UnknownCommand" xml:space="preserve">
+    <value>'{0}' adlı kısayol komutu yok.</value>
+  </data>
+</root>

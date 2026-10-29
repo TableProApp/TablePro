@@ -1,3 +1,4 @@
+using System.Globalization;
 using TablePro.Core.Connections;
 using TablePro.Core.Editing;
 using TablePro.Core.Results;
@@ -59,6 +60,25 @@ public sealed class RewindTests
         Assert.Equal(["name"], update.Written);
         Assert.Equal(["id", "name"], record.Operations[2].Written);
         Assert.Equal("1 edited, 1 added, 1 deleted", record.Summary);
+    }
+
+    [Fact]
+    public void TheSummaryIsWordedInTheUiLanguage()
+    {
+        var counts = new RewindCounts(2, 1, 0);
+        var saved = CultureInfo.CurrentUICulture;
+        try
+        {
+            CultureInfo.CurrentUICulture = CultureInfo.GetCultureInfo("fr");
+            Assert.Equal("2 modifiées, 1 ajoutée", counts.Describe());
+
+            CultureInfo.CurrentUICulture = CultureInfo.GetCultureInfo("zh-Hans");
+            Assert.Equal("已编辑 2 个，已添加 1 个", counts.Describe());
+        }
+        finally
+        {
+            CultureInfo.CurrentUICulture = saved;
+        }
     }
 
     [Fact]

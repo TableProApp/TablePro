@@ -1,5 +1,6 @@
 using TablePro.Core.Connections;
 using TablePro.Core.Drivers;
+using TablePro.Drivers.Beancount.Localization;
 
 namespace TablePro.Drivers.Beancount;
 
@@ -33,7 +34,7 @@ public sealed class BeancountDriver : IDatabaseDriver
         var options = BeancountOptions.From(request);
         if (!File.Exists(options.LedgerPath))
         {
-            throw BeancountException.ConnectionFailed("File does not exist at " + options.LedgerPath);
+            throw BeancountException.ConnectionFailed(BeancountStrings.Format("Beancount/FileMissing", options.LedgerPath));
         }
 
         var projector = new BeancountProjector(options.LedgerPath, options.Timeout, ct => CreateSourceAsync(options, ct));

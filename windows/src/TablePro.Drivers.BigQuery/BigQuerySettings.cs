@@ -1,6 +1,7 @@
 using System.Globalization;
 using TablePro.Core.Drivers;
 using TablePro.Core.Schema;
+using TablePro.Drivers.BigQuery.Localization;
 
 namespace TablePro.Drivers.BigQuery;
 
@@ -33,14 +34,14 @@ public sealed record BigQuerySettings(
         var project = Option(options, ProjectOption)
             ?? (string.IsNullOrWhiteSpace(request.Database) ? null : request.Database.Trim())
             ?? host
-            ?? throw new ArgumentException("BigQuery needs a project ID. Enter it as the database.", nameof(request));
+            ?? throw new ArgumentException(BigQueryStrings.Get("BigQuery/NeedsProjectId"), nameof(request));
 
         var limitText = Option(options, MaxBytesBilledOption);
         long? limit = null;
         if (limitText is not null)
         {
             limit = BigQueryCost.ParseBytes(limitText)
-                ?? throw new ArgumentException($"maxBytesBilled \"{limitText}\" is not a byte count such as 10000000000 or 10GB.", nameof(request));
+                ?? throw new ArgumentException(BigQueryStrings.Format("BigQuery/NotAByteCount", limitText), nameof(request));
         }
 
         var (keys, defaults) = ParseKeyColumns(Option(options, KeyColumnsOption));
@@ -127,12 +128,12 @@ public static class BigQueryCost
         var estimate = FormatBytes(estimatedBytes);
         if (limit is not { } max)
         {
-            return new BigQueryCostCheck(true, $"Estimated scan: {estimate}.");
+            return new BigQueryCostCheck(true, BigQueryStrings.Format("BigQuery/EstimatedScan", estimate));
         }
 
         return estimatedBytes <= max
-            ? new BigQueryCostCheck(true, $"Estimated scan: {estimate} (limit {FormatBytes(max)}).")
-            : new BigQueryCostCheck(false, $"Not run: the query would scan {estimate}, over the maxBytesBilled limit of {FormatBytes(max)}.");
+            ? new BigQueryCostCheck(true, BigQueryStrings.Format("BigQuery/EstimatedScanWithLimit", estimate, FormatBytes(max)))
+            : new BigQueryCostCheck(false, BigQueryStrings.Format("BigQuery/OverLimit", estimate, FormatBytes(max)));
     }
 
     public static string FormatBytes(long bytes)

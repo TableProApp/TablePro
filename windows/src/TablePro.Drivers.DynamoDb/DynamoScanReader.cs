@@ -1,6 +1,6 @@
-using System.Globalization;
 using Amazon.DynamoDBv2;
 using Amazon.DynamoDBv2.Model;
+using TablePro.Drivers.DynamoDb.Localization;
 
 namespace TablePro.Drivers.DynamoDb;
 
@@ -35,7 +35,7 @@ public static class DynamoScanReader
         var items = new List<Dictionary<string, AttributeValue>>();
         if (plan.MatchesNothing)
         {
-            notices.Add("No item can match the filter: a Number key was compared with text that is not a number.");
+            notices.Add(DynamoDbStrings.Get("DynamoDb/NumberKeyMismatch"));
             return new DynamoScanPage(items, false, notices);
         }
 
@@ -44,7 +44,7 @@ public static class DynamoScanReader
         var toSkip = offset - matched;
         if (toSkip > MaxSkippedItems)
         {
-            notices.Add(string.Create(CultureInfo.InvariantCulture, $"DynamoDB has no OFFSET, and reaching item {offset:N0} would read {toSkip:N0} items first. Page forward from the start or filter the table."));
+            notices.Add(DynamoDbStrings.Format("DynamoDb/NoOffset", offset, toSkip));
             return new DynamoScanPage(items, true, notices);
         }
 
@@ -121,7 +121,7 @@ public static class DynamoScanReader
             if (filtered && scanned >= MaxScannedItems)
             {
                 more = true;
-                notices.Add(string.Create(CultureInfo.InvariantCulture, $"Stopped after reading {scanned:N0} items to fill the page. Narrow the filter to search the whole table."));
+                notices.Add(DynamoDbStrings.Format("DynamoDb/StoppedAfterScanning", scanned));
                 break;
             }
 

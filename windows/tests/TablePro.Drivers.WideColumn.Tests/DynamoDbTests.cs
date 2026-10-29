@@ -338,7 +338,7 @@ public sealed class DynamoDbTests
         var set = Assert.Single(result.ResultSets);
         Assert.Equal(2, set.RowCount);
         Assert.False(set.IsTruncated);
-        Assert.Equal("Consumed capacity: 2.5 units over 3 request(s).", Assert.Single(result.Messages!));
+        Assert.Equal("Consumed capacity: 2.5 units over 3 requests.", Assert.Single(result.Messages!));
     }
 
     [Fact]

@@ -84,7 +84,9 @@ internal static class AtomicFile
 
             if (node is not JsonObject root)
             {
-                throw new JsonException("The document is not a JSON object.");
+                // Valid JSON that is not an object is no file TablePro wrote, so it is set aside like a corrupt one.
+                Quarantine(path);
+                return null;
             }
 
             return (prepare is null ? root : prepare(root)).Deserialize(typeInfo);

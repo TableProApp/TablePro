@@ -1,4 +1,5 @@
 using TablePro.Core.Drivers;
+using TablePro.Core.Localization;
 using TablePro.Core.Schema;
 
 namespace TablePro.Core.Compare;
@@ -34,7 +35,7 @@ public static class SchemaMigrationBuilder
             var sql = target.BuildDdl(table, change);
             if (sql.Count == 0)
             {
-                unsupported.Add($"{table.Name}: {Describe(change)}");
+                unsupported.Add(CoreStrings.Format("Compare/TableNote", table.Name, Describe(change)));
                 return;
             }
 
@@ -111,19 +112,34 @@ public static class SchemaMigrationBuilder
     /// <summary>What a change does, in a line.</summary>
     public static string Describe(SchemaChange change) => change switch
     {
-        CreateTable create => $"Create table {create.Table.Name}",
-        AddColumn add => $"Add column {add.Column.Name} {add.Column.DataType}",
-        DropColumn drop => $"Drop column {drop.Column}",
-        AlterColumn alter => $"Change column {alter.After.Name} to {alter.After.DataType}{(alter.After.IsNullable ? string.Empty : " NOT NULL")}",
-        RenameColumn rename => $"Rename column {rename.From} to {rename.To}",
-        CreateIndex index => $"Create {(index.Index.IsUnique ? "unique " : string.Empty)}index {index.Index.Name}",
-        DropIndex index => $"Drop index {index.Index}",
-        AddForeignKey key => $"Add foreign key {key.ForeignKey.Name} to {key.ForeignKey.ReferencedTable.Name}",
-        DropForeignKey key => $"Drop foreign key {key.Name}",
-        DropObject drop => $"Drop {drop.Object.Kind.ToString().ToLowerInvariant()} {drop.Object.Name.Name}",
-        RenameTable rename => $"Rename table to {rename.NewName}",
-        TruncateTable => "Truncate table",
+        CreateTable create => CoreStrings.Format("Compare/ChangeCreateTable", create.Table.Name),
+        AddColumn add => CoreStrings.Format("Compare/ChangeAddColumn", add.Column.Name, add.Column.DataType),
+        DropColumn drop => CoreStrings.Format("Compare/ChangeDropColumn", drop.Column),
+
+        // NOT NULL is part of the type as SQL spells it, so it stays English beside the data type.
+        AlterColumn alter => CoreStrings.Format("Compare/ChangeAlterColumn", alter.After.Name, alter.After.IsNullable ? alter.After.DataType : alter.After.DataType + " NOT NULL"),
+        RenameColumn rename => CoreStrings.Format("Compare/ChangeRenameColumn", rename.From, rename.To),
+        CreateIndex index => CoreStrings.Format(index.Index.IsUnique ? "Compare/ChangeCreateUniqueIndex" : "Compare/ChangeCreateIndex", index.Index.Name),
+        DropIndex index => CoreStrings.Format("Compare/ChangeDropIndex", index.Index),
+        AddForeignKey key => CoreStrings.Format("Compare/ChangeAddForeignKey", key.ForeignKey.Name, key.ForeignKey.ReferencedTable.Name),
+        DropForeignKey key => CoreStrings.Format("Compare/ChangeDropForeignKey", key.Name),
+        DropObject drop => DescribeDrop(drop.Object),
+        RenameTable rename => CoreStrings.Format("Compare/ChangeRenameTable", rename.NewName),
+        TruncateTable => CoreStrings.Get("Compare/ChangeTruncateTable"),
         _ => change.GetType().Name,
+    };
+
+    // A kind is named in the sentence itself, since a translated sentence cannot take an English kind name.
+    private static string DescribeDrop(DatabaseObject obj) => obj.Kind switch
+    {
+        ObjectKind.Table => CoreStrings.Format("Compare/ChangeDropTable", obj.Name.Name),
+        ObjectKind.View => CoreStrings.Format("Compare/ChangeDropView", obj.Name.Name),
+        ObjectKind.MaterializedView => CoreStrings.Format("Compare/ChangeDropMaterializedView", obj.Name.Name),
+        ObjectKind.Function => CoreStrings.Format("Compare/ChangeDropFunction", obj.Name.Name),
+        ObjectKind.Procedure => CoreStrings.Format("Compare/ChangeDropProcedure", obj.Name.Name),
+        ObjectKind.Sequence => CoreStrings.Format("Compare/ChangeDropSequence", obj.Name.Name),
+        ObjectKind.Trigger => CoreStrings.Format("Compare/ChangeDropTrigger", obj.Name.Name),
+        _ => CoreStrings.Format("Compare/ChangeDropObject", obj.Name.Name),
     };
 
     // Inside one table: make room before adding, so a recreated index never collides with the one it replaces.

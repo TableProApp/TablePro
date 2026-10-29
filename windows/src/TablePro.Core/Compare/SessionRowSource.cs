@@ -1,6 +1,7 @@
 using System.Runtime.CompilerServices;
 using TablePro.Core.Browse;
 using TablePro.Core.Drivers;
+using TablePro.Core.Localization;
 using TablePro.Core.Schema;
 
 namespace TablePro.Core.Compare;
@@ -97,7 +98,7 @@ public static class SessionRowSource
 
             if (index < 0)
             {
-                throw new CompareException($"{table} has no column {wanted[i]} any more. Compare again to read its current columns.");
+                throw new CompareException(CoreStrings.Format("Compare/ColumnGone", table, wanted[i]));
             }
 
             map[i] = index;

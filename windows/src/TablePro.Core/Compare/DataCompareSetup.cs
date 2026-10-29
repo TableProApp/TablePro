@@ -1,3 +1,4 @@
+using TablePro.Core.Localization;
 using TablePro.Core.Schema;
 
 namespace TablePro.Core.Compare;
@@ -55,13 +56,13 @@ public sealed record DataCompareSetup(
         var targetOnly = targetByName.Values.OrderBy(c => c.Ordinal).Select(c => c.Name).ToArray();
         if (keySet.Count == 0)
         {
-            return new(null, sourceOnly, targetOnly, $"{source.Table} has no primary key. Choose the columns that identify a row.");
+            return new(null, sourceOnly, targetOnly, CoreStrings.Format("Compare/NoPrimaryKey", source.Table));
         }
 
         var missing = keys.Where(k => !columns.Any(c => c.IsKey && string.Equals(c.Source, k, StringComparison.OrdinalIgnoreCase))).ToArray();
         if (missing.Length > 0)
         {
-            return new(null, sourceOnly, targetOnly, $"Key column {string.Join(", ", missing)} is not on both tables.");
+            return new(null, sourceOnly, targetOnly, CoreStrings.Format("Compare/KeyColumnNotOnBoth", string.Join(", ", missing)));
         }
 
         // Keys first, in the order chosen, so rows sort and read as the key describes.

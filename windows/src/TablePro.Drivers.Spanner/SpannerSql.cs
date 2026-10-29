@@ -3,6 +3,7 @@ using System.Text;
 using Google.Cloud.Spanner.Data;
 using Google.Cloud.Spanner.V1;
 using TablePro.Core.Browse;
+using TablePro.Core.Localization;
 using TablePro.Core.Schema;
 using TablePro.Core.Sql;
 
@@ -326,7 +327,7 @@ public static class SpannerSql
             converted = text ?? System.Convert.ToString(value, inv);
         }
 
-        return converted ?? throw new FormatException($"\"{value}\" is not a valid {spannerType} value.");
+        return converted ?? throw new FormatException(CoreStrings.Format("Driver/InvalidTypedValue", value, spannerType));
     }
 
     private static byte[]? FromHex(string text)

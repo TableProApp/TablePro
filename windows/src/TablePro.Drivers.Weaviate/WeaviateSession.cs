@@ -9,10 +9,12 @@ using TablePro.Core.Browse;
 using TablePro.Core.Connections;
 using TablePro.Core.Drivers;
 using TablePro.Core.Editing;
+using TablePro.Core.Localization;
 using TablePro.Core.Results;
 using TablePro.Core.Schema;
 using TablePro.Core.Sql;
 using TablePro.Drivers.Http;
+using TablePro.Drivers.Weaviate.Localization;
 
 namespace TablePro.Drivers.Weaviate;
 
@@ -235,7 +237,7 @@ internal sealed class WeaviateSession : IDatabaseSession, IServerVariablesProvid
             if (!reply.IsSuccess)
             {
                 var reason = WvErrors.Reason(reply);
-                throw new ServerRequestException(saved == 0 ? reason : $"{saved} of {changes.Count} changes were saved; Weaviate has no transaction to undo them. {reason}", reply.StatusCode);
+                throw new ServerRequestException(saved == 0 ? reason : CoreStrings.Format("Driver/PartialSaveNoTransaction", saved, changes.Count, "Weaviate", reason), reply.StatusCode);
             }
 
             saved++;
@@ -442,7 +444,7 @@ internal sealed class WeaviateSession : IDatabaseSession, IServerVariablesProvid
     private static string Id(IReadOnlyDictionary<string, object?> key) =>
         key.TryGetValue(WvClass.IdColumn, out var id) && Convert.ToString(id, CultureInfo.InvariantCulture) is { Length: > 0 } text
             ? text
-            : throw new InvalidOperationException("The object's id is unknown, so it cannot be addressed.");
+            : throw new InvalidOperationException(WeaviateStrings.Get("Weaviate/ObjectIdUnknown"));
 
     private static ConfiguredTaskAwaitable Yield() => Task.CompletedTask.ConfigureAwait(ConfigureAwaitOptions.ForceYielding);
 }
@@ -476,6 +478,6 @@ internal static class WvErrors
             reason = reply.Body.Length > 0 ? Encoding.UTF8.GetString(reply.Body).Trim() : $"HTTP {reply.StatusCode}";
         }
 
-        return reply.StatusCode is 401 or 403 ? "Authentication failed: " + reason : reason;
+        return reply.StatusCode is 401 or 403 ? CoreStrings.Format("Driver/AuthenticationFailedWith", reason) : reason;
     }
 }

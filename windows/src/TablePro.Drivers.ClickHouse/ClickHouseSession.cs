@@ -6,6 +6,7 @@ using TablePro.Core.Browse;
 using TablePro.Core.Data;
 using TablePro.Core.Drivers;
 using TablePro.Core.Editing;
+using TablePro.Core.Localization;
 using TablePro.Core.Results;
 using TablePro.Core.Schema;
 using TablePro.Core.Sql;
@@ -150,7 +151,7 @@ public sealed partial class ClickHouseSession
     {
         var qualified = obj with { Name = obj.Name with { Schema = Database(obj.Name.Schema) } };
         var rows = await QueryAsync(connection, ClickHouseDdl.ShowCreate(qualified), static r => r.GetString(0), cancellationToken);
-        return rows.Count > 0 ? rows[0] : throw new InvalidOperationException($"No definition was found for {obj.Name}.");
+        return rows.Count > 0 ? rows[0] : throw new InvalidOperationException(CoreStrings.Format("Driver/NoDefinitionFor", obj.Name));
     }
 
     public new Task<ResultSet> BrowseAsync(BrowseRequest request, CancellationToken cancellationToken) =>

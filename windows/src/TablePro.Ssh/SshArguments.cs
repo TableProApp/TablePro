@@ -1,5 +1,6 @@
 using System.Globalization;
 using TablePro.Core.Connections;
+using TablePro.Ssh.Localization;
 
 namespace TablePro.Ssh;
 
@@ -25,11 +26,11 @@ internal static class SshArguments
         bool answersPrompts)
     {
         ArgumentNullException.ThrowIfNull(settings);
-        RequireSafe(settings.Host, "SSH host");
-        RequireSafe(remoteHost, "database host");
+        RequireSafe(settings.Host, Field.SshHost);
+        RequireSafe(remoteHost, Field.DatabaseHost);
         if (settings.Username is { Length: > 0 } user)
         {
-            RequireSafe(user, "SSH user");
+            RequireSafe(user, Field.SshUser);
         }
 
         ArgumentOutOfRangeException.ThrowIfLessThan(remotePort, 1);
@@ -112,7 +113,7 @@ internal static class SshArguments
         var hops = jumpHosts.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         foreach (var hop in hops)
         {
-            RequireSafe(hop, "jump host");
+            RequireSafe(hop, Field.JumpHost);
         }
 
         return hops.Length == 0 ? null : string.Join(',', hops);
@@ -134,19 +135,40 @@ internal static class SshArguments
     /// Rejects a leading dash and whitespace or control characters. ssh would read a leading dash as an option, and a
     /// jump host is pasted into the command line of a second ssh it starts.
     /// </summary>
-    private static void RequireSafe(string? value, string what)
+    private static void RequireSafe(string? value, Field field)
     {
         if (string.IsNullOrWhiteSpace(value))
         {
-            throw new ArgumentException($"The {what} is empty.");
+            throw new ArgumentException(field switch
+            {
+                Field.SshHost => SshStrings.Get("Tunnel/SshHostEmpty"),
+                Field.SshUser => SshStrings.Get("Tunnel/SshUserEmpty"),
+                Field.DatabaseHost => SshStrings.Get("Tunnel/DatabaseHostEmpty"),
+                _ => SshStrings.Get("Tunnel/JumpHostEmpty"),
+            });
         }
 
         var trimmed = value.Trim();
         if (trimmed.StartsWith('-') || trimmed.Any(c => char.IsWhiteSpace(c) || char.IsControl(c) || c is '\'' or '"' or '`' or ';' or '|' or '&' or '$'))
         {
-            throw new ArgumentException($"The {what} \"{value}\" contains characters ssh does not accept.");
+            throw new ArgumentException(field switch
+            {
+                Field.SshHost => SshStrings.Format("Tunnel/SshHostUnsafe", value),
+                Field.SshUser => SshStrings.Format("Tunnel/SshUserUnsafe", value),
+                Field.DatabaseHost => SshStrings.Format("Tunnel/DatabaseHostUnsafe", value),
+                _ => SshStrings.Format("Tunnel/JumpHostUnsafe", value),
+            });
         }
     }
 
     private static string Invariant(FormattableString value) => FormattableString.Invariant(value);
+
+    /// <summary>Which value <see cref="RequireSafe"/> checks, so its message can name it in the UI language.</summary>
+    private enum Field
+    {
+        SshHost,
+        SshUser,
+        DatabaseHost,
+        JumpHost,
+    }
 }

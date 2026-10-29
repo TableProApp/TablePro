@@ -228,10 +228,10 @@ public sealed partial class DebuggerTabViewModel : TabViewModel
             return;
         }
 
-        StatusText = StatusOf(c);
+        StatusText = c.StatusText;
         IsWorking = c.State is DebugRunState.Preparing or DebugRunState.Starting or DebugRunState.Running || (c.IsStopping && !c.HasEnded);
         HasEnded = c.HasEnded;
-        Message = c.State == DebugRunState.Failed ? Translate(c.Message) : c.InspectionError;
+        Message = c.State == DebugRunState.Failed ? c.Message : c.InspectionError;
         if (c.DisplayedUnit is { } unit)
         {
             UnitName = unit.DisplayName;
@@ -318,35 +318,6 @@ public sealed partial class DebuggerTabViewModel : TabViewModel
             Variables.Add(new DebugVariableItem(variable.Name, kind, variable.TypeName ?? string.Empty, variable.Value ?? "NULL", variable.Value is null));
         }
     }
-
-    // The controller words its status in English; the same states are described here in the UI language.
-    private static string StatusOf(RoutineDebugController c)
-    {
-        if (c.IsStopping && !c.HasEnded)
-        {
-            return Strings.Get("Debugger/StatusStopping");
-        }
-
-        return c.State switch
-        {
-            DebugRunState.Preparing => Strings.Get("Debugger/StatusPreparing"),
-            DebugRunState.Starting => Strings.Get("Debugger/StatusStarting"),
-            DebugRunState.Running => Strings.Get("Debugger/StatusRunning"),
-            DebugRunState.Paused when c.PausedLocation is { } location => Strings.Format("Debugger/StatusPausedAt", location.Line, location.Unit.DisplayName),
-            DebugRunState.Paused => Strings.Get("Debugger/StatusPaused"),
-            DebugRunState.Finished => Strings.Get("Debugger/StatusFinished"),
-            DebugRunState.Failed => Translate(c.Message) ?? Strings.Get("Debugger/StatusFailed"),
-            _ => Translate(c.Message) ?? Strings.Get("Debugger/StatusStopped"),
-        };
-    }
-
-    // Only the controller's own fixed messages are known here; a driver's or server's message passes through.
-    private static string? Translate(string? message) => message switch
-    {
-        RoutineDebugController.StopNotConfirmed => Strings.Get("Debugger/StopNotConfirmed"),
-        RoutineDebugController.FinishedBeforeStop => Strings.Get("Debugger/FinishedBeforeStop"),
-        _ => message,
-    };
 
     private void RefreshOutput(RoutineDebugController c)
     {

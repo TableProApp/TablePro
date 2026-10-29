@@ -11,6 +11,11 @@
     <NoWarn>$(NoWarn);CS1591</NoWarn>
     <Deterministic>true</Deterministic>
     <InvariantGlobalization>false</InvariantGlobalization>
+    <!-- English sits in each main assembly, so an English UI never probes for a satellite. -->
+    <NeutralLanguage>en-US</NeutralLanguage>
+    <!-- The languages the app ships (AppLanguages.All). Package satellites in any other language would only mix a
+         third language into messages, and the libraries' own satellites are built for exactly these. -->
+    <SatelliteResourceLanguages>en-US;fr;ko;tr;vi;zh-Hans;zh-Hant</SatelliteResourceLanguages>
     <Company>TablePro</Company>
     <Product>TablePro</Product>
     <Copyright>TablePro contributors. AGPL-3.0-or-later.</Copyright>

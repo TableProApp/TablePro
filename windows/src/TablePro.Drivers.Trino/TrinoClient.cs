@@ -1,9 +1,10 @@
-using System.Globalization;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
+using TablePro.Core.Localization;
 using TablePro.Core.Results;
+using TablePro.Drivers.Trino.Localization;
 
 namespace TablePro.Drivers.Trino;
 
@@ -190,7 +191,7 @@ internal sealed partial class TrinoClient
         {
             throw new TrinoHttpException(
                 0,
-                "Trino answered an HTTPS request with a plain http:// address, so it was not followed. A coordinator behind a TLS proxy needs http-server.process-forwarded=true.");
+                TrinoStrings.Get("Trino/PlainHttpRedirect"));
         }
 
         return next;
@@ -210,11 +211,11 @@ internal sealed partial class TrinoClient
                 try
                 {
                     return await JsonSerializer.DeserializeAsync(stream, TrinoJsonContext.Default.TrinoQueryResults, cancellationToken)
-                        ?? throw new TrinoHttpException(status, "Trino returned an empty response.");
+                        ?? throw new TrinoHttpException(status, CoreStrings.Format("Driver/EmptyResponse", "Trino"));
                 }
                 catch (JsonException ex)
                 {
-                    throw new TrinoHttpException(status, "Trino returned a response that is not the client protocol: " + ex.Message);
+                    throw new TrinoHttpException(status, TrinoStrings.Format("Trino/NotClientProtocol", ex.Message));
                 }
             }
 
@@ -232,10 +233,12 @@ internal sealed partial class TrinoClient
             var body = await ReadBodyAsync(response, cancellationToken);
             throw status switch
             {
-                401 or 403 => new TrinoHttpException(status, string.IsNullOrEmpty(body) ? "Trino refused the credentials." : "Trino refused the credentials: " + body),
+                401 or 403 => new TrinoHttpException(status, string.IsNullOrEmpty(body) ? TrinoStrings.Get("Trino/CredentialsRefused") : TrinoStrings.Format("Trino/CredentialsRefusedWith", body)),
                 _ => new TrinoHttpException(
                     status,
-                    string.Create(CultureInfo.InvariantCulture, $"Trino answered HTTP {status} {response.ReasonPhrase}{(string.IsNullOrEmpty(body) ? string.Empty : ": " + body)}")),
+                    string.IsNullOrEmpty(body)
+                        ? TrinoStrings.Format("Trino/AnsweredHttp", status, response.ReasonPhrase)
+                        : TrinoStrings.Format("Trino/AnsweredHttpWith", status, response.ReasonPhrase, body)),
             };
         }
     }

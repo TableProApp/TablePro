@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="ChooseAGenerator" xml:space="preserve">
+    <value>請至少為一個欄位選擇產生器。</value>
+  </data>
+  <data name="DecimalPlacesRange" xml:space="preserve">
+    <value>{0}：小數位數為 0 到 {1}。</value>
+  </data>
+  <data name="EnterAPattern" xml:space="preserve">
+    <value>請為 {0} 輸入模式。</value>
+  </data>
+  <data name="EnterAValue" xml:space="preserve">
+    <value>請為 {0} 至少輸入一個值。</value>
+  </data>
+  <data name="FirstDateAfterLast" xml:space="preserve">
+    <value>{0}：開始日期晚於結束日期。</value>
+  </data>
+  <data name="GeneratorNotAllowed" xml:space="preserve">
+    <value>{0} 不能使用此產生器。</value>
+  </data>
+  <data name="HoldsNumbersFromTo" xml:space="preserve">
+    <value>{0} 可容納 {1:N0} 到 {2:N0} 之間的數字。</value>
+  </data>
+  <data name="HoldsValuesUpTo" xml:space="preserve">
+    <value>{0} 可容納的值最大為 {1:N0}。</value>
+  </data>
+  <data name="KeepsDecimalPlaces" xml:space="preserve">
+    <value>{0} 保留 {1} 位小數。</value>
+  </data>
+  <data name="KeyLeftToDefault" xml:space="preserve">
+    <value>（{0}）不能重複，但其每個欄位都保留預設值。</value>
+  </data>
+  <data name="KindBoolean" xml:space="preserve">
+    <value>布林值</value>
+  </data>
+  <data name="KindCity" xml:space="preserve">
+    <value>城市</value>
+  </data>
+  <data name="KindCountry" xml:space="preserve">
+    <value>國家/地區</value>
+  </data>
+  <data name="KindDate" xml:space="preserve">
+    <value>日期</value>
+  </data>
+  <data name="KindDateTime" xml:space="preserve">
+    <value>日期和時間</value>
+  </data>
+  <data name="KindDecimalRange" xml:space="preserve">
+    <value>小數範圍</value>
+  </data>
+  <data name="KindEmail" xml:space="preserve">
+    <value>電子郵件</value>
+  </data>
+  <data name="KindFirstName" xml:space="preserve">
+    <value>名字</value>
+  </data>
+  <data name="KindFullName" xml:space="preserve">
+    <value>全名</value>
+  </data>
+  <data name="KindIntegerRange" xml:space="preserve">
+    <value>數字範圍</value>
+  </data>
+  <data name="KindJson" xml:space="preserve">
+    <value>JSON</value>
+  </data>
+  <data name="KindLastName" xml:space="preserve">
+    <value>姓氏</value>
+  </data>
+  <data name="KindList" xml:space="preserve">
+    <value>值清單</value>
+  </data>
+  <data name="KindPattern" xml:space="preserve">
+    <value>模式</value>
+  </data>
+  <data name="KindPhone" xml:space="preserve">
+    <value>電話號碼</value>
+  </data>
+  <data name="KindReference" xml:space="preserve">
+    <value>參考值</value>
+  </data>
+  <data name="KindSequence" xml:space="preserve">
+    <value>序列</value>
+  </data>
+  <data name="KindServerDefault" xml:space="preserve">
+    <value>伺服器預設值</value>
+  </data>
+  <data name="KindStreetAddress" xml:space="preserve">
+    <value>街道地址</value>
+  </data>
+  <data name="KindText" xml:space="preserve">
+    <value>文字</value>
+  </data>
+  <data name="KindTime" xml:space="preserve">
+    <value>時間</value>
+  </data>
+  <data name="KindUuid" xml:space="preserve">
+    <value>UUID</value>
+  </data>
+  <data name="ListSeparator" xml:space="preserve">
+    <value>、</value>
+  </data>
+  <data name="MinimumAboveMaximum" xml:space="preserve">
+    <value>{0}：最小值大於最大值。</value>
+  </data>
+  <data name="NoGeneratorFits" xml:space="preserve">
+    <value>沒有產生器可以填入 {0}（{1}），且它不能留空。</value>
+  </data>
+  <data name="RangeTooWide" xml:space="preserve">
+    <value>{0}：對於這麼多小數位數，範圍太寬。</value>
+  </data>
+  <data name="ReferencedTableEmpty" xml:space="preserve">
+    <value>{0} 參考了 {1}，但該資料表沒有任何列。</value>
+  </data>
+  <data name="RowCountRange" xml:space="preserve">
+    <value>請輸入 1 到 {0:N0} 之間的列數。</value>
+  </data>
+  <data name="SequenceOverflows" xml:space="preserve">
+    <value>{0} 的序列超出了其所能容納的最大數字。</value>
+  </data>
+  <data name="ShortestAboveLongest" xml:space="preserve">
+    <value>{0}：最短長度大於最長長度。</value>
+  </data>
+  <data name="StepIsZero" xml:space="preserve">
+    <value>{0}：間隔不能為 0。</value>
+  </data>
+  <data name="TooFewCombinations" xml:space="preserve">
+    <value>（{0}）不能重複，但產生器只能產生 {1:N0} 種組合。</value>
+  </data>
+  <data name="TooFewDistinctValues" xml:space="preserve">
+    <value>{0} 不能重複，但其產生器只能產生 {1:N0} 個不同的值。</value>
+  </data>
+  <data name="ValuesExhausted" xml:space="preserve">
+    <value>無法再為（{0}）產生不重複的值。請擴大其範圍或減少產生的列數。</value>
+  </data>
+</root>

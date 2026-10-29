@@ -1,8 +1,10 @@
 using System.Data.Common;
 using TablePro.Core.Drivers;
+using TablePro.Core.Localization;
 using TablePro.Core.Results;
 using TablePro.Core.Schema;
 using TablePro.Core.Sql;
+using TablePro.Drivers.Dameng.Localization;
 using TablePro.Drivers.Odbc;
 
 namespace TablePro.Drivers.Dameng;
@@ -148,7 +150,7 @@ internal sealed class DamengSession
                 var lines = await RowsAsync(connection, DamengCatalog.Source, cancellationToken, owner, name.Name, obj.Kind == ObjectKind.Procedure ? "PROCEDURE" : "FUNCTION");
                 return lines.Count > 0
                     ? DamengCatalog.RoutineDefinition(lines.Select(r => CatalogValues.Text(r[0])))
-                    : throw new InvalidOperationException($"Dameng returned no source for {obj.Name}; the login may lack the privilege to read it.");
+                    : throw new InvalidOperationException(DamengStrings.Format("Dameng/NoSourcePrivilege", obj.Name));
             case ObjectKind.Sequence:
                 var sequence = await RowsAsync(connection, DamengCatalog.Sequence, cancellationToken, owner, name.Name);
                 return sequence.Count > 0 ? DamengDdl.SequenceDefinition(name, sequence[0]) : throw Missing(obj);
@@ -156,7 +158,7 @@ internal sealed class DamengSession
                 var trigger = await RowsAsync(connection, DamengCatalog.Trigger, cancellationToken, owner, name.Name);
                 return trigger.Count > 0 && DamengCatalog.TriggerDefinition(trigger[0]) is { Length: > 0 } definition ? definition : throw Missing(obj);
             default:
-                throw new NotSupportedException($"Dameng has no definition for a {obj.Kind}.");
+                throw new NotSupportedException(CoreStrings.Format("Driver/EngineHasNoDefinitionFor", "Dameng", obj.Name));
         }
     }
 
@@ -194,7 +196,7 @@ internal sealed class DamengSession
         var columns = await LoadColumnsAsync(connection, table, cancellationToken);
         if (columns.Count == 0)
         {
-            throw new InvalidOperationException($"No definition was found for {table}.");
+            throw new InvalidOperationException(CoreStrings.Format("Driver/NoDefinitionFor", table));
         }
 
         var indexes = DamengDdl.IndexStatements(table, await RowsAsync(connection, DamengCatalog.IndexDefinitions, cancellationToken, table.Name, table.Schema));
@@ -215,10 +217,10 @@ internal sealed class DamengSession
         }
     }
 
-    private static InvalidOperationException Missing(DatabaseObject obj) => new($"No definition was found for {obj.Name}.");
+    private static InvalidOperationException Missing(DatabaseObject obj) => new(CoreStrings.Format("Driver/NoDefinitionFor", obj.Name));
 
     private string Owner(string? schema) =>
         !string.IsNullOrEmpty(schema)
             ? schema
-            : _defaultSchema ?? Profile.Username?.Trim().ToUpperInvariant() ?? throw new InvalidOperationException("No schema was given and the login names none.");
+            : _defaultSchema ?? Profile.Username?.Trim().ToUpperInvariant() ?? throw new InvalidOperationException(CoreStrings.Get("Driver/NoSchemaGiven"));
 }

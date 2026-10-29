@@ -1,4 +1,5 @@
 using System.Globalization;
+using TablePro.Drivers.Redis.Localization;
 
 namespace TablePro.Drivers.Redis;
 
@@ -88,7 +89,7 @@ internal static class RedisTopologyKeys
             "sentinel" => RedisConnectionMode.Sentinel,
             "cluster" => RedisConnectionMode.Cluster,
             null or "" or "standalone" or "single" => RedisConnectionMode.Standalone,
-            var other => throw new ArgumentException($"'{other}' is not a Redis connection mode. Use standalone, sentinel or cluster."),
+            var other => throw new ArgumentException(RedisStrings.Format("Redis/NotMode", other)),
         };
 }
 
@@ -109,7 +110,7 @@ internal static class RedisHostList
         var nodes = new List<RedisNodeAddress>();
         foreach (var raw in text.Split([',', ';', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
         {
-            nodes.Add(ParseEntry(raw, defaultPort) ?? throw new ArgumentException($"'{raw}' is not a host or host:port."));
+            nodes.Add(ParseEntry(raw, defaultPort) ?? throw new ArgumentException(RedisStrings.Format("Redis/NotHost", raw)));
         }
 
         return nodes;
@@ -176,11 +177,9 @@ internal static class RedisHostList
 /// </summary>
 internal static class RedisTopologyDiagnostics
 {
-    public const string NotACluster =
-        "This server is not running in cluster mode. Set the connection mode to standalone, or point cluster mode at a node started with cluster-enabled yes.";
+    public static string NotACluster => RedisStrings.Get("Redis/NotACluster");
 
-    public const string SentinelThroughTunnel =
-        "A tunnel forwards one address, and the node Sentinel names is on the server's own network, so Sentinel mode cannot run through one. Connect to a data node directly, or turn the tunnel off.";
+    public static string SentinelThroughTunnel => RedisStrings.Get("Redis/SentinelThroughTunnel");
 
     /// <summary>The kind of server an <c>INFO server</c> reply describes, or null when it says nothing about it.</summary>
     public static RedisConnectionMode? ModeFromInfo(string? info)
@@ -209,12 +208,9 @@ internal static class RedisTopologyDiagnostics
 
         return (expected, actual) switch
         {
-            (RedisConnectionMode.Standalone, RedisConnectionMode.Cluster) =>
-                "This server is part of a Redis Cluster, so requests for keys it does not own would fail. Set the connection mode to cluster and list this address among the cluster nodes.",
-            (RedisConnectionMode.Standalone or RedisConnectionMode.Cluster, RedisConnectionMode.Sentinel) =>
-                "This is a Redis Sentinel, not a data node, so it only answers SENTINEL commands. Set the connection mode to sentinel and list this address among the Sentinel nodes.",
-            (RedisConnectionMode.Sentinel, RedisConnectionMode.Sentinel) =>
-                "Sentinel resolved to another Sentinel rather than a data node. Check the primary group name in your Sentinel configuration.",
+            (RedisConnectionMode.Standalone, RedisConnectionMode.Cluster) => RedisStrings.Get("Redis/PartOfCluster"),
+            (RedisConnectionMode.Standalone or RedisConnectionMode.Cluster, RedisConnectionMode.Sentinel) => RedisStrings.Get("Redis/IsSentinel"),
+            (RedisConnectionMode.Sentinel, RedisConnectionMode.Sentinel) => RedisStrings.Get("Redis/SentinelToSentinel"),
             (RedisConnectionMode.Cluster, RedisConnectionMode.Standalone) => NotACluster,
             _ => null,
         };

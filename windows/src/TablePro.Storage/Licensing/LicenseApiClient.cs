@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
 using TablePro.Core.Licensing;
+using TablePro.Storage.Localization;
 
 namespace TablePro.Storage.Licensing;
 
@@ -82,7 +83,7 @@ public sealed class HttpLicenseApiClient(HttpClient http) : ILicenseApiClient
                 try
                 {
                     return JsonSerializer.Deserialize(content, responseType)
-                        ?? throw new LicenseException(LicenseErrorKind.Decoding, "The license server returned an empty response.");
+                        ?? throw new LicenseException(LicenseErrorKind.Decoding, StorageStrings.Get("License/EmptyResponse"));
                 }
                 catch (JsonException ex)
                 {
@@ -106,7 +107,7 @@ public sealed class HttpLicenseApiClient(HttpClient http) : ILicenseApiClient
                     ? new LicenseException(LicenseErrorKind.Server, "Not Found", statusCode: status)
                     : new LicenseException(LicenseErrorKind.InvalidKey, message, statusCode: status);
             case (int)HttpStatusCode.Conflict:
-                return new LicenseException(LicenseErrorKind.ActivationLimitReached, message ?? "Maximum number of activations reached.", statusCode: status);
+                return new LicenseException(LicenseErrorKind.ActivationLimitReached, message ?? StorageStrings.Get("License/ActivationLimit"), statusCode: status);
             case (int)HttpStatusCode.Forbidden when message is not null:
                 var lower = message.ToLowerInvariant();
                 var kind = lower.Contains("suspend", StringComparison.Ordinal) ? LicenseErrorKind.LicenseSuspended
@@ -117,7 +118,7 @@ public sealed class HttpLicenseApiClient(HttpClient http) : ILicenseApiClient
             case (int)HttpStatusCode.Forbidden:
                 return new LicenseException(LicenseErrorKind.Server, "Forbidden", statusCode: status);
             default:
-                return new LicenseException(LicenseErrorKind.Server, message ?? reason ?? "The request failed.", statusCode: status);
+                return new LicenseException(LicenseErrorKind.Server, message ?? reason ?? StorageStrings.Get("License/RequestFailed"), statusCode: status);
         }
     }
 

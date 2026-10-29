@@ -1,3 +1,5 @@
+using TablePro.Core.Localization;
+
 namespace TablePro.Core.Shortcuts;
 
 /// <summary>
@@ -37,11 +39,11 @@ public static class ShortcutContextExtensions
 
     public static string DisplayName(this ShortcutCategory category) => category switch
     {
-        ShortcutCategory.Editor => "Editor & Query",
-        ShortcutCategory.DataGrid => "Data Grid",
-        ShortcutCategory.Navigation => "Navigation",
-        ShortcutCategory.Connections => "Connections",
-        _ => "App",
+        ShortcutCategory.Editor => CoreStrings.Get("Shortcuts/CategoryEditor"),
+        ShortcutCategory.DataGrid => CoreStrings.Get("Shortcuts/CategoryDataGrid"),
+        ShortcutCategory.Navigation => CoreStrings.Get("Shortcuts/CategoryNavigation"),
+        ShortcutCategory.Connections => CoreStrings.Get("Shortcuts/CategoryConnections"),
+        _ => CoreStrings.Get("Shortcuts/CategoryApp"),
     };
 }
 

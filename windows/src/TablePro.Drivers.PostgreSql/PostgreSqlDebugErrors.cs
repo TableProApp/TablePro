@@ -1,4 +1,5 @@
 using TablePro.Core.Drivers;
+using TablePro.Drivers.PostgreSql.Localization;
 
 namespace TablePro.Drivers.PostgreSql;
 
@@ -6,42 +7,42 @@ namespace TablePro.Drivers.PostgreSql;
 internal static class PostgreSqlDebugErrors
 {
     public static RoutineDebugException ExtensionMissing(string database) =>
-        new($"The PL/pgSQL debugger isn't installed in \"{database}\".", "Ask a superuser to run CREATE EXTENSION pldbgapi in this database.");
+        new(PostgreSqlStrings.Format("PostgreSql/ExtensionMissing", database), PostgreSqlStrings.Get("PostgreSql/ExtensionMissingDetail"));
 
     public static RoutineDebugException ServerPackageMissing() =>
-        new("This server has no PL/pgSQL debugger.", "Install the pldebugger package for this PostgreSQL version on the server, then run CREATE EXTENSION pldbgapi in this database.");
+        new(PostgreSqlStrings.Get("PostgreSql/ServerPackageMissing"), PostgreSqlStrings.Get("PostgreSql/ServerPackageMissingDetail"));
 
-    public static RoutineDebugException NotOwner(string routine) => new($"Only the owner of {routine} or a superuser can debug it.", (string?)null);
+    public static RoutineDebugException NotOwner(string routine) => new(PostgreSqlStrings.Format("PostgreSql/NotOwner", routine), (string?)null);
 
     public static RoutineDebugException SharedMemoryUnavailable() =>
-        new("The server couldn't start the debugger.", "Add plugin_debugger to shared_preload_libraries and restart the server.");
+        new(PostgreSqlStrings.Get("PostgreSql/SharedMemoryUnavailable"), PostgreSqlStrings.Get("PostgreSql/SharedMemoryUnavailableDetail"));
 
-    public static RoutineDebugException RoutineNotFound(string routine) => new($"{routine} no longer exists.", (string?)null);
+    public static RoutineDebugException RoutineNotFound(string routine) => new(PostgreSqlStrings.Format("PostgreSql/RoutineNotFound", routine), (string?)null);
 
-    public static RoutineDebugException NotDebuggable() => new("Only PL/pgSQL functions and procedures can be debugged.", (string?)null);
+    public static RoutineDebugException NotDebuggable() => new(PostgreSqlStrings.Get("PostgreSql/NotDebuggable"), (string?)null);
 
-    public static RoutineDebugException PseudoTypeParameter() => new("Routines with polymorphic or record parameters can't be debugged.", (string?)null);
+    public static RoutineDebugException PseudoTypeParameter() => new(PostgreSqlStrings.Get("PostgreSql/PseudoTypeParameter"), (string?)null);
 
     public static RoutineDebugException HidesDebuggerNotice(string value) =>
-        new($"This routine sets client_min_messages to {value}, which hides the notice the debugger starts with.", "Remove SET client_min_messages from the routine to debug it.");
+        new(PostgreSqlStrings.Format("PostgreSql/HidesDebuggerNotice", value), PostgreSqlStrings.Get("PostgreSql/HidesDebuggerNoticeDetail"));
 
     public static RoutineDebugException LimitsTransactionTime(string value) =>
-        new($"This routine sets transaction_timeout to {value}, which would end it while it waits at a breakpoint.", "Remove SET transaction_timeout from the routine to debug it.");
+        new(PostgreSqlStrings.Format("PostgreSql/LimitsTransactionTime", value), PostgreSqlStrings.Get("PostgreSql/LimitsTransactionTimeDetail"));
 
     public static RoutineDebugException TargetAbandoned(int? process, int? port) =>
         new(PostgreSqlDebugProtocol.AbandonedMessage, PostgreSqlDebugProtocol.AbandonedDetail(process, port));
 
-    public static RoutineDebugException Unavailable() => new("This connection can't run the PL/pgSQL debugger.", (string?)null);
+    public static RoutineDebugException Unavailable() => new(PostgreSqlStrings.Get("PostgreSql/Unavailable"), (string?)null);
 
-    public static RoutineDebugException NotPaused() => new("The routine isn't paused.", (string?)null);
+    public static RoutineDebugException NotPaused() => new(PostgreSqlStrings.Get("PostgreSql/NotPaused"), (string?)null);
 
-    public static RoutineDebugException UnsupportedCommand() => new("The PL/pgSQL debugger can't step out of a routine.", (string?)null);
+    public static RoutineDebugException UnsupportedCommand() => new(PostgreSqlStrings.Get("PostgreSql/CannotStepOut"), (string?)null);
 
-    public static RoutineDebugException NoDefault(string parameter) => new($"{parameter} has no default value.", (string?)null);
+    public static RoutineDebugException NoDefault(string parameter) => new(PostgreSqlStrings.Format("PostgreSql/NoDefault", parameter), (string?)null);
 
     public static RoutineDebugException DefaultNotReadable(string parameter) =>
-        new($"This server can't show the default value of {parameter}, so enter a value for it.", (string?)null);
+        new(PostgreSqlStrings.Format("PostgreSql/DefaultNotReadable", parameter), (string?)null);
 
     public static RoutineDebugException NoOverloads(string routine) =>
-        new($"{routine} has no PL/pgSQL overload that can be debugged.", "Only PL/pgSQL functions and procedures without polymorphic, record or trigger signatures can be debugged.");
+        new(PostgreSqlStrings.Format("PostgreSql/NoOverloads", routine), PostgreSqlStrings.Get("PostgreSql/NoOverloadsDetail"));
 }

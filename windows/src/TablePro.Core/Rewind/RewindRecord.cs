@@ -1,5 +1,5 @@
-using System.Globalization;
 using TablePro.Core.Connections;
+using TablePro.Core.Localization;
 using TablePro.Core.Schema;
 
 namespace TablePro.Core.Rewind;
@@ -42,9 +42,9 @@ public sealed record RewindOperation(
 
     public static string Explain(RewindRefusal refusal) => refusal switch
     {
-        RewindRefusal.NoPrimaryKey => "The table has no primary key, so this row cannot be identified.",
-        RewindRefusal.ServerAssignedKey => "The server chose this row's key.",
-        RewindRefusal.ValueTooLarge => "A value was too large to keep.",
+        RewindRefusal.NoPrimaryKey => CoreStrings.Get("Rewind/RefusalNoPrimaryKey"),
+        RewindRefusal.ServerAssignedKey => CoreStrings.Get("Rewind/RefusalServerAssignedKey"),
+        RewindRefusal.ValueTooLarge => CoreStrings.Get("Rewind/RefusalValueTooLarge"),
         _ => refusal.ToString(),
     };
 }
@@ -68,33 +68,11 @@ public sealed record RewindRecord(
 
     public bool IsReversible => ReversibleCount > 0;
 
-    /// <summary>"2 edited, 1 added", as the list of saves shows it.</summary>
-    public string Summary
-    {
-        get
-        {
-            var updated = Operations.Count(o => o.Kind == RewindOperationKind.Update);
-            var inserted = Operations.Count(o => o.Kind == RewindOperationKind.Insert);
-            var deleted = Operations.Count(o => o.Kind == RewindOperationKind.Delete);
-            var parts = new List<string>(3);
-            if (updated > 0)
-            {
-                parts.Add(string.Create(CultureInfo.CurrentCulture, $"{updated:N0} edited"));
-            }
+    /// <summary>How many rows the save edited, added and deleted.</summary>
+    public RewindCounts Counts => RewindCounts.Of(Operations);
 
-            if (inserted > 0)
-            {
-                parts.Add(string.Create(CultureInfo.CurrentCulture, $"{inserted:N0} added"));
-            }
-
-            if (deleted > 0)
-            {
-                parts.Add(string.Create(CultureInfo.CurrentCulture, $"{deleted:N0} deleted"));
-            }
-
-            return string.Join(", ", parts);
-        }
-    }
+    /// <summary>"2 edited, 1 added", as the list of saves shows it, in the UI language.</summary>
+    public string Summary => Counts.Describe();
 
     public int ColumnIndex(string column)
     {
@@ -107,5 +85,57 @@ public sealed record RewindRecord(
         }
 
         return -1;
+    }
+}
+
+/// <summary>
+/// What a save did, as counts. The journal keeps these rather than finished text, so the list of saves is worded in the
+/// language the app runs in when it is shown, not the one it ran in when the save was made.
+/// </summary>
+public readonly record struct RewindCounts(int Edited, int Added, int Deleted)
+{
+    public static RewindCounts Of(IEnumerable<RewindOperation> operations)
+    {
+        ArgumentNullException.ThrowIfNull(operations);
+        int edited = 0, added = 0, deleted = 0;
+        foreach (var operation in operations)
+        {
+            switch (operation.Kind)
+            {
+                case RewindOperationKind.Update:
+                    edited++;
+                    break;
+                case RewindOperationKind.Insert:
+                    added++;
+                    break;
+                case RewindOperationKind.Delete:
+                    deleted++;
+                    break;
+            }
+        }
+
+        return new(edited, added, deleted);
+    }
+
+    /// <summary>"2 edited, 1 added", leaving out the kinds the save did not touch.</summary>
+    public string Describe()
+    {
+        var parts = new List<string>(3);
+        if (Edited > 0)
+        {
+            parts.Add(CoreStrings.Plural("Rewind/Edited", Edited));
+        }
+
+        if (Added > 0)
+        {
+            parts.Add(CoreStrings.Plural("Rewind/Added", Added));
+        }
+
+        if (Deleted > 0)
+        {
+            parts.Add(CoreStrings.Plural("Rewind/Deleted", Deleted));
+        }
+
+        return string.Join(CoreStrings.Get("Rewind/SummarySeparator"), parts);
     }
 }

@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using TablePro.Core.Localization;
 
 namespace TablePro.Core.Connections;
 
@@ -153,27 +154,27 @@ public static class SignInMethods
 
     public static string DisplayName(this SignInMethod method, DatabaseEngine engine) => method switch
     {
-        SignInMethod.Password when engine == DatabaseEngine.SqlServer => "SQL Server Authentication",
-        SignInMethod.Password => "Password",
-        SignInMethod.WindowsIntegrated => "Windows Authentication",
-        SignInMethod.Kerberos => "Kerberos (GSSAPI)",
-        SignInMethod.AwsIamAccessKey => "AWS IAM (Access Key)",
-        SignInMethod.AwsIamProfile => "AWS IAM (Profile)",
-        SignInMethod.AwsIamSso => "AWS IAM (SSO)",
-        SignInMethod.EntraId => "Microsoft Entra ID",
-        SignInMethod.GoogleCloudApplicationDefault => "Google Cloud IAM (Application Default)",
-        SignInMethod.GoogleCloudServiceAccount => "Google Cloud IAM (Service Account)",
+        SignInMethod.Password when engine == DatabaseEngine.SqlServer => CoreStrings.Get("SignIn/MethodSqlServer"),
+        SignInMethod.Password => CoreStrings.Get("SignIn/MethodPassword"),
+        SignInMethod.WindowsIntegrated => CoreStrings.Get("SignIn/MethodWindows"),
+        SignInMethod.Kerberos => CoreStrings.Get("SignIn/MethodKerberos"),
+        SignInMethod.AwsIamAccessKey => CoreStrings.Get("SignIn/MethodAwsAccessKey"),
+        SignInMethod.AwsIamProfile => CoreStrings.Get("SignIn/MethodAwsProfile"),
+        SignInMethod.AwsIamSso => CoreStrings.Get("SignIn/MethodAwsSso"),
+        SignInMethod.EntraId => CoreStrings.Get("SignIn/MethodEntra"),
+        SignInMethod.GoogleCloudApplicationDefault => CoreStrings.Get("SignIn/MethodGoogleAdc"),
+        SignInMethod.GoogleCloudServiceAccount => CoreStrings.Get("SignIn/MethodGoogleServiceAccount"),
         _ => method.ToString(),
     };
 
     public static string DisplayName(this EntraAuthMode mode) => mode switch
     {
-        EntraAuthMode.Interactive => "Interactive (browser)",
-        EntraAuthMode.DeviceCode => "Device code",
-        EntraAuthMode.Default => "Default (Azure CLI, Visual Studio, environment)",
-        EntraAuthMode.ManagedIdentity => "Managed identity",
-        EntraAuthMode.ServicePrincipal => "Service principal",
-        EntraAuthMode.Integrated => "Integrated (Windows account)",
+        EntraAuthMode.Interactive => CoreStrings.Get("SignIn/EntraInteractive"),
+        EntraAuthMode.DeviceCode => CoreStrings.Get("SignIn/EntraDeviceCode"),
+        EntraAuthMode.Default => CoreStrings.Get("SignIn/EntraDefault"),
+        EntraAuthMode.ManagedIdentity => CoreStrings.Get("SignIn/EntraManagedIdentity"),
+        EntraAuthMode.ServicePrincipal => CoreStrings.Get("SignIn/EntraServicePrincipal"),
+        EntraAuthMode.Integrated => CoreStrings.Get("SignIn/EntraIntegrated"),
         _ => mode.ToString(),
     };
 
@@ -231,15 +232,6 @@ public static class SignInMethods
 
         return method != SignInMethod.EntraId || profile.Engine != DatabaseEngine.SqlServer || profile.Auth!.EntraMode == EntraAuthMode.Interactive;
     }
-
-    /// <summary>The label of the secret field for a method, since IAM and service principals put a key there.</summary>
-    public static string SecretLabel(SignInMethod method, EntraAuthMode entraMode) => method switch
-    {
-        SignInMethod.AwsIamAccessKey => "Secret access key",
-        SignInMethod.GoogleCloudServiceAccount => "Service account key",
-        SignInMethod.EntraId when entraMode == EntraAuthMode.ServicePrincipal => "Client secret",
-        _ => "Password",
-    };
 
     /// <summary>
     /// Tokens travel as cleartext passwords, so TLS is required unless the transport already encrypts the hop, as the

@@ -1,3 +1,5 @@
+using TablePro.Storage.Localization;
+
 namespace TablePro.Storage.Favorites;
 
 /// <summary>
@@ -32,7 +34,7 @@ public sealed record SqlFavorite
             return text.Length <= 60 ? text : string.Concat(text.AsSpan(0, 59), "…");
         }
 
-        return "Untitled query";
+        return StorageStrings.Get("Stores/UntitledQuery");
     }
 }
 

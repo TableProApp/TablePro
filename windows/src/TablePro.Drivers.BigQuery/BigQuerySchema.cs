@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Json;
 using Google.Apis.Bigquery.v2.Data;
 using Google.Cloud.BigQuery.V2;
+using TablePro.Core.Localization;
 using TablePro.Core.Results;
 using TablePro.Core.Schema;
 
@@ -270,7 +271,7 @@ public static class BigQuerySchema
             _ => text ?? System.Convert.ToString(value, inv),
         };
 
-        return converted ?? throw new FormatException($"\"{value}\" is not a valid {type} value.");
+        return converted ?? throw new FormatException(CoreStrings.Format("Driver/InvalidTypedValue", value, type));
     }
 
     private static BigQueryNumeric? TryNumeric(string text)

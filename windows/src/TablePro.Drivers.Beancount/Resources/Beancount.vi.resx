@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="BqlNeedsRledger" xml:space="preserve">
+    <value>Truy vấn BQL cần rledger. Hãy cài rustledger để rledger.exe nằm trong PATH, hoặc đặt tùy chọn rledger của kết nối thành đường dẫn của nó.</value>
+  </data>
+  <data name="CannotImport" xml:space="preserve">
+    <value>{0} không thể import beancount. Hãy chạy "{0}" -m pip install beancount, hoặc đặt tùy chọn python thành một Python có gói đó.</value>
+  </data>
+  <data name="ConnectTimedOut" xml:space="preserve">
+    <value>Kết nối đã hết thời gian chờ sau {0:0} giây</value>
+  </data>
+  <data name="CouldNotRead" xml:space="preserve">
+    <value>Không đọc được {0}: {1}</value>
+  </data>
+  <data name="CouldNotStart" xml:space="preserve">
+    <value>Không khởi động được {0}: {1}</value>
+  </data>
+  <data name="FileMissing" xml:space="preserve">
+    <value>Không có tệp tại {0}</value>
+  </data>
+  <data name="IncludeCycle" xml:space="preserve">
+    <value>Phát hiện vòng lặp include Beancount tại {0}</value>
+  </data>
+  <data name="InvalidInclude" xml:space="preserve">
+    <value>Đường dẫn include không hợp lệ "{0}" trong {1}: {2}</value>
+  </data>
+  <data name="InvalidPythonOutput" xml:space="preserve">
+    <value>Đầu ra JSON Python Beancount không hợp lệ</value>
+  </data>
+  <data name="InvalidRledgerOutput" xml:space="preserve">
+    <value>Đầu ra JSON rustledger không hợp lệ</value>
+  </data>
+  <data name="LedgerChanged" xml:space="preserve">
+    <value>Sổ cái Beancount đã thay đổi trong khi dựng bản chiếu SQL</value>
+  </data>
+  <data name="MissingTransaction" xml:space="preserve">
+    <value>Bút toán Beancount tham chiếu tới ID giao dịch không tồn tại {0}</value>
+  </data>
+  <data name="NeedsLedger" xml:space="preserve">
+    <value>Kết nối Beancount cần một tệp sổ cái.</value>
+  </data>
+  <data name="NoBackend" xml:space="preserve">
+    <value>Beancount cần Python Beancount hoặc rledger, nhưng không tìm thấy cái nào. Hãy cài gói Python bằng "py -3 -m pip install beancount" (hoặc "pip install beancount"), hoặc cài rustledger để rledger.exe nằm trong PATH, hoặc đặt tùy chọn python hay rledger của kết nối thành đường dẫn của nó.</value>
+  </data>
+  <data name="NoDdl" xml:space="preserve">
+    <value>Không lấy được DDL cho bảng '{0}'</value>
+  </data>
+  <data name="OpenFailed" xml:space="preserve">
+    <value>Không mở được sổ cái Beancount: {0}</value>
+  </data>
+  <data name="PadNoDate" xml:space="preserve">
+    <value>Chỉ thị pad không có ngày, nên các tài khoản của nó không được chiếu.</value>
+  </data>
+  <data name="PadsUnrendered" xml:space="preserve">
+    <value>rledger không thể hiển thị các chỉ thị của sổ cái, nên bảng pads trống: {0}</value>
+  </data>
+  <data name="PadUnmatched" xml:space="preserve">
+    <value>Không thể khớp chỉ thị pad với chỉ thị đã hiển thị, nên các tài khoản của nó không được chiếu.</value>
+  </data>
+  <data name="PythonFailed" xml:space="preserve">
+    <value>Chiếu Python Beancount thất bại</value>
+  </data>
+  <data name="PythonMissing" xml:space="preserve">
+    <value>Tùy chọn python trỏ tới một Python không tồn tại tại {0}.</value>
+  </data>
+  <data name="PythonNeedsPackage" xml:space="preserve">
+    <value>Backend Python Beancount cần Python 3 có gói beancount. Hãy chạy "py -3 -m pip install beancount", hoặc đặt tùy chọn python của kết nối thành một Python có gói đó.</value>
+  </data>
+  <data name="ReadOnly" xml:space="preserve">
+    <value>Sổ cái Beancount được hiển thị dưới dạng cơ sở dữ liệu SQL chỉ đọc.</value>
+  </data>
+  <data name="RledgerMissing" xml:space="preserve">
+    <value>Tùy chọn rledger trỏ tới một rledger không tồn tại tại {0}.</value>
+  </data>
+  <data name="RledgerNeedsRustledger" xml:space="preserve">
+    <value>Backend rledger cần rustledger. Hãy cài đặt để rledger.exe nằm trong PATH, hoặc đặt tùy chọn rledger của kết nối thành đường dẫn của nó.</value>
+  </data>
+  <data name="RledgerVersionFailed" xml:space="preserve">
+    <value>Kiểm tra phiên bản rledger thất bại</value>
+  </data>
+  <data name="RustledgerFailed" xml:space="preserve">
+    <value>Lệnh rustledger thất bại</value>
+  </data>
+  <data name="RustledgerValidationFailed" xml:space="preserve">
+    <value>Xác thực rustledger thất bại</value>
+  </data>
+  <data name="UnknownBackend" xml:space="preserve">
+    <value>Backend Beancount không xác định "{0}". Hãy dùng "python" hoặc "rledger".</value>
+  </data>
+</root>

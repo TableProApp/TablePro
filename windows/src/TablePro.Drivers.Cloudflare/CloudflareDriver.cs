@@ -1,5 +1,6 @@
 using TablePro.Core.Connections;
 using TablePro.Core.Drivers;
+using TablePro.Drivers.Cloudflare.Localization;
 
 namespace TablePro.Drivers.Cloudflare;
 
@@ -28,7 +29,7 @@ public sealed class CloudflareDriver : IDatabaseDriver
         {
             DatabaseEngine.CloudflareD1 => await D1Session.ConnectAsync(request, handler, cancellationToken),
             DatabaseEngine.CloudflareR2Sql => await R2SqlSession.ConnectAsync(request, handler, cancellationToken),
-            _ => throw new NotSupportedException($"{request.Profile.Descriptor.DisplayName} is not a Cloudflare engine."),
+            _ => throw new NotSupportedException(CloudflareStrings.Format("Cloudflare/NotACloudflareEngine", request.Profile.Descriptor.DisplayName)),
         };
     }
 }

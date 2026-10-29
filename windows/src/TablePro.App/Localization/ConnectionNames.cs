@@ -3,8 +3,8 @@ using TablePro.Core.Connections;
 namespace TablePro.App.Localization;
 
 /// <summary>
-/// The translated names of the connection choices Core defines. Core keeps English names for logs and its own
-/// messages; the connection form shows these instead.
+/// The translated names of the connection choices Core defines, as the connection form labels them. Core's own
+/// DisplayName methods name the same choices inside its messages.
 /// </summary>
 internal static class ConnectionNames
 {

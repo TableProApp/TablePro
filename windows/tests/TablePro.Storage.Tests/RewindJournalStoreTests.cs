@@ -1,3 +1,5 @@
+using System.Globalization;
+using Microsoft.Data.Sqlite;
 using TablePro.Core.Connections;
 using TablePro.Core.Rewind;
 using TablePro.Core.Schema;
@@ -131,5 +133,70 @@ public sealed class RewindJournalStoreTests : IDisposable
 
         Assert.True(await store.DeleteAsync(record.Id, Token));
         Assert.False(await store.DeleteAsync(record.Id, Token));
+    }
+
+    [Fact]
+    public async Task TheSummaryIsWordedWhenShownNotWhenSaved()
+    {
+        using var store = Store();
+        await store.RecordAsync(Record(), Token);
+        var saved = CultureInfo.CurrentUICulture;
+        try
+        {
+            CultureInfo.CurrentUICulture = CultureInfo.GetCultureInfo("fr");
+
+            var entry = Assert.Single(await store.ListAsync(Connection, cancellationToken: Token));
+
+            Assert.Equal(new RewindCounts(1, 0, 0), entry.Counts);
+            Assert.Equal("1 modifiée", entry.Summary);
+            Assert.Equal("1 edited", entry.SavedSummary);
+        }
+        finally
+        {
+            CultureInfo.CurrentUICulture = saved;
+        }
+    }
+
+    [Fact]
+    public async Task AJournalFromBeforeCountsShowsItsSavedText()
+    {
+        // The table as builds that stored only the finished summary created it, holding one of their rows.
+        using (var connection = new SqliteConnection($"Data Source={_temp.File("rewind.db")};Pooling=False"))
+        {
+            connection.Open();
+            using var command = connection.CreateCommand();
+            command.CommandText = """
+                CREATE TABLE rewind (
+                    id TEXT PRIMARY KEY NOT NULL, connection_id TEXT NOT NULL, database_name TEXT, schema_name TEXT,
+                    table_name TEXT NOT NULL, engine TEXT NOT NULL, captured_at INTEGER NOT NULL,
+                    operation_count INTEGER NOT NULL, reversible_count INTEGER NOT NULL, summary TEXT NOT NULL,
+                    restores_id TEXT, restored_at INTEGER, byte_count INTEGER NOT NULL, payload BLOB NOT NULL);
+                INSERT INTO rewind VALUES ($id, $connection, 'app', 'public', 'users', 'PostgreSql', $at, 2, 2, '2 edited', NULL, NULL, 1, x'00');
+                """;
+            command.Parameters.AddWithValue("$id", Guid.NewGuid().ToString("D"));
+            command.Parameters.AddWithValue("$connection", Connection.ToString("D"));
+            command.Parameters.AddWithValue("$at", DateTimeOffset.UtcNow.AddMinutes(-1).ToUnixTimeMilliseconds());
+            command.ExecuteNonQuery();
+        }
+
+        using var store = Store();
+        var saved = CultureInfo.CurrentUICulture;
+        try
+        {
+            CultureInfo.CurrentUICulture = CultureInfo.GetCultureInfo("fr");
+
+            var old = Assert.Single(await store.ListAsync(Connection, cancellationToken: Token));
+            Assert.Null(old.Counts);
+            Assert.Equal("2 edited", old.Summary);
+
+            // The journal gained the count columns, so a save made now keeps its counts beside the old row.
+            await store.RecordAsync(Record(), Token);
+            var entries = await store.ListAsync(Connection, cancellationToken: Token);
+            Assert.Equal(["1 modifiée", "2 edited"], entries.Select(e => e.Summary));
+        }
+        finally
+        {
+            CultureInfo.CurrentUICulture = saved;
+        }
     }
 }

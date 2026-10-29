@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Text;
 using TablePro.Core.Data;
 using TablePro.Core.Drivers;
+using TablePro.Core.Localization;
 using TablePro.Core.Results;
 using TablePro.Core.Schema;
 using TablePro.Core.Sql;
@@ -211,7 +212,7 @@ public sealed partial class DuckDbSession : AdoNetSession, ISchemaDdlProvider, I
             case ObjectKind.Function:
                 return await MacroDefinitionAsync(connection, obj, parameters, cancellationToken);
             default:
-                throw new NotSupportedException($"DuckDB has no {obj.Kind} objects.");
+                throw new NotSupportedException(CoreStrings.Format("Driver/EngineHasNoDefinitionFor", "DuckDB", obj.Name));
         }
     }
 
@@ -255,7 +256,7 @@ public sealed partial class DuckDbSession : AdoNetSession, ISchemaDdlProvider, I
             parameters);
         if (overloads.Count == 0)
         {
-            throw new InvalidOperationException($"No definition was found for {obj.Name}.");
+            throw new InvalidOperationException(CoreStrings.Format("Driver/NoDefinitionFor", obj.Name));
         }
 
         var sql = new StringBuilder();
@@ -280,7 +281,7 @@ public sealed partial class DuckDbSession : AdoNetSession, ISchemaDdlProvider, I
     private static string Statement(object? sql, DatabaseObject obj) =>
         sql is string text
             ? text.TrimEnd().TrimEnd(';') + ";"
-            : throw new InvalidOperationException($"No definition was found for {obj.Name}.");
+            : throw new InvalidOperationException(CoreStrings.Format("Driver/NoDefinitionFor", obj.Name));
 
     private static bool Contains(IReadOnlyList<string> names, string name)
     {

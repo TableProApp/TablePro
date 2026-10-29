@@ -1,6 +1,7 @@
 using System.Net.Http.Headers;
 using System.Runtime.CompilerServices;
 using TablePro.Ai.Http;
+using TablePro.Ai.Localization;
 using TablePro.Ai.Serialization;
 
 namespace TablePro.Ai.Providers;
@@ -124,7 +125,7 @@ public sealed class OpenAICompatibleProvider : OpenAIChatProvider
         // A key over plain http to another machine would cross the network readable by anyone on the path.
         if (!string.IsNullOrWhiteSpace(apiKey) && address.Scheme == Uri.UriSchemeHttp && !address.IsLoopback)
         {
-            throw new ArgumentException("An API key is sent over plain http only to this computer. Use an https address.", nameof(apiKey));
+            throw new ArgumentException(AiStrings.Get("Provider/KeyOverHttp"), nameof(apiKey));
         }
 
         DisplayName = string.IsNullOrWhiteSpace(displayName) ? "Ollama" : displayName;

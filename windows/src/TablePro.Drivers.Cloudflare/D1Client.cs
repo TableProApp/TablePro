@@ -1,6 +1,8 @@
 using System.Buffers;
 using System.Text.Json;
+using TablePro.Core.Localization;
 using TablePro.Core.Results;
+using TablePro.Drivers.Cloudflare.Localization;
 
 namespace TablePro.Drivers.Cloudflare;
 
@@ -15,7 +17,7 @@ internal sealed class D1Client(HttpClient http, string accountId, string token)
 {
     public const string ApiBase = "https://api.cloudflare.com/client/v4/";
 
-    private const string AuthHint = "The API token needs the D1 Read permission, and D1 Edit to change data, for this account.";
+    private static string AuthHint => CloudflareStrings.Get("Cloudflare/D1AuthHint");
 
     public Uri DatabaseUri(string? databaseId, string? suffix = null)
     {
@@ -70,7 +72,7 @@ internal sealed class D1Client(HttpClient http, string accountId, string token)
         var payloads = await CloudflareHttp.SendAsync(
             http, HttpMethod.Post, DatabaseUri(databaseId, "raw"), token, BuildQueryBody(sql, parameters),
             CloudflareJsonContext.Default.CloudflareEnvelopeListD1RawPayload, AuthHint, cancellationToken);
-        return payloads.Count == 0 ? throw new CloudflareApiException("D1 returned no result for the statement.") : Map(payloads[0], rowLimit);
+        return payloads.Count == 0 ? throw new CloudflareApiException(CoreStrings.Get("Driver/NoResultForStatement")) : Map(payloads[0], rowLimit);
     }
 
     public async Task<IReadOnlyList<D1Result>> BatchAsync(

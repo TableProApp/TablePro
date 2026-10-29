@@ -1,3 +1,5 @@
+using TablePro.Drivers.Beancount.Localization;
+
 namespace TablePro.Drivers.Beancount;
 
 /// <summary>Everything a backend produced for one ledger, table by table, before it is written to SQLite.</summary>
@@ -142,13 +144,13 @@ internal static class BeancountRowEnrichment
             var entry = entries[index];
             if (LedgerValues.Text(entry.Get("date")) is not { } date)
             {
-                diagnostics.Add(PadDiagnostic(entry, "The pad directive carries no date, so its accounts were not projected."));
+                diagnostics.Add(PadDiagnostic(entry, BeancountStrings.Get("Beancount/PadNoDate")));
                 continue;
             }
 
             if (index >= rendered.Count || PadDirective(rendered[index]) is not { } printed || printed.Date != date)
             {
-                diagnostics.Add(PadDiagnostic(entry, "The pad directive could not be matched to a rendered directive, so its accounts were not projected."));
+                diagnostics.Add(PadDiagnostic(entry, BeancountStrings.Get("Beancount/PadUnmatched")));
                 continue;
             }
 

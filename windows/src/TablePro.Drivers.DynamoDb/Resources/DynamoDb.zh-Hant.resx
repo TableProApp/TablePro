@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="CannotChangeKey" xml:space="preserve">
+    <value>DynamoDB 無法變更索引鍵屬性 {0}。請刪除該項目，然後用新索引鍵重新新增。</value>
+  </data>
+  <data name="ClientRules_One" xml:space="preserve">
+    <value>DynamoDB 無法評估的 {0} 條篩選規則已逐頁套用到讀取的項目。</value>
+  </data>
+  <data name="ClientRules_Other" xml:space="preserve">
+    <value>DynamoDB 無法評估的 {0} 條篩選規則已逐頁套用到讀取的項目。</value>
+  </data>
+  <data name="ConsumedCapacity_One" xml:space="preserve">
+    <value>耗用容量：{0} 個要求共 {1:0.##} 個單位。</value>
+  </data>
+  <data name="ConsumedCapacity_Other" xml:space="preserve">
+    <value>耗用容量：{0} 個要求共 {1:0.##} 個單位。</value>
+  </data>
+  <data name="EmptyKeyAttribute" xml:space="preserve">
+    <value>索引鍵屬性不可為空。</value>
+  </data>
+  <data name="EndpointScheme" xml:space="preserve">
+    <value>端點必須以 https:// 或 http:// 開頭。</value>
+  </data>
+  <data name="EnterSecretKey" xml:space="preserve">
+    <value>請輸入祕密存取金鑰作為存取金鑰 ID {0} 的密碼。</value>
+  </data>
+  <data name="ItemExists" xml:space="preserve">
+    <value>已存在具有此索引鍵的項目（第 {0} 項變更，共 {1} 項）。</value>
+  </data>
+  <data name="ItemGone" xml:space="preserve">
+    <value>該項目已不存在（第 {0} 項變更，共 {1} 項）。</value>
+  </data>
+  <data name="KeyNotLoaded" xml:space="preserve">
+    <value>該項目的索引鍵屬性 {0} 未載入，因此找不到該項目。</value>
+  </data>
+  <data name="MapTakesObject" xml:space="preserve">
+    <value>對應屬性需要一個 JSON 物件。</value>
+  </data>
+  <data name="NoKeySchema" xml:space="preserve">
+    <value>DynamoDB 未回報 {0} 的索引鍵結構描述。</value>
+  </data>
+  <data name="NoOffset" xml:space="preserve">
+    <value>DynamoDB 沒有 OFFSET，要到達第 {0:N0} 個項目需要先讀取 {1:N0} 個項目。請從頭開始翻頁，或篩選該資料表。</value>
+  </data>
+  <data name="NoProfile" xml:space="preserve">
+    <value>在共用的 config 或 credentials 檔案中找不到名為「{0}」的 AWS 設定檔。</value>
+  </data>
+  <data name="NotANumber" xml:space="preserve">
+    <value>「{0}」不是數字。</value>
+  </data>
+  <data name="NotARegion" xml:space="preserve">
+    <value>「{0}」不是 AWS 區域，例如 us-east-1。</value>
+  </data>
+  <data name="NotAUrl" xml:space="preserve">
+    <value>「{0}」不是 URL。請輸入端點，例如 http://localhost:8000。</value>
+  </data>
+  <data name="NumberKeyMismatch" xml:space="preserve">
+    <value>沒有項目能符合該篩選器：Number 索引鍵與非數字文字進行了比較。</value>
+  </data>
+  <data name="PlainHttpLocalOnly" xml:space="preserve">
+    <value>僅本機（localhost）上的端點允許使用未加密的 HTTP。其他主機請使用 https://。</value>
+  </data>
+  <data name="RawConditionAnd" xml:space="preserve">
+    <value>原始條件必須與規則同時符合。</value>
+  </data>
+  <data name="SortNotApplied" xml:space="preserve">
+    <value>DynamoDB 掃描依資料表本身的順序傳回項目，因此未套用排序。</value>
+  </data>
+  <data name="StoppedAfterScanning" xml:space="preserve">
+    <value>為填滿本頁讀取 {0:N0} 個項目後已停止。請縮小篩選範圍以搜尋整個資料表。</value>
+  </data>
+  <data name="TooManyItems" xml:space="preserve">
+    <value>DynamoDB 在一個交易中最多寫入 {0} 個項目，而此次儲存有 {1} 個。請每次儲存較少的列。</value>
+  </data>
+</root>

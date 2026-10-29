@@ -1,0 +1,231 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="Alias" xml:space="preserve">
+    <value>bí danh</value>
+  </data>
+  <data name="AliasOf" xml:space="preserve">
+    <value>bí danh của {0}</value>
+  </data>
+  <data name="AnsweredNotJson" xml:space="preserve">
+    <value>{0} đã trả lời bằng dữ liệu không phải JSON.</value>
+  </data>
+  <data name="AuthenticationFailedWith" xml:space="preserve">
+    <value>Xác thực thất bại: {0}</value>
+  </data>
+  <data name="BetweenNeedsUpperBound" xml:space="preserve">
+    <value>BETWEEN trên {0} cần một cận trên.</value>
+  </data>
+  <data name="BooleanFieldNotBoolean" xml:space="preserve">
+    <value>{0} là trường boolean, nên chỉ khớp với true hoặc false, không khớp với {1}.</value>
+  </data>
+  <data name="CannotChangeFromGrid" xml:space="preserve">
+    <value>Không thể thay đổi '{0}' từ lưới.</value>
+  </data>
+  <data name="CannotFilterWith" xml:space="preserve">
+    <value>{0} không thể lọc bằng {1}.</value>
+  </data>
+  <data name="CannotReadDefinition" xml:space="preserve">
+    <value>Tài khoản không thể đọc định nghĩa của {0}.</value>
+  </data>
+  <data name="ChooseDatasetFirst" xml:space="preserve">
+    <value>Hãy chọn một tập dữ liệu trước.</value>
+  </data>
+  <data name="ChooseNamespaceFirst" xml:space="preserve">
+    <value>Hãy chọn một không gian tên trước.</value>
+  </data>
+  <data name="CommandCancelled" xml:space="preserve">
+    <value>Đã hủy lệnh.</value>
+  </data>
+  <data name="CommandNotSupported" xml:space="preserve">
+    <value>Lệnh đó không được hỗ trợ.</value>
+  </data>
+  <data name="CommandTimedOutAfter" xml:space="preserve">
+    <value>Lệnh đã hết thời gian chờ sau {0} giây.</value>
+  </data>
+  <data name="Committed" xml:space="preserve">
+    <value>Đã commit.</value>
+  </data>
+  <data name="ConnectionNeedsDatabaseFile" xml:space="preserve">
+    <value>Kết nối {0} cần một tệp cơ sở dữ liệu.</value>
+  </data>
+  <data name="ConnectionNotOpen" xml:space="preserve">
+    <value>Kết nối chưa được mở.</value>
+  </data>
+  <data name="CredentialsFileType" xml:space="preserve">
+    <value>Tệp thông tin xác thực có loại "{0}". Hãy dùng khóa tài khoản dịch vụ hoặc tệp authorized_user của gcloud.</value>
+  </data>
+  <data name="DefinitionMissingPrivilege" xml:space="preserve">
+    <value>{0} không trả về định nghĩa cho {1}; tài khoản đăng nhập có thể thiếu quyền đọc nó.</value>
+  </data>
+  <data name="DocumentIdUnknown" xml:space="preserve">
+    <value>Không biết {0} của tài liệu, nên không thể xác định tài liệu đó.</value>
+  </data>
+  <data name="EmptyResponse" xml:space="preserve">
+    <value>{0} đã trả về phản hồi trống.</value>
+  </data>
+  <data name="EngineHasNoDefinitionFor" xml:space="preserve">
+    <value>{0} không thể hiển thị định nghĩa cho {1}.</value>
+  </data>
+  <data name="EnterRequestLike" xml:space="preserve">
+    <value>Nhập một yêu cầu như: {0}</value>
+  </data>
+  <data name="InsertNeedsValue" xml:space="preserve">
+    <value>{0} cần ít nhất một giá trị để chèn một hàng.</value>
+  </data>
+  <data name="InvalidTypedValue" xml:space="preserve">
+    <value>"{0}" không phải là giá trị {1} hợp lệ.</value>
+  </data>
+  <data name="KeyNoLongerExists" xml:space="preserve">
+    <value>Khóa '{0}' không còn tồn tại, nên không có gì được lưu.</value>
+  </data>
+  <data name="ListedUnexpected" xml:space="preserve">
+    <value>{0} đã liệt kê {1} với loại không mong đợi là {2}.</value>
+  </data>
+  <data name="NeedsAccountIdentifier" xml:space="preserve">
+    <value>{0} cần một mã định danh tài khoản, chẳng hạn {1}.</value>
+  </data>
+  <data name="NoAnswerWithin" xml:space="preserve">
+    <value>{0} không phản hồi trong vòng {1} giây.</value>
+  </data>
+  <data name="NoDatabaseGiven" xml:space="preserve">
+    <value>Chưa chỉ định cơ sở dữ liệu và thông tin đăng nhập không có cơ sở dữ liệu mặc định.</value>
+  </data>
+  <data name="NoDefinitionFor" xml:space="preserve">
+    <value>Không tìm thấy định nghĩa cho {0}.</value>
+  </data>
+  <data name="NoResultForStatement" xml:space="preserve">
+    <value>Máy chủ không trả về kết quả nào cho câu lệnh.</value>
+  </data>
+  <data name="NoSchemaGiven" xml:space="preserve">
+    <value>Chưa chỉ định lược đồ và thông tin đăng nhập cũng không nêu lược đồ nào.</value>
+  </data>
+  <data name="NoTransactionOpen" xml:space="preserve">
+    <value>Không có giao dịch nào đang mở.</value>
+  </data>
+  <data name="NumericFieldNotNumber" xml:space="preserve">
+    <value>{0} là trường số, và {1} không phải là số.</value>
+  </data>
+  <data name="OdbcDriverNotInstalled" xml:space="preserve">
+    <value>Trình điều khiển ODBC {0} "{1}" chưa được cài đặt. {2}</value>
+  </data>
+  <data name="OdbcDriverNotLoaded" xml:space="preserve">
+    <value>Windows đã tìm thấy trình điều khiển ODBC {0} "{1}" nhưng không thể tải nó. TablePro là ứng dụng 64-bit và cần trình điều khiển 64-bit. {2}</value>
+  </data>
+  <data name="OdbcInvalidKeyword" xml:space="preserve">
+    <value>"{0}" không phải là từ khóa kết nối ODBC hợp lệ.</value>
+  </data>
+  <data name="OdbcOptionFromForm" xml:space="preserve">
+    <value>Tùy chọn "{0}" được đặt từ biểu mẫu kết nối; hãy thay đổi nó ở đó.</value>
+  </data>
+  <data name="OptionInvalidValue" xml:space="preserve">
+    <value>"{0}" không phải là giá trị hợp lệ cho {1}.</value>
+  </data>
+  <data name="OptionIsOneOf" xml:space="preserve">
+    <value>{0} phải là một trong các giá trị: {1}.</value>
+  </data>
+  <data name="OptionNeedsValue" xml:space="preserve">
+    <value>{0} cần một giá trị.</value>
+  </data>
+  <data name="OptionPositiveWholeNumber" xml:space="preserve">
+    <value>{0} phải là số nguyên lớn hơn 0.</value>
+  </data>
+  <data name="OptionWholeNumberRange" xml:space="preserve">
+    <value>{0} phải là số nguyên từ {1} đến {2}.</value>
+  </data>
+  <data name="PartialSaveNoTransaction" xml:space="preserve">
+    <value>Đã lưu {0} trên {1} thay đổi; {2} không có giao dịch để hoàn tác chúng. {3}</value>
+  </data>
+  <data name="PathHasDotSegment" xml:space="preserve">
+    <value>Đường dẫn {0} có đoạn . hoặc .., sẽ trỏ tới một tài nguyên khác.</value>
+  </data>
+  <data name="PathLeavesHost" xml:space="preserve">
+    <value>Đường dẫn {0} sẽ đi ra ngoài {1}.</value>
+  </data>
+  <data name="QueryCancelled" xml:space="preserve">
+    <value>Đã hủy truy vấn.</value>
+  </data>
+  <data name="QueryTimedOut" xml:space="preserve">
+    <value>Truy vấn đã hết thời gian chờ.</value>
+  </data>
+  <data name="QueryTimedOutAfter" xml:space="preserve">
+    <value>Truy vấn đã hết thời gian chờ sau {0} giây.</value>
+  </data>
+  <data name="QuotedValueNotClosed" xml:space="preserve">
+    <value>Một giá trị trong dấu ngoặc kép chưa được đóng.</value>
+  </data>
+  <data name="RateLimited" xml:space="preserve">
+    <value>Đã bị giới hạn tốc độ. Hãy thử lại sau ít phút.</value>
+  </data>
+  <data name="RateLimitedRetryAfter" xml:space="preserve">
+    <value>Đã bị giới hạn tốc độ. Hãy thử lại sau {0:0} giây.</value>
+  </data>
+  <data name="ReadOnlyNothingSaved" xml:space="preserve">
+    <value>Kết nối này ở chế độ chỉ đọc, nên không có gì được lưu.</value>
+  </data>
+  <data name="ReadWriteTransactionStarted" xml:space="preserve">
+    <value>Đã bắt đầu giao dịch đọc-ghi.</value>
+  </data>
+  <data name="RequestTimedOutAfter" xml:space="preserve">
+    <value>Yêu cầu đã hết thời gian chờ sau {0} giây.</value>
+  </data>
+  <data name="ReturnedNoResult" xml:space="preserve">
+    <value>{0} không trả về kết quả nào.</value>
+  </data>
+  <data name="RolledBack" xml:space="preserve">
+    <value>Đã hoàn tác.</value>
+  </data>
+  <data name="RoutineKindFunction" xml:space="preserve">
+    <value>Hàm</value>
+  </data>
+  <data name="RoutineKindPackage" xml:space="preserve">
+    <value>Package</value>
+  </data>
+  <data name="RoutineKindProcedure" xml:space="preserve">
+    <value>Procedure</value>
+  </data>
+  <data name="RoutineKindTrigger" xml:space="preserve">
+    <value>Trigger</value>
+  </data>
+  <data name="RoutineKindType" xml:space="preserve">
+    <value>Kiểu</value>
+  </data>
+  <data name="ServerErrorNoMessage" xml:space="preserve">
+    <value>Máy chủ đã báo lỗi mà không có thông báo.</value>
+  </data>
+  <data name="ServerHttpStatus" xml:space="preserve">
+    <value>Máy chủ đã trả về HTTP {0}.</value>
+  </data>
+  <data name="ServerReportedError" xml:space="preserve">
+    <value>Máy chủ đã báo lỗi.</value>
+  </data>
+  <data name="ShowingOfKeys" xml:space="preserve">
+    <value>Đang hiển thị {0:N0} trên {1:N0} khóa.</value>
+  </data>
+  <data name="StatementCancelled" xml:space="preserve">
+    <value>Đã hủy câu lệnh.</value>
+  </data>
+  <data name="StatementNotSupported" xml:space="preserve">
+    <value>Câu lệnh đó không được hỗ trợ.</value>
+  </data>
+  <data name="TableHasNoColumn" xml:space="preserve">
+    <value>{0} không có cột {1}.</value>
+  </data>
+  <data name="TransactionAlreadyOpen" xml:space="preserve">
+    <value>Một giao dịch đang được mở.</value>
+  </data>
+  <data name="UpdateNeedsChangedColumn" xml:space="preserve">
+    <value>Một lần cập nhật cần ít nhất một cột đã thay đổi.</value>
+  </data>
+</root>

@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="ControlCharacterInPath" xml:space="preserve">
+    <value>The path of an extension in the list contains a line break or another control character.</value>
+  </data>
+  <data name="CouldNotLoad" xml:space="preserve">
+    <value>Could not load the extension "{0}".</value>
+    <comment>{0} is a file name.</comment>
+  </data>
+  <data name="CouldNotLoadList" xml:space="preserve">
+    <value>The SQLite extensions for this connection could not be loaded.</value>
+  </data>
+  <data name="Duplicate" xml:space="preserve">
+    <value>"{0}" is in the list more than once.</value>
+    <comment>{0} is a path.</comment>
+  </data>
+  <data name="EntryPointNotFound" xml:space="preserve">
+    <value>The file has no function named {0}.</value>
+    <comment>{0} is a function name.</comment>
+  </data>
+  <data name="FileNotFound" xml:space="preserve">
+    <value>There is no file at "{0}".</value>
+    <comment>{0} is a path.</comment>
+  </data>
+  <data name="InitializationFailed" xml:space="preserve">
+    <value>The extension failed to start: {0}</value>
+    <comment>{0} is the extension's own error text.</comment>
+  </data>
+  <data name="InvalidEntryPoint" xml:space="preserve">
+    <value>"{0}" is not a valid entry point name.</value>
+    <comment>{0} is a function name.</comment>
+  </data>
+  <data name="LoadingNotClosed" xml:space="preserve">
+    <value>SQLite did not turn extension loading off again after loading.</value>
+  </data>
+  <data name="LoadingUnavailable" xml:space="preserve">
+    <value>SQLite did not allow extension loading on this connection.</value>
+  </data>
+  <data name="MalformedList" xml:space="preserve">
+    <value>The saved extension list is not in a format TablePro can read.</value>
+  </data>
+  <data name="MissingPath" xml:space="preserve">
+    <value>An extension in the list has no file.</value>
+  </data>
+  <data name="NotAFile" xml:space="preserve">
+    <value>"{0}" is not a file.</value>
+    <comment>{0} is a path.</comment>
+  </data>
+  <data name="PathTooLong" xml:space="preserve">
+    <value>The path "{0}" is too long.</value>
+    <comment>{0} is a path.</comment>
+  </data>
+  <data name="RelativePath" xml:space="preserve">
+    <value>"{0}" is not a full path.</value>
+    <comment>{0} is a path.</comment>
+  </data>
+</root>

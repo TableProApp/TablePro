@@ -1,5 +1,6 @@
 using System.Globalization;
 using TablePro.Core.Connections;
+using TablePro.Ssh.Localization;
 
 namespace TablePro.Ssh;
 
@@ -48,7 +49,7 @@ public static class HelperArguments
 
         if (string.IsNullOrWhiteSpace(serviceAccountKeyJson))
         {
-            throw new TunnelException(TunnelFailureKind.InvalidSettings, "A service account key is required. Paste the key's JSON in the connection's Cloud SQL settings.");
+            throw new TunnelException(TunnelFailureKind.InvalidSettings, SshStrings.Get("Tunnel/CloudSqlKeyRequired"));
         }
 
         return new Dictionary<string, string> { [CloudSqlJsonCredentialsVariable] = serviceAccountKeyJson.Trim() };
@@ -73,7 +74,7 @@ public static class HelperArguments
 
         if (string.IsNullOrWhiteSpace(tokenId) || string.IsNullOrWhiteSpace(tokenSecret))
         {
-            throw new TunnelException(TunnelFailureKind.InvalidSettings, "Service token ID and secret are required.");
+            throw new TunnelException(TunnelFailureKind.InvalidSettings, SshStrings.Get("Tunnel/CloudflareTokenRequired"));
         }
 
         return new Dictionary<string, string>

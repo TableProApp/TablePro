@@ -3,6 +3,7 @@ using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using Cassandra;
+using TablePro.Drivers.Cassandra.Localization;
 
 namespace TablePro.Drivers.Cassandra;
 
@@ -106,7 +107,7 @@ internal sealed class KeyspacesSigV4AuthProvider(KeyspacesCredentials credential
         public byte[] EvaluateChallenge(byte[] challenge)
         {
             var nonce = KeyspacesSigV4.Nonce(challenge)
-                ?? throw new AuthenticationException("Amazon Keyspaces sent a SigV4 challenge without a nonce.");
+                ?? throw new AuthenticationException(CassandraStrings.Get("Cassandra/SigV4NoNonce"));
             return Encoding.UTF8.GetBytes(KeyspacesSigV4.AuthResponse(nonce, credentials, DateTimeOffset.UtcNow));
         }
     }

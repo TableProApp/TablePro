@@ -1,6 +1,7 @@
 using System.Globalization;
 using TablePro.Core.Connections;
 using TablePro.Core.Drivers;
+using TablePro.Drivers.LibSql.Localization;
 
 namespace TablePro.Drivers.LibSql;
 
@@ -30,7 +31,7 @@ internal static class LibSqlSettings
         {
             var path = options.TryGetValue(FilePathOption, out var file) && !string.IsNullOrWhiteSpace(file) ? file : profile.FilePath;
             return string.IsNullOrWhiteSpace(path)
-                ? throw new LibSqlException("A local libSQL connection needs a database file.")
+                ? throw new LibSqlException(LibSqlStrings.Get("LibSql/LocalNeedsFile"))
                 : path.Trim();
         }
 
@@ -55,7 +56,7 @@ internal static class LibSqlSettings
         }
 
         var path = text["file:".Length..];
-        return path.Length == 0 ? throw new LibSqlException("The file: URL names no database file.") : path;
+        return path.Length == 0 ? throw new LibSqlException(LibSqlStrings.Get("LibSql/FileUrlNoFile")) : path;
     }
 
     public static Uri BaseUri(ConnectionRequest request)
@@ -79,7 +80,7 @@ internal static class LibSqlSettings
         url = url is null ? FromHostAndPort(profile, request.Host, request.Port) : Normalize(url);
         if (!Uri.TryCreate(url.EndsWith('/') ? url : url + "/", UriKind.Absolute, out var uri) || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
         {
-            throw new LibSqlException($"'{url}' is not a libSQL database URL. Use libsql://, https:// or http://.");
+            throw new LibSqlException(LibSqlStrings.Format("LibSql/NotAUrl", url));
         }
 
         return uri;

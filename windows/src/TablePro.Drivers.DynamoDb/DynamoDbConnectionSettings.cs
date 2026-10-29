@@ -5,6 +5,7 @@ using Amazon.DynamoDBv2;
 using Amazon.Runtime;
 using Amazon.Runtime.CredentialManagement;
 using TablePro.Core.Drivers;
+using TablePro.Drivers.DynamoDb.Localization;
 
 namespace TablePro.Drivers.DynamoDb;
 
@@ -64,7 +65,7 @@ public sealed partial record DynamoDbConnectionSettings
         var region = Option(options, RegionOption) ?? (IsRegion(host) ? host : DefaultRegion);
         if (!IsRegion(region))
         {
-            throw new ArgumentException($"\"{region}\" is not an AWS region such as us-east-1.");
+            throw new ArgumentException(DynamoDbStrings.Format("DynamoDb/NotARegion", region));
         }
 
         var serviceUrl = Option(options, EndpointOption);
@@ -89,7 +90,7 @@ public sealed partial record DynamoDbConnectionSettings
 
         if (source == DynamoDbCredentialSource.AccessKey && string.IsNullOrEmpty(request.Password))
         {
-            throw new ArgumentException("Enter the secret access key as the password for access key ID " + accessKey + ".");
+            throw new ArgumentException(DynamoDbStrings.Format("DynamoDb/EnterSecretKey", accessKey));
         }
 
         return new DynamoDbConnectionSettings
@@ -137,7 +138,7 @@ public sealed partial record DynamoDbConnectionSettings
         DynamoDbCredentialSource.Local => new BasicAWSCredentials("local", "local"),
         DynamoDbCredentialSource.Profile => new CredentialProfileStoreChain().TryGetAWSCredentials(ProfileName, out var credentials)
             ? credentials
-            : throw new InvalidOperationException($"No AWS profile named \"{ProfileName}\" was found in the shared config or credentials file."),
+            : throw new InvalidOperationException(DynamoDbStrings.Format("DynamoDb/NoProfile", ProfileName)),
         _ => null,
     };
 
@@ -156,18 +157,18 @@ public sealed partial record DynamoDbConnectionSettings
     {
         if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || uri.Host.Length == 0)
         {
-            throw new ArgumentException($"\"{url}\" is not a URL. Enter an endpoint such as http://localhost:8000.");
+            throw new ArgumentException(DynamoDbStrings.Format("DynamoDb/NotAUrl", url));
         }
 
         if (uri.Scheme != Uri.UriSchemeHttps && uri.Scheme != Uri.UriSchemeHttp)
         {
-            throw new ArgumentException("The endpoint must start with https:// or http://.");
+            throw new ArgumentException(DynamoDbStrings.Get("DynamoDb/EndpointScheme"));
         }
 
         // A custom endpoint receives the signed request, session token included, so plain HTTP stays on this machine.
         if (uri.Scheme == Uri.UriSchemeHttp && !IsLoopback(uri.Host))
         {
-            throw new ArgumentException("Plain HTTP is only allowed for an endpoint on this computer (localhost). Use https:// for any other host.");
+            throw new ArgumentException(DynamoDbStrings.Get("DynamoDb/PlainHttpLocalOnly"));
         }
     }
 

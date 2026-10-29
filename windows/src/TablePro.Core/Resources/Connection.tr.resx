@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="ChooseTunnelMethod" xml:space="preserve">
+    <value>Tünelin nasıl açılacağını seçin.</value>
+  </data>
+  <data name="CloudflareHostRequired" xml:space="preserve">
+    <value>Cloudflare sunucu adı gerekli.</value>
+  </data>
+  <data name="CommandNeedsLocalPort" xml:space="preserve">
+    <value>Komut, yerel portun geleceği yerde {0} içermelidir.</value>
+  </data>
+  <data name="CommandRequired" xml:space="preserve">
+    <value>Bir komut gerekli.</value>
+  </data>
+  <data name="CommandUnclosedQuote" xml:space="preserve">
+    <value>Komutta kapatılmamış bir tırnak var.</value>
+  </data>
+  <data name="InstanceConnectionNameFormat" xml:space="preserve">
+    <value>Örnek bağlantı adı project:region:instance biçiminde olmalıdır.</value>
+  </data>
+  <data name="KubernetesResourceRequired" xml:space="preserve">
+    <value>Bir Kubernetes kaynağı gerekli, örneğin service/postgres.</value>
+  </data>
+  <data name="ListSeparator" xml:space="preserve">
+    <value>, </value>
+  </data>
+  <data name="LocalPortRange" xml:space="preserve">
+    <value>Yerel port 1 ile 65535 arasında olmalıdır.</value>
+  </data>
+  <data name="OnlyOneTransport" xml:space="preserve">
+    <value>Bir bağlantı aynı anda yalnızca bir bağlantı yöntemi kullanabilir. Etkin: {0}.</value>
+  </data>
+  <data name="ProxyHostRequired" xml:space="preserve">
+    <value>Proxy sunucusu gerekli.</value>
+  </data>
+  <data name="ProxyPortRange" xml:space="preserve">
+    <value>Proxy portu 1 ile 65535 arasında olmalıdır.</value>
+  </data>
+  <data name="SshHostRequired" xml:space="preserve">
+    <value>SSH sunucusunu girin veya tüneli kapatın.</value>
+  </data>
+  <data name="SsmTargetRequired" xml:space="preserve">
+    <value>Bir SSM hedefi gerekli, örneğin i-0123456789abcdef0.</value>
+  </data>
+  <data name="TransportCloudflare" xml:space="preserve">
+    <value>Cloudflare Tüneli</value>
+  </data>
+  <data name="TransportCloudSql" xml:space="preserve">
+    <value>Cloud SQL Kimlik Doğrulama Proxy'si</value>
+  </data>
+  <data name="TransportCommand" xml:space="preserve">
+    <value>Tünel Komutu</value>
+  </data>
+  <data name="TransportDirect" xml:space="preserve">
+    <value>Doğrudan</value>
+  </data>
+  <data name="TransportProxy" xml:space="preserve">
+    <value>Proxy</value>
+  </data>
+  <data name="TransportSsh" xml:space="preserve">
+    <value>SSH Tüneli</value>
+  </data>
+  <data name="TransportUnavailable" xml:space="preserve">
+    <value>{0}, {1} üzerinden bağlanamaz.</value>
+  </data>
+  <data name="TunnelFieldContext" xml:space="preserve">
+    <value>Bağlam</value>
+  </data>
+  <data name="TunnelFieldInvalid" xml:space="preserve">
+    <value>{0} kısa çizgiyle başlayamaz veya boşluk içeremez.</value>
+  </data>
+  <data name="TunnelFieldNamespace" xml:space="preserve">
+    <value>Namespace</value>
+  </data>
+  <data name="TunnelFieldProfile" xml:space="preserve">
+    <value>Profil</value>
+  </data>
+  <data name="TunnelFieldRegion" xml:space="preserve">
+    <value>Bölge</value>
+  </data>
+  <data name="TunnelFieldResource" xml:space="preserve">
+    <value>Kaynak</value>
+  </data>
+  <data name="TunnelFieldTarget" xml:space="preserve">
+    <value>Hedef</value>
+  </data>
+</root>

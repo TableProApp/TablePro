@@ -1,0 +1,177 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AuthDisabled" xml:space="preserve">
+    <value>已停用驗證。</value>
+  </data>
+  <data name="AuthEnabled" xml:space="preserve">
+    <value>已啟用驗證。</value>
+  </data>
+  <data name="ChangeHasNoKey" xml:space="preserve">
+    <value>etcd 列以其鍵識別，而此變更沒有鍵。</value>
+  </data>
+  <data name="Compacted" xml:space="preserve">
+    <value>已壓縮修訂版本 {0}。</value>
+  </data>
+  <data name="CompactionNeedsRevision" xml:space="preserve">
+    <value>compaction 需要一個修訂版本。</value>
+  </data>
+  <data name="ConcurrentChange" xml:space="preserve">
+    <value>儲存期間另一個用戶端變更了這些鍵，因此未儲存任何內容。請重新整理後再試一次。</value>
+  </data>
+  <data name="DescribeKey" xml:space="preserve">
+    <value>版本 {0}，修訂版本 {1}</value>
+  </data>
+  <data name="DescribeKeyWithLease" xml:space="preserve">
+    <value>版本 {0}，修訂版本 {1}，租約 {2}</value>
+  </data>
+  <data name="EmptyCommand" xml:space="preserve">
+    <value>etcd 指令為空。</value>
+  </data>
+  <data name="EmptyKey" xml:space="preserve">
+    <value>etcd 鍵不能為空。</value>
+  </data>
+  <data name="HttpStatus" xml:space="preserve">
+    <value>etcd 傳回了 HTTP {0}：{1}</value>
+  </data>
+  <data name="InvalidLeaseId" xml:space="preserve">
+    <value>無效的租約 ID：{0}</value>
+  </data>
+  <data name="KeepsColumn" xml:space="preserve">
+    <value>{0} 由 etcd 自行維護；只能變更鍵、值和租約。</value>
+  </data>
+  <data name="KeyAlreadyExists" xml:space="preserve">
+    <value>鍵 {0} 已存在，因此未儲存任何內容。請改為編輯該列。</value>
+  </data>
+  <data name="KeyChangedSinceRead" xml:space="preserve">
+    <value>鍵 {0} 在讀取後已變更，因此未儲存任何內容。請重新整理後再試一次。</value>
+  </data>
+  <data name="KeyGoneStatement" xml:space="preserve">
+    <value>已不存在的鍵 {0}</value>
+  </data>
+  <data name="LeaseComment" xml:space="preserve">
+    <value>該鍵所附加的租約，以 etcdctl 顯示的十六進位表示。</value>
+  </data>
+  <data name="LeaseExpired" xml:space="preserve">
+    <value>租約已過期或從未授予。</value>
+  </data>
+  <data name="LeaseGrantTtl" xml:space="preserve">
+    <value>lease grant 需要以整秒為單位的 TTL。</value>
+  </data>
+  <data name="LeaseRefreshed" xml:space="preserve">
+    <value>租約 {0} 已續約一次，TTL {1} 秒。要保持有效，需要會重複續約的用戶端，例如 etcdctl。</value>
+  </data>
+  <data name="LeaseRevoked" xml:space="preserve">
+    <value>租約 {0} 已撤銷。</value>
+  </data>
+  <data name="NeedsKey" xml:space="preserve">
+    <value>{0} 需要一個鍵。</value>
+  </data>
+  <data name="NeedsLeaseId" xml:space="preserve">
+    <value>{0} 需要一個租約 ID。</value>
+  </data>
+  <data name="NeedsRoleName" xml:space="preserve">
+    <value>{0} 需要一個角色名稱。</value>
+  </data>
+  <data name="NeedsSubcommand" xml:space="preserve">
+    <value>{0} 需要一個子指令：{1}。</value>
+  </data>
+  <data name="NeedsUserAndRole" xml:space="preserve">
+    <value>{0} 需要一個使用者名稱和一個角色。</value>
+  </data>
+  <data name="NeedsUserName" xml:space="preserve">
+    <value>{0} 需要一個使用者名稱。</value>
+  </data>
+  <data name="NegativeLimit" xml:space="preserve">
+    <value>--limit 和 --rev 不能為負數。</value>
+  </data>
+  <data name="NoApiAt" xml:space="preserve">
+    <value>在 {0} 找不到 etcd v3 API。請將連線指向用戶端連接埠（預設 2379），而不是對等連接埠 2380。</value>
+  </data>
+  <data name="NoKeepAliveAnswer" xml:space="preserve">
+    <value>etcd 未傳送 keep-alive 回應。</value>
+  </data>
+  <data name="NotGateway" xml:space="preserve">
+    <value>伺服器有回應，但不是 etcd v3 JSON 閘道。</value>
+  </data>
+  <data name="NoToken" xml:space="preserve">
+    <value>etcd 已登入，但未傳回權杖。</value>
+  </data>
+  <data name="OrderFlag" xml:space="preserve">
+    <value>--order 必須為 ASCEND 或 DESCEND。</value>
+  </data>
+  <data name="PrefixAndFromKey" xml:space="preserve">
+    <value>--prefix 和 --from-key 不能同時使用。</value>
+  </data>
+  <data name="PutNeedsKeyAndValue" xml:space="preserve">
+    <value>put 需要一個鍵和一個值。</value>
+  </data>
+  <data name="PutTakesOne" xml:space="preserve">
+    <value>put 只接受一個鍵和一個值；包含空格的值請加上引號。</value>
+  </data>
+  <data name="RenameSourceGone" xml:space="preserve">
+    <value>鍵 {0} 已不存在，因此無法重新命名。</value>
+  </data>
+  <data name="RoleCreated" xml:space="preserve">
+    <value>已建立角色 {0}。</value>
+  </data>
+  <data name="RoleDeleted" xml:space="preserve">
+    <value>已刪除角色 {0}。</value>
+  </data>
+  <data name="RoleGranted" xml:space="preserve">
+    <value>已將角色 {0} 授予 {1}。</value>
+  </data>
+  <data name="RoleRevoked" xml:space="preserve">
+    <value>已從 {1} 撤銷角色 {0}。</value>
+  </data>
+  <data name="SignInRefused" xml:space="preserve">
+    <value>etcd 拒絕了使用者名稱或密碼：{0}</value>
+  </data>
+  <data name="SortByFlag" xml:space="preserve">
+    <value>--sort-by 必須為 KEY、VERSION、CREATE、MOD 或 VALUE。</value>
+  </data>
+  <data name="TimeoutNumber" xml:space="preserve">
+    <value>--timeout 必須是秒數。</value>
+  </data>
+  <data name="TimeoutRange" xml:space="preserve">
+    <value>--timeout 必須介於 0 到 {0} 秒之間。</value>
+  </data>
+  <data name="UnknownCommand" xml:space="preserve">
+    <value>未知的指令：{0}。</value>
+  </data>
+  <data name="UnknownCommandTry" xml:space="preserve">
+    <value>未知的指令：{0}。請嘗試 get、put、del、watch、lease、member、endpoint 或 compaction。</value>
+  </data>
+  <data name="UnreadableResponse" xml:space="preserve">
+    <value>etcd 為 {0} 傳回了 TablePro 無法讀取的回應。</value>
+  </data>
+  <data name="UserCreated" xml:space="preserve">
+    <value>已建立使用者 {0}。</value>
+  </data>
+  <data name="UserDeleted" xml:space="preserve">
+    <value>已刪除使用者 {0}。</value>
+  </data>
+  <data name="VersionComment" xml:space="preserve">
+    <value>該鍵自建立以來變更的次數。</value>
+  </data>
+  <data name="Watched" xml:space="preserve">
+    <value>已監看 {0:0.#} 秒，發現 {1:N0} 個事件。</value>
+  </data>
+  <data name="WholeNumber" xml:space="preserve">
+    <value>{0} 必須是整數。</value>
+  </data>
+  <data name="WithRevision" xml:space="preserve">
+    <value>{0}（修訂版本 {1}）</value>
+  </data>
+</root>

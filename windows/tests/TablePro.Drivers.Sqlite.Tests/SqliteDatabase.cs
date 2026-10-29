@@ -8,6 +8,8 @@ namespace TablePro.Drivers.Sqlite.Tests;
 /// <summary>A throwaway database file with a small library schema, opened through the driver.</summary>
 internal sealed class SqliteDatabase : IAsyncDisposable
 {
+    // The seed authors name their created time: two files made either side of a second boundary would otherwise differ
+    // in every author, and the compare and sync tests would see changes nobody made.
     private const string Schema = """
         CREATE TABLE authors (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -25,7 +27,8 @@ internal sealed class SqliteDatabase : IAsyncDisposable
         CREATE INDEX ix_books_title ON books (title, price);
         CREATE VIEW cheap_books AS SELECT * FROM books WHERE price < 10;
         CREATE TRIGGER trg_books_ai AFTER INSERT ON books BEGIN UPDATE books SET price = price WHERE id = NEW.id; END;
-        INSERT INTO authors (name, email) VALUES ('Ann', 'ann@example.com'), ('Bob', 'bob@example.com'), ('Cid', NULL);
+        INSERT INTO authors (name, email, created) VALUES
+            ('Ann', 'ann@example.com', '2024-01-01 00:00:00'), ('Bob', 'bob@example.com', '2024-01-01 00:00:00'), ('Cid', NULL, '2024-01-01 00:00:00');
         INSERT INTO books (id, author_id, title, price) VALUES
             (1, 1, 'Alpha', 5), (2, 1, 'Beta', 12), (3, 2, 'Gamma', 20), (4, 2, 'Delta', 8), (5, 3, 'Epsilon', 30);
         """;

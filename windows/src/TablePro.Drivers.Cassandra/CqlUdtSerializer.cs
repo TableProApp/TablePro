@@ -1,5 +1,6 @@
 using Cassandra;
 using Cassandra.Serialization;
+using TablePro.Drivers.Cassandra.Localization;
 
 namespace TablePro.Drivers.Cassandra;
 
@@ -13,7 +14,7 @@ internal sealed class CqlUdtSerializer : UdtSerializer
         CqlValueDecoder.DecodeUdt(buffer.AsSpan(offset, length), (UdtColumnInfo)typeInfo);
 
     public override byte[] Serialize(ushort protocolVersion, object value) =>
-        throw new NotSupportedException("User-defined type values are written as JSON through fromJson(), not bound as objects.");
+        throw new NotSupportedException(CassandraStrings.Get("Cassandra/UdtAsJson"));
 
     protected override Type GetClrType(IColumnInfo typeInfo) => typeof(CqlUdtValue);
 }

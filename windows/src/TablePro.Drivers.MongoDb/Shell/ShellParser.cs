@@ -1,5 +1,6 @@
 using System.Globalization;
 using MongoDB.Bson;
+using TablePro.Drivers.MongoDb.Localization;
 
 namespace TablePro.Drivers.MongoDb.Shell;
 
@@ -31,7 +32,7 @@ internal sealed class ShellParser
         {
             if (database.Length == 0)
             {
-                throw new ShellSyntaxException("use needs a database name", text, text.Length);
+                throw new ShellSyntaxException(MongoStrings.Get("Mongo/UseNeedsDatabase"), text, text.Length);
             }
 
             return new UseStatement(text, database);
@@ -41,7 +42,7 @@ internal sealed class ShellParser
         {
             if (subject.Length == 0)
             {
-                throw new ShellSyntaxException("show needs what to list, such as dbs or collections", text, text.Length);
+                throw new ShellSyntaxException(MongoStrings.Get("Mongo/ShowNeedsWhat"), text, text.Length);
             }
 
             return new ShowStatement(text, subject);
@@ -57,18 +58,18 @@ internal sealed class ShellParser
         var parser = new ShellParser(text);
         if (parser.Current.Kind == ShellTokenKind.End)
         {
-            throw new ShellSyntaxException("Expected a value", text, 0);
+            throw new ShellSyntaxException(MongoStrings.Get("Mongo/ExpectedValue"), text, 0);
         }
 
         var value = parser.ReadValue();
-        parser.Expect(ShellTokenKind.End, "Unexpected text after the value");
+        parser.Expect(ShellTokenKind.End, MongoStrings.Get("Mongo/UnexpectedAfterValue"));
         return value;
     }
 
     public static BsonDocument ParseDocument(string text)
     {
         var value = ParseValue(text);
-        return value as BsonDocument ?? throw new ShellSyntaxException("Expected a document in braces", text, 0);
+        return value as BsonDocument ?? throw new ShellSyntaxException(MongoStrings.Get("Mongo/ExpectedDocument"), text, 0);
     }
 
     private static bool TryReadWordCommand(string text, string word, out string argument)
@@ -93,7 +94,7 @@ internal sealed class ShellParser
         var root = Current;
         if (root.Kind != ShellTokenKind.Identifier)
         {
-            throw Error(root.Kind == ShellTokenKind.End ? "The statement is empty" : "A statement starts with db, use or show", root);
+            throw Error(MongoStrings.Get(root.Kind == ShellTokenKind.End ? "Mongo/StatementEmpty" : "Mongo/StatementStart"), root);
         }
 
         _index++;
@@ -107,7 +108,7 @@ internal sealed class ShellParser
                 var name = Current;
                 if (name.Kind != ShellTokenKind.Identifier)
                 {
-                    throw Error("Expected a name after '.'", name);
+                    throw Error(MongoStrings.Get("Mongo/ExpectedNameAfterDot"), name);
                 }
 
                 segments.Add(new MemberSegment(name.Text, name.Position));
@@ -120,10 +121,10 @@ internal sealed class ShellParser
                 var value = ReadValue();
                 if (!value.IsString)
                 {
-                    throw Error("A name in brackets must be a quoted string", nameToken);
+                    throw Error(MongoStrings.Get("Mongo/BracketNameQuoted"), nameToken);
                 }
 
-                Expect(']', "Expected ']'");
+                Expect(']', MongoStrings.Format("Mongo/ExpectedChar", ']'));
                 segments.Add(new MemberSegment(value.AsString, nameToken.Position));
             }
             else if (token.Is('('))
@@ -144,7 +145,7 @@ internal sealed class ShellParser
 
         if (Current.Kind != ShellTokenKind.End)
         {
-            throw Error(Current.Is('=') ? "Assignments are not supported" : "Unexpected text after the statement", Current);
+            throw Error(MongoStrings.Get(Current.Is('=') ? "Mongo/AssignmentsUnsupported" : "Mongo/UnexpectedAfterStatement"), Current);
         }
 
         return new ChainStatement(_text, root.Text, segments);
@@ -157,7 +158,7 @@ internal sealed class ShellParser
         {
             if (Current.Kind == ShellTokenKind.End)
             {
-                throw Error($"Expected '{close}'", Current);
+                throw Error(MongoStrings.Format("Mongo/ExpectedChar", close), Current);
             }
 
             items.Add(ReadValue());
@@ -167,7 +168,7 @@ internal sealed class ShellParser
             }
             else if (!Current.Is(close))
             {
-                throw Error($"Expected ',' or '{close}'", Current);
+                throw Error(MongoStrings.Format("Mongo/ExpectedCommaOr", close), Current);
             }
         }
 
@@ -192,7 +193,7 @@ internal sealed class ShellParser
             case ShellTokenKind.Identifier:
                 return ReadNamedValue();
             case ShellTokenKind.End:
-                throw Error("Expected a value", token);
+                throw Error(MongoStrings.Get("Mongo/ExpectedValue"), token);
         }
 
         if (token.Is('{'))
@@ -222,10 +223,10 @@ internal sealed class ShellParser
                 return new BsonDouble(token.Is('-') ? double.NegativeInfinity : double.PositiveInfinity);
             }
 
-            throw Error("Expected a number after the sign", number);
+            throw Error(MongoStrings.Get("Mongo/ExpectedNumberAfterSign"), number);
         }
 
-        throw Error($"Unexpected '{token.Text}'", token);
+        throw Error(MongoStrings.Format("Mongo/UnexpectedToken", token.Text), token);
     }
 
     private BsonValue ReadObject()
@@ -244,20 +245,20 @@ internal sealed class ShellParser
                     name = key.Text;
                     break;
                 case ShellTokenKind.End:
-                    throw Error("Expected '}'", key);
+                    throw Error(MongoStrings.Format("Mongo/ExpectedChar", '}'), key);
                 default:
                     if (key.Is('.'))
                     {
-                        throw Error("Spread syntax is not supported", key);
+                        throw Error(MongoStrings.Get("Mongo/SpreadUnsupported"), key);
                     }
 
-                    throw Error("Expected a field name", key);
+                    throw Error(MongoStrings.Get("Mongo/ExpectedFieldName"), key);
             }
 
             _index++;
             if (!Current.Is(':'))
             {
-                throw Error(Current.Is(',') || Current.Is('}') ? $"Field '{name}' needs a value: shorthand properties are not supported" : "Expected ':' after the field name", Current);
+                throw Error(Current.Is(',') || Current.Is('}') ? MongoStrings.Format("Mongo/ShorthandUnsupported", name) : MongoStrings.Get("Mongo/ExpectedColon"), Current);
             }
 
             _index++;
@@ -270,7 +271,7 @@ internal sealed class ShellParser
             }
             else if (!Current.Is('}'))
             {
-                throw Error("Expected ',' or '}'", Current);
+                throw Error(MongoStrings.Format("Mongo/ExpectedCommaOr", '}'), Current);
             }
         }
 
@@ -300,12 +301,12 @@ internal sealed class ShellParser
             case "MaxKey" when !Current.Is('('):
                 return BsonMaxKey.Value;
             case "function":
-                throw Error("Functions are not supported", token);
+                throw Error(MongoStrings.Get("Mongo/FunctionsUnsupported"), token);
             case "new":
                 var constructor = Current;
                 if (constructor.Kind != ShellTokenKind.Identifier)
                 {
-                    throw Error("Expected a constructor after new", constructor);
+                    throw Error(MongoStrings.Get("Mongo/ExpectedConstructor"), constructor);
                 }
 
                 _index++;
@@ -319,19 +320,19 @@ internal sealed class ShellParser
 
         if (Current.Is('=') && _index + 1 < _tokens.Count && _tokens[_index + 1].Is('>'))
         {
-            throw Error("Functions are not supported", token);
+            throw Error(MongoStrings.Get("Mongo/FunctionsUnsupported"), token);
         }
 
-        throw Error($"'{token.Text}' is not a value: variables are not supported", token);
+        throw Error(MongoStrings.Format("Mongo/NotAValue", token.Text), token);
     }
 
     private BsonValue ReadConstructor(ShellToken name)
     {
-        Expect('(', $"Expected '(' after {name.Text}");
+        Expect('(', MongoStrings.Format("Mongo/ExpectedParenAfter", name.Text));
         var args = ReadList(')');
         try
         {
-            return ShellConstructors.Build(name.Text, args) ?? throw Error($"{name.Text}() is not supported", name);
+            return ShellConstructors.Build(name.Text, args) ?? throw Error(MongoStrings.Format("Mongo/ConstructorUnsupported", name.Text), name);
         }
         catch (FormatException ex) when (ex is not ShellSyntaxException)
         {
@@ -360,7 +361,7 @@ internal sealed class ShellParser
             }
             catch (Exception ex) when (ex is FormatException or OverflowException or ArgumentException)
             {
-                throw Error($"'{token.Text}' is not a number", token);
+                throw Error(MongoStrings.Format("Mongo/NotANumber", "'" + token.Text + "'"), token);
             }
 
             return Integer(negative ? -parsed : parsed);
@@ -378,7 +379,7 @@ internal sealed class ShellParser
             return new BsonDouble(real);
         }
 
-        throw Error($"'{token.Text}' is not a number", token);
+        throw Error(MongoStrings.Format("Mongo/NotANumber", "'" + token.Text + "'"), token);
     }
 
     // mongosh stores a whole number in the int32 range as an int; a larger one stays a long here rather than a double,

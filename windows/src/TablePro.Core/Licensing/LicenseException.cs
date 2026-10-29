@@ -1,3 +1,5 @@
+using TablePro.Core.Localization;
+
 namespace TablePro.Core.Licensing;
 
 /// <summary>What went wrong with a license operation; the app words each one for the screen.</summary>
@@ -22,7 +24,7 @@ public enum LicenseErrorKind
 public sealed class LicenseException : Exception
 {
     public LicenseException()
-        : this(LicenseErrorKind.Server, "The license operation failed.")
+        : this(LicenseErrorKind.Server, CoreStrings.Get("License/OperationFailed"))
     {
     }
 

@@ -1,3 +1,5 @@
+using TablePro.Core.Localization;
+
 namespace TablePro.Core.Schema;
 
 public enum ObjectKind
@@ -135,6 +137,37 @@ public static class TableOptionNames
     public const string SamplingKey = "Sampling key";
     public const string WithoutRowid = "Without rowid";
     public const string Strict = "Strict";
+
+    /// <summary>
+    /// The name to show for an option. The constants stay English because DDL builders switch on them; a name a
+    /// driver spelled itself has no translation and shows as the driver wrote it.
+    /// </summary>
+    public static string DisplayName(string name) => name switch
+    {
+        Engine => CoreStrings.Get("Schema/OptionEngine"),
+        Charset => CoreStrings.Get("Schema/OptionCharset"),
+        Collation => CoreStrings.Get("Schema/OptionCollation"),
+        RowFormat => CoreStrings.Get("Schema/OptionRowFormat"),
+        AutoIncrement => CoreStrings.Get("Schema/OptionAutoIncrement"),
+        Comment => CoreStrings.Get("Schema/OptionComment"),
+        Tablespace => CoreStrings.Get("Schema/OptionTablespace"),
+        FillFactor => CoreStrings.Get("Schema/OptionFillFactor"),
+        Persistence => CoreStrings.Get("Schema/OptionPersistence"),
+        StorageParameters => CoreStrings.Get("Schema/OptionStorageParameters"),
+        DataCompression => CoreStrings.Get("Schema/OptionDataCompression"),
+        LockEscalation => CoreStrings.Get("Schema/OptionLockEscalation"),
+        Filegroup => CoreStrings.Get("Schema/OptionFilegroup"),
+        PctFree => CoreStrings.Get("Schema/OptionPctFree"),
+        Logging => CoreStrings.Get("Schema/OptionLogging"),
+        Compression => CoreStrings.Get("Schema/OptionCompression"),
+        RowMovement => CoreStrings.Get("Schema/OptionRowMovement"),
+        SortingKey => CoreStrings.Get("Schema/OptionSortingKey"),
+        PrimaryKey => CoreStrings.Get("Schema/OptionPrimaryKey"),
+        SamplingKey => CoreStrings.Get("Schema/OptionSamplingKey"),
+        WithoutRowid => CoreStrings.Get("Schema/OptionWithoutRowid"),
+        Strict => CoreStrings.Get("Schema/OptionStrict"),
+        _ => name,
+    };
 }
 
 public enum TableOptionKind

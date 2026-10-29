@@ -1,5 +1,7 @@
 using System.Globalization;
 using System.Text;
+using TablePro.Core.Localization;
+using TablePro.Drivers.Etcd.Localization;
 
 namespace TablePro.Drivers.Etcd;
 
@@ -101,7 +103,7 @@ internal static class EtcdCommandParser
         var tokens = Tokenize(input.Trim());
         if (tokens.Count == 0)
         {
-            throw new EtcdCommandException("Empty etcd command.");
+            throw new EtcdCommandException(EtcdStrings.Get("Etcd/EmptyCommand"));
         }
 
         var command = tokens[0].ToLowerInvariant();
@@ -129,7 +131,7 @@ internal static class EtcdCommandParser
             }),
             "user" => ParseUser(rest),
             "role" => ParseRole(rest),
-            _ => throw new EtcdCommandException($"Unknown command: {tokens[0]}. Try get, put, del, watch, lease, member, endpoint or compaction."),
+            _ => throw new EtcdCommandException(EtcdStrings.Format("Etcd/UnknownCommandTry", tokens[0])),
         };
     }
 
@@ -150,7 +152,7 @@ internal static class EtcdCommandParser
 
         return long.TryParse(span, NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture, out value)
             ? value
-            : throw new EtcdCommandException($"Invalid lease ID: {text}");
+            : throw new EtcdCommandException(EtcdStrings.Format("Etcd/InvalidLeaseId", text));
     }
 
     public static string LeaseHex(long leaseId) => "0x" + leaseId.ToString("x", CultureInfo.InvariantCulture);
@@ -214,7 +216,7 @@ internal static class EtcdCommandParser
 
         if (quote is not null)
         {
-            throw new EtcdCommandException("A quoted value was never closed.");
+            throw new EtcdCommandException(CoreStrings.Get("Driver/QuotedValueNotClosed"));
         }
 
         if (started)
@@ -228,18 +230,18 @@ internal static class EtcdCommandParser
     private static EtcdGet ParseGet(List<string> tokens)
     {
         var flags = Flags.Read(tokens);
-        var key = flags.Positional.Count > 0 ? flags.Positional[0] : throw new EtcdCommandException("get needs a key.");
+        var key = flags.Positional.Count > 0 ? flags.Positional[0] : throw new EtcdCommandException(EtcdStrings.Format("Etcd/NeedsKey", "get"));
         var rangeEnd = flags.Positional.Count > 1 ? flags.Positional[1] : null;
         var order = flags.Value("order")?.ToUpperInvariant();
         if (order is not (null or "ASCEND" or "DESCEND"))
         {
-            throw new EtcdCommandException("--order must be ASCEND or DESCEND.");
+            throw new EtcdCommandException(EtcdStrings.Get("Etcd/OrderFlag"));
         }
 
         var sortBy = flags.Value("sort-by")?.ToUpperInvariant();
         if (sortBy is not (null or "KEY" or "VERSION" or "CREATE" or "MOD" or "VALUE"))
         {
-            throw new EtcdCommandException("--sort-by must be KEY, VERSION, CREATE, MOD or VALUE.");
+            throw new EtcdCommandException(EtcdStrings.Get("Etcd/SortByFlag"));
         }
 
         var get = new EtcdGet(
@@ -255,12 +257,12 @@ internal static class EtcdCommandParser
             Integer(flags.Value("rev"), "--rev"));
         if (get.Limit < 0 || get.Revision < 0)
         {
-            throw new EtcdCommandException("--limit and --rev cannot be negative.");
+            throw new EtcdCommandException(EtcdStrings.Get("Etcd/NegativeLimit"));
         }
 
         if (get.Prefix && get.FromKey)
         {
-            throw new EtcdCommandException("--prefix and --from-key cannot be used together.");
+            throw new EtcdCommandException(EtcdStrings.Get("Etcd/PrefixAndFromKey"));
         }
 
         return get;
@@ -271,12 +273,12 @@ internal static class EtcdCommandParser
         var flags = Flags.Read(tokens);
         if (flags.Positional.Count < 2)
         {
-            throw new EtcdCommandException("put needs a key and a value.");
+            throw new EtcdCommandException(EtcdStrings.Get("Etcd/PutNeedsKeyAndValue"));
         }
 
         if (flags.Positional.Count > 2)
         {
-            throw new EtcdCommandException("put takes one key and one value; quote a value that holds spaces.");
+            throw new EtcdCommandException(EtcdStrings.Get("Etcd/PutTakesOne"));
         }
 
         var lease = flags.Value("lease") is { } text ? ParseLeaseId(text) : (long?)null;
@@ -286,10 +288,10 @@ internal static class EtcdCommandParser
     private static EtcdDelete ParseDelete(List<string> tokens)
     {
         var flags = Flags.Read(tokens);
-        var key = flags.Positional.Count > 0 ? flags.Positional[0] : throw new EtcdCommandException("del needs a key.");
+        var key = flags.Positional.Count > 0 ? flags.Positional[0] : throw new EtcdCommandException(EtcdStrings.Format("Etcd/NeedsKey", "del"));
         if (flags.Has("prefix") && flags.Has("from-key"))
         {
-            throw new EtcdCommandException("--prefix and --from-key cannot be used together.");
+            throw new EtcdCommandException(EtcdStrings.Get("Etcd/PrefixAndFromKey"));
         }
 
         return new EtcdDelete(key, flags.Positional.Count > 1 ? flags.Positional[1] : null, flags.Has("prefix"), flags.Has("from-key"));
@@ -298,18 +300,18 @@ internal static class EtcdCommandParser
     private static EtcdWatch ParseWatch(List<string> tokens)
     {
         var flags = Flags.Read(tokens);
-        var key = flags.Positional.Count > 0 ? flags.Positional[0] : throw new EtcdCommandException("watch needs a key.");
+        var key = flags.Positional.Count > 0 ? flags.Positional[0] : throw new EtcdCommandException(EtcdStrings.Format("Etcd/NeedsKey", "watch"));
         var timeout = DefaultWatchSeconds;
         if (flags.Value("timeout") is { } text)
         {
             if (!double.TryParse(text.TrimEnd('s'), NumberStyles.Float, CultureInfo.InvariantCulture, out timeout) || !double.IsFinite(timeout))
             {
-                throw new EtcdCommandException("--timeout must be a number of seconds.");
+                throw new EtcdCommandException(EtcdStrings.Get("Etcd/TimeoutNumber"));
             }
 
             if (timeout < 0 || timeout > MaximumWatchSeconds)
             {
-                throw new EtcdCommandException(string.Create(CultureInfo.InvariantCulture, $"--timeout must be between 0 and {MaximumWatchSeconds} seconds."));
+                throw new EtcdCommandException(EtcdStrings.Format("Etcd/TimeoutRange", MaximumWatchSeconds));
             }
         }
 
@@ -320,22 +322,22 @@ internal static class EtcdCommandParser
     {
         if (tokens.Count == 0)
         {
-            throw new EtcdCommandException("lease needs a subcommand: grant, revoke, timetolive, list or keep-alive.");
+            throw new EtcdCommandException(EtcdStrings.Format("Etcd/NeedsSubcommand", "lease", "grant, revoke, timetolive, list, keep-alive"));
         }
 
         var args = tokens.Skip(1).ToList();
         var flags = Flags.Read(args);
-        string Id(string sub) => flags.Positional.Count > 0 ? flags.Positional[0] : throw new EtcdCommandException($"lease {sub} needs a lease ID.");
+        string Id(string sub) => flags.Positional.Count > 0 ? flags.Positional[0] : throw new EtcdCommandException(EtcdStrings.Format("Etcd/NeedsLeaseId", "lease " + sub));
         return tokens[0].ToLowerInvariant() switch
         {
             "grant" => new EtcdLeaseGrant(flags.Positional.Count > 0 && long.TryParse(flags.Positional[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out var ttl) && ttl > 0
                 ? ttl
-                : throw new EtcdCommandException("lease grant needs a TTL in whole seconds.")),
+                : throw new EtcdCommandException(EtcdStrings.Get("Etcd/LeaseGrantTtl"))),
             "revoke" => new EtcdLeaseRevoke(ParseLeaseId(Id("revoke"))),
             "timetolive" => new EtcdLeaseTimeToLive(ParseLeaseId(Id("timetolive")), flags.Has("keys")),
             "list" => new EtcdLeaseList(),
             "keep-alive" => new EtcdLeaseKeepAlive(ParseLeaseId(Id("keep-alive"))),
-            var other => throw new EtcdCommandException($"Unknown command: lease {other}."),
+            var other => throw new EtcdCommandException(EtcdStrings.Format("Etcd/UnknownCommand", "lease " + other)),
         };
     }
 
@@ -344,25 +346,25 @@ internal static class EtcdCommandParser
         var flags = Flags.Read(tokens);
         return flags.Positional.Count > 0 && long.TryParse(flags.Positional[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out var revision) && revision > 0
             ? new EtcdCompaction(revision, flags.Has("physical"))
-            : throw new EtcdCommandException("compaction needs a revision.");
+            : throw new EtcdCommandException(EtcdStrings.Get("Etcd/CompactionNeedsRevision"));
     }
 
     private static EtcdOperation ParseUser(List<string> tokens)
     {
         if (tokens.Count == 0)
         {
-            throw new EtcdCommandException("user needs a subcommand: add, delete, list, grant-role or revoke-role.");
+            throw new EtcdCommandException(EtcdStrings.Format("Etcd/NeedsSubcommand", "user", "add, delete, list, grant-role, revoke-role"));
         }
 
         var args = tokens.Skip(1).ToList();
         return tokens[0].ToLowerInvariant() switch
         {
-            "add" => args.Count > 0 ? new EtcdUserAdd(args[0], args.Count > 1 ? args[1] : null) : throw new EtcdCommandException("user add needs a user name."),
-            "delete" => args.Count > 0 ? new EtcdUserDelete(args[0]) : throw new EtcdCommandException("user delete needs a user name."),
+            "add" => args.Count > 0 ? new EtcdUserAdd(args[0], args.Count > 1 ? args[1] : null) : throw new EtcdCommandException(EtcdStrings.Format("Etcd/NeedsUserName", "user add")),
+            "delete" => args.Count > 0 ? new EtcdUserDelete(args[0]) : throw new EtcdCommandException(EtcdStrings.Format("Etcd/NeedsUserName", "user delete")),
             "list" => new EtcdUserList(),
-            "grant-role" => args.Count > 1 ? new EtcdUserGrantRole(args[0], args[1]) : throw new EtcdCommandException("user grant-role needs a user name and a role."),
-            "revoke-role" => args.Count > 1 ? new EtcdUserRevokeRole(args[0], args[1]) : throw new EtcdCommandException("user revoke-role needs a user name and a role."),
-            var other => throw new EtcdCommandException($"Unknown command: user {other}."),
+            "grant-role" => args.Count > 1 ? new EtcdUserGrantRole(args[0], args[1]) : throw new EtcdCommandException(EtcdStrings.Format("Etcd/NeedsUserAndRole", "user grant-role")),
+            "revoke-role" => args.Count > 1 ? new EtcdUserRevokeRole(args[0], args[1]) : throw new EtcdCommandException(EtcdStrings.Format("Etcd/NeedsUserAndRole", "user revoke-role")),
+            var other => throw new EtcdCommandException(EtcdStrings.Format("Etcd/UnknownCommand", "user " + other)),
         };
     }
 
@@ -370,16 +372,16 @@ internal static class EtcdCommandParser
     {
         if (tokens.Count == 0)
         {
-            throw new EtcdCommandException("role needs a subcommand: add, delete or list.");
+            throw new EtcdCommandException(EtcdStrings.Format("Etcd/NeedsSubcommand", "role", "add, delete, list"));
         }
 
         var args = tokens.Skip(1).ToList();
         return tokens[0].ToLowerInvariant() switch
         {
-            "add" => args.Count > 0 ? new EtcdRoleAdd(args[0]) : throw new EtcdCommandException("role add needs a role name."),
-            "delete" => args.Count > 0 ? new EtcdRoleDelete(args[0]) : throw new EtcdCommandException("role delete needs a role name."),
+            "add" => args.Count > 0 ? new EtcdRoleAdd(args[0]) : throw new EtcdCommandException(EtcdStrings.Format("Etcd/NeedsRoleName", "role add")),
+            "delete" => args.Count > 0 ? new EtcdRoleDelete(args[0]) : throw new EtcdCommandException(EtcdStrings.Format("Etcd/NeedsRoleName", "role delete")),
             "list" => new EtcdRoleList(),
-            var other => throw new EtcdCommandException($"Unknown command: role {other}."),
+            var other => throw new EtcdCommandException(EtcdStrings.Format("Etcd/UnknownCommand", "role " + other)),
         };
     }
 
@@ -387,16 +389,16 @@ internal static class EtcdCommandParser
     {
         if (tokens.Count == 0)
         {
-            throw new EtcdCommandException($"{command} needs a subcommand: {choices}.");
+            throw new EtcdCommandException(EtcdStrings.Format("Etcd/NeedsSubcommand", command, choices));
         }
 
-        return pick(tokens[0].ToLowerInvariant(), tokens) ?? throw new EtcdCommandException($"Unknown command: {command} {tokens[0]}.");
+        return pick(tokens[0].ToLowerInvariant(), tokens) ?? throw new EtcdCommandException(EtcdStrings.Format("Etcd/UnknownCommand", command + " " + tokens[0]));
     }
 
     private static long Integer(string? text, string flag) =>
         text is null ? 0
         : long.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var value) ? value
-        : throw new EtcdCommandException($"{flag} must be a whole number.");
+        : throw new EtcdCommandException(EtcdStrings.Format("Etcd/WholeNumber", flag));
 
     /// <summary>etcdctl's flags: <c>--name value</c>, <c>--name=value</c> and bare switches.</summary>
     private sealed class Flags

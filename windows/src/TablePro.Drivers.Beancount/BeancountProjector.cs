@@ -1,3 +1,5 @@
+using TablePro.Drivers.Beancount.Localization;
+
 namespace TablePro.Drivers.Beancount;
 
 /// <summary>
@@ -26,7 +28,7 @@ internal sealed class BeancountProjector(
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            throw BeancountException.ConnectionFailed($"Connection timed out after {timeout.TotalSeconds:0} seconds");
+            throw BeancountException.ConnectionFailed(BeancountStrings.Format("Beancount/ConnectTimedOut", timeout.TotalSeconds));
         }
     }
 
@@ -69,7 +71,7 @@ internal sealed class BeancountProjector(
             return projection;
         }
 
-        throw BeancountException.ConnectionFailed("Beancount ledger changed while building its SQL projection");
+        throw BeancountException.ConnectionFailed(BeancountStrings.Get("Beancount/LedgerChanged"));
     }
 
     private static bool SamePaths(IReadOnlyList<string> left, IReadOnlyList<string> right)

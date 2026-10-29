@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AnsweredHttp" xml:space="preserve">
+    <value>Trino HTTP {0} {1} yanıtını verdi</value>
+  </data>
+  <data name="AnsweredHttpWith" xml:space="preserve">
+    <value>Trino HTTP {0} {1} yanıtını verdi: {2}</value>
+  </data>
+  <data name="CredentialsRefused" xml:space="preserve">
+    <value>Trino kimlik bilgilerini reddetti.</value>
+  </data>
+  <data name="CredentialsRefusedWith" xml:space="preserve">
+    <value>Trino kimlik bilgilerini reddetti: {0}</value>
+  </data>
+  <data name="NeedsComparableKey" xml:space="preserve">
+    <value>Bir satırın güvenle değiştirilebilmesi için en az bir karşılaştırılabilir anahtar sütunu gerekir.</value>
+  </data>
+  <data name="NotClientProtocol" xml:space="preserve">
+    <value>Trino istemci protokolüne uymayan bir yanıt döndürdü: {0}</value>
+  </data>
+  <data name="PasswordNeedsHttps" xml:space="preserve">
+    <value>Trino parolayı veya belirteci yalnızca HTTPS üzerinden kabul eder. SSL modunu Zorunlu olarak ayarlayın veya {0} için bir https:// URL'si kullanın.</value>
+  </data>
+  <data name="PlainHttpRedirect" xml:space="preserve">
+    <value>Trino bir HTTPS isteğine düz bir http:// adresiyle yanıt verdi, bu nedenle izlenmedi. TLS proxy'si arkasındaki bir koordinatör http-server.process-forwarded=true gerektirir.</value>
+  </data>
+</root>

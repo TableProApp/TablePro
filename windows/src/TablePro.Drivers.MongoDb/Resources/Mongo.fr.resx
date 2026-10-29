@@ -1,0 +1,366 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AggregateCursorUnsupported" xml:space="preserve">
+    <value>.{0}() n’est pas pris en charge sur un curseur d’agrégation.</value>
+  </data>
+  <data name="ArgumentMustBeDocument" xml:space="preserve">
+    <value>L’argument {0} de {1} doit être un document</value>
+  </data>
+  <data name="AssignmentsUnsupported" xml:space="preserve">
+    <value>Les affectations ne sont pas prises en charge</value>
+  </data>
+  <data name="BinaryArgs" xml:space="preserve">
+    <value>accepte un numéro de sous-type et une chaîne</value>
+  </data>
+  <data name="BracketNameQuoted" xml:space="preserve">
+    <value>Un nom entre crochets doit être une chaîne entre guillemets</value>
+  </data>
+  <data name="BulkWriteShape" xml:space="preserve">
+    <value>Chaque opération bulkWrite est de la forme {insertOne: ...}, {updateOne: ...} ou similaire</value>
+  </data>
+  <data name="BulkWriteUnknown" xml:space="preserve">
+    <value>bulkWrite ne connaît pas l’opération {0}.</value>
+  </data>
+  <data name="CollectionMethodUnsupported" xml:space="preserve">
+    <value>db.{0}.{1}() n’est pas pris en charge.</value>
+  </data>
+  <data name="CommentNotClosed" xml:space="preserve">
+    <value>Le commentaire n’est pas fermé</value>
+  </data>
+  <data name="ConcernNotMet" xml:space="preserve">
+    <value>L’écriture a eu lieu mais sa préoccupation d’écriture (write concern) n’a pas été satisfaite : {0}</value>
+  </data>
+  <data name="ConcernUnknownWithStatement" xml:space="preserve">
+    <value>L’écriture a eu lieu mais sa préoccupation d’écriture (write concern) n’a pas été satisfaite, on ignore donc si elle est durable : {0}. Instruction : {1}</value>
+  </data>
+  <data name="ConstructorUnsupported" xml:space="preserve">
+    <value>{0}() n’est pas pris en charge</value>
+  </data>
+  <data name="DateArgs" xml:space="preserve">
+    <value>accepte un argument : une date ISO ou des millisecondes depuis 1970</value>
+  </data>
+  <data name="DbAlone" xml:space="preserve">
+    <value>db seul n’exécute rien : nommez une collection ou appelez une méthode</value>
+  </data>
+  <data name="DbMethodUnsupported" xml:space="preserve">
+    <value>db.{0}() n’est pas pris en charge.</value>
+  </data>
+  <data name="DropIndexNeeds" xml:space="preserve">
+    <value>dropIndex nécessite le nom de l’index ou ses clés</value>
+  </data>
+  <data name="ErrorWithCode" xml:space="preserve">
+    <value>{0} (code {1})</value>
+  </data>
+  <data name="ErrorWithStatement" xml:space="preserve">
+    <value>{0} (code {1}). Instruction : {2}</value>
+  </data>
+  <data name="ExpectedChar" xml:space="preserve">
+    <value>« {0} » attendu</value>
+  </data>
+  <data name="ExpectedColon" xml:space="preserve">
+    <value>« : » attendu après le nom du champ</value>
+  </data>
+  <data name="ExpectedCommaOr" xml:space="preserve">
+    <value>« , » ou « {0} » attendu</value>
+  </data>
+  <data name="ExpectedConstructor" xml:space="preserve">
+    <value>Constructeur attendu après new</value>
+  </data>
+  <data name="ExpectedDocument" xml:space="preserve">
+    <value>Document entre accolades attendu</value>
+  </data>
+  <data name="ExpectedFieldName" xml:space="preserve">
+    <value>Nom de champ attendu</value>
+  </data>
+  <data name="ExpectedMethodName" xml:space="preserve">
+    <value>Nom de méthode attendu avant les parenthèses</value>
+  </data>
+  <data name="ExpectedNameAfterDot" xml:space="preserve">
+    <value>Nom attendu après « . »</value>
+  </data>
+  <data name="ExpectedNumberAfterSign" xml:space="preserve">
+    <value>Nombre attendu après le signe</value>
+  </data>
+  <data name="ExpectedParenAfter" xml:space="preserve">
+    <value>« ( » attendu après {0}</value>
+  </data>
+  <data name="ExpectedValue" xml:space="preserve">
+    <value>Valeur attendue</value>
+  </data>
+  <data name="FindCursorUnsupported" xml:space="preserve">
+    <value>.{0}() n’est pas pris en charge sur un curseur find.</value>
+  </data>
+  <data name="FunctionsUnsupported" xml:space="preserve">
+    <value>Les fonctions ne sont pas prises en charge</value>
+  </data>
+  <data name="HelpersUnsupported" xml:space="preserve">
+    <value>Les fonctions d’aide {0}.* ne sont pas prises en charge ; utilisez db.adminCommand avec la commande qu’elles envoient.</value>
+  </data>
+  <data name="IdImmutable" xml:space="preserve">
+    <value>MongoDB ne modifie pas le _id d’un document. Supprimez plutôt la ligne et insérez-la avec le nouveau _id.</value>
+  </data>
+  <data name="InvalidEscape" xml:space="preserve">
+    <value>Séquence d’échappement non valide dans la chaîne</value>
+  </data>
+  <data name="InvalidUnicodeEscape" xml:space="preserve">
+    <value>Séquence d’échappement Unicode non valide</value>
+  </data>
+  <data name="MoreThanFirstBatch" xml:space="preserve">
+    <value>La commande a renvoyé plus de documents que son premier lot ; exécutez la méthode correspondante, comme find(), pour tous les lire.</value>
+  </data>
+  <data name="MultiNeedsOperators" xml:space="preserve">
+    <value>update avec multi: true nécessite des opérateurs de mise à jour comme $set</value>
+  </data>
+  <data name="NameAfterNumber" xml:space="preserve">
+    <value>Un nom ne peut pas commencer juste après un nombre</value>
+  </data>
+  <data name="Needs" xml:space="preserve">
+    <value>{0} nécessite {1}</value>
+  </data>
+  <data name="NeedsBraces" xml:space="preserve">
+    <value>{0} nécessite {1} entre accolades</value>
+  </data>
+  <data name="NeedsCommandDocument" xml:space="preserve">
+    <value>{0} nécessite un document de commande</value>
+  </data>
+  <data name="NeedsDocumentsInArray" xml:space="preserve">
+    <value>{0} nécessite des documents dans son tableau</value>
+  </data>
+  <data name="NeedsFilter" xml:space="preserve">
+    <value>{0} nécessite un filtre ; passez {{}} pour correspondre à tous les documents</value>
+  </data>
+  <data name="NeedsOperatorsOrPipeline" xml:space="preserve">
+    <value>{0} nécessite des opérateurs de mise à jour comme $set, ou un pipeline ; utilisez replaceOne pour remplacer un document</value>
+  </data>
+  <data name="NeedsPipeline" xml:space="preserve">
+    <value>{0} nécessite un tableau d’étapes de pipeline</value>
+  </data>
+  <data name="NeedsQuoted" xml:space="preserve">
+    <value>{0} nécessite {1} sous forme de chaîne entre guillemets</value>
+  </data>
+  <data name="NeedsWholeNumber" xml:space="preserve">
+    <value>{0} nécessite un nombre entier</value>
+  </data>
+  <data name="NoDocumentMatched" xml:space="preserve">
+    <value>Aucun document ne correspond.</value>
+  </data>
+  <data name="NoOperatorsAllowed" xml:space="preserve">
+    <value>{0} accepte un document sans opérateurs de mise à jour ; utilisez updateOne pour appliquer $set</value>
+  </data>
+  <data name="NotAChange" xml:space="preserve">
+    <value>{0} n’est pas une modification que MongoDB peut appliquer.</value>
+  </data>
+  <data name="NotACursor" xml:space="preserve">
+    <value>La méthode qui précède .{0}() ne renvoie pas de curseur, donc .{0}() ne peut pas la suivre.</value>
+  </data>
+  <data name="NotADate" xml:space="preserve">
+    <value>{0} n’est pas une date</value>
+  </data>
+  <data name="NotANumber" xml:space="preserve">
+    <value>{0} n’est pas un nombre</value>
+  </data>
+  <data name="NotAValue" xml:space="preserve">
+    <value>« {0} » n’est pas une valeur : les variables ne sont pas prises en charge</value>
+  </data>
+  <data name="NotDecimal" xml:space="preserve">
+    <value>{0} n’est pas un nombre décimal</value>
+  </data>
+  <data name="NotDefined" xml:space="preserve">
+    <value>« {0} » n’est pas défini : une instruction commence par db, use ou show</value>
+  </data>
+  <data name="NotJson" xml:space="preserve">
+    <value>{0} contient du JSON, et sa nouvelle valeur ne se lit pas comme du JSON : {1} à la colonne {2}.</value>
+  </data>
+  <data name="NotObjectIdHex" xml:space="preserve">
+    <value>{0} ne contient pas 24 chiffres hexadécimaux</value>
+  </data>
+  <data name="NotRegexFlag" xml:space="preserve">
+    <value>« {0} » n’est pas un indicateur d’expression régulière</value>
+  </data>
+  <data name="NotUuid" xml:space="preserve">
+    <value>{0} n’est pas un UUID</value>
+  </data>
+  <data name="NotWholeNumber" xml:space="preserve">
+    <value>{0} n’est pas un nombre entier</value>
+  </data>
+  <data name="OneArgument" xml:space="preserve">
+    <value>accepte un argument</value>
+  </data>
+  <data name="OperationsFailed" xml:space="preserve">
+    <value>{0} opérations sur {1} ont échoué : {2}</value>
+  </data>
+  <data name="OutOfRange" xml:space="preserve">
+    <value>{0} est hors limites</value>
+  </data>
+  <data name="QuotedStringExpected" xml:space="preserve">
+    <value>attend une chaîne entre guillemets</value>
+  </data>
+  <data name="ReadOnlyCannotSave" xml:space="preserve">
+    <value>La connexion est en lecture seule, les modifications ne peuvent donc pas être enregistrées.</value>
+  </data>
+  <data name="ReadOnlyStatement" xml:space="preserve">
+    <value>La connexion est en lecture seule, et cette instruction peut modifier des données. Seules les lectures s’exécutent sur une connexion en lecture seule.</value>
+  </data>
+  <data name="RegexArgs" xml:space="preserve">
+    <value>accepte un motif et des indicateurs facultatifs</value>
+  </data>
+  <data name="RegexNotClosed" xml:space="preserve">
+    <value>L’expression régulière n’est pas fermée</value>
+  </data>
+  <data name="ShorthandUnsupported" xml:space="preserve">
+    <value>Le champ « {0} » nécessite une valeur : les propriétés abrégées ne sont pas prises en charge</value>
+  </data>
+  <data name="ShowNeedsWhat" xml:space="preserve">
+    <value>show nécessite l’élément à lister, comme dbs ou collections</value>
+  </data>
+  <data name="ShowUnsupported" xml:space="preserve">
+    <value>show {0} n’est pas pris en charge. Essayez show dbs, show collections, show users ou show roles.</value>
+  </data>
+  <data name="SpreadUnsupported" xml:space="preserve">
+    <value>La syntaxe de décomposition n’est pas prise en charge</value>
+  </data>
+  <data name="SrvThroughTunnel" xml:space="preserve">
+    <value>Une liste de départ DNS (mongodb+srv) ne peut pas passer par un tunnel SSH : le tunnel ne transporte qu’un hôte, et la liste de départ désigne les serveurs par DNS. Désactivez la liste de départ et connectez-vous à l’hôte et au port d’un membre.</value>
+  </data>
+  <data name="StatementEmpty" xml:space="preserve">
+    <value>L’instruction est vide</value>
+  </data>
+  <data name="StatementStart" xml:space="preserve">
+    <value>Une instruction commence par db, use ou show</value>
+  </data>
+  <data name="StatementUnsupported" xml:space="preserve">
+    <value>L’instruction n’est pas prise en charge.</value>
+  </data>
+  <data name="StringNotClosed" xml:space="preserve">
+    <value>La chaîne n’est pas fermée</value>
+  </data>
+  <data name="StringNotClosedLine" xml:space="preserve">
+    <value>La chaîne n’est pas fermée avant la fin de la ligne</value>
+  </data>
+  <data name="SubtypeOutOfRange" xml:space="preserve">
+    <value>le sous-type {0} est hors limites</value>
+  </data>
+  <data name="SyntaxAt" xml:space="preserve">
+    <value>SyntaxError : {0} (ligne {1}, colonne {2})</value>
+  </data>
+  <data name="TimestampArgs" xml:space="preserve">
+    <value>accepte les secondes et l’incrément, ou {t, i}</value>
+  </data>
+  <data name="UnexpectedAfterStatement" xml:space="preserve">
+    <value>Texte inattendu après l’instruction</value>
+  </data>
+  <data name="UnexpectedAfterValue" xml:space="preserve">
+    <value>Texte inattendu après la valeur</value>
+  </data>
+  <data name="UnexpectedToken" xml:space="preserve">
+    <value>« {0} » inattendu</value>
+  </data>
+  <data name="UnknownError" xml:space="preserve">
+    <value>erreur inconnue</value>
+  </data>
+  <data name="UseNeedsDatabase" xml:space="preserve">
+    <value>use nécessite un nom de base de données</value>
+  </data>
+  <data name="WhatCollationDocument" xml:space="preserve">
+    <value>un document de collation</value>
+  </data>
+  <data name="WhatCollectionName" xml:space="preserve">
+    <value>un nom de collection</value>
+  </data>
+  <data name="WhatCommandDocument" xml:space="preserve">
+    <value>un document de commande</value>
+  </data>
+  <data name="WhatComment" xml:space="preserve">
+    <value>un commentaire</value>
+  </data>
+  <data name="WhatDatabaseName" xml:space="preserve">
+    <value>un nom de base de données</value>
+  </data>
+  <data name="WhatDocument" xml:space="preserve">
+    <value>un document</value>
+  </data>
+  <data name="WhatDocumentArray" xml:space="preserve">
+    <value>un tableau de documents</value>
+  </data>
+  <data name="WhatDocumentOrArray" xml:space="preserve">
+    <value>un document ou un tableau de documents</value>
+  </data>
+  <data name="WhatFieldName" xml:space="preserve">
+    <value>un nom de champ</value>
+  </data>
+  <data name="WhatFilter" xml:space="preserve">
+    <value>un filtre</value>
+  </data>
+  <data name="WhatFindAndModifyDocument" xml:space="preserve">
+    <value>un document de requête, de mise à jour et d’options</value>
+  </data>
+  <data name="WhatHint" xml:space="preserve">
+    <value>un nom ou des clés d’index</value>
+  </data>
+  <data name="WhatIndexKeys" xml:space="preserve">
+    <value>les clés de l’index</value>
+  </data>
+  <data name="WhatIndexKeysArray" xml:space="preserve">
+    <value>un tableau de clés d’index</value>
+  </data>
+  <data name="WhatIndexNameOrKeys" xml:space="preserve">
+    <value>le nom ou les clés de l’index</value>
+  </data>
+  <data name="WhatNewName" xml:space="preserve">
+    <value>le nouveau nom</value>
+  </data>
+  <data name="WhatOperationArray" xml:space="preserve">
+    <value>un tableau d’opérations</value>
+  </data>
+  <data name="WhatOperationId" xml:space="preserve">
+    <value>l’ID de l’opération</value>
+  </data>
+  <data name="WhatProjectionDocument" xml:space="preserve">
+    <value>un document de projection</value>
+  </data>
+  <data name="WhatReplacementDocument" xml:space="preserve">
+    <value>un document de remplacement</value>
+  </data>
+  <data name="WhatRoleArray" xml:space="preserve">
+    <value>un tableau de rôles</value>
+  </data>
+  <data name="WhatSortDocument" xml:space="preserve">
+    <value>un document de tri</value>
+  </data>
+  <data name="WhatSourceCollection" xml:space="preserve">
+    <value>la collection source</value>
+  </data>
+  <data name="WhatUpdateDocument" xml:space="preserve">
+    <value>un document de mise à jour</value>
+  </data>
+  <data name="WhatUpdateOrPipeline" xml:space="preserve">
+    <value>un document de mise à jour ou un pipeline</value>
+  </data>
+  <data name="WhatUserDocument" xml:space="preserve">
+    <value>un document utilisateur</value>
+  </data>
+  <data name="WhatUserName" xml:space="preserve">
+    <value>un nom d’utilisateur</value>
+  </data>
+  <data name="WhatViewName" xml:space="preserve">
+    <value>un nom de vue</value>
+  </data>
+  <data name="WhatWholeNumber" xml:space="preserve">
+    <value>un nombre entier</value>
+  </data>
+  <data name="WriteFailed" xml:space="preserve">
+    <value>L’écriture a échoué</value>
+  </data>
+</root>

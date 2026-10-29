@@ -1,3 +1,5 @@
+using TablePro.Core.Localization;
+
 namespace TablePro.Core.Principals;
 
 /// <summary>How deep in the server a grant reaches, from the whole server down to one column.</summary>
@@ -65,11 +67,11 @@ public sealed record PrivilegeScope
         PrivilegeLevel.Schema => Schema!,
         PrivilegeLevel.Table => Table!,
         PrivilegeLevel.Column => Column!,
-        _ => "Server",
+        _ => CoreStrings.Get("Principal/Server"),
     };
 
     /// <summary>Every name from the database down, for headers where the object alone would be ambiguous.</summary>
-    public string DisplayPath => Level == PrivilegeLevel.Server ? "Server" : string.Join(" › ", Parts());
+    public string DisplayPath => Level == PrivilegeLevel.Server ? CoreStrings.Get("Principal/Server") : string.Join(" › ", Parts());
 
     /// <summary>Orders parents before their children and siblings by name.</summary>
     public string SortKey => Level == PrivilegeLevel.Server ? string.Empty : string.Join('\u001F', Parts());

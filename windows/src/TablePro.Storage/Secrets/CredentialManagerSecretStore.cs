@@ -3,6 +3,7 @@ using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using System.Security.Cryptography;
 using System.Text;
+using TablePro.Storage.Localization;
 
 namespace TablePro.Storage.Secrets;
 
@@ -35,7 +36,7 @@ public sealed partial class CredentialManagerSecretStore : ISecretStore
         if (!NativeMethods.CredRead(key, CredTypeGeneric, 0, out var handle))
         {
             var error = Marshal.GetLastPInvokeError();
-            return error == ErrorNotFound ? null : throw new Win32Exception(error, $"Credential Manager could not read {key}.");
+            return error == ErrorNotFound ? null : throw new Win32Exception(error, StorageStrings.Format("Credentials/ReadFailed", key));
         }
 
         try
@@ -67,7 +68,7 @@ public sealed partial class CredentialManagerSecretStore : ISecretStore
         var byteCount = Encoding.Unicode.GetByteCount(secret);
         if (byteCount > MaxBlobBytes)
         {
-            throw new ArgumentException($"Credential Manager holds at most {MaxBlobBytes / 2} characters per secret.", nameof(secret));
+            throw new ArgumentException(StorageStrings.Format("Credentials/SecretTooLong", MaxBlobBytes / 2), nameof(secret));
         }
 
         var bytes = GC.AllocateUninitializedArray<byte>(byteCount, pinned: true);
@@ -89,7 +90,7 @@ public sealed partial class CredentialManagerSecretStore : ISecretStore
                 };
                 if (!NativeMethods.CredWrite(&credential, 0))
                 {
-                    throw new Win32Exception(Marshal.GetLastPInvokeError(), $"Credential Manager could not save {key}.");
+                    throw new Win32Exception(Marshal.GetLastPInvokeError(), StorageStrings.Format("Credentials/SaveFailed", key));
                 }
             }
         }
@@ -108,7 +109,7 @@ public sealed partial class CredentialManagerSecretStore : ISecretStore
         }
 
         var error = Marshal.GetLastPInvokeError();
-        return error == ErrorNotFound ? false : throw new Win32Exception(error, $"Credential Manager could not delete {key}.");
+        return error == ErrorNotFound ? false : throw new Win32Exception(error, StorageStrings.Format("Credentials/DeleteFailed", key));
     }
 
     private static unsafe partial class NativeMethods

@@ -29,7 +29,7 @@ internal sealed partial class SqlFilesPane : UserControl
     private readonly IWorkspaceHost _host;
     private readonly Action<string> _insert;
     private readonly ListView _list = new() { SelectionMode = ListViewSelectionMode.Single, IsItemClickEnabled = true };
-    private readonly AutoSuggestBox _search = new() { PlaceholderText = Strings.Get("SqlFiles/SearchPlaceholder"),QueryIcon = new SymbolIcon(Symbol.Find) };
+    private readonly AutoSuggestBox _search = new AutoSuggestBox { PlaceholderText = Strings.Get("SqlFiles/SearchPlaceholder"),QueryIcon = new SymbolIcon(Symbol.Find) }.WithLocalizedQueryButton();
     private readonly HashSet<string> _collapsed = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _expandedDirectories = new(StringComparer.OrdinalIgnoreCase);
 

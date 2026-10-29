@@ -3,7 +3,9 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using TablePro.Core.Browse;
+using TablePro.Core.Localization;
 using TablePro.Drivers.Http;
+using TablePro.Drivers.Typesense.Localization;
 
 namespace TablePro.Drivers.Typesense;
 
@@ -140,7 +142,7 @@ internal static class TsFilter
             FilterOperator.Contains => $"{column}:{Text(value, column)}",
             FilterOperator.NotContains => $"{column}:!{Text(value, column)}",
             FilterOperator.StartsWith => $"{column}:{Text(value, column)}*",
-            _ => throw new NotSupportedException($"Typesense cannot filter with {rule.Operator.DisplayName()}."),
+            _ => throw new NotSupportedException(CoreStrings.Format("Driver/CannotFilterWith", "Typesense", rule.Operator.DisplayName())),
         };
     }
 
@@ -165,13 +167,13 @@ internal static class TsFilter
         {
             return double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out _)
                 ? value.Trim()
-                : throw new ArgumentException($"{column} is a numeric field, and {value} is not a number.");
+                : throw new ArgumentException(CoreStrings.Format("Driver/NumericFieldNotNumber", column, value));
         }
 
         if (field is { IsBoolean: true })
         {
             var lowered = value.Trim().ToLowerInvariant();
-            return lowered is "true" or "false" ? lowered : throw new ArgumentException($"{column} is a boolean field, so it matches only true or false, not {value}.");
+            return lowered is "true" or "false" ? lowered : throw new ArgumentException(CoreStrings.Format("Driver/BooleanFieldNotBoolean", column, value));
         }
 
         return Text(value, column);
@@ -180,7 +182,7 @@ internal static class TsFilter
     /// <summary>Backticks are Typesense's only quoting and have no escape, so a value holding one cannot be filtered on.</summary>
     public static string Text(string value, string column) =>
         value.Contains('`', StringComparison.Ordinal)
-            ? throw new ArgumentException($"Typesense has no way to escape a backtick in a filter value, so {column} cannot be filtered on this text.")
+            ? throw new ArgumentException(TypesenseStrings.Format("Typesense/BacktickInFilter", column))
             : $"`{value}`";
 
     private static string Numeric(string value, string column, string op, TsField? field)
@@ -188,7 +190,7 @@ internal static class TsFilter
         // A string field matches nothing under a comparison rather than failing, which would read as an empty table.
         if ((field is not null && !field.IsNumeric) || !double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out _))
         {
-            throw new ArgumentException($"Typesense only compares numbers with {op}, and {column} is not a numeric field.");
+            throw new ArgumentException(TypesenseStrings.Format("Typesense/ComparesNumbersOnly", op, column));
         }
 
         return value.Trim();
@@ -207,7 +209,7 @@ internal static class TsFilter
             var comma = value.IndexOf(',', StringComparison.Ordinal);
             if (comma < 0)
             {
-                throw new ArgumentException($"BETWEEN on {column} needs an upper bound.");
+                throw new ArgumentException(CoreStrings.Format("Driver/BetweenNeedsUpperBound", column));
             }
 
             (low, high) = (value[..comma], value[(comma + 1)..]);

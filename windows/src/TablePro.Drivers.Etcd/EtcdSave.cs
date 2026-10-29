@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using TablePro.Core.Editing;
+using TablePro.Drivers.Etcd.Localization;
 
 namespace TablePro.Drivers.Etcd;
 
@@ -86,7 +87,7 @@ internal static class EtcdSave
     public static byte[] KeyOf(IReadOnlyDictionary<string, object?> key) =>
         TryGet(key, EtcdRows.KeyColumn, out var value) && Bytes(value) is { Length: > 0 } bytes
             ? bytes
-            : throw new InvalidOperationException("An etcd row is identified by its key, and this change has none.");
+            : throw new InvalidOperationException(EtcdStrings.Get("Etcd/ChangeHasNoKey"));
 
     public static string KeyName(byte[] key) => Convert.ToBase64String(key);
 
@@ -135,14 +136,14 @@ internal static class EtcdSave
 
                 if (newKey.Length == 0)
                 {
-                    throw new InvalidOperationException("An etcd key cannot be empty.");
+                    throw new InvalidOperationException(EtcdStrings.Get("Etcd/EmptyKey"));
                 }
 
                 // A rename is a put of the new key and a delete of the old one; the old key's revision must still be the
                 // one read, so a value changed by someone else in between is not copied over stale.
                 var source = renameSources.TryGetValue(KeyName(oldKey), out var found)
                     ? found
-                    : throw new InvalidOperationException($"The key {EtcdRows.KeyText(oldKey)} no longer exists, so it cannot be renamed.");
+                    : throw new InvalidOperationException(EtcdStrings.Format("Etcd/RenameSourceGone", EtcdRows.KeyText(oldKey)));
                 var copy = new EtcdPutRequest
                 {
                     Key = newKey,
@@ -169,7 +170,7 @@ internal static class EtcdSave
         {
             if (!Editable.Contains(column))
             {
-                throw new NotSupportedException($"etcd keeps {column} itself; only the key, value and lease can be changed.");
+                throw new NotSupportedException(EtcdStrings.Format("Etcd/KeepsColumn", column));
             }
         }
     }

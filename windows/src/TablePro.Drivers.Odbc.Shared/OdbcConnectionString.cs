@@ -1,5 +1,6 @@
 using System.Buffers;
 using System.Text;
+using TablePro.Core.Localization;
 
 namespace TablePro.Drivers.Odbc;
 
@@ -75,7 +76,7 @@ internal sealed class OdbcConnectionString
     {
         if (string.IsNullOrWhiteSpace(key) || key.Trim().Length != key.Length || key.AsSpan().IndexOfAny(ReservedKeyCharacters) >= 0)
         {
-            throw new ArgumentException($"\"{key}\" is not a valid ODBC connection keyword.", nameof(key));
+            throw new ArgumentException(CoreStrings.Format("Driver/OdbcInvalidKeyword", key), nameof(key));
         }
     }
 
@@ -108,7 +109,7 @@ internal sealed class OdbcConnectionString
 
             if (managed.Contains(key, StringComparer.OrdinalIgnoreCase))
             {
-                throw new ArgumentException($"The option \"{key}\" is set from the connection form; change it there instead.");
+                throw new ArgumentException(CoreStrings.Format("Driver/OdbcOptionFromForm", key));
             }
 
             Set(key, value);

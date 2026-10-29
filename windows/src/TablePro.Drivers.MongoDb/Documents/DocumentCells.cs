@@ -1,6 +1,7 @@
 using System.Globalization;
 using MongoDB.Bson;
 using TablePro.Core.Results;
+using TablePro.Drivers.MongoDb.Localization;
 using TablePro.Drivers.MongoDb.Shell;
 
 namespace TablePro.Drivers.MongoDb.Documents;
@@ -116,7 +117,7 @@ internal static class DocumentCells
         }
         catch (ShellSyntaxException ex)
         {
-            throw new FormatException($"{column} holds JSON, and its new value does not read as JSON: {ex.Reason} at column {ex.Column}.", ex);
+            throw new FormatException(MongoStrings.Format("Mongo/NotJson", column, ex.Reason, ex.Column), ex);
         }
     }
 

@@ -1,0 +1,201 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AskPassMissing" xml:space="preserve">
+    <value>SSH parola yardımcısı {0} konumunda yok. TablePro'yu yeniden yükleyin.</value>
+  </data>
+  <data name="BatchScript" xml:space="preserve">
+    <value>{0} bir toplu iş betiği; Windows bunu cmd.exe üzerinden çalıştırır. Bunun yerine programın .exe yolunu verin.</value>
+  </data>
+  <data name="CloudflaredNotFound" xml:space="preserve">
+    <value>cloudflared bulunamadı. “winget install Cloudflare.cloudflared” ile yükleyin veya yolunu bağlantının Cloudflare Tunnel ayarlarında belirtin.</value>
+  </data>
+  <data name="CloudflareSignIn" xml:space="preserve">
+    <value>Cloudflare Access tarayıcıda oturum açmayı gerektiriyor. {0} adresinde oturum açın, ardından yeniden bağlanın.</value>
+  </data>
+  <data name="CloudflareTokenRequired" xml:space="preserve">
+    <value>Hizmet belirteci kimliği ve gizli anahtarı gerekli.</value>
+  </data>
+  <data name="CloudSqlKeyRequired" xml:space="preserve">
+    <value>Bir hizmet hesabı anahtarı gerekli. Anahtarın JSON içeriğini bağlantının Cloud SQL ayarlarına yapıştırın.</value>
+  </data>
+  <data name="CloudSqlProxyName" xml:space="preserve">
+    <value>Cloud SQL Auth Proxy</value>
+  </data>
+  <data name="CloudSqlProxyNotFound" xml:space="preserve">
+    <value>cloud-sql-proxy bulunamadı. “gcloud components install cloud-sql-proxy” ile yükleyin veya yolunu bağlantının Cloud SQL ayarlarında belirtin.</value>
+  </data>
+  <data name="CommandNotFound" xml:space="preserve">
+    <value>{0} bulunamadı. Bağlantıda tam yolunu verin.</value>
+  </data>
+  <data name="CouldNotStart" xml:space="preserve">
+    <value>{0} başlatılamadı: {1}</value>
+  </data>
+  <data name="DatabaseHostEmpty" xml:space="preserve">
+    <value>Veritabanı ana bilgisayarı boş.</value>
+  </data>
+  <data name="DatabaseHostUnsafe" xml:space="preserve">
+    <value>"{0}" veritabanı ana bilgisayarı ssh'nin kabul etmediği karakterler içeriyor.</value>
+  </data>
+  <data name="FixedPortInUse" xml:space="preserve">
+    <value>Başka bir program zaten {0} yerel portunu dinliyor. Başka bir port seçin veya boş bırakın.</value>
+  </data>
+  <data name="HelperCouldNotListen" xml:space="preserve">
+    <value>{0}, {1} yerel portunu dinleyemedi.</value>
+  </data>
+  <data name="HelperExitedEarly" xml:space="preserve">
+    <value>{0}, yerel portu açılmadan önce kapandı.</value>
+  </data>
+  <data name="HelperTimedOut" xml:space="preserve">
+    <value>{0}, yerel portunu zamanında açmadı.</value>
+  </data>
+  <data name="JumpHostEmpty" xml:space="preserve">
+    <value>Atlama sunucusu boş.</value>
+  </data>
+  <data name="JumpHostUnsafe" xml:space="preserve">
+    <value>"{0}" atlama sunucusu ssh'nin kabul etmediği karakterler içeriyor.</value>
+  </data>
+  <data name="NoFreePort" xml:space="preserve">
+    <value>Tünel için boş yerel port yoktu.</value>
+  </data>
+  <data name="NotAProxyOrHelper" xml:space="preserve">
+    <value>Bağlantı bir proxy veya tünel yardımcısı kullanmıyor.</value>
+  </data>
+  <data name="NotHttpProxy" xml:space="preserve">
+    <value>Proxy bir HTTP proxy'si gibi yanıt vermedi.</value>
+  </data>
+  <data name="NotSocks5" xml:space="preserve">
+    <value>Proxy bir SOCKS5 proxy'si gibi yanıt vermedi.</value>
+  </data>
+  <data name="NotSsh" xml:space="preserve">
+    <value>Bağlantı SSH kullanmıyor.</value>
+  </data>
+  <data name="PortOutOfRange" xml:space="preserve">
+    <value>Port 1 ile 65535 arasında olmalıdır.</value>
+  </data>
+  <data name="ProxyClosed" xml:space="preserve">
+    <value>Proxy bağlantıyı kapattı.</value>
+  </data>
+  <data name="ProxyConnectFailed" xml:space="preserve">
+    <value>{0} adresindeki proxy üzerinden bağlanılamadı. {1}</value>
+  </data>
+  <data name="ProxyCouldNotConnect" xml:space="preserve">
+    <value>Proxy {0}:{1} adresine bağlanamadı: {2}.</value>
+  </data>
+  <data name="ProxyIncomplete" xml:space="preserve">
+    <value>Proxy yapılandırması eksik. Bir proxy sunucusu ve portu girin.</value>
+  </data>
+  <data name="ProxyLocalPortFailed" xml:space="preserve">
+    <value>Proxy için yerel bir port açılamadı: {0}</value>
+  </data>
+  <data name="ProxyNeedsLogin" xml:space="preserve">
+    <value>Proxy bir kullanıcı adı ve parola gerektiriyor.</value>
+  </data>
+  <data name="ProxyNoMethod" xml:space="preserve">
+    <value>Proxy sunulan oturum açma yöntemlerinin hiçbirini kabul etmiyor.</value>
+  </data>
+  <data name="ProxyRejectedLogin" xml:space="preserve">
+    <value>Proxy kullanıcı adını ve parolayı reddetti.</value>
+  </data>
+  <data name="ProxyReplyTooLong" xml:space="preserve">
+    <value>Proxy'nin yanıtı çok uzundu.</value>
+  </data>
+  <data name="ProxyTimedOut" xml:space="preserve">
+    <value>{0} adresindeki proxy üzerinden bağlanırken zaman aşımı oldu. Proxy'ye ulaşılabildiğini ve kimlik bilgilerinin doğru olduğunu denetleyin.</value>
+  </data>
+  <data name="ProxyUnreachable" xml:space="preserve">
+    <value>{0} adresindeki proxy'ye ulaşılamadı. {1}</value>
+  </data>
+  <data name="ProxyUnreadableReply" xml:space="preserve">
+    <value>Proxy, TablePro'nun okuyamadığı bir yanıt gönderdi.</value>
+  </data>
+  <data name="ProxyUnsupportedMethod" xml:space="preserve">
+    <value>Proxy, TablePro'nun desteklemediği bir oturum açma yöntemi istedi.</value>
+  </data>
+  <data name="Socks5CredentialsTooLong" xml:space="preserve">
+    <value>SOCKS5 kullanıcı adı ve parolası en fazla 255 bayt olabilir.</value>
+  </data>
+  <data name="Socks5HostTooLong" xml:space="preserve">
+    <value>{0} ana bilgisayar adı bir SOCKS5 proxy'si için çok uzun.</value>
+  </data>
+  <data name="SocksAddressTypeNotSupported" xml:space="preserve">
+    <value>adres türü desteklenmiyor</value>
+  </data>
+  <data name="SocksCommandNotSupported" xml:space="preserve">
+    <value>komut desteklenmiyor</value>
+  </data>
+  <data name="SocksConnectionRefused" xml:space="preserve">
+    <value>bağlantı reddedildi</value>
+  </data>
+  <data name="SocksError" xml:space="preserve">
+    <value>hata {0}</value>
+  </data>
+  <data name="SocksGeneralFailure" xml:space="preserve">
+    <value>genel hata</value>
+  </data>
+  <data name="SocksHostUnreachable" xml:space="preserve">
+    <value>ana bilgisayara ulaşılamıyor</value>
+  </data>
+  <data name="SocksNetworkUnreachable" xml:space="preserve">
+    <value>ağa ulaşılamıyor</value>
+  </data>
+  <data name="SocksNotAllowed" xml:space="preserve">
+    <value>proxy kurallarınca izin verilmiyor</value>
+  </data>
+  <data name="SocksTimedOut" xml:space="preserve">
+    <value>zaman aşımı</value>
+  </data>
+  <data name="SshClosed" xml:space="preserve">
+    <value>{0} üzerinden SSH tüneli kapandı.</value>
+  </data>
+  <data name="SshFailed" xml:space="preserve">
+    <value>ssh, {0} üzerinden tünel açamadı.</value>
+  </data>
+  <data name="SshHostEmpty" xml:space="preserve">
+    <value>SSH ana bilgisayarı boş.</value>
+  </data>
+  <data name="SshHostKeyMismatch" xml:space="preserve">
+    <value>{0} ana bilgisayar anahtarı known_hosts içindekiyle eşleşmiyor. Sunucunun yöneticisiyle doğrulayın, ardından eski kaydı kaldırın.</value>
+  </data>
+  <data name="SshHostNotFound" xml:space="preserve">
+    <value>SSH ana bilgisayarı {0} bulunamadı.</value>
+  </data>
+  <data name="SshHostUnsafe" xml:space="preserve">
+    <value>"{0}" SSH ana bilgisayarı ssh'nin kabul etmediği karakterler içeriyor.</value>
+  </data>
+  <data name="SshLocalPort" xml:space="preserve">
+    <value>ssh tünelin yerel ucunu dinleyemedi.</value>
+  </data>
+  <data name="SshLoginRejected" xml:space="preserve">
+    <value>SSH sunucusu {0} oturum açmayı reddetti.</value>
+  </data>
+  <data name="SshNotFound" xml:space="preserve">
+    <value>ssh.exe bulunamadı. OpenSSH İstemcisi'ni Ayarlar &gt; Sistem &gt; İsteğe bağlı özellikler bölümünden yükleyin.</value>
+  </data>
+  <data name="SshTimedOut" xml:space="preserve">
+    <value>{0} üzerinden SSH tüneli zamanında açılmadı.</value>
+  </data>
+  <data name="SshUnreachable" xml:space="preserve">
+    <value>SSH sunucusu {0} adresine ulaşılamadı.</value>
+  </data>
+  <data name="SshUserEmpty" xml:space="preserve">
+    <value>SSH kullanıcısı boş.</value>
+  </data>
+  <data name="SshUserUnsafe" xml:space="preserve">
+    <value>"{0}" SSH kullanıcısı ssh'nin kabul etmediği karakterler içeriyor.</value>
+  </data>
+  <data name="TunnelCommandName" xml:space="preserve">
+    <value>Tünel komutu</value>
+  </data>
+</root>

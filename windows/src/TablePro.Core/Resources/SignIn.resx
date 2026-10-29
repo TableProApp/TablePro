@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="ElastiCacheNameRequired" xml:space="preserve">
+    <value>Enter the ElastiCache cache name (replication group ID) to use IAM authentication.</value>
+  </data>
+  <data name="ElastiCacheRegionRequired" xml:space="preserve">
+    <value>Enter the AWS region the ElastiCache cache runs in.</value>
+  </data>
+  <data name="EntraDefault" xml:space="preserve">
+    <value>Default (Azure CLI, Visual Studio, environment)</value>
+  </data>
+  <data name="EntraDeviceCode" xml:space="preserve">
+    <value>Device code</value>
+  </data>
+  <data name="EntraIntegrated" xml:space="preserve">
+    <value>Integrated (Windows account)</value>
+  </data>
+  <data name="EntraInteractive" xml:space="preserve">
+    <value>Interactive (browser)</value>
+  </data>
+  <data name="EntraManagedIdentity" xml:space="preserve">
+    <value>Managed identity</value>
+  </data>
+  <data name="EntraServicePrincipal" xml:space="preserve">
+    <value>Service principal</value>
+  </data>
+  <data name="MethodAwsAccessKey" xml:space="preserve">
+    <value>AWS IAM (Access Key)</value>
+  </data>
+  <data name="MethodAwsProfile" xml:space="preserve">
+    <value>AWS IAM (Profile)</value>
+  </data>
+  <data name="MethodAwsSso" xml:space="preserve">
+    <value>AWS IAM (SSO)</value>
+  </data>
+  <data name="MethodEntra" xml:space="preserve">
+    <value>Microsoft Entra ID</value>
+  </data>
+  <data name="MethodGoogleAdc" xml:space="preserve">
+    <value>Google Cloud IAM (Application Default)</value>
+  </data>
+  <data name="MethodGoogleServiceAccount" xml:space="preserve">
+    <value>Google Cloud IAM (Service Account)</value>
+  </data>
+  <data name="MethodKerberos" xml:space="preserve">
+    <value>Kerberos (GSSAPI)</value>
+  </data>
+  <data name="MethodPassword" xml:space="preserve">
+    <value>Password</value>
+  </data>
+  <data name="MethodSqlServer" xml:space="preserve">
+    <value>SQL Server Authentication</value>
+  </data>
+  <data name="MethodWindows" xml:space="preserve">
+    <value>Windows Authentication</value>
+  </data>
+  <data name="NoDatabaseUser" xml:space="preserve">
+    <value>{0} does not issue a database user.</value>
+    <comment>{0} is a sign-in method, such as Microsoft Entra ID.</comment>
+  </data>
+  <data name="NotInThisBuild" xml:space="preserve">
+    <value>{0} sign-in is not available in this build.</value>
+    <comment>{0} is a sign-in method, such as AWS IAM (SSO).</comment>
+  </data>
+  <data name="RdsEndpointFormat" xml:space="preserve">
+    <value>The RDS endpoint must be host or host:port.</value>
+  </data>
+  <data name="RdsRegionRequired" xml:space="preserve">
+    <value>Enter the AWS region, since the host is not an RDS endpoint that names one.</value>
+  </data>
+  <data name="RedshiftEndpointInvalid" xml:space="preserve">
+    <value>"{0}" is not a Redshift cluster or Serverless workgroup endpoint.</value>
+    <comment>{0} is the endpoint the user typed.</comment>
+  </data>
+  <data name="RedshiftEndpointNotApplicable" xml:space="preserve">
+    <value>The Redshift endpoint applies only when the host is a local port forward or that same endpoint, and "{0}" is neither.</value>
+    <comment>{0} is the connection's host.</comment>
+  </data>
+  <data name="RedshiftEndpointUnknown" xml:space="preserve">
+    <value>TablePro cannot tell which Redshift cluster or workgroup "{0}" is. Set the host to the endpoint AWS issued, such as my-cluster.abc123.us-east-1.redshift.amazonaws.com, or enter that endpoint as the Redshift endpoint when you connect through a port forward.</value>
+    <comment>{0} is the connection's host. The example host name stays as is.</comment>
+  </data>
+</root>

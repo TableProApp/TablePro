@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="ChooseAGenerator" xml:space="preserve">
+    <value>Hãy chọn trình tạo cho ít nhất một cột.</value>
+  </data>
+  <data name="DecimalPlacesRange" xml:space="preserve">
+    <value>{0}: số chữ số thập phân từ 0 đến {1}.</value>
+  </data>
+  <data name="EnterAPattern" xml:space="preserve">
+    <value>Hãy nhập mẫu cho {0}.</value>
+  </data>
+  <data name="EnterAValue" xml:space="preserve">
+    <value>Hãy nhập ít nhất một giá trị cho {0}.</value>
+  </data>
+  <data name="FirstDateAfterLast" xml:space="preserve">
+    <value>{0}: ngày đầu tiên ở sau ngày cuối cùng.</value>
+  </data>
+  <data name="GeneratorNotAllowed" xml:space="preserve">
+    <value>{0} không thể dùng trình tạo này.</value>
+  </data>
+  <data name="HoldsNumbersFromTo" xml:space="preserve">
+    <value>{0} chứa các số từ {1:N0} đến {2:N0}.</value>
+  </data>
+  <data name="HoldsValuesUpTo" xml:space="preserve">
+    <value>{0} chứa giá trị tối đa {1:N0}.</value>
+  </data>
+  <data name="KeepsDecimalPlaces" xml:space="preserve">
+    <value>{0} giữ {1} chữ số thập phân.</value>
+  </data>
+  <data name="KeyLeftToDefault" xml:space="preserve">
+    <value>({0}) không được trùng lặp, nhưng mọi cột của nó đều để giá trị mặc định.</value>
+  </data>
+  <data name="KindBoolean" xml:space="preserve">
+    <value>Boolean</value>
+  </data>
+  <data name="KindCity" xml:space="preserve">
+    <value>Thành phố</value>
+  </data>
+  <data name="KindCountry" xml:space="preserve">
+    <value>Quốc gia</value>
+  </data>
+  <data name="KindDate" xml:space="preserve">
+    <value>Ngày</value>
+  </data>
+  <data name="KindDateTime" xml:space="preserve">
+    <value>Ngày và giờ</value>
+  </data>
+  <data name="KindDecimalRange" xml:space="preserve">
+    <value>Khoảng số thập phân</value>
+  </data>
+  <data name="KindEmail" xml:space="preserve">
+    <value>Email</value>
+  </data>
+  <data name="KindFirstName" xml:space="preserve">
+    <value>Tên</value>
+  </data>
+  <data name="KindFullName" xml:space="preserve">
+    <value>Họ và tên</value>
+  </data>
+  <data name="KindIntegerRange" xml:space="preserve">
+    <value>Khoảng số nguyên</value>
+  </data>
+  <data name="KindJson" xml:space="preserve">
+    <value>JSON</value>
+  </data>
+  <data name="KindLastName" xml:space="preserve">
+    <value>Họ</value>
+  </data>
+  <data name="KindList" xml:space="preserve">
+    <value>Danh sách giá trị</value>
+  </data>
+  <data name="KindPattern" xml:space="preserve">
+    <value>Mẫu</value>
+  </data>
+  <data name="KindPhone" xml:space="preserve">
+    <value>Số điện thoại</value>
+  </data>
+  <data name="KindReference" xml:space="preserve">
+    <value>Giá trị tham chiếu</value>
+  </data>
+  <data name="KindSequence" xml:space="preserve">
+    <value>Sequence</value>
+  </data>
+  <data name="KindServerDefault" xml:space="preserve">
+    <value>Mặc định của máy chủ</value>
+  </data>
+  <data name="KindStreetAddress" xml:space="preserve">
+    <value>Địa chỉ đường phố</value>
+  </data>
+  <data name="KindText" xml:space="preserve">
+    <value>Văn bản</value>
+  </data>
+  <data name="KindTime" xml:space="preserve">
+    <value>Thời gian</value>
+  </data>
+  <data name="KindUuid" xml:space="preserve">
+    <value>UUID</value>
+  </data>
+  <data name="ListSeparator" xml:space="preserve">
+    <value>, </value>
+  </data>
+  <data name="MinimumAboveMaximum" xml:space="preserve">
+    <value>{0}: giá trị tối thiểu lớn hơn giá trị tối đa.</value>
+  </data>
+  <data name="NoGeneratorFits" xml:space="preserve">
+    <value>Không có trình tạo nào điền được {0} ({1}), và cột này không thể để trống.</value>
+  </data>
+  <data name="RangeTooWide" xml:space="preserve">
+    <value>{0}: khoảng giá trị quá rộng so với số chữ số thập phân đó.</value>
+  </data>
+  <data name="ReferencedTableEmpty" xml:space="preserve">
+    <value>{0} tham chiếu đến {1}, nhưng bảng này không có dòng nào.</value>
+  </data>
+  <data name="RowCountRange" xml:space="preserve">
+    <value>Hãy nhập số dòng từ 1 đến {0:N0}.</value>
+  </data>
+  <data name="SequenceOverflows" xml:space="preserve">
+    <value>Dãy số của {0} vượt quá số lớn nhất mà nó có thể chứa.</value>
+  </data>
+  <data name="ShortestAboveLongest" xml:space="preserve">
+    <value>{0}: độ dài ngắn nhất lớn hơn độ dài dài nhất.</value>
+  </data>
+  <data name="StepIsZero" xml:space="preserve">
+    <value>{0}: bước nhảy không thể bằng 0.</value>
+  </data>
+  <data name="TooFewCombinations" xml:space="preserve">
+    <value>({0}) không được trùng lặp, nhưng các trình tạo chỉ tạo ra {1:N0} tổ hợp.</value>
+  </data>
+  <data name="TooFewDistinctValues" xml:space="preserve">
+    <value>{0} không được trùng lặp, nhưng trình tạo của nó chỉ tạo ra {1:N0} giá trị khác nhau.</value>
+  </data>
+  <data name="ValuesExhausted" xml:space="preserve">
+    <value>Không thể tạo thêm giá trị không trùng lặp cho ({0}). Hãy mở rộng khoảng giá trị hoặc tạo ít dòng hơn.</value>
+  </data>
+</root>

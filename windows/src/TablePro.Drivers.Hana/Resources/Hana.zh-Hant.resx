@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="ChooseSchema" xml:space="preserve">
+    <value>請先選擇一個 SAP HANA 結構描述。</value>
+  </data>
+  <data name="InstallHint" xml:space="preserve">
+    <value>請從 SAP Development Tools（tools.hana.ondemand.com）安裝 64 位元 SAP HANA Client，它會註冊 HDBODBC；或使用 odbcDriver 選項指定另一個已安裝的驅動程式。</value>
+  </data>
+  <data name="NotAConnectionId" xml:space="preserve">
+    <value>「{0}」不是 SAP HANA 連線 ID。</value>
+  </data>
+</root>

@@ -1,6 +1,8 @@
 using System.Text;
 using MongoDB.Bson;
 using TablePro.Core.Editing;
+using TablePro.Drivers.MongoDb.Localization;
+using TablePro.Drivers.MongoDb.Shell;
 
 namespace TablePro.Drivers.MongoDb.Documents;
 
@@ -19,7 +21,7 @@ internal static class ChangeCommands
         RowUpdate update => Update(collection, update, schema),
         RowInsert insert => Insert(collection, insert, schema),
         RowDelete delete => Delete(collection, delete, schema),
-        _ => throw new NotSupportedException($"{change.GetType().Name} is not a change MongoDB can apply."),
+        _ => throw new NotSupportedException(MongoStrings.Format("Mongo/NotAChange", change.GetType().Name)),
     };
 
     public static BsonDocument Filter(IReadOnlyDictionary<string, object?> key, CollectionSchema schema)
@@ -45,14 +47,14 @@ internal static class ChangeCommands
         if (reply.TryGetValue("writeErrors", out var errors) && errors is BsonArray { Count: > 0 } list)
         {
             var first = list[0] as BsonDocument;
-            var message = first?.GetValue("errmsg", "write failed").ToString();
+            var message = first?.GetValue("errmsg", BsonNull.Value) is { IsString: true } errmsg ? errmsg.AsString : MongoStrings.Get("Mongo/WriteFailed");
             var code = first?.GetValue("code", BsonNull.Value);
-            throw new InvalidOperationException($"{message} (code {code}). Statement: {shell}");
+            throw new InvalidOperationException(MongoStrings.Format("Mongo/ErrorWithStatement", message, code, shell));
         }
 
         if (reply.TryGetValue("writeConcernError", out var concern) && concern is BsonDocument concernError)
         {
-            throw new InvalidOperationException($"The write ran but its write concern was not met, so whether it lasts is unknown: {concernError.GetValue("errmsg", "unknown error")}. Statement: {shell}");
+            throw new InvalidOperationException(MongoStrings.Format("Mongo/ConcernUnknownWithStatement", ReplyResults.ServerMessage(concernError), shell));
         }
 
         return reply.TryGetValue("n", out var n) && n.IsNumeric ? n.ToInt32() : 0;
@@ -62,7 +64,7 @@ internal static class ChangeCommands
     {
         if (update.Values.ContainsKey("_id"))
         {
-            throw new InvalidOperationException("MongoDB does not change a document's _id. Delete the row and insert it with the new _id instead.");
+            throw new InvalidOperationException(MongoStrings.Get("Mongo/IdImmutable"));
         }
 
         var filter = Filter(update.Key, schema);

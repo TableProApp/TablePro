@@ -1,3 +1,5 @@
+using TablePro.Core.Localization;
+
 namespace TablePro.Core.Connections;
 
 /// <summary>Whether a Redshift endpoint is a provisioned cluster or a Serverless workgroup, which call different APIs.</summary>
@@ -92,19 +94,19 @@ public static class RedshiftAuth
         {
             var overrideHost = HostName(configured);
             var endpoint = ParseHost(overrideHost)
-                ?? throw new InvalidOperationException($"\"{configured.Trim()}\" is not a Redshift cluster or Serverless workgroup endpoint.");
+                ?? throw new InvalidOperationException(CoreStrings.Format("SignIn/RedshiftEndpointInvalid", configured.Trim()));
 
             // The temporary password goes to the host the driver dials, so it must be a forward or that endpoint itself.
             if (!IsLoopback(host) && !string.Equals(overrideHost, host, StringComparison.OrdinalIgnoreCase))
             {
-                throw new InvalidOperationException($"The Redshift endpoint applies only when the host is a local port forward or that same endpoint, and \"{host}\" is neither.");
+                throw new InvalidOperationException(CoreStrings.Format("SignIn/RedshiftEndpointNotApplicable", host));
             }
 
             return endpoint;
         }
 
         return ParseHost(host)
-            ?? throw new InvalidOperationException($"TablePro cannot tell which Redshift cluster or workgroup \"{host}\" is. Set the host to the endpoint AWS issued, such as my-cluster.abc123.us-east-1.redshift.amazonaws.com, or enter that endpoint as the Redshift endpoint when you connect through a port forward.");
+            ?? throw new InvalidOperationException(CoreStrings.Format("SignIn/RedshiftEndpointUnknown", host));
     }
 
     /// <summary>The user to ask Redshift for: the one recorded when the session's user was issued, else the profile's.</summary>

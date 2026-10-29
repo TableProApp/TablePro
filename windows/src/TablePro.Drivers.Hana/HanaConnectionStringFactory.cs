@@ -1,5 +1,6 @@
 using System.Globalization;
 using TablePro.Core.Drivers;
+using TablePro.Drivers.Hana.Localization;
 using TablePro.Drivers.Odbc;
 using CoreSslMode = TablePro.Core.Connections.SslMode;
 
@@ -25,10 +26,8 @@ internal static class HanaConnectionStringFactory
     public const string TenantOption = "tenant";
     public const string ReadOnlyMarker = "sessionVariable:TABLEPRO_ACCESS";
 
-    public static readonly OdbcDriverInfo Driver = new(
-        "SAP HANA",
-        DefaultDriver,
-        "Install the 64-bit SAP HANA Client from SAP Development Tools (tools.hana.ondemand.com), which registers HDBODBC, or name another installed driver with the odbcDriver option.");
+    // Built per session rather than once, so the install hint is in the language of the session that may need it.
+    public static OdbcDriverInfo Driver => new("SAP HANA", DefaultDriver, HanaStrings.Get("Hana/InstallHint"));
 
     private static readonly string[] ConsumedOptions = [OdbcConnectionString.DriverOption, TlsServerNameOption, TenantOption];
 

@@ -4,6 +4,7 @@ using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using TablePro.App.Controls;
+using TablePro.App.Helpers;
 using TablePro.App.Services;
 using TablePro.Core.Shortcuts;
 
@@ -30,7 +31,7 @@ public sealed partial class SettingsWindow
         });
 
         var searchLabel = Strings.Get("Settings/KeyboardSearch");
-        var search = new AutoSuggestBox { PlaceholderText = searchLabel, QueryIcon = new SymbolIcon(Symbol.Find), MinWidth = 280 };
+        var search = new AutoSuggestBox { PlaceholderText = searchLabel, QueryIcon = new SymbolIcon(Symbol.Find), MinWidth = 280 }.WithLocalizedQueryButton();
         AutomationProperties.SetName(search, searchLabel);
         var resetAll = new Button { Content = Strings.Get("Settings/KeyboardResetAll"), HorizontalAlignment = HorizontalAlignment.Right };
         var toolbar = new Grid { ColumnSpacing = 12, Margin = new Thickness(0, 0, 0, 8) };

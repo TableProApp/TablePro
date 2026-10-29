@@ -1,6 +1,7 @@
 using System.Text.Json.Nodes;
 using TablePro.Storage.Favorites;
 using TablePro.Storage.Licensing;
+using TablePro.Storage.Localization;
 
 namespace TablePro.Storage.Library.Team;
 
@@ -134,7 +135,7 @@ public sealed class TeamLibrarySync(ITeamLibraryApiClient api, TeamLibraryStore 
         IEnumerable<(Guid SourceId, JsonObject Payload)>? connections = null,
         CancellationToken cancellationToken = default)
     {
-        var license = credentials() ?? throw new TeamLibraryException("Activate a Team license to publish to the team library.");
+        var license = credentials() ?? throw new TeamLibraryException(StorageStrings.Get("Library/TeamNeedsLicense"));
         IsPublishing = true;
         Changed?.Invoke(this, EventArgs.Empty);
         try

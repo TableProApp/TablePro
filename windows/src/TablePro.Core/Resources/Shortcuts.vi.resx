@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="CategoryApp" xml:space="preserve">
+    <value>Ứng dụng</value>
+  </data>
+  <data name="CategoryConnections" xml:space="preserve">
+    <value>Kết nối</value>
+  </data>
+  <data name="CategoryDataGrid" xml:space="preserve">
+    <value>Lưới dữ liệu</value>
+  </data>
+  <data name="CategoryEditor" xml:space="preserve">
+    <value>Trình soạn thảo &amp; Truy vấn</value>
+  </data>
+  <data name="CategoryNavigation" xml:space="preserve">
+    <value>Điều hướng</value>
+  </data>
+  <data name="ConflictCommand" xml:space="preserve">
+    <value>{0} đã được dùng cho “{1}” trong {2}.</value>
+  </data>
+  <data name="ConflictNeedsModifier" xml:space="preserve">
+    <value>Phím tắt cần có Ctrl hoặc Alt, trừ khi đó là phím chức năng. Shift có thể kết hợp cùng nhưng không thể tự tạo thành phím tắt.</value>
+  </data>
+  <data name="ConflictReserved" xml:space="preserve">
+    <value>{0} được dành riêng cho “{1}” và không thể gán.</value>
+  </data>
+  <data name="ConflictSystemReserved" xml:space="preserve">
+    <value>{0} được Windows dành riêng và không thể gán.</value>
+  </data>
+  <data name="NotAShortcut" xml:space="preserve">
+    <value>'{0}' không phải là phím tắt.</value>
+  </data>
+  <data name="UnknownCommand" xml:space="preserve">
+    <value>Không có lệnh phím tắt '{0}'.</value>
+  </data>
+</root>

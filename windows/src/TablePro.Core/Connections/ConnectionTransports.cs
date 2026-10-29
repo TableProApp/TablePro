@@ -1,3 +1,5 @@
+using TablePro.Core.Localization;
+
 namespace TablePro.Core.Connections;
 
 /// <summary>
@@ -134,22 +136,12 @@ public static class ConnectionTransports
 {
     public static string DisplayName(this ConnectionTransport transport) => transport switch
     {
-        ConnectionTransport.Ssh => "SSH Tunnel",
-        ConnectionTransport.Proxy => "Proxy",
-        ConnectionTransport.CloudSqlProxy => "Cloud SQL Auth Proxy",
-        ConnectionTransport.CloudflareTunnel => "Cloudflare Tunnel",
-        ConnectionTransport.TunnelCommand => "Tunnel Command",
-        _ => "Direct",
-    };
-
-    public static string Summary(this ConnectionTransport transport) => transport switch
-    {
-        ConnectionTransport.Ssh => "Forwards a local port through an SSH server with the OpenSSH client that ships with Windows.",
-        ConnectionTransport.Proxy => "Routes through a SOCKS5 or HTTP proxy, which also resolves the database host name.",
-        ConnectionTransport.CloudSqlProxy => "Runs the Google Cloud SQL Auth Proxy against an instance connection name.",
-        ConnectionTransport.CloudflareTunnel => "Runs cloudflared against a Cloudflare Access application.",
-        ConnectionTransport.TunnelCommand => "Runs a command that forwards a local port, such as kubectl port-forward.",
-        _ => "Connects straight to the host and port.",
+        ConnectionTransport.Ssh => CoreStrings.Get("Connection/TransportSsh"),
+        ConnectionTransport.Proxy => CoreStrings.Get("Connection/TransportProxy"),
+        ConnectionTransport.CloudSqlProxy => CoreStrings.Get("Connection/TransportCloudSql"),
+        ConnectionTransport.CloudflareTunnel => CoreStrings.Get("Connection/TransportCloudflare"),
+        ConnectionTransport.TunnelCommand => CoreStrings.Get("Connection/TransportCommand"),
+        _ => CoreStrings.Get("Connection/TransportDirect"),
     };
 
     /// <summary>The transports the form offers for an engine. File databases connect directly only.</summary>
@@ -231,7 +223,7 @@ public static class ConnectionTransports
         var enabled = profile.EnabledTransports();
         if (enabled.Count > 1)
         {
-            return $"A connection can use only one connection method at a time. Enabled: {string.Join(", ", enabled.Select(DisplayName))}.";
+            return CoreStrings.Format("Connection/OnlyOneTransport", string.Join(CoreStrings.Get("Connection/ListSeparator"), enabled.Select(DisplayName)));
         }
 
         return enabled is [var transport] ? Validate(profile, transport) : null;
@@ -255,37 +247,37 @@ public static class ConnectionTransports
     {
         if (!Available(profile.Engine).Contains(transport))
         {
-            return $"{profile.Descriptor.DisplayName} cannot connect through a {transport.DisplayName()}.";
+            return CoreStrings.Format("Connection/TransportUnavailable", profile.Descriptor.DisplayName, transport.DisplayName());
         }
 
         switch (transport)
         {
             case ConnectionTransport.Ssh when string.IsNullOrWhiteSpace(profile.Ssh!.Host):
-                return "Enter the SSH host, or turn the tunnel off.";
+                return CoreStrings.Get("Connection/SshHostRequired");
             case ConnectionTransport.Proxy:
                 var proxy = profile.Proxy!;
                 if (string.IsNullOrWhiteSpace(proxy.Host))
                 {
-                    return "Proxy host is required.";
+                    return CoreStrings.Get("Connection/ProxyHostRequired");
                 }
 
-                return IsValidPort(proxy.Port) ? null : "Proxy port must be between 1 and 65535.";
+                return IsValidPort(proxy.Port) ? null : CoreStrings.Get("Connection/ProxyPortRange");
             case ConnectionTransport.CloudSqlProxy:
                 var cloudSql = profile.CloudSqlProxy!;
                 if (!IsValidInstanceConnectionName(cloudSql.InstanceConnectionName))
                 {
-                    return "Instance connection name must be project:region:instance.";
+                    return CoreStrings.Get("Connection/InstanceConnectionNameFormat");
                 }
 
-                return cloudSql.LocalPort is { } cloudSqlPort && !IsValidPort(cloudSqlPort) ? "Local port must be between 1 and 65535." : null;
+                return cloudSql.LocalPort is { } cloudSqlPort && !IsValidPort(cloudSqlPort) ? CoreStrings.Get("Connection/LocalPortRange") : null;
             case ConnectionTransport.CloudflareTunnel:
                 var cloudflare = profile.CloudflareTunnel!;
                 if (string.IsNullOrWhiteSpace(cloudflare.AccessHostname))
                 {
-                    return "Cloudflare hostname is required.";
+                    return CoreStrings.Get("Connection/CloudflareHostRequired");
                 }
 
-                return cloudflare.LocalPort is { } cloudflarePort && !IsValidPort(cloudflarePort) ? "Local port must be between 1 and 65535." : null;
+                return cloudflare.LocalPort is { } cloudflarePort && !IsValidPort(cloudflarePort) ? CoreStrings.Get("Connection/LocalPortRange") : null;
             case ConnectionTransport.TunnelCommand:
                 return TunnelCommandLine.Validate(profile.TunnelCommand!);
             default:

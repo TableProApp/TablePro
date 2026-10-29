@@ -1,6 +1,7 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Text.RegularExpressions;
+using TablePro.Core.Localization;
 
 namespace TablePro.Core.Updates;
 
@@ -93,7 +94,7 @@ public readonly partial record struct AppVersion : IComparable<AppVersion>
     }
 
     public static AppVersion Parse(string text) =>
-        TryParse(text, out var version) ? version : throw new FormatException($"'{text}' is not a TablePro version such as 0.2.0 or 0.2.0-beta.1.");
+        TryParse(text, out var version) ? version : throw new FormatException(CoreStrings.Format("Updates/NotAVersion", text));
 
     public int CompareTo(AppVersion other)
     {

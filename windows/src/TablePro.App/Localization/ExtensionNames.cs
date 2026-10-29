@@ -2,7 +2,10 @@ using TablePro.Core.Connections;
 
 namespace TablePro.App.Localization;
 
-/// <summary>The wording for Core's SQLite extension failures, which carry English text only.</summary>
+/// <summary>
+/// The wording for Core's SQLite extension failures as the app shows them: the cause on its own line, followed by
+/// what to do about it, which Core's one-line message does not say.
+/// </summary>
 internal static class ExtensionNames
 {
     /// <summary>What went wrong, what the cause was and, when there is one, what to do: the connect error's body.</summary>

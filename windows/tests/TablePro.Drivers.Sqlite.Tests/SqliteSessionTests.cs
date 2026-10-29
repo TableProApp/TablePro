@@ -1,3 +1,4 @@
+using System.Globalization;
 using TablePro.Core.Browse;
 using TablePro.Core.Drivers;
 using TablePro.Core.Editing;
@@ -207,6 +208,26 @@ public sealed class SqliteSessionTests
         }
 
         Assert.False(results[0].Succeeded);
+    }
+
+    [Fact]
+    public async Task AMissingDefinitionIsReportedInTheUiLanguage()
+    {
+        await using var db = await SqliteDatabase.CreateAsync(Ct);
+        var missing = new DatabaseObject(new ObjectName(null, "nowhere"), ObjectKind.Table);
+        var saved = CultureInfo.CurrentUICulture;
+        try
+        {
+            // The culture flows into the thread-pool work the session yields to, as the app's chosen language does.
+            CultureInfo.CurrentUICulture = CultureInfo.GetCultureInfo("fr");
+            var error = await Assert.ThrowsAsync<InvalidOperationException>(() => db.Session.GetDefinitionAsync(missing, Ct));
+
+            Assert.Equal("Aucune définition n\x2019a été trouvée pour nowhere.", error.Message);
+        }
+        finally
+        {
+            CultureInfo.CurrentUICulture = saved;
+        }
     }
 
     private static Dictionary<string, object?> Key(long id) => new() { ["id"] = id };

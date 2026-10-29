@@ -2,6 +2,7 @@ using System.Globalization;
 using System.IO.Compression;
 using System.Text;
 using System.Xml;
+using TablePro.Core.Localization;
 using TablePro.Core.Results;
 
 namespace TablePro.Core.Export;
@@ -34,7 +35,7 @@ internal static class XlsxWriter
               <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
             </Relationships>
             """, cancellationToken);
-        var sheetName = SheetName(options.TargetTable?.Name ?? "Result");
+        var sheetName = SheetName(options.TargetTable?.Name ?? CoreStrings.Get("Export/SheetName"));
         await WriteEntryAsync(zip, "xl/workbook.xml", $"""
             <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
             <workbook xmlns="{MainNs}" xmlns:r="{RelNs}"><sheets><sheet name="{System.Security.SecurityElement.Escape(sheetName)}" sheetId="1" r:id="rId1"/></sheets></workbook>
@@ -194,7 +195,7 @@ internal static class XlsxWriter
     private static string SheetName(string name)
     {
         var cleaned = string.Concat(name.Where(c => c is not ('\\' or '/' or '?' or '*' or '[' or ']' or ':')));
-        return cleaned.Length == 0 ? "Result" : cleaned[..Math.Min(31, cleaned.Length)];
+        return cleaned.Length == 0 ? CoreStrings.Get("Export/SheetName") : cleaned[..Math.Min(31, cleaned.Length)];
     }
 
     private static async Task WriteEntryAsync(ZipArchive zip, string path, string content, CancellationToken cancellationToken)

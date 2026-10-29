@@ -5,9 +5,11 @@ using TablePro.Core.Browse;
 using TablePro.Core.Connections;
 using TablePro.Core.Drivers;
 using TablePro.Core.Editing;
+using TablePro.Core.Localization;
 using TablePro.Core.Results;
 using TablePro.Core.Schema;
 using TablePro.Core.Sql;
+using TablePro.Drivers.Cloudflare.Localization;
 
 namespace TablePro.Drivers.Cloudflare;
 
@@ -48,7 +50,7 @@ internal sealed class D1Session : IDatabaseSession
     public static async Task<D1Session> ConnectAsync(ConnectionRequest request, HttpMessageHandler? handler, CancellationToken cancellationToken)
     {
         var settings = CloudflareSettings.From(request);
-        settings.Validate("D1 database name or ID");
+        settings.Validate(CloudflareStrings.Get("Cloudflare/EnterD1Database"));
         var http = CloudflareHttp.CreateClient(handler, request.Profile.ConnectTimeoutSeconds);
         try
         {
@@ -60,7 +62,7 @@ internal sealed class D1Session : IDatabaseSession
             {
                 var matches = await client.ListDatabasesAsync(databaseId, connect.Token);
                 databaseId = matches.FirstOrDefault(d => d.Name == settings.Database)?.Uuid
-                    ?? throw new CloudflareApiException($"No D1 database named '{settings.Database}' exists in this account.");
+                    ?? throw new CloudflareApiException(CloudflareStrings.Format("Cloudflare/NoD1Database", settings.Database));
             }
 
             var database = await client.GetDatabaseAsync(databaseId, connect.Token);
@@ -111,7 +113,7 @@ internal sealed class D1Session : IDatabaseSession
         var rows = await QueryRowsAsync(SqliteCatalog.Definition, [obj.Name.Name], cancellationToken);
         return rows.RowCount > 0 && rows[0, 0] is string sql
             ? sql
-            : throw new CloudflareApiException($"D1 has no definition for {obj.Name}.");
+            : throw new CloudflareApiException(CoreStrings.Format("Driver/NoDefinitionFor", obj.Name));
     }
 
     public async Task<ResultSet> BrowseAsync(BrowseRequest request, CancellationToken cancellationToken)
@@ -196,9 +198,7 @@ internal sealed class D1Session : IDatabaseSession
         var messages = new List<string>(1);
         if (result.RowsRead is not null || result.RowsWritten is not null)
         {
-            messages.Add(string.Create(
-                CultureInfo.InvariantCulture,
-                $"D1 read {result.RowsRead ?? 0:N0} rows and wrote {result.RowsWritten ?? 0:N0} rows in {result.DurationMs ?? 0:0.###} ms."));
+            messages.Add(CloudflareStrings.Format("Cloudflare/D1Stats", result.RowsRead ?? 0, result.RowsWritten ?? 0, result.DurationMs ?? 0));
         }
 
         IReadOnlyList<ResultSet> sets = result.Rows.Columns.Count > 0 ? [result.Rows] : [];
@@ -233,7 +233,7 @@ internal sealed class D1Session : IDatabaseSession
         }
 
         // The rows matched when checked again, so another client changed them while the batch ran.
-        return new RowCountMismatchException(1, -1, "a keyed change in the batch");
+        return new RowCountMismatchException(1, -1, CloudflareStrings.Get("Cloudflare/KeyedChangeInBatch"));
     }
 
     private async Task<long> CountKeyAsync(ObjectName table, IReadOnlyDictionary<string, object?> key, CancellationToken cancellationToken)

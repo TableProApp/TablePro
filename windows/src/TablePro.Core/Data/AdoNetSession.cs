@@ -7,6 +7,7 @@ using TablePro.Core.Connections;
 using TablePro.Core.Drivers;
 using TablePro.Core.Editing;
 using TablePro.Core.Import;
+using TablePro.Core.Localization;
 using TablePro.Core.Results;
 using TablePro.Core.Schema;
 using TablePro.Core.Sql;
@@ -180,7 +181,7 @@ public abstract class AdoNetSession : IDatabaseSession, IImportRowMatcher, IChan
     {
         if (!SupportsChangeTransactions)
         {
-            throw new NotSupportedException($"{Profile.Descriptor.DisplayName} cannot run several changes in one transaction.");
+            throw new NotSupportedException(CoreStrings.Format("Data/NoChangeTransactions", Profile.Descriptor.DisplayName));
         }
 
         var connection = await OpenAsync(cancellationToken);
@@ -482,11 +483,11 @@ public abstract class AdoNetSession : IDatabaseSession, IImportRowMatcher, IChan
             }
             catch (OperationCanceledException)
             {
-                return new StatementResult(sql, sets, -1, stopwatch.Elapsed, "Query cancelled.", [.. messages]);
+                return new StatementResult(sql, sets, -1, stopwatch.Elapsed, CoreStrings.Get("Data/QueryCancelled"), [.. messages]);
             }
             catch (DbException ex) when (cancellationToken.IsCancellationRequested)
             {
-                return new StatementResult(sql, sets, -1, stopwatch.Elapsed, "Query cancelled. " + ex.Message, [.. messages]);
+                return new StatementResult(sql, sets, -1, stopwatch.Elapsed, CoreStrings.Format("Data/QueryCancelledWithReason", ex.Message), [.. messages]);
             }
             catch (Exception ex) when (ex is DbException or InvalidOperationException or InvalidCastException or NotSupportedException or ArgumentException)
             {

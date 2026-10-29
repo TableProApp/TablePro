@@ -1,3 +1,5 @@
+using TablePro.Core.Localization;
+
 namespace TablePro.Core.Shortcuts;
 
 public enum ShortcutConflictKind
@@ -28,10 +30,10 @@ public readonly record struct ShortcutConflict(ShortcutConflictKind Kind, string
     /// <summary>A sentence for the settings page explaining the conflict.</summary>
     public string Describe(KeyChord chord) => Kind switch
     {
-        ShortcutConflictKind.NeedsModifier => "A shortcut needs Ctrl or Alt, unless it is a function key. Shift can join them but cannot hold a shortcut on its own.",
-        ShortcutConflictKind.SystemReserved => $"{chord} is reserved by Windows and cannot be assigned.",
-        ShortcutConflictKind.Reserved => $"{chord} is reserved for \"{Name}\" and cannot be assigned.",
-        ShortcutConflictKind.Command => $"{chord} is already used by \"{Command!.Title}\" in {Command.Category.DisplayName()}.",
+        ShortcutConflictKind.NeedsModifier => CoreStrings.Get("Shortcuts/ConflictNeedsModifier"),
+        ShortcutConflictKind.SystemReserved => CoreStrings.Format("Shortcuts/ConflictSystemReserved", chord),
+        ShortcutConflictKind.Reserved => CoreStrings.Format("Shortcuts/ConflictReserved", chord, Name),
+        ShortcutConflictKind.Command => CoreStrings.Format("Shortcuts/ConflictCommand", chord, Command!.Title, Command.Category.DisplayName()),
         _ => string.Empty,
     };
 }

@@ -1,9 +1,9 @@
-using System.Globalization;
 using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization.Metadata;
 using TablePro.Core.Connections;
+using TablePro.Storage.Localization;
 
 namespace TablePro.Storage.Connections;
 
@@ -197,7 +197,7 @@ public sealed class ConnectionStore : IDisposable
         ArgumentNullException.ThrowIfNull(group);
         if (group.ParentId == group.Id)
         {
-            throw new ArgumentException("A group cannot contain itself.", nameof(group));
+            throw new ArgumentException(StorageStrings.Get("Connections/GroupContainsItself"), nameof(group));
         }
 
         return MutateAsync(document =>
@@ -205,7 +205,7 @@ public sealed class ConnectionStore : IDisposable
             var list = document.Groups.ToList();
             if (group.ParentId is { } parent && IsDescendant(list, parent, group.Id))
             {
-                throw new InvalidOperationException("A group cannot move inside one of its own subgroups.");
+                throw new InvalidOperationException(StorageStrings.Get("Connections/GroupIntoSubgroup"));
             }
 
             var index = list.FindIndex(g => g.Id == group.Id);
@@ -263,7 +263,7 @@ public sealed class ConnectionStore : IDisposable
         var encrypt = !string.IsNullOrEmpty(options.Passphrase);
         if (options.Secrets is not null && !encrypt)
         {
-            throw new InvalidOperationException("Saved passwords can only be exported to an encrypted file.");
+            throw new InvalidOperationException(StorageStrings.Get("Connections/PasswordsNeedEncryption"));
         }
 
         var document = Volatile.Read(ref _document);
@@ -346,7 +346,7 @@ public sealed class ConnectionStore : IDisposable
 
     private static PortableConnectionFile ParsePortable(byte[] json)
     {
-        const string NotAnExport = "This file is not a valid TablePro export.";
+        var notAnExport = StorageStrings.Get("Connections/NotAnExport");
 
         // The version decides how the rest reads, and a newer one is reported as such rather than as a parse error.
         int version;
@@ -358,17 +358,17 @@ public sealed class ConnectionStore : IDisposable
                 || !element.TryGetInt32(out version)
                 || version < 1)
             {
-                throw new InvalidDataException(NotAnExport);
+                throw new InvalidDataException(notAnExport);
             }
         }
         catch (JsonException ex)
         {
-            throw new InvalidDataException(NotAnExport, ex);
+            throw new InvalidDataException(notAnExport, ex);
         }
 
         if (version > ConnectionPortability.SupportedFormatVersion)
         {
-            throw new InvalidDataException(string.Create(CultureInfo.InvariantCulture, $"This file requires a newer version of TablePro (format version {version})."));
+            throw new InvalidDataException(StorageStrings.Format("Connections/NewerFormat", version));
         }
 
         PortableConnectionFile? file;
@@ -378,12 +378,12 @@ public sealed class ConnectionStore : IDisposable
         }
         catch (JsonException ex)
         {
-            throw new InvalidDataException("Failed to parse connection file: " + ex.Message, ex);
+            throw new InvalidDataException(StorageStrings.Format("Connections/ParseFailed", ex.Message), ex);
         }
 
         if (file is null)
         {
-            throw new InvalidDataException(NotAnExport);
+            throw new InvalidDataException(notAnExport);
         }
 
         file.Connections ??= [];

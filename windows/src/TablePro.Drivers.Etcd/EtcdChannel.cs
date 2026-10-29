@@ -3,7 +3,9 @@ using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using TablePro.Core.Drivers;
+using TablePro.Core.Localization;
 using TablePro.Core.Results;
+using TablePro.Drivers.Etcd.Localization;
 
 namespace TablePro.Drivers.Etcd;
 
@@ -60,11 +62,11 @@ internal sealed class EtcdChannel(EtcdClient client) : IQueryChannel
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && timeout.IsCancellationRequested)
         {
-            return new StatementResult(command, [], -1, stopwatch.Elapsed, string.Create(CultureInfo.InvariantCulture, $"The command timed out after {options.CommandTimeoutSeconds} seconds."));
+            return new StatementResult(command, [], -1, stopwatch.Elapsed, CoreStrings.Format("Driver/CommandTimedOutAfter", options.CommandTimeoutSeconds));
         }
         catch (OperationCanceledException)
         {
-            return new StatementResult(command, [], -1, stopwatch.Elapsed, "Command cancelled.");
+            return new StatementResult(command, [], -1, stopwatch.Elapsed, CoreStrings.Get("Driver/CommandCancelled"));
         }
         catch (Exception ex) when (ex is EtcdCommandException or EtcdException or HttpRequestException or JsonException)
         {
@@ -94,7 +96,7 @@ internal static class EtcdExecutor
 
                 var kvs = response.Kvs ?? [];
                 var set = EtcdRows.ToResultSet(kvs, response.More && (get.Limit == 0 || kvs.Count < get.Limit));
-                return ([set], -1, response.More ? [string.Create(CultureInfo.InvariantCulture, $"Showing {kvs.Count:N0} of {response.Count:N0} keys.")] : []);
+                return ([set], -1, response.More ? [CoreStrings.Format("Driver/ShowingOfKeys", kvs.Count, response.Count)] : []);
             }
 
             case EtcdPut put:
@@ -123,7 +125,7 @@ internal static class EtcdExecutor
                     e.Kv?.Value is { } value ? EtcdRows.KeyText(value) : null,
                     e.Kv?.ModRevision ?? 0,
                 }).ToList();
-                var message = string.Create(CultureInfo.InvariantCulture, $"Watched for {watch.TimeoutSeconds:0.#} seconds and saw {rows.Count:N0} events.");
+                var message = EtcdStrings.Format("Etcd/Watched", watch.TimeoutSeconds, rows.Count);
                 return ([Table(["type", "key", "value", "mod_revision"], [typeof(string), typeof(string), typeof(string), typeof(long)], rows)], -1, [message]);
             }
 
@@ -140,7 +142,7 @@ internal static class EtcdExecutor
 
             case EtcdLeaseRevoke revoke:
                 await client.LeaseAsync("revoke", new EtcdLeaseRequest { Id = revoke.LeaseId }, cancellationToken);
-                return ([], 1, [$"Lease {EtcdCommandParser.LeaseHex(revoke.LeaseId)} revoked."]);
+                return ([], 1, [EtcdStrings.Format("Etcd/LeaseRevoked", EtcdCommandParser.LeaseHex(revoke.LeaseId))]);
 
             case EtcdLeaseTimeToLive live:
             {
@@ -149,7 +151,7 @@ internal static class EtcdExecutor
                 return ([Table(
                     ["lease_id_hex", "ttl", "granted_ttl", "attached_keys"],
                     [typeof(string), typeof(long), typeof(long), typeof(string)],
-                    [[EtcdCommandParser.LeaseHex(live.LeaseId), response.Ttl, response.GrantedTtl, live.Keys ? keys : null]])], -1, response.Ttl < 0 ? ["The lease has expired or was never granted."] : []);
+                    [[EtcdCommandParser.LeaseHex(live.LeaseId), response.Ttl, response.GrantedTtl, live.Keys ? keys : null]])], -1, response.Ttl < 0 ? [EtcdStrings.Get("Etcd/LeaseExpired")] : []);
             }
 
             case EtcdLeaseList:
@@ -162,7 +164,7 @@ internal static class EtcdExecutor
             case EtcdLeaseKeepAlive keep:
             {
                 var response = await client.KeepAliveOnceAsync(keep.LeaseId, cancellationToken);
-                return ([], 1, [string.Create(CultureInfo.InvariantCulture, $"Lease {EtcdCommandParser.LeaseHex(keep.LeaseId)} refreshed once, TTL {response.Ttl}s. Keeping it alive needs a client that repeats this, such as etcdctl.")]);
+                return ([], 1, [EtcdStrings.Format("Etcd/LeaseRefreshed", EtcdCommandParser.LeaseHex(keep.LeaseId), response.Ttl)]);
             }
 
             case EtcdMemberList:
@@ -223,19 +225,19 @@ internal static class EtcdExecutor
 
             case EtcdCompaction compaction:
                 await client.CompactAsync(new EtcdCompactionRequest { Revision = compaction.Revision, Physical = compaction.Physical }, cancellationToken);
-                return ([], 0, [string.Create(CultureInfo.InvariantCulture, $"Compacted revision {compaction.Revision}.")]);
+                return ([], 0, [EtcdStrings.Format("Etcd/Compacted", compaction.Revision)]);
 
             case EtcdAuthToggle toggle:
                 await client.AuthAsync(toggle.Enable ? "enable" : "disable", new EtcdAuthRequest(), cancellationToken);
-                return ([], 0, [toggle.Enable ? "Authentication enabled." : "Authentication disabled."]);
+                return ([], 0, [EtcdStrings.Get(toggle.Enable ? "Etcd/AuthEnabled" : "Etcd/AuthDisabled")]);
 
             case EtcdUserAdd add:
                 await client.AuthAsync("user/add", new EtcdAuthRequest { Name = add.Name, Password = add.Password ?? string.Empty }, cancellationToken);
-                return ([], 0, [$"User {add.Name} created."]);
+                return ([], 0, [EtcdStrings.Format("Etcd/UserCreated", add.Name)]);
 
             case EtcdUserDelete delete:
                 await client.AuthAsync("user/delete", new EtcdAuthRequest { Name = delete.Name }, cancellationToken);
-                return ([], 0, [$"User {delete.Name} deleted."]);
+                return ([], 0, [EtcdStrings.Format("Etcd/UserDeleted", delete.Name)]);
 
             case EtcdUserList:
             {
@@ -245,19 +247,19 @@ internal static class EtcdExecutor
 
             case EtcdUserGrantRole grant:
                 await client.AuthAsync("user/grant", new EtcdAuthRequest { User = grant.User, Role = grant.Role }, cancellationToken);
-                return ([], 0, [$"Role {grant.Role} granted to {grant.User}."]);
+                return ([], 0, [EtcdStrings.Format("Etcd/RoleGranted", grant.Role, grant.User)]);
 
             case EtcdUserRevokeRole revoke:
                 await client.AuthAsync("user/revoke", new EtcdAuthRequest { Name = revoke.User, Role = revoke.Role }, cancellationToken);
-                return ([], 0, [$"Role {revoke.Role} revoked from {revoke.User}."]);
+                return ([], 0, [EtcdStrings.Format("Etcd/RoleRevoked", revoke.Role, revoke.User)]);
 
             case EtcdRoleAdd add:
                 await client.AuthAsync("role/add", new EtcdAuthRequest { Name = add.Name }, cancellationToken);
-                return ([], 0, [$"Role {add.Name} created."]);
+                return ([], 0, [EtcdStrings.Format("Etcd/RoleCreated", add.Name)]);
 
             case EtcdRoleDelete delete:
                 await client.AuthAsync("role/delete", new EtcdAuthRequest { Role = delete.Name }, cancellationToken);
-                return ([], 0, [$"Role {delete.Name} deleted."]);
+                return ([], 0, [EtcdStrings.Format("Etcd/RoleDeleted", delete.Name)]);
 
             case EtcdRoleList:
             {
@@ -266,7 +268,7 @@ internal static class EtcdExecutor
             }
 
             default:
-                throw new EtcdCommandException("That command is not supported.");
+                throw new EtcdCommandException(CoreStrings.Get("Driver/CommandNotSupported"));
         }
     }
 
@@ -305,7 +307,7 @@ internal static class EtcdExecutor
     }
 
     private static string Revision(string text, EtcdHeader? header) =>
-        header is null ? text : string.Create(CultureInfo.InvariantCulture, $"{text} (revision {header.Revision})");
+        header is null ? text : EtcdStrings.Format("Etcd/WithRevision", text, header.Revision);
 
     private static ResultSet Table(string[] names, Type[] types, List<object?[]> rows)
     {

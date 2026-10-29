@@ -630,7 +630,7 @@ public sealed partial class TableTabView : UserControl
             {
                 var box = new ComboBox
                 {
-                    Header = spec.Name,
+                    Header = TableOptionNames.DisplayName(spec.Name),
                     IsEditable = true,
                     ItemsSource = spec.ChoiceList.ToList(),
                     Text = current ?? string.Empty,
@@ -642,7 +642,7 @@ public sealed partial class TableTabView : UserControl
             }
             else
             {
-                var box = new TextBox { Header = spec.Name, Text = current ?? string.Empty, PlaceholderText = spec.Placeholder ?? string.Empty };
+                var box = new TextBox { Header = TableOptionNames.DisplayName(spec.Name), Text = current ?? string.Empty, PlaceholderText = spec.Placeholder ?? string.Empty };
                 if (spec.Kind == TableOptionKind.Number)
                 {
                     box.InputScope = new InputScope { Names = { new InputScopeName(InputScopeNameValue.Number) } };

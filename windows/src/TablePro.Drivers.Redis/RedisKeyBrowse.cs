@@ -5,8 +5,10 @@ using System.Text.Encodings.Web;
 using System.Text.Json;
 using TablePro.Core.Browse;
 using TablePro.Core.Editing;
+using TablePro.Core.Localization;
 using TablePro.Core.Results;
 using TablePro.Core.Schema;
+using TablePro.Drivers.Redis.Localization;
 
 namespace TablePro.Drivers.Redis;
 
@@ -59,11 +61,11 @@ internal static class RedisKeyBrowse
 
     public static IReadOnlyList<ColumnInfo> StructureColumns() =>
     [
-        new(Key, "string", IsNullable: false, DefaultValue: null, IsPrimaryKey: true, IsIdentity: false, Ordinal: 1, Comment: "The key's name"),
-        new(Type, "string", IsNullable: true, DefaultValue: "string", IsPrimaryKey: false, IsIdentity: false, Ordinal: 2, Comment: "string, hash, list, set or zset when adding a key"),
-        new(Ttl, "integer", IsNullable: true, DefaultValue: "-1", IsPrimaryKey: false, IsIdentity: false, Ordinal: 3, Comment: "Seconds until the key expires; -1 or NULL for none"),
-        new(Length, "integer", IsNullable: true, DefaultValue: null, IsPrimaryKey: false, IsIdentity: true, Ordinal: 4, Comment: "Bytes of a string, or elements of a collection"),
-        new(Value, "string", IsNullable: true, DefaultValue: null, IsPrimaryKey: false, IsIdentity: false, Ordinal: 5, Comment: "A string's value, or a preview of a collection's first elements"),
+        new(Key, "string", IsNullable: false, DefaultValue: null, IsPrimaryKey: true, IsIdentity: false, Ordinal: 1, Comment: RedisStrings.Get("Redis/KeyNameComment")),
+        new(Type, "string", IsNullable: true, DefaultValue: "string", IsPrimaryKey: false, IsIdentity: false, Ordinal: 2, Comment: RedisStrings.Get("Redis/TypeComment")),
+        new(Ttl, "integer", IsNullable: true, DefaultValue: "-1", IsPrimaryKey: false, IsIdentity: false, Ordinal: 3, Comment: RedisStrings.Get("Redis/TtlComment")),
+        new(Length, "integer", IsNullable: true, DefaultValue: null, IsPrimaryKey: false, IsIdentity: true, Ordinal: 4, Comment: RedisStrings.Get("Redis/LengthComment")),
+        new(Value, "string", IsNullable: true, DefaultValue: null, IsPrimaryKey: false, IsIdentity: false, Ordinal: 5, Comment: RedisStrings.Get("Redis/ValueComment")),
     ];
 
     /// <summary>
@@ -89,7 +91,7 @@ internal static class RedisKeyBrowse
     {
         if (!string.IsNullOrWhiteSpace(filter.RawWhere))
         {
-            throw new NotSupportedException("Redis has no WHERE clause. Filter on the Key column with a pattern such as user:*, or on Type.");
+            throw new NotSupportedException(RedisStrings.Get("Redis/NoWhereKeys"));
         }
 
         var rules = filter.Rules.Where(r => r.Enabled).ToList();
@@ -269,7 +271,7 @@ internal static class RedisKeyBrowse
             var newKey = Text(renamed);
             if (string.IsNullOrEmpty(newKey))
             {
-                throw new NotSupportedException("A key can only be renamed to text that is not empty.");
+                throw new NotSupportedException(RedisStrings.Get("Redis/RenameEmpty"));
             }
 
             if (newKey != key)
@@ -287,16 +289,16 @@ internal static class RedisKeyBrowse
                 case Key:
                     break;
                 case Value:
-                    var text = Text(value) ?? throw new NotSupportedException("Redis cannot store NULL as a value. Enter an empty value instead.");
+                    var text = Text(value) ?? throw new NotSupportedException(RedisStrings.Get("Redis/CannotStoreNullValue"));
                     var type = types is null ? RedisKeyType.String : types.GetValueOrDefault(key, RedisKeyType.None);
                     if (type == RedisKeyType.None)
                     {
-                        throw new InvalidOperationException($"The key '{key}' no longer exists, so nothing was saved.");
+                        throw new InvalidOperationException(CoreStrings.Format("Driver/KeyNoLongerExists", key));
                     }
 
                     if (type != RedisKeyType.String)
                     {
-                        throw new NotSupportedException($"The value of a {TypeName(type)} key cannot be edited in the list of keys. Open the key to edit its elements.");
+                        throw new NotSupportedException(RedisStrings.Format("Redis/ValueInListNotEditable", TypeName(type)));
                     }
 
                     // KEEPTTL (Redis 6.0) so editing a value does not clear the key's expiry.
@@ -306,7 +308,7 @@ internal static class RedisKeyBrowse
                     commands.Add(TtlCommand(target, value));
                     break;
                 default:
-                    throw new NotSupportedException($"'{column}' cannot be changed from the grid.");
+                    throw new NotSupportedException(CoreStrings.Format("Driver/CannotChangeFromGrid", column));
             }
         }
 
@@ -327,14 +329,14 @@ internal static class RedisKeyBrowse
         var key = Text(Get(insert.Values, Key));
         if (string.IsNullOrEmpty(key))
         {
-            throw new NotSupportedException("A new key needs a name.");
+            throw new NotSupportedException(RedisStrings.Get("Redis/NewKeyNeedsName"));
         }
 
         var typeName = Text(Get(insert.Values, Type))?.Trim();
         typeName = string.IsNullOrEmpty(typeName) ? "string" : ScanTypeName(typeName);
         if (!InsertableTypes.Contains(typeName))
         {
-            throw new NotSupportedException($"A {typeName} key cannot be added from the grid. Add it with a command in the query editor.");
+            throw new NotSupportedException(RedisStrings.Format("Redis/TypeNotAddable", typeName));
         }
 
         var value = Text(Get(insert.Values, Value)) ?? string.Empty;
@@ -385,7 +387,7 @@ internal static class RedisKeyBrowse
 
         return long.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out var seconds) && seconds > 0
             ? new RedisCommand("EXPIRE", key, seconds.ToString(CultureInfo.InvariantCulture))
-            : throw new NotSupportedException("TTL has to be a whole number of seconds above 0, or -1 or NULL for no expiry.");
+            : throw new NotSupportedException(RedisStrings.Get("Redis/TtlInvalid"));
     }
 
     /// <summary>A JSON object's members as hash fields, a string member as its text and any other as its JSON.</summary>
@@ -417,7 +419,7 @@ internal static class RedisKeyBrowse
         _ => type.ToString().ToLowerInvariant(),
     };
 
-    private static NotSupportedException Unaddressable() => new("This key's name is not text, so it cannot be addressed from the grid.");
+    private static NotSupportedException Unaddressable() => new(RedisStrings.Get("Redis/KeyNameNotText"));
 
     private static bool IsColumn(FilterRule rule, string column) => string.Equals(rule.Column, column, StringComparison.OrdinalIgnoreCase);
 

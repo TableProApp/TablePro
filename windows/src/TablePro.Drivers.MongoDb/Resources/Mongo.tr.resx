@@ -1,0 +1,366 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AggregateCursorUnsupported" xml:space="preserve">
+    <value>.{0}() bir toplama imlecinde desteklenmiyor.</value>
+  </data>
+  <data name="ArgumentMustBeDocument" xml:space="preserve">
+    <value>{1} yönteminin {0}. bağımsız değişkeni bir belge olmalıdır</value>
+  </data>
+  <data name="AssignmentsUnsupported" xml:space="preserve">
+    <value>Atamalar desteklenmiyor</value>
+  </data>
+  <data name="BinaryArgs" xml:space="preserve">
+    <value>bir alt tür numarası ve bir dize alır</value>
+  </data>
+  <data name="BracketNameQuoted" xml:space="preserve">
+    <value>Köşeli ayraç içindeki bir ad tırnak içinde bir dize olmalıdır</value>
+  </data>
+  <data name="BulkWriteShape" xml:space="preserve">
+    <value>Her bulkWrite işlemi {insertOne: ...}, {updateOne: ...} ve benzerlerinden biridir</value>
+  </data>
+  <data name="BulkWriteUnknown" xml:space="preserve">
+    <value>bulkWrite {0} işlemini tanımıyor.</value>
+  </data>
+  <data name="CollectionMethodUnsupported" xml:space="preserve">
+    <value>db.{0}.{1}() desteklenmiyor.</value>
+  </data>
+  <data name="CommentNotClosed" xml:space="preserve">
+    <value>Açıklama kapatılmamış</value>
+  </data>
+  <data name="ConcernNotMet" xml:space="preserve">
+    <value>Yazma çalıştı ancak yazma garantisi (write concern) karşılanmadı: {0}</value>
+  </data>
+  <data name="ConcernUnknownWithStatement" xml:space="preserve">
+    <value>Yazma çalıştı ancak yazma garantisi (write concern) karşılanmadığından kalıcı olup olmadığı bilinmiyor: {0}. Deyim: {1}</value>
+  </data>
+  <data name="ConstructorUnsupported" xml:space="preserve">
+    <value>{0}() desteklenmiyor</value>
+  </data>
+  <data name="DateArgs" xml:space="preserve">
+    <value>tek bir bağımsız değişken alır: bir ISO tarihi veya 1970’ten bu yana milisaniye</value>
+  </data>
+  <data name="DbAlone" xml:space="preserve">
+    <value>Tek başına db hiçbir şey çalıştırmaz: bir koleksiyon adı verin veya bir yöntem çağırın</value>
+  </data>
+  <data name="DbMethodUnsupported" xml:space="preserve">
+    <value>db.{0}() desteklenmiyor.</value>
+  </data>
+  <data name="DropIndexNeeds" xml:space="preserve">
+    <value>dropIndex dizin adını veya anahtarlarını gerektirir</value>
+  </data>
+  <data name="ErrorWithCode" xml:space="preserve">
+    <value>{0} (kod {1})</value>
+  </data>
+  <data name="ErrorWithStatement" xml:space="preserve">
+    <value>{0} (kod {1}). Deyim: {2}</value>
+  </data>
+  <data name="ExpectedChar" xml:space="preserve">
+    <value>'{0}' bekleniyordu</value>
+  </data>
+  <data name="ExpectedColon" xml:space="preserve">
+    <value>Alan adından sonra ':' bekleniyordu</value>
+  </data>
+  <data name="ExpectedCommaOr" xml:space="preserve">
+    <value>',' veya '{0}' bekleniyordu</value>
+  </data>
+  <data name="ExpectedConstructor" xml:space="preserve">
+    <value>new sonrasında bir oluşturucu bekleniyordu</value>
+  </data>
+  <data name="ExpectedDocument" xml:space="preserve">
+    <value>Süslü ayraç içinde bir belge bekleniyordu</value>
+  </data>
+  <data name="ExpectedFieldName" xml:space="preserve">
+    <value>Bir alan adı bekleniyordu</value>
+  </data>
+  <data name="ExpectedMethodName" xml:space="preserve">
+    <value>Parantezlerden önce bir yöntem adı bekleniyordu</value>
+  </data>
+  <data name="ExpectedNameAfterDot" xml:space="preserve">
+    <value>'.' sonrasında bir ad bekleniyordu</value>
+  </data>
+  <data name="ExpectedNumberAfterSign" xml:space="preserve">
+    <value>İşaretten sonra bir sayı bekleniyordu</value>
+  </data>
+  <data name="ExpectedParenAfter" xml:space="preserve">
+    <value>{0} sonrasında '(' bekleniyordu</value>
+  </data>
+  <data name="ExpectedValue" xml:space="preserve">
+    <value>Bir değer bekleniyordu</value>
+  </data>
+  <data name="FindCursorUnsupported" xml:space="preserve">
+    <value>.{0}() bir find imlecinde desteklenmiyor.</value>
+  </data>
+  <data name="FunctionsUnsupported" xml:space="preserve">
+    <value>İşlevler desteklenmiyor</value>
+  </data>
+  <data name="HelpersUnsupported" xml:space="preserve">
+    <value>{0}.* yardımcıları desteklenmiyor; gönderdikleri komutla db.adminCommand kullanın.</value>
+  </data>
+  <data name="IdImmutable" xml:space="preserve">
+    <value>MongoDB bir belgenin _id değerini değiştirmez. Bunun yerine satırı silip yeni _id ile ekleyin.</value>
+  </data>
+  <data name="InvalidEscape" xml:space="preserve">
+    <value>Dizede geçersiz kaçış dizisi</value>
+  </data>
+  <data name="InvalidUnicodeEscape" xml:space="preserve">
+    <value>Geçersiz Unicode kaçış dizisi</value>
+  </data>
+  <data name="MoreThanFirstBatch" xml:space="preserve">
+    <value>Komut ilk toplu işinden daha fazla belge döndürdü; hepsini okumak için find() gibi ilgili yöntemi çalıştırın.</value>
+  </data>
+  <data name="MultiNeedsOperators" xml:space="preserve">
+    <value>multi: true ile update, $set gibi güncelleme işleçleri gerektirir</value>
+  </data>
+  <data name="NameAfterNumber" xml:space="preserve">
+    <value>Bir ad bir sayının hemen ardından başlayamaz</value>
+  </data>
+  <data name="Needs" xml:space="preserve">
+    <value>{0} için {1} gerekir</value>
+  </data>
+  <data name="NeedsBraces" xml:space="preserve">
+    <value>{0} için süslü ayraç içinde {1} gerekir</value>
+  </data>
+  <data name="NeedsCommandDocument" xml:space="preserve">
+    <value>{0} bir komut belgesi gerektirir</value>
+  </data>
+  <data name="NeedsDocumentsInArray" xml:space="preserve">
+    <value>{0} dizisinde belgeler gerektirir</value>
+  </data>
+  <data name="NeedsFilter" xml:space="preserve">
+    <value>{0} bir filtre gerektirir; her belgeyle eşleşmek için {{}} verin</value>
+  </data>
+  <data name="NeedsOperatorsOrPipeline" xml:space="preserve">
+    <value>{0}, $set gibi güncelleme işleçleri veya bir işlem hattı gerektirir; bir belgeyi değiştirmek için replaceOne kullanın</value>
+  </data>
+  <data name="NeedsPipeline" xml:space="preserve">
+    <value>{0} bir işlem hattı aşamaları dizisi gerektirir</value>
+  </data>
+  <data name="NeedsQuoted" xml:space="preserve">
+    <value>{0} için tırnak içinde bir dize olarak {1} gerekir</value>
+  </data>
+  <data name="NeedsWholeNumber" xml:space="preserve">
+    <value>{0} bir tam sayı gerektirir</value>
+  </data>
+  <data name="NoDocumentMatched" xml:space="preserve">
+    <value>Eşleşen belge yok.</value>
+  </data>
+  <data name="NoOperatorsAllowed" xml:space="preserve">
+    <value>{0} güncelleme işleci içermeyen bir belge alır; $set uygulamak için updateOne kullanın</value>
+  </data>
+  <data name="NotAChange" xml:space="preserve">
+    <value>{0}, MongoDB’nin uygulayabileceği bir değişiklik değil.</value>
+  </data>
+  <data name="NotACursor" xml:space="preserve">
+    <value>.{0}() öncesindeki yöntem bir imleç döndürmediğinden .{0}() onu izleyemez.</value>
+  </data>
+  <data name="NotADate" xml:space="preserve">
+    <value>{0} bir tarih değil</value>
+  </data>
+  <data name="NotANumber" xml:space="preserve">
+    <value>{0} bir sayı değil</value>
+  </data>
+  <data name="NotAValue" xml:space="preserve">
+    <value>'{0}' bir değer değil: değişkenler desteklenmiyor</value>
+  </data>
+  <data name="NotDecimal" xml:space="preserve">
+    <value>{0} bir ondalık sayı değil</value>
+  </data>
+  <data name="NotDefined" xml:space="preserve">
+    <value>'{0}' tanımlı değil: bir deyim db, use veya show ile başlar</value>
+  </data>
+  <data name="NotJson" xml:space="preserve">
+    <value>{0} JSON içeriyor ve yeni değeri JSON olarak okunamıyor: {2}. sütunda {1}.</value>
+  </data>
+  <data name="NotObjectIdHex" xml:space="preserve">
+    <value>{0} 24 onaltılık basamak değil</value>
+  </data>
+  <data name="NotRegexFlag" xml:space="preserve">
+    <value>'{0}' bir normal ifade bayrağı değil</value>
+  </data>
+  <data name="NotUuid" xml:space="preserve">
+    <value>{0} bir UUID değil</value>
+  </data>
+  <data name="NotWholeNumber" xml:space="preserve">
+    <value>{0} bir tam sayı değil</value>
+  </data>
+  <data name="OneArgument" xml:space="preserve">
+    <value>tek bir bağımsız değişken alır</value>
+  </data>
+  <data name="OperationsFailed" xml:space="preserve">
+    <value>{1} işlemden {0} tanesi başarısız oldu: {2}</value>
+  </data>
+  <data name="OutOfRange" xml:space="preserve">
+    <value>{0} aralık dışında</value>
+  </data>
+  <data name="QuotedStringExpected" xml:space="preserve">
+    <value>tırnak içinde bir dize bekler</value>
+  </data>
+  <data name="ReadOnlyCannotSave" xml:space="preserve">
+    <value>Bağlantı salt okunur olduğundan değişiklikler kaydedilemez.</value>
+  </data>
+  <data name="ReadOnlyStatement" xml:space="preserve">
+    <value>Bağlantı salt okunur ve bu deyim verileri değiştirebilir. Salt okunur bir bağlantıda yalnızca okumalar çalışır.</value>
+  </data>
+  <data name="RegexArgs" xml:space="preserve">
+    <value>bir desen ve isteğe bağlı bayraklar alır</value>
+  </data>
+  <data name="RegexNotClosed" xml:space="preserve">
+    <value>Normal ifade kapatılmamış</value>
+  </data>
+  <data name="ShorthandUnsupported" xml:space="preserve">
+    <value>'{0}' alanı bir değer gerektirir: kısa özellik yazımı desteklenmiyor</value>
+  </data>
+  <data name="ShowNeedsWhat" xml:space="preserve">
+    <value>show neyin listeleneceğini gerektirir, örneğin dbs veya collections</value>
+  </data>
+  <data name="ShowUnsupported" xml:space="preserve">
+    <value>show {0} desteklenmiyor. show dbs, show collections, show users veya show roles deneyin.</value>
+  </data>
+  <data name="SpreadUnsupported" xml:space="preserve">
+    <value>Yayma söz dizimi desteklenmiyor</value>
+  </data>
+  <data name="SrvThroughTunnel" xml:space="preserve">
+    <value>Bir DNS tohum listesi (mongodb+srv) SSH tüneli üzerinden çalışamaz: tünel tek bir sunucu taşır ve tohum listesi sunucuları DNS ile adlandırır. Tohum listesini kapatın ve bir üyenin sunucusuna ve bağlantı noktasına bağlanın.</value>
+  </data>
+  <data name="StatementEmpty" xml:space="preserve">
+    <value>Deyim boş</value>
+  </data>
+  <data name="StatementStart" xml:space="preserve">
+    <value>Bir deyim db, use veya show ile başlar</value>
+  </data>
+  <data name="StatementUnsupported" xml:space="preserve">
+    <value>Deyim desteklenmiyor.</value>
+  </data>
+  <data name="StringNotClosed" xml:space="preserve">
+    <value>Dize kapatılmamış</value>
+  </data>
+  <data name="StringNotClosedLine" xml:space="preserve">
+    <value>Dize satır sonundan önce kapatılmamış</value>
+  </data>
+  <data name="SubtypeOutOfRange" xml:space="preserve">
+    <value>{0} alt türü aralık dışında</value>
+  </data>
+  <data name="SyntaxAt" xml:space="preserve">
+    <value>SyntaxError: {0} (satır {1}, sütun {2})</value>
+  </data>
+  <data name="TimestampArgs" xml:space="preserve">
+    <value>saniyeleri ve artışı ya da {t, i} alır</value>
+  </data>
+  <data name="UnexpectedAfterStatement" xml:space="preserve">
+    <value>Deyimden sonra beklenmeyen metin</value>
+  </data>
+  <data name="UnexpectedAfterValue" xml:space="preserve">
+    <value>Değerden sonra beklenmeyen metin</value>
+  </data>
+  <data name="UnexpectedToken" xml:space="preserve">
+    <value>Beklenmeyen '{0}'</value>
+  </data>
+  <data name="UnknownError" xml:space="preserve">
+    <value>bilinmeyen hata</value>
+  </data>
+  <data name="UseNeedsDatabase" xml:space="preserve">
+    <value>use bir veritabanı adı gerektirir</value>
+  </data>
+  <data name="WhatCollationDocument" xml:space="preserve">
+    <value>bir harmanlama belgesi</value>
+  </data>
+  <data name="WhatCollectionName" xml:space="preserve">
+    <value>bir koleksiyon adı</value>
+  </data>
+  <data name="WhatCommandDocument" xml:space="preserve">
+    <value>bir komut belgesi</value>
+  </data>
+  <data name="WhatComment" xml:space="preserve">
+    <value>bir açıklama</value>
+  </data>
+  <data name="WhatDatabaseName" xml:space="preserve">
+    <value>bir veritabanı adı</value>
+  </data>
+  <data name="WhatDocument" xml:space="preserve">
+    <value>bir belge</value>
+  </data>
+  <data name="WhatDocumentArray" xml:space="preserve">
+    <value>bir belgeler dizisi</value>
+  </data>
+  <data name="WhatDocumentOrArray" xml:space="preserve">
+    <value>bir belge veya belgeler dizisi</value>
+  </data>
+  <data name="WhatFieldName" xml:space="preserve">
+    <value>bir alan adı</value>
+  </data>
+  <data name="WhatFilter" xml:space="preserve">
+    <value>bir filtre</value>
+  </data>
+  <data name="WhatFindAndModifyDocument" xml:space="preserve">
+    <value>sorgu, güncelleme ve seçenekler içeren bir belge</value>
+  </data>
+  <data name="WhatHint" xml:space="preserve">
+    <value>bir dizin adı veya anahtarları</value>
+  </data>
+  <data name="WhatIndexKeys" xml:space="preserve">
+    <value>dizin anahtarları</value>
+  </data>
+  <data name="WhatIndexKeysArray" xml:space="preserve">
+    <value>bir dizin anahtarları dizisi</value>
+  </data>
+  <data name="WhatIndexNameOrKeys" xml:space="preserve">
+    <value>dizin adı veya anahtarları</value>
+  </data>
+  <data name="WhatNewName" xml:space="preserve">
+    <value>yeni ad</value>
+  </data>
+  <data name="WhatOperationArray" xml:space="preserve">
+    <value>bir işlemler dizisi</value>
+  </data>
+  <data name="WhatOperationId" xml:space="preserve">
+    <value>işlem kimliği</value>
+  </data>
+  <data name="WhatProjectionDocument" xml:space="preserve">
+    <value>bir projeksiyon belgesi</value>
+  </data>
+  <data name="WhatReplacementDocument" xml:space="preserve">
+    <value>bir değiştirme belgesi</value>
+  </data>
+  <data name="WhatRoleArray" xml:space="preserve">
+    <value>bir roller dizisi</value>
+  </data>
+  <data name="WhatSortDocument" xml:space="preserve">
+    <value>bir sıralama belgesi</value>
+  </data>
+  <data name="WhatSourceCollection" xml:space="preserve">
+    <value>kaynak koleksiyon</value>
+  </data>
+  <data name="WhatUpdateDocument" xml:space="preserve">
+    <value>bir güncelleme belgesi</value>
+  </data>
+  <data name="WhatUpdateOrPipeline" xml:space="preserve">
+    <value>bir güncelleme belgesi veya işlem hattı</value>
+  </data>
+  <data name="WhatUserDocument" xml:space="preserve">
+    <value>bir kullanıcı belgesi</value>
+  </data>
+  <data name="WhatUserName" xml:space="preserve">
+    <value>bir kullanıcı adı</value>
+  </data>
+  <data name="WhatViewName" xml:space="preserve">
+    <value>bir görünüm adı</value>
+  </data>
+  <data name="WhatWholeNumber" xml:space="preserve">
+    <value>bir tam sayı</value>
+  </data>
+  <data name="WriteFailed" xml:space="preserve">
+    <value>Yazma başarısız oldu</value>
+  </data>
+</root>

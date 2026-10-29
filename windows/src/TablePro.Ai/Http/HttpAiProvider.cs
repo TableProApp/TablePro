@@ -2,6 +2,7 @@ using System.Net.Http.Headers;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
+using TablePro.Ai.Localization;
 using TablePro.Ai.Sse;
 
 namespace TablePro.Ai.Http;
@@ -57,11 +58,11 @@ public abstract class HttpAiProvider : IAiProvider
         try
         {
             return await JsonSerializer.DeserializeAsync(stream, typeInfo, cancellationToken)
-                ?? throw new AiProviderException(AiErrorKind.InvalidResponse, $"{DisplayName} answered with an empty body.");
+                ?? throw new AiProviderException(AiErrorKind.InvalidResponse, AiStrings.Format("Provider/EmptyBody", DisplayName));
         }
         catch (JsonException ex)
         {
-            throw new AiProviderException(AiErrorKind.InvalidResponse, $"{DisplayName} answered with JSON the app cannot read.", null, ex);
+            throw new AiProviderException(AiErrorKind.InvalidResponse, AiStrings.Format("Provider/UnreadableJson", DisplayName), null, ex);
         }
     }
 
@@ -88,7 +89,7 @@ public abstract class HttpAiProvider : IAiProvider
         }
         catch (JsonException ex)
         {
-            throw new AiProviderException(AiErrorKind.InvalidResponse, $"{DisplayName} sent an event the app cannot read.", null, ex);
+            throw new AiProviderException(AiErrorKind.InvalidResponse, AiStrings.Format("Provider/UnreadableEvent", DisplayName), null, ex);
         }
     }
 
@@ -101,7 +102,7 @@ public abstract class HttpAiProvider : IAiProvider
         }
         catch (HttpRequestException ex)
         {
-            throw new AiProviderException(AiErrorKind.Network, $"Could not reach {DisplayName} at {BaseAddress}: {ex.Message}", null, ex);
+            throw new AiProviderException(AiErrorKind.Network, AiStrings.Format("Provider/Unreachable", DisplayName, BaseAddress, ex.Message), null, ex);
         }
 
         if (response.IsSuccessStatusCode)

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="BacktickInFilter" xml:space="preserve">
+    <value>Typesense 無法跳脫篩選值中的反引號，因此無法依此文字篩選 {0}。</value>
+  </data>
+  <data name="ComparesNumbersOnly" xml:space="preserve">
+    <value>Typesense 只能用 {0} 比較數字，而 {1} 不是數值欄位。</value>
+  </data>
+  <data name="SearchFailed" xml:space="preserve">
+    <value>搜尋失敗。</value>
+  </data>
+</root>

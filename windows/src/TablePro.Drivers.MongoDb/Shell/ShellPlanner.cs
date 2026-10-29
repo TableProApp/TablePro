@@ -1,6 +1,6 @@
-using System.Globalization;
 using System.Text;
 using MongoDB.Bson;
+using TablePro.Drivers.MongoDb.Localization;
 
 namespace TablePro.Drivers.MongoDb.Shell;
 
@@ -27,7 +27,7 @@ internal sealed class ShellPlanner
         UseStatement use => new UsePlan(use.Database),
         ShowStatement show => Show(show, currentDatabase),
         ChainStatement chain => new ShellPlanner(chain.Text, currentDatabase).PlanChain(chain),
-        _ => throw new ShellUnsupportedException("The statement is not supported."),
+        _ => throw new ShellUnsupportedException(MongoStrings.Get("Mongo/StatementUnsupported")),
     };
 
     private static ShellPlan Show(ShowStatement show, string database) => show.Subject switch
@@ -36,7 +36,7 @@ internal sealed class ShellPlanner
         "collections" or "tables" => new ListCollectionsPlan(database, [], NamesOnly: true),
         "users" => new CommandPlan(database, new BsonDocument("usersInfo", 1), ReplyShape.Rows, "users"),
         "roles" => new CommandPlan(database, new BsonDocument("rolesInfo", 1), ReplyShape.Rows, "roles"),
-        _ => throw new ShellUnsupportedException($"show {show.Subject} is not supported. Try show dbs, show collections, show users or show roles."),
+        _ => throw new ShellUnsupportedException(MongoStrings.Format("Mongo/ShowUnsupported", show.Subject)),
     };
 
     private ShellPlan PlanChain(ChainStatement chain)
@@ -44,8 +44,8 @@ internal sealed class ShellPlanner
         if (chain.Root != "db")
         {
             throw chain.Root is "rs" or "sh" or "sp"
-                ? new ShellUnsupportedException($"{chain.Root}.* helpers are not supported; use db.adminCommand with the command they send.")
-                : new ShellSyntaxException($"'{chain.Root}' is not defined: a statement starts with db, use or show", _text, 0);
+                ? new ShellUnsupportedException(MongoStrings.Format("Mongo/HelpersUnsupported", chain.Root))
+                : new ShellSyntaxException(MongoStrings.Format("Mongo/NotDefined", chain.Root), _text, 0);
         }
 
         var segments = chain.Segments;
@@ -56,7 +56,7 @@ internal sealed class ShellPlanner
         {
             if (segments[i] is not MemberSegment member)
             {
-                throw Error("Expected a method name before the parentheses", segments[i].Position);
+                throw Error(MongoStrings.Get("Mongo/ExpectedMethodName"), segments[i].Position);
             }
 
             var call = i + 1 < segments.Count ? segments[i + 1] as CallSegment : null;
@@ -64,7 +64,7 @@ internal sealed class ShellPlanner
             {
                 if (call is null)
                 {
-                    throw Error($"Expected '(' after {member.Name}", member.Position + member.Name.Length);
+                    throw Error(MongoStrings.Format("Mongo/ExpectedParenAfter", member.Name), member.Position + member.Name.Length);
                 }
 
                 plan = ApplyCursorCall(plan, member, call);
@@ -79,10 +79,10 @@ internal sealed class ShellPlanner
                     switch (member.Name)
                     {
                         case "getSiblingDB":
-                            _database = StringArg(call, 0, "getSiblingDB", "a database name");
+                            _database = StringArg(call, 0, "getSiblingDB", MongoStrings.Get("Mongo/WhatDatabaseName"));
                             break;
                         case "getCollection":
-                            collection = StringArg(call, 0, "getCollection", "a collection name");
+                            collection = StringArg(call, 0, "getCollection", MongoStrings.Get("Mongo/WhatCollectionName"));
                             break;
                         default:
                             plan = DatabaseMethod(member, call);
@@ -128,7 +128,7 @@ internal sealed class ShellPlanner
             return new FindPlan(_database, collection, [], new FindSpec(), Single: false);
         }
 
-        throw Error("db alone runs nothing: name a collection or call a method", 0);
+        throw Error(MongoStrings.Get("Mongo/DbAlone"), 0);
     }
 
     private ShellPlan DatabaseMethod(MemberSegment member, CallSegment call)
@@ -150,7 +150,7 @@ internal sealed class ShellPlanner
                 return new ListCollectionsPlan(_database, OptionalDoc(call, 0, name) ?? [], NamesOnly: false);
             case "createCollection":
             {
-                var command = new BsonDocument("create", StringArg(call, 0, name, "a collection name"));
+                var command = new BsonDocument("create", StringArg(call, 0, name, MongoStrings.Get("Mongo/WhatCollectionName")));
                 command.Merge(OptionalDoc(call, 1, name) ?? [], overwriteExistingElements: false);
                 return new CommandPlan(_database, command, ReplyShape.Document);
             }
@@ -159,8 +159,8 @@ internal sealed class ShellPlanner
             {
                 var command = new BsonDocument
                 {
-                    { "create", StringArg(call, 0, name, "a view name") },
-                    { "viewOn", StringArg(call, 1, name, "the source collection") },
+                    { "create", StringArg(call, 0, name, MongoStrings.Get("Mongo/WhatViewName")) },
+                    { "viewOn", StringArg(call, 1, name, MongoStrings.Get("Mongo/WhatSourceCollection")) },
                     { "pipeline", new BsonArray(Pipeline(call, 2, name)) },
                 };
                 command.Merge(OptionalDoc(call, 3, name) ?? [], overwriteExistingElements: false);
@@ -207,7 +207,7 @@ internal sealed class ShellPlanner
             }
 
             case "killOp":
-                return new CommandPlan("admin", new BsonDocument { { "killOp", 1 }, { "op", Required(call, 0, name, "the operation id") } }, ReplyShape.Document);
+                return new CommandPlan("admin", new BsonDocument { { "killOp", 1 }, { "op", Required(call, 0, name, MongoStrings.Get("Mongo/WhatOperationId")) } }, ReplyShape.Document);
             case "getName":
                 return new MessagePlan(_database);
             case "aggregate":
@@ -215,12 +215,12 @@ internal sealed class ShellPlanner
             case "getUsers":
                 return new CommandPlan(_database, new BsonDocument("usersInfo", 1), ReplyShape.Rows, "users");
             case "getUser":
-                return new CommandPlan(_database, new BsonDocument("usersInfo", StringArg(call, 0, name, "a user name")), ReplyShape.Rows, "users");
+                return new CommandPlan(_database, new BsonDocument("usersInfo", StringArg(call, 0, name, MongoStrings.Get("Mongo/WhatUserName"))), ReplyShape.Rows, "users");
             case "getRoles":
                 return new CommandPlan(_database, new BsonDocument("rolesInfo", 1), ReplyShape.Rows, "roles");
             case "createUser":
             {
-                var user = DocArg(call, 0, name, "a user document");
+                var user = DocArg(call, 0, name, MongoStrings.Get("Mongo/WhatUserDocument"));
                 var command = new BsonDocument("createUser", user.GetValue("user", BsonNull.Value));
                 foreach (var element in user)
                 {
@@ -234,12 +234,12 @@ internal sealed class ShellPlanner
             }
 
             case "dropUser":
-                return new CommandPlan(_database, new BsonDocument("dropUser", StringArg(call, 0, name, "a user name")), ReplyShape.Document);
+                return new CommandPlan(_database, new BsonDocument("dropUser", StringArg(call, 0, name, MongoStrings.Get("Mongo/WhatUserName"))), ReplyShape.Document);
             case "grantRolesToUser":
             case "revokeRolesFromUser":
-                return new CommandPlan(_database, new BsonDocument { { name, StringArg(call, 0, name, "a user name") }, { "roles", ArrayArg(call, 1, name, "an array of roles") } }, ReplyShape.Document);
+                return new CommandPlan(_database, new BsonDocument { { name, StringArg(call, 0, name, MongoStrings.Get("Mongo/WhatUserName")) }, { "roles", ArrayArg(call, 1, name, MongoStrings.Get("Mongo/WhatRoleArray")) } }, ReplyShape.Document);
             default:
-                throw new ShellUnsupportedException($"db.{name}() is not supported.");
+                throw new ShellUnsupportedException(MongoStrings.Format("Mongo/DbMethodUnsupported", name));
         }
     }
 
@@ -290,23 +290,23 @@ internal sealed class ShellPlanner
 
             case "distinct":
             {
-                var command = new BsonDocument { { "distinct", collection }, { "key", StringArg(call, 0, name, "a field name") }, { "query", OptionalDoc(call, 1, name) ?? [] } };
+                var command = new BsonDocument { { "distinct", collection }, { "key", StringArg(call, 0, name, MongoStrings.Get("Mongo/WhatFieldName")) }, { "query", OptionalDoc(call, 1, name) ?? [] } };
                 CopyOptions(command, OptionalDoc(call, 2, name), "collation", "maxTimeMS", "comment", "hint");
                 return new CommandPlan(_database, command, ReplyShape.Values, "values");
             }
 
             case "insertOne":
-                return Insert(collection, [DocArg(call, 0, name, "a document")], OptionalDoc(call, 1, name));
+                return Insert(collection, [DocArg(call, 0, name, MongoStrings.Get("Mongo/WhatDocument"))], OptionalDoc(call, 1, name));
             case "insertMany":
             {
-                var array = ArrayArg(call, 0, name, "an array of documents");
+                var array = ArrayArg(call, 0, name, MongoStrings.Get("Mongo/WhatDocumentArray"));
                 return Insert(collection, Documents(array, call, name), OptionalDoc(call, 1, name));
             }
 
             case "insert":
             {
-                var first = Required(call, 0, name, "a document or an array of documents");
-                List<BsonDocument> documents = first is BsonArray many ? Documents(many, call, name) : [DocArg(call, 0, name, "a document")];
+                var first = Required(call, 0, name, MongoStrings.Get("Mongo/WhatDocumentOrArray"));
+                List<BsonDocument> documents = first is BsonArray many ? Documents(many, call, name) : [DocArg(call, 0, name, MongoStrings.Get("Mongo/WhatDocument"))];
                 return Insert(collection, documents, OptionalDoc(call, 1, name));
             }
 
@@ -315,26 +315,26 @@ internal sealed class ShellPlanner
             {
                 var update = UpdateArg(call, name);
                 var options = OptionalDoc(call, 2, name);
-                return Update(collection, UpdateStatement(DocArg(call, 0, name, "a filter"), update, name == "updateMany", options), options);
+                return Update(collection, UpdateStatement(DocArg(call, 0, name, MongoStrings.Get("Mongo/WhatFilter")), update, name == "updateMany", options), options);
             }
 
             case "replaceOne":
             {
                 var replacement = ReplacementArg(call, name);
                 var options = OptionalDoc(call, 2, name);
-                return Update(collection, UpdateStatement(DocArg(call, 0, name, "a filter"), replacement, multi: false, options), options);
+                return Update(collection, UpdateStatement(DocArg(call, 0, name, MongoStrings.Get("Mongo/WhatFilter")), replacement, multi: false, options), options);
             }
 
             case "update":
             {
                 // The legacy update replaces a document unless the second argument uses operators, and takes multi.
-                var filter = DocArg(call, 0, name, "a filter");
-                var change = Required(call, 1, name, "an update document");
+                var filter = DocArg(call, 0, name, MongoStrings.Get("Mongo/WhatFilter"));
+                var change = Required(call, 1, name, MongoStrings.Get("Mongo/WhatUpdateDocument"));
                 var options = OptionalDoc(call, 2, name);
                 var multi = options?.GetValue("multi", false).ToBoolean() ?? false;
                 if (multi && change is BsonDocument d && !IsOperatorDocument(d))
                 {
-                    throw Error("update with multi: true needs update operators such as $set", call.Position);
+                    throw Error(MongoStrings.Get("Mongo/MultiNeedsOperators"), call.Position);
                 }
 
                 return Update(collection, UpdateStatement(filter, change, multi, options), options);
@@ -345,29 +345,29 @@ internal sealed class ShellPlanner
             {
                 if (args.Count == 0)
                 {
-                    throw Error($"{name} needs a filter; pass {{}} to match every document", call.Position);
+                    throw Error(MongoStrings.Format("Mongo/NeedsFilter", name), call.Position);
                 }
 
                 var options = OptionalDoc(call, 1, name);
-                return Delete(collection, DeleteStatement(DocArg(call, 0, name, "a filter"), name == "deleteOne", options), options);
+                return Delete(collection, DeleteStatement(DocArg(call, 0, name, MongoStrings.Get("Mongo/WhatFilter")), name == "deleteOne", options), options);
             }
 
             case "remove":
             {
                 var justOne = args.Count > 1 && (args[1].IsBoolean ? args[1].AsBoolean : args[1] is BsonDocument o && o.GetValue("justOne", false).ToBoolean());
-                return Delete(collection, DeleteStatement(DocArg(call, 0, name, "a filter"), justOne, null), null);
+                return Delete(collection, DeleteStatement(DocArg(call, 0, name, MongoStrings.Get("Mongo/WhatFilter")), justOne, null), null);
             }
 
             case "findOneAndUpdate":
-                return FindAndModify(collection, DocArg(call, 0, name, "a filter"), UpdateArg(call, name), remove: false, OptionalDoc(call, 2, name));
+                return FindAndModify(collection, DocArg(call, 0, name, MongoStrings.Get("Mongo/WhatFilter")), UpdateArg(call, name), remove: false, OptionalDoc(call, 2, name));
             case "findOneAndReplace":
-                return FindAndModify(collection, DocArg(call, 0, name, "a filter"), ReplacementArg(call, name), remove: false, OptionalDoc(call, 2, name));
+                return FindAndModify(collection, DocArg(call, 0, name, MongoStrings.Get("Mongo/WhatFilter")), ReplacementArg(call, name), remove: false, OptionalDoc(call, 2, name));
             case "findOneAndDelete":
-                return FindAndModify(collection, DocArg(call, 0, name, "a filter"), null, remove: true, OptionalDoc(call, 1, name));
+                return FindAndModify(collection, DocArg(call, 0, name, MongoStrings.Get("Mongo/WhatFilter")), null, remove: true, OptionalDoc(call, 1, name));
             case "findAndModify":
             {
                 var command = new BsonDocument("findAndModify", collection);
-                command.Merge(DocArg(call, 0, name, "a document of query, update and options"), overwriteExistingElements: false);
+                command.Merge(DocArg(call, 0, name, MongoStrings.Get("Mongo/WhatFindAndModifyDocument")), overwriteExistingElements: false);
                 return new CommandPlan(_database, command, ReplyShape.FindAndModify);
             }
 
@@ -376,21 +376,21 @@ internal sealed class ShellPlanner
             case "createIndex":
             {
                 var options = OptionalDoc(call, 1, name);
-                return CreateIndexes(collection, [DocArg(call, 0, name, "the index keys")], options, keepName: true);
+                return CreateIndexes(collection, [DocArg(call, 0, name, MongoStrings.Get("Mongo/WhatIndexKeys"))], options, keepName: true);
             }
 
             case "createIndexes":
             {
-                var keys = ArrayArg(call, 0, name, "an array of index keys");
+                var keys = ArrayArg(call, 0, name, MongoStrings.Get("Mongo/WhatIndexKeysArray"));
                 return CreateIndexes(collection, Documents(keys, call, name), OptionalDoc(call, 1, name), keepName: false);
             }
 
             case "dropIndex":
             {
-                var index = Required(call, 0, name, "the index name or keys");
+                var index = Required(call, 0, name, MongoStrings.Get("Mongo/WhatIndexNameOrKeys"));
                 if (!index.IsString && index is not BsonDocument)
                 {
-                    throw Error("dropIndex needs the index name or its keys", call.Position);
+                    throw Error(MongoStrings.Get("Mongo/DropIndexNeeds"), call.Position);
                 }
 
                 return new CommandPlan(_database, new BsonDocument { { "dropIndexes", collection }, { "index", index } }, ReplyShape.Document);
@@ -401,7 +401,7 @@ internal sealed class ShellPlanner
             case "hideIndex":
             case "unhideIndex":
             {
-                var index = Required(call, 0, name, "the index name or keys");
+                var index = Required(call, 0, name, MongoStrings.Get("Mongo/WhatIndexNameOrKeys"));
                 var spec = new BsonDocument { { index.IsString ? "name" : "keyPattern", index }, { "hidden", name == "hideIndex" } };
                 return new CommandPlan(_database, new BsonDocument { { "collMod", collection }, { "index", spec } }, ReplyShape.Document);
             }
@@ -413,7 +413,7 @@ internal sealed class ShellPlanner
                 return new CommandPlan(_database, new BsonDocument("drop", collection), ReplyShape.Document);
             case "renameCollection":
             {
-                var target = StringArg(call, 0, name, "the new name");
+                var target = StringArg(call, 0, name, MongoStrings.Get("Mongo/WhatNewName"));
                 var command = new BsonDocument
                 {
                     { "renameCollection", $"{_database}.{collection}" },
@@ -456,7 +456,7 @@ internal sealed class ShellPlanner
             case "isCapped":
                 return new CommandPlan(_database, new BsonDocument("collStats", collection), ReplyShape.Field, "capped");
             default:
-                throw new ShellUnsupportedException($"db.{collection}.{name}() is not supported.");
+                throw new ShellUnsupportedException(MongoStrings.Format("Mongo/CollectionMethodUnsupported", collection, name));
         }
     }
 
@@ -469,7 +469,7 @@ internal sealed class ShellPlanner
             switch (name)
             {
                 case "sort":
-                    spec.Sort = DocArg(call, 0, name, "a sort document");
+                    spec.Sort = DocArg(call, 0, name, MongoStrings.Get("Mongo/WhatSortDocument"));
                     return find;
                 case "limit":
                     spec.Limit = IntArg(call, name);
@@ -479,10 +479,10 @@ internal sealed class ShellPlanner
                     return find;
                 case "project":
                 case "projection":
-                    spec.Projection = DocArg(call, 0, name, "a projection document");
+                    spec.Projection = DocArg(call, 0, name, MongoStrings.Get("Mongo/WhatProjectionDocument"));
                     return find;
                 case "hint":
-                    spec.Hint = Required(call, 0, name, "an index name or keys");
+                    spec.Hint = Required(call, 0, name, MongoStrings.Get("Mongo/WhatHint"));
                     return find;
                 case "maxTimeMS":
                     spec.MaxTimeMs = IntArg(call, name);
@@ -491,10 +491,10 @@ internal sealed class ShellPlanner
                     spec.BatchSize = IntArg(call, name);
                     return find;
                 case "comment":
-                    spec.Comment = Required(call, 0, name, "a comment");
+                    spec.Comment = Required(call, 0, name, MongoStrings.Get("Mongo/WhatComment"));
                     return find;
                 case "collation":
-                    spec.Collation = DocArg(call, 0, name, "a collation document");
+                    spec.Collation = DocArg(call, 0, name, MongoStrings.Get("Mongo/WhatCollationDocument"));
                     return find;
                 case "allowDiskUse":
                     spec.AllowDiskUse = call.Arguments.Count == 0 || call.Arguments[0].ToBoolean();
@@ -527,7 +527,7 @@ internal sealed class ShellPlanner
                     return Explain(find.Database, spec.ToCommand(find.Collection, find.Filter), call);
             }
 
-            throw new ShellUnsupportedException($".{name}() is not supported on a find cursor.");
+            throw new ShellUnsupportedException(MongoStrings.Format("Mongo/FindCursorUnsupported", name));
         }
 
         if (plan is AggregatePlan aggregate)
@@ -535,7 +535,7 @@ internal sealed class ShellPlanner
             switch (name)
             {
                 case "sort":
-                    aggregate.Pipeline.Add(new BsonDocument("$sort", DocArg(call, 0, name, "a sort document")));
+                    aggregate.Pipeline.Add(new BsonDocument("$sort", DocArg(call, 0, name, MongoStrings.Get("Mongo/WhatSortDocument"))));
                     return aggregate;
                 case "skip":
                     aggregate.Pipeline.Add(new BsonDocument("$skip", IntArg(call, name)));
@@ -559,10 +559,10 @@ internal sealed class ShellPlanner
                 }
             }
 
-            throw new ShellUnsupportedException($".{name}() is not supported on an aggregation cursor.");
+            throw new ShellUnsupportedException(MongoStrings.Format("Mongo/AggregateCursorUnsupported", name));
         }
 
-        throw new ShellUnsupportedException($"The method before .{name}() does not return a cursor, so .{name}() cannot follow it.");
+        throw new ShellUnsupportedException(MongoStrings.Format("Mongo/NotACursor", name));
     }
 
     private static CommandPlan Explain(string database, BsonDocument command, CallSegment call)
@@ -669,14 +669,14 @@ internal sealed class ShellPlanner
 
     private BatchPlan BulkWrite(string collection, CallSegment call)
     {
-        var operations = ArrayArg(call, 0, "bulkWrite", "an array of operations");
+        var operations = ArrayArg(call, 0, "bulkWrite", MongoStrings.Get("Mongo/WhatOperationArray"));
         var options = OptionalDoc(call, 1, "bulkWrite");
         var steps = new List<CommandPlan>(operations.Count);
         foreach (var item in operations)
         {
             if (item is not BsonDocument { ElementCount: 1 } operation || operation[0] is not BsonDocument body)
             {
-                throw Error("Each bulkWrite operation is one of {insertOne: ...}, {updateOne: ...} and the like", call.Position);
+                throw Error(MongoStrings.Get("Mongo/BulkWriteShape"), call.Position);
             }
 
             var kind = operation.GetElement(0).Name;
@@ -686,7 +686,7 @@ internal sealed class ShellPlanner
                 "updateOne" or "updateMany" => Update(collection, UpdateStatement(Field<BsonDocument>(body, "filter", kind, call), CheckedUpdate(body.GetValue("update", BsonNull.Value), kind, call), kind == "updateMany", body), null),
                 "replaceOne" => Update(collection, UpdateStatement(Field<BsonDocument>(body, "filter", kind, call), CheckedReplacement(body.GetValue("replacement", BsonNull.Value), kind, call), multi: false, body), null),
                 "deleteOne" or "deleteMany" => Delete(collection, DeleteStatement(Field<BsonDocument>(body, "filter", kind, call), kind == "deleteOne", body), null),
-                _ => throw new ShellUnsupportedException($"bulkWrite does not know the operation {kind}."),
+                _ => throw new ShellUnsupportedException(MongoStrings.Format("Mongo/BulkWriteUnknown", kind)),
             });
         }
 
@@ -726,7 +726,7 @@ internal sealed class ShellPlanner
         document.ElementCount > 0 && document.All(e => e.Name.StartsWith('$'));
 
     private BsonValue UpdateArg(CallSegment call, string method) =>
-        CheckedUpdate(Required(call, 1, method, "an update document or pipeline"), method, call);
+        CheckedUpdate(Required(call, 1, method, MongoStrings.Get("Mongo/WhatUpdateOrPipeline")), method, call);
 
     private BsonValue CheckedUpdate(BsonValue update, string method, CallSegment call)
     {
@@ -736,11 +736,11 @@ internal sealed class ShellPlanner
             return update;
         }
 
-        throw Error($"{method} needs update operators such as $set, or a pipeline; use replaceOne to replace a document", call.Position);
+        throw Error(MongoStrings.Format("Mongo/NeedsOperatorsOrPipeline", method), call.Position);
     }
 
     private BsonDocument ReplacementArg(CallSegment call, string method) =>
-        CheckedReplacement(Required(call, 1, method, "a replacement document"), method, call);
+        CheckedReplacement(Required(call, 1, method, MongoStrings.Get("Mongo/WhatReplacementDocument")), method, call);
 
     private BsonDocument CheckedReplacement(BsonValue replacement, string method, CallSegment call)
     {
@@ -749,7 +749,7 @@ internal sealed class ShellPlanner
             return document;
         }
 
-        throw Error($"{method} takes a document without update operators; use updateOne to apply $set", call.Position);
+        throw Error(MongoStrings.Format("Mongo/NoOperatorsAllowed", method), call.Position);
     }
 
     private static void ApplyFindOptions(FindSpec spec, BsonDocument? options)
@@ -823,13 +823,13 @@ internal sealed class ShellPlanner
 
     private BsonDocument CommandArg(CallSegment call, string method)
     {
-        var arg = Required(call, 0, method, "a command document");
+        var arg = Required(call, 0, method, MongoStrings.Get("Mongo/WhatCommandDocument"));
         if (arg.IsString)
         {
             return new BsonDocument(arg.AsString, 1);
         }
 
-        return arg as BsonDocument ?? throw Error($"{method} needs a command document", call.Position);
+        return arg as BsonDocument ?? throw Error(MongoStrings.Format("Mongo/NeedsCommandDocument", method), call.Position);
     }
 
     private List<BsonDocument> Pipeline(CallSegment call, int index, string method)
@@ -841,7 +841,7 @@ internal sealed class ShellPlanner
 
         return call.Arguments[index] is BsonArray stages
             ? Documents(stages, call, method)
-            : throw Error($"{method} needs an array of pipeline stages", call.Position);
+            : throw Error(MongoStrings.Format("Mongo/NeedsPipeline", method), call.Position);
     }
 
     private List<BsonDocument> Documents(BsonArray array, CallSegment call, string method)
@@ -849,7 +849,7 @@ internal sealed class ShellPlanner
         var documents = new List<BsonDocument>(array.Count);
         foreach (var item in array)
         {
-            documents.Add(item as BsonDocument ?? throw Error($"{method} needs documents in its array", call.Position));
+            documents.Add(item as BsonDocument ?? throw Error(MongoStrings.Format("Mongo/NeedsDocumentsInArray", method), call.Position));
         }
 
         return documents;
@@ -857,27 +857,27 @@ internal sealed class ShellPlanner
 
     private T Field<T>(BsonDocument body, string name, string operation, CallSegment call)
         where T : BsonValue =>
-        body.GetValue(name, null) as T ?? throw Error($"{operation} needs {name}", call.Position);
+        body.GetValue(name, null) as T ?? throw Error(MongoStrings.Format("Mongo/Needs", operation, name), call.Position);
 
     private BsonValue Required(CallSegment call, int index, string method, string what) =>
-        index < call.Arguments.Count ? call.Arguments[index] : throw Error($"{method} needs {what}", call.Position);
+        index < call.Arguments.Count ? call.Arguments[index] : throw Error(MongoStrings.Format("Mongo/Needs", method, what), call.Position);
 
     private string StringArg(CallSegment call, int index, string method, string what)
     {
         var value = Required(call, index, method, what);
-        return value.IsString ? value.AsString : throw Error($"{method} needs {what} as a quoted string", call.Position);
+        return value.IsString ? value.AsString : throw Error(MongoStrings.Format("Mongo/NeedsQuoted", method, what), call.Position);
     }
 
     private BsonDocument DocArg(CallSegment call, int index, string method, string what)
     {
         var value = Required(call, index, method, what);
-        return value as BsonDocument ?? throw Error($"{method} needs {what} in braces", call.Position);
+        return value as BsonDocument ?? throw Error(MongoStrings.Format("Mongo/NeedsBraces", method, what), call.Position);
     }
 
     private BsonArray ArrayArg(CallSegment call, int index, string method, string what)
     {
         var value = Required(call, index, method, what);
-        return value as BsonArray ?? throw Error($"{method} needs {what}", call.Position);
+        return value as BsonArray ?? throw Error(MongoStrings.Format("Mongo/Needs", method, what), call.Position);
     }
 
     private BsonDocument? OptionalDoc(CallSegment call, int index, string method)
@@ -887,12 +887,12 @@ internal sealed class ShellPlanner
             return null;
         }
 
-        return call.Arguments[index] as BsonDocument ?? throw Error($"Argument {index + 1} of {method} must be a document", call.Position);
+        return call.Arguments[index] as BsonDocument ?? throw Error(MongoStrings.Format("Mongo/ArgumentMustBeDocument", index + 1, method), call.Position);
     }
 
     private int IntArg(CallSegment call, string method)
     {
-        var value = Required(call, 0, method, "a whole number");
+        var value = Required(call, 0, method, MongoStrings.Get("Mongo/WhatWholeNumber"));
         if (value.IsInt32 || value.IsInt64 || (value.IsDouble && Math.Floor(value.AsDouble) == value.AsDouble))
         {
             var number = value.ToInt64();
@@ -902,7 +902,7 @@ internal sealed class ShellPlanner
             }
         }
 
-        throw Error(string.Create(CultureInfo.InvariantCulture, $"{method} needs a whole number"), call.Position);
+        throw Error(MongoStrings.Format("Mongo/NeedsWholeNumber", method), call.Position);
     }
 
     private ShellSyntaxException Error(string reason, int position) => new(reason, _text, position);

@@ -7,6 +7,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
 using TablePro.Core.Connections;
 using TablePro.Core.Drivers;
+using TablePro.Drivers.Etcd.Localization;
 
 namespace TablePro.Drivers.Etcd;
 
@@ -216,7 +217,7 @@ internal sealed class EtcdClient(HttpClient http, Uri baseUri, string? user, str
         var bytes = await SendAsync("lease/keepalive", body, retry: true, cancellationToken);
         var firstLine = FirstLine(bytes);
         var line = JsonSerializer.Deserialize(firstLine, EtcdJsonContext.Default.EtcdKeepAliveLine);
-        return line?.Result ?? throw new EtcdException("etcd sent no keep-alive answer.");
+        return line?.Result ?? throw new EtcdException(EtcdStrings.Get("Etcd/NoKeepAliveAnswer"));
     }
 
     /// <summary>Collects watch events until the window closes or <paramref name="maxEvents"/> arrive.</summary>
@@ -292,7 +293,7 @@ internal sealed class EtcdClient(HttpClient http, Uri baseUri, string? user, str
         }
         catch (JsonException ex)
         {
-            throw new EtcdException($"etcd returned a response TablePro could not read for {path}.", ex);
+            throw new EtcdException(EtcdStrings.Format("Etcd/UnreadableResponse", path), ex);
         }
     }
 
@@ -311,7 +312,7 @@ internal sealed class EtcdClient(HttpClient http, Uri baseUri, string? user, str
         var message = error?.Message ?? error?.Error;
         if (string.IsNullOrWhiteSpace(message))
         {
-            message = string.Create(CultureInfo.InvariantCulture, $"etcd returned HTTP {(int)status}: {Encoding.UTF8.GetString(body, 0, Math.Min(body.Length, 200)).Trim()}");
+            message = EtcdStrings.Format("Etcd/HttpStatus", (int)status, Encoding.UTF8.GetString(body, 0, Math.Min(body.Length, 200)).Trim());
         }
 
         return new EtcdException(message, status, error?.Code ?? 0);
@@ -383,11 +384,11 @@ internal sealed class EtcdClient(HttpClient http, Uri baseUri, string? user, str
                     return;
                 }
 
-                throw new EtcdException("etcd refused the user name or password: " + failure.Message, failure);
+                throw new EtcdException(EtcdStrings.Format("Etcd/SignInRefused", failure.Message), failure);
             }
 
             var parsed = JsonSerializer.Deserialize(bytes, EtcdJsonContext.Default.EtcdAuthResponse);
-            _token = string.IsNullOrEmpty(parsed?.Token) ? throw new EtcdException("etcd signed in but returned no token.") : parsed.Token;
+            _token = string.IsNullOrEmpty(parsed?.Token) ? throw new EtcdException(EtcdStrings.Get("Etcd/NoToken")) : parsed.Token;
         }
         finally
         {
@@ -417,8 +418,8 @@ internal sealed class EtcdClient(HttpClient http, Uri baseUri, string? user, str
         }
 
         throw new EtcdException(sawForeign
-            ? "The server answered but is not an etcd v3 JSON gateway."
-            : $"No etcd v3 API found at {baseUri}. Point the connection at the client port, 2379 by default, not the peer port 2380.");
+            ? EtcdStrings.Get("Etcd/NotGateway")
+            : EtcdStrings.Format("Etcd/NoApiAt", baseUri));
     }
 
     internal enum GatewayRoute

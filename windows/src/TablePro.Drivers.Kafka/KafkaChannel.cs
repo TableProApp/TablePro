@@ -1,11 +1,12 @@
 using System.Diagnostics;
-using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Text;
 using Confluent.Kafka;
 using Confluent.Kafka.Admin;
 using TablePro.Core.Drivers;
+using TablePro.Core.Localization;
 using TablePro.Core.Results;
+using TablePro.Drivers.Kafka.Localization;
 
 namespace TablePro.Drivers.Kafka;
 
@@ -59,7 +60,7 @@ internal sealed class KafkaChannel(KafkaCluster cluster) : IQueryChannel
         }
         catch (OperationCanceledException)
         {
-            return new StatementResult(text, [], -1, stopwatch.Elapsed, "Statement cancelled.");
+            return new StatementResult(text, [], -1, stopwatch.Elapsed, CoreStrings.Get("Driver/StatementCancelled"));
         }
         catch (Exception ex) when (ex is KafkaQLException or KafkaException or InvalidOperationException or NotSupportedException or ArgumentException or FormatException or TimeoutException)
         {
@@ -79,7 +80,7 @@ internal sealed class KafkaChannel(KafkaCluster cluster) : IQueryChannel
                 var (page, complete) = await cluster.ConsumeAsync(limited, budget, cancellationToken);
                 IReadOnlyList<string> notes = complete
                     ? []
-                    : [string.Create(CultureInfo.InvariantCulture, $"Stopped after {budget.TotalSeconds:0} seconds with some partitions not fully read; the rows shown are what arrived.")];
+                    : [KafkaStrings.Format("Kafka/StoppedPartial", budget.TotalSeconds)];
                 return ([KafkaRows.ToResultSet(page, !complete)], -1, notes);
             }
 
@@ -210,7 +211,7 @@ internal sealed class KafkaChannel(KafkaCluster cluster) : IQueryChannel
             case KafkaDescribeGroup describe:
             {
                 var described = await cluster.Admin.DescribeConsumerGroupsAsync([describe.Group], new DescribeConsumerGroupsOptions { RequestTimeout = options }).WaitAsync(cancellationToken);
-                var group = described.ConsumerGroupDescriptions.FirstOrDefault() ?? throw new InvalidOperationException($"There is no consumer group named {describe.Group}.");
+                var group = described.ConsumerGroupDescriptions.FirstOrDefault() ?? throw new InvalidOperationException(KafkaStrings.Format("Kafka/NoConsumerGroup", describe.Group));
                 var offsets = await cluster.Admin.ListConsumerGroupOffsetsAsync(
                     [new ConsumerGroupTopicPartitions(describe.Group, null)],
                     new ListConsumerGroupOffsetsOptions { RequestTimeout = options }).WaitAsync(cancellationToken);
@@ -238,7 +239,8 @@ internal sealed class KafkaChannel(KafkaCluster cluster) : IQueryChannel
                         member?.Host,
                     };
                 }).ToList();
-                var note = string.Create(CultureInfo.InvariantCulture, $"Group {group.GroupId} is {group.State} with {group.Members.Count} member(s).");
+                // The state is Kafka's own name for it (Stable, Empty...), the word kafka-consumer-groups prints too.
+                var note = KafkaStrings.Plural("Kafka/GroupNote", group.Members.Count, group.GroupId, group.State);
                 return ([Table(
                     ["topic", "partition", "committed", "end", "lag", "member", "client_id", "host"],
                     [typeof(string), typeof(int), typeof(long), typeof(long), typeof(long), typeof(string), typeof(string), typeof(string)],
@@ -255,15 +257,15 @@ internal sealed class KafkaChannel(KafkaCluster cluster) : IQueryChannel
                     Configs = create.Config.Count > 0 ? new Dictionary<string, string>(create.Config) : null,
                 };
                 await cluster.Admin.CreateTopicsAsync([spec], new CreateTopicsOptions { RequestTimeout = options, OperationTimeout = options }).WaitAsync(cancellationToken);
-                return ([], 0, [$"Topic {create.Topic} created."]);
+                return ([], 0, [KafkaStrings.Format("Kafka/TopicCreated", create.Topic)]);
             }
 
             case KafkaDropTopic drop:
                 await cluster.Admin.DeleteTopicsAsync([drop.Topic], new DeleteTopicsOptions { RequestTimeout = options, OperationTimeout = options }).WaitAsync(cancellationToken);
-                return ([], 0, [$"Topic {drop.Topic} deleted."]);
+                return ([], 0, [KafkaStrings.Format("Kafka/TopicDeleted", drop.Topic)]);
 
             default:
-                throw new KafkaQLException("That statement is not supported.");
+                throw new KafkaQLException(CoreStrings.Get("Driver/StatementNotSupported"));
         }
     }
 

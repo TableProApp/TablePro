@@ -1,3 +1,5 @@
+using TablePro.Core.Localization;
+
 namespace TablePro.Core.Editing;
 
 /// <summary>A pending edit from the grid, applied by the driver inside one transaction.</summary>
@@ -12,7 +14,7 @@ public sealed record RowDelete(IReadOnlyDictionary<string, object?> Key) : RowCh
 
 /// <summary>A save that would have touched more or fewer rows than the grid showed is rolled back.</summary>
 public sealed class RowCountMismatchException(int expected, int actual, string statement)
-    : InvalidOperationException($"The change would affect {actual} rows instead of {expected}, so nothing was saved. Statement: {statement}")
+    : InvalidOperationException(CoreStrings.Format("Editing/RowCountMismatch", actual, expected, statement))
 {
     public int Expected { get; } = expected;
 

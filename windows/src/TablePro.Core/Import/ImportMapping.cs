@@ -1,5 +1,6 @@
 using TablePro.Core.Connections;
 using TablePro.Core.Editing;
+using TablePro.Core.Localization;
 using TablePro.Core.Schema;
 
 namespace TablePro.Core.Import;
@@ -127,7 +128,7 @@ public sealed class ImportMapping
 
     /// <summary>Why the import cannot run yet, in the words the dialog shows, or null when it can.</summary>
     public string? Problem =>
-        !HasMappedField ? "Map at least one field to a column." : MapsOneColumnTwice ? "Each column can be mapped from only one field." : null;
+        !HasMappedField ? CoreStrings.Get("Import/MapAtLeastOneField") : MapsOneColumnTwice ? CoreStrings.Get("Import/ColumnMappedTwice") : null;
 
     public ImportTargetColumn? ColumnFor(string? name) =>
         name is null ? null : Columns.FirstOrDefault(c => string.Equals(c.Name, name, StringComparison.OrdinalIgnoreCase));
@@ -309,20 +310,20 @@ public sealed class NewTableDraft
             var names = _columns.Where(c => c.Settings.Include).Select(c => c.Settings.Name.Trim()).ToArray();
             if (names.Length == 0 || names.All(n => n.Length == 0))
             {
-                return "Include at least one column.";
+                return CoreStrings.Get("Import/IncludeAtLeastOneColumn");
             }
 
             if (names.Any(n => n.Length == 0))
             {
-                return "Every included column needs a name.";
+                return CoreStrings.Get("Import/IncludedColumnNeedsName");
             }
 
             if (_columns.Any(c => c.Settings.Include && string.IsNullOrWhiteSpace(c.Settings.Type)))
             {
-                return "Every included column needs a type.";
+                return CoreStrings.Get("Import/IncludedColumnNeedsType");
             }
 
-            return names.Distinct(StringComparer.OrdinalIgnoreCase).Count() == names.Length ? null : "Column names must be unique.";
+            return names.Distinct(StringComparer.OrdinalIgnoreCase).Count() == names.Length ? null : CoreStrings.Get("Import/ColumnNamesUnique");
         }
     }
 

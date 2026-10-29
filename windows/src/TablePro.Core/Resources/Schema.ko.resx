@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="OptionAutoIncrement" xml:space="preserve">
+    <value>다음 자동 증가 값</value>
+  </data>
+  <data name="OptionCharset" xml:space="preserve">
+    <value>문자 집합</value>
+  </data>
+  <data name="OptionCollation" xml:space="preserve">
+    <value>정렬 규칙</value>
+  </data>
+  <data name="OptionComment" xml:space="preserve">
+    <value>주석</value>
+  </data>
+  <data name="OptionCompression" xml:space="preserve">
+    <value>압축</value>
+  </data>
+  <data name="OptionDataCompression" xml:space="preserve">
+    <value>데이터 압축</value>
+  </data>
+  <data name="OptionEngine" xml:space="preserve">
+    <value>엔진</value>
+  </data>
+  <data name="OptionFilegroup" xml:space="preserve">
+    <value>파일 그룹</value>
+  </data>
+  <data name="OptionFillFactor" xml:space="preserve">
+    <value>채우기 비율</value>
+  </data>
+  <data name="OptionLockEscalation" xml:space="preserve">
+    <value>잠금 에스컬레이션</value>
+  </data>
+  <data name="OptionLogging" xml:space="preserve">
+    <value>로깅</value>
+  </data>
+  <data name="OptionPctFree" xml:space="preserve">
+    <value>여유 공간 비율</value>
+  </data>
+  <data name="OptionPersistence" xml:space="preserve">
+    <value>지속성</value>
+  </data>
+  <data name="OptionPrimaryKey" xml:space="preserve">
+    <value>기본 키</value>
+  </data>
+  <data name="OptionRowFormat" xml:space="preserve">
+    <value>행 형식</value>
+  </data>
+  <data name="OptionRowMovement" xml:space="preserve">
+    <value>행 이동</value>
+  </data>
+  <data name="OptionSamplingKey" xml:space="preserve">
+    <value>샘플링 키</value>
+  </data>
+  <data name="OptionSortingKey" xml:space="preserve">
+    <value>정렬 키</value>
+  </data>
+  <data name="OptionStorageParameters" xml:space="preserve">
+    <value>저장소 매개 변수</value>
+  </data>
+  <data name="OptionStrict" xml:space="preserve">
+    <value>엄격</value>
+  </data>
+  <data name="OptionTablespace" xml:space="preserve">
+    <value>테이블스페이스</value>
+  </data>
+  <data name="OptionWithoutRowid" xml:space="preserve">
+    <value>rowid 없음</value>
+  </data>
+</root>

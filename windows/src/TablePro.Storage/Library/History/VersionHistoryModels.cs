@@ -1,3 +1,5 @@
+using TablePro.Storage.Localization;
+
 namespace TablePro.Storage.Library.History;
 
 /// <summary>Which version an entry stands for: the text as it is now, a snapshot taken on save, or a Git commit.</summary>
@@ -33,12 +35,12 @@ public abstract record VersionHistoryNotice
 
 public sealed record KeepsLatestSnapshotsNotice(int Count) : VersionHistoryNotice
 {
-    public override string Text => FormattableString.Invariant($"TablePro keeps the latest {Count} saved versions of a file.");
+    public override string Text => StorageStrings.Plural("Library/KeepsLatestSnapshots", Count);
 }
 
 public sealed record ShowsLatestCommitsNotice(int Count) : VersionHistoryNotice
 {
-    public override string Text => FormattableString.Invariant($"Showing the latest {Count} commits.");
+    public override string Text => StorageStrings.Plural("Library/ShowsLatestCommits", Count);
 }
 
 public sealed record GitHistoryUnavailableNotice(string Reason) : VersionHistoryNotice
@@ -98,15 +100,15 @@ public sealed class VersionHistoryException : Exception
 
     private static string Describe(VersionHistoryError error, string? detail) => error switch
     {
-        VersionHistoryError.SubjectNotFound => "This file no longer exists.",
-        VersionHistoryError.VersionNotFound => "This version is no longer available.",
-        VersionHistoryError.GitUnavailable => "Git is not installed. Install Git for Windows to see the file's commits.",
-        VersionHistoryError.NotInRepository => "This file is not in a Git repository.",
-        VersionHistoryError.UndecodableContent => "This version is not readable as text.",
-        VersionHistoryError.StoredInLargeFileStorage => "This file is stored with Git LFS. Restore it with your Git client.",
-        VersionHistoryError.FileChangedBeforeWriting => "The file or its staged version changed before it could be written. Nothing was replaced.",
-        VersionHistoryError.RestoreFailed => "The version could not be restored: " + detail,
-        _ => detail ?? "Git failed.",
+        VersionHistoryError.SubjectNotFound => StorageStrings.Get("Library/HistoryFileGone"),
+        VersionHistoryError.VersionNotFound => StorageStrings.Get("Library/HistoryVersionGone"),
+        VersionHistoryError.GitUnavailable => StorageStrings.Get("Library/HistoryGitUnavailable"),
+        VersionHistoryError.NotInRepository => StorageStrings.Get("Library/HistoryNotInRepository"),
+        VersionHistoryError.UndecodableContent => StorageStrings.Get("Library/HistoryNotText"),
+        VersionHistoryError.StoredInLargeFileStorage => StorageStrings.Get("Library/HistoryInLfs"),
+        VersionHistoryError.FileChangedBeforeWriting => StorageStrings.Get("Library/HistoryChangedBeforeWriting"),
+        VersionHistoryError.RestoreFailed => StorageStrings.Format("Library/HistoryRestoreFailed", detail),
+        _ => detail ?? StorageStrings.Get("Library/HistoryGitFailed"),
     };
 }
 

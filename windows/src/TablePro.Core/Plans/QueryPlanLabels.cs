@@ -1,6 +1,7 @@
 using System.Collections.Frozen;
 using System.Globalization;
 using System.Text;
+using TablePro.Core.Localization;
 
 namespace TablePro.Core.Plans;
 
@@ -31,41 +32,41 @@ public static class QueryPlanLabels
     {
         ArgumentNullException.ThrowIfNull(node);
         var text = new StringBuilder(node.Operation);
-        void Line(string label, string value) => text.Append('\n').Append(label).Append(": ").Append(value);
+        void Line(string label, string value) => text.Append('\n').Append(CoreStrings.Format("Plan/LabelValue", label, value));
 
         if (node.Relation is { } relation)
         {
-            Line("Table", relation);
+            Line(CoreStrings.Get("Plan/LabelTable"), relation);
         }
 
         if (node.CostRangeText(2) is { } cost)
         {
-            Line("Cost", cost);
+            Line(CoreStrings.Get("Plan/LabelCost"), cost);
         }
 
         if (node.EstimatedRows is { } rows)
         {
-            Line("Rows", rows.ToString(CultureInfo.InvariantCulture));
+            Line(CoreStrings.Get("Plan/LabelRows"), rows.ToString(CultureInfo.InvariantCulture));
         }
 
         if (node.EstimatedWidth is { } width and > 0)
         {
-            Line("Width", width.ToString(CultureInfo.InvariantCulture));
+            Line(CoreStrings.Get("Plan/LabelWidth"), width.ToString(CultureInfo.InvariantCulture));
         }
 
         if (node.ActualTotalTime is { } time)
         {
-            Line("Actual Time", Milliseconds(time));
+            Line(CoreStrings.Get("Plan/LabelActualTime"), Milliseconds(time));
         }
 
         if (node.ActualRows is { } actualRows)
         {
-            Line("Actual Rows", actualRows.ToString(CultureInfo.InvariantCulture));
+            Line(CoreStrings.Get("Plan/LabelActualRows"), actualRows.ToString(CultureInfo.InvariantCulture));
         }
 
         if (node.ActualLoops is { } loops and > 1)
         {
-            Line("Loops", loops.ToString(CultureInfo.InvariantCulture));
+            Line(CoreStrings.Get("Plan/LabelLoops"), loops.ToString(CultureInfo.InvariantCulture));
         }
 
         foreach (var (key, value) in VisibleProperties(node))
@@ -75,12 +76,12 @@ public static class QueryPlanLabels
 
         foreach (var warning in node.Warnings)
         {
-            Line("Warning", warning);
+            Line(CoreStrings.Get("Plan/LabelWarning"), warning);
         }
 
         foreach (var index in node.MissingIndexes)
         {
-            Line("Missing Index", index.CreateStatement);
+            Line(CoreStrings.Get("Plan/LabelMissingIndex"), index.CreateStatement);
         }
 
         return text.ToString();
@@ -93,7 +94,7 @@ public static class QueryPlanLabels
         var parts = new List<string>(6) { node.Operation };
         if (node.Relation is { } relation)
         {
-            parts.Add("on " + relation);
+            parts.Add(CoreStrings.Format("Plan/AccessibleOnRelation", relation));
         }
 
         if (node.Severity is { } severity)
@@ -108,23 +109,23 @@ public static class QueryPlanLabels
 
         if (node.CostRangeText(2) is { } cost)
         {
-            parts.Add("Cost " + cost);
+            parts.Add(CoreStrings.Format("Plan/AccessibleCost", cost));
         }
 
         if (node.EstimatedRows is { } rows)
         {
-            parts.Add(rows.ToString(CultureInfo.InvariantCulture) + " Rows");
+            parts.Add(CoreStrings.Plural("Plan/AccessibleRows", rows));
         }
 
         if (node.ActualTotalTime is { } time)
         {
-            parts.Add("Actual Time " + Milliseconds(time));
+            parts.Add(CoreStrings.Format("Plan/AccessibleActualTime", Milliseconds(time)));
         }
 
-        return string.Join(", ", parts);
+        return string.Join(CoreStrings.Get("Plan/AccessibleSeparator"), parts);
     }
 
-    public static string WarningCount(int count) => string.Create(CultureInfo.InvariantCulture, $"Warnings: {count}");
+    public static string WarningCount(int count) => CoreStrings.Plural("Plan/AccessibleWarnings", count);
 
     private static bool IsVisible(string key, string value) =>
         !HiddenPropertyKeys.Contains(key) && (SignificantZeroKeys.Contains(key) || (value != "false" && value != "0"));

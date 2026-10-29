@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="ChangeAddColumn" xml:space="preserve">
+    <value>Thêm cột {0} {1}</value>
+  </data>
+  <data name="ChangeAddForeignKey" xml:space="preserve">
+    <value>Thêm khóa ngoại {0} tới {1}</value>
+  </data>
+  <data name="ChangeAlterColumn" xml:space="preserve">
+    <value>Đổi cột {0} thành {1}</value>
+  </data>
+  <data name="ChangeCreateIndex" xml:space="preserve">
+    <value>Tạo chỉ mục {0}</value>
+  </data>
+  <data name="ChangeCreateTable" xml:space="preserve">
+    <value>Tạo bảng {0}</value>
+  </data>
+  <data name="ChangeCreateUniqueIndex" xml:space="preserve">
+    <value>Tạo chỉ mục duy nhất {0}</value>
+  </data>
+  <data name="ChangeDropColumn" xml:space="preserve">
+    <value>Xóa cột {0}</value>
+  </data>
+  <data name="ChangeDropForeignKey" xml:space="preserve">
+    <value>Xóa khóa ngoại {0}</value>
+  </data>
+  <data name="ChangeDropFunction" xml:space="preserve">
+    <value>Xóa hàm {0}</value>
+  </data>
+  <data name="ChangeDropIndex" xml:space="preserve">
+    <value>Xóa chỉ mục {0}</value>
+  </data>
+  <data name="ChangeDropMaterializedView" xml:space="preserve">
+    <value>Xóa materialized view {0}</value>
+  </data>
+  <data name="ChangeDropObject" xml:space="preserve">
+    <value>Xóa {0}</value>
+  </data>
+  <data name="ChangeDropProcedure" xml:space="preserve">
+    <value>Xóa thủ tục {0}</value>
+  </data>
+  <data name="ChangeDropSequence" xml:space="preserve">
+    <value>Xóa sequence {0}</value>
+  </data>
+  <data name="ChangeDropTable" xml:space="preserve">
+    <value>Xóa bảng {0}</value>
+  </data>
+  <data name="ChangeDropTrigger" xml:space="preserve">
+    <value>Xóa trigger {0}</value>
+  </data>
+  <data name="ChangeDropView" xml:space="preserve">
+    <value>Xóa view {0}</value>
+  </data>
+  <data name="ChangeRenameColumn" xml:space="preserve">
+    <value>Đổi tên cột {0} thành {1}</value>
+  </data>
+  <data name="ChangeRenameTable" xml:space="preserve">
+    <value>Đổi tên bảng thành {0}</value>
+  </data>
+  <data name="ChangeTruncateTable" xml:space="preserve">
+    <value>Làm trống bảng</value>
+  </data>
+  <data name="ChooseKeyColumn" xml:space="preserve">
+    <value>Hãy chọn ít nhất một cột khóa xác định một dòng ở cả hai bên.</value>
+  </data>
+  <data name="ColumnGone" xml:space="preserve">
+    <value>{0} không còn cột {1}. Hãy so sánh lại để đọc các cột hiện tại của nó.</value>
+  </data>
+  <data name="ColumnOnlyInTarget" xml:space="preserve">
+    <value>Cột {0} chỉ có ở đích và được giữ lại.</value>
+  </data>
+  <data name="DuplicateKeyInSource" xml:space="preserve">
+    <value>Khóa {0} khớp với nhiều dòng ở nguồn. Hãy chọn các cột khóa xác định một dòng duy nhất.</value>
+  </data>
+  <data name="DuplicateKeyInTarget" xml:space="preserve">
+    <value>Khóa {0} khớp với nhiều dòng ở đích. Hãy chọn các cột khóa xác định một dòng duy nhất.</value>
+  </data>
+  <data name="ForeignKeyCycle" xml:space="preserve">
+    <value>{0} tham chiếu lẫn nhau, nên không có thứ tự nào thỏa mọi khóa ngoại. Lần đồng bộ nào vi phạm một khóa ngoại sẽ hoàn tác bảng đó.</value>
+  </data>
+  <data name="IdentityColumnWarning" xml:space="preserve">
+    <value>{0} là cột identity ở đích. Các engine như SQL Server từ chối giá trị tường minh ở đó, khiến lần đồng bộ bị hoàn tác.</value>
+  </data>
+  <data name="KeyColumnNotOnBoth" xml:space="preserve">
+    <value>Cột khóa {0} không có ở cả hai bảng.</value>
+  </data>
+  <data name="NoPrimaryKey" xml:space="preserve">
+    <value>{0} không có khóa chính. Hãy chọn các cột xác định một dòng.</value>
+  </data>
+  <data name="PrimaryKeyDiffers" xml:space="preserve">
+    <value>Khóa chính khác nhau: ({0}) so với ({1}). Hãy thay đổi thủ công.</value>
+  </data>
+  <data name="RowLimitCutShort" xml:space="preserve">
+    <value>Giới hạn dòng đã làm phép so sánh dừng sớm, nên các dòng sau giới hạn được giữ nguyên.</value>
+  </data>
+  <data name="RowsDeletedForGood_One" xml:space="preserve">
+    <value>{0:N0} dòng sẽ bị xóa vĩnh viễn khỏi {1}.</value>
+  </data>
+  <data name="RowsDeletedForGood_Other" xml:space="preserve">
+    <value>{0:N0} dòng sẽ bị xóa vĩnh viễn khỏi {1}.</value>
+  </data>
+  <data name="SortOrderSource" xml:space="preserve">
+    <value>Nguồn đã sắp xếp các dòng khác với dự kiến của phép so sánh, gần khóa {0}. Hãy chọn khóa số, hoặc khóa có collation sắp xếp theo giá trị byte.</value>
+  </data>
+  <data name="SortOrderSourceHint" xml:space="preserve">
+    <value>Nguồn đã sắp xếp các dòng khác với dự kiến của phép so sánh, gần khóa {0}. Hãy chọn khóa số, hoặc khóa có collation sắp xếp theo giá trị byte, hoặc bật khóa không phân biệt hoa thường.</value>
+  </data>
+  <data name="SortOrderTarget" xml:space="preserve">
+    <value>Đích đã sắp xếp các dòng khác với dự kiến của phép so sánh, gần khóa {0}. Hãy chọn khóa số, hoặc khóa có collation sắp xếp theo giá trị byte.</value>
+  </data>
+  <data name="SortOrderTargetHint" xml:space="preserve">
+    <value>Đích đã sắp xếp các dòng khác với dự kiến của phép so sánh, gần khóa {0}. Hãy chọn khóa số, hoặc khóa có collation sắp xếp theo giá trị byte, hoặc bật khóa không phân biệt hoa thường.</value>
+  </data>
+  <data name="SourceColumnCount" xml:space="preserve">
+    <value>Nguồn trả về {0} cột trong khi cần {1} cột.</value>
+  </data>
+  <data name="TableLeftOutTooMany" xml:space="preserve">
+    <value>{0}: {1:N0} khác biệt là quá nhiều để một lần đồng bộ xem xét, nên bảng này bị bỏ qua. Hãy thu hẹp bằng bộ lọc hoặc giới hạn dòng.</value>
+  </data>
+  <data name="TableNote" xml:space="preserve">
+    <value>{0}: {1}</value>
+  </data>
+  <data name="TargetColumnCount" xml:space="preserve">
+    <value>Đích trả về {0} cột trong khi cần {1} cột.</value>
+  </data>
+  <data name="TooManyToSync" xml:space="preserve">
+    <value>Phép so sánh tìm thấy {0:N0} khác biệt, nhiều hơn {1:N0} mà một lần đồng bộ có thể xem xét. Hãy thu hẹp bằng bộ lọc hoặc giới hạn dòng, rồi so sánh lại.</value>
+  </data>
+</root>

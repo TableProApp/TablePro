@@ -4,6 +4,7 @@ using Amazon.Redshift.Model;
 using Amazon.RedshiftServerless;
 using Amazon.Runtime;
 using TablePro.Core.Connections;
+using TablePro.Ssh.Localization;
 using ServerlessGetCredentialsRequest = Amazon.RedshiftServerless.Model.GetCredentialsRequest;
 
 namespace TablePro.Ssh.SignIn;
@@ -74,12 +75,12 @@ internal static class RedshiftSignIn
         catch (AmazonServiceException ex)
         {
             var code = string.IsNullOrEmpty(ex.ErrorCode) ? string.Empty : ex.ErrorCode + ": ";
-            throw new InvalidOperationException($"AWS did not issue Redshift credentials: {code}{ex.Message}", ex);
+            throw new InvalidOperationException(SshStrings.Format("SignIn/RedshiftNotIssued", code + ex.Message), ex);
         }
     }
 
     private static SignInCredentials Issued(string? user, string? password) =>
         string.IsNullOrEmpty(user) || string.IsNullOrEmpty(password)
-            ? throw new InvalidOperationException("AWS answered without the Redshift user and password.")
+            ? throw new InvalidOperationException(SshStrings.Get("SignIn/RedshiftNoUser"))
             : new SignInCredentials(user, password);
 }

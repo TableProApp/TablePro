@@ -4,6 +4,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using TablePro.Core.Connections;
+using TablePro.Ssh.Localization;
 
 namespace TablePro.Ssh;
 
@@ -34,7 +35,7 @@ internal static class ProxyHandshake
         var choice = await ReadExactlyAsync(stream, 2, cancellationToken);
         if (choice[0] != SocksVersion)
         {
-            throw new TunnelException(TunnelFailureKind.ProxyRefused, "The proxy did not answer as a SOCKS5 proxy.");
+            throw new TunnelException(TunnelFailureKind.ProxyRefused, SshStrings.Get("Tunnel/NotSocks5"));
         }
 
         switch (choice[1])
@@ -46,23 +47,23 @@ internal static class ProxyHandshake
                 var status = await ReadExactlyAsync(stream, 2, cancellationToken);
                 if (status[1] != 0)
                 {
-                    throw new TunnelException(TunnelFailureKind.ProxyAuthenticationFailed, "The proxy rejected the user name and password.");
+                    throw new TunnelException(TunnelFailureKind.ProxyAuthenticationFailed, SshStrings.Get("Tunnel/ProxyRejectedLogin"));
                 }
 
                 break;
             case NoAcceptableMethod or UserPassword:
                 throw new TunnelException(
                     TunnelFailureKind.ProxyAuthenticationFailed,
-                    authenticates ? "The proxy accepts none of the sign-in methods offered." : "The proxy requires a user name and password.");
+                    SshStrings.Get(authenticates ? "Tunnel/ProxyNoMethod" : "Tunnel/ProxyNeedsLogin"));
             default:
-                throw new TunnelException(TunnelFailureKind.ProxyRefused, "The proxy asked for a sign-in method TablePro does not support.");
+                throw new TunnelException(TunnelFailureKind.ProxyRefused, SshStrings.Get("Tunnel/ProxyUnsupportedMethod"));
         }
 
         await stream.WriteAsync(ConnectRequest(host, port), cancellationToken);
         var reply = await ReadExactlyAsync(stream, 4, cancellationToken);
         if (reply[1] != 0)
         {
-            throw new TunnelException(TunnelFailureKind.ProxyRefused, $"The proxy could not connect to {host}:{port}: {ReplyMessage(reply[1])}.");
+            throw new TunnelException(TunnelFailureKind.ProxyRefused, SshStrings.Format("Tunnel/ProxyCouldNotConnect", host, port, ReplyMessage(reply[1])));
         }
 
         // The bound address the proxy reports is of no use to a client; it is read only to reach the payload.
@@ -71,7 +72,7 @@ internal static class ProxyHandshake
             1 => 4 + 2,
             4 => 16 + 2,
             3 => (await ReadExactlyAsync(stream, 1, cancellationToken))[0] + 2,
-            _ => throw new TunnelException(TunnelFailureKind.ProxyRefused, "The proxy sent a reply TablePro cannot read."),
+            _ => throw new TunnelException(TunnelFailureKind.ProxyRefused, SshStrings.Get("Tunnel/ProxyUnreadableReply")),
         };
         await ReadExactlyAsync(stream, remaining, cancellationToken);
     }
@@ -87,12 +88,12 @@ internal static class ProxyHandshake
         {
             if (header.Count >= MaxHttpHeaderBytes)
             {
-                throw new TunnelException(TunnelFailureKind.ProxyRefused, "The proxy's reply was too long.");
+                throw new TunnelException(TunnelFailureKind.ProxyRefused, SshStrings.Get("Tunnel/ProxyReplyTooLong"));
             }
 
             if (await stream.ReadAsync(one, cancellationToken) == 0)
             {
-                throw new TunnelException(TunnelFailureKind.ProxyRefused, "The proxy closed the connection.");
+                throw new TunnelException(TunnelFailureKind.ProxyRefused, SshStrings.Get("Tunnel/ProxyClosed"));
             }
 
             header.Add(one[0]);
@@ -102,17 +103,17 @@ internal static class ProxyHandshake
         var parts = statusLine.Split(' ', 3);
         if (parts.Length < 2 || !parts[0].StartsWith("HTTP/", StringComparison.Ordinal) || !int.TryParse(parts[1], NumberStyles.None, CultureInfo.InvariantCulture, out var code))
         {
-            throw new TunnelException(TunnelFailureKind.ProxyRefused, "The proxy did not answer as an HTTP proxy.");
+            throw new TunnelException(TunnelFailureKind.ProxyRefused, SshStrings.Get("Tunnel/NotHttpProxy"));
         }
 
         if (code == 407)
         {
-            throw new TunnelException(TunnelFailureKind.ProxyAuthenticationFailed, "The proxy rejected the user name and password.");
+            throw new TunnelException(TunnelFailureKind.ProxyAuthenticationFailed, SshStrings.Get("Tunnel/ProxyRejectedLogin"));
         }
 
         if (code is < 200 or > 299)
         {
-            throw new TunnelException(TunnelFailureKind.ProxyRefused, $"The proxy could not connect to {host}:{port}: {statusLine}.");
+            throw new TunnelException(TunnelFailureKind.ProxyRefused, SshStrings.Format("Tunnel/ProxyCouldNotConnect", host, port, statusLine));
         }
     }
 
@@ -122,7 +123,7 @@ internal static class ProxyHandshake
         var secret = Encoding.UTF8.GetBytes(password);
         if (name.Length > 255 || secret.Length > 255)
         {
-            throw new TunnelException(TunnelFailureKind.InvalidSettings, "A SOCKS5 user name and password are at most 255 bytes each.");
+            throw new TunnelException(TunnelFailureKind.InvalidSettings, SshStrings.Get("Tunnel/Socks5CredentialsTooLong"));
         }
 
         var request = new byte[3 + name.Length + secret.Length];
@@ -148,7 +149,7 @@ internal static class ProxyHandshake
             var name = Encoding.ASCII.GetBytes(IdnHost(host));
             if (name.Length is 0 or > 255)
             {
-                throw new TunnelException(TunnelFailureKind.InvalidSettings, $"The host name {host} is too long for a SOCKS5 proxy.");
+                throw new TunnelException(TunnelFailureKind.InvalidSettings, SshStrings.Format("Tunnel/Socks5HostTooLong", host));
             }
 
             type = 3;
@@ -182,15 +183,15 @@ internal static class ProxyHandshake
 
     internal static string ReplyMessage(byte code) => code switch
     {
-        1 => "general failure",
-        2 => "not allowed by the proxy's rules",
-        3 => "network unreachable",
-        4 => "host unreachable",
-        5 => "connection refused",
-        6 => "timed out",
-        7 => "command not supported",
-        8 => "address type not supported",
-        _ => "error " + code.ToString(CultureInfo.InvariantCulture),
+        1 => SshStrings.Get("Tunnel/SocksGeneralFailure"),
+        2 => SshStrings.Get("Tunnel/SocksNotAllowed"),
+        3 => SshStrings.Get("Tunnel/SocksNetworkUnreachable"),
+        4 => SshStrings.Get("Tunnel/SocksHostUnreachable"),
+        5 => SshStrings.Get("Tunnel/SocksConnectionRefused"),
+        6 => SshStrings.Get("Tunnel/SocksTimedOut"),
+        7 => SshStrings.Get("Tunnel/SocksCommandNotSupported"),
+        8 => SshStrings.Get("Tunnel/SocksAddressTypeNotSupported"),
+        _ => SshStrings.Format("Tunnel/SocksError", code),
     };
 
     private static string IdnHost(string host)
@@ -217,7 +218,7 @@ internal static class ProxyHandshake
         }
         catch (EndOfStreamException ex)
         {
-            throw new TunnelException(TunnelFailureKind.ProxyRefused, "The proxy closed the connection.", innerException: ex);
+            throw new TunnelException(TunnelFailureKind.ProxyRefused, SshStrings.Get("Tunnel/ProxyClosed"), innerException: ex);
         }
 
         return buffer;

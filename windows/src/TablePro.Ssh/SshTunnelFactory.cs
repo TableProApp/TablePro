@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Text;
 using TablePro.Core.Connections;
 using TablePro.Core.Drivers;
+using TablePro.Ssh.Localization;
 
 namespace TablePro.Ssh;
 
@@ -83,7 +84,7 @@ public sealed class SshTunnelFactory(SshTunnelOptions? options = null) : ISshTun
         var settings = request.Profile.Ssh;
         if (settings is not { Enabled: true })
         {
-            throw new ArgumentException("The connection does not use SSH.", nameof(request));
+            throw new ArgumentException(SshStrings.Get("Tunnel/NotSsh"), nameof(request));
         }
 
         var ssh = _options.SshExecutablePath ?? FindSshExecutable();
@@ -99,7 +100,7 @@ public sealed class SshTunnelFactory(SshTunnelOptions? options = null) : ISshTun
             askPass = _options.AskPassPath ?? Environment.ProcessPath ?? string.Empty;
             if (!File.Exists(askPass))
             {
-                throw new SshTunnelException(SshFailureKind.Unknown, $"The SSH password helper is missing from {askPass}. Reinstall TablePro.");
+                throw new SshTunnelException(SshFailureKind.Unknown, SshStrings.Format("Tunnel/AskPassMissing", askPass));
             }
         }
 
@@ -193,7 +194,7 @@ public sealed class SshTunnelFactory(SshTunnelOptions? options = null) : ISshTun
         catch (Win32Exception ex)
         {
             process.Dispose();
-            throw new SshTunnelException(SshFailureKind.SshNotFound, $"Could not start {ssh}: {ex.Message}", innerException: ex);
+            throw new SshTunnelException(SshFailureKind.SshNotFound, SshStrings.Format("Tunnel/CouldNotStart", ssh, ex.Message), innerException: ex);
         }
 
         if (OperatingSystem.IsWindows())

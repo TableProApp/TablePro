@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="DebuggerFailed" xml:space="preserve">
+    <value>디버거가 실패했습니다.</value>
+  </data>
+  <data name="FinishedBeforeStop" xml:space="preserve">
+    <value>중지 지점에 도달하기 전에 루틴이 완료되었습니다.</value>
+  </data>
+  <data name="StatusFailed" xml:space="preserve">
+    <value>실패</value>
+  </data>
+  <data name="StatusFinished" xml:space="preserve">
+    <value>완료됨</value>
+  </data>
+  <data name="StatusPaused" xml:space="preserve">
+    <value>일시 중지됨</value>
+  </data>
+  <data name="StatusPausedAt" xml:space="preserve">
+    <value>{1}의 {0}행에서 일시 중지됨</value>
+  </data>
+  <data name="StatusPreparing" xml:space="preserve">
+    <value>준비 중…</value>
+  </data>
+  <data name="StatusRunning" xml:space="preserve">
+    <value>실행 중…</value>
+  </data>
+  <data name="StatusStarting" xml:space="preserve">
+    <value>시작 중…</value>
+  </data>
+  <data name="StatusStopped" xml:space="preserve">
+    <value>중지됨</value>
+  </data>
+  <data name="StatusStopping" xml:space="preserve">
+    <value>중지하는 중…</value>
+  </data>
+  <data name="StopNotConfirmed" xml:space="preserve">
+    <value>디버거가 중지를 확인하지 않았습니다. 루틴이 서버에서 아직 실행 중일 수 있습니다.</value>
+  </data>
+</root>

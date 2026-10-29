@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="Abandoned" xml:space="preserve">
+    <value>La routine n’a pas pu être arrêtée sur le serveur.</value>
+  </data>
+  <data name="AbandonedRunning" xml:space="preserve">
+    <value>Le processus serveur {0} est peut-être toujours en cours d’exécution et conserve ses verrous.</value>
+  </data>
+  <data name="AbandonedSession" xml:space="preserve">
+    <value>Sa session serveur est peut-être toujours en cours d’exécution et conserve ses verrous.</value>
+  </data>
+  <data name="AbandonedWaiting" xml:space="preserve">
+    <value>Le processus serveur {0} attend peut-être encore un débogueur en conservant ses verrous. Pour y mettre fin, exécutez SELECT pldbg_attach_to_port({1}) et transmettez le nombre renvoyé à pldbg_abort_target.</value>
+  </data>
+  <data name="CannotStepOut" xml:space="preserve">
+    <value>Le débogueur PL/pgSQL ne peut pas sortir d’une routine pas à pas.</value>
+  </data>
+  <data name="DefaultNotReadable" xml:space="preserve">
+    <value>Ce serveur ne peut pas afficher la valeur par défaut de {0} ; saisissez donc une valeur.</value>
+  </data>
+  <data name="ExtensionMissing" xml:space="preserve">
+    <value>Le débogueur PL/pgSQL n’est pas installé dans « {0} ».</value>
+  </data>
+  <data name="ExtensionMissingDetail" xml:space="preserve">
+    <value>Demandez à un superutilisateur d’exécuter CREATE EXTENSION pldbgapi dans cette base de données.</value>
+  </data>
+  <data name="HidesDebuggerNotice" xml:space="preserve">
+    <value>Cette routine définit client_min_messages sur {0}, ce qui masque la notification par laquelle le débogueur démarre.</value>
+  </data>
+  <data name="HidesDebuggerNoticeDetail" xml:space="preserve">
+    <value>Retirez SET client_min_messages de la routine pour pouvoir la déboguer.</value>
+  </data>
+  <data name="Interrupted" xml:space="preserve">
+    <value>La session du débogueur a été interrompue pendant son attente : la routine a donc été arrêtée et ses modifications non validées ont été annulées. Une annulation ou le transaction_timeout du serveur peut en être la cause.</value>
+  </data>
+  <data name="LimitsTransactionTime" xml:space="preserve">
+    <value>Cette routine définit transaction_timeout sur {0}, ce qui l’arrêterait pendant qu’elle attend à un point d’arrêt.</value>
+  </data>
+  <data name="LimitsTransactionTimeDetail" xml:space="preserve">
+    <value>Retirez SET transaction_timeout de la routine pour pouvoir la déboguer.</value>
+  </data>
+  <data name="NoDefault" xml:space="preserve">
+    <value>{0} n’a pas de valeur par défaut.</value>
+  </data>
+  <data name="NoOverloads" xml:space="preserve">
+    <value>{0} n’a aucune surcharge PL/pgSQL pouvant être déboguée.</value>
+  </data>
+  <data name="NoOverloadsDetail" xml:space="preserve">
+    <value>Seules les fonctions et procédures PL/pgSQL sans signature polymorphe, record ou trigger peuvent être déboguées.</value>
+  </data>
+  <data name="NotAStorageParameter" xml:space="preserve">
+    <value>« {0} » n’est pas un paramètre de stockage. Écrivez chacun sous la forme name=value.</value>
+  </data>
+  <data name="NotDebuggable" xml:space="preserve">
+    <value>Seules les fonctions et procédures PL/pgSQL peuvent être déboguées.</value>
+  </data>
+  <data name="NotOwner" xml:space="preserve">
+    <value>Seul le propriétaire de {0} ou un superutilisateur peut la déboguer.</value>
+  </data>
+  <data name="NotPaused" xml:space="preserve">
+    <value>La routine n’est pas en pause.</value>
+  </data>
+  <data name="PseudoTypeParameter" xml:space="preserve">
+    <value>Les routines ayant des paramètres polymorphes ou de type record ne peuvent pas être déboguées.</value>
+  </data>
+  <data name="RoutineNotFound" xml:space="preserve">
+    <value>{0} n’existe plus.</value>
+  </data>
+  <data name="RunNoteFunction" xml:space="preserve">
+    <value>Les modifications effectuées par la routine sont validées à la fin de son exécution. Arrêter les annule.</value>
+  </data>
+  <data name="RunNoteProcedure" xml:space="preserve">
+    <value>Les modifications effectuées par la procédure sont validées lorsqu’elle valide ou se termine. Arrêter annule ce qu’elle n’a pas validé.</value>
+  </data>
+  <data name="ServerPackageMissing" xml:space="preserve">
+    <value>Ce serveur n’a pas de débogueur PL/pgSQL.</value>
+  </data>
+  <data name="ServerPackageMissingDetail" xml:space="preserve">
+    <value>Installez sur le serveur le paquet pldebugger correspondant à cette version de PostgreSQL, puis exécutez CREATE EXTENSION pldbgapi dans cette base de données.</value>
+  </data>
+  <data name="SharedMemoryUnavailable" xml:space="preserve">
+    <value>Le serveur n’a pas pu démarrer le débogueur.</value>
+  </data>
+  <data name="SharedMemoryUnavailableDetail" xml:space="preserve">
+    <value>Ajoutez plugin_debugger à shared_preload_libraries et redémarrez le serveur.</value>
+  </data>
+  <data name="Stopped" xml:space="preserve">
+    <value>La routine a été arrêtée, et ses modifications non validées ont été annulées.</value>
+  </data>
+  <data name="Unavailable" xml:space="preserve">
+    <value>Cette connexion ne peut pas exécuter le débogueur PL/pgSQL.</value>
+  </data>
+</root>

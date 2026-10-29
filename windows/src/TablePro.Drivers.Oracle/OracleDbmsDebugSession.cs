@@ -3,6 +3,7 @@ using System.Threading.Channels;
 using TablePro.Core.Debugging;
 using TablePro.Core.Drivers;
 using TablePro.Core.Results;
+using TablePro.Drivers.Oracle.Localization;
 
 namespace TablePro.Drivers.Oracle;
 
@@ -860,7 +861,7 @@ internal sealed class OracleDbmsDebugSession : IRoutineDebugSession
             .Where(r => r.Parsed)
             .Select(r => (r.Line, r.Text))
             .ToArray();
-        return lines.Length > 0 ? OracleDebugStatements.AssembleSource(lines) : throw new RoutineDebugException("TablePro can't read this unit's source.", (string?)null);
+        return lines.Length > 0 ? OracleDebugStatements.AssembleSource(lines) : throw new RoutineDebugException(OracleStrings.Get("Oracle/SourceUnreadable"), (string?)null);
     }
 
     private async Task<PlSqlDeclarationScan> ScanAsync(OracleDebugUnit unit)

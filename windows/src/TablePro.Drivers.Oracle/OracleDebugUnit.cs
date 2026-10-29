@@ -1,4 +1,5 @@
 using System.Globalization;
+using TablePro.Core.Localization;
 
 namespace TablePro.Drivers.Oracle;
 
@@ -64,11 +65,11 @@ internal static class OracleDebugUnitKinds
 
     public static string DisplayName(this OracleDebugUnitKind kind) => kind switch
     {
-        OracleDebugUnitKind.Procedure => "Procedure",
-        OracleDebugUnitKind.Function => "Function",
-        OracleDebugUnitKind.Package or OracleDebugUnitKind.PackageBody => "Package",
-        OracleDebugUnitKind.Trigger => "Trigger",
-        _ => "Type",
+        OracleDebugUnitKind.Procedure => CoreStrings.Get("Driver/RoutineKindProcedure"),
+        OracleDebugUnitKind.Function => CoreStrings.Get("Driver/RoutineKindFunction"),
+        OracleDebugUnitKind.Package or OracleDebugUnitKind.PackageBody => CoreStrings.Get("Driver/RoutineKindPackage"),
+        OracleDebugUnitKind.Trigger => CoreStrings.Get("Driver/RoutineKindTrigger"),
+        _ => CoreStrings.Get("Driver/RoutineKindType"),
     };
 
     /// <summary>

@@ -171,7 +171,7 @@ public sealed class ResultMapProjectorTests
         Assert.Equal(2, projection.Diagnostics.DrawnShapes);
         Assert.Equal(1, projection.Diagnostics.OtherSridRows);
         Assert.True(projection.Diagnostics.HasAnythingToReport);
-        Assert.Contains("1 rows in other coordinate systems", projection.Diagnostics.StatusText, StringComparison.Ordinal);
+        Assert.Contains("1 row in another coordinate system is not drawn.", projection.Diagnostics.StatusText, StringComparison.Ordinal);
     }
 
     [Fact]

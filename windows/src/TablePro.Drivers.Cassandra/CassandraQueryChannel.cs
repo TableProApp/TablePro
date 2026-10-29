@@ -4,6 +4,7 @@ using Cassandra;
 using TablePro.Core.Drivers;
 using TablePro.Core.Results;
 using TablePro.Core.Sql;
+using TablePro.Drivers.Cassandra.Localization;
 using CqlSession = Cassandra.ISession;
 
 namespace TablePro.Drivers.Cassandra;
@@ -110,7 +111,7 @@ internal sealed class CassandraQueryChannel(CassandraSession owner, CqlSession s
         catch (OperationCanceledException)
         {
             // The protocol cannot stop a running request; the server finishes it, and only the wait is dropped.
-            return new StatementResult(cql, [], -1, stopwatch.Elapsed, "Query cancelled. The server may still finish it.", messages);
+            return new StatementResult(cql, [], -1, stopwatch.Elapsed, CassandraStrings.Get("Cassandra/QueryCancelledServerMayFinish"), messages);
         }
         catch (Exception ex) when (ex is DriverException or InvalidOperationException or ArgumentException or NotSupportedException)
         {

@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="BadConsistencyLevel" xml:space="preserve">
+    <value>{0} bir bağlantının kullanabileceği bir tutarlılık düzeyi değil. LOCAL_ONE, ONE, QUORUM, LOCAL_QUORUM, EACH_QUORUM, ALL, TWO, THREE veya ANY kullanın.</value>
+  </data>
+  <data name="CannotChangePrimaryKey" xml:space="preserve">
+    <value>Cassandra birincil anahtar sütunu {0} değerini değiştiremez. Satırı silin ve yeni anahtarla yeniden ekleyin.</value>
+  </data>
+  <data name="ChooseKeyspace" xml:space="preserve">
+    <value>{0} için bir anahtar alanı seçin.</value>
+  </data>
+  <data name="ClientRules_One" xml:space="preserve">
+    <value>CQL'in değerlendiremediği {0} filtre kuralı, okunan satırlara sayfa sayfa uygulandı.</value>
+  </data>
+  <data name="ClientRules_Other" xml:space="preserve">
+    <value>CQL'in değerlendiremediği {0} filtre kuralı, okunan satırlara sayfa sayfa uygulandı.</value>
+  </data>
+  <data name="ClientRulesNoAllowFiltering_One" xml:space="preserve">
+    <value>CQL diğer sütunları yalnızca ALLOW FILTERING ile filtrelediğinden {0} filtre kuralı okunan satırlara sayfa sayfa uygulandı. Sunucuda filtrelemek için bağlantının seçeneklerinde allowFiltering=true ayarlayın.</value>
+  </data>
+  <data name="ClientRulesNoAllowFiltering_Other" xml:space="preserve">
+    <value>CQL diğer sütunları yalnızca ALLOW FILTERING ile filtrelediğinden {0} filtre kuralı okunan satırlara sayfa sayfa uygulandı. Sunucuda filtrelemek için bağlantının seçeneklerinde allowFiltering=true ayarlayın.</value>
+  </data>
+  <data name="CounterColumns" xml:space="preserve">
+    <value>Sayaç sütunları yalnızca artırımla değişir. Düzenleyicide UPDATE ... SET c = c + n çalıştırın.</value>
+  </data>
+  <data name="EnterPrimaryKeyValue" xml:space="preserve">
+    <value>Birincil anahtar sütunu {0} için bir değer girin.</value>
+  </data>
+  <data name="KeyspacesNeedsAccessKey" xml:space="preserve">
+    <value>Amazon Keyspaces bir erişim anahtarı kimliği (kullanıcı adı) ve gizli erişim anahtarı (parola) gerektirir.</value>
+  </data>
+  <data name="KeyspacesNeedsRegion" xml:space="preserve">
+    <value>Amazon Keyspaces için AWS bölgesini bağlantının seçeneklerinde (awsRegion) ayarlayın.</value>
+  </data>
+  <data name="KeyspacesNeedsTls" xml:space="preserve">
+    <value>Amazon Keyspaces oturum açma işlemlerini yalnızca TLS üzerinden imzalar. SSL'yi Zorunlu veya daha katı bir moda ayarlayın.</value>
+  </data>
+  <data name="KeyspacesSignInUnavailable" xml:space="preserve">
+    <value>Amazon Keyspaces oturum açma yöntemi "{0}" henüz Windows'ta kullanılamıyor. Bir erişim anahtarı kullanın.</value>
+  </data>
+  <data name="NoKeyspace" xml:space="preserve">
+    <value>{0} adlı bir anahtar alanı bulunamadı.</value>
+  </data>
+  <data name="NoOffset" xml:space="preserve">
+    <value>CQL'de OFFSET yoktur ve {0:N0}. satıra ulaşmak için önce {1:N0} satır okunması gerekir. Baştan itibaren sayfa sayfa ilerleyin veya bölüm anahtarına göre filtreleyin.</value>
+  </data>
+  <data name="NoTableOrView" xml:space="preserve">
+    <value>{0} adlı bir tablo veya görünüm bulunamadı.</value>
+  </data>
+  <data name="PrimaryKeyNotLoaded" xml:space="preserve">
+    <value>Satırın birincil anahtar sütunu {0} değeri yüklenmediğinden satır bulunamıyor.</value>
+  </data>
+  <data name="PrimaryKeyUnreadable" xml:space="preserve">
+    <value>{0} tablosunun birincil anahtarı okunamadığından satırları değiştirilemez.</value>
+  </data>
+  <data name="QueryCancelledServerMayFinish" xml:space="preserve">
+    <value>Sorgu iptal edildi. Sunucu yine de sorguyu tamamlayabilir.</value>
+  </data>
+  <data name="RawConditionAnd" xml:space="preserve">
+    <value>CQL koşulları yalnızca AND ile birleştirir, bu nedenle ham koşulun da kurallarla birlikte eşleşmesi gerekir.</value>
+  </data>
+  <data name="SigV4NoNonce" xml:space="preserve">
+    <value>Amazon Keyspaces nonce içermeyen bir SigV4 sınaması gönderdi.</value>
+  </data>
+  <data name="SortNotApplied" xml:space="preserve">
+    <value>Cassandra satırları token sırasıyla döndürür ve yalnızca bir bölüm içinde sıralar, bu nedenle sıralama uygulanmadı.</value>
+  </data>
+  <data name="StoppedAfterScanning" xml:space="preserve">
+    <value>Sayfayı doldurmak için {0:N0} satır okunduktan sonra durduruldu. Tüm tabloda aramak için bölüm anahtarına göre filtreleyin.</value>
+  </data>
+  <data name="UdtAsJson" xml:space="preserve">
+    <value>Kullanıcı tanımlı tür değerleri nesne olarak bağlanmaz, fromJson() aracılığıyla JSON olarak yazılır.</value>
+  </data>
+</root>

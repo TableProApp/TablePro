@@ -1,8 +1,8 @@
 using System.Diagnostics;
-using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using TablePro.Core.Drivers;
+using TablePro.Core.Localization;
 using TablePro.Core.Results;
 
 namespace TablePro.Drivers.Cloudflare;
@@ -61,11 +61,11 @@ internal sealed class HttpQueryChannel(Func<string, ExecuteOptions, Cancellation
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && timeout.IsCancellationRequested)
         {
-            return Failed(sql, stopwatch, string.Create(CultureInfo.InvariantCulture, $"The query timed out after {options.CommandTimeoutSeconds} seconds."));
+            return Failed(sql, stopwatch, CoreStrings.Format("Driver/QueryTimedOutAfter", options.CommandTimeoutSeconds));
         }
         catch (OperationCanceledException)
         {
-            return Failed(sql, stopwatch, "Query cancelled.");
+            return Failed(sql, stopwatch, CoreStrings.Get("Driver/QueryCancelled"));
         }
         catch (Exception ex) when (ex is CloudflareApiException or HttpRequestException or JsonException or NotSupportedException or InvalidOperationException)
         {

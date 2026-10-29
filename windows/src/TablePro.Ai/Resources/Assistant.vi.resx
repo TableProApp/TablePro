@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="Declined" xml:space="preserve">
+    <value>Không có gì từ "{0}" được gửi đến {1}.</value>
+  </data>
+  <data name="NoWayToAsk" xml:space="preserve">
+    <value>"{0}" yêu cầu hỏi trước khi gửi bất cứ thứ gì đến {1}, nhưng không có cách nào để hỏi.</value>
+  </data>
+  <data name="TurnedOff" xml:space="preserve">
+    <value>Trợ lý AI đang tắt cho "{0}". Hãy thay đổi Trợ lý AI trong tùy chọn của kết nối để sử dụng.</value>
+  </data>
+</root>

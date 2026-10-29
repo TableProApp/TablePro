@@ -1,13 +1,14 @@
 using System.Data.Common;
 using System.Globalization;
 using System.Text;
-using Teradata.Client.Provider;
 using TablePro.Core.Browse;
 using TablePro.Core.Data;
 using TablePro.Core.Drivers;
+using TablePro.Core.Localization;
 using TablePro.Core.Results;
 using TablePro.Core.Schema;
 using TablePro.Core.Sql;
+using Teradata.Client.Provider;
 
 namespace TablePro.Drivers.Teradata;
 
@@ -200,8 +201,8 @@ public sealed class TeradataSession : AdoNetSession, IDatabaseSession, ISchemaDd
     {
         var name = obj.Name with { Schema = Database(obj.Name.Schema) };
         var kind = await ScalarAsync(connection, TeradataCatalog.TableKind, cancellationToken, ("database", name.Schema), ("table", name.Name)) as string
-            ?? throw new InvalidOperationException($"No definition was found for {obj.Name}.");
-        var show = TeradataDdl.ShowStatement(kind, name) ?? throw new NotSupportedException($"Teradata has no SHOW statement for {obj.Name}.");
+            ?? throw new InvalidOperationException(CoreStrings.Format("Driver/NoDefinitionFor", obj.Name));
+        var show = TeradataDdl.ShowStatement(kind, name) ?? throw new NotSupportedException(CoreStrings.Format("Driver/EngineHasNoDefinitionFor", "Teradata", obj.Name));
 
         // SHOW answers in one or more rows of text with CR line ends.
         var parts = await QueryAsync(connection, show, static r => NullableString(r, 0) ?? string.Empty, cancellationToken);
@@ -264,7 +265,7 @@ public sealed class TeradataSession : AdoNetSession, IDatabaseSession, ISchemaDd
     private (string, object?)[] Bind(ObjectName table) => [("database", Database(table.Schema)), ("table", table.Name)];
 
     private string Database(string? schema) =>
-        !string.IsNullOrEmpty(schema) ? schema : DefaultSchema ?? throw new InvalidOperationException("No database was given and the login has no default.");
+        !string.IsNullOrEmpty(schema) ? schema : DefaultSchema ?? throw new InvalidOperationException(CoreStrings.Get("Driver/NoDatabaseGiven"));
 
     private static int Int(DbDataReader reader, int ordinal) =>
         reader.IsDBNull(ordinal) ? 0 : Convert.ToInt32(reader.GetValue(ordinal), CultureInfo.InvariantCulture);

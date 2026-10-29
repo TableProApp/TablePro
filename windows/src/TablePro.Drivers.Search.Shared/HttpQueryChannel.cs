@@ -3,6 +3,7 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 using TablePro.Core.Drivers;
+using TablePro.Core.Localization;
 using TablePro.Core.Results;
 using TablePro.Core.Sql;
 
@@ -73,11 +74,11 @@ internal sealed class HttpQueryChannel : IQueryChannel
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && timeout.IsCancellationRequested)
         {
-            return Failed($"The request timed out after {options.CommandTimeoutSeconds} s.");
+            return Failed(CoreStrings.Format("Driver/RequestTimedOutAfter", options.CommandTimeoutSeconds));
         }
         catch (OperationCanceledException)
         {
-            return Failed("Query cancelled.");
+            return Failed(CoreStrings.Get("Driver/QueryCancelled"));
         }
         catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException or JsonException or NotSupportedException or ArgumentException or FormatException)
         {

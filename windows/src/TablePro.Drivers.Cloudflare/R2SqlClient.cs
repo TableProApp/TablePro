@@ -1,11 +1,11 @@
 using System.Buffers;
 using System.Collections.Frozen;
-using System.Globalization;
 using System.Text.Json;
 using TablePro.Core.Browse;
 using TablePro.Core.Results;
 using TablePro.Core.Schema;
 using TablePro.Core.Sql;
+using TablePro.Drivers.Cloudflare.Localization;
 
 namespace TablePro.Drivers.Cloudflare;
 
@@ -22,7 +22,7 @@ internal sealed class R2SqlClient(HttpClient http, string accountId, string buck
 
     public const int MaximumRows = 10_000;
 
-    private const string AuthHint = "The API token needs the R2 SQL, R2 Data Catalog and R2 Storage permissions for this account.";
+    private static string AuthHint => CloudflareStrings.Get("Cloudflare/R2AuthHint");
 
     private static readonly string[] NamespaceColumns = ["namespace", "namespace_name", "database_name", "schema_name", "databaseName"];
     private static readonly string[] TableColumns = ["table_name", "tableName", "name"];
@@ -134,7 +134,7 @@ internal sealed class R2SqlClient(HttpClient http, string accountId, string buck
         var available = (result.Schema ?? []).Select(f => f.Name).ToHashSet(StringComparer.Ordinal);
         if (!available.Contains("column_name") || !available.Contains("type"))
         {
-            throw new CloudflareApiException($"DESCRIBE returned columns TablePro does not recognize: {string.Join(", ", available)}.");
+            throw new CloudflareApiException(CloudflareStrings.Format("Cloudflare/ColumnsNotRecognized", "DESCRIBE", string.Join(", ", available)));
         }
 
         var columns = new List<R2SqlColumn>();
@@ -163,9 +163,7 @@ internal sealed class R2SqlClient(HttpClient http, string accountId, string buck
     {
         if (request.Offset >= MaximumRows)
         {
-            throw new NotSupportedException(string.Create(
-                CultureInfo.InvariantCulture,
-                $"R2 SQL returns at most {MaximumRows:N0} rows per query and has no OFFSET, so rows past {MaximumRows:N0} cannot be paged to. Narrow the rows with a filter or sort instead."));
+            throw new NotSupportedException(CloudflareStrings.Format("Cloudflare/R2NoOffset", MaximumRows));
         }
 
         var fetch = (int)Math.Min((long)request.Offset + request.Limit, MaximumRows);
@@ -231,7 +229,7 @@ internal sealed class R2SqlClient(HttpClient http, string accountId, string buck
     {
         var available = (result.Schema ?? []).Select(f => f.Name).ToArray();
         var column = candidates.FirstOrDefault(available.Contains) ?? (available.Length == 1 ? available[0] : null)
-            ?? throw new CloudflareApiException($"{statement} returned columns TablePro does not recognize: {string.Join(", ", available)}.");
+            ?? throw new CloudflareApiException(CloudflareStrings.Format("Cloudflare/ColumnsNotRecognized", statement, string.Join(", ", available)));
         return (result.Rows ?? [])
             .Select(row => Text(row, column))
             .Where(name => !string.IsNullOrEmpty(name))

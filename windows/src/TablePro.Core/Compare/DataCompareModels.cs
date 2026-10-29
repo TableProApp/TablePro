@@ -1,4 +1,5 @@
 using TablePro.Core.Browse;
+using TablePro.Core.Localization;
 using TablePro.Core.Schema;
 
 namespace TablePro.Core.Compare;
@@ -64,7 +65,7 @@ public sealed record DataCompareSpec
         _keyIndexes = [.. Enumerable.Range(0, columns.Count).Where(i => columns[i].IsKey)];
         if (_keyIndexes.Length == 0)
         {
-            throw new CompareException("Choose at least one key column that identifies a row on both sides.");
+            throw new CompareException(CoreStrings.Get("Compare/ChooseKeyColumn"));
         }
     }
 

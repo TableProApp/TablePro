@@ -1,3 +1,5 @@
+using TablePro.Core.Localization;
+
 namespace TablePro.Core.Plans.Parsers;
 
 /// <summary>Tree assembly the text parsers share.</summary>
@@ -63,7 +65,7 @@ internal static class QueryPlanTreeBuilder
             }
         }
 
-        return new QueryPlanNode { Operation = "Query Plan", EstimatedTotalCost = cost, Children = [.. roots] };
+        return new QueryPlanNode { Operation = CoreStrings.Get("Plan/PlanRoot"), EstimatedTotalCost = cost, Children = [.. roots] };
     }
 
     public static QueryPlan Finish(QueryPlanNode root, string rawText, PlanFormat format, double? planningTime = null, double? executionTime = null)

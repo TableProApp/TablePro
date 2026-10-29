@@ -1,5 +1,6 @@
 using System.Collections.Frozen;
 using TablePro.Core.Sql;
+using TablePro.Drivers.Redis.Localization;
 
 namespace TablePro.Drivers.Redis;
 
@@ -22,33 +23,33 @@ internal static class RedisCommandPolicy
     {
         if (words.Count == 0)
         {
-            return "Empty command.";
+            return RedisStrings.Get("Redis/EmptyCommand");
         }
 
         var verb = words[0];
         if (Subscriptions.Contains(verb))
         {
-            return $"{verb.ToUpperInvariant()} turns the connection into a message stream, which the editor cannot show. Use redis-cli for it.";
+            return RedisStrings.Format("Redis/Subscription", verb.ToUpperInvariant());
         }
 
         if (Blocking.Contains(verb) || (IsStreamRead(verb) && HasOption(words, "BLOCK")))
         {
-            return $"{verb.ToUpperInvariant()} blocks the shared connection until data arrives. Use the non-blocking form, such as LPOP or XREAD without BLOCK.";
+            return RedisStrings.Format("Redis/Blocking", verb.ToUpperInvariant());
         }
 
         if (ConnectionState.Contains(verb))
         {
-            return $"{verb.ToUpperInvariant()} changes the shared connection's login or state. Change the connection's settings instead.";
+            return RedisStrings.Format("Redis/ConnectionState", verb.ToUpperInvariant());
         }
 
         if (words.Count >= 2 && verb.Equals("CLIENT", StringComparison.OrdinalIgnoreCase) && words[1].Equals("REPLY", StringComparison.OrdinalIgnoreCase))
         {
-            return "CLIENT REPLY would stop the replies every tab waits for.";
+            return RedisStrings.Get("Redis/ClientReply");
         }
 
         if (readOnly && IsWrite(statement))
         {
-            return $"This connection is read-only, so {verb.ToUpperInvariant()} was not sent.";
+            return RedisStrings.Format("Redis/ReadOnlyNotSent", verb.ToUpperInvariant());
         }
 
         return null;

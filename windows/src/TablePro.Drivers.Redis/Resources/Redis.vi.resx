@@ -1,0 +1,285 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="Blocking" xml:space="preserve">
+    <value>{0} chặn kết nối dùng chung cho đến khi có dữ liệu. Hãy dùng dạng không chặn, chẳng hạn LPOP hoặc XREAD không có BLOCK.</value>
+  </data>
+  <data name="Bytes_One" xml:space="preserve">
+    <value>{0} byte</value>
+  </data>
+  <data name="Bytes_Other" xml:space="preserve">
+    <value>{0} byte</value>
+  </data>
+  <data name="CannotStoreNull" xml:space="preserve">
+    <value>Redis không thể lưu NULL. Hãy nhập một giá trị rỗng.</value>
+  </data>
+  <data name="CannotStoreNullValue" xml:space="preserve">
+    <value>Redis không thể lưu NULL làm giá trị. Hãy nhập một giá trị rỗng.</value>
+  </data>
+  <data name="ClientReply" xml:space="preserve">
+    <value>CLIENT REPLY sẽ dừng các phản hồi mà mọi tab đang chờ.</value>
+  </data>
+  <data name="ClusterDatabaseOption" xml:space="preserve">
+    <value>Redis Cluster chỉ phục vụ cơ sở dữ liệu 0. Hãy xóa số cơ sở dữ liệu, hoặc dùng chế độ độc lập.</value>
+  </data>
+  <data name="ClusterDatabaseZero" xml:space="preserve">
+    <value>Redis Cluster chỉ phục vụ cơ sở dữ liệu 0.</value>
+  </data>
+  <data name="CommandNotFinished" xml:space="preserve">
+    <value>Lệnh không hoàn tất trong vòng {0} giây.</value>
+  </data>
+  <data name="ConnectionState" xml:space="preserve">
+    <value>{0} thay đổi thông tin đăng nhập hoặc trạng thái của kết nối dùng chung. Hãy thay đổi cài đặt của kết nối.</value>
+  </data>
+  <data name="CrossSlot" xml:space="preserve">
+    <value>Các lệnh trong hàng đợi chạm tới khóa ở nhiều hash slot, điều mà cluster không thể chạy trong một giao dịch. Hãy cho các khóa một {hash tag} chung để chúng nằm trong một slot.</value>
+  </data>
+  <data name="CurrentValue" xml:space="preserve">
+    <value>(giá trị hiện tại)</value>
+  </data>
+  <data name="CursorRestarted" xml:space="preserve">
+    <value>Con trỏ trỏ tới một nút mà cluster không còn có, nên quá trình quét bắt đầu lại từ nút chính đầu tiên.</value>
+  </data>
+  <data name="DatabaseSelected_One" xml:space="preserve">
+    <value>Đã chọn cơ sở dữ liệu {1}, {0} khóa.</value>
+  </data>
+  <data name="DatabaseSelected_Other" xml:space="preserve">
+    <value>Đã chọn cơ sở dữ liệu {1}, {0} khóa.</value>
+  </data>
+  <data name="DbBrowseWith" xml:space="preserve">
+    <value># Duyệt bằng: {0}</value>
+  </data>
+  <data name="DbHeader" xml:space="preserve">
+    <value># Cơ sở dữ liệu Redis: {0}</value>
+  </data>
+  <data name="DbKeys" xml:space="preserve">
+    <value># Khóa: {0}</value>
+  </data>
+  <data name="DbTypes_One" xml:space="preserve">
+    <value># Phân bố kiểu ({0} khóa được lấy mẫu):</value>
+  </data>
+  <data name="DbTypes_Other" xml:space="preserve">
+    <value># Phân bố kiểu ({0} khóa được lấy mẫu):</value>
+  </data>
+  <data name="EmptyCommand" xml:space="preserve">
+    <value>Lệnh trống.</value>
+  </data>
+  <data name="FieldsComment" xml:space="preserve">
+    <value>Đối tượng JSON gồm tên trường và giá trị</value>
+  </data>
+  <data name="HashFieldGone" xml:space="preserve">
+    <value>Trường hash '{0}' không còn tồn tại, nên không có gì được lưu.</value>
+  </data>
+  <data name="HashRowNeedsField" xml:space="preserve">
+    <value>Hàng hash mới cần có tên trường.</value>
+  </data>
+  <data name="IndexComment" xml:space="preserve">
+    <value>Vị trí tính từ đầu, bắt đầu từ 0</value>
+  </data>
+  <data name="IsSentinel" xml:space="preserve">
+    <value>Đây là Redis Sentinel, không phải nút dữ liệu, nên nó chỉ trả lời các lệnh SENTINEL. Hãy đặt chế độ kết nối thành sentinel và liệt kê địa chỉ này trong các nút Sentinel.</value>
+  </data>
+  <data name="JsonNeedsPath" xml:space="preserve">
+    <value>Thành viên JSON mới cần một đường dẫn, chẳng hạn $.name.</value>
+  </data>
+  <data name="JsonPathFixed" xml:space="preserve">
+    <value>Không thể sửa đường dẫn của thành viên JSON. Hãy xóa nó và thêm giá trị dưới đường dẫn mới.</value>
+  </data>
+  <data name="JsonTextComment" xml:space="preserve">
+    <value>Văn bản JSON</value>
+  </data>
+  <data name="KeyGone" xml:space="preserve">
+    <value>Khóa '{0}' không còn tồn tại.</value>
+  </data>
+  <data name="KeyNameComment" xml:space="preserve">
+    <value>Tên của khóa</value>
+  </data>
+  <data name="KeyNameNotText" xml:space="preserve">
+    <value>Tên của khóa này không phải văn bản, nên không thể xác định từ lưới.</value>
+  </data>
+  <data name="KeyTypeNotEditable" xml:space="preserve">
+    <value>Khóa '{0}' chứa kiểu dữ liệu mà lưới không thể sửa. Hãy thay đổi bằng một lệnh trong trình soạn truy vấn.</value>
+  </data>
+  <data name="KeyTypeNotShown" xml:space="preserve">
+    <value>Khóa '{0}' chứa kiểu dữ liệu mà lưới không thể hiển thị. Hãy đọc bằng một lệnh trong trình soạn truy vấn.</value>
+  </data>
+  <data name="LengthComment" xml:space="preserve">
+    <value>Số byte của chuỗi, hoặc số phần tử của tập hợp</value>
+  </data>
+  <data name="ListOneNode" xml:space="preserve">
+    <value>Hãy liệt kê ít nhất một nút để kết nối, ở dạng host:port.</value>
+  </data>
+  <data name="ListPositionFixed" xml:space="preserve">
+    <value>Không thể sửa vị trí của phần tử danh sách. Hãy xóa nó rồi thêm lại giá trị.</value>
+  </data>
+  <data name="NewKeyNeedsName" xml:space="preserve">
+    <value>Khóa mới cần có tên.</value>
+  </data>
+  <data name="NextCursor" xml:space="preserve">
+    <value>Con trỏ tiếp theo: {0}</value>
+  </data>
+  <data name="NoListPosition" xml:space="preserve">
+    <value>Hàng không có vị trí trong danh sách, nên không thể xác định.</value>
+  </data>
+  <data name="NoServer" xml:space="preserve">
+    <value>Không có máy chủ Redis nào được kết nối.</value>
+  </data>
+  <data name="NotACluster" xml:space="preserve">
+    <value>Máy chủ này không chạy ở chế độ cluster. Hãy đặt chế độ kết nối thành độc lập, hoặc trỏ chế độ cluster tới một nút được khởi động với cluster-enabled yes.</value>
+  </data>
+  <data name="NotAScore" xml:space="preserve">
+    <value>'{0}' không phải là điểm số. Điểm số là một số, inf hoặc -inf.</value>
+  </data>
+  <data name="NotClientId" xml:space="preserve">
+    <value>'{0}' không phải là ID client Redis.</value>
+  </data>
+  <data name="NotDatabaseNumber" xml:space="preserve">
+    <value>'{0}' không phải là số cơ sở dữ liệu Redis. Hãy dùng một số như 0 hoặc một tên như db0.</value>
+  </data>
+  <data name="NotHost" xml:space="preserve">
+    <value>'{0}' không phải là host hay host:port.</value>
+  </data>
+  <data name="NotMode" xml:space="preserve">
+    <value>'{0}' không phải là chế độ kết nối Redis. Hãy dùng standalone, sentinel hoặc cluster.</value>
+  </data>
+  <data name="NotRun" xml:space="preserve">
+    <value>chưa chạy</value>
+  </data>
+  <data name="NoWhereElements" xml:space="preserve">
+    <value>Redis không có mệnh đề WHERE. Hãy dùng các quy tắc lọc, hoặc SCAN với MATCH trong trình soạn truy vấn.</value>
+  </data>
+  <data name="NoWhereKeys" xml:space="preserve">
+    <value>Redis không có mệnh đề WHERE. Hãy lọc cột Key bằng mẫu như user:*, hoặc lọc theo Type.</value>
+  </data>
+  <data name="OnlyKeyTypeCounted" xml:space="preserve">
+    <value>Chỉ các bộ lọc khóa và kiểu được đếm trên máy chủ.</value>
+  </data>
+  <data name="PartialSlots" xml:space="preserve">
+    <value>{0} trên {1} hash slot đã chạy phần của mình trước khi một slot khác từ chối; các thay đổi đó vẫn được áp dụng.</value>
+  </data>
+  <data name="PartOfCluster" xml:space="preserve">
+    <value>Máy chủ này thuộc một Redis Cluster, nên các yêu cầu cho khóa mà nó không sở hữu sẽ thất bại. Hãy đặt chế độ kết nối thành cluster và liệt kê địa chỉ này trong các nút cluster.</value>
+  </data>
+  <data name="PathComment" xml:space="preserve">
+    <value>JSONPath của thành viên</value>
+  </data>
+  <data name="ReadOnlyNoDisconnect" xml:space="preserve">
+    <value>Kết nối này ở chế độ chỉ đọc, nên client không bị ngắt kết nối.</value>
+  </data>
+  <data name="ReadOnlyNotSent" xml:space="preserve">
+    <value>Kết nối này ở chế độ chỉ đọc, nên {0} không được gửi.</value>
+  </data>
+  <data name="RenameEmpty" xml:space="preserve">
+    <value>Chỉ có thể đổi tên khóa thành văn bản không trống.</value>
+  </data>
+  <data name="RowHasNo" xml:space="preserve">
+    <value>Hàng không có {0}, nên không thể xác định.</value>
+  </data>
+  <data name="SaveSomeFailed" xml:space="preserve">
+    <value>Redis đã thực hiện lưu, nhưng một số lệnh thất bại và các lệnh còn lại vẫn được áp dụng: {0}</value>
+  </data>
+  <data name="ScanComplete" xml:space="preserve">
+    <value>Con trỏ 0: đã quét xong.</value>
+  </data>
+  <data name="Seconds_One" xml:space="preserve">
+    <value>{0} giây</value>
+  </data>
+  <data name="Seconds_Other" xml:space="preserve">
+    <value>{0} giây</value>
+  </data>
+  <data name="SelectInMulti" xml:space="preserve">
+    <value>Không thể đưa SELECT vào hàng đợi bên trong MULTI ở đây. Hãy chọn cơ sở dữ liệu trước MULTI.</value>
+  </data>
+  <data name="SelectOneNumber" xml:space="preserve">
+    <value>SELECT nhận một số cơ sở dữ liệu, chẳng hạn SELECT 1</value>
+  </data>
+  <data name="SentinelThroughTunnel" xml:space="preserve">
+    <value>Đường hầm chỉ chuyển tiếp một địa chỉ, còn nút mà Sentinel chỉ định nằm trên mạng riêng của máy chủ, nên chế độ Sentinel không thể chạy qua đường hầm. Hãy kết nối trực tiếp tới nút dữ liệu, hoặc tắt đường hầm.</value>
+  </data>
+  <data name="SentinelToSentinel" xml:space="preserve">
+    <value>Sentinel phân giải tới một Sentinel khác thay vì nút dữ liệu. Hãy kiểm tra tên nhóm chính trong cấu hình Sentinel của bạn.</value>
+  </data>
+  <data name="SlotsPartiallySaved" xml:space="preserve">
+    <value>Đã lưu {0} trên {1} hash slot và các thay đổi đó vẫn được áp dụng; slot tiếp theo thất bại: {2}</value>
+  </data>
+  <data name="SortedSetMemberGone" xml:space="preserve">
+    <value>Thành viên sorted set '{0}' không còn tồn tại, nên không có gì được lưu.</value>
+  </data>
+  <data name="StreamEntriesFixed" xml:space="preserve">
+    <value>Không thể thay đổi mục stream sau khi đã thêm. Hãy xóa mục đó và thêm mục mới.</value>
+  </data>
+  <data name="StreamFieldsNotObject" xml:space="preserve">
+    <value>Các trường của mục stream phải là một đối tượng JSON: {0}</value>
+  </data>
+  <data name="StreamFieldsObject" xml:space="preserve">
+    <value>Các trường stream phải là một đối tượng JSON, chẳng hạn {"field": "value"}.</value>
+  </data>
+  <data name="StreamIdComment" xml:space="preserve">
+    <value>Để trống khi thêm để máy chủ tự gán</value>
+  </data>
+  <data name="StreamNeedsFields" xml:space="preserve">
+    <value>Mục stream mới cần các trường ở dạng đối tượng JSON, chẳng hạn {"name": "value"}.</value>
+  </data>
+  <data name="StreamNeedsOneField" xml:space="preserve">
+    <value>Mục stream cần ít nhất một trường.</value>
+  </data>
+  <data name="StringHoldsOneValue" xml:space="preserve">
+    <value>Khóa chuỗi chỉ chứa một giá trị. Hãy sửa giá trị đó thay vì thêm hàng.</value>
+  </data>
+  <data name="Subscription" xml:space="preserve">
+    <value>{0} biến kết nối thành luồng tin nhắn mà trình soạn thảo không thể hiển thị. Hãy dùng redis-cli cho lệnh này.</value>
+  </data>
+  <data name="TtlComment" xml:space="preserve">
+    <value>Số giây đến khi khóa hết hạn; -1 hoặc NULL nếu không hết hạn</value>
+  </data>
+  <data name="TtlInvalid" xml:space="preserve">
+    <value>TTL phải là số giây nguyên lớn hơn 0, hoặc -1 hay NULL nếu không hết hạn.</value>
+  </data>
+  <data name="TtlNoExpiry" xml:space="preserve">
+    <value>-1 (không hết hạn)</value>
+  </data>
+  <data name="TtlNoKey" xml:space="preserve">
+    <value>-2 (khóa không tồn tại)</value>
+  </data>
+  <data name="TypeComment" xml:space="preserve">
+    <value>string, hash, list, set hoặc zset khi thêm khóa</value>
+  </data>
+  <data name="TypeNotAddable" xml:space="preserve">
+    <value>Không thể thêm khóa {0} từ lưới. Hãy thêm bằng một lệnh trong trình soạn truy vấn.</value>
+  </data>
+  <data name="Unknown" xml:space="preserve">
+    <value>không rõ</value>
+  </data>
+  <data name="ValueComment" xml:space="preserve">
+    <value>Giá trị của chuỗi, hoặc bản xem trước các phần tử đầu tiên của tập hợp</value>
+  </data>
+  <data name="ValueInListNotEditable" xml:space="preserve">
+    <value>Không thể sửa giá trị của khóa {0} trong danh sách khóa. Hãy mở khóa để sửa các phần tử của nó.</value>
+  </data>
+  <data name="WhatHashField" xml:space="preserve">
+    <value>trường hash</value>
+  </data>
+  <data name="WhatJsonPath" xml:space="preserve">
+    <value>đường dẫn JSON</value>
+  </data>
+  <data name="WhatSetMember" xml:space="preserve">
+    <value>thành viên set</value>
+  </data>
+  <data name="WhatSortedSetMember" xml:space="preserve">
+    <value>thành viên sorted set</value>
+  </data>
+  <data name="WhatStreamId" xml:space="preserve">
+    <value>ID mục stream</value>
+  </data>
+</root>

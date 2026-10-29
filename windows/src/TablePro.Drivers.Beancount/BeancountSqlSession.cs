@@ -4,6 +4,7 @@ using TablePro.Core.Data;
 using TablePro.Core.Drivers;
 using TablePro.Core.Schema;
 using TablePro.Core.Sql;
+using TablePro.Drivers.Beancount.Localization;
 
 namespace TablePro.Drivers.Beancount;
 
@@ -81,7 +82,7 @@ internal sealed class BeancountSqlSession(ConnectionRequest request, string conn
             ("@name", obj.Name.Name));
         if (rows.Count == 0 || rows[0].Sql is not { } sql)
         {
-            throw new BeancountException($"Failed to fetch DDL for table '{obj.Name.Name}'");
+            throw new BeancountException(BeancountStrings.Format("Beancount/NoDdl", obj.Name.Name));
         }
 
         return rows[0].Type == "table" && !sql.EndsWith(';') ? sql + ";" : sql;

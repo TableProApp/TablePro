@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using TablePro.Core.Drivers;
+using TablePro.Core.Localization;
 using TablePro.Core.Results;
 
 namespace TablePro.Core.Debugging;
@@ -31,9 +32,9 @@ public sealed class RoutineDebugController : IDisposable
 {
     public const int OutputLineLimit = 5_000;
 
-    public const string StopNotConfirmed = "The debugger didn't confirm the stop. The routine may still be running on the server.";
+    public static string StopNotConfirmed => CoreStrings.Get("Debugger/StopNotConfirmed");
 
-    public const string FinishedBeforeStop = "The routine finished before the stop reached it.";
+    public static string FinishedBeforeStop => CoreStrings.Get("Debugger/FinishedBeforeStop");
 
     // Output a driver relays as the routine completes (Oracle's DBMS_OUTPUT) arrives just after the last step.
     private static readonly TimeSpan OutputDrainLimit = TimeSpan.FromSeconds(1);
@@ -170,19 +171,19 @@ public sealed class RoutineDebugController : IDisposable
         {
             if (IsStopping && !HasEnded)
             {
-                return "Stopping…";
+                return CoreStrings.Get("Debugger/StatusStopping");
             }
 
             return State switch
             {
-                DebugRunState.Preparing => "Preparing…",
-                DebugRunState.Starting => "Starting…",
-                DebugRunState.Running => "Running…",
-                DebugRunState.Paused when PausedLocation is { } location => $"Paused at line {location.Line} in {location.Unit.DisplayName}",
-                DebugRunState.Paused => "Paused",
-                DebugRunState.Finished => "Finished",
-                DebugRunState.Failed => Message ?? "Failed",
-                _ => Message ?? "Stopped",
+                DebugRunState.Preparing => CoreStrings.Get("Debugger/StatusPreparing"),
+                DebugRunState.Starting => CoreStrings.Get("Debugger/StatusStarting"),
+                DebugRunState.Running => CoreStrings.Get("Debugger/StatusRunning"),
+                DebugRunState.Paused when PausedLocation is { } location => CoreStrings.Format("Debugger/StatusPausedAt", location.Line, location.Unit.DisplayName),
+                DebugRunState.Paused => CoreStrings.Get("Debugger/StatusPaused"),
+                DebugRunState.Finished => CoreStrings.Get("Debugger/StatusFinished"),
+                DebugRunState.Failed => Message ?? CoreStrings.Get("Debugger/StatusFailed"),
+                _ => Message ?? CoreStrings.Get("Debugger/StatusStopped"),
             };
         }
     }

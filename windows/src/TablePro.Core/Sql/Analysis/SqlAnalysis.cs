@@ -1,7 +1,7 @@
 using System.Collections.Frozen;
 using System.Collections.Immutable;
-using System.Globalization;
 using System.Text;
+using TablePro.Core.Localization;
 
 namespace TablePro.Core.Sql.Analysis;
 
@@ -347,7 +347,7 @@ public sealed class SqlAnalysis
             switch (token.Kind)
             {
                 case SqlTokenKind.BlockComment when token.IsUnterminated:
-                    output.Add(Error(token.Start, 2, SqlDiagnosticCode.UnterminatedComment, "Unterminated comment"));
+                    output.Add(Error(token.Start, 2, SqlDiagnosticCode.UnterminatedComment, CoreStrings.Get("Analysis/UnterminatedComment")));
                     break;
                 case SqlTokenKind.String or SqlTokenKind.QuotedIdentifier when token.IsUnterminated:
                     var window = new SqlTextRange(token.Start, Text.Length - token.Start);
@@ -355,8 +355,8 @@ public sealed class SqlAnalysis
                     if (!InWindow(window, Caret))
                     {
                         output.Add(token.Kind == SqlTokenKind.String
-                            ? Error(token.Start, OpeningLength(token), SqlDiagnosticCode.UnterminatedString, "Unterminated string")
-                            : Error(token.Start, 1, SqlDiagnosticCode.UnterminatedQuotedName, "Unterminated quoted name"));
+                            ? Error(token.Start, OpeningLength(token), SqlDiagnosticCode.UnterminatedString, CoreStrings.Get("Analysis/UnterminatedString"))
+                            : Error(token.Start, 1, SqlDiagnosticCode.UnterminatedQuotedName, CoreStrings.Get("Analysis/UnterminatedQuotedName")));
                     }
 
                     break;
@@ -422,7 +422,7 @@ public sealed class SqlAnalysis
             return;
         }
 
-        output.Add(Error(position, 1, SqlDiagnosticCode.UnmatchedClosingBracket, "No matching opening bracket"));
+        output.Add(Error(position, 1, SqlDiagnosticCode.UnmatchedClosingBracket, CoreStrings.Get("Analysis/NoOpeningBracket")));
     }
 
     /// <summary>
@@ -455,9 +455,9 @@ public sealed class SqlAnalysis
             {
                 output.Add(Error(position, 1, SqlDiagnosticCode.UnclosedBracket, opener switch
                 {
-                    '(' => "No matching closing parenthesis",
-                    '[' => "No matching closing bracket",
-                    _ => "No matching closing brace",
+                    '(' => CoreStrings.Get("Analysis/NoClosingParenthesis"),
+                    '[' => CoreStrings.Get("Analysis/NoClosingBracket"),
+                    _ => CoreStrings.Get("Analysis/NoClosingBrace"),
                 }));
             }
         }
@@ -504,7 +504,7 @@ public sealed class SqlAnalysis
                 continue;
             }
 
-            output.Add(table.NameRange, SqlDiagnosticCode.UnknownTable, $"Unknown table '{table.Name}'.");
+            output.Add(table.NameRange, SqlDiagnosticCode.UnknownTable, CoreStrings.Format("Analysis/UnknownTable", table.Name));
         }
     }
 
@@ -522,7 +522,7 @@ public sealed class SqlAnalysis
                 if (target.Kind == SqlTableReferenceKind.Table && q.Column is not null && q.ColumnRange is { } columnRange
                     && _index.Columns(target.Schema, target.Name) is { } columns && SqlCatalogIndex.FindColumn(columns, q.Column) is null)
                 {
-                    output.Add(columnRange, SqlDiagnosticCode.UnknownColumn, $"Table '{target.Name}' has no column '{q.Column}'.");
+                    output.Add(columnRange, SqlDiagnosticCode.UnknownColumn, CoreStrings.Format("Analysis/UnknownColumn", target.Name, q.Column));
                 }
 
                 continue;
@@ -531,7 +531,7 @@ public sealed class SqlAnalysis
             if (q.Schema is null && !PseudoTables.Contains(q.Qualifier) && !_index.IsSchema(q.Qualifier) && !created.Contains(q.Qualifier)
                 && !model.DefinesCommonTableExpression(q.Qualifier) && EveryTableIsKnownWithout(model, q.Qualifier))
             {
-                output.Add(q.QualifierRange, SqlDiagnosticCode.UnknownQualifier, $"Unknown table or alias '{q.Qualifier}'.");
+                output.Add(q.QualifierRange, SqlDiagnosticCode.UnknownQualifier, CoreStrings.Format("Analysis/UnknownQualifier", q.Qualifier));
             }
         }
     }
@@ -871,22 +871,23 @@ public sealed class SqlAnalysis
 
     private static (string? Title, string? Detail) Describe(SqlSymbol symbol) => symbol.Kind switch
     {
-        SqlSymbolKind.Table => ($"Table {Qualified(symbol.Schema, symbol.Name)}", ColumnList(symbol.Columns)),
-        SqlSymbolKind.View => ($"View {Qualified(symbol.Schema, symbol.Name)}", ColumnList(symbol.Columns)),
-        SqlSymbolKind.CommonTableExpression => ($"Common table expression {symbol.Name}", null),
-        SqlSymbolKind.TableFunction => ($"Table function {Qualified(symbol.Schema, symbol.Name)}", null),
-        SqlSymbolKind.Subquery => ($"Subquery {symbol.Name}", null),
-        SqlSymbolKind.Alias => ($"{symbol.Name}: alias of {AliasTarget(symbol)}", ColumnList(symbol.Columns)),
-        _ => ($"Column {(symbol.Table is null ? symbol.Name : $"{symbol.Table}.{symbol.Name}")}", symbol.DataType),
+        SqlSymbolKind.Table => (CoreStrings.Format("Analysis/HoverTable", Qualified(symbol.Schema, symbol.Name)), ColumnList(symbol.Columns)),
+        SqlSymbolKind.View => (CoreStrings.Format("Analysis/HoverView", Qualified(symbol.Schema, symbol.Name)), ColumnList(symbol.Columns)),
+        SqlSymbolKind.CommonTableExpression => (CoreStrings.Format("Analysis/HoverCommonTableExpression", symbol.Name), null),
+        SqlSymbolKind.TableFunction => (CoreStrings.Format("Analysis/HoverTableFunction", Qualified(symbol.Schema, symbol.Name)), null),
+        SqlSymbolKind.Subquery => (CoreStrings.Format("Analysis/HoverSubquery", symbol.Name), null),
+        SqlSymbolKind.Alias => (AliasTitle(symbol), ColumnList(symbol.Columns)),
+        _ => (CoreStrings.Format("Analysis/HoverColumn", symbol.Table is null ? symbol.Name : $"{symbol.Table}.{symbol.Name}"), symbol.DataType),
     };
 
-    private static string AliasTarget(SqlSymbol alias) => alias.TargetKind switch
+    // One whole sentence per target kind, since languages place and inflect "alias of a table" differently.
+    private static string AliasTitle(SqlSymbol alias) => alias.TargetKind switch
     {
-        SqlSymbolKind.Table => $"table {Qualified(alias.Schema, alias.Table!)}",
-        SqlSymbolKind.View => $"view {Qualified(alias.Schema, alias.Table!)}",
-        SqlSymbolKind.CommonTableExpression => $"common table expression {alias.Table}",
-        SqlSymbolKind.Subquery => "a subquery",
-        _ => $"table function {alias.Table}",
+        SqlSymbolKind.Table => CoreStrings.Format("Analysis/HoverAliasOfTable", alias.Name, Qualified(alias.Schema, alias.Table!)),
+        SqlSymbolKind.View => CoreStrings.Format("Analysis/HoverAliasOfView", alias.Name, Qualified(alias.Schema, alias.Table!)),
+        SqlSymbolKind.CommonTableExpression => CoreStrings.Format("Analysis/HoverAliasOfCommonTableExpression", alias.Name, alias.Table),
+        SqlSymbolKind.Subquery => CoreStrings.Format("Analysis/HoverAliasOfSubquery", alias.Name),
+        _ => CoreStrings.Format("Analysis/HoverAliasOfTableFunction", alias.Name, alias.Table),
     };
 
     private static string Qualified(string? schema, string name) => schema is null ? name : $"{schema}.{name}";
@@ -921,7 +922,7 @@ public sealed class SqlAnalysis
 
         if (columns.Count > shown)
         {
-            builder.Append('\n').Append(CultureInfo.InvariantCulture, $"and {columns.Count - shown} more");
+            builder.Append('\n').Append(CoreStrings.Plural("Analysis/HoverMoreColumns", columns.Count - shown));
         }
 
         return builder.ToString();

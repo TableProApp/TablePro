@@ -6,9 +6,11 @@ using TablePro.Core.Browse;
 using TablePro.Core.Connections;
 using TablePro.Core.Drivers;
 using TablePro.Core.Editing;
+using TablePro.Core.Localization;
 using TablePro.Core.Results;
 using TablePro.Core.Schema;
 using TablePro.Core.Sql;
+using TablePro.Drivers.Cloudflare.Localization;
 
 namespace TablePro.Drivers.Cloudflare;
 
@@ -44,7 +46,7 @@ internal sealed class R2SqlSession : IDatabaseSession
     public static async Task<R2SqlSession> ConnectAsync(ConnectionRequest request, HttpMessageHandler? handler, CancellationToken cancellationToken)
     {
         var settings = CloudflareSettings.From(request);
-        settings.Validate("R2 bucket name");
+        settings.Validate(CloudflareStrings.Get("Cloudflare/EnterR2Bucket"));
         var http = CloudflareHttp.CreateClient(handler, request.Profile.ConnectTimeoutSeconds);
         try
         {
@@ -134,7 +136,7 @@ internal sealed class R2SqlSession : IDatabaseSession
     }
 
     public Task<int> SaveChangesAsync(ObjectName table, IReadOnlyList<RowChange> changes, CancellationToken cancellationToken) =>
-        throw new NotSupportedException("R2 SQL is read-only. Change the Iceberg table with a writer such as Spark or PyIceberg.");
+        throw new NotSupportedException(CloudflareStrings.Get("Cloudflare/R2ReadOnly"));
 
     public Task<IQueryChannel> OpenChannelAsync(CancellationToken cancellationToken) =>
         Task.FromResult<IQueryChannel>(new HttpQueryChannel(RunStatementAsync));
@@ -155,7 +157,7 @@ internal sealed class R2SqlSession : IDatabaseSession
         // A result as long as the ceiling cannot say whether more rows exist, so it says where it stopped.
         if ((result.Rows?.Count ?? 0) >= R2SqlClient.MaximumRows)
         {
-            messages.Add(string.Create(CultureInfo.InvariantCulture, $"Stopped at {R2SqlClient.MaximumRows:N0} rows, the most R2 SQL returns from one query."));
+            messages.Add(CloudflareStrings.Format("Cloudflare/R2StoppedAt", R2SqlClient.MaximumRows));
         }
 
         return new StatementResult(sql, [rows], -1, stopwatch.Elapsed, Messages: messages);
@@ -170,7 +172,7 @@ internal sealed class R2SqlSession : IDatabaseSession
     private ObjectName Namespaced(ObjectName table) =>
         !string.IsNullOrEmpty(table.Schema) ? table
         : DefaultSchema is { } ns ? table with { Schema = ns }
-        : throw new NotSupportedException("Choose a namespace first.");
+        : throw new NotSupportedException(CoreStrings.Get("Driver/ChooseNamespaceFirst"));
 
     private static ConfiguredTaskAwaitable Yield() => Task.CompletedTask.ConfigureAwait(ConfigureAwaitOptions.ForceYielding);
 }

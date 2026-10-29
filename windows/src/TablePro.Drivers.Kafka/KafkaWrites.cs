@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using Confluent.Kafka;
 using TablePro.Core.Editing;
+using TablePro.Drivers.Kafka.Localization;
 
 namespace TablePro.Drivers.Kafka;
 
@@ -15,8 +16,7 @@ internal sealed record KafkaOutgoing(int? Partition, Message<byte[]?, byte[]?> M
 /// </summary>
 internal static class KafkaWrites
 {
-    public const string AppendOnly =
-        "Kafka topics are append-only: a message cannot be edited or deleted. Add a row to produce a new message, or produce a tombstone (a null value) for its key on a compacted topic.";
+    public static string AppendOnly => KafkaStrings.Get("Kafka/AppendOnly");
 
     /// <summary>Checks every change before anything is produced, so a refused edit never leaves half a save behind.</summary>
     public static List<KafkaOutgoing> Prepare(IReadOnlyList<RowChange> changes)
@@ -60,12 +60,12 @@ internal static class KafkaWrites
                 case KafkaRows.OffsetColumn:
                     if (value is not null)
                     {
-                        throw new NotSupportedException("The broker assigns a message's offset; leave the offset empty.");
+                        throw new NotSupportedException(KafkaStrings.Get("Kafka/OffsetAssigned"));
                     }
 
                     break;
                 default:
-                    throw new NotSupportedException($"A Kafka message has no {column} column.");
+                    throw new NotSupportedException(KafkaStrings.Format("Kafka/NoSuchColumn", column));
             }
         }
 
@@ -97,14 +97,14 @@ internal static class KafkaWrites
         }
         catch (JsonException ex)
         {
-            throw new FormatException("Headers must be a JSON object, such as {\"trace\":\"abc\"}.", ex);
+            throw new FormatException(KafkaStrings.Get("Kafka/HeadersJson"), ex);
         }
 
         using (document)
         {
             if (document.RootElement.ValueKind != JsonValueKind.Object)
             {
-                throw new FormatException("Headers must be a JSON object, such as {\"trace\":\"abc\"}.");
+                throw new FormatException(KafkaStrings.Get("Kafka/HeadersJson"));
             }
 
             var headers = new Headers();
@@ -131,6 +131,6 @@ internal static class KafkaWrites
         string text when long.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var milliseconds) => DateTimeOffset.FromUnixTimeMilliseconds(milliseconds),
         string text when DateTimeOffset.TryParse(text, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var parsed) => parsed,
         string text when string.IsNullOrWhiteSpace(text) => null,
-        _ => throw new FormatException($"{value} is not a time."),
+        _ => throw new FormatException(KafkaStrings.Format("Kafka/NotATime", value)),
     };
 }

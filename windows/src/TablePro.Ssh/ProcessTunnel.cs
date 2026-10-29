@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Text;
 using TablePro.Core.Drivers;
+using TablePro.Ssh.Localization;
 
 namespace TablePro.Ssh;
 
@@ -141,7 +142,7 @@ public sealed class ProcessTunnel : IConnectionTunnel
         catch (Win32Exception ex)
         {
             process.Dispose();
-            throw new TunnelException(TunnelFailureKind.ExecutableNotFound, $"Could not start {launch.Executable}: {ex.Message}", innerException: ex);
+            throw new TunnelException(TunnelFailureKind.ExecutableNotFound, SshStrings.Format("Tunnel/CouldNotStart", launch.Executable, ex.Message), innerException: ex);
         }
 
         if (OperatingSystem.IsWindows())
@@ -188,8 +189,8 @@ public sealed class ProcessTunnel : IConnectionTunnel
                     await process.WaitForExitAsync(CancellationToken.None);
                     var text = output.ToString();
                     throw inspect?.Invoke(text) ?? (LocalPortPolicy.IsBindFailure(text)
-                        ? new TunnelException(TunnelFailureKind.LocalPortUnavailable, $"{name} could not listen on local port {localPort}.", text)
-                        : new TunnelException(TunnelFailureKind.StartupFailed, WithTail($"{name} exited before its local port was open.", text), text));
+                        ? new TunnelException(TunnelFailureKind.LocalPortUnavailable, SshStrings.Format("Tunnel/HelperCouldNotListen", name, localPort), text)
+                        : new TunnelException(TunnelFailureKind.StartupFailed, WithTail(SshStrings.Format("Tunnel/HelperExitedEarly", name), text), text));
                 }
 
                 if (inspect?.Invoke(output.ToString()) is { } early)
@@ -217,8 +218,8 @@ public sealed class ProcessTunnel : IConnectionTunnel
         {
             var text = output.ToString();
             throw LocalPortPolicy.IsBindFailure(text)
-                ? new TunnelException(TunnelFailureKind.LocalPortUnavailable, $"{name} could not listen on local port {localPort}.", text)
-                : new TunnelException(TunnelFailureKind.Timeout, WithTail($"{name} did not open its local port in time.", text), text);
+                ? new TunnelException(TunnelFailureKind.LocalPortUnavailable, SshStrings.Format("Tunnel/HelperCouldNotListen", name, localPort), text)
+                : new TunnelException(TunnelFailureKind.Timeout, WithTail(SshStrings.Format("Tunnel/HelperTimedOut", name), text), text);
         }
     }
 

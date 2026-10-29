@@ -19,7 +19,7 @@ internal sealed partial class FavoritesPane : UserControl
     private readonly WorkspaceViewModel _workspace;
     private readonly Action<string> _insert;
     private readonly ListView _list = new() { SelectionMode = ListViewSelectionMode.Single, IsItemClickEnabled = true };
-    private readonly AutoSuggestBox _search = new() { PlaceholderText = Strings.Get("Panes/FavoritesSearch"), QueryIcon = new SymbolIcon(Symbol.Find) };
+    private readonly AutoSuggestBox _search = new AutoSuggestBox { PlaceholderText = Strings.Get("Panes/FavoritesSearch"), QueryIcon = new SymbolIcon(Symbol.Find) }.WithLocalizedQueryButton();
 
     public FavoritesPane(FavoritesStore store, WorkspaceViewModel workspace, Action<string> insert)
     {

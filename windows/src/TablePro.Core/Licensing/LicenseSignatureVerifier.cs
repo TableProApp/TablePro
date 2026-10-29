@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using TablePro.Core.Localization;
 
 namespace TablePro.Core.Licensing;
 
@@ -48,13 +49,13 @@ public sealed class LicenseSignatureVerifier : IDisposable
         ArgumentNullException.ThrowIfNull(payload);
         if (_key is null)
         {
-            throw new LicenseException(LicenseErrorKind.PublicKeyInvalid, "The license public key could not be read.");
+            throw new LicenseException(LicenseErrorKind.PublicKeyInvalid, CoreStrings.Get("License/PublicKeyUnreadable"));
         }
 
         var signature = new byte[payload.Signature.Length];
         if (!Convert.TryFromBase64String(payload.Signature, signature, out var length))
         {
-            throw new LicenseException(LicenseErrorKind.SignatureInvalid, "The license signature is not base64.");
+            throw new LicenseException(LicenseErrorKind.SignatureInvalid, CoreStrings.Get("License/SignatureNotBase64"));
         }
 
         var data = payload.Data;
@@ -63,7 +64,7 @@ public sealed class LicenseSignatureVerifier : IDisposable
             // Both encodings are deterministic functions of the same signed values, so accepting either opens nothing.
             || (data.HasNonAscii() && Verify(data.CanonicalJson(escapeNonAscii: true), signature.AsSpan(0, length)));
 
-        return valid ? data : throw new LicenseException(LicenseErrorKind.SignatureInvalid, "The license signature does not match.");
+        return valid ? data : throw new LicenseException(LicenseErrorKind.SignatureInvalid, CoreStrings.Get("License/SignatureMismatch"));
     }
 
     private bool Verify(byte[] data, ReadOnlySpan<byte> signature) =>

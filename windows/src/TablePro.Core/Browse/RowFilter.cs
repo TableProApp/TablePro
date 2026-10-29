@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using TablePro.Core.Localization;
 using TablePro.Core.Results;
 
 namespace TablePro.Core.Browse;
@@ -15,7 +16,7 @@ public static class RowFilter
     {
         if (!string.IsNullOrWhiteSpace(filter.RawWhere))
         {
-            throw new NotSupportedException($"{engine} cannot run a raw WHERE clause; use the filter rules instead.");
+            throw new NotSupportedException(CoreStrings.Format("Browse/RawWhereUnsupported", engine));
         }
 
         var rules = filter.Rules.Where(r => r.Enabled).ToArray();
@@ -41,7 +42,7 @@ public static class RowFilter
         var ordinal = IndexOf(columns, rule.Column);
         if (ordinal < 0)
         {
-            throw new NotSupportedException($"There is no column named {rule.Column} to filter on.");
+            throw new NotSupportedException(CoreStrings.Format("Browse/NoColumnToFilter", rule.Column));
         }
 
         var list = value.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);

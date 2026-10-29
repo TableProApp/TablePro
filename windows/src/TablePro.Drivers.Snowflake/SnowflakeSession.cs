@@ -7,6 +7,7 @@ using TablePro.Core.Browse;
 using TablePro.Core.Data;
 using TablePro.Core.Drivers;
 using TablePro.Core.Editing;
+using TablePro.Core.Localization;
 using TablePro.Core.Results;
 using TablePro.Core.Schema;
 using TablePro.Core.Sql;
@@ -242,7 +243,7 @@ public sealed class SnowflakeSession : AdoNetSession, IDatabaseSession, IServerA
     protected override async Task<string> LoadDefinitionAsync(DbConnection connection, DatabaseObject obj, CancellationToken cancellationToken)
     {
         var sql = SnowflakeSql.GetDdl(obj.Kind, TablePath(obj.Name), obj.Comment);
-        return await ScalarAsync(connection, sql, cancellationToken) as string ?? throw new InvalidOperationException($"No definition was found for {obj.Name}.");
+        return await ScalarAsync(connection, sql, cancellationToken) as string ?? throw new InvalidOperationException(CoreStrings.Format("Driver/NoDefinitionFor", obj.Name));
     }
 
     public Task<ResultSet> GetActivityAsync(CancellationToken cancellationToken) =>

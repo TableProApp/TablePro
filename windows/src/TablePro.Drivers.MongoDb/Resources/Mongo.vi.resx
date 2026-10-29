@@ -1,0 +1,366 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AggregateCursorUnsupported" xml:space="preserve">
+    <value>.{0}() không được hỗ trợ trên con trỏ tổng hợp.</value>
+  </data>
+  <data name="ArgumentMustBeDocument" xml:space="preserve">
+    <value>Đối số thứ {0} của {1} phải là một tài liệu</value>
+  </data>
+  <data name="AssignmentsUnsupported" xml:space="preserve">
+    <value>Không hỗ trợ phép gán</value>
+  </data>
+  <data name="BinaryArgs" xml:space="preserve">
+    <value>nhận một số kiểu con và một chuỗi</value>
+  </data>
+  <data name="BracketNameQuoted" xml:space="preserve">
+    <value>Tên trong dấu ngoặc vuông phải là chuỗi trong dấu ngoặc kép</value>
+  </data>
+  <data name="BulkWriteShape" xml:space="preserve">
+    <value>Mỗi thao tác bulkWrite là một trong {insertOne: ...}, {updateOne: ...} và tương tự</value>
+  </data>
+  <data name="BulkWriteUnknown" xml:space="preserve">
+    <value>bulkWrite không biết thao tác {0}.</value>
+  </data>
+  <data name="CollectionMethodUnsupported" xml:space="preserve">
+    <value>db.{0}.{1}() không được hỗ trợ.</value>
+  </data>
+  <data name="CommentNotClosed" xml:space="preserve">
+    <value>Chú thích chưa được đóng</value>
+  </data>
+  <data name="ConcernNotMet" xml:space="preserve">
+    <value>Thao tác ghi đã chạy nhưng write concern không được đáp ứng: {0}</value>
+  </data>
+  <data name="ConcernUnknownWithStatement" xml:space="preserve">
+    <value>Thao tác ghi đã chạy nhưng write concern không được đáp ứng, nên không rõ dữ liệu có được giữ lại không: {0}. Câu lệnh: {1}</value>
+  </data>
+  <data name="ConstructorUnsupported" xml:space="preserve">
+    <value>{0}() không được hỗ trợ</value>
+  </data>
+  <data name="DateArgs" xml:space="preserve">
+    <value>nhận một đối số: một ngày ISO hoặc số mili giây kể từ năm 1970</value>
+  </data>
+  <data name="DbAlone" xml:space="preserve">
+    <value>Chỉ db thì không chạy gì: hãy nêu tên một collection hoặc gọi một phương thức</value>
+  </data>
+  <data name="DbMethodUnsupported" xml:space="preserve">
+    <value>db.{0}() không được hỗ trợ.</value>
+  </data>
+  <data name="DropIndexNeeds" xml:space="preserve">
+    <value>dropIndex cần tên chỉ mục hoặc các khóa của nó</value>
+  </data>
+  <data name="ErrorWithCode" xml:space="preserve">
+    <value>{0} (mã {1})</value>
+  </data>
+  <data name="ErrorWithStatement" xml:space="preserve">
+    <value>{0} (mã {1}). Câu lệnh: {2}</value>
+  </data>
+  <data name="ExpectedChar" xml:space="preserve">
+    <value>Cần '{0}'</value>
+  </data>
+  <data name="ExpectedColon" xml:space="preserve">
+    <value>Cần ':' sau tên trường</value>
+  </data>
+  <data name="ExpectedCommaOr" xml:space="preserve">
+    <value>Cần ',' hoặc '{0}'</value>
+  </data>
+  <data name="ExpectedConstructor" xml:space="preserve">
+    <value>Cần một hàm khởi tạo sau new</value>
+  </data>
+  <data name="ExpectedDocument" xml:space="preserve">
+    <value>Cần một tài liệu trong dấu ngoặc nhọn</value>
+  </data>
+  <data name="ExpectedFieldName" xml:space="preserve">
+    <value>Cần một tên trường</value>
+  </data>
+  <data name="ExpectedMethodName" xml:space="preserve">
+    <value>Cần tên phương thức trước dấu ngoặc đơn</value>
+  </data>
+  <data name="ExpectedNameAfterDot" xml:space="preserve">
+    <value>Cần một tên sau '.'</value>
+  </data>
+  <data name="ExpectedNumberAfterSign" xml:space="preserve">
+    <value>Cần một số sau dấu</value>
+  </data>
+  <data name="ExpectedParenAfter" xml:space="preserve">
+    <value>Cần '(' sau {0}</value>
+  </data>
+  <data name="ExpectedValue" xml:space="preserve">
+    <value>Cần một giá trị</value>
+  </data>
+  <data name="FindCursorUnsupported" xml:space="preserve">
+    <value>.{0}() không được hỗ trợ trên con trỏ find.</value>
+  </data>
+  <data name="FunctionsUnsupported" xml:space="preserve">
+    <value>Không hỗ trợ hàm</value>
+  </data>
+  <data name="HelpersUnsupported" xml:space="preserve">
+    <value>Các hàm trợ giúp {0}.* không được hỗ trợ; hãy dùng db.adminCommand với lệnh mà chúng gửi.</value>
+  </data>
+  <data name="IdImmutable" xml:space="preserve">
+    <value>MongoDB không thay đổi _id của tài liệu. Hãy xóa hàng và chèn lại với _id mới.</value>
+  </data>
+  <data name="InvalidEscape" xml:space="preserve">
+    <value>Chuỗi thoát không hợp lệ trong chuỗi</value>
+  </data>
+  <data name="InvalidUnicodeEscape" xml:space="preserve">
+    <value>Chuỗi thoát Unicode không hợp lệ</value>
+  </data>
+  <data name="MoreThanFirstBatch" xml:space="preserve">
+    <value>Lệnh trả về nhiều tài liệu hơn lô đầu tiên; hãy chạy phương thức tương ứng, chẳng hạn find(), để đọc tất cả.</value>
+  </data>
+  <data name="MultiNeedsOperators" xml:space="preserve">
+    <value>update với multi: true cần toán tử cập nhật như $set</value>
+  </data>
+  <data name="NameAfterNumber" xml:space="preserve">
+    <value>Tên không thể bắt đầu ngay sau một số</value>
+  </data>
+  <data name="Needs" xml:space="preserve">
+    <value>{0} cần {1}</value>
+  </data>
+  <data name="NeedsBraces" xml:space="preserve">
+    <value>{0} cần {1} trong dấu ngoặc nhọn</value>
+  </data>
+  <data name="NeedsCommandDocument" xml:space="preserve">
+    <value>{0} cần một tài liệu lệnh</value>
+  </data>
+  <data name="NeedsDocumentsInArray" xml:space="preserve">
+    <value>{0} cần các tài liệu trong mảng của nó</value>
+  </data>
+  <data name="NeedsFilter" xml:space="preserve">
+    <value>{0} cần một bộ lọc; hãy truyền {{}} để khớp mọi tài liệu</value>
+  </data>
+  <data name="NeedsOperatorsOrPipeline" xml:space="preserve">
+    <value>{0} cần toán tử cập nhật như $set, hoặc một pipeline; hãy dùng replaceOne để thay thế tài liệu</value>
+  </data>
+  <data name="NeedsPipeline" xml:space="preserve">
+    <value>{0} cần một mảng các giai đoạn pipeline</value>
+  </data>
+  <data name="NeedsQuoted" xml:space="preserve">
+    <value>{0} cần {1} ở dạng chuỗi trong dấu ngoặc kép</value>
+  </data>
+  <data name="NeedsWholeNumber" xml:space="preserve">
+    <value>{0} cần một số nguyên</value>
+  </data>
+  <data name="NoDocumentMatched" xml:space="preserve">
+    <value>Không có tài liệu nào khớp.</value>
+  </data>
+  <data name="NoOperatorsAllowed" xml:space="preserve">
+    <value>{0} nhận tài liệu không có toán tử cập nhật; hãy dùng updateOne để áp dụng $set</value>
+  </data>
+  <data name="NotAChange" xml:space="preserve">
+    <value>{0} không phải là thay đổi mà MongoDB có thể áp dụng.</value>
+  </data>
+  <data name="NotACursor" xml:space="preserve">
+    <value>Phương thức trước .{0}() không trả về con trỏ, nên .{0}() không thể theo sau.</value>
+  </data>
+  <data name="NotADate" xml:space="preserve">
+    <value>{0} không phải là ngày</value>
+  </data>
+  <data name="NotANumber" xml:space="preserve">
+    <value>{0} không phải là số</value>
+  </data>
+  <data name="NotAValue" xml:space="preserve">
+    <value>'{0}' không phải là giá trị: không hỗ trợ biến</value>
+  </data>
+  <data name="NotDecimal" xml:space="preserve">
+    <value>{0} không phải là số thập phân</value>
+  </data>
+  <data name="NotDefined" xml:space="preserve">
+    <value>'{0}' chưa được định nghĩa: câu lệnh bắt đầu bằng db, use hoặc show</value>
+  </data>
+  <data name="NotJson" xml:space="preserve">
+    <value>{0} chứa JSON, nhưng giá trị mới không đọc được dưới dạng JSON: {1} tại cột {2}.</value>
+  </data>
+  <data name="NotObjectIdHex" xml:space="preserve">
+    <value>{0} không phải là 24 chữ số thập lục phân</value>
+  </data>
+  <data name="NotRegexFlag" xml:space="preserve">
+    <value>'{0}' không phải là cờ biểu thức chính quy</value>
+  </data>
+  <data name="NotUuid" xml:space="preserve">
+    <value>{0} không phải là UUID</value>
+  </data>
+  <data name="NotWholeNumber" xml:space="preserve">
+    <value>{0} không phải là số nguyên</value>
+  </data>
+  <data name="OneArgument" xml:space="preserve">
+    <value>nhận một đối số</value>
+  </data>
+  <data name="OperationsFailed" xml:space="preserve">
+    <value>{0} trên {1} thao tác thất bại: {2}</value>
+  </data>
+  <data name="OutOfRange" xml:space="preserve">
+    <value>{0} nằm ngoài phạm vi</value>
+  </data>
+  <data name="QuotedStringExpected" xml:space="preserve">
+    <value>cần một chuỗi trong dấu ngoặc kép</value>
+  </data>
+  <data name="ReadOnlyCannotSave" xml:space="preserve">
+    <value>Kết nối ở chế độ chỉ đọc, nên không thể lưu thay đổi.</value>
+  </data>
+  <data name="ReadOnlyStatement" xml:space="preserve">
+    <value>Kết nối ở chế độ chỉ đọc, và câu lệnh này có thể thay đổi dữ liệu. Chỉ thao tác đọc chạy trên kết nối chỉ đọc.</value>
+  </data>
+  <data name="RegexArgs" xml:space="preserve">
+    <value>nhận một mẫu và các cờ tùy chọn</value>
+  </data>
+  <data name="RegexNotClosed" xml:space="preserve">
+    <value>Biểu thức chính quy chưa được đóng</value>
+  </data>
+  <data name="ShorthandUnsupported" xml:space="preserve">
+    <value>Trường '{0}' cần một giá trị: không hỗ trợ thuộc tính viết tắt</value>
+  </data>
+  <data name="ShowNeedsWhat" xml:space="preserve">
+    <value>show cần đối tượng để liệt kê, chẳng hạn dbs hoặc collections</value>
+  </data>
+  <data name="ShowUnsupported" xml:space="preserve">
+    <value>show {0} không được hỗ trợ. Hãy thử show dbs, show collections, show users hoặc show roles.</value>
+  </data>
+  <data name="SpreadUnsupported" xml:space="preserve">
+    <value>Không hỗ trợ cú pháp spread</value>
+  </data>
+  <data name="SrvThroughTunnel" xml:space="preserve">
+    <value>Danh sách seed DNS (mongodb+srv) không thể chạy qua đường hầm SSH: đường hầm chỉ mang một máy chủ, còn danh sách seed đặt tên máy chủ bằng DNS. Hãy tắt danh sách seed và kết nối tới host và cổng của một thành viên.</value>
+  </data>
+  <data name="StatementEmpty" xml:space="preserve">
+    <value>Câu lệnh trống</value>
+  </data>
+  <data name="StatementStart" xml:space="preserve">
+    <value>Câu lệnh bắt đầu bằng db, use hoặc show</value>
+  </data>
+  <data name="StatementUnsupported" xml:space="preserve">
+    <value>Câu lệnh không được hỗ trợ.</value>
+  </data>
+  <data name="StringNotClosed" xml:space="preserve">
+    <value>Chuỗi chưa được đóng</value>
+  </data>
+  <data name="StringNotClosedLine" xml:space="preserve">
+    <value>Chuỗi chưa được đóng trước cuối dòng</value>
+  </data>
+  <data name="SubtypeOutOfRange" xml:space="preserve">
+    <value>kiểu con {0} nằm ngoài phạm vi</value>
+  </data>
+  <data name="SyntaxAt" xml:space="preserve">
+    <value>SyntaxError: {0} (dòng {1}, cột {2})</value>
+  </data>
+  <data name="TimestampArgs" xml:space="preserve">
+    <value>nhận số giây và bước tăng, hoặc {t, i}</value>
+  </data>
+  <data name="UnexpectedAfterStatement" xml:space="preserve">
+    <value>Văn bản không mong đợi sau câu lệnh</value>
+  </data>
+  <data name="UnexpectedAfterValue" xml:space="preserve">
+    <value>Văn bản không mong đợi sau giá trị</value>
+  </data>
+  <data name="UnexpectedToken" xml:space="preserve">
+    <value>'{0}' không mong đợi</value>
+  </data>
+  <data name="UnknownError" xml:space="preserve">
+    <value>lỗi không xác định</value>
+  </data>
+  <data name="UseNeedsDatabase" xml:space="preserve">
+    <value>use cần một tên cơ sở dữ liệu</value>
+  </data>
+  <data name="WhatCollationDocument" xml:space="preserve">
+    <value>một tài liệu collation</value>
+  </data>
+  <data name="WhatCollectionName" xml:space="preserve">
+    <value>một tên collection</value>
+  </data>
+  <data name="WhatCommandDocument" xml:space="preserve">
+    <value>một tài liệu lệnh</value>
+  </data>
+  <data name="WhatComment" xml:space="preserve">
+    <value>một chú thích</value>
+  </data>
+  <data name="WhatDatabaseName" xml:space="preserve">
+    <value>một tên cơ sở dữ liệu</value>
+  </data>
+  <data name="WhatDocument" xml:space="preserve">
+    <value>một tài liệu</value>
+  </data>
+  <data name="WhatDocumentArray" xml:space="preserve">
+    <value>một mảng tài liệu</value>
+  </data>
+  <data name="WhatDocumentOrArray" xml:space="preserve">
+    <value>một tài liệu hoặc một mảng tài liệu</value>
+  </data>
+  <data name="WhatFieldName" xml:space="preserve">
+    <value>một tên trường</value>
+  </data>
+  <data name="WhatFilter" xml:space="preserve">
+    <value>một bộ lọc</value>
+  </data>
+  <data name="WhatFindAndModifyDocument" xml:space="preserve">
+    <value>một tài liệu gồm truy vấn, cập nhật và tùy chọn</value>
+  </data>
+  <data name="WhatHint" xml:space="preserve">
+    <value>một tên hoặc các khóa chỉ mục</value>
+  </data>
+  <data name="WhatIndexKeys" xml:space="preserve">
+    <value>các khóa chỉ mục</value>
+  </data>
+  <data name="WhatIndexKeysArray" xml:space="preserve">
+    <value>một mảng khóa chỉ mục</value>
+  </data>
+  <data name="WhatIndexNameOrKeys" xml:space="preserve">
+    <value>tên hoặc các khóa chỉ mục</value>
+  </data>
+  <data name="WhatNewName" xml:space="preserve">
+    <value>tên mới</value>
+  </data>
+  <data name="WhatOperationArray" xml:space="preserve">
+    <value>một mảng thao tác</value>
+  </data>
+  <data name="WhatOperationId" xml:space="preserve">
+    <value>ID thao tác</value>
+  </data>
+  <data name="WhatProjectionDocument" xml:space="preserve">
+    <value>một tài liệu projection</value>
+  </data>
+  <data name="WhatReplacementDocument" xml:space="preserve">
+    <value>một tài liệu thay thế</value>
+  </data>
+  <data name="WhatRoleArray" xml:space="preserve">
+    <value>một mảng vai trò</value>
+  </data>
+  <data name="WhatSortDocument" xml:space="preserve">
+    <value>một tài liệu sắp xếp</value>
+  </data>
+  <data name="WhatSourceCollection" xml:space="preserve">
+    <value>collection nguồn</value>
+  </data>
+  <data name="WhatUpdateDocument" xml:space="preserve">
+    <value>một tài liệu cập nhật</value>
+  </data>
+  <data name="WhatUpdateOrPipeline" xml:space="preserve">
+    <value>một tài liệu cập nhật hoặc pipeline</value>
+  </data>
+  <data name="WhatUserDocument" xml:space="preserve">
+    <value>một tài liệu người dùng</value>
+  </data>
+  <data name="WhatUserName" xml:space="preserve">
+    <value>một tên người dùng</value>
+  </data>
+  <data name="WhatViewName" xml:space="preserve">
+    <value>một tên view</value>
+  </data>
+  <data name="WhatWholeNumber" xml:space="preserve">
+    <value>một số nguyên</value>
+  </data>
+  <data name="WriteFailed" xml:space="preserve">
+    <value>Ghi thất bại</value>
+  </data>
+</root>

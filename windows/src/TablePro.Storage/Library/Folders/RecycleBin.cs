@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
+using TablePro.Storage.Localization;
 
 namespace TablePro.Storage.Library.Folders;
 
@@ -32,7 +33,7 @@ public sealed partial class ShellRecycleBin : IRecycleBin
         var full = Path.GetFullPath(path);
         if (!File.Exists(full) && !Directory.Exists(full))
         {
-            throw new FileNotFoundException("The file no longer exists.", full);
+            throw new FileNotFoundException(StorageStrings.Get("Library/FileNoLongerExists"), full);
         }
 
         // pFrom is a list of paths, each NUL-terminated, ending with an extra NUL.
@@ -51,7 +52,7 @@ public sealed partial class ShellRecycleBin : IRecycleBin
             var result = SHFileOperationW(&operation);
             if (result != 0 || operation.AnyOperationsAborted != 0)
             {
-                throw new IOException($"The file could not be moved to the Recycle Bin.", new Win32Exception(result));
+                throw new IOException(StorageStrings.Get("Library/RecycleBinFailed"), new Win32Exception(result));
             }
         }
     }

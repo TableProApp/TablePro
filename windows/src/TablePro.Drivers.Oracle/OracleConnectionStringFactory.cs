@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text;
 using Oracle.ManagedDataAccess.Client;
 using TablePro.Core.Drivers;
+using TablePro.Drivers.Oracle.Localization;
 using CoreSslMode = TablePro.Core.Connections.SslMode;
 
 namespace TablePro.Drivers.Oracle;
@@ -70,16 +71,16 @@ internal static class OracleConnectionStringFactory
 
         var sql = new StringBuilder("(DESCRIPTION=");
         sql.Append(CultureInfo.InvariantCulture, $"(CONNECT_TIMEOUT={Math.Max(profile.ConnectTimeoutSeconds, 1)})");
-        sql.Append("(ADDRESS=(PROTOCOL=").Append(tls ? "TCPS" : "TCP").Append(")(HOST=").Append(Checked(request.Host, "host"))
+        sql.Append("(ADDRESS=(PROTOCOL=").Append(tls ? "TCPS" : "TCP").Append(")(HOST=").Append(Checked(request.Host, DescriptorPart.Host))
             .Append(CultureInfo.InvariantCulture, $")(PORT={port}))");
         sql.Append("(CONNECT_DATA=");
         if (sid is not null)
         {
-            sql.Append("(SID=").Append(Checked(sid, "SID")).Append(')');
+            sql.Append("(SID=").Append(Checked(sid, DescriptorPart.Sid)).Append(')');
         }
         else if (service is not null)
         {
-            sql.Append("(SERVICE_NAME=").Append(Checked(service, "service name")).Append(')');
+            sql.Append("(SERVICE_NAME=").Append(Checked(service, DescriptorPart.ServiceName)).Append(')');
         }
 
         sql.Append(')');
@@ -125,8 +126,19 @@ internal static class OracleConnectionStringFactory
     }
 
     // A parenthesis or equals sign would end the descriptor's value early and let the text add its own clauses.
-    private static string Checked(string value, string what) =>
-        value.AsSpan().IndexOfAny("()=") >= 0
-            ? throw new ArgumentException($"The {what} \"{value}\" holds a character Oracle connect descriptors do not allow.")
-            : value;
+    private static string Checked(string value, DescriptorPart part) =>
+        value.AsSpan().IndexOfAny("()=") < 0 ? value
+            : throw new ArgumentException(part switch
+            {
+                DescriptorPart.Host => OracleStrings.Format("Oracle/HostBadCharacter", value),
+                DescriptorPart.Sid => OracleStrings.Format("Oracle/SidBadCharacter", value),
+                _ => OracleStrings.Format("Oracle/ServiceNameBadCharacter", value),
+            });
+
+    private enum DescriptorPart
+    {
+        Host,
+        Sid,
+        ServiceName,
+    }
 }

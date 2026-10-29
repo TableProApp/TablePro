@@ -1,6 +1,7 @@
 using System.Globalization;
 using TablePro.Core.Drivers;
 using TablePro.Core.Editing;
+using TablePro.Core.Localization;
 using TablePro.Core.Schema;
 using TablePro.Core.Sql;
 
@@ -52,7 +53,7 @@ public static class RowImporter
         ArgumentNullException.ThrowIfNull(writing);
         if (builder.Mapping.Count == 0)
         {
-            throw new InvalidOperationException("No field in the file is mapped to a column of this table.");
+            throw new InvalidOperationException(CoreStrings.Get("Import/NoFieldMapped"));
         }
 
         if (writing.DeleteExistingRows)
@@ -63,10 +64,10 @@ public static class RowImporter
         IImportRowMatcher? matcher = null;
         if (writing.Mode.MatchesExistingRows())
         {
-            matcher = session as IImportRowMatcher ?? throw new NotSupportedException("This connection cannot match imported rows against existing ones.");
+            matcher = session as IImportRowMatcher ?? throw new NotSupportedException(CoreStrings.Get("Import/CannotMatchRows"));
             if (writing.KeyColumns.Count == 0)
             {
-                throw new InvalidOperationException("Choose the key the rows are matched on.");
+                throw new InvalidOperationException(CoreStrings.Get("Import/ChooseMatchKey"));
             }
         }
 
@@ -87,11 +88,11 @@ public static class RowImporter
     {
         if (writing.Mode.MatchesExistingRows())
         {
-            throw new InvalidOperationException("Delete existing rows first empties the table, so no row would match. Turn it off, or import as Insert.");
+            throw new InvalidOperationException(CoreStrings.Get("Import/DeleteFirstCannotMatch"));
         }
 
         var transactions = ChangeTransactions.For(session)
-            ?? throw new NotSupportedException("This connection cannot empty a table and import into it in one transaction, so it cannot delete the existing rows first.");
+            ?? throw new NotSupportedException(CoreStrings.Get("Import/CannotDeleteFirst"));
         await using var transaction = await transactions.BeginChangesAsync(cancellationToken);
         await transaction.DeleteAllRowsAsync(table, cancellationToken);
         var result = await WriteAsync(new BatchWriter(transaction.SaveChangesAsync, session.Dialect, null, table, writing, progress), records, builder, cancellationToken);
@@ -246,9 +247,7 @@ public static class RowImporter
             {
                 if (counts[i] > 1)
                 {
-                    throw new InvalidOperationException(string.Create(
-                        CultureInfo.InvariantCulture,
-                        $"The key {Describe(keys[i])} matched {counts[i]} rows, so the row was not written."));
+                    throw new InvalidOperationException(CoreStrings.Format("Import/KeyMatchedSeveralRows", Describe(keys[i]), counts[i]));
                 }
             }
 
@@ -321,7 +320,7 @@ public static class RowImporter
                 var match = values.FirstOrDefault(p => string.Equals(p.Key, column, StringComparison.OrdinalIgnoreCase));
                 key[i] = match.Key is not null
                     ? match.Value
-                    : throw new InvalidOperationException($"This row has no value for the key column {column}, so it cannot be matched.");
+                    : throw new InvalidOperationException(CoreStrings.Format("Import/KeyValueMissing", column));
             }
 
             return key;

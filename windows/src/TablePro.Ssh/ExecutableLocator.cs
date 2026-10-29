@@ -1,3 +1,5 @@
+using TablePro.Ssh.Localization;
+
 namespace TablePro.Ssh;
 
 /// <summary>
@@ -103,7 +105,7 @@ public static class ExecutableLocator
         {
             throw new TunnelException(
                 TunnelFailureKind.ExecutableNotFound,
-                $"{path} is a batch script, which Windows would run through cmd.exe. Give the path of the program's .exe instead.");
+                SshStrings.Format("Tunnel/BatchScript", path));
         }
 
         return null;

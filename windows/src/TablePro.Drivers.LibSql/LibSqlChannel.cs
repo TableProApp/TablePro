@@ -1,9 +1,10 @@
 using System.Diagnostics;
-using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using TablePro.Core.Drivers;
+using TablePro.Core.Localization;
 using TablePro.Core.Results;
+using TablePro.Drivers.LibSql.Localization;
 
 namespace TablePro.Drivers.LibSql;
 
@@ -84,7 +85,7 @@ internal sealed class LibSqlChannel(HranaClient client) : IQueryChannel
             var result = await client.PipelineAsync(_streamBase, _baton, [new HranaExecute(sql.Trim())], options.RowLimit, timeout.Token);
             _baton = result.Baton;
             _streamBase = result.BaseUri ?? _streamBase;
-            var outcome = result.Outcomes.Count > 0 ? result.Outcomes[0] : new HranaOutcome(null, 0, "The server returned no result for the statement.");
+            var outcome = result.Outcomes.Count > 0 ? result.Outcomes[0] : new HranaOutcome(null, 0, CoreStrings.Get("Driver/NoResultForStatement"));
             if (outcome.Error is { } error)
             {
                 return new StatementResult(sql, [], -1, stopwatch.Elapsed, error);
@@ -97,19 +98,19 @@ internal sealed class LibSqlChannel(HranaClient client) : IQueryChannel
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && timeout.IsCancellationRequested)
         {
             Forget();
-            return new StatementResult(sql, [], -1, stopwatch.Elapsed, string.Create(CultureInfo.InvariantCulture, $"The query timed out after {options.CommandTimeoutSeconds} seconds."));
+            return new StatementResult(sql, [], -1, stopwatch.Elapsed, CoreStrings.Format("Driver/QueryTimedOutAfter", options.CommandTimeoutSeconds));
         }
         catch (OperationCanceledException)
         {
             Forget();
-            return new StatementResult(sql, [], -1, stopwatch.Elapsed, "Query cancelled.");
+            return new StatementResult(sql, [], -1, stopwatch.Elapsed, CoreStrings.Get("Driver/QueryCancelled"));
         }
         catch (Exception ex) when (ex is LibSqlException or HttpRequestException or JsonException)
         {
             Forget();
 
             // A stream the server expired takes its open transaction with it; the next statement starts a new one.
-            var message = hadStream ? ex.Message + " The tab's stream ended, so any open transaction was rolled back." : ex.Message;
+            var message = hadStream ? LibSqlStrings.Format("LibSql/StreamEnded", ex.Message) : ex.Message;
             return new StatementResult(sql, [], -1, stopwatch.Elapsed, message);
         }
     }

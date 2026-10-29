@@ -1,4 +1,5 @@
 using System.Text.Json;
+using TablePro.Core.Localization;
 using TablePro.Core.Results;
 using TablePro.Drivers.Http;
 
@@ -27,7 +28,7 @@ internal static class EsErrors
         }
 
         reason ??= reply.Body.Length > 0 ? reply.Text.Trim() : $"HTTP {reply.StatusCode}";
-        return reply.StatusCode is 401 or 403 ? "Authentication failed: " + reason : reason;
+        return reply.StatusCode is 401 or 403 ? CoreStrings.Format("Driver/AuthenticationFailedWith", reason) : reason;
     }
 
     /// <summary>The error's type and reason, with the root cause when it says something the reason does not.</summary>

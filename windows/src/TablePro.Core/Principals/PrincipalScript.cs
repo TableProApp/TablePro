@@ -1,3 +1,5 @@
+using TablePro.Core.Localization;
+
 namespace TablePro.Core.Principals;
 
 /// <summary>
@@ -39,12 +41,12 @@ public static class PrincipalScript
 
     private static IEnumerable<PrincipalStatement> Statements(IPrincipalSqlGenerator generator, PrincipalChange change) => change switch
     {
-        CreatePrincipal create => Wrap(generator.CreatePrincipal(create.Definition), change, $"Create {create.Principal}", false, create.Definition.HasPassword),
-        AlterPrincipal alter => Wrap(generator.AlterPrincipal(alter.Old, alter.New), change, $"Update {alter.Principal}", false, alter.New.HasPassword),
-        SetPrincipalPassword password => Wrap(generator.SetPassword(password.Ref, password.Password), change, $"Change password for {password.Ref}", false, true),
+        CreatePrincipal create => Wrap(generator.CreatePrincipal(create.Definition), change, CoreStrings.Format("Principal/StatementCreate", create.Principal), false, create.Definition.HasPassword),
+        AlterPrincipal alter => Wrap(generator.AlterPrincipal(alter.Old, alter.New), change, CoreStrings.Format("Principal/StatementUpdate", alter.Principal), false, alter.New.HasPassword),
+        SetPrincipalPassword password => Wrap(generator.SetPassword(password.Ref, password.Password), change, CoreStrings.Format("Principal/StatementChangePassword", password.Ref), false, true),
         ModifyGrants grants => GrantStatements(generator, grants),
-        DropPrincipal drop => Wrap(generator.DropPrincipal(drop.Ref, drop.Options), change, $"Drop {drop.Ref}", true, false),
-        _ => throw new UnsupportedPrincipalChangeException($"Unknown change {change.GetType().Name}."),
+        DropPrincipal drop => Wrap(generator.DropPrincipal(drop.Ref, drop.Options), change, CoreStrings.Format("Principal/StatementDrop", drop.Ref), true, false),
+        _ => throw new UnsupportedPrincipalChangeException(CoreStrings.Format("Principal/UnknownChange", change.GetType().Name)),
     };
 
     // Revokes run first, so a privilege moved between grantable and not is never held twice in between.
@@ -54,12 +56,12 @@ public static class PrincipalScript
         var statements = new List<PrincipalStatement>();
         if (change.Changes.Removed.Count > 0)
         {
-            statements.AddRange(Wrap(generator.Revoke(principal, change.Changes.Removed), change, $"Revoke privileges from {principal}", true, false));
+            statements.AddRange(Wrap(generator.Revoke(principal, change.Changes.Removed), change, CoreStrings.Format("Principal/StatementRevoke", principal), true, false));
         }
 
         if (change.Changes.Added.Count > 0)
         {
-            statements.AddRange(Wrap(generator.Grant(principal, change.Changes.Added), change, $"Grant privileges to {principal}", false, false));
+            statements.AddRange(Wrap(generator.Grant(principal, change.Changes.Added), change, CoreStrings.Format("Principal/StatementGrant", principal), false, false));
         }
 
         return statements;
@@ -67,6 +69,6 @@ public static class PrincipalScript
 
     private static IEnumerable<PrincipalStatement> Wrap(IReadOnlyList<string>? sql, PrincipalChange change, string description, bool destructive, bool credentials) =>
         sql is null
-            ? throw new UnsupportedPrincipalChangeException($"This server cannot apply \"{description}\" for {change.Principal}.")
+            ? throw new UnsupportedPrincipalChangeException(CoreStrings.Format("Principal/CannotApply", description, change.Principal))
             : sql.Select(s => new PrincipalStatement(s, description, destructive, credentials));
 }

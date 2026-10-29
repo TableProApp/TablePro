@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using TablePro.Core.Localization;
 
 namespace TablePro.Core.Updates;
 
@@ -75,18 +76,18 @@ public sealed class UpdateFeed
         }
         catch (JsonException ex)
         {
-            throw new FormatException("The update feed is not valid JSON.", ex);
+            throw new FormatException(CoreStrings.Get("Updates/FeedNotJson"), ex);
         }
 
         if (document is null)
         {
-            throw new FormatException("The update feed is empty.");
+            throw new FormatException(CoreStrings.Get("Updates/FeedEmpty"));
         }
 
         if (document.Schema != SchemaVersion)
         {
-            throw new FormatException(string.Create(CultureInfo.InvariantCulture,
-                $"The update feed uses schema {document.Schema}; this version of TablePro reads schema {SchemaVersion}."));
+            throw new FormatException(CoreStrings.Format("Updates/FeedSchema",
+                document.Schema.ToString(CultureInfo.InvariantCulture), SchemaVersion.ToString(CultureInfo.InvariantCulture)));
         }
 
         var items = (document.Items ?? [])

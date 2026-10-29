@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
+using TablePro.Drivers.Redis.Localization;
 
 namespace TablePro.Drivers.Redis;
 
@@ -59,7 +60,7 @@ internal static class RedisJson
         using var document = JsonDocument.Parse(json);
         if (document.RootElement.ValueKind != JsonValueKind.Object)
         {
-            throw new FormatException("Stream fields must be a JSON object such as {\"field\": \"value\"}.");
+            throw new FormatException(RedisStrings.Get("Redis/StreamFieldsObject"));
         }
 
         var fields = new List<KeyValuePair<string, string>>();

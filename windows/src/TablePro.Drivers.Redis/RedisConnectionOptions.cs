@@ -5,6 +5,7 @@ using StackExchange.Redis;
 using StackExchange.Redis.Configuration;
 using TablePro.Core.Connections;
 using TablePro.Core.Drivers;
+using TablePro.Drivers.Redis.Localization;
 
 namespace TablePro.Drivers.Redis;
 
@@ -78,7 +79,7 @@ internal static class RedisConnectionOptions
             case RedisConnectionMode.Cluster:
                 if (database != 0)
                 {
-                    throw new ArgumentException("Redis Cluster serves database 0 only. Clear the database number, or use standalone mode.");
+                    throw new ArgumentException(RedisStrings.Get("Redis/ClusterDatabaseOption"));
                 }
 
                 foreach (var node in Nodes(settings, RedisTopologyKeys.ClusterHosts, RedisTopologyKeys.ClusterDefaultPort, request.Host, port))
@@ -178,7 +179,7 @@ internal static class RedisConnectionOptions
 
         return TryParseDatabaseIndex(text, out var index)
             ? index
-            : throw new ArgumentException($"'{text}' is not a Redis database number. Use a number such as 0 or a name such as db0.");
+            : throw new ArgumentException(RedisStrings.Format("Redis/NotDatabaseNumber", text));
     }
 
     public static bool TryParseDatabaseIndex(string? text, out int index)
@@ -227,7 +228,7 @@ internal static class RedisConnectionOptions
     private static IReadOnlyList<RedisNodeAddress> Nodes(IReadOnlyDictionary<string, string> settings, string[] keys, int defaultPort, string host, int port)
     {
         var nodes = RedisHostList.WithPrimary(RedisHostList.Parse(RedisTopologyKeys.Read(settings, keys), defaultPort), host, port);
-        return nodes.Count > 0 ? nodes : throw new ArgumentException("List at least one node to connect to, as host:port.");
+        return nodes.Count > 0 ? nodes : throw new ArgumentException(RedisStrings.Get("Redis/ListOneNode"));
     }
 
     private static void ApplyTls(ConfigurationOptions options, IReadOnlyDictionary<string, string> settings, SslMode mode, string? hostName)

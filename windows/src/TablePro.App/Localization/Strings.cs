@@ -1,5 +1,6 @@
 using System.Globalization;
 using Microsoft.Windows.ApplicationModel.Resources;
+using TablePro.Core.Localization;
 
 namespace TablePro.App.Localization;
 
@@ -64,18 +65,4 @@ internal static class Strings
             return (null, null);
         }
     }
-}
-
-/// <summary>
-/// Which plural form a count takes, as CLDR defines it for the languages TablePro ships. Korean, Vietnamese and Chinese
-/// have one form; French uses the singular for 0 and 1; English and Turkish for 1 alone.
-/// </summary>
-internal static class PluralRules
-{
-    public static bool IsOne(CultureInfo culture, long count) => culture.TwoLetterISOLanguageName switch
-    {
-        "ko" or "vi" or "zh" or "ja" => false,
-        "fr" => count is 0 or 1,
-        _ => count == 1,
-    };
 }

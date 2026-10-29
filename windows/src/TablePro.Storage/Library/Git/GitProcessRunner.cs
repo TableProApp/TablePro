@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Text;
+using TablePro.Storage.Localization;
 
 namespace TablePro.Storage.Library.Git;
 
@@ -108,7 +109,7 @@ public sealed class GitProcessRunner(string executablePath) : IGitProcessRunner
             await WhenDrained(output, errors, TimeSpan.FromSeconds(2));
             if (timeout.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
             {
-                throw new GitProcessException(GitProcessFailure.TimedOut, "Git did not respond in time.");
+                throw new GitProcessException(GitProcessFailure.TimedOut, StorageStrings.Get("Library/GitTimedOut"));
             }
 
             throw;
@@ -117,7 +118,7 @@ public sealed class GitProcessRunner(string executablePath) : IGitProcessRunner
         await WhenDrained(output, errors, PipeDrainGrace);
         if (overflowed)
         {
-            throw new GitProcessException(GitProcessFailure.OutputTooLarge, "Git printed more output than TablePro can read.");
+            throw new GitProcessException(GitProcessFailure.OutputTooLarge, StorageStrings.Get("Library/GitOutputTooLarge"));
         }
 
         return new GitProcessResult(process.ExitCode, Collected(output), Collected(errors));

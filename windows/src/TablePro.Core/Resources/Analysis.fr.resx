@@ -1,0 +1,189 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="CharAmpersand" xml:space="preserve">
+    <value>esperluette</value>
+  </data>
+  <data name="CharApostrophe" xml:space="preserve">
+    <value>apostrophe</value>
+  </data>
+  <data name="CharAsterisk" xml:space="preserve">
+    <value>astérisque</value>
+  </data>
+  <data name="CharAtSign" xml:space="preserve">
+    <value>arobase</value>
+  </data>
+  <data name="CharBackslash" xml:space="preserve">
+    <value>barre oblique inverse</value>
+  </data>
+  <data name="CharBacktick" xml:space="preserve">
+    <value>accent grave</value>
+  </data>
+  <data name="CharCaret" xml:space="preserve">
+    <value>accent circonflexe</value>
+  </data>
+  <data name="CharColon" xml:space="preserve">
+    <value>deux-points</value>
+  </data>
+  <data name="CharComma" xml:space="preserve">
+    <value>virgule</value>
+  </data>
+  <data name="CharDollarSign" xml:space="preserve">
+    <value>signe dollar</value>
+  </data>
+  <data name="CharEqualsSign" xml:space="preserve">
+    <value>signe égal</value>
+  </data>
+  <data name="CharExclamationMark" xml:space="preserve">
+    <value>point d’exclamation</value>
+  </data>
+  <data name="CharGreaterThanSign" xml:space="preserve">
+    <value>signe supérieur à</value>
+  </data>
+  <data name="CharHyphen" xml:space="preserve">
+    <value>trait d’union</value>
+  </data>
+  <data name="CharLeftCurlyBracket" xml:space="preserve">
+    <value>accolade gauche</value>
+  </data>
+  <data name="CharLeftParenthesis" xml:space="preserve">
+    <value>parenthèse gauche</value>
+  </data>
+  <data name="CharLeftSquareBracket" xml:space="preserve">
+    <value>crochet gauche</value>
+  </data>
+  <data name="CharLessThanSign" xml:space="preserve">
+    <value>signe inférieur à</value>
+  </data>
+  <data name="CharNumberSign" xml:space="preserve">
+    <value>croisillon</value>
+  </data>
+  <data name="CharPercentSign" xml:space="preserve">
+    <value>signe pourcentage</value>
+  </data>
+  <data name="CharPeriod" xml:space="preserve">
+    <value>point</value>
+  </data>
+  <data name="CharPlusSign" xml:space="preserve">
+    <value>signe plus</value>
+  </data>
+  <data name="CharQuestionMark" xml:space="preserve">
+    <value>point d’interrogation</value>
+  </data>
+  <data name="CharQuotationMark" xml:space="preserve">
+    <value>guillemet</value>
+  </data>
+  <data name="CharRightCurlyBracket" xml:space="preserve">
+    <value>accolade droite</value>
+  </data>
+  <data name="CharRightParenthesis" xml:space="preserve">
+    <value>parenthèse droite</value>
+  </data>
+  <data name="CharRightSquareBracket" xml:space="preserve">
+    <value>crochet droit</value>
+  </data>
+  <data name="CharSlash" xml:space="preserve">
+    <value>barre oblique</value>
+  </data>
+  <data name="CharTilde" xml:space="preserve">
+    <value>tilde</value>
+  </data>
+  <data name="CharVerticalBar" xml:space="preserve">
+    <value>barre verticale</value>
+  </data>
+  <data name="CurlyQuote" xml:space="preserve">
+    <value>Guillemet typographique ({0}). SQL exige le guillemet droit ({1}).</value>
+  </data>
+  <data name="FullWidthPunctuation" xml:space="preserve">
+    <value>Caractère {0} pleine chasse ({1}). SQL requiert le caractère {0} ASCII ({2}).</value>
+  </data>
+  <data name="FullWidthSemicolon" xml:space="preserve">
+    <value>Point-virgule pleine chasse (U+FF1B). SQL ne reconnaît que ; comme séparateur d’instructions.</value>
+  </data>
+  <data name="FullWidthWord" xml:space="preserve">
+    <value>Lettres ou chiffres pleine chasse. SQL requiert les caractères ASCII {0}.</value>
+  </data>
+  <data name="HoverAliasOfCommonTableExpression" xml:space="preserve">
+    <value>{0} : alias de l’expression de table commune {1}</value>
+  </data>
+  <data name="HoverAliasOfSubquery" xml:space="preserve">
+    <value>{0} : alias d’une sous-requête</value>
+  </data>
+  <data name="HoverAliasOfTable" xml:space="preserve">
+    <value>{0} : alias de la table {1}</value>
+  </data>
+  <data name="HoverAliasOfTableFunction" xml:space="preserve">
+    <value>{0} : alias de la fonction de table {1}</value>
+  </data>
+  <data name="HoverAliasOfView" xml:space="preserve">
+    <value>{0} : alias de la vue {1}</value>
+  </data>
+  <data name="HoverColumn" xml:space="preserve">
+    <value>Colonne {0}</value>
+  </data>
+  <data name="HoverCommonTableExpression" xml:space="preserve">
+    <value>Expression de table commune {0}</value>
+  </data>
+  <data name="HoverMoreColumns_One" xml:space="preserve">
+    <value>et {0} autre</value>
+  </data>
+  <data name="HoverMoreColumns_Other" xml:space="preserve">
+    <value>et {0} autres</value>
+  </data>
+  <data name="HoverSubquery" xml:space="preserve">
+    <value>Sous-requête {0}</value>
+  </data>
+  <data name="HoverTable" xml:space="preserve">
+    <value>Table {0}</value>
+  </data>
+  <data name="HoverTableFunction" xml:space="preserve">
+    <value>Fonction de table {0}</value>
+  </data>
+  <data name="HoverView" xml:space="preserve">
+    <value>Vue {0}</value>
+  </data>
+  <data name="NoClosingBrace" xml:space="preserve">
+    <value>Aucune accolade fermante correspondante</value>
+  </data>
+  <data name="NoClosingBracket" xml:space="preserve">
+    <value>Aucun crochet fermant correspondant</value>
+  </data>
+  <data name="NoClosingParenthesis" xml:space="preserve">
+    <value>Aucune parenthèse fermante correspondante</value>
+  </data>
+  <data name="NonAsciiSpace" xml:space="preserve">
+    <value>Espace non ASCII ({0}). SQL nécessite un espace ASCII (U+0020).</value>
+  </data>
+  <data name="NoOpeningBracket" xml:space="preserve">
+    <value>Aucun délimiteur ouvrant correspondant</value>
+  </data>
+  <data name="UnknownColumn" xml:space="preserve">
+    <value>La table « {0} » n’a pas de colonne « {1} ».</value>
+  </data>
+  <data name="UnknownQualifier" xml:space="preserve">
+    <value>Table ou alias « {0} » inconnu.</value>
+  </data>
+  <data name="UnknownTable" xml:space="preserve">
+    <value>Table « {0} » inconnue.</value>
+  </data>
+  <data name="UnterminatedComment" xml:space="preserve">
+    <value>Commentaire non terminé</value>
+  </data>
+  <data name="UnterminatedQuotedName" xml:space="preserve">
+    <value>Nom entre guillemets non terminé</value>
+  </data>
+  <data name="UnterminatedString" xml:space="preserve">
+    <value>Chaîne non terminée</value>
+  </data>
+</root>

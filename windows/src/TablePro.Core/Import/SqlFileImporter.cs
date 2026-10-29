@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using TablePro.Core.Connections;
 using TablePro.Core.Drivers;
+using TablePro.Core.Localization;
 using TablePro.Core.Results;
 using TablePro.Core.Sql;
 
@@ -75,8 +76,8 @@ public sealed class SqlImportException : Exception
     // The database's message rarely ends in punctuation, so the rollback's own failure goes on a line of its own.
     private static string Describe(SqlImportError failure, string? rollbackError) =>
         rollbackError is null
-            ? $"Line {failure.Line}: {failure.Message}"
-            : $"Line {failure.Line}: {failure.Message}\nThe transaction rollback also failed: {rollbackError}";
+            ? CoreStrings.Format("Import/ScriptErrorLine", failure.Line, failure.Message)
+            : CoreStrings.Format("Import/ScriptErrorLine", failure.Line, failure.Message) + "\n" + CoreStrings.Format("Import/RollbackAlsoFailed", rollbackError);
 }
 
 /// <summary>

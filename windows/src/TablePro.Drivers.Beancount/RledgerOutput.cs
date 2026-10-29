@@ -1,12 +1,13 @@
 using System.Text.Json;
 using TablePro.Core.Results;
+using TablePro.Drivers.Beancount.Localization;
 
 namespace TablePro.Drivers.Beancount;
 
 /// <summary>Reads what <c>rledger query -f json</c> prints.</summary>
 internal static class RledgerOutput
 {
-    private const string InvalidOutput = "Invalid rustledger JSON output";
+    private static string InvalidOutput => BeancountStrings.Get("Beancount/InvalidRledgerOutput");
 
     /// <summary>The column names, which must be present.</summary>
     public static IReadOnlyList<string> Columns(ReadOnlySpan<byte> json) =>

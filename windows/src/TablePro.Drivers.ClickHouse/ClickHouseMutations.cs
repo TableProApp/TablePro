@@ -1,7 +1,9 @@
 using System.Text;
 using TablePro.Core.Editing;
+using TablePro.Core.Localization;
 using TablePro.Core.Schema;
 using TablePro.Core.Sql;
+using TablePro.Drivers.ClickHouse.Localization;
 
 namespace TablePro.Drivers.ClickHouse;
 
@@ -74,8 +76,7 @@ internal static class ClickHouseMutations
             {
                 if (keys.Contains(column))
                 {
-                    throw new InvalidOperationException(
-                        $"ClickHouse cannot change {column}, because it is part of the table's sorting, primary or partition key. Nothing was saved.");
+                    throw new InvalidOperationException(ClickHouseStrings.Format("ClickHouse/KeyColumnUnchangeable", column));
                 }
             }
         }
@@ -85,7 +86,7 @@ internal static class ClickHouseMutations
     {
         if (update.Values.Count == 0)
         {
-            throw new InvalidOperationException("An update needs at least one changed column.");
+            throw new InvalidOperationException(CoreStrings.Get("Driver/UpdateNeedsChangedColumn"));
         }
 
         var parameters = new List<KeyValuePair<string, object?>>();
@@ -119,7 +120,7 @@ internal static class ClickHouseMutations
         // ClickHouse has no DEFAULT VALUES, and which column may take DEFAULT is not known here.
         if (insert.Values.Count == 0)
         {
-            throw new InvalidOperationException("ClickHouse needs at least one value to insert a row.");
+            throw new InvalidOperationException(CoreStrings.Format("Driver/InsertNeedsValue", "ClickHouse"));
         }
 
         var parameters = new List<KeyValuePair<string, object?>>();
@@ -133,7 +134,7 @@ internal static class ClickHouseMutations
     {
         if (key.Count == 0)
         {
-            throw new InvalidOperationException("A row needs at least one key column to be changed safely. ClickHouse keys rows by the table's ORDER BY columns.");
+            throw new InvalidOperationException(ClickHouseStrings.Get("ClickHouse/NeedsKeyColumn"));
         }
 
         sql.Append(" WHERE ");

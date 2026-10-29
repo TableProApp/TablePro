@@ -1,4 +1,5 @@
 using System.Globalization;
+using TablePro.Drivers.Oracle.Localization;
 
 namespace TablePro.Drivers.Oracle;
 
@@ -29,7 +30,7 @@ internal sealed record OracleDebugValue(string? Text, bool IsCollection = false,
     public static readonly OracleDebugValue Unavailable = new(null, IsUnavailable: true);
 
     /// <summary>Null is SQL NULL, so a value the debugger cannot read is said in words.</summary>
-    public string? Display => IsCollection ? "Collection" : IsUnavailable ? "Not readable" : Text;
+    public string? Display => IsCollection ? OracleStrings.Get("Oracle/ValueCollection") : IsUnavailable ? OracleStrings.Get("Oracle/ValueNotReadable") : Text;
 }
 
 /// <summary>A name GET_VALUE reads, from a frame by its number or from a package by its handle.</summary>

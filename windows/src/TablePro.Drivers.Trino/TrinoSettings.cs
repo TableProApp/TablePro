@@ -1,9 +1,9 @@
-using System.Globalization;
 using System.Net.Http.Headers;
 using System.Net.Security;
 using System.Text;
 using TablePro.Core.Connections;
 using TablePro.Core.Drivers;
+using TablePro.Drivers.Trino.Localization;
 
 namespace TablePro.Drivers.Trino;
 
@@ -87,7 +87,7 @@ public sealed record TrinoSettings(
         if (!UsesTls && (Password is not null || AccessToken is not null))
         {
             throw new InvalidOperationException(
-                string.Create(CultureInfo.InvariantCulture, $"Trino accepts a password or token only over HTTPS. Set the SSL mode to Required or use an https:// URL for {BaseUri.Host}."));
+                TrinoStrings.Format("Trino/PasswordNeedsHttps", BaseUri.Host));
         }
     }
 

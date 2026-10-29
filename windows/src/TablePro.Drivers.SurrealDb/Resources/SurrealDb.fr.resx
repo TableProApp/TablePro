@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="BetweenNeedsBothBounds" xml:space="preserve">
+    <value>Saisissez les deux bornes pour filtrer avec BETWEEN.</value>
+  </data>
+  <data name="HeldForTransaction" xml:space="preserve">
+    <value>Mise en attente pour la transaction ; elle s’exécutera au COMMIT.</value>
+  </data>
+  <data name="IdNotEditable" xml:space="preserve">
+    <value>L’ID d’un enregistrement ne peut pas être modifié.</value>
+  </data>
+  <data name="None" xml:space="preserve">
+    <value>(aucun)</value>
+  </data>
+  <data name="NotCbor" xml:space="preserve">
+    <value>SurrealDB a répondu autre chose que du CBOR.</value>
+  </data>
+  <data name="NotDeclared" xml:space="preserve">
+    <value>non déclaré</value>
+  </data>
+  <data name="QueryFailed" xml:space="preserve">
+    <value>La requête a échoué.</value>
+  </data>
+  <data name="RecordIdUnknown" xml:space="preserve">
+    <value>L’ID de l’enregistrement est inconnu, l’enregistrement ne peut donc pas être ciblé.</value>
+  </data>
+  <data name="RelationFieldNotSaved" xml:space="preserve">
+    <value>« {0} » ne peut pas être enregistré depuis la grille. Supprimez la relation et exécutez de nouveau RELATE.</value>
+  </data>
+  <data name="TransactionCancelled_One" xml:space="preserve">
+    <value>Transaction annulée ; {0} instruction n’a pas été envoyée.</value>
+  </data>
+  <data name="TransactionCancelled_Other" xml:space="preserve">
+    <value>Transaction annulée ; {0} instructions n’ont pas été envoyées.</value>
+  </data>
+  <data name="TransactionCancelledBecause" xml:space="preserve">
+    <value>La transaction a été annulée. {0}</value>
+  </data>
+  <data name="TransactionCommitted_One" xml:space="preserve">
+    <value>Transaction validée : {0} instruction.</value>
+  </data>
+  <data name="TransactionCommitted_Other" xml:space="preserve">
+    <value>Transaction validée : {0} instructions.</value>
+  </data>
+  <data name="TransactionStarted" xml:space="preserve">
+    <value>Transaction démarrée. Les instructions jusqu’à COMMIT s’exécutent ensemble lors de son envoi.</value>
+  </data>
+  <data name="UsingNamespace" xml:space="preserve">
+    <value>Espace de noms {0}, base de données {1} utilisés.</value>
+  </data>
+  <data name="VariableKept" xml:space="preserve">
+    <value>La variable est conservée pour les instructions qui suivent dans cet onglet.</value>
+  </data>
+  <data name="VariableNotReplayed" xml:space="preserve">
+    <value>La valeur de la variable écrit des données, elle n’est donc pas rejouée pour les instructions suivantes.</value>
+  </data>
+</root>

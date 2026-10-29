@@ -1,0 +1,178 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AvailableAfterSetRole" xml:space="preserve">
+    <value>Available after SET ROLE {0}.</value>
+    <comment>{0} is a role. SET ROLE is SQL.</comment>
+  </data>
+  <data name="CannotApply" xml:space="preserve">
+    <value>This server cannot apply "{0}" for {1}.</value>
+    <comment>{0} is what the change does, such as Grant privileges to bob; {1} is a user or role.</comment>
+  </data>
+  <data name="CategoryAdministration" xml:space="preserve">
+    <value>Administration</value>
+  </data>
+  <data name="CategoryData" xml:space="preserve">
+    <value>Data</value>
+  </data>
+  <data name="CategoryDynamic" xml:space="preserve">
+    <value>Dynamic</value>
+  </data>
+  <data name="CategoryOther" xml:space="preserve">
+    <value>Other</value>
+  </data>
+  <data name="CategoryStructure" xml:space="preserve">
+    <value>Structure</value>
+  </data>
+  <data name="ConnectToBrowse" xml:space="preserve">
+    <value>Connect to this database to browse it</value>
+  </data>
+  <data name="GrantedOn" xml:space="preserve">
+    <value>Granted on {0}</value>
+    <comment>{0} is a database object.</comment>
+  </data>
+  <data name="GrantsInside_One" xml:space="preserve">
+    <value>{0} grant inside</value>
+    <comment>{0} is a count of grants on objects inside this one.</comment>
+  </data>
+  <data name="GrantsInside_Other" xml:space="preserve">
+    <value>{0} grants inside</value>
+    <comment>{0} is a count of grants on objects inside this one.</comment>
+  </data>
+  <data name="InheritedAutomatically" xml:space="preserve">
+    <value>Inherited automatically.</value>
+  </data>
+  <data name="InheritedFrom" xml:space="preserve">
+    <value>Inherited from {0}</value>
+    <comment>{0} is a role.</comment>
+  </data>
+  <data name="KindRole" xml:space="preserve">
+    <value>Role</value>
+  </data>
+  <data name="KindUser" xml:space="preserve">
+    <value>User</value>
+  </data>
+  <data name="SelfImpactAlter" xml:space="preserve">
+    <value>These changes alter {0}, the account this connection uses.</value>
+    <comment>{0} is the account the connection signs in with.</comment>
+  </data>
+  <data name="SelfImpactDrop" xml:space="preserve">
+    <value>These changes drop {0}, the account this connection uses.</value>
+    <comment>{0} is the account the connection signs in with.</comment>
+  </data>
+  <data name="SelfImpactRevokeAll" xml:space="preserve">
+    <value>These changes revoke every privilege from {0}, the account this connection uses.</value>
+    <comment>{0} is the account the connection signs in with.</comment>
+  </data>
+  <data name="Server" xml:space="preserve">
+    <value>Server</value>
+    <comment>The server-wide privilege scope.</comment>
+  </data>
+  <data name="StageCreated" xml:space="preserve">
+    <value>Will be created when you apply changes</value>
+  </data>
+  <data name="StageDropped" xml:space="preserve">
+    <value>Will be dropped when you apply changes</value>
+  </data>
+  <data name="StageModified" xml:space="preserve">
+    <value>Has unsaved changes</value>
+  </data>
+  <data name="StatementChangePassword" xml:space="preserve">
+    <value>Change password for {0}</value>
+    <comment>What a statement does, named when it fails. {0} is a user or role.</comment>
+  </data>
+  <data name="StatementCreate" xml:space="preserve">
+    <value>Create {0}</value>
+    <comment>What a statement does, named when it fails. {0} is a user or role.</comment>
+  </data>
+  <data name="StatementDrop" xml:space="preserve">
+    <value>Drop {0}</value>
+    <comment>What a statement does, named when it fails. {0} is a user or role.</comment>
+  </data>
+  <data name="StatementGrant" xml:space="preserve">
+    <value>Grant privileges to {0}</value>
+    <comment>What a statement does, named when it fails. {0} is a user or role.</comment>
+  </data>
+  <data name="StatementRevoke" xml:space="preserve">
+    <value>Revoke privileges from {0}</value>
+    <comment>What a statement does, named when it fails. {0} is a user or role.</comment>
+  </data>
+  <data name="StatementUpdate" xml:space="preserve">
+    <value>Update {0}</value>
+    <comment>What a statement does, named when it fails. {0} is a user or role.</comment>
+  </data>
+  <data name="SummaryAll" xml:space="preserve">
+    <value>All ({0})</value>
+    <comment>{0} is a count of privileges.</comment>
+  </data>
+  <data name="SummaryGrantable" xml:space="preserve">
+    <value>{0} (grantable)</value>
+    <comment>{0} is a list of privilege names the principal may grant on.</comment>
+  </data>
+  <data name="SummaryNone" xml:space="preserve">
+    <value>None</value>
+  </data>
+  <data name="SummaryOverflow" xml:space="preserve">
+    <value>{0} +{1}</value>
+    <comment>{0} is a list of privilege names, {1} how many more are not shown.</comment>
+  </data>
+  <data name="UndoChangeAttributes" xml:space="preserve">
+    <value>Change Attributes</value>
+    <comment>An undo step's name.</comment>
+  </data>
+  <data name="UndoChangePassword" xml:space="preserve">
+    <value>Change Password for {0}</value>
+    <comment>An undo step's name. {0} is a user or role.</comment>
+  </data>
+  <data name="UndoCopyPrivileges" xml:space="preserve">
+    <value>Copy Privileges from {0}</value>
+    <comment>An undo step's name. {0} is the user or role the privileges came from.</comment>
+  </data>
+  <data name="UndoCreate" xml:space="preserve">
+    <value>Create {0}</value>
+    <comment>An undo step's name. {0} is a user or role.</comment>
+  </data>
+  <data name="UndoDrop" xml:space="preserve">
+    <value>Drop {0}</value>
+    <comment>An undo step's name. {0} is a user or role.</comment>
+  </data>
+  <data name="UndoDropMany_One" xml:space="preserve">
+    <value>Drop {0} user or role</value>
+    <comment>An undo step's name. {0} is a count.</comment>
+  </data>
+  <data name="UndoDropMany_Other" xml:space="preserve">
+    <value>Drop {0} users and roles</value>
+    <comment>An undo step's name. {0} is a count.</comment>
+  </data>
+  <data name="UndoGrant" xml:space="preserve">
+    <value>Grant</value>
+    <comment>An undo step's name, shown after Undo.</comment>
+  </data>
+  <data name="UndoKeep" xml:space="preserve">
+    <value>Keep {0}</value>
+    <comment>An undo step's name: a staged drop taken back. {0} is a user or role.</comment>
+  </data>
+  <data name="UndoRemove" xml:space="preserve">
+    <value>Remove {0}</value>
+    <comment>An undo step's name: a staged user or role taken out before it was created. {0} is its name.</comment>
+  </data>
+  <data name="UndoRevoke" xml:space="preserve">
+    <value>Revoke</value>
+    <comment>An undo step's name, shown after Undo.</comment>
+  </data>
+  <data name="UnknownChange" xml:space="preserve">
+    <value>Unknown change {0}.</value>
+    <comment>{0} is the internal name of a kind of change.</comment>
+  </data>
+</root>

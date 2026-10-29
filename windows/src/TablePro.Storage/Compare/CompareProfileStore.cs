@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
+using TablePro.Storage.Localization;
 
 namespace TablePro.Storage.Compare;
 
@@ -86,7 +87,7 @@ public sealed class CompareProfileStore : IDisposable
         var name = profile.Name?.Trim();
         if (string.IsNullOrEmpty(name))
         {
-            throw new ArgumentException("A saved comparison needs a name.", nameof(profile));
+            throw new ArgumentException(StorageStrings.Get("Stores/ComparisonNeedsName"), nameof(profile));
         }
 
         var saved = profile with { Name = name, UpdatedAt = DateTimeOffset.UtcNow };

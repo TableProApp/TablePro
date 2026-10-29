@@ -1,5 +1,6 @@
 using System.Collections.Frozen;
 using System.Text.Json;
+using TablePro.Core.Localization;
 
 namespace TablePro.Core.Plans.Parsers;
 
@@ -58,7 +59,7 @@ public static class PostgreSqlPlanParser
 
         return new QueryPlanNode
         {
-            Operation = node.Property("Node Type").String() ?? "Unknown",
+            Operation = node.Property("Node Type").String() ?? CoreStrings.Get("Plan/UnknownOperation"),
             Relation = node.Property("Relation Name").String(),
             Schema = node.Property("Schema").String(),
             Alias = node.Property("Alias").String(),

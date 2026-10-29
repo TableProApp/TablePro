@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
+using TablePro.Drivers.Beancount.Localization;
 
 namespace TablePro.Drivers.Beancount;
 
@@ -105,7 +106,7 @@ internal sealed class RledgerBackend(BeancountBackend backend, IProcessRunner ru
 
     /// <summary>Runs one BQL query and returns rledger's JSON, for the editor's <c>BQL:</c> statements.</summary>
     public async Task<byte[]> QueryJsonAsync(string ledgerPath, string bql, CancellationToken cancellationToken) =>
-        await RunAsync(await QueryArgumentsAsync(ledgerPath, bql, cancellationToken), "rustledger command failed", allowsNonZeroExit: false, cancellationToken);
+        await RunAsync(await QueryArgumentsAsync(ledgerPath, bql, cancellationToken), BeancountStrings.Get("Beancount/RustledgerFailed"), allowsNonZeroExit: false, cancellationToken);
 
     public async Task<string> VersionAsync(CancellationToken cancellationToken)
     {
@@ -117,7 +118,7 @@ internal sealed class RledgerBackend(BeancountBackend backend, IProcessRunner ru
         string version;
         try
         {
-            var reported = (await RunAsync(["--version"], "rledger version check failed", allowsNonZeroExit: false, cancellationToken)).AsSpan();
+            var reported = (await RunAsync(["--version"], BeancountStrings.Get("Beancount/RledgerVersionFailed"), allowsNonZeroExit: false, cancellationToken)).AsSpan();
             var text = System.Text.Encoding.UTF8.GetString(reported).Trim();
             version = text.Length == 0 ? "rledger" : text.StartsWith("rledger ", StringComparison.OrdinalIgnoreCase) ? text : "rledger " + text;
         }
@@ -205,7 +206,7 @@ internal sealed class RledgerBackend(BeancountBackend backend, IProcessRunner ru
             }
         }
 
-        throw failure ?? new BeancountException("rustledger command failed");
+        throw failure ?? new BeancountException(BeancountStrings.Get("Beancount/RustledgerFailed"));
     }
 
     private async Task<(List<LedgerRow> Rows, List<LedgerRow> Diagnostics)> PadsAsync(string ledgerPath, CancellationToken cancellationToken)
@@ -232,7 +233,7 @@ internal sealed class RledgerBackend(BeancountBackend backend, IProcessRunner ru
         }
         catch (BeancountException ex)
         {
-            return ([], [BeancountRowEnrichment.PadDiagnostic(null, "rledger could not render the ledger's directives, so the pads table is empty: " + ex.Message)]);
+            return ([], [BeancountRowEnrichment.PadDiagnostic(null, BeancountStrings.Format("Beancount/PadsUnrendered", ex.Message))]);
         }
     }
 
@@ -240,7 +241,7 @@ internal sealed class RledgerBackend(BeancountBackend backend, IProcessRunner ru
     {
         try
         {
-            var json = await RunAsync(["check", "--no-cache", "-f", "json", ledgerPath], "rustledger validation failed", allowsNonZeroExit: true, cancellationToken);
+            var json = await RunAsync(["check", "--no-cache", "-f", "json", ledgerPath], BeancountStrings.Get("Beancount/RustledgerValidationFailed"), allowsNonZeroExit: true, cancellationToken);
             using var document = JsonDocument.Parse(json);
             return LedgerValues.FromJson(document.RootElement) is LedgerRow root && root.Get("diagnostics") is List<object?> list
                 ? LedgerValues.Rows(list)

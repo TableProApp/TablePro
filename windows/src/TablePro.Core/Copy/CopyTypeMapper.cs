@@ -1,6 +1,7 @@
 using System.Globalization;
 using TablePro.Core.Connections;
 using TablePro.Core.Import;
+using TablePro.Core.Localization;
 using TablePro.Core.Schema;
 using TablePro.Core.Sql;
 
@@ -16,6 +17,52 @@ public enum TypeFamily
     Oracle,
     DuckDb,
     Other,
+}
+
+/// <summary>
+/// Why a target type only approximates the source's. It is a kind rather than text so the review note can be one whole
+/// sentence in the user's language.
+/// </summary>
+public enum CopyTypeApproximation
+{
+    /// <summary>The Oracle release has no BOOLEAN.</summary>
+    NoBoolean,
+
+    /// <summary>JSON is kept as text.</summary>
+    JsonAsText,
+
+    /// <summary>An enumeration becomes text without its allowed values.</summary>
+    EnumerationAsText,
+
+    /// <summary>Oracle has no TIME.</summary>
+    NoTime,
+
+    /// <summary>A time loses its time zone.</summary>
+    TimeZoneDropped,
+
+    /// <summary>A timestamp is kept in UTC since DATETIME holds no time zone.</summary>
+    UtcNoTimeZone,
+
+    /// <summary>A timestamp is kept in UTC.</summary>
+    Utc,
+
+    /// <summary>The value is written as text.</summary>
+    AsText,
+
+    /// <summary>The server's row versions are copied as bytes.</summary>
+    RowVersionAsBytes,
+
+    /// <summary>The type has no equivalent and becomes text.</summary>
+    NoEquivalent,
+
+    /// <summary>Cut to 255 characters to fit in a key.</summary>
+    CutTo255,
+
+    /// <summary>Cut to 450 characters to fit in a key.</summary>
+    CutTo450,
+
+    /// <summary>Cut to 4,000 characters to fit in a key.</summary>
+    CutTo4000,
 }
 
 /// <summary>
@@ -51,7 +98,7 @@ public static class CopyTypeMapper
 
         var unknown = FamilyOf(source) == TypeFamily.Other ? source : FamilyOf(target) == TypeFamily.Other ? target : (DatabaseEngine?)null;
         return unknown is { } engine
-            ? $"A copy to another engine needs a type system TablePro can translate, and {EngineDescriptor.For(engine).DisplayName} has none it knows. Copy to a target of the same type."
+            ? CoreStrings.Format("Copy/UnknownTypeSystem", EngineDescriptor.For(engine).DisplayName)
             : null;
     }
 
@@ -76,40 +123,59 @@ public static class CopyTypeMapper
             defaultExpression = sequenceDefault ? null : column.DefaultValue;
             if (sequenceDefault)
             {
-                notes.Add($"{column.Name}: its sequence default becomes an identity column.");
+                notes.Add(CoreStrings.Format("Copy/SequenceBecomesIdentity", column.Name));
             }
         }
         else
         {
-            (type, var note) = TypeFor(shape, target, targetVersion, keyed);
-            if (note is not null)
+            (type, var approximation) = TypeFor(shape, target, targetVersion, keyed);
+            if (approximation is { } kind)
             {
-                notes.Add($"{column.Name}: {column.DataType} becomes {type}, {note}.");
+                notes.Add(Describe(kind, column.Name, column.DataType, type));
             }
 
             defaultExpression = sequenceDefault ? null : PortableDefault(column.DefaultValue, shape, target);
             if (!string.IsNullOrWhiteSpace(column.DefaultValue) && !sequenceDefault && defaultExpression is null)
             {
-                notes.Add($"{column.Name}: the default {column.DefaultValue.Trim()} has no equivalent and is left out.");
+                notes.Add(CoreStrings.Format("Copy/DefaultLeftOut", column.Name, column.DefaultValue.Trim()));
             }
         }
 
         if (identity && writesRows && target == DatabaseEngine.SqlServer)
         {
             identity = false;
-            notes.Add($"{column.Name}: SQL Server refuses copied values for an identity column, so it is created without IDENTITY.");
+            notes.Add(CoreStrings.Format("Copy/SqlServerIdentityDropped", column.Name));
         }
 
         if (shape.Category == SqlTypeCategory.ServerComputed && SharesTypes(source, target))
         {
-            notes.Add($"{column.Name}: the server writes it, so its values are not copied.");
+            notes.Add(CoreStrings.Format("Copy/ServerWritten", column.Name));
         }
 
         return (new ColumnDefinition(column.Name, type, column.IsNullable && !column.IsPrimaryKey, defaultExpression, column.IsPrimaryKey, identity, column.Comment), notes);
     }
 
+    /// <summary>The note for a column whose type is approximated, as one sentence per kind so every language can word it whole.</summary>
+    private static string Describe(CopyTypeApproximation kind, string column, string from, string to) => kind switch
+    {
+        CopyTypeApproximation.NoBoolean => CoreStrings.Format("Copy/TypeNoBoolean", column, from, to),
+        CopyTypeApproximation.JsonAsText => CoreStrings.Format("Copy/TypeJsonAsText", column, from, to),
+        CopyTypeApproximation.EnumerationAsText => CoreStrings.Format("Copy/TypeEnumerationAsText", column, from, to),
+        CopyTypeApproximation.NoTime => CoreStrings.Format("Copy/TypeNoTime", column, from, to),
+        CopyTypeApproximation.TimeZoneDropped => CoreStrings.Format("Copy/TypeTimeZoneDropped", column, from, to),
+        CopyTypeApproximation.UtcNoTimeZone => CoreStrings.Format("Copy/TypeUtcNoTimeZone", column, from, to),
+        CopyTypeApproximation.Utc => CoreStrings.Format("Copy/TypeUtc", column, from, to),
+        CopyTypeApproximation.AsText => CoreStrings.Format("Copy/TypeAsText", column, from, to),
+        CopyTypeApproximation.RowVersionAsBytes => CoreStrings.Format("Copy/TypeRowVersionAsBytes", column, from, to),
+        CopyTypeApproximation.NoEquivalent => CoreStrings.Format("Copy/TypeNoEquivalent", column, from, to),
+        CopyTypeApproximation.CutTo255 => CoreStrings.Format("Copy/TypeCutTo255", column, from, to),
+        CopyTypeApproximation.CutTo450 => CoreStrings.Format("Copy/TypeCutTo450", column, from, to),
+        CopyTypeApproximation.CutTo4000 => CoreStrings.Format("Copy/TypeCutTo4000", column, from, to),
+        _ => throw new ArgumentOutOfRangeException(nameof(kind)),
+    };
+
     /// <summary>The target type for a shape, and why it is an approximation when it is one.</summary>
-    public static (string Type, string? Note) TypeFor(SqlTypeShape shape, DatabaseEngine target, string? targetVersion = null, bool keyed = false)
+    public static (string Type, CopyTypeApproximation? Approximation) TypeFor(SqlTypeShape shape, DatabaseEngine target, string? targetVersion = null, bool keyed = false)
     {
         ArgumentNullException.ThrowIfNull(shape);
         var family = FamilyOf(target);
@@ -125,18 +191,18 @@ public static class CopyTypeMapper
             case SqlTypeCategory.Boolean:
             {
                 var type = Mapped(ImportFieldType.Boolean);
-                return (type, family == TypeFamily.Oracle && !type.Equals("BOOLEAN", StringComparison.OrdinalIgnoreCase) ? "since this Oracle release has no BOOLEAN" : null);
+                return (type, family == TypeFamily.Oracle && !type.Equals("BOOLEAN", StringComparison.OrdinalIgnoreCase) ? CopyTypeApproximation.NoBoolean : null);
             }
 
             case SqlTypeCategory.Json:
-                return (Mapped(ImportFieldType.Json), family is TypeFamily.Sqlite or TypeFamily.SqlServer or TypeFamily.Oracle ? "kept as text" : null);
+                return (Mapped(ImportFieldType.Json), family is TypeFamily.Sqlite or TypeFamily.SqlServer or TypeFamily.Oracle ? CopyTypeApproximation.JsonAsText : null);
             case SqlTypeCategory.Text:
                 return TextType(shape, family, keyed, Mapped(ImportFieldType.Text));
             case SqlTypeCategory.Enumeration:
             {
                 var length = Math.Max(1, shape.Labels.Count == 0 ? 255 : shape.Labels.Max(l => l.Length));
                 var (type, _) = TextType(new SqlTypeShape(SqlTypeCategory.Text) { Length = length }, family, keyed, Mapped(ImportFieldType.Text));
-                return (type, "as text, without its list of allowed values");
+                return (type, CopyTypeApproximation.EnumerationAsText);
             }
 
             case SqlTypeCategory.Date:
@@ -144,37 +210,37 @@ public static class CopyTypeMapper
             case SqlTypeCategory.Time:
                 return family switch
                 {
-                    TypeFamily.Oracle => ("INTERVAL DAY(0) TO SECOND", "since Oracle has no TIME"),
-                    TypeFamily.PostgreSql when shape.HasTimeZone => ("TIME WITH TIME ZONE", null),
-                    _ => ("TIME", shape.HasTimeZone ? "without its time zone" : null),
+                    TypeFamily.Oracle => ("INTERVAL DAY(0) TO SECOND", CopyTypeApproximation.NoTime),
+                    TypeFamily.PostgreSql when shape.HasTimeZone => ("TIME WITH TIME ZONE", (CopyTypeApproximation?)null),
+                    _ => ("TIME", shape.HasTimeZone ? CopyTypeApproximation.TimeZoneDropped : null),
                 };
             case SqlTypeCategory.Timestamp:
                 return family switch
                 {
-                    TypeFamily.PostgreSql => (shape.HasTimeZone ? "TIMESTAMP WITH TIME ZONE" : "TIMESTAMP", null),
-                    TypeFamily.MySql => ("DATETIME(6)", shape.HasTimeZone ? "with times in UTC, since DATETIME keeps no time zone" : null),
+                    TypeFamily.PostgreSql => (shape.HasTimeZone ? "TIMESTAMP WITH TIME ZONE" : "TIMESTAMP", (CopyTypeApproximation?)null),
+                    TypeFamily.MySql => ("DATETIME(6)", shape.HasTimeZone ? CopyTypeApproximation.UtcNoTimeZone : null),
                     TypeFamily.SqlServer => (shape.HasTimeZone ? "DATETIMEOFFSET" : "DATETIME2", null),
                     TypeFamily.Oracle => (shape.HasTimeZone ? "TIMESTAMP WITH TIME ZONE" : "TIMESTAMP", null),
                     TypeFamily.DuckDb => (shape.HasTimeZone ? "TIMESTAMPTZ" : "TIMESTAMP", null),
-                    _ => ("DATETIME", shape.HasTimeZone ? "with times in UTC" : null),
+                    _ => ("DATETIME", shape.HasTimeZone ? CopyTypeApproximation.Utc : null),
                 };
             case SqlTypeCategory.Uuid:
                 return family switch
                 {
-                    TypeFamily.PostgreSql or TypeFamily.DuckDb => ("UUID", null),
+                    TypeFamily.PostgreSql or TypeFamily.DuckDb => ("UUID", (CopyTypeApproximation?)null),
                     TypeFamily.SqlServer => ("UNIQUEIDENTIFIER", null),
-                    TypeFamily.MySql => ("CHAR(36)", "as text"),
-                    TypeFamily.Oracle => ("VARCHAR2(36 CHAR)", "as text"),
-                    _ => ("TEXT", "as text"),
+                    TypeFamily.MySql => ("CHAR(36)", CopyTypeApproximation.AsText),
+                    TypeFamily.Oracle => ("VARCHAR2(36 CHAR)", CopyTypeApproximation.AsText),
+                    _ => ("TEXT", CopyTypeApproximation.AsText),
                 };
             case SqlTypeCategory.Binary:
                 return (BinaryType(shape, family), null);
             case SqlTypeCategory.ServerComputed:
-                return (BinaryType(new SqlTypeShape(SqlTypeCategory.Binary) { Length = 8 }, family), "with the server's row versions copied as bytes");
+                return (BinaryType(new SqlTypeShape(SqlTypeCategory.Binary) { Length = 8 }, family), CopyTypeApproximation.RowVersionAsBytes);
             default:
             {
                 var (type, _) = TextType(new SqlTypeShape(SqlTypeCategory.Text), family, keyed, Mapped(ImportFieldType.Text));
-                return (type, "as text, since it has no equivalent");
+                return (type, CopyTypeApproximation.NoEquivalent);
             }
         }
     }
@@ -224,7 +290,7 @@ public static class CopyTypeMapper
         return string.Create(CultureInfo.InvariantCulture, $"{name}({precision},{scale})");
     }
 
-    private static (string Type, string? Note) TextType(SqlTypeShape shape, TypeFamily family, bool keyed, string unbounded)
+    private static (string Type, CopyTypeApproximation? Approximation) TextType(SqlTypeShape shape, TypeFamily family, bool keyed, string unbounded)
     {
         var length = shape.Length;
         var fixedLength = shape.IsFixedLength && length is not null;
@@ -239,18 +305,18 @@ public static class CopyTypeMapper
                     return (Sized(fixedLength && m <= 255 ? "CHAR" : "VARCHAR", m), null);
                 }
 
-                return keyed ? ("VARCHAR(255)", "cut to 255 characters so it can be part of a key") : ("LONGTEXT", null);
+                return keyed ? ("VARCHAR(255)", CopyTypeApproximation.CutTo255) : ("LONGTEXT", null);
             case TypeFamily.SqlServer:
                 if (length is { } s && s <= 4_000)
                 {
                     return (Sized(fixedLength ? "NCHAR" : "NVARCHAR", s), null);
                 }
 
-                return keyed ? ("NVARCHAR(450)", "cut to 450 characters so it can be part of a key") : ("NVARCHAR(MAX)", null);
+                return keyed ? ("NVARCHAR(450)", CopyTypeApproximation.CutTo450) : ("NVARCHAR(MAX)", null);
             case TypeFamily.Oracle:
                 return length is { } o && o <= 4_000
                     ? (string.Create(CultureInfo.InvariantCulture, $"{(fixedLength ? "CHAR" : "VARCHAR2")}({o} CHAR)"), null)
-                    : keyed ? ("VARCHAR2(4000 CHAR)", "cut to 4,000 characters so it can be part of a key") : ("CLOB", null);
+                    : keyed ? ("VARCHAR2(4000 CHAR)", CopyTypeApproximation.CutTo4000) : ("CLOB", null);
             case TypeFamily.DuckDb:
                 return ("VARCHAR", null);
             case TypeFamily.Sqlite:

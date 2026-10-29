@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using Confluent.Kafka;
 using Confluent.Kafka.Admin;
+using TablePro.Drivers.Kafka.Localization;
 
 namespace TablePro.Drivers.Kafka;
 
@@ -46,7 +47,7 @@ internal sealed class KafkaCluster : IDisposable
         var found = metadata.Topics.FirstOrDefault(t => t.Topic == topic);
         if (found is null || found.Error.Code == ErrorCode.UnknownTopicOrPart || found.Partitions.Count == 0)
         {
-            throw new InvalidOperationException($"There is no topic named {topic}.");
+            throw new InvalidOperationException(KafkaStrings.Format("Kafka/NoTopic", topic));
         }
 
         return found.Error.IsError ? throw new KafkaException(found.Error) : found;
@@ -97,7 +98,7 @@ internal sealed class KafkaCluster : IDisposable
         {
             if (!available.Contains(partition))
             {
-                throw new InvalidOperationException($"Topic {topicName} has no partition {partition}.");
+                throw new InvalidOperationException(KafkaStrings.Format("Kafka/NoPartition", topicName, partition));
             }
         }
 
@@ -113,8 +114,7 @@ internal sealed class KafkaCluster : IDisposable
         var plan = KafkaRows.Plan(start, skip, limit, marks, times);
         if (plan.Sum(r => r.Count) > MaxRead)
         {
-            throw new InvalidOperationException(
-                $"This page needs more than {MaxRead:N0} messages read across {plan.Count} partitions. Read fewer partitions, or start nearer the rows with FROM OFFSET or FROM TIME.");
+            throw new InvalidOperationException(KafkaStrings.Format("Kafka/PageTooLarge", MaxRead, plan.Count));
         }
 
         var (records, complete) = Read(topicName, plan, budget, cancellationToken);

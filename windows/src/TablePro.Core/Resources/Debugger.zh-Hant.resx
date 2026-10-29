@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="DebuggerFailed" xml:space="preserve">
+    <value>偵錯工具失敗。</value>
+  </data>
+  <data name="FinishedBeforeStop" xml:space="preserve">
+    <value>常式在到達停止點之前就已結束。</value>
+  </data>
+  <data name="StatusFailed" xml:space="preserve">
+    <value>失敗</value>
+  </data>
+  <data name="StatusFinished" xml:space="preserve">
+    <value>已完成</value>
+  </data>
+  <data name="StatusPaused" xml:space="preserve">
+    <value>已暫停</value>
+  </data>
+  <data name="StatusPausedAt" xml:space="preserve">
+    <value>已在 {1} 的第 {0} 行暫停</value>
+  </data>
+  <data name="StatusPreparing" xml:space="preserve">
+    <value>正在準備…</value>
+  </data>
+  <data name="StatusRunning" xml:space="preserve">
+    <value>正在執行…</value>
+  </data>
+  <data name="StatusStarting" xml:space="preserve">
+    <value>正在啟動…</value>
+  </data>
+  <data name="StatusStopped" xml:space="preserve">
+    <value>已停止</value>
+  </data>
+  <data name="StatusStopping" xml:space="preserve">
+    <value>正在停止…</value>
+  </data>
+  <data name="StopNotConfirmed" xml:space="preserve">
+    <value>偵錯工具未確認停止。常式可能仍在伺服器上執行。</value>
+  </data>
+</root>

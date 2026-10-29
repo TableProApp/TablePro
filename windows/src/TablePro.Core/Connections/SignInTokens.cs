@@ -1,4 +1,5 @@
 using TablePro.Core.Drivers;
+using TablePro.Core.Localization;
 
 namespace TablePro.Core.Connections;
 
@@ -18,7 +19,7 @@ public interface ISignInTokenProvider
 
     /// <summary>Signs in where the cloud names the database user too; see <see cref="SignInMethods.IssuesSignInUser"/>.</summary>
     ValueTask<SignInCredentials> SignInAsync(ConnectionProfile profile, string? secret, CancellationToken cancellationToken) =>
-        throw new NotSupportedException($"{profile.EffectiveSignIn().DisplayName(profile.Engine)} does not issue a database user.");
+        throw new NotSupportedException(CoreStrings.Format("SignIn/NoDatabaseUser", profile.EffectiveSignIn().DisplayName(profile.Engine)));
 }
 
 /// <summary>How often a driver's pool refreshes a sign-in token.</summary>
@@ -60,7 +61,7 @@ public static class SignInTokens
     public static ValueTask<string> GetAsync(ConnectionProfile profile, string? secret, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(profile);
-        var provider = Provider ?? throw new InvalidOperationException($"{profile.EffectiveSignIn().DisplayName(profile.Engine)} sign-in is not available in this build.");
+        var provider = Provider ?? throw new InvalidOperationException(CoreStrings.Format("SignIn/NotInThisBuild", profile.EffectiveSignIn().DisplayName(profile.Engine)));
         return provider.GetTokenAsync(profile, secret, cancellationToken);
     }
 
@@ -83,7 +84,7 @@ public static class SignInTokens
 
         if (provider is null)
         {
-            throw new InvalidOperationException($"{profile.EffectiveSignIn().DisplayName(profile.Engine)} sign-in is not available in this build.");
+            throw new InvalidOperationException(CoreStrings.Format("SignIn/NotInThisBuild", profile.EffectiveSignIn().DisplayName(profile.Engine)));
         }
 
         var issued = await provider.SignInAsync(profile, request.Password, cancellationToken);
