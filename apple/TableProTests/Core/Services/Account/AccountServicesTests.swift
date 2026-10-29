@@ -409,6 +409,33 @@ struct AccountServicesTests {
         #expect(fixture.access.state.isSignedIn)
     }
 
+    @Test(
+        "Another key typed while one is stored signs in with it and leaves the stored key unexchanged",
+        arguments: [false, true]
+    )
+    func useLicenseKeyBesideAnotherStoredKey(signedInFirst: Bool) async throws {
+        let fixture = try AccountFixture()
+        if signedInFirst {
+            try await fixture.signIn()
+        }
+        try fixture.storeLegacyLicense(key: FakeAccountServer.validKey)
+        fixture.services.loadStoredState()
+
+        _ = try await fixture.services.useLicenseKey(FakeAccountServer.otherValidKey)
+        #expect(await fixture.services.migrateLegacyKeyIfNeeded() == .keptWhileSignedIn)
+        #expect(await fixture.services.checkNow())
+
+        let exchanged = await fixture.server.requests(to: "/oauth/token")
+            .filter { $0.form["grant_type"] == OAuthTokenClient.tokenExchangeGrant }
+            .map { $0.form["subject_token"] }
+        #expect(exchanged == [FakeAccountServer.otherValidKey])
+        #expect(fixture.hasLegacyLicense)
+        #expect(fixture.services.storedLicenseKey == FakeAccountServer.validKey)
+
+        _ = try await fixture.services.useLicenseKey(FakeAccountServer.validKey)
+        #expect(!fixture.hasLegacyLicense)
+    }
+
     @Test("A refresh that answers after a key replaced the session stores nothing from the old session")
     func refreshDuringKeyExchange() async throws {
         let fixture = try AccountFixture()

@@ -197,12 +197,8 @@ internal final class AccountServices {
     func migrateLegacyKeyIfNeeded() async -> LegacyMigrationOutcome {
         guard let key = legacy.licenseKey() else { return .nothingToMigrate }
         if session.isSignedIn {
-            // A session the exchange started, whose registration or fetch failed, finishes here without a new exchange.
-            do throws(AccountError) {
-                guard try await session.accessToken().isFromLicenseKey else { return .keptWhileSignedIn }
-            } catch {
-                return .retryLater(error)
-            }
+            // Resumes this key's own exchange; a session from another key typed into Use License Key… leaves it stored.
+            guard session.wasExchanged(from: key) else { return .keptWhileSignedIn }
         } else {
             do throws(AccountError) {
                 try await session.signIn(licenseKey: key, machine: machine)

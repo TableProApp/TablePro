@@ -3,6 +3,7 @@
 //  TablePro
 //
 
+import CryptoKit
 import Foundation
 import os
 
@@ -31,6 +32,8 @@ internal struct AccessToken: Equatable, Sendable {
 // Refresh token in the Keychain, access token in memory, one refresh in flight at a time.
 internal actor AccountSession {
     static let refreshTokenKey = "com.TablePro.account.refreshToken"
+    // Which key's exchange started this session, so the migration deletes only a key it exchanged itself.
+    static let licenseKeyDigestKey = "com.TablePro.account.licenseKeyDigest"
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "AccountSession")
     // Refreshed this long before it expires, so a request never leaves with a token about to lapse.
@@ -56,6 +59,7 @@ internal actor AccountSession {
         let code = try request.code(from: callback)
         let tokens = try await client.exchangeCode(code, verifier: request.verifier)
         try adopt(tokens)
+        keychain.delete(forKey: Self.licenseKeyDigestKey)
     }
 
     // A session already on this Mac is replaced and revoked only once the key is accepted.
@@ -66,6 +70,7 @@ internal actor AccountSession {
         refreshTask = nil
         access = nil
         try adopt(tokens)
+        keychain.writeString(Self.digest(of: licenseKey), forKey: Self.licenseKeyDigestKey)
         if let replaced, replaced != storedRefreshToken {
             do {
                 try await client.revoke(replaced)
@@ -73,6 +78,13 @@ internal actor AccountSession {
                 Self.logger.warning("Revoking the replaced refresh token failed: \(error.publicLogShape, privacy: .public)")
             }
         }
+    }
+
+    nonisolated func wasExchanged(from licenseKey: String) -> Bool {
+        guard isSignedIn, case .found(let digest) = keychain.readStringResult(forKey: Self.licenseKeyDigestKey) else {
+            return false
+        }
+        return digest == Self.digest(of: licenseKey)
     }
 
     func accessToken() async throws(AccountError) -> AccessToken {
@@ -132,6 +144,7 @@ internal actor AccountSession {
         refreshTask = nil
         access = nil
         keychain.delete(forKey: Self.refreshTokenKey)
+        keychain.delete(forKey: Self.licenseKeyDigestKey)
     }
 
     @discardableResult
@@ -153,6 +166,10 @@ internal actor AccountSession {
             return nil
         }
         return token
+    }
+
+    private static func digest(of licenseKey: String) -> String {
+        Base64URL.encode(Data(SHA256.hash(data: Data(licenseKey.utf8))))
     }
 
     private static func value(of task: Task<AccessToken, Error>) async throws(AccountError) -> AccessToken {

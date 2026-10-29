@@ -27,6 +27,7 @@ actor FakeAccountServer {
     )
     static let deviceID = "dev_01k8d6wpggfd68tbhz818p4ww4"
     static let validKey = "ABCDE-FGHIJ-KLMNO-PQRST-UVWXY"
+    static let otherValidKey = "VWXYZ-QRSTU-LMNOP-GHIJK-ABCDE"
 
     let signingKey = Curve25519.Signing.PrivateKey()
     var features: [String] = ["icloud_sync", "query_insights"]
@@ -112,7 +113,7 @@ actor FakeAccountServer {
             }
             return tokens(request, device: familyBound, method: familyMethod)
         case OAuthTokenClient.tokenExchangeGrant:
-            guard form["subject_token"] == Self.validKey else {
+            guard let key = form["subject_token"], [Self.validKey, Self.otherValidKey].contains(key) else {
                 return Self.http(request, status: 400, body: ["error": "invalid_grant"])
             }
             familyBound = true

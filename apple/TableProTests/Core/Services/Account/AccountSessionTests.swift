@@ -202,4 +202,23 @@ struct AccountSessionTests {
         #expect(token.deviceID == FakeAccountServer.deviceID)
         #expect(token.isFromLicenseKey)
     }
+
+    @Test("The session remembers which key its exchange used, until an interactive sign-in or sign-out replaces it")
+    func exchangedKeyIsRemembered() async throws {
+        let server = FakeAccountServer()
+        let keychain = InMemoryKeychain()
+        let session = Self.session(server, keychain: keychain)
+
+        try await session.signIn(licenseKey: FakeAccountServer.validKey, machine: FakeAccountServer.machine)
+        #expect(session.wasExchanged(from: FakeAccountServer.validKey))
+        #expect(!session.wasExchanged(from: FakeAccountServer.otherValidKey))
+        #expect(Self.session(server, keychain: keychain).wasExchanged(from: FakeAccountServer.validKey), "It survives a relaunch")
+
+        await session.signOut()
+        #expect(!session.wasExchanged(from: FakeAccountServer.validKey))
+
+        try await session.signIn(licenseKey: FakeAccountServer.validKey, machine: FakeAccountServer.machine)
+        let interactive = try await Self.signedIn(server, keychain: keychain)
+        #expect(!interactive.wasExchanged(from: FakeAccountServer.validKey))
+    }
 }
