@@ -4,6 +4,7 @@
 
 mod actions;
 mod cell_editor;
+mod choice_editor;
 mod deletion;
 mod paste;
 mod row_edits;

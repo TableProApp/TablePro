@@ -19,6 +19,10 @@ pub enum CellEditorKind {
         purpose: TextPurpose,
     },
     Toggle,
+    /// A menu of the column's labels; several of them for a set.
+    Choice {
+        multiple: bool,
+    },
     Details(DetailsEditor),
     ReadOnly(CellLock),
 }
@@ -52,6 +56,8 @@ impl CellEditorKind {
         };
         match kind {
             ColumnKind::Bool(_) => Self::Toggle,
+            // An enum whose labels the catalog did not give takes text.
+            ColumnKind::Enum { labels, multiple } if !labels.is_empty() => Self::Choice { multiple: *multiple },
             ColumnKind::Json { .. } => Self::Details(DetailsEditor::Json),
             ColumnKind::Xml => Self::Details(DetailsEditor::Xml),
             ColumnKind::Date => Self::Details(DetailsEditor::Date),
@@ -170,7 +176,7 @@ mod tests {
             ),
             (
                 ColumnKind::Enum {
-                    labels: vec!["a".to_owned()],
+                    labels: Vec::new(),
                     multiple: false,
                 },
                 free(false),
@@ -289,6 +295,27 @@ mod tests {
         assert_eq!(
             inline.for_text(&EditText::ReadOnly(ReadOnlyReason::Bytes)),
             CellEditorKind::ReadOnly(CellLock::Value(ReadOnlyReason::Bytes))
+        );
+    }
+
+    #[test]
+    fn an_enum_with_labels_opens_a_menu_of_them() {
+        let single = ColumnKind::Enum {
+            labels: vec!["a".to_owned()],
+            multiple: false,
+        };
+        let set = ColumnKind::Enum {
+            labels: vec!["a".to_owned(), "b".to_owned()],
+            multiple: true,
+        };
+
+        assert_eq!(
+            CellEditorKind::for_cell(&grid_of_kind("e", single), Ok(())),
+            CellEditorKind::Choice { multiple: false }
+        );
+        assert_eq!(
+            CellEditorKind::for_cell(&grid_of_kind("s", set), Ok(())),
+            CellEditorKind::Choice { multiple: true }
         );
     }
 }

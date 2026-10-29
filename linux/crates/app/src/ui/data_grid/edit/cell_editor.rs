@@ -36,6 +36,8 @@ pub(super) struct OpenEdit {
 /// What editing a cell comes to.
 pub(super) enum Plan {
     Inline(Box<InlineStart>),
+    /// A menu of the column's labels; typing edits the text instead.
+    Choice(Box<InlineStart>),
     Toggle,
     /// The value is edited in the detail pane.
     Details,
@@ -45,10 +47,10 @@ pub(super) enum Plan {
 }
 
 pub(super) struct InlineStart {
-    column: GridColumn,
+    pub(super) column: GridColumn,
     row: GridRow,
-    start: EditStart,
-    text: String,
+    pub(super) start: EditStart,
+    pub(super) text: String,
     accepts_line_breaks: bool,
     purpose: TextPurpose,
 }
@@ -123,6 +125,10 @@ impl EditController {
                 self.open_inline(&grid, cell, start, Opened::ToEdit);
                 true
             }
+            Plan::Choice(start) => {
+                self.open_choice(&grid, cell, &start);
+                true
+            }
         }
     }
 
@@ -135,7 +141,7 @@ impl EditController {
             return None;
         }
         match self.plan(&grid, &cell.row()?, cell.column()) {
-            Plan::Inline(start) => Some(self.open_inline(&grid, &cell, start, Opened::ByTyping)),
+            Plan::Inline(start) | Plan::Choice(start) => Some(self.open_inline(&grid, &cell, start, Opened::ByTyping)),
             Plan::Refused(why) => {
                 grid.toast(why);
                 None
@@ -214,6 +220,7 @@ impl EditController {
             CellEditorKind::ReadOnly(_) => return Plan::Locked,
             CellEditorKind::Toggle => return Plan::Toggle,
             CellEditorKind::Details(_) => return Plan::Details,
+            CellEditorKind::Choice { .. } => (false, TextPurpose::FreeForm),
             CellEditorKind::Inline {
                 accepts_line_breaks,
                 purpose,
@@ -240,20 +247,27 @@ impl EditController {
             }
             EditText::Editable(_) => {}
         }
-        if !matches!(kind.for_text(&text), CellEditorKind::Inline { .. }) {
+        if !matches!(
+            kind.for_text(&text),
+            CellEditorKind::Inline { .. } | CellEditorKind::Choice { .. }
+        ) {
             return Plan::Details;
         }
         let EditText::Editable(text) = text else {
             return Plan::Locked;
         };
-        Plan::Inline(Box::new(InlineStart {
+        let start = Box::new(InlineStart {
             column,
             row: row.clone(),
             start,
             text,
             accepts_line_breaks,
             purpose,
-        }))
+        });
+        match kind {
+            CellEditorKind::Choice { .. } => Plan::Choice(start),
+            _ => Plan::Inline(start),
+        }
     }
 
     fn open_inline(&self, grid: &DataGrid, cell: &GridCell, plan: Box<InlineStart>, opened: Opened) -> gtk::Text {
