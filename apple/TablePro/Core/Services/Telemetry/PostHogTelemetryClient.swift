@@ -26,6 +26,8 @@ internal final class PostHogTelemetryClient: TelemetryClient {
         config.sendFeatureFlagEvent = false
         config.errorTrackingConfig.autoCapture = false
         config.personProfiles = .identifiedOnly
+        // Batched, an event captured just before an opt-out still went out at the next flush, after it.
+        config.flushAt = 1
         return config
     }
 

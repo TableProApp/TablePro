@@ -375,7 +375,7 @@ struct TelemetryTests {
         ])
     }
 
-    @Test("The PostHog client collects nothing on its own: no lifecycle, screens, flags, swizzling, push or crashes")
+    @Test("The PostHog client collects nothing on its own and sends each event as it is captured")
     func postHogConfiguration() {
         let config = PostHogTelemetryClient.configuration(projectKey: "phc_test")
 
@@ -389,5 +389,6 @@ struct TelemetryTests {
         #expect(!config.sendFeatureFlagEvent)
         #expect(!config.errorTrackingConfig.autoCapture)
         #expect(config.personProfiles == .identifiedOnly)
+        #expect(config.flushAt == 1)
     }
 }
