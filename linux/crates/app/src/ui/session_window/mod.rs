@@ -14,9 +14,9 @@ mod connect_failure_view;
 mod connect_flow;
 mod connecting_page;
 mod connections;
-mod crash_notice;
 mod file_location_dialog;
 mod imp;
+mod launch_notice;
 mod locate_file;
 mod notification_request;
 mod notification_sink;
@@ -616,7 +616,7 @@ impl SessionWindow {
             imp.opened_for_file.set(false);
         }
         imp.page_toasts.replace(toasts);
-        self.show_crash_notice();
+        self.show_launch_notices();
         // A Cancel or Retry left as the default would take Enter on a
         // page that no longer shows it.
         self.set_default_widget(None::<&gtk::Widget>);

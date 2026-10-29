@@ -41,12 +41,7 @@ impl TableProApplication {
     /// The window in front says it, or the first one to open when the
     /// windows of a restored session are still on their way.
     fn announce_crash(&self, report: PathBuf) {
-        let window = self.active_window().and_downcast::<SessionWindow>().or_else(|| {
-            self.windows()
-                .into_iter()
-                .find_map(|window| window.downcast::<SessionWindow>().ok())
-        });
-        match window {
+        match self.front_session_window() {
             Some(window) => window.announce_crash(report),
             None => {
                 self.imp().crash_report.replace(Some(report));

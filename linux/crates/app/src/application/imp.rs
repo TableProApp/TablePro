@@ -35,6 +35,8 @@ pub struct TableProApplication {
     pub(super) pending_files: RefCell<Vec<gio::File>>,
     /// A crash report found before any window opened.
     pub(super) crash_report: RefCell<Option<std::path::PathBuf>>,
+    /// An update to say found before any window opened.
+    pub(super) updated_to: RefCell<Option<String>>,
     /// Answers the MCP server's questions about windows and sessions.
     pub(super) mcp_requests: RefCell<Option<glib::JoinHandle<()>>>,
 }
@@ -91,6 +93,7 @@ impl ApplicationImpl for TableProApplication {
             services.start();
             app.start_mcp();
             app.look_for_crash_report();
+            app.note_launch_version();
             self.session_signals
                 .replace(Some(SessionSignals::start(&services.sessions)));
         }

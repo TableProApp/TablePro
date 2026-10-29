@@ -21,6 +21,7 @@ crates/app/src/application/shortcut_owner.rs
 crates/app/src/application/shortcut_section.rs
 crates/app/src/application/tests.rs
 crates/app/src/application/third_party_licenses.rs
+crates/app/src/application/update_notice.rs
 crates/app/src/application/window_host.rs
 crates/app/src/application/window_launch.rs
 crates/app/src/application/window_registry.rs
@@ -457,9 +458,9 @@ crates/app/src/ui/session_window/connect_failure_view.rs
 crates/app/src/ui/session_window/connect_flow.rs
 crates/app/src/ui/session_window/connecting_page.rs
 crates/app/src/ui/session_window/connections.rs
-crates/app/src/ui/session_window/crash_notice.rs
 crates/app/src/ui/session_window/file_location_dialog.rs
 crates/app/src/ui/session_window/imp.rs
+crates/app/src/ui/session_window/launch_notice.rs
 crates/app/src/ui/session_window/locate_file.rs
 crates/app/src/ui/session_window/mod.rs
 crates/app/src/ui/session_window/notification_request.rs

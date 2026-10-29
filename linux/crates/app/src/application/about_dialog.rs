@@ -35,7 +35,7 @@ fn metainfo_resource() -> String {
 
 /// A development version has no release of its own in the metainfo, and
 /// libadwaita reports a version it cannot find as a critical.
-fn release_notes_version(profile: Profile) -> Option<&'static str> {
+pub(super) fn release_notes_version(profile: Profile) -> Option<&'static str> {
     match profile {
         Profile::Default => Some(config::VERSION),
         Profile::Development => None,

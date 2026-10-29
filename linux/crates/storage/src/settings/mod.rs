@@ -165,6 +165,15 @@ impl AppSettings {
         self.set_boolean(keys::RESTORE_SESSION, restore)
     }
 
+    /// The version that last ran, empty before the first launch.
+    pub fn last_seen_version(&self) -> String {
+        self.settings.string(keys::LAST_SEEN_VERSION).into()
+    }
+
+    pub fn set_last_seen_version(&self, version: &str) -> Result<(), SettingsError> {
+        self.set_string(keys::LAST_SEEN_VERSION, version)
+    }
+
     /// Whether the MCP server runs. Off until the user turns it on.
     pub fn mcp_server_enabled(&self) -> bool {
         self.settings.boolean(keys::MCP_SERVER_ENABLED)

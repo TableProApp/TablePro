@@ -23,6 +23,7 @@ mod shortcut_listing;
 mod shortcut_owner;
 mod shortcut_section;
 mod third_party_licenses;
+mod update_notice;
 mod window_host;
 mod window_launch;
 mod window_registry;
@@ -107,6 +108,7 @@ impl TableProApplication {
         self.imp().windows.insert(window.id(), window.clone());
         window.start(SessionWindowInit { services, host, launch });
         self.hand_over_crash_report(&window);
+        self.hand_over_update(&window);
         window.present();
         Some(window.upcast())
     }
