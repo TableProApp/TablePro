@@ -264,6 +264,12 @@
   <data name="InspectValue" xml:space="preserve">
     <value>Inspecter la valeur</value>
   </data>
+  <data name="KeyPatternPlaceholder" xml:space="preserve">
+    <value>Motif de clé, p. ex. user:*</value>
+  </data>
+  <data name="KeyTypeAll" xml:space="preserve">
+    <value>Tous les types</value>
+  </data>
   <data name="LoadFailedTitle" xml:space="preserve">
     <value>Impossible de charger {0}</value>
   </data>

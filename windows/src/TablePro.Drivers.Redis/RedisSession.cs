@@ -18,7 +18,7 @@ namespace TablePro.Drivers.Redis;
 /// a cluster. The sidebar, key tabs, saves and every editor tab share it; each call names its logical database, so a
 /// tab's <c>SELECT</c> never moves anyone else.
 /// </summary>
-public sealed class RedisSession : IDatabaseSession, IKeySearchProvider, IServerActivityProvider, IServerVariablesProvider, ISchemaDdlProvider
+public sealed partial class RedisSession : IDatabaseSession, IKeySearchProvider, IKeyBrowseProvider, IServerActivityProvider, IServerVariablesProvider, ISchemaDdlProvider, IChangePreviewProvider
 {
     /// <summary>How many keys the sidebar lists before it asks for a search instead.</summary>
     public const int SidebarKeyLimit = 5_000;
@@ -35,11 +35,16 @@ public sealed class RedisSession : IDatabaseSession, IKeySearchProvider, IServer
     private readonly RedisScanPager _pager = new();
     private readonly ConcurrentDictionary<(int Database, string Key), (long Offset, string NextId)> _streamPositions = new();
 
-    private RedisSession(ConnectionRequest request, ConnectionMultiplexer connection, ConnectionMultiplexer? sentinel, int database, string serverVersion, bool isCluster)
+    // The type each opened key had when last read, so the save review can show its commands without a round trip.
+    private readonly ConcurrentDictionary<(int Database, string Key), RedisKeyType> _browsedTypes = new();
+    private readonly RedisSignInPassword? _signIn;
+
+    private RedisSession(ConnectionRequest request, ConnectionMultiplexer connection, ConnectionMultiplexer? sentinel, int database, string serverVersion, bool isCluster, RedisSignInPassword? signIn)
     {
         Profile = request.Profile;
         _connection = connection;
         _sentinel = sentinel;
+        _signIn = signIn;
         DatabaseIndex = database;
         ServerVersion = serverVersion;
         IsCluster = isCluster;
@@ -65,12 +70,33 @@ public sealed class RedisSession : IDatabaseSession, IKeySearchProvider, IServer
 
     public IReadOnlyList<string> CommonDataTypes => [];
 
+    /// <summary>The separator the sidebar's key tree splits names at; the macOS default <c>:</c> when the profile names none.</summary>
+    public string KeySeparator => RedisTopologyKeys.ReadSeparator(Profile.AdditionalOptions);
+
     internal ConnectionMultiplexer Connection => _connection;
 
     internal static async Task<RedisSession> ConnectAsync(ConnectionRequest request, CancellationToken cancellationToken)
     {
         await Task.CompletedTask.ConfigureAwait(ConfigureAwaitOptions.ForceYielding);
-        var plan = RedisConnectionOptions.Plan(request);
+        var signIn = request.Profile.UsesSignInToken() ? await RedisSignInPassword.StartAsync(request, cancellationToken) : null;
+        try
+        {
+            return await ConnectAsync(request, signIn, cancellationToken);
+        }
+        catch
+        {
+            if (signIn is not null)
+            {
+                await signIn.DisposeAsync();
+            }
+
+            throw;
+        }
+    }
+
+    private static async Task<RedisSession> ConnectAsync(ConnectionRequest request, RedisSignInPassword? signIn, CancellationToken cancellationToken)
+    {
+        var plan = RedisConnectionOptions.Plan(request, signIn);
         ConnectionMultiplexer? sentinel = null;
         ConnectionMultiplexer connection;
         try
@@ -119,7 +145,7 @@ public sealed class RedisSession : IDatabaseSession, IKeySearchProvider, IServer
             }
 
             var isCluster = actual == RedisConnectionMode.Cluster;
-            return new RedisSession(request, connection, sentinel, isCluster ? 0 : plan.Data.DefaultDatabase ?? 0, VersionFromInfo(info), isCluster);
+            return new RedisSession(request, connection, sentinel, isCluster ? 0 : plan.Data.DefaultDatabase ?? 0, VersionFromInfo(info), isCluster, signIn);
         }
         catch
         {
@@ -259,8 +285,17 @@ public sealed class RedisSession : IDatabaseSession, IKeySearchProvider, IServer
     {
         await Task.CompletedTask.ConfigureAwait(ConfigureAwaitOptions.ForceYielding);
         var index = ResolveDatabase(schema);
+        var countTask = TryKeyCountAsync(index, cancellationToken);
         var (keys, _) = await ScanKeysAsync(index, null, SidebarKeyLimit, cancellationToken);
-        return await DescribeKeysAsync(index, keys, cancellationToken);
+        var described = await DescribeKeysAsync(index, keys, cancellationToken);
+
+        // The database itself comes first, as the table of all its keys that macOS opens a database as.
+        var objects = new List<DatabaseObject>(described.Count + 1)
+        {
+            new(RedisKeyBrowse.TableName(index), ObjectKind.Table, await countTask),
+        };
+        objects.AddRange(described);
+        return objects;
     }
 
     public async Task<KeySearchResult> SearchKeysAsync(string? database, string pattern, int limit, CancellationToken cancellationToken)
@@ -385,6 +420,11 @@ public sealed class RedisSession : IDatabaseSession, IKeySearchProvider, IServer
     public async Task<TableStructure> GetStructureAsync(ObjectName table, CancellationToken cancellationToken)
     {
         await Task.CompletedTask.ConfigureAwait(ConfigureAwaitOptions.ForceYielding);
+        if (RedisKeyBrowse.IsKeyTable(table, out _))
+        {
+            return new TableStructure(table, RedisKeyBrowse.StructureColumns(), [new IndexInfo("key", [RedisKeyBrowse.Key], IsUnique: true, IsPrimary: true)], [], []);
+        }
+
         var type = await KeyTypeAsync(ResolveDatabase(table.Schema), table.Name, cancellationToken);
         if (type == RedisKeyType.None)
         {
@@ -399,6 +439,11 @@ public sealed class RedisSession : IDatabaseSession, IKeySearchProvider, IServer
     public async Task<string> GetDefinitionAsync(DatabaseObject obj, CancellationToken cancellationToken)
     {
         await Task.CompletedTask.ConfigureAwait(ConfigureAwaitOptions.ForceYielding);
+        if (RedisKeyBrowse.IsKeyTable(obj.Name, out var database))
+        {
+            return await DescribeDatabaseAsync(database, cancellationToken);
+        }
+
         var db = Database(ResolveDatabase(obj.Name.Schema));
         var key = Key(obj.Name.Name);
         var typeTask = TryExecuteAsync(db, "TYPE", key);
@@ -462,10 +507,16 @@ public sealed class RedisSession : IDatabaseSession, IKeySearchProvider, IServer
     public async Task<ResultSet> BrowseAsync(BrowseRequest request, CancellationToken cancellationToken)
     {
         await Task.CompletedTask.ConfigureAwait(ConfigureAwaitOptions.ForceYielding);
+        if (RedisKeyBrowse.IsKeyTable(request.Table, out var keyTable))
+        {
+            return await BrowseKeysAsync(keyTable, request, cancellationToken);
+        }
+
         var index = ResolveDatabase(request.Table.Schema);
         var key = request.Table.Name;
         var db = Database(index);
         var type = await KeyTypeAsync(index, key, cancellationToken);
+        _browsedTypes[(index, key)] = type;
         var offset = Math.Max(0, request.Offset);
         var limit = request.Limit > 0 ? request.Limit : 1_000;
         var count = Math.Clamp(limit, 100, ScanCount).ToString(CultureInfo.InvariantCulture);
@@ -562,6 +613,11 @@ public sealed class RedisSession : IDatabaseSession, IKeySearchProvider, IServer
     public async Task<long> CountAsync(ObjectName table, BrowseFilter filter, CancellationToken cancellationToken)
     {
         await Task.CompletedTask.ConfigureAwait(ConfigureAwaitOptions.ForceYielding);
+        if (RedisKeyBrowse.IsKeyTable(table, out var keyTable))
+        {
+            return await CountKeysAsync(keyTable, filter, cancellationToken);
+        }
+
         var index = ResolveDatabase(table.Schema);
         var db = Database(index);
         var type = await KeyTypeAsync(index, table.Name, cancellationToken);
@@ -589,6 +645,11 @@ public sealed class RedisSession : IDatabaseSession, IKeySearchProvider, IServer
         if (changes.Count == 0)
         {
             return 0;
+        }
+
+        if (RedisKeyBrowse.IsKeyTable(table, out var keyTable))
+        {
+            return await SaveKeysAsync(keyTable, changes, cancellationToken);
         }
 
         var index = ResolveDatabase(table.Schema);
@@ -637,6 +698,12 @@ public sealed class RedisSession : IDatabaseSession, IKeySearchProvider, IServer
 
     internal static IReadOnlyList<string> KeyDdl(ObjectName table, SchemaChange change, int currentDatabase)
     {
+        if (RedisKeyBrowse.IsKeyTable(table, out var database))
+        {
+            // Truncating a database is FLUSHDB, which names no database of its own; a database is never dropped or renamed.
+            return change is TruncateTable ? Selecting(database, currentDatabase, "FLUSHDB") : [];
+        }
+
         var key = RedisCommand.Quote(table.Name);
         var command = change switch
         {
@@ -650,8 +717,12 @@ public sealed class RedisSession : IDatabaseSession, IKeySearchProvider, IServer
         }
 
         var index = RedisConnectionOptions.TryParseDatabaseIndex(table.Schema, out var parsed) ? parsed : currentDatabase;
-        return index == currentDatabase ? [command] : [string.Create(CultureInfo.InvariantCulture, $"SELECT {index}"), command];
+        return Selecting(index, currentDatabase, command);
     }
+
+    /// <summary>A command, after a <c>SELECT</c> when it is for another database than the one a new tab starts in.</summary>
+    internal static IReadOnlyList<string> Selecting(int index, int currentDatabase, string command) =>
+        index == currentDatabase ? [command] : [string.Create(CultureInfo.InvariantCulture, $"SELECT {index}"), command];
 
     public async Task<IQueryChannel> OpenChannelAsync(CancellationToken cancellationToken)
     {
@@ -722,6 +793,11 @@ public sealed class RedisSession : IDatabaseSession, IKeySearchProvider, IServer
         if (_sentinel is not null)
         {
             await _sentinel.DisposeAsync();
+        }
+
+        if (_signIn is not null)
+        {
+            await _signIn.DisposeAsync();
         }
     }
 }

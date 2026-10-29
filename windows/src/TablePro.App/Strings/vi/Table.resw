@@ -264,6 +264,12 @@
   <data name="InspectValue" xml:space="preserve">
     <value>Kiểm tra giá trị</value>
   </data>
+  <data name="KeyPatternPlaceholder" xml:space="preserve">
+    <value>Mẫu khóa, ví dụ user:*</value>
+  </data>
+  <data name="KeyTypeAll" xml:space="preserve">
+    <value>Tất cả kiểu</value>
+  </data>
   <data name="LoadFailedTitle" xml:space="preserve">
     <value>Không thể tải {0}</value>
   </data>

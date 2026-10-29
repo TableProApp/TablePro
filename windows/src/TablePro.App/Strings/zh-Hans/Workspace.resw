@@ -210,11 +210,17 @@
   <data name="KindView" xml:space="preserve">
     <value>视图</value>
   </data>
+  <data name="MenuBrowseKeys" xml:space="preserve">
+    <value>浏览键</value>
+  </data>
   <data name="MenuBuildJoinQuery" xml:space="preserve">
     <value>构建连接查询</value>
   </data>
   <data name="MenuCheckForUpdates.Text" xml:space="preserve">
     <value>检查更新…</value>
+  </data>
+  <data name="MenuCollapse" xml:space="preserve">
+    <value>折叠</value>
   </data>
   <data name="MenuCompare.Text" xml:space="preserve">
     <value>比较和同步</value>
@@ -242,6 +248,9 @@
   </data>
   <data name="MenuErDiagram.Text" xml:space="preserve">
     <value>ER 图</value>
+  </data>
+  <data name="MenuExpand" xml:space="preserve">
+    <value>展开</value>
   </data>
   <data name="MenuExportData" xml:space="preserve">
     <value>导出数据</value>
@@ -353,6 +362,9 @@
   </data>
   <data name="SectionViews" xml:space="preserve">
     <value>视图</value>
+  </data>
+  <data name="SidebarNamespaceAccessibleName" xml:space="preserve">
+    <value>命名空间 {0}</value>
   </data>
   <data name="SidePaneAssistant" xml:space="preserve">
     <value>助手</value>

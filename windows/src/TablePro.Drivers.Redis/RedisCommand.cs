@@ -56,6 +56,7 @@ internal sealed record RedisCommand(string Verb, IReadOnlyList<string> Args)
 internal enum RedisGuardKind
 {
     KeyExists,
+    KeyMissing,
     StringEquals,
     HashFieldExists,
     HashFieldMissing,

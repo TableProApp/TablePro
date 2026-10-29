@@ -225,6 +225,15 @@
   <data name="EditConnectionTitle" xml:space="preserve">
     <value>{0} Düzenle</value>
   </data>
+  <data name="ElastiCacheIamNote" xml:space="preserve">
+    <value>Her yeni bağlantıda AWS kimlik bilgilerinizle 15 dakikalık bir ElastiCache belirteci imzalar ve bunu TLS üzerinden kullanıcının parolası olarak gönderir. Kullanıcıda IAM kimlik doğrulaması açık olmalıdır.</value>
+  </data>
+  <data name="ElastiCacheNameHeader" xml:space="preserve">
+    <value>Önbellek adı / çoğaltma grubu kimliği</value>
+  </data>
+  <data name="ElastiCacheNameRequired" xml:space="preserve">
+    <value>IAM kimlik doğrulamasını kullanmak için ElastiCache önbellek adını (çoğaltma grubu kimliği) girin.</value>
+  </data>
   <data name="EngineHeader" xml:space="preserve">
     <value>Veritabanı</value>
   </data>
@@ -422,6 +431,39 @@
   </data>
   <data name="ProxyUserHeader" xml:space="preserve">
     <value>Proxy kullanıcısı</value>
+  </data>
+  <data name="RedisClusterHostsHeader" xml:space="preserve">
+    <value>Cluster tohum düğümleri</value>
+  </data>
+  <data name="RedisModeCluster" xml:space="preserve">
+    <value>Cluster</value>
+  </data>
+  <data name="RedisModeHeader" xml:space="preserve">
+    <value>Bağlantı modu</value>
+  </data>
+  <data name="RedisModeSentinel" xml:space="preserve">
+    <value>Sentinel</value>
+  </data>
+  <data name="RedisModeStandalone" xml:space="preserve">
+    <value>Bağımsız</value>
+  </data>
+  <data name="RedisNodesNote" xml:space="preserve">
+    <value>Düğümleri virgülle ayırın, host:port biçiminde. Yukarıdaki sunucu da bunlardan biridir.</value>
+  </data>
+  <data name="RedisPrimaryGroupHeader" xml:space="preserve">
+    <value>Birincil grup adı</value>
+  </data>
+  <data name="RedisSentinelHostsHeader" xml:space="preserve">
+    <value>Sentinel düğümleri</value>
+  </data>
+  <data name="RedisSentinelPasswordHeader" xml:space="preserve">
+    <value>Sentinel parolası</value>
+  </data>
+  <data name="RedisSentinelUserHeader" xml:space="preserve">
+    <value>Sentinel kullanıcı adı</value>
+  </data>
+  <data name="RedisSeparatorHeader" xml:space="preserve">
+    <value>Anahtar ayırıcı</value>
   </data>
   <data name="RegionHeader" xml:space="preserve">
     <value>Bölge</value>

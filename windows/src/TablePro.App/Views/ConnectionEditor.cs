@@ -4,6 +4,7 @@ using Microsoft.UI.Xaml.Media;
 using TablePro.App.Helpers;
 using TablePro.App.Services;
 using TablePro.Core.Connections;
+using TablePro.Storage.Connections;
 
 namespace TablePro.App.Views;
 
@@ -45,20 +46,25 @@ internal static class ConnectionEditor
                 var restore = form.StoreSecretsForTest(host.Connector, profile);
                 try
                 {
-                    var message = await host.Connector.TestAsync(profile, form.Password, timeout.Token);
-                    form.ShowStatus(message, InfoBarSeverity.Success);
+                    // A test loads the extensions for real, so it clears the same approval a connect does.
+                    if (await form.AuthorizeExtensionsForTestAsync(host.Connector.ExtensionApprovals, profile))
+                    {
+                        var message = await host.Connector.TestAsync(profile, form.Password, timeout.Token);
+                        form.ShowStatus(message, InfoBarSeverity.Success);
+                    }
                 }
                 finally
                 {
                     if (existing is null)
                     {
                         restore();
+                        await host.Connector.ExtensionApprovals.RevokeAsync([profile.Id]);
                     }
                 }
             }
             catch (Exception ex)
             {
-                form.ShowStatus(ex.Message, InfoBarSeverity.Error);
+                form.ShowStatus(ex is LoadableExtensionException extension ? ExtensionNames.Describe(extension) : ex.Message, InfoBarSeverity.Error);
             }
             finally
             {
@@ -80,6 +86,13 @@ internal static class ConnectionEditor
 
         form.SaveTransportSecrets(host.Connector, saved);
         await host.Connections.UpsertAsync(saved);
+
+        // Entries added or changed in this form were chosen on this PC, so saving approves them; an imported list does not.
+        if (LoadableExtensionList.AppliesTo(saved))
+        {
+            await host.Connector.ExtensionApprovals.ApproveAsync(form.EditedExtensions, saved.Id);
+        }
+
         return saved;
     }
 
@@ -195,7 +208,9 @@ internal static class ConnectionEditor
         private readonly InfoBar _status = new() { IsClosable = false, IsOpen = false };
         private readonly StackPanel _network = new() { Spacing = 12 };
         private readonly Grid _fileRow = new() { ColumnSpacing = 8 };
+        private readonly RedisConnectionFields _redis;
         private readonly EngineDescriptor[] _engines;
+        private readonly LoadableExtensionListEditor _extensions;
         private IReadOnlyList<SignInMethod> _authChoices = [SignInMethod.Password];
         private IReadOnlyList<EntraAuthMode> _entraChoices = [];
         private IReadOnlyList<ConnectionTransport> _transportChoices = [ConnectionTransport.Direct];
@@ -206,6 +221,8 @@ internal static class ConnectionEditor
         {
             _host = host;
             _dialogs = dialogs;
+            _redis = new RedisConnectionFields(_database, Note);
+            _extensions = new LoadableExtensionListEditor(dialogs);
 
             // Only engines this build has a driver for, grouped by family as tablepro.app lists them.
             _engines = EngineDescriptor.Engines.Where(d => host.Connector.Drivers.Supports(d.Engine)).ToArray();
@@ -238,6 +255,7 @@ internal static class ConnectionEditor
 
         public void ShowStatus(string message, InfoBarSeverity severity)
         {
+            _status.ActionButton = null;
             _status.Message = message;
             _status.Severity = severity;
             _status.IsOpen = true;
@@ -259,6 +277,11 @@ internal static class ConnectionEditor
             if (!descriptor.IsFileBased && string.IsNullOrWhiteSpace(_host_.Text))
             {
                 return Strings.Get("Connection/HostRequired");
+            }
+
+            if (_extensions.Root.Visibility == Visibility.Visible && _extensions.Problem is { } extensionProblem)
+            {
+                return extensionProblem;
             }
 
             var profile = Build();
@@ -303,16 +326,50 @@ internal static class ConnectionEditor
             var token = transport == ConnectionTransport.CloudflareTunnel && profile.CloudflareTunnel!.AuthMethod == CloudflareAuthMethod.ServiceToken;
             connector.SaveTransportSecret(profile, TransportSecret.CloudflareTokenId, token ? _cloudflareTokenId.Password : null);
             connector.SaveTransportSecret(profile, TransportSecret.CloudflareTokenSecret, token ? _cloudflareTokenSecret.Password : null);
+            connector.SaveTransportSecret(profile, TransportSecret.RedisSentinelPassword, _redis.SentinelPasswordFor(profile));
+        }
+
+        public IReadOnlyList<LoadableExtension> EditedExtensions => _extensions.Edited;
+
+        /// <summary>
+        /// Approves the entries edited here for the test's profile, and shows the ones that arrived with the connection
+        /// for approval in the status bar, since the form is itself a dialog and cannot open a second one.
+        /// </summary>
+        public async Task<bool> AuthorizeExtensionsForTestAsync(LoadableExtensionApprovalStore approvals, ConnectionProfile profile)
+        {
+            await approvals.ApproveAsync(EditedExtensions, profile.Id);
+            var pending = approvals.Pending(profile);
+            if (pending.Count == 0)
+            {
+                return true;
+            }
+
+            var approve = new Button { Content = Strings.Get("Extensions/PromptConfirm") };
+            approve.Click += async (_, _) =>
+            {
+                await approvals.ApproveAsync(pending, profile.Id);
+                ShowStatus(Strings.Get("Extensions/ApprovedTestAgain"), InfoBarSeverity.Informational);
+            };
+            ShowStatus(LoadableExtensionConsent.Message(profile, pending), InfoBarSeverity.Warning);
+            _status.ActionButton = approve;
+            return false;
         }
 
         public ConnectionProfile Build()
         {
             var descriptor = SelectedDescriptor;
-            var options = _options.Text.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                .Select(line => line.Split('=', 2))
-                .Where(parts => parts.Length == 2 && parts[0].Trim().Length > 0)
-                .ToDictionary(parts => parts[0].Trim(), parts => parts[1].Trim(), StringComparer.OrdinalIgnoreCase);
+            var options = ParseOptions();
+
+            // The list has its own editor, so one typed into the options box is not taken, and a form that hides the
+            // list (a remote libSQL server) drops it, as macOS drops a hidden field.
+            options.Remove(LoadableExtensionList.OptionKey);
+            if (LoadableExtensionList.AppliesTo(descriptor.Engine, _host_.Text, options) && _extensions.Stored is { Length: > 0 } extensions)
+            {
+                options[LoadableExtensionList.OptionKey] = extensions;
+            }
+
             var groups = _host.Connections.Groups;
+            _redis.Apply(options, descriptor.Engine);
             var transport = descriptor.IsFileBased ? ConnectionTransport.Direct : SelectedTransport;
             var profile = (_existing ?? new ConnectionProfile { Name = string.Empty, Engine = descriptor.Engine }) with
             {
@@ -410,7 +467,8 @@ internal static class ConnectionEditor
                 AwsRegion = NullIfEmpty(_awsRegion.Text.Trim()),
                 AwsAccessKeyId = NullIfEmpty(_awsAccessKey.Text.Trim()),
                 AwsProfileName = NullIfEmpty(_awsProfile.Text.Trim()),
-                AwsRdsEndpoint = SelectedDescriptor.Engine == DatabaseEngine.Redshift ? _existing?.Auth?.AwsRdsEndpoint : NullIfEmpty(_awsEndpoint.Text.Trim()),
+                AwsRdsEndpoint = SelectedDescriptor.Engine is DatabaseEngine.Redshift or DatabaseEngine.Redis ? _existing?.Auth?.AwsRdsEndpoint : NullIfEmpty(_awsEndpoint.Text.Trim()),
+                AwsElastiCacheName = SelectedDescriptor.Engine == DatabaseEngine.Redis ? NullIfEmpty(_awsEndpoint.Text.Trim()) : _existing?.Auth?.AwsElastiCacheName,
                 AwsRedshiftEndpoint = SelectedDescriptor.Engine == DatabaseEngine.Redshift ? NullIfEmpty(_awsEndpoint.Text.Trim()) : _existing?.Auth?.AwsRedshiftEndpoint,
                 EntraMode = SelectedEntraMode,
                 EntraTenantId = NullIfEmpty(_entraTenant.Text.Trim()),
@@ -431,6 +489,11 @@ internal static class ConnectionEditor
                 {
                     return Strings.Get("Connection/IamUserRequired");
                 }
+            }
+
+            if (method.IsAwsIam() && profile.Engine == DatabaseEngine.Redis && string.IsNullOrWhiteSpace(auth?.AwsElastiCacheName))
+            {
+                return Strings.Get("Connection/ElastiCacheNameRequired");
             }
 
             if (method == SignInMethod.GoogleCloudServiceAccount && profile.SavePassword && string.IsNullOrWhiteSpace(_googleKey.Text))
@@ -516,6 +579,8 @@ internal static class ConnectionEditor
             _kubeResource.TextChanged += (_, _) => UpdateCommandPreview();
             _ssmTarget.TextChanged += (_, _) => UpdateCommandPreview();
             _host_.TextChanged += (_, _) => UpdateCommandPreview();
+            _host_.TextChanged += (_, _) => UpdateExtensionsVisibility();
+            _options.TextChanged += (_, _) => UpdateExtensionsVisibility();
             _cloudflareSignIn.Click += async (_, _) => await SignInToCloudflareAsync();
             _browse.Click += async (_, _) =>
             {
@@ -533,6 +598,7 @@ internal static class ConnectionEditor
             };
 
             _network.Children.Add(Row(_host_, _port));
+            _network.Children.Add(_redis.Panel);
             _network.Children.Add(_auth);
             _network.Children.Add(_user);
             _network.Children.Add(_password);
@@ -574,7 +640,7 @@ internal static class ConnectionEditor
                 Labeled(Strings.Get("Connection/WillRunLabel"), _commandPreview));
             var networkPage = Section(_transport, _transportNote, _sshFields, _proxyFields, _cloudSqlFields, _cloudflareFields, _commandFields);
 
-            var advanced = Section(_safeMode, _ai, _mcp, _timeout, _startup, _options);
+            var advanced = Section(_safeMode, _ai, _mcp, _timeout, _startup, _redis.Separator, _options, _extensions.Root);
 
             var pages = new Dictionary<string, FrameworkElement> { ["General"] = general, ["SSL"] = ssl, ["Network"] = networkPage, ["Advanced"] = advanced };
             var host = new ContentControl { HorizontalContentAlignment = HorizontalAlignment.Stretch };
@@ -615,7 +681,9 @@ internal static class ConnectionEditor
             _mcp.SelectedIndex = (int)p.ExternalAccess;
             _timeout.Value = p.ConnectTimeoutSeconds;
             _startup.Text = p.StartupCommands ?? string.Empty;
-            _options.Text = string.Join("\n", p.AdditionalOptions.Select(o => $"{o.Key}={o.Value}"));
+            _options.Text = string.Join("\n", RedisConnectionFields.Unowned(p).Where(o => !string.Equals(o.Key, LoadableExtensionList.OptionKey, StringComparison.OrdinalIgnoreCase)).Select(o => $"{o.Key}={o.Value}"));
+            _redis.Fill(p, profile is null ? null : _host.Connector.SavedTransportSecret(profile, TransportSecret.RedisSentinelPassword));
+            _extensions.Load(p.AdditionalOptions.GetValueOrDefault(LoadableExtensionList.OptionKey));
             var groupIndex = _host.Connections.Groups.ToList().FindIndex(g => g.Key == p.Group);
             _group.SelectedIndex = groupIndex + 1;
             _color = p.Color;
@@ -628,7 +696,12 @@ internal static class ConnectionEditor
             _awsRegion.Text = auth.AwsRegion ?? string.Empty;
             _awsAccessKey.Text = auth.AwsAccessKeyId ?? string.Empty;
             _awsProfile.Text = auth.AwsProfileName ?? string.Empty;
-            _awsEndpoint.Text = (p.Engine == DatabaseEngine.Redshift ? auth.AwsRedshiftEndpoint : auth.AwsRdsEndpoint) ?? string.Empty;
+            _awsEndpoint.Text = p.Engine switch
+            {
+                DatabaseEngine.Redshift => auth.AwsRedshiftEndpoint,
+                DatabaseEngine.Redis => auth.AwsElastiCacheName,
+                _ => auth.AwsRdsEndpoint,
+            } ?? string.Empty;
             _entraTenant.Text = auth.EntraTenantId ?? string.Empty;
             _entraClient.Text = auth.EntraClientId ?? string.Empty;
             _kerberosService.Text = auth.KerberosServiceName ?? string.Empty;
@@ -710,7 +783,9 @@ internal static class ConnectionEditor
             _port.Visibility = Visible(form.ShowPort);
             _user.Header = form.UserLabel;
             _database.Header = form.DatabaseLabel;
+            _redis.SetEngine(descriptor.Engine);
             _options.PlaceholderText = form.OptionsHint ?? Strings.Get("Connection/OptionsPlaceholder");
+            UpdateExtensionsVisibility();
             _kerberosService.Header = form.KerberosServiceHeader ?? Strings.Get("Connection/KerberosServiceHeader");
             _kerberosService.PlaceholderText = form.KerberosServicePlaceholder ?? string.Empty;
             _gssEncryption.Visibility = Visible(form.ShowGssEncryption);
@@ -798,9 +873,13 @@ internal static class ConnectionEditor
             _awsFields.Visibility = Visible(method.IsAwsIam());
             _awsAccessKey.Visibility = Visible(method == SignInMethod.AwsIamAccessKey);
             _awsProfile.Visibility = Visible(method is SignInMethod.AwsIamProfile or SignInMethod.AwsIamSso);
-            var redshift = engine == DatabaseEngine.Redshift;
-            _awsEndpoint.Header = Strings.Get(redshift ? "Connection/RedshiftEndpointHeader" : "Connection/AwsEndpointHeader");
-            _awsEndpoint.PlaceholderText = redshift ? RedshiftEndpointPlaceholder : RdsEndpointPlaceholder;
+            // The same field names what the token is signed for: an RDS endpoint, a Redshift endpoint, or an ElastiCache cache.
+            (_awsEndpoint.Header, _awsEndpoint.PlaceholderText) = engine switch
+            {
+                DatabaseEngine.Redshift => (Strings.Get("Connection/RedshiftEndpointHeader"), RedshiftEndpointPlaceholder),
+                DatabaseEngine.Redis => (Strings.Get("Connection/ElastiCacheNameHeader"), "my-cache"),
+                _ => (Strings.Get("Connection/AwsEndpointHeader"), RdsEndpointPlaceholder),
+            };
             _entraFields.Visibility = Visible(method == SignInMethod.EntraId);
             _entraTenant.Visibility = Visible(engine != DatabaseEngine.SqlServer && entraMode is not EntraAuthMode.ManagedIdentity);
             _entraClient.Visibility = Visible(entraMode is EntraAuthMode.ServicePrincipal or EntraAuthMode.ManagedIdentity or EntraAuthMode.Default
@@ -815,6 +894,7 @@ internal static class ConnectionEditor
                 SignInMethod.Kerberos => Strings.Get("Connection/KerberosNote"),
                 SignInMethod.WindowsIntegrated => Strings.Get("Connection/WindowsAuthNote"),
                 _ when method.IsAwsIam() && engine == DatabaseEngine.Redshift => Strings.Get("Connection/RedshiftIamNote"),
+                _ when method.IsAwsIam() && engine == DatabaseEngine.Redis => Strings.Get("Connection/ElastiCacheIamNote"),
                 SignInMethod.GoogleCloudApplicationDefault => Strings.Get("Connection/GoogleAdcNote"),
                 SignInMethod.GoogleCloudServiceAccount => Strings.Get("Connection/GoogleServiceAccountNote"),
                 SignInMethod.AwsIamProfile => Strings.Get("Connection/AwsProfileNote"),
@@ -928,6 +1008,26 @@ internal static class ConnectionEditor
 
             return -1;
         }
+
+        /// <summary>The options box's <c>key=value</c> lines; a key typed twice keeps its last value.</summary>
+        private Dictionary<string, string> ParseOptions()
+        {
+            var options = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var line in _options.Text.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            {
+                var parts = line.Split('=', 2);
+                if (parts.Length == 2 && parts[0].Trim().Length > 0)
+                {
+                    options[parts[0].Trim()] = parts[1].Trim();
+                }
+            }
+
+            return options;
+        }
+
+        /// <summary>SQLite and a local libSQL file load extensions; a remote libSQL server never does.</summary>
+        private void UpdateExtensionsVisibility() =>
+            _extensions.Root.Visibility = Visible(LoadableExtensionList.AppliesTo(SelectedDescriptor.Engine, _host_.Text, ParseOptions()));
 
         private static string SectionTitle(string page) => page switch
         {

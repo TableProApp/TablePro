@@ -41,6 +41,7 @@
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
@@ -75,8 +76,11 @@
                 </AppBarButton>
             </CommandBar>
 
+            <!--  Key pattern and type, for a key-value database's list of keys  -->
+            <ContentControl x:Name="KeySearchHost" Grid.Row="1" HorizontalContentAlignment="Stretch" Visibility="Collapsed" />
+
             <!--  Filter strip  -->
-            <Grid x:Name="FilterStrip" Grid.Row="1" Padding="12,4,12,8" RowSpacing="6" Visibility="Collapsed">
+            <Grid x:Name="FilterStrip" Grid.Row="2" Padding="12,4,12,8" RowSpacing="6" Visibility="Collapsed">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
@@ -105,12 +109,12 @@
                 </StackPanel>
             </Grid>
 
-            <InfoBar x:Name="ReadOnlyBar" Grid.Row="2" IsOpen="False" IsClosable="True" Severity="Informational" Margin="8,0,8,6" />
+            <InfoBar x:Name="ReadOnlyBar" Grid.Row="3" IsOpen="False" IsClosable="True" Severity="Informational" Margin="8,0,8,6" />
 
-            <grid:DataGridView x:Name="RowsGrid" Grid.Row="3" />
+            <grid:DataGridView x:Name="RowsGrid" Grid.Row="4" />
 
             <!--  Pager  -->
-            <Grid Grid.Row="4" Padding="12,4" ColumnSpacing="8" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,1,0,0">
+            <Grid Grid.Row="5" Padding="12,4" ColumnSpacing="8" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,1,0,0">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />

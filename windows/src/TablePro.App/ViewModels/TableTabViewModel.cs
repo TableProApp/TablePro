@@ -628,7 +628,7 @@ public sealed partial class TableTabViewModel : TabViewModel
 
     private BrowseFilter BuildFilter()
     {
-        var rules = Filters.Where(f => f.Enabled && (f.Value is not null || !f.Operator.TakesValue())).Select(f => f.ToRule()).ToArray();
+        var rules = Filters.Where(f => f.Enabled && (f.Value is not null || !f.Operator.TakesValue())).Select(f => f.ToRule()).Concat(KeySearchRules()).ToArray();
         var columns = Structure?.Columns.Select(c => c.Name).ToArray() ?? [];
         return new BrowseFilter(rules, RawWhere, MatchAllFilters) { SearchColumns = columns };
     }

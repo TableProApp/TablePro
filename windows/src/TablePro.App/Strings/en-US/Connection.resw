@@ -292,6 +292,18 @@
     <value>Edit {0}</value>
     <comment>Dialog title. {0} is the connection name.</comment>
   </data>
+  <data name="ElastiCacheIamNote" xml:space="preserve">
+    <value>Signs a 15-minute ElastiCache token with your AWS credentials on every new connection and sends it as the user’s password over TLS. The user needs IAM authentication turned on.</value>
+    <comment>ElastiCache, AWS and IAM are product names; TLS is a protocol name.</comment>
+  </data>
+  <data name="ElastiCacheNameHeader" xml:space="preserve">
+    <value>Cache name / replication group ID</value>
+    <comment>Field label for the Amazon ElastiCache cache an IAM token is signed for.</comment>
+  </data>
+  <data name="ElastiCacheNameRequired" xml:space="preserve">
+    <value>Enter the ElastiCache cache name (replication group ID) to use IAM authentication.</value>
+    <comment>ElastiCache and IAM are AWS product names.</comment>
+  </data>
   <data name="EngineHeader" xml:space="preserve">
     <value>Database</value>
     <comment>Label of the picker for the database product (PostgreSQL, MySQL, ...), not the database name.</comment>
@@ -541,6 +553,45 @@
   </data>
   <data name="ProxyUserHeader" xml:space="preserve">
     <value>Proxy user</value>
+  </data>
+  <data name="RedisClusterHostsHeader" xml:space="preserve">
+    <value>Cluster seed nodes</value>
+  </data>
+  <data name="RedisModeCluster" xml:space="preserve">
+    <value>Cluster</value>
+    <comment>A Redis connection mode: Redis Cluster.</comment>
+  </data>
+  <data name="RedisModeHeader" xml:space="preserve">
+    <value>Connection mode</value>
+  </data>
+  <data name="RedisModeSentinel" xml:space="preserve">
+    <value>Sentinel</value>
+    <comment>A Redis connection mode: Redis Sentinel names the primary.</comment>
+  </data>
+  <data name="RedisModeStandalone" xml:space="preserve">
+    <value>Standalone</value>
+    <comment>A Redis connection mode: one server.</comment>
+  </data>
+  <data name="RedisNodesNote" xml:space="preserve">
+    <value>Separate nodes with commas, as host:port. The host above is one of them.</value>
+    <comment>host:port is a format; keep it as is.</comment>
+  </data>
+  <data name="RedisPrimaryGroupHeader" xml:space="preserve">
+    <value>Primary group name</value>
+    <comment>The name Sentinel monitors the primary under, such as mymaster.</comment>
+  </data>
+  <data name="RedisSentinelHostsHeader" xml:space="preserve">
+    <value>Sentinel nodes</value>
+  </data>
+  <data name="RedisSentinelPasswordHeader" xml:space="preserve">
+    <value>Sentinel password</value>
+  </data>
+  <data name="RedisSentinelUserHeader" xml:space="preserve">
+    <value>Sentinel username</value>
+  </data>
+  <data name="RedisSeparatorHeader" xml:space="preserve">
+    <value>Key separator</value>
+    <comment>The text the sidebar splits Redis key names at to group them, such as a colon.</comment>
   </data>
   <data name="RegionHeader" xml:space="preserve">
     <value>Region</value>

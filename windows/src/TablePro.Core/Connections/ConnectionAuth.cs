@@ -104,6 +104,12 @@ public sealed record ConnectionAuthSettings
     public string? AwsRedshiftEndpoint { get; init; }
 
     /// <summary>
+    /// The ElastiCache replication group ID or serverless cache name an IAM token is signed for, the macOS
+    /// <c>awsReplicationGroupId</c>. The endpoint's host name does not carry it reliably, so it is asked for.
+    /// </summary>
+    public string? AwsElastiCacheName { get; init; }
+
+    /// <summary>
     /// Set only on a session's copy of the profile once Redshift has issued the user it signs in as, so a later
     /// password refresh asks for the same user. Never saved.
     /// </summary>
@@ -135,6 +141,9 @@ public static class SignInMethods
 
         // Redshift's IAM sign-in asks AWS for a user and a temporary password rather than signing a token.
         DatabaseEngine.Redshift => [SignInMethod.Password, SignInMethod.AwsIamAccessKey, SignInMethod.AwsIamProfile, SignInMethod.AwsIamSso],
+
+        // ElastiCache signs an IAM token for the cache by name rather than for an endpoint, as RDS does.
+        DatabaseEngine.Redis => [SignInMethod.Password, SignInMethod.AwsIamAccessKey, SignInMethod.AwsIamProfile, SignInMethod.AwsIamSso],
         _ => [SignInMethod.Password],
     };
 

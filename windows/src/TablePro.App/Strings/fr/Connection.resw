@@ -225,6 +225,15 @@
   <data name="EditConnectionTitle" xml:space="preserve">
     <value>Modifier {0}</value>
   </data>
+  <data name="ElastiCacheIamNote" xml:space="preserve">
+    <value>Signe un jeton ElastiCache de 15 minutes avec vos identifiants AWS à chaque nouvelle connexion et l’envoie comme mot de passe de l’utilisateur via TLS. L’authentification IAM doit être activée pour l’utilisateur.</value>
+  </data>
+  <data name="ElastiCacheNameHeader" xml:space="preserve">
+    <value>Nom du cache / ID du groupe de réplication</value>
+  </data>
+  <data name="ElastiCacheNameRequired" xml:space="preserve">
+    <value>Saisissez le nom du cache ElastiCache (ID du groupe de réplication) pour utiliser l’authentification IAM.</value>
+  </data>
   <data name="EngineHeader" xml:space="preserve">
     <value>Base de données</value>
   </data>
@@ -422,6 +431,39 @@
   </data>
   <data name="ProxyUserHeader" xml:space="preserve">
     <value>Utilisateur du proxy</value>
+  </data>
+  <data name="RedisClusterHostsHeader" xml:space="preserve">
+    <value>Nœuds d’amorçage du cluster</value>
+  </data>
+  <data name="RedisModeCluster" xml:space="preserve">
+    <value>Cluster</value>
+  </data>
+  <data name="RedisModeHeader" xml:space="preserve">
+    <value>Mode de connexion</value>
+  </data>
+  <data name="RedisModeSentinel" xml:space="preserve">
+    <value>Sentinel</value>
+  </data>
+  <data name="RedisModeStandalone" xml:space="preserve">
+    <value>Autonome</value>
+  </data>
+  <data name="RedisNodesNote" xml:space="preserve">
+    <value>Séparez les nœuds par des virgules, au format hôte:port. L’hôte ci-dessus en fait partie.</value>
+  </data>
+  <data name="RedisPrimaryGroupHeader" xml:space="preserve">
+    <value>Nom du groupe principal</value>
+  </data>
+  <data name="RedisSentinelHostsHeader" xml:space="preserve">
+    <value>Nœuds Sentinel</value>
+  </data>
+  <data name="RedisSentinelPasswordHeader" xml:space="preserve">
+    <value>Mot de passe Sentinel</value>
+  </data>
+  <data name="RedisSentinelUserHeader" xml:space="preserve">
+    <value>Nom d’utilisateur Sentinel</value>
+  </data>
+  <data name="RedisSeparatorHeader" xml:space="preserve">
+    <value>Séparateur de clé</value>
   </data>
   <data name="RegionHeader" xml:space="preserve">
     <value>Région</value>

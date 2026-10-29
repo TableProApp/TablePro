@@ -225,6 +225,15 @@
   <data name="EditConnectionTitle" xml:space="preserve">
     <value>编辑 {0}</value>
   </data>
+  <data name="ElastiCacheIamNote" xml:space="preserve">
+    <value>每次新建连接时使用你的 AWS 凭据签署一个 15 分钟的 ElastiCache 令牌，并通过 TLS 作为该用户的密码发送。该用户需要启用 IAM 认证。</value>
+  </data>
+  <data name="ElastiCacheNameHeader" xml:space="preserve">
+    <value>缓存名称 / 复制组 ID</value>
+  </data>
+  <data name="ElastiCacheNameRequired" xml:space="preserve">
+    <value>输入 ElastiCache 缓存名称（复制组 ID）以使用 IAM 认证。</value>
+  </data>
   <data name="EngineHeader" xml:space="preserve">
     <value>数据库</value>
   </data>
@@ -422,6 +431,39 @@
   </data>
   <data name="ProxyUserHeader" xml:space="preserve">
     <value>代理用户</value>
+  </data>
+  <data name="RedisClusterHostsHeader" xml:space="preserve">
+    <value>集群种子节点</value>
+  </data>
+  <data name="RedisModeCluster" xml:space="preserve">
+    <value>集群</value>
+  </data>
+  <data name="RedisModeHeader" xml:space="preserve">
+    <value>连接模式</value>
+  </data>
+  <data name="RedisModeSentinel" xml:space="preserve">
+    <value>哨兵</value>
+  </data>
+  <data name="RedisModeStandalone" xml:space="preserve">
+    <value>单机</value>
+  </data>
+  <data name="RedisNodesNote" xml:space="preserve">
+    <value>用逗号分隔节点，格式为 host:port。上面的主机也是其中之一。</value>
+  </data>
+  <data name="RedisPrimaryGroupHeader" xml:space="preserve">
+    <value>主节点组名称</value>
+  </data>
+  <data name="RedisSentinelHostsHeader" xml:space="preserve">
+    <value>哨兵节点</value>
+  </data>
+  <data name="RedisSentinelPasswordHeader" xml:space="preserve">
+    <value>哨兵密码</value>
+  </data>
+  <data name="RedisSentinelUserHeader" xml:space="preserve">
+    <value>哨兵用户名</value>
+  </data>
+  <data name="RedisSeparatorHeader" xml:space="preserve">
+    <value>键分隔符</value>
   </data>
   <data name="RegionHeader" xml:space="preserve">
     <value>区域</value>

@@ -62,7 +62,7 @@ internal sealed record EngineForm
 
     private static EngineForm Labels(DatabaseEngine engine) => engine switch
     {
-        DatabaseEngine.Redis => new() { HostLabel = Strings.Get("Connection/RedisHostHeader"), DatabaseLabel = Strings.Get("Connection/DatabaseIndexHeader"), UserLabel = Strings.Get("Connection/AclUserHeader"), OptionsHint = "mode=standalone | sentinel | cluster\nsentinelHosts=s1:26379,s2:26379\nsentinelMasterName=mymaster\nclusterHosts=n1:6379,n2:6379\ncaCertPath=C:\\certs\\ca.pem" },
+        DatabaseEngine.Redis => new() { HostLabel = Strings.Get("Connection/RedisHostHeader"), DatabaseLabel = Strings.Get("Connection/DatabaseIndexHeader"), UserLabel = Strings.Get("Connection/AclUserHeader"), OptionsHint = "caCertPath=C:\\certs\\ca.pem\nclientCertPath=C:\\certs\\client.pem\nclientKeyPath=C:\\certs\\client.key\nsyncTimeout=5000" },
         DatabaseEngine.MongoDb => new() { UserLabel = Strings.Get("Connection/UserOptionalHeader"), OptionsHint = "authSource=admin\nsrv=true\nreplicaSet=rs0" },
         DatabaseEngine.Oracle or DatabaseEngine.Dameng => new() { DatabaseLabel = Strings.Get("Connection/ServiceNameHeader"), OptionsHint = "sid=ORCL\ndbaPrivilege=SYSDBA" },
         DatabaseEngine.Cassandra or DatabaseEngine.ScyllaDb => new() { DatabaseLabel = Strings.Get("Connection/KeyspaceHeader"), UserLabel = Strings.Get("Connection/UserOptionalHeader"), OptionsHint = "localDatacenter=datacenter1\ncontactPoints=10.0.0.1,10.0.0.2\nconsistency=LOCAL_QUORUM" },

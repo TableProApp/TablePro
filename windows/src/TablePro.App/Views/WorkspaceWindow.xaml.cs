@@ -468,6 +468,12 @@ public sealed partial class WorkspaceWindow : Window
 
     private void OnObjectClicked(object sender, ItemClickEventArgs e)
     {
+        if (e.ClickedItem is SidebarEntry { Namespace: not null } folder)
+        {
+            ViewModel.ToggleNamespace(folder);
+            return;
+        }
+
         if (ObjectOf(e.ClickedItem) is { HasRows: true } obj)
         {
             ViewModel.OpenTable(obj);
@@ -484,6 +490,20 @@ public sealed partial class WorkspaceWindow : Window
 
     private async void OnObjectKeyDown(object sender, KeyRoutedEventArgs e)
     {
+        // A namespace opens and closes as a tree item does: Enter toggles it, Right opens and Left closes.
+        if (ObjectList.SelectedItem is SidebarEntry { Namespace: not null } folder)
+        {
+            if (e.Key == VirtualKey.Enter || (e.Key == VirtualKey.Right && !folder.IsExpanded) || (e.Key == VirtualKey.Left && folder.IsExpanded))
+            {
+                var index = ViewModel.Sidebar.IndexOf(folder);
+                ViewModel.ToggleNamespace(folder);
+                ObjectList.SelectedIndex = index;
+                e.Handled = true;
+            }
+
+            return;
+        }
+
         if (ObjectOf(ObjectList.SelectedItem) is not { } obj)
         {
             return;
@@ -513,6 +533,19 @@ public sealed partial class WorkspaceWindow : Window
     private void OnObjectRightTapped(object sender, RightTappedRoutedEventArgs e)
     {
         var element = e.OriginalSource as FrameworkElement;
+        if (element?.DataContext is SidebarEntry { Namespace: { } node } folder)
+        {
+            ObjectList.SelectedItem = folder;
+            var folderMenu = new MenuFlyout();
+            folderMenu.Items.Add(GridCommands.Item(Strings.Get("Workspace/MenuBrowseKeys"), "\xE721", async () => await ViewModel.BrowseNamespaceAsync(node)));
+            folderMenu.Items.Add(GridCommands.Item(Strings.Get(folder.IsExpanded ? "Workspace/MenuCollapse" : "Workspace/MenuExpand"), null, () => ViewModel.ToggleNamespace(folder), "Enter"));
+            folderMenu.Items.Add(new MenuFlyoutSeparator());
+            folderMenu.Items.Add(GridCommands.Item(Strings.Get("Workspace/MenuCopyName"), "\xE8C8", () => GridCommands.SetClipboard(node.Prefix)));
+            folderMenu.ShowAt(element, e.GetPosition(element));
+            e.Handled = true;
+            return;
+        }
+
         if (ObjectOf(element?.DataContext) is not { } obj)
         {
             return;
@@ -578,14 +611,27 @@ public sealed partial class WorkspaceWindow : Window
             menu.Items.Add(GridCommands.Item(Strings.Get("Workspace/MenuExportData"),"", async () => await ExportTableAsync(obj)));
         }
 
-        if (obj.Kind == ObjectKind.Table && ViewModel.CanEditStructure)
+        // Engines other than SQL offer what their session can write: DEL and RENAME on a Redis key, FLUSHDB on a Redis
+        // database, deleting a Kafka topic.
+        var rename = ViewModel.Offers(obj, new RenameTable(obj.Name.Name));
+        var truncate = ViewModel.Offers(obj, new TruncateTable());
+        var drop = ViewModel.Offers(obj, new DropObject(obj));
+        if (rename || truncate)
         {
             menu.Items.Add(new MenuFlyoutSeparator());
+        }
+
+        if (rename)
+        {
             menu.Items.Add(GridCommands.Item(Strings.Get("Common/Rename"),"", async () => await ViewModel.RenameAsync(obj), "F2"));
+        }
+
+        if (truncate)
+        {
             menu.Items.Add(GridCommands.Item(Strings.Get("Workspace/Truncate"),"", async () => await ViewModel.TruncateAsync(obj)));
         }
 
-        if (ViewModel.CanEditStructure)
+        if (drop)
         {
             menu.Items.Add(GridCommands.Item(Strings.Get("Workspace/Drop"),"", async () => await ViewModel.DropObjectAsync(obj), "Delete"));
         }

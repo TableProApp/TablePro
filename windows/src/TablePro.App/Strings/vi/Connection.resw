@@ -225,6 +225,15 @@
   <data name="EditConnectionTitle" xml:space="preserve">
     <value>Sửa {0}</value>
   </data>
+  <data name="ElastiCacheIamNote" xml:space="preserve">
+    <value>Ký một token ElastiCache 15 phút bằng thông tin đăng nhập AWS của bạn cho mỗi kết nối mới và gửi nó làm mật khẩu của người dùng qua TLS. Người dùng cần bật xác thực IAM.</value>
+  </data>
+  <data name="ElastiCacheNameHeader" xml:space="preserve">
+    <value>Tên cache / replication group ID</value>
+  </data>
+  <data name="ElastiCacheNameRequired" xml:space="preserve">
+    <value>Nhập tên cache ElastiCache (replication group ID) để dùng xác thực IAM.</value>
+  </data>
   <data name="EngineHeader" xml:space="preserve">
     <value>Cơ sở dữ liệu</value>
   </data>
@@ -422,6 +431,39 @@
   </data>
   <data name="ProxyUserHeader" xml:space="preserve">
     <value>Người dùng proxy</value>
+  </data>
+  <data name="RedisClusterHostsHeader" xml:space="preserve">
+    <value>Nút khởi tạo Cluster</value>
+  </data>
+  <data name="RedisModeCluster" xml:space="preserve">
+    <value>Cluster</value>
+  </data>
+  <data name="RedisModeHeader" xml:space="preserve">
+    <value>Chế độ kết nối</value>
+  </data>
+  <data name="RedisModeSentinel" xml:space="preserve">
+    <value>Sentinel</value>
+  </data>
+  <data name="RedisModeStandalone" xml:space="preserve">
+    <value>Độc lập</value>
+  </data>
+  <data name="RedisNodesNote" xml:space="preserve">
+    <value>Phân tách các nút bằng dấu phẩy, theo dạng host:port. Máy chủ ở trên cũng là một trong số đó.</value>
+  </data>
+  <data name="RedisPrimaryGroupHeader" xml:space="preserve">
+    <value>Tên nhóm primary</value>
+  </data>
+  <data name="RedisSentinelHostsHeader" xml:space="preserve">
+    <value>Nút Sentinel</value>
+  </data>
+  <data name="RedisSentinelPasswordHeader" xml:space="preserve">
+    <value>Mật khẩu Sentinel</value>
+  </data>
+  <data name="RedisSentinelUserHeader" xml:space="preserve">
+    <value>Tên người dùng Sentinel</value>
+  </data>
+  <data name="RedisSeparatorHeader" xml:space="preserve">
+    <value>Ký tự phân tách khoá</value>
   </data>
   <data name="RegionHeader" xml:space="preserve">
     <value>Region</value>

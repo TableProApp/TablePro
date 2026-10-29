@@ -264,6 +264,12 @@
   <data name="InspectValue" xml:space="preserve">
     <value>Değeri İncele</value>
   </data>
+  <data name="KeyPatternPlaceholder" xml:space="preserve">
+    <value>Anahtar deseni, örn. user:*</value>
+  </data>
+  <data name="KeyTypeAll" xml:space="preserve">
+    <value>Tüm türler</value>
+  </data>
   <data name="LoadFailedTitle" xml:space="preserve">
     <value>{0} yüklenemedi</value>
   </data>

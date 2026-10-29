@@ -264,6 +264,12 @@
   <data name="InspectValue" xml:space="preserve">
     <value>값 검사</value>
   </data>
+  <data name="KeyPatternPlaceholder" xml:space="preserve">
+    <value>키 패턴(예: user:*)</value>
+  </data>
+  <data name="KeyTypeAll" xml:space="preserve">
+    <value>모든 유형</value>
+  </data>
   <data name="LoadFailedTitle" xml:space="preserve">
     <value>{0}을(를) 불러올 수 없습니다</value>
   </data>

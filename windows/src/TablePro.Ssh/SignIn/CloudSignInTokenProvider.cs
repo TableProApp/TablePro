@@ -10,8 +10,8 @@ using TablePro.Core.Connections;
 namespace TablePro.Ssh.SignIn;
 
 /// <summary>
-/// Mints the passwords PostgreSQL, MySQL and Redshift sign in with: Amazon RDS IAM tokens and Redshift temporary
-/// credentials, from an access key or a profile in the AWS config files (static keys, assumed roles, IAM Identity
+/// Mints the passwords PostgreSQL, MySQL, Redshift and Redis sign in with: Amazon RDS and ElastiCache IAM tokens and
+/// Redshift temporary credentials, from an access key or a profile in the AWS config files (static keys, assumed roles, IAM Identity
 /// Center); Microsoft Entra ID tokens for Azure Database; and Cloud SQL IAM access tokens. Credentials are kept per
 /// profile for the app's lifetime, so an interactive or device code sign-in happens once and the SDKs refresh what they
 /// hold.
@@ -81,6 +81,13 @@ public sealed class CloudSignInTokenProvider : ISignInTokenProvider
         if (string.IsNullOrEmpty(user))
         {
             throw new InvalidOperationException("Enter the database user the IAM token signs in as.");
+        }
+
+        if (profile.Engine == DatabaseEngine.Redis)
+        {
+            var cache = ElastiCacheAuthToken.CacheName(profile);
+            var (signer, awsProfileRegion) = await AwsCredentialsAsync(profile, method, secret, cancellationToken);
+            return ElastiCacheAuthToken.Generate(signer, cache, ElastiCacheAuthToken.SigningRegion(profile, awsProfileRegion), user, _time.GetUtcNow());
         }
 
         var (host, port) = RdsAuthToken.SigningEndpoint(profile);

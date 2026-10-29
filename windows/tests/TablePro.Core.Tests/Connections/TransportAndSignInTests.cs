@@ -175,7 +175,8 @@ public sealed class TransportAndSignInTests
         Assert.DoesNotContain(SignInMethod.Kerberos, SignInMethods.Available(DatabaseEngine.MySql));
         Assert.DoesNotContain(SignInMethod.EntraId, SignInMethods.Available(DatabaseEngine.MariaDb));
         Assert.Equal([SignInMethod.Password, SignInMethod.WindowsIntegrated, SignInMethod.EntraId], SignInMethods.Available(DatabaseEngine.SqlServer));
-        Assert.Equal([SignInMethod.Password], SignInMethods.Available(DatabaseEngine.Redis));
+        Assert.Equal([SignInMethod.Password, SignInMethod.AwsIamAccessKey, SignInMethod.AwsIamProfile, SignInMethod.AwsIamSso], SignInMethods.Available(DatabaseEngine.Redis));
+        Assert.Equal([SignInMethod.Password], SignInMethods.Available(DatabaseEngine.Kafka));
         Assert.Contains(EntraAuthMode.Integrated, SignInMethods.EntraModes(DatabaseEngine.SqlServer));
         Assert.DoesNotContain(EntraAuthMode.Integrated, SignInMethods.EntraModes(DatabaseEngine.MySql));
     }

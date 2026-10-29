@@ -35,6 +35,11 @@ public sealed partial class TableTabView : UserControl
         DefinitionEditor.Dialect = viewModel.Context.Session.Dialect;
 
         UpdateStructureCommands();
+        if (viewModel.KeyBrowse is { } keys)
+        {
+            KeySearchHost.Content = new KeySearchBar(viewModel, keys);
+            KeySearchHost.Visibility = Visibility.Visible;
+        }
 
         RowsGrid.SortRequested += async (_, e) => await ViewModel.SortByAsync(e.Column, e.AddToExisting);
         RowsGrid.CellContextRequested += OnRowsContext;
@@ -326,7 +331,10 @@ public sealed partial class TableTabView : UserControl
             type => ImportTypeMapper.SqlType(type, session.Profile.Engine, session.Database.ServerVersion),
             ddl?.CommonDataTypes ?? [],
             new Storage.Import.ImportMappingScope(session.Profile.Id, session.Database.CurrentDatabase, table.Schema, table.Name),
-            new ImportMatchOptions(ImportMatchKey.Options(structure.Columns, structure.Indexes), session.Database is IImportRowMatcher && session.Dialect.IsSql));
+            new ImportMatchOptions(
+                ImportMatchKey.Options(structure.Columns, structure.Indexes),
+                session.Database is IImportRowMatcher && session.Dialect.IsSql,
+                RowImporter.CanDeleteExistingRows(session.Database) && !session.Profile.IsReadOnly));
         if (plan is null)
         {
             return;
@@ -359,8 +367,11 @@ public sealed partial class TableTabView : UserControl
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
-            // Batches before the failure are already saved, each in its own transaction, so the message says so.
-            await dialogs.ShowErrorAsync(Strings.Get("Import/ImportStoppedTitle"), Strings.Format("Import/ImportStoppedRowsKept", ex.Message));
+            // Batches before the failure are already saved, each in its own transaction, unless the import emptied the
+            // table first, which ran in one transaction and rolled back whole.
+            await dialogs.ShowErrorAsync(
+                Strings.Get("Import/ImportStoppedTitle"),
+                Strings.Format(plan.Writing.DeleteExistingRows ? "Import/ImportStoppedNothingChanged" : "Import/ImportStoppedRowsKept", ex.Message));
         }
         finally
         {

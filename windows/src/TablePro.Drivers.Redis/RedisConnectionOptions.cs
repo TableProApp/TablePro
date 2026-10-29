@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Net.Security;
 using System.Security.Cryptography.X509Certificates;
 using StackExchange.Redis;
+using StackExchange.Redis.Configuration;
 using TablePro.Core.Connections;
 using TablePro.Core.Drivers;
 
@@ -32,7 +33,12 @@ internal static class RedisConnectionOptions
     /// node lists, certificate paths and whatever the form has no field for (<c>syncTimeout</c>, <c>protocol</c>,
     /// <c>sslHost</c> and the like).
     /// </summary>
-    public static RedisConnectPlan Plan(ConnectionRequest request)
+    /// <param name="request">What to connect to and with.</param>
+    /// <param name="signIn">
+    /// The token source of an IAM sign-in. It takes the password's place, where the request's password is the AWS
+    /// secret access key the token is signed with and must never reach the server.
+    /// </param>
+    public static RedisConnectPlan Plan(ConnectionRequest request, DefaultOptionsProvider? signIn = null)
     {
         var profile = request.Profile;
         var settings = profile.AdditionalOptions;
@@ -41,7 +47,16 @@ internal static class RedisConnectionOptions
 
         var options = LibraryOptions(settings);
         options.EndPoints.Clear();
-        options.Password = string.IsNullOrEmpty(request.Password) ? null : request.Password;
+        if (signIn is not null)
+        {
+            options.Defaults = signIn;
+            options.Password = null;
+        }
+        else
+        {
+            options.Password = string.IsNullOrEmpty(request.Password) ? null : request.Password;
+        }
+
         options.User = string.IsNullOrWhiteSpace(profile.Username) ? null : profile.Username.Trim();
         options.ConnectTimeout = (int)Math.Clamp(profile.ConnectTimeoutSeconds * 1000L, 1000, int.MaxValue);
         options.AbortOnConnectFail = true;
@@ -90,7 +105,8 @@ internal static class RedisConnectionOptions
                 break;
         }
 
-        var tls = profile.SslMode;
+        // An IAM token travels as the password, so TLS is on whatever the SSL setting says, as on macOS.
+        var tls = profile.EffectiveSslMode();
         ApplyTls(options, settings, tls, mode == RedisConnectionMode.Standalone ? profile.Host : null);
         if (sentinel is not null)
         {

@@ -19,7 +19,7 @@
                 </Grid>
             </DataTemplate>
             <DataTemplate x:Key="SidebarItemTemplate" x:DataType="vm:SidebarEntry">
-                <Grid ColumnSpacing="10" Padding="0,0,4,0">
+                <Grid ColumnSpacing="10" Padding="0,0,4,0" Margin="{x:Bind Indent}">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />

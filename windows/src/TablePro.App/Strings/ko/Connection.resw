@@ -225,6 +225,15 @@
   <data name="EditConnectionTitle" xml:space="preserve">
     <value>{0} 편집</value>
   </data>
+  <data name="ElastiCacheIamNote" xml:space="preserve">
+    <value>새 연결마다 AWS 자격 증명으로 15분짜리 ElastiCache 토큰에 서명하고 TLS를 통해 사용자 암호로 보냅니다. 사용자에게 IAM 인증이 켜져 있어야 합니다.</value>
+  </data>
+  <data name="ElastiCacheNameHeader" xml:space="preserve">
+    <value>캐시 이름 / 복제 그룹 ID</value>
+  </data>
+  <data name="ElastiCacheNameRequired" xml:space="preserve">
+    <value>IAM 인증에 사용할 ElastiCache 캐시 이름(복제 그룹 ID)을 입력하십시오.</value>
+  </data>
   <data name="EngineHeader" xml:space="preserve">
     <value>데이터베이스</value>
   </data>
@@ -422,6 +431,39 @@
   </data>
   <data name="ProxyUserHeader" xml:space="preserve">
     <value>프록시 사용자</value>
+  </data>
+  <data name="RedisClusterHostsHeader" xml:space="preserve">
+    <value>클러스터 시드 노드</value>
+  </data>
+  <data name="RedisModeCluster" xml:space="preserve">
+    <value>클러스터</value>
+  </data>
+  <data name="RedisModeHeader" xml:space="preserve">
+    <value>연결 모드</value>
+  </data>
+  <data name="RedisModeSentinel" xml:space="preserve">
+    <value>센티널</value>
+  </data>
+  <data name="RedisModeStandalone" xml:space="preserve">
+    <value>단독 실행</value>
+  </data>
+  <data name="RedisNodesNote" xml:space="preserve">
+    <value>노드는 host:port 형식으로 쉼표로 구분합니다. 위의 호스트도 그중 하나입니다.</value>
+  </data>
+  <data name="RedisPrimaryGroupHeader" xml:space="preserve">
+    <value>프라이머리 그룹 이름</value>
+  </data>
+  <data name="RedisSentinelHostsHeader" xml:space="preserve">
+    <value>센티널 노드</value>
+  </data>
+  <data name="RedisSentinelPasswordHeader" xml:space="preserve">
+    <value>센티널 암호</value>
+  </data>
+  <data name="RedisSentinelUserHeader" xml:space="preserve">
+    <value>센티널 사용자 이름</value>
+  </data>
+  <data name="RedisSeparatorHeader" xml:space="preserve">
+    <value>키 구분자</value>
   </data>
   <data name="RegionHeader" xml:space="preserve">
     <value>리전</value>

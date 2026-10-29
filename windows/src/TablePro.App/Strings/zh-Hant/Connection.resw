@@ -225,6 +225,15 @@
   <data name="EditConnectionTitle" xml:space="preserve">
     <value>編輯 {0}</value>
   </data>
+  <data name="ElastiCacheIamNote" xml:space="preserve">
+    <value>每次建立新連線時以你的 AWS 憑證簽署一個 15 分鐘的 ElastiCache 權杖，並透過 TLS 作為該使用者的密碼傳送。該使用者須啟用 IAM 驗證。</value>
+  </data>
+  <data name="ElastiCacheNameHeader" xml:space="preserve">
+    <value>快取名稱 / 複寫群組 ID</value>
+  </data>
+  <data name="ElastiCacheNameRequired" xml:space="preserve">
+    <value>輸入 ElastiCache 快取名稱（複寫群組 ID）以使用 IAM 驗證。</value>
+  </data>
   <data name="EngineHeader" xml:space="preserve">
     <value>資料庫</value>
   </data>
@@ -422,6 +431,39 @@
   </data>
   <data name="ProxyUserHeader" xml:space="preserve">
     <value>Proxy 使用者</value>
+  </data>
+  <data name="RedisClusterHostsHeader" xml:space="preserve">
+    <value>叢集種子節點</value>
+  </data>
+  <data name="RedisModeCluster" xml:space="preserve">
+    <value>叢集</value>
+  </data>
+  <data name="RedisModeHeader" xml:space="preserve">
+    <value>連線模式</value>
+  </data>
+  <data name="RedisModeSentinel" xml:space="preserve">
+    <value>哨兵</value>
+  </data>
+  <data name="RedisModeStandalone" xml:space="preserve">
+    <value>單機</value>
+  </data>
+  <data name="RedisNodesNote" xml:space="preserve">
+    <value>以逗號分隔節點，格式為 host:port。上方的主機也是其中之一。</value>
+  </data>
+  <data name="RedisPrimaryGroupHeader" xml:space="preserve">
+    <value>主節點群組名稱</value>
+  </data>
+  <data name="RedisSentinelHostsHeader" xml:space="preserve">
+    <value>哨兵節點</value>
+  </data>
+  <data name="RedisSentinelPasswordHeader" xml:space="preserve">
+    <value>哨兵密碼</value>
+  </data>
+  <data name="RedisSentinelUserHeader" xml:space="preserve">
+    <value>哨兵使用者名稱</value>
+  </data>
+  <data name="RedisSeparatorHeader" xml:space="preserve">
+    <value>鍵分隔符號</value>
   </data>
   <data name="RegionHeader" xml:space="preserve">
     <value>區域</value>

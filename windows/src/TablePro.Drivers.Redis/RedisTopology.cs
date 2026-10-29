@@ -39,6 +39,9 @@ internal static class RedisTopologyKeys
     public static readonly string[] ClientCertificate = ["redisClientCertPath", "clientCertPath"];
     public static readonly string[] ClientKey = ["redisClientKeyPath", "clientKeyPath"];
 
+    /// <summary>What the sidebar splits key names at. Unlike the other keys an empty value means something: no tree.</summary>
+    public const string Separator = "redisSeparator";
+
     /// <summary>
     /// Every key the driver reads itself. They stay out of the client library's option string, where a host list's
     /// commas would split into stray endpoints.
@@ -46,7 +49,7 @@ internal static class RedisTopologyKeys
     public static readonly IReadOnlySet<string> All = new HashSet<string>(
         Mode.Concat(SentinelHosts).Concat(PrimaryGroup).Concat(SentinelUser).Concat(SentinelPassword)
             .Concat(ClusterHosts).Concat(CaCertificate).Concat(ClientCertificate).Concat(ClientKey)
-            .Append("redisDatabase").Append("redisSeparator"),
+            .Append("redisDatabase").Append(Separator),
         StringComparer.OrdinalIgnoreCase);
 
     public static string? Read(IReadOnlyDictionary<string, string> options, string[] keys)
@@ -63,6 +66,20 @@ internal static class RedisTopologyKeys
         }
 
         return null;
+    }
+
+    /// <summary>The key separator, empty when the profile asks for a flat list; the macOS default <c>:</c> when it names none.</summary>
+    public static string ReadSeparator(IReadOnlyDictionary<string, string> options)
+    {
+        foreach (var (name, value) in options)
+        {
+            if (string.Equals(name.Trim(), Separator, StringComparison.OrdinalIgnoreCase))
+            {
+                return value;
+            }
+        }
+
+        return ":";
     }
 
     public static RedisConnectionMode ResolveMode(IReadOnlyDictionary<string, string> options) =>

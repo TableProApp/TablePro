@@ -18,6 +18,12 @@ public enum TransportSecret
     CloudSqlServiceAccountKey,
     CloudflareTokenId,
     CloudflareTokenSecret,
+
+    /// <summary>
+    /// The Redis Sentinel login's password. It is no transport's, but it is kept the same way, out of the options
+    /// file, and joins the profile's options in memory only when connecting.
+    /// </summary>
+    RedisSentinelPassword,
 }
 
 /// <summary>
@@ -59,6 +65,9 @@ public sealed class ConnectionService
     }
 
     public DriverRegistry Drivers { get; }
+
+    /// <summary>The SQLite extensions approved on this PC, which every connect checks before it opens anything.</summary>
+    public LoadableExtensionApprovalStore ExtensionApprovals { get; init; } = LoadableExtensionApprovalStore.Default;
 
     // Kept in parts like the transport secrets, since a Google service account key takes the password's place.
     public string? SavedPassword(ConnectionProfile profile) =>
@@ -133,7 +142,14 @@ public sealed class ConnectionService
             throw new InvalidOperationException(problem);
         }
 
+        // A list this PC never approved must not reach LoadLibrary, whichever route connects; the welcome window asks first.
+        if (ExtensionApprovals.Pending(profile) is { Count: > 0 } pending)
+        {
+            throw new LoadableExtensionApprovalException(pending);
+        }
+
         password ??= SavedPassword(profile);
+        profile = WithEngineSecrets(profile);
         var request = ConnectionRequest.Direct(profile, password);
         IConnectionTunnel? tunnel = null;
         var transport = profile.ActiveTransport();
@@ -228,8 +244,27 @@ public sealed class ConnectionService
         _ => new(),
     };
 
+    /// <summary>
+    /// The profile the driver gets, with the Redis Sentinel password from Credential Manager under the option key the
+    /// driver reads. The copy lives as long as the session and is never saved.
+    /// </summary>
+    private ConnectionProfile WithEngineSecrets(ConnectionProfile profile)
+    {
+        if (profile.Engine != DatabaseEngine.Redis || SavedTransportSecret(profile, TransportSecret.RedisSentinelPassword) is not { Length: > 0 } sentinel)
+        {
+            return profile;
+        }
+
+        var options = new Dictionary<string, string>(profile.AdditionalOptions, StringComparer.OrdinalIgnoreCase)
+        {
+            ["redisSentinelPassword"] = sentinel,
+        };
+        return profile with { AdditionalOptions = options };
+    }
+
     private static string TransportKey(Guid id, TransportSecret secret) => secret switch
     {
+        TransportSecret.RedisSentinelPassword => SecretKeys.Prefix + "redis-sentinel/" + id.ToString("D"),
         TransportSecret.ProxyPassword => TransportSecretKeys.ProxyPassword(id),
         TransportSecret.CloudSqlServiceAccountKey => TransportSecretKeys.CloudSqlServiceAccountKey(id),
         TransportSecret.CloudflareTokenId => TransportSecretKeys.CloudflareTokenId(id),

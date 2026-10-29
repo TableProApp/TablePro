@@ -346,6 +346,14 @@
     <value>Inspect Value</value>
     <comment>Context menu command on a grid cell: show the whole value in the inspector.</comment>
   </data>
+  <data name="KeyPatternPlaceholder" xml:space="preserve">
+    <value>Key pattern, e.g. user:*</value>
+    <comment>user:* is a Redis glob pattern; keep it as is.</comment>
+  </data>
+  <data name="KeyTypeAll" xml:space="preserve">
+    <value>All types</value>
+    <comment>The entry of the key type picker that lists keys of every type.</comment>
+  </data>
   <data name="LoadFailedTitle" xml:space="preserve">
     <value>Could not load {0}</value>
     <comment>Error title. {0} is the table or view name.</comment>

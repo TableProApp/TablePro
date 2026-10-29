@@ -56,6 +56,7 @@ internal static class RedisTransactionRunner
     internal static Condition ToCondition(RedisGuard guard) => guard.Kind switch
     {
         RedisGuardKind.KeyExists => Condition.KeyExists(guard.Key),
+        RedisGuardKind.KeyMissing => Condition.KeyNotExists(guard.Key),
         RedisGuardKind.StringEquals => Condition.StringEqual(guard.Key, guard.Value),
         RedisGuardKind.HashFieldExists => Condition.HashExists(guard.Key, guard.Member),
         RedisGuardKind.HashFieldMissing => Condition.HashNotExists(guard.Key, guard.Member),

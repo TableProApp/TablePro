@@ -264,6 +264,12 @@
   <data name="InspectValue" xml:space="preserve">
     <value>检查值</value>
   </data>
+  <data name="KeyPatternPlaceholder" xml:space="preserve">
+    <value>键模式，例如 user:*</value>
+  </data>
+  <data name="KeyTypeAll" xml:space="preserve">
+    <value>所有类型</value>
+  </data>
   <data name="LoadFailedTitle" xml:space="preserve">
     <value>无法加载 {0}</value>
   </data>

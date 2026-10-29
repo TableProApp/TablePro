@@ -210,11 +210,17 @@
   <data name="KindView" xml:space="preserve">
     <value>Vue</value>
   </data>
+  <data name="MenuBrowseKeys" xml:space="preserve">
+    <value>Parcourir les clés</value>
+  </data>
   <data name="MenuBuildJoinQuery" xml:space="preserve">
     <value>Créer une requête de jointure</value>
   </data>
   <data name="MenuCheckForUpdates.Text" xml:space="preserve">
     <value>Rechercher les mises à jour…</value>
+  </data>
+  <data name="MenuCollapse" xml:space="preserve">
+    <value>Réduire</value>
   </data>
   <data name="MenuCompare.Text" xml:space="preserve">
     <value>Comparer et synchroniser</value>
@@ -242,6 +248,9 @@
   </data>
   <data name="MenuErDiagram.Text" xml:space="preserve">
     <value>Diagramme entité-relation</value>
+  </data>
+  <data name="MenuExpand" xml:space="preserve">
+    <value>Développer</value>
   </data>
   <data name="MenuExportData" xml:space="preserve">
     <value>Exporter les données</value>
@@ -353,6 +362,9 @@
   </data>
   <data name="SectionViews" xml:space="preserve">
     <value>Vues</value>
+  </data>
+  <data name="SidebarNamespaceAccessibleName" xml:space="preserve">
+    <value>Espace de noms {0}</value>
   </data>
   <data name="SidePaneAssistant" xml:space="preserve">
     <value>Assistant</value>

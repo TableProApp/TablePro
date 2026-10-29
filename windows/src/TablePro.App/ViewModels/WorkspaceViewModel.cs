@@ -12,7 +12,7 @@ using TablePro.Storage.Workspace;
 namespace TablePro.App.ViewModels;
 
 /// <summary>A row of the sidebar: a section header or a database object.</summary>
-public sealed class SidebarEntry
+public sealed partial class SidebarEntry
 {
     private SidebarEntry(string text, string glyph, DatabaseObject? obj, string? detail)
     {
@@ -30,10 +30,12 @@ public sealed class SidebarEntry
 
     public DatabaseObject? Object { get; }
 
-    public bool IsHeader => Object is null;
+    public bool IsHeader => Object is null && Namespace is null;
 
     // ListView announces an item by its ToString, so screen readers read the object's name.
-    public override string ToString() => Object is null ? Text : Strings.Format("Workspace/SidebarItemAccessibleName", KindName(Object.Kind), Text);
+    public override string ToString() => Object is null
+        ? Namespace is null ? Text : Strings.Format("Workspace/SidebarNamespaceAccessibleName", Text)
+        : Strings.Format("Workspace/SidebarItemAccessibleName", KindName(Object.Kind), Text);
 
     // Upper-cased in the UI language, so a Turkish "i" becomes its dotted capital.
     public static SidebarEntry Header(string text, int count) => new(text.ToUpper(CultureInfo.CurrentUICulture), string.Empty, null, count.ToString(CultureInfo.CurrentCulture));
@@ -335,6 +337,8 @@ public sealed partial class WorkspaceViewModel : ObservableObject, IAsyncDisposa
         return Profile.Engine switch
         {
             DatabaseEngine.MongoDb => $"db.getCollection({dialect.StringLiteral(name)}).find({{}}).limit({page})",
+            // A Redis database lists as a table named dbN; its query walks the keyspace in that database.
+            DatabaseEngine.Redis when obj.Kind == ObjectKind.Table => $"SELECT {name[2..]}\nSCAN 0 COUNT {page}",
             DatabaseEngine.Redis => (obj.Comment ?? string.Empty).ToLowerInvariant() switch
             {
                 "hash" => $"HGETALL {Quote(name)}",
@@ -577,6 +581,12 @@ public sealed partial class WorkspaceViewModel : ObservableObject, IAsyncDisposa
         {
             var items = group.ToArray();
             Sidebar.Add(SidebarEntry.Header(SectionName(group.Key), items.Length));
+            if (group.Key == ObjectKind.Key && KeySeparator is { } separator)
+            {
+                AddKeyTree(items, separator, expandAll: query.Length > 0);
+                continue;
+            }
+
             foreach (var obj in items)
             {
                 Sidebar.Add(SidebarEntry.For(obj));
