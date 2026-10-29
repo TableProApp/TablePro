@@ -349,4 +349,18 @@ Bu noktadan önce kaydedilen satırlar tabloda kalır.</value>
     <value>Dosyanın baytlarının nasıl okunacağı. Kodlamasını SET NAMES veya client_encoding ile bildiren bir döküm o kodlamayla başlar; bayt sırası işareti her zaman önceliklidir.</value>
     <comment>Tooltip of the encoding picker. SET NAMES and client_encoding are SQL and stay untranslated.</comment>
   </data>
+  <data name="DeleteExistingRows" xml:space="preserve">
+    <value>Önce mevcut satırları sil</value>
+    <comment>Check box in the import sheet that empties the table before the rows are imported.</comment>
+  </data>
+  <data name="DeleteExistingRowsToolTip" xml:space="preserve">
+    <value>Tabloyu boşaltır ve dosyayı tek bir işlemde içe aktarır; bir hata olursa eski satırlar yerinde kalır. Eşleşecek satır kalmayacağı için yalnızca Ekle kipinde kullanılabilir.</value>
+    <comment>Tooltip of the Delete existing rows first check box. Insert is the import mode of that name.</comment>
+  </data>
+  <data name="ImportStoppedNothingChanged" xml:space="preserve">
+    <value>{0}
+
+İçe aktarma tek bir işlemde çalıştığı için tablo olduğu gibi bırakıldı.</value>
+    <comment>Error message when an import that emptied the table first fails. {0} is the error's own message.</comment>
+  </data>
 </root>

@@ -349,4 +349,18 @@
     <value>檔案位元組的讀取方式。以 SET NAMES 或 client_encoding 宣告編碼的傾印檔會預選該編碼；位元組順序標記一律優先。</value>
     <comment>Tooltip of the encoding picker. SET NAMES and client_encoding are SQL and stay untranslated.</comment>
   </data>
+  <data name="DeleteExistingRows" xml:space="preserve">
+    <value>先刪除現有列</value>
+    <comment>Check box in the import sheet that empties the table before the rows are imported.</comment>
+  </data>
+  <data name="DeleteExistingRowsToolTip" xml:space="preserve">
+    <value>清空資料表並在同一個交易中匯入檔案，因此失敗時舊列會保持原樣。只有「插入」模式可以使用，因為清空後沒有可比對的列。</value>
+    <comment>Tooltip of the Delete existing rows first check box. Insert is the import mode of that name.</comment>
+  </data>
+  <data name="ImportStoppedNothingChanged" xml:space="preserve">
+    <value>{0}
+
+匯入在同一個交易中執行，因此資料表保持原樣。</value>
+    <comment>Error message when an import that emptied the table first fails. {0} is the error's own message.</comment>
+  </data>
 </root>

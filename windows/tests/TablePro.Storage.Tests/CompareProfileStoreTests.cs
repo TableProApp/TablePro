@@ -142,4 +142,58 @@ public sealed class CompareProfileStoreTests : IDisposable
 
         Assert.Equal(["added", "kept"], second.Profiles.Select(p => p.Name));
     }
+
+    [Fact]
+    public async Task TheLastSetupComesBackWithoutJoiningTheSavedList()
+    {
+        var setup = Profile("Nightly");
+        var changed = false;
+        using (var store = new CompareProfileStore(_temp.Paths))
+        {
+            await store.EnsureLoadedAsync();
+            store.Changed += (_, _) => changed = true;
+            await store.RememberSetupAsync(setup, Token);
+            Assert.False(changed);
+        }
+
+        using var reloaded = new CompareProfileStore(_temp.Paths);
+        await reloaded.LoadAsync(Token);
+
+        var last = reloaded.LastSetup;
+        Assert.NotNull(last);
+        Assert.Empty(reloaded.Profiles);
+        Assert.Equal(string.Empty, last.Name);
+        Assert.Equal(setup.Source, last.Source);
+        Assert.Equal(setup.Target, last.Target);
+        Assert.True(last.Options.DeleteExtraRows);
+
+        // What to sync is a decision about one comparison, so no table comes back ticked; their scopes do.
+        Assert.All(last.Tables, t => Assert.False(t.IsIncluded));
+        Assert.Equal(["email"], last.Tables[0].Scope.KeyColumns);
+    }
+
+    [Fact]
+    public async Task ThereIsNoLastSetupBeforeOneIsWrittenOrWithoutBothSides()
+    {
+        using var store = new CompareProfileStore(_temp.Paths);
+        await store.LoadAsync(Token);
+        Assert.Null(store.LastSetup);
+
+        await store.RememberSetupAsync(Profile("x") with { Target = new CompareEndpointScope() }, Token);
+        Assert.Null(store.LastSetup);
+    }
+
+    [Fact]
+    public async Task SavingAProfileKeepsTheLastSetup()
+    {
+        using var store = new CompareProfileStore(_temp.Paths);
+        await store.RememberSetupAsync(Profile("last"), Token);
+
+        await store.SaveAsync(Profile("Named"), Token);
+        using var reloaded = new CompareProfileStore(_temp.Paths);
+        await reloaded.LoadAsync(Token);
+
+        Assert.NotNull(reloaded.LastSetup);
+        Assert.Equal(["Named"], reloaded.Profiles.Select(p => p.Name));
+    }
 }

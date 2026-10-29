@@ -14,7 +14,7 @@ public sealed class SessionContractTests
     /// engine's own method, not AdoNetSession's, or Snowflake binds by the wrong name and Spanner runs DDL as a query.
     /// </summary>
     [Theory]
-    [InlineData(typeof(SnowflakeSession), new[] { "BrowseAsync", "CountAsync", "SaveChangesAsync" })]
+    [InlineData(typeof(SnowflakeSession), new[] { "BrowseAsync", "CountAsync" })]
     [InlineData(typeof(SpannerSession), new[] { "BrowseAsync", "CountAsync", "SaveChangesAsync", "OpenChannelAsync", "PingAsync" })]
     public void InterfaceCallsReachTheEngineOverrides(Type session, string[] methods)
     {
@@ -25,6 +25,34 @@ public sealed class SessionContractTests
             var index = Array.FindIndex(map.InterfaceMethods, m => m.Name == name);
             Assert.Equal(session, map.TargetMethods[index].DeclaringType);
         }
+    }
+
+    /// <summary>
+    /// Snowflake's save, a multi-table sync and a delete-first import all run through the base class's transaction and
+    /// reach each change through the hook it overrides, so every path binds by position.
+    /// </summary>
+    [Theory]
+    [InlineData(typeof(SnowflakeSession), new[] { "ExecuteChangeAsync", "ExecuteDeleteAllAsync" })]
+    [InlineData(typeof(SpannerSession), new[] { "ExecuteChangeAsync", "ExecuteDeleteAllAsync", "BeginTransactionAsync" })]
+    public void SavedChangesBindThroughTheEnginesOwnHook(Type session, string[] methods)
+    {
+        foreach (var name in methods)
+        {
+            var method = session.GetMethod(name, System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+            Assert.Equal(session, method?.DeclaringType);
+        }
+    }
+
+    [Fact]
+    public async Task WarehousesThatTakeATransactionOfferOneAcrossTables()
+    {
+        await using var snowflake = new SnowflakeSession(Profiles.Request(DatabaseEngine.Snowflake, host: "xy12345"));
+        await using var spanner = new SpannerSession(Profiles.Request(DatabaseEngine.Spanner, host: "projects/p/instances/i/databases/d"));
+        await using var bigQuery = new BigQuerySession(Profiles.Request(DatabaseEngine.BigQuery, database: "proj"));
+
+        Assert.NotNull(ChangeTransactions.For(snowflake));
+        Assert.NotNull(ChangeTransactions.For(spanner));
+        Assert.Null(ChangeTransactions.For(bigQuery));
     }
 
     [Fact]

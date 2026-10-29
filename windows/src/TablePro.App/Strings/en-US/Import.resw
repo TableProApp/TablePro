@@ -452,4 +452,18 @@ Rows saved before this point stay in the table.</value>
     <value>How the file's bytes are read. A dump that declares its encoding with SET NAMES or client_encoding starts on that one; a byte order mark always wins.</value>
     <comment>Tooltip of the encoding picker. SET NAMES and client_encoding are SQL and stay untranslated.</comment>
   </data>
+  <data name="DeleteExistingRows" xml:space="preserve">
+    <value>Delete existing rows first</value>
+    <comment>Check box in the import sheet that empties the table before the rows are imported.</comment>
+  </data>
+  <data name="DeleteExistingRowsToolTip" xml:space="preserve">
+    <value>Empties the table and imports the file in one transaction, so a failure leaves the old rows in place. Only Insert can use it, since no row would be left to match.</value>
+    <comment>Tooltip of the Delete existing rows first check box. Insert is the import mode of that name.</comment>
+  </data>
+  <data name="ImportStoppedNothingChanged" xml:space="preserve">
+    <value>{0}
+
+The import ran in one transaction, so the table was left as it was.</value>
+    <comment>Error message when an import that emptied the table first fails. {0} is the error's own message.</comment>
+  </data>
 </root>

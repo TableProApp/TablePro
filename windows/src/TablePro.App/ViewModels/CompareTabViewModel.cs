@@ -239,7 +239,8 @@ public sealed partial class CompareTabViewModel : TabViewModel
     private long? GlobalRowLimit => double.IsNaN(RowLimit) || RowLimit < 1 ? null : (long)RowLimit;
 
     /// <summary>Opens the target connection picked and lists its tables, pairing them with the source's.</summary>
-    public async Task<bool> ConnectTargetAsync()
+    /// <param name="reportErrors">False when the tab restores a remembered target, which says why in the status line rather than a dialog.</param>
+    public async Task<bool> ConnectTargetAsync(bool reportErrors = true)
     {
         if (TargetProfile is not { } profile)
         {
@@ -251,7 +252,7 @@ public sealed partial class CompareTabViewModel : TabViewModel
             return true;
         }
 
-        var opened = await OpenEndpointAsync(profile);
+        var opened = await OpenEndpointAsync(profile, reportErrors);
         if (opened is null)
         {
             return false;
@@ -359,8 +360,12 @@ public sealed partial class CompareTabViewModel : TabViewModel
 
     public void Cancel() => _run?.Cancel();
 
-    /// <summary>Runs whichever comparison the mode and scope ask for.</summary>
-    public Task CompareAsync() => Mode == CompareMode.Structure ? CompareStructureAsync() : IsMultiTable ? CompareTablesAsync() : CompareDataAsync();
+    /// <summary>Runs whichever comparison the mode and scope ask for, and writes the setup down for the next tab.</summary>
+    public async Task CompareAsync()
+    {
+        await (Mode == CompareMode.Structure ? CompareStructureAsync() : IsMultiTable ? CompareTablesAsync() : CompareDataAsync());
+        RememberSetup();
+    }
 
     public async Task CompareDataAsync()
     {
@@ -653,6 +658,7 @@ public sealed partial class CompareTabViewModel : TabViewModel
     public override async ValueTask DisposeAsync()
     {
         _run?.Cancel();
+        RememberSetup();
         _endpoints.ProfileStore.Changed -= OnProfilesChanged;
         if (_target is { } target)
         {
@@ -747,7 +753,7 @@ public sealed partial class CompareTabViewModel : TabViewModel
         return lines;
     }
 
-    private async Task<CompareEndpoint?> OpenEndpointAsync(ConnectionProfile profile)
+    private async Task<CompareEndpoint?> OpenEndpointAsync(ConnectionProfile profile, bool reportErrors = true)
     {
         IsBusy = true;
         StatusText = Strings.Format("Compare/ConnectingTo", profile.Name);
@@ -761,7 +767,11 @@ public sealed partial class CompareTabViewModel : TabViewModel
         {
             CrashLog.Write($"Compare: connect to {profile.Name}", ex);
             StatusText = ex.Message;
-            await _context.Dialogs.ShowErrorAsync(Strings.Format("Compare/CouldNotConnectTitle", profile.Name), ex.Message);
+            if (reportErrors)
+            {
+                await _context.Dialogs.ShowErrorAsync(Strings.Format("Compare/CouldNotConnectTitle", profile.Name), ex.Message);
+            }
+
             return null;
         }
         finally
@@ -802,7 +812,7 @@ public sealed partial class CompareTabViewModel : TabViewModel
         var preview = plan.Preview(target.Session.Database);
         var batches = ApplyInBatches || plan.Steps.Count > DataSyncApplyOptions.SuggestedSingleTransactionLimit;
         var notes = new List<string>(plan.Warnings);
-        AddTransactionNotes(notes, target, batches, multiTable: false);
+        AddTransactionNotes(notes, target, batches, tablesCommitApart: false);
 
         var title = Strings.Format("Compare/SyncReviewTitle", plan.Table, plan.InsertCount, plan.UpdateCount, plan.DeleteCount);
         if (!await _context.Dialogs.ReviewSqlAsync(title, Reviewed(preview, notes, target.Session.Dialect), Strings.Get("Compare/SyncButton")))
@@ -851,7 +861,10 @@ public sealed partial class CompareTabViewModel : TabViewModel
         var preview = plan.Preview(target.Session.Database);
         var batches = ApplyInBatches || plan.StepCount > DataSyncApplyOptions.SuggestedSingleTransactionLimit;
         var notes = new List<string>(plan.Warnings);
-        AddTransactionNotes(notes, target, batches, multiTable: plan.Tables.Count > 1);
+
+        // A session without cross-table transactions commits each table's segment apart, which the sheet says first.
+        var tablesCommitApart = plan.Segments.Count > 1 && ChangeTransactions.For(target.Session.Database) is null;
+        AddTransactionNotes(notes, target, batches, tablesCommitApart);
         var title = Strings.Format("Compare/SyncTablesReviewTitle", plan.Tables.Count, plan.InsertCount, plan.UpdateCount, plan.DeleteCount);
         if (!await _context.Dialogs.ReviewSqlAsync(title, Reviewed(preview, notes, target.Session.Dialect), Strings.Get("Compare/SyncButton")))
         {
@@ -867,7 +880,7 @@ public sealed partial class CompareTabViewModel : TabViewModel
         }
 
         RecordHistory(target, preview, applied, DateTime.UtcNow - started);
-        var succeeded = await ReportFailureAsync(applied, batches || plan.Segments.Count > 1);
+        var succeeded = await ReportFailureAsync(applied, batches || tablesCommitApart);
         if (succeeded)
         {
             _context.Notify(Strings.Plural("Compare/SyncedTables", applied.RowsAffected, plan.Tables.Count));
@@ -893,7 +906,7 @@ public sealed partial class CompareTabViewModel : TabViewModel
         return false;
     }
 
-    private static void AddTransactionNotes(List<string> notes, CompareEndpoint target, bool batches, bool multiTable)
+    private static void AddTransactionNotes(List<string> notes, CompareEndpoint target, bool batches, bool tablesCommitApart)
     {
         if (!DataSyncTransactionality.CanRollBack(target.Profile.Engine))
         {
@@ -903,7 +916,7 @@ public sealed partial class CompareTabViewModel : TabViewModel
         {
             notes.Add(Strings.Get("Compare/BatchesCommitNote"));
         }
-        else if (multiTable)
+        else if (tablesCommitApart)
         {
             notes.Add(Strings.Get("Compare/TablesCommitNote"));
         }

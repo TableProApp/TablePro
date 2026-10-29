@@ -21,7 +21,7 @@ namespace TablePro.Core.Data;
 /// Every public entry point yields to the thread pool first: SQLite and DuckDB complete their "async" calls
 /// synchronously, and the UI thread must never wait on a database.
 /// </remarks>
-public abstract class AdoNetSession : IDatabaseSession, IImportRowMatcher
+public abstract class AdoNetSession : IDatabaseSession, IImportRowMatcher, IChangeTransactionProvider
 {
     protected AdoNetSession(ConnectionRequest request, SqlDialect dialect)
     {
@@ -146,33 +146,114 @@ public abstract class AdoNetSession : IDatabaseSession, IImportRowMatcher
             },
             cancellationToken);
 
-    public Task<int> SaveChangesAsync(ObjectName table, IReadOnlyList<RowChange> changes, CancellationToken cancellationToken) =>
-        WithConnectionAsync(
+    public Task<int> SaveChangesAsync(ObjectName table, IReadOnlyList<RowChange> changes, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(changes);
+        return WithConnectionAsync(
             async (connection, ct) =>
             {
-                await using var transaction = await connection.BeginTransactionAsync(ct);
-                var total = 0;
-                foreach (var change in changes)
+                await using var transaction = await BeginTransactionAsync(connection, ct);
+                int total;
+                try
                 {
-                    var spec = ChangeSqlBuilder.Build(Dialect, table, change);
-                    await using var command = CreateCommand(connection, spec);
-                    command.Transaction = transaction;
-                    var affected = await command.ExecuteNonQueryAsync(ct);
-
-                    // An insert into a view or with a trigger can report other counts; only keyed changes must hit one row.
-                    if (change is not RowInsert && affected != 1)
-                    {
-                        await transaction.RollbackAsync(CancellationToken.None);
-                        throw new RowCountMismatchException(1, affected, spec.Text);
-                    }
-
-                    total += Math.Max(affected, 0);
+                    total = await ApplyChangesAsync(connection, transaction, table, changes, ct);
+                }
+                catch
+                {
+                    await RollbackQuietlyAsync(transaction);
+                    throw;
                 }
 
                 await transaction.CommitAsync(ct);
                 return total;
             },
             cancellationToken);
+    }
+
+    /// <summary>
+    /// True unless a driver says otherwise: every engine this class serves takes a transaction over DML, which is all
+    /// <see cref="BeginChangesAsync"/> needs.
+    /// </summary>
+    public virtual bool SupportsChangeTransactions => true;
+
+    public virtual async Task<IChangeTransaction> BeginChangesAsync(CancellationToken cancellationToken)
+    {
+        if (!SupportsChangeTransactions)
+        {
+            throw new NotSupportedException($"{Profile.Descriptor.DisplayName} cannot run several changes in one transaction.");
+        }
+
+        var connection = await OpenAsync(cancellationToken);
+        try
+        {
+            var transaction = await BeginTransactionAsync(connection, cancellationToken);
+            return new AdoNetChangeTransaction(this, connection, transaction);
+        }
+        catch
+        {
+            await connection.DisposeAsync();
+            throw;
+        }
+    }
+
+    /// <summary>Begins the read-write transaction every save runs in; Spanner starts its own kind.</summary>
+    protected virtual ValueTask<DbTransaction> BeginTransactionAsync(DbConnection connection, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(connection);
+        return connection.BeginTransactionAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Runs one change inside <paramref name="transaction"/> and returns the rows it changed. A driver that binds
+    /// values its own way (by position, typed, with a schema added) overrides this, so the grid save, a multi-table
+    /// sync and an import all bind the same way.
+    /// </summary>
+    protected virtual async Task<int> ExecuteChangeAsync(DbConnection connection, DbTransaction transaction, ObjectName table, RowChange change, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(change);
+        var spec = ChangeSqlBuilder.Build(Dialect, table, change);
+        await using var command = CreateCommand(connection, spec);
+        command.Transaction = transaction;
+        var affected = await command.ExecuteNonQueryAsync(cancellationToken);
+
+        // An insert into a view or with a trigger can report other counts; only keyed changes must hit one row.
+        return change is not RowInsert && affected != 1
+            ? throw new RowCountMismatchException(1, affected, spec.Text)
+            : Math.Max(affected, 0);
+    }
+
+    /// <summary>Empties a table inside <paramref name="transaction"/>, as an import that replaces the rows does first.</summary>
+    protected virtual async Task<long> ExecuteDeleteAllAsync(DbConnection connection, DbTransaction transaction, ObjectName table, CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = "DELETE FROM " + Dialect.Qualify(table);
+        command.Transaction = transaction;
+        return await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    private async Task<int> ApplyChangesAsync(DbConnection connection, DbTransaction transaction, ObjectName table, IReadOnlyList<RowChange> changes, CancellationToken cancellationToken)
+    {
+        var total = 0;
+        foreach (var change in changes)
+        {
+            total += await ExecuteChangeAsync(connection, transaction, table, change, cancellationToken);
+        }
+
+        return total;
+    }
+
+    // The caller is already reporting the failure that led here; a rollback that also fails (the connection dropped)
+    // ends the transaction on the server anyway.
+    private static async Task RollbackQuietlyAsync(DbTransaction transaction)
+    {
+        try
+        {
+            await transaction.RollbackAsync(CancellationToken.None);
+        }
+        catch (Exception ex) when (ex is DbException or InvalidOperationException)
+        {
+        }
+    }
 
     public async Task<IQueryChannel> OpenChannelAsync(CancellationToken cancellationToken)
     {
@@ -278,6 +359,44 @@ public abstract class AdoNetSession : IDatabaseSession, IImportRowMatcher
             string s => s is "1" or "YES" or "yes" or "t" or "true" or "TRUE" or "Y",
             var v => Convert.ToInt64(v, System.Globalization.CultureInfo.InvariantCulture) != 0,
         };
+
+    /// <summary>A transaction on a connection of its own, ended by a commit or, on dispose, by a rollback.</summary>
+    private sealed class AdoNetChangeTransaction(AdoNetSession session, DbConnection connection, DbTransaction transaction) : IChangeTransaction
+    {
+        private bool _committed;
+
+        public async Task<int> SaveChangesAsync(ObjectName table, IReadOnlyList<RowChange> changes, CancellationToken cancellationToken)
+        {
+            ArgumentNullException.ThrowIfNull(changes);
+            await Task.CompletedTask.ConfigureAwait(ConfigureAwaitOptions.ForceYielding);
+            return await session.ApplyChangesAsync(connection, transaction, table, changes, cancellationToken);
+        }
+
+        public async Task<long> DeleteAllRowsAsync(ObjectName table, CancellationToken cancellationToken)
+        {
+            await Task.CompletedTask.ConfigureAwait(ConfigureAwaitOptions.ForceYielding);
+            return await session.ExecuteDeleteAllAsync(connection, transaction, table, cancellationToken);
+        }
+
+        public async Task CommitAsync(CancellationToken cancellationToken)
+        {
+            await Task.CompletedTask.ConfigureAwait(ConfigureAwaitOptions.ForceYielding);
+            await transaction.CommitAsync(cancellationToken);
+            _committed = true;
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            await Task.CompletedTask.ConfigureAwait(ConfigureAwaitOptions.ForceYielding);
+            if (!_committed)
+            {
+                await RollbackQuietlyAsync(transaction);
+            }
+
+            await transaction.DisposeAsync();
+            await connection.DisposeAsync();
+        }
+    }
 
     private sealed class AdoNetQueryChannel : IQueryChannel
     {

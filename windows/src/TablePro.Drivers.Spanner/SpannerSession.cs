@@ -109,28 +109,14 @@ public sealed class SpannerSession : AdoNetSession, IDatabaseSession, ISchemaDdl
             async (connection, ct) =>
             {
                 var spanner = (SpannerConnection)connection;
-                var types = await ColumnTypesAsync(connection, table, ct);
+                await ColumnTypesAsync(connection, table, ct);
                 return await spanner.RunWithRetriableTransactionAsync(
                     async transaction =>
                     {
                         var total = 0;
                         foreach (var change in changes)
                         {
-                            var spec = ChangeSqlBuilder.Build(Dialect, table, change);
-                            await using var command = spanner.CreateDmlCommand(spec.Text);
-                            command.Transaction = transaction;
-                            foreach (var (name, value) in spec.Parameters)
-                            {
-                                command.Parameters.Add(SpannerSql.Parameter(name.TrimStart('@'), types.TryGetValue(ColumnOf(change, spec, name), out var type) ? type : null, value));
-                            }
-
-                            var affected = await command.ExecuteNonQueryAsync(ct);
-                            if (change is not RowInsert && affected != 1)
-                            {
-                                throw new RowCountMismatchException(1, affected, spec.Text);
-                            }
-
-                            total += Math.Max(affected, 0);
+                            total += await ExecuteChangeAsync(connection, transaction, table, change, ct);
                         }
 
                         return total;
@@ -138,6 +124,39 @@ public sealed class SpannerSession : AdoNetSession, IDatabaseSession, ISchemaDdl
                     cancellationToken: ct);
             },
             cancellationToken);
+    }
+
+    /// <summary>
+    /// A transaction across tables for a sync or an import. It is not retried when Spanner aborts it, since its
+    /// statements arrive one call at a time; the abort reaches the caller, which rolls back and says so.
+    /// </summary>
+    protected override async ValueTask<DbTransaction> BeginTransactionAsync(DbConnection connection, CancellationToken cancellationToken) =>
+        await ((SpannerConnection)connection).BeginTransactionAsync(cancellationToken);
+
+    /// <summary>Binds each value with its column's Spanner type, which a GoogleSQL parameter needs.</summary>
+    protected override async Task<int> ExecuteChangeAsync(DbConnection connection, DbTransaction transaction, ObjectName table, RowChange change, CancellationToken cancellationToken)
+    {
+        var types = await ColumnTypesAsync(connection, table, cancellationToken);
+        var spec = ChangeSqlBuilder.Build(Dialect, table, change);
+        await using var command = ((SpannerConnection)connection).CreateDmlCommand(spec.Text);
+        command.Transaction = (SpannerTransaction)transaction;
+        foreach (var (name, value) in spec.Parameters)
+        {
+            command.Parameters.Add(SpannerSql.Parameter(name.TrimStart('@'), types.TryGetValue(ColumnOf(change, spec, name), out var type) ? type : null, value));
+        }
+
+        var affected = await command.ExecuteNonQueryAsync(cancellationToken);
+        return change is not RowInsert && affected != 1
+            ? throw new RowCountMismatchException(1, affected, spec.Text)
+            : Math.Max(affected, 0);
+    }
+
+    /// <summary>GoogleSQL refuses a DELETE without a WHERE clause.</summary>
+    protected override async Task<long> ExecuteDeleteAllAsync(DbConnection connection, DbTransaction transaction, ObjectName table, CancellationToken cancellationToken)
+    {
+        await using var command = ((SpannerConnection)connection).CreateDmlCommand($"DELETE FROM {SpannerSql.Qualify(table)} WHERE TRUE");
+        command.Transaction = (SpannerTransaction)transaction;
+        return await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
     /// <summary>

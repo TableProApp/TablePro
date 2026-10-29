@@ -30,6 +30,8 @@ public enum AiProvider
 /// </summary>
 public sealed record AppSettings
 {
+    public const string DefaultSqlImportEncoding = "UTF-8";
+
     public static AppSettings Default { get; } = new();
 
     public AppTheme Theme { get; init; } = AppTheme.System;
@@ -51,6 +53,13 @@ public sealed record AppSettings
     public McpSettings Mcp { get; init; } = new();
 
     /// <summary>
+    /// The encoding the last SQL import that succeeded read its file with, by the macOS app's stable name
+    /// (<c>TablePro.Core.Import.SqlImportEncoding.Id</c>), so the next import opens on it. An encoding the dialog
+    /// detected from the file is not written here, as on macOS.
+    /// </summary>
+    public string LastSqlImportEncoding { get; init; } = DefaultSqlImportEncoding;
+
+    /// <summary>
     /// Keyboard shortcut overrides by command id (<c>TablePro.Core.Shortcuts.ShortcutIds</c>): a chord written as
     /// <c>Ctrl+Shift+O</c>, or an empty string for a command the user cleared. Only changes are stored; a missing id
     /// keeps its default. An empty map is always the shared empty instance, because a record compares a dictionary by
@@ -62,6 +71,7 @@ public sealed record AppSettings
     public AppSettings Normalize() => this with
     {
         Language = Language?.Trim() ?? string.Empty,
+        LastSqlImportEncoding = string.IsNullOrWhiteSpace(LastSqlImportEncoding) ? DefaultSqlImportEncoding : LastSqlImportEncoding.Trim(),
         Editor = (Editor ?? new()).Normalize(),
         Data = (Data ?? new()).Normalize(),
         Ai = Ai ?? new(),

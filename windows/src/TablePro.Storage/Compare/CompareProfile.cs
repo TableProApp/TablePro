@@ -91,4 +91,7 @@ internal sealed record CompareProfilesDocument
     public int Version { get; init; } = 1;
 
     public IReadOnlyList<CompareProfile> Profiles { get; init; } = [];
+
+    /// <summary>The setup the tab last held, kept apart from the named profiles so it never joins their list.</summary>
+    public CompareProfile? LastSetup { get; init; }
 }

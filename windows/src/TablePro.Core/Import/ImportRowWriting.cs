@@ -100,9 +100,17 @@ public sealed record ImportMatchKey(string? IndexName, IReadOnlyList<string> Col
 /// <param name="Mode">Insert, or one of the modes that match existing rows.</param>
 /// <param name="KeyColumns">The match key's columns; empty for <see cref="ImportWriteMode.Insert"/>.</param>
 /// <param name="KeptColumns">Columns an UPDATE never assigns, such as an identity, written only into inserted rows.</param>
-public sealed record ImportRowWriting(ImportWriteMode Mode, IReadOnlyList<string> KeyColumns, IReadOnlyCollection<string> KeptColumns)
+/// <param name="DeleteExistingRows">
+/// Empties the table first, in the same transaction as every row the import writes, as the macOS import's "Delete
+/// existing rows first" does. Only <see cref="ImportWriteMode.Insert"/> can take it: once the table is empty no row
+/// would match.
+/// </param>
+public sealed record ImportRowWriting(ImportWriteMode Mode, IReadOnlyList<string> KeyColumns, IReadOnlyCollection<string> KeptColumns, bool DeleteExistingRows = false)
 {
     public static ImportRowWriting Insert { get; } = new(ImportWriteMode.Insert, [], []);
+
+    /// <summary>Inserts every row into a table emptied first.</summary>
+    public static ImportRowWriting ReplaceRows { get; } = new(ImportWriteMode.Insert, [], [], DeleteExistingRows: true);
 }
 
 /// <summary>Why a mode that matches rows cannot run with the chosen key and mapping.</summary>

@@ -349,4 +349,18 @@
     <value>文件字节的读取方式。用 SET NAMES 或 client_encoding 声明了编码的转储文件会预选该编码；字节顺序标记始终优先。</value>
     <comment>Tooltip of the encoding picker. SET NAMES and client_encoding are SQL and stay untranslated.</comment>
   </data>
+  <data name="DeleteExistingRows" xml:space="preserve">
+    <value>先删除现有行</value>
+    <comment>Check box in the import sheet that empties the table before the rows are imported.</comment>
+  </data>
+  <data name="DeleteExistingRowsToolTip" xml:space="preserve">
+    <value>清空表并在同一个事务中导入文件，因此失败时旧行会保留原样。只有“插入”模式可以使用，因为清空后没有可匹配的行。</value>
+    <comment>Tooltip of the Delete existing rows first check box. Insert is the import mode of that name.</comment>
+  </data>
+  <data name="ImportStoppedNothingChanged" xml:space="preserve">
+    <value>{0}
+
+导入在同一个事务中运行，因此表保持原样。</value>
+    <comment>Error message when an import that emptied the table first fails. {0} is the error's own message.</comment>
+  </data>
 </root>

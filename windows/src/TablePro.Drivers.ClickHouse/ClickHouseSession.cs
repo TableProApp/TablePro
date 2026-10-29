@@ -46,6 +46,9 @@ public sealed partial class ClickHouseSession
 
     public override string? DefaultSchema => CurrentDatabase ?? ClickHouseConnectionStringFactory.DefaultDatabase;
 
+    /// <summary>ClickHouse has no transaction, so a sync or an import writes one table at a time and says so.</summary>
+    public override bool SupportsChangeTransactions => false;
+
     public IReadOnlyList<string> CommonDataTypes => ClickHouseDdl.CommonDataTypes;
 
     public string ProcessIdColumn => "query_id";

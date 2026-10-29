@@ -148,46 +148,64 @@ internal abstract class OdbcSession : AdoNetSession, IDatabaseSession, IChangePr
     /// </summary>
     public new Task<int> SaveChangesAsync(ObjectName table, IReadOnlyList<RowChange> changes, CancellationToken cancellationToken)
     {
+        EnsureWritable();
+        return base.SaveChangesAsync(table, changes, cancellationToken);
+    }
+
+    /// <summary>A transaction over several tables, refused before anything opens on a read-only connection.</summary>
+    public override async Task<IChangeTransaction> BeginChangesAsync(CancellationToken cancellationToken)
+    {
+        EnsureWritable();
+        try
+        {
+            return await base.BeginChangesAsync(cancellationToken);
+        }
+        catch (OdbcException ex)
+        {
+            throw OdbcErrors.Translate(ex);
+        }
+    }
+
+    /// <summary>Binds by position, as ODBC requires, and cleans the driver manager's decoration off a refusal.</summary>
+    protected override async Task<int> ExecuteChangeAsync(DbConnection connection, DbTransaction transaction, ObjectName table, RowChange change, CancellationToken cancellationToken)
+    {
+        var statement = OdbcParameters.Bind(ChangeSqlBuilder.Build(Dialect, table, change), Dialect);
+        int affected;
+        try
+        {
+            await using var command = OdbcParameters.Command((OdbcConnection)connection, statement.Text, statement.Values);
+            command.Transaction = (OdbcTransaction)transaction;
+            affected = await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+        catch (OdbcException ex)
+        {
+            throw OdbcErrors.Translate(ex);
+        }
+
+        // An insert into a view or through a trigger can report other counts; only keyed changes must hit one row.
+        return change is not RowInsert && affected != 1
+            ? throw new RowCountMismatchException(1, affected, OdbcParameters.Preview(statement, Dialect))
+            : Math.Max(affected, 0);
+    }
+
+    protected override async Task<long> ExecuteDeleteAllAsync(DbConnection connection, DbTransaction transaction, ObjectName table, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await base.ExecuteDeleteAllAsync(connection, transaction, table, cancellationToken);
+        }
+        catch (OdbcException ex)
+        {
+            throw OdbcErrors.Translate(ex);
+        }
+    }
+
+    private void EnsureWritable()
+    {
         if (Profile.IsReadOnly)
         {
             throw new InvalidOperationException("This connection is read-only, so nothing was saved.");
         }
-
-        return WithConnectionAsync(
-            async (connection, ct) =>
-            {
-                await using var transaction = await connection.BeginTransactionAsync(ct);
-                var total = 0;
-                foreach (var change in changes)
-                {
-                    var statement = OdbcParameters.Bind(ChangeSqlBuilder.Build(Dialect, table, change), Dialect);
-                    int affected;
-                    try
-                    {
-                        await using var command = OdbcParameters.Command((OdbcConnection)connection, statement.Text, statement.Values);
-                        command.Transaction = (OdbcTransaction)transaction;
-                        affected = await command.ExecuteNonQueryAsync(ct);
-                    }
-                    catch (OdbcException ex)
-                    {
-                        await transaction.RollbackAsync(CancellationToken.None);
-                        throw OdbcErrors.Translate(ex);
-                    }
-
-                    // An insert into a view or through a trigger can report other counts; only keyed changes must hit one row.
-                    if (change is not RowInsert && affected != 1)
-                    {
-                        await transaction.RollbackAsync(CancellationToken.None);
-                        throw new RowCountMismatchException(1, affected, OdbcParameters.Preview(statement, Dialect));
-                    }
-
-                    total += Math.Max(affected, 0);
-                }
-
-                await transaction.CommitAsync(ct);
-                return total;
-            },
-            cancellationToken);
     }
 
     public new async Task<IQueryChannel> OpenChannelAsync(CancellationToken cancellationToken)

@@ -29,6 +29,7 @@ public sealed class SettingsAndWorkspaceTests : IDisposable
         Assert.Equal(AiProvider.Anthropic, settings.Ai.Provider);
         Assert.False(settings.Mcp.Enabled);
         Assert.Equal(23_508, settings.Mcp.Port);
+        Assert.Equal("UTF-8", settings.LastSqlImportEncoding);
     }
 
     [Fact]
@@ -91,6 +92,7 @@ public sealed class SettingsAndWorkspaceTests : IDisposable
         Assert.Equal(10_000, settings.Data.EditorRowLimit);
         Assert.Equal(23_508, settings.Mcp.Port);
         Assert.True(settings.RestoreSessionOnLaunch);
+        Assert.Equal("UTF-8", settings.LastSqlImportEncoding);
     }
 
     [Fact]
@@ -150,5 +152,21 @@ public sealed class SettingsAndWorkspaceTests : IDisposable
         await store.SaveAsync(new WorkspaceState { ConnectionId = connection, SelectedIndex = 9, Tabs = [new WorkspaceTab { Title = "only" }] }, Token);
 
         Assert.Equal(0, (await store.LoadAsync(connection, Token))!.SelectedIndex);
+    }
+
+    [Fact]
+    public async Task TheLastSqlImportEncodingIsRememberedAndDefaultsToUtf8()
+    {
+        Assert.Equal("UTF-8", AppSettings.Default.LastSqlImportEncoding);
+        using (var store = new SettingsStore(_temp.Paths))
+        {
+            await store.UpdateAsync(s => s with { LastSqlImportEncoding = "Windows-1252" }, Token);
+        }
+
+        using var reloaded = new SettingsStore(_temp.Paths);
+        Assert.Equal("Windows-1252", (await reloaded.LoadAsync(Token)).LastSqlImportEncoding);
+
+        var blank = await reloaded.UpdateAsync(s => s with { LastSqlImportEncoding = " " }, Token);
+        Assert.Equal("UTF-8", blank.LastSqlImportEncoding);
     }
 }

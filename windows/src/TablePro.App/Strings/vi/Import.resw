@@ -349,4 +349,18 @@ Các dòng đã lưu trước thời điểm này vẫn được giữ trong b�
     <value>Cách đọc các byte của tệp. Bản dump khai báo mã hóa bằng SET NAMES hoặc client_encoding sẽ bắt đầu với mã hóa đó; dấu thứ tự byte luôn được ưu tiên.</value>
     <comment>Tooltip of the encoding picker. SET NAMES and client_encoding are SQL and stay untranslated.</comment>
   </data>
+  <data name="DeleteExistingRows" xml:space="preserve">
+    <value>Xóa các dòng hiện có trước</value>
+    <comment>Check box in the import sheet that empties the table before the rows are imported.</comment>
+  </data>
+  <data name="DeleteExistingRowsToolTip" xml:space="preserve">
+    <value>Làm trống bảng và nhập tệp trong một giao dịch, nên nếu có lỗi thì các dòng cũ vẫn được giữ nguyên. Chỉ chế độ Chèn mới dùng được, vì sẽ không còn dòng nào để đối chiếu.</value>
+    <comment>Tooltip of the Delete existing rows first check box. Insert is the import mode of that name.</comment>
+  </data>
+  <data name="ImportStoppedNothingChanged" xml:space="preserve">
+    <value>{0}
+
+Việc nhập chạy trong một giao dịch, nên bảng được giữ nguyên như cũ.</value>
+    <comment>Error message when an import that emptied the table first fails. {0} is the error's own message.</comment>
+  </data>
 </root>

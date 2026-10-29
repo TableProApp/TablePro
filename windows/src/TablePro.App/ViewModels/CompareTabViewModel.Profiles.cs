@@ -76,16 +76,7 @@ public sealed partial class CompareTabViewModel
             await SetSchemaAsync(target: false, sourceSchema);
         }
 
-        var options = profile.Options;
-        InsertMissing = options.InsertMissingRows;
-        UpdateChanged = options.UpdateChangedRows;
-        DeleteExtra = options.DeleteExtraRows;
-        KeysIgnoreCase = options.KeysIgnoreCase;
-        FloatTolerance = Math.Max(0, options.FloatTolerance);
-        RowLimit = options.RowLimit is { } limit ? limit : double.NaN;
-        ApplyInBatches = options.ApplyInBatches;
-        DropExtraTables = options.DropExtraTables;
-        DropExtraColumns = options.DropExtraColumns;
+        ApplyOptions(profile.Options);
         Mode = profile.Mode;
         Scope = profile.Scope;
 
@@ -272,6 +263,113 @@ public sealed partial class CompareTabViewModel
         }
 
         SavedProfiles = _endpoints.ProfileStore.Profiles;
+        await RestoreLastSetupAsync();
+    }
+
+    /// <summary>
+    /// Puts back the setup the last compare tab held, as the macOS window reopens where it was left, so running the
+    /// same comparison again is one press of Compare. The tab's workspace stays the source. The target and the table
+    /// scopes come back only when they were remembered against this same source, connection, database and schema,
+    /// since the target is the side that gets written to. A tab opened from a table keeps that table and its mode.
+    /// Nothing is compared.
+    /// </summary>
+    private async Task RestoreLastSetupAsync()
+    {
+        if (_endpoints.ProfileStore.LastSetup is not { } setup || IsRunning || _target is not null || ActiveProfile is not null)
+        {
+            return;
+        }
+
+        ApplyOptions(setup.Options);
+        if (_startTable is null)
+        {
+            Mode = setup.Mode;
+            Scope = setup.Scope;
+        }
+
+        if (!IsCurrentSource(setup.Source) || Profiles.FirstOrDefault(p => p.Id == setup.Target.ConnectionId) is not { } target)
+        {
+            return;
+        }
+
+        TargetProfile = target;
+        if (!await ConnectTargetAsync(reportErrors: false))
+        {
+            return;
+        }
+
+        if (setup.Target.Schema is { } targetSchema && TargetSchemas.Contains(targetSchema))
+        {
+            await SetSchemaAsync(target: true, targetSchema);
+        }
+
+        if (_startTable is not null)
+        {
+            return;
+        }
+
+        if (setup.Scope == DataCompareScope.OneTable)
+        {
+            ApplyOneTable(setup.Tables.Count > 0 ? setup.Tables[0] : null);
+            RebuildPlans();
+        }
+        else
+        {
+            RebuildPlans(setup.Tables, savedOnly: setup.Scope == DataCompareScope.ChosenTables);
+        }
+
+        ClearResults();
+    }
+
+    /// <summary>
+    /// Writes the setup down for the next tab once a pair is open. Under several tables only the scopes the user
+    /// changed are kept, and the store unticks them all.
+    /// </summary>
+    private void RememberSetup()
+    {
+        if (_target is null)
+        {
+            return;
+        }
+
+        var setup = CurrentSetup(string.Empty);
+        if (Scope != DataCompareScope.OneTable)
+        {
+            setup = setup with { Tables = [.. setup.Tables.Where(t => !t.Scope.IsDefault)] };
+        }
+
+        _ = WriteSetupAsync(setup);
+    }
+
+    private async Task WriteSetupAsync(CompareProfile setup)
+    {
+        try
+        {
+            await Task.Run(() => _endpoints.ProfileStore.RememberSetupAsync(setup));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Losing the remembered setup costs a few picks next time; it must not interrupt the comparison.
+            CrashLog.Write("Compare: remember the setup", ex);
+        }
+    }
+
+    private bool IsCurrentSource(CompareEndpointScope scope) =>
+        scope.ConnectionId == Source.Profile.Id
+        && string.Equals(scope.Database ?? string.Empty, Source.Database.CurrentDatabase ?? string.Empty, StringComparison.Ordinal)
+        && string.Equals(scope.Schema ?? string.Empty, SourceSchema ?? string.Empty, StringComparison.Ordinal);
+
+    private void ApplyOptions(CompareProfileOptions options)
+    {
+        InsertMissing = options.InsertMissingRows;
+        UpdateChanged = options.UpdateChangedRows;
+        DeleteExtra = options.DeleteExtraRows;
+        KeysIgnoreCase = options.KeysIgnoreCase;
+        FloatTolerance = Math.Max(0, options.FloatTolerance);
+        RowLimit = options.RowLimit is { } limit ? limit : double.NaN;
+        ApplyInBatches = options.ApplyInBatches;
+        DropExtraTables = options.DropExtraTables;
+        DropExtraColumns = options.DropExtraColumns;
     }
 
     // The store raises Changed on whichever thread saved, which can be another window's.

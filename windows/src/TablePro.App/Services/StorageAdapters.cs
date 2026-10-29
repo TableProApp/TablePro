@@ -62,4 +62,9 @@ public sealed class SettingsPreferences(SettingsStore settings) : IWorkspacePref
     public bool VimMode => settings.Current.Editor.VimMode;
 
     public bool EmacsKeys => settings.Current.Editor.EmacsKeys;
+
+    public string LastSqlImportEncoding => settings.Current.LastSqlImportEncoding;
+
+    public Task RememberSqlImportEncodingAsync(string encodingId) =>
+        settings.UpdateAsync(s => s with { LastSqlImportEncoding = encodingId });
 }

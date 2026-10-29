@@ -18,9 +18,9 @@ namespace TablePro.Drivers.Snowflake;
 /// login; <c>USE WAREHOUSE</c> or <c>USE ROLE</c> in an editor tab switches them for that tab only.
 /// </summary>
 /// <remarks>
-/// Browse, count and save are implemented here again (the class re-implements <see cref="IDatabaseSession"/>) because
-/// Snowflake.Data names a positional binding <c>1</c>, not <c>:1</c> as the dialect writes it in the SQL, and the
-/// base class binds names verbatim.
+/// Browse and count are implemented here again (the class re-implements <see cref="IDatabaseSession"/>), and each saved
+/// change is bound here, because Snowflake.Data names a positional binding <c>1</c>, not <c>:1</c> as the dialect
+/// writes it in the SQL, and the base class binds names verbatim.
 /// </remarks>
 public sealed class SnowflakeSession : AdoNetSession, IDatabaseSession, IServerActivityProvider, ISchemaDdlProvider
 {
@@ -77,34 +77,23 @@ public sealed class SnowflakeSession : AdoNetSession, IDatabaseSession, IServerA
             },
             cancellationToken);
 
-    public new Task<int> SaveChangesAsync(ObjectName table, IReadOnlyList<RowChange> changes, CancellationToken cancellationToken)
+    /// <summary>
+    /// The base class's save, sync and import all reach here, so each binds by position and names the schema the
+    /// session opened on.
+    /// </summary>
+    protected override async Task<int> ExecuteChangeAsync(DbConnection connection, DbTransaction transaction, ObjectName table, RowChange change, CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(changes);
-        return WithConnectionAsync(
-            async (connection, ct) =>
-            {
-                await using var transaction = await connection.BeginTransactionAsync(ct);
-                var total = 0;
-                foreach (var change in changes)
-                {
-                    var spec = ChangeSqlBuilder.Build(Dialect, WithSchema(table), change);
-                    await using var command = Bind(connection, spec);
-                    command.Transaction = transaction;
-                    var affected = await command.ExecuteNonQueryAsync(ct);
-                    if (change is not RowInsert && affected != 1)
-                    {
-                        await transaction.RollbackAsync(CancellationToken.None);
-                        throw new RowCountMismatchException(1, affected, spec.Text);
-                    }
-
-                    total += Math.Max(affected, 0);
-                }
-
-                await transaction.CommitAsync(ct);
-                return total;
-            },
-            cancellationToken);
+        var spec = ChangeSqlBuilder.Build(Dialect, WithSchema(table), change);
+        await using var command = Bind(connection, spec);
+        command.Transaction = transaction;
+        var affected = await command.ExecuteNonQueryAsync(cancellationToken);
+        return change is not RowInsert && affected != 1
+            ? throw new RowCountMismatchException(1, affected, spec.Text)
+            : Math.Max(affected, 0);
     }
+
+    protected override Task<long> ExecuteDeleteAllAsync(DbConnection connection, DbTransaction transaction, ObjectName table, CancellationToken cancellationToken) =>
+        base.ExecuteDeleteAllAsync(connection, transaction, WithSchema(table), cancellationToken);
 
     /// <summary>Binds by position under the name Snowflake.Data expects, with a type so a number is not sent as text.</summary>
     internal static DbCommand Bind(DbConnection connection, SqlCommandSpec spec)

@@ -33,6 +33,7 @@ public sealed class AppHost : IWorkspaceHost, IMcpHost, IAsyncDisposable
     private Storage.Mcp.McpClientStore? _mcpClientStore;
     private Storage.Mcp.McpAuditStore? _mcpAuditStore;
     private Storage.Compare.CompareProfileStore? _compareProfiles;
+    private readonly IDisposable _forgetDeletedMappings;
 
     public AppHost(
         ConnectionStore connections,
@@ -55,6 +56,9 @@ public sealed class AppHost : IWorkspaceHost, IMcpHost, IAsyncDisposable
         HistoryRecorder = new HistoryRecorder(history);
         Preferences = new SettingsPreferences(settings);
         settings.Changed += (_, value) => _dispatcher.TryEnqueue(() => ApplySettings(value));
+
+        // Saved import mappings belong to their connection, so they go when it does, however it was deleted.
+        _forgetDeletedMappings = Views.ImportMappingDialog.Mappings.ForgetDeletedConnections(connections);
     }
 
     public ConnectionStore Connections { get; }
@@ -469,6 +473,7 @@ public sealed class AppHost : IWorkspaceHost, IMcpHost, IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        _forgetDeletedMappings.Dispose();
         if (_mcp is not null)
         {
             await _mcp.DisposeAsync();

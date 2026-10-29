@@ -2,13 +2,19 @@ using System.Globalization;
 using TablePro.Core.Drivers;
 using TablePro.Core.Editing;
 using TablePro.Core.Schema;
+using TablePro.Core.Sql;
 
 namespace TablePro.Core.Import;
 
-/// <summary>Writes the records of a file into a table, a batch per transaction.</summary>
+/// <summary>
+/// Writes the records of a file into a table, a batch per transaction, or all in one when the table is emptied first.
+/// </summary>
 public static class RowImporter
 {
-    /// <summary>Rows per save. Each batch is one transaction, so a failure leaves the batches before it in the table.</summary>
+    /// <summary>
+    /// Rows per save. Each batch is one transaction, so a failure leaves the batches before it in the table, unless
+    /// <see cref="ImportRowWriting.DeleteExistingRows"/> holds every batch in one.
+    /// </summary>
     public const int BatchSize = 500;
 
     public static Task<RowImportResult> ImportAsync(
@@ -26,6 +32,11 @@ public static class RowImporter
     /// macOS: they refuse a NOT NULL column the file leaves out even when the row exists. Rows go out in file order, so
     /// a new parent row lands before an update that points at it.
     /// </summary>
+    /// <remarks>
+    /// With <see cref="ImportRowWriting.DeleteExistingRows"/> the table is emptied and refilled in one transaction
+    /// (<see cref="ChangeTransactions"/>), so a failure leaves the old rows in place. A session that cannot hold one is
+    /// refused rather than left with an empty table and half a file.
+    /// </remarks>
     public static async Task<RowImportResult> ImportAsync(
         IDatabaseSession session,
         ObjectName table,
@@ -44,6 +55,11 @@ public static class RowImporter
             throw new InvalidOperationException("No field in the file is mapped to a column of this table.");
         }
 
+        if (writing.DeleteExistingRows)
+        {
+            return await ReplaceRowsAsync(session, table, records, builder, writing, progress, cancellationToken);
+        }
+
         IImportRowMatcher? matcher = null;
         if (writing.Mode.MatchesExistingRows())
         {
@@ -54,7 +70,41 @@ public static class RowImporter
             }
         }
 
-        var writer = new BatchWriter(session, matcher, table, writing, progress);
+        return await WriteAsync(new BatchWriter(session.SaveChangesAsync, session.Dialect, matcher, table, writing, progress), records, builder, cancellationToken);
+    }
+
+    /// <summary>Whether <paramref name="session"/> can empty a table and import into it in one transaction.</summary>
+    public static bool CanDeleteExistingRows(IDatabaseSession session) => ChangeTransactions.For(session) is not null;
+
+    private static async Task<RowImportResult> ReplaceRowsAsync(
+        IDatabaseSession session,
+        ObjectName table,
+        IAsyncEnumerable<IReadOnlyDictionary<string, object?>> records,
+        ImportRowBuilder builder,
+        ImportRowWriting writing,
+        IProgress<long>? progress,
+        CancellationToken cancellationToken)
+    {
+        if (writing.Mode.MatchesExistingRows())
+        {
+            throw new InvalidOperationException("Delete existing rows first empties the table, so no row would match. Turn it off, or import as Insert.");
+        }
+
+        var transactions = ChangeTransactions.For(session)
+            ?? throw new NotSupportedException("This connection cannot empty a table and import into it in one transaction, so it cannot delete the existing rows first.");
+        await using var transaction = await transactions.BeginChangesAsync(cancellationToken);
+        await transaction.DeleteAllRowsAsync(table, cancellationToken);
+        var result = await WriteAsync(new BatchWriter(transaction.SaveChangesAsync, session.Dialect, null, table, writing, progress), records, builder, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return result;
+    }
+
+    private static async Task<RowImportResult> WriteAsync(
+        BatchWriter writer,
+        IAsyncEnumerable<IReadOnlyDictionary<string, object?>> records,
+        ImportRowBuilder builder,
+        CancellationToken cancellationToken)
+    {
         long skipped = 0;
         await foreach (var record in records.WithCancellation(cancellationToken))
         {
@@ -126,7 +176,13 @@ public static class RowImporter
 
     private static string FoldNumber(double value) => "n:" + (value == 0 ? 0d : value).ToString("R", CultureInfo.InvariantCulture);
 
-    private sealed class BatchWriter(IDatabaseSession session, IImportRowMatcher? matcher, ObjectName table, ImportRowWriting writing, IProgress<long>? progress)
+    private sealed class BatchWriter(
+        Func<ObjectName, IReadOnlyList<RowChange>, CancellationToken, Task<int>> save,
+        SqlDialect dialect,
+        IImportRowMatcher? matcher,
+        ObjectName table,
+        ImportRowWriting writing,
+        IProgress<long>? progress)
     {
         private readonly List<IReadOnlyDictionary<string, object?>> _batch = new(BatchSize);
         private readonly HashSet<string> _keysInBatch = new(StringComparer.Ordinal);
@@ -162,7 +218,7 @@ public static class RowImporter
 
             if (matcher is null)
             {
-                var inserted = await session.SaveChangesAsync(table, [.. _batch.Select(v => new RowInsert(v))], cancellationToken);
+                var inserted = await save(table, [.. _batch.Select(v => new RowInsert(v))], cancellationToken);
                 Result = Result with { Inserted = Result.Inserted + inserted };
             }
             else
@@ -179,7 +235,7 @@ public static class RowImporter
         {
             var keys = _batch.Select(KeyOf).ToArray();
             var counts = new List<long>(keys.Length);
-            var perStatement = ImportKeyMatchSql.KeysPerStatement(session.Dialect, writing.KeyColumns.Count);
+            var perStatement = ImportKeyMatchSql.KeysPerStatement(dialect, writing.KeyColumns.Count);
             for (var start = 0; start < keys.Length; start += perStatement)
             {
                 var chunk = keys[start..Math.Min(start + perStatement, keys.Length)];
@@ -238,7 +294,7 @@ public static class RowImporter
 
             if (changes.Count > 0)
             {
-                await session.SaveChangesAsync(table, changes, cancellationToken);
+                await save(table, changes, cancellationToken);
             }
 
             Result = Result with

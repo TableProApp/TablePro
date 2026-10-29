@@ -87,4 +87,44 @@ public sealed class ImportMappingStoreTests : IDisposable
         Assert.Empty(await store.OverridesAsync(new ImportMappingScope(id, null, null, "t"), Token));
         Assert.Equal("b", (await store.OverridesAsync(new ImportMappingScope(id, null, null, "u"), Token))["a"].Column);
     }
+
+    [Fact]
+    public async Task ADeletedConnectionsMappingsAreForgotten()
+    {
+        using var connections = new Connections.ConnectionStore(_temp.Paths);
+        await connections.LoadAsync(Token);
+        var keptProfile = new Core.Connections.ConnectionProfile { Name = "kept", Engine = Core.Connections.DatabaseEngine.Sqlite, FilePath = "a.db" };
+        var droppedProfile = new Core.Connections.ConnectionProfile { Name = "dropped", Engine = Core.Connections.DatabaseEngine.Sqlite, FilePath = "b.db" };
+        await connections.UpsertAsync(keptProfile, Token);
+        await connections.UpsertAsync(droppedProfile, Token);
+        var kept = new ImportMappingScope(keptProfile.Id, null, null, "users");
+        var dropped = new ImportMappingScope(droppedProfile.Id, null, null, "users");
+        using var store = new ImportMappingStore(_temp.Paths);
+        await store.RememberAsync(kept, Overrides(("mail", "email")), ["mail"], Token);
+        await store.RememberAsync(dropped, Overrides(("mail", "email")), ["mail"], Token);
+        using var following = store.ForgetDeletedConnections(connections);
+
+        await connections.UpsertAsync(keptProfile with { Name = "renamed" }, Token);
+        await connections.DeleteAsync(droppedProfile.Id, Token);
+        await store.Forgetting.WaitAsync(Token);
+
+        Assert.NotEmpty(await store.OverridesAsync(kept, Token));
+        Assert.Empty(await store.OverridesAsync(dropped, Token));
+    }
+
+    [Fact]
+    public async Task ReadingTheConnectionListForTheFirstTimeForgetsNothing()
+    {
+        var id = Guid.NewGuid();
+        var scope = new ImportMappingScope(id, null, null, "users");
+        using var store = new ImportMappingStore(_temp.Paths);
+        await store.RememberAsync(scope, Overrides(("mail", "email")), ["mail"], Token);
+        using var connections = new Connections.ConnectionStore(_temp.Paths);
+        using var following = store.ForgetDeletedConnections(connections);
+
+        await connections.LoadAsync(Token);
+        await store.Forgetting.WaitAsync(Token);
+
+        Assert.NotEmpty(await store.OverridesAsync(scope, Token));
+    }
 }

@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
 using TablePro.Core.Import;
+using TablePro.Storage.Connections;
 
 namespace TablePro.Storage.Import;
 
@@ -148,7 +149,72 @@ public sealed class ImportMappingStore : IDisposable
         }
     }
 
+    /// <summary>
+    /// Forgets a connection's mappings once it leaves <paramref name="connections"/>, however it was deleted, as the
+    /// macOS app purges a deleted connection's table settings. Only a connection the store listed and then lost
+    /// counts, so the list being read for the first time forgets nothing. Disposing the result stops following.
+    /// </summary>
+    public IDisposable ForgetDeletedConnections(ConnectionStore connections)
+    {
+        ArgumentNullException.ThrowIfNull(connections);
+        return new DeletionFollower(this, connections);
+    }
+
+    /// <summary>The forgetting the follower last started, so a test can wait for it.</summary>
+    internal Task Forgetting { get; private set; } = Task.CompletedTask;
+
     public void Dispose() => _gate.Dispose();
+
+    private async Task ForgetAllAsync(Task previous, IReadOnlyList<Guid> removed)
+    {
+        await previous;
+        foreach (var id in removed)
+        {
+            try
+            {
+                await ForgetConnectionAsync(id);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // A mapping left behind only names a connection that no longer exists; it is never offered again.
+            }
+        }
+    }
+
+    private sealed class DeletionFollower : IDisposable
+    {
+        private readonly Lock _lock = new();
+        private readonly ImportMappingStore _store;
+        private readonly ConnectionStore _connections;
+        private HashSet<Guid> _known;
+
+        public DeletionFollower(ImportMappingStore store, ConnectionStore connections)
+        {
+            _store = store;
+            _connections = connections;
+            _known = Ids();
+            connections.Changed += OnChanged;
+        }
+
+        public void Dispose() => _connections.Changed -= OnChanged;
+
+        private HashSet<Guid> Ids() => [.. _connections.Connections.Select(c => c.Id)];
+
+        // Changed fires on the saving thread, possibly two at once, so the snapshot moves under a lock.
+        private void OnChanged(object? sender, EventArgs e)
+        {
+            lock (_lock)
+            {
+                var current = Ids();
+                var removed = _known.Where(id => !current.Contains(id)).ToArray();
+                _known = current;
+                if (removed.Length > 0)
+                {
+                    _store.Forgetting = _store.ForgetAllAsync(_store.Forgetting, removed);
+                }
+            }
+        }
+    }
 
     private async Task<ImportMappingsDocument> LoadAsync(CancellationToken cancellationToken)
     {

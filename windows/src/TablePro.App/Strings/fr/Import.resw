@@ -349,4 +349,18 @@ Les lignes enregistrées avant ce point restent dans la table.</value>
     <value>Façon dont les octets du fichier sont lus. Un dump qui déclare son encodage avec SET NAMES ou client_encoding démarre sur celui-ci ; une marque d'ordre des octets l'emporte toujours.</value>
     <comment>Tooltip of the encoding picker. SET NAMES and client_encoding are SQL and stay untranslated.</comment>
   </data>
+  <data name="DeleteExistingRows" xml:space="preserve">
+    <value>Supprimer d’abord les lignes existantes</value>
+    <comment>Check box in the import sheet that empties the table before the rows are imported.</comment>
+  </data>
+  <data name="DeleteExistingRowsToolTip" xml:space="preserve">
+    <value>Vide la table et importe le fichier dans une seule transaction : en cas d’échec, les anciennes lignes restent en place. Seul le mode Insérer peut l’utiliser, car aucune ligne ne resterait à faire correspondre.</value>
+    <comment>Tooltip of the Delete existing rows first check box. Insert is the import mode of that name.</comment>
+  </data>
+  <data name="ImportStoppedNothingChanged" xml:space="preserve">
+    <value>{0}
+
+L’importation s’est faite dans une seule transaction, la table est donc restée telle quelle.</value>
+    <comment>Error message when an import that emptied the table first fails. {0} is the error's own message.</comment>
+  </data>
 </root>

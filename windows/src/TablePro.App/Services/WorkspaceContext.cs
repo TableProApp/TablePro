@@ -28,6 +28,11 @@ public interface IWorkspacePreferences
     bool VimMode { get; }
 
     bool EmacsKeys { get; }
+
+    /// <summary>The encoding id the last successful SQL import read its file with, which the next one opens on.</summary>
+    string LastSqlImportEncoding { get; }
+
+    Task RememberSqlImportEncodingAsync(string encodingId);
 }
 
 /// <summary>Everything a tab needs from its window, handed down instead of reached for through statics.</summary>

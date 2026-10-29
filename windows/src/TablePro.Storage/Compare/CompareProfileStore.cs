@@ -45,6 +45,12 @@ public sealed class CompareProfileStore : IDisposable
     /// <summary>Every saved comparison, by name, not only those for one connection: loading one sets both sides.</summary>
     public IReadOnlyList<CompareProfile> Profiles => Volatile.Read(ref _document).Profiles;
 
+    /// <summary>
+    /// The setup a compare tab last held, as the macOS app's <c>lastSetup</c> keeps it: both sides, the mode and the
+    /// options, and each table's scope, but no table ticked, since what to sync is a decision about one comparison.
+    /// </summary>
+    public CompareProfile? LastSetup => Volatile.Read(ref _document).LastSetup;
+
     public CompareProfile? Find(Guid id) => Profiles.FirstOrDefault(p => p.Id == id);
 
     public CompareProfile? FindByName(string name) =>
@@ -103,6 +109,27 @@ public sealed class CompareProfileStore : IDisposable
         return saved;
     }
 
+    /// <summary>
+    /// Writes down the setup on screen for the next tab, replacing the last one. It joins no list, so it raises no
+    /// <see cref="Changed"/>. A setup without both connections is not a comparison to come back to.
+    /// </summary>
+    public Task RememberSetupAsync(CompareProfile setup, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(setup);
+        if (!IsLoadable(setup))
+        {
+            return Task.CompletedTask;
+        }
+
+        var remembered = setup with
+        {
+            Name = string.Empty,
+            Tables = [.. setup.Tables.Select(t => t with { IsIncluded = false })],
+            UpdatedAt = DateTimeOffset.UtcNow,
+        };
+        return MutateAsync(document => document with { LastSetup = remembered }, cancellationToken, notify: false);
+    }
+
     public async Task<bool> DeleteAsync(Guid id, CancellationToken cancellationToken = default)
     {
         var removed = false;
@@ -129,6 +156,13 @@ public sealed class CompareProfileStore : IDisposable
             }
         }
 
+        if (root["lastSetup"] is JsonObject last)
+        {
+            var setup = JsonDefaults.Overlay(last.DeepClone().AsObject(), new CompareProfile(), CompareJsonContext.Default.CompareProfile);
+            JsonDefaults.OverlayEach(setup, "tables", static () => new CompareProfileTable(), CompareJsonContext.Default.CompareProfileTable);
+            root["lastSetup"] = setup;
+        }
+
         return root;
     }
 
@@ -138,24 +172,28 @@ public sealed class CompareProfileStore : IDisposable
     /// </summary>
     private static CompareProfilesDocument Normalize(CompareProfilesDocument document) => document with
     {
-        Profiles = Sorted((document.Profiles ?? [])
-            .Where(p => p is { Source.ConnectionId: var source, Target.ConnectionId: var target } && source != Guid.Empty && target != Guid.Empty)
-            .Select(p => p with
-            {
-                Name = p.Name ?? string.Empty,
-                Options = p.Options ?? new CompareProfileOptions(),
-                Tables = [.. (p.Tables ?? []).Where(t => t is not null && !string.IsNullOrEmpty(t.Source)).Select(t => t with
-                {
-                    Target = string.IsNullOrEmpty(t.Target) ? t.Source : t.Target,
-                    Scope = (t.Scope ?? Core.Compare.CompareTableScope.Default).Normalized(),
-                })],
-            })),
+        Profiles = Sorted((document.Profiles ?? []).Where(IsLoadable).Select(Normalize)),
+        LastSetup = document.LastSetup is { } last && IsLoadable(last) ? Normalize(last) with { Name = string.Empty } : null,
+    };
+
+    private static bool IsLoadable(CompareProfile? profile) =>
+        profile is { Source.ConnectionId: var source, Target.ConnectionId: var target } && source != Guid.Empty && target != Guid.Empty;
+
+    private static CompareProfile Normalize(CompareProfile profile) => profile with
+    {
+        Name = profile.Name ?? string.Empty,
+        Options = profile.Options ?? new CompareProfileOptions(),
+        Tables = [.. (profile.Tables ?? []).Where(t => t is not null && !string.IsNullOrEmpty(t.Source)).Select(t => t with
+        {
+            Target = string.IsNullOrEmpty(t.Target) ? t.Source : t.Target,
+            Scope = (t.Scope ?? Core.Compare.CompareTableScope.Default).Normalized(),
+        })],
     };
 
     private static List<CompareProfile> Sorted(IEnumerable<CompareProfile> profiles) =>
         [.. profiles.OrderBy(p => p.Name, StringComparer.CurrentCultureIgnoreCase)];
 
-    private async Task MutateAsync(Func<CompareProfilesDocument, CompareProfilesDocument?> change, CancellationToken cancellationToken)
+    private async Task MutateAsync(Func<CompareProfilesDocument, CompareProfilesDocument?> change, CancellationToken cancellationToken, bool notify = true)
     {
         await EnsureLoadedAsync().WaitAsync(cancellationToken);
         await _gate.WaitAsync(cancellationToken);
@@ -175,6 +213,9 @@ public sealed class CompareProfileStore : IDisposable
             _gate.Release();
         }
 
-        Changed?.Invoke(this, EventArgs.Empty);
+        if (notify)
+        {
+            Changed?.Invoke(this, EventArgs.Empty);
+        }
     }
 }

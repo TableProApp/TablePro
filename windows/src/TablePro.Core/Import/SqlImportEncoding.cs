@@ -28,7 +28,9 @@ public sealed record SqlImportEncoding(string Id, string Label, int CodePage)
         new("EUC-JP", "EUC-JP", 51932),
         new("GB18030", "GB 18030", 54936),
         new("Big5", "Big5", 950),
-        new("EUC-KR", "EUC-KR", 51949),
+
+        // CP949, the superset Windows and macOS both read EUC-KR as, so Hangul outside KS X 1001 still decodes.
+        new("EUC-KR", "EUC-KR", 949),
     ];
 
     // The legacy code pages are not in .NET's default set; the provider ships in the framework itself.
@@ -36,8 +38,109 @@ public sealed record SqlImportEncoding(string Id, string Label, int CodePage)
 
     public static SqlImportEncoding? Find(string? id) => All.FirstOrDefault(e => string.Equals(e.Id, id, StringComparison.OrdinalIgnoreCase));
 
+    /// <summary>The menu's entry for what <see cref="TextEncodingDetector"/> guessed.</summary>
+    public static SqlImportEncoding From(DetectedTextEncoding detected) => Find(detected switch
+    {
+        DetectedTextEncoding.Utf16LittleEndian => "UTF-16LE",
+        DetectedTextEncoding.Utf16BigEndian => "UTF-16BE",
+        DetectedTextEncoding.ShiftJis => "Shift_JIS",
+        DetectedTextEncoding.EucJp => "EUC-JP",
+        DetectedTextEncoding.Gb18030 => "GB18030",
+        DetectedTextEncoding.Big5 => "Big5",
+        DetectedTextEncoding.EucKr => "EUC-KR",
+        DetectedTextEncoding.Windows1252 => "Windows-1252",
+        _ => "UTF-8",
+    }) ?? Utf8;
+
+    /// <summary>
+    /// A trail byte in these can be 0x5C, a backslash, so a guess of one could hide a quote's escape inside a
+    /// character. The import never switches to one by guessing, as on macOS; the user can still choose it.
+    /// </summary>
+    public bool CanHideABackslashInsideACharacter => Id is "Shift_JIS" or "GB18030" or "Big5";
+
     /// <summary>The decoder. A byte order mark in the file still wins, as it does for the default UTF-8 read.</summary>
     public Encoding GetEncoding() => Encoding.GetEncoding(CodePage);
+
+    /// <summary>
+    /// Whether every byte of <paramref name="bytes"/> reads in this encoding. When the bytes stop short of the end of
+    /// the file their last character may be cut, which is not a fault.
+    /// </summary>
+    public bool Decodes(ReadOnlySpan<byte> bytes, bool isWholeFile)
+    {
+        var decoder = Encoding.GetEncoding(CodePage, EncoderFallback.ExceptionFallback, DecoderFallback.ExceptionFallback).GetDecoder();
+        var chars = new char[16_384];
+        try
+        {
+            while (true)
+            {
+                var take = Math.Min(bytes.Length, chars.Length / 2);
+                var last = take == bytes.Length;
+                decoder.Convert(bytes[..take], chars, flush: last && isWholeFile, out var used, out _, out _);
+                bytes = bytes[used..];
+                if (last && bytes.IsEmpty)
+                {
+                    return true;
+                }
+            }
+        }
+        catch (DecoderFallbackException)
+        {
+            return false;
+        }
+    }
+}
+
+/// <summary>The encoding the SQL import dialog opens on, and whether it came from the file rather than from memory.</summary>
+/// <param name="Encoding">What the menu starts on.</param>
+/// <param name="IsDetected">
+/// True when the file's own declaration or bytes chose it over the remembered one. A successful import then leaves the
+/// remembered encoding alone, as on macOS, so one odd file does not change what the next one opens on.
+/// </param>
+public sealed record SqlImportEncodingChoice(SqlImportEncoding Encoding, bool IsDetected)
+{
+    /// <summary>How much of the file the choice reads, as the macOS dialog's preview does.</summary>
+    public const int PreviewLength = 5 * 1024 * 1024;
+
+    /// <summary>
+    /// The encoding the dump declares, when it reads the preview; otherwise the remembered one, when it reads the
+    /// preview; otherwise a guess from the bytes, as the macOS import dialog switches to one when the preview does not
+    /// decode. macOS looks at the declaration only once the remembered encoding fails; here it comes first, as this
+    /// dialog has always opened on it, since a remembered Windows-1252 reads almost any bytes, a UTF-8 dump included.
+    /// </summary>
+    public static SqlImportEncodingChoice Choose(ReadOnlySpan<byte> preview, bool isWholeFile, SqlImportEncoding remembered, SqlDialect dialect)
+    {
+        ArgumentNullException.ThrowIfNull(remembered);
+        ArgumentNullException.ThrowIfNull(dialect);
+        var head = preview[..Math.Min(preview.Length, SqlDumpEncoding.ScanLength)];
+        if (SqlDumpEncoding.Declared(System.Text.Encoding.Latin1.GetString(head), dialect) is { } declared && declared.Decodes(preview, isWholeFile))
+        {
+            return new(declared, declared != remembered);
+        }
+
+        if (remembered.Decodes(preview, isWholeFile))
+        {
+            return new(remembered, false);
+        }
+
+        var guessed = SqlImportEncoding.From(TextEncodingDetector.Sniff(preview, isWholeFile).Encoding);
+        return guessed != remembered && !guessed.CanHideABackslashInsideACharacter && guessed.Decodes(preview, isWholeFile)
+            ? new(guessed, true)
+            : new(remembered, false);
+    }
+
+    /// <summary>Reads the head of a file, gzip included, for <see cref="Choose"/>; the flag says whether it is all of it.</summary>
+    public static async Task<(byte[] Preview, bool IsWholeFile)> ReadPreviewAsync(string path, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(path);
+        await using var file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 1 << 16, FileOptions.Asynchronous | FileOptions.SequentialScan);
+        Stream source = path.EndsWith(".gz", StringComparison.OrdinalIgnoreCase) ? new System.IO.Compression.GZipStream(file, System.IO.Compression.CompressionMode.Decompress) : file;
+        await using (source)
+        {
+            var buffer = new byte[PreviewLength + 1];
+            var read = await source.ReadAtLeastAsync(buffer, buffer.Length, throwOnEndOfStream: false, cancellationToken);
+            return read > PreviewLength ? (buffer[..PreviewLength], false) : (buffer[..read], true);
+        }
+    }
 }
 
 /// <summary>

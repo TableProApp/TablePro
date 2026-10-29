@@ -30,17 +30,22 @@ internal static class SqlImportDialog
             return false;
         }
 
-        SqlImportEncoding? declared = null;
+        var remembered = SqlImportEncoding.Find(context.Preferences.LastSqlImportEncoding) ?? SqlImportEncoding.Utf8;
+        var choice = new SqlImportEncodingChoice(remembered, IsDetected: false);
         try
         {
-            declared = await Task.Run(() => SqlDumpEncoding.DeclaredInFileAsync(path, session.Dialect, CancellationToken.None));
+            choice = await Task.Run(async () =>
+            {
+                var (preview, isWholeFile) = await SqlImportEncodingChoice.ReadPreviewAsync(path, CancellationToken.None);
+                return SqlImportEncodingChoice.Choose(preview, isWholeFile, remembered, session.Dialect);
+            });
         }
         catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException)
         {
-            // An unreadable head only means no declaration is found; the import reports the read error itself.
+            // An unreadable head only means nothing is learned from it; the import reports the read error itself.
         }
 
-        var options = await AskOptionsAsync(dialogs, path, session.Profile.Name, SqlImportStatements.For(session.Profile.Engine), declared ?? SqlImportEncoding.Utf8);
+        var options = await AskOptionsAsync(dialogs, path, session.Profile.Name, SqlImportStatements.For(session.Profile.Engine), choice.Encoding);
         if (options is null)
         {
             return false;
@@ -114,6 +119,12 @@ internal static class SqlImportDialog
             return true;
         }
 
+        // Only an encoding the user chose is remembered; one the file chose for itself would steer the next file.
+        if (options.Encoding is { } used && (used != choice.Encoding || !choice.IsDetected))
+        {
+            await RememberEncodingAsync(context.Preferences, used);
+        }
+
         if (result.Skipped == 0)
         {
             context.Notify(Strings.Plural("Import/SqlImported", result.Executed, name, result.Elapsed.TotalSeconds));
@@ -125,6 +136,19 @@ internal static class SqlImportDialog
             Strings.Plural("Import/StatementsFailedTitle", result.Skipped),
             Strings.Plural("Import/SqlImportedSkipped", result.Executed, name, result.Elapsed.TotalSeconds, result.Skipped) + "\n\n" + string.Join('\n', lines));
         return true;
+    }
+
+    private static async Task RememberEncodingAsync(IWorkspacePreferences preferences, SqlImportEncoding encoding)
+    {
+        try
+        {
+            await Task.Run(() => preferences.RememberSqlImportEncodingAsync(encoding.Id));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // The import already succeeded; forgetting its encoding only costs a pick next time.
+            CrashLog.Write("SQL import: remember the encoding", ex);
+        }
     }
 
     private static async Task<SqlImportOptions?> AskOptionsAsync(DialogService dialogs, string path, string connection, SqlImportStatements engine, SqlImportEncoding encoding)

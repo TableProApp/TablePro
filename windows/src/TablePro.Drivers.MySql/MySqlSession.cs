@@ -46,6 +46,9 @@ public sealed partial class MySqlSession
 
     private bool IsMariaDb => Profile.Engine == DatabaseEngine.MariaDb;
 
+    /// <summary>Databend answers BEGIN but cannot roll a write back, so it keeps the table-by-table path.</summary>
+    public override bool SupportsChangeTransactions => Profile.Engine != DatabaseEngine.Databend;
+
     public override async ValueTask DisposeAsync()
     {
         await _dataSource.DisposeAsync();

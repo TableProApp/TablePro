@@ -25,8 +25,11 @@ internal sealed record ImportPlan(
     IReadOnlyList<ColumnDefinition> NewTableColumns,
     ImportRowWriting Writing);
 
-/// <summary>What the dialog offers for matching rows against the existing table: its keys, and whether the session can match at all.</summary>
-internal sealed record ImportMatchOptions(IReadOnlyList<ImportMatchKey> Keys, bool CanMatch)
+/// <summary>
+/// What the dialog offers for the rows already in the table: its keys, whether the session can match at all, and
+/// whether it can empty the table and import in one transaction.
+/// </summary>
+internal sealed record ImportMatchOptions(IReadOnlyList<ImportMatchKey> Keys, bool CanMatch, bool CanDeleteExistingRows = false)
 {
     public static ImportMatchOptions None { get; } = new([], false);
 }
@@ -43,6 +46,9 @@ internal sealed class ImportMappingDialog
     // One store for the process, so two windows importing at once fold their mappings into one file instead of the
     // later write dropping the earlier one.
     private static readonly Lazy<ImportMappingStore> MappingStore = new(() => new ImportMappingStore(AppPaths.Default));
+
+    /// <summary>The process's one mapping store, which the app host also prunes when a connection is deleted.</summary>
+    internal static ImportMappingStore Mappings => MappingStore.Value;
 
     private static readonly (string Name, char? Value)[] Delimiters =
     [
@@ -77,6 +83,7 @@ internal sealed class ImportMappingDialog
     private readonly TextBlock _savedNote = new() { Opacity = 0.7, VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Right, TextTrimming = TextTrimming.CharacterEllipsis };
     private readonly ComboBox _writeMode = new() { Header = Strings.Get("Import/ImportAsHeader"), MinWidth = 200 };
     private readonly ComboBox _matchKey = new() { Header = Strings.Get("Import/MatchOnHeader"), MinWidth = 220 };
+    private readonly CheckBox _deleteExisting = new() { Content = Strings.Get("Import/DeleteExistingRows"), VerticalAlignment = VerticalAlignment.Bottom };
     private readonly ImportMatchOptions _matching;
     private ImportPreview _preview;
     private CsvImportOptions? _lastOptions;
@@ -133,6 +140,7 @@ internal sealed class ImportMappingDialog
         };
         _matchKey.SelectionChanged += (_, _) => Validate();
         _newTableName.TextChanged += (_, _) => Validate();
+        ToolTipService.SetToolTip(_deleteExisting, Strings.Get("Import/DeleteExistingRowsToolTip"));
 
         foreach (var (name, _) in Delimiters)
         {
@@ -225,12 +233,23 @@ internal sealed class ImportMappingDialog
         _ => Strings.Get("Import/ProblemNothingToUpdate"),
     };
 
-    /// <summary>Only an existing table has rows to match, and only a connection that can count keys offers the modes that do.</summary>
+    /// <summary>
+    /// Only an existing table has rows to match, and only a connection that can count keys offers the modes that do.
+    /// Emptying the table first is offered only for Insert, as on macOS, since no row would be left to match.
+    /// </summary>
     private void SyncWriteControls()
     {
         _writeMode.Visibility = OffersWriteModes ? Visibility.Visible : Visibility.Collapsed;
         _matchKey.Visibility = OffersWriteModes && WriteMode.MatchesExistingRows() ? Visibility.Visible : Visibility.Collapsed;
+        _deleteExisting.Visibility = _matching.CanDeleteExistingRows && !IsNewTable ? Visibility.Visible : Visibility.Collapsed;
+        _deleteExisting.IsEnabled = !OffersWriteModes || !WriteMode.MatchesExistingRows();
+        if (!_deleteExisting.IsEnabled)
+        {
+            _deleteExisting.IsChecked = false;
+        }
     }
+
+    private bool DeletesExistingRows => _deleteExisting.Visibility == Visibility.Visible && _deleteExisting.IsEnabled && _deleteExisting.IsChecked == true;
 
     private bool IsNewTable => _destination.SelectedIndex == 1;
 
@@ -273,7 +292,8 @@ internal sealed class ImportMappingDialog
 
         await view.RememberMappingAsync(mappingScope);
         var writing = view.OffersWriteModes ? view._mapping.RowWriting(view.WriteMode, view.MatchKey) : ImportRowWriting.Insert;
-        return new ImportPlan(ImportDestination.ExistingTable, existingTable, view.CsvOptions, view._mapping.CreateRowBuilder(), [], writing);
+        return new ImportPlan(
+            ImportDestination.ExistingTable, existingTable, view.CsvOptions, view._mapping.CreateRowBuilder(), [], writing with { DeleteExistingRows = view.DeletesExistingRows });
     }
 
     /// <summary>A store that cannot be read only means nothing is restored; the import itself goes on.</summary>
@@ -329,6 +349,7 @@ internal sealed class ImportMappingDialog
         var writing = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12 };
         writing.Children.Add(_writeMode);
         writing.Children.Add(_matchKey);
+        writing.Children.Add(_deleteExisting);
         root.Children.Add(writing);
 
         if (_format == ImportFileFormat.Csv)
