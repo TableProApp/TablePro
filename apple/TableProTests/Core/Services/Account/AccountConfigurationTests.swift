@@ -21,9 +21,7 @@ struct AccountConfigurationTests {
 
     @Test("A release build verifies entitlements with at least one production key")
     func productionKeyIsEmbedded() {
-        withKnownIssue("The owner supplies the production entitlement key before cutover") {
-            #expect(!AccountConfiguration.productionEntitlementKeys.isEmpty)
-        }
+        #expect(!AccountConfiguration.productionEntitlementKeys.isEmpty)
     }
 
     @Test("A Debug build's overrides point at another stack and add its key beside production's")

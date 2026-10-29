@@ -14,7 +14,9 @@ internal struct AccountConfiguration: Sendable {
 
     // The production server's entitlement keys, kid to base64url Ed25519 x.
     // A new key ships here a release before the server signs with it (api.md, Entitlement token).
-    static let productionEntitlementKeys: [String: String] = [:]
+    static let productionEntitlementKeys: [String: String] = [
+        "wLT5qcqj3sxp-0NB_21spMxboiyTAW1BwmsXhhgA-XA": "0ozC4TYUqinr-4JfyglENxCUuxFf-90uni0M0sCMR9g"
+    ]
 
     let accountURL: URL
     let apiURL: URL
