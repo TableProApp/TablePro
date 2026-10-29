@@ -88,24 +88,27 @@ pub fn time_of(text: &str) -> Option<NaiveTime> {
     NaiveTime::from_hms_opt(hour, minute, second)
 }
 
-// A value with no clock keeps a day it has; a dated column's takes `today`.
+// Only the clock changes; text with no day or clock, such as NULL or infinity, becomes a new value.
 pub fn with_time<Tz: TimeZone>(text: &str, time: NaiveTime, field: ClockField, today: NaiveDate, zone: &Tz) -> String {
-    let clock = time.format("%H:%M:%S").to_string();
-    if let Some(span) = clock_span(text) {
-        let mut text = text.to_owned();
+    let mut clock = time.format("%H:%M:%S").to_string();
+    let mut text = text.to_owned();
+    if let Some(span) = clock_span(&text) {
         text.replace_range(span, &clock);
         return text;
     }
-    let text = text.trim_start();
-    let day = day_len(text.as_bytes()).and_then(|len| text.get(..len));
-    let offset = field
-        .with_offset
-        .then(|| offset_at(zone, day.and_then(day_of).unwrap_or(today).and_time(time)).to_string())
-        .unwrap_or_default();
-    match day {
-        Some(day) => format!("{day} {clock}{offset}"),
-        None if field.dated => format!("{} {clock}{offset}", today.format("%Y-%m-%d")),
-        None => format!("{clock}{offset}"),
+    let lead = text.len() - text.trim_start().len();
+    let day_end = text.as_bytes().get(lead..).and_then(day_len).map(|len| lead + len);
+    let day = day_end.and_then(|end| day_of(text.get(lead..end)?)).unwrap_or(today);
+    if field.with_offset {
+        clock.push_str(&offset_at(zone, day.and_time(time)).to_string());
+    }
+    match day_end {
+        Some(end) => {
+            text.insert_str(end, &format!(" {clock}"));
+            text
+        }
+        None if field.dated => format!("{} {clock}", today.format("%Y-%m-%d")),
+        None => clock,
     }
 }
 

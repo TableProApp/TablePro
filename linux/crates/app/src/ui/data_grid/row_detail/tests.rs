@@ -977,7 +977,9 @@ fn the_clock_starts_a_value_that_has_no_time() {
     assert_eq!(set_at_nine("", NAIVE), "2026-10-29 09:05:30");
     assert_eq!(set_at_nine("infinity", NAIVE), "2026-10-29 09:05:30");
     assert_eq!(set_at_nine("2024-02-29", NAIVE), "2024-02-29 09:05:30");
-    assert_eq!(set_at_nine(" 2024-02-29", NAIVE), "2024-02-29 09:05:30");
+    assert_eq!(set_at_nine(" 2024-02-29", NAIVE), " 2024-02-29 09:05:30");
+    assert_eq!(set_at_nine("4713-01-01 BC", NAIVE), "4713-01-01 09:05:30 BC");
+    assert_eq!(set_at_nine("4713-01-01 BC", ZONED), "4713-01-01 09:05:30+02:00 BC");
     assert_eq!(set_at_nine("12000-01-01", NAIVE), "12000-01-01 09:05:30");
     assert_eq!(
         set_at_nine("2024-02-29", TIME),
