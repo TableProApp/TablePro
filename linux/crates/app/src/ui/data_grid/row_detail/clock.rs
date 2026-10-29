@@ -40,40 +40,39 @@ impl ClockField {
 // By the text's own form, as chrono reads it for the commit: SQLite keeps any date or time text in a
 // DATE, TIME or DATETIME column, and chrono takes whitespace before a number and one digit for two.
 fn clock_span(text: &str) -> Option<Range<usize>> {
-    let bytes = text.as_bytes();
-    let after_day = day_len(bytes).map_or(0, |day| day + usize::from(bytes.get(day) == Some(&b'T')));
-    let start = after_day + spaces(bytes.get(after_day..)?);
-    let minute = number(bytes, literal(bytes, number(bytes, start, 2)?, b':')?, 2)?;
-    let end = literal(bytes, minute, b':').and_then(|second| number(bytes, second, 2));
+    let after_day = day_len(text).map_or(0, |day| day + usize::from(text.as_bytes().get(day) == Some(&b'T')));
+    let start = after_day + spaces(text.get(after_day..)?);
+    let minute = number(text, literal(text, number(text, start, 2)?, b':')?, 2)?;
+    let end = literal(text, minute, b':').and_then(|second| number(text, second, 2));
     Some(start..end.unwrap_or(minute))
 }
 
 // A year may run past 9999, as PostgreSQL writes one, and carry a sign.
-fn day_len(bytes: &[u8]) -> Option<usize> {
-    let lead = spaces(bytes);
-    let year = lead + usize::from(matches!(bytes.get(lead), Some(b'-' | b'+')));
-    let month = number(bytes, literal(bytes, number(bytes, year, usize::MAX)?, b'-')?, 2)?;
-    number(bytes, literal(bytes, month, b'-')?, 2)
+fn day_len(text: &str) -> Option<usize> {
+    let lead = spaces(text);
+    let year = lead + usize::from(matches!(text.as_bytes().get(lead), Some(b'-' | b'+')));
+    let month = number(text, literal(text, number(text, year, usize::MAX)?, b'-')?, 2)?;
+    number(text, literal(text, month, b'-')?, 2)
 }
 
 // The end of the number at `at`, past any whitespace before it.
-fn number(bytes: &[u8], at: usize, most: usize) -> Option<usize> {
-    let start = at + spaces(bytes.get(at..)?);
-    let run = bytes
+fn number(text: &str, at: usize, most: usize) -> Option<usize> {
+    let start = at + spaces(text.get(at..)?);
+    let run = text
         .get(start..)?
-        .iter()
+        .bytes()
         .take(most)
-        .take_while(|byte| byte.is_ascii_digit())
+        .take_while(u8::is_ascii_digit)
         .count();
     (run > 0).then_some(start + run)
 }
 
-fn literal(bytes: &[u8], at: usize, byte: u8) -> Option<usize> {
-    (bytes.get(at) == Some(&byte)).then_some(at + 1)
+fn literal(text: &str, at: usize, byte: u8) -> Option<usize> {
+    (text.as_bytes().get(at) == Some(&byte)).then_some(at + 1)
 }
 
-fn spaces(bytes: &[u8]) -> usize {
-    bytes.iter().take_while(|byte| byte.is_ascii_whitespace()).count()
+fn spaces(text: &str) -> usize {
+    text.len() - text.trim_start().len()
 }
 
 pub fn time_of(text: &str) -> Option<NaiveTime> {
@@ -94,7 +93,7 @@ pub fn with_time<Tz: TimeZone>(text: &str, time: NaiveTime, field: ClockField, t
         text.replace_range(span, &clock);
         return text;
     }
-    let day_end = day_len(text.as_bytes());
+    let day_end = day_len(&text);
     let day = day_end
         .and_then(|end| NaiveDate::parse_from_str(text.get(..end)?.trim_start(), "%Y-%m-%d").ok())
         .unwrap_or(today);

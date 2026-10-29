@@ -970,6 +970,10 @@ fn the_clock_sets_only_the_time_a_value_shows() {
     );
     assert_eq!(set_at_nine("2024-2-9 9:5:3.5", NAIVE), "2024-2-9 09:05:30.5");
     assert_eq!(set_at_nine("2024- 2-29 12: 34", NAIVE), "2024- 2-29 09:05:30");
+    assert_eq!(
+        set_at_nine("2024-\u{a0}02-29\u{a0}12:34:56", NAIVE),
+        "2024-\u{a0}02-29\u{a0}09:05:30"
+    );
     assert_eq!(set_at_nine("24:00:00+01", TIMETZ), "09:05:30+01");
 }
 
