@@ -10,10 +10,11 @@ import Testing
 
 @MainActor
 struct DeviceLimitModelTests {
+    nonisolated private static let now = Date(timeIntervalSince1970: 1_793_000_000)
     nonisolated private static let offlineUntil = "2027-01-15T00:00:00Z"
 
     private static func fixtureAtTheLimit() async throws -> AccountFixture {
-        let fixture = try AccountFixture()
+        let fixture = try AccountFixture(now: { Self.now })
         await fixture.server.set {
             $0.deviceLimitReached = true
             $0.limitHolders = [
@@ -36,7 +37,7 @@ struct DeviceLimitModelTests {
     @Test("The sheet lists the 3 devices holding the slots, and reads offline_until from GET /v2/devices")
     func rowsCarryOfflineUntil() async throws {
         let fixture = try await Self.fixtureAtTheLimit()
-        let model = DeviceLimitModel(services: fixture.services)
+        let model = DeviceLimitModel(services: fixture.services, now: { Self.now })
         #expect(model.rows.map { $0.name } == ["Workstation", "Air-gapped Mac", "Mac mini"])
         #expect(model.rows.allSatisfy { $0.offlineUntil == nil }, "The problem body carries no offline_until")
 
@@ -51,7 +52,7 @@ struct DeviceLimitModelTests {
     @Test("Removing a device frees the slot, and the refresh that follows unlocks the plan on this Mac")
     func removeResolves() async throws {
         let fixture = try await Self.fixtureAtTheLimit()
-        let model = DeviceLimitModel(services: fixture.services)
+        let model = DeviceLimitModel(services: fixture.services, now: { Self.now })
         await model.load()
         let row = try #require(model.rows.first { $0.id == "dev_mini" })
 
@@ -66,7 +67,7 @@ struct DeviceLimitModelTests {
     @Test("A device whose offline file is valid is refused with the reason, and the app stays on Free")
     func offlineDeviceIsRefused() async throws {
         let fixture = try await Self.fixtureAtTheLimit()
-        let model = DeviceLimitModel(services: fixture.services)
+        let model = DeviceLimitModel(services: fixture.services, now: { Self.now })
         let row = try #require(model.rows.first { $0.id == "dev_air" })
 
         await model.remove(row)
