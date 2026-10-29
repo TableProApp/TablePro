@@ -53,6 +53,8 @@ actor FakeAccountServer {
     var refreshGate: AsyncGate?
     var entitlementGate: AsyncGate?
     var library = FakeTeamLibrary()
+    // Answered, one per GET /me, before anything else; a 429 carries the library's Retry-After.
+    var profileFaults: [Int] = []
     private(set) var requests: [Request] = []
     private(set) var familyBound = false
     private var familyMethod = "interactive"
@@ -194,6 +196,9 @@ actor FakeAccountServer {
                 "token": token, "expires_at": "2026-11-10T00:00:00Z", "refresh_after": "2026-10-30T00:00:00Z"
             ])
         case (.get, "/me"):
+            if !profileFaults.isEmpty {
+                return library.fault(profileFaults.removeFirst())
+            }
             var account = accountClaim
             account["id"] = "acct_test"
             return Self.json(status: .ok, [

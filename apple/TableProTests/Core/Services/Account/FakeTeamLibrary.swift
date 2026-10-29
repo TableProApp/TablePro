@@ -220,7 +220,7 @@ struct FakeTeamLibrary: Sendable {
         return change
     }
 
-    private func fault(_ status: Int) -> (HTTPResponse, HTTPBody?) {
+    func fault(_ status: Int) -> (HTTPResponse, HTTPBody?) {
         var answer = FakeAccountServer.problem(status: status, code: status == 429 ? "rate_limited" : "internal")
         if status == 429, let retryAfter {
             answer.0.headerFields[.retryAfter] = "\(retryAfter)"

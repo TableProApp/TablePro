@@ -701,6 +701,33 @@ struct TeamLibrarySyncTests {
         fixture.sync.stop()
     }
 
+    @Test("A 429 on GET /me waits out its Retry-After too, and no request goes out meanwhile")
+    func profileWaitsOutRetryAfter() async throws {
+        let fixture = try await TeamLibraryFixture()
+        await fixture.server.set {
+            $0.profileFaults = [429]
+            $0.library.retryAfter = 120
+        }
+
+        fixture.sync.start()
+        try await waitUntil { fixture.sync.status == .failed(.rateLimited(retryAfter: .seconds(120))) }
+        try await waitUntil { fixture.clock.pendingSleeperCount == 2 }
+        let sent = await fixture.server.requests.count
+
+        fixture.sync.syncSoon()
+        fixture.clock.advance(by: .seconds(119))
+        #expect(await fixture.sync.sync() == .failed(.rateLimited(retryAfter: nil)))
+        #expect(await fixture.server.requests.count == sent)
+        #expect(await fixture.pulls().isEmpty)
+        fixture.clock.advance(by: .seconds(1))
+        try await waitUntil { await fixture.pulls().count == 1 }
+        try await waitUntil {
+            if case .synced = fixture.sync.status { return true }
+            return false
+        }
+        fixture.sync.stop()
+    }
+
     @Test("A 5xx during a publish keeps the edits on this Mac and the next sync pushes them")
     func serverErrorQueuesThePush() async throws {
         let fixture = try await TeamLibraryFixture()

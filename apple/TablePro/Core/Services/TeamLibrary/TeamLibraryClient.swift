@@ -79,6 +79,21 @@ internal struct TeamLibraryClient: Sendable {
 
     let api: any APIProtocol
 
+    // GET /v2/me starts every sync and counts against the same limit as the library calls, so its 429 keeps Retry-After.
+    func profile() async throws(TeamLibraryFailure) -> AccountProfile {
+        do {
+            let output = try await api.getMe()
+            if case .tooManyRequests(let answer) = output {
+                throw TeamLibraryFailure.rateLimited(retryAfter: Self.delay(seconds: answer.headers.retryAfter))
+            }
+            return try AccountProfile.read(output)
+        } catch let failure as TeamLibraryFailure {
+            throw failure
+        } catch {
+            throw TeamLibraryFailure.from(AccountError.from(error))
+        }
+    }
+
     func pull(teamID: String, cursor: String?) async throws(TeamLibraryFailure) -> TeamLibraryPage {
         do {
             switch try await api.listLibraryChanges(

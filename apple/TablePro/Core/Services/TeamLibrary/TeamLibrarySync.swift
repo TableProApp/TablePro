@@ -225,11 +225,12 @@ internal final class TeamLibrarySync: ObservableObject {
         status = .syncing
         let started = generation
         let profile: AccountProfile
-        do throws(AccountError) {
-            profile = try await account.fetchProfile()
+        do throws(TeamLibraryFailure) {
+            profile = try await client.profile()
         } catch {
             guard started == generation else { return .skipped }
-            return finish(.failed(TeamLibraryFailure.from(error)))
+            holdIfRateLimited(error)
+            return finish(.failed(error))
         }
         guard started == generation else { return .skipped }
         accountEmail = profile.email

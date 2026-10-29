@@ -45,22 +45,26 @@ internal struct AccountProfile: Equatable, Sendable {
 
     static func fetch(api: any APIProtocol) async throws(AccountError) -> AccountProfile {
         do {
-            switch try await api.getMe() {
-            case .ok(let answer):
-                return AccountProfile(try answer.body.json)
-            case .unauthorized(let answer):
-                throw AccountError.problem(try answer.body.applicationProblemJson)
-            case .forbidden(let answer):
-                throw AccountError.problem(try answer.body.applicationProblemJson)
-            case .tooManyRequests(let answer):
-                throw AccountError.problem(try answer.body.applicationProblemJson)
-            case .internalServerError(let answer):
-                throw AccountError.problem(try answer.body.applicationProblemJson)
-            case .undocumented(let status, _):
-                throw AccountError.server(status: status, code: nil)
-            }
+            return try read(try await api.getMe())
         } catch {
             throw AccountError.from(error)
+        }
+    }
+
+    static func read(_ output: Operations.GetMe.Output) throws -> AccountProfile {
+        switch output {
+        case .ok(let answer):
+            return AccountProfile(try answer.body.json)
+        case .unauthorized(let answer):
+            throw AccountError.problem(try answer.body.applicationProblemJson)
+        case .forbidden(let answer):
+            throw AccountError.problem(try answer.body.applicationProblemJson)
+        case .tooManyRequests(let answer):
+            throw AccountError.problem(try answer.body.applicationProblemJson)
+        case .internalServerError(let answer):
+            throw AccountError.problem(try answer.body.applicationProblemJson)
+        case .undocumented(let status, _):
+            throw AccountError.server(status: status, code: nil)
         }
     }
 }
