@@ -6,18 +6,30 @@ using TablePro.App.Services;
 using TablePro.Core.Import;
 using TablePro.Core.Results;
 using TablePro.Core.Schema;
+using TablePro.Storage;
+using TablePro.Storage.Import;
 using ColumnDefinition = TablePro.Core.Schema.ColumnDefinition;
 using GridColumn = Microsoft.UI.Xaml.Controls.ColumnDefinition;
 
 namespace TablePro.App.Views;
 
-/// <summary>What the mapping dialog decided: where the rows go, how the file is read and how each record becomes a row.</summary>
+/// <summary>
+/// What the mapping dialog decided: where the rows go, how the file is read, how each record becomes a row and how
+/// rows whose key is already in the table are treated.
+/// </summary>
 internal sealed record ImportPlan(
     ImportDestination Destination,
     ObjectName Table,
     CsvImportOptions CsvOptions,
     ImportRowBuilder Builder,
-    IReadOnlyList<ColumnDefinition> NewTableColumns);
+    IReadOnlyList<ColumnDefinition> NewTableColumns,
+    ImportRowWriting Writing);
+
+/// <summary>What the dialog offers for matching rows against the existing table: its keys, and whether the session can match at all.</summary>
+internal sealed record ImportMatchOptions(IReadOnlyList<ImportMatchKey> Keys, bool CanMatch)
+{
+    public static ImportMatchOptions None { get; } = new([], false);
+}
 
 /// <summary>
 /// The import sheet of the macOS app: the destination, how a delimited file is read, each field of the file against a
@@ -26,6 +38,12 @@ internal sealed record ImportPlan(
 /// </summary>
 internal sealed class ImportMappingDialog
 {
+    private static readonly ImportWriteMode[] WriteModes = [ImportWriteMode.Insert, ImportWriteMode.Update, ImportWriteMode.Upsert, ImportWriteMode.InsertSkippingExisting];
+
+    // One store for the process, so two windows importing at once fold their mappings into one file instead of the
+    // later write dropping the earlier one.
+    private static readonly Lazy<ImportMappingStore> MappingStore = new(() => new ImportMappingStore(AppPaths.Default));
+
     private static readonly (string Name, char? Value)[] Delimiters =
     [
         (Strings.Get("Import/DelimiterDetect"), null),
@@ -55,6 +73,11 @@ internal sealed class ImportMappingDialog
     private readonly TextBlock _previewNote = new() { Opacity = 0.7 };
     private readonly InfoBar _problem = new() { Severity = InfoBarSeverity.Warning, IsClosable = false };
     private readonly DropDownButton _match = new() { Content = Strings.Get("Import/MatchColumns") };
+    private readonly MenuFlyoutItem _useSaved = new() { Text = Strings.Get("Import/UseSavedMapping") };
+    private readonly TextBlock _savedNote = new() { Opacity = 0.7, VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Right, TextTrimming = TextTrimming.CharacterEllipsis };
+    private readonly ComboBox _writeMode = new() { Header = Strings.Get("Import/ImportAsHeader"), MinWidth = 200 };
+    private readonly ComboBox _matchKey = new() { Header = Strings.Get("Import/MatchOnHeader"), MinWidth = 220 };
+    private readonly ImportMatchOptions _matching;
     private ImportPreview _preview;
     private CsvImportOptions? _lastOptions;
     private ContentDialog? _dialog;
@@ -63,7 +86,8 @@ internal sealed class ImportMappingDialog
     private ImportMappingDialog(
         ImportPreview preview, ImportFileFormat format, CsvImportOptions csvOptions, Func<CsvImportOptions, Task<ImportPreview>> readPreview,
         ObjectName existingTable, IReadOnlyList<ImportTargetColumn> columns, bool canCreateTable, string proposedTableName,
-        Func<ImportFieldType, string> proposeType, IReadOnlyList<string> commonTypes)
+        Func<ImportFieldType, string> proposeType, IReadOnlyList<string> commonTypes,
+        IReadOnlyDictionary<string, ImportMappingOverride> savedMapping, ImportMatchOptions matching)
     {
         _preview = preview;
         _format = format;
@@ -71,7 +95,8 @@ internal sealed class ImportMappingDialog
         _existingTable = existingTable;
         _proposeType = proposeType;
         _commonTypes = commonTypes;
-        _mapping = new ImportMapping(preview.Fields, columns);
+        _mapping = new ImportMapping(preview.Fields, columns, savedMapping);
+        _matching = matching;
         _draft.Load(preview.Fields, proposeType);
 
         _destination.Items.Add(Strings.Format("Import/ExistingTable", existingTable.Name));
@@ -83,8 +108,30 @@ internal sealed class ImportMappingDialog
         _destination.SelectionChanged += (_, _) =>
         {
             _newTableName.IsEnabled = IsNewTable;
+            SyncWriteControls();
             BuildRows();
         };
+
+        foreach (var mode in WriteModes)
+        {
+            _writeMode.Items.Add(ModeName(mode));
+        }
+
+        _writeMode.SelectedIndex = 0;
+        ToolTipService.SetToolTip(_writeMode, Strings.Get("Import/WriteModeToolTip"));
+        foreach (var key in matching.Keys)
+        {
+            _matchKey.Items.Add(KeyName(key));
+        }
+
+        _matchKey.SelectedIndex = matching.Keys.Count > 0 ? 0 : -1;
+        _matchKey.IsEnabled = matching.Keys.Count > 0;
+        _writeMode.SelectionChanged += (_, _) =>
+        {
+            SyncWriteControls();
+            Validate();
+        };
+        _matchKey.SelectionChanged += (_, _) => Validate();
         _newTableName.TextChanged += (_, _) => Validate();
 
         foreach (var (name, _) in Delimiters)
@@ -131,9 +178,58 @@ internal sealed class ImportMappingDialog
             _mapping.MatchByPosition();
             BuildRows();
         };
+        _useSaved.Click += (_, _) =>
+        {
+            _mapping.UseSavedMapping();
+            BuildRows();
+        };
         matchMenu.Items.Add(byName);
         matchMenu.Items.Add(byPosition);
+        if (savedMapping.Count > 0)
+        {
+            matchMenu.Items.Add(new MenuFlyoutSeparator());
+            matchMenu.Items.Add(_useSaved);
+        }
+
+        matchMenu.Opening += (_, _) => _useSaved.IsEnabled = _mapping.CanUseSavedMapping;
         _match.Flyout = matchMenu;
+        _savedNote.Text = Strings.Format("Import/RestoredSavedMapping", existingTable.Name);
+        SyncWriteControls();
+    }
+
+    private ImportWriteMode WriteMode => WriteModes[Math.Max(0, _writeMode.SelectedIndex)];
+
+    private ImportMatchKey? MatchKey =>
+        _matchKey.SelectedIndex >= 0 && _matchKey.SelectedIndex < _matching.Keys.Count ? _matching.Keys[_matchKey.SelectedIndex] : null;
+
+    private bool OffersWriteModes => _matching.CanMatch && !IsNewTable;
+
+    private static string ModeName(ImportWriteMode mode) => mode switch
+    {
+        ImportWriteMode.Update => Strings.Get("Import/WriteModeUpdate"),
+        ImportWriteMode.Upsert => Strings.Get("Import/WriteModeUpsert"),
+        ImportWriteMode.InsertSkippingExisting => Strings.Get("Import/WriteModeSkipExisting"),
+        _ => Strings.Get("Import/WriteModeInsert"),
+    };
+
+    private static string KeyName(ImportMatchKey key)
+    {
+        var columns = string.Join(", ", key.Columns);
+        return key.IndexName is { } index ? Strings.Format("Import/MatchKeyIndex", index, columns) : Strings.Format("Import/MatchKeyPrimary", columns);
+    }
+
+    private static string WritingProblemText(ImportRowWritingProblem problem) => problem.Kind switch
+    {
+        ImportRowWritingProblemKind.NoKey => Strings.Get("Import/ProblemNoKey"),
+        ImportRowWritingProblemKind.UnmappedKeyColumns => Strings.Format("Import/ProblemUnmappedKey", string.Join(", ", problem.Columns)),
+        _ => Strings.Get("Import/ProblemNothingToUpdate"),
+    };
+
+    /// <summary>Only an existing table has rows to match, and only a connection that can count keys offers the modes that do.</summary>
+    private void SyncWriteControls()
+    {
+        _writeMode.Visibility = OffersWriteModes ? Visibility.Visible : Visibility.Collapsed;
+        _matchKey.Visibility = OffersWriteModes && WriteMode.MatchesExistingRows() ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private bool IsNewTable => _destination.SelectedIndex == 1;
@@ -149,10 +245,13 @@ internal sealed class ImportMappingDialog
     public static async Task<ImportPlan?> ShowAsync(
         DialogService dialogs, string fileName, ImportPreview preview, ImportFileFormat format, CsvImportOptions csvOptions,
         Func<CsvImportOptions, Task<ImportPreview>> readPreview, ObjectName existingTable, IReadOnlyList<ImportTargetColumn> columns,
-        bool canCreateTable, Func<ImportFieldType, string> proposeType, IReadOnlyList<string> commonTypes)
+        bool canCreateTable, Func<ImportFieldType, string> proposeType, IReadOnlyList<string> commonTypes,
+        ImportMappingScope? mappingScope = null, ImportMatchOptions? matching = null)
     {
         var proposed = Path.GetFileNameWithoutExtension(fileName.EndsWith(".gz", StringComparison.OrdinalIgnoreCase) ? fileName[..^3] : fileName);
-        var view = new ImportMappingDialog(preview, format, csvOptions, readPreview, existingTable, columns, canCreateTable, proposed, proposeType, commonTypes);
+        var saved = await LoadSavedMappingAsync(mappingScope);
+        var view = new ImportMappingDialog(
+            preview, format, csvOptions, readPreview, existingTable, columns, canCreateTable, proposed, proposeType, commonTypes, saved, matching ?? ImportMatchOptions.None);
         var dialog = dialogs.Create(Strings.Format("Import/ImportFileTitle", fileName), view.BuildContent(), Strings.Get("Common/Import"), Strings.Get("Common/Cancel"));
 
         // The field list, the new table's settings and the preview need more room than a ContentDialog's default 548 pixels.
@@ -165,9 +264,54 @@ internal sealed class ImportMappingDialog
             return null;
         }
 
-        return view.IsNewTable
-            ? new ImportPlan(ImportDestination.NewTable, new ObjectName(existingTable.Schema, view._newTableName.Text.Trim()), view.CsvOptions, view._draft.CreateRowBuilder(), view._draft.Definition())
-            : new ImportPlan(ImportDestination.ExistingTable, existingTable, view.CsvOptions, view._mapping.CreateRowBuilder(), []);
+        if (view.IsNewTable)
+        {
+            return new ImportPlan(
+                ImportDestination.NewTable, new ObjectName(existingTable.Schema, view._newTableName.Text.Trim()), view.CsvOptions,
+                view._draft.CreateRowBuilder(), view._draft.Definition(), ImportRowWriting.Insert);
+        }
+
+        await view.RememberMappingAsync(mappingScope);
+        var writing = view.OffersWriteModes ? view._mapping.RowWriting(view.WriteMode, view.MatchKey) : ImportRowWriting.Insert;
+        return new ImportPlan(ImportDestination.ExistingTable, existingTable, view.CsvOptions, view._mapping.CreateRowBuilder(), [], writing);
+    }
+
+    /// <summary>A store that cannot be read only means nothing is restored; the import itself goes on.</summary>
+    private static async Task<IReadOnlyDictionary<string, ImportMappingOverride>> LoadSavedMappingAsync(ImportMappingScope? scope)
+    {
+        if (scope is null)
+        {
+            return new Dictionary<string, ImportMappingOverride>();
+        }
+
+        try
+        {
+            return await Task.Run(() => MappingStore.Value.OverridesAsync(scope));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return new Dictionary<string, ImportMappingOverride>();
+        }
+    }
+
+    /// <summary>Called as the import starts, whether or not it then succeeds: a mapping built by hand is the costliest part to redo.</summary>
+    private async Task RememberMappingAsync(ImportMappingScope? scope)
+    {
+        if (scope is null)
+        {
+            return;
+        }
+
+        var overrides = _mapping.Overrides();
+        var fields = _mapping.FieldNames;
+        try
+        {
+            await Task.Run(() => MappingStore.Value.RememberAsync(scope, overrides, fields));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Losing the remembered mapping costs a few clicks next time; it must not stop the import the user asked for.
+        }
     }
 
     private StackPanel BuildContent()
@@ -182,6 +326,11 @@ internal sealed class ImportMappingDialog
             root.Children.Add(destination);
         }
 
+        var writing = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12 };
+        writing.Children.Add(_writeMode);
+        writing.Children.Add(_matchKey);
+        root.Children.Add(writing);
+
         if (_format == ImportFileFormat.Csv)
         {
             var options = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 16 };
@@ -194,11 +343,15 @@ internal sealed class ImportMappingDialog
             root.Children.Add(options);
         }
 
-        var toolbar = new Grid();
+        var toolbar = new Grid { ColumnSpacing = 12 };
+        toolbar.ColumnDefinitions.Add(new GridColumn { Width = GridLength.Auto });
         toolbar.ColumnDefinitions.Add(new GridColumn { Width = new GridLength(1, GridUnitType.Star) });
         toolbar.ColumnDefinitions.Add(new GridColumn { Width = GridLength.Auto });
         toolbar.Children.Add(_includeAll);
-        Grid.SetColumn(_match, 1);
+        _savedNote.Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"];
+        Grid.SetColumn(_savedNote, 1);
+        toolbar.Children.Add(_savedNote);
+        Grid.SetColumn(_match, 2);
         toolbar.Children.Add(_match);
         root.Children.Add(toolbar);
         root.Children.Add(new ScrollViewer { Content = _rows, MaxHeight = 260, Padding = new Thickness(0, 0, 12, 0) });
@@ -247,6 +400,7 @@ internal sealed class ImportMappingDialog
         {
             _rows.Children.Clear();
             _match.Visibility = IsNewTable ? Visibility.Collapsed : Visibility.Visible;
+            _savedNote.Visibility = !IsNewTable && _mapping.ShowsSavedMapping ? Visibility.Visible : Visibility.Collapsed;
             _includeAll.Content = IsNewTable ? Strings.Get("Import/CreateAllColumns") : Strings.Get("Import/ImportAllFields");
             _rows.Children.Add(HeaderRow());
             for (var i = 0; i < _preview.Fields.Count; i++)
@@ -447,7 +601,12 @@ internal sealed class ImportMappingDialog
 
         if (!IsNewTable)
         {
-            return _mapping.Problem;
+            if (_mapping.Problem is { } mappingProblem)
+            {
+                return mappingProblem;
+            }
+
+            return OffersWriteModes && _mapping.RowWritingProblem(WriteMode, MatchKey) is { } writingProblem ? WritingProblemText(writingProblem) : null;
         }
 
         return string.IsNullOrWhiteSpace(_newTableName.Text) ? Strings.Get("Import/EnterNewTableName") : _draft.Problem;

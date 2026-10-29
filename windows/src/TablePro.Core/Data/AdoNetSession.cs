@@ -6,6 +6,7 @@ using TablePro.Core.Browse;
 using TablePro.Core.Connections;
 using TablePro.Core.Drivers;
 using TablePro.Core.Editing;
+using TablePro.Core.Import;
 using TablePro.Core.Results;
 using TablePro.Core.Schema;
 using TablePro.Core.Sql;
@@ -20,7 +21,7 @@ namespace TablePro.Core.Data;
 /// Every public entry point yields to the thread pool first: SQLite and DuckDB complete their "async" calls
 /// synchronously, and the UI thread must never wait on a database.
 /// </remarks>
-public abstract class AdoNetSession : IDatabaseSession
+public abstract class AdoNetSession : IDatabaseSession, IImportRowMatcher
 {
     protected AdoNetSession(ConnectionRequest request, SqlDialect dialect)
     {
@@ -126,6 +127,22 @@ public abstract class AdoNetSession : IDatabaseSession
                 await using var command = CreateCommand(connection, Dialect.BuildCount(table, filter));
                 var value = await command.ExecuteScalarAsync(ct);
                 return Convert.ToInt64(value, System.Globalization.CultureInfo.InvariantCulture);
+            },
+            cancellationToken);
+
+    public Task<IReadOnlyList<long>> CountKeyMatchesAsync(ObjectName table, IReadOnlyList<string> keyColumns, IReadOnlyList<IReadOnlyList<object?>> keys, CancellationToken cancellationToken) =>
+        WithConnectionAsync(
+            async (connection, ct) =>
+            {
+                await using var command = CreateCommand(connection, ImportKeyMatchSql.Build(Dialect, table, keyColumns, keys));
+                await using var reader = await command.ExecuteReaderAsync(ct);
+                var rows = new List<(object?, object?)>(keys.Count);
+                while (await reader.ReadAsync(ct))
+                {
+                    rows.Add((reader.GetValue(0), reader.GetValue(1)));
+                }
+
+                return ImportKeyMatchSql.ReadCounts(rows, keys.Count);
             },
             cancellationToken);
 

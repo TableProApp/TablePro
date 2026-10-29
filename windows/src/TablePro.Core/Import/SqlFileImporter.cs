@@ -25,11 +25,13 @@ public enum SqlImportErrorHandling
 /// <param name="WrapInTransaction">Runs every statement in one transaction. Ignored when skipping errors.</param>
 /// <param name="DisableForeignKeyChecks">Turns foreign key checks off for the import, where the engine can.</param>
 /// <param name="BatchSize">Statements sent to the channel at a time; each still reports its own result.</param>
+/// <param name="Encoding">How the file's bytes are read; null reads UTF-8. A byte order mark wins either way.</param>
 public sealed record SqlImportOptions(
     SqlImportErrorHandling ErrorHandling = SqlImportErrorHandling.StopAndRollback,
     bool WrapInTransaction = true,
     bool DisableForeignKeyChecks = true,
-    int BatchSize = 100);
+    int BatchSize = 100,
+    SqlImportEncoding? Encoding = null);
 
 public readonly record struct SqlImportProgress(long Executed, long Skipped, long BytesRead, long TotalBytes);
 
@@ -97,11 +99,14 @@ public static partial class SqlFileImporter
         IProgress<SqlImportProgress>? progress, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(path);
+        ArgumentNullException.ThrowIfNull(options);
         await using var file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 1 << 16, FileOptions.Asynchronous | FileOptions.SequentialScan);
         Stream source = path.EndsWith(".gz", StringComparison.OrdinalIgnoreCase) ? new System.IO.Compression.GZipStream(file, System.IO.Compression.CompressionMode.Decompress) : file;
         await using (source)
         {
-            using var reader = new StreamReader(source, detectEncodingFromByteOrderMarks: true);
+            using var reader = options.Encoding is { } encoding
+                ? new StreamReader(source, encoding.GetEncoding(), detectEncodingFromByteOrderMarks: true)
+                : new StreamReader(source, detectEncodingFromByteOrderMarks: true);
             var total = file.Length;
             return await ImportAsync(channel, reader, dialect, engine, options, () => file.Position, total, progress, cancellationToken);
         }

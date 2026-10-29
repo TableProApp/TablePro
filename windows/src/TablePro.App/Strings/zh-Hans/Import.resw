@@ -296,4 +296,57 @@
   <data name="WrapInTransactionToolTip" xml:space="preserve">
     <value>在一个事务中运行所有语句，因此发生失败时会回滚导入所做的更改。在运行时即提交 CREATE、ALTER 和 DROP 的数据库（例如 MySQL）会保留这些语句及其之前的所有内容。</value>
   </data>
+  <data name="ImportAsHeader" xml:space="preserve">
+    <value>导入方式</value>
+  </data>
+  <data name="WriteModeInsert" xml:space="preserve">
+    <value>插入</value>
+  </data>
+  <data name="WriteModeUpdate" xml:space="preserve">
+    <value>更新</value>
+  </data>
+  <data name="WriteModeUpsert" xml:space="preserve">
+    <value>插入或更新</value>
+  </data>
+  <data name="WriteModeSkipExisting" xml:space="preserve">
+    <value>插入，跳过已有行</value>
+  </data>
+  <data name="WriteModeToolTip" xml:space="preserve">
+    <value>“更新”会修改键出现在文件中的行。“插入或更新”还会添加其余行，“插入，跳过已有行”只添加键不在表中的行。未映射的列保留原值。</value>
+  </data>
+  <data name="MatchOnHeader" xml:space="preserve">
+    <value>匹配依据</value>
+  </data>
+  <data name="MatchKeyPrimary" xml:space="preserve">
+    <value>主键（{0}）</value>
+  </data>
+  <data name="MatchKeyIndex" xml:space="preserve">
+    <value>{0} ({1})</value>
+  </data>
+  <data name="ProblemNoKey" xml:space="preserve">
+    <value>此表没有可用于匹配行的主键或唯一索引。</value>
+  </data>
+  <data name="ProblemUnmappedKey" xml:space="preserve">
+    <value>请将一个字段映射到 {0}，以便按它匹配行。</value>
+  </data>
+  <data name="ProblemNothingToUpdate" xml:space="preserve">
+    <value>请将字段映射到键以外的列，才有内容可更新。</value>
+  </data>
+  <data name="UseSavedMapping" xml:space="preserve">
+    <value>使用已保存的映射</value>
+  </data>
+  <data name="RestoredSavedMapping" xml:space="preserve">
+    <value>已恢复为 {0} 保存的映射。</value>
+  </data>
+  <data name="ImportedMatching" xml:space="preserve">
+    <value>已导入到 {0}。匹配：{1:N0}，更新：{2:N0}，插入：{3:N0}，跳过：{4:N0}。</value>
+  </data>
+  <data name="EncodingHeader" xml:space="preserve">
+    <value>编码</value>
+    <comment>Header of the SQL import's text encoding picker.</comment>
+  </data>
+  <data name="EncodingToolTip" xml:space="preserve">
+    <value>文件字节的读取方式。用 SET NAMES 或 client_encoding 声明了编码的转储文件会预选该编码；字节顺序标记始终优先。</value>
+    <comment>Tooltip of the encoding picker. SET NAMES and client_encoding are SQL and stay untranslated.</comment>
+  </data>
 </root>

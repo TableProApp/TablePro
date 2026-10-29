@@ -4,8 +4,11 @@ using TablePro.Core.Schema;
 
 namespace TablePro.Core.Import;
 
-/// <summary>A column of the table an import writes to, with the type its values are parsed into.</summary>
-public sealed record ImportTargetColumn(string Name, string DataType, Type ClrType);
+/// <summary>
+/// A column of the table an import writes to, with the type its values are parsed into. An identity column is written
+/// only into inserted rows, since an UPDATE may not assign it.
+/// </summary>
+public sealed record ImportTargetColumn(string Name, string DataType, Type ClrType, bool IsIdentity = false);
 
 public enum ImportDestination
 {
@@ -22,14 +25,52 @@ public sealed class ImportMapping
     private ImportFieldChoice[] _choices;
 
     public ImportMapping(IReadOnlyList<ImportField> fields, IReadOnlyList<ImportTargetColumn> columns)
+        : this(fields, columns, new Dictionary<string, ImportMappingOverride>())
+    {
+    }
+
+    /// <summary>
+    /// Starts from the mapping remembered for this table, ahead of the name match, as the macOS sheet does when a table
+    /// is picked.
+    /// </summary>
+    public ImportMapping(IReadOnlyList<ImportField> fields, IReadOnlyList<ImportTargetColumn> columns, IReadOnlyDictionary<string, ImportMappingOverride> saved)
     {
         ArgumentNullException.ThrowIfNull(fields);
         ArgumentNullException.ThrowIfNull(columns);
+        ArgumentNullException.ThrowIfNull(saved);
         Fields = fields;
         Columns = columns;
         ColumnNames = [.. columns.Select(c => c.Name)];
-        _choices = ImportColumnMatcher.ByName(FieldNames, ColumnNames);
+        Saved = saved;
+        _choices = ImportColumnMatcher.Applying(saved, FieldNames, ColumnNames);
+        ShowsSavedMapping = AppliesSavedChoice;
     }
+
+    /// <summary>The overrides remembered for this table when the dialog opened.</summary>
+    public IReadOnlyDictionary<string, ImportMappingOverride> Saved { get; }
+
+    /// <summary>
+    /// Whether the mapping shown is the remembered one, for the note that says so. A match command clears it; a manual
+    /// edit does not, since most of the mapping is still what was remembered.
+    /// </summary>
+    public bool ShowsSavedMapping { get; private set; }
+
+    /// <summary>Only when the saved mapping covers a field of this file and differs from what is shown.</summary>
+    public bool CanUseSavedMapping
+    {
+        get
+        {
+            if (Saved.Count == 0)
+            {
+                return false;
+            }
+
+            var restored = ImportColumnMatcher.Applying(Saved, FieldNames, ColumnNames);
+            return !restored.SequenceEqual(_choices) && ImportColumnMatcher.RestoredFields(Saved, FieldNames, ColumnNames, restored).Count > 0;
+        }
+    }
+
+    private bool AppliesSavedChoice => Saved.Count > 0 && ImportColumnMatcher.RestoredFields(Saved, FieldNames, ColumnNames, _choices).Count > 0;
 
     public IReadOnlyList<ImportField> Fields { get; private set; }
 
@@ -39,7 +80,7 @@ public sealed class ImportMapping
 
     public IReadOnlyList<ImportFieldChoice> Choices => _choices;
 
-    private string[] FieldNames => [.. Fields.Select(f => f.Name)];
+    public string[] FieldNames => [.. Fields.Select(f => f.Name)];
 
     public ImportFieldChoice this[int field]
     {
@@ -91,9 +132,39 @@ public sealed class ImportMapping
     public ImportTargetColumn? ColumnFor(string? name) =>
         name is null ? null : Columns.FirstOrDefault(c => string.Equals(c.Name, name, StringComparison.OrdinalIgnoreCase));
 
-    public void MatchByName() => _choices = ImportColumnMatcher.ByName(FieldNames, ColumnNames);
+    public void MatchByName()
+    {
+        _choices = ImportColumnMatcher.ByName(FieldNames, ColumnNames);
+        ShowsSavedMapping = false;
+    }
 
-    public void MatchByPosition() => _choices = ImportColumnMatcher.ByPosition(FieldNames, ColumnNames);
+    public void MatchByPosition()
+    {
+        _choices = ImportColumnMatcher.ByPosition(FieldNames, ColumnNames);
+        ShowsSavedMapping = false;
+    }
+
+    public void UseSavedMapping()
+    {
+        _choices = ImportColumnMatcher.Applying(Saved, FieldNames, ColumnNames);
+        ShowsSavedMapping = AppliesSavedChoice;
+    }
+
+    /// <summary>
+    /// What to remember of this mapping when the import starts: a mapping built by hand is the costliest part of the
+    /// dialog to redo, so it is kept whether or not the import then succeeds.
+    /// </summary>
+    public Dictionary<string, ImportMappingOverride> Overrides() => ImportColumnMatcher.Overrides(FieldNames, ColumnNames, _choices);
+
+    /// <summary>How rows are written for a mode and key, keeping identity columns out of updates.</summary>
+    public ImportRowWriting RowWriting(ImportWriteMode mode, ImportMatchKey? key) =>
+        mode.MatchesExistingRows() && key is not null
+            ? new ImportRowWriting(mode, key.Columns, [.. Columns.Where(c => c.IsIdentity).Select(c => c.Name)])
+            : ImportRowWriting.Insert;
+
+    /// <summary>Why a mode cannot run with this mapping and key, or null when it can.</summary>
+    public ImportRowWritingProblem? RowWritingProblem(ImportWriteMode mode, ImportMatchKey? key) =>
+        ImportRowWritingProblem.Of(mode, key, [.. ColumnMapping.Values]);
 
     public void SetAllIncluded(bool include)
     {
@@ -105,7 +176,7 @@ public sealed class ImportMapping
 
     /// <summary>
     /// Takes the fields of a new read of the file, after a parsing option changed. The choices made so far are kept
-    /// for the fields that are still there, ahead of the name match.
+    /// for the fields that are still there, then the remembered ones, ahead of the name match.
     /// </summary>
     public void Reload(IReadOnlyList<ImportField> fields)
     {
@@ -117,7 +188,8 @@ public sealed class ImportMapping
         }
 
         Fields = fields;
-        _choices = ImportColumnMatcher.Resolve(FieldNames, ColumnNames, [session]);
+        _choices = ImportColumnMatcher.Resolve(FieldNames, ColumnNames, [session, ImportColumnMatcher.ToChoices(Saved)]);
+        ShowsSavedMapping = ShowsSavedMapping && AppliesSavedChoice;
     }
 
     /// <summary>Parses each mapped value into its column's type.</summary>

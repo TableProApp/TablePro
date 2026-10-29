@@ -8,6 +8,14 @@ public readonly record struct ImportFieldChoice(bool Include, string? Column)
     public string? MappedColumn => Include ? Column : null;
 }
 
+/// <summary>A remembered choice for one field: the column it went to, or null when it was skipped.</summary>
+public readonly record struct ImportMappingOverride(string? Column)
+{
+    public static ImportMappingOverride Skip { get; } = new(null);
+
+    public ImportFieldChoice Choice => Column is null ? ImportFieldChoice.Skipped : new ImportFieldChoice(true, Column);
+}
+
 /// <summary>
 /// Matches the fields of a file to the columns of a table, as the macOS import sheet does: exact names before
 /// case-insensitive ones, and each column to one field at most, since the import refuses two fields in one column.
@@ -104,6 +112,95 @@ public static class ImportColumnMatcher
         }
 
         return result;
+    }
+
+    /// <summary>Remembered overrides first, then the name match.</summary>
+    public static ImportFieldChoice[] Applying(IReadOnlyDictionary<string, ImportMappingOverride> overrides, IReadOnlyList<string> fields, IReadOnlyList<string> columns) =>
+        Resolve(fields, columns, [ToChoices(overrides)]);
+
+    public static Dictionary<string, ImportFieldChoice> ToChoices(IReadOnlyDictionary<string, ImportMappingOverride> overrides)
+    {
+        ArgumentNullException.ThrowIfNull(overrides);
+        return overrides.ToDictionary(p => p.Key, p => p.Value.Choice, StringComparer.Ordinal);
+    }
+
+    /// <summary>
+    /// What to remember of a mapping: only the fields whose choice differs from the name match, so a column the table
+    /// gains later is still found by name instead of staying skipped.
+    /// </summary>
+    public static Dictionary<string, ImportMappingOverride> Overrides(IReadOnlyList<string> fields, IReadOnlyList<string> columns, IReadOnlyList<ImportFieldChoice> choices)
+    {
+        ArgumentNullException.ThrowIfNull(fields);
+        ArgumentNullException.ThrowIfNull(choices);
+        var automatic = ByName(fields, columns);
+        var overrides = new Dictionary<string, ImportMappingOverride>(StringComparer.Ordinal);
+        for (var i = 0; i < fields.Count && i < choices.Count; i++)
+        {
+            var mapped = choices[i].MappedColumn;
+            if (!string.Equals(mapped, automatic[i].MappedColumn, StringComparison.Ordinal))
+            {
+                overrides[fields[i]] = new ImportMappingOverride(mapped);
+            }
+        }
+
+        return overrides;
+    }
+
+    /// <summary>
+    /// Folds a new mapping into the saved one. Entries for fields this file does not hold are kept, so several layouts
+    /// into one table all come back; a header respelled only by case takes over its one differently-cased entry.
+    /// </summary>
+    public static Dictionary<string, ImportMappingOverride> Merging(
+        IReadOnlyDictionary<string, ImportMappingOverride> overrides, IReadOnlyList<string> fields, IReadOnlyDictionary<string, ImportMappingOverride> saved)
+    {
+        ArgumentNullException.ThrowIfNull(overrides);
+        ArgumentNullException.ThrowIfNull(fields);
+        ArgumentNullException.ThrowIfNull(saved);
+        var exact = fields.Where(saved.ContainsKey).ToHashSet(StringComparer.Ordinal);
+        var merged = saved.Where(p => !exact.Contains(p.Key)).ToDictionary(StringComparer.Ordinal);
+        foreach (var spellings in fields.GroupBy(f => f, StringComparer.OrdinalIgnoreCase))
+        {
+            if (spellings.Count() != 1 || exact.Contains(spellings.First()))
+            {
+                continue;
+            }
+
+            var variants = merged.Keys.Where(k => string.Equals(k, spellings.Key, StringComparison.OrdinalIgnoreCase)).ToArray();
+            if (variants.Length == 1)
+            {
+                merged.Remove(variants[0]);
+            }
+        }
+
+        foreach (var (field, choice) in overrides)
+        {
+            merged[field] = choice;
+        }
+
+        return merged;
+    }
+
+    /// <summary>The fields whose current choice is a remembered override the name match would not have made.</summary>
+    public static HashSet<string> RestoredFields(
+        IReadOnlyDictionary<string, ImportMappingOverride> overrides, IReadOnlyList<string> fields, IReadOnlyList<string> columns, IReadOnlyList<ImportFieldChoice> choices)
+    {
+        ArgumentNullException.ThrowIfNull(fields);
+        ArgumentNullException.ThrowIfNull(choices);
+        var prior = ToChoices(overrides);
+        var automatic = ByName(fields, columns);
+        var restored = new HashSet<string>(StringComparer.Ordinal);
+        for (var i = 0; i < fields.Count && i < choices.Count; i++)
+        {
+            var current = choices[i].MappedColumn;
+            if (ChoiceFor(fields[i], fields, prior) is { } remembered
+                && string.Equals(current, remembered.MappedColumn, StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(current, automatic[i].MappedColumn, StringComparison.Ordinal))
+            {
+                restored.Add(fields[i]);
+            }
+        }
+
+        return restored;
     }
 
     /// <summary>

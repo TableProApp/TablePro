@@ -296,4 +296,57 @@
   <data name="WrapInTransactionToolTip" xml:space="preserve">
     <value>在單一交易中執行所有陳述式，因此發生失敗時，會復原匯入所做的變更。在執行時即認可 CREATE、ALTER 和 DROP 的資料庫 (例如 MySQL)，會保留這些陳述式及其之前的所有變更。</value>
   </data>
+  <data name="ImportAsHeader" xml:space="preserve">
+    <value>匯入方式</value>
+  </data>
+  <data name="WriteModeInsert" xml:space="preserve">
+    <value>插入</value>
+  </data>
+  <data name="WriteModeUpdate" xml:space="preserve">
+    <value>更新</value>
+  </data>
+  <data name="WriteModeUpsert" xml:space="preserve">
+    <value>插入或更新</value>
+  </data>
+  <data name="WriteModeSkipExisting" xml:space="preserve">
+    <value>插入，略過已有列</value>
+  </data>
+  <data name="WriteModeToolTip" xml:space="preserve">
+    <value>「更新」會修改鍵出現在檔案中的列。「插入或更新」還會加入其餘的列，「插入，略過已有列」只加入鍵不在表格中的列。未對應的欄位保留原值。</value>
+  </data>
+  <data name="MatchOnHeader" xml:space="preserve">
+    <value>比對依據</value>
+  </data>
+  <data name="MatchKeyPrimary" xml:space="preserve">
+    <value>主鍵（{0}）</value>
+  </data>
+  <data name="MatchKeyIndex" xml:space="preserve">
+    <value>{0} ({1})</value>
+  </data>
+  <data name="ProblemNoKey" xml:space="preserve">
+    <value>此表格沒有可用來比對列的主鍵或唯一索引。</value>
+  </data>
+  <data name="ProblemUnmappedKey" xml:space="preserve">
+    <value>請將一個欄位對應到 {0}，以便依它比對列。</value>
+  </data>
+  <data name="ProblemNothingToUpdate" xml:space="preserve">
+    <value>請將欄位對應到鍵以外的欄，才有內容可更新。</value>
+  </data>
+  <data name="UseSavedMapping" xml:space="preserve">
+    <value>使用已儲存的對應</value>
+  </data>
+  <data name="RestoredSavedMapping" xml:space="preserve">
+    <value>已還原為 {0} 儲存的對應。</value>
+  </data>
+  <data name="ImportedMatching" xml:space="preserve">
+    <value>已匯入到 {0}。相符：{1:N0}，更新：{2:N0}，插入：{3:N0}，略過：{4:N0}。</value>
+  </data>
+  <data name="EncodingHeader" xml:space="preserve">
+    <value>編碼</value>
+    <comment>Header of the SQL import's text encoding picker.</comment>
+  </data>
+  <data name="EncodingToolTip" xml:space="preserve">
+    <value>檔案位元組的讀取方式。以 SET NAMES 或 client_encoding 宣告編碼的傾印檔會預選該編碼；位元組順序標記一律優先。</value>
+    <comment>Tooltip of the encoding picker. SET NAMES and client_encoding are SQL and stay untranslated.</comment>
+  </data>
 </root>

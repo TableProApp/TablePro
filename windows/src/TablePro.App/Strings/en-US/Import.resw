@@ -386,4 +386,70 @@ Rows saved before this point stay in the table.</value>
     <value>Runs every statement in one transaction, so a failure rolls back what the import changed. A database that commits CREATE, ALTER and DROP as they run, such as MySQL, keeps those statements and everything before them.</value>
     <comment>CREATE, ALTER and DROP are SQL keywords and stay untranslated.</comment>
   </data>
+  <data name="ImportAsHeader" xml:space="preserve">
+    <value>Import as</value>
+    <comment>Header of the picker that chooses how rows are written: Insert, Update, and so on.</comment>
+  </data>
+  <data name="WriteModeInsert" xml:space="preserve">
+    <value>Insert</value>
+    <comment>Import write mode: every row is inserted.</comment>
+  </data>
+  <data name="WriteModeUpdate" xml:space="preserve">
+    <value>Update</value>
+    <comment>Import write mode: rows whose key is in the table are updated, the rest left out.</comment>
+  </data>
+  <data name="WriteModeUpsert" xml:space="preserve">
+    <value>Insert or Update</value>
+    <comment>Import write mode: rows whose key exists are updated, the rest inserted.</comment>
+  </data>
+  <data name="WriteModeSkipExisting" xml:space="preserve">
+    <value>Insert, Skip Existing</value>
+    <comment>Import write mode: only rows whose key is not in the table are inserted.</comment>
+  </data>
+  <data name="WriteModeToolTip" xml:space="preserve">
+    <value>Update changes the rows whose key is in the file. Insert or Update also adds the rest, and Insert, Skip Existing adds only rows whose key is not in the table. Columns not mapped keep their values.</value>
+    <comment>Tooltip of the Import as picker. Names the modes as the picker shows them.</comment>
+  </data>
+  <data name="MatchOnHeader" xml:space="preserve">
+    <value>Match on</value>
+    <comment>Header of the picker that chooses the key rows are matched on.</comment>
+  </data>
+  <data name="MatchKeyPrimary" xml:space="preserve">
+    <value>Primary Key ({0})</value>
+    <comment>A match key choice. {0} is the comma-separated list of key columns.</comment>
+  </data>
+  <data name="MatchKeyIndex" xml:space="preserve">
+    <value>{0} ({1})</value>
+    <comment>A match key choice. {0} is a unique index name, {1} its columns.</comment>
+  </data>
+  <data name="ProblemNoKey" xml:space="preserve">
+    <value>This table has no primary key or unique index to match rows on.</value>
+  </data>
+  <data name="ProblemUnmappedKey" xml:space="preserve">
+    <value>Map a field to {0} to match rows on it.</value>
+    <comment>{0} is the list of key columns no field is mapped to.</comment>
+  </data>
+  <data name="ProblemNothingToUpdate" xml:space="preserve">
+    <value>Map a field to a column outside the key to have something to update.</value>
+  </data>
+  <data name="UseSavedMapping" xml:space="preserve">
+    <value>Use Saved Mapping</value>
+    <comment>Command in the Match Columns menu that puts back the mapping remembered for the table.</comment>
+  </data>
+  <data name="RestoredSavedMapping" xml:space="preserve">
+    <value>Restored the mapping saved for {0}.</value>
+    <comment>Note above the field list. {0} is the table name.</comment>
+  </data>
+  <data name="ImportedMatching" xml:space="preserve">
+    <value>Imported into {0}. Matched: {1:N0}, updated: {2:N0}, inserted: {3:N0}, skipped: {4:N0}.</value>
+    <comment>Notification after an import that matched existing rows. {0} is the table name; {1} to {4} are row counts.</comment>
+  </data>
+  <data name="EncodingHeader" xml:space="preserve">
+    <value>Encoding</value>
+    <comment>Header of the SQL import's text encoding picker.</comment>
+  </data>
+  <data name="EncodingToolTip" xml:space="preserve">
+    <value>How the file's bytes are read. A dump that declares its encoding with SET NAMES or client_encoding starts on that one; a byte order mark always wins.</value>
+    <comment>Tooltip of the encoding picker. SET NAMES and client_encoding are SQL and stay untranslated.</comment>
+  </data>
 </root>

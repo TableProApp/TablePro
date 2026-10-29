@@ -296,4 +296,57 @@ Các dòng đã lưu trước thời điểm này vẫn được giữ trong b�
   <data name="WrapInTransactionToolTip" xml:space="preserve">
     <value>Chạy mọi câu lệnh trong một giao dịch, nên khi có lỗi, những gì quá trình nhập đã thay đổi sẽ được hoàn tác. Cơ sở dữ liệu tự commit CREATE, ALTER và DROP ngay khi chạy, chẳng hạn MySQL, sẽ giữ lại các câu lệnh đó và mọi thứ trước chúng.</value>
   </data>
+  <data name="ImportAsHeader" xml:space="preserve">
+    <value>Nhập dưới dạng</value>
+  </data>
+  <data name="WriteModeInsert" xml:space="preserve">
+    <value>Chèn</value>
+  </data>
+  <data name="WriteModeUpdate" xml:space="preserve">
+    <value>Cập nhật</value>
+  </data>
+  <data name="WriteModeUpsert" xml:space="preserve">
+    <value>Chèn hoặc cập nhật</value>
+  </data>
+  <data name="WriteModeSkipExisting" xml:space="preserve">
+    <value>Chèn, bỏ qua hàng đã có</value>
+  </data>
+  <data name="WriteModeToolTip" xml:space="preserve">
+    <value>Cập nhật thay đổi các hàng có khóa nằm trong tệp. Chèn hoặc cập nhật thêm cả các hàng còn lại, còn Chèn, bỏ qua hàng đã có chỉ thêm các hàng có khóa chưa có trong bảng. Các cột không được ánh xạ giữ nguyên giá trị.</value>
+  </data>
+  <data name="MatchOnHeader" xml:space="preserve">
+    <value>Đối chiếu theo</value>
+  </data>
+  <data name="MatchKeyPrimary" xml:space="preserve">
+    <value>Khóa chính ({0})</value>
+  </data>
+  <data name="MatchKeyIndex" xml:space="preserve">
+    <value>{0} ({1})</value>
+  </data>
+  <data name="ProblemNoKey" xml:space="preserve">
+    <value>Bảng này không có khóa chính hay chỉ mục duy nhất để đối chiếu các hàng.</value>
+  </data>
+  <data name="ProblemUnmappedKey" xml:space="preserve">
+    <value>Hãy ánh xạ một trường vào {0} để đối chiếu các hàng theo nó.</value>
+  </data>
+  <data name="ProblemNothingToUpdate" xml:space="preserve">
+    <value>Hãy ánh xạ một trường vào một cột ngoài khóa để có dữ liệu cần cập nhật.</value>
+  </data>
+  <data name="UseSavedMapping" xml:space="preserve">
+    <value>Dùng ánh xạ đã lưu</value>
+  </data>
+  <data name="RestoredSavedMapping" xml:space="preserve">
+    <value>Đã khôi phục ánh xạ đã lưu cho {0}.</value>
+  </data>
+  <data name="ImportedMatching" xml:space="preserve">
+    <value>Đã nhập vào {0}. Khớp: {1:N0}, cập nhật: {2:N0}, chèn: {3:N0}, bỏ qua: {4:N0}.</value>
+  </data>
+  <data name="EncodingHeader" xml:space="preserve">
+    <value>Mã hóa</value>
+    <comment>Header of the SQL import's text encoding picker.</comment>
+  </data>
+  <data name="EncodingToolTip" xml:space="preserve">
+    <value>Cách đọc các byte của tệp. Bản dump khai báo mã hóa bằng SET NAMES hoặc client_encoding sẽ bắt đầu với mã hóa đó; dấu thứ tự byte luôn được ưu tiên.</value>
+    <comment>Tooltip of the encoding picker. SET NAMES and client_encoding are SQL and stay untranslated.</comment>
+  </data>
 </root>

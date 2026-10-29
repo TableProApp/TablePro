@@ -204,6 +204,52 @@ public sealed class SqlFileImporterTests
         }
     }
 
+    [Fact]
+    public async Task ReadsAFileInTheChosenEncoding()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"tablepro-import-{Guid.NewGuid():N}.sql");
+        try
+        {
+            var windows1252 = SqlImportEncoding.Find("Windows-1252")!;
+            await File.WriteAllBytesAsync(path, windows1252.GetEncoding().GetBytes("INSERT INTO a VALUES ('\x20ac \x201cquoted\x201d');\n"), TestContext.Current.CancellationToken);
+
+            var channel = new FakeChannel();
+            await SqlFileImporter.ImportFileAsync(channel, path, SqliteDialect.Instance, DatabaseEngine.Sqlite, new SqlImportOptions(WrapInTransaction: false, DisableForeignKeyChecks: false, Encoding: windows1252), null, TestContext.Current.CancellationToken);
+
+            Assert.Equal("INSERT INTO a VALUES ('\x20ac \x201cquoted\x201d')", channel.Executed.Single().Trim());
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Theory]
+    [InlineData("-- MySQL dump\n/*!40101 SET NAMES latin1 */;\nCREATE TABLE a (b int);", "Windows-1252")]
+    [InlineData("/*!40101 SET NAMES utf8mb4 */;", "UTF-8")]
+    [InlineData("SET NAMES sjis;", "Shift_JIS")]
+    [InlineData("SET character_set_client = gbk;", "GB18030")]
+    public void ReadsTheEncodingAMySqlDumpDeclares(string head, string expected) =>
+        Assert.Equal(expected, SqlDumpEncoding.Declared(head, MySqlDialect.Instance)?.Id);
+
+    [Theory]
+    [InlineData("SET statement_timeout = 0;\nSET client_encoding = 'WIN1252';", "Windows-1252")]
+    [InlineData("SET client_encoding TO 'LATIN1';", "Latin1")]
+    [InlineData("SET client_encoding = 'EUC_KR';", "EUC-KR")]
+    public void ReadsTheEncodingAPostgreSqlDumpDeclares(string head, string expected) =>
+        Assert.Equal(expected, SqlDumpEncoding.Declared(head, PostgreSqlDialect.Instance)?.Id);
+
+    [Theory]
+    [InlineData("CREATE TABLE a (b int);")]
+    [InlineData("SET NAMES klingon;")]
+    [InlineData("INSERT INTO a VALUES ('SET NAMES latin1');")]
+    public void ADumpWithoutAKnownDeclarationKeepsTheChoice(string head) =>
+        Assert.Null(SqlDumpEncoding.Declared(head, MySqlDialect.Instance));
+
+    [Fact]
+    public void EveryOfferedEncodingCanBeRead() =>
+        Assert.All(SqlImportEncoding.All, e => Assert.NotNull(e.GetEncoding()));
+
     private sealed class SyncProgress(List<SqlImportProgress> reports) : IProgress<SqlImportProgress>
     {
         public void Report(SqlImportProgress value) => reports.Add(value);

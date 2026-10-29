@@ -296,4 +296,57 @@ Bu noktadan önce kaydedilen satırlar tabloda kalır.</value>
   <data name="WrapInTransactionToolTip" xml:space="preserve">
     <value>Her ifadeyi tek bir işlemde çalıştırır; böylece bir hata, içe aktarmanın yaptığı değişiklikleri geri alır. MySQL gibi CREATE, ALTER ve DROP ifadelerini çalıştırıldıkça işleyen bir veritabanı, bu ifadeleri ve onlardan öncekileri korur.</value>
   </data>
+  <data name="ImportAsHeader" xml:space="preserve">
+    <value>İçe aktarma biçimi</value>
+  </data>
+  <data name="WriteModeInsert" xml:space="preserve">
+    <value>Ekle</value>
+  </data>
+  <data name="WriteModeUpdate" xml:space="preserve">
+    <value>Güncelle</value>
+  </data>
+  <data name="WriteModeUpsert" xml:space="preserve">
+    <value>Ekle veya güncelle</value>
+  </data>
+  <data name="WriteModeSkipExisting" xml:space="preserve">
+    <value>Ekle, mevcutları atla</value>
+  </data>
+  <data name="WriteModeToolTip" xml:space="preserve">
+    <value>Güncelle, anahtarı dosyada bulunan satırları değiştirir. Ekle veya güncelle diğerlerini de ekler; Ekle, mevcutları atla yalnızca anahtarı tabloda olmayan satırları ekler. Eşlenmeyen sütunlar değerlerini korur.</value>
+  </data>
+  <data name="MatchOnHeader" xml:space="preserve">
+    <value>Eşleştirme anahtarı</value>
+  </data>
+  <data name="MatchKeyPrimary" xml:space="preserve">
+    <value>Birincil anahtar ({0})</value>
+  </data>
+  <data name="MatchKeyIndex" xml:space="preserve">
+    <value>{0} ({1})</value>
+  </data>
+  <data name="ProblemNoKey" xml:space="preserve">
+    <value>Bu tabloda satırları eşleştirmek için birincil anahtar veya benzersiz dizin yok.</value>
+  </data>
+  <data name="ProblemUnmappedKey" xml:space="preserve">
+    <value>Satırları eşleştirmek için {0} sütununa bir alan eşleyin.</value>
+  </data>
+  <data name="ProblemNothingToUpdate" xml:space="preserve">
+    <value>Güncellenecek bir şey olması için anahtar dışındaki bir sütuna alan eşleyin.</value>
+  </data>
+  <data name="UseSavedMapping" xml:space="preserve">
+    <value>Kayıtlı eşlemeyi kullan</value>
+  </data>
+  <data name="RestoredSavedMapping" xml:space="preserve">
+    <value>{0} için kaydedilen eşleme geri yüklendi.</value>
+  </data>
+  <data name="ImportedMatching" xml:space="preserve">
+    <value>{0} tablosuna içe aktarıldı. Eşleşen: {1:N0}, güncellenen: {2:N0}, eklenen: {3:N0}, atlanan: {4:N0}.</value>
+  </data>
+  <data name="EncodingHeader" xml:space="preserve">
+    <value>Kodlama</value>
+    <comment>Header of the SQL import's text encoding picker.</comment>
+  </data>
+  <data name="EncodingToolTip" xml:space="preserve">
+    <value>Dosyanın baytlarının nasıl okunacağı. Kodlamasını SET NAMES veya client_encoding ile bildiren bir döküm o kodlamayla başlar; bayt sırası işareti her zaman önceliklidir.</value>
+    <comment>Tooltip of the encoding picker. SET NAMES and client_encoding are SQL and stay untranslated.</comment>
+  </data>
 </root>

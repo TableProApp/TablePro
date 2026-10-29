@@ -316,14 +316,17 @@ public sealed partial class TableTabView : UserControl
 
         // The grid's baseline knows the provider's CLR type of each column, which values are parsed into.
         var clrTypes = ViewModel.Buffer?.Baseline.Columns.ToDictionary(c => c.Name, c => c.ClrType, StringComparer.OrdinalIgnoreCase) ?? [];
-        var targets = structure.Columns.Select(c => new ImportTargetColumn(c.Name, c.DataType, clrTypes.GetValueOrDefault(c.Name) ?? typeof(string))).ToArray();
+        var targets = structure.Columns.Select(c => new ImportTargetColumn(c.Name, c.DataType, clrTypes.GetValueOrDefault(c.Name) ?? typeof(string), c.IsIdentity)).ToArray();
         var session = ViewModel.Context.Session;
         var ddl = session.Database as ISchemaDdlProvider;
+        var table = ViewModel.Table.Name;
         var plan = await ImportMappingDialog.ShowAsync(
-            dialogs, file.Name, preview, format, csvOptions, ReadPreview, ViewModel.Table.Name, targets,
+            dialogs, file.Name, preview, format, csvOptions, ReadPreview, table, targets,
             canCreateTable: ddl is not null && session.Dialect.IsSql && !session.Profile.IsReadOnly,
             type => ImportTypeMapper.SqlType(type, session.Profile.Engine, session.Database.ServerVersion),
-            ddl?.CommonDataTypes ?? []);
+            ddl?.CommonDataTypes ?? [],
+            new Storage.Import.ImportMappingScope(session.Profile.Id, session.Database.CurrentDatabase, table.Schema, table.Name),
+            new ImportMatchOptions(ImportMatchKey.Options(structure.Columns, structure.Indexes), session.Database is IImportRowMatcher && session.Dialect.IsSql));
         if (plan is null)
         {
             return;
@@ -343,9 +346,11 @@ public sealed partial class TableTabView : UserControl
             {
                 await using var stream = ImportFile.Open(path);
                 var records = ImportFile.ReadRecordsAsync(stream, format, plan.CsvOptions, CancellationToken.None);
-                return await RowImporter.ImportAsync(session.Database, plan.Table, records, plan.Builder, progress, CancellationToken.None);
+                return await RowImporter.ImportAsync(session.Database, plan.Table, records, plan.Builder, plan.Writing, progress, CancellationToken.None);
             });
-            var imported = Strings.Plural("Import/ImportedRows", result.Imported, plan.Table.Name);
+            var imported = plan.Writing.Mode.MatchesExistingRows()
+                ? Strings.Format("Import/ImportedMatching", plan.Table.Name, result.Matched, result.Updated, result.Inserted, result.Unmatched + result.Existing)
+                : Strings.Plural("Import/ImportedRows", result.Imported, plan.Table.Name);
             ViewModel.Context.Notify(result.Skipped > 0 ? Strings.Format("Import/ImportedWithSkipped", imported, Strings.Plural("Import/RecordsSkipped", result.Skipped)) : imported);
             if (plan.Destination == ImportDestination.ExistingTable)
             {

@@ -296,4 +296,57 @@ Les lignes enregistrées avant ce point restent dans la table.</value>
   <data name="WrapInTransactionToolTip" xml:space="preserve">
     <value>Exécute toutes les instructions dans une seule transaction&#160;: en cas d’échec, les modifications de l’importation sont annulées. Une base de données qui valide CREATE, ALTER et DROP à leur exécution, comme MySQL, conserve ces instructions et tout ce qui les précède.</value>
   </data>
+  <data name="ImportAsHeader" xml:space="preserve">
+    <value>Importer comme</value>
+  </data>
+  <data name="WriteModeInsert" xml:space="preserve">
+    <value>Insérer</value>
+  </data>
+  <data name="WriteModeUpdate" xml:space="preserve">
+    <value>Mettre à jour</value>
+  </data>
+  <data name="WriteModeUpsert" xml:space="preserve">
+    <value>Insérer ou mettre à jour</value>
+  </data>
+  <data name="WriteModeSkipExisting" xml:space="preserve">
+    <value>Insérer, ignorer les existantes</value>
+  </data>
+  <data name="WriteModeToolTip" xml:space="preserve">
+    <value>Mettre à jour modifie les lignes dont la clé figure dans le fichier. Insérer ou mettre à jour ajoute aussi les autres, et Insérer, ignorer les existantes n'ajoute que les lignes dont la clé n'est pas dans la table. Les colonnes non mappées gardent leurs valeurs.</value>
+  </data>
+  <data name="MatchOnHeader" xml:space="preserve">
+    <value>Faire correspondre sur</value>
+  </data>
+  <data name="MatchKeyPrimary" xml:space="preserve">
+    <value>Clé primaire ({0})</value>
+  </data>
+  <data name="MatchKeyIndex" xml:space="preserve">
+    <value>{0} ({1})</value>
+  </data>
+  <data name="ProblemNoKey" xml:space="preserve">
+    <value>Cette table n'a ni clé primaire ni index unique sur lequel faire correspondre les lignes.</value>
+  </data>
+  <data name="ProblemUnmappedKey" xml:space="preserve">
+    <value>Mappez un champ sur {0} pour faire correspondre les lignes.</value>
+  </data>
+  <data name="ProblemNothingToUpdate" xml:space="preserve">
+    <value>Mappez un champ sur une colonne hors de la clé pour avoir quelque chose à mettre à jour.</value>
+  </data>
+  <data name="UseSavedMapping" xml:space="preserve">
+    <value>Utiliser le mappage enregistré</value>
+  </data>
+  <data name="RestoredSavedMapping" xml:space="preserve">
+    <value>Le mappage enregistré pour {0} a été restauré.</value>
+  </data>
+  <data name="ImportedMatching" xml:space="preserve">
+    <value>Importé dans {0}. Correspondances : {1:N0}, mises à jour : {2:N0}, insertions : {3:N0}, ignorées : {4:N0}.</value>
+  </data>
+  <data name="EncodingHeader" xml:space="preserve">
+    <value>Encodage</value>
+    <comment>Header of the SQL import's text encoding picker.</comment>
+  </data>
+  <data name="EncodingToolTip" xml:space="preserve">
+    <value>Façon dont les octets du fichier sont lus. Un dump qui déclare son encodage avec SET NAMES ou client_encoding démarre sur celui-ci ; une marque d'ordre des octets l'emporte toujours.</value>
+    <comment>Tooltip of the encoding picker. SET NAMES and client_encoding are SQL and stay untranslated.</comment>
+  </data>
 </root>

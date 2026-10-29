@@ -6,8 +6,8 @@ using TablePro.Core.Import;
 namespace TablePro.App.Views;
 
 /// <summary>
-/// Imports a SQL file, plain or gzip, as the macOS SQL import does: the error mode, the transaction and the foreign key
-/// switch first, then a progress dialog whose Stop cancels and rolls back.
+/// Imports a SQL file, plain or gzip, as the macOS SQL import does: the encoding, the error mode, the transaction and
+/// the foreign key switch first, then a progress dialog whose Stop cancels and rolls back.
 /// </summary>
 internal static class SqlImportDialog
 {
@@ -30,7 +30,17 @@ internal static class SqlImportDialog
             return false;
         }
 
-        var options = await AskOptionsAsync(dialogs, path, session.Profile.Name, SqlImportStatements.For(session.Profile.Engine));
+        SqlImportEncoding? declared = null;
+        try
+        {
+            declared = await Task.Run(() => SqlDumpEncoding.DeclaredInFileAsync(path, session.Dialect, CancellationToken.None));
+        }
+        catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException)
+        {
+            // An unreadable head only means no declaration is found; the import reports the read error itself.
+        }
+
+        var options = await AskOptionsAsync(dialogs, path, session.Profile.Name, SqlImportStatements.For(session.Profile.Engine), declared ?? SqlImportEncoding.Utf8);
         if (options is null)
         {
             return false;
@@ -117,8 +127,17 @@ internal static class SqlImportDialog
         return true;
     }
 
-    private static async Task<SqlImportOptions?> AskOptionsAsync(DialogService dialogs, string path, string connection, SqlImportStatements engine)
+    private static async Task<SqlImportOptions?> AskOptionsAsync(DialogService dialogs, string path, string connection, SqlImportStatements engine, SqlImportEncoding encoding)
     {
+        var encodings = SqlImportEncoding.All;
+        var encodingBox = new ComboBox
+        {
+            Header = Strings.Get("Import/EncodingHeader"),
+            ItemsSource = encodings.Select(e => e.Label).ToList(),
+            SelectedIndex = Math.Max(0, encodings.ToList().IndexOf(encoding)),
+            MinWidth = 240,
+        };
+        ToolTipService.SetToolTip(encodingBox, Strings.Get("Import/EncodingToolTip"));
         var mode = new ComboBox { Header = Strings.Get("Import/OnErrorHeader"), ItemsSource = Modes.Select(m => m.Name).ToList(), SelectedIndex = 0, MinWidth = 240 };
         var transaction = new CheckBox { Content = Strings.Get("Import/WrapInTransaction"), IsChecked = engine.SupportsTransactions, IsEnabled = engine.SupportsTransactions };
         ToolTipService.SetToolTip(transaction, engine.SupportsTransactions
@@ -152,6 +171,7 @@ internal static class SqlImportDialog
             Text = Strings.Format("Import/SqlFileSummary", Path.GetFileName(path), size / 1024.0, connection),
             TextWrapping = TextWrapping.Wrap,
         });
+        panel.Children.Add(encodingBox);
         panel.Children.Add(mode);
         panel.Children.Add(transaction);
         panel.Children.Add(keys);
@@ -160,6 +180,7 @@ internal static class SqlImportDialog
             return null;
         }
 
-        return new SqlImportOptions(Modes[Math.Max(0, mode.SelectedIndex)].Value, transaction.IsChecked == true, keys.IsChecked == true);
+        return new SqlImportOptions(
+            Modes[Math.Max(0, mode.SelectedIndex)].Value, transaction.IsChecked == true, keys.IsChecked == true, Encoding: encodings[Math.Max(0, encodingBox.SelectedIndex)]);
     }
 }
