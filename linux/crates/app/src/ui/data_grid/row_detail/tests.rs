@@ -1118,6 +1118,8 @@ fn enter_in_a_clock_field_sets_the_time() {
         .find_map(|widget| widget.downcast::<gtk::Text>().ok())
         .expect("the field's text");
     text.emit_by_name::<()>("activate", &[]);
+    // A button activated from the keyboard clicks once its pressed look has shown.
+    wait_until(WAIT, || pending(&grid, 1, 1).is_some()).expect("Enter to set the time");
 
     let set = SqlTime::from_time_of_day(a_time(9, 5, 30));
     assert_eq!(pending(&grid, 1, 1), Some(CellInput::Value(Value::Time(set))));
