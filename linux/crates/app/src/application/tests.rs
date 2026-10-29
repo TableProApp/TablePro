@@ -825,7 +825,10 @@ fn the_first_launch_after_an_older_release_says_so_once() {
     test.app.note_launch_of(&released);
 
     assert_eq!(settings.last_seen_version(), released);
-    assert_eq!(said_at_launch(&test), [crate::ui::LaunchNotice::Update(released.clone())]);
+    assert_eq!(
+        said_at_launch(&test),
+        [crate::ui::LaunchNotice::Update(released.clone())]
+    );
     test.window();
     assert!(said_at_launch(&test).is_empty(), "the first window did not take it");
 

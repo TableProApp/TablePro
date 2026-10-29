@@ -40,10 +40,10 @@ impl SessionWindow {
             withdraw(toast);
         }
         let toast = self.say(&notice);
-        self.imp()
-            .launch_notices
-            .borrow_mut()
-            .push(Said { notice, toast: Some(toast) });
+        self.imp().launch_notices.borrow_mut().push(Said {
+            notice,
+            toast: Some(toast),
+        });
     }
 
     // A toast lives in the overlay of the page it was added to, and a restored session goes from
