@@ -9,7 +9,7 @@ extension MainContentCoordinator {
                 FeatureTipSignals.editorQueryRan()
             }
             if request.wasSuccessful {
-                Telemetry.shared.queryExecuted(databaseType: request.databaseType.rawValue)
+                services.telemetry.queryExecuted(databaseType: request.databaseType.rawValue)
             }
         }
         let recorder = services.queryHistoryManager

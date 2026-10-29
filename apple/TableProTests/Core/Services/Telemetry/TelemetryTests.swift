@@ -341,6 +341,28 @@ struct TelemetryTests {
         #expect(updated.client?.captured.isEmpty == true)
     }
 
+    @Test("A query run in the editor sends first_query_executed with the type of the connection it ran on")
+    func editorQueryNamesItsConnectionType() async throws {
+        let fixture = try TelemetryFixture()
+        fixture.start()
+        var services = AppServices.live
+        services.telemetry = fixture.telemetry
+        let connection = TestFixtures.makeConnection(type: .mssql)
+        let window = CoordinatorFixture(
+            connection: connection,
+            driver: MockDatabaseDriver(connection: connection),
+            services: services
+        )
+        window.addTab(QueryTab(title: "Query 1", query: "SELECT 1", tabType: .query))
+
+        window.coordinator.runQuery(viewport: .firstRow)
+        try await waitUntil { fixture.client?.captured.contains("first_query_executed") == true }
+
+        #expect(Array(fixture.client?.calls.dropFirst() ?? []) == [
+            .capture("first_query_executed", ["database_type": "SQL Server"])
+        ])
+    }
+
     @Test("A Mac updated after connecting sends no first_query_executed; a new Mac still sends it on a later launch")
     func firstQueryCarriedOver() throws {
         let updated = try TelemetryFixture()
