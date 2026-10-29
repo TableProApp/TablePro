@@ -225,6 +225,12 @@
   <data name="TransactionAlreadyOpen" xml:space="preserve">
     <value>已有一个事务处于打开状态。</value>
   </data>
+  <data name="TransactionLost" xml:space="preserve">
+    <value>连接已断开，服务器已回滚未结束的事务。请重新运行其语句。</value>
+  </data>
+  <data name="TransactionStartedByWrite" xml:space="preserve">
+    <value>已开始事务。COMMIT 保留更改，ROLLBACK 撤销更改。</value>
+  </data>
   <data name="UpdateNeedsChangedColumn" xml:space="preserve">
     <value>更新至少需要一个已更改的列。</value>
   </data>

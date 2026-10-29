@@ -42,6 +42,48 @@ internal static class PostgreSqlDdl
         _ => [],
     };
 
+    /// <summary>
+    /// Whether a statement creates, changes or drops a type Npgsql would need a reader for: an enum, range or composite
+    /// type, a domain, or an extension that brings its own types.
+    /// </summary>
+    public static bool ChangesTypes(string statement)
+    {
+        ArgumentNullException.ThrowIfNull(statement);
+        var span = statement.AsSpan();
+        var lexer = new SqlLexer(span, Dialect.LexerFeatures);
+        var verb = false;
+        while (lexer.TryRead(out var token))
+        {
+            if (token.IsTrivia)
+            {
+                continue;
+            }
+
+            if (token.Kind != SqlTokenKind.Word)
+            {
+                return false;
+            }
+
+            var word = token.Slice(span);
+            if (!verb)
+            {
+                if (!word.Equals("CREATE", StringComparison.OrdinalIgnoreCase) && !word.Equals("ALTER", StringComparison.OrdinalIgnoreCase)
+                    && !word.Equals("DROP", StringComparison.OrdinalIgnoreCase))
+                {
+                    return false;
+                }
+
+                verb = true;
+                continue;
+            }
+
+            return word.Equals("TYPE", StringComparison.OrdinalIgnoreCase) || word.Equals("DOMAIN", StringComparison.OrdinalIgnoreCase)
+                || word.Equals("EXTENSION", StringComparison.OrdinalIgnoreCase);
+        }
+
+        return false;
+    }
+
     public static readonly IReadOnlyList<TableOptionSpec> TableOptionSpecs =
     [
         new(TableOptionNames.Comment, TableOptionKind.Text),

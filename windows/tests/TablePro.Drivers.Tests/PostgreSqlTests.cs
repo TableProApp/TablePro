@@ -21,6 +21,36 @@ public sealed class PostgreSqlTests
         Assert.Equal(DBNull.Value, PostgreSqlSession.Parameter("@p0", null).Value);
     }
 
+    /// <summary>
+    /// The untyped binding is the base class's parameter hook, so browse, count, save, import matching and a sync all
+    /// bind through it rather than through copies of the base class's methods.
+    /// </summary>
+    [Fact]
+    public void BindsThroughTheBaseClassHookRatherThanCopiesOfItsMethods()
+    {
+        const System.Reflection.BindingFlags Declared = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public
+            | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.DeclaredOnly;
+        var declared = typeof(PostgreSqlSession).GetMethods(Declared).Select(m => m.Name).ToHashSet();
+
+        Assert.Contains("CreateParameter", declared);
+        Assert.Contains("HasUnreadableColumns", declared);
+        Assert.DoesNotContain("BrowseAsync", declared);
+        Assert.DoesNotContain("CountAsync", declared);
+        Assert.DoesNotContain("ExecuteChangeAsync", declared);
+    }
+
+    [Theory]
+    [InlineData("CREATE TYPE mood AS ENUM ('sad', 'happy')", true)]
+    [InlineData("create domain positive as integer check (value > 0)", true)]
+    [InlineData("ALTER TYPE mood ADD VALUE 'meh'", true)]
+    [InlineData("-- why\nDROP TYPE mood", true)]
+    [InlineData("CREATE EXTENSION IF NOT EXISTS hstore", true)]
+    [InlineData("CREATE TABLE t (id int)", false)]
+    [InlineData("SELECT 'CREATE TYPE x'", false)]
+    [InlineData("INSERT INTO t VALUES (1)", false)]
+    public void ReadsTheServersTypesAgainOnlyAfterATypeChanges(string sql, bool changes) =>
+        Assert.Equal(changes, PostgreSqlDdl.ChangesTypes(sql));
+
     [Fact]
     public void ConnectionStringUsesTheRequestEndpointAndProfileSettings()
     {

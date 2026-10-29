@@ -225,6 +225,12 @@
   <data name="TransactionAlreadyOpen" xml:space="preserve">
     <value>Une transaction est déjà ouverte.</value>
   </data>
+  <data name="TransactionLost" xml:space="preserve">
+    <value>La connexion a été perdue et le serveur a annulé la transaction ouverte. Exécutez de nouveau ses instructions.</value>
+  </data>
+  <data name="TransactionStartedByWrite" xml:space="preserve">
+    <value>Transaction démarrée. COMMIT conserve les modifications ; ROLLBACK les annule.</value>
+  </data>
   <data name="UpdateNeedsChangedColumn" xml:space="preserve">
     <value>Une mise à jour nécessite au moins une colonne modifiée.</value>
   </data>

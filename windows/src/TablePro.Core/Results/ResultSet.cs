@@ -65,4 +65,13 @@ public sealed record StatementResult(
     public bool Succeeded => Error is null;
 }
 
-public sealed record ExecuteOptions(int RowLimit = 10_000, int CommandTimeoutSeconds = 0, bool StopOnError = true);
+/// <summary>How a channel runs a list of statements.</summary>
+/// <param name="RowLimit">The most rows read from each result; the rest are left unread.</param>
+/// <param name="CommandTimeoutSeconds">How long a statement may run, or 0 for no limit.</param>
+/// <param name="StopOnError">Whether a failed statement skips the ones after it.</param>
+/// <param name="EditorTransaction">
+/// Whether the channel keeps the transaction an editor tab's writes open until a COMMIT or ROLLBACK typed there, on an
+/// engine whose provider otherwise commits every statement (Oracle). Imports, copies and MCP calls leave it off, so
+/// each statement they run commits as before and nothing is rolled back when their channel closes.
+/// </param>
+public sealed record ExecuteOptions(int RowLimit = 10_000, int CommandTimeoutSeconds = 0, bool StopOnError = true, bool EditorTransaction = false);

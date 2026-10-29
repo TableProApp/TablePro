@@ -317,6 +317,39 @@ public sealed class OracleTests
         Assert.Equal("PACKAGE", OracleDdl.MetadataType("PACKAGE"));
     }
 
+    /// <summary>
+    /// The editor opens its transaction before the first statement that can change data, so ROLLBACK undoes it, and
+    /// leaves reads, session settings and DDL (which Oracle commits on its own) outside it.
+    /// </summary>
+    [Theory]
+    [InlineData("SELECT * FROM t", "Query")]
+    [InlineData("with c as (select 1 from dual) select * from c", "Query")]
+    [InlineData("SELECT * FROM t WHERE id = 1 FOR UPDATE", "Write")]
+    [InlineData("SELECT 'FOR UPDATE' FROM dual", "Query")]
+    [InlineData("EXPLAIN PLAN FOR DELETE FROM t", "Query")]
+    [InlineData("-- why\nDELETE FROM t", "Write")]
+    [InlineData("INSERT INTO t VALUES (1)", "Write")]
+    [InlineData("MERGE INTO t USING s ON (t.id = s.id) WHEN MATCHED THEN UPDATE SET t.a = s.a", "Write")]
+    [InlineData("LOCK TABLE t IN EXCLUSIVE MODE", "Write")]
+    [InlineData("SAVEPOINT before_purge", "Write")]
+    [InlineData("SET TRANSACTION READ ONLY", "Write")]
+    [InlineData("SET ROLE dba", "Session")]
+    [InlineData("BEGIN DELETE FROM t; COMMIT; END;", "Procedural")]
+    [InlineData("DECLARE n NUMBER; BEGIN NULL; END;", "Procedural")]
+    [InlineData("CALL audit_pkg.log(1)", "Procedural")]
+    [InlineData("CREATE TABLE t (id NUMBER)", "Ddl")]
+    [InlineData("TRUNCATE TABLE t", "Ddl")]
+    [InlineData("ALTER TABLE t ADD (b NUMBER)", "Ddl")]
+    [InlineData("ALTER SESSION SET NLS_DATE_FORMAT = 'YYYY-MM-DD'", "Session")]
+    [InlineData("COMMIT", "Commit")]
+    [InlineData("commit work", "Commit")]
+    [InlineData("COMMIT FORCE '1.2.3'", "Session")]
+    [InlineData("ROLLBACK", "Rollback")]
+    [InlineData("ROLLBACK WORK", "Rollback")]
+    [InlineData("ROLLBACK TO SAVEPOINT before_purge", "Session")]
+    public void EditorStatementsOpenAndEndTheTabsTransaction(string sql, string role) =>
+        Assert.Equal(role, OracleEditorStatements.Role(sql).ToString());
+
     private static List<string> ParameterTokens(string text)
     {
         var tokens = new List<string>();

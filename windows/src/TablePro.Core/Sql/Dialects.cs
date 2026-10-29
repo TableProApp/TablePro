@@ -28,15 +28,21 @@ public sealed class PostgreSqlDialect : SqlDialect
     public override Plans.PlanRequest? PlanStatements(string statement, bool analyze) => Plans.PlanStatements.PostgreSql(statement, analyze);
 }
 
+/// <summary>MySQL and MariaDB, which share their syntax; MariaDB asks for its measured plan in a statement of its own.</summary>
 public sealed class MySqlDialect : SqlDialect
 {
-    public static readonly MySqlDialect Instance = new();
+    public static readonly MySqlDialect Instance = new(mariaDb: false);
 
-    private MySqlDialect()
+    public static readonly MySqlDialect MariaDb = new(mariaDb: true);
+
+    private readonly bool _mariaDb;
+
+    private MySqlDialect(bool mariaDb)
     {
+        _mariaDb = mariaDb;
     }
 
-    public override string Name => "MySQL";
+    public override string Name => _mariaDb ? "MariaDB" : "MySQL";
 
     public override SqlLexerFeatures LexerFeatures =>
         SqlLexerFeatures.BacktickIdentifiers | SqlLexerFeatures.HashComments | SqlLexerFeatures.BackslashEscapes
@@ -53,7 +59,8 @@ public sealed class MySqlDialect : SqlDialect
 
     public override string CastToText(string quotedColumn) => $"CAST({quotedColumn} AS CHAR)";
 
-    public override Plans.PlanRequest? PlanStatements(string statement, bool analyze) => Plans.PlanStatements.MySql(statement, analyze);
+    public override Plans.PlanRequest? PlanStatements(string statement, bool analyze) =>
+        _mariaDb ? Plans.PlanStatements.MariaDb(statement, analyze) : Plans.PlanStatements.MySql(statement, analyze);
 }
 
 public sealed class SqlServerDialect : SqlDialect
@@ -547,7 +554,8 @@ public static class SqlDialects
     public static SqlDialect For(DatabaseEngine engine) => engine switch
     {
         DatabaseEngine.PostgreSql or DatabaseEngine.CockroachDb or DatabaseEngine.Redshift or DatabaseEngine.PGlite => PostgreSqlDialect.Instance,
-        DatabaseEngine.MySql or DatabaseEngine.MariaDb or DatabaseEngine.TiDb or DatabaseEngine.OceanBase or DatabaseEngine.Databend => MySqlDialect.Instance,
+        DatabaseEngine.MySql or DatabaseEngine.TiDb or DatabaseEngine.OceanBase or DatabaseEngine.Databend => MySqlDialect.Instance,
+        DatabaseEngine.MariaDb => MySqlDialect.MariaDb,
         DatabaseEngine.SqlServer => SqlServerDialect.Instance,
         DatabaseEngine.Sqlite or DatabaseEngine.LibSql or DatabaseEngine.Turso or DatabaseEngine.CloudflareD1 or DatabaseEngine.CloudflareR2Sql => SqliteDialect.Instance,
         DatabaseEngine.Beancount => BeancountDialect.Instance,

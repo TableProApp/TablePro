@@ -60,6 +60,13 @@ public static class PlanStatements
         new([(analyze ? "EXPLAIN ANALYZE " : "EXPLAIN FORMAT=JSON ") + statement], PlanFormat.MySql, analyze);
 
     /// <summary>
+    /// MariaDB has no EXPLAIN ANALYZE; its ANALYZE statement runs the query and prints the JSON plan with measured
+    /// <c>r_</c> figures beside the estimates, which the same parser reads.
+    /// </summary>
+    public static PlanRequest MariaDb(string statement, bool analyze) =>
+        new([(analyze ? "ANALYZE FORMAT=JSON " : "EXPLAIN FORMAT=JSON ") + statement], PlanFormat.MySql, analyze);
+
+    /// <summary>
     /// SHOWPLAN and STATISTICS XML must each be alone in their batch and stay on for the session until switched off,
     /// so the switch-off runs even when the statement fails.
     /// </summary>

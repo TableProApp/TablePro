@@ -465,6 +465,7 @@ public sealed class SqlLexerTests
     {
         "PostgreSQL" => PostgreSqlDialect.Instance,
         "MySQL" => MySqlDialect.Instance,
+        "MariaDB" => MySqlDialect.MariaDb,
         "SQL Server" => SqlServerDialect.Instance,
         "SQLite" => SqliteDialect.Instance,
         "DuckDB" => DuckDbDialect.Instance,

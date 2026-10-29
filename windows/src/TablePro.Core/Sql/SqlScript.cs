@@ -5,6 +5,9 @@ namespace TablePro.Core.Sql;
 /// <summary>One statement (or one <c>GO</c> batch) of a script, as a range of the source text.</summary>
 public readonly record struct SqlStatement(int Start, int Length, string Text)
 {
+    /// <summary>How many times the statement runs: a SQL Server batch ended by <c>GO 5</c> runs five times.</summary>
+    public int Repeat { get; init; } = 1;
+
     public int End => Start + Length;
 
     public bool Contains(int offset) => offset >= Start && offset <= End;
@@ -39,6 +42,22 @@ public static class SqlScript
         }
 
         return builder.ToImmutable();
+    }
+
+    /// <summary>
+    /// Each statement's text as many times as it runs. A SQL Server batch ended by <c>GO 5</c> runs five times, each
+    /// run with a result of its own, as on macOS and in sqlcmd.
+    /// </summary>
+    public static IEnumerable<string> Runs(IEnumerable<SqlStatement> statements)
+    {
+        ArgumentNullException.ThrowIfNull(statements);
+        foreach (var statement in statements)
+        {
+            for (var run = 0; run < Math.Max(statement.Repeat, 1); run++)
+            {
+                yield return statement.Text;
+            }
+        }
     }
 
     /// <summary>The statement under the caret, or the one just before it when the caret sits in trailing space.</summary>
@@ -165,9 +184,9 @@ public static class SqlScript
             }
 
             if (token.Kind == SqlTokenKind.Word && token.Slice(span).Equals(separator, StringComparison.OrdinalIgnoreCase)
-                && IsLineStart(span, token.Start) && IsSeparatorLine(span, token.End))
+                && IsLineStart(span, token.Start) && SeparatorCount(span, token.End) is { } repeat)
             {
-                Emit(text, batchStart, lastSignificantEnd, output);
+                Emit(text, batchStart, lastSignificantEnd, output, repeat);
                 batchStart = -1;
                 lastSignificantEnd = -1;
                 lexer = new SqlLexer(span, dialect.LexerFeatures, LineEnd(span, token.End));
@@ -191,14 +210,14 @@ public static class SqlScript
             ? 0
             : token.Slice(text).IndexOf(delimiter, StringComparison.Ordinal);
 
-    private static void Emit(string text, int start, int end, ImmutableArray<SqlStatement>.Builder output)
+    private static void Emit(string text, int start, int end, ImmutableArray<SqlStatement>.Builder output, int repeat = 1)
     {
         if (start < 0 || end <= start)
         {
             return;
         }
 
-        output.Add(new SqlStatement(start, end - start, text[start..end]));
+        output.Add(new SqlStatement(start, end - start, text[start..end]) { Repeat = repeat });
     }
 
     private static bool IsLineStart(ReadOnlySpan<char> text, int index)
@@ -220,8 +239,11 @@ public static class SqlScript
         return true;
     }
 
-    /// <summary>A GO line may carry a repeat count and a comment, nothing else.</summary>
-    private static bool IsSeparatorLine(ReadOnlySpan<char> text, int afterWord)
+    /// <summary>
+    /// How many times the batch before a GO line runs, or null when the line is not a separator. The line may carry a
+    /// repeat count and a comment, nothing else; as on macOS and in sqlcmd, a count must be positive and fit in 32 bits.
+    /// </summary>
+    private static int? SeparatorCount(ReadOnlySpan<char> text, int afterWord)
     {
         var rest = text[afterWord..LineEnd(text, afterWord)].Trim();
         var comment = rest.IndexOf("--", StringComparison.Ordinal);
@@ -230,15 +252,20 @@ public static class SqlScript
             rest = rest[..comment].Trim();
         }
 
+        if (rest.IsEmpty)
+        {
+            return 1;
+        }
+
         foreach (var c in rest)
         {
             if (!char.IsAsciiDigit(c))
             {
-                return false;
+                return null;
             }
         }
 
-        return true;
+        return int.TryParse(rest, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var count) && count > 0 ? count : null;
     }
 
     private static int LineEnd(ReadOnlySpan<char> text, int from)

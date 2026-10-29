@@ -288,7 +288,11 @@ public static partial class SqlFileImporter
                 position = statement.Start;
                 if (!string.IsNullOrWhiteSpace(statement.Text))
                 {
-                    yield return (statement.Text, line);
+                    // A SQL Server batch ended by GO 5 runs five times, as sqlcmd and the macOS import run it.
+                    for (var run = 0; run < Math.Max(statement.Repeat, 1); run++)
+                    {
+                        yield return (statement.Text, line);
+                    }
                 }
             }
 

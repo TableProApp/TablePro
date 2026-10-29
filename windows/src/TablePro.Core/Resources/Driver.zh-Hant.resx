@@ -225,6 +225,12 @@
   <data name="TransactionAlreadyOpen" xml:space="preserve">
     <value>已有一個交易處於開啟狀態。</value>
   </data>
+  <data name="TransactionLost" xml:space="preserve">
+    <value>連線已中斷，伺服器已復原尚未結束的交易。請重新執行其陳述式。</value>
+  </data>
+  <data name="TransactionStartedByWrite" xml:space="preserve">
+    <value>已開始交易。COMMIT 會保留變更，ROLLBACK 會復原變更。</value>
+  </data>
   <data name="UpdateNeedsChangedColumn" xml:space="preserve">
     <value>更新至少需要一個已變更的欄。</value>
   </data>

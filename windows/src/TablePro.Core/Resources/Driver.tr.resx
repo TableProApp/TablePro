@@ -225,6 +225,12 @@
   <data name="TransactionAlreadyOpen" xml:space="preserve">
     <value>Zaten açık bir işlem var.</value>
   </data>
+  <data name="TransactionLost" xml:space="preserve">
+    <value>Bağlantı koptu ve sunucu açık işlemi geri aldı. İşlemin deyimlerini yeniden çalıştırın.</value>
+  </data>
+  <data name="TransactionStartedByWrite" xml:space="preserve">
+    <value>İşlem başlatıldı. COMMIT değişiklikleri korur, ROLLBACK geri alır.</value>
+  </data>
   <data name="UpdateNeedsChangedColumn" xml:space="preserve">
     <value>Bir güncelleme en az bir değiştirilmiş sütun gerektirir.</value>
   </data>

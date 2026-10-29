@@ -26,6 +26,8 @@ public sealed class StatementClassifierTests
     [InlineData("SELECT 1;")]
     [InlineData("SELECT 1; SELECT 2")]
     [InlineData("SELECT replace(a, 'x', 'y') FROM t")]
+    [InlineData("ANALYZE FORMAT=JSON SELECT * FROM t")]
+    [InlineData("ANALYZE SELECT * FROM t")]
     public void ReadsAreRead(string sql) => Assert.Equal(StatementKind.Read, Classify(sql));
 
     [Theory]
@@ -39,6 +41,11 @@ public sealed class StatementClassifierTests
     [InlineData("COPY t FROM '/tmp/f.csv'")]
     [InlineData("VACUUM")]
     [InlineData("ANALYZE t")]
+    [InlineData("ANALYZE")]
+    [InlineData("ANALYZE;")]
+    [InlineData("ANALYZE TABLE t")]
+    [InlineData("ANALYZE (VERBOSE) t")]
+    [InlineData("ANALYZE FORMAT=JSON DELETE FROM t")]
     [InlineData("WITH c AS (SELECT 1) INSERT INTO t SELECT * FROM c")]
     [InlineData("WITH d AS (DELETE FROM t RETURNING *) SELECT * FROM d")]
     [InlineData("WITH u AS (UPDATE t SET a = 1 RETURNING *) SELECT count(*) FROM u")]

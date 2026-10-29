@@ -105,6 +105,10 @@ public sealed class PlanLayoutAndStatementTests
         Assert.Equal(["EXPLAIN (ANALYZE, FORMAT JSON) SELECT 1"], PostgreSqlDialect.Instance.PlanStatements("SELECT 1", true)!.Statements);
         Assert.Equal(["EXPLAIN FORMAT=JSON SELECT 1"], MySqlDialect.Instance.PlanStatements("SELECT 1", false)!.Statements);
         Assert.Equal(["EXPLAIN ANALYZE SELECT 1"], MySqlDialect.Instance.PlanStatements("SELECT 1", true)!.Statements);
+        Assert.Equal(["EXPLAIN FORMAT=JSON SELECT 1"], MySqlDialect.MariaDb.PlanStatements("SELECT 1", false)!.Statements);
+        Assert.Equal(["ANALYZE FORMAT=JSON SELECT 1"], MySqlDialect.MariaDb.PlanStatements("SELECT 1", true)!.Statements);
+        Assert.Equal(PlanFormat.MySql, MySqlDialect.MariaDb.PlanStatements("SELECT 1", true)!.Format);
+        Assert.True(PlanStatements.Recognize(MySqlDialect.MariaDb, "analyze format=json select 1")!.Analyze);
         Assert.Equal(["EXPLAIN QUERY PLAN SELECT 1"], SqliteDialect.Instance.PlanStatements("SELECT 1", false)!.Statements);
         Assert.Null(SqliteDialect.Instance.PlanStatements("SELECT 1", true));
         Assert.Equal(["EXPLAIN (FORMAT JSON) SELECT 1"], DuckDbDialect.Instance.PlanStatements("SELECT 1", false)!.Statements);

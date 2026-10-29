@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using System.Globalization;
 using TablePro.Core.Browse;
 using TablePro.Core.Connections;
 using TablePro.Core.Drivers;
@@ -21,8 +23,8 @@ public abstract class MySqlFamilyServerTests : RelationalServerTests
 
     protected override string TimestampType => "DATETIME";
 
-    // SLEEP returns 1 when its query is killed rather than failing, so a cancel would look like a success; a join this
-    // large fails with "Query execution was interrupted".
+    // A join this large fails with "Query execution was interrupted" when killed. SLEEP returns 1 instead, which
+    // ACancelledSleepIsReportedAsCancelled covers.
     protected override string SleepStatement =>
         "SELECT COUNT(*) FROM information_schema.columns a, information_schema.columns b, information_schema.columns c";
 
@@ -30,6 +32,31 @@ public abstract class MySqlFamilyServerTests : RelationalServerTests
 
     protected override PrivilegeScope TableScope(IDatabaseSession session, ObjectName table) =>
         PrivilegeScope.ForTable(table.Schema!, null, table.Name);
+
+    /// <summary>
+    /// KILL QUERY makes SLEEP return 1 instead of failing, which showed the cancelled statement as a success and the next
+    /// one as cancelled. The tab reports the statement as cancelled, runs nothing after it and stays usable.
+    /// </summary>
+    [Fact]
+    public async Task ACancelledSleepIsReportedAsCancelled()
+    {
+        await using var session = await ConnectAsync();
+        await using var channel = await session.OpenChannelAsync(Ct);
+        using var cancel = CancellationTokenSource.CreateLinkedTokenSource(Ct);
+        cancel.CancelAfter(TimeSpan.FromMilliseconds(750));
+        var clock = Stopwatch.StartNew();
+
+        var results = await RunUntilAsync(channel, ["SELECT SLEEP(30)", SelectOne], stopOnError: false, cancel.Token);
+
+        Assert.InRange(clock.Elapsed, TimeSpan.Zero, TimeSpan.FromSeconds(15));
+        var cancelled = Assert.Single(results);
+        Assert.False(cancelled.Succeeded);
+        Assert.False(string.IsNullOrEmpty(cancelled.Error));
+
+        var after = Assert.Single(await RunAsync(channel, ["SELECT 2"]));
+        Assert.True(after.Succeeded, after.Error);
+        Assert.Equal(2L, Convert.ToInt64(after.ResultSets[0][0, 0], CultureInfo.InvariantCulture));
+    }
 
     [Fact]
     public async Task ListsViewsRoutinesAndTriggers()

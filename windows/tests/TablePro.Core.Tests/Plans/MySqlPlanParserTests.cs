@@ -78,6 +78,35 @@ public sealed class MySqlPlanParserTests
     }
 
     [Fact]
+    public void MariaDbAnalyzeReadsTheMeasuredFiguresBesideTheEstimates()
+    {
+        // ANALYZE FORMAT=JSON from MariaDB 11.4: a sort read back through read_sorted_file, table time split in two.
+        const string json = """
+            {"query_optimization": {"r_total_time_ms": 0.05},
+             "query_block": {"select_id": 1, "cost": 0.0149, "r_loops": 1, "r_total_time_ms": 0.2,
+              "nested_loop": [{"read_sorted_file": {"r_rows": 15, "filesort": {"sort_key": "t.`name`", "r_loops": 1, "r_total_time_ms": 0.08,
+                "r_used_priority_queue": false, "r_output_rows": 15, "r_buffer_size": "880",
+                "table": {"table_name": "t", "access_type": "range", "key": "PRIMARY", "loops": 1, "r_loops": 2, "rows": 15, "r_rows": 7.5,
+                  "cost": 0.0149, "r_table_time_ms": 0.03, "r_other_time_ms": 0.01, "filtered": 100, "r_filtered": 40, "attached_condition": "t.id > 5"}}}}]}}
+            """;
+
+        var plan = MySqlJsonPlanParser.Parse(json)!;
+        var sort = Assert.Single(plan.Root.Children);
+        var table = Assert.Single(sort.Children);
+
+        Assert.Equal(0.2, plan.ExecutionTime);
+        Assert.Equal("Sort (t.`name`)", sort.Operation);
+        Assert.Equal(15, sort.ActualRows);
+        Assert.Equal(0.08, sort.ActualTotalTime);
+        Assert.Equal("t", table.Relation);
+        Assert.Equal(15, table.EstimatedRows);
+        Assert.Equal(8, table.ActualRows);
+        Assert.Equal(2, table.ActualLoops);
+        Assert.Equal(0.02, table.ActualTotalTime!.Value, 6);
+        Assert.Equal("40%", table.Properties["Actual Filtered"]);
+    }
+
+    [Fact]
     public void AcceptsEngineeringNotationAndMultipliesLoops()
     {
         var plan = MySqlPlanParser.Parse("-> Table scan on huge_table  (cost=1.23e+9 rows=934e+6) (actual time=934e-6..1.2e+6 rows=1.23e+3 loops=2)")!;

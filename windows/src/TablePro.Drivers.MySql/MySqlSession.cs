@@ -21,7 +21,7 @@ public sealed partial class MySqlSession
     private readonly string? _initializeSql;
 
     public MySqlSession(ConnectionRequest request)
-        : base(request, MySqlDialect.Instance)
+        : base(request, request.Profile.Engine == DatabaseEngine.MariaDb ? MySqlDialect.MariaDb : MySqlDialect.Instance)
     {
         var builder = new MySqlDataSourceBuilder(MySqlConnectionStringFactory.Build(request));
 

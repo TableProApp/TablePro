@@ -273,6 +273,13 @@
   <data name="TransactionAlreadyOpen" xml:space="preserve">
     <value>A transaction is already open.</value>
   </data>
+  <data name="TransactionLost" xml:space="preserve">
+    <value>The connection was lost, and the server rolled back the open transaction. Run its statements again.</value>
+  </data>
+  <data name="TransactionStartedByWrite" xml:space="preserve">
+    <value>Transaction started. COMMIT keeps the changes; ROLLBACK undoes them.</value>
+    <comment>COMMIT and ROLLBACK are SQL keywords and stay untranslated.</comment>
+  </data>
   <data name="UpdateNeedsChangedColumn" xml:space="preserve">
     <value>An update needs at least one changed column.</value>
   </data>

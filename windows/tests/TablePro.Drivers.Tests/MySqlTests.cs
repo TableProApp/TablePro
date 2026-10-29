@@ -1,6 +1,7 @@
 using MySqlConnector;
 using TablePro.Core.Connections;
 using TablePro.Core.Schema;
+using TablePro.Core.Sql;
 using TablePro.Drivers.MySql;
 
 namespace TablePro.Drivers.Tests;
@@ -56,6 +57,17 @@ public sealed class MySqlTests
         var request = Profiles.Request(DatabaseEngine.MySql, options: new Dictionary<string, string> { ["Maximum Pool Size"] = "3" });
 
         Assert.Equal(3u, new MySqlConnectionStringBuilder(MySqlConnectionStringFactory.Build(request)).MaximumPoolSize);
+    }
+
+    [Fact]
+    public async Task MariaDbAsksForItsMeasuredPlanWithAnalyze()
+    {
+        await using var mariaDb = new MySqlSession(Profiles.Request(DatabaseEngine.MariaDb));
+        await using var mySql = new MySqlSession(Profiles.Request(DatabaseEngine.MySql));
+
+        Assert.Same(MySqlDialect.MariaDb, mariaDb.Dialect);
+        Assert.Equal(["ANALYZE FORMAT=JSON SELECT 1"], mariaDb.Dialect.PlanStatements("SELECT 1", true)!.Statements);
+        Assert.Equal(["EXPLAIN ANALYZE SELECT 1"], mySql.Dialect.PlanStatements("SELECT 1", true)!.Statements);
     }
 
     [Fact]

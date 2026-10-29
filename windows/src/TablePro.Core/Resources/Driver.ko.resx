@@ -225,6 +225,12 @@
   <data name="TransactionAlreadyOpen" xml:space="preserve">
     <value>트랜잭션이 이미 열려 있습니다.</value>
   </data>
+  <data name="TransactionLost" xml:space="preserve">
+    <value>연결이 끊어져 서버가 열려 있던 트랜잭션을 롤백했습니다. 해당 문을 다시 실행하세요.</value>
+  </data>
+  <data name="TransactionStartedByWrite" xml:space="preserve">
+    <value>트랜잭션이 시작되었습니다. COMMIT은 변경 내용을 유지하고 ROLLBACK은 취소합니다.</value>
+  </data>
   <data name="UpdateNeedsChangedColumn" xml:space="preserve">
     <value>업데이트에는 변경된 열이 하나 이상 필요합니다.</value>
   </data>

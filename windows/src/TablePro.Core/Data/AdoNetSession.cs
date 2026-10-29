@@ -53,6 +53,31 @@ public abstract class AdoNetSession : IDatabaseSession, IImportRowMatcher, IChan
     {
     }
 
+    /// <summary>
+    /// Binds one value of a statement Core built (a browse, a count, a save). A driver whose server will not convert
+    /// the provider's default type for a value overrides this, so every path that binds values binds them the same way.
+    /// </summary>
+    protected virtual DbParameter CreateParameter(DbCommand command, string name, object? value)
+    {
+        ArgumentNullException.ThrowIfNull(command);
+        var parameter = command.CreateParameter();
+        parameter.ParameterName = name;
+        parameter.Value = value ?? DBNull.Value;
+        return parameter;
+    }
+
+    /// <summary>
+    /// Whether the provider has no reader for a column of this result, as Npgsql has none for a type created after it
+    /// read the server's types. Such a result is read again once, after <see cref="ReloadTypesAsync"/>.
+    /// </summary>
+    protected virtual bool HasUnreadableColumns(DbDataReader reader) => false;
+
+    /// <summary>Reads the server's types again on this connection; for providers that cache them.</summary>
+    protected virtual Task ReloadTypesAsync(DbConnection connection, CancellationToken cancellationToken) => Task.CompletedTask;
+
+    /// <summary>Whether an editor statement that succeeded may have added or changed a type the provider caches.</summary>
+    protected virtual bool ChangesServerTypes(string statement) => false;
+
     protected abstract Task<IReadOnlyList<string>> LoadDatabasesAsync(DbConnection connection, CancellationToken cancellationToken);
 
     protected abstract Task<IReadOnlyList<string>> LoadSchemasAsync(DbConnection connection, CancellationToken cancellationToken);
@@ -115,9 +140,19 @@ public abstract class AdoNetSession : IDatabaseSession, IImportRowMatcher, IChan
             async (connection, ct) =>
             {
                 var spec = Dialect.BuildBrowse(request);
-                await using var command = CreateCommand(connection, spec);
-                await using var reader = await command.ExecuteReaderAsync(ct);
-                return await ResultSetReader.ReadAsync(reader, request.Limit, ct);
+                for (var attempt = 0; ; attempt++)
+                {
+                    await using var command = CreateCommand(connection, spec);
+                    await using var reader = await command.ExecuteReaderAsync(ct);
+                    if (attempt == 0 && HasUnreadableColumns(reader))
+                    {
+                        await reader.DisposeAsync();
+                        await ReloadTypesAsync(connection, ct);
+                        continue;
+                    }
+
+                    return await ResultSetReader.ReadAsync(reader, request.Limit, ct);
+                }
             },
             cancellationToken);
 
@@ -266,8 +301,19 @@ public abstract class AdoNetSession : IDatabaseSession, IImportRowMatcher, IChan
     public async Task<IQueryChannel> OpenChannelAsync(CancellationToken cancellationToken)
     {
         var connection = await OpenAsync(cancellationToken);
-        return new AdoNetQueryChannel(this, connection);
+        try
+        {
+            return CreateChannel(connection);
+        }
+        catch
+        {
+            await connection.DisposeAsync();
+            throw;
+        }
     }
+
+    /// <summary>Wraps an editor tab's connection. A driver whose editor ends transactions its own way returns a subclass.</summary>
+    protected virtual AdoNetQueryChannel CreateChannel(DbConnection connection) => new(this, connection);
 
     public virtual ValueTask DisposeAsync()
     {
@@ -298,16 +344,15 @@ public abstract class AdoNetSession : IDatabaseSession, IImportRowMatcher, IChan
         return await work(connection, cancellationToken);
     }
 
-    protected static DbCommand CreateCommand(DbConnection connection, SqlCommandSpec spec)
+    protected DbCommand CreateCommand(DbConnection connection, SqlCommandSpec spec)
     {
+        ArgumentNullException.ThrowIfNull(connection);
+        ArgumentNullException.ThrowIfNull(spec);
         var command = connection.CreateCommand();
         command.CommandText = spec.Text;
         foreach (var (name, value) in spec.Parameters)
         {
-            var parameter = command.CreateParameter();
-            parameter.ParameterName = name;
-            parameter.Value = value ?? DBNull.Value;
-            command.Parameters.Add(parameter);
+            command.Parameters.Add(CreateParameter(command, name, value));
         }
 
         return command;
@@ -413,17 +458,21 @@ public abstract class AdoNetSession : IDatabaseSession, IImportRowMatcher, IChan
         }
     }
 
-    private sealed class AdoNetQueryChannel : IQueryChannel
+    /// <summary>
+    /// An editor tab's own connection. Statements run on it in order, so a transaction, a SET or a temporary table
+    /// stays with the tab. A driver whose editor ends transactions its own way derives from it.
+    /// </summary>
+    protected class AdoNetQueryChannel : IQueryChannel
     {
         private readonly SemaphoreSlim _gate = new(1, 1);
         private readonly List<string> _messages = [];
-        private readonly AdoNetSession _session;
-        private readonly DbConnection _connection;
 
         public AdoNetQueryChannel(AdoNetSession session, DbConnection connection)
         {
-            _session = session;
-            _connection = connection;
+            ArgumentNullException.ThrowIfNull(session);
+            ArgumentNullException.ThrowIfNull(connection);
+            Session = session;
+            Connection = connection;
             session.AttachMessages(connection, message =>
             {
                 lock (_messages)
@@ -433,19 +482,38 @@ public abstract class AdoNetSession : IDatabaseSession, IImportRowMatcher, IChan
             });
         }
 
+        protected AdoNetSession Session { get; }
+
+        protected DbConnection Connection { get; }
+
+        /// <summary>The transaction editor statements join, or null when each one commits as the provider decides.</summary>
+        protected DbTransaction? Transaction { get; set; }
+
         public async IAsyncEnumerable<StatementResult> ExecuteAsync(
             IReadOnlyList<string> statements,
             ExecuteOptions options,
             [EnumeratorCancellation] CancellationToken cancellationToken)
         {
+            ArgumentNullException.ThrowIfNull(statements);
+            ArgumentNullException.ThrowIfNull(options);
             await _gate.WaitAsync(cancellationToken);
-            var messages = _messages;
             try
             {
                 foreach (var sql in statements)
                 {
-                    messages.Clear();
-                    var result = await RunAsync(sql, options, messages, cancellationToken);
+                    // A cancel that lands after one statement finished stops the run here, rather than showing up as
+                    // the next statement's failure.
+                    if (cancellationToken.IsCancellationRequested)
+                    {
+                        yield break;
+                    }
+
+                    lock (_messages)
+                    {
+                        _messages.Clear();
+                    }
+
+                    var result = await RunStatementAsync(sql, options, cancellationToken);
                     yield return result;
                     if (!result.Succeeded && (options.StopOnError || cancellationToken.IsCancellationRequested))
                     {
@@ -459,59 +527,180 @@ public abstract class AdoNetSession : IDatabaseSession, IImportRowMatcher, IChan
             }
         }
 
-        private async Task<StatementResult> RunAsync(string sql, ExecuteOptions options, List<string> messages, CancellationToken cancellationToken)
+        /// <summary>Runs one statement on the server and reads everything it returns.</summary>
+        protected virtual async Task<StatementResult> RunStatementAsync(string sql, ExecuteOptions options, CancellationToken cancellationToken)
         {
+            ArgumentNullException.ThrowIfNull(sql);
+            ArgumentNullException.ThrowIfNull(options);
             await Task.CompletedTask.ConfigureAwait(ConfigureAwaitOptions.ForceYielding);
             var stopwatch = Stopwatch.StartNew();
             var sets = new List<ResultSet>();
             try
             {
-                if (_connection.State != ConnectionState.Open)
+                await EnsureOpenAsync(cancellationToken);
+                var (affected, reloadTypes) = await ReadAllAsync(sql, options, sets, cancellationToken);
+                if (reloadTypes || Session.ChangesServerTypes(sql))
                 {
-                    await _connection.OpenAsync(cancellationToken);
-                    await _session.InitializeConnectionAsync(_connection, cancellationToken);
+                    await ReloadTypesQuietlyAsync(cancellationToken);
                 }
 
-                await using var command = _connection.CreateCommand();
+                // A server may answer a cancelled statement normally: MySQL's KILL QUERY makes SLEEP return 1. Once the
+                // user asked to stop, the statement is reported as stopped, whatever came back.
+                return cancellationToken.IsCancellationRequested
+                    ? Failed(sql, sets, stopwatch, CoreStrings.Get("Data/QueryCancelled"))
+                    : new StatementResult(sql, sets, affected, stopwatch.Elapsed, Messages: TakeMessages());
+            }
+            catch (OperationCanceledException)
+            {
+                return Failed(sql, sets, stopwatch, CoreStrings.Get("Data/QueryCancelled"));
+            }
+            catch (DbException ex) when (cancellationToken.IsCancellationRequested)
+            {
+                return Failed(sql, sets, stopwatch, CoreStrings.Format("Data/QueryCancelledWithReason", ex.Message));
+            }
+            catch (Exception ex) when (ex is DbException or InvalidOperationException or InvalidCastException or NotSupportedException or ArgumentException)
+            {
+                return Failed(sql, sets, stopwatch, ex.Message);
+            }
+        }
+
+        /// <summary>A result for a statement that did not complete, with the rows and messages it produced first.</summary>
+        protected StatementResult Failed(string sql, IReadOnlyList<ResultSet> sets, Stopwatch stopwatch, string error)
+        {
+            ArgumentNullException.ThrowIfNull(stopwatch);
+            return new StatementResult(sql, sets, -1, stopwatch.Elapsed, error, TakeMessages());
+        }
+
+        /// <summary>
+        /// Opens the connection again when the server or the network ended it, and says whether it had to. A provider
+        /// marks such a connection Broken and will not open it until it is closed, which left the tab failing every
+        /// statement. A transaction the old session held ended with it.
+        /// </summary>
+        protected async Task<bool> EnsureOpenAsync(CancellationToken cancellationToken)
+        {
+            var state = Connection.State;
+            if (state.HasFlag(ConnectionState.Open) && !state.HasFlag(ConnectionState.Broken))
+            {
+                return false;
+            }
+
+            if (Transaction is { } lost)
+            {
+                Transaction = null;
+                await DisposeQuietlyAsync(lost);
+            }
+
+            if (state.HasFlag(ConnectionState.Broken))
+            {
+                await Connection.CloseAsync();
+            }
+
+            await Connection.OpenAsync(cancellationToken);
+            await Session.InitializeConnectionAsync(Connection, cancellationToken);
+            return true;
+        }
+
+        private async Task<(int Affected, bool ReloadTypes)> ReadAllAsync(string sql, ExecuteOptions options, List<ResultSet> sets, CancellationToken cancellationToken)
+        {
+            var mayAskAgain = StatementClassifier.Classify(sql, Session.Dialect) == StatementKind.Read;
+            while (true)
+            {
+                sets.Clear();
+                var reloadTypes = false;
+                var askAgain = false;
+                await using var command = Connection.CreateCommand();
                 command.CommandText = sql;
                 command.CommandTimeout = options.CommandTimeoutSeconds;
+                command.Transaction = Transaction;
                 await using var registration = cancellationToken.Register(static state => ((DbCommand)state!).Cancel(), command);
                 await using var reader = await command.ExecuteReaderAsync(cancellationToken);
                 do
                 {
-                    if (reader.FieldCount > 0)
+                    if (reader.FieldCount == 0)
                     {
-                        var set = await ResultSetReader.ReadAsync(reader, options.RowLimit, cancellationToken);
-                        sets.Add(set);
-                        if (set.IsTruncated)
+                        continue;
+                    }
+
+                    if (Session.HasUnreadableColumns(reader))
+                    {
+                        // A type created since the provider read the server's types has no reader. A query is asked
+                        // again once the types are read; anything else already ran, so its rows are read as they are
+                        // and the types are read afterwards for the statements that follow.
+                        if (mayAskAgain && sets.Count == 0)
                         {
-                            // Cancel instead of draining the rest of a huge result through the reader's Dispose.
-                            command.Cancel();
+                            askAgain = true;
                             break;
                         }
+
+                        reloadTypes = true;
+                    }
+
+                    var set = await ResultSetReader.ReadAsync(reader, options.RowLimit, cancellationToken);
+                    sets.Add(set);
+                    if (set.IsTruncated)
+                    {
+                        // Cancel instead of draining the rest of a huge result through the reader's Dispose.
+                        command.Cancel();
+                        return (reader.RecordsAffected, reloadTypes);
                     }
                 }
                 while (await reader.NextResultAsync(cancellationToken));
 
-                return new StatementResult(sql, sets, reader.RecordsAffected, stopwatch.Elapsed, Messages: [.. messages]);
+                if (!askAgain)
+                {
+                    return (reader.RecordsAffected, reloadTypes);
+                }
+
+                mayAskAgain = false;
+                await reader.DisposeAsync();
+                await Session.ReloadTypesAsync(Connection, cancellationToken);
             }
-            catch (OperationCanceledException)
+        }
+
+        // The rows already came back; a failed reload only means the next result shows the same unreadable cells.
+        private async Task ReloadTypesQuietlyAsync(CancellationToken cancellationToken)
+        {
+            try
             {
-                return new StatementResult(sql, sets, -1, stopwatch.Elapsed, CoreStrings.Get("Data/QueryCancelled"), [.. messages]);
+                await Session.ReloadTypesAsync(Connection, cancellationToken);
             }
-            catch (DbException ex) when (cancellationToken.IsCancellationRequested)
+            catch (Exception ex) when (ex is DbException or InvalidOperationException or OperationCanceledException)
             {
-                return new StatementResult(sql, sets, -1, stopwatch.Elapsed, CoreStrings.Format("Data/QueryCancelledWithReason", ex.Message), [.. messages]);
             }
-            catch (Exception ex) when (ex is DbException or InvalidOperationException or InvalidCastException or NotSupportedException or ArgumentException)
+        }
+
+        protected IReadOnlyList<string> TakeMessages()
+        {
+            lock (_messages)
             {
-                return new StatementResult(sql, sets, -1, stopwatch.Elapsed, ex.Message, [.. messages]);
+                return [.. _messages];
+            }
+        }
+
+        // The connection that held the transaction is gone, and the server ended the transaction with it.
+        private static async Task DisposeQuietlyAsync(DbTransaction transaction)
+        {
+            try
+            {
+                await transaction.DisposeAsync();
+            }
+            catch (Exception ex) when (ex is DbException or InvalidOperationException)
+            {
             }
         }
 
         public async ValueTask DisposeAsync()
         {
-            await _connection.DisposeAsync();
+            GC.SuppressFinalize(this);
+            if (Transaction is { } open)
+            {
+                // An editor tab closed with its transaction open loses the changes, as ending its database session would.
+                Transaction = null;
+                await RollbackQuietlyAsync(open);
+                await DisposeQuietlyAsync(open);
+            }
+
+            await Connection.DisposeAsync();
             _gate.Dispose();
         }
     }

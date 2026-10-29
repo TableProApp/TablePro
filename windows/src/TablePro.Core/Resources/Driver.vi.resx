@@ -225,6 +225,12 @@
   <data name="TransactionAlreadyOpen" xml:space="preserve">
     <value>Một giao dịch đang được mở.</value>
   </data>
+  <data name="TransactionLost" xml:space="preserve">
+    <value>Kết nối đã bị mất và máy chủ đã hoàn tác giao dịch đang mở. Hãy chạy lại các câu lệnh của nó.</value>
+  </data>
+  <data name="TransactionStartedByWrite" xml:space="preserve">
+    <value>Đã bắt đầu giao dịch. COMMIT giữ lại các thay đổi; ROLLBACK hoàn tác chúng.</value>
+  </data>
   <data name="UpdateNeedsChangedColumn" xml:space="preserve">
     <value>Một lần cập nhật cần ít nhất một cột đã thay đổi.</value>
   </data>

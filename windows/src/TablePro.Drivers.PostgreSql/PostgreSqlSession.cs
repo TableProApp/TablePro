@@ -13,7 +13,7 @@ using TablePro.Core.Sql;
 namespace TablePro.Drivers.PostgreSql;
 
 public sealed partial class PostgreSqlSession
-    : AdoNetSession, IDatabaseSession, ISchemaDdlProvider, IServerActivityProvider, IUserListProvider, IDatabaseAdministration, IServerVariablesProvider
+    : AdoNetSession, ISchemaDdlProvider, IServerActivityProvider, IUserListProvider, IDatabaseAdministration, IServerVariablesProvider
 {
     private const string DefaultSchemaName = "public";
 

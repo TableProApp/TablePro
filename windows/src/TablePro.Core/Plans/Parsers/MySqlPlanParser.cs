@@ -27,7 +27,8 @@ public static class MySqlPlanParser
 }
 
 /// <summary>
-/// MySQL's flat <c>query_block</c> and MariaDB's nested one (query_block, filesort, temporary_table, nested_loop).
+/// MySQL's flat <c>query_block</c> and MariaDB's nested one (query_block, filesort, temporary_table, nested_loop), with
+/// the measured <c>r_</c> figures MariaDB's <c>ANALYZE FORMAT=JSON</c> adds beside each estimate.
 /// </summary>
 public static class MySqlJsonPlanParser
 {
@@ -47,7 +48,7 @@ public static class MySqlJsonPlanParser
         }
 
         var cost = block.Property("cost").Number() ?? block.Property("cost_info")?.Property("query_cost").Number();
-        return QueryPlanTreeBuilder.Finish(ParseBlock(block, "Query Block", cost), rawText, PlanFormat.MySql);
+        return QueryPlanTreeBuilder.Finish(ParseBlock(block, "Query Block", cost), rawText, PlanFormat.MySql, executionTime: block.Property("r_total_time_ms").Number());
     }
 
     private static QueryPlanNode ParseBlock(JsonElement block, string operation, double? cost)
@@ -62,9 +63,9 @@ public static class MySqlJsonPlanParser
         {
             foreach (var item in loop.EnumerateArray())
             {
-                if (item.Property("table") is { ValueKind: JsonValueKind.Object } nested)
+                if (ParseLoopItem(item) is { } step)
                 {
-                    children.Add(ParseTable(nested));
+                    children.Add(step);
                 }
             }
         }
@@ -100,7 +101,57 @@ public static class MySqlJsonPlanParser
             children.Add(ParseBlock(grouping, "Group", null));
         }
 
-        return new QueryPlanNode { Operation = operation, EstimatedTotalCost = cost, Children = children };
+        var (loops, time) = Measured(block);
+        return new QueryPlanNode
+        {
+            Operation = operation,
+            EstimatedTotalCost = cost,
+            ActualLoops = loops,
+            ActualTotalTime = time,
+            ActualRows = block.Property("r_output_rows").Integer(),
+            Children = children,
+        };
+    }
+
+    /// <summary>
+    /// One step of a MariaDB nested loop: a table, a table read through a join buffer, or a table read back in sorted
+    /// order after a filesort, which MariaDB writes as <c>read_sorted_file</c>.
+    /// </summary>
+    private static QueryPlanNode? ParseLoopItem(JsonElement item)
+    {
+        if (item.Property("table") is { ValueKind: JsonValueKind.Object } table)
+        {
+            return ParseTable(table);
+        }
+
+        if (item.Property("block-nl-join") is { ValueKind: JsonValueKind.Object } joined && joined.Property("table") is { ValueKind: JsonValueKind.Object } buffered)
+        {
+            return ParseTable(buffered);
+        }
+
+        if (item.Property("read_sorted_file") is { ValueKind: JsonValueKind.Object } sorted)
+        {
+            var inner = ParseBlock(sorted, "Read Sorted File", null);
+            return inner.Children.Count == 1 ? inner.Children[0] : inner;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// MariaDB's loop count and time for a step. Its <c>r_total_time_ms</c> covers every loop, and 11.x splits a table's
+    /// time into <c>r_table_time_ms</c> and <c>r_other_time_ms</c>; the node keeps time per loop, as PostgreSQL reports it.
+    /// </summary>
+    private static (long? Loops, double? TimePerLoop) Measured(JsonElement element)
+    {
+        var loops = element.Property("r_loops").Integer();
+        var total = element.Property("r_total_time_ms").Number();
+        if (total is null && element.Property("r_table_time_ms").Number() is { } table)
+        {
+            total = table + (element.Property("r_other_time_ms").Number() ?? 0);
+        }
+
+        return (loops, total is { } time && loops is > 0 ? time / loops.Value : total);
     }
 
     /// <summary>
@@ -139,12 +190,23 @@ public static class MySqlJsonPlanParser
             properties["Filtered"] = filtered.ToString("F0", CultureInfo.InvariantCulture) + "%";
         }
 
+        if (table.Property("r_filtered").Number() is { } actualFiltered and < 100)
+        {
+            properties["Actual Filtered"] = actualFiltered.ToString("F0", CultureInfo.InvariantCulture) + "%";
+        }
+
+        var (loops, time) = Measured(table);
         return new QueryPlanNode
         {
             Operation = table.Property("access_type").String() ?? "ALL",
             Relation = table.Property("table_name").String(),
             EstimatedTotalCost = TableCost(table),
             EstimatedRows = table.Property("rows").Integer() ?? table.Property("rows_examined_per_scan").Integer() ?? table.Property("rows_produced_per_join").Integer(),
+
+            // MariaDB's r_rows is already an average per loop.
+            ActualRows = table.Property("r_rows").Integer(),
+            ActualLoops = loops,
+            ActualTotalTime = time,
             Properties = properties,
         };
     }

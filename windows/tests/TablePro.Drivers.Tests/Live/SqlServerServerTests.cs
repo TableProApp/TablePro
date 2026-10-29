@@ -3,6 +3,7 @@ using TablePro.Core.Connections;
 using TablePro.Core.Drivers;
 using TablePro.Core.Editing;
 using TablePro.Core.Schema;
+using TablePro.Core.Sql;
 using TablePro.Drivers.SqlServer;
 
 namespace TablePro.Drivers.Tests.Live;
@@ -37,6 +38,29 @@ public sealed class SqlServerServerTests : RelationalServerTests
     protected override string? MessageStatement => "PRINT 'tablepro says hello'";
 
     protected override bool ServerEnforcesReadOnly => false;
+
+    /// <summary>A count after GO sends the batch that many times, as sqlcmd and the macOS app do.</summary>
+    [Fact]
+    public async Task RepeatsABatchEndedByGoWithACount()
+    {
+        await using var session = await ConnectAsync();
+        var table = await CreateItemsAsync(session, 0);
+        await using var channel = await session.OpenChannelAsync(Ct);
+        try
+        {
+            var qualified = session.Dialect.Qualify(table);
+            var script = $"INSERT INTO {qualified} (id, name) SELECT COALESCE(MAX(id), 0) + 1, N'again' FROM {qualified}\nGO 3\nSELECT COUNT(*) FROM {qualified}";
+            var results = await RunAsync(channel, [.. SqlScript.Runs(SqlScript.Split(script, session.Dialect))], stopOnError: true);
+
+            Assert.Equal(4, results.Count);
+            Assert.All(results, r => Assert.True(r.Succeeded, r.Error));
+            Assert.Equal(3, Convert.ToInt32(results[3].ResultSets[0][0, 0], System.Globalization.CultureInfo.InvariantCulture));
+        }
+        finally
+        {
+            await DropQuietlyAsync(session, table);
+        }
+    }
 
     [Fact]
     public async Task ListsViewsRoutinesAndSchemas()

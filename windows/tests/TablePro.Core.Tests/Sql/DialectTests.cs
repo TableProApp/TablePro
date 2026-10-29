@@ -12,7 +12,7 @@ public sealed class DialectTests
     [Theory]
     [InlineData(DatabaseEngine.PostgreSql, "PostgreSQL")]
     [InlineData(DatabaseEngine.MySql, "MySQL")]
-    [InlineData(DatabaseEngine.MariaDb, "MySQL")]
+    [InlineData(DatabaseEngine.MariaDb, "MariaDB")]
     [InlineData(DatabaseEngine.SqlServer, "SQL Server")]
     [InlineData(DatabaseEngine.Sqlite, "SQLite")]
     [InlineData(DatabaseEngine.DuckDb, "DuckDB")]

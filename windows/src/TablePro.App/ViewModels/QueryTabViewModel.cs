@@ -234,7 +234,8 @@ public sealed partial class QueryTabViewModel : TabViewModel
             _channel ??= await _context.Session.Database.OpenChannelAsync(_run.Token);
             var options = new ExecuteOptions(
                 RowLimit: _context.Preferences.EditorRowLimit,
-                StopOnError: stopOnError ?? Dialect.BatchSeparator is null);
+                StopOnError: stopOnError ?? Dialect.BatchSeparator is null,
+                EditorTransaction: true);
 
             await foreach (var result in _channel.ExecuteAsync(statements, options, _run.Token))
             {
@@ -335,17 +336,19 @@ public sealed partial class QueryTabViewModel : TabViewModel
         if (selectionLength > 0 && scope != RunScope.All)
         {
             var selected = rawText.Substring(selectionStart, Math.Min(selectionLength, rawText.Length - selectionStart));
-            return SqlScript.Split(selected, Dialect).Select(s => Normalize(s.Text)).ToList();
+            return Runs(SqlScript.Split(selected, Dialect));
         }
 
         var statements = SqlScript.Split(rawText, Dialect);
         if (scope == RunScope.All)
         {
-            return statements.Select(s => Normalize(s.Text)).ToList();
+            return Runs(statements);
         }
 
-        return SqlScript.StatementAt(statements, selectionStart) is { } current ? [Normalize(current.Text)] : [];
+        return SqlScript.StatementAt(statements, selectionStart) is { } current ? Runs([current]) : [];
     }
+
+    private static List<string> Runs(IEnumerable<SqlStatement> statements) => SqlScript.Runs(statements).Select(Normalize).ToList();
 
     private static string Normalize(string text) => text.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n');
 

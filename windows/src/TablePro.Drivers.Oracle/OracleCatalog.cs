@@ -183,4 +183,7 @@ internal static class OracleCatalog
     public const string SessionSettings =
         "ALTER SESSION SET NLS_DATE_FORMAT = 'YYYY-MM-DD HH24:MI:SS' NLS_TIMESTAMP_FORMAT = 'YYYY-MM-DD HH24:MI:SS.FF' "
         + "NLS_TIMESTAMP_TZ_FORMAT = 'YYYY-MM-DD HH24:MI:SS.FF TZH:TZM' NLS_NUMERIC_CHARACTERS = '.,'";
+
+    /// <summary>The id of the session's open transaction, or NULL when it has none.</summary>
+    public const string LocalTransactionId = "SELECT DBMS_TRANSACTION.LOCAL_TRANSACTION_ID FROM DUAL";
 }

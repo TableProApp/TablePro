@@ -58,12 +58,16 @@ public static class StatementClassifier
         var depth = 0;
         var sawInto = false;
 
+        // ANALYZE gathers statistics, a write, unless MariaDB's ANALYZE [FORMAT=JSON] wraps a statement it runs to
+        // measure, which then reads or writes as that statement does, as EXPLAIN ANALYZE does on PostgreSQL.
+        var afterAnalyze = false;
+
         while (lexer.TryRead(out var token))
         {
             if (token.Kind == SqlTokenKind.Semicolon)
             {
                 atEnd = false;
-                return Finish(first, decided, sawInto);
+                return afterAnalyze ? StatementKind.Write : Finish(first, decided, sawInto);
             }
 
             if (token.IsTrivia || decided is not null)
@@ -97,8 +101,19 @@ public static class StatementClassifier
             if (first.IsEmpty)
             {
                 first = word;
-                decided = ClassifyLeading(word);
+                afterAnalyze = word.Equals("ANALYZE", StringComparison.OrdinalIgnoreCase);
+                decided = afterAnalyze ? null : ClassifyLeading(word);
                 continue;
+            }
+
+            if (afterAnalyze)
+            {
+                afterAnalyze = false;
+                if (!IsAny(word, "FORMAT", "SELECT", "WITH", "INSERT", "UPDATE", "DELETE", "REPLACE"))
+                {
+                    decided = StatementKind.Write;
+                    continue;
+                }
             }
 
             decided = ClassifyInner(word);
@@ -109,7 +124,7 @@ public static class StatementClassifier
         }
 
         atEnd = true;
-        return Finish(first, decided, sawInto);
+        return afterAnalyze ? StatementKind.Write : Finish(first, decided, sawInto);
     }
 
     private static StatementKind? Finish(ReadOnlySpan<char> first, StatementKind? decided, bool sawInto)

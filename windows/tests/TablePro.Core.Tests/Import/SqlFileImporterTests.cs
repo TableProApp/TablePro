@@ -166,6 +166,18 @@ public sealed class SqlFileImporterTests
     }
 
     [Fact]
+    public async Task ASqlServerBatchEndedByGoWithACountRunsThatManyTimes()
+    {
+        var statements = new List<string>();
+        await foreach (var statement in SqlFileImporter.ReadStatementsAsync(new StringReader("INSERT INTO t VALUES (1)\nGO 3\nSELECT 2\n"), SqlServerDialect.Instance, 8, TestContext.Current.CancellationToken))
+        {
+            statements.Add(statement.Sql);
+        }
+
+        Assert.Equal(["INSERT INTO t VALUES (1)", "INSERT INTO t VALUES (1)", "INSERT INTO t VALUES (1)", "SELECT 2"], statements);
+    }
+
+    [Fact]
     public void StatementsPerEngine()
     {
         Assert.Equal("SET FOREIGN_KEY_CHECKS=0", SqlImportStatements.For(DatabaseEngine.MySql).ForeignKeysOff);

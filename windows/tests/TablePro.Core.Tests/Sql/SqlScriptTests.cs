@@ -99,16 +99,27 @@ public sealed class SqlScriptTests
     public void SqlServerKeepsSemicolonsInsideABatch() =>
         Assert.Equal(["SELECT 1; SELECT 2;"], Texts("SELECT 1; SELECT 2;", SqlServerDialect.Instance));
 
+    /// <summary>A count after GO repeats the batch before it, as on macOS and in sqlcmd.</summary>
     [Theory]
-    [InlineData("SELECT 1\nGO 5\nSELECT 2")]
-    [InlineData("SELECT 1\nGO -- run it\nSELECT 2")]
-    [InlineData("SELECT 1\nGO 3 -- three times\nSELECT 2")]
-    [InlineData("SELECT 1\ngo\nSELECT 2")]
-    [InlineData("SELECT 1\n   Go   \nSELECT 2")]
-    [InlineData("SELECT 1\r\nGO\r\nSELECT 2")]
-    [InlineData("GO\nSELECT 1\nGO\nGO\nSELECT 2\nGO")]
-    public void GoSeparatorVariants(string sql) =>
-        Assert.Equal(["SELECT 1", "SELECT 2"], Texts(sql, SqlServerDialect.Instance));
+    [InlineData("SELECT 1\nGO 5\nSELECT 2", 5)]
+    [InlineData("SELECT 1\nGO -- run it\nSELECT 2", 1)]
+    [InlineData("SELECT 1\nGO 3 -- three times\nSELECT 2", 3)]
+    [InlineData("SELECT 1\ngo\nSELECT 2", 1)]
+    [InlineData("SELECT 1\n   Go   \nSELECT 2", 1)]
+    [InlineData("SELECT 1\r\nGO\r\nSELECT 2", 1)]
+    [InlineData("GO\nSELECT 1\nGO\nGO\nSELECT 2\nGO", 1)]
+    [InlineData("SELECT 1\nGO 2147483647\nSELECT 2", int.MaxValue)]
+    public void GoSeparatorVariants(string sql, int firstRepeat)
+    {
+        var statements = SqlScript.Split(sql, SqlServerDialect.Instance);
+
+        Assert.Equal(["SELECT 1", "SELECT 2"], statements.Select(s => s.Text));
+        Assert.Equal([firstRepeat, 1], statements.Select(s => s.Repeat));
+    }
+
+    [Fact]
+    public void RunsSendsABatchAsOftenAsItsGoCountSays() =>
+        Assert.Equal(["SELECT 1", "SELECT 1", "SELECT 2"], SqlScript.Runs(SqlScript.Split("SELECT 1\nGO 2\nSELECT 2", SqlServerDialect.Instance)));
 
     [Theory]
     [InlineData("SELECT '\nGO\n' AS x")]
@@ -116,6 +127,8 @@ public sealed class SqlScriptTests
     [InlineData("SELECT 1 GO")]
     [InlineData("SELECT 1\nGO x\nSELECT 2")]
     [InlineData("SELECT 1\nGOTO done\nSELECT 2")]
+    [InlineData("SELECT 1\nGO 0\nSELECT 2")]
+    [InlineData("SELECT 1\nGO 2147483648\nSELECT 2")]
     [InlineData("SELECT [\nGO\n] FROM t")]
     public void GoThatIsNotASeparatorLineStaysInTheBatch(string sql) =>
         Assert.Equal([sql.Trim()], Texts(sql, SqlServerDialect.Instance));

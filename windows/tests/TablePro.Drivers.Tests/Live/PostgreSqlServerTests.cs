@@ -127,6 +127,48 @@ public sealed class PostgreSqlServerTests : RelationalServerTests
         }
     }
 
+    /// <summary>
+    /// An editor tab keeps one connection, and Npgsql read the server's types when it opened, so an enum or domain the
+    /// tab creates had no reader there until reconnect. One made by another connection is read on first sight.
+    /// </summary>
+    [Fact]
+    public async Task ReadsTypesCreatedInTheEditorOnTheSameTab()
+    {
+        await using var session = await ConnectAsync();
+        await using var channel = await session.OpenChannelAsync(Ct);
+        var mood = NewName("tp_mood_");
+        var positive = NewName("tp_pos_");
+        var late = NewName("tp_other_");
+        var table = TableIn(session, NewName("tp_typed_"));
+        var qualified = session.Dialect.Qualify(table);
+        try
+        {
+            Assert.True(Assert.Single(await RunAsync(channel, [SelectOne])).Succeeded);
+            var setup = await RunAsync(channel, [
+                $"CREATE TYPE {mood} AS ENUM ('sad', 'happy')",
+                $"CREATE DOMAIN {positive} AS integer CHECK (VALUE > 0)",
+                $"CREATE TABLE {qualified} (id integer PRIMARY KEY, mood {mood}, score {positive})",
+                $"INSERT INTO {qualified} VALUES (1, 'happy', 7)",
+            ]);
+            Assert.All(setup, r => Assert.True(r.Succeeded, r.Sql + "\n" + r.Error));
+
+            var read = Assert.Single(await RunAsync(channel, [$"SELECT mood, score FROM {qualified}"]));
+            Assert.True(read.Succeeded, read.Error);
+            Assert.Equal("happy", read.ResultSets[0][0, 0]);
+            Assert.Equal(7, read.ResultSets[0][0, 1]);
+
+            await ExecAsync(session, $"CREATE TYPE {late} AS ENUM ('on', 'off')");
+            var other = Assert.Single(await RunAsync(channel, [$"SELECT 'off'::{late} AS state"]));
+            Assert.True(other.Succeeded, other.Error);
+            Assert.Equal("off", other.ResultSets[0][0, 0]);
+        }
+        finally
+        {
+            await DropQuietlyAsync(session, table);
+            await ExecAsync(session, $"DROP TYPE IF EXISTS {mood}", $"DROP DOMAIN IF EXISTS {positive}", $"DROP TYPE IF EXISTS {late}");
+        }
+    }
+
     [Fact]
     public async Task ListsViewsRoutinesSequencesAndPartitions()
     {

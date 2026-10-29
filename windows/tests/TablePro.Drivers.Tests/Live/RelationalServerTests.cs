@@ -58,12 +58,6 @@ public abstract class RelationalServerTests
     /// <summary>What opens a transaction in the editor, or null where one opens with the first change.</summary>
     protected virtual string? BeginStatement => Engine == DatabaseEngine.SqlServer ? "BEGIN TRANSACTION" : "BEGIN";
 
-    /// <summary>
-    /// Whether each editor statement commits on its own with no way to open a transaction, so a ROLLBACK typed in the
-    /// editor undoes nothing. ODP.NET commits every command run outside a transaction it was asked to begin.
-    /// </summary>
-    protected virtual bool EditorAutoCommits => false;
-
     /// <summary>Whether the server's error for a missing table names it.</summary>
     protected virtual bool ErrorNamesTheMissingTable => true;
 
@@ -110,7 +104,8 @@ public abstract class RelationalServerTests
     protected static async Task<List<StatementResult>> RunUntilAsync(IQueryChannel channel, IReadOnlyList<string> statements, bool stopOnError, CancellationToken cancellationToken)
     {
         var results = new List<StatementResult>();
-        await foreach (var result in channel.ExecuteAsync(statements, new ExecuteOptions(StopOnError: stopOnError), cancellationToken))
+        // The channel stands in for an editor tab, which holds the transaction its writes open.
+        await foreach (var result in channel.ExecuteAsync(statements, new ExecuteOptions(StopOnError: stopOnError, EditorTransaction: true), cancellationToken))
         {
             results.Add(result);
         }
@@ -404,12 +399,9 @@ public abstract class RelationalServerTests
             Assert.Single(stopped);
 
             // A transaction opened in the editor stays on the tab's connection until it ends.
-            if (!EditorAutoCommits)
-            {
-                string[] rollback = BeginStatement is { } begin ? [begin, $"DELETE FROM {qualified}", "ROLLBACK"] : [$"DELETE FROM {qualified}", "ROLLBACK"];
-                Assert.All(await RunAsync(channel, rollback), r => Assert.True(r.Succeeded, r.Error));
-                Assert.Equal(10, await session.CountAsync(table, BrowseFilter.None, Ct));
-            }
+            string[] rollback = BeginStatement is { } begin ? [begin, $"DELETE FROM {qualified}", "ROLLBACK"] : [$"DELETE FROM {qualified}", "ROLLBACK"];
+            Assert.All(await RunAsync(channel, rollback), r => Assert.True(r.Succeeded, r.Error));
+            Assert.Equal(10, await session.CountAsync(table, BrowseFilter.None, Ct));
 
             if (MessageStatement is { } message)
             {
@@ -432,7 +424,7 @@ public abstract class RelationalServerTests
     private static async Task<List<StatementResult>> RunAsyncWithLimit(IQueryChannel channel, string sql, int limit)
     {
         var results = new List<StatementResult>();
-        await foreach (var result in channel.ExecuteAsync([sql], new ExecuteOptions(limit, StopOnError: false), Ct))
+        await foreach (var result in channel.ExecuteAsync([sql], new ExecuteOptions(limit, StopOnError: false, EditorTransaction: true), Ct))
         {
             results.Add(result);
         }
@@ -488,6 +480,9 @@ public abstract class RelationalServerTests
                 var plan = QueryPlanParser.Parse(text, request.Format);
                 Assert.NotNull(plan);
                 Assert.True(plan!.NodeCount > 0);
+
+                // A measured plan that parsed without its measurements would draw as an estimate.
+                Assert.True(!analyze || plan.Contains(n => n.TotalActualRows is not null), "The measured plan has no actual rows.\n" + text);
             }
 
             // The plan switch must be off again, so the next statement returns its rows.
