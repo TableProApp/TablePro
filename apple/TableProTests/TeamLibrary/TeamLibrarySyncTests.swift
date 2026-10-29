@@ -392,6 +392,25 @@ struct TeamLibrarySyncTests {
         #expect(fixture.sync.conflicts.isEmpty)
     }
 
+    @Test("A cached /v1 connection without settings is skipped, and the rest of the cache still shows")
+    func legacyConnectionWithoutSettings() async throws {
+        let fixture = try await TeamLibraryFixture()
+        let cache: [String: Any] = [
+            "connections": [["id": "lib_01", "source_connection_id": UUID().uuidString, "payload": [Any]()]],
+            "query_folders": [[String: Any]](),
+            "queries": [[
+                "client_id": UUID().uuidString.lowercased(), "name": "Orders", "query": "select 1", "sort_order": 0
+            ]],
+            "fetched_at": "2026-10-28T09:00:00+00:00"
+        ]
+        try JSONSerialization.data(withJSONObject: cache).write(to: fixture.store.legacyFile)
+
+        fixture.relaunch()
+
+        #expect(fixture.sync.content.connections.isEmpty)
+        #expect(fixture.sync.content.queries.map(\.name) == ["Orders"])
+    }
+
     // MARK: - Failures
 
     @Test("A 429 retries after 30 seconds, then 60, then the 15-minute schedule once it answers")

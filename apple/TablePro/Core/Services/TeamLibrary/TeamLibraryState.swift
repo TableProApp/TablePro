@@ -176,12 +176,20 @@ private struct TeamLibraryLegacyCache: Decodable {
     struct Connection: Decodable {
         let id: String
         let sourceConnectionID: String?
-        let payload: TeamLibraryData
+        // /v1 answers an empty array for a connection published without settings.
+        let payload: TeamLibraryData?
 
         enum CodingKeys: String, CodingKey {
             case id
             case sourceConnectionID = "source_connection_id"
             case payload
+        }
+
+        init(from decoder: any Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            id = try container.decode(String.self, forKey: .id)
+            sourceConnectionID = try container.decodeIfPresent(String.self, forKey: .sourceConnectionID)
+            payload = try? container.decode(TeamLibraryData.self, forKey: .payload)
         }
     }
 
@@ -230,8 +238,8 @@ private struct TeamLibraryLegacyCache: Decodable {
     }
 
     func changes(at now: Date) throws -> [TeamLibraryChange] {
-        var changes: [TeamLibraryChange] = connections.map { connection in
-            change(TeamLibraryKind.connection, connection.sourceConnectionID ?? connection.id, connection.payload, now)
+        var changes: [TeamLibraryChange] = connections.compactMap { connection in
+            connection.payload.map { change(TeamLibraryKind.connection, connection.sourceConnectionID ?? connection.id, $0, now) }
         }
         for folder in folders {
             let data = TeamLibraryFolderData(
