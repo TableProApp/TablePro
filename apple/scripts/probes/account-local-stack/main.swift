@@ -1,5 +1,6 @@
 import Foundation
 import TableProCloudAPI
+import TableProImport
 
 private struct ProbeConfig: Decodable {
     let signInEmail: String
@@ -7,6 +8,14 @@ private struct ProbeConfig: Decodable {
     let legacyKey: String
     let limitKey: String
     let rejectedKey: String
+}
+
+private struct LibraryConfig: Decodable {
+    let teamName: String
+    let teamUUID: String
+    let teamKey: String
+    let adminKey: String
+    let memberKey: String
 }
 
 private actor CallLog {
@@ -109,17 +118,25 @@ struct AccountLocalStackProbe {
     @MainActor
     static func main() async {
         let environment = ProcessInfo.processInfo.environment
-        guard let configPath = CommandLine.arguments.dropFirst().first,
+        let arguments = CommandLine.arguments.dropFirst()
+        guard let configPath = arguments.first,
               let data = FileManager.default.contents(atPath: configPath),
               let config = try? JSONDecoder().decode(ProbeConfig.self, from: data),
-              let script = environment["PROBE_SIGN_IN_SCRIPT"]
+              let libraryPath = arguments.dropFirst().first,
+              let libraryData = FileManager.default.contents(atPath: libraryPath),
+              let library = try? JSONDecoder().decode(LibraryConfig.self, from: libraryData),
+              let script = environment["PROBE_SIGN_IN_SCRIPT"],
+              let rowsScript = environment["PROBE_ROWS_SCRIPT"]
         else {
-            print("usage: PROBE_SIGN_IN_SCRIPT=<sign-in.cjs> probe <seeded config.json>")
+            print("usage: PROBE_SIGN_IN_SCRIPT=<sign-in.cjs> PROBE_ROWS_SCRIPT=<library-rows.cjs> probe <config.json> <library.json>")
             exit(3)
         }
         let probe = Probe(
             config: config,
+            library: library,
             script: script,
+            rowsScript: rowsScript,
+            steps: Set((environment["PROBE_STEPS"] ?? "").split(separator: ",").map(String.init)),
             configuration: AccountConfiguration.production.overridden(by: environment)
         )
         await probe.run()
@@ -132,16 +149,34 @@ struct AccountLocalStackProbe {
 private final class Probe {
     let report = Report()
     private let config: ProbeConfig
+    private let library: LibraryConfig
     private let script: String
+    private let rowsScript: String
+    private let steps: Set<String>
     private let configuration: AccountConfiguration
     private let machine = MachineDescription.current()
     private let scratch = "account-local-stack-\(UUID().uuidString)"
     private var directory: URL { FileManager.default.temporaryDirectory.appendingPathComponent(scratch, isDirectory: true) }
 
-    init(config: ProbeConfig, script: String, configuration: AccountConfiguration) {
+    init(
+        config: ProbeConfig,
+        library: LibraryConfig,
+        script: String,
+        rowsScript: String,
+        steps: Set<String>,
+        configuration: AccountConfiguration
+    ) {
         self.config = config
+        self.library = library
         self.script = script
+        self.rowsScript = rowsScript
+        self.steps = steps
         self.configuration = configuration
+    }
+
+    // PROBE_STEPS=account,library runs a subset; empty runs every step.
+    private func runs(_ step: String) -> Bool {
+        steps.isEmpty || steps.contains(step)
     }
 
     func run() async {
@@ -149,10 +184,15 @@ private final class Probe {
             try? FileManager.default.removeItem(at: directory)
             UserDefaults(suiteName: scratch)?.removePersistentDomain(forName: scratch)
         }
-        await interactiveSignIn()
-        await legacyKeyMigrates()
-        await unknownKeyIsRefused()
-        await fourthDeviceHitsTheLimit()
+        if runs("account") {
+            await interactiveSignIn()
+            await legacyKeyMigrates()
+            await unknownKeyIsRefused()
+            await fourthDeviceHitsTheLimit()
+        }
+        if runs("library") {
+            await teamLibrary()
+        }
     }
 
     // MARK: - Checks
@@ -361,9 +401,262 @@ private final class Probe {
         )
     }
 
+    // MARK: - Team library
+
+    // An old build publishes over /v1 with the team's license key and caches its pull; the update exchanges the key,
+    // takes that cache over in its first /v2 sync, pushes, a member's second device pulls, and an admin conflicts.
+    private func teamLibrary() async {
+        let connectionID = UUID()
+        let folderID = UUID()
+        let queryID = UUID()
+        let directory = self.directory.appendingPathComponent("library", isDirectory: true)
+        let ownerStore = store(in: directory.appendingPathComponent("owner", isDirectory: true))
+        try? FileManager.default.createDirectory(at: ownerStore.directory.deletingLastPathComponent(), withIntermediateDirectories: true)
+
+        guard await oldBuildPublishes(connectionID: connectionID, folderID: folderID, queryID: queryID, cache: ownerStore.legacyFile) else {
+            return
+        }
+        let before = rows()
+        report.expect(
+            before.count == 3 && before.allSatisfy { $0.via == "v1" && $0.clientID == $0.clientID.lowercased() },
+            "the old build's /v1 publish stores three items under lowercase client IDs",
+            "\(before)"
+        )
+
+        let ownerLog = CallLog()
+        let legacyKeychain = InMemoryKeychain()
+        legacyKeychain.writeString(library.teamKey, forKey: LegacyLicenseStore.keychainKey)
+        let owner = services(log: ownerLog, keychain: InMemoryKeychain(), legacyKeychain: legacyKeychain)
+        let migrated = await owner.migrateLegacyKeyIfNeeded()
+        report.expect(migrated == .migrated, "the update exchanges the team license key", "\(migrated)")
+
+        let mine = TeamLibrarySync(account: owner, store: ownerStore)
+        mine.loadIfNeeded()
+        report.expect(
+            mine.content.connections.map(\.settings.name) == ["Probe Prod"] && mine.content.queries.map(\.name) == ["Orders"],
+            "the /v1 cache shows before the first /v2 pull",
+            "\(mine.content)"
+        )
+        let synced = await mine.sync()
+        report.expect(synced == .synced, "the first /v2 sync succeeds", "\(synced)")
+        report.expect(
+            mine.content.connections.map(\.id) == [connectionID.uuidString.lowercased()]
+                && mine.content.queries.map(\.id) == [queryID.uuidString.lowercased()],
+            "the first /v2 sync shows each /v1 item once, under the same client ID",
+            "\(mine.content)"
+        )
+        report.expect(!FileManager.default.fileExists(atPath: ownerStore.legacyFile.path), "the /v1 cache is gone once the snapshot is in")
+        report.expect(mine.canPublish, "the owner may publish")
+
+        let folder = SQLFavoriteFolder(id: folderID, name: "Reports")
+        let orders = SQLFavorite(id: queryID, name: "Orders", query: "select 2", folderId: folderID)
+        let customers = SQLFavorite(id: UUID(), name: "Customers", query: "select * from customers")
+        let queries = try? await mine.publishSavedQueries(favorites: [orders, customers], folders: [folder], to: teamID(of: mine))
+        report.expect(queries == .published(2), "publishing saved queries pushes the edit and the new query", "\(String(describing: queries))")
+        let renamed = TeamLibraryPublishPlan.Connection(id: connectionID, settings: Self.settings(name: "Probe Production"))
+        let connections = try? await mine.publishConnections([renamed], to: teamID(of: mine))
+        report.expect(connections == .published(1), "publishing the connection updates the /v1 one", "\(String(describing: connections))")
+        let after = rows()
+        report.expect(
+            after.count == 4 && after.allSatisfy { $0.clientID == $0.clientID.lowercased() && !$0.deleted },
+            "the pushes update the /v1 items in place: nothing duplicated, nothing deleted, every client ID lowercase",
+            "\(after)"
+        )
+        report.expect(
+            after.first { $0.clientID == queryID.uuidString.lowercased() }.map { $0.via == "v2" && $0.version == 2 } == true,
+            "the /v1 query is now a /v2 item at version 2"
+        )
+        let ownerCalls = await ownerLog.lines.filter { $0.contains("/library/changes") }
+        report.expect(
+            ownerCalls.filter { $0.hasPrefix("POST") }.count == 2 && ownerCalls.allSatisfy { $0.hasSuffix(" 200") },
+            "this Mac pushed twice and every library call answered 200",
+            ownerCalls.joined(separator: ", ")
+        )
+
+        await memberPulls(customers: customers.name, teamID: teamID(of: mine), directory: directory)
+        await adminConflicts(orders: orders, others: [customers], folder: folder, mine: mine, directory: directory)
+    }
+
+    private func memberPulls(customers: String, teamID: String, directory: URL) async {
+        let log = CallLog()
+        let member = await keyAccount(library.memberKey, log: log, machine: "Probe Second Mac")
+        let theirs = TeamLibrarySync(account: member, store: store(in: directory.appendingPathComponent("member", isDirectory: true)))
+        theirs.loadIfNeeded()
+        _ = await theirs.sync()
+        report.expect(
+            Set(theirs.content.queries.map(\.name)) == ["Orders", customers]
+                && theirs.content.connections.map(\.settings.name) == ["Probe Production"],
+            "a member's second device pulls what this Mac pushed",
+            "\(theirs.content)"
+        )
+        report.expect(!theirs.canPublish, "a member may only pull")
+        var refusal = "published"
+        do throws(TeamLibraryPublishError) {
+            _ = try await theirs.publishSavedQueries(
+                favorites: [SQLFavorite(id: UUID(), name: "Member's", query: "select 1")],
+                folders: [],
+                to: teamID
+            )
+        } catch {
+            refusal = "\(error)"
+        }
+        let pushes = await log.lines.filter { $0.hasPrefix("POST") && $0.contains("/library/changes") }
+        report.expect(pushes.isEmpty && refusal == "notWritable", "a member's publish is refused before anything is pushed", refusal)
+    }
+
+    private func adminConflicts(
+        orders: SQLFavorite,
+        others: [SQLFavorite],
+        folder: SQLFavoriteFolder,
+        mine: TeamLibrarySync,
+        directory: URL
+    ) async {
+        let queryID = orders.id
+        let log = CallLog()
+        let admin = await keyAccount(library.adminKey, log: log, machine: "Probe Admin Mac")
+        let adminStore = store(in: directory.appendingPathComponent("admin", isDirectory: true))
+        let first = TeamLibrarySync(account: admin, store: adminStore)
+        first.loadIfNeeded()
+        _ = await first.sync()
+        // The admin's edit leaves before its pull sees this Mac's next one: staged from the state it pulled.
+        guard var state = adminStore.loadAll().first else {
+            report.expect(false, "the admin's device holds the team's library")
+            return
+        }
+        let edit = SQLFavorite(id: queryID, name: "Orders", query: "select 'admin'", folderId: nil)
+        state.pending = (try? TeamLibraryPublishPlan.savedQueries(favorites: [edit], folders: [], in: state)) ?? []
+        adminStore.save(state)
+
+        var again = orders
+        again.query = "select 3"
+        let ours = try? await mine.publishSavedQueries(favorites: [again] + others, folders: [folder], to: teamID(of: mine))
+        report.expect(ours == .published(1), "this Mac edits the query again", "\(String(describing: ours))")
+
+        let staged = TeamLibrarySync(account: admin, store: adminStore)
+        staged.loadIfNeeded()
+        _ = await staged.sync()
+        let conflict = staged.conflicts.first
+        report.expect(
+            staged.conflicts.count == 1 && conflict.flatMap { staged.current(for: $0) }?.query?.query == "select 3",
+            "the admin's stale push comes back as a conflict holding this Mac's copy",
+            "\(staged.conflicts)"
+        )
+        guard let conflict else { return }
+        await staged.resolve(conflict, keepingMine: true)
+        _ = await mine.sync()
+        report.expect(
+            staged.conflicts.isEmpty && mine.content.queries.first { $0.id == queryID.uuidString.lowercased() }?.query == "select 'admin'",
+            "Keep Mine on the admin's device lands on this Mac's next pull",
+            "\(mine.content.queries)"
+        )
+    }
+
+    // An old build: activate the key on this Mac, publish over /v1, then cache the pull as team_library.json.
+    private func oldBuildPublishes(connectionID: UUID, folderID: UUID, queryID: UUID, cache: URL) async -> Bool {
+        let credentials: [String: Any] = ["license_key": library.teamKey, "machine_id": machine.machineID]
+        let activation = await v1("license/activate", credentials.merging([
+            "machine_name": machine.name, "app_version": "0.81.0", "os_version": machine.osVersion
+        ]) { $1 })
+        guard activation.status == 200 else {
+            report.expect(false, "an old build activates the team license key", "\(activation.status)")
+            return false
+        }
+        let settings = (try? JSONSerialization.jsonObject(with: JSONEncoder().encode(Self.settings(name: "Probe Prod")))) ?? [:]
+        let published = await v1("license/library/publish", credentials.merging([
+            "connections": [["source_connection_id": connectionID.uuidString, "payload": settings]],
+            "query_folders": [["client_id": folderID.uuidString, "parent_client_id": NSNull(), "name": "Reports", "sort_order": 0]],
+            "queries": [[
+                "client_id": queryID.uuidString, "folder_client_id": folderID.uuidString,
+                "connection_client_id": connectionID.uuidString, "name": "Orders", "query": "select 1",
+                "keyword": NSNull(), "sort_order": 0
+            ]]
+        ]) { $1 })
+        report.expect(published.status == 200, "an old build publishes over /v1", "\(published.status)")
+        let pulled = await v1("license/library/pull", credentials)
+        report.expect(pulled.status == 200, "an old build pulls over /v1", "\(pulled.status)")
+        guard published.status == 200, pulled.status == 200 else { return false }
+        try? FileManager.default.createDirectory(at: cache.deletingLastPathComponent(), withIntermediateDirectories: true)
+        return (try? pulled.body.write(to: cache)) != nil
+    }
+
+    private func v1(_ path: String, _ body: [String: Any]) async -> (status: Int, body: Data) {
+        let base = ProcessInfo.processInfo.environment["TABLEPRO_API_URL"] ?? "http://api.localhost:5284"
+        guard let url = URL(string: "\(base)/v1/\(path)"),
+              let data = try? JSONSerialization.data(withJSONObject: body) else { return (0, Data()) }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.httpBody = data
+        guard let (answer, response) = try? await URLSession.shared.data(for: request) else { return (0, Data()) }
+        return ((response as? HTTPURLResponse)?.statusCode ?? 0, answer)
+    }
+
+    // A device of its own, signed in by exchanging a seat key, as a member's updated build would be.
+    private func keyAccount(_ key: String, log: CallLog, machine name: String) async -> AccountServices {
+        let machineID = (0..<32).map { _ in String(format: "%02x", UInt8.random(in: 0...255)) }.joined()
+        let device = MachineDescription(machineID: machineID, name: name, appVersion: machine.appVersion, osVersion: machine.osVersion)
+        let legacyKeychain = InMemoryKeychain()
+        legacyKeychain.writeString(key, forKey: LegacyLicenseStore.keychainKey)
+        let services = services(log: log, keychain: InMemoryKeychain(), legacyKeychain: legacyKeychain, machine: device)
+        let outcome = await services.migrateLegacyKeyIfNeeded()
+        report.expect(outcome == .migrated, "\(name) signs in with its seat key", "\(outcome)")
+        return services
+    }
+
+    private func store(in directory: URL) -> TeamLibraryStateStore {
+        TeamLibraryStateStore(
+            directory: directory.appendingPathComponent("TeamLibrary", isDirectory: true),
+            legacyFile: directory.appendingPathComponent("team_library.json"),
+            defaults: UserDefaults(suiteName: scratch) ?? .standard
+        )
+    }
+
+    private func teamID(of sync: TeamLibrarySync) -> String {
+        sync.writableTeams.first?.id ?? ""
+    }
+
+    private struct Row: Decodable, CustomStringConvertible {
+        let kind: String
+        let clientID: String
+        let version: Int
+        let via: String
+        let deleted: Bool
+
+        enum CodingKeys: String, CodingKey {
+            case kind, version, deleted
+            case clientID = "client_id"
+            case via = "updated_via"
+        }
+
+        var description: String { "\(kind) \(clientID) v\(version) \(via)\(deleted ? " deleted" : "")" }
+    }
+
+    private func rows() -> [Row] {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        process.arguments = ["node", rowsScript, library.teamUUID]
+        let output = Pipe()
+        process.standardOutput = output
+        guard (try? process.run()) != nil else { return [] }
+        let data = output.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        return (try? JSONDecoder().decode([Row].self, from: data)) ?? []
+    }
+
+    private static func settings(name: String) -> ExportableConnection {
+        ExportableConnection(name: name, host: "db.internal", port: 5432, database: "app", username: "ada", type: "PostgreSQL")
+    }
+
     // MARK: - Helpers
 
-    private func services(log: CallLog, keychain: InMemoryKeychain, legacyKeychain: InMemoryKeychain) -> AccountServices {
+    private func services(
+        log: CallLog,
+        keychain: InMemoryKeychain,
+        legacyKeychain: InMemoryKeychain,
+        machine: MachineDescription? = nil
+    ) -> AccountServices {
+        let machine = machine ?? self.machine
         let entitlementFile = directory.appendingPathComponent(UUID().uuidString).appendingPathComponent("entitlement.jwt")
         let defaults = UserDefaults(suiteName: scratch) ?? .standard
         return AccountServices(

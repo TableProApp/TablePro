@@ -43,11 +43,30 @@ final class InMemoryKeychain: KeychainStoring, @unchecked Sendable {
 final class AppEvents {
     static let shared = AppEvents()
     let licenseStatusDidChange = PassthroughSubject<Void, Never>()
+    let teamLibraryDidUpdate = PassthroughSubject<Void, Never>()
 }
 
 final class AppStorageEnvironment: Sendable {
     static let shared = AppStorageEnvironment()
     var defaults: UserDefaults { .standard }
+    var supportDirectory: URL { FileManager.default.temporaryDirectory.appendingPathComponent("TablePro", isDirectory: true) }
+}
+
+struct SQLFavorite {
+    let id: UUID
+    var name: String
+    var query: String
+    var keyword: String?
+    var folderId: UUID?
+    var connectionId: UUID?
+    var sortOrder = 0
+}
+
+struct SQLFavoriteFolder {
+    let id: UUID
+    var name: String
+    var parentId: UUID?
+    var sortOrder = 0
 }
 
 extension String {

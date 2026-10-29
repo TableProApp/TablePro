@@ -5,10 +5,14 @@
 # registration, the token refresh that names the device, the entitlement checked with the stack's key, refresh
 # token rotation, GET /v2/me, Use License Key replacing and revoking the interactive session, sign-out revoking the
 # refresh token, a seeded legacy key migrating with no refresh, an unknown key refused, and a fourth device answered
-# with device_limit_reached and its 3 holders, one of which it then removes to take the slot.
+# with device_limit_reached and its 3 holders, one of which it then removes to take the slot. Then the team library:
+# an old build publishes over /v1 with a team's license key and caches its pull, the update exchanges the key and its
+# first /v2 sync takes that cache over item by item, this Mac pushes, a member's second device pulls and cannot push,
+# and an admin's stale push comes back as a conflict that Keep Mine resolves.
 #
-# account-local-stack/main.swift drives the app's own Core/Services/Account sources, built into a SwiftPM
-# executable beside AppStubs.swift. seed.cjs inserts the accounts it needs; nothing is deleted.
+# account-local-stack/main.swift drives the app's own Core/Services/Account and Core/Services/TeamLibrary sources,
+# built into a SwiftPM executable beside AppStubs.swift. seed.cjs and seed-library.cjs insert the accounts and the team
+# it needs, library-rows.cjs reads the team's library rows; nothing is deleted.
 #
 # Usage:
 #   scripts/probes/check-account-local-stack.sh
@@ -20,6 +24,7 @@
 # MAIL_URL          the fake Resend, default http://127.0.0.1:5285
 # PROBE_EMAIL_DOMAIN  the seeded addresses' domain, default account-probe.example
 # PROBE_CHROME      a Chrome or chrome-headless-shell for Puppeteer, else Puppeteer's own
+# PROBE_STEPS       account, library or both (the default), comma-separated
 #
 # Needs node with puppeteer installed globally, and xcrun swift. Exits 0 when every check passes, 1 when one
 # fails, 3 when it cannot run.
@@ -56,6 +61,7 @@ TABLEPRO_ENTITLEMENT_KEYS="$(node -e 'const c = require("node:crypto"); console.
 export TABLEPRO_ENTITLEMENT_KEYS
 
 node "$PROBE/seed.cjs" "$WORK/config.json" "$DOMAIN" || cannot_run "seeding the local stack failed"
+node "$PROBE/seed-library.cjs" "$WORK/library.json" "$DOMAIN" || cannot_run "seeding the team library failed"
 
 mkdir -p "$WORK/Sources/Probe"
 SOURCES="$WORK/Sources/Probe"
@@ -63,6 +69,9 @@ for source in "$ROOT"/TablePro/Core/Services/Account/*.swift; do
     case "$(basename "$source")" in
         AccountServices+Live.swift | LicenseSignatureVerifier.swift) continue ;;
     esac
+    ln -s "$source" "$SOURCES/$(basename "$source")"
+done
+for source in "$ROOT"/TablePro/Core/Services/TeamLibrary/*.swift; do
     ln -s "$source" "$SOURCES/$(basename "$source")"
 done
 for source in Models/Settings/ProFeature.swift Core/Diagnostics/LogRedaction.swift Extensions/Bundle+AppInfo.swift; do
@@ -83,6 +92,7 @@ let package = Package(
     targets: [
         .executableTarget(name: "Probe", dependencies: [
             .product(name: "TableProCloudAPI", package: "TableProMacCore"),
+            .product(name: "TableProImport", package: "TableProCore"),
             .product(name: "TableProLogRedaction", package: "TableProCore")
         ], swiftSettings: [
             .enableUpcomingFeature("NonisolatedNonsendingByDefault"),
@@ -97,4 +107,5 @@ if ! (cd "$WORK" && xcrun swift build --jobs 4 > "$WORK/build.log" 2>&1); then
     cannot_run "the probe did not build"
 fi
 
-PROBE_SIGN_IN_SCRIPT="$PROBE/sign-in.cjs" "$WORK/.build/debug/Probe" "$WORK/config.json"
+PROBE_SIGN_IN_SCRIPT="$PROBE/sign-in.cjs" PROBE_ROWS_SCRIPT="$PROBE/library-rows.cjs" \
+    "$WORK/.build/debug/Probe" "$WORK/config.json" "$WORK/library.json"
