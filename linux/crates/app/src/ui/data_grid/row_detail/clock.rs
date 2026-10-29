@@ -7,7 +7,7 @@ use gtk4::{self as gtk, glib};
 use tablepro_core::column::{ColumnKind, TemporalZone, TimeRange};
 
 use super::RowDetailPane;
-use super::calendar::{day_of, offset_at};
+use super::calendar::offset_at;
 use super::value_editor::Commit;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -96,7 +96,7 @@ pub fn with_time<Tz: TimeZone>(text: &str, time: NaiveTime, field: ClockField, t
     }
     let day_end = day_len(text.as_bytes());
     let day = day_end
-        .and_then(|end| day_of(text.get(..end)?.trim_start()))
+        .and_then(|end| NaiveDate::parse_from_str(text.get(..end)?.trim_start(), "%Y-%m-%d").ok())
         .unwrap_or(today);
     if field.with_offset {
         clock.push_str(&offset_at(zone, day.and_time(time)).to_string());

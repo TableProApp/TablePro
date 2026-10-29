@@ -1018,6 +1018,11 @@ fn a_new_zoned_time_takes_the_offset_of_its_own_moment() {
     assert_eq!(set("", a_time(9, 5, 0), TIMETZ), "09:05:00+11:00");
     let earlier = NaiveDate::from_ymd_opt(2026, 7, 1).expect("a day");
     assert_eq!(
+        with_time("2026-10-4", a_time(9, 5, 0), ZONED, earlier, &sydney),
+        "2026-10-4 09:05:00+11:00",
+        "a one-digit day took today's offset"
+    );
+    assert_eq!(
         with_time("2026-10-04", a_time(9, 5, 0), ZONED, earlier, &sydney),
         "2026-10-04 09:05:00+11:00",
         "the offset was today's, not the value's day"
