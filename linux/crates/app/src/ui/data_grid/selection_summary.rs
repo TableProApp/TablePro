@@ -236,12 +236,11 @@ impl FigureRow {
     fn new(grid: &DataGrid, figure: Figure) -> Self {
         let title = gtk::Label::builder().label(figure.title()).xalign(0.0).build();
         title.add_css_class("dimmed");
-        // A sum can run to thousands of digits; the popover stays narrow.
+        // A sum can run to thousands of digits; Copy still takes every one.
         let value = gtk::Label::builder()
             .xalign(1.0)
             .hexpand(true)
-            .wrap(true)
-            .wrap_mode(gtk::pango::WrapMode::Char)
+            .ellipsize(gtk::pango::EllipsizeMode::Middle)
             .max_width_chars(32)
             .build();
         value.add_css_class("numeric");

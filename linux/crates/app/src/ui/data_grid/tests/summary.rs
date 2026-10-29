@@ -239,6 +239,29 @@ fn the_popover_lists_each_figure_and_copies_it_without_grouping() {
 }
 
 #[gtk4::test]
+fn a_long_figure_keeps_its_popover_row_on_one_line() {
+    let grid = amounts();
+    let (_, button) = readout(&grid);
+    grid.focus(0, 1);
+    grid.grid.selection().select_all();
+    wait_for_label(&button, "Sum 42, Average 21, Count 2");
+    let popover = button.popover().expect("the readout's popover");
+    let height = || popover.child().expect("the popover's content").measure(gtk::Orientation::Vertical, -1).1;
+    let short = height();
+
+    let wide = format!("1{}", "0".repeat(1_500)).parse::<SqlDecimal>().expect("a decimal");
+    grid.grid.apply_delta(&grid.tracker.apply(TrackerEdit::Cell {
+        row_key: key(1),
+        col: 1,
+        original: Value::Int(10),
+        value: Value::Decimal(wide),
+    }));
+    wait_until(WAIT, || button.label().is_some_and(|label| label.len() > 1_000)).expect("the wide sum");
+
+    assert_eq!(height(), short, "a long figure made the popover taller");
+}
+
+#[gtk4::test]
 fn the_readout_goes_with_its_grid() {
     let grid = amounts();
     let (revealer, button) = readout(&grid);
