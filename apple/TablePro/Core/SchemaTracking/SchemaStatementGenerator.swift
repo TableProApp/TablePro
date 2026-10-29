@@ -200,9 +200,13 @@ struct SchemaStatementGenerator {
                 adds.append(change)
                 continue
             }
-            if !old.allSatisfy(dropped.contains) {
-                drops.append(.modifyPrimaryKey(old: old, new: []))
+            if old.allSatisfy(dropped.contains) {
+                if !new.isEmpty {
+                    adds.append(.modifyPrimaryKey(old: [], new: new))
+                }
+                continue
             }
+            drops.append(.modifyPrimaryKey(old: old, new: []))
             if !new.isEmpty {
                 adds.append(.modifyPrimaryKey(old: [], new: new))
             }

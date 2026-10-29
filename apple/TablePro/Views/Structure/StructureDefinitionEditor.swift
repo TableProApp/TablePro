@@ -239,6 +239,9 @@ final class StructureDefinitionEditor: ObservableObject {
             if adapter.store.valueFilter.isActive { adapter.model.setValueFilter(GridValueFilterState()) }
         }
         adapter.select(entity: id)
+        // The section may have just expanded, so its grid scrolls the page once it is on screen.
+        let rowID = adapter.rowID(forEntity: id)
+        DispatchQueue.main.async { adapter.model.reveal(rowID: rowID) }
     }
 
     // MARK: - Commands
