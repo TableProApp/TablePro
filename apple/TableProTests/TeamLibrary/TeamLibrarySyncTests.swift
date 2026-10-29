@@ -623,7 +623,7 @@ struct TeamLibrarySyncTests {
         #expect(await fixture.pushes().isEmpty)
     }
 
-    @Test("Edits stored while this account could write are dropped once it only reads")
+    @Test("Edits and conflicts stored while this account could write are dropped once it only reads")
     func demotedWriterDropsItsEdits() async throws {
         let fixture = try await TeamLibraryFixture()
         await fixture.sync.sync()
@@ -633,6 +633,7 @@ struct TeamLibrarySyncTests {
             folders: [],
             in: state
         )
+        state.conflicts = [TeamLibraryConflict(teamID: Self.team, edit: state.pending[0], current: nil)]
         fixture.store.save(state)
         await fixture.server.set {
             $0.memberships = [FakeAccountServer.membership(teamID: Self.team, name: "Acme", role: "member", hasSeat: true)]
@@ -643,6 +644,8 @@ struct TeamLibrarySyncTests {
 
         #expect(await fixture.pushes().isEmpty)
         #expect(fixture.store.loadAll().first?.pending.isEmpty == true)
+        #expect(fixture.store.loadAll().first?.conflicts.isEmpty == true)
+        #expect(fixture.sync.conflicts.isEmpty)
     }
 
     @Test("A team the account lost its seat in is dropped with what it held")

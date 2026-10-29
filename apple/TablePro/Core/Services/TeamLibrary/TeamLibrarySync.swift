@@ -266,9 +266,12 @@ internal final class TeamLibrarySync: ObservableObject {
                 ?? TeamLibraryTeamState(teamID: membership.teamID, teamName: membership.teamName, canWrite: false)
             state.teamName = membership.teamName
             state.canWrite = membership.role == "owner" || membership.role == "admin"
-            if !state.canWrite, !state.pending.isEmpty {
-                Self.logger.notice("Dropping \(state.pending.count) unpushed team library edits: this account only reads the team's library")
+            if !state.canWrite, !state.pending.isEmpty || !state.conflicts.isEmpty {
+                Self.logger.notice(
+                    "Dropping \(state.pending.count) unpushed team library edits and \(state.conflicts.count) conflicts: this account only reads the team's library"
+                )
                 state.pending = []
+                state.conflicts = []
             }
             commit(state)
         }
@@ -347,6 +350,7 @@ internal final class TeamLibrarySync: ObservableObject {
                 if var current = teams[teamID] {
                     current.canWrite = false
                     current.pending = []
+                    current.conflicts = []
                     commit(current)
                 }
                 throw .writeForbidden
