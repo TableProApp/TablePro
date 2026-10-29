@@ -1,29 +1,38 @@
-use std::cell::RefCell;
+use std::cell::{Cell, OnceCell, RefCell};
 use std::rc::Rc;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use gtk4::{self as gtk, glib};
+use tablepro_core::Value;
 
 use super::DataGrid;
-use super::tracked_values::RowPendingState;
 use crate::i18n::{gettext, gettext_f};
-use crate::services::grid::{NumberFigures, SelectionSummary, SummaryRule, SummaryTally};
+use crate::services::grid::{SelectionSummary, SummaryRule, summarize};
 use crate::ui::format::{format_decimal, format_thousands};
+use crate::ui::icons;
 
-/// A summary of one row says no more than the cell, so it starts at two.
+/// A summary of one row says no more than its cell.
 const MIN_ROWS: usize = 2;
 
-/// The figures of the focused column over the selected rows, as a
-/// spreadsheet's status bar shows them, with every figure and a Copy
-/// button for each in its popover.
-#[derive(Clone)]
-pub struct SummaryReadout {
-    button: gtk::MenuButton,
-    label: SummaryLadder,
-    heading: gtk::Label,
-    figures: gtk::Grid,
-    shown: Rc<RefCell<Option<Shown>>>,
+#[derive(Default)]
+pub struct SummaryState {
+    readout: OnceCell<Readout>,
+    /// The last data column a cell had the focus in. It stays while the
+    /// focus is in the readout's popover or the detail pane.
+    column: Cell<Option<usize>>,
+    queued: Cell<bool>,
+    /// Counts runs, so an answer to an older one is dropped.
+    runs: Cell<u64>,
+    running: RefCell<Option<Arc<AtomicBool>>>,
+}
+
+impl SummaryState {
+    pub(super) fn forget_column(&self) {
+        self.column.set(None);
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -32,24 +41,41 @@ struct Shown {
     summary: SelectionSummary,
 }
 
-/// One line of the popover: what it is, the value as the locale writes
-/// it, and the text Copy puts on the clipboard.
-struct Figure {
-    title: String,
-    copy_title: String,
-    shown: String,
-    copied: String,
+/// A menu button in the host's bottom bar whose popover lists every
+/// figure with a Copy button. The revealer keeps the bar's height while
+/// it is hidden.
+struct Readout {
+    revealer: gtk::Revealer,
+    button: gtk::MenuButton,
+    heading: gtk::Label,
+    separator: gtk::Separator,
+    figures: Vec<FigureRow>,
+    shown: RefCell<Option<Shown>>,
 }
 
-impl SummaryReadout {
+impl Readout {
     fn new(grid: &DataGrid) -> Self {
-        let label = SummaryLadder::new();
         let heading = gtk::Label::builder()
             .xalign(0.0)
             .ellipsize(gtk::pango::EllipsizeMode::End)
             .build();
         heading.add_css_class("heading");
-        let figures = gtk::Grid::builder().row_spacing(4).column_spacing(12).build();
+        let table = gtk::Grid::builder().row_spacing(4).column_spacing(12).build();
+        let separator = gtk::Separator::new(gtk::Orientation::Horizontal);
+        let mut figures = Vec::with_capacity(Figure::ALL.len());
+        let mut line = 0;
+        for figure in Figure::ALL {
+            if figure == Figure::Sum {
+                table.attach(&separator, 0, line, 3, 1);
+                line += 1;
+            }
+            let row = FigureRow::new(grid, figure);
+            table.attach(&row.title, 0, line, 1, 1);
+            table.attach(&row.value, 1, line, 1, 1);
+            table.attach(&row.copy, 2, line, 1, 1);
+            figures.push(row);
+            line += 1;
+        }
         let content = gtk::Box::builder()
             .orientation(gtk::Orientation::Vertical)
             .spacing(8)
@@ -59,416 +85,299 @@ impl SummaryReadout {
             .margin_end(6)
             .build();
         content.append(&heading);
-        content.append(&figures);
-        let popover = gtk::Popover::builder().child(&content).build();
+        content.append(&table);
         let button = gtk::MenuButton::builder()
-            .child(&label)
-            .popover(&popover)
-            .visible(false)
+            .popover(&gtk::Popover::builder().child(&content).build())
+            .direction(gtk::ArrowType::Up)
+            .can_shrink(true)
             .build();
         button.add_css_class("flat");
-        button.update_property(&[gtk::accessible::Property::Description(&gettext(
-            "Shows every figure with a Copy button",
-        ))]);
-        let readout = Self {
+        button.add_css_class("caption");
+        button.add_css_class("numeric");
+        let revealer = gtk::Revealer::builder()
+            .transition_type(gtk::RevealerTransitionType::SlideRight)
+            .child(&button)
+            .build();
+        Self {
+            revealer,
             button,
-            label,
             heading,
+            separator,
             figures,
-            shown: Rc::default(),
-        };
-        let weak = grid.downgrade();
-        let filled = readout.clone();
-        popover.connect_show(move |_| {
-            if let Some(grid) = weak.upgrade() {
-                filled.fill_figures(&grid);
-            }
-        });
-        readout
+            shown: RefCell::default(),
+        }
     }
 
-    pub(crate) fn widget(&self) -> &gtk::Widget {
-        self.button.upcast_ref()
-    }
-
-    fn show(&self, grid: &DataGrid, shown: Option<Shown>) {
+    fn show(&self, shown: Option<Shown>) {
         if *self.shown.borrow() == shown {
             return;
         }
         match &shown {
             Some(shown) => {
-                let rungs = label_rungs(&shown.summary);
-                self.button.set_tooltip_text(Some(&rungs[0]));
-                self.button
-                    .update_property(&[gtk::accessible::Property::Label(&rungs[0])]);
-                self.label.set_rungs(&rungs);
+                let sentence = sentence(&shown.summary);
+                self.button.set_label(&sentence);
+                // The label ellipsizes in a narrow bar; the tooltip keeps every digit.
+                self.button.set_tooltip_text(Some(&sentence));
+                self.heading.set_label(&shown.column);
+                for row in &self.figures {
+                    row.show(row.figure.of(&shown.summary));
+                }
+                self.separator.set_visible(shown.summary.numbers.is_some());
             }
             None => self.button.popdown(),
         }
-        self.button.set_visible(shown.is_some());
+        self.revealer.set_reveal_child(shown.is_some());
         self.shown.replace(shown);
-        if self.button.popover().is_some_and(|popover| popover.is_visible()) {
-            self.fill_figures(grid);
+    }
+}
+
+fn sentence(summary: &SelectionSummary) -> String {
+    let count = format_thousands(summary.value_count);
+    match &summary.numbers {
+        Some(numbers) => gettext_f(
+            "Sum {sum}, Average {average}, Count {count}",
+            &[
+                ("sum", &format_decimal(&numbers.sum)),
+                ("average", &format_decimal(&numbers.average)),
+                ("count", &count),
+            ],
+        ),
+        None => gettext_f("Count {count}", &[("count", &count)]),
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Figure {
+    Count,
+    Numbers,
+    Empty,
+    NotANumber,
+    Sum,
+    Average,
+    Minimum,
+    Maximum,
+}
+
+impl Figure {
+    const ALL: [Self; 8] = [
+        Self::Count,
+        Self::Numbers,
+        Self::Empty,
+        Self::NotANumber,
+        Self::Sum,
+        Self::Average,
+        Self::Minimum,
+        Self::Maximum,
+    ];
+
+    fn title(self) -> String {
+        match self {
+            Self::Count => gettext("Count"),
+            // Translators: how many of the summed cells hold a number.
+            Self::Numbers => gettext("Numbers"),
+            Self::Empty => gettext("Empty"),
+            Self::NotANumber => gettext("Not a Number"),
+            Self::Sum => gettext("Sum"),
+            Self::Average => gettext("Average"),
+            Self::Minimum => gettext("Minimum"),
+            Self::Maximum => gettext("Maximum"),
         }
     }
 
-    fn fill_figures(&self, grid: &DataGrid) {
-        while let Some(child) = self.figures.first_child() {
-            self.figures.remove(&child);
-        }
-        let Some(shown) = self.shown.borrow().clone() else {
-            return;
-        };
-        self.heading.set_label(&shown.column);
-        let (counts, numbers) = figures(&shown.summary);
-        let mut line = 0;
-        for figure in counts {
-            self.attach_figure(grid, &figure, line);
-            line += 1;
-        }
-        if !numbers.is_empty() {
-            self.figures
-                .attach(&gtk::Separator::new(gtk::Orientation::Horizontal), 0, line, 3, 1);
-            line += 1;
-        }
-        for figure in numbers {
-            self.attach_figure(grid, &figure, line);
-            line += 1;
+    fn copy_title(self) -> String {
+        match self {
+            Self::Count => gettext("Copy Count"),
+            Self::Numbers => gettext("Copy Number Count"),
+            Self::Empty => gettext("Copy Empty Count"),
+            Self::NotANumber => gettext("Copy Not a Number Count"),
+            Self::Sum => gettext("Copy Sum"),
+            Self::Average => gettext("Copy Average"),
+            Self::Minimum => gettext("Copy Minimum"),
+            Self::Maximum => gettext("Copy Maximum"),
         }
     }
 
-    fn attach_figure(&self, grid: &DataGrid, figure: &Figure, line: i32) {
-        let title = gtk::Label::builder().label(&figure.title).xalign(0.0).build();
+    /// The figure as the locale writes it and as Copy puts it on the
+    /// clipboard, when the summary has it.
+    fn of(self, summary: &SelectionSummary) -> Option<(String, String)> {
+        let count = |n: u64| (format_thousands(n), n.to_string());
+        let number = |plain: &String| (format_decimal(plain), plain.clone());
+        let numbers = summary.numbers.as_ref();
+        match self {
+            Self::Count => Some(count(summary.value_count)),
+            Self::Numbers => Some(count(numbers.map_or(0, |numbers| numbers.count))),
+            Self::Empty => Some(count(summary.empty_count)),
+            Self::NotANumber => (summary.not_a_number_count > 0).then(|| count(summary.not_a_number_count)),
+            Self::Sum => numbers.map(|numbers| number(&numbers.sum)),
+            Self::Average => numbers.map(|numbers| number(&numbers.average)),
+            Self::Minimum => numbers.map(|numbers| number(&numbers.minimum)),
+            Self::Maximum => numbers.map(|numbers| number(&numbers.maximum)),
+        }
+    }
+}
+
+struct FigureRow {
+    figure: Figure,
+    title: gtk::Label,
+    value: gtk::Label,
+    copy: gtk::Button,
+    copied: Rc<RefCell<String>>,
+}
+
+impl FigureRow {
+    fn new(grid: &DataGrid, figure: Figure) -> Self {
+        let title = gtk::Label::builder().label(figure.title()).xalign(0.0).build();
         title.add_css_class("dimmed");
+        // A sum can run to thousands of digits; the popover stays narrow.
         let value = gtk::Label::builder()
-            .label(&figure.shown)
             .xalign(1.0)
             .hexpand(true)
-            .selectable(true)
+            .wrap(true)
+            .wrap_mode(gtk::pango::WrapMode::Char)
+            .max_width_chars(32)
             .build();
         value.add_css_class("numeric");
         value.update_relation(&[gtk::accessible::Relation::LabelledBy(&[title.upcast_ref()])]);
+        let copy_title = figure.copy_title();
         let copy = gtk::Button::builder()
-            .icon_name("edit-copy-symbolic")
-            .tooltip_text(&figure.copy_title)
+            .icon_name(icons::EDIT_COPY)
+            .tooltip_text(&copy_title)
+            .valign(gtk::Align::Center)
             .build();
         copy.add_css_class("flat");
-        copy.update_property(&[gtk::accessible::Property::Label(&figure.copy_title)]);
-        let text = figure.copied.clone();
-        let weak = grid.downgrade();
+        copy.update_property(&[gtk::accessible::Property::Label(&copy_title)]);
+        let copied: Rc<RefCell<String>> = Rc::default();
+        let text = copied.clone();
+        let grid = grid.downgrade();
         copy.connect_clicked(move |_| {
-            if let Some(grid) = weak.upgrade() {
-                crate::ui::clipboard::copy_text(&grid, text.clone(), |message| grid.toast(message));
+            if let Some(grid) = grid.upgrade() {
+                crate::ui::clipboard::copy_text(&grid, text.borrow().clone(), |message| grid.toast(message));
             }
         });
-        self.figures.attach(&title, 0, line, 1, 1);
-        self.figures.attach(&value, 1, line, 1, 1);
-        self.figures.attach(&copy, 2, line, 1, 1);
-    }
-}
-
-/// The bar's text from the widest to the narrowest. Digits are never cut:
-/// a narrower bar drops figures instead, down to a sign that keeps the
-/// popover in reach at every width.
-fn label_rungs(summary: &SelectionSummary) -> [String; 3] {
-    let count = format_thousands(summary.value_count);
-    // Translators: the summation sign, the bar's sum when it has room for nothing else.
-    let sign = gettext("Σ");
-    match &summary.numbers {
-        Some(numbers) => {
-            let sum = format_decimal(&numbers.sum.plain_text(numbers.scale));
-            [
-                gettext_f(
-                    "Sum {sum}, Average {average}, Count {count}",
-                    &[
-                        ("sum", &sum),
-                        ("average", &format_decimal(&numbers.average.plain_text(0))),
-                        ("count", &count),
-                    ],
-                ),
-                gettext_f("Sum {sum}", &[("sum", &sum)]),
-                sign,
-            ]
-        }
-        None => {
-            let count = gettext_f("Count {count}", &[("count", &count)]);
-            [count.clone(), count, sign]
-        }
-    }
-}
-
-mod ladder {
-    use std::cell::RefCell;
-
-    use gtk4::prelude::*;
-    use gtk4::subclass::prelude::*;
-    use gtk4::{self as gtk, glib};
-
-    /// Shows the first of its labels that fits its width, the last one
-    /// when none does, so a long one never shows cut short.
-    #[derive(Default)]
-    pub struct SummaryLadder {
-        pub rungs: RefCell<Vec<gtk::Label>>,
-    }
-
-    #[glib::object_subclass]
-    impl ObjectSubclass for SummaryLadder {
-        const NAME: &'static str = "TableProSummaryLadder";
-        type Type = super::SummaryLadder;
-        type ParentType = gtk::Widget;
-    }
-
-    impl ObjectImpl for SummaryLadder {
-        fn dispose(&self) {
-            for rung in self.rungs.take() {
-                rung.unparent();
-            }
+        Self {
+            figure,
+            title,
+            value,
+            copy,
+            copied,
         }
     }
 
-    impl WidgetImpl for SummaryLadder {
-        fn measure(&self, orientation: gtk::Orientation, _for_size: i32) -> (i32, i32, i32, i32) {
-            let rungs = self.rungs.borrow();
-            let natural = |rung: &gtk::Label| rung.measure(orientation, -1).1;
-            match orientation {
-                gtk::Orientation::Horizontal => {
-                    let widest = rungs.first().map_or(0, natural);
-                    let narrowest = rungs.last().map_or(0, natural);
-                    (narrowest, widest.max(narrowest), -1, -1)
-                }
-                _ => {
-                    let tallest = rungs.iter().map(natural).max().unwrap_or(0);
-                    (tallest, tallest, -1, -1)
-                }
-            }
+    fn show(&self, figure: Option<(String, String)>) {
+        let shown = figure.is_some();
+        if let Some((text, copied)) = figure {
+            self.value.set_label(&text);
+            self.copied.replace(copied);
         }
-
-        fn size_allocate(&self, width: i32, height: i32, baseline: i32) {
-            let rungs = self.rungs.borrow();
-            let last = rungs.len().saturating_sub(1);
-            let chosen = rungs
-                .iter()
-                .position(|rung| rung.measure(gtk::Orientation::Horizontal, -1).1 <= width)
-                .unwrap_or(last);
-            for (index, rung) in rungs.iter().enumerate() {
-                rung.set_child_visible(index == chosen);
-                if index == chosen {
-                    rung.allocate(width, height, baseline, None);
-                }
-            }
-        }
+        self.title.set_visible(shown);
+        self.value.set_visible(shown);
+        self.copy.set_visible(shown);
     }
-}
-
-glib::wrapper! {
-    pub struct SummaryLadder(ObjectSubclass<ladder::SummaryLadder>)
-        @extends gtk::Widget,
-        @implements gtk::Accessible, gtk::Buildable, gtk::ConstraintTarget;
-}
-
-impl SummaryLadder {
-    fn new() -> Self {
-        glib::Object::new()
-    }
-
-    fn set_rungs(&self, texts: &[String]) {
-        let mut rungs = self.imp().rungs.borrow_mut();
-        while rungs.len() < texts.len() {
-            // The button carries the whole text for a screen reader.
-            let rung = gtk::Label::builder()
-                .accessible_role(gtk::AccessibleRole::Presentation)
-                .build();
-            rung.add_css_class("caption");
-            rung.add_css_class("numeric");
-            rung.set_parent(self);
-            rungs.push(rung);
-        }
-        for (rung, text) in rungs.iter().zip(texts) {
-            rung.set_label(text);
-        }
-        drop(rungs);
-        self.queue_resize();
-    }
-
-    /// The text it shows when nothing is short of room.
-    #[cfg(test)]
-    fn widest(&self) -> String {
-        self.imp()
-            .rungs
-            .borrow()
-            .first()
-            .map(|rung| rung.label().to_string())
-            .unwrap_or_default()
-    }
-}
-
-fn count_figure(title: String, copy_title: String, n: u64) -> Figure {
-    Figure {
-        title,
-        copy_title,
-        shown: format_thousands(n),
-        copied: n.to_string(),
-    }
-}
-
-fn number_figure(title: String, copy_title: String, plain: String) -> Figure {
-    Figure {
-        title,
-        copy_title,
-        shown: format_decimal(&plain),
-        copied: plain,
-    }
-}
-
-/// The counts, then the figures of the numbers among the values.
-fn figures(summary: &SelectionSummary) -> (Vec<Figure>, Vec<Figure>) {
-    let mut counts = vec![
-        count_figure(gettext("Count"), gettext("Copy Count"), summary.value_count),
-        count_figure(
-            // Translators: how many of the summed cells hold a number.
-            gettext("Numbers"),
-            gettext("Copy Number Count"),
-            summary.numbers.as_ref().map_or(0, |numbers| numbers.count),
-        ),
-        count_figure(gettext("Empty"), gettext("Copy Empty Count"), summary.empty_count),
-    ];
-    if summary.not_a_number_count > 0 {
-        counts.push(count_figure(
-            gettext("Not a Number"),
-            gettext("Copy Not a Number Count"),
-            summary.not_a_number_count,
-        ));
-    }
-    let numbers = summary.numbers.as_ref().map_or_else(Vec::new, number_figures);
-    (counts, numbers)
-}
-
-fn number_figures(numbers: &NumberFigures) -> Vec<Figure> {
-    vec![
-        number_figure(
-            gettext("Sum"),
-            gettext("Copy Sum"),
-            numbers.sum.plain_text(numbers.scale),
-        ),
-        number_figure(
-            gettext("Average"),
-            gettext("Copy Average"),
-            numbers.average.plain_text(0),
-        ),
-        number_figure(
-            gettext("Minimum"),
-            gettext("Copy Minimum"),
-            numbers.minimum.plain_text(numbers.scale),
-        ),
-        number_figure(
-            gettext("Maximum"),
-            gettext("Copy Maximum"),
-            numbers.maximum.plain_text(numbers.scale),
-        ),
-    ]
 }
 
 impl DataGrid {
-    /// The readout for a host to place in its status bar. It shows only
-    /// once placed, so a grid no bar holds sums nothing.
-    pub(crate) fn selection_summary(&self) -> SummaryReadout {
-        let readout = self.imp().summary.get_or_init(|| SummaryReadout::new(self)).clone();
-        self.refresh_summary();
-        readout
-    }
-
-    pub(super) fn refresh_summary(&self) {
-        if let Some(readout) = self.imp().summary.get() {
-            readout.show(self, self.summarize());
+    /// The readout for a host to place in its bottom bar. A grid sums
+    /// nothing until one is placed.
+    pub(crate) fn selection_summary(&self) -> gtk::Widget {
+        let state = &self.imp().summary;
+        let placed = state.readout.get().is_some();
+        let widget = state
+            .readout
+            .get_or_init(|| Readout::new(self))
+            .revealer
+            .clone()
+            .upcast();
+        if !placed {
+            self.refresh_summary();
         }
+        widget
     }
 
-    /// The focused column over the selected rows. Rows marked for
-    /// deletion are left out, and pending edits count as the cell shows
-    /// them.
-    fn summarize(&self) -> Option<Shown> {
+    /// Sum again once the main loop is idle, so a key press that moves
+    /// both the focus and the selection sums once.
+    pub(super) fn refresh_summary(&self) {
+        let state = &self.imp().summary;
+        if let Some(cell) = self.focused_cell() {
+            state.column.set(Some(cell.column()));
+        }
+        if state.readout.get().is_none() || state.queued.replace(true) {
+            return;
+        }
+        let grid = self.downgrade();
+        glib::idle_add_local_once(move || {
+            if let Some(grid) = grid.upgrade() {
+                grid.imp().summary.queued.set(false);
+                grid.start_summary();
+            }
+        });
+    }
+
+    /// Sum the values off the GTK thread: a page holds up to 100,000 rows.
+    /// A newer run stops this one.
+    fn start_summary(&self) {
+        let state = &self.imp().summary;
+        let Some(readout) = state.readout.get() else {
+            return;
+        };
+        if let Some(running) = state.running.take() {
+            running.store(true, Ordering::Relaxed);
+        }
+        let run = state.runs.get().wrapping_add(1);
+        state.runs.set(run);
+        let Some((column, rule, values)) = self.summary_input() else {
+            readout.show(None);
+            return;
+        };
+        let Some(tasks) = self.config().map(|config| config.tasks.clone()) else {
+            return;
+        };
+        let cancelled = Arc::new(AtomicBool::new(false));
+        state.running.replace(Some(cancelled.clone()));
+        let grid = self.downgrade();
+        glib::spawn_future_local(async move {
+            let answer = tasks
+                .spawn_blocking_task(move || summarize(&values, rule, &|| cancelled.load(Ordering::Relaxed)))
+                .await;
+            let Some(grid) = grid.upgrade() else {
+                return;
+            };
+            let state = &grid.imp().summary;
+            if state.runs.get() != run {
+                return;
+            }
+            state.running.take();
+            match answer {
+                Ok(Some(summary)) => {
+                    if let Some(readout) = state.readout.get() {
+                        readout.show(Some(Shown { column, summary }));
+                    }
+                }
+                Ok(None) => {}
+                Err(failure) => tracing::warn!(%failure, "the selection could not be summed"),
+            }
+        });
+    }
+
+    /// The summed column's name, its rule and its values in the selected
+    /// rows, as the cells show them. Rows marked for deletion are left out,
+    /// also once a save failed on them.
+    fn summary_input(&self) -> Option<(String, SummaryRule, Vec<Value>)> {
         let rows = self.selected_rows();
         if rows.len() < MIN_ROWS {
             return None;
         }
-        let column = self.focus_target().resolve()?.cell?.1;
-        let columns = self.grid_columns();
-        let grid_column = columns.iter().find(|candidate| candidate.index == column)?;
-        let rule = SummaryRule::for_column(grid_column);
-        let tracked = self.tracked();
-        let mut tally = SummaryTally::default();
-        for row in rows {
-            if tracked.row_state(&row) == RowPendingState::MarkedForDeletion {
-                continue;
-            }
-            tracked.with_value(&row, column, |value, default| tally.add(value, default, rule));
+        let index = self.imp().summary.column.get()?;
+        if !self.shown_columns().contains(&index) {
+            return None;
         }
-        Some(Shown {
-            column: grid_column.name.clone(),
-            summary: tally.summary(),
-        })
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use gtk4::prelude::*;
-    use tablepro_core::Value;
-
-    use crate::ui::data_grid::test_grid::{Grid, named};
-
-    fn numbers_and_names() -> Vec<Vec<Value>> {
-        let text = |name: &str| Value::Text(name.to_owned());
-        vec![
-            vec![Value::Int(10), text("a")],
-            vec![Value::Int(32), text("b")],
-            vec![Value::Null, text("c")],
-        ]
-    }
-
-    #[gtk4::test]
-    fn summary_sums_the_focused_column_over_the_selected_rows() {
-        let grid = Grid::open(
-            vec![named("amount", "integer", false), named("name", "text", true)],
-            numbers_and_names(),
-        );
-        let readout = grid.grid.selection_summary();
-        assert!(!readout.widget().is_visible(), "nothing is selected yet");
-
-        grid.focus(0, 0);
-        grid.grid.selection().select_all();
-
-        assert!(readout.widget().is_visible());
-        assert_eq!(readout.label.widest(), "Sum 42, Average 21, Count 2");
-    }
-
-    #[gtk4::test]
-    fn summary_only_counts_a_text_column() {
-        let grid = Grid::open(
-            vec![named("amount", "integer", false), named("name", "text", true)],
-            numbers_and_names(),
-        );
-        let readout = grid.grid.selection_summary();
-
-        grid.focus(0, 1);
-        grid.grid.selection().select_all();
-
-        assert_eq!(readout.label.widest(), "Count 3");
-    }
-
-    #[gtk4::test]
-    fn summary_hides_for_a_single_row() {
-        let grid = Grid::open(
-            vec![named("amount", "integer", false), named("name", "text", true)],
-            numbers_and_names(),
-        );
-        let readout = grid.grid.selection_summary();
-        grid.focus(0, 0);
-        grid.grid.selection().select_all();
-        assert!(readout.widget().is_visible());
-
-        grid.grid.selection().select_item(1, true);
-
-        assert!(!readout.widget().is_visible());
+        let columns = self.grid_columns();
+        let column = columns.iter().find(|column| column.index == index)?;
+        let tracked = self.tracked();
+        let values = rows
+            .iter()
+            .filter(|row| !tracked.mark(row, index).row_deleted)
+            .map(|row| tracked.with_value(row, index, |value, default| if default { Value::Null } else { value.clone() }))
+            .collect();
+        Some((column.name.clone(), SummaryRule::for_column(column), values))
     }
 }

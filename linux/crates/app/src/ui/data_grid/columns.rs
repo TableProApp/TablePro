@@ -497,6 +497,7 @@ impl DataGrid {
         if let Some(column) = self.data_view_column(index) {
             column.set_visible(visible);
         }
+        self.refresh_summary();
     }
 
     /// Every column back where the result has it, at its opening width,

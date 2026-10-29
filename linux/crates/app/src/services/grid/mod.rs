@@ -44,4 +44,4 @@ pub use self::grid_column::{CellDisplay, GridColumn, grid_columns};
 pub use self::grid_row_id::GridRowId;
 pub use self::row_key_builder::RowKeyBuilder;
 pub use self::row_snapshot::RowSnapshot;
-pub use self::selection_summary::{NumberFigures, SelectionSummary, SummaryRule, SummaryTally};
+pub use self::selection_summary::{SelectionSummary, SummaryRule, summarize};

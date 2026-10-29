@@ -180,6 +180,7 @@ impl DataGrid {
     pub fn set_columns(&self, columns: Arc<[GridColumn]>, sorting: GridSorting, rules: Option<EditRules>) {
         self.commit_editors();
         self.store().clear();
+        self.imp().summary.forget_column();
         self.edit().set_rules(self, rules);
         self.rebuild_columns(columns, sorting);
         self.show_rows_or_empty();

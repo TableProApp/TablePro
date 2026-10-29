@@ -72,6 +72,7 @@ impl BrowseModel {
         let label = &self.widgets.selection_label;
         label.set_label(hint.as_deref().unwrap_or_default());
         label.set_visible(hint.is_some());
+        self.grid.selection_summary().set_visible(self.shown_page().is_some());
         let ids: Vec<GridRowId> = rows.iter().map(GridRow::id).collect();
         let blocked = match delete_availability(&ids, self.read_only) {
             DeleteAvailability::Unavailable(block) => block.explanation(),

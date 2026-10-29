@@ -16,6 +16,7 @@ use super::references::Armed;
 use super::reversed_list::ReversedList;
 use super::row_detail::RowDetailPane;
 use super::selection::Target;
+use super::selection_summary::SummaryState;
 use super::{GridConfig, GridStore};
 
 /// The grid's selection model, made with the grid and given its rows once
@@ -64,8 +65,7 @@ pub struct DataGrid {
     pub columns: RefCell<ColumnSet>,
     pub actions: gio::SimpleActionGroup,
     pub menus: OnceCell<GridMenus>,
-    /// Made when a host first places it in a bar.
-    pub summary: OnceCell<super::selection_summary::SummaryReadout>,
+    pub summary: SummaryState,
     pub edit: EditController,
     pub find: FindState,
     /// What a menu was opened on, until it closes.

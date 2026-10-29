@@ -282,6 +282,7 @@ crates/app/src/ui/data_grid/tests/menus.rs
 crates/app/src/ui/data_grid/tests/mod.rs
 crates/app/src/ui/data_grid/tests/selection.rs
 crates/app/src/ui/data_grid/tests/sorting.rs
+crates/app/src/ui/data_grid/tests/summary.rs
 crates/app/src/ui/data_grid/tests/values.rs
 crates/app/src/ui/data_grid/tests/view.rs
 crates/app/src/ui/data_grid/tracked_values.rs
