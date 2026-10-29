@@ -76,7 +76,7 @@ private final class BrowserAuthenticator: WebAuthenticating {
         }
         let data = await Task.detached { output.fileHandleForReading.readDataToEndOfFile() }.value
         process.waitUntilExit()
-        let lines = String(decoding: data, as: UTF8.self).split(separator: "\n").map(String.init)
+        let lines = (String(bytes: data, encoding: .utf8) ?? "").split(separator: "\n").map(String.init)
         confirmation = lines.first { $0.hasPrefix("CONFIRM ") } ?? ""
         guard let line = lines.last(where: { $0.hasPrefix("CALLBACK ") }),
               let callback = URL(string: String(line.dropFirst("CALLBACK ".count)))
@@ -147,7 +147,7 @@ private final class Probe {
     func run() async {
         defer {
             try? FileManager.default.removeItem(at: directory)
-            UserDefaults.standard.removePersistentDomain(forName: scratch)
+            UserDefaults(suiteName: scratch)?.removePersistentDomain(forName: scratch)
         }
         await interactiveSignIn()
         await legacyKeyMigrates()
@@ -212,11 +212,24 @@ private final class Probe {
         }
         report.expect(Set(refreshTokens.compactMap { $0 }).count == 3, "each refresh rotates the refresh token")
 
-        let devices = try? await services.devices.list()
+        let devices = try? await services.fetchDevices()
         report.expect(
-            devices?.contains { $0.machineId == machine.machineID && $0.licensedAt != nil } == true,
+            devices?.contains { $0.machineID == machine.machineID && $0.holdsLicense } == true,
             "GET /v2/devices lists this Mac as licensed"
         )
+        do throws(AccountError) {
+            let profile = try await services.fetchProfile()
+            report.expect(
+                profile.email == config.signInEmail && profile.memberships.isEmpty,
+                "GET /v2/me names the account and no team",
+                "\(profile)"
+            )
+        } catch {
+            report.expect(false, "GET /v2/me names the account and no team", "\(error)")
+        }
+
+        await useLicenseKeyReplacesTheSession(services, log: log, keychain: keychain)
+        refreshTokens.append(Self.refreshToken(in: keychain))
 
         await services.signOut()
         report.expect(services.access.check(.iCloudSync) == .signedOut, "sign-out leaves every feature signed out")
@@ -230,6 +243,44 @@ private final class Probe {
             }
         }
         report.expect(refusal.contains("invalid_grant"), "sign-out revokes the refresh token", refusal)
+    }
+
+    // Use License Key… on a Mac signed in interactively: the key's account takes over and the old session is revoked.
+    private func useLicenseKeyReplacesTheSession(_ services: AccountServices, log: CallLog, keychain: InMemoryKeychain) async {
+        let interactive = Self.refreshToken(in: keychain)
+        let before = await log.lines.count
+        let outcome: EntitlementRefreshState
+        do throws(AccountError) {
+            outcome = try await services.useLicenseKey(config.legacyKey)
+        } catch {
+            report.expect(false, "Use License Key signs this Mac in to the key's account", "\(error)")
+            return
+        }
+        let entitlement = services.access.state.entitlement
+        let calls = Array(await log.lines.dropFirst(before))
+        report.expect(calls == [
+            "POST /oauth/token \(OAuthTokenClient.tokenExchangeGrant) 200",
+            "POST /oauth/revoke 200",
+            "POST /v2/devices 200",
+            "POST /v2/devices/\(entitlement?.deviceID ?? "-")/entitlement 200"
+        ], "Use License Key exchanges the key, revokes the interactive session, registers and fetches", calls.joined(separator: ", "))
+        if case .succeeded = outcome {
+            report.expect(entitlement?.email == config.legacyEmail, "the entitlement names the key's account")
+        } else {
+            report.expect(false, "the entitlement names the key's account", "\(outcome)")
+        }
+        let token = try? await services.session.accessToken()
+        report.expect(token?.isFromLicenseKey == true, "the new session comes from the key")
+        let client = OAuthTokenClient(configuration: configuration) { try await URLSession.shared.data(for: $0) }
+        var refusal = "refreshed"
+        if let interactive {
+            do throws(AccountError) {
+                _ = try await client.refresh(interactive)
+            } catch {
+                refusal = "\(error)"
+            }
+        }
+        report.expect(refusal.contains("invalid_grant"), "the replaced interactive refresh token is revoked", refusal)
     }
 
     private func legacyKeyMigrates() async {
@@ -289,6 +340,25 @@ private final class Probe {
         }
         report.expect(holders.count == 3, "device_limit_reached lists the 3 devices holding the slots", "\(holders.count)")
         report.expect(services.access.check(.iCloudSync) == .notIncluded, "past the device limit the app stays on Free")
+
+        let devices = (try? await services.fetchDevices()) ?? []
+        report.expect(
+            devices.count == 4 && devices.contains { $0.machineID == machine.machineID && !$0.holdsLicense },
+            "GET /v2/devices lists the holders and this Mac without a slot",
+            "\(devices.map { "\($0.name) \($0.holdsLicense)" })"
+        )
+        guard let holder = holders.first else { return }
+        do throws(AccountError) {
+            try await services.removeDevice(holder.id)
+        } catch {
+            report.expect(false, "removing a holder in place frees its slot for this Mac", "\(error)")
+            return
+        }
+        report.expect(
+            services.access.isAvailable(.iCloudSync),
+            "removing a holder in place frees its slot for this Mac",
+            "\(services.access.state.refresh)"
+        )
     }
 
     // MARK: - Helpers
@@ -301,7 +371,7 @@ private final class Probe {
             machine: machine,
             transport: ProbeTransport(log: log),
             send: { request in
-                let form = String(decoding: request.httpBody ?? Data(), as: UTF8.self)
+                let form = String(bytes: request.httpBody ?? Data(), encoding: .utf8) ?? ""
                 let grant = form.split(separator: "&")
                     .first { $0.hasPrefix("grant_type=") }
                     .map { String($0.dropFirst("grant_type=".count)).removingPercentEncoding ?? "" }

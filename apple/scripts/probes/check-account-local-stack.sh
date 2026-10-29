@@ -3,8 +3,9 @@
 # Run the account services against a local tablepro-cloud stack (web/e2e's global setup, with its fake Resend and
 # fake Polar), end to end: an interactive sign-in through the account pages in headless Chrome, device
 # registration, the token refresh that names the device, the entitlement checked with the stack's key, refresh
-# token rotation, sign-out revoking the refresh token, a seeded legacy key migrating with no refresh, an unknown
-# key refused, and a fourth device answered with device_limit_reached and its 3 holders.
+# token rotation, GET /v2/me, Use License Key replacing and revoking the interactive session, sign-out revoking the
+# refresh token, a seeded legacy key migrating with no refresh, an unknown key refused, and a fourth device answered
+# with device_limit_reached and its 3 holders, one of which it then removes to take the slot.
 #
 # account-local-stack/main.swift drives the app's own Core/Services/Account sources, built into a SwiftPM
 # executable beside AppStubs.swift. seed.cjs inserts the accounts it needs; nothing is deleted.
