@@ -69,6 +69,8 @@ internal final class TeamLibrarySync: ObservableObject {
     private var wakeRequested = false
     // A failed publish shortened the wait the schedule is in.
     private var rescheduled = false
+    // Set by a 429's Retry-After: no pull or push goes out until it ends.
+    private var rateLimitHold: Task<Void, Never>?
     // Bumped by sign-out, so a sync still out at that moment brings no team back.
     private var generation = 0
 
@@ -197,6 +199,8 @@ internal final class TeamLibrarySync: ObservableObject {
     // Sign-out: the next account may belong to other teams.
     func clear() {
         generation += 1
+        rateLimitHold?.cancel()
+        rateLimitHold = nil
         teams = [:]
         legacy = nil
         accountEmail = nil
@@ -217,6 +221,7 @@ internal final class TeamLibrarySync: ObservableObject {
             }
             return .skipped
         }
+        guard rateLimitHold == nil else { return .failed(.rateLimited(retryAfter: nil)) }
         status = .syncing
         let started = generation
         let profile: AccountProfile
@@ -236,6 +241,7 @@ internal final class TeamLibrarySync: ObservableObject {
                 try await syncTeam(teamID)
             } catch {
                 Self.logger.warning("Team library sync failed: \(error.logName, privacy: .public)")
+                holdIfRateLimited(error)
                 if error != .unreadable {
                     failure = failure ?? error
                 }
@@ -543,11 +549,14 @@ internal final class TeamLibrarySync: ObservableObject {
         queued.pending += edits
         queued.moves.formUnion(edits.compactMap { $0.op == .upsert && !owns(TeamLibraryKey($0)) ? TeamLibraryKey($0) : nil })
         commit(queued)
+        // The schedule pushes them once the hold ends.
+        guard rateLimitHold == nil else { return .success(.queued(.rateLimited(retryAfter: nil))) }
         do throws(TeamLibraryFailure) {
             try await push(teamID)
             try await pull(teamID)
         } catch {
             guard started == generation else { return .failure(.failed(.signedOut)) }
+            holdIfRateLimited(error)
             publishContent()
             _ = finish(.failed(error))
             guard error.isRetryable else { return .failure(.failed(error)) }
@@ -620,6 +629,16 @@ internal final class TeamLibrarySync: ObservableObject {
         return min(Self.firstRetryDelay * (1 << min(retries - 1, 5)), Self.pullInterval)
     }
 
+    private func holdIfRateLimited(_ failure: TeamLibraryFailure) {
+        guard case .rateLimited(let retryAfter?) = failure else { return }
+        rateLimitHold?.cancel()
+        rateLimitHold = Task { [weak self, clock] in
+            _ = try? await clock.sleep(for: retryAfter)
+            guard !Task.isCancelled else { return }
+            self?.rateLimitHold = nil
+        }
+    }
+
     // A publish the network or the server failed: its queued edits go out after the backoff, not the next pull.
     private func retryLater() {
         retries += 1
@@ -642,6 +661,8 @@ internal final class TeamLibrarySync: ObservableObject {
             guard rescheduled else { break }
             rescheduled = false
         }
+        // Neither a wake nor a backoff shorter than a 429's Retry-After cuts it short.
+        await rateLimitHold?.value
         wakeRequested = false
     }
 

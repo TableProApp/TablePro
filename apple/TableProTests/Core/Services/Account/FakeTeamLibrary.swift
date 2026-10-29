@@ -36,6 +36,8 @@ struct FakeTeamLibrary: Sendable {
     // Answered, one per pull or per push, before anything else.
     var faults: [Int] = []
     var pushFaults: [Int] = []
+    // Seconds, sent as Retry-After on each 429 fault.
+    var retryAfter: Int?
     // Each writer's updated_by_name, as the server reads it from the accounts at answer time.
     var names: [String: String] = [:]
     var pushCursorOffset = 0
@@ -85,8 +87,7 @@ struct FakeTeamLibrary: Sendable {
 
     mutating func pull(path: String, memberships: [[String: Any]]) -> (HTTPResponse, HTTPBody?) {
         if !faults.isEmpty {
-            let status = faults.removeFirst()
-            return FakeAccountServer.problem(status: status, code: status == 429 ? "rate_limited" : "internal")
+            return fault(faults.removeFirst())
         }
         guard let components = URLComponents(string: "http://fake\(path)"),
               let team = Self.team(in: components.path)
@@ -140,8 +141,7 @@ struct FakeTeamLibrary: Sendable {
 
     mutating func push(path: String, body: Data, memberships: [[String: Any]]) -> (HTTPResponse, HTTPBody?) {
         if !pushFaults.isEmpty {
-            let status = pushFaults.removeFirst()
-            return FakeAccountServer.problem(status: status, code: status == 429 ? "rate_limited" : "internal")
+            return fault(pushFaults.removeFirst())
         }
         guard let team = Self.team(in: path), let member = Self.member(team, in: memberships) else {
             return FakeAccountServer.problem(status: 404, code: "not_found")
@@ -218,6 +218,14 @@ struct FakeTeamLibrary: Sendable {
             change["data"] = data
         }
         return change
+    }
+
+    private func fault(_ status: Int) -> (HTTPResponse, HTTPBody?) {
+        var answer = FakeAccountServer.problem(status: status, code: status == 429 ? "rate_limited" : "internal")
+        if status == 429, let retryAfter {
+            answer.0.headerFields[.retryAfter] = "\(retryAfter)"
+        }
+        return answer
     }
 
     private static func team(in path: String) -> String? {

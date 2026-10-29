@@ -591,7 +591,7 @@ struct TeamLibrarySyncTests {
         fixture.sync.start()
         try await waitUntil { await fixture.pulls().count == 1 }
         await fixture.clock.waitUntilSleeping()
-        #expect(fixture.sync.status == .failed(.rateLimited))
+        #expect(fixture.sync.status == .failed(.rateLimited(retryAfter: nil)))
 
         fixture.clock.advance(by: .seconds(29))
         await fixture.clock.waitUntilSleeping()
@@ -616,6 +616,88 @@ struct TeamLibrarySyncTests {
         #expect(await fixture.pulls().count == 3)
         fixture.clock.advance(by: .seconds(60))
         try await waitUntil { await fixture.pulls().count == 4 }
+        fixture.sync.stop()
+    }
+
+    @Test("A pull's 429 waits out its Retry-After past the backoff and a wake, and nothing goes out meanwhile")
+    func pullWaitsOutRetryAfter() async throws {
+        let fixture = try await TeamLibraryFixture { library in
+            library.faults = [429]
+            library.retryAfter = 120
+        }
+
+        fixture.sync.start()
+        try await waitUntil { await fixture.pulls().count == 1 }
+        try await waitUntil { fixture.clock.pendingSleeperCount == 2 }
+        #expect(fixture.sync.status == .failed(.rateLimited(retryAfter: .seconds(120))))
+
+        fixture.sync.syncSoon()
+        fixture.clock.advance(by: .seconds(119))
+        #expect(await fixture.sync.sync() == .failed(.rateLimited(retryAfter: nil)))
+        #expect(await fixture.pulls().count == 1)
+        fixture.clock.advance(by: .seconds(1))
+        try await waitUntil { await fixture.pulls().count == 2 }
+        try await waitUntil {
+            if case .synced = fixture.sync.status { return true }
+            return false
+        }
+        fixture.sync.stop()
+    }
+
+    @Test("A push's 429 goes out again after its Retry-After, not after the 30-second backoff")
+    func pushWaitsOutRetryAfter() async throws {
+        let fixture = try await TeamLibraryFixture()
+        fixture.sync.start()
+        try await waitUntil {
+            if case .synced = fixture.sync.status { return true }
+            return false
+        }
+        await fixture.clock.waitUntilSleeping()
+        await fixture.library {
+            $0.pushFaults = [429]
+            $0.retryAfter = 300
+        }
+
+        let result = try await fixture.sync.publishSavedQueries(
+            favorites: [TeamLibraryFixture.favorite(name: "Orders")],
+            folders: [],
+            to: Self.team
+        )
+        #expect(result == .queued(.rateLimited(retryAfter: .seconds(300))))
+
+        try await waitUntil { fixture.clock.pendingSleeperCount == 2 }
+        fixture.clock.advance(by: .seconds(299))
+        #expect(await fixture.sync.sync() == .failed(.rateLimited(retryAfter: nil)))
+        #expect(await fixture.pushes().count == 1)
+        fixture.clock.advance(by: .seconds(1))
+        try await waitUntil { await fixture.server.library.live(Self.team).count == 1 }
+        #expect(await fixture.pushes().count == 2)
+        fixture.sync.stop()
+    }
+
+    @Test("A publish during a Retry-After queues its edits without a request, and they go out once it ends")
+    func publishDuringRetryAfterQueues() async throws {
+        let fixture = try await TeamLibraryFixture()
+        await fixture.sync.sync()
+        await fixture.library {
+            $0.faults = [429]
+            $0.retryAfter = 120
+        }
+        fixture.sync.start()
+        try await waitUntil { fixture.sync.status == .failed(.rateLimited(retryAfter: .seconds(120))) }
+        let sent = await fixture.server.requests.count
+
+        let result = try await fixture.sync.publishSavedQueries(
+            favorites: [TeamLibraryFixture.favorite(name: "Orders")],
+            folders: [],
+            to: Self.team
+        )
+
+        #expect(result == .queued(.rateLimited(retryAfter: nil)))
+        #expect(await fixture.server.requests.count == sent)
+        try await waitUntil { fixture.clock.pendingSleeperCount == 2 }
+        fixture.clock.advance(by: .seconds(120))
+        try await waitUntil { await fixture.server.library.live(Self.team).count == 1 }
         fixture.sync.stop()
     }
 

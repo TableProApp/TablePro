@@ -8,7 +8,8 @@ import TableProCloudAPI
 
 internal enum TeamLibraryFailure: Error, Equatable, Sendable {
     case offline
-    case rateLimited
+    // The 429's Retry-After, when it carried one.
+    case rateLimited(retryAfter: Duration?)
     case server
     case signedOut
     // No seat, the team's plan lacks team_library, or the team is gone: the library is not this account's to read.
@@ -49,7 +50,7 @@ internal enum TeamLibraryFailure: Error, Equatable, Sendable {
         case .server(let status, _) where status == 401:
             return .signedOut
         case .server(let status, _) where status == 429:
-            return .rateLimited
+            return .rateLimited(retryAfter: nil)
         case .server(let status, _) where status >= 500:
             return .server
         case .server:
@@ -93,8 +94,8 @@ internal struct TeamLibraryClient: Sendable {
                 throw TeamLibraryFailure.unreadable
             case .gone, .unprocessableContent:
                 throw TeamLibraryFailure.cursorExpired
-            case .tooManyRequests:
-                throw TeamLibraryFailure.rateLimited
+            case .tooManyRequests(let answer):
+                throw TeamLibraryFailure.rateLimited(retryAfter: Self.delay(seconds: answer.headers.retryAfter))
             case .internalServerError:
                 throw TeamLibraryFailure.server
             case .undocumented(let status, _):
@@ -131,8 +132,8 @@ internal struct TeamLibraryClient: Sendable {
                     throw TeamLibraryFailure.refused(nil)
                 }
                 return .refusedChange(index)
-            case .tooManyRequests:
-                throw TeamLibraryFailure.rateLimited
+            case .tooManyRequests(let answer):
+                throw TeamLibraryFailure.rateLimited(retryAfter: Self.delay(seconds: answer.headers.retryAfter))
             case .internalServerError:
                 throw TeamLibraryFailure.server
             case .undocumented(let status, _):
@@ -153,9 +154,14 @@ internal struct TeamLibraryClient: Sendable {
         return Int(location[location.index(location.startIndex, offsetBy: "body.changes[".count)..<close])
     }
 
+    private static func delay(seconds: Int?) -> Duration? {
+        guard let seconds, seconds > 0 else { return nil }
+        return .seconds(seconds)
+    }
+
     private static func undocumented(_ status: Int) -> TeamLibraryFailure {
         switch status {
-        case 429: .rateLimited
+        case 429: .rateLimited(retryAfter: nil)
         case 500...: .server
         default: .refused(nil)
         }
