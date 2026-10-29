@@ -474,7 +474,10 @@ private final class Probe {
         )
 
         await memberPulls(customers: customers.name, teamID: teamID(of: mine), directory: directory)
-        await adminConflicts(orders: orders, others: [customers], folder: folder, mine: mine, directory: directory)
+        guard let admin = await adminConflicts(orders: orders, others: [customers], folder: folder, mine: mine, directory: directory) else {
+            return
+        }
+        await folderDeletes(mine: mine, admin: admin, queryID: queryID, customers: customers, reports: folder)
     }
 
     private func memberPulls(customers: String, teamID: String, directory: URL) async {
@@ -510,7 +513,7 @@ private final class Probe {
         folder: SQLFavoriteFolder,
         mine: TeamLibrarySync,
         directory: URL
-    ) async {
+    ) async -> TeamLibrarySync? {
         let queryID = orders.id
         let log = CallLog()
         let admin = await keyAccount(library.adminKey, log: log, machine: "Probe Admin Mac")
@@ -521,7 +524,7 @@ private final class Probe {
         // The admin's edit leaves before its pull sees this Mac's next one: staged from the state it pulled.
         guard var state = adminStore.loadAll().first else {
             report.expect(false, "the admin's device holds the team's library")
-            return
+            return nil
         }
         let edit = SQLFavorite(id: queryID, name: "Orders", query: "select 'admin'", folderId: nil)
         state.pending = (try? TeamLibraryPublishPlan.savedQueries(favorites: [edit], folders: [], in: state)) ?? []
@@ -541,13 +544,60 @@ private final class Probe {
             "the admin's stale push comes back as a conflict holding this Mac's copy",
             "\(staged.conflicts)"
         )
-        guard let conflict else { return }
+        guard let conflict else { return nil }
         await staged.resolve(conflict, keepingMine: true)
         _ = await mine.sync()
         report.expect(
             staged.conflicts.isEmpty && mine.content.queries.first { $0.id == queryID.uuidString.lowercased() }?.query == "select 'admin'",
             "Keep Mine on the admin's device lands on this Mac's next pull",
             "\(mine.content.queries)"
+        )
+        return staged
+    }
+
+    // This Mac removes folders it published: Reports, which the old build published over /v1, then Archive, which holds
+    // the admin's query. That query moves up and stays the admin's, so the next publish leaves it alone.
+    private func folderDeletes(
+        mine: TeamLibrarySync,
+        admin: TeamLibrarySync,
+        queryID: UUID,
+        customers: SQLFavorite,
+        reports: SQLFavoriteFolder
+    ) async {
+        let team = teamID(of: mine)
+        let orders = SQLFavorite(id: queryID, name: "Orders", query: "select 'admin'", folderId: nil)
+        let withoutReports = try? await mine.publishSavedQueries(favorites: [orders, customers], folders: [], to: team)
+        let reportsRow = rows().first { $0.clientID == reports.id.uuidString.lowercased() }
+        report.expect(
+            withoutReports == .published(1) && reportsRow?.deleted == true,
+            "deleting the folder the old build published over /v1 deletes it from the team",
+            "\(String(describing: withoutReports)), \(String(describing: reportsRow))"
+        )
+
+        let archive = SQLFavoriteFolder(id: UUID(), name: "Archive")
+        let made = try? await mine.publishSavedQueries(favorites: [orders, customers], folders: [archive], to: team)
+        report.expect(made == .published(1), "this Mac publishes the folder Archive", "\(String(describing: made))")
+        _ = await admin.sync()
+        let adminQuery = SQLFavorite(id: UUID(), name: "AdminQ", query: "select 'adminq'", folderId: archive.id)
+        let adminMade = try? await admin.publishSavedQueries(favorites: [orders, adminQuery], folders: [archive], to: team)
+        report.expect(adminMade == .published(1), "the admin publishes a query into Archive", "\(String(describing: adminMade))")
+
+        let withoutArchive = try? await mine.publishSavedQueries(favorites: [orders, customers], folders: [], to: team)
+        report.expect(
+            withoutArchive == .published(2),
+            "deleting Archive here moves the admin's query up, then deletes the folder",
+            "\(String(describing: withoutArchive))"
+        )
+        let again = try? await mine.publishSavedQueries(favorites: [orders, customers], folders: [], to: team)
+        let adminRow = rows().first { $0.clientID == adminQuery.id.uuidString.lowercased() }
+        report.expect(again == .unchanged, "publishing again with nothing changed pushes nothing", "\(String(describing: again))")
+        report.expect(adminRow?.deleted == false, "the admin's moved query stays on the team", "\(String(describing: adminRow))")
+        _ = await admin.sync()
+        let seen = admin.content.queries.first { $0.id == adminQuery.id.uuidString.lowercased() }
+        report.expect(
+            seen != nil && seen?.folderName == nil,
+            "the admin's device shows its query at the top level",
+            "\(admin.content.queries)"
         )
     }
 
@@ -645,7 +695,7 @@ private final class Probe {
     }
 
     private static func settings(name: String) -> ExportableConnection {
-        ExportableConnection(name: name, host: "db.internal", port: 5432, database: "app", username: "ada", type: "PostgreSQL")
+        ExportableConnection(name: name, host: "db.internal", port: 5_432, database: "app", username: "ada", type: "PostgreSQL")
     }
 
     // MARK: - Helpers
