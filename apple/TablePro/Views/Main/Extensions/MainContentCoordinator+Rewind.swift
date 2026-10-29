@@ -14,12 +14,7 @@ extension MainContentCoordinator {
         Logger(subsystem: "com.TablePro", category: "Rewind")
     }
 
-    /// Whether the selected tab is one a save could be restored on. Says nothing about whether
-    /// there is a save to restore, which costs a read to find out, and nothing about the licence.
-    ///
-    /// Deliberately not gated on the licence. Someone who has just saved the wrong thing has to be
-    /// able to find this, and a dimmed control they never notice tells them nothing about what the
-    /// licence is for. The gate is at the point of use instead, where it can explain itself.
+    // Not gated on the licence: someone who saved the wrong thing has to find this, and the gate at the point of use explains itself.
     var canRewindSelectedTab: Bool {
         guard let tab = tabManager.selectedTab, tab.tabType == .table else { return false }
         return tab.tableContext.tableName != nil && !safeModeLevel.blocksAllWrites
@@ -61,11 +56,7 @@ extension MainContentCoordinator {
         }
     }
 
-    /// Reached from the history drawer, where the row the user clicked is the save itself.
-    ///
-    /// The drawer can be scoped to every connection, so the record may belong to another one. A
-    /// rewind planned against the window's current scope would then read and write a same-named
-    /// table in the wrong database, which is why the record's own target decides where it runs.
+    // The history drawer can list every connection's saves, so the record's own target decides where this runs.
     func rewindSave(historyId: UUID) {
         guard presentUpsellUnlessLicensed(), canRewindSelectedTab else { return }
         Task { [weak self] in
@@ -95,13 +86,9 @@ extension MainContentCoordinator {
         }
     }
 
-    /// Returns false, having explained itself, when the licence does not cover this.
-    ///
-    /// The control is reachable without a licence on purpose, so this is the moment the feature
-    /// gets described to the person who just discovered they want it.
     private func presentUpsellUnlessLicensed() -> Bool {
         guard !isDataRewindLicensed else { return true }
-        Telemetry.shared.featureGateShown(.dataRewind, access: services.featureAccess.check(.dataRewind))
+        services.telemetry.featureGateShown(.dataRewind, access: services.featureAccess.check(.dataRewind))
         Task { @MainActor in
             let alert = NSAlert()
             alert.messageText = String(localized: "Data Rewind needs a Starter license")
@@ -111,16 +98,15 @@ extension MainContentCoordinator {
             alert.alertStyle = .informational
             alert.addButton(withTitle: String(localized: "Purchase License"))
             AlertHelper.addCancelButton(to: alert, title: String(localized: "Not Now"))
-            AlertHelper.present(alert, in: contentWindow) { response in
+            AlertHelper.present(alert, in: contentWindow) { [services] response in
                 guard response == .alertFirstButtonReturn else { return }
-                Telemetry.shared.upgradeClicked(from: .featureGate(.dataRewind))
+                services.telemetry.upgradeClicked(from: .featureGate(.dataRewind))
                 NSWorkspace.shared.open(SupportLinks.pricing(.featureGate(.dataRewind)))
             }
         }
         return false
     }
 
-    /// Where the record's own rows live, which is not necessarily where the window is pointing.
     private func scope(for record: RewindRecord) -> DatabaseScope {
         DatabaseScope(
             connectionId: connection.id,
@@ -182,9 +168,7 @@ extension MainContentCoordinator {
         }
     }
 
-    /// A factory shaped by the record rather than by the live tab: the columns, keys and computed
-    /// columns that matter are the ones the save ran against, and the tab may be on another table
-    /// by now.
+    // From the record, not the live tab: the tab may be on another table by now.
     private func rewindStatementFactory(for record: RewindRecord) -> RowChangeStatementFactory {
         let operation = record.operations.first
         return RowChangeStatementFactory(
