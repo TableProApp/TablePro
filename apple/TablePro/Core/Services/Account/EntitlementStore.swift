@@ -73,7 +73,7 @@ internal struct EntitlementStore: Sendable {
                 guard problem.code == "device_limit_reached" else {
                     throw AccountError.server(status: Int(problem.status), code: problem.code)
                 }
-                return .deviceLimitReached(problem.devices)
+                return .deviceLimitReached(problem.devices ?? [])
             case .unauthorized(let answer):
                 throw AccountError.problem(try answer.body.applicationProblemJson)
             case .forbidden(let answer):

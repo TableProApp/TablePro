@@ -65,12 +65,8 @@ internal struct AccountProfile: Equatable, Sendable {
     }
 }
 
-// tablepro-cloud is turning the /v2 plan, cycle, status and role enums into open strings; either shape reads here.
+// /v2 answers carry open strings: a code a newer server adds stays as sent, and AccountCodes shows it neutrally.
 internal enum OpenCode {
-    static func of<Value: RawRepresentable>(_ value: Value) -> String where Value.RawValue == String {
-        value.rawValue
-    }
-
     static func of(_ value: String) -> String {
         value
     }

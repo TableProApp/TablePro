@@ -148,7 +148,16 @@
             "type": "string"
           },
           "platform": {
-            "$ref": "#/components/schemas/Platform"
+            "description": "Extensible enum: macos, linux",
+            "examples": [
+              "macos",
+              "linux"
+            ],
+            "type": "string",
+            "x-extensible-enum": [
+              "macos",
+              "linux"
+            ]
           }
         },
         "required": [
@@ -160,47 +169,6 @@
           "os_version",
           "created_at",
           "last_seen_at"
-        ],
-        "type": "object"
-      },
-      "DeviceLimitProblem": {
-        "properties": {
-          "code": {
-            "description": "device_limit_reached",
-            "type": "string"
-          },
-          "detail": {
-            "description": "Explanation specific to this occurrence",
-            "type": "string"
-          },
-          "devices": {
-            "description": "The devices that hold the account's license slots, in the order they took them",
-            "items": {
-              "$ref": "#/components/schemas/LicensedDevice"
-            },
-            "type": "array"
-          },
-          "status": {
-            "description": "HTTP status code",
-            "format": "int64",
-            "type": "integer"
-          },
-          "title": {
-            "description": "Short summary of the problem type",
-            "type": "string"
-          },
-          "type": {
-            "description": "Identifies the problem type, one per code",
-            "format": "uri",
-            "type": "string"
-          }
-        },
-        "required": [
-          "type",
-          "title",
-          "status",
-          "code",
-          "devices"
         ],
         "type": "object"
       },
@@ -288,13 +256,6 @@
         ],
         "type": "object"
       },
-      "DiscountAmountType": {
-        "enum": [
-          "percent",
-          "fixed"
-        ],
-        "type": "string"
-      },
       "DiscountPreview": {
         "properties": {
           "amount": {
@@ -303,7 +264,16 @@
             "type": "number"
           },
           "amount_type": {
-            "$ref": "#/components/schemas/DiscountAmountType"
+            "description": "Extensible enum: percent, fixed",
+            "examples": [
+              "percent",
+              "fixed"
+            ],
+            "type": "string",
+            "x-extensible-enum": [
+              "percent",
+              "fixed"
+            ]
           },
           "currency": {
             "description": "A fixed amount's currency",
@@ -432,7 +402,16 @@
             "type": "string"
           },
           "role": {
-            "$ref": "#/components/schemas/AssignableRole"
+            "description": "Extensible enum: admin, member",
+            "examples": [
+              "admin",
+              "member"
+            ],
+            "type": "string",
+            "x-extensible-enum": [
+              "admin",
+              "member"
+            ]
           },
           "with_seat": {
             "description": "Whether the invitation reserves a seat, which accepting gives. One whose reservation was taken back reserves none, and accepting it needs a free seat",
@@ -511,7 +490,18 @@
             "type": "boolean"
           },
           "kind": {
-            "$ref": "#/components/schemas/LibraryItemKind"
+            "description": "Extensible enum: connection, folder, query",
+            "examples": [
+              "connection",
+              "folder",
+              "query"
+            ],
+            "type": "string",
+            "x-extensible-enum": [
+              "connection",
+              "folder",
+              "query"
+            ]
           },
           "updated_at": {
             "format": "date-time",
@@ -664,11 +654,30 @@
             "description": "On a conflict, the item as stored"
           },
           "kind": {
-            "$ref": "#/components/schemas/LibraryItemKind"
+            "description": "Extensible enum: connection, folder, query",
+            "examples": [
+              "connection",
+              "folder",
+              "query"
+            ],
+            "type": "string",
+            "x-extensible-enum": [
+              "connection",
+              "folder",
+              "query"
+            ]
           },
           "status": {
-            "$ref": "#/components/schemas/LibraryResultStatus",
-            "description": "conflict: base_version was not the stored version, so nothing changed"
+            "description": "Extensible enum: applied, conflict. conflict: base_version was not the stored version, so nothing changed",
+            "examples": [
+              "applied",
+              "conflict"
+            ],
+            "type": "string",
+            "x-extensible-enum": [
+              "applied",
+              "conflict"
+            ]
           },
           "version": {
             "description": "The item's version after the push: the new one when applied, the stored one on a conflict",
@@ -684,17 +693,21 @@
         ],
         "type": "object"
       },
-      "LibraryResultStatus": {
-        "enum": [
-          "applied",
-          "conflict"
-        ],
-        "type": "string"
-      },
       "License": {
         "properties": {
           "cycle": {
-            "$ref": "#/components/schemas/Cycle"
+            "description": "Extensible enum: monthly, yearly, lifetime",
+            "examples": [
+              "monthly",
+              "yearly",
+              "lifetime"
+            ],
+            "type": "string",
+            "x-extensible-enum": [
+              "monthly",
+              "yearly",
+              "lifetime"
+            ]
           },
           "ends_at": {
             "description": "Absent for a license without an end, such as a renewing subscription or a lifetime purchase",
@@ -709,14 +722,46 @@
             "type": "string"
           },
           "plan": {
-            "$ref": "#/components/schemas/Plan"
+            "description": "Extensible enum: starter, team",
+            "examples": [
+              "starter",
+              "team"
+            ],
+            "type": "string",
+            "x-extensible-enum": [
+              "starter",
+              "team"
+            ]
           },
           "source": {
-            "$ref": "#/components/schemas/LicenseSource"
+            "description": "Extensible enum: subscription, order, manual, legacy",
+            "examples": [
+              "subscription",
+              "order",
+              "manual",
+              "legacy"
+            ],
+            "type": "string",
+            "x-extensible-enum": [
+              "subscription",
+              "order",
+              "manual",
+              "legacy"
+            ]
           },
           "status": {
-            "$ref": "#/components/schemas/LicenseStatus",
-            "description": "past_due: a renewal failed and Polar retries it; canceling: the license ends at ends_at"
+            "description": "Extensible enum: active, past_due, canceling. past_due: a renewal failed and Polar retries it; canceling: the license ends at ends_at",
+            "examples": [
+              "active",
+              "past_due",
+              "canceling"
+            ],
+            "type": "string",
+            "x-extensible-enum": [
+              "active",
+              "past_due",
+              "canceling"
+            ]
           },
           "team": {
             "$ref": "#/components/schemas/TeamRef",
@@ -731,23 +776,6 @@
           "status"
         ],
         "type": "object"
-      },
-      "LicenseSource": {
-        "enum": [
-          "subscription",
-          "order",
-          "manual",
-          "legacy"
-        ],
-        "type": "string"
-      },
-      "LicenseStatus": {
-        "enum": [
-          "active",
-          "past_due",
-          "canceling"
-        ],
-        "type": "string"
       },
       "LicensedDevice": {
         "properties": {
@@ -796,7 +824,16 @@
             "type": "string"
           },
           "platform": {
-            "$ref": "#/components/schemas/Platform"
+            "description": "Extensible enum: macos, linux",
+            "examples": [
+              "macos",
+              "linux"
+            ],
+            "type": "string",
+            "x-extensible-enum": [
+              "macos",
+              "linux"
+            ]
           }
         },
         "required": [
@@ -876,7 +913,18 @@
             "type": "string"
           },
           "role": {
-            "$ref": "#/components/schemas/TeamRole"
+            "description": "Extensible enum: owner, admin, member",
+            "examples": [
+              "owner",
+              "admin",
+              "member"
+            ],
+            "type": "string",
+            "x-extensible-enum": [
+              "owner",
+              "admin",
+              "member"
+            ]
           }
         },
         "required": [
@@ -928,7 +976,18 @@
             "type": "boolean"
           },
           "role": {
-            "$ref": "#/components/schemas/TeamRole"
+            "description": "Extensible enum: owner, admin, member",
+            "examples": [
+              "owner",
+              "admin",
+              "member"
+            ],
+            "type": "string",
+            "x-extensible-enum": [
+              "owner",
+              "admin",
+              "member"
+            ]
           },
           "team": {
             "$ref": "#/components/schemas/TeamRef"
@@ -1002,7 +1061,18 @@
             "type": "string"
           },
           "cycle": {
-            "$ref": "#/components/schemas/Cycle"
+            "description": "Extensible enum: monthly, yearly, lifetime",
+            "examples": [
+              "monthly",
+              "yearly",
+              "lifetime"
+            ],
+            "type": "string",
+            "x-extensible-enum": [
+              "monthly",
+              "yearly",
+              "lifetime"
+            ]
           },
           "discount_percent": {
             "description": "The regional discount checkout applies without a discount code, 0 for none",
@@ -1047,7 +1117,16 @@
             "type": "boolean"
           },
           "plan": {
-            "$ref": "#/components/schemas/Plan"
+            "description": "Extensible enum: starter, team",
+            "examples": [
+              "starter",
+              "team"
+            ],
+            "type": "string",
+            "x-extensible-enum": [
+              "starter",
+              "team"
+            ]
           }
         },
         "required": [
@@ -1104,6 +1183,13 @@
           "detail": {
             "description": "Explanation specific to this occurrence",
             "type": "string"
+          },
+          "devices": {
+            "description": "With device_limit_reached: the devices that hold the account's license slots, in the order they took them",
+            "items": {
+              "$ref": "#/components/schemas/LicensedDevice"
+            },
+            "type": "array"
           },
           "errors": {
             "description": "Individual validation errors",
@@ -1192,8 +1278,18 @@
             "type": "string"
           },
           "role": {
-            "$ref": "#/components/schemas/TeamRole",
-            "description": "The caller's role"
+            "description": "Extensible enum: owner, admin, member. The caller's role",
+            "examples": [
+              "owner",
+              "admin",
+              "member"
+            ],
+            "type": "string",
+            "x-extensible-enum": [
+              "owner",
+              "admin",
+              "member"
+            ]
           }
         },
         "required": [
@@ -1224,8 +1320,18 @@
             "type": "string"
           },
           "role": {
-            "$ref": "#/components/schemas/TeamRole",
-            "description": "The caller's role; absent for a team API token"
+            "description": "Extensible enum: owner, admin, member. The caller's role; absent for a team API token",
+            "examples": [
+              "owner",
+              "admin",
+              "member"
+            ],
+            "type": "string",
+            "x-extensible-enum": [
+              "owner",
+              "admin",
+              "member"
+            ]
           },
           "seats": {
             "$ref": "#/components/schemas/Seats"
@@ -1277,14 +1383,6 @@
           "name"
         ],
         "type": "object"
-      },
-      "TeamRole": {
-        "enum": [
-          "owner",
-          "admin",
-          "member"
-        ],
-        "type": "string"
       }
     },
     "securitySchemes": {
@@ -2201,11 +2299,11 @@
                   }
                 },
                 "schema": {
-                  "$ref": "#/components/schemas/DeviceLimitProblem"
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Every license slot is taken by another device"
+            "description": "Conflict"
           },
           "422": {
             "content": {
@@ -2548,7 +2646,7 @@
               }
             }
           },
-          "default": {
+          "422": {
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -2556,7 +2654,17 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal Server Error"
           }
         },
         "summary": "Prices in the caller's country",
