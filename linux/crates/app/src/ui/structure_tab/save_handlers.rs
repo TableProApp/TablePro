@@ -37,10 +37,6 @@ impl StructureModel {
             SaveInput::Discard => {
                 // This also lets go of a save whose outcome was unknown.
                 self.tracker.clear();
-                if self.mode() == StructureMode::Edit && self.definition_stale {
-                    fx.input(SaveInput::Reload);
-                    return;
-                }
                 // New mode clears everything but the name, since a new
                 // table starts empty.
                 let restored = match self.context.borrow().original() {
@@ -49,6 +45,11 @@ impl StructureModel {
                 };
                 self.show_draft(restored);
                 self.recompute_dirty_state(fx);
+                // The read keeps the restored definition on screen while it
+                // runs and through a failure, never the discarded edits.
+                if self.mode() == StructureMode::Edit && self.definition_stale {
+                    fx.input(SaveInput::Reload);
+                }
             }
             SaveInput::SaveCompleted { new_table_name } => self.save_completed(new_table_name, fx),
             SaveInput::SaveFailed(message) => {
