@@ -98,6 +98,7 @@ fn popover(grid: &DataGrid, model: &gio::Menu) -> gtk::PopoverMenu {
     let weak = grid.downgrade();
     popover.connect_closed(move |_| {
         if let Some(grid) = weak.upgrade() {
+            grid.return_focus_from_menu();
             grid.release_menu_target_soon();
         }
     });

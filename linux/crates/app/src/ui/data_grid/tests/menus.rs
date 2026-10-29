@@ -250,6 +250,24 @@ fn a_page_under_a_closed_menu_then_a_focus_in_keeps_the_focus_in_the_grid() {
     assert!(focus_in_grid(&grid), "the focus left the grid");
 }
 
+/// GTK gives the focus a closed menu held to the first control an ancestor
+/// of the grid takes, so Escape or an item left the keyboard off the rows.
+#[gtk4::test]
+fn a_closed_cell_menu_gives_the_keyboard_back_to_its_cell() {
+    let grid = two_text_rows();
+    let cell = grid.cell_of(2, 1);
+    assert!(grid.grid.open_cell_menu(&cell, None));
+    gtk::prelude::GtkWindowExt::set_focus(&grid.window, None::<&gtk::Widget>);
+
+    close_menus(&grid);
+
+    assert_eq!(
+        grid.focused_cell(),
+        Some(cell),
+        "the keyboard did not come back to the cell"
+    );
+}
+
 /// The header gives the rows the keys that act on a selection, wherever
 /// the focus was.
 #[gtk4::test]

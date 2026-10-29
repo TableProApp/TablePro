@@ -169,6 +169,24 @@ fn tab_passes_a_value_the_one_line_editor_cannot_hold() {
     open_on(&grid, 2);
 }
 
+/// GTK gives the focus a closed menu held to the first control an ancestor
+/// of the grid takes, below the rows.
+#[gtk4::test]
+fn the_cell_takes_the_keyboard_back_when_the_labels_close() {
+    let grid = sizes_and_tags();
+    open_on(&grid, 2);
+    gtk::prelude::GtkWindowExt::set_focus(&grid.window, None::<&gtk::Widget>);
+
+    choices(&grid).popdown();
+    drain_main_context();
+
+    assert_eq!(
+        grid.focused_cell().map(|cell| (cell.position(), cell.column())),
+        Some((Some(0), 2)),
+        "the keyboard did not come back to the cell"
+    );
+}
+
 /// Edit Cell in the cell menu opens the labels while the cell menu lets go
 /// of its target, which GTK has it do before the item runs.
 #[gtk4::test]
