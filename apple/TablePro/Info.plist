@@ -4,6 +4,8 @@
 <dict>
 	<key>AnalyticsHMACSecret</key>
 	<string>$(ANALYTICS_HMAC_SECRET)</string>
+	<key>PostHogProjectKey</key>
+	<string>$(POSTHOG_PROJECT_KEY)</string>
 	<key>NSAppleScriptEnabled</key>
 	<true/>
 	<key>OSAScriptingDefinition</key>

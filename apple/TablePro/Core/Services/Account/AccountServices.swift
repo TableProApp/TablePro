@@ -3,9 +3,27 @@
 //  TablePro
 //
 
+import Combine
 import Foundation
 import os
 import TableProCloudAPI
+
+internal enum AccountEvent: Equatable, Sendable {
+    enum SignInMethod: String, Sendable {
+        case interactive
+        case licenseKey = "license_key"
+        case migration
+    }
+
+    enum SignOutCause: Equatable, Sendable {
+        case user
+        case refreshRefused
+        case deviceRevoked
+    }
+
+    case signedIn(accountID: String, method: SignInMethod)
+    case signedOut(SignOutCause)
+}
 
 internal enum LegacyMigrationOutcome: Equatable, Sendable {
     case nothingToMigrate
@@ -31,6 +49,7 @@ internal final class AccountServices {
     let devices: DeviceRegistry
     let access: FeatureAccess
     let api: any APIProtocol
+    let events = PassthroughSubject<AccountEvent, Never>()
     private let entitlements: EntitlementStore
     private let legacy: LegacyLicenseStore
     private let machine: MachineDescription
@@ -57,12 +76,14 @@ internal final class AccountServices {
         clock: any Clock<Duration> = ContinuousClock(),
         now: @escaping @Sendable () -> Date = { Date() }
     ) {
+        let refusals = RefusalRelay()
         self.configuration = configuration
         self.machine = machine
         self.session = AccountSession(
             client: OAuthTokenClient(configuration: configuration, send: send),
             keychain: keychain,
-            now: now
+            now: now,
+            onRefused: { Task { @MainActor in refusals.services?.sessionWasRefused() } }
         )
         self.api = AccountAPI.client(configuration: configuration, transport: transport, session: session)
         self.devices = DeviceRegistry(api: api, machine: machine)
@@ -76,6 +97,7 @@ internal final class AccountServices {
         self.access = access
         self.clock = clock
         self.now = now
+        refusals.services = self
     }
 
     // Reads what is on disk, then migrates a stored license key and refreshes now and every 24 hours.
@@ -122,10 +144,12 @@ internal final class AccountServices {
         )
         try await session.completeSignIn(request, callback: callback)
         publish(refresh: .idle)
+        await announceSignIn(.interactive)
         _ = await refreshEntitlement()
     }
 
     func signOut() async {
+        let wasSignedIn = session.isSignedIn
         sessionGeneration += 1
         refreshTask?.cancel()
         refreshTask = nil
@@ -134,6 +158,9 @@ internal final class AccountServices {
         legacy.clear()
         legacyEntitlement = nil
         publish(refresh: .idle)
+        if wasSignedIn {
+            events.send(.signedOut(.user))
+        }
     }
 
     @discardableResult
@@ -189,6 +216,7 @@ internal final class AccountServices {
             legacyEntitlement = nil
         }
         publish(refresh: .idle)
+        await announceSignIn(.licenseKey)
         _ = try await devices.register()
         return await refreshEntitlement()
     }
@@ -209,6 +237,7 @@ internal final class AccountServices {
         } else {
             do throws(AccountError) {
                 try await session.signIn(licenseKey: key, machine: machine)
+                await announceSignIn(.migration)
             } catch .oauth("invalid_grant", _) {
                 Self.logger.notice("The stored license key was refused; removing it")
                 legacy.clear()
@@ -301,6 +330,7 @@ internal final class AccountServices {
         case .failure(let error) where error.problemCode == "device_revoked":
             Self.logger.notice("This device was removed from the account; signing out on this Mac")
             await session.discard()
+            events.send(.signedOut(.deviceRevoked))
             outcome = .failed(error)
         case .failure(let error):
             Self.logger.warning("Entitlement refresh failed: \(error.publicLogShape, privacy: .public)")
@@ -320,6 +350,17 @@ internal final class AccountServices {
         return try await entitlements.fetch(api: api, deviceID: deviceID)
     }
 
+    private func announceSignIn(_ method: AccountEvent.SignInMethod) async {
+        guard let accountID = await session.accountID else { return }
+        events.send(.signedIn(accountID: accountID, method: method))
+    }
+
+    // Another call's refresh found the refresh token refused, and the session discarded it.
+    private func sessionWasRefused() {
+        events.send(.signedOut(.refreshRefused))
+        publish()
+    }
+
     private func dropEntitlement() {
         entitlements.clear()
         entitlement = nil
@@ -335,4 +376,10 @@ internal final class AccountServices {
         }
         access.update(state)
     }
+}
+
+// Lets the session, created before the services that own it, report a refused refresh token to them.
+@MainActor
+private final class RefusalRelay {
+    weak var services: AccountServices?
 }

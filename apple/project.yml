@@ -58,6 +58,10 @@ packages:
   Yams:
     url: https://github.com/jpsim/Yams
     majorVersion: 5.1.0
+  # Usage data (clients.md, macOS Telemetry). A build sends it only with POSTHOG_PROJECT_KEY set.
+  PostHog:
+    url: https://github.com/PostHog/posthog-ios
+    exactVersion: 3.92.7
   # Kafka brokers hand a consumer whatever codec the producer stored, and never transcode.
   # macOS supplies no zstd at any layer, so a zstd topic is unreadable without this.
   zstd:
@@ -406,6 +410,7 @@ targets:
       - package: TableProGrammars
       - package: Sparkle
       - package: Yams
+      - package: PostHog
       - package: TableProCore
         products: [TableProAnalytics, TableProAutocomplete, TableProConnectionLibrary, TableProGeometry, TableProGoogleCloud, TableProImport, TableProLogRedaction, TableProNumberFormatting, TableProRedisCore, TableProSQLGrammar, TableProSQLVocabulary, TableProSSHTransport, TableProSyncTransport, TableProTabular, TableProTabularIO, TableProTheme]
       - package: TableProMacCore

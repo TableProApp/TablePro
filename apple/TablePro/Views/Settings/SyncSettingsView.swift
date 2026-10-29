@@ -96,6 +96,7 @@ private struct SyncNoticeSection: View {
             }
         case .renewLicense:
             Link(action.title, destination: SupportLinks.pricing(.licenseSettings))
+                .countsUpgradeClicks(from: .licenseSettings)
         case .checkLicenseAgain:
             Button(action.title) {
                 Task { await AccountServices.shared.checkNow() }

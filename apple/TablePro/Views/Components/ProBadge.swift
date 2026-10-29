@@ -18,6 +18,7 @@ struct ProBadge: View {
                 .padding(.vertical, 2)
                 .background(.orange, in: Capsule())
         }
+        .countsUpgradeClicks(from: .featureGate(feature))
         .help(feature.featureDescription)
         .accessibilityLabel(Text(feature.paidPlanRequirement))
         .accessibilityHint(Text("Opens the TablePro pricing page"))

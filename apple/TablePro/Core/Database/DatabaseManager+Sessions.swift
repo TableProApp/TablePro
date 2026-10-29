@@ -31,7 +31,7 @@ extension DatabaseManager {
             return
         }
 
-        MacAnalyticsProvider.shared.markConnectionAttempted()
+        Telemetry.shared.connectionAttempted(databaseType: connection.type.rawValue)
         InteractionTracer.shared.begin(.sidebarListing, key: connection.id.uuidString, event: nil)
 
         let attempt = connectionAttempts.begin(for: connection.id)
@@ -184,7 +184,7 @@ extension DatabaseManager {
             clearConnectionStage(for: connection.id)
             connectionAttempts.finish(attempt, for: connection.id)
 
-            MacAnalyticsProvider.shared.markConnectionSucceeded()
+            Telemetry.shared.connectionSucceeded(databaseType: connection.type.rawValue)
             AppEvents.shared.databaseDidConnect.send(DatabaseDidConnect(connectionId: connection.id))
 
             await startHealthMonitor(for: connection.id)

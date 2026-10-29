@@ -10,6 +10,7 @@ import os
 internal struct AccessToken: Equatable, Sendable {
     let value: String
     let expiresAt: Date
+    let accountID: String?
     let deviceID: String?
     let isFromLicenseKey: Bool
 
@@ -17,6 +18,7 @@ internal struct AccessToken: Equatable, Sendable {
         self.value = value
         self.expiresAt = expiresAt
         let claims = Self.claims(of: value)
+        self.accountID = claims["sub"] as? String
         self.deviceID = claims["dev"] as? String
         self.isFromLicenseKey = claims["auth_method"] as? String == "license_key"
     }
@@ -42,13 +44,20 @@ internal actor AccountSession {
     private let client: OAuthTokenClient
     private let keychain: any KeychainStoring
     private let now: @Sendable () -> Date
+    private let onRefused: @Sendable () -> Void
     private var access: AccessToken?
     private var refreshTask: Task<AccessToken, Error>?
 
-    init(client: OAuthTokenClient, keychain: any KeychainStoring, now: @escaping @Sendable () -> Date = { Date() }) {
+    init(
+        client: OAuthTokenClient,
+        keychain: any KeychainStoring,
+        now: @escaping @Sendable () -> Date = { Date() },
+        onRefused: @escaping @Sendable () -> Void = {}
+    ) {
         self.client = client
         self.keychain = keychain
         self.now = now
+        self.onRefused = onRefused
     }
 
     nonisolated var isSignedIn: Bool {
@@ -87,6 +96,10 @@ internal actor AccountSession {
         return digest == Self.digest(of: licenseKey)
     }
 
+    var accountID: String? {
+        access?.accountID
+    }
+
     func accessToken() async throws(AccountError) -> AccessToken {
         if let access, access.expiresAt.timeIntervalSince(now()) > Self.expiryMargin {
             return access
@@ -120,6 +133,7 @@ internal actor AccountSession {
                 guard !Task.isCancelled else { throw AccountError.canceled }
                 Self.logger.notice("The refresh token was refused; signing out on this Mac")
                 self.discard()
+                self.onRefused()
                 throw AccountError.signedOut
             }
         }

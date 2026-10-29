@@ -40,6 +40,7 @@ actor FakeAccountServer {
     var unauthorizedOnce = false
     var entitlementLifetime: TimeInterval = 14 * 24 * 60 * 60
     var licenses: [[String: Any]] = [FakeAccountServer.license()]
+    var accountID = "acct_test"
     var accountClaim: [String: Any] = ["email": "ada@m16.example", "name": "Ada"]
     var memberships: [[String: Any]] = []
     var devices: [[String: Any]] = [FakeAccountServer.device(id: FakeAccountServer.deviceID, name: "Test Mac", machineID: FakeAccountServer.machine.machineID)]
@@ -130,7 +131,7 @@ actor FakeAccountServer {
 
     private func tokens(_ request: URLRequest, device: Bool, method: String) -> (Data, URLResponse) {
         // Unique like the server's: two tokens with equal claims could serialize alike or not, by dictionary order.
-        var claims: [String: Any] = ["sub": "acct_test", "auth_method": method, "jti": UUID().uuidString]
+        var claims: [String: Any] = ["sub": accountID, "auth_method": method, "jti": UUID().uuidString]
         if device { claims["dev"] = Self.deviceID }
         return Self.http(request, status: 200, body: [
             "access_token": Self.unsignedJWT(claims),
@@ -275,7 +276,7 @@ actor FakeAccountServer {
     func signedEntitlement(machineID: String = FakeAccountServer.machine.machineID, offline: Bool = false) -> String {
         let issued = Int64(now().timeIntervalSince1970)
         return Self.sign(claims: [
-            "iss": "https://api.tablepro.app", "aud": "tablepro-app", "sub": "acct_test",
+            "iss": "https://api.tablepro.app", "aud": "tablepro-app", "sub": accountID,
             "jti": UUID().uuidString, "iat": issued, "nbf": issued,
             "exp": issued + Int64(entitlementLifetime), "dev": Self.deviceID, "mid": machineID,
             "features": features.sorted(),

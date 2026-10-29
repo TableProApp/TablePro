@@ -196,8 +196,9 @@ struct GeneralSettingsView: View {
             } footer: {
                 Text(
                     """
-                    One report a day: hashed Mac ID, versions, architecture, language, database types, connection count, \
-                    license status, update settings, first-use dates. Never hostnames, credentials, queries, or rows.
+                    Sent to PostHog: app and macOS versions, Mac model, screen size, architecture, language, time zone, \
+                    database types, connection count, first connection and query, plan prompts, sign-in and sign-out, \
+                    and your account ID once you sign in. Never hostnames, credentials, queries, or rows.
                     """
                 )
             }

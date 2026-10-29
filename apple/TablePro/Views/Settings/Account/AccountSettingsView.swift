@@ -108,6 +108,7 @@ internal struct AccountSettingsView: View {
                     Spacer()
 
                     Button(String(localized: "Upgrade…")) {
+                        Telemetry.shared.upgradeClicked(from: .licenseSettings)
                         openURL(model.services.configuration.portalBilling)
                     }
                     .accessibilityIdentifier("account-upgrade")

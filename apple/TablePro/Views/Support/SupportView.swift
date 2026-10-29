@@ -77,6 +77,7 @@ struct SupportView: View {
             if featureAccess.supportAudience == .prospect {
                 Link("Buy a License", destination: SupportLinks.pricing(.supportWindow))
                     .buttonStyle(.borderedProminent)
+                    .countsUpgradeClicks(from: .supportWindow)
                     .accessibilityIdentifier("support-buy-license")
             }
 

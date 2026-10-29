@@ -13,6 +13,7 @@ import Foundation
 internal enum CompareSyncLauncher {
     internal static func open(prefillSource connectionId: UUID? = nil) {
         guard FeatureAccess.shared.isAvailable(.compareSync) else {
+            Telemetry.shared.featureGateShown(.compareSync, access: FeatureAccess.shared.check(.compareSync))
             presentUpgradeAlert()
             return
         }

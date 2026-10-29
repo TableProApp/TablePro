@@ -519,6 +519,30 @@
     reproduced wherever OracleNIO ships. Reaches users only through the registry-only Oracle plugin and
     through TableProMobile: no `$s9OracleNIO` symbols in the app dylib, and none in any of the 14 bundled
     plugins.'
+- id: posthog-ios
+  name: PostHog iOS SDK
+  version: 3.92.7
+  spdx: MIT AND BSD-3-Clause AND Apache-2.0
+  copyrights:
+  - Copyright (c) 2023 PostHog
+  - Copyright (c) 2015 Sentry
+  - Copyright (c) Microsoft Corporation.
+  - Copyright (c) 2008 - 2014 Plausible Labs Cooperative, Inc.
+  - Copyright 2008, Dave Benson.
+  - Copyright (c) 2010, Google Inc.
+  homepageURL: https://github.com/PostHog/posthog-ios
+  licenseTextURL: https://github.com/PostHog/posthog-ios/blob/3.92.7/LICENSE
+  textFile: texts/posthog-ios.txt
+  source: spm:posthog-ios
+  patched: false
+  platforms: [macos]
+  notes: 'The PostHog product, linked statically into the app for usage data. LICENSE is MIT for PostHog''s
+    code plus an MIT section for the files taken from getsentry/sentry-cocoa. The package also compiles two
+    vendored targets into the app, listed in vendor/UPSTREAM.md: PHPLCrashReporter (PLCrashReporter 1.12.2,
+    MIT, with protobuf-c 1.4.0 and PLCrashLogWriterEncoding.c under Apache-2.0) and phlibwebp (libwebp
+    1.5.0, BSD-3-Clause, with its PATENTS grant). The text file is LICENSE, then the PLCrashReporter LICENSE,
+    then libwebp''s COPYING and PATENTS. The crash reporter stays off: PostHogTelemetryClient sets
+    errorTrackingConfig.autoCapture to false.'
 - id: postgresql-libpq
   name: PostgreSQL (libpq client library)
   version: '17.4'

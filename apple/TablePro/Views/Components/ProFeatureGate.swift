@@ -49,6 +49,7 @@ struct ProFeatureGateModifier: ViewModifier {
                     .buttonStyle(.borderedProminent)
                     Link(String(localized: "Purchase License"), destination: SupportLinks.pricing(.featureGate(feature)))
                         .font(.subheadline)
+                        .countsUpgradeClicks(from: .featureGate(feature))
                 case .notIncluded where featureAccess.isPastDeviceLimit:
                     Text("Your plan is in use on 3 other devices")
                         .font(.headline)
@@ -69,6 +70,7 @@ struct ProFeatureGateModifier: ViewModifier {
                         .foregroundStyle(.secondary)
                     Link(String(localized: "Upgrade Plan"), destination: SupportLinks.pricing(.featureGate(feature)))
                         .buttonStyle(.borderedProminent)
+                        .countsUpgradeClicks(from: .featureGate(feature))
                 case .expired:
                     Text("Your license has expired")
                         .font(.headline)
@@ -82,6 +84,7 @@ struct ProFeatureGateModifier: ViewModifier {
                     .buttonStyle(.borderedProminent)
                     Link(String(localized: "Renew License"), destination: SupportLinks.pricing(.featureGate(feature)))
                         .font(.subheadline)
+                        .countsUpgradeClicks(from: .featureGate(feature))
                 case .refreshFailed:
                     Text("License validation failed")
                         .font(.headline)
@@ -96,6 +99,7 @@ struct ProFeatureGateModifier: ViewModifier {
             }
             .padding()
         }
+        .onAppear { Telemetry.shared.featureGateShown(feature, access: access) }
     }
 }
 

@@ -101,6 +101,7 @@ extension MainContentCoordinator {
     /// gets described to the person who just discovered they want it.
     private func presentUpsellUnlessLicensed() -> Bool {
         guard !isDataRewindLicensed else { return true }
+        Telemetry.shared.featureGateShown(.dataRewind, access: services.featureAccess.check(.dataRewind))
         Task { @MainActor in
             let alert = NSAlert()
             alert.messageText = String(localized: "Data Rewind needs a Starter license")
@@ -112,6 +113,7 @@ extension MainContentCoordinator {
             AlertHelper.addCancelButton(to: alert, title: String(localized: "Not Now"))
             AlertHelper.present(alert, in: contentWindow) { response in
                 guard response == .alertFirstButtonReturn else { return }
+                Telemetry.shared.upgradeClicked(from: .featureGate(.dataRewind))
                 NSWorkspace.shared.open(SupportLinks.pricing(.featureGate(.dataRewind)))
             }
         }

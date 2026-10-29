@@ -20,6 +20,7 @@ struct AccountFeaturesSection: View {
             HStack(spacing: 16) {
                 if offersPurchase {
                     Link("Buy a License", destination: SupportLinks.pricing(.licenseSettings))
+                        .countsUpgradeClicks(from: .licenseSettings)
                 }
 
                 Link("Learn More About Licensing", destination: SupportLinks.licensingGuide)
