@@ -152,19 +152,18 @@ struct StructureDefinitionEditorTests {
         #expect(makeEditor().adapter(for: .indexes).provider.columns.contains(String(localized: "Condition")))
     }
 
-    @Test("Text typed in an inspector field is committed before a command runs")
-    func pendingFieldDraftCommitsFirst() {
+    @Test("A pick after typing is its own undo step")
+    func pickAfterTypingIsItsOwnStep() {
         let editor = makeEditor()
         let status = id(of: "status", in: editor)
-        editor.noteFieldDraft("state") { text in
-            editor.commitInspectorField(section: .columns, id: status, field: 0, value: text)
-        }
-        #expect(editor.hasPendingFieldDraft)
+        editor.typeInspectorField(section: .columns, id: status, field: 0, value: "stat")
+        editor.typeInspectorField(section: .columns, id: status, field: 0, value: "state")
+        editor.commitInspectorField(section: .columns, id: status, field: 1, value: "VARCHAR(20)")
 
-        editor.commitPendingEdits()
-
-        #expect(!editor.hasPendingFieldDraft)
-        #expect(editor.manager.workingColumns.contains { $0.name == "state" })
+        editor.manager.undo()
+        #expect(editor.manager.workingColumns.contains { $0.name == "state" && $0.dataType != "VARCHAR(20)" })
+        editor.manager.undo()
+        #expect(editor.manager.workingColumns.contains { $0.name == "status" })
     }
 
     @Test("Nothing can be edited while the table is read again after a save")

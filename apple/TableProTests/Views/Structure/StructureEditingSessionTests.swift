@@ -290,13 +290,30 @@ struct StructureEditingSessionTests {
         #expect(!session.editor.canAdd(.columns))
     }
 
-    @Test("Text typed in the inspector counts as a change before it is committed")
-    func pendingFieldDraftCountsAsAChange() {
+    @Test("Text typed in the inspector is staged as it is typed, and its run undoes as one step")
+    func inspectorTypingIsStagedAndUndoesOnce() {
         let session = Self.makeSession(connection: TestFixtures.makeConnection())
-        #expect(!session.hasChanges)
-        session.editor.noteFieldDraft("x") { _ in }
+        session.changeManager.loadSchema(
+            tableName: "users",
+            columns: [ColumnInfo(name: "email", dataType: "TEXT", isNullable: true, isPrimaryKey: false)],
+            indexes: [],
+            foreignKeys: [],
+            primaryKey: []
+        )
+        session.markBaselineAdopted()
+        session.editor.refresh()
+        let id = session.changeManager.workingColumns[0].id
+        for text in ["e", "em", "ema", "mail"] {
+            session.editor.typeInspectorField(section: .columns, id: id, field: 0, value: text)
+        }
+
         #expect(session.hasChanges)
-        session.editor.clearFieldDraft()
+        #expect(session.changeManager.workingColumns[0].name == "mail")
+        #expect(session.undoMenuItemTitle.contains(String(localized: "Edit Column")))
+
+        session.undo()
+
+        #expect(session.changeManager.workingColumns[0].name == "email")
         #expect(!session.hasChanges)
     }
 

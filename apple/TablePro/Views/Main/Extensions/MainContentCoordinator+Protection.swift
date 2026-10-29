@@ -76,7 +76,7 @@ extension MainContentCoordinator {
 
     // Read from the tab's session, mounted or not, so it holds in Data view and in a background tab.
     func hasStagedStructureEdits(in tab: QueryTab) -> Bool {
-        (structureSessions[tab.id].map { $0.changeManager.hasChanges || $0.editor.hasPendingFieldDraft } ?? false)
+        (structureSessions[tab.id]?.changeManager.hasChanges ?? false)
             || (erDiagramModels[tab.id]?.holdsUnsavedWork ?? false)
     }
 
@@ -90,7 +90,7 @@ extension MainContentCoordinator {
     }
 
     func hasTableDraftWork(in tab: QueryTab) -> Bool {
-        createTableDrafts[tab.id].map { $0.holdsWork || $0.editor.hasPendingFieldDraft } ?? false
+        createTableDrafts[tab.id]?.holdsWork ?? false
     }
 
     // Never narrower than `hasUnsavedWork(in:)`; broader for a scratch tab, whose text is unsaved but comes back.

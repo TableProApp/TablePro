@@ -143,7 +143,7 @@ extension MainContentCoordinator {
         if let schemaModel = activeGridModelProvider(for: tab)?.activeGridModel {
             committed = schemaModel.commitEditing() && committed
         }
-        // Text typed in a structure inspector field counts as an edit the moment a command needs it.
+        // A run of typing in the structure inspector ends, so the command's undo step stands apart from it.
         activeStructureEditor?.commitPendingEdits()
         return committed
     }

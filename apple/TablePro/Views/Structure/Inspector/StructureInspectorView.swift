@@ -56,7 +56,6 @@ private struct StructureInspectorContent<TableProperties: View>: View {
             content(target: target, form: form)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
-        .environment(\.structureDefinitionEditor, editor)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("structure-inspector")
     }

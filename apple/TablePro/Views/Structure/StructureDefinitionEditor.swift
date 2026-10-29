@@ -67,12 +67,6 @@ final class StructureDefinitionEditor: ObservableObject {
 
     private let defaults: UserDefaults
     private var cancellables: Set<AnyCancellable> = []
-    private var fieldDraft: (text: String, commit: (String) -> Void)? {
-        didSet {
-            let isPending = fieldDraft != nil
-            if hasPendingFieldDraft != isPending { hasPendingFieldDraft = isPending }
-        }
-    }
     private var isSyncingSelection = false
 
     init(
@@ -172,6 +166,13 @@ final class StructureDefinitionEditor: ObservableObject {
 
     func definitionsDidChange() {
         refresh()
+    }
+
+    // One field of one definition changed, which no other section shows: the cheap refresh a keystroke can afford.
+    func definitionsDidChange(in section: StructureSection) {
+        adapter(for: section).refresh()
+        settleInspectorTarget()
+        revision &+= 1
     }
 
     // MARK: - Selection
@@ -292,25 +293,11 @@ final class StructureDefinitionEditor: ObservableObject {
         moveColumnHandler?(sourceIndex, destination)
     }
 
-    // MARK: - Pending edits
+    // MARK: - Open edits
 
-    // An inspector field's typed text is committed on Return or when focus leaves; until then it is noted here, so
-    // Save, close and the other commands see it and commit it first.
-    @Published private(set) var hasPendingFieldDraft = false
-
-    func noteFieldDraft(_ text: String, commit: @escaping (String) -> Void) {
-        fieldDraft = (text, commit)
-    }
-
-    func clearFieldDraft() {
-        fieldDraft = nil
-    }
-
+    // Commits an edit open in a grid cell, and ends a run of typing in the inspector, before a command acts.
     func commitPendingEdits() {
-        if let draft = fieldDraft {
-            fieldDraft = nil
-            draft.commit(draft.text)
-        }
+        manager.endTypingRun()
         for section in StructureSection.allCases {
             adapter(for: section).model.commitEditing()
         }
@@ -328,7 +315,29 @@ final class StructureDefinitionEditor: ObservableObject {
         return StructureInspectorForm.build(adapter: adapter, sourceIndex: sourceIndex, entityID: id)
     }
 
+    // A pick, a checkbox or a menu choice: one change, one undo step.
     func commitInspectorField(section: StructureSection, id: UUID, field: Int, value: String) {
+        manager.endTypingRun()
         adapter(for: section).applyEdit(entity: id, field: field, text: value)
+    }
+
+    // A keystroke in an inspector field, staged at once and undone with the rest of its run.
+    func typeInspectorField(section: StructureSection, id: UUID, field: Int, value: String) {
+        manager.stageTyping(in: "\(section.rawValue).\(id.uuidString).\(field)", actionName: Self.editActionName(section)) {
+            adapter(for: section).applyEdit(entity: id, field: field, text: value)
+        }
+    }
+
+    func endInspectorTyping() {
+        manager.endTypingRun()
+    }
+
+    private static func editActionName(_ section: StructureSection) -> String {
+        switch section {
+        case .columns: String(localized: "Edit Column")
+        case .indexes: String(localized: "Edit Index")
+        case .foreignKeys: String(localized: "Edit Foreign Key")
+        case .checkConstraints: String(localized: "Edit Check Constraint")
+        }
     }
 }

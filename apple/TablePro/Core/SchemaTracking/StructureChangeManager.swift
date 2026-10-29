@@ -86,12 +86,37 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
         return manager
     }()
 
-    var canUndo: Bool { !isHeldForSave && (undoManager.canUndo || hasTableCommentRun) }
-    var canRedo: Bool { !isHeldForSave && !hasTableCommentRun && undoManager.canRedo }
+    var canUndo: Bool { !isHeldForSave && (undoManager.canUndo || hasTableCommentRun || typingRun != nil) }
+    var canRedo: Bool { !isHeldForSave && !hasTableCommentRun && typingRun == nil && undoManager.canRedo }
 
     var undoMenuItemTitle: String {
-        guard !hasTableCommentRun else { return undoManager.undoMenuTitle(forUndoActionName: Self.tableCommentActionName) }
+        if hasTableCommentRun { return undoManager.undoMenuTitle(forUndoActionName: Self.tableCommentActionName) }
+        if let typingRun { return undoManager.undoMenuTitle(forUndoActionName: typingRun.actionName) }
         return undoManager.undoMenuItemTitle
+    }
+
+    // Typing in one field of one definition: every keystroke is staged, so Save, Refresh and the close prompt see it,
+    // and the whole run undoes as one step. Anything else that registers an undo ends it first.
+    private var typingRun: (key: String, actionName: String)?
+    private var isStagingTyping = false
+
+    func stageTyping(in key: String, actionName: String, _ body: () -> Void) {
+        guard !isHeldForSave else { return }
+        if typingRun?.key != key { endTypingRun() }
+        if typingRun == nil {
+            endTableCommentRun()
+            undoManager.beginUndoGrouping()
+            typingRun = (key, actionName)
+        }
+        isStagingTyping = true
+        defer { isStagingTyping = false }
+        body()
+    }
+
+    func endTypingRun() {
+        guard typingRun != nil else { return }
+        typingRun = nil
+        undoManager.endUndoGrouping()
     }
 
     var redoMenuItemTitle: String { undoManager.redoMenuItemTitle }
@@ -103,6 +128,7 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
     private func registerUndo(_ actionName: String, _ handler: @escaping (StructureChangeManager) -> Void) {
         if !undoManager.isUndoing, !undoManager.isRedoing {
             endTableCommentRun()
+            if !isStagingTyping { endTypingRun() }
         }
         let opensOwnGroup = !undoManager.groupsByEvent && undoManager.groupingLevel == 0
         if opensOwnGroup { undoManager.beginUndoGrouping() }
@@ -117,6 +143,7 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
     func performAsOneUndoStep(_ body: () -> Void) {
         guard !isHeldForSave else { return }
         endTableCommentRun()
+        if !isStagingTyping { endTypingRun() }
         undoManager.beginUndoGrouping()
         defer { undoManager.endUndoGrouping() }
         body()
@@ -136,6 +163,7 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
         autoIncrementConfirmed: Bool = true
     ) {
         guard !isHeldForSave else { return }
+        endTypingRun()
         self.tableName = tableName
         self.tableComment = ObjectCommentDraft(original: tableComment)
         tableCommentRunStart = nil
@@ -504,11 +532,11 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
 
     // A column whose delete took it out of a staged key goes back into that key, at the place it held.
     private func restoreKeyMembership(ofColumn id: UUID) {
-        let position = removedKeyPositions.removeValue(forKey: id)
-        guard let column = workingColumns.first(where: { $0.id == id }), column.isPrimaryKey,
+        guard let position = removedKeyPositions.removeValue(forKey: id),
+              let column = workingColumns.first(where: { $0.id == id }), column.isPrimaryKey,
               !workingPrimaryKey.contains(column.name) else { return }
         var key = workingPrimaryKey
-        key.insert(column.name, at: min(position ?? key.count, key.count))
+        key.insert(column.name, at: min(position, key.count))
         stagePrimaryKey(key)
     }
 
@@ -833,6 +861,7 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
 
     func discardChanges() {
         guard !isHeldForSave else { return }
+        endTypingRun()
         tableComment = ObjectCommentDraft(original: tableComment.original)
         tableCommentRunStart = nil
         tableOptions = TableOptionsDraft(
@@ -858,6 +887,7 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
     /// Taken before the save's first suspension, which is what refuses a second press.
     func holdForSave() -> StructureSaveSnapshot? {
         endTableCommentRun()
+        endTypingRun()
         guard heldSave == nil, hasChanges else { return nil }
         let snapshot = StructureSaveSnapshot(changes: getChangesArray())
         heldSave = snapshot
@@ -899,6 +929,7 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
     func undo() {
         guard !isHeldForSave else { return }
         endTableCommentRun()
+        endTypingRun()
         guard undoManager.canUndo else { return }
         undoManager.undo()
     }
@@ -906,6 +937,7 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
     func redo() {
         guard !isHeldForSave else { return }
         endTableCommentRun()
+        endTypingRun()
         guard undoManager.canRedo else { return }
         undoManager.redo()
     }

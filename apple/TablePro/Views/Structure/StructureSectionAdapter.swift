@@ -270,7 +270,7 @@ final class StructureSectionAdapter {
     func applyEdit(rowID: RowID, field: Int, text: String) -> Bool {
         guard canEdit, let sourceIndex = sourceIndex(of: rowID) else { return false }
         let applied = write(text, field: field, sourceIndex: sourceIndex)
-        editor?.definitionsDidChange()
+        editor?.definitionsDidChange(in: section)
         return applied
     }
 

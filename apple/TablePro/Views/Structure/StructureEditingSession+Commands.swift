@@ -9,8 +9,7 @@ import Foundation
 // What the menu bar, the toolbar and the keyboard ask of a structure tab. The coordinator calls these on the
 // selected tab's session, so they work whether or not a view is mounted.
 internal extension StructureEditingSession {
-    // Typing in an inspector field already counts, so Save is offered before the field commits.
-    var hasChanges: Bool { changeManager.hasChanges || editor.hasPendingFieldDraft }
+    var hasChanges: Bool { changeManager.hasChanges }
 
     var pendingChangeCount: Int { changeManager.getChangesArray().count }
 
@@ -75,7 +74,6 @@ internal extension StructureEditingSession {
     // MARK: - Discard
 
     func discardChanges() {
-        editor.clearFieldDraft()
         for section in StructureSection.allCases {
             editor.adapter(for: section).model.discardEditing()
         }

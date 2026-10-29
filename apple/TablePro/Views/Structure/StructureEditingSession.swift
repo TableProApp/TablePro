@@ -150,10 +150,6 @@ internal final class StructureEditingSession: ObservableObject {
         changeManager.objectWillChange
             .sink { [weak self] in self?.objectWillChange.send() }
             .store(in: &cancellables)
-        editor.$hasPendingFieldDraft
-            .dropFirst()
-            .sink { [weak self] _ in self?.objectWillChange.send() }
-            .store(in: &cancellables)
         $tableOptionsCatalog
             .dropFirst()
             .receive(on: RunLoop.main)

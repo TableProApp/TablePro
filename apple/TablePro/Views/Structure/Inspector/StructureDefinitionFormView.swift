@@ -57,13 +57,17 @@ struct StructureDefinitionFormView: View {
         let value = field.value ?? ""
         switch StructureInspectorControl.resolve(field) {
         case .text:
-            StructureInspectorTextField(label: field.label, value: value, revision: revision) { commit($0, to: field) }
-                .accessibilityLabel(field.label)
-                .accessibilityIdentifier(identifier)
+            StructureInspectorTextField(
+                label: field.label, value: value, revision: revision,
+                onType: { type($0, into: field) }, onEnd: { editor.endInspectorTyping() }
+            )
+            .accessibilityLabel(field.label)
+            .accessibilityIdentifier(identifier)
         case .multiline:
             StructureInspectorTextField(
-                label: field.label, value: value, revision: revision, isMultiline: true
-            ) { commit($0, to: field) }
+                label: field.label, value: value, revision: revision, isMultiline: true,
+                onType: { type($0, into: field) }, onEnd: { editor.endInspectorTyping() }
+            )
             .accessibilityLabel(field.label)
             .accessibilityIdentifier(identifier)
         case .checkbox:
@@ -91,8 +95,11 @@ struct StructureDefinitionFormView: View {
                 value: value,
                 revision: revision,
                 identifier: identifier,
-                groups: choices.groups
-            ) { commit($0, to: field) }
+                groups: choices.groups,
+                onType: { type($0, into: field) },
+                onPick: { commit($0, to: field) },
+                onEnd: { editor.endInspectorTyping() }
+            )
         case .typePicker:
             StructureInspectorTypeField(
                 value: value,
@@ -100,8 +107,11 @@ struct StructureDefinitionFormView: View {
                 label: field.label,
                 identifier: identifier,
                 databaseType: editor.context.databaseType,
-                scope: editor.context.scope
-            ) { commit($0, to: field) }
+                scope: editor.context.scope,
+                onType: { type($0, into: field) },
+                onPick: { commit($0, to: field) },
+                onEnd: { editor.endInspectorTyping() }
+            )
         case .readOnly(let text):
             Text(text)
                 .textSelection(.enabled)
@@ -143,6 +153,10 @@ struct StructureDefinitionFormView: View {
 
     // A tag no item carries, so a value the menu does not list shows nothing selected rather than another item.
     private static let noSelection = -1
+
+    private func type(_ value: String, into field: StructureInspectorForm.Field) {
+        editor.typeInspectorField(section: form.section, id: form.entityID, field: field.id, value: value)
+    }
 
     private func commit(_ value: String, to field: StructureInspectorForm.Field) {
         guard value != (field.value ?? "") else { return }

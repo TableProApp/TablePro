@@ -5,8 +5,9 @@
 
 import SwiftUI
 
-// A definition field's text: one write on Return or when focus leaves, so a typed value is one undo step. Typing
-// survives a refresh while the field has focus.
+// A definition field's text. Every keystroke is staged at once, the way the table comment's field is, so Save, Refresh
+// and the close prompt always see what is typed; the editor folds the run into one undo step, ended by Return or by
+// focus leaving.
 struct StructureInspectorTextField: View {
     let label: String
     let value: String
@@ -14,16 +15,16 @@ struct StructureInspectorTextField: View {
     var isMultiline = false
     // Moved by a pick from a menu beside the field: the field shows the picked value even while it has focus.
     var resetToken = 0
-    let onCommit: (String) -> Void
+    let onType: (String) -> Void
+    let onEnd: () -> Void
 
     @State private var draft = ""
-    // What the draft was last synced from, so only typing commits, never a value the model moved under the field.
+    // What the field last wrote or was synced from, so only typing writes, never a value the model moved under it.
     @State private var base = ""
-    // The stored value, kept while focused, so leaving a field whose write was refused puts it back.
+    // The stored value, so leaving a field whose write was refused puts it back.
     @State private var latest = ""
     @State private var hasSeeded = false
     @FocusState private var isFocused: Bool
-    @Environment(\.structureDefinitionEditor) private var editor
 
     private struct Sync: Equatable {
         let value: String
@@ -36,15 +37,20 @@ struct StructureInspectorTextField: View {
             .autocorrectionDisabled(true)
             .focused($isFocused)
             .onAppear(perform: seed)
-            // The revision moves on a refused write too, which puts the stored value back in the field.
             .onChange(of: Sync(value: value, revision: revision)) { sync in
                 latest = sync.value
                 guard !isFocused else { return }
                 draft = sync.value
                 base = sync.value
             }
+            .onChange(of: draft) { text in
+                guard hasSeeded, isFocused, text != base else { return }
+                base = text
+                onType(text)
+            }
             .onChange(of: isFocused) { focused in
-                guard !focused, !commit() else { return }
+                guard !focused else { return }
+                onEnd()
                 draft = latest
                 base = latest
             }
@@ -53,18 +59,11 @@ struct StructureInspectorTextField: View {
                 base = value
                 latest = value
             }
-            .onChange(of: draft) { text in
-                guard isFocused, text != base else {
-                    editor?.clearFieldDraft()
-                    return
-                }
-                editor?.noteFieldDraft(text, commit: onCommit)
-            }
-            .onSubmit { commit() }
-            .onDisappear { commit() }
+            .onSubmit(onEnd)
+            .onDisappear(perform: onEnd)
     }
 
-    // The label column names the field, so an empty one shows no placeholder.
+    // The field's name is above it, so an empty field shows no placeholder.
     @ViewBuilder
     private var field: some View {
         if isMultiline {
@@ -84,15 +83,6 @@ struct StructureInspectorTextField: View {
         base = value
         latest = value
     }
-
-    @discardableResult
-    private func commit() -> Bool {
-        editor?.clearFieldDraft()
-        guard hasSeeded, draft != base else { return false }
-        base = draft
-        onCommit(draft)
-        return true
-    }
 }
 
 // Free text with the engine's types and the database's own types to pick from, grouped as the grid's type picker
@@ -104,7 +94,9 @@ struct StructureInspectorTypeField: View {
     let identifier: String
     let databaseType: DatabaseType
     let scope: DatabaseScope?
-    let onCommit: (String) -> Void
+    let onType: (String) -> Void
+    let onPick: (String) -> Void
+    let onEnd: () -> Void
 
     var body: some View {
         UserDefinedTypeAwarePicker(scope: scope) { userDefinedTypes in
@@ -114,7 +106,9 @@ struct StructureInspectorTypeField: View {
                 revision: revision,
                 identifier: identifier,
                 groups: Self.groups(userDefinedTypes: userDefinedTypes, databaseType: databaseType),
-                onCommit: onCommit
+                onType: onType,
+                onPick: onPick,
+                onEnd: onEnd
             )
         }
     }
@@ -148,14 +142,16 @@ struct StructureInspectorSuggestionField: View {
     let revision: Int
     let identifier: String
     let groups: [StructureInspectorChoices.ItemGroup]
-    let onCommit: (String) -> Void
+    let onType: (String) -> Void
+    let onPick: (String) -> Void
+    let onEnd: () -> Void
 
     @State private var pickRevision = 0
 
     var body: some View {
         HStack(spacing: 4) {
             StructureInspectorTextField(
-                label: label, value: value, revision: revision, resetToken: pickRevision, onCommit: onCommit
+                label: label, value: value, revision: revision, resetToken: pickRevision, onType: onType, onEnd: onEnd
             )
             .accessibilityLabel(label)
             .accessibilityIdentifier(identifier)
@@ -179,16 +175,13 @@ struct StructureInspectorSuggestionField: View {
         }
     }
 
-    // A pick replaces whatever is typed in the field, so the typed text never lands on top of it later.
-    @Environment(\.structureDefinitionEditor) private var editor
-
+    // A pick is its own undo step and replaces whatever is typed in the field.
     private func items(_ group: StructureInspectorChoices.ItemGroup) -> some View {
         ForEach(group.items) { item in
             Button(item.title) {
-                editor?.clearFieldDraft()
                 pickRevision &+= 1
                 guard item.value != value else { return }
-                onCommit(item.value)
+                onPick(item.value)
             }
         }
     }
@@ -235,16 +228,5 @@ struct StructureInspectorFootnote: View {
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .leading)
-    }
-}
-
-private struct StructureDefinitionEditorKey: EnvironmentKey {
-    static let defaultValue: StructureDefinitionEditor? = nil
-}
-
-extension EnvironmentValues {
-    var structureDefinitionEditor: StructureDefinitionEditor? {
-        get { self[StructureDefinitionEditorKey.self] }
-        set { self[StructureDefinitionEditorKey.self] = newValue }
     }
 }
