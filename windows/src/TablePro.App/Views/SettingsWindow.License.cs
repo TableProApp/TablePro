@@ -15,6 +15,15 @@ public sealed partial class SettingsWindow
 {
     private const string LicensePage = "License";
 
+    /// <summary>Selects the License page, where a paid feature's gate sends somebody who has a key to enter.</summary>
+    public void ShowLicensePage()
+    {
+        if (Content is Grid root && root.Children.OfType<NavigationView>().FirstOrDefault() is { } navigation)
+        {
+            navigation.SelectedItem = navigation.MenuItems.OfType<NavigationViewItem>().FirstOrDefault(i => LicensePage.Equals(i.Tag));
+        }
+    }
+
     /// <summary>
     /// The License page, as macOS lays out its License pane: what you hold, whether it works, the seats it covers and
     /// the team on it. The layout is keyed on holding a license; entitlement decides only whether a renewal field

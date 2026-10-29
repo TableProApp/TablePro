@@ -290,4 +290,49 @@
   <data name="UpgradePlan" xml:space="preserve">
     <value>Passer à la formule supérieure</value>
   </data>
+  <data name="GatePlanRequirement" xml:space="preserve">
+    <value>{0} nécessite le forfait {1}</value>
+  </data>
+  <data name="GateExpired" xml:space="preserve">
+    <value>Votre licence a expiré</value>
+  </data>
+  <data name="GateValidationFailed" xml:space="preserve">
+    <value>Échec de la validation de la licence</value>
+  </data>
+  <data name="GateValidationFailedMessage" xml:space="preserve">
+    <value>Connectez-vous à Internet pour vérifier votre licence.</value>
+  </data>
+  <data name="GateActivate" xml:space="preserve">
+    <value>Activer la licence…</value>
+  </data>
+  <data name="GateRetry" xml:space="preserve">
+    <value>Réessayer la validation</value>
+  </data>
+  <data name="GatePurchase" xml:space="preserve">
+    <value>Acheter une licence</value>
+  </data>
+  <data name="ViewLicense" xml:space="preserve">
+    <value>Afficher la licence</value>
+  </data>
+  <data name="NotNow" xml:space="preserve">
+    <value>Plus tard</value>
+  </data>
+  <data name="PromptNeedsLicense" xml:space="preserve">
+    <value>{0} nécessite une licence {1}</value>
+  </data>
+  <data name="RewindPromptMessage" xml:space="preserve">
+    <value>Restaurer les valeurs précédentes des lignes déjà enregistrées. L’historique des enregistrements est conservé 7 jours sur ce PC, chiffré, et ne le quitte jamais.</value>
+  </data>
+  <data name="RewindNeedsLicense" xml:space="preserve">
+    <value>Restaurer un enregistrement déjà validé nécessite une licence Starter.</value>
+  </data>
+  <data name="IncludeCredentials" xml:space="preserve">
+    <value>Inclure les identifiants</value>
+  </data>
+  <data name="IncludeCredentialsCaption" xml:space="preserve">
+    <value>Désactivé par défaut. Activez-le pour chiffrer les mots de passe enregistrés avec une phrase secrète.</value>
+  </data>
+  <data name="OpensPricing" xml:space="preserve">
+    <value>Ouvre la page des tarifs de TablePro</value>
+  </data>
 </root>

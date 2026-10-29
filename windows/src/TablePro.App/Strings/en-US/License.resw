@@ -290,4 +290,54 @@
   <data name="UpgradePlan" xml:space="preserve">
     <value>Upgrade Plan</value>
   </data>
+  <data name="GatePlanRequirement" xml:space="preserve">
+    <value>{0} requires the {1} plan</value>
+    <comment>Headline of a paid feature that is locked. {0} is the feature, {1} the plan name.</comment>
+  </data>
+  <data name="GateExpired" xml:space="preserve">
+    <value>Your license has expired</value>
+  </data>
+  <data name="GateValidationFailed" xml:space="preserve">
+    <value>License validation failed</value>
+  </data>
+  <data name="GateValidationFailedMessage" xml:space="preserve">
+    <value>Connect to the internet to verify your license.</value>
+  </data>
+  <data name="GateActivate" xml:space="preserve">
+    <value>Activate License…</value>
+    <comment>Button that opens the License page to enter a key.</comment>
+  </data>
+  <data name="GateRetry" xml:space="preserve">
+    <value>Retry Validation</value>
+  </data>
+  <data name="GatePurchase" xml:space="preserve">
+    <value>Purchase License</value>
+  </data>
+  <data name="ViewLicense" xml:space="preserve">
+    <value>View License</value>
+  </data>
+  <data name="NotNow" xml:space="preserve">
+    <value>Not Now</value>
+  </data>
+  <data name="PromptNeedsLicense" xml:space="preserve">
+    <value>{0} needs a {1} license</value>
+    <comment>Title of the prompt when a paid feature is used without a license. {0} is the feature, {1} the plan name.</comment>
+  </data>
+  <data name="RewindPromptMessage" xml:space="preserve">
+    <value>Restore the previous values of rows you already saved. Saves are kept on this PC for 7 days, encrypted, and never leave it.</value>
+  </data>
+  <data name="RewindNeedsLicense" xml:space="preserve">
+    <value>Restoring a save that already committed needs a Starter license.</value>
+  </data>
+  <data name="IncludeCredentials" xml:space="preserve">
+    <value>Include Credentials</value>
+    <comment>Export option that is locked without a license.</comment>
+  </data>
+  <data name="IncludeCredentialsCaption" xml:space="preserve">
+    <value>Off by default. Turn it on to encrypt saved passwords with a passphrase.</value>
+  </data>
+  <data name="OpensPricing" xml:space="preserve">
+    <value>Opens the TablePro pricing page</value>
+    <comment>Accessibility hint of the plan badge.</comment>
+  </data>
 </root>

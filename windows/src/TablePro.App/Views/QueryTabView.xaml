@@ -99,7 +99,9 @@
             </Grid>
 
             <grid:DataGridView x:Name="ResultGrid" Grid.Row="1" />
-            <controls:ResultChart x:Name="Chart" Grid.Row="1" Visibility="Collapsed" />
+            <controls:ProFeatureGate x:Name="ChartGate" Grid.Row="1" Feature="ResultCharts" Visibility="Collapsed">
+                <controls:ResultChart x:Name="Chart" />
+            </controls:ProFeatureGate>
             <controls:ResultMap x:Name="Map" Grid.Row="1" Visibility="Collapsed" />
             <controls:QueryPlanView x:Name="PlanView" Grid.Row="1" Visibility="Collapsed" />
 

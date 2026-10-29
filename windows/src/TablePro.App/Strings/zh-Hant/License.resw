@@ -290,4 +290,49 @@
   <data name="UpgradePlan" xml:space="preserve">
     <value>升級方案</value>
   </data>
+  <data name="GatePlanRequirement" xml:space="preserve">
+    <value>{0} 需要 {1} 方案</value>
+  </data>
+  <data name="GateExpired" xml:space="preserve">
+    <value>你的授權已過期</value>
+  </data>
+  <data name="GateValidationFailed" xml:space="preserve">
+    <value>授權驗證失敗</value>
+  </data>
+  <data name="GateValidationFailedMessage" xml:space="preserve">
+    <value>請連線到網際網路以驗證你的授權。</value>
+  </data>
+  <data name="GateActivate" xml:space="preserve">
+    <value>啟用授權…</value>
+  </data>
+  <data name="GateRetry" xml:space="preserve">
+    <value>重試驗證</value>
+  </data>
+  <data name="GatePurchase" xml:space="preserve">
+    <value>購買授權</value>
+  </data>
+  <data name="ViewLicense" xml:space="preserve">
+    <value>查看授權</value>
+  </data>
+  <data name="NotNow" xml:space="preserve">
+    <value>稍後再說</value>
+  </data>
+  <data name="PromptNeedsLicense" xml:space="preserve">
+    <value>{0}需要 {1} 授權</value>
+  </data>
+  <data name="RewindPromptMessage" xml:space="preserve">
+    <value>還原你已經儲存的那些列先前的值。儲存記錄在這台電腦上加密保留 7 天，且絕不外傳。</value>
+  </data>
+  <data name="RewindNeedsLicense" xml:space="preserve">
+    <value>還原一次已提交的儲存需要 Starter 授權。</value>
+  </data>
+  <data name="IncludeCredentials" xml:space="preserve">
+    <value>包含認證資訊</value>
+  </data>
+  <data name="IncludeCredentialsCaption" xml:space="preserve">
+    <value>預設關閉。開啟後會用一組通關密語加密已儲存的密碼。</value>
+  </data>
+  <data name="OpensPricing" xml:space="preserve">
+    <value>開啟 TablePro 價格頁面</value>
+  </data>
 </root>

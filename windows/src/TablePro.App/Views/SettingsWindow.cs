@@ -78,11 +78,16 @@ public sealed partial class SettingsWindow : Window
                     [Strings.Get("Settings/BackdropMica"), Strings.Get("Settings/BackdropAcrylic"), Strings.Get("Common/None"), Strings.Get("Settings/BackdropMicaAlt")], (int)Prefs.Backdrop, i => Update(s => s with { Backdrop = (WindowBackdrop)i }))));
                 page.Children.Add(Card(Strings.Get("Settings/RestoreTabsTitle"), Strings.Get("Settings/RestoreTabsDescription"), Toggle(Prefs.RestoreSessionOnLaunch, v => Update(s => s with { RestoreSessionOnLaunch = v }))));
                 page.Children.Add(Card(Strings.Get("Settings/ConfirmCloseTitle"), null, Toggle(Prefs.ConfirmCloseDirtyTabs, v => Update(s => s with { ConfirmCloseDirtyTabs = v }))));
-                page.Children.Add(Card(Strings.Get("Settings/RewindJournalTitle"), Strings.Get("Settings/RewindJournalDescription"), Toggle(Prefs.KeepRewindJournal, async v =>
+                // As on macOS the switch keeps its saved value but cannot be turned on without the license; clearing
+                // stays possible, since the saves already kept are the user's own data.
+                var rewindLicensed = Controls.ProFeatureGate.IsAvailable(Core.Licensing.ProFeature.DataRewind);
+                var keepRewind = Toggle(Prefs.KeepRewindJournal, async v =>
                 {
                     RewindJournalService.Enabled = v;
                     await Update(s => s with { KeepRewindJournal = v });
-                })));
+                });
+                keepRewind.IsEnabled = rewindLicensed;
+                page.Children.Add(Card(Strings.Get("Settings/RewindJournalTitle"), rewindLicensed ? Strings.Get("Settings/RewindJournalDescription") : Strings.Get("License/RewindNeedsLicense"), keepRewind));
                 page.Children.Add(Card(Strings.Get("Settings/SavedChangesTitle"), Strings.Get("Settings/SavedChangesDescription"), ClearRewindButton()));
                 AddUpdateCards(page);
                 page.Children.Add(Card(Strings.Get("Settings/DataFolderTitle"), Storage.AppPaths.Default.Root, OpenFolderButton(Storage.AppPaths.Default.Root)));

@@ -212,6 +212,13 @@ public sealed class AppHost : IWorkspaceHost, IMcpHost, IAsyncDisposable
         _settingsWindow.Activate();
     }
 
+    /// <summary>Settings on its License page, the macOS activation sheet's counterpart for a paid feature's gate.</summary>
+    public void OpenLicenseSettings()
+    {
+        OpenSettings();
+        _settingsWindow?.ShowLicensePage();
+    }
+
     public UIElement CreateHistoryPane(WorkspaceViewModel workspace, Action<string> insert, Action<string> run) =>
         new HistoryPane(History, workspace.Profile, insert, run);
 

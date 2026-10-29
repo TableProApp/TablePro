@@ -290,4 +290,49 @@
   <data name="UpgradePlan" xml:space="preserve">
     <value>升级方案</value>
   </data>
+  <data name="GatePlanRequirement" xml:space="preserve">
+    <value>{0} 需要 {1} 方案</value>
+  </data>
+  <data name="GateExpired" xml:space="preserve">
+    <value>您的许可证已过期</value>
+  </data>
+  <data name="GateValidationFailed" xml:space="preserve">
+    <value>许可证验证失败</value>
+  </data>
+  <data name="GateValidationFailedMessage" xml:space="preserve">
+    <value>请连接互联网以验证您的许可证。</value>
+  </data>
+  <data name="GateActivate" xml:space="preserve">
+    <value>激活许可证…</value>
+  </data>
+  <data name="GateRetry" xml:space="preserve">
+    <value>重试验证</value>
+  </data>
+  <data name="GatePurchase" xml:space="preserve">
+    <value>购买许可证</value>
+  </data>
+  <data name="ViewLicense" xml:space="preserve">
+    <value>查看许可证</value>
+  </data>
+  <data name="NotNow" xml:space="preserve">
+    <value>以后再说</value>
+  </data>
+  <data name="PromptNeedsLicense" xml:space="preserve">
+    <value>{0}需要 {1} 许可证</value>
+  </data>
+  <data name="RewindPromptMessage" xml:space="preserve">
+    <value>恢复你已经保存的那些行之前的值。保存记录在此电脑上加密保留 7 天，且绝不外传。</value>
+  </data>
+  <data name="RewindNeedsLicense" xml:space="preserve">
+    <value>恢复一次已提交的保存需要 Starter 许可证。</value>
+  </data>
+  <data name="IncludeCredentials" xml:space="preserve">
+    <value>包含凭据</value>
+  </data>
+  <data name="IncludeCredentialsCaption" xml:space="preserve">
+    <value>默认关闭。开启后会用一个口令加密已保存的密码。</value>
+  </data>
+  <data name="OpensPricing" xml:space="preserve">
+    <value>打开 TablePro 价格页面</value>
+  </data>
 </root>

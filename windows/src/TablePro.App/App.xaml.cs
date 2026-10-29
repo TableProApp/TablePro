@@ -148,6 +148,7 @@ public partial class App : Application
         // The cached license is verified offline here; the server is asked only when its weekly check is due.
         host.Licensing = Storage.Licensing.LicenseService.CreateDefault(AppPaths.Default, host.Secrets, host.Updates.CurrentVersion.ToString());
         Views.SqlFiles.SqlLibraryHost.UseLicense(host.Licensing);
+        Controls.ProFeatureGate.UseLicense(host.Licensing, host.OpenLicenseSettings);
         try
         {
             await host.Licensing.LoadAsync();

@@ -1,4 +1,5 @@
 using TablePro.Core.Editing;
+using TablePro.Core.Licensing;
 using TablePro.Core.Rewind;
 using TablePro.Core.Schema;
 using TablePro.Storage;
@@ -21,6 +22,12 @@ public static class RewindJournalService
     public static bool Enabled { get; set; } = true;
 
     /// <summary>
+    /// Whether a save is journaled now: the setting is on and the license covers Data Rewind. Without the license the
+    /// saves already kept stay, unrestorable until it returns, and nothing new is added, as on macOS.
+    /// </summary>
+    public static bool IsKeeping => ProFeatureGates.KeepsRewindHistory(Enabled, Controls.ProFeatureGate.Check(ProFeature.DataRewind));
+
+    /// <summary>
     /// Records a committed grid save. Call it after <c>SaveChangesAsync</c> succeeds and before the buffer is
     /// discarded: the rows are read from the buffer now, and written to the journal in the background so the save
     /// never waits on the disk.
@@ -28,7 +35,7 @@ public static class RewindJournalService
     public static void Capture(ConnectionSession session, ObjectName table, TableEditBuffer buffer, IReadOnlyList<string> primaryKey)
     {
         ArgumentNullException.ThrowIfNull(session);
-        if (!Enabled || buffer is null)
+        if (!IsKeeping || buffer is null)
         {
             return;
         }

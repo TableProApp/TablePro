@@ -290,4 +290,49 @@
   <data name="UpgradePlan" xml:space="preserve">
     <value>요금제 업그레이드</value>
   </data>
+  <data name="GatePlanRequirement" xml:space="preserve">
+    <value>{0}에는 {1} 플랜이 필요합니다</value>
+  </data>
+  <data name="GateExpired" xml:space="preserve">
+    <value>라이선스가 만료되었습니다</value>
+  </data>
+  <data name="GateValidationFailed" xml:space="preserve">
+    <value>라이선스 유효성 검사 실패</value>
+  </data>
+  <data name="GateValidationFailedMessage" xml:space="preserve">
+    <value>라이선스를 확인하려면 인터넷에 연결하십시오.</value>
+  </data>
+  <data name="GateActivate" xml:space="preserve">
+    <value>라이선스 활성화…</value>
+  </data>
+  <data name="GateRetry" xml:space="preserve">
+    <value>유효성 검사 재시도</value>
+  </data>
+  <data name="GatePurchase" xml:space="preserve">
+    <value>라이선스 구매</value>
+  </data>
+  <data name="ViewLicense" xml:space="preserve">
+    <value>라이선스 보기</value>
+  </data>
+  <data name="NotNow" xml:space="preserve">
+    <value>나중에</value>
+  </data>
+  <data name="PromptNeedsLicense" xml:space="preserve">
+    <value>{0}에는 {1} 라이선스가 필요합니다</value>
+  </data>
+  <data name="RewindPromptMessage" xml:space="preserve">
+    <value>이미 저장한 행의 이전 값을 복원합니다. 저장 기록은 이 PC에 7일 동안 암호화되어 보관되며 밖으로 나가지 않습니다.</value>
+  </data>
+  <data name="RewindNeedsLicense" xml:space="preserve">
+    <value>이미 커밋된 저장을 복원하려면 Starter 라이선스가 필요합니다.</value>
+  </data>
+  <data name="IncludeCredentials" xml:space="preserve">
+    <value>자격 증명 포함</value>
+  </data>
+  <data name="IncludeCredentialsCaption" xml:space="preserve">
+    <value>기본적으로 꺼져 있습니다. 암호 구문으로 저장된 암호를 암호화하려면 켜십시오.</value>
+  </data>
+  <data name="OpensPricing" xml:space="preserve">
+    <value>TablePro 가격 페이지를 엽니다</value>
+  </data>
 </root>

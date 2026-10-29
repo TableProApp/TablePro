@@ -25,6 +25,8 @@ public sealed partial class QueryTabView : UserControl
         ViewModel = viewModel;
         InitializeComponent();
 
+        // A license activated or removed with the chart open draws or clears it without another toggle.
+        ChartGate.AccessChanged += (_, _) => UpdateResultView();
         Editor.Dialect = viewModel.Dialect;
 
         // A command language has no formatter, and an engine without a plan statement has no Explain.
@@ -230,7 +232,7 @@ public sealed partial class QueryTabView : UserControl
         if (showPlan)
         {
             EmptyState.Visibility = ExportButton.Visibility = ChartToggle.Visibility = MapToggle.Visibility = Visibility.Collapsed;
-            ResultGrid.Visibility = Chart.Visibility = Map.Visibility = MessagePanel.Visibility = Visibility.Collapsed;
+            ResultGrid.Visibility = ChartGate.Visibility = Map.Visibility = MessagePanel.Visibility = Visibility.Collapsed;
             Map.Result = null;
             ResultSummary.Text = string.Empty;
             var planTab = ResultTabs.Items.FirstOrDefault(i => i.Tag is Core.Plans.QueryPlanCapture);
@@ -266,17 +268,17 @@ public sealed partial class QueryTabView : UserControl
             }
 
             ResultGrid.Source = result.Source;
-            Chart.Result = showChart ? result.Result : null;
+            Chart.Result = Core.Licensing.ProFeatureGates.DrawsChart(showChart, ChartGate.Access) ? result.Result : null;
             Map.Result = showMap ? result.Result : null;
             ResultGrid.Visibility = showChart || showMap ? Visibility.Collapsed : Visibility.Visible;
-            Chart.Visibility = showChart ? Visibility.Visible : Visibility.Collapsed;
+            ChartGate.Visibility = showChart ? Visibility.Visible : Visibility.Collapsed;
             Map.Visibility = showMap ? Visibility.Visible : Visibility.Collapsed;
             MessagePanel.Visibility = Visibility.Collapsed;
             return;
         }
 
         ResultGrid.Visibility = Visibility.Collapsed;
-        Chart.Visibility = Visibility.Collapsed;
+        ChartGate.Visibility = Visibility.Collapsed;
         Map.Visibility = Visibility.Collapsed;
         Map.Result = null;
         ResultGrid.Source = null;

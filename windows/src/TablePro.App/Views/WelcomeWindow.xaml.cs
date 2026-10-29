@@ -6,6 +6,7 @@ using TablePro.App.Helpers;
 using TablePro.App.Services;
 using TablePro.App.ViewModels;
 using TablePro.Core.Connections;
+using TablePro.Core.Licensing;
 using TablePro.Storage.Connections;
 using TablePro.Storage.Favorites;
 using Windows.System;
@@ -219,11 +220,10 @@ public sealed partial class WelcomeWindow : Window
 
     private async Task ExportAsync(IEnumerable<Guid>? ids)
     {
-        var passphrase = await _dialogs.PromptPassphraseAsync(
-            Strings.Get("Welcome/ExportTitle"),
-            Strings.Get("Welcome/ExportMessage"),
-            confirm: true,
-            primary: Strings.Get("Common/Export"));
+        var access = Controls.ProFeatureGate.Check(ProFeature.EncryptedExport);
+        var passphrase = access.IsAvailable
+            ? await _dialogs.PromptPassphraseAsync(Strings.Get("Welcome/ExportTitle"), Strings.Get("Welcome/ExportMessage"), confirm: true, primary: Strings.Get("Common/Export"))
+            : await ConfirmExportWithoutCredentialsAsync() ? string.Empty : null;
         if (passphrase is null)
         {
             return;
@@ -235,13 +235,34 @@ public sealed partial class WelcomeWindow : Window
             return;
         }
 
-        var encrypt = passphrase.Length > 0;
+        var encrypt = ProFeatureGates.IncludesCredentials(passphrase.Length > 0, access);
         await _host.Connections.ExportAsync(file.Path, new ConnectionExportOptions
         {
             ConnectionIds = ids,
             Passphrase = encrypt ? passphrase : null,
             Secrets = encrypt ? _host.Connector.ExportableSecrets : null,
         });
+    }
+
+    /// <summary>
+    /// The export options without the license that encrypts credentials: the export still runs, without passwords, and
+    /// the locked option beside its plan badge shows what the license adds, as macOS shows its credentials toggle.
+    /// </summary>
+    private async Task<bool> ConfirmExportWithoutCredentialsAsync()
+    {
+        var option = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        option.Children.Add(new CheckBox { Content = Strings.Get("License/IncludeCredentials"), IsChecked = false, IsEnabled = false });
+        option.Children.Add(Controls.ProFeatureGate.Badge(ProFeature.EncryptedExport));
+        var body = new StackPanel { Spacing = 4, MinWidth = 380 };
+        body.Children.Add(option);
+        body.Children.Add(new TextBlock
+        {
+            Text = Strings.Get("License/IncludeCredentialsCaption"),
+            TextWrapping = TextWrapping.Wrap,
+            Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
+            Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
+        });
+        return await _dialogs.ShowAsync(_dialogs.Create(Strings.Get("Welcome/ExportTitle"), body, Strings.Get("Common/Export"), Strings.Get("Common/Cancel"))) == ContentDialogResult.Primary;
     }
 
     private async void OnNewGroup(object sender, RoutedEventArgs e)

@@ -290,4 +290,49 @@
   <data name="UpgradePlan" xml:space="preserve">
     <value>Nâng cấp gói</value>
   </data>
+  <data name="GatePlanRequirement" xml:space="preserve">
+    <value>{0} yêu cầu gói {1}</value>
+  </data>
+  <data name="GateExpired" xml:space="preserve">
+    <value>Giấy phép của bạn đã hết hạn</value>
+  </data>
+  <data name="GateValidationFailed" xml:space="preserve">
+    <value>Xác thực giấy phép thất bại</value>
+  </data>
+  <data name="GateValidationFailedMessage" xml:space="preserve">
+    <value>Kết nối internet để xác minh giấy phép của bạn.</value>
+  </data>
+  <data name="GateActivate" xml:space="preserve">
+    <value>Kích hoạt giấy phép…</value>
+  </data>
+  <data name="GateRetry" xml:space="preserve">
+    <value>Thử lại xác thực</value>
+  </data>
+  <data name="GatePurchase" xml:space="preserve">
+    <value>Mua giấy phép</value>
+  </data>
+  <data name="ViewLicense" xml:space="preserve">
+    <value>Xem giấy phép</value>
+  </data>
+  <data name="NotNow" xml:space="preserve">
+    <value>Để sau</value>
+  </data>
+  <data name="PromptNeedsLicense" xml:space="preserve">
+    <value>{0} cần giấy phép {1}</value>
+  </data>
+  <data name="RewindPromptMessage" xml:space="preserve">
+    <value>Khôi phục giá trị trước đó của các dòng bạn đã lưu. Các bản lưu được giữ trên PC này trong 7 ngày, được mã hoá và không bao giờ rời khỏi máy.</value>
+  </data>
+  <data name="RewindNeedsLicense" xml:space="preserve">
+    <value>Khôi phục một lần lưu đã commit cần giấy phép Starter.</value>
+  </data>
+  <data name="IncludeCredentials" xml:space="preserve">
+    <value>Bao gồm Thông tin Đăng nhập</value>
+  </data>
+  <data name="IncludeCredentialsCaption" xml:space="preserve">
+    <value>Mặc định tắt. Bật lên để mã hóa các mật khẩu đã lưu bằng một cụm mật khẩu.</value>
+  </data>
+  <data name="OpensPricing" xml:space="preserve">
+    <value>Mở trang giá của TablePro</value>
+  </data>
 </root>

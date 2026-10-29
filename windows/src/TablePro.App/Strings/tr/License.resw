@@ -290,4 +290,49 @@
   <data name="UpgradePlan" xml:space="preserve">
     <value>Planı Yükselt</value>
   </data>
+  <data name="GatePlanRequirement" xml:space="preserve">
+    <value>{0} için {1} planı gerekir</value>
+  </data>
+  <data name="GateExpired" xml:space="preserve">
+    <value>Lisansınızın süresi doldu</value>
+  </data>
+  <data name="GateValidationFailed" xml:space="preserve">
+    <value>Lisans doğrulaması başarısız oldu</value>
+  </data>
+  <data name="GateValidationFailedMessage" xml:space="preserve">
+    <value>Lisansınızı doğrulamak için internete bağlanın.</value>
+  </data>
+  <data name="GateActivate" xml:space="preserve">
+    <value>Lisansı Etkinleştir…</value>
+  </data>
+  <data name="GateRetry" xml:space="preserve">
+    <value>Doğrulamayı Tekrar Dene</value>
+  </data>
+  <data name="GatePurchase" xml:space="preserve">
+    <value>Lisans Satın Al</value>
+  </data>
+  <data name="ViewLicense" xml:space="preserve">
+    <value>Lisansı Görüntüle</value>
+  </data>
+  <data name="NotNow" xml:space="preserve">
+    <value>Şimdi Değil</value>
+  </data>
+  <data name="PromptNeedsLicense" xml:space="preserve">
+    <value>{0} bir {1} lisansı gerektirir</value>
+  </data>
+  <data name="RewindPromptMessage" xml:space="preserve">
+    <value>Zaten kaydettiğiniz satırların önceki değerlerini geri yükler. Kayıtlar bu bilgisayarda 7 gün boyunca şifrelenmiş olarak tutulur ve buradan hiç çıkmaz.</value>
+  </data>
+  <data name="RewindNeedsLicense" xml:space="preserve">
+    <value>Zaten işlenmiş bir kaydı geri yüklemek bir Starter lisansı gerektirir.</value>
+  </data>
+  <data name="IncludeCredentials" xml:space="preserve">
+    <value>Kimlik Bilgilerini Dahil Et</value>
+  </data>
+  <data name="IncludeCredentialsCaption" xml:space="preserve">
+    <value>Varsayılan olarak kapalı. Kaydedilen parolaları bir parola cümlesiyle şifrelemek için açın.</value>
+  </data>
+  <data name="OpensPricing" xml:space="preserve">
+    <value>TablePro fiyatlandırma sayfasını açar</value>
+  </data>
 </root>

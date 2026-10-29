@@ -47,7 +47,7 @@ public sealed partial class RewindViewModel : ObservableObject
     [ObservableProperty]
     public partial bool IsBusy { get; set; }
 
-    public bool IsEnabled => RewindJournalService.Enabled;
+    public bool IsEnabled => RewindJournalService.IsKeeping;
 
     public async Task RefreshAsync()
     {

@@ -788,11 +788,13 @@ public sealed partial class WorkspaceWindow : Window
         }
     }
 
-    private void OnCompare(object sender, RoutedEventArgs e) => OpenCompare((ViewModel.SelectedTab as TableTabViewModel)?.Table);
+    private async void OnCompare(object sender, RoutedEventArgs e) => await OpenCompareAsync((ViewModel.SelectedTab as TableTabViewModel)?.Table);
 
-    private void OpenCompare(DatabaseObject? table)
+    // Gated once at the way in, as the macOS launcher is: a tab already open keeps working, and saved comparisons stay
+    // on disk for when the license comes back.
+    private async Task OpenCompareAsync(DatabaseObject? table)
     {
-        if (_host is not AppHost app)
+        if (_host is not AppHost app || !await Controls.ProFeatureGate.EnsureAsync(Core.Licensing.ProFeature.CompareSync, ViewModel.Context.Dialogs))
         {
             return;
         }
