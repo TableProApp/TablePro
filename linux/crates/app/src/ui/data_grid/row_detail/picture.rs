@@ -64,12 +64,23 @@ impl RowDetailPane {
 }
 
 async fn decode(bytes: glib::Bytes, cancellable: gio::Cancellable) -> Result<Option<gdk::Texture>, glycin::ErrorCtx> {
+    let mechanism = glycin::SandboxSelector::Auto.determine_sandbox_mechanism().await;
+    let Some(sandbox) = sandbox(mechanism, cfg!(test)) else {
+        tracing::debug!("no sandbox to decode a value's picture in");
+        return Ok(None);
+    };
     let mut loader = glycin::Loader::new_bytes(bytes);
-    loader.cancellable(cancellable);
+    loader.cancellable(cancellable).sandbox_selector(sandbox);
     let image = loader.load().await?;
     let details = image.details();
     if u64::from(details.width()) * u64::from(details.height()) > MAX_PIXELS {
         return Ok(None);
     }
     Ok(Some(image.next_frame().await?.texture()))
+}
+
+// glycin's Auto falls back to no sandbox where bwrap cannot make namespaces, and database bytes must
+// never reach a decoder outside one. Tests allow it: CI runs them in containers.
+pub(super) fn sandbox(mechanism: glycin::SandboxMechanism, unsandboxed: bool) -> Option<glycin::SandboxSelector> {
+    (mechanism != glycin::SandboxMechanism::NotSandboxed || unsandboxed).then(|| mechanism.into_selector())
 }

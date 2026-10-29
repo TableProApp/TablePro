@@ -21,7 +21,7 @@ The app decodes a value's picture with the glycin crate 3.x, the GNOME 50 releas
 
 - The build links libseccomp and lcms2 (`meson.build`, `build-aux/debian/control`, `build-aux/rpm/tablepro.spec`). The GNOME SDK has both, since it builds libglycin.
 - The picture needs the glycin loaders at run time: in the GNOME runtime, a Recommends of the .deb and the .rpm, and a test dependency of both, since the picture tests decode. Without them Row Details shows the bytes and no picture.
-- Where bubblewrap cannot create namespaces, as in a container, glycin decodes without the sandbox.
+- Where no sandbox can be made, as in a container that blocks namespaces or a Flatpak run by `flatpak-builder`, glycin's own default decodes without one. The pane shows no picture there instead. The tests allow it, since CI runs them in containers.
 - glycin 3.x speaks the loaders' `2+` protocol. Moving to glycin 4 follows the platform floor ([0015](0015-gnome-50-platform-floor.md)).
 
 ## Alternatives considered

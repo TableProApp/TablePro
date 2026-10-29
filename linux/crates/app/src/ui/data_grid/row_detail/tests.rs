@@ -980,3 +980,18 @@ fn only_an_image_type_goes_to_the_decoder() {
     assert!(!super::picture::may_be_image(b"%PDF-1.7\n"));
     assert!(!super::picture::may_be_image(&[]));
 }
+
+#[test]
+fn a_picture_never_decodes_outside_a_sandbox() {
+    use glycin::{SandboxMechanism, SandboxSelector};
+
+    assert!(super::picture::sandbox(SandboxMechanism::NotSandboxed, false).is_none());
+    assert!(matches!(
+        super::picture::sandbox(SandboxMechanism::Bwrap, false),
+        Some(SandboxSelector::Bwrap)
+    ));
+    assert!(matches!(
+        super::picture::sandbox(SandboxMechanism::FlatpakSpawn, false),
+        Some(SandboxSelector::FlatpakSpawn)
+    ));
+}
