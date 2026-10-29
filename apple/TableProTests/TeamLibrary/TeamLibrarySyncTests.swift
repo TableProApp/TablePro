@@ -271,6 +271,29 @@ struct TeamLibrarySyncTests {
         #expect(await fixture.server.library.item(Self.team, kind: "query", clientID: clientID)?.version == 1)
     }
 
+    @Test("Publishing a query deleted on the team asks first, and Keep Theirs leaves it deleted on later publishes")
+    func deletedOnTheTeamAsksFirst() async throws {
+        let favorite = TeamLibraryFixture.favorite(name: "Orders")
+        let fixture = try await TeamLibraryFixture()
+        _ = try await fixture.sync.publishSavedQueries(favorites: [favorite], folders: [], to: Self.team)
+        let clientID = favorite.id.uuidString.lowercased()
+        await fixture.library { $0.write(Self.team, kind: "query", clientID: clientID, data: nil) }
+
+        let result = try await fixture.sync.publishSavedQueries(favorites: [favorite], folders: [], to: Self.team)
+
+        #expect(result == .conflicts(1))
+        let asked = try #require(await fixture.pushes().last?.first)
+        #expect(asked["base_version"] == nil || asked["base_version"] is NSNull)
+        let conflict = try #require(fixture.sync.conflicts.first)
+        #expect(fixture.sync.current(for: conflict)?.deleted == true)
+
+        await fixture.sync.resolve(conflict, keepingMine: false)
+        let again = try await fixture.sync.publishSavedQueries(favorites: [favorite], folders: [], to: Self.team)
+
+        #expect(again == .unchanged)
+        #expect(await fixture.server.library.item(Self.team, kind: "query", clientID: clientID)?.deleted == true)
+    }
+
     nonisolated private static let conflictID = "4c6b1e2a-0d8f-4f43-9a51-7c1b2e3d4f50"
 
     private func conflicted() async throws -> TeamLibraryFixture {

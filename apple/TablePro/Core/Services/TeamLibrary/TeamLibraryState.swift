@@ -39,6 +39,8 @@ internal struct TeamLibraryTeamState: Codable, Equatable, Sendable {
     var conflicts: [TeamLibraryConflict]
     // What this Mac published, so publishing saved queries again removes only the ones it put there.
     var published: Set<TeamLibraryKey>
+    // Items deleted on the team whose deletion Keep Theirs accepted, so publishing saved queries leaves them deleted.
+    var declined: Set<TeamLibraryKey>
     var syncedAt: Date?
 
     init(teamID: String, teamName: String, canWrite: Bool) {
@@ -50,11 +52,12 @@ internal struct TeamLibraryTeamState: Codable, Equatable, Sendable {
         self.pending = []
         self.conflicts = []
         self.published = []
+        self.declined = []
         self.syncedAt = nil
     }
 
     enum CodingKeys: String, CodingKey {
-        case teamID, teamName, canWrite, cursor, items, pending, conflicts, published, syncedAt
+        case teamID, teamName, canWrite, cursor, items, pending, conflicts, published, declined, syncedAt
     }
 
     init(from decoder: any Decoder) throws {
@@ -68,6 +71,7 @@ internal struct TeamLibraryTeamState: Codable, Equatable, Sendable {
         pending = try container.decode([TeamLibraryEdit].self, forKey: .pending)
         conflicts = try container.decode([TeamLibraryConflict].self, forKey: .conflicts)
         published = try container.decode(Set<TeamLibraryKey>.self, forKey: .published)
+        declined = try container.decodeIfPresent(Set<TeamLibraryKey>.self, forKey: .declined) ?? []
         syncedAt = try container.decodeIfPresent(Date.self, forKey: .syncedAt)
     }
 
@@ -81,6 +85,7 @@ internal struct TeamLibraryTeamState: Codable, Equatable, Sendable {
         try container.encode(pending, forKey: .pending)
         try container.encode(conflicts, forKey: .conflicts)
         try container.encode(published, forKey: .published)
+        try container.encode(declined, forKey: .declined)
         try container.encodeIfPresent(syncedAt, forKey: .syncedAt)
     }
 

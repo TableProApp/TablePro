@@ -49,6 +49,7 @@ internal enum TeamLibraryPublishPlan {
             )
             touched.insert(key)
             if let stored = state.items[key]?.folder, stored.matches(data) { continue }
+            if state.declined.contains(key), state.items[key]?.deleted == true { continue }
             edits.append(upsert(.folder, key: key, data: try TeamLibraryPayload.data(from: data), in: state))
         }
 
@@ -65,6 +66,7 @@ internal enum TeamLibraryPublishPlan {
             )
             touched.insert(key)
             if let stored = state.items[key]?.query, stored.matches(data) { continue }
+            if state.declined.contains(key), state.items[key]?.deleted == true { continue }
             edits.append(upsert(.query, key: key, data: try TeamLibraryPayload.data(from: data), in: state))
         }
 
@@ -107,8 +109,9 @@ internal enum TeamLibraryPublishPlan {
         in state: TeamLibraryTeamState
     ) -> TeamLibraryEdit {
         let stored = state.items[key]
+        // An item deleted on the team goes out without a base version, so the push asks before bringing it back.
         return TeamLibraryEdit(
-            baseVersion: stored.map(\.version),
+            baseVersion: stored.flatMap { $0.deleted ? nil : $0.version },
             clientId: stored?.clientId ?? key.clientID,
             data: .init(additionalProperties: data),
             kind: kind,

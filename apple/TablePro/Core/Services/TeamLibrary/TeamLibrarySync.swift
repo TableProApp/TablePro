@@ -153,6 +153,11 @@ internal final class TeamLibrarySync: ObservableObject {
         guard var state = teams[conflict.teamID] else { return }
         state.conflicts.removeAll { $0.id == conflict.id }
         var pushes = false
+        if keepingMine {
+            state.declined.remove(conflict.key)
+        } else if state.items[conflict.key]?.deleted != false {
+            state.declined.insert(conflict.key)
+        }
         if keepingMine, state.canWrite {
             let stored = state.items[conflict.key]
             var edit = conflict.edit
@@ -367,6 +372,7 @@ internal final class TeamLibrarySync: ObservableObject {
                 state.published.remove(key)
             } else {
                 state.published.insert(key)
+                state.declined.remove(key)
             }
         case "conflict":
             state.items[key] = result.current
