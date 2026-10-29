@@ -517,6 +517,7 @@ private struct AccountNoticeRow: View {
             Spacer(minLength: 0)
         }
         .padding(.vertical, 2)
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("account-notice-\(notice.id)")
     }
 

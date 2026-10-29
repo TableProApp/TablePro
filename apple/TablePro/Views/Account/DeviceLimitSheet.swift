@@ -87,6 +87,7 @@ internal struct DeviceLimitSheet: View {
         } message: { _ in
             Text("TablePro on that device signs out the next time it checks your account, and this Mac takes its place.")
         }
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("device-limit-sheet")
     }
 }
