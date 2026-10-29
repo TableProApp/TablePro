@@ -14,7 +14,9 @@ const AVERAGE_EXTRA_DIGITS: u32 = 4;
 pub enum SummaryRule {
     /// `scale` is the column's declared one, which its cells are padded to.
     /// A value that is not a number, such as NaN, is counted as one.
-    Numeric { scale: u32 },
+    Numeric {
+        scale: u32,
+    },
     /// No declared type, so text that reads as a number is one. Typed text
     /// holds identifiers like ZIP codes and is never summed.
     NumericIfParsable,
@@ -249,9 +251,9 @@ fn pow10(exponent: u32) -> BigInt {
 mod tests {
     use std::cell::Cell;
 
+    use tablepro_core::Value;
     use tablepro_core::column::{ColumnKind, IntegerKind, IntegerWidth, TextLength};
     use tablepro_core::value::{OtherValue, SqlDecimal};
-    use tablepro_core::Value;
 
     use super::{NumberFigures, SelectionSummary, SummaryRule, summarize};
     use crate::services::grid::test_columns::result_only;
@@ -372,7 +374,10 @@ mod tests {
 
         let untyped = summed(&values, SummaryRule::NumericIfParsable);
         assert_eq!(untyped.value_count, 4);
-        assert_eq!(untyped.not_a_number_count, 0, "free text in an untyped column is just text");
+        assert_eq!(
+            untyped.not_a_number_count, 0,
+            "free text in an untyped column is just text"
+        );
         assert_eq!(untyped.numbers.expect("numbers").sum, "19.5");
 
         let typed = summed(&values, SummaryRule::CountOnly);
@@ -410,7 +415,10 @@ mod tests {
             SummaryRule::for_column(&result_only("price", cents)),
             SummaryRule::Numeric { scale: 2 }
         );
-        assert_eq!(SummaryRule::for_column(&result_only("zip", zip)), SummaryRule::CountOnly);
+        assert_eq!(
+            SummaryRule::for_column(&result_only("zip", zip)),
+            SummaryRule::CountOnly
+        );
         assert_eq!(
             SummaryRule::for_column(&result_only("x", ColumnKind::Other)),
             SummaryRule::NumericIfParsable

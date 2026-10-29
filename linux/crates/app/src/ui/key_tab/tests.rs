@@ -218,7 +218,10 @@ fn the_footer_sums_the_selected_entries() {
     wait_until(WAIT, || tab.grid().focus_cell(0, 0).is_some()).expect("a cell takes the focus");
     tab.grid().selection().select_all();
 
-    let button = readout.child().and_downcast::<gtk::MenuButton>().expect("the menu button");
+    let button = readout
+        .child()
+        .and_downcast::<gtk::MenuButton>()
+        .expect("the menu button");
     wait_until(WAIT, || button.label().as_deref() == Some("Sum 3, Average 1, Count 3")).expect("the index summed");
 
     button.popup();

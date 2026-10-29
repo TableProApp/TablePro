@@ -331,7 +331,8 @@ impl DataGrid {
         }
         let run = state.runs.get().wrapping_add(1);
         state.runs.set(run);
-        let (Some(tasks), Some(input)) = (self.config().map(|config| config.tasks.clone()), self.summary_input()) else {
+        let tasks = self.config().map(|config| config.tasks.clone());
+        let (Some(tasks), Some(input)) = (tasks, self.summary_input()) else {
             readout.show(None);
             return;
         };

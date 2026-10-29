@@ -246,10 +246,18 @@ fn a_long_figure_keeps_its_popover_row_on_one_line() {
     grid.grid.selection().select_all();
     wait_for_label(&button, "Sum 42, Average 21, Count 2");
     let popover = button.popover().expect("the readout's popover");
-    let height = || popover.child().expect("the popover's content").measure(gtk::Orientation::Vertical, -1).1;
+    let height = || {
+        popover
+            .child()
+            .expect("the popover's content")
+            .measure(gtk::Orientation::Vertical, -1)
+            .1
+    };
     let short = height();
 
-    let wide = format!("1{}", "0".repeat(1_500)).parse::<SqlDecimal>().expect("a decimal");
+    let wide = format!("1{}", "0".repeat(1_500))
+        .parse::<SqlDecimal>()
+        .expect("a decimal");
     grid.grid.apply_delta(&grid.tracker.apply(TrackerEdit::Cell {
         row_key: key(1),
         col: 1,
