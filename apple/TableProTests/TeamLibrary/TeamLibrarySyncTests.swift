@@ -728,6 +728,34 @@ struct TeamLibrarySyncTests {
         fixture.sync.stop()
     }
 
+    @Test("Signing out ends a Retry-After: the next account to sign in syncs at once")
+    func signOutEndsRetryAfter() async throws {
+        let fixture = try await TeamLibraryFixture { library in
+            library.faults = [429]
+            library.retryAfter = 300
+        }
+        fixture.sync.start()
+        try await waitUntil { fixture.sync.status == .failed(.rateLimited(retryAfter: .seconds(300))) }
+        try await waitUntil { fixture.clock.pendingSleeperCount == 2 }
+
+        await fixture.account.services.signOut()
+        try await waitUntil { fixture.sync.status == .idle }
+        await fixture.server.set { $0.accountClaim = ["email": "grace@m16.example", "name": "Grace"] }
+        try await fixture.account.signIn()
+
+        // No clock advance: only a schedule no longer held can pull.
+        try await waitUntil { await fixture.pulls().count == 2 }
+        try await waitUntil {
+            if case .synced = fixture.sync.status { return true }
+            return false
+        }
+        await fixture.clock.waitUntilSleeping()
+        let pulled = await fixture.pulls().count
+        #expect(await fixture.sync.sync() == .synced)
+        #expect(await fixture.pulls().count > pulled)
+        fixture.sync.stop()
+    }
+
     @Test("A 5xx during a publish keeps the edits on this Mac and the next sync pushes them")
     func serverErrorQueuesThePush() async throws {
         let fixture = try await TeamLibraryFixture()
