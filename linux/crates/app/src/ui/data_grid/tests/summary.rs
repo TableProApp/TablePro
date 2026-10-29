@@ -293,9 +293,14 @@ fn closing_the_grid_stops_the_run_still_out() {
     readout(&grid);
     grid.focus(0, 1);
     grid.grid.selection().select_all();
-    let running = || grid.grid.imp().summary.running.borrow().clone();
-    wait_until(WAIT, || running().is_some()).expect("a run starts");
-    let running = running().expect("the run");
+    drain_main_context();
+    // The answer lands on a context nothing runs, so the run is still out
+    // when the grid goes.
+    let parked = gtk::glib::MainContext::new();
+    parked
+        .with_thread_default(|| grid.grid.start_summary())
+        .expect("the context is free");
+    let running = grid.grid.imp().summary.running.borrow().clone().expect("the run");
 
     drop(grid);
     drain_main_context();

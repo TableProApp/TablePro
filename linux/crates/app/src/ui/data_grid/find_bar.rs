@@ -388,7 +388,7 @@ mod tests {
 
     use gtk4::prelude::*;
     use gtk4::subclass::prelude::*;
-    use gtk4::{self as gtk, gdk};
+    use gtk4::{self as gtk, gdk, glib};
     use tablepro_core::Value;
 
     use super::super::test_grid::{Grid, GridSpec, WAIT, focus_in_grid, named, results};
@@ -568,7 +568,12 @@ mod tests {
     fn closing_the_grid_stops_the_search_still_running() {
         let grid = orchard();
         grid.activate("find");
-        grid.grid.start_search("apple".to_owned(), true);
+        // The answer lands on a context nothing runs, so the search is still
+        // out when the grid goes.
+        let parked = glib::MainContext::new();
+        parked
+            .with_thread_default(|| grid.grid.start_search("apple".to_owned(), true))
+            .expect("the context is free");
         let running = grid.grid.imp().find.running.borrow().clone().expect("the search runs");
 
         drop(grid);

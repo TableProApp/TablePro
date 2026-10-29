@@ -327,7 +327,7 @@ impl DataGrid {
 
     /// Sum the values off the GTK thread: a page holds up to 100,000 rows.
     /// A newer run stops this one.
-    fn start_summary(&self) {
+    pub(super) fn start_summary(&self) {
         let state = &self.imp().summary;
         let Some(readout) = state.readout.get() else {
             return;
