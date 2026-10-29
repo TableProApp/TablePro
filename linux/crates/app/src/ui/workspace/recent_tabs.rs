@@ -9,6 +9,7 @@ use libadwaita as adw;
 use super::WorkspaceShell;
 
 const WALK_KEYS: &str = "tablepro-recent-walk-keys";
+const SWITCH_RECENT_TAB: &str = "win.switch-recent-tab";
 
 pub(super) struct RecentWalk {
     // Frozen at the first press, so the tabs it passes do not reorder it.
@@ -117,21 +118,35 @@ impl WorkspaceShell {
     }
 
     pub(super) fn hook_recent_walk(&self, window: &adw::ApplicationWindow) -> WalkHooks {
-        // On the window, so the release reaches it wherever the focus is.
+        // On the window and past the event boundary of a dialog or a
+        // popover, so the release reaches it wherever the focus is.
         let keys = gtk::EventControllerKey::new();
         keys.set_name(Some(WALK_KEYS));
         keys.set_propagation_phase(gtk::PropagationPhase::Capture);
+        keys.set_propagation_limit(gtk::PropagationLimit::None);
         let shell = self.downgrade();
-        keys.connect_key_pressed(move |_, keyval, _, _| {
-            let Some(shell) = shell.upgrade().filter(|_| keyval == gdk::Key::Escape) else {
+        keys.connect_key_pressed(move |controller, keyval, _, state| {
+            let Some(shell) = shell.upgrade() else {
                 return glib::Propagation::Proceed;
             };
             let walking = shell.imp().recent_walk.borrow().is_some();
             if !walking {
                 return glib::Propagation::Proceed;
             }
-            shell.end_recent_walk(false);
-            glib::Propagation::Stop
+            if keyval == gdk::Key::Escape {
+                shell.end_recent_walk(false);
+                return glib::Propagation::Stop;
+            }
+            let modifier = controller
+                .current_event()
+                .and_then(|event| event.downcast::<gdk::KeyEvent>().ok())
+                .is_some_and(|event| event.is_modifier());
+            // This controller runs before the window's accelerators, so
+            // another command acts on the tab the walk reached.
+            if !modifier && !crate::application::component_matches(SWITCH_RECENT_TAB, keyval, state) {
+                shell.end_recent_walk(true);
+            }
+            glib::Propagation::Proceed
         });
         let shell = self.downgrade();
         keys.connect_key_released(move |_, keyval, _, _| {
@@ -329,6 +344,7 @@ mod tests {
         use gtk4::prelude::*;
         use gtk4::subclass::prelude::*;
         use libadwaita as adw;
+        use libadwaita::prelude::*;
 
         use crate::test_support::{KeyInjector, wait_until};
         use crate::ui::session_window::tests::{TestWindow, WAIT};
@@ -403,6 +419,52 @@ mod tests {
                 .press(gdk::Key::e, gdk::ModifierType::CONTROL_MASK)
                 .expect("the key press");
             walk.wait_for(2, "a tap of Ctrl+E to go back to the tab before");
+        }
+
+        #[gtk4::test]
+        fn another_command_ends_the_walk_on_the_tab_it_reached() {
+            let walk = walking("RecentWalkCommand");
+            let workspace = walk.test.workspace();
+            {
+                let _ctrl = walk.keys.hold(gdk::Key::Control_L).expect("Ctrl held");
+                wait_until(WAIT, || super::super::control_held(&walk.test.window)).expect("GDK to see Ctrl down");
+                walk.press_e();
+                walk.wait_for(1, "Ctrl+E to show the tab shown before");
+                walk.keys
+                    .press(gdk::Key::t, gdk::ModifierType::empty())
+                    .expect("the key press");
+                wait_until(WAIT, || workspace.imp().index.get().map_or(0, |index| index.pages().len()) == 4)
+                    .expect("Ctrl+T to open a tab");
+                assert!(!walk.is_walking(), "the walk went on past Ctrl+T");
+            }
+
+            let new = walk.selected().expect("the new tab in front");
+            assert!(!walk.pages.contains(&new));
+            let order = [new, walk.pages[1].clone(), walk.pages[2].clone(), walk.pages[0].clone()];
+            assert_eq!(walk.shell.recent_pages(), order, "the tab the walk reached was not recorded");
+        }
+
+        #[gtk4::test]
+        fn letting_go_of_ctrl_in_a_dialog_ends_the_walk() {
+            let walk = walking("RecentWalkDialog");
+            let dialog = adw::AlertDialog::new(Some("Connection Lost"), None);
+            dialog.add_response("close", "Close");
+            {
+                let _ctrl = walk.keys.hold(gdk::Key::Control_L).expect("Ctrl held");
+                wait_until(WAIT, || super::super::control_held(&walk.test.window)).expect("GDK to see Ctrl down");
+                walk.press_e();
+                walk.wait_for(1, "Ctrl+E to show the tab shown before");
+                dialog.present(Some(&walk.test.window));
+                wait_until(WAIT, || {
+                    gtk4::prelude::RootExt::focus(&walk.test.window).is_some_and(|focus| focus.is_ancestor(&dialog))
+                })
+                .expect("the dialog to take the focus");
+            }
+            wait_until(WAIT, || !walk.is_walking()).expect("letting go of Ctrl in the dialog to end the walk");
+
+            let order = [walk.pages[1].clone(), walk.pages[2].clone(), walk.pages[0].clone()];
+            assert_eq!(walk.shell.recent_pages(), order);
+            dialog.close();
         }
 
         #[gtk4::test]
