@@ -702,4 +702,29 @@ struct TeamLibrarySyncTests {
         #expect(fixture.store.loadAll().isEmpty)
         fixture.sync.stop()
     }
+
+    @Test("An entitlement without the team library drops this Mac's copy of it and the /v1 cache")
+    func lostFeatureDropsTheLibrary() async throws {
+        let fixture = try await TeamLibraryFixture { library in
+            library.write(Self.team, kind: "query", clientID: "q1", data: TeamLibraryFixture.queryData("Orders"))
+        }
+        await fixture.sync.sync()
+        let cache: [String: Any] = [
+            "connections": [[String: Any]](),
+            "query_folders": [[String: Any]](),
+            "queries": [["client_id": UUID().uuidString.lowercased(), "name": "Cached", "query": "select 1", "sort_order": 0]],
+            "fetched_at": "2026-10-28T09:00:00+00:00"
+        ]
+        try JSONSerialization.data(withJSONObject: cache).write(to: fixture.store.legacyFile)
+        fixture.relaunch()
+        #expect(!fixture.sync.content.queries.isEmpty)
+
+        await fixture.server.set { $0.features = [] }
+        _ = await fixture.account.services.refreshEntitlement()
+        #expect(await fixture.sync.sync() == .skipped)
+
+        #expect(fixture.sync.content == .empty)
+        #expect(fixture.store.loadAll().isEmpty)
+        #expect(!FileManager.default.fileExists(atPath: fixture.store.legacyFile.path))
+    }
 }

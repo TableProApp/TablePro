@@ -208,7 +208,13 @@ internal final class TeamLibrarySync: ObservableObject {
     // MARK: - Sync
 
     private func performSync() async -> TeamLibrarySyncOutcome {
-        guard account.access.isAvailable(.teamLibrary), account.session.isSignedIn else {
+        guard account.session.isSignedIn else { return .skipped }
+        guard account.access.isAvailable(.teamLibrary) else {
+            // A current entitlement without team_library: the seat or the plan is gone, and with it what this Mac read.
+            if account.access.currentEntitlement != nil, !teams.isEmpty || legacy != nil {
+                Self.logger.notice("The entitlement no longer includes the team library; dropping this Mac's copy")
+                clear()
+            }
             return .skipped
         }
         status = .syncing
