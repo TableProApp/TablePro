@@ -397,7 +397,7 @@ impl DataGrid {
         let rows = rows
             .iter()
             .filter(|row| !tracked.mark(row, index).row_deleted)
-            .map(|row| tracked.snapshot(row))
+            .map(|row| tracked.column_snapshot(row, index))
             .collect();
         Some(SummaryInput {
             column: column.name.clone(),
