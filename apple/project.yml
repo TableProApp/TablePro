@@ -412,7 +412,7 @@ targets:
       - package: Yams
       - package: PostHog
       - package: TableProCore
-        products: [TableProAnalytics, TableProAutocomplete, TableProConnectionLibrary, TableProGeometry, TableProGoogleCloud, TableProImport, TableProLogRedaction, TableProNumberFormatting, TableProRedisCore, TableProSQLGrammar, TableProSQLVocabulary, TableProSSHTransport, TableProSyncTransport, TableProTabular, TableProTabularIO, TableProTheme]
+        products: [TableProAutocomplete, TableProConnectionLibrary, TableProGeometry, TableProGoogleCloud, TableProImport, TableProLogRedaction, TableProNumberFormatting, TableProRedisCore, TableProSQLGrammar, TableProSQLVocabulary, TableProSSHTransport, TableProSyncTransport, TableProTabular, TableProTabularIO, TableProTheme]
       - package: TableProMacCore
         products: [TableProCloudAPI, TableProMCP, TableProSSHConfig, TableProUtilities]
     # Writes nothing for a version CHANGELOG.md has no section for, so a 0.0.0-dev build ships no notes.

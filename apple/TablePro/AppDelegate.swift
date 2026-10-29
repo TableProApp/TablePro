@@ -145,7 +145,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         ConnectionStorage.shared.migratePluginSecureFieldsIfNeeded()
         FavoriteTablesStorage.shared.migrateSyncIdentityIfNeeded()
         SoftwareUpdater.shared.start()
-        AnalyticsService.shared.startPeriodicHeartbeat()
         // Before the account starts, so a stored key's migration reaches it as a sign-in.
         Telemetry.shared.start(
             sharesUsageData: AppSettingsManager.shared.$general.map(\.shareAnalytics).eraseToAnyPublisher(),
