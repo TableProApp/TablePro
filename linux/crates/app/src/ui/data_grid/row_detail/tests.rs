@@ -411,6 +411,37 @@ fn every_control_in_the_pane_is_named() {
     }
 }
 
+#[gtk4::test]
+fn an_enum_field_picks_from_its_labels() {
+    let (grid, pane) = opened(
+        vec![
+            named("id", "integer", true),
+            named("size", "enum('small','large')", false),
+            named("note", "text", false),
+        ],
+        vec![vec![
+            Value::Int(1),
+            Value::Text("small".into()),
+            Value::Text("x".into()),
+        ]],
+    );
+    take_keyboard(&grid);
+    let button = pane.imp().choice_button.get();
+    grid.focus(0, 2);
+    assert!(!button.is_visible(), "a text field offered labels");
+    grid.focus(0, 1);
+    assert!(button.is_visible(), "an enum field offered no labels");
+
+    button.popup();
+    button
+        .activate_action("choice.label", Some(&Some(1u32).to_variant()))
+        .expect("the labels' action");
+    drain_main_context();
+
+    assert_eq!(pending(&grid, 1, 1), Some(text("large")));
+    assert_eq!(pane.typed_text(), "large");
+}
+
 /// The middle of the first of the calendar's labels that `matches`,
 /// once the popover has laid it out.
 fn calendar_label(calendar: &gtk::Calendar, matches: impl Fn(&gtk::Widget) -> bool) -> (f64, f64) {
@@ -696,6 +727,19 @@ fn what_the_value_editor_shows_for_a_cell() {
     );
     assert!(!locked.calendar, "a locked cell offered a calendar");
     assert!(value_content(&day, &saved, None, &value(a_date(2024, 1, 1))).calendar);
+    let size = column_of(named("size", "enum('s','l')", false));
+    let small = value(Value::Text("s".into()));
+    assert!(value_content(&size, &saved, None, &small).choice);
+    assert!(
+        !value_content(&size, &saved, Some(CellLock::PendingDelete), &small).choice,
+        "a locked cell offered its labels"
+    );
+    assert!(!value_content(&note, &saved, None, &value(Value::Null)).choice);
+    let nul = value_content(&size, &saved, None, &value(Value::Text("s\0".into())));
+    assert!(
+        nul.message.is_some() && nul.choice,
+        "a value the editor cannot hold hid the labels"
+    );
     assert_eq!(
         value_content(&doc, &saved, None, &value(Value::Null)).language,
         Some("json")

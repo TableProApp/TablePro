@@ -137,15 +137,21 @@ impl DataGrid {
 
     /// Hold `target` for the actions a menu offers, until it closes.
     pub(crate) fn hold_menu_target(&self, target: Target) {
-        self.imp().menu_target.replace(Some(target));
+        let imp = self.imp();
+        imp.menu_target.replace(Some(target));
+        imp.menu_targets_held.set(imp.menu_targets_held.get().wrapping_add(1));
     }
 
     /// Let go of the menu's target once the item it activated, if any,
-    /// has run: GTK closes a menu before its item's action runs.
+    /// has run: GTK closes a menu before its item's action runs. A menu
+    /// that item opened, as Edit Cell opens a cell's labels, keeps its own.
     pub(crate) fn release_menu_target_soon(&self) {
         let grid = self.downgrade();
+        let held = self.imp().menu_targets_held.get();
         glib::idle_add_local_once(move || {
-            if let Some(grid) = grid.upgrade() {
+            if let Some(grid) = grid.upgrade()
+                && grid.imp().menu_targets_held.get() == held
+            {
                 grid.imp().menu_target.take();
                 grid.refresh_actions();
             }

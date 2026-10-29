@@ -64,7 +64,7 @@ pub(super) fn refresh(controller: &EditController, grid: &DataGrid, target: Opti
             Some(
                 CellEditorKind::Inline { .. }
                     | CellEditorKind::Toggle
-                    | CellEditorKind::Choice { .. }
+                    | CellEditorKind::Choice
                     | CellEditorKind::Details(_)
             )
         );

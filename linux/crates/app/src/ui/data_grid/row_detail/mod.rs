@@ -39,6 +39,7 @@ impl RowDetailPane {
         self.connect_fields(grid);
         self.connect_value_editor(grid);
         self.connect_value_menu(grid);
+        self.connect_choices();
         self.connect_calendar();
         self.connect_close(grid);
         self.watch_details(grid);

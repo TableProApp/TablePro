@@ -2,7 +2,7 @@ use std::rc::{Rc, Weak};
 
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
-use gtk4::{self as gtk, gdk, glib};
+use gtk4::{self as gtk, gdk, gio, glib};
 use libadwaita as adw;
 use sourceview5::prelude::*;
 use tablepro_core::Value;
@@ -13,9 +13,10 @@ use super::RowDetailPane;
 use crate::application::component_matches;
 use crate::i18n::{gettext, gettext_f};
 use crate::services::grid::{
-    CellLock, CommitResult, EDIT_MAX_BYTES, EditStart, GridColumn, GridRowId, auto_filled_sentinel, display_text,
-    empty_placeholder,
+    CellEditorKind, CellLock, CommitResult, EDIT_MAX_BYTES, EditStart, GridColumn, GridRowId, auto_filled_sentinel,
+    display_text, empty_placeholder,
 };
+use crate::ui::data_grid::edit::CHOICE_ACTIONS;
 use crate::ui::data_grid::selection::Target;
 use crate::ui::data_grid::{DataGrid, GridRow, PinnedRow};
 use crate::ui::error_text::edit_parse_message;
@@ -79,6 +80,8 @@ pub struct ValueContent {
     pub emptied_placeholder: Option<String>,
     pub language: Option<&'static str>,
     pub calendar: bool,
+    /// The column's labels to pick from.
+    pub choice: bool,
 }
 
 pub fn value_content(column: &GridColumn, row: &GridRowId, lock: Option<CellLock>, input: &CellInput) -> ValueContent {
@@ -86,6 +89,10 @@ pub fn value_content(column: &GridColumn, row: &GridRowId, lock: Option<CellLock
     let (text, refusal) = match input {
         CellInput::Value(value) => typed_form(column, value),
         CellInput::Default => (String::new(), None),
+    };
+    let decodable = match input {
+        CellInput::Value(value) => matches!(edit_text(value, column.value_type()), EditText::Editable(_)),
+        CellInput::Default => true,
     };
     let message = lock.map(|lock| lock.explanation(edit_parse_message)).or(refusal);
     let editable = message.is_none();
@@ -106,6 +113,9 @@ pub fn value_content(column: &GridColumn, row: &GridRowId, lock: Option<CellLock
             _ => None,
         },
         calendar: editable && matches!(kind, ColumnKind::Date | ColumnKind::Timestamp { .. }),
+        // The menu holds no text, so a value too long or with a NUL for the
+        // editor still opens it.
+        choice: lock.is_none() && decodable && CellEditorKind::for_cell(column, Ok(())) == CellEditorKind::Choice,
         message,
     }
 }
@@ -339,6 +349,7 @@ impl RowDetailPane {
             emptied_placeholder: None,
             language: None,
             calendar: false,
+            choice: false,
         };
         self.show_value("", &content);
         self.imp().value_view.set_editable(false);
@@ -373,6 +384,7 @@ impl RowDetailPane {
             .update_property(&[gtk::accessible::Property::Label(name)]);
         self.show_message(content.message.as_deref(), false);
         imp.calendar_button.set_visible(content.calendar);
+        imp.choice_button.set_visible(content.choice);
         self.update_placeholder();
     }
 
@@ -426,6 +438,32 @@ impl RowDetailPane {
                 grid,
                 move |_| grid.release_menu_target_soon()
             ));
+        }
+    }
+
+    /// The labels of the field shown, filled as the menu opens so they act
+    /// on that row and field.
+    pub(super) fn connect_choices(&self) {
+        let button = self.imp().choice_button.get();
+        button.set_menu_model(Some(&gio::Menu::new()));
+        button.set_create_popup_func(glib::clone!(
+            #[weak(rename_to = pane)]
+            self,
+            move |button| pane.fill_choices(button)
+        ));
+    }
+
+    fn fill_choices(&self, button: &gtk::MenuButton) {
+        let Some(model) = button.menu_model().and_downcast::<gio::Menu>() else {
+            return;
+        };
+        model.remove_all();
+        let (Some(grid), Some(pin), Some(column)) = (self.grid(), self.current_pin(), self.imp().field.get()) else {
+            return;
+        };
+        if let Some(menu) = grid.edit().choice_menu(&pin, column) {
+            button.insert_action_group(CHOICE_ACTIONS, Some(&menu.actions));
+            model.append_section(None, &menu.section);
         }
     }
 

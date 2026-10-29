@@ -11,6 +11,10 @@ pub const INLINE_EDIT_MAX_BYTES: usize = 4096;
 /// details editor lays out every line on the GTK thread and would stall.
 pub const EDIT_MAX_BYTES: usize = 1_000_000;
 
+/// Past this many labels an enum edits as text: a menu lays out a row
+/// per label on the GTK thread, measured at half a second for 400.
+pub const CHOICE_MAX_LABELS: usize = 100;
+
 /// The editor a cell opens with.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CellEditorKind {
@@ -19,10 +23,8 @@ pub enum CellEditorKind {
         purpose: TextPurpose,
     },
     Toggle,
-    /// A menu of the column's labels; several of them for a set.
-    Choice {
-        multiple: bool,
-    },
+    /// A menu of the column's labels.
+    Choice,
     Details(DetailsEditor),
     ReadOnly(CellLock),
 }
@@ -56,8 +58,7 @@ impl CellEditorKind {
         };
         match kind {
             ColumnKind::Bool(_) => Self::Toggle,
-            // An enum whose labels the catalog did not give takes text.
-            ColumnKind::Enum { labels, multiple } if !labels.is_empty() => Self::Choice { multiple: *multiple },
+            ColumnKind::Enum { labels, multiple } if picks_from(labels, *multiple) => Self::Choice,
             ColumnKind::Json { .. } => Self::Details(DetailsEditor::Json),
             ColumnKind::Xml => Self::Details(DetailsEditor::Xml),
             ColumnKind::Date => Self::Details(DetailsEditor::Date),
@@ -99,6 +100,13 @@ impl CellEditorKind {
     }
 }
 
+/// Whether a menu can offer an enum's labels. Without labels from the
+/// catalog there is nothing to offer, and a set with an empty label reads
+/// the same with that member and without it.
+fn picks_from(labels: &[String], multiple: bool) -> bool {
+    (1..=CHOICE_MAX_LABELS).contains(&labels.len()) && !(multiple && labels.iter().any(String::is_empty))
+}
+
 #[cfg(test)]
 mod tests {
     use tablepro_core::column::{
@@ -107,7 +115,7 @@ mod tests {
     };
     use tablepro_core::edit::{EditText, ReadOnlyReason};
 
-    use super::{CellEditorKind, DetailsEditor, INLINE_EDIT_MAX_BYTES, TextPurpose};
+    use super::{CHOICE_MAX_LABELS, CellEditorKind, DetailsEditor, INLINE_EDIT_MAX_BYTES, TextPurpose};
     use crate::services::grid::CellLock;
     use crate::services::grid::test_columns::grid_of_kind;
 
@@ -299,23 +307,41 @@ mod tests {
     }
 
     #[test]
-    fn an_enum_with_labels_opens_a_menu_of_them() {
-        let single = ColumnKind::Enum {
-            labels: vec!["a".to_owned()],
+    fn an_enum_or_set_with_labels_opens_a_menu_of_them() {
+        for multiple in [false, true] {
+            let labelled = ColumnKind::Enum {
+                labels: vec!["a".to_owned(), "b".to_owned()],
+                multiple,
+            };
+            assert_eq!(
+                CellEditorKind::for_cell(&grid_of_kind("e", labelled), Ok(())),
+                CellEditorKind::Choice
+            );
+        }
+        let many = ColumnKind::Enum {
+            labels: (0..=CHOICE_MAX_LABELS).map(|label| label.to_string()).collect(),
             multiple: false,
         };
-        let set = ColumnKind::Enum {
-            labels: vec!["a".to_owned(), "b".to_owned()],
+        assert_eq!(CellEditorKind::for_cell(&grid_of_kind("e", many), Ok(())), free(false));
+        let set_with_empty = ColumnKind::Enum {
+            labels: vec!["a".to_owned(), String::new()],
             multiple: true,
         };
-
         assert_eq!(
-            CellEditorKind::for_cell(&grid_of_kind("e", single), Ok(())),
-            CellEditorKind::Choice { multiple: false }
+            CellEditorKind::for_cell(&grid_of_kind("s", set_with_empty), Ok(())),
+            free(false),
+            "a set whose empty member cannot be read back offered a menu"
+        );
+        let labelled = grid_of_kind(
+            "e",
+            ColumnKind::Enum {
+                labels: vec!["a".to_owned()],
+                multiple: false,
+            },
         );
         assert_eq!(
-            CellEditorKind::for_cell(&grid_of_kind("s", set), Ok(())),
-            CellEditorKind::Choice { multiple: true }
+            CellEditorKind::for_cell(&labelled, Err(CellLock::KeyColumn)),
+            CellEditorKind::ReadOnly(CellLock::KeyColumn)
         );
     }
 }

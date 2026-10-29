@@ -161,6 +161,19 @@
                                   </object>
                                 </child>
                                 <child>
+                                  <!-- No icon: the menu button's own arrow, as a drop-down shows. -->
+                                  <object class="GtkMenuButton" id="choice_button">
+                                    <property name="visible">false</property>
+                                    <property name="tooltip-text" translatable="yes">Pick a Value</property>
+                                    <accessibility>
+                                      <property name="label" translatable="yes">Pick a Value</property>
+                                    </accessibility>
+                                    <style>
+                                      <class name="flat"/>
+                                    </style>
+                                  </object>
+                                </child>
+                                <child>
                                   <object class="GtkMenuButton" id="calendar_button">
                                     <property name="icon-name">x-office-calendar-symbolic</property>
                                     <property name="visible">false</property>

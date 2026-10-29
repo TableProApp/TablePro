@@ -18,6 +18,8 @@ pub struct GridMenus {
     pub references: gio::Menu,
     /// The keys a column is in, for Ctrl+J to choose from.
     pub reference_chooser: gtk::PopoverMenu,
+    /// An enum or set cell's labels, for a grid that edits.
+    pub choices: Option<gtk::PopoverMenu>,
 }
 
 /// An item shown only while its action is enabled, so a cell it does not
@@ -30,6 +32,15 @@ fn hidden_while_disabled(label: &str, action: &str) -> gio::MenuItem {
 
 fn item(label: &str, action: &str) -> gio::MenuItem {
     crate::application::menu_item(label, action)
+}
+
+/// Set to Empty, NULL or DEFAULT, each shown where the cell takes it.
+pub(crate) fn presets_section() -> gio::Menu {
+    section([
+        hidden_while_disabled(&gettext("Set to Empty"), "grid.set-empty"),
+        hidden_while_disabled(&gettext("Set to NULL"), "grid.set-null"),
+        hidden_while_disabled(&gettext("Set to DEFAULT"), "grid.set-default"),
+    ])
 }
 
 fn section(items: impl IntoIterator<Item = gio::MenuItem>) -> gio::Menu {
@@ -55,11 +66,13 @@ impl GridMenus {
             )
         });
         let reference_chooser = popover(grid, &gio::Menu::new());
+        let choices = editable.then(|| popover(grid, &gio::Menu::new()));
         Self {
             cell,
             empty,
             references,
             reference_chooser,
+            choices,
         }
     }
 
@@ -71,6 +84,9 @@ impl GridMenus {
             empty.unparent();
         }
         self.reference_chooser.unparent();
+        if let Some(choices) = &self.choices {
+            choices.unparent();
+        }
     }
 }
 
@@ -94,15 +110,9 @@ fn cell_menu(grid: &DataGrid, references: &gio::Menu) -> gio::Menu {
     let sorts = config.is_some_and(|config| config.sorting != GridSorting::None);
     let menu = gio::Menu::new();
     if editable {
-        menu.append_section(
-            None,
-            &section([
-                hidden_while_disabled(&gettext("Edit Cell"), "grid.edit"),
-                hidden_while_disabled(&gettext("Set to Empty"), "grid.set-empty"),
-                hidden_while_disabled(&gettext("Set to NULL"), "grid.set-null"),
-                hidden_while_disabled(&gettext("Set to DEFAULT"), "grid.set-default"),
-            ]),
-        );
+        let edits = presets_section();
+        edits.prepend_item(&hidden_while_disabled(&gettext("Edit Cell"), "grid.edit"));
+        menu.append_section(None, &edits);
     }
     let copy_as = section([
         item(&gettext("Rows"), "grid.copy-rows"),

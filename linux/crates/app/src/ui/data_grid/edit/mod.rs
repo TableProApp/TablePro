@@ -1,10 +1,10 @@
-//! Every change a grid makes to its rows: the inline editor, toggles,
-//! presets, new and duplicated rows, deletes, pastes, undo and redo.
+//! Every change a grid makes to its rows: the inline editor, label menus,
+//! toggles, presets, new and duplicated rows, deletes, pastes, undo and redo.
 //! Each goes through the tracker, and each delta reaches the store here.
 
 mod actions;
 mod cell_editor;
-mod choice_editor;
+mod choice_menu;
 mod deletion;
 mod paste;
 mod row_edits;
@@ -22,6 +22,7 @@ use libadwaita::prelude::*;
 use tablepro_core::{ColumnInfo, Value};
 
 use self::cell_editor::OpenEdit;
+pub(crate) use self::choice_menu::CHOICE_ACTIONS;
 pub(crate) use self::deletion::BULK_DELETE_CONFIRM_THRESHOLD;
 use super::selection::Resolved;
 use super::{DataGrid, EditRules, GridCell, GridRequest, GridRow, PinnedRow, RowData, TrackedValues};

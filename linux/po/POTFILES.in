@@ -236,11 +236,12 @@ crates/app/src/ui/data_grid/copy/mod.rs
 crates/app/src/ui/data_grid/copy/tests.rs
 crates/app/src/ui/data_grid/edit/actions.rs
 crates/app/src/ui/data_grid/edit/cell_editor.rs
-crates/app/src/ui/data_grid/edit/choice_editor.rs
+crates/app/src/ui/data_grid/edit/choice_menu.rs
 crates/app/src/ui/data_grid/edit/deletion.rs
 crates/app/src/ui/data_grid/edit/mod.rs
 crates/app/src/ui/data_grid/edit/paste.rs
 crates/app/src/ui/data_grid/edit/row_edits.rs
+crates/app/src/ui/data_grid/edit/tests/choices.rs
 crates/app/src/ui/data_grid/edit/tests/mod.rs
 crates/app/src/ui/data_grid/edit/tests/paste.rs
 crates/app/src/ui/data_grid/edit/tests/rows.rs

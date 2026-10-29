@@ -68,6 +68,9 @@ pub struct DataGrid {
     pub find: FindState,
     /// What a menu was opened on, until it closes.
     pub menu_target: RefCell<Option<Target>>,
+    /// How many targets menus have held, so a closing menu lets go of its
+    /// own and not of one a later menu holds.
+    pub menu_targets_held: Cell<u64>,
     /// The key choices the latest menu or chooser offered, which its items
     /// act on whatever the keys or rows are by then.
     pub armed_references: RefCell<Armed>,
