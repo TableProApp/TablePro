@@ -1,4 +1,3 @@
-using TablePro.Core.Connections;
 using TablePro.Core.Drivers;
 using TablePro.Core.Editing;
 using TablePro.Core.Localization;
@@ -160,17 +159,4 @@ public sealed class DataSyncPlan
 
         return values;
     }
-}
-
-/// <summary>Which engines can take a failed sync back. The rest keep every batch that ran before the failure.</summary>
-public static class DataSyncTransactionality
-{
-    public static bool CanRollBack(DatabaseEngine engine) => engine switch
-    {
-        DatabaseEngine.ClickHouse or DatabaseEngine.Cassandra or DatabaseEngine.ScyllaDb or DatabaseEngine.BigQuery
-            or DatabaseEngine.Redis or DatabaseEngine.MongoDb or DatabaseEngine.DynamoDb or DatabaseEngine.Elasticsearch
-            or DatabaseEngine.Typesense or DatabaseEngine.Weaviate or DatabaseEngine.Kafka or DatabaseEngine.Etcd
-            or DatabaseEngine.Trino or DatabaseEngine.Databend or DatabaseEngine.CloudflareD1 => false,
-        _ => true,
-    };
 }

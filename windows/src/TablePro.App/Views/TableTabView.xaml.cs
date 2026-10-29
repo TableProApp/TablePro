@@ -334,10 +334,17 @@ public sealed partial class TableTabView : UserControl
             new ImportMatchOptions(
                 ImportMatchKey.Options(structure.Columns, structure.Indexes),
                 session.Database is IImportRowMatcher && session.Dialect.IsSql,
-                RowImporter.CanDeleteExistingRows(session.Database) && !session.Profile.IsReadOnly));
+                RowImporter.CanDeleteExistingRows(session.Database) && !session.Profile.IsReadOnly,
+                RowImporter.CanImportInOneTransaction(session.Database),
+                ViewModel.Context.Preferences.ImportWrapsInTransaction));
         if (plan is null)
         {
             return;
+        }
+
+        if (plan.WrapsInTransactionChoice is { } wraps)
+        {
+            await RememberImportWrapsInTransactionAsync(wraps);
         }
 
         if (plan.Destination == ImportDestination.NewTable && !await CreateImportTableAsync(plan))
@@ -367,16 +374,45 @@ public sealed partial class TableTabView : UserControl
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
-            // Batches before the failure are already saved, each in its own transaction, unless the import emptied the
-            // table first, which ran in one transaction and rolled back whole.
+            // One transaction rolled back whole, unless the table's storage engine ignores ROLLBACK (MyISAM); batches
+            // that committed on their own stay.
+            var rolledBack = RowImporter.RunsInOneTransaction(session.Database, plan.Writing) && await TakesRollbackAsync(session.Database, plan.Table);
             await dialogs.ShowErrorAsync(
                 Strings.Get("Import/ImportStoppedTitle"),
-                Strings.Format(plan.Writing.DeleteExistingRows ? "Import/ImportStoppedNothingChanged" : "Import/ImportStoppedRowsKept", ex.Message));
+                Strings.Format(rolledBack ? "Import/ImportStoppedNothingChanged" : "Import/ImportStoppedRowsKept", ex.Message));
         }
         finally
         {
             ViewModel.IsBusy = false;
             ViewModel.StatusText = null;
+        }
+
+        // Whether the table's storage engine took the rollback. A failed lookup, often the same lost connection that
+        // stopped the import, counts as yes, since every engine but MySQL's MyISAM family does.
+        static async Task<bool> TakesRollbackAsync(IDatabaseSession database, ObjectName table)
+        {
+            try
+            {
+                return (await Core.Compare.DataSyncTransactionality.NonTransactionalTablesAsync(database, [table], CancellationToken.None)).Count == 0;
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                return true;
+            }
+        }
+
+        async Task RememberImportWrapsInTransactionAsync(bool wraps)
+        {
+            var preferences = ViewModel.Context.Preferences;
+            try
+            {
+                await Task.Run(() => preferences.RememberImportWrapsInTransactionAsync(wraps));
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // Losing the choice only means the box opens on the old state next time; the import goes on.
+                Services.CrashLog.Write("Import: remember the transaction choice", ex);
+            }
         }
     }
 

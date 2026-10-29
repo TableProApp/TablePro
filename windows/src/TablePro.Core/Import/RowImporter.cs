@@ -8,13 +8,14 @@ using TablePro.Core.Sql;
 namespace TablePro.Core.Import;
 
 /// <summary>
-/// Writes the records of a file into a table, a batch per transaction, or all in one when the table is emptied first.
+/// Writes the records of a file into a table: in one transaction where the session can hold one, as the macOS import
+/// does by default, or a batch per transaction where it cannot or the user turned that off.
 /// </summary>
 public static class RowImporter
 {
     /// <summary>
-    /// Rows per save. Each batch is one transaction, so a failure leaves the batches before it in the table, unless
-    /// <see cref="ImportRowWriting.DeleteExistingRows"/> holds every batch in one.
+    /// Rows per save. In one transaction a batch is only how far progress moves; otherwise each batch is a transaction
+    /// of its own, so a failure leaves the batches before it in the table.
     /// </summary>
     public const int BatchSize = 500;
 
@@ -34,9 +35,11 @@ public static class RowImporter
     /// a new parent row lands before an update that points at it.
     /// </summary>
     /// <remarks>
-    /// With <see cref="ImportRowWriting.DeleteExistingRows"/> the table is emptied and refilled in one transaction
-    /// (<see cref="ChangeTransactions"/>), so a failure leaves the old rows in place. A session that cannot hold one is
-    /// refused rather than left with an empty table and half a file.
+    /// Where <see cref="RunsInOneTransaction"/> holds, every row and every key count goes through one transaction
+    /// (<see cref="ChangeTransactions"/>): a failure leaves the table as it was, and a key counted after an earlier batch
+    /// inserted it sees that row. With <see cref="ImportRowWriting.DeleteExistingRows"/> the table is emptied inside that
+    /// transaction too, and a session that cannot hold one is refused rather than left with an empty table and half a
+    /// file.
     /// </remarks>
     public static async Task<RowImportResult> ImportAsync(
         IDatabaseSession session,
@@ -56,19 +59,34 @@ public static class RowImporter
             throw new InvalidOperationException(CoreStrings.Get("Import/NoFieldMapped"));
         }
 
+        var transactions = ChangeTransactions.For(session);
         if (writing.DeleteExistingRows)
         {
-            return await ReplaceRowsAsync(session, table, records, builder, writing, progress, cancellationToken);
+            if (writing.Mode.MatchesExistingRows())
+            {
+                throw new InvalidOperationException(CoreStrings.Get("Import/DeleteFirstCannotMatch"));
+            }
+
+            if (transactions is null)
+            {
+                throw new NotSupportedException(CoreStrings.Get("Import/CannotDeleteFirst"));
+            }
+        }
+
+        if (writing.Mode.MatchesExistingRows() && writing.KeyColumns.Count == 0)
+        {
+            throw new InvalidOperationException(CoreStrings.Get("Import/ChooseMatchKey"));
+        }
+
+        if (transactions is not null && (writing.DeleteExistingRows || writing.SingleTransaction))
+        {
+            return await ImportInTransactionAsync(transactions, session.Dialect, table, records, builder, writing, progress, cancellationToken);
         }
 
         IImportRowMatcher? matcher = null;
         if (writing.Mode.MatchesExistingRows())
         {
             matcher = session as IImportRowMatcher ?? throw new NotSupportedException(CoreStrings.Get("Import/CannotMatchRows"));
-            if (writing.KeyColumns.Count == 0)
-            {
-                throw new InvalidOperationException(CoreStrings.Get("Import/ChooseMatchKey"));
-            }
         }
 
         return await WriteAsync(new BatchWriter(session.SaveChangesAsync, session.Dialect, matcher, table, writing, progress), records, builder, cancellationToken);
@@ -77,8 +95,22 @@ public static class RowImporter
     /// <summary>Whether <paramref name="session"/> can empty a table and import into it in one transaction.</summary>
     public static bool CanDeleteExistingRows(IDatabaseSession session) => ChangeTransactions.For(session) is not null;
 
-    private static async Task<RowImportResult> ReplaceRowsAsync(
-        IDatabaseSession session,
+    /// <summary>Whether <paramref name="session"/> can hold a whole import in one transaction; otherwise each batch commits on its own.</summary>
+    public static bool CanImportInOneTransaction(IDatabaseSession session) => ChangeTransactions.For(session) is not null;
+
+    /// <summary>
+    /// Whether an import with <paramref name="writing"/> runs in one transaction on <paramref name="session"/>, so a
+    /// failure leaves the table as it was rather than keeping the batches before it.
+    /// </summary>
+    public static bool RunsInOneTransaction(IDatabaseSession session, ImportRowWriting writing)
+    {
+        ArgumentNullException.ThrowIfNull(writing);
+        return (writing.DeleteExistingRows || writing.SingleTransaction) && CanImportInOneTransaction(session);
+    }
+
+    private static async Task<RowImportResult> ImportInTransactionAsync(
+        IChangeTransactionProvider transactions,
+        SqlDialect dialect,
         ObjectName table,
         IAsyncEnumerable<IReadOnlyDictionary<string, object?>> records,
         ImportRowBuilder builder,
@@ -86,16 +118,15 @@ public static class RowImporter
         IProgress<long>? progress,
         CancellationToken cancellationToken)
     {
-        if (writing.Mode.MatchesExistingRows())
+        // Disposed without a commit after any failure, which rolls back every row and the emptying with them.
+        await using var transaction = await transactions.BeginChangesAsync(cancellationToken);
+        if (writing.DeleteExistingRows)
         {
-            throw new InvalidOperationException(CoreStrings.Get("Import/DeleteFirstCannotMatch"));
+            await transaction.DeleteAllRowsAsync(table, cancellationToken);
         }
 
-        var transactions = ChangeTransactions.For(session)
-            ?? throw new NotSupportedException(CoreStrings.Get("Import/CannotDeleteFirst"));
-        await using var transaction = await transactions.BeginChangesAsync(cancellationToken);
-        await transaction.DeleteAllRowsAsync(table, cancellationToken);
-        var result = await WriteAsync(new BatchWriter(transaction.SaveChangesAsync, session.Dialect, null, table, writing, progress), records, builder, cancellationToken);
+        var matcher = writing.Mode.MatchesExistingRows() ? transaction : null;
+        var result = await WriteAsync(new BatchWriter(transaction.SaveChangesAsync, dialect, matcher, table, writing, progress), records, builder, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return result;
     }

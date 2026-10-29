@@ -363,4 +363,10 @@
 导入在同一个事务中运行，因此表保持原样。</value>
     <comment>Error message when an import that emptied the table first fails. {0} is the error's own message.</comment>
   </data>
+  <data name="RowsInTransactionToolTip" xml:space="preserve">
+    <value>在一个事务中写入所有行，因此任何一行失败时，表都会保持原样。关闭后每批写完即提交。</value>
+  </data>
+  <data name="BatchesCommitNote" xml:space="preserve">
+    <value>此连接无法在一个事务中完成整个导入，因此每 {0:N0} 行单独提交，出错时之前的行会保留。</value>
+  </data>
 </root>

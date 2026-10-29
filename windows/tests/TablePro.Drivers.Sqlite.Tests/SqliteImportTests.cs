@@ -132,6 +132,84 @@ public sealed class SqliteImportTests
     }
 
     [Fact]
+    public async Task AFailedImportLeavesTheTableAsItWas()
+    {
+        await using var db = await CreateAsync();
+        await RefuseCodeAsync(db, "BAD");
+
+        // The refused row comes after a whole batch, which a batch-at-a-time import would already have committed.
+        await Assert.ThrowsAnyAsync<Exception>(() => RowImporter.ImportAsync(
+            db.Session, Items, NewCodes(RowImporter.BatchSize + 10, ("BAD", "refused")), Builder("code", "name"), ImportRowWriting.Insert, null, Ct));
+
+        Assert.True(RowImporter.RunsInOneTransaction(db.Session, ImportRowWriting.Insert));
+        Assert.Equal(2, await db.Session.CountAsync(Items, BrowseFilter.None, Ct));
+    }
+
+    [Fact]
+    public async Task WithoutOneTransactionTheBatchesBeforeAFailureStay()
+    {
+        await using var db = await CreateAsync();
+        await RefuseCodeAsync(db, "BAD");
+        var writing = ImportRowWriting.Insert with { SingleTransaction = false };
+
+        await Assert.ThrowsAnyAsync<Exception>(() => RowImporter.ImportAsync(
+            db.Session, Items, NewCodes(RowImporter.BatchSize + 10, ("BAD", "refused")), Builder("code", "name"), writing, null, Ct));
+
+        Assert.False(RowImporter.RunsInOneTransaction(db.Session, writing));
+        Assert.Equal(2 + RowImporter.BatchSize, await db.Session.CountAsync(Items, BrowseFilter.None, Ct));
+    }
+
+    [Fact]
+    public async Task MatchingSeesRowsAnEarlierBatchWroteInTheSameImport()
+    {
+        await using var db = await CreateAsync();
+
+        // N0 is inserted in the first batch and uncommitted when the second batch counts it; a probe outside the
+        // transaction would miss it and insert it again, which the UNIQUE code refuses.
+        var result = await RowImporter.ImportAsync(
+            db.Session, Items, NewCodes(RowImporter.BatchSize, ("N0", "again")), Builder("code", "name"), Writing(ImportWriteMode.Upsert), null, Ct);
+
+        Assert.Equal((RowImporter.BatchSize, 1L), (result.Inserted, result.Updated));
+        Assert.Equal("again", (await RowsAsync(db))["N0"].Name);
+        Assert.Equal(2 + RowImporter.BatchSize, await db.Session.CountAsync(Items, BrowseFilter.None, Ct));
+    }
+
+    [Fact]
+    public async Task AFailedUpsertTakesBackItsUpdatesAndInserts()
+    {
+        await using var db = await CreateAsync();
+        await RefuseCodeAsync(db, "BAD");
+
+        await Assert.ThrowsAnyAsync<Exception>(() => RowImporter.ImportAsync(
+            db.Session, Items, Records([("code", "A"), ("name", "Avocado")], [("code", "C"), ("name", "Cherry")], [("code", "BAD"), ("name", "refused")]),
+            Builder("code", "name"), Writing(ImportWriteMode.Upsert), null, Ct));
+
+        var rows = await RowsAsync(db);
+        Assert.Equal("Apple", rows["A"].Name);
+        Assert.False(rows.ContainsKey("C"));
+    }
+
+    private static async Task RefuseCodeAsync(SqliteDatabase db, string code)
+    {
+        var results = await db.RunAsync([$"CREATE TRIGGER refuse_code BEFORE INSERT ON items WHEN NEW.code = '{code}' BEGIN SELECT RAISE(ABORT, 'refused'); END"], Ct);
+        Assert.All(results, r => Assert.True(r.Succeeded, r.Error));
+    }
+
+    private static async IAsyncEnumerable<IReadOnlyDictionary<string, object?>> NewCodes(int count, params (string Code, string Name)[] then)
+    {
+        for (var i = 0; i < count; i++)
+        {
+            await Task.Yield();
+            yield return new Dictionary<string, object?> { ["code"] = $"N{i}", ["name"] = $"New {i}" };
+        }
+
+        foreach (var (code, name) in then)
+        {
+            yield return new Dictionary<string, object?> { ["code"] = code, ["name"] = name };
+        }
+    }
+
+    [Fact]
     public async Task ProbeCountsKeysInOneRoundTrip()
     {
         await using var db = await CreateAsync();

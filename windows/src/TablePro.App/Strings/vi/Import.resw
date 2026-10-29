@@ -363,4 +363,10 @@ Các dòng đã lưu trước thời điểm này vẫn được giữ trong b�
 Việc nhập chạy trong một giao dịch, nên bảng được giữ nguyên như cũ.</value>
     <comment>Error message when an import that emptied the table first fails. {0} is the error's own message.</comment>
   </data>
+  <data name="RowsInTransactionToolTip" xml:space="preserve">
+    <value>Ghi mọi dòng trong một giao dịch, nên nếu có dòng nào lỗi, bảng vẫn giữ nguyên như cũ. Tắt để commit từng lô ngay khi ghi.</value>
+  </data>
+  <data name="BatchesCommitNote" xml:space="preserve">
+    <value>Kết nối này không thể gói cả lần nhập vào một giao dịch, nên cứ mỗi {0:N0} dòng được commit riêng và khi có lỗi, các dòng trước đó vẫn được giữ lại.</value>
+  </data>
 </root>

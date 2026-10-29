@@ -138,4 +138,13 @@
   <data name="TooManyToSync" xml:space="preserve">
     <value>La comparaison a trouvé {0:N0} différences, plus que les {1:N0} qu’une synchronisation peut examiner. Réduisez-la avec un filtre ou une limite de lignes, puis relancez la comparaison.</value>
   </data>
+  <data name="NonTransactionalTables_One" xml:space="preserve">
+    <value>{1} utilise un moteur de stockage qui ne prend pas en charge l’annulation&#160;: si la synchronisation échoue, les lignes déjà écrites y restent.</value>
+  </data>
+  <data name="NonTransactionalTables_Other" xml:space="preserve">
+    <value>{1} utilisent des moteurs de stockage qui ne prennent pas en charge l’annulation&#160;: si la synchronisation échoue, les lignes déjà écrites y restent.</value>
+  </data>
+  <data name="RollbackLeftWrites" xml:space="preserve">
+    <value>L’exécution a été annulée, mais {0} ne prend pas en charge l’annulation&#160;: les lignes déjà écrites y restent donc. Relancez la comparaison pour voir l’état actuel de la cible.</value>
+  </data>
 </root>

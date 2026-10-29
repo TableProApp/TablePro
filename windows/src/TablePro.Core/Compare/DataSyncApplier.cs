@@ -1,5 +1,6 @@
 using TablePro.Core.Drivers;
 using TablePro.Core.Editing;
+using TablePro.Core.Schema;
 
 namespace TablePro.Core.Compare;
 
@@ -20,6 +21,12 @@ public readonly record struct DataSyncProgress(int Applied, int Total);
 public sealed record DataSyncApplyResult(int AppliedSteps, int RowsAffected, int CommittedBatches, int TotalBatches, Exception? Error)
 {
     public bool Succeeded => Error is null;
+
+    /// <summary>
+    /// Every table a statement was sent to, committed or not. A table whose storage engine ignores ROLLBACK keeps
+    /// those rows even when the run rolled back, so the report after a failure names it from this list.
+    /// </summary>
+    public IReadOnlyList<ObjectName> WrittenTables { get; init; } = [];
 }
 
 /// <summary>Runs a reviewed <see cref="DataSyncPlan"/> against the target, one transaction per batch.</summary>
@@ -43,6 +50,7 @@ public static class DataSyncApplier
         var applied = 0;
         var affected = 0;
         var committed = 0;
+        IReadOnlyList<ObjectName> written = [];
         progress?.Report(new DataSyncProgress(0, changes.Count));
 
         for (var start = 0; start < changes.Count; start += batchSize)
@@ -52,6 +60,7 @@ public static class DataSyncApplier
             try
             {
                 cancellationToken.ThrowIfCancellationRequested();
+                written = [plan.Table];
 
                 // SaveChangesAsync is the session's own transaction with its row-count check, the same path a grid
                 // save takes, so a step that hits other than one row rolls its batch back.
@@ -59,7 +68,7 @@ public static class DataSyncApplier
             }
             catch (Exception ex) when (ex is not OutOfMemoryException)
             {
-                return new DataSyncApplyResult(applied, affected, committed, totalBatches, ex);
+                return new DataSyncApplyResult(applied, affected, committed, totalBatches, ex) { WrittenTables = written };
             }
 
             applied += count;
@@ -67,7 +76,7 @@ public static class DataSyncApplier
             progress?.Report(new DataSyncProgress(applied, changes.Count));
         }
 
-        return new DataSyncApplyResult(applied, affected, committed, totalBatches, null);
+        return new DataSyncApplyResult(applied, affected, committed, totalBatches, null) { WrittenTables = written };
     }
 
     /// <summary>
@@ -113,6 +122,7 @@ public static class DataSyncApplier
         var perTransaction = options.SingleTransaction ? total : options.BatchSize;
         var totalBatches = (total + perTransaction - 1) / perTransaction;
         int sent = 0, committedSteps = 0, committedRows = 0, committed = 0, pendingSteps = 0, pendingRows = 0;
+        var written = new List<ObjectName>();
         IChangeTransaction? transaction = null;
         progress?.Report(new DataSyncProgress(0, total));
         try
@@ -126,6 +136,7 @@ public static class DataSyncApplier
                     transaction ??= await transactions.BeginChangesAsync(cancellationToken);
                     var count = Math.Min(Math.Min(options.BatchSize, perTransaction - pendingSteps), changes.Count - start);
                     var batch = start == 0 && count == changes.Count ? changes : Slice(changes, start, count);
+                    Written(written, segment.Table);
                     pendingRows += await transaction.SaveChangesAsync(segment.Table, batch, cancellationToken);
                     pendingSteps += count;
                     start += count;
@@ -145,7 +156,7 @@ public static class DataSyncApplier
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
-            return new DataSyncApplyResult(committedSteps, committedRows, committed, totalBatches, ex);
+            return new DataSyncApplyResult(committedSteps, committedRows, committed, totalBatches, ex) { WrittenTables = written };
         }
         finally
         {
@@ -155,7 +166,7 @@ public static class DataSyncApplier
             }
         }
 
-        return new DataSyncApplyResult(committedSteps, committedRows, committed, totalBatches, null);
+        return new DataSyncApplyResult(committedSteps, committedRows, committed, totalBatches, null) { WrittenTables = written };
 
         async Task CommitAsync()
         {
@@ -181,6 +192,7 @@ public static class DataSyncApplier
         var applied = 0;
         var affected = 0;
         var committed = 0;
+        var written = new List<ObjectName>();
         progress?.Report(new DataSyncProgress(0, total));
 
         foreach (var segment in plan.Segments)
@@ -194,11 +206,12 @@ public static class DataSyncApplier
                 try
                 {
                     cancellationToken.ThrowIfCancellationRequested();
+                    Written(written, segment.Table);
                     affected += await target.SaveChangesAsync(segment.Table, batch, cancellationToken);
                 }
                 catch (Exception ex) when (ex is not OutOfMemoryException)
                 {
-                    return new DataSyncApplyResult(applied, affected, committed, totalBatches, ex);
+                    return new DataSyncApplyResult(applied, affected, committed, totalBatches, ex) { WrittenTables = written };
                 }
 
                 applied += count;
@@ -207,7 +220,16 @@ public static class DataSyncApplier
             }
         }
 
-        return new DataSyncApplyResult(applied, affected, committed, totalBatches, null);
+        return new DataSyncApplyResult(applied, affected, committed, totalBatches, null) { WrittenTables = written };
+    }
+
+    // A plan touches a handful of tables, so a list keeps their run order at no real cost.
+    private static void Written(List<ObjectName> written, ObjectName table)
+    {
+        if (!written.Contains(table))
+        {
+            written.Add(table);
+        }
     }
 
     private static RowChange[] Slice(IReadOnlyList<RowChange> changes, int start, int count)

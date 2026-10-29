@@ -132,20 +132,27 @@ public abstract class AdoNetSession : IDatabaseSession, IImportRowMatcher, IChan
             cancellationToken);
 
     public Task<IReadOnlyList<long>> CountKeyMatchesAsync(ObjectName table, IReadOnlyList<string> keyColumns, IReadOnlyList<IReadOnlyList<object?>> keys, CancellationToken cancellationToken) =>
-        WithConnectionAsync(
-            async (connection, ct) =>
-            {
-                await using var command = CreateCommand(connection, ImportKeyMatchSql.Build(Dialect, table, keyColumns, keys));
-                await using var reader = await command.ExecuteReaderAsync(ct);
-                var rows = new List<(object?, object?)>(keys.Count);
-                while (await reader.ReadAsync(ct))
-                {
-                    rows.Add((reader.GetValue(0), reader.GetValue(1)));
-                }
+        WithConnectionAsync((connection, ct) => CountKeyMatchesAsync(connection, null, table, keyColumns, keys, ct), cancellationToken);
 
-                return ImportKeyMatchSql.ReadCounts(rows, keys.Count);
-            },
-            cancellationToken);
+    private async Task<IReadOnlyList<long>> CountKeyMatchesAsync(
+        DbConnection connection,
+        DbTransaction? transaction,
+        ObjectName table,
+        IReadOnlyList<string> keyColumns,
+        IReadOnlyList<IReadOnlyList<object?>> keys,
+        CancellationToken cancellationToken)
+    {
+        await using var command = CreateCommand(connection, ImportKeyMatchSql.Build(Dialect, table, keyColumns, keys));
+        command.Transaction = transaction;
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        var rows = new List<(object?, object?)>(keys.Count);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            rows.Add((reader.GetValue(0), reader.GetValue(1)));
+        }
+
+        return ImportKeyMatchSql.ReadCounts(rows, keys.Count);
+    }
 
     public Task<int> SaveChangesAsync(ObjectName table, IReadOnlyList<RowChange> changes, CancellationToken cancellationToken)
     {
@@ -377,6 +384,13 @@ public abstract class AdoNetSession : IDatabaseSession, IImportRowMatcher, IChan
         {
             await Task.CompletedTask.ConfigureAwait(ConfigureAwaitOptions.ForceYielding);
             return await session.ExecuteDeleteAllAsync(connection, transaction, table, cancellationToken);
+        }
+
+        public async Task<IReadOnlyList<long>> CountKeyMatchesAsync(
+            ObjectName table, IReadOnlyList<string> keyColumns, IReadOnlyList<IReadOnlyList<object?>> keys, CancellationToken cancellationToken)
+        {
+            await Task.CompletedTask.ConfigureAwait(ConfigureAwaitOptions.ForceYielding);
+            return await session.CountKeyMatchesAsync(connection, transaction, table, keyColumns, keys, cancellationToken);
         }
 
         public async Task CommitAsync(CancellationToken cancellationToken)

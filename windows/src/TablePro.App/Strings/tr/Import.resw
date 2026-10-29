@@ -363,4 +363,10 @@ Bu noktadan önce kaydedilen satırlar tabloda kalır.</value>
 İçe aktarma tek bir işlemde çalıştığı için tablo olduğu gibi bırakıldı.</value>
     <comment>Error message when an import that emptied the table first fails. {0} is the error's own message.</comment>
   </data>
+  <data name="RowsInTransactionToolTip" xml:space="preserve">
+    <value>Tüm satırları tek bir işlemde yazar; herhangi bir satır başarısız olursa tablo olduğu gibi kalır. Her toplu işi ilerledikçe işlemek için kapatın.</value>
+  </data>
+  <data name="BatchesCommitNote" xml:space="preserve">
+    <value>Bu bağlantı içe aktarmanın tamamını tek bir işlemde tutamaz; bu nedenle her {0:N0} satır ayrı ayrı işlenir ve bir hata, ondan önceki satırları korur.</value>
+  </data>
 </root>

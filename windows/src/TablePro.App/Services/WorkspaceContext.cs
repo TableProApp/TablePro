@@ -33,6 +33,11 @@ public interface IWorkspacePreferences
     string LastSqlImportEncoding { get; }
 
     Task RememberSqlImportEncodingAsync(string encodingId);
+
+    /// <summary>Whether the import sheet's "Wrap in transaction" box opens ticked: the user's last choice.</summary>
+    bool ImportWrapsInTransaction { get; }
+
+    Task RememberImportWrapsInTransactionAsync(bool wraps);
 }
 
 /// <summary>Everything a tab needs from its window, handed down instead of reached for through statics.</summary>

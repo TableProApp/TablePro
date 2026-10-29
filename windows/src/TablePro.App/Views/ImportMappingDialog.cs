@@ -23,13 +23,19 @@ internal sealed record ImportPlan(
     CsvImportOptions CsvOptions,
     ImportRowBuilder Builder,
     IReadOnlyList<ColumnDefinition> NewTableColumns,
-    ImportRowWriting Writing);
+    ImportRowWriting Writing)
+{
+    /// <summary>The user's own pick in the "Wrap in transaction" box, to remember; null when the box was not offered.</summary>
+    public bool? WrapsInTransactionChoice { get; init; }
+}
 
 /// <summary>
-/// What the dialog offers for the rows already in the table: its keys, whether the session can match at all, and
-/// whether it can empty the table and import in one transaction.
+/// What the dialog offers for the rows already in the table: its keys, whether the session can match at all, whether
+/// it can empty the table and import in one transaction, whether it can hold any import in one transaction, and the
+/// remembered state that box opens on.
 /// </summary>
-internal sealed record ImportMatchOptions(IReadOnlyList<ImportMatchKey> Keys, bool CanMatch, bool CanDeleteExistingRows = false)
+internal sealed record ImportMatchOptions(
+    IReadOnlyList<ImportMatchKey> Keys, bool CanMatch, bool CanDeleteExistingRows = false, bool CanUseOneTransaction = false, bool WrapsInTransaction = true)
 {
     public static ImportMatchOptions None { get; } = new([], false);
 }
@@ -84,6 +90,9 @@ internal sealed class ImportMappingDialog
     private readonly ComboBox _writeMode = new() { Header = Strings.Get("Import/ImportAsHeader"), MinWidth = 200 };
     private readonly ComboBox _matchKey = new() { Header = Strings.Get("Import/MatchOnHeader"), MinWidth = 220 };
     private readonly CheckBox _deleteExisting = new() { Content = Strings.Get("Import/DeleteExistingRows"), VerticalAlignment = VerticalAlignment.Bottom };
+    private readonly CheckBox _singleTransaction = new() { Content = Strings.Get("Import/WrapInTransaction"), IsChecked = true, VerticalAlignment = VerticalAlignment.Bottom };
+    private readonly TextBlock _batchNote = new() { Text = Strings.Format("Import/BatchesCommitNote", RowImporter.BatchSize), Opacity = 0.7, TextWrapping = TextWrapping.Wrap };
+    private bool _singleTransactionChoice = true;
     private readonly ImportMatchOptions _matching;
     private ImportPreview _preview;
     private CsvImportOptions? _lastOptions;
@@ -104,6 +113,8 @@ internal sealed class ImportMappingDialog
         _commonTypes = commonTypes;
         _mapping = new ImportMapping(preview.Fields, columns, savedMapping);
         _matching = matching;
+        _singleTransactionChoice = matching.WrapsInTransaction;
+        _singleTransaction.IsChecked = matching.WrapsInTransaction;
         _draft.Load(preview.Fields, proposeType);
 
         _destination.Items.Add(Strings.Format("Import/ExistingTable", existingTable.Name));
@@ -141,6 +152,11 @@ internal sealed class ImportMappingDialog
         _matchKey.SelectionChanged += (_, _) => Validate();
         _newTableName.TextChanged += (_, _) => Validate();
         ToolTipService.SetToolTip(_deleteExisting, Strings.Get("Import/DeleteExistingRowsToolTip"));
+        ToolTipService.SetToolTip(_singleTransaction, Strings.Get("Import/RowsInTransactionToolTip"));
+        _batchNote.Visibility = matching.CanUseOneTransaction ? Visibility.Collapsed : Visibility.Visible;
+        _singleTransaction.Visibility = matching.CanUseOneTransaction ? Visibility.Visible : Visibility.Collapsed;
+        _singleTransaction.Click += (_, _) => _singleTransactionChoice = _singleTransaction.IsChecked == true;
+        _deleteExisting.Click += (_, _) => SyncWriteControls();
 
         foreach (var (name, _) in Delimiters)
         {
@@ -235,7 +251,8 @@ internal sealed class ImportMappingDialog
 
     /// <summary>
     /// Only an existing table has rows to match, and only a connection that can count keys offers the modes that do.
-    /// Emptying the table first is offered only for Insert, as on macOS, since no row would be left to match.
+    /// Emptying the table first is offered only for Insert, as on macOS, since no row would be left to match. It always
+    /// runs in one transaction, so the transaction box holds checked while it is on and returns to the user's choice after.
     /// </summary>
     private void SyncWriteControls()
     {
@@ -247,9 +264,14 @@ internal sealed class ImportMappingDialog
         {
             _deleteExisting.IsChecked = false;
         }
+
+        _singleTransaction.IsEnabled = !DeletesExistingRows;
+        _singleTransaction.IsChecked = DeletesExistingRows || _singleTransactionChoice;
     }
 
     private bool DeletesExistingRows => _deleteExisting.Visibility == Visibility.Visible && _deleteExisting.IsEnabled && _deleteExisting.IsChecked == true;
+
+    private bool UsesOneTransaction => _matching.CanUseOneTransaction && _singleTransaction.IsChecked == true;
 
     private bool IsNewTable => _destination.SelectedIndex == 1;
 
@@ -283,17 +305,25 @@ internal sealed class ImportMappingDialog
             return null;
         }
 
+        bool? choice = view._matching.CanUseOneTransaction ? view._singleTransactionChoice : null;
         if (view.IsNewTable)
         {
             return new ImportPlan(
                 ImportDestination.NewTable, new ObjectName(existingTable.Schema, view._newTableName.Text.Trim()), view.CsvOptions,
-                view._draft.CreateRowBuilder(), view._draft.Definition(), ImportRowWriting.Insert);
+                view._draft.CreateRowBuilder(), view._draft.Definition(), ImportRowWriting.Insert with { SingleTransaction = view.UsesOneTransaction })
+            {
+                WrapsInTransactionChoice = choice,
+            };
         }
 
         await view.RememberMappingAsync(mappingScope);
         var writing = view.OffersWriteModes ? view._mapping.RowWriting(view.WriteMode, view.MatchKey) : ImportRowWriting.Insert;
         return new ImportPlan(
-            ImportDestination.ExistingTable, existingTable, view.CsvOptions, view._mapping.CreateRowBuilder(), [], writing with { DeleteExistingRows = view.DeletesExistingRows });
+            ImportDestination.ExistingTable, existingTable, view.CsvOptions, view._mapping.CreateRowBuilder(), [],
+            writing with { DeleteExistingRows = view.DeletesExistingRows, SingleTransaction = view.UsesOneTransaction })
+        {
+            WrapsInTransactionChoice = choice,
+        };
     }
 
     /// <summary>A store that cannot be read only means nothing is restored; the import itself goes on.</summary>
@@ -350,7 +380,9 @@ internal sealed class ImportMappingDialog
         writing.Children.Add(_writeMode);
         writing.Children.Add(_matchKey);
         writing.Children.Add(_deleteExisting);
+        writing.Children.Add(_singleTransaction);
         root.Children.Add(writing);
+        root.Children.Add(_batchNote);
 
         if (_format == ImportFileFormat.Csv)
         {

@@ -363,4 +363,10 @@
 匯入在同一個交易中執行，因此資料表保持原樣。</value>
     <comment>Error message when an import that emptied the table first fails. {0} is the error's own message.</comment>
   </data>
+  <data name="RowsInTransactionToolTip" xml:space="preserve">
+    <value>在一個交易中寫入所有列，因此任何一列失敗時，資料表都會維持原樣。關閉後每批寫完即提交。</value>
+  </data>
+  <data name="BatchesCommitNote" xml:space="preserve">
+    <value>此連線無法在一個交易中完成整個匯入，因此每 {0:N0} 列會分別提交，出錯時之前的列會保留。</value>
+  </data>
 </root>

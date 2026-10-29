@@ -464,6 +464,14 @@ Rows saved before this point stay in the table.</value>
     <value>{0}
 
 The import ran in one transaction, so the table was left as it was.</value>
-    <comment>Error message when an import that emptied the table first fails. {0} is the error's own message.</comment>
+    <comment>Error message when an import that ran in one transaction fails. {0} is the error's own message.</comment>
+  </data>
+  <data name="RowsInTransactionToolTip" xml:space="preserve">
+    <value>Writes every row in one transaction, so if any row fails the table is left as it was. Turn it off to commit every batch as it goes.</value>
+    <comment>Tooltip of the Wrap in transaction check box in the CSV and JSON import sheet.</comment>
+  </data>
+  <data name="BatchesCommitNote" xml:space="preserve">
+    <value>This connection cannot hold the import in one transaction, so every {0:N0} rows commit on their own and a failure keeps the rows before it.</value>
+    <comment>{0} is the number of rows each batch holds. Shown in the import sheet when the connection cannot hold the whole import in one transaction.</comment>
   </data>
 </root>

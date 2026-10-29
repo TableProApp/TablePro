@@ -138,4 +138,13 @@
   <data name="TooManyToSync" xml:space="preserve">
     <value>비교에서 차이 {0:N0}개를 찾았으며, 이는 동기화에서 검토할 수 있는 {1:N0}개보다 많습니다. 필터나 행 제한으로 범위를 좁힌 다음 다시 비교하세요.</value>
   </data>
+  <data name="NonTransactionalTables_One" xml:space="preserve">
+    <value>{1}은(는) 롤백할 수 없는 스토리지 엔진을 사용하므로, 동기화가 실패하면 이미 기록된 행이 그대로 남습니다.</value>
+  </data>
+  <data name="NonTransactionalTables_Other" xml:space="preserve">
+    <value>{1}은(는) 롤백할 수 없는 스토리지 엔진을 사용하므로, 동기화가 실패하면 이미 기록된 행이 그대로 남습니다.</value>
+  </data>
+  <data name="RollbackLeftWrites" xml:space="preserve">
+    <value>실행이 롤백되었지만 {0}은(는) 롤백할 수 없으므로 이미 기록된 행이 그대로 남습니다. 대상의 현재 상태를 보려면 다시 비교하세요.</value>
+  </data>
 </root>

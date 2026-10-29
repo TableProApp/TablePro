@@ -1,4 +1,5 @@
 using TablePro.Core.Editing;
+using TablePro.Core.Import;
 using TablePro.Core.Schema;
 
 namespace TablePro.Core.Drivers;
@@ -26,7 +27,11 @@ public interface IChangeTransactionProvider
 /// <see cref="CommitAsync"/> rolls back everything it ran, which is what a caller does after any failure. One caller
 /// at a time: the calls share a single connection.
 /// </summary>
-public interface IChangeTransaction : IAsyncDisposable
+/// <remarks>
+/// It counts key matches itself because an import that updates or skips existing rows must see the rows it wrote
+/// earlier in the same transaction; a probe on another connection would not, and could wait on this one's locks.
+/// </remarks>
+public interface IChangeTransaction : IImportRowMatcher, IAsyncDisposable
 {
     /// <summary>
     /// Runs the changes in order, binding values as the session's own save does. A keyed change that hits other than
@@ -38,6 +43,20 @@ public interface IChangeTransaction : IAsyncDisposable
     Task<long> DeleteAllRowsAsync(ObjectName table, CancellationToken cancellationToken);
 
     Task CommitAsync(CancellationToken cancellationToken);
+}
+
+/// <summary>
+/// A session whose tables each choose a storage engine, as MySQL's and MariaDB's do. A MyISAM, MEMORY or ARCHIVE table
+/// ignores ROLLBACK, so a transaction that fails keeps whatever it already wrote there; the sync review names such
+/// tables before anything runs, as the macOS app reports them.
+/// </summary>
+public interface IStorageEngineProvider
+{
+    /// <summary>
+    /// The storage engine of each of <paramref name="tables"/> that exists and has one, keyed by the name as asked.
+    /// Empty for an engine whose tables do not choose one.
+    /// </summary>
+    Task<IReadOnlyDictionary<ObjectName, string>> GetStorageEnginesAsync(IReadOnlyCollection<ObjectName> tables, CancellationToken cancellationToken);
 }
 
 public static class ChangeTransactions

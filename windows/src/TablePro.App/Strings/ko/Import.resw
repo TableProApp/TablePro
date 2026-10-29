@@ -363,4 +363,10 @@
 가져오기가 하나의 트랜잭션으로 실행되었으므로 테이블은 그대로입니다.</value>
     <comment>Error message when an import that emptied the table first fails. {0} is the error's own message.</comment>
   </data>
+  <data name="RowsInTransactionToolTip" xml:space="preserve">
+    <value>모든 행을 하나의 트랜잭션으로 기록하므로, 한 행이라도 실패하면 테이블은 원래 상태로 남습니다. 끄면 배치마다 바로 커밋합니다.</value>
+  </data>
+  <data name="BatchesCommitNote" xml:space="preserve">
+    <value>이 연결은 가져오기 전체를 하나의 트랜잭션으로 처리할 수 없으므로 {0:N0}행마다 따로 커밋되며, 실패하면 그 전의 행은 그대로 남습니다.</value>
+  </data>
 </root>

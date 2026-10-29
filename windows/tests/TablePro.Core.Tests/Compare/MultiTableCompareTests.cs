@@ -167,6 +167,31 @@ public sealed class MultiTableCompareTests
     }
 
     [Fact]
+    public async Task AFailedSyncNamesEveryTableItSentStatementsTo()
+    {
+        var (outcomes, _, target) = await CompareUsersAndOrdersAsync();
+        var plan = CombinedSyncPlan.Build([.. outcomes.Select(o => new CombinedSyncInput(o.Result!, null, o.SourceStructure))], DataCompareOptions.Default);
+        target.FailOnTable = "orders";
+
+        var applied = await DataSyncApplier.ApplyAsync(target, plan, cancellationToken: Token);
+
+        // The failing table counts too: on an engine that ignores ROLLBACK its rows before the failure stay.
+        Assert.Equal(["users", "orders"], applied.WrittenTables.Select(t => t.Name));
+    }
+
+    [Fact]
+    public async Task ASyncThatSucceedsNamesTheTablesItWrote()
+    {
+        var (outcomes, _, target) = await CompareUsersAndOrdersAsync();
+        var plan = CombinedSyncPlan.Build([.. outcomes.Select(o => new CombinedSyncInput(o.Result!, null, o.SourceStructure))], DataCompareOptions.Default);
+
+        var applied = await DataSyncApplier.ApplyAsync(target, plan, cancellationToken: Token);
+
+        Assert.True(applied.Succeeded);
+        Assert.Equal(["users", "orders"], applied.WrittenTables.Select(t => t.Name));
+    }
+
+    [Fact]
     public async Task ExcludedRowsAndTruncatedTablesStayOutOfTheCombinedPlan()
     {
         var (outcomes, _, _) = await CompareUsersAndOrdersAsync();

@@ -77,6 +77,21 @@ internal static class MySqlCatalog
         WHERE TABLE_SCHEMA = COALESCE(@schema, DATABASE()) AND TABLE_NAME = @table
         """;
 
+    /// <summary>
+    /// The storage engine of each named table in one database, a bound <c>@t0</c>, <c>@t1</c>... per name. A view has
+    /// no engine and is left out.
+    /// </summary>
+    public static string StorageEngines(int tableCount)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(tableCount, 1);
+        var names = string.Join(", ", Enumerable.Range(0, tableCount).Select(i => "@t" + i.ToString(System.Globalization.CultureInfo.InvariantCulture)));
+        return $"""
+            SELECT TABLE_NAME, ENGINE
+            FROM information_schema.TABLES
+            WHERE TABLE_SCHEMA = COALESCE(@schema, DATABASE()) AND ENGINE IS NOT NULL AND TABLE_NAME IN ({names})
+            """;
+    }
+
     // One row per subpartition, or per partition when there are none; an unpartitioned table has one row with no name.
     public const string Partitions = """
         SELECT PARTITION_NAME, SUBPARTITION_NAME, PARTITION_METHOD, PARTITION_EXPRESSION, PARTITION_DESCRIPTION,

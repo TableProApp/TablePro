@@ -106,7 +106,18 @@ public sealed record ImportMatchKey(string? IndexName, IReadOnlyList<string> Col
 /// existing rows first" does. Only <see cref="ImportWriteMode.Insert"/> can take it: once the table is empty no row
 /// would match.
 /// </param>
-public sealed record ImportRowWriting(ImportWriteMode Mode, IReadOnlyList<string> KeyColumns, IReadOnlyCollection<string> KeptColumns, bool DeleteExistingRows = false)
+/// <param name="SingleTransaction">
+/// Writes every row in one transaction, so a failure leaves the table as it was, as the macOS import's "Wrap in
+/// transaction" does and by default. It takes effect where the session offers <see cref="Drivers.IChangeTransactionProvider"/>;
+/// elsewhere each batch commits on its own. Off, each batch commits as it goes, which keeps a very large file from
+/// holding its locks for the whole import.
+/// </param>
+public sealed record ImportRowWriting(
+    ImportWriteMode Mode,
+    IReadOnlyList<string> KeyColumns,
+    IReadOnlyCollection<string> KeptColumns,
+    bool DeleteExistingRows = false,
+    bool SingleTransaction = true)
 {
     public static ImportRowWriting Insert { get; } = new(ImportWriteMode.Insert, [], []);
 
@@ -166,8 +177,8 @@ public readonly record struct RowImportResult(ImportWriteMode Mode, long Inserte
 }
 
 /// <summary>
-/// A session that can count the rows matching many keys in one round trip, which the modes that match existing rows
-/// need before they decide between an insert and an update.
+/// A session, or an open transaction, that can count the rows matching many keys in one round trip, which the modes
+/// that match existing rows need before they decide between an insert and an update.
 /// </summary>
 public interface IImportRowMatcher
 {

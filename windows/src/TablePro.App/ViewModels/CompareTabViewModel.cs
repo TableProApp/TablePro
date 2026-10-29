@@ -813,6 +813,7 @@ public sealed partial class CompareTabViewModel : TabViewModel
         var batches = ApplyInBatches || plan.Steps.Count > DataSyncApplyOptions.SuggestedSingleTransactionLimit;
         var notes = new List<string>(plan.Warnings);
         AddTransactionNotes(notes, target, batches, tablesCommitApart: false);
+        var nonTransactional = await NonTransactionalTablesAsync(target, [plan.Table], notes);
 
         var title = Strings.Format("Compare/SyncReviewTitle", plan.Table, plan.InsertCount, plan.UpdateCount, plan.DeleteCount);
         if (!await _context.Dialogs.ReviewSqlAsync(title, Reviewed(preview, notes, target.Session.Dialect), Strings.Get("Compare/SyncButton")))
@@ -829,7 +830,7 @@ public sealed partial class CompareTabViewModel : TabViewModel
         }
 
         RecordHistory(target, preview, applied, DateTime.UtcNow - started);
-        if (!await ReportFailureAsync(applied, batches))
+        if (!await ReportFailureAsync(applied, batches, nonTransactional))
         {
             return;
         }
@@ -865,6 +866,7 @@ public sealed partial class CompareTabViewModel : TabViewModel
         // A session without cross-table transactions commits each table's segment apart, which the sheet says first.
         var tablesCommitApart = plan.Segments.Count > 1 && ChangeTransactions.For(target.Session.Database) is null;
         AddTransactionNotes(notes, target, batches, tablesCommitApart);
+        var nonTransactional = await NonTransactionalTablesAsync(target, plan.Tables.Select(t => t.Table), notes);
         var title = Strings.Format("Compare/SyncTablesReviewTitle", plan.Tables.Count, plan.InsertCount, plan.UpdateCount, plan.DeleteCount);
         if (!await _context.Dialogs.ReviewSqlAsync(title, Reviewed(preview, notes, target.Session.Dialect), Strings.Get("Compare/SyncButton")))
         {
@@ -880,7 +882,7 @@ public sealed partial class CompareTabViewModel : TabViewModel
         }
 
         RecordHistory(target, preview, applied, DateTime.UtcNow - started);
-        var succeeded = await ReportFailureAsync(applied, batches || tablesCommitApart);
+        var succeeded = await ReportFailureAsync(applied, batches || tablesCommitApart, nonTransactional);
         if (succeeded)
         {
             _context.Notify(Strings.Plural("Compare/SyncedTables", applied.RowsAffected, plan.Tables.Count));
@@ -922,6 +924,32 @@ public sealed partial class CompareTabViewModel : TabViewModel
         }
     }
 
+    /// <summary>
+    /// Names the tables whose storage engine ignores ROLLBACK (MyISAM and the like) in the review notes, as the macOS app
+    /// names them after a failed run. The catalog read is a warning, not a gate: when it fails the review goes on
+    /// without the note.
+    /// </summary>
+    private async Task<IReadOnlyList<NonTransactionalTable>> NonTransactionalTablesAsync(CompareEndpoint target, IEnumerable<ObjectName> tables, List<string> notes)
+    {
+        IReadOnlyList<NonTransactionalTable> found;
+        try
+        {
+            found = await DataSyncTransactionality.NonTransactionalTablesAsync(target.Session.Database, tables, CancellationToken.None);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            CrashLog.Write("Compare: read storage engines", ex);
+            return [];
+        }
+
+        if (DataSyncTransactionality.ReviewNote(found) is { } note)
+        {
+            notes.Insert(0, note);
+        }
+
+        return found;
+    }
+
     private void RecordHistory(CompareEndpoint target, IReadOnlyList<string> preview, DataSyncApplyResult applied, TimeSpan elapsed)
     {
         foreach (var statement in preview.Take(applied.AppliedSteps).Take(MaxReviewedStatements))
@@ -931,7 +959,7 @@ public sealed partial class CompareTabViewModel : TabViewModel
     }
 
     /// <summary>Tells the user how far a failed sync got. Returns true when it did not fail.</summary>
-    private async Task<bool> ReportFailureAsync(DataSyncApplyResult applied, bool partsCommit)
+    private async Task<bool> ReportFailureAsync(DataSyncApplyResult applied, bool partsCommit, IReadOnlyList<NonTransactionalTable> nonTransactional)
     {
         if (applied.Error is not { } error)
         {
@@ -941,7 +969,9 @@ public sealed partial class CompareTabViewModel : TabViewModel
         StatusText = error.Message;
         var message = applied.CommittedBatches > 0 && partsCommit
             ? Strings.Plural("Compare/SyncStoppedBatchesKept", applied.CommittedBatches, error.Message, applied.TotalBatches)
-            : Strings.Format("Compare/SyncStoppedNothingChanged", error.Message);
+            : DataSyncTransactionality.RollbackLeftWritesNote(nonTransactional, applied.WrittenTables) is { } kept
+                ? $"{error.Message} {kept}"
+                : Strings.Format("Compare/SyncStoppedNothingChanged", error.Message);
         await _context.Dialogs.ShowErrorAsync(Strings.Get("Compare/SyncStoppedTitle"), message);
         return false;
     }

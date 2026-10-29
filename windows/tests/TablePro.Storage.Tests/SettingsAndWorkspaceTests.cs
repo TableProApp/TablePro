@@ -169,4 +169,17 @@ public sealed class SettingsAndWorkspaceTests : IDisposable
         var blank = await reloaded.UpdateAsync(s => s with { LastSqlImportEncoding = " " }, Token);
         Assert.Equal("UTF-8", blank.LastSqlImportEncoding);
     }
+
+    [Fact]
+    public async Task TheImportTransactionChoiceIsRememberedAndDefaultsToWrapping()
+    {
+        Assert.True(AppSettings.Default.ImportWrapsInTransaction);
+        using (var store = new SettingsStore(_temp.Paths))
+        {
+            await store.UpdateAsync(s => s with { ImportWrapsInTransaction = false }, Token);
+        }
+
+        using var reloaded = new SettingsStore(_temp.Paths);
+        Assert.False((await reloaded.LoadAsync(Token)).ImportWrapsInTransaction);
+    }
 }

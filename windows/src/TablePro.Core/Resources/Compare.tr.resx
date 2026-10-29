@@ -138,4 +138,13 @@
   <data name="TooManyToSync" xml:space="preserve">
     <value>Karşılaştırma {0:N0} fark buldu; bu, bir eşitlemenin inceleyebileceği {1:N0} farktan fazla. Bir filtre veya satır sınırıyla daraltıp yeniden karşılaştırın.</value>
   </data>
+  <data name="NonTransactionalTables_One" xml:space="preserve">
+    <value>{1} geri alma yapamayan bir depolama motoru kullanıyor; eşitleme başarısız olursa oraya yazılmış satırlar kalır.</value>
+  </data>
+  <data name="NonTransactionalTables_Other" xml:space="preserve">
+    <value>{1} geri alma yapamayan depolama motorları kullanıyor; eşitleme başarısız olursa oraya yazılmış satırlar kalır.</value>
+  </data>
+  <data name="RollbackLeftWrites" xml:space="preserve">
+    <value>Çalıştırma geri alındı, ancak {0} geri alma yapamaz; bu nedenle oraya yazılmış satırlar kalır. Hedefin son durumunu görmek için yeniden karşılaştırın.</value>
+  </data>
 </root>

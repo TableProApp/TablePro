@@ -67,4 +67,9 @@ public sealed class SettingsPreferences(SettingsStore settings) : IWorkspacePref
 
     public Task RememberSqlImportEncodingAsync(string encodingId) =>
         settings.UpdateAsync(s => s with { LastSqlImportEncoding = encodingId });
+
+    public bool ImportWrapsInTransaction => settings.Current.ImportWrapsInTransaction;
+
+    public Task RememberImportWrapsInTransactionAsync(bool wraps) =>
+        settings.Current.ImportWrapsInTransaction == wraps ? Task.CompletedTask : settings.UpdateAsync(s => s with { ImportWrapsInTransaction = wraps });
 }

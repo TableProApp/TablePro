@@ -177,4 +177,16 @@
     <value>The comparison found {0:N0} differences, more than the {1:N0} a sync can review. Narrow it with a filter or a row limit and compare again.</value>
     <comment>{0} is the number of differences found, {1} the number a sync can review.</comment>
   </data>
+  <data name="NonTransactionalTables_One" xml:space="preserve">
+    <value>{1} uses a storage engine that cannot roll back, so if the sync fails, the rows already written there stay.</value>
+    <comment>{0} is the number of tables (one here). {1} names the table with its storage engine in parentheses, such as orders (MyISAM). Note in the sync review sheet.</comment>
+  </data>
+  <data name="NonTransactionalTables_Other" xml:space="preserve">
+    <value>{1} use storage engines that cannot roll back, so if the sync fails, the rows already written there stay.</value>
+    <comment>{0} is the number of tables. {1} is a list of tables, each with its storage engine in parentheses, such as orders (MyISAM), logs (MEMORY). Note in the sync review sheet.</comment>
+  </data>
+  <data name="RollbackLeftWrites" xml:space="preserve">
+    <value>The run was rolled back, but {0} cannot roll back, so the rows already written there stay. Compare again to see where the target stands.</value>
+    <comment>{0} is a list of table names. Shown after a failed sync that rolled back.</comment>
+  </data>
 </root>

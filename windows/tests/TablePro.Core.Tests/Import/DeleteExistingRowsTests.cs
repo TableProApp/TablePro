@@ -32,4 +32,27 @@ public sealed class DeleteExistingRowsTests
         Assert.Single(table.Rows);
         Assert.Empty(session.SavedTables);
     }
+
+    [Fact]
+    public async Task ASessionWithoutTransactionsImportsBatchByBatch()
+    {
+        var table = new InMemoryTableSession(InMemoryTableSession.Table("users", ["id"], "id"), []);
+        var session = new InMemoryDatabaseSession(table);
+
+        var result = await RowImporter.ImportAsync(session, Users, Ids(RowImporter.BatchSize + 1), Builder(), ImportRowWriting.Insert, null, Token);
+
+        Assert.False(RowImporter.CanImportInOneTransaction(session));
+        Assert.False(RowImporter.RunsInOneTransaction(session, ImportRowWriting.Insert));
+        Assert.Equal(RowImporter.BatchSize + 1, result.Inserted);
+        Assert.Equal(["users", "users"], session.SavedTables);
+    }
+
+    private static async IAsyncEnumerable<IReadOnlyDictionary<string, object?>> Ids(int count)
+    {
+        for (var i = 0; i < count; i++)
+        {
+            await Task.Yield();
+            yield return new Dictionary<string, object?> { ["id"] = (long)i };
+        }
+    }
 }

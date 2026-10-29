@@ -363,4 +363,10 @@ Les lignes enregistrées avant ce point restent dans la table.</value>
 L’importation s’est faite dans une seule transaction, la table est donc restée telle quelle.</value>
     <comment>Error message when an import that emptied the table first fails. {0} is the error's own message.</comment>
   </data>
+  <data name="RowsInTransactionToolTip" xml:space="preserve">
+    <value>Écrit toutes les lignes dans une seule transaction&#160;: si une ligne échoue, la table reste telle quelle. Désactivez cette option pour valider chaque lot au fur et à mesure.</value>
+  </data>
+  <data name="BatchesCommitNote" xml:space="preserve">
+    <value>Cette connexion ne peut pas faire tenir l’importation dans une seule transaction&#160;: chaque groupe de {0:N0} lignes est validé séparément, et une erreur conserve les lignes précédentes.</value>
+  </data>
 </root>

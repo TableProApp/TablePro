@@ -138,4 +138,13 @@
   <data name="TooManyToSync" xml:space="preserve">
     <value>比較發現了 {0:N0} 處差異，超出同步可以檢閱的 {1:N0} 處。請使用篩選條件或列數上限縮小範圍，然後再比較一次。</value>
   </data>
+  <data name="NonTransactionalTables_One" xml:space="preserve">
+    <value>{1} 使用的儲存引擎無法復原交易，因此如果同步失敗，已寫入其中的列會保留。</value>
+  </data>
+  <data name="NonTransactionalTables_Other" xml:space="preserve">
+    <value>{1} 使用的儲存引擎無法復原交易，因此如果同步失敗，已寫入其中的列會保留。</value>
+  </data>
+  <data name="RollbackLeftWrites" xml:space="preserve">
+    <value>執行已復原，但 {0} 無法復原交易，因此已寫入其中的列會保留。請重新比較以查看目標的目前狀態。</value>
+  </data>
 </root>

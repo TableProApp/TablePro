@@ -138,4 +138,13 @@
   <data name="TooManyToSync" xml:space="preserve">
     <value>Phép so sánh tìm thấy {0:N0} khác biệt, nhiều hơn {1:N0} mà một lần đồng bộ có thể xem xét. Hãy thu hẹp bằng bộ lọc hoặc giới hạn dòng, rồi so sánh lại.</value>
   </data>
+  <data name="NonTransactionalTables_One" xml:space="preserve">
+    <value>{1} dùng một storage engine không thể rollback, nên nếu đồng bộ thất bại, các dòng đã ghi vào đó vẫn còn lại.</value>
+  </data>
+  <data name="NonTransactionalTables_Other" xml:space="preserve">
+    <value>{1} dùng các storage engine không thể rollback, nên nếu đồng bộ thất bại, các dòng đã ghi vào đó vẫn còn lại.</value>
+  </data>
+  <data name="RollbackLeftWrites" xml:space="preserve">
+    <value>Lần chạy đã được rollback, nhưng {0} không thể rollback, nên các dòng đã ghi vào đó vẫn còn lại. Hãy so sánh lại để xem trạng thái hiện tại của đích.</value>
+  </data>
 </root>

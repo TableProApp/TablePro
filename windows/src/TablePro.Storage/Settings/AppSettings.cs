@@ -60,6 +60,12 @@ public sealed record AppSettings
     public string LastSqlImportEncoding { get; init; } = DefaultSqlImportEncoding;
 
     /// <summary>
+    /// The last choice of the import sheet's "Wrap in transaction" box, which the next CSV or JSON import opens on, as
+    /// on macOS. A box held ticked by "Delete existing rows first" is not a choice and is not written here.
+    /// </summary>
+    public bool ImportWrapsInTransaction { get; init; } = true;
+
+    /// <summary>
     /// Keyboard shortcut overrides by command id (<c>TablePro.Core.Shortcuts.ShortcutIds</c>): a chord written as
     /// <c>Ctrl+Shift+O</c>, or an empty string for a command the user cleared. Only changes are stored; a missing id
     /// keeps its default. An empty map is always the shared empty instance, because a record compares a dictionary by
