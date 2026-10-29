@@ -973,6 +973,12 @@ fn the_clock_starts_a_value_that_has_no_time() {
     assert_eq!(set_at_nine("infinity", NAIVE), "2026-10-29 09:05:30");
     assert_eq!(set_at_nine("2024-02-29", NAIVE), "2024-02-29 09:05:30");
     assert_eq!(set_at_nine(" 2024-02-29", NAIVE), "2024-02-29 09:05:30");
+    assert_eq!(set_at_nine("12000-01-01", NAIVE), "12000-01-01 09:05:30");
+    assert_eq!(
+        set_at_nine("2024-02-29", TIME),
+        "2024-02-29 09:05:30",
+        "SQLite keeps a date in a TIME column"
+    );
     assert_eq!(set_at_nine("", TIME), "09:05:30");
     let zoned = set_at_nine("", ZONED);
     assert_eq!(zoned, "2026-10-29 09:05:30+02:00");

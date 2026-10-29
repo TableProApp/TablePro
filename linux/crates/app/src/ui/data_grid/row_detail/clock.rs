@@ -81,7 +81,7 @@ pub fn time_of(text: &str) -> Option<NaiveTime> {
         .ok()
 }
 
-// A value with no clock yet takes `today` for a missing day and `zone`'s offset then.
+// A value with no clock keeps a day it has; a dated column's takes `today`.
 pub fn with_time<Tz: TimeZone>(text: &str, time: NaiveTime, field: ClockField, today: NaiveDate, zone: &Tz) -> String {
     let clock = time.format("%H:%M:%S").to_string();
     if let Some(span) = clock_span(text) {
@@ -89,14 +89,16 @@ pub fn with_time<Tz: TimeZone>(text: &str, time: NaiveTime, field: ClockField, t
         text.replace_range(span, &clock);
         return text;
     }
-    let day = day_of(text.trim_start()).filter(|_| field.dated).unwrap_or(today);
+    let text = text.trim_start();
+    let day = day_len(text).and_then(|len| text.get(..len));
     let offset = field
         .with_offset
-        .then(|| offset_at(zone, day.and_time(time)).to_string())
+        .then(|| offset_at(zone, day.and_then(day_of).unwrap_or(today).and_time(time)).to_string())
         .unwrap_or_default();
-    match field.dated {
-        true => format!("{} {clock}{offset}", day.format("%Y-%m-%d")),
-        false => format!("{clock}{offset}"),
+    match day {
+        Some(day) => format!("{day} {clock}{offset}"),
+        None if field.dated => format!("{} {clock}{offset}", today.format("%Y-%m-%d")),
+        None => format!("{clock}{offset}"),
     }
 }
 
