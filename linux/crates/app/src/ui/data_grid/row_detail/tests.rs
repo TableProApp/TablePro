@@ -871,3 +871,46 @@ fn alt_return_closes_row_details_from_the_pane() {
     })
     .expect("Alt+Return to close Row Details");
 }
+
+fn open_clock(pane: &RowDetailPane) {
+    for _ in 0..5 {
+        pane.imp().clock_button.popup();
+        if wait_until(Duration::from_secs(2), || pane.imp().hour.is_mapped()).is_ok() {
+            return;
+        }
+        pane.imp().clock_button.popdown();
+        drain_main_context();
+    }
+    panic!("the clock never showed");
+}
+
+/// The clock sets a timestamp's time and keeps its day; a date has none.
+#[gtk4::test]
+fn the_clock_sets_a_timestamps_time() {
+    let (grid, pane) = opened(
+        vec![
+            named("id", "integer", true),
+            named("at", "timestamp", false),
+            named("day", "date", false),
+        ],
+        vec![vec![Value::Int(1), Value::Null, a_date(2024, 2, 29)]],
+    );
+    grid.focus(0, 2);
+    drain_main_context();
+    assert!(!pane.imp().clock_button.is_visible(), "a date has no time");
+    grid.focus(0, 1);
+    drain_main_context();
+    assert!(pane.imp().clock_button.is_visible(), "a timestamp has no clock");
+
+    open_clock(&pane);
+    pane.imp().hour.set_value(9.0);
+    pane.imp().minute.set_value(5.0);
+    pane.imp().second.set_value(30.0);
+    pane.imp().clock_set.emit_clicked();
+    drain_main_context();
+
+    assert!(pending(&grid, 1, 1).is_some(), "nothing was written");
+    let text = pane.typed_text();
+    assert!(text.ends_with(" 09:05:30"), "{text}");
+    assert!(day_of(&text).is_some(), "the new time has no day: {text}");
+}

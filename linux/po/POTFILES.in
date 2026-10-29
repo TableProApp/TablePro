@@ -260,6 +260,7 @@ crates/app/src/ui/data_grid/references/mod.rs
 crates/app/src/ui/data_grid/references/tests.rs
 crates/app/src/ui/data_grid/reversed_list.rs
 crates/app/src/ui/data_grid/row_detail/calendar.rs
+crates/app/src/ui/data_grid/row_detail/clock.rs
 crates/app/src/ui/data_grid/row_detail/fields.rs
 crates/app/src/ui/data_grid/row_detail/imp.rs
 crates/app/src/ui/data_grid/row_detail/mod.rs

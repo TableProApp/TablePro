@@ -79,6 +79,7 @@ pub struct ValueContent {
     pub emptied_placeholder: Option<String>,
     pub language: Option<&'static str>,
     pub calendar: bool,
+    pub clock: bool,
 }
 
 pub fn value_content(column: &GridColumn, row: &GridRowId, lock: Option<CellLock>, input: &CellInput) -> ValueContent {
@@ -106,6 +107,7 @@ pub fn value_content(column: &GridColumn, row: &GridRowId, lock: Option<CellLock
             _ => None,
         },
         calendar: editable && matches!(kind, ColumnKind::Date | ColumnKind::Timestamp { .. }),
+        clock: editable && super::clock::ClockField::of(kind).is_some(),
         message,
     }
 }
@@ -339,6 +341,7 @@ impl RowDetailPane {
             emptied_placeholder: None,
             language: None,
             calendar: false,
+            clock: false,
         };
         self.show_value("", &content);
         self.imp().value_view.set_editable(false);
@@ -373,6 +376,7 @@ impl RowDetailPane {
             .update_property(&[gtk::accessible::Property::Label(name)]);
         self.show_message(content.message.as_deref(), false);
         imp.calendar_button.set_visible(content.calendar);
+        imp.clock_button.set_visible(content.clock);
         self.update_placeholder();
     }
 

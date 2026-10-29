@@ -185,6 +185,103 @@
                                   </object>
                                 </child>
                                 <child>
+                                  <object class="GtkMenuButton" id="clock_button">
+                                    <property name="icon-name">preferences-system-time-symbolic</property>
+                                    <property name="visible">false</property>
+                                    <property name="tooltip-text" translatable="yes">Pick a Time</property>
+                                    <accessibility>
+                                      <property name="label" translatable="yes">Pick a Time</property>
+                                    </accessibility>
+                                    <style>
+                                      <class name="flat"/>
+                                    </style>
+                                    <property name="popover">
+                                      <object class="GtkPopover" id="clock_popover">
+                                        <property name="child">
+                                          <object class="GtkBox">
+                                            <property name="spacing">6</property>
+                                            <property name="margin-top">6</property>
+                                            <property name="margin-bottom">6</property>
+                                            <property name="margin-start">6</property>
+                                            <property name="margin-end">6</property>
+                                            <child>
+                                              <object class="GtkSpinButton" id="hour">
+                                                <property name="orientation">vertical</property>
+                                                <property name="numeric">true</property>
+                                                <property name="wrap">true</property>
+                                                <property name="adjustment">
+                                                  <object class="GtkAdjustment">
+                                                    <property name="upper">23</property>
+                                                    <property name="step-increment">1</property>
+                                                    <property name="page-increment">6</property>
+                                                  </object>
+                                                </property>
+                                                <accessibility>
+                                                  <property name="label" translatable="yes">Hour</property>
+                                                </accessibility>
+                                              </object>
+                                            </child>
+                                            <child>
+                                              <object class="GtkLabel">
+                                                <property name="label">:</property>
+                                              </object>
+                                            </child>
+                                            <child>
+                                              <object class="GtkSpinButton" id="minute">
+                                                <property name="orientation">vertical</property>
+                                                <property name="numeric">true</property>
+                                                <property name="wrap">true</property>
+                                                <property name="adjustment">
+                                                  <object class="GtkAdjustment">
+                                                    <property name="upper">59</property>
+                                                    <property name="step-increment">1</property>
+                                                    <property name="page-increment">10</property>
+                                                  </object>
+                                                </property>
+                                                <accessibility>
+                                                  <property name="label" translatable="yes">Minute</property>
+                                                </accessibility>
+                                              </object>
+                                            </child>
+                                            <child>
+                                              <object class="GtkLabel">
+                                                <property name="label">:</property>
+                                              </object>
+                                            </child>
+                                            <child>
+                                              <object class="GtkSpinButton" id="second">
+                                                <property name="orientation">vertical</property>
+                                                <property name="numeric">true</property>
+                                                <property name="wrap">true</property>
+                                                <property name="adjustment">
+                                                  <object class="GtkAdjustment">
+                                                    <property name="upper">59</property>
+                                                    <property name="step-increment">1</property>
+                                                    <property name="page-increment">10</property>
+                                                  </object>
+                                                </property>
+                                                <accessibility>
+                                                  <property name="label" translatable="yes">Second</property>
+                                                </accessibility>
+                                              </object>
+                                            </child>
+                                            <child>
+                                              <object class="GtkButton" id="clock_set">
+                                                <property name="label" translatable="yes">Set</property>
+                                                <property name="valign">center</property>
+                                                <property name="margin-start">6</property>
+                                                <style>
+                                                  <class name="suggested-action"/>
+                                                </style>
+                                              </object>
+                                            </child>
+                                          </object>
+                                        </property>
+                                      </object>
+                                    </property>
+                                  </object>
+                                </child>
+                                <child>
                                   <object class="GtkMenuButton" id="value_menu_button">
                                     <property name="icon-name">view-more-symbolic</property>
                                     <property name="menu-model">value_menu</property>
