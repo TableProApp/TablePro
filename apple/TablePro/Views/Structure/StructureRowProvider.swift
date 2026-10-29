@@ -168,7 +168,8 @@ final class StructureRowProvider {
         serverSupport: StructureServerSupport,
         filterText: String? = nil,
         sortDescriptor: StructureSortDescriptor? = nil,
-        picksCharacterSets: Bool = false
+        picksCharacterSets: Bool = false,
+        keepingSourceIndices: Set<Int> = []
     ) {
         self.changeManager = changeManager
         self.tab = tab
@@ -188,7 +189,7 @@ final class StructureRowProvider {
             tab: tab, changeManager: changeManager, orderedColumnFields: self.orderedColumnFields, databaseType: databaseType
         )
         self.cachedRows = Self.applyFilterAndSort(
-            allRows, filterText: filterText, sortDescriptor: sortDescriptor
+            allRows, filterText: filterText, sortDescriptor: sortDescriptor, keeping: keepingSourceIndices
         )
     }
 
@@ -353,15 +354,18 @@ final class StructureRowProvider {
         ]
     }
 
+    // `keeping` stays listed whatever the filter says: a definition being edited never vanishes under the editor.
     private static func applyFilterAndSort(
         _ rows: [IndexedRow],
         filterText: String?,
-        sortDescriptor: StructureSortDescriptor?
+        sortDescriptor: StructureSortDescriptor?,
+        keeping: Set<Int> = []
     ) -> [IndexedRow] {
         var result = rows
 
         if let filterText, !filterText.isEmpty {
             result = result.filter { indexed in
+                if keeping.contains(indexed.sourceIndex) { return true }
                 guard let name = indexed.row.first ?? nil else { return false }
                 return name.localizedCaseInsensitiveContains(filterText)
             }

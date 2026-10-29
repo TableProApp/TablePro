@@ -137,6 +137,8 @@ final class StructureSectionAdapter {
         let entityIDs = StructureGridEdits.entityIDs(in: section, manager: manager)
         let rowIDs = entityIDs.map { identities.rowID(for: $0) }
         changeTracking.rowIDs = rowIDs
+        let selected = Set(selectedEntityIDs)
+        let keptIndices = Set(entityIDs.indices.filter { selected.contains(entityIDs[$0]) })
 
         let provider = StructureRowProvider(
             changeManager: manager,
@@ -146,7 +148,8 @@ final class StructureSectionAdapter {
             serverSupport: serverSupport,
             filterText: searchText.isEmpty ? nil : searchText,
             sortDescriptor: sortDescriptor,
-            picksCharacterSets: ColumnCharacterSetMenus.offersMenus(characterSetContext.catalog)
+            picksCharacterSets: ColumnCharacterSetMenus.offersMenus(characterSetContext.catalog),
+            keepingSourceIndices: keptIndices
         )
         self.provider = provider
         let rows = provider.asTableRows { rowIDs.indices.contains($0) ? rowIDs[$0] : .existing(-1) }

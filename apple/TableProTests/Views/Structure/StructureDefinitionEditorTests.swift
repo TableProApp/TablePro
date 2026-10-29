@@ -6,6 +6,7 @@
 import AppKit
 import Foundation
 import TableProPluginKit
+import TableProTestSupport
 import Testing
 @testable import TablePro
 
@@ -129,6 +130,31 @@ struct StructureDefinitionEditorTests {
 
         #expect(editor.searchText.isEmpty)
         #expect(editor.inspectorTarget == .entity(.columns, id))
+    }
+
+    @Test("A definition renamed out of the filter stays listed and selected while it is edited")
+    func renamedDefinitionStaysUnderTheFilter() {
+        let editor = makeEditor()
+        editor.searchText = "stat"
+        let status = id(of: "status", in: editor)
+        editor.adapter(for: .columns).select(entity: status)
+
+        editor.typeInspectorField(section: .columns, id: status, field: 0, value: "phase")
+
+        #expect(editor.inspectorTarget == .entity(.columns, status))
+        #expect(editor.adapter(for: .columns).visibleRowCount == 1)
+    }
+
+    @Test("A save's hold closes the grids and its end opens them again")
+    func saveHoldTogglesEditing() async throws {
+        let editor = makeEditor()
+        editor.manager.deleteColumn(id: id(of: "status", in: editor))
+        let hold = try #require(editor.manager.holdForSave())
+        try await waitUntil { !editor.adapter(for: .columns).model.configuration.isEditable }
+
+        _ = editor.manager.releaseHold(hold, written: false)
+
+        try await waitUntil { editor.adapter(for: .columns).model.configuration.isEditable }
     }
 
     @Test("A collapsed section stays collapsed for the next table")

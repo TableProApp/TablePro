@@ -99,6 +99,14 @@ final class StructureDefinitionEditor: ObservableObject {
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.refresh() }
             .store(in: &cancellables)
+        // A save holds every edit while it runs; the grids close on the hold and open again when it ends.
+        manager.$heldSave
+            .map { $0 != nil }
+            .removeDuplicates()
+            .dropFirst()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.refresh() }
+            .store(in: &cancellables)
     }
 
     static let collapsedSectionsKey = "structure.collapsedSections"
