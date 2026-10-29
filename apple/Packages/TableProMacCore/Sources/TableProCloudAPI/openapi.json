@@ -733,6 +733,11 @@
               "team"
             ]
           },
+          "renews_at": {
+            "description": "When an active subscription renews: the end of its current period. Absent for any other license, a past due or canceling subscription included",
+            "format": "date-time",
+            "type": "string"
+          },
           "source": {
             "description": "Extensible enum: subscription, order, manual, legacy",
             "examples": [
@@ -815,6 +820,11 @@
             "examples": [
               "Ada's MacBook Pro"
             ],
+            "type": "string"
+          },
+          "offline_until": {
+            "description": "When the last valid offline file issued for the device expires, as the device list gives it; until then the device cannot be removed (offline_file_active)",
+            "format": "date-time",
             "type": "string"
           },
           "os_version": {
@@ -2280,6 +2290,7 @@
                           "app_version": "2.0.0",
                           "os_version": "26.0",
                           "licensed_at": "2026-10-02T09:00:00Z",
+                          "offline_until": "2027-10-02T09:00:00Z",
                           "created_at": "2026-10-02T09:00:00Z",
                           "last_seen_at": "2026-10-22T09:00:00Z"
                         },
