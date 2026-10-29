@@ -33,10 +33,8 @@ pub struct TableProApplication {
     /// Files handed over while the record is read, opened after the
     /// windows it restores.
     pub(super) pending_files: RefCell<Vec<gio::File>>,
-    /// A crash report found before any window opened.
-    pub(super) crash_report: RefCell<Option<std::path::PathBuf>>,
-    /// An update to say found before any window opened.
-    pub(super) updated_to: RefCell<Option<String>>,
+    /// What to say at launch, found before any window opened.
+    pub(super) launch_notices: RefCell<Vec<crate::ui::LaunchNotice>>,
     /// Answers the MCP server's questions about windows and sessions.
     pub(super) mcp_requests: RefCell<Option<glib::JoinHandle<()>>>,
 }

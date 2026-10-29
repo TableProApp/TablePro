@@ -33,13 +33,27 @@ fn metainfo_resource() -> String {
     format!("{}/metainfo.xml", config::RESOURCE_BASE_PATH)
 }
 
-/// A development version has no release of its own in the metainfo, and
-/// libadwaita reports a version it cannot find as a critical.
+// A development version has no release in the metainfo, and libadwaita logs a critical for a missing one.
 pub(super) fn release_notes_version(profile: Profile) -> Option<&'static str> {
     match profile {
         Profile::Default => Some(config::VERSION),
         Profile::Development => None,
     }
+}
+
+// Read the way the About dialog reads them, so the update toast never points to a What's New page it lacks.
+pub(super) fn has_release_notes(version: &str) -> bool {
+    !adw::AboutDialog::from_appdata(&metainfo_resource(), Some(version))
+        .release_notes()
+        .is_empty()
+}
+
+#[cfg(test)]
+pub(super) fn embedded_metainfo() -> String {
+    crate::register_test_resources();
+    let bytes = gio::resources_lookup_data(&metainfo_resource(), gio::ResourceLookupFlags::NONE)
+        .expect("the metainfo is embedded at the resource base path");
+    String::from_utf8(bytes.to_vec()).expect("the metainfo is UTF-8")
 }
 
 #[cfg(test)]
@@ -48,13 +62,6 @@ mod tests {
 
     use super::*;
     use crate::application::metainfo_release::newest_release;
-
-    fn embedded_metainfo() -> String {
-        crate::register_test_resources();
-        let bytes = gio::resources_lookup_data(&metainfo_resource(), gio::ResourceLookupFlags::NONE)
-            .expect("the metainfo is embedded at the resource base path");
-        String::from_utf8(bytes.to_vec()).expect("the metainfo is UTF-8")
-    }
 
     /// The text between the element `open` starts and the next `close`.
     fn metainfo_text<'a>(xml: &'a str, open: &str, close: &str) -> &'a str {
@@ -189,6 +196,15 @@ mod tests {
             let bytes = std::fs::read(dir.join(name)).expect("the screenshot is readable");
             assert!(bytes.starts_with(b"\x89PNG\r\n\x1a\n"), "{name} is not a PNG");
         }
+    }
+
+    #[gtk4::test]
+    fn the_newest_release_has_notes_for_whats_new() {
+        adw::init().expect("libadwaita initialises under the test backend");
+        let xml = embedded_metainfo();
+        let version = newest_release(&xml).expect("the metainfo lists a release");
+
+        assert!(has_release_notes(version));
     }
 
     #[test]

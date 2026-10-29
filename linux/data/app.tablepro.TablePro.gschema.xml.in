@@ -117,8 +117,8 @@
 
     <key name="last-seen-version" type="s">
       <default>''</default>
-      <summary>Last version launched</summary>
-      <description>The TablePro version that last ran, so the first launch after an update can point to its release notes.</description>
+      <summary>Newest version launched</summary>
+      <description>The newest TablePro release that has run, so the first launch of a later one can point to its release notes. Empty before the first launch.</description>
     </key>
 
     <key name="mcp-server-enabled" type="b">

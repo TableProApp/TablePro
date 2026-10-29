@@ -12,7 +12,7 @@ use tablepro_session::{ConnectSource, SessionKey};
 use uuid::Uuid;
 
 use super::connections::LevelSave;
-use super::launch_notice::LaunchNotice;
+use super::launch_notice::Said;
 use super::locate_file::LocateChooser;
 use super::picker_page::PickerPage;
 use super::session_page::{FailedConnect, OpenSession, PendingConnect, SessionPage};
@@ -88,9 +88,7 @@ pub struct SessionWindow {
     /// looked for.
     pub(super) dialog_opening: Cell<bool>,
     pub(super) shut_down: Cell<bool>,
-    /// What the last run or an update left to say, until each toast is
-    /// dismissed.
-    pub(super) launch_notices: RefCell<Vec<LaunchNotice>>,
+    pub(super) launch_notices: RefCell<Vec<Said>>,
     /// Every toast shown, which the overlay does not list.
     #[cfg(test)]
     pub(super) toasts: RefCell<Vec<adw::Toast>>,

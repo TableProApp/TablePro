@@ -5556,6 +5556,7 @@ dependencies = [
  "relm4",
  "rustix 1.1.4",
  "secrecy",
+ "semver",
  "serde",
  "serde_json",
  "sourceview5",

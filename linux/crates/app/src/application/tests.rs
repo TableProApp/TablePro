@@ -804,6 +804,60 @@ fn new_window_action_opens_another_window() {
     assert_eq!(test.app.imp().windows.len(), 2);
 }
 
+fn released_version() -> String {
+    let xml = super::about_dialog::embedded_metainfo();
+    super::metainfo_release::newest_release(&xml)
+        .expect("the metainfo lists a release")
+        .to_owned()
+}
+
+fn said_at_launch(test: &TestApp) -> Vec<crate::ui::LaunchNotice> {
+    test.app.imp().launch_notices.borrow().clone()
+}
+
+#[gtk4::test]
+fn the_first_launch_after_an_older_release_says_so_once() {
+    let test = TestApp::started("LaunchUpdate");
+    let settings = test.services().settings.clone();
+    let released = released_version();
+    settings.set_last_seen_version("0.0.1").expect("store a version");
+
+    test.app.note_launch_of(&released);
+
+    assert_eq!(settings.last_seen_version(), released);
+    assert_eq!(said_at_launch(&test), [crate::ui::LaunchNotice::Update(released.clone())]);
+    test.window();
+    assert!(said_at_launch(&test).is_empty(), "the first window did not take it");
+
+    test.app.note_launch_of(&released);
+
+    assert!(said_at_launch(&test).is_empty(), "the same release was said twice");
+}
+
+#[gtk4::test]
+fn a_launch_after_a_newer_release_says_nothing_and_keeps_its_version() {
+    let test = TestApp::started("LaunchDowngrade");
+    let settings = test.services().settings.clone();
+    settings.set_last_seen_version("99.0.0").expect("store a version");
+
+    test.app.note_launch_of(&released_version());
+
+    assert_eq!(settings.last_seen_version(), "99.0.0");
+    assert!(said_at_launch(&test).is_empty());
+}
+
+#[gtk4::test]
+fn a_first_launch_records_the_version_and_says_nothing() {
+    let test = TestApp::started("LaunchFirst");
+    let settings = test.services().settings.clone();
+    let released = released_version();
+
+    test.app.note_launch_of(&released);
+
+    assert_eq!(settings.last_seen_version(), released);
+    assert!(said_at_launch(&test).is_empty());
+}
+
 #[gtk4::test]
 fn a_window_before_startup_is_refused() {
     let test = TestApp::new("Early");

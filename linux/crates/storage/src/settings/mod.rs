@@ -165,7 +165,6 @@ impl AppSettings {
         self.set_boolean(keys::RESTORE_SESSION, restore)
     }
 
-    /// The version that last ran, empty before the first launch.
     pub fn last_seen_version(&self) -> String {
         self.settings.string(keys::LAST_SEEN_VERSION).into()
     }

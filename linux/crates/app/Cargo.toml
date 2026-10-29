@@ -102,6 +102,7 @@ icu_decimal = { version = "2.3", features = ["alloc"] }
 icu_locale_core = { version = "2.3", features = ["alloc"] }
 # The assistant's replies are Markdown; the HTML writer stays off.
 pulldown-cmark = { version = "0.13", default-features = false }
+semver = "1"
 sqlformat = "0.5"
 
 [dev-dependencies]
