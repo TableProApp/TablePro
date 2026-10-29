@@ -8,16 +8,15 @@ import AppKit
 import TableProTextEngine
 import Testing
 
-/// Where the line number is actually painted, read back off the gutter.
-///
-/// A width assertion cannot tell a wide gutter apart from one drawing its number in the wrong place, and the report
-/// here was about the gap before the digit rather than the column's total width. This rasterises the gutter and finds
-/// the first column the number reaches.
+// A width assertion cannot tell a wide gutter from one drawing its number in the wrong place, so this rasterises the
+// gutter and finds the first column the number reaches.
 @MainActor
 struct GutterNumberOffsetTests {
     private func controller(fitsContent: Bool) -> TextViewController {
         let controller = Mock.textViewController(theme: Mock.theme())
         controller.loadView()
+        // In Dark Aqua the gutter's own background reads as ink.
+        controller.view.appearance = NSAppearance(named: .aqua)
         controller.textView.string = "UPDATE `Album` SET `Title` = 'sa' WHERE `AlbumId` = '6';"
         controller.textView.frame = NSRect(x: 0, y: 0, width: 800, height: 200)
         controller.textView.updatedViewport(NSRect(x: 0, y: 0, width: 800, height: 200))
@@ -27,7 +26,6 @@ struct GutterNumberOffsetTests {
         return controller
     }
 
-    /// The leftmost point of the gutter that the line number paints, or `nil` when nothing was drawn.
     private func firstInkedColumn(_ gutter: GutterView) -> CGFloat? {
         let bounds = CGRect(x: 0, y: 0, width: gutter.frame.width, height: 40)
         guard bounds.width > 0, let rep = gutter.bitmapImageRepForCachingDisplay(in: bounds) else { return nil }
