@@ -14,6 +14,10 @@
     <PackageReference Include="AWSSDK.SecurityToken" />
     <PackageReference Include="AWSSDK.SSO" />
     <PackageReference Include="AWSSDK.SSOOIDC" />
+    <!-- Redshift issues a user and a temporary password; Cloud SQL takes an OAuth access token. -->
+    <PackageReference Include="AWSSDK.Redshift" />
+    <PackageReference Include="AWSSDK.RedshiftServerless" />
+    <PackageReference Include="Google.Apis.Auth" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="TablePro.Ssh.Tests" />

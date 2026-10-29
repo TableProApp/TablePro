@@ -60,21 +60,15 @@ public sealed class ConnectionService
 
     public DriverRegistry Drivers { get; }
 
+    // Kept in parts like the transport secrets, since a Google service account key takes the password's place.
     public string? SavedPassword(ConnectionProfile profile) =>
-        profile.SavePassword ? _secrets.Get(SecretKeys.Connection(profile.Id)) : null;
+        profile.SavePassword ? GetLong(SecretKeys.Connection(profile.Id)) : null;
 
     public string? SavedSshSecret(ConnectionProfile profile) => _secrets.Get(SecretKeys.Ssh(profile.Id));
 
     public void SavePassword(ConnectionProfile profile, string? password)
     {
-        if (profile.SavePassword && !string.IsNullOrEmpty(password))
-        {
-            _secrets.Set(SecretKeys.Connection(profile.Id), password);
-        }
-        else
-        {
-            _secrets.Delete(SecretKeys.Connection(profile.Id));
-        }
+        SetLong(SecretKeys.Connection(profile.Id), profile.SavePassword ? password : null);
     }
 
     public void SaveSshSecret(ConnectionProfile profile, string? secret)
@@ -96,7 +90,7 @@ public sealed class ConnectionService
 
     public void ForgetSecrets(ConnectionProfile profile)
     {
-        _secrets.Delete(SecretKeys.Connection(profile.Id));
+        SetLong(SecretKeys.Connection(profile.Id), null);
         _secrets.Delete(SecretKeys.Ssh(profile.Id));
         foreach (var secret in Enum.GetValues<TransportSecret>())
         {
@@ -159,6 +153,8 @@ public sealed class ConnectionService
 
         try
         {
+            // Redshift's IAM sign-in names the database user, which the driver must know before it opens the pool.
+            request = await SignInTokens.PrepareAsync(request, cancellationToken);
             var session = await Drivers.Resolve(profile.Engine).ConnectAsync(request, cancellationToken);
             if (remember && _connections.Find(profile.Id) is not null)
             {

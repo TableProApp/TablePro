@@ -612,6 +612,10 @@
   <data name="UrlHeader" xml:space="preserve">
     <value>URL</value>
   </data>
+  <data name="LibSqlUrlHeader" xml:space="preserve">
+    <value>URL veya file: yolu</value>
+    <comment>Field label for a libSQL or Turso connection: a server URL, or file: followed by a local database path. Keep "file:" as is.</comment>
+  </data>
   <data name="UserHeader" xml:space="preserve">
     <value>Kullanıcı</value>
   </data>
@@ -623,5 +627,41 @@
   </data>
   <data name="WindowsAuthNote" xml:space="preserve">
     <value>Windows hesabınızla, etki alanı sunuyorsa Kerberos aracılığıyla oturum açar.</value>
+  </data>
+  <data name="RedisHostHeader" xml:space="preserve">
+    <value>Sunucu veya ilk düğüm</value>
+  </data>
+  <data name="SignInGoogleAdc" xml:space="preserve">
+    <value>Google Cloud IAM (Uygulama Varsayılanı)</value>
+  </data>
+  <data name="SignInGoogleServiceAccount" xml:space="preserve">
+    <value>Google Cloud IAM (Hizmet Hesabı)</value>
+  </data>
+  <data name="GoogleServiceAccountKeyHeader" xml:space="preserve">
+    <value>Hizmet hesabı anahtarı</value>
+  </data>
+  <data name="GoogleServiceAccountKeyPlaceholder" xml:space="preserve">
+    <value>Dosya yolu veya yapıştırılan JSON</value>
+  </data>
+  <data name="GoogleServiceAccountKeyRequired" xml:space="preserve">
+    <value>Hizmet hesabı anahtarını girin: JSON dosyasının yolunu veya JSON'un kendisini.</value>
+  </data>
+  <data name="GoogleIamUserHeader" xml:space="preserve">
+    <value>IAM veritabanı kullanıcısı</value>
+  </data>
+  <data name="GoogleAdcNote" xml:space="preserve">
+    <value>“gcloud auth application-default login” komutunun kaydettiği kimlik bilgilerinden, GOOGLE_APPLICATION_CREDENTIALS'tan veya meta veri sunucusundan alınan bir Cloud SQL IAM belirteciyle oturum açar. IAM kullanıcısını Cloud SQL'in listelediği şekilde girin.</value>
+  </data>
+  <data name="GoogleServiceAccountNote" xml:space="preserve">
+    <value>Hizmet hesabı için bir Cloud SQL IAM belirteciyle oturum açar. IAM kullanıcısını Cloud SQL'in listelediği şekilde girin.</value>
+  </data>
+  <data name="RedshiftUserHeader" xml:space="preserve">
+    <value>Veritabanı kullanıcısı (isteğe bağlı)</value>
+  </data>
+  <data name="RedshiftEndpointHeader" xml:space="preserve">
+    <value>Redshift uç noktası (isteğe bağlı)</value>
+  </data>
+  <data name="RedshiftIamNote" xml:space="preserve">
+    <value>AWS, ana bilgisayarın belirttiği küme veya Serverless çalışma grubu için geçici bir kullanıcı ve parola verir. IAM kimliğinizle oturum açmak için kullanıcıyı boş bırakın. Redshift uç noktasını yalnızca ana bilgisayar yerel bir bağlantı noktası yönlendirmesi olduğunda girin.</value>
   </data>
 </root>

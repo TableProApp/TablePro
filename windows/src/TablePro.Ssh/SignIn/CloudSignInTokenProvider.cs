@@ -10,10 +10,11 @@ using TablePro.Core.Connections;
 namespace TablePro.Ssh.SignIn;
 
 /// <summary>
-/// Mints the tokens PostgreSQL and MySQL send as passwords: Amazon RDS IAM tokens, signed with an access key or a
-/// profile from the AWS config files (static keys, assumed roles, IAM Identity Center), and Microsoft Entra ID tokens
-/// for Azure Database. Credentials are kept per profile for the app's lifetime, so an interactive or device code
-/// sign-in happens once and the SDKs refresh what they hold.
+/// Mints the passwords PostgreSQL, MySQL and Redshift sign in with: Amazon RDS IAM tokens and Redshift temporary
+/// credentials, from an access key or a profile in the AWS config files (static keys, assumed roles, IAM Identity
+/// Center); Microsoft Entra ID tokens for Azure Database; and Cloud SQL IAM access tokens. Credentials are kept per
+/// profile for the app's lifetime, so an interactive or device code sign-in happens once and the SDKs refresh what they
+/// hold.
 /// </summary>
 public sealed class CloudSignInTokenProvider : ISignInTokenProvider
 {
@@ -23,19 +24,39 @@ public sealed class CloudSignInTokenProvider : ISignInTokenProvider
     private readonly ConcurrentDictionary<string, Lazy<AWSCredentials>> _awsProfiles = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, Lazy<TokenCredential>> _entra = new(StringComparer.Ordinal);
     private readonly TimeProvider _time;
+    private readonly HttpClientFactory? _awsHttp;
+    private readonly GoogleCloudSqlTokens _google;
 
     public CloudSignInTokenProvider(TimeProvider? time = null)
+        : this(time, null, null)
+    {
+    }
+
+    /// <summary>Lets tests answer AWS and Google requests without the network.</summary>
+    internal CloudSignInTokenProvider(TimeProvider? time, HttpClientFactory? awsHttp, Google.Apis.Http.IHttpClientFactory? googleHttp)
     {
         _time = time ?? TimeProvider.System;
+        _awsHttp = awsHttp;
+        _google = new GoogleCloudSqlTokens(googleHttp);
     }
 
     public async ValueTask<string> GetTokenAsync(ConnectionProfile profile, string? secret, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(profile);
         var method = profile.EffectiveSignIn();
+        if (profile.IssuesSignInUser())
+        {
+            return (await RedshiftAsync(profile, method, secret, cancellationToken)).Password;
+        }
+
         if (method.IsAwsIam())
         {
             return await AwsTokenAsync(profile, method, secret, cancellationToken);
+        }
+
+        if (method.IsGoogleCloudIam())
+        {
+            return await _google.GetTokenAsync(profile, secret, cancellationToken);
         }
 
         if (method == SignInMethod.EntraId)
@@ -46,9 +67,16 @@ public sealed class CloudSignInTokenProvider : ISignInTokenProvider
         throw new InvalidOperationException($"{method.DisplayName(profile.Engine)} does not use a sign-in token.");
     }
 
+    public async ValueTask<SignInCredentials> SignInAsync(ConnectionProfile profile, string? secret, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(profile);
+        return profile.IssuesSignInUser()
+            ? await RedshiftAsync(profile, profile.EffectiveSignIn(), secret, cancellationToken)
+            : new SignInCredentials(profile.Username ?? string.Empty, await GetTokenAsync(profile, secret, cancellationToken));
+    }
+
     private async Task<string> AwsTokenAsync(ConnectionProfile profile, SignInMethod method, string? secret, CancellationToken cancellationToken)
     {
-        var auth = profile.Auth ?? new ConnectionAuthSettings();
         var user = profile.Username?.Trim();
         if (string.IsNullOrEmpty(user))
         {
@@ -56,49 +84,7 @@ public sealed class CloudSignInTokenProvider : ISignInTokenProvider
         }
 
         var (host, port) = RdsAuthToken.SigningEndpoint(profile);
-        AwsCredentialSet credentials;
-        string? profileRegion = null;
-        if (method == SignInMethod.AwsIamAccessKey)
-        {
-            if (string.IsNullOrWhiteSpace(auth.AwsAccessKeyId) || string.IsNullOrEmpty(secret))
-            {
-                throw new InvalidOperationException("Enter the access key ID and the secret access key.");
-            }
-
-            credentials = new AwsCredentialSet(auth.AwsAccessKeyId.Trim(), secret);
-        }
-        else
-        {
-            var name = string.IsNullOrWhiteSpace(auth.AwsProfileName) ? "default" : auth.AwsProfileName.Trim();
-            var chain = new CredentialProfileStoreChain();
-            if (chain.TryGetProfile(name, out var stored))
-            {
-                profileRegion = stored.Region?.SystemName;
-            }
-
-            ImmutableCredentials resolved;
-            try
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                var source = _awsProfiles.GetOrAdd(name, key => new Lazy<AWSCredentials>(() => LoadProfile(chain, key))).Value;
-                resolved = await source.GetCredentialsAsync();
-            }
-            catch (InvalidOperationException)
-            {
-                _awsProfiles.TryRemove(name, out _);
-                throw;
-            }
-            catch (AmazonClientException ex)
-            {
-                // A failed SSO or role session must not stay cached; the next connect reads the profile again.
-                _awsProfiles.TryRemove(name, out _);
-                var hint = method == SignInMethod.AwsIamSso ? $" Run “aws sso login --profile {name}” and connect again." : string.Empty;
-                throw new InvalidOperationException($"The AWS profile {name} gave no credentials: {ex.Message}{hint}", ex);
-            }
-
-            credentials = new AwsCredentialSet(resolved.AccessKey, resolved.SecretKey, string.IsNullOrEmpty(resolved.Token) ? null : resolved.Token);
-        }
-
+        var (credentials, profileRegion) = await AwsCredentialsAsync(profile, method, secret, cancellationToken);
         string region;
         try
         {
@@ -110,6 +96,62 @@ public sealed class CloudSignInTokenProvider : ISignInTokenProvider
         }
 
         return RdsAuthToken.Generate(credentials, host, port, region, user, _time.GetUtcNow());
+    }
+
+    private async Task<SignInCredentials> RedshiftAsync(ConnectionProfile profile, SignInMethod method, string? secret, CancellationToken cancellationToken)
+    {
+        var endpoint = RedshiftAuth.ResolveEndpoint(profile);
+        var (credentials, _) = await AwsCredentialsAsync(profile, method, secret, cancellationToken);
+        var region = profile.Auth?.AwsRegion is { } configured && !string.IsNullOrWhiteSpace(configured) ? configured.Trim() : endpoint.Region;
+        AWSCredentials sdkCredentials = credentials.SessionToken is { } token
+            ? new SessionAWSCredentials(credentials.AccessKeyId, credentials.SecretAccessKey, token)
+            : new BasicAWSCredentials(credentials.AccessKeyId, credentials.SecretAccessKey);
+        return await RedshiftSignIn.RequestAsync(endpoint, region, sdkCredentials, RedshiftAuth.RequestedUser(profile), profile.Database, _awsHttp, cancellationToken);
+    }
+
+    /// <summary>The credentials an AWS sign-in signs with, and the region the AWS profile names, if any.</summary>
+    private async Task<(AwsCredentialSet Credentials, string? ProfileRegion)> AwsCredentialsAsync(ConnectionProfile profile, SignInMethod method, string? secret, CancellationToken cancellationToken)
+    {
+        var auth = profile.Auth ?? new ConnectionAuthSettings();
+        if (method == SignInMethod.AwsIamAccessKey)
+        {
+            if (string.IsNullOrWhiteSpace(auth.AwsAccessKeyId) || string.IsNullOrEmpty(secret))
+            {
+                throw new InvalidOperationException("Enter the access key ID and the secret access key.");
+            }
+
+            return (new AwsCredentialSet(auth.AwsAccessKeyId.Trim(), secret), null);
+        }
+
+        var name = string.IsNullOrWhiteSpace(auth.AwsProfileName) ? "default" : auth.AwsProfileName.Trim();
+        var chain = new CredentialProfileStoreChain();
+        string? profileRegion = null;
+        if (chain.TryGetProfile(name, out var stored))
+        {
+            profileRegion = stored.Region?.SystemName;
+        }
+
+        ImmutableCredentials resolved;
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var source = _awsProfiles.GetOrAdd(name, key => new Lazy<AWSCredentials>(() => LoadProfile(chain, key))).Value;
+            resolved = await source.GetCredentialsAsync();
+        }
+        catch (InvalidOperationException)
+        {
+            _awsProfiles.TryRemove(name, out _);
+            throw;
+        }
+        catch (AmazonClientException ex)
+        {
+            // A failed SSO or role session must not stay cached; the next connect reads the profile again.
+            _awsProfiles.TryRemove(name, out _);
+            var hint = method == SignInMethod.AwsIamSso ? $" Run “aws sso login --profile {name}” and connect again." : string.Empty;
+            throw new InvalidOperationException($"The AWS profile {name} gave no credentials: {ex.Message}{hint}", ex);
+        }
+
+        return (new AwsCredentialSet(resolved.AccessKey, resolved.SecretKey, string.IsNullOrEmpty(resolved.Token) ? null : resolved.Token), profileRegion);
     }
 
     private static AWSCredentials LoadProfile(CredentialProfileStoreChain chain, string name) =>

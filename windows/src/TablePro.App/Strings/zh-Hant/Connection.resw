@@ -612,6 +612,10 @@
   <data name="UrlHeader" xml:space="preserve">
     <value>URL</value>
   </data>
+  <data name="LibSqlUrlHeader" xml:space="preserve">
+    <value>URL 或 file: 路徑</value>
+    <comment>Field label for a libSQL or Turso connection: a server URL, or file: followed by a local database path. Keep "file:" as is.</comment>
+  </data>
   <data name="UserHeader" xml:space="preserve">
     <value>使用者</value>
   </data>
@@ -623,5 +627,41 @@
   </data>
   <data name="WindowsAuthNote" xml:space="preserve">
     <value>以你的 Windows 帳戶登入，網域支援時會使用 Kerberos。</value>
+  </data>
+  <data name="RedisHostHeader" xml:space="preserve">
+    <value>主機或首個節點</value>
+  </data>
+  <data name="SignInGoogleAdc" xml:space="preserve">
+    <value>Google Cloud IAM（應用程式預設憑證）</value>
+  </data>
+  <data name="SignInGoogleServiceAccount" xml:space="preserve">
+    <value>Google Cloud IAM（服務帳戶）</value>
+  </data>
+  <data name="GoogleServiceAccountKeyHeader" xml:space="preserve">
+    <value>服務帳戶金鑰</value>
+  </data>
+  <data name="GoogleServiceAccountKeyPlaceholder" xml:space="preserve">
+    <value>檔案路徑或貼上 JSON</value>
+  </data>
+  <data name="GoogleServiceAccountKeyRequired" xml:space="preserve">
+    <value>請輸入服務帳戶金鑰：其 JSON 檔案的路徑，或 JSON 內容本身。</value>
+  </data>
+  <data name="GoogleIamUserHeader" xml:space="preserve">
+    <value>IAM 資料庫使用者</value>
+  </data>
+  <data name="GoogleAdcNote" xml:space="preserve">
+    <value>使用 Cloud SQL IAM 權杖登入，權杖來自「gcloud auth application-default login」儲存的憑證、GOOGLE_APPLICATION_CREDENTIALS 或中繼資料伺服器。請依 Cloud SQL 列出的名稱輸入 IAM 使用者。</value>
+  </data>
+  <data name="GoogleServiceAccountNote" xml:space="preserve">
+    <value>使用服務帳戶的 Cloud SQL IAM 權杖登入。請依 Cloud SQL 列出的名稱輸入 IAM 使用者。</value>
+  </data>
+  <data name="RedshiftUserHeader" xml:space="preserve">
+    <value>資料庫使用者（選用）</value>
+  </data>
+  <data name="RedshiftEndpointHeader" xml:space="preserve">
+    <value>Redshift 端點（選用）</value>
+  </data>
+  <data name="RedshiftIamNote" xml:space="preserve">
+    <value>AWS 會為主機所指的叢集或 Serverless 工作群組核發臨時使用者與密碼。將使用者留空即以你的 IAM 身分登入。僅當主機是本機連接埠轉送時才需填寫 Redshift 端點。</value>
   </data>
 </root>

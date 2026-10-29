@@ -612,6 +612,10 @@
   <data name="UrlHeader" xml:space="preserve">
     <value>URL</value>
   </data>
+  <data name="LibSqlUrlHeader" xml:space="preserve">
+    <value>URL 或 file: 路径</value>
+    <comment>Field label for a libSQL or Turso connection: a server URL, or file: followed by a local database path. Keep "file:" as is.</comment>
+  </data>
   <data name="UserHeader" xml:space="preserve">
     <value>用户</value>
   </data>
@@ -623,5 +627,41 @@
   </data>
   <data name="WindowsAuthNote" xml:space="preserve">
     <value>以你的 Windows 账户登录，域支持时使用 Kerberos。</value>
+  </data>
+  <data name="RedisHostHeader" xml:space="preserve">
+    <value>主机或首个节点</value>
+  </data>
+  <data name="SignInGoogleAdc" xml:space="preserve">
+    <value>Google Cloud IAM（应用默认凭据）</value>
+  </data>
+  <data name="SignInGoogleServiceAccount" xml:space="preserve">
+    <value>Google Cloud IAM（服务账号）</value>
+  </data>
+  <data name="GoogleServiceAccountKeyHeader" xml:space="preserve">
+    <value>服务账号密钥</value>
+  </data>
+  <data name="GoogleServiceAccountKeyPlaceholder" xml:space="preserve">
+    <value>文件路径或粘贴 JSON</value>
+  </data>
+  <data name="GoogleServiceAccountKeyRequired" xml:space="preserve">
+    <value>请输入服务账号密钥：其 JSON 文件的路径，或 JSON 内容本身。</value>
+  </data>
+  <data name="GoogleIamUserHeader" xml:space="preserve">
+    <value>IAM 数据库用户</value>
+  </data>
+  <data name="GoogleAdcNote" xml:space="preserve">
+    <value>使用 Cloud SQL IAM 令牌登录，令牌来自“gcloud auth application-default login”保存的凭据、GOOGLE_APPLICATION_CREDENTIALS 或元数据服务器。请按 Cloud SQL 中列出的名称输入 IAM 用户。</value>
+  </data>
+  <data name="GoogleServiceAccountNote" xml:space="preserve">
+    <value>使用服务账号的 Cloud SQL IAM 令牌登录。请按 Cloud SQL 中列出的名称输入 IAM 用户。</value>
+  </data>
+  <data name="RedshiftUserHeader" xml:space="preserve">
+    <value>数据库用户（可选）</value>
+  </data>
+  <data name="RedshiftEndpointHeader" xml:space="preserve">
+    <value>Redshift 终端节点（可选）</value>
+  </data>
+  <data name="RedshiftIamNote" xml:space="preserve">
+    <value>AWS 会为主机所指的集群或 Serverless 工作组签发临时用户和密码。将用户留空即以你的 IAM 身份登录。仅当主机是本地端口转发时才需填写 Redshift 终端节点。</value>
   </data>
 </root>

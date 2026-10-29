@@ -786,6 +786,10 @@
     <value>URL</value>
     <comment>Field label for a libSQL or Turso database URL, shown where other engines say Host.</comment>
   </data>
+  <data name="LibSqlUrlHeader" xml:space="preserve">
+    <value>URL or file: path</value>
+    <comment>Field label for a libSQL or Turso connection: a server URL, or file: followed by a local database path. Keep "file:" as is.</comment>
+  </data>
   <data name="UserHeader" xml:space="preserve">
     <value>User</value>
     <comment>Field label for the database user name.</comment>
@@ -800,5 +804,50 @@
   </data>
   <data name="WindowsAuthNote" xml:space="preserve">
     <value>Signs in as your Windows account, by Kerberos when the domain offers it.</value>
+  </data>
+  <data name="RedisHostHeader" xml:space="preserve">
+    <value>Host or first node</value>
+  </data>
+  <data name="SignInGoogleAdc" xml:space="preserve">
+    <value>Google Cloud IAM (Application Default)</value>
+    <comment>Sign-in method choice. Google Cloud IAM is a product name; Application Default refers to Google application default credentials.</comment>
+  </data>
+  <data name="SignInGoogleServiceAccount" xml:space="preserve">
+    <value>Google Cloud IAM (Service Account)</value>
+    <comment>Sign-in method choice. Google Cloud IAM is a product name.</comment>
+  </data>
+  <data name="GoogleServiceAccountKeyHeader" xml:space="preserve">
+    <value>Service account key</value>
+    <comment>Field label for a Google Cloud service account key.</comment>
+  </data>
+  <data name="GoogleServiceAccountKeyPlaceholder" xml:space="preserve">
+    <value>File path or paste JSON</value>
+    <comment>Placeholder of the service account key field.</comment>
+  </data>
+  <data name="GoogleServiceAccountKeyRequired" xml:space="preserve">
+    <value>Enter the service account key: the path of its JSON file, or the JSON itself.</value>
+  </data>
+  <data name="GoogleIamUserHeader" xml:space="preserve">
+    <value>IAM database user</value>
+    <comment>Field label for the Cloud SQL IAM user a token signs in as.</comment>
+  </data>
+  <data name="GoogleAdcNote" xml:space="preserve">
+    <value>Signs in with a Cloud SQL IAM token from the credentials that “gcloud auth application-default login” saved, from GOOGLE_APPLICATION_CREDENTIALS, or from the metadata server. Enter the IAM user as Cloud SQL lists it.</value>
+    <comment>“gcloud auth application-default login” is a command and GOOGLE_APPLICATION_CREDENTIALS an environment variable; keep both as is.</comment>
+  </data>
+  <data name="GoogleServiceAccountNote" xml:space="preserve">
+    <value>Signs in with a Cloud SQL IAM token for the service account. Enter the IAM user as Cloud SQL lists it.</value>
+  </data>
+  <data name="RedshiftUserHeader" xml:space="preserve">
+    <value>Database user (optional)</value>
+    <comment>Field label for the Redshift database user IAM credentials are issued for.</comment>
+  </data>
+  <data name="RedshiftEndpointHeader" xml:space="preserve">
+    <value>Redshift endpoint (optional)</value>
+    <comment>Field label. Redshift is an AWS product name.</comment>
+  </data>
+  <data name="RedshiftIamNote" xml:space="preserve">
+    <value>AWS issues a temporary user and password for the cluster or Serverless workgroup the host names. Leave the user empty to sign in as your IAM identity. Enter the Redshift endpoint only when the host is a local port forward.</value>
+    <comment>Redshift and Serverless are AWS product names.</comment>
   </data>
 </root>

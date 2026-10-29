@@ -85,6 +85,9 @@ internal static class ConnectionEditor
 
     private sealed class Form
     {
+        private const string RdsEndpointPlaceholder = "mydb.abc123.us-east-1.rds.amazonaws.com:5432";
+        private const string RedshiftEndpointPlaceholder = "my-cluster.abc123.us-east-1.redshift.amazonaws.com";
+
         private readonly AppHost _host;
         private readonly ConnectionProfile? _existing;
         private readonly DialogService _dialogs;
@@ -108,7 +111,10 @@ internal static class ConnectionEditor
         private readonly TextBox _awsRegion = new() { Header = Strings.Get("Connection/AwsRegionHeader"), PlaceholderText = Strings.Get("Connection/AwsRegionPlaceholder") };
         private readonly TextBox _awsAccessKey = new() { Header = Strings.Get("Connection/AccessKeyIdHeader"), PlaceholderText = "AKIA..." };
         private readonly TextBox _awsProfile = new() { Header = Strings.Get("Connection/AwsProfileHeader"), PlaceholderText = "default" };
-        private readonly TextBox _awsEndpoint = new() { Header = Strings.Get("Connection/AwsEndpointHeader"), PlaceholderText = "mydb.abc123.us-east-1.rds.amazonaws.com:5432" };
+        private readonly TextBox _awsEndpoint = new() { Header = Strings.Get("Connection/AwsEndpointHeader"), PlaceholderText = RdsEndpointPlaceholder };
+
+        // A key file is long and has line breaks, so it gets a text box of its own rather than the password box.
+        private readonly TextBox _googleKey = new() { Header = Strings.Get("Connection/GoogleServiceAccountKeyHeader"), PlaceholderText = Strings.Get("Connection/GoogleServiceAccountKeyPlaceholder"), AcceptsReturn = true, Height = 96, TextWrapping = TextWrapping.Wrap };
         private readonly StackPanel _entraFields = new() { Spacing = 12 };
         private readonly ComboBox _entraMode = new() { Header = Strings.Get("Connection/EntraModeHeader"), HorizontalAlignment = HorizontalAlignment.Stretch };
         private readonly TextBox _entraTenant = new() { Header = Strings.Get("Connection/EntraTenantHeader"), PlaceholderText = Strings.Get("Connection/EntraTenantPlaceholder") };
@@ -211,7 +217,14 @@ internal static class ConnectionEditor
 
         public FrameworkElement Root { get; }
 
-        public string? Password => string.IsNullOrEmpty(_password.Password) ? null : _password.Password;
+        public string? Password
+        {
+            get
+            {
+                var secret = _authChoices.Count > 0 && SelectedSignIn == SignInMethod.GoogleCloudServiceAccount ? _googleKey.Text.Trim() : _password.Password;
+                return string.IsNullOrEmpty(secret) ? null : secret;
+            }
+        }
 
         public string? SshSecret => string.IsNullOrEmpty(_sshSecret.Password) ? null : _sshSecret.Password;
 
@@ -397,7 +410,8 @@ internal static class ConnectionEditor
                 AwsRegion = NullIfEmpty(_awsRegion.Text.Trim()),
                 AwsAccessKeyId = NullIfEmpty(_awsAccessKey.Text.Trim()),
                 AwsProfileName = NullIfEmpty(_awsProfile.Text.Trim()),
-                AwsRdsEndpoint = NullIfEmpty(_awsEndpoint.Text.Trim()),
+                AwsRdsEndpoint = SelectedDescriptor.Engine == DatabaseEngine.Redshift ? _existing?.Auth?.AwsRdsEndpoint : NullIfEmpty(_awsEndpoint.Text.Trim()),
+                AwsRedshiftEndpoint = SelectedDescriptor.Engine == DatabaseEngine.Redshift ? NullIfEmpty(_awsEndpoint.Text.Trim()) : _existing?.Auth?.AwsRedshiftEndpoint,
                 EntraMode = SelectedEntraMode,
                 EntraTenantId = NullIfEmpty(_entraTenant.Text.Trim()),
                 EntraClientId = NullIfEmpty(_entraClient.Text.Trim()),
@@ -406,13 +420,22 @@ internal static class ConnectionEditor
             };
         }
 
-        private static string? SignInProblem(ConnectionProfile profile)
+        private string? SignInProblem(ConnectionProfile profile)
         {
             var method = profile.EffectiveSignIn();
             var auth = profile.Auth;
-            if (method.IsAwsIam() && string.IsNullOrWhiteSpace(profile.Username))
+            // An RDS or Cloud SQL token signs in a named user; Redshift can take the user from the IAM identity.
+            if ((method.IsAwsIam() && !profile.IssuesSignInUser()) || method.IsGoogleCloudIam())
             {
-                return Strings.Get("Connection/IamUserRequired");
+                if (string.IsNullOrWhiteSpace(profile.Username))
+                {
+                    return Strings.Get("Connection/IamUserRequired");
+                }
+            }
+
+            if (method == SignInMethod.GoogleCloudServiceAccount && profile.SavePassword && string.IsNullOrWhiteSpace(_googleKey.Text))
+            {
+                return Strings.Get("Connection/GoogleServiceAccountKeyRequired");
             }
 
             if (method == SignInMethod.AwsIamAccessKey && string.IsNullOrWhiteSpace(auth?.AwsAccessKeyId))
@@ -513,6 +536,7 @@ internal static class ConnectionEditor
             _network.Children.Add(_auth);
             _network.Children.Add(_user);
             _network.Children.Add(_password);
+            _network.Children.Add(_googleKey);
             _network.Children.Add(_savePassword);
             AddChildren(_awsFields, _awsRegion, _awsAccessKey, _awsProfile, _awsEndpoint);
             AddChildren(_entraFields, _entraMode, _entraTenant, _entraClient);
@@ -578,7 +602,10 @@ internal static class ConnectionEditor
             _host_.Text = p.Host;
             _port.Value = p.Port > 0 ? p.Port : p.Descriptor.DefaultPort;
             _user.Text = p.Username ?? (profile is null ? p.Descriptor.DefaultUser : string.Empty);
-            _password.Password = profile is null ? string.Empty : _host.Connector.SavedPassword(p) ?? string.Empty;
+            var savedSecret = profile is null ? string.Empty : _host.Connector.SavedPassword(p) ?? string.Empty;
+            var keyInPassword = p.EffectiveSignIn() == SignInMethod.GoogleCloudServiceAccount;
+            _password.Password = keyInPassword ? string.Empty : savedSecret;
+            _googleKey.Text = keyInPassword ? savedSecret : string.Empty;
             _savePassword.IsChecked = p.SavePassword;
             _database.Text = p.Database ?? string.Empty;
             _file.Text = p.FilePath ?? string.Empty;
@@ -601,7 +628,7 @@ internal static class ConnectionEditor
             _awsRegion.Text = auth.AwsRegion ?? string.Empty;
             _awsAccessKey.Text = auth.AwsAccessKeyId ?? string.Empty;
             _awsProfile.Text = auth.AwsProfileName ?? string.Empty;
-            _awsEndpoint.Text = auth.AwsRdsEndpoint ?? string.Empty;
+            _awsEndpoint.Text = (p.Engine == DatabaseEngine.Redshift ? auth.AwsRedshiftEndpoint : auth.AwsRdsEndpoint) ?? string.Empty;
             _entraTenant.Text = auth.EntraTenantId ?? string.Empty;
             _entraClient.Text = auth.EntraClientId ?? string.Empty;
             _kerberosService.Text = auth.KerberosServiceName ?? string.Empty;
@@ -757,17 +784,23 @@ internal static class ConnectionEditor
             {
                 SignInMethod.EntraId when engine == DatabaseEngine.SqlServer => Strings.Get("Connection/EntraLoginHintHeader"),
                 SignInMethod.EntraId => Strings.Get("Connection/EntraUserHeader"),
+                _ when method.IsAwsIam() && engine == DatabaseEngine.Redshift => Strings.Get("Connection/RedshiftUserHeader"),
                 _ when method.IsAwsIam() => Strings.Get("Connection/DatabaseUserHeader"),
+                _ when method.IsGoogleCloudIam() => Strings.Get("Connection/GoogleIamUserHeader"),
                 _ => form.UserLabel,
             };
             var usesSecret = probe.UsesSecret();
-            _password.Visibility = Visible(usesSecret);
+            _password.Visibility = Visible(usesSecret && method != SignInMethod.GoogleCloudServiceAccount);
+            _googleKey.Visibility = Visible(method == SignInMethod.GoogleCloudServiceAccount);
             _savePassword.Visibility = Visible(usesSecret);
             _password.Header = method == SignInMethod.Password ? form.PasswordLabel : ConnectionNames.SecretLabel(method, entraMode);
 
             _awsFields.Visibility = Visible(method.IsAwsIam());
             _awsAccessKey.Visibility = Visible(method == SignInMethod.AwsIamAccessKey);
             _awsProfile.Visibility = Visible(method is SignInMethod.AwsIamProfile or SignInMethod.AwsIamSso);
+            var redshift = engine == DatabaseEngine.Redshift;
+            _awsEndpoint.Header = Strings.Get(redshift ? "Connection/RedshiftEndpointHeader" : "Connection/AwsEndpointHeader");
+            _awsEndpoint.PlaceholderText = redshift ? RedshiftEndpointPlaceholder : RdsEndpointPlaceholder;
             _entraFields.Visibility = Visible(method == SignInMethod.EntraId);
             _entraTenant.Visibility = Visible(engine != DatabaseEngine.SqlServer && entraMode is not EntraAuthMode.ManagedIdentity);
             _entraClient.Visibility = Visible(entraMode is EntraAuthMode.ServicePrincipal or EntraAuthMode.ManagedIdentity or EntraAuthMode.Default
@@ -781,6 +814,9 @@ internal static class ConnectionEditor
             {
                 SignInMethod.Kerberos => Strings.Get("Connection/KerberosNote"),
                 SignInMethod.WindowsIntegrated => Strings.Get("Connection/WindowsAuthNote"),
+                _ when method.IsAwsIam() && engine == DatabaseEngine.Redshift => Strings.Get("Connection/RedshiftIamNote"),
+                SignInMethod.GoogleCloudApplicationDefault => Strings.Get("Connection/GoogleAdcNote"),
+                SignInMethod.GoogleCloudServiceAccount => Strings.Get("Connection/GoogleServiceAccountNote"),
                 SignInMethod.AwsIamProfile => Strings.Get("Connection/AwsProfileNote"),
                 SignInMethod.AwsIamSso => Strings.Get("Connection/AwsSsoNote"),
                 SignInMethod.AwsIamAccessKey => Strings.Get("Connection/AwsAccessKeyNote"),

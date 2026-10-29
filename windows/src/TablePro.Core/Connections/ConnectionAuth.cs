@@ -1,8 +1,11 @@
+using System.Text.Json.Serialization;
+
 namespace TablePro.Core.Connections;
 
 /// <summary>
 /// How a profile signs in to the database. The macOS app keeps the same choice in its additional fields, as
-/// <c>awsAuth</c> (off, accessKey, profile, sso, kerberos) and <c>mssqlAuthMethod</c> (sql, windows, entra).
+/// <c>awsAuth</c> (off, accessKey, profile, sso, kerberos, gcpApplicationDefault, gcpServiceAccount) and
+/// <c>mssqlAuthMethod</c> (sql, windows, entra). New members go at the end, since profiles store the name.
 /// </summary>
 public enum SignInMethod
 {
@@ -26,6 +29,15 @@ public enum SignInMethod
 
     /// <summary>Microsoft Entra ID: SQL Server, Azure Database for PostgreSQL and Azure Database for MySQL.</summary>
     EntraId,
+
+    /// <summary>
+    /// Cloud SQL IAM database sign-in with an OAuth access token from Google application default credentials: what
+    /// <c>gcloud auth application-default login</c> wrote, <c>GOOGLE_APPLICATION_CREDENTIALS</c>, or the metadata server.
+    /// </summary>
+    GoogleCloudApplicationDefault,
+
+    /// <summary>Cloud SQL IAM database sign-in with a service account key, whose path or JSON takes the password's place.</summary>
+    GoogleCloudServiceAccount,
 }
 
 /// <summary>Which Entra credential signs in. The SQL Server names map to SqlClient's <c>Authentication</c> keyword.</summary>
@@ -85,11 +97,27 @@ public sealed record ConnectionAuthSettings
     /// <summary>The app registration for a service principal, or a user-assigned managed identity.</summary>
     public string? EntraClientId { get; init; }
 
+    /// <summary>
+    /// The Redshift cluster or Serverless workgroup endpoint AWS issued, when the host the app dials is a local port
+    /// forward. Empty reads the cluster or workgroup from the profile's host.
+    /// </summary>
+    public string? AwsRedshiftEndpoint { get; init; }
+
+    /// <summary>
+    /// Set only on a session's copy of the profile once Redshift has issued the user it signs in as, so a later
+    /// password refresh asks for the same user. Never saved.
+    /// </summary>
+    [JsonIgnore]
+    public RedshiftIssuedUser? RedshiftIssued { get; init; }
+
     /// <summary>The Kerberos service name: PostgreSQL's <c>krbsrvname</c> (default <c>postgres</c>), MariaDB's server SPN.</summary>
     public string? KerberosServiceName { get; init; }
 
     public GssEncryptionMode GssEncryption { get; init; } = GssEncryptionMode.Prefer;
 }
+
+/// <param name="RequestedUser">The database user the profile asked for, or null when Redshift picks it from the IAM identity.</param>
+public sealed record RedshiftIssuedUser(string? RequestedUser);
 
 /// <summary>Which sign-in methods an engine offers, and what each one asks of the form.</summary>
 public static class SignInMethods
@@ -97,12 +125,16 @@ public static class SignInMethods
     /// <summary>The methods the form offers for an engine, with the plain password first.</summary>
     public static IReadOnlyList<SignInMethod> Available(DatabaseEngine engine) => engine switch
     {
-        DatabaseEngine.PostgreSql => [SignInMethod.Password, SignInMethod.AwsIamAccessKey, SignInMethod.AwsIamProfile, SignInMethod.AwsIamSso, SignInMethod.EntraId, SignInMethod.Kerberos],
-        DatabaseEngine.MySql => [SignInMethod.Password, SignInMethod.AwsIamAccessKey, SignInMethod.AwsIamProfile, SignInMethod.AwsIamSso, SignInMethod.EntraId],
+        // Cloud SQL signs IAM principals in to PostgreSQL and MySQL only, so the forks keep the AWS-only choices.
+        DatabaseEngine.PostgreSql => [SignInMethod.Password, SignInMethod.AwsIamAccessKey, SignInMethod.AwsIamProfile, SignInMethod.AwsIamSso, SignInMethod.GoogleCloudApplicationDefault, SignInMethod.GoogleCloudServiceAccount, SignInMethod.EntraId, SignInMethod.Kerberos],
+        DatabaseEngine.MySql => [SignInMethod.Password, SignInMethod.AwsIamAccessKey, SignInMethod.AwsIamProfile, SignInMethod.AwsIamSso, SignInMethod.GoogleCloudApplicationDefault, SignInMethod.GoogleCloudServiceAccount, SignInMethod.EntraId],
 
         // MariaDB's GSSAPI plugin is what MySqlConnector speaks; Azure no longer hosts MariaDB, so it has no Entra sign-in.
         DatabaseEngine.MariaDb => [SignInMethod.Password, SignInMethod.AwsIamAccessKey, SignInMethod.AwsIamProfile, SignInMethod.AwsIamSso, SignInMethod.Kerberos],
         DatabaseEngine.SqlServer => [SignInMethod.Password, SignInMethod.WindowsIntegrated, SignInMethod.EntraId],
+
+        // Redshift's IAM sign-in asks AWS for a user and a temporary password rather than signing a token.
+        DatabaseEngine.Redshift => [SignInMethod.Password, SignInMethod.AwsIamAccessKey, SignInMethod.AwsIamProfile, SignInMethod.AwsIamSso],
         _ => [SignInMethod.Password],
     };
 
@@ -120,6 +152,8 @@ public static class SignInMethods
         SignInMethod.AwsIamProfile => "AWS IAM (Profile)",
         SignInMethod.AwsIamSso => "AWS IAM (SSO)",
         SignInMethod.EntraId => "Microsoft Entra ID",
+        SignInMethod.GoogleCloudApplicationDefault => "Google Cloud IAM (Application Default)",
+        SignInMethod.GoogleCloudServiceAccount => "Google Cloud IAM (Service Account)",
         _ => method.ToString(),
     };
 
@@ -145,6 +179,13 @@ public static class SignInMethods
     public static bool IsAwsIam(this SignInMethod method) =>
         method is SignInMethod.AwsIamAccessKey or SignInMethod.AwsIamProfile or SignInMethod.AwsIamSso;
 
+    public static bool IsGoogleCloudIam(this SignInMethod method) =>
+        method is SignInMethod.GoogleCloudApplicationDefault or SignInMethod.GoogleCloudServiceAccount;
+
+    /// <summary>Whether the sign-in names the database user itself, as Redshift's IAM sign-in does, so the profile's user is only a request.</summary>
+    public static bool IssuesSignInUser(this ConnectionProfile profile) =>
+        profile.Engine == DatabaseEngine.Redshift && profile.EffectiveSignIn().IsAwsIam();
+
     /// <summary>
     /// Whether every new physical connection asks <see cref="SignInTokens"/> for a short-lived token instead of
     /// sending the saved password. SQL Server's Entra sign-in is done by SqlClient itself, so it is not one.
@@ -152,17 +193,17 @@ public static class SignInMethods
     public static bool UsesSignInToken(this ConnectionProfile profile)
     {
         var method = profile.EffectiveSignIn();
-        return method.IsAwsIam() || (method == SignInMethod.EntraId && profile.Engine != DatabaseEngine.SqlServer);
+        return method.IsAwsIam() || method.IsGoogleCloudIam() || (method == SignInMethod.EntraId && profile.Engine != DatabaseEngine.SqlServer);
     }
 
     /// <summary>
     /// Whether the profile's saved password slot holds something: the password itself, the AWS secret access key,
-    /// or a service principal's client secret.
+    /// a service principal's client secret, or a Google service account key.
     /// </summary>
     public static bool UsesSecret(this ConnectionProfile profile)
     {
         var method = profile.EffectiveSignIn();
-        return method is SignInMethod.Password or SignInMethod.AwsIamAccessKey
+        return method is SignInMethod.Password or SignInMethod.AwsIamAccessKey or SignInMethod.GoogleCloudServiceAccount
             || (method == SignInMethod.EntraId && profile.Auth!.EntraMode == EntraAuthMode.ServicePrincipal);
     }
 
@@ -186,6 +227,7 @@ public static class SignInMethods
     public static string SecretLabel(SignInMethod method, EntraAuthMode entraMode) => method switch
     {
         SignInMethod.AwsIamAccessKey => "Secret access key",
+        SignInMethod.GoogleCloudServiceAccount => "Service account key",
         SignInMethod.EntraId when entraMode == EntraAuthMode.ServicePrincipal => "Client secret",
         _ => "Password",
     };

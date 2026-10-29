@@ -612,6 +612,10 @@
   <data name="UrlHeader" xml:space="preserve">
     <value>URL</value>
   </data>
+  <data name="LibSqlUrlHeader" xml:space="preserve">
+    <value>URL hoặc đường dẫn file:</value>
+    <comment>Field label for a libSQL or Turso connection: a server URL, or file: followed by a local database path. Keep "file:" as is.</comment>
+  </data>
   <data name="UserHeader" xml:space="preserve">
     <value>Người dùng</value>
   </data>
@@ -623,5 +627,41 @@
   </data>
   <data name="WindowsAuthNote" xml:space="preserve">
     <value>Đăng nhập bằng tài khoản Windows của bạn, qua Kerberos khi miền hỗ trợ.</value>
+  </data>
+  <data name="RedisHostHeader" xml:space="preserve">
+    <value>Máy chủ hoặc nút đầu tiên</value>
+  </data>
+  <data name="SignInGoogleAdc" xml:space="preserve">
+    <value>Google Cloud IAM (Thông tin mặc định của ứng dụng)</value>
+  </data>
+  <data name="SignInGoogleServiceAccount" xml:space="preserve">
+    <value>Google Cloud IAM (Tài khoản dịch vụ)</value>
+  </data>
+  <data name="GoogleServiceAccountKeyHeader" xml:space="preserve">
+    <value>Khóa tài khoản dịch vụ</value>
+  </data>
+  <data name="GoogleServiceAccountKeyPlaceholder" xml:space="preserve">
+    <value>Đường dẫn tệp hoặc dán JSON</value>
+  </data>
+  <data name="GoogleServiceAccountKeyRequired" xml:space="preserve">
+    <value>Nhập khóa tài khoản dịch vụ: đường dẫn tệp JSON của khóa, hoặc chính nội dung JSON.</value>
+  </data>
+  <data name="GoogleIamUserHeader" xml:space="preserve">
+    <value>Người dùng cơ sở dữ liệu IAM</value>
+  </data>
+  <data name="GoogleAdcNote" xml:space="preserve">
+    <value>Đăng nhập bằng mã thông báo IAM của Cloud SQL lấy từ thông tin xác thực mà “gcloud auth application-default login” đã lưu, từ GOOGLE_APPLICATION_CREDENTIALS hoặc từ máy chủ siêu dữ liệu. Nhập người dùng IAM đúng như Cloud SQL liệt kê.</value>
+  </data>
+  <data name="GoogleServiceAccountNote" xml:space="preserve">
+    <value>Đăng nhập bằng mã thông báo IAM của Cloud SQL cho tài khoản dịch vụ. Nhập người dùng IAM đúng như Cloud SQL liệt kê.</value>
+  </data>
+  <data name="RedshiftUserHeader" xml:space="preserve">
+    <value>Người dùng cơ sở dữ liệu (tùy chọn)</value>
+  </data>
+  <data name="RedshiftEndpointHeader" xml:space="preserve">
+    <value>Endpoint Redshift (tùy chọn)</value>
+  </data>
+  <data name="RedshiftIamNote" xml:space="preserve">
+    <value>AWS cấp người dùng và mật khẩu tạm thời cho cụm hoặc nhóm làm việc Serverless mà máy chủ chỉ định. Để trống người dùng để đăng nhập bằng danh tính IAM của bạn. Chỉ nhập endpoint Redshift khi máy chủ là một chuyển tiếp cổng cục bộ.</value>
   </data>
 </root>

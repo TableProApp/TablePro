@@ -612,6 +612,10 @@
   <data name="UrlHeader" xml:space="preserve">
     <value>URL</value>
   </data>
+  <data name="LibSqlUrlHeader" xml:space="preserve">
+    <value>URL 또는 file: 경로</value>
+    <comment>Field label for a libSQL or Turso connection: a server URL, or file: followed by a local database path. Keep "file:" as is.</comment>
+  </data>
   <data name="UserHeader" xml:space="preserve">
     <value>사용자</value>
   </data>
@@ -623,5 +627,41 @@
   </data>
   <data name="WindowsAuthNote" xml:space="preserve">
     <value>Windows 계정으로 로그인하며, 도메인이 지원하면 Kerberos를 사용합니다.</value>
+  </data>
+  <data name="RedisHostHeader" xml:space="preserve">
+    <value>호스트 또는 첫 번째 노드</value>
+  </data>
+  <data name="SignInGoogleAdc" xml:space="preserve">
+    <value>Google Cloud IAM(애플리케이션 기본 사용자 인증 정보)</value>
+  </data>
+  <data name="SignInGoogleServiceAccount" xml:space="preserve">
+    <value>Google Cloud IAM(서비스 계정)</value>
+  </data>
+  <data name="GoogleServiceAccountKeyHeader" xml:space="preserve">
+    <value>서비스 계정 키</value>
+  </data>
+  <data name="GoogleServiceAccountKeyPlaceholder" xml:space="preserve">
+    <value>파일 경로 또는 JSON 붙여넣기</value>
+  </data>
+  <data name="GoogleServiceAccountKeyRequired" xml:space="preserve">
+    <value>서비스 계정 키를 입력하세요. JSON 파일의 경로나 JSON 자체를 입력할 수 있습니다.</value>
+  </data>
+  <data name="GoogleIamUserHeader" xml:space="preserve">
+    <value>IAM 데이터베이스 사용자</value>
+  </data>
+  <data name="GoogleAdcNote" xml:space="preserve">
+    <value>“gcloud auth application-default login”이 저장한 사용자 인증 정보, GOOGLE_APPLICATION_CREDENTIALS 또는 메타데이터 서버에서 받은 Cloud SQL IAM 토큰으로 로그인합니다. Cloud SQL에 표시된 대로 IAM 사용자를 입력하세요.</value>
+  </data>
+  <data name="GoogleServiceAccountNote" xml:space="preserve">
+    <value>서비스 계정의 Cloud SQL IAM 토큰으로 로그인합니다. Cloud SQL에 표시된 대로 IAM 사용자를 입력하세요.</value>
+  </data>
+  <data name="RedshiftUserHeader" xml:space="preserve">
+    <value>데이터베이스 사용자(선택 사항)</value>
+  </data>
+  <data name="RedshiftEndpointHeader" xml:space="preserve">
+    <value>Redshift 엔드포인트(선택 사항)</value>
+  </data>
+  <data name="RedshiftIamNote" xml:space="preserve">
+    <value>호스트가 가리키는 클러스터 또는 Serverless 작업 그룹에 대해 AWS가 임시 사용자와 암호를 발급합니다. IAM ID로 로그인하려면 사용자를 비워 두세요. 호스트가 로컬 포트 포워딩일 때만 Redshift 엔드포인트를 입력하세요.</value>
   </data>
 </root>

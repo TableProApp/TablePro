@@ -38,6 +38,11 @@
     <PackageVersion Include="AWSSDK.SecurityToken" Version="4.0.101.4" />
     <PackageVersion Include="AWSSDK.SSO" Version="4.0.100.20" />
     <PackageVersion Include="AWSSDK.SSOOIDC" Version="4.0.100.19" />
+    <!-- Redshift IAM sign-in: GetClusterCredentials and Redshift Serverless GetCredentials. -->
+    <PackageVersion Include="AWSSDK.Redshift" Version="4.0.102.9" />
+    <PackageVersion Include="AWSSDK.RedshiftServerless" Version="4.0.102.10" />
+    <!-- Cloud SQL IAM sign-in tokens from application default credentials or a service account key. -->
+    <PackageVersion Include="Google.Apis.Auth" Version="1.74.0" />
   </ItemGroup>
   <ItemGroup Label="Tests">
     <PackageVersion Include="xunit.v3" Version="4.0.2" />

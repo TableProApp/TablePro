@@ -18,6 +18,8 @@ internal static class ConnectionNames
         SignInMethod.AwsIamProfile => Strings.Get("Connection/SignInAwsProfile"),
         SignInMethod.AwsIamSso => Strings.Get("Connection/SignInAwsSso"),
         SignInMethod.EntraId => Strings.Get("Connection/SignInEntra"),
+        SignInMethod.GoogleCloudApplicationDefault => Strings.Get("Connection/SignInGoogleAdc"),
+        SignInMethod.GoogleCloudServiceAccount => Strings.Get("Connection/SignInGoogleServiceAccount"),
         _ => method.ToString(),
     };
 
@@ -36,6 +38,7 @@ internal static class ConnectionNames
     public static string SecretLabel(SignInMethod method, EntraAuthMode entraMode) => method switch
     {
         SignInMethod.AwsIamAccessKey => Strings.Get("Connection/SecretAccessKeyHeader"),
+        SignInMethod.GoogleCloudServiceAccount => Strings.Get("Connection/GoogleServiceAccountKeyHeader"),
         SignInMethod.EntraId when entraMode == EntraAuthMode.ServicePrincipal => Strings.Get("Connection/ClientSecretHeader"),
         _ => Strings.Get("Connection/PasswordHeader"),
     };

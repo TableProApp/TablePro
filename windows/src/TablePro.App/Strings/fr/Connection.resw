@@ -612,6 +612,10 @@
   <data name="UrlHeader" xml:space="preserve">
     <value>URL</value>
   </data>
+  <data name="LibSqlUrlHeader" xml:space="preserve">
+    <value>URL ou chemin file:</value>
+    <comment>Field label for a libSQL or Turso connection: a server URL, or file: followed by a local database path. Keep "file:" as is.</comment>
+  </data>
   <data name="UserHeader" xml:space="preserve">
     <value>Utilisateur</value>
   </data>
@@ -623,5 +627,41 @@
   </data>
   <data name="WindowsAuthNote" xml:space="preserve">
     <value>Se connecte avec votre compte Windows, via Kerberos lorsque le domaine le propose.</value>
+  </data>
+  <data name="RedisHostHeader" xml:space="preserve">
+    <value>Hôte ou premier nœud</value>
+  </data>
+  <data name="SignInGoogleAdc" xml:space="preserve">
+    <value>Google Cloud IAM (identifiants par défaut)</value>
+  </data>
+  <data name="SignInGoogleServiceAccount" xml:space="preserve">
+    <value>Google Cloud IAM (compte de service)</value>
+  </data>
+  <data name="GoogleServiceAccountKeyHeader" xml:space="preserve">
+    <value>Clé du compte de service</value>
+  </data>
+  <data name="GoogleServiceAccountKeyPlaceholder" xml:space="preserve">
+    <value>Chemin du fichier ou JSON collé</value>
+  </data>
+  <data name="GoogleServiceAccountKeyRequired" xml:space="preserve">
+    <value>Saisissez la clé du compte de service : le chemin de son fichier JSON, ou le JSON lui-même.</value>
+  </data>
+  <data name="GoogleIamUserHeader" xml:space="preserve">
+    <value>Utilisateur IAM de la base de données</value>
+  </data>
+  <data name="GoogleAdcNote" xml:space="preserve">
+    <value>Se connecte avec un jeton IAM Cloud SQL issu des identifiants enregistrés par « gcloud auth application-default login », de GOOGLE_APPLICATION_CREDENTIALS ou du serveur de métadonnées. Saisissez l'utilisateur IAM tel que Cloud SQL l'affiche.</value>
+  </data>
+  <data name="GoogleServiceAccountNote" xml:space="preserve">
+    <value>Se connecte avec un jeton IAM Cloud SQL pour le compte de service. Saisissez l'utilisateur IAM tel que Cloud SQL l'affiche.</value>
+  </data>
+  <data name="RedshiftUserHeader" xml:space="preserve">
+    <value>Utilisateur de la base de données (facultatif)</value>
+  </data>
+  <data name="RedshiftEndpointHeader" xml:space="preserve">
+    <value>Point de terminaison Redshift (facultatif)</value>
+  </data>
+  <data name="RedshiftIamNote" xml:space="preserve">
+    <value>AWS délivre un utilisateur et un mot de passe temporaires pour le cluster ou le groupe de travail Serverless indiqué par l'hôte. Laissez l'utilisateur vide pour vous connecter avec votre identité IAM. Saisissez le point de terminaison Redshift uniquement si l'hôte est une redirection de port locale.</value>
   </data>
 </root>
