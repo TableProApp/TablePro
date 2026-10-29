@@ -197,6 +197,7 @@
                                     </style>
                                     <property name="popover">
                                       <object class="GtkPopover" id="clock_popover">
+                                        <property name="default-widget">clock_set</property>
                                         <property name="child">
                                           <object class="GtkBox">
                                             <property name="spacing">6</property>
@@ -209,6 +210,8 @@
                                                 <property name="orientation">vertical</property>
                                                 <property name="numeric">true</property>
                                                 <property name="wrap">true</property>
+                                                <property name="xalign">0.5</property>
+                                                <property name="activates-default">true</property>
                                                 <property name="adjustment">
                                                   <object class="GtkAdjustment">
                                                     <property name="upper">23</property>
@@ -217,7 +220,7 @@
                                                   </object>
                                                 </property>
                                                 <accessibility>
-                                                  <property name="label" translatable="yes">Hour</property>
+                                                  <property name="label" translatable="yes" context="clock">Hour</property>
                                                 </accessibility>
                                               </object>
                                             </child>
@@ -231,6 +234,8 @@
                                                 <property name="orientation">vertical</property>
                                                 <property name="numeric">true</property>
                                                 <property name="wrap">true</property>
+                                                <property name="xalign">0.5</property>
+                                                <property name="activates-default">true</property>
                                                 <property name="adjustment">
                                                   <object class="GtkAdjustment">
                                                     <property name="upper">59</property>
@@ -239,7 +244,7 @@
                                                   </object>
                                                 </property>
                                                 <accessibility>
-                                                  <property name="label" translatable="yes">Minute</property>
+                                                  <property name="label" translatable="yes" context="clock">Minute</property>
                                                 </accessibility>
                                               </object>
                                             </child>
@@ -253,6 +258,8 @@
                                                 <property name="orientation">vertical</property>
                                                 <property name="numeric">true</property>
                                                 <property name="wrap">true</property>
+                                                <property name="xalign">0.5</property>
+                                                <property name="activates-default">true</property>
                                                 <property name="adjustment">
                                                   <object class="GtkAdjustment">
                                                     <property name="upper">59</property>
@@ -261,13 +268,13 @@
                                                   </object>
                                                 </property>
                                                 <accessibility>
-                                                  <property name="label" translatable="yes">Second</property>
+                                                  <property name="label" translatable="yes" context="clock">Second</property>
                                                 </accessibility>
                                               </object>
                                             </child>
                                             <child>
                                               <object class="GtkButton" id="clock_set">
-                                                <property name="label" translatable="yes">Set</property>
+                                                <property name="label" translatable="yes" context="clock">Set</property>
                                                 <property name="valign">center</property>
                                                 <property name="margin-start">6</property>
                                                 <style>

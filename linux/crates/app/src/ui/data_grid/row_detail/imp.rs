@@ -93,7 +93,6 @@ pub struct RowDetailPane {
     pub quiet_calendar: Cell<bool>,
     /// The row and field the open calendar picks a day for.
     pub calendar_target: RefCell<Option<(PinnedRow, usize)>>,
-    /// The row and field the open clock sets a time for.
     pub clock_target: RefCell<Option<(PinnedRow, usize)>>,
     pub sync_queued: Cell<bool>,
     /// The field rows bound now, which redraw when the row changes.
