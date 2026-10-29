@@ -120,7 +120,7 @@ internal final class Telemetry {
             .store(in: &subscriptions)
     }
 
-    func handle(_ event: AccountEvent) {
+    private func handle(_ event: AccountEvent) {
         switch event {
         case .signedIn(let accountID, let method):
             self.accountID = accountID
