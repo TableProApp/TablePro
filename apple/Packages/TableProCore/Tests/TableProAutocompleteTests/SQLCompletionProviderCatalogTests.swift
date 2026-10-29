@@ -102,6 +102,35 @@ struct SQLCompletionProviderCatalogTests {
         #expect(Set(session.items.map(\.label)) == ["orders", "customers"])
     }
 
+    // On Oracle the column read for a table that was never there ran first and queued the schema's table list
+    // behind it on one connection.
+    @Test("A qualifier in a table slot offers its schema's tables, even beside a table of that name")
+    func tableSlotQualifierIsASchema() async {
+        let catalog = StubCatalog(
+            tables: ["audit"], columns: ["audit": ["id", "action"]], schemas: ["audit"],
+            schemaTables: ["audit": ["events"]]
+        )
+        let provider = SQLCompletionProvider(catalog: catalog, grammar: .engine("PostgreSQL"), vocabulary: .generic)
+        for text in ["SELECT * FROM audit.", "SELECT * FROM orders o JOIN audit.", "INSERT INTO audit."] {
+            let session = await provider.completionSession(text: text, cursorPosition: (text as NSString).length)
+            #expect(session.items.map(\.label) == ["events"], "\(text)")
+        }
+        let columns = await provider.completionSession(text: "SELECT audit. FROM audit", cursorPosition: 13)
+        #expect(Set(columns.items.map(\.label)) == ["id", "action"])
+    }
+
+    @Test("A FROM inside an expression keeps an alias's columns", arguments: [
+        "SELECT EXTRACT(YEAR FROM o.|) FROM orders o",
+        "SELECT SUBSTRING(o.status FROM o.|) FROM orders o",
+        "SELECT SUBSTR(o.status FROM o.|) FROM orders o",
+        "SELECT * FROM orders o WHERE o.total IS DISTINCT FROM o.|",
+        "SELECT * FROM orders o WHERE o.total IS NOT DISTINCT FROM o.|",
+        "SELECT * FROM orders o, generate_series(1, o.|)"
+    ])
+    func expressionFromKeepsAliasColumns(_ marked: String) async {
+        #expect(Set(await labels(marked)) == ["id", "total", "status"])
+    }
+
     @Test("UPDATE offers tables")
     func updateOffersTables() async {
         let session = await provider.completionSession(text: "UPDATE or", cursorPosition: 9)
