@@ -93,7 +93,7 @@ unicode-width = "0.2"
 # the build free of another C dependency. Constant memory lets a sheet
 # spill its rows to a temporary file instead of holding them.
 rust_xlsxwriter = { version = "0.99", default-features = false, features = ["chrono", "constant_memory"] }
-zip = { version = "8.3", default-features = false, features = ["deflate"] }
+zip = { version = "9.0", default-features = false, features = ["deflate"] }
 futures = "0.3"
 futures-util = { version = "0.3", default-features = false, features = ["std"] }
 bytes = "1"
