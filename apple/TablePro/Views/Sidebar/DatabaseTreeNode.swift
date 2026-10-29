@@ -64,7 +64,9 @@ internal struct DatabaseTreeSidePhases: Equatable {
     }
 }
 
-final class DatabaseTreeNode: SidebarOutlineNode {
+// NSObject so the outline's item lookups hash the pointer: a plain Swift class looks up a Hashable conformance on
+// every hash, about a quarter of opening a section of 17,000 tables.
+final class DatabaseTreeNode: NSObject, SidebarOutlineNode {
     enum Status: Equatable {
         case loading
         case empty
@@ -110,6 +112,7 @@ final class DatabaseTreeNode: SidebarOutlineNode {
     init(id: String, kind: Kind) {
         self.id = id
         self.kind = kind
+        super.init()
     }
 
     var isExpandable: Bool {
