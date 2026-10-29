@@ -67,7 +67,12 @@ final class StructureDefinitionEditor: ObservableObject {
 
     private let defaults: UserDefaults
     private var cancellables: Set<AnyCancellable> = []
-    private var fieldDraft: (text: String, commit: (String) -> Void)?
+    private var fieldDraft: (text: String, commit: (String) -> Void)? {
+        didSet {
+            let isPending = fieldDraft != nil
+            if hasPendingFieldDraft != isPending { hasPendingFieldDraft = isPending }
+        }
+    }
     private var isSyncingSelection = false
 
     init(
@@ -291,7 +296,7 @@ final class StructureDefinitionEditor: ObservableObject {
 
     // An inspector field's typed text is committed on Return or when focus leaves; until then it is noted here, so
     // Save, close and the other commands see it and commit it first.
-    var hasPendingFieldDraft: Bool { fieldDraft != nil }
+    @Published private(set) var hasPendingFieldDraft = false
 
     func noteFieldDraft(_ text: String, commit: @escaping (String) -> Void) {
         fieldDraft = (text, commit)

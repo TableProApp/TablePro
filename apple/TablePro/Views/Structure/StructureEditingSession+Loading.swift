@@ -56,8 +56,12 @@ internal extension StructureEditingSession {
         }
     }
 
+    // A partial read still shows what it got, read-only, so a failed section never hides the ones that loaded.
     func adoptIfCurrent() {
-        guard definitionsAreCurrent else { return }
+        guard definitionsAreCurrent else {
+            if !changeManager.hasChanges { loadDefinitionsIntoManager() }
+            return
+        }
         hasLoaded = true
         adoptFetchedBaseline()
     }
@@ -142,8 +146,14 @@ internal extension StructureEditingSession {
 
     // MARK: - Baseline
 
-    // PostgreSQL leaves `isPrimaryKey` false on every column, so the primary index decides first.
     func adoptLoadedBaseline() {
+        loadDefinitionsIntoManager()
+        hasBaseline = true
+        editor.isAwaitingBaseline = false
+    }
+
+    // PostgreSQL leaves `isPrimaryKey` false on every column, so the primary index decides first.
+    private func loadDefinitionsIntoManager() {
         let pkFromIndexes = indexes.first(where: { $0.isPrimary })?.columns ?? []
         let pkFromColumns = columns.filter { $0.isPrimaryKey }.map { $0.name }
         let primaryKey = pkFromIndexes.isEmpty ? pkFromColumns : pkFromIndexes
@@ -159,8 +169,6 @@ internal extension StructureEditingSession {
             tableOptions: loadedTableOptions,
             autoIncrementConfirmed: autoIncrementRead == .confirmed
         )
-        hasBaseline = true
-        editor.isAwaitingBaseline = false
         editor.refresh()
     }
 

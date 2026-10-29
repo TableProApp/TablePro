@@ -143,6 +143,8 @@ extension MainContentCoordinator {
         if let schemaModel = activeGridModelProvider(for: tab)?.activeGridModel {
             committed = schemaModel.commitEditing() && committed
         }
+        // Text typed in a structure inspector field counts as an edit the moment a command needs it.
+        activeStructureEditor?.commitPendingEdits()
         return committed
     }
 

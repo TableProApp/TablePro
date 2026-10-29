@@ -12,6 +12,8 @@ struct StructureInspectorTextField: View {
     let value: String
     let revision: Int
     var isMultiline = false
+    // Moved by a pick from a menu beside the field: the field shows the picked value even while it has focus.
+    var resetToken = 0
     let onCommit: (String) -> Void
 
     @State private var draft = ""
@@ -45,6 +47,11 @@ struct StructureInspectorTextField: View {
                 guard !focused, !commit() else { return }
                 draft = latest
                 base = latest
+            }
+            .onChange(of: resetToken) { _ in
+                draft = value
+                base = value
+                latest = value
             }
             .onChange(of: draft) { text in
                 guard isFocused, text != base else {
@@ -143,11 +150,15 @@ struct StructureInspectorSuggestionField: View {
     let groups: [StructureInspectorChoices.ItemGroup]
     let onCommit: (String) -> Void
 
+    @State private var pickRevision = 0
+
     var body: some View {
         HStack(spacing: 4) {
-            StructureInspectorTextField(label: label, value: value, revision: revision, onCommit: onCommit)
-                .accessibilityLabel(label)
-                .accessibilityIdentifier(identifier)
+            StructureInspectorTextField(
+                label: label, value: value, revision: revision, resetToken: pickRevision, onCommit: onCommit
+            )
+            .accessibilityLabel(label)
+            .accessibilityIdentifier(identifier)
             Menu {
                 ForEach(groups) { group in
                     if let header = group.header {
@@ -168,9 +179,14 @@ struct StructureInspectorSuggestionField: View {
         }
     }
 
+    // A pick replaces whatever is typed in the field, so the typed text never lands on top of it later.
+    @Environment(\.structureDefinitionEditor) private var editor
+
     private func items(_ group: StructureInspectorChoices.ItemGroup) -> some View {
         ForEach(group.items) { item in
             Button(item.title) {
+                editor?.clearFieldDraft()
+                pickRevision &+= 1
                 guard item.value != value else { return }
                 onCommit(item.value)
             }

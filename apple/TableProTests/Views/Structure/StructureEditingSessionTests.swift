@@ -275,6 +275,31 @@ struct StructureEditingSessionTests {
         #expect(session.changeManager.workingColumns == columns)
     }
 
+    @Test("A failed section still shows the sections that loaded, read-only")
+    func partialReadShowsLoadedSectionsReadOnly() {
+        let session = Self.makeSession(connection: TestFixtures.makeConnection())
+        session.columns = [ColumnInfo(name: "id", dataType: "INT", isNullable: false, isPrimaryKey: true)]
+        session.loadState.markFetched(.columns)
+        session.loadState.markFailed(.indexes, message: "timed out")
+
+        session.adoptIfCurrent()
+
+        #expect(session.changeManager.workingColumns.map(\.name) == ["id"])
+        #expect(!session.hasBaseline)
+        #expect(!session.canAddRow)
+        #expect(!session.editor.canAdd(.columns))
+    }
+
+    @Test("Text typed in the inspector counts as a change before it is committed")
+    func pendingFieldDraftCountsAsAChange() {
+        let session = Self.makeSession(connection: TestFixtures.makeConnection())
+        #expect(!session.hasChanges)
+        session.editor.noteFieldDraft("x") { _ in }
+        #expect(session.hasChanges)
+        session.editor.clearFieldDraft()
+        #expect(!session.hasChanges)
+    }
+
     @Test("Row commands wait for the definitions the table was read with")
     func rowCommandsWaitForTheBaseline() {
         let session = Self.makeSession(connection: TestFixtures.makeConnection())
