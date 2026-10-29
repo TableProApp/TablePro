@@ -185,7 +185,7 @@ actor FakeAccountServer {
                 return Self.json(status: .conflict, contentType: "application/problem+json", [
                     "type": "https://api.tablepro.app/problems/device-limit-reached",
                     "title": "Device limit reached", "status": 409, "code": "device_limit_reached",
-                    "devices": limitHolders.map { $0.filter { $0.key != "offline_until" } }
+                    "devices": limitHolders
                 ])
             }
             let token = signedEntitlement()

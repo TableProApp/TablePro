@@ -34,26 +34,24 @@ struct DeviceLimitModelTests {
         return fixture
     }
 
-    @Test("The sheet lists the 3 devices holding the slots, and reads offline_until from GET /v2/devices")
+    @Test("The sheet lists the 3 devices holding the slots with the offline_until the 409 body gives, and lists no devices")
     func rowsCarryOfflineUntil() async throws {
         let fixture = try await Self.fixtureAtTheLimit()
         let model = DeviceLimitModel(services: fixture.services, now: { Self.now })
-        #expect(model.rows.map { $0.name } == ["Workstation", "Air-gapped Mac", "Mac mini"])
-        #expect(model.rows.allSatisfy { $0.offlineUntil == nil }, "The problem body carries no offline_until")
-
-        await model.load()
 
         let until = try Date(Self.offlineUntil, strategy: .iso8601)
+        #expect(model.rows.map { $0.name } == ["Workstation", "Air-gapped Mac", "Mac mini"])
         #expect(model.rows.map { $0.offlineUntil } == [nil, until, nil])
         #expect(model.rows.first?.system == "Fedora 43")
         #expect(!model.isResolved)
+        let listed = await fixture.server.requests.filter { $0.method == "GET" && $0.path.hasPrefix("/devices") }
+        #expect(listed.isEmpty)
     }
 
     @Test("Removing a device frees the slot, and the refresh that follows unlocks the plan on this Mac")
     func removeResolves() async throws {
         let fixture = try await Self.fixtureAtTheLimit()
         let model = DeviceLimitModel(services: fixture.services, now: { Self.now })
-        await model.load()
         let row = try #require(model.rows.first { $0.id == "dev_mini" })
 
         await model.remove(row)

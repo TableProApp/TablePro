@@ -27,13 +27,12 @@ internal final class DeviceLimitModel: ObservableObject {
 
     let services: AccountServices
     private let now: () -> Date
-    private var offlineUntil: [String: Date] = [:]
     private var stateObserver: AnyCancellable?
 
     init(services: AccountServices, now: @escaping () -> Date = { Date() }) {
         self.services = services
         self.now = now
-        rows = Self.rows(state: services.access.state, offlineUntil: [:], now: now())
+        rows = Self.rows(state: services.access.state, now: now())
         isResolved = !Self.isDeviceLimit(services.access.state.refresh)
         // Once resolved the rows stay as they were, so the sheet does not empty out while it closes.
         stateObserver = services.access.$state
@@ -42,23 +41,9 @@ internal final class DeviceLimitModel: ObservableObject {
                 guard let self else { return }
                 isResolved = !Self.isDeviceLimit(state.refresh)
                 if !isResolved {
-                    rows = Self.rows(state: state, offlineUntil: offlineUntil, now: self.now())
+                    rows = Self.rows(state: state, now: self.now())
                 }
             }
-    }
-
-    // The slot holders come from the problem body, which carries no offline_until; GET /v2/devices does.
-    func load() async {
-        do throws(AccountError) {
-            let devices = try await services.fetchDevices()
-            offlineUntil = Dictionary(
-                devices.compactMap { device in device.offlineUntil.map { (device.id, $0) } },
-                uniquingKeysWith: { first, _ in first }
-            )
-            rows = Self.rows(state: services.access.state, offlineUntil: offlineUntil, now: now())
-        } catch {
-            failure = error.friendlyDescription
-        }
     }
 
     func remove(_ row: Row) async {
@@ -83,10 +68,10 @@ internal final class DeviceLimitModel: ObservableObject {
         return false
     }
 
-    private static func rows(state: AccountState, offlineUntil: [String: Date], now: Date) -> [Row] {
+    private static func rows(state: AccountState, now: Date) -> [Row] {
         guard case .deviceLimitReached(let holders) = state.refresh else { return [] }
         return holders.map { holder in
-            let device = AccountDevice(holder, offlineUntil: offlineUntil[holder.id])
+            let device = AccountDevice(holder)
             return Row(
                 id: device.id,
                 name: device.name,

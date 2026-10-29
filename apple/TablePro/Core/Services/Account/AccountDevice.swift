@@ -50,8 +50,7 @@ internal struct AccountDevice: Equatable, Sendable, Identifiable {
         )
     }
 
-    // The problem body carries no offline_until; GET /v2/devices does (roadmap Follow-ups, M16.7).
-    init(_ device: Components.Schemas.LicensedDevice, offlineUntil: Date?) {
+    init(_ device: Components.Schemas.LicensedDevice) {
         self.init(
             id: device.id,
             machineID: device.machineId,
@@ -60,7 +59,7 @@ internal struct AccountDevice: Equatable, Sendable, Identifiable {
             osVersion: device.osVersion,
             lastSeenAt: device.lastSeenAt,
             holdsLicense: true,
-            offlineUntil: offlineUntil
+            offlineUntil: device.offlineUntil
         )
     }
 

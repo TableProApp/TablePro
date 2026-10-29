@@ -72,7 +72,6 @@ internal struct DeviceLimitSheet: View {
         }
         .padding(20)
         .frame(width: 480)
-        .task { await model.load() }
         .onChange(of: model.isResolved) { isResolved in
             if isResolved { dismiss() }
         }
