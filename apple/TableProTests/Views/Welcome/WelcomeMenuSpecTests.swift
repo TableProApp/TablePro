@@ -45,7 +45,8 @@ struct WelcomeMenuSpecTests {
             disconnectableConnectionIds: disconnectable,
             isSyncEnabled: isSyncEnabled,
             canPublishToTeamCatalog: false,
-            canPublishToTeamLibrary: false
+            teamLibraryTeams: [],
+            hasTeamLibraryConflicts: false
         )
     }
 

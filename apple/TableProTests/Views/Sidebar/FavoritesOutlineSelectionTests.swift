@@ -38,7 +38,7 @@ struct FavoritesOutlineSelectionTests {
         ))))
         #expect(FavoritesOutlineSelection.isSelectable(.table(table("users"))))
         #expect(FavoritesOutlineSelection.isSelectable(.query(.favorite(favorite("daily")))))
-        #expect(FavoritesOutlineSelection.isSelectable(.teamQuery(id: "t1", name: "Shared", publishedBy: nil)))
+        #expect(FavoritesOutlineSelection.isSelectable(.teamQuery(id: "t1", name: "Shared", detail: nil)))
     }
 
     @Test("A table row maps to the table selection the app persists")
@@ -97,7 +97,7 @@ struct FavoritesOutlineSelectionTests {
     @Test("A Team Library row maps to a selection of its own")
     func teamQueryMapsToSelection() {
         let selection = FavoritesOutlineSelection.selection(
-            for: .teamQuery(id: "abc", name: "Shared", publishedBy: "sam")
+            for: .teamQuery(id: "abc", name: "Shared", detail: "sam")
         )
         #expect(selection == .node(id: FavoritesOutlineNode.teamQueryId("abc")))
     }
@@ -124,7 +124,7 @@ struct FavoritesOutlineSelectionTests {
         #expect(FavoritesOutlineSelection.matchString(for: .query(.favorite(favorite("daily")))) == "daily")
         #expect(
             FavoritesOutlineSelection.matchString(
-                for: .teamQuery(id: "t", name: "Shared", publishedBy: nil)
+                for: .teamQuery(id: "t", name: "Shared", detail: nil)
             ) == "Shared"
         )
     }

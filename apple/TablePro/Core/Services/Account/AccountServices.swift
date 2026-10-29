@@ -30,7 +30,7 @@ internal final class AccountServices {
     let session: AccountSession
     let devices: DeviceRegistry
     let access: FeatureAccess
-    private let api: any APIProtocol
+    let api: any APIProtocol
     private let entitlements: EntitlementStore
     private let legacy: LegacyLicenseStore
     private let machine: MachineDescription

@@ -7,11 +7,18 @@ import SwiftUI
 
 internal struct WelcomeOutlineRow: View {
     let model: WelcomeRowModel
+    var resolveTeamLibraryConflicts: () -> Void = {}
 
     var body: some View {
         switch model {
         case .section(let title):
             WelcomeSectionHeaderRow(title: title)
+        case .teamLibrarySection(let title):
+            TeamLibraryHeader(
+                title: title,
+                font: .subheadline.weight(.semibold),
+                resolveConflicts: resolveTeamLibraryConflicts
+            )
         case .group(let group):
             WelcomeGroupRow(model: group)
         case .connection(let connection):

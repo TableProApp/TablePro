@@ -111,6 +111,8 @@ internal struct WelcomePresentations: ViewModifier {
             )
         case .deeplinkImport(let bundle):
             DeeplinkImportSheet(bundle: bundle) { vm.finishImport($0) }
+        case .teamLibraryConflicts:
+            TeamLibraryConflictSheet(sync: .shared)
         }
     }
 }

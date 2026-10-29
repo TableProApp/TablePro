@@ -17,6 +17,7 @@ actor FakeAccountServer {
         let form: [String: String]
         let json: [String: String]
         let authorization: String?
+        var body = Data()
     }
 
     static let machine = MachineDescription(
@@ -50,6 +51,7 @@ actor FakeAccountServer {
     var removalFreesSlot = true
     var refreshGate: AsyncGate?
     var entitlementGate: AsyncGate?
+    var library = FakeTeamLibrary()
     private(set) var requests: [Request] = []
     private(set) var familyBound = false
     private var familyMethod = "interactive"
@@ -149,7 +151,9 @@ actor FakeAccountServer {
             .compactMapValues { $0 as? String }
         let path = request.path ?? ""
         let authorization = request.headerFields[.authorization]
-        requests.append(Request(method: request.method.rawValue, path: path, form: [:], json: json, authorization: authorization))
+        requests.append(Request(
+            method: request.method.rawValue, path: path, form: [:], json: json, authorization: authorization, body: data
+        ))
         if isOffline { throw URLError(.notConnectedToInternet) }
         if unauthorizedOnce {
             unauthorizedOnce = false
@@ -200,6 +204,10 @@ actor FakeAccountServer {
             return Self.json(status: .ok, ["data": devices])
         case (.delete, let devicePath) where devicePath.hasPrefix("/devices/"):
             return removeDevice(String(devicePath.dropFirst("/devices/".count)))
+        case (.get, let libraryPath) where libraryPath.hasPrefix("/teams/"):
+            return library.pull(path: libraryPath, memberships: memberships)
+        case (.post, let libraryPath) where libraryPath.hasPrefix("/teams/"):
+            return library.push(path: libraryPath, body: data, memberships: memberships)
         default:
             return Self.problem(status: 404, code: "not_found")
         }
@@ -317,7 +325,7 @@ actor FakeAccountServer {
         return (data, response)
     }
 
-    private static func json(
+    static func json(
         status: HTTPResponse.Status,
         contentType: String = "application/json",
         _ body: [String: Any]
@@ -328,7 +336,7 @@ actor FakeAccountServer {
         return (response, HTTPBody(data))
     }
 
-    private static func problem(status: Int, code: String) -> (HTTPResponse, HTTPBody?) {
+    static func problem(status: Int, code: String) -> (HTTPResponse, HTTPBody?) {
         json(status: .init(code: status), contentType: "application/problem+json", [
             "type": "https://api.tablepro.app/problems/\(code)", "title": code, "status": status, "code": code
         ])

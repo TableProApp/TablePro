@@ -33,6 +33,7 @@ enum WelcomeActiveSheet: Identifiable {
     case importFromAWS
     case projectFolderScan(URL)
     case deeplinkImport(ConnectionBundle)
+    case teamLibraryConflicts
 
     var id: String {
         switch self {
@@ -49,6 +50,7 @@ enum WelcomeActiveSheet: Identifiable {
             "deeplinkImport-" + bundle.connections
                 .map { "\($0.settings.type)-\($0.settings.name)-\($0.settings.host)-\($0.settings.port)" }
                 .joined(separator: ",")
+        case .teamLibraryConflicts: "teamLibraryConflicts"
         }
     }
 }
@@ -591,12 +593,12 @@ final class WelcomeViewModel: ObservableObject {
         guard FeatureAccess.shared.isAvailable(.teamLibrary) else { return [] }
         let placeholderURL = URL(fileURLWithPath: "/")
         var seen: Set<UUID> = []
-        return TeamLibrarySyncCoordinator.shared.library.connections.compactMap { connection in
+        return TeamLibrarySync.shared.content.connections.compactMap { connection in
             let id = LinkedFolderWatcher.stableId(namespace: teamLibraryNamespace, key: connection.id)
             guard seen.insert(id).inserted else { return nil }
             return LinkedConnection(
                 id: id,
-                connection: connection.payload,
+                connection: connection.settings,
                 folderId: teamLibraryNamespace,
                 sourceFileURL: placeholderURL
             )

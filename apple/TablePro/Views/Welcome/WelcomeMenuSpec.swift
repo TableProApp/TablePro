@@ -21,7 +21,8 @@ internal enum WelcomeMenuCommand: Equatable {
     case copyTableProLink(UUID)
     case exportToFile([UUID])
     case publishToTeamCatalog([UUID])
-    case publishToTeamLibrary([UUID])
+    case publishToTeamLibrary([UUID], teamID: String)
+    case resolveTeamLibraryConflicts
     case moveToGroup([UUID], UUID?)
     case moveToNewGroup([UUID])
     case setIncludedInSync([UUID], Bool)
@@ -68,7 +69,8 @@ internal struct WelcomeMenuContext {
     internal let disconnectableConnectionIds: Set<UUID>
     internal let isSyncEnabled: Bool
     internal let canPublishToTeamCatalog: Bool
-    internal let canPublishToTeamLibrary: Bool
+    internal let teamLibraryTeams: [TeamLibraryTeam]
+    internal let hasTeamLibraryConflicts: Bool
 }
 
 @MainActor
@@ -215,6 +217,13 @@ internal enum WelcomeMenuSpec {
         if ids.count == 1, let id = ids.first, context.linkedFolderConnectionIds.contains(id) {
             sections.append(WelcomeMenuSection([.command(Titles.showInFinder, .showInFinder(id))]))
         }
+        let inTeamLibrary = context.rows.contains { row in
+            if case .connection(_, .teamLibrary) = row { return true }
+            return false
+        }
+        if inTeamLibrary, context.hasTeamLibraryConflicts {
+            sections.append(WelcomeMenuSection([.command(Titles.resolveTeamLibraryConflicts, .resolveTeamLibraryConflicts)]))
+        }
         return sections
     }
 
@@ -223,8 +232,15 @@ internal enum WelcomeMenuSpec {
         if context.canPublishToTeamCatalog {
             publish.append(.command(Titles.publishToTeamCatalog(count: ids.count), .publishToTeamCatalog(ids)))
         }
-        if context.canPublishToTeamLibrary {
-            publish.append(.command(Titles.publishToTeamLibrary(count: ids.count), .publishToTeamLibrary(ids)))
+        if context.teamLibraryTeams.count == 1, let team = context.teamLibraryTeams.first {
+            publish.append(.command(Titles.publishToTeamLibrary(count: ids.count), .publishToTeamLibrary(ids, teamID: team.id)))
+        } else if context.teamLibraryTeams.count > 1 {
+            publish.append(.submenu(
+                title: Titles.publishToTeamLibrarySubmenu(count: ids.count),
+                items: context.teamLibraryTeams.map { team in
+                    .command(Titles.teamName(team.name), .publishToTeamLibrary(ids, teamID: team.id))
+                }
+            ))
         }
         guard ids.count == 1, let id = ids.first else {
             return .submenu(title: Titles.share, sections: [WelcomeMenuSection(publish)])
@@ -414,6 +430,18 @@ internal extension WelcomeMenuSpec {
                 ? String(localized: "Publish to Team Library…")
                 : String(format: String(localized: "Publish %d Connections to Team Library…"), count)
         }
+
+        static func publishToTeamLibrarySubmenu(count: Int) -> String {
+            count == 1
+                ? String(localized: "Publish to Team Library")
+                : String(format: String(localized: "Publish %d Connections to Team Library"), count)
+        }
+
+        static func teamName(_ name: String) -> String {
+            String(format: String(localized: "%@…"), name)
+        }
+
+        static var resolveTeamLibraryConflicts: String { String(localized: "Resolve Team Library Conflicts…") }
 
         static func delete(count: Int) -> String {
             count == 1

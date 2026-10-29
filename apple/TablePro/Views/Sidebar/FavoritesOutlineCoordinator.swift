@@ -168,7 +168,7 @@ internal final class FavoritesOutlineCoordinator<Row: View>: NSObject, NSOutline
             nodes += owner.input.teamQueries.map { query in
                 node(
                     id: FavoritesOutlineNode.teamQueryId(query.id),
-                    kind: .teamQuery(id: query.id, name: query.name, publishedBy: query.publishedBy)
+                    kind: .teamQuery(id: query.id, name: query.name, detail: query.detail)
                 )
             }
         }
@@ -327,7 +327,8 @@ internal final class FavoritesOutlineCoordinator<Row: View>: NSObject, NSOutline
         let context = FavoritesMenuContext(
             clicked: clicked?.kind,
             allFolders: owner.input.allFolders,
-            teamLibraryAvailable: owner.input.teamLibraryAvailable,
+            teamLibraryTeams: owner.input.teamLibraryTeams,
+            hasTeamLibraryConflicts: owner.input.hasTeamLibraryConflicts,
             databaseEntityName: owner.input.databaseEntityName,
             activeDatabase: owner.input.activeDatabase,
             linkedFileGitStates: owner.input.linkedFileGitStates,

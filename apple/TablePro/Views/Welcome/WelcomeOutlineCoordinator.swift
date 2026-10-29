@@ -321,7 +321,10 @@ internal final class WelcomeOutlineCoordinator: NSObject, NSOutlineViewDataSourc
         if cell.isRenaming, item.row != renameSession?.row {
             cell.endRename()
         }
-        cell.update(rootView: WelcomeOutlineRow(model: viewModel.rowModel(for: item.row)))
+        cell.update(rootView: WelcomeOutlineRow(
+            model: viewModel.rowModel(for: item.row),
+            resolveTeamLibraryConflicts: { [weak viewModel] in viewModel?.presentTeamLibraryConflicts() }
+        ))
         return cell
     }
 

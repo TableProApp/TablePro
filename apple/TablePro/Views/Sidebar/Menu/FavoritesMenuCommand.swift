@@ -56,5 +56,6 @@ internal enum FavoritesMenuCommand: Equatable {
     case deleteFolder(SQLFavoriteFolder)
 
     case newQuery
-    case publishSavedQueriesToTeam
+    case publishSavedQueriesToTeam(teamID: String)
+    case resolveTeamLibraryConflicts
 }

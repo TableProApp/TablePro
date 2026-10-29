@@ -20,7 +20,8 @@ internal struct FavoritesOutlineInput {
     internal let teamQueries: [FavoritesOutlineTeamQuery]
     internal let renamingFolderId: UUID?
     internal let allFolders: [SQLFavoriteFolder]
-    internal let teamLibraryAvailable: Bool
+    internal let teamLibraryTeams: [TeamLibraryTeam]
+    internal let hasTeamLibraryConflicts: Bool
     internal var linkedFileGitStates: [UUID: LinkedFileGitState] = [:]
     internal var linkedFolderGitStates: [UUID: LinkedFolderGitMenuState] = [:]
 }
@@ -28,7 +29,7 @@ internal struct FavoritesOutlineInput {
 internal struct FavoritesOutlineTeamQuery {
     internal let id: String
     internal let name: String
-    internal let publishedBy: String?
+    internal let detail: String?
 }
 
 /// Both actions carry the row's own kind rather than the persisted `FavoriteSelection`, because a

@@ -743,6 +743,9 @@
     "“%@” Changed on Disk" : {
 
     },
+    "“%@” changed since you last synced" : {
+
+    },
     "“%@” holds no file to import." : {
 
     },
@@ -5390,6 +5393,12 @@
         }
       }
     },
+    "%@ TablePro publishes your changes once the team library answers again." : {
+
+    },
+    "%@ TablePro tries again shortly." : {
+
+    },
     "%@ tables could not be searched." : {
 
     },
@@ -6136,6 +6145,9 @@
           }
         }
       }
+    },
+    "%@…" : {
+
     },
     "%@/s" : {
       "localizations" : {
@@ -8673,6 +8685,12 @@
           }
         }
       }
+    },
+    "%d Conflicts" : {
+
+    },
+    "%d conflicts left" : {
+
     },
     "%d connected" : {
       "localizations" : {
@@ -13089,6 +13107,9 @@
       }
     },
     "1 character" : {
+
+    },
+    "1 Conflict" : {
 
     },
     "1 connection" : {
@@ -38637,6 +38658,9 @@
         }
       }
     },
+    "Choose which version the team library keeps" : {
+
+    },
     "Choose your client and follow the steps to connect it to TablePro." : {
       "localizations" : {
         "fr" : {
@@ -60208,6 +60232,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "Decide Later" : {
+
+    },
     "Decimal" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -62935,6 +62962,9 @@
           }
         }
       }
+    },
+    "Deleted from the team library" : {
+
     },
     "Deleted Text" : {
       "extractionState" : "manual",
@@ -74213,6 +74243,9 @@
           }
         }
       }
+    },
+    "Everyone on your team will see the host, port, user, database and SSH settings. Publishing again updates the team's copy. Passwords are not included." : {
+
     },
     "Everyone on your team will see the host, port, user, database and SSH settings. This replaces the connections and saved queries you published before. Passwords are not included." : {
       "localizations" : {
@@ -97667,6 +97700,9 @@
         }
       }
     },
+    "Keep Mine" : {
+
+    },
     "Keep My Changes" : {
       "localizations" : {
         "fr" : {
@@ -97866,6 +97902,9 @@
           }
         }
       }
+    },
+    "Keep Theirs" : {
+
     },
     "Keep Theme" : {
 
@@ -100392,6 +100431,9 @@
           }
         }
       }
+    },
+    "Leaves the team's version as it is" : {
+
     },
     "Ledger" : {
       "extractionState" : "manual",
@@ -117051,6 +117093,9 @@
         }
       }
     },
+    "No longer in the team library" : {
+
+    },
     "No matches" : {
       "localizations" : {
         "fr" : {
@@ -122014,6 +122059,9 @@
         }
       }
     },
+    "Not published yet" : {
+
+    },
     "Not readable" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -125783,6 +125831,9 @@
     "Only the owner of %@ or a superuser can debug it." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "Only the team's owner and admins publish to its library." : {
+
     },
     "Only use the bootstrap address" : {
       "extractionState" : "manual",
@@ -138302,6 +138353,9 @@
         }
       }
     },
+    "Publish %d Connections to Team Library" : {
+
+    },
     "Publish %d Connections to Team Library…" : {
       "localizations" : {
         "fr" : {
@@ -138391,6 +138445,9 @@
           }
         }
       }
+    },
+    "Publish Saved Queries to Team" : {
+
     },
     "Publish Saved Queries to Team…" : {
       "comment" : "Text for a menu item that publishes saved queries to the user's team.",
@@ -138513,6 +138570,9 @@
           }
         }
       }
+    },
+    "Publish to Team Library" : {
+
     },
     "Publish to Team Library…" : {
       "localizations" : {
@@ -146653,6 +146713,9 @@
         }
       }
     },
+    "Removed from the team library" : {
+
+    },
     "Removing" : {
 
     },
@@ -147568,6 +147631,9 @@
           }
         }
       }
+    },
+    "Replaces the team's version with yours" : {
+
     },
     "Replacing the whole database is not offered. Write its children one at a time." : {
       "extractionState" : "manual",
@@ -148628,6 +148694,9 @@
       }
     },
     "Resident Memory" : {
+
+    },
+    "Resolve Team Library Conflicts…" : {
 
     },
     "Resolve the conflict in a Git client before committing this file." : {
@@ -156327,6 +156396,9 @@
           }
         }
       }
+    },
+    "Saving your choice" : {
+
     },
     "Scale" : {
       "extractionState" : "stale",
@@ -166254,6 +166326,9 @@
         }
       }
     },
+    "Sign in again to sync the team library." : {
+
+    },
     "Sign in to Google with your browser?" : {
       "localizations" : {
         "fr" : {
@@ -168637,6 +168712,9 @@
           }
         }
       }
+    },
+    "Someone in %@ changed this item after TablePro last downloaded the team library. Choose the version the team library keeps." : {
+
     },
     "Something went wrong (error %d). Try again in a moment." : {
       "localizations" : {
@@ -176550,6 +176628,12 @@
         }
       }
     },
+    "Syncing the team library" : {
+
+    },
+    "Syncing the team library…" : {
+
+    },
     "Syncing with iCloud…" : {
       "localizations" : {
         "fr" : {
@@ -179206,6 +179290,9 @@
         }
       }
     },
+    "TablePro couldn't reach the team library." : {
+
+    },
     "TablePro Data Was Removed from iCloud" : {
 
     },
@@ -181232,6 +181319,12 @@
           }
         }
       }
+    },
+    "Team library updated %@" : {
+
+    },
+    "Team's Version" : {
+
     },
     "Teams" : {
 
@@ -192238,6 +192331,18 @@
           }
         }
       }
+    },
+    "The team library asked TablePro to download it again." : {
+
+    },
+    "The team library had a problem on its side." : {
+
+    },
+    "The team library is busy right now." : {
+
+    },
+    "The team library refused the change. It may be too large or hold a field the library never stores." : {
+
     },
     "The text could not be parsed as JSON." : {
       "localizations" : {
@@ -215108,6 +215213,9 @@
         }
       }
     },
+    "Your account no longer has a seat in this team's library." : {
+
+    },
     "Your account unlocks the features your plan includes on this Mac. Everything else works without an account." : {
 
     },
@@ -215506,6 +215614,9 @@
         }
       }
     },
+    "your team" : {
+
+    },
     "Your team can now see %d shared connections. Passwords were not included." : {
       "localizations" : {
         "fr" : {
@@ -215546,6 +215657,9 @@
         }
       }
     },
+    "Your team will see the names and SQL of %d saved queries. Queries you published from this Mac and deleted since are removed from the team library." : {
+
+    },
     "Your team will see the names and SQL of %d saved queries. This replaces what you previously published." : {
       "localizations" : {
         "fr" : {
@@ -215585,6 +215699,9 @@
           }
         }
       }
+    },
+    "Your Version" : {
+
     },
     "Zoom" : {
       "localizations" : {

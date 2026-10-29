@@ -17,7 +17,7 @@ internal final class FavoritesOutlineNode: SidebarOutlineNode {
         case database(FavoriteDatabaseEntry)
         case table(FavoriteTableRow)
         case query(FavoriteNode)
-        case teamQuery(id: String, name: String, publishedBy: String?)
+        case teamQuery(id: String, name: String, detail: String?)
     }
 
     internal let id: String
