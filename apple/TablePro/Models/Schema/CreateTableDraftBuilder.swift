@@ -6,56 +6,43 @@
 import Foundation
 import TableProPluginKit
 
-/// What a Create Table draft comes to: the statement plan it will run, and every row that is not
-/// ready to run.
+// The statements a Create Table draft will run, and every row that is not ready to.
 struct CreateTablePlan {
-    /// Never carries indexes. An index is always its own statement, see `CreateTableDraftBuilder`.
+    // Never carries indexes or check constraints: each is its own statement after the CREATE.
     let definition: PluginCreateTableDefinition?
     let indexes: [PluginIndexDefinition]
     let issues: [SchemaDraftIssue]
-    /// Nil writes no comment. Set after the `CREATE TABLE`, as its own statement.
+    // Nil writes no comment. Set after the CREATE, as its own statement.
     var tableComment: String?
+    var checkConstraints: [PluginCheckConstraintDefinition] = []
+    // Working-list rows of `indexes` and `checkConstraints`, since blank and incomplete rows are skipped.
+    var indexRows: [Int] = []
+    var checkConstraintRows: [Int] = []
 
     var isReadyToCreate: Bool { definition != nil && issues.isEmpty }
+
+    func indexRow(at position: Int) -> Int {
+        indexRows.indices.contains(position) ? indexRows[position] : position
+    }
+
+    func checkConstraintRow(at position: Int) -> Int {
+        checkConstraintRows.indices.contains(position) ? checkConstraintRows[position] : position
+    }
 }
 
-/// Turns the Create Table editor's working rows into a statement plan.
-///
-/// This exists because the view used to do it inline, in three filters that each demanded a
-/// non-empty `name` and then dropped whatever failed:
-///
-///     foreignKeys: workingForeignKeys.filter { !$0.name.isEmpty && !$0.columns.isEmpty && … }
-///
-/// A new foreign key row's name is always empty and nothing in the grid fills it, so every foreign
-/// key the user entered was deleted on the way to the driver, with no message and an SQL Preview
-/// that agreed. No dialect requires the name, three drivers discard it, and the filter left out the
-/// predicate that does matter: an empty referenced column list renders `REFERENCES "t" ()`, which
-/// SQLite, PostgreSQL and DuckDB all reject.
-///
-/// So the split is: this type answers whether a row is **complete**, the driver answers how to
-/// **spell** it, and `ForeignKeyDialect` answers what the engine's grammar takes. Three row states,
-/// and the middle one is the whole point:
-///
-/// - **blank**: nothing typed. Ignored, because the editor seeds a blank column and `+` seeds blank
-///   rows, and neither is something the user asked to create.
-/// - **incomplete**: begun and unusable. An issue the user is shown. Never a silent drop.
-/// - **complete**: emitted.
+// Turns the working rows into a plan. This type says whether a row is complete, the driver how to spell it, and
+// `ForeignKeyDialect` what the engine's grammar takes. A blank row is ignored (the editor seeds them), a begun one
+// that cannot run is an issue, never a silent drop: requiring a foreign key's name once dropped every key (#2691).
 @MainActor
 enum CreateTableDraftBuilder {
-    /// Indexes are never folded into the `CREATE TABLE` statement, on any engine.
-    ///
-    /// PostgreSQL and DuckDB used to append their `CREATE INDEX` statements to the same returned
-    /// string, and that only ran because `PQexec` and `duckdb_query` take a whole batch. SQLite's
-    /// driver prepares with `sqlite3_prepare_v2(db, sql, -1, &stmt, nil)` and steps once, so a
-    /// second statement in the string is compiled by nobody: the index would vanish exactly the way
-    /// the foreign keys did. Every index therefore goes through `generateAddIndexSQL` as its own
-    /// statement, which is also what the existing-table path in `SchemaStatementGenerator` does.
+    // Indexes and checks are never folded into the CREATE: SQLite steps one statement per execute.
     static func plan(
         tableName: String,
         options: CreateTableOptions,
         columns: [EditableColumnDefinition],
         indexes: [EditableIndexDefinition],
         foreignKeys: [EditableForeignKeyDefinition],
+        checkConstraints: [EditableCheckConstraintDefinition] = [],
         dialect: ForeignKeyDialect,
         includesEngineOptions: Bool,
         defaults: CreateTableOptionDefaults = CreateTableOptionDefaults(),
@@ -69,16 +56,17 @@ enum CreateTableDraftBuilder {
         let resolvedForeignKeys = resolveForeignKeys(
             foreignKeys, columnNames: columnNames, dialect: dialect, into: &issues
         )
+        let resolvedChecks = resolveCheckConstraints(checkConstraints, into: &issues)
 
         let trimmedName = tableName.trimmingCharacters(in: .whitespaces)
         if trimmedName.isEmpty {
             issues.append(SchemaDraftIssue(
-                tab: .columns, row: nil, message: String(localized: "The table needs a name.")
+                section: .columns, row: nil, message: String(localized: "The table needs a name.")
             ))
         }
         if resolvedColumns.isEmpty, !suppliesItsOwnKey {
             issues.append(SchemaDraftIssue(
-                tab: .columns, row: nil,
+                section: .columns, row: nil,
                 message: String(localized: "The table needs at least one column with a name and a type.")
             ))
         }
@@ -103,18 +91,18 @@ enum CreateTableDraftBuilder {
 
         return CreateTablePlan(
             definition: definition,
-            indexes: resolvedIndexes.map { $0.toPlugin() },
+            indexes: resolvedIndexes.map { $0.definition.toPlugin() },
             issues: issues,
-            tableComment: ObjectCommentDraft.normalized(options.comment)
+            tableComment: ObjectCommentDraft.normalized(options.comment),
+            checkConstraints: resolvedChecks.map { $0.definition.toPlugin() },
+            indexRows: resolvedIndexes.map(\.row),
+            checkConstraintRows: resolvedChecks.map(\.row)
         )
     }
 
     // MARK: - Columns
 
-    /// A column the user marked auto-increment without ticking Primary Key is promoted here rather
-    /// than in each driver. The old code passed the promotion through `primaryKeyColumns` only, and
-    /// SQLite reads `isPrimaryKey` alone, so on SQLite that column got neither a primary key nor
-    /// `AUTOINCREMENT`. Reconciling the two once leaves every driver reading one answer.
+    // An auto-increment column with no primary key ticked is promoted here, once: SQLite reads `isPrimaryKey` alone.
     private static func resolveColumns(
         _ columns: [EditableColumnDefinition],
         into issues: inout [SchemaDraftIssue]
@@ -130,19 +118,19 @@ enum CreateTableDraftBuilder {
             }
             if name.isEmpty {
                 issues.append(SchemaDraftIssue(
-                    tab: .columns, row: row, message: String(localized: "This column needs a name.")
+                    section: .columns, row: row, message: String(localized: "This column needs a name.")
                 ))
                 continue
             }
             if type.isEmpty {
                 issues.append(SchemaDraftIssue(
-                    tab: .columns, row: row, message: String(localized: "This column needs a type.")
+                    section: .columns, row: row, message: String(localized: "This column needs a type.")
                 ))
                 continue
             }
             if !column.isNullable, column.hasNullDefault {
                 issues.append(SchemaDraftIssue(
-                    tab: .columns, row: row,
+                    section: .columns, row: row,
                     message: String(localized: "This column does not allow NULL, so its default cannot be NULL.")
                 ))
             }
@@ -163,7 +151,7 @@ enum CreateTableDraftBuilder {
 
         for position in duplicatePositions(of: resolved.map(\.name)) {
             issues.append(SchemaDraftIssue(
-                tab: .columns, row: sourceRows[position],
+                section: .columns, row: sourceRows[position],
                 message: String(
                     format: String(localized: "Another column is already named %@."), resolved[position].name
                 )
@@ -175,15 +163,13 @@ enum CreateTableDraftBuilder {
 
     // MARK: - Indexes
 
-    /// An index does need a name, unlike a foreign key: `CREATE INDEX` has nowhere to put an
-    /// anonymous one. So the missing name is reported rather than required in silence.
+    // Unlike a foreign key, an index needs a name: CREATE INDEX has nowhere to put an anonymous one.
     private static func resolveIndexes(
         _ indexes: [EditableIndexDefinition],
         columnNames: Set<String>,
         into issues: inout [SchemaDraftIssue]
-    ) -> [EditableIndexDefinition] {
-        var resolved: [EditableIndexDefinition] = []
-        var sourceRows: [Int] = []
+    ) -> [Resolved<EditableIndexDefinition>] {
+        var resolved: [Resolved<EditableIndexDefinition>] = []
 
         for (row, index) in indexes.enumerated() {
             let name = index.name.trimmingCharacters(in: .whitespaces)
@@ -193,14 +179,14 @@ enum CreateTableDraftBuilder {
             }
             if columns.isEmpty {
                 issues.append(SchemaDraftIssue(
-                    tab: .indexes, row: row,
+                    section: .indexes, row: row,
                     message: String(localized: "This index needs at least one column.")
                 ))
                 continue
             }
             if name.isEmpty {
                 issues.append(SchemaDraftIssue(
-                    tab: .indexes, row: row, message: String(localized: "This index needs a name.")
+                    section: .indexes, row: row, message: String(localized: "This index needs a name.")
                 ))
                 continue
             }
@@ -209,22 +195,22 @@ enum CreateTableDraftBuilder {
             normalized.columns = columns
             if let unknown = normalized.referencedColumnNames.first(where: { !columnNames.contains($0) }) {
                 issues.append(SchemaDraftIssue(
-                    tab: .indexes, row: row,
+                    section: .indexes, row: row,
                     message: String(
                         format: String(localized: "The table has no column named %@."), unknown
                     )
                 ))
                 continue
             }
-            resolved.append(normalized)
-            sourceRows.append(row)
+            resolved.append(Resolved(definition: normalized, row: row))
         }
 
-        for position in duplicatePositions(of: resolved.map(\.name)) {
+        for position in duplicatePositions(of: resolved.map(\.definition.name)) {
             issues.append(SchemaDraftIssue(
-                tab: .indexes, row: sourceRows[position],
+                section: .indexes, row: resolved[position].row,
                 message: String(
-                    format: String(localized: "Another index is already named %@."), resolved[position].name
+                    format: String(localized: "Another index is already named %@."),
+                    resolved[position].definition.name
                 )
             ))
         }
@@ -254,7 +240,7 @@ enum CreateTableDraftBuilder {
         let names = resolved.map(\.name)
         for position in duplicatePositions(of: names) where !names[position].isEmpty {
             issues.append(SchemaDraftIssue(
-                tab: .foreignKeys, row: sourceRows[position],
+                section: .foreignKeys, row: sourceRows[position],
                 message: String(
                     format: String(localized: "Another foreign key is already named %@."),
                     resolved[position].name
@@ -265,9 +251,7 @@ enum CreateTableDraftBuilder {
         return resolved
     }
 
-    /// The constraint name is deliberately absent from every test here. It is optional in every
-    /// dialect TablePro speaks, three drivers discard it, and demanding it is what deleted the
-    /// user's foreign keys.
+    // No test here demands the name: it is optional in every dialect, and demanding it deleted the user's keys.
     private static func resolveForeignKey(
         _ foreignKey: EditableForeignKeyDefinition,
         row: Int,
@@ -294,7 +278,7 @@ enum CreateTableDraftBuilder {
         }
 
         func report(_ message: String) {
-            issues.append(SchemaDraftIssue(tab: .foreignKeys, row: row, message: message))
+            issues.append(SchemaDraftIssue(section: .foreignKeys, row: row, message: message))
         }
 
         if normalized.columns.isEmpty {
@@ -344,7 +328,60 @@ enum CreateTableDraftBuilder {
         return normalized
     }
 
+    // MARK: - Check constraints
+
+    // Every driver writes a check as ADD CONSTRAINT <name> CHECK (<expression>), so both are required.
+    private static func resolveCheckConstraints(
+        _ constraints: [EditableCheckConstraintDefinition],
+        into issues: inout [SchemaDraftIssue]
+    ) -> [Resolved<EditableCheckConstraintDefinition>] {
+        var resolved: [Resolved<EditableCheckConstraintDefinition>] = []
+
+        for (row, constraint) in constraints.enumerated() {
+            let name = constraint.name.trimmingCharacters(in: .whitespaces)
+            let expression = constraint.expression.trimmingCharacters(in: .whitespacesAndNewlines)
+            if name.isEmpty, expression.isEmpty {
+                continue
+            }
+            if expression.isEmpty {
+                issues.append(SchemaDraftIssue(
+                    section: .checkConstraints, row: row,
+                    message: String(localized: "This check constraint needs an expression.")
+                ))
+                continue
+            }
+            if name.isEmpty {
+                issues.append(SchemaDraftIssue(
+                    section: .checkConstraints, row: row,
+                    message: String(localized: "This check constraint needs a name.")
+                ))
+                continue
+            }
+            var normalized = constraint
+            normalized.name = name
+            normalized.expression = expression
+            resolved.append(Resolved(definition: normalized, row: row))
+        }
+
+        for position in duplicatePositions(of: resolved.map(\.definition.name)) {
+            issues.append(SchemaDraftIssue(
+                section: .checkConstraints, row: resolved[position].row,
+                message: String(
+                    format: String(localized: "Another check constraint is already named %@."),
+                    resolved[position].definition.name
+                )
+            ))
+        }
+
+        return resolved
+    }
+
     // MARK: - Helpers
+
+    private struct Resolved<Definition> {
+        let definition: Definition
+        let row: Int
+    }
 
     private static func trimmedOrNil(_ value: String?) -> String? {
         guard let trimmed = value?.trimmingCharacters(in: .whitespaces), !trimmed.isEmpty else { return nil }
@@ -355,12 +392,8 @@ enum CreateTableDraftBuilder {
         values.map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
     }
 
-    /// Every position after the first that repeats a name already seen, so the row the user is most
-    /// likely still editing is the one flagged.
-    ///
-    /// These are positions in the resolved list, not grid rows. A row skipped for being blank or
-    /// incomplete shortens the list, so the caller maps them back through its own `sourceRows` or
-    /// the message points at a different row than the duplicate.
+    // Positions in the resolved list after the first that repeat a name, so the row likely still being edited is
+    // flagged. The caller maps them back to working rows: skipped rows shorten the list.
     private static func duplicatePositions(of names: [String]) -> [Int] {
         var seen: Set<String> = []
         var duplicates: [Int] = []

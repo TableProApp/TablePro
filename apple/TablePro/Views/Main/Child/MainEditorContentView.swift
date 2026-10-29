@@ -553,15 +553,15 @@ struct MainEditorContentView: View {
     private func createTableContent(tab: QueryTab) -> some View {
         Group {
             if let draft = coordinator.createTableDrafts[tab.id] {
-                CreateTableView(
-                    connection: connection,
-                    scope: structureScope(for: tab),
-                    coordinator: coordinator,
-                    draft: draft
-                )
+                CreateTableView(draft: draft, coordinator: coordinator)
             } else {
                 Color.clear
-                    .onAppear { coordinator.createTableDrafts[tab.id] = CreateTableDraft() }
+                    .onAppear {
+                        coordinator.createTableDrafts[tab.id] = CreateTableDraft(
+                            connection: connection,
+                            scope: structureScope(for: tab)
+                        )
+                    }
             }
         }
         .id(tab.id)
@@ -576,13 +576,9 @@ struct MainEditorContentView: View {
         Group {
             if let session = coordinator.structureSessions[tab.id], session.identity == identity {
                 TableStructureView(
-                    tableName: tableName,
-                    connection: connection,
-                    databaseName: scope?.database ?? "",
-                    schemaName: scope?.schema,
+                    session: session,
                     toolbarState: coordinator.toolbarState,
-                    coordinator: coordinator,
-                    session: session
+                    coordinator: coordinator
                 )
             } else {
                 Color.clear
@@ -880,14 +876,12 @@ struct MainEditorContentView: View {
 
     private func statusBar(tab: QueryTab, selectedRowCount: Int) -> some View {
         let resolvedRows = resolvedTableRows(for: tab)
-        let structureFooter = coordinator.structureSessions[tab.id]?.footer ?? StructureFooterCapability()
         let isExecuting = coordinator.tabExecution.isBusy(tab.id)
         let snapshot = StatusBarSnapshot(
             tab: tab,
             tableRows: resolvedRows,
             displayRowCount: coordinator.displayIDs(forTab: tab.id)?.count,
             isFetching: isExecuting,
-            hasStructureActions: structureFooter.isActive,
             isQueryPlan: tab.display.activeExplainResult != nil,
             paginationCapability: coordinator.paginationCapability,
             hasServerOutput: !(tab.display.activeResultSet?.serverOutput.isEmpty ?? true),
@@ -935,7 +929,6 @@ struct MainEditorContentView: View {
                 onGoToPage: onGoToPage,
                 onRequestExactCount: { coordinator.paginationCoordinator.requestExactRowCount() }
             ),
-            structureFooter: structureFooter,
             execution: ExecutionReadout(
                 tabId: tab.id,
                 execution: coordinator.tabExecution,
@@ -956,9 +949,7 @@ struct MainEditorContentView: View {
                 }
             },
             onToggleFilters: { coordinator.toggleFilterPanel() },
-            onFetchAll: { coordinator.fetchAllRows() },
-            onStructureAdd: { coordinator.structureActions?.addRow?() },
-            onStructureRemove: { coordinator.structureActions?.removeRow?() }
+            onFetchAll: { coordinator.fetchAllRows() }
         )
     }
 

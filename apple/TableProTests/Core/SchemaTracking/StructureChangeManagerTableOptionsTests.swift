@@ -345,16 +345,4 @@ struct StructureChangeManagerTableOptionsTests {
         #expect(defaultOnly.validationErrors.isEmpty)
         #expect(defaultOnly.canCommit)
     }
-
-    @Test("The Options sub-tab has no rows to mark")
-    func optionsTabHasNoRowState() {
-        let manager = makeManager()
-        manager.deleteColumn(id: manager.workingColumns[1].id)
-
-        let state = manager.deleteInsertState(for: 1, tab: .options)
-        #expect(!state.isDeleted)
-        #expect(!state.isInserted)
-        manager.undoDelete(for: .options, at: 1)
-        #expect(manager.hasChanges)
-    }
 }

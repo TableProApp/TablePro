@@ -58,7 +58,7 @@ struct SchemaStatementGenerator {
                 throw NSError(
                     domain: "SchemaStatementGenerator",
                     code: -1,
-                    userInfo: [NSLocalizedDescriptionKey: String(format: String(localized: "Unsupported schema operation: %@"), change.description)]
+                    userInfo: [NSLocalizedDescriptionKey: String(format: String(localized: "Unsupported schema operation: %@"), change.localizedDescription)]
                 )
             }
             for stmt in stmts {

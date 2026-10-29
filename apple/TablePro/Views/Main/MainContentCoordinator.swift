@@ -191,11 +191,6 @@ final class MainContentCoordinator: ObservableObject {
 
     weak var sidebarViewModel: SidebarViewModel?
 
-    weak var structureActions: StructureViewActionHandler?
-
-    // Lets Save Changes (Cmd+S) route to table creation. Set by `CreateTableView` on appear.
-    weak var createTableActions: CreateTableActionHandler?
-
     weak var usersRolesActions: UsersRolesActionHandler?
 
     // Not in the view: it dies on every tab and Data/Structure switch, and the close gate must see unseen tabs' staged work.
@@ -211,9 +206,6 @@ final class MainContentCoordinator: ObservableObject {
 
     // `saveCompletionContinuation` is one slot: a second close gesture would overwrite it and strand the first task forever.
     internal var tabClosesInFlight: Set<UUID> = []
-
-    // The non-data grid that owns the selection, read by the inspector. Set by `TableStructureView` and `CreateTableView`.
-    weak var inspectorRowSource: (any InspectorRowSource)?
 
     // Bumped when a published schema row changes, so the inspector re-reads it.
     @Published var inspectorRowSourceRevision: Int = 0

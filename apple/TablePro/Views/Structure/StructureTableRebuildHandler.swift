@@ -101,7 +101,7 @@ enum StructureTableRebuildHandler {
     ) async throws -> StructureRebuildPlanRunner.Prepared {
         let partition = partition(changes)
         guard partition.unsupported.isEmpty else {
-            throw RebuildError.cannotExpress(partition.unsupported.map(\.description))
+            throw RebuildError.cannotExpress(partition.unsupported.map(\.localizedDescription))
         }
 
         let respecification = respecification(from: partition.rebuilt)

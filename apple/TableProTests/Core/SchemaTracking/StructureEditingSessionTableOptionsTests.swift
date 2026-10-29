@@ -164,12 +164,4 @@ struct StructureEditingSessionTableOptionsTests {
 
         #expect(session.tableOptionsCatalog == .loaded(Self.catalog))
     }
-
-    @Test("The Options sub-tab shows no grid")
-    func optionsTabHasNoGrid() {
-        let session = makeSession()
-        session.selectedTab = .options
-
-        #expect(session.activeGridModel == nil)
-    }
 }

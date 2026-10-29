@@ -36,6 +36,9 @@ final class DataGridViewController: NSViewController, DataGridMountedView {
     var prewarmTask: Task<Void, Never>?
     var prewarmResumeTask: Task<Void, Never>?
     var reorderToolTipOwner: NSString?
+    var isFittingHeightScheduled = false
+    var pendingPageReveal: NSRect?
+    var isRevealingInGrid = false
     private var observers: [NSObjectProtocol] = []
     private var cancellables: Set<AnyCancellable> = []
     private var themeCancellable: AnyCancellable?
@@ -109,6 +112,7 @@ final class DataGridViewController: NSViewController, DataGridMountedView {
         knownWidths = [:]
         knownWidthsSawRows = false
         savedWidthIDs = []
+        pendingPageReveal = nil
         mount()
     }
 
@@ -124,6 +128,7 @@ final class DataGridViewController: NSViewController, DataGridMountedView {
         prewarmTask = nil
         prewarmResumeTask?.cancel()
         prewarmResumeTask = nil
+        pendingPageReveal = nil
         observers.forEach(NotificationCenter.default.removeObserver)
         observers.removeAll()
         cancellables.removeAll()
@@ -152,6 +157,11 @@ final class DataGridViewController: NSViewController, DataGridMountedView {
         if needsViewportRestore, main.scrollView.contentView.bounds.height > 0 {
             needsViewportRestore = false
             applyStagedViewport()
+        }
+        updateFittingHeight()
+        if pendingPageReveal != nil {
+            // The page scrolls once its own layout is done, so its document already holds the grid's new height.
+            DispatchQueue.main.async { [weak self] in self?.performPageReveal() }
         }
     }
 
@@ -297,6 +307,8 @@ final class DataGridViewController: NSViewController, DataGridMountedView {
             applyRowReorder(configuration.rowReorder, to: table)
         }
         main.tableView.setAccessibilityLabel(configuration.accessibilityLabel ?? String(localized: "Data grid"))
+        main.scrollView.fitsRows = configuration.fitsRows
+        container.followsPageScroll = configuration.fitsRows
         applyRowHeight()
     }
 

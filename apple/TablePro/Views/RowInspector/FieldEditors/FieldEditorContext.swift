@@ -23,12 +23,8 @@ internal struct FieldEditorContext {
     /// column type and the value only when this is nil, and resolving costs a parse of the value.
     internal let editor: FieldEditorKind?
 
-    /// A schema field has no NULL or DEFAULT state and no data type to badge.
+    // False where the store has no NULL or DEFAULT to write, as in a data file.
     internal let allowsNullAndDefault: Bool
-    internal let showsTypeBadge: Bool
-
-    /// The table a column type picker offers user-defined types for. Nil outside a structure row.
-    internal let userDefinedTypeScope: DatabaseScope?
 
     internal init(
         columnName: String,
@@ -40,9 +36,7 @@ internal struct FieldEditorContext {
         isReadOnly: Bool,
         commitBytes: ((Data) -> Void)? = nil,
         editor: FieldEditorKind? = nil,
-        allowsNullAndDefault: Bool = true,
-        showsTypeBadge: Bool = true,
-        userDefinedTypeScope: DatabaseScope? = nil
+        allowsNullAndDefault: Bool = true
     ) {
         self.columnName = columnName
         self.columnType = columnType
@@ -54,8 +48,6 @@ internal struct FieldEditorContext {
         self.commitBytes = commitBytes
         self.editor = editor
         self.allowsNullAndDefault = allowsNullAndDefault
-        self.showsTypeBadge = showsTypeBadge
-        self.userDefinedTypeScope = userDefinedTypeScope
     }
 
     internal var hasMultipleValues: Bool { valueState == .multipleValues }

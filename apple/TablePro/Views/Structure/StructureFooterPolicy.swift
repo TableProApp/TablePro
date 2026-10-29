@@ -2,104 +2,45 @@
 //  StructureFooterPolicy.swift
 //  TablePro
 //
-//  What the add/remove pair under a structure list offers, and why it is dimmed when it is.
-//
 
 import Foundation
 import TableProPluginKit
 
-/// The single decision behind the "+" and "-" under the Structure tab's list.
-///
-/// Pure and SwiftUI-free so the rule is testable, and one function so the label, the enabled state
-/// and the tooltip can never disagree. They did: the labels came from one switch, the enabled state
-/// from a second that read engine capability flags alone, and the tooltip from a third that returned
-/// nil for every tab but Foreign Keys. So a view offered an enabled "Add Column" over an
-/// `ALTER TABLE … ADD COLUMN` PostgreSQL always refuses, with nothing to explain it. (#2726)
+// The add and remove pair beneath each section's table: what it is called and which edit it stages.
 enum StructureFooterPolicy {
-    /// Nil for a tab with nothing to add: DDL is text, Parts is read-only, and a trigger is created
-    /// through its own editor rather than by typing a row.
-    static func operation(forAdding tab: StructureTab) -> StructureEditOperation? {
-        switch tab {
-        case .columns: return .addColumn
-        case .indexes: return .addIndex
-        case .foreignKeys: return .addForeignKey
-        case .checkConstraints: return .addCheckConstraint
-        case .options, .ddl, .parts, .triggers: return nil
+    static func operation(forAdding section: StructureSection) -> StructureEditOperation {
+        switch section {
+        case .columns: .addColumn
+        case .indexes: .addIndex
+        case .foreignKeys: .addForeignKey
+        case .checkConstraints: .addCheckConstraint
         }
     }
 
-    static func operation(forRemoving tab: StructureTab) -> StructureEditOperation? {
-        switch tab {
-        case .columns: return .dropColumn
-        case .indexes: return .dropIndex
-        case .foreignKeys: return .dropForeignKey
-        case .checkConstraints: return .dropCheckConstraint
-        case .options, .ddl, .parts, .triggers: return nil
+    static func operation(forRemoving section: StructureSection) -> StructureEditOperation {
+        switch section {
+        case .columns: .dropColumn
+        case .indexes: .dropIndex
+        case .foreignKeys: .dropForeignKey
+        case .checkConstraints: .dropCheckConstraint
         }
     }
 
-    /// Why the grid and the pair under it take no edits while a save runs.
+    // Why the tables and the pairs under them take no edits while a save runs.
     static var savingReason: String {
         String(localized: "The staged changes are being saved.")
     }
 
-    static func labels(for tab: StructureTab) -> (add: String, remove: String)? {
-        switch tab {
+    static func labels(for section: StructureSection) -> (add: String, remove: String) {
+        switch section {
         case .columns:
-            return (String(localized: "Add Column"), String(localized: "Remove Column"))
+            (String(localized: "Add Column"), String(localized: "Remove Column"))
         case .indexes:
-            return (String(localized: "Add Index"), String(localized: "Remove Index"))
+            (String(localized: "Add Index"), String(localized: "Remove Index"))
         case .foreignKeys:
-            return (String(localized: "Add Foreign Key"), String(localized: "Remove Foreign Key"))
+            (String(localized: "Add Foreign Key"), String(localized: "Remove Foreign Key"))
         case .checkConstraints:
-            return (String(localized: "Add Check Constraint"), String(localized: "Remove Check Constraint"))
-        case .options, .ddl, .parts, .triggers:
-            return nil
+            (String(localized: "Add Check Constraint"), String(localized: "Remove Check Constraint"))
         }
-    }
-
-    /// - Parameter resolve: The full availability of one operation, which the caller supplies because
-    ///   it owns the connection the engine half of the answer comes from.
-    ///
-    /// A refusing object kind keeps the pair on screen and dims it with the reason, the way the
-    /// Foreign Keys tab already did. An engine that cannot edit structure at all hides it instead:
-    /// there is nothing to explain per object when the whole tab is read-only.
-    static func resolve(
-        tab: StructureTab,
-        canEditSchema: Bool,
-        hasSelection: Bool,
-        isSaving: Bool,
-        resolve: (StructureEditOperation) -> StructureEditAvailability
-    ) -> StructureFooterCapability {
-        guard canEditSchema,
-              let labels = labels(for: tab),
-              let adding = operation(forAdding: tab),
-              let removing = operation(forRemoving: tab)
-        else {
-            return StructureFooterCapability()
-        }
-
-        /// A save holds what is staged until it ends, so nothing can be added or removed meanwhile.
-        guard !isSaving else {
-            return StructureFooterCapability(
-                addLabel: labels.add,
-                removeLabel: labels.remove,
-                unavailableReason: savingReason
-            )
-        }
-
-        let addAvailability = resolve(adding)
-        let removeAvailability = resolve(removing)
-
-        return StructureFooterCapability(
-            canAdd: addAvailability.isAvailable,
-            canRemove: hasSelection && removeAvailability.isAvailable,
-            addLabel: labels.add,
-            removeLabel: labels.remove,
-            /// Never the absence of a selection. The pair dims while nothing is selected on every
-            /// tab and on every engine, which needs no sentence; only a refusal the user could not
-            /// have predicted does.
-            unavailableReason: addAvailability.unavailableReason ?? removeAvailability.unavailableReason
-        )
     }
 }

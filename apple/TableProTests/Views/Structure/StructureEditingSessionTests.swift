@@ -38,6 +38,45 @@ private final class StructureSessionDriver: PluginDriverStub, @unchecked Sendabl
     }
 }
 
+// Records the reads a load makes, in order.
+private final class StructureLoadDriver: PluginDriverStub, @unchecked Sendable {
+    private let lock = NSLock()
+    private var log: [String] = []
+
+    var supportsSchemas: Bool { false }
+    var supportsTransactions: Bool { false }
+    var currentSchema: String? { nil }
+    var serverVersion: String? { nil }
+
+    var reads: [String] { lock.withLock { log } }
+
+    private func record(_ read: String) {
+        lock.withLock { log.append(read) }
+    }
+
+    func switchDatabase(to database: String) async throws {}
+
+    func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] {
+        record("columns")
+        return [PluginColumnInfo(name: "id", dataType: "INT", isNullable: false, isPrimaryKey: true)]
+    }
+
+    func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] {
+        record("indexes")
+        return []
+    }
+
+    func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] {
+        record("foreignKeys")
+        return []
+    }
+
+    func fetchTableDDL(table: String, schema: String?) async throws -> String {
+        record("ddl")
+        return "CREATE TABLE `\(table)` (`id` INT)"
+    }
+}
+
 @Suite("Structure editing session", .serialized)
 @MainActor
 struct StructureEditingSessionTests {
@@ -64,6 +103,7 @@ struct StructureEditingSessionTests {
             foreignKeys: [],
             primaryKey: []
         )
+        session.markBaselineAdopted()
         manager.addNewColumn()
         guard var column = manager.workingColumns.last else { return }
         column.name = "notes"
@@ -90,68 +130,85 @@ struct StructureEditingSessionTests {
     }
 
     // A grid owner seeded once into a view's `@State` kept writing into the first session to mount.
-    @Test("A session's grid adapter writes into that session's change manager")
-    func gridAdapterBelongsToItsSession() {
+    @Test("A session's editor and its section grids write into that session's change manager")
+    func editorBelongsToItsSession() {
         let connection = TestFixtures.makeConnection()
         let first = Self.makeSession(connection: connection)
         let second = Self.makeSession(connection: connection)
 
-        #expect(first.gridAdapter !== second.gridAdapter)
-        #expect(first.gridModel !== second.gridModel)
-        #expect(first.gridAdapter.structureChangeManager === first.changeManager)
-        #expect(second.gridAdapter.structureChangeManager === second.changeManager)
-        #expect(first.gridAdapter.session === first)
-        #expect(first.gridAdapter.store.session === first)
+        #expect(first.editor !== second.editor)
+        #expect(first.editor.manager === first.changeManager)
+        #expect(second.editor.manager === second.changeManager)
+        for section in StructureSection.allCases {
+            let adapter = first.editor.adapter(for: section)
+            #expect(adapter !== second.editor.adapter(for: section), "\(section.rawValue)")
+            #expect(adapter.model !== second.editor.adapter(for: section).model, "\(section.rawValue)")
+            #expect(adapter.manager === first.changeManager, "\(section.rawValue)")
+            #expect(adapter.editor === first.editor, "\(section.rawValue)")
+        }
     }
 
-    @Test("A session's grid model survives the view: the adapter, not a mount, owns it")
+    @Test("A section's grid model survives the view: the editor, not a mount, owns it")
     func gridModelOutlivesTheView() {
         let session = Self.makeSession(connection: TestFixtures.makeConnection())
         Self.stageAColumn(on: session)
-        session.gridAdapter.refresh()
-        let model = session.gridModel
+        session.editor.refresh()
+        let adapter = session.editor.adapter(for: .columns)
+        let model = adapter.model
 
         #expect(!model.isMounted)
         #expect(model.rowCount == 1)
-        #expect(session.gridModel === model)
-        #expect(model.dataSource === session.gridAdapter)
+        #expect(session.editor.adapter(for: .columns).model === model)
+        #expect(model.dataSource === adapter)
     }
 
-    @Test("The session answers the grid on screen only while a sub-tab shows one")
-    func activeGridModelFollowsTheSubTab() {
+    @Test("The session answers the grid holding the selection, and no grid on a pane that draws none")
+    func activeGridModelFollowsThePane() {
         let session = Self.makeSession(connection: TestFixtures.makeConnection())
+        session.changeManager.loadSchema(
+            tableName: "users",
+            columns: [ColumnInfo(name: "id", dataType: "INT", isNullable: false, isPrimaryKey: true)],
+            indexes: [IndexInfo(name: "ix_id", columns: ["id"], isUnique: false, isPrimary: false, type: "BTREE")],
+            foreignKeys: [],
+            primaryKey: ["id"]
+        )
+        session.markBaselineAdopted()
+        session.editor.refresh()
+        let indexes = session.editor.adapter(for: .indexes)
 
-        for tab in [StructureTab.columns, .indexes, .foreignKeys, .checkConstraints] {
-            session.selectedTab = tab
-            #expect(session.activeGridModel === session.gridModel, "\(tab.rawValue)")
-        }
-        for tab in [StructureTab.options, .ddl, .parts, .triggers] {
-            session.selectedTab = tab
-            #expect(session.activeGridModel == nil, "\(tab.rawValue)")
+        #expect(session.activeGridModel === session.editor.adapter(for: .columns).model)
+
+        indexes.select(entity: session.changeManager.workingIndexes[0].id)
+        #expect(session.activeGridModel === indexes.model)
+
+        for pane in [StructurePane.triggers, .ddl, .parts] {
+            session.pane = pane
+            #expect(session.activeGridModel == nil, "\(pane.rawValue)")
         }
     }
 
-    // Sharing the place moved one tab to Indexes when the other did, and lost the sub-tab on a Data trip.
+    // Sharing the place moved one tab to Indexes when the other did, and lost the pane on a Data trip.
     @Test("Each session keeps its own place in the editor")
     func editorPlaceIsPerSession() {
         let connection = TestFixtures.makeConnection()
         let first = Self.makeSession(connection: connection)
         let second = Self.makeSession(connection: connection)
 
-        first.selectedTab = .indexes
-        first.searchText = "created"
+        first.pane = .ddl
+        first.editor.searchText = "created"
 
-        #expect(second.selectedTab == .columns)
-        #expect(second.searchText.isEmpty)
+        #expect(second.pane == .definition)
+        #expect(second.editor.searchText.isEmpty)
     }
 
-    // MARK: - Sub-tab switch
+    // MARK: - Open edits
 
-    // The switch used to commit an open edit into the incoming sub-tab's rows.
-    @Test("An edit open when the sub-tab changes commits into the column it was typed on")
-    func openEditCommitsIntoItsOwnSubTab() throws {
+    // A switch used to commit an open edit into the incoming sub-tab's rows; each section now owns its grid.
+    @Test("An edit open when Undo runs lands in the column it was typed on, and Undo takes that edit back")
+    func openEditCommitsIntoItsOwnSection() throws {
         let session = Self.makeSession(connection: TestFixtures.makeConnection(database: "testdb", type: .mysql))
-        session.changeManager.loadSchema(
+        let manager = session.changeManager
+        manager.loadSchema(
             tableName: "users",
             columns: ["id", "email"].map {
                 ColumnInfo(name: $0, dataType: "VARCHAR(64)", isNullable: true, isPrimaryKey: false)
@@ -162,8 +219,13 @@ struct StructureEditingSessionTests {
             foreignKeys: [],
             primaryKey: []
         )
-        session.gridAdapter.refresh()
-        let controller = DataGridViewController(model: session.gridModel)
+        session.markBaselineAdopted()
+        var index = manager.workingIndexes[0]
+        index.name = "ix_a"
+        manager.updateIndex(id: index.id, with: index)
+        session.editor.refresh()
+        let model = session.editor.adapter(for: .columns).model
+        let controller = DataGridViewController(model: model)
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 800, height: 400),
             styleMask: [.titled],
@@ -180,12 +242,97 @@ struct StructureEditingSessionTests {
         let editor = try #require(controller.editingState.editingCellView.field.currentEditor() as? NSTextView)
         editor.string = "mail"
 
-        session.selectedTab = .indexes
-        session.gridAdapter.refresh()
+        session.undo()
 
-        #expect(session.changeManager.workingColumns.map(\.name) == ["id", "mail"])
-        #expect(session.changeManager.workingIndexes.map(\.name) == ["ix_id", "ix_email"])
-        #expect(!session.gridModel.isEditing)
+        #expect(manager.workingColumns.map(\.name) == ["id", "email"])
+        #expect(manager.workingIndexes.map(\.name) == ["ix_a", "ix_email"])
+        #expect(!model.isEditing)
+        #expect(session.canRedo)
+
+        session.redo()
+        #expect(manager.workingColumns.map(\.name) == ["id", "mail"])
+    }
+
+    // MARK: - Row commands
+
+    @Test("Row commands do nothing on a pane that shows no grid", arguments: [StructurePane.triggers, .ddl, .parts])
+    func rowCommandsNeedTheDefinitionPane(pane: StructurePane) {
+        let session = Self.makeSession(connection: TestFixtures.makeConnection())
+        Self.stageAColumn(on: session)
+        session.editor.refresh()
+        session.editor.adapter(for: .columns).select(entity: session.changeManager.workingColumns[0].id)
+        let staged = session.changeManager.getChangesArray()
+        let columns = session.changeManager.workingColumns
+        session.pane = pane
+
+        #expect(!session.canAddRow)
+        #expect(!session.canRemoveRows)
+        session.addRow()
+        session.removeSelectedRows()
+        session.duplicateSelectedRows()
+
+        #expect(session.changeManager.getChangesArray() == staged)
+        #expect(session.changeManager.workingColumns == columns)
+    }
+
+    @Test("Row commands wait for the definitions the table was read with")
+    func rowCommandsWaitForTheBaseline() {
+        let session = Self.makeSession(connection: TestFixtures.makeConnection())
+        #expect(!session.canAddRow)
+        session.addRow()
+        #expect(session.changeManager.workingColumns.isEmpty)
+    }
+
+    @Test("Add and Remove act on the section holding the selection")
+    func rowCommandsFollowTheFocusedSection() {
+        let session = Self.makeSession(connection: TestFixtures.makeConnection())
+        session.changeManager.loadSchema(
+            tableName: "users",
+            columns: [ColumnInfo(name: "id", dataType: "INT", isNullable: false, isPrimaryKey: true)],
+            indexes: [IndexInfo(name: "ix_id", columns: ["id"], isUnique: false, isPrimary: false, type: "BTREE")],
+            foreignKeys: [],
+            primaryKey: ["id"]
+        )
+        session.markBaselineAdopted()
+        session.editor.refresh()
+        session.editor.adapter(for: .indexes).select(entity: session.changeManager.workingIndexes[0].id)
+
+        #expect(session.canAddRow)
+        session.addRow()
+
+        #expect(session.changeManager.workingIndexes.count == 2)
+        #expect(session.changeManager.workingColumns.count == 1)
+    }
+
+    // Cmd+Shift+D on several rows used to register one undo per row.
+    @Test("Duplicating several selected rows is one undo step")
+    func duplicateIsOneUndoStep() {
+        let session = Self.makeSession(connection: TestFixtures.makeConnection())
+        let manager = session.changeManager
+        manager.loadSchema(
+            tableName: "users",
+            columns: ["id", "email", "created_at"].map {
+                ColumnInfo(name: $0, dataType: "VARCHAR(64)", isNullable: true, isPrimaryKey: false)
+            },
+            indexes: [],
+            foreignKeys: [],
+            primaryKey: []
+        )
+        session.markBaselineAdopted()
+        session.editor.refresh()
+        let adapter = session.editor.adapter(for: .columns)
+        let selected = manager.workingColumns.prefix(2).map { adapter.rowID(forEntity: $0.id) }
+        adapter.model.selectRows(selected)
+
+        session.duplicateSelectedRows()
+        #expect(manager.workingColumns.count == 5)
+        #expect(manager.workingColumns.suffix(2).map(\.name) == ["id", "email"])
+
+        session.undo()
+
+        #expect(manager.workingColumns.map(\.name) == ["id", "email", "created_at"])
+        #expect(!session.hasChanges)
+        #expect(!session.canUndo)
     }
 
     // MARK: - Applying without a mounted view
@@ -382,77 +529,109 @@ struct StructureEditingSessionTests {
         return driver
     }
 
-    // A withdrawn tab cannot stay selected: no segment would match it.
-    @Test("A session on Constraints moves to Columns when the server withdraws the tab")
-    func withdrawnTabMovesSelection() {
-        let connection = DatabaseConnection(name: "MySQL", type: .mysql)
-        let session = Self.makeSession(connection: connection)
-        session.selectedTab = .checkConstraints
-        #expect(session.availableTabs.contains(.checkConstraints))
+    private static let legacyMySQL = StructureServerSupport(
+        unsupportedColumnFields: [],
+        unsupportedIndexTypes: [],
+        checkConstraintRefusal: "Check constraints need MySQL 8.0.16 or later."
+    )
 
-        session.serverSupport = StructureServerSupport(
-            unsupportedColumnFields: [],
-            unsupportedIndexTypes: [],
-            checkConstraintRefusal: "Check constraints need MySQL 8.0.16 or later."
-        )
+    @Test("A server that withdraws check constraints takes the section off the page and leaves the pane alone")
+    func withdrawnSectionLeavesThePage() {
+        let session = Self.makeSession(connection: DatabaseConnection(name: "MySQL", type: .mysql))
+        session.pane = .ddl
+        #expect(session.editor.sections.contains(.checkConstraints))
 
-        #expect(!session.availableTabs.contains(.checkConstraints))
-        #expect(session.selectedTab == .columns)
+        session.serverSupport = Self.legacyMySQL
+
+        #expect(!session.editor.offers(.checkConstraints))
+        #expect(!session.editor.sections.contains(.checkConstraints))
+        #expect(session.editor.serverSupport == Self.legacyMySQL)
+        #expect(session.pane == .ddl)
     }
 
-    @Test("A server change that withdraws nothing leaves the selection alone")
-    func unchangedSupportKeepsSelection() {
-        let connection = DatabaseConnection(name: "MySQL", type: .mysql)
-        let session = Self.makeSession(connection: connection)
-        session.selectedTab = .indexes
+    // A pane no segment matches cannot stay selected.
+    @Test("A pane the engine does not offer falls back to Definition when the server's support settles")
+    func unofferedPaneFallsBackToDefinition() {
+        let session = Self.makeSession(connection: DatabaseConnection(name: "MySQL", type: .mysql))
+        session.pane = .parts
+        #expect(!session.availablePanes.contains(.parts))
+
+        session.serverSupport = StructureServerSupport(unsupportedColumnFields: [.generated], unsupportedIndexTypes: [])
+
+        #expect(session.pane == .definition)
+    }
+
+    @Test("A server change that withdraws nothing leaves the pane and the sections alone")
+    func unchangedSupportKeepsThePane() {
+        let session = Self.makeSession(connection: DatabaseConnection(name: "MySQL", type: .mysql))
+        session.pane = .triggers
 
         session.serverSupport = StructureServerSupport(
             unsupportedColumnFields: [.generated],
             unsupportedIndexTypes: ["BRIN"]
         )
 
-        #expect(session.selectedTab == .indexes)
-        #expect(session.availableTabs.contains(.checkConstraints))
+        #expect(session.pane == .triggers)
+        #expect(session.editor.offers(.checkConstraints))
     }
 
-    @Test("A session built for a server with no check constraints never offers the tab")
+    @Test("A session built for a server with no check constraints never offers the section")
     func sessionSeededWithServerSupport() {
-        let connection = DatabaseConnection(name: "MySQL", type: .mysql)
         let session = StructureEditingSession(
             identity: "testdb.users",
-            connection: connection,
+            connection: DatabaseConnection(name: "MySQL", type: .mysql),
             databaseName: "testdb",
             schemaName: nil,
             tableName: "users",
-            serverSupport: StructureServerSupport(
-                unsupportedColumnFields: [],
-                unsupportedIndexTypes: [],
-                checkConstraintRefusal: "Check constraints need MySQL 8.0.16 or later."
-            )
+            serverSupport: Self.legacyMySQL
         )
-        #expect(!session.availableTabs.contains(.checkConstraints))
-        #expect(session.selectedTab == .columns)
+        #expect(!session.editor.offers(.checkConstraints))
+        #expect(session.editor.sections == [.columns, .indexes, .foreignKeys])
+        #expect(session.pane == .definition)
     }
 
-    // A stale session left on DDL or Triggers mounts without a selection change, so nothing else fetches that sub-tab.
-    @Test("A mount fetches the sub-tab the user left selected, once, after the ones it baselines from")
-    func mountFetchesTheSelectedSubTab() {
-        let session = Self.makeSession(connection: TestFixtures.makeConnection())
-        #expect(session.tabsFetchedOnMount.first == .columns)
-        #expect(!session.tabsFetchedOnMount.contains(.ddl))
+    // A stale session left on DDL or Triggers mounts without a pane change, so nothing else fetches that pane.
+    @Test("A load fetches the pane the user left selected, once, after the definitions it baselines from")
+    func loadFetchesTheSelectedPane() async throws {
+        let connection = TestFixtures.makeConnection(database: "testdb")
+        var connectionSession = ConnectionSession(
+            connection: connection,
+            driver: PluginDriverAdapter(connection: connection, pluginDriver: StructureLoadDriver())
+        )
+        connectionSession.browseDatabase = "testdb"
+        DatabaseManager.shared.injectSession(connectionSession, for: connection.id)
 
-        session.selectedTab = .ddl
-        session.tabData.markFetched(.ddl)
-        session.hasLoaded = true
+        let session = Self.makeSession(connection: connection)
+        let driver = StructureLoadDriver()
+        let adapter = PluginDriverAdapter(connection: connection, pluginDriver: driver)
+        try await adapter.connect()
+        MetadataConnectionPool.shared.injectEntry(adapter, scope: session.scope)
+        defer {
+            MetadataConnectionPool.shared.closeAll(connectionId: connection.id)
+            DatabaseManager.shared.removeSession(for: connection.id)
+        }
+
+        await session.load()
+        #expect(session.hasLoaded)
+        #expect(driver.reads.first == "columns")
+        #expect(!driver.reads.contains("ddl"))
+        #expect(session.changeManager.workingColumns.map(\.name) == ["id"])
+
         session.markStructureStale()
-
         #expect(!session.hasLoaded)
-        #expect(session.tabData.needsFetch(.ddl))
-        #expect(session.tabsFetchedOnMount.last == .ddl)
+        session.pane = .ddl
+        let before = driver.reads.count
+        await session.load()
 
-        session.selectedTab = .indexes
-        #expect(session.tabsFetchedOnMount.filter { $0 == .indexes }.count == 1)
-        #expect(!session.tabsFetchedOnMount.contains(.ddl))
+        let reload = Array(driver.reads.dropFirst(before))
+        #expect(reload.first == "columns")
+        #expect(reload.last == "ddl")
+        #expect(reload.filter { $0 == "ddl" }.count == 1)
+        #expect(session.loadState.hasData(.ddl))
+        #expect(!session.loadState.needsFetch(.ddl))
+
+        await session.load()
+        #expect(driver.reads.filter { $0 == "ddl" }.count == 1)
     }
 
     // A refetch with edits staged would re-baseline and drop them, and dropping the refetch left an undone session showing old columns.
@@ -460,14 +639,14 @@ struct StructureEditingSessionTests {
     func aChangeOwedWhileEditingIsFetchedOnceTheEditsAreGone() {
         let session = Self.makeSession(connection: TestFixtures.makeConnection())
         Self.stageAColumn(on: session)
-        session.tabData.markFetched(.columns)
+        session.loadState.markFetched(.columns)
         session.hasLoaded = true
 
         session.markStructureStale()
 
         #expect(session.changeManager.hasChanges, "The staged edit survives the change")
         #expect(session.hasLoaded)
-        #expect(!session.tabData.needsFetch(.columns))
+        #expect(!session.loadState.needsFetch(.columns))
         #expect(!session.settleOwedRefetch(), "Nothing is fetched while the edit is still staged")
 
         while session.changeManager.canUndo {
@@ -477,7 +656,7 @@ struct StructureEditingSessionTests {
 
         #expect(session.settleOwedRefetch())
         #expect(!session.hasLoaded)
-        #expect(session.tabData.needsFetch(.columns))
+        #expect(session.loadState.needsFetch(.columns))
         #expect(!session.settleOwedRefetch())
     }
 
@@ -530,6 +709,7 @@ struct StructureEditingSessionTests {
             primaryKey: ["id"],
             tableComment: "Customer orders"
         )
+        session.markBaselineAdopted()
         session.changeManager.stageTableComment("Paid orders")
 
         session.markStructureStale()

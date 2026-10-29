@@ -75,6 +75,10 @@ enum FileMenuBuilder {
                 keyboard: keyboard
             ),
             MenuItemFactory.item(
+                String(localized: "Discard Changes…"),
+                action: #selector(MainSplitViewController.discardChanges(_:))
+            ),
+            MenuItemFactory.item(
                 String(localized: "Save As…"),
                 action: #selector(MainSplitViewController.saveDocumentAs(_:)),
                 shortcut: .saveAs,

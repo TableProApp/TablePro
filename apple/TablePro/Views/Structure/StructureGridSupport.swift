@@ -17,7 +17,7 @@ enum StructureGridEdits {
         _ text: String,
         field: Int,
         sourceIndex: Int,
-        tab: StructureTab,
+        tab: StructureSection,
         manager: StructureChangeManager,
         orderedFields: [StructureColumnField],
         connection: DatabaseConnection,
@@ -62,8 +62,6 @@ enum StructureGridEdits {
             var constraint = manager.workingCheckConstraints[sourceIndex]
             StructureEditingSupport.updateCheckConstraint(&constraint, at: field, with: text)
             manager.updateCheckConstraint(id: constraint.id, with: constraint)
-        case .options, .ddl, .parts, .triggers:
-            break
         }
         return nil
     }
@@ -73,7 +71,7 @@ enum StructureGridEdits {
         _ text: String,
         field: Int,
         sourceIndex: Int,
-        tab: StructureTab,
+        tab: StructureSection,
         manager: StructureChangeManager,
         orderedFields: [StructureColumnField],
         characterSets: ColumnCharacterSetMenus.Context?
@@ -95,7 +93,7 @@ enum StructureGridEdits {
     }
 
     // One Cmd+Z brings the whole selection back: the manager registers an undo per row.
-    static func delete(sourceIndices: [Int], tab: StructureTab, manager: StructureChangeManager) {
+    static func delete(sourceIndices: [Int], tab: StructureSection, manager: StructureChangeManager) {
         manager.performAsOneUndoStep {
             for index in sourceIndices.sorted(by: >) {
                 switch tab {
@@ -111,59 +109,73 @@ enum StructureGridEdits {
                 case .checkConstraints:
                     guard manager.workingCheckConstraints.indices.contains(index) else { continue }
                     manager.deleteCheckConstraint(id: manager.workingCheckConstraints[index].id)
-                case .options, .ddl, .parts, .triggers:
-                    break
                 }
             }
         }
     }
 
-    static func duplicate(sourceIndices: [Int], tab: StructureTab, manager: StructureChangeManager) {
-        for index in sourceIndices.sorted() {
-            switch tab {
-            case .columns:
-                guard manager.workingColumns.indices.contains(index) else { continue }
-                manager.addColumn(manager.workingColumns[index].withNewIdentity())
-            case .indexes:
-                guard manager.workingIndexes.indices.contains(index) else { continue }
-                var copy = manager.workingIndexes[index].withNewIdentity()
-                copy.isPrimary = false
-                manager.addIndex(copy)
-            case .foreignKeys:
-                guard manager.workingForeignKeys.indices.contains(index) else { continue }
-                manager.addForeignKey(manager.workingForeignKeys[index].withNewIdentity())
-            case .checkConstraints:
-                guard manager.workingCheckConstraints.indices.contains(index) else { continue }
-                manager.addCheckConstraint(manager.workingCheckConstraints[index].withNewIdentity())
-            case .options, .ddl, .parts, .triggers:
-                break
+    static func duplicate(sourceIndices: [Int], tab: StructureSection, manager: StructureChangeManager) {
+        manager.performAsOneUndoStep {
+            for index in sourceIndices.sorted() {
+                switch tab {
+                case .columns:
+                    guard manager.workingColumns.indices.contains(index) else { continue }
+                    manager.addColumn(manager.workingColumns[index].withNewIdentity())
+                case .indexes:
+                    guard manager.workingIndexes.indices.contains(index) else { continue }
+                    var copy = manager.workingIndexes[index].withNewIdentity()
+                    copy.isPrimary = false
+                    manager.addIndex(copy)
+                case .foreignKeys:
+                    guard manager.workingForeignKeys.indices.contains(index) else { continue }
+                    manager.addForeignKey(manager.workingForeignKeys[index].withNewIdentity())
+                case .checkConstraints:
+                    guard manager.workingCheckConstraints.indices.contains(index) else { continue }
+                    manager.addCheckConstraint(manager.workingCheckConstraints[index].withNewIdentity())
+                }
             }
         }
     }
 
-    static func addRow(on tab: StructureTab, manager: StructureChangeManager) {
+    static func addRow(on tab: StructureSection, manager: StructureChangeManager) {
         switch tab {
         case .columns: manager.addNewColumn()
         case .indexes: manager.addNewIndex()
         case .foreignKeys: manager.addNewForeignKey()
         case .checkConstraints: manager.addNewCheckConstraint()
-        case .options, .ddl, .parts, .triggers: break
         }
     }
 
-    static func rowCount(on tab: StructureTab, manager: StructureChangeManager) -> Int {
+    static func entityIDs(in section: StructureSection, manager: StructureChangeManager) -> [UUID] {
+        switch section {
+        case .columns: manager.workingColumns.map(\.id)
+        case .indexes: manager.workingIndexes.map(\.id)
+        case .foreignKeys: manager.workingForeignKeys.map(\.id)
+        case .checkConstraints: manager.workingCheckConstraints.map(\.id)
+        }
+    }
+
+    static func sourceIndex(of id: UUID, in section: StructureSection, manager: StructureChangeManager) -> Int? {
+        switch section {
+        case .columns: manager.workingColumns.firstIndex { $0.id == id }
+        case .indexes: manager.workingIndexes.firstIndex { $0.id == id }
+        case .foreignKeys: manager.workingForeignKeys.firstIndex { $0.id == id }
+        case .checkConstraints: manager.workingCheckConstraints.firstIndex { $0.id == id }
+        }
+    }
+
+    static func rowCount(on tab: StructureSection, manager: StructureChangeManager) -> Int {
         switch tab {
         case .columns: manager.workingColumns.count
         case .indexes: manager.workingIndexes.count
         case .foreignKeys: manager.workingForeignKeys.count
         case .checkConstraints: manager.workingCheckConstraints.count
-        case .options, .ddl, .parts, .triggers: 0
         }
     }
 
     static func visualState(
         sourceIndex: Int,
-        tab: StructureTab,
+        tab: StructureSection,
         manager: StructureChangeManager,
         orderedFields: [StructureColumnField],
         tintsModifiedFields: Bool
@@ -182,7 +194,7 @@ enum StructureGridEdits {
 
     private static func modifiedFields(
         sourceIndex: Int,
-        tab: StructureTab,
+        tab: StructureSection,
         manager: StructureChangeManager,
         orderedFields: [StructureColumnField]
     ) -> Set<Int> {
@@ -207,23 +219,24 @@ enum StructureGridEdits {
             let working = manager.workingCheckConstraints[sourceIndex]
             guard let original = manager.currentCheckConstraints.first(where: { $0.id == working.id }) else { return [] }
             return StructureEditingSupport.checkConstraintModifiedIndices(old: original, new: working)
-        case .options, .ddl, .parts, .triggers:
-            return []
         }
     }
 }
 
-// The schema manager has no row identities of its own; this answers the grid's row questions by the
-// source-index RowIDs `StructureRowProvider` hands out.
+// The schema manager has no row identities of its own; this answers the grid's row questions through the RowIDs
+// the section's adapter minted, one per working definition in order.
 @MainActor
 final class StructureGridChangeState: ChangeManaging {
     let manager: StructureChangeManager
-    var tab: StructureTab
-    var rowCount: Int = 0
+    let section: StructureSection
+    var rowIDs: [RowID] = [] {
+        didSet { sourceIndexByRowID = Dictionary(uniqueKeysWithValues: rowIDs.enumerated().map { ($1, $0) }) }
+    }
+    private var sourceIndexByRowID: [RowID: Int] = [:]
 
-    init(manager: StructureChangeManager, tab: StructureTab = .columns) {
+    init(manager: StructureChangeManager, section: StructureSection) {
         self.manager = manager
-        self.tab = tab
+        self.section = section
     }
 
     var hasChanges: Bool { manager.hasChanges }
@@ -232,18 +245,16 @@ final class StructureGridChangeState: ChangeManaging {
     var rowChanges: [RowChange] { [] }
 
     var insertedRowIDs: Set<RowID> {
-        Set((0..<rowCount).filter { manager.deleteInsertState(for: $0, tab: tab).isInserted }
-            .map(StructureRowProvider.rowID(forSourceIndex:)))
+        Set(rowIDs.indices.filter { manager.deleteInsertState(for: $0, tab: section).isInserted }.map { rowIDs[$0] })
     }
 
     var deletedRowIDs: Set<RowID> {
-        Set((0..<rowCount).filter { manager.deleteInsertState(for: $0, tab: tab).isDeleted }
-            .map(StructureRowProvider.rowID(forSourceIndex:)))
+        Set(rowIDs.indices.filter { manager.deleteInsertState(for: $0, tab: section).isDeleted }.map { rowIDs[$0] })
     }
 
     func isRowDeleted(_ rowID: RowID) -> Bool {
-        guard let index = StructureRowProvider.sourceIndex(of: rowID), index >= 0 else { return false }
-        return manager.deleteInsertState(for: index, tab: tab).isDeleted
+        guard let index = sourceIndexByRowID[rowID] else { return false }
+        return manager.deleteInsertState(for: index, tab: section).isDeleted
     }
 
     func recordCellChange(
@@ -256,8 +267,10 @@ final class StructureGridChangeState: ChangeManaging {
     ) {}
 
     func undoRowDeletion(rowID: RowID) {
-        guard let index = StructureRowProvider.sourceIndex(of: rowID) else { return }
-        manager.undoDelete(for: tab, at: index)
+        guard let index = sourceIndexByRowID[rowID] else { return }
+        let ids = StructureGridEdits.entityIDs(in: section, manager: manager)
+        guard ids.indices.contains(index) else { return }
+        manager.undoDelete(section: section, id: ids[index])
     }
 }
 

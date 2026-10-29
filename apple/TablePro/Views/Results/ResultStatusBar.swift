@@ -38,7 +38,6 @@ struct ResultStatusBar: View {
     let columnState: StatusBarColumnState
     let highlightState: StatusBarHighlightState
     let paginationCallbacks: PaginationCallbacks
-    let structureFooter: StructureFooterCapability
     let execution: ExecutionReadout
     /// Held, not observed: only the readout inside the report slot re-renders when it changes.
     let selectionSummary: SelectionSummaryState
@@ -54,8 +53,6 @@ struct ResultStatusBar: View {
     let onCloseOtherResultSets: (UUID) -> Void
     let onToggleFilters: () -> Void
     let onFetchAll: (() -> Void)?
-    let onStructureAdd: () -> Void
-    let onStructureRemove: () -> Void
 
     @State private var showColumnPopover = false
     @State private var showHighlightPopover = false
@@ -300,20 +297,6 @@ struct ResultStatusBar: View {
             }
             if model.controls.showsPagination {
                 paginationControls(presentation)
-            }
-            if model.controls.showsStructureActions {
-                AddRemoveControlGroup(
-                    addLabel: structureFooter.addLabel,
-                    removeLabel: structureFooter.removeLabel,
-                    canAdd: structureFooter.canAdd,
-                    canRemove: structureFooter.canRemove,
-                    addHelp: structureFooter.unavailableReason,
-                    removeHelp: structureFooter.unavailableReason,
-                    addIdentifier: "structure-footer-add",
-                    removeIdentifier: "structure-footer-remove",
-                    onAdd: onStructureAdd,
-                    onRemove: onStructureRemove
-                )
             }
         }
         .fixedSize()

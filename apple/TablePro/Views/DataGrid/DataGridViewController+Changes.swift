@@ -41,6 +41,7 @@ extension DataGridViewController {
         applyRowNumberWidth()
         syncSortIndicators()
         redrawVisibleRows()
+        updateFittingHeight()
     }
 
     // MARK: - Structural changes
@@ -60,6 +61,7 @@ extension DataGridViewController {
         updateHighlightedColumns(model.selection)
         syncSortIndicators()
         startBackgroundPrewarm()
+        updateFittingHeight()
     }
 
     private func columnsDidChange() {
@@ -88,6 +90,7 @@ extension DataGridViewController {
         }
         applyRowNumberWidth()
         startBackgroundPrewarm()
+        updateFittingHeight()
     }
 
     private func removeRows(_ indexes: IndexSet) {
@@ -102,6 +105,7 @@ extension DataGridViewController {
             pane.tableView.removeRows(at: indexes, withAnimation: [])
         }
         applyRowNumberWidth()
+        updateFittingHeight()
     }
 
     private func updateRows(_ rows: IndexSet, columns displayColumns: IndexSet?) {
@@ -168,6 +172,31 @@ extension DataGridViewController {
                 pane.tableView.rowHeight = height
                 pane.tableView.tile()
             }
+        }
+        updateFittingHeight()
+    }
+
+    // The table's own header, rows and legacy scroller: what a fitsRows grid needs to show every row.
+    var measuredFittingHeight: CGFloat {
+        let table = main.tableView
+        return DataGridMetrics.fittingHeight(
+            headerHeight: table.headerView?.frame.height ?? 0,
+            rowCount: table.numberOfRows,
+            rowPitch: table.rowHeight + table.intercellSpacing.height,
+            horizontalScrollerHeight: main.scrollView.legacyHorizontalScrollerHeight
+        )
+    }
+
+    // Published on the next turn: this runs inside SwiftUI updates and layout passes, which refuse a model change.
+    func updateFittingHeight() {
+        guard model.configuration.fitsRows, !isFittingHeightScheduled,
+              measuredFittingHeight != model.fittingHeight else { return }
+        isFittingHeightScheduled = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.isFittingHeightScheduled = false
+            guard self.model.mountedView === self, self.model.configuration.fitsRows else { return }
+            self.model.setFittingHeight(self.measuredFittingHeight)
         }
     }
 

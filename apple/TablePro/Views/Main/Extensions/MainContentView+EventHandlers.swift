@@ -147,11 +147,9 @@ extension MainContentView {
     func updateSidebarEditState() {
         // A selection change, refresh or undo rebuilds the fields, so the typed run ends here, not in another row's step.
         coordinator.endInspectorEditRun()
+        // A structure definition is edited by the structure inspector, not the row fields.
         switch gridSelectionOwner {
-        case .schemaGrid:
-            updateSchemaSidebarEditState()
-            return
-        case .none:
+        case .schemaGrid, .none:
             clearSidebarEditState()
             return
         case .dataGrid:
@@ -306,37 +304,5 @@ extension MainContentView {
         trailingPaneState.inspector.editState.onFieldReverted = nil
         trailingPaneState.inspector.editState.onFieldRemoved = nil
         trailingPaneState.inspector.editState.onDetachedFieldChanged = nil
-    }
-
-    // Edits go back to the owning grid so they land in its change manager with one undo step, like an inline edit.
-    private func updateSchemaSidebarEditState() {
-        guard let displayRow = coordinator.activeGridModel?.selection.affectedRows.first,
-            let row = selectedInspectorRow
-        else {
-            clearSidebarEditState()
-            return
-        }
-
-        trailingPaneState.inspector.editState.configure(schemaFields: row.fields, displayRow: displayRow)
-
-        guard row.isEditable else {
-            clearSidebarEditHandlers()
-            return
-        }
-
-        let capturedCoordinator = coordinator
-        trailingPaneState.inspector.editState.onFieldExpressionChanged = nil
-        trailingPaneState.inspector.editState.onFieldValuesChanged = nil
-        trailingPaneState.inspector.editState.onFieldReverted = nil
-        trailingPaneState.inspector.editState.onFieldRemoved = nil
-        trailingPaneState.inspector.editState.onDetachedFieldChanged = nil
-        trailingPaneState.inspector.editState.onFieldChanged = { fieldIndex, newValue, _ in
-            capturedCoordinator.inspectorRowSource?.commitInspectorField(
-                displayRow: displayRow,
-                fieldIndex: fieldIndex,
-                value: newValue.asText
-            )
-            capturedCoordinator.inspectorRowSourceRevision += 1
-        }
     }
 }

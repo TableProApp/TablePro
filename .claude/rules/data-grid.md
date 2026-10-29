@@ -30,6 +30,7 @@ Three layers, knowledge pointing one way: an owner's adapter, then `DataGridMode
 - **Row height, row count, reloads, inserts and removes reach both panes in one call**, so their document heights never differ.
 - **Vertical scroll stays in step through bounds-change notifications**: each pane's clip moves the other with `clipView.scroll(to:)` and `reflectScrolledClipView`, only when its y differs. Anywhere else scroll with `NSView.scroll(_:)`: moving a clip's x that way leaves the header behind.
 - **The frozen pane forwards every wheel event to the main scroll view**, so one momentum engine moves both.
+- **A `fitsRows` grid is as tall as its rows and scrolls only sideways.** It publishes `model.fittingHeight` for its host to size it, hands a vertical gesture to the enclosing scroll view (the axis is decided once per gesture), and reveals a row by scrolling that page. The Structure tab's sections use it.
 - **Frozen columns take at most two thirds of the grid** (`DataGridMetrics.maximumFrozenShare`). Columns past that scroll, and Freeze Up to This Column is refused in the menu.
 - **`DataGridTableView.scrollToVisible(_:)` widens the rect leftward by the frozen width**, so a revealed column never parks under the frozen pane.
 - **A column moves only within its side of the freeze line.** A freeze or unfreeze rebuilds both panes' column lists from the set, writing width and position explicitly: remove-then-add alone strands a column at the end and resets its width.

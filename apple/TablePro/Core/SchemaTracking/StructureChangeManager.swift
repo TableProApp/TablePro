@@ -32,6 +32,7 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
     @Published var workingForeignKeys: [EditableForeignKeyDefinition] = []
     @Published var workingCheckConstraints: [EditableCheckConstraintDefinition] = []
     @Published var workingPrimaryKey: [String] = []
+    private var removedKeyPositions: [UUID: Int] = [:]
 
     @Published var tableName: String?
 
@@ -88,14 +89,12 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
     var canUndo: Bool { !isHeldForSave && (undoManager.canUndo || hasTableCommentRun) }
     var canRedo: Bool { !isHeldForSave && !hasTableCommentRun && undoManager.canRedo }
 
-    /// The DDL and Triggers sub-tabs show no grid, so undo there reaches only the comment.
-    var undoesTableCommentNext: Bool {
-        hasTableCommentRun || (undoManager.canUndo && undoManager.undoActionName == Self.tableCommentActionName)
+    var undoMenuItemTitle: String {
+        guard !hasTableCommentRun else { return undoManager.undoMenuTitle(forUndoActionName: Self.tableCommentActionName) }
+        return undoManager.undoMenuItemTitle
     }
 
-    var redoesTableCommentNext: Bool {
-        !hasTableCommentRun && undoManager.canRedo && undoManager.redoActionName == Self.tableCommentActionName
-    }
+    var redoMenuItemTitle: String { undoManager.redoMenuItemTitle }
 
     /// Mirrors `DataChangeManager.registerUndo`. The `groupingLevel` check is what lets
     /// `performAsOneUndoStep` nest: inside one, a group is already open and this adds to it rather
@@ -228,12 +227,78 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
 
     // MARK: - Column Operations
 
+    // The key is the table's, so a Primary Key cell stages the key change the drivers write, not a column change.
     func updateColumn(id: UUID, with newColumn: EditableColumnDefinition) {
-        stageEdit(id: id, with: newColumn, using: Self.columnOperations)
+        guard let previous = workingColumns.first(where: { $0.id == id }) else {
+            stageEdit(id: id, with: newColumn, using: Self.columnOperations)
+            return
+        }
+        let togglesKey = previous.isPrimaryKey != newColumn.isPrimaryKey
+        // A staged key names columns by their new names; a key nobody changed follows a rename by itself.
+        let renamesStagedKeyMember = previous.name != newColumn.name
+            && isStaged(.primaryKey) && workingPrimaryKey.contains(previous.name)
+        guard togglesKey || renamesStagedKeyMember else {
+            stageEdit(id: id, with: newColumn, using: Self.columnOperations)
+            return
+        }
+        performAsOneUndoStep {
+            stageEdit(id: id, with: newColumn, using: Self.columnOperations)
+            if togglesKey {
+                let names = Set([previous.name, newColumn.name] + currentColumns.filter { $0.id == id }.map(\.name))
+                stagePrimaryKeyMembership(of: newColumn.name, replacing: names, isMember: newColumn.isPrimaryKey)
+            } else {
+                stagePrimaryKey(workingPrimaryKey.map { $0 == previous.name ? newColumn.name : $0 })
+            }
+        }
     }
 
+    private func stagePrimaryKeyMembership(of name: String, replacing names: Set<String>, isMember: Bool) {
+        var new = keyInWorkingNames.filter { !names.contains($0) }
+        if isMember { new.append(name) }
+        stagePrimaryKey(new)
+    }
+
+    // The loaded key names columns as they were read; once a change to the key is staged, it names them as they are now.
+    private var keyInWorkingNames: [String] {
+        guard !isStaged(.primaryKey) else { return workingPrimaryKey }
+        return workingPrimaryKey.map { name in
+            guard let id = currentColumns.first(where: { $0.name == name })?.id,
+                  let working = workingColumns.first(where: { $0.id == id }) else { return name }
+            return working.name
+        }
+    }
+
+    private func stagePrimaryKey(_ new: [String]) {
+        let old = workingPrimaryKey
+        guard new != old else { return }
+        registerUndo(String(localized: "Change Primary Key")) { target in
+            target.applySchemaUndo(.primaryKeyChange(old: old, new: new))
+        }
+        workingPrimaryKey = new
+        let key = SchemaChangeIdentifier.primaryKey
+        if new != currentPrimaryKey {
+            pendingChanges[key] = .modifyPrimaryKey(old: currentPrimaryKey, new: new)
+            trackChangeKey(key)
+        } else {
+            pendingChanges.removeValue(forKey: key)
+            untrackChangeKey(key)
+        }
+        workingCopyDidChange()
+    }
+
+
+    // A staged key loses a column that goes, so it never names one Save cannot find.
     func deleteColumn(id: UUID) {
-        stageDeletion(id: id, using: Self.columnOperations)
+        guard let column = workingColumns.first(where: { $0.id == id }),
+              isStaged(.primaryKey), workingPrimaryKey.contains(column.name) else {
+            stageDeletion(id: id, using: Self.columnOperations)
+            return
+        }
+        performAsOneUndoStep {
+            stageDeletion(id: id, using: Self.columnOperations)
+            removedKeyPositions[id] = workingPrimaryKey.firstIndex(of: column.name)
+            stagePrimaryKey(workingPrimaryKey.filter { $0 != column.name })
+        }
     }
 
     // MARK: - Index Operations
@@ -312,7 +377,7 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
         let key = operations.identifier(id)
         if let currentIndex = self[keyPath: operations.current].firstIndex(where: { $0.id == id }) {
             let oldEntity = self[keyPath: operations.current][currentIndex]
-            if oldEntity != newEntity {
+            if operations.needsStatement(oldEntity, newEntity) {
                 pendingChanges[key] = operations.modification(oldEntity, newEntity)
                 trackChangeKey(key)
             } else {
@@ -367,7 +432,12 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
         deletionUndo: { SchemaUndoAction.columnDelete(column: $0, at: $1) },
         addActionName: String(localized: "Add Column"),
         editActionName: String(localized: "Edit Column"),
-        deleteActionName: String(localized: "Delete Column")
+        deleteActionName: String(localized: "Delete Column"),
+        needsStatement: { loaded, working in
+            var working = working
+            working.isPrimaryKey = loaded.isPrimaryKey
+            return loaded != working
+        }
     )
 
     private static let indexOperations = SchemaEntityOperations<EditableIndexDefinition>(
@@ -418,37 +488,48 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
 
     // MARK: - Row-Specific Undo Delete
 
-    /// Clear the deletion mark for the entity at `row` in `tab`. Mirrors
-    /// `DataChangeManager.undoRowDeletion(rowID:)`: the global NSUndoManager
-    /// stack is intentionally left alone. The original `applySchemaUndo(...)`
-    /// handler the deletion registered remains on the stack; if global Cmd+Z
-    /// later invokes it, the handler finds `pendingChanges` no longer marks
-    /// this row as deleted and treats the redo as a no-op for this entity. The
-    /// row-specific affordance and the global undo stack are independent
-    /// affordances. The data tab uses the same separation.
-    func undoDelete(for tab: StructureTab, at row: Int) {
+    // The row's own Undo Delete leaves the global stack alone, like the data tab's; an edit made before the
+    // delete is staged again, since the working copy still shows it.
+    func undoDelete(section: StructureSection, id: UUID) {
         guard !isHeldForSave else { return }
-        let key: SchemaChangeIdentifier
-        switch tab {
+        switch section {
         case .columns:
-            guard row < workingColumns.count else { return }
-            key = .column(workingColumns[row].id)
-        case .indexes:
-            guard row < workingIndexes.count else { return }
-            key = .index(workingIndexes[row].id)
-        case .foreignKeys:
-            guard row < workingForeignKeys.count else { return }
-            key = .foreignKey(workingForeignKeys[row].id)
-        case .checkConstraints:
-            guard row < workingCheckConstraints.count else { return }
-            key = .checkConstraint(workingCheckConstraints[row].id)
-        case .ddl, .parts, .triggers, .options:
+            undoDeletion(id: id, using: Self.columnOperations)
+            restoreKeyMembership(ofColumn: id)
+        case .indexes: undoDeletion(id: id, using: Self.indexOperations)
+        case .foreignKeys: undoDeletion(id: id, using: Self.foreignKeyOperations)
+        case .checkConstraints: undoDeletion(id: id, using: Self.checkConstraintOperations)
+        }
+    }
+
+    // A column whose delete took it out of a staged key goes back into that key, at the place it held.
+    private func restoreKeyMembership(ofColumn id: UUID) {
+        let position = removedKeyPositions.removeValue(forKey: id)
+        guard let column = workingColumns.first(where: { $0.id == id }), column.isPrimaryKey,
+              !workingPrimaryKey.contains(column.name) else { return }
+        var key = workingPrimaryKey
+        key.insert(column.name, at: min(position ?? key.count, key.count))
+        stagePrimaryKey(key)
+    }
+
+    private func undoDeletion<Entity>(id: UUID, using operations: SchemaEntityOperations<Entity>) {
+        let key = operations.identifier(id)
+        guard pendingChanges[key]?.isDelete == true else { return }
+        restageEdit(id: id, using: operations)
+        workingCopyDidChange()
+    }
+
+    private func restageEdit<Entity>(id: UUID, using operations: SchemaEntityOperations<Entity>) {
+        let key = operations.identifier(id)
+        guard let loaded = self[keyPath: operations.current].first(where: { $0.id == id }),
+              let working = self[keyPath: operations.working].first(where: { $0.id == id }),
+              operations.needsStatement(loaded, working) else {
+            pendingChanges.removeValue(forKey: key)
+            untrackChangeKey(key)
             return
         }
-        guard pendingChanges[key]?.isDelete == true else { return }
-        pendingChanges.removeValue(forKey: key)
-        untrackChangeKey(key)
-        workingCopyDidChange()
+        pendingChanges[key] = operations.modification(loaded, working)
+        trackChangeKey(key)
     }
 
     // MARK: - Validation
@@ -973,7 +1054,7 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
             return
         }
         let current = self[keyPath: operations.current][currentIndex]
-        if old != current {
+        if operations.needsStatement(current, old) {
             pendingChanges[key] = operations.modification(current, old)
             trackChangeKey(key)
         } else {
@@ -1008,8 +1089,7 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
         }
         let key = operations.identifier(entity.id)
         if self[keyPath: operations.current].contains(where: { $0.id == entity.id }) {
-            pendingChanges.removeValue(forKey: key)
-            untrackChangeKey(key)
+            restageEdit(id: entity.id, using: operations)
         } else {
             if let row, row < self[keyPath: operations.working].count {
                 self[keyPath: operations.working].insert(entity, at: row)
@@ -1045,7 +1125,7 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
     /// merges the result of this method with `modifiedColumns` from
     /// `StructureEditingSupport` field-diff helpers to build the final
     /// `RowVisualState`.
-    func deleteInsertState(for row: Int, tab: StructureTab) -> (isDeleted: Bool, isInserted: Bool) {
+    func deleteInsertState(for row: Int, tab: StructureSection) -> (isDeleted: Bool, isInserted: Bool) {
         switch tab {
         case .columns:
             return rowState(at: row, using: Self.columnOperations)
@@ -1055,8 +1135,6 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
             return rowState(at: row, using: Self.foreignKeyOperations)
         case .checkConstraints:
             return rowState(at: row, using: Self.checkConstraintOperations)
-        case .ddl, .parts, .triggers, .options:
-            return (false, false)
         }
     }
 

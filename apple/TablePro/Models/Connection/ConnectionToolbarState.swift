@@ -130,8 +130,6 @@ final class ConnectionToolbarState: ObservableObject {
     /// Whether there are pending data grid changes (for SQL preview button)
     @Published var hasDataPendingChanges: Bool = false
 
-    /// Whether the structure view has pending schema changes
-    @Published var hasStructureChanges: Bool = false
 
     // Bumped when a diagram's staged edits come or go; the pending state reads the diagram itself.
     @Published var diagramEditsRevision = 0

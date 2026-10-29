@@ -1,20 +1,20 @@
 //
-//  StructureGridAdapter+Menus.swift
+//  StructureSectionAdapter+Menus.swift
 //  TablePro
 //
 
 import AppKit
 import TableProPluginKit
 
-extension StructureGridAdapter {
+extension StructureSectionAdapter {
     // The grid adds Copy, Duplicate, Delete and Undo Delete from its commands; these are the schema's own.
     // The copies act on every targeted row, Open and the moves on the clicked one; nil when that is not known.
-    func structureRowMenuItems(for rowIDs: [RowID], clickedRow: RowID?) -> [NSMenuItem] {
-        guard showsGrid, !rowIDs.isEmpty else { return [] }
+    func rowMenuItems(for rowIDs: [RowID], clickedRow: RowID?) -> [NSMenuItem] {
+        guard !rowIDs.isEmpty else { return [] }
         let indices = sourceIndices(of: rowIDs)
-        let tab = selectedTab
-        let clicked = clickedRow.flatMap(StructureRowProvider.sourceIndex(of:))
-        if let clicked, structureChangeManager.deleteInsertState(for: clicked, tab: tab).isDeleted {
+        let tab = section
+        let clicked = clickedRow.flatMap(sourceIndex(of:))
+        if let clicked, manager.deleteInsertState(for: clicked, tab: tab).isDeleted {
             return []
         }
 
@@ -24,8 +24,8 @@ extension StructureGridAdapter {
             copyAsItem(indices),
         ]
 
-        if tab == .foreignKeys, let clicked, structureChangeManager.workingForeignKeys.indices.contains(clicked) {
-            let referenced = structureChangeManager.workingForeignKeys[clicked].referencedTable
+        if tab == .foreignKeys, let clicked, manager.workingForeignKeys.indices.contains(clicked) {
+            let referenced = manager.workingForeignKeys[clicked].referencedTable
             if !referenced.isEmpty {
                 items.append(.separator())
                 items.append(menuItem(String(format: String(localized: "Open %@"), referenced)) { [weak self] in
@@ -44,10 +44,10 @@ extension StructureGridAdapter {
 
     // Moving by menu gives the keyboard and VoiceOver the reorder a drag gives the pointer.
     private func columnMoveItems(movingRow row: Int?) -> [NSMenuItem] {
-        guard selectedTab == .columns else { return [] }
+        guard section == .columns, !context.isCreatingTable else { return [] }
         let reorder = model.configuration.rowReorder
         guard reorder.isEnabled || reorder.unavailableReason != nil else { return [] }
-        let count = structureChangeManager.workingColumns.count
+        let count = manager.workingColumns.count
         var items = [
             columnMoveItem(String(localized: "Move Column Up"), row: row, .up, count: count, isEnabled: reorder.isEnabled),
             columnMoveItem(String(localized: "Move Column Down"), row: row, .down, count: count, isEnabled: reorder.isEnabled),
@@ -70,7 +70,7 @@ extension StructureGridAdapter {
             return NSMenuItem(title: title, action: nil, keyEquivalent: "")
         }
         return menuItem(title) { [weak self] in
-            self?.moveRowHandler?(row, ColumnMove.dropIndex(movingRow: row, direction))
+            self?.editor?.moveColumn(from: row, to: ColumnMove.dropIndex(movingRow: row, direction))
         }
     }
 
@@ -82,30 +82,6 @@ extension StructureGridAdapter {
         let item = NSMenuItem(title: String(localized: "Copy As"), action: nil, keyEquivalent: "")
         item.submenu = submenu
         return item
-    }
-
-    func makeEmptySpaceMenu() -> NSMenu? {
-        guard showsGrid, editGate.canEditSchema else { return nil }
-        let label: String
-        switch selectedTab {
-        case .columns:
-            guard editGate.allows(.addColumn) else { return nil }
-            label = String(localized: "Add Column")
-        case .indexes:
-            guard editGate.allows(.addIndex) else { return nil }
-            label = String(localized: "Add Index")
-        case .foreignKeys:
-            guard canEditForeignKeys else { return nil }
-            label = String(localized: "Add Foreign Key")
-        case .checkConstraints:
-            guard editGate.allows(.addCheckConstraint) else { return nil }
-            label = String(localized: "Add Check Constraint")
-        case .options, .ddl, .parts, .triggers:
-            return nil
-        }
-        let menu = NSMenu()
-        menu.addItem(menuItem(label) { [weak self] in self?.addRow() })
-        return menu
     }
 
     private func menuItem(_ title: String, action: @escaping () -> Void) -> NSMenuItem {
@@ -120,11 +96,11 @@ extension StructureGridAdapter {
 
     private func unsortedProvider(includingPrimaryKey: Bool) -> StructureRowProvider {
         StructureRowProvider(
-            changeManager: structureChangeManager,
-            tab: selectedTab,
-            databaseType: connection.type,
+            changeManager: manager,
+            tab: section,
+            databaseType: context.databaseType,
             additionalFields: includingPrimaryKey ? [.primaryKey] : [],
-            serverSupport: session?.serverSupport ?? .unrestricted
+            serverSupport: serverSupport
         )
     }
 
@@ -136,33 +112,31 @@ extension StructureGridAdapter {
     }
 
     func copyDefinitions(_ indices: [Int]) {
-        guard let driver = DatabaseManager.shared.driver(for: connection.id) else { return }
+        guard let driver = DatabaseManager.shared.driver(for: context.connection.id) else { return }
         var definitions: [String] = []
         for index in indices.sorted() {
-            switch selectedTab {
+            switch section {
             case .columns:
-                guard structureChangeManager.workingColumns.indices.contains(index),
-                      let sql = driver.generateColumnDefinitionSQL(column: structureChangeManager.workingColumns[index].toPlugin())
+                guard manager.workingColumns.indices.contains(index),
+                      let sql = driver.generateColumnDefinitionSQL(column: manager.workingColumns[index].toPlugin())
                 else { continue }
                 definitions.append(sql)
             case .indexes:
-                guard structureChangeManager.workingIndexes.indices.contains(index),
+                guard manager.workingIndexes.indices.contains(index),
                       let sql = driver.generateIndexDefinitionSQL(
-                          index: structureChangeManager.workingIndexes[index].toPlugin(), tableName: tableName
+                          index: manager.workingIndexes[index].toPlugin(), tableName: context.tableName
                       )
                 else { continue }
                 definitions.append(sql)
             case .foreignKeys:
-                guard structureChangeManager.workingForeignKeys.indices.contains(index),
-                      let sql = driver.generateForeignKeyDefinitionSQL(fk: structureChangeManager.workingForeignKeys[index].toPlugin())
+                guard manager.workingForeignKeys.indices.contains(index),
+                      let sql = driver.generateForeignKeyDefinitionSQL(fk: manager.workingForeignKeys[index].toPlugin())
                 else { continue }
                 definitions.append(sql)
             case .checkConstraints:
-                guard structureChangeManager.workingCheckConstraints.indices.contains(index) else { continue }
-                let constraint = structureChangeManager.workingCheckConstraints[index]
+                guard manager.workingCheckConstraints.indices.contains(index) else { continue }
+                let constraint = manager.workingCheckConstraints[index]
                 definitions.append("CONSTRAINT \(driver.quoteIdentifier(constraint.name)) CHECK (\(constraint.expression))")
-            case .options, .ddl, .parts, .triggers:
-                break
             }
         }
         guard !definitions.isEmpty else { return }
@@ -199,22 +173,14 @@ extension StructureGridAdapter {
         ClipboardService.shared.writeText(json)
     }
 
-    // The grid's own Copy reaches the definitions too, so a paste in this tab stages them again.
-    func gridCopyRows(_ rowIDs: [RowID]) -> Bool {
-        guard showsGrid, !rowIDs.isEmpty else { return false }
-        copyRows(rowIDs)
-        return true
-    }
-
     // The definitions ride on the structure pasteboard type, so Paste can stage them again.
-    func copyRows(_ rowIDs: [RowID]) {
-        guard showsGrid, !rowIDs.isEmpty else { return }
+    func copyRows(_ rowIDs: [RowID], to pasteboard: NSPasteboard = .general) {
+        guard !rowIDs.isEmpty else { return }
         let ordered = rowIDs.sorted { (model.displayIndex(of: $0) ?? .max) < (model.displayIndex(of: $1) ?? .max) }
         let indices = sourceIndices(of: ordered)
-        let manager = structureChangeManager
         let encoder = JSONEncoder()
         let encoded: Data?
-        switch selectedTab {
+        switch section {
         case .columns:
             encoded = try? encoder.encode(indices.sorted().compactMap { manager.workingColumns.indices.contains($0) ? manager.workingColumns[$0] : nil })
         case .indexes:
@@ -227,8 +193,6 @@ extension StructureGridAdapter {
             encoded = try? encoder.encode(indices.sorted().compactMap {
                 manager.workingCheckConstraints.indices.contains($0) ? manager.workingCheckConstraints[$0] : nil
             })
-        case .options, .ddl, .parts, .triggers:
-            encoded = nil
         }
 
         let rows = model.rows
@@ -238,23 +202,30 @@ extension StructureGridAdapter {
 
         let item = NSPasteboardItem()
         if let encoded, let json = String(data: encoded, encoding: .utf8) {
-            item.setString(json, forType: TableStructureView.structurePasteboardType)
-            item.setString(connection.type.rawValue, forType: TableStructureView.structureSourceTypePasteboardType)
+            item.setString(json, forType: StructurePasteboard.definitionsType)
+            item.setString(context.databaseType.rawValue, forType: StructurePasteboard.sourceDatabaseType)
         }
         if !lines.isEmpty {
             item.setString(lines.joined(separator: "\n"), forType: .string)
         }
         guard !item.types.isEmpty else { return }
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.writeObjects([item])
+        pasteboard.clearContents()
+        pasteboard.writeObjects([item])
     }
 
-    func pasteRows() {
-        guard canStageAddForSelectedTab,
-              let data = NSPasteboard.general.data(forType: TableStructureView.structurePasteboardType) else { return }
+    // Pasting several definitions is one undo step.
+    func pasteRows(from pasteboard: NSPasteboard = .general) {
+        guard canEdit, canAdd, let data = pasteboard.data(forType: StructurePasteboard.definitionsType) else { return }
+        let source = pasteboard.string(forType: StructurePasteboard.sourceDatabaseType).map(DatabaseType.init(rawValue:))
+        manager.performAsOneUndoStep {
+            stagePasted(data, from: source)
+        }
+        editor?.definitionsDidChange()
+    }
+
+    private func stagePasted(_ data: Data, from source: DatabaseType?) {
         let decoder = JSONDecoder()
-        let manager = structureChangeManager
-        switch selectedTab {
+        switch section {
         case .columns:
             guard let columns = try? decoder.decode([EditableColumnDefinition].self, from: data) else { return }
             for column in columns {
@@ -262,11 +233,8 @@ extension StructureGridAdapter {
             }
         case .indexes:
             guard let indexes = try? decoder.decode([EditableIndexDefinition].self, from: data) else { return }
-            let source = NSPasteboard.general
-                .string(forType: TableStructureView.structureSourceTypePasteboardType)
-                .map(DatabaseType.init(rawValue:))
             for index in indexes {
-                manager.addIndex(index.pasted(from: source, into: connection.type))
+                manager.addIndex(index.pasted(from: source, into: context.databaseType))
             }
         case .foreignKeys:
             guard let foreignKeys = try? decoder.decode([EditableForeignKeyDefinition].self, from: data) else { return }
@@ -278,10 +246,16 @@ extension StructureGridAdapter {
             for constraint in constraints {
                 manager.addCheckConstraint(constraint.withNewIdentity())
             }
-        case .options, .ddl, .parts, .triggers:
-            return
         }
-        refresh()
+    }
+}
+
+enum StructurePasteboard {
+    static let definitionsType = NSPasteboard.PasteboardType("com.TablePro.structure")
+    static let sourceDatabaseType = NSPasteboard.PasteboardType("com.TablePro.structure.database-type")
+
+    static var canPaste: Bool {
+        NSPasteboard.general.data(forType: definitionsType) != nil
     }
 }
 

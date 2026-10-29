@@ -17,6 +17,15 @@ final class DataGridContainerView: NSView {
     private var firstResponderObservation: NSKeyValueObservation?
     private var windowObservers: [NSObjectProtocol] = []
     private var scrollObservers: [NSObjectProtocol] = []
+    private var pageScrollObserver: NSObjectProtocol?
+
+    // A grid sized to its rows moves only with its page, so the page's scroll stands in for its own.
+    var followsPageScroll = false {
+        didSet {
+            guard followsPageScroll != oldValue else { return }
+            observePageScroll()
+        }
+    }
 
     var frozenPaneWidth: CGFloat = 0 {
         didSet {
@@ -33,7 +42,10 @@ final class DataGridContainerView: NSView {
         addSubview(frozen.scrollView)
         frozen.scrollView.isHidden = true
         frozen.scrollView.wheelTarget = main.scrollView
-        main.scrollView.onTile = { [weak self] in self?.layoutFrozenPane() }
+        main.scrollView.onTile = { [weak self] in
+            self?.layoutFrozenPane()
+            self?.controller?.updateFittingHeight()
+        }
         observeScrolling()
     }
 
@@ -127,9 +139,25 @@ final class DataGridContainerView: NSView {
         isSyncingScroll = false
     }
 
+    private func observePageScroll() {
+        if let pageScrollObserver {
+            NotificationCenter.default.removeObserver(pageScrollObserver)
+        }
+        pageScrollObserver = nil
+        guard followsPageScroll, window != nil, let clip = enclosingScrollView?.contentView else { return }
+        pageScrollObserver = NotificationCenter.default.addObserver(
+            forName: NSView.boundsDidChangeNotification,
+            object: clip,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.controller?.mainViewportDidMove() }
+        }
+    }
+
     func tearDown() {
         scrollObservers.forEach(NotificationCenter.default.removeObserver)
         scrollObservers.removeAll()
+        followsPageScroll = false
         stopObservingWindow()
     }
 
@@ -138,6 +166,7 @@ final class DataGridContainerView: NSView {
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         stopObservingWindow()
+        observePageScroll()
         guard let window else {
             refreshFocus()
             return

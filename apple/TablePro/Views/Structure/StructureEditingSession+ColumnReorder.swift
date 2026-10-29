@@ -1,17 +1,16 @@
 //
-//  TableStructureView+ColumnReorder.swift
+//  StructureEditingSession+ColumnReorder.swift
 //  TablePro
 //
 
-import Combine
 import Foundation
-import SwiftUI
 import TableProPluginKit
 import TableProSQLGrammar
 
-extension TableStructureView {
+// Applies now, not staged: a reorder is offered only while nothing else is staged.
+internal extension StructureEditingSession {
     func beginColumnReorder(fromIndex: Int, toIndex: Int) {
-        let columnsSnapshot = structureChangeManager.workingColumns
+        let columnsSnapshot = changeManager.workingColumns
         let clearTarget = coordinator?.selectedColumnLayoutClearTarget()
         let reorderScope = scope
 
@@ -59,7 +58,7 @@ extension TableStructureView {
             action: TableRebuildReviewRequest.Action(
                 title: String(localized: "Rebuild Table"),
                 operationDescription: StructureColumnReorderHandler.operationDescription
-            ) {
+            ) { [self] in
                 do {
                     try await StructureColumnReorderHandler.execute(
                         prepared, tableName: tableName, databaseType: connection.type, isConfirmationPreCleared: true
@@ -88,7 +87,7 @@ extension TableStructureView {
         _ prepared: StructureColumnReorderHandler.PreparedReorder,
         clearTarget: ColumnLayoutClearTarget?
     ) async {
-        await services.queryHistoryManager.record(
+        await QueryHistoryManager.shared.record(
             QueryHistoryRecordRequest(
                 query: prepared.plan.scriptStatements
                     .map { $0.hasSuffix(";") ? $0 : $0 + ";" }
@@ -103,7 +102,7 @@ extension TableStructureView {
             )
         )
         isReloadingAfterSave = true
-        await loadColumns()
+        await fetch(.columns)
         adoptFetchedBaseline()
         isReloadingAfterSave = false
         if let clearTarget {

@@ -95,7 +95,6 @@ extension MainContentCoordinator {
         createTableDrafts.removeValue(forKey: tabId)
         erDiagramModels.removeValue(forKey: tabId)
         tabsWithStagedPrincipals.remove(tabId)
-        toolbarState.hasStructureChanges = false
         toolbarState.hasCreateTablePending = false
         toolbarState.hasPrincipalChanges = false
         toolbarState.hasTypeChanges = false
@@ -113,7 +112,6 @@ extension MainContentCoordinator {
         tableMetadataCache.removeValue(forKey: tab.id)
         guard isSelectedTab(tab) else { return }
         changeManager.clearChangesAndUndoHistory()
-        toolbarState.hasStructureChanges = false
         toolbarState.hasCreateTablePending = false
         toolbarState.hasPrincipalChanges = false
         toolbarState.hasTypeChanges = false

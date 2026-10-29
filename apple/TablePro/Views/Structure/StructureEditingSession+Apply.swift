@@ -88,6 +88,7 @@ internal extension StructureEditingSession {
     /// mounted structure view ever fills. Answering Save from anywhere else ran nothing, reported
     /// success, and closed the tab over the work.
     func applyStagedChanges(coordinator: MainContentCoordinator?) async -> StructureSaveOutcome {
+        editor.commitPendingEdits()
         /// Asked before Safe Mode, so a tab with nothing staged is never refused. `.refused` stands
         /// the close down, and refusing a save that had no work to do would leave the user unable to
         /// close the tab through Save at all.

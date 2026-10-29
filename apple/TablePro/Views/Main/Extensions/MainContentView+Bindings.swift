@@ -2,9 +2,6 @@
 //  MainContentView+Bindings.swift
 //  TablePro
 //
-//  Extension containing computed bindings for MainContentView.
-//  Extracted to reduce main view complexity.
-//
 
 import SwiftUI
 import TableProPluginKit
@@ -12,7 +9,8 @@ import TableProPluginKit
 extension MainContentView {
     // MARK: - Inspector Selection
 
-    // Whose rows the active grid model's selection indexes: the data tab's, a schema grid's, or nobody's.
+    // Whose rows the active grid model's selection indexes: the data tab's, a schema grid's, or nobody's. A schema
+    // grid's selection is drawn by the structure inspector, which observes its editor itself.
     var gridSelectionOwner: GridSelectionOwner {
         GridSelectionOwner.resolve(
             tabType: coordinator.tabManager.selectedTab?.tabType,
@@ -24,41 +22,27 @@ extension MainContentView {
         gridSelectionOwner == .dataGrid ? coordinator.activeGridModel : nil
     }
 
-    var selectedInspectorRow: InspectorRow? {
-        guard gridSelectionOwner == .schemaGrid,
-              let displayRow = coordinator.activeGridModel?.selection.affectedRows.first else { return nil }
-        return coordinator.inspectorRowSource?.inspectorRow(atDisplayRow: displayRow)
+    var structureInspectorSource: StructureInspectorSource? {
+        if let session = coordinator.activeStructureSession { return .table(session) }
+        if let draft = coordinator.activeCreateTableDraft { return .createTable(draft) }
+        return nil
     }
 
     // MARK: - Inspector Subject
 
     var hasInspectableRow: Bool {
-        switch gridSelectionOwner {
-        case .schemaGrid: return selectedInspectorRow != nil
-        case .dataGrid: return dataGridModel?.selection.isEmpty == false
-        case .none: return false
-        }
+        guard gridSelectionOwner == .dataGrid else { return false }
+        return dataGridModel?.selection.isEmpty == false
     }
 
-    // A schema grid's selection is a column definition with no position, so it is not named "Row 0 of 0".
     var inspectorSubject: InspectorSubject {
         switch gridSelectionOwner {
-        case .schemaGrid:
-            guard let row = selectedInspectorRow else {
-                guard let table = currentTab?.tableContext.tableName else { return .empty }
-                return .tableOnly(table: table)
-            }
-            let name = row.fields.first?.value ?? ""
-            return .columnDefinition(
-                column: name.isEmpty ? String(localized: "Column") : name,
-                table: currentTab?.tableContext.tableName
-            )
         case .dataGrid:
             guard let table = qualifiedTableName else {
                 return dataRowSubject(table: String(localized: "Result")) ?? .empty
             }
             return dataRowSubject(table: table) ?? .tableOnly(table: table)
-        case .none:
+        case .schemaGrid, .none:
             // A chart, a dashboard or a diagram owns no grid; the table is still the subject of its statistics.
             guard let table = qualifiedTableName else { return .empty }
             return .tableOnly(table: table)
@@ -109,9 +93,6 @@ extension MainContentView {
     // MARK: - Sidebar Edit State
 
     var isSidebarEditable: Bool {
-        if gridSelectionOwner == .schemaGrid {
-            return selectedInspectorRow?.isEditable ?? false
-        }
         guard let model = dataGridModel,
               let tab = coordinator.tabManager.selectedTab,
               tab.tabType == .table || tab.tableContext.tableName != nil,
@@ -176,7 +157,8 @@ extension MainContentView {
             metadataVersion: currentTab?.metadataVersion ?? -1,
             resultsViewMode: currentTab?.display.resultsViewMode ?? .data,
             inspectorRowSourceRevision: coordinator.inspectorRowSourceRevision,
-            gridDisplayRevision: coordinator.gridDisplayRevision
+            gridDisplayRevision: coordinator.gridDisplayRevision,
+            structureEditor: coordinator.activeStructureEditor.map { ObjectIdentifier($0) }
         )
     }
 }
@@ -188,6 +170,8 @@ struct InspectorTrigger: Equatable {
     let resultsViewMode: ResultsViewMode
     let inspectorRowSourceRevision: Int
     let gridDisplayRevision: Int
+    // A structure session or Create Table draft appears after its view first mounts, which moves nothing else here.
+    var structureEditor: ObjectIdentifier?
 }
 
 enum InspectorValueDisplayFormatResolver {

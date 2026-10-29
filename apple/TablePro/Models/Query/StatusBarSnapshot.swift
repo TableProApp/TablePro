@@ -21,8 +21,6 @@ struct StatusBarSnapshot: Equatable {
     let hasTableName: Bool
     /// The modes this tab can switch between, which the bar's leading control offers.
     let availableModes: [ResultsViewMode]
-    /// Whether the structure editor has published an add/remove pair for this tab.
-    let hasStructureActions: Bool
     let pagination: PaginationState
     let statusMessage: String?
     let paginationCapability: PaginationCapability
@@ -40,7 +38,6 @@ struct StatusBarSnapshot: Equatable {
         isValueFiltered: Bool = false,
         hasTableName: Bool,
         availableModes: [ResultsViewMode] = [],
-        hasStructureActions: Bool = false,
         isQueryPlan: Bool = false,
         pagination: PaginationState,
         statusMessage: String?,
@@ -55,7 +52,6 @@ struct StatusBarSnapshot: Equatable {
         self.isValueFiltered = isValueFiltered
         self.hasTableName = hasTableName
         self.availableModes = availableModes
-        self.hasStructureActions = hasStructureActions
         self.isQueryPlan = isQueryPlan
         self.pagination = pagination
         self.statusMessage = statusMessage
@@ -72,7 +68,6 @@ struct StatusBarSnapshot: Equatable {
         tableRows: TableRows?,
         displayRowCount: Int? = nil,
         isFetching: Bool = false,
-        hasStructureActions: Bool = false,
         isQueryPlan: Bool = false,
         paginationCapability: PaginationCapability = .offset,
         hasServerOutput: Bool = false,
@@ -98,7 +93,6 @@ struct StatusBarSnapshot: Equatable {
                 hasSpatialColumn: !(tab?.display.spatialColumns.isEmpty ?? true),
                 hasServerOutput: hasServerOutput
             ),
-            hasStructureActions: hasStructureActions,
             isQueryPlan: isQueryPlan,
             pagination: pagination,
             // A run of several statements leaves each one's message on its own result, not on the tab.

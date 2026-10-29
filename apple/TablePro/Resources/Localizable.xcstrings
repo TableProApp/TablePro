@@ -456,6 +456,9 @@
     "No foreign key links %@ to the tables before it, so it is cross joined." : {
 
     },
+    "No Foreign Keys" : {
+
+    },
     "No row holds the values it was loaded with. Another client may have changed or deleted it." : {
 
     },
@@ -698,6 +701,9 @@
       "generatesSymbol" : false
     },
     "The changes were saved, but the type could not be read back. Reload before editing it again." : {
+
+    },
+    "The changes you have not saved will be lost." : {
 
     },
     "The client certificate and key could not be written to a temporary file." : {
@@ -997,6 +1003,9 @@
           }
         }
       }
+    },
+    "-- Error generating SQL: %@" : {
+
     },
     "-- Once the rows are in" : {
       "localizations" : {
@@ -4039,6 +4048,9 @@
           }
         }
       }
+    },
+    "%@ DDL" : {
+
     },
     "%@ does not accept this column change." : {
       "localizations" : {
@@ -9388,7 +9400,13 @@
         }
       }
     },
+    "%d changes to this table's structure will be lost." : {
+
+    },
     "%d characters" : {
+
+    },
+    "%d Check Constraints Selected" : {
 
     },
     "%d columns" : {
@@ -9430,6 +9448,9 @@
           }
         }
       }
+    },
+    "%d Columns Selected" : {
+
     },
     "%d connected" : {
       "localizations" : {
@@ -9877,6 +9898,9 @@
         }
       }
     },
+    "%d Foreign Keys Selected" : {
+
+    },
     "%d included" : {
       "localizations" : {
         "fr" : {
@@ -9916,6 +9940,9 @@
           }
         }
       }
+    },
+    "%d Indexes Selected" : {
+
     },
     "%d item(s) affected" : {
       "extractionState" : "manual",
@@ -19974,6 +20001,9 @@
         }
       }
     },
+    "Add check constraint “%@”" : {
+
+    },
     "Add Column" : {
       "localizations" : {
         "fr" : {
@@ -20013,6 +20043,9 @@
           }
         }
       }
+    },
+    "Add column “%@”" : {
+
     },
     "Add Column…" : {
       "localizations" : {
@@ -20497,6 +20530,9 @@
         }
       }
     },
+    "Add foreign key “%@”" : {
+
+    },
     "Add Global Index" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -20590,6 +20626,9 @@
           }
         }
       }
+    },
+    "Add index “%@”" : {
+
     },
     "Add indexes to improve query performance on frequently searched columns" : {
       "localizations" : {
@@ -25520,6 +25559,9 @@
           }
         }
       }
+    },
+    "Another check constraint is already named %@." : {
+
     },
     "Another column is already named %@." : {
       "localizations" : {
@@ -35750,6 +35792,32 @@
         }
       }
     },
+    "Change check constraint “%@”" : {
+
+    },
+    "Change check constraint “%@” to “%@”" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Change check constraint “%1$@” to “%2$@”"
+          }
+        }
+      }
+    },
+    "Change column “%@”" : {
+
+    },
+    "Change column “%@” to “%@”" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Change column “%1$@” to “%2$@”"
+          }
+        }
+      }
+    },
     "Change File" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -35831,6 +35899,19 @@
         }
       }
     },
+    "Change foreign key “%@”" : {
+
+    },
+    "Change foreign key “%@” to “%@”" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Change foreign key “%1$@” to “%2$@”"
+          }
+        }
+      }
+    },
     "Change Host to a name the certificate covers." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -35839,6 +35920,19 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Remplacez l’hôte par un nom couvert par le certificat."
+          }
+        }
+      }
+    },
+    "Change index “%@”" : {
+
+    },
+    "Change index “%@” to “%@”" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Change index “%1$@” to “%2$@”"
           }
         }
       }
@@ -36092,6 +36186,9 @@
           }
         }
       }
+    },
+    "Change the table comment" : {
+
     },
     "Change this in Settings > Integrations." : {
       "extractionState" : "stale",
@@ -37178,6 +37275,9 @@
         }
       }
     },
+    "Check Constraint" : {
+
+    },
     "Check constraint must have a name and an expression" : {
       "localizations" : {
         "fr" : {
@@ -37187,6 +37287,12 @@
           }
         }
       }
+    },
+    "Check Constraint of %@" : {
+
+    },
+    "Check Constraints" : {
+
     },
     "Check constraints need %@ or later." : {
       "extractionState" : "manual",
@@ -50211,6 +50317,9 @@
         }
       }
     },
+    "Convert the table to %@" : {
+
+    },
     "Converting the table's character set rewrites every text column and loses characters the new one cannot hold." : {
 
     },
@@ -54913,6 +55022,9 @@
     "Couldn't read the character sets" : {
 
     },
+    "Couldn't Read the DDL" : {
+
+    },
     "Couldn't read the referenced table" : {
       "localizations" : {
         "fr" : {
@@ -54930,6 +55042,9 @@
 
     },
     "Couldn't read the table options" : {
+
+    },
+    "Couldn't Read the Triggers" : {
 
     },
     "Couldn't Refresh Materialized View" : {
@@ -56038,6 +56153,9 @@
           }
         }
       }
+    },
+    "Create Table cannot add a check constraint on this database." : {
+
     },
     "Create Table cannot add an index on this database." : {
       "localizations" : {
@@ -60873,6 +60991,9 @@
         }
       }
     },
+    "Decrease Font Size" : {
+
+    },
     "Decrypt" : {
       "localizations" : {
         "fr" : {
@@ -62153,6 +62274,9 @@
         }
       }
     },
+    "Delete check constraint “%@”" : {
+
+    },
     "Delete Column" : {
       "localizations" : {
         "fr" : {
@@ -62192,6 +62316,9 @@
           }
         }
       }
+    },
+    "Delete column “%@”" : {
+
     },
     "Delete Columns" : {
       "localizations" : {
@@ -62466,6 +62593,9 @@
         }
       }
     },
+    "Delete foreign key “%@”" : {
+
+    },
     "Delete Group" : {
       "localizations" : {
         "fr" : {
@@ -62555,6 +62685,9 @@
           }
         }
       }
+    },
+    "Delete index “%@”" : {
+
     },
     "Delete is off by default, so a first run cannot remove a row from the target." : {
       "localizations" : {
@@ -84443,6 +84576,9 @@
         }
       }
     },
+    "Foreign Key" : {
+
+    },
     "Foreign key %@ matches %@ on the target but the names differ." : {
       "localizations" : {
         "en" : {
@@ -84502,6 +84638,9 @@
           }
         }
       }
+    },
+    "Foreign Key of %@" : {
+
     },
     "Foreign key points at a column that does not exist: %@" : {
       "localizations" : {
@@ -93549,6 +93688,9 @@
         }
       }
     },
+    "Increase Font Size" : {
+
+    },
     "Increment" : {
 
     },
@@ -93763,6 +93905,9 @@
           }
         }
       }
+    },
+    "Index of %@" : {
+
     },
     "Index proposal on %@" : {
       "localizations" : {
@@ -106718,6 +106863,9 @@
         }
       }
     },
+    "Marked for deletion. Undo or Undo Delete brings it back." : {
+
+    },
     "Match" : {
       "localizations" : {
         "fr" : {
@@ -113382,6 +113530,12 @@
         }
       }
     },
+    "New Check Constraint" : {
+
+    },
+    "New Column" : {
+
+    },
     "New Connection" : {
       "localizations" : {
         "fr" : {
@@ -113765,6 +113919,9 @@
         }
       }
     },
+    "New Foreign Key" : {
+
+    },
     "New Group" : {
       "localizations" : {
         "fr" : {
@@ -113859,6 +114016,9 @@
           }
         }
       }
+    },
+    "New Index" : {
+
     },
     "New Jump Host" : {
       "localizations" : {
@@ -115474,6 +115634,9 @@
         }
       }
     },
+    "No Columns" : {
+
+    },
     "No Columns Defined" : {
       "localizations" : {
         "fr" : {
@@ -116457,6 +116620,9 @@
         }
       }
     },
+    "No DDL Available" : {
+
+    },
     "No DDL found for %@." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -117073,6 +117239,9 @@
           }
         }
       }
+    },
+    "No Indexes" : {
+
     },
     "No Indexes Defined" : {
       "localizations" : {
@@ -144608,6 +144777,9 @@
         }
       }
     },
+    "Refreshing reads the table structure again and discards the changes you have not saved." : {
+
+    },
     "Refreshing will discard all unsaved changes." : {
       "localizations" : {
         "fr" : {
@@ -146799,6 +146971,9 @@
           }
         }
       }
+    },
+    "Remove the primary key" : {
+
     },
     "Remove the second entry." : {
       "extractionState" : "manual",
@@ -154728,6 +154903,9 @@
         }
       }
     },
+    "Safe Mode is read-only for this connection." : {
+
+    },
     "Safe mode level" : {
       "localizations" : {
         "fr" : {
@@ -159751,6 +159929,9 @@
     "Select a column" : {
 
     },
+    "Select a definition to edit it" : {
+
+    },
     "Select a dump file this engine's own tool wrote." : {
       "localizations" : {
         "fr" : {
@@ -160484,6 +160665,9 @@
           }
         }
       }
+    },
+    "Select one to edit it" : {
+
     },
     "Select Plugin" : {
       "localizations" : {
@@ -162967,6 +163151,15 @@
           }
         }
       }
+    },
+    "Set the next AUTO_INCREMENT value to %@" : {
+
+    },
+    "Set the primary key to %@" : {
+
+    },
+    "Set the table's default character set to %@" : {
+
     },
     "Set to NULL" : {
       "localizations" : {
@@ -183719,6 +183912,9 @@
         }
       }
     },
+    "The change to this table's structure will be lost." : {
+
+    },
     "The changes were edited while the save was checking other tables. Save again to include them." : {
 
     },
@@ -191622,6 +191818,9 @@
         }
       }
     },
+    "The table is being read again after the save." : {
+
+    },
     "The table is no longer reachable." : {
       "localizations" : {
         "fr" : {
@@ -193791,6 +193990,12 @@
           }
         }
       }
+    },
+    "This check constraint needs a name." : {
+
+    },
+    "This check constraint needs an expression." : {
+
     },
     "This client does not have access to that connection." : {
       "localizations" : {

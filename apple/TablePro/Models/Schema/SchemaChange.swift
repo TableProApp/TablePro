@@ -88,6 +88,57 @@ enum SchemaChange: Hashable, Equatable {
         }
     }
 
+    // What an error or a review shows a person; `description` stays English for logs.
+    var localizedDescription: String {
+        switch self {
+        case .addColumn(let col):
+            return String(format: String(localized: "Add column “%@”"), col.name)
+        case .modifyColumn(let old, let new):
+            return old.name == new.name
+                ? String(format: String(localized: "Change column “%@”"), new.name)
+                : String(format: String(localized: "Change column “%@” to “%@”"), old.name, new.name)
+        case .deleteColumn(let col):
+            return String(format: String(localized: "Delete column “%@”"), col.name)
+        case .addIndex(let idx):
+            return String(format: String(localized: "Add index “%@”"), idx.name)
+        case .modifyIndex(let old, let new):
+            return old.name == new.name
+                ? String(format: String(localized: "Change index “%@”"), new.name)
+                : String(format: String(localized: "Change index “%@” to “%@”"), old.name, new.name)
+        case .deleteIndex(let idx):
+            return String(format: String(localized: "Delete index “%@”"), idx.name)
+        case .addForeignKey(let fk):
+            return String(format: String(localized: "Add foreign key “%@”"), fk.name)
+        case .modifyForeignKey(let old, let new):
+            return old.name == new.name
+                ? String(format: String(localized: "Change foreign key “%@”"), new.name)
+                : String(format: String(localized: "Change foreign key “%@” to “%@”"), old.name, new.name)
+        case .deleteForeignKey(let fk):
+            return String(format: String(localized: "Delete foreign key “%@”"), fk.name)
+        case .addCheckConstraint(let constraint):
+            return String(format: String(localized: "Add check constraint “%@”"), constraint.name)
+        case .modifyCheckConstraint(let old, let new):
+            return old.name == new.name
+                ? String(format: String(localized: "Change check constraint “%@”"), new.name)
+                : String(format: String(localized: "Change check constraint “%@” to “%@”"), old.name, new.name)
+        case .deleteCheckConstraint(let constraint):
+            return String(format: String(localized: "Delete check constraint “%@”"), constraint.name)
+        case .modifyPrimaryKey(_, let new):
+            return new.isEmpty
+                ? String(localized: "Remove the primary key")
+                : String(format: String(localized: "Set the primary key to %@"), new.joined(separator: ", "))
+        case .modifyTableComment:
+            return String(localized: "Change the table comment")
+        case .modifyTableCharacterSet(_, let new):
+            let target = [new.characterSet, new.collation].compactMap { $0 }.joined(separator: " ")
+            return new.convertsColumns
+                ? String(format: String(localized: "Convert the table to %@"), target)
+                : String(format: String(localized: "Set the table's default character set to %@"), target)
+        case .modifyAutoIncrement(_, let new):
+            return String(format: String(localized: "Set the next AUTO_INCREMENT value to %@"), String(new))
+        }
+    }
+
     var description: String {
         switch self {
         case .addColumn(let col):

@@ -4,6 +4,7 @@
 
 import Combine
 import Foundation
+import TableProTestSupport
 import Testing
 
 @testable import TablePro
@@ -298,27 +299,21 @@ struct MainContentCoordinatorRefreshTests {
         }
     }
 
-    @Test("Refresh in structure view dispatches to the structure refresh handler")
-    func refreshInStructureViewDispatchesToHandler() {
+    @Test("Refresh in structure view reloads the tab's structure session, not its rows")
+    func refreshInStructureViewReloadsTheSession() async throws {
         let (coordinator, tabManager) = makeCoordinator()
         let tabId = addTableTab(to: tabManager)
-        guard let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else {
-            Issue.record("expected tab to exist")
-            return
-        }
+        let idx = try #require(tabManager.tabs.firstIndex(where: { $0.id == tabId }))
         tabManager.tabs[idx].display.resultsViewMode = .structure
-
-        let handler = StructureViewActionHandler()
-        var refreshCalled = false
-        handler.refresh = { refreshCalled = true }
-        coordinator.structureActions = handler
+        let session = TestFixtures.makeStructureSession()
+        coordinator.structureSessions[tabId] = session
 
         let initialEpoch = coordinator.tabExecution.contentEpoch(for: tabId)
         coordinator.handleRefresh(hasPendingTableOps: false, onDiscard: {})
 
-        #expect(refreshCalled == true)
         #expect(coordinator.tabExecution.contentEpoch(for: tabId) == initialEpoch)
         #expect(coordinator.queryTasks.hasTask(for: tabId) == false)
+        try await waitUntil { session.partsReloadToken == 1 }
     }
 
     @Test("requestRefresh fires immediately and coalesces a rapid second call")

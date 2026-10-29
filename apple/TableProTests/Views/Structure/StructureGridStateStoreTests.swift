@@ -12,15 +12,15 @@ import Testing
 
 @MainActor
 struct StructureGridStateStoreTests {
-    private func makeSession(table: String = "orders_\(UUID().uuidString.prefix(8))") -> StructureEditingSession {
-        let session = StructureEditingSession(
-            identity: "shop.\(table)",
-            connection: TestFixtures.makeConnection(database: "shop", type: .mysql),
-            databaseName: "shop",
-            schemaName: nil,
-            tableName: table
-        )
-        session.changeManager.loadSchema(
+    private let suite: EphemeralDefaults
+
+    init() throws {
+        suite = try EphemeralDefaults()
+    }
+
+    private func makeEditor(table: String = "orders_\(UUID().uuidString.prefix(8))") -> StructureDefinitionEditor {
+        let manager = StructureChangeManager()
+        manager.loadSchema(
             tableName: table,
             columns: [
                 ColumnInfo(name: "id", dataType: "INT", isNullable: false, isPrimaryKey: true),
@@ -30,108 +30,172 @@ struct StructureGridStateStoreTests {
             foreignKeys: [],
             primaryKey: ["id"]
         )
-        session.gridAdapter.refresh()
-        return session
+        let editor = StructureDefinitionEditor(
+            manager: manager,
+            context: .existingTable(
+                connection: TestFixtures.makeConnection(database: "shop", type: .mysql),
+                databaseName: "shop",
+                schemaName: nil,
+                tableName: table,
+                objectKind: .table,
+                isSessionBound: false
+            ),
+            defaults: suite.defaults
+        )
+        editor.refresh()
+        return editor
     }
 
-    private func nameHeading(_ session: StructureEditingSession) throws -> String {
-        try #require(session.gridModel.columns.column(at: 0)).name
+    private func nameHeading(_ model: DataGridModel) throws -> String {
+        try #require(model.columns.column(at: 0)).name
     }
 
-    @Test("A column resized in the Structure grid stays on the session and never reaches the table's saved layout")
+    @Test("A column resized in a section's grid stays on its store and never reaches the table's saved layout")
     func resizeNeverWritesTheTableLayout() throws {
-        let session = makeSession()
-        let model = session.gridModel
-        let name = try nameHeading(session)
+        let editor = makeEditor()
+        let adapter = editor.adapter(for: .columns)
+        let model = adapter.model
+        let name = try nameHeading(model)
         let tableKey = ColumnLayoutTableKey(
-            connectionId: session.connection.id,
+            connectionId: editor.context.connection.id,
             databaseName: "shop",
             schemaName: nil,
-            tableName: session.tableName
+            tableName: editor.context.tableName
         )
 
         model.columnGeometryDidChange(widths: [name: 260], order: nil)
 
         #expect(model.store.layoutScope == .ephemeral)
-        #expect(session.columnLayouts[.columns]?.columnWidths[name] == 260)
-        #expect(model.store.columnLayout.columnWidths[name] == 260)
+        #expect(adapter.store.columnLayout.columnWidths[name] == 260)
         #expect(FileColumnLayoutPersister.shared.load(for: tableKey) == nil)
     }
 
-    @Test("Each sub-tab keeps its own column layout")
-    func layoutIsPerSubTab() throws {
-        let session = makeSession()
-        let model = session.gridModel
-        let name = try nameHeading(session)
-        model.columnGeometryDidChange(widths: [name: 260], order: nil)
+    @Test("Each section keeps its own column layout")
+    func layoutIsPerSection() throws {
+        let editor = makeEditor()
+        let columns = editor.adapter(for: .columns)
+        let indexes = editor.adapter(for: .indexes)
+        let name = try nameHeading(columns.model)
 
-        session.selectedTab = .indexes
-        session.gridAdapter.refresh()
-        #expect(model.store.columnLayout.columnWidths[name] == nil)
-        model.columnGeometryDidChange(widths: [name: 180], order: nil)
+        columns.model.columnGeometryDidChange(widths: [name: 260], order: nil)
+        #expect(indexes.store.columnLayout.columnWidths[name] == nil)
+        indexes.model.columnGeometryDidChange(widths: [name: 180], order: nil)
 
-        session.selectedTab = .columns
-        session.gridAdapter.refresh()
-        #expect(model.store.columnLayout.columnWidths[name] == 260)
-        #expect(session.columnLayouts[.indexes]?.columnWidths[name] == 180)
+        #expect(columns.store.columnLayout.columnWidths[name] == 260)
+        #expect(indexes.store.columnLayout.columnWidths[name] == 180)
     }
 
-    @Test("Another sub-tab starts with no value filter and no selection")
-    func subTabSwitchStartsTheViewOver() throws {
-        let session = makeSession()
-        let model = session.gridModel
-        let name = try nameHeading(session)
+    @Test("A value filter in one section leaves the others unfiltered")
+    func valueFilterIsPerSection() throws {
+        let editor = makeEditor()
+        let columns = editor.adapter(for: .columns)
+        let indexes = editor.adapter(for: .indexes)
+        let name = try nameHeading(columns.model)
         var filter = GridValueFilterState()
         filter.set(ColumnValueFilter(selectedValues: ["id"], includesNull: false), columnName: name, forColumn: 0)
-        model.setValueFilter(filter)
-        model.selectRows([StructureRowProvider.rowID(forSourceIndex: 0)])
-        #expect(model.store.valueFilter.isActive)
-        #expect(!model.selection.isEmpty)
 
-        session.selectedTab = .indexes
-        session.gridAdapter.refresh()
+        columns.model.setValueFilter(filter)
+        editor.refresh()
 
-        #expect(!model.store.valueFilter.isActive)
-        #expect(model.store.selectionSnapshot.isEmpty)
-        #expect(model.selection.isEmpty)
-        #expect(model.rowCount == 1)
+        #expect(columns.store.valueFilter.isActive)
+        #expect(columns.model.rowCount == 1)
+        #expect(!indexes.store.valueFilter.isActive)
+        #expect(indexes.model.rowCount == 1)
     }
 
-    @Test("The sort lives on the session, which is what orders the provider's rows")
-    func sortLivesOnTheSession() {
-        let session = makeSession()
-        let model = session.gridModel
+    @Test("The sort lives on the section's store, which is what orders the provider's rows")
+    func sortLivesOnTheSectionStore() {
+        let editor = makeEditor()
+        let adapter = editor.adapter(for: .columns)
+        let model = adapter.model
         let descending = SortState(columns: [SortColumn(columnIndex: 0, direction: .descending)], source: .user)
 
         model.setSort(descending)
 
-        #expect(session.sortState == descending)
-        #expect(session.sortDescriptor?.column == 0)
-        #expect(session.sortDescriptor?.ascending == false)
+        #expect(adapter.store.sortState == descending)
         #expect(model.rows.rows.compactMap { $0.values.first?.asText } == ["total", "id"])
+        #expect(editor.adapter(for: .indexes).store.sortState.columns.isEmpty)
+    }
+
+    @Test("A sort survives a refresh of the definitions")
+    func sortSurvivesRefresh() {
+        let editor = makeEditor()
+        let adapter = editor.adapter(for: .columns)
+        adapter.model.setSort(SortState(columns: [SortColumn(columnIndex: 0, direction: .descending)], source: .user))
+
+        var amount = EditableColumnDefinition.placeholder()
+        amount.name = "amount"
+        amount.dataType = "INT"
+        editor.manager.addColumn(amount)
+        editor.refresh()
+
+        #expect(adapter.model.rows.rows.compactMap { $0.values.first?.asText } == ["total", "id", "amount"])
     }
 
     // The provider sorts by one key, so a secondary key the header appended is dropped (changed on purpose).
     @Test("A secondary sort key is dropped, since the provider sorts by one column")
     func secondarySortKeyIsDropped() {
-        let session = makeSession()
-        let model = session.gridModel
+        let editor = makeEditor()
+        let adapter = editor.adapter(for: .columns)
         let primary = SortColumn(columnIndex: 1, direction: .ascending)
 
-        model.setSort(SortState(columns: [primary, SortColumn(columnIndex: 0, direction: .descending)], source: .user))
+        adapter.model.setSort(SortState(columns: [primary, SortColumn(columnIndex: 0, direction: .descending)], source: .user))
 
-        #expect(session.sortState.columns == [primary])
-        #expect(model.store.sortState.columns == [primary])
+        #expect(adapter.store.sortState.columns == [primary])
+        #expect(adapter.model.store.sortState.columns == [primary])
     }
 
-    @Test("Create Table's grid is ephemeral too")
+    @Test("Create Table's grids are ephemeral too")
     func createTableIsEphemeral() {
-        let adapter = CreateTableGridAdapter(
-            structureChangeManager: StructureChangeManager(),
-            connection: TestFixtures.makeConnection(type: .postgresql)
+        let editor = StructureDefinitionEditor(
+            manager: StructureChangeManager(),
+            context: .newTable(connection: TestFixtures.makeConnection(type: .postgresql), databaseName: "shop", schemaName: "public"),
+            defaults: suite.defaults
         )
-        adapter.refresh()
+        editor.refresh()
 
-        #expect(adapter.model.store.layoutScope == .ephemeral)
+        for section in StructureSection.allCases {
+            #expect(editor.adapter(for: section).model.store.layoutScope == .ephemeral, "\(section.rawValue)")
+        }
+    }
+
+    // MARK: - Hidden columns
+
+    @Test("A section starts with its lean default columns hidden")
+    func defaultHiddenColumns() {
+        let columns = StructureGridStateStore(section: .columns, defaults: suite.defaults)
+        #expect(columns.columnLayout.hiddenColumns == StructureGridStateStore.defaultHiddenColumns(.columns))
+        #expect(columns.columnLayout.hiddenColumns.contains(StructureColumnField.collation.displayName))
+        #expect(!columns.columnLayout.hiddenColumns.contains(StructureColumnField.name.displayName))
+        #expect(StructureGridStateStore(section: .indexes, defaults: suite.defaults).columnLayout.hiddenColumns.isEmpty)
+    }
+
+    @Test("Columns a person hides stay hidden for the next table, per section")
+    func hiddenColumnsPersistPerSection() {
+        let comment = StructureColumnField.comment.displayName
+        let store = StructureGridStateStore(section: .columns, defaults: suite.defaults)
+        store.columnLayout.hiddenColumns = [comment]
+
+        #expect(StructureGridStateStore(section: .columns, defaults: suite.defaults).columnLayout.hiddenColumns == [comment])
+        #expect(
+            StructureGridStateStore(section: .foreignKeys, defaults: suite.defaults).columnLayout.hiddenColumns
+                == StructureGridStateStore.defaultHiddenColumns(.foreignKeys)
+        )
+    }
+
+    @Test("Showing every column is kept too, so the defaults do not come back")
+    func showingEveryColumnPersists() {
+        let store = StructureGridStateStore(section: .columns, defaults: suite.defaults)
+        store.columnLayout.hiddenColumns = []
+
+        #expect(StructureGridStateStore(section: .columns, defaults: suite.defaults).columnLayout.hiddenColumns.isEmpty)
+    }
+
+    @Test("A width change writes nothing to the defaults")
+    func widthsAreNotPersisted() {
+        let store = StructureGridStateStore(section: .indexes, defaults: suite.defaults)
+        store.columnLayout.columnWidths["Name"] = 200
+
+        #expect(suite.defaults.object(forKey: StructureGridStateStore.hiddenColumnsKey(.indexes)) == nil)
     }
 }
