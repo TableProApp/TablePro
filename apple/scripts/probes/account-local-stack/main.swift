@@ -26,9 +26,12 @@ private actor CallLog {
     }
 }
 
-// URLSession under the generated client, while AccountServices+Live ships no transport.
-private struct ProbeTransport: ClientTransport {
+// The app's transport (AccountAPI.transport, what AccountServices+Live passes), writing each call to the log.
+private struct LoggedTransport: ClientTransport {
+    static let session = URLSession(configuration: .ephemeral)
+
     let log: CallLog
+    let base = AccountAPI.transport(session: LoggedTransport.session)
 
     func send(
         _ request: HTTPRequest,
@@ -36,25 +39,10 @@ private struct ProbeTransport: ClientTransport {
         baseURL: URL,
         operationID: String
     ) async throws -> (HTTPResponse, HTTPBody?) {
-        guard let url = URL(string: baseURL.absoluteString + (request.path ?? "")) else { throw URLError(.badURL) }
-        var urlRequest = URLRequest(url: url)
-        urlRequest.httpMethod = request.method.rawValue
-        for field in request.headerFields {
-            urlRequest.addValue(field.value, forHTTPHeaderField: field.name.rawName)
-        }
-        if let body {
-            urlRequest.httpBody = try await Data(collecting: body, upTo: 4_194_304)
-        }
-        let (data, response) = try await URLSession.shared.data(for: urlRequest)
-        guard let http = response as? HTTPURLResponse else { throw URLError(.badServerResponse) }
-        await log.add("\(request.method.rawValue) \(url.path) \(http.statusCode)")
-        var fields = HTTPFields()
-        for (name, value) in http.allHeaderFields {
-            if let name = (name as? String).flatMap({ HTTPField.Name($0) }), let value = value as? String {
-                fields.append(HTTPField(name: name, value: value))
-            }
-        }
-        return (HTTPResponse(status: .init(code: http.statusCode), headerFields: fields), HTTPBody(data))
+        let (response, responseBody) = try await base.send(request, body: body, baseURL: baseURL, operationID: operationID)
+        let path = URL(string: baseURL.absoluteString + (request.path ?? ""))?.path ?? ""
+        await log.add("\(request.method.rawValue) \(path) \(response.status.code)")
+        return (response, responseBody)
     }
 }
 
@@ -712,7 +700,7 @@ private final class Probe {
         return AccountServices(
             configuration: configuration,
             machine: machine,
-            transport: ProbeTransport(log: log),
+            transport: LoggedTransport(log: log),
             send: { request in
                 let form = String(bytes: request.httpBody ?? Data(), encoding: .utf8) ?? ""
                 let grant = form.split(separator: "&")
