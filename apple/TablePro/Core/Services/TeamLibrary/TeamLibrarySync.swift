@@ -63,9 +63,12 @@ internal final class TeamLibrarySync: ObservableObject {
     private var scheduleTask: Task<Void, Never>?
     private var sleepTask: Task<Void, Never>?
     private var accessCancellable: AnyCancellable?
+    // Failures in a row that the network or the server may recover from; each one doubles the wait for the next sync.
     private var retries = 0
     private var hasLoaded = false
     private var wakeRequested = false
+    // A failed publish shortened the wait the schedule is in.
+    private var rescheduled = false
     // Bumped by sign-out, so a sync still out at that moment brings no team back.
     private var generation = 0
 
@@ -93,8 +96,8 @@ internal final class TeamLibrarySync: ObservableObject {
         scheduleTask = Task { [weak self] in
             while !Task.isCancelled {
                 guard let self else { return }
-                let outcome = await self.sync()
-                await self.pause(for: self.delay(after: outcome))
+                self.record(await self.sync())
+                await self.pause()
             }
         }
     }
@@ -505,7 +508,9 @@ internal final class TeamLibrarySync: ObservableObject {
         } catch {
             publishContent()
             _ = finish(.failed(error))
-            return error.isRetryable ? .success(.queued(error)) : .failure(.failed(error))
+            guard error.isRetryable else { return .failure(.failed(error)) }
+            retryLater()
+            return .success(.queued(error))
         }
         publishContent()
         _ = finish(.synced)
@@ -558,28 +563,41 @@ internal final class TeamLibrarySync: ObservableObject {
         }
     }
 
-    private func delay(after outcome: TeamLibrarySyncOutcome) -> Duration {
-        guard case .failed(let failure) = outcome, failure.isRetryable else {
+    private func record(_ outcome: TeamLibrarySyncOutcome) {
+        if case .failed(let failure) = outcome, failure.isRetryable {
+            retries += 1
+        } else {
             retries = 0
-            return Self.pullInterval
         }
-        retries += 1
-        let backoff = Self.firstRetryDelay * (1 << min(retries - 1, 5))
-        return min(backoff, Self.pullInterval)
     }
 
-    private func pause(for delay: Duration) async {
-        guard !wakeRequested else {
-            wakeRequested = false
-            return
-        }
-        let task = Task { [clock] in
-            _ = try? await clock.sleep(for: delay)
-        }
-        sleepTask = task
-        await task.value
-        if sleepTask == task {
-            sleepTask = nil
+    // 30 seconds after the first failure, doubling up to the 15-minute schedule.
+    private var nextDelay: Duration {
+        guard retries > 0 else { return Self.pullInterval }
+        return min(Self.firstRetryDelay * (1 << min(retries - 1, 5)), Self.pullInterval)
+    }
+
+    // A publish the network or the server failed: its queued edits go out after the backoff, not the next pull.
+    private func retryLater() {
+        retries += 1
+        rescheduled = true
+        sleepTask?.cancel()
+    }
+
+    private func pause() async {
+        rescheduled = false
+        while !wakeRequested {
+            let delay = nextDelay
+            let task = Task { [clock] in
+                _ = try? await clock.sleep(for: delay)
+            }
+            sleepTask = task
+            await task.value
+            if sleepTask == task {
+                sleepTask = nil
+            }
+            guard rescheduled else { break }
+            rescheduled = false
         }
         wakeRequested = false
     }

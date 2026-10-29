@@ -556,6 +556,34 @@ struct TeamLibrarySyncTests {
         #expect(fixture.sync.content.queries.map(\.name) == ["Orders"])
     }
 
+    @Test("A publish the server failed is pushed again 30 seconds later, not at the next 15-minute pull")
+    func failedPublishRetriesAfterBackoff() async throws {
+        let fixture = try await TeamLibraryFixture()
+        fixture.sync.start()
+        try await waitUntil {
+            if case .synced = fixture.sync.status { return true }
+            return false
+        }
+        await fixture.clock.waitUntilSleeping()
+        await fixture.library { $0.pushFaults = [503] }
+
+        let result = try await fixture.sync.publishSavedQueries(
+            favorites: [TeamLibraryFixture.favorite(name: "Orders")],
+            folders: [],
+            to: Self.team
+        )
+        #expect(result == .queued(.server))
+
+        await fixture.clock.waitUntilSleeping()
+        fixture.clock.advance(by: .seconds(29))
+        await fixture.clock.waitUntilSleeping()
+        #expect(await fixture.pushes().count == 1)
+        fixture.clock.advance(by: .seconds(1))
+        try await waitUntil { await fixture.server.library.live(Self.team).count == 1 }
+        #expect(await fixture.pushes().count == 2)
+        fixture.sync.stop()
+    }
+
     // MARK: - Who may write
 
     @Test("A member without the owner or admin role pulls and never pushes")
