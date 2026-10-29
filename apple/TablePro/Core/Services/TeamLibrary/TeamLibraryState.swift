@@ -171,10 +171,10 @@ internal struct TeamLibraryStateStore {
     }
 
     // What the last /v1 pull cached, keyed by client ID like a /v2 snapshot, so the first one matches it item by item.
-    func loadLegacy(now: Date) -> [TeamLibraryChange]? {
+    func loadLegacy(now: Date) -> TeamLibraryLegacyLibrary? {
         guard let data = try? Data(contentsOf: legacyFile) else { return nil }
         do {
-            return try JSONDecoder().decode(TeamLibraryLegacyCache.self, from: data).changes(at: now)
+            return try JSONDecoder().decode(TeamLibraryLegacyCache.self, from: data).library(at: now)
         } catch {
             Self.logger.error("The /v1 team library cache is unreadable: \(error.publicLogShape, privacy: .public)")
             return nil
@@ -192,6 +192,21 @@ internal struct TeamLibraryStateStore {
     }
 }
 
+// The /v1 cache: what shows until the first /v2 snapshot, and the address that last published each item.
+internal struct TeamLibraryLegacyLibrary: Sendable {
+    let changes: [TeamLibraryChange]
+    let publishers: [TeamLibraryKey: String]
+
+    // The items of a first /v2 snapshot this account published over /v1, which become this Mac's to remove.
+    func published(by email: String, in snapshot: [TeamLibraryKey: TeamLibraryChange]) -> Set<TeamLibraryKey> {
+        let address = email.lowercased()
+        return Set(publishers.compactMap { key, publisher in
+            guard publisher.lowercased() == address, snapshot[key]?.deleted == false else { return nil }
+            return key
+        })
+    }
+}
+
 // team_library.json as the /v1 sync wrote it: the last pull, connections carrying their settings as the payload.
 private struct TeamLibraryLegacyCache: Decodable {
     struct Connection: Decodable {
@@ -199,11 +214,13 @@ private struct TeamLibraryLegacyCache: Decodable {
         let sourceConnectionID: String?
         // /v1 answers an empty array for a connection published without settings.
         let payload: TeamLibraryData?
+        let publishedBy: String?
 
         enum CodingKeys: String, CodingKey {
             case id
             case sourceConnectionID = "source_connection_id"
             case payload
+            case publishedBy = "published_by"
         }
 
         init(from decoder: any Decoder) throws {
@@ -211,6 +228,7 @@ private struct TeamLibraryLegacyCache: Decodable {
             id = try container.decode(String.self, forKey: .id)
             sourceConnectionID = try container.decodeIfPresent(String.self, forKey: .sourceConnectionID)
             payload = try? container.decode(TeamLibraryData.self, forKey: .payload)
+            publishedBy = try container.decodeIfPresent(String.self, forKey: .publishedBy)
         }
     }
 
@@ -219,12 +237,14 @@ private struct TeamLibraryLegacyCache: Decodable {
         let parentClientID: String?
         let name: String
         let sortOrder: Int?
+        let publishedBy: String?
 
         enum CodingKeys: String, CodingKey {
             case clientID = "client_id"
             case parentClientID = "parent_client_id"
             case name
             case sortOrder = "sort_order"
+            case publishedBy = "published_by"
         }
     }
 
@@ -236,6 +256,7 @@ private struct TeamLibraryLegacyCache: Decodable {
         let query: String
         let keyword: String?
         let sortOrder: Int?
+        let publishedBy: String?
 
         enum CodingKeys: String, CodingKey {
             case clientID = "client_id"
@@ -245,6 +266,7 @@ private struct TeamLibraryLegacyCache: Decodable {
             case query
             case keyword
             case sortOrder = "sort_order"
+            case publishedBy = "published_by"
         }
     }
 
@@ -258,9 +280,18 @@ private struct TeamLibraryLegacyCache: Decodable {
         case queries
     }
 
-    func changes(at now: Date) throws -> [TeamLibraryChange] {
-        var changes: [TeamLibraryChange] = connections.compactMap { connection in
-            connection.payload.map { change(TeamLibraryKind.connection, connection.sourceConnectionID ?? connection.id, $0, now) }
+    func library(at now: Date) throws -> TeamLibraryLegacyLibrary {
+        var changes: [TeamLibraryChange] = []
+        var publishers: [TeamLibraryKey: String] = [:]
+        func add(_ change: TeamLibraryChange, by publisher: String?) {
+            changes.append(change)
+            if let publisher, !publisher.isEmpty {
+                publishers[change.key] = publisher
+            }
+        }
+        for connection in connections {
+            guard let payload = connection.payload else { continue }
+            add(change(TeamLibraryKind.connection, connection.sourceConnectionID ?? connection.id, payload, now), by: connection.publishedBy)
         }
         for folder in folders {
             let data = TeamLibraryFolderData(
@@ -268,7 +299,7 @@ private struct TeamLibraryLegacyCache: Decodable {
                 parentClientID: folder.parentClientID,
                 sortOrder: folder.sortOrder ?? 0
             )
-            changes.append(change(TeamLibraryKind.folder, folder.clientID, try TeamLibraryPayload.data(from: data), now))
+            add(change(TeamLibraryKind.folder, folder.clientID, try TeamLibraryPayload.data(from: data), now), by: folder.publishedBy)
         }
         for query in queries {
             let data = TeamLibraryQueryData(
@@ -279,9 +310,9 @@ private struct TeamLibraryLegacyCache: Decodable {
                 connectionClientID: query.connectionClientID,
                 sortOrder: query.sortOrder ?? 0
             )
-            changes.append(change(TeamLibraryKind.query, query.clientID, try TeamLibraryPayload.data(from: data), now))
+            add(change(TeamLibraryKind.query, query.clientID, try TeamLibraryPayload.data(from: data), now), by: query.publishedBy)
         }
-        return changes
+        return TeamLibraryLegacyLibrary(changes: changes, publishers: publishers)
     }
 
     // Version 0: the /v1 pull carried none, so the first /v2 snapshot supplies it before anything is pushed.

@@ -55,7 +55,9 @@ internal final class TeamLibrarySync: ObservableObject {
     private let now: @Sendable () -> Date
     private var teams: [String: TeamLibraryTeamState] = [:]
     // The /v1 cache, shown until every team this account reads has a first /v2 snapshot.
-    private var legacy: [TeamLibraryChange]?
+    private var legacy: TeamLibraryLegacyLibrary?
+    // GET /v2/me's address, the one the /v1 cache names publishers by.
+    private var accountEmail: String?
     private var tail: Task<Void, Never>?
     private var queuedSync: Task<TeamLibrarySyncOutcome, Never>?
     private var scheduleTask: Task<Void, Never>?
@@ -192,6 +194,7 @@ internal final class TeamLibrarySync: ObservableObject {
         generation += 1
         teams = [:]
         legacy = nil
+        accountEmail = nil
         store.removeAll()
         status = .idle
         publishContent()
@@ -212,6 +215,7 @@ internal final class TeamLibrarySync: ObservableObject {
             return finish(.failed(TeamLibraryFailure.from(error)))
         }
         guard started == generation else { return .skipped }
+        accountEmail = profile.email
         adopt(profile.memberships)
 
         var failure: TeamLibraryFailure?
@@ -319,6 +323,10 @@ internal final class TeamLibrarySync: ObservableObject {
         if let snapshot {
             state.items = snapshot
             state.cursor = cursor
+            if let legacy, let accountEmail {
+                // The first snapshot after the update: what this account published over /v1 is this Mac's to remove.
+                state.published.formUnion(legacy.published(by: accountEmail, in: snapshot))
+            }
         }
         state.syncedAt = now()
         commit(state)
@@ -529,7 +537,7 @@ internal final class TeamLibrarySync: ObservableObject {
     }
 
     private func publishContent() {
-        var items = legacy ?? []
+        var items = legacy?.changes ?? []
         for state in teams.values.sorted(by: { $0.teamName < $1.teamName }) {
             items += state.liveItems
         }

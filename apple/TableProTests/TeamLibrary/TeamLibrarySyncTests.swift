@@ -445,6 +445,41 @@ struct TeamLibrarySyncTests {
         #expect(fixture.sync.conflicts.isEmpty)
     }
 
+    @Test("What this account published over /v1 is this Mac's to remove after the update; what others published is not")
+    func legacyPublishedItemsAreThisMacs() async throws {
+        let folderID = UUID().uuidString.lowercased()
+        let queryID = UUID().uuidString.lowercased()
+        let theirsID = UUID().uuidString.lowercased()
+        let fixture = try await TeamLibraryFixture { library in
+            library.write(Self.team, kind: "folder", clientID: folderID, data: TeamLibraryFixture.folderData("Reports"), by: "acct_test", via: "v1")
+            library.write(Self.team, kind: "query", clientID: queryID, data: TeamLibraryFixture.queryData("Orders", folder: folderID), by: "acct_test", via: "v1")
+            library.write(Self.team, kind: "query", clientID: theirsID, data: TeamLibraryFixture.queryData("Theirs"), via: "v1")
+        }
+        let cache: [String: Any] = [
+            "connections": [[String: Any]](),
+            "query_folders": [["client_id": folderID, "name": "Reports", "sort_order": 0, "published_by": "Ada@M16.example"]],
+            "queries": [
+                ["client_id": queryID, "folder_client_id": folderID, "name": "Orders", "query": "select 1", "sort_order": 0, "published_by": "ada@m16.example"],
+                ["client_id": theirsID, "name": "Theirs", "query": "select 1", "sort_order": 0, "published_by": "sam@m16.example"]
+            ],
+            "fetched_at": "2026-10-28T09:00:00+00:00"
+        ]
+        try JSONSerialization.data(withJSONObject: cache).write(to: fixture.store.legacyFile)
+        fixture.relaunch()
+        #expect(await fixture.sync.sync() == .synced)
+
+        // Reports and Orders are gone from this Mac; Theirs never was this Mac's.
+        let result = try await fixture.sync.publishSavedQueries(favorites: [], folders: [], to: Self.team)
+
+        #expect(result == .published(2))
+        let changes = try #require(await fixture.pushes().last)
+        #expect(changes.map { "\($0["op"] ?? "") \($0["kind"] ?? "") \($0["client_id"] ?? "")" } == [
+            "delete query \(queryID)",
+            "delete folder \(folderID)"
+        ])
+        #expect(await fixture.server.library.item(Self.team, kind: "query", clientID: theirsID)?.deleted == false)
+    }
+
     @Test("A cached /v1 connection without settings is skipped, and the rest of the cache still shows")
     func legacyConnectionWithoutSettings() async throws {
         let fixture = try await TeamLibraryFixture()
