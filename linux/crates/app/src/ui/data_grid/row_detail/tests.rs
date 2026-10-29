@@ -959,6 +959,11 @@ fn the_clock_sets_only_the_time_a_value_shows() {
     );
     assert_eq!(set_at_nine("10:00", NAIVE), "09:05:30", "a time in a DATETIME column");
     assert_eq!(set_at_nine("  2024-01-01 10:00:00", NAIVE), "  2024-01-01 09:05:30");
+    assert_eq!(
+        set_at_nine("2024-01-01  12:34:56.789+02:00", ZONED),
+        "2024-01-01  09:05:30.789+02:00"
+    );
+    assert_eq!(set_at_nine("-0001-01-01 12:34:56", NAIVE), "-0001-01-01 09:05:30");
     assert_eq!(set_at_nine("24:00:00+01", TIMETZ), "09:05:30+01");
 }
 

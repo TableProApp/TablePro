@@ -41,7 +41,14 @@ impl ClockField {
 fn clock_span(text: &str) -> Option<Range<usize>> {
     let lead = text.len() - text.trim_start().len();
     let start = match day_len(text.get(lead..)?) {
-        Some(day) => matches!(text.as_bytes().get(lead + day), Some(b' ' | b'T')).then_some(lead + day + 1)?,
+        Some(day) => {
+            let rest = text.get(lead + day..)?;
+            let gap = match rest.strip_prefix('T') {
+                Some(_) => 1,
+                None => rest.len() - rest.trim_start().len(),
+            };
+            (gap > 0).then_some(lead + day + gap)?
+        }
         None => lead,
     };
     let digits = |at: usize| {
@@ -56,14 +63,15 @@ fn clock_span(text: &str) -> Option<Range<usize>> {
     Some(start..start + len)
 }
 
-// PostgreSQL writes a year past 9999 with every digit.
+// A year can run past 9999, as PostgreSQL writes one, and carry a sign, as chrono reads one.
 fn day_len(text: &str) -> Option<usize> {
-    let year = text.bytes().take_while(u8::is_ascii_digit).count();
+    let sign = usize::from(matches!(text.as_bytes().first(), Some(b'-' | b'+')));
+    let year = text.bytes().skip(sign).take_while(u8::is_ascii_digit).count();
     let dated = matches!(
-        text.get(year..year + 6)?.as_bytes(),
+        text.get(sign + year..sign + year + 6)?.as_bytes(),
         [b'-', m1, m2, b'-', d1, d2] if [m1, m2, d1, d2].iter().all(|byte| byte.is_ascii_digit())
     );
-    (year >= 4 && dated).then_some(year + 6)
+    (year >= 4 && dated).then_some(sign + year + 6)
 }
 
 pub fn time_of(text: &str) -> Option<NaiveTime> {
