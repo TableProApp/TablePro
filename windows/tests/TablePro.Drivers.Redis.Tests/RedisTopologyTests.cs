@@ -18,6 +18,31 @@ public sealed class RedisTopologyTests
             _ => e.ToString()!,
         }).ToArray();
 
+    [Fact]
+    public void ANodeListedByNameAndByItsAnnouncedAddressIsWalkedOnce()
+    {
+        // The library holds the seed localhost:7001 and the announced 127.0.0.1:7001 as two servers.
+        EndPoint[] connected =
+        [
+            new IPEndPoint(IPAddress.Loopback, 7001),
+            new IPEndPoint(IPAddress.Loopback, 7002),
+            new IPEndPoint(IPAddress.Loopback, 7003),
+            new DnsEndPoint("localhost", 7001),
+            new DnsEndPoint("localhost", 7002),
+        ];
+        RedisClusterMember[] nodes =
+        [
+            new(new IPEndPoint(IPAddress.Loopback, 7002), IsReplica: false, OwnsSlots: true),
+            new(new IPEndPoint(IPAddress.Loopback, 7001), IsReplica: false, OwnsSlots: true),
+            new(new IPEndPoint(IPAddress.Loopback, 7003), IsReplica: true, OwnsSlots: false),
+            new(null, IsReplica: false, OwnsSlots: true),
+        ];
+
+        Assert.Equal([0, 1], RedisSession.PickClusterMembers(connected, nodes, primariesOnly: true));
+        Assert.Equal([0, 1, 2], RedisSession.PickClusterMembers(connected, nodes, primariesOnly: false));
+        Assert.Empty(RedisSession.PickClusterMembers([new DnsEndPoint("localhost", 7001)], nodes, primariesOnly: true));
+    }
+
     [Theory]
     [InlineData(null, "Standalone")]
     [InlineData("standalone", "Standalone")]

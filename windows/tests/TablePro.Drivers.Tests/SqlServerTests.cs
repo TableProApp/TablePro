@@ -87,7 +87,10 @@ public sealed class SqlServerTests
 
         Assert.Equal(2, ddl.Count);
         Assert.Contains("WHERE dc.parent_object_id = OBJECT_ID(N'[sales].[orders]') AND c.name = N'status';", ddl[0], StringComparison.Ordinal);
-        Assert.Contains("EXEC (N'ALTER TABLE ' + N'[sales].[orders]' + N' DROP CONSTRAINT ' + QUOTENAME(@constraint))", ddl[0], StringComparison.Ordinal);
+        // EXEC (...) refuses a function call such as QUOTENAME, so the statement is built in a variable first.
+        Assert.Contains("SET @drop = N'ALTER TABLE ' + N'[sales].[orders]' + N' DROP CONSTRAINT ' + QUOTENAME(@constraint);", ddl[0], StringComparison.Ordinal);
+        Assert.EndsWith("IF @drop IS NOT NULL EXEC sys.sp_executesql @drop;", ddl[0], StringComparison.Ordinal);
+        Assert.DoesNotContain("EXEC (", ddl[0], StringComparison.Ordinal);
         Assert.Equal("ALTER TABLE [sales].[orders] DROP COLUMN [status]", ddl[1]);
     }
 
@@ -99,11 +102,36 @@ public sealed class SqlServerTests
 
         var ddl = SqlServerDdl.Build(Orders, new AlterColumn(before, after));
 
-        Assert.Equal("ALTER TABLE [sales].[orders] ALTER COLUMN [qty] bigint NOT NULL", ddl[0]);
-        Assert.StartsWith("DECLARE @constraint sysname;", ddl[1], StringComparison.Ordinal);
+        // The default comes off before ALTER COLUMN, which SQL Server refuses while a default is bound to the column.
+        Assert.StartsWith("DECLARE @constraint sysname", ddl[0], StringComparison.Ordinal);
+        Assert.Equal("ALTER TABLE [sales].[orders] ALTER COLUMN [qty] bigint NOT NULL", ddl[1]);
         Assert.Equal("ALTER TABLE [sales].[orders] ADD CONSTRAINT [DF_orders_qty] DEFAULT 1 FOR [qty]", ddl[2]);
         Assert.Contains("EXEC sys.sp_dropextendedproperty", ddl[3], StringComparison.Ordinal);
         Assert.Equal("EXEC sys.sp_rename N'[sales].[orders].[qty]', N'quantity', N'COLUMN'", ddl[4]);
+    }
+
+    [Fact]
+    public void RetypingAColumnWithADefaultRebindsTheSameDefault()
+    {
+        var before = new ColumnDefinition("qty", "int", DefaultExpression: "((1))");
+
+        var ddl = SqlServerDdl.Build(Orders, new AlterColumn(before, before with { DataType = "decimal(10,2)" }));
+
+        Assert.Equal(3, ddl.Count);
+        Assert.StartsWith("DECLARE @constraint sysname", ddl[0], StringComparison.Ordinal);
+        Assert.Equal("ALTER TABLE [sales].[orders] ALTER COLUMN [qty] decimal(10,2) NULL", ddl[1]);
+        Assert.Equal("ALTER TABLE [sales].[orders] ADD CONSTRAINT [DF_orders_qty] DEFAULT ((1)) FOR [qty]", ddl[2]);
+        Assert.Equal(["ALTER TABLE [sales].[orders] ALTER COLUMN [qty] bigint NULL"], SqlServerDdl.Build(Orders, new AlterColumn(before with { DefaultExpression = null }, before with { DataType = "bigint", DefaultExpression = null })));
+    }
+
+    [Fact]
+    public void DefinitionTextCollatesCatalogTextToTheDatabase()
+    {
+        // collation_name and the _desc columns are Latin1_General_CI_AS_KS_WS; mixed with names in another collation
+        // the query does not compile, which on a default install failed every table definition.
+        Assert.Contains("N' COLLATE ' + c.collation_name COLLATE DATABASE_DEFAULT", SqlServerCatalog.ColumnDefinitions, StringComparison.Ordinal);
+        Assert.Contains("delete_referential_action_desc COLLATE DATABASE_DEFAULT", SqlServerCatalog.ForeignKeyDefinitions, StringComparison.Ordinal);
+        Assert.Contains("update_referential_action_desc COLLATE DATABASE_DEFAULT", SqlServerCatalog.ForeignKeyDefinitions, StringComparison.Ordinal);
     }
 
     [Fact]

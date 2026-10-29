@@ -194,8 +194,11 @@ public sealed partial class RedisSession : IDatabaseSession, IKeySearchProvider,
     internal IReadOnlyList<IServer> Primaries() => Primaries(_connection);
 
     /// <summary>Every connected node, replicas included.</summary>
-    internal IReadOnlyList<IServer> Nodes() =>
-        _connection.GetServers().Where(s => s.IsConnected).OrderBy(s => EndPointCollection.ToString(s.EndPoint), StringComparer.Ordinal).ToArray();
+    internal IReadOnlyList<IServer> Nodes()
+    {
+        var servers = Connected(_connection);
+        return ClusterMembers(servers, primariesOnly: false) is { Length: > 0 } members ? members : servers;
+    }
 
     /// <summary>
     /// The node the dashboard and keyless single-node commands talk to. It is always the same one, so a client listed
@@ -205,11 +208,66 @@ public sealed partial class RedisSession : IDatabaseSession, IKeySearchProvider,
 
     private static IServer[] Primaries(ConnectionMultiplexer connection)
     {
-        var servers = connection.GetServers().Where(s => s.IsConnected).OrderBy(s => EndPointCollection.ToString(s.EndPoint), StringComparer.Ordinal).ToArray();
+        var servers = Connected(connection);
+        if (ClusterMembers(servers, primariesOnly: true) is { Length: > 0 } owners)
+        {
+            return owners;
+        }
+
         var primaries = servers.Where(s => !s.IsReplica).ToArray();
 
         // A connection to a lone replica has no primary, and the replica is what there is to read.
         return primaries.Length > 0 ? primaries : servers;
+    }
+
+    private static IServer[] Connected(ConnectionMultiplexer connection) =>
+        connection.GetServers().Where(s => s.IsConnected).OrderBy(s => EndPointCollection.ToString(s.EndPoint), StringComparer.Ordinal).ToArray();
+
+    /// <summary>
+    /// A cluster's nodes, each once. A node listed by name (<c>localhost:7001</c>) and the address the cluster announces
+    /// for it (<c>127.0.0.1:7001</c>) are two servers to the library, so walking every server would scan, count and
+    /// fan out to that node twice. The cluster's own node table names each node once. Null outside a cluster.
+    /// </summary>
+    private static IServer[]? ClusterMembers(IServer[] servers, bool primariesOnly)
+    {
+        var configuration = servers.Select(s => s.ClusterConfiguration).FirstOrDefault(c => c is not null);
+        if (configuration is null)
+        {
+            return null;
+        }
+
+        var nodes = configuration.Nodes.Select(n => new RedisClusterMember(n.EndPoint, n.IsReplica, n.Slots.Count > 0)).ToArray();
+        var picked = PickClusterMembers([.. servers.Select(s => s.EndPoint)], nodes, primariesOnly);
+        return [.. picked.Select(i => servers[i])];
+    }
+
+    /// <summary>
+    /// The indexes of <paramref name="connected"/> that the cluster's node table names: slot owners only when
+    /// <paramref name="primariesOnly"/>, every reachable node otherwise. Empty when no listed node is connected, which
+    /// leaves the caller to fall back to the servers as the library has them.
+    /// </summary>
+    internal static IReadOnlyList<int> PickClusterMembers(IReadOnlyList<System.Net.EndPoint> connected, IReadOnlyList<RedisClusterMember> nodes, bool primariesOnly)
+    {
+        var picked = new List<int>(nodes.Count);
+        foreach (var node in nodes)
+        {
+            if (node.EndPoint is null || (primariesOnly && (node.IsReplica || !node.OwnsSlots)))
+            {
+                continue;
+            }
+
+            for (var i = 0; i < connected.Count; i++)
+            {
+                if (node.EndPoint.Equals(connected[i]) && !picked.Contains(i))
+                {
+                    picked.Add(i);
+                    break;
+                }
+            }
+        }
+
+        picked.Sort();
+        return picked;
     }
 
     private static IServer HomeServer(ConnectionMultiplexer connection)
@@ -810,3 +868,6 @@ public sealed partial class RedisSession : IDatabaseSession, IKeySearchProvider,
         }
     }
 }
+
+/// <summary>One row of a cluster's node table, as far as choosing which servers to walk needs it.</summary>
+internal readonly record struct RedisClusterMember(System.Net.EndPoint? EndPoint, bool IsReplica, bool OwnsSlots);

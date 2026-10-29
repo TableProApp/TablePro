@@ -123,22 +123,29 @@ internal static class SqlServerDdl
     /// </summary>
     public static List<string> AlterColumn(ObjectName table, ColumnDefinition before, ColumnDefinition after)
     {
-        var statements = new List<string>(5);
-        if (!string.Equals(before.DataType.Trim(), after.DataType.Trim(), StringComparison.OrdinalIgnoreCase) || before.IsNullable != after.IsNullable)
+        var statements = new List<string>(6);
+        var retype = !string.Equals(before.DataType.Trim(), after.DataType.Trim(), StringComparison.OrdinalIgnoreCase) || before.IsNullable != after.IsNullable;
+
+        // ALTER COLUMN fails while a default constraint is bound to the column ("The object 'DF_...' is dependent on
+        // column"), so a retyped column's default comes off first and goes back on after, changed or not.
+        var rebind = !string.Equals(before.DefaultExpression?.Trim(), after.DefaultExpression?.Trim(), StringComparison.Ordinal)
+            || (retype && !string.IsNullOrWhiteSpace(before.DefaultExpression));
+        if (rebind)
+        {
+            statements.Add(DropDefaultConstraint(table, before.Name));
+        }
+
+        if (retype)
         {
             statements.Add(string.Concat(
                 AlterTable(table), " ALTER COLUMN ", Q(before.Name), " ", after.DataType.Trim(), after.IsNullable ? " NULL" : " NOT NULL"));
         }
 
-        if (!string.Equals(before.DefaultExpression?.Trim(), after.DefaultExpression?.Trim(), StringComparison.Ordinal))
+        if (rebind && !string.IsNullOrWhiteSpace(after.DefaultExpression))
         {
-            statements.Add(DropDefaultConstraint(table, before.Name));
-            if (!string.IsNullOrWhiteSpace(after.DefaultExpression))
-            {
-                statements.Add(string.Concat(
-                    AlterTable(table), " ADD CONSTRAINT ", Q(DefaultConstraintName(table, before.Name)), " DEFAULT ",
-                    after.DefaultExpression.Trim(), " FOR ", Q(before.Name)));
-            }
+            statements.Add(string.Concat(
+                AlterTable(table), " ADD CONSTRAINT ", Q(DefaultConstraintName(table, before.Name)), " DEFAULT ",
+                after.DefaultExpression.Trim(), " FOR ", Q(before.Name)));
         }
 
         if (!string.Equals(before.Comment ?? string.Empty, after.Comment ?? string.Empty, StringComparison.Ordinal))
@@ -156,17 +163,19 @@ internal static class SqlServerDdl
 
     /// <summary>
     /// SQL Server refuses to drop a column, or change its default, while a default constraint is bound to it, and the
-    /// constraint's name is whatever the server generated, so the batch looks it up.
+    /// constraint's name is whatever the server generated, so the batch looks it up. The statement is built into a
+    /// variable first: <c>EXEC (...)</c> takes only literals and variables, and a QUOTENAME inside it is a syntax error.
     /// </summary>
     public static string DropDefaultConstraint(ObjectName table, string column)
     {
         var qualified = Dialect.Qualify(table);
         return string.Concat(
-            "DECLARE @constraint sysname;\n",
+            "DECLARE @constraint sysname, @drop nvarchar(max);\n",
             "SELECT @constraint = dc.name FROM sys.default_constraints dc\n",
             "JOIN sys.columns c ON c.object_id = dc.parent_object_id AND c.column_id = dc.parent_column_id\n",
             "WHERE dc.parent_object_id = OBJECT_ID(", Literal(qualified), ") AND c.name = ", Literal(column), ";\n",
-            "IF @constraint IS NOT NULL EXEC (N'ALTER TABLE ' + ", Literal(qualified), " + N' DROP CONSTRAINT ' + QUOTENAME(@constraint));");
+            "SET @drop = N'ALTER TABLE ' + ", Literal(qualified), " + N' DROP CONSTRAINT ' + QUOTENAME(@constraint);\n",
+            "IF @drop IS NOT NULL EXEC sys.sp_executesql @drop;");
     }
 
     public static string CreateIndex(ObjectName table, IndexDefinition index) =>

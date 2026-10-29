@@ -27,8 +27,10 @@ internal static class ClickHouseCatalog
         ORDER BY position
         """;
 
+    // The first alias is not "name": ClickHouse resolves an alias in WHERE before a column, so the filter on the table's
+    // name would compare the literal 'PRIMARY' and the sorting key would never be listed.
     public const string Indexes = """
-        SELECT 'PRIMARY' AS name, 'sorting key' AS type, sorting_key AS expr, 1 AS is_primary
+        SELECT 'PRIMARY' AS index_name, 'sorting key' AS type, sorting_key AS expr, 1 AS is_primary
         FROM system.tables
         WHERE database = {db:String} AND name = {table:String} AND sorting_key != ''
         UNION ALL

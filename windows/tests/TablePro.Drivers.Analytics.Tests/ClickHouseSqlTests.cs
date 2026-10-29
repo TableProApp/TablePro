@@ -26,6 +26,17 @@ public sealed class ClickHouseSqlTests
     }
 
     [Fact]
+    public void CatalogAliasesNeverShadowAColumnTheirFilterReads()
+    {
+        // ClickHouse reads an alias in WHERE before the column of that name, so `'PRIMARY' AS name` turned
+        // `name = {table:String}` into a comparison with the literal and hid every sorting key.
+        var primaryBranch = ClickHouseCatalog.Indexes[..ClickHouseCatalog.Indexes.IndexOf("UNION ALL", StringComparison.Ordinal)];
+
+        Assert.DoesNotContain("AS name", primaryBranch, StringComparison.Ordinal);
+        Assert.Contains("name = {table:String}", primaryBranch, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void CountParametersAreRewrittenToo()
     {
         var filter = new BrowseFilter([new FilterRule("id", FilterOperator.Between, "1", "9")]);

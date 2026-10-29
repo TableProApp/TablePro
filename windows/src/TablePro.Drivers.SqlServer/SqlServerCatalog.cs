@@ -2,7 +2,10 @@ namespace TablePro.Drivers.SqlServer;
 
 /// <summary>
 /// Catalog reads against the <c>sys</c> views, bound to <c>@schema</c> and <c>@table</c>. Lists are built with
-/// FOR XML PATH rather than STRING_AGG so the queries run on SQL Server 2012 and later.
+/// FOR XML PATH rather than STRING_AGG so the queries run on SQL Server 2012 and later. Catalog text such as
+/// <c>collation_name</c> and the <c>_desc</c> columns is in Latin1_General_CI_AS_KS_WS while names are in the database's
+/// collation, so text built from both takes COLLATE DATABASE_DEFAULT: a conflict is a compile error that fails the whole
+/// query even when no row would use it, which on a default install failed every table definition.
 /// </summary>
 internal static class SqlServerCatalog
 {
@@ -107,7 +110,7 @@ internal static class SqlServerCatalog
                          + CASE WHEN c.collation_name IS NOT NULL
                                  AND c.collation_name COLLATE DATABASE_DEFAULT
                                      <> CAST(DATABASEPROPERTYEX(DB_NAME(), 'Collation') AS sysname) COLLATE DATABASE_DEFAULT
-                                THEN N' COLLATE ' + c.collation_name ELSE N'' END
+                                THEN N' COLLATE ' + c.collation_name COLLATE DATABASE_DEFAULT ELSE N'' END
                          + CASE WHEN c.is_nullable = 1 THEN N' NULL' ELSE N' NOT NULL' END
                          + CASE WHEN dc.definition IS NOT NULL
                                 THEN N' CONSTRAINT ' + QUOTENAME(dc.name) + N' DEFAULT ' + dc.definition ELSE N'' END
@@ -154,8 +157,8 @@ internal static class SqlServerCatalog
                         WHERE k.constraint_object_id = fk.object_id ORDER BY k.constraint_column_id
                         FOR XML PATH(''), TYPE).value('.', 'nvarchar(max)'), 1, 2, N'')
                + N')'
-               + CASE WHEN fk.delete_referential_action <> 0 THEN N' ON DELETE ' + REPLACE(fk.delete_referential_action_desc, N'_', N' ') ELSE N'' END
-               + CASE WHEN fk.update_referential_action <> 0 THEN N' ON UPDATE ' + REPLACE(fk.update_referential_action_desc, N'_', N' ') ELSE N'' END
+               + CASE WHEN fk.delete_referential_action <> 0 THEN N' ON DELETE ' + REPLACE(fk.delete_referential_action_desc COLLATE DATABASE_DEFAULT, N'_', N' ') ELSE N'' END
+               + CASE WHEN fk.update_referential_action <> 0 THEN N' ON UPDATE ' + REPLACE(fk.update_referential_action_desc COLLATE DATABASE_DEFAULT, N'_', N' ') ELSE N'' END
         FROM sys.foreign_keys fk
         WHERE fk.parent_object_id = {{ObjectId}}
         ORDER BY fk.name

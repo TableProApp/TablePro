@@ -11,6 +11,17 @@ public sealed class PostgreSqlTests
     private static readonly ObjectName Orders = new("sales", "orders");
 
     [Fact]
+    public void TextValuesAreBoundUntypedSoTheServerReadsThemAsTheColumnsType()
+    {
+        // Typed as text, a value for a jsonb, uuid or enum column fails with 42804 and one compared with an integer
+        // column with 42883.
+        Assert.Equal(NpgsqlTypes.NpgsqlDbType.Unknown, PostgreSqlSession.Parameter("@p0", """{"a":1}""").NpgsqlDbType);
+        Assert.Equal(NpgsqlTypes.NpgsqlDbType.Unknown, PostgreSqlSession.Parameter("@p0", 'x').NpgsqlDbType);
+        Assert.Equal(5, PostgreSqlSession.Parameter("@p0", 5).Value);
+        Assert.Equal(DBNull.Value, PostgreSqlSession.Parameter("@p0", null).Value);
+    }
+
+    [Fact]
     public void ConnectionStringUsesTheRequestEndpointAndProfileSettings()
     {
         var builder = new NpgsqlConnectionStringBuilder(PostgreSqlConnectionStringFactory.Build(Profiles.Request(DatabaseEngine.PostgreSql)));
