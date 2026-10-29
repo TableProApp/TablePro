@@ -343,4 +343,205 @@
   <data name="UpdateChangedRows" xml:space="preserve">
     <value>Cập nhật các dòng đã thay đổi</value>
   </data>
+  <data name="NoSharedTables" xml:space="preserve">
+    <value>Hai bên không có bảng chung nào.</value>
+  </data>
+  <data name="NothingIncluded" xml:space="preserve">
+    <value>Chưa so sánh gì. Hãy đánh dấu các bảng cần so sánh rồi nhấn So sánh.</value>
+  </data>
+  <data name="TablesProgress" xml:space="preserve">
+    <value>Bảng {0}/{1}: {2}, đã đọc {3:N0} dòng…</value>
+  </data>
+  <data name="NothingToSyncTablesMessage" xml:space="preserve">
+    <value>Không bảng nào đã so sánh có khác biệt mà lần đồng bộ này sẽ ghi. Hãy so sánh các bảng trước, hoặc bật các loại thay đổi cần ghi.</value>
+  </data>
+  <data name="SyncTablesReviewTitle" xml:space="preserve">
+    <value>Đồng bộ {0} bảng: {1:N0} lệnh chèn, {2:N0} lệnh cập nhật, {3:N0} lệnh xoá</value>
+  </data>
+  <data name="SyncedTables_One" xml:space="preserve">
+    <value>Đã đồng bộ {1} bảng: {0:N0} dòng.</value>
+  </data>
+  <data name="SyncedTables_Other" xml:space="preserve">
+    <value>Đã đồng bộ {1} bảng: {0:N0} dòng.</value>
+  </data>
+  <data name="TablesCommitNote" xml:space="preserve">
+    <value>Lệnh chèn, cập nhật và xoá của mỗi bảng được commit riêng, theo thứ tự khoá ngoại. Khi có lỗi, việc đồng bộ dừng lại và giữ nguyên các bảng đã xử lý trước đó.</value>
+  </data>
+  <data name="OnlyInSourceTable" xml:space="preserve">
+    <value>{0} (chỉ có ở nguồn)</value>
+  </data>
+  <data name="OnlyInTargetTable" xml:space="preserve">
+    <value>{0} (chỉ có ở đích)</value>
+  </data>
+  <data name="UnpairedTables" xml:space="preserve">
+    <value>Không ghép được: {0}</value>
+  </data>
+  <data name="TablesSummary" xml:space="preserve">
+    <value>Đã so sánh {0:N0} bảng · {1:N0} cần chèn · {2:N0} cần cập nhật · {3:N0} cần xoá · {4:N0} bảng giống nhau</value>
+  </data>
+  <data name="TablesWithProblems_One" xml:space="preserve">
+    <value>{0:N0} bảng không so sánh được</value>
+  </data>
+  <data name="TablesWithProblems_Other" xml:space="preserve">
+    <value>{0:N0} bảng không so sánh được</value>
+  </data>
+  <data name="ReplaceProfileTitle" xml:space="preserve">
+    <value>Thay thế so sánh đã lưu?</value>
+  </data>
+  <data name="ReplaceProfileMessage" xml:space="preserve">
+    <value>Đã có một so sánh tên {0}. Thay bằng thiết lập này?</value>
+  </data>
+  <data name="ReplaceProfileButton" xml:space="preserve">
+    <value>Thay thế</value>
+  </data>
+  <data name="ProfileSaved" xml:space="preserve">
+    <value>Đã lưu {0}.</value>
+  </data>
+  <data name="CouldNotSaveProfileTitle" xml:space="preserve">
+    <value>Không thể lưu so sánh</value>
+  </data>
+  <data name="CouldNotLoadProfileTitle" xml:space="preserve">
+    <value>Không thể tải so sánh</value>
+  </data>
+  <data name="ProfileMissingConnection" xml:space="preserve">
+    <value>{0} trỏ đến một kết nối không còn tồn tại.</value>
+  </data>
+  <data name="ProfileLoaded" xml:space="preserve">
+    <value>Đã tải {0}. Nhấn So sánh để chạy.</value>
+  </data>
+  <data name="DeleteProfileTitle" xml:space="preserve">
+    <value>Xoá so sánh đã lưu?</value>
+  </data>
+  <data name="DeleteProfileMessage" xml:space="preserve">
+    <value>{0} sẽ bị gỡ khỏi các so sánh đã lưu.</value>
+  </data>
+  <data name="ScopeOneTable" xml:space="preserve">
+    <value>Một bảng</value>
+  </data>
+  <data name="ScopeChosenTables" xml:space="preserve">
+    <value>Các bảng đã chọn</value>
+  </data>
+  <data name="ScopeWholeSchema" xml:space="preserve">
+    <value>Toàn bộ schema</value>
+  </data>
+  <data name="ProfileTableCount_One" xml:space="preserve">
+    <value>{0:N0} bảng</value>
+  </data>
+  <data name="ProfileTableCount_Other" xml:space="preserve">
+    <value>{0:N0} bảng</value>
+  </data>
+  <data name="ProfileDescription" xml:space="preserve">
+    <value>{0} → {1}, {2}</value>
+  </data>
+  <data name="MissingConnection" xml:space="preserve">
+    <value>Thiếu kết nối</value>
+  </data>
+  <data name="ProfileDatabaseMoved" xml:space="preserve">
+    <value>{0} được lưu với cơ sở dữ liệu {1} và giờ mở {2}. Phép so sánh dùng {2}.</value>
+  </data>
+  <data name="SourceConnection" xml:space="preserve">
+    <value>Kết nối nguồn</value>
+  </data>
+  <data name="Schema" xml:space="preserve">
+    <value>Schema</value>
+  </data>
+  <data name="SourceSchema" xml:space="preserve">
+    <value>Schema nguồn</value>
+  </data>
+  <data name="TargetSchema" xml:space="preserve">
+    <value>Schema đích</value>
+  </data>
+  <data name="Scope" xml:space="preserve">
+    <value>Phạm vi</value>
+  </data>
+  <data name="CompareTablesButton" xml:space="preserve">
+    <value>So sánh các bảng</value>
+  </data>
+  <data name="AllTables" xml:space="preserve">
+    <value>Tất cả bảng</value>
+  </data>
+  <data name="IncludeAll" xml:space="preserve">
+    <value>Bao gồm tất cả</value>
+  </data>
+  <data name="IncludeNone" xml:space="preserve">
+    <value>Bỏ chọn tất cả</value>
+  </data>
+  <data name="TablesListName" xml:space="preserve">
+    <value>Các bảng cần so sánh</value>
+  </data>
+  <data name="ScopeKey" xml:space="preserve">
+    <value>Khoá: {0}</value>
+  </data>
+  <data name="ScopePrimaryKey" xml:space="preserve">
+    <value>Khoá chính</value>
+  </data>
+  <data name="ScopeLeftOut_One" xml:space="preserve">
+    <value>Bỏ qua {0:N0} cột</value>
+  </data>
+  <data name="ScopeLeftOut_Other" xml:space="preserve">
+    <value>Bỏ qua {0:N0} cột</value>
+  </data>
+  <data name="ScopeFiltered" xml:space="preserve">
+    <value>Đã lọc</value>
+  </data>
+  <data name="ScopeFirstRows" xml:space="preserve">
+    <value>{0:N0} dòng đầu</value>
+  </data>
+  <data name="TableComparing" xml:space="preserve">
+    <value>Đang so sánh…</value>
+  </data>
+  <data name="NotCompared" xml:space="preserve">
+    <value>Chưa so sánh</value>
+  </data>
+  <data name="TableSame_One" xml:space="preserve">
+    <value>Giống nhau, {0:N0} dòng</value>
+  </data>
+  <data name="TableSame_Other" xml:space="preserve">
+    <value>Giống nhau, {0:N0} dòng</value>
+  </data>
+  <data name="TableCounts" xml:space="preserve">
+    <value>{0:N0} cần chèn · {1:N0} cần cập nhật · {2:N0} cần xoá · {3:N0} giống nhau</value>
+  </data>
+  <data name="RowsSkipped_One" xml:space="preserve">
+    <value>Đã bỏ qua {0:N0} dòng</value>
+  </data>
+  <data name="RowsSkipped_Other" xml:space="preserve">
+    <value>Đã bỏ qua {0:N0} dòng</value>
+  </data>
+  <data name="TooManyToSync" xml:space="preserve">
+    <value>quá nhiều khác biệt để đồng bộ</value>
+  </data>
+  <data name="SameFilterForTarget" xml:space="preserve">
+    <value>Dùng cùng bộ lọc cho đích</value>
+  </data>
+  <data name="ScopeNote" xml:space="preserve">
+    <value>Bộ lọc và giới hạn dòng chỉ đọc những dòng chúng chọn, ở cả hai bên.</value>
+  </data>
+  <data name="ShowRows" xml:space="preserve">
+    <value>Xem các dòng</value>
+  </data>
+  <data name="IncludeTable" xml:space="preserve">
+    <value>Bao gồm {0}</value>
+  </data>
+  <data name="EditScope" xml:space="preserve">
+    <value>Phạm vi…</value>
+  </data>
+  <data name="SavedComparisons" xml:space="preserve">
+    <value>So sánh đã lưu</value>
+  </data>
+  <data name="NothingSaved" xml:space="preserve">
+    <value>Chưa lưu gì.</value>
+  </data>
+  <data name="SaveComparison" xml:space="preserve">
+    <value>Lưu so sánh…</value>
+  </data>
+  <data name="DeleteComparison" xml:space="preserve">
+    <value>Xoá so sánh đã lưu</value>
+  </data>
+  <data name="SaveComparisonTitle" xml:space="preserve">
+    <value>Lưu so sánh</value>
+  </data>
+  <data name="SaveComparisonLabel" xml:space="preserve">
+    <value>Tên</value>
+  </data>
 </root>

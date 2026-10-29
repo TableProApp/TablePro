@@ -751,7 +751,7 @@ public sealed partial class WorkspaceWindow : Window
         }
 
         var endpoints = new CompareEndpoints(app, ViewModel.Context.Dialogs);
-        var tab = new CompareTabViewModel(ViewModel.Context, endpoints.Profiles, (profile, token) => endpoints.OpenAsync(profile, ViewModel.Session, token), table);
+        var tab = new CompareTabViewModel(ViewModel.Context, endpoints, table);
         ViewModel.Tabs.Add(tab);
         ViewModel.SelectedTab = tab;
     }

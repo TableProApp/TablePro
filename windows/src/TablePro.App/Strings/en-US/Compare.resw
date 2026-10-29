@@ -430,4 +430,266 @@
     <value>Update changed rows</value>
     <comment>Check box in the compare options.</comment>
   </data>
+  <data name="NoSharedTables" xml:space="preserve">
+    <value>The two sides share no tables.</value>
+    <comment>Shown when the two sides of a multi-table comparison have no table in common.</comment>
+  </data>
+  <data name="NothingIncluded" xml:space="preserve">
+    <value>Nothing was compared. Tick the tables to compare, then press Compare.</value>
+    <comment>Status when Compare is pressed with no table ticked.</comment>
+  </data>
+  <data name="TablesProgress" xml:space="preserve">
+    <value>Table {0} of {1}: {2}, {3:N0} rows read…</value>
+    <comment>{0} is the table's position, {1} the number of tables, {2} the table name, {3} the rows read so far.</comment>
+  </data>
+  <data name="NothingToSyncTablesMessage" xml:space="preserve">
+    <value>No compared table has a difference this sync would write. Compare the tables first, or turn on the kinds of change to write.</value>
+    <comment>Shown when a multi-table sync would write nothing.</comment>
+  </data>
+  <data name="SyncTablesReviewTitle" xml:space="preserve">
+    <value>Sync {0} tables: {1:N0} inserts, {2:N0} updates, {3:N0} deletes</value>
+    <comment>Title of the review sheet for a multi-table sync. {0} is the number of tables.</comment>
+  </data>
+  <data name="SyncedTables_One" xml:space="preserve">
+    <value>Synced {1} tables: {0:N0} row.</value>
+    <comment>{0} is the number of rows written, {1} the number of tables.</comment>
+  </data>
+  <data name="SyncedTables_Other" xml:space="preserve">
+    <value>Synced {1} tables: {0:N0} rows.</value>
+    <comment>{0} is the number of rows written, {1} the number of tables.</comment>
+  </data>
+  <data name="TablesCommitNote" xml:space="preserve">
+    <value>Each table's inserts, updates and deletes commit on their own, in foreign key order. A failure stops the sync and keeps the tables before it.</value>
+    <comment>Note in the review sheet of a multi-table sync.</comment>
+  </data>
+  <data name="OnlyInSourceTable" xml:space="preserve">
+    <value>{0} (source only)</value>
+    <comment>{0} is a table that only the source has.</comment>
+  </data>
+  <data name="OnlyInTargetTable" xml:space="preserve">
+    <value>{0} (target only)</value>
+    <comment>{0} is a table that only the target has.</comment>
+  </data>
+  <data name="UnpairedTables" xml:space="preserve">
+    <value>Not paired: {0}</value>
+    <comment>{0} lists the tables only one side has.</comment>
+  </data>
+  <data name="TablesSummary" xml:space="preserve">
+    <value>{0:N0} tables compared · {1:N0} to insert · {2:N0} to update · {3:N0} to delete · {4:N0} tables identical</value>
+    <comment>Summary after a multi-table comparison.</comment>
+  </data>
+  <data name="TablesWithProblems_One" xml:space="preserve">
+    <value>{0:N0} table could not be compared</value>
+    <comment>Appended to the multi-table summary.</comment>
+  </data>
+  <data name="TablesWithProblems_Other" xml:space="preserve">
+    <value>{0:N0} tables could not be compared</value>
+    <comment>Appended to the multi-table summary.</comment>
+  </data>
+  <data name="ReplaceProfileTitle" xml:space="preserve">
+    <value>Replace saved comparison?</value>
+  </data>
+  <data name="ReplaceProfileMessage" xml:space="preserve">
+    <value>A comparison named {0} is already saved. Replace it with this setup?</value>
+    <comment>{0} is the name of a saved comparison.</comment>
+  </data>
+  <data name="ReplaceProfileButton" xml:space="preserve">
+    <value>Replace</value>
+    <comment>Button (verb).</comment>
+  </data>
+  <data name="ProfileSaved" xml:space="preserve">
+    <value>Saved {0}.</value>
+    <comment>{0} is the name of a saved comparison.</comment>
+  </data>
+  <data name="CouldNotSaveProfileTitle" xml:space="preserve">
+    <value>Could not save the comparison</value>
+  </data>
+  <data name="CouldNotLoadProfileTitle" xml:space="preserve">
+    <value>Could not load the comparison</value>
+  </data>
+  <data name="ProfileMissingConnection" xml:space="preserve">
+    <value>{0} names a connection that no longer exists.</value>
+    <comment>{0} is the name of a saved comparison.</comment>
+  </data>
+  <data name="ProfileLoaded" xml:space="preserve">
+    <value>Loaded {0}. Press Compare to run it.</value>
+    <comment>{0} is the name of a saved comparison.</comment>
+  </data>
+  <data name="DeleteProfileTitle" xml:space="preserve">
+    <value>Delete saved comparison?</value>
+  </data>
+  <data name="DeleteProfileMessage" xml:space="preserve">
+    <value>{0} will be removed from the saved comparisons.</value>
+    <comment>{0} is the name of a saved comparison.</comment>
+  </data>
+  <data name="ScopeOneTable" xml:space="preserve">
+    <value>One table</value>
+    <comment>Choice in the compare scope picker.</comment>
+  </data>
+  <data name="ScopeChosenTables" xml:space="preserve">
+    <value>Chosen tables</value>
+    <comment>Choice in the compare scope picker.</comment>
+  </data>
+  <data name="ScopeWholeSchema" xml:space="preserve">
+    <value>Whole schema</value>
+    <comment>Choice in the compare scope picker: every table both sides share.</comment>
+  </data>
+  <data name="ProfileTableCount_One" xml:space="preserve">
+    <value>{0:N0} table</value>
+    <comment>Part of a saved comparison's description.</comment>
+  </data>
+  <data name="ProfileTableCount_Other" xml:space="preserve">
+    <value>{0:N0} tables</value>
+    <comment>Part of a saved comparison's description.</comment>
+  </data>
+  <data name="ProfileDescription" xml:space="preserve">
+    <value>{0} → {1}, {2}</value>
+    <comment>Tooltip of a saved comparison. {0} is the source, {1} the target, {2} the mode or scope.</comment>
+  </data>
+  <data name="MissingConnection" xml:space="preserve">
+    <value>Missing connection</value>
+    <comment>Shown for a saved comparison whose connection was deleted.</comment>
+  </data>
+  <data name="ProfileDatabaseMoved" xml:space="preserve">
+    <value>{0} was saved against database {1} and now opens {2}. The comparison uses {2}.</value>
+    <comment>{0} is a connection name, {1} the database it was saved against, {2} the database it opens now.</comment>
+  </data>
+  <data name="SourceConnection" xml:space="preserve">
+    <value>Source connection</value>
+    <comment>Placeholder and accessible name of the source connection picker.</comment>
+  </data>
+  <data name="Schema" xml:space="preserve">
+    <value>Schema</value>
+    <comment>Placeholder of a schema picker.</comment>
+  </data>
+  <data name="SourceSchema" xml:space="preserve">
+    <value>Source schema</value>
+    <comment>Accessible name of the source schema picker.</comment>
+  </data>
+  <data name="TargetSchema" xml:space="preserve">
+    <value>Target schema</value>
+    <comment>Accessible name of the target schema picker.</comment>
+  </data>
+  <data name="Scope" xml:space="preserve">
+    <value>Scope</value>
+    <comment>Accessible name of the compare scope picker.</comment>
+  </data>
+  <data name="CompareTablesButton" xml:space="preserve">
+    <value>Compare tables</value>
+    <comment>Button (verb) that compares every included table.</comment>
+  </data>
+  <data name="AllTables" xml:space="preserve">
+    <value>All tables</value>
+    <comment>Button that goes back from one table's rows to the list of tables.</comment>
+  </data>
+  <data name="IncludeAll" xml:space="preserve">
+    <value>Include all</value>
+    <comment>Button that ticks every table.</comment>
+  </data>
+  <data name="IncludeNone" xml:space="preserve">
+    <value>Include none</value>
+    <comment>Button that unticks every table.</comment>
+  </data>
+  <data name="TablesListName" xml:space="preserve">
+    <value>Tables to compare</value>
+    <comment>Accessible name of the list of tables to compare.</comment>
+  </data>
+  <data name="ScopeKey" xml:space="preserve">
+    <value>Key: {0}</value>
+    <comment>{0} lists the key columns of a table.</comment>
+  </data>
+  <data name="ScopePrimaryKey" xml:space="preserve">
+    <value>Primary key</value>
+    <comment>A table is matched on its primary key.</comment>
+  </data>
+  <data name="ScopeLeftOut_One" xml:space="preserve">
+    <value>{0:N0} column left out</value>
+  </data>
+  <data name="ScopeLeftOut_Other" xml:space="preserve">
+    <value>{0:N0} columns left out</value>
+  </data>
+  <data name="ScopeFiltered" xml:space="preserve">
+    <value>Filtered</value>
+    <comment>A table's rows are narrowed by a filter.</comment>
+  </data>
+  <data name="ScopeFirstRows" xml:space="preserve">
+    <value>First {0:N0} rows</value>
+    <comment>{0} is a row limit.</comment>
+  </data>
+  <data name="TableComparing" xml:space="preserve">
+    <value>Comparing…</value>
+    <comment>Shown on a table's row while it is compared.</comment>
+  </data>
+  <data name="NotCompared" xml:space="preserve">
+    <value>Not compared</value>
+    <comment>Shown on a table's row before a run.</comment>
+  </data>
+  <data name="TableSame_One" xml:space="preserve">
+    <value>Identical, {0:N0} row</value>
+    <comment>A compared table with no differences.</comment>
+  </data>
+  <data name="TableSame_Other" xml:space="preserve">
+    <value>Identical, {0:N0} rows</value>
+    <comment>A compared table with no differences.</comment>
+  </data>
+  <data name="TableCounts" xml:space="preserve">
+    <value>{0:N0} to insert · {1:N0} to update · {2:N0} to delete · {3:N0} identical</value>
+    <comment>A compared table's counts.</comment>
+  </data>
+  <data name="RowsSkipped_One" xml:space="preserve">
+    <value>{0:N0} row skipped</value>
+    <comment>Rows the user left out of a table's sync.</comment>
+  </data>
+  <data name="RowsSkipped_Other" xml:space="preserve">
+    <value>{0:N0} rows skipped</value>
+    <comment>Rows the user left out of a table's sync.</comment>
+  </data>
+  <data name="TooManyToSync" xml:space="preserve">
+    <value>too many differences to sync</value>
+    <comment>A table found more differences than a sync can review.</comment>
+  </data>
+  <data name="SameFilterForTarget" xml:space="preserve">
+    <value>Use the same filter for the target</value>
+    <comment>Check box in a table's scope editor.</comment>
+  </data>
+  <data name="ScopeNote" xml:space="preserve">
+    <value>A filter and a row limit read only the rows they select, on both sides.</value>
+    <comment>Explanation in a table's scope editor.</comment>
+  </data>
+  <data name="ShowRows" xml:space="preserve">
+    <value>Show rows</value>
+    <comment>Button that shows one table's row differences.</comment>
+  </data>
+  <data name="IncludeTable" xml:space="preserve">
+    <value>Include {0}</value>
+    <comment>Accessible name of a table's check box. {0} is the table name.</comment>
+  </data>
+  <data name="EditScope" xml:space="preserve">
+    <value>Scope…</value>
+    <comment>Button that opens a table's scope editor.</comment>
+  </data>
+  <data name="SavedComparisons" xml:space="preserve">
+    <value>Saved comparisons</value>
+    <comment>Menu button listing saved comparison setups.</comment>
+  </data>
+  <data name="NothingSaved" xml:space="preserve">
+    <value>Nothing saved yet.</value>
+    <comment>Disabled menu item when no comparison is saved.</comment>
+  </data>
+  <data name="SaveComparison" xml:space="preserve">
+    <value>Save comparison…</value>
+    <comment>Menu item.</comment>
+  </data>
+  <data name="DeleteComparison" xml:space="preserve">
+    <value>Delete saved comparison</value>
+    <comment>Menu item that lists saved comparisons to delete.</comment>
+  </data>
+  <data name="SaveComparisonTitle" xml:space="preserve">
+    <value>Save comparison</value>
+    <comment>Title of the dialog that names a comparison to save.</comment>
+  </data>
+  <data name="SaveComparisonLabel" xml:space="preserve">
+    <value>Name</value>
+    <comment>Label of the name field when saving a comparison.</comment>
+  </data>
 </root>

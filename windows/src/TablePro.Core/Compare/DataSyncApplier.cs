@@ -70,6 +70,57 @@ public static class DataSyncApplier
         return new DataSyncApplyResult(applied, affected, committed, totalBatches, null);
     }
 
+    /// <summary>
+    /// Runs a combined plan segment by segment, in its foreign-key order. The session contract saves one table per
+    /// transaction, so each segment commits on its own (or in batches); a failure stops the run and the segments
+    /// before it stay applied, which the review sheet says before anything runs.
+    /// </summary>
+    public static async Task<DataSyncApplyResult> ApplyAsync(
+        IDatabaseSession target,
+        CombinedSyncPlan plan,
+        DataSyncApplyOptions? options = null,
+        IProgress<DataSyncProgress>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+        ArgumentNullException.ThrowIfNull(plan);
+        options ??= new DataSyncApplyOptions();
+        ArgumentOutOfRangeException.ThrowIfLessThan(options.BatchSize, 1);
+
+        var total = plan.StepCount;
+        var totalBatches = plan.Segments.Sum(s => options.SingleTransaction ? 1 : (s.Steps.Count + options.BatchSize - 1) / options.BatchSize);
+        var applied = 0;
+        var affected = 0;
+        var committed = 0;
+        progress?.Report(new DataSyncProgress(0, total));
+
+        foreach (var segment in plan.Segments)
+        {
+            var changes = segment.Changes;
+            var batchSize = options.SingleTransaction ? changes.Count : options.BatchSize;
+            for (var start = 0; start < changes.Count; start += batchSize)
+            {
+                var count = Math.Min(batchSize, changes.Count - start);
+                var batch = start == 0 && count == changes.Count ? changes : Slice(changes, start, count);
+                try
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    affected += await target.SaveChangesAsync(segment.Table, batch, cancellationToken);
+                }
+                catch (Exception ex) when (ex is not OutOfMemoryException)
+                {
+                    return new DataSyncApplyResult(applied, affected, committed, totalBatches, ex);
+                }
+
+                applied += count;
+                committed++;
+                progress?.Report(new DataSyncProgress(applied, total));
+            }
+        }
+
+        return new DataSyncApplyResult(applied, affected, committed, totalBatches, null);
+    }
+
     private static RowChange[] Slice(IReadOnlyList<RowChange> changes, int start, int count)
     {
         var slice = new RowChange[count];

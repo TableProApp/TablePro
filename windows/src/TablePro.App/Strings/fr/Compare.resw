@@ -343,4 +343,205 @@
   <data name="UpdateChangedRows" xml:space="preserve">
     <value>Mettre à jour les lignes modifiées</value>
   </data>
+  <data name="NoSharedTables" xml:space="preserve">
+    <value>Les deux côtés n’ont aucune table en commun.</value>
+  </data>
+  <data name="NothingIncluded" xml:space="preserve">
+    <value>Rien n’a été comparé. Cochez les tables à comparer, puis appuyez sur Comparer.</value>
+  </data>
+  <data name="TablesProgress" xml:space="preserve">
+    <value>Table {0} sur {1} : {2}, {3:N0} lignes lues…</value>
+  </data>
+  <data name="NothingToSyncTablesMessage" xml:space="preserve">
+    <value>Aucune table comparée ne présente de différence que cette synchronisation écrirait. Comparez d’abord les tables, ou activez les types de modification à écrire.</value>
+  </data>
+  <data name="SyncTablesReviewTitle" xml:space="preserve">
+    <value>Synchroniser {0} tables : {1:N0} insertions, {2:N0} mises à jour, {3:N0} suppressions</value>
+  </data>
+  <data name="SyncedTables_One" xml:space="preserve">
+    <value>{1} tables synchronisées : {0:N0} ligne.</value>
+  </data>
+  <data name="SyncedTables_Other" xml:space="preserve">
+    <value>{1} tables synchronisées : {0:N0} lignes.</value>
+  </data>
+  <data name="TablesCommitNote" xml:space="preserve">
+    <value>Les insertions, mises à jour et suppressions de chaque table sont validées séparément, dans l’ordre des clés étrangères. Une erreur arrête la synchronisation et conserve les tables traitées avant elle.</value>
+  </data>
+  <data name="OnlyInSourceTable" xml:space="preserve">
+    <value>{0} (source uniquement)</value>
+  </data>
+  <data name="OnlyInTargetTable" xml:space="preserve">
+    <value>{0} (cible uniquement)</value>
+  </data>
+  <data name="UnpairedTables" xml:space="preserve">
+    <value>Non appariées : {0}</value>
+  </data>
+  <data name="TablesSummary" xml:space="preserve">
+    <value>{0:N0} tables comparées · {1:N0} à insérer · {2:N0} à mettre à jour · {3:N0} à supprimer · {4:N0} tables identiques</value>
+  </data>
+  <data name="TablesWithProblems_One" xml:space="preserve">
+    <value>{0:N0} table n’a pas pu être comparée</value>
+  </data>
+  <data name="TablesWithProblems_Other" xml:space="preserve">
+    <value>{0:N0} tables n’ont pas pu être comparées</value>
+  </data>
+  <data name="ReplaceProfileTitle" xml:space="preserve">
+    <value>Remplacer la comparaison enregistrée ?</value>
+  </data>
+  <data name="ReplaceProfileMessage" xml:space="preserve">
+    <value>Une comparaison nommée {0} est déjà enregistrée. La remplacer par cette configuration ?</value>
+  </data>
+  <data name="ReplaceProfileButton" xml:space="preserve">
+    <value>Remplacer</value>
+  </data>
+  <data name="ProfileSaved" xml:space="preserve">
+    <value>{0} enregistrée.</value>
+  </data>
+  <data name="CouldNotSaveProfileTitle" xml:space="preserve">
+    <value>Impossible d’enregistrer la comparaison</value>
+  </data>
+  <data name="CouldNotLoadProfileTitle" xml:space="preserve">
+    <value>Impossible de charger la comparaison</value>
+  </data>
+  <data name="ProfileMissingConnection" xml:space="preserve">
+    <value>{0} désigne une connexion qui n’existe plus.</value>
+  </data>
+  <data name="ProfileLoaded" xml:space="preserve">
+    <value>{0} chargée. Appuyez sur Comparer pour la lancer.</value>
+  </data>
+  <data name="DeleteProfileTitle" xml:space="preserve">
+    <value>Supprimer la comparaison enregistrée ?</value>
+  </data>
+  <data name="DeleteProfileMessage" xml:space="preserve">
+    <value>{0} sera retirée des comparaisons enregistrées.</value>
+  </data>
+  <data name="ScopeOneTable" xml:space="preserve">
+    <value>Une table</value>
+  </data>
+  <data name="ScopeChosenTables" xml:space="preserve">
+    <value>Tables choisies</value>
+  </data>
+  <data name="ScopeWholeSchema" xml:space="preserve">
+    <value>Schéma entier</value>
+  </data>
+  <data name="ProfileTableCount_One" xml:space="preserve">
+    <value>{0:N0} table</value>
+  </data>
+  <data name="ProfileTableCount_Other" xml:space="preserve">
+    <value>{0:N0} tables</value>
+  </data>
+  <data name="ProfileDescription" xml:space="preserve">
+    <value>{0} → {1}, {2}</value>
+  </data>
+  <data name="MissingConnection" xml:space="preserve">
+    <value>Connexion manquante</value>
+  </data>
+  <data name="ProfileDatabaseMoved" xml:space="preserve">
+    <value>{0} a été enregistrée avec la base {1} et ouvre maintenant {2}. La comparaison utilise {2}.</value>
+  </data>
+  <data name="SourceConnection" xml:space="preserve">
+    <value>Connexion source</value>
+  </data>
+  <data name="Schema" xml:space="preserve">
+    <value>Schéma</value>
+  </data>
+  <data name="SourceSchema" xml:space="preserve">
+    <value>Schéma source</value>
+  </data>
+  <data name="TargetSchema" xml:space="preserve">
+    <value>Schéma cible</value>
+  </data>
+  <data name="Scope" xml:space="preserve">
+    <value>Portée</value>
+  </data>
+  <data name="CompareTablesButton" xml:space="preserve">
+    <value>Comparer les tables</value>
+  </data>
+  <data name="AllTables" xml:space="preserve">
+    <value>Toutes les tables</value>
+  </data>
+  <data name="IncludeAll" xml:space="preserve">
+    <value>Tout inclure</value>
+  </data>
+  <data name="IncludeNone" xml:space="preserve">
+    <value>Ne rien inclure</value>
+  </data>
+  <data name="TablesListName" xml:space="preserve">
+    <value>Tables à comparer</value>
+  </data>
+  <data name="ScopeKey" xml:space="preserve">
+    <value>Clé : {0}</value>
+  </data>
+  <data name="ScopePrimaryKey" xml:space="preserve">
+    <value>Clé primaire</value>
+  </data>
+  <data name="ScopeLeftOut_One" xml:space="preserve">
+    <value>{0:N0} colonne exclue</value>
+  </data>
+  <data name="ScopeLeftOut_Other" xml:space="preserve">
+    <value>{0:N0} colonnes exclues</value>
+  </data>
+  <data name="ScopeFiltered" xml:space="preserve">
+    <value>Filtrée</value>
+  </data>
+  <data name="ScopeFirstRows" xml:space="preserve">
+    <value>{0:N0} premières lignes</value>
+  </data>
+  <data name="TableComparing" xml:space="preserve">
+    <value>Comparaison…</value>
+  </data>
+  <data name="NotCompared" xml:space="preserve">
+    <value>Non comparé</value>
+  </data>
+  <data name="TableSame_One" xml:space="preserve">
+    <value>Identique, {0:N0} ligne</value>
+  </data>
+  <data name="TableSame_Other" xml:space="preserve">
+    <value>Identique, {0:N0} lignes</value>
+  </data>
+  <data name="TableCounts" xml:space="preserve">
+    <value>{0:N0} à insérer · {1:N0} à mettre à jour · {2:N0} à supprimer · {3:N0} identiques</value>
+  </data>
+  <data name="RowsSkipped_One" xml:space="preserve">
+    <value>{0:N0} ligne ignorée</value>
+  </data>
+  <data name="RowsSkipped_Other" xml:space="preserve">
+    <value>{0:N0} lignes ignorées</value>
+  </data>
+  <data name="TooManyToSync" xml:space="preserve">
+    <value>trop de différences pour synchroniser</value>
+  </data>
+  <data name="SameFilterForTarget" xml:space="preserve">
+    <value>Utiliser le même filtre pour la cible</value>
+  </data>
+  <data name="ScopeNote" xml:space="preserve">
+    <value>Un filtre et une limite de lignes ne lisent que les lignes qu’ils sélectionnent, des deux côtés.</value>
+  </data>
+  <data name="ShowRows" xml:space="preserve">
+    <value>Afficher les lignes</value>
+  </data>
+  <data name="IncludeTable" xml:space="preserve">
+    <value>Inclure {0}</value>
+  </data>
+  <data name="EditScope" xml:space="preserve">
+    <value>Portée…</value>
+  </data>
+  <data name="SavedComparisons" xml:space="preserve">
+    <value>Comparaisons enregistrées</value>
+  </data>
+  <data name="NothingSaved" xml:space="preserve">
+    <value>Rien n’est encore enregistré.</value>
+  </data>
+  <data name="SaveComparison" xml:space="preserve">
+    <value>Enregistrer la comparaison…</value>
+  </data>
+  <data name="DeleteComparison" xml:space="preserve">
+    <value>Supprimer une comparaison enregistrée</value>
+  </data>
+  <data name="SaveComparisonTitle" xml:space="preserve">
+    <value>Enregistrer la comparaison</value>
+  </data>
+  <data name="SaveComparisonLabel" xml:space="preserve">
+    <value>Nom</value>
+  </data>
 </root>

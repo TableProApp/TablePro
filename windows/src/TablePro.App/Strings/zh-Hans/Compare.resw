@@ -343,4 +343,205 @@
   <data name="UpdateChangedRows" xml:space="preserve">
     <value>更新已更改的行</value>
   </data>
+  <data name="NoSharedTables" xml:space="preserve">
+    <value>两侧没有共同的表。</value>
+  </data>
+  <data name="NothingIncluded" xml:space="preserve">
+    <value>未比较任何内容。勾选要比较的表，然后点按“比较”。</value>
+  </data>
+  <data name="TablesProgress" xml:space="preserve">
+    <value>第 {0} 个表，共 {1} 个：{2}，已读取 {3:N0} 行…</value>
+  </data>
+  <data name="NothingToSyncTablesMessage" xml:space="preserve">
+    <value>已比较的表中没有此次同步会写入的差异。请先比较这些表，或打开要写入的更改类型。</value>
+  </data>
+  <data name="SyncTablesReviewTitle" xml:space="preserve">
+    <value>同步 {0} 个表：{1:N0} 条插入，{2:N0} 条更新，{3:N0} 条删除</value>
+  </data>
+  <data name="SyncedTables_One" xml:space="preserve">
+    <value>已同步 {1} 个表：{0:N0} 行。</value>
+  </data>
+  <data name="SyncedTables_Other" xml:space="preserve">
+    <value>已同步 {1} 个表：{0:N0} 行。</value>
+  </data>
+  <data name="TablesCommitNote" xml:space="preserve">
+    <value>每个表的插入、更新和删除按外键顺序分别提交。出错时同步会停止，之前的表保持已更改。</value>
+  </data>
+  <data name="OnlyInSourceTable" xml:space="preserve">
+    <value>{0}（仅源端）</value>
+  </data>
+  <data name="OnlyInTargetTable" xml:space="preserve">
+    <value>{0}（仅目标端）</value>
+  </data>
+  <data name="UnpairedTables" xml:space="preserve">
+    <value>未配对：{0}</value>
+  </data>
+  <data name="TablesSummary" xml:space="preserve">
+    <value>已比较 {0:N0} 个表 · {1:N0} 条待插入 · {2:N0} 条待更新 · {3:N0} 条待删除 · {4:N0} 个表相同</value>
+  </data>
+  <data name="TablesWithProblems_One" xml:space="preserve">
+    <value>{0:N0} 个表无法比较</value>
+  </data>
+  <data name="TablesWithProblems_Other" xml:space="preserve">
+    <value>{0:N0} 个表无法比较</value>
+  </data>
+  <data name="ReplaceProfileTitle" xml:space="preserve">
+    <value>替换已保存的比较？</value>
+  </data>
+  <data name="ReplaceProfileMessage" xml:space="preserve">
+    <value>已保存名为 {0} 的比较。要用此设置替换它吗？</value>
+  </data>
+  <data name="ReplaceProfileButton" xml:space="preserve">
+    <value>替换</value>
+  </data>
+  <data name="ProfileSaved" xml:space="preserve">
+    <value>已保存 {0}。</value>
+  </data>
+  <data name="CouldNotSaveProfileTitle" xml:space="preserve">
+    <value>无法保存比较</value>
+  </data>
+  <data name="CouldNotLoadProfileTitle" xml:space="preserve">
+    <value>无法载入比较</value>
+  </data>
+  <data name="ProfileMissingConnection" xml:space="preserve">
+    <value>{0} 指定的连接已不存在。</value>
+  </data>
+  <data name="ProfileLoaded" xml:space="preserve">
+    <value>已载入 {0}。点按“比较”运行它。</value>
+  </data>
+  <data name="DeleteProfileTitle" xml:space="preserve">
+    <value>删除已保存的比较？</value>
+  </data>
+  <data name="DeleteProfileMessage" xml:space="preserve">
+    <value>{0} 将从已保存的比较中移除。</value>
+  </data>
+  <data name="ScopeOneTable" xml:space="preserve">
+    <value>单个表</value>
+  </data>
+  <data name="ScopeChosenTables" xml:space="preserve">
+    <value>所选表</value>
+  </data>
+  <data name="ScopeWholeSchema" xml:space="preserve">
+    <value>整个 Schema</value>
+  </data>
+  <data name="ProfileTableCount_One" xml:space="preserve">
+    <value>{0:N0} 个表</value>
+  </data>
+  <data name="ProfileTableCount_Other" xml:space="preserve">
+    <value>{0:N0} 个表</value>
+  </data>
+  <data name="ProfileDescription" xml:space="preserve">
+    <value>{0} → {1}，{2}</value>
+  </data>
+  <data name="MissingConnection" xml:space="preserve">
+    <value>连接缺失</value>
+  </data>
+  <data name="ProfileDatabaseMoved" xml:space="preserve">
+    <value>{0} 保存时使用数据库 {1}，现在打开的是 {2}。比较将使用 {2}。</value>
+  </data>
+  <data name="SourceConnection" xml:space="preserve">
+    <value>源连接</value>
+  </data>
+  <data name="Schema" xml:space="preserve">
+    <value>Schema</value>
+  </data>
+  <data name="SourceSchema" xml:space="preserve">
+    <value>源 Schema</value>
+  </data>
+  <data name="TargetSchema" xml:space="preserve">
+    <value>目标 Schema</value>
+  </data>
+  <data name="Scope" xml:space="preserve">
+    <value>范围</value>
+  </data>
+  <data name="CompareTablesButton" xml:space="preserve">
+    <value>比较表</value>
+  </data>
+  <data name="AllTables" xml:space="preserve">
+    <value>所有表</value>
+  </data>
+  <data name="IncludeAll" xml:space="preserve">
+    <value>全部包含</value>
+  </data>
+  <data name="IncludeNone" xml:space="preserve">
+    <value>全部不包含</value>
+  </data>
+  <data name="TablesListName" xml:space="preserve">
+    <value>要比较的表</value>
+  </data>
+  <data name="ScopeKey" xml:space="preserve">
+    <value>键：{0}</value>
+  </data>
+  <data name="ScopePrimaryKey" xml:space="preserve">
+    <value>主键</value>
+  </data>
+  <data name="ScopeLeftOut_One" xml:space="preserve">
+    <value>排除 {0:N0} 列</value>
+  </data>
+  <data name="ScopeLeftOut_Other" xml:space="preserve">
+    <value>排除 {0:N0} 列</value>
+  </data>
+  <data name="ScopeFiltered" xml:space="preserve">
+    <value>已筛选</value>
+  </data>
+  <data name="ScopeFirstRows" xml:space="preserve">
+    <value>前 {0:N0} 行</value>
+  </data>
+  <data name="TableComparing" xml:space="preserve">
+    <value>正在比较…</value>
+  </data>
+  <data name="NotCompared" xml:space="preserve">
+    <value>未比较</value>
+  </data>
+  <data name="TableSame_One" xml:space="preserve">
+    <value>相同，{0:N0} 行</value>
+  </data>
+  <data name="TableSame_Other" xml:space="preserve">
+    <value>相同，{0:N0} 行</value>
+  </data>
+  <data name="TableCounts" xml:space="preserve">
+    <value>{0:N0} 条待插入 · {1:N0} 条待更新 · {2:N0} 条待删除 · {3:N0} 条相同</value>
+  </data>
+  <data name="RowsSkipped_One" xml:space="preserve">
+    <value>已跳过 {0:N0} 行</value>
+  </data>
+  <data name="RowsSkipped_Other" xml:space="preserve">
+    <value>已跳过 {0:N0} 行</value>
+  </data>
+  <data name="TooManyToSync" xml:space="preserve">
+    <value>差异过多，无法同步</value>
+  </data>
+  <data name="SameFilterForTarget" xml:space="preserve">
+    <value>对目标使用相同的筛选条件</value>
+  </data>
+  <data name="ScopeNote" xml:space="preserve">
+    <value>筛选条件和行数限制在两侧都只读取它们选中的行。</value>
+  </data>
+  <data name="ShowRows" xml:space="preserve">
+    <value>显示行</value>
+  </data>
+  <data name="IncludeTable" xml:space="preserve">
+    <value>包含 {0}</value>
+  </data>
+  <data name="EditScope" xml:space="preserve">
+    <value>范围…</value>
+  </data>
+  <data name="SavedComparisons" xml:space="preserve">
+    <value>已保存的比较</value>
+  </data>
+  <data name="NothingSaved" xml:space="preserve">
+    <value>尚未保存任何内容。</value>
+  </data>
+  <data name="SaveComparison" xml:space="preserve">
+    <value>保存比较…</value>
+  </data>
+  <data name="DeleteComparison" xml:space="preserve">
+    <value>删除已保存的比较</value>
+  </data>
+  <data name="SaveComparisonTitle" xml:space="preserve">
+    <value>保存比较</value>
+  </data>
+  <data name="SaveComparisonLabel" xml:space="preserve">
+    <value>名称</value>
+  </data>
 </root>

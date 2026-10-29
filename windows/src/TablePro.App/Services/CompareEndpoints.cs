@@ -1,6 +1,7 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using TablePro.Core.Connections;
+using TablePro.Storage.Compare;
 
 namespace TablePro.App.Services;
 
@@ -21,12 +22,15 @@ public sealed class CompareEndpoint(ConnectionSession session, bool owned) : IAs
 }
 
 /// <summary>
-/// Finds or opens the session a compare tab reads its target from. A connection already open in this or another
-/// window is borrowed, so comparing against it costs no second login; any other is connected for the tab alone.
+/// Finds or opens the sessions a compare tab reads from. A connection already open in this or another window is
+/// borrowed, so comparing against it costs no second login; any other is connected for the tab alone.
 /// </summary>
 public sealed class CompareEndpoints(AppHost host, DialogService dialogs)
 {
     public IReadOnlyList<ConnectionProfile> Profiles => host.Connections.Connections;
+
+    /// <summary>The saved comparisons, shared by every compare tab in every window.</summary>
+    public CompareProfileStore ProfileStore => host.CompareProfiles;
 
     public async Task<CompareEndpoint?> OpenAsync(ConnectionProfile profile, ConnectionSession current, CancellationToken cancellationToken)
     {

@@ -343,4 +343,205 @@ Bundan önce {0:N0} ifade çalıştı. İşlemsel DDL desteği olmayan motorlar 
   <data name="UpdateChangedRows" xml:space="preserve">
     <value>Değişen satırları güncelle</value>
   </data>
+  <data name="NoSharedTables" xml:space="preserve">
+    <value>İki tarafın ortak tablosu yok.</value>
+  </data>
+  <data name="NothingIncluded" xml:space="preserve">
+    <value>Hiçbir şey karşılaştırılmadı. Karşılaştırılacak tabloları işaretleyin, ardından Karşılaştır’a basın.</value>
+  </data>
+  <data name="TablesProgress" xml:space="preserve">
+    <value>Tablo {0}/{1}: {2}, {3:N0} satır okundu…</value>
+  </data>
+  <data name="NothingToSyncTablesMessage" xml:space="preserve">
+    <value>Karşılaştırılan hiçbir tabloda bu eşitlemenin yazacağı bir fark yok. Önce tabloları karşılaştırın ya da yazılacak değişiklik türlerini açın.</value>
+  </data>
+  <data name="SyncTablesReviewTitle" xml:space="preserve">
+    <value>{0} tabloyu eşitle: {1:N0} ekleme, {2:N0} güncelleme, {3:N0} silme</value>
+  </data>
+  <data name="SyncedTables_One" xml:space="preserve">
+    <value>{1} tablo eşitlendi: {0:N0} satır.</value>
+  </data>
+  <data name="SyncedTables_Other" xml:space="preserve">
+    <value>{1} tablo eşitlendi: {0:N0} satır.</value>
+  </data>
+  <data name="TablesCommitNote" xml:space="preserve">
+    <value>Her tablonun eklemeleri, güncellemeleri ve silmeleri yabancı anahtar sırasıyla ayrı ayrı işlenir. Bir hata eşitlemeyi durdurur ve ondan önceki tablolar korunur.</value>
+  </data>
+  <data name="OnlyInSourceTable" xml:space="preserve">
+    <value>{0} (yalnızca kaynakta)</value>
+  </data>
+  <data name="OnlyInTargetTable" xml:space="preserve">
+    <value>{0} (yalnızca hedefte)</value>
+  </data>
+  <data name="UnpairedTables" xml:space="preserve">
+    <value>Eşleşmeyen: {0}</value>
+  </data>
+  <data name="TablesSummary" xml:space="preserve">
+    <value>{0:N0} tablo karşılaştırıldı · {1:N0} eklenecek · {2:N0} güncellenecek · {3:N0} silinecek · {4:N0} tablo aynı</value>
+  </data>
+  <data name="TablesWithProblems_One" xml:space="preserve">
+    <value>{0:N0} tablo karşılaştırılamadı</value>
+  </data>
+  <data name="TablesWithProblems_Other" xml:space="preserve">
+    <value>{0:N0} tablo karşılaştırılamadı</value>
+  </data>
+  <data name="ReplaceProfileTitle" xml:space="preserve">
+    <value>Kayıtlı karşılaştırma değiştirilsin mi?</value>
+  </data>
+  <data name="ReplaceProfileMessage" xml:space="preserve">
+    <value>{0} adlı bir karşılaştırma zaten kayıtlı. Bu kurulumla değiştirilsin mi?</value>
+  </data>
+  <data name="ReplaceProfileButton" xml:space="preserve">
+    <value>Değiştir</value>
+  </data>
+  <data name="ProfileSaved" xml:space="preserve">
+    <value>{0} kaydedildi.</value>
+  </data>
+  <data name="CouldNotSaveProfileTitle" xml:space="preserve">
+    <value>Karşılaştırma kaydedilemedi</value>
+  </data>
+  <data name="CouldNotLoadProfileTitle" xml:space="preserve">
+    <value>Karşılaştırma yüklenemedi</value>
+  </data>
+  <data name="ProfileMissingConnection" xml:space="preserve">
+    <value>{0}, artık var olmayan bir bağlantıyı adlandırıyor.</value>
+  </data>
+  <data name="ProfileLoaded" xml:space="preserve">
+    <value>{0} yüklendi. Çalıştırmak için Karşılaştır’a basın.</value>
+  </data>
+  <data name="DeleteProfileTitle" xml:space="preserve">
+    <value>Kayıtlı karşılaştırma silinsin mi?</value>
+  </data>
+  <data name="DeleteProfileMessage" xml:space="preserve">
+    <value>{0} kayıtlı karşılaştırmalardan kaldırılacak.</value>
+  </data>
+  <data name="ScopeOneTable" xml:space="preserve">
+    <value>Tek tablo</value>
+  </data>
+  <data name="ScopeChosenTables" xml:space="preserve">
+    <value>Seçilen tablolar</value>
+  </data>
+  <data name="ScopeWholeSchema" xml:space="preserve">
+    <value>Tüm şema</value>
+  </data>
+  <data name="ProfileTableCount_One" xml:space="preserve">
+    <value>{0:N0} tablo</value>
+  </data>
+  <data name="ProfileTableCount_Other" xml:space="preserve">
+    <value>{0:N0} tablo</value>
+  </data>
+  <data name="ProfileDescription" xml:space="preserve">
+    <value>{0} → {1}, {2}</value>
+  </data>
+  <data name="MissingConnection" xml:space="preserve">
+    <value>Eksik bağlantı</value>
+  </data>
+  <data name="ProfileDatabaseMoved" xml:space="preserve">
+    <value>{0}, {1} veritabanıyla kaydedildi ve artık {2} veritabanını açıyor. Karşılaştırma {2} kullanır.</value>
+  </data>
+  <data name="SourceConnection" xml:space="preserve">
+    <value>Kaynak bağlantı</value>
+  </data>
+  <data name="Schema" xml:space="preserve">
+    <value>Şema</value>
+  </data>
+  <data name="SourceSchema" xml:space="preserve">
+    <value>Kaynak şema</value>
+  </data>
+  <data name="TargetSchema" xml:space="preserve">
+    <value>Hedef şema</value>
+  </data>
+  <data name="Scope" xml:space="preserve">
+    <value>Kapsam</value>
+  </data>
+  <data name="CompareTablesButton" xml:space="preserve">
+    <value>Tabloları karşılaştır</value>
+  </data>
+  <data name="AllTables" xml:space="preserve">
+    <value>Tüm tablolar</value>
+  </data>
+  <data name="IncludeAll" xml:space="preserve">
+    <value>Tümünü dahil et</value>
+  </data>
+  <data name="IncludeNone" xml:space="preserve">
+    <value>Hiçbirini dahil etme</value>
+  </data>
+  <data name="TablesListName" xml:space="preserve">
+    <value>Karşılaştırılacak tablolar</value>
+  </data>
+  <data name="ScopeKey" xml:space="preserve">
+    <value>Anahtar: {0}</value>
+  </data>
+  <data name="ScopePrimaryKey" xml:space="preserve">
+    <value>Birincil anahtar</value>
+  </data>
+  <data name="ScopeLeftOut_One" xml:space="preserve">
+    <value>{0:N0} sütun dışarıda</value>
+  </data>
+  <data name="ScopeLeftOut_Other" xml:space="preserve">
+    <value>{0:N0} sütun dışarıda</value>
+  </data>
+  <data name="ScopeFiltered" xml:space="preserve">
+    <value>Filtrelendi</value>
+  </data>
+  <data name="ScopeFirstRows" xml:space="preserve">
+    <value>İlk {0:N0} satır</value>
+  </data>
+  <data name="TableComparing" xml:space="preserve">
+    <value>Karşılaştırılıyor…</value>
+  </data>
+  <data name="NotCompared" xml:space="preserve">
+    <value>Karşılaştırılmadı</value>
+  </data>
+  <data name="TableSame_One" xml:space="preserve">
+    <value>Aynı, {0:N0} satır</value>
+  </data>
+  <data name="TableSame_Other" xml:space="preserve">
+    <value>Aynı, {0:N0} satır</value>
+  </data>
+  <data name="TableCounts" xml:space="preserve">
+    <value>{0:N0} eklenecek · {1:N0} güncellenecek · {2:N0} silinecek · {3:N0} aynı</value>
+  </data>
+  <data name="RowsSkipped_One" xml:space="preserve">
+    <value>{0:N0} satır atlandı</value>
+  </data>
+  <data name="RowsSkipped_Other" xml:space="preserve">
+    <value>{0:N0} satır atlandı</value>
+  </data>
+  <data name="TooManyToSync" xml:space="preserve">
+    <value>eşitlemek için çok fazla fark var</value>
+  </data>
+  <data name="SameFilterForTarget" xml:space="preserve">
+    <value>Hedef için aynı filtreyi kullan</value>
+  </data>
+  <data name="ScopeNote" xml:space="preserve">
+    <value>Filtre ve satır sınırı, her iki tarafta da yalnızca seçtikleri satırları okur.</value>
+  </data>
+  <data name="ShowRows" xml:space="preserve">
+    <value>Satırları göster</value>
+  </data>
+  <data name="IncludeTable" xml:space="preserve">
+    <value>{0} tablosunu dahil et</value>
+  </data>
+  <data name="EditScope" xml:space="preserve">
+    <value>Kapsam…</value>
+  </data>
+  <data name="SavedComparisons" xml:space="preserve">
+    <value>Kayıtlı karşılaştırmalar</value>
+  </data>
+  <data name="NothingSaved" xml:space="preserve">
+    <value>Henüz kayıtlı bir şey yok.</value>
+  </data>
+  <data name="SaveComparison" xml:space="preserve">
+    <value>Karşılaştırmayı kaydet…</value>
+  </data>
+  <data name="DeleteComparison" xml:space="preserve">
+    <value>Kayıtlı karşılaştırmayı sil</value>
+  </data>
+  <data name="SaveComparisonTitle" xml:space="preserve">
+    <value>Karşılaştırmayı kaydet</value>
+  </data>
+  <data name="SaveComparisonLabel" xml:space="preserve">
+    <value>Ad</value>
+  </data>
 </root>

@@ -12,16 +12,22 @@ using Windows.ApplicationModel.DataTransfer;
 namespace TablePro.App.Views;
 
 /// <summary>
-/// The Compare and Sync tab: a source table on this connection against a target table on any saved connection, or the
-/// two schemas side by side. Differences show in the data grid in its edit colors, and every sync or migration goes
-/// through the review sheet before it runs.
+/// The Compare and Sync tab: a source on any saved connection against a target on any other, compared one table pair
+/// at a time, across a chosen set of tables or the whole schema, or structure against structure. Differences show in
+/// the data grid in its edit colors, and every sync or migration goes through the review sheet before it runs.
 /// </summary>
 public sealed partial class CompareTabView : UserControl
 {
+    private static readonly DataCompareScope[] Scopes = [DataCompareScope.OneTable, DataCompareScope.ChosenTables, DataCompareScope.WholeSchema];
+
     private readonly SelectorBar _modes = new();
+    private readonly ComboBox _sourceConnection = new() { MinWidth = 180, PlaceholderText = Strings.Get("Compare/SourceConnection") };
+    private readonly ComboBox _sourceSchema = new() { MinWidth = 140, PlaceholderText = Strings.Get("Compare/Schema") };
     private readonly ComboBox _sourceTable = new() { MinWidth = 200, PlaceholderText = Strings.Get("Compare/SourceTable") };
     private readonly ComboBox _targetConnection = new() { MinWidth = 180, PlaceholderText = Strings.Get("Compare/TargetConnection") };
+    private readonly ComboBox _targetSchema = new() { MinWidth = 140, PlaceholderText = Strings.Get("Compare/Schema") };
     private readonly ComboBox _targetTable = new() { MinWidth = 200, PlaceholderText = Strings.Get("Compare/TargetTable") };
+    private readonly ComboBox _scope = new() { MinWidth = 160 };
     private readonly Button _compare = new() { Content = Strings.Get("Compare/CompareButton"), Style = (Style)Application.Current.Resources["AccentButtonStyle"] };
     private readonly Button _stop = new() { Content = Strings.Get("Common/Stop"), Visibility = Visibility.Collapsed };
     private readonly ProgressRing _busy = new() { Width = 18, Height = 18, IsActive = false };
@@ -29,17 +35,20 @@ public sealed partial class CompareTabView : UserControl
     private readonly TextBlock _status = new() { TextWrapping = TextWrapping.Wrap, Opacity = 0.75 };
     private readonly InfoBar _notes = new() { IsClosable = false, Severity = InfoBarSeverity.Informational };
     private readonly StackPanel _dataOptions = new() { Spacing = 8 };
+    private readonly StackPanel _tableOptions = new() { Orientation = Orientation.Horizontal, Spacing = 12 };
     private readonly StackPanel _structureOptions = new() { Spacing = 8, Visibility = Visibility.Collapsed };
     private readonly ToggleButton _showInserts = new() { Content = Strings.Get("Compare/ShowOnlyInSource"), IsChecked = true };
     private readonly ToggleButton _showUpdates = new() { Content = Strings.Get("Compare/ShowChanged"), IsChecked = true };
     private readonly ToggleButton _showDeletes = new() { Content = Strings.Get("Compare/ShowOnlyInTarget"), IsChecked = true };
     private readonly DataGridView _grid = new();
-    private readonly Grid _dataPanel = new() { RowSpacing = 8 };
+    private readonly Grid _rowsPanel = new() { RowSpacing = 8 };
     private readonly Grid _structurePanel = new() { ColumnSpacing = 12, Visibility = Visibility.Collapsed };
     private readonly ListView _tables = new() { SelectionMode = ListViewSelectionMode.Single };
     private readonly StackPanel _tableDetail = new() { Spacing = 8 };
     private readonly StackPanel _dataActions = new() { Orientation = Orientation.Horizontal, Spacing = 8 };
     private readonly StackPanel _structureActions = new() { Orientation = Orientation.Horizontal, Spacing = 8, Visibility = Visibility.Collapsed };
+    private readonly Button _skip = new() { Content = Strings.Get("Compare/SkipOrIncludeRows") };
+    private readonly List<Action> _optionRefreshers = [];
     private CompareGridSource? _source;
     private bool _updating;
 
@@ -48,57 +57,35 @@ public sealed partial class CompareTabView : UserControl
         ArgumentNullException.ThrowIfNull(viewModel);
         ViewModel = viewModel;
 
-        _modes.Items.Add(new SelectorBarItem { Text = Strings.Get("Compare/ModeData"), IsSelected = true });
-        _modes.Items.Add(new SelectorBarItem { Text = Strings.Get("Compare/ModeStructure") });
-        _modes.SelectionChanged += (_, _) => SetMode(_modes.SelectedItem == _modes.Items[1] ? CompareMode.Structure : CompareMode.Data);
-
-        foreach (var table in viewModel.SourceTables)
+        _modes.Items.Add(new SelectorBarItem { Text = Strings.Get("Compare/ModeData"), IsSelected = viewModel.Mode == CompareMode.Data });
+        _modes.Items.Add(new SelectorBarItem { Text = Strings.Get("Compare/ModeStructure"), IsSelected = viewModel.Mode == CompareMode.Structure });
+        _modes.SelectionChanged += (_, _) =>
         {
-            _sourceTable.Items.Add(table.Name.ToString());
-        }
+            if (!_updating)
+            {
+                ViewModel.Mode = _modes.SelectedItem == _modes.Items[1] ? CompareMode.Structure : CompareMode.Data;
+            }
+        };
+
+        _scope.Items.Add(Strings.Get("Compare/ScopeOneTable"));
+        _scope.Items.Add(Strings.Get("Compare/ScopeChosenTables"));
+        _scope.Items.Add(Strings.Get("Compare/ScopeWholeSchema"));
+        _scope.SelectionChanged += (_, _) =>
+        {
+            if (!_updating && _scope.SelectedIndex >= 0)
+            {
+                ViewModel.Scope = Scopes[_scope.SelectedIndex];
+            }
+        };
 
         foreach (var profile in viewModel.Profiles)
         {
+            _sourceConnection.Items.Add(profile.Name);
             _targetConnection.Items.Add(profile.Name);
         }
 
-        _sourceTable.SelectedIndex = viewModel.SelectedSourceTable is { } selected ? IndexOf(viewModel.SourceTables, selected) : -1;
-        _targetConnection.SelectedIndex = viewModel.TargetProfile is { } target ? viewModel.Profiles.ToList().FindIndex(p => p.Id == target.Id) : -1;
-        _sourceTable.SelectionChanged += (_, _) =>
-        {
-            if (!_updating && _sourceTable.SelectedIndex >= 0)
-            {
-                ViewModel.SelectedSourceTable = ViewModel.SourceTables[_sourceTable.SelectedIndex];
-                ViewModel.MatchTargetTable();
-            }
-        };
-        _targetConnection.SelectionChanged += async (_, _) =>
-        {
-            if (!_updating && _targetConnection.SelectedIndex >= 0)
-            {
-                ViewModel.TargetProfile = ViewModel.Profiles[_targetConnection.SelectedIndex];
-                await ViewModel.ConnectTargetAsync();
-            }
-        };
-        _targetTable.SelectionChanged += (_, _) =>
-        {
-            if (!_updating && _targetTable.SelectedIndex >= 0)
-            {
-                ViewModel.SelectedTargetTable = ViewModel.TargetTables[_targetTable.SelectedIndex];
-            }
-        };
-
-        _compare.Click += async (_, _) =>
-        {
-            if (ViewModel.Mode == CompareMode.Data)
-            {
-                await ViewModel.CompareDataAsync();
-            }
-            else
-            {
-                await ViewModel.CompareStructureAsync();
-            }
-        };
+        WireEndpoints();
+        _compare.Click += async (_, _) => await ViewModel.CompareAsync();
         _stop.Click += (_, _) => ViewModel.Cancel();
         foreach (var toggle in new[] { _showInserts, _showUpdates, _showDeletes })
         {
@@ -115,12 +102,20 @@ public sealed partial class CompareTabView : UserControl
         viewModel.PropertyChanged += OnViewModelChanged;
         Loaded += async (_, _) =>
         {
+            // Rows unhook from their plans while the tab is hidden, so a hidden tab's run costs no redraws.
+            if (_planRows.Count == 0 && ViewModel.TablePlans.Count > 0)
+            {
+                RebuildPlanList();
+            }
+
             if (ViewModel.Target is null)
             {
                 await ViewModel.ConnectTargetAsync();
             }
         };
+        Unloaded += (_, _) => DetachPlanRows();
         Refresh();
+        UpdateVisibility();
     }
 
     public CompareTabViewModel ViewModel { get; }
@@ -138,20 +133,6 @@ public sealed partial class CompareTabView : UserControl
         return -1;
     }
 
-    private static TextBox Field(string header, string placeholder, string value, Action<string> set)
-    {
-        var box = new TextBox { Header = header, PlaceholderText = placeholder, Text = value, MinWidth = 220 };
-        box.TextChanged += (_, _) => set(box.Text);
-        return box;
-    }
-
-    private static CheckBox Check(string text, bool value, Action<bool> set)
-    {
-        var box = new CheckBox { Content = text, IsChecked = value };
-        box.Click += (_, _) => set(box.IsChecked == true);
-        return box;
-    }
-
     private static void Copy(string? text)
     {
         if (string.IsNullOrEmpty(text))
@@ -164,48 +145,171 @@ public sealed partial class CompareTabView : UserControl
         Clipboard.SetContent(package);
     }
 
+    /// <summary>Refills a combo box only when its items changed, so a refresh during a run does not reset a dropdown.</summary>
+    private static void Fill(ComboBox box, IReadOnlyList<string> items)
+    {
+        var same = box.Items.Count == items.Count;
+        for (var i = 0; same && i < items.Count; i++)
+        {
+            same = Equals(box.Items[i], items[i]);
+        }
+
+        if (!same)
+        {
+            box.Items.Clear();
+            foreach (var item in items)
+            {
+                box.Items.Add(item);
+            }
+        }
+    }
+
+    private void WireEndpoints()
+    {
+        _sourceConnection.SelectionChanged += async (_, _) =>
+        {
+            if (!_updating && _sourceConnection.SelectedIndex >= 0)
+            {
+                await ViewModel.ConnectSourceAsync(ViewModel.Profiles[_sourceConnection.SelectedIndex]);
+            }
+        };
+        _sourceSchema.SelectionChanged += async (_, _) =>
+        {
+            if (!_updating && _sourceSchema.SelectedIndex >= 0)
+            {
+                await ViewModel.SetSchemaAsync(target: false, ViewModel.SourceSchemas[_sourceSchema.SelectedIndex]);
+            }
+        };
+        _sourceTable.SelectionChanged += (_, _) =>
+        {
+            if (!_updating && _sourceTable.SelectedIndex >= 0)
+            {
+                ViewModel.SelectedSourceTable = ViewModel.SourceTables[_sourceTable.SelectedIndex];
+                ViewModel.MatchTargetTable();
+            }
+        };
+        _targetConnection.SelectionChanged += async (_, _) =>
+        {
+            if (!_updating && _targetConnection.SelectedIndex >= 0)
+            {
+                ViewModel.TargetProfile = ViewModel.Profiles[_targetConnection.SelectedIndex];
+                await ViewModel.ConnectTargetAsync();
+            }
+        };
+        _targetSchema.SelectionChanged += async (_, _) =>
+        {
+            if (!_updating && _targetSchema.SelectedIndex >= 0)
+            {
+                await ViewModel.SetSchemaAsync(target: true, ViewModel.TargetSchemas[_targetSchema.SelectedIndex]);
+            }
+        };
+        _targetTable.SelectionChanged += (_, _) =>
+        {
+            if (!_updating && _targetTable.SelectedIndex >= 0)
+            {
+                ViewModel.SelectedTargetTable = ViewModel.TargetTables[_targetTable.SelectedIndex];
+            }
+        };
+        AutomationProperties.SetName(_sourceConnection, Strings.Get("Compare/SourceConnection"));
+        AutomationProperties.SetName(_sourceSchema, Strings.Get("Compare/SourceSchema"));
+        AutomationProperties.SetName(_sourceTable, Strings.Get("Compare/SourceTable"));
+        AutomationProperties.SetName(_targetConnection, Strings.Get("Compare/TargetConnection"));
+        AutomationProperties.SetName(_targetSchema, Strings.Get("Compare/TargetSchema"));
+        AutomationProperties.SetName(_targetTable, Strings.Get("Compare/TargetTable"));
+        AutomationProperties.SetName(_scope, Strings.Get("Compare/Scope"));
+    }
+
+    private TextBox Field(string header, string placeholder, Func<string> get, Action<string> set)
+    {
+        var box = new TextBox { Header = header, PlaceholderText = placeholder, Text = get(), MinWidth = 220 };
+        box.TextChanged += (_, _) =>
+        {
+            if (!_updating)
+            {
+                set(box.Text);
+            }
+        };
+        _optionRefreshers.Add(() =>
+        {
+            if (!string.Equals(box.Text, get(), StringComparison.Ordinal))
+            {
+                box.Text = get();
+            }
+        });
+        return box;
+    }
+
+    private CheckBox Check(string text, Func<bool> get, Action<bool> set)
+    {
+        var box = new CheckBox { Content = text, IsChecked = get() };
+        box.Click += (_, _) => set(box.IsChecked == true);
+        _optionRefreshers.Add(() => box.IsChecked = get());
+        return box;
+    }
+
+    private NumberBox Number(NumberBox box, Func<double> get, Action<double> set)
+    {
+        box.Value = get();
+        box.ValueChanged += (_, e) =>
+        {
+            if (!_updating)
+            {
+                set(e.NewValue);
+            }
+        };
+        _optionRefreshers.Add(() =>
+        {
+            var value = get();
+            if (!(double.IsNaN(value) && double.IsNaN(box.Value)) && box.Value != value)
+            {
+                box.Value = value;
+            }
+        });
+        return box;
+    }
+
     private void BuildOptions()
     {
         var vm = ViewModel;
-        var keys = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12 };
-        keys.Children.Add(Field(Strings.Get("Compare/KeyColumns"), Strings.Get("Compare/KeyColumnsPlaceholder"), vm.KeyColumns, v => vm.KeyColumns = v));
-        keys.Children.Add(Field(Strings.Get("Compare/LeaveOutColumns"), "updated_at, version", vm.ExcludedColumns, v => vm.ExcludedColumns = v));
-        _dataOptions.Children.Add(keys);
+        _tableOptions.Children.Add(Field(Strings.Get("Compare/KeyColumns"), Strings.Get("Compare/KeyColumnsPlaceholder"), () => vm.KeyColumns, v => vm.KeyColumns = v));
+        _tableOptions.Children.Add(Field(Strings.Get("Compare/LeaveOutColumns"), "updated_at, version", () => vm.ExcludedColumns, v => vm.ExcludedColumns = v));
+        _tableOptions.Children.Add(Field(Strings.Get("Compare/SourceWhere"), "status = 'active'", () => vm.SourceWhere, v => vm.SourceWhere = v));
+        _tableOptions.Children.Add(Field(Strings.Get("Compare/TargetWhere"), "status = 'active'", () => vm.TargetWhere, v => vm.TargetWhere = v));
+        _dataOptions.Children.Add(_tableOptions);
 
-        var filters = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12 };
-        filters.Children.Add(Field(Strings.Get("Compare/SourceWhere"), "status = 'active'", vm.SourceWhere, v => vm.SourceWhere = v));
-        filters.Children.Add(Field(Strings.Get("Compare/TargetWhere"), "status = 'active'", vm.TargetWhere, v => vm.TargetWhere = v));
-        var tolerance = new NumberBox { Header = Strings.Get("Compare/FloatTolerance"), Value = vm.FloatTolerance, Minimum = 0, SmallChange = 0.001, SpinButtonPlacementMode = NumberBoxSpinButtonPlacementMode.Compact };
-        tolerance.ValueChanged += (_, e) => vm.FloatTolerance = double.IsNaN(e.NewValue) ? 0 : e.NewValue;
-        var limit = new NumberBox { Header = Strings.Get("Compare/RowLimit"), PlaceholderText = Strings.Get("Compare/RowLimitPlaceholder"), Value = vm.RowLimit, Minimum = 1 };
-        limit.ValueChanged += (_, e) => vm.RowLimit = e.NewValue;
-        filters.Children.Add(tolerance);
-        filters.Children.Add(limit);
-        _dataOptions.Children.Add(filters);
+        var limits = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12 };
+        limits.Children.Add(Number(
+            new NumberBox { Header = Strings.Get("Compare/FloatTolerance"), Minimum = 0, SmallChange = 0.001, SpinButtonPlacementMode = NumberBoxSpinButtonPlacementMode.Compact },
+            () => vm.FloatTolerance,
+            v => vm.FloatTolerance = double.IsNaN(v) ? 0 : v));
+        limits.Children.Add(Number(
+            new NumberBox { Header = Strings.Get("Compare/RowLimit"), PlaceholderText = Strings.Get("Compare/RowLimitPlaceholder"), Minimum = 1 },
+            () => vm.RowLimit,
+            v => vm.RowLimit = v));
+        _dataOptions.Children.Add(limits);
 
         var writes = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 16 };
-        writes.Children.Add(Check(Strings.Get("Compare/InsertMissingRows"), vm.InsertMissing, v => vm.InsertMissing = v));
-        writes.Children.Add(Check(Strings.Get("Compare/UpdateChangedRows"), vm.UpdateChanged, v => vm.UpdateChanged = v));
-        writes.Children.Add(Check(Strings.Get("Compare/DeleteExtraRows"), vm.DeleteExtra, v => vm.DeleteExtra = v));
-        writes.Children.Add(Check(Strings.Get("Compare/KeysIgnoreCase"), vm.KeysIgnoreCase, v => vm.KeysIgnoreCase = v));
-        writes.Children.Add(Check(Strings.Get("Compare/CommitInBatches"), vm.ApplyInBatches, v => vm.ApplyInBatches = v));
+        writes.Children.Add(Check(Strings.Get("Compare/InsertMissingRows"), () => vm.InsertMissing, v => vm.InsertMissing = v));
+        writes.Children.Add(Check(Strings.Get("Compare/UpdateChangedRows"), () => vm.UpdateChanged, v => vm.UpdateChanged = v));
+        writes.Children.Add(Check(Strings.Get("Compare/DeleteExtraRows"), () => vm.DeleteExtra, v => vm.DeleteExtra = v));
+        writes.Children.Add(Check(Strings.Get("Compare/KeysIgnoreCase"), () => vm.KeysIgnoreCase, v => vm.KeysIgnoreCase = v));
+        writes.Children.Add(Check(Strings.Get("Compare/CommitInBatches"), () => vm.ApplyInBatches, v => vm.ApplyInBatches = v));
         _dataOptions.Children.Add(writes);
 
         var drops = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 16 };
-        drops.Children.Add(Check(Strings.Get("Compare/DropExtraTables"), vm.DropExtraTables, v => vm.DropExtraTables = v));
-        drops.Children.Add(Check(Strings.Get("Compare/DropExtraColumns"), vm.DropExtraColumns, v => vm.DropExtraColumns = v));
+        drops.Children.Add(Check(Strings.Get("Compare/DropExtraTables"), () => vm.DropExtraTables, v => vm.DropExtraTables = v));
+        drops.Children.Add(Check(Strings.Get("Compare/DropExtraColumns"), () => vm.DropExtraColumns, v => vm.DropExtraColumns = v));
         _structureOptions.Children.Add(drops);
     }
 
     private void BuildActions()
     {
-        var skip = new Button { Content = Strings.Get("Compare/SkipOrIncludeRows") };
-        skip.Click += (_, _) => ToggleSelected();
+        _skip.Click += (_, _) => ToggleSelected();
         var copy = new Button { Content = Strings.Get("Compare/CopySyncScript") };
         copy.Click += (_, _) => Copy(ViewModel.SyncScript());
         var sync = new Button { Content = Strings.Get("Compare/ReviewAndSync"), Style = (Style)Application.Current.Resources["AccentButtonStyle"] };
         sync.Click += async (_, _) => await ViewModel.SyncAsync();
-        _dataActions.Children.Add(skip);
+        _dataActions.Children.Add(_skip);
         _dataActions.Children.Add(copy);
         _dataActions.Children.Add(sync);
 
@@ -219,19 +323,22 @@ public sealed partial class CompareTabView : UserControl
 
     private Grid BuildLayout()
     {
-        var endpoints = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-        endpoints.Children.Add(new TextBlock { Text = Strings.Get("Compare/SourceLabel"), VerticalAlignment = VerticalAlignment.Center });
-        endpoints.Children.Add(_sourceTable);
-        endpoints.Children.Add(new FontIcon { Glyph = "", FontSize = 14, Margin = new Thickness(4, 0, 4, 0) });
-        endpoints.Children.Add(new TextBlock { Text = Strings.Get("Compare/TargetLabel"), VerticalAlignment = VerticalAlignment.Center });
-        endpoints.Children.Add(_targetConnection);
-        endpoints.Children.Add(_targetTable);
-        endpoints.Children.Add(_compare);
-        endpoints.Children.Add(_stop);
-        endpoints.Children.Add(_busy);
-        AutomationProperties.SetName(_sourceTable, Strings.Get("Compare/SourceTable"));
-        AutomationProperties.SetName(_targetConnection, Strings.Get("Compare/TargetConnection"));
-        AutomationProperties.SetName(_targetTable, Strings.Get("Compare/TargetTable"));
+        var header = new Grid { ColumnSpacing = 12 };
+        header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        header.Children.Add(_modes);
+        var saved = BuildSavedComparisons();
+        Grid.SetColumn(saved, 1);
+        header.Children.Add(saved);
+
+        var endpoints = new Grid { ColumnSpacing = 8, RowSpacing = 8 };
+        endpoints.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        endpoints.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        endpoints.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        endpoints.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        endpoints.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        AddEndpointRow(endpoints, 0, Strings.Get("Compare/SourceLabel"), _sourceConnection, _sourceSchema, _sourceTable, new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { _scope } });
+        AddEndpointRow(endpoints, 1, Strings.Get("Compare/TargetLabel"), _targetConnection, _targetSchema, _targetTable, new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { _compare, _stop, _busy } });
 
         var options = new Expander
         {
@@ -245,11 +352,14 @@ public sealed partial class CompareTabView : UserControl
         filters.Children.Add(_showInserts);
         filters.Children.Add(_showUpdates);
         filters.Children.Add(_showDeletes);
-        _dataPanel.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        _dataPanel.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
-        _dataPanel.Children.Add(filters);
-        Grid.SetRow(_grid, 1);
-        _dataPanel.Children.Add(_grid);
+        _rowsPanel.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        _rowsPanel.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        _rowsPanel.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        _rowsPanel.Children.Add(BuildPlanHeader());
+        Grid.SetRow(filters, 1);
+        _rowsPanel.Children.Add(filters);
+        Grid.SetRow(_grid, 2);
+        _rowsPanel.Children.Add(_grid);
 
         _structurePanel.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(320) });
         _structurePanel.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -267,14 +377,10 @@ public sealed partial class CompareTabView : UserControl
         footer.Children.Add(actions);
 
         var root = new Grid { Padding = new Thickness(12), RowSpacing = 10 };
-        for (var i = 0; i < 7; i++)
-        {
-            root.RowDefinitions.Add(new RowDefinition { Height = i == 5 ? new GridLength(1, GridUnitType.Star) : GridLength.Auto });
-        }
-
-        UIElement[] rows = [_modes, endpoints, options, _summary, _notes, new Grid { Children = { _dataPanel, _structurePanel } }, footer];
+        UIElement[] rows = [header, endpoints, options, _summary, _notes, new Grid { Children = { _rowsPanel, BuildPlanList(), _structurePanel } }, footer];
         for (var i = 0; i < rows.Length; i++)
         {
+            root.RowDefinitions.Add(new RowDefinition { Height = i == 5 ? new GridLength(1, GridUnitType.Star) : GridLength.Auto });
             Grid.SetRow((FrameworkElement)rows[i], i);
             root.Children.Add(rows[i]);
         }
@@ -282,14 +388,18 @@ public sealed partial class CompareTabView : UserControl
         return root;
     }
 
-    private void SetMode(CompareMode mode)
+    private static void AddEndpointRow(Grid grid, int row, string label, ComboBox connection, ComboBox schema, ComboBox table, FrameworkElement trailing)
     {
-        ViewModel.Mode = mode;
-        var data = mode == CompareMode.Data;
-        _dataOptions.Visibility = _dataPanel.Visibility = _dataActions.Visibility = data ? Visibility.Visible : Visibility.Collapsed;
-        _structureOptions.Visibility = _structurePanel.Visibility = _structureActions.Visibility = data ? Visibility.Collapsed : Visibility.Visible;
-        _sourceTable.Visibility = _targetTable.Visibility = data ? Visibility.Visible : Visibility.Collapsed;
-        _compare.Content = data ? Strings.Get("Compare/CompareButton") : Strings.Get("Compare/CompareStructureButton");
+        var text = new TextBlock { Text = label, VerticalAlignment = VerticalAlignment.Center, MinWidth = 56 };
+        var pickers = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { connection, schema, table } };
+        Grid.SetRow(text, row);
+        Grid.SetRow(pickers, row);
+        Grid.SetColumn(pickers, 1);
+        Grid.SetRow(trailing, row);
+        Grid.SetColumn(trailing, 2);
+        grid.Children.Add(text);
+        grid.Children.Add(pickers);
+        grid.Children.Add(trailing);
     }
 
     private void OnViewModelChanged(object? sender, PropertyChangedEventArgs e)
@@ -302,50 +412,132 @@ public sealed partial class CompareTabView : UserControl
             case nameof(CompareTabViewModel.SchemaDiffs):
                 RebuildTables();
                 break;
+            case nameof(CompareTabViewModel.TablePlans):
+                RebuildPlanList();
+                break;
+            case nameof(CompareTabViewModel.SelectedPlan):
+                RebuildGrid();
+                UpdateVisibility();
+                break;
+            case nameof(CompareTabViewModel.Mode):
+            case nameof(CompareTabViewModel.Scope):
+                UpdateVisibility();
+                Refresh();
+                break;
+            case nameof(CompareTabViewModel.StatusText):
+            case nameof(CompareTabViewModel.IsBusy):
+            case nameof(CompareTabViewModel.Summary):
+            case nameof(CompareTabViewModel.Notes):
+                RefreshStatus();
+                break;
             default:
                 Refresh();
                 break;
         }
     }
 
+    /// <summary>Puts every picker and option back in step with the view model, as after a saved comparison loads.</summary>
     private void Refresh()
     {
         _updating = true;
         try
         {
             var vm = ViewModel;
-            if (_targetTable.Items.Count != vm.TargetTables.Count || (vm.TargetTables.Count > 0 && !Equals(_targetTable.Items[0], vm.TargetTables[0].Name.ToString())))
-            {
-                _targetTable.Items.Clear();
-                foreach (var table in vm.TargetTables)
-                {
-                    _targetTable.Items.Add(table.Name.ToString());
-                }
-            }
+            _modes.SelectedItem = _modes.Items[vm.Mode == CompareMode.Structure ? 1 : 0];
+            _scope.SelectedIndex = Array.IndexOf(Scopes, vm.Scope);
+            _sourceConnection.SelectedIndex = vm.Profiles.ToList().FindIndex(p => p.Id == vm.SourceProfile.Id);
+            _targetConnection.SelectedIndex = vm.TargetProfile is { } target ? vm.Profiles.ToList().FindIndex(p => p.Id == target.Id) : -1;
 
-            _targetTable.SelectedIndex = vm.SelectedTargetTable is { } target ? IndexOf(vm.TargetTables, target) : -1;
-            _busy.IsActive = vm.IsBusy;
-            _stop.Visibility = vm.IsRunning ? Visibility.Visible : Visibility.Collapsed;
-            _compare.IsEnabled = !vm.IsBusy;
-            _summary.Text = vm.Summary ?? string.Empty;
-            _summary.Visibility = string.IsNullOrEmpty(vm.Summary) ? Visibility.Collapsed : Visibility.Visible;
-            _status.Text = vm.StatusText ?? string.Empty;
-            _notes.Message = string.Join("\n", vm.Notes);
-            _notes.IsOpen = vm.Notes.Count > 0;
+            Fill(_sourceSchema, vm.SourceSchemas);
+            _sourceSchema.SelectedIndex = vm.SourceSchema is { } sourceSchema ? IndexOfName(vm.SourceSchemas, sourceSchema) : -1;
+            Fill(_targetSchema, vm.TargetSchemas);
+            _targetSchema.SelectedIndex = vm.TargetSchema is { } targetSchema ? IndexOfName(vm.TargetSchemas, targetSchema) : -1;
+            _sourceSchema.Visibility = vm.SourceSchemas.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+            _targetSchema.Visibility = vm.TargetSchemas.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+
+            Fill(_sourceTable, [.. vm.SourceTables.Select(t => t.Name.ToString())]);
+            _sourceTable.SelectedIndex = vm.SelectedSourceTable is { } sourceTable ? IndexOf(vm.SourceTables, sourceTable) : -1;
+            Fill(_targetTable, [.. vm.TargetTables.Select(t => t.Name.ToString())]);
+            _targetTable.SelectedIndex = vm.SelectedTargetTable is { } targetTable ? IndexOf(vm.TargetTables, targetTable) : -1;
+
+            foreach (var refresh in _optionRefreshers)
+            {
+                refresh();
+            }
         }
         finally
         {
             _updating = false;
         }
+
+        RefreshStatus();
     }
+
+    private static int IndexOfName(IReadOnlyList<string> names, string name)
+    {
+        for (var i = 0; i < names.Count; i++)
+        {
+            if (string.Equals(names[i], name, StringComparison.Ordinal))
+            {
+                return i;
+            }
+        }
+
+        return -1;
+    }
+
+    private void RefreshStatus()
+    {
+        var vm = ViewModel;
+        _busy.IsActive = vm.IsBusy;
+        _stop.Visibility = vm.IsRunning ? Visibility.Visible : Visibility.Collapsed;
+        _compare.IsEnabled = !vm.IsBusy;
+        _summary.Text = vm.Summary ?? string.Empty;
+        _summary.Visibility = string.IsNullOrEmpty(vm.Summary) ? Visibility.Collapsed : Visibility.Visible;
+        _status.Text = vm.StatusText ?? string.Empty;
+        _notes.Message = string.Join("\n", vm.Notes);
+        _notes.IsOpen = vm.Notes.Count > 0;
+    }
+
+    private void UpdateVisibility()
+    {
+        var vm = ViewModel;
+        var data = vm.Mode == CompareMode.Data;
+        var oneTable = data && vm.Scope == DataCompareScope.OneTable;
+        var showRows = oneTable || (vm.IsMultiTable && vm.SelectedPlan is not null);
+        _dataOptions.Visibility = _dataActions.Visibility = data ? Visibility.Visible : Visibility.Collapsed;
+        _structureOptions.Visibility = _structurePanel.Visibility = _structureActions.Visibility = data ? Visibility.Collapsed : Visibility.Visible;
+        _tableOptions.Visibility = oneTable ? Visibility.Visible : Visibility.Collapsed;
+        _sourceTable.Visibility = _targetTable.Visibility = oneTable ? Visibility.Visible : Visibility.Collapsed;
+        _scope.Visibility = data ? Visibility.Visible : Visibility.Collapsed;
+        _rowsPanel.Visibility = showRows ? Visibility.Visible : Visibility.Collapsed;
+        _planHeader.Visibility = vm.IsMultiTable ? Visibility.Visible : Visibility.Collapsed;
+        _planList.Visibility = vm.IsMultiTable && vm.SelectedPlan is null ? Visibility.Visible : Visibility.Collapsed;
+        _skip.Visibility = showRows ? Visibility.Visible : Visibility.Collapsed;
+        _selectButtons.Visibility = vm.Scope == DataCompareScope.ChosenTables ? Visibility.Visible : Visibility.Collapsed;
+        _compare.Content = !data ? Strings.Get("Compare/CompareStructureButton") : vm.IsMultiTable ? Strings.Get("Compare/CompareTablesButton") : Strings.Get("Compare/CompareButton");
+        _planTitle.Text = vm.SelectedPlan?.DisplayName ?? string.Empty;
+        foreach (var row in _planRows)
+        {
+            row.UpdateScope(vm.Scope);
+            row.Update();
+        }
+    }
+
+    /// <summary>The comparison the grid shows: the one-table result, or the drilled-into table's.</summary>
+    private (DataDiffResult? Result, IReadOnlySet<string> Excluded) Shown() =>
+        ViewModel.IsMultiTable
+            ? ViewModel.SelectedPlan is { Outcome.Result: { } result } plan ? (result, plan.Excluded) : (null, ViewModel.Excluded)
+            : (ViewModel.Result, ViewModel.Excluded);
 
     private void RebuildGrid()
     {
-        if (ViewModel.Result is not { } result)
+        var (result, excluded) = Shown();
+        if (result is null)
         {
             _grid.Source = null;
             _source = null;
-            Refresh();
+            RefreshStatus();
             return;
         }
 
@@ -368,9 +560,9 @@ public sealed partial class CompareTabView : UserControl
         _showInserts.Content = Strings.Format("Compare/ShowOnlyInSourceCount", result.OnlyInSourceCount);
         _showUpdates.Content = Strings.Format("Compare/ShowChangedCount", result.ChangedCount);
         _showDeletes.Content = Strings.Format("Compare/ShowOnlyInTargetCount", result.OnlyInTargetCount);
-        _source = new CompareGridSource(result, kinds, ViewModel.Excluded);
+        _source = new CompareGridSource(result, kinds, excluded);
         _grid.Source = _source;
-        Refresh();
+        RefreshStatus();
     }
 
     private void ToggleSelected()
@@ -412,7 +604,7 @@ public sealed partial class CompareTabView : UserControl
             _tables.SelectedIndex = 0;
         }
 
-        Refresh();
+        RefreshStatus();
     }
 
     private void ShowTableDetail()
