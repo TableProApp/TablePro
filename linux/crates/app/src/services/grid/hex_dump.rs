@@ -70,7 +70,11 @@ mod tests {
         let dump = hex_dump(&vec![0u8; HEX_DUMP_MAX_BYTES + 5]);
         let note = "\n… (5 more bytes)";
 
-        assert!(dump.ends_with(&format!("|................|{note}")), "{}", &dump[dump.len() - 120..]);
+        assert!(
+            dump.ends_with(&format!("|................|{note}")),
+            "{}",
+            &dump[dump.len() - 120..]
+        );
         assert!(dump.len() - note.len() <= EDIT_MAX_BYTES, "{} bytes", dump.len());
         assert_eq!(dump.lines().count(), HEX_DUMP_MAX_BYTES / PER_LINE + 1);
     }

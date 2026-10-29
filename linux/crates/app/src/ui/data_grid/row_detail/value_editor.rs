@@ -97,9 +97,11 @@ pub fn value_content(column: &GridColumn, row: &GridRowId, lock: Option<CellLock
         CellInput::Default if column.auto_filled() => Some(auto_filled_sentinel()),
         CellInput::Default => Some("DEFAULT".to_owned()),
         // An empty dump would read as no value at all.
-        CellInput::Value(value @ Value::Bytes(bytes)) if bytes.is_empty() => {
-            Some(display_text(value, &column.column_type, &mut String::new()).text.to_owned())
-        }
+        CellInput::Value(value @ Value::Bytes(bytes)) if bytes.is_empty() => Some(
+            display_text(value, &column.column_type, &mut String::new())
+                .text
+                .to_owned(),
+        ),
         CellInput::Value(_) => emptied_placeholder.clone(),
     };
     ValueContent {

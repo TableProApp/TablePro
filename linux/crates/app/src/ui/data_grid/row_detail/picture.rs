@@ -44,7 +44,10 @@ impl RowDetailPane {
         let Some(bytes) = bytes.filter(|bytes| may_be_image(bytes)) else {
             return;
         };
-        let Some(tasks) = self.grid().and_then(|grid| grid.config().map(|config| config.tasks.clone())) else {
+        let Some(tasks) = self
+            .grid()
+            .and_then(|grid| grid.config().map(|config| config.tasks.clone()))
+        else {
             return;
         };
         let cancellable = gio::Cancellable::new();
@@ -60,7 +63,12 @@ impl RowDetailPane {
                 return;
             };
             // The stop of a superseded decode lands on the runtime later than this may.
-            let current = pane.imp().picture_load.borrow().as_ref().is_some_and(|load| load.cancellable == cancellable);
+            let current = pane
+                .imp()
+                .picture_load
+                .borrow()
+                .as_ref()
+                .is_some_and(|load| load.cancellable == cancellable);
             if !current {
                 return;
             }
@@ -83,7 +91,10 @@ impl RowDetailPane {
     }
 }
 
-async fn decode(bytes: glib::Bytes, cancellable: gio::Cancellable) -> Result<Option<gdk::Texture>, glycin::ErrorCtx> {
+async fn decode(
+    bytes: glib::Bytes,
+    cancellable: gio::Cancellable,
+) -> Result<Option<gdk::Texture>, Box<glycin::ErrorCtx>> {
     let mechanism = glycin::SandboxSelector::Auto.determine_sandbox_mechanism().await;
     let Some(sandbox) = sandbox(mechanism, cfg!(test)) else {
         tracing::debug!("no sandbox to decode a value's picture in");
@@ -91,12 +102,12 @@ async fn decode(bytes: glib::Bytes, cancellable: gio::Cancellable) -> Result<Opt
     };
     let mut loader = glycin::Loader::new_bytes(bytes);
     loader.cancellable(cancellable).sandbox_selector(sandbox);
-    let image = loader.load().await?;
+    let image = loader.load().await.map_err(Box::new)?;
     let details = image.details();
     if u64::from(details.width()) * u64::from(details.height()) > MAX_PIXELS {
         return Ok(None);
     }
-    Ok(Some(image.next_frame().await?.texture()))
+    Ok(Some(image.next_frame().await.map_err(Box::new)?.texture()))
 }
 
 // glycin's Auto falls back to no sandbox where bwrap cannot make namespaces, and database bytes must

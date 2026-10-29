@@ -936,7 +936,10 @@ fn a_binary_value_shows_its_bytes_unwrapped_and_an_image_its_picture() {
     assert!(text.starts_with("00000000  48 69 21 00"), "{text}");
     assert!(text.ends_with("|Hi!.|"), "{text}");
     assert_eq!(pane.imp().value_view.wrap_mode(), gtk::WrapMode::None);
-    assert_eq!(pane.imp().value_scroller.hscrollbar_policy(), gtk::PolicyType::Automatic);
+    assert_eq!(
+        pane.imp().value_scroller.hscrollbar_policy(),
+        gtk::PolicyType::Automatic
+    );
     assert_eq!(picture_size(&pane), None, "bytes that are no image showed a picture");
 
     grid.focus(0, 1);
@@ -958,7 +961,14 @@ fn a_picture_the_pane_moved_away_from_never_lands() {
     let (grid, pane) = binary_grid();
 
     grid.focus(0, 1);
-    let first = pane.imp().picture_load.borrow().as_ref().expect("a decode under way").cancellable.clone();
+    let first = pane
+        .imp()
+        .picture_load
+        .borrow()
+        .as_ref()
+        .expect("a decode under way")
+        .cancellable
+        .clone();
     grid.focus(0, 2);
 
     wait_until(DECODE_WAIT, || first.is_cancelled()).expect("the decode of the field left behind stops");
