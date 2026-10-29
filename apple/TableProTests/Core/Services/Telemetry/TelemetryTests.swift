@@ -60,10 +60,18 @@ final class TelemetryFixture {
     var now = Date(timeIntervalSince1970: 1_793_000_000)
     private(set) var telemetry: Telemetry!
 
+    private let projectKey: String?
+
     init(projectKey: String? = "phc_test", sharesUsageData: Bool = true) throws {
         account = try AccountFixture()
         storage = try EphemeralDefaults()
+        self.projectKey = projectKey
         self.sharesUsageData = CurrentValueSubject(sharesUsageData)
+        relaunch()
+    }
+
+    // A new Telemetry on the same defaults, the way the next launch finds them.
+    func relaunch() {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: "UTC") ?? .current
         telemetry = Telemetry(
@@ -331,6 +339,23 @@ struct TelemetryTests {
         updated.start()
         updated.telemetry.connectionAttempted(databaseType: "PostgreSQL")
         #expect(updated.client?.captured.isEmpty == true)
+    }
+
+    @Test("A Mac updated after connecting sends no first_query_executed; a new Mac still sends it on a later launch")
+    func firstQueryCarriedOver() throws {
+        let updated = try TelemetryFixture()
+        updated.storage.defaults.set(Date(timeIntervalSince1970: 1), forKey: Telemetry.Keys.connectionSucceededAt)
+        updated.start()
+        updated.telemetry.queryExecuted()
+        #expect(updated.client?.captured.isEmpty == true)
+
+        let fresh = try TelemetryFixture()
+        fresh.start()
+        fresh.telemetry.connectionSucceeded(databaseType: "PostgreSQL")
+        fresh.relaunch()
+        fresh.start()
+        fresh.telemetry.queryExecuted()
+        #expect(fresh.client?.captured == ["first_query_executed"])
     }
 
     @Test("feature_gate_shown goes once per feature in a launch, and upgrade_clicked names where it came from")

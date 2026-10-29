@@ -48,6 +48,7 @@ internal final class Telemetry {
     enum Keys {
         static let appOpenedAt = "com.TablePro.telemetry.appOpenedAt"
         static let identifiedAccount = "com.TablePro.telemetry.identifiedAccount"
+        static let firstQueryCarriedOver = "com.TablePro.telemetry.firstQueryCarriedOver"
         // The heartbeat's write-once dates, kept so an updated Mac does not report its first use again.
         static let connectionAttemptedAt = "com.TablePro.analytics.connectionAttemptedAt"
         static let connectionSucceededAt = "com.TablePro.analytics.connectionSucceededAt"
@@ -104,6 +105,7 @@ internal final class Telemetry {
     ) {
         guard !isStarted else { return }
         isStarted = true
+        carryOverFirstQuery()
         guard projectKey != nil else {
             Self.logger.info("This build has no PostHog project key; usage data is off")
             return
@@ -220,6 +222,15 @@ internal final class Telemetry {
             "connection_count": environment.connectionCount
         ])
         defaults.set(today, forKey: Keys.appOpenedAt)
+    }
+
+    // Builds from August 2026 until this one never wrote the first query date: a Mac that connected on one has queried.
+    private func carryOverFirstQuery() {
+        guard !defaults.bool(forKey: Keys.firstQueryCarriedOver) else { return }
+        defaults.set(true, forKey: Keys.firstQueryCarriedOver)
+        guard defaults.object(forKey: Keys.connectionSucceededAt) != nil,
+              defaults.object(forKey: Keys.firstQueryExecutedAt) == nil else { return }
+        defaults.set(now(), forKey: Keys.firstQueryExecutedAt)
     }
 
     private func captureOnce(_ key: String, _ event: String, _ properties: [String: Any]) {
