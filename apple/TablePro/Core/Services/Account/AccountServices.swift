@@ -61,6 +61,10 @@ internal final class AccountServices {
     private var refreshTask: Task<EntitlementRefreshState, Never>?
     private var checkTask: Task<Bool, Never>?
     private var scheduleTask: Task<Void, Never>?
+    private var sleepTask: Task<Void, Never>?
+    // Set by the last refresh, whatever asked for it; the schedule waits this long from that moment.
+    private var nextRefreshDelay = AccountServices.refreshInterval
+    private var rescheduled = false
     // Bumped by sign-out, so a refresh still out at that moment adopts nothing it brings back.
     private var sessionGeneration = 0
 
@@ -100,21 +104,15 @@ internal final class AccountServices {
         refusals.services = self
     }
 
-    // Reads what is on disk, then migrates a stored license key and refreshes now and every 24 hours.
+    // Reads what is on disk, then migrates a stored license key and refreshes now and on the schedule.
     func start() {
         guard scheduleTask == nil else { return }
         loadStoredState()
         scheduleTask = Task { [weak self] in
             while !Task.isCancelled {
                 guard let self else { return }
-                let succeeded = await self.checkNow()
-                // Past the device limit, a slot freed in the portal or on another device unlocks this Mac within the hour.
-                let delay = succeeded && !self.access.isPastDeviceLimit ? Self.refreshInterval : Self.retryInterval
-                do {
-                    try await self.clock.sleep(for: delay)
-                } catch {
-                    return
-                }
+                await self.checkNow()
+                await self.waitForNextRefresh()
             }
         }
     }
@@ -122,6 +120,7 @@ internal final class AccountServices {
     func stop() {
         scheduleTask?.cancel()
         scheduleTask = nil
+        sleepTask?.cancel()
     }
 
     // Back from the portal's device page, where the user may have freed a slot.
@@ -174,6 +173,14 @@ internal final class AccountServices {
         if refreshTask == task {
             refreshTask = nil
         }
+        switch outcome {
+        case .succeeded, .deviceLimitReached:
+            reschedule(succeeded: true)
+        case .failed:
+            reschedule(succeeded: false)
+        case .idle:
+            break
+        }
         return outcome
     }
 
@@ -190,6 +197,7 @@ internal final class AccountServices {
         if checkTask == task {
             checkTask = nil
         }
+        reschedule(succeeded: succeeded)
         return succeeded
     }
 
@@ -285,6 +293,28 @@ internal final class AccountServices {
     }
 
     // MARK: - Private
+
+    // clients.md, Shared rules: a day after a refresh that worked, an hour after one that failed. Past the device
+    // limit, a slot freed in the portal or on another device unlocks this Mac within the hour.
+    private func reschedule(succeeded: Bool) {
+        nextRefreshDelay = succeeded && !access.isPastDeviceLimit ? Self.refreshInterval : Self.retryInterval
+        rescheduled = true
+        sleepTask?.cancel()
+    }
+
+    private func waitForNextRefresh() async {
+        repeat {
+            rescheduled = false
+            let task = Task { [clock, nextRefreshDelay] in
+                _ = try? await clock.sleep(for: nextRefreshDelay)
+            }
+            sleepTask = task
+            await task.value
+            if sleepTask == task {
+                sleepTask = nil
+            }
+        } while rescheduled && !Task.isCancelled
+    }
 
     private func runScheduledWork() async -> Bool {
         switch await migrateLegacyKeyIfNeeded() {

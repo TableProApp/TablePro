@@ -162,6 +162,70 @@ struct AccountServicesTests {
         }
     }
 
+    @Test("A Refresh between scheduled ones moves the next to a day after it, or to an hour after it when it fails")
+    func refreshMovesTheSchedule() async throws {
+        let fixture = try AccountFixture()
+        try await fixture.signIn()
+        let entitlementPath = "/devices/\(FakeAccountServer.deviceID)/entitlement"
+        defer { fixture.services.stop() }
+
+        fixture.services.start()
+        await fixture.clock.waitUntilSleeping()
+        #expect(await fixture.server.requests(to: entitlementPath).count == 2)
+
+        fixture.clock.advance(by: .seconds(12 * 60 * 60))
+        #expect(await fixture.services.checkNow())
+        #expect(await fixture.server.requests(to: entitlementPath).count == 3)
+        await fixture.clock.waitUntilSleeping()
+        #expect(fixture.clock.pendingSleeperCount == 1)
+
+        fixture.clock.advance(by: .seconds(12 * 60 * 60))
+        await fixture.clock.waitUntilSleeping()
+        #expect(await fixture.server.requests(to: entitlementPath).count == 3, "A day after launch is no longer due")
+
+        await fixture.server.set { $0.isOffline = true }
+        #expect(await fixture.services.checkNow() == false)
+        #expect(await fixture.server.requests(to: entitlementPath).count == 4)
+        await fixture.server.set { $0.isOffline = false }
+        await fixture.clock.waitUntilSleeping()
+        fixture.clock.advance(by: AccountServices.retryInterval - .seconds(1))
+        await fixture.clock.waitUntilSleeping()
+        #expect(await fixture.server.requests(to: entitlementPath).count == 4)
+        fixture.clock.advance(by: .seconds(1))
+        try await waitUntil { await fixture.server.requests(to: entitlementPath).count == 5 }
+    }
+
+    @Test("Signing in and removing a device move the next scheduled refresh too")
+    func signInAndRemovalMoveTheSchedule() async throws {
+        let fixture = try AccountFixture()
+        let entitlementPath = "/devices/\(FakeAccountServer.deviceID)/entitlement"
+        await fixture.server.set {
+            $0.devices.append(FakeAccountServer.device(id: "dev_old", name: "Old Mac", machineID: String(repeating: "1", count: 64)))
+        }
+        defer { fixture.services.stop() }
+
+        fixture.services.start()
+        await fixture.clock.waitUntilSleeping()
+        fixture.clock.advance(by: .seconds(6 * 60 * 60))
+        try await fixture.signIn()
+        #expect(await fixture.server.requests(to: entitlementPath).count == 1)
+
+        await fixture.clock.waitUntilSleeping()
+        fixture.clock.advance(by: .seconds(18 * 60 * 60))
+        await fixture.clock.waitUntilSleeping()
+        #expect(await fixture.server.requests(to: entitlementPath).count == 1, "A day after launch is no longer due")
+
+        try await fixture.services.removeDevice("dev_old")
+        #expect(await fixture.server.requests(to: entitlementPath).count == 2)
+        await fixture.clock.waitUntilSleeping()
+        fixture.clock.advance(by: .seconds(6 * 60 * 60))
+        await fixture.clock.waitUntilSleeping()
+        #expect(await fixture.server.requests(to: entitlementPath).count == 2, "A day after the sign-in is no longer due")
+
+        fixture.clock.advance(by: .seconds(18 * 60 * 60))
+        try await waitUntil { await fixture.server.requests(to: entitlementPath).count == 3 }
+    }
+
     @Test("device_limit_reached leaves the app on the free tier and keeps the devices that hold the slots")
     func deviceLimitReached() async throws {
         let fixture = try AccountFixture()
