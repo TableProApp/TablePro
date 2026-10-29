@@ -59,7 +59,11 @@ pub struct NumberFigures {
 /// `values` as their cells show them, with a cell left to its default as
 /// NULL. `None` once `cancelled` says so. It asks before every value: one
 /// of 100,000 digits takes milliseconds alone.
-pub fn summarize(values: &[Value], rule: SummaryRule, cancelled: &dyn Fn() -> bool) -> Option<SelectionSummary> {
+pub fn summarize<'a>(
+    values: impl IntoIterator<Item = &'a Value>,
+    rule: SummaryRule,
+    cancelled: &dyn Fn() -> bool,
+) -> Option<SelectionSummary> {
     let mut tally = Tally::default();
     for value in values {
         if cancelled() {

@@ -6,11 +6,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use gtk4::{self as gtk, glib};
-use tablepro_core::Value;
 
 use super::DataGrid;
 use crate::i18n::{gettext, gettext_f};
-use crate::services::grid::{SelectionSummary, SummaryRule, summarize};
+use crate::services::grid::{RowSnapshot, SelectionSummary, SummaryRule, summarize};
 use crate::ui::format::{format_decimal, format_thousands};
 use crate::ui::icons;
 
@@ -108,7 +107,16 @@ impl Readout {
         }
     }
 
+    /// While a run is out, Copy would take figures of rows no longer
+    /// selected.
+    fn set_current(&self, current: bool) {
+        for row in &self.figures {
+            row.copy.set_sensitive(current);
+        }
+    }
+
     fn show(&self, shown: Option<Shown>) {
+        self.set_current(true);
         if *self.shown.borrow() == shown {
             return;
         }
@@ -324,19 +332,26 @@ impl DataGrid {
         }
         let run = state.runs.get().wrapping_add(1);
         state.runs.set(run);
-        let Some((column, rule, values)) = self.summary_input() else {
+        let (Some(tasks), Some(input)) = (self.config().map(|config| config.tasks.clone()), self.summary_input()) else {
             readout.show(None);
             return;
         };
-        let Some(tasks) = self.config().map(|config| config.tasks.clone()) else {
-            return;
-        };
+        let SummaryInput {
+            column,
+            index,
+            rule,
+            rows,
+        } = input;
         let cancelled = Arc::new(AtomicBool::new(false));
         state.running.replace(Some(cancelled.clone()));
+        readout.set_current(false);
         let grid = self.downgrade();
         glib::spawn_future_local(async move {
             let answer = tasks
-                .spawn_blocking_task(move || summarize(&values, rule, &|| cancelled.load(Ordering::Relaxed)))
+                .spawn_blocking_task(move || {
+                    let values = rows.iter().map(|row| row.value(index));
+                    summarize(values, rule, &|| cancelled.load(Ordering::Relaxed))
+                })
                 .await;
             let Some(grid) = grid.upgrade() else {
                 return;
@@ -346,22 +361,24 @@ impl DataGrid {
                 return;
             }
             state.running.take();
+            let Some(readout) = state.readout.get() else {
+                return;
+            };
             match answer {
-                Ok(Some(summary)) => {
-                    if let Some(readout) = state.readout.get() {
-                        readout.show(Some(Shown { column, summary }));
-                    }
-                }
+                Ok(Some(summary)) => readout.show(Some(Shown { column, summary })),
                 Ok(None) => {}
-                Err(failure) => tracing::warn!(%failure, "the selection could not be summed"),
+                Err(failure) => {
+                    tracing::warn!(%failure, "the selection could not be summed");
+                    readout.show(None);
+                }
             }
         });
     }
 
-    /// The summed column's name, its rule and its values in the selected
-    /// rows, as the cells show them. Rows marked for deletion are left out,
-    /// also once a save failed on them.
-    fn summary_input(&self) -> Option<(String, SummaryRule, Vec<Value>)> {
+    /// The selected rows as the cells show them, sharing the cells the page
+    /// read. Rows marked for deletion are left out, also once a save failed
+    /// on them.
+    fn summary_input(&self) -> Option<SummaryInput> {
         let rows = self.selected_rows();
         if rows.len() < MIN_ROWS {
             return None;
@@ -373,11 +390,23 @@ impl DataGrid {
         let columns = self.grid_columns();
         let column = columns.iter().find(|column| column.index == index)?;
         let tracked = self.tracked();
-        let values = rows
+        let rows = rows
             .iter()
             .filter(|row| !tracked.mark(row, index).row_deleted)
-            .map(|row| tracked.with_value(row, index, |value, default| if default { Value::Null } else { value.clone() }))
+            .map(|row| tracked.snapshot(row))
             .collect();
-        Some((column.name.clone(), SummaryRule::for_column(column), values))
+        Some(SummaryInput {
+            column: column.name.clone(),
+            index,
+            rule: SummaryRule::for_column(column),
+            rows,
+        })
     }
+}
+
+struct SummaryInput {
+    column: String,
+    index: usize,
+    rule: SummaryRule,
+    rows: Vec<RowSnapshot>,
 }

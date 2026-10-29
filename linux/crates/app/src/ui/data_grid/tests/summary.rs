@@ -197,7 +197,7 @@ fn the_popover_lists_each_figure_and_copies_it_without_grouping() {
     let labels: Vec<String> = descendants(&popover)
         .into_iter()
         .filter_map(|widget| widget.downcast::<gtk::Label>().ok())
-        .filter(|label| label.is_visible())
+        .filter(|label| label.get_visible())
         .map(|label| label.label().to_string())
         .collect();
     assert_eq!(
@@ -228,6 +228,7 @@ fn the_popover_lists_each_figure_and_copies_it_without_grouping() {
         .filter_map(|widget| widget.downcast::<gtk::Button>().ok())
         .find(|copy| copy.tooltip_text().as_deref() == Some("Copy Maximum"))
         .expect("Copy Maximum");
+    assert!(copy_maximum.is_sensitive(), "Copy stayed off after the figures came in");
     copy_maximum.emit_clicked();
     wait_until(WAIT, || !toasts.borrow().is_empty()).expect("the copy lands");
     let clipboard = grid.grid.clipboard();
