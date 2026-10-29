@@ -19,7 +19,7 @@ internal enum TeamLibraryFailure: Error, Equatable, Sendable {
     // the server points at one.
     case refused(String?)
 
-    // The case alone: a refusal's detail is the server's text.
+    // The case alone: a refusal carries the name of someone's saved item.
     var logName: String {
         switch self {
         case .offline: "offline"
