@@ -727,4 +727,56 @@ struct TeamLibrarySyncTests {
         #expect(fixture.store.loadAll().isEmpty)
         #expect(!FileManager.default.fileExists(atPath: fixture.store.legacyFile.path))
     }
+
+    // MARK: - Sign-out while a call is out
+
+    @Test("A pull that answers after sign-out brings nothing back")
+    func pullAnsweredAfterSignOut() async throws {
+        let gate = AsyncGate()
+        let fixture = try await TeamLibraryFixture { library in
+            library.write(Self.team, kind: "query", clientID: "q1", data: TeamLibraryFixture.queryData("Orders"))
+        }
+        fixture.sync.start()
+        try await waitUntil { !fixture.sync.content.queries.isEmpty }
+        await fixture.library {
+            $0.write(Self.team, kind: "query", clientID: "q2", data: TeamLibraryFixture.queryData("Users"))
+            $0.pullGate = gate
+        }
+        fixture.sync.syncSoon()
+        await gate.arrived(1)
+
+        await fixture.account.services.signOut()
+        await gate.open()
+        await fixture.sync.sync()
+
+        #expect(fixture.sync.content == .empty)
+        #expect(fixture.store.loadAll().isEmpty)
+        #expect(fixture.sync.status == .idle)
+        fixture.sync.stop()
+    }
+
+    @Test("A push that answers after sign-out brings nothing back, and the publish says signed out")
+    func pushAnsweredAfterSignOut() async throws {
+        let gate = AsyncGate()
+        let fixture = try await TeamLibraryFixture()
+        fixture.sync.start()
+        try await waitUntil {
+            if case .synced = fixture.sync.status { return true }
+            return false
+        }
+        await fixture.library { $0.pushGate = gate }
+        let publishing = Task {
+            try await fixture.sync.publishSavedQueries(favorites: [TeamLibraryFixture.favorite(name: "Orders")], folders: [], to: Self.team)
+        }
+        await gate.arrived(1)
+
+        await fixture.account.services.signOut()
+        await gate.open()
+
+        await #expect(throws: TeamLibraryPublishError.failed(.signedOut)) { try await publishing.value }
+        #expect(fixture.sync.content == .empty)
+        #expect(fixture.store.loadAll().isEmpty)
+        #expect(fixture.sync.status == .idle)
+        fixture.sync.stop()
+    }
 }

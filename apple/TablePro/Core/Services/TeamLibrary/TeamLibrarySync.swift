@@ -223,6 +223,7 @@ internal final class TeamLibrarySync: ObservableObject {
         do throws(AccountError) {
             profile = try await account.fetchProfile()
         } catch {
+            guard started == generation else { return .skipped }
             return finish(.failed(TeamLibraryFailure.from(error)))
         }
         guard started == generation else { return .skipped }
@@ -230,7 +231,7 @@ internal final class TeamLibrarySync: ObservableObject {
         adopt(profile.memberships)
 
         var failure: TeamLibraryFailure?
-        for teamID in teams.keys.sorted() {
+        for teamID in teams.keys.sorted() where started == generation {
             do throws(TeamLibraryFailure) {
                 try await syncTeam(teamID)
             } catch {
@@ -241,6 +242,8 @@ internal final class TeamLibrarySync: ObservableObject {
                 if error.isRetryable { break }
             }
         }
+        // Signed out while a pull or a push was out: clear() already dropped everything it would bring back.
+        guard started == generation else { return .skipped }
         if legacy != nil, teams.values.allSatisfy({ $0.cursor != nil }) {
             legacy = nil
             store.removeLegacy()
@@ -511,7 +514,9 @@ internal final class TeamLibrarySync: ObservableObject {
         owns: (TeamLibraryKey) -> Bool,
         plan: (TeamLibraryTeamState) throws -> [TeamLibraryEdit]
     ) async -> Result<TeamLibraryPublishResult, TeamLibraryPublishError> {
+        let started = generation
         let outcome = await performSync()
+        guard started == generation else { return .failure(.failed(.signedOut)) }
         guard let state = teams[teamID], state.canWrite else {
             if case .failed(let failure) = outcome, teams[teamID] == nil {
                 return .failure(.failed(failure))
@@ -542,12 +547,14 @@ internal final class TeamLibrarySync: ObservableObject {
             try await push(teamID)
             try await pull(teamID)
         } catch {
+            guard started == generation else { return .failure(.failed(.signedOut)) }
             publishContent()
             _ = finish(.failed(error))
             guard error.isRetryable else { return .failure(.failed(error)) }
             retryLater()
             return .success(.queued(error))
         }
+        guard started == generation else { return .failure(.failed(.signedOut)) }
         publishContent()
         _ = finish(.synced)
         let keys = Set(edits.map { TeamLibraryKey($0) })
