@@ -31,7 +31,9 @@ internal struct TeamLibraryConflictPresentation: Equatable {
     init(conflict: TeamLibraryConflict, current: TeamLibraryChange?, teamName: String?) {
         let mineData = conflict.edit.data?.additionalProperties
         let kind = conflict.edit.kind.rawValue
-        let name = Self.name(kind: kind, data: mineData) ?? Self.name(kind: kind, data: current?.dataValues) ?? conflict.edit.clientId
+        let name = TeamLibraryPayload.name(kind: kind, data: mineData)
+            ?? TeamLibraryPayload.name(kind: kind, data: current?.dataValues)
+            ?? conflict.edit.clientId
         title = String(format: String(localized: "“%@” changed since you last synced"), name)
         let team = teamName ?? String(localized: "your team")
         message = String(
@@ -48,16 +50,6 @@ internal struct TeamLibraryConflictPresentation: Equatable {
         } else {
             theirs = TeamLibraryVersionSummary(lines: [], removal: String(localized: "No longer in the team library"))
         }
-    }
-
-    private static func name(kind: String, data: TeamLibraryData?) -> String? {
-        let name: String? = switch kind {
-        case TeamLibraryKind.folder: TeamLibraryPayload.decode(TeamLibraryFolderData.self, from: data)?.name
-        case TeamLibraryKind.query: TeamLibraryPayload.decode(TeamLibraryQueryData.self, from: data)?.name
-        case TeamLibraryKind.connection: TeamLibraryPayload.decode(ExportableConnection.self, from: data)?.name
-        default: nil
-        }
-        return name.flatMap { $0.isEmpty ? nil : $0 }
     }
 
     private static func lines(kind: String, data: TeamLibraryData?) -> [TeamLibraryVersionSummary.Line] {

@@ -15,7 +15,8 @@ internal enum TeamLibraryFailure: Error, Equatable, Sendable {
     case unreadable
     case writeForbidden
     case cursorExpired
-    // The server refused the push as sent (422, 413); sending it again changes nothing.
+    // The server refused the push as sent (422, 413); sending it again changes nothing. Names the refused item when
+    // the server points at one.
     case refused(String?)
 
     // The case alone: a refusal's detail is the server's text.
@@ -65,6 +66,12 @@ internal struct TeamLibraryPage: Sendable {
     let hasMore: Bool
 }
 
+internal enum TeamLibraryPushAnswer: Sendable {
+    case results([Components.Schemas.LibraryResult])
+    // A 422 naming one change by its place in the batch: the server applied none of the batch.
+    case refusedChange(Int)
+}
+
 // The /v2 team library calls through the generated client, which carries the session's access token.
 internal struct TeamLibraryClient: Sendable {
     static let pageSize: Int64 = 500
@@ -100,7 +107,7 @@ internal struct TeamLibraryClient: Sendable {
         }
     }
 
-    func push(teamID: String, edits: [TeamLibraryEdit]) async throws(TeamLibraryFailure) -> [Components.Schemas.LibraryResult] {
+    func push(teamID: String, edits: [TeamLibraryEdit]) async throws(TeamLibraryFailure) -> TeamLibraryPushAnswer {
         do {
             switch try await api.pushLibraryChanges(
                 path: .init(teamId: teamID),
@@ -108,7 +115,7 @@ internal struct TeamLibraryClient: Sendable {
             ) {
             case .ok(let answer):
                 // The answer's cursor is never adopted: it covers other writers' commits too.
-                return try answer.body.json.results
+                return .results(try answer.body.json.results)
             case .unauthorized:
                 throw TeamLibraryFailure.signedOut
             case .forbidden(let answer):
@@ -116,11 +123,14 @@ internal struct TeamLibraryClient: Sendable {
                 throw problem.code == "library_write_forbidden" ? TeamLibraryFailure.writeForbidden : .unreadable
             case .notFound:
                 throw TeamLibraryFailure.unreadable
-            case .contentTooLarge(let answer):
-                throw TeamLibraryFailure.refused(try answer.body.applicationProblemJson.detail)
+            case .contentTooLarge:
+                throw TeamLibraryFailure.refused(nil)
             case .unprocessableContent(let answer):
                 let problem = try answer.body.applicationProblemJson
-                throw TeamLibraryFailure.refused(problem.errors?.first?.location ?? problem.detail)
+                guard let index = Self.changeIndex(in: problem.errors?.first?.location) else {
+                    throw TeamLibraryFailure.refused(nil)
+                }
+                return .refusedChange(index)
             case .tooManyRequests:
                 throw TeamLibraryFailure.rateLimited
             case .internalServerError:
@@ -133,6 +143,14 @@ internal struct TeamLibraryClient: Sendable {
         } catch {
             throw TeamLibraryFailure.from(AccountError.from(error))
         }
+    }
+
+    // "body.changes[3].data.password" names change 3.
+    static func changeIndex(in location: String?) -> Int? {
+        guard let location, location.hasPrefix("body.changes["),
+              let close = location.firstIndex(of: "]")
+        else { return nil }
+        return Int(location[location.index(location.startIndex, offsetBy: "body.changes[".count)..<close])
     }
 
     private static func undocumented(_ status: Int) -> TeamLibraryFailure {

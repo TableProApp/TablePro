@@ -337,11 +337,12 @@ internal final class TeamLibrarySync: ObservableObject {
 
     private func push(_ teamID: String) async throws(TeamLibraryFailure) {
         dropOversizedEdits(teamID)
+        var refusal: TeamLibraryFailure?
         while let state = teams[teamID], state.canWrite, !state.pending.isEmpty {
             let batch = Self.batch(state.pending)
-            let results: [Components.Schemas.LibraryResult]
+            let answer: TeamLibraryPushAnswer
             do throws(TeamLibraryFailure) {
-                results = try await client.push(teamID: teamID, edits: batch)
+                answer = try await client.push(teamID: teamID, edits: batch)
             } catch .writeForbidden {
                 if var current = teams[teamID] {
                     current.canWrite = false
@@ -349,25 +350,50 @@ internal final class TeamLibrarySync: ObservableObject {
                     commit(current)
                 }
                 throw .writeForbidden
-            } catch .refused(let reason) {
-                Self.logger.error("The team library refused a push: \(reason ?? "-", privacy: .private)")
+            } catch .refused(_) {
+                Self.logger.error("The team library refused a push of \(batch.count) changes without naming one")
                 if var current = teams[teamID] {
                     current.pending.removeFirst(min(batch.count, current.pending.count))
                     commit(current)
                 }
-                throw .refused(reason)
+                throw .refused(nil)
             } catch .unreadable {
                 teams[teamID] = nil
                 store.remove(teamID: teamID)
                 throw .unreadable
             }
             guard var current = teams[teamID] else { return }
-            current.pending.removeFirst(min(batch.count, current.pending.count))
-            for (edit, result) in zip(batch, results) {
-                apply(result, of: edit, to: &current)
+            switch answer {
+            case .refusedChange(let index):
+                // Nothing in the batch was applied: only the change the server named is dropped, the rest goes again.
+                Self.logger.error("The team library refused change \(index) of a push of \(batch.count)")
+                if batch.indices.contains(index), current.pending.indices.contains(index),
+                   TeamLibraryKey(current.pending[index]) == TeamLibraryKey(batch[index]) {
+                    let edit = current.pending.remove(at: index)
+                    refusal = refusal ?? .refused(Self.name(of: edit, in: current))
+                } else {
+                    current.pending.removeFirst(min(batch.count, current.pending.count))
+                    refusal = refusal ?? .refused(nil)
+                }
+                commit(current)
+            case .results(let results):
+                current.pending.removeFirst(min(batch.count, current.pending.count))
+                for (edit, result) in zip(batch, results) {
+                    apply(result, of: edit, to: &current)
+                }
+                commit(current)
             }
-            commit(current)
         }
+        if let refusal {
+            throw refusal
+        }
+    }
+
+    private static func name(of edit: TeamLibraryEdit, in state: TeamLibraryTeamState) -> String {
+        let kind = edit.kind.rawValue
+        return TeamLibraryPayload.name(kind: kind, data: edit.data?.additionalProperties)
+            ?? TeamLibraryPayload.name(kind: kind, data: state.items[TeamLibraryKey(edit)]?.dataValues)
+            ?? edit.clientId
     }
 
     private func apply(_ result: Components.Schemas.LibraryResult, of edit: TeamLibraryEdit, to state: inout TeamLibraryTeamState) {

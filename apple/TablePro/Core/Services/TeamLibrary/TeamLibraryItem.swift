@@ -143,6 +143,16 @@ internal enum TeamLibraryPayload {
         return try? JSONDecoder().decode(type, from: encoded)
     }
 
+    static func name(kind: String, data: TeamLibraryData?) -> String? {
+        let name: String? = switch kind {
+        case TeamLibraryKind.folder: decode(TeamLibraryFolderData.self, from: data)?.name
+        case TeamLibraryKind.query: decode(TeamLibraryQueryData.self, from: data)?.name
+        case TeamLibraryKind.connection: decode(ExportableConnection.self, from: data)?.name
+        default: nil
+        }
+        return name.flatMap { $0.isEmpty ? nil : $0 }
+    }
+
     static func byteCount(of data: TeamLibraryData) -> Int {
         let encoder = JSONEncoder()
         encoder.outputFormatting = .withoutEscapingSlashes

@@ -40,6 +40,8 @@ struct FakeTeamLibrary: Sendable {
     // Hold each pull or push until the test opens it.
     var pullGate: AsyncGate?
     var pushGate: AsyncGate?
+    // A push holding a change whose data names this query is refused with 422 at that change, as the server does.
+    var refusedQueryName: String?
 
     func live(_ team: String) -> [Item] {
         (items[team] ?? []).filter { !$0.deleted }
@@ -151,9 +153,14 @@ struct FakeTeamLibrary: Sendable {
         guard !changes.isEmpty, changes.count <= 500 else {
             return FakeAccountServer.problem(status: 422, code: "validation_failed")
         }
-        for change in changes {
-            if let data = change["data"], Self.holdsSecret(data) {
-                return FakeAccountServer.problem(status: 422, code: "validation_failed")
+        for (index, change) in changes.enumerated() {
+            let data = change["data"] as? [String: Any]
+            if let data, Self.holdsSecret(data) || refusedQueryName.map({ data["name"] as? String == $0 }) == true {
+                return FakeAccountServer.json(status: .init(code: 422), contentType: "application/problem+json", [
+                    "type": "https://api.tablepro.app/problems/validation_failed", "title": "validation failed",
+                    "status": 422, "code": "validation_failed",
+                    "errors": [["location": "body.changes[\(index)].data.query", "message": "refused"]]
+                ])
             }
         }
         var results: [[String: Any]] = []

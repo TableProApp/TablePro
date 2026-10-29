@@ -256,6 +256,23 @@ struct TeamLibrarySyncTests {
         #expect(theirs.data?["folder_client_id"] == nil)
     }
 
+    @Test("A change the server refuses is dropped and named, and the rest of the batch is published")
+    func refusedChangeIsNamed() async throws {
+        let fixture = try await TeamLibraryFixture { $0.refusedQueryName = "Broken" }
+        let favorites = ["Orders", "Broken", "Users"].map { TeamLibraryFixture.favorite(name: $0) }
+
+        await #expect(throws: TeamLibraryPublishError.failed(.refused("Broken"))) {
+            try await fixture.sync.publishSavedQueries(favorites: favorites, folders: [], to: Self.team)
+        }
+
+        let sizes = await fixture.pushes().map { $0.count }
+        #expect(sizes == [3, 2])
+        let names = Set(await fixture.server.library.live(Self.team).compactMap { $0.data?["name"] as? String })
+        #expect(names == ["Orders", "Users"])
+        #expect(fixture.store.loadAll().first?.pending.isEmpty == true)
+        #expect(fixture.sync.status == .failed(.refused("Broken")))
+    }
+
     // MARK: - Conflicts
 
     @Test("A push over an item someone changed since the pull leaves a conflict holding their copy")
