@@ -182,6 +182,43 @@ struct QuickSwitcherPanelControllerTests {
         try await waitUntil { released == nil }
     }
 
+    @Test("A retained panel comes back as the same window, answering for the model it was given last")
+    func retainedPanelSwapsItsModel() async throws {
+        let controller = QuickSwitcherPanelController()
+        defer { controller.dismiss() }
+        weak var released: QuickSwitcherViewModel?
+        weak var firstPanel: QuickSwitcherPanel?
+        do {
+            let viewModel = QuickSwitcherViewModel(connectionId: UUID())
+            released = viewModel
+            controller.present(
+                QuickSwitcherPanelContent(viewModel: viewModel) { _, _ in },
+                over: nil,
+                identity: "open-quickly",
+                retainsPanel: true
+            )
+            let panel = try #require(controller.presentedWindow as? QuickSwitcherPanel)
+            firstPanel = panel
+            try await waitUntil { panel.keyCommandHandler != nil }
+        }
+        controller.dismiss()
+
+        let viewModel = QuickSwitcherViewModel(connectionId: UUID())
+        controller.present(
+            QuickSwitcherPanelContent(viewModel: viewModel) { _, _ in },
+            over: nil,
+            identity: "open-quickly",
+            retainsPanel: true
+        )
+        let panel = try #require(controller.presentedWindow as? QuickSwitcherPanel)
+        #expect(panel === firstPanel)
+        try await waitUntil { panel.keyCommandHandler != nil }
+        try await waitUntil { released == nil }
+
+        #expect(panel.performKeyEquivalent(with: try Self.key("2", modifiers: .command, window: panel)))
+        #expect(viewModel.scope == QuickSwitcherScope.allCases[1])
+    }
+
     @Test("The panel answers its own commands ahead of the search field and passes the rest on")
     func panelAnswersItsCommands() async throws {
         let controller = QuickSwitcherPanelController()

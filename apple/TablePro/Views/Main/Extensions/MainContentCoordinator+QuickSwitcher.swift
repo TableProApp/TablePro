@@ -39,15 +39,22 @@ extension MainContentCoordinator {
                     )
                 }
         )
+        let viewModel = QuickSwitcherViewModel(connectionId: connectionId)
         let panelView = QuickSwitcherPanelView(
-            connectionId: connectionId,
+            viewModel: viewModel,
             databaseType: connection.type,
             openTables: openTables,
             browseSchema: browseSchema,
             onSelect: { [weak self] item, intent in self?.handleQuickSwitcherSelection(item, intent: intent) },
             onDismiss: { [weak self] in self?.quickSwitcherPanel?.dismiss() }
         )
-        quickSwitcherPanel.present(panelView, over: contentWindow, identity: Self.openQuicklyPanelIdentity)
+        quickSwitcherPanel.present(
+            panelView,
+            over: contentWindow,
+            identity: Self.openQuicklyPanelIdentity,
+            retainsPanel: true,
+            onClose: { [weak viewModel] in viewModel?.releaseResults() }
+        )
         InteractionTracer.shared.end(
             .quickOpenPanel, key: connectionId.uuidString, after: quickSwitcherPanel.presentedWindow
         )
