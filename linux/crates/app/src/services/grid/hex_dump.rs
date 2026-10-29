@@ -82,10 +82,17 @@ fn image_size(bytes: &[u8]) -> Option<(u32, u32)> {
         return le16(6).zip(le16(8));
     }
     if bytes.starts_with(b"BM") {
-        // A bottom-up bitmap stores its height as negative.
-        return le32(18)
-            .zip(le32(22))
-            .map(|(w, h)| (w.unsigned_abs(), h.unsigned_abs()));
+        return match le32(14)? {
+            // OS/2's header, with 16-bit sizes.
+            12 => le16(18).zip(le16(20)),
+            // Windows' headers, and OS/2's second. A bottom-up bitmap
+            // stores its height as negative; a negative width is no bitmap.
+            40 | 52 | 56 | 64 | 108 | 124 => {
+                let (width, height) = le32(18).zip(le32(22))?;
+                (width > 0 && height != 0 && height != i32::MIN).then(|| (width.unsigned_abs(), height.unsigned_abs()))
+            }
+            _ => None,
+        };
     }
     if bytes.starts_with(b"RIFF") && bytes.get(8..12) == Some(b"WEBP") {
         return match bytes.get(12..16)? {
@@ -104,15 +111,35 @@ fn image_size(bytes: &[u8]) -> Option<(u32, u32)> {
     None
 }
 
-/// A JPEG's size, from the first start-of-frame segment.
+/// A JPEG's size, from the first start-of-frame segment, read the way a
+/// decoder walks the segments: fill bytes skipped, markers with no length
+/// stepped over. Anything else it cannot follow says no size.
 fn jpeg_size(bytes: &[u8]) -> Option<(u32, u32)> {
     let mut at = 2;
     loop {
         if *bytes.get(at)? != 0xff {
             return None;
         }
+        // Any number of 0xFF may pad before a marker.
+        while *bytes.get(at + 1)? == 0xff {
+            at += 1;
+        }
         let marker = *bytes.get(at + 1)?;
+        match marker {
+            // TEM, and RST0 to RST7, stand alone.
+            0x01 | 0xd0..=0xd7 => {
+                at += 2;
+                continue;
+            }
+            // A second start of image, or the scan or the end before any
+            // frame: no size a decoder would agree on.
+            0x00 | 0xd8 | 0xd9 | 0xda => return None,
+            _ => {}
+        }
         let length = usize::from(u16::from_be_bytes([*bytes.get(at + 2)?, *bytes.get(at + 3)?]));
+        if length < 2 {
+            return None;
+        }
         // SOF0 to SOF15, but for DHT (C4), JPG (C8) and DAC (CC).
         if (0xc0..=0xcf).contains(&marker) && !matches!(marker, 0xc4 | 0xc8 | 0xcc) {
             let height = u16::from_be_bytes([*bytes.get(at + 5)?, *bytes.get(at + 6)?]);
@@ -178,6 +205,36 @@ mod tests {
         assert!(!previewable_image(b"RIFF\x00\x00\x00\x00WAVEfmt "));
         assert!(!previewable_image(b"%PDF-1.7"));
         assert!(!previewable_image(&[0xff, 0xd8, 0xff]), "a JPEG with no frame");
+        assert!(
+            previewable_image(&[
+                0xff, 0xd8, 0xff, 0xff, 0xff, 0xe0, 0x00, 0x02, 0xff, 0xd0, 0xff, 0xc0, 0x00, 0x0b, 0x08, 0x00, 0x20,
+                0x00, 0x40,
+            ]),
+            "fill bytes and a standalone marker before the frame"
+        );
+        assert!(
+            !previewable_image(&[
+                0xff, 0xd8, 0xff, 0xe0, 0x00, 0x00, 0xff, 0xc0, 0x00, 0x0b, 0x08, 0x00, 0x20, 0x00, 0x40
+            ]),
+            "a segment shorter than its own length field"
+        );
+        let bitmap = |header: u32, width: i32, height: i32| {
+            let mut bytes = b"BM".to_vec();
+            bytes.extend_from_slice(&[0; 12]);
+            bytes.extend_from_slice(&header.to_le_bytes());
+            bytes.extend_from_slice(&width.to_le_bytes());
+            bytes.extend_from_slice(&height.to_le_bytes());
+            bytes
+        };
+        assert!(previewable_image(&bitmap(40, 64, -32)), "a top-down bitmap");
+        assert!(!previewable_image(&bitmap(40, -64, 32)), "a negative width");
+        assert!(!previewable_image(&bitmap(40, 64, i32::MIN)));
+        assert!(!previewable_image(&bitmap(64_000, 64, 32)), "an unknown header");
+        let mut os2 = b"BM".to_vec();
+        os2.extend_from_slice(&[0; 12]);
+        os2.extend_from_slice(&12u32.to_le_bytes());
+        os2.extend_from_slice(&[0x40, 0x00, 0x20, 0x00]);
+        assert!(previewable_image(&os2), "an OS/2 bitmap, 16-bit sizes");
         assert!(!previewable_image(&[]));
     }
 }
