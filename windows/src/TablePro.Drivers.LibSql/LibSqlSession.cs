@@ -15,7 +15,7 @@ namespace TablePro.Drivers.LibSql;
 /// A remote libSQL database (sqld or Turso) over Hrana. Reads run on a stream each; a save holds one stream across
 /// two calls through its baton, so its statements commit or roll back together.
 /// </summary>
-internal sealed class LibSqlSession : IDatabaseSession
+internal sealed class LibSqlSession : IDatabaseSession, ISchemaDdlProvider
 {
     private readonly HttpClient _http;
     private readonly HranaClient _client;
@@ -35,6 +35,10 @@ internal sealed class LibSqlSession : IDatabaseSession
     public string ServerVersion { get; }
 
     public string? CurrentDatabase => null;
+
+    public IReadOnlyList<string> CommonDataTypes => LibSqlDdl.CommonDataTypes;
+
+    public IReadOnlyList<string> BuildDdl(ObjectName table, SchemaChange change) => LibSqlDdl.Build(table, change);
 
     public string? DefaultSchema => null;
 

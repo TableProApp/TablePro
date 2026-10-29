@@ -409,6 +409,45 @@ public sealed class TeradataDialect : SqlDialect
     // Teradata has no OFFSET; QUALIFY over ROW_NUMBER is how its own tools page.
     public override void AppendPaging(StringBuilder sql, int offset, int limit, bool hasOrderBy) =>
         sql.Append(CultureInfo.InvariantCulture, $" QUALIFY ROW_NUMBER() OVER (ORDER BY 1) BETWEEN {offset + 1} AND {offset + limit}");
+
+    /// <summary>
+    /// The first page is <c>TOP n</c>, which stops reading once it has its rows. A later page numbers the rows over
+    /// the browse's own sort, so the window and the page agree on the order; numbering over a constant lets each page
+    /// draw from a different order.
+    /// </summary>
+    public override SqlCommandSpec BuildBrowse(Browse.BrowseRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        var sql = new StringBuilder("SELECT ");
+        if (request.Offset <= 0 && request.Limit is > 0 and < int.MaxValue)
+        {
+            sql.Append(CultureInfo.InvariantCulture, $"TOP {request.Limit} ");
+        }
+
+        sql.Append("* FROM ").Append(Qualify(request.Table));
+        var parameters = new List<KeyValuePair<string, object?>>();
+        AppendWhere(sql, request.Filter, parameters);
+
+        var order = new StringBuilder();
+        foreach (var sort in request.Sort)
+        {
+            order.Append(order.Length == 0 ? string.Empty : ", ").Append(QuoteIdentifier(sort.Column)).Append(sort.Descending ? " DESC" : " ASC");
+        }
+
+        // QUALIFY comes before ORDER BY in Teradata's clause order; the outer ORDER BY keeps the page's rows sorted.
+        if (request.Offset > 0)
+        {
+            var window = order.Length > 0 ? order.ToString() : "1";
+            sql.Append(CultureInfo.InvariantCulture, $" QUALIFY ROW_NUMBER() OVER (ORDER BY {window}) BETWEEN {request.Offset + 1L} AND {request.Offset + (long)Math.Max(request.Limit, 1)}");
+        }
+
+        if (order.Length > 0)
+        {
+            sql.Append(" ORDER BY ").Append(order);
+        }
+
+        return new SqlCommandSpec(sql.ToString(), parameters);
+    }
 }
 
 public sealed class HanaDialect : SqlDialect

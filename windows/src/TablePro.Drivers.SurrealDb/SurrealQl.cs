@@ -16,6 +16,7 @@ internal sealed record SurrealKind(string Base, bool IsOptional, string? RecordT
         "int" => typeof(long),
         "float" or "number" => typeof(double),
         "decimal" => typeof(decimal),
+        "datetime" => typeof(DateTimeOffset),
         "bool" => typeof(bool),
         _ => typeof(string),
     };

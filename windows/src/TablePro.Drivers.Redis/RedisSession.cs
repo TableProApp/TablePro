@@ -14,10 +14,11 @@ using TablePro.Core.Sql;
 namespace TablePro.Drivers.Redis;
 
 /// <summary>
-/// One Redis server over one multiplexed connection. The sidebar, key tabs, saves and every editor tab share it; each
-/// call names its logical database, so a tab's <c>SELECT</c> never moves anyone else.
+/// One Redis deployment over one multiplexed connection: a single server, the primary Sentinel names, or every node of
+/// a cluster. The sidebar, key tabs, saves and every editor tab share it; each call names its logical database, so a
+/// tab's <c>SELECT</c> never moves anyone else.
 /// </summary>
-public sealed class RedisSession : IDatabaseSession, IKeySearchProvider, IServerActivityProvider, IServerVariablesProvider
+public sealed class RedisSession : IDatabaseSession, IKeySearchProvider, IServerActivityProvider, IServerVariablesProvider, ISchemaDdlProvider
 {
     /// <summary>How many keys the sidebar lists before it asks for a search instead.</summary>
     public const int SidebarKeyLimit = 5_000;
@@ -30,15 +31,18 @@ public sealed class RedisSession : IDatabaseSession, IKeySearchProvider, IServer
     private static readonly TimeSpan SearchBudget = TimeSpan.FromSeconds(5);
 
     private readonly ConnectionMultiplexer _connection;
+    private readonly ConnectionMultiplexer? _sentinel;
     private readonly RedisScanPager _pager = new();
     private readonly ConcurrentDictionary<(int Database, string Key), (long Offset, string NextId)> _streamPositions = new();
 
-    private RedisSession(ConnectionRequest request, ConnectionMultiplexer connection, int database, string serverVersion)
+    private RedisSession(ConnectionRequest request, ConnectionMultiplexer connection, ConnectionMultiplexer? sentinel, int database, string serverVersion, bool isCluster)
     {
         Profile = request.Profile;
         _connection = connection;
+        _sentinel = sentinel;
         DatabaseIndex = database;
         ServerVersion = serverVersion;
+        IsCluster = isCluster;
     }
 
     public ConnectionProfile Profile { get; }
@@ -50,39 +54,95 @@ public sealed class RedisSession : IDatabaseSession, IKeySearchProvider, IServer
     /// <summary>The logical database the connection opened on, also what a new editor tab starts in.</summary>
     public int DatabaseIndex { get; }
 
+    /// <summary>Whether the keyspace is spread over the primaries of a Redis Cluster, which serves database 0 only.</summary>
+    public bool IsCluster { get; }
+
     public string? CurrentDatabase => RedisConnectionOptions.SchemaName(DatabaseIndex);
 
     public string? DefaultSchema => RedisConnectionOptions.SchemaName(DatabaseIndex);
 
     public string ProcessIdColumn => "id";
 
+    public IReadOnlyList<string> CommonDataTypes => [];
+
     internal ConnectionMultiplexer Connection => _connection;
 
     internal static async Task<RedisSession> ConnectAsync(ConnectionRequest request, CancellationToken cancellationToken)
     {
         await Task.CompletedTask.ConfigureAwait(ConfigureAwaitOptions.ForceYielding);
-        var options = RedisConnectionOptions.Build(request);
-        var connecting = ConnectionMultiplexer.ConnectAsync(options);
+        var plan = RedisConnectionOptions.Plan(request);
+        ConnectionMultiplexer? sentinel = null;
         ConnectionMultiplexer connection;
         try
         {
-            connection = await connecting.WaitAsync(cancellationToken);
+            if (plan.Sentinel is { } sentinelOptions)
+            {
+                // The Sentinel connection stays open beside the data one: it is how the library hears of a failover
+                // and moves the data connection to the new primary.
+                sentinel = await LandAsync(ConnectionMultiplexer.SentinelConnectAsync(sentinelOptions), cancellationToken);
+                var sentinels = sentinel;
+                connection = await LandAsync(Task.Run(() => sentinels.GetSentinelMasterConnection(plan.Data), CancellationToken.None), cancellationToken);
+            }
+            else
+            {
+                connection = await LandAsync(ConnectionMultiplexer.ConnectAsync(plan.Data), cancellationToken);
+            }
         }
-        catch (OperationCanceledException)
+        catch
         {
-            // The library has no cancellation of its own; close the connection once it lands so nothing leaks.
-            _ = connecting.ContinueWith(static t => t.Result.Dispose(), CancellationToken.None, TaskContinuationOptions.OnlyOnRanToCompletion, TaskScheduler.Default);
+            sentinel?.Dispose();
             throw;
         }
 
         try
         {
-            var info = await connection.GetDatabase(options.DefaultDatabase ?? 0).ExecuteAsync("INFO", "server").WaitAsync(cancellationToken);
-            return new RedisSession(request, connection, options.DefaultDatabase ?? 0, VersionFromInfo(info.ToString()));
+            var home = HomeServer(connection);
+            string? info = null;
+            try
+            {
+                info = (await home.ExecuteAsync("INFO", "server").WaitAsync(cancellationToken)).ToString();
+            }
+            catch (RedisServerException)
+            {
+                // A login that may not run INFO still connects; the library's own reading of the server stands in.
+            }
+
+            var actual = RedisTopologyDiagnostics.ModeFromInfo(info) ?? home.ServerType switch
+            {
+                ServerType.Cluster => RedisConnectionMode.Cluster,
+                ServerType.Sentinel => RedisConnectionMode.Sentinel,
+                _ => RedisConnectionMode.Standalone,
+            };
+            if (RedisTopologyDiagnostics.Mismatch(plan.RequestedMode, actual, plan.Tunneled) is { } mismatch)
+            {
+                throw new InvalidOperationException(mismatch);
+            }
+
+            var isCluster = actual == RedisConnectionMode.Cluster;
+            return new RedisSession(request, connection, sentinel, isCluster ? 0 : plan.Data.DefaultDatabase ?? 0, VersionFromInfo(info), isCluster);
         }
         catch
         {
             await connection.DisposeAsync();
+            if (sentinel is not null)
+            {
+                await sentinel.DisposeAsync();
+            }
+
+            throw;
+        }
+    }
+
+    /// <summary>The library has no cancellation of its own; a connection that lands after a cancel is closed so nothing leaks.</summary>
+    private static async Task<ConnectionMultiplexer> LandAsync(Task<ConnectionMultiplexer> connecting, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await connecting.WaitAsync(cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            _ = connecting.ContinueWith(static t => t.Result.Dispose(), CancellationToken.None, TaskContinuationOptions.OnlyOnRanToCompletion, TaskScheduler.Default);
             throw;
         }
     }
@@ -102,6 +162,40 @@ public sealed class RedisSession : IDatabaseSession, IKeySearchProvider, IServer
     internal int ResolveDatabase(string? schema) =>
         RedisConnectionOptions.TryParseDatabaseIndex(schema, out var index) ? index : DatabaseIndex;
 
+    /// <summary>The primaries, in a stable order: every node a keyless command over the keyspace has to reach.</summary>
+    internal IReadOnlyList<IServer> Primaries() => Primaries(_connection);
+
+    /// <summary>Every connected node, replicas included.</summary>
+    internal IReadOnlyList<IServer> Nodes() =>
+        _connection.GetServers().Where(s => s.IsConnected).OrderBy(s => EndPointCollection.ToString(s.EndPoint), StringComparer.Ordinal).ToArray();
+
+    /// <summary>
+    /// The node the dashboard and keyless single-node commands talk to. It is always the same one, so a client listed
+    /// by CLIENT LIST is killed on the node that listed it, as on macOS, where the panels describe one primary.
+    /// </summary>
+    internal IServer Home => HomeServer(_connection);
+
+    private static IServer[] Primaries(ConnectionMultiplexer connection)
+    {
+        var servers = connection.GetServers().Where(s => s.IsConnected).OrderBy(s => EndPointCollection.ToString(s.EndPoint), StringComparer.Ordinal).ToArray();
+        var primaries = servers.Where(s => !s.IsReplica).ToArray();
+
+        // A connection to a lone replica has no primary, and the replica is what there is to read.
+        return primaries.Length > 0 ? primaries : servers;
+    }
+
+    private static IServer HomeServer(ConnectionMultiplexer connection)
+    {
+        var primaries = Primaries(connection);
+        if (primaries.Length > 0)
+        {
+            return primaries[0];
+        }
+
+        var servers = connection.GetServers();
+        return servers.Length > 0 ? servers[0] : throw new InvalidOperationException("No Redis server is connected.");
+    }
+
     public async Task PingAsync(CancellationToken cancellationToken)
     {
         await Task.CompletedTask.ConfigureAwait(ConfigureAwaitOptions.ForceYielding);
@@ -114,6 +208,11 @@ public sealed class RedisSession : IDatabaseSession, IKeySearchProvider, IServer
     public async Task<IReadOnlyList<string>> GetSchemasAsync(CancellationToken cancellationToken)
     {
         await Task.CompletedTask.ConfigureAwait(ConfigureAwaitOptions.ForceYielding);
+        if (IsCluster)
+        {
+            return [RedisConnectionOptions.SchemaName(0)];
+        }
+
         var db = Database(DatabaseIndex);
         var configTask = TryExecuteAsync(db, "CONFIG", "GET", "databases");
         var keyspaceTask = TryExecuteAsync(db, "INFO", "keyspace");
@@ -173,46 +272,54 @@ public sealed class RedisSession : IDatabaseSession, IKeySearchProvider, IServer
         return new KeySearchResult(await DescribeKeysAsync(index, keys, cancellationToken), truncated);
     }
 
-    /// <summary>Walks the keyspace with SCAN, never KEYS, which would hold the server for the whole keyspace.</summary>
+    /// <summary>
+    /// Walks the keyspace with SCAN, never KEYS, which would hold the server for the whole keyspace. A cluster's
+    /// keyspace is the union of its primaries', each walked with a cursor of its own.
+    /// </summary>
     private async Task<(List<string> Keys, bool Truncated)> ScanKeysAsync(int index, string? pattern, int limit, CancellationToken cancellationToken)
     {
         var db = Database(index);
         var seen = new HashSet<string>(StringComparer.Ordinal);
         var keys = new List<string>();
-        var cursor = "0";
         var clock = Stopwatch.StartNew();
         var args = pattern is null ? new object[] { "0", "COUNT", ScanCount } : ["0", "MATCH", pattern, "COUNT", ScanCount];
-        do
+        IServer?[] targets = IsCluster ? [.. Primaries()] : [null];
+        foreach (var server in targets)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            args[0] = cursor;
-            var reply = RedisReply.From(await db.ExecuteAsync("SCAN", args).WaitAsync(cancellationToken));
-            if (reply.Items.Count < 2)
+            var cursor = "0";
+            do
             {
-                break;
-            }
-
-            cursor = reply.Items[0].Text ?? "0";
-            foreach (var item in reply.Items[1].Items)
-            {
-                // SCAN may return a key twice while the server rehashes.
-                if (item.Text is { } key && seen.Add(key))
+                cancellationToken.ThrowIfCancellationRequested();
+                args[0] = cursor;
+                var pending = server is null ? db.ExecuteAsync("SCAN", args) : server.ExecuteAsync(index, "SCAN", args, CommandFlags.None);
+                var reply = RedisReply.From(await pending.WaitAsync(cancellationToken));
+                if (reply.Items.Count < 2)
                 {
-                    if (keys.Count == limit)
-                    {
-                        return (Sorted(keys), true);
-                    }
+                    break;
+                }
 
-                    keys.Add(key);
+                cursor = reply.Items[0].Text ?? "0";
+                foreach (var item in reply.Items[1].Items)
+                {
+                    // SCAN may return a key twice while the server rehashes.
+                    if (item.Text is { } key && seen.Add(key))
+                    {
+                        if (keys.Count == limit)
+                        {
+                            return (Sorted(keys), true);
+                        }
+
+                        keys.Add(key);
+                    }
+                }
+
+                if (pattern is not null && clock.Elapsed > SearchBudget && cursor != "0")
+                {
+                    return (Sorted(keys), true);
                 }
             }
-
-            if (pattern is not null && clock.Elapsed > SearchBudget && cursor != "0")
-            {
-                return (Sorted(keys), true);
-            }
+            while (cursor != "0");
         }
-        while (cursor != "0");
 
         return (Sorted(keys), false);
 
@@ -236,7 +343,7 @@ public sealed class RedisSession : IDatabaseSession, IKeySearchProvider, IServer
             var typeTasks = new Task<RedisReply?>[count];
             for (var i = 0; i < count; i++)
             {
-                typeTasks[i] = TryExecuteAsync(db, "TYPE", keys[start + i]);
+                typeTasks[i] = TryExecuteAsync(db, "TYPE", Key(keys[start + i]));
             }
 
             await Task.WhenAll(typeTasks).WaitAsync(cancellationToken);
@@ -246,7 +353,7 @@ public sealed class RedisSession : IDatabaseSession, IKeySearchProvider, IServer
                 var type = RedisKeyTypes.Parse(typeTasks[i].Result?.Text);
                 if (RedisKeyTypes.LengthCommand(type) is { } command)
                 {
-                    lengthTasks[i] = TryExecuteAsync(db, command, keys[start + i]);
+                    lengthTasks[i] = TryExecuteAsync(db, command, Key(keys[start + i]));
                 }
             }
 
@@ -293,7 +400,7 @@ public sealed class RedisSession : IDatabaseSession, IKeySearchProvider, IServer
     {
         await Task.CompletedTask.ConfigureAwait(ConfigureAwaitOptions.ForceYielding);
         var db = Database(ResolveDatabase(obj.Name.Schema));
-        var key = obj.Name.Name;
+        var key = Key(obj.Name.Name);
         var typeTask = TryExecuteAsync(db, "TYPE", key);
         var ttlTask = TryExecuteAsync(db, "TTL", key);
         var encodingTask = TryExecuteAsync(db, "OBJECT", "ENCODING", key);
@@ -310,7 +417,7 @@ public sealed class RedisSession : IDatabaseSession, IKeySearchProvider, IServer
             length = await TryExecuteAsync(db, "STRLEN", key).WaitAsync(cancellationToken);
         }
 
-        return DescribeKey(key, typeTask.Result?.Text, ttlTask.Result?.Text, encodingTask.Result?.Text, memoryTask.Result?.Text, type == RedisKeyType.String ? null : length?.Text, type == RedisKeyType.String ? length?.Text : null);
+        return DescribeKey(obj.Name.Name, typeTask.Result?.Text, ttlTask.Result?.Text, encodingTask.Result?.Text, memoryTask.Result?.Text, type == RedisKeyType.String ? null : length?.Text, type == RedisKeyType.String ? length?.Text : null);
     }
 
     /// <summary>The key's facts as readable lines; a fact the server would not give is left out.</summary>
@@ -371,7 +478,7 @@ public sealed class RedisSession : IDatabaseSession, IKeySearchProvider, IServer
             case RedisKeyType.String:
                 page = offset > 0
                     ? new ResultSet(RedisKeyLayout.Columns(type), [])
-                    : RedisKeyLayout.StringRows(RedisReply.From(await db.ExecuteAsync("GET", key).WaitAsync(cancellationToken)).Text);
+                    : RedisKeyLayout.StringRows(RedisReply.From(await db.ExecuteAsync("GET", Key(key)).WaitAsync(cancellationToken)).Text);
                 break;
             case RedisKeyType.Hash:
             {
@@ -390,7 +497,7 @@ public sealed class RedisSession : IDatabaseSession, IKeySearchProvider, IServer
             case RedisKeyType.List:
             {
                 // One element past the page says whether another page follows, without an LLEN.
-                var reply = RedisReply.From(await db.ExecuteAsync("LRANGE", key, offset, offset + limit).WaitAsync(cancellationToken));
+                var reply = RedisReply.From(await db.ExecuteAsync("LRANGE", Key(key), offset, offset + limit).WaitAsync(cancellationToken));
                 var more = reply.Items.Count > limit;
                 page = RedisKeyLayout.ListRows(more ? reply.Items.Take(limit).ToArray() : reply.Items, offset, more);
                 break;
@@ -399,7 +506,7 @@ public sealed class RedisSession : IDatabaseSession, IKeySearchProvider, IServer
             case RedisKeyType.SortedSet:
             {
                 var descending = request.Sort.Count > 0 && request.Sort[0].Descending && string.Equals(request.Sort[0].Column, RedisKeyLayout.Score, StringComparison.OrdinalIgnoreCase);
-                var reply = RedisReply.From(await db.ExecuteAsync(descending ? "ZREVRANGE" : "ZRANGE", key, offset, offset + limit, "WITHSCORES").WaitAsync(cancellationToken));
+                var reply = RedisReply.From(await db.ExecuteAsync(descending ? "ZREVRANGE" : "ZRANGE", Key(key), offset, offset + limit, "WITHSCORES").WaitAsync(cancellationToken));
                 var items = reply.Items.Count > 0 && reply.Items[0].Kind == RedisReplyKind.Array ? reply.Items.SelectMany(i => i.Items).ToArray() : reply.Items;
                 var more = items.Count > limit * 2;
                 page = RedisKeyLayout.SortedSetRows(more ? items.Take(limit * 2).ToArray() : items, more);
@@ -411,7 +518,7 @@ public sealed class RedisSession : IDatabaseSession, IKeySearchProvider, IServer
                 break;
             case RedisKeyType.Json:
             {
-                var reply = RedisReply.From(await db.ExecuteAsync("JSON.GET", key).WaitAsync(cancellationToken));
+                var reply = RedisReply.From(await db.ExecuteAsync("JSON.GET", Key(key)).WaitAsync(cancellationToken));
                 page = RedisKeyLayout.JsonResult(RedisKeyLayout.JsonRows(reply.Text), offset, limit);
                 break;
             }
@@ -426,7 +533,7 @@ public sealed class RedisSession : IDatabaseSession, IKeySearchProvider, IServer
     private static RedisScanPager.ScanStep ScanStep(IDatabase db, string verb, string key, string count) =>
         async (cursor, cancellationToken) =>
         {
-            var reply = RedisReply.From(await db.ExecuteAsync(verb, key, cursor, "COUNT", count).WaitAsync(cancellationToken));
+            var reply = RedisReply.From(await db.ExecuteAsync(verb, Key(key), cursor, "COUNT", count).WaitAsync(cancellationToken));
             return reply.Items.Count < 2 ? ("0", []) : (reply.Items[0].Text ?? "0", reply.Items[1].Items);
         };
 
@@ -436,7 +543,7 @@ public sealed class RedisSession : IDatabaseSession, IKeySearchProvider, IServer
         var resume = _streamPositions.TryGetValue((index, key), out var saved) && saved.Offset == offset;
         var start = resume ? saved.NextId : "-";
         var fetch = resume ? limit + 1 : offset + limit + 1;
-        var reply = RedisReply.From(await db.ExecuteAsync("XRANGE", key, start, "+", "COUNT", fetch).WaitAsync(cancellationToken));
+        var reply = RedisReply.From(await db.ExecuteAsync("XRANGE", Key(key), start, "+", "COUNT", fetch).WaitAsync(cancellationToken));
         var entries = resume ? reply.Items : reply.Items.Skip((int)Math.Min(offset, int.MaxValue)).ToArray();
         var more = entries.Count > limit;
         var pageEntries = more ? entries.Take(limit).ToArray() : entries;
@@ -460,13 +567,13 @@ public sealed class RedisSession : IDatabaseSession, IKeySearchProvider, IServer
         var type = await KeyTypeAsync(index, table.Name, cancellationToken);
         if (RedisKeyTypes.LengthCommand(type) is { } command)
         {
-            return (long)await db.ExecuteAsync(command, table.Name).WaitAsync(cancellationToken);
+            return (long)await db.ExecuteAsync(command, Key(table.Name)).WaitAsync(cancellationToken);
         }
 
         return type switch
         {
             RedisKeyType.String => 1,
-            RedisKeyType.Json => RedisKeyLayout.JsonRows(RedisReply.From(await db.ExecuteAsync("JSON.GET", table.Name).WaitAsync(cancellationToken)).Text).Count,
+            RedisKeyType.Json => RedisKeyLayout.JsonRows(RedisReply.From(await db.ExecuteAsync("JSON.GET", Key(table.Name)).WaitAsync(cancellationToken)).Text).Count,
             _ => 0,
         };
     }
@@ -495,6 +602,7 @@ public sealed class RedisSession : IDatabaseSession, IKeySearchProvider, IServer
             return 0;
         }
 
+        // A save touches one key, so even on a cluster the whole transaction runs on the primary that owns its slot.
         await RedisTransactionRunner.RunAsync(db, plan, cancellationToken);
         _pager.Forget(index, key);
         _streamPositions.TryRemove((index, key), out _);
@@ -510,7 +618,7 @@ public sealed class RedisSession : IDatabaseSession, IKeySearchProvider, IServer
         }
 
         var tasks = lookups
-            .Select(l => db.ExecuteAsync(type == RedisKeyType.Hash ? "HGET" : "ZSCORE", key, l))
+            .Select(l => db.ExecuteAsync(type == RedisKeyType.Hash ? "HGET" : "ZSCORE", Key(key), l))
             .ToArray();
         await Task.WhenAll(tasks).WaitAsync(cancellationToken);
         for (var i = 0; i < lookups.Count; i++)
@@ -519,6 +627,30 @@ public sealed class RedisSession : IDatabaseSession, IKeySearchProvider, IServer
         }
 
         return values;
+    }
+
+    /// <summary>
+    /// Sidebar actions on a key, as redis-cli commands for the review sheet: Delete is <c>DEL</c> and Rename is
+    /// <c>RENAME</c>, after a <c>SELECT</c> when the key is in another database than the one a new tab starts in.
+    /// </summary>
+    public IReadOnlyList<string> BuildDdl(ObjectName table, SchemaChange change) => KeyDdl(table, change, DatabaseIndex);
+
+    internal static IReadOnlyList<string> KeyDdl(ObjectName table, SchemaChange change, int currentDatabase)
+    {
+        var key = RedisCommand.Quote(table.Name);
+        var command = change switch
+        {
+            DropObject { Object.Kind: ObjectKind.Key } => "DEL " + key,
+            RenameTable rename when !string.IsNullOrEmpty(rename.NewName) => $"RENAME {key} {RedisCommand.Quote(rename.NewName)}",
+            _ => null,
+        };
+        if (command is null)
+        {
+            return [];
+        }
+
+        var index = RedisConnectionOptions.TryParseDatabaseIndex(table.Schema, out var parsed) ? parsed : currentDatabase;
+        return index == currentDatabase ? [command] : [string.Create(CultureInfo.InvariantCulture, $"SELECT {index}"), command];
     }
 
     public async Task<IQueryChannel> OpenChannelAsync(CancellationToken cancellationToken)
@@ -530,7 +662,7 @@ public sealed class RedisSession : IDatabaseSession, IKeySearchProvider, IServer
     public async Task<ResultSet> GetActivityAsync(CancellationToken cancellationToken)
     {
         await Task.CompletedTask.ConfigureAwait(ConfigureAwaitOptions.ForceYielding);
-        var reply = await Database(DatabaseIndex).ExecuteAsync("CLIENT", "LIST").WaitAsync(cancellationToken);
+        var reply = await OnHomeAsync("CLIENT", "LIST").WaitAsync(cancellationToken);
         return RedisServerText.ParseClientList(reply.ToString());
     }
 
@@ -548,21 +680,28 @@ public sealed class RedisSession : IDatabaseSession, IKeySearchProvider, IServer
             throw new ArgumentException($"'{id}' is not a Redis client id.", nameof(processId));
         }
 
-        await Database(DatabaseIndex).ExecuteAsync("CLIENT", "KILL", "ID", id).WaitAsync(cancellationToken);
+        await OnHomeAsync("CLIENT", "KILL", "ID", id).WaitAsync(cancellationToken);
     }
 
     public async Task<ResultSet> GetVariablesAsync(CancellationToken cancellationToken)
     {
         await Task.CompletedTask.ConfigureAwait(ConfigureAwaitOptions.ForceYielding);
-        var reply = await Database(DatabaseIndex).ExecuteAsync("INFO").WaitAsync(cancellationToken);
+        var reply = await OnHomeAsync("INFO").WaitAsync(cancellationToken);
         return RedisServerText.InfoResult(reply.ToString());
     }
 
+    /// <summary>A keyless command on the home node of a cluster, or on the one primary otherwise.</summary>
+    internal Task<RedisResult> OnHomeAsync(string command, params object[] args) =>
+        IsCluster ? Home.ExecuteAsync(command, args) : Database(DatabaseIndex).ExecuteAsync(command, args);
+
     private async Task<RedisKeyType> KeyTypeAsync(int index, string key, CancellationToken cancellationToken)
     {
-        var reply = await Database(index).ExecuteAsync("TYPE", key).WaitAsync(cancellationToken);
+        var reply = await Database(index).ExecuteAsync("TYPE", Key(key)).WaitAsync(cancellationToken);
         return RedisKeyTypes.Parse(reply.ToString());
     }
+
+    /// <summary>A key argument, typed so the library routes the command to the node that owns the key's slot.</summary>
+    private static RedisKey Key(string key) => key;
 
     /// <summary>A reply, or null when the server refused the command (an ACL denial, a renamed command).</summary>
     private static async Task<RedisReply?> TryExecuteAsync(IDatabase db, string command, params object[] args)
@@ -577,5 +716,12 @@ public sealed class RedisSession : IDatabaseSession, IKeySearchProvider, IServer
         }
     }
 
-    public async ValueTask DisposeAsync() => await _connection.DisposeAsync();
+    public async ValueTask DisposeAsync()
+    {
+        await _connection.DisposeAsync();
+        if (_sentinel is not null)
+        {
+            await _sentinel.DisposeAsync();
+        }
+    }
 }

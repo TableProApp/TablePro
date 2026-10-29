@@ -22,7 +22,7 @@ namespace TablePro.Drivers.Snowflake;
 /// Snowflake.Data names a positional binding <c>1</c>, not <c>:1</c> as the dialect writes it in the SQL, and the
 /// base class binds names verbatim.
 /// </remarks>
-public sealed class SnowflakeSession : AdoNetSession, IDatabaseSession, IServerActivityProvider
+public sealed class SnowflakeSession : AdoNetSession, IDatabaseSession, IServerActivityProvider, ISchemaDdlProvider
 {
     private readonly SnowflakeConnectionSettings _settings;
     private readonly string _defaultSchema;
@@ -37,6 +37,10 @@ public sealed class SnowflakeSession : AdoNetSession, IDatabaseSession, IServerA
     public override string? DefaultSchema => _defaultSchema;
 
     public string ProcessIdColumn => "QUERY_ID";
+
+    public IReadOnlyList<string> CommonDataTypes => SnowflakeDdl.CommonDataTypes;
+
+    public IReadOnlyList<string> BuildDdl(ObjectName table, SchemaChange change) => SnowflakeDdl.Build(table, change, TablePath);
 
     internal SnowflakeConnectionSettings Settings => _settings;
 

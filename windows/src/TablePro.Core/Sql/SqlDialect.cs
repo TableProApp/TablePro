@@ -103,7 +103,7 @@ public abstract class SqlDialect
         sql.Append(CultureInfo.InvariantCulture, $" LIMIT {limit} OFFSET {offset}");
 
     /// <summary>Builds the statement a table tab runs to show one page.</summary>
-    public SqlCommandSpec BuildBrowse(BrowseRequest request)
+    public virtual SqlCommandSpec BuildBrowse(BrowseRequest request)
     {
         var sql = new StringBuilder("SELECT * FROM ").Append(Qualify(request.Table));
         var parameters = new List<KeyValuePair<string, object?>>();
@@ -121,7 +121,7 @@ public abstract class SqlDialect
         return new SqlCommandSpec(sql.ToString(), parameters);
     }
 
-    private void AppendWhere(StringBuilder sql, BrowseFilter filter, List<KeyValuePair<string, object?>> parameters)
+    protected void AppendWhere(StringBuilder sql, BrowseFilter filter, List<KeyValuePair<string, object?>> parameters)
     {
         var clauses = new List<string>(filter.Rules.Count + 1);
         foreach (var rule in filter.Rules.Where(r => r.Enabled))

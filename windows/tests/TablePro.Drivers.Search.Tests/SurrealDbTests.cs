@@ -25,7 +25,7 @@ public sealed class SurrealDbTests
 
     private static FakeHttp Server() =>
         new FakeHttp()
-            .On("GET", "/version", "surrealdb-2.1.4", contentType: "text/plain")
+            .On("GET", "/version", "surrealdb-1.5.4", contentType: "text/plain")
             .On("POST", "/sql", """[{"result":1,"status":"OK","time":"1µs"}]""");
 
     private static Task<SurrealDbSession> ConnectAsync(FakeHttp http, string database = "app/main", Dictionary<string, string>? options = null) =>
@@ -52,7 +52,8 @@ public sealed class SurrealDbTests
         var http = Server();
         await using var session = await ConnectAsync(http);
 
-        Assert.Equal("2.1.4", session.ServerVersion);
+        Assert.Equal("1.5.4", session.ServerVersion);
+        Assert.False(session.UsesRpc);
         var check = http.Last("POST", "/sql");
         Assert.Equal("http://search.test:8000/sql", check.Uri.ToString());
         Assert.Equal("RETURN 1;", check.Body);

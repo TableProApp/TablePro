@@ -92,8 +92,20 @@ internal static class RedisTransactionRunner
                 maxLength: (int?)null,
                 useApproximateMaxLength: false,
                 flags: CommandFlags.None),
-            _ => t.ExecuteAsync(command.Verb, a.Cast<object>().ToArray()),
+            _ => t.ExecuteAsync(command.Verb, KeyFirst(a)),
         };
+    }
+
+    // Every planned command names its key first; typing it as a key routes the transaction to that key's primary on a cluster.
+    private static object[] KeyFirst(IReadOnlyList<string> args)
+    {
+        var typed = new object[args.Count];
+        for (var i = 0; i < args.Count; i++)
+        {
+            typed[i] = i == 0 ? (RedisKey)args[i] : args[i];
+        }
+
+        return typed;
     }
 
     private static NameValueEntry[] StreamFields(IReadOnlyList<string> args)

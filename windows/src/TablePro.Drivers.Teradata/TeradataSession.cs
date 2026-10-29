@@ -2,6 +2,7 @@ using System.Data.Common;
 using System.Globalization;
 using System.Text;
 using Teradata.Client.Provider;
+using TablePro.Core.Browse;
 using TablePro.Core.Data;
 using TablePro.Core.Drivers;
 using TablePro.Core.Results;
@@ -15,10 +16,11 @@ namespace TablePro.Drivers.Teradata;
 /// as schemas; the session opens on the login's default database.
 /// </summary>
 /// <remarks>
-/// Core's browse, count and save run unchanged: the provider binds <c>?</c> by position and does not require distinct
-/// parameter names, and Core adds parameters in the order their markers appear.
+/// Core's count and save run unchanged: the provider binds <c>?</c> by position and does not require distinct
+/// parameter names, and Core adds parameters in the order their markers appear. Browse adds a default sort first, so
+/// the class re-implements <see cref="IDatabaseSession"/> to reach its own <see cref="BrowseAsync"/>.
 /// </remarks>
-public sealed class TeradataSession : AdoNetSession, ISchemaDdlProvider, IUserListProvider
+public sealed class TeradataSession : AdoNetSession, IDatabaseSession, ISchemaDdlProvider, IUserListProvider
 {
     private readonly string _connectionString;
     private readonly string[] _startupStatements;
@@ -210,6 +212,36 @@ public sealed class TeradataSession : AdoNetSession, ISchemaDdlProvider, IUserLi
         }
 
         return NormalizeLines(sql.ToString())!.Trim();
+    }
+
+    /// <summary>
+    /// A page after the first numbers its rows over the sort, and Teradata gives unsorted rows no stable order, so an
+    /// unsorted browse is sorted by the table's key, or by its first column when it has none, as the macOS app does.
+    /// The first page reads <c>TOP n</c> and needs no order.
+    /// </summary>
+    public new Task<ResultSet> BrowseAsync(BrowseRequest request, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        if (request.Sort.Count > 0 || request.Offset <= 0)
+        {
+            return base.BrowseAsync(request, cancellationToken);
+        }
+
+        return WithConnectionAsync(
+            async (connection, ct) =>
+            {
+                var sorted = request with { Sort = DefaultSort(await LoadColumnsAsync(connection, request.Table, ct)) };
+                await using var command = CreateCommand(connection, Dialect.BuildBrowse(sorted));
+                await using var reader = await command.ExecuteReaderAsync(ct);
+                return await ResultSetReader.ReadAsync(reader, request.Limit, ct);
+            },
+            cancellationToken);
+    }
+
+    internal static SortColumn[] DefaultSort(IReadOnlyList<ColumnInfo> columns)
+    {
+        var keys = columns.Where(c => c.IsPrimaryKey).Select(c => new SortColumn(c.Name, false)).ToArray();
+        return keys.Length > 0 ? keys : columns.Count > 0 ? [new SortColumn(columns[0].Name, false)] : [];
     }
 
     public IReadOnlyList<string> BuildDdl(ObjectName table, SchemaChange change) =>

@@ -18,7 +18,7 @@ namespace TablePro.Drivers.Kafka;
 /// (or the newest, sorted descending), saves produce new messages, and consumer groups with their lag fill the server
 /// dashboard.
 /// </summary>
-internal sealed class KafkaSession : IDatabaseSession, IServerActivityProvider
+internal sealed class KafkaSession : IDatabaseSession, IServerActivityProvider, ISchemaDdlProvider
 {
     /// <summary>How long a grid page may spend reading before it shows what arrived.</summary>
     internal static readonly TimeSpan BrowseBudget = TimeSpan.FromSeconds(30);
@@ -43,6 +43,8 @@ internal sealed class KafkaSession : IDatabaseSession, IServerActivityProvider
     public string ProcessIdColumn => "group";
 
     internal KafkaCluster Cluster { get; }
+
+    public IReadOnlyList<string> CommonDataTypes => [];
 
     public static async Task<KafkaSession> ConnectAsync(ConnectionRequest request, CancellationToken cancellationToken)
     {
@@ -195,6 +197,16 @@ internal sealed class KafkaSession : IDatabaseSession, IServerActivityProvider
 
         return messages.Count;
     }
+
+    /// <summary>
+    /// Deleting a topic from the sidebar, in KafkaQL for the review sheet, as macOS offers it. Kafka has no rename and
+    /// no truncate: deleting records up to an offset is per partition and leaves retention to remove them, which is not
+    /// what Truncate promises, so neither is offered.
+    /// </summary>
+    public IReadOnlyList<string> BuildDdl(ObjectName table, SchemaChange change) => TopicDdl(table, change);
+
+    internal static IReadOnlyList<string> TopicDdl(ObjectName table, SchemaChange change) =>
+        change is DropObject { Object.Kind: ObjectKind.Topic } ? ["DROP TOPIC " + KafkaQL.Quote(table.Name)] : [];
 
     public Task<IQueryChannel> OpenChannelAsync(CancellationToken cancellationToken) =>
         Task.FromResult<IQueryChannel>(new KafkaChannel(Cluster));

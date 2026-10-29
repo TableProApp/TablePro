@@ -1,5 +1,4 @@
 using System.Text;
-using System.Text.Json;
 using System.Text.RegularExpressions;
 using TablePro.Core.Results;
 using TablePro.Core.Sql;
@@ -162,12 +161,12 @@ internal sealed partial class SurrealChannelState
         var affected = -1;
         foreach (var result in results)
         {
-            if (Table(result.Value, rowLimit) is { } set)
+            if (Table(result, rowLimit) is { } set)
             {
                 sets.Add(set);
-                if (kind == StatementKind.Write && result.Value.ValueKind == JsonValueKind.Array)
+                if (kind == StatementKind.Write && result.Data is List<object?> written)
                 {
-                    affected = Math.Max(affected, 0) + result.Value.GetArrayLength();
+                    affected = Math.Max(affected, 0) + written.Count;
                 }
             }
         }
@@ -177,22 +176,24 @@ internal sealed partial class SurrealChannelState
 
     /// <summary>
     /// Records become rows with their top-level fields as columns; an INFO answer or other object becomes path and
-    /// value; a plain value is one cell. NONE and NULL produce no result.
+    /// value; a plain value is one cell. NONE and NULL produce no result. Columns whose values all are datetimes or
+    /// decimals are typed as such, which the RPC's answers make possible.
     /// </summary>
-    internal static ResultSet? Table(JsonElement value, int rowLimit)
+    internal static ResultSet? Table(SurrealResult result, int rowLimit)
     {
-        switch (value.ValueKind)
+        switch (result.Data)
         {
-            case JsonValueKind.Array:
+            case List<object?> items:
             {
                 var table = new DocumentTable();
-                if (value.EnumerateArray().Any(r => r.ValueKind == JsonValueKind.Object && r.TryGetProperty("id", out _)))
+                if (items.Any(r => r is SurrealObject record && record.TryGetValue("id", out _)))
                 {
                     table.Declare("id", "record", typeof(string));
                 }
 
                 var truncated = false;
-                foreach (var row in value.EnumerateArray())
+                var records = new List<SurrealObject>(Math.Min(items.Count, rowLimit));
+                foreach (var row in items)
                 {
                     if (table.RowCount >= rowLimit)
                     {
@@ -201,34 +202,57 @@ internal sealed partial class SurrealChannelState
                     }
 
                     table.NewRow();
-                    table.SetTopLevel(row);
+                    Fill(table, row);
+                    if (row is SurrealObject record)
+                    {
+                        records.Add(record);
+                    }
                 }
 
+                SurrealValues.DeclareTypedColumns(table, records);
                 return table.Build(truncated);
             }
 
-            case JsonValueKind.Object when value.TryGetProperty("id", out _):
+            case SurrealObject record when record.TryGetValue("id", out _):
             {
                 var table = new DocumentTable();
                 table.Declare("id", "record", typeof(string));
                 table.NewRow();
-                table.SetTopLevel(value);
+                Fill(table, record);
+                SurrealValues.DeclareTypedColumns(table, [record]);
                 return table.Build();
             }
 
-            case JsonValueKind.Object:
-                return JsonTables.PathValue(value, rowLimit);
+            case SurrealObject:
+                return JsonTables.PathValue(result.Value, rowLimit);
 
-            case JsonValueKind.Null or JsonValueKind.Undefined:
+            case null:
                 return null;
 
-            default:
+            case var value:
             {
                 var table = new DocumentTable();
                 table.NewRow();
-                table.Set("result", value);
+                table.Set("result", SurrealValues.ToCell(value));
+                var single = new SurrealObject(1);
+                single.Add("result", value);
+                SurrealValues.DeclareTypedColumns(table, [single]);
                 return table.Build();
             }
+        }
+    }
+
+    private static void Fill(DocumentTable table, object? row)
+    {
+        if (row is not SurrealObject record)
+        {
+            table.Set("value", SurrealValues.ToCell(row));
+            return;
+        }
+
+        foreach (var (name, value) in record.Fields)
+        {
+            table.Set(name, SurrealValues.ToCell(value));
         }
     }
 

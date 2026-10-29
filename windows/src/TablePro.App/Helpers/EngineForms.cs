@@ -62,7 +62,7 @@ internal sealed record EngineForm
 
     private static EngineForm Labels(DatabaseEngine engine) => engine switch
     {
-        DatabaseEngine.Redis => new() { DatabaseLabel = Strings.Get("Connection/DatabaseIndexHeader"), UserLabel = Strings.Get("Connection/AclUserHeader"), OptionsHint = "syncTimeout=10000\nname=tablepro" },
+        DatabaseEngine.Redis => new() { HostLabel = Strings.Get("Connection/RedisHostHeader"), DatabaseLabel = Strings.Get("Connection/DatabaseIndexHeader"), UserLabel = Strings.Get("Connection/AclUserHeader"), OptionsHint = "mode=standalone | sentinel | cluster\nsentinelHosts=s1:26379,s2:26379\nsentinelMasterName=mymaster\nclusterHosts=n1:6379,n2:6379\ncaCertPath=C:\\certs\\ca.pem" },
         DatabaseEngine.MongoDb => new() { UserLabel = Strings.Get("Connection/UserOptionalHeader"), OptionsHint = "authSource=admin\nsrv=true\nreplicaSet=rs0" },
         DatabaseEngine.Oracle or DatabaseEngine.Dameng => new() { DatabaseLabel = Strings.Get("Connection/ServiceNameHeader"), OptionsHint = "sid=ORCL\ndbaPrivilege=SYSDBA" },
         DatabaseEngine.Cassandra or DatabaseEngine.ScyllaDb => new() { DatabaseLabel = Strings.Get("Connection/KeyspaceHeader"), UserLabel = Strings.Get("Connection/UserOptionalHeader"), OptionsHint = "localDatacenter=datacenter1\ncontactPoints=10.0.0.1,10.0.0.2\nconsistency=LOCAL_QUORUM" },
@@ -77,7 +77,7 @@ internal sealed record EngineForm
         DatabaseEngine.Etcd => new() { UserLabel = Strings.Get("Connection/UserOptionalHeader"), OptionsHint = "prefix=/" },
         DatabaseEngine.SurrealDb => new() { DatabaseLabel = Strings.Get("Connection/NamespaceDatabaseHeader"), OptionsHint = "namespace=test" },
         DatabaseEngine.CloudflareD1 or DatabaseEngine.CloudflareR2Sql => new() { HostLabel = Strings.Get("Connection/AccountIdHeader"), HostPlaceholder = "0123456789abcdef", ShowPort = false, ShowUser = false, DatabaseLabel = Strings.Get("Connection/DatabaseIdHeader"), PasswordLabel = Strings.Get("Connection/ApiTokenHeader") },
-        DatabaseEngine.LibSql or DatabaseEngine.Turso => new() { HostLabel = Strings.Get("Connection/UrlHeader"), HostPlaceholder = "libsql://my-db-me.turso.io", ShowPort = engine == DatabaseEngine.LibSql, ShowUser = false, PasswordLabel = Strings.Get("Connection/AuthTokenHeader") },
+        DatabaseEngine.LibSql or DatabaseEngine.Turso => new() { HostLabel = Strings.Get("Connection/LibSqlUrlHeader"), HostPlaceholder = "libsql://my-db-me.turso.io", ShowPort = engine == DatabaseEngine.LibSql, ShowUser = false, PasswordLabel = Strings.Get("Connection/AuthTokenHeader") },
         DatabaseEngine.Teradata => new() { DatabaseLabel = Strings.Get("Connection/DefaultDatabaseHeader"), OptionsHint = "logmech=LDAP\nSession Mode=ANSI" },
         DatabaseEngine.Beancount => new() { OptionsHint = "backend=python\npython=py\nrledger=C:\\Tools\\rledger.exe\nbeancountRunLedgerPlugins=true" },
         DatabaseEngine.ClickHouse => new() { OptionsHint = "set_max_execution_time=60" },

@@ -255,5 +255,43 @@ public sealed class TeradataTests
         Assert.Null(TeradataSession.NormalizeLines(null));
     }
 
+    [Fact]
+    public void FirstPageReadsTopRowsInTheBrowseOrder()
+    {
+        var spec = TeradataDialect.Instance.BuildBrowse(new BrowseRequest(Orders, BrowseFilter.None, [new("placed", true)], 0, 50));
+
+        Assert.Equal("SELECT TOP 50 * FROM \"sales\".\"orders\" ORDER BY \"placed\" DESC", spec.Text);
+    }
+
+    [Fact]
+    public void LaterPageNumbersRowsOverTheBrowseSort()
+    {
+        var filter = new BrowseFilter([new FilterRule("id", FilterOperator.GreaterThan, "5")]);
+        var spec = TeradataDialect.Instance.BuildBrowse(new BrowseRequest(Orders, filter, [new("placed", true), new("id", false)], 100, 50));
+
+        Assert.Equal(
+            "SELECT * FROM \"sales\".\"orders\" WHERE \"id\" > ? QUALIFY ROW_NUMBER() OVER (ORDER BY \"placed\" DESC, \"id\" ASC) BETWEEN 101 AND 150 ORDER BY \"placed\" DESC, \"id\" ASC",
+            spec.Text);
+        Assert.Single(spec.Parameters);
+    }
+
+    [Fact]
+    public void UnlimitedBrowseHasNoTop()
+    {
+        var spec = TeradataDialect.Instance.BuildBrowse(new BrowseRequest(Orders, BrowseFilter.None, [], 0, int.MaxValue));
+
+        Assert.Equal("SELECT * FROM \"sales\".\"orders\"", spec.Text);
+    }
+
+    [Fact]
+    public void UnsortedPagesSortByTheKeyOrElseTheFirstColumn()
+    {
+        var keyed = new[] { Column("note"), Column("id") with { IsPrimaryKey = true }, Column("line") with { IsPrimaryKey = true } };
+
+        Assert.Equal([new SortColumn("id", false), new SortColumn("line", false)], TeradataSession.DefaultSort(keyed));
+        Assert.Equal([new SortColumn("note", false)], TeradataSession.DefaultSort([Column("note"), Column("id")]));
+        Assert.Empty(TeradataSession.DefaultSort([]));
+    }
+
     private static ColumnInfo Column(string name) => new(name, "INTEGER", true, null, false, false, 9);
 }

@@ -10,7 +10,53 @@ namespace TablePro.Drivers.LibSql;
 /// </summary>
 internal static class LibSqlSettings
 {
+    // The macOS app's connection fields, so a connection written there opens the same way here.
+    public const string ModeOption = "libsqlMode";
+    public const string FilePathOption = "libsqlFilePath";
+
     private static readonly string[] UrlKeys = ["databaseUrl", "url"];
+
+    /// <summary>The options only this driver reads, which the SQLite provider would refuse as unknown keywords.</summary>
+    public static readonly IReadOnlySet<string> OwnOptions = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { ModeOption, FilePathOption, "databaseUrl", "url" };
+
+    /// <summary>
+    /// The local database file the connection opens, or null for a remote server. A <c>file:</c> URL in the URL
+    /// field names one, as libSQL's own clients spell a local database, and so does the macOS app's local mode.
+    /// </summary>
+    public static string? LocalFile(ConnectionProfile profile)
+    {
+        var options = profile.AdditionalOptions;
+        if (options.TryGetValue(ModeOption, out var mode) && string.Equals(mode?.Trim(), "local", StringComparison.OrdinalIgnoreCase))
+        {
+            var path = options.TryGetValue(FilePathOption, out var file) && !string.IsNullOrWhiteSpace(file) ? file : profile.FilePath;
+            return string.IsNullOrWhiteSpace(path)
+                ? throw new LibSqlException("A local libSQL connection needs a database file.")
+                : path.Trim();
+        }
+
+        var url = UrlKeys.Select(k => options.TryGetValue(k, out var v) ? v : null).FirstOrDefault(v => !string.IsNullOrWhiteSpace(v)) ?? profile.Host;
+        return FilePathFromUrl(url);
+    }
+
+    /// <summary>
+    /// The path in a <c>file:</c> URL: <c>file:C:\data\app.db</c>, <c>file:local.db</c> or <c>file:///C:/data/app.db</c>.
+    /// </summary>
+    public static string? FilePathFromUrl(string? url)
+    {
+        var text = url?.Trim();
+        if (text is null || !text.StartsWith("file:", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        if (text.StartsWith("file://", StringComparison.OrdinalIgnoreCase) && Uri.TryCreate(text, UriKind.Absolute, out var uri) && uri.IsFile)
+        {
+            return uri.LocalPath;
+        }
+
+        var path = text["file:".Length..];
+        return path.Length == 0 ? throw new LibSqlException("The file: URL names no database file.") : path;
+    }
 
     public static Uri BaseUri(ConnectionRequest request)
     {

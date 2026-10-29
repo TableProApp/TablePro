@@ -99,8 +99,72 @@ internal sealed record SurrealSettings(string? Namespace, string? Database, stri
     }
 }
 
-/// <summary>One statement's answer from <c>/sql</c>.</summary>
-internal readonly record struct SurrealResult(bool Ok, JsonElement Value, string? Error);
+/// <summary>
+/// One statement's answer. <see cref="Data"/> is the value with its types, which grids read; <see cref="Value"/> is
+/// its JSON, which the catalog code reads. Each is made from the other only when asked for, since a page of rows
+/// never needs its JSON and an INFO answer never needs its types.
+/// </summary>
+internal sealed class SurrealResult
+{
+    private readonly List<JsonDocument>? _documents;
+    private JsonElement _value;
+    private bool _hasValue;
+    private object? _data;
+    private bool _hasData;
+
+    /// <summary>A result from <c>/sql</c>, whose JSON lives in the response's document.</summary>
+    public SurrealResult(bool ok, JsonElement value, string? error)
+    {
+        Ok = ok;
+        Error = error;
+        _value = value;
+        _hasValue = true;
+    }
+
+    /// <summary>A result from the RPC; its JSON, when asked for, joins <paramref name="documents"/> to be freed with the response.</summary>
+    public SurrealResult(bool ok, object? data, string? error, List<JsonDocument> documents)
+    {
+        Ok = ok;
+        Error = error;
+        _data = data;
+        _hasData = true;
+        _documents = documents;
+    }
+
+    public bool Ok { get; }
+
+    public string? Error { get; }
+
+    public JsonElement Value
+    {
+        get
+        {
+            if (!_hasValue)
+            {
+                var document = JsonDocument.Parse(SurrealValues.ToJson(_data));
+                _documents!.Add(document);
+                _value = document.RootElement;
+                _hasValue = true;
+            }
+
+            return _value;
+        }
+    }
+
+    public object? Data
+    {
+        get
+        {
+            if (!_hasData)
+            {
+                _data = SurrealValues.FromJson(_value);
+                _hasData = true;
+            }
+
+            return _data;
+        }
+    }
+}
 
 /// <summary>
 /// A connected SurrealDB. Namespaces are the databases of the switcher, a namespace's databases are its schemas, and
@@ -116,6 +180,7 @@ internal sealed class SurrealDbSession : IDatabaseSession
     private readonly HttpTransport _transport;
     private readonly SurrealSettings _settings;
     private readonly ConcurrentDictionary<(string? Database, string Table), IReadOnlyDictionary<string, SurrealKind>> _kinds = new();
+    private long _requestId;
 
     private SurrealDbSession(ConnectionProfile profile, HttpTransport transport, SurrealSettings settings, string version)
     {
@@ -123,6 +188,26 @@ internal sealed class SurrealDbSession : IDatabaseSession
         _transport = transport;
         _settings = settings;
         ServerVersion = version;
+        UsesRpc = SpeaksRpc(version);
+    }
+
+    /// <summary>
+    /// Whether requests go to <c>/rpc</c> in CBOR, which keeps datetimes, decimals and record ids typed, rather than to
+    /// <c>/sql</c>, whose JSON turns them into text. SurrealDB 2 serves the RPC over HTTP, as the macOS app uses it;
+    /// SurrealDB 1 keeps <c>/sql</c>, where declared fields still read typed through their kinds.
+    /// </summary>
+    internal bool UsesRpc { get; }
+
+    internal static bool SpeaksRpc(string version)
+    {
+        var digits = version.AsSpan().TrimStart('v');
+        var end = 0;
+        while (end < digits.Length && char.IsAsciiDigit(digits[end]))
+        {
+            end++;
+        }
+
+        return int.TryParse(digits[..end], NumberStyles.None, CultureInfo.InvariantCulture, out var major) && major >= 2;
     }
 
     public ConnectionProfile Profile { get; }
@@ -152,6 +237,11 @@ internal sealed class SurrealDbSession : IDatabaseSession
                 return text.StartsWith("surrealdb-", StringComparison.OrdinalIgnoreCase) ? text["surrealdb-".Length..] : text;
             }, cancellationToken);
             var session = new SurrealDbSession(profile, transport, settings, version);
+            if (session.UsesRpc)
+            {
+                // Each RPC request asks for CBOR itself; a default JSON Accept would be sent beside it.
+                transport.DefaultHeaders.Accept.Clear();
+            }
 
             // /version answers without credentials, so the login is checked by a statement.
             await session.QueryValueAsync("RETURN 1;", settings.Database, cancellationToken);
@@ -234,17 +324,22 @@ internal sealed class SurrealDbSession : IDatabaseSession
             string.Create(CultureInfo.InvariantCulture, $"INFO FOR TABLE {ident};\nSELECT * FROM {ident} LIMIT {SampleSize};"),
             database,
             cancellationToken);
-        var (columns, kinds, indexes) = Describe(table.Name, response.Results[0].Value, response.Results.Count > 1 ? response.Results[1].Value : default);
+        var (columns, kinds, indexes) = Describe(table.Name, response.Results[0].Value, response.Results.Count > 1 ? response.Results[1].Data : null);
         _kinds[(database, table.Name)] = kinds;
         return new TableStructure(table, columns, indexes, [], []);
     }
 
-    internal static (List<ColumnInfo> Columns, Dictionary<string, SurrealKind> Kinds, List<IndexInfo> Indexes) Describe(string table, JsonElement info, JsonElement sample)
+    /// <summary>
+    /// The columns, kinds and indexes of a table from its INFO answer and a <paramref name="sample"/> of its rows, read
+    /// with their types so an undeclared field that holds datetimes reads as one.
+    /// </summary>
+    internal static (List<ColumnInfo> Columns, Dictionary<string, SurrealKind> Kinds, List<IndexInfo> Indexes) Describe(string table, JsonElement info, object? sample)
     {
         var columns = new List<ColumnInfo> { new("id", "record", false, null, true, false, 0) };
         var kinds = new Dictionary<string, SurrealKind>(StringComparer.Ordinal);
         var fields = Entries(info, "fields").ToArray();
-        var isRelation = sample.ValueKind == JsonValueKind.Array && sample.EnumerateArray().Any(r => r.ValueKind == JsonValueKind.Object && r.TryGetProperty("in", out _) && r.TryGetProperty("out", out _));
+        var rows = sample is List<object?> list ? list.OfType<SurrealObject>().ToArray() : [];
+        var isRelation = rows.Any(r => r.TryGetValue("in", out _) && r.TryGetValue("out", out _));
         if (isRelation)
         {
             columns.Add(new ColumnInfo("in", "record", false, null, false, false, columns.Count));
@@ -264,19 +359,16 @@ internal sealed class SurrealDbSession : IDatabaseSession
             columns.Add(new ColumnInfo(name, kind.Raw.Length == 0 ? "any" : kind.Raw, kind.IsOptional, Default(definition), false, false, columns.Count));
         }
 
-        if (sample.ValueKind == JsonValueKind.Array)
+        var seen = new HashSet<string>(columns.Select(c => c.Name), StringComparer.Ordinal);
+        foreach (var row in rows)
         {
-            var seen = new HashSet<string>(columns.Select(c => c.Name), StringComparer.Ordinal);
-            foreach (var row in sample.EnumerateArray().Where(r => r.ValueKind == JsonValueKind.Object))
+            foreach (var (name, value) in row.Fields)
             {
-                foreach (var property in row.EnumerateObject())
+                if (seen.Add(name))
                 {
-                    if (seen.Add(property.Name))
-                    {
-                        var inferred = Infer(property.Value);
-                        kinds[property.Name] = new SurrealKind(inferred, true, null, inferred);
-                        columns.Add(new ColumnInfo(property.Name, inferred, true, null, false, false, columns.Count, "not declared"));
-                    }
+                    var inferred = SurrealValues.KindName(value);
+                    kinds[name] = new SurrealKind(inferred, true, null, inferred);
+                    columns.Add(new ColumnInfo(name, inferred, true, null, false, false, columns.Count, "not declared"));
                 }
             }
         }
@@ -321,7 +413,12 @@ internal sealed class SurrealDbSession : IDatabaseSession
         var kinds = await KindsAsync(request.Table, cancellationToken);
         var statement = BuildBrowse(request, kinds);
         using var response = await QueryAsync(statement, database, cancellationToken);
-        var value = response.Results[^1].Value;
+        return Page(response.Results[^1].Data, kinds);
+    }
+
+    /// <summary>A page of records as rows, each field read in its declared kind.</summary>
+    internal static ResultSet Page(object? rows, IReadOnlyDictionary<string, SurrealKind> kinds)
+    {
         var table = new DocumentTable();
         table.Declare("id", "record", typeof(string));
         foreach (var (name, kind) in kinds)
@@ -329,12 +426,22 @@ internal sealed class SurrealDbSession : IDatabaseSession
             table.Declare(name, kind.Raw.Length == 0 ? "any" : kind.Raw, kind.ClrType);
         }
 
-        if (value.ValueKind == JsonValueKind.Array)
+        if (rows is List<object?> records)
         {
-            foreach (var row in value.EnumerateArray())
+            foreach (var record in records)
             {
                 table.NewRow();
-                table.SetTopLevel(row);
+                if (record is SurrealObject fields)
+                {
+                    foreach (var (name, value) in fields.Fields)
+                    {
+                        table.Set(name, SurrealValues.ToCell(SurrealValues.Coerce(value, kinds.GetValueOrDefault(name))));
+                    }
+                }
+                else
+                {
+                    table.Set("value", SurrealValues.ToCell(record));
+                }
             }
         }
 
@@ -531,17 +638,25 @@ internal sealed class SurrealDbSession : IDatabaseSession
     internal void ForgetKinds() => _kinds.Clear();
 
     /// <summary>A response held open so its results can be read; disposing it frees the parsed JSON.</summary>
-    internal sealed class SurrealResponse(JsonDocument document, IReadOnlyList<SurrealResult> results) : IDisposable
+    internal sealed class SurrealResponse(List<JsonDocument> documents, IReadOnlyList<SurrealResult> results) : IDisposable
     {
         public IReadOnlyList<SurrealResult> Results { get; } = results;
 
-        public void Dispose() => document.Dispose();
+        public void Dispose()
+        {
+            foreach (var document in documents)
+            {
+                document.Dispose();
+            }
+
+            documents.Clear();
+        }
     }
 
     internal async Task<SurrealResponse> QueryAsync(string sql, string? database, CancellationToken cancellationToken, bool throwOnError = true, bool noNamespace = false, string? namespaceOverride = null)
     {
         var ns = noNamespace ? null : namespaceOverride ?? _settings.Namespace;
-        var reply = await _transport.SendAsync(HttpMethod.Post, "/sql", new StringContent(sql, Encoding.UTF8, "text/plain"), cancellationToken, request =>
+        void Scope(HttpRequestMessage request)
         {
             if (ns is not null)
             {
@@ -551,14 +666,40 @@ internal sealed class SurrealDbSession : IDatabaseSession
                     request.Headers.TryAddWithoutValidation("Surreal-DB", database);
                 }
             }
-        });
+        }
 
+        var documents = new List<JsonDocument>(1);
+        var results = UsesRpc
+            ? await RpcAsync(sql, Scope, documents, cancellationToken)
+            : await SqlAsync(sql, Scope, documents, cancellationToken);
+        var response = new SurrealResponse(documents, results);
+
+        if (throwOnError && results.Any(r => !r.Ok))
+        {
+            var errors = results.Where(r => !r.Ok).Select(r => r.Error ?? string.Empty).ToArray();
+            response.Dispose();
+            throw new ServerRequestException(RootCause(errors));
+        }
+
+        if (results.Count == 0)
+        {
+            response.Dispose();
+            throw new ServerRequestException("SurrealDB returned no result.");
+        }
+
+        return response;
+    }
+
+    private async Task<List<SurrealResult>> SqlAsync(string sql, Action<HttpRequestMessage> scope, List<JsonDocument> documents, CancellationToken cancellationToken)
+    {
+        var reply = await _transport.SendAsync(HttpMethod.Post, "/sql", new StringContent(sql, Encoding.UTF8, "text/plain"), cancellationToken, scope);
         if (!reply.IsSuccess)
         {
             throw new ServerRequestException(SurrealErrors.Reason(reply), reply.StatusCode);
         }
 
         var document = reply.TryParseJson() ?? throw new ServerRequestException("SurrealDB answered something other than JSON.");
+        documents.Add(document);
         var results = new List<SurrealResult>();
         if (document.RootElement.ValueKind == JsonValueKind.Array)
         {
@@ -570,20 +711,72 @@ internal sealed class SurrealDbSession : IDatabaseSession
             }
         }
 
-        if (throwOnError && results.Any(r => !r.Ok))
+        return results;
+    }
+
+    /// <summary>
+    /// The <c>query</c> method of the RPC, posted as CBOR to <c>/rpc</c> with the same scope and sign-in headers as
+    /// <c>/sql</c>. The answer is <c>{ result: [{ status, result }] }</c>, or <c>{ error: { message } }</c> when the
+    /// request as a whole fails.
+    /// </summary>
+    private async Task<List<SurrealResult>> RpcAsync(string sql, Action<HttpRequestMessage> scope, List<JsonDocument> documents, CancellationToken cancellationToken)
+    {
+        var content = new ByteArrayContent(SurrealCbor.QueryRequest(Interlocked.Increment(ref _requestId), sql));
+        content.Headers.ContentType = new MediaTypeHeaderValue(CborMediaType);
+        var reply = await _transport.SendAsync(HttpMethod.Post, "/rpc", content, cancellationToken, request =>
         {
-            var errors = results.Where(r => !r.Ok).Select(r => r.Error ?? string.Empty).ToArray();
-            document.Dispose();
-            throw new ServerRequestException(RootCause(errors));
+            request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue(CborMediaType));
+            scope(request);
+        });
+
+        return ReadRpc(reply, documents);
+    }
+
+    private const string CborMediaType = "application/cbor";
+
+    internal static List<SurrealResult> ReadRpc(HttpReply reply, List<JsonDocument> documents)
+    {
+        object? envelope;
+        try
+        {
+            envelope = SurrealCbor.Decode(reply.Body);
+        }
+        catch (FormatException)
+        {
+            // A proxy or an auth failure can answer in text before SurrealDB ever sees the request.
+            throw new ServerRequestException(reply.IsSuccess ? "SurrealDB answered something other than CBOR." : SurrealErrors.Reason(reply), reply.StatusCode);
         }
 
-        if (results.Count == 0)
+        var fields = envelope as SurrealObject;
+        if (fields is not null && fields.TryGetValue("error", out var error) && error is not null)
         {
-            document.Dispose();
-            throw new ServerRequestException("SurrealDB returned no result.");
+            var message = error is SurrealObject details && details.TryGetValue("message", out var text) && text is string reason ? reason : SurrealValues.Text(error);
+            throw new ServerRequestException(reply.StatusCode is 401 or 403 ? "Authentication failed: " + message : message, reply.StatusCode);
         }
 
-        return new SurrealResponse(document, results);
+        if (!reply.IsSuccess)
+        {
+            throw new ServerRequestException(SurrealErrors.Reason(reply), reply.StatusCode);
+        }
+
+        object? result = null;
+        if (fields?.TryGetValue("result", out result) != true || result is not List<object?> statements)
+        {
+            return [new SurrealResult(true, result, null, documents)];
+        }
+
+        var results = new List<SurrealResult>(statements.Count);
+        foreach (var statement in statements)
+        {
+            var entry = statement as SurrealObject;
+            object? status = null, value = null;
+            entry?.TryGetValue("status", out status);
+            entry?.TryGetValue("result", out value);
+            var ok = status is not string text || text == "OK";
+            results.Add(new SurrealResult(ok, value, ok ? null : SurrealValues.Text(value), documents));
+        }
+
+        return results;
     }
 
     private async Task QueryValueAsync(string sql, string? database, CancellationToken cancellationToken)
@@ -706,16 +899,6 @@ internal sealed class SurrealDbSession : IDatabaseSession
 
         return [];
     }
-
-    private static string Infer(JsonElement value) => value.ValueKind switch
-    {
-        JsonValueKind.Number => value.TryGetInt64(out _) ? "int" : "float",
-        JsonValueKind.True or JsonValueKind.False => "bool",
-        JsonValueKind.Object => "object",
-        JsonValueKind.Array => "array",
-        JsonValueKind.String => "string",
-        _ => "any",
-    };
 
     private static ConfiguredTaskAwaitable Yield() => Task.CompletedTask.ConfigureAwait(ConfigureAwaitOptions.ForceYielding);
 }

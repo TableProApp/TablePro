@@ -16,6 +16,8 @@
     <ProjectReference Include="../../src/TablePro.Drivers.Etcd/TablePro.Drivers.Etcd.csproj" />
     <ProjectReference Include="../../src/TablePro.Drivers.Cloudflare/TablePro.Drivers.Cloudflare.csproj" />
     <ProjectReference Include="../../src/TablePro.Drivers.LibSql/TablePro.Drivers.LibSql.csproj" />
+    <!-- libSQL's local file mode opens through the SQLite driver, as the app composes them. -->
+    <ProjectReference Include="../../src/TablePro.Drivers.Sqlite/TablePro.Drivers.Sqlite.csproj" />
   </ItemGroup>
   <ItemGroup>
     <Using Include="Xunit" />
