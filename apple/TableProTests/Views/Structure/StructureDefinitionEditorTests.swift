@@ -145,6 +145,37 @@ struct StructureDefinitionEditorTests {
         #expect(editor.adapter(for: .columns).visibleRowCount == 1)
     }
 
+    @Test("A reload keeps the selected definition, under the name the save gave it")
+    func reloadKeepsTheSelection() async throws {
+        let editor = makeEditor()
+        let status = id(of: "status", in: editor)
+        let index = editor.manager.workingIndexes[0].id
+        editor.adapter(for: .columns).select(entity: status)
+        editor.commitInspectorField(section: .columns, id: status, field: 0, value: "phase")
+        let version = editor.manager.reloadVersion
+
+        editor.manager.loadSchema(
+            tableName: "orders",
+            columns: [
+                ColumnInfo(name: "id", dataType: "INT", isNullable: false, isPrimaryKey: true,
+                           defaultValue: nil, extra: nil, charset: nil, collation: nil, comment: nil),
+                ColumnInfo(name: "customer_id", dataType: "INT", isNullable: false, isPrimaryKey: false,
+                           defaultValue: nil, extra: nil, charset: nil, collation: nil, comment: nil),
+                ColumnInfo(name: "phase", dataType: "TEXT", isNullable: true, isPrimaryKey: false,
+                           defaultValue: nil, extra: nil, charset: nil, collation: nil, comment: nil)
+            ],
+            indexes: [IndexInfo(name: "orders_pkey", columns: ["id"], isUnique: true, isPrimary: true, type: "BTREE")],
+            foreignKeys: [],
+            primaryKey: ["id"]
+        )
+        try await waitUntil { editor.manager.reloadVersion > version && editor.adapter(for: .columns).rowCount == 3 }
+
+        #expect(id(of: "phase", in: editor) == status)
+        #expect(editor.manager.workingIndexes[0].id == index)
+        #expect(Set(editor.manager.workingColumns.map(\.id)).count == 3)
+        #expect(editor.inspectorTarget == .entity(.columns, status))
+    }
+
     @Test("A save's hold closes the grids and its end opens them again")
     func saveHoldTogglesEditing() async throws {
         let editor = makeEditor()

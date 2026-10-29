@@ -183,6 +183,7 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
         self.currentForeignKeys = EditableForeignKeyDefinition.grouping(foreignKeys).sorted { $0.name < $1.name }
         self.currentCheckConstraints = checkConstraints.map { EditableCheckConstraintDefinition.from($0) }
         self.currentPrimaryKey = primaryKey
+        keepIdentitiesAcrossReload()
 
         resetWorkingState()
 
@@ -195,6 +196,34 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
         // Increment reloadVersion to trigger DataGridView column width recalculation
         // This ensures columns auto-size based on actual cell content after initial load
         reloadVersion += 1
+    }
+
+    // Every fetch mints fresh ids; a definition that comes back under a name it had keeps its id, so the grid
+    // selection and the inspector survive a refresh or a save.
+    private func keepIdentitiesAcrossReload() {
+        currentColumns = Self.keepingIDs(of: currentColumns, from: workingColumns, \.name, \.id)
+        currentIndexes = Self.keepingIDs(of: currentIndexes, from: workingIndexes, \.name, \.id)
+        currentForeignKeys = Self.keepingIDs(of: currentForeignKeys, from: workingForeignKeys, \.name, \.id)
+        currentCheckConstraints = Self.keepingIDs(of: currentCheckConstraints, from: workingCheckConstraints, \.name, \.id)
+    }
+
+    private static func keepingIDs<Entity>(
+        of loaded: [Entity],
+        from earlier: [Entity],
+        _ name: KeyPath<Entity, String>,
+        _ id: WritableKeyPath<Entity, UUID>
+    ) -> [Entity] {
+        var ids: [String: UUID] = [:]
+        for entity in earlier where !entity[keyPath: name].isEmpty && ids[entity[keyPath: name]] == nil {
+            ids[entity[keyPath: name]] = entity[keyPath: id]
+        }
+        var used = Set<UUID>()
+        return loaded.map { entity in
+            guard let previous = ids[entity[keyPath: name]], used.insert(previous).inserted else { return entity }
+            var kept = entity
+            kept[keyPath: id] = previous
+            return kept
+        }
     }
 
     private func resetWorkingState() {
