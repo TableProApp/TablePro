@@ -336,7 +336,7 @@ impl RowDetailPane {
         let input = tracked.edit_input(&row, column.index);
         let content = value_content(&column, &row.id(), tracked.lock(&column, &row), &input);
         self.show_value(&column.name, &content);
-        self.show_picture(match &input {
+        self.show_picture(match input {
             CellInput::Value(Value::Bytes(bytes)) => Some(bytes),
             _ => None,
         });

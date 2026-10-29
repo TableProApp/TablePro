@@ -5,7 +5,7 @@ use tablepro_session::runtime::Tasks;
 
 use super::RowDetailPane;
 
-// glycin guesses the type from this much of the head, as it does here.
+// The head glycin guesses the type from.
 const SNIFF_BYTES: usize = u16::MAX as usize;
 // A preview has no use for more, and the texture lives in this process: 256 MB at 8 bits a channel.
 const MAX_PIXELS: u64 = 8192 * 8192;
@@ -33,7 +33,7 @@ impl PictureLoad {
 
 impl RowDetailPane {
     // Database bytes are untrusted, so they decode in glycin's sandbox, never in this process.
-    pub(super) fn show_picture(&self, bytes: Option<&[u8]>) {
+    pub(super) fn show_picture(&self, bytes: Option<Vec<u8>>) {
         let imp = self.imp();
         if let Some(superseded) = imp.picture_load.take() {
             superseded.stop();
@@ -48,7 +48,7 @@ impl RowDetailPane {
             return;
         };
         let cancellable = gio::Cancellable::new();
-        let decode = tasks.spawn_task(decode(glib::Bytes::from(bytes), cancellable.clone()));
+        let decode = tasks.spawn_task(decode(glib::Bytes::from_owned(bytes), cancellable.clone()));
         imp.picture_load.replace(Some(PictureLoad {
             cancellable: cancellable.clone(),
             tasks,
