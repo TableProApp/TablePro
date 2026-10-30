@@ -227,9 +227,15 @@ impl SqlEditor {
     /// Completion reads `session`'s catalog: the session the window holds
     /// for the tab's database, or `None` back on the connection's own.
     pub(crate) fn follow_catalog(&self, session: Option<Arc<Session>>) {
-        // A session opened late for a database the tab has since left.
+        // A session opened late for a database the tab has since left
+        // changes nothing; the one it is in may have answered first.
         let current = self.imp().named_database.borrow().clone();
-        let session = session.filter(|session| session.database() == current.as_deref());
+        if session
+            .as_ref()
+            .is_some_and(|session| session.database() != current.as_deref())
+        {
+            return;
+        }
         for provider in self.imp().completion_providers.borrow().iter() {
             if let Some(provider) = provider.downcast_ref::<SqlCompletionProvider>() {
                 provider.set_catalog_session(session.clone());

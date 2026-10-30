@@ -2912,6 +2912,13 @@ fn completion_reads_only_the_session_of_the_tabs_database() {
     pick_database(&harness, "analytics");
     harness.editor.follow_catalog(Some(analytics));
     assert_eq!(followed_catalog(&harness).as_deref(), Some("analytics"));
+    let archive = session_in("archive", harness.runtime.tasks());
+    harness.editor.follow_catalog(Some(archive));
+    assert_eq!(
+        followed_catalog(&harness).as_deref(),
+        Some("analytics"),
+        "a late session for a database the tab left replaced the one it is in"
+    );
 
     pick_database(&harness, "shop");
     assert_eq!(followed_catalog(&harness), None, "the last database's catalog stayed");

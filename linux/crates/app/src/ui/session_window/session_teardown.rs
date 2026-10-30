@@ -61,6 +61,17 @@ impl SessionWindow {
     /// False when the window holds no such session.
     pub(super) fn tear_down_session(&self, key: &SessionKey) -> bool {
         let imp = self.imp();
+        // A database still opening from this connection opens for nobody;
+        // one asked of the next connection opens anew.
+        if let SessionKey::Saved(id) = key {
+            imp.opening_databases.borrow_mut().retain(|opening, (cancel, _)| {
+                let goes = matches!(opening, SessionKey::SavedIn { id: of, .. } if of == id);
+                if goes {
+                    cancel.cancel();
+                }
+                !goes
+            });
+        }
         let open = {
             let Ok(mut sessions) = imp.sessions.try_borrow_mut() else {
                 tracing::warn!("a session was torn down while the sessions were read");
