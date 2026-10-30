@@ -174,13 +174,6 @@ struct TableRows: Sendable {
         rowLocators[id]
     }
 
-    /// Releases the row payload while keeping the schema needed to render and reload the table.
-    mutating func discardRowsKeepingMetadata() {
-        rows = []
-        indexByID = [:]
-        rowLocators = [:]
-    }
-
     /// Writes a value into a cell, or with `isAbsent` takes the field out of the row. A value
     /// written into a missing field puts the field back.
     @discardableResult

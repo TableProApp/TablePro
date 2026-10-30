@@ -20,8 +20,6 @@ extension MainContentCoordinator {
             "[switch] coordinator.handleWindowDidBecomeKey connId=\(self.connectionId, privacy: .public) selectedTabId=\(self.tabManager.selectedTabId?.uuidString ?? "nil", privacy: .public)"
         )
         isKeyWindow = true
-        evictionTask?.cancel()
-        evictionTask = nil
 
         consumeDeferredRestoreLoadIfNeeded()
         refreshSourceFileDiskChanges()
@@ -40,16 +38,6 @@ extension MainContentCoordinator {
             "[switch] coordinator.handleWindowDidResignKey connId=\(self.connectionId, privacy: .public)"
         )
         isKeyWindow = false
-
-        evictionTask?.cancel()
-        evictionTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(5))
-            guard let self, !Task.isCancelled else { return }
-            Self.lifecycleLogger.debug(
-                "[switch] coordinator evictInactiveRowData firing (5s after resignKey) connId=\(self.connectionId, privacy: .public)"
-            )
-            self.evictInactiveRowData()
-        }
     }
 
     // Synchronous on purpose: no grace period, no delayed Task.
@@ -64,9 +52,6 @@ extension MainContentCoordinator {
         if !MainContentCoordinator.isAppTerminating, !isTearingDown {
             persistence.saveAggregatedSync()
         }
-
-        evictionTask?.cancel()
-        evictionTask = nil
 
         trailingPaneState?.teardown()
 
@@ -175,7 +160,7 @@ extension MainContentCoordinator {
               session.isConnected else {
             tracer.anomaly(.connectionNotReady, token: traceToken)
             tracer.finish(token: traceToken, outcome: .notConnected)
-            pendingLoadTrigger = trigger
+            parkedTableLoad = ParkedTableLoad(tabId: tab.id, trigger: trigger)
             declineTableLoad(for: tab.id)
             return
         }
@@ -211,19 +196,25 @@ extension MainContentCoordinator {
         lazyLoadCurrentTabIfNeeded(trigger: .restore)
     }
 
+    // The parked trigger goes only to the tab that parked it: run against another selected tab, it executed a query tab's SQL.
+    func loadSelectedTableTabAfterConnect() {
+        let parked = parkedTableLoad
+        parkedTableLoad = nil
+        let trigger = parked.flatMap { $0.tabId == tabManager.selectedTabId ? $0.trigger : nil }
+        lazyLoadCurrentTabIfNeeded(trigger: trigger ?? .userInitiated)
+    }
+
+    // Rows a tab holds stay until the user asks for others; only a first load or a change TablePro made to the table loads here.
     func canAutoLoadTableTab(_ tab: QueryTab) -> Bool {
         guard tab.tabType == .table else { return false }
         guard tab.execution.errorMessage == nil else { return false }
         guard !tab.content.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
 
-        let rows = tabSessionRegistry.tableRows(for: tab.id)
-        let needsReload = tabSessionRegistry.isEvicted(tab.id) || tabSessionRegistry.isStale(tab.id)
-        let hasFreshRows = !rows.rows.isEmpty && !needsReload
-        let hasExecuted = tab.execution.lastExecutedAt != nil && !needsReload
-        guard !hasFreshRows, !hasExecuted else { return false }
+        let hasLoaded = tab.execution.lastExecutedAt != nil
+            || !tabSessionRegistry.tableRows(for: tab.id).rows.isEmpty
+        guard !hasLoaded || tabSessionRegistry.isStale(tab.id) else { return false }
 
-        let hasPendingEdits = changeManager.hasChanges || tab.pendingChanges.hasChanges
-        return !hasPendingEdits
+        return !holdsUnsavedWork(tab)
     }
 
     private func clearAbandonedExecutingFlagIfNeeded(for tab: QueryTab) {

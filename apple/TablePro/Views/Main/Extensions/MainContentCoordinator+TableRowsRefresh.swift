@@ -119,10 +119,18 @@ extension MainContentCoordinator {
 
     private var selectedTabRefreshState: TableRowsRefreshPlan.SelectedTabState? {
         guard let tab = tabManager.selectedTab else { return nil }
-        let holdsEdits = changeManager.hasChanges
-            || tab.pendingChanges.hasChanges
-            || isEditingActiveGrid
-        return TableRowsRefreshPlan.SelectedTabState(id: tab.id, holdsEdits: holdsEdits, load: selectedTabLoad(tab.id))
+        return TableRowsRefreshPlan.SelectedTabState(
+            id: tab.id,
+            holdsEdits: holdsUnsavedWork(tab),
+            load: selectedTabLoad(tab.id)
+        )
+    }
+
+    // The one answer for every reload path, the lazy load included: an open cell counts, or a reload drops what is typed in it.
+    func holdsUnsavedWork(_ tab: QueryTab) -> Bool {
+        if tab.pendingChanges.hasChanges { return true }
+        guard tab.id == changeManagerTabId else { return false }
+        return changeManager.hasChanges || isEditingActiveGrid
     }
 
     private func selectedTabLoad(_ tabId: UUID) -> TableRowsRefreshPlan.SelectedTabLoad {
