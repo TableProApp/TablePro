@@ -7,6 +7,7 @@ use libadwaita as adw;
 use libadwaita::subclass::prelude::*;
 
 use super::Shown;
+use super::picture::PictureLoad;
 use super::value_editor::{Loaded, OpenEdit, Placeholders};
 use crate::ui::data_grid::{DataGrid, PinnedRow};
 use crate::ui::handler_guard::HandlerGuard;
@@ -50,6 +51,8 @@ pub struct RowDetailPane {
     #[template_child]
     pub calendar: TemplateChild<gtk::Calendar>,
     #[template_child]
+    pub value_picture: TemplateChild<gtk::Picture>,
+    #[template_child]
     pub clock_button: TemplateChild<gtk::MenuButton>,
     #[template_child]
     pub clock_popover: TemplateChild<gtk::Popover>,
@@ -63,6 +66,8 @@ pub struct RowDetailPane {
     pub clock_set: TemplateChild<gtk::Button>,
     #[template_child]
     pub value_menu_button: TemplateChild<gtk::MenuButton>,
+    #[template_child]
+    pub value_scroller: TemplateChild<gtk::ScrolledWindow>,
     #[template_child]
     pub value_view: TemplateChild<sourceview5::View>,
     #[template_child]
@@ -84,6 +89,7 @@ pub struct RowDetailPane {
     pub loaded: RefCell<Option<Loaded>>,
     pub placeholders: RefCell<Placeholders>,
     pub edit: RefCell<Option<OpenEdit>>,
+    pub picture_load: RefCell<Option<PictureLoad>>,
     /// Set while the pane writes the buffer itself, which is no edit.
     pub loading: Cell<bool>,
     /// Set while the pane selects a field itself, which moves no focus.
@@ -122,6 +128,9 @@ impl ObjectSubclass for RowDetailPane {
 
 impl ObjectImpl for RowDetailPane {
     fn dispose(&self) {
+        if let Some(load) = self.picture_load.take() {
+            load.stop();
+        }
         self.guards.take();
         self.obj().stop_watching_columns();
         self.obj().watch_row(None);

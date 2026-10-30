@@ -317,12 +317,22 @@
                               </object>
                             </child>
                             <child>
+                              <object class="GtkPicture" id="value_picture">
+                                <property name="visible">false</property>
+                                <property name="content-fit">scale-down</property>
+                                <property name="margin-top">6</property>
+                                <property name="margin-start">12</property>
+                                <property name="margin-end">12</property>
+                                <property name="alternative-text" translatable="yes">Image preview</property>
+                              </object>
+                            </child>
+                            <child>
                               <!-- A text view has no placeholder of its own, so
                                    one is drawn over it while it is empty. -->
                               <object class="GtkOverlay">
                                 <property name="vexpand">true</property>
                                 <property name="child">
-                                  <object class="GtkScrolledWindow">
+                                  <object class="GtkScrolledWindow" id="value_scroller">
                                     <property name="hscrollbar-policy">never</property>
                                     <property name="min-content-height">120</property>
                                     <property name="child">

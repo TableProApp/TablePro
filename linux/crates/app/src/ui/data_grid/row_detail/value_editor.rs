@@ -14,7 +14,7 @@ use crate::application::component_matches;
 use crate::i18n::{gettext, gettext_f};
 use crate::services::grid::{
     CellEditorKind, CellLock, CommitResult, EDIT_MAX_BYTES, EditStart, GridColumn, GridRowId, auto_filled_sentinel,
-    display_text, empty_placeholder,
+    display_text, empty_placeholder, hex_dump,
 };
 use crate::ui::data_grid::edit::CHOICE_ACTIONS;
 use crate::ui::data_grid::selection::Target;
@@ -80,6 +80,8 @@ pub struct ValueContent {
     pub emptied_placeholder: Option<String>,
     pub language: Option<&'static str>,
     pub calendar: bool,
+    /// A hex dump lines up only unwrapped.
+    pub hex_dump: bool,
     /// The column's labels to pick from.
     pub choice: bool,
     pub clock: bool,
@@ -102,6 +104,12 @@ pub fn value_content(column: &GridColumn, row: &GridRowId, lock: Option<CellLock
         CellInput::Value(Value::Null) => Some("NULL".to_owned()),
         CellInput::Default if column.auto_filled() => Some(auto_filled_sentinel()),
         CellInput::Default => Some("DEFAULT".to_owned()),
+        // An empty dump would read as no value at all.
+        CellInput::Value(value @ Value::Bytes(bytes)) if bytes.is_empty() => Some(
+            display_text(value, &column.column_type, &mut String::new())
+                .text
+                .to_owned(),
+        ),
         CellInput::Value(_) => emptied_placeholder.clone(),
     };
     ValueContent {
@@ -114,6 +122,7 @@ pub fn value_content(column: &GridColumn, row: &GridRowId, lock: Option<CellLock
             _ => None,
         },
         calendar: editable && matches!(kind, ColumnKind::Date | ColumnKind::Timestamp { .. }),
+        hex_dump: matches!(input, CellInput::Value(Value::Bytes(_))),
         // The menu holds no text, so a value too long or with a NUL for the
         // editor still opens it.
         choice: lock.is_none() && decodable && CellEditorKind::for_cell(column, Ok(())) == CellEditorKind::Choice,
@@ -136,6 +145,7 @@ fn typed_form(column: &GridColumn, value: &Value) -> (String, Option<String>) {
     };
     let text = match value {
         Value::Null => String::new(),
+        Value::Bytes(bytes) => hex_dump(bytes),
         value => {
             let mut scratch = String::new();
             display_text(value, &column.column_type, &mut scratch).text.to_owned()
@@ -340,6 +350,10 @@ impl RowDetailPane {
         let input = tracked.edit_input(&row, column.index);
         let content = value_content(&column, &row.id(), tracked.lock(&column, &row), &input);
         self.show_value(&column.name, &content);
+        self.show_picture(match input {
+            CellInput::Value(Value::Bytes(bytes)) => Some(bytes),
+            _ => None,
+        });
         imp.loaded.replace(Some(loaded));
     }
 
@@ -351,10 +365,12 @@ impl RowDetailPane {
             emptied_placeholder: None,
             language: None,
             calendar: false,
+            hex_dump: false,
             choice: false,
             clock: false,
         };
         self.show_value("", &content);
+        self.show_picture(None);
         self.imp().value_view.set_editable(false);
         self.imp().loaded.take();
     }
@@ -387,6 +403,12 @@ impl RowDetailPane {
             .update_property(&[gtk::accessible::Property::Label(name)]);
         self.show_message(content.message.as_deref(), false);
         imp.calendar_button.set_visible(content.calendar);
+        let (wrap, hscroll) = match content.hex_dump {
+            true => (gtk::WrapMode::None, gtk::PolicyType::Automatic),
+            false => (gtk::WrapMode::WordChar, gtk::PolicyType::Never),
+        };
+        view.set_wrap_mode(wrap);
+        imp.value_scroller.set_hscrollbar_policy(hscroll);
         imp.choice_button.set_visible(content.choice);
         imp.clock_button.set_visible(content.clock);
         self.update_placeholder();
