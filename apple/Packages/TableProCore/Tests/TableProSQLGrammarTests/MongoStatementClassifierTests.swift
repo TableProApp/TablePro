@@ -63,6 +63,23 @@ struct MongoStatementClassifierTests {
         #expect(!verdict(#"db.users.find({where: "this.a > 1"})"#).reachesCode)
     }
 
+    @Test("The server's own operators reach code, the two it rewrites mapReduce into among them", arguments: [
+        #"db.users.aggregate([{$project: {e: {$_internalJsEmit: {this: "$$ROOT", eval: "function () {}"}}}}])"#,
+        #"db.users.aggregate([{$group: {_id: null, v: {$_internalJsReduce: {data: {k: 1, v: "$a"}, eval: "function () {}"}}}}])"#,
+        #"db.users.aggregate([{$project: {e: {"\u0024_internalJsEmit": {this: "$$ROOT", eval: "function () {}"}}}}])"#,
+        #"db.users.find({$expr: {$_internalJsEmit: {this: "$$ROOT", eval: "function () {}"}}})"#
+    ])
+    func internalOperatorsReachCode(text: String) {
+        #expect(verdict(text) == MongoStatementVerdict(tier: .read, reachesCode: true))
+    }
+
+    @Test("An internal operator reaches code in text the grammar rejects, and only as a key in text it accepts")
+    func internalOperatorSpelling() {
+        #expect(verdict(#"var p = [{$project: {e: {$_internalJsEmit: {this: "$$ROOT", eval: "function () {}"}}}}]"#)
+            == MongoStatementVerdict(tier: .write, reachesCode: true))
+        #expect(!verdict(#"db.users.find({_internal: "$_internalJsEmit"})"#).reachesCode)
+    }
+
     @Test("Several statements take the worst tier, and any one reaching code marks the text")
     func worstStatementWins() {
         #expect(tier("db.a.find({})\ndb.b.insertOne({})") == .write)
