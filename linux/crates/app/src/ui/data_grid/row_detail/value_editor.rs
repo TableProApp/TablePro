@@ -81,6 +81,7 @@ pub struct ValueContent {
     pub calendar: bool,
     /// A hex dump lines up only unwrapped.
     pub hex_dump: bool,
+    pub clock: bool,
 }
 
 pub fn value_content(column: &GridColumn, row: &GridRowId, lock: Option<CellLock>, input: &CellInput) -> ValueContent {
@@ -115,6 +116,7 @@ pub fn value_content(column: &GridColumn, row: &GridRowId, lock: Option<CellLock
         },
         calendar: editable && matches!(kind, ColumnKind::Date | ColumnKind::Timestamp { .. }),
         hex_dump: matches!(input, CellInput::Value(Value::Bytes(_))),
+        clock: editable && super::clock::ClockField::of(kind).is_some(),
         message,
     }
 }
@@ -354,6 +356,7 @@ impl RowDetailPane {
             language: None,
             calendar: false,
             hex_dump: false,
+            clock: false,
         };
         self.show_value("", &content);
         self.show_picture(None);
@@ -395,6 +398,7 @@ impl RowDetailPane {
         };
         view.set_wrap_mode(wrap);
         imp.value_scroller.set_hscrollbar_policy(hscroll);
+        imp.clock_button.set_visible(content.clock);
         self.update_placeholder();
     }
 

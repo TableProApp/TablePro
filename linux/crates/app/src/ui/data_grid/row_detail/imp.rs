@@ -51,6 +51,18 @@ pub struct RowDetailPane {
     #[template_child]
     pub value_picture: TemplateChild<gtk::Picture>,
     #[template_child]
+    pub clock_button: TemplateChild<gtk::MenuButton>,
+    #[template_child]
+    pub clock_popover: TemplateChild<gtk::Popover>,
+    #[template_child]
+    pub hour: TemplateChild<gtk::SpinButton>,
+    #[template_child]
+    pub minute: TemplateChild<gtk::SpinButton>,
+    #[template_child]
+    pub second: TemplateChild<gtk::SpinButton>,
+    #[template_child]
+    pub clock_set: TemplateChild<gtk::Button>,
+    #[template_child]
     pub value_menu_button: TemplateChild<gtk::MenuButton>,
     #[template_child]
     pub value_scroller: TemplateChild<gtk::ScrolledWindow>,
@@ -87,6 +99,7 @@ pub struct RowDetailPane {
     pub quiet_calendar: Cell<bool>,
     /// The row and field the open calendar picks a day for.
     pub calendar_target: RefCell<Option<(PinnedRow, usize)>>,
+    pub clock_target: RefCell<Option<(PinnedRow, usize)>>,
     pub sync_queued: Cell<bool>,
     /// The field rows bound now, which redraw when the row changes.
     pub bound: RefCell<Vec<gtk::ListItem>>,

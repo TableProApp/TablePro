@@ -2,6 +2,7 @@
 //! editor for the whole value of one of them.
 
 mod calendar;
+mod clock;
 mod fields;
 mod imp;
 mod picture;
@@ -41,6 +42,7 @@ impl RowDetailPane {
         self.connect_value_editor(grid);
         self.connect_value_menu(grid);
         self.connect_calendar();
+        self.connect_clock();
         self.connect_close(grid);
         self.watch_details(grid);
         self.watch_rows(grid);
@@ -146,6 +148,7 @@ impl RowDetailPane {
         };
         if !same {
             self.imp().calendar_popover.popdown();
+            self.imp().clock_popover.popdown();
             self.commit(Commit::Teardown);
             self.watch_row(row.as_ref());
         }

@@ -2,17 +2,18 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::time::Duration;
 
-use chrono::NaiveDate;
+use chrono::{NaiveDate, NaiveTime};
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use gtk4::{self as gtk, gdk};
-use tablepro_core::column::TemporalZone;
+use tablepro_core::column::{TemporalZone, TimeRange};
 use tablepro_core::edit::CellInput;
-use tablepro_core::value::{JsonText, Temporal};
+use tablepro_core::value::{JsonText, SqlTime, Temporal};
 use tablepro_core::{ColumnInfo, Value};
 
 use super::RowDetailPane;
 use super::calendar::{day_of, day_start_offset, with_day};
+use super::clock::{ClockField, time_of, with_time};
 use super::fields::field_order;
 use super::value_editor::value_content;
 use crate::services::change_tracker::RowKey;
@@ -1002,4 +1003,294 @@ fn a_picture_never_decodes_outside_a_sandbox() {
         super::picture::sandbox(SandboxMechanism::FlatpakSpawn, false),
         Some(SandboxSelector::FlatpakSpawn)
     ));
+}
+
+/// Open the pane's clock until it shows, as `open_calendar` does.
+fn open_clock(pane: &RowDetailPane) {
+    for _ in 0..5 {
+        pane.imp().clock_button.popup();
+        if wait_until(Duration::from_secs(2), || pane.imp().hour.is_mapped()).is_ok() {
+            return;
+        }
+        pane.imp().clock_button.popdown();
+        drain_main_context();
+    }
+    panic!("the clock never showed");
+}
+
+fn set_clock(pane: &RowDetailPane, (hour, minute, second): (u32, u32, u32)) {
+    pane.imp().hour.set_value(f64::from(hour));
+    pane.imp().minute.set_value(f64::from(minute));
+    pane.imp().second.set_value(f64::from(second));
+}
+
+fn clock_text(pane: &RowDetailPane) -> [String; 3] {
+    let imp = pane.imp();
+    [&imp.hour, &imp.minute, &imp.second].map(|spin| spin.text().to_string())
+}
+
+fn a_time(hour: u32, minute: u32, second: u32) -> NaiveTime {
+    NaiveTime::from_hms_opt(hour, minute, second).expect("a time")
+}
+
+fn a_timestamp(day: (i32, u32, u32), time: NaiveTime) -> Value {
+    let (year, month, date) = day;
+    Value::Timestamp(Temporal::Finite(
+        NaiveDate::from_ymd_opt(year, month, date)
+            .expect("a day")
+            .and_time(time),
+    ))
+}
+
+const NAIVE: ClockField = ClockField {
+    dated: true,
+    with_offset: false,
+};
+const ZONED: ClockField = ClockField {
+    dated: true,
+    with_offset: true,
+};
+const TIME: ClockField = ClockField {
+    dated: false,
+    with_offset: false,
+};
+const TIMETZ: ClockField = ClockField {
+    dated: false,
+    with_offset: true,
+};
+
+fn set_at_nine(text: &str, field: ClockField) -> String {
+    let today = NaiveDate::from_ymd_opt(2026, 10, 29).expect("a day");
+    let plus_two = chrono::FixedOffset::east_opt(2 * 3600).expect("an offset");
+    with_time(text, a_time(9, 5, 30), field, today, &plus_two)
+}
+
+#[test]
+fn the_clock_sets_only_the_time_a_value_shows() {
+    assert_eq!(
+        set_at_nine("2024-02-29 23:59:58.125000", NAIVE),
+        "2024-02-29 09:05:30.125000"
+    );
+    assert_eq!(set_at_nine("2024-02-29T23:59:58", NAIVE), "2024-02-29T09:05:30");
+    assert_eq!(set_at_nine("2024-02-29 23:59", NAIVE), "2024-02-29 09:05:30");
+    assert_eq!(
+        set_at_nine("2024-02-29 23:59:58+05:30", ZONED),
+        "2024-02-29 09:05:30+05:30"
+    );
+    assert_eq!(set_at_nine("0044-03-15 12:00:00 BC", NAIVE), "0044-03-15 09:05:30 BC");
+    assert_eq!(
+        set_at_nine("12000-01-01 10:00:00", NAIVE),
+        "12000-01-01 09:05:30",
+        "a year past 9999 lost its day"
+    );
+    assert_eq!(set_at_nine("13:45:07.5+01", TIMETZ), "09:05:30.5+01");
+    assert_eq!(
+        set_at_nine("2024-03-10T02:30:00.125-08:00", TIME),
+        "2024-03-10T09:05:30.125-08:00",
+        "SQLite keeps a timestamp in a TIME column"
+    );
+    assert_eq!(set_at_nine("10:00", NAIVE), "09:05:30", "a time in a DATETIME column");
+    assert_eq!(set_at_nine("  2024-01-01 10:00:00", NAIVE), "  2024-01-01 09:05:30");
+    assert_eq!(
+        set_at_nine("2024-01-01  12:34:56.789+02:00", ZONED),
+        "2024-01-01  09:05:30.789+02:00"
+    );
+    assert_eq!(set_at_nine("-0001-01-01 12:34:56", NAIVE), "-0001-01-01 09:05:30");
+    assert_eq!(
+        set_at_nine("2024-02-29T 12:34:56.125+05:30", ZONED),
+        "2024-02-29T 09:05:30.125+05:30"
+    );
+    assert_eq!(set_at_nine("2024-2-9 9:5:3.5", NAIVE), "2024-2-9 09:05:30.5");
+    assert_eq!(set_at_nine("2024- 2-29 12: 34", NAIVE), "2024- 2-29 09:05:30");
+    assert_eq!(
+        set_at_nine("2024-\u{a0}02-29\u{a0}12:34:56", NAIVE),
+        "2024-\u{a0}02-29\u{a0}09:05:30"
+    );
+    assert_eq!(set_at_nine("24:00:00+01", TIMETZ), "09:05:30+01");
+}
+
+#[test]
+fn the_clock_starts_a_value_that_has_no_time() {
+    assert_eq!(set_at_nine("", NAIVE), "2026-10-29 09:05:30");
+    assert_eq!(set_at_nine("infinity", NAIVE), "2026-10-29 09:05:30");
+    assert_eq!(set_at_nine("2024-02-29", NAIVE), "2024-02-29 09:05:30");
+    assert_eq!(set_at_nine(" 2024-02-29", NAIVE), " 2024-02-29 09:05:30");
+    assert_eq!(set_at_nine("4713-01-01 BC", NAIVE), "4713-01-01 09:05:30 BC");
+    assert_eq!(set_at_nine("4713-01-01 BC", ZONED), "4713-01-01 09:05:30+02:00 BC");
+    assert_eq!(set_at_nine("12000-01-01", NAIVE), "12000-01-01 09:05:30");
+    assert_eq!(
+        set_at_nine("2024-02-29", TIME),
+        "2024-02-29 09:05:30",
+        "SQLite keeps a date in a TIME column"
+    );
+    assert_eq!(set_at_nine("", TIME), "09:05:30");
+    let zoned = set_at_nine("", ZONED);
+    assert_eq!(zoned, "2026-10-29 09:05:30+02:00");
+    assert!(tablepro_core::edit::parse_timestamp_with_offset(&zoned).is_ok());
+    let timetz = set_at_nine("", TIMETZ);
+    assert_eq!(timetz, "09:05:30+02:00");
+    assert!(tablepro_core::edit::parse_time_with_offset(&timetz).is_ok());
+}
+
+#[test]
+fn a_new_zoned_time_takes_the_offset_of_its_own_moment() {
+    let hours = |hours: i32| chrono::FixedOffset::east_opt(hours * 3600).expect("an offset");
+    // Sydney moves to +11 at 02:00 local on 2026-10-04.
+    let sydney = OneChange {
+        before: hours(10),
+        after: hours(11),
+        change: chrono::NaiveDateTime::parse_from_str("2026-10-03 16:00", "%Y-%m-%d %H:%M").expect("a UTC time"),
+    };
+    let day = NaiveDate::from_ymd_opt(2026, 10, 4).expect("a day");
+    let set = |text: &str, time: NaiveTime, field: ClockField| with_time(text, time, field, day, &sydney);
+
+    assert_eq!(set("", a_time(9, 5, 0), ZONED), "2026-10-04 09:05:00+11:00");
+    assert_eq!(set("", a_time(1, 30, 0), ZONED), "2026-10-04 01:30:00+10:00");
+    assert_eq!(
+        set("", a_time(2, 30, 0), ZONED),
+        "2026-10-04 02:30:00+10:00",
+        "a time the change skips"
+    );
+    assert_eq!(set("", a_time(9, 5, 0), TIMETZ), "09:05:00+11:00");
+    let earlier = NaiveDate::from_ymd_opt(2026, 7, 1).expect("a day");
+    assert_eq!(
+        with_time("2026-10-4", a_time(9, 5, 0), ZONED, earlier, &sydney),
+        "2026-10-4 09:05:00+11:00",
+        "a one-digit day took today's offset"
+    );
+    assert_eq!(
+        with_time("2026-10-04", a_time(9, 5, 0), ZONED, earlier, &sydney),
+        "2026-10-04 09:05:00+11:00",
+        "the offset was today's, not the value's day"
+    );
+}
+
+#[test]
+fn the_clock_reads_the_time_a_value_shows() {
+    assert_eq!(time_of("2024-02-29 23:59:58.125"), Some(a_time(23, 59, 58)));
+    assert_eq!(time_of("12000-01-01 10:00:00"), Some(a_time(10, 0, 0)));
+    assert_eq!(time_of("2024-02-29 10:30"), Some(a_time(10, 30, 0)));
+    assert_eq!(time_of("13:45:07.5+01"), Some(a_time(13, 45, 7)));
+    assert_eq!(time_of(" 2024-02-29T10:00:00Z"), Some(a_time(10, 0, 0)));
+    assert_eq!(time_of("2024-2-9 9:5:3"), Some(a_time(9, 5, 3)));
+    assert_eq!(time_of("2024- 2-29 12: 34"), Some(a_time(12, 34, 0)));
+    assert_eq!(time_of("24:00:00"), None);
+    assert_eq!(time_of("2024-02-29"), None);
+    assert_eq!(time_of("2024-02-2é 10:00:00"), None, "a cut inside a character");
+    assert_eq!(time_of("not a time"), None);
+}
+
+#[test]
+fn a_clock_is_offered_where_a_time_of_day_can_be_typed() {
+    let saved = GridRowId::Persisted(RowKey::from_pk_values(&[Value::Int(1)]).expect("a key"));
+    let clock = |data_type: &str, lock: Option<CellLock>| {
+        value_content(
+            &column_of(named("t", data_type, false)),
+            &saved,
+            lock,
+            &CellInput::Value(Value::Null),
+        )
+        .clock
+    };
+
+    assert!(clock("timestamp", None));
+    assert!(clock("timestamptz", None));
+    assert!(clock("time", None));
+    assert!(!clock("date", None));
+    assert!(!clock("interval", None));
+    assert!(
+        !clock("timestamp", Some(CellLock::PendingDelete)),
+        "a locked cell offered a clock"
+    );
+    let time = |range| tablepro_core::column::ColumnKind::Time {
+        fractional_digits: None,
+        with_offset: false,
+        range,
+    };
+    assert_eq!(ClockField::of(&time(TimeRange::TimeOfDay)), Some(TIME));
+    assert_eq!(
+        ClockField::of(&time(TimeRange::Duration)),
+        None,
+        "MySQL TIME runs past a day"
+    );
+    assert_eq!(ClockField::of(&time(TimeRange::LongDuration)), None);
+}
+
+#[gtk4::test]
+fn the_clock_opens_on_the_value_and_sets_its_time() {
+    let (grid, pane) = opened(
+        vec![named("id", "integer", true), named("at", "timestamp", false)],
+        vec![vec![Value::Int(1), a_timestamp((2024, 2, 29), a_time(23, 59, 8))]],
+    );
+    take_keyboard(&grid);
+    grid.focus(0, 1);
+    assert!(pane.imp().clock_button.is_visible(), "a timestamp has no clock");
+    assert_eq!(
+        pane.imp().clock_button.direction(),
+        gtk::ArrowType::Left,
+        "a clock centred below the pane's button runs past the window"
+    );
+
+    open_clock(&pane);
+    assert_eq!(
+        clock_text(&pane),
+        ["23", "59", "08"],
+        "the clock did not open on the value"
+    );
+    set_clock(&pane, (9, 5, 30));
+    assert_eq!(clock_text(&pane), ["09", "05", "30"], "a clock shows two digits");
+    pane.imp().clock_set.emit_clicked();
+
+    assert_eq!(
+        pending(&grid, 1, 1),
+        Some(CellInput::Value(a_timestamp((2024, 2, 29), a_time(9, 5, 30))))
+    );
+    assert!(!pane.imp().clock_popover.is_visible());
+}
+
+#[gtk4::test]
+fn enter_in_a_clock_field_sets_the_time() {
+    let (grid, pane) = opened(
+        vec![named("id", "integer", true), named("at", "time", false)],
+        vec![vec![Value::Int(1), Value::Null]],
+    );
+    take_keyboard(&grid);
+    grid.focus(0, 1);
+    open_clock(&pane);
+    set_clock(&pane, (9, 5, 30));
+
+    let text = descendants(&pane.imp().second.get())
+        .into_iter()
+        .find_map(|widget| widget.downcast::<gtk::Text>().ok())
+        .expect("the field's text");
+    text.emit_by_name::<()>("activate", &[]);
+    // A button activated from the keyboard clicks once its pressed look has shown.
+    wait_until(WAIT, || pending(&grid, 1, 1).is_some()).expect("Enter to set the time");
+
+    let set = SqlTime::from_time_of_day(a_time(9, 5, 30));
+    assert_eq!(pending(&grid, 1, 1), Some(CellInput::Value(Value::Time(set))));
+}
+
+#[gtk4::test]
+fn a_page_that_takes_the_row_closes_its_clock_and_writes_nothing() {
+    let (grid, pane) = opened(
+        vec![named("id", "integer", true), named("at", "time", false)],
+        vec![vec![Value::Int(1), Value::Null], vec![Value::Int(2), Value::Null]],
+    );
+    take_keyboard(&grid);
+    grid.focus(0, 1);
+    open_clock(&pane);
+
+    grid.grid
+        .replace_rows(persisted(&[vec![Value::Int(2), Value::Null]]), 0);
+    drain_main_context();
+    pane.imp().clock_set.emit_clicked();
+    drain_main_context();
+
+    assert_eq!(
+        grid.tracker.pending_count(),
+        0,
+        "the clock wrote into the row that took the slot"
+    );
+    assert!(!pane.imp().clock_popover.is_visible());
 }

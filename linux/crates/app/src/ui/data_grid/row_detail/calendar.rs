@@ -1,4 +1,4 @@
-use chrono::{Datelike, FixedOffset, Local, NaiveDate, NaiveTime, Offset, TimeDelta, TimeZone};
+use chrono::{Datelike, FixedOffset, Local, NaiveDate, NaiveDateTime, NaiveTime, Offset, TimeDelta, TimeZone};
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use gtk4::{self as gtk, glib};
@@ -30,18 +30,16 @@ pub fn with_day(text: &str, day: NaiveDate, zone: Option<&TemporalZone>, offset:
     }
 }
 
-/// The offset `zone` has as `day` starts. Where a clock change skips
-/// midnight, the day starts at the change, which is midnight at the
-/// offset before it.
 pub fn day_start_offset<Tz: TimeZone>(zone: &Tz, day: NaiveDate) -> FixedOffset {
-    let midnight = day.and_time(NaiveTime::MIN);
-    [midnight, midnight - TimeDelta::hours(1)]
+    offset_at(zone, day.and_time(NaiveTime::MIN))
+}
+
+// A wall-clock time a clock change skips takes the offset before the change.
+pub fn offset_at<Tz: TimeZone>(zone: &Tz, local: NaiveDateTime) -> FixedOffset {
+    [local, local - TimeDelta::hours(1)]
         .iter()
         .find_map(|local| zone.from_local_datetime(local).earliest())
-        .map_or_else(
-            || zone.offset_from_utc_datetime(&midnight).fix(),
-            |at| at.offset().fix(),
-        )
+        .map_or_else(|| zone.offset_from_utc_datetime(&local).fix(), |at| at.offset().fix())
 }
 
 impl RowDetailPane {
@@ -50,10 +48,7 @@ impl RowDetailPane {
         // Dropped below a button halfway down the pane, the calendar fits
         // neither below nor above it on a short screen and GTK closes it;
         // opened toward the rows, it slides up or down to fit.
-        imp.calendar_button.set_direction(match self.direction() {
-            gtk::TextDirection::Rtl => gtk::ArrowType::Right,
-            _ => gtk::ArrowType::Left,
-        });
+        imp.calendar_button.set_direction(self.toward_rows());
         imp.calendar_popover.connect_show(glib::clone!(
             #[weak(rename_to = pane)]
             self,
@@ -97,6 +92,13 @@ impl RowDetailPane {
             }
         ));
         imp.calendar.add_controller(keys);
+    }
+
+    pub(super) fn toward_rows(&self) -> gtk::ArrowType {
+        match self.direction() {
+            gtk::TextDirection::Rtl => gtk::ArrowType::Right,
+            _ => gtk::ArrowType::Left,
+        }
     }
 
     /// The calendar opens on the value's day, else on today, for the row
