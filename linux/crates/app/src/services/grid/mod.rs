@@ -32,7 +32,7 @@ pub use self::cell_lock::CellLock;
 pub use self::cell_preset::{CellPreset, CellPresets, cell_presets};
 pub use self::column_layout::{ColumnLayout, LayoutSlot, Placement, merge_order};
 pub use self::column_width::{
-    default_width_chars, number_width_chars, typical_texts, typical_width_chars, widest_text,
+    default_width_chars, header_text, number_width_chars, typical_texts, typical_width_chars, widest_text,
 };
 pub use self::copy_scope::{CopyScope, copy_scope};
 pub use self::delete_availability::{DeleteAvailability, delete_availability};
