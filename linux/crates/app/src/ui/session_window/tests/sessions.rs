@@ -678,8 +678,8 @@ fn another_database_opens_beside_the_connection_and_goes_with_it() {
 }
 
 /// An editor tab moved to another database brings that database's session
-/// into the window for the tab to read its catalog; one moved back to the
-/// connection's own opens nothing (0030).
+/// into the window for the tab to read its catalog, and names it in its
+/// title; one moved back to the connection's own opens nothing (0030).
 #[gtk4::test]
 fn an_editor_tab_moved_to_a_database_opens_its_session() {
     let test = TestWindow::with_script(
@@ -720,14 +720,30 @@ fn an_editor_tab_moved_to_a_database_opens_its_session() {
         "the connection's own database opened again"
     );
 
-    test.window.send(SessionWindowInput::FollowDatabase {
-        key: connection,
-        tab_id: uuid::Uuid::new_v4(),
-        database: "analytics".to_owned(),
-    });
+    let shell = test.window.shell().expect("the shell");
+    WidgetExt::activate_action(
+        &test.window,
+        "win.new-query-in",
+        Some(&crate::ui::session_target::to_variant(&connection)),
+    )
+    .expect("win.new-query-in");
+    wait_until(WAIT, || shell.tab_view().n_pages() == 1).expect("a new tab");
+    let page = shell.tab_view().nth_page(0);
+    let child = page.child();
+    let editor = crate::test_support::descendants(&child)
+        .into_iter()
+        .chain([child])
+        .find_map(|widget| widget.downcast::<crate::ui::editor::SqlEditor>().ok())
+        .expect("the editor");
+    WidgetExt::activate_action(&editor, "tab.database", Some(&"analytics".to_variant())).expect("tab.database");
     let sibling = SessionKey::SavedIn {
         id: test.saved.id,
         database: "analytics".to_owned(),
     };
     wait_until(WAIT, || test.window.held_session(&sibling).is_some()).expect("the database's session");
+    assert_eq!(
+        page.title(),
+        "Query 1 (analytics)",
+        "the tab does not name its database"
+    );
 }

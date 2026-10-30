@@ -139,6 +139,7 @@ impl TabFactory {
             &page,
             &resolve_tab_title(&slot.identity(), self.parts.naming.get()),
             &self.parts.label,
+            slot.moved_to().as_deref(),
         );
         self.parts.tabs.borrow_mut().insert(id, slot);
         self.parts.input.deliver(WorkspaceInput::WorkspaceTabsChanged);

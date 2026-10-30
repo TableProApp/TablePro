@@ -412,6 +412,14 @@ impl WorkspaceTab {
         }
     }
 
+    /// The database the editor bar moved the tab to.
+    pub(crate) fn moved_to(&self) -> Option<String> {
+        match self {
+            WorkspaceTab::Editor(slot) => slot.editor.tab_database(),
+            _ => None,
+        }
+    }
+
     /// What the tab's title is made from.
     pub(crate) fn identity(&self) -> tab_identity::TabIdentity {
         use tab_identity::TabIdentity;
@@ -1055,6 +1063,7 @@ impl WorkspaceModel {
     /// Ask the window to reach the session of the database an editor tab
     /// moved to, and to hand it back for the tab's completion.
     fn follow_editor_database(&self, tab_id: Uuid, database: String) {
+        self.retitle_tab(tab_id);
         let Some(shell) = self.shell.upgrade() else {
             return;
         };
@@ -1149,7 +1158,7 @@ impl WorkspaceModel {
             return;
         };
         if let Some(tab) = self.workspace_tabs.borrow().get(&id) {
-            tab_title::apply_tab_title(tab.page(), &title, &self.label);
+            tab_title::apply_tab_title(tab.page(), &title, &self.label, tab.moved_to().as_deref());
         }
         if self.index.last_selected() == Some(id) {
             self.refresh_title();
