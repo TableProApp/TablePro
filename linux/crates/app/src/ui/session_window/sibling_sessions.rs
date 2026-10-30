@@ -23,6 +23,9 @@ use crate::runtime::DeliverInput;
 use crate::ui::error_text::{connect_error_message, operation_error_message};
 use crate::ui::workspace::WorkspaceInput;
 
+/// What waits for a database's session while it opens.
+pub(super) type Waiter = Box<dyn FnOnce(&SessionWindow, Arc<Session>)>;
+
 /// The response of the chooser that opens the database picked.
 const OPEN: &str = "open";
 
@@ -62,15 +65,23 @@ impl SessionWindow {
             then(self, session);
             return;
         }
+        if let Some(waiting) = self.imp().opening_databases.borrow_mut().get_mut(&key) {
+            waiting.push(Box::new(then));
+            return;
+        }
         let (Some(origin), Some(state)) = (self.held_session(&SessionKey::Saved(id)), self.state()) else {
             return;
         };
         if origin.database() == Some(database.as_str()) {
             return;
         }
-        let Some(claim) = self.claim(key) else {
+        let Some(claim) = self.claim(key.clone()) else {
             return;
         };
+        self.imp()
+            .opening_databases
+            .borrow_mut()
+            .insert(key.clone(), vec![Box::new(then)]);
         let opening = {
             let (database, origin) = (database.clone(), origin.clone());
             state
@@ -83,6 +94,10 @@ impl SessionWindow {
             let opened = opening.await;
             // A database goes with the connection it opened from, which may
             // have gone, or been opened again, while it opened.
+            let waiting = window
+                .upgrade()
+                .and_then(|window| window.imp().opening_databases.borrow_mut().remove(&key))
+                .unwrap_or_default();
             let window = window.upgrade().filter(|window| {
                 window
                     .held_session(&SessionKey::Saved(id))
@@ -97,7 +112,9 @@ impl SessionWindow {
             match opened {
                 Ok(Ok(session)) => {
                     window.join(claim, session.clone(), &[]);
-                    then(&window, session);
+                    for waiter in waiting {
+                        waiter(&window, session.clone());
+                    }
                 }
                 Ok(Err(error)) => window.show_toast(&gettext_f(
                     "Could not open the database “{database}”: {error}",
@@ -186,37 +203,41 @@ impl SessionWindow {
         dialog.present(Some(self));
     }
 
-    /// An editor tab of the session under `key` moved to `database`: open
-    /// or reach that database's session, hand it to the tab's completion,
-    /// and select its row, as the macOS window follows the tab (0030). Back
-    /// on the connection's own database the tab reads the connection's.
+    /// An editor tab of the session under `key` moved to `database`: reach
+    /// that database's session, the connection's or one opened beside it,
+    /// hand it to the tab's completion, and select its row (0030). Back on
+    /// its own session's database the tab reads that session's catalog.
     pub(super) fn follow_database(&self, key: &SessionKey, tab_id: Uuid, database: String) {
-        let SessionKey::Saved(id) = *key else {
+        let id = match key {
+            SessionKey::Saved(id) | SessionKey::SavedIn { id, .. } => *id,
+            SessionKey::File(_) => return,
+        };
+        let connection = SessionKey::Saved(id);
+        let Some(parent) = self.held_session(&connection) else {
             return;
         };
-        let Some(origin) = self.held_session(key) else {
-            return;
-        };
-        if database.is_empty() || origin.database() == Some(database.as_str()) {
-            self.hand_over(id, tab_id, None, key);
-            return;
+        if database.is_empty() {
+            self.hand_over(key, tab_id, None, key);
+        } else if parent.database() == Some(database.as_str()) {
+            self.hand_over(key, tab_id, Some(parent), &connection);
+        } else {
+            let (from, row) = (
+                key.clone(),
+                SessionKey::SavedIn {
+                    id,
+                    database: database.clone(),
+                },
+            );
+            self.open_database_then(id, database, move |window, session| {
+                window.hand_over(&from, tab_id, Some(session), &row);
+            });
         }
-        let row = SessionKey::SavedIn {
-            id,
-            database: database.clone(),
-        };
-        self.open_database_then(id, database, move |window, session| {
-            window.hand_over(id, tab_id, Some(session), &row);
-        });
     }
 
-    /// Give the connection `id`'s editor tab `tab_id` the catalog of
-    /// `session`, and select `row` in the sidebar.
-    fn hand_over(&self, id: Uuid, tab_id: Uuid, session: Option<Arc<Session>>, row: &SessionKey) {
-        if let Some(sender) = self
-            .session_workspace(&SessionKey::Saved(id))
-            .and_then(|workspace| workspace.sender())
-        {
+    /// Give the editor tab `tab_id` of the session under `from` the
+    /// catalog of `session`, and select `row` in the sidebar.
+    fn hand_over(&self, from: &SessionKey, tab_id: Uuid, session: Option<Arc<Session>>, row: &SessionKey) {
+        if let Some(sender) = self.session_workspace(from).and_then(|workspace| workspace.sender()) {
             sender.deliver(WorkspaceInput::FollowCatalog { tab_id, session });
         }
         if let Some(tree) = self.shell().and_then(|shell| shell.tree()) {
