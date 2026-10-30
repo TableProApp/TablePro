@@ -6,8 +6,8 @@ use crate::sql_syntax::{ExpressionSyntaxError, HistoryRecording, SqlGrammar, Typ
 use crate::value::Value;
 
 use super::{
-    BindError, BindTarget, DialectCapabilities, InsertBatchLimits, KeysetDirection, LikeCase, LikeForm, LiteralError,
-    Placeholder, TablePaging,
+    BindError, BindTarget, DatabaseLayout, DialectCapabilities, InsertBatchLimits, KeysetDirection, LikeCase, LikeForm,
+    LiteralError, Placeholder, TablePaging,
 };
 
 /// How one engine spells SQL.
@@ -31,11 +31,8 @@ pub trait SqlDialect: Send + Sync + std::fmt::Debug {
     /// whatever it contains.
     fn quote_identifier(&self, name: &str) -> String;
 
-    /// The statement that moves an editor session to the server's database
-    /// `name`, which a query tab runs before its next statement. `None`
-    /// for a name the engine's statement cannot carry whole.
-    fn use_database(&self, name: &str) -> Option<String> {
-        Some(format!("USE {}", self.quote_identifier(name)))
+    fn database_layout(&self) -> DatabaseLayout {
+        DatabaseLayout::Single
     }
 
     /// Bind one value, giving back the SQL that names it.

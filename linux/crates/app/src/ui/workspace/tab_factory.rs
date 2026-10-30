@@ -496,6 +496,8 @@ pub(super) fn connect_editor(
     editor.connect_content_changed(move |_| content.deliver(WorkspaceInput::EditorTabContentChanged(tab_id)));
     let file = input.clone();
     editor.connect_file_changed(move |_| file.deliver(WorkspaceInput::EditorTabFileChanged(tab_id)));
+    let database = input.clone();
+    editor.connect_database_changed(move |_| database.deliver(WorkspaceInput::EditorTabDatabaseChanged));
     let transaction = input.clone();
     editor.connect_transaction_changed(move |_, _| transaction.deliver(WorkspaceInput::EditorTransactionChanged));
     let toast = input.clone();

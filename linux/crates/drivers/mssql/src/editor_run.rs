@@ -247,6 +247,16 @@ pub(crate) async fn transaction_state(client: &mut MssqlClient) -> Result<Transa
     Ok(state_of(cells.int(0), cells.int(1)))
 }
 
+/// The database the session is in, from the server itself.
+pub(crate) async fn current_database(client: &mut MssqlClient) -> Result<Option<String>, DriverError> {
+    let stream = client.simple_query("SELECT DB_NAME()").await.map_err(map_error)?;
+    let row = stream.into_row().await.map_err(map_error)?;
+    Ok(row.and_then(|row| match decode_row(&row).into_iter().next() {
+        Some(Value::Text(name)) => Some(name),
+        _ => None,
+    }))
+}
+
 /// XACT_STATE is -1 when an error has doomed the transaction: it can
 /// only be rolled back.
 fn state_of(transaction_count: Option<i64>, xact_state: Option<i64>) -> TransactionState {

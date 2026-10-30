@@ -143,6 +143,33 @@ fn show_sidebar_action_toggles_split_view() {
 }
 
 #[gtk4::test]
+fn show_tabs_opens_and_closes_the_overview_while_a_tab_is_open() {
+    let test = TestWindow::connected("ShowTabs");
+    let workspace = test.workspace();
+    let shell = shell_of(&workspace);
+    let overview = shell.imp().tab_overview.get();
+    let enabled = |name: &str| {
+        test.window
+            .lookup_action(name)
+            .is_some_and(|action| action.is_enabled())
+    };
+    assert_eq!(shell.tab_view().n_pages(), 0);
+    assert!(!enabled("show-tabs"), "the overview warns and stays shut with no tab");
+    assert!(!enabled("switch-recent-tab"));
+
+    super::open_editor(&workspace);
+    assert!(enabled("show-tabs"));
+    assert!(!enabled("switch-recent-tab"), "one tab has no other to go to");
+    WidgetExt::activate_action(&test.window, "win.show-tabs", None).expect("win.show-tabs");
+    assert!(overview.is_open());
+    WidgetExt::activate_action(&test.window, "win.show-tabs", None).expect("win.show-tabs");
+    assert!(!overview.is_open());
+
+    super::open_editor(&workspace);
+    assert!(enabled("switch-recent-tab"));
+}
+
+#[gtk4::test]
 fn sidebar_toggle_visible_only_when_collapsed_or_hidden() {
     let test = TestWindow::connected("SidebarToggle");
     let workspace = test.workspace();

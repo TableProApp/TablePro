@@ -4,8 +4,8 @@ use tablepro_core::column::{
 };
 use tablepro_core::ddl::DdlDialect;
 use tablepro_core::dialect::{
-    BindError, BindTarget, DialectCapabilities, InsertBatchLimits, InsertConflict, KeysetDirection, LikeCase, LikeForm,
-    LiteralError, Placeholder, SqlDialect,
+    BindError, BindTarget, DatabaseLayout, DialectCapabilities, InsertBatchLimits, InsertConflict, KeysetDirection,
+    LikeCase, LikeForm, LiteralError, Placeholder, SqlDialect,
 };
 use tablepro_core::export::value_to_text;
 use tablepro_core::meta::{EngineRowId, EngineRowIdPart, TableRef};
@@ -53,6 +53,10 @@ impl ClickHouseDialect {
 }
 
 impl SqlDialect for ClickHouseDialect {
+    fn database_layout(&self) -> DatabaseLayout {
+        DatabaseLayout::AsSchemas
+    }
+
     fn capabilities(&self) -> DialectCapabilities {
         // A mutation reports nothing useful about how many rows it
         // touched, so a write proves itself with a probe instead.
