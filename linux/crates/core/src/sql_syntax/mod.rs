@@ -12,6 +12,7 @@ mod parse_type;
 pub mod redis;
 mod reserved_words;
 pub mod script;
+mod state_changing_functions;
 mod statement_access;
 mod statement_tokens;
 
@@ -24,4 +25,4 @@ pub use history_recording::{HistoryRecording, WithholdReason, classify_for_histo
 pub use literal_token::LiteralToken;
 pub use parse_expression::{MAX_EXPRESSION_LEN, ValidatedExpression, parse_expression};
 pub use parse_type::{MAX_TYPE_LEN, TypeShape, ValidatedType, parse_type};
-pub use statement_access::{StatementAccess, statement_access};
+pub use statement_access::{StatementAccess, sqlite_pragma_reports, statement_access};

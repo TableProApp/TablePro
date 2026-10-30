@@ -32,9 +32,43 @@ pub(crate) fn cleaned(value: &str, max: usize) -> String {
     shown.trim().chars().take(max).collect()
 }
 
+/// A connection's name as the list shows it: control characters as
+/// spaces, characters that show as nothing dropped, and no blanks around
+/// it. Two names that read the same have the same form, so one cannot
+/// pass for the other.
+pub(crate) fn shown(value: &str) -> String {
+    let visible: String = value
+        .chars()
+        .filter(|c| !tablepro_core::unicode_blank::is_default_ignorable(*c))
+        .map(|c| if c.is_control() { ' ' } else { c })
+        .collect();
+    visible.trim().to_owned()
+}
+
+/// A stored name, read as [`shown`] gives it.
+pub(crate) fn deserialize_shown<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<String, D::Error> {
+    let name = <String as serde::Deserialize>::deserialize(deserializer)?;
+    Ok(shown(&name))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_shown_name_drops_what_cannot_be_seen() {
+        for lookalike in [
+            "production",
+            " production ",
+            "production\u{a0}",
+            "pro\u{200b}duction",
+            "\u{feff}production",
+            "production\u{2060}\t",
+        ] {
+            assert_eq!(shown(lookalike), "production", "{lookalike:?}");
+        }
+        assert_eq!(shown("prod\nuction"), "prod uction");
+    }
 
     #[test]
     fn a_name_is_trimmed_and_checked_in_characters() {

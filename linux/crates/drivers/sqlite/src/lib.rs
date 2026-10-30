@@ -21,6 +21,7 @@ mod interrupt;
 mod lock_wait;
 mod metadata;
 mod open;
+mod read_guard;
 mod result_stream;
 mod sqlite_pooled;
 mod sqlite_standalone;
