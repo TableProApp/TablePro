@@ -369,14 +369,14 @@ struct QuickSwitcherPanelContent: View {
     /// on screen saying so, that first press reads as a key that did nothing.
     private var footer: some View {
         HStack(spacing: 14) {
-            QuickSwitcherKeyHint(symbol: "\u{21A9}", label: String(localized: "Open"))
-            QuickSwitcherKeyHint(symbol: "\u{2318}\u{21A9}", label: String(localized: "New Tab"))
+            QuickSwitcherKeyHint(keys: [.returnKey], label: String(localized: "Open"))
+            QuickSwitcherKeyHint(keys: [.text("\u{2318}"), .returnKey], label: String(localized: "New Tab"))
 
             Spacer(minLength: 0)
 
-            QuickSwitcherKeyHint(symbol: "\u{2318}1\u{2013}5", label: String(localized: "Scope"))
+            QuickSwitcherKeyHint(keys: [.text("\u{2318}1\u{2013}5")], label: String(localized: "Scope"))
             QuickSwitcherKeyHint(
-                symbol: "\u{238B}",
+                keys: [.text("\u{238B}")],
                 label: escapeDismissesPanel ? String(localized: "Close") : String(localized: "Clear")
             )
         }
