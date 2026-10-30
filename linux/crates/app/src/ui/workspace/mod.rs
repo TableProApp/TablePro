@@ -572,6 +572,9 @@ pub(crate) enum WorkspaceInput {
         body: String,
     },
     ShowToast(String),
+    /// Another database of the connection opened: its query tabs read
+    /// its catalog.
+    DatabaseOpened(Arc<Session>),
     /// Completion in the editor tab reads `session`'s catalog, the tab's
     /// database's, or the connection's again with `None`.
     FollowCatalog {
@@ -1056,6 +1059,15 @@ impl WorkspaceModel {
         self.follow_editor_database(tab_id);
     }
 
+    fn on_database_opened(&self, session: &Arc<Session>) {
+        for tab in self.workspace_tabs.borrow().values() {
+            // A tab in another database lets it pass.
+            if let WorkspaceTab::Editor(slot) = tab {
+                slot.editor.follow_catalog(Some(session.clone()));
+            }
+        }
+    }
+
     fn follow_catalog(&self, tab_id: Uuid, session: Option<Arc<Session>>) {
         if let Some(WorkspaceTab::Editor(slot)) = self.workspace_tabs.borrow().get(&tab_id) {
             slot.editor.follow_catalog(session);
@@ -1304,6 +1316,7 @@ impl WorkspaceModel {
             WorkspaceInput::ShowAlert { title, body } => self.show_error_alert(&title, &body),
             WorkspaceInput::ShowToast(msg) => self.show_toast(&msg),
             WorkspaceInput::FollowCatalog { tab_id, session } => self.follow_catalog(tab_id, session),
+            WorkspaceInput::DatabaseOpened(session) => self.on_database_opened(&session),
             WorkspaceInput::TabDirtyChanged => self.refresh_unsaved(),
             WorkspaceInput::NewTableTab { schema } => self.on_new_table_tab(schema),
             WorkspaceInput::ShowDiagram { schema } => self.show_diagram(schema, Vec::new()),
