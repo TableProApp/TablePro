@@ -66,6 +66,9 @@ pub struct SqlEditor {
     pub slot: Arc<EditorSessionSlot>,
     /// The database the bar names, to tell the workspace when it changes.
     pub named_database: RefCell<Option<String>>,
+    /// The server's name for the connection's database, for one opened
+    /// without a name.
+    pub listed_own_database: RefCell<Option<String>>,
     pub running: RefCell<Option<RunningScript>>,
     pub log: RefCell<Option<RunLog>>,
     /// Whether the last run left a transaction open, as last reported.
