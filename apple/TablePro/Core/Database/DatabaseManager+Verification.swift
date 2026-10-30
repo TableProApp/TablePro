@@ -64,7 +64,8 @@ extension DatabaseManager {
     /// and stamps the connection fresh each time.
     internal func verifyBeforeUse(_ connectionId: UUID) async {
         guard let session = activeSessions[connectionId], let driver = session.driver else { return }
-        guard supportsHealthChecks(connectionId) else { return }
+        // A driver that reports its connection gone answered unasked, so an opted-out engine is reconnected too.
+        guard supportsHealthChecks(connectionId) || driver.hasLostConnection else { return }
         /// A session already known to be in trouble has a reconnect of its own, either the
         /// monitor's or the one `ensureConnected` is about to run. Checking it again would only
         /// race them.

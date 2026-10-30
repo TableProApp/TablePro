@@ -6,7 +6,8 @@ use super::{DataGrid, GridCell, GridRow};
 /// Where a click landed in the view.
 enum Hit {
     Cell(GridCell),
-    /// A row outside its data cells: the row number column.
+    /// A row outside its data cells: the row number column or the space
+    /// after the last column.
     Row(GridRow, u32),
     /// The list below its last row.
     Empty,
@@ -166,6 +167,22 @@ mod tests {
         .expect("the widget is laid out");
         let at = at.expect("a point in the view");
         (f64::from(at.x()), f64::from(at.y()))
+    }
+
+    /// A right click there opens the row's menu, as one on its number does.
+    #[gtk4::test]
+    fn a_click_after_the_last_column_is_on_the_row() {
+        let grid = Grid::open(two_text_columns(), two_text_values());
+        let row = grid
+            .cell_of(2, 1)
+            .parent()
+            .and_then(|cell| cell.parent())
+            .expect("the row");
+        let after = row.last_child().expect("the row's last cell");
+
+        let (x, y) = point_in(&grid, &after);
+
+        assert!(matches!(hit_at(&grid.grid, x, y), Hit::Row(_, 1)));
     }
 
     /// GtkText's own menu cuts, copies and pastes in the open editor.

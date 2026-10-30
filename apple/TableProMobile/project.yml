@@ -74,6 +74,7 @@ targets:
         excludes:
           - Info.plist
       - ../Plugins/Shared/PluginConnectTimeout.swift
+      - ../Plugins/Shared/PluginRedirectRefusingDelegate.swift
       # The MongoDB plugin driver runs behind PluginBackedDriver too; the iOS CLibMongoc bridge stands in for the
       # plugin's own, and the principal class stays on the Mac.
       - path: ../Plugins/MongoDBDriverPlugin

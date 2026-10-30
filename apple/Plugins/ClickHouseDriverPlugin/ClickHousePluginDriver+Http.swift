@@ -136,7 +136,7 @@ nonisolated extension ClickHousePluginDriver {
     /// With `send_progress_in_http_headers` the status goes out with the first progress header, so
     /// a query that fails after it answers HTTP 200 and names the failure in this header.
     static func isFailure(_ response: HTTPURLResponse) -> Bool {
-        response.statusCode >= 400 || response.value(forHTTPHeaderField: exceptionCodeHeader) != nil
+        !(200 ..< 300).contains(response.statusCode) || response.value(forHTTPHeaderField: exceptionCodeHeader) != nil
     }
 
     static func headerFields(_ response: HTTPURLResponse?) -> [String: String] {

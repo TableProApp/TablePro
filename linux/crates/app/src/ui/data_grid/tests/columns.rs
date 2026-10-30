@@ -542,3 +542,53 @@ fn a_cleared_width_in_an_empty_table_returns_to_its_types_width() {
     wait_until(WAIT, || column.fixed_width() > 0).expect("the grid gives the column a width again");
     assert_eq!(column.fixed_width(), typed);
 }
+
+/// These click on the X display every test shares; nextest runs them
+/// with no other test beside them.
+mod real_keys {
+    use gtk4 as gtk;
+    use gtk4::prelude::*;
+
+    use super::super::{Layouts, data_column, laid_out, settled_width};
+    use super::saved_to;
+    use crate::test_support::{KeyInjector, descendants, wait_until};
+    use crate::ui::data_grid::test_grid::WAIT;
+
+    fn header_of(header: &gtk::Widget, name: &str) -> gtk::Widget {
+        std::iter::successors(header.first_child(), |title| title.next_sibling())
+            .find(|title| {
+                descendants(title).iter().any(|widget| {
+                    widget
+                        .downcast_ref::<gtk::Label>()
+                        .is_some_and(|label| label.label() == name)
+                })
+            })
+            .expect("the column's header")
+    }
+
+    /// GTK resizes no column from the view's last edge, which was the last
+    /// data column's.
+    #[gtk4::test]
+    fn a_double_click_on_the_last_columns_edge_gives_it_the_grids_width() {
+        let layouts = Layouts::new();
+        let grid = laid_out(saved_to(&layouts));
+        KeyInjector::focus_only(&grid.window);
+        wait_until(WAIT, || grid.window.is_active()).expect("the window to take the focus");
+        let mouse = KeyInjector::connect().expect("an X11 display");
+        let column = data_column(&grid, 1);
+        column.set_fixed_width(300);
+        settled_width(&grid, 1);
+        let header = grid.grid.column_view().first_child().expect("the header");
+        let bounds = header_of(&header, "name")
+            .compute_bounds(&header)
+            .expect("the column's header bounds");
+
+        // Where GTK looks for the edge: the header's origin plus the
+        // column's width.
+        let edge = (bounds.x() + 300.0, bounds.y() + bounds.height() / 2.0);
+        mouse.click(&header, edge, 2).expect("the double click");
+
+        wait_until(WAIT, || column.fixed_width() > 0 && column.fixed_width() != 300).expect("the grid's width");
+        assert_eq!(layouts.saved("t").widths.get("name"), None);
+    }
+}
