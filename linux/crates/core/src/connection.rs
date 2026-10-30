@@ -103,9 +103,8 @@ pub trait Connection: Send + Sync {
         })
     }
 
-    /// The server's databases a query tab can switch to, the connection's
-    /// own marked as the default, and the engine's own marked as system.
-    /// An engine whose connection is to one database keeps this default.
+    /// The server's databases the login can open, the connection's own
+    /// marked as the default and the engine's own as system.
     async fn list_databases(&self, _options: CallOptions) -> Result<Vec<SchemaInfo>, DriverError> {
         Err(DriverError::Unsupported {
             feature: UnsupportedFeature::DatabaseSwitching,

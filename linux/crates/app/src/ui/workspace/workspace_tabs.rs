@@ -664,6 +664,7 @@ fn describe_closed_tab(slot: &WorkspaceTab) -> Option<ClosedTabDescriptor> {
         WorkspaceTab::Editor(s) => Some(ClosedTabDescriptor::Editor {
             query: whole_text(&s.editor.buffer()),
             file: editor_file_record(&s.editor),
+            database: s.editor.tab_database(),
         }),
         WorkspaceTab::Table(s) => Some(ClosedTabDescriptor::Table {
             schema: s.schema.clone(),
@@ -695,13 +696,13 @@ impl WorkspaceModel {
     /// Open again a tab this session closed, which the shell kept.
     pub(super) fn on_reopen_closed_tab(&mut self, descriptor: ClosedTabDescriptor) {
         match descriptor {
-            ClosedTabDescriptor::Editor { query, file } => {
+            ClosedTabDescriptor::Editor { query, file, database } => {
                 let initial = if query.is_empty() { None } else { Some(query) };
                 self.open_editor(TabSpec::Editor {
                     initial_query: initial,
                     draft: None,
                     file,
-                    database: None,
+                    database,
                 });
             }
             ClosedTabDescriptor::Table {

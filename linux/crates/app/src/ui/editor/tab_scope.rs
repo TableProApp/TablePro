@@ -1,49 +1,39 @@
-//! The database the tab works on, named in the editor bar as the macOS
-//! editor names it (`QueryContainerPicker`): the database, then the schema
-//! an unqualified name resolves to where the engine nests schemas in a
-//! database. Where the server has other databases and the connection may
-//! write, the name is a menu of them, the user's first and the engine's own
-//! after, and picking one moves the tab there. A file's name is already in
-//! the window title and the sidebar.
-
-use std::sync::Arc;
+//! The database the tab works on, named in the editor bar, and the menu
+//! that moves the tab to another of the server's databases.
 
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use gtk4::{gio, glib};
+use tablepro_core::dialect::DatabaseLayout;
 use tablepro_core::meta::SchemaInfo;
 use tablepro_session::Session;
 use tablepro_session::operation::OperationKind;
-use tablepro_session::runtime::Tasks;
 
 use super::SqlEditor;
-use super::editor_session_slot::TabDatabase;
-use crate::i18n::{gettext, gettext_f};
+use super::completion::{CatalogHome, SqlCompletionProvider};
+use crate::i18n::gettext_f;
 
-/// The action a database menu item names, with the database as target.
-const SWITCH_ACTION: &str = "database";
+/// The `editor` action a database menu item names, with the database as
+/// its target.
+pub(super) const MOVE_ACTION: &str = "database";
 
-/// The bar's text, dot-qualified as SQL and the sidebar spell a qualified
-/// object, and what a screen reader says for it. `None` with no database.
-pub(super) fn scope_text(database: Option<&str>, default_schema: Option<&str>) -> Option<(String, String)> {
-    let database = database.filter(|database| !database.is_empty())?;
-    // Where the engine's schemas are its databases, as on MySQL, the
-    // default one is the database itself and adds nothing.
-    match default_schema.filter(|schema| !schema.is_empty() && *schema != database) {
-        Some(schema) => Some((
+/// The bar's text, dot-qualified as SQL spells a qualified name, and what
+/// a screen reader says for it.
+pub(super) fn scope_text(database: &str, schema: Option<&str>) -> (String, String) {
+    match schema.filter(|schema| !schema.is_empty()) {
+        Some(schema) => (
             format!("{database}.{schema}"),
             gettext_f(
                 "{database}, schema {schema}",
                 &[("database", database), ("schema", schema)],
             ),
-        )),
-        None => Some((database.to_owned(), database.to_owned())),
+        ),
+        None => (database.to_owned(), database.to_owned()),
     }
 }
 
-/// The menu's sections as macOS orders them: the user's databases, then
-/// the engine's own after a separator. `None` when there is no other
-/// database to move to.
+/// The user's databases, then the engine's own after a separator. `None`
+/// when there is no other database to move to.
 pub(super) fn database_menu(databases: &[SchemaInfo]) -> Option<gio::Menu> {
     if databases.len() < 2 {
         return None;
@@ -53,7 +43,10 @@ pub(super) fn database_menu(databases: &[SchemaInfo]) -> Option<gio::Menu> {
         let section = gio::Menu::new();
         for database in databases.iter().filter(|database| database.is_system == system) {
             let item = gio::MenuItem::new(Some(&database.name), None);
-            item.set_action_and_target_value(Some(&format!("tab.{SWITCH_ACTION}")), Some(&database.name.to_variant()));
+            item.set_action_and_target_value(
+                Some(&format!("editor.{MOVE_ACTION}")),
+                Some(&database.name.to_variant()),
+            );
             section.append_item(&item);
         }
         if section.n_items() > 0 {
@@ -63,11 +56,19 @@ pub(super) fn database_menu(databases: &[SchemaInfo]) -> Option<gio::Menu> {
     Some(menu)
 }
 
+/// Where completion resolves unqualified names for a tab in `database`.
+pub(super) fn catalog_home(layout: DatabaseLayout, own: Option<&str>, database: &str) -> CatalogHome {
+    match layout {
+        _ if own == Some(database) => CatalogHome::Connection,
+        DatabaseLayout::AsSchemas => CatalogHome::Schema(database.to_owned()),
+        DatabaseLayout::WithSchemas | DatabaseLayout::Single => CatalogHome::Elsewhere,
+    }
+}
+
 impl SqlEditor {
-    /// Name the tab's database now, its schema once the catalog has listed
-    /// the schemas, and offer the server's others once they are listed.
+    /// Name where the tab's next statement runs and, on an engine whose
+    /// databases hold schemas, the schema completion resolves names in.
     pub(super) fn show_scope(&self) {
-        self.install_database_action();
         let Some((session, tasks)) = self
             .deps()
             .and_then(|deps| deps.session.get().map(|session| (session, deps.tasks.clone())))
@@ -75,18 +76,23 @@ impl SqlEditor {
             self.set_scope(None);
             return;
         };
-        if let Some(moved) = self.imp().slot.database() {
-            self.set_scope(scope_text(Some(&moved.name), None));
-            self.list_databases(&session, &tasks, &moved.name);
-            return;
-        }
-        let database = session.database().map(str::to_owned);
-        self.set_scope(scope_text(database.as_deref(), None));
-        let Some(database) = database else {
+        let Some((database, layout)) = self.scope_database(&session) else {
+            self.set_scope(None);
             return;
         };
-        self.list_databases(&session, &tasks, &database);
-        // The catalog reads on the runtime, as completion's reads do.
+        self.set_scope(Some(scope_text(&database, None)));
+        self.follow_in_completion(catalog_home(layout, session.database(), &database));
+        let moved = self.imp().named_database.replace(Some(database.clone())) != Some(database.clone());
+        if moved {
+            self.emit_by_name::<()>("database-changed", &[]);
+        }
+        if let Some(action) = super::imp_action(self, MOVE_ACTION) {
+            action.set_state(&database.to_variant());
+        }
+        // The catalog describes the connection's own database only.
+        if layout != DatabaseLayout::WithSchemas || session.database() != Some(database.as_str()) {
+            return;
+        }
         let reading = {
             let session = session.clone();
             tasks.spawn_task(async move {
@@ -100,34 +106,53 @@ impl SqlEditor {
         };
         let editor = self.downgrade();
         glib::spawn_future_local(async move {
-            let default = reading.await.ok().flatten();
+            let Some(schema) = reading.await.ok().flatten() else {
+                return;
+            };
             if let Some(editor) = editor.upgrade()
-                && editor.imp().slot.database().is_none()
+                && editor.scope_database(&session).is_some_and(|(now, _)| now == database)
             {
-                editor.set_scope(scope_text(Some(&database), default.as_deref()));
+                editor.set_scope(Some(scope_text(&database, Some(&schema))));
             }
         });
     }
 
-    /// Ask the server for its databases. A connection that may not write
-    /// keeps the label, as on macOS, and so does an engine that cannot
-    /// list them.
-    fn list_databases(&self, session: &Arc<Session>, tasks: &Tasks, current: &str) {
-        if session.read_only() {
+    /// The tab's database, else the connection's. `None` where a
+    /// connection reaches one database.
+    fn scope_database(&self, session: &Session) -> Option<(String, DatabaseLayout)> {
+        let layout = session.current_dialect()?.database_layout();
+        if layout == DatabaseLayout::Single {
+            return None;
+        }
+        let database = self
+            .imp()
+            .slot
+            .database()
+            .or_else(|| session.database().map(str::to_owned))
+            .filter(|name| !name.is_empty())?;
+        Some((database, layout))
+    }
+
+    /// Ask the server for its databases, for the bar's menu. A server
+    /// that cannot list them leaves the bar a label.
+    pub(super) fn list_databases(&self) {
+        let Some((session, tasks)) = self
+            .deps()
+            .and_then(|deps| deps.session.get().map(|session| (session, deps.tasks.clone())))
+        else {
+            return;
+        };
+        if self.scope_database(&session).is_none() {
             return;
         }
-        let listing = {
-            let session = session.clone();
-            tasks.spawn_task(async move {
-                session
-                    .run(OperationKind::Metadata, |lease, options| async move {
-                        Ok(lease.list_databases(options).await?)
-                    })
-                    .await
-            })
-        };
+        let listing = tasks.spawn_task(async move {
+            session
+                .run(OperationKind::Metadata, |lease, options| async move {
+                    Ok(lease.list_databases(options).await?)
+                })
+                .await
+        });
         let editor = self.downgrade();
-        let current = current.to_owned();
         glib::spawn_future_local(async move {
             let databases = match listing.await {
                 Ok(Ok(databases)) => databases,
@@ -141,82 +166,48 @@ impl SqlEditor {
                 }
             };
             if let Some(editor) = editor.upgrade() {
-                editor.offer_databases(&databases, &current);
+                let imp = editor.imp();
+                imp.scope_button.set_menu_model(database_menu(&databases).as_ref());
+                editor.show_scope();
             }
         });
     }
 
-    fn offer_databases(&self, databases: &[SchemaInfo], current: &str) {
-        let Some(menu) = database_menu(databases) else {
-            return;
-        };
-        let imp = self.imp();
-        imp.scope_button.set_menu_model(Some(&menu));
-        let current = imp
-            .slot
-            .database()
-            .map_or_else(|| current.to_owned(), |moved| moved.name);
-        if let Some(action) = self.database_action() {
-            action.set_state(&current.to_variant());
-        }
-        imp.scope_box.set_visible(false);
-        imp.scope_button.set_visible(true);
-    }
-
-    fn install_database_action(&self) {
-        if self.database_action().is_some() {
+    /// Point the tab at `database`: its next run goes there, completion
+    /// resolves names there, and the bar names it.
+    pub(crate) fn move_to_database(&self, database: &str) {
+        if self.imp().slot.database().as_deref() == Some(database) {
             return;
         }
-        let action = gio::SimpleAction::new_stateful(SWITCH_ACTION, Some(glib::VariantTy::STRING), &"".to_variant());
-        let editor = self.downgrade();
-        action.connect_change_state(move |action, value| {
-            let (Some(editor), Some(name)) = (editor.upgrade(), value.and_then(|value| value.str())) else {
-                return;
-            };
-            if action.state().as_ref().and_then(|state| state.str()) == Some(name) {
-                return;
-            }
-            action.set_state(&name.to_variant());
-            editor.move_to_database(name);
-        });
-        let group = gio::SimpleActionGroup::new();
-        group.add_action(&action);
-        self.insert_action_group("tab", Some(&group));
-        self.imp().tab_actions.replace(Some(group));
+        self.imp().slot.set_database(database.to_owned());
+        self.show_scope();
     }
 
-    fn database_action(&self) -> Option<gio::SimpleAction> {
-        self.imp()
-            .tab_actions
-            .borrow()
-            .as_ref()?
-            .lookup_action(SWITCH_ACTION)
-            .and_downcast()
-    }
-
-    /// Point the tab at `name`: its sessions run the engine's `USE` before
-    /// the next statement, completion resolves unqualified names there,
-    /// and the bar names it. The schema goes with the old database, since
-    /// a schema only means something inside the database that holds it.
-    pub(crate) fn move_to_database(&self, name: &str) {
-        self.imp()
-            .slot
-            .set_database(Some(TabDatabase { name: name.to_owned() }));
-        if let Some(action) = self.database_action() {
-            action.set_state(&name.to_variant());
-        }
-        for provider in self.imp().completion_providers.borrow().iter() {
-            if let Some(catalog) = provider.downcast_ref::<super::completion::SqlCompletionProvider>() {
-                catalog.set_home(Some(name.to_owned()));
-            }
-        }
-        self.set_scope(scope_text(Some(name), None));
-    }
-
-    /// The database the editor bar moved the tab to, which a restore
-    /// moves it to again.
+    /// The database a restore puts the tab back in: `None` while it is
+    /// the connection's own.
     pub(crate) fn tab_database(&self) -> Option<String> {
-        self.imp().slot.database().map(|database| database.name)
+        let database = self.imp().slot.database()?;
+        let own = self.deps().and_then(|deps| deps.session.get());
+        match own {
+            Some(session) if session.database() == Some(database.as_str()) => None,
+            _ => Some(database),
+        }
+    }
+
+    pub(crate) fn connect_database_changed<F: Fn(&Self) + 'static>(&self, f: F) -> glib::SignalHandlerId {
+        self.connect_closure(
+            "database-changed",
+            false,
+            glib::closure_local!(move |editor: &Self| f(editor)),
+        )
+    }
+
+    fn follow_in_completion(&self, home: CatalogHome) {
+        for provider in self.imp().completion_providers.borrow().iter() {
+            if let Some(provider) = provider.downcast_ref::<SqlCompletionProvider>() {
+                provider.set_home(home.clone());
+            }
+        }
     }
 
     fn set_scope(&self, scope: Option<(String, String)>) {
@@ -234,9 +225,6 @@ impl SqlEditor {
         imp.scope_box.set_tooltip_text(Some(&spoken));
         imp.scope_button
             .update_property(&[gtk4::accessible::Property::Label(&spoken)]);
-        imp.scope_button
-            .update_property(&[gtk4::accessible::Property::Description(&gettext("Switch Database"))]);
-        imp.scope_button.set_tooltip_text(Some(&gettext("Switch Database")));
         imp.scope_box.set_visible(!switchable);
         imp.scope_button.set_visible(switchable);
     }
@@ -246,27 +234,19 @@ impl SqlEditor {
 mod tests {
     use gtk4::gio;
     use gtk4::prelude::*;
+    use tablepro_core::dialect::DatabaseLayout;
     use tablepro_core::meta::SchemaInfo;
 
-    use super::{database_menu, scope_text};
+    use super::{CatalogHome, catalog_home, database_menu, scope_text};
 
     #[test]
-    fn the_scope_names_the_database_then_a_schema_of_its_own() {
+    fn the_scope_names_the_database_then_its_schema() {
         assert_eq!(
-            scope_text(Some("shop"), Some("public")),
-            Some(("shop.public".to_owned(), "shop, schema public".to_owned()))
+            scope_text("shop", Some("public")),
+            ("shop.public".to_owned(), "shop, schema public".to_owned())
         );
-        assert_eq!(
-            scope_text(Some("shop"), Some("shop")),
-            Some(("shop".to_owned(), "shop".to_owned())),
-            "a schema that is the database"
-        );
-        assert_eq!(
-            scope_text(Some("shop"), None),
-            Some(("shop".to_owned(), "shop".to_owned()))
-        );
-        assert_eq!(scope_text(None, Some("main")), None, "a file");
-        assert_eq!(scope_text(Some(""), None), None);
+        assert_eq!(scope_text("shop", None), ("shop".to_owned(), "shop".to_owned()));
+        assert_eq!(scope_text("shop", Some("")), ("shop".to_owned(), "shop".to_owned()));
     }
 
     fn database(name: &str, is_system: bool) -> SchemaInfo {
@@ -304,6 +284,24 @@ mod tests {
         assert!(
             database_menu(&[database("shop", false)]).is_none(),
             "nothing to move to"
+        );
+    }
+
+    /// A database the catalog does not describe offers no tables, rather
+    /// than the connection's under the wrong database.
+    #[test]
+    fn completion_resolves_where_the_catalog_reaches() {
+        assert_eq!(
+            catalog_home(DatabaseLayout::AsSchemas, Some("shop"), "shop"),
+            CatalogHome::Connection
+        );
+        assert_eq!(
+            catalog_home(DatabaseLayout::AsSchemas, Some("shop"), "analytics"),
+            CatalogHome::Schema("analytics".to_owned())
+        );
+        assert_eq!(
+            catalog_home(DatabaseLayout::WithSchemas, Some("shop"), "analytics"),
+            CatalogHome::Elsewhere
         );
     }
 }

@@ -68,6 +68,10 @@ impl PgEndpoint {
         }
     }
 
+    pub(crate) fn database(&self) -> Option<&str> {
+        self.config.get_dbname()
+    }
+
     pub(crate) fn liveness(&self) -> &LivenessPolicy {
         &self.liveness
     }

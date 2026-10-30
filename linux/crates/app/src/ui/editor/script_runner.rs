@@ -243,6 +243,14 @@ pub async fn run_in_tab(
             refuse(&events, message, true).await;
             return;
         }
+        Err(AcquireError::Moved { database, reason }) => {
+            let message = crate::i18n::gettext_f(
+                "Could not move this tab to the database “{database}”: {reason}",
+                &[("database", &database), ("reason", &reason)],
+            );
+            refuse(&events, message, false).await;
+            return;
+        }
         Err(AcquireError::Failed(message)) => {
             refuse(&events, message, false).await;
             return;
@@ -250,6 +258,7 @@ pub async fn run_in_tab(
     };
     let before = slot.transaction(&editor);
     let after = run_batches(&editor, &run, &cancel, &events, before).await;
+    slot.follow(&editor);
     if editor.state() != EditorSessionState::Lost {
         slot.note_transaction(&editor, after.transaction);
         return;
