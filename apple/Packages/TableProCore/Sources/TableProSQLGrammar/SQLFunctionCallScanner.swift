@@ -22,13 +22,25 @@ public enum SQLFunctionCallScanner {
         return calls
     }
 
+    // DuckDB takes U+00A0 and U+200B before a call's parenthesis, as StatementBlank does.
     public static func isBlank(_ unit: UInt16) -> Bool {
-        unit == 0x20 || unit == 0x0A || unit == 0x09 || unit == 0x0D || unit == 0x0C || unit == 0x0B
+        guard let scalar = UnicodeScalar(unit) else { return false }
+        return StatementBlank.isBlank(scalar)
     }
 
     public static func isIdentifierUnit(_ unit: UInt16) -> Bool {
         guard let scalar = UnicodeScalar(unit) else { return true }
+        guard !StatementBlank.isBlank(scalar) else { return false }
         return scalar == "_" || scalar == "$" || CharacterSet.alphanumerics.contains(scalar) || unit > 0x7F
+    }
+
+    // A blank outside the BMP, such as a tag character, is two units.
+    private static func blankUnits(endingAt cursor: Int, in code: NSString) -> Int {
+        let unit = code.character(at: cursor)
+        if UTF16.isTrailSurrogate(unit), cursor > 0, UTF16.isLeadSurrogate(code.character(at: cursor - 1)) {
+            return StatementBlank.blankLength(in: code, at: cursor - 1) == 2 ? 2 : 0
+        }
+        return isBlank(unit) ? 1 : 0
     }
 
     private static let quoteClosers: Set<UInt16> = [0x22, 0x60, 0x5D]
@@ -43,8 +55,8 @@ public enum SQLFunctionCallScanner {
     /// whether a quoted name was there.
     private static func callee(before index: Int, code: NSString, source: NSString) -> Callee? {
         var cursor = index - 1
-        while cursor >= 0, isBlank(code.character(at: cursor)) {
-            cursor -= 1
+        while cursor >= 0, blankUnits(endingAt: cursor, in: code) > 0 {
+            cursor -= blankUnits(endingAt: cursor, in: code)
         }
         let blankStart = cursor + 1
         if blankStart < index {
@@ -63,7 +75,7 @@ public enum SQLFunctionCallScanner {
         }
         guard isIdentifierUnit(code.character(at: cursor)) else { return nil }
         var start = cursor
-        while start > 0, isIdentifierUnit(code.character(at: start - 1)) {
+        while start > 0, isIdentifierUnit(code.character(at: start - 1)), blankUnits(endingAt: start - 1, in: code) == 0 {
             start -= 1
         }
         let name = code.substring(with: NSRange(location: start, length: cursor - start + 1))

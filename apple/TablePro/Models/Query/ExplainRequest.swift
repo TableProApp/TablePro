@@ -65,20 +65,21 @@ struct ExplainRequest: Equatable {
     }
 
     // What the execution gate classifies, which reads the text as well as the kind.
-    var gatedSQL: String {
-        driverStep.map { Self.gatedSQL(subject: subjectSQL, runsStatement: $0.runsStatement) } ?? sql
+    func gatedSQL(databaseType: DatabaseType) -> String {
+        driverStep.map {
+            Self.gatedSQL(subject: subjectSQL, runsStatement: $0.runsStatement, databaseType: databaseType)
+        } ?? sql
     }
 
     func operationKind(databaseType: DatabaseType) -> OperationKind {
-        OperationKind.worst(of: [gatedSQL], databaseType: databaseType)
+        OperationKind.worst(of: [gatedSQL(databaseType: databaseType)], databaseType: databaseType)
     }
 
     // A plan that only plans the statement is gated as a plain EXPLAIN of it. A SET or USE is not planned: SQL Server
     // runs it even with SHOWPLAN on, so it is gated as itself.
-    static func gatedSQL(subject: String, runsStatement: Bool) -> String {
+    static func gatedSQL(subject: String, runsStatement: Bool, databaseType: DatabaseType) -> String {
         guard !runsStatement else { return subject }
         let planned = "EXPLAIN \(subject)"
-        // `planned` opens with its keyword, so no engine's comment rule changes where it starts.
-        return QueryClassifier.explainedStatement(in: planned, grammar: .ansi) == nil ? subject : planned
+        return QueryClassifier.explainedStatement(in: planned, databaseType: databaseType) == nil ? subject : planned
     }
 }

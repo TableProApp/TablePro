@@ -113,6 +113,97 @@ struct QueryClassifierFailClosedTests {
         }
     }
 
+    @Test("A SELECT that reads a file, a directory, a URL or another database through a function is flagged", arguments: [
+        (DatabaseType.duckdb, "SELECT content FROM read_text('/Users/ann/.ssh/id_ed25519')"),
+        (DatabaseType.duckdb, "SELECT file FROM glob('/Users/ann/.ssh/*')"),
+        (DatabaseType.duckdb, "SELECT * FROM read_csv('https://attacker.example/collect.csv')"),
+        (DatabaseType.duckdb, "SELECT * FROM READ_PARQUET (['a.parquet', 'b.parquet'])"),
+        (DatabaseType.duckdb, "SELECT * FROM system.main.read_blob/* c */('/etc/passwd')"),
+        (DatabaseType.duckdb, "WITH f AS (SELECT * FROM \"read_blob\" ('/etc/passwd')) SELECT * FROM f"),
+        (DatabaseType.duckdb, "SELECT * FROM read_text\u{00A0}('/etc/passwd')"),
+        (DatabaseType.duckdb, "SELECT * FROM parquet_scan('a.parquet')"),
+        (DatabaseType.duckdb, "SELECT * FROM parquet_metadata('a.parquet')"),
+        (DatabaseType.duckdb, "SELECT * FROM sniff_csv('/etc/passwd')"),
+        (DatabaseType.duckdb, "SELECT * FROM ST_Read('a.shp')"),
+        (DatabaseType.duckdb, "SELECT * FROM sqlite_scan('/Users/ann/Library/other.db', 'notes')"),
+        (DatabaseType.duckdb, "SELECT * FROM postgres_query('host=10.0.0.1', 'SELECT 1')"),
+        (DatabaseType.duckdb, "SELECT * FROM iceberg_scan('s3://bucket/table')"),
+        (DatabaseType.duckdb, "SELECT * FROM query('SELECT * FROM read_' || 'text(''/etc/passwd'')')"),
+        (DatabaseType.duckdb, "SELECT * FROM query_table('/Users/ann/Documents/payroll.csv')"),
+        (DatabaseType.duckdb, "EXPLAIN SELECT * FROM read_csv('/etc/passwd')"),
+        (DatabaseType.clickhouse, "SELECT * FROM url('http://169.254.169.254/latest/meta-data/', 'RawBLOB')"),
+        (DatabaseType.clickhouse, "SELECT * FROM file('secrets.tsv', 'LineAsString')"),
+        (DatabaseType.clickhouse, "SELECT * FROM `remoteSecure`('10.0.0.1', system.users)"),
+        (DatabaseType.clickhouse, "SELECT * FROM executable('x.sh', TabSeparated, 'a String')"),
+        (DatabaseType.clickhouse, "SELECT * FROM icebergLocal('/var/lib/table')")
+    ])
+    func functionsReachingOutsideAreFlagged(engine: DatabaseType, sql: String) {
+        #expect(QueryClassifier.reachesFilesystemOrExecutesCode(sql, databaseType: engine))
+    }
+
+    @Test("DuckDB reads a file named where a table is", arguments: [
+        "SELECT * FROM '/Users/ann/Documents/payroll.csv'",
+        "SELECT * FROM \"/Users/ann/Documents/payroll.csv\"",
+        "SELECT * FROM notes, /* c */ '/Users/ann/Documents/payroll.csv'",
+        "SELECT * FROM notes JOIN 'payroll.parquet' USING (id)",
+        "FROM 'payroll.csv'",
+        "DESCRIBE '/Users/ann/Documents/payroll.csv'",
+        "SUMMARIZE '/Users/ann/Documents/payroll.csv'"
+    ])
+    func fileNamedAsTableIsFlagged(sql: String) {
+        #expect(QueryClassifier.reachesFilesystemOrExecutesCode(sql, databaseType: .duckdb))
+        #expect(!QueryClassifier.reachesFilesystemOrExecutesCode(sql, databaseType: .postgresql))
+    }
+
+    @Test("A read that reaches outside the database is still a read", arguments: [
+        (DatabaseType.duckdb, "SELECT * FROM 'payroll.csv'"),
+        (DatabaseType.duckdb, "SELECT * FROM read_parquet('payroll.parquet')"),
+        (DatabaseType.clickhouse, "SELECT * FROM s3('https://bucket.s3.amazonaws.com/a.csv')")
+    ])
+    func readsOutsideTheDatabaseKeepTheirTier(engine: DatabaseType, sql: String) {
+        #expect(QueryClassifier.classifyTier(sql, databaseType: engine) == .safe)
+    }
+
+    @Test("A string that is a value, and a name that is a function elsewhere, stay plain reads", arguments: [
+        (DatabaseType.duckdb, "SELECT 'a.csv', 'b.csv' FROM notes WHERE path = 'c.csv' ORDER BY 'd'"),
+        (DatabaseType.duckdb, "SELECT * FROM \"main\".\"notes\" JOIN tags ON tags.name = 'x' AND tags.kind IN ('a', 'b')"),
+        (DatabaseType.duckdb, "SELECT * FROM range(1, 10), notes WHERE body LIKE 'from %'"),
+        (DatabaseType.duckdb, "SELECT extract(year FROM '2026-01-01'::DATE), trim('x' FROM 'xax') FROM notes"),
+        (DatabaseType.duckdb, "SELECT read_at, glob, query FROM notes WHERE name GLOB 'a*'"),
+        (DatabaseType.duckdb, "SELECT * FROM duckdb_tables()"),
+        (DatabaseType.clickhouse, "SELECT file, url, URLHash(url), filesystemAvailable() FROM downloads"),
+        (DatabaseType.sqlite, "SELECT * FROM notes WHERE glob('a*', name)"),
+        (DatabaseType.postgresql, "SELECT file, url, query(1) FROM downloads")
+    ])
+    func ordinaryReadsStaySafe(engine: DatabaseType, sql: String) {
+        #expect(QueryClassifier.classify(sql, databaseType: engine) == .safe)
+    }
+
+    @Test("VACUUM INTO reaches the filesystem whether or not it names a schema")
+    func vacuumIntoIsFlaggedWithASchemaName() {
+        let flagged = [
+            "VACUUM INTO '/tmp/copy.db'",
+            "VACUUM main INTO '/tmp/copy.db'",
+            "vacuum main into '/tmp/copy.db'",
+            "VACUUM main /* copy */ INTO '/tmp/copy.db'",
+            "VACUUM \"main\" INTO '/tmp/copy.db'"
+        ]
+        for statement in flagged {
+            #expect(
+                QueryClassifier.reachesFilesystemOrExecutesCode(statement, databaseType: .sqlite),
+                "\(statement) must be flagged"
+            )
+            #expect(QueryClassifier.isWriteQuery(statement, databaseType: .sqlite))
+        }
+        for statement in ["VACUUM", "VACUUM main", "VACUUM (ANALYZE) orders"] {
+            #expect(QueryClassifier.classifyTier(statement, databaseType: .postgresql) == .write)
+            #expect(
+                !QueryClassifier.reachesFilesystemOrExecutesCode(statement, databaseType: .postgresql),
+                "\(statement) writes no file"
+            )
+        }
+    }
+
     @Test("LOAD DATA INFILE reaches the filesystem")
     func loadDataInfileIsFlagged() {
         let statement = "LOAD DATA INFILE '/etc/passwd' INTO TABLE staging"
@@ -752,6 +843,49 @@ struct QueryClassifierNonSqlTests {
         )
     }
 
+    @Test(
+        "A Typesense path that can land on another one is judged unsafe",
+        arguments: [
+            "POST /collections/../keys",
+            "POST collections/../keys",
+            "POST /./keys",
+            "GET /collections/../keys",
+            "POST /collections/..//keys",
+            "POST /a%2Fb/../keys",
+            "POST /collections/%2e%2E/keys",
+            "POST /collections%2F..%2Fkeys",
+            "POST /collections/../operations/snapshot?snapshot_path=/tmp/out",
+            "POST //localhost:8108/keys",
+            "POST //localhost:8108/operations/snapshot?snapshot_path=/tmp/out",
+            "POST /%6Beys/%ff/%2e%2e"
+        ]
+    )
+    func typesensePathThatResolvesElsewhereIsUnsafe(request: String) {
+        #expect(QueryClassifier.reachesFilesystemOrExecutesCode(request, databaseType: .typesense))
+    }
+
+    @Test(
+        "A respelled Typesense unsafe path is still that path",
+        arguments: ["POST /%6Beys", "POST /operations//snapshot", "POST /operations/snapshot/", "DELETE /keys//12"]
+    )
+    func typesenseRespelledUnsafePathIsFlagged(request: String) {
+        #expect(QueryClassifier.reachesFilesystemOrExecutesCode(request, databaseType: .typesense))
+    }
+
+    @Test(
+        "Escapes and dots inside a Typesense name do not flag an ordinary request",
+        arguments: [
+            "GET /collections/a%2Fb",
+            "GET /collections/v1.2/documents/a..b",
+            "POST /collections/%6Beys/documents",
+            "GET /collections/books/documents/keys",
+            "POST /multi_search\n{\"searches\": [{\"q\": \"../keys\"}]}"
+        ]
+    )
+    func typesenseOrdinaryPathsStayUnflagged(request: String) {
+        #expect(!QueryClassifier.reachesFilesystemOrExecutesCode(request, databaseType: .typesense))
+    }
+
     @Test("Weaviate GraphQL reads are safe and uuid deletes are destructive")
     func weaviateTiers() {
         #expect(!QueryClassifier.isWriteQuery("{ Get { Article { title } } }", databaseType: .weaviate))
@@ -839,6 +973,24 @@ struct QueryClassifierNonSqlTests {
             databaseType: .weaviate
         ))
         #expect(!QueryClassifier.isWriteQuery("{ Get { Article { title } } }", databaseType: .weaviate))
+    }
+
+    @Test("A request text is tiered by the requests the scanner hands the driver", arguments: [
+        (DatabaseType.firestore, "GET users", "DELETE users/alice"),
+        (.firebaseRealtimeDatabase, "GET users", "DELETE users/alice"),
+        (.bigtable, "GET events/k", "DELETE events/k"),
+        (.typesense, "GET /collections", "DELETE /collections/books"),
+        (.weaviate, "GET /v1/schema", "DELETE /v1/schema/Article"),
+        (.elasticsearch, "GET /_cat/indices", "DELETE /orders"),
+        (.etcd, "get /keys", "del /keys")
+    ])
+    func requestTextTiersWhatTheDriverReceives(type: DatabaseType, read: String, delete: String) {
+        for text in [";\(delete)", "\(read);\(delete)", "--\n;\(delete)", "--\r\(read)\n;\(delete)", "/**/;\(delete)"] {
+            #expect(QueryClassifier.classifyTier(text, databaseType: type) == .destructive, "\(text) must be destructive")
+        }
+        for text in ["\(read);", ";\(read)", "-- note\n;\(read)", "-- \(delete)", ";"] {
+            #expect(QueryClassifier.classifyTier(text, databaseType: type) == .safe, "\(text) must be safe")
+        }
     }
 
     @Test("Elasticsearch stored scripts are flagged as code execution on both verbs")
