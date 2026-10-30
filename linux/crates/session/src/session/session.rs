@@ -309,7 +309,11 @@ impl Session {
             .connector
             .establish(refreshed.request, CredentialInteraction::Unattended, cancel)
             .await?;
-        Ok(Session::start(pending, self.origin.deps.clone()))
+        let sibling = Session::start(pending, self.origin.deps.clone());
+        // The level the user chose since the connection opened, which a
+        // read-only connection's sibling shares by opening read-only too.
+        sibling.set_safe_mode(self.safe_mode());
+        Ok(sibling)
     }
 
     /// The SSH tunnel the connection was made through, if any.
@@ -536,11 +540,18 @@ mod tests {
             },
         );
 
+        assert!(session.set_safe_mode(SafeModeLevel::ConfirmWrites));
+
         let sibling = session
             .open_in_database("analytics", CancellationToken::new())
             .await
             .expect("a session in analytics");
 
+        assert_eq!(
+            sibling.safe_mode(),
+            SafeModeLevel::ConfirmWrites,
+            "the sibling dropped the level"
+        );
         assert_eq!(session.database(), Some("shop"));
         assert_eq!(sibling.database(), Some("analytics"));
         let call = connector.calls().pop().expect("an attempt");

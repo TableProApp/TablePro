@@ -43,9 +43,9 @@ pub enum EditorSessionState {
 #[derive(Debug, Clone, Default)]
 pub struct EditorSessionOptions {
     pub statement_timeout: Option<std::time::Duration>,
-    /// Another of the server's databases to open the session in, for an
-    /// engine whose connection stays in the database it opened in.
-    /// `None` opens it in the connection's own.
+    /// The database to open the session in, where the engine binds a
+    /// session's database when it connects. Elsewhere the session opens in
+    /// the connection's and `EditorSession::use_database` moves it.
     pub database: Option<String>,
 }
 
@@ -74,6 +74,22 @@ pub trait EditorSession: Send + Sync {
     ) -> Result<RunSummary, DriverError>;
 
     async fn transaction_state(&self, options: CallOptions) -> Result<TransactionState, DriverError>;
+
+    /// The database an unqualified name resolves to now, as the server
+    /// last said. `None` where the driver does not follow it: the session
+    /// is still in the database it opened in.
+    fn database(&self) -> Option<String> {
+        None
+    }
+
+    /// Move the session to the server's database `database`, keeping
+    /// what it holds. Unsupported where the engine binds a session's
+    /// database when it connects.
+    async fn use_database(&self, _database: &str, _options: CallOptions) -> Result<(), DriverError> {
+        Err(DriverError::Unsupported {
+            feature: crate::UnsupportedFeature::DatabaseSwitching,
+        })
+    }
 
     async fn close(&self);
 }

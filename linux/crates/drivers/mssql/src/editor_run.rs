@@ -247,6 +247,25 @@ pub(crate) async fn transaction_state(client: &mut MssqlClient) -> Result<Transa
     Ok(state_of(cells.int(0), cells.int(1)))
 }
 
+/// Move the session to `database`. A bracketed name carries any name: a
+/// `]` in it is doubled.
+pub(crate) async fn use_database(client: &mut MssqlClient, database: &str) -> Result<(), DriverError> {
+    let statement = format!("USE {}", crate::dialect::quote(database));
+    let stream = client.simple_query(statement).await.map_err(map_error)?;
+    stream.into_results().await.map_err(map_error)?;
+    Ok(())
+}
+
+/// The database the session is in, from the server itself.
+pub(crate) async fn current_database(client: &mut MssqlClient) -> Result<Option<String>, DriverError> {
+    let stream = client.simple_query("SELECT DB_NAME()").await.map_err(map_error)?;
+    let row = stream.into_row().await.map_err(map_error)?;
+    Ok(row.and_then(|row| match decode_row(&row).into_iter().next() {
+        Some(Value::Text(name)) => Some(name),
+        _ => None,
+    }))
+}
+
 /// XACT_STATE is -1 when an error has doomed the transaction: it can
 /// only be rolled back.
 fn state_of(transaction_count: Option<i64>, xact_state: Option<i64>) -> TransactionState {
