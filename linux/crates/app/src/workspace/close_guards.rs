@@ -174,9 +174,13 @@ impl CloseGuards {
         self.teardown_acknowledged.borrow_mut().clear();
     }
 
-    /// Whether every tab may go with the connection without asking.
-    pub(crate) fn may_tear_down(&self, handle: &WorkspaceHandle) -> bool {
-        handle.close_step(CloseScope::Window, &self.teardown_acknowledged.borrow()) == CloseStep::Approve
+    /// Whether every tab of `handles` may go with their connection
+    /// without asking.
+    pub(crate) fn may_tear_down(&self, handles: &[WorkspaceHandle]) -> bool {
+        let acknowledged = self.teardown_acknowledged.borrow();
+        handles
+            .iter()
+            .all(|handle| handle.close_step(CloseScope::Window, &acknowledged) == CloseStep::Approve)
     }
 
     /// Ask whether every tab may go with the connection; `decided` hears
@@ -184,19 +188,14 @@ impl CloseGuards {
     pub(crate) fn ask_tear_down(
         self: &Rc<Self>,
         parent: &gtk::Widget,
-        handle: &WorkspaceHandle,
+        handles: &[WorkspaceHandle],
         decided: impl FnOnce(CloseDecision) + 'static,
     ) {
-        let (guards, handle, parent) = (self.clone(), handle.clone(), parent.clone());
+        let (guards, handles, parent) = (self.clone(), handles.to_vec(), parent.clone());
         glib::spawn_future_local(async move {
             let mut acknowledged = guards.teardown_acknowledged.borrow().clone();
             let decision = guards
-                .run(
-                    &parent,
-                    std::slice::from_ref(&handle),
-                    CloseScope::Window,
-                    &mut acknowledged,
-                )
+                .run(&parent, &handles, CloseScope::Window, &mut acknowledged)
                 .await;
             if decision == CloseDecision::Approved {
                 guards.teardown_acknowledged.replace(acknowledged);
