@@ -314,9 +314,14 @@ mod tests {
             ["mysql", "information__schema"],
             "an underscore is no mnemonic"
         );
+        let own = SchemaInfo {
+            is_default: true,
+            ..database("shop", false)
+        };
+        assert!(database_menu(&[own]).is_none(), "nothing to move to");
         assert!(
-            database_menu(&[database("shop", false)]).is_none(),
-            "nothing to move to"
+            database_menu(&[database("shop", false)]).is_some(),
+            "a connection in no database can pick its one"
         );
     }
 
