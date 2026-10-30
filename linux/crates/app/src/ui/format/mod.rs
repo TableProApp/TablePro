@@ -4,7 +4,7 @@ mod thousands;
 
 #[cfg(test)]
 pub(crate) use self::thousands::Thousands;
-pub(crate) use self::thousands::format_thousands;
+pub(crate) use self::thousands::{format_decimal, format_thousands};
 
 /// The count gettext picks a plural form by. It takes a u32, and a
 /// result past that is rare enough for the largest u32 to stand in.

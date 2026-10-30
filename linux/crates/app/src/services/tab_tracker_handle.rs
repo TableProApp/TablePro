@@ -72,7 +72,7 @@ impl TabTrackerHandle {
     }
 
     pub fn drafts(&self) -> Vec<DraftRow> {
-        self.0.borrow().drafts().to_vec()
+        self.0.borrow().drafts().values().cloned().collect()
     }
 
     pub fn draft_values(&self, draft_id: u64) -> Option<Vec<Value>> {

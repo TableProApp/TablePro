@@ -100,8 +100,13 @@ gettext-rs = { version = "0.8", features = ["gettext-system"] }
 # Counts grouped the way the user's locale groups digits.
 icu_decimal = { version = "2.3", features = ["alloc"] }
 icu_locale_core = { version = "2.3", features = ["alloc"] }
+# Pending drafts, found by id and kept in order.
+indexmap = "2.14"
+# A selection's sum and average, exact past what i128 holds.
+num-bigint.workspace = true
 # The assistant's replies are Markdown; the HTML writer stays off.
 pulldown-cmark = { version = "0.13", default-features = false }
+semver = "1"
 sqlformat = "0.5"
 
 [dev-dependencies]

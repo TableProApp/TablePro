@@ -215,7 +215,7 @@ fn integer_of(value: &Value) -> Option<i128> {
 /// The value as an exact decimal, for comparing numbers of different
 /// kinds. A float is taken at the decimal its shortest form spells. A
 /// decimal is borrowed, since a sort compares each one many times.
-fn decimal_of(value: &Value) -> Option<Cow<'_, SqlDecimal>> {
+pub(crate) fn decimal_of(value: &Value) -> Option<Cow<'_, SqlDecimal>> {
     let owned = match value {
         Value::Decimal(decimal) => return Some(Cow::Borrowed(decimal)),
         Value::Float32(_) | Value::Float64(_) => {

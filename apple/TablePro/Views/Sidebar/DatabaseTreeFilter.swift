@@ -175,7 +175,23 @@ enum DatabaseTreeFilter {
     /// each object's own schema, and the database only when the search names one.
     static func filteredTables(_ tables: [TableInfo], searchText: String, database: String? = nil) -> [TableInfo] {
         let matched = SidebarSearch(searchText).ranked(tables, name: { $0.name }, database: database, schema: { $0.schema })
-        return deduplicated(matched, by: \.id)
+        return deduplicated(matched, by: TableIdentity.init)
+    }
+
+    // The fields `TableInfo.id` is built from, without escaping and joining a string for every row.
+    // The id reads an empty schema as none, so the key does too.
+    private struct TableIdentity: Hashable {
+        let name: String
+        let schema: String?
+        let type: TableInfo.TableType
+        let isTemporary: Bool
+
+        init(_ table: TableInfo) {
+            name = table.name
+            schema = table.schema?.isEmpty == false ? table.schema : nil
+            type = table.type
+            isTemporary = table.isTemporary
+        }
     }
 
     static func filteredRoutines(
@@ -390,27 +406,46 @@ enum DatabaseTreeFilter {
         let rowsBySchema: [String: [TableInfo]]
 
         init(listing: CatalogTableListing.Result, database: String, searchText: String, covered: Set<String>? = nil) {
+            self.init(
+                groups: SchemaListingGroups(tables: listing.tables),
+                unlisted: listing.unlistedSchemas,
+                database: database,
+                searchText: searchText,
+                covered: covered
+            )
+        }
+
+        init(groups: SchemaListingGroups, unlisted: Set<String>, database: String, searchText: String, covered: Set<String>?) {
             let search = SidebarSearch(searchText)
-            var listed: Set<String> = []
             var matched: Set<String> = []
-            var rowsBySchema: [String: [TableInfo]] = [:]
-            for table in listing.tables {
-                guard let schema = table.schema else { continue }
-                listed.insert(schema)
-                rowsBySchema[schema, default: []].append(table)
-                guard !matched.contains(schema),
-                      search.matchesObject(named: table.name, database: database, schema: schema) else { continue }
+            for (schema, rows) in groups.rowsBySchema
+            where rows.contains(where: { search.matchesObject(named: $0.name, database: database, schema: schema) }) {
                 matched.insert(schema)
             }
-            self.listed = listed
+            self.listed = Set(groups.rowsBySchema.keys)
             self.matched = matched
-            self.unlisted = listing.unlistedSchemas
+            self.unlisted = unlisted
             self.covered = covered
-            self.rowsBySchema = rowsBySchema
+            self.rowsBySchema = groups.rowsBySchema
         }
 
         func answers(for schema: String) -> Bool {
             !unlisted.contains(schema) && covered?.contains(schema) != false
+        }
+    }
+
+    // A keystroke changes which schemas match, never which rows each schema lists, so the grouping
+    // waits for the next listing. Grouping 50,000 rows again on every keystroke copied each of them.
+    struct SchemaListingGroups {
+        let rowsBySchema: [String: [TableInfo]]
+
+        init(tables: [TableInfo]) {
+            var rowsBySchema: [String: [TableInfo]] = [:]
+            for table in tables {
+                guard let schema = table.schema else { continue }
+                rowsBySchema[schema, default: []].append(table)
+            }
+            self.rowsBySchema = rowsBySchema
         }
     }
 
@@ -424,7 +459,13 @@ enum DatabaseTreeFilter {
             let matches: SchemaListingMatches
         }
 
+        private struct GroupsEntry {
+            let tables: SameRows<TableInfo>
+            let groups: SchemaListingGroups
+        }
+
         private var entries: [String: Entry] = [:]
+        private var groupsEntries: [String: GroupsEntry] = [:]
 
         mutating func matches(
             listing: CatalogTableListing.Result,
@@ -432,13 +473,27 @@ enum DatabaseTreeFilter {
             searchText: String,
             covered: Set<String>?
         ) -> SchemaListingMatches {
+            let tables = SameRows(rows: listing.tables)
             if let entry = entries[database], entry.searchText == searchText, entry.covered == covered,
-               entry.unlisted == listing.unlistedSchemas, entry.tables == SameRows(rows: listing.tables) {
+               entry.unlisted == listing.unlistedSchemas, entry.tables == tables {
                 return entry.matches
             }
-            let matches = SchemaListingMatches(listing: listing, database: database, searchText: searchText, covered: covered)
+            let groups: SchemaListingGroups
+            if let entry = groupsEntries[database], entry.tables == tables {
+                groups = entry.groups
+            } else {
+                groups = SchemaListingGroups(tables: listing.tables)
+                groupsEntries[database] = GroupsEntry(tables: tables, groups: groups)
+            }
+            let matches = SchemaListingMatches(
+                groups: groups,
+                unlisted: listing.unlistedSchemas,
+                database: database,
+                searchText: searchText,
+                covered: covered
+            )
             entries[database] = Entry(
-                tables: SameRows(rows: listing.tables),
+                tables: tables,
                 unlisted: listing.unlistedSchemas,
                 searchText: searchText,
                 covered: covered,
@@ -449,6 +504,7 @@ enum DatabaseTreeFilter {
 
         mutating func removeAll() {
             entries.removeAll()
+            groupsEntries.removeAll()
         }
     }
 

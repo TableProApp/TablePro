@@ -19,6 +19,7 @@ mod grid_column;
 mod grid_row_id;
 mod row_key_builder;
 mod row_snapshot;
+mod selection_summary;
 #[cfg(test)]
 mod test_columns;
 pub mod value_order;
@@ -43,3 +44,4 @@ pub use self::grid_column::{CellDisplay, GridColumn, grid_columns};
 pub use self::grid_row_id::GridRowId;
 pub use self::row_key_builder::RowKeyBuilder;
 pub use self::row_snapshot::RowSnapshot;
+pub use self::selection_summary::{SelectionSummary, SummaryRule, summarize};

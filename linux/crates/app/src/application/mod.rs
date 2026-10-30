@@ -8,9 +8,9 @@ mod accelerators;
 mod app_actions;
 mod app_services;
 mod app_window_host;
-mod crash_notice;
 mod debug_info;
 mod imp;
+mod launch_notice;
 mod legal_section;
 mod mcp_bridge;
 #[cfg(test)]
@@ -106,7 +106,7 @@ impl TableProApplication {
         let host: Rc<dyn WindowHost> = Rc::new(AppWindowHost::new(self));
         self.imp().windows.insert(window.id(), window.clone());
         window.start(SessionWindowInit { services, host, launch });
-        self.hand_over_crash_report(&window);
+        self.hand_over_launch_notices(&window);
         window.present();
         Some(window.upcast())
     }

@@ -271,7 +271,7 @@ Turning the setting off keeps what is already there; Clear removes it.
 
 ## App preferences with `gio::Settings`
 
-`data/app.tablepro.TablePro.gschema.xml.in` holds every app-wide preference and the window geometry. Meson installs it to `$datadir/glib-2.0/schemas` and compiles it; see [ADR 0007](decisions/0007-gsettings-preferences.md).
+`data/app.tablepro.TablePro.gschema.xml.in` holds every app-wide preference, the window geometry and the newest release that has run. Meson installs it to `$datadir/glib-2.0/schemas` and compiles it; see [ADR 0007](decisions/0007-gsettings-preferences.md).
 
 The schema id is the application id and the path follows it: `app.tablepro.TablePro` at `/app/tablepro/TablePro/` for an installed build, `app.tablepro.TablePro.Devel` at `/app/tablepro/TablePro/Devel/` for a development one. Neither reads the other's settings.
 
@@ -283,6 +283,7 @@ The schema id is the application id and the path follows it: `app.tablepro.Table
 | `default-page-size` | `u` | `1000` | 100 to 100000 |
 | `confirm-bulk-delete` | `b` | `true` | |
 | `restore-session` | `b` | `true` | |
+| `last-seen-version` | `s` | empty | |
 | `mcp-server-enabled` | `b` | `false` | |
 | `mcp-server-port` | `u` | `23508` | 1024 to 65535 |
 | `ai-provider` | enum | `none` | `none`, `anthropic`, `openai`, `openai-compatible` |

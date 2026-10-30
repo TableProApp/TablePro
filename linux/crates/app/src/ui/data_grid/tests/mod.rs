@@ -6,6 +6,7 @@ mod layout;
 mod menus;
 mod selection;
 mod sorting;
+mod summary;
 mod values;
 mod view;
 

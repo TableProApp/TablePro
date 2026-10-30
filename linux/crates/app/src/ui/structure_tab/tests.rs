@@ -1110,6 +1110,24 @@ fn a_discard_after_a_save_found_the_table_changed_reads_it_again() {
     assert_eq!(reads_after_discard(Some(SaveInput::TableChangedBeforeSave.into())), 2);
 }
 
+#[gtk4::test]
+fn a_discard_whose_read_fails_leaves_the_discarded_column_out() {
+    let mut script = postgres_script();
+    script
+        .fetch_table_definition
+        .once(FakeReply::ok(definition("id")))
+        .always(FakeReply::err(DriverError::server("denied")));
+    let harness = Harness::open(StructureMode::Edit, script, []);
+    wait_until(WAIT, || harness.page().as_deref() == Some("editor")).expect("the structure");
+    harness.tab().send(ColumnsInput::AddColumn);
+    harness.tab().send(SaveInput::TableChangedBeforeSave);
+
+    harness.tab().send(SaveInput::Discard);
+
+    wait_until(WAIT, || banner(&harness).is_revealed()).expect("the failed read was not shown");
+    assert_eq!(harness.column_names(), ["id"]);
+}
+
 /// The titles of the add buttons the tab shows under `container`.
 fn add_buttons(container: &gtk::Box) -> Vec<String> {
     descendants(container)

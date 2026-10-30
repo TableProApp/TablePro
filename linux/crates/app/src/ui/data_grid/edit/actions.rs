@@ -61,7 +61,12 @@ pub(super) fn refresh(controller: &EditController, grid: &DataGrid, target: Opti
     let edits = !typing
         && matches!(
             kind,
-            Some(CellEditorKind::Inline { .. } | CellEditorKind::Toggle | CellEditorKind::Details(_))
+            Some(
+                CellEditorKind::Inline { .. }
+                    | CellEditorKind::Toggle
+                    | CellEditorKind::Choice
+                    | CellEditorKind::Details(_)
+            )
         );
     enable(grid, "edit", edits);
     enable(grid, "toggle", !typing && kind == Some(CellEditorKind::Toggle));

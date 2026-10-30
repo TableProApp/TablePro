@@ -5,6 +5,8 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 
+use indexmap::IndexMap;
+use indexmap::map::Slice;
 use tablepro_core::dml::BuildSqlError;
 use tablepro_core::edit::CellInput;
 use tablepro_core::meta::RowIdentity;
@@ -128,7 +130,7 @@ struct SetAside {
 
 #[derive(Debug, Default)]
 pub struct TabChangeTracker {
-    drafts: Vec<DraftRow>,
+    drafts: IndexMap<u64, DraftRow>,
     deletes: HashMap<RowKey, DeleteMark>,
     updates: HashMap<(RowKey, usize), CellEdit>,
     undo: VecDeque<UndoOp>,
@@ -198,8 +200,8 @@ impl TabChangeTracker {
     fn draft_in_flight(&self, draft_id: u64) -> bool {
         self.saving.as_ref().is_some_and(|save| {
             self.drafts
-                .iter()
-                .any(|draft| draft.draft_id == draft_id && save.snapshot.includes(draft.touched))
+                .get(&draft_id)
+                .is_some_and(|draft| save.snapshot.includes(draft.touched))
         })
     }
 
@@ -317,9 +319,7 @@ impl TabChangeTracker {
     // The draft's undo and redo entries go with it, so Ctrl+Z cannot
     // bring it back half-edited.
     fn drop_draft(&mut self, draft_id: u64) -> bool {
-        let before = self.drafts.len();
-        self.drafts.retain(|d| d.draft_id != draft_id);
-        if self.drafts.len() == before {
+        if self.drafts.shift_remove(&draft_id).is_none() {
             return false;
         }
         self.updates
@@ -348,7 +348,7 @@ impl TabChangeTracker {
     }
 
     fn draft_cell(&self, draft_id: u64, col: usize) -> Option<(CellInput, Touch)> {
-        let draft = self.drafts.iter().find(|d| d.draft_id == draft_id)?;
+        let draft = self.drafts.get(&draft_id)?;
         Some((draft.cells.get(col)?.clone(), draft.touched))
     }
 
@@ -390,7 +390,8 @@ impl TabChangeTracker {
 
     fn put_drafts(&mut self, drafts: Vec<DraftRow>) -> TrackerDelta {
         let draft_ids: Vec<u64> = drafts.iter().map(|draft| draft.draft_id).collect();
-        self.drafts.extend(drafts);
+        self.drafts
+            .extend(drafts.into_iter().map(|draft| (draft.draft_id, draft)));
         TrackerDelta {
             inserted_drafts: draft_ids.clone(),
             ..self.delta(draft_ids.into_iter().map(RowKey::Draft).collect())
@@ -399,7 +400,8 @@ impl TabChangeTracker {
 
     fn remove_drafts(&mut self, drafts: &[DraftRow]) -> TrackerDelta {
         let draft_ids: Vec<u64> = drafts.iter().map(|draft| draft.draft_id).collect();
-        self.drafts.retain(|d| !draft_ids.contains(&d.draft_id));
+        let removed: HashSet<u64> = draft_ids.iter().copied().collect();
+        self.drafts.retain(|draft_id, _| !removed.contains(draft_id));
         TrackerDelta {
             removed_drafts: draft_ids.clone(),
             ..self.delta(draft_ids.into_iter().map(RowKey::Draft).collect())
@@ -407,7 +409,7 @@ impl TabChangeTracker {
     }
 
     fn put_draft_cell(&mut self, draft_id: u64, col: usize, input: CellInput, touched: Touch) -> TrackerDelta {
-        let Some(draft) = self.drafts.iter_mut().find(|d| d.draft_id == draft_id) else {
+        let Some(draft) = self.drafts.get_mut(&draft_id) else {
             return self.delta(Vec::new());
         };
         let Some(cell) = draft.cells.get_mut(col) else {
@@ -487,10 +489,10 @@ impl TabChangeTracker {
             .map(|(row_key, _)| row_key)
             .chain(self.deletes.keys())
             .cloned()
-            .chain(self.drafts.iter().map(|draft| RowKey::Draft(draft.draft_id)))
+            .chain(self.drafts.keys().map(|draft_id| RowKey::Draft(*draft_id)))
             .filter(|row_key| seen.insert(row_key.clone()))
             .collect();
-        let removed_drafts = self.drafts.iter().map(|draft| draft.draft_id).collect();
+        let removed_drafts = self.drafts.keys().copied().collect();
         self.drafts.clear();
         self.deletes.clear();
         self.updates.clear();
@@ -570,8 +572,8 @@ impl TabChangeTracker {
         }
     }
 
-    pub fn drafts(&self) -> &[DraftRow] {
-        &self.drafts
+    pub fn drafts(&self) -> &Slice<u64, DraftRow> {
+        self.drafts.as_slice()
     }
 
     /// Mark the row a failed save points at. The row marked before, if
@@ -595,39 +597,29 @@ impl TabChangeTracker {
 
     /// A draft's values, with a cell left to the server as NULL.
     pub fn draft_values(&self, draft_id: u64) -> Option<Vec<Value>> {
-        self.drafts
-            .iter()
-            .find(|draft| draft.draft_id == draft_id)
-            .map(|draft| {
-                draft
-                    .cells
-                    .iter()
-                    .map(|input| input.value().cloned().unwrap_or(Value::Null))
-                    .collect()
-            })
+        self.drafts.get(&draft_id).map(|draft| {
+            draft
+                .cells
+                .iter()
+                .map(|input| input.value().cloned().unwrap_or(Value::Null))
+                .collect()
+        })
     }
 
     pub fn draft_inputs(&self, draft_id: u64) -> Option<Vec<CellInput>> {
-        self.drafts
-            .iter()
-            .find(|draft| draft.draft_id == draft_id)
-            .map(|draft| draft.cells.clone())
+        self.drafts.get(&draft_id).map(|draft| draft.cells.clone())
     }
 
     pub fn draft_input(&self, draft_id: u64, col: usize) -> Option<CellInput> {
         self.drafts
-            .iter()
-            .find(|draft| draft.draft_id == draft_id)
+            .get(&draft_id)
             .and_then(|draft| draft.cells.get(col))
             .cloned()
     }
 
     /// A draft's cells as its INSERT carries them.
     pub fn draft_cells(&self, draft_id: u64, columns: &[ColumnInfo]) -> Option<Vec<CellInput>> {
-        self.drafts
-            .iter()
-            .find(|draft| draft.draft_id == draft_id)
-            .map(|draft| insert_cells(columns, draft))
+        self.drafts.get(&draft_id).map(|draft| insert_cells(columns, draft))
     }
 
     /// What the user changed, as the change set a save is planned from.
@@ -642,7 +634,7 @@ impl TabChangeTracker {
     /// one, as does any column the server fills.
     pub fn change_set(&self, columns: &[ColumnInfo]) -> Result<TrackedChanges, BuildSqlError> {
         let mut rows: Vec<(Touch, RowChange, StatementSource)> = Vec::new();
-        for draft in &self.drafts {
+        for draft in self.drafts.values() {
             rows.push((
                 draft.touched,
                 RowChange::Insert {
@@ -750,11 +742,11 @@ impl TabChangeTracker {
             }
             rows.push(row_key);
         }
-        for mut draft in std::mem::take(&mut self.drafts) {
+        for (draft_id, mut draft) in std::mem::take(&mut self.drafts) {
             match layout.draft(&draft.cells) {
                 Ok(cells) => {
                     draft.cells = cells;
-                    self.drafts.push(draft);
+                    self.drafts.insert(draft_id, draft);
                 }
                 Err(misfit) => {
                     removed_drafts.push(draft.draft_id);
@@ -948,7 +940,7 @@ impl TabChangeTracker {
             !saved
         });
         self.set_aside.retain(|change| !snapshot.includes(change.touched));
-        self.drafts.retain(|draft| {
+        self.drafts.retain(|_, draft| {
             let saved = snapshot.includes(draft.touched);
             if saved {
                 rows.push(RowKey::Draft(draft.draft_id));
@@ -1685,6 +1677,27 @@ mod tests {
         assert_eq!(t.drafts()[0].draft_id, b);
         // The remaining draft is still undoable on its own.
         assert!(t.can_undo());
+    }
+
+    #[test]
+    fn the_largest_paste_reads_back_and_undoes_without_a_scan_per_draft() {
+        let mut t = TabChangeTracker::default();
+        let rows = (0..tablepro_core::import::MAX_PASTED_ROWS)
+            .map(|row| vec![CellInput::Value(Value::Int(row as i64))])
+            .collect();
+        let drafts = t.track_insert(rows).inserted_drafts;
+
+        let started = std::time::Instant::now();
+        let read = drafts
+            .iter()
+            .filter(|draft_id| t.draft_values(**draft_id).is_some())
+            .count();
+        assert!(t.undo().is_some());
+        let elapsed = started.elapsed();
+
+        assert_eq!(read, tablepro_core::import::MAX_PASTED_ROWS);
+        assert!(t.drafts().is_empty());
+        assert!(elapsed < std::time::Duration::from_secs(2), "took {elapsed:?}");
     }
 
     #[test]

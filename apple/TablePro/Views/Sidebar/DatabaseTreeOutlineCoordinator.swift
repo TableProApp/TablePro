@@ -300,7 +300,8 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
             schemaService: schemaService,
             temporaryTables: temporaryTables,
             sidebarState: sidebarState,
-            rootShape: rootShape
+            rootShape: rootShape,
+            searchText: searchText
         )
     }
 
