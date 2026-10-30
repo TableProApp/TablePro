@@ -232,8 +232,7 @@ mod tests {
             )
             .await
             .expect("a run");
-        let rows = rows.lock().unwrap_or_else(PoisonError::into_inner).clone();
-        rows
+        rows.lock().unwrap_or_else(PoisonError::into_inner).clone()
     }
 
     /// Every request names its database, so a `USE` lasts only because
