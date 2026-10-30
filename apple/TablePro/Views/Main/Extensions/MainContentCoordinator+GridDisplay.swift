@@ -83,12 +83,9 @@ extension MainContentCoordinator {
         return state
     }
 
-    /// Each entry holds a whole result's formatted text, budgeted at 64 MB by `RowDisplayCache`, so
-    /// the tabs the user is actually moving between keep theirs and the rest give it back. The
-    /// budget is the one inactive row data already uses, so the two do not disagree about how many
-    /// background tabs are worth keeping.
+    // An entry is a result's formatted text (up to 64 MB in `RowDisplayCache`), rebuilt on demand: the only per-tab memory given back. Rows stay.
     private func pruneDisplayStateCache() {
-        let budget = MemoryPressureAdvisor.budgetForInactiveTabs() + 1
+        let budget = GridDisplayCacheBudget.unmountedGrids() + 1
         guard displayStateCache.count > budget else { return }
         let ordered = displayStateCache.sorted { $0.value.lastUsed > $1.value.lastUsed }
         for entry in ordered.dropFirst(budget) {

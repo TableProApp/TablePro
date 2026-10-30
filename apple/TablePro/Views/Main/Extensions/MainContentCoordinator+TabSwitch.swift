@@ -9,7 +9,6 @@
 import Foundation
 import os
 import TableProEditorKit
-import TableProUtilities
 
 extension MainContentCoordinator {
     func handleTabChange(
@@ -83,16 +82,6 @@ extension MainContentCoordinator {
         }
         let saveMs = Int(Date().timeIntervalSince(saveStart) * 1_000)
 
-        // Defer to the next run-loop tick so the synchronous switch path
-        // stays cheap; the sort + budget calculation is non-trivial on
-        // connections with many open tabs.
-        if tabManager.tabs.count > 2 {
-            let activeIds: Set<UUID> = Set([oldTabId, newTabId].compactMap { $0 })
-            Task { @MainActor [weak self] in
-                self?.evictInactiveTabs(excluding: activeIds)
-            }
-        }
-
         let restoreStart = Date()
         if let newId = newTabId,
            let newIndex = tabManager.tabs.firstIndex(where: { $0.id == newId }) {
@@ -143,11 +132,11 @@ extension MainContentCoordinator {
             // the incoming grid its rows had changed and made it re-format the whole result. The
             // reload a switch does need is already forced by the freshly mounted grid's zero row
             // count, and a real content change still arrives through `configureForTable`. (#2424)
-            let needsReload = needsRowReload(newId)
+            let isStale = tabSessionRegistry.isStale(newId)
             lazyLoadCurrentTabIfNeeded()
             TabSwitchTracer.shared.selectionApplied(
                 tabId: newId,
-                rows: TabSwitchRows(loads: isLoadingRows(newId), needsReload: needsReload),
+                rows: TabSwitchRows(loads: isLoadingRows(newId), needsReload: isStale),
                 window: contentWindow,
                 isShowing: { [weak manager = tabManager] in manager?.isShowing(newId) ?? false }
             )
@@ -176,12 +165,8 @@ extension MainContentCoordinator {
         guard let tab = tabManager.tabs.first(where: { $0.id == tabId }) else { return .resident }
         return TabSwitchRows(
             loads: isLoadingRows(tabId) || canAutoLoadTableTab(tab),
-            needsReload: needsRowReload(tabId)
+            needsReload: tabSessionRegistry.isStale(tabId)
         )
-    }
-
-    private func needsRowReload(_ tabId: UUID) -> Bool {
-        tabSessionRegistry.isEvicted(tabId) || tabSessionRegistry.isStale(tabId)
     }
 
     // Only a traced load reports its end; a multi-statement run does not, and would hold the switch open.
@@ -214,91 +199,5 @@ extension MainContentCoordinator {
     var isSelectedTabExecuting: Bool {
         guard let tabId = tabManager.selectedTabId else { return false }
         return tabExecution.isExecuting(tabId)
-    }
-
-    /// Whether dropping this tab's rows is safe, which is exactly whether `canAutoLoadTableTab`
-    /// will bring them back. The two answers have to agree: a tab evicted without a route back to
-    /// its rows shows an empty grid until the user refreshes it by hand.
-    ///
-    /// Table tabs qualify because their rows follow from their generated query. Query tabs do not,
-    /// a pinned result shares the buffer it would lose, and a tab with an execution, a load task or
-    /// a page fetch in flight would have the result land on a buffer that moved out from under it.
-    func canEvictReloadableTableRows(_ tab: QueryTab) -> Bool {
-        guard tab.id != tabManager.selectedTabId,
-              tab.tabType == .table,
-              tab.execution.errorMessage == nil,
-              tab.content.query.contains(where: { !$0.isWhitespace }),
-              !tab.pendingChanges.hasChanges,
-              !tab.display.hasPinnedResults,
-              !tab.pagination.isLoading,
-              !tab.pagination.isLoadingMore,
-              !tabExecution.isBusy(tab.id),
-              tableLoadTasks[tab.id] == nil,
-              !tabSessionRegistry.isEvicted(tab.id),
-              let rows = tabSessionRegistry.existingTableRows(for: tab.id),
-              !rows.rows.isEmpty
-        else { return false }
-        return true
-    }
-
-    @discardableResult
-    func evictReloadableTableRows(for tabId: UUID) -> Bool {
-        guard let index = tabManager.tabs.firstIndex(where: { $0.id == tabId }),
-              canEvictReloadableTableRows(tabManager.tabs[index])
-        else { return false }
-
-        tabManager.mutate(at: index) { tab in
-            for resultSet in tab.display.resultSets where !resultSet.isPinned {
-                resultSet.tableRows.discardRowsKeepingMetadata()
-            }
-            tab.loadEpoch &+= 1
-        }
-        tabSessionRegistry.evict(for: tabId)
-        displayStateCache.removeValue(forKey: tabId)
-        return true
-    }
-
-    func evictInactiveTabs(excluding activeTabIds: Set<UUID>) {
-        let start = Date()
-        let candidates: [(tab: QueryTab, rows: TableRows)] = tabManager.tabs.compactMap { tab in
-            guard !activeTabIds.contains(tab.id),
-                  tab.execution.lastExecutedAt != nil,
-                  canEvictReloadableTableRows(tab),
-                  let rows = tabSessionRegistry.existingTableRows(for: tab.id)
-            else { return nil }
-            return (tab, rows)
-        }
-
-        let sorted = candidates.sorted {
-            let t0 = $0.tab.execution.lastExecutedAt ?? .distantFuture
-            let t1 = $1.tab.execution.lastExecutedAt ?? .distantFuture
-            if t0 != t1 { return t0 < t1 }
-            let size0 = MemoryPressureAdvisor.estimatedFootprint(
-                rowCount: $0.rows.rows.count,
-                columnCount: $0.rows.columns.count
-            )
-            let size1 = MemoryPressureAdvisor.estimatedFootprint(
-                rowCount: $1.rows.rows.count,
-                columnCount: $1.rows.columns.count
-            )
-            return size0 > size1
-        }
-
-        let maxInactiveLoaded = MemoryPressureAdvisor.budgetForInactiveTabs()
-        guard sorted.count > maxInactiveLoaded else {
-            Self.lifecycleLogger.debug(
-                "[switch] evictInactiveTabs no-op candidates=\(sorted.count) budget=\(maxInactiveLoaded) elapsedMs=\(Int(Date().timeIntervalSince(start) * 1_000))"
-            )
-            return
-        }
-        let toEvict = sorted.dropLast(maxInactiveLoaded)
-
-        var evicted = 0
-        for entry in toEvict {
-            if evictReloadableTableRows(for: entry.tab.id) { evicted += 1 }
-        }
-        Self.lifecycleLogger.debug(
-            "[switch] evictInactiveTabs evicted=\(evicted) attempted=\(toEvict.count) candidates=\(sorted.count) keptInactive=\(maxInactiveLoaded) elapsedMs=\(Int(Date().timeIntervalSince(start) * 1_000))"
-        )
     }
 }

@@ -107,20 +107,6 @@ struct MainContentCoordinatorDisplayStateTests {
         #expect(coordinator.displayState(for: tabManager.tabs[0]) !== before)
     }
 
-    @Test("Evicting a tab's rows drops the text formatted from them")
-    func evictionDropsTheState() {
-        let (coordinator, tabManager) = makeCoordinator()
-        let first = addTableTab(to: tabManager, tableName: "orders")
-        let second = addTableTab(to: tabManager, tableName: "customers")
-        seedRows(coordinator, for: first.id)
-        seedRows(coordinator, for: second.id)
-        _ = coordinator.displayState(for: tabManager.tabs[0])
-        #expect(coordinator.displayStateCache[first.id] != nil)
-
-        #expect(coordinator.evictReloadableTableRows(for: first.id))
-        #expect(coordinator.displayStateCache[first.id] == nil)
-    }
-
     @Test("Closed tabs take their formatted text with them")
     func closingATabPrunesTheState() {
         let (coordinator, tabManager) = makeCoordinator()

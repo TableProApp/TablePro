@@ -109,7 +109,6 @@ struct QueryTab: Identifiable, Equatable {
     var schemaVersion: Int
     var metadataVersion: Int
     var paginationVersion: Int
-    var loadEpoch: Int = 0
 
     var pendingRestoredSort: [PersistedSortColumn]?
     /// The source the saved sort was written with, held until the first load resolves the columns.
@@ -209,7 +208,6 @@ struct QueryTab: Identifiable, Equatable {
         self.schemaVersion = 0
         self.metadataVersion = 0
         self.paginationVersion = 0
-        self.loadEpoch = 0
         self.pendingRestoredSort = nil
         self.restoredSortSource = .unset
         self.restoredPage = nil
@@ -268,7 +266,6 @@ struct QueryTab: Identifiable, Equatable {
         self.schemaVersion = 0
         self.metadataVersion = 0
         self.paginationVersion = 0
-        self.loadEpoch = 0
         self.pendingRestoredSort = persisted.sortColumns
         /// A file written before `sortSource` existed carries no answer, so it decodes to the
         /// behaviour it was written under: saved columns were always the user's, and no saved
@@ -463,6 +460,5 @@ struct QueryTab: Identifiable, Equatable {
             && lhs.isPreview == rhs.isPreview
             && lhs.isPinned == rhs.isPinned
             && lhs.hasUserInteraction == rhs.hasUserInteraction
-            && lhs.loadEpoch == rhs.loadEpoch
     }
 }

@@ -29,9 +29,11 @@ extension MainContentCoordinator {
     /// two. They all read this now.
     var canEditActiveResult: Bool {
         guard let tab = tabManager.selectedTab else { return false }
+        // A claimed execution replaces these rows and clears whatever was staged on them meanwhile, as the data files grid does when busy.
         return tab.tableContext.isEditable
             && tab.tableContext.allowsRowEditing
             && !safeModeLevel.blocksAllWrites
             && activeResultEditRefusal == nil
+            && !tabExecution.isExecuting(tab.id)
     }
 }

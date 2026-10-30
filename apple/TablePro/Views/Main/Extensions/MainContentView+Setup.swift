@@ -68,7 +68,7 @@ extension MainContentView {
         if let session = DatabaseManager.shared.activeSessions[connection.id], session.isConnected {
             coordinator.lazyLoadCurrentTabIfNeeded()
         } else {
-            coordinator.pendingLoadTrigger = .userInitiated
+            coordinator.parkedTableLoad = ParkedTableLoad(tabId: selectedTab.id, trigger: .userInitiated)
         }
     }
 
