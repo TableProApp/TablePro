@@ -589,6 +589,43 @@ fn a_picked_day_keeps_a_timestamp_time() {
     assert_eq!(day_of("2024-02-2é"), None, "a cut inside a character");
 }
 
+#[test]
+fn a_picked_day_keeps_the_time_of_any_timestamp_the_commit_reads() {
+    let day = NaiveDate::from_ymd_opt(2024, 3, 1).expect("a day");
+    let plus_two = chrono::FixedOffset::east_opt(2 * 3600).expect("an offset");
+    let pick = |text: &str| with_day(text, day, Some(&TemporalZone::Naive), plus_two);
+
+    assert_eq!(
+        pick("12024-01-05 10:00:00"),
+        "2024-03-01 10:00:00",
+        "PostgreSQL writes a far year in full"
+    );
+    assert_eq!(
+        pick("2024-1-5 10:00"),
+        "2024-03-01 10:00",
+        "SQLite keeps the text as typed"
+    );
+    assert_eq!(pick(" 2024-01-05 10:00"), " 2024-03-01 10:00");
+    assert_eq!(
+        pick("0044-03-15 12:00:00 BC"),
+        "2024-03-01 12:00:00",
+        "an AD day kept the BC era"
+    );
+    assert_eq!(pick("10:00"), "2024-03-01 10:00");
+    assert_eq!(
+        with_day("2024-01-05 10:00", day, None, plus_two),
+        "2024-03-01 10:00",
+        "SQLite keeps a timestamp in a DATE column"
+    );
+    assert_eq!(day_of("2024-1-5 10:00"), NaiveDate::from_ymd_opt(2024, 1, 5));
+    assert_eq!(day_of(" 2024-01-05"), NaiveDate::from_ymd_opt(2024, 1, 5));
+    assert_eq!(
+        day_of("0044-03-15 12:00:00 BC"),
+        None,
+        "the calendar opened on an AD day"
+    );
+}
+
 /// A zone whose offset moves from `before` to `after` at `change`, in UTC.
 #[derive(Clone)]
 struct OneChange {

@@ -3,30 +3,38 @@ use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use gtk4::{self as gtk, glib};
 use tablepro_core::column::{ColumnKind, TemporalZone};
+use tablepro_core::edit::temporal_parts;
 
 use super::RowDetailPane;
 use super::value_editor::Commit;
 use crate::application::component_matches;
 
-/// The day a value's text starts with, when it starts with one the
-/// calendar can show.
+// GtkCalendar shows the years 1 to 9999 only, so it opens on today for any other.
 pub fn day_of(text: &str) -> Option<NaiveDate> {
-    let head = text.get(..10)?;
-    NaiveDate::parse_from_str(head, "%Y-%m-%d")
-        .ok()
-        .filter(|day| (1..=9999).contains(&day.year()))
+    temporal_parts(text).date.filter(|day| (1..=9999).contains(&day.year()))
 }
 
-/// The value's text with `day` picked: a date, or a timestamp in `zone`,
-/// which keeps the time it had. A new zoned timestamp starts the day at
-/// `offset`, as one without an offset is refused.
+// Only the day changes, and the era with it, since a picked day is AD. Text with no day takes one
+// before its clock, or becomes a new value; a new zoned timestamp starts the day at `offset`.
 pub fn with_day(text: &str, day: NaiveDate, zone: Option<&TemporalZone>, offset: FixedOffset) -> String {
     let date = day.format("%Y-%m-%d").to_string();
-    match (zone, day_of(text)) {
-        (None, _) => date,
-        (Some(_), Some(_)) => format!("{date}{}", text.get(10..).unwrap_or_default()),
-        (Some(TemporalZone::Offset), None) => format!("{date} 00:00:00{offset}"),
-        (Some(_), None) => format!("{date} 00:00:00"),
+    let parts = temporal_parts(text);
+    let mut text = text.to_owned();
+    if let Some(era) = parts.era {
+        text.replace_range(era, "");
+    }
+    match (parts.day, parts.clock, zone) {
+        (Some(old), _, _) => {
+            text.replace_range(old, &date);
+            text
+        }
+        (None, Some(clock), Some(_)) => {
+            text.insert_str(clock.start, &format!("{date} "));
+            text
+        }
+        (None, _, None) => date,
+        (None, None, Some(TemporalZone::Offset)) => format!("{date} 00:00:00{offset}"),
+        (None, None, Some(_)) => format!("{date} 00:00:00"),
     }
 }
 
