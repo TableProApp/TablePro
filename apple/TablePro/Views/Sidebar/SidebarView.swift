@@ -210,7 +210,8 @@ struct SidebarView: View {
                 showsLoadedCatalog = false
                 return
             }
-            CommittedTurn.after(in: coordinator?.contentWindow) { showsLoadedCatalog = true }
+            // A refresh can put the catalog back to loading before the frame, and a stale true skips the next hold.
+            CommittedTurn.after(in: coordinator?.contentWindow) { showsLoadedCatalog = isCatalogLoaded }
         }
         .onChange(of: viewModel.showOperationDialog) { isPresented in
             guard isPresented else { return }
