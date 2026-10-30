@@ -153,7 +153,11 @@ internal final class CompareSyncWindowController: NSWindowController,
     private func installToolbar(on window: NSWindow) {
         let toolbar = NSToolbar(identifier: "com.TablePro.CompareSyncToolbar")
         toolbar.delegate = self
-        toolbar.displayMode = .iconAndLabel
+        /// Icon only, the default every other TablePro window and the system apps ship. The source
+        /// and target items still read as words, since an item's title draws in this mode, and a
+        /// user who wants labels sets Icon and Text from Customize Toolbar, which is autosaved and
+        /// restored over this default.
+        toolbar.displayMode = .iconOnly
         toolbar.allowsUserCustomization = true
         toolbar.autosavesConfiguration = true
         window.toolbar = toolbar

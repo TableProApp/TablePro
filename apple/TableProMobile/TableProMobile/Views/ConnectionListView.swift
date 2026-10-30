@@ -677,7 +677,7 @@ struct ConnectionListView: View {
                 .disabled(!appState.connections.contains(where: \.participatesInSync))
             }
         } label: {
-            Label("More", systemImage: "ellipsis.circle")
+            Label("More", systemImage: ToolbarSymbols.more())
         }
     }
 

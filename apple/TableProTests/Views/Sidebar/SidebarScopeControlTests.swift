@@ -22,6 +22,19 @@ struct SidebarScopeControlTests {
         #expect(control.label(forSegment: 1) == String(localized: "Favorites"))
     }
 
+    @Test("macOS 27 draws it as small tabs, earlier releases as a regular control")
+    func tabsRoleOnMacOS27() {
+        let control = SidebarScopeControl()
+        #if SDK_MACOS_27
+        if #available(macOS 27.0, *) {
+            #expect(control.role == .tabs)
+            #expect(control.controlSize == .small)
+            return
+        }
+        #endif
+        #expect(control.controlSize == .regular)
+    }
+
     /// The toolbar version was measured announcing its SF Symbol names, "List" and "favorite". A
     /// worded segment publishes its own label, measured on macOS 27 as a radio group of two radio
     /// buttons under the control.

@@ -67,6 +67,8 @@ targets:
       # through a socket.
       - ../Plugins/MySQLDriverPlugin/MySQLLocalSocket.swift
       - ../Plugins/Shared/PluginQueryTimeout.swift
+      # The toolbar glyph rule both apps follow on and before the 26 releases.
+      - ../TablePro/Core/Services/Infrastructure/Toolbar/ToolbarSymbols.swift
       # The ClickHouse plugin driver runs whole behind PluginBackedDriver, so every file of the plugin is compiled in.
       - path: ../Plugins/ClickHouseDriverPlugin
         excludes:

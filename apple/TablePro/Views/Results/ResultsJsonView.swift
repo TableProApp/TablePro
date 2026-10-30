@@ -123,9 +123,10 @@ internal struct ResultsJsonView: View {
                 Text("Text").tag(JSONViewMode.text)
                 Text("Tree").tag(JSONViewMode.tree)
             }
-            .pickerStyle(.segmented)
+            .viewSwitcherStyle()
             .labelsHidden()
             .fixedSize()
+            .accessibilityIdentifier("results-json-mode-picker")
 
             Spacer()
 

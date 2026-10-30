@@ -146,7 +146,7 @@ struct ResultStatusBar: View {
 
         if presentation.modeSwitcherIsSegmented {
             picker
-                .pickerStyle(.segmented)
+                .viewSwitcherStyle()
                 .fixedSize()
         } else {
             picker
