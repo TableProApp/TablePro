@@ -82,6 +82,7 @@ pub struct ValueContent {
     pub calendar: bool,
     /// The column's labels to pick from.
     pub choice: bool,
+    pub clock: bool,
 }
 
 pub fn value_content(column: &GridColumn, row: &GridRowId, lock: Option<CellLock>, input: &CellInput) -> ValueContent {
@@ -116,6 +117,7 @@ pub fn value_content(column: &GridColumn, row: &GridRowId, lock: Option<CellLock
         // The menu holds no text, so a value too long or with a NUL for the
         // editor still opens it.
         choice: lock.is_none() && decodable && CellEditorKind::for_cell(column, Ok(())) == CellEditorKind::Choice,
+        clock: editable && super::clock::ClockField::of(kind).is_some(),
         message,
     }
 }
@@ -350,6 +352,7 @@ impl RowDetailPane {
             language: None,
             calendar: false,
             choice: false,
+            clock: false,
         };
         self.show_value("", &content);
         self.imp().value_view.set_editable(false);
@@ -385,6 +388,7 @@ impl RowDetailPane {
         self.show_message(content.message.as_deref(), false);
         imp.calendar_button.set_visible(content.calendar);
         imp.choice_button.set_visible(content.choice);
+        imp.clock_button.set_visible(content.clock);
         self.update_placeholder();
     }
 
