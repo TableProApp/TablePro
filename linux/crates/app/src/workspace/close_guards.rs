@@ -464,21 +464,21 @@ mod tests {
         let guards = CloseGuards::new();
         let window = window();
         let parent = window.clone().upcast::<gtk::Widget>();
-        assert!(!guards.may_tear_down(&workspace.handle));
+        assert!(!guards.may_tear_down(std::slice::from_ref(&workspace.handle)));
 
         let (kept, sink) = decision_sink();
-        guards.ask_tear_down(&parent, &workspace.handle, sink);
+        guards.ask_tear_down(&parent, std::slice::from_ref(&workspace.handle), sink);
         let first = answer_next(&window, "Save Changes?", "cancel", None);
         wait_until(WAIT, || kept.get().is_some()).expect("a decision");
         assert_eq!(kept.get(), Some(CloseDecision::Cancelled));
-        assert!(!guards.may_tear_down(&workspace.handle));
+        assert!(!guards.may_tear_down(std::slice::from_ref(&workspace.handle)));
 
         let (approved, sink) = decision_sink();
-        guards.ask_tear_down(&parent, &workspace.handle, sink);
+        guards.ask_tear_down(&parent, std::slice::from_ref(&workspace.handle), sink);
         answer_next(&window, "Save Changes?", "discard", Some(&first));
         wait_until(WAIT, || approved.get().is_some()).expect("a decision");
         assert_eq!(approved.get(), Some(CloseDecision::Approved));
-        assert!(guards.may_tear_down(&workspace.handle));
+        assert!(guards.may_tear_down(std::slice::from_ref(&workspace.handle)));
     }
 
     /// A switch asks once before it connects and again before the new
@@ -493,26 +493,26 @@ mod tests {
 
         guards.begin_teardown();
         let (approved, sink) = decision_sink();
-        guards.ask_tear_down(&parent, &workspace.handle, sink);
+        guards.ask_tear_down(&parent, std::slice::from_ref(&workspace.handle), sink);
         answer_next(&window, "Close With Open Transactions?", "close", None);
         let first = answer_next(&window, "Save Changes?", "discard", None);
         wait_until(WAIT, || approved.get().is_some()).expect("a decision");
-        assert!(guards.may_tear_down(&workspace.handle));
+        assert!(guards.may_tear_down(std::slice::from_ref(&workspace.handle)));
 
         edit_again(&workspace);
         assert!(
-            !guards.may_tear_down(&workspace.handle),
+            !guards.may_tear_down(std::slice::from_ref(&workspace.handle)),
             "an edit made while connecting went unasked"
         );
         let (again, sink) = decision_sink();
-        guards.ask_tear_down(&parent, &workspace.handle, sink);
+        guards.ask_tear_down(&parent, std::slice::from_ref(&workspace.handle), sink);
         answer_next(&window, "Save Changes?", "discard", Some(&first));
         wait_until(WAIT, || again.get().is_some()).expect("a decision");
         assert_eq!(again.get(), Some(CloseDecision::Approved));
 
         guards.begin_teardown();
         assert!(
-            !guards.may_tear_down(&workspace.handle),
+            !guards.may_tear_down(std::slice::from_ref(&workspace.handle)),
             "a new switch skipped the transaction"
         );
     }
