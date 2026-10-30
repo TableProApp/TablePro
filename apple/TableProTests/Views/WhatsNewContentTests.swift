@@ -84,39 +84,89 @@ struct WhatsNewContentTests {
         }
     }
 
-    @Test("With notes a new version shows the Welcome link and is recorded as seen")
-    func notesShowLinkForNewVersion() throws {
+    @Test("With notes a newer build shows the Welcome link and is recorded as seen")
+    func notesShowLinkForNewerBuild() throws {
         let suite = try EphemeralDefaults()
-        suite.defaults.set("0.81.0", forKey: PreferenceKeys.lastSeenAppVersion.name)
+        suite.defaults.set(810_099, forKey: PreferenceKeys.lastSeenAppBuild.name)
 
-        try withBundle(version: "0.82.0", notes: "# TablePro 0.82.0\n") { bundle in
+        try withBundle(version: "0.82.0", build: 820_099, notes: "# TablePro 0.82.0\n") { bundle in
             let showsLink = WhatsNewNotice(bundle: bundle, defaults: suite.defaults).recordLaunch()
 
             #expect(showsLink)
-            #expect(suite.defaults.string(forKey: PreferenceKeys.lastSeenAppVersion.name) == "0.82.0")
+            #expect(suite.defaults.integer(forKey: PreferenceKeys.lastSeenAppBuild.name) == 820_099)
         }
     }
 
-    @Test("A first launch records the version without the Welcome link")
+    @Test("A first launch records the build without the Welcome link")
     func firstLaunchHasNoLink() throws {
         let suite = try EphemeralDefaults()
 
-        try withBundle(version: "0.82.0", notes: "# TablePro 0.82.0\n") { bundle in
+        try withBundle(version: "0.82.0", build: 820_099, notes: "# TablePro 0.82.0\n") { bundle in
             let showsLink = WhatsNewNotice(bundle: bundle, defaults: suite.defaults).recordLaunch()
 
             #expect(!showsLink)
-            #expect(suite.defaults.string(forKey: PreferenceKeys.lastSeenAppVersion.name) == "0.82.0")
+            #expect(suite.defaults.integer(forKey: PreferenceKeys.lastSeenAppBuild.name) == 820_099)
         }
     }
 
-    private func withBundle(version: String, notes: String?, _ body: (Bundle) throws -> Void) throws {
+    @Test("An older build shows no link and leaves the newer build recorded")
+    func olderBuildIsQuiet() throws {
+        let suite = try EphemeralDefaults()
+        suite.defaults.set(830_099, forKey: PreferenceKeys.lastSeenAppBuild.name)
+        suite.defaults.set("0.83.0", forKey: PreferenceKeys.lastSeenAppVersion.name)
+
+        try withBundle(version: "0.82.0", build: 820_099, notes: "# TablePro 0.82.0\n") { bundle in
+            let showsLink = WhatsNewNotice(bundle: bundle, defaults: suite.defaults).recordLaunch()
+
+            #expect(!showsLink)
+            #expect(suite.defaults.integer(forKey: PreferenceKeys.lastSeenAppBuild.name) == 830_099)
+            #expect(suite.defaults.string(forKey: PreferenceKeys.lastSeenAppVersion.name) == "0.83.0")
+        }
+    }
+
+    @Test("The stable after its beta shows the link, and a relaunch does not")
+    func stableAfterBetaShowsLinkOnce() throws {
+        let suite = try EphemeralDefaults()
+        suite.defaults.set(830_002, forKey: PreferenceKeys.lastSeenAppBuild.name)
+
+        try withBundle(version: "0.83.0", build: 830_099, notes: "# TablePro 0.83.0\n") { bundle in
+            let notice = WhatsNewNotice(bundle: bundle, defaults: suite.defaults)
+
+            #expect(notice.recordLaunch())
+            #expect(!notice.recordLaunch())
+        }
+    }
+
+    @Test("The first build to record a build number shows the link after an older version")
+    func legacyVersionRecordCarriesOver() throws {
+        let suite = try EphemeralDefaults()
+        suite.defaults.set("0.81.0", forKey: PreferenceKeys.lastSeenAppVersion.name)
+
+        try withBundle(version: "0.82.0", build: 820_099, notes: "# TablePro 0.82.0\n") { bundle in
+            let showsLink = WhatsNewNotice(bundle: bundle, defaults: suite.defaults).recordLaunch()
+
+            #expect(showsLink)
+            #expect(suite.defaults.integer(forKey: PreferenceKeys.lastSeenAppBuild.name) == 820_099)
+        }
+    }
+
+    private func withBundle(
+        version: String,
+        build: Int = 1,
+        notes: String?,
+        _ body: (Bundle) throws -> Void
+    ) throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("WhatsNewContentTests-\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: root) }
         let bundleURL = root.appendingPathComponent("Probe.bundle", isDirectory: true)
         let resources = bundleURL.appendingPathComponent("Contents/Resources", isDirectory: true)
         try FileManager.default.createDirectory(at: resources, withIntermediateDirectories: true)
-        let info = ["CFBundleIdentifier": "com.TablePro.WhatsNewProbe", "CFBundleShortVersionString": version]
+        let info = [
+            "CFBundleIdentifier": "com.TablePro.WhatsNewProbe",
+            "CFBundleShortVersionString": version,
+            "CFBundleVersion": String(build),
+        ]
         let plist = try PropertyListSerialization.data(fromPropertyList: info, format: .xml, options: 0)
         try plist.write(to: bundleURL.appendingPathComponent("Contents/Info.plist"))
         if let notes {
