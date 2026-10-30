@@ -14,6 +14,8 @@ Build-Depends:
  libgtk-4-dev (>= 4.22),
  libgtksourceview-5-dev (>= 5.18),
  libkrb5-dev,
+ liblcms2-dev,
+ libseccomp-dev,
  libsqlite3-dev (>= 3.46),
  libxml2-utils,
  meson (>= 1.4),
@@ -23,6 +25,7 @@ Build-Depends:
  appstream <!nocheck>,
  ca-certificates <!nocheck>,
  dbus-daemon <!nocheck>,
+ glycin-loaders <!nocheck>,
  locales-all <!nocheck>,
  openssh-client <!nocheck>,
  xauth <!nocheck>,
@@ -41,6 +44,7 @@ Depends:
  ${shlibs:Depends},
 Recommends:
  ca-certificates,
+ glycin-loaders,
  gnome-keyring | kwallet6 | keepassxc,
 Suggests:
  krb5-user,

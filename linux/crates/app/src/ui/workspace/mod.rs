@@ -14,6 +14,7 @@ mod health_banner;
 mod imp;
 mod import;
 mod import_ledger;
+mod recent_tabs;
 mod references;
 mod saves;
 mod session_watches;
