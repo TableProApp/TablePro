@@ -375,7 +375,7 @@ mod tests {
                 database: "analytics".to_owned(),
             },
         );
-        let names = [&database, &other_database].map(|key| WorkspaceFileName::for_key(key));
+        let names = [&database, &other_database].map(WorkspaceFileName::for_key);
         for (key, name) in [&database, &other_database].into_iter().zip(&names) {
             let draft = DraftId::new();
             fixture
