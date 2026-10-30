@@ -1050,6 +1050,18 @@ fn replace_text(cell: &RefCell<String>, text: &str) -> bool {
 }
 
 impl WorkspaceModel {
+    /// The record keeps the tab's database, and the window follows it.
+    fn on_editor_tab_database_changed(&self, tab_id: Uuid) {
+        self.persist_workspace_state();
+        self.follow_editor_database(tab_id);
+    }
+
+    fn follow_catalog(&self, tab_id: Uuid, session: Option<Arc<Session>>) {
+        if let Some(WorkspaceTab::Editor(slot)) = self.workspace_tabs.borrow().get(&tab_id) {
+            slot.editor.follow_catalog(session);
+        }
+    }
+
     /// Ask the window to reach the session of the database an editor tab
     /// is in, and to hand it back for the tab's completion.
     fn follow_editor_database(&self, tab_id: Uuid) {
@@ -1291,11 +1303,7 @@ impl WorkspaceModel {
             WorkspaceInput::CloseActiveWorkspaceTab => self.close_active_workspace_tab(),
             WorkspaceInput::ShowAlert { title, body } => self.show_error_alert(&title, &body),
             WorkspaceInput::ShowToast(msg) => self.show_toast(&msg),
-            WorkspaceInput::FollowCatalog { tab_id, session } => {
-                if let Some(WorkspaceTab::Editor(slot)) = self.workspace_tabs.borrow().get(&tab_id) {
-                    slot.editor.follow_catalog(session);
-                }
-            }
+            WorkspaceInput::FollowCatalog { tab_id, session } => self.follow_catalog(tab_id, session),
             WorkspaceInput::TabDirtyChanged => self.refresh_unsaved(),
             WorkspaceInput::NewTableTab { schema } => self.on_new_table_tab(schema),
             WorkspaceInput::ShowDiagram { schema } => self.show_diagram(schema, Vec::new()),
@@ -1319,10 +1327,7 @@ impl WorkspaceModel {
             }
             WorkspaceInput::EditorTabContentChanged(id) => self.on_editor_tab_content_changed(id),
             WorkspaceInput::EditorTabFileChanged(id) => self.on_editor_tab_file_changed(id),
-            WorkspaceInput::EditorTabDatabaseChanged(id) => {
-                self.persist_workspace_state();
-                self.follow_editor_database(id);
-            }
+            WorkspaceInput::EditorTabDatabaseChanged(id) => self.on_editor_tab_database_changed(id),
             WorkspaceInput::WorkspaceLoaded(loaded) => self.on_workspace_loaded(loaded),
             WorkspaceInput::ResetWorkspaceLayout => self.on_reset_workspace_layout(),
             WorkspaceInput::SafeModeChanged => self.refresh_title(),
