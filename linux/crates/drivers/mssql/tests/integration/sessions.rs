@@ -31,12 +31,13 @@ async fn use_database_persists_across_runs() {
 async fn a_session_moves_to_a_database_by_its_name() {
     let fixture = start().await;
     let connection = connect(&fixture, false).await;
-    setup(
-        connection.as_ref(),
-        &["IF DB_ID(N'odd]name') IS NULL CREATE DATABASE [odd]]name]"],
+    let session = session(connection.as_ref()).await;
+    // CREATE DATABASE runs outside a transaction, as the editor runs it.
+    run_ok(
+        session.as_ref(),
+        "IF DB_ID(N'odd]name') IS NULL CREATE DATABASE [odd]]name]",
     )
     .await;
-    let session = session(connection.as_ref()).await;
     let options = || tablepro_core::CallOptions::new(None, CancellationToken::new());
 
     session.use_database("odd]name", options()).await.expect("a move");
