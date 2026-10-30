@@ -73,6 +73,8 @@ struct ConnectionSecretsTests {
             "com.TablePro.plugin.awsSecretAccessKey.",
             "com.TablePro.plugin.awsSessionToken.",
             "com.TablePro.plugin.gcpServiceAccountKey.",
+            "com.TablePro.plugin.mongoAWSSessionToken.",
+            "com.TablePro.sslkeypassphrase.",
             "com.TablePro.deviceiam."
         ])
         let id = UUID()

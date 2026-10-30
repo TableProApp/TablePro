@@ -72,6 +72,13 @@ nonisolated final class MongoDBPlugin: NSObject, TableProPlugin, DriverPlugin {
             section: .authentication
         ),
         ConnectionField(
+            id: "mongoAWSSessionToken",
+            label: "AWS Session Token",
+            fieldType: .secure,
+            section: .authentication,
+            visibleWhen: FieldVisibilityRule(fieldId: "mongoAuthMechanism", values: ["MONGODB-AWS"])
+        ),
+        ConnectionField(
             id: "mongoReplicaSet",
             label: "Replica Set",
             section: .advanced

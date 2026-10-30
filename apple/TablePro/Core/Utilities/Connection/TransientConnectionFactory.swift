@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProConnectionLibrary
 import TableProPluginKit
 import TableProSSHConfig
 
@@ -64,13 +65,23 @@ internal enum TransientConnectionFactory {
 
         connection.additionalFields.merge(parsed.additionalFields) { _, imported in imported }
 
-        // The same field mapping as Import from URL, so an opened link reads legacy UUIDs the way its sender set.
+        // The same field mapping as Import from URL, so an opened link reads legacy UUIDs the way its sender set and
+        // its secrets sit where the driver and the backup tools read them. The connection is never saved.
         for (key, value) in parsed.mongoQueryParams where !value.isEmpty {
-            switch key {
-            case "authMechanism", "replicaSet":
+            switch key.lowercased() {
+            case "authmechanism", "replicaset", "proxypassword":
                 continue
-            case "uuidRepresentation":
+            case "uuidrepresentation":
                 connection.additionalFields["mongoUuidRepresentation"] = value
+            case "tlscertificatekeyfile", "sslclientcertificatekeyfile":
+                connection.sslConfig.clientCertificatePath = value
+                connection.sslConfig.clientKeyPath = value
+            case "tlscertificatekeyfilepassword", "sslclientcertificatekeypassword":
+                connection.additionalFields["sslClientKeyPassphrase"] = value
+            case "authmechanismproperties":
+                let split = ConnectionSecretOptions.splitSessionToken(from: value)
+                connection.additionalFields["mongoParam_\(key)"] = split.remaining
+                connection.additionalFields[ConnectionSecretOptions.mongoSessionTokenFieldId] = split.sessionToken
             default:
                 connection.additionalFields["mongoParam_\(key)"] = value
             }

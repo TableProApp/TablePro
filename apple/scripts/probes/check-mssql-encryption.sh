@@ -451,6 +451,7 @@ enum Check {
             password: "",
             database: database,
             encryptionLevel: .require,
+            certificateVerification: .none,
             authMethod: .windows,
             kerberosCachePath: cachePath,
             kerberosServicePrincipal: servicePrincipal

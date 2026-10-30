@@ -93,6 +93,37 @@ struct DriverSSLConfigurationTests {
         #expect(mssqlEncryptionLevel(SSLConfiguration(mode: .require)) == .require)
     }
 
+    @Test("The SQL Server driver refuses a synced verify mode it cannot honour before dialing", arguments: [
+        SSLConfiguration.SSLMode.verifyCa, .verifyFull
+    ])
+    func mssqlDriverRefusesVerifyModes(mode: SSLConfiguration.SSLMode) async {
+        let driver = MSSQLDriver(
+            connection: DatabaseConnection(
+                type: .mssql,
+                host: "sql.example.com",
+                port: 1_433,
+                sslEnabled: true,
+                sslConfiguration: SSLConfiguration(mode: mode, caCertificatePath: "/Users/alice/corp-ca.pem")
+            ),
+            password: "secret"
+        )
+
+        #expect(driver.options.certificateVerification.needsAuthority)
+        await #expect {
+            try await driver.connect()
+        } throws: { error in
+            (error as? DatabaseError)?.message == MSSQLDriver.verifyModeUnavailableMessage
+        }
+    }
+
+    @Test("The SQL Server driver checks no certificate only where the mode asks for none")
+    func mssqlCertificateVerificationMapping() {
+        #expect(DriverSSLConfiguration(mode: .disable).mssqlCertificateVerification == .none)
+        #expect(DriverSSLConfiguration(mode: .require).mssqlCertificateVerification == .none)
+        #expect(DriverSSLConfiguration(mode: .verifyCa).mssqlCertificateVerification == .chain)
+        #expect(DriverSSLConfiguration(mode: .verifyFull).mssqlCertificateVerification == .chainAndHostname)
+    }
+
     private func mssqlEncryptionLevel(_ configuration: SSLConfiguration) -> MSSQLEncryptionLevel {
         MSSQLDriver(
             connection: DatabaseConnection(

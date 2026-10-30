@@ -10,6 +10,8 @@ nonisolated enum ConnectionSecretKind: CaseIterable, Sendable {
     case awsSecretAccessKey
     case awsSessionToken
     case gcpServiceAccountKey
+    case mongoAWSSessionToken
+    case sslKeyPassphrase
     case deviceIAM
 
     var prefix: String {
@@ -23,6 +25,8 @@ nonisolated enum ConnectionSecretKind: CaseIterable, Sendable {
         case .awsSecretAccessKey: "com.TablePro.plugin.awsSecretAccessKey."
         case .awsSessionToken: "com.TablePro.plugin.awsSessionToken."
         case .gcpServiceAccountKey: "com.TablePro.plugin.gcpServiceAccountKey."
+        case .mongoAWSSessionToken: "com.TablePro.plugin.mongoAWSSessionToken."
+        case .sslKeyPassphrase: "com.TablePro.sslkeypassphrase."
         case .deviceIAM: "com.TablePro.deviceiam."
         }
     }
@@ -31,7 +35,8 @@ nonisolated enum ConnectionSecretKind: CaseIterable, Sendable {
         switch self {
         case .password, .sshPassword, .keyPassphrase,
              .awsSecretAccessKey, .awsSessionToken, .gcpServiceAccountKey, .deviceIAM: true
-        case .sshPrivateKey, .jumpHostKeys, .totpSecret: false
+        // The Mac owns these two, so this device never deletes them.
+        case .sshPrivateKey, .jumpHostKeys, .totpSecret, .mongoAWSSessionToken, .sslKeyPassphrase: false
         }
     }
 

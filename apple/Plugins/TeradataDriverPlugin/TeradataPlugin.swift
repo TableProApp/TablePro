@@ -157,7 +157,10 @@ final class TeradataPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             database: config.database.isEmpty ? nil : config.database,
             logMech: logMech,
             transactionMode: transactionMode,
-            tls: try TeradataSSLMapping.tlsOptions(for: config.ssl),
+            tls: try TeradataSSLMapping.tlsOptions(
+                for: config.ssl,
+                tunneled: config.additionalFields["preTunnelHost"]?.isEmpty == false
+            ),
             connectTimeoutMilliseconds: TeradataConnectTimeout(
                 additionalFields: config.additionalFields
             ).milliseconds)

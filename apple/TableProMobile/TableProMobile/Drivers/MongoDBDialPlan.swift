@@ -49,6 +49,26 @@ nonisolated enum MongoDBDialPlan {
         return fields
     }
 
+    // The Mac keeps a connection string's session token and key passphrase in the Keychain, never in the record.
+    static let keychainFields: [(kind: ConnectionSecretKind, field: String)] = [
+        (.mongoAWSSessionToken, ConnectionSecretOptions.mongoSessionTokenFieldId),
+        (.sslKeyPassphrase, "sslClientKeyPassphrase"),
+    ]
+
+    static func addingKeychainSecrets(
+        to fields: [String: String],
+        of connection: DatabaseConnection,
+        in secureStore: any SecureStore
+    ) -> [String: String] {
+        var fields = fields
+        for (kind, field) in keychainFields {
+            guard let value = try? secureStore.retrieve(forKey: kind.account(for: connection.id)), !value.isEmpty
+            else { continue }
+            fields[field] = value
+        }
+        return fields
+    }
+
     // OpenSSL on iOS has no trust store, so a verify mode needs the user's CA. Behind a tunnel the dialed name is the
     // loopback, so Verify Identity keeps the chain check and drops only the name check.
     static func ssl(_ ssl: DriverSSLConfiguration, tunneled: Bool) throws -> DriverSSLConfiguration {

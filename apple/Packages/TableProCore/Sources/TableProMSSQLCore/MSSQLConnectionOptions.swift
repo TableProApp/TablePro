@@ -14,14 +14,11 @@ public struct MSSQLConnectionOptions: Sendable, Equatable {
     public var kerberosCachePath: String?
     public var kerberosServicePrincipal: String?
 
-    /// How far to check the server certificate. Set after init by the plugin from the
-    /// connection's SSL mode, so the existing initializer keeps its signature.
-    public var certificateVerification: MSSQLCertificateVerification = .none
+    // No default: a caller that forgets it would encrypt without checking who answers.
+    public var certificateVerification: MSSQLCertificateVerification
     public var caCertificatePath: String?
 
-    /// Microsoft Entra ID access token, sent in place of a user name and password. Set after
-    /// init for the same reason as `certificateVerification`. Only read when
-    /// `authMethod == .entra`.
+    // Sent in place of a user name and password, read only when `authMethod == .entra`.
     public var fedAuthToken: String?
 
     public static let defaultPort = 1_433
@@ -38,6 +35,7 @@ public struct MSSQLConnectionOptions: Sendable, Equatable {
         database: String,
         schema: String = MSSQLConnectionOptions.defaultSchema,
         encryptionLevel: MSSQLEncryptionLevel = MSSQLConnectionOptions.defaultEncryptionLevel,
+        certificateVerification: MSSQLCertificateVerification,
         applicationName: String = MSSQLConnectionOptions.defaultApplicationName,
         loginTimeoutSeconds: Int = MSSQLConnectionOptions.defaultLoginTimeoutSeconds,
         authMethod: MSSQLAuthMethod = .sqlServer,
@@ -60,6 +58,7 @@ public struct MSSQLConnectionOptions: Sendable, Equatable {
         self.database = database
         self.schema = schema
         self.encryptionLevel = encryptionLevel
+        self.certificateVerification = certificateVerification
         self.applicationName = applicationName
         self.loginTimeoutSeconds = loginTimeoutSeconds
     }
