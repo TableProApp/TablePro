@@ -93,8 +93,6 @@
             <property name="margin-start">8</property>
             <property name="margin-end">8</property>
             <child>
-              <!-- The database the tab works on, as the macOS editor bar
-                   names it. -->
               <object class="GtkBox" id="scope_box">
                 <property name="visible">false</property>
                 <property name="spacing">6</property>

@@ -25,6 +25,7 @@ pub struct FakeEditorSession {
     texts: Mutex<Vec<UserSql>>,
     state: Mutex<EditorSessionState>,
     transaction_state: Mutex<TransactionState>,
+    database: Mutex<Option<String>>,
     close_behaviour: CloseBehaviour,
     closes: AtomicUsize,
     closed: AtomicBool,
@@ -44,6 +45,7 @@ impl FakeEditorSession {
             texts: Mutex::new(Vec::new()),
             state: Mutex::new(EditorSessionState::Ready),
             transaction_state: Mutex::new(TransactionState::Idle),
+            database: Mutex::new(None),
             close_behaviour,
             closes: AtomicUsize::new(0),
             closed: AtomicBool::new(false),
@@ -73,6 +75,11 @@ impl FakeEditorSession {
 
     pub fn set_transaction_state(&self, state: TransactionState) {
         *lock(&self.transaction_state) = state;
+    }
+
+    /// Where the session says it is, as after a `USE`.
+    pub fn set_database(&self, database: Option<&str>) {
+        *lock(&self.database) = database.map(str::to_owned);
     }
 
     /// The connection goes while no run is on it, as when the server
@@ -186,6 +193,10 @@ impl EditorSession for FakeEditorSession {
 
     async fn transaction_state(&self, _options: CallOptions) -> Result<TransactionState, DriverError> {
         Ok(*lock(&self.transaction_state))
+    }
+
+    fn database(&self) -> Option<String> {
+        lock(&self.database).clone()
     }
 
     async fn close(&self) {

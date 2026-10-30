@@ -1,22 +1,26 @@
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
 use async_trait::async_trait;
 use sqlx::mysql::MySqlConnection;
 use sqlx::{AssertSqlSafe, Connection as _, Executor as _};
+use tablepro_core::sql_syntax::{SqlGrammar, may_change_database};
 use tablepro_core::{
     CallOptions, DriverError, EditorSession, EditorSessionId, EditorSessionOptions, EditorSessionState, LivenessPolicy,
-    LossPhase, ResultSink, RowLimit, RunEnd, RunOptions, RunSummary, TimeoutPhase, TransactionState, UserSql,
+    LossPhase, ResultSink, RowLimit, RunEnd, RunOptions, RunSummary, TimeoutPhase, TransactionState, UserSql, Value,
 };
 use tokio::sync::OwnedMutexGuard;
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 
 use crate::cancel::ControlLink;
+use crate::decode::decode_row;
 use crate::editor_run::{RunOutcome, run_script};
 use crate::errors::map_error;
 use crate::flavour::MySqlFlavour;
+use crate::mysql_timestamp_mode::MySqlTimestampMode;
+use crate::mysql_wire_format::MySqlWireFormat;
 use crate::physical::{MysqlEndpoint, SessionKind};
 use crate::session_statements::{SessionLimits, select_limit};
 use crate::transaction_probe::TransactionProbe;
@@ -47,6 +51,8 @@ struct Shared {
     flavour: MySqlFlavour,
     control: ControlLink,
     probe: TransactionProbe,
+    /// Where a `USE` left the session, once one ran.
+    database: Mutex<Option<String>>,
     running: AtomicBool,
     lost: AtomicBool,
     /// Cancelled when the session closes, so a running statement stops.
@@ -85,6 +91,7 @@ impl MysqlEditorSession {
                 flavour: physical.flavour,
                 control: ControlLink::new(endpoint),
                 probe: TransactionProbe::new(physical.flavour),
+                database: Mutex::new(None),
                 running: AtomicBool::new(false),
                 lost: AtomicBool::new(false),
                 closing: CancellationToken::new(),
@@ -126,6 +133,9 @@ impl Shared {
         let supervised = self.supervise(held, &sql, &options, sink.as_mut()).await;
         let transaction_state = match &supervised {
             Ok((_, true)) => {
+                if may_change_database(sql.as_str(), SqlGrammar::MySql) {
+                    self.follow_database(&mut held.connection).await;
+                }
                 let asking = self.probe.state(&mut held.connection);
                 tokio::time::timeout(self.liveness.cancel_grace, asking)
                     .await
@@ -152,6 +162,18 @@ impl Shared {
             end,
             transaction_state,
         })
+    }
+
+    async fn follow_database(&self, connection: &mut MySqlConnection) {
+        let asking = connection.fetch_one(sqlx::raw_sql("SELECT DATABASE()"));
+        let Ok(Ok(row)) = tokio::time::timeout(self.liveness.cancel_grace, asking).await else {
+            return;
+        };
+        let current = match decode_row(&row, MySqlWireFormat::Text, MySqlTimestampMode::SessionLocal).first() {
+            Some(Value::Text(name)) => Some(name.clone()),
+            _ => None,
+        };
+        *self.database.lock().unwrap_or_else(PoisonError::into_inner) = current;
     }
 
     /// Run the script, stopping it on a cancel, at the deadline, when
@@ -315,6 +337,14 @@ impl EditorSession for MysqlEditorSession {
         });
         drop(cancel_on_drop.disarm());
         outcome
+    }
+
+    fn database(&self) -> Option<String> {
+        self.shared
+            .database
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
     }
 
     async fn transaction_state(&self, options: CallOptions) -> Result<TransactionState, DriverError> {

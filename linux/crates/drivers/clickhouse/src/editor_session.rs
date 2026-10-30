@@ -76,6 +76,12 @@ impl EditorSession for ClickHouseEditorSession {
         self.id
     }
 
+    /// Every request names the database, which a `USE` in the session
+    /// does not override.
+    fn database(&self) -> Option<String> {
+        self.session.database().map(str::to_owned)
+    }
+
     fn state(&self) -> EditorSessionState {
         self.status.state()
     }

@@ -71,5 +71,12 @@ pub trait EditorSession: Send + Sync {
 
     async fn transaction_state(&self, options: CallOptions) -> Result<TransactionState, DriverError>;
 
+    /// The database an unqualified name resolves to now, as the server
+    /// last said. `None` where the driver does not follow it: the session
+    /// is still in the database it opened in.
+    fn database(&self) -> Option<String> {
+        None
+    }
+
     async fn close(&self);
 }

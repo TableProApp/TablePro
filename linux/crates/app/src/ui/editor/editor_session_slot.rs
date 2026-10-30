@@ -139,6 +139,11 @@ impl EditorSessionSlot {
         }
     }
 
+    /// Where the tab's session says it is, once it says.
+    pub fn database(&self) -> Option<String> {
+        lock(&self.state).open.as_ref().and_then(|open| open.editor.database())
+    }
+
     /// Where the transaction of `editor` stood after its last run.
     pub fn transaction(&self, editor: &Arc<dyn EditorSession>) -> Option<TransactionState> {
         let state = lock(&self.state);

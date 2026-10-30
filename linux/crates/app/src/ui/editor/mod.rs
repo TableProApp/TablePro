@@ -691,6 +691,7 @@ impl SqlEditor {
             self.emit_by_name::<()>("transaction-changed", &[&dirty]);
         }
         self.record_history(entry, dialect);
+        self.show_scope();
         self.emit_by_name::<()>("run-finished", &[&outcome]);
         self.emit_by_name::<()>("run-state-changed", &[&false]);
     }

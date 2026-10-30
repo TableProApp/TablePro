@@ -6,7 +6,8 @@ use tablepro_core::column::{
 };
 use tablepro_core::ddl::DdlDialect;
 use tablepro_core::dialect::{
-    BindError, BindTarget, DialectCapabilities, InsertConflict, KeysetDirection, LiteralError, Placeholder, SqlDialect,
+    BindError, BindTarget, DatabaseLayout, DialectCapabilities, InsertConflict, KeysetDirection, LiteralError,
+    Placeholder, SqlDialect,
 };
 use tablepro_core::export::value_to_text;
 use tablepro_core::meta::{EngineRowId, EngineRowIdPart};
@@ -41,6 +42,10 @@ impl PgDialect {
 }
 
 impl SqlDialect for PgDialect {
+    fn database_layout(&self) -> DatabaseLayout {
+        DatabaseLayout::WithSchemas
+    }
+
     fn capabilities(&self) -> DialectCapabilities {
         DialectCapabilities {
             exact_row_counts: true,
