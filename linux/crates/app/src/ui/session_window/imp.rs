@@ -65,7 +65,7 @@ pub struct SessionWindow {
     pub(super) restoring: RefCell<Vec<SessionKey>>,
     /// Another database opening beside its connection, and what waits for
     /// its session: each tab moved there while it opened.
-    pub(super) opening_databases: RefCell<HashMap<SessionKey, Vec<super::sibling_sessions::Waiter>>>,
+    pub(super) opening_databases: RefCell<HashMap<SessionKey, super::sibling_sessions::Opening>>,
     /// One close prompt at a time, for a tab, the window or a
     /// disconnect.
     pub(super) close_guards: OnceCell<Rc<CloseGuards>>,

@@ -61,6 +61,9 @@ impl ConnectionDeletion {
         if let Err(error) = self.workspaces.purge(&SessionKey::Saved(id)).await {
             report.purge_failures.push(PurgeFailure::Workspace(error));
         }
+        if let Err(error) = self.workspaces.purge_databases_of(id).await {
+            report.purge_failures.push(PurgeFailure::Workspace(error));
+        }
         let Some(history) = self.history.clone() else {
             let unavailable = || "the query history did not open".to_owned();
             report.purge_failures.push(PurgeFailure::SavedQueries(unavailable()));
@@ -355,6 +358,62 @@ mod tests {
             assert_eq!(self.history_count(id).await, 1);
             assert_eq!(self.saved_query_count(id).await, 1);
         }
+    }
+
+    /// Another database opened beside the connection keeps its tabs and
+    /// drafts under a name of its own, which goes with the connection.
+    #[tokio::test]
+    async fn the_tabs_of_its_other_databases_go_with_the_connection() {
+        let fixture = fixture().await;
+        let (database, other_database) = (
+            SessionKey::SavedIn {
+                id: fixture.id,
+                database: "analytics".to_owned(),
+            },
+            SessionKey::SavedIn {
+                id: fixture.other,
+                database: "analytics".to_owned(),
+            },
+        );
+        let names = [&database, &other_database].map(|key| WorkspaceFileName::for_key(key));
+        for (key, name) in [&database, &other_database].into_iter().zip(&names) {
+            let draft = DraftId::new();
+            fixture
+                .drafts
+                .write_blocking(&name.draft_scope(), draft, "SELECT 1")
+                .expect("a draft");
+            fixture
+                .workspaces
+                .schedule(
+                    key,
+                    WorkspaceRecord {
+                        active_tab: Some(0),
+                        tabs: vec![TabRecord::Editor {
+                            draft,
+                            file: None,
+                            database: None,
+                        }],
+                    },
+                )
+                .expect("scheduled");
+            fixture.workspaces.flush(key).await.expect("the saved tabs");
+        }
+        let workspaces_dir = fixture.paths.workspaces_dir();
+        let drafts_dir = |name: &WorkspaceFileName| fixture.drafts.root().join(name.draft_scope().as_str());
+
+        fixture
+            .deletion()
+            .run(fixture.id, DeletionOptions { delete_history: false })
+            .await
+            .expect("the delete");
+
+        assert!(!workspaces_dir.join(names[0].file_name()).exists(), "its tabs stayed");
+        assert!(!drafts_dir(&names[0]).exists(), "its drafts stayed");
+        assert!(
+            workspaces_dir.join(names[1].file_name()).exists(),
+            "another connection's went"
+        );
+        assert!(drafts_dir(&names[1]).exists());
     }
 
     #[tokio::test]

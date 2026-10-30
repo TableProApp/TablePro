@@ -20,7 +20,7 @@ impl WorkspaceFileName {
                 let digest = glib::compute_checksum_for_string(glib::ChecksumType::Sha256, database.as_str())
                     .map(|digest| digest.to_string())
                     .unwrap_or_default();
-                format!("{id}-database-{digest}")
+                format!("{}{digest}", Self::databases_prefix(*id))
             }
             SessionKey::File(uri) => {
                 // GLib returns no digest only for a checksum type it
@@ -32,6 +32,11 @@ impl WorkspaceFileName {
             }
         };
         Self { stem }
+    }
+
+    /// What the names of the connection `id`'s other databases start with.
+    pub fn databases_prefix(id: uuid::Uuid) -> String {
+        format!("{id}-database-")
     }
 
     pub fn file_name(&self) -> String {
