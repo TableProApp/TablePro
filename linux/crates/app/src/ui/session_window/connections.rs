@@ -1155,16 +1155,16 @@ mod tests {
         );
     }
 
-    /// A file whose entry takes a saved connection's name but another
-    /// host: the dialog shows the host and the suffixed name before
-    /// anything is written, and only Import writes it.
+    /// A file whose entry takes a saved connection's name but opens
+    /// another file: the dialog shows where it goes and the suffixed name
+    /// before anything is written, and only Import writes it.
     #[gtk4::test]
     fn an_import_shows_where_each_connection_goes_before_writing() {
         let test = TestWindow::picker("ImportPreview");
         wait_for_list(&test.window);
         let lookalike = SavedConnection {
             id: Uuid::new_v4(),
-            host: "db.elsewhere.example".to_owned(),
+            database: "/srv/elsewhere.sqlite3".to_owned(),
             ..test.saved.clone()
         };
         let entry = serde_json::to_string(&lookalike).expect("the entry");
@@ -1175,17 +1175,25 @@ mod tests {
             bytes,
         });
         let alert = wait_for_alert(&test.window);
-        let rows: Vec<adw::ActionRow> =
-            crate::test_support::descendants(&alert.extra_child().expect("the dialog's rows"))
+        let list = alert.extra_child().expect("the dialog's rows");
+        let mut rows: Vec<adw::ActionRow> = Vec::new();
+        wait_until(WAIT, || {
+            rows = crate::test_support::descendants(&list)
                 .into_iter()
                 .filter_map(|widget| widget.downcast::<adw::ActionRow>().ok())
+                .filter(|row| !row.title().is_empty())
                 .collect();
+            !rows.is_empty()
+        })
+        .expect("the rows");
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].title(), format!("{} (imported)", test.saved.name));
         assert!(
             rows[0]
                 .subtitle()
-                .is_some_and(|subtitle| subtitle.contains("db.elsewhere.example"))
+                .is_some_and(|subtitle| subtitle.contains("elsewhere.sqlite3")),
+            "{:?}",
+            rows[0].subtitle()
         );
         assert!(!listed(&test, lookalike.id), "the preview wrote the list");
 

@@ -1,4 +1,5 @@
 use gtk4 as gtk;
+use gtk4::{gio, glib};
 use libadwaita as adw;
 use libadwaita::prelude::*;
 use tablepro_core::{AiPolicy, DriverRegistry, ExternalAccess};
@@ -29,13 +30,17 @@ pub(crate) fn import_preview_dialog(preview: &ImportPreview, drivers: &DriverReg
             "Check where each one connects. A file you did not export yourself can point anywhere.",
         )),
     );
-    let list = gtk::ListBox::builder()
-        .selection_mode(gtk::SelectionMode::None)
+    let rows = gio::ListStore::new::<glib::BoxedAnyObject>();
+    for entry in preview.entries() {
+        rows.append(&glib::BoxedAnyObject::new(entry_text(entry, drivers)));
+    }
+    // A row is built only while it is on screen, so a file of thousands
+    // of connections opens the dialog as fast as one of three.
+    let list = gtk::ListView::builder()
+        .model(&gtk::NoSelection::new(Some(rows)))
+        .factory(&row_factory())
         .css_classes(["boxed-list"])
         .build();
-    for entry in preview.entries() {
-        list.append(&entry_row(entry, drivers));
-    }
     let scrolled = gtk::ScrolledWindow::builder()
         .hscrollbar_policy(gtk::PolicyType::Never)
         .propagate_natural_height(true)
@@ -51,34 +56,58 @@ pub(crate) fn import_preview_dialog(preview: &ImportPreview, drivers: &DriverReg
     dialog
 }
 
-fn entry_row(entry: &ImportEntry, drivers: &DriverRegistry) -> adw::ActionRow {
+/// What one row shows.
+struct EntryText {
+    title: String,
+    subtitle: String,
+}
+
+fn entry_text(entry: &ImportEntry, drivers: &DriverRegistry) -> EntryText {
     let saved = &entry.connection;
     let file_based = drivers
         .get(&saved.driver_id)
         .is_some_and(|driver| driver.capabilities().is_file_based());
-    let mut lines = vec![subtitle_for(saved, file_based, None)];
+    let change = match entry.change {
+        ImportChange::Added => crate::i18n::gettext("New"),
+        ImportChange::Updated => crate::i18n::gettext("Updated"),
+    };
+    let mut lines = vec![format!("{change} · {}", subtitle_for(saved, file_based, None))];
     // An updated entry keeps its own settings; only the list's labels
     // come from the file.
     if entry.change == ImportChange::Added {
         lines.extend(looser_settings(saved.external_access, saved.ai_policy));
     }
-    let row = adw::ActionRow::builder()
-        .title(&saved.name)
-        .subtitle(lines.join("\n"))
-        // A name and a host are the file's text, never markup.
-        .use_markup(false)
-        .build();
-    let change = match entry.change {
-        ImportChange::Added => crate::i18n::gettext("New"),
-        ImportChange::Updated => crate::i18n::gettext("Updated"),
-    };
-    let label = gtk::Label::builder()
-        .label(change)
-        .valign(gtk::Align::Center)
-        .css_classes(["dim-label"])
-        .build();
-    row.add_suffix(&label);
-    row
+    EntryText {
+        title: saved.name.clone(),
+        subtitle: lines.join("\n"),
+    }
+}
+
+fn row_factory() -> gtk::SignalListItemFactory {
+    let factory = gtk::SignalListItemFactory::new();
+    factory.connect_setup(|_, object| {
+        if let Some(item) = object.downcast_ref::<gtk::ListItem>() {
+            // A name and a host are the file's text, never markup.
+            let row = adw::ActionRow::builder().use_markup(false).build();
+            item.set_activatable(false);
+            item.set_child(Some(&row));
+        }
+    });
+    factory.connect_bind(|_, object| {
+        let Some(item) = object.downcast_ref::<gtk::ListItem>() else {
+            return;
+        };
+        let (Some(row), Some(text)) = (
+            item.child().and_downcast::<adw::ActionRow>(),
+            item.item().and_downcast::<glib::BoxedAnyObject>(),
+        ) else {
+            return;
+        };
+        let text = text.borrow::<EntryText>();
+        row.set_title(&text.title);
+        row.set_subtitle(&text.subtitle);
+    });
+    factory
 }
 
 /// What the file allows beyond what a new connection starts with.
