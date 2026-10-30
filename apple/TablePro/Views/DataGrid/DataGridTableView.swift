@@ -258,15 +258,21 @@ final class DataGridTableView: NSTableView {
 
     override func accessibilityChildren() -> [Any]? {
         guard paneKind == .main else { return [] }
-        DataGridAccessibility.markActive()
+        noteAccessibilityRead()
         return super.accessibilityChildren()
     }
 
     override func accessibilityCell(forColumn column: Int, row: Int) -> Any? {
         guard paneKind == .main else { return nil }
-        DataGridAccessibility.markActive()
+        noteAccessibilityRead()
         return view(atColumn: column, row: row, makeIfNecessary: false) as? DataGridAccessibilityCellView
             ?? super.accessibilityCell(forColumn: column, row: row)
+    }
+
+    // A read prepares every row it walks, off screen ones without a stand-in, and some reach the screen with no scroll.
+    private func noteAccessibilityRead() {
+        DataGridAccessibility.markActive()
+        controller?.scheduleAccessibilityRemount()
     }
 
     override func accessibilitySelectedCells() -> [Any]? {
