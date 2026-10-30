@@ -211,6 +211,17 @@ impl SqlEditor {
             }
         }
         self.set_scope(scope_text(Some(name), None));
+        self.emit_by_name::<()>("database-moved", &[&name.to_owned()]);
+    }
+
+    /// Completion reads `session`'s catalog: the session the window holds
+    /// for the tab's database, once it has opened (0030).
+    pub(crate) fn follow_catalog(&self, session: Option<Arc<Session>>) {
+        for provider in self.imp().completion_providers.borrow().iter() {
+            if let Some(catalog) = provider.downcast_ref::<super::completion::SqlCompletionProvider>() {
+                catalog.set_catalog_session(session.clone());
+            }
+        }
     }
 
     /// The database the editor bar moved the tab to, which a restore

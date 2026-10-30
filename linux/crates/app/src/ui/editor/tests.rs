@@ -2723,8 +2723,12 @@ fn picking_a_database_moves_the_tab_and_its_next_run() {
     let button = editor.imp().scope_button.get();
     crate::test_support::wait_until(Duration::from_secs(5), || button.is_visible()).expect("the database menu");
 
+    let moved = Rc::new(std::cell::RefCell::new(Vec::new()));
+    let heard = moved.clone();
+    editor.connect_database_moved(move |_, database| heard.borrow_mut().push(database));
     WidgetExt::activate_action(&editor, "tab.database", Some(&"analytics".to_variant())).expect("tab.database");
     assert_eq!(editor.imp().scope_button_label.label(), "analytics");
+    assert_eq!(*moved.borrow(), ["analytics"], "the window was not told");
 
     let harness = Harness {
         editor,

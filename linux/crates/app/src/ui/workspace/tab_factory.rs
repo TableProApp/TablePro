@@ -500,6 +500,10 @@ pub(super) fn connect_editor(
     editor.connect_transaction_changed(move |_, _| transaction.deliver(WorkspaceInput::EditorTransactionChanged));
     let toast = input.clone();
     editor.connect_toast(move |_, text| toast.deliver(WorkspaceInput::ShowToast(text)));
+    let moved = input.clone();
+    editor.connect_database_moved(move |_, database| {
+        moved.deliver(WorkspaceInput::EditorDatabaseMoved { tab_id, database });
+    });
     let close = input.clone();
     editor.connect_close_requested(move |_| close.deliver(WorkspaceInput::CloseWorkspaceTab(tab_id)));
     let assistant = input.clone();

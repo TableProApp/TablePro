@@ -467,6 +467,9 @@ impl SessionWindow {
             SessionWindowInput::Disconnect => self.on_disconnect_front(),
             SessionWindowInput::DisconnectSession(key) => self.on_disconnect(key),
             SessionWindowInput::ChooseDatabaseIn(key) => self.choose_database_in(key),
+            SessionWindowInput::FollowDatabase { key, tab_id, database } => {
+                self.follow_database(&key, tab_id, database);
+            }
             SessionWindowInput::SessionTeardownApproved(key) => self.on_session_teardown_approved(&key),
             SessionWindowInput::ShowSession(key) => self.show_session(&key),
             SessionWindowInput::NewQueryIn(key) => self.deliver_to(&key, WorkspaceInput::NewEditorTab),

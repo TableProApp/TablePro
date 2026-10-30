@@ -21,6 +21,9 @@ pub struct SqlCompletionProvider {
     pub deps: OnceCell<ProviderDeps>,
     /// The database the tab was moved to, where unqualified names resolve.
     pub home: std::cell::RefCell<Option<String>>,
+    /// The session of the tab's database, whose catalog completion reads
+    /// instead of the window's connection's.
+    pub catalog_session: std::cell::RefCell<Option<std::sync::Arc<tablepro_session::Session>>>,
 }
 
 #[glib::object_subclass]

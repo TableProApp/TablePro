@@ -72,6 +72,13 @@ pub(crate) enum SessionWindowInput {
     /// Open Database… on a connection's row: pick another of its server's
     /// databases to open beside it.
     ChooseDatabaseIn(SessionKey),
+    /// An editor tab of the session under `key` moved to `database`, or
+    /// back to the connection's own with "" (0030).
+    FollowDatabase {
+        key: SessionKey,
+        tab_id: uuid::Uuid,
+        database: String,
+    },
     /// The prompts approved closing the session under the key.
     SessionTeardownApproved(SessionKey),
     /// Bring the session under the key to the front.

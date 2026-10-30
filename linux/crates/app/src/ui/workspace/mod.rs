@@ -73,6 +73,7 @@ use crate::runtime::{DeliverInput, InputSender};
 use crate::services::change_tracker_registry::ChangeTrackerRegistry;
 use crate::services::session_context::SessionContext;
 use crate::services::structure_tracker_registry::StructureTrackerRegistry;
+use crate::ui::SessionWindowInput;
 use crate::workspace::{ApplicationInhibit, CloseBlocker, CloseGuards, WindowInhibitor, WorkspaceHandle};
 
 glib::wrapper! {
@@ -567,6 +568,18 @@ pub(crate) enum WorkspaceInput {
         body: String,
     },
     ShowToast(String),
+    /// An editor tab's bar moved it to `database`, or back to the
+    /// connection's own with "": the window follows it there (0030).
+    EditorDatabaseMoved {
+        tab_id: Uuid,
+        database: String,
+    },
+    /// Completion in the editor tab reads `session`'s catalog, the tab's
+    /// database's, or the connection's again with `None`.
+    FollowCatalog {
+        tab_id: Uuid,
+        session: Option<Arc<Session>>,
+    },
     /// A table or structure tab gained or lost unsaved changes.
     TabDirtyChanged,
     NewTableTab {
@@ -1039,6 +1052,21 @@ fn replace_text(cell: &RefCell<String>, text: &str) -> bool {
 }
 
 impl WorkspaceModel {
+    /// Ask the window to reach the session of the database an editor tab
+    /// moved to, and to hand it back for the tab's completion.
+    fn follow_editor_database(&self, tab_id: Uuid, database: String) {
+        let Some(shell) = self.shell.upgrade() else {
+            return;
+        };
+        if let Some(sender) = shell.imp().sender.get() {
+            sender.deliver(SessionWindowInput::FollowDatabase {
+                key: self.key.clone(),
+                tab_id,
+                database,
+            });
+        }
+    }
+
     /// The window this workspace is in, for dialogs to sit over.
     pub(super) fn window(&self) -> Option<adw::ApplicationWindow> {
         self.window.upgrade()
@@ -1242,6 +1270,12 @@ impl WorkspaceModel {
             WorkspaceInput::CloseActiveWorkspaceTab => self.close_active_workspace_tab(),
             WorkspaceInput::ShowAlert { title, body } => self.show_error_alert(&title, &body),
             WorkspaceInput::ShowToast(msg) => self.show_toast(&msg),
+            WorkspaceInput::EditorDatabaseMoved { tab_id, database } => self.follow_editor_database(tab_id, database),
+            WorkspaceInput::FollowCatalog { tab_id, session } => {
+                if let Some(WorkspaceTab::Editor(slot)) = self.workspace_tabs.borrow().get(&tab_id) {
+                    slot.editor.follow_catalog(session);
+                }
+            }
             WorkspaceInput::TabDirtyChanged => self.refresh_unsaved(),
             WorkspaceInput::NewTableTab { schema } => self.on_new_table_tab(schema),
             WorkspaceInput::ShowDiagram { schema } => self.show_diagram(schema, Vec::new()),

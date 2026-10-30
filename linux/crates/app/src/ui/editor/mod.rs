@@ -359,6 +359,14 @@ impl SqlEditor {
         )
     }
 
+    pub fn connect_database_moved<F: Fn(&Self, String) + 'static>(&self, f: F) -> glib::SignalHandlerId {
+        self.connect_closure(
+            "database-moved",
+            false,
+            glib::closure_local!(move |editor: &Self, database: String| f(editor, database)),
+        )
+    }
+
     pub fn connect_toast<F: Fn(&Self, String) + 'static>(&self, f: F) -> glib::SignalHandlerId {
         self.connect_closure(
             "toast",

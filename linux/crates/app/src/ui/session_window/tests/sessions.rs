@@ -676,3 +676,58 @@ fn another_database_opens_beside_the_connection_and_goes_with_it() {
     ));
     wait_until(WAIT, || test.window.held_session(&sibling).is_none()).expect("the database to go with it");
 }
+
+/// An editor tab moved to another database brings that database's session
+/// into the window for the tab to read its catalog; one moved back to the
+/// connection's own opens nothing (0030).
+#[gtk4::test]
+fn an_editor_tab_moved_to_a_database_opens_its_session() {
+    let test = TestWindow::with_script(
+        "FollowDatabase",
+        Script {
+            network: true,
+            ..Script::default()
+        },
+    );
+    let (vault, id) = (test.vault.clone(), test.saved.id);
+    crate::test_support::finish_on_main(WAIT, async move {
+        tablepro_core::credentials::SecretVault::store(
+            &*vault,
+            id,
+            tablepro_core::credentials::SecretKind::DatabasePassword,
+            &secrecy::SecretString::from("s3cret"),
+            "label",
+        )
+        .await
+    })
+    .expect("the store to end")
+    .expect("the password stored");
+    test.window
+        .send(SessionWindowInput::OpenSaved(Box::new(test.saved.clone())));
+    test.wait_for_page("workspace");
+    let connection = SessionKey::Saved(test.saved.id);
+    let before = test.connector.calls().len();
+
+    test.window.send(SessionWindowInput::FollowDatabase {
+        key: connection.clone(),
+        tab_id: uuid::Uuid::new_v4(),
+        database: String::new(),
+    });
+    drain_main_context();
+    assert_eq!(
+        test.connector.calls().len(),
+        before,
+        "the connection's own database opened again"
+    );
+
+    test.window.send(SessionWindowInput::FollowDatabase {
+        key: connection,
+        tab_id: uuid::Uuid::new_v4(),
+        database: "analytics".to_owned(),
+    });
+    let sibling = SessionKey::SavedIn {
+        id: test.saved.id,
+        database: "analytics".to_owned(),
+    };
+    wait_until(WAIT, || test.window.held_session(&sibling).is_some()).expect("the database's session");
+}

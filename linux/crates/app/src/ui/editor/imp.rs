@@ -142,6 +142,11 @@ impl ObjectImpl for SqlEditor {
                     .param_types([bool::static_type()])
                     .build(),
                 Signal::builder("file-changed").build(),
+                // The editor bar moved the tab to another database, named
+                // here, or back to the connection's own with "".
+                Signal::builder("database-moved")
+                    .param_types([String::static_type()])
+                    .build(),
                 // Vim's :q, which closes the tab through its close prompts.
                 Signal::builder("close-requested").build(),
                 Signal::builder("assistant-requested")
