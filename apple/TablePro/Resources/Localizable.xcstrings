@@ -649,6 +649,16 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "TablePro builds this request for its own grid, so it cannot be sent from outside the app. Send the statement it stands for instead." : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TablePro construit cette requête pour sa propre grille, elle ne peut donc pas être envoyée depuis l’extérieur de l’app. Envoyez plutôt l’instruction qu’elle représente."
+          }
+        }
+      }
+    },
     "TablePro signs RSA keys with rsa-sha2-256 or rsa-sha2-512, not with ssh-rsa, which uses SHA-1." : {
       "extractionState" : "manual",
       "generatesSymbol" : false

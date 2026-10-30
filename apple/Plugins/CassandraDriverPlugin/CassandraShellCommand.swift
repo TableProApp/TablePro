@@ -83,10 +83,10 @@ enum CassandraShellCommand: Equatable, Sendable {
             if character.isWhitespace {
                 index = statement.index(after: index)
             } else if starts(with: "--", at: index) || starts(with: "//", at: index) {
-                index = statement[index...].firstIndex(where: \.isNewline) ?? end
+                index = statement.unicodeScalars[index...].firstIndex { $0 == "\n" || $0 == "\r" } ?? end
             } else if starts(with: "/*", at: index) {
                 let body = statement.index(index, offsetBy: 2)
-                index = statement[body...].range(of: "*/")?.upperBound ?? end
+                index = statement[body...].range(of: "*/", options: .literal)?.upperBound ?? end
             } else if character == ";" {
                 words.append(statement[index...index])
                 index = statement.index(after: index)
