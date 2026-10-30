@@ -557,9 +557,11 @@ mod real_keys {
     fn header_of(header: &gtk::Widget, name: &str) -> gtk::Widget {
         std::iter::successors(header.first_child(), |title| title.next_sibling())
             .find(|title| {
-                descendants(title)
-                    .iter()
-                    .any(|widget| widget.downcast_ref::<gtk::Label>().is_some_and(|label| label.label() == name))
+                descendants(title).iter().any(|widget| {
+                    widget
+                        .downcast_ref::<gtk::Label>()
+                        .is_some_and(|label| label.label() == name)
+                })
             })
             .expect("the column's header")
     }
