@@ -17,7 +17,7 @@ internal extension LibPQPluginConnection {
     func learnTypeNames(for oids: [UInt32], conn: OpaquePointer) {
         preconditionOnQueue()
         guard let query = PostgreSQLCatalogTypeNames.lookupQuery(oids: oids) else { return }
-        let result: OpaquePointer? = query.withCString { PQexec(conn, $0) }
+        let result = pinnedCatalogSideQueryOnQueue(query, conn: conn)
         guard let result else { return }
         defer { PQclear(result) }
 
@@ -36,8 +36,7 @@ internal extension LibPQPluginConnection {
     func noteCommandTag(_ tag: String?, conn: OpaquePointer) {
         preconditionOnQueue()
         guard tag == Self.createTypeCommandTag else { return }
-        let query = PostgreSQLSchemaQueries.enumTypeOidQuery
-        let result: OpaquePointer? = query.withCString { PQexec(conn, $0) }
+        let result = pinnedCatalogSideQueryOnQueue(PostgreSQLSchemaQueries.enumTypeOidQuery, conn: conn)
         guard let result else { return }
         defer { PQclear(result) }
         guard PQresultStatus(result) == PGRES_TUPLES_OK else { return }

@@ -10,7 +10,7 @@ struct OracleDictionaryQualificationTests {
     /// tables lowercase aliases, so a name after one (`c.USER_GENERATED`, a column of `ALL_TAB_COLS`) is a column and
     /// names no dictionary object, while an uppercase owner in front of a view is still caught.
     private static let bareDictionary = try! NSRegularExpression(
-        pattern: #"(?<![a-z]\.)\b(ALL|DBA|USER)_[A-Z_]+\b|\bDUAL\b|V\$[A-Z_]+"#
+        pattern: #"(?<![a-z]\.)\b(ALL|DBA|USER)_[A-Z_]+\b|\bDUAL\b|V\$[A-Z_]+|\bPLAN_TABLE\b"#
     )
 
     /// Strips every `SYS.`-qualified reference, then fails if any dictionary token is left bare.
@@ -60,6 +60,25 @@ struct OracleDictionaryQualificationTests {
         for (label, sql) in everySchemaQuery {
             assertFullyQualified(sql, label)
         }
+    }
+
+    // A tab pins its schema with ALTER SESSION SET CURRENT_SCHEMA, and Actual Plan reads these before anything else.
+    @Test func testEveryActualPlanStatementIsOwnerQualified() {
+        assertFullyQualified(OracleExplainPlan.actualPlanProbe, "actualPlanProbe")
+        assertFullyQualified(OracleExplainPlan.lastCursorPlanQuery, "lastCursorPlanQuery")
+    }
+
+    // Estimated Plan is the default variant, and a bare PLAN_TABLE resolves to the tab's schema the same way.
+    @Test func testEveryEstimatedPlanStatementIsOwnerQualified() {
+        assertFullyQualified(OracleExplainPlan.planRowsQuery(statementId: "TP1"), "planRowsQuery")
+        assertFullyQualified(OracleExplainPlan.deleteStatement(statementId: "TP1"), "deleteStatement")
+    }
+
+    // Without INTO, EXPLAIN PLAN writes to whatever PLAN_TABLE resolves to from the current schema.
+    @Test func testExplainPlanNamesItsOutputTable() {
+        #expect(OracleDictionary.planTable == "SYS.PLAN_TABLE$")
+        #expect(OracleExplainPlan.explainStatement("SELECT 1 FROM t", statementId: "TP1")
+            .contains(" INTO SYS.PLAN_TABLE$ FOR "))
     }
 
     @Test func testThePerformanceViewUsesTheUnderscoreForm() {

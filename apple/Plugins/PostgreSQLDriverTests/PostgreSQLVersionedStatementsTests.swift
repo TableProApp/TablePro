@@ -92,7 +92,7 @@ struct PostgreSQLVersionedStatementsTests {
         let statement = PostgreSQLVersionedStatements.createSchema("sales", capabilities: Self.v91)
         #expect(statement.hasPrefix("DO $tablepro$ "))
         #expect(statement.hasSuffix(" $tablepro$"))
-        #expect(statement.contains("WHERE nspname = 'sales'"))
+        #expect(statement.contains("WHERE nspname OPERATOR(pg_catalog.=) 'sales'"))
         #expect(statement.contains("EXECUTE 'CREATE SCHEMA \"sales\"'"))
         #expect(!statement.contains("IF NOT EXISTS \""))
     }
@@ -100,7 +100,7 @@ struct PostgreSQLVersionedStatementsTests {
     @Test("A legacy schema name with quotes and backslashes stays inside its literals")
     func createSchemaLegacyEscapesName() {
         let statement = PostgreSQLVersionedStatements.createSchema(#"o'b\"x"#, capabilities: Self.v91)
-        #expect(statement.contains(#"nspname = E'o''b\\"x'"#))
+        #expect(statement.contains(#"nspname OPERATOR(pg_catalog.=) E'o''b\\"x'"#))
         #expect(statement.contains(#"EXECUTE E'CREATE SCHEMA "o''b\\""x"'"#))
     }
 

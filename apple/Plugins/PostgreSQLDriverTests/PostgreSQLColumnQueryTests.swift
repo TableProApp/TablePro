@@ -80,7 +80,13 @@ struct PostgreSQLColumnsQueryTests {
         let query = singleTable(schema: "s2", table: "orders")
         #expect(query.contains("a.attidentity"))
         #expect(query.contains("a.attgenerated"))
-        #expect(query.contains("c.generation_expression"))
+        #expect(query.contains("NULL::text AS generation_expression"))
+        #expect(!query.contains("c.generation_expression"))
+        let spelling = PostgreSQLSchemaQueries.columnSpellingQuery(
+            schema: "s2", table: "orders", capabilities: PostgreSQLCapabilities(serverVersion: 170_011)
+        )
+        #expect(spelling.contains("CASE WHEN a.attgenerated IN ('s', 'v') THEN pg_catalog.pg_get_expr(ad.adbin, ad.adrelid) END"))
+        #expect(spelling.contains("CASE WHEN NOT (a.attgenerated IN ('s', 'v')) THEN pg_catalog.pg_get_expr(ad.adbin, ad.adrelid) END"))
         #expect(query.contains("ON a.attrelid = rel.oid"))
         #expect(query.contains("AND a.attnum = c.ordinal_position"))
     }
@@ -100,8 +106,7 @@ struct PostgreSQLColumnsQueryTests {
     @Test("both the modern and the legacy query read the declared type and the domain name")
     func everyServerReadsTheDeclaredType() {
         for query in [singleTable(schema: "s2", table: "orders"), allTables(schema: "s2")] {
-            #expect(query.contains("pg_catalog.format_type(a.atttypid, a.atttypmod)"))
-            #expect(query.contains("AS declared_type"))
+            #expect(query.contains("NULL::text AS declared_type"))
             #expect(query.contains("c.domain_name AS domain_name"))
             #expect(query.contains("ON a.attrelid = rel.oid"))
             #expect(query.contains("AND a.attnum = c.ordinal_position"))
@@ -252,8 +257,12 @@ struct PostgreSQLMaterializedViewColumnsQueryTests {
     @Test("the declared type carries the modifier and the domain name comes from the type itself")
     func armReadsTheDeclaredType() {
         let rendered = query()
-        #expect(rendered.contains("pg_catalog.format_type(mva.atttypid, mva.atttypmod)"))
-        #expect(rendered.contains("AS declared_type"))
+        #expect(rendered.contains("NULL::text AS declared_type"))
+        let spelling = PostgreSQLSchemaQueries.columnSpellingQuery(
+            schema: "public", table: nil, capabilities: PostgreSQLCapabilities(serverVersion: 170_011)
+        )
+        #expect(spelling.contains("c.relkind IN ('r', 'v', 'f', 'p', 'm')"))
+        #expect(spelling.contains("pg_catalog.format_type(a.atttypid, a.atttypmod)"))
         #expect(rendered.contains("CASE WHEN mvt.typtype = 'd' THEN mvt.typname END AS domain_name"))
     }
 

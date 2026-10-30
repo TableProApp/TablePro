@@ -14,7 +14,7 @@ extension PostgreSQLPluginDriver {
             schema: resolvedSchema,
             capabilities: catalogCapabilities
         )
-        let result = try await execute(query: query)
+        let result = try await catalogRead(query)
         return result.rows.compactMap { row -> PluginRoutineInfo? in
             guard let name = row[safe: 1]?.asText else { return nil }
             let kind: PluginRoutineKind = row[safe: 6]?.asText == "p" ? .procedure : .function
@@ -43,7 +43,7 @@ extension PostgreSQLPluginDriver {
                 arguments: routine.argumentSignature
             )
         }
-        let result = try await execute(query: query)
+        let result = try await catalogRead(query)
         guard let ddl = result.rows.first?[safe: 0]?.asText, !ddl.isEmpty else {
             throw PluginObjectSourceError.notFound(routine.name)
         }
@@ -55,7 +55,7 @@ extension PostgreSQLPluginDriver {
     func fetchAllTriggers(schema: String?) async throws -> [PluginTriggerInfo] {
         let resolvedSchema = schema ?? currentSchema ?? "public"
         let query = PostgreSQLObjectQueries.triggerList(schema: resolvedSchema, table: nil)
-        let result = try await execute(query: query)
+        let result = try await catalogRead(query)
         return result.rows.compactMap { Self.trigger(from: $0, fallbackSchema: resolvedSchema) }
     }
 
@@ -63,7 +63,7 @@ extension PostgreSQLPluginDriver {
         if let definition = trigger.definition, !definition.isEmpty { return definition }
         let resolvedSchema = trigger.schema ?? currentSchema ?? "public"
         let query = PostgreSQLObjectQueries.triggerList(schema: resolvedSchema, table: trigger.table)
-        let result = try await execute(query: query)
+        let result = try await catalogRead(query)
         let match = result.rows
             .compactMap { Self.trigger(from: $0, fallbackSchema: resolvedSchema) }
             .first { $0.name == trigger.name }

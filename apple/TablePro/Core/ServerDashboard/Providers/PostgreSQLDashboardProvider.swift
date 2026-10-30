@@ -87,12 +87,12 @@ struct PostgreSQLDashboardProvider: ServerDashboardQueryProvider {
 
     func killSessionSQL(processId: String) -> String? {
         guard acceptsProcessId(processId), let pid = Int(processId) else { return nil }
-        return "SELECT pg_terminate_backend(\(pid))"
+        return "SELECT pg_catalog.pg_terminate_backend(\(pid))"
     }
 
     func cancelQuerySQL(processId: String) -> String? {
         guard acceptsProcessId(processId), let pid = Int(processId) else { return nil }
-        return "SELECT pg_cancel_backend(\(pid))"
+        return "SELECT pg_catalog.pg_cancel_backend(\(pid))"
     }
 
     func acceptsProcessId(_ processId: String) -> Bool {
@@ -130,10 +130,16 @@ private extension PostgreSQLDashboardProvider {
                 unit: "%",
                 icon: "bolt",
                 query: """
-                    SELECT CASE WHEN blks_hit + blks_read = 0 THEN '0'
-                                ELSE round(blks_hit::numeric / (blks_hit + blks_read) * 100, 1)::text
+                    SELECT CASE WHEN (blks_hit OPERATOR(pg_catalog.+) blks_read) OPERATOR(pg_catalog.=) 0 THEN '0'
+                                ELSE pg_catalog.round(
+                                    blks_hit::pg_catalog.numeric
+                                        OPERATOR(pg_catalog./) (blks_hit OPERATOR(pg_catalog.+) blks_read)::pg_catalog.numeric
+                                        OPERATOR(pg_catalog.*) 100.0,
+                                    1
+                                )::pg_catalog.text
                            END
-                    FROM pg_stat_database WHERE datname = current_database()
+                    FROM pg_catalog.pg_stat_database
+                    WHERE datname OPERATOR(pg_catalog.=) pg_catalog.current_database()
                     """
             ),
             MetricDefinition(
@@ -141,14 +147,18 @@ private extension PostgreSQLDashboardProvider {
                 label: String(localized: "Database Size"),
                 unit: "",
                 icon: "internaldrive",
-                query: "SELECT pg_size_pretty(pg_database_size(current_database()))"
+                query: "SELECT pg_catalog.pg_size_pretty(pg_catalog.pg_database_size(pg_catalog.current_database()))"
             ),
             MetricDefinition(
                 id: "uptime",
                 label: String(localized: "Uptime"),
                 unit: "",
                 icon: "clock",
-                query: "SELECT date_trunc('second', now() - pg_postmaster_start_time())::text"
+                query: """
+                    SELECT pg_catalog.date_trunc(
+                        'second', pg_catalog.now() OPERATOR(pg_catalog.-) pg_catalog.pg_postmaster_start_time()
+                    )::pg_catalog.text
+                    """
             ),
             MetricDefinition(
                 id: "active_queries",
