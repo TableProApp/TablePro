@@ -26,6 +26,10 @@ use crate::ui::workspace::WorkspaceInput;
 /// What waits for a database's session while it opens.
 pub(super) type Waiter = Box<dyn FnOnce(&SessionWindow, Arc<Session>)>;
 
+/// A database opening beside its connection: the stop for its open, and
+/// what waits for it.
+pub(super) type Opening = (CancellationToken, Vec<Waiter>);
+
 /// The response of the chooser that opens the database picked.
 const OPEN: &str = "open";
 
@@ -65,7 +69,7 @@ impl SessionWindow {
             then(self, session);
             return;
         }
-        if let Some(waiting) = self.imp().opening_databases.borrow_mut().get_mut(&key) {
+        if let Some((_, waiting)) = self.imp().opening_databases.borrow_mut().get_mut(&key) {
             waiting.push(Box::new(then));
             return;
         }
@@ -78,25 +82,30 @@ impl SessionWindow {
         let Some(claim) = self.claim(key.clone()) else {
             return;
         };
+        let cancel = CancellationToken::new();
         self.imp()
             .opening_databases
             .borrow_mut()
-            .insert(key.clone(), vec![Box::new(then)]);
+            .insert(key.clone(), (cancel.clone(), vec![Box::new(then)]));
         let opening = {
-            let (database, origin) = (database.clone(), origin.clone());
+            let (database, origin, cancel) = (database.clone(), origin.clone(), cancel.clone());
             state
                 .services
                 .tasks
-                .spawn_task(async move { origin.open_in_database(&database, CancellationToken::new()).await })
+                .spawn_task(async move { origin.open_in_database(&database, cancel).await })
         };
         let window = self.downgrade();
         glib::spawn_future_local(async move {
             let opened = opening.await;
             // A database goes with the connection it opened from, which may
             // have gone, or been opened again, while it opened.
+            // One stopped with its connection was taken off the list then,
+            // and one under the same name since is another's.
             let waiting = window
                 .upgrade()
+                .filter(|_| !cancel.is_cancelled())
                 .and_then(|window| window.imp().opening_databases.borrow_mut().remove(&key))
+                .map(|(_, waiting)| waiting)
                 .unwrap_or_default();
             let window = window.upgrade().filter(|window| {
                 window

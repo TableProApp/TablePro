@@ -33,6 +33,10 @@ pub(crate) struct ConnectionLabel {
 }
 
 impl ConnectionLabel {
+    pub(crate) fn key(&self) -> &SessionKey {
+        &self.key
+    }
+
     pub(crate) fn new(key: SessionKey, saved: Rc<SavedConnectionList>, session: ActiveSession) -> Self {
         Self {
             key,

@@ -1078,6 +1078,25 @@ impl WorkspaceModel {
         }
     }
 
+    /// Ask the window to read the catalog of this connection's database
+    /// `database` again, where a tab's statement changed it.
+    fn refresh_database(&self, database: String) {
+        let id = match &self.key {
+            SessionKey::Saved(id) | SessionKey::SavedIn { id, .. } => *id,
+            SessionKey::File(_) => return,
+        };
+        let Some(shell) = self.shell.upgrade() else {
+            return;
+        };
+        if let Some(sender) = shell.imp().sender.get() {
+            // The connection's own database has no row of its own beside it.
+            if matches!(self.key, SessionKey::SavedIn { .. }) {
+                sender.deliver(SessionWindowInput::RefreshIn(SessionKey::Saved(id)));
+            }
+            sender.deliver(SessionWindowInput::RefreshIn(SessionKey::SavedIn { id, database }));
+        }
+    }
+
     /// The window this workspace is in, for dialogs to sit over.
     pub(super) fn window(&self) -> Option<adw::ApplicationWindow> {
         self.window.upgrade()
