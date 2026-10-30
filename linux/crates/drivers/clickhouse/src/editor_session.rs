@@ -1,10 +1,10 @@
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
 use async_trait::async_trait;
 use tablepro_core::{
     CallOptions, DriverError, EditorSession, EditorSessionId, EditorSessionOptions, EditorSessionState, LossPhase,
-    ResultSink, RunOptions, RunSummary, TimeoutPhase, TransactionState, UserSql,
+    ResultSink, RunEnd, RunOptions, RunSummary, TimeoutPhase, TransactionState, UserSql,
 };
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
@@ -24,7 +24,9 @@ use crate::session_status::SessionStatus;
 /// takes no scripts.
 pub(crate) struct ClickHouseEditorSession {
     id: EditorSessionId,
-    session: clickhouse::Client,
+    /// Every request names its database, which overrides a `USE` the
+    /// session ran, so the tab's database lives in the client.
+    session: Arc<Mutex<clickhouse::Client>>,
     control: clickhouse::Client,
     statement_timeout: Option<Duration>,
     grace: Duration,
@@ -34,6 +36,10 @@ pub(crate) struct ClickHouseEditorSession {
 }
 
 impl ClickHouseEditorSession {
+    fn client(&self) -> clickhouse::Client {
+        self.session.lock().unwrap_or_else(PoisonError::into_inner).clone()
+    }
+
     /// Open the session with one trivial question, so a session the
     /// server will not create fails here rather than on the first run.
     pub(crate) async fn open(
@@ -59,7 +65,7 @@ impl ClickHouseEditorSession {
             id: EditorSessionId::new(),
             // Without the check, a run on a session the server let expire
             // quietly starts a new, empty one under the same id.
-            session: session.with_setting("session_check", "1"),
+            session: Arc::new(Mutex::new(session.with_setting("session_check", "1"))),
             control: endpoint.control().clone(),
             statement_timeout: options.statement_timeout,
             grace: liveness.cancel_grace,
@@ -76,10 +82,26 @@ impl EditorSession for ClickHouseEditorSession {
         self.id
     }
 
-    /// Every request names the database, which a `USE` in the session
-    /// does not override.
     fn database(&self) -> Option<String> {
-        self.session.database().map(str::to_owned)
+        self.client().database().map(str::to_owned)
+    }
+
+    /// The next request names `database`, once a request there answers.
+    async fn use_database(&self, database: &str, options: CallOptions) -> Result<(), DriverError> {
+        let moved = self.client().with_database(database);
+        let asking = drain(moved.query_raw("SELECT 1"));
+        let answered = tokio::select! {
+            biased;
+            () = options.cancel().cancelled() => return Err(DriverError::Cancelled),
+            () = until(options.deadline()) => return Err(DriverError::Timeout {
+                phase: TimeoutPhase::Statement,
+                server_cancelled: false,
+            }),
+            answered = asking => answered,
+        };
+        answered?;
+        *self.session.lock().unwrap_or_else(PoisonError::into_inner) = moved;
+        Ok(())
     }
 
     fn state(&self) -> EditorSessionState {
@@ -97,17 +119,27 @@ impl EditorSession for ClickHouseEditorSession {
     ) -> Result<RunSummary, DriverError> {
         self.status.begin()?;
         let guard = options.cancel.clone().drop_guard();
+        let used =
+            tablepro_core::sql_syntax::used_database(sql.as_str(), tablepro_core::sql_syntax::SqlGrammar::ClickHouse);
         let run = EditorRun {
-            session: self.session.clone(),
+            session: self.client(),
             control: self.control.clone(),
             statement_timeout: self.statement_timeout,
             grace: self.grace,
             shutdown: self.shutdown.clone(),
             lingering: self.lingering.clone(),
         };
-        let status = self.status.clone();
+        let (status, client) = (self.status.clone(), self.session.clone());
         let running = tokio::spawn(async move {
             let outcome = run.run(sql, options, sink).await;
+            // The server took the `USE`; the requests after it name that
+            // database, as the session would have.
+            if let (Ok(summary), Some(database)) = (&outcome, used)
+                && summary.end == RunEnd::Completed
+            {
+                let mut client = client.lock().unwrap_or_else(PoisonError::into_inner);
+                *client = client.clone().with_database(database);
+            }
             match &outcome {
                 // The server still held the session for a stopped query:
                 // the session itself is fine.
@@ -143,6 +175,13 @@ impl EditorSession for ClickHouseEditorSession {
     }
 }
 
+async fn until(deadline: Option<tokio::time::Instant>) {
+    match deadline {
+        Some(at) => tokio::time::sleep_until(at).await,
+        None => std::future::pending().await,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use async_trait::async_trait;
@@ -169,6 +208,64 @@ mod tests {
                 Box::new(Discard),
             )
             .await
+    }
+
+    struct Collect(Arc<Mutex<Vec<Vec<tablepro_core::Value>>>>);
+
+    #[async_trait]
+    impl ResultSink for Collect {
+        async fn accept(&mut self, event: ResultEvent) -> SinkFlow {
+            if let ResultEvent::Rows(rows) = event {
+                self.0.lock().unwrap_or_else(PoisonError::into_inner).extend(rows);
+            }
+            SinkFlow::Continue
+        }
+    }
+
+    async fn current_database(session: &ClickHouseEditorSession) -> Vec<Vec<tablepro_core::Value>> {
+        let rows = Arc::new(Mutex::new(Vec::new()));
+        session
+            .run(
+                UserSql::new("SELECT currentDatabase()"),
+                RunOptions::new(CancellationToken::new()),
+                Box::new(Collect(rows.clone())),
+            )
+            .await
+            .expect("a run");
+        let rows = rows.lock().unwrap_or_else(PoisonError::into_inner).clone();
+        rows
+    }
+
+    /// Every request names its database, so a `USE` lasts only because
+    /// the session's next requests name the database it chose.
+    #[tokio::test]
+    #[ignore = "requires docker"]
+    async fn a_session_runs_in_the_database_it_moved_to() {
+        let fixture = ClickHouseFixture::start().await.expect("a ClickHouse container");
+        let endpoint = ClickHouseEndpoint::for_fixture(&fixture, test_liveness());
+        let session =
+            ClickHouseEditorSession::open(&endpoint, EditorSessionOptions::default(), CancellationToken::new())
+                .await
+                .expect("an editor session");
+        let text = |name: &str| vec![vec![tablepro_core::Value::Text(name.to_owned())]];
+
+        session
+            .use_database("system", CallOptions::new(None, CancellationToken::new()))
+            .await
+            .expect("a move to system");
+        assert_eq!(current_database(&session).await, text("system"));
+        assert_eq!(session.database().as_deref(), Some("system"));
+
+        let used = run(&session, "USE default").await;
+        assert_eq!(used.map(|summary| summary.end), Ok(RunEnd::Completed));
+        assert_eq!(current_database(&session).await, text("default"));
+        assert_eq!(session.database().as_deref(), Some("default"));
+
+        let refused = session
+            .use_database("no_such_database", CallOptions::new(None, CancellationToken::new()))
+            .await;
+        assert!(refused.is_err(), "{refused:?}");
+        assert_eq!(session.database().as_deref(), Some("default"), "a refused move moved");
     }
 
     #[tokio::test]

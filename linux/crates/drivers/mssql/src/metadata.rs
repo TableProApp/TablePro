@@ -24,13 +24,13 @@ const SCHEMAS_SQL: &str = "SELECT s.name, \
              THEN 1 ELSE 0 END AS int) \
     FROM sys.schemas s ORDER BY s.name";
 
-/// The databases the login may open, the connection's own the default
-/// and the four the server keeps for itself (`database_id` 1 to 4) as
-/// system ones.
+/// The online databases the login may open, the connection's own the
+/// default and the four the server keeps for itself (`database_id` 1 to
+/// 4) as system ones.
 const DATABASES_SQL: &str = "SELECT d.name, \
         CAST(CASE WHEN d.name = DB_NAME() THEN 1 ELSE 0 END AS int), \
         CAST(CASE WHEN d.database_id <= 4 THEN 1 ELSE 0 END AS int) \
-    FROM sys.databases d WHERE HAS_DBACCESS(d.name) = 1 ORDER BY d.name";
+    FROM sys.databases d WHERE d.state = 0 AND HAS_DBACCESS(d.name) = 1 ORDER BY d.name";
 
 const OBJECTS_SQL: &str = "SELECT SCHEMA_NAME(o.schema_id), o.name, RTRIM(o.type) \
     FROM sys.objects o \

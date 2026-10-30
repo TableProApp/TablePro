@@ -41,6 +41,10 @@ impl MssqlDialect {
     }
 }
 
+pub(crate) fn quote(name: &str) -> String {
+    format!("[{}]", name.replace(']', "]]"))
+}
+
 impl SqlDialect for MssqlDialect {
     fn database_layout(&self) -> DatabaseLayout {
         DatabaseLayout::WithSchemas
@@ -60,7 +64,7 @@ impl SqlDialect for MssqlDialect {
     }
 
     fn quote_identifier(&self, name: &str) -> String {
-        format!("[{}]", name.replace(']', "]]"))
+        quote(name)
     }
 
     fn placeholder(&self, ordinal: usize, value: Value, target: BindTarget<'_>) -> Result<Placeholder, BindError> {

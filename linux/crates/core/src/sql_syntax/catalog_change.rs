@@ -39,6 +39,22 @@ pub fn may_change_database(text: &str, grammar: SqlGrammar) -> bool {
         .any(|token| token.is_word("USE"))
 }
 
+/// The database the last `USE <name>` in `text` names, for an engine
+/// whose client, not its server, keeps the database a request runs in. A
+/// name that would need unescaping is left out.
+pub fn used_database(text: &str, grammar: SqlGrammar) -> Option<String> {
+    lex_statements(text, grammar)
+        .statements
+        .iter()
+        .rev()
+        .find_map(|statement| match statement.as_slice() {
+            [first, name] if first.is_word("USE") => name.name(),
+            _ => None,
+        })
+        .filter(|name| !name.is_empty() && !name.contains(['`', '"', '\\']))
+        .map(str::to_owned)
+}
+
 fn plan_changes(text: &str, plan: &ScriptPlan) -> bool {
     let is = |word: &str, set: &[&str]| set.iter().any(|verb| word.eq_ignore_ascii_case(verb));
     plan.statements().iter().any(|statement| {
@@ -59,6 +75,16 @@ fn plan_changes(text: &str, plan: &ScriptPlan) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_use_names_its_database() {
+        let grammar = SqlGrammar::ClickHouse;
+        assert_eq!(used_database("USE analytics", grammar).as_deref(), Some("analytics"));
+        assert_eq!(used_database("use `my db`;", grammar).as_deref(), Some("my db"));
+        assert_eq!(used_database("USE a; USE b", grammar).as_deref(), Some("b"));
+        assert_eq!(used_database("SELECT 1", grammar), None);
+        assert_eq!(used_database("USE `a``b`", grammar), None, "a name to unescape");
+    }
 
     #[test]
     fn a_use_can_change_the_database() {

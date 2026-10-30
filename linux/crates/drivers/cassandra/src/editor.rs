@@ -21,7 +21,7 @@ use tablepro_core::{
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 
-use crate::errors::execution_error;
+use crate::errors::{execution_error, use_keyspace_error};
 use crate::rows::{ColumnsRead, MAX_PAGE_ROWS, next_state, page_size};
 use crate::session::{CqlLink, LinkSlot};
 
@@ -78,6 +78,22 @@ impl EditorSession for CqlEditorSession {
     fn database(&self) -> Option<String> {
         let link = self.link.get().ok()?;
         link.session().get_keyspace().map(|keyspace| keyspace.to_string())
+    }
+
+    /// The driver checks the name, which CQL takes as letters, digits and
+    /// `_` alone, and moves every connection of the session.
+    async fn use_database(&self, database: &str, options: CallOptions) -> Result<(), DriverError> {
+        let link = self.link.get()?;
+        let using = link.session().use_keyspace(database, true);
+        tokio::select! {
+            biased;
+            () = options.cancel().cancelled() => Err(DriverError::Cancelled),
+            () = until(options.deadline()) => Err(DriverError::Timeout {
+                phase: tablepro_core::TimeoutPhase::Statement,
+                server_cancelled: false,
+            }),
+            used = using => used.map_err(|error| use_keyspace_error(error, LossPhase::Statement)),
+        }
     }
 
     fn state(&self) -> EditorSessionState {
@@ -374,4 +390,11 @@ fn lost(error: &DriverError) -> bool {
         error.category(),
         ErrorCategory::Network | ErrorCategory::ConnectionLost | ErrorCategory::Tls
     )
+}
+
+async fn until(deadline: Option<Instant>) {
+    match deadline {
+        Some(at) => tokio::time::sleep_until(at).await,
+        None => std::future::pending().await,
+    }
 }
