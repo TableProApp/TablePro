@@ -1,44 +1,38 @@
-# 0030: Another database of a connection is a session of its own in the window
+# 0030: A query tab's database, and another database as a session of its own
 
 - **Status**: Accepted
 - **Date**: 2026-10-30
 
 ## Context
 
-A session is one connection to one database ([0028](0028-sessions-share-a-window.md)). The editor bar lets a query tab move its own editor session to another of the server's databases. The window's sidebar, its catalog and completion still read the database the connection opened, so after a move the tab's tables are missing from both. On SQL Server and PostgreSQL, where a database holds schemas, completion offers nothing.
-
-The macOS app keeps a connection per database where the engine needs one and points the window at the database of the tab in front: its sidebar shows that database, and a tab bound to another one is hidden until the window returns there (`BrowseCursorCoordinator`, `QueryTabManager.reconcileVisibleContainer`).
+A session is one connection to one database ([0028](0028-sessions-share-a-window.md)). A query tab can run in another of the server's databases, through the editor bar or a `USE` the user types. Engines get there in different ways: MySQL, MariaDB and SQL Server move a live session with `USE`, ClickHouse names the database in every request, Cassandra moves its keyspace, MongoDB's shell keeps a current database, and PostgreSQL binds the database when the connection opens. The window's sidebar and the completion catalog read the database the connection opened.
 
 [0012](0012-window-per-session.md) rejected a session that changes in place under its parts, and 0028 keeps a tab on the session it was built with.
 
 ## Decision
 
-Each other database of a connection the user opens is a sibling session in the same window, with a workspace of its own, made with `Session::open_in_database`. The sidebar shows each open database of a connection as a branch under it. A query tab moved to a database from the editor bar opens or reaches that database's session, and the window follows it there.
+A query tab keeps its database, and its own editor session goes there. `EditorSession::use_database` moves a live session by the engine's own means; where the engine binds the database at connect, the driver refuses it and the tab gets an editor session opened in that database (`EditorSessionOptions::database`). A session reports the database a `USE` left it in, and the tab follows. The tab never changes session: its workspace, Safe Mode and teardown stay its connection's.
+
+What the window shows of another database is a sibling session, `Session::open_in_database`: the same server and login, opened as a reconnect is. It joins the window with a workspace and a sidebar row of its own, from Open Database… on a connection's row, or when a tab moves to that database. Completion in a moved tab reads the sibling's catalog.
 
 ## Rationale
 
-- **No session changes under its parts.** A sibling is another session, so what 0012 and 0028 protect holds: a workspace never changes database, and a tab never changes session. A table opened from a database's branch is built on that database's session.
-- **The catalog is the database's own.** Each sibling's catalog lists its database, so the sidebar, completion and Show CREATE TABLE are right on every engine, the ones whose databases hold schemas included.
-- **One way in.** A sibling joins the window as any session does, so its tabs, its unsaved edits, its banners and its teardown follow what a connection's already do.
-- **The same secret and no prompt.** A sibling opens as a reconnect does, through the window's connector and the stored secret (#3900).
+- **A tab keeps what it built.** A `USE` keeps the tab's temporary tables and settings. The database menu waits while the tab holds a transaction, so a move never rolls one back.
+- **The tab's session does not wait on the window's.** A PostgreSQL tab opens in its database over its own connection, with the secret the connection already holds, so a restored tab or a lost connection reopens there without a sibling.
+- **The catalog is the database's own.** A sibling lists its own database, so the sidebar and completion are right on engines whose databases hold schemas. Until it opens, completion reads the connection's catalog where the server's databases are its schemas (MySQL, ClickHouse, Cassandra, MongoDB) and offers no tables where they are not.
+- **No session changes under its parts.** A sibling is a session like any other, so 0012 and 0028 hold.
 
 ## Consequences
 
-- The registry keeps a window's key per saved connection; a sibling is keyed by the connection and its database, so the same database of a connection never opens twice.
-- The sidebar's connection row gets Open Database…, from the server's databases, and each open database is a branch the user can close.
-- A tab names its database beside its connection, as "orders (prod, analytics)", while another database of the connection has a tab in the bar.
-- The restore record keeps each window's siblings with their tabs.
-- The editor bar's move runs on the tab's own editor session as before; the window following it is the sidebar selecting that database's branch and completion reading its catalog.
-- A file connection has no other database.
+- A sibling opens with the stored secret and never prompts; one that cannot open says so in a toast and the tab still runs in its database.
+- The registry keys a sibling by its connection and database, so a database opens once per window. It goes when its connection disconnects.
+- A tab names its database in its title when it is not the connection's.
+- The workspace record keeps a tab's database, and a restore reopens a connection's open databases beside it once it has joined.
 
 ## Alternatives considered
 
-**One session that follows the tab in front, as macOS's window does.** Every part reading the session would have to be reset at each tab switch, which 0012 rejected, and a table tab built for one database would run on another.
+**One session that follows the tab in front.** Every part reading the session would reset at each tab switch, which 0012 rejected.
 
-**Hide the tabs of the other databases, as macOS does.** 0028 chose tabs of several sessions side by side over a strip that hides them; a database is a session here, so its tabs show beside the others with its name in the title.
+**Every move opens a new editor session.** One path for every engine, but a `USE` engine would lose its temporary tables and settings at each move.
 
-**Only completion follows the tab.** Smaller, but the sidebar and every other tab stay on the connection's database, which is the gap this closes.
-
-## Plan
-
-In order, each its own pull request: the sibling session (#3900); the registry key and a sibling joining the window; Open Database… and the database branches in the sidebar; the editor bar's move reaching the database's session, with completion on its catalog; tab titles; the restore record.
+**A PostgreSQL tab runs on its sibling's connection.** The tab would depend on a window session the user can close, and a password typed only for the connection could not open it.
