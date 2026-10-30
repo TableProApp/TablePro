@@ -44,7 +44,9 @@ pub(super) fn database_menu(databases: &[SchemaInfo]) -> Option<gio::Menu> {
     for system in [false, true] {
         let section = gio::Menu::new();
         for database in databases.iter().filter(|database| database.is_system == system) {
-            let item = gio::MenuItem::new(Some(&database.name), None);
+            // A popover menu reads `_` as a mnemonic mark, and database names
+            // such as `information_schema` hold one.
+            let item = gio::MenuItem::new(Some(&database.name.replace('_', "__")), None);
             item.set_action_and_target_value(
                 Some(&format!("editor.{MOVE_ACTION}")),
                 Some(&database.name.to_variant()),
@@ -332,7 +334,11 @@ mod tests {
 
         assert_eq!(menu.n_items(), 2, "two sections");
         assert_eq!(labels(&menu, 0), ["shop", "analytics"]);
-        assert_eq!(labels(&menu, 1), ["mysql", "information_schema"]);
+        assert_eq!(
+            labels(&menu, 1),
+            ["mysql", "information__schema"],
+            "an underscore is no mnemonic"
+        );
         assert!(
             database_menu(&[database("shop", false)]).is_none(),
             "nothing to move to"
