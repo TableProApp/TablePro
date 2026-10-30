@@ -4,7 +4,7 @@ use gtk4::prelude::*;
 use gtk4::subclass::prelude::ObjectSubclassIsExt;
 use tablepro_core::Value;
 
-use super::{keyed, text};
+use super::{keyed, settled_width, text};
 use crate::test_support::wait_until;
 use crate::ui::data_grid::GridCell;
 use crate::ui::data_grid::test_grid::{Grid, GridSpec, WAIT, two_text_columns};
@@ -54,6 +54,30 @@ fn the_empty_page_shows_over_the_view_and_goes_with_the_first_row() {
     grid.grid.set_empty_text("No Matches", Some("Change the filter"));
     assert_eq!(empty.title().as_str(), "No Matches");
     assert_eq!(empty.description().as_deref(), Some("Change the filter"));
+}
+
+/// GTK makes the header and rows only as wide as the columns unless one
+/// expands, so a selection stopped at the last column.
+#[gtk4::test]
+fn the_header_and_rows_reach_the_grids_edge_and_the_columns_keep_their_width() {
+    let grid = Grid::build(GridSpec::table(two_text_columns()), keyed(&[1, 2]));
+    let view = grid.grid.column_view();
+    let header = view.first_child().expect("the header");
+    let row = grid
+        .cell_of(1, 1)
+        .parent()
+        .and_then(|cell| cell.parent())
+        .expect("the row");
+    let reaches_edge = |widget: &gtk::Widget| {
+        widget
+            .compute_bounds(&view)
+            .is_some_and(|bounds| (bounds.x() + bounds.width() - view.width() as f32).abs() < 1.0)
+    };
+
+    wait_until(WAIT, || reaches_edge(&header) && reaches_edge(&row)).expect("the header and rows as wide as the grid");
+    for index in 0..2 {
+        settled_width(&grid, index);
+    }
 }
 
 /// The tooltip quotes the whole text, up to 300 characters; GTK keeps

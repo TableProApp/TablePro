@@ -285,12 +285,9 @@ nonisolated final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked
         )
         urlConfig.timeoutIntervalForResource = HttpQueryTimeout.sessionResourceTimeout
 
+        let delegate = tlsDelegate ?? PluginRedirectRefusingDelegate()
         lock.withLock {
-            if let tlsDelegate {
-                session = URLSession(configuration: urlConfig, delegate: tlsDelegate, delegateQueue: nil)
-            } else {
-                session = URLSession(configuration: urlConfig)
-            }
+            session = URLSession(configuration: urlConfig, delegate: delegate, delegateQueue: nil)
         }
 
         let versionText: String?
@@ -925,7 +922,7 @@ nonisolated final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked
 
 // MARK: - TLS Delegate
 
-nonisolated final class ClickHouseTLSDelegate: NSObject, URLSessionDelegate, @unchecked Sendable {
+nonisolated final class ClickHouseTLSDelegate: PluginRedirectRefusingDelegate, @unchecked Sendable {
     private enum Strategy {
         case systemTrust
         case skipVerify
