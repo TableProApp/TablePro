@@ -100,7 +100,7 @@ An export, on any connection, runs in `START TRANSACTION READ ONLY` and refuses 
 
 Safe Mode reads text every way the client or a server may read it, and the strictest reading stands (`tablepro_core::sql_syntax::script::ScriptPlan::server_readings`):
 
-- A `/*!`, `/*!NNNNN` or `/*M!` comment as MySQL up to 8.0, MySQL 8.1 and later, MariaDB and a MariaDB Galera node run or skip it, at every version the text names. A comment that runs is code up to the first `*/` outside a string, a quoted name or a line comment. One that a version skips ends at the first `*/` past one nested `/* */`. MySQL reads `/*M!` as a plain comment, MariaDB skips `/*!50700` to `/*!99999`, and Galera runs `/*!99997`.
+- A `/*!`, `/*!NNNNN` or `/*M!` comment as MySQL up to 8.0, MySQL 8.1 and later, MariaDB and a Galera node of each run or skip it, at every version the text names. A comment that runs is code up to the first `*/` outside a string, a quoted name or a line comment. One that a version skips ends at the first `*/` past one nested `/* */`. MySQL reads `/*M!` as a plain comment, MariaDB skips `/*!50700` to `/*!99999`, and Galera runs `/*!99997`.
 - `$tag$ ... $tag$` as a quote, as MySQL 8.1 and later read it.
 - A `DELIMITER` line as SQL, since only a client reads it as a directive.
 - With backslash escapes on and off, `"` as a name (ANSI_QUOTES), and `[name]` as a name (MariaDB's MSSQL mode).

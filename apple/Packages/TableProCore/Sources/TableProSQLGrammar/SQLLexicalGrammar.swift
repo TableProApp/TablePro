@@ -9,9 +9,9 @@ import Foundation
 /// Which grammar an engine has is ``SQLLexicalProfile``'s question, and which one a gate must read is
 /// ``SQLLexicalReadings``'s.
 public struct SQLLexicalGrammar: OptionSet, Hashable, Sendable {
-    public let rawValue: UInt32
+    public let rawValue: UInt64
 
-    public init(rawValue: UInt32) {
+    public init(rawValue: UInt64) {
         self.rawValue = rawValue
     }
 
@@ -99,6 +99,34 @@ public struct SQLLexicalGrammar: OptionSet, Hashable, Sendable {
     /// ``CQLBatchTracker``. Only the curated CQL grammar carries it, so the kit has no feature for it.
     public static let cqlBatches = SQLLexicalGrammar(rawValue: 1 << 26)
 
+    /// `#` and `@` continue a name after its first character, so T-SQL's `Part#` and `c@d` are one name each. Only the
+    /// curated T-SQL grammar carries it, so the kit has no feature for it.
+    public static let hashAndAtInIdentifiers = SQLLexicalGrammar(rawValue: 1 << 27)
+
+    /// `⟨name⟩`, U+27E8 to U+27E9, is a quoted identifier, as SurrealQL reads it. Curated only.
+    public static let angleQuotedIdentifiers = SQLLexicalGrammar(rawValue: 1 << 28)
+
+    /// A backslash keeps an angle-quoted identifier open. Curated only, as the quote itself is.
+    public static let backslashEscapesInAngleQuotes = SQLLexicalGrammar(rawValue: 1 << 29)
+
+    /// CockroachDB's `b'...'` byte literal, which a backslash escapes in as it does in `E'...'`. `B'...'` is a bit
+    /// string and takes no escape. Curated only.
+    public static let escapeBytesPrefix = SQLLexicalGrammar(rawValue: 1 << 30)
+
+    /// A number's `e` takes the sign after it whether or not a digit follows, as T-SQL reads `1E+`, so the `--` of
+    /// `1E--1` is that sign and a minus rather than a comment. Curated only.
+    public static let exponentSignsNeedNoDigits = SQLLexicalGrammar(rawValue: 1 << 31)
+
+    /// A form feed ends a line comment, as Databend's tokenizer reads `--[^\n\f]*`. Curated only.
+    public static let formFeedEndsLineComments = SQLLexicalGrammar(rawValue: 1 << 32)
+
+    /// The only body written outside a literal is the `BEGIN ATOMIC ... END` of a `CREATE FUNCTION` or a
+    /// `CREATE PROCEDURE`, as PostgreSQL writes it, so any other `begin` in a definition is a name. Curated only.
+    public static let atomicRoutineBodies = SQLLexicalGrammar(rawValue: 1 << 33)
+
+    /// The only body is the `BEGIN ... END` of a `CREATE TRIGGER`, as in SQLite. Curated only.
+    public static let triggerBodies = SQLLexicalGrammar(rawValue: 1 << 34)
+
     /// Standard SQL: quotes close only on a doubled quote, `--` and flat `/* */` are the only comments.
     public static let ansi: SQLLexicalGrammar = []
 
@@ -106,6 +134,11 @@ public struct SQLLexicalGrammar: OptionSet, Hashable, Sendable {
         if contains(.taggedDollarQuotes) { return .tagged }
         if contains(.untaggedDollarQuotes) { return .untagged }
         return nil
+    }
+
+    /// A single body form holds no other body, so nothing nests inside it.
+    public var hasSingleBodyForm: Bool {
+        !isDisjoint(with: [.atomicRoutineBodies, .triggerBodies])
     }
 
     public func backslashEscapes(inQuote quote: UInt16) -> Bool {

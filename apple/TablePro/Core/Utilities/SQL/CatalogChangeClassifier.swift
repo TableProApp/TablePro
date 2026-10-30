@@ -14,8 +14,13 @@ enum CatalogChangeClassifier {
         }
     }
 
-    static func effect(of sql: String, databaseType: DatabaseType) -> SQLCatalogEffect {
-        let trimmed = StatementBlank.trimming(SQLLeadingComments.stripping(sql))
+    static func effect(
+        of sql: String,
+        databaseType: DatabaseType,
+        grammar: SQLLexicalGrammar? = nil
+    ) -> SQLCatalogEffect {
+        let resolvedGrammar = grammar ?? databaseType.lexicalGrammar
+        let trimmed = StatementBlank.trimming(SQLLeadingComments.stripping(sql, grammar: resolvedGrammar))
         guard !trimmed.isEmpty else { return .none }
         if databaseType == .redis {
             return .none
@@ -24,16 +29,20 @@ enum CatalogChangeClassifier {
             let tier = QueryClassifier.classifyTier(trimmed, databaseType: databaseType)
             return tier == .safe ? .none : .opaque
         }
-        if let request = dynamoDBRequestEffect(trimmed, databaseType: databaseType) {
+        if let request = dynamoDBRequestEffect(trimmed, grammar: resolvedGrammar, databaseType: databaseType) {
             return request
         }
-        return SQLCatalogEffectClassifier.effect(of: trimmed, grammar: databaseType.lexicalGrammar)
+        return SQLCatalogEffectClassifier.effect(of: trimmed, grammar: resolvedGrammar)
     }
 
     // PartiQL, and an action the driver does not know, which goes out as PartiQL, take the SQL path.
-    private static func dynamoDBRequestEffect(_ trimmed: String, databaseType: DatabaseType) -> SQLCatalogEffect? {
+    private static func dynamoDBRequestEffect(
+        _ trimmed: String,
+        grammar: SQLLexicalGrammar,
+        databaseType: DatabaseType
+    ) -> SQLCatalogEffect? {
         guard databaseType == .dynamodb,
-              let action = DynamoDBRequestStatement(trimmed)?.action
+              let action = DynamoDBRequestStatement(trimmed, grammar: grammar)?.action
         else { return nil }
         return action.changesCatalog ? SQLCatalogEffect(kinds: .tables, endsTransaction: false) : .none
     }

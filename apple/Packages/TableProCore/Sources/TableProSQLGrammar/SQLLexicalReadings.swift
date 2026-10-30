@@ -119,6 +119,8 @@ enum SQLLexicalRelevance {
     private static let openBracket = UInt16(UnicodeScalar("[").value)
     private static let at = UInt16(UnicodeScalar("@").value)
     private static let colon = UInt16(UnicodeScalar(":").value)
+    private static let capitalE = UInt16(UnicodeScalar("E").value)
+    private static let smallE = UInt16(UnicodeScalar("e").value)
     private static let capitalG = UInt16(UnicodeScalar("G").value)
     private static let smallG = UInt16(UnicodeScalar("g").value)
 
@@ -126,7 +128,7 @@ enum SQLLexicalRelevance {
         let length = text.length
         var facts: SQLLexicalGrammar = [
             .plsqlBlocks, .delimiterDirective, .unterminatedStatements, .terminatedMergeStatements,
-            .sqlScriptBlocks, .cqlBatches,
+            .sqlScriptBlocks, .cqlBatches, .atomicRoutineBodies, .triggerBodies,
         ]
         var blockCommentOpeners = 0
         var index = 0
@@ -137,10 +139,12 @@ enum SQLLexicalRelevance {
             case SqlLexer.backslash:
                 facts.formUnion([
                     .backslashEscapesInSingleQuotes, .backslashEscapesInDoubleQuotes, .backslashEscapesInBackticks,
-                    .escapeStringPrefix,
+                    .backslashEscapesInAngleQuotes, .escapeStringPrefix, .escapeBytesPrefix,
                 ])
             case SqlLexer.backtick:
                 facts.insert(.backtickQuotes)
+            case SqlLexer.openAngleQuote:
+                facts.insert(.angleQuotedIdentifiers)
             case openBracket:
                 facts.formUnion([.bracketQuotedIdentifiers, .doubledClosingBracketEscapes])
             case SqlLexer.singleQuote, SqlLexer.doubleQuote:
@@ -153,8 +157,12 @@ enum SQLLexicalRelevance {
                     .parenthesizedParameterNames,
                 ])
             case SqlLexer.hash:
-                facts.formUnion([.hashLineComments, .dollarAndHashInIdentifiers, .parenthesizedParameterNames])
-            case at, colon:
+                facts.formUnion([
+                    .hashLineComments, .dollarAndHashInIdentifiers, .parenthesizedParameterNames, .hashAndAtInIdentifiers,
+                ])
+            case at:
+                facts.formUnion([.parenthesizedParameterNames, .hashAndAtInIdentifiers])
+            case colon:
                 facts.insert(.parenthesizedParameterNames)
             case SqlLexer.slash:
                 facts.insert(.slashLineTerminators)
@@ -165,8 +173,13 @@ enum SQLLexicalRelevance {
                 }
             case SqlLexer.dash where next == SqlLexer.dash:
                 facts.insert(.dashCommentsNeedWhitespace)
+                if index > 0, [capitalE, smallE].contains(text.character(at: index - 1)) {
+                    facts.insert(.exponentSignsNeedNoDigits)
+                }
             case SqlLexer.carriageReturn:
                 facts.insert(.carriageReturnEndsLineComments)
+            case SqlLexer.formFeed:
+                facts.insert(.formFeedEndsLineComments)
             case SqlLexer.smallQ, SqlLexer.capitalQ:
                 if next == SqlLexer.singleQuote { facts.insert(.alternativeQuoting) }
             case capitalG, smallG:

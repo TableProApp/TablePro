@@ -219,6 +219,20 @@ final class LibPQDriverCore: @unchecked Sendable {
         )
     }
 
+    func executeSingleStatement(query: String) async throws -> PluginQueryResult {
+        let pqConn = try connection()
+        let startTime = Date()
+        let result = try await pqConn.executeSingleStatement(query)
+        return PluginQueryResult(
+            columns: result.columns,
+            columnTypeNames: result.columnTypeNames,
+            rows: result.rows,
+            rowsAffected: result.affectedRows,
+            executionTime: Date().timeIntervalSince(startTime),
+            isTruncated: result.isTruncated
+        )
+    }
+
     /// The one way a statement the driver writes against the catalogs runs. Under `PostgreSQLCatalogSearchPath`,
     /// whatever schema the session is pinned to, so a function or operator in that schema cannot stand in for a
     /// `pg_catalog` one. A definition that is replayed (table DDL, routines, triggers, types) reads pinned and comes
@@ -419,6 +433,25 @@ extension LibPQBackedDriver {
 
     func executeParameterized(query: String, parameters: [PluginCellValue]) async throws -> PluginQueryResult {
         try await core.executeParameterized(query: query, parameters: parameters)
+    }
+
+    // The host sends a user's statements one at a time, so each goes through the extended query protocol.
+    func executeUserQuery(query: String, rowCap: Int?, parameters: [PluginCellValue]?) async throws -> PluginQueryResult {
+        let raw: PluginQueryResult
+        if let parameters {
+            raw = try await executeParameterized(query: query, parameters: parameters)
+        } else {
+            raw = try await core.executeSingleStatement(query: query)
+        }
+        guard let cap = rowCap, cap > 0, raw.rows.count > cap else { return raw }
+        return PluginQueryResult(
+            columns: raw.columns,
+            columnTypeNames: raw.columnTypeNames,
+            rows: Array(raw.rows.prefix(cap)),
+            rowsAffected: raw.rowsAffected,
+            executionTime: raw.executionTime,
+            isTruncated: true
+        )
     }
 
     func executeBoundedQuery(query: String, rowCap: Int) async throws -> PluginQueryResult? {

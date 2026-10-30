@@ -446,13 +446,15 @@ final class SnowflakeConnection: @unchecked Sendable {
 
     // MARK: - Query Execution
 
+    // `singleStatement` has the server refuse a text holding a second statement the host's split missed.
     func query(
         _ sql: String,
         parameters: [PluginCellValue] = [],
-        owner: String = SnowflakeConnection.sessionOwner
+        owner: String = SnowflakeConnection.sessionOwner,
+        singleStatement: Bool = false
     ) async throws -> SnowflakeQueryResult {
         try await withReauthentication {
-            try await performQuery(sql, parameters: parameters, owner: owner)
+            try await performQuery(sql, parameters: parameters, owner: owner, singleStatement: singleStatement)
         }
     }
 
@@ -492,9 +494,12 @@ final class SnowflakeConnection: @unchecked Sendable {
     private func performQuery(
         _ sql: String,
         parameters: [PluginCellValue] = [],
-        owner: String
+        owner: String,
+        singleStatement: Bool
     ) async throws -> SnowflakeQueryResult {
-        let (data, token) = try await submitQuery(sql, parameters: parameters, owner: owner)
+        let (data, token) = try await submitQuery(
+            sql, parameters: parameters, owner: owner, singleStatement: singleStatement
+        )
         if let resultIds = data["resultIds"] as? String, !resultIds.isEmpty {
             return try await collectMultiStatementResults(ids: resultIds, token: token)
         }
@@ -505,7 +510,8 @@ final class SnowflakeConnection: @unchecked Sendable {
     private func submitQuery(
         _ sql: String,
         parameters: [PluginCellValue],
-        owner: String
+        owner: String,
+        singleStatement: Bool = false
     ) async throws -> (data: [String: Any], token: String) {
         guard let token = lock.withLock({ sessionToken }) else {
             throw SnowflakeError.notConnected
@@ -532,6 +538,9 @@ final class SnowflakeConnection: @unchecked Sendable {
         ]
         if !parameters.isEmpty {
             body["bindings"] = SnowflakeBindingEncoder.encode(parameters)
+        } else if singleStatement {
+            // Explicit, so an account or user default of 0 cannot let a second statement run.
+            body["parameters"] = ["MULTI_STATEMENT_COUNT": 1]
         } else if SnowflakeSchemaQueries.isLikelyMultiStatement(sql) {
             body["parameters"] = ["MULTI_STATEMENT_COUNT": 0]
         }

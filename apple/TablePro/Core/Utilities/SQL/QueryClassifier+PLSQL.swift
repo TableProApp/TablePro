@@ -112,12 +112,8 @@ extension QueryClassifier {
         if text.character(at: offset) == SqlLexer.singleQuote {
             return quotedBody(in: text, from: offset + 1)
         }
-        guard let span = SqlLexer.skipAlternativeQuotedString(text, at: offset, length: length) else { return nil }
-        let prefixLength = text.character(at: offset) == SqlLexer.smallQ
-            || text.character(at: offset) == SqlLexer.capitalQ ? 3 : 4
-        let bodyStart = offset + prefixLength
-        let bodyEnd = max(bodyStart, span.next - 2)
-        return text.substring(with: NSRange(location: bodyStart, length: bodyEnd - bodyStart))
+        guard let literal = SqlLexer.skipAlternativeQuotedString(text, at: offset, length: length) else { return nil }
+        return text.substring(with: NSRange(location: literal.bodyStart, length: literal.bodyEnd - literal.bodyStart))
     }
 
     private static func quotedBody(in text: NSString, from start: Int) -> String {

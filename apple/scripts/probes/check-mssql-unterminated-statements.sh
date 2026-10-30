@@ -145,6 +145,9 @@ enum Check {
         Case(name: "glued to an exponent", sql: "SELECT 1e1DELETE FROM \(canary)", hidden: "DELETE"),
         Case(name: "glued to an empty exponent", sql: "SELECT 1eDELETE FROM \(canary)", hidden: "DELETE"),
         Case(name: "glued to a signed empty exponent", sql: "SELECT 1E+DELETE FROM \(canary)", hidden: "DELETE"),
+        Case(name: "after an exponent signed by a --", sql: "SELECT 1E--1 DELETE FROM \(canary)", hidden: "DELETE"),
+        Case(name: "after an exponent and a -- comment", sql: "SELECT 1E--'\nDELETE FROM \(canary) --'",
+             hidden: "DELETE"),
         Case(name: "glued to a fraction", sql: "SELECT .5DELETE FROM \(canary)", hidden: "DELETE"),
         Case(name: "glued to money", sql: "SELECT $1DELETE FROM \(canary)", hidden: "DELETE"),
         Case(name: "glued to euro money", sql: "SELECT \u{20AC}1DELETE FROM \(canary)", hidden: "DELETE"),
@@ -215,8 +218,7 @@ enum Check {
         INSERT INTO dbo.unterminated_canary VALUES (1), (2), (3);
         """
 
-    static let grammar = SQLLexicalReadings.resolve(databaseTypeId: "SQL Server", declared: nil, session: nil)
-        .execution
+    static let readings = SQLLexicalReadings.resolve(databaseTypeId: "SQL Server", declared: nil, session: nil).all
 
     static func connect(_ database: String) async throws -> MSSQLPluginDriver {
         let environment = ProcessInfo.processInfo.environment
@@ -240,9 +242,11 @@ enum Check {
     }
 
     static func readerSees(_ hidden: String, in sql: String) -> Bool {
-        SQLStatementScanner.executableStatements(in: sql, grammar: grammar).contains { statement in
-            SQLUnterminatedStatements.runnable(in: statement.sql, grammar: grammar).dropFirst().contains {
-                StatementBlank.trimming($0).uppercased().hasPrefix(hidden)
+        readings.contains { grammar in
+            SQLStatementScanner.executableStatements(in: sql, grammar: grammar).contains { statement in
+                SQLUnterminatedStatements.runnable(in: statement.sql, grammar: grammar).dropFirst().contains {
+                    StatementBlank.trimming($0).uppercased().hasPrefix(hidden)
+                }
             }
         }
     }

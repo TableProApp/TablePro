@@ -638,6 +638,16 @@ final class LibPQPluginConnection: @unchecked Sendable {
         }
     }
 
+    // The extended query protocol refuses a text holding a second statement, so one the host's split missed fails.
+    func executeSingleStatement(_ query: String) async throws -> LibPQPluginQueryResult {
+        let queryToRun = String(query)
+
+        return try await pluginDispatchAsync(on: queue) { [self] in
+            guard !isShuttingDown else { throw LibPQPluginError.notConnected }
+            return try executeQuerySync(queryToRun, singleStatement: true)
+        }
+    }
+
     /// Runs a read whose statement changes session settings with `SET LOCAL`, and confines those
     /// settings to the read whether or not the session has a transaction block open.
     ///
@@ -850,7 +860,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
         return decoded
     }
 
-    private func executeQuerySync(_ query: String) throws -> LibPQPluginQueryResult {
+    private func executeQuerySync(_ query: String, singleStatement: Bool = false) throws -> LibPQPluginQueryResult {
         let conn = connectionHandle
 
         guard !isShuttingDown, let conn else {
@@ -866,7 +876,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
 
         let localQuery = String(query)
         let result: OpaquePointer? = localQuery.withCString { queryPtr in
-            PQexec(conn, queryPtr)
+            singleStatement ? PQexecParams(conn, queryPtr, 0, nil, nil, nil, nil, 0) : PQexec(conn, queryPtr)
         }
 
         guard let result = result else {

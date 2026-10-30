@@ -21,6 +21,7 @@ enum BatchResultMapping {
         _ batch: ExecutableBatch,
         resultSetCount: Int,
         hasErrors: Bool,
+        grammar: SQLLexicalGrammar,
         isPlainQuery: (String) -> Bool
     ) -> Bool {
         guard batch.repeatCount == 1, !hasErrors else { return false }
@@ -28,7 +29,7 @@ enum BatchResultMapping {
         for statement in batch.statements {
             if isPlainQuery(statement.sql) {
                 queryCount += 1
-            } else if !declarationKeywords.contains(QueryClassifier.leadingKeyword(of: statement.sql)) {
+            } else if !declarationKeywords.contains(QueryClassifier.leadingKeyword(of: statement.sql, grammar: grammar)) {
                 return false
             }
         }
