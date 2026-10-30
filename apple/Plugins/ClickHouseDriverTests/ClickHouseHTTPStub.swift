@@ -59,6 +59,12 @@ final class ClickHouseHTTPStubProtocol: URLProtocol, @unchecked Sendable {
                   headerFields: reply.headers
               )
         else { return }
+        // As URLSession's own loader does: offer the redirect, then hand over the 3xx if the delegate keeps it.
+        if (300 ..< 400).contains(reply.statusCode), let location = reply.headers["Location"].flatMap(URL.init) {
+            var redirected = request
+            redirected.url = location
+            client?.urlProtocol(self, wasRedirectedTo: redirected, redirectResponse: response)
+        }
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
         client?.urlProtocol(self, didLoad: Data(reply.body.utf8))
         client?.urlProtocolDidFinishLoading(self)

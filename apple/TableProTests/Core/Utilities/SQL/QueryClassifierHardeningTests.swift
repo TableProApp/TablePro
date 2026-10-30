@@ -120,6 +120,35 @@ struct QueryClassifierFailClosedTests {
         #expect(QueryClassifier.isWriteQuery(statement, databaseType: .mysql))
     }
 
+    @Test("T-SQL's BULK loads a file the server can reach", arguments: [
+        "BULK INSERT dbo.staging FROM '\\\\198.51.100.7\\share\\rows.txt'",
+        "SELECT 1 BULK INSERT dbo.staging FROM 'C:\\rows.txt'",
+        "SELECT BulkColumn FROM OPENROWSET(BULK 'C:\\inetpub\\wwwroot\\web.config', SINGLE_CLOB) AS f",
+        "INSERT INTO dbo.staging SELECT BulkColumn FROM OPENROWSET ( BULK 'C:\\web.config', SINGLE_BLOB) AS f",
+    ])
+    func bulkLoadsAreFlagged(statement: String) {
+        #expect(QueryClassifier.reachesFilesystemOrExecutesCode(statement, databaseType: .mssql))
+        #expect(QueryClassifier.isWriteQuery(statement, databaseType: .mssql))
+    }
+
+    @Test("T-SQL's ad hoc data sources open the file or the server the statement names", arguments: [
+        "SELECT * FROM OPENROWSET('Microsoft.ACE.OLEDB.12.0', 'Text;Database=C:\\logs', 'SELECT * FROM app.txt')",
+        "SELECT * FROM OPENDATASOURCE('Microsoft.ACE.OLEDB.12.0', 'Data Source=C:\\a.xlsx')...[Sheet1$]",
+    ])
+    func adHocDataSourcesAreFlagged(statement: String) {
+        #expect(QueryClassifier.reachesFilesystemOrExecutesCode(statement, databaseType: .mssql))
+    }
+
+    @Test("A word that only resembles T-SQL's BULK reaches no file", arguments: [
+        "GRANT ADMINISTER BULK OPERATIONS TO loader",
+        "ALTER DATABASE app SET RECOVERY BULK_LOGGED",
+        "SELECT [bulk], bulk_id, 'BULK INSERT' FROM dbo.orders",
+        "SELECT [openrowset] FROM dbo.orders",
+    ])
+    func bulkLookalikesAreNotFlagged(statement: String) {
+        #expect(!QueryClassifier.reachesFilesystemOrExecutesCode(statement, databaseType: .mssql))
+    }
+
     @Test("Ordinary reads stay safe and never claim to reach the filesystem")
     func readsStaySafe() {
         let reads = [
