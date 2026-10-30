@@ -5,6 +5,7 @@ public final class TeradataConnection {
     private let config: TeradataConnectionConfig
     private let socketLock = NSLock()
     private var _socket: (any TeradataTransport)?
+    private var _hasLostConnection = false
     private var socket: (any TeradataTransport)? {
         get { socketLock.withLock { _socket } }
         set { socketLock.withLock { _socket = newValue } }
@@ -23,7 +24,16 @@ public final class TeradataConnection {
         self.config = config
     }
 
+    init(config: TeradataConnectionConfig, transport: any TeradataTransport) {
+        self.config = config
+        self._socket = transport
+        confidentialityBypassed = true
+    }
+
     public var isConnected: Bool { socket != nil }
+
+    // Set when a request failed partway, so the session it ran on was given up rather than ended.
+    public var hasLostConnection: Bool { socketLock.withLock { _hasLostConnection } }
 
     public func connect() throws {
         try validateLogMech()
@@ -36,7 +46,10 @@ public final class TeradataConnection {
             connectDeadline = nil
             throw error
         }
-        self.socket = socket
+        socketLock.withLock {
+            _socket = socket
+            _hasLostConnection = false
+        }
         var established = false
         defer {
             if !established {
@@ -78,20 +91,36 @@ public final class TeradataConnection {
         let body = TeradataMessages.optionsParcel(returnStatementInfo: false).encoded()
             + TeradataMessages.requestParcel(sql: sql).encoded()
             + TeradataMessages.responseParcel().encoded()
-        try sendEncrypted(kind: .start, body: body, requestNumber: requestNumber)
-
-        var parcels: [Parcel] = []
-        var responseComplete = false
-        while !responseComplete {
-            let batch = try readReply()
-            parcels.append(contentsOf: batch)
-            if Self.responseIsComplete(batch) {
-                responseComplete = true
-            } else {
-                try sendContinue(requestNumber: requestNumber)
-            }
+        let parcels: [Parcel]
+        do {
+            parcels = try exchange(body, requestNumber: requestNumber)
+        } catch {
+            // The reply still on its way would be read as the next request's.
+            dropTransport()
+            throw error
         }
         return try TeradataResultParser.parse(parcels)
+    }
+
+    private func exchange(_ body: [UInt8], requestNumber: UInt32) throws -> [Parcel] {
+        try sendEncrypted(kind: .start, body: body, requestNumber: requestNumber)
+        var parcels: [Parcel] = []
+        while true {
+            let batch = try readReply()
+            parcels.append(contentsOf: batch)
+            if Self.responseIsComplete(batch) { return parcels }
+            try sendContinue(requestNumber: requestNumber)
+        }
+    }
+
+    private func dropTransport() {
+        let dropped = socketLock.withLock {
+            let transport = _socket
+            _socket = nil
+            _hasLostConnection = transport != nil
+            return transport
+        }
+        dropped?.close()
     }
 
     public func disconnect() {

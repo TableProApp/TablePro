@@ -13,6 +13,9 @@ final class TeradataAsyncConnection: @unchecked Sendable {
         queue.sync { connection.isConnected }
     }
 
+    // Read outside the queue, so asking never waits behind a running statement.
+    var hasLostConnection: Bool { connection.hasLostConnection }
+
     func connect() async throws {
         try await run { try $0.connect() }
     }
