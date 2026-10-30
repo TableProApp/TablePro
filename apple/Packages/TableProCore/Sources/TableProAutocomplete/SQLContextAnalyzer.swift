@@ -209,6 +209,7 @@ public final class SQLContextAnalyzer {
     private static let doubleQuote = UInt16(UnicodeScalar("\"").value)
     private static let backtick = UInt16(UnicodeScalar("`").value)
     private static let openBracket = UInt16(UnicodeScalar("[").value)
+    private static let closeBracket = UInt16(UnicodeScalar("]").value)
     private static let dollar = UInt16(UnicodeScalar("$").value)
     private static let hash = UInt16(UnicodeScalar("#").value)
 
@@ -260,8 +261,9 @@ public final class SQLContextAnalyzer {
     // and hold any character.
     private static let quotedSegment = "[`\"'\\[]?\\w+[`\"'\\]]?"
 
+    // A trailing dot stays in the path, so `JOIN sales.` reads as unfinished instead of naming a table `sales`.
     private static let tableRefRegexes: [NSRegularExpression] = {
-        let path = "(\(quotedSegment)(?:\\.\(quotedSegment))*)"
+        let path = "(\(quotedSegment)(?:\\.\(quotedSegment))*\\.?)"
         let alias = "(?:\\s+(?:AS\\s+)?(\(quotedSegment)))?"
         let patterns = [
             // MySQL's STRAIGHT_JOIN has no word boundary before JOIN.
@@ -282,7 +284,7 @@ public final class SQLContextAnalyzer {
     )
 
     private static let alterTableRegex = compileRegex(
-        "(?i)\\bALTER\\s+TABLE\\s+(\(quotedSegment)(?:\\.\(quotedSegment))*)"
+        "(?i)\\bALTER\\s+TABLE\\s+(\(quotedSegment)(?:\\.\(quotedSegment))*\\.?)"
     )
 
     private static let derivedTableParser = DerivedTableParser()
@@ -855,7 +857,13 @@ public final class SQLContextAnalyzer {
             append(upTo: index)
             start = index + 1
         }
-        append(upTo: end)
+        // The name after a trailing dot is still being typed: an empty last segment, so no caller reads `sales.` as
+        // a table named `sales`.
+        if start == end, end > range.location {
+            segments.append(PathSegment(masked: "", name: "", isQuoted: false))
+        } else {
+            append(upTo: end)
+        }
         return segments
     }
 
@@ -1048,16 +1056,16 @@ public final class SQLContextAnalyzer {
         dotPrefix: String?,
         currentFunction: String? = nil
     ) -> ClauseResolution {
-        if dotPrefix != nil {
-            return ClauseResolution(clause: .select, expectsObjectName: false)
-        }
-
         // Bounds the regex work on a long statement. SQLContextAnalyzerWindowingTests pins the size.
         let windowSize = 5_000
         let nsText = textBeforeCursor as NSString
         let windowedText = nsText.length > windowSize
             ? nsText.substring(from: nsText.length - windowSize)
             : textBeforeCursor
+
+        if dotPrefix != nil {
+            return ClauseResolution(clause: .select, expectsObjectName: qualifiesTableName(after: windowedText))
+        }
 
         // Structural contexts first: `CREATE TABLE test (id ` looks like a call to `test(` but is a column definition.
         let range = NSRange(location: 0, length: (windowedText as NSString).length)
@@ -1077,6 +1085,42 @@ public final class SQLContextAnalyzer {
         }
 
         return ClauseResolution(clause: .unknown, expectsObjectName: false)
+    }
+
+    // `FROM sales.` qualifies the table being named. A FROM after `IS DISTINCT` or inside a call such as
+    // `EXTRACT(YEAR FROM o.`, and any qualifier this cannot place, stays a table or alias.
+    private func qualifiesTableName(after textBeforePrefix: String) -> Bool {
+        let tokens = tokenize(Self.removingTrailingPath(textBeforePrefix))
+        guard let keyword = tokens.last, keyword.kind == .word,
+              ["FROM", "JOIN", "INTO"].contains(keyword.upper) else { return false }
+        guard keyword.upper == "FROM" else { return true }
+        if tokens.count >= 2, tokens[tokens.count - 2].upper == "DISTINCT" { return false }
+        var open: [Int] = []
+        for (index, token) in tokens.enumerated() {
+            if token.kind == .openParen {
+                open.append(index)
+            } else if token.kind == .closeParen, !open.isEmpty {
+                open.removeLast()
+            }
+        }
+        guard let paren = open.last, paren > 0, tokens[paren - 1].kind == .word else { return true }
+        return Self.groupingKeywords.contains(tokens[paren - 1].upper)
+    }
+
+    // A parenthesis after one of these opens a subquery or a join group, so a FROM inside it names a table.
+    private static let groupingKeywords: Set<String> = [
+        "FROM", "JOIN", "LATERAL", "AS", "IN", "EXISTS", "ANY", "ALL", "SOME", "UNION", "INTERSECT", "EXCEPT"
+    ]
+
+    private static func removingTrailingPath(_ text: String) -> String {
+        let ns = text as NSString
+        var start = ns.length
+        while start > 0 {
+            let ch = ns.character(at: start - 1)
+            guard SQLTokenBoundary.isTokenChar(ch) || ch == dot || ch == openBracket || ch == closeBracket else { break }
+            start -= 1
+        }
+        return ns.substring(to: start)
     }
 
     // MARK: - Linear Clause Scan
