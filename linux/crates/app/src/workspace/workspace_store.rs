@@ -206,6 +206,34 @@ impl WorkspaceStore {
         async move { purging.await.unwrap_or(Err(WorkspaceSaveError::WriterStopped)) }
     }
 
+    /// Remove the saved tabs and drafts of every other database of the
+    /// connection `id` that was ever open beside it. Their names hold a
+    /// digest of the database, so they are found by the connection's part.
+    pub fn purge_databases_of(&self, id: uuid::Uuid) -> impl Future<Output = Result<(), WorkspaceSaveError>> + use<> {
+        let prefix = WorkspaceFileName::databases_prefix(id);
+        let stems: Vec<String> = std::fs::read_dir(&self.inner.dir)
+            .into_iter()
+            .flatten()
+            .filter_map(|entry| entry.ok()?.file_name().into_string().ok())
+            .filter_map(|name| name.strip_suffix(".json").map(str::to_owned))
+            .filter(|stem| stem.starts_with(&prefix))
+            .collect();
+        let purges: Vec<_> = stems
+            .into_iter()
+            .filter_map(|stem| {
+                let drafts = tablepro_storage::DraftScope::new(&stem).ok()?;
+                let path = self.inner.dir.join(format!("{stem}.json"));
+                Some(queue_purge(&self.inner.writer, path, drafts))
+            })
+            .collect();
+        async move {
+            for purge in purges {
+                purge.await.unwrap_or(Err(WorkspaceSaveError::WriterStopped))?;
+            }
+            Ok(())
+        }
+    }
+
     /// Queue `record` as the sessions the windows show. A newer one
     /// replaces it if the writer has not reached it yet.
     pub fn schedule_open_sessions(&self, record: OpenSessionsRecord) -> Result<(), WorkspaceSaveError> {
