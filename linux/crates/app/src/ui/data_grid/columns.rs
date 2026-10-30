@@ -14,7 +14,7 @@ use super::{DataGrid, GridRow, GridSorting, TrackedValues, client_sorter, grid_m
 use crate::services::grid::display_text::editable_null_sentinel;
 use crate::services::grid::{
     CellDisplay, ColumnLayout, GridColumn, LayoutSlot, Placement, default_width_chars, header_text, merge_order,
-    number_width_chars, typical_texts, typical_width_chars, widest_text,
+    number_width_chars, sampled_texts, typical_texts, typical_width_chars,
 };
 
 /// Rows sampled for a column's opening width.
@@ -270,9 +270,8 @@ impl DataGrid {
             let sampled = match (by_type, paint.numbers.get()) {
                 (_, true) => tabular_width(&view, &font, &"0".repeat(usize::try_from(chars).unwrap_or_default())),
                 (true, false) => 0,
-                (false, false) => {
-                    widest_text(column, values.iter().copied()).map_or(0, |widest| drawn_width(&view, &font, &widest))
-                }
+                // One line each, so one layout measures them all.
+                (false, false) => drawn_width(&view, &font, &sampled_texts(column, values.iter().copied()).join("\n")),
             };
             let spelled = match by_type || column.display() == CellDisplay::Temporal {
                 true => typical_texts(column)

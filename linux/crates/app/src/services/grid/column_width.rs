@@ -82,23 +82,33 @@ fn widest_cells<'a>(column: &GridColumn, sample: impl IntoIterator<Item = &'a Va
         .unwrap_or(0)
 }
 
-/// The sampled value that takes the most cells, as the cell draws it and
-/// cut at the cap, for the caller to measure. A number column is
-/// measured in tabular digits instead.
-pub fn widest_text<'a>(column: &GridColumn, sample: impl IntoIterator<Item = &'a Value>) -> Option<String> {
+/// The sampled values for the caller to measure, as the cells draw them
+/// and cut at the cap: of the plain ASCII ones, which a monospace font
+/// draws one cell each, the one that takes the most cells, and every
+/// other one, since its characters may draw in a fallback font. A number
+/// column is measured in tabular digits instead.
+pub fn sampled_texts<'a>(column: &GridColumn, sample: impl IntoIterator<Item = &'a Value>) -> Vec<String> {
     if column.display() == CellDisplay::Number {
-        return None;
+        return Vec::new();
     }
     let mut scratch = String::new();
-    let mut widest: Option<(u32, String)> = None;
+    let mut widest_plain: Option<(u32, String)> = None;
+    let mut others = Vec::new();
     for value in sample.into_iter().take(SAMPLE_ROWS).filter(|value| !value.is_null()) {
         let text = within_cap(display_text(value, &column.column_type, &mut scratch).text);
+        if !is_plain(text) {
+            others.push(text.to_owned());
+            continue;
+        }
         let width = cells(text);
-        if widest.as_ref().is_none_or(|(most, _)| width > *most) {
-            widest = Some((width, text.to_owned()));
+        if widest_plain.as_ref().is_none_or(|(most, _)| width > *most) {
+            widest_plain = Some((width, text.to_owned()));
         }
     }
-    widest.map(|(_, text)| text)
+    others.sort_unstable();
+    others.dedup();
+    others.extend(widest_plain.map(|(_, text)| text));
+    others
 }
 
 /// The values of a type that holds nothing wider: a date or a time
@@ -134,6 +144,12 @@ fn cells(text: &str) -> u32 {
     u32::try_from(text.width()).unwrap_or(u32::MAX)
 }
 
+/// Printable ASCII, which a monospace font draws one cell a character.
+fn is_plain(text: &str) -> bool {
+    text.chars()
+        .all(|character| character == ' ' || character.is_ascii_graphic())
+}
+
 /// The start of `text` that fits in the cap's cells.
 fn within_cap(text: &str) -> &str {
     let cap = usize::try_from(TEXT_MAX_CHARS).unwrap_or(usize::MAX);
@@ -153,7 +169,7 @@ mod tests {
     use tablepro_core::column::{BoolStorage, ColumnKind, IntegerKind, IntegerWidth, TemporalZone, TextLength};
     use tablepro_core::value::{SqlDecimal, Temporal};
 
-    use super::{default_width_chars, number_width_chars, typical_texts, typical_width_chars, widest_text};
+    use super::{default_width_chars, number_width_chars, sampled_texts, typical_texts, typical_width_chars};
     use crate::services::grid::test_columns::result_only;
 
     fn text() -> ColumnKind {
@@ -190,7 +206,7 @@ mod tests {
     }
 
     #[test]
-    fn the_widest_text_is_the_longest_value_within_the_cap() {
+    fn the_longest_plain_value_is_measured_within_the_cap() {
         let note = result_only("note", text());
         let integer = ColumnKind::Integer(IntegerKind {
             width: IntegerWidth::W64,
@@ -198,18 +214,36 @@ mod tests {
         });
 
         assert_eq!(
-            widest_text(
+            sampled_texts(
                 &note,
                 &[Value::Text("CF-1001".into()), Value::Null, Value::Text("a".into())]
             ),
-            Some("CF-1001".to_owned())
+            ["CF-1001"]
         );
         assert_eq!(
-            widest_text(&note, &texts(&["x".repeat(500).as_str()])).map(|text| text.chars().count()),
-            Some(40)
+            sampled_texts(&note, &texts(&["x".repeat(500).as_str()]))
+                .iter()
+                .map(|text| text.chars().count())
+                .collect::<Vec<_>>(),
+            [40]
         );
-        assert_eq!(widest_text(&note, &[Value::Null]), None);
-        assert_eq!(widest_text(&result_only("id", integer), &[Value::Int(7)]), None);
+        assert!(sampled_texts(&note, &[Value::Null]).is_empty());
+        assert!(sampled_texts(&result_only("id", integer), &[Value::Int(7)]).is_empty());
+    }
+
+    /// A character a monospace font may lack draws in a fallback font, as
+    /// wide as that font draws it, so every such value is measured.
+    #[test]
+    fn every_value_beyond_plain_ascii_is_measured() {
+        let note = result_only("note", text());
+
+        assert_eq!(
+            sampled_texts(
+                &note,
+                &texts(&["Marunouchi 12", "कखगघ", "東京", "a", "कखगघ", "tab\tbed"])
+            ),
+            ["tab\tbed", "कखगघ", "東京", "Marunouchi 12"]
+        );
     }
 
     /// A Chinese or Japanese character takes two cells of a monospace font.
@@ -217,14 +251,13 @@ mod tests {
     fn a_wide_character_takes_two_cells() {
         let note = result_only("note", text());
 
-        assert_eq!(
-            widest_text(&note, &texts(&["Marunouchi 1", "東京都千代田区"])),
-            Some("東京都千代田区".to_owned())
-        );
         assert_eq!(default_width_chars(&note, &texts(&["東京都千代田区"])), 14);
         assert_eq!(
-            widest_text(&note, &texts(&["東".repeat(500).as_str()])).map(|text| text.chars().count()),
-            Some(20),
+            sampled_texts(&note, &texts(&["東".repeat(500).as_str()]))
+                .iter()
+                .map(|text| text.chars().count())
+                .collect::<Vec<_>>(),
+            [20],
             "the cap counts cells"
         );
         assert_eq!(

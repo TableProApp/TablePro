@@ -403,22 +403,32 @@ fn values_of_one_length_draw_whole_in_the_monospace_font() {
 }
 
 /// A Chinese or Japanese character takes two cells of a monospace font,
-/// so the value with the most characters is not the widest.
+/// and a script the font lacks draws in a fallback font, so the value
+/// with the most characters is not the widest, in either order.
 #[gtk4::test]
-fn a_value_of_wide_characters_shows_whole() {
-    let wide = "東京都千代田区丸の内一丁";
+fn a_value_in_another_script_shows_whole() {
     let narrow = "Marunouchi 12";
-    let grid = laid_out(Grid::open(
-        vec![named("id", "integer", true), named("area", "text", false)],
-        vec![vec![Value::Int(1), text(wide)], vec![Value::Int(2), text(narrow)]],
-    ));
-    let display = grid.cell_of(1, 1).display().cloned().expect("the value's text");
-    assert!(
-        tabular_width(&display, wide) > tabular_width(&display, narrow),
-        "the font draws {wide} no wider than {narrow}"
-    );
+    for wide in ["東京都千代田区丸の内一丁", "कखगघङचछजझञटठ"] {
+        for values in [[wide, narrow], [narrow, wide]] {
+            let grid = laid_out(Grid::open(
+                vec![named("id", "integer", true), named("area", "text", false)],
+                vec![
+                    vec![Value::Int(1), text(values[0])],
+                    vec![Value::Int(2), text(values[1])],
+                ],
+            ));
+            let shown = drawn(&grid, &[1]);
+            assert_eq!(shown.len(), 2);
+            assert!(
+                tabular_width(&shown[0], wide) > tabular_width(&shown[0], narrow),
+                "the font draws {wide} no wider than {narrow}"
+            );
 
-    wait_until(WAIT, || shows_whole(&display)).expect("the value of wide characters shows whole");
+            for display in &shown {
+                wait_until(WAIT, || shows_whole(display)).unwrap_or_else(|_| panic!("{:?} cut", display.text()));
+            }
+        }
+    }
 }
 
 /// The header draws its title in the interface font, not the cells'.
