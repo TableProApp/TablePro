@@ -395,7 +395,7 @@ final class QueryExecutor {
 
     static func qualifiesForRowCap(sql: String, tabType: TabType, databaseType: DatabaseType) -> Bool {
         guard tabType == .query else { return false }
-        let keyword = QueryClassifier.leadingKeyword(of: sql)
+        let keyword = QueryClassifier.leadingKeyword(of: sql, grammar: databaseType.lexicalGrammar)
         return rowProducingKeywords.contains(keyword)
             && !QueryClassifier.isWriteQuery(sql, databaseType: databaseType)
             && !isDDLStatement(sql)

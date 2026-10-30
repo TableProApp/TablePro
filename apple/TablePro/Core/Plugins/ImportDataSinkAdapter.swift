@@ -600,10 +600,10 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
 
     /// `ROLLBACK TO SAVEPOINT` keeps the transaction, and the classifier already reads it as not ending one.
     private func fileTransactionEnd(of statement: String) -> FileTransactionEnd? {
-        guard CatalogChangeClassifier.effect(of: statement, databaseType: databaseType).endsTransaction else {
-            return nil
-        }
-        return Self.rollbackKeywords.contains(QueryClassifier.leadingKeyword(of: statement)) ? .rollback : .commit
+        let effect = CatalogChangeClassifier.effect(of: statement, databaseType: databaseType, grammar: grammar)
+        guard effect.endsTransaction else { return nil }
+        let keyword = QueryClassifier.leadingKeyword(of: statement, grammar: grammar)
+        return Self.rollbackKeywords.contains(keyword) ? .rollback : .commit
     }
 
     private static let rollbackKeywords: Set<String> = ["ROLLBACK", "ABORT"]

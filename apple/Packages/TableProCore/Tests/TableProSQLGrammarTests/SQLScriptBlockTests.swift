@@ -121,7 +121,7 @@ struct SQLScriptBlockTests {
     func otherEnginesAreUnchanged(typeId: String) {
         let readings = SQLLexicalReadings.resolve(databaseTypeId: typeId, declared: nil, session: nil)
         let doBlock = "DO BEGIN SELECT 1 FROM DUMMY; SELECT 2 FROM DUMMY; END;"
-        let procedure = "CREATE PROCEDURE p () BEGIN SELECT :a FROM DUMMY; END;"
+        let procedure = "CREATE PROCEDURE p () BEGIN ATOMIC SELECT :a FROM DUMMY; END;"
 
         for grammar in readings.all {
             #expect(sent(doBlock, grammar).count == 3, "\(typeId)")

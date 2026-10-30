@@ -232,6 +232,15 @@ struct SQLWriteClassifierTests {
         #expect(!isWrite("SELECT 'a\nGO\nDROP TABLE t'", .mssql))
     }
 
+    @Test("a write after SQL Server's 1E-- is seen whether that is a comment or a signed exponent and a minus")
+    func signedEmptyExponentHidesAWrite() {
+        #expect(isWrite("SELECT 1E--1 DROP TABLE t", .mssql))
+        #expect(isWrite("SELECT 1E--1 INTO t2 FROM t", .mssql))
+        #expect(isWrite("SELECT 1E--'\nDROP TABLE t --'", .mssql))
+        #expect(!isWrite("SELECT 1 --1 DROP TABLE t", .mssql))
+        #expect(!isWrite("SELECT a1E--1 DROP TABLE t", .mssql))
+    }
+
     @Test("SQL Server runs a statement written after another without a semicolon, measured on Azure SQL Edge 15",
           arguments: [
               "SELECT 1\nDROP TABLE t", "SELECT 1 DELETE FROM t", "SELECT 1 TRUNCATE TABLE t",

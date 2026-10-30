@@ -578,6 +578,39 @@ mod tests {
     }
 
     #[test]
+    fn a_dash_comment_after_an_empty_exponent_is_read_both_ways() {
+        for sql in [
+            "SELECT 1E--1 DROP TABLE t",
+            "SELECT 1.5e--1; DROP TABLE t",
+            "SELECT .5E--1 DELETE FROM t",
+            "SELECT a1E+1E--1 DROP TABLE t",
+            "SELECT 1E--DROP TABLE t",
+            "SELECT 1E--'\nDROP TABLE t --'",
+        ] {
+            assert_eq!(access(sql, SqlGrammar::MsSql), StatementAccess::Destructive, "{sql}");
+        }
+        assert_eq!(
+            access("SELECT 1E--1 INTO t2 FROM t", SqlGrammar::MsSql),
+            StatementAccess::Write
+        );
+        for sql in [
+            "SELECT 1 --1 DROP TABLE t",
+            "SELECT 1--1 DROP TABLE t",
+            "SELECT a1E--1 DROP TABLE t",
+            "SELECT 0x1E--1 DROP TABLE t",
+            "SELECT 1E1--1 DROP TABLE t",
+            "SELECT 1E---1 DROP TABLE t",
+            "SELECT 1E+1E--1 DROP TABLE t",
+        ] {
+            assert_eq!(access(sql, SqlGrammar::MsSql), StatementAccess::Read, "{sql}");
+        }
+        assert_eq!(
+            access("SELECT 1E--1 DROP TABLE t", SqlGrammar::PostgreSql),
+            StatementAccess::Read
+        );
+    }
+
+    #[test]
     fn drops_truncates_and_unbounded_row_changes_are_destructive() {
         for grammar in SqlGrammar::ALL {
             for sql in [
@@ -899,6 +932,14 @@ mod tests {
         assert_eq!(
             access(
                 "/*M! /*!99997 DROP TABLE orders -- */ SELECT 1 -- \n*/",
+                SqlGrammar::MySql
+            ),
+            StatementAccess::Destructive
+        );
+        // A MySQL one also runs 50700 and skips 90000, as no other server does.
+        assert_eq!(
+            access(
+                "/*!50700 # */ \"\n*/ /*!90000 ' */ /*!99997 DROP TABLE orders # */ ' \"\n*/",
                 SqlGrammar::MySql
             ),
             StatementAccess::Destructive
