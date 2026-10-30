@@ -17,6 +17,11 @@ async fn use_database_persists_across_runs() {
     let database = run_ok(session.as_ref(), "SELECT DB_NAME()").await.rows();
 
     assert_eq!(database, vec![vec![Value::Text("tempdb".to_owned())]]);
+    assert_eq!(
+        session.database().as_deref(),
+        Some("tempdb"),
+        "where the session says it is"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

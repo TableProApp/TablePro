@@ -39,6 +39,7 @@ License:        %{shrink:
     BSL-1.0 AND
     CDLA-Permissive-2.0 AND
     ISC AND
+    (LGPL-2.1-or-later OR MPL-2.0) AND
     MIT AND
     (MIT OR Unlicense) AND
     Unicode-3.0 AND
@@ -73,6 +74,9 @@ BuildRequires:  pkgconfig(gtksourceview-5) >= 5.18
 # security fixes arrive through Fedora's sqlite package.
 BuildRequires:  pkgconfig(sqlite3) >= 3.46
 BuildRequires:  pkgconfig(mit-krb5-gssapi)
+# glycin, which decodes a value's picture in a sandbox.
+BuildRequires:  pkgconfig(libseccomp)
+BuildRequires:  pkgconfig(lcms2)
 %if %{with check}
 # The gtk suite opens windows on a display and owns D-Bus names, and the
 # catalogue test needs a real locale.
@@ -82,6 +86,7 @@ BuildRequires:  /usr/bin/dbus-run-session
 BuildRequires:  adwaita-icon-theme
 BuildRequires:  glibc-langpack-en
 BuildRequires:  openssh-clients >= 8.7
+BuildRequires:  glycin-loaders
 %endif
 
 Requires:       hicolor-icon-theme
@@ -99,6 +104,8 @@ Requires:       openssh-clients >= 8.7
 # Saved passwords live in the Secret Service. Without a provider every
 # connect asks for the password and Remember is hidden.
 Recommends:     (gnome-keyring or kf6-kwallet or keepassxc)
+# Without them Row Details shows an image's bytes but not its picture.
+Recommends:     glycin-loaders
 # kinit, for SQL Server sign-in with Kerberos.
 Suggests:       krb5-workstation
 

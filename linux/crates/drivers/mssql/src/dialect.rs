@@ -4,8 +4,8 @@ use tablepro_core::column::{
 };
 use tablepro_core::ddl::DdlDialect;
 use tablepro_core::dialect::{
-    BindError, BindTarget, DialectCapabilities, InsertBatchLimits, InsertConflict, KeysetDirection, LikeCase, LikeForm,
-    LiteralError, Placeholder, SqlDialect,
+    BindError, BindTarget, DatabaseLayout, DialectCapabilities, InsertBatchLimits, InsertConflict, KeysetDirection,
+    LikeCase, LikeForm, LiteralError, Placeholder, SqlDialect,
 };
 use tablepro_core::meta::{EngineRowId, EngineRowIdPart};
 use tablepro_core::sql_syntax::{
@@ -42,6 +42,10 @@ impl MssqlDialect {
 }
 
 impl SqlDialect for MssqlDialect {
+    fn database_layout(&self) -> DatabaseLayout {
+        DatabaseLayout::WithSchemas
+    }
+
     /// SQL Server adds the rows its triggers touch to a statement's
     /// count, so a write proves itself with a probe instead.
     fn capabilities(&self) -> DialectCapabilities {

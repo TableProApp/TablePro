@@ -2619,10 +2619,9 @@ fn a_command_editor_has_none_of_the_sql_tools() {
     );
 }
 
-/// The bar names the tab's database and its default schema, as the
-/// macOS editor bar does.
-#[gtk4::test]
-fn the_bar_names_the_tabs_database_and_schema() {
+/// An editor on a connection to `shop`, whose catalog lists `schemas`
+/// with the first as the default.
+fn scoped_editor(dialect: Arc<dyn tablepro_core::dialect::SqlDialect>, schemas: &[&str]) -> Harness {
     crate::register_test_resources();
     let runtime = crate::test_support::test_runtime();
     let fake = Arc::new(FakeEditorSession::new(answering()));
@@ -2630,8 +2629,11 @@ fn the_bar_names_the_tabs_database_and_schema() {
     if let tablepro_session::connect::RequestTarget::Network { database, .. } = &mut request.target {
         *database = Some("shop".to_owned());
     }
-    let mut script = ConnectionScript::default();
-    let editor_session: Arc<dyn EditorSession> = fake;
+    let mut script = ConnectionScript {
+        dialect,
+        ..ConnectionScript::default()
+    };
+    let editor_session: Arc<dyn EditorSession> = fake.clone();
     script.open_editor_session.always(FakeReply::ok(editor_session));
     let (pending, _) = FakeConnector::pending_session(request, script);
     let session = Session::start(
@@ -2644,32 +2646,90 @@ fn the_bar_names_the_tabs_database_and_schema() {
             prompter: None,
         },
     );
-    let schema = |name: &str, is_default: bool| tablepro_core::meta::SchemaInfo {
-        name: name.to_owned(),
-        is_default,
-        is_system: false,
-    };
-    session
-        .catalog()
-        .commit(vec![schema("public", true), schema("audit", false)], Vec::new());
+    let listed = schemas
+        .iter()
+        .enumerate()
+        .map(|(index, name)| tablepro_core::meta::SchemaInfo {
+            name: (*name).to_owned(),
+            is_default: index == 0,
+            is_system: false,
+        })
+        .collect();
+    session.catalog().commit(listed, Vec::new());
     let active = ActiveSession::new();
     active.replace(session);
     let settings = MemorySettings::new();
     let editor = SqlEditor::new(SqlEditorInit {
-        initial_query: None,
+        initial_query: Some("SELECT 1".to_owned()),
         settings: settings.get().clone(),
         history: None,
         tasks: runtime.tasks(),
-        session: active,
+        session: active.clone(),
         hold: Rc::new(tablepro_session::runtime::CountingHold::new()),
         close_timeout: Duration::from_secs(5),
         snippets: crate::test_support::builtin_snippets_only(),
     });
+    Harness {
+        editor,
+        fake,
+        history: None,
+        active,
+        settings,
+        runtime,
+    }
+}
 
-    let label = editor.imp().scope_label.get();
-    crate::test_support::wait_until(Duration::from_secs(5), || label.label() == "shop.public")
-        .unwrap_or_else(|_| panic!("the bar says {:?}", label.label()));
-    assert!(editor.imp().scope_box.is_visible());
+fn postgres_dialect() -> Arc<dyn tablepro_core::dialect::SqlDialect> {
+    Arc::new(tablepro_driver_postgres::PgDialect::new(
+        &tablepro_core::ServerInfo::new("PostgreSQL", "18.0", 18, 0, 0),
+    ))
+}
+
+fn scope_shown(harness: &Harness) -> Option<String> {
+    let imp = harness.editor.imp();
+    imp.scope_box.is_visible().then(|| imp.scope_label.label().to_string())
+}
+
+#[gtk4::test]
+fn the_bar_names_the_database_and_the_schema_names_resolve_in() {
+    let harness = scoped_editor(postgres_dialect(), &["public", "audit"]);
+
+    wait_until(WAIT, || scope_shown(&harness).as_deref() == Some("shop.public"))
+        .unwrap_or_else(|_| panic!("the bar says {:?}", scope_shown(&harness)));
+    assert_eq!(
+        harness.editor.imp().scope_box.tooltip_text().as_deref(),
+        Some("shop, schema public")
+    );
+}
+
+/// Where the server's databases are the catalog's schemas, the default
+/// schema is the database and adds nothing.
+#[gtk4::test]
+fn the_bar_names_a_database_that_is_its_own_schema_once() {
+    let harness = scoped_editor(Arc::new(tablepro_driver_mongodb::MongoDialect), &["shop", "analytics"]);
+
+    crate::test_support::drain_main_context();
+    assert_eq!(scope_shown(&harness).as_deref(), Some("shop"));
+}
+
+#[gtk4::test]
+fn an_engine_of_one_database_names_none() {
+    let harness = scoped_editor(Arc::new(tablepro_test_support::FakeDialect), &["main"]);
+
+    crate::test_support::drain_main_context();
+    assert_eq!(scope_shown(&harness), None);
+}
+
+/// A `USE` in the script moves the session, and the bar goes with it.
+#[gtk4::test]
+fn the_bar_follows_a_use_the_tab_ran() {
+    let harness = scoped_editor(postgres_dialect(), &["public"]);
+    wait_until(WAIT, || scope_shown(&harness).as_deref() == Some("shop.public")).expect("the scope");
+    harness.fake.set_database(Some("analytics"));
+
+    run_and_wait(&harness);
+
+    assert_eq!(scope_shown(&harness).as_deref(), Some("analytics"));
 }
 
 /// The bar is a menu of the server's databases; picking one moves the

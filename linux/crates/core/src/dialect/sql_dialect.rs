@@ -6,8 +6,8 @@ use crate::sql_syntax::{ExpressionSyntaxError, HistoryRecording, SqlGrammar, Typ
 use crate::value::Value;
 
 use super::{
-    BindError, BindTarget, DialectCapabilities, InsertBatchLimits, KeysetDirection, LikeCase, LikeForm, LiteralError,
-    Placeholder, TablePaging,
+    BindError, BindTarget, DatabaseLayout, DialectCapabilities, InsertBatchLimits, KeysetDirection, LikeCase, LikeForm,
+    LiteralError, Placeholder, TablePaging,
 };
 
 /// How one engine spells SQL.
@@ -30,6 +30,10 @@ pub trait SqlDialect: Send + Sync + std::fmt::Debug {
     /// Wrap an identifier so it cannot be read as anything else,
     /// whatever it contains.
     fn quote_identifier(&self, name: &str) -> String;
+
+    fn database_layout(&self) -> DatabaseLayout {
+        DatabaseLayout::Single
+    }
 
     /// Bind one value, giving back the SQL that names it.
     ///

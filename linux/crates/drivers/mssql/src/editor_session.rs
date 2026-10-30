@@ -3,6 +3,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
 use async_trait::async_trait;
+use tablepro_core::sql_syntax::{SqlGrammar, may_change_database};
 use tablepro_core::{
     CallOptions, DriverError, EditorSession, EditorSessionId, EditorSessionOptions, EditorSessionState, LossPhase,
     ResultSink, RunEnd, RunOptions, RunSummary, StopReason, StopRequest, TimeoutPhase, TransactionState, UserSql,
@@ -11,7 +12,7 @@ use tokio::sync::OwnedMutexGuard;
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 
-use crate::editor_run::{EditorRun, ScriptOutcome, transaction_state};
+use crate::editor_run::{EditorRun, ScriptOutcome, current_database, transaction_state};
 use crate::endpoint::MssqlEndpoint;
 use crate::errors::ends_connection;
 use crate::in_band_request::StopPolicy;
@@ -38,6 +39,8 @@ struct Shared {
     lost: AtomicBool,
     /// The running statement's stop, so closing the tab stops it.
     current: Mutex<Option<StopRequest>>,
+    /// Where a `USE` left the session, once one ran.
+    database: Mutex<Option<String>>,
     statement_timeout: Option<Duration>,
     policy: StopPolicy,
     cancel_grace: Duration,
@@ -59,6 +62,7 @@ impl MssqlEditorSession {
                 running: AtomicBool::new(false),
                 lost: AtomicBool::new(false),
                 current: Mutex::new(None),
+                database: Mutex::new(None),
                 statement_timeout: options.statement_timeout,
                 policy: StopPolicy::within(liveness.cancel_grace),
                 cancel_grace: liveness.cancel_grace,
@@ -103,7 +107,8 @@ impl Shared {
         let supervised = self.supervise(link, &request, &sql, &options, sink.as_mut()).await;
         let (end, transaction_state, keep) = match supervised {
             Some(Ok(outcome)) if outcome.reusable => {
-                let (state, keep) = self.state_after_run(link).await;
+                let follow = may_change_database(sql.as_str(), SqlGrammar::MsSql);
+                let (state, keep) = self.state_after_run(link, follow).await;
                 (Ok(outcome.end), state, keep)
             }
             // The run ended, but somewhere the connection cannot go on
@@ -175,7 +180,14 @@ impl Shared {
 
     /// Where the transaction stands after a run, within the cancel grace,
     /// and unknown rather than guessed when the answer does not come.
-    async fn state_after_run(&self, link: &mut MssqlLink) -> (TransactionState, bool) {
+    async fn state_after_run(&self, link: &mut MssqlLink, follow_database: bool) -> (TransactionState, bool) {
+        if follow_database {
+            match tokio::time::timeout(self.cancel_grace, current_database(&mut link.client)).await {
+                Ok(Ok(current)) => *self.database.lock().unwrap_or_else(PoisonError::into_inner) = current,
+                Ok(Err(error)) => return (TransactionState::Unknown, !ends_connection(&error)),
+                Err(_) => return (TransactionState::Unknown, false),
+            }
+        }
         match tokio::time::timeout(self.cancel_grace, transaction_state(&mut link.client)).await {
             Ok(Ok(state)) => (state, true),
             Ok(Err(error)) => (TransactionState::Unknown, !ends_connection(&error)),
@@ -196,6 +208,14 @@ async fn elapsed(deadline: Option<Instant>) {
 impl EditorSession for MssqlEditorSession {
     fn id(&self) -> EditorSessionId {
         self.id
+    }
+
+    fn database(&self) -> Option<String> {
+        self.shared
+            .database
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
     }
 
     fn state(&self) -> EditorSessionState {

@@ -64,6 +64,10 @@ impl EditorSession for MongoEditorSession {
         self.id
     }
 
+    fn database(&self) -> Option<String> {
+        Some(self.database.lock().unwrap_or_else(PoisonError::into_inner).clone())
+    }
+
     fn state(&self) -> EditorSessionState {
         self.status.state()
     }

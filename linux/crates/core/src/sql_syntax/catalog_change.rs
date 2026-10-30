@@ -1,5 +1,6 @@
 use super::SqlGrammar;
 use super::script::{ScriptPlan, ScriptTokenKind};
+use super::statement_tokens::lex_statements;
 
 /// Words that add, rename or remove what the sidebar lists. They count
 /// anywhere in a statement: a SQL Server batch needs no `;` between its
@@ -27,6 +28,17 @@ pub fn changes_catalog(text: &str, grammar: SqlGrammar) -> bool {
     ScriptPlan::server_readings(text, grammar).is_none_or(|mut plans| plans.any(|plan| plan_changes(text, &plan)))
 }
 
+/// Whether running `text` can leave the session in another database. A
+/// `USE` anywhere counts, since a SQL Server batch needs no `;` between
+/// its statements; an index hint's `USE` only costs a question.
+pub fn may_change_database(text: &str, grammar: SqlGrammar) -> bool {
+    lex_statements(text, grammar)
+        .statements
+        .iter()
+        .flatten()
+        .any(|token| token.is_word("USE"))
+}
+
 fn plan_changes(text: &str, plan: &ScriptPlan) -> bool {
     let is = |word: &str, set: &[&str]| set.iter().any(|verb| word.eq_ignore_ascii_case(verb));
     plan.statements().iter().any(|statement| {
@@ -47,6 +59,22 @@ fn plan_changes(text: &str, plan: &ScriptPlan) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_use_can_change_the_database() {
+        for grammar in SqlGrammar::SQL {
+            for sql in [
+                "USE analytics",
+                "SELECT 1; use `a b`",
+                "SELECT 1 USE analytics SELECT 2",
+            ] {
+                assert!(may_change_database(sql, grammar), "{grammar:?}: {sql}");
+            }
+            for sql in ["SELECT 'USE x'", "-- USE x\nSELECT 1", "SELECT used FROM t"] {
+                assert!(!may_change_database(sql, grammar), "{grammar:?}: {sql}");
+            }
+        }
+    }
 
     #[test]
     fn ddl_changes_the_catalog_in_every_grammar() {

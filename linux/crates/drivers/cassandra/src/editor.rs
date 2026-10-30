@@ -74,6 +74,12 @@ impl EditorSession for CqlEditorSession {
         self.id
     }
 
+    /// The driver moves the session itself when a `USE` answers.
+    fn database(&self) -> Option<String> {
+        let link = self.link.get().ok()?;
+        link.session().get_keyspace().map(|keyspace| keyspace.to_string())
+    }
+
     fn state(&self) -> EditorSessionState {
         match self.state.load(Ordering::SeqCst) {
             READY => EditorSessionState::Ready,

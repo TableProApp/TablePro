@@ -16,7 +16,7 @@ mod statement_access;
 mod statement_tokens;
 
 pub use builtin_snippet::{BuiltinSnippet, builtin_snippets};
-pub use catalog_change::changes_catalog;
+pub use catalog_change::{changes_catalog, may_change_database};
 pub use credential_rules::CredentialRules;
 pub use errors::{ExpressionSyntaxError, TypeSyntaxError};
 pub use grammar::SqlGrammar;

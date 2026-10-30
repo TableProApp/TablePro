@@ -1,7 +1,7 @@
 use tablepro_core::column::{ColumnType, SqlExpression};
 use tablepro_core::dialect::{
-    BindError, BindTarget, DialectCapabilities, InsertBatchLimits, InsertConflict, KeysetDirection, LiteralError,
-    Placeholder, SqlDialect,
+    BindError, BindTarget, DatabaseLayout, DialectCapabilities, InsertBatchLimits, InsertConflict, KeysetDirection,
+    LiteralError, Placeholder, SqlDialect,
 };
 use tablepro_core::meta::{EngineRowId, EngineRowIdPart};
 use tablepro_core::sql_syntax::{ExpressionSyntaxError, HistoryRecording, SqlGrammar, TypeSyntaxError};
@@ -17,6 +17,10 @@ use tablepro_core::value::Value;
 pub struct MongoDialect;
 
 impl SqlDialect for MongoDialect {
+    fn database_layout(&self) -> DatabaseLayout {
+        DatabaseLayout::AsSchemas
+    }
+
     /// A write reports how many documents it matched, and `_id` is
     /// unique, so a count proves a save touched the document it meant to,
     /// and an insert with an `_id` already taken fails with E11000.
