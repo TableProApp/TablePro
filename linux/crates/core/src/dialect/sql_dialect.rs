@@ -32,9 +32,10 @@ pub trait SqlDialect: Send + Sync + std::fmt::Debug {
     fn quote_identifier(&self, name: &str) -> String;
 
     /// The statement that moves an editor session to the server's database
-    /// `name`, which a query tab runs before its next statement.
-    fn use_database(&self, name: &str) -> String {
-        format!("USE {}", self.quote_identifier(name))
+    /// `name`, which a query tab runs before its next statement. `None`
+    /// for a name the engine's statement cannot carry whole.
+    fn use_database(&self, name: &str) -> Option<String> {
+        Some(format!("USE {}", self.quote_identifier(name)))
     }
 
     /// Bind one value, giving back the SQL that names it.

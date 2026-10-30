@@ -482,7 +482,10 @@ mod tests {
 
     #[test]
     fn a_tab_moves_with_use_and_a_bracketed_name() {
-        assert_eq!(dialect().use_database("sales ]2026"), "USE [sales ]]2026]");
+        assert_eq!(
+            dialect().use_database("sales ]2026").as_deref(),
+            Some("USE [sales ]]2026]")
+        );
     }
 
     fn column(declared: &str) -> ColumnInfo {

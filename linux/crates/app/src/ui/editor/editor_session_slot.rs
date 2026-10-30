@@ -159,13 +159,15 @@ impl EditorSessionSlot {
         let Some(database) = wanted else {
             return Ok(editor);
         };
-        let Some(dialect) = session.current_dialect() else {
+        let Some(statement) = session
+            .current_dialect()
+            .and_then(|dialect| dialect.use_database(&database.name))
+        else {
             return Err(AcquireError::Failed(crate::i18n::gettext_f(
                 "Could not switch this tab to the database “{database}”",
                 &[("database", &database.name)],
             )));
         };
-        let statement = dialect.use_database(&database.name);
         let ran = editor
             .run(
                 UserSql::new(statement.as_str()),
