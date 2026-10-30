@@ -64,7 +64,7 @@ impl SessionWindow {
         // A database still opening from this connection opens for nobody;
         // one asked of the next connection opens anew.
         if let SessionKey::Saved(id) = key {
-            imp.opening_databases.borrow_mut().retain(|opening, (cancel, _)| {
+            imp.opening_databases.borrow_mut().retain(|opening, cancel| {
                 let goes = matches!(opening, SessionKey::SavedIn { id: of, .. } if of == id);
                 if goes {
                     cancel.cancel();

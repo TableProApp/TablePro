@@ -1272,6 +1272,13 @@ impl SessionWindow {
     }
 
     fn on_session_teardown_approved(&self, key: &SessionKey) {
+        // A database that joined while the question was up has nothing
+        // unsaved yet, and goes with its connection too.
+        if let SessionKey::Saved(id) = key {
+            for sibling in self.siblings_of(*id) {
+                self.tear_down_session(&sibling);
+            }
+        }
         if self.tear_down_session(key) {
             tracing::info!("disconnected");
         }
