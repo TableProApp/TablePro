@@ -432,6 +432,7 @@ const CREDENTIAL_RULES: CredentialRules = CredentialRules {
         "ENCODE",
         "DECODE",
     ],
+    secret_parameters: &[],
 };
 
 #[cfg(test)]

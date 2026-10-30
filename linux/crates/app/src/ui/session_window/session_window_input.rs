@@ -162,5 +162,7 @@ pub(crate) enum SessionWindowInput {
         path: std::path::PathBuf,
         bytes: Vec<u8>,
     },
+    /// What importing that file would do, for the user to agree to.
+    ImportPreviewed(Box<tablepro_storage::ImportPreview>),
     ShowToast(String),
 }

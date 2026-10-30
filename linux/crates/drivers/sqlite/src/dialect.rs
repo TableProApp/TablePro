@@ -253,6 +253,7 @@ const CREDENTIAL_RULES: CredentialRules = CredentialRules {
         (&["ATTACH"], &["KEY"]),
     ],
     carriers: &[],
+    secret_parameters: &[],
 };
 
 #[cfg(test)]

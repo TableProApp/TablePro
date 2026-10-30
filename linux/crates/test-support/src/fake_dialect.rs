@@ -108,6 +108,7 @@ const CREDENTIAL_RULES: CredentialRules = CredentialRules {
     ],
     conditional_prefixes: &[],
     carriers: &[],
+    secret_parameters: &[],
 };
 
 /// The parameter type that carries a value as it is, so a fake bind

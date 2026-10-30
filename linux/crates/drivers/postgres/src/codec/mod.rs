@@ -10,9 +10,11 @@ pub(crate) mod oid;
 mod pg_param;
 mod raw_cell;
 mod temporal_wire;
+mod text_array;
 mod wire_error;
 
 pub(crate) use decode::decodes_natively;
 pub(crate) use pg_param::typed;
 pub(crate) use raw_cell::RawCell;
+pub(crate) use text_array::TextArray;
 pub(crate) use wire_error::WireError;
