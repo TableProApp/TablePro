@@ -64,7 +64,7 @@ struct PostgreSQLTypeQueryTests {
         let sql = PostgreSQLObjectQueries.userDefinedTypeList(
             schema: nil, identity: "16387", capabilities: .assumingModernWhenUnknown(170_000)
         )
-        #expect(sql.contains("AND t.oid = 16387::oid"))
+        #expect(sql.contains("AND t.oid = 16387::pg_catalog.oid"))
         #expect(!sql.contains("n.nspname ="))
     }
 

@@ -35,6 +35,15 @@ struct PostgreSQLSessionTransactionTests {
         #expect(PostgreSQLSessionTransaction.state(from: PQTRANS_INERROR) == .abortedTransaction)
     }
 
+    // A catalog read's SET LOCAL search_path would outlast the read inside a block, so it takes a savepoint there.
+    @Test("Only an open or aborted block scopes a catalog read with a savepoint")
+    func catalogReadScopesInsideABlockOnly() {
+        #expect(PostgreSQLSessionTransaction.isInsideBlock(PQTRANS_INTRANS))
+        #expect(PostgreSQLSessionTransaction.isInsideBlock(PQTRANS_INERROR))
+        #expect(!PostgreSQLSessionTransaction.isInsideBlock(PQTRANS_IDLE))
+        #expect(!PostgreSQLSessionTransaction.isInsideBlock(PQTRANS_ACTIVE))
+    }
+
     @Test("A statement in flight reports the transaction it was sent in")
     func statementInFlightReportsStatusAtSend() {
         #expect(PostgreSQLSessionTransaction.state(from: PQTRANS_ACTIVE, statusAtSend: PQTRANS_IDLE) == .idle)

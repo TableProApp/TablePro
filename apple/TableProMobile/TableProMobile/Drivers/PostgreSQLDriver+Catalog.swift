@@ -12,7 +12,7 @@ nonisolated extension PostgreSQLDriver {
         let schemaName = schema ?? effectiveSchema
         let query = Self.tablesQuery(schema: schemaName, databaseType: databaseType, presence: catalogPresence)
         do {
-            let result = try await execute(query: query)
+            let result = try await catalogRead(query)
             return Self.tables(fromRows: result.rows, databaseType: databaseType)
         } catch is CancellationError {
             throw CancellationError()
@@ -20,7 +20,7 @@ nonisolated extension PostgreSQLDriver {
             guard let fallback = Self.fallbackTablesQuery(schema: schemaName, databaseType: databaseType) else { throw error }
             Self.logger.debug("Table listing fell back to information_schema: \(error.localizedDescription, privacy: .private)")
             try Task.checkCancellation()
-            let result = try await execute(query: fallback)
+            let result = try await catalogRead(fallback)
             return Self.tables(fromRows: result.rows, databaseType: databaseType)
         }
     }
@@ -47,7 +47,7 @@ nonisolated extension PostgreSQLDriver {
     }
 
     private func readColumns(table: String, schema: String, shape: PostgreSQLColumnReadShape) async throws -> [ColumnInfo] {
-        let result = try await execute(query: Self.columnsQuery(schema: schema, table: table, shape: shape))
+        let result = try await catalogRead(Self.columnsQuery(schema: schema, table: table, shape: shape))
         columnReadSupport = columnReadSupport.learning(
             from: shape,
             materializedViewsPresent: catalogPresence.hasMaterializedViews
@@ -64,7 +64,7 @@ nonisolated extension PostgreSQLDriver {
             return columns
         }
         do {
-            let result = try await execute(query: Self.enumLabelsQuery(schema: schema, table: table))
+            let result = try await catalogRead(Self.enumLabelsQuery(schema: schema, table: table))
             let labels = Self.enumLabels(fromRows: result.rows)
             return columns.map { column in
                 labels[column.name].map { column.withAllowedValues($0) } ?? column
@@ -111,7 +111,7 @@ nonisolated extension PostgreSQLDriver {
             databaseType: databaseType,
             serverVersionNumber: serverVersionNumber
         )
-        let result = try await execute(query: query)
+        let result = try await catalogRead(query)
         return Self.indexes(fromRows: result.rows, databaseType: databaseType)
     }
 

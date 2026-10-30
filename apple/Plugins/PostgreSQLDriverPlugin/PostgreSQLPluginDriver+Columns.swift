@@ -16,10 +16,11 @@ extension PostgreSQLPluginDriver {
             capabilities: versionedCapabilities,
             includeMaterializedViews: includesMaterializedViews()
         )
-        let result = try await executeSchemaRelativeRead(query, schema: resolvedSchema)
+        let result = try await catalogRead(query)
+        let spellings = try await fetchColumnSpellings(schema: resolvedSchema, table: table)[table] ?? [:]
         let columnDDL = try await fetchColumnDDL(schema: resolvedSchema, table: table)[table] ?? [:]
         return result.rows.compactMap { row in
-            mapPgColumnRow(row, tableNameOffset: 0, catalog: catalog, columnDDL: columnDDL)
+            mapPgColumnRow(row, tableNameOffset: 0, catalog: catalog, spellings: spellings, columnDDL: columnDDL)
         }
     }
 
@@ -32,17 +33,32 @@ extension PostgreSQLPluginDriver {
             capabilities: versionedCapabilities,
             includeMaterializedViews: includesMaterializedViews()
         )
-        let result = try await executeSchemaRelativeRead(query, schema: resolvedSchema)
+        let result = try await catalogRead(query)
+        let spellings = try await fetchColumnSpellings(schema: resolvedSchema, table: nil)
         let columnDDL = try await fetchColumnDDL(schema: resolvedSchema, table: nil)
         var allColumns: [String: [PluginColumnInfo]] = [:]
         for row in result.rows {
             guard row.count >= 5, let tableName = row[0].asText else { continue }
             let tableDDL = columnDDL[tableName] ?? [:]
-            if let column = mapPgColumnRow(row, tableNameOffset: 1, catalog: catalog, columnDDL: tableDDL) {
+            let tableSpellings = spellings[tableName] ?? [:]
+            if let column = mapPgColumnRow(
+                row, tableNameOffset: 1, catalog: catalog, spellings: tableSpellings, columnDDL: tableDDL
+            ) {
                 allColumns[tableName, default: []].append(column)
             }
         }
         return allColumns
+    }
+
+    fileprivate func fetchColumnSpellings(
+        schema: String,
+        table: String?
+    ) async throws -> [String: [String: PostgreSQLColumnSpelling]] {
+        let query = PostgreSQLSchemaQueries.columnSpellingQuery(
+            schema: schema, table: table, capabilities: versionedCapabilities
+        )
+        let result = try await catalogRead(query, namesRelativeTo: schema)
+        return PostgreSQLSchemaQueries.columnSpellings(rows: result.rows)
     }
 
     fileprivate func fetchColumnDDL(
@@ -52,12 +68,12 @@ extension PostgreSQLPluginDriver {
         let query = PostgreSQLSchemaQueries.columnDDLQuery(
             schema: schema, table: table, capabilities: versionedCapabilities
         )
-        let result = try await executeQualifiedRead(query)
+        let result = try await catalogRead(query)
         return PostgreSQLSchemaQueries.columnDDL(rows: result.rows)
     }
 
     fileprivate func fetchEnumLabelMap(schema: String, table: String?) async throws -> [String: [String]] {
-        let result = try await execute(query: PostgreSQLSchemaQueries.enumLabelQuery(schema: schema, table: table))
+        let result = try await catalogRead(PostgreSQLSchemaQueries.enumLabelQuery(schema: schema, table: table))
         var map: [String: [String]] = [:]
         for row in result.rows {
             guard let schemaName = row[safe: 0]?.asText,
@@ -73,7 +89,7 @@ extension PostgreSQLPluginDriver {
     }
 
     fileprivate func fetchArrayTypeMap(schema: String, table: String?) async throws -> [String: PostgresArrayTypeInfo] {
-        let result = try await execute(query: PostgreSQLSchemaQueries.arrayTypeQuery(schema: schema, table: table))
+        let result = try await catalogRead(PostgreSQLSchemaQueries.arrayTypeQuery(schema: schema, table: table))
         var map: [String: PostgresArrayTypeInfo] = [:]
         for row in result.rows {
             guard let schemaName = row[safe: 0]?.asText,
@@ -98,12 +114,12 @@ extension PostgreSQLPluginDriver {
         _ row: [PluginCellValue],
         tableNameOffset: Int,
         catalog: PostgresTypeCatalog,
+        spellings: [String: PostgreSQLColumnSpelling],
         columnDDL: [String: PostgreSQLCatalogColumnDDL]
     ) -> PluginColumnInfo? {
         let nameIdx = tableNameOffset
         let typeIdx = tableNameOffset + 1
         let nullableIdx = tableNameOffset + 2
-        let defaultIdx = tableNameOffset + 3
         let collationIdx = tableNameOffset + 4
         let commentIdx = tableNameOffset + 5
         let udtIdx = tableNameOffset + 6
@@ -111,14 +127,13 @@ extension PostgreSQLPluginDriver {
         let identityIdx = tableNameOffset + 8
         let generatedIdx = tableNameOffset + 9
         let udtSchemaIdx = tableNameOffset + 10
-        let generationExpressionIdx = tableNameOffset + 11
-        let declaredTypeIdx = tableNameOffset + 12
         let domainNameIdx = tableNameOffset + 13
 
         guard row.count > typeIdx,
               let name = row[nameIdx].asText,
               let rawDataType = row[typeIdx].asText
         else { return nil }
+        let spelling = spellings[name]
 
         let udtName = row.count > udtIdx ? row[udtIdx].asText : nil
         let udtSchema = row.count > udtSchemaIdx ? row[udtSchemaIdx].asText : nil
@@ -130,8 +145,8 @@ extension PostgreSQLPluginDriver {
             arrayTypesByQualifiedName: catalog.arrayTypes
         )
         let allowedValues = resolution.allowedValues
-        let spelling = PostgreSQLColumnTypeSpelling.resolve(
-            declaredType: row.count > declaredTypeIdx ? row[declaredTypeIdx].asText : nil,
+        let typeSpelling = PostgreSQLColumnTypeSpelling.resolve(
+            declaredType: spelling?.declaredType,
             informationSchemaType: rawDataType,
             domainName: row.count > domainNameIdx ? row[domainNameIdx].asText : nil,
             udtSchema: udtSchema,
@@ -139,7 +154,6 @@ extension PostgreSQLPluginDriver {
         )
 
         let isNullable = row.count > nullableIdx && row[nullableIdx].asText == "YES"
-        let defaultValue = row.count > defaultIdx ? row[defaultIdx].asText : nil
         let collation = row.count > collationIdx ? row[collationIdx].asText : nil
         let comment = row.count > commentIdx ? row[commentIdx].asText : nil
         let isPk = row.count > pkIdx && row[pkIdx].asText == "YES"
@@ -153,24 +167,23 @@ extension PostgreSQLPluginDriver {
 
         return PluginColumnInfo(
             name: name,
-            dataType: spelling.dataType,
+            dataType: typeSpelling.dataType,
             isNullable: isNullable,
             isPrimaryKey: isPk,
-            defaultValue: defaultValue,
+            defaultValue: spelling?.defaultValue,
             charset: charset,
             collation: collation,
             comment: comment?.isEmpty == false ? comment : nil,
             identityKind: pgIdentityKind(attidentity),
             isGenerated: attgenerated == "s" || attgenerated == "v",
             allowedValues: allowedValues,
-            generationExpression: row.count > generationExpressionIdx
-                ? row[generationExpressionIdx].asText.flatMap { $0.nilIfEmpty } : nil,
+            generationExpression: spelling?.generationExpression,
             generationKind: pgGenerationKind(attgenerated),
             ddlSpelling: columnDDL[name]?.typeSpelling,
             ddlDefault: columnDDL[name]?.defaultExpression,
             ddlGenerationExpression: columnDDL[name]?.generationExpression,
             ddlCollation: columnDDL[name]?.collation,
-            classificationTypeName: spelling.classificationTypeName
+            classificationTypeName: typeSpelling.classificationTypeName
         )
     }
 

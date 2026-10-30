@@ -14,6 +14,7 @@ final class LibPQDriverCore: @unchecked Sendable {
     private let config: DriverConnectionConfig
     private let schemaFallbackQueries: [String]
     private let singleConnectionMode: Bool
+    private let pinsCatalogSearchPath: Bool
     private let connectionLock = NSLock()
     private var _libpqConnection: LibPQPluginConnection?
     private var _lostConnection = false
@@ -58,14 +59,19 @@ final class LibPQDriverCore: @unchecked Sendable {
         )
     }
 
+    /// Redshift and CockroachDB pass `pinsCatalogSearchPath: false`: neither has user-defined operators, so their
+    /// catalog statements are safe through `pg_catalog`-qualified calls alone, and neither was measured with
+    /// `SET LOCAL search_path` naming `pg_temp`.
     init(
         config: DriverConnectionConfig,
         schemaFallbackQueries: [String] = PostgreSQLSchemaQueries.schemaFallbackQueries,
-        singleConnectionMode: Bool = false
+        singleConnectionMode: Bool = false,
+        pinsCatalogSearchPath: Bool = true
     ) {
         self.config = config
         self.schemaFallbackQueries = schemaFallbackQueries
         self.singleConnectionMode = singleConnectionMode
+        self.pinsCatalogSearchPath = pinsCatalogSearchPath
     }
 
     // MARK: - Connection
@@ -92,7 +98,8 @@ final class LibPQDriverCore: @unchecked Sendable {
             ),
             suppressServerSideCancel: singleConnectionMode,
             connectTimeout: LibPQConnectTimeout(milliseconds: timeout.milliseconds - elapsedMilliseconds),
-            kerberos: kerberos
+            kerberos: kerberos,
+            pinsCatalogSearchPath: pinsCatalogSearchPath
         )
 
         do {
@@ -141,15 +148,23 @@ final class LibPQDriverCore: @unchecked Sendable {
 
     private func firstFallbackSchema(_ pqConn: LibPQPluginConnection) async -> String? {
         for query in schemaFallbackQueries {
-            if case .schema(let schema) = await probeSchema(pqConn, query: query) {
+            // The search-path read answers from the session's own path; a schema listing reads the catalogs.
+            let readsCatalogs = query != PostgreSQLSchemaQueries.firstSearchPathSchema
+            if case .schema(let schema) = await probeSchema(pqConn, query: query, readsCatalogs: readsCatalogs) {
                 return schema
             }
         }
         return nil
     }
 
-    private func probeSchema(_ pqConn: LibPQPluginConnection, query: String) async -> PostgreSQLSchemaProbe {
-        let result = try? await pqConn.executeQuery(query)
+    private func probeSchema(
+        _ pqConn: LibPQPluginConnection,
+        query: String,
+        readsCatalogs: Bool = false
+    ) async -> PostgreSQLSchemaProbe {
+        let result = readsCatalogs && pinsCatalogSearchPath
+            ? try? await pqConn.executeTransactionScopedRead(PostgreSQLCatalogSearchPath.pinned + query)
+            : try? await pqConn.executeQuery(query)
         return PostgreSQLSchemaQueries.probe(rows: result?.rows)
     }
 
@@ -204,7 +219,18 @@ final class LibPQDriverCore: @unchecked Sendable {
         )
     }
 
-    func executeTransactionScopedRead(_ statement: String) async throws -> PluginQueryResult {
+    /// The one way a statement the driver writes against the catalogs runs. Under `PostgreSQLCatalogSearchPath`,
+    /// whatever schema the session is pinned to, so a function or operator in that schema cannot stand in for a
+    /// `pg_catalog` one. A definition that is replayed (table DDL, routines, triggers, types) reads pinned and comes
+    /// back qualified, as `pg_dump` writes it. `namesRelativeTo` is for what a person reads or compares across
+    /// schemas: the column spellings, index definitions, check constraints and partition bounds.
+    func executeCatalogRead(_ statement: String, namesRelativeTo schema: String? = nil) async throws -> PluginQueryResult {
+        guard pinsCatalogSearchPath else { return try await execute(query: statement) }
+        let path = schema.map(PostgreSQLCatalogSearchPath.relative(to:)) ?? PostgreSQLCatalogSearchPath.pinned
+        return try await executeTransactionScopedRead(path + statement)
+    }
+
+    private func executeTransactionScopedRead(_ statement: String) async throws -> PluginQueryResult {
         let pqConn = try connection()
         let startTime = Date()
         let result = try await pqConn.executeTransactionScopedRead(statement)
@@ -341,12 +367,14 @@ extension LibPQBackedDriver {
         )
     }
 
+    func catalogRead(_ statement: String, namesRelativeTo schema: String? = nil) async throws -> PluginQueryResult {
+        try await core.executeCatalogRead(statement, namesRelativeTo: schema)
+    }
+
     func fetchCheckConstraints(table: String, schema: String?) async throws -> [PluginCheckConstraintInfo] {
-        let query = PostgreSQLSchemaQueries.checkConstraintsQuery(
-            schema: schema ?? core.currentSchema,
-            table: table
-        )
-        let result = try await execute(query: query)
+        let resolvedSchema = schema ?? core.currentSchema
+        let query = PostgreSQLSchemaQueries.checkConstraintsQuery(schema: resolvedSchema, table: table)
+        let result = try await catalogRead(query, namesRelativeTo: resolvedSchema)
         return result.rows.compactMap { row in
             guard let name = row[safe: 0]?.asText,
                   let definition = row[safe: 1]?.asText else { return nil }
@@ -361,7 +389,7 @@ extension LibPQBackedDriver {
 
     func fetchRelationComment(table: String, schema: String) async throws -> String? {
         let query = PostgreSQLCommentStatements.relationCommentQuery(name: table, schema: schema)
-        let result = try await execute(query: query)
+        let result = try await catalogRead(query)
         return result.rows.first?.first?.asText?.nilIfEmpty
     }
 
