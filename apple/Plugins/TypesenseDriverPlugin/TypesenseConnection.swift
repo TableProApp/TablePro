@@ -342,7 +342,7 @@ internal final class TypesenseConnection: NSObject, @unchecked Sendable {
     }
 }
 
-extension TypesenseConnection: URLSessionDelegate {
+extension TypesenseConnection: URLSessionTaskDelegate {
     func urlSession(
         _ session: URLSession,
         didReceive challenge: URLAuthenticationChallenge,
@@ -356,5 +356,16 @@ extension TypesenseConnection: URLSessionDelegate {
             return
         }
         completionHandler(.useCredential, URLCredential(trust: trust))
+    }
+
+    // A redirect would carry the API key to wherever it points.
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        willPerformHTTPRedirection response: HTTPURLResponse,
+        newRequest request: URLRequest,
+        completionHandler: @escaping (URLRequest?) -> Void
+    ) {
+        completionHandler(nil)
     }
 }

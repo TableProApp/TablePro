@@ -127,11 +127,12 @@ final class TeradataPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     static let logger = Logger(subsystem: "com.TablePro", category: "TeradataPluginDriver")
 
     var serverVersion: String? { _serverVersion }
+    var hasLostConnection: Bool { connection?.hasLostConnection ?? false }
     var supportsSchemas: Bool { false }
     var supportsTransactions: Bool { true }
 
     var capabilities: PluginCapabilities {
-        [.cancelQuery, .transactions, .alterTableDDL, .dataCompare, .cellExpressions, .uuidCellText]
+        [.cancelQuery, .transactions, .alterTableDDL, .dataCompare, .cellExpressions, .uuidCellText, .rowWrites]
     }
 
     init(config: DriverConnectionConfig) {
