@@ -96,7 +96,7 @@ A call that timed out or lost its connection is checked before the link is decla
 
 `ReadOnlyEnforcement::SessionDefault`: `SET SESSION TRANSACTION READ ONLY` on every session. Saves are refused before anything is sent, and a write through generated SQL fails with 1792. At Safe Mode Read-Only the app refuses every editor statement that does not read before it is sent, `SET TRANSACTION READ WRITE` included; a function a `SELECT` calls is the server's to refuse. For a guarantee, connect with a login that has no write privileges.
 
-An export, on any connection, runs in `START TRANSACTION READ ONLY` and refuses user SQL that Safe Mode would not count as a read (`tablepro_core::sql_syntax::statement_access`).
+An export, on any connection, runs in `START TRANSACTION READ ONLY` and refuses user SQL that Safe Mode would not count as a read (`tablepro_core::sql_syntax::statement_access`). The text protocol runs every statement a text holds, so user SQL is first prepared, which the server parses with multiple statements off: a text it reads as two fails there, and one it parses but does not prepare (1295, such as some `SHOW`) still runs.
 
 Safe Mode reads text every way the client or a server may read it, and the strictest reading stands (`tablepro_core::sql_syntax::script::ScriptPlan::server_readings`):
 
