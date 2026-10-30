@@ -44,9 +44,7 @@ pub(super) fn database_menu(databases: &[SchemaInfo]) -> Option<gio::Menu> {
     for system in [false, true] {
         let section = gio::Menu::new();
         for database in databases.iter().filter(|database| database.is_system == system) {
-            // A popover menu reads `_` as a mnemonic mark, and database names
-            // such as `information_schema` hold one.
-            let item = gio::MenuItem::new(Some(&database.name.replace('_', "__")), None);
+            let item = gio::MenuItem::new(Some(&crate::ui::menu_label(&database.name)), None);
             item.set_action_and_target_value(
                 Some(&format!("editor.{MOVE_ACTION}")),
                 Some(&database.name.to_variant()),
