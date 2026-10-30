@@ -653,10 +653,10 @@ actor QueryHistoryStorage {
     static func ftsQuery(for searchText: String) -> String {
         let terms = searchText
             .split(whereSeparator: { $0.isWhitespace })
-            .map { $0.replacingOccurrences(of: "\"", with: "\"\"") }
+            .map { $0.replacingOccurrences(of: "\"", with: "\"\"", options: .literal) }
             .filter { !$0.isEmpty }
 
-        guard !terms.isEmpty else { return "\"\(searchText.replacingOccurrences(of: "\"", with: "\"\""))\"*" }
+        guard !terms.isEmpty else { return "\"\(searchText.replacingOccurrences(of: "\"", with: "\"\"", options: .literal))\"*" }
         return terms.map { "\"\($0)\"*" }.joined(separator: " AND ")
     }
 

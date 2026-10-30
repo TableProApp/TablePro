@@ -198,6 +198,19 @@ struct FilterSQLGeneratorTests {
         #expect(clause("code", "a\\' OR 1=1 -- ", dialect: mysql) == "WHERE `code` = 'a\\\\'' OR 1=1 -- '")
     }
 
+    @Test("A quote a combining mark follows is doubled", arguments: ["\u{301}", "\u{200C}", "\u{FE0F}", "\u{FF9E}"])
+    func quoteBeforeCombiningMarkIsDoubled(mark: String) {
+        let sql = clause("code", "x'\(mark): DROP TABLE t -- ")
+        #expect(Array(sql.unicodeScalars) == Array("WHERE \"code\" = 'x''\(mark): DROP TABLE t -- '".unicodeScalars))
+    }
+
+    @Test("A closing quote a combining mark follows is doubled in a column name")
+    func identifierQuoteBeforeCombiningMarkIsDoubled() {
+        let mssql = makeDialect(quote: "[")
+        let sql = clause("c]\u{FF9E}x", "1", dialect: mssql)
+        #expect(Array(sql.unicodeScalars).starts(with: Array("WHERE [c]]\u{FF9E}x]".unicodeScalars)))
+    }
+
     // Snowflake takes an ESCAPE clause for LIKE and still reads `\'` inside a literal as a quote.
     @Test("A LIKE pattern doubles a backslash where the engine reads it as an escape, whatever the LIKE style")
     func likeDoublesBackslashForTheLiteral() {

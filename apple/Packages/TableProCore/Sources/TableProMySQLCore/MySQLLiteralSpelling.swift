@@ -24,7 +24,7 @@ public enum MySQLLiteralSpelling: Equatable, Sendable {
         case .backslashEscapes:
             return mysqlEscapeStringLiteral(value)
         case .quoteDoubling:
-            return value.replacingOccurrences(of: "'", with: "''")
+            return value.replacingOccurrences(of: "'", with: "''", options: .literal)
         }
     }
 

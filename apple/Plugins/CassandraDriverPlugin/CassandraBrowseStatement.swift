@@ -130,7 +130,7 @@ enum CassandraBrowseRenderer {
     }
 
     static func quote(_ identifier: String) -> String {
-        "\"" + identifier.replacingOccurrences(of: "\"", with: "\"\"") + "\""
+        "\"" + identifier.replacingOccurrences(of: "\"", with: "\"\"", options: .literal) + "\""
     }
 
     static func qualifiedTable(keyspace: String?, table: String) -> String {

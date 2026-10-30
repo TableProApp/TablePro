@@ -11,41 +11,37 @@ import Foundation
 
 public enum MySQLGrantPatternEscaping {
     public static func escapeDatabasePattern(_ value: String) -> String {
-        var result = ""
-        result.reserveCapacity(value.count)
-        for character in value {
-            switch character {
-            case "\\", "_", "%":
-                result.append("\\")
-                result.append(character)
-            default:
-                result.append(character)
+        var result = String.UnicodeScalarView()
+        for scalar in value.unicodeScalars {
+            switch scalar {
+            case "\\", "_", "%": result.append("\\")
+            default: break
             }
+            result.append(scalar)
         }
-        return result
+        return String(result)
     }
 
     public static func unescapeDatabasePattern(_ value: String) -> String {
-        var result = ""
-        result.reserveCapacity(value.count)
+        var result = String.UnicodeScalarView()
         var isEscaped = false
 
-        for character in value {
+        for scalar in value.unicodeScalars {
             if isEscaped {
-                result.append(character)
+                result.append(scalar)
                 isEscaped = false
                 continue
             }
-            if character == "\\" {
+            if scalar == "\\" {
                 isEscaped = true
                 continue
             }
-            result.append(character)
+            result.append(scalar)
         }
 
         if isEscaped {
             result.append("\\")
         }
-        return result
+        return String(result)
     }
 }
