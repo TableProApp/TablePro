@@ -71,7 +71,7 @@ struct NativeDumpServiceCommandTests {
         #expect(slice(after: "-h", in: command.arguments) == "db.example.com")
         #expect(slice(after: "-p", in: command.arguments) == "5432")
         #expect(slice(after: "-U", in: command.arguments) == "alice")
-        #expect(slice(after: "-d", in: command.arguments) == "sales")
+        #expect(slice(after: "-d", in: command.arguments) == "dbname='sales'")
         #expect(slice(after: "-f", in: command.arguments) == "/tmp/sales.dump")
         #expect(command.environment["PGPASSWORD"] == "s3cret")
     }
@@ -93,7 +93,7 @@ struct NativeDumpServiceCommandTests {
         #expect(command.arguments.contains("--no-acl"))
         #expect(command.arguments.contains("--no-password"))
         #expect(!command.arguments.contains("-Fc"))
-        #expect(slice(after: "-d", in: command.arguments) == "sales")
+        #expect(slice(after: "-d", in: command.arguments) == "dbname='sales'")
         #expect(command.arguments.last == "/tmp/sales.dump")
         #expect(!command.arguments.contains("-f"))
     }

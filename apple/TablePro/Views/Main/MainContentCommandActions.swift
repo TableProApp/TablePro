@@ -1181,7 +1181,7 @@ final class MainContentCommandActions: ObservableObject {
     /// The engine's own archive, not PostgreSQL's. Every engine the registry supports is offered
     /// Restore Dump, and the panel used to tell all of them to pick a `pg_dump` custom archive.
     private var restoreSourceContentTypes: [UTType] {
-        let extensions = NativeDumpRegistry.formats(for: connection.type)
+        let extensions = NativeDumpRegistry.restoreFormats(for: connection.type)
             .map(\.fileExtension)
             .filter { !$0.isEmpty }
         let types = extensions.compactMap { UTType(filenameExtension: $0) }
@@ -1189,14 +1189,12 @@ final class MainContentCommandActions: ObservableObject {
         return types + [.folder, .data]
     }
 
-    /// DuckDB restores either one `.duckdb` file or a folder of Parquet, so the panel has to accept
-    /// a folder as well.
     private var restoreAcceptsDirectory: Bool {
-        NativeDumpRegistry.formats(for: connection.type).contains { $0.producesDirectory }
+        NativeDumpRegistry.restoreFormats(for: connection.type).contains { $0.producesDirectory }
     }
 
     private var restoreSourceMessage: String {
-        let descriptions = NativeDumpRegistry.formats(for: connection.type)
+        let descriptions = NativeDumpRegistry.restoreFormats(for: connection.type)
             .map(\.contentDescription)
             .filter { !$0.isEmpty }
         guard let joined = descriptions.formatted(.list(type: .or)).nilIfEmpty else {

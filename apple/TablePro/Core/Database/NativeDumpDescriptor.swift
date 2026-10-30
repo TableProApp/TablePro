@@ -35,17 +35,20 @@ struct NativeDumpDescriptor: Sendable {
         /// A destination the user chooses with an open panel rather than a save panel, because the
         /// engine writes a folder of files rather than one file.
         let producesDirectory: Bool
+        let restores: Bool
 
         init(
             id: String = "default",
             fileExtension: String,
             contentDescription: String,
-            producesDirectory: Bool = false
+            producesDirectory: Bool = false,
+            restores: Bool = true
         ) {
             self.id = id
             self.fileExtension = fileExtension
             self.contentDescription = contentDescription
             self.producesDirectory = producesDirectory
+            self.restores = restores
         }
     }
 

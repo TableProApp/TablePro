@@ -111,6 +111,18 @@
     "%@ is read-only, so rows cannot be added." : {
 
     },
+    "%@ was not found in any of the CanonicalDomains in ~/.ssh/config, and CanonicalizeFallbackLocal is set to no." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ est introuvable dans les CanonicalDomains de ~/.ssh/config, et CanonicalizeFallbackLocal vaut no."
+          }
+        }
+      }
+    },
     "%@, without checking stored values" : {
 
     },
@@ -662,6 +674,16 @@
     "The CSV data has no header row." : {
 
     },
+    "The database name or a sign-in value holds a NUL character, which a command line cannot carry." : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le nom de la base de données ou une valeur de connexion contient un caractère NUL, qu’une ligne de commande ne peut pas transmettre."
+          }
+        }
+      }
+    },
     "The JSON array must contain only objects." : {
 
     },
@@ -757,11 +779,47 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "The SSH host %@ contains characters ssh does not allow in a host name." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "L’hôte SSH %@ contient des caractères que ssh n’accepte pas dans un nom d’hôte."
+          }
+        }
+      }
+    },
+    "the SSH host or user of “%@” contains characters ssh does not allow" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "l’hôte ou l’utilisateur SSH de « %@ » contient des caractères que ssh n’accepte pas"
+          }
+        }
+      }
+    },
     "The SSH server closed the connection during the handshake." : {
 
     },
     "The SSH server ended the connection during the handshake: %@" : {
 
+    },
+    "The SSH user %@ contains characters ssh does not allow in a user name." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "L’utilisateur SSH %@ contient des caractères que ssh n’accepte pas dans un nom d’utilisateur."
+          }
+        }
+      }
     },
     "The structure of a table in an attached database cannot be changed here." : {
       "extractionState" : "manual",
@@ -16346,6 +16404,16 @@
     },
     "A folder imports the %@ files directly inside it." : {
 
+    },
+    "A folder of Parquet files cannot be restored. Back up to a .duckdb file and restore that file instead." : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Un dossier de fichiers Parquet ne peut pas être restauré. Sauvegardez dans un fichier .duckdb et restaurez ce fichier à la place."
+          }
+        }
+      }
     },
     "A foreign key change recreates the table, and these cannot travel with it:\n\n%@\n\nSave them on their own first, then change the foreign key." : {
       "localizations" : {

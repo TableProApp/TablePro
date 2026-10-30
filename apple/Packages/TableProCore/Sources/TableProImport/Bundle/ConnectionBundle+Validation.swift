@@ -7,6 +7,7 @@ enum BundleViolation: Equatable, Sendable {
     case unresolvedCredentials(BundleRef)
     case cycle(BundleRef)
     case tooDeep(BundleRef)
+    case invalidSSHDestination(connection: String)
 
     /// Deeper than any folder or group the app creates, and shallow enough that a crafted file cannot
     /// make every query row carry a path of thousands of names.
@@ -30,6 +31,8 @@ enum BundleViolation: Equatable, Sendable {
             String(format: String(localized: "the reference “%@” is inside itself"), ref.rawValue)
         case .tooDeep(let ref):
             String(format: String(localized: "the reference “%@” is nested too deeply"), ref.rawValue)
+        case .invalidSSHDestination(let connection):
+            String(format: String(localized: "the SSH host or user of “%@” contains characters ssh does not allow"), connection)
         }
     }
 
@@ -50,6 +53,9 @@ enum BundleViolation: Equatable, Sendable {
         ]
         for refs in refLists {
             if let violation = identityViolation(refs) { return violation }
+        }
+        if let connection = connections.first(where: { $0.settings.refusedSSHDestination != nil }) {
+            return .invalidSSHDestination(connection: connection.settings.name)
         }
 
         let connectionRefs = Set(connections.map(\.ref))
