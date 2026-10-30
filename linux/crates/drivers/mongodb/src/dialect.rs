@@ -1,7 +1,7 @@
 use tablepro_core::column::{ColumnType, SqlExpression};
 use tablepro_core::dialect::{
-    BindError, BindTarget, DialectCapabilities, InsertBatchLimits, InsertConflict, KeysetDirection, LiteralError,
-    Placeholder, SqlDialect,
+    BindError, BindTarget, DatabaseMove, DialectCapabilities, InsertBatchLimits, InsertConflict, KeysetDirection,
+    LiteralError, Placeholder, SqlDialect,
 };
 use tablepro_core::meta::{EngineRowId, EngineRowIdPart};
 use tablepro_core::sql_syntax::{ExpressionSyntaxError, HistoryRecording, SqlGrammar, TypeSyntaxError};
@@ -21,12 +21,15 @@ impl SqlDialect for MongoDialect {
     /// name as it stands, escapes and all, and the splitter ends a
     /// statement at `;`, so a name holding a quote, a backslash, `;` or a
     /// space is refused rather than sent as more than one statement.
-    fn use_database(&self, name: &str) -> Option<String> {
+    fn database_move(&self, name: &str) -> DatabaseMove {
         let carried = !name.is_empty()
             && !name
                 .chars()
                 .any(|c| matches!(c, '"' | '\'' | '\\' | ';') || c.is_whitespace() || c.is_control());
-        carried.then(|| format!("use \"{name}\""))
+        match carried {
+            true => DatabaseMove::Use(format!("use \"{name}\"")),
+            false => DatabaseMove::Refused,
+        }
     }
 
     /// A write reports how many documents it matched, and `_id` is
@@ -121,11 +124,11 @@ mod tests {
     #[test]
     fn a_tab_moves_with_the_shells_own_use() {
         assert_eq!(
-            MongoDialect.use_database("analytics").as_deref(),
-            Some("use \"analytics\"")
+            MongoDialect.database_move("analytics"),
+            DatabaseMove::Use("use \"analytics\"".to_owned())
         );
         for name in ["x; db.dropDatabase()", "a\"b", "a\\b", "two words", "line\nbreak", ""] {
-            assert_eq!(MongoDialect.use_database(name), None, "{name:?}");
+            assert_eq!(MongoDialect.database_move(name), DatabaseMove::Refused, "{name:?}");
         }
     }
 

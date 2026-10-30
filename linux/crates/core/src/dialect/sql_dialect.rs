@@ -10,6 +10,18 @@ use super::{
     Placeholder, TablePaging,
 };
 
+/// How an editor session gets to another of the server's databases.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DatabaseMove {
+    /// Run this statement on the session, before anything else.
+    Use(String),
+    /// A connection stays in the database it opened in, as on PostgreSQL:
+    /// open a session there instead.
+    Reconnect,
+    /// The engine's statement cannot carry the name whole.
+    Refused,
+}
+
 /// How one engine spells SQL.
 ///
 /// Every builder in core goes through this rather than matching on a
@@ -31,11 +43,10 @@ pub trait SqlDialect: Send + Sync + std::fmt::Debug {
     /// whatever it contains.
     fn quote_identifier(&self, name: &str) -> String;
 
-    /// The statement that moves an editor session to the server's database
-    /// `name`, which a query tab runs before its next statement. `None`
-    /// for a name the engine's statement cannot carry whole.
-    fn use_database(&self, name: &str) -> Option<String> {
-        Some(format!("USE {}", self.quote_identifier(name)))
+    /// How an editor session gets to the server's database `name`, for a
+    /// query tab moved there from the editor bar.
+    fn database_move(&self, name: &str) -> DatabaseMove {
+        DatabaseMove::Use(format!("USE {}", self.quote_identifier(name)))
     }
 
     /// Bind one value, giving back the SQL that names it.

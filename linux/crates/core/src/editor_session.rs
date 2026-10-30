@@ -43,6 +43,10 @@ pub enum EditorSessionState {
 #[derive(Debug, Clone, Default)]
 pub struct EditorSessionOptions {
     pub statement_timeout: Option<std::time::Duration>,
+    /// Another of the server's databases to open the session in, for an
+    /// engine whose connection stays in the database it opened in.
+    /// `None` opens it in the connection's own.
+    pub database: Option<String>,
 }
 
 /// One editor tab's own connection to the server.
