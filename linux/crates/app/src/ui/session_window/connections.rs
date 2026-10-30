@@ -492,7 +492,7 @@ impl SessionWindow {
             return;
         };
         let saved = match key {
-            SessionKey::Saved(id) => self.stored_connection(*id),
+            SessionKey::Saved(id) | SessionKey::SavedIn { id, .. } => self.stored_connection(*id),
             SessionKey::File(_) => None,
         };
         // The saved level can differ from the session's after a reconnect

@@ -22,6 +22,8 @@ impl SessionWindow {
                 return;
             }
             SessionKey::Saved(id) => id,
+            // Not recorded yet: a sibling reopens with its connection.
+            SessionKey::SavedIn { .. } => return,
         };
         let (Some(state), Some(input)) = (self.state(), self.input()) else {
             return;
@@ -76,6 +78,7 @@ impl SessionWindow {
         let restorable = match key {
             SessionKey::File(_) => true,
             SessionKey::Saved(_) => saved.is_some(),
+            SessionKey::SavedIn { .. } => false,
         };
         if restorable && let Some(state) = self.state() {
             state.services.open_sessions().add(key.clone(), self.id());
