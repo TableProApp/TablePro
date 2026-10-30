@@ -67,5 +67,15 @@ final class QueryRunUITests: UITestCase {
         XCTAssertTrue(names.contains { $0.hasPrefix("SELECT 2") }, "A bare statement is named after its text, got \(names)")
         XCTAssertFalse(names.contains { $0.hasPrefix("Result ") }, "No result may fall back to its position, got \(names)")
         app.typeKey(.escape, modifierFlags: [])
+
+        let tabs = resultSetTabs(in: window)
+        XCTAssertTrue(tabs.waitToExist(timeout: 10), "Two results must be offered as tabs")
+        let firstResult = resultSetTab(containing: "monthly totals", in: tabs)
+        XCTAssertTrue(waitUntilHittable(firstResult, timeout: 10), "Each result must have its own tab")
+        firstResult.click()
+        XCTAssertTrue(
+            waitForPredicate(timeout: 10) { chooser.title.hasPrefix("1 of 2") || chooser.title.hasSuffix("1/2") },
+            "One click on a tab must show that result, got \(chooser.title)"
+        )
     }
 }
