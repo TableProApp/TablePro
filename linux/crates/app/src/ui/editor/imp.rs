@@ -64,8 +64,8 @@ pub struct SqlEditor {
     /// This tab's own connection, which keeps its transaction and
     /// temporary tables between runs.
     pub slot: Arc<EditorSessionSlot>,
-    /// The tab's own actions: the database menu's.
-    pub tab_actions: RefCell<Option<gtk4::gio::SimpleActionGroup>>,
+    /// The database the bar names, to tell the workspace when it changes.
+    pub named_database: RefCell<Option<String>>,
     pub running: RefCell<Option<RunningScript>>,
     pub log: RefCell<Option<RunLog>>,
     /// Whether the last run left a transaction open, as last reported.
@@ -142,11 +142,9 @@ impl ObjectImpl for SqlEditor {
                     .param_types([bool::static_type()])
                     .build(),
                 Signal::builder("file-changed").build(),
-                // The editor bar moved the tab to another database, named
-                // here, or back to the connection's own with "".
-                Signal::builder("database-moved")
-                    .param_types([String::static_type()])
-                    .build(),
+                // The tab is in another database: picked from the bar, or
+                // where a `USE` took its session.
+                Signal::builder("database-changed").build(),
                 // Vim's :q, which closes the tab through its close prompts.
                 Signal::builder("close-requested").build(),
                 Signal::builder("assistant-requested")

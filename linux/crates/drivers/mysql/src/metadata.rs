@@ -113,7 +113,7 @@ pub(crate) async fn list_databases(
         };
         databases.push(SchemaInfo {
             is_default: current.as_deref() == Some(name.as_str()),
-            is_system: SYSTEM_DATABASES.iter().any(|system| name.eq_ignore_ascii_case(system)),
+            is_system: SYSTEM_DATABASES.contains(&name.as_str()),
             name,
         });
     }

@@ -49,7 +49,7 @@ use tablepro_session::runtime::{ProcessHold, Tasks};
 use tokio_util::sync::CancellationToken;
 
 use self::buffer_edit::{CursorAnchor, replace_all_undoable};
-pub(crate) use self::completion::{CompletionScope, read_catalog, tables_named};
+pub(crate) use self::completion::{CatalogHome, CompletionScope, read_catalog, tables_named};
 pub(crate) use self::editor_file::file_name;
 use self::editor_view::EditorView;
 use self::imp::RunningScript;
@@ -154,6 +154,7 @@ impl SqlEditor {
         editor.connect_buttons();
         editor.connect_grid();
         editor.show_scope();
+        editor.list_databases();
         editor
     }
 
@@ -356,14 +357,6 @@ impl SqlEditor {
             "content-changed",
             false,
             glib::closure_local!(move |editor: &Self| f(editor)),
-        )
-    }
-
-    pub fn connect_database_moved<F: Fn(&Self, String) + 'static>(&self, f: F) -> glib::SignalHandlerId {
-        self.connect_closure(
-            "database-moved",
-            false,
-            glib::closure_local!(move |editor: &Self, database: String| f(editor, database)),
         )
     }
 
@@ -699,6 +692,10 @@ impl SqlEditor {
             self.emit_by_name::<()>("transaction-changed", &[&dirty]);
         }
         self.record_history(entry, dialect);
+        self.show_scope();
+        if imp.changes_catalog.get() {
+            self.list_databases();
+        }
         self.emit_by_name::<()>("run-finished", &[&outcome]);
         self.emit_by_name::<()>("run-state-changed", &[&false]);
     }

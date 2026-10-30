@@ -259,3 +259,32 @@ async fn a_deadline_reaches_a_run_still_setting_its_row_limit() {
     editor.close().await;
     connection.close().await.expect("a close");
 }
+
+/// The session says where a `USE` left it, so the editor bar can follow.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn a_use_moves_the_session_and_it_says_where() {
+    for flavour in FLAVOURS {
+        let fixture = start(flavour).await;
+        let root = connect_root(&fixture).await;
+        let grant = format!(
+            "GRANT ALL ON analytics.* TO '{}'@'%'",
+            fixture.password_credentials().username
+        );
+        setup(
+            root.as_ref(),
+            &["CREATE DATABASE IF NOT EXISTS analytics", grant.as_str()],
+        )
+        .await;
+        root.close().await.expect("a close");
+        let connection = connect(&fixture, false).await;
+        let editor = session(connection.as_ref()).await;
+
+        run_ok(editor.as_ref(), "SELECT 1").await;
+        assert_eq!(editor.database(), None, "{flavour:?}: no USE ran");
+        run_ok(editor.as_ref(), "USE analytics").await;
+        assert_eq!(editor.database().as_deref(), Some("analytics"), "{flavour:?}");
+        editor.close().await;
+        connection.close().await.expect("a close");
+    }
+}

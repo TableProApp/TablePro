@@ -6,21 +6,9 @@ use crate::sql_syntax::{ExpressionSyntaxError, HistoryRecording, SqlGrammar, Typ
 use crate::value::Value;
 
 use super::{
-    BindError, BindTarget, DialectCapabilities, InsertBatchLimits, KeysetDirection, LikeCase, LikeForm, LiteralError,
-    Placeholder, TablePaging,
+    BindError, BindTarget, DatabaseLayout, DialectCapabilities, InsertBatchLimits, KeysetDirection, LikeCase, LikeForm,
+    LiteralError, Placeholder, TablePaging,
 };
-
-/// How an editor session gets to another of the server's databases.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum DatabaseMove {
-    /// Run this statement on the session, before anything else.
-    Use(String),
-    /// A connection stays in the database it opened in, as on PostgreSQL:
-    /// open a session there instead.
-    Reconnect,
-    /// The engine's statement cannot carry the name whole.
-    Refused,
-}
 
 /// How one engine spells SQL.
 ///
@@ -43,10 +31,8 @@ pub trait SqlDialect: Send + Sync + std::fmt::Debug {
     /// whatever it contains.
     fn quote_identifier(&self, name: &str) -> String;
 
-    /// How an editor session gets to the server's database `name`, for a
-    /// query tab moved there from the editor bar.
-    fn database_move(&self, name: &str) -> DatabaseMove {
-        DatabaseMove::Use(format!("USE {}", self.quote_identifier(name)))
+    fn database_layout(&self) -> DatabaseLayout {
+        DatabaseLayout::Single
     }
 
     /// Bind one value, giving back the SQL that names it.

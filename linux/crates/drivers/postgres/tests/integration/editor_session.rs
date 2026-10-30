@@ -562,5 +562,11 @@ async fn a_session_opened_in_another_database_runs_there() {
         .expect("a session in postgres");
     let (_, events) = run(elsewhere.as_ref(), "SELECT current_database()").await;
     assert_eq!(texts(&events), ["postgres"]);
+    assert_eq!(elsewhere.database().as_deref(), Some("postgres"));
+    let moved = elsewhere.use_database("tablepro", within(CALL)).await;
+    assert!(
+        matches!(moved, Err(tablepro_core::DriverError::Unsupported { .. })),
+        "a live session moved: {moved:?}"
+    );
     elsewhere.close().await;
 }

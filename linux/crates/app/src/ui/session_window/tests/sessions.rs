@@ -686,6 +686,14 @@ fn an_editor_tab_moved_to_a_database_opens_its_session() {
         "FollowDatabase",
         Script {
             network: true,
+            // An engine whose server holds several databases.
+            connection: tablepro_test_support::ConnectionScript {
+                dialect: std::sync::Arc::new(tablepro_driver_mysql::MySqlDialect::new(
+                    tablepro_driver_mysql::MySqlFlavour::MySql,
+                    &tablepro_core::ServerInfo::new("MySQL", "8.4.0", 8, 4, 0),
+                )),
+                ..tablepro_test_support::ConnectionScript::default()
+            },
             ..Script::default()
         },
     );
@@ -735,7 +743,7 @@ fn an_editor_tab_moved_to_a_database_opens_its_session() {
         .chain([child])
         .find_map(|widget| widget.downcast::<crate::ui::editor::SqlEditor>().ok())
         .expect("the editor");
-    WidgetExt::activate_action(&editor, "tab.database", Some(&"analytics".to_variant())).expect("tab.database");
+    WidgetExt::activate_action(&editor, "editor.database", Some(&"analytics".to_variant())).expect("editor.database");
     let sibling = SessionKey::SavedIn {
         id: test.saved.id,
         database: "analytics".to_owned(),
