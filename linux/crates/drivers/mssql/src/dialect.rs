@@ -480,6 +480,11 @@ mod tests {
         MssqlDialect::new(16)
     }
 
+    #[test]
+    fn a_tab_moves_with_use_and_a_bracketed_name() {
+        assert_eq!(dialect().use_database("sales ]2026"), "USE [sales ]]2026]");
+    }
+
     fn column(declared: &str) -> ColumnInfo {
         ColumnInfo {
             name: "c".to_owned(),

@@ -165,7 +165,7 @@ impl EditorSessionSlot {
                 &[("database", &database.name)],
             )));
         };
-        let statement = format!("USE {}", dialect.quote_identifier(&database.name));
+        let statement = dialect.use_database(&database.name);
         let ran = editor
             .run(
                 UserSql::new(statement.as_str()),

@@ -17,6 +17,11 @@ use tablepro_core::value::Value;
 pub struct MongoDialect;
 
 impl SqlDialect for MongoDialect {
+    /// mongosh's own: `use` takes the name as it is, never quoted.
+    fn use_database(&self, name: &str) -> String {
+        format!("use {name}")
+    }
+
     /// A write reports how many documents it matched, and `_id` is
     /// unique, so a count proves a save touched the document it meant to,
     /// and an insert with an `_id` already taken fails with E11000.
@@ -105,6 +110,11 @@ mod tests {
     use tablepro_core::statement::ParamType;
 
     use super::*;
+
+    #[test]
+    fn a_tab_moves_with_the_shells_own_use() {
+        assert_eq!(MongoDialect.use_database("analytics"), "use analytics");
+    }
 
     #[test]
     fn an_import_writes_a_document_a_step() {

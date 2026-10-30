@@ -24,6 +24,14 @@ const SCHEMAS_SQL: &str = "SELECT s.name, \
              THEN 1 ELSE 0 END AS int) \
     FROM sys.schemas s ORDER BY s.name";
 
+/// The databases the login may open, the connection's own the default
+/// and the four the server keeps for itself (`database_id` 1 to 4) as
+/// system ones.
+const DATABASES_SQL: &str = "SELECT d.name, \
+        CAST(CASE WHEN d.name = DB_NAME() THEN 1 ELSE 0 END AS int), \
+        CAST(CASE WHEN d.database_id <= 4 THEN 1 ELSE 0 END AS int) \
+    FROM sys.databases d WHERE HAS_DBACCESS(d.name) = 1 ORDER BY d.name";
+
 const OBJECTS_SQL: &str = "SELECT SCHEMA_NAME(o.schema_id), o.name, RTRIM(o.type) \
     FROM sys.objects o \
     WHERE o.type IN ('U', 'V', 'SO', 'FN', 'IF', 'TF', 'FS', 'FT', 'P', 'PC') AND o.is_ms_shipped = 0";
@@ -70,6 +78,21 @@ pub(crate) async fn list_schemas(client: &mut MssqlClient, watch: &Watch) -> Res
     rows.iter()
         .map(|row| {
             let cells = Cells::new(row, "sys.schemas");
+            Ok(SchemaInfo {
+                name: cells.required_text(0)?,
+                is_default: cells.flag(1),
+                is_system: cells.flag(2),
+            })
+        })
+        .collect::<Result<_, DriverError>>()
+        .map_err(Interrupt::Failed)
+}
+
+pub(crate) async fn list_databases(client: &mut MssqlClient, watch: &Watch) -> Result<Vec<SchemaInfo>, Interrupt> {
+    let rows = catalogue_rows(client, watch, DATABASES_SQL, &[]).await?;
+    rows.iter()
+        .map(|row| {
+            let cells = Cells::new(row, "sys.databases");
             Ok(SchemaInfo {
                 name: cells.required_text(0)?,
                 is_default: cells.flag(1),
