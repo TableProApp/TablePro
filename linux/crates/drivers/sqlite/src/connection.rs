@@ -29,7 +29,7 @@ use crate::errors::{map_error, map_open_error};
 use crate::interrupt::{InterruptFlag, SqliteStop};
 use crate::metadata;
 use crate::open::connect_options;
-use crate::result_stream::{collect, count, run_bound, run_script};
+use crate::result_stream::{StreamOutcome, collect, count, run_bound, run_script};
 use crate::sqlite_pooled::SqlitePooled;
 use crate::sqlite_standalone::SqliteStandalone;
 use crate::write_batch;
@@ -228,11 +228,26 @@ impl SqliteConnection {
             }),
             opened = SqlxConnection::connect_with(&read_only) => {
                 let mut connection = opened.map_err(|error| map_open_error(error, &self.path))?;
-                crate::attach_guard::install(&mut connection).await?;
+                crate::read_guard::install(&mut connection).await?;
                 Ok(connection)
             }
         }
     }
+}
+
+/// User SQL on a read connection, run only once SQLite reads it as one
+/// statement.
+async fn read_user_sql(
+    connection: &mut SqlxConnection,
+    flag: &InterruptFlag,
+    lock_timeout: std::time::Duration,
+    sql: &str,
+    sink: &mut dyn ResultSink,
+) -> Result<StreamOutcome, DriverError> {
+    crate::read_guard::refuse_more_than_one(connection, sql).await?;
+    // The count took the busy handler off.
+    flag.install(connection, lock_timeout).await?;
+    run_script(connection, sql, None, sink, || false).await
 }
 
 /// Read the file once, so a file that is not a database fails the
@@ -441,7 +456,7 @@ impl Connection for SqliteConnection {
                                 run_bound(held.connection(), statement, sink.as_mut()).await
                             }
                             ReadStatement::User(sql) => {
-                                run_script(held.connection(), sql.as_str(), None, sink.as_mut(), || false).await
+                                read_user_sql(held.connection(), &flag, lock_timeout, sql.as_str(), sink.as_mut()).await
                             }
                         },
                         Err(error) => Err(error),
