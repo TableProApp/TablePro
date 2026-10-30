@@ -199,6 +199,15 @@ enum QueryClassifier {
         if SQLProceduralBlock.runs(statement, grammar: grammar) {
             return proceduralBlockDeletesEverything(statement, grammar: grammar)
         }
+        // With ANALYZE the engine runs what it explains, so the explained statement is read as the tier reads it.
+        let projection = StatementProjection(statement: statement, grammar: grammar)
+        let keyword = SQLLeadingComments.leadingCodeKeyword(projection.body)
+        if explainPrefixes.contains(keyword) {
+            guard let inner = explainedInnerStatement(projection, keyword: keyword), inner.executesStatement else {
+                return false
+            }
+            return statementDeletesEverything(inner.statement, grammar: grammar, databaseType: databaseType)
+        }
         return SQLUnfilteredWrite.writes(in: statement, grammar: grammar).contains(.delete)
     }
 
@@ -240,7 +249,22 @@ private extension QueryClassifier {
     static let executingExplainOptions: [String] = ["ANALYZE", "ANALYSE"]
 
     static func explainExecutesStatement(_ options: String) -> Bool {
-        executingExplainOptions.contains { options.contains($0) }
+        executingExplainOptions.contains { option in
+            options.components(separatedBy: option).dropFirst().contains { !turnsOptionOff($0) }
+        }
+    }
+
+    static let optionOffValues = ["FALSE", "OFF", "0"]
+
+    // PostgreSQL turns an option off with FALSE, OFF or 0 after it, so `EXPLAIN (ANALYZE FALSE)` only plans.
+    static func turnsOptionOff(_ rest: String) -> Bool {
+        let value = StatementBlank.trimmingLeading(rest[...])
+        guard value.startIndex != rest.startIndex else { return false }
+        return optionOffValues.contains { off in
+            guard value.hasPrefix(off) else { return false }
+            guard let next = value.dropFirst(off.count).first else { return true }
+            return !(next.isLetter || next.isNumber || next == "_" || next == "$")
+        }
     }
 
     static let whereClauseRegex = try? NSRegularExpression(pattern: "\\sWHERE\\s", options: [])
@@ -272,7 +296,7 @@ private extension QueryClassifier {
 
     static let filesystemOrCodeKeywords: Set<String> = [
         "COPY", "ATTACH", "DETACH", "DO", "LOAD", "INSTALL", "IMPORT", "EXPORT",
-        "BACKUP", "RESTORE", "DUMP", "SOURCE", "UNLOAD"
+        "BACKUP", "RESTORE", "DUMP", "SOURCE", "UNLOAD", "BULK"
     ]
 
     static let writeKeywords: Set<String> = [
@@ -301,7 +325,8 @@ private extension QueryClassifier {
         "INTO OUTFILE", "INTO DUMPFILE", "TO PROGRAM", "FROM PROGRAM", "VACUUM INTO",
         "LOAD_FILE(", "PG_READ_FILE(", "PG_READ_BINARY_FILE(", "PG_LS_DIR(",
         "LO_IMPORT(", "LO_EXPORT(", "PG_FILE_WRITE(", "LOAD_EXTENSION(",
-        "READFILE(", "WRITEFILE(", "FN_GET_AUDIT_FILE(", "XP_CMDSHELL", "SP_OACREATE"
+        "READFILE(", "WRITEFILE(", "FN_GET_AUDIT_FILE(", "XP_CMDSHELL", "SP_OACREATE",
+        "OPENROWSET(", "OPENDATASOURCE("
     ]
 
     // A comment, a line break or a run of spaces between two words, or a space before `(`, is nothing to the server:
@@ -392,6 +417,10 @@ private extension QueryClassifier {
             return QueryClassification(tier: .destructive, reachesFilesystemOrExecutesCode: false)
         }
 
+        if keyword == "CREATE" || keyword == "REPLACE", replacesStoredData(projection.code) {
+            return QueryClassification(tier: .destructive, reachesFilesystemOrExecutesCode: false)
+        }
+
         if keyword == "ALTER" {
             // `ALTER TABLE t TRUNCATE PARTITION ALL` empties the table, measured on MySQL 8.4.
             let dropsData = body.range(of: " DROP ", options: .literal) != nil
@@ -445,6 +474,44 @@ private extension QueryClassifier {
     ]
 
     private static let routineDefinitionLookahead = 3
+
+    private static let replacedDataKinds: Set<String> = ["TABLE", "SCHEMA", "DATABASE"]
+
+    private static let replacedObjectKinds: Set<String> = [
+        "VIEW", "FUNCTION", "PROCEDURE", "PROC", "TRIGGER", "PACKAGE", "TYPE", "SEQUENCE", "MACRO", "INDEX", "SYNONYM",
+    ]
+
+    // Modifiers such as `GLOBAL TEMPORARY` or DuckDB's `UNLOGGED` stand before the kind, two words at most.
+    private static let replacedKindLookahead = 3
+
+    /// `CREATE OR REPLACE TABLE t` drops `t` and its rows before it makes the new one on Snowflake, BigQuery, DuckDB,
+    /// MariaDB, ClickHouse and Databricks, and a replaced schema or database takes every table in it. ClickHouse's
+    /// `REPLACE TABLE` is the same statement. A replaced view or routine loses no rows.
+    static func replacesStoredData(_ code: String) -> Bool {
+        let code = code as NSString
+        var cursor = skipBlanks(in: code, from: 0)
+        func nextWord() -> String? {
+            let end = endOfWord(in: code, from: cursor)
+            guard end > cursor else { return nil }
+            let word = code.substring(with: NSRange(location: cursor, length: end - cursor)).uppercased()
+            cursor = skipBlanks(in: code, from: end)
+            return word
+        }
+        switch nextWord() {
+        case "CREATE":
+            guard nextWord() == "OR", nextWord() == "REPLACE" else { return false }
+        case "REPLACE":
+            break
+        default:
+            return false
+        }
+        for _ in 0 ..< replacedKindLookahead {
+            guard let word = nextWord() else { return false }
+            if replacedDataKinds.contains(word) { return true }
+            if replacedObjectKinds.contains(word) { return false }
+        }
+        return false
+    }
 
     static func commonTableExpressionClassification(_ body: String) -> QueryClassification {
         for keyword in ["DROP", "TRUNCATE"] where containsWord(body, keyword) {

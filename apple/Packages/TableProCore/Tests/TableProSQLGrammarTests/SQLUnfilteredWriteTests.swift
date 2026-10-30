@@ -80,6 +80,61 @@ struct SQLUnfilteredWriteTests {
         #expect(first("WITH a AS (SELECT 1), b AS (UPDATE t SET c = 1 RETURNING c) SELECT * FROM b") == .update)
     }
 
+    private static let walk = "WITH RECURSIVE a(id) AS (SELECT 1 UNION ALL SELECT id + 1 FROM a WHERE id < 2)"
+
+    @Test("A writing common table expression is read wherever it stands in the list", arguments: [
+        "WITH U&\"gone\" AS (DELETE FROM items RETURNING *) SELECT 1",
+        "WITH gone\u{20AC} AS (DELETE FROM items RETURNING *) SELECT 1",
+        "WITH \u{20AC}as (id) AS (DELETE FROM items RETURNING id) SELECT 1",
+        "\(walk) SEARCH DEPTH FIRST BY id SET ord, gone AS (DELETE FROM items RETURNING *) SELECT 1",
+        "\(walk) CYCLE id SET looped USING path, gone AS MATERIALIZED (DELETE FROM items RETURNING *) SELECT 1",
+    ])
+    func writingExpressionAnywhereInTheList(sql: String) {
+        #expect(first(sql) == .delete)
+    }
+
+    @Test("A name the engine reads as one word and T-SQL as several is not the statement", arguments: [
+        "WITH merge\u{20AC} AS (SELECT 1) DELETE FROM t",
+        "WITH update\u{20AC} AS (SELECT 1) DELETE FROM t",
+        "WITH c\u{A0}select AS (SELECT 1) DELETE FROM t",
+        "WITH \u{20AC}as AS (SELECT 1), merge AS (SELECT 1) DELETE FROM t",
+        "WITH 1merge AS (SELECT 1) DELETE FROM t",
+    ])
+    func nameOfSeveralTokens(sql: String) {
+        #expect(SQLUnfilteredWrite.writes(in: sql, grammar: Self.grammar("SQLite")).contains(.delete))
+        #expect(SQLUnfilteredWrite.writes(in: sql, grammar: Self.mySQL).contains(.delete))
+        #expect(first(sql + " WHERE id = 1", Self.grammar("SQLite")) == nil)
+    }
+
+    @Test("A SEARCH or CYCLE clause is not the statement")
+    func searchAndCycleClauses() {
+        #expect(first("\(Self.walk) SEARCH BREADTH FIRST BY id SET merge DELETE FROM items") == .delete)
+        #expect(first("\(Self.walk) CYCLE id SET c USING merge DELETE FROM items") == .delete)
+        #expect(first("\(Self.walk) CYCLE id SET c USING p DELETE FROM items WHERE id IN (SELECT id FROM a)") == nil)
+        #expect(first("\(Self.walk) SEARCH DEPTH FIRST BY id SET ord SELECT * FROM a") == nil)
+    }
+
+    @Test("A WHERE the engine reads as a name, or as part of one, is not the statement's", arguments: [
+        ("DELETE FROM orders AS o\u{A0}WHERE\u{A0}id\u{A0}IS\u{A0}NULL", "SQLite"),
+        ("DELETE FROM t AS \u{20AC}where", "SQLite"),
+        ("DELETE FROM t AS where\u{20AC}", "SQLite"),
+        ("DELETE FROM t x\u{200B}where", "PostgreSQL"),
+        ("DELETE FROM t RETURNING id AS where", "PostgreSQL"),
+        ("DELETE FROM t RETURNING id AS /* label */ where", "PostgreSQL"),
+        ("DELETE FROM t AS 1where", "MySQL"),
+        ("DELETE x\u{660}where FROM t AS x\u{660}where", "SQL Server"),
+    ])
+    func whereInsideAName(sql: String, typeId: String) {
+        #expect(first(sql, Self.grammar(typeId)) == .delete)
+    }
+
+    @Test("A name outside ASCII that ends before the WHERE leaves it the statement's own")
+    func whereAfterANameOutsideASCII() {
+        #expect(first("DELETE FROM t AS \u{20AC} WHERE id = 1", Self.grammar("SQLite")) == nil)
+        #expect(first("DELETE FROM \"\u{20AC}\"WHERE id = 1 RETURNING id AS where") == nil)
+        #expect(first("UPDATE t SET a = 1, b = 2 WHERE \u{E9}t\u{E9} = 1") == nil)
+    }
+
     @Test("Only T-SQL's maintenance command is spelled UPDATE STATISTICS without a SET")
     func tableNamedStatistics() {
         #expect(first("UPDATE statistics SET value = 1") == .update)
