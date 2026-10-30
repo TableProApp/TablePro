@@ -81,6 +81,7 @@ mod transport_class;
 mod transport_error;
 mod transport_kind;
 mod transport_route;
+pub mod unicode_blank;
 mod unsupported_feature;
 mod user_sql;
 pub mod value;

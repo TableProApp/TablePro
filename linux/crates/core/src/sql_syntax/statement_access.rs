@@ -2,6 +2,8 @@ use std::collections::HashMap;
 
 use crate::sql_syntax::SqlGrammar;
 use crate::sql_syntax::script::{ScriptPlan, ScriptToken, ScriptTokenKind};
+use crate::sql_syntax::state_changing_functions::changes_state;
+use crate::unicode_blank::is_blank;
 
 /// What running a piece of SQL can do, from its own words. Ordered, so
 /// the strictest of several statements is their maximum.
@@ -19,6 +21,11 @@ pub enum StatementAccess {
 const READ_VERBS: [&str; 8] = [
     "SELECT", "WITH", "VALUES", "TABLE", "SHOW", "EXPLAIN", "DESCRIBE", "DESC",
 ];
+
+/// T-SQL has no SHOW, EXPLAIN, DESCRIBE, TABLE or VALUES statement: such
+/// a word is a name there, `SHOW:` a label in front of any statement, and
+/// `SHOW 'x'` opening a batch runs a procedure called SHOW.
+const TSQL_READ_VERBS: [&str; 2] = ["SELECT", "WITH"];
 
 /// Words that make a statement a write wherever they stand: a CTE that
 /// deletes, `SELECT … INTO`, `FOR UPDATE`. `REPLACE` and `COPY` are left
@@ -88,35 +95,6 @@ const STATEMENT_VERBS: [&str; 10] = [
     "DELETE", "UPDATE", "DROP", "TRUNCATE", "SELECT", "INSERT", "MERGE", "EXEC", "EXECUTE", "ALTER",
 ];
 
-/// Built-in functions that change state from inside a SELECT: sequences,
-/// settings, other sessions, large objects, replication. A function the
-/// user wrote is beyond what the words show; on PostgreSQL and MySQL a
-/// Read-Only connection's read-only transaction still refuses its write.
-const MUTATING_FUNCTIONS: [&str; 22] = [
-    "SETVAL",
-    "NEXTVAL",
-    "SET_CONFIG",
-    "PG_TERMINATE_BACKEND",
-    "PG_CANCEL_BACKEND",
-    "PG_RELOAD_CONF",
-    "PG_ROTATE_LOGFILE",
-    "PG_SWITCH_WAL",
-    "PG_PROMOTE",
-    "PG_CREATE_RESTORE_POINT",
-    "PG_CREATE_PHYSICAL_REPLICATION_SLOT",
-    "PG_CREATE_LOGICAL_REPLICATION_SLOT",
-    "PG_DROP_REPLICATION_SLOT",
-    "PG_STAT_RESET",
-    "LO_CREATE",
-    "LO_IMPORT",
-    "LO_EXPORT",
-    "LO_UNLINK",
-    "LO_PUT",
-    "LO_FROM_BYTEA",
-    "DBLINK_EXEC",
-    "LOAD_EXTENSION",
-];
-
 /// Statement verbs that MySQL also has as functions: `TRUNCATE(x, 2)`
 /// rounds and `INSERT(s, 1, 2, 'x')` splices, both inside a read.
 const ALSO_FUNCTIONS: [&str; 2] = ["TRUNCATE", "INSERT"];
@@ -145,6 +123,43 @@ const DECLARATION_MODIFIERS: [&str; 10] = [
 /// `AFTER UPDATE OF`.
 const CLAUSE_WORDS: [&str; 15] = [
     "ON", "THEN", "FOR", "OF", "AFTER", "BEFORE", "INSTEAD", "DO", "KEY", "GRANT", "REVOKE", "DENY", "AND", "OR", "NOT",
+];
+
+/// The clause words T-SQL reserves, so none of them can be a name that
+/// ends a statement. ON and KEY are reserved but also end one (`SET
+/// NOCOUNT ON`, `CLOSE MASTER KEY`), so ON leads in only before a foreign
+/// key's referential action, and KEY never does. BEFORE, AFTER, INSTEAD
+/// and DO are names there outside a trigger, whose body never runs on
+/// creation anyway.
+const TSQL_CLAUSE_WORDS: [&str; 9] = ["THEN", "FOR", "OF", "GRANT", "REVOKE", "DENY", "AND", "OR", "NOT"];
+
+/// What a T-SQL DROP statement drops and an ALTER's DROP clause never
+/// does, so `DROP TABLE` after an ALTER with no `;` starts a statement.
+const TSQL_DROPPED_OBJECTS: [&str; 24] = [
+    "TABLE",
+    "VIEW",
+    "PROCEDURE",
+    "PROC",
+    "FUNCTION",
+    "TRIGGER",
+    "INDEX",
+    "SCHEMA",
+    "DATABASE",
+    "TYPE",
+    "SEQUENCE",
+    "SYNONYM",
+    "USER",
+    "LOGIN",
+    "ROLE",
+    "ASSEMBLY",
+    "AGGREGATE",
+    "DEFAULT",
+    "RULE",
+    "STATISTICS",
+    "EXTERNAL",
+    "FULLTEXT",
+    "XML",
+    "SECURITY",
 ];
 
 /// The strictest access among the statements of `sql`.
@@ -209,12 +224,26 @@ fn access_in(sql: &str, grammar: SqlGrammar, plan: &ScriptPlan) -> StatementAcce
         .fold(unreadable, StatementAccess::max)
 }
 
+/// A server may take a Unicode blank inside a word for a space or for
+/// part of the name, so both readings count and the stricter stands.
 fn access_of(sql: &str, grammar: SqlGrammar, tokens: &[ScriptToken]) -> StatementAccess {
     let code = code_of(sql, tokens);
-    if code.iter().all(|token| token.kind == Kind::End) || plans_only(&code, grammar) {
+    let whole = access_of_code(&code, grammar);
+    let blanks_inside = code
+        .iter()
+        .any(|token| token.kind == Kind::Word && token.text.contains(is_blank));
+    match blanks_inside {
+        true => whole.max(access_of_code(&split_at_blanks(&code), grammar)),
+        false => whole,
+    }
+}
+
+fn access_of_code(code: &[Code<'_>], grammar: SqlGrammar) -> StatementAccess {
+    let code = explained_pragma(code, grammar);
+    if code.iter().all(|token| token.kind == Kind::End) || plans_only(code, grammar) {
         return StatementAccess::Read;
     }
-    if destructive(&code, grammar) {
+    if destructive(code, grammar) {
         return StatementAccess::Destructive;
     }
     // A SQL Server batch is one statement here, so each part between
@@ -238,13 +267,51 @@ fn plans_only(code: &[Code<'_>], grammar: SqlGrammar) -> bool {
             .first()
             .is_some_and(|first| first.is_word(&["EXPLAIN", "DESCRIBE", "DESC"]))
         && !code.iter().any(|token| token.is_word(&["ANALYZE", "ANALYSE"]))
+        && !quotes_an_option(code, grammar)
         && code.iter().rev().skip(1).all(|token| token.kind != Kind::End)
+}
+
+/// PostgreSQL takes a quoted name for an option too, so
+/// `EXPLAIN ("analyze")` runs the statement, and `U&"\0061nalyze"`
+/// spells the same name. No option needs quotes, so a list that has them
+/// may run what it explains. A parenthesis that opens on a query is that
+/// query, not a list.
+fn quotes_an_option(code: &[Code<'_>], grammar: SqlGrammar) -> bool {
+    code.get(1).is_some_and(|second| second.kind == Kind::Open)
+        && !code.get(2..).is_some_and(|rest| opens_as_read(rest, grammar))
+        && code
+            .iter()
+            .skip(2)
+            .take_while(|token| token.kind != Kind::Close || token.depth > 0)
+            .any(|token| token.kind == Kind::Quoted)
+}
+
+/// SQLite applies a pragma such as `foreign_keys = OFF` while it compiles
+/// the statement, and EXPLAIN compiles what it explains, so an explained
+/// pragma is read as the pragma itself.
+fn explained_pragma<'code, 'sql>(code: &'code [Code<'sql>], grammar: SqlGrammar) -> &'code [Code<'sql>] {
+    if grammar != SqlGrammar::Sqlite {
+        return code;
+    }
+    let explained = match code {
+        [explain, query, plan, rest @ ..]
+            if explain.is_word(&["EXPLAIN"]) && query.is_word(&["QUERY"]) && plan.is_word(&["PLAN"]) =>
+        {
+            rest
+        }
+        [explain, rest @ ..] if explain.is_word(&["EXPLAIN"]) => rest,
+        _ => return code,
+    };
+    match explained.first().is_some_and(|first| first.is_word(&["PRAGMA"])) {
+        true => explained,
+        false => code,
+    }
 }
 
 /// Whether a word in `part` writes wherever it stands. Every SHOW only
 /// reports, `SHOW CREATE TABLE` included.
 fn writes(part: &[Code<'_>], grammar: SqlGrammar) -> bool {
-    if part.first().is_some_and(|first| first.is_word(&["SHOW"])) {
+    if grammar != SqlGrammar::MsSql && part.first().is_some_and(|first| first.is_word(&["SHOW"])) {
         return false;
     }
     let follows = |index: usize, set: &[&str]| index > 0 && part[index - 1].is_word(set);
@@ -256,16 +323,51 @@ fn writes(part: &[Code<'_>], grammar: SqlGrammar) -> bool {
                     || (is(token.text, &["SHARE"]) && follows(index, &["FOR", "KEY", "IN"]))
                     // `NEXT VALUE FOR` takes a number from a sequence.
                     || (is(token.text, &["VALUE"]) && follows(index, &["NEXT"]))
-                    || calls_mutator(part, index))
+                    || calls_mutator(part, index, grammar))
         }
-        Kind::Quoted => calls_mutator(part, index),
+        Kind::Quoted => calls_mutator(part, index, grammar),
         _ => false,
     })
 }
 
 /// A call of a built-in that changes state, its name quoted or not.
-fn calls_mutator(part: &[Code<'_>], index: usize) -> bool {
-    is(part[index].text, &MUTATING_FUNCTIONS) && part.get(index + 1).is_some_and(|next| next.kind == Kind::Open)
+/// PostgreSQL decodes the escapes in `U&"set\0076al"` before it looks the
+/// name up, under an escape character `UESCAPE` may change, so a name
+/// spelled that way is compared with nothing and may be any of them.
+fn calls_mutator(part: &[Code<'_>], index: usize, grammar: SqlGrammar) -> bool {
+    let arguments = match decodes_unicode_names(grammar) && spelled_in_escapes(part, index) {
+        true => after_uescape(part, index + 1),
+        false if changes_state(part[index].text) => index + 1,
+        false => return false,
+    };
+    part.get(arguments).is_some_and(|next| next.kind == Kind::Open)
+}
+
+/// The grammars whose scanner is PostgreSQL's, which reads `U&"…"`.
+fn decodes_unicode_names(grammar: SqlGrammar) -> bool {
+    matches!(grammar, SqlGrammar::PostgreSql | SqlGrammar::DuckDb)
+}
+
+/// A `U&"…"` name, whose prefix the lexer reads as the word `U` and `&`,
+/// written with nothing between them, since `u & "f"(1)` is an AND.
+fn spelled_in_escapes(part: &[Code<'_>], index: usize) -> bool {
+    part[index].kind == Kind::Quoted
+        && index >= 2
+        && part[index - 1].kind == Kind::Other
+        && part[index - 1].text == "&"
+        && part[index - 2].is_word(&["U"])
+        && part[index - 2].text.as_ptr() as usize + 3 == part[index].text.as_ptr() as usize
+}
+
+/// The index past a `UESCAPE '!'` at `index`, or `index` where there is
+/// none. A string can go on in another on the next line, so it is as
+/// many tokens as stand there.
+fn after_uescape(part: &[Code<'_>], index: usize) -> usize {
+    if !part.get(index).is_some_and(|word| word.is_word(&["UESCAPE"])) {
+        return index;
+    }
+    let strings = part[index + 1..].iter().take_while(|token| token.kind == Kind::Literal);
+    index + 1 + strings.count()
 }
 
 /// A verb MySQL also has as a function, called as one.
@@ -280,6 +382,7 @@ fn opens_as_read(part: &[Code<'_>], grammar: SqlGrammar) -> bool {
     match first.kind {
         Kind::Open => true,
         Kind::Word if is(first.text, &["PRAGMA"]) => grammar == SqlGrammar::Sqlite && reporting_pragma(part),
+        Kind::Word if grammar == SqlGrammar::MsSql => is(first.text, &TSQL_READ_VERBS),
         // CQL's LIST ROLES, LIST USERS and LIST PERMISSIONS report.
         Kind::Word => is(first.text, &READ_VERBS) || (grammar == SqlGrammar::Cql && is(first.text, &["LIST"])),
         _ => false,
@@ -297,6 +400,8 @@ enum Kind {
     End,
     /// A quoted name, its text without the quotes.
     Quoted,
+    /// A string or a dollar-quoted body.
+    Literal,
     Other,
 }
 
@@ -341,6 +446,7 @@ fn code_of<'a>(sql: &'a str, tokens: &[ScriptToken]) -> Vec<Code<'a>> {
                 ScriptTokenKind::Semicolon if depth == 0 => Kind::End,
                 ScriptTokenKind::Word => Kind::Word,
                 ScriptTokenKind::QuotedIdentifier => Kind::Quoted,
+                ScriptTokenKind::StringLiteral | ScriptTokenKind::DollarQuoted => Kind::Literal,
                 ScriptTokenKind::Punct if text == "," => Kind::Comma,
                 ScriptTokenKind::Punct if text == "=" => Kind::Equals,
                 _ => Kind::Other,
@@ -354,6 +460,24 @@ fn code_of<'a>(sql: &'a str, tokens: &[ScriptToken]) -> Vec<Code<'a>> {
                 _ => text,
             };
             Code { kind, text, depth }
+        })
+        .collect()
+}
+
+/// `code` with each word cut where it holds a Unicode blank.
+fn split_at_blanks<'a>(code: &[Code<'a>]) -> Vec<Code<'a>> {
+    code.iter()
+        .flat_map(|token| {
+            let pieces: Vec<Code<'a>> = match token.kind {
+                Kind::Word => token
+                    .text
+                    .split(is_blank)
+                    .filter(|piece| !piece.is_empty())
+                    .map(|text| Code { text, ..*token })
+                    .collect(),
+                _ => vec![*token],
+            };
+            pieces
         })
         .collect()
 }
@@ -393,7 +517,7 @@ fn defines_routine(statement: &[Code<'_>]) -> bool {
 /// Server batch written without `;`; one in parentheses is a
 /// data-modifying CTE.
 fn statement_destroys(code: &[Code<'_>], grammar: SqlGrammar) -> bool {
-    let starts = statement_starts(code);
+    let starts = statement_starts(code, grammar);
     // Each start's segment runs to the next start at its depth, found in
     // one pass from the end.
     let mut next_at_depth: HashMap<usize, usize> = HashMap::new();
@@ -411,7 +535,7 @@ fn statement_destroys(code: &[Code<'_>], grammar: SqlGrammar) -> bool {
         .any(|(&start, end)| segment_destroys(&code[start..end], grammar))
 }
 
-fn statement_starts(code: &[Code<'_>]) -> Vec<usize> {
+fn statement_starts(code: &[Code<'_>], grammar: SqlGrammar) -> Vec<usize> {
     let mut starts = Vec::new();
     let mut lead: Option<&str> = None;
     for (index, token) in code.iter().enumerate() {
@@ -420,8 +544,10 @@ fn statement_starts(code: &[Code<'_>]) -> Vec<usize> {
             None => token.kind == Kind::Word,
             Some(before) if token.is_word(&["DELETE", "UPDATE"]) && before.kind == Kind::Open => true,
             Some(before) if token.depth == 0 && token.is_word(&STATEMENT_VERBS) => {
-                let led_in = before.is_word(&CLAUSE_WORDS) || before.kind == Kind::Comma;
-                let alters = lead.is_some_and(|lead| is(lead, &["ALTER"])) && token.is_word(&["DROP", "ALTER"]);
+                let led_in = leads_in(before, &code[index..], grammar) || before.kind == Kind::Comma;
+                let alters = lead.is_some_and(|lead| is(lead, &["ALTER"]))
+                    && token.is_word(&["DROP", "ALTER"])
+                    && !(grammar == SqlGrammar::MsSql && drops_an_object(&code[index..]));
                 !led_in && !alters
             }
             Some(_) => false,
@@ -434,6 +560,27 @@ fn statement_starts(code: &[Code<'_>]) -> Vec<usize> {
         }
     }
     starts
+}
+
+/// Whether `before` keeps the verb at `code[0]` inside its statement.
+fn leads_in(before: &Code<'_>, code: &[Code<'_>], grammar: SqlGrammar) -> bool {
+    if grammar != SqlGrammar::MsSql {
+        return before.is_word(&CLAUSE_WORDS);
+    }
+    if !before.is_word(&["ON"]) {
+        return before.is_word(&TSQL_CLAUSE_WORDS);
+    }
+    let word = |at: usize, set: &[&str]| code.get(at).is_some_and(|token| token.is_word(set));
+    word(0, &["DELETE", "UPDATE"])
+        && (word(1, &["CASCADE"])
+            || (word(1, &["SET"]) && word(2, &["NULL", "DEFAULT"]))
+            || (word(1, &["NO"]) && word(2, &["ACTION"])))
+}
+
+/// A DROP at `code[0]` that names a kind of object only a DROP statement
+/// takes.
+fn drops_an_object(code: &[Code<'_>]) -> bool {
+    code[0].is_word(&["DROP"]) && code.get(1).is_some_and(|kind| kind.is_word(&TSQL_DROPPED_OBJECTS))
 }
 
 /// The statement that starts at `code[0]` and runs to the end of `code`
@@ -469,7 +616,13 @@ fn reporting_pragma(code: &[Code<'_>]) -> bool {
         .filter(|token| token.kind == Kind::Word)
         .last();
     let assigns = code.iter().any(|token| token.kind == Kind::Equals);
-    !assigns && name.is_some_and(|name| is(name.text, &REPORTING_PRAGMAS))
+    !assigns && name.is_some_and(|name| sqlite_pragma_reports(name.text))
+}
+
+/// Whether the SQLite pragma `name` only reports, whatever argument it
+/// is given. Any other pragma can change the database or the connection.
+pub fn sqlite_pragma_reports(name: &str) -> bool {
+    is(name, &REPORTING_PRAGMAS)
 }
 
 fn is(word: &str, set: &[&str]) -> bool {
@@ -494,13 +647,22 @@ mod tests {
                 "/* UPDATE orders */ SELECT 1",
                 "(SELECT 1) UNION (SELECT 2)",
                 "WITH recent AS (SELECT * FROM orders) SELECT * FROM recent",
-                "EXPLAIN SELECT * FROM orders",
                 "SELECT replace(name, 'a', 'b') FROM orders",
                 "",
                 "-- only a note",
             ] {
                 assert_eq!(access(sql, grammar), StatementAccess::Read, "{grammar:?}: {sql}");
             }
+        }
+        for grammar in SqlGrammar::SQL
+            .into_iter()
+            .filter(|grammar| *grammar != SqlGrammar::MsSql)
+        {
+            assert_eq!(
+                access("EXPLAIN SELECT * FROM orders", grammar),
+                StatementAccess::Read,
+                "{grammar:?}"
+            );
         }
     }
 
@@ -623,7 +785,6 @@ mod tests {
                 "UPDATE orders SET total = 0 WHERE id = 1",
                 "ALTER TABLE orders DROP COLUMN note",
                 "CREATE TABLE lines (order_id int REFERENCES orders ON DELETE CASCADE)",
-                "INSERT INTO orders VALUES (1) ON CONFLICT (id) DO UPDATE SET total = 0",
                 "SELECT * FROM orders FOR UPDATE",
                 "GRANT SELECT, UPDATE, DELETE ON orders TO someone",
                 "CREATE TRIGGER t AFTER UPDATE OF total ON orders FOR EACH ROW EXECUTE FUNCTION f()",
@@ -631,6 +792,14 @@ mod tests {
             ] {
                 assert_ne!(access(sql, grammar), StatementAccess::Destructive, "{grammar:?}: {sql}");
             }
+        }
+        // T-SQL has no ON CONFLICT, and DO is a name there.
+        for grammar in SqlGrammar::SQL
+            .into_iter()
+            .filter(|grammar| *grammar != SqlGrammar::MsSql)
+        {
+            let sql = "INSERT INTO orders VALUES (1) ON CONFLICT (id) DO UPDATE SET total = 0";
+            assert_ne!(access(sql, grammar), StatementAccess::Destructive, "{grammar:?}: {sql}");
         }
     }
 
@@ -931,5 +1100,277 @@ mod tests {
         let sql = r"SELECT 'a\'; DELETE FROM orders; -- '";
         assert_eq!(access(sql, SqlGrammar::MySql), StatementAccess::Destructive);
         assert_eq!(access(sql, SqlGrammar::PostgreSql), StatementAccess::Destructive);
+    }
+
+    #[test]
+    fn a_quote_inside_a_sqlite_parameter_opens_no_string() {
+        for sql in [
+            "WITH c AS (SELECT $1(')) DELETE FROM orders --'",
+            "WITH c AS (SELECT $a::b(')) DELETE FROM orders --'",
+            "WITH c AS (SELECT @a(')) DELETE FROM orders --'",
+            "WITH c AS (SELECT :a(')) DELETE FROM orders --'",
+            "WITH c AS (SELECT #a(')) DELETE FROM orders --'",
+        ] {
+            assert_eq!(access(sql, SqlGrammar::Sqlite), StatementAccess::Destructive, "{sql}");
+        }
+        for sql in [
+            "SELECT $1('); ATTACH DATABASE 'other.db' AS other; --'",
+            "SELECT $1('); VACUUM INTO 'copy.db'; --'",
+        ] {
+            assert_eq!(access(sql, SqlGrammar::Sqlite), StatementAccess::Write, "{sql}");
+        }
+        for sql in [
+            "SELECT $1, $name, :name, @name FROM orders",
+            "SELECT $1( '; DELETE FROM orders; --')",
+            "SELECT a$1('; DELETE FROM orders; --')",
+        ] {
+            assert_eq!(access(sql, SqlGrammar::Sqlite), StatementAccess::Read, "{sql}");
+        }
+    }
+
+    #[test]
+    fn a_string_that_continues_an_escape_string_is_read_as_one() {
+        // The server carries `E'x'` on into a string on the next line and
+        // reads that with backslash escapes on, so the first `\'` is an
+        // escaped quote and the COMMIT is code.
+        for sql in [
+            "SELECT E'x'\n'\\' || ' || '\\' ; COMMIT; DELETE FROM orders; --'",
+            "SELECT e'x' -- note\r\n  -- note\n\t'\\' || ' || '\\' ; COMMIT; DELETE FROM orders; --'",
+            "SELECT E'x'\n'y'\n'\\' || ' || '\\' ; COMMIT; DELETE FROM orders; --'",
+        ] {
+            for grammar in [SqlGrammar::PostgreSql, SqlGrammar::DuckDb] {
+                assert_eq!(
+                    access(sql, grammar),
+                    StatementAccess::Destructive,
+                    "{grammar:?}: {sql:?}"
+                );
+            }
+        }
+        for sql in [
+            "SELECT E'x'\n'\\'; DELETE FROM orders; --'",
+            "SELECT E'a\\'b'\n'c\\'d' FROM orders",
+        ] {
+            assert_eq!(access(sql, SqlGrammar::PostgreSql), StatementAccess::Read, "{sql:?}");
+        }
+    }
+
+    #[test]
+    fn a_unicode_blank_before_a_keyword_does_not_hide_it() {
+        for (sql, expected) in [
+            ("\u{feff}DROP TABLE t", StatementAccess::Destructive),
+            ("SELECT 1;\u{feff}DELETE FROM t", StatementAccess::Destructive),
+            (
+                "WITH x AS (SELECT 1) \u{feff}DELETE FROM t",
+                StatementAccess::Destructive,
+            ),
+            (
+                "WITH x AS (SELECT 1) \u{feff}INSERT \u{feff}INTO t VALUES (1)",
+                StatementAccess::Write,
+            ),
+            ("\u{feff}SELECT 1", StatementAccess::Read),
+        ] {
+            assert_eq!(access(sql, SqlGrammar::Sqlite), expected, "{sql:?}");
+        }
+        // Whether SQL Server or ClickHouse skip such a character is not
+        // known here, so the stricter reading stands.
+        for grammar in [SqlGrammar::MsSql, SqlGrammar::ClickHouse] {
+            for sql in [
+                "SELECT 1\n\u{feff}DROP TABLE t",
+                "SELECT 1\n\u{200b}DROP TABLE t",
+                "SELECT 1\n\u{a0}DROP TABLE t",
+            ] {
+                assert_eq!(
+                    access(sql, grammar),
+                    StatementAccess::Destructive,
+                    "{grammar:?}: {sql:?}"
+                );
+            }
+            assert!(
+                access("SEL\u{feff}ECT 1", grammar) >= StatementAccess::Write,
+                "{grammar:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_sql_server_batch_that_opens_with_the_name_show_is_not_a_read() {
+        for sql in [
+            "SHOW: SELECT 1",
+            "SHOW: UPDATE orders SET total = 0 WHERE id = 1",
+            "SHOW: COMMIT TRANSACTION UPDATE orders SET total = 0 WHERE id = 1 BEGIN TRANSACTION",
+            "SHOW: EXEC('DROP TABLE orders')",
+            "SHOW: EXEC xp_cmdshell 'whoami'",
+            "SELECT 1; show : BACKUP DATABASE shop TO DISK = 'x'",
+            "SHOW INSERT INTO orders VALUES (1)",
+            "EXPLAIN 'x'",
+            "DESCRIBE orders",
+            "VALUES (1)",
+            "TABLE orders",
+        ] {
+            assert_eq!(access(sql, SqlGrammar::MsSql), StatementAccess::Write, "{sql}");
+        }
+        assert_eq!(
+            access("SHOW: DELETE FROM orders", SqlGrammar::MsSql),
+            StatementAccess::Destructive
+        );
+    }
+
+    #[test]
+    fn an_explain_with_a_quoted_option_may_run_what_it_explains() {
+        for (sql, expected) in [
+            ("EXPLAIN (\"analyze\") DELETE FROM orders", StatementAccess::Destructive),
+            (
+                "EXPLAIN (COSTS off, \"analyze\" true) DELETE FROM orders",
+                StatementAccess::Destructive,
+            ),
+            (
+                "EXPLAIN (U&\"\\0061nalyze\") DELETE FROM orders",
+                StatementAccess::Destructive,
+            ),
+            (
+                "EXPLAIN (\"analyze\") SELECT pg_terminate_backend(42)",
+                StatementAccess::Write,
+            ),
+        ] {
+            assert_eq!(access(sql, SqlGrammar::PostgreSql), expected, "{sql}");
+        }
+        for sql in [
+            "EXPLAIN (COSTS false) DELETE FROM \"analyze\"",
+            "EXPLAIN (FORMAT 'json') DELETE FROM orders",
+            "EXPLAIN (WITH gone AS (SELECT * FROM \"orders\") SELECT * FROM gone)",
+        ] {
+            assert_eq!(access(sql, SqlGrammar::PostgreSql), StatementAccess::Read, "{sql}");
+        }
+    }
+
+    #[test]
+    fn an_explained_pragma_is_read_as_the_pragma_on_sqlite() {
+        for sql in [
+            "EXPLAIN PRAGMA foreign_keys = OFF",
+            "explain pragma main.trusted_schema = ON",
+            "EXPLAIN QUERY PLAN PRAGMA writable_schema(ON)",
+            "EXPLAIN /* plan */ PRAGMA hard_heap_limit = 1",
+            "EXPLAIN QUERY PLAN PRAGMA recursive_triggers = ON",
+            "EXPLAIN PRAGMA optimize",
+        ] {
+            assert_eq!(access(sql, SqlGrammar::Sqlite), StatementAccess::Write, "{sql}");
+        }
+        for sql in [
+            "EXPLAIN PRAGMA table_info(orders)",
+            "EXPLAIN QUERY PLAN PRAGMA main.index_list('orders')",
+            "EXPLAIN QUERY PLAN SELECT * FROM orders",
+            "EXPLAIN DELETE FROM orders",
+        ] {
+            assert_eq!(access(sql, SqlGrammar::Sqlite), StatementAccess::Read, "{sql}");
+        }
+    }
+
+    #[test]
+    fn a_function_that_runs_sql_text_or_signals_writes() {
+        for sql in [
+            "SELECT dblink('host=db', 'DELETE FROM orders')",
+            "SELECT * FROM dblink('host=db', 'DELETE FROM orders') AS t(n int)",
+            "SELECT dblink_send_query('c', 'DELETE FROM orders')",
+            "SELECT dblink_open('c', 'cur', 'SELECT 1')",
+            "SELECT query_to_xml('DELETE FROM orders RETURNING *', true, false, '')",
+            "SELECT ts_stat('DELETE FROM orders RETURNING note::tsvector')",
+            "SELECT lo_creat(-1)",
+            "SELECT lowrite(0, 'x')",
+            "SELECT lo_truncate(0, 0)",
+            "SELECT pg_notify('jobs', 'run')",
+            "SELECT pg_advisory_lock(1)",
+            "SELECT pg_logical_slot_get_changes('s', NULL, NULL)",
+            "SELECT pg_replication_origin_create('o')",
+            "SELECT pg_stat_reset_shared('bgwriter')",
+            "SELECT pg_wal_replay_pause()",
+            "SELECT gin_clean_pending_list('i'::regclass)",
+        ] {
+            assert_eq!(access(sql, SqlGrammar::PostgreSql), StatementAccess::Write, "{sql}");
+        }
+        for sql in ["SELECT GET_LOCK('l', 1)", "SELECT release_all_locks()"] {
+            assert_eq!(access(sql, SqlGrammar::MySql), StatementAccess::Write, "{sql}");
+        }
+        assert_eq!(
+            access(
+                "SELECT dblink_build_sql_insert('t', '1', 1, '{1}', '{2}')",
+                SqlGrammar::PostgreSql
+            ),
+            StatementAccess::Read
+        );
+    }
+
+    #[test]
+    fn a_call_of_a_name_spelled_in_escapes_writes() {
+        for sql in [
+            r#"SELECT U&"set\0076al"('orders_id_seq', 1, false)"#,
+            r#"SELECT pg_catalog.u&"pg_terminate_backen\0064"(pid) FROM pg_stat_activity"#,
+            r#"SELECT U&"pg_terminate_backen\+000064" /* all */ (pid) FROM pg_stat_activity"#,
+            r#"SELECT U&"setv!0061l" UESCAPE '!' ('orders_id_seq', 1, false)"#,
+            r#"SELECT U&"setv!0061l" uescape E'!'('orders_id_seq', 1, false)"#,
+            r#"SELECT U&"setv!0061l" UESCAPE $$!$$ ('orders_id_seq', 1, false)"#,
+            "SELECT U&\"setv!0061l\" UESCAPE '!'\n'' ('orders_id_seq', 1, false)",
+        ] {
+            assert_eq!(access(sql, SqlGrammar::PostgreSql), StatementAccess::Write, "{sql}");
+        }
+        for sql in [
+            r#"SELECT U&"d\0061ta", u & "mask" FROM orders"#,
+            r#"SELECT U&"d!0061ta" UESCAPE '!' FROM orders WHERE id IN (1, 2)"#,
+            r#"SELECT U&'d\0061ta', count(*) FROM orders"#,
+            r#"SELECT U&"pg_terminate_backen\0064" FROM pg_proc"#,
+        ] {
+            assert_eq!(access(sql, SqlGrammar::PostgreSql), StatementAccess::Read, "{sql}");
+        }
+        assert_eq!(
+            access(
+                r#"SELECT U&"price" UESCAPE '!' + (1) FROM items"#,
+                SqlGrammar::PostgreSql
+            ),
+            StatementAccess::Read
+        );
+        // No other grammar decodes a name, and a spaced `&` is an AND.
+        assert_eq!(
+            access(r#"SELECT U & "f"(1) FROM t"#, SqlGrammar::Sqlite),
+            StatementAccess::Read
+        );
+        assert_eq!(
+            access(
+                r#"SELECT u & "abs"(-3) FROM (VALUES (7)) AS t(u)"#,
+                SqlGrammar::PostgreSql
+            ),
+            StatementAccess::Read
+        );
+    }
+
+    #[test]
+    fn a_sql_server_statement_that_ends_in_a_clause_word_still_ends() {
+        for sql in [
+            "SET NOCOUNT ON\nDROP TABLE orders",
+            "SET XACT_ABORT ON\nTRUNCATE TABLE orders",
+            "SET IDENTITY_INSERT orders ON\nDELETE FROM orders",
+            "SET IDENTITY_INSERT orders ON\nDELETE orders",
+            "SET NOCOUNT ON\nUPDATE orders SET total = 0",
+            "SELECT 1\nSET NOCOUNT ON -- quiet\nDROP TABLE orders",
+            "CLOSE MASTER KEY\nDROP TABLE orders",
+            "SELECT * FROM before\nDROP TABLE orders",
+            "SELECT * FROM after\nDELETE FROM orders",
+            "SELECT * FROM instead\nTRUNCATE TABLE orders",
+            "SELECT * FROM do\nUPDATE orders SET total = 0",
+            "ALTER TABLE t ADD x int\nDROP TABLE y",
+            "ALTER TABLE t ADD x int\nDELETE FROM y",
+        ] {
+            assert_eq!(access(sql, SqlGrammar::MsSql), StatementAccess::Destructive, "{sql}");
+        }
+        for sql in [
+            "ALTER TABLE lines ADD CONSTRAINT fk FOREIGN KEY (order_id) REFERENCES orders (id) ON DELETE CASCADE",
+            "ALTER TABLE lines ADD CONSTRAINT fk FOREIGN KEY (order_id) REFERENCES orders (id) ON UPDATE SET NULL",
+            "ALTER TABLE lines ADD CONSTRAINT fk FOREIGN KEY (order_id) REFERENCES orders (id) ON DELETE NO ACTION",
+            "SET NOCOUNT ON\nDELETE FROM orders WHERE id = 1",
+            "ALTER TABLE orders DROP COLUMN note",
+            "ALTER TABLE orders DROP CONSTRAINT orders_pk",
+            "MERGE INTO t USING s ON t.id = s.id WHEN MATCHED THEN DELETE",
+            "DECLARE c CURSOR FOR SELECT id FROM orders FOR UPDATE",
+        ] {
+            assert_eq!(access(sql, SqlGrammar::MsSql), StatementAccess::Write, "{sql}");
+        }
     }
 }

@@ -871,8 +871,11 @@ impl SqlEditor {
         let EntryKind::ResultSet(result) = &entry.kind else {
             return None;
         };
-        Some(ExportOffer {
-            origin: ExportOrigin::Editor {
+        // All Rows runs the statement again on the connection, which is in
+        // another database than this tab.
+        let origin = match self.tab_database() {
+            Some(_) => ExportOrigin::Shown { rows: shown },
+            None => ExportOrigin::Editor {
                 shown,
                 query: ExportQuery::Editor {
                     sql: result.statement.clone(),
@@ -880,6 +883,9 @@ impl SqlEditor {
                 shown_rows: result.row_count() as u64,
                 truncated: result.summary.is_truncated(),
             },
+        };
+        Some(ExportOffer {
+            origin,
             session: self.deps().and_then(|deps| deps.session.get()),
             name: export_name_for_query(&entry.preview),
             target: None,

@@ -2828,6 +2828,68 @@ fn a_connection_without_a_database_name_names_the_servers() {
     assert_eq!(harness.editor.tab_database(), None, "the connection's own");
 }
 
+/// A connection in no database yet still offers the server's.
+#[gtk4::test]
+fn a_connection_in_no_database_offers_one() {
+    let database = |name: &str| tablepro_core::meta::SchemaInfo {
+        name: name.to_owned(),
+        is_default: false,
+        is_system: false,
+    };
+    let harness = scoped_editor_with(mysql_dialect(), &[], answering(), |script, request| {
+        if let tablepro_session::connect::RequestTarget::Network { database, .. } = &mut request.target {
+            *database = None;
+        }
+        script.list_databases.always(FakeReply::ok(vec![database("analytics")]));
+    });
+    let button = harness.editor.imp().scope_button.get();
+    wait_until(WAIT, || button.is_visible()).expect("the database menu");
+
+    assert_eq!(harness.editor.imp().scope_button_label.label(), "No Database");
+    pick_database(&harness, "analytics");
+    assert_eq!(harness.editor.imp().scope_button_label.label(), "analytics");
+}
+
+/// All Rows runs the statement again on the connection, in another
+/// database than a moved tab's, so only the rows shown are offered.
+#[gtk4::test]
+fn a_moved_tab_exports_the_rows_it_shows_only() {
+    let mut runs = Replies::default();
+    runs.always(result_set(3, Some(40), Truncation::ReadPastLimit));
+    let harness = databases_editor(runs, false);
+    let offers = SignalLog::connect(&harness.editor, "export-results", |values| {
+        values[1]
+            .get::<glib::BoxedAnyObject>()
+            .expect("an offer")
+            .borrow::<ExportOffer>()
+            .clone()
+    });
+    pick_database(&harness, "analytics");
+    run_and_wait(&harness);
+
+    shown_banner(&harness).emit_by_name::<()>("button-clicked", &[]);
+
+    let offers = offers.take();
+    let [offer] = offers.as_slice() else {
+        panic!("one offer, not {}", offers.len());
+    };
+    assert!(matches!(offer.origin, ExportOrigin::Shown { .. }), "{:?}", offer.origin);
+}
+
+/// The assistant describes the database the tab in front is in.
+#[gtk4::test]
+fn the_assistant_reads_the_tabs_database() {
+    let harness = databases_editor(answering(), false);
+    assert_eq!(harness.editor.catalog_home(), CatalogHome::Connection);
+
+    pick_database(&harness, "analytics");
+
+    assert_eq!(
+        harness.editor.catalog_home(),
+        CatalogHome::Schema("analytics".to_owned())
+    );
+}
+
 /// A database the server will not move to leaves the tab where its
 /// session is, and the run says why.
 #[gtk4::test]

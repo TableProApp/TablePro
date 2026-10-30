@@ -9,9 +9,9 @@ pub(crate) fn resolve_op(token: &CommitToken) -> Result<ReadOp<CommitResolution>
         return Ok(read_op(|_| Box::pin(async { Ok(CommitResolution::Unresolvable) })));
     };
     let sql = if *legacy_txid {
-        "SELECT txid_status($1::text::int8)::text"
+        "SELECT pg_catalog.txid_status($1::text::int8)::text"
     } else {
-        "SELECT pg_xact_status($1::text::xid8)::text"
+        "SELECT pg_catalog.pg_xact_status($1::text::xid8)::text"
     };
     let xid = xid.to_string();
     Ok(read_op(move |client| {
