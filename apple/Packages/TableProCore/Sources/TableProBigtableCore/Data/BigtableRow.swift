@@ -15,14 +15,16 @@ public struct BigtableColumn: Hashable, Sendable, Comparable {
         family + ":" + BigtableBytes.display(qualifier)
     }
 
+    // By scalar: a qualifier that starts with a combining mark joins the colon into one Character.
     public init(name: String) throws {
-        guard let colon = name.firstIndex(of: ":"), colon != name.startIndex else {
+        guard let colon = name.unicodeScalars.firstIndex(of: ":"), colon != name.startIndex else {
             throw BigtableError.configuration(String(
                 format: String(localized: "\"%@\" is not a column. Name it as family:qualifier."), name
             ))
         }
-        self.family = String(name[..<colon])
-        self.qualifier = try BigtableBytes.parse(String(name[name.index(after: colon)...]))
+        self.family = String(name.unicodeScalars[..<colon])
+        let scalars = name.unicodeScalars
+        self.qualifier = try BigtableBytes.parse(String(scalars[scalars.index(after: colon)...]))
     }
 
     public static func < (lhs: BigtableColumn, rhs: BigtableColumn) -> Bool {
