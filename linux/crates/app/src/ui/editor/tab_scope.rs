@@ -81,7 +81,8 @@ impl SqlEditor {
             return;
         };
         self.set_scope(Some(scope_text(&database, None)));
-        self.follow_in_completion(catalog_home(layout, session.database(), &database));
+        let own = self.own_database(&session);
+        self.follow_in_completion(catalog_home(layout, own.as_deref(), &database));
         let moved = self.imp().named_database.replace(Some(database.clone())) != Some(database.clone());
         if moved {
             self.emit_by_name::<()>("database-changed", &[]);
@@ -90,7 +91,7 @@ impl SqlEditor {
             action.set_state(&database.to_variant());
         }
         // The catalog describes the connection's own database only.
-        if layout != DatabaseLayout::WithSchemas || session.database() != Some(database.as_str()) {
+        if layout != DatabaseLayout::WithSchemas || own.as_deref() != Some(database.as_str()) {
             return;
         }
         let reading = {
@@ -128,9 +129,19 @@ impl SqlEditor {
             .imp()
             .slot
             .database()
-            .or_else(|| session.database().map(str::to_owned))
+            .or_else(|| self.own_database(session))
             .filter(|name| !name.is_empty())?;
         Some((database, layout))
+    }
+
+    /// The database the connection opened in: the name it was given, else
+    /// the one the server listed as its own.
+    fn own_database(&self, session: &Session) -> Option<String> {
+        session
+            .database()
+            .filter(|name| !name.is_empty())
+            .map(str::to_owned)
+            .or_else(|| self.imp().listed_own_database.borrow().clone())
     }
 
     /// Ask the server for its databases, for the bar's menu. A server
@@ -142,7 +153,10 @@ impl SqlEditor {
         else {
             return;
         };
-        if self.scope_database(&session).is_none() {
+        let several = session
+            .current_dialect()
+            .is_some_and(|dialect| dialect.database_layout() != DatabaseLayout::Single);
+        if !several {
             return;
         }
         let listing = tasks.spawn_task(async move {
@@ -167,6 +181,9 @@ impl SqlEditor {
             };
             if let Some(editor) = editor.upgrade() {
                 let imp = editor.imp();
+                let own = databases.iter().find(|database| database.is_default);
+                imp.listed_own_database
+                    .replace(own.map(|database| database.name.clone()));
                 imp.scope_button.set_menu_model(database_menu(&databases).as_ref());
                 editor.show_scope();
             }
@@ -187,11 +204,11 @@ impl SqlEditor {
     /// the connection's own.
     pub(crate) fn tab_database(&self) -> Option<String> {
         let database = self.imp().slot.database()?;
-        let own = self.deps().and_then(|deps| deps.session.get());
-        match own {
-            Some(session) if session.database() == Some(database.as_str()) => None,
-            _ => Some(database),
-        }
+        let own = self
+            .deps()
+            .and_then(|deps| deps.session.get())
+            .and_then(|session| self.own_database(&session));
+        (own.as_deref() != Some(database.as_str())).then_some(database)
     }
 
     pub(crate) fn connect_database_changed<F: Fn(&Self) + 'static>(&self, f: F) -> glib::SignalHandlerId {
