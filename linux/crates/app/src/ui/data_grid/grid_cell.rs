@@ -154,6 +154,10 @@ impl GridCell {
         display.set_valign(gtk::Align::Center);
         display.set_text_overflow(gtk::InscriptionOverflow::EllipsizeEnd);
         display.set_min_chars(1);
+        // The desktop's monospace font, as the macOS grid draws in the
+        // system's: a column of times or codes lines up, and its width
+        // follows its characters.
+        display.add_css_class("monospace");
         display.set_parent(&cell);
         let _ = cell.imp().display.set(display);
         let _ = cell.imp().paint.set(paint);

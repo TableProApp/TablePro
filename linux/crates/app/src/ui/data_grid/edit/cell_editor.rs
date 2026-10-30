@@ -305,6 +305,8 @@ impl EditController {
         self.commit_open(Refusal::Drop, CloseWhen::Now);
         let text = gtk::Text::new();
         text.set_hexpand(true);
+        // In the font the cell draws in, so the value does not jump.
+        text.add_css_class("monospace");
         text.set_truncate_multiline(!plan.accepts_line_breaks);
         text.set_input_purpose(input_purpose(plan.purpose));
         text.set_placeholder_text(empty_placeholder(&plan.column, &plan.start.row).as_deref());

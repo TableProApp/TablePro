@@ -5,6 +5,7 @@ use std::sync::Arc;
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use gtk4::{self as gtk, glib, pango};
+use libadwaita as adw;
 use tablepro_core::Value;
 
 use super::grid_cell::{GridCell, TextAttributes};
@@ -240,8 +241,10 @@ impl DataGrid {
         let sample: Vec<Option<Arc<[Value]>>> = self.store().rows().take(WIDTH_SAMPLE).map(|row| row.cells()).collect();
         let by_type = set.pages == Pages::Empty;
         let view = self.column_view();
-        let metrics = view.pango_context().metrics(None, None);
-        let char_px = pango::units_to_double(metrics.approximate_char_width());
+        let font = grid_font();
+        // As the macOS grid sizes a column: its characters at the width of
+        // an M in the grid's monospace font.
+        let char_px = f64::from(drawn_width(&view, &font, "M"));
         let mut widths = Vec::new();
         for (paint, view_column) in set.paints.iter().zip(&set.view_columns) {
             let index = paint.column.index;
@@ -265,16 +268,16 @@ impl DataGrid {
             // nor with no rows a value its type spells out, as a UUID or an
             // enum's label, so those are measured in tabular figures too.
             let sampled = match (by_type, paint.numbers.get()) {
-                (_, true) => tabular_width(&view, &"0".repeat(usize::try_from(chars).unwrap_or_default())),
+                (_, true) => tabular_width(&view, &font, &"0".repeat(usize::try_from(chars).unwrap_or_default())),
                 (true, false) => 0,
                 (false, false) => {
-                    widest_text(column, values.iter().copied()).map_or(0, |widest| drawn_width(&view, &widest))
+                    widest_text(column, values.iter().copied()).map_or(0, |widest| drawn_width(&view, &font, &widest))
                 }
             };
             let spelled = match by_type || column.display() == CellDisplay::Temporal {
                 true => typical_texts(column)
                     .iter()
-                    .map(|typical| tabular_width(&view, typical))
+                    .map(|typical| tabular_width(&view, &font, typical))
                     .max()
                     .unwrap_or(0),
                 false => 0,
@@ -664,14 +667,23 @@ fn same_names(layout: &ColumnLayout, columns: &[GridColumn]) -> bool {
 
 /// How wide `text` is in the tabular figures libadwaita's `numeric`
 /// class draws.
-fn tabular_width(widget: &impl IsA<gtk::Widget>, text: &str) -> i32 {
+/// The font the grid's cells draw in: libadwaita's `monospace` class
+/// takes the desktop's monospace font from the same setting.
+fn grid_font() -> pango::FontDescription {
+    pango::FontDescription::from_string(&adw::StyleManager::default().monospace_font_name())
+}
+
+fn tabular_width(widget: &impl IsA<gtk::Widget>, font: &pango::FontDescription, text: &str) -> i32 {
     let layout = widget.create_pango_layout(Some(text));
+    layout.set_font_description(Some(font));
     let tabular = pango::AttrList::new();
     tabular.insert(pango::AttrFontFeatures::new("tnum"));
     layout.set_attributes(Some(&tabular));
     layout.pixel_size().0
 }
 
-fn drawn_width(widget: &impl IsA<gtk::Widget>, text: &str) -> i32 {
-    widget.create_pango_layout(Some(text)).pixel_size().0
+fn drawn_width(widget: &impl IsA<gtk::Widget>, font: &pango::FontDescription, text: &str) -> i32 {
+    let layout = widget.create_pango_layout(Some(text));
+    layout.set_font_description(Some(font));
+    layout.pixel_size().0
 }

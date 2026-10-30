@@ -542,3 +542,31 @@ fn a_cleared_width_in_an_empty_table_returns_to_its_types_width() {
     wait_until(WAIT, || column.fixed_width() > 0).expect("the grid gives the column a width again");
     assert_eq!(column.fixed_width(), typed);
 }
+
+/// The cells draw in the desktop's monospace font, as the macOS grid
+/// draws in the system's, and a column is wide enough for every value of
+/// the same length: a proportional font drew 08:30:00 wider than the
+/// 11:30:00 it was sized from, and cut it.
+#[gtk4::test]
+fn values_draw_in_the_monospace_font_and_none_of_the_same_length_is_cut() {
+    let grid = laid_out(Grid::open(
+        vec![named("id", "integer", true), named("at", "text", false)],
+        vec![
+            vec![Value::Int(1), text("08:30:00")],
+            vec![Value::Int(2), text("10:00:00")],
+            vec![Value::Int(3), text("11:11:11")],
+        ],
+    ));
+    let monospace = pango::FontDescription::from_string(&libadwaita::StyleManager::default().monospace_font_name());
+
+    let shown = drawn(&grid, &[1]);
+    assert_eq!(shown.len(), 3);
+    for display in &shown {
+        let family = display
+            .pango_context()
+            .font_description()
+            .and_then(|font| font.family());
+        assert_eq!(family, monospace.family(), "a cell drawn in another font");
+        wait_until(WAIT, || shows_whole(display)).unwrap_or_else(|_| panic!("{:?} cut", display.text()));
+    }
+}
