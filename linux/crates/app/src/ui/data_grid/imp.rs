@@ -18,6 +18,7 @@ use super::row_detail::RowDetailPane;
 use super::selection::Target;
 use super::selection_summary::SummaryState;
 use super::{GridConfig, GridStore};
+use crate::ui::handler_guard::HandlerGuard;
 
 /// The grid's selection model, made with the grid and given its rows once
 /// the grid knows how it sorts.
@@ -85,6 +86,7 @@ pub struct DataGrid {
     pub editing: Cell<bool>,
     /// The window's focus handler, while the grid is in a window.
     pub focus_watch: RefCell<Option<(glib::WeakRef<gtk4::Window>, glib::SignalHandlerId)>>,
+    pub(super) font_watch: RefCell<Option<HandlerGuard>>,
 }
 
 #[glib::object_subclass]
@@ -122,6 +124,7 @@ impl ObjectImpl for DataGrid {
         self.find.stop();
         self.summary.stop();
         self.obj().stop_watching_focus();
+        drop(self.font_watch.take());
         if let Some(menus) = self.menus.get() {
             menus.unparent();
         }
@@ -139,6 +142,17 @@ impl WidgetImpl for DataGrid {
     fn unroot(&self) {
         self.obj().stop_watching_focus();
         self.parent_unroot();
+    }
+
+    fn system_setting_changed(&self, setting: &gtk4::SystemSetting) {
+        // First, since on its way down GTK gives the view the new font.
+        self.parent_system_setting_changed(setting);
+        if matches!(
+            setting,
+            gtk4::SystemSetting::Dpi | gtk4::SystemSetting::FontName | gtk4::SystemSetting::FontConfig
+        ) {
+            self.obj().fonts_changed();
+        }
     }
 }
 

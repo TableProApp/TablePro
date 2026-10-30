@@ -438,18 +438,118 @@ fn a_header_of_wide_letters_shows_whole() {
         vec![named("id", "integer", true), named("WWWWWWWW", "text", false)],
         vec![vec![Value::Int(1), text("a")]],
     ));
+    let (header, title) = header_title(&grid, "WWWWWWWW");
+    let (_, needs, _, _) = title.measure(gtk::Orientation::Horizontal, -1);
+
+    wait_until(WAIT, || header.width() >= needs).expect("the header's title shows whole");
+}
+
+/// GTK keeps a sort indicator beside the title of every sortable column,
+/// so a column as wide as its title alone cuts the arrow once it sorts.
+#[gtk4::test]
+fn a_sorted_columns_header_shows_its_title_and_arrow_whole() {
+    let grid = laid_out(Grid::open(
+        vec![named("id", "integer", true), named("level", "text", false)],
+        vec![vec![Value::Int(1), text("a")]],
+    ));
+    grid.grid.sort_by(Some((1, true)));
+    let (header, title) = header_title(&grid, "level");
+    let title_and_arrow = title.parent().expect("the title's box");
+    let (_, needs, _, _) = title_and_arrow.measure(gtk::Orientation::Horizontal, -1);
+
+    wait_until(WAIT, || header.width() >= needs).expect("the title and its sort arrow show whole");
+}
+
+/// The text size reaches the grid as a GTK setting: a column it sized
+/// takes the new measure both ways, and a width the user gave stays.
+#[gtk4::test]
+fn a_text_size_change_measures_the_grids_columns_again() {
+    let grid = laid_out(Grid::open(
+        vec![
+            named("id", "integer", true),
+            named("code", "text", false),
+            named("note", "text", false),
+        ],
+        vec![vec![Value::Int(1), text("CF-1001"), text("Ships in two days")]],
+    ));
+    let code = data_column(&grid, 1);
+    let opened = code.fixed_width();
+    data_column(&grid, 2).set_fixed_width(300);
+    let scaled = TextScale::times(1.5);
+
+    wait_until(WAIT, || code.fixed_width() > opened).expect("the column widened with the text");
+    let display = grid.cell_of(1, 1).display().cloned().expect("the code's text");
+    wait_until(WAIT, || shows_whole(&display)).expect("the code shows whole at the larger text");
+    assert_eq!(
+        data_column(&grid, 2).fixed_width(),
+        300,
+        "the width the user gave changed"
+    );
+    let widened = code.fixed_width();
+
+    drop(scaled);
+    wait_until(WAIT, || code.fixed_width() < widened).expect("the column narrowed with the text");
+    assert_eq!(
+        data_column(&grid, 2).fixed_width(),
+        300,
+        "the width the user gave changed"
+    );
+}
+
+/// libadwaita announces a new monospace font; the grid measures the
+/// columns it sized again, from the rows it holds now.
+#[gtk4::test]
+fn a_monospace_font_change_measures_the_grids_columns_again() {
+    let grid = laid_out(Grid::open(
+        vec![named("id", "integer", true), named("note", "text", false)],
+        vec![vec![Value::Int(1), text(&"x".repeat(30))]],
+    ));
+    let column = data_column(&grid, 1);
+    let wide = column.fixed_width();
+    grid.grid.replace_rows(persisted(&[vec![Value::Int(1), text("a")]]), 0);
+    assert_eq!(column.fixed_width(), wide, "a page of shorter rows narrowed the column");
+
+    libadwaita::StyleManager::default().notify("monospace-font-name");
+
+    wait_until(WAIT, || column.fixed_width() < wide).expect("the column measured again");
+}
+
+/// The header of the column named `name`, and its title.
+fn header_title(grid: &Grid, name: &str) -> (gtk::Widget, gtk::Label) {
     let title = descendants(&grid.grid.column_view())
         .into_iter()
         .filter_map(|widget| widget.downcast::<gtk::Label>().ok())
-        .find(|label| label.label() == "WWWWWWWW")
+        .find(|label| label.label() == name)
         .expect("the header's title");
     let header = title
         .parent()
         .and_then(|title_box| title_box.parent())
         .expect("the header button");
-    let (_, needs, _, _) = title.measure(gtk::Orientation::Horizontal, -1);
+    (header, title)
+}
 
-    wait_until(WAIT, || header.width() >= needs).expect("the header's title shows whole");
+/// The display's text scaled for one test, put back after even when the
+/// test fails.
+struct TextScale {
+    settings: gtk::Settings,
+    dpi: i32,
+}
+
+impl TextScale {
+    fn times(factor: f64) -> Self {
+        let settings = gtk::Settings::default().expect("the display's settings");
+        let dpi = settings.gtk_xft_dpi();
+        // GTK reads -1 as 96 dots per inch, which it keeps in 1024ths.
+        let base = if dpi > 0 { dpi } else { 96 * 1024 };
+        settings.set_gtk_xft_dpi((f64::from(base) * factor).round() as i32);
+        Self { settings, dpi }
+    }
+}
+
+impl Drop for TextScale {
+    fn drop(&mut self) {
+        self.settings.set_gtk_xft_dpi(self.dpi);
+    }
 }
 
 /// A NULL the user can replace draws as `<NULL>`, which a column of short
