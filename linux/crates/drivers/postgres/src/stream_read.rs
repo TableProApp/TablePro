@@ -53,6 +53,7 @@ pub(crate) async fn stream(
             emitter.binary(client, statement, rows).await
         }
         ReadStatement::User(sql) => {
+            refuse_more_than_one(client, sql.as_str()).await?;
             let messages = client
                 .simple_query_raw(sql.as_str())
                 .await
@@ -86,6 +87,20 @@ fn refuse_transaction_control(sql: &str, conforming: bool) -> Result<(), DriverE
         }
     }
     Ok(())
+}
+
+/// The extended protocol's Parse refuses a text that holds more than one
+/// statement, and the simple query that follows splits the text with the
+/// same parser, so nothing can follow the read inside its transaction
+/// whatever the client's lexer made of the text. The simple query keeps
+/// every value as the server's text. The statement is prepared under a
+/// name, which the read's own connection allows.
+async fn refuse_more_than_one(client: &Client, sql: &str) -> Result<(), DriverError> {
+    client
+        .prepare_typed(sql, &[])
+        .await
+        .map(drop)
+        .map_err(|error| map_error(&error))
 }
 
 struct Emitter<'a> {

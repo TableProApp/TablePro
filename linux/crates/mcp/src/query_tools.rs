@@ -438,6 +438,14 @@ mod tests {
         assert!(single_batch("SELECT 1; SELECT 2", SqlGrammar::PostgreSql).is_err());
         assert!(single_batch("", SqlGrammar::PostgreSql).is_err());
         assert!(single_batch("SELECT 'open", SqlGrammar::PostgreSql).is_err());
+        assert!(single_batch("SELECT $1('); VACUUM INTO 'copy.db'; --'", SqlGrammar::Sqlite).is_err());
+        assert!(
+            single_batch(
+                "SELECT E'x'\n'\\' || ' || '\\' ; COMMIT; DELETE FROM orders; --'",
+                SqlGrammar::PostgreSql
+            )
+            .is_err()
+        );
     }
 
     #[test]

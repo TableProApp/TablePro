@@ -80,12 +80,40 @@ impl ClickHouseType {
 /// clickhouse-types slices a name at fixed byte offsets and at its last
 /// byte, which land on character boundaries only when the name is ASCII
 /// or ends in the closing parenthesis the server always prints.
+///
+/// It also calls itself once per wrapper, on the stack, as do `kind_of`
+/// and `CellPlan::of` on what it builds, so a name with more wrappers
+/// than [`MAX_WRAPPERS`] is left to the shared classifier, which bounds
+/// its own nesting.
 fn parse_node(text: &str) -> Option<DataTypeNode> {
     if !text.is_ascii() && !text.ends_with(')') {
         return None;
     }
+    let wrappers: usize = WRAPPERS.iter().map(|name| text.matches(name).count()).sum();
+    if wrappers > MAX_WRAPPERS {
+        return None;
+    }
     DataTypeNode::new(text).ok()
 }
+
+/// The names clickhouse-types parses by calling itself on what they
+/// wrap. It goes by the name and not by the parentheses around the inner
+/// type (`Array!UInt8!` parses as `Array(UInt8)`), so the names are what
+/// bounds how deep it recurses.
+const WRAPPERS: [&str; 8] = [
+    "Nullable",
+    "LowCardinality",
+    "Array",
+    "Map",
+    "Tuple",
+    "Variant",
+    "SimpleAggregateFunction",
+    "JSON",
+];
+
+/// More wrappers than any column declares, and few enough that a hostile
+/// name cannot exhaust the stack of a runtime worker.
+const MAX_WRAPPERS: usize = 64;
 
 /// The type a value of this column is bound as: the wrappers change how
 /// it is stored, not what text the server parses for it, and a NULL is
@@ -314,5 +342,45 @@ mod tests {
             }
         );
         assert!(!array.nullable, "the element's NULL was read as the column's");
+    }
+
+    #[test]
+    fn a_name_with_too_many_wrappers_is_read_as_server_text() {
+        // clickhouse-types takes `Array!UInt8!` for `Array(UInt8)`.
+        for (open, close) in [
+            ("Array(", ")"),
+            ("Array!", "!"),
+            ("Map(String, ", ")"),
+            ("Nullable(", ")"),
+        ] {
+            let name = format!("{}UInt8{}", open.repeat(100_000), close.repeat(100_000));
+
+            assert_eq!(parsed(&name).plan, CellPlan::Raw { type_name: name });
+        }
+    }
+
+    #[test]
+    fn a_name_at_the_wrapper_limit_parses_on_a_worker_stack() {
+        // A runtime worker has the 2 MiB default stack.
+        let worker = std::thread::Builder::new().stack_size(2 << 20);
+        let handle = worker
+            .spawn(|| {
+                for (open, close) in [
+                    ("Array(", ")"),
+                    ("Nullable(", ")"),
+                    ("LowCardinality(", ")"),
+                    ("Map(String, ", ")"),
+                    ("Tuple(", ")"),
+                    ("Variant(", ")"),
+                    ("SimpleAggregateFunction(any, ", ")"),
+                ] {
+                    let name = format!("{}UInt8{}", open.repeat(MAX_WRAPPERS), close.repeat(MAX_WRAPPERS));
+
+                    assert!(parse_node(&name).is_some(), "{open}");
+                    assert_eq!(parsed(&name).column_type.name, name);
+                }
+            })
+            .unwrap();
+        handle.join().unwrap();
     }
 }

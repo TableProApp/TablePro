@@ -431,6 +431,7 @@ crates/app/src/ui/host_key_failure.rs
 crates/app/src/ui/host_key_review.rs
 crates/app/src/ui/icons.rs
 crates/app/src/ui/import_dialog.rs
+crates/app/src/ui/import_preview.rs
 crates/app/src/ui/key_tab/key_summary.rs
 crates/app/src/ui/key_tab/mod.rs
 crates/app/src/ui/key_tab/tests.rs
