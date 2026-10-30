@@ -72,7 +72,7 @@ impl SessionWindow {
             return;
         };
         let opening = {
-            let database = database.clone();
+            let (database, origin) = (database.clone(), origin.clone());
             state
                 .services
                 .tasks
@@ -81,11 +81,13 @@ impl SessionWindow {
         let window = self.downgrade();
         glib::spawn_future_local(async move {
             let opened = opening.await;
-            // A database goes with its connection, which may have gone
-            // while it opened.
-            let window = window
-                .upgrade()
-                .filter(|window| window.held_session(&SessionKey::Saved(id)).is_some());
+            // A database goes with the connection it opened from, which may
+            // have gone, or been opened again, while it opened.
+            let window = window.upgrade().filter(|window| {
+                window
+                    .held_session(&SessionKey::Saved(id))
+                    .is_some_and(|now| Arc::ptr_eq(&now, &origin))
+            });
             let Some(window) = window else {
                 if let Ok(Ok(session)) = opened {
                     drop(session.begin_shutdown());
