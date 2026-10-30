@@ -318,8 +318,8 @@ internal final class TeamLibrarySync: ObservableObject {
             let page: TeamLibraryPage
             do throws(TeamLibraryFailure) {
                 page = try await client.pull(teamID: teamID, cursor: cursor)
-            } catch .cursorExpired where cursor != nil {
-                Self.logger.notice("The team library cursor expired; pulling a snapshot")
+            } catch .cursorRefused where cursor != nil {
+                Self.logger.notice("The server refused the team library cursor; pulling a snapshot")
                 cursor = nil
                 snapshot = [:]
                 continue

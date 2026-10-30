@@ -30,8 +30,6 @@ struct FakeTeamLibrary: Sendable {
 
     var items: [String: [Item]] = [:]
     var revision = 0
-    // A cursor that covers less than this answers 410 cursor_expired.
-    var floor: [String: Int] = [:]
     var pageSize = 500
     // Answered, one per pull or per push, before anything else.
     var faults: [Int] = []
@@ -108,9 +106,6 @@ struct FakeTeamLibrary: Sendable {
         if let cursorText {
             guard let parsed = Self.parse(cursorText) else {
                 return FakeAccountServer.problem(status: 422, code: "validation_failed")
-            }
-            if (parsed.end ?? parsed.after) < floor[team, default: 0] {
-                return FakeAccountServer.problem(status: 410, code: "cursor_expired")
             }
             if let end = parsed.end {
                 (page, cursor, hasMore) = snapshot(all, after: parsed.after, end: end, limit: limit, horizon: horizon)

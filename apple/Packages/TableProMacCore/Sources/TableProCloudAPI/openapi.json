@@ -140,7 +140,7 @@
             "type": "string"
           },
           "last_seen_at": {
-            "description": "Last registration or entitlement; devices not seen for 180 days are removed",
+            "description": "Last registration or entitlement",
             "format": "date-time",
             "type": "string"
           },
@@ -4326,7 +4326,7 @@
     },
     "/teams/{team_id}/library/changes": {
       "get": {
-        "description": "Needs a seat in the team and the team_library feature. A cursor older than the 90 days deletions are kept answers cursor_expired; pull a snapshot then.",
+        "description": "Needs a seat in the team and the team_library feature.",
         "operationId": "list-library-changes",
         "parameters": [
           {
@@ -4472,28 +4472,6 @@
               }
             },
             "description": "Not Found"
-          },
-          "410": {
-            "content": {
-              "application/problem+json": {
-                "examples": {
-                  "cursor_expired": {
-                    "summary": "Cursor expired",
-                    "value": {
-                      "type": "https://api.tablepro.app/problems/cursor-expired",
-                      "title": "Cursor expired",
-                      "status": 410,
-                      "code": "cursor_expired",
-                      "detail": "This cursor is older than the deletions kept. Pull a snapshot without a cursor."
-                    }
-                  }
-                },
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Gone"
           },
           "422": {
             "content": {

@@ -15,7 +15,8 @@ internal enum TeamLibraryFailure: Error, Equatable, Sendable {
     // No seat, the team's plan lacks team_library, or the team is gone: the library is not this account's to read.
     case unreadable
     case writeForbidden
-    case cursorExpired
+    // The pull's 422: the server cannot decode the cursor.
+    case cursorRefused
     // The server refused the push as sent (422, 413); sending it again changes nothing. Names the refused item when
     // the server points at one.
     case refused(String?)
@@ -29,7 +30,7 @@ internal enum TeamLibraryFailure: Error, Equatable, Sendable {
         case .signedOut: "signedOut"
         case .unreadable: "unreadable"
         case .writeForbidden: "writeForbidden"
-        case .cursorExpired: "cursorExpired"
+        case .cursorRefused: "cursorRefused"
         case .refused: "refused"
         }
     }
@@ -38,7 +39,7 @@ internal enum TeamLibraryFailure: Error, Equatable, Sendable {
         switch self {
         case .offline, .rateLimited, .server:
             return true
-        case .signedOut, .unreadable, .writeForbidden, .cursorExpired, .refused:
+        case .signedOut, .unreadable, .writeForbidden, .cursorRefused, .refused:
             return false
         }
     }
@@ -107,8 +108,8 @@ internal struct TeamLibraryClient: Sendable {
                 throw TeamLibraryFailure.signedOut
             case .forbidden, .notFound:
                 throw TeamLibraryFailure.unreadable
-            case .gone, .unprocessableContent:
-                throw TeamLibraryFailure.cursorExpired
+            case .unprocessableContent:
+                throw TeamLibraryFailure.cursorRefused
             case .tooManyRequests(let answer):
                 throw TeamLibraryFailure.rateLimited(retryAfter: Self.delay(seconds: answer.headers.retryAfter))
             case .internalServerError:

@@ -69,7 +69,7 @@ internal enum TeamLibrarySyncDescription {
         switch failure {
         case .offline, .rateLimited, .server:
             return String(format: String(localized: "%@ TablePro tries again shortly."), TeamLibraryPublishing.failureText(failure))
-        case .signedOut, .unreadable, .writeForbidden, .cursorExpired, .refused:
+        case .signedOut, .unreadable, .writeForbidden, .cursorRefused, .refused:
             return TeamLibraryPublishing.failureText(failure)
         }
     }

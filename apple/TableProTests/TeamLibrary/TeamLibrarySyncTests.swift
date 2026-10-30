@@ -112,20 +112,23 @@ struct TeamLibrarySyncTests {
         #expect(fixture.sync.content.queries.map { $0.detail } == ["Ada Lovelace", "Reports"], "The stored library keeps the name")
     }
 
-    @Test("An expired cursor pulls a snapshot")
-    func expiredCursorPullsSnapshot() async throws {
+    @Test("A cursor the server cannot decode pulls a snapshot")
+    func refusedCursorPullsSnapshot() async throws {
         let fixture = try await TeamLibraryFixture { library in
             library.write(Self.team, kind: "query", clientID: "q1", data: TeamLibraryFixture.queryData("Orders"))
         }
         await fixture.sync.sync()
+        var state = try #require(fixture.store.loadAll().first)
+        state.cursor = "unreadable"
+        fixture.store.save(state)
         await fixture.library {
             $0.write(Self.team, kind: "query", clientID: "q2", data: TeamLibraryFixture.queryData("Users"))
-            $0.floor[Self.team] = 2
         }
+        fixture.relaunch()
 
         #expect(await fixture.sync.sync() == .synced)
 
-        #expect(await fixture.pulls().suffix(2).map { TeamLibraryFixture.cursor(of: $0) } == ["r1", nil])
+        #expect(await fixture.pulls().suffix(2).map { TeamLibraryFixture.cursor(of: $0) } == ["unreadable", nil])
         #expect(fixture.sync.content.queries.map(\.name) == ["Orders", "Users"])
     }
 

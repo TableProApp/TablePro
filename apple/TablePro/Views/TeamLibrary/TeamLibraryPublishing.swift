@@ -65,7 +65,7 @@ internal enum TeamLibraryPublishing {
             return String(localized: "Your account no longer has a seat in this team's library.")
         case .writeForbidden:
             return String(localized: "Only the team's owner and admins publish to its library.")
-        case .cursorExpired:
+        case .cursorRefused:
             return String(localized: "The team library asked TablePro to download it again.")
         case .refused(let item?):
             return String(
