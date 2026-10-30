@@ -9,7 +9,8 @@ use tablepro_core::value::Temporal;
 use tablepro_core::{ColumnInfo, Value};
 
 use super::{Layouts, close_menus, data_column, keyed, laid_out, settled_width, shown_width, step, text, untyped};
-use crate::test_support::{drain_main_context, wait_until};
+use crate::services::grid::display_text::editable_null_sentinel;
+use crate::test_support::{descendants, drain_main_context, wait_until};
 use crate::ui::data_grid::columns::ColumnPaint;
 use crate::ui::data_grid::test_grid::{
     Grid, GridSpec, WAIT, named, persisted, results, two_text_columns, two_text_values,
@@ -369,6 +370,100 @@ fn a_short_code_in_a_text_column_shows_whole() {
     });
 
     assert!(whole.is_ok(), "CF-1001 was cut");
+}
+
+/// Every value of one length draws as wide as the others in the
+/// desktop's monospace font, whichever one the column was sized from.
+#[gtk4::test]
+fn values_of_one_length_draw_whole_in_the_monospace_font() {
+    let grid = laid_out(Grid::open(
+        vec![named("id", "integer", true), named("at", "text", false)],
+        vec![
+            vec![Value::Int(1), text("08:30:00")],
+            vec![Value::Int(2), text("10:00:00")],
+            vec![Value::Int(3), text("11:11:11")],
+        ],
+    ));
+    let monospace = pango::FontDescription::from_string(&libadwaita::StyleManager::default().monospace_font_name());
+
+    let shown = drawn(&grid, &[1]);
+    assert_eq!(shown.len(), 3);
+    for display in &shown {
+        assert!(display.has_css_class("monospace"));
+        assert_eq!(
+            display
+                .pango_context()
+                .font_description()
+                .and_then(|font| font.family()),
+            monospace.family(),
+            "a value drawn in another font"
+        );
+        wait_until(WAIT, || shows_whole(display)).unwrap_or_else(|_| panic!("{:?} cut", display.text()));
+    }
+}
+
+/// A Chinese or Japanese character takes two cells of a monospace font,
+/// and a script the font lacks draws in a fallback font, so the value
+/// with the most characters is not the widest, in either order.
+#[gtk4::test]
+fn a_value_in_another_script_shows_whole() {
+    let narrow = "Marunouchi 12";
+    for wide in ["東京都千代田区丸の内一丁", "कखगघङचछजझञटठ"] {
+        for values in [[wide, narrow], [narrow, wide]] {
+            let grid = laid_out(Grid::open(
+                vec![named("id", "integer", true), named("area", "text", false)],
+                vec![
+                    vec![Value::Int(1), text(values[0])],
+                    vec![Value::Int(2), text(values[1])],
+                ],
+            ));
+            let shown = drawn(&grid, &[1]);
+            assert_eq!(shown.len(), 2);
+            assert!(
+                tabular_width(&shown[0], wide) > tabular_width(&shown[0], narrow),
+                "the font draws {wide} no wider than {narrow}"
+            );
+
+            for display in &shown {
+                wait_until(WAIT, || shows_whole(display)).unwrap_or_else(|_| panic!("{:?} cut", display.text()));
+            }
+        }
+    }
+}
+
+/// The header draws its title in the interface font, not the cells'.
+#[gtk4::test]
+fn a_header_of_wide_letters_shows_whole() {
+    let grid = laid_out(Grid::open(
+        vec![named("id", "integer", true), named("WWWWWWWW", "text", false)],
+        vec![vec![Value::Int(1), text("a")]],
+    ));
+    let title = descendants(&grid.grid.column_view())
+        .into_iter()
+        .filter_map(|widget| widget.downcast::<gtk::Label>().ok())
+        .find(|label| label.label() == "WWWWWWWW")
+        .expect("the header's title");
+    let header = title
+        .parent()
+        .and_then(|title_box| title_box.parent())
+        .expect("the header button");
+    let (_, needs, _, _) = title.measure(gtk::Orientation::Horizontal, -1);
+
+    wait_until(WAIT, || header.width() >= needs).expect("the header's title shows whole");
+}
+
+/// A NULL the user can replace draws as `<NULL>`, which a column of short
+/// values would cut.
+#[gtk4::test]
+fn a_null_shows_its_placeholder_whole() {
+    let grid = laid_out(Grid::open(
+        vec![named("id", "integer", true), named("x", "text", false)],
+        vec![vec![Value::Int(1), Value::Null]],
+    ));
+    let display = grid.cell_of(1, 1).display().cloned().expect("the placeholder's text");
+    assert_eq!(display.text().as_deref(), Some(editable_null_sentinel().as_str()));
+
+    wait_until(WAIT, || shows_whole(&display)).expect("the placeholder shows whole");
 }
 
 #[gtk4::test]

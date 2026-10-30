@@ -562,6 +562,24 @@ fn the_cell_editor_is_named_by_its_column() {
     assert_eq!(assert_labelled(&editor), Ok(()));
 }
 
+/// The editor draws the value in the cell's font and on the cell's side,
+/// so the value does not jump as the edit opens.
+#[gtk4::test]
+fn the_editor_draws_the_value_where_and_as_its_cell_did() {
+    for grid in [number_row(), name_rows(Value::Text("A".into()))] {
+        let cell = grid.cell_of(1, 1);
+        let shown = cell.display().cloned().expect("the cell's text");
+
+        let editor = type_into(&grid, &cell, "5");
+
+        assert!(editor.has_css_class("monospace"));
+        assert_eq!(editor.alignment(), shown.xalign());
+        let family = |widget: &gtk::Widget| widget.pango_context().font_description().and_then(|font| font.family());
+        wait_until(WAIT, || family(editor.upcast_ref()) == family(shown.upcast_ref()))
+            .expect("the editor draws in the cell's font");
+    }
+}
+
 #[gtk4::test]
 fn a_value_too_large_to_lay_out_does_not_open_and_says_why() {
     let large = "x".repeat(EDIT_MAX_BYTES + 1);

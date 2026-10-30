@@ -5,14 +5,16 @@ use std::sync::Arc;
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use gtk4::{self as gtk, glib, pango};
+use libadwaita as adw;
 use tablepro_core::Value;
 
 use super::grid_cell::{GridCell, TextAttributes};
 use super::server_sorter::ServerSorter;
 use super::{DataGrid, GridRow, GridSorting, TrackedValues, client_sorter, grid_menu, row_number_column};
+use crate::services::grid::display_text::editable_null_sentinel;
 use crate::services::grid::{
-    CellDisplay, ColumnLayout, GridColumn, LayoutSlot, Placement, default_width_chars, merge_order, number_width_chars,
-    typical_texts, typical_width_chars, widest_text,
+    CellDisplay, ColumnLayout, GridColumn, LayoutSlot, Placement, default_width_chars, header_text, merge_order,
+    number_width_chars, sampled_texts, typical_texts, typical_width_chars,
 };
 
 /// Rows sampled for a column's opening width.
@@ -20,8 +22,8 @@ const WIDTH_SAMPLE: usize = 200;
 /// Cell padding Adwaita gives a data table's cell, both sides, and the
 /// column separator.
 const CELL_CHROME_PX: i32 = 13;
-/// A resize step, in digits of the grid's font, so a step is the same
-/// number of characters at any text size.
+/// A resize step, in digits of the font the cells draw in, so a step is
+/// the same number of characters at any text size.
 const STEP_DIGITS: i32 = 2;
 
 /// What a column's cells read to draw a row. The column makes one and
@@ -244,8 +246,10 @@ impl DataGrid {
         let sample: Vec<Option<Arc<[Value]>>> = self.store().rows().take(WIDTH_SAMPLE).map(|row| row.cells()).collect();
         let by_type = set.pages == Pages::Empty;
         let view = self.column_view();
-        let metrics = view.pango_context().metrics(None, None);
+        let font = value_font(&view);
+        let metrics = view.pango_context().metrics(Some(&font), None);
         let char_px = pango::units_to_double(metrics.approximate_char_width());
+        let null = editable_null_sentinel();
         let mut widths = Vec::new();
         for (paint, view_column) in set.paints.iter().zip(&set.view_columns) {
             let index = paint.column.index;
@@ -264,26 +268,33 @@ impl DataGrid {
                 (false, false) => default_width_chars(column, values.iter().copied()),
             };
             let estimate = (f64::from(chars) * char_px).ceil() as i32;
-            // A number is never cut, and its digits in tabular figures run
-            // wider than an average character. Nor is a date, held or not,
-            // nor with no rows a value its type spells out, as a UUID or an
-            // enum's label, so those are measured in tabular figures too.
+            // A number is never cut. Nor is a date, held or not, nor with
+            // no rows a value its type spells out, as a UUID or an enum's
+            // label, so those are measured as the cell draws them.
             let sampled = match (by_type, paint.numbers.get()) {
-                (_, true) => tabular_width(&view, &"0".repeat(usize::try_from(chars).unwrap_or_default())),
+                (_, true) => tabular_width(&view, &font, &"0".repeat(usize::try_from(chars).unwrap_or_default())),
                 (true, false) => 0,
-                (false, false) => {
-                    widest_text(column, values.iter().copied()).map_or(0, |widest| drawn_width(&view, &widest))
-                }
+                // One line each, so one layout measures them all.
+                (false, false) => drawn_width(&view, &font, &sampled_texts(column, values.iter().copied()).join("\n")),
             };
             let spelled = match by_type || column.display() == CellDisplay::Temporal {
                 true => typical_texts(column)
                     .iter()
-                    .map(|typical| tabular_width(&view, typical))
+                    .map(|typical| tabular_width(&view, &font, typical))
                     .max()
                     .unwrap_or(0),
                 false => 0,
             };
-            let text = estimate.max(sampled).max(spelled);
+            // The header draws its title smaller than the body font, so the
+            // body font's width holds it.
+            let header = view.create_pango_layout(Some(header_text(column))).pixel_size().0;
+            // A NULL the user can replace draws as `<NULL>`, wider than the
+            // fewest cells a column takes.
+            let placeholder = match paint.tracked.tracks_changes() && values.iter().any(|value| value.is_null()) {
+                true => drawn_width(&view, &font, &null),
+                false => 0,
+            };
+            let text = estimate.max(sampled).max(spelled).max(header).max(placeholder);
             let width = text + CELL_CHROME_PX;
             if auto.is_none_or(|auto| width > auto) {
                 widths.push((index, view_column.clone(), width));
@@ -481,7 +492,8 @@ impl DataGrid {
         let Some(column) = column else {
             return;
         };
-        let metrics = self.column_view().pango_context().metrics(None, None);
+        let view = self.column_view();
+        let metrics = view.pango_context().metrics(Some(&value_font(&view)), None);
         let step = (pango::units_to_double(metrics.approximate_digit_width()) * f64::from(STEP_DIGITS)).ceil() as i32;
         let width = column.fixed_width();
         let width = match wider {
@@ -707,16 +719,29 @@ fn same_names(layout: &ColumnLayout, columns: &[GridColumn]) -> bool {
     names.len() == columns.len() && names.iter().zip(columns).all(|(name, column)| *name == column.name)
 }
 
+/// The font a cell draws its value in: libadwaita's `monospace` class
+/// sets only the family and size of the desktop's monospace font.
+fn value_font(view: &gtk::ColumnView) -> pango::FontDescription {
+    let mut monospace = pango::FontDescription::from_string(&adw::StyleManager::default().monospace_font_name());
+    monospace.unset_fields(!(pango::FontMask::FAMILY | pango::FontMask::SIZE));
+    let mut font = view.pango_context().font_description().unwrap_or_default();
+    font.merge(Some(&monospace), true);
+    font
+}
+
 /// How wide `text` is in the tabular figures libadwaita's `numeric`
 /// class draws.
-fn tabular_width(widget: &impl IsA<gtk::Widget>, text: &str) -> i32 {
+fn tabular_width(widget: &impl IsA<gtk::Widget>, font: &pango::FontDescription, text: &str) -> i32 {
     let layout = widget.create_pango_layout(Some(text));
+    layout.set_font_description(Some(font));
     let tabular = pango::AttrList::new();
     tabular.insert(pango::AttrFontFeatures::new("tnum"));
     layout.set_attributes(Some(&tabular));
     layout.pixel_size().0
 }
 
-fn drawn_width(widget: &impl IsA<gtk::Widget>, text: &str) -> i32 {
-    widget.create_pango_layout(Some(text)).pixel_size().0
+fn drawn_width(widget: &impl IsA<gtk::Widget>, font: &pango::FontDescription, text: &str) -> i32 {
+    let layout = widget.create_pango_layout(Some(text));
+    layout.set_font_description(Some(font));
+    layout.pixel_size().0
 }

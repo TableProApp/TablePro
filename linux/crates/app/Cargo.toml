@@ -96,6 +96,8 @@ tokio.workspace = true
 tokio-util.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
+# Cells a value takes in the grid's monospace font.
+unicode-width.workspace = true
 uuid.workspace = true
 gettext-rs = { version = "0.8", features = ["gettext-system"] }
 # Counts grouped the way the user's locale groups digits.
