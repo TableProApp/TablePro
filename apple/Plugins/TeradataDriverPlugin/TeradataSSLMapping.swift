@@ -39,28 +39,36 @@ struct TeradataConnectTimeout: Equatable, Sendable {
 
 internal enum TeradataSSLConfigurationError: Error, PluginDriverError {
     case verifyCaNeedsCertificate
+    case tlsBehindTunnel
 
     var pluginErrorMessage: String {
         switch self {
         case .verifyCaNeedsCertificate:
             return String(localized: "Verify CA needs a CA certificate. Choose the CA certificate that signed the server's certificate.")
+        case .tlsBehindTunnel:
+            return String(localized: "Teradata uses TLS on its HTTPS port, which the tunnel does not forward. Set SSL Mode to Disabled or Preferred to connect through the tunnel, or turn the tunnel off.")
         }
     }
 }
 
 enum TeradataSSLMapping {
-    static func tlsOptions(for ssl: SSLConfiguration) throws -> TeradataTLSOptions {
+    static func tlsOptions(for ssl: SSLConfiguration, tunneled: Bool) throws -> TeradataTLSOptions {
         guard ssl.isEnabled else { return .disabled }
         if ssl.mode == .verifyCa, ssl.caCertificatePath.trimmingCharacters(in: .whitespaces).isEmpty {
             throw TeradataSSLConfigurationError.verifyCaNeedsCertificate
         }
-        return TeradataTLSOptions(
+        let options = TeradataTLSOptions(
             enabled: true,
             allowPlaintextFallback: ssl.mode == .preferred,
             verifiesCertificate: ssl.verifiesCertificate,
             verifiesHostname: ssl.verifiesHostname,
             caCertificatePath: ssl.caCertificatePath,
             modeLabel: modeLabel(for: ssl.mode))
+        guard tunneled else { return options }
+        guard let throughTunnel = options.throughTunnel() else {
+            throw TeradataSSLConfigurationError.tlsBehindTunnel
+        }
+        return throughTunnel
     }
 
     private static func modeLabel(for mode: SSLMode) -> String {

@@ -21271,6 +21271,9 @@
         }
       }
     },
+    "SQL Server on this device cannot check the server's certificate. Set SSL Mode to Required in the connection's settings, or connect from the Mac app." : {
+
+    },
     "SQL Server returned no plan for this statement." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -22603,6 +22606,9 @@
 
     },
     "This cursor has already been closed." : {
+
+    },
+    "This device cannot check a SQL Server certificate, so it does not connect in this mode. Choose Required to connect without the check." : {
 
     },
     "This document has no _id, so it cannot be edited here." : {

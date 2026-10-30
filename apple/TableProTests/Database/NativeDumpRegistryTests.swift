@@ -225,6 +225,24 @@ struct NativeDumpRegistryTests {
         #expect(!built.arguments.contains { $0.hasPrefix("--host") || $0.hasPrefix("--port") })
     }
 
+    @Test("The tools sign in with the Keychain's key passphrase and session token, never a plain copy")
+    func mongoToolsGetTheKeychainSecrets() throws {
+        var aws = connection(type: .mongodb, sslMode: .required, sslEnabled: true)
+        aws.sslConfig.clientCertificatePath = "/Users/alice/client.pem"
+        aws.mongoAuthMechanism = "MONGODB-AWS"
+        aws.additionalFields["sslClientKeyPassphrase"] = "hunter2"
+        aws.additionalFields["mongoAWSSessionToken"] = "FQoG"
+        aws.additionalFields["mongoParam_authMechanismProperties"] = "AWS_SESSION_TOKEN:stale"
+        aws.additionalFields["mongoParam_proxyPassword"] = "proxy-secret"
+
+        let uri = try configurationValue("uri", in: configuration(of: command(.mongodb, connection: aws)))
+
+        #expect(uri.contains("tlsCertificateKeyFilePassword=hunter2"))
+        #expect(uri.contains("authMechanismProperties=AWS_SESSION_TOKEN%3AFQoG"))
+        #expect(!uri.contains("stale"))
+        #expect(!uri.contains("proxy-secret"))
+    }
+
     @Test("A host list and its replica set reach the tool whole, not as the first host")
     func mongoHostListUsesAConnectionString() throws {
         var replicaSet = connection(type: .mongodb, host: "a.example.com", port: 27_017)

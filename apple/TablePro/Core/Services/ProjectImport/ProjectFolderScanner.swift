@@ -91,12 +91,20 @@ enum ProjectFolderScanner {
             guard let contents = ProjectFileReader.text(at: file.url) else {
                 return []
             }
-            return SpringPropertiesExtractor.extract(contents: contents, relativePath: file.relativePath)
+            return SpringPropertiesExtractor.extract(
+                contents: contents,
+                relativePath: file.relativePath,
+                processEnvironment: [:]
+            )
         case .springYaml:
             guard let contents = ProjectFileReader.text(at: file.url) else {
                 return []
             }
-            return SpringYamlExtractor.extract(contents: contents, relativePath: file.relativePath)
+            return SpringYamlExtractor.extract(
+                contents: contents,
+                relativePath: file.relativePath,
+                processEnvironment: [:]
+            )
         case .appSettingsJson:
             guard let data = ProjectFileReader.data(at: file.url) else {
                 return []

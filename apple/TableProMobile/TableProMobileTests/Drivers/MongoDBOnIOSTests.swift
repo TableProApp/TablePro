@@ -252,6 +252,24 @@ struct MongoDBOnIOSTests {
         }
     }
 
+    @Test("A session token and key passphrase the Mac moved to the Keychain reach the driver")
+    func sessionTokenComesFromTheKeychain() {
+        let saved = connection(fields: ["mongoAuthMechanism": "MONGODB-AWS"])
+        let store = EphemeralSecureStore([
+            ConnectionSecretKind.mongoAWSSessionToken.account(for: saved.id): "FQoG",
+            ConnectionSecretKind.sslKeyPassphrase.account(for: saved.id): "hunter2"
+        ])
+
+        let fields = MongoDBDialPlan.addingKeychainSecrets(to: saved.additionalFields, of: saved, in: store)
+
+        #expect(fields == [
+            "mongoAuthMechanism": "MONGODB-AWS",
+            "mongoAWSSessionToken": "FQoG",
+            "sslClientKeyPassphrase": "hunter2"
+        ])
+        #expect(MongoDBDialPlan.addingKeychainSecrets(to: [:], of: saved, in: EphemeralSecureStore()).isEmpty)
+    }
+
     @Test("Without a tunnel the fields reach the plugin as stored")
     func directKeepsTheFields() throws {
         let stored = ["mongoHosts": "db1.internal:27017,db2.internal:27018"]

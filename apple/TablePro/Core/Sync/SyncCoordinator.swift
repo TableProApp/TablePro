@@ -25,6 +25,7 @@ final class SyncCoordinator: ObservableObject {
     /// Created on the first run, so no CloudKit container exists while sync stays off.
     private lazy var transport: any SyncTransport = makeTransport()
     let changeTracker: SyncChangeTracker
+    private var connectionsCleanedOnPull: Set<String> = []
     let metadataStorage: SyncMetadataStorage
     let recordCache: SyncRecordCache
     let columnLayouts: () -> FileColumnLayoutPersister
@@ -818,6 +819,9 @@ final class SyncCoordinator: ObservableObject {
         )
         changeTracker.isSuppressed = false
 
+        // Pushed again without the secret it carried; the tracker ignores marks while suppressed.
+        changeTracker.markDirty(.connection, ids: Array(connectionsCleanedOnPull))
+        connectionsCleanedOnPull.removeAll()
         changeTracker.markDeleted(.tableFavorite, idsByOwner: effects.tableFavoriteIdsToRetire)
         return !effects.persistenceFailed
     }
@@ -977,9 +981,10 @@ final class SyncCoordinator: ObservableObject {
         }
 
         var connections = services.connectionStorage.loadConnections()
-        if let index = connections.firstIndex(where: { $0.id == remoteConnection.id }) {
+        var incoming = remoteConnection
+        let index = connections.firstIndex(where: { $0.id == remoteConnection.id })
+        if let index {
             guard !connections[index].localOnly else { return .skipped }
-            var incoming = remoteConnection
             if changeTracker.dirtyRecords(for: .connection).contains(remoteConnection.id.uuidString) {
                 guard let reconciled = mergeLocalEdits(
                     into: record,
@@ -989,13 +994,21 @@ final class SyncCoordinator: ObservableObject {
                 }
                 incoming = reconciled
             }
-            connections[index] = incoming.adoptingDeviceLocalState(from: connections[index])
+        }
+        // A record an older build pushed can still carry a connection string's secret in plain text.
+        let kept = services.connectionStorage.keepingMongoURISecretsInKeychain(incoming)
+        let movedSecrets = kept.additionalFields != incoming.additionalFields
+        if let index {
+            connections[index] = kept.adoptingDeviceLocalState(from: connections[index])
         } else {
-            connections.append(remoteConnection)
+            connections.append(kept)
         }
         guard services.connectionStorage.saveConnections(connections, byUser: false) else {
             Self.logger.error("Failed to apply remote connection update: persistence error for \(remoteConnection.id, privacy: .public)")
             return .failed
+        }
+        if movedSecrets {
+            connectionsCleanedOnPull.insert(remoteConnection.id.uuidString)
         }
         return .applied
     }

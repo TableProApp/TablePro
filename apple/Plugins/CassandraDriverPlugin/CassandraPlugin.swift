@@ -225,6 +225,7 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
             sslClientCertPath: clientCertPath,
             sslClientKeyPath: clientKeyPath,
             sslClientKeyPassphrase: clientKeyPassphrase,
+            pinnedToContactPoint: config.additionalFields["preTunnelHost"]?.isEmpty == false,
             awsCredentials: awsCredentials,
             awsRegion: awsRegion,
             connectTimeout: CassandraConnectTimeout(milliseconds: Int(remainingConnectMilliseconds))
