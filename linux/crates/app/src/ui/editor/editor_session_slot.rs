@@ -1,7 +1,12 @@
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError, Weak};
 use std::time::Duration;
 
-use tablepro_core::{EditorSession, EditorSessionOptions, EditorSessionState, TransactionState};
+use async_trait::async_trait;
+use tablepro_core::dialect::DatabaseMove;
+use tablepro_core::{
+    EditorSession, EditorSessionOptions, EditorSessionState, ResultEvent, ResultSink, RunOptions, SinkFlow,
+    TransactionState, UserSql,
+};
 use tablepro_session::{OperationError, Session};
 use tokio_util::sync::CancellationToken;
 
@@ -28,6 +33,15 @@ struct SlotState {
     /// told yet.
     rolled_back: bool,
     closed: bool,
+    /// The database the tab was moved to from the editor bar. Every
+    /// session the tab opens or holds is moved there before anything else.
+    database: Option<TabDatabase>,
+}
+
+/// A database a tab was moved to.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TabDatabase {
+    pub name: String,
 }
 
 struct OpenEditor {
@@ -37,6 +51,23 @@ struct OpenEditor {
     editor: Arc<dyn EditorSession>,
     /// Where the transaction stood after the last run that reported it.
     transaction: Option<TransactionState>,
+    /// The tab's database this session was moved to, if any.
+    moved_to: Option<String>,
+}
+
+/// What the open session does for a tab that has to be in a database it
+/// can reach only by opening a session there.
+enum Leave {
+    Stay,
+    Go,
+    Refused(String),
+}
+
+fn could_not_switch(database: &str) -> String {
+    crate::i18n::gettext_f(
+        "Could not switch this tab to the database “{database}”",
+        &[("database", database)],
+    )
 }
 
 enum Lookup {
@@ -79,8 +110,16 @@ impl EditorSessionSlot {
         close_timeout: Duration,
         cancel: &CancellationToken,
     ) -> Result<Arc<dyn EditorSession>, AcquireError> {
+        // A session in another database than the tab's, on an engine whose
+        // connection cannot leave its database, gives way to one opened in
+        // the tab's.
+        let reopen_in = self.reopen_in(session);
         let stale = match self.lookup(session) {
-            Lookup::Ready(editor) => return Ok(editor),
+            Lookup::Ready(editor) => match self.leave_for(&editor, reopen_in.as_deref()) {
+                Leave::Stay => return self.move_to_database(session, editor, cancel).await,
+                Leave::Refused(reason) => return Err(AcquireError::Failed(reason)),
+                Leave::Go => Some(editor),
+            },
             Lookup::Closed => return Err(AcquireError::Cancelled),
             Lookup::RolledBack { stale } => {
                 if let Some(stale) = stale {
@@ -93,10 +132,13 @@ impl EditorSessionSlot {
         if let Some(stale) = stale {
             close_quietly(stale, close_timeout).await;
         }
-        let options = EditorSessionOptions { statement_timeout };
+        let options = EditorSessionOptions {
+            statement_timeout,
+            database: reopen_in.clone(),
+        };
         match session.open_editor_session(options, cancel).await {
-            Ok(editor) => match self.adopt(session, editor.clone()) {
-                Ok(()) => Ok(editor),
+            Ok(editor) => match self.adopt(session, editor.clone(), reopen_in) {
+                Ok(()) => self.move_to_database(session, editor, cancel).await,
                 Err(orphan) => {
                     close_quietly(orphan, close_timeout).await;
                     Err(AcquireError::Cancelled)
@@ -108,6 +150,100 @@ impl EditorSessionSlot {
                 &[("error", &crate::ui::error_text::operation_error_message(&error))],
             ))),
         }
+    }
+
+    /// Move the tab's sessions to `database` from the next run on.
+    pub fn set_database(&self, database: Option<TabDatabase>) {
+        lock(&self.state).database = database;
+    }
+
+    /// The tab's database, when it was moved off the connection's own.
+    pub fn database(&self) -> Option<TabDatabase> {
+        lock(&self.state).database.clone()
+    }
+
+    /// Run the engine's `USE` for the tab's database on `editor` unless it
+    /// ran there already. Built now, when the session's dialect is known:
+    /// a tab restored before the connection came up named only the name.
+    async fn move_to_database(
+        &self,
+        session: &Arc<Session>,
+        editor: Arc<dyn EditorSession>,
+        cancel: &CancellationToken,
+    ) -> Result<Arc<dyn EditorSession>, AcquireError> {
+        let wanted = {
+            let state = lock(&self.state);
+            let moved = state
+                .open
+                .as_ref()
+                .filter(|open| Arc::ptr_eq(&open.editor, &editor))
+                .and_then(|open| open.moved_to.clone());
+            state
+                .database
+                .clone()
+                .filter(|database| moved.as_ref() != Some(&database.name))
+        };
+        let Some(database) = wanted else {
+            return Ok(editor);
+        };
+        let Some(DatabaseMove::Use(statement)) = session
+            .current_dialect()
+            .map(|dialect| dialect.database_move(&database.name))
+        else {
+            return Err(AcquireError::Failed(could_not_switch(&database.name)));
+        };
+        let ran = editor
+            .run(
+                UserSql::new(statement.as_str()),
+                RunOptions::new(cancel.clone()),
+                Box::new(Discard),
+            )
+            .await;
+        match ran {
+            Ok(summary) if summary.succeeded() => {
+                if let Some(open) = lock(&self.state)
+                    .open
+                    .as_mut()
+                    .filter(|open| Arc::ptr_eq(&open.editor, &editor))
+                {
+                    open.moved_to = Some(database.name);
+                }
+                Ok(editor)
+            }
+            _ => Err(AcquireError::Failed(could_not_switch(&database.name))),
+        }
+    }
+
+    /// The tab's database, when the engine reaches it only by opening a
+    /// session there.
+    fn reopen_in(&self, session: &Arc<Session>) -> Option<String> {
+        let database = lock(&self.state).database.clone()?;
+        let dialect = session.current_dialect()?;
+        (dialect.database_move(&database.name) == DatabaseMove::Reconnect).then_some(database.name)
+    }
+
+    /// Whether the open session can serve a tab that has to be in
+    /// `reopen_in`. One holding a transaction stays: closing it would roll
+    /// the transaction back behind the user's back.
+    fn leave_for(&self, editor: &Arc<dyn EditorSession>, reopen_in: Option<&str>) -> Leave {
+        let Some(wanted) = reopen_in else {
+            return Leave::Stay;
+        };
+        let mut state = lock(&self.state);
+        let Some(open) = state.open.as_ref().filter(|open| Arc::ptr_eq(&open.editor, editor)) else {
+            return Leave::Stay;
+        };
+        if open.moved_to.as_deref() == Some(wanted) {
+            return Leave::Stay;
+        }
+        if open.held_transaction() {
+            return Leave::Refused(crate::i18n::gettext_f(
+                "Commit or roll back the transaction before this tab moves to the database “{database}”",
+                &[("database", wanted)],
+            ));
+        }
+        state.open = None;
+        Leave::Go
     }
 
     fn lookup(&self, owner: &Arc<Session>) -> Lookup {
@@ -159,7 +295,12 @@ impl EditorSessionSlot {
 
     /// Keep a newly opened session, or hand it back when the tab closed
     /// while it was opening.
-    fn adopt(&self, owner: &Arc<Session>, editor: Arc<dyn EditorSession>) -> Result<(), Arc<dyn EditorSession>> {
+    fn adopt(
+        &self,
+        owner: &Arc<Session>,
+        editor: Arc<dyn EditorSession>,
+        opened_in: Option<String>,
+    ) -> Result<(), Arc<dyn EditorSession>> {
         let mut state = lock(&self.state);
         if state.closed {
             return Err(editor);
@@ -168,6 +309,7 @@ impl EditorSessionSlot {
             owner: Arc::downgrade(owner),
             editor,
             transaction: None,
+            moved_to: opened_in,
         });
         Ok(())
     }
@@ -229,6 +371,16 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
+/// Takes what a `USE` sends back, which is nothing the tab shows.
+struct Discard;
+
+#[async_trait]
+impl ResultSink for Discard {
+    async fn accept(&mut self, _event: ResultEvent) -> SinkFlow {
+        SinkFlow::Continue
+    }
+}
+
 #[cfg(test)]
 pub(super) mod tests {
     use tablepro_test_support::{FakeEditorSession, FakeRun, Replies};
@@ -267,6 +419,27 @@ pub(super) mod tests {
     }
 
     const CLOSE: Duration = Duration::from_secs(10);
+
+    /// A tab moved to a database its engine reaches only by opening a
+    /// session there leaves a session in another one, keeps one already
+    /// there, and keeps one holding a transaction, with the reason.
+    #[tokio::test]
+    async fn a_session_in_another_database_gives_way_unless_it_holds_a_transaction() {
+        let (session, _) = session_opening(Vec::new());
+        let slot = EditorSessionSlot::new();
+        let editor: Arc<dyn EditorSession> = answering();
+
+        assert!(slot.adopt(&session, editor.clone(), Some("shop".to_owned())).is_ok());
+        assert!(matches!(slot.leave_for(&editor, Some("shop")), Leave::Stay));
+        assert!(matches!(slot.leave_for(&editor, None), Leave::Stay));
+
+        slot.note_transaction(&editor, Some(TransactionState::InTransaction));
+        assert!(matches!(slot.leave_for(&editor, Some("analytics")), Leave::Refused(_)));
+
+        slot.note_transaction(&editor, Some(TransactionState::Idle));
+        assert!(matches!(slot.leave_for(&editor, Some("analytics")), Leave::Go));
+        assert!(lock(&slot.state).open.is_none(), "the session in shop stayed");
+    }
 
     #[tokio::test]
     async fn a_tab_opens_its_editor_session_once_and_reuses_it() {
@@ -316,7 +489,7 @@ pub(super) mod tests {
 
         assert!(slot.close().is_none());
 
-        assert!(slot.adopt(&session, editor).is_err());
+        assert!(slot.adopt(&session, editor, None).is_err());
         assert!(matches!(
             slot.acquire(&session, None, CLOSE, &CancellationToken::new()).await,
             Err(AcquireError::Cancelled)

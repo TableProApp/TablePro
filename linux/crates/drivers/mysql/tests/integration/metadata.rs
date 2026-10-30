@@ -8,7 +8,7 @@ use tablepro_core::statement::StatementBuilder;
 use tablepro_core::{Connection, RowLimit, Value};
 use tablepro_test_fixtures::MysqlFlavour;
 
-use crate::support::{CALL, FLAVOURS, connect, rows, setup, start, table, within};
+use crate::support::{CALL, FLAVOURS, connect, connect_root, rows, setup, start, table, within};
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires docker"]
@@ -495,4 +495,38 @@ async fn insensitive_filter_matches_mixed_case() {
     assert!(sensitive.is_empty(), "a _bin collation compares case: {sensitive:?}");
     assert_eq!(insensitive, ["Alpha"]);
     connection.close().await.expect("a close");
+}
+
+/// The databases a query tab can move to: the login's own marked as the
+/// default, another one it can see, and the server's own marked as
+/// system, which the editor bar lists after the user's.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn the_servers_databases_are_listed_for_a_query_tab() {
+    for flavour in FLAVOURS {
+        let fixture = start(flavour).await;
+        let root = connect_root(&fixture).await;
+        let grant = format!(
+            "GRANT ALL ON analytics.* TO '{}'@'%'",
+            fixture.password_credentials().username
+        );
+        setup(
+            root.as_ref(),
+            &["CREATE DATABASE IF NOT EXISTS analytics", grant.as_str()],
+        )
+        .await;
+        root.close().await.expect("a close");
+        let connection = connect(&fixture, false).await;
+
+        let databases = connection.list_databases(within(CALL)).await.expect("the databases");
+
+        let find = |name: &str| databases.iter().find(|database| database.name == name);
+        let own = find("tablepro").expect("the login's database");
+        assert!(own.is_default && !own.is_system, "{flavour:?}: {own:?}");
+        let other = find("analytics").expect("another database");
+        assert!(!other.is_default && !other.is_system, "{flavour:?}: {other:?}");
+        let system = find("information_schema").expect("information_schema");
+        assert!(system.is_system, "{flavour:?}: {system:?}");
+        connection.close().await.expect("a close");
+    }
 }

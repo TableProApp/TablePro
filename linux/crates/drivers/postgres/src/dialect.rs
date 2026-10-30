@@ -6,7 +6,8 @@ use tablepro_core::column::{
 };
 use tablepro_core::ddl::DdlDialect;
 use tablepro_core::dialect::{
-    BindError, BindTarget, DialectCapabilities, InsertConflict, KeysetDirection, LiteralError, Placeholder, SqlDialect,
+    BindError, BindTarget, DatabaseMove, DialectCapabilities, InsertConflict, KeysetDirection, LiteralError,
+    Placeholder, SqlDialect,
 };
 use tablepro_core::export::value_to_text;
 use tablepro_core::meta::{EngineRowId, EngineRowIdPart};
@@ -41,6 +42,12 @@ impl PgDialect {
 }
 
 impl SqlDialect for PgDialect {
+    /// A PostgreSQL connection stays in the database it opened in: there
+    /// is no `USE`, so a tab moves by opening a session there.
+    fn database_move(&self, _name: &str) -> DatabaseMove {
+        DatabaseMove::Reconnect
+    }
+
     fn capabilities(&self) -> DialectCapabilities {
         DialectCapabilities {
             exact_row_counts: true,
@@ -474,6 +481,11 @@ mod tests {
 
     fn int(width: IntegerWidth) -> ColumnKind {
         ColumnKind::Integer(IntegerKind { width, signed: true })
+    }
+
+    #[test]
+    fn a_tab_moves_to_another_database_by_reconnecting() {
+        assert_eq!(dialect().database_move("analytics"), DatabaseMove::Reconnect);
     }
 
     #[test]

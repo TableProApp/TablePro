@@ -472,12 +472,21 @@ const CREDENTIAL_RULES: CredentialRules = CredentialRules {
 mod tests {
     use chrono::{DateTime, NaiveDate};
     use tablepro_core::column::{ColumnDefault, SqlTypeExpr};
+    use tablepro_core::dialect::DatabaseMove;
     use tablepro_core::value::OffsetTimestamp;
 
     use super::*;
 
     fn dialect() -> MssqlDialect {
         MssqlDialect::new(16)
+    }
+
+    #[test]
+    fn a_tab_moves_with_use_and_a_bracketed_name() {
+        assert_eq!(
+            dialect().database_move("sales ]2026"),
+            DatabaseMove::Use("USE [sales ]]2026]".to_owned())
+        );
     }
 
     fn column(declared: &str) -> ColumnInfo {

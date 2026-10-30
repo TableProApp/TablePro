@@ -131,10 +131,11 @@ impl WorkspaceModel {
             TabRecord::Diagram { schema, places } => TabSpec::Diagram { schema, places },
             // Its text is on disk already, or there is none to keep, so
             // nothing is written until the user types.
-            TabRecord::Editor { draft, file } => TabSpec::Editor {
+            TabRecord::Editor { draft, file, database } => TabSpec::Editor {
                 initial_query: Some(drafts.remove(&draft).unwrap_or_default()),
                 draft: Some(draft),
                 file,
+                database,
             },
             TabRecord::Key { key } => TabSpec::Key { key },
         };
@@ -188,6 +189,7 @@ impl WorkspaceModel {
             initial_query,
             draft: None,
             file: None,
+            database: None,
         });
     }
 
@@ -699,6 +701,7 @@ impl WorkspaceModel {
                     initial_query: initial,
                     draft: None,
                     file,
+                    database: None,
                 });
             }
             ClosedTabDescriptor::Table {

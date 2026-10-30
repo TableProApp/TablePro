@@ -44,6 +44,12 @@ pub struct ProviderDeps {
 }
 
 impl SqlCompletionProvider {
+    /// Resolve unqualified names in `database`, the tab's own when the
+    /// editor bar moved it off the connection's.
+    pub fn set_home(&self, database: Option<String>) {
+        self.imp().home.replace(database);
+    }
+
     pub fn new(session: ActiveSession, tasks: Tasks, snippets: Rc<SnippetLibrary>) -> Self {
         let provider: Self = glib::Object::new();
         let _ = provider.imp().deps.set(ProviderDeps {
@@ -67,11 +73,12 @@ impl SqlCompletionProvider {
         let ranking = match (request.session.clone(), tasks.clone()) {
             (Some(session), Some(tasks)) if request.grammar.is_sql() => {
                 let fallback = request.clone();
+                let home = self.imp().home.borrow().clone();
                 let ranked_for = needle.clone();
                 let blocking = tasks.clone();
                 tasks
                     .spawn_task(async move {
-                        let answer = catalog_read::read(session, request.scope.clone()).await;
+                        let answer = catalog_read::read(session, request.scope.clone(), home).await;
                         blocking
                             .spawn_blocking_task(move || Ranking::new(request.candidates(&answer).into(), &ranked_for))
                             .await

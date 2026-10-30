@@ -7,6 +7,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 pub struct CallCounters {
     pub probe: Arc<AtomicUsize>,
     pub list_schemas: Arc<AtomicUsize>,
+    pub list_databases: Arc<AtomicUsize>,
     pub list_objects: Arc<AtomicUsize>,
     pub fetch_columns: Arc<AtomicUsize>,
     pub fetch_indexes: Arc<AtomicUsize>,

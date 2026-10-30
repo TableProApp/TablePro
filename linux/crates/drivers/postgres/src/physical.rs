@@ -56,6 +56,18 @@ impl PgEndpoint {
         })
     }
 
+    /// The same server, login and TLS, opening connections in `database`.
+    pub(crate) fn in_database(&self, database: &str) -> Self {
+        let mut config = self.config.clone();
+        config.dbname(database);
+        Self {
+            transport: self.transport.clone(),
+            config,
+            tls: self.tls.clone(),
+            liveness: self.liveness,
+        }
+    }
+
     pub(crate) fn liveness(&self) -> &LivenessPolicy {
         &self.liveness
     }

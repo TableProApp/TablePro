@@ -1,7 +1,7 @@
 use tablepro_core::column::{ColumnType, SqlExpression};
 use tablepro_core::dialect::{
-    BindError, BindTarget, DialectCapabilities, InsertBatchLimits, InsertConflict, KeysetDirection, LiteralError,
-    Placeholder, SqlDialect,
+    BindError, BindTarget, DatabaseMove, DialectCapabilities, InsertBatchLimits, InsertConflict, KeysetDirection,
+    LiteralError, Placeholder, SqlDialect,
 };
 use tablepro_core::meta::{EngineRowId, EngineRowIdPart};
 use tablepro_core::sql_syntax::{ExpressionSyntaxError, HistoryRecording, SqlGrammar, TypeSyntaxError};
@@ -17,6 +17,21 @@ use tablepro_core::value::Value;
 pub struct MongoDialect;
 
 impl SqlDialect for MongoDialect {
+    /// mongosh's own `use`, the name quoted. Its parser takes a quoted
+    /// name as it stands, escapes and all, and the splitter ends a
+    /// statement at `;`, so a name holding a quote, a backslash, `;` or a
+    /// space is refused rather than sent as more than one statement.
+    fn database_move(&self, name: &str) -> DatabaseMove {
+        let carried = !name.is_empty()
+            && !name
+                .chars()
+                .any(|c| matches!(c, '"' | '\'' | '\\' | ';') || c.is_whitespace() || c.is_control());
+        match carried {
+            true => DatabaseMove::Use(format!("use \"{name}\"")),
+            false => DatabaseMove::Refused,
+        }
+    }
+
     /// A write reports how many documents it matched, and `_id` is
     /// unique, so a count proves a save touched the document it meant to,
     /// and an insert with an `_id` already taken fails with E11000.
@@ -105,6 +120,17 @@ mod tests {
     use tablepro_core::statement::ParamType;
 
     use super::*;
+
+    #[test]
+    fn a_tab_moves_with_the_shells_own_use() {
+        assert_eq!(
+            MongoDialect.database_move("analytics"),
+            DatabaseMove::Use("use \"analytics\"".to_owned())
+        );
+        for name in ["x; db.dropDatabase()", "a\"b", "a\\b", "two words", "line\nbreak", ""] {
+            assert_eq!(MongoDialect.database_move(name), DatabaseMove::Refused, "{name:?}");
+        }
+    }
 
     #[test]
     fn an_import_writes_a_document_a_step() {

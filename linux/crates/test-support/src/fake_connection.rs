@@ -189,6 +189,19 @@ impl Connection for FakeConnection {
             .await
     }
 
+    async fn list_databases(&self, options: CallOptions) -> Result<Vec<SchemaInfo>, DriverError> {
+        let counter = &self.counters.list_databases;
+        self.answer(
+            "list_databases",
+            counter,
+            |s| &mut s.list_databases,
+            None,
+            &options,
+            TimeoutPhase::Statement,
+        )
+        .await
+    }
+
     async fn list_schemas(&self, options: CallOptions) -> Result<Vec<SchemaInfo>, DriverError> {
         let counter = &self.counters.list_schemas;
         self.answer(
