@@ -49,7 +49,7 @@ use tablepro_session::runtime::{ProcessHold, Tasks};
 use tokio_util::sync::CancellationToken;
 
 use self::buffer_edit::{CursorAnchor, replace_all_undoable};
-pub(crate) use self::completion::{CompletionScope, read_catalog, tables_named};
+pub(crate) use self::completion::{CatalogHome, CompletionScope, read_catalog, tables_named};
 pub(crate) use self::editor_file::file_name;
 use self::editor_view::EditorView;
 use self::imp::RunningScript;
@@ -154,6 +154,7 @@ impl SqlEditor {
         editor.connect_buttons();
         editor.connect_grid();
         editor.show_scope();
+        editor.list_databases();
         editor
     }
 
@@ -692,6 +693,9 @@ impl SqlEditor {
         }
         self.record_history(entry, dialect);
         self.show_scope();
+        if imp.changes_catalog.get() {
+            self.list_databases();
+        }
         self.emit_by_name::<()>("run-finished", &[&outcome]);
         self.emit_by_name::<()>("run-state-changed", &[&false]);
     }

@@ -60,6 +60,10 @@ impl MySqlDialect {
     }
 }
 
+pub(crate) fn quote(name: &str) -> String {
+    format!("`{}`", name.replace('`', "``"))
+}
+
 impl SqlDialect for MySqlDialect {
     fn database_layout(&self) -> DatabaseLayout {
         DatabaseLayout::AsSchemas
@@ -79,7 +83,7 @@ impl SqlDialect for MySqlDialect {
     }
 
     fn quote_identifier(&self, name: &str) -> String {
-        format!("`{}`", name.replace('`', "``"))
+        quote(name)
     }
 
     fn placeholder(&self, _ordinal: usize, value: Value, target: BindTarget<'_>) -> Result<Placeholder, BindError> {

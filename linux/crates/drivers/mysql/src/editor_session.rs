@@ -16,6 +16,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::cancel::ControlLink;
 use crate::decode::decode_row;
+use crate::dialect::quote;
 use crate::editor_run::{RunOutcome, run_script};
 use crate::errors::map_error;
 use crate::flavour::MySqlFlavour;
@@ -345,6 +346,51 @@ impl EditorSession for MysqlEditorSession {
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .clone()
+    }
+
+    /// `USE` carries any name: a backtick in it is doubled.
+    async fn use_database(&self, database: &str, options: CallOptions) -> Result<(), DriverError> {
+        let shared = &self.shared;
+        let stopped = || match options.cancel().is_cancelled() {
+            true => DriverError::Cancelled,
+            false => DriverError::Timeout {
+                phase: TimeoutPhase::Statement,
+                server_cancelled: false,
+            },
+        };
+        let mut guard = tokio::select! {
+            biased;
+            () = options.cancel().cancelled() => return Err(stopped()),
+            () = elapsed(options.deadline()) => return Err(stopped()),
+            guard = shared.held.lock() => guard,
+        };
+        let Some(held) = guard.as_mut().filter(|_| !shared.lost.load(Ordering::SeqCst)) else {
+            return Err(DriverError::ConnectionLost {
+                during: LossPhase::Idle,
+            });
+        };
+        let statement = format!("USE {}", quote(database));
+        let using = held.connection.execute(sqlx::raw_sql(AssertSqlSafe(statement)));
+        let used = tokio::select! {
+            biased;
+            () = options.cancel().cancelled() => None,
+            () = elapsed(options.deadline()) => None,
+            used = using => Some(used),
+        };
+        match used {
+            Some(Ok(_)) => {
+                *shared.database.lock().unwrap_or_else(PoisonError::into_inner) = Some(database.to_owned());
+                Ok(())
+            }
+            Some(Err(error)) => Err(map_error(&error, shared.flavour)),
+            // The answer is still on the wire, so the connection is in no
+            // state anything knows.
+            None => {
+                shared.lost.store(true, Ordering::SeqCst);
+                *guard = None;
+                Err(stopped())
+            }
+        }
     }
 
     async fn transaction_state(&self, options: CallOptions) -> Result<TransactionState, DriverError> {
