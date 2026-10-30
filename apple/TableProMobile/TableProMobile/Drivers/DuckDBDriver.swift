@@ -354,7 +354,7 @@ actor DuckDBActor {
     }
 
     static func quoteIdentifier(_ identifier: String) -> String {
-        "\"\(identifier.replacingOccurrences(of: "\"", with: "\"\""))\""
+        "\"\(identifier.replacingOccurrences(of: "\"", with: "\"\"", options: .literal))\""
     }
 
     static func stripTrailingSemicolon(_ query: String) -> String {

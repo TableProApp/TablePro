@@ -169,9 +169,9 @@ final class CSVExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
 
             if options.convertLineBreakToSpace {
                 processed = processed
-                    .replacingOccurrences(of: "\r\n", with: " ")
-                    .replacingOccurrences(of: "\r", with: " ")
-                    .replacingOccurrences(of: "\n", with: " ")
+                    .replacingOccurrences(of: "\r\n", with: " ", options: .literal)
+                    .replacingOccurrences(of: "\r", with: " ", options: .literal)
+                    .replacingOccurrences(of: "\n", with: " ", options: .literal)
             }
 
             if options.decimalFormat == .comma {
@@ -195,7 +195,7 @@ final class CSVExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
     /// delimiter has no way to know the space it now sees was one.
     private func escapeCSVField(_ field: String, options: CSVExportOptions, originalHadLineBreaks: Bool = false) -> String {
         let escaped = PluginRowWriters.csvField(field, options: writeOptions(options))
-        guard originalHadLineBreaks, options.quoteHandling == .asNeeded, !escaped.hasPrefix("\"") else {
+        guard originalHadLineBreaks, options.quoteHandling == .asNeeded, escaped.unicodeScalars.first != "\"" else {
             return escaped
         }
         return "\"\(escaped.replacingOccurrences(of: "\"", with: "\"\"", options: .literal))\""

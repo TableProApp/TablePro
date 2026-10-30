@@ -242,7 +242,7 @@ struct FilterSQLGenerator {
 
     private func foldedComparison(_ literal: String, folding: PluginSQLCaseFolding) -> String? {
         guard folding.foldsComparisonOperands else { return literal }
-        guard literal.hasPrefix("'") else { return nil }
+        guard literal.unicodeScalars.first == "'" else { return nil }
         return folding.fold(literal)
     }
 
@@ -279,7 +279,7 @@ struct FilterSQLGenerator {
             }
         }
 
-        let foldsList = folding.foldsComparisonOperands && literals.allSatisfy { $0.hasPrefix("'") }
+        let foldsList = folding.foldsComparisonOperands && literals.allSatisfy { $0.unicodeScalars.first == "'" }
         let nonNullValues = foldsList ? literals.map(folding.fold) : literals
         let foldedColumn = foldsList ? folding.fold(patternOperand(column, columnType: columnType)) : column
         let inClause: String? = nonNullValues.isEmpty ? nil : {

@@ -26,16 +26,13 @@ struct TableQueryBuilder {
         pluginDriver: (any PluginDatabaseDriver)? = nil,
         dialect: SQLDialectDescriptor? = nil,
         pagination: PaginationCapability,
-        dialectQuote: ((String) -> String)? = nil
+        dialectQuote: @escaping (String) -> String
     ) {
         self.databaseType = databaseType
         self.pluginDriver = pluginDriver
         self.dialect = dialect
         self.pagination = pagination
-        self.dialectQuote = dialectQuote ?? { name in
-            let escaped = name.replacingOccurrences(of: "\"", with: "\"\"")
-            return "\"\(escaped)\""
-        }
+        self.dialectQuote = dialectQuote
     }
 
     mutating func setPluginDriver(_ driver: (any PluginDatabaseDriver)?) {

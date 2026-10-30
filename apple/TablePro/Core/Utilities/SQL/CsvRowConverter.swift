@@ -47,7 +47,7 @@ internal struct CsvRowConverter {
     // An unquoted field holds no quote, so wrapping it for its edge spaces needs no escaping.
     static func encode(_ value: String) -> String {
         let field = PluginRowWriters.csvField(value, options: fieldOptions)
-        guard !field.hasPrefix("\""), value.hasPrefix(" ") || value.hasSuffix(" ") else { return field }
+        guard field.unicodeScalars.first != "\"", value.hasPrefix(" ") || value.hasSuffix(" ") else { return field }
         return "\"\(field)\""
     }
 

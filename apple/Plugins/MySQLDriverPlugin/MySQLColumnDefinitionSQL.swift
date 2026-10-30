@@ -8,7 +8,7 @@ import TableProMySQLCore
 import TableProPluginKit
 
 internal func mysqlQuoteIdentifier(_ name: String) -> String {
-    let escaped = name.replacingOccurrences(of: "`", with: "``")
+    let escaped = name.replacingOccurrences(of: "`", with: "``", options: .literal)
     return "`\(escaped)`"
 }
 

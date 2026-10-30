@@ -13,9 +13,9 @@ public enum SurrealQL {
 
     public static func escapeStringLiteral(_ value: String) -> String {
         var out = ""
-        out.reserveCapacity(value.count)
-        for character in value {
-            switch character {
+        out.reserveCapacity(value.utf8.count)
+        for scalar in value.unicodeScalars {
+            switch scalar {
             case "\\":
                 out += "\\\\"
             case "'":
@@ -23,7 +23,7 @@ public enum SurrealQL {
             case "\u{00}":
                 continue
             default:
-                out.append(character)
+                out.unicodeScalars.append(scalar)
             }
         }
         return out
@@ -112,8 +112,8 @@ public enum SurrealQL {
     }
 
     private static func escapeBackticks(_ text: String) -> String {
-        text.replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "`", with: "\\`")
+        text.replacingOccurrences(of: "\\", with: "\\\\", options: .literal)
+            .replacingOccurrences(of: "`", with: "\\`", options: .literal)
     }
 
     private static func unescapeBackticks(_ text: String) -> String {

@@ -103,7 +103,7 @@ public struct SQLIdentifierSpelling: Sendable {
 
     public func quoted(_ name: String) -> String {
         let quote = String(rules.quote)
-        return quote + name.replacingOccurrences(of: quote, with: quote + quote) + quote
+        return quote + name.replacingOccurrences(of: quote, with: quote + quote, options: .literal) + quote
     }
 
     // A name written into a statement with nothing typed: as stored keeps the caller's own spelling.
@@ -131,7 +131,7 @@ public struct SQLIdentifierSpelling: Sendable {
         if quoting != .none, identifier.parts.count == 1, case .catalog(let name) = identifier.parts[0] {
             // The user's own quote asks for the exact name: inside a closed pair it goes in raw.
             let quote = String(rules.quote)
-            let text = quoting == .enclosed ? name.replacingOccurrences(of: quote, with: quote + quote) : quoted(name)
+            let text = quoting == .enclosed ? name.replacingOccurrences(of: quote, with: quote + quote, options: .literal) : quoted(name)
             return item.recased(label: name, insertText: text)
         }
         // A qualified reference replaces the user's quotes, so it is spelled as if none were typed.
