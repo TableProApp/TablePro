@@ -131,11 +131,16 @@ impl Shared {
         let started = Instant::now();
         self.running.store(true, Ordering::SeqCst);
         let supervised = self.supervise(held, &sql, &options, sink.as_mut()).await;
+        // A session in a database nothing knows would run the next script
+        // in the wrong one, so it ends instead.
+        let placed = match &supervised {
+            Ok((_, true)) if may_change_database(sql.as_str(), SqlGrammar::MySql) => {
+                self.follow_database(&mut held.connection).await
+            }
+            _ => true,
+        };
         let transaction_state = match &supervised {
-            Ok((_, true)) => {
-                if may_change_database(sql.as_str(), SqlGrammar::MySql) {
-                    self.follow_database(&mut held.connection).await;
-                }
+            Ok((_, true)) if placed => {
                 let asking = self.probe.state(&mut held.connection);
                 tokio::time::timeout(self.liveness.cancel_grace, asking)
                     .await
@@ -145,8 +150,8 @@ impl Shared {
         };
         self.running.store(false, Ordering::SeqCst);
         let end = match supervised {
-            Ok((end, true)) => end,
-            Ok((end, false)) => {
+            Ok((end, true)) if placed => end,
+            Ok((end, _)) => {
                 self.lost.store(true, Ordering::SeqCst);
                 *guard = None;
                 end
@@ -164,16 +169,19 @@ impl Shared {
         })
     }
 
-    async fn follow_database(&self, connection: &mut MySqlConnection) {
+    /// Ask where a `USE` left the session. False when the answer did not
+    /// come.
+    async fn follow_database(&self, connection: &mut MySqlConnection) -> bool {
         let asking = connection.fetch_one(sqlx::raw_sql("SELECT DATABASE()"));
         let Ok(Ok(row)) = tokio::time::timeout(self.liveness.cancel_grace, asking).await else {
-            return;
+            return false;
         };
         let current = match decode_row(&row, MySqlWireFormat::Text, MySqlTimestampMode::SessionLocal).first() {
             Some(Value::Text(name)) => Some(name.clone()),
             _ => None,
         };
         *self.database.lock().unwrap_or_else(PoisonError::into_inner) = current;
+        true
     }
 
     /// Run the script, stopping it on a cancel, at the deadline, when

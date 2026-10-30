@@ -184,8 +184,9 @@ impl Shared {
         if follow_database {
             match tokio::time::timeout(self.cancel_grace, current_database(&mut link.client)).await {
                 Ok(Ok(current)) => *self.database.lock().unwrap_or_else(PoisonError::into_inner) = current,
-                Ok(Err(error)) => return (TransactionState::Unknown, !ends_connection(&error)),
-                Err(_) => return (TransactionState::Unknown, false),
+                // A session in a database nothing knows ends rather than
+                // run the next script in the wrong one.
+                Ok(Err(_)) | Err(_) => return (TransactionState::Unknown, false),
             }
         }
         match tokio::time::timeout(self.cancel_grace, transaction_state(&mut link.client)).await {
