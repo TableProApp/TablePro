@@ -373,21 +373,17 @@ internal final class EtcdHttpClient: @unchecked Sendable {
         )
         urlConfig.timeoutIntervalForResource = HttpQueryTimeout.sessionResourceTimeout
 
-        let delegate: URLSessionDelegate?
+        let delegate: PluginRedirectRefusingDelegate
         switch tlsMode {
         case "Required":
             // Encryption without certificate verification — matches UI "Required (skip verify)"
             delegate = InsecureTlsDelegate()
         default:
-            delegate = try verifyingDelegate(tlsMode: tlsMode)
+            delegate = try verifyingDelegate(tlsMode: tlsMode) ?? PluginRedirectRefusingDelegate()
         }
 
         lock.withLock {
-            if let delegate {
-                session = URLSession(configuration: urlConfig, delegate: delegate, delegateQueue: nil)
-            } else {
-                session = URLSession(configuration: urlConfig)
-            }
+            session = URLSession(configuration: urlConfig, delegate: delegate, delegateQueue: nil)
         }
 
         do {
@@ -414,7 +410,7 @@ internal final class EtcdHttpClient: @unchecked Sendable {
         !config.username.isEmpty
     }
 
-    private func verifyingDelegate(tlsMode: String) throws -> URLSessionDelegate? {
+    private func verifyingDelegate(tlsMode: String) throws -> PluginRedirectRefusingDelegate? {
         let caPath = config.additionalFields["etcdCaCertPath"]
         guard let serverTrust = try EtcdServerTrust.make(tlsMode: tlsMode, caCertificatePath: caPath) else {
             return nil
@@ -821,7 +817,8 @@ internal final class EtcdHttpClient: @unchecked Sendable {
         guard let httpResponse = response as? HTTPURLResponse else {
             throw EtcdError.serverError(String(localized: "Invalid response type"))
         }
-        guard httpResponse.statusCode >= 400 else { return data }
+        // A refused redirect arrives as its 3xx.
+        guard !(200 ..< 300).contains(httpResponse.statusCode) else { return data }
 
         let fault = EtcdServerFault.decode(httpStatus: httpResponse.statusCode, body: data)
         let recovery = EtcdRequestRecovery.action(
@@ -1082,7 +1079,7 @@ internal final class EtcdHttpClient: @unchecked Sendable {
 
     // MARK: - TLS Delegates
 
-    private final class InsecureTlsDelegate: NSObject, URLSessionDelegate {
+    private final class InsecureTlsDelegate: PluginRedirectRefusingDelegate {
         func urlSession(
             _ session: URLSession,
             didReceive challenge: URLAuthenticationChallenge,
@@ -1097,7 +1094,7 @@ internal final class EtcdHttpClient: @unchecked Sendable {
         }
     }
 
-    private final class EtcdTlsDelegate: NSObject, URLSessionDelegate {
+    private final class EtcdTlsDelegate: PluginRedirectRefusingDelegate {
         private let serverTrust: EtcdServerTrust
         private let clientCredential: URLCredential?
 

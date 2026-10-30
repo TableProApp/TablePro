@@ -27,6 +27,34 @@ enum DuckDBFileKinds {
     /// or `.csv` path is a typo, and DuckDB would answer it by creating an empty database
     /// under that name, which reads as a working connection to nothing.
     static func canBeCreated(atPath path: String) -> Bool {
-        !readOnlyData.contains((path as NSString).pathExtension.lowercased())
+        !opensAsReader(path)
+    }
+
+    // Measured on the shipped libduckdb (scripts/probes/check-duckdb-access-mode.sh): DuckDB picks a reader by name,
+    // in any case and with or without gzip or zstd around it, and opens every other path as a database.
+    static func opensAsReader(_ path: String) -> Bool {
+        var name = (path as NSString).lastPathComponent.lowercased() as NSString
+        if compressionExtensions.contains(name.pathExtension) {
+            name = name.deletingPathExtension as NSString
+        }
+        return readerExtensions.contains(name.pathExtension)
+    }
+
+    private static let readerExtensions = Set(readOnlyData + ["jsonl"])
+
+    private static let compressionExtensions: Set<String> = ["gz", "zst"]
+
+    private static let duckDBMagic = Data("DUCK".utf8)
+    private static let duckDBMagicOffset = 8
+    private static let sqliteMagic = Data("SQLite format 3\u{0}".utf8)
+
+    // DuckDB opens its own storage and a SQLite file by their header, whatever they are called.
+    static func holdsDatabase(atPath path: String) -> Bool {
+        guard let handle = FileHandle(forReadingAtPath: path) else { return false }
+        defer { try? handle.close() }
+        guard let header = try? handle.read(upToCount: sqliteMagic.count) else { return false }
+        if header.starts(with: sqliteMagic) { return true }
+        let magicRange = duckDBMagicOffset..<(duckDBMagicOffset + duckDBMagic.count)
+        return header.count >= magicRange.upperBound && header.subdata(in: magicRange) == duckDBMagic
     }
 }

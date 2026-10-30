@@ -327,7 +327,7 @@ fn no_header_sorts_a_table_in_the_engines_order() {
         .map(|column| column.sorter().is_some())
         .collect();
 
-    assert_eq!(sorters, [false, false, false]);
+    assert_eq!(sorters, [false; 4]);
 }
 
 /// D4: a field no sort can name, as a document's nested field, sorts by
