@@ -73,6 +73,124 @@ fn escape_string_backslash_quote() {
     );
 }
 
+/// A string that follows `E'...'` after a line break continues it, and
+/// the server reads it with backslash escapes on, so `\'` does not end it.
+#[test]
+fn escape_string_continues_past_a_line_break() {
+    for grammar in [SqlGrammar::PostgreSql, SqlGrammar::DuckDb] {
+        for continued in [
+            "SELECT E'a'\n'\\'; b'",
+            "SELECT E'a'\r'\\'; b'",
+            "SELECT E'a' \t\x0c-- note\n\x0b -- note\r\n '\\'; b'",
+            "SELECT E'a'\n'b'\n'\\'; c'",
+        ] {
+            let text = format!("{continued}; SELECT 2;");
+            assert_eq!(
+                statements(grammar, &text),
+                [continued, "SELECT 2"],
+                "{grammar:?}: {continued:?}"
+            );
+        }
+    }
+    // Without a line break, past a block comment, past anything but a
+    // blank or a `--` comment, or after a vertical tab before the line
+    // break, the server ends the string and so must the lexer.
+    for apart in [
+        "SELECT E'a' '\\'",
+        "SELECT E'a' /* note */\n'\\'",
+        "SELECT E'a'\n, '\\'",
+        "SELECT E'a'\x0b\n'\\'",
+    ] {
+        let text = format!("{apart}; SELECT 2;");
+        assert_eq!(
+            statements(SqlGrammar::PostgreSql, &text),
+            [apart, "SELECT 2"],
+            "{apart:?}"
+        );
+    }
+    assert_eq!(
+        plan(SqlGrammar::PostgreSql, "SELECT E'a'\n'b").diagnostics(),
+        [ScriptDiagnostic::Unterminated {
+            construct: OpenConstruct::StringLiteral,
+            start: 7,
+        }]
+    );
+}
+
+#[test]
+fn a_sqlite_parameter_runs_to_its_closing_parenthesis() {
+    for parameter in [
+        "$1(')",
+        "$a::b(;)",
+        "@a(\")",
+        ":a(`)",
+        "#a([)",
+        "$a(\u{1b}')",
+        ":::a(')",
+    ] {
+        let text = format!("SELECT {parameter}; SELECT 2; --'");
+        assert_eq!(
+            statements(SqlGrammar::Sqlite, &text),
+            [format!("SELECT {parameter}").as_str(), "SELECT 2"],
+            "{parameter}"
+        );
+    }
+    // White space ends it early, and one of no name is none.
+    for text in [
+        "SELECT $1( '; SELECT 2; --')",
+        "SELECT $1(\n'; SELECT 2; --')",
+        "SELECT $('; SELECT 2; --')",
+        "SELECT $::('; SELECT 2; --')",
+        "SELECT a$1('; SELECT 2; --')",
+        "SELECT ?1('; SELECT 2; --')",
+    ] {
+        assert_eq!(statements(SqlGrammar::Sqlite, text), [text], "{text}");
+    }
+    for grammar in [SqlGrammar::PostgreSql, SqlGrammar::MySql, SqlGrammar::MsSql] {
+        let text = "SELECT $1('); SELECT 2; --')";
+        assert_eq!(statements(grammar, text), [text], "{grammar:?}");
+    }
+
+    let text = "SELECT $a::b, $a::b(c;d), $e(";
+    let words: Vec<&str> = plan(SqlGrammar::Sqlite, text)
+        .tokens(0..text.len())
+        .filter(|token| token.kind == ScriptTokenKind::Word)
+        .map(|token| &text[token.range.clone()])
+        .collect();
+    assert_eq!(words, ["SELECT", "$a::b", "$a::b(c;d)", "$e("]);
+}
+
+#[test]
+fn a_byte_order_mark_is_a_space_where_sqlite_starts_a_token() {
+    let words = |grammar: SqlGrammar, text: &str| -> Vec<String> {
+        plan(grammar, text)
+            .tokens(0..text.len())
+            .filter(|token| token.kind == ScriptTokenKind::Word)
+            .map(|token| text[token.range.clone()].to_owned())
+            .collect()
+    };
+
+    assert_eq!(
+        words(SqlGrammar::Sqlite, "\u{feff}DROP \u{feff}\u{feff}TABLE t"),
+        ["DROP", "TABLE", "t"]
+    );
+    assert_eq!(
+        words(SqlGrammar::Sqlite, "DROP\u{feff} TABLE t"),
+        ["DROP\u{feff}", "TABLE", "t"]
+    );
+    assert_eq!(
+        statements(SqlGrammar::Sqlite, "SELECT 1;\u{feff}DELETE FROM t;"),
+        ["SELECT 1", "DELETE FROM t"]
+    );
+    for grammar in [SqlGrammar::PostgreSql, SqlGrammar::MySql] {
+        assert_eq!(
+            words(grammar, "\u{feff}DROP TABLE t"),
+            ["\u{feff}DROP", "TABLE", "t"],
+            "{grammar:?}"
+        );
+    }
+}
+
 #[test]
 fn backslash_plain_string_when_enabled_vs_disabled() {
     let text = r"SELECT 'a\'; SELECT 'b';";

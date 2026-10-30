@@ -457,6 +457,7 @@ const CREDENTIAL_RULES: CredentialRules = CredentialRules {
         (&["ALTER", "ROLE"], &["PASSWORD", "HASHED"]),
     ],
     carriers: &[],
+    secret_parameters: &[],
 };
 
 #[cfg(test)]

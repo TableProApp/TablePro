@@ -28,6 +28,7 @@ mod host_key_failure;
 mod host_key_review;
 pub(crate) mod icons;
 mod import_dialog;
+pub(crate) mod import_preview;
 mod key_tab;
 mod menu_label;
 mod name_entry;

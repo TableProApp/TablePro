@@ -432,6 +432,7 @@ const CREDENTIAL_RULES: CredentialRules = CredentialRules {
         "decrypt_iv",
         "hmac",
     ],
+    secret_parameters: &[],
 };
 
 #[cfg(test)]

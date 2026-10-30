@@ -17,7 +17,7 @@ The app's data goes to the store its shape calls for. The `storage` crate owns t
 
 `ConnectionStore` holds the saved-connection list, one store per storage root:
 
-- `load_blocking`, `upsert_blocking`, `update_blocking`, `remove_blocking`, `touch_last_opened_blocking`, `import_blocking` and `export_blocking` run off the GTK thread. A change holds the store's lock across read, change and write, so two writers never lose an entry. `update_blocking` changes one entry as the list holds it at the write, so a last-opened stamp from another window in between is kept.
+- `load_blocking`, `upsert_blocking`, `update_blocking`, `remove_blocking`, `touch_last_opened_blocking`, `preview_import_blocking`, `apply_import_blocking` and `export_blocking` run off the GTK thread. A change holds the store's lock across read, change and write, so two writers never lose an entry. `update_blocking` changes one entry as the list holds it at the write, so a last-opened stamp from another window in between is kept.
 - A write goes through `write_private_blocking` first and the cached list changes only once it landed, so a failed write leaves both as they were.
 - `subscribe` hands out a watch of `ConnectionListSnapshot`, so every picker sees every writer's change.
 - A file that cannot be read, or that another version wrote, leaves the store `Unavailable`, and it refuses every write until the user picks Reset (`reset_unreadable_blocking`), which moves the file aside.
@@ -29,6 +29,8 @@ The app's data goes to the store its shape calls for. The `storage` crate owns t
 - The file's `tags` list holds every `ConnectionTag`: an `id`, a `name` (`ConnectionTagName`: trimmed, 1 to 32 characters, no control characters, cleaned on read as a group's is) and a `color` from the same palette as `color`. No two tags share a name in any case: `create_tag_blocking` and `update_tag_blocking` refuse one with `TagNameTaken`.
 - A connection's `tags` are ids from that list. Every write drops an id the list lacks and a repeated one, so `delete_tag_blocking` takes the tag off every connection in the same write, and a connection saved with a tag deleted meanwhile loses it.
 - `icon` is one of the `ConnectionIcon` names. The app draws each with a symbolic icon from the theme (`crates/app/src/ui/icons.rs`).
+- A connection's `name` is stored and compared as the list shows it: control characters as spaces, characters that show as nothing (U+200B, U+FEFF) dropped, no blanks around it, so a name that looks like a saved one is the same name.
+- An import is previewed first: `preview_import_blocking` works out every entry as it will be saved and writes nothing, the app shows each one with its host, and `apply_import_blocking` writes that result, or refuses with `ImportOutdated` when the list changed in between. An imported entry never takes a name another entry holds or held before the import, whatever order the file lists them in.
 - On import, a tag is matched by id, then by name in any case, and added only when neither matches, so importing a file twice leaves one tag of each name. A tag matched by id takes the file's colour, and its name unless another tag has it. A connection updated by an import takes the file's tags and icon.
 - An edit, a copy or a move to another group goes through the app's `SavedConnectionEditor`, which writes the keyring first. A refused secret stops before the list changes, and the secrets of a copy whose entry did not land are deleted again. Edits and copies run one at a time, so two windows editing one connection never leave the host of one with the password of the other.
 
@@ -248,7 +250,12 @@ script lexer:
   only with a given word (`GRANT ... IDENTIFIED`), and functions or engines
   that take a password (`dblink`, `OPENROWSET`, `s3`). A routine body is
   read for the statements inside it, whether dollar-quoted or, on
-  PostgreSQL, a plain string after `DO` or `AS`. The text is read every
+  PostgreSQL, a plain string after `DO` or `AS`. So is every string of a
+  script that hands the server text to run (T-SQL `EXEC` and
+  `sp_executesql`, MySQL `PREPARE ... FROM` and `EXECUTE IMMEDIATE`,
+  PL/pgSQL `EXECUTE`), since the text may reach them through a variable.
+  On SQL Server a named argument whose name holds `password` or `pwd`
+  withholds the entry whatever the procedure. The text is read every
   way the server may read it: with and without backslash escapes, and
   with each MySQL `/*!` comment run or skipped as each server version
   would.

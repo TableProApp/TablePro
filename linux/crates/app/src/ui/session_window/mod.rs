@@ -521,6 +521,7 @@ impl SessionWindow {
             SessionWindowInput::ExportConnections => self.on_export_connections(),
             SessionWindowInput::ImportConnections => self.on_import_connections(),
             SessionWindowInput::ConnectionsFileRead { path, bytes } => self.on_connections_file_read(path, bytes),
+            SessionWindowInput::ImportPreviewed(preview) => self.on_import_previewed(*preview),
             SessionWindowInput::ShowToast(message) => self.show_toast(&message),
         }
     }

@@ -698,6 +698,7 @@ impl SessionWindow {
         });
     }
 
+    /// Work out what the file would do, writing nothing yet.
     pub(super) fn on_connections_file_read(&self, path: std::path::PathBuf, bytes: Vec<u8>) {
         let (Some(state), Some(input)) = (self.state(), self.input()) else {
             return;
@@ -706,20 +707,70 @@ impl SessionWindow {
         let tasks = state.services.tasks.clone();
         let file = path.clone();
         crate::runtime::spawn_held(&state.services.tasks, &*state.services.hold(), async move {
+            let previewed = tasks
+                .spawn_blocking_task(move || connections.preview_import_blocking(&path, &bytes))
+                .await;
+            let message = match previewed {
+                Ok(Ok(preview)) if preview.entries().is_empty() => {
+                    crate::i18n::gettext("That file has no connections in it.")
+                }
+                Ok(Ok(preview)) => {
+                    input.deliver(SessionWindowInput::ImportPreviewed(Box::new(preview)));
+                    return;
+                }
+                Ok(Err(error)) => {
+                    tracing::warn!(%error, "could not read the connections to import");
+                    import_failure_message(error, &file)
+                }
+                Err(error) => {
+                    tracing::warn!(%error, "the import task did not finish");
+                    crate::i18n::gettext("The connections could not be imported.")
+                }
+            };
+            input.deliver(SessionWindowInput::ShowToast(message));
+        });
+    }
+
+    /// Ask before writing, showing where each connection goes.
+    pub(super) fn on_import_previewed(&self, preview: tablepro_storage::ImportPreview) {
+        let Some(state) = self.state() else {
+            return;
+        };
+        let dialog = crate::ui::import_preview::import_preview_dialog(&preview, &state.services.drivers);
+        let window = self.downgrade();
+        dialog.connect_response(None, move |_, response| {
+            if response == crate::ui::import_preview::IMPORT
+                && let Some(window) = window.upgrade()
+            {
+                window.apply_import(preview.clone());
+            }
+        });
+        dialog.present(Some(self));
+    }
+
+    fn apply_import(&self, preview: tablepro_storage::ImportPreview) {
+        let (Some(state), Some(input)) = (self.state(), self.input()) else {
+            return;
+        };
+        let connections = state.services.storage.connections().clone();
+        let tasks = state.services.tasks.clone();
+        crate::runtime::spawn_held(&state.services.tasks, &*state.services.hold(), async move {
             let imported = tasks
-                .spawn_blocking_task(move || connections.import_blocking(&path, &bytes))
+                .spawn_blocking_task(move || connections.apply_import_blocking(&preview))
                 .await;
             let message = match imported {
-                Ok(Ok(report)) if report.total() == 0 => crate::i18n::gettext("That file has no connections in it."),
                 Ok(Ok(report)) => crate::i18n::ngettext_f(
                     "Imported {n} connection.",
                     "Imported {n} connections.",
                     u32::try_from(report.total()).unwrap_or(u32::MAX),
                     &[("n", &report.total().to_string())],
                 ),
+                Ok(Err(tablepro_storage::StorageError::ImportOutdated)) => crate::i18n::gettext(
+                    "The saved connections changed while you were deciding. Import the file again.",
+                ),
                 Ok(Err(error)) => {
                     tracing::warn!(%error, "could not import the connections");
-                    import_failure_message(error, &file)
+                    crate::ui::error_text::saved_connection_error_message(&SavedConnectionError::Storage(error))
                 }
                 Err(error) => {
                     tracing::warn!(%error, "the import task did not finish");
@@ -1102,6 +1153,44 @@ mod tests {
             !test.vault.calls().contains(&Call::DeleteConnection(test.saved.id)),
             "an open connection's secrets were deleted"
         );
+    }
+
+    /// A file whose entry takes a saved connection's name but another
+    /// host: the dialog shows the host and the suffixed name before
+    /// anything is written, and only Import writes it.
+    #[gtk4::test]
+    fn an_import_shows_where_each_connection_goes_before_writing() {
+        let test = TestWindow::picker("ImportPreview");
+        wait_for_list(&test.window);
+        let lookalike = SavedConnection {
+            id: Uuid::new_v4(),
+            host: "db.elsewhere.example".to_owned(),
+            ..test.saved.clone()
+        };
+        let entry = serde_json::to_string(&lookalike).expect("the entry");
+        let bytes = format!(r#"{{"version": 2, "connections": [{entry}]}}"#).into_bytes();
+
+        test.window.send(SessionWindowInput::ConnectionsFileRead {
+            path: "/tmp/connections.json".into(),
+            bytes,
+        });
+        let alert = wait_for_alert(&test.window);
+        let rows: Vec<adw::ActionRow> =
+            crate::test_support::descendants(&alert.extra_child().expect("the dialog's rows"))
+                .into_iter()
+                .filter_map(|widget| widget.downcast::<adw::ActionRow>().ok())
+                .collect();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].title(), format!("{} (imported)", test.saved.name));
+        assert!(
+            rows[0]
+                .subtitle()
+                .is_some_and(|subtitle| subtitle.contains("db.elsewhere.example"))
+        );
+        assert!(!listed(&test, lookalike.id), "the preview wrote the list");
+
+        respond(&alert, crate::ui::import_preview::IMPORT);
+        wait_until(WAIT, || listed(&test, lookalike.id)).expect("the import to land");
     }
 
     #[gtk4::test]
