@@ -85,28 +85,29 @@ System dependencies:
 
 ```bash
 # Ubuntu 26.04
-sudo apt install -y build-essential pkgconf meson ninja-build gettext desktop-file-utils appstream libglib2.0-bin libxml2-utils libgtk-4-dev libadwaita-1-dev libgtksourceview-5-dev libsqlite3-dev libkrb5-dev clang libclang-dev openssh-client
+sudo apt install -y build-essential pkgconf meson ninja-build gettext desktop-file-utils appstream libglib2.0-bin libxml2-utils libgtk-4-dev libadwaita-1-dev libgtksourceview-5-dev libsqlite3-dev libkrb5-dev liblcms2-dev libseccomp-dev clang libclang-dev openssh-client
 
 # Fedora 44
-sudo dnf install -y gcc gcc-c++ pkgconf meson ninja-build gettext desktop-file-utils appstream glib2-devel libxml2 gtk4-devel libadwaita-devel gtksourceview5-devel sqlite-devel krb5-devel clang-devel openssh-clients
+sudo dnf install -y gcc gcc-c++ pkgconf meson ninja-build gettext desktop-file-utils appstream glib2-devel libxml2 gtk4-devel libadwaita-devel gtksourceview5-devel sqlite-devel krb5-devel lcms2-devel libseccomp-devel clang-devel openssh-clients
 
 # Arch (not covered by CI)
-sudo pacman -S --needed base-devel pkgconf meson ninja gettext desktop-file-utils appstream libxml2 gtk4 libadwaita gtksourceview5 sqlite krb5 clang openssh
+sudo pacman -S --needed base-devel pkgconf meson ninja gettext desktop-file-utils appstream libxml2 gtk4 libadwaita gtksourceview5 sqlite krb5 lcms2 libseccomp clang openssh
 ```
 
 The Ubuntu list is the .deb's build dependencies in `build-aux/debian/control` and the Fedora list the RPM's in `build-aux/rpm/tablepro.spec`, less the ones only their tests need. CI builds both.
 
 The test suites need a few more: an X server for the GTK tests, a session
 bus, the icon theme, a generated `en_US.UTF-8` locale for the catalogue
-test, and gnome-keyring for the Secret Service tests.
+test, gnome-keyring for the Secret Service tests and the glycin loaders
+for the Row Details picture tests.
 
 ```bash
 # Ubuntu 26.04
-sudo apt install -y xvfb xauth dbus-daemon adwaita-icon-theme locales gnome-keyring
+sudo apt install -y xvfb xauth dbus-daemon adwaita-icon-theme locales gnome-keyring glycin-loaders
 sudo localedef -i en_US -f UTF-8 en_US.UTF-8
 
 # Fedora 44
-sudo dnf install -y xorg-x11-server-Xvfb xorg-x11-xauth dbus-daemon adwaita-icon-theme glibc-langpack-en gnome-keyring
+sudo dnf install -y xorg-x11-server-Xvfb xorg-x11-xauth dbus-daemon adwaita-icon-theme glibc-langpack-en gnome-keyring glycin-loaders
 ```
 
 Check the installed versions against the floors in
@@ -146,6 +147,11 @@ Before pushing, run the [fast-job commands](CONTRIBUTING.md#fast-job-commands). 
 link the system SQLite through sqlx's `sqlite-unbundled` feature rather
 than compiling a second copy into the binary. `libclang-dev` lets
 `libsqlite3-sys` run bindgen against the installed `sqlite3.h`.
+
+`libseccomp-dev` and `liblcms2-dev` are there for glycin, which decodes
+the picture of a binary value in Row Details in a sandbox
+([ADR 0029](docs/decisions/0029-images-decode-in-glycin.md)). At run time
+it needs the glycin loaders, which GNOME installs.
 
 A C++ compiler is there for DuckDB, which the `duckdb` crate compiles
 from its own sources: `build-essential` brings g++ on Ubuntu, `gcc-c++`

@@ -88,6 +88,7 @@ crates/app/src/services/grid/edit_policy.rs
 crates/app/src/services/grid/find_matches.rs
 crates/app/src/services/grid/grid_column.rs
 crates/app/src/services/grid/grid_row_id.rs
+crates/app/src/services/grid/hex_dump.rs
 crates/app/src/services/grid/mod.rs
 crates/app/src/services/grid/row_key_builder.rs
 crates/app/src/services/grid/row_snapshot.rs
@@ -267,6 +268,7 @@ crates/app/src/ui/data_grid/row_detail/clock.rs
 crates/app/src/ui/data_grid/row_detail/fields.rs
 crates/app/src/ui/data_grid/row_detail/imp.rs
 crates/app/src/ui/data_grid/row_detail/mod.rs
+crates/app/src/ui/data_grid/row_detail/picture.rs
 crates/app/src/ui/data_grid/row_detail/tests.rs
 crates/app/src/ui/data_grid/row_detail/value_editor.rs
 crates/app/src/ui/data_grid/row_json_dialog.rs
@@ -554,6 +556,7 @@ crates/app/src/ui/workspace/imp.rs
 crates/app/src/ui/workspace/import.rs
 crates/app/src/ui/workspace/import_ledger.rs
 crates/app/src/ui/workspace/mod.rs
+crates/app/src/ui/workspace/recent_tabs.rs
 crates/app/src/ui/workspace/references.rs
 crates/app/src/ui/workspace/saves.rs
 crates/app/src/ui/workspace/session_watches.rs
