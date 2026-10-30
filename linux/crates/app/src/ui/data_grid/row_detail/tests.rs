@@ -1090,6 +1090,18 @@ fn a_clock_on_the_first_day_chrono_holds_takes_an_offset() {
 }
 
 #[test]
+fn a_picker_replaces_a_part_out_of_range() {
+    let day = NaiveDate::from_ymd_opt(2024, 3, 1).expect("a day");
+    let plus_two = chrono::FixedOffset::east_opt(2 * 3600).expect("an offset");
+
+    assert_eq!(set_at_nine("2024-01-01 12:34:99", NAIVE), "2024-01-01 09:05:30");
+    assert_eq!(
+        with_day("2024-02-30 10:00", day, Some(&TemporalZone::Naive), plus_two),
+        "2024-03-01 10:00"
+    );
+}
+
+#[test]
 fn the_clock_reads_the_time_a_value_shows() {
     assert_eq!(time_of("2024-02-29 23:59:58.125"), Some(a_time(23, 59, 58)));
     assert_eq!(time_of("12000-01-01 10:00:00"), Some(a_time(10, 0, 0)));

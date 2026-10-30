@@ -8,10 +8,10 @@ use super::parse_literal_text::{chrono_year, far_year_stand_in};
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct TemporalParts {
     pub day: Option<Range<usize>>,
-    // None for a year past the last chrono holds.
+    // None for a day out of range or a year past the last chrono holds.
     pub date: Option<NaiveDate>,
     pub clock: Option<Range<usize>>,
-    // None for PostgreSQL's 24:00:00.
+    // None for a clock out of range, PostgreSQL's 24:00:00 among them.
     pub time: Option<NaiveTime>,
     pub era: Option<Range<usize>>,
 }
@@ -19,13 +19,34 @@ pub struct TemporalParts {
 // The day, clock and ` BC` a date or time text spells, read as `parse_literal_text` reads them:
 // the same year forms, a space or `T` between day and clock, seconds optional.
 pub fn temporal_parts(text: &str) -> TemporalParts {
+    // A 1 for every digit keeps the shape and drops the values, so a part out of range still has
+    // its place for a picker to replace.
+    let shape: String = text
+        .chars()
+        .map(|char| if char.is_ascii_digit() { '1' } else { char })
+        .collect();
+    let mut parts = spans(&shape);
+    let era = parts.era.clone().and_then(|era| text.get(era)).unwrap_or_default();
+    parts.date = parts.day.clone().and_then(|day| {
+        let day = chrono_year(&format!("{}{era}", text.get(day)?.trim_start()))?.into_owned();
+        NaiveDate::parse_from_str(&day, "%Y-%m-%d").ok()
+    });
+    parts.time = parts.clock.clone().and_then(|clock| {
+        let clock = text.get(clock)?;
+        ["%H:%M:%S", "%H:%M"]
+            .into_iter()
+            .find_map(|format| NaiveTime::parse_from_str(clock, format).ok())
+    });
+    parts
+}
+
+fn spans(text: &str) -> TemporalParts {
     let start = text.len() - text.trim_start().len();
     let trimmed = text.trim();
     let written = trimmed
         .strip_suffix(" BC")
         .or_else(|| trimmed.strip_suffix(" bc"))
         .unwrap_or(trimmed);
-    let era_len = trimmed.len() - written.len();
     let Some(read) = chrono_year(trimmed) else {
         return TemporalParts::default();
     };
@@ -33,44 +54,31 @@ pub fn temporal_parts(text: &str) -> TemporalParts {
     let end = start + written.len();
     let at = |rest: &str| end - rest.len();
     let mut parts = TemporalParts {
-        era: (era_len > 0).then_some(end..end + era_len),
+        era: (written.len() < trimmed.len()).then_some(end..start + trimmed.len()),
         ..TemporalParts::default()
     };
     let mut clock_text = read.as_ref();
-    if let Some((date, rest)) = read_day(&read, written) {
+    if let Some(rest) = day_rest(&read, written) {
         let after_t = rest.strip_prefix('T').unwrap_or(rest);
         let joined = rest.is_empty() || rest.starts_with(char::is_whitespace) || rest.starts_with('T');
-        if joined || read_clock(after_t).is_some() {
+        if joined || parse_clock(after_t).is_some() {
             parts.day = Some(start..at(rest));
-            parts.date = date;
             clock_text = after_t;
         }
     }
-    if let Some((time, rest)) = read_clock(clock_text) {
+    if let Some((_, rest)) = parse_clock(clock_text) {
         parts.clock = Some(at(clock_text.trim_start())..at(rest));
-        parts.time = time;
     }
     parts
 }
 
-fn read_day<'a>(read: &'a str, written: &str) -> Option<(Option<NaiveDate>, &'a str)> {
-    if let Ok((date, rest)) = NaiveDate::parse_and_remainder(read, "%Y-%m-%d") {
-        return Some((Some(date), rest));
+fn day_rest<'a>(read: &'a str, written: &str) -> Option<&'a str> {
+    if let Ok((_, rest)) = NaiveDate::parse_and_remainder(read, "%Y-%m-%d") {
+        return Some(rest);
     }
     let stand_in = far_year_stand_in(written)?;
     let (_, rest) = NaiveDate::parse_and_remainder(&stand_in, "%Y-%m-%d").ok()?;
-    Some((None, read.get(read.len() - rest.len()..)?))
-}
-
-fn read_clock(text: &str) -> Option<(Option<NaiveTime>, &str)> {
-    if let Some((time, rest)) = parse_clock(text) {
-        return Some((Some(time), rest));
-    }
-    // No NaiveTime holds 24:00:00, which `parse_literal_text` takes for a time.
-    let stand_in = format!("00{}", text.trim_start().strip_prefix("24")?);
-    let (midnight, rest) = parse_clock(&stand_in)?;
-    let rest_len = rest.len();
-    (midnight == NaiveTime::MIN).then_some((None, text.get(text.len() - rest_len..)?))
+    read.get(read.len() - rest.len()..)
 }
 
 fn parse_clock(text: &str) -> Option<(NaiveTime, &str)> {
@@ -131,7 +139,7 @@ mod tests {
 
         assert_eq!(parts.clock, Some(0..8));
         assert_eq!(parts.time, None);
-        assert_eq!(temporal_parts("24:30:00").clock, None);
+        assert_eq!(temporal_parts("24:30:00").clock, Some(0..8));
     }
 
     #[test]
@@ -139,6 +147,16 @@ mod tests {
         assert_eq!(temporal_parts("2024-02-2é 10:00:00").day, None);
         assert_eq!(temporal_parts("infinity"), TemporalParts::default());
         assert_eq!(temporal_parts(""), TemporalParts::default());
-        assert_eq!(temporal_parts("2024-02-30 10:00").day, None, "no such day");
+    }
+
+    #[test]
+    fn a_part_out_of_range_has_its_place_and_no_value() {
+        let text = "2024-02-30 12:34:99";
+        let parts = temporal_parts(text);
+
+        assert_eq!(day(text), Some("2024-02-30"));
+        assert_eq!(parts.date, None);
+        assert_eq!(clock(text), Some("12:34:99"));
+        assert_eq!(parts.time, None);
     }
 }
