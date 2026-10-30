@@ -5936,6 +5936,7 @@ dependencies = [
  "tracing",
  "tracing-log",
  "tracing-subscriber",
+ "unicode-width",
  "uuid",
  "x11rb",
 ]
