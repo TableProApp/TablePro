@@ -972,7 +972,6 @@ internal final class MainSplitViewController: NSSplitViewController {
                 windowTitle: windowTitleBinding(for: workspace),
                 windowSubtitle: windowSubtitleBinding(for: workspace),
                 windowRepresentedURL: windowRepresentedURLBinding(for: workspace),
-                sidebarState: SharedSidebarState.forConnection(session.connection.id),
                 pendingTruncates: sessionBinding(for: workspace, get: { $0.pendingTruncates }, set: { $0.pendingTruncates = $1 }, defaultValue: []),
                 pendingDeletes: sessionBinding(for: workspace, get: { $0.pendingDeletes }, set: { $0.pendingDeletes = $1 }, defaultValue: []),
                 tableOperationOptions: sessionBinding(for: workspace, get: { $0.tableOperationOptions }, set: { $0.tableOperationOptions = $1 }, defaultValue: [:]),
