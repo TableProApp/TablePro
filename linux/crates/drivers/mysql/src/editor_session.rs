@@ -390,7 +390,14 @@ impl EditorSession for MysqlEditorSession {
                 *shared.database.lock().unwrap_or_else(PoisonError::into_inner) = Some(database.to_owned());
                 Ok(())
             }
-            Some(Err(error)) => Err(map_error(&error, shared.flavour)),
+            Some(Err(error)) => {
+                let error = map_error(&error, shared.flavour);
+                if error.category() == tablepro_core::ErrorCategory::ConnectionLost {
+                    shared.lost.store(true, Ordering::SeqCst);
+                    *guard = None;
+                }
+                Err(error)
+            }
             // The answer is still on the wire, so the connection is in no
             // state anything knows.
             None => {
