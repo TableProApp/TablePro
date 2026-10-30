@@ -94,25 +94,55 @@
             <property name="margin-end">8</property>
             <child>
               <!-- The database the tab works on, as the macOS editor bar
-                   names it. -->
-              <object class="GtkBox" id="scope_box">
-                <property name="visible">false</property>
-                <property name="spacing">6</property>
-                <property name="margin-start">4</property>
-                <property name="accessible-role">label</property>
-                <style>
-                  <class name="dim-label"/>
-                </style>
+                   names it: a label where there is nothing to switch to,
+                   else a menu of the server's databases. -->
+              <object class="GtkBox">
                 <child>
-                  <object class="GtkImage">
-                    <property name="icon-name">drive-harddisk-symbolic</property>
-                    <property name="accessible-role">presentation</property>
+                  <object class="GtkBox" id="scope_box">
+                    <property name="visible">false</property>
+                    <property name="spacing">6</property>
+                    <property name="margin-start">4</property>
+                    <property name="accessible-role">label</property>
+                    <style>
+                      <class name="dim-label"/>
+                    </style>
+                    <child>
+                      <object class="GtkImage">
+                        <property name="icon-name">drive-harddisk-symbolic</property>
+                        <property name="accessible-role">presentation</property>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkLabel" id="scope_label">
+                        <property name="ellipsize">middle</property>
+                        <property name="accessible-role">presentation</property>
+                      </object>
+                    </child>
                   </object>
                 </child>
                 <child>
-                  <object class="GtkLabel" id="scope_label">
-                    <property name="ellipsize">middle</property>
-                    <property name="accessible-role">presentation</property>
+                  <object class="GtkMenuButton" id="scope_button">
+                    <property name="visible">false</property>
+                    <style>
+                      <class name="flat"/>
+                    </style>
+                    <property name="child">
+                      <object class="GtkBox">
+                        <property name="spacing">6</property>
+                        <child>
+                          <object class="GtkImage">
+                            <property name="icon-name">drive-harddisk-symbolic</property>
+                            <property name="accessible-role">presentation</property>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="GtkLabel" id="scope_button_label">
+                            <property name="ellipsize">middle</property>
+                            <property name="accessible-role">presentation</property>
+                          </object>
+                        </child>
+                      </object>
+                    </property>
                   </object>
                 </child>
               </object>

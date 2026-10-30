@@ -19,6 +19,8 @@ const PRIORITY: i32 = 100;
 #[derive(Default)]
 pub struct SqlCompletionProvider {
     pub deps: OnceCell<ProviderDeps>,
+    /// The database the tab was moved to, where unqualified names resolve.
+    pub home: std::cell::RefCell<Option<String>>,
 }
 
 #[glib::object_subclass]

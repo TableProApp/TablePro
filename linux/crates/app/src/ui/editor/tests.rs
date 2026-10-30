@@ -2671,3 +2671,75 @@ fn the_bar_names_the_tabs_database_and_schema() {
         .unwrap_or_else(|_| panic!("the bar says {:?}", label.label()));
     assert!(editor.imp().scope_box.is_visible());
 }
+
+/// The bar is a menu of the server's databases; picking one moves the
+/// tab there, so the next run sends the engine's `USE` before the query.
+#[gtk4::test]
+fn picking_a_database_moves_the_tab_and_its_next_run() {
+    crate::register_test_resources();
+    let runtime = crate::test_support::test_runtime();
+    let fake = Arc::new(FakeEditorSession::new(answering()));
+    let mut request = FakeConnector::network_request("db.example", 3306).expect("a request");
+    if let tablepro_session::connect::RequestTarget::Network { database, .. } = &mut request.target {
+        *database = Some("shop".to_owned());
+    }
+    let database = |name: &str, is_default: bool, is_system: bool| tablepro_core::meta::SchemaInfo {
+        name: name.to_owned(),
+        is_default,
+        is_system,
+    };
+    let mut script = ConnectionScript::default();
+    script.list_databases.always(FakeReply::ok(vec![
+        database("analytics", false, false),
+        database("shop", true, false),
+        database("mysql", false, true),
+    ]));
+    let editor_session: Arc<dyn EditorSession> = fake.clone();
+    script.open_editor_session.always(FakeReply::ok(editor_session));
+    let (pending, _) = FakeConnector::pending_session(request, script);
+    let session = Session::start(
+        pending,
+        tablepro_session::SessionDeps {
+            connector: Arc::new(FakeConnector::new([])),
+            credentials: Arc::new(FakeCredentialSource::new()),
+            deadlines: Arc::new(DefaultDeadlines::new(tablepro_core::LivenessPolicy::DESKTOP)),
+            tasks: runtime.tasks(),
+            prompter: None,
+        },
+    );
+    let active = ActiveSession::new();
+    active.replace(session);
+    let settings = MemorySettings::new();
+    let editor = SqlEditor::new(SqlEditorInit {
+        initial_query: Some("SELECT 1".to_owned()),
+        settings: settings.get().clone(),
+        history: None,
+        tasks: runtime.tasks(),
+        session: active.clone(),
+        hold: Rc::new(tablepro_session::runtime::CountingHold::new()),
+        close_timeout: Duration::from_secs(5),
+        snippets: crate::test_support::builtin_snippets_only(),
+    });
+    let button = editor.imp().scope_button.get();
+    crate::test_support::wait_until(Duration::from_secs(5), || button.is_visible()).expect("the database menu");
+
+    WidgetExt::activate_action(&editor, "tab.database", Some(&"analytics".to_variant())).expect("tab.database");
+    assert_eq!(editor.imp().scope_button_label.label(), "analytics");
+
+    let harness = Harness {
+        editor,
+        fake: fake.clone(),
+        history: None,
+        active,
+        settings,
+        runtime,
+    };
+    run_and_wait(&harness);
+    let sent = sent(&fake);
+    assert!(
+        sent.first()
+            .is_some_and(|first| first.starts_with("USE ") && first.contains("analytics")),
+        "{sent:?}"
+    );
+    assert_eq!(sent.last().map(String::as_str), Some("SELECT 1"));
+}

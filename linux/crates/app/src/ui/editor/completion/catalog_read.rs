@@ -17,8 +17,15 @@ pub struct CatalogAnswer {
 /// Read what `scope` offers. The catalog shares each read with every
 /// other view and keeps what it read, so typing does not reach the
 /// server again; a list that cannot be read is left out.
-pub async fn read(session: Arc<Session>, scope: CompletionScope) -> CatalogAnswer {
-    let defaults = listed(session.objects(ObjectScope::DefaultSchema).await);
+///
+/// `home` is the database the tab was moved to from the editor bar, where
+/// an unqualified name now resolves; `None` keeps the connection's own.
+pub async fn read(session: Arc<Session>, scope: CompletionScope, home: Option<String>) -> CatalogAnswer {
+    let home = match home {
+        Some(database) => ObjectScope::Schema(database),
+        None => ObjectScope::DefaultSchema,
+    };
+    let defaults = listed(session.objects(home).await);
     match scope {
         CompletionScope::Objects { schema: None } => CatalogAnswer {
             schemas: Some(listed(session.schemas().await)),

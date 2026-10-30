@@ -34,6 +34,10 @@ pub struct SqlEditor {
     #[template_child]
     pub scope_label: TemplateChild<gtk4::Label>,
     #[template_child]
+    pub scope_button: TemplateChild<gtk4::MenuButton>,
+    #[template_child]
+    pub scope_button_label: TemplateChild<gtk4::Label>,
+    #[template_child]
     pub cursor_info: TemplateChild<gtk4::Label>,
     #[template_child]
     pub menu_button: TemplateChild<gtk4::MenuButton>,
@@ -60,6 +64,8 @@ pub struct SqlEditor {
     /// This tab's own connection, which keeps its transaction and
     /// temporary tables between runs.
     pub slot: Arc<EditorSessionSlot>,
+    /// The tab's own actions: the database menu's.
+    pub tab_actions: RefCell<Option<gtk4::gio::SimpleActionGroup>>,
     pub running: RefCell<Option<RunningScript>>,
     pub log: RefCell<Option<RunLog>>,
     /// Whether the last run left a transaction open, as last reported.

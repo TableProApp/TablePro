@@ -39,6 +39,7 @@ pub(crate) async fn read(session: Arc<Session>, engine: String, text: String) ->
         CompletionScope::General {
             tables_in_statement: named,
         },
+        None,
     )
     .await;
     let schema = session.schemas().await.ok().and_then(|schemas| {
