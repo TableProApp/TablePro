@@ -17,22 +17,30 @@ internal struct FavoriteStarButton: View {
 
     private var isVisible: Bool { isFavorite || isRowHovered }
 
+    // A hidden star is a placeholder, not a button: a button adds AppKit focus views to its row, and the sidebar
+    // builds every visible row again on each reload.
     internal var body: some View {
-        Button(action: toggle) {
-            Image(systemName: isFavorite ? "star.fill" : "star")
-                .font(.system(size: 11, weight: .regular))
-                .selectionAwareTint(isFavorite ? Color.yellow : Color.secondary)
-                .frame(width: 20, height: 20)
-                .contentShape(Rectangle())
+        if isVisible {
+            Button(action: toggle) {
+                Image(systemName: isFavorite ? "star.fill" : "star")
+                    .font(.system(size: 11, weight: .regular))
+                    .selectionAwareTint(isFavorite ? Color.yellow : Color.secondary)
+                    .frame(width: Self.side, height: Self.side)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityHidden(true)
+            .help(isFavorite
+                ? String(localized: "Remove from Favorites")
+                : String(localized: "Add to Favorites"))
+        } else {
+            Color.clear
+                .frame(width: Self.side, height: Self.side)
+                .accessibilityHidden(true)
         }
-        .buttonStyle(.plain)
-        .opacity(isVisible ? 1 : 0)
-        .allowsHitTesting(isVisible)
-        .accessibilityHidden(true)
-        .help(isFavorite
-            ? String(localized: "Remove from Favorites")
-            : String(localized: "Add to Favorites"))
     }
+
+    private static let side: CGFloat = 20
 }
 
 /// A hover-revealed control is pointer-only, so the row publishes the same action to VoiceOver.
