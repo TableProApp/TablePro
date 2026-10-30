@@ -210,7 +210,7 @@ struct SidebarView: View {
                 showsLoadedCatalog = false
                 return
             }
-            CommittedTurn.after { showsLoadedCatalog = true }
+            CommittedTurn.after(in: coordinator?.contentWindow) { showsLoadedCatalog = true }
         }
         .onChange(of: viewModel.showOperationDialog) { isPresented in
             guard isPresented else { return }
