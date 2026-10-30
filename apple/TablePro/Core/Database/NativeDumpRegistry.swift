@@ -53,6 +53,11 @@ enum NativeDumpRegistry {
         }
     }
 
+    // The open panel offers only these. A Parquet folder's schema.sql and load.sql would run on the live session.
+    static func restoreFormats(for type: DatabaseType) -> [NativeDumpDescriptor.ArchiveFormat] {
+        formats(for: type).filter(\.restores)
+    }
+
     static func supports(_ type: DatabaseType) -> Bool {
         descriptor(for: type) != nil
     }
@@ -93,13 +98,19 @@ enum NativeDumpRegistry {
                     requiresUntranslatedMessages: true,
                     toolForServer: toolForServer,
                     backupArguments: { request, _ in
-                        connectionFlags(request)
-                            + ["-Fc", "-d", request.database]
+                        try connectionFlags(request)
+                            + ["-Fc", "-d", NativeDumpArgumentQuoting.postgresDatabase(request.database)]
                             + postgresTableFlags(request)
                             + ["-f", request.fileURL.path]
                     },
                     restoreArguments: { request, _ in
-                        connectionFlags(request) + ["--no-owner", "--no-acl", "-d", request.database, request.fileURL.path]
+                        try connectionFlags(request) + [
+                            "--no-owner",
+                            "--no-acl",
+                            "-d",
+                            NativeDumpArgumentQuoting.postgresDatabase(request.database),
+                            request.fileURL.path
+                        ]
                     },
                     environment: { request in
                         var environment: [String: String] = [:]
@@ -212,6 +223,7 @@ enum NativeDumpRegistry {
                     },
                     restoreArguments: { request, resolved in
                         try mysqlConnectionFlags(request, resolved)
+                            + MySQLClientArguments.restoreSafety(tool: resolved)
                             + ["--default-character-set=utf8mb4", "--", request.database]
                     },
                     environment: { request in
@@ -436,15 +448,15 @@ enum NativeDumpRegistry {
                     restoreDelivery: .toolWritesFile,
                     exposesPasswordInArguments: true,
                     backupArguments: { request, _ in
-                        ["/Action:Export",
-                         "/TargetFile:\(request.fileURL.path)",
-                         "/SourceConnectionString:\(sqlServerConnectionString(request))"]
+                        try ["/Action:Export",
+                             "/TargetFile:\(request.fileURL.path)",
+                             "/SourceConnectionString:\(sqlServerConnectionString(request))"]
                             + request.scope.objects.map { "/p:TableData=\(sqlServerTableData($0))" }
                     },
                     restoreArguments: { request, _ in
-                        ["/Action:Import",
-                         "/SourceFile:\(request.fileURL.path)",
-                         "/TargetConnectionString:\(sqlServerConnectionString(request))"]
+                        try ["/Action:Import",
+                             "/SourceFile:\(request.fileURL.path)",
+                             "/TargetConnectionString:\(sqlServerConnectionString(request))"]
                     }
                 )
             ),
@@ -472,16 +484,17 @@ enum NativeDumpRegistry {
     /// string is the only channel it has. That puts the password in `argv`, where `ps` can read it,
     /// so the string is built here and `NativeDumpService` keeps SQL Server out of the flows that
     /// promise otherwise. Anything better needs Entra or integrated auth, which have no password.
-    private static func sqlServerConnectionString(_ request: NativeDumpDescriptor.Request) -> String {
-        var parts = [
-            "Server=\(request.host),\(request.connection.port)",
-            "Database=\(request.database)"
+    private static func sqlServerConnectionString(_ request: NativeDumpDescriptor.Request) throws -> String {
+        let quoted = NativeDumpArgumentQuoting.sqlServerConnectionStringValue
+        var parts = try [
+            "Server=\(quoted("\(request.host),\(request.connection.port)"))",
+            "Database=\(quoted(request.database))"
         ]
         if request.connection.username.isEmpty {
             parts.append("Integrated Security=true")
         } else {
-            parts.append("User ID=\(request.connection.username)")
-            parts.append("Password=\(request.password ?? "")")
+            try parts.append("User ID=\(quoted(request.connection.username))")
+            try parts.append("Password=\(quoted(request.password ?? ""))")
         }
         parts.append(request.connection.sslConfig.isEnabled ? "Encrypt=true" : "Encrypt=false")
         if request.connection.sslConfig.mode == .required || request.connection.sslConfig.mode == .preferred {
@@ -507,15 +520,18 @@ enum NativeDumpRegistry {
                     installHint: String(localized: "Install it with “brew install sqlite” and link it."),
                     backupDelivery: .standardOutput,
                     restoreDelivery: .standardOutput,
+                    // `.shell`, `.system` and writefile() run from a dump read on stdin unless `-safe`
+                    // is given. Not `-readonly`: it cannot open a WAL database whose -wal and -shm are gone.
                     backupArguments: { request, _ in
                         [
+                            "-safe",
                             sqlitePath(request),
                             NativeDumpArgumentQuoting.sqliteDumpCommand(
                                 names: request.scope.objects.map(\.name)
                             )
                         ]
                     },
-                    restoreArguments: { request, _ in [sqlitePath(request)] }
+                    restoreArguments: { request, _ in ["-safe", "-bail", sqlitePath(request)] }
                 )
             ),
             archiveFormat: NativeDumpDescriptor.ArchiveFormat(
@@ -545,39 +561,13 @@ enum NativeDumpRegistry {
         id: "parquet",
         fileExtension: "",
         contentDescription: String(localized: "Folder of Parquet files"),
-        producesDirectory: true
+        producesDirectory: true,
+        restores: false
     )
 
-    /// One `.duckdb` file, written by the engine already in front of the app.
-    ///
-    /// Measured against the vendored libduckdb v1.5.2: `ATTACH` plus `COPY FROM DATABASE` carries
-    /// tables, views, indexes, foreign keys and sequences, and restores with the same statement
-    /// reversed. The source catalog comes from `current_database()`, because DuckDB derives a
-    /// catalog name from the file's basename: a file `my-weird.name.db` attaches as `my-weird`, and
-    /// `COPY FROM DATABASE main` fails with `Catalog "main" does not exist`.
     private static var duckDBFile: NativeDumpDescriptor {
         NativeDumpDescriptor(
-            mechanism: .engineStatements(
-                NativeDumpDescriptor.EngineStatements(
-                    backupStatements: { request, alias in
-                        guard let source = request.currentCatalog, !source.isEmpty else { return [] }
-                        return [
-                            "ATTACH \(quotedLiteral(request.fileURL.path)) AS \(quotedIdentifier(alias))",
-                            "COPY FROM DATABASE \(quotedIdentifier(source)) TO \(quotedIdentifier(alias))",
-                            "DETACH \(quotedIdentifier(alias))"
-                        ]
-                    },
-                    restoreStatements: { request, alias in
-                        guard let target = request.currentCatalog, !target.isEmpty else { return [] }
-                        return [
-                            "ATTACH \(quotedLiteral(request.fileURL.path)) AS \(quotedIdentifier(alias)) (READ_ONLY)",
-                            "COPY FROM DATABASE \(quotedIdentifier(alias)) TO \(quotedIdentifier(target))",
-                            "DETACH \(quotedIdentifier(alias))"
-                        ]
-                    },
-                    cleanupStatements: { alias in ["DETACH \(quotedIdentifier(alias))"] }
-                )
-            ),
+            mechanism: .engineStatements(duckDBFileStatements),
             archiveFormat: duckDBFileFormat,
             objectScope: .unsupported(
                 reason: String(localized: "DuckDB copies the whole database. There is no table filter.")
@@ -586,9 +576,31 @@ enum NativeDumpRegistry {
         )
     }
 
-    /// A folder of Parquet next to `schema.sql` and `load.sql`, which tools other than DuckDB can
-    /// read. `EXPORT DATABASE` merges into a folder that already holds one, leaving the previous
-    /// run's data files behind, so the caller empties the destination first.
+    // The catalog is the session's, never `main`: DuckDB names one after the file, so `my-weird.name.db` attaches as `my-weird`.
+    private static let duckDBFileStatements = NativeDumpDescriptor.EngineStatements(
+        backupStatements: { request, alias in
+            guard let source = request.currentCatalog, !source.isEmpty else { return [] }
+            return ["ATTACH \(quotedLiteral(request.fileURL.path)) AS \(quotedIdentifier(alias))"]
+                + copyDatabase(from: source, to: alias)
+                + ["DETACH \(quotedIdentifier(alias))"]
+        },
+        restoreStatements: { request, alias in
+            guard let target = request.currentCatalog, !target.isEmpty else { return [] }
+            return ["ATTACH \(quotedLiteral(request.fileURL.path)) AS \(quotedIdentifier(alias)) (READ_ONLY)"]
+                + copyDatabase(from: alias, to: target)
+                + ["DETACH \(quotedIdentifier(alias))"]
+        },
+        cleanupStatements: { alias in ["DETACH \(quotedIdentifier(alias))"] }
+    )
+
+    // Without an option, COPY FROM DATABASE expands to these two statements, and a prepared statement holds only one.
+    private static func copyDatabase(from source: String, to target: String) -> [String] {
+        ["SCHEMA", "DATA"].map { part in
+            "COPY FROM DATABASE \(quotedIdentifier(source)) TO \(quotedIdentifier(target)) (\(part))"
+        }
+    }
+
+    // EXPORT DATABASE merges into an earlier export, so the caller empties the folder first. No restore: see `restoreFormats`.
     private static var duckDBParquet: NativeDumpDescriptor {
         NativeDumpDescriptor(
             mechanism: .engineStatements(
@@ -596,9 +608,7 @@ enum NativeDumpRegistry {
                     backupStatements: { request, _ in
                         ["EXPORT DATABASE \(quotedLiteral(request.fileURL.path)) (FORMAT PARQUET)"]
                     },
-                    restoreStatements: { request, _ in
-                        ["IMPORT DATABASE \(quotedLiteral(request.fileURL.path))"]
-                    },
+                    restoreStatements: { _, _ in [] },
                     cleanupStatements: { _ in [] }
                 )
             ),
@@ -611,10 +621,10 @@ enum NativeDumpRegistry {
     }
 
     private static func quotedLiteral(_ value: String) -> String {
-        "'\(value.replacingOccurrences(of: "'", with: "''"))'"
+        "'\(value.replacingOccurrences(of: "'", with: "''", options: .literal))'"
     }
 
     private static func quotedIdentifier(_ value: String) -> String {
-        "\"\(value.replacingOccurrences(of: "\"", with: "\"\""))\""
+        "\"\(value.replacingOccurrences(of: "\"", with: "\"\"", options: .literal))\""
     }
 }

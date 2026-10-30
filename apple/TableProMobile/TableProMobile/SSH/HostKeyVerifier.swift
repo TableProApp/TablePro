@@ -8,6 +8,7 @@
 
 import Foundation
 import TableProDatabase
+import TableProSSHTransport
 
 enum HostKeyVerifier {
     static func verify(
@@ -28,6 +29,9 @@ enum HostKeyVerifier {
         switch result {
         case .trusted:
             return
+
+        case let .invalidHost(problem):
+            throw SSHTunnelError.hostKeyRejected(problem.explanation)
 
         case let .unknown(fingerprint, presentedType):
             try await decide(

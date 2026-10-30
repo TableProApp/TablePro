@@ -105,7 +105,7 @@ let package = Package(
         ),
         .target(
             name: "TableProImport",
-            dependencies: ["TableProConnectionLibrary"],
+            dependencies: ["TableProConnectionLibrary", "TableProSSHTransport"],
             path: "Sources/TableProImport"
         ),
         .target(

@@ -6,6 +6,7 @@
 import CryptoKit
 import Darwin
 import Foundation
+import TableProSSHTransport
 import TableProUtilities
 
 /// Which `%X` tokens a keyword accepts, per the TOKENS section of ssh_config(5). OpenSSH treats a
@@ -65,6 +66,9 @@ public enum SSHTokenExpansionError: Error, Hashable, Sendable {
     case undefinedEnvironmentVariable(keyword: String, name: String)
     /// A `${` with no closing brace, which ssh refuses to run on.
     case malformedEnvironmentReference(keyword: String)
+    case invalidDestination(SSHDestinationName.Problem)
+    // `CanonicalizeFallbackLocal no` and no `CanonicalDomains` suffix resolved, where ssh stops.
+    case hostNotInCanonicalDomains(host: String)
 
     public var explanation: String {
         switch self {
@@ -89,6 +93,15 @@ public enum SSHTokenExpansionError: Error, Hashable, Sendable {
             return String(
                 format: String(localized: "The %@ line in ~/.ssh/config has a ${ with no closing brace."),
                 keyword
+            )
+        case .invalidDestination(let problem):
+            return problem.explanation
+        case .hostNotInCanonicalDomains(let host):
+            return String(
+                format: String(
+                    localized: "%@ was not found in any of the CanonicalDomains in ~/.ssh/config, and CanonicalizeFallbackLocal is set to no."
+                ),
+                host
             )
         }
     }

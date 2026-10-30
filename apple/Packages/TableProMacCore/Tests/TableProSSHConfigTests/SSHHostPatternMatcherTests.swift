@@ -76,6 +76,17 @@ struct SSHHostPatternMatcherTests {
         #expect(SSHHostPatternMatcher.parseMatchPatternList("a,b").map(\.glob) == ["a", "b"])
     }
 
+    @Test("Only * and ? are wildcards; brackets and backslashes match themselves, as in ssh")
+    func testBracketAndBackslashAreLiteral() {
+        let brackets = [HostPattern(glob: "db[12]", negated: false)]
+        #expect(!SSHHostPatternMatcher.matches(host: "db1", patterns: brackets))
+        #expect(SSHHostPatternMatcher.matches(host: "db[12]", patterns: brackets))
+        let backslash = [HostPattern(glob: "a\\*", negated: false)]
+        #expect(SSHHostPatternMatcher.matches(host: "a\\bc", patterns: backslash))
+        #expect(!SSHHostPatternMatcher.matches(host: "a*", patterns: [HostPattern(glob: "a\\*x", negated: false)]))
+        #expect(SSHHostPatternMatcher.matches(host: "db-7.internal.example", patterns: [HostPattern(glob: "*-?.internal.*", negated: false)]))
+    }
+
     @Test("Match host comparison ignores case")
     func testMatchHostIsCaseInsensitive() {
         let patterns = SSHHostPatternMatcher.parseMatchPatternList("real.EXAMPLE.com")
