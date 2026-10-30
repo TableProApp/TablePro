@@ -66,6 +66,9 @@ pub struct SqlEditor {
     pub slot: Arc<EditorSessionSlot>,
     /// The database the bar names, to tell the workspace when it changes.
     pub named_database: RefCell<Option<String>>,
+    /// Where completion resolves unqualified names, which the assistant
+    /// describes too.
+    pub catalog_home: RefCell<super::completion::CatalogHome>,
     /// The server's name for the connection's database, for one opened
     /// without a name.
     pub listed_own_database: RefCell<Option<String>>,
