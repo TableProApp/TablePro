@@ -24,6 +24,9 @@ internal extension PostgreSQLPluginDriver {
         case .verbatimWrite:
             // What the read pins reads back the same under any settings; nil would make the host drop the read too.
             return PluginSessionScope(purpose: .verbatimWrite, saved: [], applied: [])
+        case .relaxedForeignKeys:
+            // `session_replication_role = replica` would also stop the target's user triggers, and needs a superuser.
+            return nil
         @unknown default:
             return nil
         }

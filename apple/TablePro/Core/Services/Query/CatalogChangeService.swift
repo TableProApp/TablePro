@@ -131,7 +131,11 @@ final class CatalogChangeService {
 
     private func recordStatements(_ statements: [String], databaseType: DatabaseType, connectionId: UUID) {
         recordNameHazards(of: statements, databaseType: databaseType, connectionId: connectionId)
-        let effect = CatalogChangeClassifier.effect(ofStatements: statements, databaseType: databaseType)
+        let effect = CatalogChangeClassifier.effect(
+            ofStatements: statements,
+            databaseType: databaseType,
+            grammar: SQLLexicalResolver.executionGrammar(for: databaseType, connectionId: connectionId)
+        )
         var kinds = effect.kinds
         if effect.endsTransaction {
             kinds.formUnion(Self.transactionEndKinds)
@@ -145,14 +149,14 @@ final class CatalogChangeService {
     /// chain and a drop of a name another statement just freed both land on the right table.
     private func recordCommittedTableEdits(of succeeded: SucceededStatements) {
         let connectionId = succeeded.scope.connectionId
+        let grammar = SQLLexicalResolver.executionGrammar(for: succeeded.databaseType, connectionId: connectionId)
         recordNameHazards(
             of: DatabaseManager.startupStatements(
-                from: startupCommands(connectionId), databaseType: succeeded.databaseType
+                from: startupCommands(connectionId), databaseType: succeeded.databaseType, grammar: grammar
             ),
             databaseType: succeeded.databaseType,
             connectionId: connectionId
         )
-        let grammar = SQLLexicalResolver.executionGrammar(for: succeeded.databaseType, connectionId: connectionId)
         var hazards = nameHazards[connectionId] ?? TableNameHazards()
         let edits = CommittedTableEdits.edits(in: succeeded, grammar: grammar, hazards: &hazards)
         nameHazards[connectionId] = hazards

@@ -1065,6 +1065,17 @@ targets:
       - package: swift-nio-ssl
         product: NIOSSL
 
+  KingbaseESDriverPlugin:
+    templates: [DriverPlugin, PostgreSQLLinkage]
+    templateAttributes:
+      folder: KingbaseESDriverPlugin
+      principalClass: KingbaseESPlugin
+    sources:
+      - path: Plugins/PostgreSQLDriverPlugin
+        excludes:
+          - Info.plist
+          - README.md
+
   LibSQLDriverPlugin:
     templates: [DriverPlugin]
     templateAttributes:
@@ -1285,6 +1296,7 @@ aggregateTargets:
       - FirebaseDriverPlugin
       - HanaDriver
       - KafkaDriverPlugin
+      - KingbaseESDriverPlugin
       - LibSQLDriverPlugin
       - MSSQLDriver
       - MongoDBDriver

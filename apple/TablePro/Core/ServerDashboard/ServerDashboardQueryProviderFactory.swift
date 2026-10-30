@@ -67,7 +67,7 @@ private enum DashboardEngine {
 
     init?(_ databaseType: DatabaseType) {
         switch databaseType {
-        case .postgresql:
+        case .postgresql, .kingbasees:
             self = .postgresql
         case .redshift:
             self = .redshift

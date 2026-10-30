@@ -10,13 +10,18 @@ use gtk4::prelude::*;
 use libadwaita as adw;
 
 use tablepro_core::SafeModeLevel;
+use tablepro_session::SessionKey;
 
-use super::SessionWindowInput;
 use super::session_page::SessionPage;
+use super::session_window_command::ConnectFailure;
+use super::{SessionWindow, SessionWindowInput};
 use crate::runtime::{DeliverInput, InputSender};
 
 /// Builds the input an action sends.
 type ActionInput = fn() -> SessionWindowInput;
+
+/// Builds the input an action that names a session sends.
+type SessionInput = fn(SessionKey) -> SessionWindowInput;
 
 const SAFE_MODE: &str = "safe-mode";
 
@@ -37,6 +42,18 @@ const ACTIONS: [(&str, ActionInput); 11] = [
     ("manage-tags", || SessionWindowInput::ManageTags),
 ];
 
+/// The actions a connection tree row or a toast fires for its own
+/// session, which take the session as their target (`session_target`).
+const SESSION_ACTIONS: [(&str, SessionInput); 7] = [
+    ("show-session", SessionWindowInput::ShowSession),
+    ("disconnect-session", SessionWindowInput::DisconnectSession),
+    ("stop-connecting", SessionWindowInput::StopConnecting),
+    ("new-query-in", SessionWindowInput::NewQueryIn),
+    ("refresh-in", SessionWindowInput::RefreshIn),
+    ("show-connect-failure", SessionWindowInput::ShowConnectFailure),
+    ("forget-connect-failure", SessionWindowInput::ForgetConnectFailure),
+];
+
 pub(super) fn install(window: &adw::ApplicationWindow, input: &InputSender<SessionWindowInput>) {
     let entries = ACTIONS.map(|(name, message)| {
         let input = input.clone();
@@ -45,7 +62,24 @@ pub(super) fn install(window: &adw::ApplicationWindow, input: &InputSender<Sessi
             .build()
     });
     window.add_action_entries(entries);
+    window.add_action_entries(SESSION_ACTIONS.map(|(name, message)| session_action(name, message, input.clone())));
     window.add_action_entries([retry_with_new_secret(input.clone()), safe_mode(input.clone())]);
+}
+
+/// A target that names no session does nothing.
+fn session_action(
+    name: &str,
+    message: SessionInput,
+    input: InputSender<SessionWindowInput>,
+) -> gio::ActionEntry<adw::ApplicationWindow> {
+    gio::ActionEntry::builder(name)
+        .parameter_type(Some(glib::VariantTy::STRING))
+        .activate(move |_, _, target| {
+            if let Some(key) = target.and_then(crate::ui::session_target::from_variant) {
+                input.deliver(message(key));
+            }
+        })
+        .build()
 }
 
 /// Stateful, so the main menu shows the levels as radio items with the
@@ -54,19 +88,27 @@ fn safe_mode(input: InputSender<SessionWindowInput>) -> gio::ActionEntry<adw::Ap
     gio::ActionEntry::builder(SAFE_MODE)
         .parameter_type(Some(glib::VariantTy::STRING))
         .state(crate::ui::safe_mode::action_target(SafeModeLevel::Off).to_variant())
-        .change_state(move |_, _, target| {
-            if let Some(level) = target
-                .and_then(|target| target.str())
-                .and_then(crate::ui::safe_mode::from_action_target)
-            {
-                input.deliver(SessionWindowInput::SetSafeMode(level));
+        .change_state(move |window: &adw::ApplicationWindow, _, target| {
+            // The session is read now: a tab switched before the input is
+            // handled must not move another connection's level.
+            let key = window
+                .downcast_ref::<SessionWindow>()
+                .and_then(|window| window.front_session())
+                .map(|(key, _)| key);
+            if let (Some(key), Some(level)) = (
+                key,
+                target
+                    .and_then(|target| target.str())
+                    .and_then(crate::ui::safe_mode::from_action_target),
+            ) {
+                input.deliver(SessionWindowInput::SetSafeMode { key, level });
             }
         })
         .build()
 }
 
-/// Tick the level the session runs at, or disable the levels with no
-/// session on screen.
+/// Tick the level the session in front runs at, or disable the levels
+/// with no session.
 pub(super) fn show_safe_mode(window: &adw::ApplicationWindow, level: Option<SafeModeLevel>) {
     let Some(action) = window.lookup_action(SAFE_MODE).and_downcast::<gio::SimpleAction>() else {
         return;
@@ -94,32 +136,27 @@ fn retry_with_new_secret(input: InputSender<SessionWindowInput>) -> gio::ActionE
 }
 
 /// Enable each action on the page it means something on, so its menu
-/// item and button are insensitive elsewhere.
-pub(super) fn sync(window: &adw::ApplicationWindow, page: &SessionPage, editable: bool) {
-    let connected = matches!(page, SessionPage::Workspace { .. });
-    let failed = matches!(page, SessionPage::ConnectFailed { .. });
-    let reenter = matches!(page, SessionPage::ConnectFailed { failure, .. } if failure.reenter.is_some());
+/// item and button are insensitive elsewhere. `failed` is the failed
+/// page's failure, and whether the connect dialog can edit what failed.
+pub(super) fn sync(window: &adw::ApplicationWindow, page: SessionPage, failed: Option<(&ConnectFailure, bool)>) {
+    let shell = page == SessionPage::Shell;
+    let reenter = failed.is_some_and(|(failure, _)| failure.reenter.is_some());
     for (name, enabled) in [
-        ("disconnect", connected),
-        ("reconnect", connected),
-        ("reset-workspace-layout", connected),
+        ("disconnect", shell),
+        ("reconnect", shell),
+        ("reset-workspace-layout", shell),
         (
             "cancel-connect",
-            matches!(page, SessionPage::Connecting { .. }) || failed,
+            matches!(page, SessionPage::Connecting(_)) || failed.is_some(),
         ),
-        ("retry-connect", failed),
+        ("retry-connect", failed.is_some()),
         ("retry-with-new-secret", reenter),
-        ("edit-connection", failed && editable),
+        ("edit-connection", failed.is_some_and(|(_, editable)| editable)),
     ] {
         if let Some(action) = window.lookup_action(name).and_downcast::<gio::SimpleAction>() {
             action.set_enabled(enabled);
         }
     }
-    let level = match page {
-        SessionPage::Workspace { session, .. } => Some(session.safe_mode()),
-        _ => None,
-    };
-    show_safe_mode(window, level);
 }
 
 #[cfg(test)]
@@ -135,7 +172,7 @@ mod tests {
         let (input, mut receiver) = crate::runtime::input_queue::<SessionWindowInput>();
 
         install(&window, &input);
-        sync(&window, &SessionPage::Picker, false);
+        sync(&window, SessionPage::Picker, None);
 
         assert!(
             window
@@ -154,13 +191,33 @@ mod tests {
     }
 
     #[gtk4::test]
+    fn a_session_action_sends_the_session_it_names() {
+        let window = crate::test_support::OwnedWindow::new(adw::ApplicationWindow::builder().build());
+        let (input, mut receiver) = crate::runtime::input_queue::<SessionWindowInput>();
+        install(&window, &input);
+        let key = SessionKey::File("file:///srv/app.db".to_owned());
+
+        WidgetExt::activate_action(
+            &*window,
+            "win.stop-connecting",
+            Some(&crate::ui::session_target::to_variant(&key)),
+        )
+        .expect("win.stop-connecting");
+        WidgetExt::activate_action(&*window, "win.disconnect-session", Some(&"table:users".to_variant()))
+            .expect("win.disconnect-session");
+
+        assert!(matches!(receiver.try_recv(), Ok(SessionWindowInput::StopConnecting(sent)) if sent == key));
+        assert!(receiver.try_recv().is_err(), "a target naming no session was sent");
+    }
+
+    #[gtk4::test]
     fn action_after_workspace_drop_does_not_panic() {
         let test = TestWindow::connected("ActionAfterDrop");
         let action = test
             .window
             .lookup_action("reopen-closed-tab")
             .expect("the workspace's reopen action");
-        let input = test.workspace().input().expect("the workspace's input");
+        let input = test.workspace().sender().expect("the workspace's input");
 
         test.window.send(SessionWindowInput::Disconnect);
         test.wait_for_page("picker");

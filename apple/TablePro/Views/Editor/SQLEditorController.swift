@@ -9,6 +9,7 @@ import SwiftUI
 import TableProEditorKit
 import TableProGrammars
 import TableProPluginKit
+import TableProSQLGrammar
 import TableProTextEngine
 
 /// What a query tab hands the SQL editor on every update.
@@ -31,6 +32,9 @@ struct SQLEditorInput {
     var onFoldRangesChanged: (([Range<Int>]) -> Void)?
     var onCloseTab: (() -> Void)?
     var onExecuteQuery: (() -> Void)?
+    var onSelectTab: ((Int) -> Void)?
+    var onSelectAdjacentTab: ((Int) -> Void)?
+    var tabCount: (() -> Int)?
     var onRunStatement: ((String, Int) -> Bool)?
     /// A tab runs one thing at a time, so the gutter's run controls go dim for the length of a query.
     var isExecuting = false
@@ -60,6 +64,11 @@ final class SQLEditorController {
     private var pendingCaret: [CursorPosition]?
     private var cancellables: Set<AnyCancellable> = []
     private var isTornDown = false
+    // One instance, because `SourceEditor` keeps the provider it was created with and a new grammar has to reach it.
+    private lazy var foldProvider: LineFoldProvider? = FoldProviderResolver.provider(
+        for: input.databaseType ?? .mysql,
+        grammar: coordinator.lexicalGrammar
+    )
 
     var textViewController: TextViewController {
         guard let host else { preconditionFailure("SQLEditorController used before init finished") }
@@ -81,6 +90,7 @@ final class SQLEditorController {
 
         observeEditorSettings()
         observeVimMode()
+        observeSessionChanges()
         configureCompletion()
         setupFavoritesObserver()
         subscribeToCompletionRevision()
@@ -133,6 +143,9 @@ final class SQLEditorController {
     private func applyInput(_ input: SQLEditorInput) {
         coordinator.onCloseTab = input.onCloseTab
         coordinator.onExecuteQuery = input.onExecuteQuery
+        coordinator.onSelectTab = input.onSelectTab
+        coordinator.onSelectAdjacentTab = input.onSelectAdjacentTab
+        coordinator.tabCount = input.tabCount
         coordinator.onRunStatement = input.onRunStatement
         coordinator.setStatementRunControlsEnabled(!input.isExecuting)
         coordinator.setStatementHighlightEnabled(AppSettingsManager.shared.editor.highlightCurrentStatement)
@@ -154,6 +167,36 @@ final class SQLEditorController {
         if let restoredFoldRanges = input.restoredFoldRanges {
             coordinator.scheduleFoldRestore(restoredFoldRanges)
         }
+        // Also on every run's start and end, which is when a `SET` can have changed a session flag.
+        refreshSessionGrammar()
+    }
+
+    /// The grammar the session lexes with: KingbaseES in Oracle mode, MySQL under `NO_BACKSLASH_ESCAPES`, or
+    /// PostgreSQL with `standard_conforming_strings` off each split text differently from the engine's default.
+    private func refreshSessionGrammar() {
+        guard let databaseType = input.databaseType else { return }
+        let grammar: SQLLexicalGrammar
+        if let scope = input.databaseScope {
+            grammar = SQLLexicalResolver.executionGrammar(for: databaseType, scope: scope)
+        } else if let connectionId = input.connectionId {
+            grammar = SQLLexicalResolver.executionGrammar(for: databaseType, connectionId: connectionId)
+        } else {
+            grammar = databaseType.lexicalGrammar
+        }
+        guard grammar != coordinator.sessionGrammar else { return }
+        coordinator.setSessionGrammar(grammar)
+        (foldProvider as? SQLLineFoldProvider)?.grammar = grammar
+        configureCompletion()
+    }
+
+    private func observeSessionChanges() {
+        AppEvents.shared.connectionStatusChanged
+            .receive(on: RunLoop.main)
+            .sink { [weak self] change in
+                guard let self, !self.isTornDown, change.connectionId == self.input.connectionId else { return }
+                self.refreshSessionGrammar()
+            }
+            .store(in: &cancellables)
     }
 
     private func makeEditor(state: Binding<SourceEditorState>) -> SourceEditor {
@@ -170,7 +213,7 @@ final class SQLEditorController {
             language: PluginManager.shared.editorLanguage(for: databaseType).treeSitterLanguage,
             configuration: configuration,
             state: state,
-            foldProvider: FoldProviderResolver.provider(for: databaseType),
+            foldProvider: foldProvider,
             coordinators: [coordinator],
             completionDelegate: completionAdapter
         )
@@ -267,7 +310,8 @@ final class SQLEditorController {
             schemaProvider: input.schemaProvider,
             databaseType: input.databaseType,
             profile: completionProfile,
-            connectionId: input.connectionId
+            connectionId: input.connectionId,
+            grammar: coordinator.sessionGrammar
         )
     }
 

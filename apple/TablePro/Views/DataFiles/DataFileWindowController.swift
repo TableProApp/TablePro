@@ -12,7 +12,15 @@ extension NSToolbarItem.Identifier {
     static let dataFileColumns = NSToolbarItem.Identifier("com.TablePro.dataFile.columns")
     static let dataFileFilters = NSToolbarItem.Identifier("com.TablePro.dataFile.filters")
     static let dataFileSearch = NSToolbarItem.Identifier("com.TablePro.dataFile.search")
-    static let dataFileInspector = NSToolbarItem.Identifier("com.TablePro.dataFile.inspector")
+    /// AppKit's own inspector toggle from macOS 14, which draws the system glyph and sends
+    /// `toggleInspector(_:)` down the responder chain to the split controller. macOS 13 has no such
+    /// item, so it keeps an app-owned one.
+    static let dataFileInspector: NSToolbarItem.Identifier = {
+        if #available(macOS 14.0, *) {
+            return .toggleInspector
+        }
+        return NSToolbarItem.Identifier("com.TablePro.dataFile.inspector")
+    }()
 }
 
 @MainActor
@@ -110,6 +118,7 @@ final class DataFileWindowController: NSWindowController, NSWindowDelegate, NSTo
             return makeItem(itemIdentifier, label: String(localized: "Filters"), symbol: ToolbarSymbols.filter(),
                             action: #selector(DataFileSplitViewController.toggleFilterBar(_:)))
         case .dataFileInspector:
+            guard #unavailable(macOS 14.0) else { return nil }
             return makeItem(itemIdentifier, label: String(localized: "Inspector"), symbol: "sidebar.trailing",
                             action: #selector(DataFileSplitViewController.toggleInspector(_:)))
         case .dataFileColumns:
@@ -132,9 +141,18 @@ final class DataFileWindowController: NSWindowController, NSWindowDelegate, NSTo
         }
     }
 
+    /// The inspector toggle follows the order the main window uses: after the tracking separator
+    /// and a flexible space, so it sits over the inspector and stays at the trailing edge whether
+    /// the pane is open or not.
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [.dataFileAddRow, .dataFileDeleteRows, .dataFileColumns, .flexibleSpace, .dataFileFilters,
-         .dataFileSearch, .dataFileInspector]
+        var items: [NSToolbarItem.Identifier] = [
+            .dataFileAddRow, .dataFileDeleteRows, .dataFileColumns, .flexibleSpace, .dataFileFilters, .dataFileSearch,
+        ]
+        if #available(macOS 14.0, *) {
+            items.append(contentsOf: [.inspectorTrackingSeparator, .flexibleSpace])
+        }
+        items.append(.dataFileInspector)
+        return items
     }
 
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {

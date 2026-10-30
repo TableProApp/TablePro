@@ -143,6 +143,8 @@ extension MainContentCoordinator {
         if let schemaModel = activeGridModelProvider(for: tab)?.activeGridModel {
             committed = schemaModel.commitEditing() && committed
         }
+        // A run of typing in the structure inspector ends, so the command's undo step stands apart from it.
+        activeStructureEditor?.commitPendingEdits()
         return committed
     }
 
@@ -235,9 +237,9 @@ extension MainContentCoordinator {
         dataGridEntries[tabId]?.displayInputs = inputs
     }
 
-    // Each model holds a whole result's formatted text, so only the tabs in use keep theirs.
+    // The only memory a tab switch releases: formatted text, rebuilt per drawn cell. Rows stay until the user replaces them.
     func pruneGridDisplayCaches() {
-        let budget = MemoryPressureAdvisor.budgetForInactiveTabs() + 1
+        let budget = GridDisplayCacheBudget.unmountedGrids() + 1
         guard dataGridEntries.count > budget else { return }
         let ordered = dataGridEntries.sorted { $0.value.lastUsed > $1.value.lastUsed }
         for (tabId, entry) in ordered.dropFirst(budget) where !entry.model.isMounted {

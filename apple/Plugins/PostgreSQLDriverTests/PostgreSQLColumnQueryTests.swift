@@ -80,7 +80,9 @@ struct PostgreSQLColumnsQueryTests {
         let query = singleTable(schema: "s2", table: "orders")
         #expect(query.contains("a.attidentity"))
         #expect(query.contains("a.attgenerated"))
-        #expect(query.contains("c.generation_expression"))
+        #expect(query.contains("CASE WHEN a.attgenerated IN ('s', 'v')"))
+        #expect(query.contains("THEN (SELECT pg_catalog.pg_get_expr(ad.adbin, ad.adrelid)"))
+        #expect(!query.contains("c.generation_expression"))
         #expect(query.contains("ON a.attrelid = rel.oid"))
         #expect(query.contains("AND a.attnum = c.ordinal_position"))
     }
@@ -223,11 +225,13 @@ struct PostgreSQLMaterializedViewColumnsQueryTests {
     }
 
     @Test("a materialized view column has no primary key and no default")
-    func armSkipsConstraintsAndDefaults() {
+    func armSkipsConstraintsAndDefaults() throws {
         let rendered = query()
+        let arm = try #require(rendered.components(separatedBy: "UNION ALL").last)
         #expect(rendered.contains("'NO' AS is_pk"))
         #expect(rendered.contains("NULL::text AS column_default"))
-        #expect(!rendered.contains("pg_attrdef"))
+        #expect(arm.contains("mvc.relkind = 'm'"))
+        #expect(!arm.contains("pg_attrdef"))
         #expect(rendered.components(separatedBy: "FROM pg_catalog.pg_constraint con").count - 1 == 1)
     }
 

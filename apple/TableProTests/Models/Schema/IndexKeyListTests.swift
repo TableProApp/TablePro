@@ -130,7 +130,7 @@ struct IndexKeyListTests {
 
     @Test("Engines that write an expression key take one; the rest take column names")
     func dialectPerEngine() {
-        for type in [DatabaseType.postgresql, .pglite, .sqlite, .libsql, .turso, .cloudflareD1, .duckdb] {
+        for type in [DatabaseType.postgresql, .pglite, .kingbasees, .sqlite, .libsql, .turso, .cloudflareD1, .duckdb] {
             #expect(IndexKeyDialect.forType(type) == IndexKeyDialect(takesPrefixLengths: false, takesExpressions: true))
         }
         #expect(IndexKeyDialect.forType(.mysql) == IndexKeyDialect(takesPrefixLengths: true, takesExpressions: true))

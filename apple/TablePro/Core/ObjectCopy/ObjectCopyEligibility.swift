@@ -62,7 +62,9 @@ internal enum ObjectCopyEligibility {
         from source: DatabaseType,
         to target: DatabaseType,
         sourceLanguage: EditorLanguage,
-        targetLanguage: EditorLanguage
+        targetLanguage: EditorLanguage,
+        sourceSession: PluginSessionLexicalState? = nil,
+        targetSession: PluginSessionLexicalState? = nil
     ) -> String? {
         guard supportsCopying(editorLanguage: sourceLanguage),
               supportsCopying(editorLanguage: targetLanguage) else {
@@ -71,7 +73,7 @@ internal enum ObjectCopyEligibility {
                 source.rawValue, target.rawValue
             )
         }
-        return crossEngineRefusal(from: source, to: target)
+        return crossEngineRefusal(from: source, sourceSession, to: target, targetSession)
     }
 
     /// The second half of the gate, and the one the editor language cannot answer.
@@ -81,8 +83,12 @@ internal enum ObjectCopyEligibility {
     /// where both engines have a type system `SQLTypeFamily` names, which is the same set the
     /// translation was written and tested against. Within one engine nothing is translated, so an
     /// engine no family names still copies to itself.
-    private static func crossEngineRefusal(from source: DatabaseType, to target: DatabaseType) -> String? {
-        guard SQLTypeFamily.needsTranslation(from: source, to: target) else { return nil }
+    private static func crossEngineRefusal(
+        from source: DatabaseType, _ sourceSession: PluginSessionLexicalState?,
+        to target: DatabaseType, _ targetSession: PluginSessionLexicalState?
+    ) -> String? {
+        guard crosses(from: source, sourceSession, to: target, targetSession) else { return nil }
+        if let moded = modeRefusal(source, sourceSession, target, targetSession) { return moded }
         let unnamed = [source, target].filter { SQLTypeFamily.of($0) == .generic }
         guard let first = unnamed.first else { return nil }
         return String(
@@ -90,6 +96,33 @@ internal enum ObjectCopyEligibility {
                 localized: "A copy to another engine needs a type system TablePro can translate, and %@ has none it knows. Copy to a target of the same type."
             ),
             first.rawValue
+        )
+    }
+
+    /// `SQLTypeFamily.needsTranslation` with each side's session applied, so two servers of one engine
+    /// in different modes cross as well.
+    private static func crosses(
+        from source: DatabaseType, _ sourceSession: PluginSessionLexicalState?,
+        to target: DatabaseType, _ targetSession: PluginSessionLexicalState?
+    ) -> Bool {
+        let sourceFamily = SQLTypeFamily.of(source, session: sourceSession)
+        let targetFamily = SQLTypeFamily.of(target, session: targetSession)
+        if source == target { return sourceFamily != targetFamily }
+        return sourceFamily != targetFamily || sourceFamily == .generic
+    }
+
+    private static func modeRefusal(
+        _ source: DatabaseType, _ sourceSession: PluginSessionLexicalState?,
+        _ target: DatabaseType, _ targetSession: PluginSessionLexicalState?
+    ) -> String? {
+        let moded = [(source, sourceSession), (target, targetSession)]
+            .first { SQLTypeFamily.leavesFamily($0.0, session: $0.1) }
+        guard let moded else { return nil }
+        return String(
+            format: String(
+                localized: "%@ runs in a compatibility mode with column types of its own. Copy to a target of the same type in the same mode."
+            ),
+            moded.0.rawValue
         )
     }
 
@@ -101,9 +134,12 @@ internal enum ObjectCopyEligibility {
     /// structure the translator can restate; a definition has only text.
     internal static func definitionEngineRefusal(
         from source: DatabaseType,
-        to target: DatabaseType
+        to target: DatabaseType,
+        sourceSession: PluginSessionLexicalState? = nil,
+        targetSession: PluginSessionLexicalState? = nil
     ) -> String? {
-        guard SQLTypeFamily.needsTranslation(from: source, to: target) else { return nil }
+        guard crosses(from: source, sourceSession, to: target, targetSession) else { return nil }
+        if let moded = modeRefusal(source, sourceSession, target, targetSession) { return moded }
         return String(
             format: String(
                 localized: "Its definition is written in %1$@'s own SQL, which %2$@ does not parse."

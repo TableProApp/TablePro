@@ -165,11 +165,10 @@ internal struct ObjectCopyRunner {
         /// the table it points at and a trigger before the table that owns it. One parent-first
         /// pass had every DROP rejected by the constraint below it.
         ///
-        /// Both phases run under one `withMetadataDriver` call and, where the engine has them,
-        /// with foreign key checks off and a transaction around them. Split across two calls, a
-        /// Stop between them or a failing first CREATE left every later object dropped with
-        /// nothing put back.
-        if !plan.schemaStatements.isEmpty || !plan.cleanupGroups.isEmpty || !plan.creationGroups.isEmpty {
+        /// Both phases run under one `withMetadataDriver` call, in a transaction or with foreign
+        /// key checks off. Split across two calls, a Stop between them or a failing first CREATE
+        /// left every later object dropped with nothing put back.
+        if !(plan.schemaStatements + plan.cleanupStatements + plan.creationStatements).isEmpty {
             let result = try await runStructure(plan, request: request, progress: progress)
             outcomes += result.outcomes
             cancelled = cancelled || result.cancelled
@@ -185,16 +184,20 @@ internal struct ObjectCopyRunner {
         /// A run that promises a rollback empties them inside the data phase's own transaction
         /// instead, because a DELETE that has already committed cannot be taken back by anything
         /// that fails afterwards. Only a run that promises nothing clears here.
+        var uncleared: Set<String> = []
         if !cancelled, !plan.clearGroups.isEmpty, !plan.clearsInsideDataTransaction {
             let result = try await runDDL(plan.clearGroups, request: request, progress: progress)
-            outcomes += result.outcomes.filter { $0.error != nil }
+            let failures = result.outcomes.filter { $0.error != nil }
+            outcomes += failures
+            // A table that kept its own rows would get the source's on top of them.
+            uncleared = Set(failures.map(\.id))
             cancelled = cancelled || result.cancelled
             pendingInSessionTransaction = pendingInSessionTransaction || result.joinedSessionTransaction
             if result.stopped { return finished() }
         }
 
         if !cancelled, request.content.includesData {
-            let dataOutcomes = try await runData(plan, request: request, progress: progress)
+            let dataOutcomes = try await runData(plan, skipping: uncleared, request: request, progress: progress)
             outcomes += dataOutcomes.outcomes
             cancelled = cancelled || dataOutcomes.cancelled
             rowsCopied = dataOutcomes.rowsCopied
@@ -237,8 +240,8 @@ internal struct ObjectCopyRunner {
     ///
     /// A replacement is destructive only in the moment between its DROP and its CREATE, so the two
     /// have to be one unit as far as the engine can make them: a transaction where DDL is
-    /// transactional, and otherwise at least one connection lease with foreign key checks off so
-    /// the ordering cannot fail half way.
+    /// transactional and the run promises a rollback, and otherwise at least one connection lease
+    /// with foreign key checks off so the ordering cannot fail half way.
     private func runStructure(
         _ plan: ObjectCopyPlan,
         request: ObjectCopyRequest,
@@ -250,6 +253,11 @@ internal struct ObjectCopyRunner {
         let scope = request.target.scope
         let hasCleanup = !plan.cleanupGroups.isEmpty
         let schemaStatements = plan.schemaStatements
+        // A MySQL DROP refuses a table another references, and a CREATE a key to a table not there
+        // yet, which a cycle always has. Past a replacement, a key to a table outside the copy keeps
+        // the checks, so it still fails when that table is missing.
+        let dropsTables = plan.cleanupGroups.contains { !$0.statements.isEmpty }
+        let relaxesKeys = tableGroups.contains { !$0.statements.isEmpty } && (dropsTables || plan.keysInside.created)
         let pinsSession = plan.isStructureReadPinned && VerbatimTransferScopes.isSameEngine(
             source: request.source.databaseType, target: request.target.databaseType
         )
@@ -259,23 +267,30 @@ internal struct ObjectCopyRunner {
                 throw ObjectCopyError.refused(Self.noTargetDriver)
             }
             let owner = await Self.transactionOwner(of: driver)
-            let usesTransaction = hasCleanup && plugin.supportsTransactionalDDL && owner.opensTransaction
-            let relaxesForeignKeys = hasCleanup && !usesTransaction
+            // The other two settings keep what ran, and PostgreSQL commits an aborted transaction as a ROLLBACK.
+            let usesTransaction = hasCleanup && errorHandling == .stopAndRollback
+                && plugin.supportsTransactionalDDL && owner.opensTransaction
             if usesTransaction { try await plugin.beginTransaction(mode: .readWrite) }
-            if relaxesForeignKeys {
-                for statement in plugin.foreignKeyDisableStatements() ?? [] {
-                    _ = try? await plugin.execute(query: statement)
-                }
-            }
 
-            var result = try await Self.executeTableDDL(
-                schemaStatements: schemaStatements,
-                groups: tableGroups,
-                on: plugin,
-                pinsSession: pinsSession,
-                errorHandling: errorHandling,
-                progress: progress
-            )
+            var result: DDLResult
+            do {
+                result = try await Self.withForeignKeysRelaxed(
+                    on: plugin, when: relaxesKeys && !usesTransaction && owner != .session
+                ) { _ in
+                    try await Self.executeTableDDL(
+                        schemaStatements: schemaStatements,
+                        groups: tableGroups,
+                        on: plugin,
+                        pinsSession: pinsSession,
+                        errorHandling: errorHandling,
+                        progress: progress
+                    )
+                }
+            } catch {
+                // The pool never ends a transaction, so the next lease would inherit an aborted one.
+                if usesTransaction { try? await plugin.rollbackTransaction() }
+                throw error
+            }
             /// Outside the write scope, because a routine or trigger records the session's
             /// `sql_mode`: it gets its own creation settings, or else the target's.
             if !result.stopped {
@@ -288,14 +303,14 @@ internal struct ObjectCopyRunner {
             }
             result.joinedSessionTransaction = owner == .session
 
-            if relaxesForeignKeys {
-                for statement in plugin.foreignKeyEnableStatements() ?? [] {
-                    _ = try? await plugin.execute(query: statement)
-                }
-            }
             guard usesTransaction else { return result }
             guard result.stopped else {
-                try await plugin.commitTransaction()
+                do {
+                    try await plugin.commitTransaction()
+                } catch {
+                    try? await plugin.rollbackTransaction()
+                    throw error
+                }
                 return result
             }
             try? await plugin.rollbackTransaction()
@@ -406,6 +421,40 @@ internal struct ObjectCopyRunner {
         return ranAny
     }
 
+    /// Parents already come first, but a cycle, a self reference whose child row comes first, or a
+    /// source row that already breaks a key is written only with the target's checks off.
+    nonisolated private static func withForeignKeysRelaxed<T>(
+        on plugin: any PluginDatabaseDriver,
+        when relaxes: Bool,
+        _ body: (_ relaxed: Bool) async throws -> T
+    ) async throws -> T {
+        guard relaxes else { return try await body(false) }
+        let opened: PluginSessionScope?
+        do {
+            opened = try await plugin.openSessionScope(for: .relaxedForeignKeys)
+        } catch {
+            logger.warning("Copying with foreign key checks on: \(error.publicLogShape, privacy: .public)")
+            opened = nil
+        }
+        guard let scope = opened else { return try await body(false) }
+        // Shielded like a rollback: the connection goes back to the pool after this lease.
+        func close() async {
+            do {
+                try await TaskCancellationShield.run { try await plugin.closeSessionScope(scope) }
+            } catch {
+                logger.error("Restoring foreign key checks failed: \(error.publicLogShape, privacy: .public)")
+            }
+        }
+        do {
+            let value = try await body(true)
+            await close()
+            return value
+        } catch {
+            await close()
+            throw error
+        }
+    }
+
     /// Each statement shielded like a rollback: the connection goes back to the pool after this
     /// lease, and a setting left behind would apply to whatever leases it next.
     nonisolated private static func closeSettings(
@@ -453,33 +502,73 @@ internal struct ObjectCopyRunner {
         var stopped = false
         /// True when the rows went into a transaction the session already held.
         var joinedSessionTransaction = false
-        /// Only what was committed. A cancelled table rolls its rows back, so counting what the
-        /// copier inserted reported rows the target never kept.
+        /// Every row written, a stopped or failed table's included. A rollback takes the count back
+        /// with the rows; a target that opened no transaction keeps both, and leaving them out
+        /// would send a retry over them.
         var rowsCopied = 0
+
+        mutating func recordCopy(of step: ObjectCopyTableStep, inserted: Int) {
+            rowsCopied += inserted
+            outcomes.append(ObjectCopyObjectOutcome(selection: step.selection, rowsCopied: inserted, error: nil))
+        }
+
+        /// Stop reaching the driver mid-stream is the user stopping, not the copy failing, and the
+        /// two produce different notifications.
+        mutating func recordStop(of step: ObjectCopyTableStep, inserted: Int, progress: ObjectCopyProgress) {
+            cancelled = true
+            stopped = true
+            if inserted > 0 { recordCopy(of: step, inserted: inserted) }
+            progress.setRowsForCurrentObject(0, completedBefore: rowsCopied)
+        }
+
+        /// False when the run stops here.
+        mutating func recordFailure(
+            of step: ObjectCopyTableStep,
+            _ error: any Error,
+            errorHandling: ImportErrorHandling,
+            progress: ObjectCopyProgress
+        ) -> Bool {
+            ObjectCopyRunner.logger.error(
+                "Copy rows failed for \(step.qualifiedTargetName, privacy: .public): \(error.publicLogShape, privacy: .public)"
+            )
+            let written = (error as? ObjectCopyRowCopier.PartialFailure)?.written ?? 0
+            rowsCopied += written
+            progress.setRowsForCurrentObject(0, completedBefore: rowsCopied)
+            outcomes.append(ObjectCopyObjectOutcome(
+                selection: step.selection, rowsCopied: written, error: error.localizedDescription
+            ))
+            guard errorHandling == .skipAndContinue else {
+                stopped = true
+                return false
+            }
+            return true
+        }
     }
 
     private func runData(
         _ plan: ObjectCopyPlan,
+        skipping uncleared: Set<String>,
         request: ObjectCopyRequest,
         progress: ObjectCopyProgress
     ) async throws -> DataResult {
-        guard plan.clearsInsideDataTransaction else {
-            return await runIndependentTables(plan, request: request, progress: progress)
+        guard plan.dataRunsInOneTransaction else {
+            let steps = plan.dataSteps.filter { !uncleared.contains($0.id) }
+            return await runIndependentTables(steps, request: request, progress: progress)
         }
-        return try await runClearedTables(plan, request: request, progress: progress)
+        return try await runInOneTransaction(plan, request: request, progress: progress)
     }
 
-    /// The clear and every row it makes room for, in one transaction on the target.
+    /// Every clear and every row, in one transaction on the target.
     ///
     /// Emptying a table is reversible only while the transaction that emptied it is still open, so
     /// the clears cannot run in a phase of their own once the run has promised a rollback. They
     /// still all run before any table is filled, which is what keeps a cascading foreign key from
     /// taking rows out of a table the user never selected.
     ///
-    /// One transaction for every table is the price of that promise, and it is charged only here:
-    /// a copy with nothing to empty keeps its per-table transactions, where one table's failure
-    /// leaves the tables already copied alone.
-    private func runClearedTables(
+    /// The rows relax the target's checks only here, where a failure takes every one of them back:
+    /// committed table by table, a cycle's first table would keep rows pointing at a second that
+    /// then failed.
+    private func runInOneTransaction(
         _ plan: ObjectCopyPlan,
         request: ObjectCopyRequest,
         progress: ObjectCopyProgress
@@ -491,6 +580,7 @@ internal struct ObjectCopyRunner {
         let targetType = request.target.databaseType
         let sourceScope = request.source.scope
         let errorHandling = request.errorHandling
+        let relaxesRows = plan.keysInside.rows
 
         /// A lease this phase cannot take is a run-level failure with no object to pin it on, and
         /// it is thrown for the same reason the DDL phases throw it: swallowed into a stopped
@@ -507,6 +597,8 @@ internal struct ObjectCopyRunner {
 
             var result = DataResult()
             result.joinedSessionTransaction = owner == .session
+            // Checks stay on for the clears: a table outside the copy that references a cleared one
+            // keeps its own ON DELETE rule, and MySQL cannot prove no other database holds one.
             let cleared = await Self.execute(
                 clearGroups, on: targetPlugin, errorHandling: errorHandling, progress: progress
             )
@@ -515,24 +607,36 @@ internal struct ObjectCopyRunner {
             result.stopped = cleared.stopped
 
             if !result.stopped {
-                let copied = await Self.stream(
-                    steps,
-                    from: sourceScope,
-                    into: targetPlugin,
-                    manager: manager,
-                    sourceType: sourceType,
-                    targetType: targetType,
-                    errorHandling: errorHandling,
-                    progress: progress
-                )
-                result.outcomes += copied.outcomes
-                result.cancelled = result.cancelled || copied.cancelled
-                result.stopped = copied.stopped
-                result.rowsCopied = copied.rowsCopied
+                // Every table here was just created, so the checks cost nothing yet. One the account
+                // may not run, such as a SELECT on a write-only login, keeps the target's checks on.
+                let checkable = usesTransaction && relaxesRows
+                    ? await Self.keyChecksRun(steps, on: targetPlugin)
+                    : false
+                try await Self.withForeignKeysRelaxed(on: targetPlugin, when: checkable) { relaxed in
+                    let copied = await Self.stream(
+                        steps,
+                        from: sourceScope,
+                        into: targetPlugin,
+                        manager: manager,
+                        sourceType: sourceType,
+                        targetType: targetType,
+                        errorHandling: errorHandling,
+                        progress: progress
+                    )
+                    result.outcomes += copied.outcomes
+                    result.cancelled = result.cancelled || copied.cancelled
+                    result.stopped = copied.stopped
+                    result.rowsCopied = copied.rowsCopied
+                    // A row read while the source was changing, or one the source already broke,
+                    // fails here rather than committing past keys nothing checks again.
+                    if relaxed, !result.stopped {
+                        await Self.checkKeys(of: steps, on: targetPlugin, into: &result, progress: progress)
+                    }
+                }
             }
 
             guard usesTransaction else { return result }
-            guard result.stopped, errorHandling != .stopAndCommit else {
+            guard result.stopped else {
                 /// A commit that fails leaves the transaction open, and the clears are inside it,
                 /// so it is rolled back rather than left for the lease to decide.
                 do {
@@ -544,10 +648,16 @@ internal struct ObjectCopyRunner {
                 return result
             }
             try? await targetPlugin.rollbackTransaction()
-            /// The target is back where it started, rows and all, so nothing may be reported
-            /// as copied and no table may be reported as done.
-            result.outcomes = result.outcomes.filter { $0.error != nil }
-            result.rowsCopied = 0
+            /// Nothing may be reported as copied that the rollback took back, and no such table as
+            /// done. A table the engine keeps through a ROLLBACK still holds its rows, and leaving
+            /// them out would send a retry over them.
+            let kept = Set(steps.filter { !$0.rollsBack }.map(\.id))
+            result.outcomes = result.outcomes.compactMap { outcome in
+                if kept.contains(outcome.id) { return outcome }
+                guard let error = outcome.error else { return nil }
+                return ObjectCopyObjectOutcome(selection: outcome.selection, rowsCopied: 0, error: error)
+            }
+            result.rowsCopied = result.outcomes.filter { kept.contains($0.id) }.reduce(0) { $0 + $1.rowsCopied }
             return result
         }
     }
@@ -589,107 +699,63 @@ internal struct ObjectCopyRunner {
                     }
                 }
                 guard !outcome.cancelled else {
-                    result.cancelled = true
-                    result.stopped = true
-                    progress.setRowsForCurrentObject(0, completedBefore: result.rowsCopied)
+                    result.recordStop(of: step, inserted: outcome.inserted, progress: progress)
                     break
                 }
-                result.rowsCopied += outcome.inserted
-                result.outcomes.append(ObjectCopyObjectOutcome(
-                    selection: step.selection, rowsCopied: outcome.inserted, error: nil
-                ))
+                result.recordCopy(of: step, inserted: outcome.inserted)
             } catch is CancellationError {
-                result.cancelled = true
-                result.stopped = true
-                progress.setRowsForCurrentObject(0, completedBefore: result.rowsCopied)
+                result.recordStop(of: step, inserted: 0, progress: progress)
                 break
             } catch {
-                logger.error(
-                    "Copy rows failed for \(step.qualifiedTargetName, privacy: .public): \(error.publicLogShape, privacy: .public)"
-                )
-                result.outcomes.append(ObjectCopyObjectOutcome(
-                    selection: step.selection, rowsCopied: 0, error: error.localizedDescription
-                ))
-                guard errorHandling == .skipAndContinue else {
-                    result.stopped = true
-                    break
-                }
+                guard result.recordFailure(of: step, error, errorHandling: errorHandling, progress: progress) else { break }
             }
         }
         return result
     }
 
-    /// Each table is its own unit of work, so one that fails leaves the ones already copied alone.
-    /// Both scopes are open at once, which the planner has already established is safe: two scopes
-    /// on one connection are refused unless both route to the pool.
+    /// Each batch commits as it is written, so a failure keeps what ran before it, and the target's
+    /// checks stay on: past a stop or a skipped failure a child's parent rows can be missing. Both
+    /// scopes are open at once, which the planner has already established is safe: two scopes on
+    /// one connection are refused unless both route to the pool.
     private func runIndependentTables(
-        _ plan: ObjectCopyPlan,
+        _ steps: [ObjectCopyTableStep],
         request: ObjectCopyRequest,
         progress: ObjectCopyProgress
     ) async -> DataResult {
         var result = DataResult()
         let targetType = request.target.databaseType
 
-        for step in plan.dataSteps {
+        for step in steps {
             if progress.isCancelled || Task.isCancelled {
                 result.cancelled = true
                 result.stopped = true
                 break
             }
             progress.startObject(step.qualifiedTargetName)
-            let wrapsInTransaction = request.wrapEachTableInTransaction
-                && request.errorHandling != .skipAndContinue
 
             do {
                 let copied = try await copyRows(
                     step,
                     request: request,
                     targetType: targetType,
-                    wrapsInTransaction: wrapsInTransaction,
                     completedBefore: result.rowsCopied,
                     progress: progress
                 )
                 let outcome = copied.outcome
                 result.joinedSessionTransaction =
                     result.joinedSessionTransaction || copied.joinedSessionTransaction
-                /// A cancelled table that rolled back neither counts as copied nor reads as an
-                /// object that succeeded. On a target without transactions nothing rolled back, so
-                /// the batches already flushed are in the target and saying otherwise hides them
-                /// from a user about to retry and double the rows.
                 guard !outcome.cancelled else {
-                    result.cancelled = true
-                    result.stopped = true
-                    if outcome.committed > 0 {
-                        result.rowsCopied += outcome.committed
-                        result.outcomes.append(ObjectCopyObjectOutcome(
-                            selection: step.selection, rowsCopied: outcome.committed, error: nil
-                        ))
-                    }
-                    progress.setRowsForCurrentObject(0, completedBefore: result.rowsCopied)
+                    result.recordStop(of: step, inserted: outcome.inserted, progress: progress)
                     break
                 }
-                result.rowsCopied += outcome.inserted
-                result.outcomes.append(ObjectCopyObjectOutcome(
-                    selection: step.selection, rowsCopied: outcome.inserted, error: nil
-                ))
+                result.recordCopy(of: step, inserted: outcome.inserted)
             } catch is CancellationError {
-                /// Stop reaching the driver mid-stream is the user stopping, not the copy failing,
-                /// and the two produce different notifications.
-                result.cancelled = true
-                result.stopped = true
-                progress.setRowsForCurrentObject(0, completedBefore: result.rowsCopied)
+                result.recordStop(of: step, inserted: 0, progress: progress)
                 break
             } catch {
-                Self.logger.error(
-                    "Copy rows failed for \(step.qualifiedTargetName, privacy: .public): \(error.publicLogShape, privacy: .public)"
-                )
-                result.outcomes.append(ObjectCopyObjectOutcome(
-                    selection: step.selection, rowsCopied: 0, error: error.localizedDescription
-                ))
-                guard request.errorHandling == .skipAndContinue else {
-                    result.stopped = true
-                    break
-                }
+                guard result.recordFailure(
+                    of: step, error, errorHandling: request.errorHandling, progress: progress
+                ) else { break }
             }
         }
         return result
@@ -705,7 +771,6 @@ internal struct ObjectCopyRunner {
         _ step: ObjectCopyTableStep,
         request: ObjectCopyRequest,
         targetType: DatabaseType,
-        wrapsInTransaction: Bool,
         completedBefore: Int,
         progress: ObjectCopyProgress
     ) async throws -> CopiedRows {
@@ -714,62 +779,76 @@ internal struct ObjectCopyRunner {
         let copier = ObjectCopyRowCopier(
             step: step, sourceDatabaseType: request.source.databaseType, targetDatabaseType: targetType
         )
-        let errorHandling = request.errorHandling
 
         /// The injected manager on both sides. Reaching for the singleton on the target bypassed
         /// the caller's own connections and routing, which is the whole point of injecting one.
         let manager = self.manager
-        return try await manager.withMetadataDriver(scope: sourceScope, workload: .bulk) { sourceDriver in
-            guard let sourcePlugin = CompareMetadataService.pluginDriver(from: sourceDriver) else {
-                throw ObjectCopyError.refused(Self.noSourceDriver)
+        // Target first, as `runInOneTransaction` takes them: two copies taking the two leases in
+        // opposite orders could each hold the one the other waits for.
+        return try await manager.withMetadataDriver(scope: targetScope, workload: .bulk) { targetDriver in
+            guard let targetPlugin = CompareMetadataService.pluginDriver(from: targetDriver) else {
+                throw ObjectCopyError.refused(Self.noTargetDriver)
             }
+            let owner = await Self.transactionOwner(of: targetDriver)
             return try await manager.withMetadataDriver(
-                scope: targetScope, workload: .bulk
-            ) { targetDriver in
-                guard let targetPlugin = CompareMetadataService.pluginDriver(from: targetDriver) else {
-                    throw ObjectCopyError.refused(Self.noTargetDriver)
+                scope: sourceScope, workload: .bulk
+            ) { sourceDriver in
+                guard let sourcePlugin = CompareMetadataService.pluginDriver(from: sourceDriver) else {
+                    throw ObjectCopyError.refused(Self.noSourceDriver)
                 }
-                let owner = await Self.transactionOwner(of: targetDriver)
-                let usesTransaction = wrapsInTransaction && owner.opensTransaction
-                if usesTransaction {
-                    try await targetPlugin.beginTransaction(mode: .readWrite)
+                let outcome = try await copier.copy(from: sourcePlugin, to: targetPlugin) { rows in
+                    progress.setRowsForCurrentObject(rows, completedBefore: completedBefore)
                 }
+                return CopiedRows(outcome: outcome, joinedSessionTransaction: owner == .session)
+            }
+        }
+    }
+
+    nonisolated private static func keyChecksRun(
+        _ steps: [ObjectCopyTableStep],
+        on driver: any PluginDatabaseDriver
+    ) async -> Bool {
+        for check in steps.flatMap({ $0.keyChecks ?? [] }) {
+            do {
+                _ = try await driver.execute(query: check.sql)
+            } catch {
+                logger.warning(
+                    "Copying with foreign key checks on, \(check.constraint, privacy: .public) cannot be checked: \(error.publicLogShape, privacy: .public)"
+                )
+                return false
+            }
+        }
+        return true
+    }
+
+    /// Stops at the first key that fails, since the rollback that follows takes back every table.
+    nonisolated private static func checkKeys(
+        of steps: [ObjectCopyTableStep],
+        on driver: any PluginDatabaseDriver,
+        into result: inout DataResult,
+        progress: ObjectCopyProgress
+    ) async {
+        for step in steps {
+            for check in step.keyChecks ?? [] {
+                if progress.isCancelled || Task.isCancelled {
+                    result.cancelled = true
+                    result.stopped = true
+                    return
+                }
+                let failure: String
                 do {
-                    let outcome = try await copier.copy(
-                        from: sourcePlugin,
-                        to: targetPlugin
-                    ) { rows in
-                        progress.setRowsForCurrentObject(rows, completedBefore: completedBefore)
-                    }
-                    guard usesTransaction else {
-                        /// Nothing of the copy's own to roll back, so every batch already flushed is
-                        /// in the target, or pending in the transaction the session already held,
-                        /// whether the user stopped or not.
-                        return CopiedRows(
-                            outcome: ObjectCopyRowCopier.Outcome(
-                                inserted: outcome.inserted,
-                                cancelled: outcome.cancelled,
-                                committed: outcome.inserted
-                            ),
-                            joinedSessionTransaction: owner == .session
-                        )
-                    }
-                    if outcome.cancelled {
-                        try? await targetPlugin.rollbackTransaction()
-                    } else {
-                        try await targetPlugin.commitTransaction()
-                    }
-                    return CopiedRows(outcome: outcome, joinedSessionTransaction: false)
+                    let counted = try await driver.execute(query: check.sql).rows.first?.first?.asText
+                    guard let broken = counted.flatMap(Int.init), broken > 0 else { continue }
+                    failure = String(
+                        format: String(localized: "Rows in %1$@ break the foreign key %2$@."),
+                        step.qualifiedTargetName, check.constraint
+                    )
                 } catch {
-                    if usesTransaction {
-                        if errorHandling == .stopAndCommit {
-                            try? await targetPlugin.commitTransaction()
-                        } else {
-                            try? await targetPlugin.rollbackTransaction()
-                        }
-                    }
-                    throw error
+                    failure = error.localizedDescription
                 }
+                result.outcomes.append(ObjectCopyObjectOutcome(selection: step.selection, rowsCopied: 0, error: failure))
+                result.stopped = true
+                return
             }
         }
     }

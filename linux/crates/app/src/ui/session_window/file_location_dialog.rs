@@ -11,13 +11,11 @@ use gtk4::subclass::prelude::*;
 use libadwaita as adw;
 use libadwaita::prelude::*;
 use tablepro_core::FileOpenMode;
-use tablepro_session::connect::AttemptGeneration;
 use tablepro_session::runtime::Tasks;
 use tablepro_session::{ConnectSource, RequestTarget};
-use tablepro_storage::CredentialDemand;
 use tokio_util::sync::CancellationToken;
 
-use super::session_page::SessionPage;
+use super::session_page::PendingConnect;
 use super::session_window_command::{AttemptError, Connected};
 use super::{SessionWindow, SessionWindowInput};
 use crate::services::file_location::{self, FileLocationKind, LocationClassifier};
@@ -84,17 +82,19 @@ impl FileCheck {
     }
 }
 
-/// The question for a file at `kind`, or `None` when it opens without
-/// one.
-pub(crate) fn for_location(kind: &FileLocationKind) -> Option<adw::AlertDialog> {
-    kind.requires_read_only_prompt().then(location_dialog)
+/// The question for the file `name` at `kind`, or `None` when it opens
+/// without one. It names the file, since several connects of one window
+/// can ask at once.
+pub(crate) fn for_location(kind: &FileLocationKind, name: &str) -> Option<adw::AlertDialog> {
+    kind.requires_read_only_prompt().then(|| location_dialog(name))
 }
 
-fn location_dialog() -> adw::AlertDialog {
+fn location_dialog(name: &str) -> adw::AlertDialog {
     let dialog = adw::AlertDialog::new(
         Some(&crate::i18n::gettext("Database on a Network Filesystem")),
-        Some(&crate::i18n::gettext(
-            "A database on a network or FUSE filesystem can be corrupted when more than one program writes to it.",
+        Some(&crate::i18n::gettext_f(
+            "“{name}” is on a network or FUSE filesystem. A database there can be corrupted when more than one program writes to it.",
+            &[("name", name)],
         )),
     );
     dialog.add_responses(&[
@@ -157,12 +157,21 @@ impl SessionWindow {
         }
     }
 
-    /// The connect stopped before connecting to ask about its file. The
-    /// connecting page stays behind the question.
-    pub(super) fn ask_about_location(&self, generation: AttemptGeneration, kind: &FileLocationKind) {
-        let Some(dialog) = for_location(kind) else {
+    /// Connect `id` stopped before connecting to ask about its file,
+    /// over this window, whatever else it shows. The connect stays among
+    /// the window's until the answer.
+    pub(super) fn ask_about_location(&self, id: u64, kind: &FileLocationKind) {
+        let name = self
+            .imp()
+            .connects
+            .borrow()
+            .iter()
+            .find(|pending| pending.id == id)
+            .map(|pending| super::source_name(&pending.source))
+            .unwrap_or_default();
+        let Some(dialog) = for_location(kind, &name) else {
             self.send(SessionWindowInput::LocationChosen {
-                generation,
+                id,
                 choice: LocationChoice::ReadWrite,
             });
             return;
@@ -177,28 +186,36 @@ impl SessionWindow {
                 READ_WRITE => LocationChoice::ReadWrite,
                 _ => LocationChoice::Cancel,
             };
-            window.send(SessionWindowInput::LocationChosen { generation, choice });
+            window.send(SessionWindowInput::LocationChosen { id, choice });
         });
     }
 
-    pub(super) fn on_location_chosen(&self, generation: AttemptGeneration, choice: LocationChoice) {
-        let asking = self.imp().attempts.accepts(generation)
-            && self.page_is(|page| matches!(page, SessionPage::Connecting { .. }));
-        if !asking {
+    /// The same connect goes on, in its place among the others, under a
+    /// new id: a result of the one that asked can no longer be taken
+    /// for it. One stopped while the question was open is not started.
+    pub(super) fn on_location_chosen(&self, id: u64, choice: LocationChoice) {
+        let imp = self.imp();
+        let position = imp.connects.borrow().iter().position(|pending| pending.id == id);
+        let Some(position) = position else {
             return;
-        }
+        };
+        let asked = imp.connects.borrow_mut().remove(position);
         let read_only = match choice {
             LocationChoice::Cancel => {
-                self.on_cancel_connect();
+                self.drop_connect(asked);
+                self.connects_changed();
                 return;
             }
             LocationChoice::ReadOnly => true,
             LocationChoice::ReadWrite => false,
         };
-        let SessionPage::Connecting { claim, source } = self.imp().page.replace(SessionPage::Picker) else {
-            return;
-        };
-        self.start_connect(claim, source, Some(read_only), CredentialDemand::default());
+        let PendingConnect {
+            claim, source, demand, ..
+        } = asked;
+        if let Some(pending) = self.spawn_connect(claim, source, Some(read_only), demand) {
+            imp.connects.borrow_mut().insert(position, pending);
+        }
+        self.connects_changed();
     }
 }
 
@@ -232,7 +249,7 @@ mod tests {
     fn default_response_is_read_only() {
         adw::init().expect("libadwaita initialises under the test backend");
 
-        let dialog = for_location(&on_a_share(Path::new("/mnt/share/app.db"))).expect("a question");
+        let dialog = for_location(&on_a_share(Path::new("/mnt/share/app.db")), "app.db").expect("a question");
 
         assert_eq!(dialog.default_response().as_deref(), Some(READ_ONLY));
         assert_eq!(dialog.close_response(), CANCEL);
@@ -244,7 +261,11 @@ mod tests {
             dialog.response_appearance(READ_WRITE),
             adw::ResponseAppearance::Destructive
         );
-        assert!(for_location(&FileLocationKind::Local).is_none());
+        assert!(
+            dialog.body().contains("“app.db”"),
+            "the question does not name its file"
+        );
+        assert!(for_location(&FileLocationKind::Local, "app.db").is_none());
     }
 
     #[gtk4::test]
@@ -252,7 +273,7 @@ mod tests {
         adw::init().expect("libadwaita initialises under the test backend");
         let portal = FileLocationKind::portal(None, |_| true, |_| FileLocationKind::Local);
 
-        let dialog = for_location(&portal).expect("a question for a portal file");
+        let dialog = for_location(&portal, "app.db").expect("a question for a portal file");
 
         assert_eq!(dialog.default_response().as_deref(), Some(READ_ONLY));
     }
@@ -331,6 +352,27 @@ mod tests {
         let calls = test.connector.calls();
         assert_eq!(calls.len(), 1);
         assert!(calls[0].request.workspace_settings.read_only);
+    }
+
+    /// The question goes over this window, and the connect it held back
+    /// joins the sessions there.
+    #[gtk4::test]
+    fn a_file_opened_beside_the_sessions_is_asked_about_here() {
+        let test = TestWindow::connected("ShareBeside");
+        test.window.imp().classify_location.set(Some(on_a_share));
+        let dir = tempfile::tempdir().expect("tempdir");
+        let database = dir.path().join("app.db");
+        std::fs::write(&database, b"").expect("seed");
+
+        test.window
+            .send(SessionWindowInput::OpenFile(gio::File::for_path(&database)));
+        wait_until(WAIT, || visible_alert(&test.window).is_some()).expect("the location question");
+        assert_eq!(test.connector.calls().len(), 1, "the file connected before the answer");
+        assert!(answer(&test.window, READ_ONLY));
+        wait_until(WAIT, || test.window.workspaces().len() == 2).expect("the file to join the window");
+
+        assert_eq!(test.app.windows().len(), 1, "the question went to a window of its own");
+        assert!(test.connector.calls()[1].request.workspace_settings.read_only);
     }
 
     #[gtk4::test]

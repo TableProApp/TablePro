@@ -175,4 +175,26 @@ struct PostgreSQLSessionScopeSQLTests {
     func readScopeRefusesOtherwise(state: PluginSessionTransactionState) {
         #expect(!PostgreSQLSessionScopeSQL.canOpenReadScope(in: state))
     }
+
+    private static func unconnectedDriver() -> PostgreSQLPluginDriver {
+        PostgreSQLPluginDriver(config: DriverConnectionConfig(host: "", port: 0, username: "", password: "", database: ""))
+    }
+
+    /// Measured on PostgreSQL 17.11 and 18.6: for a role without the privilege the block answers DO and the
+    /// transaction keeps its rows, where the bare `SET` aborts it.
+    @Test("The foreign key switch swallows a refused SET, both ways")
+    func foreignKeySwitchSwallowsRefusal() {
+        let driver = Self.unconnectedDriver()
+        #expect(driver.foreignKeyDisableStatements() == [
+            "DO $$ BEGIN SET session_replication_role = replica; EXCEPTION WHEN insufficient_privilege THEN NULL; END $$",
+        ])
+        #expect(driver.foreignKeyEnableStatements() == [
+            "DO $$ BEGIN SET session_replication_role = DEFAULT; EXCEPTION WHEN insufficient_privilege THEN NULL; END $$",
+        ])
+    }
+
+    @Test("Relaxing foreign keys opens no scope, since replica would also stop the target's user triggers")
+    func relaxedForeignKeysOpensNoScope() async throws {
+        #expect(try await Self.unconnectedDriver().openSessionScope(for: .relaxedForeignKeys) == nil)
+    }
 }

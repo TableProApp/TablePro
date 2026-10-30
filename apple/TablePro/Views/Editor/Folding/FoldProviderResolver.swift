@@ -18,10 +18,12 @@ import TableProSQLGrammar
 enum FoldProviderResolver {
     /// The provider for a connection, which knows both the language and the SQL dialect.
     static func provider(for databaseType: DatabaseType) -> LineFoldProvider? {
-        provider(
-            for: PluginManager.shared.editorLanguage(for: databaseType),
-            grammar: databaseType.lexicalGrammar
-        )
+        provider(for: databaseType, grammar: databaseType.lexicalGrammar)
+    }
+
+    /// The same, reading the grammar the connection's session lexes with.
+    static func provider(for databaseType: DatabaseType, grammar: SQLLexicalGrammar) -> LineFoldProvider? {
+        provider(for: PluginManager.shared.editorLanguage(for: databaseType), grammar: grammar)
     }
 
     /// The provider for a listing whose language is known but whose dialect is not, such as a fenced code block.

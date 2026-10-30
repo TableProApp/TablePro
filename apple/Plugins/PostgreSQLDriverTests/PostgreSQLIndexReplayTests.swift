@@ -173,9 +173,13 @@ struct PostgreSQLIndexDDLQueryTests {
     @Test("The suffix is the predicate as pg_get_expr writes it, and the keys are cut only when both ends match")
     func suffixAndCut() throws {
         let sql = PostgreSQLIndexQueries.indexDDLQuery(schema: "src", table: nil)
-        #expect(sql.contains("COALESCE(' WHERE ' || pg_catalog.pg_get_expr(ix.indpred, ix.indrelid), '') AS suffix"))
+        #expect(sql.contains("CASE WHEN ix.indpred IS NOT NULL"))
+        #expect(sql.contains("THEN ' WHERE ' || pg_catalog.pg_get_expr(ix.indpred, ix.indrelid)"))
+        #expect(sql.contains("END AS suffix"))
+        #expect(!sql.contains("COALESCE(' WHERE '"))
         #expect(sql.contains("AND pg_catalog.substr(d.definition, 1, pg_catalog.length(d.prefix)) = d.prefix"))
-        #expect(sql.contains(") = d.suffix"))
+        #expect(sql.contains("AND (d.suffix IS NULL OR pg_catalog.substr("))
+        #expect(sql.contains(") = d.suffix)"))
         let cutStart = try #require(sql.range(of: "CASE"))
         let cutEnd = try #require(sql.range(of: "END AS method_and_keys"))
         let cut = sql[cutStart.upperBound..<cutEnd.lowerBound]

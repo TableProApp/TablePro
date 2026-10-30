@@ -12,12 +12,11 @@ use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use libadwaita as adw;
 use libadwaita::prelude::*;
-use tablepro_session::ConnectSource;
 use tablepro_session::connect::{ConnectionWrites, StoreConnectionWrites};
-use tablepro_storage::SavedConnection;
+use tablepro_session::{ConnectSource, SessionKey};
+use tablepro_storage::{CredentialDemand, SavedConnection};
 use uuid::Uuid;
 
-use super::session_page::SessionPage;
 use super::{SessionWindow, SessionWindowInput};
 use crate::runtime::DeliverInput;
 use crate::ui::connect_dialog::DatabaseFiles;
@@ -89,15 +88,38 @@ impl SessionWindow {
     /// Connection.
     pub(super) fn offer_locate(&self, id: Uuid, missing: PathBuf) {
         let dialog = not_found_dialog(&missing);
+        let window = self.downgrade();
+        glib::spawn_future_local(async move {
+            let Some(window) = window.upgrade() else {
+                return;
+            };
+            if crate::workspace::respond(&dialog, window.upcast_ref()).await == LOCATE {
+                window.choose_location(id, missing);
+            }
+        });
+    }
+
+    /// A failure's Details already said the file is gone, so its Locate
+    /// File goes straight to the file chooser.
+    pub(super) fn locate_for(&self, key: &SessionKey) {
+        let lost = self
+            .with_failure(key, |source, failure| match source {
+                ConnectSource::Saved(saved) => failure.missing_file.clone().map(|missing| (saved.id, missing)),
+                _ => None,
+            })
+            .flatten();
+        if let Some((id, missing)) = lost {
+            self.choose_location(id, missing);
+        }
+    }
+
+    fn choose_location(&self, id: Uuid, missing: PathBuf) {
         let files = self.located_files(id);
         let window = self.downgrade();
         glib::spawn_future_local(async move {
             let Some(window) = window.upgrade() else {
                 return;
             };
-            if crate::workspace::respond(&dialog, window.upcast_ref()).await != LOCATE {
-                return;
-            }
             let chooser = window
                 .imp()
                 .locate_chooser
@@ -111,37 +133,38 @@ impl SessionWindow {
         });
     }
 
+    /// The saved connection whose connect failed under `id`, while its
+    /// failure is the window's.
+    fn failed_saved(&self, id: Uuid) -> Option<SavedConnection> {
+        self.with_failure(&SessionKey::Saved(id), |source, _| match source {
+            ConnectSource::Saved(saved) => Some((**saved).clone()),
+            _ => None,
+        })
+        .flatten()
+    }
+
     /// The files the failed connection's engine opens.
     fn located_files(&self, id: Uuid) -> Option<DatabaseFiles> {
-        let driver_id = match &*self.imp().page.borrow() {
-            SessionPage::ConnectFailed {
-                source: ConnectSource::Saved(saved),
-                ..
-            } if saved.id == id => saved.driver_id.clone(),
-            _ => return None,
-        };
+        let driver_id = self.failed_saved(id)?.driver_id;
         let driver = self.state()?.context.drivers.get(&driver_id)?;
         DatabaseFiles::of(driver.as_ref())
     }
 
-    /// Save the file's new path on the connection the failed page is
-    /// about, then connect to it once the write lands, so the entry and
-    /// the open session name the same file.
+    /// Save the file's new path on the connection that failed, then
+    /// connect to it once the write lands, so the entry and the open
+    /// session name the same file.
     pub(super) fn on_file_located(&self, id: Uuid, path: PathBuf) {
-        let saved = match &*self.imp().page.borrow() {
-            SessionPage::ConnectFailed {
-                source: ConnectSource::Saved(saved),
-                ..
-            } if saved.id == id => (**saved).clone(),
-            _ => return,
+        let Some(saved) = self.failed_saved(id) else {
+            return;
         };
         let (Some(state), Some(input)) = (self.state(), self.input()) else {
             return;
         };
         // Deleted in another window while the question was open: writing
-        // the page's copy back would bring it back without its secrets.
+        // the failure's copy back would bring it back without its secrets.
         let Some(mut located) = self.saved_as_stored(&saved) else {
-            self.show_page(SessionPage::Picker);
+            drop(self.take_failure(&SessionKey::Saved(id)));
+            self.render();
             self.show_toast(&crate::i18n::gettext("The connection was deleted."));
             return;
         };
@@ -173,23 +196,19 @@ impl SessionWindow {
         );
     }
 
-    /// Connect to the located file, unless the user left the failed
-    /// page while its path was saved.
+    /// Connect to the located file, unless its failure went while its
+    /// path was saved: the user left it, or it connected again.
     pub(super) fn on_located_saved(&self, located: SavedConnection) {
-        let current = match &*self.imp().page.borrow() {
-            SessionPage::ConnectFailed {
-                source: ConnectSource::Saved(saved),
-                ..
-            } => saved.id == located.id,
-            _ => false,
-        };
-        if !current {
+        if self.failed_saved(located.id).is_none() {
             return;
         }
-        let SessionPage::ConnectFailed { claim, .. } = self.imp().page.replace(SessionPage::Picker) else {
-            return;
-        };
-        self.begin_connect(claim, ConnectSource::Saved(Box::new(located)));
+        if let Some((claim, _, _)) = self.take_failure(&SessionKey::Saved(located.id)) {
+            self.connect_with(
+                claim,
+                ConnectSource::Saved(Box::new(located)),
+                CredentialDemand::default(),
+            );
+        }
     }
 }
 

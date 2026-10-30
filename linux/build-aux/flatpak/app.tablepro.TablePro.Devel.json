@@ -25,6 +25,7 @@
     "build-options": {
         "append-path": "/usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/llvm22/bin",
         "prepend-ld-library-path": "/usr/lib/sdk/llvm22/lib",
+        "cxxflags": "-g0",
         "build-args": [
             "--share=network"
         ],
@@ -34,7 +35,14 @@
         "test-args": [
             "--socket=x11",
             "--share=network"
-        ]
+        ],
+        "arch": {
+            "aarch64": {
+                "env": {
+                    "CARGO_ENCODED_RUSTFLAGS": "-Clink-arg=-fuse-ld=lld"
+                }
+            }
+        }
     },
     "cleanup": [
         "/share/man"

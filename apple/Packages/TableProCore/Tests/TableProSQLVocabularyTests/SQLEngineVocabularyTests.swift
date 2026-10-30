@@ -9,7 +9,7 @@ struct SQLEngineVocabularyTests {
         let typeIds = SQLEngineVocabulary.curatedDatabaseTypeIds
         #expect(typeIds == [
             "MySQL", "MariaDB", "TiDB", "Databend", "OceanBase",
-            "PostgreSQL", "CockroachDB", "PGlite", "Redshift",
+            "PostgreSQL", "CockroachDB", "PGlite", "KingbaseES", "Redshift",
             "SQLite", "SQL Server", "Oracle", "DuckDB",
         ])
         for typeId in typeIds {
@@ -32,6 +32,7 @@ struct SQLEngineVocabularyTests {
         ("OceanBase", "MySQL"),
         ("CockroachDB", "PostgreSQL"),
         ("PGlite", "PostgreSQL"),
+        ("KingbaseES", "PostgreSQL"),
     ])
     func variantResolvesLikeItsBase(variant: String, base: String) {
         let resolved = SQLEngineVocabulary.curated(forDatabaseTypeId: variant)

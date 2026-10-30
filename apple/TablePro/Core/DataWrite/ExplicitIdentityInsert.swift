@@ -16,7 +16,7 @@ enum ExplicitIdentityInsert: Equatable {
 
     static func style(for databaseType: DatabaseType) -> ExplicitIdentityInsert? {
         switch databaseType {
-        case .postgresql, .pglite:
+        case .postgresql, .pglite, .kingbasees:
             return .overridingSystemValue
         case .mssql:
             return .identityInsertSession

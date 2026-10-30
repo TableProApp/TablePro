@@ -81,6 +81,19 @@ struct MySQLCreateTableTests {
         #expect(sql.contains("COLLATE=latin1_swedish_ci"))
     }
 
+    @Test("A table character set no catalog lists is backticked rather than spliced in")
+    func unsafeTableCharsetIsQuoted() {
+        let definition = PluginCreateTableDefinition(
+            tableName: "t",
+            columns: [PluginColumnDefinition(name: "id", dataType: "INT")],
+            charset: "latin1 ENGINE=x",
+            collation: "latin1_bin"
+        )
+
+        let sql = mysqlCreateTableSQL(definition: definition, isMariaDB: false)!
+        #expect(sql.contains("DEFAULT CHARSET=`latin1 ENGINE=x` COLLATE=latin1_bin"))
+    }
+
     @Test("IF NOT EXISTS flag")
     func ifNotExists() {
         let definition = PluginCreateTableDefinition(

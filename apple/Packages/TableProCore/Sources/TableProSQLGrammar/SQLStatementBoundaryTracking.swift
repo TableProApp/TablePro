@@ -20,7 +20,8 @@ public enum SQLStatementTerminator: Equatable, Sendable {
 /// boundaries without looking ahead.
 ///
 /// Words arrive uppercased. Whitespace and comments arrive as ``observeGap()``; a string literal, a quoted identifier
-/// or a dollar-quoted body arrives as ``observeOpaqueToken()``.
+/// or a dollar-quoted body arrives as ``observeQuotedToken(opener:)``, and any other token no word or symbol describes
+/// as ``observeOpaqueToken()``.
 public protocol SQLStatementBoundaryTracking {
     /// Whether words still bear on where this statement ends. A reader that has to assemble words itself can stop
     /// doing so once this is false, which keeps a plain `INSERT` dump free of the cost.
@@ -36,6 +37,10 @@ public protocol SQLStatementBoundaryTracking {
     mutating func observeSymbol(_ symbol: UInt16)
     mutating func observeOpaqueToken()
 
+    /// A quoted token, named by its first character: `'`, `$`, or a prefix such as `E` or `q` for a literal, and `"`,
+    /// a backtick or `[` for a quoted name.
+    mutating func observeQuotedToken(opener: UInt16)
+
     /// Whitespace or a comment between two tokens, which keeps a word from continuing the name before it: `x$MERGE`
     /// is one name in T-SQL, while `x$` and `MERGE` on the next line are a name and a statement.
     mutating func observeGap()
@@ -44,6 +49,12 @@ public protocol SQLStatementBoundaryTracking {
     mutating func observeSemicolon() -> Bool
 
     mutating func reset()
+}
+
+public extension SQLStatementBoundaryTracking {
+    mutating func observeQuotedToken(opener: UInt16) {
+        observeOpaqueToken()
+    }
 }
 
 public enum SQLStatementBoundaries {

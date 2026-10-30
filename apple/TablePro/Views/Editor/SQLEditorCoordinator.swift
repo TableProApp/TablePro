@@ -71,6 +71,11 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
     }
 
     func scheduleEditorFocusClaim() {
+        // Query tabs share one editor, which installs only once, so a later tab's claim is taken here.
+        if hasInstalledEditorServices, !isDestroyed, let textView = controller?.textView, let window = textView.window {
+            window.makeFirstResponder(textView)
+            return
+        }
         focusClaimPending = true
     }
 
@@ -115,6 +120,9 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
     private var vimCursorManager: VimCursorManager?
     var onCloseTab: (() -> Void)?
     var onExecuteQuery: (() -> Void)?
+    var onSelectTab: ((Int) -> Void)?
+    var onSelectAdjacentTab: ((Int) -> Void)?
+    var tabCount: (() -> Int)?
     var onRunStatement: ((String, Int) -> Bool)?
     var currentAIAvailability: (() -> AIQueryActionAvailability)?
     var onAIAction: ((AIQueryAction, AIQueryTarget) -> Void)?
@@ -123,6 +131,12 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
     var tabID: UUID?
     var connectionId: UUID?
     var sourceFileURL: URL?
+    /// The connection's execution grammar, which `SQLEditorController` sets from the live session.
+    private(set) var sessionGrammar: SQLLexicalGrammar?
+
+    var lexicalGrammar: SQLLexicalGrammar {
+        sessionGrammar ?? (databaseType ?? .mysql).lexicalGrammar
+    }
 
     /// Whether the editor text view is currently the first responder.
     /// Used to guard cursor propagation — when the find panel highlights
@@ -183,7 +197,7 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
         installFoldPreview(controller: controller)
         installStatementRunControls(controller: controller)
         installInlineSuggestionManager(controller: controller)
-        diagnosticsController.configure(databaseType: databaseType)
+        diagnosticsController.configure(databaseType: databaseType, grammar: lexicalGrammar)
         diagnosticsController.install(on: controller)
         diagnosticsController.scheduleRefresh(for: controller)
         applyKeyBindings(controller: controller)
@@ -323,6 +337,9 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
         releaseWindowSentinel()
         onCloseTab = nil
         onExecuteQuery = nil
+        onSelectTab = nil
+        onSelectAdjacentTab = nil
+        tabCount = nil
         onRunStatement = nil
         statementRunController.onRun = nil
         statementRunController.clear(in: controller)
@@ -351,13 +368,28 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
     }
 
     private func installStatementRunControls(controller: TextViewController) {
-        statementRunController.grammar = (databaseType ?? .mysql).lexicalGrammar
+        statementRunController.grammar = lexicalGrammar
         statementRunController.statementModel = QueryStatementModel.forDatabaseType(databaseType ?? .mysql)
         statementRunController.isHighlightEnabled = AppSettingsManager.shared.editor.highlightCurrentStatement
         statementRunController.onRun = { [weak self] sql, offset in
             self?.onRunStatement?(sql, offset) ?? false
         }
         statementRunController.install(on: controller)
+    }
+
+    /// Moves the run controls and diagnostics to `grammar`, as a connect, a reconnect or a `SET` changes it.
+    func setSessionGrammar(_ grammar: SQLLexicalGrammar) {
+        guard grammar != sessionGrammar else { return }
+        sessionGrammar = grammar
+        guard hasInstalledEditorServices, !isDestroyed, let controller else { return }
+        statementRunController.grammar = grammar
+        statementRunController.refreshControls(in: controller)
+        statementRunController.refreshHighlight(in: controller)
+        diagnosticsController.configure(databaseType: databaseType, grammar: grammar)
+        refreshDiagnostics(
+            in: controller,
+            isLargeDocument: controller.textView.textStorage.length > Self.languageServiceLengthLimit
+        )
     }
 
     /// Turns the run controls off for the length of a query, because a tab runs one at a time.
@@ -481,15 +513,15 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
         guard let textView = controller?.textView else { return }
         let formatter: QueryFormatting
         do {
-            guard let made = try QueryFormatterFactory.make(for: databaseType, sourceFileURL: sourceFileURL) else { return }
+            guard let made = try QueryFormatterFactory.make(
+                for: databaseType,
+                sourceFileURL: sourceFileURL,
+                grammar: formatGrammar
+            ) else { return }
             formatter = made
         } catch {
             Self.logger.error("Formatter rules unreadable: \(error.publicLogShape, privacy: .public)")
-            AlertHelper.showErrorSheet(
-                title: String(localized: "Couldn't Format Query"),
-                message: error.localizedDescription,
-                window: textView.window
-            )
+            showFormatError(error, in: textView.window)
             return
         }
         let scope = FormatScopeResolver.resolve(
@@ -513,7 +545,22 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
             controller?.setCursorPositions([CursorPosition(range: NSRange(location: caretLocation, length: 0))])
         } catch {
             Self.logger.error("SQL Formatting error: \(error.publicLogShape, privacy: .public)")
+            showFormatError(error, in: textView.window)
         }
+    }
+
+    private var formatGrammar: SQLLexicalGrammar? {
+        guard let databaseType else { return nil }
+        guard let connectionId else { return databaseType.lexicalGrammar }
+        return SQLLexicalResolver.executionGrammar(for: databaseType, connectionId: connectionId)
+    }
+
+    private func showFormatError(_ error: Error, in window: NSWindow?) {
+        AlertHelper.showErrorSheet(
+            title: String(localized: "Couldn't Format Query"),
+            message: error.localizedDescription,
+            window: window
+        )
     }
 
     // MARK: - Inline Suggestion Manager
@@ -665,6 +712,15 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
         }
         commandHandler.onCloseTab = { [weak self] in
             self?.onCloseTab?()
+        }
+        commandHandler.onSelectTab = { [weak self] number in
+            self?.onSelectTab?(number)
+        }
+        commandHandler.onSelectAdjacentTab = { [weak self] offset in
+            self?.onSelectAdjacentTab?(offset)
+        }
+        commandHandler.tabCount = { [weak self] in
+            self?.tabCount?() ?? 0
         }
         engine.onCommand = { [weak self] command in
             self?.commandHandler.handle(command)

@@ -150,7 +150,9 @@ fn answer(app: &TableProApplication, request: McpRequest) {
 
 /// Open the connection the way the picker does: in the window that has
 /// it, in the active window while it only shows the picker, or in a new
-/// window. Every prompt the connect needs shows there.
+/// window. Every prompt the connect needs shows there. An agent's connect
+/// never joins the sessions the user works in, where it would take the
+/// front and the window's actions.
 fn open(
     app: &TableProApplication,
     services: &AppServices,
@@ -179,7 +181,7 @@ fn open(
             }
         }
         // A failed connect keeps its claim, and its window says why.
-        Some(window_id) if !app.imp().windows.keeps_session(window_id) => {
+        Some(window_id) if !app.imp().windows.keeps_session(window_id, &key) => {
             app.present_window(window_id);
             let _ = reply.send(OpenOutcome::Closed);
             return;
@@ -201,7 +203,7 @@ fn open(
                 break OpenOutcome::Closed;
             };
             match sessions.window_for(&key) {
-                Some(window_id) if app.imp().windows.keeps_session(window_id) => claimed = true,
+                Some(window_id) if app.imp().windows.keeps_session(window_id, &key) => claimed = true,
                 Some(_) => break OpenOutcome::Closed,
                 None if claimed => break OpenOutcome::Closed,
                 None => {}
@@ -230,16 +232,17 @@ fn approve(
     approval: WriteApproval,
     mut reply: oneshot::Sender<bool>,
 ) {
-    let window = services
-        .sessions
-        .window_for(&SessionKey::Saved(approval.connection_id))
-        .and_then(|id| app.window_by_id(id));
-    let Some(window) = window else {
+    let key = SessionKey::Saved(approval.connection_id);
+    let owner = services.sessions.window_for(&key);
+    let window = owner.and_then(|id| app.window_by_id(id));
+    let (Some(owner), Some(window)) = (owner, window) else {
         let _ = reply.send(false);
         return;
     };
     let confirmation = WriteConfirmation::external(&approval.connection_name, &approval.sql, approval.destructive);
-    window.present();
+    // The question comes over the connection it is about, which may be
+    // behind another session of the window.
+    app.present_session(owner, &key);
     glib::spawn_future_local(async move {
         let asked = approval.cancel.child_token();
         let parent: gtk4::Widget = window.upcast();

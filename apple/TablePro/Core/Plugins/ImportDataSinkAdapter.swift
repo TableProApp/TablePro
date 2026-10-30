@@ -97,7 +97,7 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
         self.joinsTransaction = joinsTransaction
         self.driver = driver
         self.databaseType = databaseType
-        self.grammar = databaseType.lexicalGrammar
+        self.grammar = SQLLexicalResolver.readings(for: databaseType, session: driver.sessionLexicalState).execution
         self.tableEditDialect = TableEditDialect.of(databaseType)
         self.databaseTypeId = databaseType.rawValue
         self.targetTable = targetTable
@@ -600,9 +600,8 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
 
     /// `ROLLBACK TO SAVEPOINT` keeps the transaction, and the classifier already reads it as not ending one.
     private func fileTransactionEnd(of statement: String) -> FileTransactionEnd? {
-        guard CatalogChangeClassifier.effect(of: statement, databaseType: databaseType).endsTransaction else {
-            return nil
-        }
+        let effect = CatalogChangeClassifier.effect(of: statement, databaseType: databaseType, grammar: grammar)
+        guard effect.endsTransaction else { return nil }
         return Self.rollbackKeywords.contains(QueryClassifier.leadingKeyword(of: statement)) ? .rollback : .commit
     }
 

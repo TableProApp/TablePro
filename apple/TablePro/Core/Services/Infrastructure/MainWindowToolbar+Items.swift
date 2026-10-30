@@ -286,6 +286,53 @@ extension MainWindowToolbar {
         return item
     }
 
+    func makeDebugItem(_ identifier: NSToolbarItem.Identifier) -> NSToolbarItem? {
+        switch identifier {
+        case Self.debugContinue:
+            return menuOnlyItem(
+                id: identifier,
+                label: String(localized: "Continue"),
+                symbol: "play",
+                action: #selector(performDebugContinue(_:)),
+                shortcut: .debugContinue
+            )
+        case Self.debugStepOver:
+            return menuOnlyItem(
+                id: identifier,
+                label: String(localized: "Step Over"),
+                symbol: "arrow.uturn.forward",
+                action: #selector(performDebugStepOver(_:)),
+                shortcut: .debugStepOver
+            )
+        case Self.debugStepInto:
+            return menuOnlyItem(
+                id: identifier,
+                label: String(localized: "Step Into"),
+                symbol: "arrow.down.to.line",
+                action: #selector(performDebugStepInto(_:)),
+                shortcut: .debugStepInto
+            )
+        case Self.debugStepOut:
+            return menuOnlyItem(
+                id: identifier,
+                label: String(localized: "Step Out"),
+                symbol: "arrow.up.to.line",
+                action: #selector(performDebugStepOut(_:)),
+                shortcut: .debugStepOut
+            )
+        case Self.debugStop:
+            return menuOnlyItem(
+                id: identifier,
+                label: String(localized: "Stop"),
+                symbol: "stop",
+                action: #selector(performDebugStop(_:)),
+                description: String(localized: "Stop Debugging")
+            )
+        default:
+            return nil
+        }
+    }
+
     // MARK: - Helpers
 
     /// The label is what the customization palette and the overflow menu show, so it stays short.

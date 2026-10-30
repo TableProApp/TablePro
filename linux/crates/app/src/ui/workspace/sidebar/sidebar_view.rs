@@ -1,72 +1,67 @@
 use std::cell::{Cell, RefCell};
-use std::rc::{Rc, Weak};
+use std::rc::Rc;
 use std::sync::Arc;
 
-use gtk4 as gtk;
 use gtk4::prelude::*;
-use gtk4::{gdk, gio, glib};
-use libadwaita as adw;
+use gtk4::{gio, glib};
 use tablepro_core::meta::TableRef;
 use tablepro_session::runtime::Tasks;
 
 use super::object_key::ObjectKey;
 use super::sidebar_affordances::SidebarAffordances;
 use super::sidebar_event::SidebarEvent;
-use super::sidebar_header_factory::header_factory;
 use super::sidebar_index::SidebarIndex;
 use super::sidebar_menu::{
-    CONTEXT_MENU, DROP_TABLE, EDIT_STRUCTURE, GROUP, IMPORT_CSV, NEW_TABLE, OPEN_IN_NEW_TAB, SHOW_CREATE_TABLE,
-    SHOW_DIAGRAM, SHOW_SCHEMA_DIAGRAM, object_menu, offers,
+    DROP_TABLE, EDIT_STRUCTURE, IMPORT_CSV, NEW_TABLE, OPEN_IN_NEW_TAB, SHOW_CREATE_TABLE, SHOW_DIAGRAM,
+    SHOW_SCHEMA_DIAGRAM, offers,
 };
-use super::sidebar_model::{RowsAsked, RowsWorkedOut, SidebarModel};
-use super::sidebar_row_factory::row_factory;
-use crate::application::{ShortcutOwner, local_shortcut_controller};
+use super::sidebar_model::{RowsAsked, RowsWorkedOut, Search, SidebarModel};
+use super::tree_node::TreeNode;
 
-const LIST_PAGE: &str = "list";
-const EMPTY_PAGE: &str = "empty";
+/// What a session's sidebar lists.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) enum Holds {
+    #[default]
+    Tables,
+    /// A key-value engine's keys, which its server matches against the
+    /// search.
+    Keys,
+    /// A document engine's collections.
+    Collections,
+}
 
-/// The session's tables in one list view that recycles its rows, in a
-/// section per schema, with one shared menu.
+/// A session's tables as the window's connection tree lists them under
+/// its connection, the table actions their menus name, and what the user
+/// asks of them, which goes to the session's workspace.
 #[derive(Clone)]
 pub(crate) struct SidebarView {
     inner: Rc<SidebarInner>,
 }
 
-pub(crate) struct SidebarInner {
-    root: gtk::Stack,
-    pub(super) list_view: gtk::ListView,
+/// What the tree runs once a list or a search's rows land.
+type RowsObserver = Rc<dyn Fn()>;
+
+struct SidebarInner {
     model: SidebarModel,
-    pub(super) popover: gtk::PopoverMenu,
     actions: gio::SimpleActionGroup,
-    empty: adw::StatusPage,
     events: Box<dyn Fn(SidebarEvent)>,
     affordances: Cell<SidebarAffordances>,
     /// Where a new index or search is worked out into rows. Without it,
     /// on the GTK thread.
     tasks: Option<Tasks>,
-    /// Whether a list was shown yet. Until then the sidebar is blank
-    /// rather than saying there are no tables.
-    listed: Cell<bool>,
-    header_factory: RefCell<Option<gtk::SignalListItemFactory>>,
-    /// The table of the tab in front. Activation on a single click also
-    /// selects rows on hover, so the selection returns here.
-    active: RefCell<Option<TableRef>>,
-    /// The recycled rows, to point the keyboard's menu at one.
-    rows: RefCell<Vec<glib::WeakRef<gtk::ListItem>>>,
-    /// The table under a middle press. A new list can bind its row to
-    /// another table before the release.
-    middle_pressed: RefCell<Option<TableRef>>,
-    handlers: RefCell<Vec<(glib::WeakRef<glib::Object>, glib::SignalHandlerId)>>,
-    hover: RefCell<Option<gtk::EventControllerMotion>>,
-    /// Whether the list holds keys, which the server matched against the
-    /// search, rather than tables the list filters itself.
-    keys: Cell<bool>,
-    /// Whether the list holds a document engine's collections, which it
-    /// names as such.
-    collections: Cell<bool>,
-    /// Whether the keys shown are those a search matched.
-    searched: Cell<bool>,
+    holds: Cell<Holds>,
+    /// What a key-value engine's server is asked to match, empty while
+    /// its branch does not follow the search.
+    key_search: RefCell<String>,
+    /// Asks the workspace for a new listing of keys.
+    relist: RefCell<Option<Box<dyn Fn()>>>,
+    observers: RefCell<Vec<(u64, RowsObserver)>>,
+    next_observer: Cell<u64>,
 }
+
+/// What `connect_rows_shown` returns, to disconnect with.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct RowsObserverId(u64);
 
 impl SidebarView {
     pub(crate) fn new(
@@ -74,343 +69,164 @@ impl SidebarView {
         affordances: SidebarAffordances,
         tasks: Option<Tasks>,
     ) -> Self {
-        let model = SidebarModel::new();
-        let list_view = gtk::ListView::new(Some(model.selection().clone()), None::<gtk::ListItemFactory>);
-        list_view.add_css_class("navigation-sidebar");
-        // A click opens the table, as the list always did; Enter and a
-        // double click reach the same activate.
-        list_view.set_single_click_activate(true);
-        list_view.update_property(&[gtk::accessible::Property::Label(&crate::i18n::gettext("Tables"))]);
-        let scroll = gtk::ScrolledWindow::builder()
-            .hscrollbar_policy(gtk::PolicyType::Never)
-            .vexpand(true)
-            .child(&list_view)
-            .build();
-        let empty = adw::StatusPage::new();
-        empty.add_css_class("compact");
-        let root = gtk::Stack::new();
-        root.add_named(&scroll, Some(LIST_PAGE));
-        root.add_named(&empty, Some(EMPTY_PAGE));
-        let actions = gio::SimpleActionGroup::new();
-        // Before the popover is parented: a popover menu finds its
-        // actions through the parent it had when it was set up.
-        list_view.insert_action_group(GROUP, Some(&actions));
-        let popover = gtk::PopoverMenu::from_model(None::<&gio::MenuModel>);
-        popover.set_has_arrow(true);
-        popover.set_parent(&list_view);
         let inner = Rc::new(SidebarInner {
-            root,
-            list_view,
-            model,
-            popover,
-            actions,
-            empty,
+            model: SidebarModel::new(),
+            actions: gio::SimpleActionGroup::new(),
             events: Box::new(events),
             affordances: Cell::new(affordances),
             tasks,
-            listed: Cell::new(false),
-            header_factory: RefCell::new(None),
-            active: RefCell::new(None),
-            rows: RefCell::new(Vec::new()),
-            middle_pressed: RefCell::new(None),
-            handlers: RefCell::new(Vec::new()),
-            hover: RefCell::new(None),
-            keys: Cell::new(false),
-            collections: Cell::new(false),
-            searched: Cell::new(false),
+            holds: Cell::new(Holds::Tables),
+            key_search: RefCell::new(String::new()),
+            relist: RefCell::new(None),
+            observers: RefCell::new(Vec::new()),
+            next_observer: Cell::new(0),
         });
-        inner
-            .list_view
-            .set_factory(Some(&row_factory(Rc::downgrade(&inner), false)));
-        let headers = header_factory(Rc::downgrade(&inner));
-        inner.list_view.set_header_factory(Some(&headers));
-        inner.header_factory.replace(Some(headers));
-        inner
-            .list_view
-            .add_controller(local_shortcut_controller(ShortcutOwner::SidebarList));
         install_actions(&inner);
-        connect_view(&inner);
-        inner.refresh_placeholder();
         Self { inner }
     }
 
-    pub(crate) fn widget(&self) -> &gtk::Stack {
-        &self.inner.root
+    /// The schemas the tree lists under the session's connection, then
+    /// a placeholder once there are none.
+    pub(crate) fn rows(&self) -> gio::ListModel {
+        self.inner.model.rows()
     }
 
-    /// Show a new object list under the search, once its rows are worked
-    /// out. The selection goes back to the tab in front's table, which the
-    /// new list holds as a new object.
-    pub(crate) fn show(&self, index: SidebarIndex) {
-        self.inner.listed.set(true);
-        let asked = self.inner.model.replace(index);
-        work_out_rows(&self.inner, asked);
+    /// Every schema, in list order, each over its tables and the ones the
+    /// search finds.
+    pub(crate) fn schemas(&self) -> gio::ListModel {
+        self.inner.model.schemas()
     }
 
-    /// `show`, indexing on the GTK thread, for lists a test writes out.
-    #[cfg(test)]
-    pub(crate) fn apply_objects(
-        &self,
-        objects: &[tablepro_core::meta::ObjectInfo],
-        schemas: &[tablepro_core::meta::SchemaInfo],
-    ) {
-        self.show(SidebarIndex::build(objects, schemas));
+    /// The table actions its menus name, for the tree's menus to reach.
+    pub(crate) fn actions(&self) -> &gio::SimpleActionGroup {
+        &self.inner.actions
+    }
+
+    pub(crate) fn affordances(&self) -> SidebarAffordances {
+        self.inner.affordances.get()
+    }
+
+    /// A reconnect can reach a server that edits less; the menus offer
+    /// what it does from their next opening.
+    pub(crate) fn set_affordances(&self, affordances: SidebarAffordances) {
+        self.inner.affordances.set(affordances);
+    }
+
+    pub(crate) fn holds(&self) -> Holds {
+        self.inner.holds.get()
     }
 
     /// Name what the list holds as a document engine's collections.
     pub(crate) fn hold_collections(&self) {
-        self.inner.collections.set(true);
+        self.inner.holds.set(Holds::Collections);
         self.inner
-            .list_view
-            .update_property(&[gtk::accessible::Property::Label(&crate::i18n::gettext("Collections"))]);
-        self.inner.refresh_placeholder();
+            .model
+            .name_placeholder(&crate::i18n::gettext("No Collections"));
     }
 
-    /// List a key-value engine's keys from now on. Its search goes to the
-    /// server, so the list shows what came back as it is.
-    pub(crate) fn hold_keys(&self) {
-        self.inner.keys.set(true);
-        let rows = row_factory(Rc::downgrade(&self.inner), true);
-        self.inner.list_view.set_factory(Some(&rows));
-        self.inner
-            .list_view
-            .update_property(&[gtk::accessible::Property::Label(&crate::i18n::gettext("Keys"))]);
-        self.inner.refresh_placeholder();
+    /// List a key-value engine's keys from now on. Its server matches the
+    /// search, so a new search asks `relist` for a new listing.
+    pub(crate) fn hold_keys(&self, relist: impl Fn() + 'static) {
+        self.inner.holds.set(Holds::Keys);
+        self.inner.relist.replace(Some(Box::new(relist)));
+        self.inner.model.name_placeholder(&crate::i18n::gettext("No Keys"));
     }
 
-    /// Show the keys a listing found, `searched` when a search picked
-    /// them.
+    /// Show a new object list under the search, once its rows are worked
+    /// out.
+    pub(crate) fn show(&self, index: SidebarIndex) {
+        let asked = self.inner.model.replace(index);
+        work_out_rows(&self.inner, asked);
+    }
+
+    /// Show the keys a listing found, `searched` when the server matched
+    /// them against the search: then every one is a result.
     pub(crate) fn show_keys(&self, index: SidebarIndex, searched: bool) {
-        self.inner.searched.set(searched);
+        self.inner
+            .model
+            .hold_search(if searched { Search::Everything } else { Search::None });
         self.show(index);
     }
 
+    /// The search typed. A key-value engine's server is asked for the
+    /// keys that match it, so the tree gives it only while its branch
+    /// follows the search.
     pub(crate) fn set_query(&self, query: &str) {
+        if self.holds() == Holds::Keys {
+            let query = query.trim();
+            if *self.inner.key_search.borrow() == query {
+                return;
+            }
+            self.inner.key_search.replace(query.to_owned());
+            if let Some(relist) = self.inner.relist.borrow().as_ref() {
+                relist();
+            }
+            return;
+        }
         if let Some(asked) = self.inner.model.set_query(query) {
             work_out_rows(&self.inner, asked);
         }
     }
 
-    /// Select the row of the table the tab in front shows, or none for
-    /// any other tab: a selected row would say the editor shows it.
-    pub(crate) fn sync_selection(&self, table: Option<&TableRef>) {
-        self.inner.active.replace(table.cloned());
-        self.inner.model.select(table);
+    /// What the next listing of keys asks the server to match.
+    pub(crate) fn key_search(&self) -> String {
+        self.inner.key_search.borrow().clone()
     }
 
-    /// A reconnect can reach a server that edits less, so the headers are
-    /// bound again with what it offers.
-    pub(crate) fn set_affordances(&self, affordances: SidebarAffordances) {
-        if self.inner.affordances.replace(affordances) == affordances {
-            return;
-        }
-        if let Some(headers) = self.inner.header_factory.borrow().as_ref() {
-            self.inner.list_view.set_header_factory(None::<&gtk::ListItemFactory>);
-            self.inner.list_view.set_header_factory(Some(headers));
-        }
+    /// Open `table` in its tab, or a new one.
+    pub(crate) fn open(&self, table: TableRef) {
+        (self.inner.events)(SidebarEvent::Open(table));
     }
 
-    /// Filter as the user types in `entry`.
-    pub(crate) fn follow_search(&self, entry: &gtk::SearchEntry) {
-        let view = Rc::downgrade(&self.inner);
-        let handler = entry.connect_search_changed(move |entry| {
-            if let Some(view) = view.upgrade() {
-                SidebarView { inner: view }.set_query(&entry.text());
-            }
-        });
-        self.inner.remember(entry, handler);
+    pub(crate) fn open_in_new_tab(&self, table: TableRef) {
+        (self.inner.events)(SidebarEvent::OpenInNewTab(table));
     }
 
-    /// Ask for a new listing as the user types in `entry`; the server
-    /// matches the search, so the list does not filter itself.
-    pub(crate) fn follow_key_search(&self, entry: &gtk::SearchEntry, changed: impl Fn() + 'static) {
-        let handler = entry.connect_search_changed(move |_| changed());
-        self.inner.remember(entry, handler);
+    /// Whether the session lists `table`, searched for or not.
+    pub(crate) fn lists(&self, table: &TableRef) -> bool {
+        self.inner.model.kind_of(table).is_some()
     }
 
-    /// Let go of the menu and the signals, before the widgets go.
+    /// The schema whose tables hold `table`, and where among them.
+    pub(crate) fn locate(&self, table: &TableRef) -> Option<(TreeNode, u32)> {
+        self.inner.model.locate(table)
+    }
+
+    /// The schema whose tables the search found hold `table`, and where
+    /// among them.
+    pub(crate) fn locate_found(&self, table: &TableRef) -> Option<(TreeNode, u32)> {
+        self.inner.model.locate_found(table)
+    }
+
+    /// Whether the rows on show are the ones last asked for. A key-value
+    /// engine's listing runs in the workspace, which shows it once read.
+    pub(crate) fn settled(&self) -> bool {
+        self.inner.model.settled()
+    }
+
+    /// Run `observer` each time a list or a search's rows land.
+    pub(crate) fn connect_rows_shown(&self, observer: impl Fn() + 'static) -> RowsObserverId {
+        let id = self.inner.next_observer.get();
+        self.inner.next_observer.set(id + 1);
+        self.inner.observers.borrow_mut().push((id, Rc::new(observer)));
+        RowsObserverId(id)
+    }
+
+    pub(crate) fn disconnect_rows_shown(&self, id: RowsObserverId) {
+        self.inner
+            .observers
+            .borrow_mut()
+            .retain(|(observer, _)| *observer != id.0);
+    }
+
+    /// Let go of the tree and the workspace, which outlive nothing here.
     pub(crate) fn shutdown(&self) {
-        let inner = &self.inner;
-        inner.popover.popdown();
-        if inner.popover.parent().is_some() {
-            inner.popover.unparent();
-        }
-        for (object, handler) in inner.handlers.take() {
-            if let Some(object) = object.upgrade() {
-                object.disconnect(handler);
-            }
-        }
-        if let Some(hover) = inner.hover.take() {
-            inner.list_view.remove_controller(&hover);
-        }
-        inner.list_view.insert_action_group(GROUP, None::<&gio::ActionGroup>);
-        inner.rows.take();
-    }
-
-    #[cfg(test)]
-    pub(crate) fn inner(&self) -> &Rc<SidebarInner> {
-        &self.inner
-    }
-
-    #[cfg(test)]
-    pub(crate) fn shown(&self) -> u32 {
-        self.inner.model.shown()
-    }
-
-    /// How many rows the list made since its last new index.
-    #[cfg(test)]
-    pub(crate) fn made(&self) -> usize {
-        self.inner.model.list().made()
-    }
-
-    /// Each bound row's table name and what a screen reader says it is.
-    #[cfg(test)]
-    pub(crate) fn row_descriptions(&self) -> Vec<(String, String)> {
-        let mut found: Vec<(String, String)> = self
-            .inner
-            .bound_rows()
-            .filter_map(|item| {
-                let object = item.item().and_downcast::<super::sidebar_object::SidebarObject>()?;
-                Some((object.name(), item.accessible_description().to_string()))
-            })
-            .collect();
-        found.sort();
-        found
-    }
-
-    #[cfg(test)]
-    pub(crate) fn selected_table(&self) -> Option<TableRef> {
-        let model = &self.inner.model;
-        model
-            .object_at(model.selection().selected())
-            .map(|object| object.table_ref())
+        self.inner.observers.take();
+        self.inner.relist.take();
     }
 }
 
 impl SidebarInner {
-    pub(super) fn affordances(&self) -> SidebarAffordances {
-        self.affordances.get()
-    }
-
-    pub(super) fn holds_keys(&self) -> bool {
-        self.keys.get()
-    }
-
-    pub(super) fn track_row(&self, item: &gtk::ListItem) {
-        let mut rows = self.rows.borrow_mut();
-        // A search makes two hundred rows at once, so the rows gone are
-        // dropped only when the list would grow, not on every row.
-        if rows.len() == rows.capacity() {
-            rows.retain(|row| row.upgrade().is_some());
-        }
-        rows.push(item.downgrade());
-    }
-
-    /// A press on the row at `position`. True when the sidebar handled
-    /// it, so the row's own click does not select or open it too.
-    pub(crate) fn pressed(
-        &self,
-        position: u32,
-        button: u32,
-        modifiers: gdk::ModifierType,
-        pointing: Option<gdk::Rectangle>,
-    ) -> bool {
-        match button {
-            gdk::BUTTON_SECONDARY => {
-                self.popup_menu(position, pointing);
-                true
-            }
-            gdk::BUTTON_PRIMARY if modifiers.contains(gdk::ModifierType::CONTROL_MASK) => {
-                self.open_in_new_tab(position);
-                true
-            }
-            gdk::BUTTON_MIDDLE => {
-                self.middle_pressed
-                    .replace(self.model.object_at(position).map(|object| object.table_ref()));
-                false
-            }
-            _ => false,
-        }
-    }
-
-    /// A middle click opens the table it was pressed on in a new tab, as
-    /// a link does.
-    pub(super) fn released(&self, button: u32) -> bool {
-        if button != gdk::BUTTON_MIDDLE {
-            return false;
-        }
-        let Some(table) = self.middle_pressed.take() else {
-            return false;
-        };
-        if self.model.kind_of(&table).is_some() {
-            (self.events)(SidebarEvent::OpenInNewTab(table));
-        }
-        true
-    }
-
-    fn open_in_new_tab(&self, position: u32) {
-        if let Some(object) = self.model.object_at(position) {
-            (self.events)(SidebarEvent::OpenInNewTab(object.table_ref()));
-        }
-    }
-
-    fn activate(&self, position: u32) {
-        if let Some(object) = self.model.object_at(position) {
-            (self.events)(SidebarEvent::Open(object.table_ref()));
-        }
-    }
-
-    /// Select the row at `position` and open its menu, pointing at
-    /// `pointing` in the list view, or at the whole list.
-    pub(crate) fn popup_menu(&self, position: u32, pointing: Option<gdk::Rectangle>) {
-        let Some(object) = self.model.object_at(position) else {
-            return;
-        };
-        self.model.selection().set_selected(position);
-        let menu = object_menu(&ObjectKey(object.table_ref()), object.kind(), self.affordances.get());
-        self.popover.set_menu_model(Some(&menu));
-        self.popover.set_pointing_to(pointing.as_ref());
-        self.popover.popup();
-    }
-
-    /// The Menu key and Shift+F10: the menu of the row the keyboard is
-    /// on, over that row. The selection follows the tab in front, not
-    /// the keyboard, so it stands in only when no row has focus.
-    fn popup_keyboard_menu(&self) {
-        let position = self
-            .focused_position()
-            .unwrap_or_else(|| self.model.selection().selected());
-        if position == gtk::INVALID_LIST_POSITION {
-            return;
-        }
-        let pointing = self.row_bounds(position).or_else(|| {
-            self.list_view
-                .focus_child()
-                .and_then(|row| bounds_in(&row, &self.list_view))
-        });
-        self.popup_menu(position, pointing);
-    }
-
-    fn row_bounds(&self, position: u32) -> Option<gdk::Rectangle> {
-        let row = self.bound_rows().find(|item| item.position() == position)?.child()?;
-        bounds_in(&row, &self.list_view)
-    }
-
-    fn focused_position(&self) -> Option<u32> {
-        let focused = self.list_view.focus_child()?;
-        self.bound_rows()
-            .find(|item| {
-                item.child()
-                    .is_some_and(|row| row == focused || row.is_ancestor(&focused))
-            })
-            .map(|item| item.position())
-    }
-
-    fn bound_rows(&self) -> impl Iterator<Item = gtk::ListItem> {
-        let rows: Vec<gtk::ListItem> = self.rows.borrow().iter().filter_map(glib::WeakRef::upgrade).collect();
-        rows.into_iter().filter(|item| item.item().is_some())
-    }
-
     /// Run a table action whose target came through GAction: a target of
     /// the wrong shape, or for a table the list no longer has, does
     /// nothing.
@@ -455,19 +271,31 @@ impl SidebarInner {
             tracing::warn!("a diagram was asked for without a schema");
             return;
         };
+        if !self.affordances.get().speaks_sql || self.holds.get() == Holds::Keys {
+            return;
+        }
         (self.events)(SidebarEvent::ShowDiagram(schema.filter(|schema| !schema.is_empty())));
     }
 
     fn show_rows(&self, worked_out: RowsWorkedOut) {
-        let previous = self.model.shown_index();
-        if let Err(overtaken) = self.model.show(worked_out) {
-            self.release(overtaken);
-            return;
+        let previous = match self.model.show(worked_out) {
+            Ok(previous) => previous,
+            Err(overtaken) => {
+                self.release(overtaken);
+                return;
+            }
+        };
+        let observers: Vec<RowsObserver> = self
+            .observers
+            .borrow()
+            .iter()
+            .map(|(_, observer)| observer.clone())
+            .collect();
+        for observer in observers {
+            observer();
         }
-        self.reselect();
-        // An empty list replacing an empty list changes no item, so the
-        // list's signal never says the placeholder is out of date.
-        self.refresh_placeholder();
+        // After the observers: the tree lets go of the lists of what an
+        // older search found, which hold the index too.
         if !Arc::ptr_eq(&previous, &self.model.shown_index()) {
             self.release(previous);
         }
@@ -480,44 +308,6 @@ impl SidebarInner {
         if let Some(tasks) = self.tasks.as_ref() {
             drop(tasks.spawn_blocking_task(move || drop(unused)));
         }
-    }
-
-    fn reselect(&self) {
-        self.model.select(self.active.borrow().as_ref());
-    }
-
-    fn refresh_placeholder(&self) {
-        if self.model.shown() > 0 || !self.listed.get() {
-            self.root.set_visible_child_name(LIST_PAGE);
-            return;
-        }
-        let keys = self.keys.get();
-        let collections = self.collections.get();
-        if self.model.has_query() || (keys && self.searched.get()) {
-            self.empty.set_icon_name(Some(crate::ui::icons::SYSTEM_SEARCH));
-            self.empty.set_title(&match (keys, collections) {
-                (true, _) => crate::i18n::gettext("No Matching Keys"),
-                (false, true) => crate::i18n::gettext("No Matching Collections"),
-                (false, false) => crate::i18n::gettext("No Matching Tables"),
-            });
-            self.empty
-                .set_description(Some(&crate::i18n::gettext("Try a different search.")));
-        } else {
-            self.empty.set_icon_name(Some(crate::ui::icons::VIEW_GRID));
-            self.empty.set_title(&match (keys, collections) {
-                (true, _) => crate::i18n::gettext("No Keys"),
-                (false, true) => crate::i18n::gettext("No Collections"),
-                (false, false) => crate::i18n::gettext("No Tables"),
-            });
-            self.empty.set_description(None);
-        }
-        self.root.set_visible_child_name(EMPTY_PAGE);
-    }
-
-    fn remember(&self, object: &impl IsA<glib::Object>, handler: glib::SignalHandlerId) {
-        self.handlers
-            .borrow_mut()
-            .push((object.upcast_ref::<glib::Object>().downgrade(), handler));
     }
 }
 
@@ -576,49 +366,4 @@ fn install_actions(inner: &Rc<SidebarInner>) {
         }
     });
     inner.actions.add_action(&diagram);
-    let menu = gio::SimpleAction::new(CONTEXT_MENU, None);
-    let view = Rc::downgrade(inner);
-    menu.connect_activate(move |_, _| {
-        if let Some(view) = view.upgrade() {
-            view.popup_keyboard_menu();
-        }
-    });
-    inner.actions.add_action(&menu);
-}
-
-fn connect_view(inner: &Rc<SidebarInner>) {
-    let view: Weak<SidebarInner> = Rc::downgrade(inner);
-    let handler = inner.list_view.connect_activate(move |_, position| {
-        if let Some(view) = view.upgrade() {
-            view.activate(position);
-        }
-    });
-    inner.remember(&inner.list_view, handler);
-    let view = Rc::downgrade(inner);
-    let handler = inner.model.selection().connect_items_changed(move |_, _, _, _| {
-        if let Some(view) = view.upgrade() {
-            view.refresh_placeholder();
-        }
-    });
-    inner.remember(inner.model.selection(), handler);
-    let hover = gtk::EventControllerMotion::new();
-    let view = Rc::downgrade(inner);
-    hover.connect_leave(move |_| {
-        if let Some(view) = view.upgrade() {
-            view.reselect();
-        }
-    });
-    inner.list_view.add_controller(hover.clone());
-    inner.hover.replace(Some(hover));
-}
-
-fn bounds_in(widget: &impl IsA<gtk::Widget>, target: &gtk::ListView) -> Option<gdk::Rectangle> {
-    widget.compute_bounds(target).map(|bounds| {
-        gdk::Rectangle::new(
-            bounds.x() as i32,
-            bounds.y() as i32,
-            bounds.width() as i32,
-            bounds.height() as i32,
-        )
-    })
 }

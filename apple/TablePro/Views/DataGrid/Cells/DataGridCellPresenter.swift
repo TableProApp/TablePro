@@ -16,6 +16,7 @@ final class DataGridCellPresenter {
         let findMatch: GridFindState.Match?
         let isEditable: Bool
         let checkboxColumns: Set<Int>
+        let marksEmptyText: Bool
         let palette: DataGridCellPalette
         let scope: ThemeScope
         let databaseType: DatabaseType?
@@ -55,6 +56,7 @@ final class DataGridCellPresenter {
             findMatch: model.find.currentMatch,
             isEditable: model.configuration.isEditable,
             checkboxColumns: model.configuration.checkboxColumns,
+            marksEmptyText: model.configuration.marksEmptyText,
             palette: registry.palette,
             scope: model.themeScope,
             databaseType: model.configuration.traits.databaseType,
@@ -248,7 +250,8 @@ final class DataGridCellPresenter {
                 placeholder: DataGridCellContent.placeholder(
                     for: rawValue,
                     isAbsent: row.isAbsent(dataIndex),
-                    unloadedByteCount: row.unloadedByteCount(dataIndex)
+                    unloadedByteCount: row.unloadedByteCount(dataIndex),
+                    marksEmptyText: pass.marksEmptyText
                 )
             ),
             state: DataGridCellState(
@@ -294,7 +297,8 @@ final class DataGridCellPresenter {
         switch DataGridCellContent.placeholder(
             for: rawValue,
             isAbsent: row.isAbsent(dataIndex),
-            unloadedByteCount: row.unloadedByteCount(dataIndex)
+            unloadedByteCount: row.unloadedByteCount(dataIndex),
+            marksEmptyText: model.configuration.marksEmptyText
         ) {
         case .null: return String(localized: "NULL")
         case .empty: return String(localized: "Empty")

@@ -183,7 +183,9 @@ internal final class ObjectCopySession: ObservableObject {
                 from: source.databaseType,
                 to: target.databaseType,
                 sourceLanguage: PluginManager.shared.editorLanguage(for: source.databaseType),
-                targetLanguage: PluginManager.shared.editorLanguage(for: target.databaseType)
+                targetLanguage: PluginManager.shared.editorLanguage(for: target.databaseType),
+                sourceSession: SQLLexicalResolver.sessionState(for: source.connectionId),
+                targetSession: SQLLexicalResolver.sessionState(for: target.connectionId)
             ) {
                 return reason
             }

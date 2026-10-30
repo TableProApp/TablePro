@@ -23,7 +23,9 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
     /// record on the next launch. A user who customized keeps their arrangement and still receives
     /// new items where they belong; a bump would throw that away along with their display mode.
     /// The record is six keys and `isHidden` is not among them, since it is runtime state that is
-    /// never persisted, so a context-sensitive item set is no reason to bump either.
+    /// never persisted, so a context-sensitive item set is no reason to bump either. A reordered
+    /// default list needs no bump: a toolbar nobody customized stores no item list and takes the
+    /// new order, and a customized one keeps the user's (`scripts/probes/check-toolbar-autosave-reorder.sh`).
     ///
     /// Bump only for a change that diff cannot express, and say which. Neither fact was measured on
     /// macOS 13 or 14.
@@ -80,6 +82,13 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
 
     /// Coalesces the passes Customize Toolbar asks for, so a drop of several items is one pass.
     private var isVisibilityReapplyScheduled = false
+
+    // Whether the Routine Debugger module is on; its controls are vended only then, so turning it off prunes them.
+    internal var debugItemsEnabled: @MainActor () -> Bool = {
+        AppModuleSettings.shared.isEnabled(.routineDebugger)
+    }
+
+    internal var debugItemsRecord = ToolbarDebugItemsRecord()
 
     /// `NSMenu.delegate` is weak, and the safe-mode control's menu is built here rather than by the
     /// menu bar, so this toolbar is what keeps its delegate alive.
@@ -348,7 +357,8 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
     internal func apply(_ visibility: ToolbarVisibility) {
         guard #available(macOS 15.0, *) else { return }
         self.visibility = visibility
-        for item in managedToolbar.items where ToolbarContextResolver.hideableIdentifiers.contains(item.itemIdentifier) {
+        let hideable = ToolbarContextResolver.hideableItems(showsDebugItems: debugItemsEnabled())
+        for item in managedToolbar.items where hideable.contains(item.itemIdentifier) {
             item.isHidden = visibility.hides(item.itemIdentifier)
         }
         managedToolbar.validateVisibleItems()
@@ -406,13 +416,29 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
     /// The pull-down that carries the long tail of a context's commands. One control whose menu
     /// changes with the tab, instead of one permanent titlebar slot per command.
     nonisolated static let actions = NSToolbarItem.Identifier("com.TablePro.toolbar.actions")
+    nonisolated static let debugContinue = NSToolbarItem.Identifier("com.TablePro.toolbar.debug.continue")
+    nonisolated static let debugStepOver = NSToolbarItem.Identifier("com.TablePro.toolbar.debug.stepOver")
+    nonisolated static let debugStepInto = NSToolbarItem.Identifier("com.TablePro.toolbar.debug.stepInto")
+    nonisolated static let debugStepOut = NSToolbarItem.Identifier("com.TablePro.toolbar.debug.stepOut")
+    nonisolated static let debugStop = NSToolbarItem.Identifier("com.TablePro.toolbar.debug.stop")
+    nonisolated static let debugItemIdentifiers: [NSToolbarItem.Identifier] = [
+        debugContinue, debugStepOver, debugStepInto, debugStepOut, debugStop,
+    ]
+    // Xcode's pair. The steps live in the debug tab's own bar and the palette, which keeps a debug tab at eight hit targets.
+    nonisolated static let debugDefaultItemIdentifiers: [NSToolbarItem.Identifier] = [debugContinue, debugStop]
 
     // MARK: - NSToolbarDelegate
 
     /// Eight controls, and the zones are the panes. AppKit's own sidebar toggle stands alone ahead of
     /// `.sidebarTrackingSeparator`, so it lays out in the sidebar's titlebar strip and follows the
-    /// divider; the connection and its container are centred; Refresh, the commit verb, the Actions
-    /// pull-down and Safe Mode are the content run; the trailing-pane toggle closes the row.
+    /// divider; the connection and its container are centred; Refresh, the Actions pull-down, Safe
+    /// Mode and the commit verb are the content run; the trailing-pane toggle closes the row.
+    ///
+    /// The commit verb comes last because the HIG gives a critical action like Save "dedicated,
+    /// familiar, and visually distinct sections" and puts the primary action on the trailing side.
+    /// Measured on macOS 27, AppKit already gives it a glass section of its own there: Safe Mode's
+    /// menu indicator ends the shared capsule before it, so no `.space` is needed, and one drew
+    /// pixel-identical.
     ///
     /// A tracking separator divides the toolbar into pane-aligned sections; it does not align the
     /// items inside one. Everything after `.inspectorTrackingSeparator` therefore lays out from
@@ -444,9 +470,9 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
             database,
             .flexibleSpace,
             refresh,
-            saveChanges,
             actions,
             safeMode,
+            saveChanges,
         ]
         if #available(macOS 14.0, *) {
             items.append(.inspectorTrackingSeparator)
@@ -478,11 +504,77 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
         quickSwitcher,
     ]
 
+    // Ahead of the Actions pull-down, in the content run Refresh and the commit control leave empty on a debug tab.
+    nonisolated internal static func defaultItems(includingDebugItems: Bool) -> [NSToolbarItem.Identifier] {
+        let items = defaultItemIdentifiers
+        guard includingDebugItems, let index = items.firstIndex(of: actions) else { return items }
+        return Array(items[..<index]) + debugDefaultItemIdentifiers + Array(items[index...])
+    }
+
     internal func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        Self.defaultItemIdentifiers
+        Self.defaultItems(includingDebugItems: debugItemsEnabled())
     }
 
     internal func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        Self.allowedItemIdentifiers
+        debugItemsEnabled() ? Self.allowedItemIdentifiers + Self.debugItemIdentifiers : Self.allowedItemIdentifiers
+    }
+
+    // Replaced under test, where no window hosts the toolbar.
+    internal var isInWindow: @MainActor () -> Bool = { false }
+
+    // Pushed by the one writer of a module's state, so no toolbar listens for module changes while the module is off.
+    internal static func applyModuleChange() {
+        for window in NSApp.windows {
+            guard let owner = window.toolbar?.delegate as? MainWindowToolbar else { continue }
+            owner.reconcileDebugItems()
+            owner.refreshContext(forcing: true)
+        }
+    }
+
+    // Run when the module changes and when the toolbar reaches a window, after it restored its saved arrangement: a
+    // change made while no connection window was open would otherwise never reach the arrangement. Inserted or removed
+    // in place, because reassigning the toolbar rebuilds the whole titlebar.
+    internal func reconcileDebugItems() {
+        guard windowController?.view.window != nil || isInWindow() else { return }
+        let wanted = debugItemsEnabled()
+        guard debugItemsRecord.isApplied != wanted else { return }
+        debugItemsRecord.record(wanted)
+        let debugIdentifiers = Set(Self.debugItemIdentifiers)
+        if wanted {
+            let present = managedToolbar.items.contains { debugIdentifiers.contains($0.itemIdentifier) }
+            if !present, let index = managedToolbar.items.firstIndex(where: { $0.itemIdentifier == Self.actions }) {
+                for (offset, identifier) in Self.debugDefaultItemIdentifiers.enumerated() {
+                    managedToolbar.insertItem(withItemIdentifier: identifier, at: index + offset)
+                }
+            }
+        } else {
+            for index in managedToolbar.items.indices.reversed()
+            where debugIdentifiers.contains(managedToolbar.items[index].itemIdentifier) {
+                managedToolbar.removeItem(at: index)
+            }
+        }
+    }
+}
+
+// The module state last written into the shared arrangement. Toolbars sharing an identifier copy each other's edits, so
+// a change is written once, by the first toolbar in a window to see it, and a person who then removes the pair keeps it
+// removed. Kept beside the arrangement, in the domain AppKit autosaves it to, so it outlives the launch: a module turned on
+// before any connection window opened still reaches a customized arrangement. Missing reads as off, which is what an
+// arrangement saved before the module existed holds.
+internal struct ToolbarDebugItemsRecord {
+    static let key = "com.TablePro.main.toolbar.v4.debugItems"
+
+    let defaults: UserDefaults
+
+    init(defaults: UserDefaults = AppStorageEnvironment.shared.defaults) {
+        self.defaults = defaults
+    }
+
+    var isApplied: Bool {
+        defaults.bool(forKey: Self.key)
+    }
+
+    func record(_ applied: Bool) {
+        defaults.set(applied, forKey: Self.key)
     }
 }

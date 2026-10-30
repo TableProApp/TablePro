@@ -22,11 +22,11 @@ private final class CountingDriver: PluginDriverStub, @unchecked Sendable {
     /// What the session answers when the executor asks what it is already holding.
     let sessionState: PluginSessionTransactionState
 
-    /// Every call in the order it arrived: statement text, plus "BEGIN", "COMMIT" and "ROLLBACK".
+    /// Every call in the order it arrived: statement text, plus "BEGIN", "COMMIT", "ROLLBACK" and
+    /// "open" or "close" with a session scope's purpose.
     private(set) var trace: [String] = []
     private var statementCount = 0
 
-    var executed: [String] { trace.filter { !["BEGIN", "COMMIT", "ROLLBACK"].contains($0) } }
     var didCommit: Bool { trace.contains("COMMIT") }
     var didRollBack: Bool { trace.contains("ROLLBACK") }
 
@@ -61,6 +61,15 @@ private final class CountingDriver: PluginDriverStub, @unchecked Sendable {
     }
 
     func sessionTransactionState() async -> PluginSessionTransactionState { sessionState }
+
+    func openSessionScope(for purpose: PluginSessionPurpose) async throws -> PluginSessionScope? {
+        trace.append("open \(purpose)")
+        return PluginSessionScope(purpose: purpose, saved: [], applied: [])
+    }
+
+    func closeSessionScope(_ scope: PluginSessionScope) async throws {
+        trace.append("close \(scope.purpose)")
+    }
 
     func beginTransaction(mode: PluginTransactionAccessMode) async throws { trace.append("BEGIN") }
     func commitTransaction() async throws { trace.append("COMMIT") }
@@ -181,6 +190,18 @@ struct DataWriteExecutorTests {
         #expect(counting.didRollBack)
     }
 
+    @Test("A KingbaseES keyless write that found no row is rolled back, as libpq reports a real count")
+    func kingbaseKeylessWriteThatMatchedNothingFails() async throws {
+        let counting = CountingDriver(affectedRows: 0)
+        await #expect(throws: DataWriteError.rowsNoLongerMatch(table: "t", expected: 1, actual: 0)) {
+            try await DataWriteExecutor.run(
+                plan(expectedRowCount: 1, matchesRowsWithoutKey: true, databaseType: .kingbasees),
+                on: driver(counting)
+            )
+        }
+        #expect(counting.didRollBack)
+    }
+
     @Test("An engine whose driver reports no real count is not held to one")
     func keylessWriteOnAnEngineWithoutCountsSucceeds() async throws {
         let counting = CountingDriver(affectedRows: 0)
@@ -193,7 +214,8 @@ struct DataWriteExecutorTests {
         #expect(counting.didCommit)
     }
 
-    @Test("The foreign-key disable runs before the transaction, and the re-enable after it")
+    /// SQLite opens with foreign_keys off, and the epilogue alone would leave it on.
+    @Test("The foreign-key disable runs before the transaction and the re-enable after it, inside a preserving scope")
     func togglesRunOutsideTheTransaction() async throws {
         let counting = CountingDriver(affectedRows: 1)
         _ = try await DataWriteExecutor.run(
@@ -206,15 +228,17 @@ struct DataWriteExecutorTests {
         )
 
         #expect(counting.trace == [
+            "open preserve",
             "PRAGMA foreign_keys = OFF",
             "BEGIN",
             "UPDATE \"t\" SET \"b\" = 0",
             "COMMIT",
             "PRAGMA foreign_keys = ON",
+            "close preserve",
         ])
     }
 
-    @Test("Foreign keys are re-enabled after a rollback too")
+    @Test("Foreign keys are re-enabled and the session's settings put back after a rollback too")
     func togglesRunAfterRollback() async throws {
         let counting = CountingDriver(affectedRows: 1, failOnStatement: 2)
         await #expect(throws: (any Error).self) {
@@ -228,8 +252,36 @@ struct DataWriteExecutorTests {
             )
         }
 
-        #expect(counting.didRollBack)
-        #expect(counting.trace.last == "PRAGMA foreign_keys = ON")
+        #expect(counting.trace.first == "open preserve")
+        #expect(Array(counting.trace.suffix(3)) == ["ROLLBACK", "PRAGMA foreign_keys = ON", "close preserve"])
+    }
+
+    /// PostgreSQL would put a `SET LOCAL` value back session-wide, where it outlives the user's transaction.
+    @Test(
+        "A save inside the user's transaction saves no session settings to put back",
+        arguments: [PluginSessionTransactionState.inTransaction, .abortedTransaction]
+    )
+    func saveInsideTheUsersTransactionOpensNoScope(state: PluginSessionTransactionState) async throws {
+        let counting = CountingDriver(affectedRows: 1, sessionState: state)
+        _ = try? await DataWriteExecutor.run(
+            plan(
+                expectedRowCount: 1,
+                prologue: ["SET session_replication_role = replica"],
+                epilogue: ["SET session_replication_role = origin"]
+            ),
+            on: driver(counting)
+        )
+
+        #expect(!counting.trace.contains("open preserve"))
+        #expect(counting.trace.contains("SET session_replication_role = origin"))
+    }
+
+    @Test("A plan without a prologue leaves the session's settings alone")
+    func planWithoutPrologueOpensNoScope() async throws {
+        let counting = CountingDriver(affectedRows: 1)
+        _ = try await DataWriteExecutor.run(plan(expectedRowCount: 1), on: driver(counting))
+
+        #expect(counting.trace == ["BEGIN", "UPDATE \"t\" SET \"b\" = 0", "COMMIT"])
     }
 
     @Test
@@ -247,7 +299,12 @@ struct DataWriteExecutorTests {
             try await DataWriteExecutor.run(required, on: driver(counting))
         }
 
-        #expect(counting.executed == ["SET IDENTITY_INSERT [dbo].[t] ON", "SET IDENTITY_INSERT [dbo].[t] OFF"])
+        #expect(counting.trace == [
+            "open preserve",
+            "SET IDENTITY_INSERT [dbo].[t] ON",
+            "SET IDENTITY_INSERT [dbo].[t] OFF",
+            "close preserve",
+        ])
         #expect(!counting.didCommit)
     }
 

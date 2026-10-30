@@ -329,16 +329,23 @@ enum PostgreSQLSchemaQueries {
     /// inherits `C` from its domain and one declared `COLLATE "C"` over `text` report `C` in
     /// `information_schema`, and only the second declares it. Reads the attribute as `a`, which every
     /// column read and column DDL builder in this plugin aliases it to.
-    static let columnCollation = """
-        CASE WHEN a.attcollation <> 0
-                  AND a.attcollation <> (SELECT ty.typcollation FROM pg_catalog.pg_type ty WHERE ty.oid = a.atttypid)
-                 THEN \(PostgreSQLObjectQueries.collationName("a.attcollation"))
-            END
-        """
+    static let columnCollation = declaredCollation(PostgreSQLObjectQueries.collationName("a.attcollation"))
 
     /// `columnCollation` as the text a column definition appends after its type: ` COLLATE <name>`, or
     /// an empty string.
-    static let columnCollateClause = "COALESCE(' COLLATE ' || \(columnCollation), '')"
+    // The keyword sits inside the THEN: KingbaseES in Oracle mode reads `' COLLATE ' || NULL` as ` COLLATE `.
+    static let columnCollateClause = declaredCollation(
+        "' COLLATE ' || \(PostgreSQLObjectQueries.collationName("a.attcollation"))", otherwise: "''"
+    )
+
+    private static func declaredCollation(_ value: String, otherwise fallback: String? = nil) -> String {
+        """
+        CASE WHEN a.attcollation <> 0
+                  AND a.attcollation <> (SELECT ty.typcollation FROM pg_catalog.pg_type ty WHERE ty.oid = a.atttypid)
+                 THEN \(value)\(fallback.map { "\n         ELSE \($0)" } ?? "")
+            END
+        """
+    }
 
     /// One array over the sequences this column's default reads in the table's own schema, ordered by
     /// oid so the qualified and relative arrays pair element for element.
@@ -431,8 +438,8 @@ enum PostgreSQLSchemaQueries {
     }
 
     static func rebuildColumnsQuery(schema: String, table: String, capabilities: PostgreSQLCapabilities) -> String {
-        let identityFlag = capabilities.hasIdentityColumns ? "a.attidentity <> ''" : "false"
-        let generatedFlag = capabilities.hasGeneratedColumns ? "a.attgenerated <> ''" : "false"
+        let identityFlag = capabilities.hasIdentityColumns ? "a.attidentity IN ('a', 'd')" : "false"
+        let generatedFlag = capabilities.hasGeneratedColumns ? "a.attgenerated IN ('s', 'v')" : "false"
         return """
             SELECT
                 a.attname,
@@ -458,9 +465,10 @@ enum PostgreSQLSchemaQueries {
                   ELSE ''
                 END ||
             """ : ""
+        // The kinds are named because KingbaseES in Oracle mode reads `''` as NULL, so `= ''` is never true there.
         let defaultGuard = [
-            capabilities.hasIdentityColumns ? "AND a.attidentity = ''" : "",
-            capabilities.hasGeneratedColumns ? "AND a.attgenerated = ''" : ""
+            capabilities.hasIdentityColumns ? "AND a.attidentity NOT IN ('a', 'd')" : "",
+            capabilities.hasGeneratedColumns ? "AND a.attgenerated NOT IN ('s', 'v')" : ""
         ].filter { !$0.isEmpty }.joined(separator: " ")
         return """
             quote_ident(a.attname) || ' ' || format_type(a.atttypid, a.atttypmod) || \(columnCollateClause) ||
@@ -523,8 +531,15 @@ enum PostgreSQLSchemaQueries {
         let includesTableName = table == nil
         let identityProjection = capabilities.hasIdentityColumns ? "a.attidentity" : "NULL::text"
         let generatedProjection = capabilities.hasGeneratedColumns ? "a.attgenerated" : "NULL::text"
+        // Not `c.generation_expression`: KingbaseES's Oracle-mode view compares `attgenerated <> NULL`, so it is always NULL.
         let generationExpressionProjection = capabilities.hasGeneratedColumns
-            ? "c.generation_expression"
+            ? """
+                CASE WHEN a.attgenerated IN ('s', 'v')
+                         THEN (SELECT pg_catalog.pg_get_expr(ad.adbin, ad.adrelid)
+                                 FROM pg_catalog.pg_attrdef ad
+                                WHERE ad.adrelid = a.attrelid AND ad.adnum = a.attnum)
+                    END
+                """
             : "NULL::text"
         let attributeJoin = """
 

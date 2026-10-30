@@ -171,4 +171,4 @@ TablePro에 기여해 주신 모든 분께 감사드립니다.
 
 ## 라이선스
 
-이 프로젝트는 [GNU Affero General Public License v3.0(AGPLv3)](LICENSE)에 따라 라이선스가 부여됩니다.
+이 프로젝트는 [GNU Affero General Public License v3.0(AGPLv3)](LICENSE)에 따라 라이선스가 부여됩니다. TablePro 이름과 아이콘은 이 라이선스에 포함되지 않으며, 사용 방법은 [TRADEMARKS.md](TRADEMARKS.md)에 있습니다.

@@ -28,9 +28,14 @@ internal struct SQLScriptText {
     private let grammar: SQLLexicalGrammar
 
     internal init(databaseType: DatabaseType) {
+        self.init(databaseType: databaseType, grammar: databaseType.lexicalGrammar)
+    }
+
+    /// `grammar` is the session's execution grammar, which a server setting such as KingbaseES Oracle mode changes.
+    internal init(databaseType: DatabaseType, grammar: SQLLexicalGrammar) {
         self.databaseType = databaseType
         self.dialect = SqlDialect.from(databaseTypeId: databaseType.rawValue)
-        self.grammar = databaseType.lexicalGrammar
+        self.grammar = grammar
     }
 
     /// The statements `text` holds, each exactly as the driver receives it in one call, in order.

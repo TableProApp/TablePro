@@ -14,9 +14,14 @@ internal struct BiometricOperationAuthenticating: OperationAuthenticating {
     private static let logger = Logger(subsystem: "com.TablePro", category: "ExecutionGate")
 
     func authenticate(reason: String) async -> Bool {
-        let context = LAContext()
+        // A caller that gives up invalidates the context, which cancels the evaluation and dismisses its prompt.
+        nonisolated(unsafe) let context = LAContext()
         do {
-            return try await context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: reason)
+            return try await withTaskCancellationHandler {
+                try await context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: reason)
+            } onCancel: {
+                context.invalidate()
+            }
         } catch {
             Self.logger.warning("Biometric authentication failed: \(error.publicLogShape, privacy: .public)")
             return false

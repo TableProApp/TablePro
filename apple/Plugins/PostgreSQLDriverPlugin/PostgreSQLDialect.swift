@@ -16,7 +16,8 @@ enum PostgreSQLDialect {
         caseSensitivityStyle: .ilikeOperator,
         operators: SQLEngineVocabulary.postgreSQL.operators.compactMap(SQLOperatorDescriptor.init(vocabulary:)),
         textCastTypeName: "TEXT",
-        functionNamesAreCaseInsensitive: SQLEngineVocabulary.postgreSQL.functionNamesAreCaseInsensitive
+        functionNamesAreCaseInsensitive: SQLEngineVocabulary.postgreSQL.functionNamesAreCaseInsensitive,
+        typeNamesAreCaseInsensitive: true
     )
 
     static let keywords: Set<String> = reservedKeywords

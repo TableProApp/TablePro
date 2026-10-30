@@ -288,10 +288,10 @@ fn document_encoders_match_their_renderers() {
     );
     assert_eq!(
         streamed(
-            SqlInsertEncoder::new(dialect.clone(), &TableRef::unqualified("t"), columns.clone(), &[]),
+            SqlInsertEncoder::new(dialect.clone(), &TableRef::unqualified("t"), columns.clone(), &[], &[]),
             &rows
         ),
-        render_sql_insert(&*dialect, &TableRef::unqualified("t"), &columns, &[], &rows)
+        render_sql_insert(&*dialect, &TableRef::unqualified("t"), &columns, &[], &[], &rows)
     );
 }
 
@@ -310,12 +310,12 @@ fn document_encoders_write_whole_documents_for_no_rows() {
     );
     let table = TableRef::unqualified("t");
     assert_eq!(
-        streamed(SqlInsertEncoder::new(dialect.clone(), &table, columns, &[]), &[]),
+        streamed(SqlInsertEncoder::new(dialect.clone(), &table, columns, &[], &[]), &[]),
         ""
     );
     assert_eq!(
         streamed(
-            SqlInsertEncoder::new(dialect, &table, Vec::new().into(), &[]),
+            SqlInsertEncoder::new(dialect, &table, Vec::new().into(), &[], &[]),
             &[Vec::new()]
         ),
         "",
@@ -334,6 +334,7 @@ fn encoder_reports_undecodable_cell() {
         Box::new(CsvEncoder::new(columns.clone(), CsvOptions::default())),
         Box::new(TsvEncoder::new(columns.clone(), true)),
         Box::new(JsonArrayEncoder::new(columns.clone())),
+        Box::new(JsonLinesEncoder::new(columns.clone())),
         Box::new(MarkdownEncoder::new(columns.clone())),
         Box::new(HtmlEncoder::new(columns.clone(), "t")),
         Box::new(XmlEncoder::new(columns.clone())),
@@ -341,6 +342,7 @@ fn encoder_reports_undecodable_cell() {
             Arc::new(TestDialect::default()),
             &TableRef::unqualified("t"),
             columns.clone(),
+            &[],
             &[],
         )),
     ];
@@ -381,4 +383,36 @@ fn csv_neutralises_text_not_negative_numbers_through_encoder() {
         out,
         "\"a\"\n\"'=cmd\"\n\"'-cmd\"\n\"-5\"\n\"-12.30\"\n\"-1.5\"\n\"-12\"\n"
     );
+}
+
+#[test]
+fn json_lines_end_every_object_with_a_line_break_and_hold_the_arrays_objects() {
+    let (columns, rows) = fixture();
+
+    let out = streamed(JsonLinesEncoder::new(columns.clone()), &rows);
+
+    assert!(out.ends_with('\n'), "{out}");
+    let parsed: Vec<serde_json::Value> = out
+        .lines()
+        .map(|line| serde_json::from_str(line).expect("each line is JSON"))
+        .collect();
+    let array: Vec<serde_json::Value> =
+        serde_json::from_str(&streamed(JsonArrayEncoder::new(columns), &rows)).expect("the array");
+    assert_eq!(parsed, array, "one line per row: {out}");
+}
+
+#[test]
+fn json_lines_keep_a_json_value_written_over_several_lines_on_its_row() {
+    let columns: Arc<[ResultColumn]> = cols(&["id", "payload"]).into();
+    let payload = JsonText::parse("{\r\n  \"a\": \"x\\ny\"\n}".to_owned()).expect("JSON");
+    let rows = vec![vec![Value::Int(1), Value::Json(payload)]];
+
+    let out = streamed(JsonLinesEncoder::new(columns), &rows);
+
+    assert_eq!(out, "{\"id\":1,\"payload\":{    \"a\": \"x\\ny\" }}\n");
+}
+
+#[test]
+fn json_lines_of_no_rows_is_empty() {
+    assert_eq!(streamed(JsonLinesEncoder::new(cols(&["a"]).into()), &[]), "");
 }

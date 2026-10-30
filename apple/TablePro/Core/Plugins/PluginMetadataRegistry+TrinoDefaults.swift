@@ -168,7 +168,10 @@ extension PluginMetadataRegistry {
             likeEscapeStyle: .explicit,
             paginationStyle: paginationStyle,
             offsetFetchOrderBy: "",
-            caseSensitivityStyle: .regexFlag
+            caseSensitivityStyle: .regexFlag,
+            textCastTypeName: nil,
+            functionNamesAreCaseInsensitive: true,
+            typeNamesAreCaseInsensitive: true
         )
     }
 

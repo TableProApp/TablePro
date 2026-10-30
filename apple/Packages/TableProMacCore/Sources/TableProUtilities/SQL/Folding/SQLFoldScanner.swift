@@ -243,10 +243,13 @@ private struct Scan {
             appendSpanningRegion(.blockComment, start: start, startLine: startLine, end: span.contentEnd)
         case .quoted where text.character(at: index) == SqlDollarQuote.dollar:
             openStatementIfNeeded()
-            boundaries.observeOpaqueToken()
+            boundaries.observeQuotedToken(opener: SqlDollarQuote.dollar)
             line += span.newlines
             appendSpanningRegion(.quotedBody, start: start, startLine: startLine, end: span.contentEnd)
-        case .quoted, .parameter:
+        case .quoted:
+            boundaries.observeQuotedToken(opener: text.character(at: index))
+            line += span.newlines
+        case .parameter:
             boundaries.observeOpaqueToken()
             line += span.newlines
         }

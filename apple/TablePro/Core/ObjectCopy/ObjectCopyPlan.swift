@@ -12,6 +12,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProSQLGrammar
 
 /// One table's work: its DDL, and the read and write it will stream between.
 internal struct ObjectCopyTableStep: Identifiable, Sendable {
@@ -61,6 +62,12 @@ internal struct ObjectCopyTableStep: Identifiable, Sendable {
     /// Set when this table is in the plan but part of it cannot run, so the sheet can say why
     /// before the user presses Copy.
     internal let note: String?
+    /// One count per foreign key this table is created with. Nil when a key cannot be checked,
+    /// which keeps the target's checks on for the rows.
+    internal let keyChecks: [ObjectCopyKeyCheck]?
+    /// False when the target keeps this table's rows through a ROLLBACK, so a rolled back run still
+    /// reports them.
+    internal let rollsBack: Bool
 
     /// Spelled out rather than left to the memberwise init so the three fields a same-engine copy
     /// never sets can default. Every one of them describes something only a crossing or a
@@ -83,8 +90,12 @@ internal struct ObjectCopyTableStep: Identifiable, Sendable {
         coercer: CrossEngineValueCoercer? = nil,
         serverSideInsert: SyncStatement? = nil,
         hasRowFilter: Bool = false,
-        note: String?
+        note: String?,
+        keyChecks: [ObjectCopyKeyCheck]? = [],
+        rollsBack: Bool = true
     ) {
+        self.keyChecks = keyChecks
+        self.rollsBack = rollsBack
         self.selection = selection
         self.dropStatements = dropStatements
         self.sequenceStatements = sequenceStatements
@@ -207,6 +218,22 @@ internal struct ObjectCopyPartialNote: Identifiable, Sendable {
     internal var id: String { selection.id }
 }
 
+/// Counts the rows of a table that point at nothing through one foreign key.
+internal struct ObjectCopyKeyCheck: Sendable, Equatable {
+    internal let constraint: String
+    internal let sql: String
+}
+
+/// Whether the copy's foreign keys point only at tables it writes, which is when the target's checks
+/// may be off: turning them back on checks nothing already written.
+internal struct ObjectCopyKeysInside: Sendable, Equatable {
+    /// Every key of a table the copy creates names a table in the copy.
+    internal var created = false
+    /// Every table that gets rows is one the copy creates, so the target holds the source's keys
+    /// and no others, and each names a table that gets all of its rows.
+    internal var rows = false
+}
+
 internal struct ObjectCopyPlan: Sendable {
     internal let request: ObjectCopyRequest
     internal let createsDatabase: Bool
@@ -224,6 +251,9 @@ internal struct ObjectCopyPlan: Sendable {
     /// so the run may write that DDL under the target's write scope. A definition read as the
     /// session is runs as the session is, the way it did before scopes.
     internal let isStructureReadPinned: Bool
+    internal let keysInside: ObjectCopyKeysInside
+    /// The target session's execution grammar, which the review script is written in.
+    internal let targetGrammar: SQLLexicalGrammar
 
     internal init(
         request: ObjectCopyRequest,
@@ -232,7 +262,9 @@ internal struct ObjectCopyPlan: Sendable {
         definitionSteps: [ObjectCopyDefinitionStep],
         schemaStatements: [SyncStatement] = [],
         skipped: [ObjectCopySkip] = [],
-        isStructureReadPinned: Bool = false
+        isStructureReadPinned: Bool = false,
+        keysInside: ObjectCopyKeysInside = ObjectCopyKeysInside(),
+        targetGrammar: SQLLexicalGrammar? = nil
     ) {
         self.request = request
         self.createsDatabase = createsDatabase
@@ -241,6 +273,8 @@ internal struct ObjectCopyPlan: Sendable {
         self.schemaStatements = schemaStatements
         self.skipped = skipped
         self.isStructureReadPinned = isStructureReadPinned
+        self.keysInside = keysInside
+        self.targetGrammar = targetGrammar ?? request.target.databaseType.lexicalGrammar
     }
 
     /// Shown above the script, for the caveats the copy cannot do anything about: a key column the
@@ -352,9 +386,14 @@ internal struct ObjectCopyPlan: Sendable {
     /// A run that promises nothing keeps them in a phase of their own, where one table's failure
     /// does not reach the tables already copied.
     internal var clearsInsideDataTransaction: Bool {
-        !clearGroups.isEmpty
-            && request.wrapEachTableInTransaction
-            && request.errorHandling != .skipAndContinue
+        !clearGroups.isEmpty && dataRunsInOneTransaction
+    }
+
+    /// Stop and roll back promises the target ends as it was, so the clears and every table's rows
+    /// are one transaction. The other two keep what ran, and PostgreSQL commits an aborted
+    /// transaction as a ROLLBACK, so their batches commit as they go.
+    internal var dataRunsInOneTransaction: Bool {
+        request.wrapEachTableInTransaction && request.errorHandling == .stopAndRollback
     }
 
     /// The definitions held back until the rows are in: a trigger fires on the copy itself, and a
@@ -386,7 +425,7 @@ internal struct ObjectCopyPlan: Sendable {
     /// filled, and a user reasoning about a cascade from what they were asked to approve reached
     /// the opposite conclusion from what the run would do.
     internal var scriptText: String {
-        let script = SQLScriptText(databaseType: request.target.databaseType)
+        let script = SQLScriptText(databaseType: request.target.databaseType, grammar: targetGrammar)
         var lines: [String] = []
         if case .newDatabase(_, let name, _) = request.destination {
             lines.append(String(format: String(localized: "-- Create database %@"), name))

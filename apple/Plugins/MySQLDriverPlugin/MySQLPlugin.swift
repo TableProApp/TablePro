@@ -94,7 +94,8 @@ final class MySQLPlugin: NSObject, TableProPlugin, DriverPlugin {
         caseSensitivityStyle: .collationDefined,
         operators: SQLEngineVocabulary.mySQL.operators.compactMap(SQLOperatorDescriptor.init(vocabulary:)),
         textCastTypeName: nil,
-        functionNamesAreCaseInsensitive: SQLEngineVocabulary.mySQL.functionNamesAreCaseInsensitive
+        functionNamesAreCaseInsensitive: SQLEngineVocabulary.mySQL.functionNamesAreCaseInsensitive,
+        typeNamesAreCaseInsensitive: true
     )
 
     static let supportsDropDatabase = true

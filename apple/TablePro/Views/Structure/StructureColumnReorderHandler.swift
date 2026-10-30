@@ -25,7 +25,7 @@ enum StructureColumnReorderHandler {
                 return String(
                     localized: """
                         Could not build the column reorder for this table. If this engine's driver \
-                        was installed before column reorder shipped, update it in Settings > Plugins.
+                        was installed before column reorder shipped, update it in Settings > Extensions.
                         """
                 )
             }

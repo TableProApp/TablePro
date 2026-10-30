@@ -268,4 +268,11 @@ struct SQLExportSessionDeclarationTests {
         #expect(parts.count == 1)
         #expect(!writer.didSplit)
     }
+    @Test("KingbaseES dumps declare PostgreSQL string and encoding semantics")
+    func kingbaseSessionDeclaration() {
+        #expect(SQLExportSessionDeclaration.forDatabaseType("KingbaseES")
+            == SQLExportSessionDeclaration.forDatabaseType("PostgreSQL"))
+        #expect(!SQLExportSessionDeclaration.forDatabaseType("KingbaseES").prologue.isEmpty)
+    }
+
 }

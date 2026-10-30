@@ -99,14 +99,15 @@ struct DataFileContentView: View {
 }
 
 struct DataFileSheetTabs: View {
-    static let segmentedSheetLimit = 8
+    /// The HIG's limit for tabs, past which it asks for a pop-up menu instead.
+    static let segmentedSheetLimit = 6
 
     @ObservedObject var controller: DataFileController
 
     var body: some View {
         HStack {
             if controller.sheets.count <= Self.segmentedSheetLimit {
-                picker.pickerStyle(.segmented)
+                picker.viewSwitcherStyle()
             } else {
                 picker.pickerStyle(.menu)
             }
@@ -130,5 +131,6 @@ struct DataFileSheetTabs: View {
         .labelsHidden()
         .fixedSize()
         .accessibilityLabel(String(localized: "Sheet"))
+        .accessibilityIdentifier("data-file-sheet-picker")
     }
 }

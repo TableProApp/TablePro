@@ -15,7 +15,7 @@ import Foundation
 enum DataWriteRowCounts {
     private static let enginesReportingRealCounts: Set<DatabaseType> = [
         .mysql, .mariadb, .tidb, .oceanbase,
-        .postgresql, .redshift, .cockroachdb, .pglite,
+        .postgresql, .redshift, .cockroachdb, .pglite, .kingbasees,
         .sqlite, .libsql, .turso, .duckdb,
         .mssql, .oracle,
     ]

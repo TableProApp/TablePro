@@ -148,7 +148,8 @@ private extension PostgreSQLDashboardProvider {
                 label: String(localized: "Uptime"),
                 unit: "",
                 icon: "clock",
-                query: "SELECT date_trunc('second', now() - pg_postmaster_start_time())::text"
+                // KingbaseES in Oracle mode subtracts timestamps into an Oracle interval, printed as +000000000 00:20:19.
+                query: "SELECT date_trunc('second', CAST(now() - pg_postmaster_start_time() AS pg_catalog.interval))::text"
             ),
             MetricDefinition(
                 id: "active_queries",

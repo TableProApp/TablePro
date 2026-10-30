@@ -125,7 +125,9 @@ nonisolated enum PostgreSQLIndexQueries {
     /// `pg_get_expr` writes it, which is the same deparse with the same flags. When either end fails to
     /// match byte for byte, `method_and_keys` is NULL and the index falls back to its fields. Cutting
     /// at the first ` USING ` or the last ` WHERE ` instead would split an index named
-    /// `i ON s.t USING btree (` or a predicate holding the literal `' WHERE '`.
+    /// `i ON s.t USING btree (` or a predicate holding the literal `' WHERE '`. An index without a
+    /// predicate has a NULL suffix, never `''`: KingbaseES in Oracle mode reads `''` as NULL and
+    /// `' WHERE ' || NULL` as ` WHERE `.
     static func indexDDLQuery(schema: String, table: String?) -> String {
         let schemaLiteral = PostgreSQLObjectQueries.quoteLiteral(schema)
         let tablePredicate = table.map { " AND t.relname = \(PostgreSQLObjectQueries.quoteLiteral($0))" } ?? ""
@@ -134,15 +136,17 @@ nonisolated enum PostgreSQLIndexQueries {
                 d.table_name,
                 d.index_name,
                 CASE
-                    WHEN pg_catalog.length(d.definition) >= pg_catalog.length(d.prefix) + pg_catalog.length(d.suffix)
+                    WHEN pg_catalog.length(d.definition)
+                            >= pg_catalog.length(d.prefix) + COALESCE(pg_catalog.length(d.suffix), 0)
                         AND pg_catalog.substr(d.definition, 1, pg_catalog.length(d.prefix)) = d.prefix
-                        AND pg_catalog.substr(
+                        AND (d.suffix IS NULL OR pg_catalog.substr(
                             d.definition, pg_catalog.length(d.definition) - pg_catalog.length(d.suffix) + 1
-                        ) = d.suffix
+                        ) = d.suffix)
                     THEN pg_catalog.substr(
                         d.definition,
                         pg_catalog.length(d.prefix) + 1,
-                        pg_catalog.length(d.definition) - pg_catalog.length(d.prefix) - pg_catalog.length(d.suffix)
+                        pg_catalog.length(d.definition) - pg_catalog.length(d.prefix)
+                            - COALESCE(pg_catalog.length(d.suffix), 0)
                     )
                 END AS method_and_keys,
                 d.predicate
@@ -162,7 +166,9 @@ nonisolated enum PostgreSQLIndexQueries {
                         END
                         || pg_catalog.quote_ident(n.nspname) || '.' || pg_catalog.quote_ident(t.relname) || ' '
                         AS prefix,
-                    COALESCE(' WHERE ' || pg_catalog.pg_get_expr(ix.indpred, ix.indrelid), '') AS suffix,
+                    CASE WHEN ix.indpred IS NOT NULL
+                        THEN ' WHERE ' || pg_catalog.pg_get_expr(ix.indpred, ix.indrelid)
+                    END AS suffix,
                     pg_catalog.pg_get_expr(ix.indpred, ix.indrelid) AS predicate
                 FROM pg_catalog.pg_index ix
                 JOIN pg_catalog.pg_class i ON i.oid = ix.indexrelid

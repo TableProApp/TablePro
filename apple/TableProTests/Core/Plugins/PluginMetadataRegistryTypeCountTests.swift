@@ -7,7 +7,7 @@ import Testing
 struct PluginMetadataRegistryTypeCountTests {
     private static let expectedTypeIds: Set<String> = [
         "Beancount", "BigQuery", "Cassandra", "ClickHouse", "Cloudflare D1", "Cloudflare R2 SQL",
-        "CockroachDB", "Dameng", "Databend", "DuckDB", "DynamoDB", "Elasticsearch", "etcd", "Kafka",
+        "CockroachDB", "Dameng", "Databend", "DuckDB", "DynamoDB", "Elasticsearch", "etcd", "Kafka", "KingbaseES",
         "libSQL", "MariaDB", "MongoDB", "MySQL", "Oracle", "PGlite", "PostgreSQL", "Redis", "Redshift",
         "SAP HANA", "ScyllaDB", "Snowflake", "Spanner", "SQL Server", "SQLite", "SurrealDB", "Teradata", "TiDB",
         "Trino", "Presto", "Turso", "Typesense", "Weaviate", "OceanBase", "Firestore", "Firebase Realtime Database", "Bigtable"

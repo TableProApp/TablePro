@@ -2,43 +2,29 @@
 //! again, and the retry asks for it rather than reading the keyring's
 //! copy, which is the one that was just refused.
 
-use gtk4::subclass::prelude::*;
 use tablepro_core::credentials::SecretKind;
 use tablepro_core::{AuthMode, DriverError, SshFailure, TransportError};
-use tablepro_session::{ConnectError, ConnectSource};
+use tablepro_session::{ConnectError, ConnectSource, SessionKey};
 use tablepro_storage::{CredentialDemand, SavedConnection, SavedSshAuth};
 
 use super::SessionWindow;
-use super::session_page::SessionPage;
 
 impl SessionWindow {
-    /// The failed page's Enter Password: connect again, asking for
-    /// `kind` whatever the keyring holds. A stale activation, from a
-    /// page that has moved on, does nothing.
-    pub(super) fn on_retry_with_new_secret(&self, kind: SecretKind) {
-        let imp = self.imp();
-        let offered = self.page_is(|page| {
-            matches!(
-                page,
-                SessionPage::ConnectFailed {
-                    source: ConnectSource::Saved(_),
-                    failure,
-                    ..
-                } if failure.reenter == Some(kind)
-            )
-        });
+    /// Enter Password, on the failed page or in a failure's Details:
+    /// connect again, asking for `kind` whatever the keyring holds. One
+    /// for a failure that has moved on does nothing.
+    pub(super) fn on_retry_with_new_secret(&self, key: &SessionKey, kind: SecretKind) {
+        let offered = self
+            .with_failure(key, |source, failure| {
+                matches!(source, ConnectSource::Saved(_)) && failure.reenter == Some(kind)
+            })
+            .unwrap_or(false);
         if !offered {
             return;
         }
-        let SessionPage::ConnectFailed {
-            claim,
-            source: ConnectSource::Saved(saved),
-            ..
-        } = imp.page.replace(SessionPage::Picker)
-        else {
-            return;
-        };
-        self.reconnect_saved(claim, *saved, CredentialDemand::reenter(kind));
+        if let Some((claim, source, _)) = self.take_failure(key) {
+            self.reconnect(claim, source, CredentialDemand::reenter(kind));
+        }
     }
 }
 
@@ -251,6 +237,7 @@ mod tests {
 mod window_tests {
     use gtk4::glib;
     use gtk4::prelude::*;
+    use gtk4::subclass::prelude::*;
     use libadwaita as adw;
     use libadwaita::prelude::*;
     use secrecy::{ExposeSecret, SecretString};

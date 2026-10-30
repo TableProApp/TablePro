@@ -32,6 +32,12 @@ internal enum SidebarObjectListPresentation: Equatable {
     /// Reaching for the state enum directly instead is what left the tree with a spinner on no gate
     /// at all, flashing it on every engine that groups by schema while the two flat shapes beside
     /// it held theirs back.
+    /// What the list stands on while a loaded catalog waits for its turn: the load still reads as in flight.
+    internal static func presentedState(_ state: SchemaState, showsLoaded: Bool) -> SchemaState {
+        if case .loaded = state, !showsLoaded { return .loading }
+        return state
+    }
+
     internal static func resolveDeferringEmptyStates(
         state: SchemaState,
         hasOutlastedGrace: Bool = true

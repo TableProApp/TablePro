@@ -18,6 +18,10 @@ public enum PluginSessionPurpose: Sendable, Equatable {
     /// Rows read under `verbatimRead` are written back: the target side of a copy. A driver pins the same
     /// representation for both purposes, so a value read under one is written under the other unchanged.
     case verbatimWrite
+
+    /// Rows arrive in an order the target's foreign keys may refuse. The driver turns off the checks it can for this
+    /// session, changing nothing else the writes do, and closing puts back what it saved. Nil when it cannot.
+    case relaxedForeignKeys
 }
 
 /// One session setting, named and spelled the way its driver reads and writes it. A nil value is SQL `NULL`.

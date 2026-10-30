@@ -2,6 +2,7 @@
 //! and keeping the record of open sessions in step with the window.
 
 use gtk4::glib;
+use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use tablepro_session::SessionKey;
 use tablepro_storage::SavedConnection;
@@ -25,6 +26,16 @@ impl SessionWindow {
         let (Some(state), Some(input)) = (self.state(), self.input()) else {
             return;
         };
+        // The list the window follows has it once read: the keys restored
+        // beside the first need no read of the file each.
+        if matches!(
+            state.services.saved_connections.state(),
+            tablepro_storage::ConnectionListState::Ready(_)
+        ) {
+            let saved = state.services.saved_connections.get(id).map(Box::new);
+            input.deliver(SessionWindowInput::RestoreSaved { id, saved });
+            return;
+        }
         let store = state.services.storage.connections().clone();
         let reading = state.services.tasks.spawn_blocking_task(move || store.load_blocking());
         glib::spawn_future_local(async move {
@@ -36,10 +47,12 @@ impl SessionWindow {
                 // The key stays recorded: the list may read again once
                 // the user resets it, which the picker's banner offers.
                 Ok(Err(error)) => {
-                    tracing::warn!(%error, "a session was not restored: the saved connections could not be read")
+                    tracing::warn!(%error, "a session was not restored: the saved connections could not be read");
+                    input.deliver(SessionWindowInput::RestoreUnread(SessionKey::Saved(id)));
                 }
                 Err(failure) => {
-                    tracing::warn!(%failure, "a session was not restored: the connections read task failed")
+                    tracing::warn!(%failure, "a session was not restored: the connections read task failed");
+                    input.deliver(SessionWindowInput::RestoreUnread(SessionKey::Saved(id)));
                 }
             }
         });
@@ -65,7 +78,7 @@ impl SessionWindow {
             SessionKey::Saved(_) => saved.is_some(),
         };
         if restorable && let Some(state) = self.state() {
-            state.services.open_sessions().add(key.clone());
+            state.services.open_sessions().add(key.clone(), self.id());
         }
     }
 
@@ -75,19 +88,20 @@ impl SessionWindow {
         }
     }
 
-    /// The restore has its answer, and the page the window shows next
+    /// The restore has its answer, and what the window does with it
     /// speaks for the key.
     pub(super) fn end_restore(&self, key: &SessionKey) {
-        let restoring = &self.imp().restoring;
-        if restoring.borrow().as_ref() == Some(key) {
-            restoring.replace(None);
-        }
+        self.imp().restoring.borrow_mut().retain(|restoring| restoring != key);
     }
 
     /// A window closed before its restore had an answer holds no claim
-    /// whose release would forget the key.
+    /// whose release would forget the keys.
     pub(super) fn abandon_restore(&self) {
-        if let Some(key) = self.imp().restoring.take() {
+        let restoring = match self.imp().restoring.try_borrow_mut() {
+            Ok(mut restoring) => std::mem::take(&mut *restoring),
+            Err(_) => return,
+        };
+        for key in restoring {
             self.forget_unclaimed(&key);
         }
     }
@@ -107,7 +121,6 @@ impl SessionWindow {
 mod tests {
     use std::time::Duration;
 
-    use gtk4::prelude::*;
     use tablepro_session::fakes::{FakeConnector, FakeEstablish};
     use tablepro_session::{PendingSave, SessionKey};
     use tablepro_test_support::ConnectionScript;
@@ -126,13 +139,22 @@ mod tests {
 
         /// Open a window on `key` the way a launch restoring it does.
         fn restored_window(&self, key: &SessionKey) -> SessionWindow {
+            self.restored_window_of(std::slice::from_ref(key))
+        }
+
+        /// Open one window on `keys` the way a launch restoring that
+        /// recorded window does.
+        fn restored_window_of(&self, keys: &[SessionKey]) -> SessionWindow {
             self.services
                 .open_sessions()
-                .restore(OpenSessionsRecord::from_keys([key]));
-            self.app
-                .open_window(WindowLaunch::Restore(key.clone()))
+                .restore(OpenSessionsRecord::from_windows([keys]));
+            let window = self
+                .app
+                .open_window(WindowLaunch::Restore(keys.to_vec()))
                 .and_then(|window| window.downcast::<SessionWindow>().ok())
-                .expect("a restored window")
+                .expect("a restored window");
+            self.services.open_sessions().assign(keys, window.id());
+            window
         }
 
         /// The URI a file under the test's directory is keyed by.
@@ -307,6 +329,28 @@ mod tests {
         wait_until(WAIT, || test.window.is_visible()).expect("the window showing the file to come forward");
 
         assert_eq!(test.recorded(), [key]);
+    }
+
+    /// The keys a window recorded connect at once, so one that fails
+    /// first says why in this window and the others still open here.
+    #[gtk4::test]
+    fn a_restored_window_whose_first_key_fails_opens_the_rest_in_it() {
+        let test = TestWindow::picker("RestoreFirstFails");
+        let gone = test.file_key("gone.db");
+
+        let window = test.restored_window_of(&[gone, test.key()]);
+        wait_for(&window, "workspace");
+        crate::test_support::drain_main_context();
+
+        assert_eq!(test.services.sessions.window_for(&test.key()), Some(window.id()));
+        assert_eq!(
+            test.app.windows().len(),
+            2,
+            "the restore spilled into a window of its own"
+        );
+        assert_eq!(window.workspaces().len(), 1);
+        assert_eq!(test.recorded(), [test.key()]);
+        assert_eq!(test.connector.calls().len(), 1, "the missing file was connected to");
     }
 
     #[gtk4::test]

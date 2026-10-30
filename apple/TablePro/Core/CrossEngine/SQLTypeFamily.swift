@@ -17,6 +17,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 
 internal enum SQLTypeFamily: String, Hashable, Sendable, CaseIterable {
     case mysql
@@ -30,6 +31,20 @@ internal enum SQLTypeFamily: String, Hashable, Sendable, CaseIterable {
 
     internal static func of(_ type: DatabaseType) -> SQLTypeFamily {
         familiesByTypeId[type.rawValue] ?? .generic
+    }
+
+    /// The family a live session spells its types in. A KingbaseES cluster initialized in Oracle mode spells
+    /// `varchar2(10)` as `character varying(10 char)` and `date` as `sys.date`, a timestamp, and PostgreSQL parses
+    /// neither (measured on V9R1C10). Its driver reports that mode as PL/SQL lexing, the one part of it a session
+    /// carries, so such a session has no family a copy can cross to.
+    internal static func of(_ type: DatabaseType, session: PluginSessionLexicalState?) -> SQLTypeFamily {
+        if leavesFamily(type, session: session) { return .generic }
+        return of(type)
+    }
+
+    /// Whether the session's mode takes it out of the family its engine has.
+    internal static func leavesFamily(_ type: DatabaseType, session: PluginSessionLexicalState?) -> Bool {
+        type == .kingbasees && session?.enabled.contains(.plsqlBlocks) == true
     }
 
     /// MySQL reads a `BIT` back as the number it holds; PostgreSQL and DuckDB read theirs as a string of digits.
@@ -60,6 +75,7 @@ internal enum SQLTypeFamily: String, Hashable, Sendable, CaseIterable {
         "AlloyDB": .postgres,
         "Citus": .postgres,
         "Greenplum": .postgres,
+        "KingbaseES": .postgres,
         "SQLite": .sqlite,
         "libSQL": .sqlite,
         "Turso": .sqlite,

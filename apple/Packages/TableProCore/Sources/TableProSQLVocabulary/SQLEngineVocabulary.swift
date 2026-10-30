@@ -67,6 +67,7 @@ public struct SQLEngineVocabulary: Sendable, Hashable {
         "PostgreSQL": postgreSQL,
         "CockroachDB": postgreSQL,
         "PGlite": postgreSQL,
+        "KingbaseES": postgreSQL,
         "Redshift": redshift,
         "SQLite": sqlite,
         "SQL Server": sqlServer,

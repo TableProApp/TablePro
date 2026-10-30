@@ -72,6 +72,15 @@ struct SQLScriptTextTests {
         #expect(Self.dameng.sendableStatements(text) == [text])
     }
 
+    @Test("A KingbaseES Oracle-mode session sends a block whole, where the engine's default cuts it at each ;")
+    func sessionGrammarKeepsABlockWhole() {
+        let text = "BEGIN x := 1; y := 2; END;\n/\nSELECT 2;"
+        let session = SQLScriptText(databaseType: .kingbasees, grammar: TestGrammar.kingbaseESOracle)
+
+        #expect(session.sendableStatements(text) == ["BEGIN x := 1; y := 2; END;", "SELECT 2"])
+        #expect(SQLScriptText(databaseType: .kingbasees).sendableStatements(text).first == "BEGIN x := 1")
+    }
+
     @Test("Nothing but blanks sends nothing")
     func blankTextSendsNothing() {
         #expect(Self.oracle.sendableStatements("  \n ").isEmpty)

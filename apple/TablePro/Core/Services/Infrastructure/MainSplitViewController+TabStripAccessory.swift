@@ -157,22 +157,16 @@ internal extension MainSplitViewController {
             },
             canTearOff: { [weak workspace] id in
                 guard let workspace,
-                      let sessionState = workspace.sessionState
+                      let sessionState = workspace.sessionState,
+                      let tab = sessionState.tabManager.tabs.first(where: { $0.id == id })
                 else { return false }
                 return EditorTabDetachPolicy.canDetach(
+                    tabType: tab.tabType,
                     tabCount: sessionState.tabManager.tabs.count,
                     hasUnsavedWork: sessionState.coordinator.hasUnsavedWork(forTab: id),
-                    /// `isBusy`, never `isExecuting`. Work that cannot claim the tab still runs on
-                    /// it: Fetch All registers unclaimed work, and an exact row count lives in the
-                    /// tab's own pagination state. Moving a tab in either of those leaves the
-                    /// copied `isLoadingMore` or `isCountingExact` raised in the new window with
-                    /// the completion still owned by the old one, so it never comes down.
-                    isBusy: sessionState.coordinator.tabExecution.isBusy(id)
-                        || sessionState.tabManager.tabs.first { $0.id == id }?.pagination.isBusy == true,
-                    /// `reportedStatus`, never the driver handle. An installed driver is a handle,
-                    /// not a live connection: it stays put through a reconnect and after the health
-                    /// monitor gives up, so reading it moved tabs into windows that could not use
-                    /// them.
+                    // Not `isExecuting`: Fetch All and an exact row count run on the tab without claiming it.
+                    isBusy: sessionState.coordinator.tabExecution.isBusy(id) || tab.pagination.isBusy,
+                    // Not the driver handle, which stays installed through a reconnect and after the monitor gives up.
                     isConnected: DatabaseManager.shared.activeSessions[workspace.connectionId]?
                         .reportedStatus.isConnected == true
                 )

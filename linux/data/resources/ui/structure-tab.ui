@@ -240,6 +240,64 @@
                               </object>
                             </child>
                             <child>
+                              <!-- Shown only where the engine changes a table's options. -->
+                              <object class="AdwViewStackPage" id="options_page">
+                                <property name="name">options</property>
+                                <property name="title" translatable="yes">Options</property>
+                                <property name="icon-name">preferences-system-symbolic</property>
+                                <property name="visible">false</property>
+                                <property name="child">
+                                  <object class="GtkScrolledWindow">
+                                    <property name="vexpand">true</property>
+                                    <property name="child">
+                                      <object class="GtkBox" id="options_box">
+                                        <property name="orientation">vertical</property>
+                                        <property name="spacing">18</property>
+                                        <property name="margin-start">12</property>
+                                        <property name="margin-end">12</property>
+                                        <property name="margin-top">6</property>
+                                        <property name="margin-bottom">12</property>
+                                        <child>
+                                          <object class="AdwPreferencesGroup">
+                                            <property name="title" translatable="yes">Defaults</property>
+                                            <property name="description" translatable="yes">Columns added later take these. Existing columns keep their own unless they are converted.</property>
+                                            <child>
+                                              <object class="AdwComboRow" id="character_set_row">
+                                                <property name="title" translatable="yes">Character Set</property>
+                                              </object>
+                                            </child>
+                                            <child>
+                                              <object class="AdwComboRow" id="collation_row">
+                                                <property name="title" translatable="yes">Collation</property>
+                                              </object>
+                                            </child>
+                                            <child>
+                                              <object class="AdwSwitchRow" id="convert_row">
+                                                <property name="title" translatable="yes">Convert existing columns</property>
+                                                <property name="subtitle" translatable="yes">Rewrites the text in every column. TEXT can grow to MEDIUMTEXT, and the table is copied while it runs.</property>
+                                              </object>
+                                            </child>
+                                          </object>
+                                        </child>
+                                        <child>
+                                          <!-- Shown only while a column numbers itself. -->
+                                          <object class="AdwPreferencesGroup" id="auto_increment_group">
+                                            <property name="description" translatable="yes">A value at or below the highest one in use becomes that value plus one.</property>
+                                            <child>
+                                              <object class="AdwEntryRow" id="auto_increment_row">
+                                                <property name="title" translatable="yes">Next Auto Increment</property>
+                                                <property name="input-purpose">digits</property>
+                                              </object>
+                                            </child>
+                                          </object>
+                                        </child>
+                                      </object>
+                                    </property>
+                                  </object>
+                                </property>
+                              </object>
+                            </child>
+                            <child>
                               <object class="AdwViewStackPage">
                                 <property name="name">sql</property>
                                 <property name="title" translatable="yes">SQL Preview</property>

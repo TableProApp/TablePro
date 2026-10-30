@@ -7,13 +7,13 @@ The `app` crate's application, windows, workspace and tabs are gtk-rs subclasses
 | State | Owner | Lives as long as |
 |---|---|---|
 | Driver registry, connector, deadlines, settings, storage, `Tasks`, `SessionRegistry`, query history, the open-sessions record | `AppServices`, built by `run()` and handed to every window | the process |
-| The claim on a session's key | the window's `SessionPage` | the page |
+| The claim on a session's key | the window's open session, connect in progress or failed page | that entry |
 | The connection | `Session`, shared by the window's page and its workspace | the page, until the teardown closes it |
 | Schemas, objects and columns | the session's `SchemaCatalog` | the session |
 | Tabs, pending edits, running saves | the `Workspace`: `ChangeTrackerRegistry`, `StructureTrackerRegistry`, `WorkspaceHandle` with its `SaveLedger` | the workspace |
 | Running exports | the workspace's `ExportLedger` | the workspace |
 | A tab's rows, filter and requests | the tab's model, in its `imp` struct | the tab |
-| An editor tab's own connection | the tab's `EditorSessionSlot` | the tab, or until that connection is lost or the window's session is replaced |
+| An editor tab's own connection | the tab's `EditorSessionSlot` | the tab, or until that connection is lost or its session closes |
 | What the last run returned | the editor tab's `RunLog`, shown by its `ResultsPane` | the next run |
 | The history list, its search and the pages read | the `HistoryDialog` and its `HistoryPaging` | the dialog |
 
@@ -54,7 +54,7 @@ Windows share nothing but `AppServices`. CI fails on a `thread_local!` under `cr
 
 - Actions, signal handlers and background work send it a message, and `pump_inputs` hands the messages to the widget one at a time on the GTK thread, never inside the signal or action that sent one.
 - Shutdown aborts the pump, which closes the queue. A queued message that owns something, such as a connection that finished connecting, goes to the pump's leftover handler (`pump_inputs_with_leftovers`) and is closed rather than dropped.
-- Window actions go on the window's own action map with `add_action_entries`, which GTK exports as `win`; CI fails on a group inserted as `win`. The workspace removes the actions it added when it shuts down.
+- Window actions go on the window's own action map with `add_action_entries`, which GTK exports as `win`; CI fails on a group inserted as `win`. The `WorkspaceShell` adds the workspace actions once, sends each to the session in front, and removes them when it shuts down.
 - The workspace reports to the window through signals (`title-changed`, `dirty-changed`, `saves-in-flight-changed`, `work-completed`, `tabs-changed`), and the window turns each into one of its own inputs.
 
 A background read follows this shape, trimmed from `SessionWindow::on_restore`, which looks up the saved connection `id` names:

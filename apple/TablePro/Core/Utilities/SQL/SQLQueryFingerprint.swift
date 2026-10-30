@@ -66,7 +66,7 @@ enum SQLQueryFingerprint {
             }
 
             switch token.type {
-            case .comment, .whitespace:
+            case .comment, .whitespace, .directive:
                 continue
 
             case .number, .placeholder:
@@ -189,7 +189,7 @@ enum SQLQueryFingerprint {
             return previousValue != "]"
         case .punctuation:
             return signPrecedingPunctuation.contains(previousValue)
-        case .identifier, .number, .string, .placeholder, .comment, .whitespace:
+        case .identifier, .number, .string, .placeholder, .comment, .whitespace, .directive:
             return false
         }
     }

@@ -37,6 +37,16 @@ final class SourceEditorTextView: TextView {
     /// view, the trigger editor, the SQL preview and the AI chat code blocks all use this class.
     var statementBoundaryProvider: ((_ offset: Int, _ forward: Bool) -> Int?)?
 
+    var executionLine: Int? {
+        didSet {
+            guard executionLine != oldValue else { return }
+            needsDisplay = true
+        }
+    }
+
+    // Xcode's green for a stopped line, translucent so the text keeps its theme color on any background.
+    let executionLineColor = NSColor.systemGreen.withDynamicAlpha(0.22)
+
     /// Painted by the text view itself, the way `NSTextView.drawsBackground` does. Left to the enclosing scroll view,
     /// a semantic color such as `textBackgroundColor` is drawn as the window's background inside a window with a
     /// toolbar, so the text area no longer matched the gutter in Dark.
@@ -54,6 +64,8 @@ final class SourceEditorTextView: TextView {
         }
         drawStatementHighlight(in: dirtyRect)
         super.draw(dirtyRect)
+        // After `super`, so the caret line's opaque fill cannot hide it; the text is drawn by subviews above both.
+        drawExecutionLine(in: dirtyRect)
     }
 
     /// `Option+Shift+Up`, per AppKit's own standard key bindings.
@@ -116,6 +128,23 @@ final class SourceEditorTextView: TextView {
         for rect in layoutManager.rectsFor(range: range) where rect.intersects(dirtyRect) {
             context.fill(rect.pixelAligned)
         }
+        context.restoreGState()
+    }
+
+    private func drawExecutionLine(in dirtyRect: NSRect) {
+        guard let executionLine,
+              let line = layoutManager.textLineForIndex(executionLine - 1),
+              line.index == executionLine - 1,
+              let context = NSGraphicsContext.current?.cgContext else {
+            return
+        }
+
+        let band = CGRect(x: 0, y: line.yPos, width: bounds.width, height: line.height).pixelAligned
+        guard band.intersects(dirtyRect) else { return }
+
+        context.saveGState()
+        context.setFillColor(executionLineColor.safeCGColor)
+        context.fill(band.intersection(dirtyRect))
         context.restoreGState()
     }
 }

@@ -2,7 +2,10 @@ import Foundation
 
 public enum SQLStateChangingFunctions {
     public static func contains(_ name: String) -> Bool {
-        names.contains(name.lowercased())
+        let lowered = name.lowercased()
+        // KingbaseES ships each pg_ function under a sys_ name too, such as sys_terminate_backend (measured on V9R1C10).
+        if lowered.hasPrefix("sys_") { return names.contains("pg_" + lowered.dropFirst(4)) }
+        return names.contains(lowered)
     }
 
     private static let names: Set<String> = serverSignals

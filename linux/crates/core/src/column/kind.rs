@@ -69,6 +69,12 @@ impl ColumnKind {
         matches!(self, Self::Text { .. } | Self::Enum { .. } | Self::Xml | Self::Other)
     }
 
+    /// The kind says nothing of what the column holds, as a PostgreSQL
+    /// result's columns do (ADR 0016), so it lines up by its values.
+    pub fn is_untyped(&self) -> bool {
+        matches!(self, Self::Other | Self::Variant)
+    }
+
     pub fn is_numeric(&self) -> bool {
         matches!(
             self,
@@ -82,7 +88,8 @@ impl ColumnKind {
     pub fn accepts_empty_string(&self) -> bool {
         match self {
             Self::Text { .. } | Self::Other => true,
-            Self::Enum { labels, .. } => labels.iter().any(String::is_empty),
+            // A set with no members is the empty string.
+            Self::Enum { labels, multiple } => *multiple || labels.iter().any(String::is_empty),
             _ => false,
         }
     }
@@ -228,6 +235,20 @@ mod tests {
             assert_eq!(kind.accepts_empty_string(), empty, "accepts_empty_string {kind:?}");
             assert_eq!(kind.accepts_line_breaks(), breaks, "accepts_line_breaks {kind:?}");
         }
+    }
+
+    #[test]
+    fn a_set_with_no_members_is_the_empty_string() {
+        let set = ColumnKind::Enum {
+            labels: vec!["a".to_owned()],
+            multiple: true,
+        };
+
+        assert!(set.accepts_empty_string());
+        assert!(
+            !enumeration(&["a"]).accepts_empty_string(),
+            "an enum without an empty label"
+        );
     }
 
     #[test]

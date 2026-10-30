@@ -152,12 +152,12 @@ internal extension ObjectCopyPlanner {
         let wanted = Set(names.map { $0.lowercased() })
         let scopes = await VerbatimTransferScopes.open(reading: SessionScopeHandle(plugin))
         do {
-            let tables = try await plugin.fetchTables(schema: schema).filter { wanted.contains($0.name.lowercased()) }
+            let listed = try await plugin.fetchTables(schema: schema)
             let reads = try await CompareMetadataService.read(
-                tables: tables,
+                tables: listed.filter { wanted.contains($0.name.lowercased()) },
                 schema: schema,
                 profile: .structure,
-                narrowed: true,
+                narrowed: CompareMetadataService.narrows(listed, to: wanted),
                 databaseType: databaseType,
                 indexedKinds: SourceObjectIndexes.carriedKinds(on: databaseType),
                 using: plugin

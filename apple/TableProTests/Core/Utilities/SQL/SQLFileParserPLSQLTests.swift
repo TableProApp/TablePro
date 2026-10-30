@@ -34,6 +34,21 @@ struct SQLFileParserPLSQLTests {
         !example.script.contains("--") && !example.script.contains("/*")
     }
 
+    @Test("An Oracle-mode KingbaseES import ends a quoted routine body at its semicolon")
+    func kingbaseOracleModeQuotedBodies() async throws {
+        let script = """
+            CREATE FUNCTION f() RETURNS integer LANGUAGE SQL AS E'SELECT 42';
+            CREATE FUNCTION g() RETURNS integer AS $$ SELECT 1; $$ LANGUAGE sql;
+            CREATE FUNCTION h RETURN NUMBER AS "v" NUMBER := 1; BEGIN RETURN "v"; END;
+            /
+            SELECT E'it\\'s; here';
+            SELECT 2;
+            """
+        let statements = try await Self.parse(script, grammar: TestGrammar.kingbaseESOracle)
+        #expect(statements.count == 5)
+        #expect(statements.last == "SELECT 2")
+    }
+
     @Test("An imported script splits like the same script in the editor", arguments: commentFreeCases)
     func importMatchesTheEditor(example: PLSQLScriptCase) async throws {
         #expect(try await Self.parse(example.script, grammar: TestGrammar.oracle) == example.statements)

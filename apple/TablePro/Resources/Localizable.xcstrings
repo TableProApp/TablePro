@@ -195,6 +195,10 @@
     "Add one row to a table on a saved connection. Provide the row as a JSON object or a CSV row." : {
 
     },
+    "Add plugin_debugger to shared_preload_libraries and restart the server." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Add rows to ${table}" : {
 
     },
@@ -452,6 +456,9 @@
     "No foreign key links %@ to the tables before it, so it is cross joined." : {
 
     },
+    "No Foreign Keys" : {
+
+    },
     "No row holds the values it was loaded with. Another client may have changed or deleted it." : {
 
     },
@@ -472,6 +479,10 @@
     },
     "Only Left" : {
 
+    },
+    "Only PL/pgSQL functions and procedures can be debugged." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Only Right" : {
 
@@ -637,6 +648,22 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "TablePro can't pass any value of type %2$@ to %1$@." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "TablePro can't read %@. Check that this account can see its source." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "TablePro can't read this unit's source." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "TablePro can't turn text into a %2$@ value for %1$@." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "TablePro signs RSA keys with rsa-sha2-256 or rsa-sha2-512, not with ssh-rsa, which uses SHA-1." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -674,6 +701,9 @@
       "generatesSymbol" : false
     },
     "The changes were saved, but the type could not be read back. Reload before editing it again." : {
+
+    },
+    "The changes you have not saved will be lost." : {
 
     },
     "The client certificate and key could not be written to a temporary file." : {
@@ -973,6 +1003,9 @@
           }
         }
       }
+    },
+    "-- Error generating SQL: %@" : {
+
     },
     "-- Once the rows are in" : {
       "localizations" : {
@@ -1824,6 +1857,10 @@
           }
         }
       }
+    },
+    "“%@” isn't a port or a range of ports, such as 4000-4999." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "“%@” now holds the current result of its query." : {
       "localizations" : {
@@ -3173,6 +3210,9 @@
         }
       }
     },
+    "%@ (default)" : {
+
+    },
     "%@ (entry point %@)" : {
       "localizations" : {
         "fr" : {
@@ -3202,6 +3242,10 @@
           }
         }
       }
+    },
+    "%@ (specification)" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "%@ (You)" : {
       "localizations" : {
@@ -4005,6 +4049,9 @@
         }
       }
     },
+    "%@ DDL" : {
+
+    },
     "%@ does not accept this column change." : {
       "localizations" : {
         "fr" : {
@@ -4287,6 +4334,14 @@
     },
     "%@ has no column to create." : {
 
+    },
+    "%@ has no default value." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "%@ has no public procedure or function to start from." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "%@ holds a document or an array, and this text is not valid JSON." : {
       "extractionState" : "manual",
@@ -4878,6 +4933,10 @@
         }
       }
     },
+    "%@ isn't compiled for debugging." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "%@ lines have unreadable characters" : {
       "localizations" : {
         "fr" : {
@@ -4927,6 +4986,9 @@
           }
         }
       }
+    },
+    "%@ May Still Be Running" : {
+
     },
     "%@ more, in the script beside this" : {
       "localizations" : {
@@ -5781,6 +5843,12 @@
           }
         }
       }
+    },
+    "%@ runs in a compatibility mode with column types of its own, so structures can be compared but no script is generated." : {
+
+    },
+    "%@ runs in a compatibility mode with column types of its own. Copy to a target of the same type in the same mode." : {
+
     },
     "%@ s" : {
       "extractionState" : "stale",
@@ -9332,7 +9400,13 @@
         }
       }
     },
+    "%d changes to this table's structure will be lost." : {
+
+    },
     "%d characters" : {
+
+    },
+    "%d Check Constraints Selected" : {
 
     },
     "%d columns" : {
@@ -9374,6 +9448,9 @@
           }
         }
       }
+    },
+    "%d Columns Selected" : {
+
     },
     "%d connected" : {
       "localizations" : {
@@ -9821,6 +9898,9 @@
         }
       }
     },
+    "%d Foreign Keys Selected" : {
+
+    },
     "%d included" : {
       "localizations" : {
         "fr" : {
@@ -9860,6 +9940,9 @@
           }
         }
       }
+    },
+    "%d Indexes Selected" : {
+
     },
     "%d item(s) affected" : {
       "extractionState" : "manual",
@@ -15946,6 +16029,10 @@
         }
       }
     },
+    "A connection came from %@, which isn't the database server's address, so TablePro closed it." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "A connection can use only one connection method at a time. Enabled: %@." : {
       "localizations" : {
         "fr" : {
@@ -16116,6 +16203,14 @@
           }
         }
       }
+    },
+    "A DBA can grant it with GRANT DEBUG CONNECT SESSION TO %@." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "A DBA can grant it with GRANT DEBUG ON %1$@ TO %2$@, or grant DEBUG ANY PROCEDURE." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "a destructive statement" : {
       "localizations" : {
@@ -17899,6 +17994,13 @@
           }
         }
       }
+    },
+    "A user with ALTER SYSTEM can find its session in V$SESSION and end it with ALTER SYSTEM KILL SESSION." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "A value at or below the highest existing ID becomes that ID plus one." : {
+
     },
     "A value could not be written as JSON." : {
       "localizations" : {
@@ -19899,6 +20001,9 @@
         }
       }
     },
+    "Add check constraint “%@”" : {
+
+    },
     "Add Column" : {
       "localizations" : {
         "fr" : {
@@ -19938,6 +20043,9 @@
           }
         }
       }
+    },
+    "Add column “%@”" : {
+
     },
     "Add Column…" : {
       "localizations" : {
@@ -20422,6 +20530,9 @@
         }
       }
     },
+    "Add foreign key “%@”" : {
+
+    },
     "Add Global Index" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -20515,6 +20626,9 @@
           }
         }
       }
+    },
+    "Add index “%@”" : {
+
     },
     "Add indexes to improve query performance on frequently searched columns" : {
       "localizations" : {
@@ -21232,6 +21346,10 @@
           }
         }
       }
+    },
+    "Address the database server can reach this Mac at" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Adds a narrow strip on the window's leading edge listing every connection and database you have open, so one click switches to it." : {
       "localizations" : {
@@ -25322,6 +25440,9 @@
     "And %lld more" : {
 
     },
+    "AND and OR:" : {
+
+    },
     "And one that will run after this session ends:\n\n%@" : {
 
     },
@@ -25438,6 +25559,9 @@
           }
         }
       }
+    },
+    "Another check constraint is already named %@." : {
+
     },
     "Another column is already named %@." : {
       "localizations" : {
@@ -26516,6 +26640,9 @@
           }
         }
       }
+    },
+    "Applies to columns added later. Existing columns keep their character set." : {
+
     },
     "Applies to grid cells, the inspector, cell popovers and the row diff." : {
 
@@ -28147,6 +28274,10 @@
           }
         }
       }
+    },
+    "Ask a superuser to run CREATE EXTENSION pldbgapi in this database." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Ask about step %d" : {
       "localizations" : {
@@ -29960,6 +30091,8 @@
       }
     },
     "Automatic" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -31636,6 +31769,12 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "Below the keyword" : {
+
+    },
+    "Beside the keyword" : {
+
+    },
     "Betas get new features first. Turning this off keeps the beta you have until a newer release ships." : {
 
     },
@@ -32277,6 +32416,14 @@
       "generatesSymbol" : false
     },
     "Branch" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Breakpoint, line %d" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Breakpoints" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
@@ -33397,6 +33544,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "Call Stack" : {
+
+    },
     "Calling" : {
       "localizations" : {
         "fr" : {
@@ -33556,6 +33706,12 @@
           }
         }
       }
+    },
+    "Can't Debug %@" : {
+
+    },
+    "Can't List Routines" : {
+
     },
     "Can't List Tables" : {
       "localizations" : {
@@ -35636,6 +35792,32 @@
         }
       }
     },
+    "Change check constraint “%@”" : {
+
+    },
+    "Change check constraint “%@” to “%@”" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Change check constraint “%1$@” to “%2$@”"
+          }
+        }
+      }
+    },
+    "Change column “%@”" : {
+
+    },
+    "Change column “%@” to “%@”" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Change column “%1$@” to “%2$@”"
+          }
+        }
+      }
+    },
     "Change File" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -35717,6 +35899,19 @@
         }
       }
     },
+    "Change foreign key “%@”" : {
+
+    },
+    "Change foreign key “%@” to “%@”" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Change foreign key “%1$@” to “%2$@”"
+          }
+        }
+      }
+    },
     "Change Host to a name the certificate covers." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -35725,6 +35920,19 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Remplacez l’hôte par un nom couvert par le certificat."
+          }
+        }
+      }
+    },
+    "Change index “%@”" : {
+
+    },
+    "Change index “%@” to “%@”" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Change index “%1$@” to “%2$@”"
           }
         }
       }
@@ -35978,6 +36186,9 @@
           }
         }
       }
+    },
+    "Change the table comment" : {
+
     },
     "Change this in Settings > Integrations." : {
       "extractionState" : "stale",
@@ -36343,6 +36554,14 @@
           }
         }
       }
+    },
+    "Changes the procedure makes are committed when it commits or finishes. Stop rolls back what it hasn't committed." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Changes the routine makes are committed when it finishes. Stop rolls them back." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Changes Unavailable" : {
 
@@ -37056,6 +37275,9 @@
         }
       }
     },
+    "Check Constraint" : {
+
+    },
     "Check constraint must have a name and an expression" : {
       "localizations" : {
         "fr" : {
@@ -37065,6 +37287,12 @@
           }
         }
       }
+    },
+    "Check Constraint of %@" : {
+
+    },
+    "Check Constraints" : {
+
     },
     "Check constraints need %@ or later." : {
       "extractionState" : "manual",
@@ -37725,6 +37953,9 @@
           }
         }
       }
+    },
+    "Choose a character set first" : {
+
     },
     "Choose a connection" : {
       "localizations" : {
@@ -38609,6 +38840,10 @@
         }
       }
     },
+    "Choose DBMS_DEBUG as the protocol." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Choose Destination…" : {
       "localizations" : {
         "fr" : {
@@ -38768,6 +39003,10 @@
           }
         }
       }
+    },
+    "Choose other Debugger Ports, or DBMS_DEBUG as the protocol." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Choose port automatically" : {
       "localizations" : {
@@ -39391,6 +39630,9 @@
           }
         }
       }
+    },
+    "Clause items:" : {
+
     },
     "Clear" : {
       "localizations" : {
@@ -43287,6 +43529,10 @@
         }
       }
     },
+    "Collection" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Collection %@ no longer exists." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -43310,6 +43556,14 @@
           }
         }
       }
+    },
+    "Collection of %d elements" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Collection of 1 element" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "collections" : {
       "localizations" : {
@@ -46135,6 +46389,10 @@
           }
         }
       }
+    },
+    "Compile for Debug" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Complete Sign In" : {
       "localizations" : {
@@ -49933,6 +50191,9 @@
         }
       }
     },
+    "Convert existing columns" : {
+
+    },
     "Convert line break to space" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -50055,6 +50316,12 @@
           }
         }
       }
+    },
+    "Convert the table to %@" : {
+
+    },
+    "Converting the table's character set rewrites every text column and loses characters the new one cannot hold." : {
+
     },
     "Coordination & Config" : {
       "localizations" : {
@@ -52473,6 +52740,9 @@
         }
       }
     },
+    "Could not build the column reorder for this table. If this engine's driver was installed before column reorder shipped, update it in Settings > Extensions." : {
+
+    },
     "Could not build the column reorder for this table. If this engine's driver was installed before column reorder shipped, update it in Settings > Plugins." : {
       "localizations" : {
         "fr" : {
@@ -52524,6 +52794,9 @@
       }
     },
     "Could not build the query that matches rows" : {
+
+    },
+    "Could not build the table rebuild for this change. If this engine's driver was installed before foreign key editing shipped, update it in Settings > Extensions." : {
 
     },
     "Could not build the table rebuild for this change. If this engine's driver was installed before foreign key editing shipped, update it in Settings > Plugins." : {
@@ -54556,6 +54829,9 @@
     "Couldn't Duplicate the Theme" : {
 
     },
+    "Couldn't Export Formatter Rules" : {
+
+    },
     "Couldn't Export the Theme" : {
 
     },
@@ -54743,6 +55019,12 @@
         }
       }
     },
+    "Couldn't read the character sets" : {
+
+    },
+    "Couldn't Read the DDL" : {
+
+    },
     "Couldn't read the referenced table" : {
       "localizations" : {
         "fr" : {
@@ -54752,6 +55034,18 @@
           }
         }
       }
+    },
+    "Couldn't read the saved value." : {
+
+    },
+    "Couldn't read the server's character sets." : {
+
+    },
+    "Couldn't read the table options" : {
+
+    },
+    "Couldn't Read the Triggers" : {
+
     },
     "Couldn't Refresh Materialized View" : {
       "localizations" : {
@@ -55859,6 +56153,9 @@
           }
         }
       }
+    },
+    "Create Table cannot add a check constraint on this database." : {
+
     },
     "Create Table cannot add an index on this database." : {
       "localizations" : {
@@ -57710,6 +58007,8 @@
       }
     },
     "Data" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -58179,6 +58478,9 @@
       }
     },
     "Data type" : {
+
+    },
+    "Data type case:" : {
 
     },
     "data type negotiation" : {
@@ -60259,6 +60561,10 @@
         }
       }
     },
+    "DBMS_DEBUG_JDWP needs a Debugger Host for the database to connect back to." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Deactivate" : {
       "localizations" : {
         "fr" : {
@@ -60459,6 +60765,60 @@
         }
       }
     },
+    "Debug" : {
+
+    },
+    "Debug %@" : {
+
+    },
+    "Debug it from a routine that calls it with arguments only this overload takes." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Debug it from a routine that calls it with that value." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Debug Routine" : {
+
+    },
+    "Debug Routine…" : {
+
+    },
+    "Debug Session Ended" : {
+
+    },
+    "Debug…" : {
+
+    },
+    "Debugger Host" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Debugger Ports" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Debugging %@ needs the DEBUG privilege on it." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Debugging needs the DEBUG CONNECT SESSION privilege." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Debugging through DBMS_DEBUG instead." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Debugging through DBMS_DEBUG_JDWP. The database connected to TablePro at %@." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Debugging through DBMS_DEBUG." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Decimal" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -60630,6 +60990,9 @@
           }
         }
       }
+    },
+    "Decrease Font Size" : {
+
     },
     "Decrypt" : {
       "localizations" : {
@@ -61911,6 +62274,9 @@
         }
       }
     },
+    "Delete check constraint “%@”" : {
+
+    },
     "Delete Column" : {
       "localizations" : {
         "fr" : {
@@ -61950,6 +62316,9 @@
           }
         }
       }
+    },
+    "Delete column “%@”" : {
+
     },
     "Delete Columns" : {
       "localizations" : {
@@ -62224,6 +62593,9 @@
         }
       }
     },
+    "Delete foreign key “%@”" : {
+
+    },
     "Delete Group" : {
       "localizations" : {
         "fr" : {
@@ -62313,6 +62685,9 @@
           }
         }
       }
+    },
+    "Delete index “%@”" : {
+
     },
     "Delete is off by default, so a first run cannot remove a row from the target." : {
       "localizations" : {
@@ -69820,6 +70195,9 @@
     "Edit Settings" : {
 
     },
+    "Edit Table Options" : {
+
+    },
     "Edit Sequence" : {
 
     },
@@ -71794,6 +72172,9 @@
     "Engines that match function names by exact case, such as ClickHouse, keep the case you typed." : {
 
     },
+    "Engines that match type names by exact case, such as ClickHouse, keep the case you typed." : {
+
+    },
     "Enter a _key for the new row. Bigtable has no generated keys." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -71983,6 +72364,9 @@
           }
         }
       }
+    },
+    "Enter a whole number from 1 to %@." : {
+
     },
     "Enter an absolute path, as it appears on the SSH server." : {
       "localizations" : {
@@ -84192,6 +84576,9 @@
         }
       }
     },
+    "Foreign Key" : {
+
+    },
     "Foreign key %@ matches %@ on the target but the names differ." : {
       "localizations" : {
         "en" : {
@@ -84238,6 +84625,10 @@
         }
       }
     },
+    "Foreign key enforcement could not be put back while a transaction is open." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Foreign key must have at least one column, a referenced table, and a referenced column" : {
       "localizations" : {
         "fr" : {
@@ -84247,6 +84638,9 @@
           }
         }
       }
+    },
+    "Foreign Key of %@" : {
+
     },
     "Foreign key points at a column that does not exist: %@" : {
       "localizations" : {
@@ -86406,6 +86800,14 @@
           }
         }
       }
+    },
+    "Give %1$@ a value. Left at its default, the call also matches another overload of %2$@." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Give %1$@ values. Left at their defaults, the call also matches another overload of %2$@." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Give its full path in the connection. Apps launched from the Dock do not inherit your shell's PATH." : {
       "localizations" : {
@@ -90562,6 +90964,10 @@
         }
       }
     },
+    "If the server reaches this Mac through NAT or a load balancer, choose DBMS_DEBUG as the protocol." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "If the server stopped answering at the network encryption step, set Network Encryption to Rejected on the Advanced tab and connect again." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -93282,6 +93688,9 @@
         }
       }
     },
+    "Increase Font Size" : {
+
+    },
     "Increment" : {
 
     },
@@ -93497,6 +93906,9 @@
         }
       }
     },
+    "Index of %@" : {
+
+    },
     "Index proposal on %@" : {
       "localizations" : {
         "fr" : {
@@ -93672,6 +94084,8 @@
       }
     },
     "Indexes" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -95142,6 +95556,10 @@
     },
     "Install the %@ plugin?" : {
 
+    },
+    "Install the pldebugger package for this PostgreSQL version on the server, then run CREATE EXTENSION pldbgapi in this database." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Installed" : {
       "localizations" : {
@@ -97066,6 +97484,10 @@
         }
       }
     },
+    "Its server session may still be running and holding its locks." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Its structure could not be read." : {
       "localizations" : {
         "fr" : {
@@ -97079,6 +97501,10 @@
     "Its uncommitted changes are discarded." : {
 
     },
+    "Its uncommitted work rolls back when it ends." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Its WHERE clause is not supported here, so it covers every row." : {
       "localizations" : {
         "fr" : {
@@ -97088,6 +97514,10 @@
           }
         }
       }
+    },
+    "JDWP error %d." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Join condition:" : {
 
@@ -98977,6 +99407,10 @@
     "This sequence's settings could not be read, so they cannot be changed here." : {
 
     },
+    "This server can't show the default value of %@, so enter a value for it." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "keyword: %@" : {
       "localizations" : {
         "fr" : {
@@ -99176,6 +99610,10 @@
           }
         }
       }
+    },
+    "KingbaseES in %@ mode is not supported. Connect to a server in PostgreSQL or Oracle mode." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "kubectl port-forward" : {
       "localizations" : {
@@ -101983,6 +102421,10 @@
         }
       }
     },
+    "Line %1$d of %2$@ has no code to stop at." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Line %1$d: %2$@" : {
       "localizations" : {
         "fr" : {
@@ -102046,6 +102488,9 @@
           }
         }
       }
+    },
+    "Line %d" : {
+
     },
     "Line break" : {
       "extractionState" : "manual",
@@ -106417,6 +106862,9 @@
           }
         }
       }
+    },
+    "Marked for deletion. Undo or Undo Delete brings it back." : {
+
     },
     "Match" : {
       "localizations" : {
@@ -113082,6 +113530,12 @@
         }
       }
     },
+    "New Check Constraint" : {
+
+    },
+    "New Column" : {
+
+    },
     "New Connection" : {
       "localizations" : {
         "fr" : {
@@ -113465,6 +113919,9 @@
         }
       }
     },
+    "New Foreign Key" : {
+
+    },
     "New Group" : {
       "localizations" : {
         "fr" : {
@@ -113559,6 +114016,9 @@
           }
         }
       }
+    },
+    "New Index" : {
+
     },
     "New Jump Host" : {
       "localizations" : {
@@ -114303,6 +114763,15 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "Next Auto Increment" : {
+
+    },
+    "Next Auto Increment must be between 1 and %@" : {
+
+    },
+    "Next Auto Increment needs a column with AUTO_INCREMENT" : {
+
+    },
     "Next cursor: %@. The scan has not finished." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -114952,6 +115421,9 @@
     "No build of this plugin works with this version of TablePro." : {
 
     },
+    "No Call Stack" : {
+
+    },
     "No cells changed." : {
       "localizations" : {
         "fr" : {
@@ -115161,6 +115633,9 @@
           }
         }
       }
+    },
+    "No Columns" : {
+
     },
     "No Columns Defined" : {
       "localizations" : {
@@ -116145,6 +116620,9 @@
         }
       }
     },
+    "No DDL Available" : {
+
+    },
     "No DDL found for %@." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -116156,6 +116634,10 @@
           }
         }
       }
+    },
+    "No debugger host is set, so the database can't connect back to TablePro. Debugging through DBMS_DEBUG." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "No default" : {
       "localizations" : {
@@ -116757,6 +117239,9 @@
           }
         }
       }
+    },
+    "No Indexes" : {
+
     },
     "No Indexes Defined" : {
       "localizations" : {
@@ -117890,6 +118375,9 @@
         }
       }
     },
+    "No Output" : {
+
+    },
     "No parts found" : {
       "localizations" : {
         "fr" : {
@@ -118011,6 +118499,10 @@
           }
         }
       }
+    },
+    "No port in the Debugger Ports range is free on this Mac." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "No primary key. Choose key columns to compare this table." : {
       "localizations" : {
@@ -120370,6 +120862,9 @@
         }
       }
     },
+    "No Variables" : {
+
+    },
     "No Vault address. Enter one in the credential profile, or set VAULT_ADDR in TablePro's environment." : {
 
     },
@@ -122017,6 +122512,10 @@
         }
       }
     },
+    "Not readable" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Not readable with your permissions" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -122889,6 +123388,9 @@
           }
         }
       }
+    },
+    "Nothing to Debug" : {
+
     },
     "Nothing to Draw" : {
       "localizations" : {
@@ -125738,6 +126240,10 @@
           }
         }
       }
+    },
+    "Only the owner of %@ or a superuser can debug it." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Only use the bootstrap address" : {
       "extractionState" : "manual",
@@ -128799,6 +129305,10 @@
         }
       }
     },
+    "Or choose DBMS_DEBUG as the protocol, which needs no ACL entry." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Oracle" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -128841,6 +129351,10 @@
       }
     },
     "Oracle 11g has no identity columns, so a column cannot be auto-increment." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Oracle can't tell the overloads apart without it (PLS-00307), and TablePro can't read the default to pass it." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
@@ -128993,6 +129507,10 @@
           }
         }
       }
+    },
+    "Other sessions using the package lose its state, and their next call to it fails once with ORA-04068." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Other work ran on this connection before you confirmed. Check the transaction and try again." : {
 
@@ -131044,6 +131562,10 @@
         }
       }
     },
+    "Pass NULL or leave it at its default." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Passphrase" : {
       "localizations" : {
         "fr" : {
@@ -132092,6 +132614,20 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "已在 %d 次工具呼叫後暫停。"
+          }
+        }
+      }
+    },
+    "Paused at line %d" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Paused at line %d in %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Paused at line %1$d in %2$@"
           }
         }
       }
@@ -134469,6 +135005,9 @@
         }
       }
     },
+    "PostgreSQL and Oracle compatible SQL" : {
+
+    },
     "PostgreSQL custom archive" : {
       "localizations" : {
         "fr" : {
@@ -135028,6 +135567,9 @@
           }
         }
       }
+    },
+    "Preferred tries TLS first, falls back to plain." : {
+
     },
     "Preferred tries TLS first, falls back to plain. Matches psql and DataGrip defaults. Required by AWS RDS, Cloud SQL, Heroku, Supabase, Neon." : {
       "localizations" : {
@@ -136961,6 +137503,8 @@
       }
     },
     "Procedure" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -137928,6 +138472,10 @@
           }
         }
       }
+    },
+    "Protocol" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "protocol negotiation" : {
       "extractionState" : "manual",
@@ -142425,6 +142973,12 @@
     "Reading the files…" : {
 
     },
+    "Reading the saved value…" : {
+
+    },
+    "Reading the server's character sets…" : {
+
+    },
     "Reading the source…" : {
       "localizations" : {
         "fr" : {
@@ -144223,6 +144777,9 @@
         }
       }
     },
+    "Refreshing reads the table structure again and discards the changes you have not saved." : {
+
+    },
     "Refreshing will discard all unsaved changes." : {
       "localizations" : {
         "fr" : {
@@ -145239,6 +145796,9 @@
           }
         }
       }
+    },
+    "Remove All Breakpoints" : {
+
     },
     "Remove All Filters" : {
       "localizations" : {
@@ -146310,6 +146870,14 @@
         }
       }
     },
+    "Remove SET client_min_messages from the routine to debug it." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Remove SET transaction_timeout from the routine to debug it." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Remove tag %@" : {
       "comment" : "A label for a button that removes a tag from a list of selected tags. The argument is the name of the tag to be removed.",
       "isCommentAutoGenerated" : true,
@@ -146403,6 +146971,9 @@
           }
         }
       }
+    },
+    "Remove the primary key" : {
+
     },
     "Remove the second entry." : {
       "extractionState" : "manual",
@@ -150827,6 +151398,9 @@
         }
       }
     },
+    "Rewrites every text column to this character set. TEXT can grow to MEDIUMTEXT, and the table is copied while it runs." : {
+
+    },
     "right curly bracket" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -151316,6 +151890,9 @@
         }
       }
     },
+    "Routine Debugger" : {
+
+    },
     "Routine name" : {
       "localizations" : {
         "fr" : {
@@ -151365,6 +151942,10 @@
           }
         }
       }
+    },
+    "Routines with polymorphic or record parameters can't be debugged." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Routines, sorted by qualified name" : {
       "localizations" : {
@@ -152404,6 +152985,9 @@
           }
         }
       }
+    },
+    "Rows in %1$@ break the foreign key %2$@." : {
+
     },
     "Rows in %@ changed after they were compared. Compare again before generating the script." : {
       "localizations" : {
@@ -153991,6 +154575,9 @@
         }
       }
     },
+    "Running…" : {
+
+    },
     "Runs a command you write. It must open the local port itself." : {
       "localizations" : {
         "fr" : {
@@ -154315,6 +154902,9 @@
           }
         }
       }
+    },
+    "Safe Mode is read-only for this connection." : {
+
     },
     "Safe mode level" : {
       "localizations" : {
@@ -155069,6 +155659,9 @@
           }
         }
       }
+    },
+    "Save column and primary key changes before converting existing columns." : {
+
     },
     "Save Comparison…" : {
       "localizations" : {
@@ -159336,6 +159929,9 @@
     "Select a column" : {
 
     },
+    "Select a definition to edit it" : {
+
+    },
     "Select a dump file this engine's own tool wrote." : {
       "localizations" : {
         "fr" : {
@@ -160069,6 +160665,9 @@
           }
         }
       }
+    },
+    "Select one to edit it" : {
+
     },
     "Select Plugin" : {
       "localizations" : {
@@ -161408,6 +162007,14 @@
         }
       }
     },
+    "Server process %d may still be running and holding its locks." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Server process %d may still be waiting for a debugger and holding its locks. To end it, run SELECT pldbg_attach_to_port(%d) and pass the number it returns to pldbg_abort_target." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Server response: %@" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -161968,6 +162575,14 @@
         }
       }
     },
+    "Session SID %1$d, SERIAL# %2$d. %3$@ A user with ALTER SYSTEM can end it now with %4$@." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Session SID %d. %@" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Session state" : {
       "localizations" : {
         "fr" : {
@@ -162311,6 +162926,14 @@
         }
       }
     },
+    "Set Debugger Host to an address the database server can reach this Mac at, or choose DBMS_DEBUG as the protocol." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Set Debugger Host to an address the server can reach, or choose DBMS_DEBUG as the protocol." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Set DEFAULT" : {
       "localizations" : {
         "fr" : {
@@ -162528,6 +163151,15 @@
           }
         }
       }
+    },
+    "Set the next AUTO_INCREMENT value to %@" : {
+
+    },
+    "Set the primary key to %@" : {
+
+    },
+    "Set the table's default character set to %@" : {
+
     },
     "Set to NULL" : {
       "localizations" : {
@@ -173064,6 +173696,18 @@
         }
       }
     },
+    "Step Into" : {
+
+    },
+    "Step Out" : {
+
+    },
+    "Step Over" : {
+
+    },
+    "Step through PL/pgSQL and PL/SQL routines with breakpoints." : {
+
+    },
     "Stop" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -173315,6 +173959,9 @@
           }
         }
       }
+    },
+    "Stop Debugging" : {
+
     },
     "Stop Export?" : {
       "localizations" : {
@@ -173646,6 +174293,10 @@
     "Stopped." : {
 
     },
+    "Stopped. The routine's changes were rolled back." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Stopping…" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -173973,6 +174624,8 @@
       }
     },
     "Structure" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -177241,6 +177894,9 @@
         }
       }
     },
+    "Table Default" : {
+
+    },
     "Table Description" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -178562,6 +179218,10 @@
         }
       }
     },
+    "TablePro compiles it again with debug information (PLSQL_OPTIMIZE_LEVEL=1) and keeps its other settings. Compiling commits." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "TablePro connects to the first broker over a tunnel. Partitions led by other brokers cannot be read." : {
       "localizations" : {
         "fr" : {
@@ -178767,6 +179427,10 @@
     },
     "TablePro couldn't check which rows in other tables reference these rows." : {
 
+    },
+    "TablePro couldn't confirm that the routine ended. It may still be running on the server." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "TablePro couldn't reach the plugin registry to update this plugin. Check your connection and reopen TablePro." : {
       "localizations" : {
@@ -182830,6 +183494,10 @@
     "The branch and its upstream branch each have commits the other lacks. Finish this pull in a Git client." : {
 
     },
+    "The breakpoint on line %1$d of %2$@ moved to line %3$d, the next line with code." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The broker answered a coordinator lookup with no coordinator." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -183244,6 +183912,9 @@
         }
       }
     },
+    "The change to this table's structure will be lost." : {
+
+    },
     "The changes were edited while the save was checking other tables. Save again to include them." : {
 
     },
@@ -183329,6 +184000,10 @@
           }
         }
       }
+    },
+    "The CHECK on column %@ names column %@, which this save renames. Save the rename on its own first." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "The cache must be at least 1." : {
 
@@ -183963,6 +184638,10 @@
         }
       }
     },
+    "The connection from the database didn't complete the debugger handshake." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The connection has no current DuckDB catalog to read metadata from" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -184322,6 +185001,9 @@
           }
         }
       }
+    },
+    "The connection was closed or reconnected while the debugger was starting. Start it again." : {
+
     },
     "The connection was closed." : {
       "localizations" : {
@@ -184741,6 +185423,18 @@
         }
       }
     },
+    "The database answered the debugger with data TablePro can't read." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The database couldn't reach TablePro at %@." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The database didn't connect to TablePro at %@ in time." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "the database file" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -184814,6 +185508,10 @@
           }
         }
       }
+    },
+    "The database isn't allowed to connect to TablePro at %@ (ORA-24247). A DBA can allow it with DBMS_NETWORK_ACL_ADMIN.APPEND_HOST_ACE and the jdwp privilege." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "The database name is longer than the 128 bytes FreeTDS takes." : {
       "extractionState" : "manual",
@@ -184950,6 +185648,44 @@
       }
     },
     "The Database URL is not valid." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The database's debugger refused the request." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The database's debugger sent data TablePro can't read, so the session ended." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The database's debugger stopped answering, so the session ended." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The debug session has ended." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The debug session's connection closed." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The debugger couldn't finish this step." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The debugger couldn't start." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The debugger didn't confirm the stop. The routine may still be running on the server." : {
+
+    },
+    "The debugger stopped for a reason TablePro doesn't know." : {
+
+    },
+    "The debugger's session was interrupted while it waited, so the routine was stopped and its uncommitted changes were rolled back. A cancel or the server's transaction_timeout can cause this." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
@@ -186074,6 +186810,9 @@
           }
         }
       }
+    },
+    "The installed %1$@ does not support %2$@. Update it in Settings > Extensions." : {
+
     },
     "The installed %1$@ does not support %2$@. Update it in Settings > Plugins." : {
 
@@ -187594,6 +188333,14 @@
         }
       }
     },
+    "The PL/pgSQL debugger can't step out of a routine." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The PL/pgSQL debugger isn't installed in “%@”." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The plan setting could not be turned off again, so the connection was closed. Reconnect to go on." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -188328,6 +189075,9 @@
         }
       }
     },
+    "The query is larger than %@, too large to format." : {
+
+    },
     "The query names its own output format, %@. Remove its FORMAT clause to read it as rows." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -188643,6 +189393,29 @@
 
     },
     "The root of the database" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The routine couldn't be stopped on the server." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The routine finished before the stop reached it." : {
+
+    },
+    "The routine is still running on the server. DBMS_DEBUG can't interrupt it between breakpoints." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The routine isn't paused." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The routine raised an error. Its changes were rolled back." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The routine was stopped, and its uncommitted changes were rolled back." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
@@ -189418,6 +190191,10 @@
     },
     "The server computes this column, so it is left out." : {
 
+    },
+    "The server couldn't start the debugger." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "The server did not accept the client certificate. %@" : {
       "extractionState" : "manual",
@@ -191040,6 +191817,9 @@
           }
         }
       }
+    },
+    "The table is being read again after the save." : {
+
     },
     "The table is no longer reachable." : {
       "localizations" : {
@@ -193187,6 +193967,10 @@
         }
       }
     },
+    "This call matches more than one overload of %@, so Oracle can't run it (PLS-00307)." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "This change needs %@ to be recreated, and it cannot be recreated from the definition the database stored for it. Virtual tables, such as full-text search tables, are the usual reason." : {
       "localizations" : {
         "fr" : {
@@ -193206,6 +193990,12 @@
           }
         }
       }
+    },
+    "This check constraint needs a name." : {
+
+    },
+    "This check constraint needs an expression." : {
+
     },
     "This client does not have access to that connection." : {
       "localizations" : {
@@ -193380,6 +194170,13 @@
           }
         }
       }
+    },
+    "This connection can't open the separate sessions the debugger needs." : {
+
+    },
+    "This connection can't run the PL/pgSQL debugger." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "This connection does not support user and role management." : {
       "localizations" : {
@@ -193954,6 +194751,9 @@
         }
       }
     },
+    "This connection's driver can't debug routines." : {
+
+    },
     "This connection's driver does not list its tables." : {
       "localizations" : {
         "fr" : {
@@ -194363,6 +195163,10 @@
           }
         }
       }
+    },
+    "This database doesn't provide DBMS_DEBUG_JDWP." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "This database has an open transaction. Closing it rolls the transaction back and discards its uncommitted changes." : {
       "localizations" : {
@@ -197548,6 +198352,17 @@
         }
       }
     },
+    "This routine sets client_min_messages to %@, which hides the notice the debugger starts with." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "This routine sets transaction_timeout to %@, which would end it while it waits at a breakpoint." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "This routine takes no arguments." : {
+
+    },
     "This row does not name a stored document." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -197879,6 +198694,10 @@
           }
         }
       }
+    },
+    "This server has no PL/pgSQL debugger." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "This server has no users or roles you can manage." : {
       "localizations" : {
@@ -198234,6 +199053,9 @@
           }
         }
       }
+    },
+    "This table has no options to change." : {
+
     },
     "This table has no primary key or unique index to match rows on." : {
 
@@ -200090,6 +200912,9 @@
         }
       }
     },
+    "Toggle Breakpoint" : {
+
+    },
     "Toggle Comment" : {
       "localizations" : {
         "fr" : {
@@ -201744,6 +202569,8 @@
       "generatesSymbol" : false
     },
     "Trigger" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -202608,6 +203435,9 @@
       }
     },
     "Try again and answer the prompt in TablePro." : {
+
+    },
+    "Try again, or install the plugin from Settings > Extensions." : {
 
     },
     "Try again, or install the plugin from Settings > Plugins." : {
@@ -205869,6 +206699,9 @@
         }
       }
     },
+    "Update or reinstall the plugin in Settings > Extensions." : {
+
+    },
     "Update or reinstall the plugin in Settings > Plugins." : {
       "localizations" : {
         "fr" : {
@@ -206047,6 +206880,12 @@
           }
         }
       }
+    },
+    "Update the database driver in Settings > Extensions to run a batch more than once with GO." : {
+
+    },
+    "Update the database driver in Settings > Extensions to run several statements in one call." : {
+
     },
     "Update the database driver in Settings > Plugins to run a batch more than once with GO." : {
       "localizations" : {
@@ -209101,6 +209940,9 @@
         }
       }
     },
+    "Variables" : {
+
+    },
     "Variant id" : {
       "localizations" : {
         "fr" : {
@@ -211442,6 +212284,9 @@
         }
       }
     },
+    "Where AND and OR go when a WHERE or HAVING condition breaks across lines." : {
+
+    },
     "WHERE clause" : {
       "localizations" : {
         "fr" : {
@@ -211481,6 +212326,9 @@
           }
         }
       }
+    },
+    "Where the items of a SELECT list, SET list, WITH list, or WHERE or HAVING condition start once it breaks across lines. A single item stays beside its keyword." : {
+
     },
     "Whether a session is open" : {
       "localizations" : {

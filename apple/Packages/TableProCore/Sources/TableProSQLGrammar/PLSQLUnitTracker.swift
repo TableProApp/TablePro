@@ -184,6 +184,17 @@ public struct PLSQLUnitTracker: SQLStatementBoundaryTracking {
         settlePendingBeforeNonWord()
     }
 
+    /// KingbaseES in Oracle mode also takes PostgreSQL's quoted routine body, `AS 'SELECT 1'` or `AS $$ ... $$`, which
+    /// opens no block. Oracle never puts a literal after a subprogram's `IS` or `AS`; a quoted name there still starts
+    /// its declarations.
+    public mutating func observeQuotedToken(opener: UInt16) {
+        if pendingBodyKeyword, opener != SqlLexer.doubleQuote {
+            pendingBodyKeyword = false
+            header = nil
+        }
+        observeOpaqueToken()
+    }
+
     /// PL/SQL reads `a . b` as `a.b`, so whitespace leaves a member name a member name.
     public mutating func observeGap() {}
 

@@ -168,6 +168,9 @@ impl WeakTurnRow {
 }
 
 impl AssistantPane {
+    /// Bind the pane to its session, once: a conversation is about one
+    /// connection's tables and editor, so each session has a pane of its
+    /// own.
     pub(crate) fn bind(&self, hooks: PaneHooks) {
         let settings = hooks.access.ai().settings().clone();
         let mut watches = Vec::new();
@@ -244,7 +247,7 @@ impl AssistantPane {
     }
 
     /// Stop the reply in flight and let go of the window's services, as
-    /// the window's session ends.
+    /// the pane's session ends.
     pub(crate) fn shutdown(&self) {
         self.stop_work();
         self.imp().settings_watch.take();

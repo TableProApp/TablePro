@@ -176,11 +176,12 @@ impl Sandbox {
         let bytes = std::fs::read(self.record_path()).map_err(|error| format!("no record after the quit: {error}"))?;
         let record: serde_json::Value =
             serde_json::from_slice(&bytes).map_err(|error| format!("the record is not JSON: {error}"))?;
-        let sessions = record["sessions"]
+        let windows = record["windows"]
             .as_array()
-            .ok_or_else(|| format!("the record lists no sessions: {record}"))?;
-        sessions
+            .ok_or_else(|| format!("the record lists no windows: {record}"))?;
+        windows
             .iter()
+            .flat_map(|window| window.as_array().into_iter().flatten())
             .map(|session| {
                 session["uri"]
                     .as_str()

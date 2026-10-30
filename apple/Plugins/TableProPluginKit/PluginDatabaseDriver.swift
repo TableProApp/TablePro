@@ -570,7 +570,9 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     // Table operations (optional — return nil to use app-level fallback)
     func truncateTableStatements(table: String, schema: String?, cascade: Bool) -> [String]?
     func dropObjectStatement(name: String, objectType: String, schema: String?, cascade: Bool) -> String?
+    /// Turns the session's foreign key checks off. Runs outside a transaction, on the connection that writes.
     func foreignKeyDisableStatements() -> [String]?
+    /// Turns them on whatever they were before; a caller that needs the previous value back holds a session scope.
     func foreignKeyEnableStatements() -> [String]?
 
     /// `UPDATE <table> SET <assignments> WHERE <predicate>` in this engine's own form, or nil for that form. The host
@@ -619,6 +621,20 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     /// wrong keyword: PostgreSQL answers `COMMENT ON TABLE` on a view with "is not a table". A nil
     /// or empty comment removes it. Return nil for a kind the engine cannot comment on.
     func objectCommentStatement(name: String, objectType: String, schema: String?, comment: String?) -> String?
+
+    /// The table's default character set, collation and AUTO_INCREMENT counter, read live. Nil where the
+    /// engine has no such table options.
+    func fetchTableOptions(table: String, schema: String?) async throws -> PluginTableOptions?
+
+    /// The character sets, collations and storage engines the server offers any table. Nil where the engine
+    /// has none.
+    func fetchTableOptionsCatalog() async throws -> PluginTableOptionsCatalog?
+
+    /// The character set and collation a new table in `schema` takes when it names none.
+    func fetchDefaultTableOptions(schema: String?) async throws -> PluginTableOptions?
+
+    /// The statement that applies `change` to an existing table. Return nil where the engine cannot.
+    func tableOptionsStatement(table: String, schema: String?, change: PluginTableOptionsChange) -> String?
 
     /// The statement that recomputes a materialized view's stored rows. Return nil where the engine
     /// has no materialized views or keeps them current on its own.

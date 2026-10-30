@@ -382,8 +382,12 @@ private final class SidebarFilterField: NSSearchField {
 
     override func becomeFirstResponder() -> Bool {
         let became = super.becomeFirstResponder()
-        if became { onFocus?() }
-        return became
+        guard became else { return false }
+        onFocus?()
+        // AppKit sets up a field editor's selection navigation on its first caret move, about 15 ms once per launch;
+        // asking for it here keeps that cost out of the first keystroke of a search over a large catalog.
+        _ = (currentEditor() as? NSTextView)?.textLayoutManager?.textSelectionNavigation
+        return true
     }
 }
 

@@ -1,5 +1,6 @@
 import Foundation
 import TableProPluginKit
+import TableProSQLGrammar
 
 struct QueryFormatResult {
     let text: String
@@ -12,16 +13,24 @@ protocol QueryFormatting {
 
 struct SQLQueryFormatter: QueryFormatting {
     private let dialect: DatabaseType
+    private let grammar: SQLLexicalGrammar?
     private let options: SQLFormatterOptions
     private let formatter = SQLFormatterService()
 
-    init(dialect: DatabaseType, options: SQLFormatterOptions = .default) {
+    init(dialect: DatabaseType, grammar: SQLLexicalGrammar? = nil, options: SQLFormatterOptions = .default) {
         self.dialect = dialect
+        self.grammar = grammar
         self.options = options
     }
 
     func format(_ text: String, cursorOffset: Int?) throws -> QueryFormatResult {
-        let result = try formatter.format(text, dialect: dialect, cursorOffset: cursorOffset, options: options)
+        let result = try formatter.format(
+            text,
+            dialect: dialect,
+            grammar: grammar,
+            cursorOffset: cursorOffset,
+            options: options
+        )
         return QueryFormatResult(text: result.formattedSQL, cursorOffset: result.cursorOffset)
     }
 }
@@ -32,9 +41,14 @@ enum QueryFormatterFactory {
         make(for: databaseType) { AppSettingsManager.shared.formatterOptions }
     }
 
-    // Throws when the linked folder's rules file can't be read, rather than format with Settings.
-    static func make(for databaseType: DatabaseType?, sourceFileURL: URL?) throws -> QueryFormatting? {
-        try make(for: databaseType) { try SQLFormatterRuleSource.options(forFileAt: sourceFileURL) }
+    // Throws when the linked folder's rules file can't be read, rather than format with Settings. `grammar` is the one
+    // the tab's statements are split with, so a literal or a comment ends where the connected engine ends it.
+    static func make(
+        for databaseType: DatabaseType?,
+        sourceFileURL: URL?,
+        grammar: SQLLexicalGrammar? = nil
+    ) throws -> QueryFormatting? {
+        try make(for: databaseType, grammar: grammar) { try SQLFormatterRuleSource.options(forFileAt: sourceFileURL) }
     }
 
     // Nil for a language with no formatter of its own. The SQL formatter reads a Redis key `user:1` as
@@ -42,6 +56,7 @@ enum QueryFormatterFactory {
     // so running it there changes what the command does.
     private static func make(
         for databaseType: DatabaseType?,
+        grammar: SQLLexicalGrammar? = nil,
         sqlOptions: () throws -> SQLFormatterOptions
     ) rethrows -> QueryFormatting? {
         let dialect = databaseType ?? .mysql
@@ -54,7 +69,7 @@ enum QueryFormatterFactory {
 
         switch PluginManager.shared.editorLanguage(for: dialect) {
         case .sql:
-            return SQLQueryFormatter(dialect: dialect, options: try sqlOptions())
+            return SQLQueryFormatter(dialect: dialect, grammar: grammar, options: try sqlOptions())
         case .javascript:
             return ConsoleRequestFormatter()
         case .bash, .custom:

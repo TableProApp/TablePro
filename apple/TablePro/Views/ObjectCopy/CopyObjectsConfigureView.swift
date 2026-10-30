@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import TableProPluginKit
 
 internal struct CopyObjectsConfigureView: View {
     @ObservedObject internal var session: ObjectCopySession
@@ -35,6 +36,7 @@ internal struct CopyObjectsConfigureView: View {
             destinationSection
             contentSection
             existingSection
+            errorHandlingSection
             Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -121,6 +123,18 @@ internal struct CopyObjectsConfigureView: View {
                 : String(localized: "The target's rows are removed before the source's are written.")
         case .appendData:
             return String(localized: "The target keeps its structure and its rows, and the source's rows are added.")
+        }
+    }
+
+    private var errorHandlingSection: some View {
+        labelled(String(localized: "On error")) {
+            Picker(String(localized: "On error"), selection: $session.errorHandling) {
+                Text("Stop and roll back").tag(ImportErrorHandling.stopAndRollback)
+                Text("Stop and keep what ran").tag(ImportErrorHandling.stopAndCommit)
+                Text("Skip and continue").tag(ImportErrorHandling.skipAndContinue)
+            }
+            .labelsHidden()
+            .accessibilityIdentifier("copy-objects-error-handling")
         }
     }
 

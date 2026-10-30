@@ -333,7 +333,10 @@ public enum SQLStatementScanner {
                     tracker.observeGap()
                 case .executableComment:
                     hasStatementContent = true
-                case .quoted, .parameter:
+                case .quoted:
+                    hasStatementContent = true
+                    tracker.observeQuotedToken(opener: nsQuery.character(at: span.start))
+                case .parameter:
                     hasStatementContent = true
                     tracker.observeOpaqueToken()
                 }

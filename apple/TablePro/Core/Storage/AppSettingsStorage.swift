@@ -315,6 +315,7 @@ final class AppSettingsStorage: Sendable {
         defaults.removeObject(forKey: PreferenceKeys.rowInspectorGeometryFieldHeight.name)
         defaults.removeObject(forKey: PreferenceKeys.rowInspectorGeometryFieldMode.name)
         defaults.removeObject(forKey: SidebarPersistenceKey.defaultLayout)
+        RoutineDebugOptionStore(defaults: { [defaults] in defaults }).removeAll()
     }
 
     // MARK: - Helpers

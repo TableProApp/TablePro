@@ -42,7 +42,6 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
         [
             .parameterizedQueries,
             .alterTableDDL,
-            .foreignKeyToggle,
             .truncateTable,
             .cancelQuery,
             .schemaCompare,
@@ -543,16 +542,6 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
     func editViewFallbackTemplate(viewName: String) -> String? {
         let quoted = quoteIdentifier(viewName)
         return "DROP VIEW IF EXISTS \(quoted);\nCREATE VIEW \(quoted) AS\nSELECT * FROM table_name;"
-    }
-
-    // MARK: - Foreign Key Checks
-
-    func foreignKeyDisableStatements() -> [String]? {
-        ["PRAGMA foreign_keys = OFF"]
-    }
-
-    func foreignKeyEnableStatements() -> [String]? {
-        ["PRAGMA foreign_keys = ON"]
     }
 
     // MARK: - Table Operations

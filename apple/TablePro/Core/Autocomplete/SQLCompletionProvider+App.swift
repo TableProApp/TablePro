@@ -9,26 +9,14 @@ extension SQLCompletionProvider {
         schemaProvider: SQLSchemaProvider?,
         databaseType: DatabaseType? = nil,
         dialect: SQLDialectDescriptor? = nil,
-        statementCompletions: [CompletionEntry] = []
+        statementCompletions: [CompletionEntry] = [],
+        grammar: SQLLexicalGrammar? = nil
     ) {
         self.init(
             catalog: schemaProvider,
-            grammar: databaseType?.lexicalGrammar ?? .ansi,
+            grammar: grammar ?? databaseType?.lexicalGrammar ?? .ansi,
             vocabulary: SQLCompletionVocabulary(
                 dialect: dialect, statementCompletions: statementCompletions, databaseType: databaseType
-            )
-        )
-    }
-
-    func setDatabaseType(
-        _ type: DatabaseType,
-        dialect: SQLDialectDescriptor? = nil,
-        statementCompletions: [CompletionEntry] = []
-    ) {
-        update(
-            grammar: type.lexicalGrammar,
-            vocabulary: SQLCompletionVocabulary(
-                dialect: dialect, statementCompletions: statementCompletions, databaseType: type
             )
         )
     }

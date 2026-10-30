@@ -45,7 +45,6 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         var base: PluginCapabilities = [
             .parameterizedQueries,
             .alterTableDDL,
-            .foreignKeyToggle,
             .truncateTable,
             .cancelQuery,
             .schemaCompare,
@@ -54,6 +53,7 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         if isLocalMode {
             base.insert(.transactions)
             base.insert(.batchExecute)
+            base.insert(.foreignKeyToggle)
         }
         return base
     }
@@ -581,12 +581,25 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     // MARK: - Foreign Key Checks
 
+    // Remote runs every statement on a stream of its own, so a pragma is gone before the next statement runs.
     func foreignKeyDisableStatements() -> [String]? {
-        ["PRAGMA foreign_keys = OFF"]
+        isLocalMode ? ["PRAGMA foreign_keys = OFF"] : nil
     }
 
     func foreignKeyEnableStatements() -> [String]? {
-        ["PRAGMA foreign_keys = ON"]
+        isLocalMode ? ["PRAGMA foreign_keys = ON"] : nil
+    }
+
+    // MARK: - Session Scope
+
+    func openSessionScope(for purpose: PluginSessionPurpose) async throws -> PluginSessionScope? {
+        guard isLocalMode else { return nil }
+        return try await SQLiteSessionScope.open(for: purpose) { try await self.execute(query: $0) }
+    }
+
+    func closeSessionScope(_ scope: PluginSessionScope) async throws {
+        guard isLocalMode else { return }
+        try await SQLiteSessionScope.close(scope) { try await self.execute(query: $0) }
     }
 
     // MARK: - Table Operations

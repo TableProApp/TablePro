@@ -48,7 +48,7 @@ struct CompareSQLLiteralTests {
 
     @Test
     func postgresFamilyUsesAByteaCast() throws {
-        for type in [DatabaseType.postgresql, .cockroachdb, .redshift, .pglite] {
+        for type in [DatabaseType.postgresql, .cockroachdb, .redshift, .pglite, .kingbasees] {
             let literal = try #require(CompareSQLLiteral.binaryLiteral(for: png, databaseType: type))
             #expect(literal == "'\\x89504e47'::bytea", "\(type.rawValue) uses a bytea literal")
         }

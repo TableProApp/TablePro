@@ -4,54 +4,55 @@
 //
 
 import Foundation
+import TableProPluginKit
 
-// The Structure grid's view state lives on the tab's session, one column layout per sub-tab, and never
-// reaches a table's saved layout.
+// One section's grid state. It never reaches a table's saved layout; only the columns a person hides are kept,
+// per section, for every table.
 @MainActor
 final class StructureGridStateStore: DataGridStateStore {
-    weak var session: StructureEditingSession?
-    private(set) var subTab: StructureTab = .columns
+    let section: StructureSection
+    private let defaults: UserDefaults
 
+    var sortState = SortState()
     var valueFilter = GridValueFilterState()
     var displayFormats: [ValueDisplayFormat?] = []
     var selectionSnapshot = GridSelectionSnapshot.empty
     var viewportAnchor: GridViewportPlacement?
     let layoutScope: DataGridLayoutScope = .ephemeral
 
-    private var detachedLayouts: [StructureTab: ColumnLayoutState] = [:]
-    private var detachedSort = SortState()
-
-    var sortState: SortState {
-        get { session?.sortState ?? detachedSort }
-        set {
-            guard let session else {
-                detachedSort = newValue
-                return
-            }
-            guard session.sortState != newValue else { return }
-            session.sortState = newValue
-        }
-    }
-
     var columnLayout: ColumnLayoutState {
-        get { session?.columnLayouts[subTab] ?? detachedLayouts[subTab] ?? ColumnLayoutState() }
-        set {
-            guard let session else {
-                detachedLayouts[subTab] = newValue
-                return
-            }
-            guard session.columnLayouts[subTab] != newValue else { return }
-            session.columnLayouts[subTab] = newValue
+        didSet {
+            guard columnLayout.hiddenColumns != oldValue.hiddenColumns else { return }
+            defaults.set(Array(columnLayout.hiddenColumns).sorted(), forKey: Self.hiddenColumnsKey(section))
         }
     }
 
-    // Search, sort, filter and selection start over on another sub-tab; the column layout is kept per sub-tab.
-    func switchSubTab(to tab: StructureTab) {
-        guard tab != subTab else { return }
-        subTab = tab
-        valueFilter = GridValueFilterState()
-        displayFormats = []
-        selectionSnapshot = .empty
-        viewportAnchor = nil
+    init(section: StructureSection, defaults: UserDefaults = AppStorageEnvironment.shared.defaults) {
+        self.section = section
+        self.defaults = defaults
+        var layout = ColumnLayoutState()
+        if let stored = defaults.stringArray(forKey: Self.hiddenColumnsKey(section)) {
+            layout.hiddenColumns = Set(stored)
+        } else {
+            layout.hiddenColumns = Self.defaultHiddenColumns(section)
+        }
+        columnLayout = layout
+    }
+
+    static func hiddenColumnsKey(_ section: StructureSection) -> String {
+        "structure.hiddenColumns.\(section.rawValue)"
+    }
+
+    // The inspector edits every field; the table keeps the ones read at a glance.
+    static func defaultHiddenColumns(_ section: StructureSection) -> Set<String> {
+        switch section {
+        case .columns:
+            let hidden: [StructureColumnField] = [.onUpdate, .autoIncrement, .charset, .collation, .generated, .generationExpression]
+            return Set(hidden.map(\.displayName))
+        case .foreignKeys:
+            return [String(localized: "Ref Schema")]
+        case .indexes, .checkConstraints:
+            return []
+        }
     }
 }

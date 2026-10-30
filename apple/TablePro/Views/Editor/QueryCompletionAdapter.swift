@@ -3,6 +3,7 @@ import SwiftUI
 import TableProAutocomplete
 import TableProEditorKit
 import TableProPluginKit
+import TableProSQLGrammar
 import TableProTextEngine
 
 @MainActor
@@ -41,6 +42,7 @@ final class QueryCompletionAdapter: CodeSuggestionDelegate {
         let databaseType: DatabaseType?
         let profileRevision: String?
         let connectionId: UUID?
+        let grammar: SQLLexicalGrammar?
     }
 
     private var service: QueryCompletionService
@@ -60,13 +62,15 @@ final class QueryCompletionAdapter: CodeSuggestionDelegate {
         schemaProvider: SQLSchemaProvider?,
         databaseType: DatabaseType?,
         profile: QueryCompletionProfile? = nil,
-        connectionId: UUID? = nil
+        connectionId: UUID? = nil,
+        grammar: SQLLexicalGrammar? = nil
     ) {
         let requested = Configuration(
             schemaProvider: schemaProvider.map(ObjectIdentifier.init),
             databaseType: databaseType,
             profileRevision: profile?.revision,
-            connectionId: connectionId
+            connectionId: connectionId,
+            grammar: grammar
         )
         guard requested != configuration else { return }
         configuration = requested
@@ -74,7 +78,8 @@ final class QueryCompletionAdapter: CodeSuggestionDelegate {
             schemaProvider: schemaProvider,
             databaseType: databaseType,
             profile: profile,
-            connectionId: connectionId
+            connectionId: connectionId,
+            grammar: grammar
         )
         service.updateFavoriteKeywords(favoriteKeywords)
         session = nil

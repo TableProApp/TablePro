@@ -79,9 +79,9 @@ enum PluginError: LocalizedError {
         case .unknownDatabaseType:
             return String(localized: "Edit the connection and choose its database type.")
         case .pluginLoadFailed:
-            return String(localized: "Update or reinstall the plugin in Settings > Plugins.")
+            return String(localized: "Update or reinstall the plugin in Settings > Extensions.")
         case .pluginInstallFailed:
-            return String(localized: "Try again, or install the plugin from Settings > Plugins.")
+            return String(localized: "Try again, or install the plugin from Settings > Extensions.")
         default:
             return nil
         }

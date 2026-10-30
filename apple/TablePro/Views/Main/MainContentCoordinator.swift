@@ -191,11 +191,6 @@ final class MainContentCoordinator: ObservableObject {
 
     weak var sidebarViewModel: SidebarViewModel?
 
-    weak var structureActions: StructureViewActionHandler?
-
-    // Lets Save Changes (Cmd+S) route to table creation. Set by `CreateTableView` on appear.
-    weak var createTableActions: CreateTableActionHandler?
-
     weak var usersRolesActions: UsersRolesActionHandler?
 
     // Not in the view: it dies on every tab and Data/Structure switch, and the close gate must see unseen tabs' staged work.
@@ -211,9 +206,6 @@ final class MainContentCoordinator: ObservableObject {
 
     // `saveCompletionContinuation` is one slot: a second close gesture would overwrite it and strand the first task forever.
     internal var tabClosesInFlight: Set<UUID> = []
-
-    // The non-data grid that owns the selection, read by the inspector. Set by `TableStructureView` and `CreateTableView`.
-    weak var inspectorRowSource: (any InspectorRowSource)?
 
     // Bumped when a published schema row changes, so the inspector re-reads it.
     @Published var inspectorRowSourceRevision: Int = 0
@@ -272,7 +264,7 @@ final class MainContentCoordinator: ObservableObject {
     @Published var exportFormatId: String?
     // Kept after the sheet closes, so reopening Search Database after opening a result shows the results again.
     var databaseSearchSession: DatabaseSearchSession?
-    @Published var pendingLoadTrigger: TableLoadTrigger?
+    var parkedTableLoad: ParkedTableLoad?
     var deferredRestoreLoadTabId: UUID?
 
     var displayFormatsCache: [UUID: DisplayFormatsCacheEntry] = [:]
@@ -373,9 +365,6 @@ final class MainContentCoordinator: ObservableObject {
     // Updated by TabWindowController; read by event handlers such as the sidebar table-selection filter.
     var isKeyWindow = false
 
-    // Scheduled in `handleWindowDidResignKey`, fires 5s later.
-    var evictionTask: Task<Void, Never>?
-
     var refreshCoalesceTask: Task<Void, Never>?
     var refreshPendingTrailing = false
 
@@ -421,12 +410,15 @@ final class MainContentCoordinator: ObservableObject {
     }
 
     // Union across windows: saving one window's tabs erased torn-off ones. Deduped, since SwiftUI's throwaway coordinators repeat tabs.
+    // The connection's saved tab set. A debug tab is never saved, so a window holding only debug tabs counts as empty.
     static func aggregatedTabs(for connectionId: UUID) -> [QueryTab] {
         var seen = Set<UUID>()
         return activeCoordinators.values
             .filter { $0.connectionId == connectionId }
             .flatMap { coordinator in
-                coordinator.tabManager.tabs.map(coordinator.enrichedForPersistence)
+                coordinator.tabManager.tabs
+                    .filter { !$0.tabType.isTransient }
+                    .map(coordinator.enrichedForPersistence)
             }
             .filter { seen.insert($0.id).inserted }
     }
@@ -575,13 +567,6 @@ final class MainContentCoordinator: ObservableObject {
             MainContentCoordinator.isAppTerminating = true
         }
     }()
-
-    // Called on resign key. The selected tab keeps its rows; `canEvictReloadableTableRows` keeps tabs that can't reload themselves.
-    func evictInactiveRowData() {
-        for tab in tabManager.tabs {
-            evictReloadableTableRows(for: tab.id)
-        }
-    }
 
     // MARK: - Initialization
 
@@ -883,6 +868,10 @@ final class MainContentCoordinator: ObservableObject {
         columnScopeRequeryTask?.cancel()
         releaseImportFile()
 
+        let debugTabIds = tabManager.tabs.filter { $0.tabType.isTransient }.map(\.id)
+        if !debugTabIds.isEmpty {
+            RoutineDebugSessions.shared.endSessions(forTabs: debugTabIds, window: contentWindow)
+        }
         tabManager.tabs.removeAll()
         tabManager.selectedTabId = nil
 

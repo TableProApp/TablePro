@@ -42,8 +42,8 @@ internal struct ObjectCopyPlanner {
         try refuseUpFront(request)
 
         /// One pass per source namespace. A database-level copy on PostgreSQL spans every schema,
-        /// and each schema's tables have to be read, ordered and written in their own scope: one
-        /// read against a nil schema answers only whatever the connection is currently on.
+        /// and each schema's tables have to be read and written in their own scope: one read
+        /// against a nil schema answers only whatever the connection is currently on.
         var skipped: [ObjectCopySkip] = []
         var tableSteps: [ObjectCopyTableStep] = []
         var definitionSteps: [ObjectCopyDefinitionStep] = []
@@ -99,6 +99,7 @@ internal struct ObjectCopyPlanner {
             passes.append(ScopePass(
                 scope: scope,
                 sourceEndpoint: sourceEndpoint,
+                sourceNamespace: ObjectCopyNamespace.name(for: sourceEndpoint),
                 targetEndpoint: targetEndpoint,
                 sourceReads: sourceReads,
                 targetObjects: targetObjects,
@@ -106,6 +107,20 @@ internal struct ObjectCopyPlanner {
                 skipped: tableSkips
             ))
         }
+        let parentsFirst = Self.orderAcrossScopes(&passes)
+        let drafts = passes.flatMap(\.drafts)
+        var keysInside = Self.keysInside(
+            passes.map { (namespace: $0.sourceNamespace, tables: $0.drafts.map(\.selection)) },
+            reads: Dictionary(drafts.map { ($0.selection, $0.read) }, uniquingKeysWith: { first, _ in first }),
+            created: Set(drafts.filter(\.writesStructure).map(\.selection)),
+            rows: Dictionary(
+                drafts.filter(\.copiesData).map { draft in
+                    let scope = draft.rowScope
+                    return (draft.selection, !VerbatimTransferScopes.filtersRows(scope) && scope?.rowLimit == nil)
+                },
+                uniquingKeysWith: { first, _ in first }
+            )
+        )
 
         /// Every source scope of a copy to a chosen target lands in the one schema that was chosen,
         /// so the names its indexes take are allocated across scopes, not afresh for each.
@@ -144,6 +159,8 @@ internal struct ObjectCopyPlanner {
                 skipped: &skipped
             )
         }
+        tableSteps.sort { parentsFirst($0.selection, $1.selection) }
+        keysInside.rows = keysInside.rows && tableSteps.filter(\.copiesData).allSatisfy { $0.keyChecks != nil }
 
         return ObjectCopyPlan(
             request: request,
@@ -152,8 +169,40 @@ internal struct ObjectCopyPlanner {
             definitionSteps: definitionSteps,
             schemaStatements: try await buildSchemaStatements(request, namespaces: targetNamespaces),
             skipped: skipped,
-            isStructureReadPinned: isStructureReadPinned
+            isStructureReadPinned: isStructureReadPinned,
+            keysInside: keysInside,
+            targetGrammar: SQLLexicalResolver.executionGrammar(
+                for: request.target.databaseType, connectionId: request.target.connectionId
+            )
         )
+    }
+
+    /// Settles one dependency order over every scope's tables and puts each pass's drafts in it.
+    ///
+    /// Sorted one scope at a time, a PostgreSQL database with `app.orders` referencing `core.users`
+    /// created `orders` first, because `app` was the first scope. The drafts are reordered before
+    /// any step is built, because a sequence several tables share is created under the first.
+    private static func orderAcrossScopes(
+        _ passes: inout [ScopePass]
+    ) -> (ObjectCopySelection, ObjectCopySelection) -> Bool {
+        var reads: [ObjectCopySelection: TableStructureRead] = [:]
+        for draft in passes.flatMap(\.drafts) {
+            reads[draft.selection] = draft.read
+        }
+        let ordered = orderedByDependency(
+            passes.map { (namespace: $0.sourceNamespace, tables: $0.drafts.map(\.selection)) },
+            reads: reads
+        )
+        let rank = Dictionary(
+            ordered.enumerated().map { ($0.element, $0.offset) }, uniquingKeysWith: { first, _ in first }
+        )
+        let parentsFirst = { (lhs: ObjectCopySelection, rhs: ObjectCopySelection) in
+            (rank[lhs] ?? .max) < (rank[rhs] ?? .max)
+        }
+        for index in passes.indices {
+            passes[index].drafts.sort { parentsFirst($0.selection, $1.selection) }
+        }
+        return parentsFirst
     }
 
     private func sourceTableReads(
@@ -203,7 +252,12 @@ internal struct ObjectCopyPlanner {
             scope: targetScope(request, endpoint: request.target)
         ) { driver in
             guard let plugin = CompareMetadataService.pluginDriver(from: driver) else { return [] }
-            let scriptText = SQLScriptText(databaseType: driver.connection.type)
+            let scriptText = SQLScriptText(
+                databaseType: driver.connection.type,
+                grammar: SQLLexicalResolver.readings(
+                    for: driver.connection.type, session: driver.sessionLexicalState
+                ).execution
+            )
             return namespaces.flatMap { name -> [SyncStatement] in
                 guard let sql = plugin.createSchemaStatement(name: name) else { return [] }
                 let summary = String(format: String(localized: "Create schema %@"), name)
@@ -231,10 +285,14 @@ internal struct ObjectCopyPlanner {
     private struct ScopePass {
         let scope: Scope
         let sourceEndpoint: DatabaseEndpoint
+        /// The engine's own namespace, not the endpoint's schema. MySQL reports no schema on a
+        /// table while its foreign keys carry the database name, so ordering by the schema alone
+        /// matched no edge and fell through to alphabetical order.
+        let sourceNamespace: String?
         let targetEndpoint: DatabaseEndpoint
         let sourceReads: [TableStructureRead]
         let targetObjects: [String: ObjectCopySelection]
-        let drafts: [ObjectCopyTableDraft]
+        var drafts: [ObjectCopyTableDraft]
         let skipped: [ObjectCopySkip]
     }
 
@@ -283,7 +341,9 @@ internal struct ObjectCopyPlanner {
             from: request.source.databaseType,
             to: request.target.databaseType,
             sourceLanguage: PluginManager.shared.editorLanguage(for: request.source.databaseType),
-            targetLanguage: PluginManager.shared.editorLanguage(for: request.target.databaseType)
+            targetLanguage: PluginManager.shared.editorLanguage(for: request.target.databaseType),
+            sourceSession: manager.driver(for: request.source.connectionId)?.sessionLexicalState,
+            targetSession: manager.driver(for: request.target.connectionId)?.sessionLexicalState
         ) {
             throw ObjectCopyError.refused(reason)
         }
@@ -412,20 +472,13 @@ internal struct ObjectCopyPlanner {
         }
         guard !reads.isEmpty else { return [] }
 
-        /// The engine's own namespace, not the endpoint's schema. MySQL reports no schema on a
-        /// table while its foreign keys carry the database name, so ordering by the schema alone
-        /// matched no edge and fell through to alphabetical order.
-        let sourceNamespace = ObjectCopyNamespace.name(for: sourceEndpoint)
-        /// Seeded from the user's own order, not from `reads.keys`. Swift seeds Dictionary hashing
-        /// per process, so taking the keys gave the tables with no foreign key between them a
-        /// different tie-break on every launch: the approved script, the progress order and the
-        /// outcome list were all shuffled differently for the same copy.
+        /// In the user's own order, not `reads.keys`: Swift seeds Dictionary hashing per process, so
+        /// the tie-break between unrelated tables changed on every launch and shuffled the approved
+        /// script. `orderAcrossScopes` sorts them once every scope is read.
         var drafts: [ObjectCopyTableDraft] = []
         let targetServerVersion = manager.driver(for: request.target.connectionId)?.serverVersion
-        for selection in Self.orderedByDependency(
-            scope.objects.filter { reads[$0] != nil }, reads: reads, effectiveSchema: sourceNamespace
-        ) {
-            guard let read = reads[selection], let snapshot = read.sourceSnapshot else { continue }
+        for selection in scope.objects {
+            guard let read = reads.removeValue(forKey: selection), let snapshot = read.sourceSnapshot else { continue }
             let targetRead = match(selection, in: targetReads)
             let existsInTarget = targetRead != nil
             if existsInTarget, request.existingPolicy == .skip {
@@ -500,7 +553,9 @@ internal struct ObjectCopyPlanner {
                 coercer: draft.coercer,
                 serverSideInsert: draft.copiesData ? serverSide[draft.selection.id] : nil,
                 hasRowFilter: VerbatimTransferScopes.filtersRows(draft.rowScope),
-                note: draft.note
+                note: draft.note,
+                keyChecks: statements.keyChecks,
+                rollsBack: draft.rollsBack
             )
         }
     }
@@ -739,6 +794,9 @@ internal struct ObjectCopyPlanner {
                     ddl.create = try builder.build(
                         operations: [.createTable(input.snapshot)], foreignKeysByTable: [:]
                     )
+                    ddl.keyChecks = Self.keyChecks(
+                        for: input.snapshot, schema: input.targetSchema, driver: plugin, databaseType: driver.connection.type
+                    )
                 }
                 if input.emptiesFirst {
                     ddl.truncate = Self.emptyStatements(
@@ -822,6 +880,36 @@ internal struct ObjectCopyPlanner {
         )
     }
 
+    /// Turning the target's checks back on checks nothing already written, so a copy that wrote
+    /// with them off counts what each key would have refused before it commits. Nil when a key's
+    /// columns do not pair up, since that one could not be checked.
+    nonisolated static func keyChecks(
+        for snapshot: TableStructureSnapshot,
+        schema: String?,
+        driver: any PluginDatabaseDriver,
+        databaseType: DatabaseType
+    ) -> [ObjectCopyKeyCheck]? {
+        let quote = driver.quoteIdentifier
+        let child = SchemaQualifiedName.render(name: snapshot.name, schema: schema, databaseType: databaseType, quote: quote)
+        var checks: [ObjectCopyKeyCheck] = []
+        for key in snapshot.foreignKeys {
+            guard !key.columns.isEmpty, key.columns.count == key.referencedColumns.count else { return nil }
+            let parent = SchemaQualifiedName.render(
+                name: key.referencedTable, schema: key.referencedSchema ?? schema, databaseType: databaseType, quote: quote
+            )
+            // A key with any column NULL holds nothing, the way MATCH SIMPLE reads it.
+            let present = key.columns.map { "c.\(quote($0)) IS NOT NULL" }.joined(separator: " AND ")
+            let matches = zip(key.columns, key.referencedColumns)
+                .map { "p.\(quote($1)) = c.\(quote($0))" }
+                .joined(separator: " AND ")
+            checks.append(ObjectCopyKeyCheck(
+                constraint: key.name,
+                sql: "SELECT COUNT(*) FROM \(child) c WHERE \(present) AND NOT EXISTS (SELECT 1 FROM \(parent) p WHERE \(matches))"
+            ))
+        }
+        return checks
+    }
+
     /// What empties a table before its rows are written.
     ///
     /// DELETE whenever the run promises to roll the table back. TRUNCATE commits implicitly on the
@@ -849,7 +937,8 @@ internal struct ObjectCopyPlanner {
                 format: String(localized: "Every row already in %@ is removed."), table
             )
         )]
-        return SQLScriptText(databaseType: databaseType).sendableStatements(sql).map { statement in
+        let grammar = SQLLexicalResolver.readings(for: databaseType, session: driver.sessionLexicalState).execution
+        return SQLScriptText(databaseType: databaseType, grammar: grammar).sendableStatements(sql).map { statement in
             SyncStatement(sql: statement, objectName: table, summary: summary, hazards: hazards)
         }
     }
@@ -881,7 +970,10 @@ internal struct ObjectCopyPlanner {
         /// engines alone, so one skip per object here costs nothing while reading every body first
         /// and discarding all of them costs a round trip per object.
         if let reason = ObjectCopyEligibility.definitionEngineRefusal(
-            from: request.source.databaseType, to: request.target.databaseType
+            from: request.source.databaseType,
+            to: request.target.databaseType,
+            sourceSession: manager.driver(for: request.source.connectionId)?.sessionLexicalState,
+            targetSession: manager.driver(for: request.target.connectionId)?.sessionLexicalState
         ) {
             skipped += selections.map { ObjectCopySkip(selection: $0, reason: reason) }
             return []
@@ -907,7 +999,12 @@ internal struct ObjectCopyPlanner {
             sourceReads: sourceReads,
             connection: connection
         )
-        let targetScriptText = SQLScriptText(databaseType: request.target.databaseType)
+        let targetScriptText = SQLScriptText(
+            databaseType: request.target.databaseType,
+            grammar: SQLLexicalResolver.executionGrammar(
+                for: request.target.databaseType, connectionId: request.target.connectionId
+            )
+        )
         var pending: [(
             selection: ObjectCopySelection, definition: String, read: RoutineSourceRead, target: ObjectCopySelection?
         )] = []
@@ -1047,28 +1144,31 @@ internal struct ObjectCopyPlanner {
     /// Parents before children, so a foreign key in a `CREATE TABLE` finds the table it points at.
     /// A cycle keeps whatever order the sort settles on and fails at the server, which is the same
     /// answer Compare & Sync gives it.
-    /// `effectiveSchema` is the scope the tables were read in, and it is load-bearing.
+    ///
+    /// Every scope goes into one sort, because a key may point into another scope's table. Each
+    /// scope's `namespace` is the one its tables were read in, and it is load-bearing.
     /// `fetchTables` returns `PluginTableInfo.schema == nil` on MySQL and PostgreSQL while their
     /// foreign keys carry a non-nil `referencedSchema`, so nodes built from the table's own schema
     /// were keyed `child` while the dependency named `public.parent`. No edge ever matched, every
     /// table looked independent, and the sort fell through to alphabetical order: a child could be
     /// created before its parent and the server rejected it.
     nonisolated internal static func orderedByDependency(
-        _ selections: [ObjectCopySelection],
-        reads: [ObjectCopySelection: TableStructureRead],
-        effectiveSchema: String?
+        _ scopes: [(namespace: String?, tables: [ObjectCopySelection])],
+        reads: [ObjectCopySelection: TableStructureRead]
     ) -> [ObjectCopySelection] {
+        let selections = scopes.flatMap { $0.tables }
         guard selections.count > 1 else { return selections }
         var foreignKeysByTable: [String: [PluginForeignKeyInfo]] = [:]
         var nodes: [ForeignKeyTopologicalSort.Table] = []
         var bySortKey: [String: ObjectCopySelection] = [:]
-        for selection in selections {
-            guard let read = reads[selection] else { continue }
-            let schema = read.table.schema ?? selection.schema ?? effectiveSchema
-            let node = ForeignKeyTopologicalSort.Table(name: read.table.name, schema: schema)
-            nodes.append(node)
-            foreignKeysByTable[node.identifier] = read.foreignKeys
-            bySortKey[node.identifier] = selection
+        for scope in scopes {
+            for selection in scope.tables {
+                guard let read = reads[selection] else { continue }
+                let node = sortNode(selection, read: read, namespace: scope.namespace)
+                nodes.append(node)
+                foreignKeysByTable[node.identifier] = read.foreignKeys
+                bySortKey[node.identifier] = selection
+            }
         }
 
         var emitted: Set<String> = []
@@ -1087,6 +1187,51 @@ internal struct ObjectCopyPlanner {
             result.append(selection)
         }
         return result
+    }
+
+    /// `created` holds each table whose structure the copy writes, and `rows` each table that gets
+    /// rows, true when it gets every one. Keys are read from the source, which is what the target
+    /// holds only for a table the copy creates: one it keeps may carry keys of its own.
+    nonisolated internal static func keysInside(
+        _ scopes: [(namespace: String?, tables: [ObjectCopySelection])],
+        reads: [ObjectCopySelection: TableStructureRead],
+        created: Set<ObjectCopySelection>,
+        rows: [ObjectCopySelection: Bool]
+    ) -> ObjectCopyKeysInside {
+        var nodes: [(selection: ObjectCopySelection, keys: [PluginForeignKeyInfo], node: ForeignKeyTopologicalSort.Table)] = []
+        for scope in scopes {
+            for selection in scope.tables {
+                guard let read = reads[selection] else { return ObjectCopyKeysInside() }
+                nodes.append((selection, read.foreignKeys, sortNode(selection, read: read, namespace: scope.namespace)))
+            }
+        }
+        func pointsWithin(
+            _ keys: [PluginForeignKeyInfo], from node: ForeignKeyTopologicalSort.Table, _ tables: Set<String>
+        ) -> Bool {
+            keys.allSatisfy { key in
+                tables.contains(ForeignKeyTopologicalSort.Table(
+                    name: key.referencedTable, schema: key.referencedSchema ?? node.schema
+                ).identifier)
+            }
+        }
+        let present = Set(nodes.map(\.node.identifier))
+        let filled = Set(nodes.filter { rows[$0.selection] == true }.map(\.node.identifier))
+        return ObjectCopyKeysInside(
+            created: nodes.filter { created.contains($0.selection) }.allSatisfy {
+                pointsWithin($0.keys, from: $0.node, present)
+            },
+            rows: nodes.filter { rows[$0.selection] != nil }.allSatisfy {
+                created.contains($0.selection) && pointsWithin($0.keys, from: $0.node, filled)
+            }
+        )
+    }
+
+    nonisolated private static func sortNode(
+        _ selection: ObjectCopySelection,
+        read: TableStructureRead,
+        namespace: String?
+    ) -> ForeignKeyTopologicalSort.Table {
+        ForeignKeyTopologicalSort.Table(name: read.table.name, schema: read.table.schema ?? selection.schema ?? namespace)
     }
 
     /// A view selects from a table, a routine calls a view, and a trigger hangs off a table, so the

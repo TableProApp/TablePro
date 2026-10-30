@@ -58,7 +58,7 @@ enum PostgreSQLSchemaManagementQueries {
         ) s
         LEFT JOIN pg_catalog.pg_roles gte ON gte.oid = (s.acl).grantee
         LEFT JOIN pg_catalog.pg_roles gtr ON gtr.oid = (s.acl).grantor
-        ORDER BY 2, 3
+        ORDER BY gte.rolname NULLS FIRST, 3
         """
     }
 

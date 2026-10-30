@@ -24,15 +24,19 @@ extension DatabaseManager {
         return !commands.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    /// The statements `executeStartupCommands` sends, one per line or `;`, read the way the engine reads a quote or a
+    /// The statements `executeStartupCommands` sends, one per line or `;`, read the way the session reads a quote or a
     /// comment. Also read by the catalog, because a temporary table a startup command creates shadows a real one for
     /// the whole session.
-    nonisolated internal static func startupStatements(from commands: String?, databaseType: DatabaseType) -> [String] {
+    nonisolated internal static func startupStatements(
+        from commands: String?,
+        databaseType: DatabaseType,
+        grammar sessionGrammar: SQLLexicalGrammar? = nil
+    ) -> [String] {
         guard hasStartupCommands(commands), let commands else { return [] }
         if QueryStatementModel.forDatabaseType(databaseType) == .redis {
             return RedisCommandSplitter.commands(in: commands).map(\.text)
         }
-        let grammar = databaseType.lexicalGrammar
+        let grammar = sessionGrammar ?? databaseType.lexicalGrammar
         let source = commands as NSString
         var statements: [String] = []
         var lineStart = 0
@@ -62,7 +66,9 @@ extension DatabaseManager {
         _ commands: String?, on driver: DatabaseDriver, connectionName: String
     ) async -> [(statement: String, error: String)] {
         var failures: [(statement: String, error: String)] = []
-        for statement in Self.startupStatements(from: commands, databaseType: driver.connection.type) {
+        let databaseType = driver.connection.type
+        let grammar = SQLLexicalResolver.readings(for: databaseType, session: driver.sessionLexicalState).execution
+        for statement in Self.startupStatements(from: commands, databaseType: databaseType, grammar: grammar) {
             do {
                 _ = try await driver.execute(query: statement)
                 Self.startupLogger.info(

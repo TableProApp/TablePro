@@ -43,6 +43,9 @@
     "KafkaDriverPlugin": {
       "name": "Kafka Driver"
     },
+    "KingbaseESDriverPlugin": {
+      "name": "KingbaseES Driver"
+    },
     "LibSQLDriverPlugin": {
       "name": "libSQL / Turso Driver"
     },

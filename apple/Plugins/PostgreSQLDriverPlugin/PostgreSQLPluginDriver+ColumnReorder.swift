@@ -137,7 +137,7 @@ extension PostgreSQLPluginDriver {
             JOIN pg_class c ON c.oid = t.tgrelid
             JOIN pg_namespace n ON n.oid = c.relnamespace
             WHERE c.relname = \(tableLiteral) AND n.nspname = \(schemaLiteral) AND NOT t.tgisinternal
-              AND t.tgenabled <> 'O'
+              AND t.tgenabled IN ('D', 'R', 'A')
             ORDER BY t.tgname
             """)
 
@@ -155,7 +155,7 @@ extension PostgreSQLPluginDriver {
             JOIN pg_namespace n ON n.oid = c.relnamespace
             WHERE c.relname = \(tableLiteral) AND n.nspname = \(schemaLiteral)
               AND a.attnum > 0 AND NOT a.attisdropped
-              AND \(caps.hasIdentityColumns ? "a.attidentity = ''" : "true")
+              AND \(caps.hasIdentityColumns ? "a.attidentity NOT IN ('a', 'd')" : "true")
               AND pg_get_serial_sequence(
                     quote_ident(n.nspname) || '.' || quote_ident(c.relname), a.attname
                   ) IS NOT NULL

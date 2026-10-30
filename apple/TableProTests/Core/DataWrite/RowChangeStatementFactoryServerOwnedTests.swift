@@ -203,9 +203,9 @@ struct RowChangeStatementFactoryServerOwnedTests {
         #expect(!sql.contains("Doubled"))
     }
 
-    @Test
-    func aPostgreSQLRestoreOverridesTheSystemValue() throws {
-        let restored = try factory(databaseType: .postgresql, schemaName: "sales").restoreStatements(
+    @Test(arguments: [DatabaseType.postgresql, .pglite, .kingbasees])
+    func aPostgreSQLRestoreOverridesTheSystemValue(databaseType: DatabaseType) throws {
+        let restored = try factory(databaseType: databaseType, schemaName: "sales").restoreStatements(
             rows: [["5", "a", "10"]]
         )
         #expect(restored.prologue.isEmpty)

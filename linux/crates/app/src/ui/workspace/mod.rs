@@ -1,6 +1,9 @@
-//! One connection session's workspace: the sidebar of its tables and
-//! the tabs open on them. A workspace never changes session; a
-//! disconnect drops it and the window shows the connection picker.
+//! One connection session's workspace: the sidebar of its tables, the
+//! tabs open on them in the tab view of the window's shell, which every
+//! session of the window shares, its banners and its assistant. What the
+//! shell shows of it while it is in front are its properties. A
+//! workspace never changes session; a disconnect drops it, and the
+//! window shows the connection picker once it holds no session.
 
 mod assistant;
 mod close_flow;
@@ -11,11 +14,10 @@ mod health_banner;
 mod imp;
 mod import;
 mod import_ledger;
+mod recent_tabs;
 mod references;
-mod row_ops;
 mod saves;
 mod session_watches;
-mod shell;
 mod sidebar;
 mod status_pages;
 mod structure;
@@ -27,18 +29,20 @@ mod tab_spec;
 mod tab_title;
 mod table_naming;
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;
 mod transaction_banner;
 mod unsaved_icon;
 mod window_tabs;
 mod window_title;
 mod workspace_actions;
 mod workspace_persistence;
+mod workspace_shell;
+mod workspace_shell_imp;
 mod workspace_tab_view;
 mod workspace_tabs;
 
 use std::cell::{Cell, RefCell};
-use std::collections::{HashMap, VecDeque};
+use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -56,6 +60,8 @@ use tablepro_session::{ObjectListSnapshot, Session, SessionHealth, SessionKey};
 use uuid::Uuid;
 
 use self::session_watches::SessionWatches;
+use self::tab_title::ConnectionLabel;
+pub(crate) use self::workspace_shell::WorkspaceShell;
 use super::browse_tab::BrowseTab;
 use super::editor::SqlEditor;
 use super::export::{ExportLedger, ExportLedgerInit, ExportOffer, ExportReporter};
@@ -86,6 +92,9 @@ pub(crate) struct WorkspaceInit {
     /// The window's prompts, so a tab's close and the window's never ask
     /// at once.
     pub close_guards: Rc<CloseGuards>,
+    /// The window's shell, whose tab view, header bars and sidebar the
+    /// workspace shares with the window's other sessions.
+    pub shell: WorkspaceShell,
 }
 
 pub(crate) type WorkspaceSender = InputSender<WorkspaceInput>;
@@ -97,23 +106,17 @@ pub(crate) struct WorkspaceModel {
     input: WorkspaceSender,
     this: glib::WeakRef<Workspace>,
     window: glib::WeakRef<adw::ApplicationWindow>,
+    shell: glib::WeakRef<WorkspaceShell>,
     settings: Rc<tablepro_storage::AppSettings>,
     storage: crate::storage::SharedStorage,
     tasks: tablepro_session::runtime::Tasks,
     history: crate::services::history_service::HistoryService,
     drafts: Rc<crate::workspace::DraftWriter>,
-    window_title: adw::WindowTitle,
-    sidebar_title: adw::WindowTitle,
-    /// The header bars' buttons and bindings the workspace set up, let go
-    /// of at shutdown.
-    shell: shell::ShellHandles,
-    /// Watches `HistoryService` and flips `win.show-history`. Aborted
-    /// with the workspace, whose actions it acts on.
-    history_gate: glib::JoinHandle<()>,
-    /// The window's actions this workspace added, removed with it.
-    actions: Vec<&'static str>,
-    /// The assistant's column, its toggle and what it may send.
-    assistant: assistant::AssistantShell,
+    saved_connections: Rc<crate::services::saved_connection_list::SavedConnectionList>,
+    /// The connection the tabs and the titles name.
+    label: Rc<ConnectionLabel>,
+    /// The session's assistant pane and what it may send.
+    assistant: assistant::AssistantColumn,
     sidebar: sidebar::SidebarView,
     /// The schemas the sidebar's sections are made from, which also
     /// decide whether tab titles name their schema.
@@ -124,7 +127,6 @@ pub(crate) struct WorkspaceModel {
     /// Whether every schema's list has landed once. Until then the
     /// sidebar shows the default schema's.
     all_schemas_listed: bool,
-    toast_overlay: adw::ToastOverlay,
     reconnect_banner: adw::Banner,
     transaction_banner: adw::Banner,
     /// Says the sidebar's list could not be read again, until a read
@@ -136,8 +138,6 @@ pub(crate) struct WorkspaceModel {
     /// Says the saved tabs could not be read, until Reset moves them
     /// aside.
     layout_banner: adw::Banner,
-    row_op_spinner: adw::Spinner,
-    table_search: gtk::SearchEntry,
     /// Removes a changed host key from known_hosts. `None` without ssh.
     ssh: Option<tablepro_ssh::SshServices>,
     file_revealer: Rc<dyn crate::ui::file_reveal::FileRevealer>,
@@ -147,6 +147,8 @@ pub(crate) struct WorkspaceModel {
     tab_view: adw::TabView,
     /// Which tab each page shows.
     index: Rc<tab_index::TabIndex>,
+    /// The session's hold on the shared tab view, let go of at shutdown.
+    tab_view_watch: Option<workspace_tabs::TabViewWatch>,
     /// Builds every tab the workspace opens.
     factory: Rc<tab_factory::TabFactory>,
     /// Whether tab titles name the schema, from the session's schemas.
@@ -166,8 +168,6 @@ pub(crate) struct WorkspaceModel {
     exports: Rc<ExportLedger>,
     /// The CSV imports running into this workspace's tables.
     imports: Rc<import_ledger::ImportLedger>,
-    /// Whether the window was last told there is something to lose.
-    reported_dirty: Cell<Option<bool>>,
     history_dialog: Option<HistoryDialog>,
     saved_queries_dialog: Option<Controller<super::saved_queries_dialog::SavedQueriesDialog>>,
     import_dialog: Option<Controller<super::import_dialog::ImportCsvDialog>>,
@@ -176,9 +176,6 @@ pub(crate) struct WorkspaceModel {
     driver_name: String,
     /// Writes the tab list a moment after the last change.
     workspace: Rc<workspace_persistence::WorkspacePersistence>,
-    /// Recently closed tabs for Ctrl+Shift+T. Pending edits are not
-    /// kept: the close has already cleared them.
-    closed_tabs_stack: Rc<RefCell<VecDeque<ClosedTabDescriptor>>>,
     _watches: SessionWatches,
     /// Tells the user once when editor drafts start failing to land.
     _draft_failures: tablepro_session::runtime::WatchForwarder,
@@ -243,6 +240,15 @@ fn draft_failure_watch(
     )
 }
 
+/// The connection as the session's tabs and titles name it.
+fn connection_label(key: &SessionKey, services: &AppServices, context: &SessionContext) -> Rc<ConnectionLabel> {
+    Rc::new(ConnectionLabel::new(
+        key.clone(),
+        services.saved_connections.clone(),
+        context.active.clone(),
+    ))
+}
+
 /// What the tab view's parts are built from.
 struct TabsInit<'a> {
     key: &'a SessionKey,
@@ -251,6 +257,7 @@ struct TabsInit<'a> {
     context: &'a Rc<SessionContext>,
     drafts: &'a Rc<crate::workspace::DraftWriter>,
     exports: &'a Rc<ExportLedger>,
+    label: &'a Rc<ConnectionLabel>,
 }
 
 struct WorkspaceTabParts {
@@ -262,13 +269,15 @@ struct WorkspaceTabParts {
     naming: Rc<Cell<table_naming::TableNaming>>,
     factory: Rc<tab_factory::TabFactory>,
     workspace_handle: WorkspaceHandle,
-    /// What the window's assistant may send, which editor tabs ask.
+    /// What the session's assistant may send, which editor tabs ask.
     assistant: Rc<crate::ui::assistant::AssistantAccess>,
+    tab_view_watch: workspace_tabs::TabViewWatch,
 }
 
-/// Snapshot of a tab the user just closed, retained for Ctrl+Shift+T
-/// reopen, so a reopen builds its tab the way a restore does, through
-/// a `TabSpec`.
+/// Snapshot of a tab the user just closed, which the shell keeps for
+/// Ctrl+Shift+T, so a reopen builds its tab the way a restore does,
+/// through a `TabSpec`. Pending edits are not kept: the close has
+/// already cleared them.
 #[derive(Debug, Clone)]
 pub enum ClosedTabDescriptor {
     Editor {
@@ -421,20 +430,6 @@ impl WorkspaceTab {
     }
 }
 
-/// Give `page` its title and tooltip. libadwaita treats an empty tooltip
-/// as none, which clears the last one. The tooltip says what the unsaved
-/// icon shows, since a screen reader reads a tab's tooltip and not its
-/// icon.
-pub(crate) fn apply_tab_title(page: &adw::TabPage, title: &tab_title::TabTitle) {
-    page.set_title(&title.label);
-    let unsaved = page.icon().is_some().then(|| crate::i18n::gettext("Unsaved changes"));
-    let lines: Vec<&str> = [title.tooltip.as_deref(), unsaved.as_deref()]
-        .into_iter()
-        .flatten()
-        .collect();
-    page.set_tooltip(&lines.join("\n"));
-}
-
 #[derive(Debug, Clone, Copy)]
 pub enum OpenMode {
     /// Plain sidebar click: activate the table's tab, or append one.
@@ -455,6 +450,8 @@ fn close_if_presented(dialog: &adw::Dialog) {
 #[derive(Debug)]
 pub(crate) enum WorkspaceInput {
     HealthChanged(SessionHealth),
+    /// Another session's tab came into the bar, or the last one left it.
+    SharesBar,
     /// The banner's Review Key, for a session parked on a host key.
     ReviewHostKey,
     HostKeyReviewed {
@@ -553,9 +550,6 @@ pub(crate) enum WorkspaceInput {
     WorkspaceTabClosed(Uuid),
     /// Close the tab as its close button does, prompts and all.
     CloseWorkspaceTab(Uuid),
-    /// Each tab still asks about its own unsaved changes.
-    CloseOtherWorkspaceTabs(Uuid),
-    CloseWorkspaceTabsToRight(Uuid),
     /// The tab order, the selection or a tab's state changed, so the
     /// workspace is saved.
     WorkspaceTabsChanged,
@@ -623,7 +617,8 @@ pub(crate) enum WorkspaceInput {
         schema: Option<String>,
         table: Option<String>,
     },
-    ReopenClosedTab,
+    /// Ctrl+Shift+T reopens a tab this session closed last.
+    ReopenClosedTab(ClosedTabDescriptor),
     /// A browse tab's F5.
     RefreshTab(Uuid),
     /// Bring the tab to the front, for a notification about it.
@@ -636,6 +631,106 @@ pub(crate) enum WorkspaceInput {
     AssistantChanged,
 }
 
+/// The exports this workspace's grids start, listed in the shell's
+/// operations button once the shell holds the workspace, and reported in
+/// its toasts.
+fn export_ledger(
+    shell: &WorkspaceShell,
+    window: &adw::ApplicationWindow,
+    services: &AppServices,
+    context: &SessionContext,
+    input: &WorkspaceSender,
+) -> Rc<ExportLedger> {
+    let exports = ExportLedger::new(ExportLedgerInit {
+        tasks: services.tasks.clone(),
+        hold: context.hold.clone(),
+        reporter: ExportReporter::new(window, &shell.toast_overlay(), services.file_revealer.clone()),
+        inhibitor: window_inhibitor(window),
+    });
+    let ended = input.clone();
+    exports.on_ended(move |tab, outcome| ended.deliver(WorkspaceInput::ExportEnded { tab, outcome }));
+    exports
+}
+
+/// The tab view's registries, the factory that builds every tab into
+/// them, and the handle that saves and settles their changes.
+fn build_tabs(shell: &WorkspaceShell, init: TabsInit<'_>, input: &WorkspaceSender) -> WorkspaceTabParts {
+    let TabsInit {
+        key,
+        session,
+        services,
+        context,
+        drafts,
+        exports,
+        label,
+    } = init;
+    let engine = driver_display_name(context, &session.metadata().driver_id);
+    let assistant = assistant::access(services, key, context.active.clone(), engine);
+    let change_trackers = Rc::new(ChangeTrackerRegistry::default());
+    let structure_trackers = Rc::new(StructureTrackerRegistry::default());
+    let workspace_tabs: workspace_persistence::WorkspaceTabs = Rc::new(RefCell::new(HashMap::new()));
+    let index = Rc::new(tab_index::TabIndex::default());
+    let tab_view = shell.tab_view();
+    let window_tabs = Rc::new(window_tabs::WindowTabs::new(
+        workspace_tabs.clone(),
+        index.clone(),
+        &tab_view,
+    ));
+    let events = input.clone();
+    let workspace_handle = WorkspaceHandle::new(crate::workspace::WorkspaceDeps {
+        session: context.active.clone(),
+        tasks: context.tasks.clone(),
+        hold: context.hold.clone(),
+        history: Some(services.history()),
+        rows: change_trackers.clone(),
+        structures: structure_trackers.clone(),
+        directory: window_tabs,
+        events: Rc::new(move |event| events.deliver(WorkspaceInput::Workspace(event))),
+        engine: crate::workspace::EngineProfile::of(&context.drivers, &session.metadata().driver_id),
+    });
+    let saves = input.clone();
+    workspace_handle
+        .ledger()
+        .on_change(move |count| saves.deliver(WorkspaceInput::SavesInFlightChanged(count)));
+
+    let naming = Rc::new(Cell::new(table_naming::TableNaming::default()));
+    let factory = tab_factory::TabFactory::new(tab_factory::TabFactoryParts {
+        view: tab_view.clone(),
+        tabs: workspace_tabs.clone(),
+        index: index.clone(),
+        input: input.clone(),
+        shell: shell.downgrade(),
+        toasts: shell.toast_overlay().downgrade(),
+        context: context.clone(),
+        settings: services.settings.clone(),
+        storage: services.storage.clone(),
+        history: Some(services.history()),
+        drafts: drafts.clone(),
+        draft_scope: crate::workspace::WorkspaceFileName::for_key(key).draft_scope(),
+        change_trackers: change_trackers.clone(),
+        structure_trackers: structure_trackers.clone(),
+        exports: exports.clone(),
+        read_only: session.read_only(),
+        naming: naming.clone(),
+        label: label.clone(),
+        assistant: assistant.clone(),
+        snippets: services.snippets.clone(),
+    });
+    let tab_view_watch = workspace_tabs::connect_tab_view(&tab_view, &index, input);
+    WorkspaceTabParts {
+        tab_view,
+        index,
+        workspace_tabs,
+        change_trackers,
+        structure_trackers,
+        naming,
+        factory,
+        workspace_handle,
+        assistant,
+        tab_view_watch,
+    }
+}
+
 impl Workspace {
     pub(crate) fn new(init: WorkspaceInit) -> Self {
         let WorkspaceInit {
@@ -645,22 +740,27 @@ impl Workspace {
             context,
             window,
             close_guards,
+            shell,
         } = init;
         let workspace: Self = glib::Object::new();
         let imp = workspace.imp();
+        imp.shell.set(Some(&shell));
         let input = workspace.pump_inputs();
+        let _ = imp.sender.set(input.clone());
+        let _ = imp.key.set(key.clone());
         let context = session_slot(&context, &session);
-        let settings = services.settings.clone();
         let storage = services.storage.clone();
         let tasks = services.tasks.clone();
-        let history = services.history();
         let drafts = draft_writer(&storage, &tasks);
         let persistence = workspace_persistence::WorkspacePersistence::new(storage.workspaces().clone());
-        let exports = workspace.export_ledger(&window, &services, &context, &input);
+        let exports = export_ledger(&shell, &window, &services, &context, &input);
         let imports = import_ledger::ImportLedger::new(context.hold.clone(), window_inhibitor(&window));
         let data = data_model(&context, &session);
-        let sidebar = sidebar::build(&workspace, &input, &session, &tasks, data);
-        let tabs = workspace.build_tabs(
+        let _ = imp.data_model.set(data);
+        let sidebar = sidebar::build(&input, &session, &tasks, data);
+        let label = connection_label(&key, &services, &context);
+        let tabs = build_tabs(
+            &shell,
             TabsInit {
                 key: &key,
                 session: &session,
@@ -668,54 +768,50 @@ impl Workspace {
                 context: &context,
                 drafts: &drafts,
                 exports: &exports,
+                label: &label,
             },
             &input,
         );
-        let mut actions = workspace_actions::install(&window, &input);
-        let shell = shell::install(&workspace, &window, &tabs.factory, &services, &input);
-        actions.extend([shell::SHOW_SIDEBAR, assistant::SHOW_ASSISTANT]);
-        let history_gate = workspace_actions::spawn_history_gate(&window, history.availability());
-        let watches = SessionWatches::new(&session, &input);
+        let _ = imp.index.set(tabs.index.clone());
+        imp.factory.replace(Some(tabs.factory.clone()));
+        let assistant = assistant::install(&tabs, &input);
+        let _ = imp.assistant_pane.set(assistant.pane());
+        let watches = SessionWatches::new(&session, &services.saved_connections, &input);
         let draft_failures = draft_failure_watch(&drafts, &input);
         transaction_banner::connect_show(&imp.transaction_banner, &input);
 
-        let driver_id = session.metadata().driver_id.clone();
-        let driver_name = driver_display_name(&context, &driver_id);
         let model = WorkspaceModel {
-            // Before `input` and the tabs' parts move into the model.
-            assistant: assistant::install(&workspace, &window, &tabs, &input),
+            assistant,
+            driver_name: driver_display_name(&context, &session.metadata().driver_id),
+            driver_id: session.metadata().driver_id.clone(),
             context,
             key,
             input,
             this: workspace.downgrade(),
             window: window.downgrade(),
-            settings,
+            shell: shell.downgrade(),
+            settings: services.settings.clone(),
             storage,
             tasks,
-            history,
+            history: services.history(),
             drafts,
-            window_title: imp.window_title.get(),
-            sidebar_title: imp.sidebar_title.get(),
-            shell,
-            history_gate,
-            actions,
+            saved_connections: services.saved_connections.clone(),
+            label,
             sidebar,
             catalog_schemas: Arc::from([]),
             sidebar_read: 0,
             all_schemas_listed: false,
-            toast_overlay: imp.toast_overlay.get(),
             reconnect_banner: imp.reconnect_banner.get(),
             transaction_banner: imp.transaction_banner.get(),
             catalog_banner: imp.catalog_banner.get(),
             keys: (data == DataModel::KeyValue).then(|| sidebar::KeySidebar::new(imp.key_limit_banner.get())),
             layout_banner: imp.layout_banner.get(),
-            row_op_spinner: imp.row_op_spinner.get(),
-            table_search: imp.table_search.get(),
             ssh: services.ssh(),
             file_revealer: services.file_revealer.clone(),
             reviewing_host_key: false,
             tab_view: tabs.tab_view,
             index: tabs.index,
+            tab_view_watch: Some(tabs.tab_view_watch),
             factory: tabs.factory,
             naming: tabs.naming,
             workspace_tabs: tabs.workspace_tabs,
@@ -725,21 +821,27 @@ impl Workspace {
             close_guards,
             exports: exports.clone(),
             imports: imports.clone(),
-            reported_dirty: Cell::new(None),
             history_dialog: None,
             saved_queries_dialog: None,
             import_dialog: None,
-            driver_id,
-            driver_name,
             workspace: persistence,
-            closed_tabs_stack: Rc::new(RefCell::new(VecDeque::with_capacity(CLOSED_TABS_CAPACITY))),
             _watches: watches,
             _draft_failures: draft_failures,
         };
-        imp.model.replace(Some(model));
-        workspace.register_close_blocker(exports);
-        workspace.register_close_blocker(imports);
+        workspace.hold(model, [exports, imports]);
         workspace
+    }
+
+    /// Hold the model, and have every close of the window ask the
+    /// `blockers` first. The session is named before the shell holds it,
+    /// which titles its row and the header bars from these.
+    fn hold(&self, model: WorkspaceModel, blockers: [Rc<dyn CloseBlocker>; 2]) {
+        model.refresh_title();
+        model.refresh_assistant();
+        self.imp().model.replace(Some(model));
+        for blocker in blockers {
+            self.register_close_blocker(blocker);
+        }
     }
 
     fn pump_inputs(&self) -> WorkspaceSender {
@@ -752,119 +854,84 @@ impl Workspace {
         input
     }
 
-    /// The exports this workspace's grids start, shown in the header's
-    /// operations button and reported in its toasts.
-    fn export_ledger(
-        &self,
-        window: &adw::ApplicationWindow,
-        services: &AppServices,
-        context: &SessionContext,
-        input: &WorkspaceSender,
-    ) -> Rc<ExportLedger> {
-        let imp = self.imp();
-        let exports = ExportLedger::new(ExportLedgerInit {
-            tasks: services.tasks.clone(),
-            hold: context.hold.clone(),
-            reporter: ExportReporter::new(window, &imp.toast_overlay.get(), services.file_revealer.clone()),
-            inhibitor: window_inhibitor(window),
-        });
-        imp.export_operations_button.bind(&exports.jobs());
-        let ended = input.clone();
-        exports.on_ended(move |tab, outcome| ended.deliver(WorkspaceInput::ExportEnded { tab, outcome }));
-        exports
-    }
-
-    /// The tab view's registries, the factory that builds every tab into
-    /// them, and the handle that saves and settles their changes.
-    fn build_tabs(&self, init: TabsInit<'_>, input: &WorkspaceSender) -> WorkspaceTabParts {
-        let TabsInit {
-            key,
-            session,
-            services,
-            context,
-            drafts,
-            exports,
-        } = init;
-        let engine = driver_display_name(context, &session.metadata().driver_id);
-        let assistant = assistant::access(services, key, context.active.clone(), engine);
-        let change_trackers = Rc::new(ChangeTrackerRegistry::default());
-        let structure_trackers = Rc::new(StructureTrackerRegistry::default());
-        let workspace_tabs: workspace_persistence::WorkspaceTabs = Rc::new(RefCell::new(HashMap::new()));
-        let index = Rc::new(tab_index::TabIndex::default());
-        let tab_view = self.imp().tab_view.get();
-        let window_tabs = Rc::new(window_tabs::WindowTabs::new(
-            workspace_tabs.clone(),
-            index.clone(),
-            &tab_view,
-        ));
-        let events = input.clone();
-        let workspace_handle = WorkspaceHandle::new(crate::workspace::WorkspaceDeps {
-            session: context.active.clone(),
-            tasks: context.tasks.clone(),
-            hold: context.hold.clone(),
-            history: Some(services.history()),
-            rows: change_trackers.clone(),
-            structures: structure_trackers.clone(),
-            directory: window_tabs,
-            events: Rc::new(move |event| events.deliver(WorkspaceInput::Workspace(event))),
-            engine: crate::workspace::EngineProfile::of(&context.drivers, &session.metadata().driver_id),
-        });
-        let saves = input.clone();
-        workspace_handle
-            .ledger()
-            .on_change(move |count| saves.deliver(WorkspaceInput::SavesInFlightChanged(count)));
-
-        let naming = Rc::new(Cell::new(table_naming::TableNaming::default()));
-        let factory = tab_factory::TabFactory::new(tab_factory::TabFactoryParts {
-            view: tab_view.clone(),
-            tabs: workspace_tabs.clone(),
-            index: index.clone(),
-            input: input.clone(),
-            toasts: self.imp().toast_overlay.downgrade(),
-            context: context.clone(),
-            settings: services.settings.clone(),
-            storage: services.storage.clone(),
-            history: Some(services.history()),
-            drafts: drafts.clone(),
-            draft_scope: crate::workspace::WorkspaceFileName::for_key(key).draft_scope(),
-            change_trackers: change_trackers.clone(),
-            structure_trackers: structure_trackers.clone(),
-            exports: exports.clone(),
-            read_only: session.read_only(),
-            naming: naming.clone(),
-            assistant: assistant.clone(),
-            snippets: services.snippets.clone(),
-        });
-        workspace_tabs::connect_tab_view(&tab_view, &index, input);
-        WorkspaceTabParts {
-            tab_view,
-            index,
-            workspace_tabs,
-            change_trackers,
-            structure_trackers,
-            naming,
-            factory,
-            workspace_handle,
-            assistant,
-        }
-    }
-
     /// Show the session: its tables, the empty tab area, and the tabs
     /// saved for it. Called once the window listens for the
-    /// workspace's signals, so it hears the first title.
+    /// workspace's signals.
     pub(crate) fn start(&self) {
         self.with_model(WorkspaceModel::open);
     }
 
-    /// Where the window shows its toasts while it shows this workspace:
-    /// under the header bars, inside the tab overview.
-    pub(crate) fn toast_overlay(&self) -> adw::ToastOverlay {
-        self.imp().toast_overlay.get()
+    /// The key the session is open under.
+    pub(crate) fn key(&self) -> Option<SessionKey> {
+        self.imp().key.get().cloned()
     }
 
-    /// What the workspace's actions, tabs and background work send it.
-    pub(crate) fn input(&self) -> Option<WorkspaceSender> {
-        self.read(|model| model.input.clone())
+    /// What the session's engine holds, which names the page with no
+    /// tab open.
+    pub(crate) fn data_model(&self) -> Option<DataModel> {
+        self.imp().data_model.get().copied()
+    }
+
+    /// The tab `page` shows, when it is one of this session's. Read from
+    /// the index, so it answers while the workspace handles its input.
+    pub(crate) fn tab_id(&self, page: &adw::TabPage) -> Option<Uuid> {
+        self.imp().index.get()?.id_of(page)
+    }
+
+    /// Whether the session has a tab open.
+    pub(super) fn has_tabs(&self) -> bool {
+        self.imp().index.get().is_some_and(|index| !index.is_empty())
+    }
+
+    /// A page of one of the session's tabs: the one in front if it is,
+    /// else the one the user left the session on, else its first.
+    pub(super) fn some_page(&self) -> Option<adw::TabPage> {
+        let index = self.imp().index.get()?;
+        let view = self.imp().shell.upgrade()?.tab_view();
+        view.selected_page()
+            .filter(|page| index.id_of(page).is_some())
+            .or_else(|| index.last_selected().and_then(|id| index.page_of(id)))
+            .or_else(|| index.first_in(&view))
+    }
+
+    /// What builds the session's tabs, while the session is open.
+    fn tab_factory(&self) -> Option<Rc<tab_factory::TabFactory>> {
+        self.imp().factory.borrow().clone()
+    }
+
+    /// The session's list of tables, which the connection tree shows
+    /// under the session's connection.
+    pub(super) fn sidebar_view(&self) -> Option<sidebar::SidebarView> {
+        self.read(|model| model.sidebar.clone())
+    }
+
+    /// The session's assistant, which the shell shows while the session
+    /// is in front.
+    pub(super) fn assistant_pane(&self) -> Option<crate::ui::assistant::AssistantPane> {
+        self.imp().assistant_pane.get().cloned()
+    }
+
+    /// Whether the workspace last said it has something to lose.
+    pub(crate) fn is_dirty(&self) -> bool {
+        self.imp().dirty.get()
+    }
+
+    /// The handle a close prompt asks, once a value still typed in a
+    /// cell counts as the unsaved change it is.
+    pub(crate) fn prompt_handle(&self) -> Option<WorkspaceHandle> {
+        self.commit_cell_edits();
+        self.handle()
+    }
+
+    /// Whether a save of the workspace's is still being written.
+    pub(crate) fn is_saving(&self) -> bool {
+        self.imp().saving.get()
+    }
+
+    /// What the window's actions, the shell, the tabs and background
+    /// work send the workspace, whatever it is busy with.
+    pub(crate) fn sender(&self) -> Option<WorkspaceSender> {
+        self.imp().sender.get().cloned()
     }
 
     /// The saves and the close prompts' view of the tabs.
@@ -883,12 +950,6 @@ impl Workspace {
     /// The exports running from this workspace.
     pub(crate) fn exports(&self) -> Option<Rc<ExportLedger>> {
         self.read(|model| model.exports.clone())
-    }
-
-    /// The pending row changes of table tab `tab`.
-    #[cfg(test)]
-    pub(crate) fn row_tracker(&self, tab: Uuid) -> Option<crate::services::tab_tracker_handle::TabTrackerHandle> {
-        self.read(|model| model.change_trackers.get(tab)).flatten()
     }
 
     /// Have every close of the window ask about `blocker`'s work first.
@@ -912,9 +973,14 @@ impl Workspace {
 
     /// Stop the tabs, their reads and the watchers, take the
     /// workspace's actions off the window and drop what it holds. Any
-    /// reply still on its way is dropped with the input queue.
-    pub(crate) fn shutdown(&self) {
+    /// reply still on its way is dropped with the input queue. With
+    /// `close_pages` its pages leave the shared tab view too, for a
+    /// window that keeps its other sessions; a window that closes whole
+    /// lets the view go with its shell, so no session sees another's page
+    /// come forward as it goes.
+    pub(crate) fn shutdown(&self, close_pages: bool) {
         let imp = self.imp();
+        imp.factory.take();
         if let Some(pump) = imp.pump.take() {
             pump.abort();
         }
@@ -926,7 +992,7 @@ impl Workspace {
             }
         };
         if let Some(model) = model {
-            model.shutdown();
+            model.shutdown(close_pages);
         }
     }
 
@@ -948,14 +1014,6 @@ impl Workspace {
         )
     }
 
-    pub(crate) fn connect_title_changed<F: Fn(&Self, String) + 'static>(&self, f: F) -> glib::SignalHandlerId {
-        self.connect_closure(
-            "title-changed",
-            false,
-            glib::closure_local!(move |workspace: &Self, title: String| f(workspace, title)),
-        )
-    }
-
     fn handle_input(&self, message: WorkspaceInput) {
         self.with_model(|model| model.update(message));
     }
@@ -969,6 +1027,15 @@ impl Workspace {
         let model = self.imp().model.try_borrow().ok()?;
         model.as_ref().map(f)
     }
+}
+
+/// Replace `cell`'s text, saying whether it changed.
+fn replace_text(cell: &RefCell<String>, text: &str) -> bool {
+    if *cell.borrow() == text {
+        return false;
+    }
+    cell.replace(text.to_owned());
+    true
 }
 
 impl WorkspaceModel {
@@ -985,38 +1052,58 @@ impl WorkspaceModel {
             .or_else(|| self.this.upgrade().map(Cast::upcast))
     }
 
+    /// Whether the shell has this session in front.
+    pub(super) fn is_front(&self) -> bool {
+        let front = self.shell.upgrade().and_then(|shell| shell.front());
+        front.is_some_and(|front| Some(front) == self.this.upgrade())
+    }
+
     /// Show the session it was built for: the sidebar, the empty tab
     /// area, and the tabs saved for it.
     fn open(&mut self) {
         self.reconnect_banner.set_revealed(false);
-        self.table_search.set_text("");
         tracing::info!(driver = %self.driver_id, "workspace ready");
         self.open_sidebar();
-        self.refresh_window_title();
+        self.refresh_title();
         self.restore_workspace_tabs(self.key.clone());
         self.refresh_unsaved();
     }
 
-    /// The window is named after the tab in front of the user and the
-    /// connection; the sidebar's header names the connection and its
-    /// driver.
-    pub(super) fn refresh_window_title(&self) {
-        let metadata = self.context.active.metadata();
-        let name = metadata.as_ref().map_or("", |metadata| metadata.name.as_str());
-        let active = self.selected_workspace_tab_id().and_then(|id| self.tab_title(id));
+    /// Name the session after the tab it was left on and the connection,
+    /// for the header bars and the window's title while it is in front.
+    pub(super) fn refresh_title(&self) {
+        let Some(workspace) = self.this.upgrade() else {
+            return;
+        };
+        let imp = workspace.imp();
+        let name = self.label.name();
+        let active = self.index.last_selected().and_then(|id| self.tab_title(id));
         let safe_mode = self
             .context
             .active
             .get()
             .map_or_else(Default::default, |session| session.safe_mode());
-        let title = window_title::resolve_window_title(active.as_ref(), name, &self.driver_name, safe_mode);
-        self.window_title.set_title(&title.heading);
-        self.window_title.set_subtitle(&title.subtitle);
-        self.sidebar_title.set_title(name);
-        self.sidebar_title.set_subtitle(&self.driver_name);
-        self.shell.show_connection_icon(&self.key);
-        if let Some(workspace) = self.this.upgrade() {
-            workspace.emit_by_name::<()>("title-changed", &[&title.window]);
+        let title = window_title::resolve_window_title(active.as_ref(), &name, &self.driver_name, safe_mode);
+        if replace_text(&imp.title, &title.heading) {
+            workspace.notify_title();
+        }
+        if replace_text(&imp.subtitle, &title.subtitle) {
+            workspace.notify_subtitle();
+        }
+        if replace_text(&imp.window_title, &title.window) {
+            workspace.notify_window_title();
+        }
+        if replace_text(&imp.connection_name, &name) {
+            workspace.notify_connection_name();
+        }
+        let icon = match &self.key {
+            SessionKey::Saved(id) => self.saved_connections.get(*id).and_then(|saved| saved.icon),
+            SessionKey::File(_) => None,
+        }
+        .map(|icon| crate::ui::icons::connection_icon(icon).to_owned());
+        if *imp.icon_name.borrow() != icon {
+            imp.icon_name.replace(icon);
+            workspace.notify_icon_name();
         }
     }
 
@@ -1032,10 +1119,10 @@ impl WorkspaceModel {
             return;
         };
         if let Some(tab) = self.workspace_tabs.borrow().get(&id) {
-            apply_tab_title(tab.page(), &title);
+            tab_title::apply_tab_title(tab.page(), &title, &self.label);
         }
-        if self.selected_workspace_tab_id() == Some(id) {
-            self.refresh_window_title();
+        if self.index.last_selected() == Some(id) {
+            self.refresh_title();
         }
         self.refresh_transaction_banner();
     }
@@ -1046,21 +1133,40 @@ impl WorkspaceModel {
         if self.naming.replace(naming) == naming {
             return;
         }
+        self.retitle_tabs();
+    }
+
+    /// Title every tab again when another session's tab comes into the
+    /// bar beside this one's, or the last one leaves.
+    fn on_shares_bar(&self) {
+        let (Some(shell), Some(this)) = (self.shell.upgrade(), self.this.upgrade()) else {
+            return;
+        };
+        if self.label.set_shares_bar(shell.others_have_tabs(&this)) {
+            self.retitle_tabs();
+        }
+    }
+
+    /// A rename, an icon or a policy changed, perhaps this connection's.
+    fn on_saved_connections_changed(&self) {
+        self.retitle_tabs();
+        self.refresh_assistant();
+    }
+
+    fn retitle_tabs(&self) {
         let ids: Vec<Uuid> = self.workspace_tabs.borrow().keys().copied().collect();
         for id in ids {
             self.retitle_tab(id);
         }
-        self.refresh_window_title();
+        self.refresh_title();
     }
 
-    fn shutdown(mut self) {
-        self.history_gate.abort();
+    fn shutdown(mut self, close_pages: bool) {
         self.assistant.shutdown();
         if let Some(keys) = self.keys.as_mut() {
             keys.stop_listing();
         }
         self.sidebar.shutdown();
-        self.shell.release();
         // Their entries name this session's tables and queries.
         if let Some(dialog) = self.history_dialog.take() {
             close_if_presented(dialog.upcast_ref());
@@ -1071,12 +1177,11 @@ impl WorkspaceModel {
         if let Some(dialog) = self.import_dialog.take() {
             close_if_presented(dialog.model().dialog());
         }
-        if let Some(window) = self.window() {
-            for action in &self.actions {
-                window.remove_action(action);
-            }
-        }
+        let pages = if close_pages { self.index.pages() } else { Vec::new() };
         self.close_tabs();
+        if let Some(watch) = self.tab_view_watch.take() {
+            watch.release(pages);
+        }
         // The close asked about them already; one started since has no
         // window left to finish in.
         self.exports.shut_down();
@@ -1132,8 +1237,6 @@ impl WorkspaceModel {
             WorkspaceInput::ShowTransactionTab => self.show_transaction_tab(),
             WorkspaceInput::WorkspaceTabClosed(id) => self.close_workspace_tab_by_id(id),
             WorkspaceInput::CloseWorkspaceTab(id) => self.close_workspace_tab(id),
-            WorkspaceInput::CloseOtherWorkspaceTabs(id) => self.close_other_workspace_tabs(id),
-            WorkspaceInput::CloseWorkspaceTabsToRight(id) => self.close_workspace_tabs_to_right(id),
             WorkspaceInput::CloseActiveWorkspaceTab => self.close_active_workspace_tab(),
             WorkspaceInput::ShowAlert { title, body } => self.show_error_alert(&title, &body),
             WorkspaceInput::ShowToast(msg) => self.show_toast(&msg),
@@ -1162,11 +1265,9 @@ impl WorkspaceModel {
             WorkspaceInput::EditorTabFileChanged(id) => self.on_editor_tab_file_changed(id),
             WorkspaceInput::WorkspaceLoaded(loaded) => self.on_workspace_loaded(loaded),
             WorkspaceInput::ResetWorkspaceLayout => self.on_reset_workspace_layout(),
-            WorkspaceInput::SafeModeChanged => self.refresh_window_title(),
-            WorkspaceInput::SavedConnectionsChanged => {
-                self.refresh_window_title();
-                self.refresh_assistant();
-            }
+            WorkspaceInput::SafeModeChanged => self.refresh_title(),
+            WorkspaceInput::SharesBar => self.on_shares_bar(),
+            WorkspaceInput::SavedConnectionsChanged => self.on_saved_connections_changed(),
             WorkspaceInput::WorkspaceLayoutReset(outcome) => self.on_workspace_layout_reset(outcome),
             WorkspaceInput::DraftsNotSaved => self.show_toast(&crate::i18n::gettext(
                 "Editor text could not be saved to disk, so it may not come back after TablePro restarts.",
@@ -1190,7 +1291,7 @@ impl WorkspaceModel {
             WorkspaceInput::ExportEnded { tab, outcome } => {
                 self.report_work(tab, crate::workspace::WorkKind::Export, outcome);
             }
-            WorkspaceInput::ReopenClosedTab => self.on_reopen_closed_tab(),
+            WorkspaceInput::ReopenClosedTab(tab) => self.on_reopen_closed_tab(tab),
             WorkspaceInput::RefreshTab(id) => self.on_refresh_tab(id),
             WorkspaceInput::FocusTab(id) => self.focus_tab(id),
             WorkspaceInput::AskAssistant(request) => self.on_ask_assistant(*request),

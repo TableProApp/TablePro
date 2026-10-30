@@ -50,7 +50,8 @@ extension PluginMetadataRegistry {
             caseSensitivityStyle: .collationDefined,
             operators: SQLEngineVocabulary.mySQL.operators.compactMap(SQLOperatorDescriptor.init(vocabulary:)),
             textCastTypeName: nil,
-            functionNamesAreCaseInsensitive: SQLEngineVocabulary.mySQL.functionNamesAreCaseInsensitive
+            functionNamesAreCaseInsensitive: SQLEngineVocabulary.mySQL.functionNamesAreCaseInsensitive,
+            typeNamesAreCaseInsensitive: true
         )
 
         let mysqlColumnTypes: [String: [String]] = [
@@ -92,7 +93,8 @@ extension PluginMetadataRegistry {
             caseSensitivityStyle: .ilikeOperator,
             operators: SQLEngineVocabulary.postgreSQL.operators.compactMap(SQLOperatorDescriptor.init(vocabulary:)),
             textCastTypeName: nil,
-            functionNamesAreCaseInsensitive: SQLEngineVocabulary.postgreSQL.functionNamesAreCaseInsensitive
+            functionNamesAreCaseInsensitive: SQLEngineVocabulary.postgreSQL.functionNamesAreCaseInsensitive,
+            typeNamesAreCaseInsensitive: true
         )
 
         // Redshift ILIKE only folds ASCII, so it uses LOWER on both sides instead.
@@ -147,7 +149,8 @@ extension PluginMetadataRegistry {
             caseSensitivityStyle: .collationDefined,
             operators: SQLEngineVocabulary.sqlite.operators.compactMap(SQLOperatorDescriptor.init(vocabulary:)),
             textCastTypeName: nil,
-            functionNamesAreCaseInsensitive: SQLEngineVocabulary.sqlite.functionNamesAreCaseInsensitive
+            functionNamesAreCaseInsensitive: SQLEngineVocabulary.sqlite.functionNamesAreCaseInsensitive,
+            typeNamesAreCaseInsensitive: true
         )
 
         let sqliteColumnTypes: [String: [String]] = [
@@ -713,7 +716,7 @@ extension PluginMetadataRegistry {
         ]
         return defaults + mysqlVariantDefaults(
             dialect: mysqlDialect, mysqlColumnTypes: mysqlColumnTypes, idleReleaseField: mysqlIdleReleaseField
-        )
+        ) + defaults.filter { $0.typeId == "PostgreSQL" }.flatMap { kingbaseESDefaults(postgreSQL: $0.snapshot) }
     }
 }
 
@@ -751,7 +754,8 @@ private extension SQLDialectDescriptor {
             operators: vocabulary.operators.compactMap(SQLOperatorDescriptor.init(vocabulary:)),
             textCastTypeName: textCastTypeName,
             functionNamesAreCaseInsensitive: vocabulary.functionNamesAreCaseInsensitive,
-            lexicalFeatures: lexicalFeatures
+            lexicalFeatures: lexicalFeatures,
+            typeNamesAreCaseInsensitive: typeNamesAreCaseInsensitive
         )
     }
 }

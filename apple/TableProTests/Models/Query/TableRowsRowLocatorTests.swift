@@ -69,11 +69,4 @@ struct TableRowsRowLocatorTests {
         #expect(rows.rowLocators.isEmpty)
         #expect(table(nil).rowLocators.isEmpty)
     }
-
-    @Test("Releasing the rows releases their locators")
-    func discardClears() {
-        var rows = table(["A", "B", "C"])
-        rows.discardRowsKeepingMetadata()
-        #expect(rows.rowLocators.isEmpty)
-    }
 }

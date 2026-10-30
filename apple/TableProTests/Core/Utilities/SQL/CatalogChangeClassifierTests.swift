@@ -142,6 +142,13 @@ struct CatalogChangeClassifierTests {
         #expect(CatalogChangeClassifier.effect(of: sql, databaseType: .postgresql) == .none)
     }
 
+    @Test("a block on a KingbaseES Oracle-mode session is read as a block, not as a transaction start")
+    func oracleModeBlockIsOpaque() {
+        let sql = "BEGIN staging_pkg.create_tables(1); END;"
+        let effect = CatalogChangeClassifier.effect(of: sql, databaseType: .kingbasees, grammar: TestGrammar.kingbaseESOracle)
+        #expect(effect == .opaque)
+    }
+
     @Test("a script reports the union of its statements")
     func scriptsUnionTheirStatements() {
         let effect = CatalogChangeClassifier.effect(

@@ -372,3 +372,90 @@ fn large_copy_renders_on_blocking_pool() {
         serde_json::from_str(&local_text(&clipboard).expect("the copy")).expect("JSON");
     assert_eq!(parsed.len(), 200_000);
 }
+
+#[gtk4::test]
+fn copy_as_text_table_and_json_lines_go_as_plain_text() {
+    // Each copy replaces the one before on the display's one clipboard,
+    // so each is read before the next.
+    let copy = |kind| {
+        let (clipboard, toasts) = copied(rows_request(&people(), kind));
+        let formats = clipboard.formats();
+        assert!(!formats.contain_mime_type("application/json"), "{}", formats.to_str());
+        assert!(formats.contain_mime_type(CELLS_MIME_TYPE), "{}", formats.to_str());
+        (local_text(&clipboard).expect("the copy"), toasts)
+    };
+
+    let (table, toasts) = copy(CopyKind::TextTable);
+    let (json_lines, _) = copy(CopyKind::JsonLines);
+
+    assert_eq!(
+        table,
+        "+----+------------------+\n\
+         | id | name             |\n\
+         +----+------------------+\n\
+         | -5 | =cmd             |\n\
+         |  7 | Ada, \"the first\" |\n\
+         +----+------------------+"
+    );
+    assert_eq!(toasts, ["Copied 2 rows"]);
+    assert_eq!(
+        json_lines,
+        "{\"id\":-5,\"name\":\"=cmd\"}\n{\"id\":7,\"name\":\"Ada, \\\"the first\\\"\"}\n"
+    );
+}
+
+#[gtk4::test]
+fn copy_as_one_row_goes_as_sql_literals() {
+    let (clipboard, toasts) = copied(CopyRequest::Values {
+        dialect: Arc::new(FakeDialect),
+        columns: columns(&["id", "name"]),
+        rows: snapshots(&[
+            vec![Value::Int(7), Value::Text("Ada, 'the first'".into())],
+            vec![Value::Int(8), Value::Null],
+        ]),
+    });
+
+    assert!(clipboard.formats().contain_mime_type("application/sql"));
+    assert_eq!(
+        local_text(&clipboard).as_deref(),
+        Some("7, 'Ada, ''the first''', 8, NULL")
+    );
+    assert_eq!(toasts, ["Copied 2 rows"]);
+}
+
+#[test]
+fn one_row_writes_text_in_the_engines_own_literal() {
+    let dialect = Arc::new(tablepro_driver_mysql::MySqlDialect::new(
+        tablepro_driver_mysql::MySqlFlavour::MySql,
+        &tablepro_core::ServerInfo::new("MySQL", "8.4.3", 8, 4, 3),
+    ));
+    let injected = "\\', 1) -- ";
+
+    let payload = render(CopyRequest::Values {
+        dialect,
+        columns: columns(&["name"]),
+        rows: snapshots(&[vec![Value::Text(injected.into())]]),
+    })
+    .expect("the copy");
+
+    assert_eq!(
+        payload.text,
+        format!("_utf8mb4 X'{}'", tablepro_core::hex::encode_lower(injected.as_bytes()))
+    );
+}
+
+#[test]
+fn a_text_table_too_large_to_hold_is_refused() {
+    let long = Value::Text("x".repeat(60_000));
+    let rows: Vec<Vec<Value>> = std::iter::once(vec![long])
+        .chain((0..1_200).map(|_| vec![Value::Null]))
+        .collect();
+
+    let refused = render(CopyRequest::Rows {
+        columns: columns(&["note"]),
+        rows: snapshots(&rows),
+        kind: CopyKind::TextTable,
+    });
+
+    assert!(matches!(refused, Err(CopyError::TextTableTooLarge)), "{refused:?}");
+}

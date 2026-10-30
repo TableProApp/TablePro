@@ -38,7 +38,7 @@ struct StructureCodeStandInThemeTests {
 
     @Test("No DDL available stands in for the DDL view on the editor background")
     func missingDDL() throws {
-        try expectEditorStandIn(StructureDDLUnavailableView())
+        try expectEditorStandIn(StructureDDLStandIn())
     }
 
     @Test("The Create Table SQL Preview placeholder sits on the editor background")

@@ -1,8 +1,10 @@
-//! The sidebar and the editor's completion over 50,000 tables on a real
-//! server: PostgreSQL with 100 schemas of 500 tables, the default schema
-//! among them, and MySQL with one database of 50,000. Each step has a
-//! time bound, the main loop may never stall past `STALL_LIMIT`, and the
-//! catalog may not raise the resident peak past `MEMORY_LIMIT`.
+//! The connection tree and the editor's completion over 50,000 tables on
+//! a real server: PostgreSQL with 100 schemas of 500 tables, the default
+//! schema among them, and MySQL with one database of 50,000. The tree
+//! lists the session under its connection with the default schema open
+//! while the search is typed. Each step has a time bound, the main loop
+//! may never stall past `STALL_LIMIT`, and the catalog may not raise the
+//! resident peak past `MEMORY_LIMIT`.
 //!
 //! The peak is the whole process's, so the case needs a process to
 //! itself, which nextest gives every test.
@@ -34,7 +36,7 @@ use tablepro_net::DirectTcpTransport;
 use tablepro_session::runtime::{CountingHold, Tasks};
 use tablepro_session::{
     ConnectRequest, ConnectServices, ConnectionMetadata, Connector, DefaultDeadlines, DriverConnector,
-    NoStoredCredentials, RequestTarget, Session, SessionDeps,
+    NoStoredCredentials, RequestTarget, Session, SessionDeps, SessionKey,
 };
 use tablepro_ssh::{SshRuntimeCell, SshServices};
 use tablepro_test_fixtures::{FixtureCredentials, HbaMode, MysqlFixture, MysqlFlavour, MysqlOptions, PostgresFixture};
@@ -42,8 +44,10 @@ use tablepro_test_support::conformance::ResidentPeak;
 use tokio::sync::oneshot;
 use tokio_util::sync::CancellationToken;
 
-use super::super::sidebar::{SidebarAffordances, SidebarView, list_catalog};
+use super::super::sidebar::tests::{found, listed};
+use super::super::sidebar::{ConnectionTree, SidebarAffordances, SidebarView, list_catalog};
 use crate::services::active_session::ActiveSession;
+use crate::services::saved_connection_list::SavedConnectionList;
 use crate::test_support::{
     MemorySettings, StallProbe, after_next_frame, descendants, finish_on_main, test_runtime, wait_until,
 };
@@ -95,10 +99,10 @@ const STALL_LIMIT: Duration = Duration::from_millis(100);
 // key 62 ms, completion 2.6 s after MySQL's dot, a key typed into it
 // 57 ms.
 
-/// From asking for every schema's tables to the sidebar listing them.
+/// From asking for every schema's tables to the tree listing them.
 const LISTING_LIMIT: Duration = Duration::from_secs(3);
 
-/// From a key in the sidebar's search to the list it leaves.
+/// From a key in the tree's search to the rows it leaves.
 const SEARCH_LIMIT: Duration = Duration::from_millis(250);
 
 /// From asking for completion to the list on screen, the catalog read
@@ -108,7 +112,7 @@ const COMPLETION_LIMIT: Duration = Duration::from_secs(8);
 /// From a key typed in the completion's word to the list it leaves.
 const NARROW_LIMIT: Duration = Duration::from_millis(250);
 
-/// How far the catalog in the session, the sidebar and the completion
+/// How far the catalog in the session, the tree and the completion
 /// lists may raise the process's resident peak: twice what MySQL's
 /// 50,000 tables took in the first CI run, 128 MiB.
 const MEMORY_LIMIT: u64 = 256 * 1024 * 1024;
@@ -144,8 +148,9 @@ fn large_catalog_case(engine: Engine) {
     let probe = StallProbe::start();
 
     let listing = screen.list(&probe, &session, &tasks, catalog.objects.len());
+    screen.open_schema(catalog.default_schema());
     // A table tab in front keeps its row selected through the searches.
-    screen.sidebar.sync_selection(catalog.objects.get(OPEN_TABLE));
+    screen.tree.select(Some(&screen.key), catalog.objects.get(OPEN_TABLE));
     let searches = SEARCHES.map(|query| screen.search(&probe, query, catalog.matching(query)));
     let from = screen.complete(&probe, "SELECT * FROM ", catalog.default_names());
     let narrow = screen.narrow(&probe, NARROW, catalog.default_names());
@@ -244,10 +249,11 @@ impl Catalog {
 
     /// The tables of the schema the connection starts in.
     fn default_names(&self) -> HashSet<String> {
-        self.schemas
-            .first()
-            .map(|(schema, _)| self.names_in(schema))
-            .unwrap_or_default()
+        self.names_in(self.default_schema())
+    }
+
+    fn default_schema(&self) -> &str {
+        self.schemas.first().map_or("", |(schema, _)| schema.as_str())
     }
 
     /// The schema typed before a dot: one of PostgreSQL's tenants, and
@@ -650,23 +656,45 @@ struct Step {
     finished: bool,
 }
 
-/// The sidebar and an editor side by side in a window on screen. Each
-/// completion opens in an editor of its own, as in a new editor tab.
+/// The connection tree and an editor side by side in a window on
+/// screen. Each completion opens in an editor of its own, as in a new
+/// editor tab.
 struct Screen {
     window: gtk4::Window,
     panes: gtk4::Paned,
+    tree: ConnectionTree,
+    entry: gtk4::SearchEntry,
+    key: SessionKey,
     sidebar: SidebarView,
     editor: RefCell<Option<SqlEditor>>,
     session: Arc<Session>,
     tasks: Tasks,
     settings: MemorySettings,
+    _store: tempfile::TempDir,
 }
 
 impl Screen {
     fn new(session: &Arc<Session>, tasks: &Tasks) -> Self {
+        let store = tempfile::tempdir().expect("a temporary directory");
+        let connections = tablepro_storage::ConnectionStore::new(&tablepro_storage::StoragePaths::under(
+            store.path(),
+            "tablepro",
+            crate::config::APP_ID,
+        ));
+        let tree = ConnectionTree::new(SavedConnectionList::follow(
+            &connections,
+            Arc::new(tablepro_core::DriverRegistry::new()),
+        ));
+        let entry = gtk4::SearchEntry::new();
+        tree.follow_search(&entry);
         let sidebar = SidebarView::new(|_| {}, SidebarAffordances::for_session(session), Some(tasks.clone()));
+        let key = SessionKey::Saved(uuid::Uuid::new_v4());
+        tree.add_session(&key, "Large catalog", &sidebar);
+        let column = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
+        column.append(&entry);
+        column.append(&tree.widget());
         let panes = gtk4::Paned::new(gtk4::Orientation::Horizontal);
-        panes.set_start_child(Some(sidebar.widget()));
+        panes.set_start_child(Some(&column));
         panes.set_position(300);
         let window = gtk4::Window::new();
         window.set_default_size(1100, 700);
@@ -679,11 +707,68 @@ impl Screen {
         Self {
             window,
             panes,
+            tree,
+            entry,
+            key,
             sidebar,
             editor: RefCell::new(None),
             session: session.clone(),
             tasks: tasks.clone(),
             settings: MemorySettings::new(),
+            _store: store,
+        }
+    }
+
+    /// The tree's list on screen: the tree, or what the search finds.
+    fn shown_page(&self) -> Option<String> {
+        self.tree
+            .widget()
+            .downcast::<gtk4::Stack>()
+            .ok()
+            .and_then(|pages| pages.visible_child_name())
+            .map(|name| name.to_string())
+    }
+
+    /// Open the schema `name` under the session's connection, as a user
+    /// opens the one they work in. MySQL's lone database opens itself.
+    fn open_schema(&self, name: &str) {
+        let schema = self
+            .schema_rows()
+            .into_iter()
+            .find(|row| row.item().is_some_and(|item| item.property::<String>("title") == name));
+        schema.expect("the default schema's row").set_expanded(true);
+        after_next_frame(&self.window);
+    }
+
+    /// The rows of the session's schemas in the tree, reached through
+    /// their connections' rows: a row asked for by position is made, and
+    /// making one for each of an open schema's 50,000 tables would stall
+    /// the main loop inside the step it measures.
+    fn schema_rows(&self) -> Vec<gtk4::TreeListRow> {
+        let Some(rows) = descendants(&self.tree.widget())
+            .into_iter()
+            .find_map(|widget| widget.downcast::<gtk4::ListView>().ok())
+            .and_then(|list| list.model())
+            .and_then(|selection| selection.downcast::<gtk4::SingleSelection>().ok())
+            .and_then(|selection| selection.model())
+            .and_then(|model| model.downcast::<gtk4::TreeListModel>().ok())
+        else {
+            panic!("the tree's rows");
+        };
+        (0..rows.model().n_items())
+            .filter_map(|at| rows.child_row(at))
+            .flat_map(|connection| {
+                let count = connection.children().map_or(0, |children| children.n_items());
+                (0..count).filter_map(move |at| connection.child_row(at))
+            })
+            .collect()
+    }
+
+    /// Whether a lone schema, which opens as it comes, is open.
+    fn lone_schema_open(&self) -> bool {
+        match self.schema_rows().as_slice() {
+            [lone] => lone.is_expanded(),
+            _ => true,
         }
     }
 
@@ -738,8 +823,8 @@ impl Screen {
         }
     }
 
-    /// Every schema's tables, read, indexed and shown the way the
-    /// workspace does once they land.
+    /// Every schema's tables, read, indexed and listed under the
+    /// connection the way the workspace does once they land.
     fn list(&self, probe: &StallProbe, session: &Arc<Session>, tasks: &Tasks, expected: usize) -> Step {
         let expected = u32::try_from(expected).unwrap_or(u32::MAX);
         self.step(
@@ -765,16 +850,28 @@ impl Screen {
                     }
                 });
             },
-            || self.sidebar.shown() == expected,
+            || listed(&self.sidebar) == expected && self.lone_schema_open(),
         )
     }
 
+    /// Type `query`, as the search entry sends it once the user pauses,
+    /// until the tree shows what it finds, or shows itself again for an
+    /// empty search.
     fn search(&self, probe: &StallProbe, query: &str, expected: u32) -> Step {
         self.step(
             probe,
             &format!("the search for {query:?}"),
-            || self.sidebar.set_query(query),
-            || self.sidebar.shown() == expected,
+            || {
+                self.entry.set_text(query);
+                self.entry.emit_by_name::<()>("search-changed", &[]);
+            },
+            || {
+                if query.is_empty() {
+                    self.shown_page().as_deref() == Some("tree") && found(&self.sidebar) == 0
+                } else {
+                    self.shown_page().as_deref() == Some("found") && found(&self.sidebar) == expected
+                }
+            },
         )
     }
 
@@ -824,6 +921,7 @@ impl Screen {
 
 impl Drop for Screen {
     fn drop(&mut self) {
+        self.tree.shutdown();
         self.sidebar.shutdown();
         if let Some(editor) = self.editor.take() {
             editor.shutdown();
@@ -833,14 +931,16 @@ impl Drop for Screen {
     }
 }
 
-/// A header with the icons the sidebar's rows and headings draw.
+/// A header with the icons the tree's rows draw.
 fn header_bar() -> gtk4::HeaderBar {
     let header = gtk4::HeaderBar::new();
     for icon in [
         crate::ui::icons::VIEW_GRID,
         crate::ui::icons::VIEW_LIST,
         crate::ui::icons::VIEW_PAGED,
-        crate::ui::icons::LIST_ADD,
+        crate::ui::icons::DRIVE_HARDDISK,
+        crate::ui::icons::NETWORK_SERVER,
+        crate::ui::icons::MEDIA_EJECT,
     ] {
         header.pack_start(&gtk4::Button::from_icon_name(icon));
     }

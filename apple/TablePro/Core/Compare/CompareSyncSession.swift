@@ -185,13 +185,23 @@ internal final class CompareSyncSession: ObservableObject {
 
     internal var canGenerateStructureScript: Bool {
         guard mode == .structure, let source, let target else { return false }
-        return CompareSyncEngineFamily.canGenerateStructureScript(from: source.databaseType, to: target.databaseType)
+        return CompareSyncEngineFamily.canGenerateStructureScript(
+            from: source.databaseType,
+            to: target.databaseType,
+            sourceSession: SQLLexicalResolver.sessionState(for: source.connectionId),
+            targetSession: SQLLexicalResolver.sessionState(for: target.connectionId)
+        )
     }
 
     internal var crossEngineNotice: String? {
         guard let source, let target else { return nil }
         if mode == .structure, !canGenerateStructureScript {
-            return CompareSyncEngineFamily.structureScriptRefusal(from: source.databaseType, to: target.databaseType)
+            return CompareSyncEngineFamily.structureScriptRefusal(
+                from: source.databaseType,
+                to: target.databaseType,
+                sourceSession: SQLLexicalResolver.sessionState(for: source.connectionId),
+                targetSession: SQLLexicalResolver.sessionState(for: target.connectionId)
+            )
         }
         return CompareSyncEngineFamily.crossEngineDataWarning(from: source.databaseType, to: target.databaseType)
     }
@@ -395,8 +405,9 @@ internal final class CompareSyncSession: ObservableObject {
     }
 
     private func script(of statements: [SyncStatement]) -> String {
-        guard let databaseType = target?.databaseType else { return "" }
-        return SQLScriptText(databaseType: databaseType).script(statements.map(\.sql))
+        guard let target else { return "" }
+        let grammar = SQLLexicalResolver.executionGrammar(for: target.databaseType, connectionId: target.connectionId)
+        return SQLScriptText(databaseType: target.databaseType, grammar: grammar).script(statements.map(\.sql))
     }
 
     // MARK: - Results view

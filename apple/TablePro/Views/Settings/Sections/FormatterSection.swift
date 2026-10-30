@@ -15,7 +15,7 @@ struct FormatterSection: View {
     private static let previewSQL = """
         select u.id as user_id, u.name as user_name, count(o.id) as order_count \
         from users u left join orders o on u.id = o.user_id \
-        where u.status = 'active' and o.created_at >= '2026-01-01' \
+        where u.status = 'active' and cast(o.created_at as date) >= '2026-01-01' \
         group by u.id, u.name order by order_count desc;
         """
     private static let indentWidths = [2, 4, 8]
@@ -28,6 +28,7 @@ struct FormatterSection: View {
     @State private var isImporting = false
     @State private var exportDocument: SQLFormatterRulesDocument?
     @State private var importError: String?
+    @State private var exportError: String?
 
     private enum IndentWidthChoice: Hashable {
         case tabWidth
@@ -65,16 +66,35 @@ struct FormatterSection: View {
                 }
             }
             .help(Text("Engines that match function names by exact case, such as ClickHouse, keep the case you typed."))
+            Picker("Data type case:", selection: $settings.rules.dataTypeCase) {
+                ForEach(SQLFormatterCase.allCases, id: \.self) { formatterCase in
+                    Text(caseName(formatterCase)).tag(formatterCase)
+                }
+            }
+            .help(Text("Engines that match type names by exact case, such as ClickHouse, keep the case you typed."))
             Picker("Commas:", selection: $settings.rules.commaPosition) {
                 Text("At the end of the line").tag(SQLFormatterCommaPosition.trailing)
                 Text("At the start of the line").tag(SQLFormatterCommaPosition.leading)
             }
+            Picker("AND and OR:", selection: $settings.rules.logicalOperatorNewline) {
+                Text("At the start of the line").tag(SQLFormatterLogicalOperatorNewline.before)
+                Text("At the end of the line").tag(SQLFormatterLogicalOperatorNewline.after)
+            }
+            .help(Text("Where AND and OR go when a WHERE or HAVING condition breaks across lines."))
             Picker("Line width:", selection: $settings.rules.lineWidth) {
                 ForEach(Self.options(Self.lineWidths, including: settings.rules.lineWidth), id: \.self) { width in
                     Text(lineWidthName(width)).tag(width)
                 }
             }
             .help(Text("A SELECT list, SET list or WHERE condition that fits in this width stays on one line."))
+            Picker("Clause items:", selection: $settings.rules.clauseItems) {
+                Text("Beside the keyword").tag(SQLFormatterClauseItems.sameLine)
+                Text("Below the keyword").tag(SQLFormatterClauseItems.newLine)
+            }
+            .help(Text("""
+                Where the items of a SELECT list, SET list, WITH list, or WHERE or HAVING condition start once it \
+                breaks across lines. A single item stays beside its keyword.
+                """))
             Picker("Join condition:", selection: $settings.rules.joinCondition) {
                 Text("On its own line").tag(SQLFormatterJoinCondition.newLine)
                 Text("On the JOIN line").tag(SQLFormatterJoinCondition.sameLine)
@@ -95,7 +115,11 @@ struct FormatterSection: View {
                             document: exportDocument,
                             contentType: .json,
                             defaultFilename: SQLFormatterRulesFile.exportFileName
-                        ) { _ in }
+                        ) { result in
+                            if case .failure(let error) = result, (error as? CocoaError)?.code != .userCancelled {
+                                reportExportFailure(error)
+                            }
+                        }
                     Button("Restore Defaults") { settings = .default }
                         .disabled(settings == .default)
                 }
@@ -111,6 +135,15 @@ struct FormatterSection: View {
             String(localized: "Couldn't Import Formatter Rules"),
             isPresented: isShowingImportError,
             presenting: importError
+        ) { _ in
+            Button(String(localized: "OK")) {}
+        } message: { message in
+            Text(message)
+        }
+        .alert(
+            String(localized: "Couldn't Export Formatter Rules"),
+            isPresented: isShowingExportError,
+            presenting: exportError
         ) { _ in
             Button(String(localized: "OK")) {}
         } message: { message in
@@ -207,6 +240,10 @@ struct FormatterSection: View {
         Binding(get: { importError != nil }, set: { if !$0 { importError = nil } })
     }
 
+    private var isShowingExportError: Binding<Bool> {
+        Binding(get: { exportError != nil }, set: { if !$0 { exportError = nil } })
+    }
+
     // MARK: - Import and export
 
     private func importRules(_ result: Result<URL, Error>) {
@@ -226,8 +263,13 @@ struct FormatterSection: View {
         do {
             exportDocument = SQLFormatterRulesDocument(data: try SQLFormatterRulesFile.encode(settings.options(for: editor)))
         } catch {
-            Self.logger.error("Formatter rules export failed: \(error.publicLogShape, privacy: .public)")
+            reportExportFailure(error)
         }
+    }
+
+    private func reportExportFailure(_ error: Error) {
+        Self.logger.error("Formatter rules export failed: \(error.publicLogShape, privacy: .public)")
+        exportError = error.localizedDescription
     }
 
     // MARK: - Labels

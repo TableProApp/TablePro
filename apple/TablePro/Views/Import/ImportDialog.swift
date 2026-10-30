@@ -443,7 +443,7 @@ struct ImportDialog: View {
                 forPreview: previewData,
                 isWholeFile: previewData.count < maxPreviewSize,
                 family: TransactionEngineFamily.of(connection.type),
-                grammar: connection.type.lexicalGrammar
+                grammar: sessionGrammar
             ) {
                 Self.logger.info("Preview did not decode as \(selectedEncoding.rawValue, privacy: .public); switching to the detected \(detected.rawValue, privacy: .public)")
                 detectedEncoding = detected
@@ -464,6 +464,12 @@ struct ImportDialog: View {
         }
     }
 
+    /// What the import itself splits with, so the count and the detected encoding match the run.
+    @MainActor
+    private var sessionGrammar: SQLLexicalGrammar {
+        SQLLexicalResolver.executionGrammar(for: connection.type, connectionId: connection.id)
+    }
+
     @MainActor
     private func countStatements(url: URL) async {
         isCountingStatements = true
@@ -471,7 +477,7 @@ struct ImportDialog: View {
 
         do {
             let encoding = selectedEncoding.encoding
-            let grammar = connection.type.lexicalGrammar
+            let grammar = sessionGrammar
             let parser = SQLFileParser()
             let count = try await Task.detached {
                 try await parser.countStatements(url: url, encoding: encoding, grammar: grammar)

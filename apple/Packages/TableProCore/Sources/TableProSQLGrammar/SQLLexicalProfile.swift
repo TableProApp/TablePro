@@ -136,6 +136,7 @@ public struct SQLLexicalProfile: Sendable, Hashable {
     public static let sqlServer: SQLLexicalGrammar = [
         .bracketQuotedIdentifiers, .doubledClosingBracketEscapes, .nestedBlockComments,
         .carriageReturnEndsLineComments, .batchSeparatorLines, .unterminatedStatements, .terminatedMergeStatements,
+        .hashAndAtInIdentifiers,
     ]
 
     /// Spanner's GoogleSQL dialect on the emulator, measured, and BigQuery by the ZetaSQL grammar the two share: a
@@ -218,6 +219,13 @@ public struct SQLLexicalProfile: Sendable, Hashable {
             "AlloyDB": postgreSQLFamily,
             "Citus": postgreSQLFamily,
             "PGlite": postgreSQLFamily,
+            "KingbaseES": SQLLexicalProfile(
+                grammar: postgreSQL,
+                undetermined: [
+                    .backslashEscapesInSingleQuotes, .alternativeQuoting, .plsqlBlocks,
+                    .slashLineTerminators, .dollarAndHashInIdentifiers,
+                ]
+            ),
             "Redshift": SQLLexicalProfile(
                 grammar: postgreSQL,
                 undetermined: [.backslashEscapesInSingleQuotes, .nestedBlockComments, .escapeStringPrefix]

@@ -298,6 +298,16 @@ final class SQLFileParser: Sendable {
             flushWord(&ctx)
         }
         guard SqlBlockStructure.startsWord(nsBuffer, at: i, length: bufLen, grammar: ctx.grammar) else { return .none }
+        // `E'...'` is a literal, and the escape-string branch that reads it never runs once `E` starts a word.
+        if ctx.grammar.contains(.escapeStringPrefix), char == kCapitalE || char == kSmallE,
+           !SQLNonCodeSpan.isWordUnit(ctx.previousUnit) {
+            if i + 1 < bufLen {
+                if nsBuffer.character(at: i + 1) == kSingleQuote { return .none }
+            } else if !ctx.atEndOfInput {
+                ctx.previousUnitInWord = followsWord
+                return .needsMoreData
+            }
+        }
         if readsAlternativeQuotes, !SQLNonCodeSpan.isWordUnit(ctx.previousUnit),
            let quoteLength = alternativeQuotePrefixLength(nsBuffer, at: i, bufLen: bufLen) {
             if quoteLength > 0 {
@@ -425,7 +435,7 @@ final class SQLFileParser: Sendable {
             appendRange(&ctx, from: i, to: i + prefixLength, in: nsBuffer)
             ctx.alternativeQuoteCloser = alternativeQuoteCloser(for: nsBuffer.character(at: i + prefixLength - 1))
             ctx.state = .inAlternativeQuote
-            ctx.boundaries?.observeOpaqueToken()
+            ctx.boundaries?.observeQuotedToken(opener: char)
             i += prefixLength
             return StepResult(advanced: true, deferred: false)
         case .none:
@@ -479,6 +489,7 @@ final class SQLFileParser: Sendable {
             ctx.state = .inSingleQuotedString
             ctx.quoteChar = kSingleQuote
             ctx.backslashEscapesActive = true
+            ctx.boundaries?.observeQuotedToken(opener: char)
             i += 2
             return StepResult(advanced: true, deferred: false)
         }
@@ -488,7 +499,7 @@ final class SQLFileParser: Sendable {
                 ctx.hasStatementContent, ctx.statementStartLine, ctx.currentLine)
             appendChar(char, to: ctx.currentStatement)
             ctx.state = .inBracketedIdentifier
-            ctx.boundaries?.observeOpaqueToken()
+            ctx.boundaries?.observeQuotedToken(opener: char)
             return StepResult(advanced: false, deferred: false)
         }
 
@@ -501,7 +512,7 @@ final class SQLFileParser: Sendable {
                     let openerRange = NSRange(location: i, length: length)
                     target.append(nsBuffer.substring(with: openerRange))
                 }
-                ctx.boundaries?.observeOpaqueToken()
+                ctx.boundaries?.observeQuotedToken(opener: char)
                 ctx.state = .inDollarQuote
                 ctx.dollarTag = tag
                 i += length
@@ -525,7 +536,7 @@ final class SQLFileParser: Sendable {
         }
 
         if let advanced = processQuoteOpen(&ctx, char: char, nextChar: nextChar) {
-            ctx.boundaries?.observeOpaqueToken()
+            ctx.boundaries?.observeQuotedToken(opener: char)
             if advanced { i += 2 }
             return StepResult(advanced: advanced, deferred: false)
         }
@@ -708,7 +719,7 @@ final class SQLFileParser: Sendable {
         ctx.state = .inTripleQuotedString
         ctx.quoteChar = quote
         ctx.backslashEscapesActive = ctx.grammar.backslashEscapes(inQuote: quote)
-        ctx.boundaries?.observeOpaqueToken()
+        ctx.boundaries?.observeQuotedToken(opener: quote)
     }
 
     /// Runs a triple-quoted literal to the three quotes that close it, holding back a quote or a backslash the buffer

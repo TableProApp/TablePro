@@ -248,7 +248,7 @@ extension AIChatViewModel {
         else { return [] }
         return AISchemaContext.referencedTables(
             in: AISchemaContext.carriedQuery(query),
-            grammar: connection.type.lexicalGrammar
+            grammar: SQLLexicalResolver.executionGrammar(for: connection.type, connectionId: connection.id)
         )
     }
 

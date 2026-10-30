@@ -232,7 +232,8 @@ final class MSSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
         caseSensitivityStyle: .collationDefined,
         operators: SQLEngineVocabulary.sqlServer.operators.compactMap(SQLOperatorDescriptor.init(vocabulary:)),
         textCastTypeName: nil,
-        functionNamesAreCaseInsensitive: SQLEngineVocabulary.sqlServer.functionNamesAreCaseInsensitive
+        functionNamesAreCaseInsensitive: SQLEngineVocabulary.sqlServer.functionNamesAreCaseInsensitive,
+        typeNamesAreCaseInsensitive: true
     )
 
     static let supportsDropDatabase = true

@@ -581,6 +581,8 @@
 			<array>
 				<string>postgresql</string>
 				<string>postgres</string>
+				<string>kingbase</string>
+				<string>kingbase8</string>
 				<string>mysql</string>
 				<string>mariadb</string>
 				<string>tidb</string>

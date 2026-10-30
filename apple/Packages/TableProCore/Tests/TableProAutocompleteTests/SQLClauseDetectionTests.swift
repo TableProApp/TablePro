@@ -132,6 +132,28 @@ struct SQLClauseDetectionTests {
         #expect(ctx.expectsObjectName == testCase.expects)
     }
 
+    @Test("A qualifier's dot sits in the table slot only right after a table-naming keyword", arguments: [
+        (query: "SELECT * FROM sales.", expects: true),
+        (query: "SELECT * FROM a JOIN sales.", expects: true),
+        (query: "INSERT INTO sales.", expects: true),
+        (query: "SELECT * FROM t WHERE id IN (SELECT id FROM sales.", expects: true),
+        (query: "SELECT * FROM (WITH c AS (SELECT 1 AS id) SELECT * FROM sales.", expects: true),
+        (query: "SELECT * FROM (a JOIN sales.", expects: true),
+        (query: "SELECT o. FROM orders o", expects: false),
+        (query: "SELECT * FROM orders o WHERE o.", expects: false),
+        (query: "SELECT * FROM a, sales.", expects: false),
+        (query: "SELECT EXTRACT(YEAR FROM o.", expects: false),
+        (query: "SELECT SUBSTR(o.status FROM o.", expects: false),
+        (query: "SELECT * FROM t WHERE a IS DISTINCT FROM o.", expects: false),
+        (query: "SELECT * FROM orders o, generate_series(1, o.", expects: false),
+    ])
+    func dotInOperandSlot(_ testCase: (query: String, expects: Bool)) {
+        let cursor = testCase.query.hasPrefix("SELECT o.") ? 9 : (testCase.query as NSString).length
+        let ctx = analyzer.analyze(query: testCase.query, cursorPosition: cursor)
+        #expect(ctx.dotPrefix != nil)
+        #expect(ctx.expectsObjectName == testCase.expects)
+    }
+
     // MARK: - String and Comment Guards
 
     @Test("Clause keywords inside a string literal are ignored")

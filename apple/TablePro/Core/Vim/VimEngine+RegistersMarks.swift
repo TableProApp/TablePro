@@ -7,6 +7,10 @@ import Foundation
 
 extension VimEngine {
     func writeToActiveRegister(text: String, linewise: Bool, asDelete: Bool) {
+        if selectedRegister == "_" {
+            selectedRegister = nil
+            return
+        }
         let entry = VimRegister(text: text, isLinewise: linewise)
         register = entry
         register.syncToPasteboard()
@@ -18,7 +22,7 @@ extension VimEngine {
         } else {
             numberedRegisters[0] = entry
         }
-        if let name = selectedRegister, name != "_" {
+        if let name = selectedRegister {
             let isAppend = name.isUppercase
             let key: Character = isAppend ? Character(name.lowercased()) : name
             if isAppend, let existing = namedRegisters[key], !existing.text.isEmpty {

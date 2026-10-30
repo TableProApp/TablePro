@@ -79,6 +79,13 @@ struct CrossEngineIndexTypeTests {
         #expect(index.ddlMethodAndKeys == "USING hnsw (a vector_l2_ops)")
     }
 
+    @Test("KingbaseES reports its access method from pg_am, so a PostgreSQL copy keeps it")
+    func kingbaseAccessMethodSurvives() {
+        let bloom = Self.index("items_bloom", type: "bloom").type
+        #expect(CrossEngineIndexTranslator.resolvedType(bloom, from: .kingbasees, to: .postgresql) == bloom)
+        #expect(CrossEngineIndexTranslator.resolvedType(bloom, from: .mssql, to: .postgresql) == .btree)
+    }
+
     @Test("A Redshift DISTKEY and SORTKEY are left out of a PostgreSQL copy, though the two share a family")
     func redshiftKeysAreLeftOut() {
         let result = CrossEngineStructureTranslator.translate(

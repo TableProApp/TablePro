@@ -1,6 +1,7 @@
 import Foundation
 import TableProAutocomplete
 import TableProPluginKit
+import TableProSQLGrammar
 
 struct CompletionContext {
     let items: [SQLCompletionItem]
@@ -19,13 +20,15 @@ final class CompletionEngine {
         schemaProvider: SQLSchemaProvider?,
         databaseType: DatabaseType? = nil,
         dialect: SQLDialectDescriptor? = nil,
-        statementCompletions: [CompletionEntry] = []
+        statementCompletions: [CompletionEntry] = [],
+        grammar: SQLLexicalGrammar? = nil
     ) {
         self.provider = SQLCompletionProvider(
             schemaProvider: schemaProvider,
             databaseType: databaseType,
             dialect: dialect,
-            statementCompletions: statementCompletions
+            statementCompletions: statementCompletions,
+            grammar: grammar
         )
         self.identifierRules = databaseType?.identifierRules
     }

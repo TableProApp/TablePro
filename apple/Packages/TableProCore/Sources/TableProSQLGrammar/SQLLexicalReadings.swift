@@ -153,8 +153,12 @@ enum SQLLexicalRelevance {
                     .parenthesizedParameterNames,
                 ])
             case SqlLexer.hash:
-                facts.formUnion([.hashLineComments, .dollarAndHashInIdentifiers, .parenthesizedParameterNames])
-            case at, colon:
+                facts.formUnion([
+                    .hashLineComments, .dollarAndHashInIdentifiers, .parenthesizedParameterNames, .hashAndAtInIdentifiers,
+                ])
+            case at:
+                facts.formUnion([.parenthesizedParameterNames, .hashAndAtInIdentifiers])
+            case colon:
                 facts.insert(.parenthesizedParameterNames)
             case SqlLexer.slash:
                 facts.insert(.slashLineTerminators)

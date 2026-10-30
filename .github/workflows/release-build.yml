@@ -16,7 +16,7 @@ jobs:
   build:
     name: Release Build
     runs-on: xcode-27
-    timeout-minutes: 150
+    timeout-minutes: 240
     # The tag's version settings run here first; 9999999 is the largest build at MAJOR 0 (apple/RELEASING.md, Versions).
     env:
       VERSION: 0.0.0-dev
@@ -62,7 +62,8 @@ jobs:
         run: scripts/release/package.sh plugins --unsigned
 
       - name: Upload the build logs
-        if: ${{ failure() }}
+        # A timeout cancels the job; the log shows where xcodebuild was when it stopped.
+        if: ${{ failure() || cancelled() }}
         continue-on-error: true
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:

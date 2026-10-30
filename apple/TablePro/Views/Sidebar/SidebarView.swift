@@ -15,6 +15,8 @@ struct SidebarView: View {
     @StateObject private var viewModel: SidebarViewModel
     @ObservedObject private var settingsManager = AppSettingsManager.shared
     @State private var showsSchemaProgress = false
+    /// See `presentedSchemaState`.
+    @State private var showsLoadedCatalog = false
 
     @ObservedObject private var schemaService = SchemaService.shared
     @ObservedObject private var treeMetadata = DatabaseTreeMetadataService.shared
@@ -200,6 +202,16 @@ struct SidebarView: View {
         }
         .onAppear {
             coordinator?.sidebarViewModel = viewModel
+            // A pane put back on screen shows the list it already had.
+            showsLoadedCatalog = isCatalogLoaded
+        }
+        .onChange(of: isCatalogLoaded) { isLoaded in
+            guard isLoaded else {
+                showsLoadedCatalog = false
+                return
+            }
+            // A refresh can put the catalog back to loading before the frame, and a stale true skips the next hold.
+            CommittedTurn.after(in: coordinator?.contentWindow) { showsLoadedCatalog = isCatalogLoaded }
         }
         .onChange(of: viewModel.showOperationDialog) { isPresented in
             guard isPresented else { return }
@@ -305,7 +317,7 @@ struct SidebarView: View {
     @ViewBuilder
     private var hierarchicalContent: some View {
         let presentation = SidebarObjectListPresentation.resolveDeferringEmptyStates(
-            state: schemaService.state(for: connectionId),
+            state: presentedSchemaState,
             hasOutlastedGrace: showsSchemaProgress
         )
         Group {
@@ -336,9 +348,20 @@ struct SidebarView: View {
         )
     }
 
+    private var isCatalogLoaded: Bool {
+        if case .loaded = schemaService.state(for: connectionId) { return true }
+        return false
+    }
+
+    // A connection's first catalog can land in the turn that commits the restored tab's frame, and building the
+    // outline there made one stall of both. The outline goes up in a later turn, the loading state held till then.
+    private var presentedSchemaState: SchemaState {
+        SidebarObjectListPresentation.presentedState(schemaService.state(for: connectionId), showsLoaded: showsLoadedCatalog)
+    }
+
     private var objectListPresentation: SidebarObjectListPresentation {
         SidebarObjectListPresentation.resolve(
-            state: schemaService.state(for: connectionId),
+            state: presentedSchemaState,
             hasActiveFilter: !viewModel.filterQuery.isEmpty,
             hasAnyMatch: hasAnyMatch,
             hasOutlastedGrace: showsSchemaProgress,

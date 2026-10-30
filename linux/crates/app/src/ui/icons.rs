@@ -30,6 +30,7 @@ pub const GO_PREVIOUS: &str = "go-previous-symbolic";
 pub const GO_UP: &str = "go-up-symbolic";
 pub const LIST_ADD: &str = "list-add-symbolic";
 pub const LIST_REMOVE: &str = "list-remove-symbolic";
+pub const MEDIA_EJECT: &str = "media-eject-symbolic";
 pub const MEDIA_PLAYBACK_STOP: &str = "media-playback-stop-symbolic";
 pub const NETWORK_ERROR: &str = "network-error-symbolic";
 pub const NETWORK_SERVER: &str = "network-server-symbolic";
@@ -37,6 +38,7 @@ pub const OPEN_MENU: &str = "open-menu-symbolic";
 pub const PACKAGE: &str = "package-x-generic-symbolic";
 pub const PAN_DOWN: &str = "pan-down-symbolic";
 pub const PREFERENCES_SYSTEM: &str = "preferences-system-symbolic";
+pub const PREFERENCES_SYSTEM_TIME: &str = "preferences-system-time-symbolic";
 pub const PROCESS_STOP: &str = "process-stop-symbolic";
 pub const SECURITY_HIGH: &str = "security-high-symbolic";
 pub const STARRED: &str = "starred-symbolic";
@@ -107,6 +109,7 @@ pub const ALL: &[&str] = &[
     GO_UP,
     LIST_ADD,
     LIST_REMOVE,
+    MEDIA_EJECT,
     MEDIA_PLAYBACK_STOP,
     NETWORK_ERROR,
     NETWORK_SERVER,
@@ -114,6 +117,7 @@ pub const ALL: &[&str] = &[
     PACKAGE,
     PAN_DOWN,
     PREFERENCES_SYSTEM,
+    PREFERENCES_SYSTEM_TIME,
     PROCESS_STOP,
     SECURITY_HIGH,
     SIDEBAR_SHOW,

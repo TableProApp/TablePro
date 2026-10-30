@@ -24,7 +24,7 @@ extension MainContentCoordinator {
             traceConnectUnavailable(traceToken)
             guard tabExecution.settle(claim) else { return false }
             retireQueryTask(.claim(claim))
-            pendingLoadTrigger = trigger
+            parkedTableLoad = ParkedTableLoad(tabId: claim.tabId, trigger: trigger)
             declineTableLoad(for: claim.tabId)
             return false
         }

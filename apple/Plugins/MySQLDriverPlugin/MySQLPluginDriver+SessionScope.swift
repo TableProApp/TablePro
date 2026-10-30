@@ -9,7 +9,8 @@ import TableProMySQLCore
 import TableProPluginKit
 
 internal extension MySQLPluginDriver {
-    /// Databend has no `sql_mode` to hold, and a server before 5.0.3 cannot filter `SHOW` with `WHERE`.
+    /// Databend has no `sql_mode` or foreign key checks to hold, and a server before 5.0.3 cannot filter `SHOW` with
+    /// `WHERE`.
     func openSessionScope(for purpose: PluginSessionPurpose) async throws -> PluginSessionScope? {
         let names = MySQLSessionScopePlan.savedNames(for: purpose)
         guard !flavor.isDatabend,

@@ -217,6 +217,17 @@ impl TrackedValues {
         RowSnapshot::new(cells, overrides)
     }
 
+    /// `snapshot` that reads only `column` through the tracker, for a
+    /// caller that reads no other column of the row.
+    pub fn column_snapshot(&self, row: &GridRow, column: usize) -> RowSnapshot {
+        let cells = row.cells().unwrap_or_else(|| Arc::from([]));
+        let pending = self
+            .tracked_key(row)
+            .and_then(|(tracker, key)| tracker.cell_overlay(&key, column).pending)
+            .map(|input| (column, input.value().cloned().unwrap_or(Value::Null)));
+        RowSnapshot::new(cells, pending.into_iter().collect())
+    }
+
     /// Like `snapshot`, except a draft's cell left to the server stays
     /// `Default`.
     pub fn inputs(&self, row: &GridRow) -> Vec<CellInput> {
@@ -279,9 +290,23 @@ mod tests {
         });
 
         assert!(values.with_value(&row, 1, |value, _| *value == Value::Int(6)));
+        assert_eq!(values.column_snapshot(&row, 1).value(1), &Value::Int(6));
         assert_eq!(values.edit_input(&row, 1), CellInput::Value(Value::Int(6)));
         assert_eq!(values.row_state(&row), RowPendingState::Modified);
         assert_eq!(values.mark(&row, 1).state, CellState::Modified);
+    }
+
+    #[test]
+    fn a_column_snapshot_of_a_draft_reads_its_cell_and_a_default_as_null() {
+        let tracker = TabTrackerHandle::default();
+        let values = TrackedValues::tracked(tracker.clone(), keyed());
+        let delta = tracker.apply(TrackerEdit::InsertDrafts {
+            rows: vec![vec![CellInput::Default, CellInput::Value(Value::Int(7))]],
+        });
+        let row = GridRow::new(RowData::draft(delta.inserted_drafts[0]));
+
+        assert_eq!(values.column_snapshot(&row, 1).value(1), &Value::Int(7));
+        assert_eq!(values.column_snapshot(&row, 0).value(0), &Value::Null);
     }
 
     #[test]

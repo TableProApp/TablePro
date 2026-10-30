@@ -59,7 +59,7 @@ struct CellExpression: Hashable, Sendable {
 enum CellExpressionVocabulary {
     static func expressions(for databaseType: DatabaseType) -> [CellExpression] {
         switch databaseType {
-        case .postgresql, .pglite: postgreSQL
+        case .postgresql, .pglite, .kingbasees: postgreSQL
         case .cockroachdb: cockroachDB
         case .redshift: redshift
         case .mysql, .mariadb, .tidb, .oceanbase: mySQL

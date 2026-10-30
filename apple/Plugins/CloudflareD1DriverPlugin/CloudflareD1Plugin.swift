@@ -28,6 +28,8 @@ final class CloudflareD1Plugin: NSObject, TableProPlugin, DriverPlugin {
     static let supportsSSL = false
     static let isDownloadable = true
     static let supportsImport = false
+    // D1 runs each request in a transaction of its own, where user queries cannot change foreign key enforcement.
+    static let supportsForeignKeyDisable = false
     static let supportsSchemaEditing = true
     static let supportsTriggers = true
     static let supportsDatabaseTriggerBrowse = true
@@ -95,7 +97,10 @@ final class CloudflareD1Plugin: NSObject, TableProPlugin, DriverPlugin {
         booleanLiteralStyle: .numeric,
         likeEscapeStyle: .explicit,
         paginationStyle: .limit,
-        caseSensitivityStyle: .collationDefined
+        caseSensitivityStyle: .collationDefined,
+        textCastTypeName: nil,
+        functionNamesAreCaseInsensitive: true,
+        typeNamesAreCaseInsensitive: true
     )
 
     static let additionalConnectionFields: [ConnectionField] = [

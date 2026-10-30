@@ -171,6 +171,23 @@ class CheckPluginKitABITests(unittest.TestCase):
         self.commit(API + ["prepare", "explain"], 41, 19, tag="libs-1")
         self.assertPasses("against v1.1.0: changed; kit 41, minimum 19.")
 
+    def test_default_base_is_the_release_branch_tag_that_shipped_the_highest_kit(self):
+        self.commit(API + ["prepare"], 40, 19)
+        self.git("checkout", "-q", "-b", "release/1.1")
+        self.commit(API + ["prepare"], 40, 19, tag="v1.1.0")
+        self.git("checkout", "-q", "main")
+        self.commit(API + ["prepare", "explain"], 40, 19)
+        self.assertFails("against v1.1.0: changed. Set TABLEPRO_PLUGINKIT_VERSION to 41 and "
+                         "TABLEPRO_PLUGINKIT_MINIMUM_VERSION to 19")
+        self.commit(API + ["prepare", "explain"], 41, 19)
+        self.assertPasses("against v1.1.0: changed; kit 41, minimum 19.")
+
+    def test_frozen_base_is_the_tag_the_release_line_reaches(self):
+        self.commit(API + ["prepare"], 40, 19, tag="v1.1.0")
+        self.git("checkout", "-q", "-b", "release/1.0", "v1.0.0")
+        self.commit(API, 39, 19)
+        self.assertPasses("against v1.0.0: unchanged; kit 39, minimum 19.", "--frozen")
+
     def test_an_explicit_base_replaces_the_tag(self):
         self.commit(API + ["prepare"], 40, 19, tag="v1.1.0")
         self.assertPasses("against v1.1.0: unchanged; kit 40, minimum 19.")

@@ -5,6 +5,7 @@
 
 import Foundation
 import TableProPluginKit
+import Testing
 import XCTest
 
 @testable import TablePro
@@ -321,6 +322,171 @@ final class SchemaSyncScriptBuilderTests: XCTestCase {
             "ALTER TABLE \"T\" RENAME COLUMN \"A\" TO \"B\"",
             "ALTER TABLE \"T\" MODIFY (\"B\" NUMBER)",
         ])
+    }
+}
+
+// The listing leaves the table's schema nil while each key's `referencedSchema` names the endpoint's
+// namespace: MySQL's database, PostgreSQL's schema.
+@MainActor
+struct CompareForeignKeyOrderTests {
+    private func endpoint(database: String, schema: String?, type: DatabaseType) -> DatabaseEndpoint {
+        DatabaseEndpoint(
+            scope: DatabaseScope(connectionId: UUID(), database: database, schema: schema),
+            connectionName: "server",
+            databaseType: type,
+            safeModeLevel: .silent,
+            color: .blue
+        )
+    }
+
+    private func mysql(_ database: String) -> CompareRunner.ReferenceNamespace {
+        CompareRunner.ReferenceNamespace(
+            endpoint: endpoint(database: database, schema: nil, type: .mysql),
+            supportsSchemas: false,
+            supportsDatabases: true
+        )
+    }
+
+    private func postgres(_ schema: String) -> CompareRunner.ReferenceNamespace {
+        CompareRunner.ReferenceNamespace(
+            endpoint: endpoint(database: "app", schema: schema, type: .postgresql),
+            supportsSchemas: true,
+            supportsDatabases: true
+        )
+    }
+
+    private func table(
+        _ name: String,
+        schema: String? = nil,
+        referencing parent: String? = nil,
+        in referencedSchema: String? = nil
+    ) -> TableStructureSnapshot {
+        let foreignKeys = parent.map { parent in
+            [EditableForeignKeyDefinition(
+                id: UUID(), name: "fk_\(name)_\(parent)", columns: ["\(parent)_id"],
+                referencedTable: parent, referencedColumns: ["id"], referencedSchema: referencedSchema,
+                onDelete: .noAction, onUpdate: .noAction
+            )]
+        } ?? []
+        return TableStructureSnapshot(name: name, schema: schema, columns: [], foreignKeys: foreignKeys)
+    }
+
+    private func keyed(_ snapshots: TableStructureSnapshot...) -> [String: TableStructureSnapshot] {
+        Dictionary(uniqueKeysWithValues: snapshots.map { ($0.qualifiedName, $0) })
+    }
+
+    private func rows(
+        for table: String,
+        schema: String? = nil
+    ) -> (plan: DataComparePlan, statements: DataSyncStatements) {
+        let qualified = schema.map { "\($0).\(table)" } ?? table
+        return (
+            DataComparePlan(table: table, schema: schema, columns: [], scope: DataTableScope(), isEnabled: true),
+            DataSyncStatements(
+                inserts: [SyncStatement(sql: "INSERT \(qualified)", objectName: qualified, summary: "")],
+                deletes: [SyncStatement(sql: "DELETE \(qualified)", objectName: qualified, summary: "")]
+            )
+        )
+    }
+
+    @Test
+    func mysqlCreatesAParentBeforeItsChild() {
+        let estates = table("estates")
+        let buildings = table("buildings", referencing: "estates", in: "regest")
+        let foreignKeys = CompareRunner.structureForeignKeys(
+            source: keyed(buildings, estates), in: mysql("regest"), target: [:], in: mysql("regest_copy")
+        )
+
+        let ordered = SchemaSyncScriptBuilder.order(
+            operations: [.createTable(buildings), .createTable(estates)], foreignKeysByTable: foreignKeys
+        )
+
+        let names = ordered.map(\.tableName)
+        #expect(names == ["estates", "buildings"])
+    }
+
+    /// A case-sensitive server holds `Shop` and `shop` side by side, so a key into one is not a key into the other.
+    @Test
+    func mysqlDatabasesThatDifferOnlyInCaseStayApart() {
+        #expect(mysql("Shop").names("Shop"))
+        #expect(!mysql("Shop").names("shop"))
+    }
+
+    @Test
+    func mysqlDropsAChildBeforeItsParentFromTheTargetsKeys() {
+        let estates = table("estates")
+        let buildings = table("buildings", referencing: "estates", in: "regest_copy")
+        let foreignKeys = CompareRunner.structureForeignKeys(
+            source: [:], in: mysql("regest"), target: keyed(buildings, estates), in: mysql("regest_copy")
+        )
+
+        let ordered = SchemaSyncScriptBuilder.order(
+            operations: [.dropTable(name: "estates", schema: nil), .dropTable(name: "buildings", schema: nil)],
+            foreignKeysByTable: foreignKeys
+        )
+
+        let names = ordered.map(\.tableName)
+        #expect(names == ["buildings", "estates"])
+    }
+
+    @Test
+    func mysqlInsertsAParentFirstAndDeletesItLast() {
+        let statements = CompareRunner.orderedAcrossTables(
+            [rows(for: "buildings"), rows(for: "estates")],
+            sourceSnapshots: keyed(table("buildings", referencing: "estates", in: "regest"), table("estates")),
+            in: mysql("regest")
+        )
+
+        let sql = statements.map(\.sql)
+        #expect(sql == ["INSERT estates", "INSERT buildings", "DELETE buildings", "DELETE estates"])
+    }
+
+    // The plan takes the endpoint's schema, so its id is qualified while the snapshot's key is bare.
+    @Test
+    func postgresInsertsAParentFirstWhenTheListingLeavesTheSchemaOff() {
+        let statements = CompareRunner.orderedAcrossTables(
+            [rows(for: "buildings", schema: "public"), rows(for: "estates", schema: "public")],
+            sourceSnapshots: keyed(table("buildings", referencing: "estates", in: "public"), table("estates")),
+            in: postgres("public")
+        )
+
+        let sql = statements.map(\.sql)
+        #expect(sql == [
+            "INSERT public.estates", "INSERT public.buildings", "DELETE public.buildings", "DELETE public.estates",
+        ])
+    }
+
+    @Test
+    func postgresKeysIntoTheTablesOwnSchemaKeepTheParentFirst() {
+        let estates = table("estates", schema: "public")
+        let buildings = table("buildings", schema: "public", referencing: "estates", in: "public")
+        let foreignKeys = CompareRunner.structureForeignKeys(
+            source: keyed(buildings, estates), in: postgres("public"), target: [:], in: postgres("public")
+        )
+
+        let ordered = SchemaSyncScriptBuilder.order(
+            operations: [.createTable(buildings), .createTable(estates)], foreignKeysByTable: foreignKeys
+        )
+
+        let identifiers = ordered.map(\.tableIdentifier)
+        #expect(identifiers == ["public.estates", "public.buildings"])
+    }
+
+    // `app` and `App` are two PostgreSQL schemas, so a key into the other one is no edge here.
+    @Test
+    func postgresSchemaNamesFoldOnlyWhenTheyMatchExactly() {
+        let estates = table("estates")
+        let buildings = table("buildings", referencing: "estates", in: "app")
+        let foreignKeys = CompareRunner.structureForeignKeys(
+            source: keyed(buildings, estates), in: postgres("App"), target: [:], in: postgres("App")
+        )
+
+        let ordered = SchemaSyncScriptBuilder.order(
+            operations: [.createTable(buildings), .createTable(estates)], foreignKeysByTable: foreignKeys
+        )
+
+        let names = ordered.map(\.tableName)
+        #expect(names == ["buildings", "estates"])
     }
 }
 

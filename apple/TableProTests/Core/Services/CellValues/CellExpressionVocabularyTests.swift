@@ -141,4 +141,10 @@ struct CellExpressionVocabularyTests {
     func updateTakesDefault(databaseType: DatabaseType, expected: Bool) {
         #expect(CellExpressionVocabulary.updateTakesDefault(databaseType) == expected)
     }
+    @Test("KingbaseES offers the expressions of its PostgreSQL dialect")
+    func kingbaseExpressions() {
+        #expect(Self.sql(.kingbasees, .timestamp(rawType: "TIMESTAMP"))
+            == Self.sql(.postgresql, .timestamp(rawType: "TIMESTAMP")))
+        #expect(CellExpressionVocabulary.isCanonical("now()", for: .kingbasees))
+    }
 }

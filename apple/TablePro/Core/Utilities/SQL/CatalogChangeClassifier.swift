@@ -8,13 +8,21 @@ import TableProSQLGrammar
 
 // SQL is read by SQLCatalogEffectClassifier, shared with iOS; engines that do not speak SQL are decided here.
 enum CatalogChangeClassifier {
-    static func effect(ofStatements statements: [String], databaseType: DatabaseType) -> SQLCatalogEffect {
+    static func effect(
+        ofStatements statements: [String],
+        databaseType: DatabaseType,
+        grammar: SQLLexicalGrammar? = nil
+    ) -> SQLCatalogEffect {
         statements.reduce(SQLCatalogEffect.none) { partial, statement in
-            partial.union(effect(of: statement, databaseType: databaseType))
+            partial.union(effect(of: statement, databaseType: databaseType, grammar: grammar))
         }
     }
 
-    static func effect(of sql: String, databaseType: DatabaseType) -> SQLCatalogEffect {
+    static func effect(
+        of sql: String,
+        databaseType: DatabaseType,
+        grammar: SQLLexicalGrammar? = nil
+    ) -> SQLCatalogEffect {
         let trimmed = StatementBlank.trimming(SQLLeadingComments.stripping(sql))
         guard !trimmed.isEmpty else { return .none }
         if databaseType == .redis {
@@ -27,7 +35,7 @@ enum CatalogChangeClassifier {
         if let request = dynamoDBRequestEffect(trimmed, databaseType: databaseType) {
             return request
         }
-        return SQLCatalogEffectClassifier.effect(of: trimmed, grammar: databaseType.lexicalGrammar)
+        return SQLCatalogEffectClassifier.effect(of: trimmed, grammar: grammar ?? databaseType.lexicalGrammar)
     }
 
     // PartiQL, and an action the driver does not know, which goes out as PartiQL, take the SQL path.

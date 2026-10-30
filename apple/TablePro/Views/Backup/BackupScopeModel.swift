@@ -115,33 +115,89 @@ final class BackupScopeModel: ObservableObject {
         rows = Self.togglingObject(id, in: database, rows: rows)
     }
 
+    enum Row: Equatable {
+        case database(String)
+        case object(String, database: String)
+    }
+
+    func toggle(_ selection: [Row]) {
+        rows = Self.toggling(selection, in: rows)
+    }
+
+    // One direction for every row, and an object under a selected database is left to it: toggling both flipped it back.
+    static func toggling(_ selection: [Row], in rows: [DatabaseRow]) -> [DatabaseRow] {
+        let databases = Set(selection.compactMap { row -> String? in
+            guard case .database(let name) = row else { return nil }
+            return name
+        })
+        let targets = selection.filter { row in
+            guard case .object(_, let database) = row else { return true }
+            return !databases.contains(database)
+        }
+        let turningOn = targets.contains { target in
+            switch target {
+            case .database(let name):
+                return rows.first { $0.name == name }.map { !$0.isSelected || $0.isMixed } ?? false
+            case .object(let id, let database):
+                return rows.first { $0.name == database }?.objects.first { $0.id == id }.map { !$0.isSelected } ?? false
+            }
+        }
+        return targets.reduce(rows) { rows, target in
+            switch target {
+            case .database(let name):
+                return settingDatabase(name, selected: turningOn, in: rows)
+            case .object(let id, let database):
+                return settingObject(id, in: database, selected: turningOn, rows: rows)
+            }
+        }
+    }
+
     /// Ticking a mixed database means "all of it", which is the state a user reaches by unticking
     /// a few tables and then changing their mind.
     static func togglingDatabase(
         _ database: String,
         in rows: [DatabaseRow]
     ) -> [DatabaseRow] {
+        guard let row = rows.first(where: { $0.name == database }) else { return rows }
+        return settingDatabase(database, selected: !row.isSelected || row.isMixed, in: rows)
+    }
+
+    static func settingDatabase(
+        _ database: String,
+        selected: Bool,
+        in rows: [DatabaseRow]
+    ) -> [DatabaseRow] {
         var rows = rows
         guard let index = rows.firstIndex(where: { $0.name == database }) else { return rows }
-        let turningOn = !rows[index].isSelected || rows[index].isMixed
-        rows[index].isSelected = turningOn
+        rows[index].isSelected = selected
         for objectIndex in rows[index].objects.indices {
-            rows[index].objects[objectIndex].isSelected = turningOn
+            rows[index].objects[objectIndex].isSelected = selected
         }
         return rows
     }
 
-    /// Unticking the last object is a decision to leave the database out, not a decision to back it
-    /// up empty. Ticking one again brings the database back carrying only that object.
     static func togglingObject(
         _ id: String,
         in database: String,
         rows: [DatabaseRow]
     ) -> [DatabaseRow] {
+        guard let object = rows.first(where: { $0.name == database })?.objects.first(where: { $0.id == id })
+        else { return rows }
+        return settingObject(id, in: database, selected: !object.isSelected, rows: rows)
+    }
+
+    /// Unticking the last object is a decision to leave the database out, not a decision to back it
+    /// up empty. Ticking one again brings the database back carrying only that object.
+    static func settingObject(
+        _ id: String,
+        in database: String,
+        selected: Bool,
+        rows: [DatabaseRow]
+    ) -> [DatabaseRow] {
         var rows = rows
         guard let index = rows.firstIndex(where: { $0.name == database }) else { return rows }
         guard let objectIndex = rows[index].objects.firstIndex(where: { $0.id == id }) else { return rows }
-        rows[index].objects[objectIndex].isSelected.toggle()
+        rows[index].objects[objectIndex].isSelected = selected
         rows[index].isSelected = rows[index].objects.contains(where: \.isSelected)
         return rows
     }

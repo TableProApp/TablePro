@@ -4,6 +4,7 @@
 //
 
 @testable import TablePro
+import TableProPluginKit
 import TableProSQLGrammar
 
 /// The grammar each engine family a test names is split with, taken from the app's own resolver so a test reads
@@ -17,6 +18,18 @@ enum TestGrammar {
     static let sqlServer = DatabaseType.mssql.lexicalGrammar
     static let snowflake = DatabaseType.snowflake.lexicalGrammar
     static let standard = SQLLexicalGrammar.ansi
+
+    /// What the KingbaseES driver reports for a cluster initialized in Oracle mode.
+    static let kingbaseESOracleSession = PluginSessionLexicalState(
+        determined: [
+            .alternativeQuoting, .plsqlBlocks, .slashLineTerminators, .dollarAndHashInIdentifiers,
+            .backslashEscapesInSingleQuotes,
+        ],
+        enabled: [.alternativeQuoting, .plsqlBlocks, .slashLineTerminators, .dollarAndHashInIdentifiers]
+    )
+    static let kingbaseESOracle = SQLLexicalResolver.readings(
+        for: .kingbasees, session: kingbaseESOracleSession
+    ).execution
 }
 
 /// A statement split with no engine named is standard SQL, which is what a test that does not care about an engine's

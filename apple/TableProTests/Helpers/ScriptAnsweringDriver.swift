@@ -16,6 +16,7 @@ final class ScriptAnsweringDriver: DatabaseDriver, @unchecked Sendable {
     }
 
     let connection: DatabaseConnection
+    let sessionLexicalState: PluginSessionLexicalState?
     var status: ConnectionStatus = .connected
     var serverVersion: String? { nil }
 
@@ -38,9 +39,11 @@ final class ScriptAnsweringDriver: DatabaseDriver, @unchecked Sendable {
         sendsBatchesWhole: Bool = true,
         transactionState: PluginSessionTransactionState = .idle,
         transactionStateAfterBatches: PluginSessionTransactionState? = nil,
+        sessionLexicalState: PluginSessionLexicalState? = nil,
         answer: @escaping @Sendable (String) -> QueryBatchResult = { _ in .empty }
     ) {
         self.connection = connection
+        self.sessionLexicalState = sessionLexicalState
         self.sendsBatchesWhole = sendsBatchesWhole
         self.transactionState = transactionState
         self.transactionStateAfterBatches = transactionStateAfterBatches

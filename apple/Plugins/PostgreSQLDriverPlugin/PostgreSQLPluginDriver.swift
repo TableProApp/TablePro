@@ -21,6 +21,8 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     let sessionFacts = OSAllocatedUnfairLock(initialState: PostgreSQLSessionFacts.unknown)
     private let listingDegradeReported = OSAllocatedUnfairLock(initialState: false)
 
+    var sessionLexicalState: PluginSessionLexicalState? { core.sessionLexicalState }
+
     var serverVersionNumber: Int32 {
         let reported = core.serverVersionNumber
         return sessionFacts.withLock { $0.resolvedServerVersion(reported: reported) }
@@ -52,6 +54,9 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         ]
     }
 
+    // In the class body so PGlite, which inherits the debugger conformance, can turn it off.
+    var canDebugRoutines: Bool { true }
+
     init(config: DriverConnectionConfig, singleConnectionMode: Bool = false) {
         self.core = LibPQDriverCore(config: config, singleConnectionMode: singleConnectionMode)
     }
@@ -60,13 +65,18 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
 
     func connect() async throws {
         core.onPostConnect = { [weak self] in
-            await self?.probeSessionFacts()
-            await self?.probeCatalogPresence()
-            await self?.probePostgisOids()
-            await self?.probeEnumOids()
-            await self?.probeVectorTypes()
+            try await self?.probeAfterConnect()
         }
         try await core.connect()
+    }
+
+    /// Runs inside the connect's deadline and cancellation, before the connection is handed out.
+    func probeAfterConnect() async throws {
+        await probeSessionFacts()
+        await probeCatalogPresence()
+        await probePostgisOids()
+        await probeEnumOids()
+        await probeVectorTypes()
     }
 
     private func probeCatalogPresence() async {
@@ -122,11 +132,17 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     // MARK: - Foreign Keys
 
     func foreignKeyDisableStatements() -> [String]? {
-        ["SET session_replication_role = replica"]
+        [Self.settingReplicationRole("replica")]
     }
 
     func foreignKeyEnableStatements() -> [String]? {
-        ["SET session_replication_role = DEFAULT"]
+        [Self.settingReplicationRole("DEFAULT")]
+    }
+
+    /// Setting it takes a superuser or a `SET` grant, and a bare refusal aborts the transaction it runs in. The block
+    /// swallows the refusal and keeps the transaction, and an allowed `SET` outlives it (measured on 17.11 and 18.6).
+    private static func settingReplicationRole(_ value: String) -> String {
+        "DO $$ BEGIN SET session_replication_role = \(value); EXCEPTION WHEN insufficient_privilege THEN NULL; END $$"
     }
 
     /// A duplicated database arrives with `public` alone, so every other schema its tables are

@@ -38,6 +38,14 @@ struct StartupStatementsTests {
         #expect(statements == ["SET marker \"a; FLUSHALL; b\"", "CLIENT SETNAME 'line\nbreak'"])
     }
 
+    @Test("A startup block on a KingbaseES Oracle-mode session runs whole")
+    func oracleModeBlockRunsWhole() {
+        let block = "BEGIN dbms_session.set_identifier('x'); END;"
+        #expect(DatabaseManager.startupStatements(
+            from: block, databaseType: .kingbasees, grammar: TestGrammar.kingbaseESOracle
+        ) == [block])
+    }
+
     @Test("Blank text holds no startup statement")
     func blank() {
         #expect(DatabaseManager.startupStatements(from: " \n ; ", databaseType: .postgresql).isEmpty)

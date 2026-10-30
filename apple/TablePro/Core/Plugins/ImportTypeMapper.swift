@@ -13,7 +13,7 @@ enum ImportTypeMapper {
         serverVersion: String? = nil
     ) -> String {
         switch databaseType {
-        case .postgresql, .redshift, .cockroachdb:
+        case .postgresql, .redshift, .cockroachdb, .kingbasees:
             return postgresType(
                 type,
                 jsonColumnType: PostgreSQLServerVersion.jsonColumnType(

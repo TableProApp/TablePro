@@ -11,12 +11,6 @@ import SwiftUI
 import TableProEditorKit
 import TableProPluginKit
 
-// A change to either field cancels the old task and starts a new one, which coalesces rapid Cmd+Number switches.
-private struct TabLoadKey: Hashable {
-    let tabId: UUID?
-    let loadEpoch: Int
-}
-
 // Only a tab showing rows reruns: an error, a plan or a write's count is not a view of the new database's data.
 @MainActor
 internal enum ContainerChangeRerunPolicy {
@@ -169,10 +163,7 @@ struct MainEditorContentView: View {
         .onAppear {
             updateHasQueryText()
         }
-        .task(id: TabLoadKey(
-            tabId: tabManager.selectedTabId,
-            loadEpoch: tabManager.selectedTab?.loadEpoch ?? 0
-        )) {
+        .task(id: tabManager.selectedTabId) {
             coordinator.lazyLoadCurrentTabIfNeeded()
         }
     }
@@ -219,6 +210,9 @@ struct MainEditorContentView: View {
             versionHistoryContent(tab: tab)
         case .tableListing:
             tableListingContent(tab: tab)
+        case .routineDebug:
+            RoutineDebugTabContent(tabId: tab.id, databaseType: connection.type)
+                .id(tab.id)
         }
     }
 
@@ -559,15 +553,15 @@ struct MainEditorContentView: View {
     private func createTableContent(tab: QueryTab) -> some View {
         Group {
             if let draft = coordinator.createTableDrafts[tab.id] {
-                CreateTableView(
-                    connection: connection,
-                    scope: structureScope(for: tab),
-                    coordinator: coordinator,
-                    draft: draft
-                )
+                CreateTableView(draft: draft, coordinator: coordinator)
             } else {
                 Color.clear
-                    .onAppear { coordinator.createTableDrafts[tab.id] = CreateTableDraft() }
+                    .onAppear {
+                        coordinator.createTableDrafts[tab.id] = CreateTableDraft(
+                            connection: connection,
+                            scope: structureScope(for: tab)
+                        )
+                    }
             }
         }
         .id(tab.id)
@@ -582,13 +576,9 @@ struct MainEditorContentView: View {
         Group {
             if let session = coordinator.structureSessions[tab.id], session.identity == identity {
                 TableStructureView(
-                    tableName: tableName,
-                    connection: connection,
-                    databaseName: scope?.database ?? "",
-                    schemaName: scope?.schema,
+                    session: session,
                     toolbarState: coordinator.toolbarState,
-                    coordinator: coordinator,
-                    session: session
+                    coordinator: coordinator
                 )
             } else {
                 Color.clear
@@ -886,14 +876,12 @@ struct MainEditorContentView: View {
 
     private func statusBar(tab: QueryTab, selectedRowCount: Int) -> some View {
         let resolvedRows = resolvedTableRows(for: tab)
-        let structureFooter = coordinator.structureSessions[tab.id]?.footer ?? StructureFooterCapability()
         let isExecuting = coordinator.tabExecution.isBusy(tab.id)
         let snapshot = StatusBarSnapshot(
             tab: tab,
             tableRows: resolvedRows,
             displayRowCount: coordinator.displayIDs(forTab: tab.id)?.count,
             isFetching: isExecuting,
-            hasStructureActions: structureFooter.isActive,
             isQueryPlan: tab.display.activeExplainResult != nil,
             paginationCapability: coordinator.paginationCapability,
             hasServerOutput: !(tab.display.activeResultSet?.serverOutput.isEmpty ?? true),
@@ -941,7 +929,6 @@ struct MainEditorContentView: View {
                 onGoToPage: onGoToPage,
                 onRequestExactCount: { coordinator.paginationCoordinator.requestExactRowCount() }
             ),
-            structureFooter: structureFooter,
             execution: ExecutionReadout(
                 tabId: tab.id,
                 execution: coordinator.tabExecution,
@@ -962,9 +949,7 @@ struct MainEditorContentView: View {
                 }
             },
             onToggleFilters: { coordinator.toggleFilterPanel() },
-            onFetchAll: { coordinator.fetchAllRows() },
-            onStructureAdd: { coordinator.structureActions?.addRow?() },
-            onStructureRemove: { coordinator.structureActions?.removeRow?() }
+            onFetchAll: { coordinator.fetchAllRows() }
         )
     }
 
@@ -1215,6 +1200,9 @@ extension MainEditorContentView {
                 coordinator.commandActions?.closeTab()
             },
             onExecuteQuery: { coordinator.runQuery(viewport: .firstRow) },
+            onSelectTab: { number in coordinator.commandActions?.selectTab(number: number) },
+            onSelectAdjacentTab: { offset in coordinator.commandActions?.selectTab(offsetBy: offset) },
+            tabCount: { coordinator.tabManager.visibleTabs.count },
             onRunStatement: { sql, offset in coordinator.runStatement(sql, sourceOffset: offset) },
             isExecuting: isExecuting,
             currentAIAvailability: { coordinator.aiQueryActionAvailability },

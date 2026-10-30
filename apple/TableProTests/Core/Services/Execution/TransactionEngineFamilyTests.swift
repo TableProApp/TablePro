@@ -10,7 +10,7 @@ import Testing
 struct TransactionEngineFamilyTests {
     @Test(
         "Every PostgreSQL-compatible engine reads the PostgreSQL rules",
-        arguments: ["PostgreSQL", "PGlite", "AlloyDB", "Citus", "Greenplum"]
+        arguments: ["PostgreSQL", "PGlite", "AlloyDB", "Citus", "Greenplum", "KingbaseES"]
     )
     func postgresCompatibles(typeId: String) {
         #expect(TransactionEngineFamily.of(DatabaseType(rawValue: typeId)) == .postgres)

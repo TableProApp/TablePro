@@ -51,7 +51,7 @@ struct ForeignKeyDialect: Equatable, Sendable {
                 allowsQualifiedReferencedTable: true,
                 allowsOmittedReferencedColumns: false
             )
-        case .postgresql, .pglite, .cockroachdb, .redshift:
+        case .postgresql, .pglite, .cockroachdb, .redshift, .kingbasees:
             return ForeignKeyDialect(
                 deleteActions: everyAction,
                 updateActions: everyAction,

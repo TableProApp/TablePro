@@ -443,18 +443,18 @@ actor SQLSchemaProvider {
         let capturedConnection = connection
         let defaultSchema = getDefaultSchema()
         let capturedScopeDatabase = scopeDatabase
-        let (dbName, idQuote, editorLanguage, queryLanguageName) = await MainActor.run {
+        let (dbName, idQuote, editorLanguage, queryLanguageName, grammar) = await MainActor.run {
             let resolvedName = capturedScopeDatabase
                 ?? DatabaseManager.shared.browseDatabaseName(for: capturedConnection)
             let quote = PluginManager.shared.sqlDialect(for: dbType)?.identifierQuote ?? "\""
             let lang = PluginManager.shared.editorLanguage(for: dbType)
             let langName = PluginManager.shared.queryLanguageName(for: dbType)
-            return (resolvedName, quote, lang, langName)
+            let sessionGrammar = SQLLexicalResolver.executionGrammar(for: dbType, connectionId: capturedConnection.id)
+            return (resolvedName, quote, lang, langName, sessionGrammar)
         }
 
         var listedTables = tables
         if let editorText, editorLanguage == .sql, listedTables.count > settings.maxSchemaTables {
-            let grammar = dbType.lexicalGrammar
             let statement = SQLStatementScanner.statementAtCursor(
                 in: editorText,
                 cursorPosition: cursorOffset,

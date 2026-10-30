@@ -22,20 +22,37 @@ internal enum QuickSwitcherRowChrome {
 }
 
 internal struct QuickSwitcherKeyHint: View {
-    let symbol: String
+    enum Glyph {
+        case text(String)
+        case symbol(String)
+
+        // The system font has no U+21A9: its first draw in a process loads a fallback font, about 10 ms.
+        static let returnKey = Glyph.symbol("return")
+    }
+
+    let keys: [Glyph]
     let label: String
 
     var body: some View {
         HStack(spacing: 4) {
-            Text(symbol)
-                .font(.caption.weight(.medium))
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 5)
-                .frame(minWidth: 20, minHeight: 17)
-                .background(
-                    RoundedRectangle(cornerRadius: 4, style: .continuous)
-                        .fill(Color(nsColor: .quaternaryFill))
-                )
+            HStack(spacing: 1) {
+                ForEach(keys.indices, id: \.self) { index in
+                    switch keys[index] {
+                    case .text(let text):
+                        Text(text)
+                    case .symbol(let name):
+                        Image(systemName: name)
+                    }
+                }
+            }
+            .font(.caption.weight(.medium))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 5)
+            .frame(minWidth: 20, minHeight: 17)
+            .background(
+                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                    .fill(Color(nsColor: .quaternaryFill))
+            )
             Text(label)
                 .font(.caption)
                 .foregroundStyle(.secondary)

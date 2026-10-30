@@ -104,7 +104,7 @@ internal struct CompareMetadataService {
     /// `names` narrows the read to the objects the caller already knows it wants, matched without
     /// regard to case because engines disagree on identifier folding. A comparison passes nil and
     /// reads the whole scope; a copy of one table would otherwise pay four round trips for every
-    /// other table in the database.
+    /// other table in the database. Names that cover every table still take the whole-scope reads.
     ///
     /// `profile` says which of the four reads this caller actually looks at. A data comparison
     /// pairs tables and reads their rows, so the indexes and the table metadata it used to fetch
@@ -124,17 +124,32 @@ internal struct CompareMetadataService {
 
         return try await manager.withMetadataDriver(scope: endpoint.scope) { driver in
             guard let plugin = Self.pluginDriver(from: driver) else { return [] }
-            let tables = try await plugin.fetchTables(schema: schema).filter { table in
-                guard wanted?.contains(table.name.lowercased()) ?? true,
-                      !CompareTableKindClassifier.isSequence(table) else { return false }
+            let listed = try await plugin.fetchTables(schema: schema).filter { table in
+                guard !CompareTableKindClassifier.isSequence(table) else { return false }
                 let kind = CompareTableKindClassifier.kind(of: table)
                 return kind == .table || includeViews
             }
             return try await Self.read(
-                tables: tables, schema: schema, profile: profile,
-                narrowed: wanted != nil, databaseType: databaseType,
+                tables: listed.filter { wanted?.contains($0.name.lowercased()) ?? true },
+                schema: schema, profile: profile,
+                narrowed: Self.narrows(listed, to: wanted), databaseType: databaseType,
                 indexedKinds: indexedKinds, using: plugin
             )
+        }
+    }
+
+    /// Whether `wanted` leaves out a table `listed` offers, which is when the whole-scope reads
+    /// would fetch more than the caller keeps. A Copy To of every table took the per-table reads
+    /// anyway: 52 statements for 8 MySQL tables, measured, against 5 in bulk. A foreign table and
+    /// a sequence are never offered for a copy, and a view adds little to a bulk read, so none of
+    /// them counts.
+    nonisolated internal static func narrows(_ listed: [PluginTableInfo], to wanted: Set<String>?) -> Bool {
+        guard let wanted else { return false }
+        return listed.contains { table in
+            CompareTableKindClassifier.kind(of: table) == .table
+                && !CompareTableKindClassifier.isForeign(table)
+                && !CompareTableKindClassifier.isSequence(table)
+                && !wanted.contains(table.name.lowercased())
         }
     }
 
@@ -219,8 +234,9 @@ internal struct CompareMetadataService {
     /// connection queue behind each other. Its gate was `supportsConnectionPooling`, which answers
     /// whether a *second* connection is safe, not whether one connection can run two statements.
     ///
-    /// `narrowed` says the caller asked for specific tables, so the whole-schema queries would read
-    /// the rest of the database to throw it away. Those callers keep the per-table reads.
+    /// `narrowed` says the caller wants only some of the scope's tables (`narrows`), so the
+    /// whole-schema queries would read the rest of the database to throw it away. Those callers
+    /// keep the per-table reads.
     nonisolated internal static func read(
         tables: [PluginTableInfo],
         schema: String?,

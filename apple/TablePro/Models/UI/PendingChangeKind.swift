@@ -5,17 +5,8 @@
 
 import Foundation
 
-/// What the window's Save command would commit, which is also whether it can commit at all.
-///
-/// One value rather than five booleans read in five places. `updateToolbarPendingState()` folded
-/// four of the five sources into `hasPendingChanges` and never read the fifth, so a Users & Roles
-/// tab with staged principals left both the toolbar's commit button and Cmd+S dim while
-/// `saveChanges()` already carried the branch that would have applied them.
-///
-/// The tab decides the kind, because two kinds can be staged at once and only one of them is the
-/// one the user is looking at. It decides nothing the user reads: the commit control's label is
-/// `ToolbarContextResolver.commitVerb(for:)`, from the tab kind alone, because this value comes and
-/// goes with every edit and a label that followed it moved the titlebar while the user typed.
+// What the window's Save would commit, and whether it can commit at all. The tab decides the kind, since two kinds
+// can be staged at once; the commit label comes from the tab kind alone, so it does not move while the user types.
 internal enum PendingChangeKind: Equatable, Hashable, Sendable {
     case data
     case structure
@@ -23,7 +14,7 @@ internal enum PendingChangeKind: Equatable, Hashable, Sendable {
     case principals
     case file
 
-    /// Nil when nothing is staged for this tab, which is what leaves the commit control dim.
+    // Nil when nothing is staged for this tab, which leaves the commit control dim.
     internal static func resolve(
         tabType: TabType?,
         hasDataChanges: Bool,
@@ -41,12 +32,12 @@ internal enum PendingChangeKind: Equatable, Hashable, Sendable {
         }
         switch tabType {
         case .createTable:
-            /// A definition that is not yet committable is not a pending change: the tab's own
-            /// validity gate is what `hasCreateTablePending` already answers.
+            // A definition that is not yet committable is not a pending change.
             return hasCreateTablePending ? .createTable : nil
         case .usersRoles:
             return hasPrincipalChanges ? .principals : nil
-        case .query, .table, .erDiagram, .serverDashboard, .insights, .objectSource, .versionHistory, .tableListing:
+        case .query, .table, .erDiagram, .serverDashboard, .insights, .objectSource, .versionHistory, .tableListing,
+             .routineDebug:
             return contentKind(
                 hasDataChanges: hasDataChanges,
                 hasStructureChanges: hasStructureChanges,
@@ -55,8 +46,24 @@ internal enum PendingChangeKind: Equatable, Hashable, Sendable {
         }
     }
 
-    /// Structure outranks data, and data outranks a dirty file, because a structure edit rewrites
-    /// the table the staged rows are going into and has to be named first.
+    // Narrower than the commit: a dirty file and staged principals have no SQL to show, and a structure session
+    // previews only from its own Structure view, so staged ALTERs behind the Data view leave Preview with nothing.
+    internal static func offersPreview(
+        of kind: PendingChangeKind?,
+        hasDataChanges: Bool,
+        previewsSchemaChanges: Bool
+    ) -> Bool {
+        switch kind {
+        case .data, .createTable:
+            return true
+        case .structure:
+            return hasDataChanges || previewsSchemaChanges
+        case .principals, .file, nil:
+            return false
+        }
+    }
+
+    // A structure edit rewrites the table the staged rows go into, so it is named before data, and data before a file.
     private static func contentKind(
         hasDataChanges: Bool,
         hasStructureChanges: Bool,

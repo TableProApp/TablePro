@@ -198,6 +198,42 @@ struct FilterSQLGeneratorTests {
         #expect(clause("code", "a\\' OR 1=1 -- ", dialect: mysql) == "WHERE `code` = 'a\\\\'' OR 1=1 -- '")
     }
 
+    // Snowflake takes an ESCAPE clause for LIKE and still reads `\'` inside a literal as a quote.
+    @Test("A LIKE pattern doubles a backslash where the engine reads it as an escape, whatever the LIKE style")
+    func likeDoublesBackslashForTheLiteral() {
+        let explicitBackslash = SQLDialectDescriptor(
+            identifierQuote: "\"", keywords: [], functions: [], dataTypes: [],
+            likeEscapeStyle: .explicit, requiresBackslashEscaping: true
+        )
+        #expect(
+            clause("code", #"\' OR 1=1 -- "#, op: .contains, dialect: explicitBackslash)
+                == #"WHERE "code" LIKE '%\\'' OR 1=1 -- %' ESCAPE '!'"#
+        )
+    }
+
+    @Test("A MySQL LIKE keeps a backslash literal through the string and the pattern")
+    func mysqlLikeBackslashIsLiteral() {
+        let mysql = makeDialect(quote: "`", backslashEscaping: true)
+        #expect(clause("code", #"a\b%"#, op: .contains, dialect: mysql) == #"WHERE `code` LIKE '%a\\\\b\\%%'"#)
+    }
+
+    @Test("A SQL Server LIKE escapes an opening bracket")
+    func mssqlLikeEscapesBracket() {
+        let generator = FilterSQLGenerator(dialect: makeDialect(quote: "["), databaseType: .mssql)
+        let filter = TableFilter(columnName: "code", filterOperator: .contains, value: "[a]")
+        #expect(generator.generateWhereClause(from: [filter], logicMode: .and) == "WHERE [code] LIKE '%![a]%' ESCAPE '!'")
+    }
+
+    // A combining mark joins the quote into one grapheme cluster.
+    @Test("A quote fused with a combining mark is still escaped")
+    func fusedQuoteIsEscaped() {
+        #expect(clause("code", "x'\u{0301} OR 1=1 --") == "WHERE \"code\" = 'x''\u{0301} OR 1=1 --'")
+        #expect(
+            clause("code", "x'\u{0301})", op: .contains)
+                == "WHERE \"code\" LIKE '%x''\u{0301})%' ESCAPE '!'"
+        )
+    }
+
     @Test("A backslash stays single where the engine reads it as a character")
     func backslashStaysSingle() {
         #expect(clause("path", "C:\\temp") == "WHERE \"path\" = 'C:\\temp'")

@@ -36,6 +36,17 @@ impl Thousands {
             None => n.to_string(),
         }
     }
+
+    /// `plain`, a decimal number written with a `.` and no grouping,
+    /// grouped and with the locale's decimal separator. Every fraction
+    /// digit stays, trailing zeros included, so cents read as cents.
+    pub(crate) fn format_decimal(&self, plain: &str) -> String {
+        let parsed = Decimal::try_from_str(plain);
+        match (&self.formatter, parsed) {
+            (Some(formatter), Ok(decimal)) => formatter.format_to_string(&decimal),
+            _ => plain.to_owned(),
+        }
+    }
 }
 
 // A cache, not state: every window formats with the process's locale,
@@ -55,6 +66,11 @@ fn numeric_locale() -> String {
 /// `n` grouped as the user's locale groups digits.
 pub(crate) fn format_thousands(n: u64) -> String {
     USER.with(|thousands| thousands.format(n))
+}
+
+/// `plain` decimal text as the user's locale writes numbers.
+pub(crate) fn format_decimal(plain: &str) -> String {
+    USER.with(|thousands| thousands.format_decimal(plain))
 }
 
 #[cfg(test)]
@@ -96,5 +112,21 @@ mod tests {
         assert_eq!(Thousands::for_posix_locale("C").format(1_000), "1,000");
         assert_eq!(Thousands::for_posix_locale("").format(1_000), "1,000");
         assert_eq!(Thousands::for_posix_locale("not a locale").format(1_000), "1,000");
+    }
+
+    #[test]
+    fn a_decimal_keeps_its_fraction_digits_and_the_locale_separator() {
+        let english = Thousands::for_posix_locale("en_US.UTF-8");
+        let italian = Thousands::for_posix_locale("it_IT.UTF-8");
+
+        assert_eq!(english.format_decimal("1234567.50"), "1,234,567.50");
+        assert_eq!(english.format_decimal("-0.025"), "-0.025");
+        assert_eq!(italian.format_decimal("12345.5"), "12.345,5");
+        assert_eq!(
+            italian.format_decimal("1234.5"),
+            "1234,5",
+            "four digits stay together in Italian"
+        );
+        assert_eq!(english.format_decimal("not a number"), "not a number");
     }
 }

@@ -140,10 +140,7 @@ async fn every(
 }
 
 fn current(cursor: &SessionCursor<Document>) -> Result<Document, DriverError> {
-    cursor.deserialize_current().map_err(|error| DriverError::Decode {
-        column: String::new(),
-        detail: error.to_string(),
-    })
+    crate::nested_document::current_document(cursor)
 }
 
 async fn finish(sink: &mut dyn ResultSink, retained: u64, total_rows: Option<u64>, truncation: Truncation) -> SinkFlow {

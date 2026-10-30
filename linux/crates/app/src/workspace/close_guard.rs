@@ -14,69 +14,127 @@ use super::{CloseDecision, CloseScope, CloseStep, DirtyTab, SaveRejection, SaveS
 
 /// Decides whether a tab, or every tab of a window, may close.
 ///
-/// It reads the workspace again after every answer and every settled
+/// It reads the workspaces again after every answer and every settled
 /// save rather than following a plan made up front, so a save that
 /// rolls back is asked about again and one that lands is not.
 pub(crate) struct CloseGuard;
 
 impl CloseGuard {
+    /// `handles` are the workspaces of every session the close covers,
+    /// asked in one pass: each question that is not Save Changes is
+    /// settled for the workspace it is about first, then one Save Changes
+    /// lists the tabs of all of them, so a Cancel there keeps every one.
     /// `acknowledged` holds the tabs whose open transactions or file
     /// changes the user already agreed to lose, and gains the ones
     /// agreed to here.
     pub(crate) async fn run(
         parent: &gtk::Widget,
-        handle: &WorkspaceHandle,
+        handles: &[WorkspaceHandle],
         scope: CloseScope,
         acknowledged: &mut HashSet<Uuid>,
     ) -> CloseDecision {
-        let _asking = handle.claim_for_prompt(scope);
+        let _asking: Vec<_> = handles.iter().map(|handle| handle.claim_for_prompt(scope)).collect();
         loop {
-            match handle.close_step(scope, acknowledged) {
-                CloseStep::Approve => return CloseDecision::Approved,
-                CloseStep::StopBlocker { blocker, prompt } => {
-                    if !ask_stop(parent, &prompt).await {
-                        return CloseDecision::Cancelled;
-                    }
-                    handle.stop_blocker(blocker).await;
-                }
-                CloseStep::WaitForSaves => {
-                    if !wait_for_saves(parent, handle, scope).await {
-                        return CloseDecision::Cancelled;
+            let mut unsaved: Vec<(&WorkspaceHandle, Vec<DirtyTab>)> = Vec::new();
+            let mut next = None;
+            for handle in handles {
+                match handle.close_step(scope, acknowledged) {
+                    CloseStep::Approve => {}
+                    CloseStep::AskSaveChanges(tabs) => unsaved.push((handle, tabs)),
+                    step => {
+                        next = Some((handle, step));
+                        break;
                     }
                 }
-                CloseStep::ResolveUnknownOutcome(tabs) => match resolve_unknown_outcome(parent, &tabs).await {
-                    UnknownChoice::KeepOpen => return CloseDecision::Cancelled,
-                    UnknownChoice::Reload => {
-                        handle.discard(&ids(&tabs), true);
-                        return CloseDecision::Cancelled;
-                    }
-                    UnknownChoice::Discard => handle.discard(&ids(&tabs), false),
-                },
-                CloseStep::ConfirmOpenTransactions(tabs) => {
-                    if !confirm_open_transactions(parent, &tabs).await {
-                        return CloseDecision::Cancelled;
-                    }
-                    acknowledged.extend(ids(&tabs));
+            }
+            if let Some((handle, step)) = next {
+                if !settle_step(parent, handle, scope, step, acknowledged).await {
+                    return CloseDecision::Cancelled;
                 }
-                CloseStep::AskSaveChanges(tabs) => match ask_save_changes(parent, &tabs).await {
-                    SaveChoice::Cancel => return CloseDecision::Cancelled,
-                    SaveChoice::Proceed { save, discard } => {
-                        handle.discard(&discard, false);
-                        // A file's text has no tracker to clear: it goes
-                        // with the tab, once the user agreed to that.
-                        acknowledged.extend(discard.iter().copied());
-                        let (refused, declined) = start_saves(parent, handle, &save).await;
-                        if !refused.is_empty() {
-                            show_refused(parent, &tabs, &refused);
-                        }
-                        if declined || !refused.is_empty() {
-                            return CloseDecision::Cancelled;
-                        }
-                    }
-                },
+                continue;
+            }
+            if unsaved.is_empty() {
+                return CloseDecision::Approved;
+            }
+            let tabs: Vec<DirtyTab> = unsaved.iter().flat_map(|(_, tabs)| tabs.iter().cloned()).collect();
+            let (save, discard) = match ask_save_changes(parent, &tabs).await {
+                SaveChoice::Cancel => return CloseDecision::Cancelled,
+                SaveChoice::Proceed { save, discard } => (save, discard),
+            };
+            for (handle, theirs) in &unsaved {
+                let dropped = of_tabs(&discard, theirs);
+                handle.discard(&dropped, false);
+                // A file's text has no tracker to clear: it goes with the
+                // tab, once the user agreed to that.
+                acknowledged.extend(dropped);
+            }
+            let mut refused = Vec::new();
+            let mut declined = false;
+            for (handle, theirs) in &unsaved {
+                let (not_started, review_declined) = start_saves(parent, handle, &of_tabs(&save, theirs)).await;
+                refused.extend(not_started);
+                if review_declined {
+                    declined = true;
+                    break;
+                }
+            }
+            if !refused.is_empty() {
+                show_refused(parent, &tabs, &refused);
+            }
+            if declined || !refused.is_empty() {
+                return CloseDecision::Cancelled;
             }
         }
     }
+}
+
+/// Settle one question that is not Save Changes for `handle`. False when
+/// the user kept the close from going ahead.
+async fn settle_step(
+    parent: &gtk::Widget,
+    handle: &WorkspaceHandle,
+    scope: CloseScope,
+    step: CloseStep,
+    acknowledged: &mut HashSet<Uuid>,
+) -> bool {
+    match step {
+        CloseStep::Approve | CloseStep::AskSaveChanges(_) => true,
+        CloseStep::StopBlocker { blocker, prompt } => {
+            if !ask_stop(parent, &prompt).await {
+                return false;
+            }
+            handle.stop_blocker(blocker).await;
+            true
+        }
+        CloseStep::WaitForSaves => wait_for_saves(parent, handle, scope).await,
+        CloseStep::ResolveUnknownOutcome(tabs) => match resolve_unknown_outcome(parent, &tabs).await {
+            UnknownChoice::KeepOpen => false,
+            UnknownChoice::Reload => {
+                handle.discard(&ids(&tabs), true);
+                false
+            }
+            UnknownChoice::Discard => {
+                handle.discard(&ids(&tabs), false);
+                true
+            }
+        },
+        CloseStep::ConfirmOpenTransactions(tabs) => {
+            if !confirm_open_transactions(parent, &tabs).await {
+                return false;
+            }
+            acknowledged.extend(ids(&tabs));
+            true
+        }
+    }
+}
+
+/// The tabs of `chosen` that are among `theirs`.
+fn of_tabs(chosen: &[Uuid], theirs: &[DirtyTab]) -> Vec<Uuid> {
+    chosen
+        .iter()
+        .copied()
+        .filter(|id| theirs.iter().any(|tab| tab.id == *id))
+        .collect()
 }
 
 /// Start each save in turn, and give back the ones refused and whether
@@ -150,7 +208,7 @@ mod tests {
         let parent = window.clone().upcast::<gtk::Widget>();
         let handle = handle.clone();
         gtk::glib::spawn_future_local(async move {
-            let decided = CloseGuard::run(&parent, &handle, scope, &mut HashSet::new()).await;
+            let decided = CloseGuard::run(&parent, std::slice::from_ref(&handle), scope, &mut HashSet::new()).await;
             sink.replace(Some(decided));
         });
         decision

@@ -7,8 +7,8 @@ import Foundation
 /// a statement the server rejects.
 ///
 /// Curated in the app and keyed by database type id. It cannot be keyed by plugin: MySQL and MariaDB
-/// share one and spell an expression default differently; PostgreSQL, Redshift, CockroachDB and PGlite
-/// share one, and only two of them have `gen_random_uuid()`.
+/// share one and spell an expression default differently; PostgreSQL, Redshift, CockroachDB, PGlite and
+/// KingbaseES share one, and Redshift and KingbaseES have no `gen_random_uuid()`.
 ///
 /// What belongs here is the vocabulary, not the syntax. MySQL takes a `TEXT` or `JSON` default only in
 /// parentheses whatever the value is, so that parenthesising is the MySQL driver's job at the point it
@@ -36,10 +36,11 @@ internal enum ColumnDefaultVocabulary {
     }
 
     /// Oracle treats a zero-length character value as null, so `DEFAULT ''` and `DEFAULT NULL` are the
-    /// same statement there and offering both would be a lie. Dameng follows Oracle.
+    /// same statement there and offering both would be a lie. Dameng follows Oracle, and so does KingbaseES
+    /// in Oracle mode, which its type id cannot tell from PostgreSQL mode.
     private static func offersEmptyString(_ databaseType: DatabaseType) -> Bool {
         switch databaseType {
-        case .oracle, .dameng: false
+        case .oracle, .dameng, .kingbasees: false
         default: true
         }
     }
@@ -52,6 +53,8 @@ internal enum ColumnDefaultVocabulary {
             return ["CURRENT_TIMESTAMP", "uuid()", "curdate()"]
         case .postgresql, .pglite:
             return ["CURRENT_TIMESTAMP", "now()", "CURRENT_DATE", "gen_random_uuid()", "true", "false"]
+        case .kingbasees:
+            return ["CURRENT_TIMESTAMP", "now()", "CURRENT_DATE", "true", "false"]
         case .cockroachdb:
             return ["current_timestamp()", "now()", "gen_random_uuid()", "unique_rowid()", "true", "false"]
         case .redshift:

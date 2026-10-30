@@ -1,9 +1,17 @@
+use std::cell::Cell;
+use std::rc::Rc;
+
+use gtk4::glib;
+use libadwaita as adw;
 use tablepro_core::meta::TableRef;
+use tablepro_session::SessionKey;
 
 use super::editor_label::EditorLabel;
 use super::structure_target::StructureTarget;
 use super::tab_identity::TabIdentity;
 use super::table_naming::TableNaming;
+use crate::services::active_session::ActiveSession;
+use crate::services::saved_connection_list::SavedConnectionList;
 use crate::ui::editor::derive_tab_label;
 
 /// A tab's title and the tooltip that says more than it.
@@ -11,6 +19,84 @@ use crate::ui::editor::derive_tab_label;
 pub(crate) struct TabTitle {
     pub label: String,
     pub tooltip: Option<String>,
+}
+
+/// The connection a session's tabs belong to, as the saved connections
+/// name it now, so a renamed connection retitles its tabs. A file opened
+/// without a saved connection keeps the name it connected with.
+pub(crate) struct ConnectionLabel {
+    key: SessionKey,
+    saved: Rc<SavedConnectionList>,
+    session: ActiveSession,
+    /// Another session has a tab in the bar beside this one's.
+    shares_bar: Cell<bool>,
+}
+
+impl ConnectionLabel {
+    pub(crate) fn new(key: SessionKey, saved: Rc<SavedConnectionList>, session: ActiveSession) -> Self {
+        Self {
+            key,
+            saved,
+            session,
+            shares_bar: Cell::new(false),
+        }
+    }
+
+    pub(crate) fn name(&self) -> String {
+        let saved = match &self.key {
+            SessionKey::Saved(id) => self.saved.get(*id).map(|saved| saved.name),
+            SessionKey::File(_) => None,
+        };
+        saved
+            .or_else(|| self.session.metadata().map(|metadata| metadata.name))
+            .unwrap_or_default()
+    }
+
+    pub(crate) fn shares_bar(&self) -> bool {
+        self.shares_bar.get()
+    }
+
+    /// True when that changed, and the tabs have to be titled again.
+    pub(crate) fn set_shares_bar(&self, shares: bool) -> bool {
+        self.shares_bar.replace(shares) != shares
+    }
+}
+
+/// Give `page` its title, tooltip and keyword. libadwaita treats an
+/// empty tooltip as none, which clears the last one. The tooltip says
+/// what the unsaved icon shows, since a screen reader reads a tab's
+/// tooltip and not its icon, and it is escaped: AdwTab shows it as Pango
+/// markup.
+pub(crate) fn apply_tab_title(page: &adw::TabPage, title: &TabTitle, connection: &ConnectionLabel) {
+    let name = connection.name();
+    // The overview's search finds a connection's tabs by its name.
+    page.set_keyword(&name);
+    let title = match connection.shares_bar() {
+        true => name_connection(title.clone(), &name),
+        false => title.clone(),
+    };
+    page.set_title(&title.label);
+    let unsaved = page.icon().is_some().then(|| crate::i18n::gettext("Unsaved changes"));
+    let lines: Vec<&str> = [title.tooltip.as_deref(), unsaved.as_deref()]
+        .into_iter()
+        .flatten()
+        .collect();
+    page.set_tooltip(&glib::markup_escape_text(&lines.join("\n")));
+}
+
+/// A tab beside another connection's names its own after its title,
+/// which stays the useful part once ellipsized. The tooltip names it on a
+/// line of its own, which a cut label loses.
+fn name_connection(title: TabTitle, connection: &str) -> TabTitle {
+    let tooltip = [title.tooltip.as_deref().unwrap_or(&title.label), connection].join("\n");
+    TabTitle {
+        // Translators: a tab's title and its connection, while several connections share the tab bar.
+        label: crate::i18n::gettext_f(
+            "{title} ({connection})",
+            &[("title", &title.label), ("connection", connection)],
+        ),
+        tooltip: Some(tooltip),
+    }
 }
 
 /// The one place a tab's title is made. Unsaved changes never change it;
@@ -184,6 +270,18 @@ mod tests {
 
         assert_eq!(title.label, "daily.sql");
         assert_eq!(title.tooltip.as_deref(), Some("/home/ada/reports/daily.sql"));
+    }
+
+    #[test]
+    fn a_tab_beside_another_connections_names_its_own_after_its_title() {
+        let title = name_connection(
+            resolve_tab_title(&TabIdentity::Table(orders()), TableNaming::Bare),
+            "Shop",
+        );
+
+        assert_eq!(title.label, "orders (Shop)");
+        assert_eq!(title.tooltip.as_deref(), Some("public.orders\nShop"));
+        assert!(!title.label.contains('·'));
     }
 
     #[test]

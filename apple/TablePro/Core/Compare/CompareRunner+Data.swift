@@ -122,8 +122,26 @@ internal extension CompareRunner {
             byTable.append((plan, statements))
         }
         guard !byTable.isEmpty else { return [] }
+        return Self.orderedAcrossTables(
+            byTable,
+            sourceSnapshots: session.sourceSnapshots,
+            in: Self.referenceNamespace(of: context.source)
+        )
+    }
 
-        let foreignKeys = CompareRunner.foreignKeyMap(from: session.sourceSnapshots)
+    static func orderedAcrossTables(
+        _ byTable: [(plan: DataComparePlan, statements: DataSyncStatements)],
+        sourceSnapshots: [String: TableStructureSnapshot],
+        in namespace: ReferenceNamespace
+    ) -> [SyncStatement] {
+        var foreignKeys: [String: [PluginForeignKeyInfo]] = [:]
+        for entry in byTable {
+            // A listing that leaves the schema off keys the snapshot by bare name, while the plan takes the endpoint's.
+            guard let snapshot = sourceSnapshots[entry.plan.id] ?? sourceSnapshots[entry.plan.table] else { continue }
+            let dependencies = dependencies(of: snapshot, ownSchema: entry.plan.schema, in: namespace)
+            guard !dependencies.isEmpty else { continue }
+            foreignKeys[entry.plan.id] = dependencies
+        }
         let nodes = byTable.map { ForeignKeyTopologicalSort.Table(name: $0.plan.table, schema: $0.plan.schema) }
         let parentFirst = ForeignKeyTopologicalSort
             .ordered(nodes, foreignKeysByTable: foreignKeys, childrenFirst: false)

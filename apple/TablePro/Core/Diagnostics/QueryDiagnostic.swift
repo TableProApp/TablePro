@@ -1,5 +1,6 @@
 import Foundation
 import TableProPluginKit
+import TableProSQLGrammar
 
 struct QueryDiagnostic: Equatable, Identifiable {
     enum Severity: String {
@@ -42,7 +43,7 @@ struct CombinedQueryDiagnosticsProducer: QueryDiagnosticsProducing {
 
 @MainActor
 enum QueryDiagnosticsFactory {
-    static func make(for databaseType: DatabaseType?) -> QueryDiagnosticsProducing {
+    static func make(for databaseType: DatabaseType?, grammar: SQLLexicalGrammar? = nil) -> QueryDiagnosticsProducing {
         let resolvedType = databaseType ?? .mysql
 
         // Highlighting as JavaScript does not make the language JavaScript: Elasticsearch, Typesense
@@ -57,7 +58,7 @@ enum QueryDiagnosticsFactory {
         case .sql:
             return CombinedQueryDiagnosticsProducer(producers: [
                 SQLDiagnosticsProducer(),
-                SQLConfusableCharacterDiagnosticsProducer(grammar: resolvedType.lexicalGrammar)
+                SQLConfusableCharacterDiagnosticsProducer(grammar: grammar ?? resolvedType.lexicalGrammar)
             ])
         case .bash:
             // A command line's arguments are plain text, so `SET smile :)` holds a bracket that closes

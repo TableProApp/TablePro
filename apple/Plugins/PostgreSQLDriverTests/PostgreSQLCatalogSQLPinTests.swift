@@ -277,7 +277,11 @@ struct PostgreSQLCatalogSQLPinTests {
             a.attidentity AS identity_kind,
             a.attgenerated AS generated_kind,
             c.udt_schema AS udt_schema,
-            c.generation_expression AS generation_expression,
+            CASE WHEN a.attgenerated IN ('s', 'v')
+                 THEN (SELECT pg_catalog.pg_get_expr(ad.adbin, ad.adrelid)
+                         FROM pg_catalog.pg_attrdef ad
+                        WHERE ad.adrelid = a.attrelid AND ad.adnum = a.attnum)
+            END AS generation_expression,
             CASE WHEN EXISTS (
                         SELECT 1
                         FROM pg_catalog.pg_type dt

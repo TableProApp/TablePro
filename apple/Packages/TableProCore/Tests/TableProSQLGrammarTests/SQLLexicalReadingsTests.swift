@@ -7,7 +7,7 @@ struct SQLLexicalReadingsTests {
     @Test("Every SQL engine TablePro ships has a curated grammar")
     func curatedTableCoversShippedEngines() {
         let shipped = [
-            "MySQL", "MariaDB", "TiDB", "Databend", "OceanBase", "PostgreSQL", "Redshift", "CockroachDB", "PGlite",
+            "MySQL", "MariaDB", "TiDB", "Databend", "OceanBase", "PostgreSQL", "Redshift", "CockroachDB", "PGlite", "KingbaseES",
             "SQLite", "libSQL", "Turso", "Cloudflare D1", "DuckDB", "Oracle", "Dameng", "SQL Server", "ClickHouse",
             "Snowflake", "BigQuery", "Spanner", "Trino", "Presto", "Teradata", "SAP HANA", "Cassandra", "ScyllaDB", "DynamoDB",
             "SurrealDB", "Redis", "MongoDB", "etcd", "Elasticsearch", "Typesense", "Weaviate", "Kafka",
@@ -15,6 +15,14 @@ struct SQLLexicalReadingsTests {
         ]
         let missing = shipped.filter { SQLLexicalProfile.curated(forDatabaseTypeId: $0) == nil }
         #expect(missing.isEmpty)
+    }
+
+    @Test("Only T-SQL names continue with # and @")
+    func hashAndAtContinueOnlyTSQLNames() {
+        #expect(SQLLexicalProfile.curated(forDatabaseTypeId: "SQL Server")?.grammar.contains(.hashAndAtInIdentifiers) == true)
+        for typeId in ["MySQL", "PostgreSQL", "SQLite", "Oracle", "ClickHouse", "DuckDB"] {
+            #expect(SQLLexicalProfile.curated(forDatabaseTypeId: typeId)?.grammar.contains(.hashAndAtInIdentifiers) == false)
+        }
     }
 
     @Test("A curated engine ignores what a plugin declares, because a registry plugin may be older than the app")
@@ -121,5 +129,36 @@ struct SQLLexicalReadingsTests {
             [], [.hashLineComments], [.nestedBlockComments], [.hashLineComments, .nestedBlockComments],
         ])
         #expect(profile.readings.first == .ansi)
+    }
+    @Test("KingbaseES retains both compatibility-mode readings before a session is known")
+    func kingbaseCompatibilityReadings() throws {
+        let profile = try #require(SQLLexicalProfile.curated(forDatabaseTypeId: "KingbaseES"))
+        #expect(profile.grammar.contains(.taggedDollarQuotes))
+        #expect(profile.readings.contains { $0.contains(.alternativeQuoting) && $0.contains(.plsqlBlocks) })
+        let oracle = SQLSessionLexicalFacts(
+            determined: [.alternativeQuoting, .plsqlBlocks], enabled: [.alternativeQuoting, .plsqlBlocks]
+        )
+        let readings = SQLLexicalReadings.resolve(databaseTypeId: "KingbaseES", declared: nil, session: oracle)
+        #expect(readings.execution.contains(.alternativeQuoting))
+        #expect(readings.execution.contains(.plsqlBlocks))
+        #expect(readings.all.contains { !$0.contains(.alternativeQuoting) })
+    }
+
+    // Measured on KingbaseES V9R1C10 in Oracle mode: each of these creates its function, beside PL/SQL bodies.
+    @Test("Oracle-mode KingbaseES ends a quoted routine body at its semicolon and keeps a PL/SQL body whole")
+    func kingbaseOracleModeRoutineBodies() {
+        let oracle = SQLSessionLexicalFacts(
+            determined: [.alternativeQuoting, .plsqlBlocks, .slashLineTerminators, .dollarAndHashInIdentifiers],
+            enabled: [.alternativeQuoting, .plsqlBlocks, .slashLineTerminators, .dollarAndHashInIdentifiers]
+        )
+        let grammar = SQLLexicalReadings.resolve(databaseTypeId: "KingbaseES", declared: nil, session: oracle).execution
+        func sent(_ sql: String) -> [String] {
+            SQLStatementScanner.executableStatements(in: sql, grammar: grammar).map(\.sql)
+        }
+        #expect(sent("CREATE FUNCTION f() RETURNS integer LANGUAGE SQL AS 'SELECT 42'; SELECT 2;").count == 2)
+        #expect(sent("CREATE FUNCTION f() RETURNS integer AS $$ SELECT 1; $$ LANGUAGE sql; SELECT 2;").count == 2)
+        #expect(sent("CREATE FUNCTION f() RETURNS integer AS $b$ BEGIN RETURN 1; END; $b$ LANGUAGE plpgsql; SELECT 2;").count == 2)
+        #expect(sent("CREATE FUNCTION f RETURN NUMBER AS BEGIN RETURN 1; END;\n/\nSELECT 2;").count == 2)
+        #expect(sent("CREATE FUNCTION f RETURN NUMBER AS \"v\" NUMBER := 1; BEGIN RETURN \"v\"; END;\n/\nSELECT 2;").count == 2)
     }
 }

@@ -13,7 +13,7 @@ internal struct SQLExportSessionDeclaration: Equatable {
     let epilogue: String
 
     private static let typesAcceptingSetClientEncoding: Set<String> = [
-        "PostgreSQL", "Greenplum", "AlloyDB", "Citus", "CockroachDB", "PGlite"
+        "PostgreSQL", "Greenplum", "AlloyDB", "Citus", "CockroachDB", "PGlite", "KingbaseES"
     ]
 
     /// `readTimeZone` is the zone the rows were read in, from the export's read scope. Only a MySQL dump declares

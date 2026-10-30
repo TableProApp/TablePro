@@ -156,19 +156,32 @@ extension DataGridViewController {
         return cell
     }
 
-    // A row prepared off screen was answered with no view and is never asked again, so revealed rows reload.
+    // A row prepared off screen was answered with no view and is never asked again, so an on-screen row without
+    // its stand-in reloads. Asked of the rows themselves: a client's read prepares rows the grid never showed.
     func remountAccessibilityCells(force: Bool = false) {
         guard DataGridAccessibility.isActive, !isEditingCell else { return }
         let table = main.tableView
         let visible = table.rows(in: table.visibleRect)
-        guard visible.length > 0, force || !NSEqualRanges(visible, accessibilityMountedRows) else { return }
         let upperBound = min(visible.location + visible.length, table.numberOfRows)
         guard visible.location >= 0, upperBound > visible.location, table.numberOfColumns > 0 else { return }
-        accessibilityMountedRows = visible
-        table.reloadData(
-            forRowIndexes: IndexSet(integersIn: visible.location..<upperBound),
-            columnIndexes: IndexSet(integersIn: 0..<table.numberOfColumns)
-        )
+        let rows = IndexSet(integersIn: visible.location..<upperBound).filteredIndexSet { row in
+            guard table.rowView(atRow: row, makeIfNecessary: false) != nil else { return false }
+            return force || !(table.view(atColumn: 0, row: row, makeIfNecessary: false) is DataGridAccessibilityCellView)
+        }
+        guard !rows.isEmpty else { return }
+        table.reloadData(forRowIndexes: rows, columnIndexes: IndexSet(integersIn: 0..<table.numberOfColumns))
+    }
+
+    // Rows also come on screen with no scroll: a fitted grid grows to its rows, a pane resizes, a page moves the
+    // grid. Deferred past the layout pass or accessibility read that asks, which a reload inside would re-enter.
+    func scheduleAccessibilityRemount() {
+        guard DataGridAccessibility.isActive, !isAccessibilityRemountScheduled else { return }
+        isAccessibilityRemountScheduled = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.isAccessibilityRemountScheduled = false
+            self.remountAccessibilityCells()
+        }
     }
 
     // Clamped to the visible rows: AppKit would otherwise ask for every cell of a million-row selection.

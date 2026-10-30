@@ -70,6 +70,7 @@ internal enum TransactionEngineFamily: String, Hashable, Sendable, CaseIterable 
         "AlloyDB": .postgres,
         "Citus": .postgres,
         "Greenplum": .postgres,
+        "KingbaseES": .postgres,
         "Redshift": .redshift,
         "CockroachDB": .cockroach,
         "MySQL": .mysql,

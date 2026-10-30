@@ -90,6 +90,41 @@ struct ObjectCopyEligibilityTests {
         #expect(ObjectCopyEligibility.definitionEngineRefusal(from: .postgresql, to: .postgresql) == nil)
     }
 
+    private static let oracleModeSession = PluginSessionLexicalState(
+        determined: [.plsqlBlocks, .alternativeQuoting], enabled: [.plsqlBlocks, .alternativeQuoting]
+    )
+    private static let pgModeSession = PluginSessionLexicalState(determined: [.plsqlBlocks], enabled: [])
+
+    @Test
+    func kingbaseESCopiesWithPostgreSQLOnlyInPostgreSQLMode() {
+        #expect(ObjectCopyEligibility.engineRefusal(
+            from: .postgresql, to: .kingbasees, sourceLanguage: .sql, targetLanguage: .sql,
+            sourceSession: nil, targetSession: Self.pgModeSession
+        ) == nil)
+        #expect(ObjectCopyEligibility.definitionEngineRefusal(
+            from: .kingbasees, to: .postgresql, sourceSession: Self.pgModeSession, targetSession: nil
+        ) == nil)
+        #expect(ObjectCopyEligibility.engineRefusal(
+            from: .postgresql, to: .kingbasees, sourceLanguage: .sql, targetLanguage: .sql,
+            sourceSession: nil, targetSession: Self.oracleModeSession
+        ) != nil)
+        #expect(ObjectCopyEligibility.definitionEngineRefusal(
+            from: .kingbasees, to: .postgresql, sourceSession: Self.oracleModeSession, targetSession: nil
+        ) != nil)
+    }
+
+    @Test
+    func kingbaseESCopiesBetweenServersOfTheSameModeOnly() {
+        #expect(ObjectCopyEligibility.engineRefusal(
+            from: .kingbasees, to: .kingbasees, sourceLanguage: .sql, targetLanguage: .sql,
+            sourceSession: Self.oracleModeSession, targetSession: Self.oracleModeSession
+        ) == nil)
+        #expect(ObjectCopyEligibility.engineRefusal(
+            from: .kingbasees, to: .kingbasees, sourceLanguage: .sql, targetLanguage: .sql,
+            sourceSession: Self.oracleModeSession, targetSession: Self.pgModeSession
+        ) != nil)
+    }
+
     /// Copying a database onto itself either drops the rows it is about to read or doubles them.
     @Test
     func theSameScopeIsRefusedAsATarget() {

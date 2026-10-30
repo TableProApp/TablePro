@@ -233,7 +233,7 @@ internal struct SQLRowToStatementConverter {
             hex += String(format: "%02X", byte)
         }
         switch databaseType {
-        case .postgresql, .redshift, .cockroachdb:
+        case .postgresql, .redshift, .cockroachdb, .pglite, .kingbasees:
             return "'\\x\(hex)'::bytea"
         case .mssql:
             return "0x\(hex)"

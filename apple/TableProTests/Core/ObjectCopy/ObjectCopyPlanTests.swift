@@ -128,6 +128,11 @@ struct ObjectCopyPlanTests {
             [step("orders")],
             request: request(errorHandling: .skipAndContinue)
         ).clearsInsideDataTransaction))
+        /// PostgreSQL commits a transaction a failure aborted as a ROLLBACK, which keeps nothing.
+        #expect(!(plan(
+            [step("orders")],
+            request: request(errorHandling: .stopAndCommit)
+        ).clearsInsideDataTransaction))
         #expect(!(plan(
             [step("orders")],
             request: request(wrapEachTableInTransaction: false)

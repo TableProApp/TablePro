@@ -1,9 +1,9 @@
-//! The assistant's column beside the tabs: the header's toggle, the
-//! `win.show-assistant` action, and the pane's view of the tabs.
+//! The session's assistant: its own pane, which the shell's column shows
+//! while the session is in front, so a reply keeps coming while another
+//! session's tab is on screen, and what that pane may send.
 
 use std::rc::Rc;
 
-use gtk4 as gtk;
 use gtk4::glib;
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
@@ -14,21 +14,16 @@ use tablepro_storage::settings::keys;
 
 use super::tab_index::TabIndex;
 use super::workspace_persistence::WorkspaceTabs;
-use super::{Workspace, WorkspaceInput, WorkspaceModel, WorkspaceSender, WorkspaceTab, WorkspaceTabParts};
+use super::{WorkspaceInput, WorkspaceModel, WorkspaceSender, WorkspaceTab, WorkspaceTabParts};
 use crate::application::AppServices;
 use crate::runtime::DeliverInput;
 use crate::services::active_session::ActiveSession;
-use crate::ui::assistant::{AssistantAccess, AssistantRequest, Availability, PaneHooks};
+use crate::ui::assistant::{AssistantAccess, AssistantPane, AssistantRequest, Availability, PaneHooks};
 use crate::ui::handler_guard::HandlerGuard;
 
-pub(super) const SHOW_ASSISTANT: &str = "show-assistant";
-
-pub(super) struct AssistantShell {
+pub(super) struct AssistantColumn {
     access: Rc<AssistantAccess>,
-    action: gio::SimpleAction,
-    split: adw::OverlaySplitView,
-    pane: crate::ui::assistant::AssistantPane,
-    toggle: gtk::ToggleButton,
+    pane: AssistantPane,
     _watches: Vec<HandlerGuard>,
 }
 
@@ -49,41 +44,15 @@ pub(super) fn access(
     })
 }
 
-pub(super) fn install(
-    workspace: &Workspace,
-    window: &adw::ApplicationWindow,
-    parts: &WorkspaceTabParts,
-    input: &WorkspaceSender,
-) -> AssistantShell {
+/// The session's pane, bound once to its tabs and its access.
+pub(super) fn install(parts: &WorkspaceTabParts, input: &WorkspaceSender) -> AssistantColumn {
     let access = parts.assistant.clone();
-    let (tabs, index) = (parts.workspace_tabs.clone(), parts.index.clone());
-    let imp = workspace.imp();
-    let split = imp.assistant_split.get();
-    let action = gio::SimpleAction::new_stateful(SHOW_ASSISTANT, None, &false.to_variant());
-    let shown = split.downgrade();
-    let pane = imp.assistant_pane.get();
-    let focus = pane.downgrade();
-    action.connect_change_state(move |action, state| {
-        let Some(show) = state.and_then(|state| state.get::<bool>()) else {
-            return;
-        };
-        action.set_state(&show.to_variant());
-        if let Some(split) = shown.upgrade() {
-            split.set_show_sidebar(show);
-        }
-        if show && let Some(pane) = focus.upgrade() {
-            pane.focus_composer();
-        }
-    });
-    let followed = action.downgrade();
-    split.connect_show_sidebar_notify(move |split| {
-        if let Some(action) = followed.upgrade() {
-            action.set_state(&split.shows_sidebar().to_variant());
-        }
-    });
-    window.add_action(&action);
-
-    let view = imp.tab_view.downgrade();
+    let (tabs, index, view) = (
+        parts.workspace_tabs.clone(),
+        parts.index.clone(),
+        parts.tab_view.downgrade(),
+    );
+    let pane: AssistantPane = glib::Object::new();
     pane.bind(PaneHooks {
         access: access.clone(),
         editor_text: Rc::new(move || active_editor_text(&tabs, &index, &view)),
@@ -105,19 +74,14 @@ pub(super) fn install(
             .connect_changed(Some(key), move |_, _| changed.deliver(WorkspaceInput::AssistantChanged));
         watches.push(HandlerGuard::new(settings.gio(), handler));
     }
-    let toggle = imp.assistant_toggle.get();
-    let shell = AssistantShell {
+    AssistantColumn {
         access,
-        action,
-        split,
         pane,
-        toggle,
         _watches: watches,
-    };
-    shell.refresh_controls();
-    shell
+    }
 }
 
+/// The text of this session's editor tab while it is the one on screen.
 fn active_editor_text(tabs: &WorkspaceTabs, index: &TabIndex, view: &glib::WeakRef<adw::TabView>) -> Option<String> {
     let id = index.id_of(&view.upgrade()?.selected_page()?)?;
     match tabs.borrow().get(&id) {
@@ -130,17 +94,9 @@ fn active_editor_text(tabs: &WorkspaceTabs, index: &TabIndex, view: &glib::WeakR
     }
 }
 
-impl AssistantShell {
-    /// With no provider the column and its toggle go, and the key does
-    /// nothing; under Never the pane says why it is off.
-    fn refresh_controls(&self) {
-        let available = self.access.availability() != Availability::Off;
-        self.toggle.set_visible(available);
-        self.action.set_enabled(available);
-        if !available {
-            self.split.set_show_sidebar(false);
-        }
-        self.pane.refresh();
+impl AssistantColumn {
+    pub(super) fn pane(&self) -> AssistantPane {
+        self.pane.clone()
     }
 
     pub(super) fn shutdown(&self) {
@@ -150,8 +106,17 @@ impl AssistantShell {
 
 impl WorkspaceModel {
     /// The provider, a preference or the connection's policy changed.
+    /// With no provider the column and its toggle go while the session is
+    /// in front, and the key does nothing; under Never the pane says why
+    /// it is off.
     pub(super) fn refresh_assistant(&self) {
-        self.assistant.refresh_controls();
+        let available = self.assistant.access.availability() != Availability::Off;
+        if let Some(workspace) = self.this.upgrade()
+            && workspace.imp().assistant_available.replace(available) != available
+        {
+            workspace.notify_assistant_available();
+        }
+        self.assistant.pane.refresh();
         for tab in self.workspace_tabs.borrow().values() {
             if let WorkspaceTab::Editor(slot) = tab {
                 slot.editor.refresh_assistant();
@@ -159,11 +124,17 @@ impl WorkspaceModel {
         }
     }
 
+    /// An editor tab asked about a statement. It asks this session's own
+    /// pane, which comes into view while the session is in front.
     pub(super) fn on_ask_assistant(&self, request: AssistantRequest) {
         if self.assistant.access.availability() != Availability::Ready {
             return;
         }
-        self.assistant.split.set_show_sidebar(true);
+        if self.is_front()
+            && let Some(shell) = self.shell.upgrade()
+        {
+            shell.reveal_assistant();
+        }
         self.assistant.pane.run_action(request);
     }
 

@@ -23,12 +23,19 @@ enum StructureEditingSupport {
         _ column: inout EditableColumnDefinition,
         at index: Int,
         with value: String,
-        orderedFields: [StructureColumnField]
+        orderedFields: [StructureColumnField],
+        catalog: TableOptionsCatalog? = nil
     ) {
         guard index >= 0, index < orderedFields.count else { return }
         switch orderedFields[index] {
         case .name: column.name = value
-        case .type: column.dataType = value
+        case .type:
+            // Only engines with per-column character sets list the field; elsewhere the driver decides a retype's collation.
+            if orderedFields.contains(.charset) {
+                column.setDataType(value)
+            } else {
+                column.dataType = value
+            }
         case .nullable: column.setNullable(parseBool(value) && !column.isPrimaryKey)
         case .defaultValue: column.defaultValue = value.isEmpty ? nil : value
         case .onUpdate:
@@ -38,8 +45,14 @@ enum StructureEditingSupport {
             if column.isPrimaryKey { column.setNullable(false) }
         case .autoIncrement: column.autoIncrement = parseBool(value)
         case .comment: column.comment = value.isEmpty ? nil : value
-        case .charset: column.charset = value.isEmpty ? nil : value
-        case .collation: column.collation = value.isEmpty ? nil : value
+        case .charset:
+            let name = value.isEmpty ? nil : value
+            guard name != column.charset else { break }
+            column.setCharacterSet(name, collation: name.flatMap { catalog?.defaultCollation(for: $0) })
+        case .collation:
+            let collation = value.isEmpty ? nil : value
+            let owner = collation.flatMap { catalog?.characterSet(owning: $0)?.name }
+            column.setCharacterSet(owner ?? column.charset, collation: collation)
         case .generated:
             column.generationKind = GenerationKind(rawValue: value.uppercased())
             if column.generationKind == nil { column.generationExpression = nil }

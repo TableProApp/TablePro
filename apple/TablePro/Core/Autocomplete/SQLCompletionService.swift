@@ -14,6 +14,7 @@ final class SQLCompletionService: QueryCompletionService {
         schemaProvider: SQLSchemaProvider?,
         databaseType: DatabaseType?,
         profile: QueryCompletionProfile? = nil,
+        grammar: SQLLexicalGrammar? = nil,
         identifierCase: @escaping @MainActor () -> SQLIdentifierCase = { .default }
     ) {
         let dialect = profile?.resolvedDialect
@@ -21,13 +22,15 @@ final class SQLCompletionService: QueryCompletionService {
         let statementCompletions = profile?.statementCompletions
             ?? databaseType.flatMap { PluginManager.shared.statementCompletions(for: $0) }
             ?? []
+        let resolvedGrammar = grammar ?? databaseType?.lexicalGrammar ?? .ansi
         self.engine = CompletionEngine(
             schemaProvider: schemaProvider,
             databaseType: databaseType,
             dialect: dialect,
-            statementCompletions: statementCompletions
+            statementCompletions: statementCompletions,
+            grammar: resolvedGrammar
         )
-        self.grammar = databaseType?.lexicalGrammar ?? .ansi
+        self.grammar = resolvedGrammar
         self.identifierCaseSource = identifierCase
     }
 

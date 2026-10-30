@@ -41,7 +41,7 @@ internal enum DatabaseTreeMenuSpec {
                 context: context
             )
         case .routine(let ref):
-            return routineSections(ref)
+            return routineSections(ref, context: context)
         case .trigger(let ref):
             return triggerSections(ref)
         case .userType(let ref):
@@ -304,7 +304,10 @@ internal enum DatabaseTreeMenuSpec {
         return [DatabaseTreeMenuSection(copies)]
     }
 
-    private static func routineSections(_ ref: DatabaseTreeRoutineRef) -> [DatabaseTreeMenuSection] {
+    private static func routineSections(
+        _ ref: DatabaseTreeRoutineRef,
+        context: DatabaseTreeMenuContext
+    ) -> [DatabaseTreeMenuSection] {
         var copies: [DatabaseTreeMenuItem] = [.command(String(localized: "Copy Name"), .copyText(ref.routine.name))]
         if let signature = ref.routine.argumentSignature, !signature.isEmpty {
             copies.append(.command(
@@ -312,10 +315,14 @@ internal enum DatabaseTreeMenuSpec {
                 .copyText(RoutineDisplayLabel.copyableSignature(for: ref.routine))
             ))
         }
-        return [
+        var sections = [
             DatabaseTreeMenuSection(copies),
             DatabaseTreeMenuSection([.command(String(localized: "Show DDL"), .showObjectSource(ref.objectRef))])
         ]
+        if context.canDebugRoutine {
+            sections.append(DatabaseTreeMenuSection([.command(String(localized: "Debug…"), .debugRoutine(ref))]))
+        }
+        return sections
     }
 
     private static func triggerSections(_ ref: DatabaseTreeTriggerRef) -> [DatabaseTreeMenuSection] {

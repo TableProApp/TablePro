@@ -43,6 +43,7 @@ pub(crate) async fn fetch_table_definition(
             create_statement,
             dependents: Vec::new(),
         }),
+        options: None,
     })
 }
 

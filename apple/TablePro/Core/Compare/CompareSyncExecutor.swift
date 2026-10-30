@@ -159,7 +159,13 @@ internal actor CompareSyncExecutor {
         let request = OperationRequest(
             connectionId: target.connectionId,
             databaseType: target.databaseType,
-            sql: Self.digest(of: runnable, databaseType: target.databaseType),
+            sql: Self.digest(
+                of: runnable,
+                databaseType: target.databaseType,
+                grammar: SQLLexicalResolver.readings(
+                    for: target.databaseType, session: driver.sessionLexicalState
+                ).execution
+            ),
             kind: Self.kind(for: mode, statements: runnable, databaseType: target.databaseType),
             caller: .userInterface,
             capabilities: [.mayWrite, .mayRunDestructive, .mayRunMultiStatement, .confirmationPreCleared],
@@ -330,8 +336,12 @@ internal actor CompareSyncExecutor {
     /// statement count and a hash of every statement, so two scripts that share their first ten
     /// thousand characters are never recorded as the same run. Each statement is written the way the
     /// saved script writes it, so the gate reads statements ended where they end.
-    static func digest(of statements: [SyncStatement], databaseType: DatabaseType) -> String {
-        let scriptText = SQLScriptText(databaseType: databaseType)
+    static func digest(
+        of statements: [SyncStatement],
+        databaseType: DatabaseType,
+        grammar: SQLLexicalGrammar? = nil
+    ) -> String {
+        let scriptText = SQLScriptText(databaseType: databaseType, grammar: grammar ?? databaseType.lexicalGrammar)
         var digest = ""
         var length = 0
         for statement in statements {

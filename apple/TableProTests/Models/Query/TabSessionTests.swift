@@ -20,7 +20,6 @@ struct TabSessionTests {
 
         #expect(session.tableRows.rows.isEmpty)
         #expect(session.tableRows.columns.isEmpty)
-        #expect(session.isEvicted == false)
         #expect(session.dataRevision == 0)
         #expect(session.rowSetRevision == 0)
     }

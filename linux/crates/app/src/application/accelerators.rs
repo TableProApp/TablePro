@@ -7,8 +7,8 @@ use super::{Accelerator, AcceleratorScope, ShortcutListing, ShortcutOwner, Short
 use AcceleratorScope::{Application, Component, Local, Stock};
 use ShortcutListing::{Listed, Unlisted};
 use ShortcutOwner::{
-    AssistantComposer, BrowseTab, CellEditor, DiagramCanvas, DiagramTab, FilterStrip, Grid, GridCell, HistoryRow,
-    InlineSuggestion, PickerPage, PickerRow, SidebarList, SqlEditor, SqlEditorCursors, SqlEditorTab, StructureTab,
+    AssistantComposer, BrowseTab, CellEditor, ConnectionTree, DiagramCanvas, DiagramTab, FilterStrip, Grid, GridCell,
+    HistoryRow, InlineSuggestion, PickerPage, PickerRow, SqlEditor, SqlEditorCursors, SqlEditorTab, StructureTab,
 };
 use ShortcutSection::{BrowseTable, DataGrid, ErDiagram, General, TableStructure, Tabs};
 
@@ -83,6 +83,10 @@ pub const ACCELERATORS: &[Accelerator] = &[
     application("win.new-editor-tab", &["<Primary>t"], Tabs),
     application("win.close-current", &["<Primary>w"], Tabs),
     application("win.reopen-closed-tab", &["<Primary><Shift>t"], Tabs),
+    // Ctrl+Tab stays the tab view's next tab, as across GNOME.
+    application("win.switch-recent-tab", &["<Primary>e"], Tabs),
+    // As in GNOME Web and Console.
+    application("win.show-tabs", &["<Primary><Shift>o"], Tabs),
     // AdwTabView's own controller, which runs in the capture phase. The
     // workspace removes its Ctrl+Home and Ctrl+End pairs, so the lists
     // and the editor inside the tabs keep those keys.
@@ -392,9 +396,9 @@ pub const ACCELERATORS: &[Accelerator] = &[
     ),
     local(FilterStrip, BUBBLE, "filter.close", &["Escape"], Unlisted),
     local(
-        SidebarList,
+        ConnectionTree,
         BUBBLE,
-        "sidebar.context-menu",
+        "tree.context-menu",
         &["Menu", "<Shift>F10"],
         Unlisted,
     ),
@@ -535,7 +539,7 @@ pub const fn controller_name(owner: ShortcutOwner) -> &'static str {
         SqlEditorTab => "tablepro-sql-editor-tab-shortcuts",
         StructureTab => "tablepro-structure-tab-shortcuts",
         FilterStrip => "tablepro-filter-strip-shortcuts",
-        SidebarList => "tablepro-sidebar-list-shortcuts",
+        ConnectionTree => "tablepro-connection-tree-shortcuts",
         HistoryRow => "tablepro-history-row-shortcuts",
         PickerRow => "tablepro-picker-row-shortcuts",
         DiagramTab => "tablepro-diagram-tab-shortcuts",

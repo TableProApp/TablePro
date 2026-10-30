@@ -47,6 +47,29 @@ struct DatabaseAccessBridgeStatementTests {
         #expect(QueryClassifier.classifyTier(sent, databaseType: .postgresql) == .safe)
     }
 
+    @Test(
+        "An external statement on a KingbaseES Oracle-mode session keeps the ; after its END",
+        arguments: ["BEGIN x := 1; y := 2; END;", "BEGIN x := 1; y := 2; END;\n/\n"]
+    )
+    @MainActor
+    func oracleModeBlockKeepsItsTerminator(sql: String) async throws {
+        let driver = ScriptAnsweringDriver(
+            connection: TestFixtures.makeConnection(database: "app", type: .kingbasees),
+            sessionLexicalState: TestGrammar.kingbaseESOracleSession
+        )
+        var session = ConnectionSession(connection: driver.connection)
+        session.driver = driver
+        DatabaseManager.shared.injectSession(session, for: driver.connection.id)
+        defer { DatabaseManager.shared.removeSession(for: driver.connection.id) }
+        let scope = DatabaseScope(connectionId: driver.connection.id, database: "app", schema: nil)
+
+        _ = try await DatabaseAccessBridge().runStatement(
+            scope: scope, query: sql, maxRows: 10, timeoutSeconds: 30, cancellation: nil
+        )
+
+        #expect(driver.sentStatements == ["BEGIN x := 1; y := 2; END;"])
+    }
+
     @Test("An explain behind an invisible character is not wrapped in a second explain")
     func explainBehindInvisibleCharacterIsNotWrapped() throws {
         let statement = try MCPConnectionBridge.explainStatement(

@@ -165,7 +165,8 @@ final class OraclePlugin: NSObject, TableProPlugin, DriverPlugin, PluginDiagnost
         caseSensitivityStyle: .caseFoldFunction,
         operators: SQLEngineVocabulary.oracle.operators.compactMap(SQLOperatorDescriptor.init(vocabulary:)),
         textCastTypeName: nil,
-        functionNamesAreCaseInsensitive: SQLEngineVocabulary.oracle.functionNamesAreCaseInsensitive
+        functionNamesAreCaseInsensitive: SQLEngineVocabulary.oracle.functionNamesAreCaseInsensitive,
+        typeNamesAreCaseInsensitive: true
     )
 
     func createDriver(config: DriverConnectionConfig) -> any PluginDatabaseDriver {
@@ -188,11 +189,12 @@ private extension SQLOperatorDescriptor {
 }
 
 final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
-    private let config: DriverConnectionConfig
+    let config: DriverConnectionConfig
     private(set) var core: OracleCoreConnection?
     private var _currentSchema: String?
     private var _serverVersion: String?
     let principalState = OSAllocatedUnfairLock(initialState: OraclePrincipalState())
+    let debugState = OSAllocatedUnfairLock(initialState: OracleDebugState())
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "OraclePluginDriver")
 
@@ -703,7 +705,7 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func fetchViewDefinition(view: String, schema: String?) async throws -> String {
         // ALL_VIEWS.TEXT is LONG (crashes OracleNIO). TEXT_VC is VARCHAR2(4000), safe.
-        // Do NOT use DBMS_METADATA.GET_DDL — wrong object type triggers ORA-31603
+        // Do NOT use DBMS_METADATA.GET_DDL: the wrong object type triggers ORA-31603,
         // which corrupts OracleNIO's connection state machine.
         let owner = effectiveSchema(schema)
         let result = try await execute(query: OracleSchemaQueries.viewDefinition(schema: owner, view: view))

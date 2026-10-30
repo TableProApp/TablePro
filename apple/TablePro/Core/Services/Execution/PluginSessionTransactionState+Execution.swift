@@ -37,6 +37,18 @@ internal extension PluginSessionTransactionState {
         }
     }
 
+    /// Whether the session is inside a transaction the user opened, aborted or not.
+    var holdsUserTransaction: Bool {
+        switch self {
+        case .inTransaction, .abortedTransaction:
+            return true
+        case .idle, .holdsSessionLocks, .unknown:
+            return false
+        @unknown default:
+            return false
+        }
+    }
+
     /// What the user has to be told about the transaction this session is holding, or nil when it
     /// is holding none.
     ///

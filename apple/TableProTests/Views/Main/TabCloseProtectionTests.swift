@@ -228,7 +228,7 @@ struct TabCloseProtectionTests {
         var tab = QueryTab(query: "")
         tab.tabType = .createTable
 
-        let draft = CreateTableDraft()
+        let draft = CreateTableDraft(connection: TestFixtures.makeConnection(), scope: nil)
         draft.changeManager.addNewColumn()
         coordinator.createTableDrafts[tab.id] = draft
 
@@ -244,7 +244,7 @@ struct TabCloseProtectionTests {
         var tab = QueryTab(query: "")
         tab.tabType = .createTable
 
-        let draft = CreateTableDraft()
+        let draft = CreateTableDraft(connection: TestFixtures.makeConnection(), scope: nil)
         draft.tableName = "invoices"
         coordinator.createTableDrafts[tab.id] = draft
 
@@ -260,7 +260,7 @@ struct TabCloseProtectionTests {
         var tab = QueryTab(query: "")
         tab.tabType = .createTable
 
-        let draft = CreateTableDraft()
+        let draft = CreateTableDraft(connection: TestFixtures.makeConnection(), scope: nil)
         draft.changeManager.addNewColumn()
         coordinator.createTableDrafts[tab.id] = draft
 
@@ -382,7 +382,7 @@ struct TabCloseProtectionTests {
             return
         }
         coordinator.structureSessions[id] = TestFixtures.makeStructureSession()
-        coordinator.createTableDrafts[id] = CreateTableDraft()
+        coordinator.createTableDrafts[id] = CreateTableDraft(connection: TestFixtures.makeConnection(), scope: nil)
 
         coordinator.closeTabsByUser(ids: [id])
 

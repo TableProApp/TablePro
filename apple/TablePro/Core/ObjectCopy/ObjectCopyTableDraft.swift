@@ -16,6 +16,8 @@ import TableProPluginKit
 /// each run over the whole list.
 internal struct ObjectCopyTableDraft {
     let selection: ObjectCopySelection
+    /// Kept for the dependency order, which waits until every scope has been read.
+    let read: TableStructureRead
     let snapshot: TableStructureSnapshot
     /// The same table said in the target's own types, which is what the target driver is handed.
     /// Identical to `snapshot` whenever the two engines share a type family, apart from an index the
@@ -41,6 +43,8 @@ internal struct ObjectCopyTableDraft {
     /// The `WHERE` and row limit the user set on this table, or nil for every row.
     let rowScope: PluginExportRowScope?
     let note: String?
+    /// False for a MySQL table whose storage engine keeps its rows through a ROLLBACK, such as MyISAM.
+    let rollsBack: Bool
 
     init(
         selection: ObjectCopySelection,
@@ -54,6 +58,7 @@ internal struct ObjectCopyTableDraft {
         request: ObjectCopyRequest
     ) {
         self.selection = selection
+        self.read = read
         self.snapshot = snapshot
         self.rowScope = request.rowScope(for: selection)
         self.sourceSchema = sourceSchema
@@ -79,6 +84,10 @@ internal struct ObjectCopyTableDraft {
         )
         self.targetStructure = translation.snapshot
         self.isCrossEngine = translation.translated
+        self.rollsBack = !DataSyncTransactionality.cannotRollBack(
+            storageEngine: writesStructure ? translation.snapshot.engine : targetSnapshot?.engine,
+            databaseType: request.target.databaseType
+        )
         /// Only a run that writes the structure has anything to report about it. Appending into a
         /// table the target already has changes no type, so a list of conversions would describe
         /// DDL that is not going to run.
@@ -232,6 +241,7 @@ internal struct ObjectCopyTableDDL: Sendable {
     var drop: [SyncStatement] = []
     var create: [SyncStatement] = []
     var truncate: [SyncStatement] = []
+    var keyChecks: [ObjectCopyKeyCheck]?
 }
 
 internal enum ObjectCopyError: LocalizedError {

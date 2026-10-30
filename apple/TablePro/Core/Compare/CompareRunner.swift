@@ -364,7 +364,13 @@ internal struct CompareRunner {
             options: session.structureOptions,
             sourceDatabaseType: context.source.databaseType,
             targetDatabaseType: context.target.databaseType,
-            targetIndexedKinds: SourceObjectIndexes.carriedKinds(on: context.target.databaseType)
+            targetIndexedKinds: SourceObjectIndexes.carriedKinds(on: context.target.databaseType),
+            sourceGrammar: SQLLexicalResolver.executionGrammar(
+                for: context.source.databaseType, connectionId: context.source.connectionId
+            ),
+            targetGrammar: SQLLexicalResolver.executionGrammar(
+                for: context.target.databaseType, connectionId: context.target.connectionId
+            )
         )
 
         /// Each pair reads two independent endpoints, so the two sides run together rather than the
@@ -435,7 +441,12 @@ internal struct CompareRunner {
         let sourceDefined = selected
             .filter { $0.identity.kind != .table }
             .map { (result: $0, action: session.action(for: $0)) }
-        let foreignKeys = Self.foreignKeyMap(from: snapshots)
+        let foreignKeys = Self.structureForeignKeys(
+            source: snapshots,
+            in: Self.referenceNamespace(of: context.source),
+            target: session.targetSnapshots,
+            in: Self.referenceNamespace(of: context.target)
+        )
 
         return try await DatabaseManager.shared.withMetadataDriver(scope: context.target.scope) { driver in
             guard let plugin = CompareMetadataService.pluginDriver(from: driver) else {
@@ -492,28 +503,78 @@ internal struct CompareRunner {
         }
     }
 
+    // MARK: - Foreign keys
+
+    // What a catalog writes into `referencedSchema` for a key inside the endpoint: MySQL's database, PostgreSQL's schema.
+    internal struct ReferenceNamespace {
+        internal let name: String?
+
+        internal init(endpoint: DatabaseEndpoint, supportsSchemas: Bool, supportsDatabases: Bool) {
+            self.name = ObjectCopyNamespace.name(
+                for: endpoint, supportsSchemas: supportsSchemas, supportsDatabases: supportsDatabases
+            )
+        }
+
+        // Exact: on a case-sensitive MySQL server `Shop` and `shop` are two databases.
+        internal func names(_ schema: String) -> Bool {
+            schema == name
+        }
+    }
+
+    internal static func referenceNamespace(of endpoint: DatabaseEndpoint) -> ReferenceNamespace {
+        ReferenceNamespace(
+            endpoint: endpoint,
+            supportsSchemas: PluginManager.shared.supportsSchemaSwitching(for: endpoint.databaseType),
+            supportsDatabases: PluginManager.shared.supportsDatabaseSwitching(for: endpoint.databaseType)
+        )
+    }
+
+    // A dropped table exists only on the target, so its keys are read there.
+    internal static func structureForeignKeys(
+        source: [String: TableStructureSnapshot],
+        in sourceNamespace: ReferenceNamespace,
+        target: [String: TableStructureSnapshot],
+        in targetNamespace: ReferenceNamespace
+    ) -> [String: [PluginForeignKeyInfo]] {
+        let targetOnly = target.filter { source[$0.key] == nil }
+        return foreignKeyMap(from: source, in: sourceNamespace)
+            .merging(foreignKeyMap(from: targetOnly, in: targetNamespace)) { sourceKeys, _ in sourceKeys }
+    }
+
     internal static func foreignKeyMap(
-        from snapshots: [String: TableStructureSnapshot]
+        from snapshots: [String: TableStructureSnapshot],
+        in namespace: ReferenceNamespace
     ) -> [String: [PluginForeignKeyInfo]] {
         var map: [String: [PluginForeignKeyInfo]] = [:]
         for snapshot in snapshots.values {
-            let dependencies = snapshot.foreignKeys.compactMap { foreignKey -> PluginForeignKeyInfo? in
-                guard let column = foreignKey.columns.first,
-                      let referencedColumn = foreignKey.referencedColumns.first else { return nil }
-                let referencedSchema = foreignKey.referencedSchema ?? snapshot.schema
-                /// The sort qualifies `referencedTable` with `referencedSchema` itself, so
-                /// pre-qualifying here produced `public.public.orders` and dropped every edge.
-                return PluginForeignKeyInfo(
-                    name: foreignKey.name,
-                    column: column,
-                    referencedTable: foreignKey.referencedTable,
-                    referencedColumn: referencedColumn,
-                    referencedSchema: referencedSchema
-                )
-            }
+            let dependencies = dependencies(of: snapshot, ownSchema: snapshot.schema, in: namespace)
             guard !dependencies.isEmpty else { continue }
             map[snapshot.qualifiedName] = dependencies
         }
         return map
+    }
+
+    internal static func dependencies(
+        of snapshot: TableStructureSnapshot,
+        ownSchema: String?,
+        in namespace: ReferenceNamespace
+    ) -> [PluginForeignKeyInfo] {
+        snapshot.foreignKeys.compactMap { foreignKey -> PluginForeignKeyInfo? in
+            guard let column = foreignKey.columns.first,
+                  let referencedColumn = foreignKey.referencedColumns.first else { return nil }
+            var referencedSchema = foreignKey.referencedSchema ?? ownSchema
+            // The listing leaves that namespace off its tables, so a key into it points at the child's own schema.
+            if let named = referencedSchema, namespace.names(named) {
+                referencedSchema = ownSchema
+            }
+            // The sort qualifies `referencedTable` with `referencedSchema`; pre-qualifying gave `public.public.orders`.
+            return PluginForeignKeyInfo(
+                name: foreignKey.name,
+                column: column,
+                referencedTable: foreignKey.referencedTable,
+                referencedColumn: referencedColumn,
+                referencedSchema: referencedSchema
+            )
+        }
     }
 }

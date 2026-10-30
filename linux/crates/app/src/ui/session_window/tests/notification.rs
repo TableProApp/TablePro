@@ -4,7 +4,6 @@ use std::sync::Arc;
 
 use gtk4::glib;
 use gtk4::prelude::*;
-use gtk4::subclass::prelude::*;
 use libadwaita::prelude::AlertDialogExt;
 use tablepro_core::column::{ColumnType, ResultColumn};
 use tablepro_core::export::CsvOptions;
@@ -94,7 +93,7 @@ impl Notified {
         let workspace = self.test.workspace();
         let before = workspace.selected_tab();
         workspace
-            .input()
+            .sender()
             .expect("the workspace's input")
             .deliver(WorkspaceInput::SelectTable {
                 schema: None,
@@ -204,7 +203,7 @@ fn activating_tab_withdraws() {
     notified.run(&editor);
     notified.wait_for_sent(1);
 
-    let view = notified.test.workspace().imp().tab_view.get();
+    let view = notified.test.window.shell().expect("the shell").tab_view();
     view.set_selected_page(&view.nth_page(0));
 
     wait_until(WAIT, || notified.sink.withdrawn() == [notified.id(first)]).expect("the notification to go");
@@ -233,7 +232,7 @@ fn closing_a_tab_withdraws_its_notification() {
     notified.run(&editor);
     notified.wait_for_sent(1);
 
-    let view = notified.test.workspace().imp().tab_view.get();
+    let view = notified.test.window.shell().expect("the shell").tab_view();
     view.close_page(&view.nth_page(0));
 
     wait_until(WAIT, || notified.sink.withdrawn() == [notified.id(first)]).expect("the notification to go");
@@ -266,7 +265,7 @@ fn a_failed_save_in_a_background_tab_names_only_the_table() {
     let table = notified.open_table_tab("orders");
     notified.open_editor_tab();
 
-    let input = workspace.input().expect("the workspace's input");
+    let input = workspace.sender().expect("the workspace's input");
     input.deliver(WorkspaceInput::Workspace(WorkspaceEvent::SaveSettled {
         settled: Box::new(SaveSettled {
             tab: table,
@@ -324,9 +323,9 @@ fn a_background_tab_saved_by_its_close_prompt_is_not_notified() {
     let notified = Notified::completing("NotifyPromptSave");
     let workspace = notified.test.workspace();
     let table = notified.open_table_tab("orders");
-    let view = workspace.imp().tab_view.get();
+    let view = notified.test.window.shell().expect("the shell").tab_view();
     let page = view.selected_page().expect("the table's page");
-    let tracker = workspace.row_tracker(table).expect("the table's tracker");
+    let tracker = crate::ui::workspace::tests::row_tracker(&workspace, table).expect("the table's tracker");
     let _ = tracker.set_target(SaveTarget {
         table: TableRef::unqualified("orders"),
         columns: vec![integer("id", true), integer("n", false)],
@@ -358,7 +357,7 @@ fn a_background_tab_saved_by_its_close_prompt_is_not_notified() {
 fn an_editor_tab_named_by_its_script_is_notified_by_its_number() {
     let notified = Notified::completing("NotifyScriptTab");
     let (first, editor) = notified.open_editor_tab();
-    let view = notified.test.workspace().imp().tab_view.get();
+    let view = notified.test.window.shell().expect("the shell").tab_view();
     let page = view.selected_page().expect("the editor's page");
     notified.open_editor_tab();
 

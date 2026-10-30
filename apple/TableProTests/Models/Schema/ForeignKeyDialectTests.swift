@@ -81,6 +81,13 @@ struct ForeignKeyDialectTests {
         }
     }
 
+    // Measured on KingbaseES V9R1C10: Oracle mode keeps PostgreSQL's ON UPDATE grammar.
+    @Test("KingbaseES takes PostgreSQL's clause in both modes")
+    func kingbasees() {
+        #expect(ForeignKeyDialect.forType(.kingbasees) == ForeignKeyDialect.forType(.postgresql))
+        #expect(ForeignKeyDialect.forType(.kingbasees).allowsOmittedReferencedColumns)
+    }
+
     @Test("an engine nobody has checked keeps the full vocabulary")
     func unknownEngine() {
         let dialect = ForeignKeyDialect.forType(DatabaseType(rawValue: "SomeFuturePlugin"))

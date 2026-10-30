@@ -553,25 +553,86 @@ struct MySQLColumnDefinitionSQLTests {
 
     // MARK: - Other Attributes
 
-    @Test("Charset, collation, unsigned, and auto increment all render")
+    @Test("Unsigned and auto increment render on a numeric column")
     func attributesRender() {
         let column = PluginColumnDefinition(
             name: "id",
             dataType: "BIGINT",
             isNullable: false,
             autoIncrement: true,
-            unsigned: true,
-            charset: "utf8mb4",
-            collation: "utf8mb4_general_ci"
+            unsigned: true
         )
 
+        #expect(mysqlColumnDefinitionSQL(column) == "`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT")
+    }
+
+    @Test("A text column writes its character set and collation")
+    func textColumnWritesCharset() {
+        let column = PluginColumnDefinition(
+            name: "name", dataType: "VARCHAR(20)", charset: "latin1", collation: "latin1_swedish_ci"
+        )
+        #expect(mysqlColumnDefinitionSQL(column)
+            == "`name` VARCHAR(20) CHARACTER SET latin1 COLLATE latin1_swedish_ci NULL")
+    }
+
+    /// Measured on MySQL 8.4 and MariaDB 11.4: `MODIFY name INT CHARACTER SET latin1 ...` is ERROR 1064,
+    /// and a type change kept the old text type's charset.
+    @Test("A type that takes no character set writes neither clause", arguments: [
+        "INT", "BIGINT UNSIGNED", "VARBINARY(32)", "BINARY(16)", "BLOB", "JSON", "DATETIME(6)", "GEOMETRY",
+        "DECIMAL(10,2)", "CHAR BYTE", "LONG VARBINARY", "UUID"
+    ])
+    func nonTextTypeDropsCharset(dataType: String) {
+        let column = PluginColumnDefinition(
+            name: "c", dataType: dataType, charset: "latin1", collation: "latin1_swedish_ci"
+        )
         let sql = mysqlColumnDefinitionSQL(column)
-        #expect(sql.contains("`id` BIGINT"))
-        #expect(sql.contains("UNSIGNED"))
-        #expect(sql.contains("CHARACTER SET utf8mb4"))
-        #expect(sql.contains("COLLATE utf8mb4_general_ci"))
-        #expect(sql.contains("NOT NULL"))
-        #expect(sql.contains("AUTO_INCREMENT"))
+        #expect(!sql.contains("CHARACTER SET"))
+        #expect(!sql.contains("COLLATE"))
+    }
+
+    @Test("Every text spelling writes both clauses", arguments: [
+        "CHAR(1)", "VARCHAR (64)", "varchar(64)", "CHARACTER VARYING(10)", "CHAR VARYING(10)", "CHARACTER(3)",
+        "TINYTEXT", "TEXT", "MEDIUMTEXT", "LONGTEXT", "LONG", "LONG VARCHAR", "ENUM('a','b')", "SET('x')",
+        "ENUM ('a')", "VARCHAR(10) BINARY"
+    ])
+    func textSpellingsWriteCharset(dataType: String) {
+        let column = PluginColumnDefinition(name: "c", dataType: dataType, charset: "latin1", collation: "latin1_bin")
+        let sql = mysqlColumnDefinitionSQL(column)
+        #expect(sql.contains(" CHARACTER SET latin1 COLLATE latin1_bin "))
+    }
+
+    /// Measured: `NVARCHAR(10) CHARACTER SET utf8mb3` is ERROR 1064 on both servers, while
+    /// `NVARCHAR(10) COLLATE utf8mb3_bin` is accepted.
+    @Test("A national spelling writes the collation alone", arguments: [
+        "NVARCHAR(10)", "NCHAR(5)", "NATIONAL VARCHAR(10)", "NATIONAL CHAR(3)", "NCHAR VARCHAR(4)",
+        "NATIONAL CHARACTER VARYING(10)"
+    ])
+    func nationalSpellingWritesCollationOnly(dataType: String) {
+        let column = PluginColumnDefinition(name: "c", dataType: dataType, charset: "utf8mb3", collation: "utf8mb3_bin")
+        let sql = mysqlColumnDefinitionSQL(column)
+        #expect(!sql.contains("CHARACTER SET"))
+        #expect(sql.contains(" COLLATE utf8mb3_bin "))
+    }
+
+    @Test("A generated column of a numeric type writes no character set before its expression")
+    func generatedNumericColumnDropsCharset() {
+        let column = PluginColumnDefinition(
+            name: "total",
+            dataType: "INT",
+            charset: "latin1",
+            collation: "latin1_bin",
+            generationExpression: "`a` + 1",
+            generationKind: .stored
+        )
+        #expect(mysqlColumnDefinitionSQL(column) == "`total` INT GENERATED ALWAYS AS (`a` + 1) STORED")
+    }
+
+    @Test("A character set name no catalog lists is backticked, never spliced in bare")
+    func unsafeCharsetIsQuoted() {
+        let column = PluginColumnDefinition(
+            name: "c", dataType: "VARCHAR(5)", charset: "latin1 NOT NULL", collation: "latin1_bin"
+        )
+        #expect(mysqlColumnDefinitionSQL(column).contains("CHARACTER SET `latin1 NOT NULL` COLLATE latin1_bin"))
     }
 
     @Test("A backtick in a column name is escaped")

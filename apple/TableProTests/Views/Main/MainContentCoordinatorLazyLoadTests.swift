@@ -8,6 +8,7 @@
 //  and handleTabChange.
 //
 
+import AppKit
 import Foundation
 import TableProPluginKit
 import Testing
@@ -71,7 +72,7 @@ struct MainContentCoordinatorLazyLoadTests {
     func skipsWhenNoSelectedTab() {
         let (coordinator, _) = makeCoordinator()
         coordinator.lazyLoadCurrentTabIfNeeded()
-        #expect(coordinator.pendingLoadTrigger == nil)
+        #expect(coordinator.parkedTableLoad == nil)
     }
 
     @Test("Returns early when selected tab is a query tab (not a table tab)")
@@ -79,7 +80,7 @@ struct MainContentCoordinatorLazyLoadTests {
         let (coordinator, tabManager) = makeCoordinator()
         _ = addQueryTab(to: tabManager)
         coordinator.lazyLoadCurrentTabIfNeeded()
-        #expect(coordinator.pendingLoadTrigger == nil)
+        #expect(coordinator.parkedTableLoad == nil)
     }
 
     @Test("Returns early when tab has an error message")
@@ -92,7 +93,7 @@ struct MainContentCoordinatorLazyLoadTests {
         }
         tabManager.tabs[idx].execution.errorMessage = "boom"
         coordinator.lazyLoadCurrentTabIfNeeded()
-        #expect(coordinator.pendingLoadTrigger == nil)
+        #expect(coordinator.parkedTableLoad == nil)
     }
 
     @Test("Returns early when tab query is whitespace-only")
@@ -100,7 +101,7 @@ struct MainContentCoordinatorLazyLoadTests {
         let (coordinator, tabManager) = makeCoordinator()
         _ = addTableTab(to: tabManager, query: "    ")
         coordinator.lazyLoadCurrentTabIfNeeded()
-        #expect(coordinator.pendingLoadTrigger == nil)
+        #expect(coordinator.parkedTableLoad == nil)
     }
 
     @Test("Returns early when tab has fresh row data already loaded")
@@ -115,7 +116,7 @@ struct MainContentCoordinatorLazyLoadTests {
         tabManager.tabs[idx].execution.lastExecutedAt = Date()
 
         coordinator.lazyLoadCurrentTabIfNeeded()
-        #expect(coordinator.pendingLoadTrigger == nil)
+        #expect(coordinator.parkedTableLoad == nil)
         #expect(coordinator.tabSessionRegistry.tableRows(for: tabId).rows.count == 5)
     }
 
@@ -133,7 +134,7 @@ struct MainContentCoordinatorLazyLoadTests {
 
         coordinator.lazyLoadCurrentTabIfNeeded()
 
-        #expect(coordinator.pendingLoadTrigger == .userInitiated)
+        #expect(coordinator.parkedTableLoad?.trigger == .userInitiated)
         #expect(coordinator.tabSessionRegistry.tableRows(for: tabId).rows.count == 5)
     }
 
@@ -152,7 +153,7 @@ struct MainContentCoordinatorLazyLoadTests {
 
         coordinator.lazyLoadCurrentTabIfNeeded()
 
-        #expect(coordinator.pendingLoadTrigger == nil)
+        #expect(coordinator.parkedTableLoad == nil)
     }
 
     @Test("Returns early when tab has pending edits in the change manager")
@@ -167,7 +168,7 @@ struct MainContentCoordinatorLazyLoadTests {
         tabManager.tabs[idx].pendingChanges.deletedRowIDs = [.existing(0)]
 
         coordinator.lazyLoadCurrentTabIfNeeded()
-        #expect(coordinator.pendingLoadTrigger == nil)
+        #expect(coordinator.parkedTableLoad == nil)
     }
 
     @Test("Returns early when a load Task is already registered for this tab")
@@ -182,7 +183,7 @@ struct MainContentCoordinatorLazyLoadTests {
 
         #expect(coordinator.tableLoadTasks.count == 1)
         #expect(coordinator.tableLoadTasks[tabId] != nil)
-        #expect(coordinator.pendingLoadTrigger == nil)
+        #expect(coordinator.parkedTableLoad == nil)
     }
 
     /// The task slot stops answering once the load hands off to an execution: `executeQueryInternal`
@@ -202,7 +203,7 @@ struct MainContentCoordinatorLazyLoadTests {
 
         #expect(coordinator.tabExecution.isCurrent(claim))
         #expect(coordinator.tableLoadTasks[tabId] == nil)
-        #expect(coordinator.pendingLoadTrigger == nil)
+        #expect(coordinator.parkedTableLoad == nil)
     }
 
     /// Fetch All runs without claiming the tab, so the narrower `isExecuting` would let a second
@@ -221,31 +222,31 @@ struct MainContentCoordinatorLazyLoadTests {
         coordinator.lazyLoadCurrentTabIfNeeded()
 
         #expect(coordinator.tableLoadTasks[tabId] == nil)
-        #expect(coordinator.pendingLoadTrigger == nil)
+        #expect(coordinator.parkedTableLoad == nil)
     }
 
     // MARK: - Connection guard
 
-    @Test("Sets pendingLoadTrigger when a fresh table tab is not connected")
+    @Test("Parks the load with its tab when a fresh table tab is not connected")
     func defersWhenDisconnected() {
         let (coordinator, tabManager) = makeCoordinator()
-        _ = addTableTab(to: tabManager)
-        coordinator.pendingLoadTrigger = nil
+        let tabId = addTableTab(to: tabManager)
+        coordinator.parkedTableLoad = nil
 
         coordinator.lazyLoadCurrentTabIfNeeded()
 
-        #expect(coordinator.pendingLoadTrigger == .userInitiated)
+        #expect(coordinator.parkedTableLoad == ParkedTableLoad(tabId: tabId, trigger: .userInitiated))
     }
 
-    @Test("Carries the restore trigger into pendingLoadTrigger when disconnected")
+    @Test("Parks the restore trigger with its tab when disconnected")
     func carriesRestoreTriggerWhenDisconnected() {
         let (coordinator, tabManager) = makeCoordinator()
-        _ = addTableTab(to: tabManager)
-        coordinator.pendingLoadTrigger = nil
+        let tabId = addTableTab(to: tabManager)
+        coordinator.parkedTableLoad = nil
 
         coordinator.lazyLoadCurrentTabIfNeeded(trigger: .restore)
 
-        #expect(coordinator.pendingLoadTrigger == .restore)
+        #expect(coordinator.parkedTableLoad == ParkedTableLoad(tabId: tabId, trigger: .restore))
     }
 
     @Test("A deferred restore tab does not load until its window becomes key")
@@ -253,11 +254,11 @@ struct MainContentCoordinatorLazyLoadTests {
         let (coordinator, tabManager) = makeCoordinator()
         let tabId = addTableTab(to: tabManager)
         coordinator.deferredRestoreLoadTabId = tabId
-        coordinator.pendingLoadTrigger = nil
+        coordinator.parkedTableLoad = nil
 
         coordinator.lazyLoadCurrentTabIfNeeded(trigger: .restore)
 
-        #expect(coordinator.pendingLoadTrigger == nil)
+        #expect(coordinator.parkedTableLoad == nil)
         #expect(coordinator.tableLoadTasks[tabId] == nil)
     }
 
@@ -267,12 +268,12 @@ struct MainContentCoordinatorLazyLoadTests {
         let tabId = addTableTab(to: tabManager)
         coordinator.deferredRestoreLoadTabId = tabId
         coordinator.isKeyWindow = false
-        coordinator.pendingLoadTrigger = nil
+        coordinator.parkedTableLoad = nil
 
         coordinator.consumeDeferredRestoreLoadIfNeeded()
 
         #expect(coordinator.deferredRestoreLoadTabId == tabId)
-        #expect(coordinator.pendingLoadTrigger == nil)
+        #expect(coordinator.parkedTableLoad == nil)
         #expect(coordinator.tableLoadTasks[tabId] == nil)
     }
 
@@ -281,12 +282,12 @@ struct MainContentCoordinatorLazyLoadTests {
         let (coordinator, tabManager) = makeCoordinator()
         let tabId = addTableTab(to: tabManager)
         coordinator.deferredRestoreLoadTabId = tabId
-        coordinator.pendingLoadTrigger = nil
+        coordinator.parkedTableLoad = nil
 
         coordinator.handleWindowDidBecomeKey()
 
         #expect(coordinator.deferredRestoreLoadTabId == nil)
-        #expect(coordinator.pendingLoadTrigger == .restore)
+        #expect(coordinator.parkedTableLoad?.trigger == .restore)
     }
 
     /// A link or an agent can select another tab before the restored window comes forward. The
@@ -303,10 +304,10 @@ struct MainContentCoordinatorLazyLoadTests {
         #expect(coordinator.deferredRestoreLoadTabId == nil)
 
         tabManager.selectedTabId = deferredId
-        coordinator.pendingLoadTrigger = nil
+        coordinator.parkedTableLoad = nil
         coordinator.lazyLoadCurrentTabIfNeeded()
 
-        #expect(coordinator.pendingLoadTrigger == .userInitiated)
+        #expect(coordinator.parkedTableLoad?.trigger == .userInitiated)
     }
 
     // MARK: - Idempotency
@@ -326,7 +327,7 @@ struct MainContentCoordinatorLazyLoadTests {
             coordinator.lazyLoadCurrentTabIfNeeded()
         }
         #expect(coordinator.tabSessionRegistry.tableRows(for: tabId).rows.count == 4)
-        #expect(coordinator.pendingLoadTrigger == nil)
+        #expect(coordinator.parkedTableLoad == nil)
     }
 
     @Test("Clears an abandoned claim when no in-flight task remains")
@@ -343,38 +344,7 @@ struct MainContentCoordinatorLazyLoadTests {
         coordinator.lazyLoadCurrentTabIfNeeded()
 
         #expect(coordinator.tabExecution.isExecuting(tabId) == false)
-        #expect(coordinator.pendingLoadTrigger == .userInitiated)
-    }
-
-    // MARK: - loadEpoch bump triggers reload after eviction
-
-    /// `.task(id:)` keys on the tab's own `loadEpoch`, so that is the one the eviction path has to
-    /// move. This used to assert on a copy held by the session that nothing reads, which would
-    /// have stayed green with the reload broken.
-    @Test("Evicting a background tab bumps the tab's loadEpoch so .task(id:) re-fires")
-    func evictionBumpsLoadEpoch() {
-        let (coordinator, tabManager) = makeCoordinator()
-        let background = addTableTab(to: tabManager, tableName: "orders")
-        seedRows(coordinator, for: background, rowCount: 7)
-        let foreground = addTableTab(to: tabManager, tableName: "customers")
-        tabManager.selectedTabId = foreground
-        guard let idx = tabManager.tabs.firstIndex(where: { $0.id == background }) else {
-            Issue.record("expected tab to exist")
-            return
-        }
-        tabManager.tabs[idx].execution.lastExecutedAt = Date()
-        let initialEpoch = tabManager.tabs[idx].loadEpoch
-        #expect(coordinator.tabSessionRegistry.tableRows(for: background).rows.count == 7)
-
-        coordinator.evictInactiveRowData()
-
-        guard let evictedTab = tabManager.tabs.first(where: { $0.id == background }) else {
-            Issue.record("expected tab to exist")
-            return
-        }
-        #expect(evictedTab.loadEpoch != initialEpoch)
-        #expect(coordinator.tabSessionRegistry.isEvicted(background) == true)
-        #expect(coordinator.tabSessionRegistry.isEvicted(foreground) == false)
+        #expect(coordinator.parkedTableLoad?.trigger == .userInitiated)
     }
 
     /// A claim with no task behind it is healed on the next lazy load. That heal never lowered the
@@ -421,14 +391,91 @@ struct MainContentCoordinatorLazyLoadTests {
         #expect(coordinator.isKeyWindow == true)
     }
 
-    @Test("handleWindowDidBecomeKey cancels a pending eviction task")
-    func windowDidBecomeKeyCancelsEviction() {
-        let (coordinator, _) = makeCoordinator()
-        coordinator.handleWindowDidResignKey()
-        #expect(coordinator.evictionTask != nil)
+    @Test("Resigning and regaining key status runs no query")
+    func keyRoundTripRunsNothing() {
+        let (coordinator, tabManager) = makeCoordinator()
+        let tabId = addTableTab(to: tabManager)
+        seedRows(coordinator, for: tabId)
+        tabManager.mutate(tabId: tabId) { $0.execution.lastExecutedAt = Date() }
 
+        coordinator.handleWindowDidResignKey()
+        #expect(coordinator.isKeyWindow == false)
         coordinator.handleWindowDidBecomeKey()
-        #expect(coordinator.evictionTask == nil)
+
         #expect(coordinator.isKeyWindow == true)
+        #expect(coordinator.tabExecution.isAnyExecuting == false)
+        #expect(coordinator.tableLoadTasks[tabId] == nil)
+        #expect(coordinator.tabSessionRegistry.tableRows(for: tabId).rows.count == 3)
     }
+
+    // MARK: - Loading once the connection comes back
+
+    /// The parked load used to be one window-wide trigger, consumed against whatever tab was
+    /// selected, and a query tab took it as a Run.
+    @Test("A connection coming back never runs the selected query tab's statement")
+    func reconnectNeverRunsAQueryTab() {
+        let (coordinator, tabManager) = makeCoordinator()
+        let tableTab = addTableTab(to: tabManager)
+        coordinator.parkedTableLoad = ParkedTableLoad(tabId: tableTab, trigger: .userInitiated)
+        let queryTab = addQueryTab(to: tabManager, query: "DELETE FROM orders WHERE id = 7")
+
+        coordinator.loadSelectedTableTabAfterConnect()
+
+        #expect(coordinator.parkedTableLoad == nil)
+        #expect(coordinator.tabExecution.isBusy(queryTab) == false)
+        #expect(coordinator.queryTasks.hasTask(for: queryTab) == false)
+    }
+
+    @Test("A parked trigger goes only to the tab that parked it")
+    func parkedTriggerStaysWithItsTab() {
+        let (coordinator, tabManager) = makeCoordinator()
+        let restored = addTableTab(to: tabManager)
+        coordinator.parkedTableLoad = ParkedTableLoad(tabId: restored, trigger: .restore)
+
+        coordinator.loadSelectedTableTabAfterConnect()
+        #expect(coordinator.parkedTableLoad == ParkedTableLoad(tabId: restored, trigger: .restore))
+
+        let other = addTableTab(to: tabManager, tableName: "orders", query: "SELECT * FROM orders")
+        coordinator.loadSelectedTableTabAfterConnect()
+        #expect(coordinator.parkedTableLoad == ParkedTableLoad(tabId: other, trigger: .userInitiated))
+    }
+
+    // MARK: - A changed table under an open cell
+
+    @Test("A tab whose table changed waits for an open cell to close before it reloads")
+    func changedTableWaitsForAnOpenCell() throws {
+        let (coordinator, tabManager) = makeCoordinator()
+        let tabId = addTableTab(to: tabManager)
+        seedRows(coordinator, for: tabId)
+        tabManager.mutate(tabId: tabId) { $0.execution.lastExecutedAt = Date() }
+        coordinator.tabSessionRegistry.recordChange(TableFreshness.Change(extent: .rows, at: .now), for: tabId)
+        let editor = EditingGridView()
+        coordinator.gridModel(forTab: tabId).attach(editor)
+        let tab = try #require(tabManager.selectedTab)
+
+        editor.isEditing = true
+        #expect(coordinator.canAutoLoadTableTab(tab) == false)
+
+        editor.isEditing = false
+        #expect(coordinator.canAutoLoadTableTab(tab))
+    }
+}
+
+@MainActor
+private final class EditingGridView: DataGridMountedView {
+    var isEditing = false
+
+    func apply(_ change: DataGridChange) {}
+    func selectionDidChange() {}
+    func configurationDidChange() {}
+    func reveal(row: Int, displayColumn: Int?) {}
+    func revealColumn(_ displayColumn: Int) {}
+    func sortDidChange() {}
+    func summaryRulesDidChange() {}
+    func viewportSample() -> (row: Int, offset: CGFloat)? { nil }
+    func beginEditing(row: Int, displayColumn: Int) -> Bool { false }
+    func commitEditing() -> Bool { true }
+    func discardEditing() {}
+    func focus() -> Bool { false }
+    func anchor(forColumn displayColumn: Int) -> (view: NSView, rect: NSRect)? { nil }
 }

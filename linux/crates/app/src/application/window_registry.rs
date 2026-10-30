@@ -1,6 +1,8 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 
+use tablepro_session::SessionKey;
+
 use crate::runtime::InputSender;
 use crate::ui::{SessionWindow, SessionWindowInput};
 
@@ -33,8 +35,12 @@ impl WindowRegistry {
         self.windows.borrow().get(&id).is_some_and(SessionWindow::is_inhibiting)
     }
 
-    pub(crate) fn keeps_session(&self, id: u32) -> bool {
-        self.windows.borrow().get(&id).is_some_and(SessionWindow::keeps_session)
+    /// Whether the window shows the session under `key` or connects it.
+    pub(crate) fn keeps_session(&self, id: u32, key: &SessionKey) -> bool {
+        self.windows
+            .borrow()
+            .get(&id)
+            .is_some_and(|window| window.keeps_session(key))
     }
 
     #[cfg(test)]

@@ -56,6 +56,13 @@ struct FilterSQLGeneratorTests {
         offsetFetchOrderBy: ""
     )
 
+    private static let snowflakeDialect = SQLDialectDescriptor(
+        identifierQuote: "\"", keywords: [], functions: [], dataTypes: [],
+        regexSyntax: .regexpLike, booleanLiteralStyle: .truefalse,
+        likeEscapeStyle: .explicit, paginationStyle: .limit,
+        requiresBackslashEscaping: true
+    )
+
     // MARK: - Per-Operator Tests (MySQL)
 
     @Test("Equal operator generates correct condition")
@@ -1037,5 +1044,65 @@ struct FilterSQLGeneratorTests {
         )
         let result = generator.generateCondition(from: filter)
         #expect(result == "`status` IS NULL")
+    }
+
+    // MARK: - Literal Escaping
+
+    private func condition(
+        _ dialect: SQLDialectDescriptor, _ filterOperator: FilterOperator, _ value: String, column: String = "code"
+    ) -> String? {
+        FilterSQLGenerator(dialect: dialect).generateCondition(from: TableFilter(
+            columnName: column, filterOperator: filterOperator, value: value, isCaseSensitive: true
+        ))
+    }
+
+    // Snowflake takes an ESCAPE clause for LIKE and still reads `\'` inside a literal as a quote.
+    @Test("A Snowflake filter value doubles its backslash, whatever the operator", arguments: [
+        (FilterOperator.equal, #""CODE" = '\\''; DROP TABLE AUDIT_LOG; --'"#),
+        (.inList, #""CODE" IN ('\\''; DROP TABLE AUDIT_LOG; --')"#),
+        (.contains, #""CODE" LIKE '%\\''; DROP TABLE AUDIT!_LOG; --%' ESCAPE '!'"#),
+        (.startsWith, #""CODE" LIKE '\\''; DROP TABLE AUDIT!_LOG; --%' ESCAPE '!'"#),
+        (.regex, #"REGEXP_LIKE("CODE", '\\''; DROP TABLE AUDIT_LOG; --')"#)
+    ])
+    func snowflakeDoublesBackslash(filterOperator: FilterOperator, expected: String) {
+        #expect(condition(Self.snowflakeDialect, filterOperator, #"\'; DROP TABLE AUDIT_LOG; --"#, column: "CODE") == expected)
+    }
+
+    @Test("A Snowflake LIKE pattern reads a backslash as a character, not as its escape")
+    func snowflakeLikeBackslashIsLiteral() {
+        #expect(condition(Self.snowflakeDialect, .endsWith, #"C:\temp\"#) == #""code" LIKE '%C:\\temp\\' ESCAPE '!'"#)
+    }
+
+    @Test("The LIKE a regex falls back to doubles a backslash where the engine reads it as an escape")
+    func regexFallbackDoublesBackslash() {
+        let implicitWithoutRegex = SQLDialectDescriptor(
+            identifierQuote: "`", keywords: [], functions: [], dataTypes: [],
+            regexSyntax: .unsupported, booleanLiteralStyle: .truefalse,
+            likeEscapeStyle: .implicit, paginationStyle: .limit
+        )
+        #expect(condition(implicitWithoutRegex, .regex, #"\' OR 1=1 -- "#) == #"`code` LIKE '%\\'' OR 1=1 -- %'"#)
+        #expect(condition(Self.sqliteDialect, .regex, #"\' OR 1=1 -- "#) == #"`code` LIKE '%\'' OR 1=1 -- %'"#)
+    }
+
+    @Test("A MySQL LIKE keeps a backslash literal through the string and the pattern")
+    func mysqlLikeBackslash() {
+        #expect(condition(Self.mysqlDialect, .contains, #"a\b%"#) == #"`code` LIKE '%a\\\\b\\%%'"#)
+    }
+
+    // A combining mark or a Prepend scalar joins the quote or backslash into one grapheme cluster.
+    @Test("A quote or backslash fused with its neighbour is still escaped", arguments: [
+        ("x'\u{0301} OR 1=1 --", #"`code` = 'x''"# + "\u{0301}" + #" OR 1=1 --'"#),
+        ("\u{0600}\\' OR 1=1 --", "`code` = '\u{0600}" + #"\\'' OR 1=1 --'"#)
+    ])
+    func fusedQuoteIsEscaped(value: String, expected: String) {
+        #expect(condition(Self.mysqlDialect, .equal, value) == expected)
+    }
+
+    @Test("A quote fused with a combining mark is escaped in a LIKE pattern")
+    func fusedQuoteInLikeIsEscaped() {
+        #expect(
+            condition(Self.postgresqlDialect, .contains, "x'\u{0301})")
+                == "\"code\" LIKE '%x''\u{0301})%' ESCAPE '!'"
+        )
     }
 }

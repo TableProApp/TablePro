@@ -45,6 +45,7 @@ struct ColumnDefaultVocabularyTests {
     func emptyStringOmittedOnOracleFamily() {
         #expect(!sqlValues(.oracle).contains("''"))
         #expect(!sqlValues(.dameng).contains("''"))
+        #expect(!sqlValues(.kingbasees).contains("''"))
         #expect(sqlValues(.mysql).contains("''"))
         #expect(sqlValues(.postgresql).contains("''"))
     }
@@ -86,6 +87,8 @@ struct ColumnDefaultVocabularyTests {
     @Test("Engines that share a plugin still get their own vocabulary")
     func sharedPluginsDoNotShareVocabulary() {
         #expect(!sqlValues(.redshift).contains("gen_random_uuid()"))
+        #expect(!sqlValues(.kingbasees).contains("gen_random_uuid()"))
+        #expect(sqlValues(.kingbasees).contains("now()"))
         #expect(sqlValues(.cockroachdb).contains("unique_rowid()"))
         #expect(!sqlValues(.postgresql).contains("unique_rowid()"))
         #expect(sqlValues(.mysql) != sqlValues(.mariadb))

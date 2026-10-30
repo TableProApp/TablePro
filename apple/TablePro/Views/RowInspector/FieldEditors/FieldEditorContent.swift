@@ -10,7 +10,6 @@ import SwiftUI
 internal struct FieldEditorContent: View {
     internal let context: FieldEditorContext
     internal let kind: FieldEditorKind
-    internal let databaseType: DatabaseType
     internal var onSetNull: (() -> Void)?
     internal var onSetDefault: (() -> Void)?
     internal var onPopOut: ((String) -> Void)?
@@ -29,8 +28,8 @@ internal struct FieldEditorContent: View {
     /// take away the control that changes it back.
     private var isPicker: Bool {
         switch kind {
-        case .boolean, .enumPicker, .setPicker, .arrayElements, .vector, .typePicker, .valuePicker: return true
-        case .json, .phpSerialized, .binaryValue, .image, .geometry, .blobHex, .schemaText, .multiLine, .singleLine:
+        case .boolean, .enumPicker, .setPicker, .arrayElements, .vector: return true
+        case .json, .phpSerialized, .binaryValue, .image, .geometry, .blobHex, .multiLine, .singleLine:
             return false
         }
     }
@@ -42,8 +41,7 @@ internal struct FieldEditorContent: View {
         switch kind {
         case .json, .phpSerialized, .binaryValue, .multiLine: return true
         case .geometry(let descriptor): return canExpand(kind: descriptor.textEditorKind, state: state)
-        case .image, .blobHex, .boolean, .enumPicker, .setPicker, .arrayElements, .vector, .typePicker,
-             .valuePicker, .schemaText, .singleLine:
+        case .image, .blobHex, .boolean, .enumPicker, .setPicker, .arrayElements, .vector, .singleLine:
             return false
         }
     }
@@ -57,8 +55,7 @@ internal struct FieldEditorContent: View {
         case .blobHex: return 60
         case .multiLine: return ResizableFieldMetrics.defaultTextHeight
         case .geometry(let descriptor): return pillHeight(for: descriptor.textEditorKind)
-        case .boolean, .enumPicker, .setPicker, .arrayElements, .vector, .typePicker, .valuePicker,
-             .schemaText, .singleLine:
+        case .boolean, .enumPicker, .setPicker, .arrayElements, .vector, .singleLine:
             return nil
         }
     }
@@ -100,12 +97,6 @@ internal struct FieldEditorContent: View {
             )
         case .vector:
             VectorFieldEditorView(context: context, onSetNull: onSetNull, onSetDefault: onSetDefault)
-        case .typePicker:
-            TypePickerFieldView(context: context, databaseType: databaseType)
-        case .valuePicker(let options):
-            ValuePickerFieldView(context: context, options: options)
-        case .schemaText:
-            SchemaTextFieldView(context: context)
         case .multiLine:
             MultiLineEditorView(context: context, onPopOut: onPopOut, isExpanded: isExpanded)
         case .singleLine:

@@ -10364,6 +10364,10 @@
     "Folder Deleted" : {
 
     },
+    "Foreign key enforcement could not be put back while a transaction is open." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Foreign Keys" : {
       "localizations" : {
         "ko" : {

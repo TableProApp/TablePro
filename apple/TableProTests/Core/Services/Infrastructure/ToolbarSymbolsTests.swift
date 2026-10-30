@@ -14,6 +14,7 @@ struct ToolbarSymbolsTests {
     func containedItemsDropTheCircle() {
         #expect(ToolbarSymbols.more(itemsHaveContainer: true) == "ellipsis")
         #expect(ToolbarSymbols.filter(isActive: false, itemsHaveContainer: true) == "line.3.horizontal.decrease")
+        #expect(ToolbarSymbols.sort(isActive: false, itemsHaveContainer: true) == "arrow.up.arrow.down")
         #expect(ToolbarSymbols.disconnect(itemsHaveContainer: true) == "xmark")
     }
 
@@ -23,15 +24,20 @@ struct ToolbarSymbolsTests {
         #expect(
             ToolbarSymbols.filter(isActive: false, itemsHaveContainer: false) == "line.3.horizontal.decrease.circle"
         )
+        #expect(ToolbarSymbols.sort(isActive: false, itemsHaveContainer: false) == "arrow.up.arrow.down.circle")
         #expect(ToolbarSymbols.disconnect(itemsHaveContainer: false) == "xmark.circle")
     }
 
     /// There is no filled form of the bare glyph, so the disc is the only way to say a filter is on.
-    @Test("An active filter is the filled disc on both", arguments: [true, false])
+    @Test("An active filter or sort is the filled disc on both", arguments: [true, false])
     func activeFilterIsFilled(itemsHaveContainer: Bool) {
         #expect(
             ToolbarSymbols.filter(isActive: true, itemsHaveContainer: itemsHaveContainer)
                 == "line.3.horizontal.decrease.circle.fill"
+        )
+        #expect(
+            ToolbarSymbols.sort(isActive: true, itemsHaveContainer: itemsHaveContainer)
+                == "arrow.up.arrow.down.circle.fill"
         )
     }
 
@@ -56,10 +62,11 @@ struct ToolbarSymbolsTests {
             names.insert(ToolbarSymbols.disconnect(itemsHaveContainer: itemsHaveContainer))
             for isActive in [true, false] {
                 names.insert(ToolbarSymbols.filter(isActive: isActive, itemsHaveContainer: itemsHaveContainer))
+                names.insert(ToolbarSymbols.sort(isActive: isActive, itemsHaveContainer: itemsHaveContainer))
             }
         }
 
-        #expect(names.count == 8)
+        #expect(names.count == 11)
         for name in names {
             #expect(
                 NSImage(systemSymbolName: name, accessibilityDescription: nil) != nil,

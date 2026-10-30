@@ -442,6 +442,40 @@ struct FilterSQLGeneratorColumnTypeTests {
         #expect(postgres?.contains("'%a[bc]%'") == true)
     }
 
+    // '' is NULL on Oracle and on KingbaseES in Oracle mode, so `v != ''` found no row there. Measured on Oracle 23ai,
+    // KingbaseES V9R1C10 in both modes and PostgreSQL 18: the length form returns what `= ''` returns on PostgreSQL.
+    @Test(
+        "Is empty and is not empty test the length where '' can read as NULL",
+        arguments: [DatabaseType.kingbasees, .oracle]
+    )
+    func emptyFiltersTestTheLength(databaseType: DatabaseType) {
+        let text = ColumnType.text(rawType: "text")
+        let empty = Self.engineCondition(databaseType, type: text, op: .isEmpty, value: "", dialect: Self.postgresqlDialect)
+        let notEmpty = Self.engineCondition(
+            databaseType, type: text, op: .isNotEmpty, value: "", dialect: Self.postgresqlDialect
+        )
+        #expect(empty == "(\"v\" IS NULL OR LENGTH(\"v\") = 0)")
+        #expect(notEmpty == "(\"v\" IS NOT NULL AND LENGTH(\"v\") > 0)")
+    }
+
+    @Test("The length form measures the text cast of a column of unknown type, and PostgreSQL and MySQL keep = ''")
+    func emptyFiltersElsewhere() {
+        let cast = Self.engineCondition(.kingbasees, type: nil, op: .isNotEmpty, value: "", dialect: Self.castingPostgres)
+        let mysql = Self.engineCondition(
+            .mysql, type: .text(rawType: "VARCHAR"), op: .isNotEmpty, value: "", dialect: Self.mysqlDialect
+        )
+        let integer = Self.engineCondition(
+            .kingbasees, type: .integer(rawType: "integer"), op: .isNotEmpty, value: "", dialect: Self.postgresqlDialect
+        )
+        let postgreSQL = Self.engineCondition(
+            .postgresql, type: .text(rawType: "text"), op: .isNotEmpty, value: "", dialect: Self.postgresqlDialect
+        )
+        #expect(cast == "(\"v\" IS NOT NULL AND LENGTH(CAST(\"v\" AS TEXT)) > 0)")
+        #expect(mysql == "(`v` IS NOT NULL AND `v` != '')")
+        #expect(postgreSQL == "(\"v\" IS NOT NULL AND \"v\" != '')")
+        #expect(integer == "\"v\" IS NOT NULL")
+    }
+
     @Test("A PostgreSQL bit read as a string of digits compares quoted")
     func postgresBitIsQuoted() {
         let type = ColumnTypeClassifier(family: .postgres).classify(rawTypeName: "bit")

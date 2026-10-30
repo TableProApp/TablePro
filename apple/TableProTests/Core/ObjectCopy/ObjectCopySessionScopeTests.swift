@@ -331,7 +331,8 @@ struct ObjectCopySessionScopeTests {
             ),
             createsDatabase: false,
             tableSteps: [step()],
-            definitionSteps: []
+            definitionSteps: [],
+            keysInside: ObjectCopyKeysInside(created: true, rows: true)
         )
         let provider = TwoConnectionProvider(drivers: [
             sourceScope.connectionId: PluginDriverAdapter(
@@ -356,7 +357,10 @@ struct ObjectCopySessionScopeTests {
 
         #expect(result.rowsCopied == 2)
         #expect(source.events == ["open verbatimRead", "stream", "close verbatimRead"])
-        #expect(target.events == ["begin", "open verbatimWrite", "insert", "close verbatimWrite", "commit"])
+        #expect(target.events == [
+            "begin", "open relaxedForeignKeys", "open verbatimWrite", "insert", "close verbatimWrite",
+            "close relaxedForeignKeys", "commit"
+        ])
     }
 
     @MainActor @Test("The runner opens no scope for a copy between engines")
@@ -368,6 +372,6 @@ struct ObjectCopySessionScopeTests {
 
         #expect(result.rowsCopied == 2)
         #expect(source.events == ["stream"])
-        #expect(target.events == ["begin", "insert", "commit"])
+        #expect(target.events == ["begin", "open relaxedForeignKeys", "insert", "close relaxedForeignKeys", "commit"])
     }
 }

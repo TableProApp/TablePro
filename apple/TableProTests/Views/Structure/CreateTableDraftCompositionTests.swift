@@ -8,14 +8,16 @@ import Testing
 private final class CompositionDriver: PluginDriverStub, @unchecked Sendable {
     private(set) var createTableRequests = 0
     private var schema: String?
+    private let addsCheckConstraints: Bool
 
     var supportsSchemas: Bool { true }
     var supportsTransactions: Bool { false }
     var serverVersion: String? { nil }
     var currentSchema: String? { schema }
 
-    init(currentSchema: String?) {
+    init(currentSchema: String?, addsCheckConstraints: Bool = true) {
         self.schema = currentSchema
+        self.addsCheckConstraints = addsCheckConstraints
     }
 
     func execute(query: String) async throws -> PluginQueryResult {
@@ -37,14 +39,23 @@ private final class CompositionDriver: PluginDriverStub, @unchecked Sendable {
     func objectCommentStatement(name: String, objectType: String, schema: String?, comment: String?) -> String? {
         "COMMENT ON \(objectType) \"\(schema ?? "")\".\"\(name)\" IS '\(comment ?? "")'"
     }
+
+    func generateAddCheckConstraintSQL(table: String, constraint: PluginCheckConstraintDefinition) -> String? {
+        guard addsCheckConstraints else { return nil }
+        return "ALTER TABLE \"\(schema ?? "")\".\"\(table)\" ADD CONSTRAINT \"\(constraint.name)\" CHECK (\(constraint.expression))"
+    }
 }
 
 @Suite("Create Table draft composition", .serialized)
 @MainActor
 struct CreateTableDraftCompositionTests {
-    private static func inject(type: DatabaseType, sessionSchema: String) -> (DatabaseConnection, CompositionDriver) {
+    private static func inject(
+        type: DatabaseType,
+        sessionSchema: String,
+        addsCheckConstraints: Bool = true
+    ) -> (DatabaseConnection, CompositionDriver) {
         let connection = TestFixtures.makeConnection(database: "shop", type: type)
-        let driver = CompositionDriver(currentSchema: sessionSchema)
+        let driver = CompositionDriver(currentSchema: sessionSchema, addsCheckConstraints: addsCheckConstraints)
         var session = ConnectionSession(
             connection: connection,
             driver: PluginDriverAdapter(connection: connection, pluginDriver: driver)
@@ -71,8 +82,12 @@ struct CreateTableDraftCompositionTests {
         DatabaseManager.shared.removeSession(for: connection.id)
     }
 
-    private static func makeDraft(tableName: String) -> CreateTableDraft {
-        let draft = CreateTableDraft()
+    private static func makeDraft(
+        tableName: String,
+        connection: DatabaseConnection,
+        scope: DatabaseScope
+    ) -> CreateTableDraft {
+        let draft = CreateTableDraft(connection: connection, scope: scope)
         draft.tableName = tableName
         var column = EditableColumnDefinition.placeholder()
         column.name = "id"
@@ -87,9 +102,9 @@ struct CreateTableDraftCompositionTests {
         defer { Self.tearDown(connection) }
         let scope = DatabaseScope(connectionId: connection.id, database: "shop", schema: "reporting")
         _ = try await Self.seedPooledDriver(connection, scope: scope)
-        let draft = Self.makeDraft(tableName: "sales")
+        let draft = Self.makeDraft(tableName: "sales", connection: connection, scope: scope)
 
-        await draft.recompose(databaseType: .postgresql, scope: scope)
+        await draft.recompose()
 
         #expect(draft.composed?.statements == ["CREATE TABLE \"reporting\".\"sales\" (\"id\" INT)"])
         #expect(draft.compositionFailure == nil)
@@ -101,8 +116,8 @@ struct CreateTableDraftCompositionTests {
         let (connection, _) = Self.inject(type: .pglite, sessionSchema: "reporting")
         defer { Self.tearDown(connection) }
         let scope = DatabaseScope(connectionId: connection.id, database: "shop", schema: "reporting")
-        let draft = Self.makeDraft(tableName: "sales")
-        await draft.recompose(databaseType: .pglite, scope: scope)
+        let draft = Self.makeDraft(tableName: "sales", connection: connection, scope: scope)
+        await draft.recompose()
         #expect(draft.composed?.tableName == "sales")
 
         let acquired = AsyncGate()
@@ -117,7 +132,7 @@ struct CreateTableDraftCompositionTests {
 
         draft.tableName = "invoices"
         let recomposition = Task { @MainActor in
-            await draft.recompose(databaseType: .pglite, scope: scope)
+            await draft.recompose()
         }
         _ = try? await waitUntil { DatabaseManager.shared.sessionDriverGate.waiterCount(for: connection.id) >= 1 }
 
@@ -136,12 +151,12 @@ struct CreateTableDraftCompositionTests {
         let (connection, _) = Self.inject(type: .pglite, sessionSchema: "reporting")
         defer { Self.tearDown(connection) }
         let scope = DatabaseScope(connectionId: connection.id, database: "shop", schema: "reporting")
-        let draft = Self.makeDraft(tableName: "sales")
-        await draft.recompose(databaseType: .pglite, scope: scope)
+        let draft = Self.makeDraft(tableName: "sales", connection: connection, scope: scope)
+        await draft.recompose()
 
         DatabaseManager.shared.removeSession(for: connection.id)
         draft.tableName = "invoices"
-        await draft.recompose(databaseType: .pglite, scope: scope)
+        await draft.recompose()
 
         #expect(draft.composed?.statements == ["CREATE TABLE \"reporting\".\"sales\" (\"id\" INT)"])
         #expect(draft.compositionFailure != nil)
@@ -152,31 +167,30 @@ struct CreateTableDraftCompositionTests {
         let (connection, driver) = Self.inject(type: .pglite, sessionSchema: "reporting")
         defer { Self.tearDown(connection) }
         let scope = DatabaseScope(connectionId: connection.id, database: "shop", schema: "reporting")
-        let draft = Self.makeDraft(tableName: "sales")
+        let draft = Self.makeDraft(tableName: "sales", connection: connection, scope: scope)
 
-        await draft.recompose(databaseType: .pglite, scope: scope)
-        await draft.recompose(databaseType: .pglite, scope: scope)
+        await draft.recompose()
+        await draft.recompose()
 
         #expect(driver.createTableRequests == 1)
     }
 
     @Test(
         "A grid edit reaches whoever observes the draft, so the preview and Create Table follow it",
-        arguments: [StructureTab.columns, StructureTab.indexes, StructureTab.foreignKeys]
+        arguments: StructureSection.allCases
     )
-    func gridEditPublishesTheDraft(tab: StructureTab) throws {
+    func gridEditPublishesTheDraft(section: StructureSection) throws {
         let connection = TestFixtures.makeConnection(type: .postgresql)
         let scope = DatabaseScope(connectionId: connection.id, database: "shop", schema: "reporting")
-        let draft = Self.makeDraft(tableName: "sales")
+        let draft = Self.makeDraft(tableName: "sales", connection: connection, scope: scope)
         draft.changeManager.addNewIndex()
         draft.changeManager.addNewForeignKey()
-        let adapter = draft.gridAdapter(for: connection)
-        adapter.select(tab)
-        adapter.refresh()
-        let model = adapter.model
+        draft.changeManager.addNewCheckConstraint()
+        draft.editor.refresh()
+        let model = draft.editor.adapter(for: section).model
         let rowID = try #require(model.rowID(at: 0))
         let name = try #require(model.columns.column(at: 0))
-        let keyBefore = draft.compositionKey(scope: scope)
+        let keyBefore = draft.compositionKey
 
         var published = 0
         let observation = draft.objectWillChange.sink { published += 1 }
@@ -188,7 +202,7 @@ struct CreateTableDraftCompositionTests {
 
         #expect(committed)
         #expect(published > 0)
-        #expect(draft.compositionKey(scope: scope) != keyBefore)
+        #expect(draft.compositionKey != keyBefore)
     }
 
     @Test("A typed comment is composed after the CREATE, on the tab's schema")
@@ -197,10 +211,10 @@ struct CreateTableDraftCompositionTests {
         defer { Self.tearDown(connection) }
         let scope = DatabaseScope(connectionId: connection.id, database: "shop", schema: "reporting")
         _ = try await Self.seedPooledDriver(connection, scope: scope)
-        let draft = Self.makeDraft(tableName: "sales")
+        let draft = Self.makeDraft(tableName: "sales", connection: connection, scope: scope)
         draft.tableOptions.comment = "Daily sales"
 
-        await draft.recompose(databaseType: .postgresql, scope: scope)
+        await draft.recompose()
 
         #expect(draft.composed?.statements == [
             "CREATE TABLE \"reporting\".\"sales\" (\"id\" INT)",
@@ -213,27 +227,95 @@ struct CreateTableDraftCompositionTests {
         let (connection, driver) = Self.inject(type: .pglite, sessionSchema: "reporting")
         defer { Self.tearDown(connection) }
         let scope = DatabaseScope(connectionId: connection.id, database: "shop", schema: "reporting")
-        let draft = Self.makeDraft(tableName: "sales")
-        await draft.recompose(databaseType: .pglite, scope: scope)
-        let keyBefore = draft.compositionKey(scope: scope)
+        let draft = Self.makeDraft(tableName: "sales", connection: connection, scope: scope)
+        await draft.recompose()
+        let keyBefore = draft.compositionKey
 
         draft.tableOptions.comment = "Daily sales"
-        await draft.recompose(databaseType: .pglite, scope: scope)
+        await draft.recompose()
 
-        #expect(draft.compositionKey(scope: scope) != keyBefore)
+        #expect(draft.compositionKey != keyBefore)
         #expect(driver.createTableRequests == 2)
         #expect(draft.composed?.statements.last == "COMMENT ON TABLE \"reporting\".\"sales\" IS 'Daily sales'")
     }
 
     @Test("A draft with nothing to create names what is missing without a connection")
     func emptyDraftNeedsNoConnection() async {
-        let scope = DatabaseScope(connectionId: UUID(), database: "shop", schema: nil)
-        let draft = CreateTableDraft()
+        let connection = TestFixtures.makeConnection(type: .postgresql)
+        let scope = DatabaseScope(connectionId: connection.id, database: "shop", schema: nil)
+        let draft = CreateTableDraft(connection: connection, scope: scope)
 
-        await draft.recompose(databaseType: .postgresql, scope: scope)
+        await draft.recompose()
 
         #expect(draft.composed?.statements.isEmpty == true)
         #expect(draft.composed?.issues.isEmpty == false)
         #expect(draft.compositionFailure == nil)
+    }
+
+    private static func check(_ name: String, _ expression: String) -> EditableCheckConstraintDefinition {
+        var constraint = EditableCheckConstraintDefinition.placeholder()
+        constraint.name = name
+        constraint.expression = expression
+        return constraint
+    }
+
+    @Test("A check constraint is added right after the CREATE, on the tab's schema")
+    func checkConstraintIsComposed() async throws {
+        let (connection, _) = Self.inject(type: .postgresql, sessionSchema: "public")
+        defer { Self.tearDown(connection) }
+        let scope = DatabaseScope(connectionId: connection.id, database: "shop", schema: "reporting")
+        _ = try await Self.seedPooledDriver(connection, scope: scope)
+        let draft = Self.makeDraft(tableName: "sales", connection: connection, scope: scope)
+        draft.changeManager.workingCheckConstraints = [Self.check("positive_id", "id > 0")]
+        draft.tableOptions.comment = "Daily sales"
+
+        await draft.recompose()
+
+        #expect(draft.composed?.statements == [
+            "CREATE TABLE \"reporting\".\"sales\" (\"id\" INT)",
+            "ALTER TABLE \"reporting\".\"sales\" ADD CONSTRAINT \"positive_id\" CHECK (id > 0)",
+            "COMMENT ON TABLE \"reporting\".\"sales\" IS 'Daily sales'"
+        ])
+        #expect(draft.composed?.issues.isEmpty == true)
+    }
+
+    @Test("A check the driver cannot add is named on its own row, never dropped")
+    func refusedCheckConstraintIsAnIssue() async throws {
+        let (connection, _) = Self.inject(type: .pglite, sessionSchema: "reporting", addsCheckConstraints: false)
+        defer { Self.tearDown(connection) }
+        let scope = DatabaseScope(connectionId: connection.id, database: "shop", schema: "reporting")
+        let draft = Self.makeDraft(tableName: "sales", connection: connection, scope: scope)
+        draft.changeManager.workingCheckConstraints = [
+            EditableCheckConstraintDefinition.placeholder(),
+            Self.check("positive_id", "id > 0")
+        ]
+
+        await draft.recompose()
+
+        let composed = try #require(draft.composed)
+        #expect(composed.statements == ["CREATE TABLE \"reporting\".\"sales\" (\"id\" INT)"])
+        let issue = try #require(composed.issues.first)
+        #expect(issue.section == .checkConstraints)
+        #expect(issue.row == 1)
+        #expect(draft.entityID(for: issue) == draft.changeManager.workingCheckConstraints[1].id)
+    }
+
+    @Test("An index the driver cannot add is named on its working row, past a blank one above it")
+    func refusedIndexNamesItsWorkingRow() async throws {
+        let (connection, _) = Self.inject(type: .pglite, sessionSchema: "reporting")
+        defer { Self.tearDown(connection) }
+        let scope = DatabaseScope(connectionId: connection.id, database: "shop", schema: "reporting")
+        let draft = Self.makeDraft(tableName: "sales", connection: connection, scope: scope)
+        var index = EditableIndexDefinition.placeholder()
+        index.name = "sales_id"
+        index.columns = ["id"]
+        draft.changeManager.workingIndexes = [EditableIndexDefinition.placeholder(), index]
+
+        await draft.recompose()
+
+        let composed = try #require(draft.composed)
+        let issue = try #require(composed.issues.first { $0.section == .indexes })
+        #expect(issue.row == 1)
+        #expect(draft.entityID(for: issue) == index.id)
     }
 }

@@ -9,7 +9,7 @@ enum IOSConnectionImportService {
     // Mac plugin type ids with no DatabaseType constant.
     static let recognizedTypeIds: Set<String> = Set(
         (DatabaseType.allKnownTypes + [.cockroachdb, .scylladb, .turso]).map(\.rawValue)
-    ).union(["SAP HANA", "Elasticsearch", "Typesense", "PGlite", "Presto"])
+    ).union(["SAP HANA", "Elasticsearch", "Typesense", "PGlite", "Presto", "KingbaseES"])
 
     static func environment(for appState: AppState) -> ImportEnvironment {
         ImportEnvironment(

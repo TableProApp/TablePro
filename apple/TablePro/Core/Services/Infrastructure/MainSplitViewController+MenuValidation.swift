@@ -4,6 +4,7 @@
 //
 
 import AppKit
+import TableProPluginKit
 
 // A plain value keeps `isEnabled` pure and testable, the same split `ToolbarContextResolver` uses for the toolbar.
 struct MenuValidationContext: Equatable {
@@ -42,6 +43,8 @@ struct MenuValidationContext: Equatable {
     // A batch whose COMMIT is on the wire is executing yet unstoppable, and Cmd+. must dim rather than fire into it.
     var isQueryStoppable = false
     var hasQueryText = false
+    // A Create Table tab runs its statement with Execute (Cmd+Return), as its old Create Table button did.
+    var canCreateDraftTable = false
     var canRunAIQueryActions = false
     var canClearQuery = false
     var canClearResults = false
@@ -49,6 +52,8 @@ struct MenuValidationContext: Equatable {
     // Save commits an edit still open in the grid before it looks for changes.
     var hasOpenGridEdit = false
     var hasDataPendingChanges = false
+    // The selected tab's staged structure edits, or its grid edits; Create Table has nothing to return to.
+    var canDiscardChanges = false
     var hasRowSelection = false
     // Copy with headers and Copy as JSON read the data grid's columns, so the structure grid's selection does not count.
     var hasDataGridRowSelection = false
@@ -125,6 +130,8 @@ struct MenuValidationContext: Equatable {
     var hasDatabaseFilter = false
     var canFilterSchemas = false
     var hasSchemaFilter = false
+    // Filled only when a Debug menu item is validated; the menu exists only while the module is on.
+    var routineDebug = RoutineDebugMenuState()
 
     // The validation and the window's handler both read it, so a lit Use Selection for Find never lands on an editor with no selection.
     var usesGridSelectionForFind: Bool {
@@ -140,6 +147,7 @@ extension MainSplitViewController: NSMenuItemValidation {
         if let query = isQueryCommandEnabled(selector, context: context) { return query }
         if let chooser = isContainerCommandEnabled(selector, context: context) { return chooser }
         if let creation = isCreationCommandEnabled(selector, context: context) { return creation }
+        if let debug = isRoutineDebugCommandEnabled(selector, context: context) { return debug }
 
         switch selector {
         case #selector(exportTables(_:)),
@@ -171,6 +179,8 @@ extension MainSplitViewController: NSMenuItemValidation {
 
         case #selector(saveDocument(_:)):
             return context.isConnected && !context.isReadOnly && (context.hasPendingChanges || context.hasOpenGridEdit)
+        case #selector(discardChanges(_:)):
+            return context.isConnected && context.canDiscardChanges
         case #selector(saveDocumentAs(_:)):
             return context.isConnected && context.isQueryTab
         case #selector(exportQueryResults(_:)):
@@ -326,6 +336,27 @@ extension MainSplitViewController: NSMenuItemValidation {
         }
     }
 
+    // Agent mode does not draw the debug tab these act on.
+    private static func isRoutineDebugCommandEnabled(
+        _ selector: Selector,
+        context: MenuValidationContext
+    ) -> Bool? {
+        guard routineDebugSelectors.contains(selector) else { return nil }
+        guard !context.isAgentMode else { return false }
+        let debug = context.routineDebug
+        switch selector {
+        case #selector(chooseRoutineToDebug(_:)): return context.isConnected && debug.canChooseRoutine
+        case #selector(debugContinue(_:)): return debug.performableCommands.contains(.continueExecution)
+        case #selector(debugStepOver(_:)): return debug.performableCommands.contains(.stepOver)
+        case #selector(debugStepInto(_:)): return debug.performableCommands.contains(.stepInto)
+        case #selector(debugStepOut(_:)): return debug.performableCommands.contains(.stepOut)
+        case #selector(debugStop(_:)): return debug.canStop
+        case #selector(toggleBreakpoint(_:)): return debug.canToggleBreakpoint
+        case #selector(removeAllBreakpoints(_:)): return debug.canRemoveAllBreakpoints
+        default: return false
+        }
+    }
+
     // The sidebar's add button sends these too. New Folder records local state only, so read-only does not dim it.
     private static func isCreationCommandEnabled(
         _ selector: Selector,
@@ -409,6 +440,7 @@ extension MainSplitViewController: NSMenuItemValidation {
     private static let browseContentSelectors: Set<Selector> = [
         #selector(refreshDatabase(_:)),
         #selector(saveDocument(_:)),
+        #selector(discardChanges(_:)),
         #selector(addRow(_:)),
         #selector(restorePreviousValues(_:)),
         #selector(editDocument(_:)),
@@ -452,8 +484,9 @@ extension MainSplitViewController: NSMenuItemValidation {
 
     private static func isQueryCommandEnabled(_ selector: Selector, context: MenuValidationContext) -> Bool? {
         switch selector {
-        case #selector(executeQuery(_:)),
-             #selector(executeAllStatements(_:)),
+        case #selector(executeQuery(_:)):
+            return context.isConnected && (context.hasQueryText || context.canCreateDraftTable)
+        case #selector(executeAllStatements(_:)),
              #selector(executeQueryWithoutLimit(_:)):
             return context.isConnected && context.hasQueryText
         case #selector(formatQuery(_:)):
@@ -557,12 +590,14 @@ extension MainSplitViewController: NSMenuItemValidation {
             isQueryExecuting: actions.isQueryExecuting,
             isQueryStoppable: actions.isQueryStoppable,
             hasQueryText: actions.hasQueryText,
+            canCreateDraftTable: actions.canCreateDraftTable,
             canRunAIQueryActions: actions.aiQueryActionAvailability.isEnabled,
             canClearQuery: actions.canClearQuery,
             canClearResults: actions.canClearResults,
             hasPendingChanges: actions.hasPendingChanges,
             hasOpenGridEdit: actions.hasOpenGridEdit,
             hasDataPendingChanges: actions.hasDataPendingChanges,
+            canDiscardChanges: actions.canDiscardChanges,
             hasRowSelection: actions.hasRowSelection,
             hasDataGridRowSelection: actions.hasDataGridRowSelection,
             hasTableSelection: actions.hasTableSelection,
@@ -650,6 +685,9 @@ extension MainSplitViewController: NSMenuItemValidation {
         guard let action = menuItem.action else { return context }
         if action == #selector(selectNumberedTab(_:)) {
             context.requestedTabNumber = menuItem.tag
+        }
+        if Self.routineDebugSelectors.contains(action) {
+            context.routineDebug = routineDebugMenuState
         }
         guard Self.agentSessionSelectors.contains(action) else { return context }
         context.agentSessionTarget = agentSessionTarget(for: menuItem)?.status

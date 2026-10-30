@@ -133,7 +133,10 @@ internal struct RowImportTableMaker {
             OperationRequest(
                 connectionId: connection.id,
                 databaseType: connection.type,
-                sql: SQLScriptText(databaseType: connection.type).script(statements),
+                sql: SQLScriptText(
+                    databaseType: connection.type,
+                    grammar: SQLLexicalResolver.executionGrammar(for: connection.type, connectionId: connection.id)
+                ).script(statements),
                 kind: clears ? .destructiveQuery : .schemaMutation,
                 caller: .userInterface,
                 capabilities: .interactiveUser,

@@ -21,6 +21,7 @@
 import Foundation
 import os
 import TableProPluginKit
+import TableProSQLGrammar
 
 internal struct SourceObjectSyncBuilder {
     private static let logger = Logger(subsystem: "com.TablePro", category: "SourceObjectSyncBuilder")
@@ -40,7 +41,12 @@ internal struct SourceObjectSyncBuilder {
         self.targetDriver = targetDriver
         self.targetDatabaseType = targetDatabaseType
         self.indexSchema = indexSchema
-        self.scriptText = SQLScriptText(databaseType: targetDatabaseType)
+        self.scriptText = SQLScriptText(
+            databaseType: targetDatabaseType,
+            grammar: SQLLexicalResolver.readings(
+                for: targetDatabaseType, session: targetDriver.sessionLexicalState
+            ).execution
+        )
         self.changeBuilder = SchemaSyncScriptBuilder(targetDriver: targetDriver, targetDatabaseType: targetDatabaseType)
     }
 

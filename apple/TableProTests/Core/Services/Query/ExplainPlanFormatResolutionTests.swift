@@ -47,6 +47,7 @@ struct ExplainPlanFormatResolutionTests {
     @Test("A database type the app knows resolves a format even when the variant declares none")
     func fallsBackToCuratedDefault() {
         #expect(ExplainFormatResolver.resolve(declared: .plainText, databaseType: .pglite) == .postgresJson)
+        #expect(ExplainFormatResolver.resolve(declared: .plainText, databaseType: .kingbasees) == .postgresJson)
         #expect(ExplainFormatResolver.resolve(declared: .plainText, databaseType: .cloudflareD1) == .sqliteQueryPlan)
         #expect(ExplainFormatResolver.resolve(declared: .plainText, databaseType: .libsql) == .sqliteQueryPlan)
         #expect(ExplainFormatResolver.resolve(declared: .plainText, databaseType: .turso) == .sqliteQueryPlan)

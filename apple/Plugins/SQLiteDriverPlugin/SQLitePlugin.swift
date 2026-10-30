@@ -94,7 +94,8 @@ final class SQLitePlugin: NSObject, TableProPlugin, DriverPlugin {
         caseSensitivityStyle: .collationDefined,
         operators: SQLEngineVocabulary.sqlite.operators.compactMap(SQLOperatorDescriptor.init(vocabulary:)),
         textCastTypeName: nil,
-        functionNamesAreCaseInsensitive: SQLEngineVocabulary.sqlite.functionNamesAreCaseInsensitive
+        functionNamesAreCaseInsensitive: SQLEngineVocabulary.sqlite.functionNamesAreCaseInsensitive,
+        typeNamesAreCaseInsensitive: true
     )
 
     func createDriver(config: DriverConnectionConfig) -> any PluginDatabaseDriver {
@@ -287,6 +288,16 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func foreignKeyEnableStatements() -> [String]? {
         ["PRAGMA foreign_keys = ON"]
+    }
+
+    // MARK: - Session Scope
+
+    func openSessionScope(for purpose: PluginSessionPurpose) async throws -> PluginSessionScope? {
+        try await SQLiteSessionScope.open(for: purpose) { try await self.execute(query: $0) }
+    }
+
+    func closeSessionScope(_ scope: PluginSessionScope) async throws {
+        try await SQLiteSessionScope.close(scope) { try await self.execute(query: $0) }
     }
 
     // MARK: - User Query

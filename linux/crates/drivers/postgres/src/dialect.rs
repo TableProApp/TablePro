@@ -188,6 +188,13 @@ impl SqlDialect for PgDialect {
             ColumnKind::Json { binary: false } | ColumnKind::Xml
         )
     }
+
+    /// The clause came with identity columns in PostgreSQL 10, and an
+    /// INSERT into a serial or plain column takes it too, so a statement
+    /// needs no word on which kind of numbering the column has.
+    fn insert_overriding_clause(&self) -> Option<&'static str> {
+        (self.server_version_num >= 100_000).then_some("OVERRIDING SYSTEM VALUE")
+    }
 }
 
 /// What a value binds as, and the cast that turns the parameter into the
@@ -425,6 +432,7 @@ const CREDENTIAL_RULES: CredentialRules = CredentialRules {
         "decrypt_iv",
         "hmac",
     ],
+    secret_parameters: &[],
 };
 
 #[cfg(test)]
@@ -758,5 +766,16 @@ mod tests {
         ] {
             assert_eq!(dialect().history_recording(sql), HistoryRecording::Record, "{sql}");
         }
+    }
+
+    #[test]
+    fn an_insert_overrides_a_numbered_column_from_postgresql_10() {
+        let nine = PgDialect::new(&ServerInfo::new("PostgreSQL", "9.6.24", 9, 624, 0));
+        let ten = PgDialect::new(&ServerInfo::new("PostgreSQL", "10.0", 10, 0, 0));
+
+        assert_eq!(nine.insert_overriding_clause(), None);
+        assert_eq!(ten.insert_overriding_clause(), Some("OVERRIDING SYSTEM VALUE"));
+        assert_eq!(dialect().insert_overriding_clause(), Some("OVERRIDING SYSTEM VALUE"));
+        assert_eq!(dialect().identity_insert("\"t\"", true), None);
     }
 }

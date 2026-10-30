@@ -64,8 +64,8 @@ READY=()
 case "$ENGINE" in
     postgresql)
         FOLDER=PostgreSQLDriverPlugin CLASS=PostgreSQLPlugin C_MODULE=CLibPQ
-        PRODUCTS="TableProLogRedaction TableProPostgreSQLCore"
-        LINK="$ROOT/Libs/libpq.a $ROOT/Libs/libpgcommon.a $ROOT/Libs/libpgport.a -lssl.3 -lcrypto.3 -lz"
+        PRODUCTS="TableProCoreTypes TableProKerberos TableProLogRedaction TableProPostgreSQLCore TableProSQLVocabulary"
+        LINK="$ROOT/Libs/libpq.a $ROOT/Libs/libpgcommon.a $ROOT/Libs/libpgport.a -lssl.3 -lcrypto.3 -lz -framework GSS -lcom_err"
         IMAGE=postgres:17-alpine PORT_IN=5432 PORT=15467 USER_DEFAULT=postgres DATABASE_DEFAULT=postgres
         DOCKER_ENV=(-e "POSTGRES_PASSWORD=$PASSWORD_DEFAULT")
         READY=(pg_isready -h 127.0.0.1 -U postgres)

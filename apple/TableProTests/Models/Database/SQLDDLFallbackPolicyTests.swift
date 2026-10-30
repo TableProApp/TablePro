@@ -13,7 +13,7 @@ struct SQLDDLFallbackPolicyTests {
     @Test("Engines with SQL DDL keep the generated statement")
     func sqlEnginesFabricate() {
         for type in [
-            DatabaseType.mysql, .postgresql, .sqlite, .mssql, .oracle,
+            DatabaseType.mysql, .postgresql, .kingbasees, .sqlite, .mssql, .oracle,
             .duckdb, .cassandra, .trino, .presto, .teradata, .clickhouse, .bigQuery, .sapHana,
         ] {
             #expect(SQLDDLFallbackPolicy.allowsGeneratedDDL(for: type), "\(type.rawValue) should fabricate")
@@ -58,7 +58,7 @@ struct SQLDDLFallbackPolicyTests {
     }
 
     private static let fabricatingTypes: Set<DatabaseType> = [
-        .mysql, .mariadb, .tidb, .databend, .oceanbase, .postgresql, .sqlite, .redshift,
+        .mysql, .mariadb, .tidb, .databend, .oceanbase, .postgresql, .kingbasees, .sqlite, .redshift,
         .cockroachdb, .pglite, .mssql, .oracle, .snowflake, .dameng, .clickhouse, .duckdb,
         .cassandra, .scylladb, .cloudflareD1, .cloudflareR2SQL, .bigQuery, .spanner,
         .libsql, .turso, .teradata, .trino, .presto, .sapHana,

@@ -62,6 +62,14 @@ impl StructureModel {
                 }
             }
             ColumnField::Comment(comment) => column.update(|draft| draft.comment = comment),
+            ColumnField::CharacterSet {
+                character_set,
+                collation,
+            } => column.update(|draft| {
+                draft.character_set = character_set;
+                draft.collation = collation;
+            }),
+            ColumnField::Collation(collation) => column.update(|draft| draft.collation = collation),
         }
         self.recompute_dirty_state(fx);
     }

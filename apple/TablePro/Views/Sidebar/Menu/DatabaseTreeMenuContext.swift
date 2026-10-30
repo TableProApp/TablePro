@@ -81,6 +81,20 @@ internal struct DatabaseTreeMenuContext {
     /// The engine's schema rows are databases attached beside the opened file: reached by their
     /// qualifier, never made active, and not exported or copied as a unit.
     internal var listsAttachedSchemas: Bool = false
+    internal var canDebugRoutine: Bool = false
+}
+
+internal extension DatabaseTreeMenuContext {
+    // The module is asked first, so with it off the debugger's code is never reached from a menu.
+    @MainActor
+    static func canDebugRoutine(
+        _ clicked: DatabaseTreeNode.Kind?,
+        modules: AppModuleSettings,
+        debugTarget: (RoutineInfo) -> PluginDebugTarget?
+    ) -> Bool {
+        guard modules.isEnabled(.routineDebugger), case .routine(let ref) = clicked else { return false }
+        return debugTarget(ref.routine) != nil
+    }
 }
 
 internal extension DatabaseTreeMenuContext {

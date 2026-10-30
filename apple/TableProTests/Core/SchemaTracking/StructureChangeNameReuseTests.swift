@@ -7,12 +7,8 @@ import Foundation
 @testable import TablePro
 import Testing
 
-/// A name belongs to the rows the table keeps after the save.
-///
-/// The save drops every index and check constraint before it adds or renames one, so a name a row
-/// is being deleted under is free by the time anything takes it. The duplicate check still counted
-/// the deleted row, and "delete idx_a, add a new idx_a" was refused as a duplicate of the row on
-/// its way out.
+// The save drops indexes and check constraints before it adds one, so a deleted row's name is free; the duplicate
+// check still counted it and refused "delete idx_a, add a new idx_a".
 @MainActor
 struct StructureChangeNameReuseTests {
     private func manager(
@@ -69,8 +65,8 @@ struct StructureChangeNameReuseTests {
 
     // MARK: - Indexes
 
-    /// Measured on SQLite 3.54, PostgreSQL 17.11 and MariaDB 13.0.2: `CREATE INDEX idx_a` fails while
-    /// `idx_a` exists, and succeeds straight after `DROP INDEX idx_a` in the same save.
+    // Measured on SQLite 3.54, PostgreSQL 17.11 and MariaDB 13.0.2: `CREATE INDEX idx_a` fails while
+    // `idx_a` exists, and succeeds straight after `DROP INDEX idx_a` in the same save.
     @Test("Deleting an index frees its name for a new one in the same save")
     func deletingAnIndexFreesItsNameForANewOne() throws {
         let manager = manager(indexes: [loadedIndex("idx_a", on: "body")])
@@ -93,8 +89,8 @@ struct StructureChangeNameReuseTests {
         #expect(manager.validationErrors.isEmpty)
     }
 
-    /// The row menu's **Duplicate** stages a copy under the same name, which is the everyday way to
-    /// build a replacement before the original goes.
+    // The row menu's **Duplicate** stages a copy under the same name, which is the everyday way to
+    // build a replacement before the original goes.
     @Test("Duplicating an index and then deleting the original saves")
     func duplicatingAnIndexThenDeletingTheOriginalSaves() throws {
         let manager = manager(indexes: [loadedIndex("idx_a", on: "body")])
@@ -116,7 +112,7 @@ struct StructureChangeNameReuseTests {
         manager.deleteIndex(id: original.id)
         #expect(manager.canCommit)
 
-        manager.undoDelete(for: .indexes, at: 0)
+        manager.undoDelete(section: .indexes, id: original.id)
         #expect(!manager.canCommit)
         #expect(manager.validationErrors.count == 2)
         #expect(errors(in: manager) == ["Duplicate index name: idx_a"])
@@ -156,8 +152,8 @@ struct StructureChangeNameReuseTests {
 
     // MARK: - Check constraints
 
-    /// Measured on SQLite 3.54 and PostgreSQL 17.11: `DROP CONSTRAINT c` then `ADD CONSTRAINT c`
-    /// saves, and `ADD CONSTRAINT c` alone fails while `c` exists.
+    // Measured on SQLite 3.54 and PostgreSQL 17.11: `DROP CONSTRAINT c` then `ADD CONSTRAINT c`
+    // saves, and `ADD CONSTRAINT c` alone fails while `c` exists.
     @Test("Deleting a check constraint frees its name for a new one in the same save")
     func deletingACheckConstraintFreesItsName() throws {
         let manager = manager(checkConstraints: [CheckConstraintInfo(name: "c", expression: "a > 0")])
@@ -192,8 +188,8 @@ struct StructureChangeNameReuseTests {
         #expect(errors(in: manager) == ["Duplicate constraint name: c"])
     }
 
-    /// Measured on SQLite 3.54: `ADD CONSTRAINT "C"` beside `c` fails with "constraint C already
-    /// exists", and MariaDB 13.0.2 refuses it with ERROR 1826.
+    // Measured on SQLite 3.54: `ADD CONSTRAINT "C"` beside `c` fails with "constraint C already
+    // exists", and MariaDB 13.0.2 refuses it with ERROR 1826.
     @Test("A check constraint added beside one whose name differs only in case is a duplicate")
     func addingAConstraintUnderACaseVariantOfAKeptNameIsADuplicate() {
         let manager = manager(checkConstraints: [CheckConstraintInfo(name: "c", expression: "a > 0")])
@@ -205,8 +201,8 @@ struct StructureChangeNameReuseTests {
 
     // MARK: - Two loaded check constraints under one name
 
-    /// SQLite 3.54 accepts `CONSTRAINT c CHECK (a > 0), CONSTRAINT c CHECK (a < 10)` in one
-    /// `CREATE TABLE`, and the Structure tab lists both.
+    // SQLite 3.54 accepts `CONSTRAINT c CHECK (a > 0), CONSTRAINT c CHECK (a < 10)` in one
+    // `CREATE TABLE`, and the Structure tab lists both.
     private func tableWithTwoConstraintsNamedC(secondName: String = "c") -> StructureChangeManager {
         manager(checkConstraints: [
             CheckConstraintInfo(name: "c", expression: "a > 0"),
@@ -225,8 +221,8 @@ struct StructureChangeNameReuseTests {
         #expect(manager.validationErrors.isEmpty)
     }
 
-    /// Measured on SQLite 3.54: `DROP CONSTRAINT c` removes the first `c` in the table's text,
-    /// whichever row was picked.
+    // Measured on SQLite 3.54: `DROP CONSTRAINT c` removes the first `c` in the table's text,
+    // whichever row was picked.
     @Test("Deleting one of two check constraints under one name is refused")
     func droppingOneOfTwoSameNamedConstraintsIsRefused() throws {
         let manager = tableWithTwoConstraintsNamedC()
@@ -261,7 +257,7 @@ struct StructureChangeNameReuseTests {
         #expect(manager.validationErrors.count == 1)
     }
 
-    /// Measured on SQLite 3.54: `DROP CONSTRAINT "C"` on a table holding `c` and `C` drops `c`.
+    // Measured on SQLite 3.54: `DROP CONSTRAINT "C"` on a table holding `c` and `C` drops `c`.
     @Test("Check constraint names that differ only in case are one name")
     func caseVariantConstraintNamesAreShared() throws {
         let manager = tableWithTwoConstraintsNamedC(secondName: "C")
@@ -284,8 +280,8 @@ struct StructureChangeNameReuseTests {
         #expect(manager.validationErrors.isEmpty)
     }
 
-    /// Measured on SQLite 3.54: after `DROP CONSTRAINT c` twice and `ADD CONSTRAINT c`, the add of
-    /// `C` fails with "constraint C already exists".
+    // Measured on SQLite 3.54: after `DROP CONSTRAINT c` twice and `ADD CONSTRAINT c`, the add of
+    // `C` fails with "constraint C already exists".
     @Test("Replacing both check constraints under a shared name with c and C is a duplicate")
     func replacingBothWithCaseVariantsIsADuplicate() {
         let manager = tableWithTwoConstraintsNamedC()
@@ -299,8 +295,8 @@ struct StructureChangeNameReuseTests {
         #expect(errors(in: manager) == ["Duplicate constraint name: c", "Duplicate constraint name: C"])
     }
 
-    /// SQLite has no `RENAME CONSTRAINT`, so each rename is a drop by the shared name and an add of
-    /// the row's own definition. Whichever `c` each drop takes, both go and both come back right.
+    // SQLite has no `RENAME CONSTRAINT`, so each rename is a drop by the shared name and an add of
+    // the row's own definition. Whichever `c` each drop takes, both go and both come back right.
     @Test("Renaming every check constraint under a shared name saves")
     func renamingBothSameNamedConstraintsSaves() throws {
         let manager = tableWithTwoConstraintsNamedC()
@@ -314,8 +310,8 @@ struct StructureChangeNameReuseTests {
         #expect(manager.validationErrors.isEmpty)
     }
 
-    /// Measured on SQLite 3.54: `DROP CONSTRAINT c; DROP CONSTRAINT c; ADD CONSTRAINT c CHECK (a < 20)`
-    /// leaves exactly the rewritten constraint.
+    // Measured on SQLite 3.54: `DROP CONSTRAINT c; DROP CONSTRAINT c; ADD CONSTRAINT c CHECK (a < 20)`
+    // leaves exactly the rewritten constraint.
     @Test("Deleting one check constraint under a shared name and rewriting the other saves")
     func deletingOneAndRewritingTheOtherSaves() throws {
         let manager = tableWithTwoConstraintsNamedC()
@@ -328,8 +324,8 @@ struct StructureChangeNameReuseTests {
         #expect(manager.validationErrors.isEmpty)
     }
 
-    /// Both would be added back as `c`, and the second `ADD CONSTRAINT c` fails on SQLite 3.54 with
-    /// "constraint c already exists".
+    // Both would be added back as `c`, and the second `ADD CONSTRAINT c` fails on SQLite 3.54 with
+    // "constraint c already exists".
     @Test("Rewriting both check constraints under their shared name is a duplicate")
     func rewritingBothUnderTheSharedNameIsADuplicate() throws {
         let manager = tableWithTwoConstraintsNamedC()

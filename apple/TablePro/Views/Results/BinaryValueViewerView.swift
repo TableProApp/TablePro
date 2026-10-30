@@ -57,9 +57,10 @@ internal struct BinaryValueViewerView: View {
                     Text(String(localized: "Text")).tag(BinaryValueViewMode.text)
                     Text(String(localized: "Hex")).tag(BinaryValueViewMode.hex)
                 }
-                .pickerStyle(.segmented)
+                .viewSwitcherStyle()
                 .labelsHidden()
                 .fixedSize()
+                .accessibilityIdentifier("binary-viewer-mode-picker")
             } else {
                 Text(format.displayName)
                     .font(.headline)

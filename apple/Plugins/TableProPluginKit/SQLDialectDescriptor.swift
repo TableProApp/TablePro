@@ -107,6 +107,10 @@ public struct SQLDialectDescriptor: Sendable {
     /// gates then read every grammar TablePro knows. Ignored for an engine the app curates itself.
     public let lexicalFeatures: SQLLexicalFeatures?
 
+    // Whether the engine reads a built-in type name in any case, so the formatter may re-case it. False when the
+    // plugin does not say: ClickHouse's `String` and `UInt8` are matched by exact case.
+    public let typeNamesAreCaseInsensitive: Bool
+
     public enum CaseSensitivityStyle: String, Sendable {
         case ilikeOperator    // PostgreSQL, CockroachDB, PGlite, DuckDB, Snowflake
         case caseFoldFunction // Oracle, BigQuery, ClickHouse, Redshift
@@ -331,6 +335,7 @@ public struct SQLDialectDescriptor: Sendable {
         )
     }
 
+    @_disfavoredOverload
     public init(
         identifierQuote: String,
         keywords: Set<String>,
@@ -351,7 +356,52 @@ public struct SQLDialectDescriptor: Sendable {
         functionNamesAreCaseInsensitive: Bool,
         lexicalFeatures: SQLLexicalFeatures? = nil
     ) {
+        self.init(
+            identifierQuote: identifierQuote,
+            keywords: keywords,
+            functions: functions,
+            dataTypes: dataTypes,
+            tableOptions: tableOptions,
+            regexSyntax: regexSyntax,
+            booleanLiteralStyle: booleanLiteralStyle,
+            likeEscapeStyle: likeEscapeStyle,
+            paginationStyle: paginationStyle,
+            offsetFetchOrderBy: offsetFetchOrderBy,
+            requiresBackslashEscaping: requiresBackslashEscaping,
+            autoLimitStyle: autoLimitStyle,
+            caseSensitivityStyle: caseSensitivityStyle,
+            caseFoldFunction: caseFoldFunction,
+            operators: operators,
+            textCastTypeName: textCastTypeName,
+            functionNamesAreCaseInsensitive: functionNamesAreCaseInsensitive,
+            lexicalFeatures: lexicalFeatures,
+            typeNamesAreCaseInsensitive: false
+        )
+    }
+
+    public init(
+        identifierQuote: String,
+        keywords: Set<String>,
+        functions: Set<String>,
+        dataTypes: Set<String>,
+        tableOptions: [String] = [],
+        regexSyntax: RegexSyntax = .unsupported,
+        booleanLiteralStyle: BooleanLiteralStyle = .numeric,
+        likeEscapeStyle: LikeEscapeStyle = .explicit,
+        paginationStyle: PaginationStyle = .limit,
+        offsetFetchOrderBy: String = "ORDER BY (SELECT NULL)",
+        requiresBackslashEscaping: Bool = false,
+        autoLimitStyle: AutoLimitStyle = .limit,
+        caseSensitivityStyle: CaseSensitivityStyle = .unsupported,
+        caseFoldFunction: String = SQLDialectDescriptor.defaultCaseFoldFunction,
+        operators: [SQLOperatorDescriptor] = [],
+        textCastTypeName: String?,
+        functionNamesAreCaseInsensitive: Bool,
+        lexicalFeatures: SQLLexicalFeatures? = nil,
+        typeNamesAreCaseInsensitive: Bool = false
+    ) {
         self.lexicalFeatures = lexicalFeatures
+        self.typeNamesAreCaseInsensitive = typeNamesAreCaseInsensitive
         self.identifierQuote = identifierQuote
         self.keywords = keywords
         self.functions = functions
@@ -395,7 +445,8 @@ public struct SQLDialectDescriptor: Sendable {
             operators: operators,
             textCastTypeName: textCastTypeName,
             functionNamesAreCaseInsensitive: functionNamesAreCaseInsensitive,
-            lexicalFeatures: lexicalFeatures
+            lexicalFeatures: lexicalFeatures,
+            typeNamesAreCaseInsensitive: typeNamesAreCaseInsensitive
         )
     }
 }

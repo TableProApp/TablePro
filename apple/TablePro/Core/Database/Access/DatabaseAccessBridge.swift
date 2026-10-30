@@ -214,8 +214,11 @@ internal actor DatabaseAccessBridge {
         guard !Self.statementText(query, grammar: .ansi).isEmpty else {
             throw DatabaseAccessError.invalidArgument(String(localized: "The query is empty."))
         }
-        let databaseType = try await ensureConnected(scope.connectionId)
-        let normalizedQuery = Self.statementText(query, databaseType: databaseType)
+        let (sessionDriver, databaseType) = try await resolveDriver(scope.connectionId)
+        let grammar = SQLLexicalResolver.readings(
+            for: databaseType, session: sessionDriver.sessionLexicalState
+        ).execution
+        let normalizedQuery = Self.statementText(query, databaseType: databaseType, grammar: grammar)
         guard !normalizedQuery.isEmpty else {
             throw DatabaseAccessError.invalidArgument(String(localized: "The query is empty."))
         }
@@ -253,7 +256,6 @@ internal actor DatabaseAccessBridge {
         /// A write that timed out or failed may still have committed: a group only returns once
         /// every child has, so by the time the error arrives the driver call has finished one way or
         /// the other, and a catalog that might have changed is refreshed rather than trusted.
-        let grammar = databaseType.lexicalGrammar
         let result: QueryResult
         let tableEdits: SucceededStatements?
         do {
@@ -405,11 +407,15 @@ internal actor DatabaseAccessBridge {
         SQLStatementScanner.executableText(of: query, grammar: grammar)
     }
 
-    internal static func statementText(_ query: String, databaseType: DatabaseType) -> String {
+    internal static func statementText(
+        _ query: String,
+        databaseType: DatabaseType,
+        grammar: SQLLexicalGrammar? = nil
+    ) -> String {
         QueryStatementScanner.executableText(
             of: query,
             model: QueryStatementModel.forDatabaseType(databaseType),
-            grammar: databaseType.lexicalGrammar
+            grammar: grammar ?? databaseType.lexicalGrammar
         )
     }
 }

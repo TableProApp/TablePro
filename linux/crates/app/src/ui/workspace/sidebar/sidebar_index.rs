@@ -23,6 +23,17 @@ pub(crate) struct SidebarIndex {
     /// Where each entry's text starts in `search`.
     starts: Vec<usize>,
     positions: HashMap<TableRef, u32>,
+    /// Each section's entries, in list order.
+    runs: Vec<SectionRun>,
+}
+
+/// One section's entries, which the list order keeps together: from
+/// `start` to before `end`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct SectionRun {
+    pub(crate) section: u32,
+    pub(crate) start: u32,
+    pub(crate) end: u32,
 }
 
 #[derive(Debug)]
@@ -107,13 +118,17 @@ impl SidebarIndex {
             index.search.push_str(&search);
             index.search.push('\0');
             index.positions.entry(entry.table.clone()).or_insert(at);
+            match index.runs.last_mut() {
+                Some(run) if run.section == entry.section => run.end = at + 1,
+                _ => index.runs.push(SectionRun {
+                    section: entry.section,
+                    start: at,
+                    end: at + 1,
+                }),
+            }
             index.entries.push(entry);
         }
         index
-    }
-
-    pub(crate) fn len(&self) -> usize {
-        self.entries.len()
     }
 
     pub(crate) fn entry(&self, index: u32) -> Option<&IndexEntry> {
@@ -127,6 +142,27 @@ impl SidebarIndex {
     /// Where `table` is in the list order.
     pub(crate) fn find(&self, table: &TableRef) -> Option<u32> {
         self.positions.get(table).copied()
+    }
+
+    /// Every section's entries, in list order.
+    pub(crate) fn runs(&self) -> &[SectionRun] {
+        &self.runs
+    }
+
+    /// `entries`, in list order, split by the run each one is in: one
+    /// list per run, in run order.
+    pub(crate) fn split_by_run(&self, entries: &[u32]) -> Vec<Vec<u32>> {
+        let mut split: Vec<Vec<u32>> = self.runs.iter().map(|_| Vec::new()).collect();
+        let mut run = 0;
+        for &entry in entries {
+            while self.runs.get(run).is_some_and(|current| current.end <= entry) {
+                run += 1;
+            }
+            if let Some(found) = split.get_mut(run) {
+                found.push(entry);
+            }
+        }
+        split
     }
 
     /// The entries whose `schema.name` holds `query`, which `search_key`
@@ -240,9 +276,13 @@ mod tests {
         }
     }
 
+    fn len(index: &SidebarIndex) -> u32 {
+        index.runs().last().map_or(0, |run| run.end)
+    }
+
     /// Each entry's section title and name, in list order.
     fn listed(index: &SidebarIndex) -> Vec<(String, String)> {
-        (0..u32::try_from(index.len()).unwrap_or_default())
+        (0..len(index))
             .filter_map(|at| index.entry(at))
             .map(|entry| {
                 let title = index
@@ -335,7 +375,7 @@ mod tests {
             &[],
         );
 
-        assert_eq!(index.len(), 2);
+        assert_eq!(len(&index), 2);
         let found = index.find(&TableRef::new(Some("public".to_owned()), "active_users"));
         assert_eq!(found, Some(0));
         assert_eq!(
@@ -413,6 +453,38 @@ mod tests {
     }
 
     #[test]
+    fn each_section_is_one_run_and_a_search_splits_by_run() {
+        let index = SidebarIndex::build(
+            &[
+                table("sales", "orders"),
+                table("public", "users"),
+                table("sales", "carts"),
+                table("public", "accounts"),
+            ],
+            &[schema("public", true, false)],
+        );
+
+        let titles: Vec<(String, u32, u32)> = index
+            .runs()
+            .iter()
+            .map(|run| {
+                let title = index
+                    .section(run.section)
+                    .map(|section| section.title.clone())
+                    .unwrap_or_default();
+                (title, run.start, run.end)
+            })
+            .collect();
+        assert_eq!(titles, [("public".to_owned(), 0, 2), ("sales".to_owned(), 2, 4)]);
+        assert_eq!(
+            index.split_by_run(&index.matching(&search_key("r"))),
+            [vec![1], vec![2, 3]]
+        );
+        assert_eq!(index.split_by_run(&[]), [Vec::<u32>::new(), Vec::new()]);
+        assert!(SidebarIndex::build(&[], &[]).runs().is_empty());
+    }
+
+    #[test]
     fn fifty_thousand_tables_index_in_list_order() {
         let objects: Vec<ObjectInfo> = (0..50_000)
             .rev()
@@ -421,7 +493,7 @@ mod tests {
 
         let index = SidebarIndex::build(&objects, &[schema("tenant_000", true, false)]);
 
-        assert_eq!(index.len(), 50_000);
+        assert_eq!(len(&index), 50_000);
         assert_eq!(index.sections.len(), 100);
         let first = listed(&index).into_iter().take(2).collect::<Vec<_>>();
         assert_eq!(

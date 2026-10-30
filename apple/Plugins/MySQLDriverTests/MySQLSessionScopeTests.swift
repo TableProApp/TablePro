@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProMySQLCore
 import TableProPluginKit
 import Testing
 
@@ -103,6 +104,21 @@ struct MySQLSessionScopeTests {
     func writeModeFollowsTheSession(_ sessionMode: String, _ writeMode: String) {
         let saved = [PluginSessionSetting(name: "sql_mode", value: sessionMode)]
         #expect(MySQLSessionScopePlan.writeMode(saved: saved) == writeMode)
+    }
+
+    /// `SET SESSION foreign_key_checks = 'OFF'` and `'ON'` measured on MySQL 8.4.13, inside a transaction too.
+    @Test("Relaxing foreign keys saves foreign_key_checks alone, turns it off, and closing turns it back on")
+    func relaxedForeignKeysPlan() {
+        let saved = [PluginSessionSetting(name: "foreign_key_checks", value: "ON")]
+        #expect(MySQLSessionScopePlan.savedNames(for: .relaxedForeignKeys) == ["foreign_key_checks"])
+        let applied = MySQLSessionScopePlan.applied(for: .relaxedForeignKeys, saved: saved)
+        #expect(applied == [PluginSessionSetting(name: "foreign_key_checks", value: "OFF")])
+        #expect(applied?.compactMap { MySQLSessionStatements.assignment(name: $0.name, value: $0.value) } == [
+            "SET SESSION foreign_key_checks = 'OFF'",
+        ])
+        let restore = MySQLSessionScopePlan.restore(saved: saved, current: applied ?? [], isTransactionOpen: true)
+        #expect(restore.statements == ["SET SESSION foreign_key_checks = 'ON'"])
+        #expect(restore.isComplete)
     }
 
     @Test("A write scope with no saved mode adds only NO_AUTO_VALUE_ON_ZERO, and reading ignores the session's mode")
@@ -216,7 +232,7 @@ struct MySQLSessionScopeTests {
             host: "", port: 0, username: "", password: "", database: "",
             additionalFields: ["driverVariant": MySQLServerFlavor.databendVariant]
         ))
-        for purpose in [PluginSessionPurpose.preserve, .verbatimRead, .verbatimWrite] {
+        for purpose in [PluginSessionPurpose.preserve, .verbatimRead, .verbatimWrite, .relaxedForeignKeys] {
             #expect(try await driver.openSessionScope(for: purpose) == nil)
         }
         let routine = PluginRoutineInfo(name: "cleanup", kind: .procedure)

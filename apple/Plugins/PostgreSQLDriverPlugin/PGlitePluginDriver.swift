@@ -26,6 +26,9 @@ final class PGlitePluginDriver: PostgreSQLPluginDriver {
         super.capabilities.subtracting(.cancelQuery)
     }
 
+    // pldebugger is a server C extension and needs a second session; PGlite has neither.
+    override var canDebugRoutines: Bool { false }
+
     override func connect() async throws {
         do {
             try await super.connect()

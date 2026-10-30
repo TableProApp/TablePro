@@ -35,6 +35,8 @@ internal enum MySQLSessionScopePlan {
             return preservedNames
         case .verbatimRead, .verbatimWrite:
             return verbatimNames
+        case .relaxedForeignKeys:
+            return ["foreign_key_checks"]
         @unknown default:
             return []
         }
@@ -57,6 +59,8 @@ internal enum MySQLSessionScopePlan {
                 PluginSessionSetting(name: "sql_mode", value: writeMode(saved: saved)),
                 PluginSessionSetting(name: "time_zone", value: "+00:00"),
             ]
+        case .relaxedForeignKeys:
+            return [PluginSessionSetting(name: "foreign_key_checks", value: "OFF")]
         @unknown default:
             return nil
         }

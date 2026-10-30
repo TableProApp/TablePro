@@ -37,7 +37,7 @@ extension MainContentCoordinator {
         }
 
         guard let session = DatabaseManager.shared.activeSessions[connection.id], session.isConnected else {
-            if isTableTab { pendingLoadTrigger = .restore }
+            if isTableTab { parkedTableLoad = ParkedTableLoad(tabId: selected.id, trigger: .restore) }
             return
         }
 
@@ -144,6 +144,11 @@ extension MainContentCoordinator {
             )
             return
         }
+        // The connected panes lay out on the window's next frame; a read that landed first built the
+        // restored tab in that turn, one stall of both. Waited before the read, so the saves the read
+        // unlocks never see a tab list the restore has not merged into yet.
+        await window.nextFrame()
+        guard !isTearingDown else { return }
         let restoreStart = Date()
         let result = await persistence.restoreFromDisk()
         Self.lifecycleLogger.info(

@@ -76,7 +76,7 @@ impl XlsxSheetWriter {
             });
         }
         let mut workbook = Workbook::new();
-        let sheet = workbook.add_worksheet_with_constant_memory();
+        let sheet = workbook.add_worksheet_with_constant_memory().map_err(xlsx_error)?;
         sheet.set_name(sheet_title(sheet_name)).map_err(xlsx_error)?;
         let header = Format::new().set_bold();
         for (index, column) in columns.iter().enumerate() {

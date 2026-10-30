@@ -38,9 +38,15 @@ internal struct ObjectCopyRowCopier: Sendable {
     internal struct Outcome: Sendable {
         internal let inserted: Int
         internal let cancelled: Bool
-        /// What is in the target whatever happens next. Zero where the caller holds a transaction
-        /// it can roll back, and every flushed batch where it does not.
-        internal var committed: Int = 0
+    }
+
+    /// A table that failed after some of its batches were written. Outside a transaction those stay
+    /// in the target, and a count that left them out would send a retry over them.
+    internal struct PartialFailure: LocalizedError {
+        internal let written: Int
+        internal let underlying: any Error
+
+        internal var errorDescription: String? { underlying.localizedDescription }
     }
 
     internal let step: ObjectCopyTableStep
@@ -92,29 +98,35 @@ internal struct ObjectCopyRowCopier: Sendable {
 
         var inserted = 0
 
-        while let element = try await stream.next() {
+        do {
+            while let element = try await stream.next() {
+                if Task.isCancelled { return Outcome(inserted: inserted, cancelled: true) }
+                guard case .rows(let rows) = element else { continue }
+                for row in rows {
+                    let values = try aligned(row)
+                    let rowBytes = budget.byteCount(of: values)
+                    guard let batch = filler.append(values, bytes: rowBytes) else { continue }
+                    inserted += try await write(batch, generator: generator, driver: targetDriver)
+                    onProgress(inserted)
+                    if Task.isCancelled { return Outcome(inserted: inserted, cancelled: true) }
+                }
+            }
+
+            /// Checked again here. Cancellation can reach an `AsyncThrowingStream` as an ordinary end
+            /// of stream, or land after its last element, and the loop then falls out with rows still
+            /// pending: writing them committed a batch the user had already stopped and reported the
+            /// table as copied.
             if Task.isCancelled { return Outcome(inserted: inserted, cancelled: true) }
-            guard case .rows(let rows) = element else { continue }
-            for row in rows {
-                let values = try aligned(row)
-                let rowBytes = budget.byteCount(of: values)
-                guard let batch = filler.append(values, bytes: rowBytes) else { continue }
+            if let batch = filler.take() {
                 inserted += try await write(batch, generator: generator, driver: targetDriver)
                 onProgress(inserted)
-                if Task.isCancelled { return Outcome(inserted: inserted, cancelled: true) }
             }
+            return Outcome(inserted: inserted, cancelled: Task.isCancelled)
+        } catch is CancellationError {
+            return Outcome(inserted: inserted, cancelled: true)
+        } catch where inserted > 0 {
+            throw PartialFailure(written: inserted, underlying: error)
         }
-
-        /// Checked again here. Cancellation can reach an `AsyncThrowingStream` as an ordinary end
-        /// of stream, or land after its last element, and the loop then falls out with rows still
-        /// pending: writing them committed a batch the user had already stopped and reported the
-        /// table as copied.
-        if Task.isCancelled { return Outcome(inserted: inserted, cancelled: true) }
-        if let batch = filler.take() {
-            inserted += try await write(batch, generator: generator, driver: targetDriver)
-            onProgress(inserted)
-        }
-        return Outcome(inserted: inserted, cancelled: Task.isCancelled)
     }
 
     // MARK: - Server side
@@ -139,9 +151,6 @@ internal struct ObjectCopyRowCopier: Sendable {
         /// worse-looking number; over-reporting one is a false claim about their data.
         let inserted = result.rowsAffected
         onProgress(inserted)
-        /// `committed` is left at zero, as the streamed path leaves it: whether these rows survive
-        /// is the caller's transaction to decide, and it is the caller that fills it in when there
-        /// is no transaction to roll back.
         return Outcome(inserted: inserted, cancelled: false)
     }
 

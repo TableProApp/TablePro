@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use gtk4 as gtk;
 use gtk4::glib;
+use gtk4::subclass::prelude::*;
 use libadwaita as adw;
 use libadwaita::prelude::*;
 use tablepro_core::EditorSession;
@@ -169,10 +170,9 @@ impl WorkspaceModel {
             self.retitle_tab(id);
         }
         let dirty = dirty_tabs.iter().any(|tab| tab.kind.lost_with_the_window());
-        if self.reported_dirty.replace(Some(dirty)) == Some(dirty) {
-            return;
-        }
-        if let Some(workspace) = self.this.upgrade() {
+        if let Some(workspace) = self.this.upgrade()
+            && workspace.imp().dirty.replace(dirty) != dirty
+        {
             workspace.emit_by_name::<()>("dirty-changed", &[&dirty]);
         }
     }

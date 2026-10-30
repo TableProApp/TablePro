@@ -17,7 +17,7 @@ struct IndexKeyDialect: Equatable, Sendable {
             return IndexKeyDialect(takesPrefixLengths: true, takesExpressions: true)
         case .mariadb, .tidb, .oceanbase:
             return IndexKeyDialect(takesPrefixLengths: true, takesExpressions: false)
-        case .postgresql, .pglite, .sqlite, .libsql, .turso, .cloudflareD1, .duckdb:
+        case .postgresql, .pglite, .kingbasees, .sqlite, .libsql, .turso, .cloudflareD1, .duckdb:
             return IndexKeyDialect(takesPrefixLengths: false, takesExpressions: true)
         default:
             return .columnsOnly

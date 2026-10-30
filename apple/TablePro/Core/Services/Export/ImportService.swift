@@ -97,7 +97,7 @@ final class ImportService: ObservableObject {
             source = SqlFileImportSource(
                 url: url,
                 encoding: encoding,
-                grammar: connection.type.lexicalGrammar,
+                grammar: SQLLexicalResolver.executionGrammar(for: connection.type, connectionId: connection.id),
                 family: TransactionEngineFamily.of(connection.type),
                 decompressedURL: decompressedURL,
                 ownsDecompressedFile: ownsDecompressedFile

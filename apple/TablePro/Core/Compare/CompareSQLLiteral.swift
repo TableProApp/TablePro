@@ -104,7 +104,7 @@ internal enum CompareSQLLiteral {
             return .bitString
         case .duckdb:
             return .unhexFunction
-        case .postgresql, .cockroachdb, .redshift, .pglite:
+        case .postgresql, .cockroachdb, .redshift, .pglite, .kingbasees:
             return .postgresBytea
         case .mssql:
             return .zeroX

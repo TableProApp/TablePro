@@ -77,6 +77,7 @@ internal enum SidebarMenuCommand: Equatable {
     case refreshHierarchicalSchema(String)
     case copyText(String)
     case showObjectSource(DatabaseObjectRef)
+    case debugRoutine(DatabaseTreeRoutineRef)
     case dropUserType(DatabaseTreeUserTypeRef)
     case renameUserType(DatabaseTreeUserTypeRef)
     /// Nil database and schema mean the ones the sidebar is browsing.

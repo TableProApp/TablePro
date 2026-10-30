@@ -187,8 +187,7 @@ struct QueryPlanResultView: View {
                         Text(mode.title).tag(mode)
                     }
                 }
-                .pickerStyle(.segmented)
-                .controlSize(.small)
+                .viewSwitcherStyle()
                 .fixedSize()
                 .labelsHidden()
                 .accessibilityIdentifier("query-plan-mode-picker")

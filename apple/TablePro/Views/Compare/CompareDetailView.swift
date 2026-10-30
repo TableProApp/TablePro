@@ -29,16 +29,15 @@ internal struct CompareDetailView: View {
     }
 
     private var paneSelector: some View {
-        Picker(String(localized: "Detail"), selection: $session.detailPane) {
+        PaneTabBar(
+            title: String(localized: "Detail"),
+            selection: $session.detailPane,
+            identifier: "compare-detail-tabs"
+        ) {
             ForEach(CompareDetailPane.allCases, id: \.self) { pane in
                 Text(pane.title).tag(pane)
             }
         }
-        .pickerStyle(.segmented)
-        .labelsHidden()
-        .fixedSize()
-        .padding(.vertical, 8)
-        .frame(maxWidth: .infinity)
     }
 
     @ViewBuilder

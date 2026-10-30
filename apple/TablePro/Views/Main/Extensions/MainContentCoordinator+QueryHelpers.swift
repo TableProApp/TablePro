@@ -76,7 +76,7 @@ extension MainContentCoordinator {
             return
         }
         if isAutoLoad, services.databaseManager.driver(for: connectionId)?.status != .connected {
-            pendingLoadTrigger = trigger
+            parkedTableLoad = ParkedTableLoad(tabId: tabId, trigger: trigger)
             return
         }
         handleQueryExecutionError(error, sql: sql, tabId: tabId, connection: conn, serverOutput: serverOutput)

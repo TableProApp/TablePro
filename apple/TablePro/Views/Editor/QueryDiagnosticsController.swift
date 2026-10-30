@@ -9,6 +9,7 @@
 import AppKit
 import os
 import TableProEditorKit
+import TableProSQLGrammar
 import TableProTextEngine
 
 @MainActor
@@ -32,8 +33,8 @@ final class QueryDiagnosticsController {
         self.clock = clock
     }
 
-    func configure(databaseType: DatabaseType?) {
-        producer = QueryDiagnosticsFactory.make(for: databaseType)
+    func configure(databaseType: DatabaseType?, grammar: SQLLexicalGrammar? = nil) {
+        producer = QueryDiagnosticsFactory.make(for: databaseType, grammar: grammar)
         diagnostics = []
     }
 

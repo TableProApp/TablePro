@@ -53,31 +53,30 @@ impl CloseGuards {
     async fn run(
         &self,
         parent: &gtk::Widget,
-        handle: &WorkspaceHandle,
+        handles: &[WorkspaceHandle],
         scope: CloseScope,
         acknowledged: &mut HashSet<Uuid>,
     ) -> CloseDecision {
         let _turn = self.turn.lock().await;
-        CloseGuard::run(parent, handle, scope, acknowledged).await
+        CloseGuard::run(parent, handles, scope, acknowledged).await
     }
 
     /// The window closes only once its prompts approve; `on_close` runs
     /// as it does. A close request while they decide is dropped, since
-    /// their dialog is already on screen. `handle` gives the workspace
-    /// the window shows at the time, and a window with none closes at
-    /// once.
+    /// their dialog is already on screen. `handles` gives the workspace
+    /// of each session the window holds at the time, all asked in one
+    /// pass, so nothing is saved or discarded until every one agreed, and
+    /// a window with none closes at once.
     pub(crate) fn connect_window<W: IsA<gtk::Window>>(
         self: &Rc<Self>,
         window: &W,
-        handle: impl Fn() -> Option<WorkspaceHandle> + 'static,
+        handles: impl Fn() -> Vec<WorkspaceHandle> + 'static,
         on_close: impl Fn(&W) + 'static,
     ) {
         let guards = self.clone();
         window.connect_close_request(move |window| {
             guards.requests.set(guards.requests.get() + 1);
-            if let Some(handle) = handle()
-                && !guards.window_may_close(window.upcast_ref(), &handle)
-            {
+            if !guards.window_may_close(window.upcast_ref(), handles()) {
                 return glib::Propagation::Stop;
             }
             on_close(window);
@@ -113,20 +112,23 @@ impl CloseGuards {
         }
     }
 
-    fn window_may_close(self: &Rc<Self>, window: &gtk::Window, handle: &WorkspaceHandle) -> bool {
+    fn window_may_close(self: &Rc<Self>, window: &gtk::Window, handles: Vec<WorkspaceHandle>) -> bool {
         match self.window.get() {
             WindowClose::Asking => return false,
             WindowClose::Approved => return true,
             WindowClose::Open => {}
         }
-        if handle.close_step(CloseScope::Window, &HashSet::new()) == CloseStep::Approve {
+        if handles
+            .iter()
+            .all(|handle| handle.close_step(CloseScope::Window, &HashSet::new()) == CloseStep::Approve)
+        {
             return true;
         }
         self.window.set(WindowClose::Asking);
-        let (guards, handle, window) = (self.clone(), handle.clone(), window.clone());
+        let (guards, window) = (self.clone(), window.clone());
         glib::spawn_future_local(async move {
             let decision = guards
-                .run(window.upcast_ref(), &handle, CloseScope::Window, &mut HashSet::new())
+                .run(window.upcast_ref(), &handles, CloseScope::Window, &mut HashSet::new())
                 .await;
             match decision {
                 CloseDecision::Approved => {
@@ -156,7 +158,12 @@ impl CloseGuards {
         let (guards, handle, parent) = (self.clone(), handle.clone(), parent.clone());
         glib::spawn_future_local(async move {
             let decision = guards
-                .run(&parent, &handle, CloseScope::Tab(tab), &mut HashSet::new())
+                .run(
+                    &parent,
+                    std::slice::from_ref(&handle),
+                    CloseScope::Tab(tab),
+                    &mut HashSet::new(),
+                )
                 .await;
             decided(decision);
         });
@@ -184,7 +191,12 @@ impl CloseGuards {
         glib::spawn_future_local(async move {
             let mut acknowledged = guards.teardown_acknowledged.borrow().clone();
             let decision = guards
-                .run(&parent, &handle, CloseScope::Window, &mut acknowledged)
+                .run(
+                    &parent,
+                    std::slice::from_ref(&handle),
+                    CloseScope::Window,
+                    &mut acknowledged,
+                )
                 .await;
             if decision == CloseDecision::Approved {
                 guards.teardown_acknowledged.replace(acknowledged);
@@ -205,6 +217,7 @@ mod tests {
     use crate::services::change_tracker::RowKey;
     use crate::services::tracker_edit::TrackerEdit;
     use crate::test_support::{OwnedWindow, drain_main_context, wait_until};
+    use crate::workspace::PendingState;
     use crate::workspace::dialog_response::{answer, visible_alert};
     use crate::workspace::test_workspace::{WAIT, Workspace};
 
@@ -225,7 +238,7 @@ mod tests {
         let handle = workspace.handle.clone();
         guards.connect_window(
             &*window,
-            move || Some(handle.clone()),
+            move || vec![handle.clone()],
             move |_| sink.set(sink.get() + 1),
         );
         (window, closes)
@@ -278,13 +291,51 @@ mod tests {
         assert!(visible_alert(&window).is_none());
     }
 
+    /// A window of two sessions asks once about both, and saves or
+    /// discards nothing until that answer.
+    #[gtk4::test]
+    fn one_save_changes_covers_every_workspace_and_cancel_keeps_them_all() {
+        let (first, second) = (
+            Workspace::open(ConnectionScript::default()),
+            Workspace::open(ConnectionScript::default()),
+        );
+        let guards = CloseGuards::new();
+        let window = window();
+        let closes = Rc::new(Cell::new(0));
+        let sink = closes.clone();
+        let handles = [first.handle.clone(), second.handle.clone()];
+        guards.connect_window(&*window, move || handles.to_vec(), move |_| sink.set(sink.get() + 1));
+
+        window.close();
+        let kept = answer_next(&window, "Save Changes?", "cancel", None);
+        wait_until(WAIT, || guards.window.get() == WindowClose::Open).expect("the close to be dropped");
+
+        assert_eq!(
+            kept.response_label("discard").as_str(),
+            "_Discard All",
+            "the prompt did not list both tabs"
+        );
+        assert_eq!(closes.get(), 0);
+        assert_eq!(first.tracker.pending_state(), PendingState::Unsaved);
+        assert_eq!(second.tracker.pending_state(), PendingState::Unsaved);
+
+        window.close();
+        answer_next(&window, "Save Changes?", "discard", Some(&kept));
+        wait_until(WAIT, || closes.get() == 1).expect("the approved close to go through");
+        drain_main_context();
+
+        assert_eq!(closes.get(), 1);
+        assert_eq!(first.tracker.pending_state(), PendingState::Clean);
+        assert_eq!(second.tracker.pending_state(), PendingState::Clean);
+    }
+
     #[gtk4::test]
     fn a_window_with_no_workspace_closes_without_asking() {
         let guards = CloseGuards::new();
         let window = window();
         let closes = Rc::new(Cell::new(0));
         let sink = closes.clone();
-        guards.connect_window(&*window, || None, move |_| sink.set(sink.get() + 1));
+        guards.connect_window(&*window, Vec::new, move |_| sink.set(sink.get() + 1));
 
         window.close();
 

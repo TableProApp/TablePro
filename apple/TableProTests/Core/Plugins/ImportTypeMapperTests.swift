@@ -93,4 +93,10 @@ struct ImportTypeMapperTests {
         #expect(ImportTypeMapper.sqlType(for: .integer, databaseType: .clickhouse) == "INTEGER")
         #expect(ImportTypeMapper.sqlType(for: .boolean, databaseType: .clickhouse) == "BOOLEAN")
     }
+    @Test("KingbaseES imports keep 64-bit integers and native JSON")
+    func kingbaseImportTypes() {
+        #expect(ImportTypeMapper.sqlType(for: .integer, databaseType: .kingbasees) == "BIGINT")
+        #expect(ImportTypeMapper.sqlType(for: .json, databaseType: .kingbasees, serverVersion: "12.1") == "JSONB")
+        #expect(ImportTypeMapper.sqlType(for: .boolean, databaseType: .kingbasees) == "BOOLEAN")
+    }
 }

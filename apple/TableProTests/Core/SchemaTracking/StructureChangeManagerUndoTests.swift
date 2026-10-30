@@ -244,10 +244,7 @@ struct StructureChangeManagerUndoTests {
         #expect(manager.workingColumns.contains(where: { $0.id == newCol.id }))
     }
 
-    /// The other half of the grouping contract, and the one with no test before this. The structure
-    /// grid deletes a multi-row selection by calling `deleteColumn` once per row, so without an
-    /// explicit group a five-row delete would take five undos. `performAsOneUndoStep` is what the
-    /// two grid delegates wrap those loops in.
+    // The grid deletes a multi-row selection one `deleteColumn` per row; without a group, five rows took five undos.
     @Test("A batch wrapped in performAsOneUndoStep undoes as one step")
     @MainActor func batchedDeletesUndoTogether() {
         let manager = makeManager()
@@ -269,6 +266,39 @@ struct StructureChangeManagerUndoTests {
         #expect(manager.pendingChanges[.column(emailCol.id)] == nil)
         #expect(manager.hasChanges == false)
         #expect(manager.canUndo == false)
+    }
+
+    @Test("Duplicating several rows is one undo step")
+    @MainActor func duplicatedRowsUndoTogether() {
+        let manager = makeManager()
+        loadSampleSchema(manager)
+        let names = manager.workingColumns.map(\.name)
+
+        StructureGridEdits.duplicate(sourceIndices: [2, 1], tab: .columns, manager: manager)
+        #expect(manager.workingColumns.count == names.count + 2)
+        #expect(manager.workingColumns.suffix(2).map(\.name) == ["name", "email"])
+
+        manager.undo()
+
+        #expect(manager.workingColumns.map(\.name) == names)
+        #expect(manager.hasChanges == false)
+        #expect(manager.canUndo == false)
+    }
+
+    @Test("Duplicating a primary index stages a plain copy, and one undo removes it")
+    @MainActor func duplicatedPrimaryIndexIsNotPrimary() throws {
+        let manager = makeManager()
+        loadSampleSchema(manager)
+
+        StructureGridEdits.duplicate(sourceIndices: [0], tab: .indexes, manager: manager)
+        let copy = try #require(manager.workingIndexes.last)
+        #expect(manager.workingIndexes.count == 2)
+        #expect(!copy.isPrimary)
+
+        manager.undo()
+
+        #expect(manager.workingIndexes.count == 1)
+        #expect(manager.hasChanges == false)
     }
 
     // MARK: - Discard Clears Undo

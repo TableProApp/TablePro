@@ -1,6 +1,7 @@
 import Foundation
 import TableProAutocomplete
 import TableProPluginKit
+import TableProSQLGrammar
 
 struct QueryCompletionSession {
     let items: [SQLCompletionItem]
@@ -29,7 +30,8 @@ enum QueryCompletionServiceFactory {
         schemaProvider: SQLSchemaProvider?,
         databaseType: DatabaseType?,
         profile: QueryCompletionProfile? = nil,
-        connectionId: UUID? = nil
+        connectionId: UUID? = nil,
+        grammar: SQLLexicalGrammar? = nil
     ) -> QueryCompletionService {
         let language = databaseType.map { PluginManager.shared.editorLanguage(for: $0) } ?? .sql
 
@@ -41,6 +43,7 @@ enum QueryCompletionServiceFactory {
                 schemaProvider: schemaProvider,
                 databaseType: databaseType,
                 profile: profile,
+                grammar: grammar,
                 identifierCase: { SQLIdentifierCase.stored(for: connectionId) }
             )
         }

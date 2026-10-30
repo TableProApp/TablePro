@@ -25,6 +25,7 @@ use tokio_postgres::{Client, Row};
 use crate::catalog::{
     PRIMARY_KEY_NAME_SQL, PgColumnRow, column_definition, column_info, inbound_foreign_key, inbound_foreign_keys_sql,
 };
+use crate::codec::TextArray;
 use crate::errors::map_error;
 
 /// Rows of a catalogue query whose parameters are all text.
@@ -101,7 +102,7 @@ pub(crate) async fn fetch_table_definition(
             let field = decode_error("pg_constraint");
             Ok(PrimaryKeyConstraint {
                 name: Some(row.try_get(0).map_err(&field)?),
-                columns: row.try_get(1).map_err(&field)?,
+                columns: row.try_get::<_, TextArray>(1).map_err(&field)?.0,
             })
         })
         .transpose()?;
@@ -114,5 +115,82 @@ pub(crate) async fn fetch_table_definition(
         inbound_foreign_keys,
         // PostgreSQL has no statement that prints a table's own DDL.
         source: None,
+        options: None,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::catalog::COLUMNS_SQL_BEFORE_14;
+
+    /// Words that take a parenthesis without calling a function by name.
+    const SYNTAX: [&str; 14] = [
+        "AS", "ARRAY", "COALESCE", "EXISTS", "FROM", "IN", "ANY", "NULLIF", "GREATEST", "ON", "AND", "OR", "NOT",
+        "OPERATOR",
+    ];
+
+    /// Names called without `pg_catalog.` in front, which the session's
+    /// search_path would resolve. An alias's column list after AS is no
+    /// call, and neither is text in a string.
+    fn bare_calls(sql: &str) -> Vec<String> {
+        let mut code = String::with_capacity(sql.len());
+        let mut quoted = false;
+        for c in sql.chars() {
+            if c == '\'' {
+                quoted = !quoted;
+            }
+            code.push(if quoted { ' ' } else { c });
+        }
+        let mut words: Vec<(usize, usize)> = Vec::new();
+        let mut start = None;
+        for (index, c) in code.char_indices().chain([(code.len(), ' ')]) {
+            match (start, c.is_ascii_alphanumeric() || c == '_') {
+                (None, true) => start = Some(index),
+                (Some(from), false) => {
+                    words.push((from, index));
+                    start = None;
+                }
+                _ => {}
+            }
+        }
+        let mut calls = Vec::new();
+        for (nth, &(from, to)) in words.iter().enumerate() {
+            let word = &code[from..to];
+            let calls_it = code[to..].trim_start().starts_with('(');
+            let qualified = code[..from].ends_with('.');
+            let after_as = nth > 0 && code[words[nth - 1].0..words[nth - 1].1].eq_ignore_ascii_case("AS");
+            let syntax = SYNTAX.iter().any(|keyword| keyword.eq_ignore_ascii_case(word));
+            if calls_it && !qualified && !after_as && !syntax {
+                calls.push(word.to_owned());
+            }
+        }
+        calls
+    }
+
+    #[test]
+    fn every_catalog_read_names_its_functions_in_pg_catalog() {
+        for (name, sql) in [
+            ("schemas", objects::SCHEMAS_SQL.to_owned()),
+            ("objects", objects::OBJECTS_SQL.to_owned()),
+            ("identity", identity::IDENTITY_SQL.to_owned()),
+            ("indexes", indexes::INDEXES_SQL.to_owned()),
+            ("estimate", estimate::ESTIMATE_SQL.to_owned()),
+            ("foreign keys", foreign_keys::foreign_keys_sql()),
+            ("inbound foreign keys", inbound_foreign_keys_sql()),
+            ("primary key", PRIMARY_KEY_NAME_SQL.to_owned()),
+            ("columns", crate::catalog::COLUMNS_SQL.to_owned()),
+            ("columns before 14", COLUMNS_SQL_BEFORE_14.to_owned()),
+        ] {
+            assert_eq!(bare_calls(&sql), Vec::<String>::new(), "{name}");
+        }
+    }
+
+    #[test]
+    fn a_bare_call_is_found_and_a_qualified_one_or_an_alias_is_not() {
+        assert_eq!(
+            bare_calls("SELECT unnest(a), pg_catalog.unnest(b), COALESCE(x, 'f(y)') FROM t AS k(a, b)"),
+            ["unnest"]
+        );
+    }
 }

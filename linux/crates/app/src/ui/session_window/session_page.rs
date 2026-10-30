@@ -1,67 +1,69 @@
 use std::sync::Arc;
 
 use tablepro_session::{ConnectSource, Session, SessionClaim, SessionKey};
+use tablepro_storage::CredentialDemand;
+use tokio_util::sync::CancellationToken;
 
 use super::session_window_command::ConnectFailure;
 use crate::ui::workspace::Workspace;
 
-/// Which page a window shows, and what it holds for that page. The
-/// claim on the session's key lives here, so leaving the page releases
-/// it.
-#[derive(Default)]
+/// A session the window holds, with the claim on its key and the
+/// workspace that shows it.
+pub(crate) struct OpenSession {
+    pub(crate) claim: SessionClaim,
+    pub(crate) session: Arc<Session>,
+    pub(crate) workspace: Workspace,
+}
+
+/// A connect the window runs, its first one included. Its result
+/// carries `id`, so a result for one the window stopped or started
+/// again finds nothing and is closed.
+pub(crate) struct PendingConnect {
+    pub(crate) id: u64,
+    pub(crate) claim: SessionClaim,
+    pub(crate) source: ConnectSource,
+    pub(crate) cancel: CancellationToken,
+    /// What the connect asks beyond the stored secrets, kept for the
+    /// connect that follows the question about its file.
+    pub(crate) demand: CredentialDemand,
+}
+
+/// A connect that failed while the window had nothing else to show,
+/// which keeps its claim for the failed page's ways on.
+pub(crate) struct FailedConnect {
+    pub(crate) claim: SessionClaim,
+    pub(crate) source: ConnectSource,
+    pub(crate) failure: ConnectFailure,
+}
+
+/// The key a connect from `source` claims.
+pub(crate) fn source_key(source: &ConnectSource) -> SessionKey {
+    match source {
+        ConnectSource::Saved(saved) => SessionKey::Saved(saved.id),
+        ConnectSource::Intent(intent) => intent.key.clone(),
+        ConnectSource::File(identity) => SessionKey::File(identity.uri.clone()),
+    }
+}
+
+/// What the window shows, worked out from what it holds: its sessions,
+/// else the failed connect, else its first connect, else the picker.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SessionPage {
-    /// The saved connections, to pick one from.
-    #[default]
     Picker,
-    Connecting {
-        claim: SessionClaim,
-        source: ConnectSource,
-    },
-    ConnectFailed {
-        claim: SessionClaim,
-        source: ConnectSource,
-        failure: ConnectFailure,
-    },
-    Workspace {
-        claim: SessionClaim,
-        session: Arc<Session>,
-        workspace: Workspace,
-    },
+    /// The first of the window's connects, by its id.
+    Connecting(u64),
+    Failed,
+    Shell,
 }
 
 impl SessionPage {
-    /// The key the page holds a claim on.
-    pub(crate) fn key(&self) -> Option<&SessionKey> {
-        match self {
-            Self::Picker => None,
-            Self::Connecting { claim, .. } | Self::ConnectFailed { claim, .. } | Self::Workspace { claim, .. } => {
-                Some(claim.key())
-            }
-        }
-    }
-
     #[cfg(test)]
-    pub(crate) fn name(&self) -> &'static str {
+    pub(crate) fn name(self) -> &'static str {
         match self {
             Self::Picker => "picker",
-            Self::Connecting { .. } => "connecting",
-            Self::ConnectFailed { .. } => "connect-failed",
-            Self::Workspace { .. } => "workspace",
-        }
-    }
-}
-
-impl std::fmt::Debug for SessionPage {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Picker => f.write_str("Picker"),
-            Self::Connecting { claim, .. } => f.debug_struct("Connecting").field("key", claim.key()).finish(),
-            Self::ConnectFailed { claim, failure, .. } => f
-                .debug_struct("ConnectFailed")
-                .field("key", claim.key())
-                .field("failure", failure)
-                .finish(),
-            Self::Workspace { claim, .. } => f.debug_struct("Workspace").field("key", claim.key()).finish(),
+            Self::Connecting(_) => "connecting",
+            Self::Failed => "connect-failed",
+            Self::Shell => "workspace",
         }
     }
 }

@@ -26,6 +26,7 @@ extension DatabaseType {
     static let pglite = DatabaseType(rawValue: "PGlite")
 
     // Registry-distributed types (known plugins, downloadable separately)
+    static let kingbasees = DatabaseType(rawValue: "KingbaseES")
     static let mongodb = DatabaseType(rawValue: "MongoDB")
     static let redis = DatabaseType(rawValue: "Redis")
     static let mssql = DatabaseType(rawValue: "SQL Server")

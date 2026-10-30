@@ -60,6 +60,15 @@ struct PostgreSQLDashboardProviderTests {
         #expect(try catalog(for: .cockroachdb, serverVersion: "13.0.0") == .current)
     }
 
+    // KingbaseES V9R1C10 reports server_version 12.1 in both modes and answers all five metrics.
+    @Test("KingbaseES reads the current catalog and every metric")
+    func kingbaseReadsCurrentCatalog() throws {
+        let provider = ServerDashboardQueryProviderFactory.provider(for: .kingbasees, serverVersion: "12.1")
+        let postgres = try #require(provider as? PostgreSQLDashboardProvider)
+        #expect(postgres.activityCatalog == .current)
+        #expect(postgres.metricSet == .full)
+    }
+
     @Test("Redshift never names a pg_stat_activity column that arrived after PostgreSQL 8.0")
     func redshiftAsksOnlyForItsColumns() async throws {
         let provider = try #require(

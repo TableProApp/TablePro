@@ -192,7 +192,9 @@ final class QueryTabManager: ObservableObject {
         guard !strip.isEmpty else { return nil }
         let current = selectedTab.flatMap { tab in strip.firstIndex { $0.id == tab.id } } ?? 0
         let count = strip.count
-        return strip[((current + offset) % count + count) % count].id
+        // Reduced before it is added, so no offset can overflow.
+        let step = offset % count
+        return strip[((current + step) % count + count) % count].id
     }
 
     // MARK: - Recency
@@ -580,6 +582,23 @@ final class QueryTabManager: ObservableObject {
         return newTab.id
     }
 
+    // One tab per run: debugging the same routine again starts a second session rather than taking over a live one.
+    @discardableResult
+    func addRoutineDebugTab(id: UUID = UUID(), title: String, databaseName: String, schemaName: String?) -> UUID {
+        var newTab = QueryTab(id: id, title: title, tabType: .routineDebug)
+        newTab.tableContext.isEditable = false
+        newTab.tableContext.databaseName = databaseName
+        newTab.tableContext.schemaName = schemaName.flatMap { $0.isEmpty ? nil : $0 }
+        newTab.hasUserInteraction = true
+        tabs.append(newTab)
+        selectedTabId = newTab.id
+        return newTab.id
+    }
+
+    static func routineDebugTitle(for name: String) -> String {
+        String(format: String(localized: "Debug %@"), name)
+    }
+
     // Qualified by schema where tables are listed per schema, or two listings in one database would share a label.
     static func tableListingTitle(kindTitle: String, schemaName: String?) -> String {
         guard let schemaName, !schemaName.isEmpty else { return kindTitle }
@@ -742,8 +761,11 @@ extension QueryTabManager {
         return visible
     }
 
+    // A debug tab names no entry: its paused target holds locks whichever database the sidebar shows, so it stays in
+    // sight everywhere while its run keeps the database it was started in.
     func containerName(of tab: QueryTab) -> String? {
-        WorkspaceAnchoring.containerName(of: tab, target: containerTarget)
+        guard !tab.tabType.isTransient else { return nil }
+        return WorkspaceAnchoring.containerName(of: tab, target: containerTarget)
     }
 
     // A tab naming no container (a server dashboard, a query tab on a browse-following engine) shows in every entry.
@@ -810,7 +832,8 @@ extension QueryTabManager {
         switch type {
         case .query, .table, .createTable, .erDiagram, .objectSource, .tableListing:
             return true
-        case .serverDashboard, .usersRoles, .insights, .versionHistory:
+        // A paused debug target holds locks, so its tab stays in sight whichever entry the sidebar shows.
+        case .serverDashboard, .usersRoles, .insights, .versionHistory, .routineDebug:
             return false
         }
     }

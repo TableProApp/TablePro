@@ -48,6 +48,15 @@ struct ObjectCopyPlannerOrderingTests {
         )
     }
 
+    private func parentsFirst(
+        _ selections: [ObjectCopySelection],
+        reads: [ObjectCopySelection: TableStructureRead]
+    ) -> [ObjectCopySelection] {
+        ObjectCopyPlanner.orderedByDependency(
+            [(namespace: "public", tables: selections)], reads: reads
+        )
+    }
+
     @Test
     func aParentIsCreatedBeforeItsChild() {
         let orders = selection("orders")
@@ -57,9 +66,7 @@ struct ObjectCopyPlannerOrderingTests {
             customers: read("customers")
         ]
 
-        let ordered = ObjectCopyPlanner.orderedByDependency(
-            [orders, customers], reads: reads, effectiveSchema: "public"
-        )
+        let ordered = parentsFirst([orders, customers], reads: reads)
 
         #expect(ordered.map(\.name) == ["customers", "orders"])
     }
@@ -76,12 +83,65 @@ struct ObjectCopyPlannerOrderingTests {
             customers: read("customers")
         ]
 
-        let ordered = ObjectCopyPlanner.orderedByDependency(
-            [orders, customers], reads: reads, effectiveSchema: "public"
-        )
+        let ordered = parentsFirst([orders, customers], reads: reads)
 
         #expect(ordered.map(\.name) == ["customers", "orders"],
             "the edge has to survive the schema the table itself does not report")
+    }
+
+    /// Sorted one scope at a time, a PostgreSQL database copy created `app.orders` before the
+    /// `core.users` it references, because `app` was the first scope.
+    @Test
+    func aParentInAnotherScopeIsCreatedFirst() {
+        let orders = selection("orders", schema: "app")
+        let users = selection("users", schema: "core")
+        let reads: [ObjectCopySelection: TableStructureRead] = [
+            orders: read("orders", referencing: ["users"], referencedSchema: "core"),
+            users: read("users")
+        ]
+
+        let ordered = ObjectCopyPlanner.orderedByDependency(
+            [(namespace: "app", tables: [orders]), (namespace: "core", tables: [users])],
+            reads: reads
+        )
+
+        #expect(ordered.map(\.qualifiedName) == ["core.users", "app.orders"])
+    }
+
+    /// A case-sensitive MySQL server holds `Shop` and `shop` side by side, so a key into `shop` is
+    /// no edge in `Shop`. Without one the tie-break puts `buildings` first.
+    @Test
+    func aDatabaseSpelledInAnotherCaseIsAnotherDatabase() {
+        let buildings = selection("buildings", schema: nil)
+        let estates = selection("estates", schema: nil)
+        let reads: [ObjectCopySelection: TableStructureRead] = [
+            buildings: read("buildings", referencing: ["estates"], referencedSchema: "shop"),
+            estates: read("estates")
+        ]
+
+        let ordered = ObjectCopyPlanner.orderedByDependency(
+            [(namespace: "Shop", tables: [buildings, estates])], reads: reads
+        )
+
+        #expect(ordered.map(\.name) == ["buildings", "estates"])
+    }
+
+    /// PostgreSQL schemas `App` and `app` are two schemas, so a key into `App` is no edge in `app`.
+    /// Without one the tie-break puts `orders` first.
+    @Test
+    func aSchemaSpelledInAnotherCaseIsAnotherSchema() {
+        let orders = selection("orders", schema: "app")
+        let users = selection("users", schema: "app")
+        let reads: [ObjectCopySelection: TableStructureRead] = [
+            orders: read("orders", referencing: ["users"], referencedSchema: "App"),
+            users: read("users")
+        ]
+
+        let ordered = ObjectCopyPlanner.orderedByDependency(
+            [(namespace: "app", tables: [users, orders])], reads: reads
+        )
+
+        #expect(ordered.map(\.name) == ["orders", "users"])
     }
 
     /// A cycle cannot be ordered, and dropping one of its tables would be worse than letting the
@@ -95,9 +155,7 @@ struct ObjectCopyPlannerOrderingTests {
             second: read("b", referencing: ["a"])
         ]
 
-        let ordered = ObjectCopyPlanner.orderedByDependency(
-            [first, second], reads: reads, effectiveSchema: "public"
-        )
+        let ordered = parentsFirst([first, second], reads: reads)
 
         #expect(Set(ordered.map(\.name)) == ["a", "b"])
         #expect(ordered.count == 2)
@@ -106,9 +164,7 @@ struct ObjectCopyPlannerOrderingTests {
     @Test
     func aSingleTableIsReturnedUnchanged() {
         let only = selection("orders")
-        #expect(ObjectCopyPlanner.orderedByDependency(
-                [only], reads: [only: read("orders")], effectiveSchema: "public"
-            ).map(\.name) == ["orders"])
+        #expect(parentsFirst([only], reads: [only: read("orders")]).map(\.name) == ["orders"])
     }
 
     @Test
@@ -302,9 +358,7 @@ struct ObjectCopyPlannerOrderingTests {
         let unread = names.map { selection($0) }
         let reads: [ObjectCopySelection: TableStructureRead] = [placed: read("customers")]
 
-        let ordered = ObjectCopyPlanner.orderedByDependency(
-            [placed] + unread, reads: reads, effectiveSchema: "public"
-        )
+        let ordered = parentsFirst([placed] + unread, reads: reads)
 
         #expect(ordered.map(\.name) == ["customers"] + names)
     }
@@ -320,12 +374,8 @@ struct ObjectCopyPlannerOrderingTests {
         var backwards: [ObjectCopySelection: TableStructureRead] = [:]
         for (selection, name) in zip(selections, names).reversed() { backwards[selection] = read(name) }
 
-        let first = ObjectCopyPlanner.orderedByDependency(
-            selections, reads: forwards, effectiveSchema: "public"
-        )
-        let second = ObjectCopyPlanner.orderedByDependency(
-            selections, reads: backwards, effectiveSchema: "public"
-        )
+        let first = parentsFirst(selections, reads: forwards)
+        let second = parentsFirst(selections, reads: backwards)
 
         #expect(first.map(\.name) == second.map(\.name))
         #expect(Set(first.map(\.name)) == Set(names))
@@ -344,9 +394,7 @@ struct ObjectCopyPlannerOrderingTests {
             audit: read("audit")
         ]
 
-        let ordered = ObjectCopyPlanner.orderedByDependency(
-            [orders, audit, customers], reads: reads, effectiveSchema: "public"
-        )
+        let ordered = parentsFirst([orders, audit, customers], reads: reads)
 
         guard let parent = ordered.firstIndex(of: customers),
               let child = ordered.firstIndex(of: orders) else {
@@ -356,4 +404,135 @@ struct ObjectCopyPlannerOrderingTests {
         #expect(parent < child)
         #expect(ordered.count == 3)
     }
+
+    // MARK: - Keys inside the copy
+
+    private func keysInside(
+        _ selections: [ObjectCopySelection],
+        reads: [ObjectCopySelection: TableStructureRead],
+        created: Set<ObjectCopySelection>? = nil,
+        rows: [ObjectCopySelection: Bool]
+    ) -> ObjectCopyKeysInside {
+        ObjectCopyPlanner.keysInside(
+            [(namespace: "public", tables: selections)], reads: reads, created: created ?? Set(selections), rows: rows
+        )
+    }
+
+    @Test
+    func aCycleCopiedWholeKeepsItsKeysInside() {
+        let orders = selection("orders", schema: nil)
+        let customers = selection("customers", schema: nil)
+        let reads = [
+            orders: read("orders", referencing: ["customers"]),
+            customers: read("customers", referencing: ["orders", "customers"])
+        ]
+
+        let inside = keysInside([orders, customers], reads: reads, rows: [orders: true, customers: true])
+
+        #expect(inside == ObjectCopyKeysInside(created: true, rows: true))
+    }
+
+    @Test
+    func aChildWithoutItsParentPointsOutside() {
+        let orders = selection("orders")
+
+        let inside = keysInside([orders], reads: [orders: read("orders", referencing: ["customers"])], rows: [orders: true])
+
+        #expect(inside == ObjectCopyKeysInside(created: false, rows: false))
+    }
+
+    /// A table that gets no rows only needs its parent created, not filled.
+    @Test
+    func aParentMissingRowsLeavesOnlyTheRowsOutside() {
+        let orders = selection("orders")
+        let customers = selection("customers")
+        let reads = [orders: read("orders", referencing: ["customers"]), customers: read("customers")]
+
+        #expect(keysInside([orders, customers], reads: reads, rows: [orders: true, customers: false])
+            == ObjectCopyKeysInside(created: true, rows: false))
+        #expect(keysInside([orders, customers], reads: reads, rows: [orders: true])
+            == ObjectCopyKeysInside(created: true, rows: false))
+        #expect(keysInside([orders, customers], reads: reads, rows: [:])
+            == ObjectCopyKeysInside(created: true, rows: true))
+    }
+
+    /// The source's keys say nothing about a table the target keeps, which may reference a parent the copy never touches.
+    @Test
+    func aTableTheTargetKeepsLeavesTheRowsOutside() {
+        let orders = selection("orders")
+
+        let inside = keysInside([orders], reads: [orders: read("orders")], created: [], rows: [orders: true])
+
+        #expect(inside == ObjectCopyKeysInside(created: true, rows: false))
+    }
+
+    @Test
+    func aKeyIntoAnotherSchemaNeedsThatSchemasTable() {
+        let orders = selection("orders", schema: "app")
+        let users = selection("users", schema: "core")
+        let reads = [
+            orders: read("orders", tableSchema: "app", referencing: ["users"], referencedSchema: "core"),
+            users: read("users", tableSchema: "core")
+        ]
+
+        let whole = ObjectCopyPlanner.keysInside(
+            [(namespace: "app", tables: [orders]), (namespace: "core", tables: [users])],
+            reads: reads,
+            created: [orders, users],
+            rows: [orders: true, users: true]
+        )
+        let alone = ObjectCopyPlanner.keysInside(
+            [(namespace: "app", tables: [orders])], reads: reads, created: [orders], rows: [orders: true]
+        )
+
+        #expect(whole == ObjectCopyKeysInside(created: true, rows: true))
+        #expect(alone == ObjectCopyKeysInside(created: false, rows: false))
+    }
+
+    // MARK: - Key checks
+
+    private func key(
+        _ name: String, _ columns: [String], references table: String, _ referenced: [String]
+    ) -> EditableForeignKeyDefinition {
+        EditableForeignKeyDefinition(
+            id: UUID(), name: name, columns: columns, referencedTable: table, referencedColumns: referenced,
+            referencedSchema: nil, onDelete: .noAction, onUpdate: .noAction
+        )
+    }
+
+    private func keyChecks(_ keys: [EditableForeignKeyDefinition]) -> [ObjectCopyKeyCheck]? {
+        ObjectCopyPlanner.keyChecks(
+            for: TableStructureSnapshot(name: "lines", columns: [], foreignKeys: keys),
+            schema: nil,
+            driver: QuotingDriver(),
+            databaseType: .sqlite
+        )
+    }
+
+    @Test
+    func aCompositeKeyIsCheckedOnEveryColumnAndSkipsNulls() {
+        let checks = keyChecks([key("fk_order", ["order_id", "shop_id"], references: "orders", ["id", "shop_id"])])
+
+        #expect(checks == [ObjectCopyKeyCheck(
+            constraint: "fk_order",
+            sql: #"SELECT COUNT(*) FROM "lines" c WHERE c."order_id" IS NOT NULL AND c."shop_id" IS NOT NULL "#
+                + #"AND NOT EXISTS (SELECT 1 FROM "orders" p WHERE p."id" = c."order_id" AND p."shop_id" = c."shop_id")"#
+        )])
+    }
+
+    @Test
+    func aSelfReferenceIsCheckedAgainstItsOwnTable() {
+        let checks = keyChecks([key("fk_parent", ["parent_id"], references: "lines", ["id"])])
+
+        #expect(checks?.first?.sql.contains(#"FROM "lines" c"#) == true)
+        #expect(checks?.first?.sql.contains(#"FROM "lines" p"#) == true)
+    }
+
+    @Test
+    func aKeyWhoseColumnsDoNotPairCannotBeChecked() {
+        #expect(keyChecks([key("fk_bad", ["a", "b"], references: "orders", ["id"])]) == nil)
+        #expect(keyChecks([]) == [])
+    }
 }
+
+private final class QuotingDriver: PluginDriverStub, @unchecked Sendable {}

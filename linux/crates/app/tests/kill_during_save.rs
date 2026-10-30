@@ -124,7 +124,8 @@ fn first_window() -> Option<gtk4::Widget> {
     app.windows().into_iter().next().map(Cast::upcast)
 }
 
-/// The sidebar's row for `name`, which opens its table when activated.
+/// The connection tree's row for `name`, which opens its table when
+/// activated.
 fn table_row(window: &gtk4::Widget, name: &str) -> Option<(gtk4::ListView, u32)> {
     descendants(window)
         .into_iter()
@@ -132,10 +133,14 @@ fn table_row(window: &gtk4::Widget, name: &str) -> Option<(gtk4::ListView, u32)>
         .find_map(|list| {
             let model = list.model()?;
             let position = (0..model.n_items()).find(|&position| {
-                model.item(position).is_some_and(|item| {
-                    item.find_property("name").is_some()
-                        && item.property_value("name").get::<String>().ok().as_deref() == Some(name)
-                })
+                model
+                    .item(position)
+                    .and_downcast::<gtk4::TreeListRow>()
+                    .and_then(|row| row.item())
+                    .is_some_and(|item| {
+                        item.find_property("name").is_some()
+                            && item.property_value("name").get::<String>().ok().as_deref() == Some(name)
+                    })
             })?;
             Some((list, position))
         })

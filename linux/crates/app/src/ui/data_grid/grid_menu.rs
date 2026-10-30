@@ -18,6 +18,8 @@ pub struct GridMenus {
     pub references: gio::Menu,
     /// The keys a column is in, for Ctrl+J to choose from.
     pub reference_chooser: gtk::PopoverMenu,
+    /// An enum or set cell's labels, for a grid that edits.
+    pub choices: Option<gtk::PopoverMenu>,
 }
 
 /// An item shown only while its action is enabled, so a cell it does not
@@ -30,6 +32,15 @@ fn hidden_while_disabled(label: &str, action: &str) -> gio::MenuItem {
 
 fn item(label: &str, action: &str) -> gio::MenuItem {
     crate::application::menu_item(label, action)
+}
+
+/// Set to Empty, NULL or DEFAULT, each shown where the cell takes it.
+pub(crate) fn presets_section() -> gio::Menu {
+    section([
+        hidden_while_disabled(&gettext("Set to Empty"), "grid.set-empty"),
+        hidden_while_disabled(&gettext("Set to NULL"), "grid.set-null"),
+        hidden_while_disabled(&gettext("Set to DEFAULT"), "grid.set-default"),
+    ])
 }
 
 fn section(items: impl IntoIterator<Item = gio::MenuItem>) -> gio::Menu {
@@ -55,11 +66,13 @@ impl GridMenus {
             )
         });
         let reference_chooser = popover(grid, &gio::Menu::new());
+        let choices = editable.then(|| popover(grid, &gio::Menu::new()));
         Self {
             cell,
             empty,
             references,
             reference_chooser,
+            choices,
         }
     }
 
@@ -71,6 +84,9 @@ impl GridMenus {
             empty.unparent();
         }
         self.reference_chooser.unparent();
+        if let Some(choices) = &self.choices {
+            choices.unparent();
+        }
     }
 }
 
@@ -82,6 +98,7 @@ fn popover(grid: &DataGrid, model: &gio::Menu) -> gtk::PopoverMenu {
     let weak = grid.downgrade();
     popover.connect_closed(move |_| {
         if let Some(grid) = weak.upgrade() {
+            grid.return_focus_from_menu();
             grid.release_menu_target_soon();
         }
     });
@@ -94,29 +111,35 @@ fn cell_menu(grid: &DataGrid, references: &gio::Menu) -> gio::Menu {
     let sorts = config.is_some_and(|config| config.sorting != GridSorting::None);
     let menu = gio::Menu::new();
     if editable {
-        menu.append_section(
-            None,
-            &section([
-                hidden_while_disabled(&gettext("Edit Cell"), "grid.edit"),
-                hidden_while_disabled(&gettext("Set to Empty"), "grid.set-empty"),
-                hidden_while_disabled(&gettext("Set to NULL"), "grid.set-null"),
-                hidden_while_disabled(&gettext("Set to DEFAULT"), "grid.set-default"),
-            ]),
-        );
+        let edits = presets_section();
+        edits.prepend_item(&hidden_while_disabled(&gettext("Edit Cell"), "grid.edit"));
+        menu.append_section(None, &edits);
     }
     let copy_as = section([
         item(&gettext("Rows"), "grid.copy-rows"),
         item(&gettext("With Headers"), "grid.copy-rows-headers"),
-        item(&gettext("JSON"), "grid.copy-json"),
         item(&gettext("CSV"), "grid.copy-csv"),
         item(&gettext("CSV With Headers"), "grid.copy-csv-headers"),
-        item(&gettext("Markdown"), "grid.copy-markdown"),
     ]);
     copy_as.append_section(
         None,
         &section([
+            item(&gettext("JSON"), "grid.copy-json"),
+            item(&gettext("JSON Lines"), "grid.copy-json-lines"),
+            item(&gettext("Markdown"), "grid.copy-markdown"),
+            item(&gettext("Text Table"), "grid.copy-text-table"),
+        ]),
+    );
+    copy_as.append_section(
+        None,
+        &section([
             hidden_while_disabled(&gettext("IN Clause"), "grid.copy-in-clause"),
+            hidden_while_disabled(&gettext("One Row"), "grid.copy-one-row"),
             hidden_while_disabled(&gettext("INSERT Statement"), "grid.copy-insert"),
+            hidden_while_disabled(
+                &gettext("INSERT Without Generated Keys"),
+                "grid.copy-insert-without-generated-keys",
+            ),
         ]),
     );
     copy_as.append_section(None, &section([item(&gettext("Column Name"), "grid.copy-column-name")]));
@@ -210,6 +233,20 @@ pub fn header_menu(column: &GridColumn, sorting: GridSorting) -> gio::Menu {
             at(gettext("Copy Column Name"), "grid.copy-column-name-at"),
         ]),
     );
+    menu.append_section(None, &section([item(&gettext("Columns…"), "grid.columns")]));
+    menu
+}
+
+/// The row number column's header menu. GTK keeps a header's click for
+/// sorting, so the header selects the rows from here. The key is
+/// GtkListBase's `list.select-all`, out of a header menu's reach.
+pub fn row_numbers_header_menu() -> gio::Menu {
+    let select_all = item(&gettext("Select All Rows"), "grid.select-all");
+    if let Some(key) = crate::application::triggers_for("list.select-all").first() {
+        select_all.set_attribute_value("accel", Some(&key.to_variant()));
+    }
+    let menu = gio::Menu::new();
+    menu.append_section(None, &section([select_all]));
     menu.append_section(None, &section([item(&gettext("Columns…"), "grid.columns")]));
     menu
 }

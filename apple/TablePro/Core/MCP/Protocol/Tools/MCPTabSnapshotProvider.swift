@@ -31,11 +31,12 @@ enum MCPTabSnapshotProvider {
                 ?? coordinator.connection.name
             let selectedId = coordinator.tabManager.selectedTabId
             for tab in coordinator.tabManager.tabs {
+                guard let tabType = tab.tabType.snapshotName else { continue }
                 snapshots.append(MCPTabSnapshot(
                     tabId: tab.id,
                     connectionId: coordinator.connectionId,
                     connectionName: connectionName,
-                    tabType: tab.tabType.snapshotName,
+                    tabType: tabType,
                     tableName: tab.tableContext.tableName,
                     databaseName: tab.tableContext.databaseName,
                     schemaName: tab.tableContext.schemaName,
@@ -156,7 +157,8 @@ enum MCPTabSnapshotProvider {
 }
 
 private extension TabType {
-    var snapshotName: String {
+    // Nil for a debug tab: the debugger is a module and adds nothing a client can list.
+    var snapshotName: String? {
         switch self {
         case .query: "query"
         case .table: "table"
@@ -168,6 +170,7 @@ private extension TabType {
         case .objectSource: "objectSource"
         case .versionHistory: "versionHistory"
         case .tableListing: "tableListing"
+        case .routineDebug: nil
         }
     }
 }

@@ -420,15 +420,17 @@ async fn killed_mutation_unresolvable_despite_another_tables_mutation_in_its_win
         let update = batch_on(&held, &[&format!("ALTER TABLE {held_table} UPDATE n = 1 WHERE 1")]);
         tokio::spawn(async move { connection.write_batch(&update, within(CALL)).await })
     };
-    let waiting = format!(
-        "SELECT count() FROM system.processes WHERE query LIKE 'ALTER TABLE%{held}%' \
-         AND query NOT LIKE '%system.processes%'"
+    // The server lists the ALTER in system.processes before it registers
+    // the mutation, and KILL MUTATION only sees system.mutations.
+    let registered = format!(
+        "SELECT count() FROM system.mutations WHERE database = '{DATABASE}' AND table = '{held}' \
+         AND NOT is_done"
     );
     let give_up = Instant::now() + Duration::from_secs(10);
-    while count(connection.as_ref(), &waiting).await == 0 {
+    while count(connection.as_ref(), &registered).await == 0 {
         assert!(
             Instant::now() < give_up,
-            "the ALTER never showed up in system.processes"
+            "the ALTER's mutation never showed up in system.mutations"
         );
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
@@ -437,11 +439,12 @@ async fn killed_mutation_unresolvable_despite_another_tables_mutation_in_its_win
         &format!("ALTER TABLE {other_table} UPDATE n = 1 WHERE 1"),
     )
     .await;
-    admin(
+    let killed = admin(
         connection.as_ref(),
         &format!("KILL MUTATION WHERE database = '{DATABASE}' AND table = '{held}' SYNC"),
     )
     .await;
+    assert_eq!(killed.rows().len(), 1, "KILL MUTATION found no mutation on {held}");
 
     let outcome = writing.await.expect("the write task");
     let Err(DriverError::CommitOutcomeUnknown { token: Some(token), .. }) = outcome else {

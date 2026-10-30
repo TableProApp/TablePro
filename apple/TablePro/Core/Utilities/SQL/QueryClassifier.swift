@@ -258,7 +258,10 @@ private extension QueryClassifier {
         options: []
     )
 
-    static let enginesWithSequencePseudoColumns: Set<DatabaseType> = [.oracle, .sapHana, .snowflake, .dameng, .mariadb]
+    // KingbaseES has it in Oracle mode only, and its type id cannot say which mode a server runs.
+    static let enginesWithSequencePseudoColumns: Set<DatabaseType> = [
+        .oracle, .sapHana, .snowflake, .dameng, .mariadb, .kingbasees,
+    ]
 
     static func advancesSequence(_ body: String, databaseType: DatabaseType) -> Bool {
         let range = NSRange(body.startIndex..., in: body)
@@ -300,6 +303,7 @@ private extension QueryClassifier {
     static let filesystemMarkers: [String] = [
         "INTO OUTFILE", "INTO DUMPFILE", "TO PROGRAM", "FROM PROGRAM", "VACUUM INTO",
         "LOAD_FILE(", "PG_READ_FILE(", "PG_READ_BINARY_FILE(", "PG_LS_DIR(",
+        "SYS_READ_FILE(", "SYS_READ_BINARY_FILE(", "SYS_LS_DIR(",
         "LO_IMPORT(", "LO_EXPORT(", "PG_FILE_WRITE(", "LOAD_EXTENSION(",
         "READFILE(", "WRITEFILE(", "FN_GET_AUDIT_FILE(", "XP_CMDSHELL", "SP_OACREATE"
     ]

@@ -3,8 +3,7 @@
 //  TableProTests
 //
 //  Switching connection inside a window is that window's key change as far as each connection's
-//  coordinator is concerned: the one leaving the screen resigns, which is what schedules the
-//  eviction of its row buffers.
+//  coordinator is concerned: the one leaving the screen resigns.
 //
 
 import AppKit
@@ -75,12 +74,11 @@ struct WorkspaceSwitchKeyStateTests {
         harness.controller.workspaces.select(harness.second.connectionId)
 
         #expect(first.isKeyWindow == false)
-        #expect(first.evictionTask != nil)
         #expect(second.isKeyWindow)
     }
 
     /// A window that is not key can still change its selection, for example when a close is
-    /// cancelled. Marking that connection key kept its row eviction from ever being scheduled.
+    /// cancelled. Marking that connection key ran its deferred restore load in a window nobody saw.
     @Test("Switching in a window that is not key marks nothing key")
     func switchInNonKeyWindowMarksNothingKey() throws {
         let harness = Harness()

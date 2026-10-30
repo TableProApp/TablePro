@@ -146,7 +146,7 @@ internal enum CrossEngineIndexTranslator {
 
     /// The database types whose index type is the server's own access method, read from `pg_am`, so
     /// `BLOOM`, `HNSW` or `IVFFLAT` names something a PostgreSQL `USING` clause can write.
-    private static let accessMethodSources: Set<DatabaseType> = [.postgresql, .pglite]
+    private static let accessMethodSources: Set<DatabaseType> = [.postgresql, .pglite, .kingbasees]
 
     /// The database types whose indexes, past the primary key, are keys of the table itself:
     /// Redshift's `DISTKEY` and `SORTKEY`, Snowflake's clustering key, and BigQuery's clustering and

@@ -7,30 +7,28 @@ import AppKit
 import SwiftUI
 
 struct QuickSwitcherPanelView: View {
-    let connectionId: UUID
     let databaseType: DatabaseType
     let openTables: Set<QuickSwitcherOpenTable>
     let browseSchema: String?
     let onSelect: (QuickSwitcherItem, QuickSwitcherCommitIntent) -> Void
     let onDismiss: () -> Void
 
-    @StateObject private var viewModel: QuickSwitcherViewModel
+    @ObservedObject private var viewModel: QuickSwitcherViewModel
 
     init(
-        connectionId: UUID,
+        viewModel: QuickSwitcherViewModel,
         databaseType: DatabaseType,
         openTables: Set<QuickSwitcherOpenTable> = [],
         browseSchema: String? = nil,
         onSelect: @escaping (QuickSwitcherItem, QuickSwitcherCommitIntent) -> Void,
         onDismiss: @escaping () -> Void
     ) {
-        self.connectionId = connectionId
         self.databaseType = databaseType
         self.openTables = openTables
         self.browseSchema = browseSchema
         self.onSelect = onSelect
         self.onDismiss = onDismiss
-        self._viewModel = StateObject(wrappedValue: QuickSwitcherViewModel(connectionId: connectionId))
+        self.viewModel = viewModel
     }
 
     var body: some View {
@@ -39,17 +37,17 @@ struct QuickSwitcherPanelView: View {
             onSelect(item, intent)
             onDismiss()
         }
-        .task {
+        .task(id: ObjectIdentifier(viewModel)) {
             await viewModel.loadItems(
                 databaseType: databaseType,
                 openTables: openTables,
                 browseSchema: browseSchema
             )
         }
-        .task(id: viewModel.crossConnectionLoadVersion) {
+        .task(id: ModelTaskKey(model: ObjectIdentifier(viewModel), version: viewModel.crossConnectionLoadVersion)) {
             await viewModel.loadCrossConnectionItems()
         }
-        .task(id: viewModel.crossConnectionQueryLoadVersion) {
+        .task(id: ModelTaskKey(model: ObjectIdentifier(viewModel), version: viewModel.crossConnectionQueryLoadVersion)) {
             await viewModel.loadCrossConnectionQueryItems()
         }
         .onReceive(AppEvents.shared.queryHistoryDidUpdate) { _ in
@@ -57,6 +55,39 @@ struct QuickSwitcherPanelView: View {
         }
         .onReceive(AppEvents.shared.sqlFavoritesDidUpdate) { _ in
             viewModel.invalidateCrossConnectionQueryItems()
+        }
+    }
+}
+
+// The retained panel keeps this view and swaps its model, so each load is keyed by the model as well.
+private struct ModelTaskKey<Version: Equatable>: Equatable {
+    let model: ObjectIdentifier
+    let version: Version
+}
+
+// Installed on every update, not only when joining the window: the retained panel swaps in a new model.
+private struct PanelKeyCommandInstaller: NSViewRepresentable {
+    let handler: (NSEvent) -> Bool
+
+    func makeNSView(context: Context) -> InstallerView {
+        InstallerView()
+    }
+
+    func updateNSView(_ nsView: InstallerView, context: Context) {
+        nsView.handler = handler
+        nsView.install()
+    }
+
+    final class InstallerView: NSView {
+        var handler: ((NSEvent) -> Bool)?
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            install()
+        }
+
+        func install() {
+            (window as? QuickSwitcherPanel)?.keyCommandHandler = handler
         }
     }
 }
@@ -89,9 +120,7 @@ struct QuickSwitcherPanelContent: View {
             .quickSwitcherSurface(cornerRadius: QuickSwitcherMetrics.cornerRadius)
         }
         .background {
-            WindowAccessor { window in
-                (window as? QuickSwitcherPanel)?.keyCommandHandler = handleKeyCommand
-            }
+            PanelKeyCommandInstaller(handler: handleKeyCommand)
         }
     }
 
@@ -369,14 +398,14 @@ struct QuickSwitcherPanelContent: View {
     /// on screen saying so, that first press reads as a key that did nothing.
     private var footer: some View {
         HStack(spacing: 14) {
-            QuickSwitcherKeyHint(symbol: "\u{21A9}", label: String(localized: "Open"))
-            QuickSwitcherKeyHint(symbol: "\u{2318}\u{21A9}", label: String(localized: "New Tab"))
+            QuickSwitcherKeyHint(keys: [.returnKey], label: String(localized: "Open"))
+            QuickSwitcherKeyHint(keys: [.text("\u{2318}"), .returnKey], label: String(localized: "New Tab"))
 
             Spacer(minLength: 0)
 
-            QuickSwitcherKeyHint(symbol: "\u{2318}1\u{2013}5", label: String(localized: "Scope"))
+            QuickSwitcherKeyHint(keys: [.text("\u{2318}1\u{2013}5")], label: String(localized: "Scope"))
             QuickSwitcherKeyHint(
-                symbol: "\u{238B}",
+                keys: [.text("\u{238B}")],
                 label: escapeDismissesPanel ? String(localized: "Close") : String(localized: "Clear")
             )
         }

@@ -16,10 +16,6 @@ import TableProSQLGrammar
 /// spell out and never below a write. Dynamic SQL built from variables cannot be read, which leaves it where a `CALL`
 /// of a stored procedure is: a write whose effect the text does not show.
 extension QueryClassifier {
-    static func runsPLSQL(_ sql: String, databaseType: DatabaseType) -> Bool {
-        SQLProceduralBlock.runsPLSQL(sql, grammar: databaseType.lexicalGrammar)
-    }
-
     static func proceduralBlockClassification(
         _ trimmed: String,
         grammar: SQLLexicalGrammar,

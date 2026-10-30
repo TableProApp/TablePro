@@ -292,6 +292,8 @@ struct ExportDatabaseItem: Identifiable {
     /// Set when the container's own checkbox was turned on before its unread kinds arrived, so
     /// they arrive selected like everything else the click reached.
     var selectsLoadedObjects = false
+    // Column values set before the unread kinds arrived, by column index; they arrive with them.
+    var arrivingOptionValues: [Int: Bool] = [:]
 
     init(
         id: UUID = UUID(),
@@ -313,8 +315,12 @@ struct ExportDatabaseItem: Identifiable {
 
     /// An object that arrives already selected (a restored row) stays so. Any other is selected
     /// only when the container was ticked whole and nothing in it has been unticked since.
-    func mergingLoadedObjects(_ loaded: [ExportObjectItem]) -> ExportDatabaseItem {
-        let selectsArrivals = selectsLoadedObjects && objects.allSatisfy(\.isSelected)
+    func mergingLoadedObjects(
+        _ loaded: [ExportObjectItem],
+        writes: (ExportObjectItem) -> Bool = { _ in true }
+    ) -> ExportDatabaseItem {
+        // An object that writes nothing stays out of a container tick, so it does not count as unticked.
+        let selectsArrivals = selectsLoadedObjects && objects.filter(writes).allSatisfy(\.isSelected)
         let incoming = loaded.filter { unloadedKinds.contains($0.kind) }
         // The table listing reported these sequences as tables; one relation, so the sequence replaces it.
         let sequenceNames = Set(incoming.filter { $0.kind == .sequence }.map(\.name))
@@ -331,7 +337,30 @@ struct ExportDatabaseItem: Identifiable {
         merged.unloadedKinds = []
         merged.isLoadingObjects = false
         merged.selectsLoadedObjects = false
+        merged.arrivingOptionValues = [:]
         return merged
+    }
+
+    // Kept values go on after normalizing, which replaces an arrival's empty list with the defaults.
+    func mergingLoadedObjects(_ loaded: [ExportObjectItem], layout: ExportOptionLayout) -> ExportDatabaseItem? {
+        let merged = mergingLoadedObjects(loaded, writes: layout.writesSomething)
+        guard !merged.objects.isEmpty, let normalized = [merged].normalized(for: layout).first else { return nil }
+        let arrivals = Set(normalized.objects.map(\.id)).subtracting(objects.map(\.id))
+        return normalized.applyingOptionValues(arrivingOptionValues, toObjects: arrivals, layout: layout)
+    }
+
+    func applyingOptionValues(
+        _ values: [Int: Bool],
+        toObjects ids: Set<UUID>,
+        layout: ExportOptionLayout
+    ) -> ExportDatabaseItem {
+        guard !values.isEmpty, !ids.isEmpty else { return self }
+        var updated = self
+        updated.objects = objects.map { object in
+            guard ids.contains(object.id) else { return object }
+            return object.settingOptions(values.filter { layout.supports(columnAt: $0.key, kind: object.kind) })
+        }
+        return updated
     }
 
     func withID(_ id: UUID) -> ExportDatabaseItem {
@@ -344,6 +373,7 @@ struct ExportDatabaseItem: Identifiable {
         )
         copy.isLoadingObjects = isLoadingObjects
         copy.selectsLoadedObjects = selectsLoadedObjects
+        copy.arrivingOptionValues = arrivingOptionValues
         return copy
     }
 
@@ -377,7 +407,75 @@ struct ExportDatabaseItem: Identifiable {
     }
 }
 
+enum ExportKindReconciliation: Equatable {
+    case unchanged
+    // The kinds left after narrowing, so a wider format later reads again.
+    case narrowed(loadedKinds: Set<PluginExportObjectKind>)
+    case reload
+
+    static func next(
+        loadedKinds: Set<PluginExportObjectKind>,
+        wanted: Set<PluginExportObjectKind>
+    ) -> ExportKindReconciliation {
+        guard !loadedKinds.isEmpty else { return .unchanged }
+        guard wanted.isSubset(of: loadedKinds) else { return .reload }
+        return wanted == loadedKinds ? .unchanged : .narrowed(loadedKinds: wanted)
+    }
+}
+
+// Resolved by the dialog so the tree never looks a plugin up itself.
+struct ExportOptionLayout {
+    let columns: [PluginExportOptionColumn]
+    let defaultValues: [Bool]
+    // False for a structure-only format, which ignores a row scope.
+    let readsRows: Bool
+    let supports: (String, PluginExportObjectKind) -> Bool
+
+    static var none: ExportOptionLayout {
+        ExportOptionLayout(columns: [], defaultValues: [], readsRows: true) { _, _ in true }
+    }
+
+    func supports(columnAt index: Int, kind: PluginExportObjectKind) -> Bool {
+        columns.indices.contains(index) && supports(columns[index].id, kind)
+    }
+
+    func writesSomething(_ object: ExportObjectItem) -> Bool {
+        columns.isEmpty || object.optionValues.contains(true)
+    }
+
+    // Unread kinds count with the value they will arrive with.
+    func values(
+        ofColumn index: Int,
+        in objects: [ExportObjectItem],
+        unloadedKinds: Set<PluginExportObjectKind> = [],
+        arriving: [Int: Bool] = [:]
+    ) -> [Bool] {
+        guard columns.indices.contains(index) else { return [] }
+        let fallback = defaultValues.count == columns.count ? defaultValues[index] : columns[index].defaultValue
+        var values = objects
+            .filter { supports(columnAt: index, kind: $0.kind) }
+            .map { $0.optionValues[safe: index] ?? columns[index].defaultValue }
+        if unloadedKinds.contains(where: { supports(columnAt: index, kind: $0) }) {
+            values.append(arriving[index] ?? fallback)
+        }
+        return values
+    }
+}
+
 extension ExportObjectItem {
+    // Never selects. A selected object left with nothing on is deselected: it would export nothing.
+    func settingOptions(_ values: [Int: Bool]) -> ExportObjectItem {
+        guard values.keys.contains(where: optionValues.indices.contains) else { return self }
+        var updated = self
+        for (index, value) in values where updated.optionValues.indices.contains(index) {
+            updated.optionValues[index] = value
+        }
+        if !updated.optionValues.contains(true) {
+            updated.isSelected = false
+        }
+        return updated
+    }
+
     func normalized(forOptionColumnCount optionColumnCount: Int, defaultOptionValues: [Bool]) -> ExportObjectItem {
         guard optionColumnCount > 0 else { return self }
         let fallback = defaultOptionValues.count == optionColumnCount
@@ -451,6 +549,23 @@ extension [ExportDatabaseItem] {
         }
     }
 
+    // Masking keeps a routine from carrying a Data flag that would count it as exportable.
+    func normalized(for layout: ExportOptionLayout) -> [ExportDatabaseItem] {
+        normalizingOptionValues(optionColumnCount: layout.columns.count, defaultOptionValues: layout.defaultValues)
+            .maskingUnsupportedOptions(columns: layout.columns, supports: layout.supports)
+    }
+
+    // A profile's option values belong to its format, so the tree is reset for that format first.
+    func applyingProfile(
+        _ profile: ExportProfile,
+        layout: ExportOptionLayout,
+        databaseType: DatabaseType
+    ) -> [ExportDatabaseItem] {
+        ExportProfileStorage.apply(profile, to: self)
+            .clearingRowScopes(unavailableOn: databaseType)
+            .normalized(for: layout)
+    }
+
     func normalizingOptionValues(optionColumnCount: Int, defaultOptionValues: [Bool]) -> [ExportDatabaseItem] {
         map { database in
             var normalizedDatabase = database
@@ -464,6 +579,7 @@ extension [ExportDatabaseItem] {
     func resettingOptionValues(to values: [Bool]) -> [ExportDatabaseItem] {
         map { database in
             var resetDatabase = database
+            resetDatabase.arrivingOptionValues = [:]
             resetDatabase.objects = database.objects.map { object in
                 var resetObject = object
                 resetObject.optionValues = values
@@ -483,6 +599,24 @@ extension [ExportDatabaseItem] {
                 $0.maskingUnsupportedOptions(columns: columns, supports: supports)
             }
             return maskedDatabase
+        }
+    }
+
+    func settingOption(
+        _ index: Int,
+        to value: Bool,
+        objectIDs ids: Set<UUID>,
+        arrivingIn databaseID: UUID? = nil
+    ) -> [ExportDatabaseItem] {
+        map { database in
+            var updated = database
+            updated.objects = database.objects.map { object in
+                ids.contains(object.id) ? object.settingOptions([index: value]) : object
+            }
+            if database.id == databaseID {
+                updated.arrivingOptionValues[index] = value
+            }
+            return updated
         }
     }
 

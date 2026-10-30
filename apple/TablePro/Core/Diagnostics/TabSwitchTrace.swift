@@ -12,7 +12,7 @@ internal enum TabSwitchTrigger: String, Sendable {
     case tabStrip
 }
 
-// requery: the memory budget dropped the rows. firstLoad: restored from the last session, never shown since.
+// requery: TablePro changed the table since the rows were read. firstLoad: restored from the last session, never shown since.
 internal enum TabSwitchRows: String, Sendable {
     case resident
     case requery

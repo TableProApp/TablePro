@@ -238,6 +238,7 @@ struct QueryClassifierLexicalTests {
         (DatabaseType.snowflake, "SELECT SYSTEM$ABORT_SESSION(1)"),
         (DatabaseType.teradata, "SELECT SYSLIB.AbortSessions(1, 'u', 0, 'Y', 'Y')"),
         (DatabaseType.oracle, "SELECT orders_seq.NEXTVAL FROM DUAL"),
+        (DatabaseType.kingbasees, "SELECT orders_seq.NEXTVAL FROM DUAL"),
         (DatabaseType.sapHana, "SELECT MY_SEQ.NEXTVAL FROM DUMMY"),
         (DatabaseType.snowflake, "SELECT orders_seq.nextval"),
         (DatabaseType.mssql, "SELECT NEXT VALUE FOR dbo.orders_seq"),

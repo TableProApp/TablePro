@@ -138,7 +138,8 @@ extension PluginMetadataRegistry {
             caseSensitivityStyle: .collationDefined,
             operators: SQLEngineVocabulary.sqlServer.operators.compactMap(SQLOperatorDescriptor.init(vocabulary:)),
             textCastTypeName: nil,
-            functionNamesAreCaseInsensitive: SQLEngineVocabulary.sqlServer.functionNamesAreCaseInsensitive
+            functionNamesAreCaseInsensitive: SQLEngineVocabulary.sqlServer.functionNamesAreCaseInsensitive,
+            typeNamesAreCaseInsensitive: true
         )
 
         let mssqlColumnTypes: [String: [String]] = [
@@ -186,7 +187,8 @@ extension PluginMetadataRegistry {
             caseSensitivityStyle: .caseFoldFunction,
             operators: SQLEngineVocabulary.oracle.operators.compactMap(SQLOperatorDescriptor.init(vocabulary:)),
             textCastTypeName: nil,
-            functionNamesAreCaseInsensitive: SQLEngineVocabulary.oracle.functionNamesAreCaseInsensitive
+            functionNamesAreCaseInsensitive: SQLEngineVocabulary.oracle.functionNamesAreCaseInsensitive,
+            typeNamesAreCaseInsensitive: true
         )
 
         let oracleColumnTypes: [String: [String]] = [
@@ -244,7 +246,10 @@ extension PluginMetadataRegistry {
             paginationStyle: .offsetFetch,
             offsetFetchOrderBy: "ORDER BY 1",
             autoLimitStyle: .fetchFirst,
-            caseSensitivityStyle: .caseFoldFunction
+            caseSensitivityStyle: .caseFoldFunction,
+            textCastTypeName: nil,
+            functionNamesAreCaseInsensitive: true,
+            typeNamesAreCaseInsensitive: true
         )
         let damengCompletions = [
             CompletionEntry(label: "SELECT", insertText: "SELECT"),
@@ -304,7 +309,8 @@ extension PluginMetadataRegistry {
             caseSensitivityStyle: .ilikeOperator,
             operators: SQLEngineVocabulary.duckDB.operators.compactMap(SQLOperatorDescriptor.init(vocabulary:)),
             textCastTypeName: "VARCHAR",
-            functionNamesAreCaseInsensitive: SQLEngineVocabulary.duckDB.functionNamesAreCaseInsensitive
+            functionNamesAreCaseInsensitive: SQLEngineVocabulary.duckDB.functionNamesAreCaseInsensitive,
+            typeNamesAreCaseInsensitive: true
         )
 
         let duckdbColumnTypes: [String: [String]] = [
@@ -365,7 +371,10 @@ extension PluginMetadataRegistry {
             likeEscapeStyle: .explicit,
             paginationStyle: .limit,
             autoLimitStyle: .limit,
-            caseSensitivityStyle: .unsupported
+            caseSensitivityStyle: .unsupported,
+            textCastTypeName: nil,
+            functionNamesAreCaseInsensitive: true,
+            typeNamesAreCaseInsensitive: true
         )
 
         let cassandraColumnTypes: [String: [String]] = [
@@ -566,7 +575,10 @@ extension PluginMetadataRegistry {
             booleanLiteralStyle: .numeric,
             likeEscapeStyle: .explicit,
             paginationStyle: .limit,
-            caseSensitivityStyle: .collationDefined
+            caseSensitivityStyle: .collationDefined,
+            textCastTypeName: nil,
+            functionNamesAreCaseInsensitive: true,
+            typeNamesAreCaseInsensitive: true
         )
 
         let d1ColumnTypes: [String: [String]] = [

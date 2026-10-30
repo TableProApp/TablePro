@@ -29,11 +29,17 @@ internal struct SourceObjectDiffEngine {
         options: StructureCompareOptions = .default,
         sourceDatabaseType: DatabaseType,
         targetDatabaseType: DatabaseType,
-        targetIndexedKinds: Set<CompareObjectKind>
+        targetIndexedKinds: Set<CompareObjectKind>,
+        sourceGrammar: SQLLexicalGrammar? = nil,
+        targetGrammar: SQLLexicalGrammar? = nil
     ) {
         self.options = options
-        self.sourceScriptText = SQLScriptText(databaseType: sourceDatabaseType)
-        self.targetScriptText = SQLScriptText(databaseType: targetDatabaseType)
+        self.sourceScriptText = SQLScriptText(
+            databaseType: sourceDatabaseType, grammar: sourceGrammar ?? sourceDatabaseType.lexicalGrammar
+        )
+        self.targetScriptText = SQLScriptText(
+            databaseType: targetDatabaseType, grammar: targetGrammar ?? targetDatabaseType.lexicalGrammar
+        )
         self.targetIndexedKinds = targetIndexedKinds
     }
 
