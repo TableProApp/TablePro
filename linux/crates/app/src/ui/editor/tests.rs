@@ -2803,6 +2803,31 @@ fn picking_a_database_moves_the_tab_and_its_next_run() {
     assert_eq!(harness.editor.tab_database(), None);
 }
 
+/// A connection opened without a database name is in the one the server
+/// calls its own, which the bar names and the menu checks.
+#[gtk4::test]
+fn a_connection_without_a_database_name_names_the_servers() {
+    let database = |name: &str, is_default: bool| tablepro_core::meta::SchemaInfo {
+        name: name.to_owned(),
+        is_default,
+        is_system: false,
+    };
+    let harness = scoped_editor_with(mysql_dialect(), &[], answering(), |script, request| {
+        if let tablepro_session::connect::RequestTarget::Network { database, .. } = &mut request.target {
+            *database = None;
+        }
+        script
+            .list_databases
+            .always(FakeReply::ok(vec![database("analytics", false), database("app", true)]));
+    });
+    let button = harness.editor.imp().scope_button.get();
+    wait_until(WAIT, || button.is_visible()).expect("the database menu");
+
+    assert_eq!(harness.editor.imp().scope_button_label.label(), "app");
+    pick_database(&harness, "app");
+    assert_eq!(harness.editor.tab_database(), None, "the connection's own");
+}
+
 /// A database the server will not move to leaves the tab where its
 /// session is, and the run says why.
 #[gtk4::test]
