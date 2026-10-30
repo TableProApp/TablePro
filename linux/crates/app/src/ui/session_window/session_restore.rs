@@ -22,8 +22,10 @@ impl SessionWindow {
                 return;
             }
             SessionKey::Saved(id) => id,
-            // Not recorded yet: a sibling reopens with its connection.
-            SessionKey::SavedIn { .. } => return,
+            SessionKey::SavedIn { id, database } => {
+                self.restore_database(id, database);
+                return;
+            }
         };
         let (Some(state), Some(input)) = (self.state(), self.input()) else {
             return;
@@ -60,6 +62,46 @@ impl SessionWindow {
         });
     }
 
+    /// Another database of a connection reopens beside it once the
+    /// connection has (0030), and goes unopened with it.
+    fn restore_database(&self, id: Uuid, database: String) {
+        let key = SessionKey::SavedIn {
+            id,
+            database: database.clone(),
+        };
+        let connection = SessionKey::Saved(id);
+        if self.held_session(&connection).is_some() {
+            self.end_restore(&key);
+            self.open_database(id, database);
+        } else if !self.imp().restoring.borrow().contains(&connection) {
+            self.end_restore(&key);
+            self.forget_session(&key);
+        }
+    }
+
+    /// The connection `id` joined: open its databases restored with it.
+    pub(super) fn open_waiting_databases(&self, id: Uuid) {
+        for (id, database) in self.take_waiting_databases(id) {
+            self.open_database(id, database);
+        }
+    }
+
+    /// The databases of the connection `id` that wait for it to reopen.
+    fn take_waiting_databases(&self, id: Uuid) -> Vec<(Uuid, String)> {
+        let Ok(mut restoring) = self.imp().restoring.try_borrow_mut() else {
+            return Vec::new();
+        };
+        let mut waiting = Vec::new();
+        restoring.retain(|key| match key {
+            SessionKey::SavedIn { id: of, database } if *of == id => {
+                waiting.push((id, database.clone()));
+                false
+            }
+            _ => true,
+        });
+        waiting
+    }
+
     pub(super) fn on_restore_saved(&self, id: Uuid, saved: Option<SavedConnection>) {
         self.end_restore(&SessionKey::Saved(id));
         match saved {
@@ -72,22 +114,34 @@ impl SessionWindow {
     }
 
     /// Record the session the window adopted when a later launch can
-    /// open it again: a file, or a connection the saved list holds. One
-    /// that was never saved has nothing to reopen it from.
+    /// open it again: a file, a connection the saved list holds, or
+    /// another database of one, which reopens beside it. One that was
+    /// never saved has nothing to reopen it from.
     pub(super) fn remember_session(&self, key: &SessionKey, saved: Option<&SavedConnection>) {
         let restorable = match key {
             SessionKey::File(_) => true,
             SessionKey::Saved(_) => saved.is_some(),
-            SessionKey::SavedIn { .. } => false,
+            SessionKey::SavedIn { .. } => true,
         };
         if restorable && let Some(state) = self.state() {
             state.services.open_sessions().add(key.clone(), self.id());
         }
     }
 
+    /// A connection forgotten takes the databases waiting to reopen with
+    /// it, which have nothing to open beside.
     pub(super) fn forget_session(&self, key: &SessionKey) {
-        if let Some(state) = self.state() {
-            state.services.open_sessions().remove(key);
+        let Some(state) = self.state() else {
+            return;
+        };
+        state.services.open_sessions().remove(key);
+        if let SessionKey::Saved(id) = key {
+            for (id, database) in self.take_waiting_databases(*id) {
+                state
+                    .services
+                    .open_sessions()
+                    .remove(&SessionKey::SavedIn { id, database });
+            }
         }
     }
 
@@ -354,6 +408,46 @@ mod tests {
         assert_eq!(window.workspaces().len(), 1);
         assert_eq!(test.recorded(), [test.key()]);
         assert_eq!(test.connector.calls().len(), 1, "the missing file was connected to");
+    }
+
+    /// A database open beside its connection reopens beside it; one whose
+    /// connection does not reopen is forgotten (0030).
+    #[gtk4::test]
+    fn a_database_open_beside_its_connection_reopens_with_it() {
+        let test = TestWindow::with_script(
+            "RestoreDatabase",
+            Script {
+                network: true,
+                ..Script::default()
+            },
+        );
+        let (vault, id) = (test.vault.clone(), test.saved.id);
+        crate::test_support::finish_on_main(WAIT, async move {
+            tablepro_core::credentials::SecretVault::store(
+                &*vault,
+                id,
+                tablepro_core::credentials::SecretKind::DatabasePassword,
+                &secrecy::SecretString::from("s3cret"),
+                "label",
+            )
+            .await
+        })
+        .expect("the store to end")
+        .expect("the password stored");
+        let sibling = SessionKey::SavedIn {
+            id,
+            database: "analytics".to_owned(),
+        };
+        let orphan = SessionKey::SavedIn {
+            id: Uuid::new_v4(),
+            database: "analytics".to_owned(),
+        };
+
+        let window = test.restored_window_of(&[test.key(), sibling.clone(), orphan]);
+        wait_until(WAIT, || window.held_session(&sibling).is_some()).expect("the database to reopen");
+
+        assert_eq!(test.services.sessions.window_for(&sibling), Some(window.id()));
+        assert_eq!(test.recorded(), [test.key(), sibling]);
     }
 
     #[gtk4::test]

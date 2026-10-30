@@ -816,6 +816,7 @@ impl SessionWindow {
         }
         if let SessionKey::Saved(id) = key {
             self.touch_last_opened(id);
+            self.open_waiting_databases(id);
         }
     }
 

@@ -86,13 +86,19 @@ impl SessionWindow {
             };
             match opened {
                 Ok(Ok(session)) => {
+                    window.remember_session(claim.key(), None);
                     window.join(claim, session.clone(), &[]);
                     then(&window, session);
                 }
-                Ok(Err(error)) => window.show_toast(&gettext_f(
-                    "Could not open the database “{database}”: {error}",
-                    &[("database", &database), ("error", &connect_error_message(&error))],
-                )),
+                Ok(Err(error)) => {
+                    // As a connection that no longer opens, a database
+                    // restored at launch is not tried again at the next.
+                    window.forget_session(claim.key());
+                    window.show_toast(&gettext_f(
+                        "Could not open the database “{database}”: {error}",
+                        &[("database", &database), ("error", &connect_error_message(&error))],
+                    ));
+                }
                 Err(failure) => {
                     tracing::warn!(%failure, "opening another database failed");
                 }
