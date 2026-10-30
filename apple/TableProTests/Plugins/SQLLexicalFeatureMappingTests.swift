@@ -28,10 +28,10 @@ struct SQLLexicalFeatureMappingTests {
         let curatedOnly: SQLLexicalGrammar = [
             .sqlScriptBlocks, .cqlBatches, .hashAndAtInIdentifiers, .angleQuotedIdentifiers,
             .backslashEscapesInAngleQuotes, .escapeBytesPrefix, .exponentSignsNeedNoDigits, .formFeedEndsLineComments,
-            .atomicRoutineBodies, .triggerBodies,
+            .atomicRoutineBodies, .triggerBodies, .statementsAsValues, .bracketedStatementSources, .pipeOperatorChains,
         ]
         #expect(grammarBits.isDisjoint(with: curatedOnly))
-        #expect(grammarBits.union(curatedOnly).rawValue == (1 << 35) - 1)
+        #expect(grammarBits.union(curatedOnly).rawValue == (1 << 38) - 1)
     }
 
     @Test("SAP HANA's SQLScript blocks stay in the app's curated grammar and never reach the kit")
@@ -62,7 +62,10 @@ struct SQLLexicalFeatureMappingTests {
         let surrealQL = DatabaseType.surrealdb.lexicalGrammar
         let curatedOnly: SQLLexicalGrammar = [.angleQuotedIdentifiers, .backslashEscapesInAngleQuotes]
         #expect(surrealQL.isSuperset(of: curatedOnly))
-        #expect(SQLLexicalGrammar(pluginFeatures: surrealQL.pluginFeatures) == surrealQL.subtracting(curatedOnly))
+        #expect(
+            SQLLexicalGrammar(pluginFeatures: surrealQL.pluginFeatures)
+                == surrealQL.subtracting(curatedOnly.union(.statementsAsValues))
+        )
     }
 
     @Test("CockroachDB's byte literal stays in the app's curated grammar and never reaches the kit")
@@ -72,7 +75,7 @@ struct SQLLexicalFeatureMappingTests {
         #expect(cockroach.pluginFeatures == DatabaseType.postgresql.lexicalGrammar.pluginFeatures)
         #expect(
             SQLLexicalGrammar(pluginFeatures: cockroach.pluginFeatures)
-                == cockroach.subtracting([.escapeBytesPrefix, .atomicRoutineBodies])
+                == cockroach.subtracting([.escapeBytesPrefix, .atomicRoutineBodies, .bracketedStatementSources])
         )
     }
 

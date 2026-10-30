@@ -128,7 +128,8 @@ enum SQLLexicalRelevance {
         let length = text.length
         var facts: SQLLexicalGrammar = [
             .plsqlBlocks, .delimiterDirective, .unterminatedStatements, .terminatedMergeStatements,
-            .sqlScriptBlocks, .cqlBatches, .atomicRoutineBodies, .triggerBodies,
+            .sqlScriptBlocks, .cqlBatches, .atomicRoutineBodies, .triggerBodies, .statementsAsValues,
+            .pipeOperatorChains,
         ]
         var blockCommentOpeners = 0
         var index = 0
@@ -146,7 +147,9 @@ enum SQLLexicalRelevance {
             case SqlLexer.openAngleQuote:
                 facts.insert(.angleQuotedIdentifiers)
             case openBracket:
-                facts.formUnion([.bracketQuotedIdentifiers, .doubledClosingBracketEscapes])
+                facts.formUnion([
+                    .bracketQuotedIdentifiers, .doubledClosingBracketEscapes, .bracketedStatementSources,
+                ])
             case SqlLexer.singleQuote, SqlLexer.doubleQuote:
                 if next == unit, index + 2 < length, text.character(at: index + 2) == unit {
                     facts.insert(.tripleQuotedStrings)
