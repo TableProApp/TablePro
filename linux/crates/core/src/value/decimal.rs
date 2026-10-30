@@ -132,6 +132,18 @@ impl SqlDecimal {
         Some((if *negative { -magnitude } else { magnitude }, *scale))
     }
 
+    /// What `from_parts` takes: the sign, the digits and the scale.
+    pub fn parts(&self) -> Option<(bool, &str, u32)> {
+        match &self.0 {
+            DecimalRepr::Finite {
+                negative,
+                coefficient,
+                scale,
+            } => Some((*negative, &**coefficient, *scale)),
+            _ => None,
+        }
+    }
+
     pub fn fits(&self, precision: u32, scale: u32) -> bool {
         let DecimalRepr::Finite {
             coefficient,
@@ -440,6 +452,19 @@ mod tests {
         assert_eq!(parse("-1.25").to_scaled_i128(), Some((-125, 2)));
         assert_eq!(parse(&"9".repeat(40)).to_scaled_i128(), None);
         assert_eq!(SqlDecimal::from_scaled_i128(-125, 2).to_string(), "-1.25");
+    }
+
+    #[test]
+    fn parts_round_trip_through_from_parts() {
+        let wide = format!("-{}.5", "9".repeat(60));
+        let digits = format!("{}5", "9".repeat(60));
+        assert_eq!(parse(&wide).parts(), Some((true, digits.as_str(), 1)));
+        assert_eq!(parse("0.10").parts(), Some((false, "10", 2)));
+        let cents = parse("-12.30");
+        let (negative, coefficient, scale) = cents.parts().unwrap();
+        assert_eq!(SqlDecimal::from_parts(negative, coefficient, scale), Ok(cents.clone()));
+        assert_eq!(SqlDecimal::nan().parts(), None);
+        assert_eq!(SqlDecimal::infinity(true).parts(), None);
     }
 
     #[test]

@@ -14,9 +14,9 @@ mod connect_failure_view;
 mod connect_flow;
 mod connecting_page;
 mod connections;
-mod crash_notice;
 mod file_location_dialog;
 mod imp;
+mod launch_notice;
 mod locate_file;
 mod notification_request;
 mod notification_sink;
@@ -61,6 +61,7 @@ pub(super) use self::connect_failed_page::ConnectFailedPage;
 use self::connect_failure_view::ConnectFailureView;
 pub(super) use self::connecting_page::ConnectingPage;
 use self::file_location_dialog::FileCheck;
+pub(crate) use self::launch_notice::LaunchNotice;
 pub(super) use self::picker_page::PickerPage;
 use self::resolve_file_identity::{FileResolveError, FileTarget, ResolvedFile, resolve_file_blocking};
 use self::session_page::{FailedConnect, OpenSession, PendingConnect, SessionPage, source_key};
@@ -616,7 +617,7 @@ impl SessionWindow {
             imp.opened_for_file.set(false);
         }
         imp.page_toasts.replace(toasts);
-        self.show_crash_notice();
+        self.show_launch_notices();
         // A Cancel or Retry left as the default would take Enter on a
         // page that no longer shows it.
         self.set_default_widget(None::<&gtk::Widget>);

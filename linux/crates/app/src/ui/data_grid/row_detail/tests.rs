@@ -412,6 +412,37 @@ fn every_control_in_the_pane_is_named() {
     }
 }
 
+#[gtk4::test]
+fn an_enum_field_picks_from_its_labels() {
+    let (grid, pane) = opened(
+        vec![
+            named("id", "integer", true),
+            named("size", "enum('small','large')", false),
+            named("note", "text", false),
+        ],
+        vec![vec![
+            Value::Int(1),
+            Value::Text("small".into()),
+            Value::Text("x".into()),
+        ]],
+    );
+    take_keyboard(&grid);
+    let button = pane.imp().choice_button.get();
+    grid.focus(0, 2);
+    assert!(!button.is_visible(), "a text field offered labels");
+    grid.focus(0, 1);
+    assert!(button.is_visible(), "an enum field offered no labels");
+
+    button.popup();
+    button
+        .activate_action("choice.label", Some(&Some(1u32).to_variant()))
+        .expect("the labels' action");
+    drain_main_context();
+
+    assert_eq!(pending(&grid, 1, 1), Some(text("large")));
+    assert_eq!(pane.typed_text(), "large");
+}
+
 /// The middle of the first of the calendar's labels that `matches`,
 /// once the popover has laid it out.
 fn calendar_label(calendar: &gtk::Calendar, matches: impl Fn(&gtk::Widget) -> bool) -> (f64, f64) {
@@ -589,6 +620,50 @@ fn a_picked_day_keeps_a_timestamp_time() {
     assert_eq!(day_of("2024-02-2é"), None, "a cut inside a character");
 }
 
+#[test]
+fn a_picked_day_keeps_the_time_of_any_timestamp_the_commit_reads() {
+    let day = NaiveDate::from_ymd_opt(2024, 3, 1).expect("a day");
+    let plus_two = chrono::FixedOffset::east_opt(2 * 3600).expect("an offset");
+    let pick = |text: &str| with_day(text, day, Some(&TemporalZone::Naive), plus_two);
+
+    assert_eq!(
+        pick("12024-01-05 10:00:00"),
+        "2024-03-01 10:00:00",
+        "PostgreSQL writes a far year in full"
+    );
+    assert_eq!(
+        pick("2024-1-5 10:00"),
+        "2024-03-01 10:00",
+        "SQLite keeps the text as typed"
+    );
+    assert_eq!(pick(" 2024-01-05 10:00"), " 2024-03-01 10:00");
+    assert_eq!(
+        pick("0044-03-15 12:00:00 BC"),
+        "2024-03-01 12:00:00",
+        "an AD day kept the BC era"
+    );
+    assert_eq!(pick("10:00"), "2024-03-01 10:00");
+    let zoned = |text: &str| with_day(text, day, Some(&TemporalZone::Offset), plus_two);
+    assert_eq!(
+        zoned("10:00"),
+        "2024-03-01 10:00+02:00",
+        "a zoned timestamp took no offset"
+    );
+    assert_eq!(zoned("10:00+05"), "2024-03-01 10:00+05");
+    assert_eq!(
+        with_day("2024-01-05 10:00", day, None, plus_two),
+        "2024-03-01 10:00",
+        "SQLite keeps a timestamp in a DATE column"
+    );
+    assert_eq!(day_of("2024-1-5 10:00"), NaiveDate::from_ymd_opt(2024, 1, 5));
+    assert_eq!(day_of(" 2024-01-05"), NaiveDate::from_ymd_opt(2024, 1, 5));
+    assert_eq!(
+        day_of("0044-03-15 12:00:00 BC"),
+        None,
+        "the calendar opened on an AD day"
+    );
+}
+
 /// A zone whose offset moves from `before` to `after` at `change`, in UTC.
 #[derive(Clone)]
 struct OneChange {
@@ -697,6 +772,19 @@ fn what_the_value_editor_shows_for_a_cell() {
     );
     assert!(!locked.calendar, "a locked cell offered a calendar");
     assert!(value_content(&day, &saved, None, &value(a_date(2024, 1, 1))).calendar);
+    let size = column_of(named("size", "enum('s','l')", false));
+    let small = value(Value::Text("s".into()));
+    assert!(value_content(&size, &saved, None, &small).choice);
+    assert!(
+        !value_content(&size, &saved, Some(CellLock::PendingDelete), &small).choice,
+        "a locked cell offered its labels"
+    );
+    assert!(!value_content(&note, &saved, None, &value(Value::Null)).choice);
+    let nul = value_content(&size, &saved, None, &value(Value::Text("s\0".into())));
+    assert!(
+        nul.message.is_some() && nul.choice,
+        "a value the editor cannot hold hid the labels"
+    );
     assert_eq!(
         value_content(&doc, &saved, None, &value(Value::Null)).language,
         Some("json")
@@ -1162,6 +1250,30 @@ fn a_new_zoned_time_takes_the_offset_of_its_own_moment() {
         with_time("2026-10-04", a_time(9, 5, 0), ZONED, earlier, &sydney),
         "2026-10-04 09:05:00+11:00",
         "the offset was today's, not the value's day"
+    );
+}
+
+#[test]
+fn a_clock_on_the_first_day_chrono_holds_takes_an_offset() {
+    let first = NaiveDate::MIN.format("%Y-%m-%d").to_string();
+    let today = NaiveDate::from_ymd_opt(2026, 10, 29).expect("a day");
+    let plus_two = chrono::FixedOffset::east_opt(2 * 3600).expect("an offset");
+
+    assert_eq!(
+        with_time(&first, a_time(0, 30, 0), ZONED, today, &plus_two),
+        format!("{first} 00:30:00+02:00")
+    );
+}
+
+#[test]
+fn a_picker_replaces_a_part_out_of_range() {
+    let day = NaiveDate::from_ymd_opt(2024, 3, 1).expect("a day");
+    let plus_two = chrono::FixedOffset::east_opt(2 * 3600).expect("an offset");
+
+    assert_eq!(set_at_nine("2024-01-01 12:34:99", NAIVE), "2024-01-01 09:05:30");
+    assert_eq!(
+        with_day("2024-02-30 10:00", day, Some(&TemporalZone::Naive), plus_two),
+        "2024-03-01 10:00"
     );
 }
 

@@ -5,9 +5,9 @@ crates/app/src/application/accelerators.rs
 crates/app/src/application/app_actions.rs
 crates/app/src/application/app_services.rs
 crates/app/src/application/app_window_host.rs
-crates/app/src/application/crash_notice.rs
 crates/app/src/application/debug_info.rs
 crates/app/src/application/imp.rs
+crates/app/src/application/launch_notice.rs
 crates/app/src/application/legal_section.rs
 crates/app/src/application/mcp_bridge.rs
 crates/app/src/application/metainfo_release.rs
@@ -92,6 +92,7 @@ crates/app/src/services/grid/hex_dump.rs
 crates/app/src/services/grid/mod.rs
 crates/app/src/services/grid/row_key_builder.rs
 crates/app/src/services/grid/row_snapshot.rs
+crates/app/src/services/grid/selection_summary.rs
 crates/app/src/services/grid/test_columns.rs
 crates/app/src/services/grid/value_order.rs
 crates/app/src/services/history_availability.rs
@@ -237,10 +238,12 @@ crates/app/src/ui/data_grid/copy/mod.rs
 crates/app/src/ui/data_grid/copy/tests.rs
 crates/app/src/ui/data_grid/edit/actions.rs
 crates/app/src/ui/data_grid/edit/cell_editor.rs
+crates/app/src/ui/data_grid/edit/choice_menu.rs
 crates/app/src/ui/data_grid/edit/deletion.rs
 crates/app/src/ui/data_grid/edit/mod.rs
 crates/app/src/ui/data_grid/edit/paste.rs
 crates/app/src/ui/data_grid/edit/row_edits.rs
+crates/app/src/ui/data_grid/edit/tests/choices.rs
 crates/app/src/ui/data_grid/edit/tests/mod.rs
 crates/app/src/ui/data_grid/edit/tests/paste.rs
 crates/app/src/ui/data_grid/edit/tests/rows.rs
@@ -271,6 +274,7 @@ crates/app/src/ui/data_grid/row_detail/value_editor.rs
 crates/app/src/ui/data_grid/row_json_dialog.rs
 crates/app/src/ui/data_grid/row_number_column.rs
 crates/app/src/ui/data_grid/selection.rs
+crates/app/src/ui/data_grid/selection_summary.rs
 crates/app/src/ui/data_grid/server_sorter.rs
 crates/app/src/ui/data_grid/table_keys.rs
 crates/app/src/ui/data_grid/test_grid.rs
@@ -283,6 +287,7 @@ crates/app/src/ui/data_grid/tests/menus.rs
 crates/app/src/ui/data_grid/tests/mod.rs
 crates/app/src/ui/data_grid/tests/selection.rs
 crates/app/src/ui/data_grid/tests/sorting.rs
+crates/app/src/ui/data_grid/tests/summary.rs
 crates/app/src/ui/data_grid/tests/values.rs
 crates/app/src/ui/data_grid/tests/view.rs
 crates/app/src/ui/data_grid/tracked_values.rs
@@ -460,9 +465,9 @@ crates/app/src/ui/session_window/connect_failure_view.rs
 crates/app/src/ui/session_window/connect_flow.rs
 crates/app/src/ui/session_window/connecting_page.rs
 crates/app/src/ui/session_window/connections.rs
-crates/app/src/ui/session_window/crash_notice.rs
 crates/app/src/ui/session_window/file_location_dialog.rs
 crates/app/src/ui/session_window/imp.rs
+crates/app/src/ui/session_window/launch_notice.rs
 crates/app/src/ui/session_window/locate_file.rs
 crates/app/src/ui/session_window/mod.rs
 crates/app/src/ui/session_window/notification_request.rs

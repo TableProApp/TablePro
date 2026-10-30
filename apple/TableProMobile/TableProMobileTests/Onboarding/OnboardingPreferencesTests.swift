@@ -58,4 +58,25 @@ struct OnboardingPreferencesTests {
         #expect(reloaded.hasSeenWelcome)
         #expect(reloaded.lastSeenVersion == "1.0")
     }
+
+    @Test("An older version records nothing, so the newer one stays recorded")
+    func olderVersionKeepsNewerRecorded() {
+        let preferences = OnboardingPreferences(defaults: defaults)
+        preferences.recordLaunch(version: "1.1")
+
+        preferences.recordLaunch(version: "1.0")
+
+        #expect(preferences.lastSeenVersion == "1.1")
+        #expect(OnboardingPreferences(defaults: defaults).lastSeenVersion == "1.1")
+    }
+
+    @Test("A newer version is recorded, compared as numbers")
+    func newerVersionIsRecorded() {
+        let preferences = OnboardingPreferences(defaults: defaults)
+        preferences.recordLaunch(version: "1.9")
+
+        preferences.recordLaunch(version: "1.10")
+
+        #expect(OnboardingPreferences(defaults: defaults).lastSeenVersion == "1.10")
+    }
 }

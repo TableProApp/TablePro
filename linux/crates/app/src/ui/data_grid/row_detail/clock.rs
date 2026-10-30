@@ -1,10 +1,9 @@
-use std::ops::Range;
-
 use chrono::{Local, NaiveDate, NaiveTime, TimeZone, Timelike};
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use gtk4::{self as gtk, glib};
 use tablepro_core::column::{ColumnKind, TemporalZone, TimeRange};
+use tablepro_core::edit::temporal_parts;
 
 use super::RowDetailPane;
 use super::calendar::offset_at;
@@ -37,72 +36,26 @@ impl ClockField {
     }
 }
 
-// By the text's own form, as chrono reads it for the commit: SQLite keeps any date or time text in a
-// DATE, TIME or DATETIME column, and chrono takes whitespace before a number and one digit for two.
-fn clock_span(text: &str) -> Option<Range<usize>> {
-    let after_day = day_len(text).map_or(0, |day| day + usize::from(text.as_bytes().get(day) == Some(&b'T')));
-    let start = after_day + spaces(text.get(after_day..)?);
-    let minute = number(text, literal(text, number(text, start, 2)?, b':')?, 2)?;
-    let end = literal(text, minute, b':').and_then(|second| number(text, second, 2));
-    Some(start..end.unwrap_or(minute))
-}
-
-// A year may run past 9999, as PostgreSQL writes one, and carry a sign.
-fn day_len(text: &str) -> Option<usize> {
-    let lead = spaces(text);
-    let year = lead + usize::from(matches!(text.as_bytes().get(lead), Some(b'-' | b'+')));
-    let month = number(text, literal(text, number(text, year, usize::MAX)?, b'-')?, 2)?;
-    number(text, literal(text, month, b'-')?, 2)
-}
-
-// The end of the number at `at`, past any whitespace before it.
-fn number(text: &str, at: usize, most: usize) -> Option<usize> {
-    let start = at + spaces(text.get(at..)?);
-    let run = text
-        .get(start..)?
-        .bytes()
-        .take(most)
-        .take_while(u8::is_ascii_digit)
-        .count();
-    (run > 0).then_some(start + run)
-}
-
-fn literal(text: &str, at: usize, byte: u8) -> Option<usize> {
-    (text.as_bytes().get(at) == Some(&byte)).then_some(at + 1)
-}
-
-fn spaces(text: &str) -> usize {
-    text.len() - text.trim_start().len()
-}
-
 pub fn time_of(text: &str) -> Option<NaiveTime> {
-    let mut parts = text
-        .get(clock_span(text)?)?
-        .split(':')
-        .map(|part| part.trim().parse::<u32>());
-    let (hour, minute) = (parts.next()?.ok()?, parts.next()?.ok()?);
-    let second = parts.next().transpose().ok()?.unwrap_or(0);
-    NaiveTime::from_hms_opt(hour, minute, second)
+    temporal_parts(text).time
 }
 
 // Only the clock changes; text with no day or clock, such as NULL or infinity, becomes a new value.
 pub fn with_time<Tz: TimeZone>(text: &str, time: NaiveTime, field: ClockField, today: NaiveDate, zone: &Tz) -> String {
     let mut clock = time.format("%H:%M:%S").to_string();
+    let parts = temporal_parts(text);
     let mut text = text.to_owned();
-    if let Some(span) = clock_span(&text) {
+    if let Some(span) = parts.clock {
         text.replace_range(span, &clock);
         return text;
     }
-    let day_end = day_len(&text);
-    let day = day_end
-        .and_then(|end| NaiveDate::parse_from_str(text.get(..end)?.trim_start(), "%Y-%m-%d").ok())
-        .unwrap_or(today);
     if field.with_offset {
+        let day = parts.date.unwrap_or(today);
         clock.push_str(&offset_at(zone, day.and_time(time)).to_string());
     }
-    match day_end {
-        Some(end) => {
-            text.insert_str(end, &format!(" {clock}"));
+    match parts.day {
+        Some(day) => {
+            text.insert_str(day.end, &format!(" {clock}"));
             text
         }
         None if field.dated => format!("{} {clock}", today.format("%Y-%m-%d")),

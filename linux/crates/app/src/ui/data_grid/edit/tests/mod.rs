@@ -1,3 +1,4 @@
+mod choices;
 mod paste;
 mod rows;
 

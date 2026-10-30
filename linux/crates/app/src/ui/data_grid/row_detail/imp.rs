@@ -43,6 +43,8 @@ pub struct RowDetailPane {
     #[template_child]
     pub field_label: TemplateChild<gtk::Label>,
     #[template_child]
+    pub choice_button: TemplateChild<gtk::MenuButton>,
+    #[template_child]
     pub calendar_button: TemplateChild<gtk::MenuButton>,
     #[template_child]
     pub calendar_popover: TemplateChild<gtk::Popover>,
