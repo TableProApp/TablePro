@@ -63,9 +63,9 @@ pub struct SessionWindow {
     /// The recorded sessions the window was opened to restore, until
     /// each saved connection is looked up or each file resolved.
     pub(super) restoring: RefCell<Vec<SessionKey>>,
-    /// Another database opening beside its connection, and what waits for
-    /// its session: each tab moved there while it opened.
-    pub(super) opening_databases: RefCell<HashMap<SessionKey, super::sibling_sessions::Opening>>,
+    /// Another database opening beside its connection, with the stop for
+    /// its open.
+    pub(super) opening_databases: RefCell<HashMap<SessionKey, tokio_util::sync::CancellationToken>>,
     /// One close prompt at a time, for a tab, the window or a
     /// disconnect.
     pub(super) close_guards: OnceCell<Rc<CloseGuards>>,
