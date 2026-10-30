@@ -482,7 +482,8 @@ mod tests {
         let session = Session::start(pending, deps(credentials.clone()));
         let weak: Weak<Session> = Arc::downgrade(&session);
         let mut health = session.health();
-        assert_eq!(Arc::strong_count(&credentials), 2, "the monitor holds no plan");
+        // The test's, the monitor's, and the session's own for its siblings.
+        assert_eq!(Arc::strong_count(&credentials), 3, "the monitor holds no plan");
 
         drop(session);
         for _ in 0..10 {
