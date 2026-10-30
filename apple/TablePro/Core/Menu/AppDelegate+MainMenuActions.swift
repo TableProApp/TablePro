@@ -156,35 +156,3 @@ enum MainMenuLink {
     static let repository = "https://github.com/TableProApp/TablePro"
     static let issues = "https://github.com/TableProApp/TablePro/issues"
 }
-
-/// The About panel's credits line, kept out of the delegate so the menu action stays
-/// a single call.
-enum AboutPanelCredits {
-    static func attributedString() -> NSAttributedString {
-        let style: [NSAttributedString.Key: Any] = [
-            .font: NSFont.systemFont(ofSize: 11),
-            .foregroundColor: NSColor.secondaryLabelColor
-        ]
-        let credits = NSMutableAttributedString()
-        let links: [(String, String)] = [
-            ("Website", MainMenuLink.website),
-            ("GitHub", MainMenuLink.repository),
-            (String(localized: "Documentation"), MainMenuLink.documentation),
-            (String(localized: "Sponsor"), SupportLinks.sponsors(.aboutPanel).absoluteString)
-        ]
-        for (index, link) in links.enumerated() {
-            if index > 0 {
-                credits.append(NSAttributedString(string: "  |  ", attributes: style))
-            }
-            let attributed = NSMutableAttributedString(string: link.0, attributes: style)
-            if let url = URL(string: link.1) {
-                attributed.addAttribute(.link, value: url, range: NSRange(location: 0, length: attributed.length))
-            }
-            credits.append(attributed)
-        }
-        let centered = NSMutableParagraphStyle()
-        centered.alignment = .center
-        credits.addAttribute(.paragraphStyle, value: centered, range: NSRange(location: 0, length: credits.length))
-        return credits
-    }
-}
