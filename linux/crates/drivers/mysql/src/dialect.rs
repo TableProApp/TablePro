@@ -5,8 +5,8 @@ use tablepro_core::column::{
 };
 use tablepro_core::ddl::DdlDialect;
 use tablepro_core::dialect::{
-    BindError, BindTarget, DialectCapabilities, InsertConflict, KeysetDirection, LikeCase, LikeForm, LiteralError,
-    Placeholder, SqlDialect,
+    BindError, BindTarget, DatabaseLayout, DialectCapabilities, InsertConflict, KeysetDirection, LikeCase, LikeForm,
+    LiteralError, Placeholder, SqlDialect,
 };
 use tablepro_core::export::value_to_text;
 use tablepro_core::meta::{EngineRowId, EngineRowIdPart};
@@ -60,7 +60,15 @@ impl MySqlDialect {
     }
 }
 
+pub(crate) fn quote(name: &str) -> String {
+    format!("`{}`", name.replace('`', "``"))
+}
+
 impl SqlDialect for MySqlDialect {
+    fn database_layout(&self) -> DatabaseLayout {
+        DatabaseLayout::AsSchemas
+    }
+
     fn capabilities(&self) -> DialectCapabilities {
         // CLIENT_FOUND_ROWS is on, so an UPDATE reports the rows it
         // matched, including ones it left unchanged.
@@ -75,7 +83,7 @@ impl SqlDialect for MySqlDialect {
     }
 
     fn quote_identifier(&self, name: &str) -> String {
-        format!("`{}`", name.replace('`', "``"))
+        quote(name)
     }
 
     fn placeholder(&self, _ordinal: usize, value: Value, target: BindTarget<'_>) -> Result<Placeholder, BindError> {

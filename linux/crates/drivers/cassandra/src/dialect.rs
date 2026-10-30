@@ -1,8 +1,8 @@
 use tablepro_core::column::{ColumnInfo, ColumnType, SqlExpression};
 use tablepro_core::ddl::DdlDialect;
 use tablepro_core::dialect::{
-    BindError, BindTarget, DialectCapabilities, InsertBatchLimits, InsertConflict, KeysetDirection, LikeForm,
-    LiteralError, Placeholder, SqlDialect, TablePaging,
+    BindError, BindTarget, DatabaseLayout, DialectCapabilities, InsertBatchLimits, InsertConflict, KeysetDirection,
+    LikeForm, LiteralError, Placeholder, SqlDialect, TablePaging,
 };
 use tablepro_core::filter::{Combinator, FilterOp};
 use tablepro_core::meta::{EngineRowId, EngineRowIdPart, TableRef};
@@ -141,6 +141,10 @@ const DURATION: &[FilterOp] = &[FilterOp::Eq];
 const CASSANDRA_IN_OUTSIDE_KEY: (u32, u32) = (5, 0);
 
 impl SqlDialect for CqlDialect {
+    fn database_layout(&self) -> DatabaseLayout {
+        DatabaseLayout::AsSchemas
+    }
+
     fn capabilities(&self) -> DialectCapabilities {
         match self.conditional_writes {
             true => DialectCapabilities {

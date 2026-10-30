@@ -184,10 +184,15 @@ impl TabFactory {
             close_timeout: parts.context.close_timeout(),
             snippets: parts.snippets.clone(),
         });
+        let moved = database.is_some();
         if let Some(database) = database {
             editor.move_to_database(&database);
         }
         connect_editor(&editor, id, &parts.input, &parts.toasts);
+        // A restored or reopened tab brings its database's session in too.
+        if moved {
+            parts.input.deliver(WorkspaceInput::EditorTabDatabaseChanged(id));
+        }
         editor.attach_assistant(parts.assistant.clone());
         // After the signals are connected, so the workspace marks a tab
         // restored with unsaved changes.
@@ -497,14 +502,12 @@ pub(super) fn connect_editor(
     editor.connect_content_changed(move |_| content.deliver(WorkspaceInput::EditorTabContentChanged(tab_id)));
     let file = input.clone();
     editor.connect_file_changed(move |_| file.deliver(WorkspaceInput::EditorTabFileChanged(tab_id)));
+    let database = input.clone();
+    editor.connect_database_changed(move |_| database.deliver(WorkspaceInput::EditorTabDatabaseChanged(tab_id)));
     let transaction = input.clone();
     editor.connect_transaction_changed(move |_, _| transaction.deliver(WorkspaceInput::EditorTransactionChanged));
     let toast = input.clone();
     editor.connect_toast(move |_, text| toast.deliver(WorkspaceInput::ShowToast(text)));
-    let moved = input.clone();
-    editor.connect_database_moved(move |_, database| {
-        moved.deliver(WorkspaceInput::EditorDatabaseMoved { tab_id, database });
-    });
     let close = input.clone();
     editor.connect_close_requested(move |_| close.deliver(WorkspaceInput::CloseWorkspaceTab(tab_id)));
     let assistant = input.clone();

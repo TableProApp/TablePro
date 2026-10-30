@@ -284,6 +284,7 @@ pub enum ClosedTabDescriptor {
     Editor {
         query: String,
         file: Option<crate::workspace::EditorFileRecord>,
+        database: Option<String>,
     },
     Table {
         schema: Option<String>,
@@ -508,6 +509,9 @@ pub(crate) enum WorkspaceInput {
     /// An editor tab was saved, opened a file, or its text came to
     /// differ from its file's or match it again.
     EditorTabFileChanged(Uuid),
+    /// An editor tab moved to another database, which its record keeps
+    /// and the window follows (0030).
+    EditorTabDatabaseChanged(Uuid),
     /// The session's saved tabs and their editor text, read off the GTK
     /// thread.
     WorkspaceLoaded(workspace_tabs::LoadedWorkspace),
@@ -576,12 +580,6 @@ pub(crate) enum WorkspaceInput {
         body: String,
     },
     ShowToast(String),
-    /// An editor tab's bar moved it to `database`, or back to the
-    /// connection's own with "": the window follows it there (0030).
-    EditorDatabaseMoved {
-        tab_id: Uuid,
-        database: String,
-    },
     /// Completion in the editor tab reads `session`'s catalog, the tab's
     /// database's, or the connection's again with `None`.
     FollowCatalog {
@@ -1061,9 +1059,13 @@ fn replace_text(cell: &RefCell<String>, text: &str) -> bool {
 
 impl WorkspaceModel {
     /// Ask the window to reach the session of the database an editor tab
-    /// moved to, and to hand it back for the tab's completion.
-    fn follow_editor_database(&self, tab_id: Uuid, database: String) {
+    /// is in, and to hand it back for the tab's completion.
+    fn follow_editor_database(&self, tab_id: Uuid) {
         self.retitle_tab(tab_id);
+        let database = match self.workspace_tabs.borrow().get(&tab_id) {
+            Some(WorkspaceTab::Editor(slot)) => slot.editor.tab_database().unwrap_or_default(),
+            _ => return,
+        };
         let Some(shell) = self.shell.upgrade() else {
             return;
         };
@@ -1279,7 +1281,6 @@ impl WorkspaceModel {
             WorkspaceInput::CloseActiveWorkspaceTab => self.close_active_workspace_tab(),
             WorkspaceInput::ShowAlert { title, body } => self.show_error_alert(&title, &body),
             WorkspaceInput::ShowToast(msg) => self.show_toast(&msg),
-            WorkspaceInput::EditorDatabaseMoved { tab_id, database } => self.follow_editor_database(tab_id, database),
             WorkspaceInput::FollowCatalog { tab_id, session } => {
                 if let Some(WorkspaceTab::Editor(slot)) = self.workspace_tabs.borrow().get(&tab_id) {
                     slot.editor.follow_catalog(session);
@@ -1308,6 +1309,10 @@ impl WorkspaceModel {
             }
             WorkspaceInput::EditorTabContentChanged(id) => self.on_editor_tab_content_changed(id),
             WorkspaceInput::EditorTabFileChanged(id) => self.on_editor_tab_file_changed(id),
+            WorkspaceInput::EditorTabDatabaseChanged(id) => {
+                self.persist_workspace_state();
+                self.follow_editor_database(id);
+            }
             WorkspaceInput::WorkspaceLoaded(loaded) => self.on_workspace_loaded(loaded),
             WorkspaceInput::ResetWorkspaceLayout => self.on_reset_workspace_layout(),
             WorkspaceInput::SafeModeChanged => self.refresh_title(),

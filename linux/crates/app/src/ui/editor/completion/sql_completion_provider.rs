@@ -14,7 +14,7 @@ use tablepro_core::sql_syntax::script::{LexicalSettings, text_offsets};
 use tablepro_session::Session;
 use tablepro_session::runtime::Tasks;
 
-use super::catalog_read::{self, CatalogAnswer};
+use super::catalog_read::{self, CatalogAnswer, CatalogHome};
 use super::completion_scope::{self, CompletionScope};
 use super::fuzzy;
 use super::proposal_kind::ProposalKind;
@@ -44,16 +44,14 @@ pub struct ProviderDeps {
 }
 
 impl SqlCompletionProvider {
-    /// Read the catalog of `session`, the tab's database's, rather than
-    /// the connection's. Names resolve in that session's default schema.
-    pub fn set_catalog_session(&self, session: Option<std::sync::Arc<tablepro_session::Session>>) {
-        self.imp().catalog_session.replace(session);
+    /// Resolve unqualified names in `home`, the tab's database.
+    pub fn set_home(&self, home: CatalogHome) {
+        self.imp().home.replace(home);
     }
 
-    /// Resolve unqualified names in `database`, the tab's own when the
-    /// editor bar moved it off the connection's.
-    pub fn set_home(&self, database: Option<String>) {
-        self.imp().home.replace(database);
+    /// Read `session`'s catalog, the tab's database's, while it is open.
+    pub fn set_catalog_session(&self, session: Option<Arc<Session>>) {
+        self.imp().catalog_session.replace(session);
     }
 
     pub fn new(session: ActiveSession, tasks: Tasks, snippets: Rc<SnippetLibrary>) -> Self {
@@ -79,15 +77,16 @@ impl SqlCompletionProvider {
         let ranking = match (request.session.clone(), tasks.clone()) {
             (Some(session), Some(tasks)) if request.grammar.is_sql() => {
                 let fallback = request.clone();
-                // The tab's database's own session resolves its names in
-                // its default schema; until it opens, the home database
-                // stands in on the connection's catalog.
-                let followed = self.imp().catalog_session.borrow().clone();
-                let home = match followed {
-                    Some(_) => None,
-                    None => self.imp().home.borrow().clone(),
+                let followed = self
+                    .imp()
+                    .catalog_session
+                    .borrow()
+                    .clone()
+                    .filter(|followed| !followed.is_shut_down());
+                let (session, home) = match followed {
+                    Some(followed) => (followed, CatalogHome::Connection),
+                    None => (session, self.imp().home.borrow().clone()),
                 };
-                let session = followed.unwrap_or(session);
                 let ranked_for = needle.clone();
                 let blocking = tasks.clone();
                 tasks
