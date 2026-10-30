@@ -56,7 +56,6 @@ pub struct ColumnSet {
     view_columns: Vec<gtk::ColumnViewColumn>,
     paints: Vec<Rc<ColumnPaint>>,
     row_numbers: Option<gtk::ColumnViewColumn>,
-    /// Last on screen, holding the width the columns leave.
     filler: Option<gtk::ColumnViewColumn>,
     sorting: Option<GridSorting>,
     /// The order, visibility and widths as the user left them.
@@ -106,12 +105,7 @@ impl ColumnSet {
         // GTK 4.22 leaks a reference to the column beside the focus column
         // when the view drops the focus column, so a column can outlive its
         // view; its factory must not keep the grid's cells alive with it.
-        for column in self
-            .view_columns
-            .drain(..)
-            .chain(self.row_numbers.take())
-            .chain(self.filler.take())
-        {
+        for column in self.view_columns.drain(..).chain(self.row_numbers.take()) {
             column.set_factory(None::<&gtk::ListItemFactory>);
         }
         self.paints.clear();
@@ -168,7 +162,7 @@ impl DataGrid {
                 view.append_column(&column);
             }
         }
-        let filler = super::filler_column::build();
+        let filler = filler_column();
         view.append_column(&filler);
         built.filler = Some(filler);
         self.imp().columns.replace(built);
@@ -386,39 +380,34 @@ impl DataGrid {
     /// A column moved, went or came back: the layout keeps it, and a
     /// search counts only the columns on screen, in their order.
     fn columns_moved(&self) {
-        if self.keep_filler_last() {
-            // Moving it back changes the columns again, which comes here.
-            return;
-        }
+        self.keep_filler_last();
         self.record_layout();
         self.find_rows_changed();
     }
 
-    /// A header dragged past the filler puts it back after every column.
-    /// `true` when it moved.
-    fn keep_filler_last(&self) -> bool {
+    // GTK drops a header dragged onto the filler after it, and lets the
+    // filler's own header be dragged.
+    fn keep_filler_last(&self) {
         let Some(filler) = self.imp().columns.borrow().filler.clone() else {
-            return false;
+            return;
         };
         let view = self.column_view();
-        let columns = view.columns();
-        let last = columns.n_items().saturating_sub(1);
-        // A move takes a column out before it puts it back: while the
-        // filler is out, there is nothing to put back yet.
-        let at = (0..columns.n_items()).find(|&position| columns.item(position).as_ref() == Some(filler.upcast_ref()));
-        if at.is_none_or(|at| at == last) {
-            return false;
+        if !out_of_place(&view, &filler) {
+            return;
         }
-        // Not inside the list's own change, whose other handlers still
-        // read the positions it announced.
-        glib::idle_add_local_once(move || {
-            let columns = view.columns();
-            let last = columns.n_items().saturating_sub(1);
-            if columns.item(last).as_ref() != Some(filler.upcast_ref()) {
-                view.insert_column(last, &filler);
+        // GTK places the moved column's widgets after the list announces
+        // the move, so a move from in here would leave them out of order.
+        glib::idle_add_local_once(glib::clone!(
+            #[weak]
+            view,
+            #[weak]
+            filler,
+            move || {
+                if out_of_place(&view, &filler) {
+                    view.insert_column(view.columns().n_items().saturating_sub(1), &filler);
+                }
             }
-        });
-        true
+        ));
     }
 
     /// Fold what the view shows into the stored layout. A column the rows
@@ -689,6 +678,21 @@ impl DataGrid {
             None => self.store().position_of(row),
         }
     }
+}
+
+// GTK makes the header and rows only as wide as the columns unless one
+// expands, and never resizes the last column; this one takes both.
+fn filler_column() -> gtk::ColumnViewColumn {
+    let column = gtk::ColumnViewColumn::builder().expand(true).build();
+    column.set_id(Some("filler"));
+    column
+}
+
+// The idle can run after a rebuild dropped this filler from the view.
+fn out_of_place(view: &gtk::ColumnView, filler: &gtk::ColumnViewColumn) -> bool {
+    let columns = view.columns();
+    let last = columns.item(columns.n_items().saturating_sub(1));
+    filler.column_view().as_ref() == Some(view) && last.as_ref() != Some(filler.upcast_ref())
 }
 
 fn same_names(layout: &ColumnLayout, columns: &[GridColumn]) -> bool {

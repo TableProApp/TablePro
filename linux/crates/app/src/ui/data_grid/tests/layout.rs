@@ -6,8 +6,8 @@ use tablepro_core::{ColumnInfo, Value};
 
 use super::{Layouts, data_column, text};
 use crate::services::grid::{ColumnLayout, LayoutSlot};
-use crate::test_support::drain_main_context;
-use crate::ui::data_grid::test_grid::{Grid, GridSpec, named, persisted, two_text_columns, two_text_values};
+use crate::test_support::{drain_main_context, wait_until};
+use crate::ui::data_grid::test_grid::{Grid, GridSpec, WAIT, named, persisted, two_text_columns, two_text_values};
 
 fn users() -> Vec<ColumnInfo> {
     vec![
@@ -124,6 +124,31 @@ fn a_column_missing_from_one_read_keeps_its_entry() {
     assert_eq!(all.grid.shown_columns(), [0, 1]);
     assert!(!data_column(&all, 2).is_visible());
     assert_eq!(data_column(&all, 2).fixed_width(), 222);
+}
+
+/// GTK drops a header let go over the space after the last column after
+/// the filler that holds that space, and lets the filler be dragged too.
+#[gtk4::test]
+fn the_space_after_the_last_column_stays_last() {
+    let layouts = Layouts::new();
+    let grid = open_users(&layouts, "users");
+    let view = grid.grid.column_view();
+    let last = || {
+        view.columns()
+            .item(view.columns().n_items() - 1)
+            .and_downcast::<gtk::ColumnViewColumn>()
+            .expect("a column")
+    };
+    let filler = last();
+
+    view.insert_column(position_in_view(&view, &filler), &data_column(&grid, 0));
+    wait_until(WAIT, || last() == filler).expect("the filler back at the end");
+    assert_eq!(grid.grid.shown_columns(), [1, 2, 0]);
+    assert_eq!(layouts.saved("users").order.last(), Some(&slot("id")));
+
+    view.insert_column(1, &filler);
+    wait_until(WAIT, || last() == filler).expect("the filler back at the end");
+    assert_eq!(grid.grid.shown_columns(), [1, 2, 0]);
 }
 
 /// A grid of no columns has nothing to focus and no header to bring one

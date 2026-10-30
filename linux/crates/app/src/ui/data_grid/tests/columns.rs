@@ -543,64 +543,50 @@ fn a_cleared_width_in_an_empty_table_returns_to_its_types_width() {
     assert_eq!(column.fixed_width(), typed);
 }
 
-fn view_columns(grid: &Grid) -> Vec<gtk::ColumnViewColumn> {
-    let columns = grid.grid.column_view().columns();
-    (0..columns.n_items())
-        .filter_map(|position| columns.item(position).and_downcast())
-        .collect()
-}
+/// These click on the X display every test shares; nextest runs them
+/// with no other test beside them.
+mod real_keys {
+    use gtk4 as gtk;
+    use gtk4::prelude::*;
 
-/// The rows reach the grid's edge, as an AppKit table's do: an empty
-/// column after the last takes the width the columns leave, and the
-/// columns keep their own.
-#[gtk4::test]
-fn the_rows_reach_the_grids_edge_and_the_columns_keep_their_width() {
-    let grid = laid_out(two_text_rows());
-    let columns = view_columns(&grid);
-    let filler = columns.last().expect("a column");
+    use super::super::{Layouts, data_column, laid_out, settled_width};
+    use super::saved_to;
+    use crate::test_support::{KeyInjector, descendants, wait_until};
+    use crate::ui::data_grid::test_grid::WAIT;
 
-    assert_eq!(filler.id().as_deref(), Some("filler"));
-    assert!(filler.expands());
-    assert!(!filler.is_resizable());
-    assert!(
-        grid.grid.column_index(filler).is_none(),
-        "the filler counts as a data column"
-    );
-    for index in 0..2 {
-        assert!(!data_column(&grid, index).expands(), "column {index} expands");
-        settled_width(&grid, index);
+    fn header_of(header: &gtk::Widget, name: &str) -> gtk::Widget {
+        std::iter::successors(header.first_child(), |title| title.next_sibling())
+            .find(|title| {
+                descendants(title)
+                    .iter()
+                    .any(|widget| widget.downcast_ref::<gtk::Label>().is_some_and(|label| label.label() == name))
+            })
+            .expect("the column's header")
     }
-    let row = grid
-        .cell_at(0, 1)
-        .parent()
-        .and_then(|cell| cell.parent())
-        .expect("the row");
-    let view = grid.grid.column_view();
-    wait_until(WAIT, || row.width() >= view.width() - 1).expect("the row as wide as the grid");
-}
 
-/// A header dragged after the filler leaves it last, and the layout
-/// keeps the move.
-#[gtk4::test]
-fn a_column_moved_past_the_filler_leaves_it_last() {
-    let grid = laid_out(two_text_rows());
-    let view = grid.grid.column_view();
-    let id = data_column(&grid, 0);
+    /// GTK resizes no column from the view's last edge, which was the last
+    /// data column's.
+    #[gtk4::test]
+    fn a_double_click_on_the_last_columns_edge_gives_it_the_grids_width() {
+        let layouts = Layouts::new();
+        let grid = laid_out(saved_to(&layouts));
+        KeyInjector::focus_only(&grid.window);
+        wait_until(WAIT, || grid.window.is_active()).expect("the window to take the focus");
+        let mouse = KeyInjector::connect().expect("an X11 display");
+        let column = data_column(&grid, 1);
+        column.set_fixed_width(300);
+        settled_width(&grid, 1);
+        let header = grid.grid.column_view().first_child().expect("the header");
+        let bounds = header_of(&header, "name")
+            .compute_bounds(&header)
+            .expect("the column's header bounds");
 
-    view.insert_column(view.columns().n_items() - 1, &id);
-    wait_until(WAIT, || {
-        view_columns(&grid)
-            .last()
-            .and_then(gtk::ColumnViewColumn::id)
-            .as_deref()
-            == Some("filler")
-    })
-    .expect("the filler back at the end");
+        // Where GTK looks for the edge: the header's origin plus the
+        // column's width.
+        let edge = (bounds.x() + 300.0, bounds.y() + bounds.height() / 2.0);
+        mouse.click(&header, edge, 2).expect("the double click");
 
-    let columns = view_columns(&grid);
-    assert_eq!(
-        columns[columns.len() - 2],
-        id,
-        "the moved column stays where it was put"
-    );
+        wait_until(WAIT, || column.fixed_width() > 0 && column.fixed_width() != 300).expect("the grid's width");
+        assert_eq!(layouts.saved("t").widths.get("name"), None);
+    }
 }
