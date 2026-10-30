@@ -6,6 +6,7 @@ mod column_chooser;
 mod columns;
 mod copy;
 mod edit;
+mod filler_column;
 mod find_bar;
 mod grid_actions;
 mod grid_cell;

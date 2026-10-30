@@ -542,3 +542,65 @@ fn a_cleared_width_in_an_empty_table_returns_to_its_types_width() {
     wait_until(WAIT, || column.fixed_width() > 0).expect("the grid gives the column a width again");
     assert_eq!(column.fixed_width(), typed);
 }
+
+fn view_columns(grid: &Grid) -> Vec<gtk::ColumnViewColumn> {
+    let columns = grid.grid.column_view().columns();
+    (0..columns.n_items())
+        .filter_map(|position| columns.item(position).and_downcast())
+        .collect()
+}
+
+/// The rows reach the grid's edge, as an AppKit table's do: an empty
+/// column after the last takes the width the columns leave, and the
+/// columns keep their own.
+#[gtk4::test]
+fn the_rows_reach_the_grids_edge_and_the_columns_keep_their_width() {
+    let grid = laid_out(two_text_rows());
+    let columns = view_columns(&grid);
+    let filler = columns.last().expect("a column");
+
+    assert_eq!(filler.id().as_deref(), Some("filler"));
+    assert!(filler.expands());
+    assert!(!filler.is_resizable());
+    assert!(
+        grid.grid.column_index(filler).is_none(),
+        "the filler counts as a data column"
+    );
+    for index in 0..2 {
+        assert!(!data_column(&grid, index).expands(), "column {index} expands");
+        settled_width(&grid, index);
+    }
+    let row = grid
+        .cell_at(0, 1)
+        .parent()
+        .and_then(|cell| cell.parent())
+        .expect("the row");
+    let view = grid.grid.column_view();
+    wait_until(WAIT, || row.width() >= view.width() - 1).expect("the row as wide as the grid");
+}
+
+/// A header dragged after the filler leaves it last, and the layout
+/// keeps the move.
+#[gtk4::test]
+fn a_column_moved_past_the_filler_leaves_it_last() {
+    let grid = laid_out(two_text_rows());
+    let view = grid.grid.column_view();
+    let id = data_column(&grid, 0);
+
+    view.insert_column(view.columns().n_items() - 1, &id);
+    wait_until(WAIT, || {
+        view_columns(&grid)
+            .last()
+            .and_then(gtk::ColumnViewColumn::id)
+            .as_deref()
+            == Some("filler")
+    })
+    .expect("the filler back at the end");
+
+    let columns = view_columns(&grid);
+    assert_eq!(
+        columns[columns.len() - 2],
+        id,
+        "the moved column stays where it was put"
+    );
+}

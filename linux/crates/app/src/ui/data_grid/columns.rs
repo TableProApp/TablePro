@@ -56,6 +56,8 @@ pub struct ColumnSet {
     view_columns: Vec<gtk::ColumnViewColumn>,
     paints: Vec<Rc<ColumnPaint>>,
     row_numbers: Option<gtk::ColumnViewColumn>,
+    /// Last on screen, holding the width the columns leave.
+    filler: Option<gtk::ColumnViewColumn>,
     sorting: Option<GridSorting>,
     /// The order, visibility and widths as the user left them.
     layout: ColumnLayout,
@@ -104,7 +106,12 @@ impl ColumnSet {
         // GTK 4.22 leaks a reference to the column beside the focus column
         // when the view drops the focus column, so a column can outlive its
         // view; its factory must not keep the grid's cells alive with it.
-        for column in self.view_columns.drain(..).chain(self.row_numbers.take()) {
+        for column in self
+            .view_columns
+            .drain(..)
+            .chain(self.row_numbers.take())
+            .chain(self.filler.take())
+        {
             column.set_factory(None::<&gtk::ListItemFactory>);
         }
         self.paints.clear();
@@ -161,6 +168,9 @@ impl DataGrid {
                 view.append_column(&column);
             }
         }
+        let filler = super::filler_column::build();
+        view.append_column(&filler);
+        built.filler = Some(filler);
         self.imp().columns.replace(built);
         self.size_unsized_columns();
         self.watch_layout_changes();
@@ -376,8 +386,39 @@ impl DataGrid {
     /// A column moved, went or came back: the layout keeps it, and a
     /// search counts only the columns on screen, in their order.
     fn columns_moved(&self) {
+        if self.keep_filler_last() {
+            // Moving it back changes the columns again, which comes here.
+            return;
+        }
         self.record_layout();
         self.find_rows_changed();
+    }
+
+    /// A header dragged past the filler puts it back after every column.
+    /// `true` when it moved.
+    fn keep_filler_last(&self) -> bool {
+        let Some(filler) = self.imp().columns.borrow().filler.clone() else {
+            return false;
+        };
+        let view = self.column_view();
+        let columns = view.columns();
+        let last = columns.n_items().saturating_sub(1);
+        // A move takes a column out before it puts it back: while the
+        // filler is out, there is nothing to put back yet.
+        let at = (0..columns.n_items()).find(|&position| columns.item(position).as_ref() == Some(filler.upcast_ref()));
+        if at.is_none_or(|at| at == last) {
+            return false;
+        }
+        // Not inside the list's own change, whose other handlers still
+        // read the positions it announced.
+        glib::idle_add_local_once(move || {
+            let columns = view.columns();
+            let last = columns.n_items().saturating_sub(1);
+            if columns.item(last).as_ref() != Some(filler.upcast_ref()) {
+                view.insert_column(last, &filler);
+            }
+        });
+        true
     }
 
     /// Fold what the view shows into the stored layout. A column the rows
