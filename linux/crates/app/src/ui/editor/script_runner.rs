@@ -126,7 +126,8 @@ pub struct AfterRun {
 }
 
 /// Send each batch in turn, reporting each one as it ends. `transaction`
-/// is where the session's transaction stood before the run.
+/// is where the session's transaction stood before the run. The caller
+/// says `Finished` once the tab knows where the run left it.
 pub async fn run_batches(
     editor: &Arc<dyn EditorSession>,
     run: &ScriptRun,
@@ -201,7 +202,6 @@ pub async fn run_batches(
             }
         }
     }
-    let _ = events.send(RunEvent::Finished).await;
     after
 }
 
@@ -261,12 +261,15 @@ pub async fn run_in_tab(
     slot.follow(&editor);
     if editor.state() != EditorSessionState::Lost {
         slot.note_transaction(&editor, after.transaction);
+        let _ = events.send(RunEvent::Finished).await;
         return;
     }
     let generation = *session.link_changes().borrow();
     session.signal(MonitorSignal::ProbeRequested { generation });
     let refuse_next = transaction_open(after.transaction) && !after.rollback_told;
-    if slot.forget(&editor, refuse_next) {
+    let forgotten = slot.forget(&editor, refuse_next);
+    let _ = events.send(RunEvent::Finished).await;
+    if forgotten {
         close_quietly(editor, close_timeout).await;
     }
 }
@@ -399,7 +402,11 @@ mod tests {
             }
             log
         };
-        let (_, log) = tokio::join!(run_batches(&session, run, cancel, &events, None), collect);
+        let running = async {
+            run_batches(&session, run, cancel, &events, None).await;
+            let _ = events.send(RunEvent::Finished).await;
+        };
+        let (_, log) = tokio::join!(running, collect);
         log
     }
 
