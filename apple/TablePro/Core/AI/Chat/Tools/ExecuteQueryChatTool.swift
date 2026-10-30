@@ -54,6 +54,11 @@ struct ExecuteQueryChatTool: ChatTool {
         )
 
         let meta = try await ToolConnectionMetadata.resolve(connectionId: connectionId)
+
+        if let refusal = ExternalStatementGate.privateRequestRefusal(sql: query) {
+            return ChatToolResult(content: refusal, isError: true)
+        }
+
         let capabilities = ExternalStatementGate.capabilities(
             context.writeCapabilities,
             takingScriptsOn: meta.databaseType
