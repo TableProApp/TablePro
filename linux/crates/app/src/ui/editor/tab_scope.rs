@@ -220,6 +220,17 @@ impl SqlEditor {
         }
     }
 
+    /// The database of the session whose catalog completion reads, when
+    /// the window handed one over.
+    #[cfg(test)]
+    pub(crate) fn followed_catalog(&self) -> Option<String> {
+        self.imp().completion_providers.borrow().iter().find_map(|provider| {
+            let provider = provider.downcast_ref::<SqlCompletionProvider>()?;
+            let session = provider.imp().catalog_session.borrow().clone()?;
+            session.database().map(str::to_owned)
+        })
+    }
+
     fn follow_in_completion(&self, home: CatalogHome) {
         for provider in self.imp().completion_providers.borrow().iter() {
             if let Some(provider) = provider.downcast_ref::<SqlCompletionProvider>() {

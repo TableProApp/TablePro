@@ -1278,35 +1278,59 @@ impl SessionWindow {
     }
 
     /// Close the session under `key` through its own prompts, then tear
-    /// it down. The window's other sessions and connects go on.
+    /// it down. A connection's other databases go with it, under one
+    /// question for all of them (0030). The window's other sessions and
+    /// connects go on.
     fn on_disconnect(&self, key: SessionKey) {
-        // A connection's other databases go with it, each through its own
-        // prompts (0030).
-        if let SessionKey::Saved(id) = &key {
-            for sibling in self.siblings_of(*id) {
-                self.on_disconnect(sibling);
-            }
-        }
-        let Some(workspace) = self.session_workspace(&key) else {
+        let keys = self.with_siblings(&key);
+        let Some((handles, guards)) = self.teardown_handles(&keys) else {
             return;
         };
-        let (Some(handle), Some(guards)) = (workspace.prompt_handle(), self.close_guards()) else {
-            return;
+        let approved = move || {
+            keys.iter()
+                .cloned()
+                .map(SessionWindowInput::SessionTeardownApproved)
+                .collect::<Vec<_>>()
         };
-        let approved = move || SessionWindowInput::SessionTeardownApproved(key.clone());
         guards.begin_teardown();
-        if guards.may_tear_down(&handle) {
-            self.send(approved());
+        if guards.may_tear_down(&handles) {
+            for input in approved() {
+                self.send(input);
+            }
             return;
         }
         let input = self.input();
-        guards.ask_tear_down(self.upcast_ref(), &handle, move |decision| {
+        guards.ask_tear_down(self.upcast_ref(), &handles, move |decision| {
             if decision == CloseDecision::Approved
                 && let Some(input) = input
             {
-                input.deliver(approved());
+                for approved in approved() {
+                    input.deliver(approved);
+                }
             }
         });
+    }
+
+    /// `key`, after the other databases of its connection.
+    pub(super) fn with_siblings(&self, key: &SessionKey) -> Vec<SessionKey> {
+        let mut keys = match key {
+            SessionKey::Saved(id) => self.siblings_of(*id),
+            _ => Vec::new(),
+        };
+        keys.push(key.clone());
+        keys
+    }
+
+    /// The prompt handles of the workspaces open under `keys`. `None`
+    /// when the last of them, the one asked about, is not open.
+    pub(super) fn teardown_handles(&self, keys: &[SessionKey]) -> Option<(Vec<WorkspaceHandle>, Rc<CloseGuards>)> {
+        let guards = self.close_guards()?.clone();
+        self.session_workspace(keys.last()?)?;
+        let handles = keys
+            .iter()
+            .filter_map(|key| self.session_workspace(key)?.prompt_handle())
+            .collect();
+        Some((handles, guards))
     }
 
     /// Ctrl+W: the tab on screen closes through its session's prompts,

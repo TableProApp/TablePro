@@ -755,3 +755,70 @@ fn an_editor_tab_moved_to_a_database_opens_its_session() {
         "the tab does not name its database"
     );
 }
+
+fn editors_of(shell: &crate::ui::workspace::WorkspaceShell) -> Vec<crate::ui::editor::SqlEditor> {
+    let pages = shell.tab_view().n_pages();
+    (0..pages)
+        .filter_map(|index| {
+            let child = shell.tab_view().nth_page(index).child();
+            crate::test_support::descendants(&child)
+                .into_iter()
+                .chain([child])
+                .find_map(|widget| widget.downcast::<crate::ui::editor::SqlEditor>().ok())
+        })
+        .collect()
+}
+
+/// Two tabs moved to a database while its session opens both read its
+/// catalog once it has (0030).
+#[gtk4::test]
+fn tabs_moved_while_a_database_opens_all_read_its_catalog() {
+    let test = TestWindow::with_script(
+        "FollowWhileOpening",
+        Script {
+            network: true,
+            connection: tablepro_test_support::ConnectionScript {
+                dialect: std::sync::Arc::new(tablepro_driver_mysql::MySqlDialect::new(
+                    tablepro_driver_mysql::MySqlFlavour::MySql,
+                    &tablepro_core::ServerInfo::new("MySQL", "8.4.0", 8, 4, 0),
+                )),
+                ..tablepro_test_support::ConnectionScript::default()
+            },
+            ..Script::default()
+        },
+    );
+    let (vault, id) = (test.vault.clone(), test.saved.id);
+    crate::test_support::finish_on_main(WAIT, async move {
+        tablepro_core::credentials::SecretVault::store(
+            &*vault,
+            id,
+            tablepro_core::credentials::SecretKind::DatabasePassword,
+            &secrecy::SecretString::from("s3cret"),
+            "label",
+        )
+        .await
+    })
+    .expect("the store to end")
+    .expect("the password stored");
+    test.window
+        .send(SessionWindowInput::OpenSaved(Box::new(test.saved.clone())));
+    test.wait_for_page("workspace");
+    let shell = test.window.shell().expect("the shell");
+    let connection = crate::ui::session_target::to_variant(&SessionKey::Saved(test.saved.id));
+    for _ in 0..2 {
+        WidgetExt::activate_action(&test.window, "win.new-query-in", Some(&connection)).expect("win.new-query-in");
+    }
+    wait_until(WAIT, || editors_of(&shell).len() == 2).expect("two tabs");
+
+    for editor in editors_of(&shell) {
+        WidgetExt::activate_action(&editor, "editor.database", Some(&"analytics".to_variant()))
+            .expect("editor.database");
+    }
+
+    wait_until(WAIT, || {
+        editors_of(&shell)
+            .iter()
+            .all(|editor| editor.followed_catalog().as_deref() == Some("analytics"))
+    })
+    .expect("both tabs to read the database's catalog");
+}
