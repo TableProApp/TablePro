@@ -50,7 +50,8 @@ impl ColumnsRead {
         let iter = rows
             .rows::<Row>()
             .map_err(|error| DriverError::Protocol(error.to_string()))?;
-        let mut decoded = Vec::with_capacity(rows.rows_num());
+        // Not sized by the count the server declares: the rows read bound it.
+        let mut decoded = Vec::new();
         for row in iter {
             let row = row.map_err(|error| DriverError::Protocol(error.to_string()))?;
             decoded.push(

@@ -3,15 +3,16 @@ use tablepro_core::meta::{EngineRowId, RowIdentity};
 use tokio_postgres::Client;
 
 use super::{decode_error, text_rows};
+use crate::codec::TextArray;
 
 /// The relation's kind, its primary key, and the first unique index that
 /// can stand in for one: no predicate, no expressions, and every key
 /// column NOT NULL, so it names every row exactly once.
-const IDENTITY_SQL: &str = "\
+pub(super) const IDENTITY_SQL: &str = "\
 SELECT c.relkind::text,
        ARRAY(SELECT a.attname::text
                FROM pg_catalog.pg_constraint p
-               CROSS JOIN LATERAL unnest(p.conkey) WITH ORDINALITY AS k(attnum, ord)
+               CROSS JOIN LATERAL pg_catalog.unnest(p.conkey) WITH ORDINALITY AS k(attnum, ord)
                JOIN pg_catalog.pg_attribute a ON a.attrelid = p.conrelid AND a.attnum = k.attnum
               WHERE p.conrelid = c.oid AND p.contype = 'p'
               ORDER BY k.ord),
@@ -26,18 +27,18 @@ SELECT c.relkind::text,
                         AND i.indexprs IS NULL
                         AND NOT EXISTS (
                             SELECT 1
-                              FROM unnest(i.indkey::int2[]) WITH ORDINALITY AS u(attnum, ord)
+                              FROM pg_catalog.unnest(i.indkey::int2[]) WITH ORDINALITY AS u(attnum, ord)
                               JOIN pg_catalog.pg_attribute ua
                                 ON ua.attrelid = i.indrelid AND ua.attnum = u.attnum
                              WHERE u.ord <= i.indnkeyatts AND NOT ua.attnotnull)
                       ORDER BY ic.relname
                       LIMIT 1) best
-               CROSS JOIN LATERAL unnest(best.indkey::int2[]) WITH ORDINALITY AS k(attnum, ord)
+               CROSS JOIN LATERAL pg_catalog.unnest(best.indkey::int2[]) WITH ORDINALITY AS k(attnum, ord)
                JOIN pg_catalog.pg_attribute a ON a.attrelid = best.indrelid AND a.attnum = k.attnum
               WHERE k.ord <= best.indnkeyatts
               ORDER BY k.ord)
 FROM pg_catalog.pg_class c
-WHERE c.oid = $1::text::regclass";
+WHERE c.oid = $1::text::regclass::oid";
 
 pub(crate) async fn row_identity(client: &Client, relation: &str) -> Result<RowIdentity, DriverError> {
     let field = decode_error("pg_class");
@@ -46,8 +47,8 @@ pub(crate) async fn row_identity(client: &Client, relation: &str) -> Result<RowI
         return Ok(RowIdentity::Unordered);
     };
     let relkind: String = row.try_get(0).map_err(&field)?;
-    let primary_key: Vec<String> = row.try_get(1).map_err(&field)?;
-    let unique_key: Vec<String> = row.try_get(2).map_err(&field)?;
+    let TextArray(primary_key) = row.try_get(1).map_err(&field)?;
+    let TextArray(unique_key) = row.try_get(2).map_err(&field)?;
     Ok(identity(&relkind, primary_key, unique_key))
 }
 

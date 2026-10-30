@@ -124,7 +124,7 @@ pub(crate) async fn collect(
             loop {
                 match cursor.advance(session).await {
                     Ok(true) if (documents.len() as u64) < limit.get() => {
-                        documents.push(cursor.deserialize_current().map_err(|error| decode(&error))?);
+                        documents.push(crate::nested_document::current_document(&cursor)?);
                     }
                     Ok(true) => {
                         truncated = true;
@@ -156,13 +156,6 @@ pub(crate) async fn collect(
     }
     let rows = documents.iter().map(|document| layout.row(document)).collect();
     Ok(QueryResult::new(layout.columns(), rows).truncated(truncated))
-}
-
-fn decode(error: &mongodb::error::Error) -> DriverError {
-    DriverError::Decode {
-        column: String::new(),
-        detail: error.to_string(),
-    }
 }
 
 /// Stream a source into `sink`, keeping at most `limit` rows when there
