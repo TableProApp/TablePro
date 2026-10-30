@@ -202,17 +202,10 @@ impl EditorSessionSlot {
         (statement_timeout, close_timeout): (Option<Duration>, Duration),
         cancel: &CancellationToken,
     ) -> Result<Arc<dyn EditorSession>, AcquireError> {
-        let holds_transaction = {
-            let mut state = lock(&self.state);
-            let held = state
-                .open
-                .as_ref()
-                .is_some_and(|open| open.editor.id() == editor.id() && open.held_transaction());
-            if !held {
-                state.open = None;
-            }
-            held
-        };
+        let holds_transaction = lock(&self.state)
+            .open
+            .as_ref()
+            .is_some_and(|open| open.editor.id() == editor.id() && open.held_transaction());
         if holds_transaction {
             lock(&self.state).database = here;
             return Err(AcquireError::Moved {
@@ -220,26 +213,33 @@ impl EditorSessionSlot {
                 reason: crate::i18n::gettext("Commit or roll back the transaction first."),
             });
         }
-        close_quietly(editor, close_timeout).await;
+        // The session in the old database stays until one opens in the
+        // new, so a move that fails keeps what the tab built there.
         let options = EditorSessionOptions {
             statement_timeout,
             database: Some(wanted.clone()),
         };
-        match session.open_editor_session(options, cancel).await {
-            Ok(opened) => match self.adopt(session, opened.clone()) {
-                Ok(()) => Ok(opened),
-                Err(orphan) => {
-                    close_quietly(orphan, close_timeout).await;
-                    Err(AcquireError::Cancelled)
-                }
-            },
-            Err(OperationError::Cancelled) => Err(AcquireError::Cancelled),
+        let opened = match session.open_editor_session(options, cancel).await {
+            Ok(opened) => opened,
             Err(error) => {
                 lock(&self.state).database = here;
-                Err(AcquireError::Moved {
-                    database: wanted,
-                    reason: crate::ui::error_text::operation_error_message(&error),
-                })
+                return Err(match error {
+                    OperationError::Cancelled => AcquireError::Cancelled,
+                    error => AcquireError::Moved {
+                        database: wanted,
+                        reason: crate::ui::error_text::operation_error_message(&error),
+                    },
+                });
+            }
+        };
+        match self.adopt(session, opened.clone()) {
+            Ok(()) => {
+                close_quietly(editor, close_timeout).await;
+                Ok(opened)
+            }
+            Err(orphan) => {
+                close_quietly(orphan, close_timeout).await;
+                Err(AcquireError::Cancelled)
             }
         }
     }
@@ -411,6 +411,35 @@ pub(super) mod tests {
             feature: tablepro_core::UnsupportedFeature::DatabaseSwitching,
         });
         editor
+    }
+
+    /// A session that cannot open in the new database leaves the tab in its
+    /// own, on the session it had and what it built there.
+    #[tokio::test]
+    async fn a_move_that_cannot_open_keeps_the_session_it_had() {
+        let shop = bound_to("shop");
+        let (session, _) = session_opening(vec![shop.clone()]);
+        let slot = EditorSessionSlot::new();
+        let first = slot
+            .acquire(&session, None, CLOSE, &CancellationToken::new())
+            .await
+            .expect("a session in shop");
+
+        slot.set_database("analytics".to_owned());
+        let refused = slot.acquire(&session, None, CLOSE, &CancellationToken::new()).await;
+        assert!(
+            matches!(refused, Err(AcquireError::Moved { .. })),
+            "{:?}",
+            refused.err()
+        );
+        assert_eq!(shop.close_count(), 0, "the session in shop closed");
+        assert_eq!(slot.database().as_deref(), Some("shop"));
+
+        let again = slot
+            .acquire(&session, None, CLOSE, &CancellationToken::new())
+            .await
+            .expect("the session in shop");
+        assert_eq!(again.id(), first.id());
     }
 
     /// Where a live session cannot move, the tab gets a session opened in
