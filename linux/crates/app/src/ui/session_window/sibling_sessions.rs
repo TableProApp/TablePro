@@ -81,7 +81,15 @@ impl SessionWindow {
         let window = self.downgrade();
         glib::spawn_future_local(async move {
             let opened = opening.await;
-            let Some(window) = window.upgrade() else {
+            // A database goes with its connection, which may have gone
+            // while it opened.
+            let window = window
+                .upgrade()
+                .filter(|window| window.held_session(&SessionKey::Saved(id)).is_some());
+            let Some(window) = window else {
+                if let Ok(Ok(session)) = opened {
+                    drop(session.begin_shutdown());
+                }
                 return;
             };
             match opened {
