@@ -82,6 +82,10 @@ impl SqlEditor {
         };
         self.set_scope(Some(scope_text(&database, None)));
         self.follow_in_completion(catalog_home(layout, session.database(), &database));
+        let moved = self.imp().named_database.replace(Some(database.clone())) != Some(database.clone());
+        if moved {
+            self.emit_by_name::<()>("database-changed", &[]);
+        }
         if let Some(action) = super::imp_action(self, MOVE_ACTION) {
             action.set_state(&database.to_variant());
         }
@@ -177,7 +181,6 @@ impl SqlEditor {
         }
         self.imp().slot.set_database(database.to_owned());
         self.show_scope();
-        self.emit_by_name::<()>("database-changed", &[]);
     }
 
     /// The database a restore puts the tab back in: `None` while it is

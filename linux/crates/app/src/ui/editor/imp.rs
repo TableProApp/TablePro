@@ -64,6 +64,8 @@ pub struct SqlEditor {
     /// This tab's own connection, which keeps its transaction and
     /// temporary tables between runs.
     pub slot: Arc<EditorSessionSlot>,
+    /// The database the bar names, to tell the workspace when it changes.
+    pub named_database: RefCell<Option<String>>,
     pub running: RefCell<Option<RunningScript>>,
     pub log: RefCell<Option<RunLog>>,
     /// Whether the last run left a transaction open, as last reported.
@@ -140,7 +142,8 @@ impl ObjectImpl for SqlEditor {
                     .param_types([bool::static_type()])
                     .build(),
                 Signal::builder("file-changed").build(),
-                // The tab moved to another database.
+                // The tab is in another database: picked from the bar, or
+                // where a `USE` took its session.
                 Signal::builder("database-changed").build(),
                 // Vim's :q, which closes the tab through its close prompts.
                 Signal::builder("close-requested").build(),
