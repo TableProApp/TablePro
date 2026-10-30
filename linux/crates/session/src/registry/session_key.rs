@@ -18,7 +18,10 @@ pub enum SessionKey {
     /// window and never another's.
     ///
     /// [0030]: ../../../docs/decisions/0030-a-database-is-a-session-of-its-own.md
-    SavedIn { id: Uuid, database: String },
+    SavedIn {
+        id: Uuid,
+        database: String,
+    },
     /// The canonical file URI when there is one, else the URI the file
     /// arrived as.
     File(String),

@@ -69,6 +69,9 @@ pub(crate) enum SessionWindowInput {
     Disconnect,
     /// Close the session open under the key through its prompts.
     DisconnectSession(SessionKey),
+    /// Open Database… on a connection's row: pick another of its server's
+    /// databases to open beside it.
+    ChooseDatabaseIn(SessionKey),
     /// The prompts approved closing the session under the key.
     SessionTeardownApproved(SessionKey),
     /// Bring the session under the key to the front.

@@ -1097,7 +1097,9 @@ impl WorkspaceModel {
             workspace.notify_connection_name();
         }
         let icon = match &self.key {
-            SessionKey::Saved(id) => self.saved_connections.get(*id).and_then(|saved| saved.icon),
+            SessionKey::Saved(id) | SessionKey::SavedIn { id, .. } => {
+                self.saved_connections.get(*id).and_then(|saved| saved.icon)
+            }
             SessionKey::File(_) => None,
         }
         .map(|icon| crate::ui::icons::connection_icon(icon).to_owned());

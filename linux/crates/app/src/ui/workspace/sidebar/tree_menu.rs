@@ -6,6 +6,7 @@ use tablepro_session::SessionKey;
 pub(super) const SHOW_SESSION: &str = "win.show-session";
 const NEW_QUERY_IN: &str = "win.new-query-in";
 const REFRESH_IN: &str = "win.refresh-in";
+const OPEN_DATABASE_IN: &str = "win.open-database-in";
 pub(super) const DISCONNECT_SESSION: &str = "win.disconnect-session";
 const STOP_CONNECTING: &str = "win.stop-connecting";
 pub(super) const SHOW_CONNECT_FAILURE: &str = "win.show-connect-failure";
@@ -39,6 +40,10 @@ pub(super) fn session_section(key: &SessionKey, state: InWindow) -> gio::Menu {
         InWindow::Open => {
             add(crate::i18n::gettext("New Query"), NEW_QUERY_IN);
             add(crate::i18n::gettext("Refresh"), REFRESH_IN);
+            // Another of the server's databases, beside this one (0030).
+            if let SessionKey::Saved(_) = key {
+                add(crate::i18n::gettext("Open Database…"), OPEN_DATABASE_IN);
+            }
             add(crate::i18n::gettext("Disconnect"), DISCONNECT_SESSION);
         }
         // A connect can wait for a host that never answers.

@@ -29,6 +29,7 @@ mod session_restore;
 mod session_teardown;
 mod session_window_command;
 mod session_window_input;
+mod sibling_sessions;
 #[cfg(test)]
 pub(crate) mod tests;
 mod window_actions;
@@ -465,6 +466,7 @@ impl SessionWindow {
             SessionWindowInput::ConnectionSaved(id) => self.on_connection_saved(id),
             SessionWindowInput::Disconnect => self.on_disconnect_front(),
             SessionWindowInput::DisconnectSession(key) => self.on_disconnect(key),
+            SessionWindowInput::ChooseDatabaseIn(key) => self.choose_database_in(key),
             SessionWindowInput::SessionTeardownApproved(key) => self.on_session_teardown_approved(&key),
             SessionWindowInput::ShowSession(key) => self.show_session(&key),
             SessionWindowInput::NewQueryIn(key) => self.deliver_to(&key, WorkspaceInput::NewEditorTab),
@@ -758,14 +760,13 @@ impl SessionWindow {
             warnings,
             session_only,
         } = connected;
-        let (Some(state), Some(guards), Some(input)) = (self.state(), self.close_guards(), self.input()) else {
+        let (Some(state), Some(_), Some(_)) = (self.state(), self.close_guards(), self.input()) else {
             self.discard_pending(pending);
             return;
         };
         let key = claim.key().clone();
         let credentials = state.context.session_credentials(saved.as_ref(), &session_only);
         let session = Session::start(pending, state.context.session_deps(credentials));
-        claim.attach(&session);
         self.remember_session(&key, saved.as_ref());
         if let ConnectSource::Intent(intent) = &source
             && let Err(error) = state
@@ -775,6 +776,18 @@ impl SessionWindow {
         {
             tracing::warn!(%error, "could not remember the connect dialog driver");
         }
+        self.join(claim, session, &warnings);
+    }
+
+    /// Build the workspace of a session that started, in the window's
+    /// shell, which the first session builds. A connect and a sibling of
+    /// another database both join this way.
+    pub(super) fn join(&self, claim: SessionClaim, session: Arc<Session>, warnings: &[String]) {
+        let (Some(state), Some(guards), Some(input)) = (self.state(), self.close_guards(), self.input()) else {
+            return;
+        };
+        let key = claim.key().clone();
+        claim.attach(&session);
         let shell = self.shell().unwrap_or_else(|| self.new_shell(state, &input));
         let workspace = Workspace::new(WorkspaceInit {
             key: key.clone(),
@@ -796,7 +809,7 @@ impl SessionWindow {
         workspace.start();
         self.sync_actions();
         for warning in warnings {
-            self.show_toast(&warning);
+            self.show_toast(warning);
         }
         if let SessionKey::Saved(id) = key {
             self.touch_last_opened(id);
@@ -1263,6 +1276,13 @@ impl SessionWindow {
     /// Close the session under `key` through its own prompts, then tear
     /// it down. The window's other sessions and connects go on.
     fn on_disconnect(&self, key: SessionKey) {
+        // A connection's other databases go with it, each through its own
+        // prompts (0030).
+        if let SessionKey::Saved(id) = &key {
+            for sibling in self.siblings_of(*id) {
+                self.on_disconnect(sibling);
+            }
+        }
         let Some(workspace) = self.session_workspace(&key) else {
             return;
         };
