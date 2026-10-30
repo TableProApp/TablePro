@@ -197519,6 +197519,9 @@
         }
       }
     },
+    "This repository defines a Git filter that TablePro cannot switch off." : {
+
+    },
     "This repository has no commits yet." : {
       "localizations" : {
         "fr" : {

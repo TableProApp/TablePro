@@ -46,13 +46,16 @@ private struct ScratchRepository {
         try String(contentsOf: url(relativePath), encoding: .utf8)
     }
 
+    // Setup is the test's own Terminal git, which clones and pushes; the app's reads reach no remote.
     @discardableResult
     func git(_ arguments: String...) async throws -> GitProcessResult {
         let identity = [
             "-c", "user.name=Ann Author", "-c", "user.email=ann@example.com",
             "-c", "commit.gpgsign=false", "-c", "init.defaultBranch=main",
         ]
-        let result = try await client.runner.run(GitCommand(arguments: identity + arguments, workingDirectory: root))
+        let result = try await client.runner.run(
+            GitCommand(arguments: identity + arguments, workingDirectory: root, access: .write)
+        )
         guard result.succeeded else { throw GitCommandFailure(exitCode: result.exitCode, message: result.errorMessage) }
         return result
     }
@@ -136,6 +139,93 @@ struct GitIntegrationTests {
         let after = try repo.indexIdentity()
         #expect(before[.systemFileNumber] as? Int == after[.systemFileNumber] as? Int)
         #expect(before[.modificationDate] as? Date == after[.modificationDate] as? Date)
+    }
+
+    @Test("Status runs no filter command the repository's own configuration names")
+    func statusRunsNoRepositoryFilter() async throws {
+        let repo = try ScratchRepository(client: client)
+        defer { repo.remove() }
+        let marker = repo.url("filter-ran")
+        try await repo.git("init", "-q")
+        try repo.write("SELECT 1;\n", to: "a.sql")
+        try repo.write("*.sql filter=tidy\n", to: ".gitattributes")
+        try await repo.git("add", "-A")
+        try await repo.git("commit", "-qm", "first")
+        try await repo.git("config", "filter.tidy.clean", "touch '\(marker.path)'; cat")
+        try repo.write("SELECT 1;\n", to: "a.sql")
+
+        _ = try await client.status(in: repo.root)
+
+        #expect(!FileManager.default.fileExists(atPath: marker.path))
+    }
+
+    @Test(
+        "Status switches off a clean or process driver whatever it is called, and still sees the edit",
+        arguments: ["clean", "process"], ["tidy", "a=b.c", "Ti\"dy\\", ""]
+    )
+    func statusRunsNoFilterOfAnyName(variable: String, driver: String) async throws {
+        let repo = try ScratchRepository(client: client)
+        defer { repo.remove() }
+        let marker = repo.url("filter-ran")
+        try await repo.git("init", "-q")
+        try repo.write("SELECT 1;\n", to: "a.sql")
+        try await repo.git("add", "-A")
+        try await repo.git("commit", "-qm", "first")
+        try repo.write("* filter=\(driver)\n", to: ".git/info/attributes")
+        try await repo.git("config", "filter.\(driver).\(variable)", "touch '\(marker.path)'; cat")
+        try await repo.git("config", "filter.\(driver).required", "true")
+        try repo.write("SELECT 2;\n", to: "a.sql")
+
+        let records = try await client.status(in: repo.root)
+
+        #expect(records.map(\.path) == ["a.sql"])
+        #expect(!FileManager.default.fileExists(atPath: marker.path))
+    }
+
+    @Test("Status refuses a repository whose filter has a name it cannot pass back to git")
+    func statusRefusesUnreadableFilterName() async throws {
+        let repo = try ScratchRepository(client: client)
+        defer { repo.remove() }
+        let marker = repo.url("filter-ran")
+        try await repo.git("init", "-q")
+        try repo.write("SELECT 1;\n", to: "a.sql")
+        try await repo.git("add", "-A")
+        try await repo.git("commit", "-qm", "first")
+        let name = Data([0xFF, 0xFE])
+        try (Data("* filter=".utf8) + name + Data("\n".utf8)).write(to: repo.url(".git/info/attributes"))
+        let section = Data("[filter \"".utf8) + name + Data("\"]\n\tclean = \"touch '\(marker.path)'; cat\"\n".utf8)
+        try (Data(contentsOf: repo.url(".git/config")) + section).write(to: repo.url(".git/config"))
+        try repo.write("SELECT 2;\n", to: "a.sql")
+
+        await #expect(throws: GitCommandFailure.self) { try await client.status(in: repo.root) }
+        #expect(!FileManager.default.fileExists(atPath: marker.path))
+    }
+
+    @Test("Status runs no filter of a nested repository, and still reports it at another commit")
+    func statusRunsNoNestedRepositoryFilter() async throws {
+        let repo = try ScratchRepository(client: client)
+        defer { repo.remove() }
+        let marker = repo.url("filter-ran")
+        let nested = ScratchRepository(client: client, root: repo.url("vendor"))
+        try FileManager.default.createDirectory(at: nested.root, withIntermediateDirectories: true)
+        try await nested.git("init", "-q")
+        try nested.write("SELECT 1;\n", to: "b.sql")
+        try await nested.git("add", "-A")
+        try await nested.git("commit", "-qm", "first")
+        try await nested.git("commit", "-qm", "second", "--allow-empty")
+        try await repo.git("init", "-q")
+        try await repo.git("add", "-A")
+        try await repo.git("commit", "-qm", "first")
+        try nested.write("* filter=tidy\n", to: ".git/info/attributes")
+        try await nested.git("config", "filter.tidy.clean", "touch '\(marker.path)'; cat")
+        try nested.write("SELECT 2;\n", to: "b.sql")
+
+        #expect(try await client.status(in: repo.root).isEmpty)
+        #expect(!FileManager.default.fileExists(atPath: marker.path))
+
+        try await nested.git("update-ref", "HEAD", "HEAD~1")
+        #expect(try await client.status(in: repo.root).map(\.path) == ["vendor"])
+        #expect(!FileManager.default.fileExists(atPath: marker.path))
     }
 
     @Test("A folder outside any repository is not one")
@@ -516,6 +606,30 @@ struct GitIntegrationTests {
 
         let remoteLog = try await workspace.output("--git-dir=\(workspace.url("remote.git").path)", "log", "-1", "--format=%s", "main")
         #expect(remoteLog == "My change")
+    }
+
+    @Test("Pull fast-forwards a partial clone, fetching the files the new commit needs as Terminal git does")
+    func pullIntoPartialClone() async throws {
+        let workspace = try ScratchRepository(client: client)
+        defer { workspace.remove() }
+        try await workspace.git("init", "-q", "--bare", "remote.git")
+        try await workspace.git("--git-dir=remote.git", "config", "uploadpack.allowFilter", "true")
+        try await workspace.git("clone", "-q", "remote.git", "teammate")
+        let teammate = ScratchRepository(client: client, root: workspace.url("teammate"))
+        try await teammate.configureForWrites()
+        try teammate.write("SELECT 1;\n", to: "report.sql")
+        try await teammate.git("add", "-A")
+        try await teammate.git("commit", "-qm", "First")
+        try await teammate.git("push", "-q", "origin", "HEAD:main")
+        try await workspace.git("clone", "-q", "--filter=blob:none", workspace.url("remote.git").absoluteString, "mine")
+        let mine = ScratchRepository(client: client, root: workspace.url("mine"))
+        try teammate.write("SELECT 2;\n", to: "report.sql")
+        try await teammate.git("commit", "-qam", "Second")
+        try await teammate.git("push", "-q", "origin", "HEAD:main")
+
+        try await client.pull(in: mine.root)
+
+        #expect(try mine.read("report.sql") == "SELECT 2;\n")
     }
 
     @Test("A pull that cannot fast-forward stops, says so, and leaves the branch where it was")
