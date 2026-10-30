@@ -428,6 +428,7 @@ const CREDENTIAL_RULES: CredentialRules = CredentialRules {
         "aes_encrypt_mysql",
         "aes_decrypt_mysql",
     ],
+    secret_parameters: &[],
 };
 
 #[cfg(test)]

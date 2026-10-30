@@ -26,24 +26,30 @@ pub(crate) fn decode_array(ty: &Type, element: &Type, raw: &[u8]) -> Result<Valu
     if dimensions.len() > MAX_DIMENSIONS {
         return Err(WireError::Malformed);
     }
+    // The server sends an empty array with no dimensions, so a dimension
+    // of length 0 beside others could only make `nest` build the others'
+    // empty arrays from a few bytes.
     let lengths: Vec<usize> = dimensions
         .iter()
-        .map(|dimension| usize::try_from(dimension.len).map_err(|_| WireError::Malformed))
+        .map(|dimension| match usize::try_from(dimension.len) {
+            Ok(0) | Err(_) => Err(WireError::Malformed),
+            Ok(length) => Ok(length),
+        })
         .collect::<Result<_, _>>()?;
     let total = lengths
         .iter()
         .try_fold(1usize, |total, length| total.checked_mul(*length))
         .ok_or(WireError::Malformed)?;
-    let values: Vec<Value> = array
-        .values()
-        .map(|value| {
-            Ok(match value {
-                Some(bytes) => decode_binary(element, bytes),
-                None => Value::Null,
-            })
-        })
-        .collect()
-        .map_err(|_| WireError::Malformed)?;
+    // Not `collect`, which would reserve room for the header's count
+    // before reading an element: the cell's bytes bound the allocation.
+    let mut elements = array.values();
+    let mut values = Vec::new();
+    while let Some(value) = elements.next().map_err(|_| WireError::Malformed)? {
+        values.push(match value {
+            Some(bytes) => decode_binary(element, bytes),
+            None => Value::Null,
+        });
+    }
     if values.len() != total {
         return Err(WireError::Malformed);
     }
@@ -116,6 +122,41 @@ mod tests {
         )
         .expect("an array");
         out
+    }
+
+    #[test]
+    fn a_declared_count_the_bytes_cannot_hold_is_malformed() {
+        let raw = int4_array(
+            vec![ArrayDimension {
+                len: i32::MAX,
+                lower_bound: 1,
+            }],
+            &[],
+        );
+
+        assert_eq!(
+            decode_array(&Type::INT4_ARRAY, &Type::INT4, &raw),
+            Err(WireError::Malformed)
+        );
+    }
+
+    #[test]
+    fn a_dimension_of_length_zero_is_malformed() {
+        let raw = int4_array(
+            vec![
+                ArrayDimension {
+                    len: i32::MAX,
+                    lower_bound: 1,
+                },
+                ArrayDimension { len: 0, lower_bound: 1 },
+            ],
+            &[],
+        );
+
+        assert_eq!(
+            decode_array(&Type::INT4_ARRAY, &Type::INT4, &raw),
+            Err(WireError::Malformed)
+        );
     }
 
     #[test]
