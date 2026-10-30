@@ -5,6 +5,7 @@ mod calendar;
 mod clock;
 mod fields;
 mod imp;
+mod picture;
 #[cfg(test)]
 mod tests;
 mod value_editor;

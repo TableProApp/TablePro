@@ -75,5 +75,21 @@ pub trait EditorSession: Send + Sync {
 
     async fn transaction_state(&self, options: CallOptions) -> Result<TransactionState, DriverError>;
 
+    /// The database an unqualified name resolves to now, as the server
+    /// last said. `None` where the driver does not follow it: the session
+    /// is still in the database it opened in.
+    fn database(&self) -> Option<String> {
+        None
+    }
+
+    /// Move the session to the server's database `database`, keeping
+    /// what it holds. Unsupported where the engine binds a session's
+    /// database when it connects.
+    async fn use_database(&self, _database: &str, _options: CallOptions) -> Result<(), DriverError> {
+        Err(DriverError::Unsupported {
+            feature: crate::UnsupportedFeature::DatabaseSwitching,
+        })
+    }
+
     async fn close(&self);
 }

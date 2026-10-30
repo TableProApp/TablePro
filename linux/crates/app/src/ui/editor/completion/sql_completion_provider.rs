@@ -14,7 +14,7 @@ use tablepro_core::sql_syntax::script::{LexicalSettings, text_offsets};
 use tablepro_session::Session;
 use tablepro_session::runtime::Tasks;
 
-use super::catalog_read::{self, CatalogAnswer};
+use super::catalog_read::{self, CatalogAnswer, CatalogHome};
 use super::completion_scope::{self, CompletionScope};
 use super::fuzzy;
 use super::proposal_kind::ProposalKind;
@@ -44,10 +44,9 @@ pub struct ProviderDeps {
 }
 
 impl SqlCompletionProvider {
-    /// Resolve unqualified names in `database`, the tab's own when the
-    /// editor bar moved it off the connection's.
-    pub fn set_home(&self, database: Option<String>) {
-        self.imp().home.replace(database);
+    /// Resolve unqualified names in `home`, the tab's database.
+    pub fn set_home(&self, home: CatalogHome) {
+        self.imp().home.replace(home);
     }
 
     pub fn new(session: ActiveSession, tasks: Tasks, snippets: Rc<SnippetLibrary>) -> Self {

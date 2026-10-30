@@ -160,18 +160,22 @@ fn cut_in_place(scratch: &mut String) -> DisplayText<'_> {
 
 fn finish_cut(scratch: &mut String, truncated_bytes: usize) -> DisplayText<'_> {
     if truncated_bytes > 0 {
-        scratch.push_str(&crate::i18n::ngettext_f(
-            "… ({count} more byte)",
-            "… ({count} more bytes)",
-            plural_count(truncated_bytes),
-            &[("count", &truncated_bytes.to_string())],
-        ));
+        scratch.push_str(&more_bytes(truncated_bytes));
     }
     DisplayText {
         text: scratch,
         placeholder: false,
         truncated_bytes,
     }
+}
+
+pub fn more_bytes(count: usize) -> String {
+    crate::i18n::ngettext_f(
+        "… ({count} more byte)",
+        "… ({count} more bytes)",
+        plural_count(count),
+        &[("count", &count.to_string())],
+    )
 }
 
 /// Where the cell cuts `text`, on a char boundary. A string of no more

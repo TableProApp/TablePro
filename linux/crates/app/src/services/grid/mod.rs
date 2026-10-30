@@ -17,6 +17,7 @@ mod edit_policy;
 mod find_matches;
 mod grid_column;
 mod grid_row_id;
+mod hex_dump;
 mod row_key_builder;
 mod row_snapshot;
 mod selection_summary;
@@ -42,6 +43,7 @@ pub use self::edit_policy::{EditPolicy, EditRefusal, edit_policy, selection_hint
 pub use self::find_matches::{FindMatch, find_matches};
 pub use self::grid_column::{CellDisplay, GridColumn, grid_columns};
 pub use self::grid_row_id::GridRowId;
+pub use self::hex_dump::hex_dump;
 pub use self::row_key_builder::RowKeyBuilder;
 pub use self::row_snapshot::RowSnapshot;
 pub use self::selection_summary::{SelectionSummary, SummaryRule, summarize};

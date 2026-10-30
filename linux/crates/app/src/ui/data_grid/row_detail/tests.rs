@@ -793,6 +793,27 @@ fn what_the_value_editor_shows_for_a_cell() {
     assert_eq!(draft.open_placeholder.as_deref(), Some("DEFAULT"));
 }
 
+#[test]
+fn a_binary_value_shows_as_a_read_only_dump() {
+    let blob = column_of(named("blob", "bytea", false));
+    let saved = GridRowId::Persisted(RowKey::from_pk_values(&[Value::Int(1)]).expect("a key"));
+    let shown = |bytes: Vec<u8>| value_content(&blob, &saved, None, &CellInput::Value(Value::Bytes(bytes)));
+
+    let dump = shown(vec![0xab, 0x41]);
+    assert!(dump.hex_dump);
+    assert_eq!(
+        dump.text,
+        "00000000  ab 41                                             |.A|"
+    );
+    assert!(dump.message.is_some(), "a dump opened for typing");
+    let empty = shown(Vec::new());
+    assert_eq!(
+        (empty.text.as_str(), empty.open_placeholder.as_deref()),
+        ("", Some("<0 bytes>")),
+        "an empty value read as no value at all"
+    );
+}
+
 #[gtk4::test]
 fn opening_the_calendar_and_closing_it_records_no_edit() {
     let (grid, pane) = date_grid(a_date(2024, 2, 29));
@@ -959,6 +980,117 @@ fn alt_return_closes_row_details_from_the_pane() {
             == Some(false)
     })
     .expect("Alt+Return to close Row Details");
+}
+
+fn png_bytes(width: i32, height: i32) -> Vec<u8> {
+    let stride = 4 * width as usize;
+    let pixels = gtk4::glib::Bytes::from_owned(vec![255u8; stride * height as usize]);
+    let texture = gdk::MemoryTexture::new(width, height, gdk::MemoryFormat::R8g8b8a8, &pixels, stride);
+    texture.save_to_png_bytes().to_vec()
+}
+
+// The first decode also starts glycin's loader process.
+const DECODE_WAIT: Duration = Duration::from_secs(30);
+
+fn picture_size(pane: &RowDetailPane) -> Option<(i32, i32)> {
+    let picture = pane.imp().value_picture.get();
+    let paintable = picture.paintable().filter(|_| picture.is_visible())?;
+    Some((paintable.intrinsic_width(), paintable.intrinsic_height()))
+}
+
+fn binary_grid() -> (Grid, RowDetailPane) {
+    opened(
+        vec![
+            named("id", "integer", true),
+            named("photo", "bytea", false),
+            named("blob", "bytea", false),
+            named("note", "text", false),
+        ],
+        vec![vec![
+            Value::Int(1),
+            Value::Bytes(png_bytes(2, 1)),
+            Value::Bytes(b"Hi!\x00".to_vec()),
+            Value::Text("plain".into()),
+        ]],
+    )
+}
+
+#[gtk4::test]
+fn a_binary_value_shows_its_bytes_unwrapped_and_an_image_its_picture() {
+    let (grid, pane) = binary_grid();
+
+    grid.focus(0, 2);
+    drain_main_context();
+    let text = pane.typed_text();
+    assert!(text.starts_with("00000000  48 69 21 00"), "{text}");
+    assert!(text.ends_with("|Hi!.|"), "{text}");
+    assert_eq!(pane.imp().value_view.wrap_mode(), gtk::WrapMode::None);
+    assert_eq!(
+        pane.imp().value_scroller.hscrollbar_policy(),
+        gtk::PolicyType::Automatic
+    );
+    assert_eq!(picture_size(&pane), None, "bytes that are no image showed a picture");
+
+    grid.focus(0, 1);
+    wait_until(DECODE_WAIT, || picture_size(&pane).is_some()).expect("the image's picture");
+    assert_eq!(picture_size(&pane), Some((2, 1)));
+    let (_, natural, _, _) = pane.imp().value_picture.measure(gtk::Orientation::Vertical, 300);
+    assert!(natural < 20, "a 1-pixel-high image asked for {natural} pixels");
+    assert!(pane.typed_text().starts_with("00000000  89 50 4e 47"));
+
+    grid.focus(0, 3);
+    drain_main_context();
+    assert_eq!(picture_size(&pane), None, "a text field kept the picture");
+    assert_eq!(pane.imp().value_view.wrap_mode(), gtk::WrapMode::WordChar);
+    assert_eq!(pane.imp().value_scroller.hscrollbar_policy(), gtk::PolicyType::Never);
+}
+
+#[gtk4::test]
+fn a_picture_the_pane_moved_away_from_never_lands() {
+    let (grid, pane) = binary_grid();
+
+    grid.focus(0, 1);
+    let first = pane
+        .imp()
+        .picture_load
+        .borrow()
+        .as_ref()
+        .expect("a decode under way")
+        .cancellable
+        .clone();
+    grid.focus(0, 2);
+
+    wait_until(DECODE_WAIT, || first.is_cancelled()).expect("the decode of the field left behind stops");
+    assert!(
+        wait_until(Duration::from_secs(2), || picture_size(&pane).is_some()).is_err(),
+        "the picture of the field left behind landed"
+    );
+}
+
+#[gtk4::test]
+fn only_an_image_type_goes_to_the_decoder() {
+    assert!(super::picture::may_be_image(&png_bytes(1, 1)));
+    assert!(super::picture::may_be_image(
+        br#"<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>"#
+    ));
+    assert!(!super::picture::may_be_image(b"Hi!\x00"));
+    assert!(!super::picture::may_be_image(b"%PDF-1.7\n"));
+    assert!(!super::picture::may_be_image(&[]));
+}
+
+#[test]
+fn a_picture_never_decodes_outside_a_sandbox() {
+    use glycin::{SandboxMechanism, SandboxSelector};
+
+    assert!(super::picture::sandbox(SandboxMechanism::NotSandboxed, false).is_none());
+    assert!(matches!(
+        super::picture::sandbox(SandboxMechanism::Bwrap, false),
+        Some(SandboxSelector::Bwrap)
+    ));
+    assert!(matches!(
+        super::picture::sandbox(SandboxMechanism::FlatpakSpawn, false),
+        Some(SandboxSelector::FlatpakSpawn)
+    ));
 }
 
 /// Open the pane's clock until it shows, as `open_calendar` does.
