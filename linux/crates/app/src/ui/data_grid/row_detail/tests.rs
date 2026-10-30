@@ -612,6 +612,13 @@ fn a_picked_day_keeps_the_time_of_any_timestamp_the_commit_reads() {
         "an AD day kept the BC era"
     );
     assert_eq!(pick("10:00"), "2024-03-01 10:00");
+    let zoned = |text: &str| with_day(text, day, Some(&TemporalZone::Offset), plus_two);
+    assert_eq!(
+        zoned("10:00"),
+        "2024-03-01 10:00+02:00",
+        "a zoned timestamp took no offset"
+    );
+    assert_eq!(zoned("10:00+05"), "2024-03-01 10:00+05");
     assert_eq!(
         with_day("2024-01-05 10:00", day, None, plus_two),
         "2024-03-01 10:00",

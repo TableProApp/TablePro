@@ -3,7 +3,7 @@ use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use gtk4::{self as gtk, glib};
 use tablepro_core::column::{ColumnKind, TemporalZone};
-use tablepro_core::edit::temporal_parts;
+use tablepro_core::edit::{parse_timestamp_with_offset, temporal_parts};
 
 use super::RowDetailPane;
 use super::value_editor::Commit;
@@ -15,7 +15,7 @@ pub fn day_of(text: &str) -> Option<NaiveDate> {
 }
 
 // Only the day changes, and the era with it, since a picked day is AD. Text with no day takes one
-// before its clock, or becomes a new value; a new zoned timestamp starts the day at `offset`.
+// before its clock, or becomes a new value; a zoned timestamp lacking an offset takes `offset`.
 pub fn with_day(text: &str, day: NaiveDate, zone: Option<&TemporalZone>, offset: FixedOffset) -> String {
     let date = day.format("%Y-%m-%d").to_string();
     let parts = temporal_parts(text);
@@ -28,9 +28,17 @@ pub fn with_day(text: &str, day: NaiveDate, zone: Option<&TemporalZone>, offset:
             text.replace_range(old, &date);
             text
         }
-        (None, Some(clock), Some(_)) => {
+        (None, Some(clock), Some(zone)) => {
             text.insert_str(clock.start, &format!("{date} "));
-            text
+            let (body, tail) = text.split_at(text.trim_end().len());
+            let zoned = format!("{body}{offset}{tail}");
+            match zone == &TemporalZone::Offset
+                && parse_timestamp_with_offset(&text).is_err()
+                && parse_timestamp_with_offset(&zoned).is_ok()
+            {
+                true => zoned,
+                false => text,
+            }
         }
         (None, _, None) => date,
         (None, None, Some(TemporalZone::Offset)) => format!("{date} 00:00:00{offset}"),
@@ -156,7 +164,12 @@ impl RowDetailPane {
             ColumnKind::Timestamp { zone, .. } => Some(zone.clone()),
             _ => None,
         });
-        let text = with_day(&self.typed_text(), day, zone.as_ref(), day_start_offset(&Local, day));
+        let typed = self.typed_text();
+        let offset = temporal_parts(&typed).time.map_or_else(
+            || day_start_offset(&Local, day),
+            |time| offset_at(&Local, day.and_time(time)),
+        );
+        let text = with_day(&typed, day, zone.as_ref(), offset);
         imp.calendar_popover.popdown();
         imp.value_buffer.set_text(&text);
         self.commit(Commit::Keep);
