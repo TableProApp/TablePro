@@ -210,25 +210,35 @@ impl WorkspaceStore {
     /// connection `id` that was ever open beside it. Their names hold a
     /// digest of the database, so they are found by the connection's part.
     pub fn purge_databases_of(&self, id: uuid::Uuid) -> impl Future<Output = Result<(), WorkspaceSaveError>> + use<> {
-        let prefix = WorkspaceFileName::databases_prefix(id);
-        let stems: Vec<String> = std::fs::read_dir(&self.inner.dir)
-            .into_iter()
-            .flatten()
-            .filter_map(|entry| entry.ok()?.file_name().into_string().ok())
-            .filter_map(|name| name.strip_suffix(".json").map(str::to_owned))
-            .filter(|stem| stem.starts_with(&prefix))
+        // A database closed a moment ago may still be writing its drafts,
+        // which would come back after the purge.
+        let landings: Vec<_> = self
+            .inner
+            .outside
+            .keys_in_flight(|key| matches!(key, SessionKey::SavedIn { id: of, .. } if *of == id))
+            .iter()
+            .filter_map(|key| self.inner.outside.landing(key))
             .collect();
-        let purges: Vec<_> = stems
-            .into_iter()
-            .filter_map(|stem| {
-                let drafts = tablepro_storage::DraftScope::new(&stem).ok()?;
-                let path = self.inner.dir.join(format!("{stem}.json"));
-                Some(queue_purge(&self.inner.writer, path, drafts))
-            })
-            .collect();
+        let (dir, writer) = (self.inner.dir.clone(), self.inner.writer.clone());
         async move {
-            for purge in purges {
-                purge.await.unwrap_or(Err(WorkspaceSaveError::WriterStopped))?;
+            for landing in landings {
+                let _ = landing.await;
+            }
+            let prefix = WorkspaceFileName::databases_prefix(id);
+            let stems: Vec<String> = std::fs::read_dir(&dir)
+                .into_iter()
+                .flatten()
+                .filter_map(|entry| entry.ok()?.file_name().into_string().ok())
+                .filter_map(|name| name.strip_suffix(".json").map(str::to_owned))
+                .filter(|stem| stem.starts_with(&prefix))
+                .collect();
+            for stem in stems {
+                let Ok(drafts) = tablepro_storage::DraftScope::new(&stem) else {
+                    continue;
+                };
+                queue_purge(&writer, dir.join(format!("{stem}.json")), drafts)
+                    .await
+                    .unwrap_or(Err(WorkspaceSaveError::WriterStopped))?;
             }
             Ok(())
         }
