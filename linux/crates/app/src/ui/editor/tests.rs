@@ -2618,3 +2618,56 @@ fn a_command_editor_has_none_of_the_sql_tools() {
         "the document's words and the engine's own snippets complete"
     );
 }
+
+/// The bar names the tab's database and its default schema, as the
+/// macOS editor bar does.
+#[gtk4::test]
+fn the_bar_names_the_tabs_database_and_schema() {
+    crate::register_test_resources();
+    let runtime = crate::test_support::test_runtime();
+    let fake = Arc::new(FakeEditorSession::new(answering()));
+    let mut request = FakeConnector::network_request("db.example", 5432).expect("a request");
+    if let tablepro_session::connect::RequestTarget::Network { database, .. } = &mut request.target {
+        *database = Some("shop".to_owned());
+    }
+    let mut script = ConnectionScript::default();
+    let editor_session: Arc<dyn EditorSession> = fake;
+    script.open_editor_session.always(FakeReply::ok(editor_session));
+    let (pending, _) = FakeConnector::pending_session(request, script);
+    let session = Session::start(
+        pending,
+        tablepro_session::SessionDeps {
+            connector: Arc::new(FakeConnector::new([])),
+            credentials: Arc::new(FakeCredentialSource::new()),
+            deadlines: Arc::new(DefaultDeadlines::new(tablepro_core::LivenessPolicy::DESKTOP)),
+            tasks: runtime.tasks(),
+            prompter: None,
+        },
+    );
+    let schema = |name: &str, is_default: bool| tablepro_core::meta::SchemaInfo {
+        name: name.to_owned(),
+        is_default,
+        is_system: false,
+    };
+    session
+        .catalog()
+        .commit(vec![schema("public", true), schema("audit", false)], Vec::new());
+    let active = ActiveSession::new();
+    active.replace(session);
+    let settings = MemorySettings::new();
+    let editor = SqlEditor::new(SqlEditorInit {
+        initial_query: None,
+        settings: settings.get().clone(),
+        history: None,
+        tasks: runtime.tasks(),
+        session: active,
+        hold: Rc::new(tablepro_session::runtime::CountingHold::new()),
+        close_timeout: Duration::from_secs(5),
+        snippets: crate::test_support::builtin_snippets_only(),
+    });
+
+    let label = editor.imp().scope_label.get();
+    crate::test_support::wait_until(Duration::from_secs(5), || label.label() == "shop.public")
+        .unwrap_or_else(|_| panic!("the bar says {:?}", label.label()));
+    assert!(editor.imp().scope_box.is_visible());
+}

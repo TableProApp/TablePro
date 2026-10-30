@@ -30,6 +30,10 @@ pub struct RunningScript {
 #[template(resource = "/app/tablepro/TablePro/ui/sql-editor.ui")]
 pub struct SqlEditor {
     #[template_child]
+    pub scope_box: TemplateChild<gtk4::Box>,
+    #[template_child]
+    pub scope_label: TemplateChild<gtk4::Label>,
+    #[template_child]
     pub cursor_info: TemplateChild<gtk4::Label>,
     #[template_child]
     pub menu_button: TemplateChild<gtk4::MenuButton>,

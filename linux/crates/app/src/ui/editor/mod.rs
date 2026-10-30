@@ -26,6 +26,7 @@ mod sidebar_policy;
 mod significant_tokens;
 mod sql_file;
 mod statement_cursor;
+mod tab_scope;
 #[cfg(test)]
 mod tests;
 mod transaction_dirty;
@@ -152,6 +153,7 @@ impl SqlEditor {
         editor.install_drop_target();
         editor.connect_buttons();
         editor.connect_grid();
+        editor.show_scope();
         editor
     }
 
