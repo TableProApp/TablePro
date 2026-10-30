@@ -44,9 +44,12 @@ pub fn day_start_offset<Tz: TimeZone>(zone: &Tz, day: NaiveDate) -> FixedOffset 
 
 // A wall-clock time a clock change skips takes the offset before the change.
 pub fn offset_at<Tz: TimeZone>(zone: &Tz, local: NaiveDateTime) -> FixedOffset {
-    [local, local - TimeDelta::hours(1)]
-        .iter()
-        .find_map(|local| zone.from_local_datetime(local).earliest())
+    zone.from_local_datetime(&local)
+        .earliest()
+        .or_else(|| {
+            let before = local.checked_sub_signed(TimeDelta::hours(1))?;
+            zone.from_local_datetime(&before).earliest()
+        })
         .map_or_else(|| zone.offset_from_utc_datetime(&local).fix(), |at| at.offset().fix())
 }
 

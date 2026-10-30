@@ -1071,6 +1071,18 @@ fn a_new_zoned_time_takes_the_offset_of_its_own_moment() {
 }
 
 #[test]
+fn a_clock_on_the_first_day_chrono_holds_takes_an_offset() {
+    let first = NaiveDate::MIN.format("%Y-%m-%d").to_string();
+    let today = NaiveDate::from_ymd_opt(2026, 10, 29).expect("a day");
+    let plus_two = chrono::FixedOffset::east_opt(2 * 3600).expect("an offset");
+
+    assert_eq!(
+        with_time(&first, a_time(0, 30, 0), ZONED, today, &plus_two),
+        format!("{first} 00:30:00+02:00")
+    );
+}
+
+#[test]
 fn the_clock_reads_the_time_a_value_shows() {
     assert_eq!(time_of("2024-02-29 23:59:58.125"), Some(a_time(23, 59, 58)));
     assert_eq!(time_of("12000-01-01 10:00:00"), Some(a_time(10, 0, 0)));
