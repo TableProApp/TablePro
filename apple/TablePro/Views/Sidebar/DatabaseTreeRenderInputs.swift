@@ -97,7 +97,8 @@ struct DatabaseTreeRenderInputs: Equatable {
         schemaService: SchemaService,
         temporaryTables: TemporaryTableStore,
         sidebarState: SharedSidebarState?,
-        rootShape: SidebarRootShape
+        rootShape: SidebarRootShape,
+        searchText: String
     ) {
         let ownsObjects = { (key: ObjectsKey) in key.connectionId == connectionId }
         let tables = Self.slice(treeMetadata.tablesState, where: ownsObjects) { Rows($0) }
@@ -114,7 +115,9 @@ struct DatabaseTreeRenderInputs: Equatable {
             )
         }
         var listings: [DatabaseKey: Listing] = [:]
-        for (key, state) in treeMetadata.allSchemaTablesState where key.connectionId == connectionId {
+        // The outline reads the listing only under a search, and Open Quickly loads it with none: landing
+        // then reloaded every row. A search starting refreshes the outline anyway.
+        for (key, state) in treeMetadata.allSchemaTablesState where key.connectionId == connectionId && !searchText.isEmpty {
             let listing = Listing(
                 state, covered: treeMetadata.allSchemaTablesSelection(connectionId: connectionId, database: key.database)
             )
