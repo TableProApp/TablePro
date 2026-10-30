@@ -54,7 +54,6 @@ extension DataGridViewController {
         for pane in panes {
             pane.tableView.reloadData()
         }
-        accessibilityMountedRows = NSRange(location: 0, length: 0)
         drawnSelection = model.selection
         // A view-based reloadData() drops the selection without telling anyone (probe P2), so it is written back.
         mirrorSelection()

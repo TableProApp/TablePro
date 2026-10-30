@@ -29,7 +29,7 @@ final class DataGridViewController: NSViewController, DataGridMountedView {
     var knownWidths: [DataGridColumnID: CGFloat] = [:]
     var knownWidthsSawRows = false
     var savedWidthIDs: Set<DataGridColumnID> = []
-    var accessibilityMountedRows = NSRange(location: 0, length: 0)
+    var isAccessibilityRemountScheduled = false
     var needsViewportRestore = false
     var pendingFocus = false
     var lastDataGridSettings = AppSettingsManager.shared.dataGrid
@@ -159,6 +159,7 @@ final class DataGridViewController: NSViewController, DataGridMountedView {
             applyStagedViewport()
         }
         updateFittingHeight()
+        scheduleAccessibilityRemount()
         if pendingPageReveal != nil {
             // The page scrolls once its own layout is done, so its document already holds the grid's new height.
             DispatchQueue.main.async { [weak self] in self?.performPageReveal() }
