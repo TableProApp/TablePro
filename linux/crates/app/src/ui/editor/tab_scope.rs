@@ -13,7 +13,7 @@ use tablepro_session::operation::OperationKind;
 
 use super::SqlEditor;
 use super::completion::{CatalogHome, SqlCompletionProvider};
-use crate::i18n::gettext_f;
+use crate::i18n::{gettext, gettext_f};
 
 /// The `editor` action a database menu item names, with the database as
 /// its target.
@@ -35,9 +35,9 @@ pub(super) fn scope_text(database: &str, schema: Option<&str>) -> (String, Strin
 }
 
 /// The user's databases, then the engine's own after a separator. `None`
-/// when there is no other database to move to.
+/// when there is no database to move to but the one the tab is in.
 pub(super) fn database_menu(databases: &[SchemaInfo]) -> Option<gio::Menu> {
-    if databases.len() < 2 {
+    if !databases.iter().any(|database| !database.is_default) {
         return None;
     }
     let menu = gio::Menu::new();
@@ -63,7 +63,7 @@ pub(super) fn catalog_home(layout: DatabaseLayout, own: Option<&str>, database: 
     match layout {
         _ if own == Some(database) => CatalogHome::Connection,
         DatabaseLayout::AsSchemas => CatalogHome::Schema(database.to_owned()),
-        DatabaseLayout::WithSchemas | DatabaseLayout::Single => CatalogHome::Elsewhere,
+        DatabaseLayout::WithSchemas | DatabaseLayout::Single => CatalogHome::Elsewhere(database.to_owned()),
     }
 }
 
@@ -79,7 +79,12 @@ impl SqlEditor {
             return;
         };
         let Some((database, layout)) = self.scope_database(&session) else {
-            self.set_scope(None);
+            // A connection in no database yet can still pick one.
+            let pick = self.imp().scope_button.menu_model().is_some().then(|| {
+                let none = gettext("No Database");
+                (none.clone(), none)
+            });
+            self.set_scope(pick);
             return;
         };
         self.set_scope(Some(scope_text(&database, None)));
@@ -254,7 +259,14 @@ impl SqlEditor {
         })
     }
 
+    /// Where unqualified names in this tab resolve, for what the assistant
+    /// says about it.
+    pub(crate) fn catalog_home(&self) -> CatalogHome {
+        self.imp().catalog_home.borrow().clone()
+    }
+
     fn follow_in_completion(&self, home: CatalogHome) {
+        self.imp().catalog_home.replace(home.clone());
         for provider in self.imp().completion_providers.borrow().iter() {
             if let Some(provider) = provider.downcast_ref::<SqlCompletionProvider>() {
                 provider.set_home(home.clone());
@@ -357,7 +369,7 @@ mod tests {
         );
         assert_eq!(
             catalog_home(DatabaseLayout::WithSchemas, Some("shop"), "analytics"),
-            CatalogHome::Elsewhere
+            CatalogHome::Elsewhere("analytics".to_owned())
         );
     }
 }

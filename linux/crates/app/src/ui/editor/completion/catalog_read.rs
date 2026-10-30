@@ -25,7 +25,7 @@ pub enum CatalogHome {
     Schema(String),
     /// A database the catalog does not describe, which nothing offered
     /// from it would be right for.
-    Elsewhere,
+    Elsewhere(String),
 }
 
 /// Read what `scope` offers. The catalog shares each read with every
@@ -35,7 +35,7 @@ pub async fn read(session: Arc<Session>, scope: CompletionScope, home: CatalogHo
     let defaults = match &home {
         CatalogHome::Connection => listed(session.objects(ObjectScope::DefaultSchema).await),
         CatalogHome::Schema(name) => listed(session.objects(ObjectScope::Schema(name.clone())).await),
-        CatalogHome::Elsewhere => return CatalogAnswer::default(),
+        CatalogHome::Elsewhere(_) => return CatalogAnswer::default(),
     };
     let home = Home { home, defaults };
     match scope {
@@ -90,14 +90,15 @@ impl Home {
         match &self.home {
             CatalogHome::Connection => schema.is_default,
             CatalogHome::Schema(name) => schema.name == *name,
-            CatalogHome::Elsewhere => false,
+            CatalogHome::Elsewhere(_) => false,
         }
     }
 
     /// A name for the home database the catalog does not list as a
-    /// schema, as MySQL lists only the connection's.
+    /// schema, as MySQL lists only the connection's. Exact, since
+    /// `Analytics` and `analytics` can be two databases.
     fn named(&self, name: &str) -> bool {
-        matches!(&self.home, CatalogHome::Schema(home) if home.eq_ignore_ascii_case(name))
+        matches!(&self.home, CatalogHome::Schema(home) if home == name)
     }
 }
 
