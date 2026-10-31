@@ -16,7 +16,7 @@ import TableProSQLVocabulary
 final class MySQLPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let pluginName = "MySQL Driver"
     static let pluginVersion = "1.0.0"
-    static let pluginDescription = "MySQL, MariaDB, TiDB, Databend, and OceanBase support via libmariadb"
+    static let pluginDescription = "MySQL, MariaDB, TiDB, Databend, OceanBase, and StarRocks support via libmariadb"
     static let capabilities: [PluginCapability] = [.databaseDriver]
 
     static let databaseTypeId = "MySQL"
@@ -34,7 +34,7 @@ final class MySQLPlugin: NSObject, TableProPlugin, DriverPlugin {
         ),
         MySQLConnectionEncoding.connectionField
         ]
-    static let additionalDatabaseTypeIds: [String] = ["MariaDB", "TiDB", "Databend", "OceanBase"]
+    static let additionalDatabaseTypeIds: [String] = ["MariaDB", "TiDB", "Databend", "OceanBase", "StarRocks"]
 
     // MARK: - UI/Capability Metadata
 
@@ -110,7 +110,8 @@ final class MySQLPlugin: NSObject, TableProPlugin, DriverPlugin {
 
     static func driverVariant(for databaseTypeId: String) -> String? {
         switch databaseTypeId {
-        case MySQLServerFlavor.tidbVariant, MySQLServerFlavor.databendVariant, MySQLServerFlavor.oceanbaseVariant:
+        case MySQLServerFlavor.tidbVariant, MySQLServerFlavor.databendVariant, MySQLServerFlavor.oceanbaseVariant,
+             MySQLServerFlavor.starrocksVariant:
             return databaseTypeId
         default:
             return nil

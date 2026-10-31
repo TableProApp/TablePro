@@ -241,6 +241,7 @@ public struct SQLLexicalProfile: Sendable, Hashable {
             "MariaDB": mySQLFamily,
             "TiDB": mySQLCompatible,
             "OceanBase": mySQLCompatible,
+            "StarRocks": mySQLCompatible,
             "Databend": SQLLexicalProfile(
                 grammar: databend,
                 undetermined: [.hashLineComments, .nestedBlockComments, .carriageReturnEndsLineComments]

@@ -27,7 +27,7 @@ internal extension MySQLServerVersion {
             return isKnownBelow((5, 7, 6), banner: banner) ? .grantUsage : .alterUser
         case .mariadb:
             return isKnownBelow((10, 2, 0), banner: banner) ? .grantUsage : .alterUser
-        case .tidb, .oceanbase, .databend:
+        case .tidb, .oceanbase, .databend, .starrocks:
             return .alterUser
         }
     }

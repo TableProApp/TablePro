@@ -28,7 +28,7 @@ extension MySQLPluginDriver {
     /// `SHOW INDEX` returns text, so both are cast rather than read through a text accessor that
     /// would depend on how the driver rendered an integer cell.
     func fetchAllIndexes(schema: String?) async throws -> [String: [PluginIndexInfo]] {
-        guard !flavor.isDatabend else { return [:] }
+        guard flavor.hasMySQLObjectCatalogs else { return [:] }
         let database = routineSchema(schema)
         return try await catalogOrShow(
             database: database,
@@ -80,6 +80,7 @@ extension MySQLPluginDriver {
     /// so a caller asking about another one is answered about the one it asked about.
     func fetchAllTableMetadata(schema: String?) async throws -> [String: PluginTableMetadata] {
         guard !flavor.isDatabend else { return try await databendAllTableMetadata(database: routineSchema(schema)) }
+        guard !flavor.isStarRocks else { return [:] }
         let result = try await execute(query: Self.tableStatusStatement(database: routineSchema(schema)))
         let appendsInnoDBStatus = serverAppendsInnoDBStatus
         var metadata: [String: PluginTableMetadata] = [:]

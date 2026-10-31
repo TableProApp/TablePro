@@ -63,7 +63,94 @@ extension PluginMetadataRegistry {
             tidbVariant(dialect: dialect, mysqlColumnTypes: mysqlColumnTypes, idleReleaseField: idleReleaseField),
             databendVariant(dialect: dialect, idleReleaseField: idleReleaseField),
             oceanbaseVariant(dialect: dialect, mysqlColumnTypes: mysqlColumnTypes, idleReleaseField: idleReleaseField),
+            starrocksVariant(dialect: dialect, idleReleaseField: idleReleaseField),
         ]
+    }
+
+    static let starrocksColumnTypes: [String: [String]] = [
+        "Integer": ["TINYINT", "SMALLINT", "INT", "BIGINT", "LARGEINT"],
+        "Float": ["FLOAT", "DOUBLE", "DECIMAL"],
+        "String": ["CHAR", "VARCHAR", "STRING"],
+        "Date": ["DATE", "DATETIME"],
+        "Binary": ["BINARY", "VARBINARY"],
+        "Boolean": ["BOOLEAN"],
+        "Semi-structured": ["JSON", "ARRAY", "MAP", "STRUCT"],
+        "Aggregate": ["BITMAP", "HLL", "PERCENTILE"],
+    ]
+
+    static let starrocksRowMatchExcludedTypePrefixes = [
+        "ARRAY", "MAP", "STRUCT", "JSON", "BITMAP", "HLL", "PERCENTILE", "BINARY", "VARBINARY",
+    ]
+
+    /// Catalogs fill the database level and a catalog's databases the schema level, the shape Trino
+    /// has. The Database field takes `catalog.database`, as StarRocks's own clients write it.
+    private static func starrocksVariant(
+        dialect: SQLDialectDescriptor,
+        idleReleaseField: ConnectionField
+    ) -> (typeId: String, snapshot: PluginMetadataSnapshot) {
+        ("StarRocks", PluginMetadataSnapshot(
+            displayName: "StarRocks", iconName: "starrocks-icon", defaultPort: 9_030,
+            requiresAuthentication: true, supportsForeignKeys: false, supportsSchemaEditing: false,
+            isDownloadable: false, primaryUrlScheme: "", parameterStyle: .questionMark,
+            navigationModel: .standard, explainVariants: mysqlVariantExplainVariants, pathFieldRole: .database,
+            supportsHealthMonitor: true, urlSchemes: [],
+            postConnectActions: [.selectDatabaseFromLastSession, .selectSchemaFromLastSession],
+            brandColorHex: "#01808F",
+            queryLanguageName: "SQL", editorLanguage: .sql,
+            connectionMode: .network, supportsDatabaseSwitching: true,
+            structureEditing: SchemaEditingSupport(columnReorder: .unsupported, foreignKeyEdit: .unsupported),
+            capabilities: PluginMetadataSnapshot.CapabilityFlags(
+                supportsSchemaSwitching: true,
+                supportsImport: false,
+                supportsExport: true,
+                supportsSSH: true,
+                supportsSSL: true,
+                supportsCascadeDrop: false,
+                supportsForeignKeyDisable: false,
+                supportsReadOnlyMode: true,
+                supportsQueryProgress: false,
+                requiresReconnectForDatabaseSwitch: false,
+                supportsDropDatabase: false,
+                supportsRenameTable: false,
+                supportsRenameView: false,
+                supportsRenameColumn: false,
+                supportsAddIndex: false,
+                supportsDropIndex: false,
+                supportsModifyPrimaryKey: false,
+                supportsTriggers: false,
+                supportsTriggerEditing: false,
+                supportsCheckConstraints: false,
+                supportsCheckConstraintEditing: false,
+                supportsGeneratedColumns: false,
+                supportsRoutines: false,
+                supportsDatabaseTriggerBrowse: false,
+                defaultSSLMode: .preferred
+            ),
+            schema: PluginMetadataSnapshot.SchemaInfo(
+                defaultSchemaName: "",
+                defaultGroupName: "default",
+                tableEntityName: "Tables",
+                containerEntityName: "Catalog",
+                defaultPrimaryKeyColumn: nil,
+                immutableColumns: [],
+                systemDatabaseNames: [],
+                systemSchemaNames: ["_statistics_", "information_schema", "sys"],
+                fileExtensions: [],
+                databaseGroupingStrategy: .hierarchicalSchema,
+                structureColumnFields: [.name, .type, .nullable, .defaultValue, .comment],
+                rowMatchExcludedTypePrefixes: starrocksRowMatchExcludedTypePrefixes
+            ),
+            editor: PluginMetadataSnapshot.EditorConfig(
+                sqlDialect: dialect,
+                statementCompletions: [],
+                columnTypesByCategory: starrocksColumnTypes
+            ),
+            connection: PluginMetadataSnapshot.ConnectionConfig(
+                additionalConnectionFields: [idleReleaseField],
+                category: .analytical,
+                tagline: String(localized: "Lakehouse analytics, MySQL protocol")
+        )
+        ))
     }
 
     private static func tidbVariant(

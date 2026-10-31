@@ -34,12 +34,17 @@ nonisolated internal enum MySQLServerFlavor: Equatable, Sendable {
     case tidb(version: MySQLEngineVersion?)
     case databend
     case oceanbase(version: MySQLEngineVersion?)
+    case starrocks
 
     static let tidbVariant = "TiDB"
     static let databendVariant = "Databend"
     static let oceanbaseVariant = "OceanBase"
+    static let starrocksVariant = "StarRocks"
 
     static let oceanbaseUnlimitedQueryTimeoutMicroseconds: Int64 = 3_216_672_000_000_000
+
+    /// StarRocks takes `query_timeout` in seconds from 1 to 259200 and has no spelling for unlimited.
+    static let starrocksMaximumQueryTimeoutSeconds = 259_200
 
     static func fromBanner(_ banner: String?) -> MySQLServerFlavor {
         guard let banner else { return .mysql }
@@ -95,6 +100,12 @@ nonisolated internal enum MySQLServerFlavor: Equatable, Sendable {
         return true
     }
 
+    var isStarRocks: Bool { self == .starrocks }
+
+    /// Databend and StarRocks speak the protocol without MySQL's object catalogs, so there are no
+    /// indexes, foreign keys, triggers, routines, events or partitions to read or write the MySQL way.
+    var hasMySQLObjectCatalogs: Bool { !isDatabend && !isStarRocks }
+
     var tidbVersion: MySQLEngineVersion? {
         guard case .tidb(let version) = self else { return nil }
         return version
@@ -110,6 +121,9 @@ nonisolated internal enum MySQLServerFlavor: Equatable, Sendable {
             return ["information_schema", "system"]
         case .oceanbase:
             return ["information_schema", "mysql", "oceanbase", "__recyclebin", "__public", "SYS", "LBACSYS", "ORAAUDITOR"]
+        case .starrocks:
+            // The database level of a StarRocks connection is its catalogs, and none of them is a system one.
+            return []
         }
     }
 
@@ -118,13 +132,13 @@ nonisolated internal enum MySQLServerFlavor: Equatable, Sendable {
     ///
     /// Measured with the app's own libmariadb 3.4.4 against MySQL 5.5.62 and 8.4.11, MariaDB 5.5.64
     /// and 11.4.13 and TiDB v8.5.1: all five report the flag, including the transaction that
-    /// `SET autocommit = 0` plus a write opens. Databend and OceanBase are unmeasured, so they
-    /// report nothing rather than reporting "no transaction" from a flag that may never be set.
+    /// `SET autocommit = 0` plus a write opens. Databend, OceanBase and StarRocks are unmeasured, so
+    /// they report nothing rather than reporting "no transaction" from a flag that may never be set.
     var reportsSessionStatusFlags: Bool {
         switch self {
         case .mysql, .mariadb, .tidb:
             return true
-        case .databend, .oceanbase:
+        case .databend, .oceanbase, .starrocks:
             return false
         }
     }
@@ -133,10 +147,15 @@ nonisolated internal enum MySQLServerFlavor: Equatable, Sendable {
 
     var dropsIdleSessionOnKillQuery: Bool { isTiDB }
 
-    var preparesOnServer: Bool { !isDatabend }
+    /// StarRocks labels a JSON or an Iceberg VARIANT result charset 63 although it sends UTF-8 text,
+    /// so the grid showed `{"` as `0x7B22`. A VARBINARY value that is not UTF-8 still reads as bytes.
+    var labelsTextResultsAsBinary: Bool { isStarRocks }
+
+    /// StarRocks took `COM_STMT_PREPARE` only in 3.2, and a 3.1 frontend refuses it.
+    var preparesOnServer: Bool { !isDatabend && !isStarRocks }
 
     func beginTransactionStatement(mode: PluginTransactionAccessMode) -> String {
-        guard !isDatabend else { return "BEGIN" }
+        guard !isDatabend, !isStarRocks else { return "BEGIN" }
         guard mode == .readWrite else { return "START TRANSACTION" }
         return "START TRANSACTION \(readWriteAccessModeClause)"
     }
@@ -145,7 +164,7 @@ nonisolated internal enum MySQLServerFlavor: Equatable, Sendable {
         switch self {
         case .mysql, .mariadb:
             return "/*!50605 READ WRITE */"
-        case .tidb, .oceanbase, .databend:
+        case .tidb, .oceanbase, .databend, .starrocks:
             return "READ WRITE"
         }
     }
@@ -162,6 +181,9 @@ nonisolated internal enum MySQLServerFlavor: Equatable, Sendable {
                 ? PluginQueryTimeout.microseconds(seconds)
                 : Self.oceanbaseUnlimitedQueryTimeoutMicroseconds
             return ["SET SESSION ob_query_timeout = \(microseconds)", "SET SESSION max_execution_time = 0"]
+        case .starrocks:
+            let maximum = Self.starrocksMaximumQueryTimeoutSeconds
+            return ["SET query_timeout = \(seconds > 0 ? min(seconds, maximum) : maximum)"]
         case .mysql, .tidb:
             return ["SET SESSION max_execution_time = \(PluginQueryTimeout.milliseconds(seconds))"]
         }
@@ -195,6 +217,10 @@ nonisolated internal enum MySQLFlavorResolution {
     static func needsDatabendProbe(banner: String?, variant: String?) -> Bool {
         variant == MySQLServerFlavor.databendVariant && !MySQLServerFlavor.fromBanner(banner).isDatabend
     }
+
+    /// The StarRocks handshake carries `mysql_server_version`, which defaults to a plain MySQL
+    /// version, so only a function MySQL lacks tells the two apart.
+    static let starrocksProbe = "SELECT current_version()"
 
     static func oceanbaseFlavor(versionComment: String?, serverVersion: String?) -> MySQLServerFlavor? {
         let version = versionComment.flatMap(MySQLServerFlavor.oceanbaseVersion(fromVersionComment:))
