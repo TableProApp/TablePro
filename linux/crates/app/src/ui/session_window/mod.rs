@@ -971,7 +971,7 @@ impl SessionWindow {
     }
 
     /// Open `databases` beside the connection under `key` that is open or
-    /// connecting already.
+    /// connecting already, in this window or the one that holds it.
     fn open_beside(&self, key: &SessionKey, databases: Vec<String>) {
         let SessionKey::Saved(id) = *key else {
             return;
@@ -982,14 +982,34 @@ impl SessionWindow {
             }
             return;
         }
-        if let Some(pending) = self
-            .imp()
-            .connects
-            .borrow_mut()
-            .iter_mut()
-            .find(|pending| pending.claim.key() == key)
-        {
-            pending.databases.extend(databases);
+        let joined = {
+            let mut connects = self.imp().connects.borrow_mut();
+            match connects.iter_mut().find(|pending| pending.claim.key() == key) {
+                Some(pending) => {
+                    pending.databases.extend(databases.iter().cloned());
+                    true
+                }
+                None => false,
+            }
+        };
+        if joined {
+            return;
+        }
+        // Another window holds the connection, and its databases open
+        // there.
+        let owner = self
+            .state()
+            .and_then(|state| state.context.sessions.window_for(key))
+            .filter(|owner| *owner != self.id());
+        let owner = owner.and_then(|owner| {
+            self.application()?
+                .windows()
+                .into_iter()
+                .filter_map(|window| window.downcast::<SessionWindow>().ok())
+                .find(|window| window.id() == owner)
+        });
+        if let Some(owner) = owner {
+            owner.open_beside(key, databases);
         }
     }
 
