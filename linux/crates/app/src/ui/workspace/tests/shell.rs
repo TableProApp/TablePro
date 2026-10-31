@@ -12,7 +12,7 @@ use libadwaita::prelude::*;
 use super::{served_table, shell_of};
 use crate::test_support::{descendants, wait_until};
 use crate::ui::SessionWindowInput;
-use crate::ui::session_window::tests::{Script, TestWindow};
+use crate::ui::session_window::tests::{Script, TestWindow, WAIT};
 use crate::ui::workspace::{WorkspaceShell, WorkspaceTab};
 
 fn overview_new_tab_button(overview: &adw::TabOverview) -> gtk::Button {
@@ -417,4 +417,23 @@ fn the_overview_opens_a_tab_in_a_session_that_came_forward_from_its_own_input() 
         Some(second),
         "the new tab went to a session behind"
     );
+}
+
+#[gtk4::test]
+fn the_primary_menu_opens_a_new_connection_from_a_session() {
+    let test = TestWindow::connected("PrimaryMenuNewConnection");
+    let menu = test.app.menu_by_id("primary_menu").expect("the primary menu");
+    let first = menu.item_link(0, "section").expect("a first section");
+    let action = first
+        .item_attribute_value(0, "action", None)
+        .and_then(|value| value.get::<String>());
+    assert_eq!(
+        action.as_deref(),
+        Some("win.new-connection"),
+        "New Connection does not lead the menu"
+    );
+
+    WidgetExt::activate_action(&test.window, "win.new-connection", None).expect("win.new-connection");
+
+    wait_until(WAIT, || test.window.visible_dialog().is_some()).expect("the connection dialog");
 }
