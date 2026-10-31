@@ -324,7 +324,7 @@ mod tests {
 
         fixture.sessions.remove(&connection);
 
-        assert_eq!(fixture.sessions.keys(), [other.clone()]);
+        assert_eq!(fixture.sessions.keys(), std::slice::from_ref(&other));
         assert_eq!(fixture.on_disk(), [other]);
     }
 
