@@ -75,7 +75,9 @@ enum QueryClassifier {
         readings: SQLLexicalReadings,
         until isSettled: (QueryClassification) -> Bool
     ) -> QueryClassification {
-        if let document = documentStoreClassification(sql, databaseType: databaseType) { return document }
+        if let document = documentStoreClassification(sql, databaseType: databaseType, readings: readings) {
+            return document
+        }
         if let redis = redisClassification(sql, databaseType: databaseType) { return redis }
         // Whether the text is nothing but comments is each reading's answer: a reading that finds no statement adds
         // nothing to `worst`.
@@ -112,7 +114,7 @@ enum QueryClassifier {
         if classification.tier == .destructive { return true }
         // A MongoDB statement is JavaScript, where `delete d.x` removes a field from a local object.
         guard databaseType != .redis, databaseType != .mongodb else { return false }
-        guard documentStoreClassification(sql, databaseType: databaseType) == nil else {
+        guard documentStoreClassification(sql, databaseType: databaseType, readings: readings) == nil else {
             let trimmed = StatementBlank.trimming(SQLLeadingComments.stripping(sql, grammar: readings.execution))
             let code = SQLCodeProjection.code(of: trimmed, grammar: readings.execution).uppercased()
             return leadingKeyword(of: trimmed, grammar: readings.execution) == "DELETE" && !hasWhereClause(code: code)
@@ -158,8 +160,6 @@ enum QueryClassifier {
         SQLStatementScanner.executableStatements(in: sql, grammar: grammar).map(\.sql)
     }
 
-    /// Every statement the engine may run from `sql`: each one the driver receives, and on an engine that needs no
-    /// terminator, each one that begins inside it, as `SELECT 1` followed by `DROP TABLE t` does on SQL Server.
     private static func runnableStatements(of sql: String, grammar: SQLLexicalGrammar) -> [String] {
         statements(of: sql, grammar: grammar).flatMap { statement in
             SQLUnterminatedStatements.runnable(in: statement, grammar: grammar)
@@ -203,13 +203,10 @@ enum QueryClassifier {
             return proceduralBlockDeletesEverything(statement, grammar: grammar)
         }
         // With ANALYZE the engine runs what it explains, so the explained statement is read as the tier reads it.
-        let projection = StatementProjection(statement: statement, grammar: grammar)
-        let keyword = SQLLeadingComments.leadingCodeKeyword(projection.body)
-        if explainPrefixes.contains(keyword) {
-            guard let inner = explainedInnerStatement(projection, keyword: keyword), inner.executesStatement else {
-                return false
-            }
-            return statementDeletesEverything(inner.statement, grammar: grammar, databaseType: databaseType)
+        if let explain = SQLExplainStatement.read(statement, grammar: grammar) {
+            guard case .explains(let start, true) = explain.reading else { return false }
+            let inner = (statement as NSString).substring(from: start)
+            return statementDeletesEverything(inner, grammar: grammar, databaseType: databaseType)
         }
         return SQLUnfilteredWrite.writes(in: statement, grammar: grammar).contains(.delete)
     }
@@ -224,11 +221,13 @@ enum QueryClassifier {
         }
     }
 
-    static func explainedStatement(in sql: String, grammar: SQLLexicalGrammar) -> String? {
-        let trimmed = StatementBlank.trimming(SQLLeadingComments.stripping(sql, grammar: grammar))
-        let keyword = leadingKeyword(of: trimmed, grammar: grammar)
-        guard explainPrefixes.contains(keyword) else { return nil }
-        return explainInnerStatement(trimmed, keyword: keyword)?.statement
+    static func explainedStatement(in sql: String, databaseType: DatabaseType) -> String? {
+        let text = StatementBlank.trimming(sql)
+        guard let explain = SQLExplainStatement.read(text, grammar: databaseType.lexicalGrammar),
+              explainPrefixes.contains(explain.keyword),
+              case .explains(let start, _) = explain.reading
+        else { return nil }
+        return StatementBlank.trimming((text as NSString).substring(from: start))
     }
 
     /// A parenthesised query expression is idiomatic when each arm of a set operation carries its
@@ -246,27 +245,6 @@ enum QueryClassifier {
 
 private extension QueryClassifier {
     static let explainPrefixes: [String] = ["EXPLAIN", "ANALYZE"]
-
-    static let executingExplainOptions: [String] = ["ANALYZE", "ANALYSE"]
-
-    static func explainExecutesStatement(_ options: String) -> Bool {
-        executingExplainOptions.contains { option in
-            options.components(separatedBy: option).dropFirst().contains { !turnsOptionOff($0) }
-        }
-    }
-
-    static let optionOffValues = ["FALSE", "OFF", "0"]
-
-    // PostgreSQL turns an option off with FALSE, OFF or 0 after it, so `EXPLAIN (ANALYZE FALSE)` only plans.
-    static func turnsOptionOff(_ rest: String) -> Bool {
-        let value = StatementBlank.trimmingLeading(rest[...])
-        guard value.startIndex != rest.startIndex else { return false }
-        return optionOffValues.contains { off in
-            guard value.hasPrefix(off) else { return false }
-            guard let next = value.dropFirst(off.count).first else { return true }
-            return !(next.isLetter || next.isNumber || next == "_" || next == "$")
-        }
-    }
 
     static let whereClauseRegex = try? NSRegularExpression(pattern: "\\sWHERE\\s", options: [])
 
@@ -298,6 +276,7 @@ private extension QueryClassifier {
     static let destructiveKeywords: Set<String> = ["DROP", "TRUNCATE"]
 
 
+    // T-SQL's BULK INSERT reads a file on the server.
     static let filesystemOrCodeKeywords: Set<String> = [
         "COPY", "ATTACH", "DETACH", "DO", "LOAD", "INSTALL", "IMPORT", "EXPORT",
         "BACKUP", "RESTORE", "DUMP", "SOURCE", "UNLOAD", "BULK"
@@ -315,15 +294,14 @@ private extension QueryClassifier {
         "DEFINE", "REMOVE", "RELATE", "LET", "SECURITY", "LISTEN", "UNLISTEN", "NOTIFY"
     ]
 
-    static let readOnlyKeywords: Set<String> = [
-        "SELECT", "WITH", "SHOW", "DESCRIBE", "DESC", "VALUES", "TABLE",
-        "HELP", "INFO", "PRINT", "EXPLAIN", "ANALYZE"
-    ]
+    static let readOnlyKeywords: Set<String> = ["SHOW", "HELP", "INFO", "PRINT"]
 
-    static let statementStartKeywords: Set<String> = [
-        "SELECT", "WITH", "INSERT", "UPDATE", "DELETE", "MERGE", "REPLACE", "UPSERT",
-        "CREATE", "ALTER", "DROP", "TRUNCATE", "TABLE", "VALUES", "CALL", "EXECUTE", "COPY", "DO"
-    ]
+    static let queryKeywords: Set<String> = ["SELECT", "TABLE", "VALUES"]
+
+    // DuckDB reads with `FROM t`, `PIVOT t ...` and `UNPIVOT t ...` too.
+    static func isQuery(_ keyword: String, databaseType: DatabaseType) -> Bool {
+        queryKeywords.contains(keyword) || (databaseType == .duckdb && ["FROM", "PIVOT", "UNPIVOT"].contains(keyword))
+    }
 
     static let filesystemMarkers: [String] = [
         "INTO OUTFILE", "INTO DUMPFILE", "TO PROGRAM", "FROM PROGRAM", "VACUUM INTO",
@@ -331,8 +309,112 @@ private extension QueryClassifier {
         "SYS_READ_FILE(", "SYS_READ_BINARY_FILE(", "SYS_LS_DIR(",
         "LO_IMPORT(", "LO_EXPORT(", "PG_FILE_WRITE(", "LOAD_EXTENSION(",
         "READFILE(", "WRITEFILE(", "FN_GET_AUDIT_FILE(", "XP_CMDSHELL", "SP_OACREATE",
-        "OPENROWSET(", "OPENDATASOURCE("
+        "OPENROWSET(", "OPENDATASOURCE(", "FSDIR(",
+        "PG_STAT_FILE(", "PG_LS_LOGDIR(", "PG_LS_WALDIR(", "PG_LS_TMPDIR(", "PG_LS_ARCHIVE_STATUSDIR(",
+        "PG_LS_LOGICALSNAPDIR(", "PG_LS_LOGICALMAPDIR(", "PG_LS_REPLSLOTDIR(", "PG_FILE_UNLINK(", "PG_FILE_RENAME(",
+        "PG_FILE_SYNC(", "PG_FILE_READ(", "PG_LOGDIR_LS(",
+        "FN_XE_FILE_TARGET_READ_FILE(", "FN_TRACE_GETTABLE(", "FN_DUMP_DBLOG(", "DM_OS_ENUMERATE_FILESYSTEM(",
+        "DM_OS_FILE_EXISTS(", "XP_DIRTREE", "XP_FILEEXIST", "XP_SUBDIRS", "XP_REGREAD", "XP_REGWRITE",
+        "SP_EXECUTE_EXTERNAL_SCRIPT",
+        "BFILENAME(", "HTTPURITYPE(", "UTL_HTTP", "UTL_FILE", "UTL_TCP", "UTL_SMTP", "UTL_INADDR"
     ]
+
+    // Per engine, since `glob` is a scalar on SQLite and `file` and `url` name columns anywhere.
+    static let functionsReachingOutside: [DatabaseType: Set<String>] = [
+        .duckdb: [
+            "GLOB", "SNIFF_CSV", "GETENV", "QUERY", "QUERY_TABLE", "JSON_EXECUTE_SERIALIZED_SQL", "FROM_SUBSTRAIT",
+            "FROM_SUBSTRAIT_JSON", "IMPORT_DATABASE", "ARROW_SCAN", "ARROW_SCAN_DUMB", "LOAD_AWS_CREDENTIALS",
+            "ENABLE_LOGGING", "START_UI", "START_UI_SERVER"
+        ],
+        .clickhouse: [
+            "FILE", "FILECLUSTER", "URL", "URLCLUSTER", "S3", "S3CLUSTER", "GCS", "COSN", "OSS", "HDFS", "HDFSCLUSTER",
+            "REMOTE", "REMOTESECURE", "MYSQL", "POSTGRESQL", "MONGODB", "REDIS", "SQLITE", "JDBC", "ODBC", "EXECUTABLE",
+            "ARROWFLIGHT", "YTSAURUS"
+        ],
+        // SurrealQL runs `function() { ... }` as JavaScript on a server with scripting on.
+        .surrealdb: ["FUNCTION"]
+    ]
+
+    // SurrealQL's http:: functions make requests from the server.
+    static let markersReachingOutside: [DatabaseType: [String]] = [.surrealdb: ["HTTP::"]]
+
+    static let functionFamiliesReachingOutside: [DatabaseType: [String]] = [
+        .duckdb: ["READ_", "PARQUET_", "ST_READ", "ICEBERG_", "DELTA_", "SQLITE_", "POSTGRES_", "MYSQL_"],
+        .clickhouse: ["AZUREBLOBSTORAGE", "ICEBERG", "DELTALAKE", "HUDI", "PAIMON"]
+    ]
+
+    // A read of a file stays a read in the app's own windows, where the tier sets the row cap.
+    static let readOutsideDatabase = QueryClassification(tier: .safe, reachesFilesystemOrExecutesCode: true)
+
+    static func reachesOutsideDatabase(
+        _ projection: StatementProjection,
+        calls: [SQLFunctionCallScanner.Call],
+        markerBody: String,
+        grammar: SQLLexicalGrammar,
+        databaseType: DatabaseType
+    ) -> Bool {
+        if markersReachingOutside[databaseType]?.contains(where: markerBody.contains) == true { return true }
+        guard let names = functionsReachingOutside[databaseType] else { return false }
+        if databaseType == .duckdb, SQLFileNamedAsTable.appears(in: projection.statement, grammar: grammar) {
+            return true
+        }
+        let families = functionFamiliesReachingOutside[databaseType] ?? []
+        return calls.contains { call in
+            guard case .named(let name, _) = call.callee else { return true }
+            let function = name.uppercased()
+            return names.contains(function) || families.contains(where: function.hasPrefix)
+        }
+    }
+
+    // The projection blanks a quoted name, so `"pg_read_file"(` is matched by the name the call scanner reads.
+    static let filesystemFunctions: Set<String> = Set(
+        filesystemMarkers.filter { $0.hasSuffix("(") }.map { String($0.dropLast()) }
+    )
+
+    // A callee the scanner cannot name counts as one.
+    static func callsFilesystemFunction(_ calls: [SQLFunctionCallScanner.Call]) -> Bool {
+        calls.contains { call in
+            guard case .named(let name, _) = call.callee else { return true }
+            let function = name.uppercased()
+            // KingbaseES ships each pg_ function under a sys_ name too.
+            let alias = function.hasPrefix("SYS_") ? "PG_" + function.dropFirst(4) : function
+            return filesystemFunctions.contains(function) || filesystemFunctions.contains(alias)
+        }
+    }
+
+    // `EXEC [xp_cmdshell] 'dir'` runs the procedure its plain spelling does.
+    static let filesystemProcedures: Set<String> = Set(filesystemMarkers.filter { !$0.contains("(") && !$0.contains(" ") })
+
+    static let identifierQuotes: Set<UInt16> = [
+        SqlLexer.doubleQuote, SqlLexer.backtick, UInt16(UnicodeScalar("[").value)
+    ]
+
+    static func quotesFilesystemProcedure(
+        in statement: String,
+        grammar: SQLLexicalGrammar,
+        revealingExecutableComments: Bool = false
+    ) -> Bool {
+        let text = statement as NSString
+        let length = text.length
+        var index = 0
+        while index < length {
+            if revealingExecutableComments,
+               let opener = SqlLexer.executableCommentOpenerLength(text, at: index, length: length) {
+                index += opener
+                continue
+            }
+            guard let span = SQLNonCodeSpan.span(at: index, in: text, grammar: grammar) else {
+                index += 1
+                continue
+            }
+            if span.kind == .quoted, identifierQuotes.contains(text.character(at: span.start)) {
+                let inner = NSRange(location: span.start + 1, length: max(0, span.contentEnd - span.start - 1))
+                if filesystemProcedures.contains(text.substring(with: inner).uppercased()) { return true }
+            }
+            index = max(span.end, index + 1)
+        }
+        return false
+    }
 
     // A comment, a line break or a run of spaces between two words, or a space before `(`, is nothing to the server:
     // `INTO/**/OUTFILE` and `LOAD_FILE (` write and read files as their plain spellings do.
@@ -362,18 +444,28 @@ private extension QueryClassifier {
     static func sqlClassification(
         _ statement: String,
         grammar: SQLLexicalGrammar,
-        databaseType: DatabaseType
+        databaseType: DatabaseType,
+        depth: Int = 0
     ) -> QueryClassification {
+        guard depth <= deepestNesting else { return mostSevere }
         let projection = StatementProjection(statement: statement, grammar: grammar)
-        let body = projection.body
-        let markerBody = markerForm(of: body)
+        let calls = SQLFunctionCallScanner.calls(in: statement as NSString, code: projection.code as NSString)
+        let markerBody = markerForm(of: projection.body)
         let touchesUnsafeSurface = filesystemMarkers.contains { markerBody.contains($0) }
-        let keywordTier = keywordClassification(projection, grammar: grammar, databaseType: databaseType)
+            || callsFilesystemFunction(calls)
+            || quotesFilesystemProcedure(in: statement, grammar: grammar)
+        let keywordTier = keywordClassification(projection, grammar: grammar, databaseType: databaseType, depth: depth)
         let base = keywordTier.tier == .safe
-            ? keywordTier.escalated(to: stateChangingCallTier(projection, databaseType: databaseType))
+            ? keywordTier.escalated(to: stateChangingCallTier(projection, calls: calls, grammar: grammar, databaseType: databaseType))
             : keywordTier
         var classification = touchesUnsafeSurface ? base.markingUnsafeSurface() : base
-        if let dynamic = dynamicSQLClassification(projection, grammar: grammar, databaseType: databaseType) {
+        let reachesOutside = reachesOutsideDatabase(
+            projection, calls: calls, markerBody: markerBody, grammar: grammar, databaseType: databaseType
+        )
+        if reachesOutside {
+            classification = classification.escalated(with: readOutsideDatabase)
+        }
+        if let dynamic = dynamicSQLClassification(projection, grammar: grammar, databaseType: databaseType, depth: depth) {
             classification = classification.escalated(with: dynamic)
         }
         guard let conditional = conditionalCommentClassification(statement, grammar: grammar) else {
@@ -390,11 +482,16 @@ private extension QueryClassifier {
     ) -> QueryClassification? {
         let readsOpeners = grammar.union(.executableComments)
         guard SQLExecutableCommentReadings.holdsExecutableComment(statement, grammar: readsOpeners) else { return nil }
-        let revealed = SQLCodeProjection.code(of: statement, grammar: readsOpeners, revealingExecutableComments: true)
-            .uppercased()
+        let revealedCode = SQLCodeProjection.code(
+            of: statement, grammar: readsOpeners, revealingExecutableComments: true
+        )
+        let revealed = revealedCode.uppercased()
         let dropsData = destructiveKeywords.contains { containsWord(revealed, $0) }
         let revealedMarkers = markerForm(of: revealed)
+        let revealedCalls = SQLFunctionCallScanner.calls(in: statement as NSString, code: revealedCode as NSString)
         let reachesFilesystemOrExecutesCode = filesystemMarkers.contains { revealedMarkers.contains($0) }
+            || callsFilesystemFunction(revealedCalls)
+            || quotesFilesystemProcedure(in: statement, grammar: grammar, revealingExecutableComments: true)
             || filesystemOrCodeKeywords.contains { containsWord(revealed, $0) }
         return QueryClassification(
             tier: dropsData ? .destructive : .write,
@@ -402,16 +499,21 @@ private extension QueryClassifier {
         )
     }
 
+    // Each nested statement copies and reads what is left of the text, so nesting past this is refused.
+    static let deepestNesting = 32
+
     static func keywordClassification(
         _ projection: StatementProjection,
         grammar: SQLLexicalGrammar,
-        databaseType: DatabaseType
+        databaseType: DatabaseType,
+        depth: Int = 0
     ) -> QueryClassification {
+        guard depth <= deepestNesting else { return mostSevere }
         let body = projection.body
         let keyword = SQLLeadingComments.leadingCodeKeyword(body)
 
-        if keyword == "EXPLAIN" || keyword == "ANALYZE" {
-            return explainClassification(projection, keyword: keyword, grammar: grammar, databaseType: databaseType)
+        if SQLExplainStatement.keywords.contains(keyword) {
+            return explainClassification(projection, grammar: grammar, databaseType: databaseType, depth: depth)
         }
 
         if filesystemOrCodeKeywords.contains(keyword) {
@@ -435,12 +537,19 @@ private extension QueryClassifier {
         }
 
         if keyword == "WITH" {
-            return commonTableExpressionClassification(body)
+            return commonTableExpressionClassification(
+                projection, grammar: grammar, databaseType: databaseType, depth: depth
+            )
         }
 
-        if keyword == "SELECT" || keyword == "TABLE" || keyword == "VALUES" {
+        if isQuery(keyword, databaseType: databaseType) {
             guard containsWord(body, "INTO") else { return .safe }
             return QueryClassification(tier: .write, reachesFilesystemOrExecutesCode: false)
+        }
+
+        if keyword == "VACUUM" {
+            // SQLite's `VACUUM [schema] INTO 'file'` writes a file whatever stands between the two words.
+            return QueryClassification(tier: .write, reachesFilesystemOrExecutesCode: containsWord(body, "INTO"))
         }
 
         if writeKeywords.contains(keyword) {
@@ -454,18 +563,22 @@ private extension QueryClassifier {
         return QueryClassification(tier: .write, reachesFilesystemOrExecutesCode: false)
     }
 
-    static func stateChangingCallTier(_ projection: StatementProjection, databaseType: DatabaseType) -> QueryTier {
-        guard !explainPrefixes.contains(SQLLeadingComments.leadingCodeKeyword(projection.body)) else { return .safe }
+    // An EXPLAIN that runs its statement is tiered by that statement's own calls.
+    static func stateChangingCallTier(
+        _ projection: StatementProjection,
+        calls: [SQLFunctionCallScanner.Call],
+        grammar: SQLLexicalGrammar,
+        databaseType: DatabaseType
+    ) -> QueryTier {
+        let keyword = SQLLeadingComments.leadingCodeKeyword(projection.body)
+        guard !SQLExplainStatement.keywords.contains(keyword) else { return .safe }
         if advancesSequence(projection.body, databaseType: databaseType) { return .write }
-        let calls = SQLFunctionCallScanner.calls(
-            in: projection.statement as NSString,
-            code: projection.code as NSString
-        )
         let changesState = calls.contains { call in
             guard case .named(let name, _) = call.callee else { return true }
             return SQLStateChangingFunctions.contains(name)
         }
-        return changesState ? .write : .safe
+        guard !changesState else { return .write }
+        return SQLStateChangingFunctions.namesStateChangingTable(in: projection.statement, grammar: grammar) ? .write : .safe
     }
 
     private static let routineDefinitionKinds: Set<String> = [
@@ -518,14 +631,36 @@ private extension QueryClassifier {
         return false
     }
 
-    static func commonTableExpressionClassification(_ body: String) -> QueryClassification {
+    // After the CTE list only a query reads. Each body is tiered as a statement of its own, since PostgreSQL runs a
+    // data-modifying one, and a list this reader does not know is a write.
+    static func commonTableExpressionClassification(
+        _ projection: StatementProjection,
+        grammar: SQLLexicalGrammar,
+        databaseType: DatabaseType,
+        depth: Int
+    ) -> QueryClassification {
+        let write = QueryClassification(tier: .write, reachesFilesystemOrExecutesCode: false)
+        let body = projection.body
         for keyword in ["DROP", "TRUNCATE"] where containsWord(body, keyword) {
             return QueryClassification(tier: .destructive, reachesFilesystemOrExecutesCode: false)
         }
-        for keyword in ["INSERT", "UPDATE", "DELETE", "MERGE"] where containsWord(body, keyword) {
-            return QueryClassification(tier: .write, reachesFilesystemOrExecutesCode: false)
+        var worst = ["INSERT", "UPDATE", "DELETE", "MERGE"].contains { containsWord(body, $0) } ? write : .safe
+        guard let list = SQLCommonTableExpressions.read(projection.statement, grammar: grammar) else {
+            // Snowflake's `WITH p AS PROCEDURE ... CALL p()` creates and runs a procedure whose body is a literal.
+            let definesRoutine = containsWord(body, "PROCEDURE") || containsWord(body, "FUNCTION")
+            return definesRoutine ? write.markingUnsafeSurface() : write
         }
-        return .safe
+        let text = projection.statement as NSString
+        let main = StatementProjection(statement: text.substring(from: list.mainStatement), grammar: grammar)
+        if !isQuery(SQLLeadingComments.leadingCodeKeyword(main.body), databaseType: databaseType) {
+            worst = worst.escalated(with: write)
+        }
+        let parts = [main] + list.bodies.map { StatementProjection(statement: text.substring(with: $0), grammar: grammar) }
+        return parts.reduce(worst) { worst, part in
+            worst.escalated(
+                with: keywordClassification(part, grammar: grammar, databaseType: databaseType, depth: depth + 1)
+            )
+        }
     }
 
     /// A routine's body is not run by the statement that stores it, so a definition is tiered by what storing it does,
@@ -542,19 +677,33 @@ private extension QueryClassifier {
         return false
     }
 
-    /// `EXECUTE IMMEDIATE` runs a statement written as a literal, and once a dollar-quoted body is one literal a
-    /// keyword scan of the statement around it no longer sees what the body runs. So the literal is classified as SQL
-    /// of its own, a `DROP` or `TRUNCATE` anywhere in it makes the statement destructive, and the statement carries
-    /// the code flag, as PostgreSQL's `DO` does.
+    // A literal the statement runs is tiered as SQL of its own, and the statement carries the code flag as `DO` does.
     static func dynamicSQLClassification(
         _ projection: StatementProjection,
         grammar: SQLLexicalGrammar,
-        databaseType: DatabaseType
+        databaseType: DatabaseType,
+        depth: Int
     ) -> QueryClassification? {
         guard !definesRoutine(projection.code) else { return nil }
         let text = projection.statement as NSString
-        guard let keywordEnd = executeImmediateEnd(in: projection.code as NSString) else { return nil }
-        let literalStart = skipBlanks(in: text, from: keywordEnd)
+        var prepared: QueryClassification?
+        if case .statement(let offset) = preparedBody(projection, grammar: grammar) {
+            let stored = text.substring(from: offset)
+            prepared = sqlClassification(stored, grammar: grammar, databaseType: databaseType, depth: depth + 1)
+        }
+        return dynamicSQLOffsets(in: projection, grammar: grammar).reduce(prepared) { worst, offset in
+            let dynamic = dynamicSQLClassification(at: offset, in: text, grammar: grammar, databaseType: databaseType)
+            return worst?.escalated(with: dynamic) ?? dynamic
+        }
+    }
+
+    private static func dynamicSQLClassification(
+        at offset: Int,
+        in text: NSString,
+        grammar: SQLLexicalGrammar,
+        databaseType: DatabaseType
+    ) -> QueryClassification {
+        let literalStart = skipNationalPrefix(in: text, from: skipBlanks(in: text, from: offset))
         guard let span = SQLNonCodeSpan.span(at: literalStart, in: text, grammar: grammar), span.kind == .quoted else {
             return QueryClassification(tier: .write, reachesFilesystemOrExecutesCode: true)
         }
@@ -573,12 +722,49 @@ private extension QueryClassifier {
         options: [.caseInsensitive]
     )
 
-    /// Where `EXECUTE IMMEDIATE` ends in the code projection. The literal after it is blank there, so it is found in
-    /// the statement itself from this offset.
-    static func executeImmediateEnd(in code: NSString) -> Int? {
-        let whole = NSRange(location: 0, length: code.length)
-        guard let match = executeImmediateRegex?.firstMatch(in: code as String, range: whole) else { return nil }
-        return match.range.location + match.range.length
+    static func dynamicSQLOffsets(in projection: StatementProjection, grammar: SQLLexicalGrammar) -> [Int] {
+        let code = blanksAsSpaces(projection.code)
+        let whole = NSRange(location: 0, length: (code as NSString).length)
+        let executeImmediate = executeImmediateRegex?.firstMatch(in: code, range: whole)
+            .map { [$0.range.location + $0.range.length] } ?? []
+        var prepared: [Int] = []
+        if case .text(let offset) = preparedBody(projection, grammar: grammar) {
+            prepared = [offset]
+        }
+        return executeImmediate + prepared + TSQLDynamicSQL.textOffsets(in: projection.statement, grammar: grammar)
+    }
+
+    static func preparedBody(_ projection: StatementProjection, grammar: SQLLexicalGrammar) -> SQLPreparedStatement.Body? {
+        guard SQLLeadingComments.leadingCodeKeyword(projection.body) == "PREPARE" else { return nil }
+        return SQLPreparedStatement.body(in: projection.statement, grammar: grammar)
+    }
+
+    // `\s` misses a control or zero-width character, which ends a word for SQL Server. Each UTF-16 unit of one becomes a
+    // space, so offsets into the result are offsets into the statement.
+    static func blanksAsSpaces(_ code: String) -> String {
+        let source = code as NSString
+        var units = [UInt16](repeating: 0, count: source.length)
+        source.getCharacters(&units, range: NSRange(location: 0, length: source.length))
+        var index = 0
+        while index < units.count {
+            let length = StatementBlank.blankLength(in: source, at: index)
+            guard length > 0 else {
+                index += 1
+                continue
+            }
+            for offset in index..<min(index + length, units.count) {
+                units[offset] = SqlLexer.space
+            }
+            index += length
+        }
+        return String(utf16CodeUnits: units, count: units.count)
+    }
+
+    static func skipNationalPrefix(in text: NSString, from offset: Int) -> Int {
+        guard offset + 1 < text.length, text.character(at: offset + 1) == SqlLexer.singleQuote,
+              [SqlLexer.smallN, SqlLexer.capitalN].contains(text.character(at: offset))
+        else { return offset }
+        return offset + 1
     }
 
     /// The text between a literal's delimiters: the body of `'...'`, `E'...'`, `b'...'`, `$tag$...$tag$` or `q'[...]'`,
@@ -622,49 +808,6 @@ private extension QueryClassifier {
     static let escapeStringPrefixes = (lower: UInt16(UnicodeScalar("e").value), upper: UInt16(UnicodeScalar("E").value))
     static let escapeBytesPrefix = UInt16(UnicodeScalar("b").value)
 
-    /// EXPLAIN's options read off the code projection, where every comment is already blank, so a comment between
-    /// the options and the statement ends where the engine ends it.
-    static func explainedInnerStatement(
-        _ projection: StatementProjection,
-        keyword: String
-    ) -> (statement: String, executesStatement: Bool)? {
-        let code = projection.code as NSString
-        let length = code.length
-        var options = keyword == "ANALYZE" ? "ANALYZE" : ""
-        var cursor = skipBlanks(in: code, from: codeOffset(ofKeyword: keyword, in: code))
-        while cursor < length {
-            let unit = code.character(at: cursor)
-            if unit == SqlLexer.openParen {
-                let end = closingParenthesis(in: code, from: cursor)
-                options += " " + code.substring(with: NSRange(location: cursor, length: end - cursor)).uppercased()
-                cursor = skipBlanks(in: code, from: end)
-                continue
-            }
-            if unit == equalsSign || unit == comma {
-                cursor = skipBlanks(in: code, from: cursor + 1)
-                continue
-            }
-            let wordEnd = endOfWord(in: code, from: cursor)
-            guard wordEnd > cursor else { return nil }
-            let word = code.substring(with: NSRange(location: cursor, length: wordEnd - cursor)).uppercased()
-            if statementStartKeywords.contains(word) {
-                let statement = (projection.statement as NSString).substring(from: cursor)
-                return (statement, explainExecutesStatement(options))
-            }
-            options += " " + word
-            cursor = skipBlanks(in: code, from: wordEnd)
-        }
-        return nil
-    }
-
-    static let equalsSign = UInt16(UnicodeScalar("=").value)
-    static let comma = UInt16(UnicodeScalar(",").value)
-
-    static func codeOffset(ofKeyword keyword: String, in code: NSString) -> Int {
-        let start = skipBlanks(in: code, from: 0)
-        return min(code.length, start + (keyword as NSString).length)
-    }
-
     static func skipBlanks(in code: NSString, from offset: Int) -> Int {
         var cursor = offset
         while cursor < code.length, StatementBlank.blankLength(in: code, at: cursor) > 0 {
@@ -676,21 +819,6 @@ private extension QueryClassifier {
     static func endOfWord(in code: NSString, from offset: Int) -> Int {
         var cursor = offset
         while cursor < code.length, SqlDollarQuote.isIdentifierPart(code.character(at: cursor)) {
-            cursor += 1
-        }
-        return cursor
-    }
-
-    static func closingParenthesis(in code: NSString, from offset: Int) -> Int {
-        var depth = 0
-        var cursor = offset
-        while cursor < code.length {
-            let unit = code.character(at: cursor)
-            if unit == SqlLexer.openParen { depth += 1 }
-            if unit == SqlLexer.closeParen {
-                depth -= 1
-                if depth == 0 { return cursor + 1 }
-            }
             cursor += 1
         }
         return cursor
@@ -709,112 +837,52 @@ private struct StatementProjection {
     init(statement: String, grammar: SQLLexicalGrammar) {
         self.statement = statement
         self.code = SQLCodeProjection.code(of: statement, grammar: grammar)
-        self.body = code.uppercased()
+        self.body = Self.spacingBlanks(in: code.uppercased())
+    }
+
+    // SQL Server ends a word at a control or zero-width character, which `\s` and `isWhitespace` miss.
+    private static func spacingBlanks(in text: String) -> String {
+        guard text.unicodeScalars.contains(where: isNonWhiteSpaceBlank) else { return text }
+        var spaced = String.UnicodeScalarView()
+        for scalar in text.unicodeScalars {
+            spaced.append(isNonWhiteSpaceBlank(scalar) ? " " : scalar)
+        }
+        return String(spaced)
+    }
+
+    private static func isNonWhiteSpaceBlank(_ scalar: Unicode.Scalar) -> Bool {
+        StatementBlank.isBlank(scalar) && !(scalar.isASCII && scalar.properties.isWhitespace)
     }
 }
 
 private extension QueryClassifier {
+    // An EXPLAIN, a DESCRIBE of a statement or a bare ANALYZE runs nothing unless an option runs it. A bare ANALYZE
+    // of a name, and MySQL's or Oracle's ANALYZE TABLE, store statistics.
     static func explainClassification(
         _ projection: StatementProjection,
-        keyword: String,
         grammar: SQLLexicalGrammar,
-        databaseType: DatabaseType
+        databaseType: DatabaseType,
+        depth: Int
     ) -> QueryClassification {
-        guard let inner = explainedInnerStatement(projection, keyword: keyword) else {
-            let tier: QueryTier = keyword == "ANALYZE" ? .write : .safe
-            return QueryClassification(tier: tier, reachesFilesystemOrExecutesCode: false)
+        let write = QueryClassification(tier: .write, reachesFilesystemOrExecutesCode: false)
+        guard let explain = SQLExplainStatement.read(projection.statement, grammar: grammar) else { return write }
+        switch explain.reading {
+        case .unreadable:
+            return write
+        case .describesObject:
+            return explain.keyword == "ANALYZE" ? write : .safe
+        case .explains(let start, let runsStatement):
+            let statement = (projection.statement as NSString).substring(from: start)
+            let inner = sqlClassification(statement, grammar: grammar, databaseType: databaseType, depth: depth + 1)
+            let innerKeyword = SQLLeadingComments.leadingCodeKeyword(SQLCodeProjection.code(of: statement, grammar: grammar))
+            if explain.keyword == "ANALYZE", innerKeyword.uppercased() == "TABLE" {
+                return inner.escalated(to: .write)
+            }
+            guard runsStatement else {
+                return QueryClassification(tier: .safe, reachesFilesystemOrExecutesCode: inner.reachesFilesystemOrExecutesCode)
+            }
+            return inner
         }
-        let innerClassification = sqlClassification(inner.statement, grammar: grammar, databaseType: databaseType)
-        guard inner.executesStatement else {
-            return QueryClassification(
-                tier: .safe,
-                reachesFilesystemOrExecutesCode: innerClassification.reachesFilesystemOrExecutesCode
-            )
-        }
-        return innerClassification
-    }
-
-    static func explainInnerStatement(
-        _ trimmed: String,
-        keyword: String
-    ) -> (statement: String, executesStatement: Bool)? {
-        var remainder = Substring(trimmed).dropFirst(keyword.count)
-        var options = keyword == "ANALYZE" ? "ANALYZE" : ""
-        var statementTriviaStart: String.Index?
-        while true {
-            remainder = remainder.drop { $0.isWhitespace }
-            guard let first = remainder.first else { return nil }
-            if remainder.hasPrefix("--") {
-                statementTriviaStart = statementTriviaStart ?? remainder.startIndex
-                guard let lineBreak = remainder.firstIndex(where: SQLLeadingComments.endsLineComment) else { return nil }
-                remainder = remainder[remainder.index(after: lineBreak)...]
-                continue
-            }
-            if remainder.hasPrefix("/*") {
-                statementTriviaStart = statementTriviaStart ?? remainder.startIndex
-                guard let afterComment = remainderAfterBlockComment(in: remainder) else { return nil }
-                remainder = afterComment
-                continue
-            }
-            if first == "(" {
-                statementTriviaStart = nil
-                var depth = 0
-                var index = remainder.startIndex
-                while index < remainder.endIndex {
-                    if remainder[index] == "(" { depth += 1 }
-                    if remainder[index] == ")" {
-                        depth -= 1
-                        if depth == 0 {
-                            index = remainder.index(after: index)
-                            break
-                        }
-                    }
-                    index = remainder.index(after: index)
-                }
-                options += " " + remainder[remainder.startIndex..<index].uppercased()
-                remainder = remainder[index...]
-                continue
-            }
-            let token = remainder.prefix { $0.isLetter || $0.isNumber || $0 == "_" }
-            guard !token.isEmpty else {
-                if first == "=" || first == "," {
-                    statementTriviaStart = nil
-                    remainder = remainder.dropFirst()
-                    continue
-                }
-                return nil
-            }
-            let upperToken = token.uppercased()
-            if statementStartKeywords.contains(upperToken) {
-                let statement = statementTriviaStart.map { trimmed[$0...] } ?? remainder
-                return (String(statement), explainExecutesStatement(options))
-            }
-            options += " " + upperToken
-            statementTriviaStart = nil
-            remainder = remainder.dropFirst(token.count)
-        }
-    }
-
-    static func remainderAfterBlockComment(in sql: Substring) -> Substring? {
-        var depth = 1
-        var index = sql.index(sql.startIndex, offsetBy: 2)
-        while index < sql.endIndex {
-            let next = sql.index(after: index)
-            guard next < sql.endIndex else { return nil }
-            let pair = sql[index...next]
-            if pair == "/*" {
-                depth += 1
-                index = sql.index(after: next)
-            } else if pair == "*/" {
-                depth -= 1
-                let afterClose = sql.index(after: next)
-                if depth == 0 { return sql[afterClose...] }
-                index = afterClose
-            } else {
-                index = next
-            }
-        }
-        return nil
     }
 
     static func containsWord(_ body: String, _ word: String) -> Bool {
@@ -923,31 +991,32 @@ private extension QueryClassifier {
 
     private static let beancountReadPrefixes = ["bql:", "bql ", "pragma table_info", "pragma database_list"]
 
-    /// MongoDB and Elasticsearch read the text the way their drivers do. A SQL comment is not a
-    /// comment to either: `--` is a JavaScript decrement, and a console request's first line is its
-    /// method, so stripping one would classify text the driver never runs.
+    // A request driver gets the statements the scanner cuts, so each is tiered as cut and the worst one wins.
     static func documentStoreClassification(
         _ sql: String,
-        databaseType: DatabaseType
+        databaseType: DatabaseType,
+        readings: SQLLexicalReadings
     ) -> QueryClassification? {
-        var trimmed: String {
-            StatementBlank.trimming(SQLLeadingComments.stripping(sql, grammar: databaseType.lexicalGrammar))
+        func worstRequest(_ classification: (String) -> QueryClassification) -> QueryClassification {
+            readings.all.flatMap { statements(of: sql, grammar: $0) }.reduce(.safe) { worst, request in
+                worst.escalated(with: classification(request))
+            }
         }
         switch databaseType {
         case .mongodb:
             return mongoClassification(sql)
         case .elasticsearch:
-            return StatementBlank.hasContent(sql) ? elasticsearchClassification(sql) : .safe
+            return worstRequest(elasticsearchClassification)
         case .etcd:
-            return trimmed.isEmpty ? .safe : etcdClassification(trimmed)
+            return worstRequest(etcdClassification)
         case .typesense:
-            return trimmed.isEmpty ? .safe : typesenseClassification(trimmed)
+            return worstRequest(typesenseClassification)
         case .weaviate:
-            return trimmed.isEmpty ? .safe : weaviateClassification(trimmed)
+            return worstRequest(weaviateClassification)
         case .firestore, .firebaseRealtimeDatabase:
-            return trimmed.isEmpty ? .safe : firebaseClassification(trimmed, databaseType: databaseType)
+            return worstRequest { firebaseClassification($0, databaseType: databaseType) }
         case .bigtable:
-            return trimmed.isEmpty ? .safe : bigtableClassification(trimmed)
+            return worstRequest(bigtableClassification)
         default:
             return nil
         }
@@ -1004,11 +1073,8 @@ private extension QueryClassifier {
         return segments.first { $0.hasPrefix("_") }.map(String.init)
     }
 
-    static let typesenseReadPaths: [String] = ["/MULTI_SEARCH", "/DOCUMENTS/SEARCH", "/DOCUMENTS/EXPORT"]
-
-    /// `/operations/snapshot` writes the whole dataset to a server path the request names, and
-    /// `/keys` mints API keys, so both widen reach beyond the data the request touches.
-    static let typesenseUnsafePaths: [String] = ["/OPERATIONS/SNAPSHOT", "/KEYS"]
+    // A snapshot writes to a server path and `/keys` mints API keys.
+    static let typesenseUnsafePaths: [[String]] = [["OPERATIONS", "SNAPSHOT"], ["KEYS"]]
 
     /// The verb and the path, and nothing else. A Typesense console request is one header line
     /// followed by a JSON body, and the body is the caller's data: scanning the whole statement
@@ -1033,13 +1099,36 @@ private extension QueryClassifier {
         return (String(verb).uppercased(), path.uppercased())
     }
 
+    // Resolved with `URL(string:relativeTo:)` as the driver resolves it, so `/a/../keys` and `//host/keys` are `/keys`.
+    // A dot segment an escape hid could still move the request.
+    static func typesenseRoute(of path: String) -> [String]? {
+        guard let base = typesenseResolutionBase,
+              let resolved = URL(string: path, relativeTo: base)?.absoluteURL,
+              let decoded = resolved.path(percentEncoded: true).removingPercentEncoding
+        else { return nil }
+        let segments = decoded.split(separator: "/").map { $0.uppercased() }
+        guard !segments.contains(where: { $0 == "." || $0 == ".." || $0.contains("%") }) else { return nil }
+        return segments
+    }
+
+    static let typesenseResolutionBase = URL(string: "http://typesense.invalid/")
+
+    static func typesenseReadsOnly(_ route: [String]) -> Bool {
+        if route == ["MULTI_SEARCH"] { return true }
+        guard route.count == 4, route[0] == "COLLECTIONS", route[2] == "DOCUMENTS" else { return false }
+        return route[3] == "SEARCH" || route[3] == "EXPORT"
+    }
+
     static func typesenseClassification(_ trimmed: String) -> QueryClassification {
         let (verb, path) = typesenseRequestLine(trimmed)
-        let touchesUnsafeSurface = typesenseUnsafePaths.contains { path == $0 || path.hasPrefix("\($0)/") }
+        let route = typesenseRoute(of: path)
+        let touchesUnsafeSurface = route.map { route in
+            typesenseUnsafePaths.contains { unsafe in route.starts(with: unsafe) }
+        } ?? true
         if verb == "GET" || verb == "HEAD" {
             return QueryClassification(tier: .safe, reachesFilesystemOrExecutesCode: touchesUnsafeSurface)
         }
-        if verb == "POST", typesenseReadPaths.contains(where: { path == $0 || path.hasSuffix($0) }) {
+        if verb == "POST", route.map(typesenseReadsOnly) == true {
             return QueryClassification(tier: .safe, reachesFilesystemOrExecutesCode: touchesUnsafeSurface)
         }
         if verb == "DELETE" {

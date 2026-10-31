@@ -453,7 +453,9 @@ extension MCPConnectionBridge {
         case .driver(let runsStatement):
             return MCPExplainRequest(
                 statement: trimmed,
-                gatedSQL: ExplainRequest.gatedSQL(subject: trimmed, runsStatement: runsStatement),
+                gatedSQL: ExplainRequest.gatedSQL(
+                    subject: trimmed, runsStatement: runsStatement, databaseType: databaseType
+                ),
                 subjectSQL: trimmed,
                 driverStep: ExplainRequest.DriverStep(variantId: variant.id, runsStatement: runsStatement)
             )

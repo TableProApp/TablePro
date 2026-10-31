@@ -127,6 +127,21 @@ public struct SQLLexicalGrammar: OptionSet, Hashable, Sendable {
     /// The only body is the `BEGIN ... END` of a `CREATE TRIGGER`, as in SQLite. Curated only.
     public static let triggerBodies = SQLLexicalGrammar(rawValue: 1 << 34)
 
+    /// A statement may stand wherever a value may, as in SurrealQL, so `SELECT * FROM t WHERE (DELETE t)` deletes.
+    /// ``SQLEmbeddedStatements`` finds them. Only the curated SurrealQL grammar carries it, so the kit has no feature
+    /// for it.
+    public static let statementsAsValues = SQLLexicalGrammar(rawValue: 1 << 35)
+
+    /// A statement in brackets is a table, as on CockroachDB, so `SELECT * FROM [DELETE FROM t RETURNING id]` deletes.
+    /// ``SQLEmbeddedStatements`` finds them. Only the curated CockroachDB grammar carries it, so the kit has no feature
+    /// for it.
+    public static let bracketedStatementSources = SQLLexicalGrammar(rawValue: 1 << 36)
+
+    /// `->>` chains statements the engine runs in order, as Snowflake's pipe operator does, so `SHOW TABLES ->> DROP
+    /// TABLE t` is two statements. ``SQLPipeOperatorChain`` finds each one. Only the curated Snowflake grammar carries
+    /// it, so the kit has no feature for it.
+    public static let pipeOperatorChains = SQLLexicalGrammar(rawValue: 1 << 37)
+
     /// Standard SQL: quotes close only on a doubled quote, `--` and flat `/* */` are the only comments.
     public static let ansi: SQLLexicalGrammar = []
 

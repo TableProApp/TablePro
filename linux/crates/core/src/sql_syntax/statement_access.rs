@@ -177,7 +177,22 @@ pub fn statement_access(sql: &str, grammar: SqlGrammar) -> StatementAccess {
         SqlGrammar::Mongo => return crate::sql_syntax::mongo::script_access(sql),
         _ => {}
     }
-    access_as_sent(sql, grammar, CLIENT_SPLITS)
+    let written = access_as_sent(sql, grammar, CLIENT_SPLITS);
+    // PostgreSQL and SQLite read these characters as part of a name, or refuse them.
+    let letters = matches!(grammar, SqlGrammar::PostgreSql | SqlGrammar::Sqlite);
+    if written == StatementAccess::Destructive || letters || !sql.contains(may_be_space) {
+        return written;
+    }
+    written.max(access_as_sent(&sql.replace(may_be_space, " "), grammar, CLIENT_SPLITS))
+}
+
+// SQL Server ends a word at a control character, a non-ASCII space or a zero-width character, so
+// `NEXT\u{1}VALUE FOR` takes a number from a sequence; the lexer reads them as punctuation or letters.
+fn may_be_space(character: char) -> bool {
+    !character.is_ascii_whitespace()
+        && (character.is_whitespace()
+            || character.is_control()
+            || matches!(character, '\u{200b}'..='\u{200f}' | '\u{2060}'..='\u{2064}' | '\u{feff}'))
 }
 
 /// How many times a script can be split by `DELIMITER` lines on its way:
@@ -260,7 +275,9 @@ fn access_of_code(code: &[Code<'_>], grammar: SqlGrammar) -> StatementAccess {
 
 /// EXPLAIN, and MySQL's DESCRIBE of a statement, without ANALYZE shows
 /// a plan and runs nothing. SQL Server has no EXPLAIN, and its batch
-/// could hold a statement after one.
+/// could hold a statement after one. A quoted option name may be
+/// PostgreSQL's `("analyze")`, and SQLite applies a PRAGMA while it
+/// compiles the EXPLAIN.
 fn plans_only(code: &[Code<'_>], grammar: SqlGrammar) -> bool {
     grammar != SqlGrammar::MsSql
         && code
@@ -902,6 +919,75 @@ mod tests {
         }
         assert_eq!(
             access("SELECT currval('orders_id_seq')", SqlGrammar::PostgreSql),
+            StatementAccess::Read
+        );
+    }
+
+    #[test]
+    fn a_character_sql_server_takes_for_a_space_is_read_as_one() {
+        for blank in [
+            '\u{1}', '\u{8}', '\u{1f}', '\u{7f}', '\u{85}', '\u{a0}', '\u{200b}', '\u{feff}', '\u{3000}',
+        ] {
+            for sql in [
+                format!("SELECT NEXT{blank}VALUE FOR dbo.order_ids"),
+                format!("SELECT NEXT VALUE{blank}FOR dbo.order_ids"),
+                format!("SELECT id{blank}INTO{blank}copies FROM orders"),
+            ] {
+                assert_eq!(access(&sql, SqlGrammar::MsSql), StatementAccess::Write, "{sql:?}");
+            }
+            let sql = format!("SELECT 1{blank}DROP{blank}TABLE orders");
+            assert_eq!(access(&sql, SqlGrammar::MsSql), StatementAccess::Destructive, "{sql:?}");
+            for sql in [
+                format!("SELECT id{blank}FROM orders"),
+                format!("SELECT 'NEXT{blank}VALUE FOR s', [DROP{blank}TABLE] FROM orders -- a{blank}DROP"),
+            ] {
+                assert_eq!(access(&sql, SqlGrammar::MsSql), StatementAccess::Read, "{sql:?}");
+            }
+        }
+        assert_eq!(
+            access("SELECT caf\u{e9}, \u{540d}\u{524d} FROM orders", SqlGrammar::MsSql),
+            StatementAccess::Read
+        );
+        // A blank inside a word is read both ways on every engine, and the stricter reading stands.
+        assert_eq!(
+            access("SELECT foo\u{200b}INTO\u{200b}bar FROM orders", SqlGrammar::PostgreSql),
+            StatementAccess::Write
+        );
+    }
+
+    #[test]
+    fn an_explain_option_that_is_quoted_runs_the_statement() {
+        for sql in [
+            r#"EXPLAIN ("analyze") DELETE FROM orders"#,
+            r#"EXPLAIN (VERBOSE, "analyze") DELETE FROM orders"#,
+            r#"EXPLAIN (U&"an\0061lyze") DELETE FROM orders"#,
+        ] {
+            assert_ne!(access(sql, SqlGrammar::PostgreSql), StatementAccess::Read, "{sql}");
+        }
+        assert_eq!(
+            access(
+                r#"EXPLAIN (FORMAT JSON) SELECT "id" FROM orders"#,
+                SqlGrammar::PostgreSql
+            ),
+            StatementAccess::Read
+        );
+    }
+
+    #[test]
+    fn explain_pragma_reads_only_when_the_pragma_does() {
+        for sql in [
+            "EXPLAIN PRAGMA query_only=ON",
+            "EXPLAIN QUERY PLAN PRAGMA hard_heap_limit = 1",
+            "explain pragma foreign_keys = off",
+        ] {
+            assert_eq!(access(sql, SqlGrammar::Sqlite), StatementAccess::Write, "{sql}");
+        }
+        assert_eq!(
+            access("EXPLAIN PRAGMA table_info(orders)", SqlGrammar::Sqlite),
+            StatementAccess::Read
+        );
+        assert_eq!(
+            access("EXPLAIN QUERY PLAN SELECT * FROM orders", SqlGrammar::Sqlite),
             StatementAccess::Read
         );
     }

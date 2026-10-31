@@ -53,7 +53,7 @@ struct QueryClassifierExplainedStatementTests {
         let explicitSubject = try #require(SQLStatementScanner.executableStatements(in: subject).first?.sql)
 
         #expect(
-            QueryClassifier.explainedStatement(in: "EXPLAIN QUERY PLAN \(subject)", grammar: .ansi)
+            QueryClassifier.explainedStatement(in: "EXPLAIN QUERY PLAN \(subject)", databaseType: .postgresql)
                 == explicitSubject
         )
     }
@@ -64,7 +64,7 @@ struct QueryClassifierExplainedStatementTests {
         let explicitSubject = try #require(SQLStatementScanner.executableStatements(in: subject).first?.sql)
 
         #expect(
-            QueryClassifier.explainedStatement(in: "EXPLAIN (ANALYZE, BUFFERS) \(subject)", grammar: .ansi)
+            QueryClassifier.explainedStatement(in: "EXPLAIN (ANALYZE, BUFFERS) \(subject)", databaseType: .postgresql)
                 == explicitSubject
         )
     }
@@ -75,7 +75,7 @@ struct QueryClassifierExplainedStatementTests {
         let explicitSubject = try #require(SQLStatementScanner.executableStatements(in: subject).first?.sql)
 
         #expect(
-            QueryClassifier.explainedStatement(in: "EXPLAIN (FORMAT JSON) \(subject)", grammar: .ansi)
+            QueryClassifier.explainedStatement(in: "EXPLAIN (FORMAT JSON) \(subject)", databaseType: .postgresql)
                 == explicitSubject
         )
     }
@@ -85,7 +85,7 @@ struct QueryClassifierExplainedStatementTests {
         #expect(
             QueryClassifier.explainedStatement(
                 in: "EXPLAIN FORMAT /* option separator */ = JSON /* statement */ SELECT 1",
-                grammar: .ansi
+                databaseType: .mysql
             ) == "/* statement */ SELECT 1"
         )
     }

@@ -68,7 +68,9 @@ public struct SQLLexicalProfile: Sendable, Hashable {
     /// own; an engine that runs statements without one says so through its plugin. A `MERGE` that keeps its `;` is left
     /// out for the same reason: an engine that refuses one without it says so through its plugin. So is a CQL batch,
     /// which would read one statement where an unknown engine may run several. So are the two single body forms, which
-    /// would cut the `BEGIN ... END` body of an engine that has the usual one.
+    /// would cut the `BEGIN ... END` body of an engine that has the usual one. So is a statement inside another, which
+    /// would make every `update` or `access` column an unknown engine names a write, and Snowflake's pipe operator,
+    /// which would cut a statement at the `->>` that is JSON's operator on an unknown engine.
     public static let everyKnownReading: [SQLLexicalGrammar] = {
         var seen: Set<SQLLexicalGrammar> = []
         var result: [SQLLexicalGrammar] = []
@@ -78,6 +80,7 @@ public struct SQLLexicalProfile: Sendable, Hashable {
                 let unitless = reading.subtracting([
                     .plsqlBlocks, .delimiterDirective, .unterminatedStatements, .terminatedMergeStatements,
                     .sqlScriptBlocks, .cqlBatches, .atomicRoutineBodies, .triggerBodies,
+                    .statementsAsValues, .bracketedStatementSources, .pipeOperatorChains,
                 ])
                 if seen.insert(unitless).inserted {
                     result.append(unitless)
@@ -170,10 +173,11 @@ public struct SQLLexicalProfile: Sendable, Hashable {
         .backtickQuotes, .hashLineComments, .doubleSlashLineComments, .taggedDollarQuotes,
     ]
 
-    /// Snowflake, from its reference: a backslash escapes in single-quoted strings, `$$` bodies are literals and `//`
-    /// is a comment. Not measured.
+    /// Snowflake, from its reference: a backslash escapes in single-quoted strings, `$$` bodies are literals, `//`
+    /// is a comment, and the pipe operator `->>` chains statements that run in order, so `SHOW TABLES ->> DROP TABLE t`
+    /// runs both. Not measured.
     static let snowflake: SQLLexicalGrammar = [
-        .backslashEscapesInSingleQuotes, .untaggedDollarQuotes, .doubleSlashLineComments,
+        .backslashEscapesInSingleQuotes, .untaggedDollarQuotes, .doubleSlashLineComments, .pipeOperatorChains,
     ]
 
     /// Databend, from its tokenizer: a backslash escapes in `'` and `"`, backticks quote identifiers, `$$` bodies
@@ -189,11 +193,11 @@ public struct SQLLexicalProfile: Sendable, Hashable {
 
     /// SurrealQL, from its reference and lexer: a backslash escapes in both quotes and in a backtick identifier, which
     /// has no doubled-backtick form and is how the plugin's `SurrealQL.quoteIdentifier` writes a name, `⟨⟩` quotes an
-    /// identifier too, and `#`, `//` and `--` are comments. Not measured.
+    /// identifier too, `#`, `//` and `--` are comments, and a statement is a value. Not measured.
     static let surrealQL: SQLLexicalGrammar = [
         .backslashEscapesInSingleQuotes, .backslashEscapesInDoubleQuotes, .backslashEscapesInBackticks,
         .backtickQuotes, .angleQuotedIdentifiers, .backslashEscapesInAngleQuotes, .hashLineComments,
-        .doubleSlashLineComments,
+        .doubleSlashLineComments, .statementsAsValues,
     ]
 
     /// DynamoDB, from the driver's statement forms: a request is `<Action> {JSON}`, and a backslash escapes inside a
@@ -245,7 +249,7 @@ public struct SQLLexicalProfile: Sendable, Hashable {
                 undetermined: [.backslashEscapesInSingleQuotes, .nestedBlockComments, .escapeStringPrefix]
             ),
             "CockroachDB": SQLLexicalProfile(
-                grammar: cockroachDB,
+                grammar: cockroachDB.union(.bracketedStatementSources),
                 undetermined: [.nestedBlockComments, .taggedDollarQuotes, .carriageReturnEndsLineComments]
             ),
             "MySQL": SQLLexicalProfile(

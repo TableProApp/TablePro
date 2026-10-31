@@ -165,6 +165,19 @@ struct SQLUnfilteredWriteTests {
         #expect(first("UPDATE STATISTICS [t]", Self.sqlServer) == nil)
     }
 
+    @Test("A statement an engine runs from inside another is read on its own")
+    func embeddedStatement() {
+        let cockroachDB = Self.grammar("CockroachDB")
+        #expect(first("SELECT * FROM [DELETE FROM t RETURNING id] WHERE id = 1", cockroachDB) == .delete)
+        #expect(first("SELECT * FROM [UPDATE t SET a = 1 RETURNING id] WHERE id = 1", cockroachDB) == .update)
+        #expect(first("SELECT * FROM [DELETE FROM t WHERE id = 1 RETURNING id]", cockroachDB) == nil)
+        #expect(first("SELECT * FROM [DELETE FROM t RETURNING id]") == nil)
+        let surrealQL = Self.grammar("SurrealDB")
+        #expect(first("SELECT * FROM t WHERE (DELETE t)", surrealQL) == .delete)
+        #expect(first("SELECT DELETE t FROM u WHERE true", surrealQL) == .delete)
+        #expect(first("SELECT * FROM (DELETE t WHERE id = 1)", surrealQL) == nil)
+    }
+
     @Test("ClickHouse's ALTER TABLE mutations are read as the write they are")
     func clickHouseMutations() {
         #expect(first("ALTER TABLE `t` UPDATE `a` = ? WHERE `id` = ?", Self.clickHouse) == nil)

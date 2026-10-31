@@ -8,6 +8,61 @@ public enum SQLStateChangingFunctions {
         return names.contains(lowered)
     }
 
+    // SQLite runs a table-valued pragma named as a table source too, so `SELECT * FROM main.pragma_optimize` runs
+    // ANALYZE. A call is the call scanner's; a column or alias of that name runs nothing.
+    public static func namesStateChangingTable(in statement: String, grammar: SQLLexicalGrammar) -> Bool {
+        guard tableFunctions.contains(where: { statement.range(of: $0, options: .caseInsensitive) != nil }) else {
+            return false
+        }
+        let text = statement as NSString
+        var listsTables: [Int: Bool] = [:]
+        var expectsTable = false
+        var namesTable = false
+        for token in TSQLTokens.read(text, grammar: grammar) {
+            let expected = expectsTable
+            let qualifies = namesTable
+            expectsTable = false
+            namesTable = false
+            switch token.kind {
+            case .word(let word):
+                if expected, tableFunctions.contains(word.lowercased()) { return true }
+                namesTable = expected
+                if tableIntroducers.contains(word) {
+                    listsTables[token.depth] = true
+                    expectsTable = true
+                } else if tableListEnders.contains(word) {
+                    listsTables[token.depth] = false
+                }
+            case .quoted:
+                guard expected else { break }
+                guard let span = SQLNonCodeSpan.span(at: token.location, in: text, grammar: grammar) else { return true }
+                let body = NSRange(location: span.start + 1, length: max(0, span.contentEnd - span.start - 1))
+                if tableFunctions.contains(text.substring(with: body).lowercased()) { return true }
+                namesTable = true
+            case .name:
+                namesTable = expected
+            case .comma:
+                expectsTable = listsTables[token.depth] == true
+            case .other where text.character(at: token.location) == period:
+                expectsTable = qualifies
+            default:
+                break
+            }
+        }
+        return false
+    }
+
+    private static let period = UInt16(UnicodeScalar(".").value)
+
+    private static let tableIntroducers: Set<String> = ["FROM", "JOIN"]
+
+    private static let tableListEnders: Set<String> = [
+        "WHERE", "GROUP", "HAVING", "WINDOW", "ORDER", "LIMIT", "OFFSET", "UNION", "INTERSECT", "EXCEPT", "RETURNING",
+        "ON", "USING", "SELECT",
+    ]
+
+    private static let tableFunctions: Set<String> = ["pragma_optimize"]
+
     private static let names: Set<String> = serverSignals
         .union(sessionControl)
         .union(recoveryAndBackup)
@@ -16,6 +71,7 @@ public enum SQLStateChangingFunctions {
         .union(advisoryLocks)
         .union(settingsAndStatistics)
         .union(largeObjects)
+        .union(filesAndExtensions)
         .union(indexMaintenance)
         .union(sqlTextRunners)
 
@@ -65,12 +121,21 @@ public enum SQLStateChangingFunctions {
         "lo_create", "lo_creat", "lo_unlink", "lo_from_bytea", "lo_put", "lowrite", "lo_truncate", "lo_truncate64"
     ]
 
-    private static let indexMaintenance: Set<String> = [
-        "brin_summarize_new_values", "brin_summarize_range", "brin_desummarize_range", "gin_clean_pending_list"
+    // The Mac flags these through its file markers too; iOS has only this list.
+    private static let filesAndExtensions: Set<String> = [
+        "lo_import", "lo_export", "pg_file_write", "writefile", "load_extension"
     ]
 
+    // SQLite's pragma_optimize table function runs ANALYZE, measured on 3.54.0. No other pragma function takes a value.
+    private static let indexMaintenance: Set<String> = [
+        "brin_summarize_new_values", "brin_summarize_range", "brin_desummarize_range", "gin_clean_pending_list",
+        "pragma_optimize"
+    ]
+
+    // SQL Server's OPENQUERY and OPENROWSET hand their last argument to a linked server, or back to this one through
+    // a loopback link, as a batch of its own: a SELECT from either can carry a DELETE, as a SELECT from dblink can.
     private static let sqlTextRunners: Set<String> = [
         "query_to_xml", "query_to_xml_and_xmlschema", "ts_stat", "ts_rewrite", "dblink", "dblink_exec",
-        "dblink_send_query", "dblink_open"
+        "dblink_send_query", "dblink_open", "openquery", "openrowset"
     ]
 }
