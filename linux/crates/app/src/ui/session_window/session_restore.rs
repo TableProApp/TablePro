@@ -491,6 +491,43 @@ mod tests {
         wait_until(WAIT, || window.held_session(&sibling).is_some()).expect("the database to reopen");
     }
 
+    /// Opening the failed connection again from the picker, not Retry,
+    /// reopens the databases restored with it too.
+    #[gtk4::test]
+    fn a_database_restored_with_a_failed_connection_reopens_when_it_is_opened_again() {
+        let test = TestWindow::with_script(
+            "RestoreDatabaseReopen",
+            Script {
+                network: true,
+                establish: vec![crate::ui::session_window::tests::refused()],
+                ..Script::default()
+            },
+        );
+        let (vault, id) = (test.vault.clone(), test.saved.id);
+        crate::test_support::finish_on_main(WAIT, async move {
+            tablepro_core::credentials::SecretVault::store(
+                &*vault,
+                id,
+                tablepro_core::credentials::SecretKind::DatabasePassword,
+                &secrecy::SecretString::from("s3cret"),
+                "label",
+            )
+            .await
+        })
+        .expect("the store to end")
+        .expect("the password stored");
+        let sibling = SessionKey::SavedIn {
+            id,
+            database: "analytics".to_owned(),
+        };
+
+        let window = test.restored_window_of(&[test.key(), sibling.clone()]);
+        wait_until(WAIT, || window.page_name() == "connect-failed").expect("the failed page");
+        window.send(SessionWindowInput::OpenSaved(Box::new(test.saved.clone())));
+
+        wait_until(WAIT, || window.held_session(&sibling).is_some()).expect("the database to reopen");
+    }
+
     #[gtk4::test]
     fn a_missing_file_is_forgotten_and_a_retry_records_it_again() {
         let test = TestWindow::picker("RestoreMissing");

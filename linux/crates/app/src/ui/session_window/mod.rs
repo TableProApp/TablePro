@@ -907,7 +907,20 @@ impl SessionWindow {
             return None;
         }
         match self.imp().failed.take() {
-            Some(failed) if failed.claim.key() == key => Some(failed.claim),
+            Some(FailedConnect {
+                claim,
+                source,
+                failure,
+                databases,
+            }) if claim.key() == key => {
+                // The connect this claim starts takes them, as it takes
+                // a failure beside the window's sessions.
+                self.imp()
+                    .failures
+                    .borrow_mut()
+                    .insert(key.clone(), (source, failure, databases));
+                Some(claim)
+            }
             failed => {
                 let left = failed.is_some();
                 drop(failed);
@@ -951,7 +964,7 @@ impl SessionWindow {
             },
         };
         if let Some(mut pending) = self.spawn_connect(claim, source, None, demand) {
-            pending.databases = databases;
+            pending.databases.extend(databases);
             self.imp().connects.borrow_mut().push(pending);
         }
         self.connects_changed();
@@ -1113,11 +1126,17 @@ impl SessionWindow {
         let id = imp.next_connect.get().wrapping_add(1);
         imp.next_connect.set(id);
         let key = claim.key();
-        if imp.failures.borrow_mut().remove(key).is_some()
-            && let Some(tree) = self.shell().and_then(|shell| shell.tree())
-        {
-            tree.set_failure(key, None);
-        }
+        // Whatever brings a failed connection back reopens the other
+        // databases its failure kept.
+        let databases = match imp.failures.borrow_mut().remove(key) {
+            Some((_, _, databases)) => {
+                if let Some(tree) = self.shell().and_then(|shell| shell.tree()) {
+                    tree.set_failure(key, None);
+                }
+                databases
+            }
+            None => Vec::new(),
+        };
         let cancel = CancellationToken::new();
         let check = self.file_check(&source, answer);
         let work = connect_work(state, &source, check, demand, cancel.clone());
@@ -1128,7 +1147,7 @@ impl SessionWindow {
             source,
             cancel,
             demand,
-            databases: Vec::new(),
+            databases,
         })
     }
 
