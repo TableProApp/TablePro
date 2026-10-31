@@ -20,6 +20,8 @@ internal final class SupportAskCoordinator {
         var keyWindow: () -> NSWindow?
         var isModalSessionRunning: () -> Bool
         var openPricing: (URL) -> Void
+        var reportShown: () -> Void
+        var reportAnswer: (SupportAskAnswer) -> Void
         var now: () -> Date
     }
 
@@ -117,6 +119,7 @@ internal final class SupportAskCoordinator {
         // counts as an ask and the next launch does not repeat it.
         defaults.set(now, forKey: Keys.lastAskedAt)
         defaults.removeObject(forKey: Keys.lastAnswer)
+        environment.reportShown()
         Self.logger.info("Showed the license ask after \(self.counter.days, privacy: .public) days of use")
     }
 
@@ -136,6 +139,7 @@ internal final class SupportAskCoordinator {
 
     private func record(_ answer: SupportAskAnswer) {
         defaults.set(answer.rawValue, forKey: Keys.lastAnswer)
+        environment.reportAnswer(answer)
         if answer == .buy {
             environment.openPricing(SupportLinks.pricing(.ask))
         }
@@ -162,7 +166,12 @@ extension SupportAskCoordinator {
             isQueryRunning: { MainContentCoordinator.isAnyQueryRunning },
             keyWindow: { NSApp.keyWindow },
             isModalSessionRunning: { NSApp.modalWindow != nil },
-            openPricing: { NSWorkspace.shared.open($0) },
+            openPricing: { url in
+                Telemetry.shared.upgradeClicked(from: .ask)
+                NSWorkspace.shared.open(url)
+            },
+            reportShown: { Telemetry.shared.supportAskShown() },
+            reportAnswer: { Telemetry.shared.supportAskAnswered($0) },
             now: { Date() }
         )
     )

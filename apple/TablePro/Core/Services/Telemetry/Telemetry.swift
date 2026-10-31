@@ -159,6 +159,15 @@ internal final class Telemetry {
         capture("upgrade_clicked", ["source": referrer.parameterValue])
     }
 
+    // No properties: the count of days used stays on the Mac.
+    func supportAskShown() {
+        capture("support_ask_shown")
+    }
+
+    func supportAskAnswered(_ answer: SupportAskAnswer) {
+        capture("support_ask_answered", ["answer": Self.value(for: answer)])
+    }
+
     // MARK: - Private
 
     private func setEnabled(_ enabled: Bool) {
@@ -231,6 +240,15 @@ internal final class Telemetry {
     private func capture(_ event: String, _ properties: [String: Any] = [:]) {
         guard isEnabled, let client else { return }
         client.capture(event, properties: properties)
+    }
+
+    // Not the stored raw value, which keeps the case name; events spell values in snake case.
+    private static func value(for answer: SupportAskAnswer) -> String {
+        switch answer {
+        case .buy: "buy"
+        case .personal: "personal"
+        case .notNow: "not_now"
+        }
     }
 
     private static func reason(for access: ProFeatureAccess) -> String {

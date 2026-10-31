@@ -43,6 +43,8 @@ struct SupportAskCoordinatorTests {
         var hasLicense = false
         var isQueryRunning = false
         private(set) var openedURLs: [URL] = []
+        private(set) var shownReports = 0
+        private(set) var reportedAnswers: [SupportAskAnswer] = []
         private(set) var coordinator: SupportAskCoordinator!
 
         init(daysBeforeLaunch: Int, windowIdentifier: String = WindowIdentifier.connection) throws {
@@ -76,6 +78,8 @@ struct SupportAskCoordinatorTests {
                     keyWindow: { [unowned self] in window },
                     isModalSessionRunning: { false },
                     openPricing: { [unowned self] in openedURLs.append($0) },
+                    reportShown: { [unowned self] in shownReports += 1 },
+                    reportAnswer: { [unowned self] in reportedAnswers.append($0) },
                     now: { [unowned self] in now }
                 ),
                 calendar: calendar,
@@ -208,6 +212,25 @@ struct SupportAskCoordinatorTests {
         harness.advance(days: 1)
         harness.coordinator.askIfDue()
         #expect(harness.presenter.shownDays == [30, 30])
+    }
+
+    @Test("Each ask shown and each answer is reported once, and an ask not shown reports nothing")
+    func reportsShownAndAnswered() throws {
+        let harness = try Harness(daysBeforeLaunch: 29)
+        defer { harness.tearDown() }
+
+        harness.advance(days: 0, seconds: 60)
+        harness.coordinator.askIfDue()
+        #expect(harness.shownReports == 0)
+
+        harness.advance(days: 0, seconds: 600)
+        harness.coordinator.askIfDue()
+        harness.coordinator.askIfDue()
+        harness.presenter.choose(.notNow)
+        harness.coordinator.askIfDue()
+
+        #expect(harness.shownReports == 1)
+        #expect(harness.reportedAnswers == [.notNow])
     }
 
     @Test("While the sheet is open, no second ask is attempted")

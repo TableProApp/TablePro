@@ -114,6 +114,8 @@ struct TelemetryTests {
             fixture.telemetry.queryExecuted()
             fixture.telemetry.featureGateShown(.resultCharts, access: .signedOut)
             fixture.telemetry.upgradeClicked(from: .licenseSettings)
+            fixture.telemetry.supportAskShown()
+            fixture.telemetry.supportAskAnswered(.buy)
             fixture.clock.advance(by: .seconds(48 * 60 * 60))
 
             #expect(fixture.clients.isEmpty, "key \(key ?? "nil")")
@@ -317,6 +319,24 @@ struct TelemetryTests {
             .capture("feature_gate_shown", ["feature": "result_charts", "reason": "signed_out"]),
             .capture("feature_gate_shown", ["feature": "compare_sync", "reason": "not_included"]),
             .capture("upgrade_clicked", ["source": "app-gate-compare-sync"])
+        ])
+    }
+
+    @Test("The license ask sends support_ask_shown with no properties, and each answer in snake case")
+    func supportAsk() throws {
+        let fixture = try TelemetryFixture()
+        fixture.start()
+
+        fixture.telemetry.supportAskShown()
+        fixture.telemetry.supportAskAnswered(.buy)
+        fixture.telemetry.supportAskAnswered(.personal)
+        fixture.telemetry.supportAskAnswered(.notNow)
+
+        #expect(Array(fixture.client?.calls.dropFirst() ?? []) == [
+            .capture("support_ask_shown", [:]),
+            .capture("support_ask_answered", ["answer": "buy"]),
+            .capture("support_ask_answered", ["answer": "personal"]),
+            .capture("support_ask_answered", ["answer": "not_now"])
         ])
     }
 
