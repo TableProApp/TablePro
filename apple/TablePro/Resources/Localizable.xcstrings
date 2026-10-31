@@ -39852,6 +39852,9 @@
         }
       }
     },
+    "Clearing the results will discard all unsaved changes." : {
+
+    },
     "CLI Connection Name" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -41495,6 +41498,9 @@
           }
         }
       }
+    },
+    "Closing this result will discard all unsaved changes." : {
+
     },
     "Cloud" : {
       "extractionState" : "manual",
@@ -133071,6 +133077,9 @@
           }
         }
       }
+    },
+    "Pinned" : {
+
     },
     "Pipe" : {
       "localizations" : {

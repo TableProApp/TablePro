@@ -1231,23 +1231,27 @@ final class MainContentCommandActions: ObservableObject {
     }
 
     func previousResultTab() {
-        guard let coordinator,
-              let (tab, _) = coordinator.tabManager.selectedTabAndIndex else { return }
-        guard tab.display.resultSets.count > 1,
-              let currentId = tab.display.activeResultSetId ?? tab.display.resultSets.last?.id,
-              let currentIndex = tab.display.resultSets.firstIndex(where: { $0.id == currentId }),
-              currentIndex > 0 else { return }
-        coordinator.switchActiveResultSet(to: tab.display.resultSets[currentIndex - 1].id, in: tab.id)
+        stepResultTab(by: -1)
     }
 
     func nextResultTab() {
-        guard let coordinator,
-              let (tab, _) = coordinator.tabManager.selectedTabAndIndex else { return }
-        guard tab.display.resultSets.count > 1,
-              let currentId = tab.display.activeResultSetId ?? tab.display.resultSets.last?.id,
-              let currentIndex = tab.display.resultSets.firstIndex(where: { $0.id == currentId }),
-              currentIndex < tab.display.resultSets.count - 1 else { return }
-        coordinator.switchActiveResultSet(to: tab.display.resultSets[currentIndex + 1].id, in: tab.id)
+        stepResultTab(by: 1)
+    }
+
+    var canShowPreviousResult: Bool {
+        coordinator?.canStepActiveResultSet(by: -1) ?? false
+    }
+
+    var canShowNextResult: Bool {
+        coordinator?.canStepActiveResultSet(by: 1) ?? false
+    }
+
+    private func stepResultTab(by offset: Int) {
+        guard let coordinator, coordinator.canStepActiveResultSet(by: offset),
+              let (tab, _) = coordinator.tabManager.selectedTabAndIndex,
+              let activeId = tab.display.activeResultSet?.id,
+              let index = tab.display.resultSets.firstIndex(where: { $0.id == activeId }) else { return }
+        coordinator.switchActiveResultSet(to: tab.display.resultSets[index + offset].id, in: tab.id)
     }
 
     var canPinResultTab: Bool {
@@ -1272,10 +1276,12 @@ final class MainContentCommandActions: ObservableObject {
         coordinator?.compareActiveResult()
     }
 
+    var canCloseResultTab: Bool {
+        coordinator?.canCloseActiveResultSet ?? false
+    }
+
     func closeResultTab() {
-        guard let coordinator else { return }
-        let tab = coordinator.tabManager.selectedTab
-        guard let activeId = tab?.display.activeResultSetId ?? tab?.display.resultSets.last?.id else { return }
+        guard let coordinator, let activeId = coordinator.tabManager.selectedTab?.display.activeResultSet?.id else { return }
         coordinator.closeResultSet(id: activeId)
     }
 

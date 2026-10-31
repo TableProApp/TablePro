@@ -127,8 +127,12 @@ final class MockDatabaseDriver: DatabaseDriver, SchemaSwitchable, @unchecked Sen
         applyQueryTimeoutValues.append(seconds)
     }
 
+    // A statement holding this text fails, the way a server rejects one statement of a script.
+    var failsStatementContaining: (text: String, error: any Error)?
+
     func execute(query: String) async throws -> QueryResult {
         executedQueries.append(query)
+        if let failure = failsStatementContaining, query.contains(failure.text) { throw failure.error }
         if executeDelaySeconds > 0 {
             try await Task.sleep(nanoseconds: UInt64(executeDelaySeconds * 1_000_000_000))
         }
@@ -179,6 +183,7 @@ final class MockDatabaseDriver: DatabaseDriver, SchemaSwitchable, @unchecked Sen
     }
 
     func executeUserQuery(query: String, rowCap: Int?, parameters: [Any?]?) async throws -> QueryResult {
+        if let failure = failsStatementContaining, query.contains(failure.text) { throw failure.error }
         if pausesNextUserQuery {
             pausesNextUserQuery = false
             await withCheckedContinuation { continuation in
