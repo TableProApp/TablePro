@@ -59,7 +59,23 @@ extension TableHealthProvider {
             ? statisticsNote(from: statisticsResults, now: now)
             : nil
 
+        // The connection can move to another database between queries; a report that spans two would
+        // send one database's fixes to the other.
+        if let databaseQuery {
+            let result = try await execute(databaseQuery)
+            let finalName = TableHealthRow.rows(of: result).first?["database_name"]
+            guard finalName == databaseName else { throw TableHealthError.databaseChanged }
+        }
+
         return TableHealthReport(checks: results, databaseName: databaseName, statisticsNote: note)
+    }
+}
+
+enum TableHealthError: LocalizedError {
+    case databaseChanged
+
+    var errorDescription: String? {
+        String(localized: "The connection switched databases during the refresh. Refresh again.")
     }
 }
 

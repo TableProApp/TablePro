@@ -4,14 +4,16 @@ struct TableHealthView: View {
     @ObservedObject var viewModel: TableHealthViewModel
     @ObservedObject var coordinator: MainContentCoordinator
 
+    // A VStack, not safeAreaInset: the inset does not reach the List inside VSplitView, whose first rows then sit under the bar.
     var body: some View {
-        content
-            .safeAreaInset(edge: .top, spacing: 0) {
-                if viewModel.isSupported {
-                    toolbar
-                }
+        VStack(spacing: 0) {
+            if viewModel.isSupported {
+                toolbar
             }
-            .task { await viewModel.loadIfNeeded() }
+            content
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .task { await viewModel.loadIfNeeded() }
     }
 
     @ViewBuilder

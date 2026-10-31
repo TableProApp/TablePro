@@ -113,6 +113,16 @@ SQL
     expect "unused index skips a unique index" "$unused" "no_pk_unique_idx" no
     expect "unused index skips a primary key" "$unused" "parent_pkey" no
     expect "unused index skips a unique constraint" "$unused" "parent_code_key" no
+    if [ "$(pg -d "$DATABASE" -c 'SHOW server_version_num')" -ge 110000 ]; then
+        pg -d "$DATABASE" > /dev/null <<'PART'
+CREATE TABLE events (at date, kind text) PARTITION BY RANGE (at);
+CREATE TABLE events_2026 PARTITION OF events FOR VALUES FROM ('2026-01-01') TO ('2027-01-01');
+CREATE INDEX events_kind_idx ON events (kind);
+PART
+        unused="$(pg -d "$DATABASE" -c "$(query_of "$source" unusedIndexQuery)")"
+        expect "unused index skips a partition index its parent owns" "$unused" "events_2026_kind_idx" no
+        pg -d "$DATABASE" -c 'DROP TABLE events' > /dev/null
+    fi
 
     local nopk
     nopk="$(pg -d "$DATABASE" -c "$(query_of "$source" missingPrimaryKeyQuery)")"

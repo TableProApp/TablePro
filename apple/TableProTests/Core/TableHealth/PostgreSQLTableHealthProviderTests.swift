@@ -149,6 +149,19 @@ struct PostgreSQLTableHealthProviderTests {
         }
     }
 
+    @Test("A refresh that ends on another database than it began on is discarded")
+    func databaseSwitchDiscardsReport() async {
+        var answers = ["shop", "archive"]
+        await #expect(throws: TableHealthError.self) {
+            _ = try await provider.fetchReport { query in
+                if query == PostgreSQLTableHealthProvider.databaseNameQuery {
+                    return TableHealthFixture.result(columns: ["database_name"], rows: [[answers.removeFirst()]])
+                }
+                return TableHealthFixture.result(columns: [], rows: [])
+            }
+        }
+    }
+
     @Test("A cancelled refresh stops instead of reporting every check as failed")
     func cancellationPropagates() async {
         await #expect(throws: CancellationError.self) {

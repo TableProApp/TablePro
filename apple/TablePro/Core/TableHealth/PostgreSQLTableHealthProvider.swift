@@ -24,7 +24,8 @@ struct PostgreSQLTableHealthProvider: TableHealthProvider {
         LIMIT 500
         """
 
-    // A unique or constraint index enforces something even when no query reads it.
+    // A unique or constraint index enforces something even when no query reads it. An index on a
+    // partition that a parent index owns cannot be dropped on its own.
     static let unusedIndexQuery = """
         SELECT s.schemaname AS schema_name,
                s.relname AS table_name,
@@ -35,6 +36,7 @@ struct PostgreSQLTableHealthProvider: TableHealthProvider {
         WHERE s.idx_scan = 0
           AND NOT i.indisunique
           AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_constraint c WHERE c.conindid = s.indexrelid)
+          AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_inherits h WHERE h.inhrelid = s.indexrelid)
         ORDER BY index_bytes DESC, schema_name, index_name
         LIMIT 500
         """
