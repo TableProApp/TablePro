@@ -1,4 +1,5 @@
 import Foundation
+import TableProDamengCore
 import TableProPluginKit
 
 final class DamengPlugin: NSObject, TableProPlugin, DriverPlugin {
@@ -283,11 +284,9 @@ final class DamengPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         )
     }
 
-    /// Every statement in a script has to be a read, not just the first one. A script now
-    /// really executes, so `SELECT ...; DELETE ...` classified on its leading keyword alone
-    /// would replay the delete on a rebuilt connection.
+    // Every statement has to be a read, or `SELECT ...; DELETE ...` would replay the DELETE on a rebuilt connection.
     func replayPolicy(for query: String) -> DamengReplayPolicy {
-        let statements = DamengScriptSplitter.statements(in: query, escaping: textEscaping)
+        let statements = DamengScriptSplitter.statements(in: query, backslashEscapes: textEscaping == .backslashEscape)
         guard !statements.isEmpty else { return .reportFailure }
         return statements.allSatisfy(DamengStatementClassifier.isReadOnly) ? .replayable : .reportFailure
     }
@@ -412,9 +411,7 @@ final class DamengPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         "EXPLAIN \(sql)"
     }
 
-    /// DM8 rejects a string holding more than one statement, so a script is sent a statement at
-    /// a time and the last one's result is returned. A single statement is passed through
-    /// untouched, terminator and all, so nothing changes for the common path.
+    // DM8 rejects a batch, so a script goes a statement at a time; one statement goes through untouched, terminator and all.
     func executeOnce(
         query: String,
         parameters: [PluginCellValue],
@@ -423,7 +420,7 @@ final class DamengPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let bound = parameters.isEmpty
             ? query
             : try DamengParameterBinder.bind(query: query, parameters: parameters, escaping: textEscaping)
-        let statements = DamengScriptSplitter.statements(in: bound, escaping: textEscaping)
+        let statements = DamengScriptSplitter.statements(in: bound, backslashEscapes: textEscaping == .backslashEscape)
         let generation = cancellationGate.beginQuery()
         defer { cancellationGate.endQuery(generation) }
 
