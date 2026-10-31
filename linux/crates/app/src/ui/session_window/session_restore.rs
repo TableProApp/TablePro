@@ -115,7 +115,8 @@ impl SessionWindow {
     pub(super) fn on_restore_saved(&self, id: Uuid, saved: Option<SavedConnection>) {
         self.end_restore(&SessionKey::Saved(id));
         let databases = self.take_restored_databases(id);
-        match saved {
+        // It may have been edited or deleted since the lookup read it.
+        match saved.and_then(|saved| self.saved_as_stored(&saved)) {
             Some(saved) => self.connect_saved(saved, databases),
             None => {
                 self.forget_session(&SessionKey::Saved(id));

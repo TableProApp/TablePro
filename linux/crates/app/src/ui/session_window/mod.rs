@@ -939,11 +939,15 @@ impl SessionWindow {
         demand: CredentialDemand,
         databases: Vec<String>,
     ) {
+        let key = source_key(&source);
         let claim = match claim {
             Some(claim) => claim,
-            None => match self.claim_for(&source_key(&source)) {
+            None => match self.claim_for(&key) {
                 Some(claim) => claim,
-                None => return,
+                None => {
+                    self.open_beside(&key, databases);
+                    return;
+                }
             },
         };
         if let Some(mut pending) = self.spawn_connect(claim, source, None, demand) {
@@ -951,6 +955,29 @@ impl SessionWindow {
             self.imp().connects.borrow_mut().push(pending);
         }
         self.connects_changed();
+    }
+
+    /// Open `databases` beside the connection under `key` that is open or
+    /// connecting already.
+    fn open_beside(&self, key: &SessionKey, databases: Vec<String>) {
+        let SessionKey::Saved(id) = *key else {
+            return;
+        };
+        if self.holds_session(key) {
+            for database in databases {
+                self.open_database(id, database);
+            }
+            return;
+        }
+        if let Some(pending) = self
+            .imp()
+            .connects
+            .borrow_mut()
+            .iter_mut()
+            .find(|pending| pending.claim.key() == key)
+        {
+            pending.databases.extend(databases);
+        }
     }
 
     fn connect_with(&self, claim: Option<SessionClaim>, source: ConnectSource, demand: CredentialDemand) {
