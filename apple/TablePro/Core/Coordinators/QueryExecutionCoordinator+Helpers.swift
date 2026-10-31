@@ -323,7 +323,12 @@ extension QueryExecutionCoordinator {
             definitionChanged: definitionChanged
         )
 
-        parent.tabManager.mutate(at: idx) { $0.tableContext.primaryKeyColumns = resolvedPKs }
+        parent.tabManager.mutate(at: idx) { tab in
+            tab.tableContext.primaryKeyColumns = resolvedPKs
+            if let viewRowEditing = metadata?.viewRowEditing {
+                tab.tableContext.viewRowEditing = viewRowEditing
+            }
+        }
         captureOrigin(
             tabIndex: idx,
             tabId: tabId,
@@ -511,7 +516,8 @@ extension QueryExecutionCoordinator {
             isEditable: isEditable,
             isView: context.isView,
             objectType: context.objectType,
-            keysResolved: true
+            keysResolved: true,
+            viewRowEditing: context.viewRowEditing
         )
     }
 
@@ -567,6 +573,10 @@ extension QueryExecutionCoordinator {
             resultSet.origin?.primaryKeyColumns = parsed.primaryKeyColumns
             resultSet.origin?.keysResolved = true
         }
+        // Phase 2 always read the schema afresh, so a nil answer replaces a stale one.
+        if resultSet.origin?.isView == true {
+            resultSet.origin?.viewRowEditing = parsed.viewRowEditing
+        }
     }
 
     private func applyEnumValues(
@@ -614,6 +624,10 @@ extension QueryExecutionCoordinator {
                 tab.tableContext.primaryKeyColumns = parsed.primaryKeyColumns
                 tab.display.activeResultSet?.origin?.primaryKeyColumns = parsed.primaryKeyColumns
                 tab.display.activeResultSet?.origin?.keysResolved = true
+            }
+            if tab.tableContext.resolvedObjectKind() == .view {
+                tab.tableContext.viewRowEditing = parsed.viewRowEditing
+                tab.display.activeResultSet?.origin?.viewRowEditing = parsed.viewRowEditing
             }
             if let approxCount = parsed.approximateRowCount, approxCount > 0,
                !tab.filterState.narrowsRows(browseSearchIsSupported: usesBrowseSearch) {

@@ -646,10 +646,11 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
 
     /// Whether this view can be refreshed without blocking its readers. Return nil where the engine
     /// has no such refresh, so the option is not offered at all.
-    func concurrentRefreshAvailability(
-        materializedView: String,
-        schema: String?
-    ) async throws -> PluginConcurrentRefreshAvailability?
+    func concurrentRefreshAvailability(materializedView: String, schema: String?) async throws -> PluginConcurrentRefreshAvailability?
+
+    /// Whether the grid may write rows through this view, keyed on its base table's primary key.
+    /// Return nil where the engine does not check, so its views stay read-only.
+    func fetchViewRowEditing(view: String, schema: String?) async throws -> PluginViewRowEditing?
 
     // Nil where the engine has no sequences, which keeps the sequence commands off the menu.
     func fetchSequenceDetails(sequence: String, schema: String?) async throws -> PluginSequenceDetails?

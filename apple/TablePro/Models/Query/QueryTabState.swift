@@ -533,12 +533,20 @@ struct TabTableContext: Equatable {
     // Browse only: a staged row edit would land on whatever table the name reaches once the temporary one is dropped.
     var isTemporary = false
 
+    // Nil until the driver has answered, and for an engine that never does.
+    var viewRowEditing: PluginViewRowEditing?
+
     func resolvedObjectKind() -> TableInfo.TableType {
         objectType ?? (isView ? .view : .table)
     }
 
     var allowsRowEditing: Bool {
-        !isView && !isTemporary && resolvedObjectKind().allowsRowEditing
+        guard !isTemporary else { return false }
+        if resolvedObjectKind() == .view {
+            guard let keys = viewRowEditing?.keyColumns else { return false }
+            return !keys.isEmpty && keys == primaryKeyColumns
+        }
+        return !isView && resolvedObjectKind().allowsRowEditing
     }
 
     var primaryKeyColumn: String? { primaryKeyColumns.first }

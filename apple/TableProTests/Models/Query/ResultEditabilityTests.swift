@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 import Testing
 
 @testable import TablePro
@@ -50,7 +51,40 @@ struct ResultEditabilityTests {
 
     @Test("A view refuses, and says so rather than reporting an unknown table")
     func viewRefuses() {
-        #expect(ResultEditability.refusal(for: origin(isView: true), currentDatabaseName: "app") == .view)
+        #expect(ResultEditability.refusal(for: origin(isView: true), currentDatabaseName: "app") == .view(nil))
+    }
+
+    @Test("An updatable view that exposes its table's key is written like a table")
+    func editableViewIsEditable() {
+        var view = origin(isView: true)
+        view.objectType = .view
+        view.viewRowEditing = .editable(keyColumns: ["id"])
+        #expect(ResultEditability.refusal(for: view, currentDatabaseName: "app") == nil)
+    }
+
+    @Test("A view refuses when the keys the edit would use are not the driver's")
+    func viewWithStaleKeysRefuses() {
+        var view = origin(isView: true)
+        view.viewRowEditing = .editable(keyColumns: ["id"])
+        view.primaryKeyColumns = []
+        #expect(ResultEditability.refusal(for: view, currentDatabaseName: "app") == .view(nil))
+        view.primaryKeyColumns = ["code"]
+        #expect(ResultEditability.refusal(for: view, currentDatabaseName: "app") == .view(nil))
+    }
+
+    @Test("A read-only view carries the driver's reason into the refusal")
+    func readOnlyViewSaysWhy() {
+        var view = origin(isView: true)
+        view.viewRowEditing = .readOnly(.keyNotExposed)
+        #expect(ResultEditability.refusal(for: view, currentDatabaseName: "app") == .view(.keyNotExposed))
+    }
+
+    @Test("A materialized view never takes a view's editing answer")
+    func materializedViewStaysReadOnly() {
+        var matview = origin(isView: true)
+        matview.objectType = .materializedView
+        matview.viewRowEditing = .editable(keyColumns: ["id"])
+        #expect(ResultEditability.refusal(for: matview, currentDatabaseName: "app") == .view(nil))
     }
 
     @Test("A result captured against another database refuses once the tab has moved")
@@ -84,7 +118,10 @@ struct ResultEditabilityTests {
 
     @Test("Every refusal carries a sentence for the user")
     func everyRefusalExplainsItself() {
-        for refusal in [ResultEditRefusal.unknownTable, .view, .databaseMoved, .keysUnresolved] {
+        let viewRefusals: [ResultEditRefusal] = [
+            .view(nil), .view(.notUpdatable), .view(.readsSeveralTables), .view(.baseTableHasNoKey), .view(.keyNotExposed),
+        ]
+        for refusal in [ResultEditRefusal.unknownTable, .databaseMoved, .keysUnresolved] + viewRefusals {
             #expect(!refusal.message.isEmpty)
         }
     }

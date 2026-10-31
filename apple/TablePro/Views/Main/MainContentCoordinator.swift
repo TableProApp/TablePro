@@ -1201,7 +1201,7 @@ final class MainContentCoordinator: ObservableObject {
             }
             return
         }
-        let isTableTab = tab.tabType == .table
+        let (isTableTab, readsView) = (tab.tabType == .table, tab.tableContext.resolvedObjectKind() == .view)
         let (grammar, lengthColumns) = (lexicalGrammar, unloadedValueLengthColumns(for: tab))
 
         let failureOutput = ServerOutputBox()
@@ -1213,7 +1213,7 @@ final class MainContentCoordinator: ObservableObject {
             }
 
             if let tableName, !tableName.isEmpty { prefetchForeignKeys(scope: scope) }
-            let schemaTask = QueryExecutor.schemaFetch(tableName: needsMetadataFetch ? tableName : nil, scope: scope)
+            let schemaTask = QueryExecutor.schemaFetch(tableName: needsMetadataFetch ? tableName : nil, isView: readsView, scope: scope)
 
             let fetchBeganAt = ContinuousClock.now
             do {

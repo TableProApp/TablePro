@@ -51,6 +51,24 @@ struct TabObjectKindTests {
         #expect(!TabTableContext(isView: true, objectType: nil).allowsRowEditing)
     }
 
+    @Test("A view allows row edits only once its driver keyed it on the base table")
+    func viewFollowsItsEditingAnswer() {
+        var view = TabTableContext(isView: true, objectType: .view)
+        #expect(!view.allowsRowEditing)
+        view.viewRowEditing = .readOnly(.notUpdatable)
+        #expect(!view.allowsRowEditing)
+        view.viewRowEditing = .editable(keyColumns: ["id"])
+        #expect(!view.allowsRowEditing, "the tab does not key its edits on the driver's columns yet")
+        view.primaryKeyColumns = ["id"]
+        #expect(view.allowsRowEditing)
+        view.isTemporary = true
+        #expect(!view.allowsRowEditing)
+
+        var matview = TabTableContext(isView: true, objectType: .materializedView)
+        matview.viewRowEditing = .editable(keyColumns: ["id"])
+        #expect(!matview.allowsRowEditing)
+    }
+
     @Test("A writable kind, or no kind at all, keeps the rows writable")
     func writableKindsKeepRowEditing() {
         #expect(TabTableContext(isView: false, objectType: .table).allowsRowEditing)

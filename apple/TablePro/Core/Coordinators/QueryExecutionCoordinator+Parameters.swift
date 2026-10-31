@@ -158,6 +158,7 @@ extension QueryExecutionCoordinator {
             primaryKeyColumns: tab.tableContext.primaryKeyColumns
         )
 
+        let readsView = tab.tableContext.resolvedObjectKind() == .view
         let boundValues = BoundParameterValues(values: parameters)
         let failureOutput = ServerOutputBox()
         let grammar = parent.lexicalGrammar
@@ -165,7 +166,9 @@ extension QueryExecutionCoordinator {
             guard let self else { return }
 
             if let tableName, !tableName.isEmpty { parent.prefetchForeignKeys(scope: scope) }
-            let schemaTask = QueryExecutor.schemaFetch(tableName: needsMetadataFetch ? tableName : nil, scope: scope)
+            let schemaTask = QueryExecutor.schemaFetch(
+                tableName: needsMetadataFetch ? tableName : nil, isView: readsView, scope: scope
+            )
 
             do {
                 let (fetchResult, tableEdits) = try await DatabaseManager.shared.withScopedDriver(

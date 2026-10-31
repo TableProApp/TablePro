@@ -22,6 +22,39 @@ extension PostgreSQLPluginDriver {
         return PostgreSQLViewDefinition.statement(name: view, schema: resolvedSchema, row: catalogRow)
     }
 
+    func fetchViewRowEditing(view: String, schema: String?) async throws -> PluginViewRowEditing? {
+        let resolvedSchema = schema ?? core.currentSchema
+        let viewResult = try await catalogRead(PostgreSQLViewRowEditing.viewQuery(name: view, schema: resolvedSchema))
+        guard let row = viewResult.rows.first, let viewOID = row[safe: 0]?.asText else { return nil }
+        let isUpdatable = row[safe: 1]?.asText == "true"
+        let origins = PostgreSQLViewRowEditing.targetOrigins(nodeTree: row[safe: 2]?.asText ?? "")
+        guard isUpdatable, let baseTableOID = origins.first?.tableOID else {
+            return PostgreSQLViewRowEditing.resolve(
+                isUpdatable: isUpdatable, origins: origins, viewColumnNames: [:], baseKeyColumnNumbers: []
+            )
+        }
+
+        let detail = try await catalogRead(
+            PostgreSQLViewRowEditing.columnsAndKeyQuery(viewOID: viewOID, baseTableOID: baseTableOID)
+        )
+        var viewColumnNames: [Int: String] = [:]
+        var baseKeyColumnNumbers: [Int] = []
+        for detailRow in detail.rows {
+            guard let number = detailRow[safe: 1]?.asText.flatMap(Int.init) else { continue }
+            switch detailRow[safe: 0]?.asText {
+            case "v": viewColumnNames[number] = detailRow[safe: 2]?.asText
+            case "k": baseKeyColumnNumbers.append(number)
+            default: break
+            }
+        }
+        return PostgreSQLViewRowEditing.resolve(
+            isUpdatable: isUpdatable,
+            origins: origins,
+            viewColumnNames: viewColumnNames,
+            baseKeyColumnNumbers: baseKeyColumnNumbers
+        )
+    }
+
     func objectCommentStatement(name: String, objectType: String, schema: String?, comment: String?) -> String? {
         PostgreSQLRelationSQL.commentStatement(
             name: name,

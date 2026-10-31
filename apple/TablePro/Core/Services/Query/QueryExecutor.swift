@@ -35,6 +35,7 @@ struct FetchedTableSchema {
     let columns: [ColumnInfo]
     let foreignKeys: [ForeignKeyInfo]?
     let approximateRowCount: Int?
+    var viewRowEditing: PluginViewRowEditing?
 }
 
 struct ParsedSchemaMetadata {
@@ -57,6 +58,7 @@ struct ParsedSchemaMetadata {
     let isAuthoritative: Bool
     var rowMatchPolicy: RowMatchPolicy = .none
     var columnDeclaredTypes: [String: String] = [:]
+    var viewRowEditing: PluginViewRowEditing?
 
     /// The metadata a tab already holds, captured at the moment the cache decision is made.
     ///
@@ -244,12 +246,16 @@ final class QueryExecutor {
     // MARK: - Schema fetch + parse
 
     /// The schema read that runs beside a load's rows, when the load needs one.
-    static func schemaFetch(tableName: String?, scope: DatabaseScope) -> Task<FetchedTableSchema, Error>? {
+    static func schemaFetch(tableName: String?, isView: Bool, scope: DatabaseScope) -> Task<FetchedTableSchema, Error>? {
         guard let tableName else { return nil }
-        return Task { try await fetchTableSchema(scope: scope, tableName: tableName) }
+        return Task { try await fetchTableSchema(scope: scope, tableName: tableName, isView: isView) }
     }
 
-    static func fetchTableSchema(scope: DatabaseScope, tableName: String) async throws -> FetchedTableSchema {
+    static func fetchTableSchema(
+        scope: DatabaseScope,
+        tableName: String,
+        isView: Bool = false
+    ) async throws -> FetchedTableSchema {
         queryExecutorLog.info(
             "[fk] schema fetch start table=\(tableName, privacy: .private(mask: .hash)) db=\(scope.database, privacy: .public) schema=\(scope.schema ?? "default", privacy: .public)"
         )
@@ -261,10 +267,30 @@ final class QueryExecutor {
             return (columns, approximateRowCount)
         }
         let foreignKeys = await fetchForeignKeys(scope: scope, tableName: tableName)
+        let viewRowEditing = isView ? await fetchViewRowEditing(scope: scope, viewName: tableName) : nil
         queryExecutorLog.info(
             "[fk] schema fetch done table=\(tableName, privacy: .private(mask: .hash)) columns=\(columns.count) fks=\(foreignKeys.map { String($0.count) } ?? "failed", privacy: .public)"
         )
-        return FetchedTableSchema(columns: columns, foreignKeys: foreignKeys, approximateRowCount: approximateRowCount)
+        return FetchedTableSchema(
+            columns: columns,
+            foreignKeys: foreignKeys,
+            approximateRowCount: approximateRowCount,
+            viewRowEditing: viewRowEditing
+        )
+    }
+
+    // A failed check leaves the view read-only, as it was before views could be edited.
+    private static func fetchViewRowEditing(scope: DatabaseScope, viewName: String) async -> PluginViewRowEditing? {
+        do {
+            return try await DatabaseManager.shared.withMetadataDriver(scope: scope) { driver in
+                try await driver.fetchViewRowEditing(view: viewName, schema: scope.schema)
+            }
+        } catch {
+            queryExecutorLog.error(
+                "View row editing check failed for \(viewName, privacy: .private(mask: .hash)): \(error.publicLogShape, privacy: .public)"
+            )
+            return nil
+        }
     }
 
     private static func fetchForeignKeys(scope: DatabaseScope, tableName: String) async -> [ForeignKeyInfo]? {
@@ -319,7 +345,7 @@ final class QueryExecutor {
             columnDefaults: defaults,
             columnForeignKeys: fks,
             columnNullable: nullable,
-            primaryKeyColumns: schema.columns.filter { $0.isPrimaryKey }.map(\.name),
+            primaryKeyColumns: schema.viewRowEditing?.keyColumns ?? schema.columns.filter { $0.isPrimaryKey }.map(\.name),
             generatedColumns: Set(
                 schema.columns
                     .filter { $0.isGenerated || $0.identityKind == .always }
@@ -334,7 +360,8 @@ final class QueryExecutor {
                 excludedColumns: columns(in: schema.columns, typedAnyOf: rowMatchExcludedTypePrefixes),
                 textColumns: columns(in: schema.columns, typedAnyOf: rowMatchTextTypePrefixes)
             ),
-            columnDeclaredTypes: declaredTypes
+            columnDeclaredTypes: declaredTypes,
+            viewRowEditing: schema.viewRowEditing
         )
     }
 

@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 
 /// Where one result set's rows came from, captured when its statement ran.
 ///
@@ -29,6 +30,9 @@ struct ResultOrigin: Equatable {
     /// first is safe to write to, so the two cannot share a representation.
     var keysResolved: Bool
 
+    /// The driver's answer for a view, nil for a table or before the answer arrives.
+    var viewRowEditing: PluginViewRowEditing?
+
     init(
         tableName: String? = nil,
         schemaName: String? = nil,
@@ -37,7 +41,8 @@ struct ResultOrigin: Equatable {
         isEditable: Bool = false,
         isView: Bool = false,
         objectType: TableInfo.TableType? = nil,
-        keysResolved: Bool = false
+        keysResolved: Bool = false,
+        viewRowEditing: PluginViewRowEditing? = nil
     ) {
         self.tableName = tableName
         self.schemaName = schemaName
@@ -47,6 +52,7 @@ struct ResultOrigin: Equatable {
         self.isView = isView
         self.objectType = objectType
         self.keysResolved = keysResolved
+        self.viewRowEditing = viewRowEditing
     }
 }
 
@@ -54,7 +60,7 @@ struct ResultOrigin: Equatable {
 /// every case carries the sentence shown to the user.
 enum ResultEditRefusal: Equatable {
     case unknownTable
-    case view
+    case view(PluginViewReadOnlyReason?)
     case databaseMoved
     case keysUnresolved
 
@@ -62,12 +68,29 @@ enum ResultEditRefusal: Equatable {
         switch self {
         case .unknownTable:
             return String(localized: "These rows cannot be edited because TablePro cannot tell which table they came from.")
-        case .view:
-            return String(localized: "These rows come from a view, which cannot be edited.")
+        case .view(let reason):
+            return Self.viewMessage(reason)
         case .databaseMoved:
             return String(localized: "These rows came from another database than the one this tab is now using.")
         case .keysUnresolved:
             return String(localized: "TablePro has not looked up this table's key columns, so it cannot tell which row an edit would change.")
+        }
+    }
+
+    private static func viewMessage(_ reason: PluginViewReadOnlyReason?) -> String {
+        switch reason {
+        case .notUpdatable:
+            return String(localized: "These rows come from a view the server reports as not updatable.")
+        case .readsSeveralTables:
+            return String(localized: "These rows come from a view that reads more than one table, so an edit cannot target one row.")
+        case .baseTableHasNoKey:
+            return String(localized: "These rows come from a view whose table has no primary key, so an edit could change more than one row.")
+        case .keyNotExposed:
+            return String(localized: "These rows come from a view that does not show every primary key column of its table, so an edit could change more than one row.")
+        case nil:
+            return String(localized: "These rows come from a view, which cannot be edited.")
+        @unknown default:
+            return String(localized: "These rows come from a view, which cannot be edited.")
         }
     }
 }
@@ -79,7 +102,10 @@ enum ResultEditRefusal: Equatable {
 enum ResultEditability {
     static func refusal(for origin: ResultOrigin?, currentDatabaseName: String) -> ResultEditRefusal? {
         guard let origin else { return .unknownTable }
-        if origin.isView { return .view }
+        if origin.isView, !writesThroughView(origin) {
+            if case .readOnly(let reason) = origin.viewRowEditing { return .view(reason) }
+            return .view(nil)
+        }
         guard origin.isEditable, let tableName = origin.tableName, !tableName.isEmpty else {
             return .unknownTable
         }
@@ -90,5 +116,12 @@ enum ResultEditability {
             return .databaseMoved
         }
         return nil
+    }
+
+    /// The keys the edit will use must be the ones the driver named, or a stale answer would key
+    /// the write on whatever the tab last held.
+    private static func writesThroughView(_ origin: ResultOrigin) -> Bool {
+        guard (origin.objectType ?? .view) == .view, let keys = origin.viewRowEditing?.keyColumns else { return false }
+        return !keys.isEmpty && keys == origin.primaryKeyColumns
     }
 }

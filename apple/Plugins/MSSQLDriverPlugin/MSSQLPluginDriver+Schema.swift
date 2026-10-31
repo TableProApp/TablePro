@@ -58,6 +58,26 @@ extension MSSQLPluginDriver {
         }
     }
 
+    func fetchViewRowEditing(view: String, schema: String?) async throws -> PluginViewRowEditing? {
+        let resolvedSchema = effectiveSchema(schema)
+        let errors = try await execute(query: MSSQLViewSources.compileErrorsQuery(schema: resolvedSchema, view: view))
+        let compileErrors = errors.rows.compactMap { $0[safe: 0]?.asText.flatMap(Int.init) }
+        let sources = try await execute(query: MSSQLViewSources.columnSourcesQuery(schema: resolvedSchema, view: view))
+        let summary = MSSQLViewSources.summarize(rows: sources.rows.map { $0.map(\.asText) })
+
+        var baseKeyColumns: [String] = []
+        if summary.baseTables.count == 1, let baseTable = summary.baseTables.first {
+            let keys = try await execute(query: MSSQLViewSources.primaryKeyQuery(baseTable))
+            baseKeyColumns = keys.rows.compactMap { $0[safe: 0]?.asText }
+        }
+        return PluginViewRowEditing.resolve(
+            isUpdatable: MSSQLViewSources.isUpdatable(compileErrors: compileErrors),
+            baseTableCount: MSSQLViewSources.baseTableCount(summary, compileErrors: compileErrors),
+            baseKeyColumns: baseKeyColumns,
+            origins: summary.origins.map { PluginViewColumnOrigin(viewColumn: $0.viewColumn, baseColumn: $0.baseColumn) }
+        )
+    }
+
     func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] {
         /// Bracket-escaped for the identifier and literal-escaped for the string it sits in:
         /// SQL Server allows both `]` and `'` in an identifier.
