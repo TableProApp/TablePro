@@ -22,8 +22,10 @@ impl SessionWindow {
                 return;
             }
             SessionKey::Saved(id) => id,
-            // Never recorded: another database opens from its connection.
-            SessionKey::SavedIn { .. } => return,
+            SessionKey::SavedIn { id, database } => {
+                self.restore_database(id, database);
+                return;
+            }
         };
         let (Some(state), Some(input)) = (self.state(), self.input()) else {
             return;
@@ -60,25 +62,81 @@ impl SessionWindow {
         });
     }
 
+    /// Another database of a connection reopens beside it (0030): with the
+    /// connection's restore, which takes it, or beside the connection open
+    /// or connecting already. One with no connection to open beside is
+    /// forgotten.
+    fn restore_database(&self, id: Uuid, database: String) {
+        let key = SessionKey::SavedIn {
+            id,
+            database: database.clone(),
+        };
+        let connection = SessionKey::Saved(id);
+        if self.imp().restoring.borrow().contains(&connection) {
+            return;
+        }
+        self.end_restore(&key);
+        if self.held_session(&connection).is_some() {
+            self.open_database(id, database);
+            return;
+        }
+        let joined = {
+            let mut connects = self.imp().connects.borrow_mut();
+            match connects.iter_mut().find(|pending| pending.claim.key() == &connection) {
+                Some(pending) => {
+                    pending.databases.push(database);
+                    true
+                }
+                None => false,
+            }
+        };
+        if !joined {
+            self.forget_session(&key);
+        }
+    }
+
+    /// The databases restored with the connection `id`, which its restore
+    /// takes.
+    fn take_restored_databases(&self, id: Uuid) -> Vec<String> {
+        let Ok(mut restoring) = self.imp().restoring.try_borrow_mut() else {
+            return Vec::new();
+        };
+        let mut databases = Vec::new();
+        restoring.retain(|key| match key {
+            SessionKey::SavedIn { id: of, database } if *of == id => {
+                databases.push(database.clone());
+                false
+            }
+            _ => true,
+        });
+        databases
+    }
+
     pub(super) fn on_restore_saved(&self, id: Uuid, saved: Option<SavedConnection>) {
         self.end_restore(&SessionKey::Saved(id));
-        match saved {
-            Some(saved) => self.on_open_saved(saved),
+        let databases = self.take_restored_databases(id);
+        // It may have been edited or deleted since the lookup read it.
+        match saved.and_then(|saved| self.saved_as_stored(&saved)) {
+            Some(saved) => self.connect_saved(saved, databases),
             None => {
                 self.forget_session(&SessionKey::Saved(id));
+                for database in databases {
+                    self.forget_session(&SessionKey::SavedIn { id, database });
+                }
                 self.show_toast(&crate::i18n::gettext("The connection was deleted."));
             }
         }
     }
 
     /// Record the session the window adopted when a later launch can
-    /// open it again: a file, or a connection the saved list holds. One
-    /// that was never saved has nothing to reopen it from.
+    /// open it again: a file, a connection the saved list holds, or
+    /// another database of one, which reopens beside it. One that was
+    /// never saved has nothing to reopen it from.
     pub(super) fn remember_session(&self, key: &SessionKey, saved: Option<&SavedConnection>) {
         let restorable = match key {
             SessionKey::File(_) => true,
             SessionKey::Saved(_) => saved.is_some(),
-            SessionKey::SavedIn { .. } => false,
+            SessionKey::SavedIn { .. } => true,
         };
         if restorable && let Some(state) = self.state() {
             state.services.open_sessions().add(key.clone(), self.id());
@@ -354,6 +412,120 @@ mod tests {
         assert_eq!(window.workspaces().len(), 1);
         assert_eq!(test.recorded(), [test.key()]);
         assert_eq!(test.connector.calls().len(), 1, "the missing file was connected to");
+    }
+
+    /// A database open beside its connection reopens beside it; one whose
+    /// connection does not reopen is forgotten (0030).
+    #[gtk4::test]
+    fn a_database_open_beside_its_connection_reopens_with_it() {
+        let test = TestWindow::with_script(
+            "RestoreDatabase",
+            Script {
+                network: true,
+                ..Script::default()
+            },
+        );
+        let (vault, id) = (test.vault.clone(), test.saved.id);
+        crate::test_support::finish_on_main(WAIT, async move {
+            tablepro_core::credentials::SecretVault::store(
+                &*vault,
+                id,
+                tablepro_core::credentials::SecretKind::DatabasePassword,
+                &secrecy::SecretString::from("s3cret"),
+                "label",
+            )
+            .await
+        })
+        .expect("the store to end")
+        .expect("the password stored");
+        let sibling = SessionKey::SavedIn {
+            id,
+            database: "analytics".to_owned(),
+        };
+        let orphan = SessionKey::SavedIn {
+            id: Uuid::new_v4(),
+            database: "analytics".to_owned(),
+        };
+
+        let window = test.restored_window_of(&[test.key(), sibling.clone(), orphan]);
+        wait_until(WAIT, || window.held_session(&sibling).is_some()).expect("the database to reopen");
+
+        assert_eq!(test.services.sessions.window_for(&sibling), Some(window.id()));
+        assert_eq!(test.recorded(), [test.key(), sibling]);
+    }
+
+    /// A connection that fails at launch keeps the databases restored
+    /// with it, and Retry opens them beside it.
+    #[gtk4::test]
+    fn a_database_restored_with_a_failed_connection_reopens_on_retry() {
+        let test = TestWindow::with_script(
+            "RestoreDatabaseRetry",
+            Script {
+                network: true,
+                establish: vec![crate::ui::session_window::tests::refused()],
+                ..Script::default()
+            },
+        );
+        let (vault, id) = (test.vault.clone(), test.saved.id);
+        crate::test_support::finish_on_main(WAIT, async move {
+            tablepro_core::credentials::SecretVault::store(
+                &*vault,
+                id,
+                tablepro_core::credentials::SecretKind::DatabasePassword,
+                &secrecy::SecretString::from("s3cret"),
+                "label",
+            )
+            .await
+        })
+        .expect("the store to end")
+        .expect("the password stored");
+        let sibling = SessionKey::SavedIn {
+            id,
+            database: "analytics".to_owned(),
+        };
+
+        let window = test.restored_window_of(&[test.key(), sibling.clone()]);
+        wait_until(WAIT, || window.page_name() == "connect-failed").expect("the failed page");
+        window.send(SessionWindowInput::RetryConnect);
+
+        wait_until(WAIT, || window.held_session(&sibling).is_some()).expect("the database to reopen");
+    }
+
+    /// Opening the failed connection again from the picker, not Retry,
+    /// reopens the databases restored with it too.
+    #[gtk4::test]
+    fn a_database_restored_with_a_failed_connection_reopens_when_it_is_opened_again() {
+        let test = TestWindow::with_script(
+            "RestoreDatabaseReopen",
+            Script {
+                network: true,
+                establish: vec![crate::ui::session_window::tests::refused()],
+                ..Script::default()
+            },
+        );
+        let (vault, id) = (test.vault.clone(), test.saved.id);
+        crate::test_support::finish_on_main(WAIT, async move {
+            tablepro_core::credentials::SecretVault::store(
+                &*vault,
+                id,
+                tablepro_core::credentials::SecretKind::DatabasePassword,
+                &secrecy::SecretString::from("s3cret"),
+                "label",
+            )
+            .await
+        })
+        .expect("the store to end")
+        .expect("the password stored");
+        let sibling = SessionKey::SavedIn {
+            id,
+            database: "analytics".to_owned(),
+        };
+
+        let window = test.restored_window_of(&[test.key(), sibling.clone()]);
+        wait_until(WAIT, || window.page_name() == "connect-failed").expect("the failed page");
+        window.send(SessionWindowInput::OpenSaved(Box::new(test.saved.clone())));
+
+        wait_until(WAIT, || window.held_session(&sibling).is_some()).expect("the database to reopen");
     }
 
     #[gtk4::test]

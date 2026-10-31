@@ -176,6 +176,12 @@ impl SessionWindow {
             }
             (None, Ok(Ok(session))) => drop(session.begin_shutdown()),
             (Some(_), Ok(Err(error))) if !matches!(error, ConnectError::Cancelled) => {
+                // A database restored at launch that no longer opens is
+                // not tried again at the next one.
+                self.forget_session(&SessionKey::SavedIn {
+                    id,
+                    database: database.clone(),
+                });
                 self.show_toast(&gettext_f(
                     "Could not open the database “{database}”: {error}",
                     &[("database", &database), ("error", &connect_error_message(&error))],
@@ -194,7 +200,8 @@ impl SessionWindow {
             return;
         };
         claim.attach(&session);
-        let Some(workspace) = self.new_workspace(claim.key().clone(), &session, &shell) else {
+        let key = claim.key().clone();
+        let Some(workspace) = self.new_workspace(key.clone(), &session, &shell) else {
             drop(session.begin_shutdown());
             return;
         };
@@ -216,6 +223,7 @@ impl SessionWindow {
                 .push(OpenSession::new(claim, session, workspace.clone()));
             others
         };
+        self.remember_session(&key, None);
         self.render();
         shell.add_session(&workspace);
         workspace.start();

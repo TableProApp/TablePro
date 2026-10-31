@@ -63,6 +63,16 @@ pub(crate) struct FailedConnect {
     pub(crate) claim: SessionClaim,
     pub(crate) source: ConnectSource,
     pub(crate) failure: ConnectFailure,
+    /// The connection's other databases its next connect opens again.
+    pub(crate) databases: Vec<String>,
+}
+
+/// A failure taken to act on, with the failed page's claim when it was
+/// the page's.
+pub(crate) struct TakenFailure {
+    pub(crate) claim: Option<SessionClaim>,
+    pub(crate) source: ConnectSource,
+    pub(crate) databases: Vec<String>,
 }
 
 /// The key a connect from `source` claims.
