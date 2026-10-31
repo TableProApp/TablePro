@@ -37,6 +37,7 @@ struct DataBrowserView: View {
     @State private var isCompletingCells = false
     @State private var hapticSuccess = false
     @State private var hapticError = false
+    @AppStorage(RowLayout.storageKey) private var preferredLayout: RowLayout?
 
     private var activeSchema: String? {
         coordinator.supportsSchemas ? coordinator.activeSchema : nil
@@ -299,7 +300,28 @@ struct DataBrowserView: View {
                 }
             }
         } else {
-            rowList
+            rowsView
+        }
+    }
+
+    private var rowLayout: RowLayout {
+        RowLayout.resolved(preferred: preferredLayout, widthClass: duoWidthClass)
+    }
+
+    private var rowLayoutBinding: Binding<RowLayout> {
+        Binding(
+            get: { rowLayout },
+            set: { preferredLayout = $0 }
+        )
+    }
+
+    @ViewBuilder
+    private var rowsView: some View {
+        switch rowLayout {
+        case .cards:
+            pageContainer(rowList)
+        case .grid:
+            pageContainer(rowGrid)
         }
     }
 
@@ -311,12 +333,29 @@ struct DataBrowserView: View {
             }
         }
         .listStyle(.plain)
-        .id(viewModel.pagination.currentPage)
-        .opacity(viewModel.isPageLoading ? 0.5 : 1)
-        .allowsHitTesting(!viewModel.isPageLoading)
-        .overlay { if viewModel.isPageLoading { ProgressView() } }
-        .animation(.default, value: viewModel.isPageLoading)
-        .refreshable { await viewModel.load() }
+    }
+
+    private var rowGrid: some View {
+        RowGrid(
+            columns: columns,
+            rows: rows,
+            destination: { index in rowDetail(index: index) },
+            menuItems: { index in rowContextMenu(cells: viewModel.cells(at: index)) },
+            deleteAction: { index in
+                guard canDeleteRows, let locator = viewModel.rowLocator(forRowAt: index) else { return nil }
+                return { confirmDelete(locator) }
+            }
+        )
+    }
+
+    private func pageContainer(_ rows: some View) -> some View {
+        rows
+            .id(viewModel.pagination.currentPage)
+            .opacity(viewModel.isPageLoading ? 0.5 : 1)
+            .allowsHitTesting(!viewModel.isPageLoading)
+            .overlay { if viewModel.isPageLoading { ProgressView() } }
+            .animation(.default, value: viewModel.isPageLoading)
+            .refreshable { await viewModel.load() }
     }
 
     private func rowDetail(index: Int) -> some View {
@@ -450,6 +489,15 @@ struct DataBrowserView: View {
                     }
                     Divider()
                 }
+                Picker(selection: rowLayoutBinding) {
+                    ForEach(RowLayout.allCases) { layout in
+                        Label(layout.title, systemImage: layout.systemImage).tag(layout)
+                    }
+                } label: {
+                    Label("Layout", systemImage: rowLayout.systemImage)
+                }
+                .pickerStyle(.inline)
+                Divider()
                 Section("Export") {
                     ForEach(ExportFormat.offered(for: connection.type)) { format in
                         Button {
