@@ -5,6 +5,7 @@
 
 import Foundation
 @testable import TablePro
+import TableProSQLGrammar
 import Testing
 
 struct QueryClassifierInvisibleCharacterTests {
@@ -71,7 +72,7 @@ struct QueryClassifierInvisibleCharacterTests {
 
     @Test("A leading invisible character does not hide an EXPLAIN")
     func explainBehindInvisibleCharacter() {
-        #expect(QueryClassifier.isExplainStatement("\u{FEFF}EXPLAIN SELECT 1"))
-        #expect(QueryClassifier.explainedStatement(in: "\u{0008}EXPLAIN SELECT 1") == "SELECT 1")
+        #expect(QueryClassifier.isExplainStatement("\u{FEFF}EXPLAIN SELECT 1", grammar: .ansi))
+        #expect(QueryClassifier.explainedStatement(in: "\u{0008}EXPLAIN SELECT 1", grammar: .ansi) == "SELECT 1")
     }
 }

@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProSQLGrammar
 import TableProUtilities
 
 /// Tiering a DynamoDB request by the action it names and what its body asks for.
@@ -18,15 +19,27 @@ import TableProUtilities
 /// own, which is how a gate reads statements joined without a semicolon. PartiQL keeps the SQL rules, including the
 /// PartiQL a request carries in its body.
 extension QueryClassifier {
-    static func dynamoDBClassification(_ statement: String, databaseType: DatabaseType) -> QueryClassification? {
-        guard databaseType == .dynamodb, let request = DynamoDBRequestStatement(statement) else { return nil }
+    static func dynamoDBClassification(
+        _ statement: String,
+        grammar: SQLLexicalGrammar,
+        databaseType: DatabaseType
+    ) -> QueryClassification? {
+        guard databaseType == .dynamodb, let request = DynamoDBRequestStatement(statement, grammar: grammar) else {
+            return nil
+        }
         return QueryClassification(tier: dynamoDBTier(of: request), reachesFilesystemOrExecutesCode: false)
     }
 
     /// Nil for PartiQL, which the SQL rule answers. A request deletes everything only through the PartiQL it carries
     /// or the statements after it.
-    static func dynamoDBDeletesEverything(_ statement: String, databaseType: DatabaseType) -> Bool? {
-        guard databaseType == .dynamodb, let request = DynamoDBRequestStatement(statement) else { return nil }
+    static func dynamoDBDeletesEverything(
+        _ statement: String,
+        grammar: SQLLexicalGrammar,
+        databaseType: DatabaseType
+    ) -> Bool? {
+        guard databaseType == .dynamodb, let request = DynamoDBRequestStatement(statement, grammar: grammar) else {
+            return nil
+        }
         let carried = request.partiQLStatements ?? []
         let following = request.hasOnlyReadWindowAfterBody ? [] : [request.trailingText]
         return (carried + following).contains { isDangerousQuery($0, databaseType: databaseType) }

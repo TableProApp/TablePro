@@ -107,6 +107,7 @@ CASE_NAMES=(
     "SQLite parameter"
     "dollars glued to an identifier"
     "dollars glued to a non-ASCII identifier"
+    "canonically equivalent dollar tag"
 )
 CASE_SQL=(
     "SELECT 'C:\\' AS p; DROP TABLE lexer_canary"
@@ -123,6 +124,7 @@ CASE_SQL=(
     "SELECT \$a('); DROP TABLE lexer_canary; --'"
     "SELECT 1 AS x\$\$; DROP TABLE lexer_canary; --\$\$"
     "SELECT 1 AS é\$\$; DROP TABLE lexer_canary; --\$\$"
+    "SELECT \$K\$ x \$K\$ , \$K\$; DROP TABLE lexer_canary; -- \$K\$" # the second tag is U+212A KELVIN SIGN
 )
 
 SQLITE_DB="$WORK/lexer.sqlite"

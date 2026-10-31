@@ -191,7 +191,7 @@ private struct Reader {
     private func startsLineComment() -> Bool {
         guard scalars[index] == "-", peek(1) == "-" else { return false }
         guard let after = peek(2) else { return true }
-        return after.properties.isWhitespace || after.value < 0x20
+        return after.properties.isWhitespace || after.value < 0x20 || after.value == 0x7F
     }
 
     private func peek(_ offset: Int) -> Unicode.Scalar? {

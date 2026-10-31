@@ -31,6 +31,16 @@ struct SQLStatementSplittingTests {
         ).count == 1)
     }
 
+    @Test("SQLite's $name(...) parameter keeps a semicolon, and a $ inside a name starts none")
+    func featuresReadParenthesizedParameters() {
+        #expect(SQLStatementSplitting.statements(in: "SELECT $a(;)", lexicalFeatures: .parenthesizedParameterNames)
+            == ["SELECT $a(;)"])
+        #expect(SQLStatementSplitting.statements(
+            in: "SELECT x$y(\"')\"); SELECT 2 --\"",
+            lexicalFeatures: .parenthesizedParameterNames
+        ) == ["SELECT x$y(\"')\")", "SELECT 2 --\""])
+    }
+
     @Test("Leading comments are read by the engine's own comment rules")
     func featuresStripTheEnginesComments() {
         #expect(SQLStatementSplitting.stripLeadingComments("# a\nSELECT 1", lexicalFeatures: .hashLineComments)
@@ -55,6 +65,14 @@ struct SQLStatementSplittingTests {
         #expect(SQLStatementSplitting.statements(in: "/* note */ SELECT 1") == ["SELECT 1"])
         #expect(SQLStatementSplitting.statements(in: "# note\nSELECT 1") == ["SELECT 1"])
         #expect(SQLStatementSplitting.statements(in: "/* only a comment */").isEmpty)
+    }
+
+    @Test("The * of a comment's opener does not close it, and the / of its closer opens nothing")
+    func commentOpenerDoesNotCloseItself() {
+        #expect(SQLStatementSplitting.stripLeadingComments("/*/ -- */ COMMIT") == "COMMIT")
+        #expect(SQLStatementSplitting.stripLeadingComments("/**/ COMMIT") == "COMMIT")
+        #expect(SQLStatementSplitting.statements(in: "/*/ ; */ COMMIT") == ["COMMIT"])
+        #expect(SQLStatementSplitting.statements(in: "SELECT 2 /**/* 3; COMMIT") == ["SELECT 2 /**/* 3", "COMMIT"])
     }
 
     /// `/*!40101 ... */` is SQL, not a comment: MySQL runs the body on any server at or above the
@@ -92,6 +110,17 @@ struct SQLStatementSplittingTests {
             SQLStatementSplitting.statements(in: "/*m! note */ CREATE TEMPORARY TABLE t (a INT)", lexicalFeatures: mySQL)
                 == ["CREATE TEMPORARY TABLE t (a INT)"]
         )
+    }
+
+    @Test("Every control character after -- starts a MySQL comment, U+007F among them")
+    func deleteAfterDashesStartsAComment() {
+        for control in ["\u{01}", "\u{7F}"] {
+            #expect(
+                SQLStatementSplitting.statements(
+                    in: "SELECT 1 --\(control)'\n; SELECT 2 -- '", lexicalFeatures: .dashCommentsNeedWhitespace
+                ).count == 2
+            )
+        }
     }
 
     /// Keeping it must not make it read as a transaction statement here. The keyword is no longer

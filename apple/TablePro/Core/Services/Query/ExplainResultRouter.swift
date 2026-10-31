@@ -30,12 +30,13 @@ enum ExplainResultRouter {
         databaseType: DatabaseType,
         declaredVariants: [ExplainVariant]
     ) -> RoutedPlan? {
-        guard QueryClassifier.isExplainStatement(sql) else { return nil }
+        let grammar = databaseType.lexicalGrammar
+        guard QueryClassifier.isExplainStatement(sql, grammar: grammar) else { return nil }
 
         let text = ExplainPlanTextFlattener.flatten(rows: rows)
         guard !text.isEmpty else { return nil }
 
-        let explainSQL = SQLLeadingComments.stripping(sql)
+        let explainSQL = SQLLeadingComments.stripping(sql, grammar: grammar)
         let variant = ExplainFormatResolver.matchingVariant(
             sql: explainSQL, declaredVariants: declaredVariants
         )
@@ -46,7 +47,7 @@ enum ExplainResultRouter {
 
         guard columns.count == 1 || plan != nil else { return nil }
 
-        let subjectSQL = QueryClassifier.explainedStatement(in: explainSQL) ?? sql
+        let subjectSQL = QueryClassifier.explainedStatement(in: explainSQL, grammar: grammar) ?? sql
         return RoutedPlan(
             rawText: text,
             plan: plan,

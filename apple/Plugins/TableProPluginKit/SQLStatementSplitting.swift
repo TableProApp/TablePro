@@ -112,7 +112,8 @@ public enum SQLStatementSplitting {
                 continue
             }
             if trimmed.hasPrefix("/*"), !isExecutableComment(trimmed) {
-                guard let end = trimmed.range(of: "*/") else { return "" }
+                // Past the opener: its `*` closes nothing, so `/*/` is still open.
+                guard let end = trimmed.dropFirst(2).range(of: "*/") else { return "" }
                 remainder = trimmed[end.upperBound...]
                 continue
             }
@@ -142,7 +143,10 @@ public enum SQLStatementSplitting {
         /// Returns true when the character is part of a literal or comment, so the caller must not
         /// read it as a separator.
         mutating func consume(_ character: Character) -> Bool {
-            defer { previous = character }
+            // A character that opened or closed something is spent: the `*` of `/*` closes nothing, so
+            // `/*/` is still open, and the `/` of `*/` opens nothing, so `*/*` is code.
+            let entered = state
+            defer { previous = state == entered ? character : nil }
 
             switch state {
             case .code:

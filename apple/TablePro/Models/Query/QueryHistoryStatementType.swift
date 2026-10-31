@@ -1,4 +1,5 @@
 import Foundation
+import TableProSQLGrammar
 
 enum QueryHistoryStatementType: String, Codable, CaseIterable, Sendable {
     case select
@@ -8,8 +9,8 @@ enum QueryHistoryStatementType: String, Codable, CaseIterable, Sendable {
     case ddl
     case other
 
-    static func classify(_ query: String) -> QueryHistoryStatementType {
-        switch QueryClassifier.leadingKeyword(of: query) {
+    static func classify(_ query: String, grammar: SQLLexicalGrammar) -> QueryHistoryStatementType {
+        switch QueryClassifier.leadingKeyword(of: query, grammar: grammar) {
         case "SELECT", "SHOW", "DESCRIBE", "DESC", "EXPLAIN", "WITH", "TABLE", "VALUES", "PRAGMA":
             return .select
         case "INSERT", "REPLACE", "UPSERT", "MERGE", "COPY", "LOAD":

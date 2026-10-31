@@ -198,6 +198,24 @@ struct QueryClassifierFailClosedTests {
         )
     }
 
+    @Test("A leading block comment ends where the engine ends it, so a -- inside it hides nothing")
+    func leadingBlockCommentEndsWhereTheEngineEndsIt() {
+        for type in [DatabaseType.sqlite, .mysql, .postgresql, .mssql, .oracle] {
+            #expect(QueryClassifier.classifyTier("/*/ -- */ DROP TABLE users", databaseType: type) == .destructive)
+        }
+        for type in [DatabaseType.postgresql, .mssql, .duckdb] {
+            #expect(QueryClassifier.classifyTier("/* /* */ -- */ DROP TABLE users", databaseType: type) == .destructive)
+        }
+        #expect(
+            QueryClassifier.reachesFilesystemOrExecutesCode(
+                "/*/ -- */ COPY users TO PROGRAM 'id'",
+                databaseType: .postgresql
+            )
+        )
+        #expect(QueryClassifier.classifyTier("/*/ -- */ SELECT 1", databaseType: .postgresql) == .safe)
+        #expect(QueryClassifier.classifyTier("/*/ -- */", databaseType: .postgresql) == .safe)
+    }
+
     @Test("EXPLAIN ANALYZE of a write executes the write")
     func explainAnalyzeInheritsInnerTier() {
         #expect(QueryClassifier.isWriteQuery("EXPLAIN ANALYZE DELETE FROM users", databaseType: .postgresql))

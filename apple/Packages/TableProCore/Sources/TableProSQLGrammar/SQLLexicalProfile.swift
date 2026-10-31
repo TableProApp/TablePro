@@ -34,7 +34,7 @@ public struct SQLLexicalProfile: Sendable, Hashable {
         alternatives: [SQLLexicalGrammar],
         undetermined: SQLLexicalGrammar
     ) -> [SQLLexicalGrammar] {
-        let bits = (0..<32).map { SQLLexicalGrammar(rawValue: 1 << $0) }.filter { undetermined.contains($0) }
+        let bits = (0..<UInt64.bitWidth).map { SQLLexicalGrammar(rawValue: 1 << $0) }.filter { undetermined.contains($0) }
         var subsets: [SQLLexicalGrammar] = [[]]
         for bit in bits {
             subsets += subsets.map { $0.union(bit) }
@@ -67,7 +67,8 @@ public struct SQLLexicalProfile: Sendable, Hashable {
     /// terminator, which would make every `open`, `close` or `return` column an unknown engine names a statement of its
     /// own; an engine that runs statements without one says so through its plugin. A `MERGE` that keeps its `;` is left
     /// out for the same reason: an engine that refuses one without it says so through its plugin. So is a CQL batch,
-    /// which would read one statement where an unknown engine may run several.
+    /// which would read one statement where an unknown engine may run several. So are the two single body forms, which
+    /// would cut the `BEGIN ... END` body of an engine that has the usual one.
     public static let everyKnownReading: [SQLLexicalGrammar] = {
         var seen: Set<SQLLexicalGrammar> = []
         var result: [SQLLexicalGrammar] = []
@@ -76,8 +77,7 @@ public struct SQLLexicalProfile: Sendable, Hashable {
             for reading in profile.readings {
                 let unitless = reading.subtracting([
                     .plsqlBlocks, .delimiterDirective, .unterminatedStatements, .terminatedMergeStatements,
-                    .sqlScriptBlocks,
-                    .cqlBatches,
+                    .sqlScriptBlocks, .cqlBatches, .atomicRoutineBodies, .triggerBodies,
                 ])
                 if seen.insert(unitless).inserted {
                     result.append(unitless)
@@ -91,10 +91,15 @@ public struct SQLLexicalProfile: Sendable, Hashable {
 
     /// PostgreSQL 17.11, measured: a backslash is literal under `standard_conforming_strings`, block comments nest,
     /// `$tag$` takes non-ASCII and case-sensitive tags, `E'\''` escapes, a carriage return ends `--`, and `#` and `//`
-    /// are operators.
+    /// are operators. From its grammar: a routine's body is a literal or `BEGIN ATOMIC ... END`.
     static let postgreSQL: SQLLexicalGrammar = [
         .taggedDollarQuotes, .nestedBlockComments, .escapeStringPrefix, .carriageReturnEndsLineComments,
+        .atomicRoutineBodies,
     ]
+
+    /// CockroachDB, from its scanner: PostgreSQL's grammar, and a `b'...'` byte literal read by the routine that reads
+    /// `e'...'`, so `b'\''` escapes. Not measured.
+    static let cockroachDB: SQLLexicalGrammar = postgreSQL.union(.escapeBytesPrefix)
 
     /// MySQL 8.4.11 and MariaDB 11.8.9, measured: a backslash escapes in `'` and `"` strings and is literal in a
     /// backtick identifier, block comments do not nest, `#` is a comment, `/*! */` runs, `--` needs whitespace after
@@ -105,14 +110,17 @@ public struct SQLLexicalProfile: Sendable, Hashable {
     ]
 
     /// SQLite 3.54, measured: brackets and backticks quote identifiers, `]]` does not escape, a backslash is literal,
-    /// a Tcl-style `$name(...)` parameter swallows quotes and semicolons, and only a line feed ends `--`.
+    /// a Tcl-style `$name(...)` parameter swallows quotes and semicolons, and only a line feed ends `--`. From its
+    /// grammar: only a trigger has a body.
     static let sqlite: SQLLexicalGrammar = [
-        .backtickQuotes, .bracketQuotedIdentifiers, .parenthesizedParameterNames,
+        .backtickQuotes, .bracketQuotedIdentifiers, .parenthesizedParameterNames, .triggerBodies,
     ]
 
-    /// DuckDB 1.5.2 and 1.5.4, measured: lexes strings, comments and dollar quotes as PostgreSQL does.
+    /// DuckDB 1.5.2 and 1.5.4, measured: lexes strings, comments and dollar quotes as PostgreSQL does. It has no
+    /// `BEGIN ... END` body, so it takes PostgreSQL's narrower fact.
     static let duckDB: SQLLexicalGrammar = [
         .taggedDollarQuotes, .nestedBlockComments, .escapeStringPrefix, .carriageReturnEndsLineComments,
+        .atomicRoutineBodies,
     ]
 
     /// Oracle 23.26, measured: a backslash is literal, block comments do not nest, `q'[...]'` is a literal, `$` and
@@ -132,7 +140,8 @@ public struct SQLLexicalProfile: Sendable, Hashable {
     /// comments nest, a backslash is literal, a carriage return ends `--`, and T-SQL has no `$$`, `#` or `//` comment.
     /// A `GO` line is sqlcmd's, not the server's: sent to it, Azure SQL Edge answers Msg 102 and runs nothing. A
     /// statement needs no `;`: `SELECT 1` followed by `DROP TABLE t` runs both. A `MERGE` is the exception, and one
-    /// sent without its `;` fails the whole batch with Msg 10713.
+    /// sent without its `;` fails the whole batch with Msg 10713. An exponent takes its sign with no digit after it:
+    /// `1E+DELETE` runs the `DELETE`. Whether it takes the first `-` of a `--` that way is not measured.
     public static let sqlServer: SQLLexicalGrammar = [
         .bracketQuotedIdentifiers, .doubledClosingBracketEscapes, .nestedBlockComments,
         .carriageReturnEndsLineComments, .batchSeparatorLines, .unterminatedStatements, .terminatedMergeStatements,
@@ -149,14 +158,16 @@ public struct SQLLexicalProfile: Sendable, Hashable {
 
     /// Spanner's PostgreSQL dialect on the emulator, measured: lexes as PostgreSQL does.
     static let spannerPostgreSQL: SQLLexicalGrammar = [
-        .taggedDollarQuotes, .nestedBlockComments, .escapeStringPrefix,
+        .taggedDollarQuotes, .nestedBlockComments, .escapeStringPrefix, .atomicRoutineBodies,
     ]
 
     /// ClickHouse, from its syntax reference: a backslash escapes in strings and in both quoted identifier forms, `#`
-    /// and `--` are comments, and `$heredoc$` bodies are literals. Not measured.
+    /// and `--` are comments, and `$heredoc$` bodies are literals. `//` is a comment too: the reference leaves it out,
+    /// but its `Lexer.cpp` reads it to the end of the line and has no `//` operator, so no reading takes it for code.
+    /// Not measured.
     static let clickHouse: SQLLexicalGrammar = [
         .backslashEscapesInSingleQuotes, .backslashEscapesInDoubleQuotes, .backslashEscapesInBackticks,
-        .backtickQuotes, .hashLineComments, .taggedDollarQuotes,
+        .backtickQuotes, .hashLineComments, .doubleSlashLineComments, .taggedDollarQuotes,
     ]
 
     /// Snowflake, from its reference: a backslash escapes in single-quoted strings, `$$` bodies are literals and `//`
@@ -165,20 +176,23 @@ public struct SQLLexicalProfile: Sendable, Hashable {
         .backslashEscapesInSingleQuotes, .untaggedDollarQuotes, .doubleSlashLineComments,
     ]
 
-    /// Databend, from its tokenizer: a backslash escapes in `'` and `"`, backticks quote identifiers and `$$` bodies
-    /// are literals. Not measured.
+    /// Databend, from its tokenizer: a backslash escapes in `'` and `"`, backticks quote identifiers, `$$` bodies
+    /// are literals, and a form feed ends `--` as a line feed does. Not measured.
     static let databend: SQLLexicalGrammar = [
         .backslashEscapesInSingleQuotes, .backslashEscapesInDoubleQuotes, .backtickQuotes, .untaggedDollarQuotes,
+        .formFeedEndsLineComments,
     ]
 
     /// CQL for Cassandra and ScyllaDB, from the reference: `$$` bodies are literals, `//` is a comment, and a
     /// `BEGIN BATCH ... APPLY BATCH` holds the `;` after each statement inside it. Not measured.
     static let cql: SQLLexicalGrammar = [.untaggedDollarQuotes, .doubleSlashLineComments, .cqlBatches]
 
-    /// SurrealQL, from its reference: a backslash escapes in both quotes, and `#`, `//` and `--` are comments. Not
-    /// measured.
+    /// SurrealQL, from its reference and lexer: a backslash escapes in both quotes and in a backtick identifier, which
+    /// has no doubled-backtick form and is how the plugin's `SurrealQL.quoteIdentifier` writes a name, `⟨⟩` quotes an
+    /// identifier too, and `#`, `//` and `--` are comments. Not measured.
     static let surrealQL: SQLLexicalGrammar = [
-        .backslashEscapesInSingleQuotes, .backslashEscapesInDoubleQuotes, .backtickQuotes, .hashLineComments,
+        .backslashEscapesInSingleQuotes, .backslashEscapesInDoubleQuotes, .backslashEscapesInBackticks,
+        .backtickQuotes, .angleQuotedIdentifiers, .backslashEscapesInAngleQuotes, .hashLineComments,
         .doubleSlashLineComments,
     ]
 
@@ -231,7 +245,7 @@ public struct SQLLexicalProfile: Sendable, Hashable {
                 undetermined: [.backslashEscapesInSingleQuotes, .nestedBlockComments, .escapeStringPrefix]
             ),
             "CockroachDB": SQLLexicalProfile(
-                grammar: postgreSQL,
+                grammar: cockroachDB,
                 undetermined: [.nestedBlockComments, .taggedDollarQuotes, .carriageReturnEndsLineComments]
             ),
             "MySQL": SQLLexicalProfile(
@@ -243,7 +257,9 @@ public struct SQLLexicalProfile: Sendable, Hashable {
             "OceanBase": mySQLCompatible,
             "Databend": SQLLexicalProfile(
                 grammar: databend,
-                undetermined: [.hashLineComments, .nestedBlockComments, .carriageReturnEndsLineComments]
+                undetermined: [
+                    .hashLineComments, .nestedBlockComments, .carriageReturnEndsLineComments, .formFeedEndsLineComments,
+                ]
             ),
             "SQLite": sqliteFamily,
             "libSQL": sqliteFamily,
@@ -255,7 +271,7 @@ public struct SQLLexicalProfile: Sendable, Hashable {
                 grammar: dameng,
                 undetermined: [.backslashEscapesInSingleQuotes, .backslashEscapesInDoubleQuotes]
             ),
-            "SQL Server": SQLLexicalProfile(grammar: sqlServer),
+            "SQL Server": SQLLexicalProfile(grammar: sqlServer, undetermined: [.exponentSignsNeedNoDigits]),
             "ClickHouse": SQLLexicalProfile(
                 grammar: clickHouse,
                 undetermined: [.nestedBlockComments, .taggedDollarQuotes, .carriageReturnEndsLineComments]
@@ -287,7 +303,12 @@ public struct SQLLexicalProfile: Sendable, Hashable {
                 alternatives: [.ansi],
                 undetermined: [.carriageReturnEndsLineComments]
             ),
-            "SurrealDB": SQLLexicalProfile(grammar: surrealQL, undetermined: [.carriageReturnEndsLineComments]),
+            "SurrealDB": SQLLexicalProfile(
+                grammar: surrealQL,
+                undetermined: [
+                    .backslashEscapesInBackticks, .backslashEscapesInAngleQuotes, .carriageReturnEndsLineComments,
+                ]
+            ),
             "Redis": commandLineFamily,
             "MongoDB": commandLineFamily,
             "etcd": commandLineFamily,

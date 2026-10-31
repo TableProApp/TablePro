@@ -77,9 +77,10 @@ enum QueryClassifier {
     ) -> QueryClassification {
         if let document = documentStoreClassification(sql, databaseType: databaseType) { return document }
         if let redis = redisClassification(sql, databaseType: databaseType) { return redis }
-        let trimmed = StatementBlank.trimming(SQLLeadingComments.stripping(sql))
-        guard !trimmed.isEmpty else { return .safe }
-        if let ledger = beancountClassification(trimmed, databaseType: databaseType) { return ledger }
+        // Whether the text is nothing but comments is each reading's answer: a reading that finds no statement adds
+        // nothing to `worst`.
+        let leading = StatementBlank.trimming(SQLLeadingComments.stripping(sql, grammar: readings.execution))
+        if let ledger = beancountClassification(leading, databaseType: databaseType) { return ledger }
         guard let lexings = readings.lexings(of: sql) else { return mostSevere }
         var worst = QueryClassification.safe
         var seen: Set<SQLLexing> = []
@@ -111,10 +112,10 @@ enum QueryClassifier {
         if classification.tier == .destructive { return true }
         // A MongoDB statement is JavaScript, where `delete d.x` removes a field from a local object.
         guard databaseType != .redis, databaseType != .mongodb else { return false }
-        let trimmed = StatementBlank.trimming(SQLLeadingComments.stripping(sql))
         guard documentStoreClassification(sql, databaseType: databaseType) == nil else {
+            let trimmed = StatementBlank.trimming(SQLLeadingComments.stripping(sql, grammar: readings.execution))
             let code = SQLCodeProjection.code(of: trimmed, grammar: readings.execution).uppercased()
-            return leadingKeyword(of: trimmed) == "DELETE" && !hasWhereClause(code: code)
+            return leadingKeyword(of: trimmed, grammar: readings.execution) == "DELETE" && !hasWhereClause(code: code)
         }
         guard let lexings = readings.lexings(of: sql) else { return true }
         var seen: Set<SQLLexing> = []
@@ -139,14 +140,16 @@ enum QueryClassifier {
         isMultiStatement(sql, databaseType: databaseType, readings: databaseType.lexicalReadings)
     }
 
-    /// Whether `sql` runs more than one statement: it holds several, or a `GO n` line runs its one statement n times.
-    /// A caller that sends one statement once cannot honour the count, and dropping it runs the statement once.
+    /// Whether `sql` runs more than one statement: it holds several, a `GO n` line runs its one statement n times, or it
+    /// ends inside a block it opened, which an engine that reads the opener as a name runs as several statements. A
+    /// caller that sends one statement once cannot honour the count, and dropping it runs the statement once.
     static func isMultiStatement(_ sql: String, databaseType: DatabaseType, readings: SQLLexicalReadings) -> Bool {
         let model = QueryStatementModel.forDatabaseType(databaseType)
         guard let lexings = readings.lexings(of: sql) else { return true }
         return lexings.contains { lexing in
             let batches = QueryBatchPlanner.batches(in: lexing.text, model: model, grammar: lexing.grammar)
             return batches.flatMap(\.statements).count > 1 || batches.contains { $0.repeatCount > 1 }
+                || SQLStatementScanner.endsInsideOpenBlock(lexing.text, grammar: lexing.grammar)
         }
     }
 
@@ -168,7 +171,7 @@ enum QueryClassifier {
         grammar: SQLLexicalGrammar,
         databaseType: DatabaseType
     ) -> QueryClassification {
-        if let request = dynamoDBClassification(statement, databaseType: databaseType) {
+        if let request = dynamoDBClassification(statement, grammar: grammar, databaseType: databaseType) {
             return request
         }
         if let batch = CQLBatch.statements(in: statement, grammar: grammar) {
@@ -190,7 +193,7 @@ enum QueryClassifier {
         grammar: SQLLexicalGrammar,
         databaseType: DatabaseType
     ) -> Bool {
-        if let request = dynamoDBDeletesEverything(statement, databaseType: databaseType) {
+        if let request = dynamoDBDeletesEverything(statement, grammar: grammar, databaseType: databaseType) {
             return request
         }
         if let batch = CQLBatch.statements(in: statement, grammar: grammar) {
@@ -211,8 +214,8 @@ enum QueryClassifier {
         return SQLUnfilteredWrite.writes(in: statement, grammar: grammar).contains(.delete)
     }
 
-    static func isExplainStatement(_ sql: String) -> Bool {
-        let upper = SQLLeadingComments.stripping(sql).uppercased()
+    static func isExplainStatement(_ sql: String, grammar: SQLLexicalGrammar) -> Bool {
+        let upper = SQLLeadingComments.stripping(sql, grammar: grammar).uppercased()
         return explainPrefixes.contains { prefix in
             guard upper.hasPrefix(prefix), let boundary = upper.dropFirst(prefix.count).first else {
                 return false
@@ -221,9 +224,9 @@ enum QueryClassifier {
         }
     }
 
-    static func explainedStatement(in sql: String) -> String? {
-        let trimmed = StatementBlank.trimming(SQLLeadingComments.stripping(sql))
-        let keyword = leadingKeyword(of: trimmed)
+    static func explainedStatement(in sql: String, grammar: SQLLexicalGrammar) -> String? {
+        let trimmed = StatementBlank.trimming(SQLLeadingComments.stripping(sql, grammar: grammar))
+        let keyword = leadingKeyword(of: trimmed, grammar: grammar)
         guard explainPrefixes.contains(keyword) else { return nil }
         return explainInnerStatement(trimmed, keyword: keyword)?.statement
     }
@@ -232,12 +235,10 @@ enum QueryClassifier {
     /// own ORDER BY, so the opening parens are skipped to reach the keyword that classifies the
     /// statement. Skipping cannot loosen the classification: an unrecognised keyword still falls to
     /// the write arm, and the body-wide filesystem and destructive scans run over the whole text.
-    static func leadingKeyword(of sql: String) -> String {
-        var remaining = SQLLeadingComments.stripping(sql)[...]
+    static func leadingKeyword(of sql: String, grammar: SQLLexicalGrammar) -> String {
+        var remaining = SQLLeadingComments.stripping(sql, grammar: grammar)[...]
         while remaining.first == "(" {
-            remaining = StatementBlank.trimmingLeading(remaining.dropFirst())
-            guard remaining.hasPrefix("--") || remaining.hasPrefix("/*") else { continue }
-            remaining = SQLLeadingComments.stripping(String(remaining))[...]
+            remaining = SQLLeadingComments.stripping(String(remaining.dropFirst()), grammar: grammar)[...]
         }
         return remaining.prefix { $0.isLetter || $0.isNumber || $0 == "_" }.uppercased()
     }
@@ -389,7 +390,7 @@ private extension QueryClassifier {
     ) -> QueryClassification? {
         let readsOpeners = grammar.union(.executableComments)
         guard SQLExecutableCommentReadings.holdsExecutableComment(statement, grammar: readsOpeners) else { return nil }
-        let revealed = SQLCodeProjection.code(of: statement, grammar: grammar, revealingExecutableComments: true)
+        let revealed = SQLCodeProjection.code(of: statement, grammar: readsOpeners, revealingExecutableComments: true)
             .uppercased()
         let dropsData = destructiveKeywords.contains { containsWord(revealed, $0) }
         let revealedMarkers = markerForm(of: revealed)
@@ -580,8 +581,8 @@ private extension QueryClassifier {
         return match.range.location + match.range.length
     }
 
-    /// The text between a literal's delimiters: the body of `'...'`, `E'...'`, `$tag$...$tag$` or `q'[...]'`, with a
-    /// doubled quote folded back to one.
+    /// The text between a literal's delimiters: the body of `'...'`, `E'...'`, `b'...'`, `$tag$...$tag$` or `q'[...]'`,
+    /// with a doubled quote folded back to one.
     static func literalBody(of span: SQLNonCodeSpan.Span, in text: NSString, grammar: SQLLexicalGrammar) -> String {
         let opener = text.character(at: span.start)
         let bodyStart = min(literalBodyStart(of: span, opener: opener, in: text, grammar: grammar), span.contentEnd)
@@ -608,11 +609,10 @@ private extension QueryClassifier {
             let isTriple = grammar.contains(.tripleQuotedStrings)
                 && SqlLexer.startsTripleQuote(text, at: span.start, length: text.length)
             return span.start + (isTriple ? 3 : 1)
-        case SqlLexer.smallN, SqlLexer.capitalN:
-            return span.start + 4
-        case SqlLexer.smallQ, SqlLexer.capitalQ:
-            return span.start + 3
-        case escapeStringPrefixes.lower, escapeStringPrefixes.upper:
+        case SqlLexer.smallN, SqlLexer.capitalN, SqlLexer.smallQ, SqlLexer.capitalQ:
+            let literal = SqlLexer.skipAlternativeQuotedString(text, at: span.start, length: text.length)
+            return literal?.bodyStart ?? span.start + 1
+        case escapeStringPrefixes.lower, escapeStringPrefixes.upper, escapeBytesPrefix:
             return span.start + 2
         default:
             return span.start + 1
@@ -620,6 +620,7 @@ private extension QueryClassifier {
     }
 
     static let escapeStringPrefixes = (lower: UInt16(UnicodeScalar("e").value), upper: UInt16(UnicodeScalar("E").value))
+    static let escapeBytesPrefix = UInt16(UnicodeScalar("b").value)
 
     /// EXPLAIN's options read off the code projection, where every comment is already blank, so a comment between
     /// the options and the statement ends where the engine ends it.
@@ -929,7 +930,9 @@ private extension QueryClassifier {
         _ sql: String,
         databaseType: DatabaseType
     ) -> QueryClassification? {
-        let trimmed = StatementBlank.trimming(SQLLeadingComments.stripping(sql))
+        var trimmed: String {
+            StatementBlank.trimming(SQLLeadingComments.stripping(sql, grammar: databaseType.lexicalGrammar))
+        }
         switch databaseType {
         case .mongodb:
             return mongoClassification(sql)

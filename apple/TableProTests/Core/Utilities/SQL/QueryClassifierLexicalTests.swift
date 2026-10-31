@@ -93,8 +93,23 @@ struct QueryClassifierLexicalTests {
         ),
         Bypass(
             engine: .postgresql,
+            sql: "SELECT $K$ x $\u{212A}$ , $K$; DROP TABLE users; -- $K$",
+            measured: "PostgreSQL's scan.l compares tags with strcmp, so the KELVIN SIGN does not close $K$"
+        ),
+        Bypass(
+            engine: .postgresql,
             sql: "SELECT E'\\''; DROP TABLE users; --'",
             measured: "PostgreSQL 17.11 escapes inside E'' and ran the DROP"
+        ),
+        Bypass(
+            engine: .cockroachdb,
+            sql: "SELECT b'\\''; DROP TABLE users; --'",
+            measured: "CockroachDB's scanner escapes inside b'' as it does inside e''"
+        ),
+        Bypass(
+            engine: .cockroachdb,
+            sql: "SELECT b'\\'', '\\'; DROP TABLE users; --'",
+            measured: "CockroachDB's scanner escapes inside b'' and not inside a plain string"
         ),
         Bypass(
             engine: .postgresql,
@@ -139,6 +154,38 @@ struct QueryClassifierLexicalTests {
     @Test("A DELETE with no WHERE hidden after a literal backslash asks for consent")
     func hiddenDeleteIsDangerous() {
         #expect(QueryClassifier.isDangerousQuery("SELECT 'x\\'; DELETE FROM users", databaseType: .postgresql))
+    }
+
+    @Test("A DELETE hidden after a $ inside a CTE's name is a write, measured on SQLite 3.46")
+    func dollarInsideANameDoesNotHideADelete() {
+        let sql = "WITH x$y(\"')\") AS (SELECT 1) DELETE FROM users --\""
+        #expect(QueryClassifier.classifyTier(sql, databaseType: .sqlite) == .write)
+        #expect(QueryClassifier.isDangerousQuery(sql, databaseType: .sqlite))
+    }
+
+    @Test("A REMOVE hidden after a backtick that a backslash escapes is a second statement and a write on SurrealDB")
+    func hiddenRemoveAfterEscapedBacktickIsAWrite() {
+        let sql = "SELECT `\\`` FROM person; REMOVE TABLE person; -- `"
+        #expect(QueryClassifier.isMultiStatement(sql, databaseType: .surrealdb))
+        #expect(QueryClassifier.classifyTier(sql, databaseType: .surrealdb) == .write)
+    }
+
+    @Test(
+        "A REMOVE hidden after a quote inside a SurrealQL ⟨...⟩ identifier is a second statement and a write",
+        arguments: [
+            "SELECT ⟨'⟩ FROM person; REMOVE TABLE person; --'",
+            "SELECT ⟨\\⟩'⟩ FROM person; REMOVE TABLE person; --'",
+        ]
+    )
+    func surrealQLAngleQuotedIdentifierDoesNotHideAStatement(sql: String) {
+        #expect(QueryClassifier.classifyTier(sql, databaseType: .surrealdb) != .safe)
+        #expect(QueryClassifier.isMultiStatement(sql, databaseType: .surrealdb))
+    }
+
+    @Test("A form feed ends a Databend line comment, so the DROP after it is destructive")
+    func databendFormFeedDoesNotHideADrop() {
+        let sql = "-- note\u{0C}DROP TABLE customers /*\nSELECT 1 -- */"
+        #expect(QueryClassifier.classifyTier(sql, databaseType: .databend) == .destructive)
     }
 
     @Test("A nested comment in front of a statement ends where PostgreSQL ends it")

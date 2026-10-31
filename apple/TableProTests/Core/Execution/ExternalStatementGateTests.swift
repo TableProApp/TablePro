@@ -99,6 +99,31 @@ struct ExternalStatementGateTests {
         #expect(refusal(statement("SELECT 1; SELECT 2", allowsMultiStatement: true)) == nil)
     }
 
+    @Test("A name spelled like a block keyword hides no second statement, and a block left open is refused", arguments: [
+        ("CREATE TABLE begin(a int); DROP TABLE users", DatabaseType.postgresql),
+        ("CREATE TABLE begin(a int); DROP TABLE users", .cloudflareD1),
+        ("CREATE TABLE lookup (id INTEGER, upper$case TEXT); DROP TABLE users", .postgresql),
+        ("CREATE TABLE \u{E9}case (id int); DROP TABLE users", .sqlite),
+        ("CREATE VIEW flags AS SELECT id, CASE WHEN id > 0 THEN 1 ELSE 0 END loop FROM orders; DROP TABLE users", .postgresql),
+        ("CREATE VIEW flags AS SELECT id, CASE WHEN id > 0 THEN 1 ELSE 0 END loop FROM orders; DROP TABLE users", .snowflake),
+        ("CREATE PROCEDURE p() BEGIN SELECT begin FROM t; END; DROP TABLE users", .mysql),
+        ("CREATE PROCEDURE p() BEGIN SELECT 1; BEGIN SELECT 2; END; DROP TABLE users", .mysql),
+        ("CREATE PROCEDURE p() BEGIN SELECT 1; DROP TABLE users", .mysql),
+    ])
+    func blockKeywordNamesAreRefusedAsSeveralStatements(sql: String, databaseType: DatabaseType) {
+        #expect(refusal(statement(sql, databaseType: databaseType))
+            == .invalidArgument(String(localized: "Send one statement at a time.")))
+    }
+
+    @Test("A routine whose column is named begin is one statement", arguments: [
+        ("CREATE PROCEDURE p() BEGIN SELECT begin FROM t; END", DatabaseType.mysql),
+        ("CREATE FUNCTION f() RETURNS int LANGUAGE sql BEGIN ATOMIC SELECT begin FROM t; END", .postgresql),
+        ("CREATE TRIGGER tr AFTER INSERT ON t BEGIN SELECT begin FROM t; END", .sqlite),
+    ])
+    func routineWithABeginColumnPasses(sql: String, databaseType: DatabaseType) {
+        #expect(refusal(statement(sql, databaseType: databaseType)) == nil)
+    }
+
     /// SQL Server runs whatever one request carries as one batch, `;` or not, and a variable lives only in the batch
     /// that declares it, so a caller that takes scripts may send one there (#3078). Nowhere else.
     @Test("Only an engine that cuts scripts into GO batches takes a script in one call")
@@ -197,8 +222,21 @@ struct ExternalStatementGateTests {
     }
 
     @Test("A write SQL Server runs without a terminator is refused on a connection read only for external clients",
-          arguments: ["SELECT 1\nDROP TABLE t", "PRINT 'x' UPDATE t SET c = 1", "SELECT 1\nUPDATE [t] SET c = 1"])
+          arguments: [
+              "SELECT 1\nDROP TABLE t", "PRINT 'x' UPDATE t SET c = 1", "SELECT 1\nUPDATE [t] SET c = 1",
+              "SELECT 1 ADD SIGNATURE TO dbo.p BY CERTIFICATE c",
+          ])
     func unterminatedWriteRefusedOnReadOnlyConnection(sql: String) {
+        #expect(refusal(statement(sql, databaseType: .mssql, externalAccess: .readOnly))
+            == .denied(String(localized: "This connection is read only for external clients.")))
+    }
+
+    @Test("A write after SQL Server's `1E--` is refused whether that is a comment or a signed exponent and a minus",
+          arguments: [
+              "SELECT 1E--1 DROP TABLE t", "SELECT 1.5e--1 DROP TABLE t", "SELECT 1E--1 INTO t2 FROM t",
+              "SELECT 1E--'\nDROP TABLE t --'",
+          ])
+    func writeAfterSignedEmptyExponentRefusedOnReadOnlyConnection(sql: String) {
         #expect(refusal(statement(sql, databaseType: .mssql, externalAccess: .readOnly))
             == .denied(String(localized: "This connection is read only for external clients.")))
     }
