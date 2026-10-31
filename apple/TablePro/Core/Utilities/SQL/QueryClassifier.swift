@@ -945,6 +945,8 @@ private extension QueryClassifier {
             return trimmed.isEmpty ? .safe : firebaseClassification(trimmed, databaseType: databaseType)
         case .bigtable:
             return trimmed.isEmpty ? .safe : bigtableClassification(trimmed)
+        case .neo4j:
+            return cypherClassification(sql)
         default:
             return nil
         }

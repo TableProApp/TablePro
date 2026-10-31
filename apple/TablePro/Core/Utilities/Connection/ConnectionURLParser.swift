@@ -225,6 +225,7 @@ struct ConnectionURLParser {
         if scheme == "etcds" {
             sslMode = sslMode ?? .required
         }
+        sslMode = sslMode ?? neo4jSchemeSSLMode(trimmed, type: dbType)
 
         // Oracle-specific: path component is the service name, not the database name
         var oracleServiceName: String?
@@ -393,6 +394,15 @@ struct ConnectionURLParser {
             return .failure(.invalidSocketPath(issue))
         }
         return .success(path)
+    }
+
+    /// Neo4j's `+s` verifies the server's certificate; `+ssc` accepts a self-signed one.
+    private static func neo4jSchemeSSLMode(_ url: String, type: DatabaseType) -> SSLMode? {
+        guard type == .neo4j else { return nil }
+        let scheme = url.prefix { $0 != ":" }.lowercased()
+        if scheme.hasSuffix("+s") { return .verifyIdentity }
+        if scheme.hasSuffix("+ssc") { return .required }
+        return nil
     }
 
     private static func resolveDBType(from scheme: String) -> DatabaseType? {

@@ -182,6 +182,14 @@ public struct SQLLexicalProfile: Sendable, Hashable {
         .doubleSlashLineComments,
     ]
 
+    /// Cypher, from the Neo4j manual: a backslash escapes in both quotes, backticks quote names, and `//` starts a
+    /// comment. `--` is not a comment, but `(a)--(b)` is a pattern, so a dash comment needs the space after it. Not
+    /// measured.
+    static let cypher: SQLLexicalGrammar = [
+        .backslashEscapesInSingleQuotes, .backslashEscapesInDoubleQuotes, .backtickQuotes, .doubleSlashLineComments,
+        .dashCommentsNeedWhitespace,
+    ]
+
     /// DynamoDB, from the driver's statement forms: a request is `<Action> {JSON}`, and a backslash escapes inside a
     /// JSON string. PartiQL, the other form, documents only a doubled quote, so plain ANSI is kept as an alternative
     /// and a gate reads both. Not measured.
@@ -288,6 +296,7 @@ public struct SQLLexicalProfile: Sendable, Hashable {
                 undetermined: [.carriageReturnEndsLineComments]
             ),
             "SurrealDB": SQLLexicalProfile(grammar: surrealQL, undetermined: [.carriageReturnEndsLineComments]),
+            "Neo4j": SQLLexicalProfile(grammar: cypher, undetermined: [.carriageReturnEndsLineComments]),
             "Redis": commandLineFamily,
             "MongoDB": commandLineFamily,
             "etcd": commandLineFamily,

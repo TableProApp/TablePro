@@ -1164,6 +1164,21 @@ targets:
           - -lz
         SWIFT_INCLUDE_PATHS: $(SRCROOT)/Plugins/MongoDBDriverPlugin/CLibMongoc
 
+  Neo4jDriverPlugin:
+    templates: [DriverPlugin]
+    templateAttributes:
+      folder: Neo4jDriverPlugin
+      principalClass: Neo4jPlugin
+    dependencies:
+      - package: TableProCore
+        product: TableProNeo4jCore
+      - package: swift-nio
+        product: NIOCore
+      - package: swift-nio
+        product: NIOPosix
+      - package: swift-nio-ssl
+        product: NIOSSL
+
   OracleDriver:
     templates: [DriverPlugin]
     templateAttributes:
@@ -1301,6 +1316,7 @@ aggregateTargets:
       - LibSQLDriverPlugin
       - MSSQLDriver
       - MongoDBDriver
+      - Neo4jDriverPlugin
       - OracleDriver
       - ParquetExport
       - SnowflakeDriverPlugin
