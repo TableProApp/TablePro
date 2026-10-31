@@ -95,7 +95,7 @@ extension PluginMetadataRegistry {
             navigationModel: .standard, explainVariants: mysqlVariantExplainVariants, pathFieldRole: .database,
             supportsHealthMonitor: true, urlSchemes: [],
             postConnectActions: [.selectDatabaseFromLastSession, .selectSchemaFromLastSession],
-            brandColorHex: "#4E5BF2",
+            brandColorHex: "#01808F",
             queryLanguageName: "SQL", editorLanguage: .sql,
             connectionMode: .network, supportsDatabaseSwitching: true,
             structureEditing: SchemaEditingSupport(columnReorder: .unsupported, foreignKeyEdit: .unsupported),

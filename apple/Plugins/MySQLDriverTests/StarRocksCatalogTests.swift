@@ -60,6 +60,19 @@ struct StarRocksCatalogTests {
         #expect(flavor.maintenanceOperations.isEmpty)
     }
 
+    /// Iceberg VARIANT and JSON columns arrive as charset 63 with `BINARY_FLAG`, and read as hex without this.
+    @Test("StarRocks binary-labelled strings decode as text when they are UTF-8")
+    func binaryLabelledStringsAreText() {
+        #expect(MySQLServerFlavor.starrocks.labelsTextResultsAsBinary)
+        #expect(!MySQLServerFlavor.mysql.labelsTextResultsAsBinary)
+        let longBlob: UInt32 = 251
+        let decoding = MySQLColumnDecoding(
+            typeRaw: longBlob, charsetnr: 63, characterSetName: "binary", flavor: .starrocks,
+            binaryStringsAreText: MySQLServerFlavor.starrocks.labelsTextResultsAsBinary
+        )
+        #expect(decoding == .utf8TextOrBytes)
+    }
+
     @Test("StarRocks begins with BEGIN whatever the access mode")
     func begins() {
         #expect(MySQLServerFlavor.starrocks.beginTransactionStatement(mode: .readWrite) == "BEGIN")

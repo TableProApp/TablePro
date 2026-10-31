@@ -147,6 +147,10 @@ nonisolated internal enum MySQLServerFlavor: Equatable, Sendable {
 
     var dropsIdleSessionOnKillQuery: Bool { isTiDB }
 
+    /// StarRocks labels a JSON or an Iceberg VARIANT result charset 63 although it sends UTF-8 text,
+    /// so the grid showed `{"` as `0x7B22`. A VARBINARY value that is not UTF-8 still reads as bytes.
+    var labelsTextResultsAsBinary: Bool { isStarRocks }
+
     /// StarRocks took `COM_STMT_PREPARE` only in 3.2, and a 3.1 frontend refuses it.
     var preparesOnServer: Bool { !isDatabend && !isStarRocks }
 
