@@ -340,6 +340,7 @@ pub async fn a_timed_out_command_is_stopped_by_the_server<E: KeyspaceEngine>(
     let connection = connect(TIMEOUT_CASE, &engine, writable()).await?;
     let options = EditorSessionOptions {
         statement_timeout: Some(SETTLE),
+        database: None,
     };
     let session = editor(connection.as_ref(), options).await?;
 
