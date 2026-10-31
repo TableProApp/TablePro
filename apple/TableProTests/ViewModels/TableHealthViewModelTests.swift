@@ -1,6 +1,7 @@
 import Foundation
 @testable import TablePro
 import TableProPluginKit
+import TableProTestSupport
 import Testing
 
 private struct Offline: LocalizedError {
@@ -65,6 +66,8 @@ private final class HealthMetadata: ScopedMetadataProviding {
     var database = "shop"
     var isConnected = true
     var leaseFails = false
+    // Holds the next lease until the test releases it, the way a slow catalog read holds one.
+    var hold: (reached: AsyncGate, release: AsyncGate)?
     private(set) var leases: [(scope: DatabaseScope, workload: MetadataConnectionPool.Workload)] = []
 
     func withMetadataDriver<T: Sendable>(
@@ -73,6 +76,11 @@ private final class HealthMetadata: ScopedMetadataProviding {
         _ body: @Sendable @escaping (DatabaseDriver) async throws -> T
     ) async throws -> T {
         leases.append((scope, workload))
+        if let hold {
+            self.hold = nil
+            await hold.reached.open()
+            await hold.release.wait()
+        }
         if leaseFails { throw Offline() }
         return try await body(PluginDriverAdapter(connection: connection, pluginDriver: HealthPluginDriver(server: server)))
     }
@@ -134,6 +142,25 @@ struct TableHealthViewModelTests {
 
         #expect(metadata.leases.count == 1)
         #expect(viewModel.report?.findingCount == 1)
+    }
+
+    @Test("A pane switch during the first load neither drops it nor strands the next appearance")
+    func paneSwitchDuringFirstLoad() async {
+        let metadata = HealthMetadata()
+        let hold = (reached: AsyncGate(), release: AsyncGate())
+        metadata.hold = hold
+        let viewModel = makeViewModel(metadata)
+
+        let firstAppearance = Task { await viewModel.loadIfNeeded() }
+        await hold.reached.wait()
+        firstAppearance.cancel()
+        let secondAppearance = Task { await viewModel.loadIfNeeded() }
+        await hold.release.open()
+        await secondAppearance.value
+
+        #expect(viewModel.report?.findingCount == 1)
+        #expect(metadata.leases.count == 1)
+        #expect(!viewModel.isRefreshing)
     }
 
     @Test("A connection with no database selected asks for one and reads nothing")

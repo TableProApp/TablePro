@@ -40,10 +40,18 @@ struct MySQLTableHealthProviderTests {
         return map
     }
 
+    private struct KeyRow {
+        let table: String
+        let constraint: String
+        let column: String
+        var referencedTable: String?
+        var referencedColumn: String?
+    }
+
     private func unused(
         candidates: [(table: String, index: String)],
         indexes: [IndexRow],
-        foreignKeys: [(table: String, constraint: String, column: String)] = []
+        foreignKeys: [KeyRow] = []
     ) -> [String] {
         let results = [
             TableHealthFixture.result(
@@ -52,8 +60,10 @@ struct MySQLTableHealthProviderTests {
             ),
             Self.indexResult(indexes),
             TableHealthFixture.result(
-                columns: ["table_name", "constraint_name", "column_name"],
-                rows: foreignKeys.map { key -> [String?] in [key.table, key.constraint, key.column] }
+                columns: ["table_name", "constraint_name", "column_name", "referenced_table_name", "referenced_column_name"],
+                rows: foreignKeys.map { key -> [String?] in
+                    [key.table, key.constraint, key.column, key.referencedTable, key.referencedColumn]
+                }
             )
         ]
         return provider.findings(for: .unusedIndex, from: results, context: context).compactMap(\.objectName)
@@ -242,12 +252,28 @@ struct MySQLTableHealthProviderTests {
                 IndexRow(table: "line", index: "line_short_idx", nonUnique: "1", column: "y")
             ],
             foreignKeys: [
-                ("line", "line_order_fk", "order_id"),
-                ("line", "line_pair_fk", "x"),
-                ("line", "line_pair_fk", "y")
+                KeyRow(table: "line", constraint: "line_order_fk", column: "order_id"),
+                KeyRow(table: "line", constraint: "line_pair_fk", column: "x"),
+                KeyRow(table: "line", constraint: "line_pair_fk", column: "y")
             ]
         )
         #expect(found == ["line_late_idx", "line_short_idx"])
+    }
+
+    @Test("A non-unique index a foreign key references in this database is not unused")
+    func unusedSkipsReferencedIndex() {
+        let found = unused(
+            candidates: [("orders", "orders_code_idx"), ("orders", "orders_note_idx")],
+            indexes: [
+                IndexRow(index: "orders_code_idx", nonUnique: "1", column: "code"),
+                IndexRow(index: "orders_note_idx", nonUnique: "1", column: "note")
+            ],
+            foreignKeys: [
+                KeyRow(table: "line", constraint: "line_code_fk", column: "order_code", referencedTable: "orders", referencedColumn: "code"),
+                KeyRow(table: "audit", constraint: "audit_note_fk", column: "note", referencedTable: nil, referencedColumn: "note")
+            ]
+        )
+        #expect(found == ["orders_note_idx"])
     }
 
     @Test("An unused index and a table without a primary key preview their fixes")
@@ -257,7 +283,10 @@ struct MySQLTableHealthProviderTests {
             from: [
                 TableHealthFixture.result(columns: ["table_name", "index_name"], rows: [["orders", "orders_note_idx"]]),
                 Self.indexResult([IndexRow(index: "orders_note_idx", nonUnique: "1", column: "note")]),
-                TableHealthFixture.result(columns: ["table_name", "constraint_name", "column_name"], rows: [])
+                TableHealthFixture.result(
+                    columns: ["table_name", "constraint_name", "column_name", "referenced_table_name", "referenced_column_name"],
+                    rows: []
+                )
             ],
             context: context
         ).first)

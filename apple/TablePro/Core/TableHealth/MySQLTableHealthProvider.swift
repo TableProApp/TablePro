@@ -20,7 +20,8 @@ struct MySQLTableHealthProvider: TableHealthProvider {
                 WHERE t.OBJECT_SCHEMA = DATABASE() AND t.COUNT_STAR > 0) AS counted_tables
         """
 
-    // The table sys.schema_unused_indexes reads; MariaDB before 10.6 has no sys schema.
+    // The table sys.schema_unused_indexes reads; MariaDB before 10.6 has no sys schema. A table
+    // setup_objects leaves out keeps its index rows at zero, so only a table with counted I/O counts.
     static let unusedIndexQuery = """
         SELECT u.OBJECT_NAME AS table_name,
                u.INDEX_NAME AS index_name
@@ -29,6 +30,13 @@ struct MySQLTableHealthProvider: TableHealthProvider {
           AND u.INDEX_NAME IS NOT NULL
           AND u.INDEX_NAME <> 'PRIMARY'
           AND u.COUNT_STAR = 0
+          AND EXISTS (
+              SELECT 1 FROM performance_schema.table_io_waits_summary_by_table t
+              WHERE t.OBJECT_TYPE = u.OBJECT_TYPE
+                AND t.OBJECT_SCHEMA = u.OBJECT_SCHEMA
+                AND t.OBJECT_NAME = u.OBJECT_NAME
+                AND t.COUNT_STAR > 0
+          )
         ORDER BY u.OBJECT_NAME, u.INDEX_NAME
         """
 
@@ -40,10 +48,14 @@ struct MySQLTableHealthProvider: TableHealthProvider {
         ORDER BY TABLE_NAME, INDEX_NAME, SEQ_IN_INDEX
         """
 
+    // Both ends: InnoDB checks a key through an index on each side, and MariaDB lets the referenced
+    // one be non-unique. A key from another database is not read: on MariaDB that scans every database.
     static let foreignKeyQuery = """
         SELECT k.TABLE_NAME AS table_name,
                k.CONSTRAINT_NAME AS constraint_name,
-               k.COLUMN_NAME AS column_name
+               k.COLUMN_NAME AS column_name,
+               CASE WHEN k.REFERENCED_TABLE_SCHEMA = DATABASE() THEN k.REFERENCED_TABLE_NAME END AS referenced_table_name,
+               k.REFERENCED_COLUMN_NAME AS referenced_column_name
         FROM information_schema.KEY_COLUMN_USAGE k
         WHERE k.TABLE_SCHEMA = DATABASE()
           AND k.REFERENCED_TABLE_NAME IS NOT NULL
@@ -134,8 +146,8 @@ struct MySQLTableHealthProvider: TableHealthProvider {
         }
     }
 
-    // A unique index enforces something no read counts. InnoDB checks a foreign key through the
-    // index that leads with its columns without counting a read, and refuses to drop the last one.
+    // A unique index enforces something no read counts. InnoDB checks a foreign key through an
+    // index that leads with its columns on either end without counting a read, and refuses to drop the last one.
     private func unusedIndexFindings(
         candidates: [TableHealthRow],
         tables: [MySQLIndexShape],
@@ -264,21 +276,35 @@ struct MySQLIndexShape {
         return tables
     }
 
-    // Each table's foreign keys, as their columns in key order.
+    // Per table, the columns each foreign key reads through it, on the referencing or the referenced end, in key order.
     static func foreignKeys(from rows: [TableHealthRow]) -> [String: [[String]]] {
-        var keys: [String: [[String]]] = [:]
-        var previous: (table: String, constraint: String)?
+        struct Key {
+            let table: String
+            let constraint: String
+            let referencedTable: String
+            var columns: [String]
+            var referencedColumns: [String]
+        }
+        var keys: [Key] = []
         for row in rows {
             let table = row["table_name"], constraint = row["constraint_name"]
-            var tableKeys = keys[table] ?? []
-            if previous?.table == table, previous?.constraint == constraint, !tableKeys.isEmpty {
-                tableKeys[tableKeys.count - 1].append(row["column_name"])
+            if let last = keys.last, last.table == table, last.constraint == constraint {
+                keys[keys.count - 1].columns.append(row["column_name"])
+                keys[keys.count - 1].referencedColumns.append(row["referenced_column_name"])
             } else {
-                tableKeys.append([row["column_name"]])
+                keys.append(Key(
+                    table: table, constraint: constraint, referencedTable: row["referenced_table_name"],
+                    columns: [row["column_name"]], referencedColumns: [row["referenced_column_name"]]
+                ))
             }
-            keys[table] = tableKeys
-            previous = (table, constraint)
         }
-        return keys
+        var byTable: [String: [[String]]] = [:]
+        for key in keys {
+            byTable[key.table, default: []].append(key.columns)
+            if !key.referencedTable.isEmpty {
+                byTable[key.referencedTable, default: []].append(key.referencedColumns)
+            }
+        }
+        return byTable
     }
 }

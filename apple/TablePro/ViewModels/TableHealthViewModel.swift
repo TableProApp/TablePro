@@ -24,6 +24,7 @@ final class TableHealthViewModel: ObservableObject {
 
     private let connectionId: UUID
     private let metadata: any ScopedMetadataProviding
+    private var refreshTask: Task<Void, Never>?
 
     var isSupported: Bool { provider != nil }
 
@@ -47,10 +48,25 @@ final class TableHealthViewModel: ObservableObject {
         await refresh()
     }
 
+    // The model owns the read, so a pane switch that cancels `.task` neither drops it nor leaves the
+    // next appearance waiting on nothing: a second call joins the one in flight.
     func refresh() async {
-        guard let provider, !isRefreshing else { return }
+        if let refreshTask {
+            await refreshTask.value
+            return
+        }
+        guard let provider else { return }
+        let task = Task { await self.performRefresh(provider) }
+        refreshTask = task
+        await task.value
+    }
+
+    private func performRefresh(_ provider: any TableHealthProvider) async {
         isRefreshing = true
-        defer { isRefreshing = false }
+        defer {
+            isRefreshing = false
+            refreshTask = nil
+        }
 
         do {
             guard let scope = metadata.browseScope(for: connectionId) else { throw DatabaseError.notConnected }
@@ -61,13 +77,10 @@ final class TableHealthViewModel: ObservableObject {
                     try await driver.executeRead(query: query)
                 }
             }
-            try Task.checkCancellation()
             report = Self.merging(fresh, over: report)
             loadError = nil
             lastRefreshDate = Date()
             if selectedFinding == nil { selectedFindingId = nil }
-        } catch is CancellationError {
-            return
         } catch {
             Self.logger.warning("Table health refresh failed: \(error.publicLogShape, privacy: .public)")
             loadError = error.localizedDescription

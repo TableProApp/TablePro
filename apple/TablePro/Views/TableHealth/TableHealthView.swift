@@ -39,8 +39,8 @@ struct TableHealthView: View {
                 autosaveName: "com.TablePro.tableHealth.findingsDetail",
                 isVertical: false,
                 primaryMinimum: 160,
-                secondaryMinimum: 120,
-                primaryThicknessFraction: 0.65
+                secondaryMinimum: 150,
+                primaryHoldingPriority: .splitPaneFlexible
             ) {
                 TableHealthFindingsList(viewModel: viewModel, actions: actions)
             } secondary: {

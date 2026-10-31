@@ -216,15 +216,21 @@ check_mysql() {
 
     echo "$(my -e 'SELECT VERSION()') at $HOST:$PORT"
     my -e "DROP DATABASE IF EXISTS $DATABASE; CREATE DATABASE $DATABASE; DROP DATABASE IF EXISTS $OTHER_DATABASE; CREATE DATABASE $OTHER_DATABASE"
-    trap 'mysql --protocol=TCP -h "$HOST" -P "$PORT" -u "$USER_NAME" -e "DROP DATABASE IF EXISTS '"$DATABASE"'; DROP DATABASE IF EXISTS '"$OTHER_DATABASE"'" > /dev/null 2>&1' EXIT
+    trap 'mysql --protocol=TCP -h "$HOST" -P "$PORT" -u "$USER_NAME" -e "DROP DATABASE IF EXISTS '"$DATABASE"'; DROP DATABASE IF EXISTS '"$OTHER_DATABASE"'; UPDATE performance_schema.setup_instruments SET ENABLED = '"'YES'"' WHERE NAME = '"'wait/io/table/sql/handler'"'; DELETE FROM performance_schema.setup_objects WHERE OBJECT_SCHEMA = '"'$DATABASE'"'" > /dev/null 2>&1' EXIT
 
     my "$OTHER_DATABASE" -e "CREATE TABLE other_no_pk (v INT, KEY other_v_idx (v)); INSERT INTO other_no_pk VALUES (1)"
+    # A table setup_objects leaves out keeps zero-count index rows even after a read through the index.
+    my -e "INSERT INTO performance_schema.setup_objects (OBJECT_TYPE, OBJECT_SCHEMA, OBJECT_NAME, ENABLED, TIMED) VALUES ('TABLE', '$DATABASE', 'uncounted', 'NO', 'NO')" 2> /dev/null
     my "$DATABASE" > /dev/null <<'SQL' || exit 1
 CREATE TABLE parent (id INT PRIMARY KEY);
 CREATE TABLE child (id INT PRIMARY KEY, parent_id INT, note INT, CONSTRAINT child_fk FOREIGN KEY (parent_id) REFERENCES parent (id), KEY child_note_idx (note));
 CREATE TABLE no_pk (a INT, b INT, KEY no_pk_a_idx (a), KEY no_pk_ab_idx (a, b), UNIQUE KEY no_pk_b_uniq (b));
 CREATE TABLE `odd``name` (v INT);
 CREATE TABLE healthy (id INT PRIMARY KEY, v INT, KEY healthy_v_idx (v));
+CREATE TABLE uncounted (id INT PRIMARY KEY, v INT, KEY uncounted_v_idx (v));
+INSERT INTO uncounted VALUES (1, 1), (2, 2);
+FLUSH TABLES;
+SELECT COUNT(*) FROM uncounted FORCE INDEX (uncounted_v_idx) WHERE v = 2;
 INSERT INTO parent VALUES (1);
 INSERT INTO child VALUES (1, 1, 1);
 INSERT INTO healthy VALUES (1, 1), (2, 2), (3, 3);
@@ -259,6 +265,7 @@ SQL
         expect "unused candidates list the foreign key's own index, which InnoDB reads uncounted" "$unused" "child	child_fk" yes
         expect "unused candidates skip an index a query read" "$unused" "healthy_v_idx" no
         expect "unused candidates skip another database" "$unused" "other_v_idx" no
+        expect "unused candidates skip a table setup_objects leaves uncounted" "$unused" "uncounted_v_idx" no
     fi
     local drop_fk_index
     drop_fk_index="$(my "$DATABASE" -e 'ALTER TABLE child DROP INDEX child_fk' 2>&1)"
@@ -278,7 +285,7 @@ SQL
 
     local keys
     keys="$(my "$DATABASE" -e "$(query_of "$source" foreignKeyQuery)")"
-    expect "foreign key rows name the table, key and column" "$keys" "child	child_fk	parent_id" yes
+    expect "foreign key rows name both ends" "$keys" "child	child_fk	parent_id	parent	id" yes
 
     local nopk
     nopk="$(my "$DATABASE" -e "$(query_of "$source" missingPrimaryKeyQuery)")"
