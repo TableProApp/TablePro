@@ -38,6 +38,7 @@ pub const OPEN_MENU: &str = "open-menu-symbolic";
 pub const PACKAGE: &str = "package-x-generic-symbolic";
 pub const PAN_DOWN: &str = "pan-down-symbolic";
 pub const PREFERENCES_SYSTEM: &str = "preferences-system-symbolic";
+pub const PREFERENCES_SYSTEM_TIME: &str = "preferences-system-time-symbolic";
 pub const PROCESS_STOP: &str = "process-stop-symbolic";
 pub const SECURITY_HIGH: &str = "security-high-symbolic";
 pub const STARRED: &str = "starred-symbolic";
@@ -116,6 +117,7 @@ pub const ALL: &[&str] = &[
     PACKAGE,
     PAN_DOWN,
     PREFERENCES_SYSTEM,
+    PREFERENCES_SYSTEM_TIME,
     PROCESS_STOP,
     SECURITY_HIGH,
     SIDEBAR_SHOW,

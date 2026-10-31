@@ -2,8 +2,8 @@
 
 use tablepro_core::column::ColumnDefault;
 use tablepro_core::ddl::{
-    BuildDdlError, CollationName, ColumnVisibility, DraftColumn, DraftType, GeneratedStorage, Permission,
-    RefusalReason, TableDefinition, TableDraft, diff_table,
+    BuildDdlError, CollationName, ColumnVisibility, DraftColumn, DraftTableOptions, DraftType, GeneratedStorage,
+    Permission, RefusalReason, TableDefinition, TableDraft, TableOptions, diff_table,
 };
 use tablepro_core::{Connection, WriteKind};
 use tablepro_test_fixtures::{MysqlFlavour, MysqlOptions};
@@ -19,9 +19,16 @@ async fn read(connection: &dyn Connection) -> TableDefinition {
 
 /// Plan the edit against the table as read, run it, and read it again.
 async fn change(connection: &dyn Connection, edit: impl Fn(&mut DraftColumn)) -> (TableDefinition, TableDefinition) {
+    change_table(connection, |draft| draft.columns.iter_mut().for_each(edit)).await
+}
+
+async fn change_table(
+    connection: &dyn Connection,
+    edit: impl FnOnce(&mut TableDraft),
+) -> (TableDefinition, TableDefinition) {
     let before = read(connection).await;
     let mut draft = TableDraft::from_definition(&before);
-    draft.columns.iter_mut().for_each(edit);
+    edit(&mut draft);
     let dialect = connection.dialect();
     let plan = dialect
         .ddl()
@@ -526,4 +533,218 @@ async fn change_primary_key_to_composite_applies() {
     .await;
     assert!(repeated.is_err(), "the key does not hold the line");
     connection.close().await.expect("a close");
+}
+
+fn draft_options(draft: &mut TableDraft) -> &mut DraftTableOptions {
+    draft.options.as_mut().expect("the table's options")
+}
+
+fn pair(definition: &TableDefinition, column: &str) -> (Option<String>, Option<String>) {
+    let attributes = &definition.column(column).expect("the column").attributes;
+    (
+        attributes.character_set.clone(),
+        attributes.collation.as_ref().map(|collation| collation.name.clone()),
+    )
+}
+
+fn named(character_set: &str, collation: &str) -> (Option<String>, Option<String>) {
+    (Some(character_set.to_owned()), Some(collation.to_owned()))
+}
+
+/// A new default leaves every column as it was, and both clauses go
+/// together because a character set alone resets the collation.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn table_default_and_counter_apply_and_read_back() {
+    for flavour in FLAVOURS {
+        let fixture = start(flavour).await;
+        let connection = connect(&fixture, false).await;
+        setup(
+            connection.as_ref(),
+            &[
+                "CREATE TABLE kept (id int AUTO_INCREMENT PRIMARY KEY, code varchar(20)) DEFAULT CHARSET=latin1 \
+                 COLLATE=latin1_swedish_ci",
+                "INSERT INTO kept (code) VALUES ('a'), ('b'), ('c')",
+            ],
+        )
+        .await;
+
+        let (before, after) = change_table(connection.as_ref(), |draft| {
+            let options = draft_options(draft);
+            options.character_set = Some("utf8mb4".to_owned());
+            options.collation = Some("utf8mb4_bin".to_owned());
+            options.next_auto_increment = Some(500);
+        })
+        .await;
+        setup(connection.as_ref(), &["INSERT INTO kept (code) VALUES ('d')"]).await;
+
+        let options = |character_set: &str, collation: &str, next: u64| {
+            Some(TableOptions {
+                character_set: Some(character_set.to_owned()),
+                collation: Some(collation.to_owned()),
+                next_auto_increment: Some(next),
+            })
+        };
+        assert_eq!(before.options, options("latin1", "latin1_swedish_ci", 4), "{flavour:?}");
+        assert_eq!(after.options, options("utf8mb4", "utf8mb4_bin", 500), "{flavour:?}");
+        assert_eq!(
+            pair(&after, "code"),
+            named("latin1", "latin1_swedish_ci"),
+            "{flavour:?}"
+        );
+        assert_eq!(
+            text(&scalar(connection.as_ref(), "SELECT id FROM kept WHERE code = 'd'").await),
+            "500",
+            "{flavour:?}"
+        );
+        connection.close().await.expect("a close");
+    }
+}
+
+/// A foreign key or an index on a column the convert widens refuses it,
+/// so both are dropped first. A column added in the same save takes the
+/// convert's pair, and one the user gave a pair keeps it.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn convert_runs_after_the_drops_and_before_the_added_columns() {
+    for flavour in FLAVOURS {
+        let fixture = start(flavour).await;
+        let connection = connect(&fixture, false).await;
+        setup(
+            connection.as_ref(),
+            &[
+                "CREATE TABLE parent (code varchar(20) PRIMARY KEY) DEFAULT CHARSET=latin1",
+                "CREATE TABLE kept (id int PRIMARY KEY, code varchar(20), note varchar(1000), label varchar(20) \
+                 CHARACTER SET ascii, KEY by_note (note), CONSTRAINT kept_parent FOREIGN KEY (code) REFERENCES \
+                 parent (code)) DEFAULT CHARSET=latin1",
+                "INSERT INTO parent VALUES ('\u{e9}')",
+                "INSERT INTO kept VALUES (1, '\u{e9}', 'x', 'y')",
+            ],
+        )
+        .await;
+
+        let (_, after) = change_table(connection.as_ref(), |draft| {
+            let options = draft_options(draft);
+            options.character_set = Some("utf8mb4".to_owned());
+            options.collation = Some("utf8mb4_bin".to_owned());
+            options.converts_columns = true;
+            draft.foreign_keys.clear();
+            draft.indexes.retain(|index| index.name != "by_note");
+            draft
+                .columns
+                .push(DraftColumn::new("fresh", DraftType::Typed("varchar(20)".to_owned())));
+            let mut picked = DraftColumn::new("picked", DraftType::Typed("varchar(20)".to_owned()));
+            picked.character_set = Some("latin1".to_owned());
+            picked.collation = Some("latin1_bin".to_owned());
+            draft.columns.push(picked);
+        })
+        .await;
+
+        let collation = after.options.as_ref().and_then(|options| options.collation.as_deref());
+        assert_eq!(collation, Some("utf8mb4_bin"), "{flavour:?}");
+        assert_eq!(pair(&after, "code"), named("utf8mb4", "utf8mb4_bin"), "{flavour:?}");
+        assert_eq!(pair(&after, "label"), named("utf8mb4", "utf8mb4_bin"), "{flavour:?}");
+        assert_eq!(pair(&after, "fresh"), named("utf8mb4", "utf8mb4_bin"), "{flavour:?}");
+        assert_eq!(pair(&after, "picked"), named("latin1", "latin1_bin"), "{flavour:?}");
+        assert_eq!(
+            text(&scalar(connection.as_ref(), "SELECT HEX(code) FROM kept").await),
+            "C3A9",
+            "{flavour:?}"
+        );
+        connection.close().await.expect("a close");
+    }
+}
+
+/// A counter set in a statement before the MODIFY that turns numbering
+/// on is lost, so it goes in the same ALTER.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn counter_survives_turning_numbering_on() {
+    for flavour in FLAVOURS {
+        let fixture = start(flavour).await;
+        let connection = connect(&fixture, false).await;
+        setup(
+            connection.as_ref(),
+            &[
+                "CREATE TABLE kept (id int PRIMARY KEY, code varchar(20))",
+                "INSERT INTO kept VALUES (1, 'a'), (2, 'b'), (3, 'c')",
+            ],
+        )
+        .await;
+
+        let (before, after) = change_table(connection.as_ref(), |draft| {
+            for column in &mut draft.columns {
+                if column.name == "id" {
+                    column.auto_increment = true;
+                }
+            }
+            draft_options(draft).next_auto_increment = Some(500);
+        })
+        .await;
+        setup(connection.as_ref(), &["INSERT INTO kept (code) VALUES ('d')"]).await;
+
+        let next = |definition: &TableDefinition| {
+            definition
+                .options
+                .as_ref()
+                .and_then(|options| options.next_auto_increment)
+        };
+        assert_eq!(next(&before), None, "{flavour:?}");
+        assert_eq!(next(&after), Some(500), "{flavour:?}");
+        assert_eq!(
+            text(&scalar(connection.as_ref(), "SELECT id FROM kept WHERE code = 'd'").await),
+            "500",
+            "{flavour:?}"
+        );
+        connection.close().await.expect("a close");
+    }
+}
+
+/// A standard or spaced spelling of a text type is still text, so its
+/// character set is restated, and a TIMESTAMP's ON UPDATE and a
+/// CURRENT_TIMESTAMP default take the precision of the new type, which
+/// MySQL requires.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn a_retyped_column_keeps_its_character_set_and_on_update() {
+    for flavour in FLAVOURS {
+        let fixture = start(flavour).await;
+        let connection = connect(&fixture, false).await;
+        setup(
+            connection.as_ref(),
+            &[
+                "CREATE TABLE kept (id int PRIMARY KEY, code varchar(20) CHARACTER SET latin1 COLLATE latin1_bin, \
+               spaced varchar(20) CHARACTER SET latin1 COLLATE latin1_bin, stamp timestamp NULL DEFAULT NULL ON \
+               UPDATE CURRENT_TIMESTAMP, made datetime NULL DEFAULT CURRENT_TIMESTAMP)",
+            ],
+        )
+        .await;
+
+        let (_, after) = change(connection.as_ref(), |column| {
+            let retyped = match column.name.as_str() {
+                "code" => "character varying(64)",
+                "spaced" => "VARCHAR (64)",
+                "stamp" => "timestamp(6)",
+                "made" => "datetime(6)",
+                _ => return,
+            };
+            column.column_type = DraftType::Typed(retyped.to_owned());
+        })
+        .await;
+
+        assert_eq!(pair(&after, "code"), named("latin1", "latin1_bin"), "{flavour:?}");
+        assert_eq!(pair(&after, "spaced"), named("latin1", "latin1_bin"), "{flavour:?}");
+        assert_eq!(type_of(&after, "code"), "varchar(64)", "{flavour:?}");
+        let on_update = after
+            .column("stamp")
+            .and_then(|column| column.attributes.on_update.as_ref())
+            .map(|expression| expression.as_sql().to_ascii_lowercase());
+        assert_eq!(on_update.as_deref(), Some("current_timestamp(6)"), "{flavour:?}");
+        let default = match after.column("made").map(|column| &column.info.default) {
+            Some(ColumnDefault::Expression(expression)) => Some(expression.as_sql().to_ascii_lowercase()),
+            _ => None,
+        };
+        assert_eq!(default.as_deref(), Some("current_timestamp(6)"), "{flavour:?}");
+        connection.close().await.expect("a close");
+    }
 }

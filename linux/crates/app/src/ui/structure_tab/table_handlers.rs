@@ -12,6 +12,15 @@ impl StructureModel {
                 self.table.name = text;
                 self.recompute_dirty_state(fx);
             }
+            TableInput::CharacterSetPicked(name) => self.pick_table_character_set(name, fx),
+            TableInput::CollationPicked(name) => self.edit_table_options(fx, |options| options.collation = Some(name)),
+            TableInput::ConvertColumnsToggled(converts) => {
+                self.edit_table_options(fx, |options| options.converts_columns = converts);
+            }
+            TableInput::NextAutoIncrementEdited(text) => {
+                self.next_auto_increment.text = text;
+                self.recompute_dirty_state(fx);
+            }
             TableInput::DropTableRequested => {
                 if self.read_only {
                     tracing::error!("Drop reached a structure tab on a read-only connection");

@@ -49,6 +49,7 @@ mod tests {
             RowFormat::Sql(InsertTarget {
                 table: tablepro_core::meta::TableRef::unqualified("t"),
                 generated: Arc::from([]),
+                numbered: Arc::from([]),
                 dialect: Arc::new(FakeDialect),
             }),
         ];

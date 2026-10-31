@@ -18,10 +18,11 @@ final class StructureRowProvider {
     ]
 
     private let changeManager: StructureChangeManager
-    private let tab: StructureTab
+    private let tab: StructureSection
     private let databaseType: DatabaseType
     private let additionalFields: Set<StructureColumnField>
     private let serverSupport: StructureServerSupport
+    private let picksCharacterSets: Bool
     let orderedColumnFields: [StructureColumnField]
     private let filterText: String?
     private let sortDescriptor: StructureSortDescriptor?
@@ -41,13 +42,13 @@ final class StructureRowProvider {
         case .columns:
             return orderedColumnFields.map { $0.displayName }
         case .indexes:
-            return [
+            let headings = [
                 String(localized: "Name"),
                 String(localized: "Columns"),
                 String(localized: "Type"),
-                String(localized: "Unique"),
-                String(localized: "Condition")
+                String(localized: "Unique")
             ]
+            return Self.offersIndexCondition(databaseType) ? headings + [String(localized: "Condition")] : headings
         case .foreignKeys:
             return [
                 String(localized: "Name"),
@@ -64,8 +65,6 @@ final class StructureRowProvider {
                 String(localized: "Expression"),
                 String(localized: "Columns")
             ]
-        case .ddl, .parts, .triggers:
-            return []
         }
     }
 
@@ -81,11 +80,26 @@ final class StructureRowProvider {
         switch tab {
         case .foreignKeys: ForeignKeyReferenceMenus.rowDependentColumns
         case .indexes: [Self.indexTypeColumn]
-        case .columns, .checkConstraints, .ddl, .parts, .triggers: []
+        case .columns:
+            // A collation list follows the row's character set, and both cells close on a non-text type.
+            picksCharacterSets
+                ? Set(orderedColumnFields.indices.filter { ColumnCharacterSetMenus.isCharacterSetField(orderedColumnFields[$0]) })
+                : []
+        case .checkConstraints: []
         }
     }
 
     static let indexTypeColumn = 2
+    static let indexUniqueColumn = 3
+
+    // Yes-or-no fields, drawn as checkboxes in the grid and the inspector.
+    var booleanColumns: Set<Int> {
+        switch tab {
+        case .columns: Set(Self.booleanFields.compactMap { orderedColumnFields.firstIndex(of: $0) })
+        case .indexes: [Self.indexUniqueColumn]
+        case .foreignKeys, .checkConstraints: []
+        }
+    }
 
     static func indexMenuOptions(
         columnIndex: Int,
@@ -121,11 +135,10 @@ final class StructureRowProvider {
                 result[index] = ColumnDefaultVocabulary.options(for: databaseType)
             }
             return result
-        case .checkConstraints, .ddl, .parts, .triggers:
+        case .checkConstraints:
             return [:]
         }
     }
-
 
     static let booleanOptions = ["YES", "NO"]
 
@@ -138,7 +151,7 @@ final class StructureRowProvider {
         case .columns:
             if let i = orderedColumnFields.firstIndex(of: .type) { return [i] }
             return []
-        case .indexes, .foreignKeys, .checkConstraints, .ddl, .parts, .triggers:
+        case .indexes, .foreignKeys, .checkConstraints:
             return []
         }
     }
@@ -149,18 +162,21 @@ final class StructureRowProvider {
 
     init(
         changeManager: StructureChangeManager,
-        tab: StructureTab,
+        tab: StructureSection,
         databaseType: DatabaseType = .mysql,
         additionalFields: Set<StructureColumnField> = [],
         serverSupport: StructureServerSupport,
         filterText: String? = nil,
-        sortDescriptor: StructureSortDescriptor? = nil
+        sortDescriptor: StructureSortDescriptor? = nil,
+        picksCharacterSets: Bool = false,
+        keepingSourceIndices: Set<Int> = []
     ) {
         self.changeManager = changeManager
         self.tab = tab
         self.databaseType = databaseType
         self.additionalFields = additionalFields
         self.serverSupport = serverSupport
+        self.picksCharacterSets = picksCharacterSets
         self.filterText = filterText
         self.sortDescriptor = sortDescriptor
         self.orderedColumnFields = Self.orderedFields(
@@ -170,10 +186,10 @@ final class StructureRowProvider {
         )
 
         let allRows = Self.buildAllRows(
-            tab: tab, changeManager: changeManager, orderedColumnFields: self.orderedColumnFields
+            tab: tab, changeManager: changeManager, orderedColumnFields: self.orderedColumnFields, databaseType: databaseType
         )
         self.cachedRows = Self.applyFilterAndSort(
-            allRows, filterText: filterText, sortDescriptor: sortDescriptor
+            allRows, filterText: filterText, sortDescriptor: sortDescriptor, keeping: keepingSourceIndices
         )
     }
 
@@ -225,7 +241,7 @@ final class StructureRowProvider {
             guard sourceIndex < changeManager.workingIndexes.count else { return nil }
             let id = changeManager.workingIndexes[sourceIndex].id
             guard let original = changeManager.currentIndexes.first(where: { $0.id == id }) else { return nil }
-            return Self.row(for: original)
+            return Self.row(for: original, offersCondition: Self.offersIndexCondition(databaseType))
         case .foreignKeys:
             guard sourceIndex < changeManager.workingForeignKeys.count else { return nil }
             let id = changeManager.workingForeignKeys[sourceIndex].id
@@ -238,8 +254,6 @@ final class StructureRowProvider {
                 return nil
             }
             return Self.row(for: original)
-        case .ddl, .parts, .triggers:
-            return nil
         }
     }
 
@@ -251,9 +265,10 @@ final class StructureRowProvider {
     }
 
     private static func buildAllRows(
-        tab: StructureTab,
+        tab: StructureSection,
         changeManager: StructureChangeManager,
-        orderedColumnFields: [StructureColumnField]
+        orderedColumnFields: [StructureColumnField],
+        databaseType: DatabaseType
     ) -> [IndexedRow] {
         switch tab {
         case .columns:
@@ -262,7 +277,7 @@ final class StructureRowProvider {
             }
         case .indexes:
             return changeManager.workingIndexes.enumerated().map { index, indexInfo in
-                IndexedRow(sourceIndex: index, row: row(for: indexInfo))
+                IndexedRow(sourceIndex: index, row: row(for: indexInfo, offersCondition: offersIndexCondition(databaseType)))
             }
         case .foreignKeys:
             return changeManager.workingForeignKeys.enumerated().map { index, fk in
@@ -272,8 +287,6 @@ final class StructureRowProvider {
             return changeManager.workingCheckConstraints.enumerated().map { index, constraint in
                 IndexedRow(sourceIndex: index, row: row(for: constraint))
             }
-        case .ddl, .parts, .triggers:
-            return []
         }
     }
 
@@ -308,20 +321,25 @@ final class StructureRowProvider {
         }
     }
 
-    private static func row(for index: EditableIndexDefinition) -> [String?] {
+    // MySQL and MariaDB have no partial indexes and their DDL drops a WHERE clause, so none is offered.
+    static func offersIndexCondition(_ type: DatabaseType) -> Bool {
+        SQLTypeFamily.of(type) != .mysql
+    }
+
+    private static func row(for index: EditableIndexDefinition, offersCondition: Bool) -> [String?] {
         let columnsStr = index.columns.map { col in
             if let prefix = index.columnPrefixes[col] {
                 return "\(col)(\(prefix))"
             }
             return col
         }.joined(separator: ", ")
-        return [
+        let values: [String?] = [
             index.name,
             columnsStr,
             index.type.rawValue,
-            index.isUnique ? "YES" : "NO",
-            index.whereClause ?? ""
+            index.isUnique ? "YES" : "NO"
         ]
+        return offersCondition ? values + [index.whereClause ?? ""] : values
     }
 
     private static func row(for fk: EditableForeignKeyDefinition) -> [String?] {
@@ -336,15 +354,18 @@ final class StructureRowProvider {
         ]
     }
 
+    // `keeping` stays listed whatever the filter says: a definition being edited never vanishes under the editor.
     private static func applyFilterAndSort(
         _ rows: [IndexedRow],
         filterText: String?,
-        sortDescriptor: StructureSortDescriptor?
+        sortDescriptor: StructureSortDescriptor?,
+        keeping: Set<Int> = []
     ) -> [IndexedRow] {
         var result = rows
 
         if let filterText, !filterText.isEmpty {
             result = result.filter { indexed in
+                if keeping.contains(indexed.sourceIndex) { return true }
                 guard let name = indexed.row.first ?? nil else { return false }
                 return name.localizedCaseInsensitiveContains(filterText)
             }
@@ -364,27 +385,16 @@ final class StructureRowProvider {
 }
 
 extension StructureRowProvider {
-    // A row is named by its index in the working list, so a search, a sort or the grid's value filter
-    // never changes which definition an edit lands on.
-    static func rowID(forSourceIndex index: Int) -> RowID {
-        .existing(index)
-    }
-
-    static func sourceIndex(of rowID: RowID) -> Int? {
-        guard case .existing(let index) = rowID, index >= 0 else { return nil }
-        return index
-    }
-
     func displayRow(ofSourceIndex sourceIndex: Int) -> Int? {
         cachedRows.firstIndex { $0.sourceIndex == sourceIndex }
     }
 
-    func asTableRows() -> TableRows {
+    func asTableRows(rowID: (Int) -> RowID) -> TableRows {
         var rows = ContiguousArray<Row>()
         rows.reserveCapacity(cachedRows.count)
         for indexed in cachedRows {
             rows.append(Row(
-                id: Self.rowID(forSourceIndex: indexed.sourceIndex),
+                id: rowID(indexed.sourceIndex),
                 values: ContiguousArray(indexed.row.map(PluginCellValue.fromOptional))
             ))
         }

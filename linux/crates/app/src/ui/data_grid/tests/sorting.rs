@@ -161,13 +161,17 @@ fn text_column_sorter_is_string_sorter_with_unicode_collation() {
         .expect("a text column sorts in steps");
 
     let collating = sorter
-        .item(sorter.n_items() - 1)
+        .item(1)
         .and_downcast::<gtk::StringSorter>()
-        .expect("the last step collates the text");
+        .expect("the second step collates the text");
     assert_eq!(collating.collation(), gtk::Collation::Unicode);
     assert!(
-        sorter.item(0).and_downcast::<gtk::CustomSorter>().is_some(),
-        "NULL is not placed first"
+        sorter.item(0).and_downcast::<gtk::NumericSorter>().is_some(),
+        "NULL is not placed first by a key"
+    );
+    assert!(
+        sorter.item(2).and_downcast::<gtk::CustomSorter>().is_some(),
+        "numbers are not ordered among themselves"
     );
 }
 
@@ -323,7 +327,7 @@ fn no_header_sorts_a_table_in_the_engines_order() {
         .map(|column| column.sorter().is_some())
         .collect();
 
-    assert_eq!(sorters, [false, false, false]);
+    assert_eq!(sorters, [false; 4]);
 }
 
 /// D4: a field no sort can name, as a document's nested field, sorts by

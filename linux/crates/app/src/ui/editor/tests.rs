@@ -2618,3 +2618,349 @@ fn a_command_editor_has_none_of_the_sql_tools() {
         "the document's words and the engine's own snippets complete"
     );
 }
+
+/// An editor on a connection to `shop`, whose catalog lists `schemas`
+/// with the first as the default.
+fn scoped_editor(dialect: Arc<dyn tablepro_core::dialect::SqlDialect>, schemas: &[&str]) -> Harness {
+    scoped_editor_with(dialect, schemas, answering(), |_, _| {})
+}
+
+fn scoped_editor_with(
+    dialect: Arc<dyn tablepro_core::dialect::SqlDialect>,
+    schemas: &[&str],
+    runs: Replies<FakeRun>,
+    setup: impl FnOnce(&mut ConnectionScript, &mut tablepro_session::connect::ConnectRequest),
+) -> Harness {
+    crate::register_test_resources();
+    let runtime = crate::test_support::test_runtime();
+    let fake = Arc::new(FakeEditorSession::new(runs));
+    let mut request = FakeConnector::network_request("db.example", 5432).expect("a request");
+    if let tablepro_session::connect::RequestTarget::Network { database, .. } = &mut request.target {
+        *database = Some("shop".to_owned());
+    }
+    let mut script = ConnectionScript {
+        dialect,
+        ..ConnectionScript::default()
+    };
+    setup(&mut script, &mut request);
+    let editor_session: Arc<dyn EditorSession> = fake.clone();
+    script.open_editor_session.always(FakeReply::ok(editor_session));
+    let (pending, _) = FakeConnector::pending_session(request, script);
+    let session = Session::start(
+        pending,
+        tablepro_session::SessionDeps {
+            connector: Arc::new(FakeConnector::new([])),
+            credentials: Arc::new(FakeCredentialSource::new()),
+            deadlines: Arc::new(DefaultDeadlines::new(tablepro_core::LivenessPolicy::DESKTOP)),
+            tasks: runtime.tasks(),
+            prompter: None,
+        },
+    );
+    let listed = schemas
+        .iter()
+        .enumerate()
+        .map(|(index, name)| tablepro_core::meta::SchemaInfo {
+            name: (*name).to_owned(),
+            is_default: index == 0,
+            is_system: false,
+        })
+        .collect();
+    session.catalog().commit(listed, Vec::new());
+    let active = ActiveSession::new();
+    active.replace(session);
+    let settings = MemorySettings::new();
+    let editor = SqlEditor::new(SqlEditorInit {
+        initial_query: Some("SELECT 1".to_owned()),
+        settings: settings.get().clone(),
+        history: None,
+        tasks: runtime.tasks(),
+        session: active.clone(),
+        hold: Rc::new(tablepro_session::runtime::CountingHold::new()),
+        close_timeout: Duration::from_secs(5),
+        snippets: crate::test_support::builtin_snippets_only(),
+    });
+    Harness {
+        editor,
+        fake,
+        history: None,
+        active,
+        settings,
+        runtime,
+    }
+}
+
+fn postgres_dialect() -> Arc<dyn tablepro_core::dialect::SqlDialect> {
+    Arc::new(tablepro_driver_postgres::PgDialect::new(
+        &tablepro_core::ServerInfo::new("PostgreSQL", "18.0", 18, 0, 0),
+    ))
+}
+
+fn scope_shown(harness: &Harness) -> Option<String> {
+    let imp = harness.editor.imp();
+    imp.scope_box.is_visible().then(|| imp.scope_label.label().to_string())
+}
+
+#[gtk4::test]
+fn the_bar_names_the_database_and_the_schema_names_resolve_in() {
+    let harness = scoped_editor(postgres_dialect(), &["public", "audit"]);
+
+    wait_until(WAIT, || scope_shown(&harness).as_deref() == Some("shop.public"))
+        .unwrap_or_else(|_| panic!("the bar says {:?}", scope_shown(&harness)));
+    assert_eq!(
+        harness.editor.imp().scope_box.tooltip_text().as_deref(),
+        Some("shop, schema public")
+    );
+}
+
+/// Where the server's databases are the catalog's schemas, the default
+/// schema is the database and adds nothing.
+#[gtk4::test]
+fn the_bar_names_a_database_that_is_its_own_schema_once() {
+    let harness = scoped_editor(Arc::new(tablepro_driver_mongodb::MongoDialect), &["shop", "analytics"]);
+
+    crate::test_support::drain_main_context();
+    assert_eq!(scope_shown(&harness).as_deref(), Some("shop"));
+}
+
+#[gtk4::test]
+fn an_engine_of_one_database_names_none() {
+    let harness = scoped_editor(Arc::new(tablepro_test_support::FakeDialect), &["main"]);
+
+    crate::test_support::drain_main_context();
+    assert_eq!(scope_shown(&harness), None);
+}
+
+/// A `USE` in the script moves the session, and the bar goes with it.
+#[gtk4::test]
+fn the_bar_follows_a_use_the_tab_ran() {
+    let harness = scoped_editor(postgres_dialect(), &["public"]);
+    wait_until(WAIT, || scope_shown(&harness).as_deref() == Some("shop.public")).expect("the scope");
+    harness.fake.set_database(Some("analytics"));
+
+    run_and_wait(&harness);
+
+    assert_eq!(scope_shown(&harness).as_deref(), Some("analytics"));
+}
+
+fn mysql_dialect() -> Arc<dyn tablepro_core::dialect::SqlDialect> {
+    Arc::new(tablepro_driver_mysql::MySqlDialect::new(
+        tablepro_driver_mysql::MySqlFlavour::MySql,
+        &tablepro_core::ServerInfo::new("MySQL", "8.4.0", 8, 4, 0),
+    ))
+}
+
+/// A MySQL connection to `shop` on a server that also holds `analytics`.
+fn databases_editor(runs: Replies<FakeRun>, read_only: bool) -> Harness {
+    let database = |name: &str, is_default: bool, is_system: bool| tablepro_core::meta::SchemaInfo {
+        name: name.to_owned(),
+        is_default,
+        is_system,
+    };
+    let harness = scoped_editor_with(mysql_dialect(), &["shop"], runs, |script, _| {
+        script.list_databases.always(FakeReply::ok(vec![
+            database("analytics", false, false),
+            database("shop", true, false),
+            database("mysql", false, true),
+        ]));
+        script.read_only = read_only;
+    });
+    let button = harness.editor.imp().scope_button.get();
+    wait_until(WAIT, || button.is_visible()).expect("the database menu");
+    harness
+}
+
+fn pick_database(harness: &Harness, name: &str) {
+    WidgetExt::activate_action(&harness.editor, "editor.database", Some(&name.to_variant())).expect("editor.database");
+}
+
+/// Picking a database moves the tab: the bar names it at once, and the
+/// next run moves the session there before its statements.
+#[gtk4::test]
+fn picking_a_database_moves_the_tab_and_its_next_run() {
+    let harness = databases_editor(answering(), false);
+    let changed = SignalLog::connect(&harness.editor, "database-changed", |_| ());
+
+    pick_database(&harness, "analytics");
+    assert_eq!(harness.editor.imp().scope_button_label.label(), "analytics");
+    assert_eq!(changed.count(), 1, "the workspace keeps where the tab is");
+
+    run_and_wait(&harness);
+    assert_eq!(harness.fake.moves(), ["analytics"]);
+    assert_eq!(
+        sent(&harness.fake),
+        ["SELECT 1"],
+        "the move is the session's, not a statement"
+    );
+    assert_eq!(harness.editor.tab_database().as_deref(), Some("analytics"));
+
+    pick_database(&harness, "shop");
+    run_and_wait(&harness);
+    assert_eq!(
+        harness.fake.moves(),
+        ["analytics", "shop"],
+        "back to the connection's own"
+    );
+    assert_eq!(harness.editor.tab_database(), None);
+}
+
+/// A connection opened without a database name is in the one the server
+/// calls its own, which the bar names and the menu checks.
+#[gtk4::test]
+fn a_connection_without_a_database_name_names_the_servers() {
+    let database = |name: &str, is_default: bool| tablepro_core::meta::SchemaInfo {
+        name: name.to_owned(),
+        is_default,
+        is_system: false,
+    };
+    let harness = scoped_editor_with(mysql_dialect(), &[], answering(), |script, request| {
+        if let tablepro_session::connect::RequestTarget::Network { database, .. } = &mut request.target {
+            *database = None;
+        }
+        script
+            .list_databases
+            .always(FakeReply::ok(vec![database("analytics", false), database("app", true)]));
+    });
+    let button = harness.editor.imp().scope_button.get();
+    wait_until(WAIT, || button.is_visible()).expect("the database menu");
+
+    assert_eq!(harness.editor.imp().scope_button_label.label(), "app");
+    pick_database(&harness, "app");
+    assert_eq!(harness.editor.tab_database(), None, "the connection's own");
+}
+
+/// A connection in no database yet still offers the server's.
+#[gtk4::test]
+fn a_connection_in_no_database_offers_one() {
+    let database = |name: &str| tablepro_core::meta::SchemaInfo {
+        name: name.to_owned(),
+        is_default: false,
+        is_system: false,
+    };
+    let harness = scoped_editor_with(mysql_dialect(), &[], answering(), |script, request| {
+        if let tablepro_session::connect::RequestTarget::Network { database, .. } = &mut request.target {
+            *database = None;
+        }
+        script.list_databases.always(FakeReply::ok(vec![database("analytics")]));
+    });
+    let button = harness.editor.imp().scope_button.get();
+    wait_until(WAIT, || button.is_visible()).expect("the database menu");
+
+    assert_eq!(harness.editor.imp().scope_button_label.label(), "No Database");
+    pick_database(&harness, "analytics");
+    assert_eq!(harness.editor.imp().scope_button_label.label(), "analytics");
+}
+
+/// A tab in the database the server names as the connection's own once
+/// it lists them again is no longer a moved one, for its title and its
+/// record.
+#[gtk4::test]
+fn a_tab_in_the_database_the_server_then_calls_its_own_is_not_moved() {
+    let database = |name: &str, is_default: bool| tablepro_core::meta::SchemaInfo {
+        name: name.to_owned(),
+        is_default,
+        is_system: false,
+    };
+    let harness = scoped_editor_with(mysql_dialect(), &[], answering(), |script, request| {
+        if let tablepro_session::connect::RequestTarget::Network { database, .. } = &mut request.target {
+            *database = None;
+        }
+        script
+            .list_databases
+            .once(FakeReply::ok(vec![
+                database("analytics", false),
+                database("app", false),
+            ]))
+            .always(FakeReply::ok(vec![database("analytics", false), database("app", true)]));
+    });
+    let button = harness.editor.imp().scope_button.get();
+    wait_until(WAIT, || button.is_visible()).expect("the database menu");
+    let changed = SignalLog::connect(&harness.editor, "database-changed", |_| ());
+    pick_database(&harness, "app");
+    assert_eq!(harness.editor.tab_database().as_deref(), Some("app"));
+
+    harness.editor.buffer().set_text("CREATE DATABASE scratch");
+    run_and_wait(&harness);
+
+    wait_until(WAIT, || changed.count() == 2).expect("the workspace to hear the tab is in its own database");
+    assert_eq!(harness.editor.tab_database(), None);
+}
+
+/// All Rows runs the statement again on the connection, in another
+/// database than a moved tab's, so only the rows shown are offered.
+#[gtk4::test]
+fn a_moved_tab_exports_the_rows_it_shows_only() {
+    let mut runs = Replies::default();
+    runs.always(result_set(3, Some(40), Truncation::ReadPastLimit));
+    let harness = databases_editor(runs, false);
+    let offers = SignalLog::connect(&harness.editor, "export-results", |values| {
+        values[1]
+            .get::<glib::BoxedAnyObject>()
+            .expect("an offer")
+            .borrow::<ExportOffer>()
+            .clone()
+    });
+    pick_database(&harness, "analytics");
+    run_and_wait(&harness);
+
+    shown_banner(&harness).emit_by_name::<()>("button-clicked", &[]);
+
+    let offers = offers.take();
+    let [offer] = offers.as_slice() else {
+        panic!("one offer, not {}", offers.len());
+    };
+    assert!(matches!(offer.origin, ExportOrigin::Shown { .. }), "{:?}", offer.origin);
+}
+
+/// The assistant describes the database the tab in front is in.
+#[gtk4::test]
+fn the_assistant_reads_the_tabs_database() {
+    let harness = databases_editor(answering(), false);
+    assert_eq!(harness.editor.catalog_home(), CatalogHome::Connection);
+
+    pick_database(&harness, "analytics");
+
+    assert_eq!(
+        harness.editor.catalog_home(),
+        CatalogHome::Schema("analytics".to_owned())
+    );
+}
+
+/// A database the server will not move to leaves the tab where its
+/// session is, and the run says why.
+#[gtk4::test]
+fn a_refused_move_leaves_the_tab_where_its_session_is() {
+    let harness = databases_editor(answering(), false);
+    harness
+        .fake
+        .refuse_moves(DriverError::server("Access denied to database 'analytics'"));
+
+    pick_database(&harness, "analytics");
+    run_and_wait(&harness);
+
+    assert!(sent(&harness.fake).is_empty(), "the script ran in the wrong database");
+    assert_eq!(harness.editor.imp().scope_button_label.label(), "shop");
+    let log = harness.editor.imp().log.borrow();
+    let said = log.as_ref().and_then(|log| log.first_failure()).unwrap_or_default();
+    assert!(said.contains("analytics") && said.contains("Access denied"), "{said}");
+}
+
+/// A `USE` is no write, so a read-only connection moves too.
+#[gtk4::test]
+fn a_read_only_connection_offers_its_databases() {
+    let harness = databases_editor(answering(), true);
+
+    pick_database(&harness, "analytics");
+    run_and_wait(&harness);
+
+    assert_eq!(harness.fake.moves(), ["analytics"]);
+}
+
+/// A tab never leaves its transaction behind in another database.
+#[gtk4::test]
+fn a_tab_holding_a_transaction_stays_where_it_is() {
+    let harness = databases_editor(transaction_runs(), false);
+    run_and_wait(&harness);
+    let action = imp_action(&harness.editor, "database").expect("the action");
+
+    assert!(!action.is_enabled(), "the tab could leave its transaction");
+}

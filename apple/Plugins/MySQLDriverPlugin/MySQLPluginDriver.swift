@@ -63,9 +63,22 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         set { sessionLock.withLock { _schemaNamesAreCaseSensitive = newValue } }
     }
 
+    /// Which `information_schema` columns this server has, keyed `TABLE.COLUMN`. Kept and cleared like
+    /// `_schemaNamesAreCaseSensitive`.
+    private var _catalogColumnPresence: [String: Bool] = [:]
+
+    internal func cachedCatalogColumnPresence(_ key: String) -> Bool? {
+        sessionLock.withLock { _catalogColumnPresence[key] }
+    }
+
+    internal func cacheCatalogColumnPresence(_ key: String, _ present: Bool) {
+        sessionLock.withLock { _catalogColumnPresence[key] = present }
+    }
+
     /// Guards `_flavor`, `footprint`, `appliedQueryTimeoutSeconds`, `isReleased`, `sessionLoss`,
-    /// `_schemaNamesAreCaseSensitive` and `lastActivity`. The driver is `@unchecked Sendable` and the idle timer runs on its own task, so
-    /// the release decision and a query arriving would otherwise read and write them at the same time.
+    /// `_schemaNamesAreCaseSensitive`, `_catalogColumnPresence` and `lastActivity`. The driver is
+    /// `@unchecked Sendable` and the idle timer runs on its own task, so the release decision and a
+    /// query arriving would otherwise read and write them at the same time.
     /// Nothing calls into the connection while holding it: the connection asks the driver back under
     /// this lock from its deadline queue.
     private let sessionLock = NSLock()
@@ -249,6 +262,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             _serverVersion = nil
             _flavor = initialFlavor
             _schemaNamesAreCaseSensitive = nil
+            _catalogColumnPresence = [:]
             isReleased = false
             isDisconnected = true
             footprint.reset()
@@ -1160,7 +1174,11 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             return DatabendCatalog.modifyColumnSQL(table: table, oldColumn: oldColumn, newColumn: newColumn)
         }
         let tableName = quoteIdentifier(table)
-        let definition = mysqlColumnDefinitionSQL(newColumn, isMariaDB: flavor.isMariaDB)
+        let isMariaDB = flavor.isMariaDB
+        let check = isMariaDB
+            ? MySQLColumnChecks.restated(newColumn.columnCheck, renaming: oldColumn.name, to: newColumn.name)
+            : nil
+        let definition = mysqlColumnDefinitionSQL(newColumn, isMariaDB: isMariaDB, columnCheck: check)
         if oldColumn.name != newColumn.name {
             return literalSpelling.respelled(
                 "ALTER TABLE \(tableName) CHANGE COLUMN \(quoteIdentifier(oldColumn.name)) \(definition)"
@@ -1253,7 +1271,10 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         /// replaces the whole definition, and the attribute list does not carry
         /// `GENERATED ALWAYS AS`, so moving a generated column with it dropped the expression and
         /// left a plain column of stored defaults behind.
-        let definition = mysqlColumnDefinitionSQL(column, isMariaDB: flavor.isMariaDB)
+        let isMariaDB = flavor.isMariaDB
+        let definition = mysqlColumnDefinitionSQL(
+            column, isMariaDB: isMariaDB, columnCheck: isMariaDB ? column.columnCheck : nil
+        )
         return literalSpelling.respelled("ALTER TABLE \(tableName) MODIFY COLUMN \(definition) \(position)")
     }
 

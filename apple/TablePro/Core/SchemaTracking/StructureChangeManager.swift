@@ -16,7 +16,7 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
     @Published private(set) var pendingChanges: [SchemaChangeIdentifier: SchemaChange] = [:]
     private var changeOrder: [SchemaChangeIdentifier] = []
     @Published private(set) var validationErrors: [SchemaChangeIdentifier: String] = [:]
-    var hasChanges: Bool { !pendingChanges.isEmpty }
+    var hasChanges: Bool { !pendingChanges.isEmpty || holdsInvalidAutoIncrementEntry }
     @Published var reloadVersion: Int = 0
 
     // Current state (loaded from database)
@@ -31,7 +31,9 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
     @Published var workingIndexes: [EditableIndexDefinition] = []
     @Published var workingForeignKeys: [EditableForeignKeyDefinition] = []
     @Published var workingCheckConstraints: [EditableCheckConstraintDefinition] = []
-    @Published var workingPrimaryKey: [String] = []
+    // Derived from the columns after every change: the ones that stay and are marked Primary Key, the loaded members in
+    // the loaded key's order, new ones after them in column order. A key nobody changed follows a rename by itself.
+    @Published private(set) var workingPrimaryKey: [String] = []
 
     @Published var tableName: String?
 
@@ -60,6 +62,12 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
 
     private static var tableCommentActionName: String { String(localized: "Edit Comment") }
 
+    @Published private(set) var tableOptions = TableOptionsDraft(original: nil)
+    // Text in Next Auto Increment that is not a counter. It holds Save and counts as unsaved, so it is never dropped quietly.
+    @Published private(set) var invalidAutoIncrementEntry: String?
+
+    private static var tableOptionsActionName: String { String(localized: "Edit Table Options") }
+
     // MARK: - Undo/Redo Support
 
     /// Owned per manager so its actions cannot outlive the editor. Cmd+Z reaches it through
@@ -79,17 +87,40 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
         return manager
     }()
 
-    var canUndo: Bool { !isHeldForSave && (undoManager.canUndo || hasTableCommentRun) }
-    var canRedo: Bool { !isHeldForSave && !hasTableCommentRun && undoManager.canRedo }
+    var canUndo: Bool { !isHeldForSave && (undoManager.canUndo || hasTableCommentRun || typingRun != nil) }
+    var canRedo: Bool { !isHeldForSave && !hasTableCommentRun && typingRun == nil && undoManager.canRedo }
 
-    /// The DDL and Triggers sub-tabs show no grid, so undo there reaches only the comment.
-    var undoesTableCommentNext: Bool {
-        hasTableCommentRun || (undoManager.canUndo && undoManager.undoActionName == Self.tableCommentActionName)
+    var undoMenuItemTitle: String {
+        if hasTableCommentRun { return undoManager.undoMenuTitle(forUndoActionName: Self.tableCommentActionName) }
+        if let typingRun { return undoManager.undoMenuTitle(forUndoActionName: typingRun.actionName) }
+        return undoManager.undoMenuItemTitle
     }
 
-    var redoesTableCommentNext: Bool {
-        !hasTableCommentRun && undoManager.canRedo && undoManager.redoActionName == Self.tableCommentActionName
+    // Typing in one field of one definition: every keystroke is staged, so Save, Refresh and the close prompt see it,
+    // and the whole run undoes as one step. Anything else that registers an undo ends it first.
+    private var typingRun: (key: String, actionName: String)?
+    private var isStagingTyping = false
+
+    func stageTyping(in key: String, actionName: String, _ body: () -> Void) {
+        guard !isHeldForSave else { return }
+        if typingRun?.key != key { endTypingRun() }
+        if typingRun == nil {
+            endTableCommentRun()
+            undoManager.beginUndoGrouping()
+            typingRun = (key, actionName)
+        }
+        isStagingTyping = true
+        defer { isStagingTyping = false }
+        body()
     }
+
+    func endTypingRun() {
+        guard typingRun != nil else { return }
+        typingRun = nil
+        undoManager.endUndoGrouping()
+    }
+
+    var redoMenuItemTitle: String { undoManager.redoMenuItemTitle }
 
     /// Mirrors `DataChangeManager.registerUndo`. The `groupingLevel` check is what lets
     /// `performAsOneUndoStep` nest: inside one, a group is already open and this adds to it rather
@@ -98,6 +129,7 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
     private func registerUndo(_ actionName: String, _ handler: @escaping (StructureChangeManager) -> Void) {
         if !undoManager.isUndoing, !undoManager.isRedoing {
             endTableCommentRun()
+            if !isStagingTyping { endTypingRun() }
         }
         let opensOwnGroup = !undoManager.groupsByEvent && undoManager.groupingLevel == 0
         if opensOwnGroup { undoManager.beginUndoGrouping() }
@@ -112,6 +144,7 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
     func performAsOneUndoStep(_ body: () -> Void) {
         guard !isHeldForSave else { return }
         endTableCommentRun()
+        if !isStagingTyping { endTypingRun() }
         undoManager.beginUndoGrouping()
         defer { undoManager.endUndoGrouping() }
         body()
@@ -126,12 +159,17 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
         foreignKeys: [ForeignKeyInfo],
         checkConstraints: [CheckConstraintInfo] = [],
         primaryKey: [String],
-        tableComment: String? = nil
+        tableComment: String? = nil,
+        tableOptions: TableOptions? = nil,
+        autoIncrementConfirmed: Bool = true
     ) {
         guard !isHeldForSave else { return }
+        endTypingRun()
         self.tableName = tableName
         self.tableComment = ObjectCommentDraft(original: tableComment)
         tableCommentRunStart = nil
+        self.tableOptions = TableOptionsDraft(original: tableOptions, isAutoIncrementConfirmed: autoIncrementConfirmed)
+        invalidAutoIncrementEntry = nil
 
         self.currentColumns = columns.map { EditableColumnDefinition.from($0) }
 
@@ -145,6 +183,7 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
         self.currentForeignKeys = EditableForeignKeyDefinition.grouping(foreignKeys).sorted { $0.name < $1.name }
         self.currentCheckConstraints = checkConstraints.map { EditableCheckConstraintDefinition.from($0) }
         self.currentPrimaryKey = primaryKey
+        keepIdentitiesAcrossReload()
 
         resetWorkingState()
 
@@ -157,6 +196,34 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
         // Increment reloadVersion to trigger DataGridView column width recalculation
         // This ensures columns auto-size based on actual cell content after initial load
         reloadVersion += 1
+    }
+
+    // Every fetch mints fresh ids; a definition that comes back under a name it had keeps its id, so the grid
+    // selection and the inspector survive a refresh or a save.
+    private func keepIdentitiesAcrossReload() {
+        currentColumns = Self.keepingIDs(of: currentColumns, from: workingColumns, \.name, \.id)
+        currentIndexes = Self.keepingIDs(of: currentIndexes, from: workingIndexes, \.name, \.id)
+        currentForeignKeys = Self.keepingIDs(of: currentForeignKeys, from: workingForeignKeys, \.name, \.id)
+        currentCheckConstraints = Self.keepingIDs(of: currentCheckConstraints, from: workingCheckConstraints, \.name, \.id)
+    }
+
+    private static func keepingIDs<Entity>(
+        of loaded: [Entity],
+        from earlier: [Entity],
+        _ name: KeyPath<Entity, String>,
+        _ id: WritableKeyPath<Entity, UUID>
+    ) -> [Entity] {
+        var ids: [String: UUID] = [:]
+        for entity in earlier where !entity[keyPath: name].isEmpty && ids[entity[keyPath: name]] == nil {
+            ids[entity[keyPath: name]] = entity[keyPath: id]
+        }
+        var used = Set<UUID>()
+        return loaded.map { entity in
+            guard let previous = ids[entity[keyPath: name]], used.insert(previous).inserted else { return entity }
+            var kept = entity
+            kept[keyPath: id] = previous
+            return kept
+        }
     }
 
     private func resetWorkingState() {
@@ -302,7 +369,7 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
         let key = operations.identifier(id)
         if let currentIndex = self[keyPath: operations.current].firstIndex(where: { $0.id == id }) {
             let oldEntity = self[keyPath: operations.current][currentIndex]
-            if oldEntity != newEntity {
+            if operations.needsStatement(oldEntity, newEntity) {
                 pendingChanges[key] = operations.modification(oldEntity, newEntity)
                 trackChangeKey(key)
             } else {
@@ -357,7 +424,12 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
         deletionUndo: { SchemaUndoAction.columnDelete(column: $0, at: $1) },
         addActionName: String(localized: "Add Column"),
         editActionName: String(localized: "Edit Column"),
-        deleteActionName: String(localized: "Delete Column")
+        deleteActionName: String(localized: "Delete Column"),
+        needsStatement: { loaded, working in
+            var working = working
+            working.isPrimaryKey = loaded.isPrimaryKey
+            return loaded != working
+        }
     )
 
     private static let indexOperations = SchemaEntityOperations<EditableIndexDefinition>(
@@ -408,37 +480,36 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
 
     // MARK: - Row-Specific Undo Delete
 
-    /// Clear the deletion mark for the entity at `row` in `tab`. Mirrors
-    /// `DataChangeManager.undoRowDeletion(rowID:)`: the global NSUndoManager
-    /// stack is intentionally left alone. The original `applySchemaUndo(...)`
-    /// handler the deletion registered remains on the stack; if global Cmd+Z
-    /// later invokes it, the handler finds `pendingChanges` no longer marks
-    /// this row as deleted and treats the redo as a no-op for this entity. The
-    /// row-specific affordance and the global undo stack are independent
-    /// affordances. The data tab uses the same separation.
-    func undoDelete(for tab: StructureTab, at row: Int) {
+    // The row's own Undo Delete leaves the global stack alone, like the data tab's; an edit made before the
+    // delete is staged again, since the working copy still shows it.
+    func undoDelete(section: StructureSection, id: UUID) {
         guard !isHeldForSave else { return }
-        let key: SchemaChangeIdentifier
-        switch tab {
-        case .columns:
-            guard row < workingColumns.count else { return }
-            key = .column(workingColumns[row].id)
-        case .indexes:
-            guard row < workingIndexes.count else { return }
-            key = .index(workingIndexes[row].id)
-        case .foreignKeys:
-            guard row < workingForeignKeys.count else { return }
-            key = .foreignKey(workingForeignKeys[row].id)
-        case .checkConstraints:
-            guard row < workingCheckConstraints.count else { return }
-            key = .checkConstraint(workingCheckConstraints[row].id)
-        case .ddl, .parts, .triggers:
+        switch section {
+        case .columns: undoDeletion(id: id, using: Self.columnOperations)
+        case .indexes: undoDeletion(id: id, using: Self.indexOperations)
+        case .foreignKeys: undoDeletion(id: id, using: Self.foreignKeyOperations)
+        case .checkConstraints: undoDeletion(id: id, using: Self.checkConstraintOperations)
+        }
+    }
+
+    private func undoDeletion<Entity>(id: UUID, using operations: SchemaEntityOperations<Entity>) {
+        let key = operations.identifier(id)
+        guard pendingChanges[key]?.isDelete == true else { return }
+        restageEdit(id: id, using: operations)
+        workingCopyDidChange()
+    }
+
+    private func restageEdit<Entity>(id: UUID, using operations: SchemaEntityOperations<Entity>) {
+        let key = operations.identifier(id)
+        guard let loaded = self[keyPath: operations.current].first(where: { $0.id == id }),
+              let working = self[keyPath: operations.working].first(where: { $0.id == id }),
+              operations.needsStatement(loaded, working) else {
+            pendingChanges.removeValue(forKey: key)
+            untrackChangeKey(key)
             return
         }
-        guard pendingChanges[key]?.isDelete == true else { return }
-        pendingChanges.removeValue(forKey: key)
-        untrackChangeKey(key)
-        workingCopyDidChange()
+        pendingChanges[key] = operations.modification(loaded, working)
+        trackChangeKey(key)
     }
 
     // MARK: - Validation
@@ -447,6 +518,7 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
     /// decides for rows it did not touch, then validation.
     private func workingCopyDidChange() {
         settleClusteredAdditions()
+        restagePrimaryKey()
         validate()
     }
 
@@ -555,11 +627,61 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
                 format: String(localized: "Primary key references a column that does not exist: %@"), columnName
             )
         }
+
+        validateAutoIncrement()
+        validateConvert()
+    }
+
+    /// A MODIFY restates the loaded type, narrowing a TEXT the convert widened, and a replaced key is converted before it drops.
+    private func validateConvert() {
+        guard case .modifyTableCharacterSet(_, let new)? = pendingChanges[.tableCharacterSet], new.convertsColumns else {
+            return
+        }
+        let restatesColumns = pendingChanges.values.contains { change in
+            switch change {
+            case .modifyColumn, .modifyPrimaryKey: true
+            default: false
+            }
+        }
+        guard restatesColumns else { return }
+        validationErrors[.tableCharacterSet] = String(
+            localized: "Save column and primary key changes before converting existing columns."
+        )
+    }
+
+    /// Against the column as the save leaves it: a widening in the same save keeps a larger counter (MySQL 8.4, MariaDB 11.4).
+    private func validateAutoIncrement() {
+        if holdsInvalidAutoIncrementEntry, let invalidAutoIncrementEntry {
+            validationErrors[.autoIncrement] = invalidAutoIncrementEntry
+            return
+        }
+        guard case .modifyAutoIncrement(_, let value)? = pendingChanges[.autoIncrement] else { return }
+        guard let range = autoIncrementRange else {
+            validationErrors[.autoIncrement] = String(
+                localized: "Next Auto Increment needs a column with AUTO_INCREMENT"
+            )
+            return
+        }
+        guard !range.contains(value) else { return }
+        validationErrors[.autoIncrement] = String(
+            format: String(localized: "Next Auto Increment must be between 1 and %@"), String(range.upperBound)
+        )
     }
 
     /// Every column the table keeps after this save, whatever state its name and type are in.
     private var columnsAfterSave: [EditableColumnDefinition] {
         workingColumns.filter { !isPendingDeletion(.column($0.id)) }
+    }
+
+    var autoIncrementColumn: EditableColumnDefinition? {
+        columnsAfterSave.first { $0.autoIncrement }
+    }
+
+    /// Nil without an AUTO_INCREMENT column; a type the range does not know is held to the counter's width.
+    var autoIncrementRange: ClosedRange<UInt64>? {
+        guard let column = autoIncrementColumn else { return nil }
+        let maximum = AutoIncrementRange.maximum(forColumnType: column.dataType, unsigned: column.unsigned)
+        return 1...(maximum ?? UInt64.max)
     }
 
     /// Only a column this save adds or changes is held to being complete.
@@ -692,8 +814,13 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
 
     func discardChanges() {
         guard !isHeldForSave else { return }
+        endTypingRun()
         tableComment = ObjectCommentDraft(original: tableComment.original)
         tableCommentRunStart = nil
+        tableOptions = TableOptionsDraft(
+            original: tableOptions.original, isAutoIncrementConfirmed: tableOptions.isAutoIncrementConfirmed
+        )
+        invalidAutoIncrementEntry = nil
         pendingChanges.removeAll()
         changeOrder.removeAll()
         validationErrors.removeAll()
@@ -713,6 +840,7 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
     /// Taken before the save's first suspension, which is what refuses a second press.
     func holdForSave() -> StructureSaveSnapshot? {
         endTableCommentRun()
+        endTypingRun()
         guard heldSave == nil, hasChanges else { return nil }
         let snapshot = StructureSaveSnapshot(changes: getChangesArray())
         heldSave = snapshot
@@ -731,8 +859,33 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
         for case .modifyTableComment(_, let savedComment) in snapshot.changes {
             tableComment = ObjectCommentDraft(original: savedComment)
         }
+        var writtenOptions = tableOptions.original
+        var isAutoIncrementConfirmed = tableOptions.isAutoIncrementConfirmed
+        for change in snapshot.changes {
+            switch change {
+            case .modifyTableCharacterSet(_, let saved):
+                writtenOptions = writtenOptions?.adoptingCharacterSet(of: saved)
+            case .modifyAutoIncrement:
+                // Left to the re-read: the server silently raises a value below the next free one.
+                isAutoIncrementConfirmed = false
+            default:
+                continue
+            }
+        }
+        tableOptions = TableOptionsDraft(original: writtenOptions, isAutoIncrementConfirmed: isAutoIncrementConfirmed)
+        adoptWrittenDefinitions()
         discardChanges()
         return true
+    }
+
+    // The written definitions stand in until the re-read lands, so a renamed or new definition keeps its id, its
+    // selection and the name the re-read is matched by.
+    private func adoptWrittenDefinitions() {
+        currentColumns = workingColumns.filter { !isPendingDeletion(.column($0.id)) }
+        currentIndexes = workingIndexes.filter { !isPendingDeletion(.index($0.id)) }
+        currentForeignKeys = workingForeignKeys.filter { !isPendingDeletion(.foreignKey($0.id)) }
+        currentCheckConstraints = workingCheckConstraints.filter { !isPendingDeletion(.checkConstraint($0.id)) }
+        currentPrimaryKey = workingPrimaryKey
     }
 
     // MARK: - Undo/Redo Operations
@@ -740,6 +893,7 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
     func undo() {
         guard !isHeldForSave else { return }
         endTableCommentRun()
+        endTypingRun()
         guard undoManager.canUndo else { return }
         undoManager.undo()
     }
@@ -747,6 +901,7 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
     func redo() {
         guard !isHeldForSave else { return }
         endTableCommentRun()
+        endTypingRun()
         guard undoManager.canRedo else { return }
         undoManager.redo()
     }
@@ -791,6 +946,55 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
         restageTableComment()
     }
 
+    // MARK: - Table Options
+
+    /// One whole-value write, so a collation never resolves against a stale character set.
+    func stageTableOptions(_ options: TableOptions) {
+        guard !isHeldForSave, let previous = tableOptions.current, options != previous else { return }
+        // An unconfirmed baseline may be a counter the server already moved past.
+        guard tableOptions.isAutoIncrementConfirmed || options.autoIncrement == previous.autoIncrement else { return }
+        registerUndo(Self.tableOptionsActionName) { target in
+            target.applySchemaUndo(.tableOptionsEdit(old: previous, new: options))
+        }
+        tableOptions.current = options
+        restageTableOptions()
+        workingCopyDidChange()
+    }
+
+    // The field goes with the last AUTO_INCREMENT column, and so does what was typed in it.
+    private var holdsInvalidAutoIncrementEntry: Bool {
+        invalidAutoIncrementEntry != nil && autoIncrementRange != nil
+    }
+
+    func noteAutoIncrementEntry(invalid message: String?) {
+        guard !isHeldForSave, invalidAutoIncrementEntry != message else { return }
+        invalidAutoIncrementEntry = message
+        workingCopyDidChange()
+    }
+
+    private func restageTableOptions() {
+        restage(.tableCharacterSet, as: tableOptions.characterSetChange)
+        restage(.autoIncrement, as: tableOptions.autoIncrementChange)
+    }
+
+    private func restage(_ key: SchemaChangeIdentifier, as change: SchemaChange?) {
+        if let change {
+            pendingChanges[key] = change
+            trackChangeKey(key)
+        } else {
+            pendingChanges.removeValue(forKey: key)
+            untrackChangeKey(key)
+        }
+    }
+
+    private func applyTableOptionsUndo(old: TableOptions, new: TableOptions) {
+        registerUndo(Self.tableOptionsActionName) { target in
+            target.applySchemaUndo(.tableOptionsEdit(old: new, new: old))
+        }
+        tableOptions.current = old
+        restageTableOptions()
+    }
+
     private func applySchemaUndo(_ action: SchemaUndoAction) {
         switch action {
         case .columnEdit(let id, let old, let new):
@@ -817,10 +1021,12 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
             applyAdditionUndo(constraint, using: Self.checkConstraintOperations)
         case .checkConstraintDelete(let constraint, let at):
             applyDeletionUndo(constraint, at: at, using: Self.checkConstraintOperations)
-        case .primaryKeyChange(let old, _):
-            applyPrimaryKeyChangeUndo(old: old)
+        case .primaryKeyChange:
+            restagePrimaryKey()
         case .tableCommentEdit(let old, let new):
             applyTableCommentUndo(old: old, new: new)
+        case .tableOptionsEdit(let old, let new):
+            applyTableOptionsUndo(old: old, new: new)
         }
 
         workingCopyDidChange()
@@ -844,7 +1050,7 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
             return
         }
         let current = self[keyPath: operations.current][currentIndex]
-        if old != current {
+        if operations.needsStatement(current, old) {
             pendingChanges[key] = operations.modification(current, old)
             trackChangeKey(key)
         } else {
@@ -879,8 +1085,7 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
         }
         let key = operations.identifier(entity.id)
         if self[keyPath: operations.current].contains(where: { $0.id == entity.id }) {
-            pendingChanges.removeValue(forKey: key)
-            untrackChangeKey(key)
+            restageEdit(id: entity.id, using: operations)
         } else {
             if let row, row < self[keyPath: operations.working].count {
                 self[keyPath: operations.working].insert(entity, at: row)
@@ -892,19 +1097,31 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
         }
     }
 
-    private func applyPrimaryKeyChangeUndo(old: [String]) {
-        let current = workingPrimaryKey
-        registerUndo(String(localized: "Change Primary Key")) { target in
-            target.applySchemaUndo(.primaryKeyChange(old: current, new: old))
+    // MARK: - Primary key
+
+    private func restagePrimaryKey() {
+        let loadedIDs = currentPrimaryKey.compactMap { name in currentColumns.first { $0.name == name }?.id }
+        let key = SchemaChangeIdentifier.primaryKey
+        // A key naming a column that was not read (a failed read, an expression key) is left as it was loaded.
+        guard loadedIDs.count == currentPrimaryKey.count else {
+            workingPrimaryKey = currentPrimaryKey
+            pendingChanges.removeValue(forKey: key)
+            untrackChangeKey(key)
+            return
         }
-        workingPrimaryKey = old
-        let pkKey = SchemaChangeIdentifier.primaryKey
-        if workingPrimaryKey != currentPrimaryKey {
-            pendingChanges[pkKey] = .modifyPrimaryKey(old: currentPrimaryKey, new: workingPrimaryKey)
-            trackChangeKey(pkKey)
+        let members = workingColumns.filter { $0.isPrimaryKey && !isPendingDeletion(.column($0.id)) }
+        let ordered = loadedIDs.compactMap { id in members.first { $0.id == id } }
+            + members.filter { !loadedIDs.contains($0.id) }
+        workingPrimaryKey = ordered.map(\.name)
+        // A key that only loses columns being dropped needs no statement: the database takes them out with the column,
+        // and on MySQL an AUTO_INCREMENT key cannot be dropped before its column.
+        let survivingLoadedIDs = loadedIDs.filter { !isPendingDeletion(.column($0)) }
+        if ordered.map(\.id) == loadedIDs || ordered.map(\.id) == survivingLoadedIDs {
+            pendingChanges.removeValue(forKey: key)
+            untrackChangeKey(key)
         } else {
-            pendingChanges.removeValue(forKey: pkKey)
-            untrackChangeKey(pkKey)
+            pendingChanges[key] = .modifyPrimaryKey(old: currentPrimaryKey, new: workingPrimaryKey)
+            trackChangeKey(key)
         }
     }
 
@@ -916,7 +1133,7 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
     /// merges the result of this method with `modifiedColumns` from
     /// `StructureEditingSupport` field-diff helpers to build the final
     /// `RowVisualState`.
-    func deleteInsertState(for row: Int, tab: StructureTab) -> (isDeleted: Bool, isInserted: Bool) {
+    func deleteInsertState(for row: Int, tab: StructureSection) -> (isDeleted: Bool, isInserted: Bool) {
         switch tab {
         case .columns:
             return rowState(at: row, using: Self.columnOperations)
@@ -926,8 +1143,6 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
             return rowState(at: row, using: Self.foreignKeyOperations)
         case .checkConstraints:
             return rowState(at: row, using: Self.checkConstraintOperations)
-        case .ddl, .parts, .triggers:
-            return (false, false)
         }
     }
 
@@ -982,6 +1197,7 @@ enum SchemaUndoAction {
     case primaryKeyChange(old: [String], new: [String])
     /// The field's raw text, so undo restores exactly what was typed.
     case tableCommentEdit(old: String, new: String)
+    case tableOptionsEdit(old: TableOptions, new: TableOptions)
 }
 
 /// The staged edits a save read when it was pressed, and so the only edits it may clear.

@@ -100,15 +100,15 @@ struct TriggerInfoMappingTests {
     }
 }
 
-struct StructureTabTriggersTests {
-    @Test("Triggers tab is part of the canonical tab set")
+struct StructurePaneTriggersTests {
+    @Test("Triggers is one of the Structure view's panes")
     func triggersInAllCases() {
-        #expect(StructureTab.allCases.contains(.triggers))
+        #expect(StructurePane.allCases.contains(.triggers))
     }
 
-    @Test("Triggers tab has a localized display name")
+    @Test("The Triggers pane has a localized display name")
     func triggersDisplayName() {
-        #expect(StructureTab.triggers.displayName == "Triggers")
+        #expect(StructurePane.triggers.displayName == "Triggers")
     }
 }
 
@@ -221,13 +221,8 @@ struct TriggerApplyExecutionTests {
         #expect(stub.executedQueries == ["DROP TRIGGER t", "CREATE TRIGGER t", "RESTORE t"])
     }
 
-    /// The session driver holds whatever transaction a query tab left open, so a trigger edit
-    /// with a BEGIN of its own ran inside it and committed or rolled back the tab's work.
-    ///
-    /// The gate is supplied rather than taken from `ExecutionGateProvider`. A drop is a
-    /// `.destructiveQuery`, which the real gate confirms with an `NSAlert`, and an alert raised
-    /// with no window runs application-modal: on a CI runner nobody answers it, so the whole
-    /// unit job stops there and is killed by its timeout rather than failing.
+    // A trigger edit's own BEGIN ran inside the transaction a query tab left open on the session driver.
+    // The gate is injected: the real one confirms a drop with an NSAlert nobody answers on CI.
     @Test("Apply and drop run on the pooled connection and leave the session driver alone")
     func applyAndDropRunOnThePooledConnection() async throws {
         let connection = TestFixtures.makeConnection(database: "app", type: .postgresql)
@@ -241,12 +236,7 @@ struct TriggerApplyExecutionTests {
         let scope = DatabaseScope(connectionId: connection.id, database: "app", schema: "public")
         let pooledStub = StubTriggerDriver()
         pooledStub.transactionalDDL = true
-        /// The drop statement is built on the driver that will run it, because an engine that
-        /// qualifies its DDL with the connection's current database would otherwise write the
-        /// session's database into a statement the pooled connection runs somewhere else. Both
-        /// stubs can produce it, so the assertions below are what say which one was asked: a
-        /// regression back to the session driver shows up as a query it executed rather than as a
-        /// statement nobody could generate.
+        // Both stubs build the drop, so only the queries each one executed show which driver was asked.
         pooledStub.dropToReturn = "DROP TRIGGER t"
         let pooledAdapter = PluginDriverAdapter(connection: connection, pluginDriver: pooledStub)
         try await pooledAdapter.connect()

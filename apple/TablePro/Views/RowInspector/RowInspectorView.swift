@@ -5,12 +5,9 @@
 
 import SwiftUI
 
-/// The window's inspector: the currently selected row, in one of two renderings.
-///
-/// It replaces a view that carried four modes plus two full-panel takeovers, each takeover drawing
-/// its own back button over the rest of the row. There is no navigation here: a structured value
-/// grows in place and the pop-out windows take anything larger, so the fields around it never go
-/// away.
+// The window's inspector: the selected row in one of two renderings, or a structure definition's form while a
+// Structure view or a Create Table tab is on screen. No navigation: a structured value grows in place and the
+// pop-out windows take anything larger.
 internal struct RowInspectorView: View {
     @ObservedObject private var state: RowInspectorState
     private let paneState: TrailingPaneState
@@ -42,8 +39,12 @@ internal struct RowInspectorView: View {
             ) { section in
                 menuSection(section)
             }
-            InspectorSubjectView(subject: context.subject)
-            content
+            if let structure = context.structure {
+                StructureInspectorView(source: structure, tableMetadata: context.tableMetadata)
+            } else {
+                InspectorSubjectView(subject: context.subject)
+                content
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
@@ -60,9 +61,7 @@ internal struct RowInspectorView: View {
         }
     }
 
-    /// Both renderings are views of the same selection, which is the case Apple's inspector guidance
-    /// covers. The header offers this only while `offeredRendering` has a value, and there the stored
-    /// mode is the one drawn, so the item it checks is the one on screen.
+    // Offered only while `offeredRendering` has a value, so the item it checks is the rendering on screen.
     private var renderingPicker: some View {
         Picker(String(localized: "Inspector View"), selection: $state.viewMode) {
             ForEach(InspectorViewMode.allCases, id: \.self) { mode in
@@ -73,22 +72,14 @@ internal struct RowInspectorView: View {
         .labelsHidden()
     }
 
-    /// The rendering on screen, for a selection that can be drawn both ways. A schema grid's
-    /// selection is a column definition with no types and no foreign keys to follow, and a pane with
-    /// no row draws table info or nothing, so neither offers a choice: the stored mode would be
-    /// checked there over a pane drawing something else.
+    // Only a data row can be drawn both ways; a structure definition or a pane with no row offers no choice.
     private var offeredRendering: InspectorViewMode? {
-        guard context.hasRow, context.jsonRow != nil else { return nil }
+        guard context.structure == nil, context.hasRow, context.jsonRow != nil else { return nil }
         return showsFields ? .fields : .json
     }
 
-    /// The field list stays mounted and is hidden rather than rebuilt.
-    ///
-    /// It owns its search term, its edited-only setting, which field is expanded, which field has
-    /// focus and the `List`'s scroll position, and none of that survives leaving the hierarchy.
-    /// Rebuilding it also rebuilds a row per column, which is what scales on a wide table. The JSON
-    /// rendering is cheap to rebuild and keeps its own reader state in `jsonViewModel`, so it stays
-    /// conditional.
+    // The field list stays mounted and hidden: its search, expansion, focus and scroll position would not survive
+    // a rebuild, and a rebuild makes a row per column. The JSON rendering keeps its state in `jsonViewModel`.
     @ViewBuilder
     private var content: some View {
         if context.hasRow {
@@ -96,10 +87,8 @@ internal struct RowInspectorView: View {
                 fieldsMode
                     .opacity(showsFields ? 1 : 0)
                     .allowsHitTesting(showsFields)
-                    /// Neither opacity nor hit-testing stops the keyboard. Without this a field
-                    /// still holding first responder when the mode changed goes on accepting text
-                    /// and the list's Ctrl-Option-N and Ctrl-Option-D behind the JSON view, and
-                    /// each of those stages a real cell change that Save later commits unseen.
+                    // Neither opacity nor hit-testing stops the keyboard: a focused field behind the JSON view
+                    // would go on staging cell changes that Save commits unseen.
                     .disabled(!showsFields)
                     .accessibilityHidden(!showsFields)
 
@@ -114,8 +103,6 @@ internal struct RowInspectorView: View {
         }
     }
 
-    /// The JSON rendering only exists for a data-grid row, because a schema grid's selection is a
-    /// column definition with no types and no foreign keys to follow.
     private var showsFields: Bool {
         state.viewMode == .fields || context.jsonRow == nil
     }
@@ -125,7 +112,6 @@ internal struct RowInspectorView: View {
             editState: state.editState,
             isEditable: context.isEditable && !context.isRowDeleted,
             databaseType: connection.type,
-            userDefinedTypeScope: context.userDefinedTypeScope,
             onPopOut: popOut
         )
     }
@@ -140,9 +126,7 @@ internal struct RowInspectorView: View {
         )
     }
 
-    /// The inspector's own glyph rather than `sidebar.right`, which is the pane and which the pane's
-    /// not-connected state drew too: a row not being selected and a connection being down read the
-    /// same.
+    // The inspector's own glyph, not `sidebar.right`, which the not-connected state draws.
     private var emptyState: some View {
         UnavailableStateView(
             String(localized: "No Row Selected"),
@@ -152,12 +136,9 @@ internal struct RowInspectorView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    /// The pop-out windows are the escape for a value too large for the pane, and the only escape:
-    /// no competitor ships an in-panel takeover and neither does this any more.
     private func popOut(field: FieldEditState, text: String, kind: FieldEditorKind) {
         let isEditable = context.isEditable && !context.isRowDeleted && !field.isServerOwned
-        /// Captured, not looked up per keystroke: the field's id is reissued on every selection
-        /// change, and a window left open over a new selection dropped what was typed into it.
+        // Captured, not looked up per keystroke: the field's id is reissued on every selection change.
         let columnIndex = field.columnIndex
         let rowIDs = state.editState.rowIDs
         let commit: ((String) -> Void)? = isEditable
@@ -189,8 +170,7 @@ internal struct RowInspectorView: View {
     }
 }
 
-/// The window a field's text opens in. A geometry field's map opens its own window from the field;
-/// what reaches here is its Text segment, which goes where that editor's kind would.
+// A geometry field's map opens its own window; its Text segment goes where that editor's kind would.
 internal enum InspectorPopOutWindow: Equatable {
     case json
     case php
@@ -207,19 +187,14 @@ internal enum InspectorPopOutWindow: Equatable {
             return .binary(format)
         case .geometry(let descriptor):
             return resolve(for: descriptor.textEditorKind)
-        case .multiLine, .singleLine, .schemaText, .blobHex, .image, .boolean,
-             .enumPicker, .setPicker, .arrayElements, .vector, .typePicker, .valuePicker:
+        case .multiLine, .singleLine, .blobHex, .image, .boolean, .enumPicker, .setPicker, .arrayElements, .vector:
             return .text
         }
     }
 }
 
-/// The JSON rendering's own commands, in the pane header's menu while that rendering is on screen.
-///
-/// They were an ellipsis of their own at the end of the JSON filter field, which put two ellipsis
-/// menus one above the other in the same column once the pane's header gained one. Its own view so
-/// it observes the reader's model: the inspector does not, and a menu built from it would go on
-/// showing Always Expand Foreign Keys in the state it had when the pane last redrew.
+// The JSON rendering's commands in the pane header's menu. Its own view so it observes the reader's model, which
+// the inspector does not.
 private struct JSONReadingCommands: View {
     @ObservedObject var viewModel: JSONRowInspectorViewModel
 

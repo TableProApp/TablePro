@@ -16,7 +16,12 @@ struct DataGridView: View {
     var body: some View {
         VStack(spacing: 0) {
             DataGridFindBarSlot(model: model, find: model.find)
-            DataGridRepresentable(model: model)
+            if model.configuration.fitsRows {
+                DataGridRepresentable(model: model)
+                    .frame(height: model.fittingHeight)
+            } else {
+                DataGridRepresentable(model: model)
+            }
         }
     }
 }

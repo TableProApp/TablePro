@@ -96,6 +96,7 @@ mod tests {
             foreign_keys: Vec::new(),
             inbound_foreign_keys: Vec::new(),
             source: None,
+            options: None,
         }));
 
         let failure = read(script).expect_err("a failed read");

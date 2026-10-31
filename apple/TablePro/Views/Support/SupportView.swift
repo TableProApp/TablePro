@@ -63,8 +63,9 @@ struct SupportView: View {
                 ),
                 String(
                     localized: """
-                    The app stays free, all of it. If TablePro is useful to you, a license is what \
-                    pays for the next release.
+                    The app stays free, all of it, at work too. If TablePro is part of your work, \
+                    please buy a license. It is a request, not a condition, and it pays for the \
+                    next release.
                     """
                 )
             ]

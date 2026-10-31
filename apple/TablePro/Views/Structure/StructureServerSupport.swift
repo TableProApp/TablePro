@@ -49,11 +49,11 @@ struct StructureServerSupport: Equatable, Sendable {
     }
 
     /// Exhaustive on purpose: a new tab has to state whether this server can refuse it.
-    func offers(_ tab: StructureTab) -> Bool {
+    func offers(_ tab: StructureSection) -> Bool {
         switch tab {
         case .checkConstraints:
             return checkConstraintRefusal == nil
-        case .columns, .indexes, .foreignKeys, .triggers, .ddl, .parts:
+        case .columns, .indexes, .foreignKeys:
             return true
         }
     }

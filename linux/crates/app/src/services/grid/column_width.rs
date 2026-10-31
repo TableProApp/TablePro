@@ -1,5 +1,6 @@
 use tablepro_core::Value;
-use tablepro_core::column::{ColumnKind, TemporalZone};
+use tablepro_core::column::{ColumnKind, TemporalZone, TextLength};
+use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 use super::display_text::display_text;
 use super::{CellDisplay, GridColumn};
@@ -9,80 +10,157 @@ const TEXT_MAX_CHARS: u32 = 40;
 /// `false`, the longer of the two values.
 const BOOL_CHARS: u32 = 5;
 const SAMPLE_ROWS: usize = 200;
+/// A value of a type that sets no length, as wide as a name or a code.
+const TYPICAL_CHARS: u32 = 20;
+/// A number of a type that sets no precision.
+const TYPICAL_DIGITS: u32 = 10;
 
-/// A column's starting width in characters: its header or its widest
-/// sampled value. Text is capped so one long value does not push the rest
-/// off screen; a number or a date is never cut.
+/// The monospace cells a column's values open at: its widest sampled
+/// value. Text is capped so one long value does not push the rest off
+/// screen; a number or a date is never cut. The header, drawn in another
+/// font, is the caller's to measure.
 pub fn default_width_chars<'a>(column: &GridColumn, sample: impl IntoIterator<Item = &'a Value>) -> u32 {
-    let (header, widest) = header_and_widest(column, sample);
-    match column.display() {
-        CellDisplay::Bool => header.max(BOOL_CHARS),
-        CellDisplay::Number => header.max(widest),
-        CellDisplay::Temporal => header.max(widest).max(temporal_chars(&column.column_type.kind)),
-        CellDisplay::Text | CellDisplay::Json | CellDisplay::Binary => header.max(widest).min(TEXT_MAX_CHARS),
-    }
+    let widest = widest_cells(column, sample);
+    let cells = match column.display() {
+        CellDisplay::Bool => BOOL_CHARS,
+        CellDisplay::Number => widest,
+        CellDisplay::Temporal => widest.max(spelled_chars(&column.column_type.kind).unwrap_or(0)),
+        CellDisplay::Text | CellDisplay::Json | CellDisplay::Binary => widest.min(TEXT_MAX_CHARS),
+    };
+    cells.max(MIN_CHARS)
+}
+
+/// The monospace cells a column's values open at in a table that holds
+/// no rows: a value its type leads one to expect. A bounded type gives
+/// its widest value, text no wider than a name.
+pub fn typical_width_chars(column: &GridColumn) -> u32 {
+    let kind = &column.column_type.kind;
+    let typical = match kind {
+        ColumnKind::Bool(_) => BOOL_CHARS,
+        // The digits, a sign and a decimal point.
+        ColumnKind::Decimal {
+            precision: Some(precision),
+            ..
+        } => precision.saturating_add(2).min(TYPICAL_CHARS),
+        _ if kind.is_numeric() => TYPICAL_DIGITS,
+        ColumnKind::Text {
+            length: TextLength::Varying(length) | TextLength::Fixed(length),
+        } => (*length).min(TYPICAL_CHARS),
+        _ => spelled_chars(kind).unwrap_or(TYPICAL_CHARS),
+    };
+    typical.clamp(MIN_CHARS, TEXT_MAX_CHARS)
+}
+
+/// The values the column's type spells out, cut at the cap, for the
+/// caller to measure.
+pub fn typical_texts(column: &GridColumn) -> Vec<String> {
+    spelled(&column.column_type.kind)
+        .into_iter()
+        .map(|text| within_cap(text).to_owned())
+        .collect()
 }
 
 /// The width of a column that turned out to hold only numbers, as an
 /// untyped PostgreSQL result does: a number is never cut.
 pub fn number_width_chars<'a>(column: &GridColumn, sample: impl IntoIterator<Item = &'a Value>) -> u32 {
-    let (header, widest) = header_and_widest(column, sample);
-    header.max(widest)
+    widest_cells(column, sample).max(MIN_CHARS)
 }
 
-fn header_and_widest<'a>(column: &GridColumn, sample: impl IntoIterator<Item = &'a Value>) -> (u32, u32) {
-    let header = char_count(&column.name).clamp(MIN_CHARS, TEXT_MAX_CHARS);
-    let mut scratch = String::new();
-    let widest = sample
-        .into_iter()
-        .take(SAMPLE_ROWS)
-        .filter(|value| !value.is_null())
-        .map(|value| char_count(display_text(value, &column.column_type, &mut scratch).text))
-        .max()
-        .unwrap_or(0);
-    (header, widest)
+/// The column's name as its header draws it, cut at the cap.
+pub fn header_text(column: &GridColumn) -> &str {
+    within_cap(&column.name)
 }
 
-/// The sampled value with the most characters, as the cell draws it and
-/// cut at the cap: a count of average characters runs short of capitals
-/// and digits, so the caller measures this one. A number column is
-/// measured in tabular digits instead.
-pub fn widest_text<'a>(column: &GridColumn, sample: impl IntoIterator<Item = &'a Value>) -> Option<String> {
-    if column.display() == CellDisplay::Number {
-        return None;
-    }
-    let cap = usize::try_from(TEXT_MAX_CHARS).unwrap_or(usize::MAX);
+fn widest_cells<'a>(column: &GridColumn, sample: impl IntoIterator<Item = &'a Value>) -> u32 {
     let mut scratch = String::new();
     sample
         .into_iter()
         .take(SAMPLE_ROWS)
         .filter(|value| !value.is_null())
-        .map(|value| {
-            display_text(value, &column.column_type, &mut scratch)
-                .text
-                .chars()
-                .take(cap)
-                .collect::<String>()
-        })
-        .max_by_key(|text| char_count(text))
+        .map(|value| cells(display_text(value, &column.column_type, &mut scratch).text))
+        .max()
+        .unwrap_or(0)
 }
 
-/// The width of a value without fractional seconds, which the sample adds
-/// when the column holds them.
-fn temporal_chars(kind: &ColumnKind) -> u32 {
-    const OFFSET: u32 = "+00:00".len() as u32;
-    match kind {
-        ColumnKind::Date => "2026-01-01".len() as u32,
-        ColumnKind::Time { with_offset, .. } => "00:00:00".len() as u32 + if *with_offset { OFFSET } else { 0 },
-        ColumnKind::Timestamp { zone, .. } => {
-            "2026-01-01 00:00:00".len() as u32 + if *zone == TemporalZone::Offset { OFFSET } else { 0 }
+/// The sampled values for the caller to measure, as the cells draw them
+/// and cut at the cap: of the plain ASCII ones, which a monospace font
+/// draws one cell each, the one that takes the most cells, and every
+/// other one, since its characters may draw in a fallback font. A number
+/// column is measured in tabular digits instead.
+pub fn sampled_texts<'a>(column: &GridColumn, sample: impl IntoIterator<Item = &'a Value>) -> Vec<String> {
+    if column.display() == CellDisplay::Number {
+        return Vec::new();
+    }
+    let mut scratch = String::new();
+    let mut widest_plain: Option<(u32, String)> = None;
+    let mut others = Vec::new();
+    for value in sample.into_iter().take(SAMPLE_ROWS).filter(|value| !value.is_null()) {
+        let text = within_cap(display_text(value, &column.column_type, &mut scratch).text);
+        if !is_plain(text) {
+            others.push(text.to_owned());
+            continue;
         }
-        _ => 0,
+        let width = cells(text);
+        if widest_plain.as_ref().is_none_or(|(most, _)| width > *most) {
+            widest_plain = Some((width, text.to_owned()));
+        }
+    }
+    others.sort_unstable();
+    others.dedup();
+    others.extend(widest_plain.map(|(_, text)| text));
+    others
+}
+
+/// The values of a type that holds nothing wider: a date or a time
+/// without the fractional seconds a sample adds when the column holds
+/// them, a UUID, or an enum's labels, as many as a sample holds. A MySQL
+/// SET joins its labels, so it has none.
+fn spelled(kind: &ColumnKind) -> Vec<&str> {
+    match kind {
+        ColumnKind::Date => vec!["0000-00-00"],
+        ColumnKind::Time { with_offset: false, .. } => vec!["00:00:00"],
+        ColumnKind::Time { with_offset: true, .. } => vec!["00:00:00+00:00"],
+        ColumnKind::Timestamp {
+            zone: TemporalZone::Offset,
+            ..
+        } => vec!["0000-00-00 00:00:00+00:00"],
+        ColumnKind::Timestamp { .. } => vec!["0000-00-00 00:00:00"],
+        ColumnKind::Uuid => vec!["00000000-0000-0000-0000-000000000000"],
+        ColumnKind::Enum {
+            labels,
+            multiple: false,
+        } => labels.iter().take(SAMPLE_ROWS).map(String::as_str).collect(),
+        _ => Vec::new(),
     }
 }
 
-fn char_count(text: &str) -> u32 {
-    u32::try_from(text.chars().count()).unwrap_or(u32::MAX)
+fn spelled_chars(kind: &ColumnKind) -> Option<u32> {
+    spelled(kind).into_iter().map(cells).max()
+}
+
+/// The cells `text` takes in a monospace font, where a Chinese or
+/// Japanese character takes two.
+fn cells(text: &str) -> u32 {
+    u32::try_from(text.width()).unwrap_or(u32::MAX)
+}
+
+/// Printable ASCII, which a monospace font draws one cell a character.
+fn is_plain(text: &str) -> bool {
+    text.chars()
+        .all(|character| character == ' ' || character.is_ascii_graphic())
+}
+
+/// The start of `text` that fits in the cap's cells.
+fn within_cap(text: &str) -> &str {
+    let cap = usize::try_from(TEXT_MAX_CHARS).unwrap_or(usize::MAX);
+    let mut taken = 0;
+    for (at, character) in text.char_indices() {
+        taken += character.width().unwrap_or(0);
+        if taken > cap {
+            return &text[..at];
+        }
+    }
+    text
 }
 
 #[cfg(test)]
@@ -91,7 +169,7 @@ mod tests {
     use tablepro_core::column::{BoolStorage, ColumnKind, IntegerKind, IntegerWidth, TemporalZone, TextLength};
     use tablepro_core::value::{SqlDecimal, Temporal};
 
-    use super::{default_width_chars, number_width_chars, widest_text};
+    use super::{default_width_chars, number_width_chars, sampled_texts, typical_texts, typical_width_chars};
     use crate::services::grid::test_columns::result_only;
 
     fn text() -> ColumnKind {
@@ -105,7 +183,7 @@ mod tests {
     }
 
     #[test]
-    fn text_widths_take_the_header_or_the_widest_value_within_bounds() {
+    fn text_widths_take_the_widest_value_within_bounds() {
         let note = result_only("note", text());
 
         assert_eq!(default_width_chars(&note, &texts(&["a", "bb"])), 4, "the minimum");
@@ -117,7 +195,8 @@ mod tests {
         );
         assert_eq!(
             default_width_chars(&result_only("a_rather_long_column_name", text()), &texts(&["a"])),
-            25
+            4,
+            "the header is drawn in another font"
         );
         assert_eq!(
             default_width_chars(&note, &[Value::Null, Value::Null]),
@@ -127,7 +206,7 @@ mod tests {
     }
 
     #[test]
-    fn the_widest_text_is_the_longest_value_within_the_cap() {
+    fn the_longest_plain_value_is_measured_within_the_cap() {
         let note = result_only("note", text());
         let integer = ColumnKind::Integer(IntegerKind {
             width: IntegerWidth::W64,
@@ -135,18 +214,65 @@ mod tests {
         });
 
         assert_eq!(
-            widest_text(
+            sampled_texts(
                 &note,
                 &[Value::Text("CF-1001".into()), Value::Null, Value::Text("a".into())]
             ),
-            Some("CF-1001".to_owned())
+            ["CF-1001"]
         );
         assert_eq!(
-            widest_text(&note, &texts(&["x".repeat(500).as_str()])).map(|text| text.chars().count()),
-            Some(40)
+            sampled_texts(&note, &texts(&["x".repeat(500).as_str()]))
+                .iter()
+                .map(|text| text.chars().count())
+                .collect::<Vec<_>>(),
+            [40]
         );
-        assert_eq!(widest_text(&note, &[Value::Null]), None);
-        assert_eq!(widest_text(&result_only("id", integer), &[Value::Int(7)]), None);
+        assert!(sampled_texts(&note, &[Value::Null]).is_empty());
+        assert!(sampled_texts(&result_only("id", integer), &[Value::Int(7)]).is_empty());
+    }
+
+    /// A character a monospace font may lack draws in a fallback font, as
+    /// wide as that font draws it, so every such value is measured.
+    #[test]
+    fn every_value_beyond_plain_ascii_is_measured() {
+        let note = result_only("note", text());
+
+        assert_eq!(
+            sampled_texts(
+                &note,
+                &texts(&["Marunouchi 12", "कखगघ", "東京", "a", "कखगघ", "tab\tbed"])
+            ),
+            ["tab\tbed", "कखगघ", "東京", "Marunouchi 12"]
+        );
+    }
+
+    /// A Chinese or Japanese character takes two cells of a monospace font.
+    #[test]
+    fn a_wide_character_takes_two_cells() {
+        let note = result_only("note", text());
+
+        assert_eq!(default_width_chars(&note, &texts(&["東京都千代田区"])), 14);
+        assert_eq!(
+            sampled_texts(&note, &texts(&["東".repeat(500).as_str()]))
+                .iter()
+                .map(|text| text.chars().count())
+                .collect::<Vec<_>>(),
+            [20],
+            "the cap counts cells"
+        );
+        assert_eq!(
+            typical_texts(&result_only(
+                "state",
+                ColumnKind::Enum {
+                    labels: vec!["東".repeat(30)],
+                    multiple: false,
+                }
+            ))
+            .iter()
+            .map(|text| text.chars().count())
+            .collect::<Vec<_>>(),
+            [20]
+        );
     }
 
     #[test]
@@ -201,7 +327,7 @@ mod tests {
             default_width_chars(&result_only("ok", flag.clone()), &[Value::Bool(true)]),
             5
         );
-        assert_eq!(default_width_chars(&result_only("is_active", flag), &[]), 9);
+        assert_eq!(default_width_chars(&result_only("is_active", flag), &[]), 5);
     }
 
     #[test]
@@ -221,5 +347,88 @@ mod tests {
             10
         );
         assert_eq!(default_width_chars(&result_only("at", stamped), &[]), 25);
+    }
+
+    #[test]
+    fn with_no_rows_a_column_opens_at_what_its_type_leads_one_to_expect() {
+        let bounded = |length| ColumnKind::Text { length };
+        let integer = ColumnKind::Integer(IntegerKind {
+            width: IntegerWidth::W64,
+            signed: true,
+        });
+        let money = ColumnKind::Decimal {
+            precision: Some(10),
+            scale: Some(2),
+        };
+        let labels = vec!["active".to_owned(), "suspended".to_owned()];
+        let state = ColumnKind::Enum {
+            labels: labels.clone(),
+            multiple: false,
+        };
+        let tags = ColumnKind::Enum { labels, multiple: true };
+        let stamped = ColumnKind::Timestamp {
+            fractional_digits: None,
+            zone: TemporalZone::Offset,
+        };
+
+        assert_eq!(typical_width_chars(&result_only("realm", text())), 20, "unbounded text");
+        assert_eq!(
+            typical_width_chars(&result_only("code", bounded(TextLength::Varying(8)))),
+            8,
+            "no wider than its bound"
+        );
+        assert_eq!(
+            typical_width_chars(&result_only("name", bounded(TextLength::Varying(255)))),
+            20
+        );
+        assert_eq!(typical_width_chars(&result_only("id", ColumnKind::Uuid)), 36);
+        assert_eq!(typical_width_chars(&result_only("id", integer)), 10);
+        assert_eq!(typical_width_chars(&result_only("total", money)), 12);
+        assert_eq!(
+            typical_width_chars(&result_only("state", state)),
+            9,
+            "its longest label"
+        );
+        assert_eq!(
+            typical_width_chars(&result_only("tags", tags)),
+            20,
+            "a SET joins its labels"
+        );
+        assert_eq!(typical_width_chars(&result_only("created", stamped)), 25);
+        assert_eq!(
+            typical_width_chars(&result_only("ok", ColumnKind::Bool(BoolStorage::Native))),
+            5
+        );
+        assert_eq!(
+            typical_width_chars(&result_only("a_column_with_a_name_far_longer_than_it_holds", text())),
+            20,
+            "the header is drawn in another font"
+        );
+    }
+
+    #[test]
+    fn the_typical_texts_are_the_values_a_type_spells_out() {
+        let state = ColumnKind::Enum {
+            labels: vec!["active".to_owned(), "suspended".to_owned()],
+            multiple: false,
+        };
+
+        assert_eq!(typical_texts(&result_only("on", ColumnKind::Date)), ["0000-00-00"]);
+        assert_eq!(
+            typical_texts(&result_only("id", ColumnKind::Uuid))
+                .iter()
+                .map(|text| text.chars().count())
+                .collect::<Vec<_>>(),
+            [36]
+        );
+        assert_eq!(
+            typical_texts(&result_only("state", state)),
+            ["active", "suspended"],
+            "every label, since the longest is not always the widest"
+        );
+        assert!(
+            typical_texts(&result_only("name", text())).is_empty(),
+            "text has no widest"
+        );
     }
 }

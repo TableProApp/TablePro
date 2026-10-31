@@ -4,7 +4,6 @@ use tablepro_core::Value;
 use tablepro_core::column::{BoolStorage, ColumnKind};
 use tablepro_core::edit::{CellInput, EditParseError, new_draft_cell, parse_edit_text};
 
-use super::cell_editor::Plan;
 use super::{EditController, edit_start};
 use crate::i18n::gettext;
 use crate::services::change_tracker::RowKey;
@@ -173,9 +172,9 @@ impl EditController {
         let column = grid
             .shown_columns()
             .into_iter()
-            .find(|column| matches!(self.plan(grid, &row, *column), Plan::Inline(_)));
+            .find(|column| self.plan(grid, &row, *column).in_place().is_some());
         if let Some(cell) = column.and_then(|column| grid.focus_cell(position, column)) {
-            self.edit_cell(&cell);
+            self.edit_in_place(&cell);
         }
     }
 

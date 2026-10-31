@@ -12,7 +12,6 @@ internal enum FieldEditorResolver {
     /// Answers from the field's own resolution when it has one. Only a field built before
     /// `MultiRowEditState` filled it in pays the detectors here.
     static func resolve(field: FieldEditState) -> FieldEditorKind {
-        if let editor = field.editor { return editor }
         if let resolved = field.resolvedEditor { return resolved }
         return resolve(
             for: field.columnTypeEnum,

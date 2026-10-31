@@ -20,6 +20,11 @@ pub enum DdlOperation {
     AlterPrimaryKey,
     AlterAutoIncrement,
     SetColumnComment,
+    /// A column's own character set or collation.
+    AlterColumnCollation,
+    /// The table's default character set and collation, a convert of its
+    /// columns, or its next AUTO_INCREMENT value.
+    AlterTableOptions,
     CreateIndex,
     IndexExpressionKey,
     DescendingIndexKey,
@@ -52,6 +57,8 @@ impl fmt::Display for DdlOperation {
             Self::AlterPrimaryKey => "changing the primary key",
             Self::AlterAutoIncrement => "changing whether a column numbers itself",
             Self::SetColumnComment => "setting a column comment",
+            Self::AlterColumnCollation => "changing a column's character set or collation",
+            Self::AlterTableOptions => "changing the table's character set or AUTO_INCREMENT value",
             Self::CreateIndex => "creating an index",
             Self::IndexExpressionKey => "an index on an expression",
             Self::DescendingIndexKey => "a descending index key",

@@ -36,6 +36,12 @@ pub(super) struct OpenEdit {
 /// What editing a cell comes to.
 pub(super) enum Plan {
     Inline(Box<InlineStart>),
+    /// A menu of the column's labels. Typing, Tab and a new row edit its
+    /// text in place instead, where it fits a one-line editor.
+    Choice {
+        start: Box<InlineStart>,
+        in_place: bool,
+    },
     Toggle,
     /// The value is edited in the detail pane.
     Details,
@@ -45,12 +51,24 @@ pub(super) enum Plan {
 }
 
 pub(super) struct InlineStart {
-    column: GridColumn,
-    row: GridRow,
-    start: EditStart,
+    pub(super) column: GridColumn,
+    pub(super) row: GridRow,
+    pub(super) start: EditStart,
     text: String,
     accepts_line_breaks: bool,
     purpose: TextPurpose,
+}
+
+impl Plan {
+    /// Where the cell's text can be edited in place.
+    pub(super) fn in_place(self) -> Option<Box<InlineStart>> {
+        match self {
+            Self::Inline(start) | Self::Choice { start, in_place: true } => Some(start),
+            Self::Choice { in_place: false, .. } | Self::Toggle | Self::Details | Self::Refused(_) | Self::Locked => {
+                None
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -123,6 +141,10 @@ impl EditController {
                 self.open_inline(&grid, cell, start, Opened::ToEdit);
                 true
             }
+            Plan::Choice { start, .. } => {
+                self.open_choice(&grid, cell, &start);
+                true
+            }
         }
     }
 
@@ -135,12 +157,13 @@ impl EditController {
             return None;
         }
         match self.plan(&grid, &cell.row()?, cell.column()) {
-            Plan::Inline(start) => Some(self.open_inline(&grid, &cell, start, Opened::ByTyping)),
             Plan::Refused(why) => {
                 grid.toast(why);
                 None
             }
-            Plan::Toggle | Plan::Details | Plan::Locked => None,
+            plan => plan
+                .in_place()
+                .map(|start| self.open_inline(&grid, &cell, start, Opened::ByTyping)),
         }
     }
 
@@ -214,6 +237,7 @@ impl EditController {
             CellEditorKind::ReadOnly(_) => return Plan::Locked,
             CellEditorKind::Toggle => return Plan::Toggle,
             CellEditorKind::Details(_) => return Plan::Details,
+            CellEditorKind::Choice => (false, TextPurpose::FreeForm),
             CellEditorKind::Inline {
                 accepts_line_breaks,
                 purpose,
@@ -226,40 +250,66 @@ impl EditController {
             CellInput::Value(value) => edit_text(value, column.value_type()),
             CellInput::Default => EditText::Editable(String::new()),
         };
-        match &text {
+        let refusal = match &text {
             EditText::ReadOnly(reason) => {
                 return Plan::Refused(edit_parse_message(&EditParseError::NotEditable(*reason)));
             }
             // A GTK editor holds text only up to a NUL, and committing it
             // would cut the value there.
             EditText::Editable(editable) if editable.contains('\0') => {
-                return Plan::Refused(gettext("Values with a NUL character can't be edited here"));
+                Some(gettext("Values with a NUL character can't be edited here"))
             }
-            EditText::Editable(editable) if editable.len() > EDIT_MAX_BYTES => {
-                return Plan::Refused(too_large_to_edit());
-            }
-            EditText::Editable(_) => {}
-        }
-        if !matches!(kind.for_text(&text), CellEditorKind::Inline { .. }) {
-            return Plan::Details;
-        }
+            EditText::Editable(editable) if editable.len() > EDIT_MAX_BYTES => Some(too_large_to_edit()),
+            EditText::Editable(_) => None,
+        };
+        let one_line = CellEditorKind::Inline {
+            accepts_line_breaks,
+            purpose,
+        };
+        let in_place = refusal.is_none() && matches!(one_line.for_text(&text), CellEditorKind::Inline { .. });
         let EditText::Editable(text) = text else {
             return Plan::Locked;
         };
-        Plan::Inline(Box::new(InlineStart {
+        let start = Box::new(InlineStart {
             column,
             row: row.clone(),
             start,
             text,
             accepts_line_breaks,
             purpose,
-        }))
+        });
+        match (kind, refusal) {
+            // The menu holds no text, so any value opens it.
+            (CellEditorKind::Choice, _) => Plan::Choice { start, in_place },
+            (_, Some(why)) => Plan::Refused(why),
+            _ if in_place => Plan::Inline(start),
+            _ => Plan::Details,
+        }
+    }
+
+    /// Edit `cell`'s text in place, as Tab and a new row do, a cell that
+    /// picks from a menu included.
+    pub(super) fn edit_in_place(&self, cell: &GridCell) {
+        let (Some(grid), Some(row)) = (self.grid.upgrade(), cell.row()) else {
+            return;
+        };
+        if self.open_in(cell).is_some() {
+            return;
+        }
+        if let Some(start) = self.plan(&grid, &row, cell.column()).in_place() {
+            self.open_inline(&grid, cell, start, Opened::ToEdit);
+        }
     }
 
     fn open_inline(&self, grid: &DataGrid, cell: &GridCell, plan: Box<InlineStart>, opened: Opened) -> gtk::Text {
         self.commit_open(Refusal::Drop, CloseWhen::Now);
         let text = gtk::Text::new();
         text.set_hexpand(true);
+        // Drawn as the cell draws the value, so it does not jump as the edit opens.
+        text.add_css_class("monospace");
+        if cell.paint().is_some_and(|paint| paint.numbers.get()) {
+            text.set_alignment(1.0);
+        }
         text.set_truncate_multiline(!plan.accepts_line_breaks);
         text.set_input_purpose(input_purpose(plan.purpose));
         text.set_placeholder_text(empty_placeholder(&plan.column, &plan.start.row).as_deref());
@@ -476,7 +526,7 @@ impl EditController {
             shown
                 .get(at)
                 .zip(selection.item(position).and_downcast::<GridRow>())
-                .is_some_and(|(column, row)| matches!(self.plan(&grid, &row, *column), Plan::Inline(_)))
+                .is_some_and(|(column, row)| self.plan(&grid, &row, *column).in_place().is_some())
         };
         let target = next_edit_target(
             opens_inline,
@@ -490,7 +540,7 @@ impl EditController {
         match target {
             Some((position, column)) => {
                 if let Some(cell) = grid.focus_cell(position, column) {
-                    self.edit_cell(&cell);
+                    self.edit_in_place(&cell);
                 }
             }
             None => {

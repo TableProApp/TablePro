@@ -8,6 +8,8 @@ import Foundation
 import os
 import TableProPluginKit
 
+// One table tab's structure: what was read, what is staged, and the commands that act on it. The coordinator
+// holds it by tab id, so staged edits, the close prompt and Save work with no view mounted.
 @MainActor
 internal final class StructureEditingSession: ObservableObject {
     static let logger = Logger(subsystem: "com.TablePro", category: "StructureEditingSession")
@@ -23,12 +25,7 @@ internal final class StructureEditingSession: ObservableObject {
     internal let objectKind: TableInfo.TableType
 
     internal let changeManager = StructureChangeManager()
-
-    // Owned here, not by the view, so the grid the user types into and the edits the close prompt
-    // reports are one object, and its model outlives every remount.
-    internal let gridAdapter: StructureGridAdapter
-
-    internal var gridModel: DataGridModel { gridAdapter.model }
+    internal let editor: StructureDefinitionEditor
 
     internal var scope: DatabaseScope {
         DatabaseScope(
@@ -42,7 +39,7 @@ internal final class StructureEditingSession: ObservableObject {
     @Published internal var checkConstraints: [CheckConstraintInfo] = []
     @Published internal var triggers: [TriggerInfo] = []
     @Published internal var ddlStatement: String = ""
-    @Published internal var tabData = StructureTabDataState()
+    @Published internal var loadState = StructureLoadState()
 
     @Published internal var concurrentRefresh: MetadataLoadState<PluginConcurrentRefreshAvailability?> = .idle
     private var concurrentRefreshRequest = 0
@@ -51,45 +48,54 @@ internal final class StructureEditingSession: ObservableObject {
 
     internal var loadedTableComment: String? { tableComment.value ?? nil }
 
-    @Published internal var selectedTab: StructureTab = .columns
-    @Published internal var searchText = ""
-    @Published internal var sortState = SortState()
-    @Published internal var sortDescriptor: StructureSortDescriptor?
-    @Published internal var columnLayouts: [StructureTab: ColumnLayoutState] = [:]
+    @Published internal private(set) var tableOptions: MetadataLoadState<TableOptions?> = .idle
+
+    internal var loadedTableOptions: TableOptions? { tableOptions.value ?? nil }
+
+    // Leaves `.confirmed` when a save writes the counter and returns only on a read that lands, since the server may raise it.
+    @Published internal private(set) var autoIncrementRead: AutoIncrementReadState = .confirmed
+
+    @Published internal private(set) var tableOptionsCatalog: MetadataLoadState<TableOptionsCatalog?> = .idle
+    internal var tableOptionsCatalogRead: Task<Void, Never>?
+
+    @Published internal var pane: StructurePane = .definition
+    @Published internal var partsReloadToken = 0
 
     @Published internal var serverSupport = StructureServerSupport.unrestricted {
         didSet {
-            guard !availableTabs.contains(selectedTab) else { return }
-            selectedTab = .columns
+            editor.serverSupport = serverSupport
+            if !availablePanes.contains(pane) {
+                pane = .definition
+            }
         }
     }
 
-    internal var availableTabs: [StructureTab] {
-        StructureTabAvailability.tabs(for: connection.type, serverSupport: serverSupport)
-    }
-
-    internal var tabsFetchedOnMount: [StructureTab] {
-        var tabs: [StructureTab] = [.columns, .indexes, .foreignKeys]
-        if availableTabs.contains(.checkConstraints) {
-            tabs.append(.checkConstraints)
+    internal var availablePanes: [StructurePane] {
+        StructurePane.allCases.filter { pane in
+            switch pane {
+            case .definition, .ddl: true
+            case .triggers: connection.type.supportsTriggers
+            case .parts: connection.type == .clickhouse
+            }
         }
-        if !tabs.contains(selectedTab) {
-            tabs.append(selectedTab)
-        }
-        return tabs
     }
-
-    @Published internal var footer = StructureFooterCapability()
 
     @Published internal var hasLoaded = false
-
+    @Published internal var hasBaseline = false
+    // The ER diagram's sessions watch this to learn a save landed.
     @Published internal private(set) var appliedVersion = 0
-
     @Published internal var isApplying = false
-
     @Published internal var lastAppliedAt: Date?
 
+    internal var isReloadingAfterSave = false
+
+    weak var coordinator: MainContentCoordinator? {
+        didSet { editor.coordinator = coordinator }
+    }
+
     internal var executionGate: any ExecutionGate = ExecutionGateProvider.shared
+
+    private var cancellables: Set<AnyCancellable> = []
 
     internal init(
         identity: String,
@@ -108,23 +114,58 @@ internal final class StructureEditingSession: ObservableObject {
         self.isSessionBound = isSessionBound
         self.tableName = tableName
         self.objectKind = objectKind
-        self.serverSupport = serverSupport
-        gridAdapter = StructureGridAdapter(
-            structureChangeManager: changeManager,
-            connection: connection,
-            tableName: tableName,
-            databaseName: databaseName,
-            schemaName: schemaName,
-            objectKind: objectKind,
-            isSessionBound: isSessionBound
+        editor = StructureDefinitionEditor(
+            manager: changeManager,
+            context: .existingTable(
+                connection: connection,
+                databaseName: databaseName,
+                schemaName: schemaName,
+                tableName: tableName,
+                objectKind: objectKind,
+                isSessionBound: isSessionBound
+            )
         )
-        gridAdapter.session = self
-        gridAdapter.store.session = self
+        self.serverSupport = serverSupport
+        editor.serverSupport = serverSupport
+        // Nothing is editable before the table's definitions are read.
+        editor.isAwaitingBaseline = true
+        editor.characterSetContextProvider = { [weak self] in
+            ColumnCharacterSetMenus.Context(
+                catalog: self?.tableOptionsCatalog ?? .idle,
+                tableCharacterSet: self?.changeManager.tableOptions.current?.characterSet
+            )
+        }
+        editor.characterSetCatalogReader = { [weak self] in
+            guard let self else { return }
+            switch tableOptionsCatalog {
+            case .idle, .failed:
+                Task { await self.readTableOptionsCatalog() }
+            case .loading, .loaded:
+                break
+            }
+        }
+        editor.moveColumnHandler = { [weak self] from, to in
+            self?.beginColumnReorder(fromIndex: from, toIndex: to)
+        }
+        changeManager.objectWillChange
+            .sink { [weak self] in self?.objectWillChange.send() }
+            .store(in: &cancellables)
+        $tableOptionsCatalog
+            .dropFirst()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.editor.refresh() }
+            .store(in: &cancellables)
     }
 
+    // A tab's session reads the table again at once; a diagram's has no view to show it and is dropped instead.
     internal func markApplied() {
         appliedVersion += 1
+        guard coordinator != nil else { return }
+        editor.isAwaitingBaseline = true
+        Task { await refreshAfterApply() }
     }
+
+    // MARK: - Staleness
 
     internal private(set) var owesRefetch = false
 
@@ -145,9 +186,11 @@ internal final class StructureEditingSession: ObservableObject {
     }
 
     internal func markEveryTabStale() {
-        tabData.markAllStale()
+        loadState.markAllStale()
         owesRefetch = false
     }
+
+    // MARK: - Table comment and options
 
     internal func beginTableCommentLoad() {
         tableComment = tableComment.enteringLoad
@@ -161,6 +204,44 @@ internal final class StructureEditingSession: ObservableObject {
 
     internal func settleTableComment(_ outcome: MetadataFetchOutcome<String?>) {
         tableComment = tableComment.settled(by: outcome, discardingValue: false)
+    }
+
+    internal func beginTableOptionsLoad() {
+        tableOptions = tableOptions.enteringLoad
+        if autoIncrementRead == .unconfirmed {
+            autoIncrementRead = .rereading
+        }
+    }
+
+    internal func adoptWrittenTableOptions(from changes: [SchemaChange]) {
+        for change in changes {
+            switch change {
+            case .modifyTableCharacterSet(_, let written):
+                guard let loaded = loadedTableOptions else { continue }
+                tableOptions = .loaded(loaded.adoptingCharacterSet(of: written))
+            case .modifyAutoIncrement:
+                autoIncrementRead = .rereading
+            default:
+                continue
+            }
+        }
+    }
+
+    internal func settleTableOptions(_ outcome: MetadataFetchOutcome<TableOptions?>) {
+        tableOptions = tableOptions.settled(by: outcome, discardingValue: false)
+        if outcome.didFetch {
+            autoIncrementRead = .confirmed
+        } else if autoIncrementRead == .rereading {
+            autoIncrementRead = .unconfirmed
+        }
+    }
+
+    internal func beginTableOptionsCatalogLoad() {
+        tableOptionsCatalog = tableOptionsCatalog.enteringLoad
+    }
+
+    internal func settleTableOptionsCatalog(_ outcome: MetadataFetchOutcome<TableOptionsCatalog?>) {
+        tableOptionsCatalog = tableOptionsCatalog.settled(by: outcome, discardingValue: false)
     }
 
     internal func reloadConcurrentRefreshAvailability(
@@ -186,34 +267,23 @@ internal final class StructureEditingSession: ObservableObject {
         concurrentRefresh = concurrentRefresh.settled(by: outcome, discardingValue: true)
     }
 
-    // The mounted view installs closures that capture it, and it holds this session; called wherever a
-    // session is dropped, never from `onDisappear`.
+    // Called wherever a session is dropped, never from `onDisappear`.
     internal func releaseViewWiring() {
-        gridAdapter.releaseViewWiring()
+        coordinator = nil
     }
+}
+
+internal enum AutoIncrementReadState: Equatable {
+    case confirmed
+    case rereading
+    // The re-read failed or was cancelled, so the loaded counter may be one the server has moved past.
+    case unconfirmed
 }
 
 extension StructureEditingSession: ActiveGridModelProviding {
-    // The schema grid while a sub-tab shows one; Parts and Triggers draw lists of their own.
+    // The section that holds the selection while the Definition page is on screen; the other panes draw no grid.
     var activeGridModel: DataGridModel? {
-        switch selectedTab {
-        case .columns, .indexes, .foreignKeys, .checkConstraints:
-            return gridModel
-        case .ddl, .parts, .triggers:
-            return nil
-        }
-    }
-}
-
-internal struct StructureFooterCapability: Equatable {
-    internal var canAdd = false
-    internal var canRemove = false
-    internal var addLabel = ""
-    internal var removeLabel = ""
-
-    internal var unavailableReason: String?
-
-    internal var isActive: Bool {
-        !addLabel.isEmpty
+        guard pane == .definition else { return nil }
+        return editor.focusedModel ?? editor.adapter(for: .columns).model
     }
 }

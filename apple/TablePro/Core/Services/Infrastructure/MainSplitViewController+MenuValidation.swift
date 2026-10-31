@@ -43,6 +43,8 @@ struct MenuValidationContext: Equatable {
     // A batch whose COMMIT is on the wire is executing yet unstoppable, and Cmd+. must dim rather than fire into it.
     var isQueryStoppable = false
     var hasQueryText = false
+    // A Create Table tab runs its statement with Execute (Cmd+Return), as its old Create Table button did.
+    var canCreateDraftTable = false
     var canRunAIQueryActions = false
     var canClearQuery = false
     var canClearResults = false
@@ -50,6 +52,8 @@ struct MenuValidationContext: Equatable {
     // Save commits an edit still open in the grid before it looks for changes.
     var hasOpenGridEdit = false
     var hasDataPendingChanges = false
+    // The selected tab's staged structure edits, or its grid edits; Create Table has nothing to return to.
+    var canDiscardChanges = false
     var hasRowSelection = false
     // Copy with headers and Copy as JSON read the data grid's columns, so the structure grid's selection does not count.
     var hasDataGridRowSelection = false
@@ -76,6 +80,9 @@ struct MenuValidationContext: Equatable {
     var hasOtherWindowTabs = false
     var canPinResultTab = false
     var canCompareResult = false
+    var canShowPreviousResult = false
+    var canShowNextResult = false
+    var canCloseResultTab = false
     // Separate flags: Back and Forward run out independently and a disabled item has to say which one it is.
     var canNavigateBack = false
     var canNavigateForward = false
@@ -150,9 +157,6 @@ extension MainSplitViewController: NSMenuItemValidation {
              #selector(refreshDatabase(_:)),
              #selector(openQuickSwitcher(_:)),
              #selector(toggleQueryHistory(_:)),
-             #selector(showPreviousResult(_:)),
-             #selector(showNextResult(_:)),
-             #selector(closeResultTab(_:)),
              #selector(focusSidebarFilter(_:)),
              #selector(showERDiagram(_:)):
             return context.isConnected
@@ -175,6 +179,8 @@ extension MainSplitViewController: NSMenuItemValidation {
 
         case #selector(saveDocument(_:)):
             return context.isConnected && !context.isReadOnly && (context.hasPendingChanges || context.hasOpenGridEdit)
+        case #selector(discardChanges(_:)):
+            return context.isConnected && context.canDiscardChanges
         case #selector(saveDocumentAs(_:)):
             return context.isConnected && context.isQueryTab
         case #selector(exportQueryResults(_:)):
@@ -290,6 +296,12 @@ extension MainSplitViewController: NSMenuItemValidation {
             return context.canPinResultTab
         case #selector(compareResult(_:)):
             return context.canCompareResult
+        case #selector(showPreviousResult(_:)):
+            return context.canShowPreviousResult
+        case #selector(showNextResult(_:)):
+            return context.canShowNextResult
+        case #selector(closeResultTab(_:)):
+            return context.canCloseResultTab
         case #selector(navigateBack(_:)):
             return context.isConnected && context.canNavigateBack
         case #selector(navigateForward(_:)):
@@ -434,6 +446,7 @@ extension MainSplitViewController: NSMenuItemValidation {
     private static let browseContentSelectors: Set<Selector> = [
         #selector(refreshDatabase(_:)),
         #selector(saveDocument(_:)),
+        #selector(discardChanges(_:)),
         #selector(addRow(_:)),
         #selector(restorePreviousValues(_:)),
         #selector(editDocument(_:)),
@@ -454,6 +467,11 @@ extension MainSplitViewController: NSMenuItemValidation {
         #selector(moveTabToConnection(_:)),
         #selector(searchDatabase(_:)),
         #selector(buildJoinQuery(_:)),
+        #selector(pinResult(_:)),
+        #selector(compareResult(_:)),
+        #selector(showPreviousResult(_:)),
+        #selector(showNextResult(_:)),
+        #selector(closeResultTab(_:)),
     ]
 
     // A command this window does not own stays enabled, which keeps `performClose:` and the system's own items working.
@@ -477,8 +495,9 @@ extension MainSplitViewController: NSMenuItemValidation {
 
     private static func isQueryCommandEnabled(_ selector: Selector, context: MenuValidationContext) -> Bool? {
         switch selector {
-        case #selector(executeQuery(_:)),
-             #selector(executeAllStatements(_:)),
+        case #selector(executeQuery(_:)):
+            return context.isConnected && (context.hasQueryText || context.canCreateDraftTable)
+        case #selector(executeAllStatements(_:)),
              #selector(executeQueryWithoutLimit(_:)):
             return context.isConnected && context.hasQueryText
         case #selector(formatQuery(_:)):
@@ -582,12 +601,14 @@ extension MainSplitViewController: NSMenuItemValidation {
             isQueryExecuting: actions.isQueryExecuting,
             isQueryStoppable: actions.isQueryStoppable,
             hasQueryText: actions.hasQueryText,
+            canCreateDraftTable: actions.canCreateDraftTable,
             canRunAIQueryActions: actions.aiQueryActionAvailability.isEnabled,
             canClearQuery: actions.canClearQuery,
             canClearResults: actions.canClearResults,
             hasPendingChanges: actions.hasPendingChanges,
             hasOpenGridEdit: actions.hasOpenGridEdit,
             hasDataPendingChanges: actions.hasDataPendingChanges,
+            canDiscardChanges: actions.canDiscardChanges,
             hasRowSelection: actions.hasRowSelection,
             hasDataGridRowSelection: actions.hasDataGridRowSelection,
             hasTableSelection: actions.hasTableSelection,
@@ -604,6 +625,9 @@ extension MainSplitViewController: NSMenuItemValidation {
             hasOtherWindowTabs: hasOtherWindowTabs,
             canPinResultTab: actions.canPinResultTab,
             canCompareResult: actions.canCompareResult,
+            canShowPreviousResult: actions.canShowPreviousResult,
+            canShowNextResult: actions.canShowNextResult,
+            canCloseResultTab: actions.canCloseResultTab,
             canNavigateBack: actions.canNavigateBack,
             canNavigateForward: actions.canNavigateForward,
             canNavigatePages: actions.canNavigatePages,

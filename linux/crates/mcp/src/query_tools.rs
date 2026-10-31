@@ -184,6 +184,7 @@ async fn run_read(session: &Session, text: &str, limit: usize, timeout: Duration
 async fn run_write(session: &Session, text: &str, limit: usize, timeout: Duration, cancel: &CancellationToken) -> Ran {
     let options = EditorSessionOptions {
         statement_timeout: Some(timeout),
+        database: None,
     };
     let editor = session
         .open_editor_session(options, cancel)
@@ -437,6 +438,14 @@ mod tests {
         assert!(single_batch("SELECT 1; SELECT 2", SqlGrammar::PostgreSql).is_err());
         assert!(single_batch("", SqlGrammar::PostgreSql).is_err());
         assert!(single_batch("SELECT 'open", SqlGrammar::PostgreSql).is_err());
+        assert!(single_batch("SELECT $1('); VACUUM INTO 'copy.db'; --'", SqlGrammar::Sqlite).is_err());
+        assert!(
+            single_batch(
+                "SELECT E'x'\n'\\' || ' || '\\' ; COMMIT; DELETE FROM orders; --'",
+                SqlGrammar::PostgreSql
+            )
+            .is_err()
+        );
     }
 
     #[test]

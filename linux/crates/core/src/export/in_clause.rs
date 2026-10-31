@@ -17,11 +17,23 @@ fn in_clause_literal(
         // different spelling on every engine. Both are reported to
         // the caller rather than written.
         Value::Null | Value::Bytes(_) => None,
+        other => Some(list_literal(dialect, column, other)),
+    }
+}
+
+/// The value as a literal to compare a column with or put back in one.
+pub(super) fn list_literal(
+    dialect: &dyn SqlDialect,
+    column: &ColumnType,
+    value: &Value,
+) -> Result<String, LiteralError> {
+    match value {
         // The widened double, not the real's own digits: an engine
         // compares a `real` with a numeric literal as a double, and
-        // `0.1` as a double is not the `real` 0.1.
-        Value::Float32(real) => Some(dialect.literal(&Value::Float64(f64::from(*real)), column)),
-        other => Some(dialect.literal(other, column)),
+        // `0.1` as a double is not the `real` 0.1. Stored back in a
+        // `real`, the double rounds to the same value.
+        Value::Float32(real) => dialect.literal(&Value::Float64(f64::from(*real)), column),
+        other => dialect.literal(other, column),
     }
 }
 

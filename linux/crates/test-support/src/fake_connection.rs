@@ -2,7 +2,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
-use tablepro_core::ddl::{InboundForeignKey, OutboundForeignKey, TableDefinition};
+use tablepro_core::ddl::{CharacterSet, InboundForeignKey, OutboundForeignKey, TableDefinition};
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::keyspace::{KeyListing, KeyPage, KeyScan, KeyWindow};
 use tablepro_core::meta::{ObjectInfo, ObjectScope, RowIdentity, SchemaInfo, TableEstimate};
@@ -189,6 +189,19 @@ impl Connection for FakeConnection {
             .await
     }
 
+    async fn list_databases(&self, options: CallOptions) -> Result<Vec<SchemaInfo>, DriverError> {
+        let counter = &self.counters.list_databases;
+        self.answer(
+            "list_databases",
+            counter,
+            |s| &mut s.list_databases,
+            None,
+            &options,
+            TimeoutPhase::Statement,
+        )
+        .await
+    }
+
     async fn list_schemas(&self, options: CallOptions) -> Result<Vec<SchemaInfo>, DriverError> {
         let counter = &self.counters.list_schemas;
         self.answer(
@@ -309,6 +322,19 @@ impl Connection for FakeConnection {
             counter,
             |s| &mut s.fetch_table_definition,
             name,
+            &options,
+            TimeoutPhase::Statement,
+        )
+        .await
+    }
+
+    async fn fetch_character_sets(&self, options: CallOptions) -> Result<Vec<CharacterSet>, DriverError> {
+        let counter = &self.counters.fetch_character_sets;
+        self.answer(
+            "fetch_character_sets",
+            counter,
+            |s| &mut s.fetch_character_sets,
+            None,
             &options,
             TimeoutPhase::Statement,
         )

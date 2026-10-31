@@ -85,11 +85,15 @@ mongodb = { version = "3.9.1", default-features = false, features = [
 ] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
 csv = "1.4"
+# Already built for duckdb's arrow, with its terminal support; a text
+# table turns that off itself (force_no_tty).
+comfy-table = "7.1"
+unicode-width = "0.2"
 # No zlib feature: it pulls libz-sys, and the pure-Rust deflate keeps
 # the build free of another C dependency. Constant memory lets a sheet
 # spill its rows to a temporary file instead of holding them.
-rust_xlsxwriter = { version = "0.99", default-features = false, features = ["chrono", "constant_memory"] }
-zip = { version = "8.3", default-features = false, features = ["deflate"] }
+rust_xlsxwriter = { version = "0.102", default-features = false, features = ["chrono", "constant_memory"] }
+zip = { version = "9.0", default-features = false, features = ["deflate"] }
 futures = "0.3"
 futures-util = { version = "0.3", default-features = false, features = ["std"] }
 bytes = "1"
@@ -129,6 +133,8 @@ gtk4 = { version = "0.11", features = ["gnome_50"] }
 cairo-rs = { version = "0.22", features = ["png", "svg"] }
 libadwaita = { version = "0.9", features = ["v1_9"] }
 sourceview5 = { version = "0.11", features = ["v5_18"] }
+# 3.x is the GNOME 50 release, which speaks the loaders' 2+ protocol.
+glycin = { version = "3.1", default-features = false, features = ["gdk4", "tokio"] }
 gio = { version = "0.22", features = ["v2_88"] }
 gio-unix = { version = "0.22", features = ["v2_84"] }
 glib = { version = "0.22", features = ["v2_88"] }

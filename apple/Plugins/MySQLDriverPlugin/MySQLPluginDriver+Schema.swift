@@ -60,7 +60,7 @@ internal extension MySQLPluginDriver {
             table: table, schema: schema, showRows: result.rows, catalogDetails: catalogDetails
         )
 
-        return result.rows.compactMap { row in
+        let columns = result.rows.compactMap { row -> PluginColumnInfo? in
             guard let name = row[safe: 0]?.asText,
                   let dataType = row[safe: 1]?.asText
             else { return nil }
@@ -109,6 +109,9 @@ internal extension MySQLPluginDriver {
                 generationKind: mysqlGenerationKind(extra: extra)
             )
         }
+        let checks = try await mariadbColumnChecks(table: table, schema: schema, columns: columns.map(\.name))
+        guard !checks.isEmpty else { return columns }
+        return columns.map { $0.withColumnCheck(checks[$0.name]) }
     }
 
     /// What `INFORMATION_SCHEMA.COLUMNS` says about a table's columns that `SHOW FULL COLUMNS` cannot:
@@ -292,10 +295,13 @@ internal extension MySQLPluginDriver {
         let safeTable = mysqlEscapeStringLiteral(table)
         let query: String
         if flavor.isMariaDB {
+            // A column's own check is the column's, restated by its MODIFY: as a constraint here, its
+            // DROP CONSTRAINT fails with ERROR 1091.
+            let tableLevel = try await catalogHasColumn(.checkConstraintLevel) ? " AND LEVEL <> \'Column\'" : ""
             query = """
                 SELECT CONSTRAINT_NAME, CHECK_CLAUSE
                 FROM INFORMATION_SCHEMA.CHECK_CONSTRAINTS
-                WHERE CONSTRAINT_SCHEMA = \'\(database)\' AND TABLE_NAME = \'\(safeTable)\'
+                WHERE CONSTRAINT_SCHEMA = \'\(database)\' AND TABLE_NAME = \'\(safeTable)\'\(tableLevel)
                 ORDER BY CONSTRAINT_NAME
                 """
         } else {

@@ -26,6 +26,7 @@ mod sidebar_policy;
 mod significant_tokens;
 mod sql_file;
 mod statement_cursor;
+mod tab_scope;
 #[cfg(test)]
 mod tests;
 mod transaction_dirty;
@@ -48,7 +49,7 @@ use tablepro_session::runtime::{ProcessHold, Tasks};
 use tokio_util::sync::CancellationToken;
 
 use self::buffer_edit::{CursorAnchor, replace_all_undoable};
-pub(crate) use self::completion::{CompletionScope, read_catalog, tables_named};
+pub(crate) use self::completion::{CatalogHome, CompletionScope, read_catalog, tables_named};
 pub(crate) use self::editor_file::file_name;
 use self::editor_view::EditorView;
 use self::imp::RunningScript;
@@ -152,6 +153,8 @@ impl SqlEditor {
         editor.install_drop_target();
         editor.connect_buttons();
         editor.connect_grid();
+        editor.show_scope();
+        editor.list_databases();
         editor
     }
 
@@ -689,6 +692,10 @@ impl SqlEditor {
             self.emit_by_name::<()>("transaction-changed", &[&dirty]);
         }
         self.record_history(entry, dialect);
+        self.show_scope();
+        if imp.changes_catalog.get() {
+            self.list_databases();
+        }
         self.emit_by_name::<()>("run-finished", &[&outcome]);
         self.emit_by_name::<()>("run-state-changed", &[&false]);
     }
@@ -864,8 +871,11 @@ impl SqlEditor {
         let EntryKind::ResultSet(result) = &entry.kind else {
             return None;
         };
-        Some(ExportOffer {
-            origin: ExportOrigin::Editor {
+        // All Rows runs the statement again on the connection, which is in
+        // another database than this tab.
+        let origin = match self.tab_database() {
+            Some(_) => ExportOrigin::Shown { rows: shown },
+            None => ExportOrigin::Editor {
                 shown,
                 query: ExportQuery::Editor {
                     sql: result.statement.clone(),
@@ -873,6 +883,9 @@ impl SqlEditor {
                 shown_rows: result.row_count() as u64,
                 truncated: result.summary.is_truncated(),
             },
+        };
+        Some(ExportOffer {
+            origin,
             session: self.deps().and_then(|deps| deps.session.get()),
             name: export_name_for_query(&entry.preview),
             target: None,

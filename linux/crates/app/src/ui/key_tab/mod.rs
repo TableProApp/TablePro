@@ -344,6 +344,7 @@ fn content_page(grid: &DataGrid) -> (gtk::Box, ContentParts) {
         .build();
     more.add_css_class("flat");
     footer_bar.append(&footer);
+    footer_bar.append(&grid.selection_summary());
     footer_bar.append(&more);
     page.append(&header);
     page.append(&gtk::Separator::new(gtk::Orientation::Horizontal));

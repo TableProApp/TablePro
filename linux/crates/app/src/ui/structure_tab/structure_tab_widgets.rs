@@ -2,6 +2,7 @@ use gtk4 as gtk;
 use gtk4::glib;
 use libadwaita as adw;
 
+use super::table_options::TableOptionsWidgets;
 use crate::ui::handler_guard::HandlerGuard;
 use crate::ui::tab_load::StaleBanner;
 
@@ -23,6 +24,7 @@ pub(super) struct StructureTabWidgets {
     pub(super) add_column_row: adw::ButtonRow,
     pub(super) add_index_row: adw::ButtonRow,
     pub(super) add_fk_row: adw::ButtonRow,
+    pub(super) options: TableOptionsWidgets,
     pub(super) sql_buffer: sourceview5::Buffer,
     pub(super) pending_label: gtk::Label,
     pub(super) save_button: gtk::Button,

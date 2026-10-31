@@ -1,4 +1,4 @@
-use super::{ColumnDefinition, InboundForeignKey, PrimaryKeyConstraint, TableSource};
+use super::{ColumnDefinition, InboundForeignKey, PrimaryKeyConstraint, TableOptions, TableSource};
 use crate::foreign_key_info::ForeignKeyInfo;
 use crate::meta::{IndexInfo, TableRef};
 
@@ -19,6 +19,9 @@ pub struct TableDefinition {
     pub inbound_foreign_keys: Vec<InboundForeignKey>,
     /// `None` where the engine cannot produce its own DDL for the table.
     pub source: Option<TableSource>,
+    /// `None` where the engine keeps no options for the table, and for a
+    /// view.
+    pub options: Option<TableOptions>,
 }
 
 impl TableDefinition {
@@ -71,6 +74,7 @@ mod tests {
             foreign_keys: Vec::new(),
             inbound_foreign_keys: Vec::new(),
             source: None,
+            options: None,
         };
 
         assert_eq!(definition.column("Email").map(ColumnDefinition::name), Some("Email"));

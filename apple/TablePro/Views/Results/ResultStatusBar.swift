@@ -38,7 +38,6 @@ struct ResultStatusBar: View {
     let columnState: StatusBarColumnState
     let highlightState: StatusBarHighlightState
     let paginationCallbacks: PaginationCallbacks
-    let structureFooter: StructureFooterCapability
     let execution: ExecutionReadout
     /// Held, not observed: only the readout inside the report slot re-renders when it changes.
     let selectionSummary: SelectionSummaryState
@@ -46,16 +45,11 @@ struct ResultStatusBar: View {
     /// this window is. It had no surface at all between the centred toolbar item going and this.
     let isRefreshingSchema: Bool
     @Binding var viewMode: ResultsViewMode
+    // Empty unless the tab holds exactly one result: two or more are chosen from the tab row above the result.
     let resultSetMenu: ResultSetMenuModel
-    let onActivateResultSet: (UUID) -> Void
-    let onToggleResultSetPin: (UUID) -> Void
-    let onCompareResultSet: (UUID) -> Void
-    let onCloseResultSet: (UUID) -> Void
-    let onCloseOtherResultSets: (UUID) -> Void
+    let resultSetActions: ResultSetActions
     let onToggleFilters: () -> Void
     let onFetchAll: (() -> Void)?
-    let onStructureAdd: () -> Void
-    let onStructureRemove: () -> Void
 
     @State private var showColumnPopover = false
     @State private var showHighlightPopover = false
@@ -114,11 +108,7 @@ struct ResultStatusBar: View {
                 ResultSetMenu(
                     model: resultSetMenu,
                     isSpelledOut: presentation.resultSetMenuIsSpelledOut,
-                    onActivate: onActivateResultSet,
-                    onTogglePin: onToggleResultSetPin,
-                    onCompare: onCompareResultSet,
-                    onClose: onCloseResultSet,
-                    onCloseOthers: onCloseOtherResultSets
+                    actions: resultSetActions
                 )
             }
             if model.controls.showsReadout || model.controls.showsExecution {
@@ -300,20 +290,6 @@ struct ResultStatusBar: View {
             }
             if model.controls.showsPagination {
                 paginationControls(presentation)
-            }
-            if model.controls.showsStructureActions {
-                AddRemoveControlGroup(
-                    addLabel: structureFooter.addLabel,
-                    removeLabel: structureFooter.removeLabel,
-                    canAdd: structureFooter.canAdd,
-                    canRemove: structureFooter.canRemove,
-                    addHelp: structureFooter.unavailableReason,
-                    removeHelp: structureFooter.unavailableReason,
-                    addIdentifier: "structure-footer-add",
-                    removeIdentifier: "structure-footer-remove",
-                    onAdd: onStructureAdd,
-                    onRemove: onStructureRemove
-                )
             }
         }
         .fixedSize()

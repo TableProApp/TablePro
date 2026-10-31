@@ -14,48 +14,91 @@ pub struct CatalogAnswer {
     pub columns: Vec<(TableRef, Arc<[ColumnInfo]>)>,
 }
 
+/// Where an unqualified name resolves for the tab.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub enum CatalogHome {
+    /// The connection's default schema.
+    #[default]
+    Connection,
+    /// Another of the server's databases, which the catalog lists as a
+    /// schema.
+    Schema(String),
+    /// A database the catalog does not describe, which nothing offered
+    /// from it would be right for.
+    Elsewhere(String),
+}
+
 /// Read what `scope` offers. The catalog shares each read with every
 /// other view and keeps what it read, so typing does not reach the
 /// server again; a list that cannot be read is left out.
-pub async fn read(session: Arc<Session>, scope: CompletionScope) -> CatalogAnswer {
-    let defaults = listed(session.objects(ObjectScope::DefaultSchema).await);
+pub async fn read(session: Arc<Session>, scope: CompletionScope, home: CatalogHome) -> CatalogAnswer {
+    let defaults = match &home {
+        CatalogHome::Connection => listed(session.objects(ObjectScope::DefaultSchema).await),
+        CatalogHome::Schema(name) => listed(session.objects(ObjectScope::Schema(name.clone())).await),
+        CatalogHome::Elsewhere(_) => return CatalogAnswer::default(),
+    };
+    let home = Home { home, defaults };
     match scope {
         CompletionScope::Objects { schema: None } => CatalogAnswer {
             schemas: Some(listed(session.schemas().await)),
-            objects: Some(defaults),
+            objects: Some(home.defaults.clone()),
             columns: Vec::new(),
         },
         CompletionScope::Objects { schema: Some(name) } => {
             // `users.` typed before the FROM that names users.
-            let table = relation_named(&defaults, &name);
+            let table = relation_named(&home.defaults, &name);
             CatalogAnswer {
                 schemas: None,
-                objects: schema_objects(&session, &name).await,
+                objects: schema_objects(&session, &home, &name).await,
                 columns: columns_of(&session, table.into_iter().collect()).await,
             }
         }
         CompletionScope::Qualified { qualifier, name } => {
             let table = TableRef::new(Some(qualifier), name.clone());
-            match known_table(&session, &defaults, &table).await {
+            match known_table(&session, &home, &table).await {
                 Some(table) => CatalogAnswer {
                     columns: columns_of(&session, vec![table]).await,
                     ..CatalogAnswer::default()
                 },
                 None => CatalogAnswer {
-                    objects: schema_objects(&session, &name).await,
+                    objects: schema_objects(&session, &home, &name).await,
                     ..CatalogAnswer::default()
                 },
             }
         }
         CompletionScope::Columns { tables } => CatalogAnswer {
-            columns: columns_of(&session, known_tables(&session, &defaults, &tables).await).await,
+            columns: columns_of(&session, known_tables(&session, &home, &tables).await).await,
             ..CatalogAnswer::default()
         },
         CompletionScope::General { tables_in_statement } => CatalogAnswer {
             schemas: None,
-            columns: columns_of(&session, known_tables(&session, &defaults, &tables_in_statement).await).await,
-            objects: Some(defaults),
+            columns: columns_of(&session, known_tables(&session, &home, &tables_in_statement).await).await,
+            objects: Some(home.defaults),
         },
+    }
+}
+
+/// The schema unqualified names resolve in and what it holds.
+struct Home {
+    home: CatalogHome,
+    defaults: Arc<[ObjectInfo]>,
+}
+
+impl Home {
+    /// Whether `schema` names the home schema, whose objects are read.
+    fn is(&self, schema: &SchemaInfo) -> bool {
+        match &self.home {
+            CatalogHome::Connection => schema.is_default,
+            CatalogHome::Schema(name) => schema.name == *name,
+            CatalogHome::Elsewhere(_) => false,
+        }
+    }
+
+    /// A name for the home database the catalog does not list as a
+    /// schema, as MySQL lists only the connection's. Exact, since
+    /// `Analytics` and `analytics` can be two databases.
+    fn named(&self, name: &str) -> bool {
+        matches!(&self.home, CatalogHome::Schema(home) if home == name)
     }
 }
 
@@ -76,7 +119,10 @@ fn listed<T>(read: Result<Arc<[T]>, Arc<OperationError>>) -> Arc<[T]> {
 
 /// The objects of the schema called `name`, or `None` when the catalog
 /// has no such schema.
-async fn schema_objects(session: &Session, name: &str) -> Option<Arc<[ObjectInfo]>> {
+async fn schema_objects(session: &Session, home: &Home, name: &str) -> Option<Arc<[ObjectInfo]>> {
+    if home.named(name) {
+        return Some(home.defaults.clone());
+    }
     let schemas = listed(session.schemas().await);
     let schema = schema_named(&schemas, name)?;
     Some(listed(session.objects(ObjectScope::Schema(schema.name.clone())).await))
@@ -85,10 +131,10 @@ async fn schema_objects(session: &Session, name: &str) -> Option<Arc<[ObjectInfo
 /// The catalog's own names for the tables among `tables` it holds. A
 /// name it does not hold, such as a CTE's, is left out: reading it
 /// could only fail, and a failed read is asked again every time.
-async fn known_tables(session: &Session, defaults: &[ObjectInfo], tables: &[TableRef]) -> Vec<TableRef> {
+async fn known_tables(session: &Session, home: &Home, tables: &[TableRef]) -> Vec<TableRef> {
     let mut known = Vec::new();
     for table in tables {
-        if let Some(table) = known_table(session, defaults, table).await
+        if let Some(table) = known_table(session, home, table).await
             && !known.contains(&table)
         {
             known.push(table);
@@ -99,14 +145,17 @@ async fn known_tables(session: &Session, defaults: &[ObjectInfo], tables: &[Tabl
 
 /// The catalog's own name for `table`, so the read is the one the
 /// table's other views share.
-async fn known_table(session: &Session, defaults: &[ObjectInfo], table: &TableRef) -> Option<TableRef> {
+async fn known_table(session: &Session, home: &Home, table: &TableRef) -> Option<TableRef> {
     let Some(schema) = &table.schema else {
-        return relation_named(defaults, &table.name);
+        return relation_named(&home.defaults, &table.name);
     };
+    if home.named(schema) {
+        return relation_named(&home.defaults, &table.name);
+    }
     let schemas = listed(session.schemas().await);
     let schema = schema_named(&schemas, schema)?;
-    if schema.is_default {
-        return relation_named(defaults, &table.name);
+    if home.is(schema) {
+        return relation_named(&home.defaults, &table.name);
     }
     let objects = listed(session.objects(ObjectScope::Schema(schema.name.clone())).await);
     relation_named(&objects, &table.name)
@@ -147,6 +196,29 @@ mod tests {
             name: name.to_owned(),
             kind,
         }
+    }
+
+    /// A tab moved to `analytics` reads `shop.orders` from `shop`, the
+    /// connection's default schema, not from its own.
+    #[test]
+    fn only_the_tabs_own_database_is_read_from_its_home() {
+        let shop = SchemaInfo {
+            name: "shop".to_owned(),
+            is_default: true,
+            is_system: false,
+        };
+        let moved = Home {
+            home: CatalogHome::Schema("analytics".to_owned()),
+            defaults: Arc::from([]),
+        };
+        assert!(!moved.is(&shop));
+        assert!(moved.named("analytics"));
+        let staying = Home {
+            home: CatalogHome::Connection,
+            defaults: Arc::from([]),
+        };
+        assert!(staying.is(&shop));
+        assert!(!staying.named("shop"), "the catalog lists the connection's own");
     }
 
     #[test]

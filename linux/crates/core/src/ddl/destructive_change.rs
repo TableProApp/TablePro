@@ -21,6 +21,15 @@ pub enum DestructiveChange {
     SetNotNull {
         column: String,
     },
+    /// Every text column is rewritten in the table's new character set. A
+    /// character the new one lacks is changed or refused, and a column's
+    /// type can widen to hold the longer characters.
+    ConvertCharacterSet,
+    /// The values the column holds are rewritten in its new character
+    /// set, and a character that set lacks is changed or refused.
+    ChangeColumnCharacterSet {
+        column: String,
+    },
     DropIndex {
         index: String,
     },

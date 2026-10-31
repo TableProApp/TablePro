@@ -505,6 +505,7 @@ pub(crate) async fn fetch_table_definition(
         foreign_keys,
         inbound_foreign_keys: inbound,
         source,
+        options: None,
     })
 }
 
@@ -664,7 +665,6 @@ async fn table_shape(connection: &mut SqlxConnection, table: &TableRef) -> Resul
     let mut facts = TableFacts {
         strict,
         without_rowid,
-        autoincrement: false,
         single_column_key,
         descending_key: false,
     };
@@ -672,24 +672,8 @@ async fn table_shape(connection: &mut SqlxConnection, table: &TableRef) -> Resul
         facts.descending_key = create_statement(connection, table)
             .await?
             .is_some_and(|sql| declared_descending_key(&sql, &candidate.name));
-        if !facts.descending_key {
-            facts.autoincrement = autoincrement(connection, schema, &table.name).await?;
-        }
     }
     Ok(TableShape { kind, facts, columns })
-}
-
-async fn autoincrement(connection: &mut SqlxConnection, schema: &str, table: &str) -> Result<bool, DriverError> {
-    let schema_sql = quote(schema);
-    if !has_table(connection, &schema_sql, "sqlite_sequence").await? {
-        return Ok(false);
-    }
-    let rows: i64 = sqlx::query_scalar(AssertSqlSafe(catalog::sequence_sql(&schema_sql)))
-        .bind(table)
-        .fetch_one(&mut *connection)
-        .await
-        .map_err(map_error)?;
-    Ok(rows > 0)
 }
 
 async fn has_table(connection: &mut SqlxConnection, schema_sql: &str, name: &str) -> Result<bool, DriverError> {

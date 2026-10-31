@@ -276,3 +276,12 @@ enum TestFixtures {
         )
     }
 }
+
+@MainActor
+extension StructureEditingSession {
+    // What a finished load leaves behind, for a test that stages straight into the change manager.
+    func markBaselineAdopted() {
+        hasBaseline = true
+        editor.isAwaitingBaseline = false
+    }
+}

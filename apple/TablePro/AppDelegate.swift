@@ -154,6 +154,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         SyncCoordinator.shared.start()
         LinkedFolderWatcher.shared.start()
         TeamLibrarySync.shared.start()
+        SupportAskCoordinator.shared.start()
     }
 
     func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {

@@ -9,8 +9,9 @@ use libadwaita::prelude::{
 };
 use tablepro_core::column::{ColumnDefault, ColumnType};
 use tablepro_core::ddl::{
-    ColumnAttributes, ColumnDefinition, ColumnKeyRoles, DraftColumn, IdentityStyle, InboundForeignKey,
-    PrimaryKeyConstraint, TableDefinition, TableDraft, TableSource, UnmodeledAttribute,
+    CharacterSet, CollationName, ColumnAttributes, ColumnDefinition, ColumnKeyRoles, DraftColumn, DraftTableOptions,
+    IdentityStyle, InboundForeignKey, PrimaryKeyConstraint, TableDefinition, TableDraft, TableOptions, TableSource,
+    UnmodeledAttribute,
 };
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::meta::{ObjectInfo, ObjectKind, TableRef};
@@ -94,6 +95,22 @@ impl Harness {
             .map(|model| model.tracker.clone())
             .expect("the tab has a model")
     }
+
+    /// The structure on screen with the server's character sets read, so
+    /// a row held across an edit is not built again under it.
+    fn wait_for_structure(&self) {
+        wait_until(WAIT, || self.page().as_deref() == Some("editor")).expect("the structure");
+        wait_until(WAIT, || {
+            self.tab()
+                .imp()
+                .model
+                .borrow()
+                .as_ref()
+                .is_some_and(|model| !model.sequencer.is_pending(StructureRequestKind::CharacterSets))
+        })
+        .expect("the character sets were read");
+        drain_main_context();
+    }
 }
 
 impl Drop for Harness {
@@ -166,6 +183,7 @@ fn definition(column: &str) -> TableDefinition {
         foreign_keys: Vec::new(),
         inbound_foreign_keys: Vec::new(),
         source: None,
+        options: None,
     }
 }
 
@@ -655,6 +673,7 @@ fn referenced_primary_key_switch_is_insensitive_with_foreign_key_names() {
             referenced_columns: vec!["id".to_owned()],
         }],
         source: None,
+        options: None,
     };
     let mut script = postgres_script();
     script.fetch_table_definition.always(FakeReply::ok(users));
@@ -693,8 +712,7 @@ fn a_computed_column_takes_no_comment_where_the_comment_restates_it() {
     };
     script.fetch_table_definition.always(FakeReply::ok(table));
     let harness = Harness::open(StructureMode::Edit, script, []);
-    wait_until(WAIT, || harness.page().as_deref() == Some("editor")).expect("the structure");
-    drain_main_context();
+    harness.wait_for_structure();
 
     let computed = column_widget(harness.tab(), 0, "col-comment");
 
@@ -945,8 +963,7 @@ fn open_edit(dialect: Arc<dyn SqlDialect>, table: TableDefinition) -> Harness {
     };
     script.fetch_table_definition.always(FakeReply::ok(table));
     let harness = Harness::open(StructureMode::Edit, script, []);
-    wait_until(WAIT, || harness.page().as_deref() == Some("editor")).expect("the structure");
-    drain_main_context();
+    harness.wait_for_structure();
     harness
 }
 
@@ -1091,6 +1108,24 @@ fn a_discard_after_a_change_elsewhere_reads_the_table_again() {
 #[gtk4::test]
 fn a_discard_after_a_save_found_the_table_changed_reads_it_again() {
     assert_eq!(reads_after_discard(Some(SaveInput::TableChangedBeforeSave.into())), 2);
+}
+
+#[gtk4::test]
+fn a_discard_whose_read_fails_leaves_the_discarded_column_out() {
+    let mut script = postgres_script();
+    script
+        .fetch_table_definition
+        .once(FakeReply::ok(definition("id")))
+        .always(FakeReply::err(DriverError::server("denied")));
+    let harness = Harness::open(StructureMode::Edit, script, []);
+    wait_until(WAIT, || harness.page().as_deref() == Some("editor")).expect("the structure");
+    harness.tab().send(ColumnsInput::AddColumn);
+    harness.tab().send(SaveInput::TableChangedBeforeSave);
+
+    harness.tab().send(SaveInput::Discard);
+
+    wait_until(WAIT, || banner(&harness).is_revealed()).expect("the failed read was not shown");
+    assert_eq!(harness.column_names(), ["id"]);
 }
 
 /// The titles of the add buttons the tab shows under `container`.
@@ -1533,6 +1568,7 @@ fn icon_buttons_are_labelled_without_accelerator_hints() {
         }],
         inbound_foreign_keys: Vec::new(),
         source: None,
+        options: None,
     };
     let mut script = postgres_script();
     script.fetch_table_definition.always(FakeReply::ok(table));
@@ -1559,4 +1595,354 @@ fn icon_buttons_are_labelled_without_accelerator_hints() {
     assert!(suggestions > 0, "no column offers its suggested types");
     assert_eq!(crate::test_support::unlabelled_icon_buttons(tab), Vec::<String>::new());
     assert_eq!(crate::test_support::tooltips_with_keys(tab), Vec::<String>::new());
+}
+
+fn mysql() -> Arc<dyn SqlDialect> {
+    Arc::new(tablepro_driver_mysql::MySqlDialect::new(
+        tablepro_driver_mysql::MySqlFlavour::MySql,
+        &ServerInfo::new("MySQL", "8.4.3", 8, 4, 3),
+    ))
+}
+
+/// `id int` keyed and numbered, next 7, and `title varchar(40)` in
+/// utf8mb4, as MySQL reads them.
+fn mysql_users() -> TableDefinition {
+    let dialect = mysql();
+    let mut id = integer_column("id", true);
+    id.info.column_type = dialect.parse_type("int").expect("a MySQL type");
+    id.info.is_auto_increment = true;
+    let mut title = definition("title").columns.remove(0);
+    title.info.column_type = dialect.parse_type("varchar(40)").expect("a MySQL type");
+    title.attributes.character_set = Some("utf8mb4".to_owned());
+    title.attributes.collation = Some(CollationName::new(None, "utf8mb4_0900_ai_ci"));
+    TableDefinition {
+        columns: vec![id, title],
+        primary_key: Some(PrimaryKeyConstraint {
+            name: Some("PRIMARY".to_owned()),
+            columns: vec!["id".to_owned()],
+        }),
+        options: Some(TableOptions {
+            character_set: Some("utf8mb4".to_owned()),
+            collation: Some("utf8mb4_0900_ai_ci".to_owned()),
+            next_auto_increment: Some(7),
+        }),
+        ..definition("id")
+    }
+}
+
+fn character_set(name: &str, default_collation: &str, collations: &[&str]) -> CharacterSet {
+    CharacterSet {
+        name: name.to_owned(),
+        default_collation: default_collation.to_owned(),
+        collations: collations.iter().map(|collation| (*collation).to_owned()).collect(),
+    }
+}
+
+fn character_sets() -> Vec<CharacterSet> {
+    vec![
+        character_set("latin1", "latin1_swedish_ci", &["latin1_bin", "latin1_swedish_ci"]),
+        character_set("utf8mb4", "utf8mb4_0900_ai_ci", &["utf8mb4_0900_ai_ci", "utf8mb4_bin"]),
+    ]
+}
+
+fn open_mysql(table: TableDefinition, sets: FakeReply<Vec<CharacterSet>>) -> Harness {
+    let mut script = ConnectionScript {
+        dialect: mysql(),
+        ..ConnectionScript::default()
+    };
+    script.fetch_table_definition.always(FakeReply::ok(table));
+    script.fetch_character_sets.always(sets);
+    let harness = Harness::open(StructureMode::Edit, script, []);
+    harness.wait_for_structure();
+    harness
+}
+
+fn choices(row: &adw::ComboRow) -> Vec<String> {
+    let names = row.model().and_downcast::<gtk::StringList>().expect("a list of names");
+    (0..names.n_items())
+        .filter_map(|position| names.string(position))
+        .map(|name| name.to_string())
+        .collect()
+}
+
+fn picked(row: &adw::ComboRow) -> Option<String> {
+    row.selected_item()
+        .and_downcast::<gtk::StringObject>()
+        .map(|item| item.string().to_string())
+}
+
+fn combo(tab: &StructureTab, position: i32, name: &str) -> adw::ComboRow {
+    column_widget(tab, position, name)
+        .downcast::<adw::ComboRow>()
+        .expect("a combo row")
+}
+
+fn table_options(harness: &Harness) -> DraftTableOptions {
+    harness.draft().options.expect("the table's options")
+}
+
+#[gtk4::test]
+fn mysql_offers_the_table_options_and_text_column_character_sets() {
+    let harness = open_mysql(mysql_users(), FakeReply::ok(character_sets()));
+    let (tab, imp) = (harness.tab(), harness.tab().imp());
+
+    assert!(imp.options_page.is_visible());
+    assert_eq!(choices(&imp.character_set_row), ["latin1", "utf8mb4"]);
+    assert_eq!(picked(&imp.character_set_row).as_deref(), Some("utf8mb4"));
+    assert_eq!(
+        choices(&imp.collation_row),
+        ["utf8mb4_0900_ai_ci (default)", "utf8mb4_bin"]
+    );
+    assert!(!imp.convert_row.is_active());
+    assert!(imp.auto_increment_group.is_visible());
+    assert_eq!(imp.auto_increment_row.text(), "7");
+    assert!(
+        !combo(tab, 0, "col-charset").is_visible(),
+        "an int column offers a character set"
+    );
+    let title = combo(tab, 1, "col-charset");
+    assert!(title.is_visible() && title.is_sensitive());
+    assert_eq!(choices(&title), ["latin1", "utf8mb4"]);
+    assert_eq!(
+        picked(&combo(tab, 1, "col-collation")).as_deref(),
+        Some("utf8mb4_0900_ai_ci (default)")
+    );
+    assert_eq!(preview(tab), "-- No pending changes.");
+}
+
+#[gtk4::test]
+fn postgres_offers_no_table_options_and_reads_no_character_sets() {
+    let harness = open_edit(postgres(), keyed_users());
+
+    assert!(!harness.tab().imp().options_page.is_visible());
+    assert!(
+        descendants(harness.tab())
+            .iter()
+            .all(|widget| widget.widget_name() != "col-charset"),
+        "a PostgreSQL column offers a character set"
+    );
+    assert_eq!(
+        CallCounters::get(&harness.fake.connection.counters().fetch_character_sets),
+        0
+    );
+}
+
+#[gtk4::test]
+fn a_table_character_set_takes_its_default_collation_into_the_preview() {
+    let harness = open_mysql(mysql_users(), FakeReply::ok(character_sets()));
+    let (tab, imp) = (harness.tab(), harness.tab().imp());
+
+    imp.character_set_row.set_selected(0);
+    drain_main_context();
+
+    let options = table_options(&harness);
+    assert_eq!(options.character_set.as_deref(), Some("latin1"));
+    assert_eq!(options.collation.as_deref(), Some("latin1_swedish_ci"));
+    assert_eq!(
+        choices(&imp.collation_row),
+        ["latin1_bin", "latin1_swedish_ci (default)"]
+    );
+    assert_eq!(
+        picked(&imp.collation_row).as_deref(),
+        Some("latin1_swedish_ci (default)")
+    );
+    assert!(preview(tab).contains("latin1_swedish_ci"), "{}", preview(tab));
+    assert!(imp.save_button.is_sensitive());
+
+    imp.collation_row.set_selected(0);
+    imp.convert_row.set_active(true);
+
+    let options = table_options(&harness);
+    assert_eq!(options.collation.as_deref(), Some("latin1_bin"));
+    assert!(options.converts_columns);
+    assert!(preview(tab).contains("CONVERT TO CHARACTER SET"), "{}", preview(tab));
+}
+
+#[gtk4::test]
+fn a_convert_beside_a_column_change_says_why_before_save() {
+    let harness = open_mysql(mysql_users(), FakeReply::ok(character_sets()));
+    let (tab, imp) = (harness.tab(), harness.tab().imp());
+
+    imp.convert_row.set_active(true);
+    tab.send(ColumnsInput::ColumnEdited {
+        column: harness.column(1),
+        field: ColumnField::Comment(Some("a title".to_owned())),
+    });
+    drain_main_context();
+
+    assert_eq!(
+        preview(tab),
+        "-- Column title can't be changed this way. Save column and primary key changes before converting existing \
+         columns."
+    );
+}
+
+#[gtk4::test]
+fn discard_restores_the_table_options() {
+    let harness = open_mysql(mysql_users(), FakeReply::ok(character_sets()));
+    let window = in_window(&harness);
+    let imp = harness.tab().imp();
+    imp.character_set_row.set_selected(0);
+    imp.convert_row.set_active(true);
+    imp.auto_increment_row.set_text("100");
+    assert_eq!(table_options(&harness).next_auto_increment, Some(100));
+
+    imp.discard_button.emit_clicked();
+    answer_discard(&window, "discard");
+
+    assert_eq!(
+        table_options(&harness),
+        DraftTableOptions {
+            character_set: Some("utf8mb4".to_owned()),
+            collation: Some("utf8mb4_0900_ai_ci".to_owned()),
+            converts_columns: false,
+            next_auto_increment: Some(7),
+        }
+    );
+    assert_eq!(picked(&imp.character_set_row).as_deref(), Some("utf8mb4"));
+    assert_eq!(
+        picked(&imp.collation_row).as_deref(),
+        Some("utf8mb4_0900_ai_ci (default)")
+    );
+    assert!(!imp.convert_row.is_active());
+    assert_eq!(imp.auto_increment_row.text(), "7");
+    assert_eq!(preview(harness.tab()), "-- No pending changes.");
+}
+
+/// The draft holds still while a save has it, so an option edit that
+/// arrives then is refused and the controls show the draft again.
+#[gtk4::test]
+fn table_option_edits_wait_for_the_save() {
+    let harness = open_mysql(mysql_users(), FakeReply::ok(character_sets()));
+    let imp = harness.tab().imp();
+    imp.character_set_row.set_selected(0);
+    harness.tab().send(SaveInput::SaveStarted);
+    assert!(
+        !imp.options_box.is_sensitive(),
+        "the options stayed editable during the save"
+    );
+    let toasts = toasts(harness.tab());
+
+    harness.tab().send(TableInput::CollationPicked("latin1_bin".to_owned()));
+    harness.tab().send(TableInput::ConvertColumnsToggled(true));
+    harness.tab().send(TableInput::NextAutoIncrementEdited("50".to_owned()));
+
+    let options = table_options(&harness);
+    assert_eq!(options.collation.as_deref(), Some("latin1_swedish_ci"));
+    assert!(!options.converts_columns);
+    assert_eq!(options.next_auto_increment, Some(7));
+    assert_eq!(
+        picked(&imp.collation_row).as_deref(),
+        Some("latin1_swedish_ci (default)")
+    );
+    assert_eq!(imp.auto_increment_row.text(), "7");
+    assert_eq!(toasts.borrow().len(), 3, "a refused edit said nothing");
+
+    harness.tab().send(SaveInput::SaveFailed("rolled back".to_owned()));
+    assert!(imp.options_box.is_sensitive());
+}
+
+#[gtk4::test]
+fn a_column_collation_list_follows_its_character_set() {
+    let harness = open_mysql(mysql_users(), FakeReply::ok(character_sets()));
+    let tab = harness.tab();
+    let (character_set, collation) = (combo(tab, 1, "col-charset"), combo(tab, 1, "col-collation"));
+
+    character_set.set_selected(0);
+
+    assert_eq!(choices(&collation), ["latin1_bin", "latin1_swedish_ci (default)"]);
+    assert_eq!(picked(&collation).as_deref(), Some("latin1_swedish_ci (default)"));
+    let column = harness.draft_column(1);
+    assert_eq!(
+        (column.character_set.as_deref(), column.collation.as_deref()),
+        (Some("latin1"), Some("latin1_swedish_ci"))
+    );
+
+    collation.set_selected(0);
+
+    assert_eq!(harness.draft_column(1).collation.as_deref(), Some("latin1_bin"));
+    assert!(preview(tab).contains("latin1_bin"), "{}", preview(tab));
+}
+
+/// A column the user adds follows the table's character set until one
+/// is picked, and the rows show only while its type holds text.
+#[gtk4::test]
+fn a_new_column_takes_the_table_default_while_its_type_holds_text() {
+    let harness = open_mysql(mysql_users(), FakeReply::ok(character_sets()));
+    let tab = harness.tab();
+    tab.send(ColumnsInput::AddColumn);
+    entry(tab, 2, "col-type").set_text("varchar(20)");
+    let (character_set, collation) = (combo(tab, 2, "col-charset"), combo(tab, 2, "col-collation"));
+
+    assert!(character_set.is_visible());
+    assert_eq!(choices(&character_set), ["Table default", "latin1", "utf8mb4"]);
+    assert_eq!(picked(&character_set).as_deref(), Some("Table default"));
+    assert_eq!(choices(&collation), ["Table default"]);
+
+    entry(tab, 2, "col-type").set_text("int");
+
+    assert!(!character_set.is_visible() && !collation.is_visible());
+}
+
+#[gtk4::test]
+fn the_next_auto_increment_takes_only_what_the_column_numbers() {
+    let mut table = mysql_users();
+    table.columns[0].info.column_type = mysql().parse_type("tinyint").expect("a MySQL type");
+    let harness = open_mysql(table, FakeReply::ok(character_sets()));
+    let (tab, imp) = (harness.tab(), harness.tab().imp());
+    let field = imp.auto_increment_row.get();
+
+    for refused in ["300", "0", "seven"] {
+        field.set_text(refused);
+
+        assert!(field.has_css_class("error"), "{refused}");
+        assert_eq!(
+            field.tooltip_text().as_deref(),
+            Some("Enter a whole number from 1 to 127.")
+        );
+        assert!(!imp.save_button.is_sensitive(), "{refused} could be saved");
+        assert_eq!(preview(tab), "-- Fix the highlighted fields to see the SQL.");
+        assert_eq!(table_options(&harness).next_auto_increment, Some(7));
+    }
+
+    field.set_text("100");
+
+    assert!(!field.has_css_class("error"));
+    assert!(imp.save_button.is_sensitive());
+    assert!(preview(tab).contains("AUTO_INCREMENT"), "{}", preview(tab));
+
+    switch_row(tab, 0, "col-auto").set_active(false);
+    drain_main_context();
+
+    assert!(!imp.auto_increment_group.is_visible());
+    assert_eq!(table_options(&harness).next_auto_increment, Some(7));
+    assert_eq!(field.text(), "7");
+}
+
+#[gtk4::test]
+fn a_failed_character_set_read_leaves_the_tab_editable() {
+    let harness = open_mysql(
+        mysql_users(),
+        FakeReply::err(DriverError::server("information_schema denied")),
+    );
+    let (tab, imp) = (harness.tab(), harness.tab().imp());
+
+    assert!(imp.options_page.is_visible());
+    assert_eq!(choices(&imp.character_set_row), ["utf8mb4"]);
+    for row in [imp.character_set_row.get(), combo(tab, 1, "col-charset")] {
+        assert!(!row.is_sensitive());
+        assert!(
+            row.tooltip_text()
+                .is_some_and(|tip| tip.contains("character sets couldn't be read")),
+            "{:?}",
+            row.tooltip_text()
+        );
+    }
+    assert!(!banner(&harness).is_revealed());
+
+    entry(tab, 1, "col-comment").set_text("headline");
+    imp.auto_increment_row.set_text("100");
+
+    assert!(imp.save_button.is_sensitive());
+    assert_eq!(imp.pending_label.label(), "2 unsaved changes");
 }

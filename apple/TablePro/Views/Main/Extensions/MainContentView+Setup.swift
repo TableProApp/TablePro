@@ -76,19 +76,32 @@ extension MainContentView {
 
     // One resolution of what is staged, so commit, its verb and Preview SQL agree; staged principals once left Cmd+S dim.
     func updateToolbarPendingState() {
+        let selectedTab = tabManager.selectedTab
+        let hasDataChanges = changeManager.hasChanges || !pendingTruncates.isEmpty || !pendingDeletes.isEmpty
+        // The session, not the mounted view: leaving Structure for Data used to dim Save over staged edits.
+        let hasStagedStructure = selectedStructureSession?.hasChanges ?? false
+        let previewsSchemaChanges = toolbarState.hasTypeChanges || coordinator.selectedDiagramHasStagedEdits
+            || (hasStagedStructure && selectedTab?.display.resultsViewMode == .structure)
         let kind = PendingChangeKind.resolve(
-            tabType: tabManager.selectedTab?.tabType,
-            hasDataChanges: changeManager.hasChanges || !pendingTruncates.isEmpty || !pendingDeletes.isEmpty,
-            hasStructureChanges: toolbarState.hasStructureChanges || toolbarState.hasTypeChanges
+            tabType: selectedTab?.tabType,
+            hasDataChanges: hasDataChanges,
+            hasStructureChanges: hasStagedStructure || toolbarState.hasTypeChanges
                 || coordinator.selectedDiagramHasStagedEdits,
             hasCreateTablePending: toolbarState.hasCreateTablePending,
             hasPrincipalChanges: toolbarState.hasPrincipalChanges,
-            isFileDirty: tabManager.selectedTab?.content.isFileDirty ?? false
+            isFileDirty: selectedTab?.content.isFileDirty ?? false
         )
         toolbarState.pendingChange = kind
         toolbarState.hasPendingChanges = kind != nil
-        // Narrower than the commit: a dirty query file and staged principals raise the commit but have no grid SQL to show.
-        toolbarState.hasDataPendingChanges = kind == .data || kind == .structure
+        toolbarState.hasDataPendingChanges = PendingChangeKind.offersPreview(
+            of: kind,
+            hasDataChanges: hasDataChanges,
+            previewsSchemaChanges: previewsSchemaChanges
+        )
+    }
+
+    var selectedStructureSession: StructureEditingSession? {
+        tabManager.selectedTabId.flatMap { coordinator.structureSessions[$0] }
     }
 
     // The edited dot is written directly: the unsaved work it reports stays in the window under an agent conversation.

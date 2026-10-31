@@ -31,6 +31,28 @@ struct DatabaseTreeFilterTests {
         #expect(DatabaseTreeFilter.filteredTables(tables, searchText: "c").count == 2)
     }
 
+    @Test("filteredTables keeps a table apart from a view or a temporary table of the same name")
+    func filteredTablesKeepsKindsApart() {
+        let tables = [
+            TableInfo(name: "users", type: .table, rowCount: 0, schema: "public"),
+            TableInfo(name: "users", type: .view, rowCount: 0, schema: "public"),
+            TableInfo(name: "users", type: .table, rowCount: 0, schema: "public", isTemporary: true),
+            TableInfo(name: "users", type: .table, rowCount: 12, schema: "public")
+        ]
+        let result = DatabaseTreeFilter.filteredTables(tables, searchText: "use")
+        #expect(result.map(\.id) == tables.dropLast().map(\.id))
+    }
+
+    @Test("filteredTables reads an empty schema as none, the way a table's id does")
+    func filteredTablesTreatsEmptySchemaAsNone() {
+        let tables = [
+            TableInfo(name: "users", type: .table, rowCount: 0, schema: nil),
+            TableInfo(name: "users", type: .table, rowCount: 0, schema: "")
+        ]
+        #expect(tables[0].id == tables[1].id)
+        #expect(DatabaseTreeFilter.filteredTables(tables, searchText: "").count == 1)
+    }
+
     @Test("filteredRoutines and filteredUserTypes keep objects whose schema holds a period")
     func filteredRoutinesAndTypesKeepDottedNamesApart() {
         let routines = [

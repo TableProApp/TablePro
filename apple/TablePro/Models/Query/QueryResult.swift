@@ -286,6 +286,9 @@ struct ColumnInfo: Identifiable, Hashable {
     /// says nothing about what the column holds. `PluginColumnInfo.classificationTypeName` says why.
     let classificationTypeName: String?
 
+    /// MariaDB's column-level CHECK clause, which a MODIFY drops unless it restates it.
+    let columnCheck: String?
+
     /// What a classifier reads. Every display reads `dataType`, and these differ on PostgreSQL:
     /// `status` is shown and `ENUM` is classified, `posint` is shown and `INTEGER` is classified.
     var typeNameForClassification: String { classificationTypeName ?? dataType }
@@ -309,7 +312,8 @@ struct ColumnInfo: Identifiable, Hashable {
         ddlDefault: String? = nil,
         ddlGenerationExpression: String? = nil,
         ddlCollation: String? = nil,
-        classificationTypeName: String? = nil
+        classificationTypeName: String? = nil,
+        columnCheck: String? = nil
     ) {
         self.name = name
         self.dataType = dataType
@@ -330,6 +334,7 @@ struct ColumnInfo: Identifiable, Hashable {
         self.ddlGenerationExpression = ddlGenerationExpression
         self.ddlCollation = ddlCollation
         self.classificationTypeName = classificationTypeName
+        self.columnCheck = columnCheck
     }
 }
 

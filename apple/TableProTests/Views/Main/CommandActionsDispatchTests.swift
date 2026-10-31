@@ -116,111 +116,81 @@ extension GlobalStateSuites {
             #expect(coordinator.tabManager.selectedTab?.content.query == "SELECT 2")
         }
 
-        // MARK: - copySelectedRows (structure mode)
+        // MARK: - Structure mode
 
-        @Test("copySelectedRows in structure mode calls structureActions.copyRows")
-        func copySelectedRows_structureMode_callsStructureActions() {
-            let (actions, coordinator) = makeSUT()
+        private func showStructure(
+            of coordinator: MainContentCoordinator
+        ) throws -> StructureEditingSession {
             coordinator.tabManager.addTab(databaseName: "testdb")
-
-            // Enable structure mode on the selected tab
-            if let idx = coordinator.tabManager.selectedTabIndex {
-                coordinator.tabManager.tabs[idx].display.resultsViewMode = .structure
-            }
-
-            // Install a spy handler
-            let handler = StructureViewActionHandler()
-            var copyRowsCalled = false
-            handler.copyRows = { copyRowsCalled = true }
-            coordinator.structureActions = handler
-
-            actions.copySelectedRows()
-
-            #expect(copyRowsCalled)
+            let index = try #require(coordinator.tabManager.selectedTabIndex)
+            coordinator.tabManager.tabs[index].display.resultsViewMode = .structure
+            let session = TestFixtures.makeStructureSession()
+            session.changeManager.loadSchema(
+                tableName: "users", columns: [], indexes: [], foreignKeys: [], primaryKey: []
+            )
+            session.markBaselineAdopted()
+            coordinator.structureSessions[coordinator.tabManager.tabs[index].id] = session
+            return session
         }
 
-        // MARK: - pasteRows (structure mode)
-
-        @Test("pasteRows in structure mode calls structureActions.pasteRows")
-        func pasteRows_structureMode_callsStructureActions() {
+        @Test("Add Row in Structure stages a column on the tab's session")
+        func addNewRow_structureMode_stagesOnTheSession() throws {
             let (actions, coordinator) = makeSUT()
-            coordinator.tabManager.addTab(databaseName: "testdb")
-
-            // Enable structure mode on the selected tab
-            if let idx = coordinator.tabManager.selectedTabIndex {
-                coordinator.tabManager.tabs[idx].display.resultsViewMode = .structure
-            }
-
-            // Install a spy handler
-            let handler = StructureViewActionHandler()
-            var pasteRowsCalled = false
-            handler.pasteRows = { pasteRowsCalled = true }
-            coordinator.structureActions = handler
-
-            actions.pasteRows()
-
-            #expect(pasteRowsCalled)
-        }
-
-        // MARK: - addNewRow (structure mode)
-
-        @Test("addNewRow in structure mode calls structureActions.addRow")
-        func addNewRow_structureMode_callsStructureActions() {
-            let (actions, coordinator) = makeSUT()
-            coordinator.tabManager.addTab(databaseName: "testdb")
-
-            if let idx = coordinator.tabManager.selectedTabIndex {
-                coordinator.tabManager.tabs[idx].display.resultsViewMode = .structure
-            }
-
-            let handler = StructureViewActionHandler()
-            var addRowCalled = false
-            handler.addRow = { addRowCalled = true }
-            coordinator.structureActions = handler
+            let session = try showStructure(of: coordinator)
+            #expect(actions.selectionOwner == .schemaGrid)
+            #expect(actions.isCurrentTabEditable)
+            #expect(actions.isCurrentTabSchemaResolved)
 
             actions.addNewRow()
 
-            #expect(addRowCalled)
+            #expect(session.changeManager.workingColumns.count == 1)
+            #expect(session.hasChanges)
         }
 
-        // MARK: - deleteSelectedRows (structure mode)
-
-        @Test("deleteSelectedRows in structure mode calls structureActions.removeRow")
-        func deleteSelectedRows_structureMode_callsStructureActions() {
+        // Cmd+Shift+D reached only the data grid, so it did nothing in Structure.
+        @Test("Duplicate Row in Structure duplicates the selected column")
+        func duplicateRow_structureMode_duplicatesTheSelection() throws {
             let (actions, coordinator) = makeSUT()
-            coordinator.tabManager.addTab(databaseName: "testdb")
+            let session = try showStructure(of: coordinator)
+            actions.addNewRow()
+            try #require(session.editor.focusedSection == .columns)
 
-            if let idx = coordinator.tabManager.selectedTabIndex {
-                coordinator.tabManager.tabs[idx].display.resultsViewMode = .structure
-            }
+            actions.duplicateRow()
 
-            let handler = StructureViewActionHandler()
-            var removeRowCalled = false
-            handler.removeRow = { removeRowCalled = true }
-            coordinator.structureActions = handler
+            #expect(session.changeManager.workingColumns.count == 2)
+        }
+
+        @Test("Delete in Structure removes the selected column")
+        func deleteSelectedRows_structureMode_removesTheSelection() throws {
+            let (actions, coordinator) = makeSUT()
+            let session = try showStructure(of: coordinator)
+            actions.addNewRow()
+            try #require(actions.hasRowSelection)
 
             actions.deleteSelectedRows()
 
-            #expect(removeRowCalled)
+            #expect(session.changeManager.workingColumns.isEmpty)
+        }
+
+        @Test("A Structure view with no session takes no row commands")
+        func structureModeWithoutASession_ownsNoSelection() throws {
+            let (actions, coordinator) = makeSUT()
+            coordinator.tabManager.addTab(databaseName: "testdb")
+            let index = try #require(coordinator.tabManager.selectedTabIndex)
+            coordinator.tabManager.tabs[index].display.resultsViewMode = .structure
+
+            #expect(actions.selectionOwner == .none)
+            #expect(!actions.isCurrentTabEditable)
         }
 
         // MARK: - saveChanges (createTable tab)
 
-        // The structure arm below would otherwise apply the staged edits of whatever session the tab id carries.
-        @Test("saveChanges dispatches createTableActions when the selected tab is createTable")
-        func saveChanges_createTableTab_callsCreateTableAction() {
+        // The structure arm would otherwise apply the staged edits of whatever session the tab id carries.
+        @Test("saveChanges on a createTable tab never applies a structure session's edits")
+        func saveChanges_createTableTab_leavesStructureSessionAlone() throws {
             let (actions, coordinator) = makeSUT()
             coordinator.tabManager.addCreateTableTab(databaseName: "testdb")
-            guard let id = coordinator.tabManager.selectedTabId else {
-                Issue.record("expected a selected tab")
-                return
-            }
-
-            let createHandler = CreateTableActionHandler()
-            var createCalled = false
-            createHandler.createTable = { createCalled = true }
-            coordinator.createTableActions = createHandler
-
+            let id = try #require(coordinator.tabManager.selectedTabId)
             let session = TestFixtures.makeStructureSession()
             coordinator.structureSessions[id] = session
             session.changeManager.loadSchema(
@@ -230,25 +200,31 @@ extension GlobalStateSuites {
 
             actions.saveChanges()
 
-            #expect(createCalled)
             #expect(session.appliedVersion == 0)
             #expect(session.changeManager.hasChanges)
         }
 
-        @Test("saveChanges without createTableActions is a no-op for a createTable tab")
-        func saveChanges_createTableTab_withoutAction_doesNothing() {
+        // Leaving Structure for Data used to dim Save while the session still held its ALTERs.
+        @Test("From the Data view, Save reaches staged structure edits only when no grid edit is ahead of them")
+        func stagedStructureSession_followsTheDataView() throws {
             let (actions, coordinator) = makeSUT()
-            coordinator.tabManager.addCreateTableTab(databaseName: "testdb")
-            guard let id = coordinator.tabManager.selectedTabId else {
-                Issue.record("expected a selected tab")
-                return
-            }
-            let session = TestFixtures.makeStructureSession()
-            coordinator.structureSessions[id] = session
+            let session = try showStructure(of: coordinator)
+            session.changeManager.addNewColumn()
+            let index = try #require(coordinator.tabManager.selectedTabIndex)
+            coordinator.tabManager.tabs[index].display.resultsViewMode = .data
 
-            actions.saveChanges()
+            #expect(actions.stagedStructureSession === session)
 
-            #expect(session.appliedVersion == 0)
+            coordinator.changeManager.configureForTable(
+                tableName: "users",
+                columns: ["id"],
+                primaryKeyColumns: ["id"],
+                databaseType: .mysql,
+                generatedColumns: []
+            )
+            coordinator.changeManager.recordRowDeletion(rowID: .existing(0), originalRow: [.text("1")])
+
+            #expect(actions.stagedStructureSession == nil)
         }
 
         // MARK: - Row selection resolution

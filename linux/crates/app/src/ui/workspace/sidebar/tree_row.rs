@@ -1,4 +1,4 @@
-use std::cell::RefCell;
+use std::cell::{OnceCell, RefCell};
 
 use gtk4 as gtk;
 use gtk4::prelude::*;
@@ -22,12 +22,8 @@ mod imp {
         pub(in super::super) name: gtk::Label,
         /// A key's type, as a dim suffix: its icon alone would leave the
         /// user to learn which picture means a sorted set.
-        pub(in super::super) kind: gtk::Label,
-        pub(in super::super) spinner: adw::Spinner,
-        /// Disconnects an open connection, as GNOME Files ejects a mount.
-        pub(in super::super) eject: gtk::Button,
-        /// Says why the connection could not connect, or what it lost.
-        pub(in super::super) problem: gtk::Image,
+        pub(super) kind: OnceCell<gtk::Label>,
+        pub(super) status: OnceCell<Status>,
         /// The list item the row is in, which a screen reader describes.
         pub(crate) item: glib::WeakRef<gtk::ListItem>,
         /// The node the row shows, and its watches.
@@ -39,32 +35,18 @@ mod imp {
     // screen reader skips are built with theirs.
     impl Default for TreeRow {
         fn default() -> Self {
-            let presentation = gtk::AccessibleRole::Presentation;
             Self {
                 icon: gtk::Image::builder()
                     .pixel_size(16)
-                    .accessible_role(presentation)
+                    .accessible_role(gtk::AccessibleRole::Presentation)
                     .build(),
                 name: gtk::Label::builder()
                     .xalign(0.0)
                     .hexpand(true)
                     .ellipsize(pango::EllipsizeMode::End)
                     .build(),
-                kind: gtk::Label::builder()
-                    .accessible_role(presentation)
-                    .visible(false)
-                    .build(),
-                spinner: adw::Spinner::builder().visible(false).build(),
-                eject: gtk::Button::builder()
-                    .icon_name(crate::ui::icons::MEDIA_EJECT)
-                    .valign(gtk::Align::Center)
-                    .visible(false)
-                    .build(),
-                problem: gtk::Image::builder()
-                    .icon_name(crate::ui::icons::NETWORK_ERROR)
-                    .accessible_role(presentation)
-                    .visible(false)
-                    .build(),
+                kind: OnceCell::new(),
+                status: OnceCell::new(),
                 item: glib::WeakRef::new(),
                 watched: RefCell::new(None),
                 bindings: RefCell::new(Vec::new()),
@@ -94,24 +76,48 @@ mod imp {
                 tooltip.set_text(Some(&object.qualified_name()));
                 true
             });
-            self.kind.add_css_class("dimmed");
-            self.kind.add_css_class("caption");
-            self.eject.add_css_class("flat");
-            crate::ui::a11y::describe_icon_button(&self.eject, &crate::i18n::gettext("Disconnect"), None);
-            // The target first, or GTK warns that the action takes one.
-            self.eject.set_action_target_value(Some(&String::new().to_variant()));
-            self.eject.set_action_name(Some(DISCONNECT_SESSION));
             row.append(&self.icon);
             row.append(&self.name);
-            row.append(&self.kind);
-            row.append(&self.spinner);
-            row.append(&self.eject);
-            row.append(&self.problem);
         }
     }
 
     impl WidgetImpl for TreeRow {}
     impl BoxImpl for TreeRow {}
+}
+
+/// What a connection is doing, made for the first connection a row shows:
+/// most rows show tables, and opening a schema makes two hundred rows at
+/// once.
+pub(super) struct Status {
+    pub(super) spinner: adw::Spinner,
+    /// Disconnects an open connection, as GNOME Files ejects a mount.
+    pub(super) eject: gtk::Button,
+    /// Says why the connection could not connect, or what it lost.
+    pub(super) problem: gtk::Image,
+}
+
+impl Status {
+    fn new() -> Self {
+        let eject = gtk::Button::builder()
+            .icon_name(crate::ui::icons::MEDIA_EJECT)
+            .valign(gtk::Align::Center)
+            .visible(false)
+            .build();
+        eject.add_css_class("flat");
+        crate::ui::a11y::describe_icon_button(&eject, &crate::i18n::gettext("Disconnect"), None);
+        // The target first, or GTK warns that the action takes one.
+        eject.set_action_target_value(Some(&String::new().to_variant()));
+        eject.set_action_name(Some(DISCONNECT_SESSION));
+        Self {
+            spinner: adw::Spinner::builder().visible(false).build(),
+            eject,
+            problem: gtk::Image::builder()
+                .icon_name(crate::ui::icons::NETWORK_ERROR)
+                .accessible_role(gtk::AccessibleRole::Presentation)
+                .visible(false)
+                .build(),
+        }
+    }
 }
 
 glib::wrapper! {
@@ -143,6 +149,31 @@ impl TreeRow {
     pub(crate) fn position(&self) -> Option<u32> {
         let item = self.imp().item.upgrade()?;
         item.item().is_some().then(|| item.position())
+    }
+
+    /// The label of a key's type, made for the first key the row shows.
+    pub(super) fn kind(&self) -> &gtk::Label {
+        let imp = self.imp();
+        imp.kind.get_or_init(|| {
+            let kind = gtk::Label::builder()
+                .accessible_role(gtk::AccessibleRole::Presentation)
+                .visible(false)
+                .build();
+            kind.add_css_class("dimmed");
+            kind.add_css_class("caption");
+            self.insert_child_after(&kind, Some(&imp.name));
+            kind
+        })
+    }
+
+    pub(super) fn status(&self) -> &Status {
+        self.imp().status.get_or_init(|| {
+            let status = Status::new();
+            self.append(&status.spinner);
+            self.append(&status.eject);
+            self.append(&status.problem);
+            status
+        })
     }
 
     /// Show `object`, the item of the row's list row.
@@ -183,9 +214,14 @@ impl TreeRow {
         imp.icon.set_visible(true);
         imp.name.set_label(&object.name());
         set_classes(&imp.name, &[]);
-        let kind = object.type_label();
-        imp.kind.set_visible(kind.is_some());
-        imp.kind.set_label(kind.as_deref().unwrap_or_default());
+        match object.type_label() {
+            Some(kind) => {
+                let label = self.kind();
+                label.set_label(&kind);
+                label.set_visible(true);
+            }
+            None => self.hide_kind(),
+        }
         self.show_suffix(false, false, false);
         describe(item, &object.kind_name());
         set_choosable(item, true);
@@ -193,7 +229,7 @@ impl TreeRow {
 
     fn show_node(&self, item: &gtk::ListItem, node: &TreeNode) {
         let imp = self.imp();
-        imp.kind.set_visible(false);
+        self.hide_kind();
         imp.bindings
             .borrow_mut()
             .push(node.bind_property("title", &imp.name, "label").sync_create().build());
@@ -232,7 +268,8 @@ impl TreeRow {
                 .build(),
         );
         if let Some(key) = node.key() {
-            imp.eject
+            self.status()
+                .eject
                 .set_action_target_value(Some(&crate::ui::session_target::to_variant(&key)));
         }
         let mut watches = Vec::new();
@@ -259,8 +296,9 @@ impl TreeRow {
         let problem = node.problem();
         let (open, busy, failed) = (node.open(), node.busy(), !problem.is_empty());
         self.show_suffix(busy, open && !busy && !failed, !busy && failed);
-        if failed && imp.problem.tooltip_text().as_deref() != Some(problem.as_str()) {
-            imp.problem.set_tooltip_text(Some(&problem));
+        let shown = &self.status().problem;
+        if failed && shown.tooltip_text().as_deref() != Some(problem.as_str()) {
+            shown.set_tooltip_text(Some(&problem));
         }
         let description = if busy && !open {
             crate::i18n::gettext("Connection, connecting")
@@ -279,10 +317,20 @@ impl TreeRow {
     }
 
     fn show_suffix(&self, busy: bool, eject: bool, problem: bool) {
-        let imp = self.imp();
-        imp.spinner.set_visible(busy);
-        imp.eject.set_visible(eject);
-        imp.problem.set_visible(problem);
+        let status = match self.imp().status.get() {
+            Some(status) => status,
+            None if busy || eject || problem => self.status(),
+            None => return,
+        };
+        status.spinner.set_visible(busy);
+        status.eject.set_visible(eject);
+        status.problem.set_visible(problem);
+    }
+
+    fn hide_kind(&self) {
+        if let Some(kind) = self.imp().kind.get() {
+            kind.set_visible(false);
+        }
     }
 }
 

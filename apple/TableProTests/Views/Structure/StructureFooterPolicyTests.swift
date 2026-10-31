@@ -5,134 +5,147 @@
 
 import Foundation
 @testable import TablePro
+import TableProPluginKit
 import Testing
 
-/// The "+" and "-" under a structure list used to take their label, their enabled state and their
-/// tooltip from three different switches, and only the Foreign Keys one asked about the object at
-/// all. So a view offered an enabled "Add Column" over a statement PostgreSQL always refuses, with
-/// nothing to explain it. (#2726)
+// The +/- beneath each section takes its label from the policy and its state and help from the editor, so a view
+// that PostgreSQL refuses an added column on dims the pair and says why (#2726).
+@MainActor
 struct StructureFooterPolicyTests {
-    private func resolve(
-        tab: StructureTab,
+    private let suite: EphemeralDefaults
+
+    init() throws {
+        suite = try EphemeralDefaults()
+    }
+
+    private func makeEditor(
         kind: TableInfo.TableType,
-        matrix: StructureObjectEditMatrix = .postgreSQL,
-        canEditSchema: Bool = true,
-        hasSelection: Bool = true,
-        isSaving: Bool = false
-    ) -> StructureFooterCapability {
-        StructureFooterPolicy.resolve(
-            tab: tab,
-            canEditSchema: canEditSchema,
-            hasSelection: hasSelection,
-            isSaving: isSaving,
-            resolve: { operation in
-                StructureEditEligibility.resolve(
-                    operation,
-                    on: kind,
-                    matrix: matrix,
-                    engineAllows: true,
-                    engineName: "PostgreSQL",
-                    canEditSchema: canEditSchema
-                )
-            }
+        type: DatabaseType = .postgresql,
+        isSessionBound: Bool = false
+    ) -> StructureDefinitionEditor {
+        let manager = StructureChangeManager()
+        manager.loadSchema(
+            tableName: "t",
+            columns: [ColumnInfo(name: "id", dataType: "integer", isNullable: false, isPrimaryKey: true)],
+            indexes: [IndexInfo(name: "t_pkey", columns: ["id"], isUnique: true, isPrimary: true, type: "BTREE")],
+            foreignKeys: [],
+            primaryKey: ["id"]
         )
+        let editor = StructureDefinitionEditor(
+            manager: manager,
+            context: .existingTable(
+                connection: TestFixtures.makeConnection(type: type),
+                databaseName: "db",
+                schemaName: "public",
+                tableName: "t",
+                objectKind: kind,
+                isSessionBound: isSessionBound
+            ),
+            defaults: suite.defaults
+        )
+        editor.refresh()
+        return editor
     }
 
-    @Test("A table offers both buttons on all four editable tabs")
+    // Selects the section's first row, staging a placeholder where the table has none.
+    private func selectFirst(_ section: StructureSection, in editor: StructureDefinitionEditor) {
+        if StructureGridEdits.entityIDs(in: section, manager: editor.manager).isEmpty {
+            StructureGridEdits.addRow(on: section, manager: editor.manager)
+            editor.refresh()
+        }
+        let id = StructureGridEdits.entityIDs(in: section, manager: editor.manager)[0]
+        editor.adapter(for: section).select(entity: id)
+    }
+
+    @Test("A table offers both buttons in all four sections")
     func tableOffersEverything() {
-        for tab in [StructureTab.columns, .indexes, .foreignKeys, .checkConstraints] {
-            let capability = resolve(tab: tab, kind: .table)
-            #expect(capability.canAdd, "\(tab.rawValue)")
-            #expect(capability.canRemove, "\(tab.rawValue)")
-            #expect(capability.unavailableReason == nil, "\(tab.rawValue)")
+        let editor = makeEditor(kind: .table)
+        for section in StructureSection.allCases {
+            selectFirst(section, in: editor)
+            #expect(editor.canAdd(section), "\(section.rawValue)")
+            #expect(editor.canRemoveSelection(in: section), "\(section.rawValue)")
+            #expect(editor.refusal(adding: section) == nil, "\(section.rawValue)")
         }
     }
 
-    /// A save holds what is staged from the press until it ends, so the pair cannot stage more
-    /// meanwhile, and says why rather than going grey in silence.
-    @Test("A save in progress dims both buttons on every editable tab and says why")
-    func savingDimsThePair() {
-        for tab in [StructureTab.columns, .indexes, .foreignKeys, .checkConstraints] {
-            let capability = resolve(tab: tab, kind: .table, isSaving: true)
-            #expect(!capability.canAdd, "\(tab.rawValue)")
-            #expect(!capability.canRemove, "\(tab.rawValue)")
-            #expect(capability.isActive, "\(tab.rawValue)")
-            #expect(capability.unavailableReason == StructureFooterPolicy.savingReason, "\(tab.rawValue)")
+    // A save holds what is staged from the press until it ends, so the pair cannot stage more meanwhile.
+    @Test("A save in progress dims both buttons in every section and says why")
+    func savingDimsThePair() throws {
+        let editor = makeEditor(kind: .table)
+        selectFirst(.columns, in: editor)
+        editor.manager.stageTableComment("Orders")
+        _ = try #require(editor.manager.holdForSave())
+        editor.refresh()
+        #expect(!editor.adapter(for: .columns).model.selection.isEmpty)
+
+        for section in StructureSection.allCases {
+            #expect(!editor.canAdd(section), "\(section.rawValue)")
+            #expect(!editor.canRemoveSelection(in: section), "\(section.rawValue)")
+            #expect(editor.refusal(adding: section) == StructureFooterPolicy.savingReason, "\(section.rawValue)")
         }
-        #expect(!resolve(tab: .ddl, kind: .table, isSaving: true).isActive)
     }
 
-    /// Shown and dimmed, not hidden. The pair disappearing would read as "this tab has no columns",
-    /// and the tooltip is the only place the refusal can be stated.
-    @Test("A view keeps the Columns pair on screen, dimmed, with a reason")
+    // Dimmed, not hidden: the pair disappearing would read as "this table has no columns".
+    @Test("A view keeps the Columns pair, dimmed, with a reason")
     func viewDimsTheColumnsPair() {
-        let capability = resolve(tab: .columns, kind: .view)
-        #expect(!capability.canAdd)
-        #expect(!capability.canRemove)
-        #expect(capability.isActive)
-        #expect(capability.addLabel.isEmpty == false)
-        #expect(capability.unavailableReason?.isEmpty == false)
+        let editor = makeEditor(kind: .view)
+        selectFirst(.columns, in: editor)
+
+        #expect(!editor.canAdd(.columns))
+        #expect(!editor.canRemoveSelection(in: .columns))
+        #expect(!StructureFooterPolicy.labels(for: .columns).add.isEmpty)
+        #expect(editor.refusal(adding: .columns)?.isEmpty == false)
     }
 
     @Test("A materialized view offers an index and refuses a column")
-    func materializedViewSplitsByTab() {
-        let indexes = resolve(tab: .indexes, kind: .materializedView)
-        #expect(indexes.canAdd)
-        #expect(indexes.canRemove)
-        #expect(indexes.unavailableReason == nil)
+    func materializedViewSplitsBySection() {
+        let editor = makeEditor(kind: .materializedView)
+        selectFirst(.indexes, in: editor)
+        #expect(editor.canAdd(.indexes))
+        #expect(editor.canRemoveSelection(in: .indexes))
+        #expect(editor.refusal(adding: .indexes) == nil)
 
-        let columns = resolve(tab: .columns, kind: .materializedView)
-        #expect(!columns.canAdd)
-        #expect(columns.unavailableReason?.isEmpty == false)
+        #expect(!editor.canAdd(.columns))
+        #expect(editor.refusal(adding: .columns)?.isEmpty == false)
     }
 
     @Test("A foreign table offers a check constraint and refuses an index")
-    func foreignTableSplitsByTab() {
-        let checks = resolve(tab: .checkConstraints, kind: .foreignTable)
-        #expect(checks.canAdd)
+    func foreignTableSplitsBySection() {
+        let editor = makeEditor(kind: .foreignTable)
+        #expect(editor.canAdd(.checkConstraints))
 
-        let indexes = resolve(tab: .indexes, kind: .foreignTable)
-        #expect(!indexes.canAdd)
-        #expect(indexes.unavailableReason?.isEmpty == false)
+        #expect(!editor.canAdd(.indexes))
+        #expect(editor.refusal(adding: .indexes)?.isEmpty == false)
     }
 
     @Test("A foreign table refuses a foreign key, which is the constraint PostgreSQL rejects on one")
     func foreignTableRefusesForeignKeys() {
-        let keys = resolve(tab: .foreignKeys, kind: .foreignTable)
-        #expect(!keys.canAdd)
-        #expect(keys.unavailableReason?.isEmpty == false)
+        let editor = makeEditor(kind: .foreignTable)
+        #expect(!editor.canAdd(.foreignKeys))
+        #expect(editor.refusal(adding: .foreignKeys)?.isEmpty == false)
     }
 
-    /// Today's behaviour, preserved on purpose: an engine that cannot edit structure at all hides the
-    /// pair rather than showing two dead buttons on every tab.
-    @Test("An engine that cannot edit structure hides the pair entirely")
-    func readOnlyEngineHidesThePair() {
-        let capability = resolve(tab: .columns, kind: .table, canEditSchema: false)
-        #expect(!capability.isActive)
-        #expect(capability.addLabel.isEmpty)
-        #expect(!capability.canAdd)
-        #expect(!capability.canRemove)
+    // The pair stays on screen beneath every section; a table whose structure cannot be edited dims it.
+    @Test("A table the connection cannot edit offers neither button")
+    func uneditableTableDimsThePair() {
+        let editor = makeEditor(kind: .table, isSessionBound: true)
+        for section in StructureSection.allCases {
+            selectFirst(section, in: editor)
+            #expect(!editor.canAdd(section), "\(section.rawValue)")
+            #expect(!editor.canRemoveSelection(in: section), "\(section.rawValue)")
+        }
     }
 
     @Test("Nothing selected dims Remove without dimming Add and without inventing a reason")
     func emptySelectionOnlyDimsRemove() {
-        let capability = resolve(tab: .columns, kind: .table, hasSelection: false)
-        #expect(capability.canAdd)
-        #expect(!capability.canRemove)
-        #expect(capability.unavailableReason == nil)
+        let editor = makeEditor(kind: .table)
+        #expect(editor.canAdd(.columns))
+        #expect(!editor.canRemoveSelection(in: .columns))
+        #expect(editor.refusal(adding: .columns) == nil)
     }
 
-    @Test("The tabs with nothing to add have no operation and no pair")
-    func nonEditableTabsHaveNoPair() {
-        for tab in [StructureTab.ddl, .parts, .triggers] {
-            #expect(StructureFooterPolicy.operation(forAdding: tab) == nil, "\(tab.rawValue)")
-            #expect(StructureFooterPolicy.operation(forRemoving: tab) == nil, "\(tab.rawValue)")
-            #expect(!resolve(tab: tab, kind: .table).isActive, "\(tab.rawValue)")
-        }
-    }
-
-    @Test("Each editable tab names the add and the drop of its own object")
-    func operationsMatchTheirTabs() {
+    @Test("Each section names the add and the drop of its own object")
+    func operationsMatchTheirSections() {
         #expect(StructureFooterPolicy.operation(forAdding: .columns) == .addColumn)
         #expect(StructureFooterPolicy.operation(forRemoving: .columns) == .dropColumn)
         #expect(StructureFooterPolicy.operation(forAdding: .indexes) == .addIndex)
@@ -143,13 +156,25 @@ struct StructureFooterPolicyTests {
         #expect(StructureFooterPolicy.operation(forRemoving: .checkConstraints) == .dropCheckConstraint)
     }
 
-    /// An engine nobody has measured falls back to tables only, so every non-table dims rather than
-    /// offering an edit its server may refuse.
+    @Test("Each section labels both buttons, and no two sections share a label")
+    func everySectionHasItsOwnLabels() {
+        let labels = StructureSection.allCases.map { StructureFooterPolicy.labels(for: $0) }
+        for (section, label) in zip(StructureSection.allCases, labels) {
+            #expect(!label.add.isEmpty, "\(section.rawValue)")
+            #expect(!label.remove.isEmpty, "\(section.rawValue)")
+            #expect(label.add != label.remove, "\(section.rawValue)")
+        }
+        let adds = Set(labels.map { $0.add })
+        let removes = Set(labels.map { $0.remove })
+        #expect(adds.count == StructureSection.allCases.count)
+        #expect(removes.count == StructureSection.allCases.count)
+    }
+
+    // An engine nobody has measured falls back to tables only, so every non-table dims.
     @Test("An uncurated engine dims the pair on a view")
     func uncuratedEngineDimsNonTables() {
-        let capability = resolve(tab: .columns, kind: .view, matrix: .tablesOnly)
-        #expect(!capability.canAdd)
-        #expect(capability.isActive)
-        #expect(capability.unavailableReason?.isEmpty == false)
+        let editor = makeEditor(kind: .view, type: .mysql)
+        #expect(!editor.canAdd(.columns))
+        #expect(editor.refusal(adding: .columns)?.isEmpty == false)
     }
 }

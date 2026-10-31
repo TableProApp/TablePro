@@ -9,6 +9,7 @@ pub const STYLE_SCHEME: &str = "style-scheme";
 pub const VIM_KEYBINDINGS: &str = "vim-keybindings";
 pub const CONNECT_DIALOG_DRIVER: &str = "connect-dialog-driver";
 pub const RESTORE_SESSION: &str = "restore-session";
+pub const LAST_SEEN_VERSION: &str = "last-seen-version";
 pub const MCP_SERVER_ENABLED: &str = "mcp-server-enabled";
 pub const MCP_SERVER_PORT: &str = "mcp-server-port";
 pub const AI_PROVIDER: &str = "ai-provider";

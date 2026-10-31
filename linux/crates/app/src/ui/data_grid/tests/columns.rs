@@ -4,10 +4,13 @@ use gtk4 as gtk;
 use gtk4::pango;
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::ObjectSubclassIsExt;
+use tablepro_core::column::ColumnKind;
+use tablepro_core::value::Temporal;
 use tablepro_core::{ColumnInfo, Value};
 
 use super::{Layouts, close_menus, data_column, keyed, laid_out, settled_width, shown_width, step, text, untyped};
-use crate::test_support::{drain_main_context, wait_until};
+use crate::services::grid::display_text::editable_null_sentinel;
+use crate::test_support::{descendants, drain_main_context, wait_until};
 use crate::ui::data_grid::columns::ColumnPaint;
 use crate::ui::data_grid::test_grid::{
     Grid, GridSpec, WAIT, named, persisted, results, two_text_columns, two_text_values,
@@ -369,6 +372,228 @@ fn a_short_code_in_a_text_column_shows_whole() {
     assert!(whole.is_ok(), "CF-1001 was cut");
 }
 
+/// Every value of one length draws as wide as the others in the
+/// desktop's monospace font, whichever one the column was sized from.
+#[gtk4::test]
+fn values_of_one_length_draw_whole_in_the_monospace_font() {
+    let grid = laid_out(Grid::open(
+        vec![named("id", "integer", true), named("at", "text", false)],
+        vec![
+            vec![Value::Int(1), text("08:30:00")],
+            vec![Value::Int(2), text("10:00:00")],
+            vec![Value::Int(3), text("11:11:11")],
+        ],
+    ));
+    let monospace = pango::FontDescription::from_string(&libadwaita::StyleManager::default().monospace_font_name());
+
+    let shown = drawn(&grid, &[1]);
+    assert_eq!(shown.len(), 3);
+    for display in &shown {
+        assert!(display.has_css_class("monospace"));
+        assert_eq!(
+            display
+                .pango_context()
+                .font_description()
+                .and_then(|font| font.family()),
+            monospace.family(),
+            "a value drawn in another font"
+        );
+        wait_until(WAIT, || shows_whole(display)).unwrap_or_else(|_| panic!("{:?} cut", display.text()));
+    }
+}
+
+/// A Chinese or Japanese character takes two cells of a monospace font,
+/// and a script the font lacks draws in a fallback font, so the value
+/// with the most characters is not the widest, in either order.
+#[gtk4::test]
+fn a_value_in_another_script_shows_whole() {
+    let narrow = "Marunouchi 12";
+    for wide in ["東京都千代田区丸の内一丁", "कखगघङचछजझञटठ"] {
+        for values in [[wide, narrow], [narrow, wide]] {
+            let grid = laid_out(Grid::open(
+                vec![named("id", "integer", true), named("area", "text", false)],
+                vec![
+                    vec![Value::Int(1), text(values[0])],
+                    vec![Value::Int(2), text(values[1])],
+                ],
+            ));
+            let shown = drawn(&grid, &[1]);
+            assert_eq!(shown.len(), 2);
+            assert!(
+                tabular_width(&shown[0], wide) > tabular_width(&shown[0], narrow),
+                "the font draws {wide} no wider than {narrow}"
+            );
+
+            for display in &shown {
+                wait_until(WAIT, || shows_whole(display)).unwrap_or_else(|_| panic!("{:?} cut", display.text()));
+            }
+        }
+    }
+}
+
+/// The header draws its title in the interface font, not the cells'.
+#[gtk4::test]
+fn a_header_of_wide_letters_shows_whole() {
+    let grid = laid_out(Grid::open(
+        vec![named("id", "integer", true), named("WWWWWWWW", "text", false)],
+        vec![vec![Value::Int(1), text("a")]],
+    ));
+    let (header, title) = header_title(&grid, "WWWWWWWW");
+    let (_, needs, _, _) = title.measure(gtk::Orientation::Horizontal, -1);
+
+    wait_until(WAIT, || header.width() >= needs).expect("the header's title shows whole");
+}
+
+/// GTK keeps a sort indicator beside the title of every sortable column,
+/// so a column as wide as its title alone cuts the arrow once it sorts.
+#[gtk4::test]
+fn a_sorted_columns_header_shows_its_title_and_arrow_whole() {
+    let grid = laid_out(Grid::open(
+        vec![named("id", "integer", true), named("level", "text", false)],
+        vec![vec![Value::Int(1), text("a")]],
+    ));
+    grid.grid.sort_by(Some((1, true)));
+    let (header, title) = header_title(&grid, "level");
+    let title_and_arrow = title.parent().expect("the title's box");
+    let (_, needs, _, _) = title_and_arrow.measure(gtk::Orientation::Horizontal, -1);
+
+    wait_until(WAIT, || header.width() >= needs).expect("the title and its sort arrow show whole");
+}
+
+/// The text size reaches the grid as a GTK setting: a column it sized
+/// takes the new measure both ways, and a width the user gave stays.
+#[gtk4::test]
+fn a_text_size_change_measures_the_grids_columns_again() {
+    let grid = laid_out(Grid::open(
+        vec![
+            named("id", "integer", true),
+            named("code", "text", false),
+            named("note", "text", false),
+        ],
+        vec![vec![Value::Int(1), text("CF-1001"), text("Ships in two days")]],
+    ));
+    let code = data_column(&grid, 1);
+    let opened = code.fixed_width();
+    data_column(&grid, 2).set_fixed_width(300);
+    let scaled = TextScale::times(1.5);
+
+    wait_until(WAIT, || code.fixed_width() > opened).expect("the column widened with the text");
+    let display = grid.cell_of(1, 1).display().cloned().expect("the code's text");
+    wait_until(WAIT, || shows_whole(&display)).expect("the code shows whole at the larger text");
+    assert_eq!(
+        data_column(&grid, 2).fixed_width(),
+        300,
+        "the width the user gave changed"
+    );
+    let widened = code.fixed_width();
+
+    drop(scaled);
+    wait_until(WAIT, || code.fixed_width() < widened).expect("the column narrowed with the text");
+    assert_eq!(
+        data_column(&grid, 2).fixed_width(),
+        300,
+        "the width the user gave changed"
+    );
+}
+
+/// A grid out of its window hears of no text size change, so it measures
+/// again when it is back if its fonts are not the ones it measured in.
+#[gtk4::test]
+fn a_grid_back_in_its_window_takes_a_text_size_it_missed() {
+    let grid = laid_out(Grid::open(
+        vec![
+            named("id", "integer", true),
+            named("code", "text", false),
+            named("note", "text", false),
+        ],
+        vec![vec![Value::Int(1), text("CF-1001"), text("Ships in two days")]],
+    ));
+    let code = data_column(&grid, 1);
+    let opened = code.fixed_width();
+    data_column(&grid, 2).set_fixed_width(300);
+
+    grid.window.set_child(None::<&gtk::Widget>);
+    let _scaled = TextScale::times(1.5);
+    grid.window.set_child(Some(&grid.grid));
+
+    wait_until(WAIT, || code.fixed_width() > opened).expect("the column widened with the text");
+    assert_eq!(
+        data_column(&grid, 2).fixed_width(),
+        300,
+        "the width the user gave changed"
+    );
+}
+
+/// libadwaita announces a new monospace font; the grid measures the
+/// columns it sized again, from the rows it holds now.
+#[gtk4::test]
+fn a_monospace_font_change_measures_the_grids_columns_again() {
+    let grid = laid_out(Grid::open(
+        vec![named("id", "integer", true), named("note", "text", false)],
+        vec![vec![Value::Int(1), text(&"x".repeat(30))]],
+    ));
+    let column = data_column(&grid, 1);
+    let wide = column.fixed_width();
+    grid.grid.replace_rows(persisted(&[vec![Value::Int(1), text("a")]]), 0);
+    assert_eq!(column.fixed_width(), wide, "a page of shorter rows narrowed the column");
+
+    libadwaita::StyleManager::default().notify("monospace-font-name");
+
+    wait_until(WAIT, || column.fixed_width() < wide).expect("the column measured again");
+}
+
+/// The header of the column named `name`, and its title.
+fn header_title(grid: &Grid, name: &str) -> (gtk::Widget, gtk::Label) {
+    let title = descendants(&grid.grid.column_view())
+        .into_iter()
+        .filter_map(|widget| widget.downcast::<gtk::Label>().ok())
+        .find(|label| label.label() == name)
+        .expect("the header's title");
+    let header = title
+        .parent()
+        .and_then(|title_box| title_box.parent())
+        .expect("the header button");
+    (header, title)
+}
+
+/// The display's text scaled for one test, put back after even when the
+/// test fails.
+struct TextScale {
+    settings: gtk::Settings,
+    dpi: i32,
+}
+
+impl TextScale {
+    fn times(factor: f64) -> Self {
+        let settings = gtk::Settings::default().expect("the display's settings");
+        let dpi = settings.gtk_xft_dpi();
+        // GTK reads -1 as 96 dots per inch, which it keeps in 1024ths.
+        let base = if dpi > 0 { dpi } else { 96 * 1024 };
+        settings.set_gtk_xft_dpi((f64::from(base) * factor).round() as i32);
+        Self { settings, dpi }
+    }
+}
+
+impl Drop for TextScale {
+    fn drop(&mut self) {
+        self.settings.set_gtk_xft_dpi(self.dpi);
+    }
+}
+
+/// A NULL the user can replace draws as `<NULL>`, which a column of short
+/// values would cut.
+#[gtk4::test]
+fn a_null_shows_its_placeholder_whole() {
+    let grid = laid_out(Grid::open(
+        vec![named("id", "integer", true), named("x", "text", false)],
+        vec![vec![Value::Int(1), Value::Null]],
+    ));
+    let display = grid.cell_of(1, 1).display().cloned().expect("the placeholder's text");
+    assert_eq!(display.text().as_deref(), Some(editable_null_sentinel().as_str()));
+
+    wait_until(WAIT, || shows_whole(&display)).expect("the placeholder shows whole");
+}
+
 #[gtk4::test]
 fn adding_a_draft_keeps_the_width_the_page_measured() {
     let columns = shop_columns(0);
@@ -430,4 +655,163 @@ fn a_column_left_behind_by_its_view_lets_go_of_the_grid() {
         paints.iter().all(|paint| paint.upgrade().is_none()),
         "a column the view left behind kept the grid's columns"
     );
+}
+
+/// A table with no rows opens as wide as its types lead one to expect,
+/// not shrunk to its headers, and a page with rows still opens at what
+/// it holds: the grid sizes its columns before the first page arrives.
+#[gtk4::test]
+fn an_empty_table_opens_its_columns_at_their_types_width() {
+    let columns = || vec![named("realm", "text", true), named("note", "varchar(255)", false)];
+
+    let empty = Grid::open(columns(), Vec::new());
+    let short = Grid::open(columns(), vec![vec![text("a"), text("b")]]);
+
+    for index in 0..2 {
+        let typed = data_column(&empty, index).fixed_width();
+        assert!(
+            typed > data_column(&short, index).fixed_width(),
+            "column {index} of the empty table is no wider than one holding a single letter: {typed}"
+        );
+    }
+}
+
+/// Digits and capitals run wider than an average character, so a count
+/// of them would cut a date, a UUID or a label typed into an empty
+/// table. The label with the most characters is not the widest.
+#[gtk4::test]
+fn an_empty_tables_column_holds_a_whole_value_of_its_type() {
+    let state = || {
+        let mut column = named("state", "text", false);
+        column.column_type.kind = ColumnKind::Enum {
+            labels: vec!["illiterate".to_owned(), "WWWWWWWWW".to_owned()],
+            multiple: false,
+        };
+        column
+    };
+    let columns = || vec![named("id", "uuid", true), named("on", "date", false), state()];
+    let id = uuid::Uuid::parse_str("8a6e0804-2bd0-4672-b79d-d97027f9071a").expect("a UUID");
+    let day = chrono::NaiveDate::from_ymd_opt(2026, 10, 28).expect("a date");
+
+    let held = Grid::open(
+        columns(),
+        vec![vec![
+            Value::Uuid(id),
+            Value::Date(Temporal::Finite(day)),
+            text("WWWWWWWWW"),
+        ]],
+    );
+    let empty = Grid::open(columns(), Vec::new());
+
+    for index in 0..3 {
+        let typed = data_column(&empty, index).fixed_width();
+        let measured = data_column(&held, index).fixed_width();
+        assert!(
+            typed >= measured,
+            "column {index} of the empty table is narrower than a value of its type: {typed} < {measured}"
+        );
+    }
+}
+
+/// A date is never cut, so a date column whose first rows hold none
+/// still opens wide enough for one.
+#[gtk4::test]
+fn a_date_column_holding_no_date_yet_is_as_wide_as_a_date() {
+    let columns = || vec![named("id", "integer", true), named("on", "date", false)];
+    let day = chrono::NaiveDate::from_ymd_opt(2026, 10, 28).expect("a date");
+
+    let none = Grid::open(columns(), vec![vec![Value::Int(1), Value::Null]]);
+    let held = Grid::open(columns(), vec![vec![Value::Int(1), Value::Date(Temporal::Finite(day))]]);
+
+    let blank = data_column(&none, 1).fixed_width();
+    let dated = data_column(&held, 1).fixed_width();
+    assert!(
+        blank >= dated,
+        "a column of NULLs is narrower than a date: {blank} < {dated}"
+    );
+}
+
+/// A filter that matches nothing has no value to measure, so the columns
+/// keep the widths their rows gave them.
+#[gtk4::test]
+fn a_page_that_comes_back_empty_keeps_the_widths_the_rows_gave() {
+    let grid = Grid::open(
+        vec![named("id", "integer", true), named("name", "text", false)],
+        vec![vec![Value::Int(1), text("Ada")]],
+    );
+    let opened: Vec<i32> = (0..2).map(|index| data_column(&grid, index).fixed_width()).collect();
+
+    grid.grid.replace_rows(Vec::new(), 0);
+
+    let after: Vec<i32> = (0..2).map(|index| data_column(&grid, index).fixed_width()).collect();
+    assert_eq!(after, opened, "an empty page widened the columns its rows had sized");
+}
+
+/// A double click on a header's edge hands the width back to the grid,
+/// which in an empty table is the type's again. A draft is the user's,
+/// not the table's, so a page that comes back empty beside one still
+/// leaves the table empty.
+#[gtk4::test]
+fn a_cleared_width_in_an_empty_table_returns_to_its_types_width() {
+    let grid = Grid::open(vec![named("name", "text", true)], Vec::new());
+    let column = data_column(&grid, 0);
+    let typed = column.fixed_width();
+    grid.insert_draft();
+    grid.grid.replace_rows(Vec::new(), 0);
+
+    column.set_fixed_width(200);
+    column.set_fixed_width(-1);
+
+    wait_until(WAIT, || column.fixed_width() > 0).expect("the grid gives the column a width again");
+    assert_eq!(column.fixed_width(), typed);
+}
+
+/// These click on the X display every test shares; nextest runs them
+/// with no other test beside them.
+mod real_keys {
+    use gtk4 as gtk;
+    use gtk4::prelude::*;
+
+    use super::super::{Layouts, data_column, laid_out, settled_width};
+    use super::saved_to;
+    use crate::test_support::{KeyInjector, descendants, wait_until};
+    use crate::ui::data_grid::test_grid::WAIT;
+
+    fn header_of(header: &gtk::Widget, name: &str) -> gtk::Widget {
+        std::iter::successors(header.first_child(), |title| title.next_sibling())
+            .find(|title| {
+                descendants(title).iter().any(|widget| {
+                    widget
+                        .downcast_ref::<gtk::Label>()
+                        .is_some_and(|label| label.label() == name)
+                })
+            })
+            .expect("the column's header")
+    }
+
+    /// GTK resizes no column from the view's last edge, which was the last
+    /// data column's.
+    #[gtk4::test]
+    fn a_double_click_on_the_last_columns_edge_gives_it_the_grids_width() {
+        let layouts = Layouts::new();
+        let grid = laid_out(saved_to(&layouts));
+        KeyInjector::focus_only(&grid.window);
+        wait_until(WAIT, || grid.window.is_active()).expect("the window to take the focus");
+        let mouse = KeyInjector::connect().expect("an X11 display");
+        let column = data_column(&grid, 1);
+        column.set_fixed_width(300);
+        settled_width(&grid, 1);
+        let header = grid.grid.column_view().first_child().expect("the header");
+        let bounds = header_of(&header, "name")
+            .compute_bounds(&header)
+            .expect("the column's header bounds");
+
+        // Where GTK looks for the edge: the header's origin plus the
+        // column's width.
+        let edge = (bounds.x() + 300.0, bounds.y() + bounds.height() / 2.0);
+        mouse.click(&header, edge, 2).expect("the double click");
+
+        wait_until(WAIT, || column.fixed_width() > 0 && column.fixed_width() != 300).expect("the grid's width");
+        assert_eq!(layouts.saved("t").widths.get("name"), None);
+    }
 }
