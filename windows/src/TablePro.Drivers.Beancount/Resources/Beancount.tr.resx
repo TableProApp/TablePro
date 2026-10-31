@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="BqlNeedsRledger" xml:space="preserve">
+    <value>BQL sorguları rledger gerektirir. rledger.exe PATH üzerinde olacak şekilde rustledger’ı yükleyin veya bağlantının rledger seçeneğini yoluna ayarlayın.</value>
+  </data>
+  <data name="CannotImport" xml:space="preserve">
+    <value>{0} beancount’u içe aktaramıyor. "{0}" -m pip install beancount komutunu çalıştırın veya python seçeneğini paketin yüklü olduğu bir Python’a ayarlayın.</value>
+  </data>
+  <data name="ConnectTimedOut" xml:space="preserve">
+    <value>Bağlantı {0:0} saniye sonra zaman aşımına uğradı</value>
+  </data>
+  <data name="CouldNotRead" xml:space="preserve">
+    <value>{0} okunamadı: {1}</value>
+  </data>
+  <data name="CouldNotStart" xml:space="preserve">
+    <value>{0} başlatılamadı: {1}</value>
+  </data>
+  <data name="FileMissing" xml:space="preserve">
+    <value>{0} konumunda dosya yok</value>
+  </data>
+  <data name="IncludeCycle" xml:space="preserve">
+    <value>{0} konumunda Beancount include döngüsü algılandı</value>
+  </data>
+  <data name="InvalidInclude" xml:space="preserve">
+    <value>{1} içinde geçersiz include yolu "{0}": {2}</value>
+  </data>
+  <data name="InvalidPythonOutput" xml:space="preserve">
+    <value>Geçersiz Python Beancount JSON çıktısı</value>
+  </data>
+  <data name="InvalidRledgerOutput" xml:space="preserve">
+    <value>Geçersiz rustledger JSON çıktısı</value>
+  </data>
+  <data name="LedgerChanged" xml:space="preserve">
+    <value>SQL yansıması oluşturulurken Beancount defteri değişti</value>
+  </data>
+  <data name="MissingTransaction" xml:space="preserve">
+    <value>Beancount kaydı, eksik işlem kimliğine {0} başvuruyor</value>
+  </data>
+  <data name="NeedsLedger" xml:space="preserve">
+    <value>Bir Beancount bağlantısı için defter dosyası gerekir.</value>
+  </data>
+  <data name="NoBackend" xml:space="preserve">
+    <value>Beancount, Python Beancount veya rledger gerektirir ve ikisi de bulunamadı. Python paketini "py -3 -m pip install beancount" (veya "pip install beancount") ile yükleyin ya da rledger.exe PATH üzerinde olacak şekilde rustledger’ı yükleyin veya bağlantının python ya da rledger seçeneğini yoluna ayarlayın.</value>
+  </data>
+  <data name="NoDdl" xml:space="preserve">
+    <value>'{0}' tablosunun DDL’i alınamadı</value>
+  </data>
+  <data name="OpenFailed" xml:space="preserve">
+    <value>Beancount defteri açılamadı: {0}</value>
+  </data>
+  <data name="PadNoDate" xml:space="preserve">
+    <value>pad yönergesi tarih taşımadığından hesapları yansıtılmadı.</value>
+  </data>
+  <data name="PadsUnrendered" xml:space="preserve">
+    <value>rledger defterin yönergelerini işleyemediğinden pads tablosu boş: {0}</value>
+  </data>
+  <data name="PadUnmatched" xml:space="preserve">
+    <value>pad yönergesi işlenmiş bir yönergeyle eşleştirilemediğinden hesapları yansıtılmadı.</value>
+  </data>
+  <data name="PythonFailed" xml:space="preserve">
+    <value>Python Beancount yansıması başarısız oldu</value>
+  </data>
+  <data name="PythonMissing" xml:space="preserve">
+    <value>python seçeneği {0} konumunda bulunmayan bir Python’u gösteriyor.</value>
+  </data>
+  <data name="PythonNeedsPackage" xml:space="preserve">
+    <value>Python Beancount arka ucu, beancount paketi yüklü Python 3 gerektirir. "py -3 -m pip install beancount" komutunu çalıştırın veya bağlantının python seçeneğini paketin yüklü olduğu bir Python’a ayarlayın.</value>
+  </data>
+  <data name="ReadOnly" xml:space="preserve">
+    <value>Beancount defterleri salt okunur bir SQL veritabanı olarak sunulur.</value>
+  </data>
+  <data name="RledgerMissing" xml:space="preserve">
+    <value>rledger seçeneği {0} konumunda bulunmayan bir rledger’ı gösteriyor.</value>
+  </data>
+  <data name="RledgerNeedsRustledger" xml:space="preserve">
+    <value>rledger arka ucu rustledger gerektirir. rledger.exe PATH üzerinde olacak şekilde yükleyin veya bağlantının rledger seçeneğini yoluna ayarlayın.</value>
+  </data>
+  <data name="RledgerVersionFailed" xml:space="preserve">
+    <value>rledger sürüm denetimi başarısız oldu</value>
+  </data>
+  <data name="RustledgerFailed" xml:space="preserve">
+    <value>rustledger komutu başarısız oldu</value>
+  </data>
+  <data name="RustledgerValidationFailed" xml:space="preserve">
+    <value>rustledger doğrulaması başarısız oldu</value>
+  </data>
+  <data name="UnknownBackend" xml:space="preserve">
+    <value>Bilinmeyen Beancount arka ucu "{0}". "python" veya "rledger" kullanın.</value>
+  </data>
+</root>

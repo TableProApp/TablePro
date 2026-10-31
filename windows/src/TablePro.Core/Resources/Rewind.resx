@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="Added_One" xml:space="preserve">
+    <value>{0:N0} added</value>
+    <comment>Part of a save's summary. {0} is a row count.</comment>
+  </data>
+  <data name="Added_Other" xml:space="preserve">
+    <value>{0:N0} added</value>
+    <comment>Part of a save's summary. {0} is a row count.</comment>
+  </data>
+  <data name="Deleted_One" xml:space="preserve">
+    <value>{0:N0} deleted</value>
+    <comment>Part of a save's summary. {0} is a row count.</comment>
+  </data>
+  <data name="Deleted_Other" xml:space="preserve">
+    <value>{0:N0} deleted</value>
+    <comment>Part of a save's summary. {0} is a row count.</comment>
+  </data>
+  <data name="Edited_One" xml:space="preserve">
+    <value>{0:N0} edited</value>
+    <comment>Part of a save's summary, such as 2 edited, 1 added. {0} is a row count.</comment>
+  </data>
+  <data name="Edited_Other" xml:space="preserve">
+    <value>{0:N0} edited</value>
+    <comment>Part of a save's summary, such as 2 edited, 1 added. {0} is a row count.</comment>
+  </data>
+  <data name="RecordedByNewerVersion" xml:space="preserve">
+    <value>The save was recorded by a newer TablePro.</value>
+  </data>
+  <data name="RefusalNoPrimaryKey" xml:space="preserve">
+    <value>The table has no primary key, so this row cannot be identified.</value>
+  </data>
+  <data name="RefusalServerAssignedKey" xml:space="preserve">
+    <value>The server chose this row's key.</value>
+  </data>
+  <data name="RefusalValueTooLarge" xml:space="preserve">
+    <value>A value was too large to keep.</value>
+  </data>
+  <data name="StepPutRowBack" xml:space="preserve">
+    <value>Put the row back</value>
+  </data>
+  <data name="StepRemoveAddedRow" xml:space="preserve">
+    <value>Remove the added row</value>
+  </data>
+  <data name="StepRestoreValues" xml:space="preserve">
+    <value>Restore previous values</value>
+  </data>
+  <data name="SummarySeparator" xml:space="preserve">
+    <value>, </value>
+    <comment>Joins the parts of a save's summary: a comma and a space in English.</comment>
+  </data>
+</root>

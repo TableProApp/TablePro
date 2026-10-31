@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AvailableAfterSetRole" xml:space="preserve">
+    <value>Có sẵn sau khi SET ROLE {0}.</value>
+  </data>
+  <data name="CannotApply" xml:space="preserve">
+    <value>Máy chủ này không thể áp dụng "{0}" cho {1}.</value>
+  </data>
+  <data name="CategoryAdministration" xml:space="preserve">
+    <value>Quản trị</value>
+  </data>
+  <data name="CategoryData" xml:space="preserve">
+    <value>Dữ liệu</value>
+  </data>
+  <data name="CategoryDynamic" xml:space="preserve">
+    <value>Động</value>
+  </data>
+  <data name="CategoryOther" xml:space="preserve">
+    <value>Khác</value>
+  </data>
+  <data name="CategoryStructure" xml:space="preserve">
+    <value>Cấu trúc</value>
+  </data>
+  <data name="ConnectToBrowse" xml:space="preserve">
+    <value>Kết nối tới cơ sở dữ liệu này để duyệt</value>
+  </data>
+  <data name="GrantedOn" xml:space="preserve">
+    <value>Đã cấp trên {0}</value>
+  </data>
+  <data name="GrantsInside_One" xml:space="preserve">
+    <value>{0} quyền được cấp bên trong</value>
+  </data>
+  <data name="GrantsInside_Other" xml:space="preserve">
+    <value>{0} quyền được cấp bên trong</value>
+  </data>
+  <data name="InheritedAutomatically" xml:space="preserve">
+    <value>Được kế thừa tự động.</value>
+  </data>
+  <data name="InheritedFrom" xml:space="preserve">
+    <value>Kế thừa từ {0}</value>
+  </data>
+  <data name="KindRole" xml:space="preserve">
+    <value>Vai trò</value>
+  </data>
+  <data name="KindUser" xml:space="preserve">
+    <value>Người dùng</value>
+  </data>
+  <data name="SelfImpactAlter" xml:space="preserve">
+    <value>Các thay đổi này sửa {0}, tài khoản mà kết nối này đang dùng.</value>
+  </data>
+  <data name="SelfImpactDrop" xml:space="preserve">
+    <value>Các thay đổi này xóa {0}, tài khoản mà kết nối này đang dùng.</value>
+  </data>
+  <data name="SelfImpactRevokeAll" xml:space="preserve">
+    <value>Các thay đổi này thu hồi mọi quyền của {0}, tài khoản mà kết nối này đang dùng.</value>
+  </data>
+  <data name="Server" xml:space="preserve">
+    <value>Máy chủ</value>
+  </data>
+  <data name="StageCreated" xml:space="preserve">
+    <value>Sẽ được tạo khi bạn áp dụng thay đổi</value>
+  </data>
+  <data name="StageDropped" xml:space="preserve">
+    <value>Sẽ bị xóa khi bạn áp dụng thay đổi</value>
+  </data>
+  <data name="StageModified" xml:space="preserve">
+    <value>Có thay đổi chưa lưu</value>
+  </data>
+  <data name="StatementChangePassword" xml:space="preserve">
+    <value>Đổi mật khẩu cho {0}</value>
+  </data>
+  <data name="StatementCreate" xml:space="preserve">
+    <value>Tạo {0}</value>
+  </data>
+  <data name="StatementDrop" xml:space="preserve">
+    <value>Xóa {0}</value>
+  </data>
+  <data name="StatementGrant" xml:space="preserve">
+    <value>Cấp quyền cho {0}</value>
+  </data>
+  <data name="StatementRevoke" xml:space="preserve">
+    <value>Thu hồi quyền của {0}</value>
+  </data>
+  <data name="StatementUpdate" xml:space="preserve">
+    <value>Cập nhật {0}</value>
+  </data>
+  <data name="SummaryAll" xml:space="preserve">
+    <value>Tất cả ({0})</value>
+  </data>
+  <data name="SummaryGrantable" xml:space="preserve">
+    <value>{0} (có thể cấp lại)</value>
+  </data>
+  <data name="SummaryNone" xml:space="preserve">
+    <value>Không</value>
+  </data>
+  <data name="SummaryOverflow" xml:space="preserve">
+    <value>{0} +{1}</value>
+  </data>
+  <data name="UndoChangeAttributes" xml:space="preserve">
+    <value>Thay đổi thuộc tính</value>
+  </data>
+  <data name="UndoChangePassword" xml:space="preserve">
+    <value>Đổi mật khẩu cho {0}</value>
+  </data>
+  <data name="UndoCopyPrivileges" xml:space="preserve">
+    <value>Sao chép quyền từ {0}</value>
+  </data>
+  <data name="UndoCreate" xml:space="preserve">
+    <value>Tạo {0}</value>
+  </data>
+  <data name="UndoDrop" xml:space="preserve">
+    <value>Xóa {0}</value>
+  </data>
+  <data name="UndoDropMany_One" xml:space="preserve">
+    <value>Xóa {0} người dùng hoặc vai trò</value>
+  </data>
+  <data name="UndoDropMany_Other" xml:space="preserve">
+    <value>Xóa {0} người dùng và vai trò</value>
+  </data>
+  <data name="UndoGrant" xml:space="preserve">
+    <value>Cấp quyền</value>
+  </data>
+  <data name="UndoKeep" xml:space="preserve">
+    <value>Giữ {0}</value>
+  </data>
+  <data name="UndoRemove" xml:space="preserve">
+    <value>Gỡ {0}</value>
+  </data>
+  <data name="UndoRevoke" xml:space="preserve">
+    <value>Thu hồi</value>
+  </data>
+  <data name="UnknownChange" xml:space="preserve">
+    <value>Thay đổi không xác định {0}.</value>
+  </data>
+</root>

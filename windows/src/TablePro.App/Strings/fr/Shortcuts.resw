@@ -1,0 +1,255 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="CategoryApp" xml:space="preserve">
+    <value>Application</value>
+  </data>
+  <data name="CategoryConnections" xml:space="preserve">
+    <value>Connexions</value>
+  </data>
+  <data name="CategoryDataGrid" xml:space="preserve">
+    <value>Grille de données</value>
+  </data>
+  <data name="CategoryEditor" xml:space="preserve">
+    <value>Éditeur et requêtes</value>
+  </data>
+  <data name="CategoryNavigation" xml:space="preserve">
+    <value>Navigation</value>
+  </data>
+  <data name="CommandCloseAllTabs" xml:space="preserve">
+    <value>Fermer tous les onglets</value>
+  </data>
+  <data name="CommandCloseOtherTabs" xml:space="preserve">
+    <value>Fermer les autres onglets</value>
+  </data>
+  <data name="CommandCloseTab" xml:space="preserve">
+    <value>Fermer l’onglet</value>
+  </data>
+  <data name="CommandDisconnect" xml:space="preserve">
+    <value>Se déconnecter</value>
+  </data>
+  <data name="CommandErDiagram" xml:space="preserve">
+    <value>Diagramme entité-relation</value>
+  </data>
+  <data name="CommandExecuteAllStatements" xml:space="preserve">
+    <value>Exécuter toutes les instructions</value>
+  </data>
+  <data name="CommandExecuteQuery" xml:space="preserve">
+    <value>Exécuter l’instruction actuelle</value>
+  </data>
+  <data name="CommandExplainQuery" xml:space="preserve">
+    <value>Expliquer la requête</value>
+  </data>
+  <data name="CommandExportDatabase" xml:space="preserve">
+    <value>Exporter la base de données</value>
+  </data>
+  <data name="CommandFind" xml:space="preserve">
+    <value>Rechercher</value>
+  </data>
+  <data name="CommandFindAndReplace" xml:space="preserve">
+    <value>Rechercher et remplacer</value>
+  </data>
+  <data name="CommandFindNext" xml:space="preserve">
+    <value>Rechercher le suivant</value>
+  </data>
+  <data name="CommandFindPrevious" xml:space="preserve">
+    <value>Rechercher le précédent</value>
+  </data>
+  <data name="CommandFocusObjectList" xml:space="preserve">
+    <value>Activer la liste des objets</value>
+  </data>
+  <data name="CommandFocusSidebarSearch" xml:space="preserve">
+    <value>Activer le filtre de la barre latérale</value>
+  </data>
+  <data name="CommandFormatQuery" xml:space="preserve">
+    <value>Formater la requête</value>
+  </data>
+  <data name="CommandGoToDefinition" xml:space="preserve">
+    <value>Atteindre la définition</value>
+  </data>
+  <data name="CommandManageConnections" xml:space="preserve">
+    <value>Gérer les connexions</value>
+  </data>
+  <data name="CommandNewTab" xml:space="preserve">
+    <value>Nouvel onglet</value>
+  </data>
+  <data name="CommandNextQueryIssue" xml:space="preserve">
+    <value>Problème suivant dans la requête</value>
+  </data>
+  <data name="CommandOpenSettings" xml:space="preserve">
+    <value>Paramètres</value>
+  </data>
+  <data name="CommandPreviousQueryIssue" xml:space="preserve">
+    <value>Problème précédent dans la requête</value>
+  </data>
+  <data name="CommandQuickSwitcher" xml:space="preserve">
+    <value>Ouverture rapide</value>
+  </data>
+  <data name="CommandRenameSymbol" xml:space="preserve">
+    <value>Renommer le symbole</value>
+  </data>
+  <data name="CommandRunSqlFile" xml:space="preserve">
+    <value>Exécuter un fichier SQL</value>
+  </data>
+  <data name="CommandSaveFile" xml:space="preserve">
+    <value>Enregistrer le fichier</value>
+  </data>
+  <data name="CommandSearchDatabase" xml:space="preserve">
+    <value>Rechercher dans la base de données</value>
+  </data>
+  <data name="CommandServerDashboard" xml:space="preserve">
+    <value>Tableau de bord du serveur</value>
+  </data>
+  <data name="CommandShowFavoritesList" xml:space="preserve">
+    <value>Afficher les favoris</value>
+  </data>
+  <data name="CommandShowNextTab" xml:space="preserve">
+    <value>Afficher l’onglet suivant</value>
+  </data>
+  <data name="CommandShowPreviousTab" xml:space="preserve">
+    <value>Afficher l’onglet précédent</value>
+  </data>
+  <data name="CommandShowQuickInfo" xml:space="preserve">
+    <value>Afficher Info express</value>
+  </data>
+  <data name="CommandToggleAssistant" xml:space="preserve">
+    <value>Afficher/masquer l’assistant</value>
+  </data>
+  <data name="CommandToggleComment" xml:space="preserve">
+    <value>Commenter/décommenter</value>
+  </data>
+  <data name="CommandToggleHistory" xml:space="preserve">
+    <value>Afficher/masquer l’historique</value>
+  </data>
+  <data name="CommandToggleSqlFiles" xml:space="preserve">
+    <value>Afficher/masquer les fichiers SQL</value>
+  </data>
+  <data name="CommandToggleTableBrowser" xml:space="preserve">
+    <value>Afficher/masquer la barre latérale</value>
+  </data>
+  <data name="ConflictCommand" xml:space="preserve">
+    <value>{0} est déjà utilisé par «&#160;{1}&#160;» dans {2}.</value>
+  </data>
+  <data name="ConflictNeedsModifier" xml:space="preserve">
+    <value>Un raccourci nécessite Ctrl ou Alt, sauf s’il s’agit d’une touche de fonction. Maj peut s’y ajouter, mais ne peut pas constituer un raccourci à elle seule.</value>
+  </data>
+  <data name="ConflictReserved" xml:space="preserve">
+    <value>{0} est réservé à «&#160;{1}&#160;» et ne peut pas être attribué.</value>
+  </data>
+  <data name="ConflictSystemReserved" xml:space="preserve">
+    <value>{0} est réservé par Windows et ne peut pas être attribué.</value>
+  </data>
+  <data name="RecorderHelpText" xml:space="preserve">
+    <value>Appuyez pour enregistrer un raccourci. Échap annule, Retour arrière efface.</value>
+  </data>
+  <data name="RecorderPrompt" xml:space="preserve">
+    <value>Tapez un raccourci</value>
+  </data>
+  <data name="RecorderRecording" xml:space="preserve">
+    <value>Enregistrement</value>
+  </data>
+  <data name="ReservedAddRow" xml:space="preserve">
+    <value>Ajouter une ligne</value>
+  </data>
+  <data name="ReservedCloseWindow" xml:space="preserve">
+    <value>Fermer la fenêtre</value>
+  </data>
+  <data name="ReservedContextMenu" xml:space="preserve">
+    <value>Menu contextuel</value>
+  </data>
+  <data name="ReservedCopyWithHeaders" xml:space="preserve">
+    <value>Copier avec les en-têtes</value>
+  </data>
+  <data name="ReservedCycleWindows" xml:space="preserve">
+    <value>Parcourir les fenêtres</value>
+  </data>
+  <data name="ReservedDeleteWordBackward" xml:space="preserve">
+    <value>Supprimer le mot précédent</value>
+  </data>
+  <data name="ReservedDeleteWordForward" xml:space="preserve">
+    <value>Supprimer le mot suivant</value>
+  </data>
+  <data name="ReservedDuplicateLine" xml:space="preserve">
+    <value>Dupliquer la ligne</value>
+  </data>
+  <data name="ReservedMenuBar" xml:space="preserve">
+    <value>Barre de menus</value>
+  </data>
+  <data name="ReservedMoveToBeginningOfDocument" xml:space="preserve">
+    <value>Aller au début du document</value>
+  </data>
+  <data name="ReservedMoveToEndOfDocument" xml:space="preserve">
+    <value>Aller à la fin du document</value>
+  </data>
+  <data name="ReservedMoveToNextParagraph" xml:space="preserve">
+    <value>Aller au paragraphe suivant</value>
+  </data>
+  <data name="ReservedMoveToPreviousParagraph" xml:space="preserve">
+    <value>Aller au paragraphe précédent</value>
+  </data>
+  <data name="ReservedMoveWordLeft" xml:space="preserve">
+    <value>Déplacer d’un mot vers la gauche</value>
+  </data>
+  <data name="ReservedMoveWordRight" xml:space="preserve">
+    <value>Déplacer d’un mot vers la droite</value>
+  </data>
+  <data name="ReservedNextProblem" xml:space="preserve">
+    <value>Problème suivant</value>
+  </data>
+  <data name="ReservedPreviousProblem" xml:space="preserve">
+    <value>Problème précédent</value>
+  </data>
+  <data name="ReservedPrintScreen" xml:space="preserve">
+    <value>Impr. écran</value>
+  </data>
+  <data name="ReservedQuickInfo" xml:space="preserve">
+    <value>Info express</value>
+  </data>
+  <data name="ReservedSaveChanges" xml:space="preserve">
+    <value>Enregistrer les modifications</value>
+  </data>
+  <data name="ReservedSecurityOptions" xml:space="preserve">
+    <value>Options de sécurité</value>
+  </data>
+  <data name="ReservedSelectTab" xml:space="preserve">
+    <value>Sélectionner l’onglet {0}</value>
+  </data>
+  <data name="ReservedSelectToBeginningOfDocument" xml:space="preserve">
+    <value>Sélectionner jusqu’au début du document</value>
+  </data>
+  <data name="ReservedSelectToEndOfDocument" xml:space="preserve">
+    <value>Sélectionner jusqu’à la fin du document</value>
+  </data>
+  <data name="ReservedSelectWordLeft" xml:space="preserve">
+    <value>Sélectionner le mot à gauche</value>
+  </data>
+  <data name="ReservedSelectWordRight" xml:space="preserve">
+    <value>Sélectionner le mot à droite</value>
+  </data>
+  <data name="ReservedShowCompletions" xml:space="preserve">
+    <value>Afficher les complétions</value>
+  </data>
+  <data name="ReservedStartMenu" xml:space="preserve">
+    <value>Menu Démarrer</value>
+  </data>
+  <data name="ReservedSwitchApps" xml:space="preserve">
+    <value>Basculer entre les applications</value>
+  </data>
+  <data name="ReservedTaskManager" xml:space="preserve">
+    <value>Gestionnaire des tâches</value>
+  </data>
+  <data name="ReservedWindowMenu" xml:space="preserve">
+    <value>Menu système</value>
+  </data>
+</root>

@@ -1,0 +1,456 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AccessibleActualTime" xml:space="preserve">
+    <value>Actual Time {0}</value>
+    <comment>Part of the screen reader name of a plan step. {0} is a duration such as "12.500ms".</comment>
+  </data>
+  <data name="AccessibleCost" xml:space="preserve">
+    <value>Cost {0}</value>
+    <comment>Part of the screen reader name of a plan step. {0} is the planner's cost, such as "0.00..35.50".</comment>
+  </data>
+  <data name="AccessibleOnRelation" xml:space="preserve">
+    <value>on {0}</value>
+    <comment>Part of the screen reader name of a plan step, after the operation name ("Seq Scan, on users"). {0} is the table name.</comment>
+  </data>
+  <data name="AccessibleRows_One" xml:space="preserve">
+    <value>{0} Row</value>
+    <comment>Part of the screen reader name of a plan step. {0} is the estimated number of rows.</comment>
+  </data>
+  <data name="AccessibleRows_Other" xml:space="preserve">
+    <value>{0} Rows</value>
+    <comment>Part of the screen reader name of a plan step. {0} is the estimated number of rows.</comment>
+  </data>
+  <data name="AccessibleSeparator" xml:space="preserve">
+    <value>, </value>
+    <comment>Separator between the parts of the screen reader name of a plan step. Keep the trailing space if your language uses one.</comment>
+  </data>
+  <data name="AccessibleWarnings_One" xml:space="preserve">
+    <value>Warnings: {0}</value>
+    <comment>Part of the screen reader name of a plan step. {0} is the number of warnings the engine reported for it.</comment>
+  </data>
+  <data name="AccessibleWarnings_Other" xml:space="preserve">
+    <value>Warnings: {0}</value>
+    <comment>Part of the screen reader name of a plan step. {0} is the number of warnings the engine reported for it.</comment>
+  </data>
+  <data name="ActualEstimatedRowsHeader" xml:space="preserve">
+    <value>Actual / Est. Rows</value>
+    <comment>Column header in the plan outline: measured rows, then the planner's estimate. Narrow column.</comment>
+  </data>
+  <data name="ActualSection" xml:space="preserve">
+    <value>Actual</value>
+    <comment>Heading in the plan step details over the values measured by running the statement, as opposed to estimates.</comment>
+  </data>
+  <data name="ActualTimeHeader.Text" xml:space="preserve">
+    <value>Actual Time</value>
+    <comment>Column header in the plan outline. Narrow column.</comment>
+  </data>
+  <data name="BarMetricSelfCost" xml:space="preserve">
+    <value>Self Cost</value>
+    <comment>What the plan outline's bars measure: the cost of a step without its children.</comment>
+  </data>
+  <data name="BarMetricSelfTime" xml:space="preserve">
+    <value>Self Time</value>
+    <comment>What the plan outline's bars measure: the time of a step without its children.</comment>
+  </data>
+  <data name="Baseline" xml:space="preserve">
+    <value>Baseline</value>
+    <comment>Noun: the earlier plan the current one is compared with. Column header and heading in the plan comparison.</comment>
+  </data>
+  <data name="CaptureTime" xml:space="preserve">
+    <value>{0:T}</value>
+    <comment>When a plan was captured. {0} is the time of day.</comment>
+  </data>
+  <data name="CaptureTimeAnalyzed" xml:space="preserve">
+    <value>{0:T}, analyzed</value>
+    <comment>When a plan was captured, for a plan measured by running the statement (EXPLAIN ANALYZE). {0} is the time of day.</comment>
+  </data>
+  <data name="ChangeAdded" xml:space="preserve">
+    <value>Added</value>
+    <comment>Label of a plan step that appears only in the current plan.</comment>
+  </data>
+  <data name="ChangeChanged" xml:space="preserve">
+    <value>Changed</value>
+    <comment>Label of a plan step whose values differ from the baseline.</comment>
+  </data>
+  <data name="ChangeRemoved" xml:space="preserve">
+    <value>Removed</value>
+    <comment>Label of a plan step that appears only in the baseline plan.</comment>
+  </data>
+  <data name="ChangeRowName" xml:space="preserve">
+    <value>{0}: {1}</value>
+    <comment>Screen reader name of a changed plan step. {0} is Added, Removed or Changed; {1} is the step's operation and table.</comment>
+  </data>
+  <data name="ColumnChange" xml:space="preserve">
+    <value>Change</value>
+    <comment>Noun: column header in the plan comparison for the difference between the two values.</comment>
+  </data>
+  <data name="ColumnMetric" xml:space="preserve">
+    <value>Metric</value>
+    <comment>Column header in the plan comparison.</comment>
+  </data>
+  <data name="CompareMode.Text" xml:space="preserve">
+    <value>Compare</value>
+    <comment>Tab of the plan view (verb) that compares this plan with the previous one.</comment>
+  </data>
+  <data name="ComparedAsTextMessage" xml:space="preserve">
+    <value>One of the plans could not be read as a tree, so the two runs are compared line by line.</value>
+  </data>
+  <data name="ComparedAsTextTitle" xml:space="preserve">
+    <value>Compared as text</value>
+  </data>
+  <data name="ComparisonCaption" xml:space="preserve">
+    <value>Baseline from {0}, current from {1}</value>
+    <comment>{0} and {1} are capture times, possibly followed by ", analyzed".</comment>
+  </data>
+  <data name="ComparisonName" xml:space="preserve">
+    <value>Plan comparison</value>
+    <comment>Screen reader name of the plan comparison view.</comment>
+  </data>
+  <data name="CopyButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Copy the plan text</value>
+  </data>
+  <data name="CopyButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Copy the plan text the server returned</value>
+  </data>
+  <data name="CopyCreateIndexButton" xml:space="preserve">
+    <value>Copy CREATE INDEX</value>
+    <comment>Copies a suggested index statement. CREATE INDEX is SQL and stays untranslated.</comment>
+  </data>
+  <data name="CopyOperation" xml:space="preserve">
+    <value>Copy Operation</value>
+    <comment>Context menu command on a plan step that copies its operation name.</comment>
+  </data>
+  <data name="CopyStepDetails" xml:space="preserve">
+    <value>Copy Step Details</value>
+    <comment>Context menu command on a plan step.</comment>
+  </data>
+  <data name="CopyStepDetailsButton" xml:space="preserve">
+    <value>Copy step details</value>
+    <comment>Tooltip and screen reader name of an icon button in the plan step details.</comment>
+  </data>
+  <data name="CostHeader.Text" xml:space="preserve">
+    <value>Cost</value>
+    <comment>Column header in the plan outline: the planner's cost estimate. Narrow column.</comment>
+  </data>
+  <data name="Current" xml:space="preserve">
+    <value>Current</value>
+    <comment>Noun: the newest plan, compared with the baseline. Column header and heading in the plan comparison.</comment>
+  </data>
+  <data name="DiagramActualRows" xml:space="preserve">
+    <value>actual {0:N0}</value>
+    <comment>On a plan diagram step: the measured number of rows. {0} is the count. Short space.</comment>
+  </data>
+  <data name="DiagramMode.Text" xml:space="preserve">
+    <value>Diagram</value>
+    <comment>Tab of the plan view.</comment>
+  </data>
+  <data name="DiagramName" xml:space="preserve">
+    <value>Plan diagram</value>
+    <comment>Screen reader name of the plan diagram.</comment>
+  </data>
+  <data name="DiagramRows_One" xml:space="preserve">
+    <value>{0:N0} row</value>
+    <comment>On a plan diagram step: the estimated number of rows. {0} is the count. Short space.</comment>
+  </data>
+  <data name="DiagramRows_Other" xml:space="preserve">
+    <value>{0:N0} rows</value>
+    <comment>On a plan diagram step: the estimated number of rows. {0} is the count. Short space.</comment>
+  </data>
+  <data name="DifferentStatementTitle" xml:space="preserve">
+    <value>The baseline explained a different statement</value>
+    <comment>"Explained" refers to running EXPLAIN on a SQL statement.</comment>
+  </data>
+  <data name="EstimatedRowsHeader" xml:space="preserve">
+    <value>Rows</value>
+    <comment>Column header in the plan outline when only the planner's estimate is known. Narrow column.</comment>
+  </data>
+  <data name="FieldChange" xml:space="preserve">
+    <value>{0}: {1} → {2}</value>
+    <comment>A value that changed between two plans. {0} is the value's name, {1} the baseline value, {2} the current value.</comment>
+  </data>
+  <data name="FitButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Fit the plan</value>
+  </data>
+  <data name="FitButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Fit the plan</value>
+  </data>
+  <data name="LabelActualRows" xml:space="preserve">
+    <value>Actual Rows</value>
+    <comment>Label in a plan step's tooltip and copied details.</comment>
+  </data>
+  <data name="LabelActualTime" xml:space="preserve">
+    <value>Actual Time</value>
+    <comment>Label in a plan step's tooltip and copied details.</comment>
+  </data>
+  <data name="LabelAlias" xml:space="preserve">
+    <value>Alias</value>
+    <comment>Label in the plan step details: the table alias used in the query. Narrow column.</comment>
+  </data>
+  <data name="LabelCost" xml:space="preserve">
+    <value>Cost</value>
+    <comment>Label in the plan step details and tooltip: the planner's cost estimate. Narrow column.</comment>
+  </data>
+  <data name="LabelLoops" xml:space="preserve">
+    <value>Loops</value>
+    <comment>Label in the plan step details: how many times the step ran. Narrow column.</comment>
+  </data>
+  <data name="LabelMissingIndex" xml:space="preserve">
+    <value>Missing Index</value>
+    <comment>Label in a plan step's tooltip and copied details, before a suggested CREATE INDEX statement.</comment>
+  </data>
+  <data name="LabelRows" xml:space="preserve">
+    <value>Rows</value>
+    <comment>Label in the plan step details and tooltip. Narrow column.</comment>
+  </data>
+  <data name="LabelSchema" xml:space="preserve">
+    <value>Schema</value>
+    <comment>Label in the plan step details: the database schema. Narrow column.</comment>
+  </data>
+  <data name="LabelShare" xml:space="preserve">
+    <value>Share</value>
+    <comment>Noun: the step's percentage of the whole plan's cost. Label in the plan step details. Narrow column.</comment>
+  </data>
+  <data name="LabelStartup" xml:space="preserve">
+    <value>Startup</value>
+    <comment>Label in the plan step details: the time until the step returned its first row. Narrow column.</comment>
+  </data>
+  <data name="LabelTable" xml:space="preserve">
+    <value>Table</value>
+    <comment>Label in the plan step details and tooltip. Narrow column.</comment>
+  </data>
+  <data name="LabelTime" xml:space="preserve">
+    <value>Time</value>
+    <comment>Label in the plan step details under "Actual". Narrow column.</comment>
+  </data>
+  <data name="LabelTotalRows" xml:space="preserve">
+    <value>Total rows</value>
+    <comment>Label in the plan step details: rows across all loops. Narrow column.</comment>
+  </data>
+  <data name="LabelValue" xml:space="preserve">
+    <value>{0}: {1}</value>
+    <comment>One line of a plan step's tooltip and copied details. {0} is a label, {1} its value.</comment>
+  </data>
+  <data name="LabelWarning" xml:space="preserve">
+    <value>Warning</value>
+    <comment>Label in a plan step's tooltip and copied details, before a warning the engine reported.</comment>
+  </data>
+  <data name="LabelWidth" xml:space="preserve">
+    <value>Width</value>
+    <comment>Label in the plan step details: the estimated row size in bytes. Narrow column.</comment>
+  </data>
+  <data name="MetricActualLoops" xml:space="preserve">
+    <value>Actual Loops</value>
+  </data>
+  <data name="MetricActualRows" xml:space="preserve">
+    <value>Actual Rows</value>
+  </data>
+  <data name="MetricActualStartupTime" xml:space="preserve">
+    <value>Actual Startup Time</value>
+  </data>
+  <data name="MetricActualTotalTime" xml:space="preserve">
+    <value>Actual Total Time</value>
+  </data>
+  <data name="MetricBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Bar metric</value>
+    <comment>Screen reader name of the list that picks what the plan outline's bars measure.</comment>
+  </data>
+  <data name="MetricBox.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>What the bars measure</value>
+  </data>
+  <data name="MetricEstimatedRows" xml:space="preserve">
+    <value>Estimated Rows</value>
+  </data>
+  <data name="MetricEstimatedStartupCost" xml:space="preserve">
+    <value>Estimated Startup Cost</value>
+  </data>
+  <data name="MetricEstimatedTotalCost" xml:space="preserve">
+    <value>Estimated Total Cost</value>
+  </data>
+  <data name="MetricEstimatedWidth" xml:space="preserve">
+    <value>Estimated Width</value>
+  </data>
+  <data name="MissingIndex" xml:space="preserve">
+    <value>Missing index</value>
+    <comment>Heading over an index the engine suggests creating.</comment>
+  </data>
+  <data name="MissingIndexImpact" xml:space="preserve">
+    <value>Missing index, estimated impact {0:0.#}%</value>
+    <comment>Heading over an index the engine suggests creating. {0} is the estimated improvement as a percentage.</comment>
+  </data>
+  <data name="Modes.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Plan view</value>
+    <comment>Screen reader name of the tabs that switch how the plan is shown.</comment>
+  </data>
+  <data name="NoStepChanged" xml:space="preserve">
+    <value>No step changed.</value>
+  </data>
+  <data name="NoStepSelected" xml:space="preserve">
+    <value>No step selected</value>
+  </data>
+  <data name="NoStepSelectedHint" xml:space="preserve">
+    <value>Select a step in the plan to see what it does.</value>
+  </data>
+  <data name="NothingToCompareMessage" xml:space="preserve">
+    <value>Explain again after changing the query or the schema, and this run becomes the baseline.</value>
+    <comment>"Explain" is the editor command that shows the query plan.</comment>
+  </data>
+  <data name="NothingToCompareTitle" xml:space="preserve">
+    <value>Nothing to compare yet</value>
+  </data>
+  <data name="OperationHeader.Text" xml:space="preserve">
+    <value>Operation</value>
+    <comment>Column header in the plan outline.</comment>
+  </data>
+  <data name="RawMode.Text" xml:space="preserve">
+    <value>Raw</value>
+    <comment>Tab of the plan view that shows the plan text exactly as the server returned it.</comment>
+  </data>
+  <data name="RawText.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Plan text</value>
+  </data>
+  <data name="RowsHeader.Text" xml:space="preserve">
+    <value>Rows</value>
+    <comment>Column header in the plan outline. Narrow column.</comment>
+  </data>
+  <data name="SeverityCritical" xml:space="preserve">
+    <value>Critical cost</value>
+    <comment>Screen reader name and tooltip of a plan step's cost badge.</comment>
+  </data>
+  <data name="SeverityHigh" xml:space="preserve">
+    <value>High cost</value>
+    <comment>Screen reader name and tooltip of a plan step's cost badge.</comment>
+  </data>
+  <data name="SeverityLow" xml:space="preserve">
+    <value>Low cost</value>
+    <comment>Screen reader name and tooltip of a plan step's cost badge.</comment>
+  </data>
+  <data name="SeverityModerate" xml:space="preserve">
+    <value>Moderate cost</value>
+    <comment>Screen reader name and tooltip of a plan step's cost badge.</comment>
+  </data>
+  <data name="StepChangesHeading" xml:space="preserve">
+    <value>Step changes</value>
+    <comment>Heading over the list of plan steps that were added, removed or changed.</comment>
+  </data>
+  <data name="StepDetailsName" xml:space="preserve">
+    <value>Plan step details</value>
+    <comment>Screen reader name of the pane that shows the selected plan step.</comment>
+  </data>
+  <data name="SummaryEstimatedRows" xml:space="preserve">
+    <value>Estimated rows</value>
+    <comment>Plan-wide value in the plan comparison.</comment>
+  </data>
+  <data name="SummaryExecutionTime" xml:space="preserve">
+    <value>Execution time</value>
+    <comment>Plan-wide value in the plan comparison.</comment>
+  </data>
+  <data name="SummaryName" xml:space="preserve">
+    <value>Plan summary</value>
+    <comment>Screen reader name of the table of plan-wide values in the comparison.</comment>
+  </data>
+  <data name="SummaryNodeCount" xml:space="preserve">
+    <value>Node count</value>
+    <comment>Plan-wide value in the plan comparison: the number of steps.</comment>
+  </data>
+  <data name="SummaryPlanningTime" xml:space="preserve">
+    <value>Planning time</value>
+    <comment>Plan-wide value in the plan comparison.</comment>
+  </data>
+  <data name="SummaryTotalCost" xml:space="preserve">
+    <value>Cost</value>
+    <comment>Plan-wide value in the plan comparison: the planner's total cost.</comment>
+  </data>
+  <data name="TimingsAnalyzed" xml:space="preserve">
+    <value>Analyzed plan · {0}</value>
+    <comment>Plan toolbar summary for a plan measured by running the statement. {0} is a list such as "4 steps · cost 35.5 · execution 0.2 ms".</comment>
+  </data>
+  <data name="TimingsCost" xml:space="preserve">
+    <value>cost {0}</value>
+    <comment>Part of the plan toolbar summary. {0} is the planner's total cost.</comment>
+  </data>
+  <data name="TimingsEstimated" xml:space="preserve">
+    <value>Estimated plan · {0}</value>
+    <comment>Plan toolbar summary for a plan the planner estimated without running. {0} is a list such as "4 steps · cost 35.5".</comment>
+  </data>
+  <data name="TimingsExecution" xml:space="preserve">
+    <value>execution {0}</value>
+    <comment>Part of the plan toolbar summary. {0} is a duration such as "0.2 ms".</comment>
+  </data>
+  <data name="TimingsPlanning" xml:space="preserve">
+    <value>planning {0}</value>
+    <comment>Part of the plan toolbar summary. {0} is a duration such as "0.1 ms".</comment>
+  </data>
+  <data name="TimingsSteps_One" xml:space="preserve">
+    <value>1 step</value>
+    <comment>Part of the plan toolbar summary. {0} is the number of steps in the plan.</comment>
+  </data>
+  <data name="TimingsSteps_Other" xml:space="preserve">
+    <value>{0:N0} steps</value>
+    <comment>Part of the plan toolbar summary. {0} is the number of steps in the plan.</comment>
+  </data>
+  <data name="Tree.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Plan steps</value>
+  </data>
+  <data name="TreeMode.Text" xml:space="preserve">
+    <value>Tree</value>
+    <comment>Tab of the plan view that shows the plan as an outline.</comment>
+  </data>
+  <data name="UnparsedBar.Message" xml:space="preserve">
+    <value>This plan could not be read as a tree, so it is shown as the server returned it.</value>
+  </data>
+  <data name="ValueChanged" xml:space="preserve">
+    <value>Changed</value>
+    <comment>In the plan comparison's Change column, for a text value that differs from the baseline.</comment>
+  </data>
+  <data name="VerdictFaster" xml:space="preserve">
+    <value>{0:0.#}x faster than the baseline</value>
+    <comment>{0} is how many times faster, such as "2.5".</comment>
+  </data>
+  <data name="VerdictShapeChanged" xml:space="preserve">
+    <value>The plan shape changed</value>
+  </data>
+  <data name="VerdictSlower" xml:space="preserve">
+    <value>{0:0.#}x slower than the baseline</value>
+    <comment>{0} is how many times slower, such as "2.5".</comment>
+  </data>
+  <data name="VerdictUnchanged" xml:space="preserve">
+    <value>No measurable change</value>
+  </data>
+  <data name="VerdictValuesChanged" xml:space="preserve">
+    <value>Same plan shape, different numbers</value>
+  </data>
+  <data name="WarningsTitle_One" xml:space="preserve">
+    <value>Warning</value>
+    <comment>Title over the warnings the engine reported for a plan step. {0} is their number.</comment>
+  </data>
+  <data name="WarningsTitle_Other" xml:space="preserve">
+    <value>Warnings</value>
+    <comment>Title over the warnings the engine reported for a plan step. {0} is their number.</comment>
+  </data>
+  <data name="ZoomInButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Zoom in</value>
+  </data>
+  <data name="ZoomInButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Zoom in (Ctrl+wheel)</value>
+    <comment>Ctrl is the key name; "wheel" is the mouse wheel.</comment>
+  </data>
+  <data name="ZoomOutButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Zoom out</value>
+  </data>
+  <data name="ZoomOutButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Zoom out (Ctrl+wheel)</value>
+    <comment>Ctrl is the key name; "wheel" is the mouse wheel.</comment>
+  </data>
+</root>

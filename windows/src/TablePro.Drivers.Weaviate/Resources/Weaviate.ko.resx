@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="BooleanProperty" xml:space="preserve">
+    <value>{0}은(는) 부울 속성이므로 {1}이(가) 아닌 true 또는 false만 일치합니다.</value>
+  </data>
+  <data name="ComparesNumbersAndDates" xml:space="preserve">
+    <value>Weaviate는 {0}(으)로 숫자와 날짜만 비교하는데 {1}은(는) 둘 다 아닙니다.</value>
+  </data>
+  <data name="DateProperty" xml:space="preserve">
+    <value>{0}은(는) 날짜 속성인데 {1}은(는) 2024-01-31T00:00:00Z 같은 RFC 3339 타임스탬프가 아닙니다.</value>
+  </data>
+  <data name="InNeedsValue" xml:space="preserve">
+    <value>{0}에 대한 IN에는 값이 하나 이상 필요합니다.</value>
+  </data>
+  <data name="MatchesTextOnly" xml:space="preserve">
+    <value>Weaviate는 {0}(으)로 텍스트를 비교하는데 {1}은(는) 텍스트 속성이 아닙니다.</value>
+  </data>
+  <data name="NotValidName" xml:space="preserve">
+    <value>{0}은(는) 올바른 Weaviate 이름이 아닙니다.</value>
+  </data>
+  <data name="NumericProperty" xml:space="preserve">
+    <value>{0}은(는) 숫자 속성인데 {1}은(는) 숫자가 아닙니다.</value>
+  </data>
+  <data name="ObjectIdUnknown" xml:space="preserve">
+    <value>개체의 ID를 알 수 없으므로 개체를 지정할 수 없습니다.</value>
+  </data>
+  <data name="RawFilterShape" xml:space="preserve">
+    <value>원시 Weaviate 필터는 { path: ["title"] operator: Like valueText: "*a*" }와 같은 where 개체입니다.</value>
+  </data>
+</root>

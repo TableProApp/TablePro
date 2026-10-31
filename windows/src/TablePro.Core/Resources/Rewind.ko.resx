@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="Added_One" xml:space="preserve">
+    <value>{0:N0}개 추가됨</value>
+  </data>
+  <data name="Added_Other" xml:space="preserve">
+    <value>{0:N0}개 추가됨</value>
+  </data>
+  <data name="Deleted_One" xml:space="preserve">
+    <value>{0:N0}개 삭제됨</value>
+  </data>
+  <data name="Deleted_Other" xml:space="preserve">
+    <value>{0:N0}개 삭제됨</value>
+  </data>
+  <data name="Edited_One" xml:space="preserve">
+    <value>{0:N0}개 편집됨</value>
+  </data>
+  <data name="Edited_Other" xml:space="preserve">
+    <value>{0:N0}개 편집됨</value>
+  </data>
+  <data name="RecordedByNewerVersion" xml:space="preserve">
+    <value>이 저장은 더 새로운 버전의 TablePro에서 기록되었습니다.</value>
+  </data>
+  <data name="RefusalNoPrimaryKey" xml:space="preserve">
+    <value>테이블에 기본 키가 없어 이 행을 식별할 수 없습니다.</value>
+  </data>
+  <data name="RefusalServerAssignedKey" xml:space="preserve">
+    <value>서버가 이 행의 키를 정했습니다.</value>
+  </data>
+  <data name="RefusalValueTooLarge" xml:space="preserve">
+    <value>값이 너무 커서 보관할 수 없었습니다.</value>
+  </data>
+  <data name="StepPutRowBack" xml:space="preserve">
+    <value>행 되돌리기</value>
+  </data>
+  <data name="StepRemoveAddedRow" xml:space="preserve">
+    <value>추가한 행 제거</value>
+  </data>
+  <data name="StepRestoreValues" xml:space="preserve">
+    <value>이전 값 복원</value>
+  </data>
+  <data name="SummarySeparator" xml:space="preserve">
+    <value>, </value>
+  </data>
+</root>

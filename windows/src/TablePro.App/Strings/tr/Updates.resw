@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AutoCheckDescription" xml:space="preserve">
+    <value>Günde bir kez yeni sürüm olup olmadığına bakar.</value>
+  </data>
+  <data name="AutoCheckTitle" xml:space="preserve">
+    <value>Güncellemeleri otomatik olarak kontrol et</value>
+  </data>
+  <data name="AvailableVersion" xml:space="preserve">
+    <value>TablePro {0} kullanılabilir. Yüklü sürümünüz: {1}.</value>
+  </data>
+  <data name="BetaDescription" xml:space="preserve">
+    <value>Beta sürümler kararlı sürümden önce gelir ve bazı pürüzler içerebilir.</value>
+  </data>
+  <data name="BetaTitle" xml:space="preserve">
+    <value>Beta güncellemelerini al</value>
+  </data>
+  <data name="CheckNow" xml:space="preserve">
+    <value>Şimdi Kontrol Et</value>
+  </data>
+  <data name="CheckTitle" xml:space="preserve">
+    <value>Güncellemeleri Kontrol Et</value>
+  </data>
+  <data name="ErrorChecksumMismatch" xml:space="preserve">
+    <value>İndirilen güncelleme, sürümle birlikte yayımlanan sağlama toplamıyla eşleşmiyor. Hiçbir şey yüklenmedi.</value>
+  </data>
+  <data name="ErrorFeedTooLarge" xml:space="preserve">
+    <value>Güncelleme akışı beklenenden büyük.</value>
+  </data>
+  <data name="ErrorHttpsOnly" xml:space="preserve">
+    <value>Güncellemeler yalnızca HTTPS üzerinden indirilir.</value>
+  </data>
+  <data name="ErrorNoInstallScript" xml:space="preserve">
+    <value>Güncellemede yükleme betiği yok.</value>
+  </data>
+  <data name="ImportantUpdateTitle" xml:space="preserve">
+    <value>Önemli Güncelleme</value>
+  </data>
+  <data name="InstallAndRestart" xml:space="preserve">
+    <value>Yükle ve Yeniden Başlat</value>
+  </data>
+  <data name="InstallFailedTitle" xml:space="preserve">
+    <value>Güncelleme yüklenemedi</value>
+  </data>
+  <data name="Later" xml:space="preserve">
+    <value>Daha Sonra</value>
+  </data>
+  <data name="MenuCheckForUpdates" xml:space="preserve">
+    <value>Güncellemeleri Kontrol Et…</value>
+  </data>
+  <data name="MenuUpdateAvailable" xml:space="preserve">
+    <value>Güncelleme Kullanılabilir…</value>
+  </data>
+  <data name="RestartToUpdate" xml:space="preserve">
+    <value>Güncellemek için Yeniden Başlat</value>
+  </data>
+  <data name="SettingsTitle" xml:space="preserve">
+    <value>Güncellemeler</value>
+  </data>
+  <data name="SkipThisVersion" xml:space="preserve">
+    <value>Bu Sürümü Atla</value>
+  </data>
+  <data name="StatusAvailable" xml:space="preserve">
+    <value>Bir güncelleme kullanılabilir.</value>
+  </data>
+  <data name="StatusChecking" xml:space="preserve">
+    <value>Güncellemeler kontrol ediliyor…</value>
+  </data>
+  <data name="StatusDisabled" xml:space="preserve">
+    <value>Bu derlemede güncellemeler kapalı.</value>
+  </data>
+  <data name="StatusDownloading" xml:space="preserve">
+    <value>Güncelleme indiriliyor: {0:P0}</value>
+  </data>
+  <data name="StatusFailed" xml:space="preserve">
+    <value>Güncelleme kontrolü başarısız oldu: {0}</value>
+  </data>
+  <data name="StatusInstalling" xml:space="preserve">
+    <value>Yükleyici başlatılıyor…</value>
+  </data>
+  <data name="StatusLastChecked" xml:space="preserve">
+    <value>Son kontrol: {0:g}.</value>
+  </data>
+  <data name="StatusStore" xml:space="preserve">
+    <value>TablePro'yu Microsoft Store güncel tutar.</value>
+  </data>
+  <data name="StatusUpToDate" xml:space="preserve">
+    <value>TablePro {0} en son sürüm.</value>
+  </data>
+  <data name="StatusVersion" xml:space="preserve">
+    <value>TablePro {0}.</value>
+  </data>
+  <data name="UpdateAvailableTitle" xml:space="preserve">
+    <value>Güncelleme Kullanılabilir</value>
+  </data>
+  <data name="VersionTitle" xml:space="preserve">
+    <value>TablePro {0}</value>
+  </data>
+</root>

@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AwsProfileMissing" xml:space="preserve">
+    <value>The AWS profile {0} is not in %USERPROFILE%\.aws\config or credentials.</value>
+    <comment>{0} is a profile name.</comment>
+  </data>
+  <data name="AwsProfileNoCredentials" xml:space="preserve">
+    <value>The AWS profile {0} gave no credentials: {1}</value>
+    <comment>{0} is a profile name, {1} the AWS SDK's reason.</comment>
+  </data>
+  <data name="AwsProfileNoCredentialsSso" xml:space="preserve">
+    <value>The AWS profile {0} gave no credentials: {1} Run “aws sso login --profile {0}” and connect again.</value>
+    <comment>{0} is a profile name, {1} the AWS SDK's reason.</comment>
+  </data>
+  <data name="EnterAccessKey" xml:space="preserve">
+    <value>Enter the access key ID and the secret access key.</value>
+  </data>
+  <data name="EnterIamUser" xml:space="preserve">
+    <value>Enter the database user the IAM token signs in as.</value>
+  </data>
+  <data name="EntraFailed" xml:space="preserve">
+    <value>Microsoft Entra ID sign-in failed: {0}</value>
+    <comment>{0} is the identity service's reason.</comment>
+  </data>
+  <data name="EntraIntegratedSqlServerOnly" xml:space="preserve">
+    <value>Integrated Entra sign-in is available for SQL Server only.</value>
+  </data>
+  <data name="GcloudScope" xml:space="preserve">
+    <value>The gcloud login does not allow Cloud SQL sign-in. Run gcloud auth application-default login again, without --scopes.</value>
+  </data>
+  <data name="GoogleFailed" xml:space="preserve">
+    <value>Google Cloud IAM sign-in failed: {0}</value>
+    <comment>{0} is Google's reason.</comment>
+  </data>
+  <data name="GoogleRefused" xml:space="preserve">
+    <value>Google refused the credentials: {0} Run gcloud auth application-default login, or check the service account key, and connect again.</value>
+    <comment>{0} is Google's reason.</comment>
+  </data>
+  <data name="KeyFileUnreadable" xml:space="preserve">
+    <value>The service account key file {0} cannot be read: {1}</value>
+    <comment>{0} is a file path, {1} the system's reason.</comment>
+  </data>
+  <data name="KeyNotJson" xml:space="preserve">
+    <value>The service account key is not valid JSON.</value>
+  </data>
+  <data name="KeyWrongType" xml:space="preserve">
+    <value>The key is a "{0}" credential, not a service account key.</value>
+    <comment>{0} is the key file's type field, or UnknownCredentialType.</comment>
+  </data>
+  <data name="NoAdc" xml:space="preserve">
+    <value>No Google application default credentials were found. Run gcloud auth application-default login and connect again.</value>
+  </data>
+  <data name="NoSignInToken" xml:space="preserve">
+    <value>{0} does not use a sign-in token.</value>
+    <comment>{0} is a sign-in method name.</comment>
+  </data>
+  <data name="PemKey" xml:space="preserve">
+    <value>This is a PEM private key. Use the JSON key file Google Cloud created for the service account.</value>
+  </data>
+  <data name="RedshiftNotIssued" xml:space="preserve">
+    <value>AWS did not issue Redshift credentials: {0}</value>
+    <comment>{0} is AWS's error code and message.</comment>
+  </data>
+  <data name="RedshiftNoUser" xml:space="preserve">
+    <value>AWS answered without the Redshift user and password.</value>
+  </data>
+  <data name="ServiceAccountKeyRequired" xml:space="preserve">
+    <value>Enter the service account key: the path of its JSON file, or the JSON itself.</value>
+  </data>
+  <data name="ServicePrincipalIncomplete" xml:space="preserve">
+    <value>A service principal needs the directory (tenant) ID, the application (client) ID and the client secret.</value>
+  </data>
+  <data name="UnknownCredentialType" xml:space="preserve">
+    <value>unknown</value>
+    <comment>Shown in KeyWrongType when the key names no type.</comment>
+  </data>
+</root>

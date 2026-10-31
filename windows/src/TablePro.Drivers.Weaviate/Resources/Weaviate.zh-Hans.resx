@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="BooleanProperty" xml:space="preserve">
+    <value>{0} 是布尔属性，只匹配 true 或 false，不匹配 {1}。</value>
+  </data>
+  <data name="ComparesNumbersAndDates" xml:space="preserve">
+    <value>Weaviate 只能用 {0} 比较数字和日期，而 {1} 两者都不是。</value>
+  </data>
+  <data name="DateProperty" xml:space="preserve">
+    <value>{0} 是日期属性，而 {1} 不是 RFC 3339 时间戳，例如 2024-01-31T00:00:00Z。</value>
+  </data>
+  <data name="InNeedsValue" xml:space="preserve">
+    <value>{0} 上的 IN 至少需要一个值。</value>
+  </data>
+  <data name="MatchesTextOnly" xml:space="preserve">
+    <value>Weaviate 用 {0} 匹配文本，而 {1} 不是文本属性。</value>
+  </data>
+  <data name="NotValidName" xml:space="preserve">
+    <value>{0} 不是有效的 Weaviate 名称。</value>
+  </data>
+  <data name="NumericProperty" xml:space="preserve">
+    <value>{0} 是数值属性，而 {1} 不是数字。</value>
+  </data>
+  <data name="ObjectIdUnknown" xml:space="preserve">
+    <value>对象的 ID 未知，因此无法定位该对象。</value>
+  </data>
+  <data name="RawFilterShape" xml:space="preserve">
+    <value>原始 Weaviate 筛选器是一个 where 对象，例如 { path: ["title"] operator: Like valueText: "*a*" }。</value>
+  </data>
+</root>

@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="ActivationLimit" xml:space="preserve">
+    <value>Đã đạt số lần kích hoạt tối đa.</value>
+  </data>
+  <data name="EmptyResponse" xml:space="preserve">
+    <value>Máy chủ giấy phép trả về phản hồi trống.</value>
+  </data>
+  <data name="KeyEmpty" xml:space="preserve">
+    <value>Khóa giấy phép đang trống.</value>
+  </data>
+  <data name="MachineMismatch" xml:space="preserve">
+    <value>Giấy phép này được cấp cho một máy khác.</value>
+  </data>
+  <data name="RequestFailed" xml:space="preserve">
+    <value>Yêu cầu không thành công.</value>
+  </data>
+  <data name="SeatUnconfirmed" xml:space="preserve">
+    <value>Không thể kết nối tới máy chủ giấy phép, nên chỗ này có thể vẫn đang được dùng.</value>
+  </data>
+</root>

@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="BadConsistencyLevel" xml:space="preserve">
+    <value>{0} n’est pas un niveau de cohérence utilisable par une connexion. Utilisez LOCAL_ONE, ONE, QUORUM, LOCAL_QUORUM, EACH_QUORUM, ALL, TWO, THREE ou ANY.</value>
+  </data>
+  <data name="CannotChangePrimaryKey" xml:space="preserve">
+    <value>Cassandra ne peut pas modifier la colonne de clé primaire {0}. Supprimez la ligne et ajoutez-la de nouveau avec la nouvelle clé.</value>
+  </data>
+  <data name="ChooseKeyspace" xml:space="preserve">
+    <value>Choisissez un keyspace pour {0}.</value>
+  </data>
+  <data name="ClientRules_One" xml:space="preserve">
+    <value>{0} règle de filtre que CQL ne peut pas évaluer a été appliquée aux lignes lues, page par page.</value>
+  </data>
+  <data name="ClientRules_Other" xml:space="preserve">
+    <value>{0} règles de filtre que CQL ne peut pas évaluer ont été appliquées aux lignes lues, page par page.</value>
+  </data>
+  <data name="ClientRulesNoAllowFiltering_One" xml:space="preserve">
+    <value>{0} règle de filtre a été appliquée aux lignes lues, page par page, car CQL ne filtre les autres colonnes qu’avec ALLOW FILTERING. Définissez allowFiltering=true dans les options de la connexion pour filtrer sur le serveur.</value>
+  </data>
+  <data name="ClientRulesNoAllowFiltering_Other" xml:space="preserve">
+    <value>{0} règles de filtre ont été appliquées aux lignes lues, page par page, car CQL ne filtre les autres colonnes qu’avec ALLOW FILTERING. Définissez allowFiltering=true dans les options de la connexion pour filtrer sur le serveur.</value>
+  </data>
+  <data name="CounterColumns" xml:space="preserve">
+    <value>Les colonnes de compteur ne changent que par incréments. Exécutez UPDATE ... SET c = c + n dans l’éditeur.</value>
+  </data>
+  <data name="EnterPrimaryKeyValue" xml:space="preserve">
+    <value>Saisissez une valeur pour la colonne de clé primaire {0}.</value>
+  </data>
+  <data name="KeyspacesNeedsAccessKey" xml:space="preserve">
+    <value>Amazon Keyspaces a besoin d’un ID de clé d’accès (nom d’utilisateur) et d’une clé d’accès secrète (mot de passe).</value>
+  </data>
+  <data name="KeyspacesNeedsRegion" xml:space="preserve">
+    <value>Définissez la région AWS d’Amazon Keyspaces dans les options de la connexion (awsRegion).</value>
+  </data>
+  <data name="KeyspacesNeedsTls" xml:space="preserve">
+    <value>Amazon Keyspaces ne signe les connexions que via TLS. Définissez SSL sur Requis ou plus strict.</value>
+  </data>
+  <data name="KeyspacesSignInUnavailable" xml:space="preserve">
+    <value>La connexion Amazon Keyspaces « {0} » n’est pas encore disponible sur Windows. Utilisez une clé d’accès.</value>
+  </data>
+  <data name="NoKeyspace" xml:space="preserve">
+    <value>Aucun keyspace nommé {0} n’a été trouvé.</value>
+  </data>
+  <data name="NoOffset" xml:space="preserve">
+    <value>CQL n’a pas d’OFFSET, et atteindre la ligne {0:N0} obligerait à lire d’abord {1:N0} lignes. Avancez page par page depuis le début ou filtrez par clé de partition.</value>
+  </data>
+  <data name="NoTableOrView" xml:space="preserve">
+    <value>Aucune table ni vue nommée {0} n’a été trouvée.</value>
+  </data>
+  <data name="PrimaryKeyNotLoaded" xml:space="preserve">
+    <value>La valeur de la ligne pour la colonne de clé primaire {0} n’est pas chargée, la ligne est donc introuvable.</value>
+  </data>
+  <data name="PrimaryKeyUnreadable" xml:space="preserve">
+    <value>La clé primaire de {0} n’a pas pu être lue, ses lignes ne peuvent donc pas être modifiées.</value>
+  </data>
+  <data name="QueryCancelledServerMayFinish" xml:space="preserve">
+    <value>Requête annulée. Le serveur peut encore la terminer.</value>
+  </data>
+  <data name="RawConditionAnd" xml:space="preserve">
+    <value>CQL ne combine les conditions qu’avec AND, la condition brute doit donc correspondre en plus des règles.</value>
+  </data>
+  <data name="SigV4NoNonce" xml:space="preserve">
+    <value>Amazon Keyspaces a envoyé une demande SigV4 sans nonce.</value>
+  </data>
+  <data name="SortNotApplied" xml:space="preserve">
+    <value>Cassandra renvoie les lignes dans l’ordre des jetons et ne trie qu’au sein d’une partition, le tri n’a donc pas été appliqué.</value>
+  </data>
+  <data name="StoppedAfterScanning" xml:space="preserve">
+    <value>Arrêt après la lecture de {0:N0} lignes pour remplir la page. Filtrez par clé de partition pour rechercher dans toute la table.</value>
+  </data>
+  <data name="UdtAsJson" xml:space="preserve">
+    <value>Les valeurs de type défini par l’utilisateur sont écrites en JSON via fromJson(), et non liées comme objets.</value>
+  </data>
+</root>

@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="ElastiCacheNameRequired" xml:space="preserve">
+    <value>Saisissez le nom du cache ElastiCache (ID du groupe de réplication) pour utiliser l’authentification IAM.</value>
+  </data>
+  <data name="ElastiCacheRegionRequired" xml:space="preserve">
+    <value>Saisissez la région AWS dans laquelle s’exécute le cache ElastiCache.</value>
+  </data>
+  <data name="EntraDefault" xml:space="preserve">
+    <value>Par défaut (Azure CLI, Visual Studio, environnement)</value>
+  </data>
+  <data name="EntraDeviceCode" xml:space="preserve">
+    <value>Code d’appareil</value>
+  </data>
+  <data name="EntraIntegrated" xml:space="preserve">
+    <value>Intégrée (compte Windows)</value>
+  </data>
+  <data name="EntraInteractive" xml:space="preserve">
+    <value>Interactive (navigateur)</value>
+  </data>
+  <data name="EntraManagedIdentity" xml:space="preserve">
+    <value>Identité managée</value>
+  </data>
+  <data name="EntraServicePrincipal" xml:space="preserve">
+    <value>Principal de service</value>
+  </data>
+  <data name="MethodAwsAccessKey" xml:space="preserve">
+    <value>AWS IAM (clé d’accès)</value>
+  </data>
+  <data name="MethodAwsProfile" xml:space="preserve">
+    <value>AWS IAM (profil)</value>
+  </data>
+  <data name="MethodAwsSso" xml:space="preserve">
+    <value>AWS IAM (SSO)</value>
+  </data>
+  <data name="MethodEntra" xml:space="preserve">
+    <value>Microsoft Entra ID</value>
+  </data>
+  <data name="MethodGoogleAdc" xml:space="preserve">
+    <value>Google Cloud IAM (identifiants par défaut)</value>
+  </data>
+  <data name="MethodGoogleServiceAccount" xml:space="preserve">
+    <value>Google Cloud IAM (compte de service)</value>
+  </data>
+  <data name="MethodKerberos" xml:space="preserve">
+    <value>Kerberos (GSSAPI)</value>
+  </data>
+  <data name="MethodPassword" xml:space="preserve">
+    <value>Mot de passe</value>
+  </data>
+  <data name="MethodSqlServer" xml:space="preserve">
+    <value>Authentification SQL Server</value>
+  </data>
+  <data name="MethodWindows" xml:space="preserve">
+    <value>Authentification Windows</value>
+  </data>
+  <data name="NoDatabaseUser" xml:space="preserve">
+    <value>{0} ne fournit pas d’utilisateur de base de données.</value>
+  </data>
+  <data name="NotInThisBuild" xml:space="preserve">
+    <value>La connexion par {0} n’est pas disponible dans cette version.</value>
+  </data>
+  <data name="RdsEndpointFormat" xml:space="preserve">
+    <value>Le point de terminaison RDS doit être au format hôte ou hôte:port.</value>
+  </data>
+  <data name="RdsRegionRequired" xml:space="preserve">
+    <value>Saisissez la région AWS, car l’hôte n’est pas un point de terminaison RDS qui en indique une.</value>
+  </data>
+  <data name="RedshiftEndpointInvalid" xml:space="preserve">
+    <value>« {0} » n’est pas un point de terminaison de cluster Redshift ou de groupe de travail Serverless.</value>
+  </data>
+  <data name="RedshiftEndpointNotApplicable" xml:space="preserve">
+    <value>Le point de terminaison Redshift ne s’applique que si l’hôte est une redirection de port locale ou ce même point de terminaison, et « {0} » n’est ni l’un ni l’autre.</value>
+  </data>
+  <data name="RedshiftEndpointUnknown" xml:space="preserve">
+    <value>TablePro ne peut pas déterminer à quel cluster ou groupe de travail Redshift correspond « {0} ». Définissez comme hôte le point de terminaison fourni par AWS, par exemple my-cluster.abc123.us-east-1.redshift.amazonaws.com, ou saisissez-le comme point de terminaison Redshift si vous vous connectez par une redirection de port.</value>
+  </data>
+</root>

@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="Abandoned" xml:space="preserve">
+    <value>Không thể dừng thủ tục trên máy chủ.</value>
+  </data>
+  <data name="AbandonedRunning" xml:space="preserve">
+    <value>Tiến trình máy chủ {0} có thể vẫn đang chạy và giữ các khóa của nó.</value>
+  </data>
+  <data name="AbandonedSession" xml:space="preserve">
+    <value>Phiên máy chủ của nó có thể vẫn đang chạy và giữ các khóa.</value>
+  </data>
+  <data name="AbandonedWaiting" xml:space="preserve">
+    <value>Tiến trình máy chủ {0} có thể vẫn đang chờ trình gỡ lỗi và giữ các khóa của nó. Để kết thúc, hãy chạy SELECT pldbg_attach_to_port({1}) rồi truyền số nó trả về cho pldbg_abort_target.</value>
+  </data>
+  <data name="CannotStepOut" xml:space="preserve">
+    <value>Trình gỡ lỗi PL/pgSQL không thể bước ra khỏi một thủ tục.</value>
+  </data>
+  <data name="DefaultNotReadable" xml:space="preserve">
+    <value>Máy chủ này không thể hiển thị giá trị mặc định của {0}, nên hãy nhập một giá trị cho nó.</value>
+  </data>
+  <data name="ExtensionMissing" xml:space="preserve">
+    <value>Trình gỡ lỗi PL/pgSQL chưa được cài trong "{0}".</value>
+  </data>
+  <data name="ExtensionMissingDetail" xml:space="preserve">
+    <value>Hãy nhờ một superuser chạy CREATE EXTENSION pldbgapi trong cơ sở dữ liệu này.</value>
+  </data>
+  <data name="HidesDebuggerNotice" xml:space="preserve">
+    <value>Thủ tục này đặt client_min_messages thành {0}, làm ẩn thông báo mà trình gỡ lỗi dùng để bắt đầu.</value>
+  </data>
+  <data name="HidesDebuggerNoticeDetail" xml:space="preserve">
+    <value>Hãy bỏ SET client_min_messages khỏi thủ tục để gỡ lỗi nó.</value>
+  </data>
+  <data name="Interrupted" xml:space="preserve">
+    <value>Phiên của trình gỡ lỗi bị gián đoạn trong lúc chờ, nên thủ tục đã bị dừng và các thay đổi chưa commit đã được hoàn tác. Việc hủy hoặc transaction_timeout của máy chủ có thể gây ra điều này.</value>
+  </data>
+  <data name="LimitsTransactionTime" xml:space="preserve">
+    <value>Thủ tục này đặt transaction_timeout thành {0}, sẽ kết thúc nó khi nó đang chờ tại điểm dừng.</value>
+  </data>
+  <data name="LimitsTransactionTimeDetail" xml:space="preserve">
+    <value>Hãy bỏ SET transaction_timeout khỏi thủ tục để gỡ lỗi nó.</value>
+  </data>
+  <data name="NoDefault" xml:space="preserve">
+    <value>{0} không có giá trị mặc định.</value>
+  </data>
+  <data name="NoOverloads" xml:space="preserve">
+    <value>{0} không có overload PL/pgSQL nào có thể gỡ lỗi.</value>
+  </data>
+  <data name="NoOverloadsDetail" xml:space="preserve">
+    <value>Chỉ có thể gỡ lỗi hàm và procedure PL/pgSQL không có chữ ký đa hình, record hoặc trigger.</value>
+  </data>
+  <data name="NotAStorageParameter" xml:space="preserve">
+    <value>"{0}" không phải là tham số lưu trữ. Hãy viết mỗi tham số dưới dạng name=value.</value>
+  </data>
+  <data name="NotDebuggable" xml:space="preserve">
+    <value>Chỉ có thể gỡ lỗi hàm và procedure PL/pgSQL.</value>
+  </data>
+  <data name="NotOwner" xml:space="preserve">
+    <value>Chỉ chủ sở hữu của {0} hoặc superuser mới có thể gỡ lỗi nó.</value>
+  </data>
+  <data name="NotPaused" xml:space="preserve">
+    <value>Thủ tục không ở trạng thái tạm dừng.</value>
+  </data>
+  <data name="PseudoTypeParameter" xml:space="preserve">
+    <value>Không thể gỡ lỗi các thủ tục có tham số đa hình hoặc kiểu record.</value>
+  </data>
+  <data name="RoutineNotFound" xml:space="preserve">
+    <value>{0} không còn tồn tại.</value>
+  </data>
+  <data name="RunNoteFunction" xml:space="preserve">
+    <value>Các thay đổi do thủ tục thực hiện được commit khi nó kết thúc. Dừng sẽ hoàn tác chúng.</value>
+  </data>
+  <data name="RunNoteProcedure" xml:space="preserve">
+    <value>Các thay đổi do procedure thực hiện được commit khi nó commit hoặc kết thúc. Dừng sẽ hoàn tác những gì nó chưa commit.</value>
+  </data>
+  <data name="ServerPackageMissing" xml:space="preserve">
+    <value>Máy chủ này không có trình gỡ lỗi PL/pgSQL.</value>
+  </data>
+  <data name="ServerPackageMissingDetail" xml:space="preserve">
+    <value>Hãy cài gói pldebugger cho phiên bản PostgreSQL này trên máy chủ, rồi chạy CREATE EXTENSION pldbgapi trong cơ sở dữ liệu này.</value>
+  </data>
+  <data name="SharedMemoryUnavailable" xml:space="preserve">
+    <value>Máy chủ không thể khởi động trình gỡ lỗi.</value>
+  </data>
+  <data name="SharedMemoryUnavailableDetail" xml:space="preserve">
+    <value>Hãy thêm plugin_debugger vào shared_preload_libraries và khởi động lại máy chủ.</value>
+  </data>
+  <data name="Stopped" xml:space="preserve">
+    <value>Thủ tục đã bị dừng, và các thay đổi chưa commit của nó đã được hoàn tác.</value>
+  </data>
+  <data name="Unavailable" xml:space="preserve">
+    <value>Kết nối này không thể chạy trình gỡ lỗi PL/pgSQL.</value>
+  </data>
+</root>

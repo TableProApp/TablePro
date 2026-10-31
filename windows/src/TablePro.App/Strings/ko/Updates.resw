@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AutoCheckDescription" xml:space="preserve">
+    <value>하루에 한 번 새 버전을 확인합니다.</value>
+  </data>
+  <data name="AutoCheckTitle" xml:space="preserve">
+    <value>자동으로 업데이트 확인</value>
+  </data>
+  <data name="AvailableVersion" xml:space="preserve">
+    <value>TablePro {0}을(를) 사용할 수 있습니다. 현재 버전은 {1}입니다.</value>
+  </data>
+  <data name="BetaDescription" xml:space="preserve">
+    <value>베타는 정식 릴리스 전에 제공되며 다듬어지지 않은 부분이 있을 수 있습니다.</value>
+  </data>
+  <data name="BetaTitle" xml:space="preserve">
+    <value>베타 업데이트 받기</value>
+  </data>
+  <data name="CheckNow" xml:space="preserve">
+    <value>지금 확인</value>
+  </data>
+  <data name="CheckTitle" xml:space="preserve">
+    <value>업데이트 확인</value>
+  </data>
+  <data name="ErrorChecksumMismatch" xml:space="preserve">
+    <value>다운로드한 업데이트가 릴리스에 게시된 체크섬과 일치하지 않습니다. 아무것도 설치되지 않았습니다.</value>
+  </data>
+  <data name="ErrorFeedTooLarge" xml:space="preserve">
+    <value>업데이트 피드가 예상보다 큽니다.</value>
+  </data>
+  <data name="ErrorHttpsOnly" xml:space="preserve">
+    <value>업데이트는 HTTPS를 통해서만 다운로드됩니다.</value>
+  </data>
+  <data name="ErrorNoInstallScript" xml:space="preserve">
+    <value>업데이트에 설치 스크립트가 없습니다.</value>
+  </data>
+  <data name="ImportantUpdateTitle" xml:space="preserve">
+    <value>중요 업데이트</value>
+  </data>
+  <data name="InstallAndRestart" xml:space="preserve">
+    <value>설치 후 다시 시작</value>
+  </data>
+  <data name="InstallFailedTitle" xml:space="preserve">
+    <value>업데이트를 설치할 수 없습니다</value>
+  </data>
+  <data name="Later" xml:space="preserve">
+    <value>나중에</value>
+  </data>
+  <data name="MenuCheckForUpdates" xml:space="preserve">
+    <value>업데이트 확인…</value>
+  </data>
+  <data name="MenuUpdateAvailable" xml:space="preserve">
+    <value>업데이트 사용 가능…</value>
+  </data>
+  <data name="RestartToUpdate" xml:space="preserve">
+    <value>다시 시작하여 업데이트</value>
+  </data>
+  <data name="SettingsTitle" xml:space="preserve">
+    <value>업데이트</value>
+  </data>
+  <data name="SkipThisVersion" xml:space="preserve">
+    <value>이 버전 건너뛰기</value>
+  </data>
+  <data name="StatusAvailable" xml:space="preserve">
+    <value>업데이트를 사용할 수 있습니다.</value>
+  </data>
+  <data name="StatusChecking" xml:space="preserve">
+    <value>업데이트 확인 중…</value>
+  </data>
+  <data name="StatusDisabled" xml:space="preserve">
+    <value>이 빌드에서는 업데이트가 꺼져 있습니다.</value>
+  </data>
+  <data name="StatusDownloading" xml:space="preserve">
+    <value>업데이트 다운로드 중: {0:P0}</value>
+  </data>
+  <data name="StatusFailed" xml:space="preserve">
+    <value>업데이트 확인 실패: {0}</value>
+  </data>
+  <data name="StatusInstalling" xml:space="preserve">
+    <value>설치 프로그램을 시작하는 중…</value>
+  </data>
+  <data name="StatusLastChecked" xml:space="preserve">
+    <value>마지막 확인: {0:g}.</value>
+  </data>
+  <data name="StatusStore" xml:space="preserve">
+    <value>Microsoft Store에서 TablePro를 최신 상태로 유지합니다.</value>
+  </data>
+  <data name="StatusUpToDate" xml:space="preserve">
+    <value>TablePro {0}은(는) 최신 버전입니다.</value>
+  </data>
+  <data name="StatusVersion" xml:space="preserve">
+    <value>TablePro {0}.</value>
+  </data>
+  <data name="UpdateAvailableTitle" xml:space="preserve">
+    <value>업데이트 사용 가능</value>
+  </data>
+  <data name="VersionTitle" xml:space="preserve">
+    <value>TablePro {0}</value>
+  </data>
+</root>

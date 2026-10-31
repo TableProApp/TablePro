@@ -1,0 +1,189 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="CharAmpersand" xml:space="preserve">
+    <value>앰퍼샌드</value>
+  </data>
+  <data name="CharApostrophe" xml:space="preserve">
+    <value>작은따옴표</value>
+  </data>
+  <data name="CharAsterisk" xml:space="preserve">
+    <value>별표</value>
+  </data>
+  <data name="CharAtSign" xml:space="preserve">
+    <value>골뱅이표</value>
+  </data>
+  <data name="CharBackslash" xml:space="preserve">
+    <value>백슬래시</value>
+  </data>
+  <data name="CharBacktick" xml:space="preserve">
+    <value>백틱</value>
+  </data>
+  <data name="CharCaret" xml:space="preserve">
+    <value>캐럿</value>
+  </data>
+  <data name="CharColon" xml:space="preserve">
+    <value>콜론</value>
+  </data>
+  <data name="CharComma" xml:space="preserve">
+    <value>쉼표</value>
+  </data>
+  <data name="CharDollarSign" xml:space="preserve">
+    <value>달러 기호</value>
+  </data>
+  <data name="CharEqualsSign" xml:space="preserve">
+    <value>등호</value>
+  </data>
+  <data name="CharExclamationMark" xml:space="preserve">
+    <value>느낌표</value>
+  </data>
+  <data name="CharGreaterThanSign" xml:space="preserve">
+    <value>보다 큼 기호</value>
+  </data>
+  <data name="CharHyphen" xml:space="preserve">
+    <value>하이픈</value>
+  </data>
+  <data name="CharLeftCurlyBracket" xml:space="preserve">
+    <value>여는 중괄호</value>
+  </data>
+  <data name="CharLeftParenthesis" xml:space="preserve">
+    <value>여는 괄호</value>
+  </data>
+  <data name="CharLeftSquareBracket" xml:space="preserve">
+    <value>여는 대괄호</value>
+  </data>
+  <data name="CharLessThanSign" xml:space="preserve">
+    <value>보다 작음 기호</value>
+  </data>
+  <data name="CharNumberSign" xml:space="preserve">
+    <value>샵 기호</value>
+  </data>
+  <data name="CharPercentSign" xml:space="preserve">
+    <value>퍼센트 기호</value>
+  </data>
+  <data name="CharPeriod" xml:space="preserve">
+    <value>마침표</value>
+  </data>
+  <data name="CharPlusSign" xml:space="preserve">
+    <value>더하기 기호</value>
+  </data>
+  <data name="CharQuestionMark" xml:space="preserve">
+    <value>물음표</value>
+  </data>
+  <data name="CharQuotationMark" xml:space="preserve">
+    <value>큰따옴표</value>
+  </data>
+  <data name="CharRightCurlyBracket" xml:space="preserve">
+    <value>닫는 중괄호</value>
+  </data>
+  <data name="CharRightParenthesis" xml:space="preserve">
+    <value>닫는 괄호</value>
+  </data>
+  <data name="CharRightSquareBracket" xml:space="preserve">
+    <value>닫는 대괄호</value>
+  </data>
+  <data name="CharSlash" xml:space="preserve">
+    <value>슬래시</value>
+  </data>
+  <data name="CharTilde" xml:space="preserve">
+    <value>물결표</value>
+  </data>
+  <data name="CharVerticalBar" xml:space="preserve">
+    <value>세로 막대</value>
+  </data>
+  <data name="CurlyQuote" xml:space="preserve">
+    <value>둥근 따옴표({0})입니다. SQL은 곧은 따옴표({1})만 인식합니다.</value>
+  </data>
+  <data name="FullWidthPunctuation" xml:space="preserve">
+    <value>전각 {0}({1})입니다. SQL은 ASCII {0}({2})만 인식합니다.</value>
+  </data>
+  <data name="FullWidthSemicolon" xml:space="preserve">
+    <value>전각 세미콜론(U+FF1B)입니다. SQL은 ;만 문 구분자로 인식합니다.</value>
+  </data>
+  <data name="FullWidthWord" xml:space="preserve">
+    <value>전각 문자 또는 숫자입니다. SQL은 ASCII {0}만 인식합니다.</value>
+  </data>
+  <data name="HoverAliasOfCommonTableExpression" xml:space="preserve">
+    <value>{0}: 공통 테이블 식 {1}의 별칭</value>
+  </data>
+  <data name="HoverAliasOfSubquery" xml:space="preserve">
+    <value>{0}: 하위 쿼리의 별칭</value>
+  </data>
+  <data name="HoverAliasOfTable" xml:space="preserve">
+    <value>{0}: 테이블 {1}의 별칭</value>
+  </data>
+  <data name="HoverAliasOfTableFunction" xml:space="preserve">
+    <value>{0}: 테이블 함수 {1}의 별칭</value>
+  </data>
+  <data name="HoverAliasOfView" xml:space="preserve">
+    <value>{0}: 뷰 {1}의 별칭</value>
+  </data>
+  <data name="HoverColumn" xml:space="preserve">
+    <value>열 {0}</value>
+  </data>
+  <data name="HoverCommonTableExpression" xml:space="preserve">
+    <value>공통 테이블 식 {0}</value>
+  </data>
+  <data name="HoverMoreColumns_One" xml:space="preserve">
+    <value>외 {0}개</value>
+  </data>
+  <data name="HoverMoreColumns_Other" xml:space="preserve">
+    <value>외 {0}개</value>
+  </data>
+  <data name="HoverSubquery" xml:space="preserve">
+    <value>하위 쿼리 {0}</value>
+  </data>
+  <data name="HoverTable" xml:space="preserve">
+    <value>테이블 {0}</value>
+  </data>
+  <data name="HoverTableFunction" xml:space="preserve">
+    <value>테이블 함수 {0}</value>
+  </data>
+  <data name="HoverView" xml:space="preserve">
+    <value>뷰 {0}</value>
+  </data>
+  <data name="NoClosingBrace" xml:space="preserve">
+    <value>짝이 맞는 닫는 중괄호 없음</value>
+  </data>
+  <data name="NoClosingBracket" xml:space="preserve">
+    <value>짝이 맞는 닫는 대괄호 없음</value>
+  </data>
+  <data name="NoClosingParenthesis" xml:space="preserve">
+    <value>짝이 맞는 닫는 괄호 없음</value>
+  </data>
+  <data name="NonAsciiSpace" xml:space="preserve">
+    <value>ASCII가 아닌 공백({0})입니다. SQL은 ASCII 공백(U+0020)만 인식합니다.</value>
+  </data>
+  <data name="NoOpeningBracket" xml:space="preserve">
+    <value>짝이 맞는 여는 괄호 없음</value>
+  </data>
+  <data name="UnknownColumn" xml:space="preserve">
+    <value>테이블 '{0}'에 '{1}' 열이 없습니다.</value>
+  </data>
+  <data name="UnknownQualifier" xml:space="preserve">
+    <value>알 수 없는 테이블 또는 별칭 '{0}'입니다.</value>
+  </data>
+  <data name="UnknownTable" xml:space="preserve">
+    <value>알 수 없는 테이블 '{0}'입니다.</value>
+  </data>
+  <data name="UnterminatedComment" xml:space="preserve">
+    <value>종료되지 않은 주석</value>
+  </data>
+  <data name="UnterminatedQuotedName" xml:space="preserve">
+    <value>종료되지 않은 따옴표 이름</value>
+  </data>
+  <data name="UnterminatedString" xml:space="preserve">
+    <value>종료되지 않은 문자열</value>
+  </data>
+</root>

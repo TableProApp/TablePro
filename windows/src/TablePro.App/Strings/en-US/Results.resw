@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="ChartAllNumericColumns" xml:space="preserve">
+    <value>All numeric columns</value>
+    <comment>Last entry of the chart's series list, after the column names.</comment>
+  </data>
+  <data name="ChartBarTooltip" xml:space="preserve">
+    <value>{0}: {1:N}</value>
+    <comment>Tooltip of a chart bar. {0} is the category value, {1} the number.</comment>
+  </data>
+  <data name="ChartBy" xml:space="preserve">
+    <value>by</value>
+    <comment>The chart toolbar reads as a sentence across three lists: "Chart [Bar] of [column] by [column]". This word sits before the category list.</comment>
+  </data>
+  <data name="ChartFirstRows_One" xml:space="preserve">
+    <value>First {1:N0} of {0:N0} row</value>
+    <comment>Chart note when the result is longer than the chart draws. {0} is the result's row count, {1} how many rows are charted.</comment>
+  </data>
+  <data name="ChartFirstRows_Other" xml:space="preserve">
+    <value>First {1:N0} of {0:N0} rows</value>
+    <comment>Chart note when the result is longer than the chart draws. {0} is the result's row count, {1} how many rows are charted.</comment>
+  </data>
+  <data name="ChartKindArea" xml:space="preserve">
+    <value>Area</value>
+    <comment>Chart type (area chart).</comment>
+  </data>
+  <data name="ChartKindBar" xml:space="preserve">
+    <value>Bar</value>
+    <comment>Chart type (bar chart).</comment>
+  </data>
+  <data name="ChartKindLine" xml:space="preserve">
+    <value>Line</value>
+    <comment>Chart type (line chart).</comment>
+  </data>
+  <data name="ChartLead" xml:space="preserve">
+    <value>Chart</value>
+    <comment>The chart toolbar reads as a sentence across three lists: "Chart [Bar] of [column] by [column]". This word starts it, before the chart type list.</comment>
+  </data>
+  <data name="ChartNoNumericColumn" xml:space="preserve">
+    <value>This result has no numeric column to chart.</value>
+  </data>
+  <data name="ChartOf" xml:space="preserve">
+    <value>of</value>
+    <comment>The chart toolbar reads as a sentence across three lists: "Chart [Bar] of [column] by [column]". This word sits before the series list.</comment>
+  </data>
+  <data name="MapEast" xml:space="preserve">
+    <value>E</value>
+    <comment>Abbreviation for east, after a longitude on the map grid, such as 30°E.</comment>
+  </data>
+  <data name="MapFitToResult" xml:space="preserve">
+    <value>Fit to result</value>
+    <comment>Tooltip of the map button that zooms to show every row.</comment>
+  </data>
+  <data name="MapName" xml:space="preserve">
+    <value>Map</value>
+    <comment>Screen reader name of the map (noun).</comment>
+  </data>
+  <data name="MapNameWithCounts" xml:space="preserve">
+    <value>Map of {0} from {1}</value>
+    <comment>Screen reader name of the map. {0} is a count of shapes such as "12 shapes", {1} a count of rows such as "10 rows".</comment>
+  </data>
+  <data name="MapNoRows" xml:space="preserve">
+    <value>Run a query to map its rows.</value>
+  </data>
+  <data name="MapNoSource" xml:space="preserve">
+    <value>A map needs a geometry column, or latitude and longitude columns. This result has none.</value>
+  </data>
+  <data name="MapNorth" xml:space="preserve">
+    <value>N</value>
+    <comment>Abbreviation for north, after a latitude on the map grid, such as 45°N.</comment>
+  </data>
+  <data name="MapRows_One" xml:space="preserve">
+    <value>{0:N0} row</value>
+    <comment>Fills {1} of "Map of {0} from {1}". {0} is the number of result rows drawn.</comment>
+  </data>
+  <data name="MapRows_Other" xml:space="preserve">
+    <value>{0:N0} rows</value>
+    <comment>Fills {1} of "Map of {0} from {1}". {0} is the number of result rows drawn.</comment>
+  </data>
+  <data name="MapShapes_One" xml:space="preserve">
+    <value>{0:N0} shape</value>
+    <comment>Fills {0} of "Map of {0} from {1}". {0} is the number of shapes drawn.</comment>
+  </data>
+  <data name="MapShapes_Other" xml:space="preserve">
+    <value>{0:N0} shapes</value>
+    <comment>Fills {0} of "Map of {0} from {1}". {0} is the number of shapes drawn.</comment>
+  </data>
+  <data name="MapSourceName" xml:space="preserve">
+    <value>Map source</value>
+    <comment>Screen reader name of the list that picks which column or columns the map draws.</comment>
+  </data>
+  <data name="MapSouth" xml:space="preserve">
+    <value>S</value>
+    <comment>Abbreviation for south, after a latitude on the map grid, such as 45°S.</comment>
+  </data>
+  <data name="MapWest" xml:space="preserve">
+    <value>W</value>
+    <comment>Abbreviation for west, after a longitude on the map grid, such as 30°W.</comment>
+  </data>
+  <data name="MapZoomIn" xml:space="preserve">
+    <value>Zoom in</value>
+  </data>
+  <data name="MapZoomOut" xml:space="preserve">
+    <value>Zoom out</value>
+  </data>
+</root>

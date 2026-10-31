@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="MissingDatabase" xml:space="preserve">
+    <value>Spanner에 데이터베이스가 필요합니다. 호스트로 projects/p/instances/i/databases/d를 입력하거나, project 및 instance 옵션과 데이터베이스를 설정하세요.</value>
+  </data>
+  <data name="MissingInstance" xml:space="preserve">
+    <value>Spanner에 인스턴스가 필요합니다. 호스트로 projects/p/instances/i/databases/d를 입력하거나, project 및 instance 옵션과 데이터베이스를 설정하세요.</value>
+  </data>
+  <data name="MissingProject" xml:space="preserve">
+    <value>Spanner에 프로젝트가 필요합니다. 호스트로 projects/p/instances/i/databases/d를 입력하거나, project 및 instance 옵션과 데이터베이스를 설정하세요.</value>
+  </data>
+  <data name="NoSchemaChangeInTransaction" xml:space="preserve">
+    <value>Spanner는 트랜잭션 안에서 스키마를 변경할 수 없습니다. 먼저 COMMIT 또는 ROLLBACK을 실행하세요.</value>
+  </data>
+  <data name="NotADatabasePath" xml:space="preserve">
+    <value>"{0}"은(는) projects/my-project/instances/my-instance/databases/my-db 같은 Spanner 데이터베이스 경로가 아닙니다.</value>
+  </data>
+  <data name="PostgreSqlDialect" xml:space="preserve">
+    <value>이 Spanner 데이터베이스는 PostgreSQL 언어를 사용하며, Windows용 TablePro는 아직 이를 지원하지 않습니다. GoogleSQL 데이터베이스는 사용할 수 있습니다.</value>
+  </data>
+  <data name="SchemaChangeApplied" xml:space="preserve">
+    <value>UpdateDatabaseDdl을 통해 스키마 변경이 적용되었습니다.</value>
+  </data>
+</root>

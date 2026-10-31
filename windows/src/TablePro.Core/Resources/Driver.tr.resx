@@ -1,0 +1,237 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="Alias" xml:space="preserve">
+    <value>diğer ad</value>
+  </data>
+  <data name="AliasOf" xml:space="preserve">
+    <value>{0} için diğer ad</value>
+  </data>
+  <data name="AnsweredNotJson" xml:space="preserve">
+    <value>{0}, JSON dışında bir yanıt verdi.</value>
+  </data>
+  <data name="AuthenticationFailedWith" xml:space="preserve">
+    <value>Kimlik doğrulama başarısız: {0}</value>
+  </data>
+  <data name="BetweenNeedsUpperBound" xml:space="preserve">
+    <value>{0} üzerindeki BETWEEN bir üst sınır gerektirir.</value>
+  </data>
+  <data name="BooleanFieldNotBoolean" xml:space="preserve">
+    <value>{0} bir boole alanı olduğundan yalnızca true veya false ile eşleşir, {1} ile eşleşmez.</value>
+  </data>
+  <data name="CannotChangeFromGrid" xml:space="preserve">
+    <value>'{0}' ızgaradan değiştirilemez.</value>
+  </data>
+  <data name="CannotFilterWith" xml:space="preserve">
+    <value>{0}, {1} ile filtreleyemez.</value>
+  </data>
+  <data name="CannotReadDefinition" xml:space="preserve">
+    <value>Hesap {0} tanımını okuyamıyor.</value>
+  </data>
+  <data name="ChooseDatasetFirst" xml:space="preserve">
+    <value>Önce bir veri kümesi seçin.</value>
+  </data>
+  <data name="ChooseNamespaceFirst" xml:space="preserve">
+    <value>Önce bir ad alanı seçin.</value>
+  </data>
+  <data name="CommandCancelled" xml:space="preserve">
+    <value>Komut iptal edildi.</value>
+  </data>
+  <data name="CommandNotSupported" xml:space="preserve">
+    <value>Bu komut desteklenmiyor.</value>
+  </data>
+  <data name="CommandTimedOutAfter" xml:space="preserve">
+    <value>Komut {0} saniye sonra zaman aşımına uğradı.</value>
+  </data>
+  <data name="Committed" xml:space="preserve">
+    <value>İşlendi.</value>
+  </data>
+  <data name="ConnectionNeedsDatabaseFile" xml:space="preserve">
+    <value>Bir {0} bağlantısı için veritabanı dosyası gerekir.</value>
+  </data>
+  <data name="ConnectionNotOpen" xml:space="preserve">
+    <value>Bağlantı açık değil.</value>
+  </data>
+  <data name="CredentialsFileType" xml:space="preserve">
+    <value>Kimlik bilgileri dosyasının türü "{0}". Bir hizmet hesabı anahtarı veya gcloud authorized_user dosyası kullanın.</value>
+  </data>
+  <data name="DefinitionMissingPrivilege" xml:space="preserve">
+    <value>{0}, {1} için tanım döndürmedi; oturum açan kullanıcının bunu okuma ayrıcalığı olmayabilir.</value>
+  </data>
+  <data name="DocumentIdUnknown" xml:space="preserve">
+    <value>Belgenin {0} değeri bilinmediğinden belgeye erişilemiyor.</value>
+  </data>
+  <data name="EmptyResponse" xml:space="preserve">
+    <value>{0} boş bir yanıt döndürdü.</value>
+  </data>
+  <data name="EngineHasNoDefinitionFor" xml:space="preserve">
+    <value>{0}, {1} için tanım gösteremez.</value>
+  </data>
+  <data name="EnterRequestLike" xml:space="preserve">
+    <value>Şuna benzer bir istek girin: {0}</value>
+  </data>
+  <data name="InsertNeedsValue" xml:space="preserve">
+    <value>{0}, satır eklemek için en az bir değer gerektirir.</value>
+  </data>
+  <data name="InvalidTypedValue" xml:space="preserve">
+    <value>"{0}" geçerli bir {1} değeri değil.</value>
+  </data>
+  <data name="KeyNoLongerExists" xml:space="preserve">
+    <value>'{0}' anahtarı artık mevcut olmadığından hiçbir şey kaydedilmedi.</value>
+  </data>
+  <data name="ListedUnexpected" xml:space="preserve">
+    <value>{0}, {1} nesnesini beklenmeyen {2} türünde listeledi.</value>
+  </data>
+  <data name="NeedsAccountIdentifier" xml:space="preserve">
+    <value>{0} için {1} gibi bir hesap tanımlayıcısı gerekir.</value>
+  </data>
+  <data name="NoAnswerWithin" xml:space="preserve">
+    <value>{0}, {1} sn içinde yanıt vermedi.</value>
+  </data>
+  <data name="NoDatabaseGiven" xml:space="preserve">
+    <value>Veritabanı belirtilmedi ve oturum açma bilgisinin varsayılan bir veritabanı yok.</value>
+  </data>
+  <data name="NoDefinitionFor" xml:space="preserve">
+    <value>{0} için tanım bulunamadı.</value>
+  </data>
+  <data name="NoResultForStatement" xml:space="preserve">
+    <value>Sunucu deyim için sonuç döndürmedi.</value>
+  </data>
+  <data name="NoSchemaGiven" xml:space="preserve">
+    <value>Şema belirtilmedi ve oturum açma bilgisi de bir şema belirtmiyor.</value>
+  </data>
+  <data name="NoTransactionOpen" xml:space="preserve">
+    <value>Açık bir işlem yok.</value>
+  </data>
+  <data name="NumericFieldNotNumber" xml:space="preserve">
+    <value>{0} sayısal bir alan ve {1} bir sayı değil.</value>
+  </data>
+  <data name="OdbcDriverNotInstalled" xml:space="preserve">
+    <value>{0} ODBC sürücüsü "{1}" yüklü değil. {2}</value>
+  </data>
+  <data name="OdbcDriverNotLoaded" xml:space="preserve">
+    <value>Windows {0} ODBC sürücüsü "{1}" öğesini buldu ancak yükleyemedi. TablePro 64 bit bir uygulamadır ve 64 bit sürücü gerektirir. {2}</value>
+  </data>
+  <data name="OdbcInvalidKeyword" xml:space="preserve">
+    <value>"{0}" geçerli bir ODBC bağlantı anahtar sözcüğü değil.</value>
+  </data>
+  <data name="OdbcOptionFromForm" xml:space="preserve">
+    <value>"{0}" seçeneği bağlantı formundan ayarlanır; bunun yerine orada değiştirin.</value>
+  </data>
+  <data name="OptionInvalidValue" xml:space="preserve">
+    <value>"{0}", {1} için geçerli bir değer değil.</value>
+  </data>
+  <data name="OptionIsOneOf" xml:space="preserve">
+    <value>{0} şunlardan biri olmalıdır: {1}.</value>
+  </data>
+  <data name="OptionNeedsValue" xml:space="preserve">
+    <value>{0} için bir değer gerekir.</value>
+  </data>
+  <data name="OptionPositiveWholeNumber" xml:space="preserve">
+    <value>{0} sıfırdan büyük bir tam sayı olmalıdır.</value>
+  </data>
+  <data name="OptionWholeNumberRange" xml:space="preserve">
+    <value>{0}, {1} ile {2} arasında bir tam sayı olmalıdır.</value>
+  </data>
+  <data name="PartialSaveNoTransaction" xml:space="preserve">
+    <value>{1} değişiklikten {0} tanesi kaydedildi; {2} bunları geri almak için işlem desteği sunmuyor. {3}</value>
+  </data>
+  <data name="PathHasDotSegment" xml:space="preserve">
+    <value>{0} yolu . veya .. kesimi içeriyor; bu, farklı bir kaynağı işaret eder.</value>
+  </data>
+  <data name="PathLeavesHost" xml:space="preserve">
+    <value>{0} yolu {1} dışına çıkar.</value>
+  </data>
+  <data name="QueryCancelled" xml:space="preserve">
+    <value>Sorgu iptal edildi.</value>
+  </data>
+  <data name="QueryTimedOut" xml:space="preserve">
+    <value>Sorgu zaman aşımına uğradı.</value>
+  </data>
+  <data name="QueryTimedOutAfter" xml:space="preserve">
+    <value>Sorgu {0} saniye sonra zaman aşımına uğradı.</value>
+  </data>
+  <data name="QuotedValueNotClosed" xml:space="preserve">
+    <value>Tırnak içindeki bir değer hiç kapatılmadı.</value>
+  </data>
+  <data name="RateLimited" xml:space="preserve">
+    <value>Hız sınırına ulaşıldı. Kısa süre sonra yeniden deneyin.</value>
+  </data>
+  <data name="RateLimitedRetryAfter" xml:space="preserve">
+    <value>Hız sınırına ulaşıldı. {0:0} saniye sonra yeniden deneyin.</value>
+  </data>
+  <data name="ReadOnlyNothingSaved" xml:space="preserve">
+    <value>Bu bağlantı salt okunur olduğundan hiçbir şey kaydedilmedi.</value>
+  </data>
+  <data name="ReadWriteTransactionStarted" xml:space="preserve">
+    <value>Okuma-yazma işlemi başlatıldı.</value>
+  </data>
+  <data name="RequestTimedOutAfter" xml:space="preserve">
+    <value>İstek {0} sn sonra zaman aşımına uğradı.</value>
+  </data>
+  <data name="ReturnedNoResult" xml:space="preserve">
+    <value>{0} sonuç döndürmedi.</value>
+  </data>
+  <data name="RolledBack" xml:space="preserve">
+    <value>Geri alındı.</value>
+  </data>
+  <data name="RoutineKindFunction" xml:space="preserve">
+    <value>Fonksiyon</value>
+  </data>
+  <data name="RoutineKindPackage" xml:space="preserve">
+    <value>Paket</value>
+  </data>
+  <data name="RoutineKindProcedure" xml:space="preserve">
+    <value>Prosedür</value>
+  </data>
+  <data name="RoutineKindTrigger" xml:space="preserve">
+    <value>Tetikleyici</value>
+  </data>
+  <data name="RoutineKindType" xml:space="preserve">
+    <value>Tür</value>
+  </data>
+  <data name="ServerErrorNoMessage" xml:space="preserve">
+    <value>Sunucu mesaj içermeyen bir hata bildirdi.</value>
+  </data>
+  <data name="ServerHttpStatus" xml:space="preserve">
+    <value>Sunucu HTTP {0} döndürdü.</value>
+  </data>
+  <data name="ServerReportedError" xml:space="preserve">
+    <value>Sunucu bir hata bildirdi.</value>
+  </data>
+  <data name="ShowingOfKeys" xml:space="preserve">
+    <value>{1:N0} anahtardan {0:N0} tanesi gösteriliyor.</value>
+  </data>
+  <data name="StatementCancelled" xml:space="preserve">
+    <value>Deyim iptal edildi.</value>
+  </data>
+  <data name="StatementNotSupported" xml:space="preserve">
+    <value>Bu deyim desteklenmiyor.</value>
+  </data>
+  <data name="TableHasNoColumn" xml:space="preserve">
+    <value>{0} tablosunda {1} sütunu yok.</value>
+  </data>
+  <data name="TransactionAlreadyOpen" xml:space="preserve">
+    <value>Zaten açık bir işlem var.</value>
+  </data>
+  <data name="TransactionLost" xml:space="preserve">
+    <value>Bağlantı koptu ve sunucu açık işlemi geri aldı. İşlemin deyimlerini yeniden çalıştırın.</value>
+  </data>
+  <data name="TransactionStartedByWrite" xml:space="preserve">
+    <value>İşlem başlatıldı. COMMIT değişiklikleri korur, ROLLBACK geri alır.</value>
+  </data>
+  <data name="UpdateNeedsChangedColumn" xml:space="preserve">
+    <value>Bir güncelleme en az bir değiştirilmiş sütun gerektirir.</value>
+  </data>
+</root>

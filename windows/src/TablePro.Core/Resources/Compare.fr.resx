@@ -1,0 +1,150 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="ChangeAddColumn" xml:space="preserve">
+    <value>Ajouter la colonne {0} {1}</value>
+  </data>
+  <data name="ChangeAddForeignKey" xml:space="preserve">
+    <value>Ajouter la clé étrangère {0} vers {1}</value>
+  </data>
+  <data name="ChangeAlterColumn" xml:space="preserve">
+    <value>Changer la colonne {0} en {1}</value>
+  </data>
+  <data name="ChangeCreateIndex" xml:space="preserve">
+    <value>Créer l’index {0}</value>
+  </data>
+  <data name="ChangeCreateTable" xml:space="preserve">
+    <value>Créer la table {0}</value>
+  </data>
+  <data name="ChangeCreateUniqueIndex" xml:space="preserve">
+    <value>Créer l’index unique {0}</value>
+  </data>
+  <data name="ChangeDropColumn" xml:space="preserve">
+    <value>Supprimer la colonne {0}</value>
+  </data>
+  <data name="ChangeDropForeignKey" xml:space="preserve">
+    <value>Supprimer la clé étrangère {0}</value>
+  </data>
+  <data name="ChangeDropFunction" xml:space="preserve">
+    <value>Supprimer la fonction {0}</value>
+  </data>
+  <data name="ChangeDropIndex" xml:space="preserve">
+    <value>Supprimer l’index {0}</value>
+  </data>
+  <data name="ChangeDropMaterializedView" xml:space="preserve">
+    <value>Supprimer la vue matérialisée {0}</value>
+  </data>
+  <data name="ChangeDropObject" xml:space="preserve">
+    <value>Supprimer {0}</value>
+  </data>
+  <data name="ChangeDropProcedure" xml:space="preserve">
+    <value>Supprimer la procédure {0}</value>
+  </data>
+  <data name="ChangeDropSequence" xml:space="preserve">
+    <value>Supprimer la séquence {0}</value>
+  </data>
+  <data name="ChangeDropTable" xml:space="preserve">
+    <value>Supprimer la table {0}</value>
+  </data>
+  <data name="ChangeDropTrigger" xml:space="preserve">
+    <value>Supprimer le déclencheur {0}</value>
+  </data>
+  <data name="ChangeDropView" xml:space="preserve">
+    <value>Supprimer la vue {0}</value>
+  </data>
+  <data name="ChangeRenameColumn" xml:space="preserve">
+    <value>Renommer la colonne {0} en {1}</value>
+  </data>
+  <data name="ChangeRenameTable" xml:space="preserve">
+    <value>Renommer la table en {0}</value>
+  </data>
+  <data name="ChangeTruncateTable" xml:space="preserve">
+    <value>Vider la table</value>
+  </data>
+  <data name="ChooseKeyColumn" xml:space="preserve">
+    <value>Choisissez au moins une colonne clé qui identifie une ligne des deux côtés.</value>
+  </data>
+  <data name="ColumnGone" xml:space="preserve">
+    <value>{0} n’a plus de colonne {1}. Relancez la comparaison pour lire ses colonnes actuelles.</value>
+  </data>
+  <data name="ColumnOnlyInTarget" xml:space="preserve">
+    <value>La colonne {0} n’existe que dans la cible et est conservée.</value>
+  </data>
+  <data name="DuplicateKeyInSource" xml:space="preserve">
+    <value>La clé {0} correspond à plusieurs lignes dans la source. Choisissez des colonnes clés qui identifient une seule ligne.</value>
+  </data>
+  <data name="DuplicateKeyInTarget" xml:space="preserve">
+    <value>La clé {0} correspond à plusieurs lignes dans la cible. Choisissez des colonnes clés qui identifient une seule ligne.</value>
+  </data>
+  <data name="ForeignKeyCycle" xml:space="preserve">
+    <value>{0} se référencent mutuellement : aucun ordre ne satisfait donc toutes les clés étrangères. Une synchronisation qui en enfreint une annule les modifications de cette table.</value>
+  </data>
+  <data name="IdentityColumnWarning" xml:space="preserve">
+    <value>{0} est une colonne d’identité dans la cible. Des moteurs comme SQL Server y refusent une valeur explicite, ce qui annule la synchronisation.</value>
+  </data>
+  <data name="KeyColumnNotOnBoth" xml:space="preserve">
+    <value>La colonne clé {0} ne figure pas dans les deux tables.</value>
+  </data>
+  <data name="NoPrimaryKey" xml:space="preserve">
+    <value>{0} n’a pas de clé primaire. Choisissez les colonnes qui identifient une ligne.</value>
+  </data>
+  <data name="PrimaryKeyDiffers" xml:space="preserve">
+    <value>La clé primaire diffère : ({0}) contre ({1}). Modifiez-la manuellement.</value>
+  </data>
+  <data name="RowLimitCutShort" xml:space="preserve">
+    <value>La limite de lignes a écourté la comparaison : les lignes au-delà sont laissées telles quelles.</value>
+  </data>
+  <data name="RowsDeletedForGood_One" xml:space="preserve">
+    <value>{0:N0} ligne sera définitivement supprimée de {1}.</value>
+  </data>
+  <data name="RowsDeletedForGood_Other" xml:space="preserve">
+    <value>{0:N0} lignes seront définitivement supprimées de {1}.</value>
+  </data>
+  <data name="SortOrderSource" xml:space="preserve">
+    <value>La source a trié les lignes autrement que ne l’attend la comparaison, près de la clé {0}. Choisissez une clé numérique, ou une clé dont le classement trie par valeur d’octet.</value>
+  </data>
+  <data name="SortOrderSourceHint" xml:space="preserve">
+    <value>La source a trié les lignes autrement que ne l’attend la comparaison, près de la clé {0}. Choisissez une clé numérique, ou une clé dont le classement trie par valeur d’octet, ou activez les clés insensibles à la casse.</value>
+  </data>
+  <data name="SortOrderTarget" xml:space="preserve">
+    <value>La cible a trié les lignes autrement que ne l’attend la comparaison, près de la clé {0}. Choisissez une clé numérique, ou une clé dont le classement trie par valeur d’octet.</value>
+  </data>
+  <data name="SortOrderTargetHint" xml:space="preserve">
+    <value>La cible a trié les lignes autrement que ne l’attend la comparaison, près de la clé {0}. Choisissez une clé numérique, ou une clé dont le classement trie par valeur d’octet, ou activez les clés insensibles à la casse.</value>
+  </data>
+  <data name="SourceColumnCount" xml:space="preserve">
+    <value>La source a renvoyé {0} colonnes alors que {1} étaient attendues.</value>
+  </data>
+  <data name="TableLeftOutTooMany" xml:space="preserve">
+    <value>{0} : {1:N0} différences, c’est plus qu’une synchronisation ne peut en examiner ; la table est donc exclue. Réduisez-la avec un filtre ou une limite de lignes.</value>
+  </data>
+  <data name="TableNote" xml:space="preserve">
+    <value>{0} : {1}</value>
+  </data>
+  <data name="TargetColumnCount" xml:space="preserve">
+    <value>La cible a renvoyé {0} colonnes alors que {1} étaient attendues.</value>
+  </data>
+  <data name="TooManyToSync" xml:space="preserve">
+    <value>La comparaison a trouvé {0:N0} différences, plus que les {1:N0} qu’une synchronisation peut examiner. Réduisez-la avec un filtre ou une limite de lignes, puis relancez la comparaison.</value>
+  </data>
+  <data name="NonTransactionalTables_One" xml:space="preserve">
+    <value>{1} utilise un moteur de stockage qui ne prend pas en charge l’annulation&#160;: si la synchronisation échoue, les lignes déjà écrites y restent.</value>
+  </data>
+  <data name="NonTransactionalTables_Other" xml:space="preserve">
+    <value>{1} utilisent des moteurs de stockage qui ne prennent pas en charge l’annulation&#160;: si la synchronisation échoue, les lignes déjà écrites y restent.</value>
+  </data>
+  <data name="RollbackLeftWrites" xml:space="preserve">
+    <value>L’exécution a été annulée, mais {0} ne prend pas en charge l’annulation&#160;: les lignes déjà écrites y restent donc. Relancez la comparaison pour voir l’état actuel de la cible.</value>
+  </data>
+</root>

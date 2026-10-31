@@ -1,0 +1,12 @@
+<Project>
+  <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))" />
+  <PropertyGroup>
+    <!-- dotnet test drives xunit.v3 through VSTest; global.json does not opt into Microsoft.Testing.Platform. -->
+    <IsTestingPlatformApplication>false</IsTestingPlatformApplication>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <!-- Tests read and assert English messages whatever the machine's language is. -->
+  <ItemGroup Condition="'$(MSBuildProjectName.EndsWith(`.Tests`))' == 'true'">
+    <Compile Include="$(MSBuildThisFileDirectory)TestCulture.cs" Link="TestCulture.cs" />
+  </ItemGroup>
+</Project>

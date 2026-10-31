@@ -1,0 +1,177 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AccessibleActualTime" xml:space="preserve">
+    <value>Gerçek Süre {0}</value>
+  </data>
+  <data name="AccessibleCost" xml:space="preserve">
+    <value>Maliyet {0}</value>
+  </data>
+  <data name="AccessibleOnRelation" xml:space="preserve">
+    <value>{0} üzerinde</value>
+  </data>
+  <data name="AccessibleRows_One" xml:space="preserve">
+    <value>{0} Satır</value>
+  </data>
+  <data name="AccessibleRows_Other" xml:space="preserve">
+    <value>{0} Satır</value>
+  </data>
+  <data name="AccessibleSeparator" xml:space="preserve">
+    <value>, </value>
+  </data>
+  <data name="AccessibleWarnings_One" xml:space="preserve">
+    <value>Uyarılar: {0}</value>
+  </data>
+  <data name="AccessibleWarnings_Other" xml:space="preserve">
+    <value>Uyarılar: {0}</value>
+  </data>
+  <data name="BarMetricSelfCost" xml:space="preserve">
+    <value>Kendi Maliyeti</value>
+  </data>
+  <data name="BarMetricSelfTime" xml:space="preserve">
+    <value>Kendi Süresi</value>
+  </data>
+  <data name="ColumnsWithNoStatistics" xml:space="preserve">
+    <value>İstatistiği olmayan sütunlar</value>
+  </data>
+  <data name="ImplicitConversion" xml:space="preserve">
+    <value>Örtük dönüştürme: {0}</value>
+  </data>
+  <data name="ImplicitConversionIssue" xml:space="preserve">
+    <value>Örtük dönüştürme ({0}): {1}</value>
+  </data>
+  <data name="LabelActualRows" xml:space="preserve">
+    <value>Gerçek Satır</value>
+  </data>
+  <data name="LabelActualTime" xml:space="preserve">
+    <value>Gerçek Süre</value>
+  </data>
+  <data name="LabelCost" xml:space="preserve">
+    <value>Maliyet</value>
+  </data>
+  <data name="LabelLoops" xml:space="preserve">
+    <value>Döngü</value>
+  </data>
+  <data name="LabelMissingIndex" xml:space="preserve">
+    <value>Eksik İndeks</value>
+  </data>
+  <data name="LabelRows" xml:space="preserve">
+    <value>Satırlar</value>
+  </data>
+  <data name="LabelTable" xml:space="preserve">
+    <value>Tablo</value>
+  </data>
+  <data name="LabelValue" xml:space="preserve">
+    <value>{0}: {1}</value>
+  </data>
+  <data name="LabelWarning" xml:space="preserve">
+    <value>Uyarı</value>
+  </data>
+  <data name="LabelWidth" xml:space="preserve">
+    <value>Genişlik</value>
+  </data>
+  <data name="MetricActualLoops" xml:space="preserve">
+    <value>Gerçek Döngüler</value>
+  </data>
+  <data name="MetricActualRows" xml:space="preserve">
+    <value>Gerçek Satır</value>
+  </data>
+  <data name="MetricActualStartupTime" xml:space="preserve">
+    <value>Gerçek Başlangıç Süresi</value>
+  </data>
+  <data name="MetricActualTotalTime" xml:space="preserve">
+    <value>Gerçek Toplam Süre</value>
+  </data>
+  <data name="MetricEstimatedRows" xml:space="preserve">
+    <value>Tahmini Satır</value>
+  </data>
+  <data name="MetricEstimatedStartupCost" xml:space="preserve">
+    <value>Tahmini Başlangıç Maliyeti</value>
+  </data>
+  <data name="MetricEstimatedTotalCost" xml:space="preserve">
+    <value>Tahmini Toplam Maliyet</value>
+  </data>
+  <data name="MetricEstimatedWidth" xml:space="preserve">
+    <value>Tahmini Genişlik</value>
+  </data>
+  <data name="NeverExecuted" xml:space="preserve">
+    <value>Hiç çalıştırılmadı</value>
+  </data>
+  <data name="PlanRoot" xml:space="preserve">
+    <value>Sorgu Planı</value>
+  </data>
+  <data name="SeverityCritical" xml:space="preserve">
+    <value>Kritik maliyet</value>
+  </data>
+  <data name="SeverityHigh" xml:space="preserve">
+    <value>Yüksek maliyet</value>
+  </data>
+  <data name="SeverityLow" xml:space="preserve">
+    <value>Düşük maliyet</value>
+  </data>
+  <data name="SeverityModerate" xml:space="preserve">
+    <value>Orta maliyet</value>
+  </data>
+  <data name="ShareOfLargestStep" xml:space="preserve">
+    <value>En büyük adımın {0} kadarı</value>
+  </data>
+  <data name="ShareOfPlan" xml:space="preserve">
+    <value>Planın {0} kadarı</value>
+  </data>
+  <data name="ShowplanTooDeep" xml:space="preserve">
+    <value>Showplan çok derin iç içe geçiyor.</value>
+  </data>
+  <data name="SpillToTempDb" xml:space="preserve">
+    <value>tempdb'ye taşma</value>
+  </data>
+  <data name="SpillToTempDbLevel" xml:space="preserve">
+    <value>tempdb'ye taşma, düzey {0}</value>
+  </data>
+  <data name="SummaryEstimatedRows" xml:space="preserve">
+    <value>Tahmini satır</value>
+  </data>
+  <data name="SummaryExecutionTime" xml:space="preserve">
+    <value>Çalıştırma süresi</value>
+  </data>
+  <data name="SummaryNodeCount" xml:space="preserve">
+    <value>Düğüm sayısı</value>
+  </data>
+  <data name="SummaryPlanningTime" xml:space="preserve">
+    <value>Planlama süresi</value>
+  </data>
+  <data name="SummaryTotalCost" xml:space="preserve">
+    <value>Maliyet</value>
+  </data>
+  <data name="UnknownOperation" xml:space="preserve">
+    <value>Bilinmiyor</value>
+  </data>
+  <data name="ValueChanged" xml:space="preserve">
+    <value>Değişti</value>
+  </data>
+  <data name="VerdictFaster" xml:space="preserve">
+    <value>Referanstan {0:0.#} kat daha hızlı</value>
+  </data>
+  <data name="VerdictShapeChanged" xml:space="preserve">
+    <value>Plan yapısı değişti</value>
+  </data>
+  <data name="VerdictSlower" xml:space="preserve">
+    <value>Referanstan {0:0.#} kat daha yavaş</value>
+  </data>
+  <data name="VerdictUnchanged" xml:space="preserve">
+    <value>Ölçülebilir bir değişiklik yok</value>
+  </data>
+  <data name="VerdictValuesChanged" xml:space="preserve">
+    <value>Aynı plan yapısı, farklı sayılar</value>
+  </data>
+</root>

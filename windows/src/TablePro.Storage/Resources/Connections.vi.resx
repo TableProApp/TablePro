@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="BundleCycle" xml:space="preserve">
+    <value>tham chiếu “{0}” nằm bên trong chính nó</value>
+  </data>
+  <data name="BundleDuplicateReference" xml:space="preserve">
+    <value>tham chiếu “{0}” được dùng nhiều lần</value>
+  </data>
+  <data name="BundleEmptyReference" xml:space="preserve">
+    <value>một mục có tham chiếu trống</value>
+  </data>
+  <data name="BundleMissingTarget" xml:space="preserve">
+    <value>“{0}” tham chiếu đến “{1}”, mục này không có trong tệp</value>
+  </data>
+  <data name="BundleOrphanCredentials" xml:space="preserve">
+    <value>mật khẩu của “{0}” không thuộc kết nối nào trong tệp</value>
+  </data>
+  <data name="BundleTooDeep" xml:space="preserve">
+    <value>tham chiếu “{0}” lồng nhau quá sâu</value>
+  </data>
+  <data name="EncryptedCorrupt" xml:space="preserve">
+    <value>Tệp đã mã hoá bị hỏng hoặc không đầy đủ.</value>
+  </data>
+  <data name="EncryptionVersionUnsupported" xml:space="preserve">
+    <value>Phiên bản mã hoá {0} không được hỗ trợ. Hãy cập nhật TablePro để mở tệp này.</value>
+  </data>
+  <data name="GroupContainsItself" xml:space="preserve">
+    <value>Một nhóm không thể chứa chính nó.</value>
+  </data>
+  <data name="GroupIntoSubgroup" xml:space="preserve">
+    <value>Không thể di chuyển một nhóm vào bên trong nhóm con của chính nó.</value>
+  </data>
+  <data name="ImportedConnectionName" xml:space="preserve">
+    <value>Kết nối đã nhập</value>
+  </data>
+  <data name="ImportedGroupName" xml:space="preserve">
+    <value>Đã nhập</value>
+  </data>
+  <data name="IncorrectPassphrase" xml:space="preserve">
+    <value>Cụm mật khẩu không đúng.</value>
+  </data>
+  <data name="NewerFormat" xml:space="preserve">
+    <value>Tệp này cần phiên bản TablePro mới hơn (phiên bản định dạng {0}).</value>
+  </data>
+  <data name="NoDriverFor" xml:space="preserve">
+    <value>TablePro cho Windows không có trình điều khiển cho {0}.</value>
+  </data>
+  <data name="NotAnExport" xml:space="preserve">
+    <value>Tệp này không phải là tệp xuất TablePro hợp lệ.</value>
+  </data>
+  <data name="NotAnExportBecause" xml:space="preserve">
+    <value>Tệp này không phải là tệp xuất TablePro hợp lệ: {0}.</value>
+  </data>
+  <data name="ParseFailed" xml:space="preserve">
+    <value>Không thể phân tích tệp kết nối: {0}</value>
+  </data>
+  <data name="PassphraseRequired" xml:space="preserve">
+    <value>Tệp này đã được mã hoá và cần cụm mật khẩu.</value>
+  </data>
+  <data name="PasswordsNeedEncryption" xml:space="preserve">
+    <value>Mật khẩu đã lưu chỉ có thể được xuất ra tệp đã mã hoá.</value>
+  </data>
+</root>

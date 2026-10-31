@@ -1,0 +1,315 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AccessReadOnly" xml:space="preserve">
+    <value>읽기 전용</value>
+  </data>
+  <data name="AccessReadWrite" xml:space="preserve">
+    <value>읽기 및 쓰기(쓰기 전마다 확인)</value>
+  </data>
+  <data name="ActionClientAdded" xml:space="preserve">
+    <value>클라이언트 추가됨</value>
+  </data>
+  <data name="ActionClientRemoved" xml:space="preserve">
+    <value>클라이언트 제거됨</value>
+  </data>
+  <data name="ActionClientRevoked" xml:space="preserve">
+    <value>클라이언트 철회됨</value>
+  </data>
+  <data name="ActionPairingApproved" xml:space="preserve">
+    <value>페어링 승인됨</value>
+  </data>
+  <data name="ActionPairingDenied" xml:space="preserve">
+    <value>페어링 거절됨</value>
+  </data>
+  <data name="ActionPairingRequest" xml:space="preserve">
+    <value>페어링 요청</value>
+  </data>
+  <data name="ActionSignInRefused" xml:space="preserve">
+    <value>로그인 거부됨</value>
+  </data>
+  <data name="ActionTokenCollected" xml:space="preserve">
+    <value>토큰 수령됨</value>
+  </data>
+  <data name="ActivityHeading" xml:space="preserve">
+    <value>활동</value>
+  </data>
+  <data name="ActivityListName" xml:space="preserve">
+    <value>MCP 활동</value>
+  </data>
+  <data name="ActivityNote_One" xml:space="preserve">
+    <value>모든 도구 호출, 페어링 및 클라이언트 변경 내용이 mcp-audit.db에 {0}일 동안 보관됩니다. 문은 텍스트가 아닌 SHA-256 다이제스트로만 보관되며, 문 자체는 쿼리 기록에 있습니다.</value>
+  </data>
+  <data name="ActivityNote_Other" xml:space="preserve">
+    <value>모든 도구 호출, 페어링 및 클라이언트 변경 내용이 mcp-audit.db에 {0}일 동안 보관됩니다. 문은 텍스트가 아닌 SHA-256 다이제스트로만 보관되며, 문 자체는 쿼리 기록에 있습니다.</value>
+  </data>
+  <data name="AddClient" xml:space="preserve">
+    <value>클라이언트 추가</value>
+  </data>
+  <data name="AddClientTitle" xml:space="preserve">
+    <value>MCP 클라이언트 추가</value>
+  </data>
+  <data name="AddClientTooltip" xml:space="preserve">
+    <value>페어링할 수 없는 클라이언트를 위해 토큰을 직접 발급합니다</value>
+  </data>
+  <data name="AllClients" xml:space="preserve">
+    <value>모든 클라이언트</value>
+  </data>
+  <data name="Allow" xml:space="preserve">
+    <value>허용</value>
+  </data>
+  <data name="CategoryAdmin" xml:space="preserve">
+    <value>클라이언트 변경</value>
+  </data>
+  <data name="CategoryAll" xml:space="preserve">
+    <value>모든 활동</value>
+  </data>
+  <data name="CategoryAuth" xml:space="preserve">
+    <value>페어링 및 로그인</value>
+  </data>
+  <data name="CategoryFilterName" xml:space="preserve">
+    <value>활동 종류</value>
+  </data>
+  <data name="CategoryTools" xml:space="preserve">
+    <value>도구 호출</value>
+  </data>
+  <data name="ChangeClientFailed" xml:space="preserve">
+    <value>클라이언트를 변경할 수 없습니다</value>
+  </data>
+  <data name="ClearLog" xml:space="preserve">
+    <value>로그 지우기</value>
+  </data>
+  <data name="ClearLogConfirmMessage" xml:space="preserve">
+    <value>기록된 모든 호출, 페어링 및 클라이언트 변경 내용이 삭제됩니다. 페어링된 클라이언트의 접근 권한은 유지됩니다.</value>
+  </data>
+  <data name="ClearLogConfirmTitle" xml:space="preserve">
+    <value>MCP 활동 로그를 지우시겠습니까?</value>
+  </data>
+  <data name="ClearLogFailed" xml:space="preserve">
+    <value>로그를 지울 수 없습니다</value>
+  </data>
+  <data name="ClientFilterName" xml:space="preserve">
+    <value>클라이언트</value>
+  </data>
+  <data name="Copied" xml:space="preserve">
+    <value>복사됨</value>
+  </data>
+  <data name="CopyToken" xml:space="preserve">
+    <value>토큰 복사</value>
+  </data>
+  <data name="CreateToken" xml:space="preserve">
+    <value>토큰 생성</value>
+  </data>
+  <data name="CreateTokenFailed" xml:space="preserve">
+    <value>토큰을 생성할 수 없습니다</value>
+  </data>
+  <data name="Deny" xml:space="preserve">
+    <value>거부</value>
+  </data>
+  <data name="ExpiredOn" xml:space="preserve">
+    <value>{0:d}에 만료됨</value>
+  </data>
+  <data name="ExpiresOn" xml:space="preserve">
+    <value>{0:d}까지</value>
+  </data>
+  <data name="ExpiryIn30Days" xml:space="preserve">
+    <value>30일 후</value>
+  </data>
+  <data name="ExpiryIn90Days" xml:space="preserve">
+    <value>90일 후</value>
+  </data>
+  <data name="ExpiryInAYear" xml:space="preserve">
+    <value>1년 후</value>
+  </data>
+  <data name="ExpiryNever" xml:space="preserve">
+    <value>안 함</value>
+  </data>
+  <data name="FormAccessHeader" xml:space="preserve">
+    <value>접근 권한</value>
+  </data>
+  <data name="FormAccessNote" xml:space="preserve">
+    <value>각 연결의 외부 클라이언트 수준은 그대로 적용되며, 클라이언트는 그 수준을 넘는 권한을 얻을 수 없습니다.</value>
+  </data>
+  <data name="FormClientNameHeader" xml:space="preserve">
+    <value>클라이언트 이름</value>
+  </data>
+  <data name="FormClientNamePlaceholder" xml:space="preserve">
+    <value>예: Claude Desktop</value>
+  </data>
+  <data name="FormConnectionsHeader" xml:space="preserve">
+    <value>연결</value>
+  </data>
+  <data name="FormExpiryHeader" xml:space="preserve">
+    <value>토큰 만료</value>
+  </data>
+  <data name="FormNoConnections" xml:space="preserve">
+    <value>아직 MCP 클라이언트를 허용하는 연결이 없습니다.</value>
+  </data>
+  <data name="FormRequestMessage" xml:space="preserve">
+    <value>“{0}”이(가) TablePro의 MCP 서버를 통해 저장된 연결을 사용하려고 합니다. 이 PC의 모든 프로그램이 어떤 이름으로든 요청할 수 있으므로, 방금 해당 앱에서 페어링을 시작한 경우에만 허용하세요.</value>
+  </data>
+  <data name="FormScopeAll" xml:space="preserve">
+    <value>모든 연결</value>
+  </data>
+  <data name="FormScopeTicked" xml:space="preserve">
+    <value>아래에서 선택한 연결만</value>
+  </data>
+  <data name="IntegrityBroken_One" xml:space="preserve">
+    <value>항목 {1}이(가) TablePro 외부에서 변경되거나 제거되었습니다. 그 전의 항목 {0:N0}개는 손상되지 않았습니다.</value>
+  </data>
+  <data name="IntegrityBroken_Other" xml:space="preserve">
+    <value>항목 {1}이(가) TablePro 외부에서 변경되거나 제거되었습니다. 그 전의 항목 {0:N0}개는 손상되지 않았습니다.</value>
+  </data>
+  <data name="IntegrityIntactShowingLatest_One" xml:space="preserve">
+    <value>항목 {0:N0}개가 보관되어 있습니다. 각 항목의 해시는 이전 항목에 연결되며 체인은 손상되지 않았습니다. 최근 {1}개를 표시합니다.</value>
+  </data>
+  <data name="IntegrityIntactShowingLatest_Other" xml:space="preserve">
+    <value>항목 {0:N0}개가 보관되어 있습니다. 각 항목의 해시는 이전 항목에 연결되며 체인은 손상되지 않았습니다. 최근 {1}개를 표시합니다.</value>
+  </data>
+  <data name="IntegrityIntact_One" xml:space="preserve">
+    <value>항목 {0:N0}개가 보관되어 있습니다. 각 항목의 해시는 이전 항목에 연결되며 체인은 손상되지 않았습니다.</value>
+  </data>
+  <data name="IntegrityIntact_Other" xml:space="preserve">
+    <value>항목 {0:N0}개가 보관되어 있습니다. 각 항목의 해시는 이전 항목에 연결되며 체인은 손상되지 않았습니다.</value>
+  </data>
+  <data name="LastUsed" xml:space="preserve">
+    <value>마지막 사용 {0:g}</value>
+  </data>
+  <data name="ListSeparator" xml:space="preserve">
+    <value>, </value>
+  </data>
+  <data name="NeverUsed" xml:space="preserve">
+    <value>사용한 적 없음</value>
+  </data>
+  <data name="NoClients" xml:space="preserve">
+    <value>아직 페어링된 클라이언트가 없습니다.</value>
+  </data>
+  <data name="NoExpiry" xml:space="preserve">
+    <value>만료 없음</value>
+  </data>
+  <data name="NothingLogged" xml:space="preserve">
+    <value>아직 기록된 항목이 없습니다.</value>
+  </data>
+  <data name="OutcomeDeclined" xml:space="preserve">
+    <value>거절됨</value>
+  </data>
+  <data name="OutcomeDenied" xml:space="preserve">
+    <value>거부됨</value>
+  </data>
+  <data name="OutcomeFailed" xml:space="preserve">
+    <value>실패</value>
+  </data>
+  <data name="OutcomeRefused" xml:space="preserve">
+    <value>거부됨(토큰 없음)</value>
+  </data>
+  <data name="OutcomeSucceeded" xml:space="preserve">
+    <value>성공</value>
+  </data>
+  <data name="PairedClientsHeading" xml:space="preserve">
+    <value>페어링된 클라이언트</value>
+  </data>
+  <data name="PairedClientsNote" xml:space="preserve">
+    <value>클라이언트는 TablePro에 접근 권한을 요청하여 페어링합니다. 대화 상자에서 승인하면 클라이언트는 자체 토큰을 받습니다. 각 토큰은 SHA-256 해시만 Windows 자격 증명 관리자에 보관됩니다. 클라이언트를 철회하면 다음 요청부터 거부됩니다.</value>
+  </data>
+  <data name="PairedSummary" xml:space="preserve">
+    <value>{0:g}에 페어링됨 · {1} · 토큰 {2}…</value>
+  </data>
+  <data name="PairingApprovalTitle" xml:space="preserve">
+    <value>MCP 클라이언트를 허용하시겠습니까?</value>
+  </data>
+  <data name="PairingHint" xml:space="preserve">
+    <value>클라이언트는 POST {0}(으)로 페어링을 시작하고 /v1/integrations/exchange에서 토큰을 받습니다.</value>
+  </data>
+  <data name="PairingHintServerOff" xml:space="preserve">
+    <value>클라이언트가 페어링할 수 있도록 서버를 켜세요.</value>
+  </data>
+  <data name="ReachAllConnections" xml:space="preserve">
+    <value>모든 연결</value>
+  </data>
+  <data name="ReachConnectionCount_One" xml:space="preserve">
+    <value>{0}개 연결</value>
+  </data>
+  <data name="ReachConnectionCount_Other" xml:space="preserve">
+    <value>{0}개 연결</value>
+  </data>
+  <data name="ReachDeletedConnection" xml:space="preserve">
+    <value>삭제된 연결</value>
+  </data>
+  <data name="ReachNoConnections" xml:space="preserve">
+    <value>연결 없음</value>
+  </data>
+  <data name="ReadActivityFailed" xml:space="preserve">
+    <value>MCP 활동 로그를 읽을 수 없습니다</value>
+  </data>
+  <data name="ReadClientsFailed" xml:space="preserve">
+    <value>페어링된 클라이언트를 읽을 수 없습니다</value>
+  </data>
+  <data name="RemoveClientName" xml:space="preserve">
+    <value>{0} 제거</value>
+  </data>
+  <data name="RemoveConfirmMessage" xml:space="preserve">
+    <value>해당 권한 부여와 자격 증명 관리자에 있는 토큰 해시가 삭제됩니다. 지난 활동은 로그에 남습니다.</value>
+  </data>
+  <data name="RemoveConfirmTitle" xml:space="preserve">
+    <value>“{0}”을(를) 제거하시겠습니까?</value>
+  </data>
+  <data name="Revoke" xml:space="preserve">
+    <value>철회</value>
+  </data>
+  <data name="RevokeClientName" xml:space="preserve">
+    <value>{0} 철회</value>
+  </data>
+  <data name="RevokeConfirmMessage" xml:space="preserve">
+    <value>클라이언트의 다음 요청부터 거부됩니다. 클라이언트는 철회됨 상태로 목록에 남으며, 다시 접근 권한을 주려면 다시 페어링하세요.</value>
+  </data>
+  <data name="RevokeConfirmTitle" xml:space="preserve">
+    <value>“{0}”을(를) 철회하시겠습니까?</value>
+  </data>
+  <data name="StatementDigest" xml:space="preserve">
+    <value>문 SHA-256 {0}</value>
+  </data>
+  <data name="StatusActive" xml:space="preserve">
+    <value>활성</value>
+  </data>
+  <data name="StatusExpired" xml:space="preserve">
+    <value>만료됨</value>
+  </data>
+  <data name="StatusRevoked" xml:space="preserve">
+    <value>철회됨</value>
+  </data>
+  <data name="StatusTokenMissing" xml:space="preserve">
+    <value>토큰 없음</value>
+  </data>
+  <data name="TokenCopyMessage" xml:space="preserve">
+    <value>지금 “{0}”의 토큰을 복사하세요. TablePro는 해시만 보관하므로 토큰을 다시 표시할 수 없습니다.</value>
+  </data>
+  <data name="TokenCreatedTitle" xml:space="preserve">
+    <value>토큰이 생성되었습니다</value>
+  </data>
+  <data name="TokenHeader" xml:space="preserve">
+    <value>토큰</value>
+  </data>
+  <data name="UnknownCaller" xml:space="preserve">
+    <value>알 수 없는 호출자</value>
+  </data>
+  <data name="WriteApprovalMessage" xml:space="preserve">
+    <value>TablePro의 MCP 서버에 연결된 “{0}”이(가) {1}에서 다음을 실행하려고 합니다.</value>
+  </data>
+  <data name="WriteApprovalMessageUnnamed" xml:space="preserve">
+    <value>TablePro의 MCP 서버에 연결된 클라이언트가 {0}에서 다음을 실행하려고 합니다.</value>
+  </data>
+  <data name="WriteApprovalTitle" xml:space="preserve">
+    <value>MCP 클라이언트가 문을 실행하려고 합니다</value>
+  </data>
+</root>

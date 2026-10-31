@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="FeedEmpty" xml:space="preserve">
+    <value>Güncelleme akışı boş.</value>
+  </data>
+  <data name="FeedNotJson" xml:space="preserve">
+    <value>Güncelleme akışı geçerli bir JSON değil.</value>
+  </data>
+  <data name="FeedSchema" xml:space="preserve">
+    <value>Güncelleme akışı {0} şemasını kullanıyor; TablePro'nun bu sürümü {1} şemasını okur.</value>
+  </data>
+  <data name="NotAVersion" xml:space="preserve">
+    <value>'{0}', 0.2.0 veya 0.2.0-beta.1 gibi bir TablePro sürümü değil.</value>
+  </data>
+</root>

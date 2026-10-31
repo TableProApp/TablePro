@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AuthFailed" xml:space="preserve">
+    <value>Authentication failed. Check the auth token in the Password field.</value>
+  </data>
+  <data name="BeginFailed" xml:space="preserve">
+    <value>The save could not start a transaction: {0}</value>
+    <comment>{0} is the server's own error message.</comment>
+  </data>
+  <data name="BeginNoAnswer" xml:space="preserve">
+    <value>The save could not start a transaction: the server gave no answer.</value>
+  </data>
+  <data name="CommitFailed" xml:space="preserve">
+    <value>The save could not commit: {0}</value>
+    <comment>{0} is the server's own error message.</comment>
+  </data>
+  <data name="FewerAnswers" xml:space="preserve">
+    <value>The server answered fewer statements than the save sent.</value>
+  </data>
+  <data name="FileUrlNoFile" xml:space="preserve">
+    <value>The file: URL names no database file.</value>
+  </data>
+  <data name="LocalNeedsFile" xml:space="preserve">
+    <value>A local libSQL connection needs a database file.</value>
+  </data>
+  <data name="NoLocalFiles" xml:space="preserve">
+    <value>This build cannot open local libSQL files; connect to a server URL instead.</value>
+  </data>
+  <data name="NoPipeline" xml:space="preserve">
+    <value>The server has no Hrana pipeline at this URL. Check the database URL.</value>
+  </data>
+  <data name="NotAUrl" xml:space="preserve">
+    <value>'{0}' is not a libSQL database URL. Use libsql://, https:// or http://.</value>
+    <comment>{0} is the URL entered.</comment>
+  </data>
+  <data name="StreamClosedBeforeCommit" xml:space="preserve">
+    <value>The server closed the save's stream before it could commit, so nothing was saved.</value>
+  </data>
+  <data name="StreamEnded" xml:space="preserve">
+    <value>{0} The tab's stream ended, so any open transaction was rolled back.</value>
+    <comment>{0} is the error that ended the stream, as the server or the network reported it.</comment>
+  </data>
+  <data name="Unreadable" xml:space="preserve">
+    <value>The server returned a response TablePro could not read.</value>
+  </data>
+</root>

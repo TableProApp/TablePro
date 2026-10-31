@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="CloseFind" xml:space="preserve">
+    <value>Fermer (Esc)</value>
+  </data>
+  <data name="CompletionColumn" xml:space="preserve">
+    <value>Colonne</value>
+  </data>
+  <data name="CompletionFunction" xml:space="preserve">
+    <value>Fonction</value>
+  </data>
+  <data name="CompletionKeyword" xml:space="preserve">
+    <value>Mot-clé</value>
+  </data>
+  <data name="CompletionSchema" xml:space="preserve">
+    <value>Schéma</value>
+  </data>
+  <data name="CompletionSnippet" xml:space="preserve">
+    <value>Extrait</value>
+  </data>
+  <data name="CompletionTable" xml:space="preserve">
+    <value>Table</value>
+  </data>
+  <data name="CompletionView" xml:space="preserve">
+    <value>Vue</value>
+  </data>
+  <data name="ErrorAnnouncement" xml:space="preserve">
+    <value>Erreur&#160;: {0}</value>
+  </data>
+  <data name="Explain" xml:space="preserve">
+    <value>Expliquer</value>
+  </data>
+  <data name="Find" xml:space="preserve">
+    <value>Rechercher</value>
+  </data>
+  <data name="FindMatches_One" xml:space="preserve">
+    <value>{0} correspondance</value>
+  </data>
+  <data name="FindMatches_Other" xml:space="preserve">
+    <value>{0} correspondances</value>
+  </data>
+  <data name="FindNoResults" xml:space="preserve">
+    <value>Aucun résultat</value>
+  </data>
+  <data name="FindPlaceholder" xml:space="preserve">
+    <value>Rechercher</value>
+  </data>
+  <data name="FormatSql" xml:space="preserve">
+    <value>Formater le SQL</value>
+  </data>
+  <data name="GoToDefinition" xml:space="preserve">
+    <value>Atteindre la définition</value>
+  </data>
+  <data name="MatchCase" xml:space="preserve">
+    <value>Respecter la casse</value>
+  </data>
+  <data name="NextMatch" xml:space="preserve">
+    <value>Correspondance suivante (F3)</value>
+  </data>
+  <data name="NoDefinitionFound" xml:space="preserve">
+    <value>Aucune définition trouvée pour «&#160;{0}&#160;».</value>
+  </data>
+  <data name="NoProblems" xml:space="preserve">
+    <value>Aucun problème.</value>
+  </data>
+  <data name="NoSymbolAtCaret" xml:space="preserve">
+    <value>Aucun symbole à la position du curseur.</value>
+  </data>
+  <data name="NothingAtCaret" xml:space="preserve">
+    <value>Rien à afficher à la position du curseur.</value>
+  </data>
+  <data name="PreviousMatch" xml:space="preserve">
+    <value>Correspondance précédente (Shift+F3)</value>
+  </data>
+  <data name="ReferencesSelected_One" xml:space="preserve">
+    <value>{0} référence sélectionnée</value>
+  </data>
+  <data name="ReferencesSelected_Other" xml:space="preserve">
+    <value>{0} références sélectionnées</value>
+  </data>
+  <data name="RenameNeedsInsertMode" xml:space="preserve">
+    <value>Le renommage fonctionne en mode insertion.</value>
+  </data>
+  <data name="RenameSymbol" xml:space="preserve">
+    <value>Renommer le symbole</value>
+  </data>
+  <data name="Replace" xml:space="preserve">
+    <value>Remplacer</value>
+  </data>
+  <data name="ReplaceAllButton" xml:space="preserve">
+    <value>Tout remplacer</value>
+  </data>
+  <data name="ReplaceButton" xml:space="preserve">
+    <value>Remplacer</value>
+  </data>
+  <data name="ReplacePlaceholder" xml:space="preserve">
+    <value>Remplacer</value>
+  </data>
+  <data name="ReplacedCount_One" xml:space="preserve">
+    <value>{0} occurrence remplacée</value>
+  </data>
+  <data name="ReplacedCount_Other" xml:space="preserve">
+    <value>{0} occurrences remplacées</value>
+  </data>
+  <data name="RunAll" xml:space="preserve">
+    <value>Tout exécuter</value>
+  </data>
+  <data name="RunCurrent" xml:space="preserve">
+    <value>Exécuter l’instruction actuelle</value>
+  </data>
+  <data name="SuggestionAcceptHint" xml:space="preserve">
+    <value>Tab pour accepter</value>
+  </data>
+  <data name="ToggleComment" xml:space="preserve">
+    <value>Commenter/décommenter</value>
+  </data>
+  <data name="WarningAnnouncement" xml:space="preserve">
+    <value>Avertissement&#160;: {0}</value>
+  </data>
+  <data name="WentTo" xml:space="preserve">
+    <value>Déplacé vers {0}</value>
+  </data>
+</root>

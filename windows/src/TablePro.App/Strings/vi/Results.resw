@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="ChartAllNumericColumns" xml:space="preserve">
+    <value>Tất cả các cột số</value>
+  </data>
+  <data name="ChartBarTooltip" xml:space="preserve">
+    <value>{0}: {1:N}</value>
+  </data>
+  <data name="ChartBy" xml:space="preserve">
+    <value>theo</value>
+  </data>
+  <data name="ChartFirstRows_One" xml:space="preserve">
+    <value>{1:N0} dòng đầu tiên trong {0:N0} dòng</value>
+  </data>
+  <data name="ChartFirstRows_Other" xml:space="preserve">
+    <value>{1:N0} dòng đầu tiên trong {0:N0} dòng</value>
+  </data>
+  <data name="ChartKindArea" xml:space="preserve">
+    <value>Miền</value>
+  </data>
+  <data name="ChartKindBar" xml:space="preserve">
+    <value>Thanh</value>
+  </data>
+  <data name="ChartKindLine" xml:space="preserve">
+    <value>Đường</value>
+  </data>
+  <data name="ChartLead" xml:space="preserve">
+    <value>Biểu đồ</value>
+  </data>
+  <data name="ChartNoNumericColumn" xml:space="preserve">
+    <value>Kết quả này không có cột số nào để vẽ biểu đồ.</value>
+  </data>
+  <data name="ChartOf" xml:space="preserve">
+    <value>của</value>
+  </data>
+  <data name="MapEast" xml:space="preserve">
+    <value>Đ</value>
+  </data>
+  <data name="MapFitToResult" xml:space="preserve">
+    <value>Vừa với kết quả</value>
+  </data>
+  <data name="MapName" xml:space="preserve">
+    <value>Bản đồ</value>
+  </data>
+  <data name="MapNameWithCounts" xml:space="preserve">
+    <value>Bản đồ gồm {0} từ {1}</value>
+  </data>
+  <data name="MapNoRows" xml:space="preserve">
+    <value>Chạy truy vấn để hiển thị các dòng trên bản đồ.</value>
+  </data>
+  <data name="MapNoSource" xml:space="preserve">
+    <value>Bản đồ cần một cột hình học, hoặc các cột vĩ độ và kinh độ. Kết quả này không có cột nào như vậy.</value>
+  </data>
+  <data name="MapNorth" xml:space="preserve">
+    <value>B</value>
+  </data>
+  <data name="MapRows_One" xml:space="preserve">
+    <value>{0:N0} dòng</value>
+  </data>
+  <data name="MapRows_Other" xml:space="preserve">
+    <value>{0:N0} dòng</value>
+  </data>
+  <data name="MapShapes_One" xml:space="preserve">
+    <value>{0:N0} hình</value>
+  </data>
+  <data name="MapShapes_Other" xml:space="preserve">
+    <value>{0:N0} hình</value>
+  </data>
+  <data name="MapSourceName" xml:space="preserve">
+    <value>Nguồn bản đồ</value>
+  </data>
+  <data name="MapSouth" xml:space="preserve">
+    <value>N</value>
+  </data>
+  <data name="MapWest" xml:space="preserve">
+    <value>T</value>
+  </data>
+  <data name="MapZoomIn" xml:space="preserve">
+    <value>Phóng to</value>
+  </data>
+  <data name="MapZoomOut" xml:space="preserve">
+    <value>Thu nhỏ</value>
+  </data>
+</root>

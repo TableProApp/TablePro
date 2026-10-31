@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="CappedRows_One" xml:space="preserve">
+    <value>{0:N0} row is past the drawing limit.</value>
+    <comment>Map status. {0} is a count of rows not drawn because of the limit.</comment>
+  </data>
+  <data name="CappedRows_Other" xml:space="preserve">
+    <value>{0:N0} rows are past the drawing limit.</value>
+    <comment>Map status. {0} is a count of rows not drawn because of the limit.</comment>
+  </data>
+  <data name="DrawingPoints_One" xml:space="preserve">
+    <value>Drawing {0:N0} point from latitude and longitude columns.</value>
+    <comment>Map status. {0} is a count of points.</comment>
+  </data>
+  <data name="DrawingPoints_Other" xml:space="preserve">
+    <value>Drawing {0:N0} points from latitude and longitude columns.</value>
+    <comment>Map status. {0} is a count of points.</comment>
+  </data>
+  <data name="DrawingShapes_One" xml:space="preserve">
+    <value>Drawing {0:N0} shape.</value>
+    <comment>Map status. {0} is a count of shapes.</comment>
+  </data>
+  <data name="DrawingShapes_Other" xml:space="preserve">
+    <value>Drawing {0:N0} shapes.</value>
+    <comment>Map status. {0} is a count of shapes.</comment>
+  </data>
+  <data name="DrawingShapesInSrid_One" xml:space="preserve">
+    <value>Drawing {0:N0} shape in SRID {1}.</value>
+    <comment>Map status. {0} is a count of shapes, {1} a spatial reference id such as 4326.</comment>
+  </data>
+  <data name="DrawingShapesInSrid_Other" xml:space="preserve">
+    <value>Drawing {0:N0} shapes in SRID {1}.</value>
+    <comment>Map status. {0} is a count of shapes, {1} a spatial reference id such as 4326.</comment>
+  </data>
+  <data name="DrawingShapesNoSrid_One" xml:space="preserve">
+    <value>Drawing {0:N0} shape with no SRID, read as longitude and latitude.</value>
+    <comment>Map status. {0} is a count of shapes.</comment>
+  </data>
+  <data name="DrawingShapesNoSrid_Other" xml:space="preserve">
+    <value>Drawing {0:N0} shapes with no SRID, read as longitude and latitude.</value>
+    <comment>Map status. {0} is a count of shapes.</comment>
+  </data>
+  <data name="DroppedParts_One" xml:space="preserve">
+    <value>{0:N0} part of a multi-part geometry cannot be drawn and is left out.</value>
+    <comment>Map status. {0} is a count of geometry parts.</comment>
+  </data>
+  <data name="DroppedParts_Other" xml:space="preserve">
+    <value>{0:N0} parts of multi-part geometries cannot be drawn and are left out.</value>
+    <comment>Map status. {0} is a count of geometry parts.</comment>
+  </data>
+  <data name="EmptyCoordinatesNull" xml:space="preserve">
+    <value>Every latitude or longitude in these columns is null.</value>
+  </data>
+  <data name="EmptyGeometriesNull" xml:space="preserve">
+    <value>Every geometry in this column is empty or null.</value>
+  </data>
+  <data name="EmptyNoSridOutOfRange" xml:space="preserve">
+    <value>This column carries no SRID and its coordinates are outside the range of longitude and latitude, so the map cannot place them.</value>
+  </data>
+  <data name="EmptyNothingDrawable" xml:space="preserve">
+    <value>Nothing in this column can be drawn. The coordinates are out of range for their coordinate system, or a line or ring has too few points.</value>
+  </data>
+  <data name="EmptyUnreadable_One" xml:space="preserve">
+    <value>{0:N0} value in this column is not in a format the map can read. The grid still shows it as the database returned it.</value>
+    <comment>Why the map is empty. {0} is a count of values.</comment>
+  </data>
+  <data name="EmptyUnreadable_Other" xml:space="preserve">
+    <value>{0:N0} values in this column are not in a format the map can read. The grid still shows them as the database returned them.</value>
+    <comment>Why the map is empty. {0} is a count of values.</comment>
+  </data>
+  <data name="EmptyUnsupportedSrid" xml:space="preserve">
+    <value>The map cannot place SRID {0}. It reads longitude and latitude, such as SRID 4326, and Web Mercator. Query ST_Transform(geom, 4326) to see these shapes.</value>
+    <comment>{0} is a spatial reference id. Keep SRID 4326, Web Mercator and the ST_Transform call as they are.</comment>
+  </data>
+  <data name="EmptyUnsupportedTypes" xml:space="preserve">
+    <value>This column holds {0}, which the map cannot draw.</value>
+    <comment>Why the map is empty. {0} lists geometry type keywords.</comment>
+  </data>
+  <data name="OtherSridRows_One" xml:space="preserve">
+    <value>{0:N0} row in another coordinate system is not drawn.</value>
+    <comment>Map status. {0} is a count of rows.</comment>
+  </data>
+  <data name="OtherSridRows_Other" xml:space="preserve">
+    <value>{0:N0} rows in other coordinate systems are not drawn.</value>
+    <comment>Map status. {0} is a count of rows.</comment>
+  </data>
+  <data name="UnreadableRows_One" xml:space="preserve">
+    <value>{0:N0} row could not be read.</value>
+    <comment>Map status. {0} is a count of rows.</comment>
+  </data>
+  <data name="UnreadableRows_Other" xml:space="preserve">
+    <value>{0:N0} rows could not be read.</value>
+    <comment>Map status. {0} is a count of rows.</comment>
+  </data>
+  <data name="UnsupportedTypeRows_One" xml:space="preserve">
+    <value>{0:N0} row uses {1}, which cannot be drawn.</value>
+    <comment>Map status. {0} is a count of rows, {1} a geometry type keyword such as CIRCULARSTRING.</comment>
+  </data>
+  <data name="UnsupportedTypeRows_Other" xml:space="preserve">
+    <value>{0:N0} rows use {1}, which cannot be drawn.</value>
+    <comment>Map status. {0} is a count of rows, {1} a geometry type keyword such as CIRCULARSTRING.</comment>
+  </data>
+</root>

@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AnsweredHttp" xml:space="preserve">
+    <value>Trino answered HTTP {0} {1}</value>
+    <comment>{0} is an HTTP status code, {1} the server's reason phrase.</comment>
+  </data>
+  <data name="AnsweredHttpWith" xml:space="preserve">
+    <value>Trino answered HTTP {0} {1}: {2}</value>
+    <comment>{0} is an HTTP status code, {1} the server's reason phrase, {2} the response body.</comment>
+  </data>
+  <data name="CredentialsRefused" xml:space="preserve">
+    <value>Trino refused the credentials.</value>
+  </data>
+  <data name="CredentialsRefusedWith" xml:space="preserve">
+    <value>Trino refused the credentials: {0}</value>
+    <comment>{0} is the server's own message.</comment>
+  </data>
+  <data name="NeedsComparableKey" xml:space="preserve">
+    <value>A row needs at least one comparable key column to be changed safely.</value>
+  </data>
+  <data name="NotClientProtocol" xml:space="preserve">
+    <value>Trino returned a response that is not the client protocol: {0}</value>
+    <comment>{0} is the JSON parser's own message.</comment>
+  </data>
+  <data name="PasswordNeedsHttps" xml:space="preserve">
+    <value>Trino accepts a password or token only over HTTPS. Set the SSL mode to Required or use an https:// URL for {0}.</value>
+    <comment>{0} is a host name.</comment>
+  </data>
+  <data name="PlainHttpRedirect" xml:space="preserve">
+    <value>Trino answered an HTTPS request with a plain http:// address, so it was not followed. A coordinator behind a TLS proxy needs http-server.process-forwarded=true.</value>
+  </data>
+</root>

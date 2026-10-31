@@ -1,0 +1,189 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="CharAmpersand" xml:space="preserve">
+    <value>ve işareti</value>
+  </data>
+  <data name="CharApostrophe" xml:space="preserve">
+    <value>kesme işareti</value>
+  </data>
+  <data name="CharAsterisk" xml:space="preserve">
+    <value>yıldız işareti</value>
+  </data>
+  <data name="CharAtSign" xml:space="preserve">
+    <value>et işareti</value>
+  </data>
+  <data name="CharBackslash" xml:space="preserve">
+    <value>ters eğik çizgi</value>
+  </data>
+  <data name="CharBacktick" xml:space="preserve">
+    <value>ters tırnak</value>
+  </data>
+  <data name="CharCaret" xml:space="preserve">
+    <value>şapka işareti</value>
+  </data>
+  <data name="CharColon" xml:space="preserve">
+    <value>iki nokta üst üste</value>
+  </data>
+  <data name="CharComma" xml:space="preserve">
+    <value>virgül</value>
+  </data>
+  <data name="CharDollarSign" xml:space="preserve">
+    <value>dolar işareti</value>
+  </data>
+  <data name="CharEqualsSign" xml:space="preserve">
+    <value>eşittir işareti</value>
+  </data>
+  <data name="CharExclamationMark" xml:space="preserve">
+    <value>ünlem işareti</value>
+  </data>
+  <data name="CharGreaterThanSign" xml:space="preserve">
+    <value>büyüktür işareti</value>
+  </data>
+  <data name="CharHyphen" xml:space="preserve">
+    <value>kısa çizgi</value>
+  </data>
+  <data name="CharLeftCurlyBracket" xml:space="preserve">
+    <value>sol süslü parantez</value>
+  </data>
+  <data name="CharLeftParenthesis" xml:space="preserve">
+    <value>sol parantez</value>
+  </data>
+  <data name="CharLeftSquareBracket" xml:space="preserve">
+    <value>sol köşeli parantez</value>
+  </data>
+  <data name="CharLessThanSign" xml:space="preserve">
+    <value>küçüktür işareti</value>
+  </data>
+  <data name="CharNumberSign" xml:space="preserve">
+    <value>diyez işareti</value>
+  </data>
+  <data name="CharPercentSign" xml:space="preserve">
+    <value>yüzde işareti</value>
+  </data>
+  <data name="CharPeriod" xml:space="preserve">
+    <value>nokta</value>
+  </data>
+  <data name="CharPlusSign" xml:space="preserve">
+    <value>artı işareti</value>
+  </data>
+  <data name="CharQuestionMark" xml:space="preserve">
+    <value>soru işareti</value>
+  </data>
+  <data name="CharQuotationMark" xml:space="preserve">
+    <value>çift tırnak</value>
+  </data>
+  <data name="CharRightCurlyBracket" xml:space="preserve">
+    <value>sağ süslü parantez</value>
+  </data>
+  <data name="CharRightParenthesis" xml:space="preserve">
+    <value>sağ parantez</value>
+  </data>
+  <data name="CharRightSquareBracket" xml:space="preserve">
+    <value>sağ köşeli parantez</value>
+  </data>
+  <data name="CharSlash" xml:space="preserve">
+    <value>eğik çizgi</value>
+  </data>
+  <data name="CharTilde" xml:space="preserve">
+    <value>tilde</value>
+  </data>
+  <data name="CharVerticalBar" xml:space="preserve">
+    <value>dikey çizgi</value>
+  </data>
+  <data name="CurlyQuote" xml:space="preserve">
+    <value>Kıvrık tırnak ({0}). SQL düz tırnak ({1}) bekler.</value>
+  </data>
+  <data name="FullWidthPunctuation" xml:space="preserve">
+    <value>Tam genişlikte {0} ({1}). SQL, ASCII {0} ({2}) bekler.</value>
+  </data>
+  <data name="FullWidthSemicolon" xml:space="preserve">
+    <value>Tam genişlikte noktalı virgül (U+FF1B). SQL yalnızca ; karakterini deyim ayırıcı olarak okur.</value>
+  </data>
+  <data name="FullWidthWord" xml:space="preserve">
+    <value>Tam genişlikte harf veya rakam. SQL, ASCII {0} bekler.</value>
+  </data>
+  <data name="HoverAliasOfCommonTableExpression" xml:space="preserve">
+    <value>{0}: {1} ortak tablo ifadesinin takma adı</value>
+  </data>
+  <data name="HoverAliasOfSubquery" xml:space="preserve">
+    <value>{0}: bir alt sorgunun takma adı</value>
+  </data>
+  <data name="HoverAliasOfTable" xml:space="preserve">
+    <value>{0}: {1} tablosunun takma adı</value>
+  </data>
+  <data name="HoverAliasOfTableFunction" xml:space="preserve">
+    <value>{0}: {1} tablo işlevinin takma adı</value>
+  </data>
+  <data name="HoverAliasOfView" xml:space="preserve">
+    <value>{0}: {1} görünümünün takma adı</value>
+  </data>
+  <data name="HoverColumn" xml:space="preserve">
+    <value>Sütun {0}</value>
+  </data>
+  <data name="HoverCommonTableExpression" xml:space="preserve">
+    <value>Ortak tablo ifadesi {0}</value>
+  </data>
+  <data name="HoverMoreColumns_One" xml:space="preserve">
+    <value>ve {0} tane daha</value>
+  </data>
+  <data name="HoverMoreColumns_Other" xml:space="preserve">
+    <value>ve {0} tane daha</value>
+  </data>
+  <data name="HoverSubquery" xml:space="preserve">
+    <value>Alt sorgu {0}</value>
+  </data>
+  <data name="HoverTable" xml:space="preserve">
+    <value>Tablo {0}</value>
+  </data>
+  <data name="HoverTableFunction" xml:space="preserve">
+    <value>Tablo işlevi {0}</value>
+  </data>
+  <data name="HoverView" xml:space="preserve">
+    <value>Görünüm {0}</value>
+  </data>
+  <data name="NoClosingBrace" xml:space="preserve">
+    <value>Eşleşen kapanış süslü parantezi yok</value>
+  </data>
+  <data name="NoClosingBracket" xml:space="preserve">
+    <value>Eşleşen kapanış köşeli parantezi yok</value>
+  </data>
+  <data name="NoClosingParenthesis" xml:space="preserve">
+    <value>Eşleşen kapanış parantezi yok</value>
+  </data>
+  <data name="NonAsciiSpace" xml:space="preserve">
+    <value>ASCII olmayan boşluk ({0}). SQL, ASCII boşluk (U+0020) bekler.</value>
+  </data>
+  <data name="NoOpeningBracket" xml:space="preserve">
+    <value>Eşleşen açılış parantezi yok</value>
+  </data>
+  <data name="UnknownColumn" xml:space="preserve">
+    <value>'{0}' tablosunda '{1}' sütunu yok.</value>
+  </data>
+  <data name="UnknownQualifier" xml:space="preserve">
+    <value>Bilinmeyen tablo veya takma ad '{0}'.</value>
+  </data>
+  <data name="UnknownTable" xml:space="preserve">
+    <value>Bilinmeyen tablo '{0}'.</value>
+  </data>
+  <data name="UnterminatedComment" xml:space="preserve">
+    <value>Sonlandırılmamış yorum</value>
+  </data>
+  <data name="UnterminatedQuotedName" xml:space="preserve">
+    <value>Sonlandırılmamış tırnaklı ad</value>
+  </data>
+  <data name="UnterminatedString" xml:space="preserve">
+    <value>Sonlandırılmamış dize</value>
+  </data>
+</root>

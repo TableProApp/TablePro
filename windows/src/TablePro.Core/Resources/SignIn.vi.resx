@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="ElastiCacheNameRequired" xml:space="preserve">
+    <value>Hãy nhập tên bộ nhớ đệm ElastiCache (ID nhóm sao chép) để dùng xác thực IAM.</value>
+  </data>
+  <data name="ElastiCacheRegionRequired" xml:space="preserve">
+    <value>Hãy nhập AWS region nơi bộ nhớ đệm ElastiCache đang chạy.</value>
+  </data>
+  <data name="EntraDefault" xml:space="preserve">
+    <value>Mặc định (Azure CLI, Visual Studio, biến môi trường)</value>
+  </data>
+  <data name="EntraDeviceCode" xml:space="preserve">
+    <value>Mã thiết bị</value>
+  </data>
+  <data name="EntraIntegrated" xml:space="preserve">
+    <value>Tích hợp (tài khoản Windows)</value>
+  </data>
+  <data name="EntraInteractive" xml:space="preserve">
+    <value>Tương tác (trình duyệt)</value>
+  </data>
+  <data name="EntraManagedIdentity" xml:space="preserve">
+    <value>Managed identity</value>
+  </data>
+  <data name="EntraServicePrincipal" xml:space="preserve">
+    <value>Service principal</value>
+  </data>
+  <data name="MethodAwsAccessKey" xml:space="preserve">
+    <value>AWS IAM (Access Key)</value>
+  </data>
+  <data name="MethodAwsProfile" xml:space="preserve">
+    <value>AWS IAM (Hồ sơ)</value>
+  </data>
+  <data name="MethodAwsSso" xml:space="preserve">
+    <value>AWS IAM (SSO)</value>
+  </data>
+  <data name="MethodEntra" xml:space="preserve">
+    <value>Microsoft Entra ID</value>
+  </data>
+  <data name="MethodGoogleAdc" xml:space="preserve">
+    <value>Google Cloud IAM (Thông tin mặc định của ứng dụng)</value>
+  </data>
+  <data name="MethodGoogleServiceAccount" xml:space="preserve">
+    <value>Google Cloud IAM (Tài khoản dịch vụ)</value>
+  </data>
+  <data name="MethodKerberos" xml:space="preserve">
+    <value>Kerberos (GSSAPI)</value>
+  </data>
+  <data name="MethodPassword" xml:space="preserve">
+    <value>Mật khẩu</value>
+  </data>
+  <data name="MethodSqlServer" xml:space="preserve">
+    <value>Xác thực SQL Server</value>
+  </data>
+  <data name="MethodWindows" xml:space="preserve">
+    <value>Xác thực Windows</value>
+  </data>
+  <data name="NoDatabaseUser" xml:space="preserve">
+    <value>{0} không cấp người dùng cơ sở dữ liệu.</value>
+  </data>
+  <data name="NotInThisBuild" xml:space="preserve">
+    <value>Đăng nhập bằng {0} không có trong bản dựng này.</value>
+  </data>
+  <data name="RdsEndpointFormat" xml:space="preserve">
+    <value>Endpoint RDS phải có dạng host hoặc host:port.</value>
+  </data>
+  <data name="RdsRegionRequired" xml:space="preserve">
+    <value>Hãy nhập AWS region, vì máy chủ không phải là endpoint RDS có ghi region.</value>
+  </data>
+  <data name="RedshiftEndpointInvalid" xml:space="preserve">
+    <value>"{0}" không phải là endpoint của cụm Redshift hay workgroup Serverless.</value>
+  </data>
+  <data name="RedshiftEndpointNotApplicable" xml:space="preserve">
+    <value>Endpoint Redshift chỉ áp dụng khi máy chủ là chuyển tiếp cổng cục bộ hoặc chính endpoint đó, và "{0}" không phải cả hai.</value>
+  </data>
+  <data name="RedshiftEndpointUnknown" xml:space="preserve">
+    <value>TablePro không xác định được "{0}" là cụm hay workgroup Redshift nào. Hãy đặt máy chủ là endpoint do AWS cấp, ví dụ my-cluster.abc123.us-east-1.redshift.amazonaws.com, hoặc nhập endpoint đó vào ô endpoint Redshift khi bạn kết nối qua chuyển tiếp cổng.</value>
+  </data>
+</root>

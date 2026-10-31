@@ -1,0 +1,126 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AlreadyExists" xml:space="preserve">
+    <value>{0} 已存在于目标中。</value>
+  </data>
+  <data name="CannotCreateTables" xml:space="preserve">
+    <value>{0} 无法从 TablePro 创建表，因此只有已存在的表会接收行。</value>
+  </data>
+  <data name="CannotExpressChange" xml:space="preserve">
+    <value>{0} 无法表达此更改。</value>
+  </data>
+  <data name="ColumnNotInTarget" xml:space="preserve">
+    <value>{0}：目标表没有此列，因此不会复制。</value>
+  </data>
+  <data name="DefaultLeftOut" xml:space="preserve">
+    <value>{0}：默认值 {1} 没有对应项，因此不予保留。</value>
+  </data>
+  <data name="DefinitionHasNoRows" xml:space="preserve">
+    <value>{0} 不是表，因此没有可复制的行。</value>
+  </data>
+  <data name="DefinitionOtherEngine" xml:space="preserve">
+    <value>{0} 是为 {1} 编写的 SQL，{2} 无法按原样运行。</value>
+  </data>
+  <data name="ForeignKeyFailed" xml:space="preserve">
+    <value>无法创建外键 {0}：{1}</value>
+  </data>
+  <data name="ForeignKeyLeftOut" xml:space="preserve">
+    <value>外键 {0} 指向目标中不存在的 {1}，因此不予复制。</value>
+  </data>
+  <data name="ForeignKeyNotAdded" xml:space="preserve">
+    <value>由于 {1} 未复制，外键 {0} 未添加。</value>
+  </data>
+  <data name="IndexFailed" xml:space="preserve">
+    <value>无法创建索引 {0}：{1}</value>
+  </data>
+  <data name="NoSourceDefinition" xml:space="preserve">
+    <value>源未返回 {0} 的定义。</value>
+  </data>
+  <data name="NoTableToAddRows" xml:space="preserve">
+    <value>目标中没有可添加行的表 {0}。</value>
+  </data>
+  <data name="NotFinished" xml:space="preserve">
+    <value>未完成，因为复制在之前的一次失败处已停止。</value>
+  </data>
+  <data name="SequenceBecomesIdentity" xml:space="preserve">
+    <value>{0}：其序列默认值变为标识列。</value>
+  </data>
+  <data name="ServerWritten" xml:space="preserve">
+    <value>{0}：该列由服务器写入，因此不复制其值。</value>
+  </data>
+  <data name="SqlServerIdentityDropped" xml:space="preserve">
+    <value>{0}：SQL Server 拒绝向标识列写入复制的值，因此创建时不带 IDENTITY。</value>
+  </data>
+  <data name="SqlServerIdentityLeftOut" xml:space="preserve">
+    <value>{0}：SQL Server 会自行为其标识列编号，因此不使用源中的值。</value>
+  </data>
+  <data name="StoppedBeforeFinished" xml:space="preserve">
+    <value>在完成前已停止。</value>
+  </data>
+  <data name="TargetCannotChangeStructure" xml:space="preserve">
+    <value>目标无法从 TablePro 更改其结构。</value>
+  </data>
+  <data name="TargetCannotCreate" xml:space="preserve">
+    <value>目标无法创建它。</value>
+  </data>
+  <data name="TargetHasOtherObject" xml:space="preserve">
+    <value>目标中已有一个名为 {0} 的对象，且它不是表。</value>
+  </data>
+  <data name="TargetReadOnly" xml:space="preserve">
+    <value>目标连接为只读，因此无法向其写入任何内容。</value>
+  </data>
+  <data name="TypeAsText" xml:space="preserve">
+    <value>{0}：{1} 变为 {2}，以文本形式保存。</value>
+  </data>
+  <data name="TypeCutTo255" xml:space="preserve">
+    <value>{0}：{1} 变为 {2}，截断为 255 个字符以便作为键的一部分。</value>
+  </data>
+  <data name="TypeCutTo4000" xml:space="preserve">
+    <value>{0}：{1} 变为 {2}，截断为 4,000 个字符以便作为键的一部分。</value>
+  </data>
+  <data name="TypeCutTo450" xml:space="preserve">
+    <value>{0}：{1} 变为 {2}，截断为 450 个字符以便作为键的一部分。</value>
+  </data>
+  <data name="TypeEnumerationAsText" xml:space="preserve">
+    <value>{0}：{1} 变为 {2}，以文本形式保存，不含其允许值列表。</value>
+  </data>
+  <data name="TypeJsonAsText" xml:space="preserve">
+    <value>{0}：{1} 变为 {2}，以文本形式保留。</value>
+  </data>
+  <data name="TypeNoBoolean" xml:space="preserve">
+    <value>{0}：{1} 变为 {2}，因为此 Oracle 版本没有 BOOLEAN。</value>
+  </data>
+  <data name="TypeNoEquivalent" xml:space="preserve">
+    <value>{0}：{1} 变为 {2}，以文本形式保存，因为没有对应类型。</value>
+  </data>
+  <data name="TypeNoTime" xml:space="preserve">
+    <value>{0}：{1} 变为 {2}，因为 Oracle 没有 TIME。</value>
+  </data>
+  <data name="TypeRowVersionAsBytes" xml:space="preserve">
+    <value>{0}：{1} 变为 {2}，服务器的行版本以字节形式复制。</value>
+  </data>
+  <data name="TypeTimeZoneDropped" xml:space="preserve">
+    <value>{0}：{1} 变为 {2}，不含时区。</value>
+  </data>
+  <data name="TypeUtc" xml:space="preserve">
+    <value>{0}：{1} 变为 {2}，时间采用 UTC。</value>
+  </data>
+  <data name="TypeUtcNoTimeZone" xml:space="preserve">
+    <value>{0}：{1} 变为 {2}，时间采用 UTC，因为 DATETIME 不保存时区。</value>
+  </data>
+  <data name="UnknownTypeSystem" xml:space="preserve">
+    <value>复制到其他引擎需要 TablePro 能转换的类型系统，而 TablePro 不了解 {0} 的类型系统。请复制到同类型的目标。</value>
+  </data>
+</root>

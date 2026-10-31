@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AuthFailed" xml:space="preserve">
+    <value>L’authentification a échoué. Vérifiez le jeton d’authentification dans le champ Mot de passe.</value>
+  </data>
+  <data name="BeginFailed" xml:space="preserve">
+    <value>L’enregistrement n’a pas pu démarrer de transaction : {0}</value>
+  </data>
+  <data name="BeginNoAnswer" xml:space="preserve">
+    <value>L’enregistrement n’a pas pu démarrer de transaction : le serveur n’a pas répondu.</value>
+  </data>
+  <data name="CommitFailed" xml:space="preserve">
+    <value>L’enregistrement n’a pas pu être validé : {0}</value>
+  </data>
+  <data name="FewerAnswers" xml:space="preserve">
+    <value>Le serveur a répondu à moins d’instructions que l’enregistrement n’en a envoyé.</value>
+  </data>
+  <data name="FileUrlNoFile" xml:space="preserve">
+    <value>L’URL file: n’indique aucun fichier de base de données.</value>
+  </data>
+  <data name="LocalNeedsFile" xml:space="preserve">
+    <value>Une connexion libSQL locale nécessite un fichier de base de données.</value>
+  </data>
+  <data name="NoLocalFiles" xml:space="preserve">
+    <value>Cette version ne peut pas ouvrir de fichiers libSQL locaux ; connectez-vous plutôt à une URL de serveur.</value>
+  </data>
+  <data name="NoPipeline" xml:space="preserve">
+    <value>Le serveur n’a pas de pipeline Hrana à cette URL. Vérifiez l’URL de la base de données.</value>
+  </data>
+  <data name="NotAUrl" xml:space="preserve">
+    <value>« {0} » n’est pas une URL de base de données libSQL. Utilisez libsql://, https:// ou http://.</value>
+  </data>
+  <data name="StreamClosedBeforeCommit" xml:space="preserve">
+    <value>Le serveur a fermé le flux de l’enregistrement avant la validation, rien n’a donc été enregistré.</value>
+  </data>
+  <data name="StreamEnded" xml:space="preserve">
+    <value>{0} Le flux de l’onglet s’est terminé, toute transaction ouverte a donc été annulée.</value>
+  </data>
+  <data name="Unreadable" xml:space="preserve">
+    <value>Le serveur a renvoyé une réponse que TablePro n’a pas pu lire.</value>
+  </data>
+</root>

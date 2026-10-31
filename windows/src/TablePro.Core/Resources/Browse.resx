@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="NoColumnToFilter" xml:space="preserve">
+    <value>There is no column named {0} to filter on.</value>
+    <comment>{0} is a column name.</comment>
+  </data>
+  <data name="OperatorBetween" xml:space="preserve">
+    <value>between</value>
+    <comment>Filter operator name.</comment>
+  </data>
+  <data name="OperatorContains" xml:space="preserve">
+    <value>contains</value>
+    <comment>Filter operator name, also placed into messages such as 'X cannot filter with contains'.</comment>
+  </data>
+  <data name="OperatorEndsWith" xml:space="preserve">
+    <value>ends with</value>
+    <comment>Filter operator name.</comment>
+  </data>
+  <data name="OperatorIn" xml:space="preserve">
+    <value>in list</value>
+    <comment>Filter operator name.</comment>
+  </data>
+  <data name="OperatorIsEmpty" xml:space="preserve">
+    <value>is empty</value>
+    <comment>Filter operator name.</comment>
+  </data>
+  <data name="OperatorIsNotEmpty" xml:space="preserve">
+    <value>is not empty</value>
+    <comment>Filter operator name.</comment>
+  </data>
+  <data name="OperatorIsNotNull" xml:space="preserve">
+    <value>is not NULL</value>
+    <comment>Filter operator name. Keep NULL.</comment>
+  </data>
+  <data name="OperatorIsNull" xml:space="preserve">
+    <value>is NULL</value>
+    <comment>Filter operator name. Keep NULL.</comment>
+  </data>
+  <data name="OperatorNotContains" xml:space="preserve">
+    <value>does not contain</value>
+    <comment>Filter operator name.</comment>
+  </data>
+  <data name="OperatorNotIn" xml:space="preserve">
+    <value>not in list</value>
+    <comment>Filter operator name.</comment>
+  </data>
+  <data name="OperatorStartsWith" xml:space="preserve">
+    <value>starts with</value>
+    <comment>Filter operator name.</comment>
+  </data>
+  <data name="RawWhereUnsupported" xml:space="preserve">
+    <value>{0} cannot run a raw WHERE clause; use the filter rules instead.</value>
+    <comment>{0} is an engine name.</comment>
+  </data>
+</root>

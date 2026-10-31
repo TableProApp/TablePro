@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AutoCheckDescription" xml:space="preserve">
+    <value>每天检查一次是否有新版本。</value>
+  </data>
+  <data name="AutoCheckTitle" xml:space="preserve">
+    <value>自动检查更新</value>
+  </data>
+  <data name="AvailableVersion" xml:space="preserve">
+    <value>TablePro {0} 现已推出。你当前的版本是 {1}。</value>
+  </data>
+  <data name="BetaDescription" xml:space="preserve">
+    <value>Beta 版在稳定版之前发布，可能还不够完善。</value>
+  </data>
+  <data name="BetaTitle" xml:space="preserve">
+    <value>获取 Beta 版更新</value>
+  </data>
+  <data name="CheckNow" xml:space="preserve">
+    <value>立即检查</value>
+  </data>
+  <data name="CheckTitle" xml:space="preserve">
+    <value>检查更新</value>
+  </data>
+  <data name="ErrorChecksumMismatch" xml:space="preserve">
+    <value>下载的更新与发布时公布的校验和不匹配。未安装任何内容。</value>
+  </data>
+  <data name="ErrorFeedTooLarge" xml:space="preserve">
+    <value>更新源比预期的大。</value>
+  </data>
+  <data name="ErrorHttpsOnly" xml:space="preserve">
+    <value>更新只能通过 HTTPS 下载。</value>
+  </data>
+  <data name="ErrorNoInstallScript" xml:space="preserve">
+    <value>此更新没有安装脚本。</value>
+  </data>
+  <data name="ImportantUpdateTitle" xml:space="preserve">
+    <value>重要更新</value>
+  </data>
+  <data name="InstallAndRestart" xml:space="preserve">
+    <value>安装并重新启动</value>
+  </data>
+  <data name="InstallFailedTitle" xml:space="preserve">
+    <value>无法安装更新</value>
+  </data>
+  <data name="Later" xml:space="preserve">
+    <value>稍后</value>
+  </data>
+  <data name="MenuCheckForUpdates" xml:space="preserve">
+    <value>检查更新…</value>
+  </data>
+  <data name="MenuUpdateAvailable" xml:space="preserve">
+    <value>有可用更新…</value>
+  </data>
+  <data name="RestartToUpdate" xml:space="preserve">
+    <value>重新启动以更新</value>
+  </data>
+  <data name="SettingsTitle" xml:space="preserve">
+    <value>更新</value>
+  </data>
+  <data name="SkipThisVersion" xml:space="preserve">
+    <value>跳过此版本</value>
+  </data>
+  <data name="StatusAvailable" xml:space="preserve">
+    <value>有可用更新。</value>
+  </data>
+  <data name="StatusChecking" xml:space="preserve">
+    <value>正在检查更新…</value>
+  </data>
+  <data name="StatusDisabled" xml:space="preserve">
+    <value>此版本已关闭更新。</value>
+  </data>
+  <data name="StatusDownloading" xml:space="preserve">
+    <value>正在下载更新：{0:P0}</value>
+  </data>
+  <data name="StatusFailed" xml:space="preserve">
+    <value>检查更新失败：{0}</value>
+  </data>
+  <data name="StatusInstalling" xml:space="preserve">
+    <value>正在启动安装程序…</value>
+  </data>
+  <data name="StatusLastChecked" xml:space="preserve">
+    <value>上次检查时间：{0:g}。</value>
+  </data>
+  <data name="StatusStore" xml:space="preserve">
+    <value>Microsoft Store 会让 TablePro 保持最新。</value>
+  </data>
+  <data name="StatusUpToDate" xml:space="preserve">
+    <value>TablePro {0} 已是最新版本。</value>
+  </data>
+  <data name="StatusVersion" xml:space="preserve">
+    <value>TablePro {0}。</value>
+  </data>
+  <data name="UpdateAvailableTitle" xml:space="preserve">
+    <value>有可用更新</value>
+  </data>
+  <data name="VersionTitle" xml:space="preserve">
+    <value>TablePro {0}</value>
+  </data>
+</root>

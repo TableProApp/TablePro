@@ -1,0 +1,209 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="CharAmpersand" xml:space="preserve">
+    <value>ampersand</value>
+  </data>
+  <data name="CharApostrophe" xml:space="preserve">
+    <value>apostrophe</value>
+  </data>
+  <data name="CharAsterisk" xml:space="preserve">
+    <value>asterisk</value>
+  </data>
+  <data name="CharAtSign" xml:space="preserve">
+    <value>at sign</value>
+  </data>
+  <data name="CharBackslash" xml:space="preserve">
+    <value>backslash</value>
+  </data>
+  <data name="CharBacktick" xml:space="preserve">
+    <value>backtick</value>
+  </data>
+  <data name="CharCaret" xml:space="preserve">
+    <value>caret</value>
+  </data>
+  <data name="CharColon" xml:space="preserve">
+    <value>colon</value>
+  </data>
+  <data name="CharComma" xml:space="preserve">
+    <value>comma</value>
+  </data>
+  <data name="CharDollarSign" xml:space="preserve">
+    <value>dollar sign</value>
+  </data>
+  <data name="CharEqualsSign" xml:space="preserve">
+    <value>equals sign</value>
+  </data>
+  <data name="CharExclamationMark" xml:space="preserve">
+    <value>exclamation mark</value>
+  </data>
+  <data name="CharGreaterThanSign" xml:space="preserve">
+    <value>greater-than sign</value>
+  </data>
+  <data name="CharHyphen" xml:space="preserve">
+    <value>hyphen</value>
+  </data>
+  <data name="CharLeftCurlyBracket" xml:space="preserve">
+    <value>left curly bracket</value>
+  </data>
+  <data name="CharLeftParenthesis" xml:space="preserve">
+    <value>left parenthesis</value>
+  </data>
+  <data name="CharLeftSquareBracket" xml:space="preserve">
+    <value>left square bracket</value>
+  </data>
+  <data name="CharLessThanSign" xml:space="preserve">
+    <value>less-than sign</value>
+  </data>
+  <data name="CharNumberSign" xml:space="preserve">
+    <value>number sign</value>
+  </data>
+  <data name="CharPercentSign" xml:space="preserve">
+    <value>percent sign</value>
+  </data>
+  <data name="CharPeriod" xml:space="preserve">
+    <value>period</value>
+  </data>
+  <data name="CharPlusSign" xml:space="preserve">
+    <value>plus sign</value>
+  </data>
+  <data name="CharQuestionMark" xml:space="preserve">
+    <value>question mark</value>
+  </data>
+  <data name="CharQuotationMark" xml:space="preserve">
+    <value>quotation mark</value>
+  </data>
+  <data name="CharRightCurlyBracket" xml:space="preserve">
+    <value>right curly bracket</value>
+  </data>
+  <data name="CharRightParenthesis" xml:space="preserve">
+    <value>right parenthesis</value>
+  </data>
+  <data name="CharRightSquareBracket" xml:space="preserve">
+    <value>right square bracket</value>
+  </data>
+  <data name="CharSlash" xml:space="preserve">
+    <value>slash</value>
+  </data>
+  <data name="CharTilde" xml:space="preserve">
+    <value>tilde</value>
+  </data>
+  <data name="CharVerticalBar" xml:space="preserve">
+    <value>vertical bar</value>
+  </data>
+  <data name="CurlyQuote" xml:space="preserve">
+    <value>Curly quote ({0}). SQL needs the straight quote ({1}).</value>
+    <comment>{0} is the curly quote's code point, {1} the straight quote's.</comment>
+  </data>
+  <data name="FullWidthPunctuation" xml:space="preserve">
+    <value>Full-width {0} ({1}). SQL needs the ASCII {0} ({2}).</value>
+    <comment>{0} is a punctuation name such as comma, {1} the full-width code point, {2} the ASCII code point.</comment>
+  </data>
+  <data name="FullWidthSemicolon" xml:space="preserve">
+    <value>Full-width semicolon (U+FF1B). SQL reads only ; as a statement separator.</value>
+  </data>
+  <data name="FullWidthWord" xml:space="preserve">
+    <value>Full-width letters or digits. SQL needs the ASCII {0}.</value>
+    <comment>{0} is the word with full-width characters turned into ASCII.</comment>
+  </data>
+  <data name="HoverAliasOfCommonTableExpression" xml:space="preserve">
+    <value>{0}: alias of common table expression {1}</value>
+    <comment>{0} is an alias, {1} the common table expression it names.</comment>
+  </data>
+  <data name="HoverAliasOfSubquery" xml:space="preserve">
+    <value>{0}: alias of a subquery</value>
+    <comment>{0} is an alias.</comment>
+  </data>
+  <data name="HoverAliasOfTable" xml:space="preserve">
+    <value>{0}: alias of table {1}</value>
+    <comment>{0} is an alias, {1} the table it names.</comment>
+  </data>
+  <data name="HoverAliasOfTableFunction" xml:space="preserve">
+    <value>{0}: alias of table function {1}</value>
+    <comment>{0} is an alias, {1} the function it names.</comment>
+  </data>
+  <data name="HoverAliasOfView" xml:space="preserve">
+    <value>{0}: alias of view {1}</value>
+    <comment>{0} is an alias, {1} the view it names.</comment>
+  </data>
+  <data name="HoverColumn" xml:space="preserve">
+    <value>Column {0}</value>
+    <comment>Hover card title. {0} is a column name, maybe qualified by its table.</comment>
+  </data>
+  <data name="HoverCommonTableExpression" xml:space="preserve">
+    <value>Common table expression {0}</value>
+    <comment>Hover card title. {0} is the name a WITH clause defines.</comment>
+  </data>
+  <data name="HoverMoreColumns_One" xml:space="preserve">
+    <value>and {0} more</value>
+    <comment>Last line of a column list. {0} is how many columns are not shown.</comment>
+  </data>
+  <data name="HoverMoreColumns_Other" xml:space="preserve">
+    <value>and {0} more</value>
+    <comment>Last line of a column list. {0} is how many columns are not shown.</comment>
+  </data>
+  <data name="HoverSubquery" xml:space="preserve">
+    <value>Subquery {0}</value>
+    <comment>Hover card title. {0} is the subquery's alias.</comment>
+  </data>
+  <data name="HoverTable" xml:space="preserve">
+    <value>Table {0}</value>
+    <comment>Hover card title. {0} is a table name.</comment>
+  </data>
+  <data name="HoverTableFunction" xml:space="preserve">
+    <value>Table function {0}</value>
+    <comment>Hover card title. {0} is a function name.</comment>
+  </data>
+  <data name="HoverView" xml:space="preserve">
+    <value>View {0}</value>
+    <comment>Hover card title. {0} is a view name.</comment>
+  </data>
+  <data name="NoClosingBrace" xml:space="preserve">
+    <value>No matching closing brace</value>
+  </data>
+  <data name="NoClosingBracket" xml:space="preserve">
+    <value>No matching closing bracket</value>
+  </data>
+  <data name="NoClosingParenthesis" xml:space="preserve">
+    <value>No matching closing parenthesis</value>
+  </data>
+  <data name="NonAsciiSpace" xml:space="preserve">
+    <value>Non-ASCII space ({0}). SQL needs an ASCII space (U+0020).</value>
+    <comment>{0} is the space's code point.</comment>
+  </data>
+  <data name="NoOpeningBracket" xml:space="preserve">
+    <value>No matching opening bracket</value>
+  </data>
+  <data name="UnknownColumn" xml:space="preserve">
+    <value>Table '{0}' has no column '{1}'.</value>
+    <comment>{0} is a table name, {1} a column name.</comment>
+  </data>
+  <data name="UnknownQualifier" xml:space="preserve">
+    <value>Unknown table or alias '{0}'.</value>
+    <comment>{0} is the name before the dot, such as u in u.name.</comment>
+  </data>
+  <data name="UnknownTable" xml:space="preserve">
+    <value>Unknown table '{0}'.</value>
+    <comment>{0} is a table name.</comment>
+  </data>
+  <data name="UnterminatedComment" xml:space="preserve">
+    <value>Unterminated comment</value>
+  </data>
+  <data name="UnterminatedQuotedName" xml:space="preserve">
+    <value>Unterminated quoted name</value>
+  </data>
+  <data name="UnterminatedString" xml:space="preserve">
+    <value>Unterminated string</value>
+  </data>
+</root>

@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AuthFailed" xml:space="preserve">
+    <value>L’authentification a échoué. {0}</value>
+  </data>
+  <data name="AuthFailedWith" xml:space="preserve">
+    <value>{0}. {1}</value>
+  </data>
+  <data name="CheckTokenAndAccount" xml:space="preserve">
+    <value>Vérifiez le jeton API et l’ID de compte.</value>
+  </data>
+  <data name="ColumnsNotRecognized" xml:space="preserve">
+    <value>{0} a renvoyé des colonnes que TablePro ne reconnaît pas : {1}.</value>
+  </data>
+  <data name="D1AuthHint" xml:space="preserve">
+    <value>Le jeton API a besoin de l’autorisation D1 Read, et de D1 Edit pour modifier les données, pour ce compte.</value>
+  </data>
+  <data name="D1Stats" xml:space="preserve">
+    <value>D1 a lu {0:N0} lignes et écrit {1:N0} lignes en {2:0.###} ms.</value>
+  </data>
+  <data name="EmptyBody" xml:space="preserve">
+    <value>corps vide</value>
+  </data>
+  <data name="EmptyResult" xml:space="preserve">
+    <value>Cloudflare a renvoyé un résultat vide.</value>
+  </data>
+  <data name="EnterAccountId" xml:space="preserve">
+    <value>Saisissez l’ID de compte Cloudflare dans le champ Hôte.</value>
+  </data>
+  <data name="EnterApiToken" xml:space="preserve">
+    <value>Saisissez un jeton API Cloudflare dans le champ Mot de passe.</value>
+  </data>
+  <data name="EnterD1Database" xml:space="preserve">
+    <value>Saisissez le nom ou l’ID de la base de données D1 dans le champ Base de données.</value>
+  </data>
+  <data name="EnterR2Bucket" xml:space="preserve">
+    <value>Saisissez le nom du compartiment R2 dans le champ Base de données.</value>
+  </data>
+  <data name="HttpStatus" xml:space="preserve">
+    <value>Cloudflare a renvoyé HTTP {0} : {1}</value>
+  </data>
+  <data name="KeyedChangeInBatch" xml:space="preserve">
+    <value>une modification par clé dans le lot</value>
+  </data>
+  <data name="NoD1Database" xml:space="preserve">
+    <value>Aucune base de données D1 nommée « {0} » n’existe dans ce compte.</value>
+  </data>
+  <data name="NotACloudflareEngine" xml:space="preserve">
+    <value>{0} n’est pas un moteur Cloudflare.</value>
+  </data>
+  <data name="R2AuthHint" xml:space="preserve">
+    <value>Le jeton API a besoin des autorisations R2 SQL, R2 Data Catalog et R2 Storage pour ce compte.</value>
+  </data>
+  <data name="R2NoOffset" xml:space="preserve">
+    <value>R2 SQL renvoie au plus {0:N0} lignes par requête et n’a pas d’OFFSET, les lignes au-delà de {0:N0} ne sont donc pas accessibles par pagination. Réduisez plutôt les lignes avec un filtre ou un tri.</value>
+  </data>
+  <data name="R2ReadOnly" xml:space="preserve">
+    <value>R2 SQL est en lecture seule. Modifiez la table Iceberg avec un outil d’écriture tel que Spark ou PyIceberg.</value>
+  </data>
+  <data name="R2StoppedAt" xml:space="preserve">
+    <value>Arrêt à {0:N0} lignes, le maximum que R2 SQL renvoie pour une requête.</value>
+  </data>
+  <data name="RateLimited" xml:space="preserve">
+    <value>Cloudflare limite le débit de ce jeton. Réessayez dans un instant.</value>
+  </data>
+  <data name="RateLimitedRetryAfter" xml:space="preserve">
+    <value>Cloudflare limite le débit de ce jeton. Réessayez dans {0:0} secondes.</value>
+  </data>
+  <data name="Unreadable" xml:space="preserve">
+    <value>Cloudflare a renvoyé une réponse que TablePro n’a pas pu lire (HTTP {0}) : {1}</value>
+  </data>
+</root>

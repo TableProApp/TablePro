@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="CappedRows_One" xml:space="preserve">
+    <value>{0:N0} dòng vượt quá giới hạn vẽ.</value>
+  </data>
+  <data name="CappedRows_Other" xml:space="preserve">
+    <value>{0:N0} dòng vượt quá giới hạn vẽ.</value>
+  </data>
+  <data name="DrawingPoints_One" xml:space="preserve">
+    <value>Đang vẽ {0:N0} điểm từ các cột vĩ độ và kinh độ.</value>
+  </data>
+  <data name="DrawingPoints_Other" xml:space="preserve">
+    <value>Đang vẽ {0:N0} điểm từ các cột vĩ độ và kinh độ.</value>
+  </data>
+  <data name="DrawingShapes_One" xml:space="preserve">
+    <value>Đang vẽ {0:N0} hình.</value>
+  </data>
+  <data name="DrawingShapes_Other" xml:space="preserve">
+    <value>Đang vẽ {0:N0} hình.</value>
+  </data>
+  <data name="DrawingShapesInSrid_One" xml:space="preserve">
+    <value>Đang vẽ {0:N0} hình trong SRID {1}.</value>
+  </data>
+  <data name="DrawingShapesInSrid_Other" xml:space="preserve">
+    <value>Đang vẽ {0:N0} hình trong SRID {1}.</value>
+  </data>
+  <data name="DrawingShapesNoSrid_One" xml:space="preserve">
+    <value>Đang vẽ {0:N0} hình không có SRID, đọc theo kinh độ và vĩ độ.</value>
+  </data>
+  <data name="DrawingShapesNoSrid_Other" xml:space="preserve">
+    <value>Đang vẽ {0:N0} hình không có SRID, đọc theo kinh độ và vĩ độ.</value>
+  </data>
+  <data name="DroppedParts_One" xml:space="preserve">
+    <value>{0:N0} phần của hình học nhiều phần không thể vẽ và bị bỏ qua.</value>
+  </data>
+  <data name="DroppedParts_Other" xml:space="preserve">
+    <value>{0:N0} phần của các hình học nhiều phần không thể vẽ và bị bỏ qua.</value>
+  </data>
+  <data name="EmptyCoordinatesNull" xml:space="preserve">
+    <value>Mọi vĩ độ hoặc kinh độ trong các cột này đều là null.</value>
+  </data>
+  <data name="EmptyGeometriesNull" xml:space="preserve">
+    <value>Mọi hình học trong cột này đều trống hoặc null.</value>
+  </data>
+  <data name="EmptyNoSridOutOfRange" xml:space="preserve">
+    <value>Cột này không có SRID và tọa độ nằm ngoài phạm vi kinh độ và vĩ độ, nên bản đồ không thể định vị chúng.</value>
+  </data>
+  <data name="EmptyNothingDrawable" xml:space="preserve">
+    <value>Không có gì trong cột này vẽ được. Tọa độ nằm ngoài phạm vi của hệ tọa độ, hoặc một đường hay vòng có quá ít điểm.</value>
+  </data>
+  <data name="EmptyUnreadable_One" xml:space="preserve">
+    <value>{0:N0} giá trị trong cột này không ở định dạng bản đồ đọc được. Lưới vẫn hiển thị đúng như cơ sở dữ liệu trả về.</value>
+  </data>
+  <data name="EmptyUnreadable_Other" xml:space="preserve">
+    <value>{0:N0} giá trị trong cột này không ở định dạng bản đồ đọc được. Lưới vẫn hiển thị đúng như cơ sở dữ liệu trả về.</value>
+  </data>
+  <data name="EmptyUnsupportedSrid" xml:space="preserve">
+    <value>Bản đồ không thể định vị SRID {0}. Bản đồ đọc kinh độ và vĩ độ, như SRID 4326, và Web Mercator. Hãy truy vấn ST_Transform(geom, 4326) để xem các hình này.</value>
+  </data>
+  <data name="EmptyUnsupportedTypes" xml:space="preserve">
+    <value>Cột này chứa {0}, loại mà bản đồ không thể vẽ.</value>
+  </data>
+  <data name="OtherSridRows_One" xml:space="preserve">
+    <value>{0:N0} dòng thuộc hệ tọa độ khác không được vẽ.</value>
+  </data>
+  <data name="OtherSridRows_Other" xml:space="preserve">
+    <value>{0:N0} dòng thuộc hệ tọa độ khác không được vẽ.</value>
+  </data>
+  <data name="UnreadableRows_One" xml:space="preserve">
+    <value>Không thể đọc {0:N0} dòng.</value>
+  </data>
+  <data name="UnreadableRows_Other" xml:space="preserve">
+    <value>Không thể đọc {0:N0} dòng.</value>
+  </data>
+  <data name="UnsupportedTypeRows_One" xml:space="preserve">
+    <value>{0:N0} dòng dùng {1}, loại không thể vẽ.</value>
+  </data>
+  <data name="UnsupportedTypeRows_Other" xml:space="preserve">
+    <value>{0:N0} dòng dùng {1}, loại không thể vẽ.</value>
+  </data>
+</root>

@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="CannotChangeKey" xml:space="preserve">
+    <value>DynamoDB không thể thay đổi thuộc tính khóa {0}. Hãy xóa mục rồi thêm lại với khóa mới.</value>
+  </data>
+  <data name="ClientRules_One" xml:space="preserve">
+    <value>{0} quy tắc lọc mà DynamoDB không đánh giá được đã được áp dụng cho các mục đã đọc, từng trang một.</value>
+  </data>
+  <data name="ClientRules_Other" xml:space="preserve">
+    <value>{0} quy tắc lọc mà DynamoDB không đánh giá được đã được áp dụng cho các mục đã đọc, từng trang một.</value>
+  </data>
+  <data name="ConsumedCapacity_One" xml:space="preserve">
+    <value>Dung lượng đã dùng: {1:0.##} đơn vị qua {0} yêu cầu.</value>
+  </data>
+  <data name="ConsumedCapacity_Other" xml:space="preserve">
+    <value>Dung lượng đã dùng: {1:0.##} đơn vị qua {0} yêu cầu.</value>
+  </data>
+  <data name="EmptyKeyAttribute" xml:space="preserve">
+    <value>Thuộc tính khóa không được để trống.</value>
+  </data>
+  <data name="EndpointScheme" xml:space="preserve">
+    <value>Endpoint phải bắt đầu bằng https:// hoặc http://.</value>
+  </data>
+  <data name="EnterSecretKey" xml:space="preserve">
+    <value>Hãy nhập khóa truy cập bí mật làm mật khẩu cho ID khóa truy cập {0}.</value>
+  </data>
+  <data name="ItemExists" xml:space="preserve">
+    <value>Đã có một mục với khóa này (thay đổi {0} trên {1}).</value>
+  </data>
+  <data name="ItemGone" xml:space="preserve">
+    <value>Mục không còn tồn tại (thay đổi {0} trên {1}).</value>
+  </data>
+  <data name="KeyNotLoaded" xml:space="preserve">
+    <value>Thuộc tính khóa {0} của mục chưa được tải, nên không thể tìm thấy mục.</value>
+  </data>
+  <data name="MapTakesObject" xml:space="preserve">
+    <value>Thuộc tính map nhận một đối tượng JSON.</value>
+  </data>
+  <data name="NoKeySchema" xml:space="preserve">
+    <value>DynamoDB không báo lược đồ khóa của {0}.</value>
+  </data>
+  <data name="NoOffset" xml:space="preserve">
+    <value>DynamoDB không có OFFSET, và để tới mục {0:N0} phải đọc trước {1:N0} mục. Hãy chuyển trang từ đầu hoặc lọc bảng.</value>
+  </data>
+  <data name="NoProfile" xml:space="preserve">
+    <value>Không tìm thấy hồ sơ AWS nào tên "{0}" trong tệp config hoặc credentials dùng chung.</value>
+  </data>
+  <data name="NotANumber" xml:space="preserve">
+    <value>"{0}" không phải là số.</value>
+  </data>
+  <data name="NotARegion" xml:space="preserve">
+    <value>"{0}" không phải là vùng AWS, chẳng hạn us-east-1.</value>
+  </data>
+  <data name="NotAUrl" xml:space="preserve">
+    <value>"{0}" không phải là URL. Hãy nhập một endpoint, chẳng hạn http://localhost:8000.</value>
+  </data>
+  <data name="NumberKeyMismatch" xml:space="preserve">
+    <value>Không mục nào có thể khớp bộ lọc: một khóa Number đã được so sánh với văn bản không phải là số.</value>
+  </data>
+  <data name="PlainHttpLocalOnly" xml:space="preserve">
+    <value>HTTP không mã hóa chỉ được phép cho endpoint trên máy tính này (localhost). Hãy dùng https:// cho mọi máy chủ khác.</value>
+  </data>
+  <data name="RawConditionAnd" xml:space="preserve">
+    <value>Điều kiện thô phải khớp cùng với các quy tắc.</value>
+  </data>
+  <data name="SortNotApplied" xml:space="preserve">
+    <value>Lệnh scan của DynamoDB trả về mục theo thứ tự riêng của bảng, nên thứ tự sắp xếp chưa được áp dụng.</value>
+  </data>
+  <data name="StoppedAfterScanning" xml:space="preserve">
+    <value>Đã dừng sau khi đọc {0:N0} mục để lấp đầy trang. Hãy thu hẹp bộ lọc để tìm trong toàn bộ bảng.</value>
+  </data>
+  <data name="TooManyItems" xml:space="preserve">
+    <value>DynamoDB ghi tối đa {0} mục trong một giao dịch, còn lần lưu này có {1} mục. Hãy lưu ít hàng hơn mỗi lần.</value>
+  </data>
+</root>

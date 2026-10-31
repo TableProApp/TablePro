@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="BooleanProperty" xml:space="preserve">
+    <value>{0} is a boolean property, so it matches only true or false, not {1}.</value>
+    <comment>{0} is a property name, {1} the value typed. true and false are literal values.</comment>
+  </data>
+  <data name="ComparesNumbersAndDates" xml:space="preserve">
+    <value>Weaviate compares only numbers and dates with {0}, and {1} is neither.</value>
+    <comment>{0} is a comparison operator such as &gt; or BETWEEN, {1} a property name.</comment>
+  </data>
+  <data name="DateProperty" xml:space="preserve">
+    <value>{0} is a date property, and {1} is not an RFC 3339 timestamp such as 2024-01-31T00:00:00Z.</value>
+    <comment>{0} is a property name, {1} the value typed.</comment>
+  </data>
+  <data name="InNeedsValue" xml:space="preserve">
+    <value>IN on {0} needs at least one value.</value>
+    <comment>{0} is a property name. IN is a filter operator.</comment>
+  </data>
+  <data name="MatchesTextOnly" xml:space="preserve">
+    <value>Weaviate matches text with {0}, and {1} is not a text property.</value>
+    <comment>{0} is a filter operator name, {1} a property name.</comment>
+  </data>
+  <data name="NotValidName" xml:space="preserve">
+    <value>{0} is not a valid Weaviate name.</value>
+    <comment>{0} is a class or property name.</comment>
+  </data>
+  <data name="NumericProperty" xml:space="preserve">
+    <value>{0} is a numeric property, and {1} is not a number.</value>
+    <comment>{0} is a property name, {1} the value typed.</comment>
+  </data>
+  <data name="ObjectIdUnknown" xml:space="preserve">
+    <value>The object's id is unknown, so it cannot be addressed.</value>
+  </data>
+  <data name="RawFilterShape" xml:space="preserve">
+    <value>A raw Weaviate filter is a where object, such as { path: ["title"] operator: Like valueText: "*a*" }.</value>
+    <comment>The part in braces is Weaviate syntax and stays as it is.</comment>
+  </data>
+</root>

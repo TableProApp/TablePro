@@ -1,0 +1,177 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AuthDisabled" xml:space="preserve">
+    <value>Authentification désactivée.</value>
+  </data>
+  <data name="AuthEnabled" xml:space="preserve">
+    <value>Authentification activée.</value>
+  </data>
+  <data name="ChangeHasNoKey" xml:space="preserve">
+    <value>Une ligne etcd est identifiée par sa clé, et cette modification n’en a pas.</value>
+  </data>
+  <data name="Compacted" xml:space="preserve">
+    <value>Révision {0} compactée.</value>
+  </data>
+  <data name="CompactionNeedsRevision" xml:space="preserve">
+    <value>compaction nécessite une révision.</value>
+  </data>
+  <data name="ConcurrentChange" xml:space="preserve">
+    <value>Un autre client a modifié ces clés pendant l’enregistrement, rien n’a donc été enregistré. Actualisez et réessayez.</value>
+  </data>
+  <data name="DescribeKey" xml:space="preserve">
+    <value>version {0}, révision {1}</value>
+  </data>
+  <data name="DescribeKeyWithLease" xml:space="preserve">
+    <value>version {0}, révision {1}, bail {2}</value>
+  </data>
+  <data name="EmptyCommand" xml:space="preserve">
+    <value>Commande etcd vide.</value>
+  </data>
+  <data name="EmptyKey" xml:space="preserve">
+    <value>Une clé etcd ne peut pas être vide.</value>
+  </data>
+  <data name="HttpStatus" xml:space="preserve">
+    <value>etcd a renvoyé HTTP {0} : {1}</value>
+  </data>
+  <data name="InvalidLeaseId" xml:space="preserve">
+    <value>ID de bail non valide : {0}</value>
+  </data>
+  <data name="KeepsColumn" xml:space="preserve">
+    <value>etcd gère {0} lui-même ; seuls la clé, la valeur et le bail peuvent être modifiés.</value>
+  </data>
+  <data name="KeyAlreadyExists" xml:space="preserve">
+    <value>La clé {0} existe déjà, rien n’a donc été enregistré. Modifiez plutôt cette ligne.</value>
+  </data>
+  <data name="KeyChangedSinceRead" xml:space="preserve">
+    <value>La clé {0} a changé depuis sa lecture, rien n’a donc été enregistré. Actualisez et réessayez.</value>
+  </data>
+  <data name="KeyGoneStatement" xml:space="preserve">
+    <value>la clé {0}, qui n’existe plus</value>
+  </data>
+  <data name="LeaseComment" xml:space="preserve">
+    <value>Le bail auquel la clé est rattachée, en hexadécimal comme l’affiche etcdctl.</value>
+  </data>
+  <data name="LeaseExpired" xml:space="preserve">
+    <value>Le bail a expiré ou n’a jamais été accordé.</value>
+  </data>
+  <data name="LeaseGrantTtl" xml:space="preserve">
+    <value>lease grant nécessite une durée de vie (TTL) en secondes entières.</value>
+  </data>
+  <data name="LeaseRefreshed" xml:space="preserve">
+    <value>Bail {0} renouvelé une fois, TTL {1} s. Pour le garder actif, il faut un client qui répète l’opération, comme etcdctl.</value>
+  </data>
+  <data name="LeaseRevoked" xml:space="preserve">
+    <value>Bail {0} révoqué.</value>
+  </data>
+  <data name="NeedsKey" xml:space="preserve">
+    <value>{0} nécessite une clé.</value>
+  </data>
+  <data name="NeedsLeaseId" xml:space="preserve">
+    <value>{0} nécessite un ID de bail.</value>
+  </data>
+  <data name="NeedsRoleName" xml:space="preserve">
+    <value>{0} nécessite un nom de rôle.</value>
+  </data>
+  <data name="NeedsSubcommand" xml:space="preserve">
+    <value>{0} nécessite une sous-commande : {1}.</value>
+  </data>
+  <data name="NeedsUserAndRole" xml:space="preserve">
+    <value>{0} nécessite un nom d’utilisateur et un rôle.</value>
+  </data>
+  <data name="NeedsUserName" xml:space="preserve">
+    <value>{0} nécessite un nom d’utilisateur.</value>
+  </data>
+  <data name="NegativeLimit" xml:space="preserve">
+    <value>--limit et --rev ne peuvent pas être négatifs.</value>
+  </data>
+  <data name="NoApiAt" xml:space="preserve">
+    <value>Aucune API etcd v3 trouvée à {0}. Dirigez la connexion vers le port client (2379 par défaut), et non vers le port pair 2380.</value>
+  </data>
+  <data name="NoKeepAliveAnswer" xml:space="preserve">
+    <value>etcd n’a envoyé aucune réponse de maintien en vie.</value>
+  </data>
+  <data name="NotGateway" xml:space="preserve">
+    <value>Le serveur a répondu, mais ce n’est pas une passerelle JSON etcd v3.</value>
+  </data>
+  <data name="NoToken" xml:space="preserve">
+    <value>etcd a accepté la connexion mais n’a renvoyé aucun jeton.</value>
+  </data>
+  <data name="OrderFlag" xml:space="preserve">
+    <value>--order doit valoir ASCEND ou DESCEND.</value>
+  </data>
+  <data name="PrefixAndFromKey" xml:space="preserve">
+    <value>--prefix et --from-key ne peuvent pas être utilisés ensemble.</value>
+  </data>
+  <data name="PutNeedsKeyAndValue" xml:space="preserve">
+    <value>put nécessite une clé et une valeur.</value>
+  </data>
+  <data name="PutTakesOne" xml:space="preserve">
+    <value>put accepte une clé et une valeur ; mettez entre guillemets une valeur qui contient des espaces.</value>
+  </data>
+  <data name="RenameSourceGone" xml:space="preserve">
+    <value>La clé {0} n’existe plus et ne peut donc pas être renommée.</value>
+  </data>
+  <data name="RoleCreated" xml:space="preserve">
+    <value>Rôle {0} créé.</value>
+  </data>
+  <data name="RoleDeleted" xml:space="preserve">
+    <value>Rôle {0} supprimé.</value>
+  </data>
+  <data name="RoleGranted" xml:space="preserve">
+    <value>Rôle {0} accordé à {1}.</value>
+  </data>
+  <data name="RoleRevoked" xml:space="preserve">
+    <value>Rôle {0} retiré à {1}.</value>
+  </data>
+  <data name="SignInRefused" xml:space="preserve">
+    <value>etcd a refusé le nom d’utilisateur ou le mot de passe : {0}</value>
+  </data>
+  <data name="SortByFlag" xml:space="preserve">
+    <value>--sort-by doit valoir KEY, VERSION, CREATE, MOD ou VALUE.</value>
+  </data>
+  <data name="TimeoutNumber" xml:space="preserve">
+    <value>--timeout doit être un nombre de secondes.</value>
+  </data>
+  <data name="TimeoutRange" xml:space="preserve">
+    <value>--timeout doit être compris entre 0 et {0} secondes.</value>
+  </data>
+  <data name="UnknownCommand" xml:space="preserve">
+    <value>Commande inconnue : {0}.</value>
+  </data>
+  <data name="UnknownCommandTry" xml:space="preserve">
+    <value>Commande inconnue : {0}. Essayez get, put, del, watch, lease, member, endpoint ou compaction.</value>
+  </data>
+  <data name="UnreadableResponse" xml:space="preserve">
+    <value>etcd a renvoyé pour {0} une réponse que TablePro n’a pas pu lire.</value>
+  </data>
+  <data name="UserCreated" xml:space="preserve">
+    <value>Utilisateur {0} créé.</value>
+  </data>
+  <data name="UserDeleted" xml:space="preserve">
+    <value>Utilisateur {0} supprimé.</value>
+  </data>
+  <data name="VersionComment" xml:space="preserve">
+    <value>Nombre de modifications de la clé depuis sa création.</value>
+  </data>
+  <data name="Watched" xml:space="preserve">
+    <value>Surveillance pendant {0:0.#} secondes : {1:N0} événements observés.</value>
+  </data>
+  <data name="WholeNumber" xml:space="preserve">
+    <value>{0} doit être un nombre entier.</value>
+  </data>
+  <data name="WithRevision" xml:space="preserve">
+    <value>{0} (révision {1})</value>
+  </data>
+</root>

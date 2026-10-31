@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="BooleanProperty" xml:space="preserve">
+    <value>{0} bir boole özelliği olduğundan yalnızca true veya false ile eşleşir, {1} ile eşleşmez.</value>
+  </data>
+  <data name="ComparesNumbersAndDates" xml:space="preserve">
+    <value>Weaviate {0} ile yalnızca sayıları ve tarihleri karşılaştırır, {1} ise ikisi de değil.</value>
+  </data>
+  <data name="DateProperty" xml:space="preserve">
+    <value>{0} bir tarih özelliği ve {1}, 2024-01-31T00:00:00Z gibi bir RFC 3339 zaman damgası değil.</value>
+  </data>
+  <data name="InNeedsValue" xml:space="preserve">
+    <value>{0} üzerindeki IN en az bir değer gerektirir.</value>
+  </data>
+  <data name="MatchesTextOnly" xml:space="preserve">
+    <value>Weaviate {0} ile metin eşleştirir ve {1} bir metin özelliği değil.</value>
+  </data>
+  <data name="NotValidName" xml:space="preserve">
+    <value>{0} geçerli bir Weaviate adı değil.</value>
+  </data>
+  <data name="NumericProperty" xml:space="preserve">
+    <value>{0} sayısal bir özellik ve {1} bir sayı değil.</value>
+  </data>
+  <data name="ObjectIdUnknown" xml:space="preserve">
+    <value>Nesnenin kimliği bilinmediğinden nesneye erişilemiyor.</value>
+  </data>
+  <data name="RawFilterShape" xml:space="preserve">
+    <value>Ham bir Weaviate filtresi, { path: ["title"] operator: Like valueText: "*a*" } gibi bir where nesnesidir.</value>
+  </data>
+</root>

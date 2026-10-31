@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AutoRefreshSwitch.OffContent" xml:space="preserve">
+    <value>Tự động làm mới</value>
+  </data>
+  <data name="AutoRefreshSwitch.OnContent" xml:space="preserve">
+    <value>Tự động làm mới</value>
+  </data>
+  <data name="EndSessionFailed" xml:space="preserve">
+    <value>Không thể kết thúc phiên</value>
+  </data>
+  <data name="EndSessionMessage" xml:space="preserve">
+    <value>Kết thúc phiên máy chủ {0}? Câu lệnh đang chạy của phiên sẽ bị huỷ và kết nối của phiên sẽ bị đóng.</value>
+  </data>
+  <data name="EndSessionTitle" xml:space="preserve">
+    <value>Kết thúc phiên?</value>
+  </data>
+  <data name="NoActivityView" xml:space="preserve">
+    <value>{0} không có chế độ xem hoạt động.</value>
+  </data>
+  <data name="NoUsersView" xml:space="preserve">
+    <value>{0} không có chế độ xem người dùng.</value>
+  </data>
+  <data name="NoVariablesView" xml:space="preserve">
+    <value>{0} không có chế độ xem biến.</value>
+  </data>
+  <data name="RefreshButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Làm mới</value>
+  </data>
+  <data name="RefreshButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Làm mới</value>
+  </data>
+  <data name="SearchButton.Content" xml:space="preserve">
+    <value>Tìm kiếm</value>
+  </data>
+  <data name="SearchHitRowsMore_One" xml:space="preserve">
+    <value>{0:N0}+ dòng</value>
+  </data>
+  <data name="SearchHitRowsMore_Other" xml:space="preserve">
+    <value>{0:N0}+ dòng</value>
+  </data>
+  <data name="SearchHitRows_One" xml:space="preserve">
+    <value>{0:N0} dòng</value>
+  </data>
+  <data name="SearchHitRows_Other" xml:space="preserve">
+    <value>{0:N0} dòng</value>
+  </data>
+  <data name="SearchProgress_One" xml:space="preserve">
+    <value>Đã tìm {1:N0}/{0:N0} bảng · {2:N0} bảng có kết quả khớp</value>
+  </data>
+  <data name="SearchProgress_Other" xml:space="preserve">
+    <value>Đã tìm {1:N0}/{0:N0} bảng · {2:N0} bảng có kết quả khớp</value>
+  </data>
+  <data name="SearchQueryBox.PlaceholderText" xml:space="preserve">
+    <value>Tìm một giá trị trong mọi bảng của schema này</value>
+  </data>
+  <data name="SearchStopButton.Content" xml:space="preserve">
+    <value>Dừng</value>
+  </data>
+  <data name="SearchStopped" xml:space="preserve">
+    <value>Đã dừng tìm kiếm.</value>
+  </data>
+  <data name="SearchTabTitle" xml:space="preserve">
+    <value>Tìm kiếm</value>
+  </data>
+  <data name="SectionActivity.Text" xml:space="preserve">
+    <value>Hoạt động</value>
+  </data>
+  <data name="SectionUsers.Text" xml:space="preserve">
+    <value>Người dùng</value>
+  </data>
+  <data name="SectionVariables.Text" xml:space="preserve">
+    <value>Biến</value>
+  </data>
+  <data name="StatusRows_One" xml:space="preserve">
+    <value>{0:N0} dòng · {1:T}</value>
+  </data>
+  <data name="StatusRows_Other" xml:space="preserve">
+    <value>{0:N0} dòng · {1:T}</value>
+  </data>
+  <data name="TabTitle" xml:space="preserve">
+    <value>Máy chủ</value>
+  </data>
+  <data name="Terminate" xml:space="preserve">
+    <value>Kết thúc</value>
+  </data>
+  <data name="TerminateSession" xml:space="preserve">
+    <value>Kết thúc phiên</value>
+  </data>
+</root>

@@ -1,0 +1,177 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AccessibleActualTime" xml:space="preserve">
+    <value>实际耗时 {0}</value>
+  </data>
+  <data name="AccessibleCost" xml:space="preserve">
+    <value>成本 {0}</value>
+  </data>
+  <data name="AccessibleOnRelation" xml:space="preserve">
+    <value>在 {0} 上</value>
+  </data>
+  <data name="AccessibleRows_One" xml:space="preserve">
+    <value>{0} 行</value>
+  </data>
+  <data name="AccessibleRows_Other" xml:space="preserve">
+    <value>{0} 行</value>
+  </data>
+  <data name="AccessibleSeparator" xml:space="preserve">
+    <value>，</value>
+  </data>
+  <data name="AccessibleWarnings_One" xml:space="preserve">
+    <value>警告：{0}</value>
+  </data>
+  <data name="AccessibleWarnings_Other" xml:space="preserve">
+    <value>警告：{0}</value>
+  </data>
+  <data name="BarMetricSelfCost" xml:space="preserve">
+    <value>自身成本</value>
+  </data>
+  <data name="BarMetricSelfTime" xml:space="preserve">
+    <value>自身耗时</value>
+  </data>
+  <data name="ColumnsWithNoStatistics" xml:space="preserve">
+    <value>没有统计信息的列</value>
+  </data>
+  <data name="ImplicitConversion" xml:space="preserve">
+    <value>隐式转换：{0}</value>
+  </data>
+  <data name="ImplicitConversionIssue" xml:space="preserve">
+    <value>隐式转换（{0}）：{1}</value>
+  </data>
+  <data name="LabelActualRows" xml:space="preserve">
+    <value>实际行数</value>
+  </data>
+  <data name="LabelActualTime" xml:space="preserve">
+    <value>实际耗时</value>
+  </data>
+  <data name="LabelCost" xml:space="preserve">
+    <value>成本</value>
+  </data>
+  <data name="LabelLoops" xml:space="preserve">
+    <value>循环次数</value>
+  </data>
+  <data name="LabelMissingIndex" xml:space="preserve">
+    <value>缺失的索引</value>
+  </data>
+  <data name="LabelRows" xml:space="preserve">
+    <value>行</value>
+  </data>
+  <data name="LabelTable" xml:space="preserve">
+    <value>表</value>
+  </data>
+  <data name="LabelValue" xml:space="preserve">
+    <value>{0}: {1}</value>
+  </data>
+  <data name="LabelWarning" xml:space="preserve">
+    <value>警告</value>
+  </data>
+  <data name="LabelWidth" xml:space="preserve">
+    <value>宽度</value>
+  </data>
+  <data name="MetricActualLoops" xml:space="preserve">
+    <value>实际循环次数</value>
+  </data>
+  <data name="MetricActualRows" xml:space="preserve">
+    <value>实际行数</value>
+  </data>
+  <data name="MetricActualStartupTime" xml:space="preserve">
+    <value>实际启动时间</value>
+  </data>
+  <data name="MetricActualTotalTime" xml:space="preserve">
+    <value>实际总时间</value>
+  </data>
+  <data name="MetricEstimatedRows" xml:space="preserve">
+    <value>估算行数</value>
+  </data>
+  <data name="MetricEstimatedStartupCost" xml:space="preserve">
+    <value>估算启动成本</value>
+  </data>
+  <data name="MetricEstimatedTotalCost" xml:space="preserve">
+    <value>估算总成本</value>
+  </data>
+  <data name="MetricEstimatedWidth" xml:space="preserve">
+    <value>估算宽度</value>
+  </data>
+  <data name="NeverExecuted" xml:space="preserve">
+    <value>从未执行</value>
+  </data>
+  <data name="PlanRoot" xml:space="preserve">
+    <value>查询计划</value>
+  </data>
+  <data name="SeverityCritical" xml:space="preserve">
+    <value>严重成本</value>
+  </data>
+  <data name="SeverityHigh" xml:space="preserve">
+    <value>高成本</value>
+  </data>
+  <data name="SeverityLow" xml:space="preserve">
+    <value>低成本</value>
+  </data>
+  <data name="SeverityModerate" xml:space="preserve">
+    <value>中等成本</value>
+  </data>
+  <data name="ShareOfLargestStep" xml:space="preserve">
+    <value>占最大步骤的 {0}</value>
+  </data>
+  <data name="ShareOfPlan" xml:space="preserve">
+    <value>占计划的 {0}</value>
+  </data>
+  <data name="ShowplanTooDeep" xml:space="preserve">
+    <value>showplan 嵌套层级过深。</value>
+  </data>
+  <data name="SpillToTempDb" xml:space="preserve">
+    <value>溢出到 tempdb</value>
+  </data>
+  <data name="SpillToTempDbLevel" xml:space="preserve">
+    <value>溢出到 tempdb，级别 {0}</value>
+  </data>
+  <data name="SummaryEstimatedRows" xml:space="preserve">
+    <value>估算行数</value>
+  </data>
+  <data name="SummaryExecutionTime" xml:space="preserve">
+    <value>执行时间</value>
+  </data>
+  <data name="SummaryNodeCount" xml:space="preserve">
+    <value>节点数</value>
+  </data>
+  <data name="SummaryPlanningTime" xml:space="preserve">
+    <value>规划时间</value>
+  </data>
+  <data name="SummaryTotalCost" xml:space="preserve">
+    <value>成本</value>
+  </data>
+  <data name="UnknownOperation" xml:space="preserve">
+    <value>未知</value>
+  </data>
+  <data name="ValueChanged" xml:space="preserve">
+    <value>已更改</value>
+  </data>
+  <data name="VerdictFaster" xml:space="preserve">
+    <value>比基准快 {0:0.#} 倍</value>
+  </data>
+  <data name="VerdictShapeChanged" xml:space="preserve">
+    <value>计划结构已改变</value>
+  </data>
+  <data name="VerdictSlower" xml:space="preserve">
+    <value>比基准慢 {0:0.#} 倍</value>
+  </data>
+  <data name="VerdictUnchanged" xml:space="preserve">
+    <value>没有可测量的变化</value>
+  </data>
+  <data name="VerdictValuesChanged" xml:space="preserve">
+    <value>计划结构相同，数值不同</value>
+  </data>
+</root>

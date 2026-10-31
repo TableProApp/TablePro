@@ -1,0 +1,565 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="CopyActionAppend" xml:space="preserve">
+    <value>Thêm dòng vào</value>
+  </data>
+  <data name="CopyActionCreate" xml:space="preserve">
+    <value>Tạo</value>
+  </data>
+  <data name="CopyActionEmptyAndFill" xml:space="preserve">
+    <value>Làm trống và điền</value>
+  </data>
+  <data name="CopyActionReplace" xml:space="preserve">
+    <value>Thay thế</value>
+  </data>
+  <data name="CopyActionSkip" xml:space="preserve">
+    <value>Bỏ qua</value>
+  </data>
+  <data name="CopyCannotConnect" xml:space="preserve">
+    <value>Không thể kết nối tới {0}</value>
+  </data>
+  <data name="CopyContentData" xml:space="preserve">
+    <value>Chỉ dữ liệu</value>
+  </data>
+  <data name="CopyContentHeader" xml:space="preserve">
+    <value>Sao chép</value>
+  </data>
+  <data name="CopyContentStructure" xml:space="preserve">
+    <value>Chỉ cấu trúc</value>
+  </data>
+  <data name="CopyContentStructureAndData" xml:space="preserve">
+    <value>Cấu trúc và dữ liệu</value>
+  </data>
+  <data name="CopyCrossEngineNote" xml:space="preserve">
+    <value>{0} và {1} là các engine khác nhau, nên kiểu cột sẽ được chuyển đổi. Hãy kiểm tra chúng trước khi sao chép.</value>
+  </data>
+  <data name="CopyFailedTitle" xml:space="preserve">
+    <value>Sao chép thất bại</value>
+  </data>
+  <data name="CopyFinishedTitle" xml:space="preserve">
+    <value>Sao chép xong</value>
+  </data>
+  <data name="CopyFinishedWithProblemsTitle" xml:space="preserve">
+    <value>Sao chép xong nhưng có sự cố</value>
+  </data>
+  <data name="CopyKindFunction" xml:space="preserve">
+    <value>hàm</value>
+  </data>
+  <data name="CopyKindMaterializedView" xml:space="preserve">
+    <value>materialized view</value>
+  </data>
+  <data name="CopyKindProcedure" xml:space="preserve">
+    <value>procedure</value>
+  </data>
+  <data name="CopyKindSequence" xml:space="preserve">
+    <value>sequence</value>
+  </data>
+  <data name="CopyKindTable" xml:space="preserve">
+    <value>bảng</value>
+  </data>
+  <data name="CopyKindView" xml:space="preserve">
+    <value>view</value>
+  </data>
+  <data name="CopyObjectsCopied_One" xml:space="preserve">
+    <value>Đã sao chép {0} đối tượng. {1}</value>
+  </data>
+  <data name="CopyObjectsCopied_Other" xml:space="preserve">
+    <value>Đã sao chép {0} đối tượng. {1}</value>
+  </data>
+  <data name="CopyObjectsFrom" xml:space="preserve">
+    <value>Đối tượng từ {0}</value>
+  </data>
+  <data name="CopyObjectsTitle" xml:space="preserve">
+    <value>Sao chép đối tượng</value>
+  </data>
+  <data name="CopyOnError" xml:space="preserve">
+    <value>Khi có lỗi</value>
+  </data>
+  <data name="CopyOnErrorSkip" xml:space="preserve">
+    <value>Bỏ qua đối tượng bị lỗi và tiếp tục</value>
+  </data>
+  <data name="CopyOnErrorStop" xml:space="preserve">
+    <value>Dừng ở lỗi đầu tiên</value>
+  </data>
+  <data name="CopyOutcomeCopied" xml:space="preserve">
+    <value>Đã sao chép</value>
+  </data>
+  <data name="CopyOutcomeFailed" xml:space="preserve">
+    <value>Thất bại</value>
+  </data>
+  <data name="CopyOutcomeNameRows_One" xml:space="preserve">
+    <value>{1}, {0:N0} dòng</value>
+  </data>
+  <data name="CopyOutcomeNameRows_Other" xml:space="preserve">
+    <value>{1}, {0:N0} dòng</value>
+  </data>
+  <data name="CopyOutcomeSkipped" xml:space="preserve">
+    <value>Đã bỏ qua</value>
+  </data>
+  <data name="CopyOutcomeStopped" xml:space="preserve">
+    <value>Đã dừng</value>
+  </data>
+  <data name="CopyPhaseCopyingRows" xml:space="preserve">
+    <value>Đang sao chép các dòng của {0}</value>
+  </data>
+  <data name="CopyPhaseCreating" xml:space="preserve">
+    <value>Đang tạo {0}</value>
+  </data>
+  <data name="CopyPhaseDropping" xml:space="preserve">
+    <value>Đang xoá {0}</value>
+  </data>
+  <data name="CopyPhaseFinishing" xml:space="preserve">
+    <value>Đang hoàn tất</value>
+  </data>
+  <data name="CopyPhaseIndexing" xml:space="preserve">
+    <value>Đang tạo chỉ mục cho {0}</value>
+  </data>
+  <data name="CopyPhaseLinkingKeys" xml:space="preserve">
+    <value>Đang thêm các khóa của {0}</value>
+  </data>
+  <data name="CopyPhasePreparing" xml:space="preserve">
+    <value>Đang chuẩn bị</value>
+  </data>
+  <data name="CopyPolicyAppend" xml:space="preserve">
+    <value>Thêm dòng vào đối tượng đó</value>
+  </data>
+  <data name="CopyPolicyHeader" xml:space="preserve">
+    <value>Khi đích đã có một đối tượng trùng tên</value>
+  </data>
+  <data name="CopyPolicyReplace" xml:space="preserve">
+    <value>Thay thế đối tượng đó</value>
+  </data>
+  <data name="CopyPolicySkip" xml:space="preserve">
+    <value>Bỏ qua đối tượng đó</value>
+  </data>
+  <data name="CopyProgressName" xml:space="preserve">
+    <value>Tiến trình sao chép</value>
+  </data>
+  <data name="CopyProgressTitle" xml:space="preserve">
+    <value>Đang sao chép</value>
+  </data>
+  <data name="CopyReviewButton" xml:space="preserve">
+    <value>Sao chép</value>
+  </data>
+  <data name="CopyReviewTitle" xml:space="preserve">
+    <value>Sao chép tới {0}</value>
+  </data>
+  <data name="CopyRowsCopiedTo_One" xml:space="preserve">
+    <value>Đã sao chép {0:N0} dòng tới {1}.</value>
+  </data>
+  <data name="CopyRowsCopiedTo_Other" xml:space="preserve">
+    <value>Đã sao chép {0:N0} dòng tới {1}.</value>
+  </data>
+  <data name="CopyRowsCopied_One" xml:space="preserve">
+    <value>Đã sao chép {0:N0} dòng</value>
+  </data>
+  <data name="CopyRowsCopied_Other" xml:space="preserve">
+    <value>Đã sao chép {0:N0} dòng</value>
+  </data>
+  <data name="CopySelectNone" xml:space="preserve">
+    <value>Bỏ chọn tất cả</value>
+  </data>
+  <data name="CopyStoppedTitle" xml:space="preserve">
+    <value>Đã dừng sao chép</value>
+  </data>
+  <data name="CopyTargetSchema" xml:space="preserve">
+    <value>Schema đích</value>
+  </data>
+  <data name="CopyThisConnection" xml:space="preserve">
+    <value>{0} (kết nối này)</value>
+  </data>
+  <data name="CopyTo" xml:space="preserve">
+    <value>Sao chép tới</value>
+  </data>
+  <data name="GenCannotReadTable" xml:space="preserve">
+    <value>Không thể đọc bảng</value>
+  </data>
+  <data name="GenColumns" xml:space="preserve">
+    <value>Cột</value>
+  </data>
+  <data name="GenDateFrom" xml:space="preserve">
+    <value>Từ</value>
+  </data>
+  <data name="GenDateTo" xml:space="preserve">
+    <value>Đến</value>
+  </data>
+  <data name="GenDecimalPlaces" xml:space="preserve">
+    <value>Số chữ số thập phân</value>
+  </data>
+  <data name="GenFixIssues" xml:space="preserve">
+    <value>Hãy sửa các lỗi này trước khi tạo</value>
+  </data>
+  <data name="GenGenerate" xml:space="preserve">
+    <value>Tạo</value>
+  </data>
+  <data name="GenGenerator" xml:space="preserve">
+    <value>Bộ tạo</value>
+  </data>
+  <data name="GenInsert" xml:space="preserve">
+    <value>Chèn</value>
+  </data>
+  <data name="GenInsertConfirmMessage_One" xml:space="preserve">
+    <value>Chèn {0:N0} dòng được tạo vào {1}?</value>
+  </data>
+  <data name="GenInsertConfirmMessage_Other" xml:space="preserve">
+    <value>Chèn {0:N0} dòng được tạo vào {1}?</value>
+  </data>
+  <data name="GenInsertConfirmTitle" xml:space="preserve">
+    <value>Thêm dòng?</value>
+  </data>
+  <data name="GenInserted_One" xml:space="preserve">
+    <value>Đã chèn {0:N0} dòng vào {1}.</value>
+  </data>
+  <data name="GenInserted_Other" xml:space="preserve">
+    <value>Đã chèn {0:N0} dòng vào {1}.</value>
+  </data>
+  <data name="GenListValues" xml:space="preserve">
+    <value>Giá trị, mỗi dòng một giá trị</value>
+  </data>
+  <data name="GenLongest" xml:space="preserve">
+    <value>Dài nhất</value>
+  </data>
+  <data name="GenMaximum" xml:space="preserve">
+    <value>Tối đa</value>
+  </data>
+  <data name="GenMinimum" xml:space="preserve">
+    <value>Tối thiểu</value>
+  </data>
+  <data name="GenNewSeed" xml:space="preserve">
+    <value>Seed mới</value>
+  </data>
+  <data name="GenNewSeedTip" xml:space="preserve">
+    <value>Seed mới: cùng seed và cùng cài đặt luôn cho ra các dòng giống nhau</value>
+  </data>
+  <data name="GenNoGenerator" xml:space="preserve">
+    <value>Không có bộ tạo nào điền được kiểu này.</value>
+  </data>
+  <data name="GenNullValues" xml:space="preserve">
+    <value>Giá trị NULL</value>
+  </data>
+  <data name="GenOpenAsSql" xml:space="preserve">
+    <value>Mở dưới dạng SQL</value>
+  </data>
+  <data name="GenPattern" xml:space="preserve">
+    <value>Mẫu</value>
+  </data>
+  <data name="GenPatternHelp" xml:space="preserve">
+    <value># là một chữ số, ? là một chữ cái, * là một trong hai, và \ khiến ký tự tiếp theo được hiểu theo nghĩa đen.</value>
+  </data>
+  <data name="GenPreview" xml:space="preserve">
+    <value>Xem trước</value>
+  </data>
+  <data name="GenPreviewName" xml:space="preserve">
+    <value>Xem trước các dòng đầu tiên</value>
+  </data>
+  <data name="GenPreviewNote" xml:space="preserve">
+    <value>Các dòng đầu tiên trong số {0:N0}. Không hiển thị các cột để máy chủ tự điền.</value>
+  </data>
+  <data name="GenPreviewWaiting" xml:space="preserve">
+    <value>Bản xem trước sẽ xuất hiện khi cài đặt không còn lỗi.</value>
+  </data>
+  <data name="GenProgressTitle" xml:space="preserve">
+    <value>Đang tạo dòng</value>
+  </data>
+  <data name="GenProgress_One" xml:space="preserve">
+    <value>{1:N0} trên {0:N0} hàng</value>
+  </data>
+  <data name="GenProgress_Other" xml:space="preserve">
+    <value>{1:N0} trên {0:N0} hàng</value>
+  </data>
+  <data name="GenReadOnlyMessage" xml:space="preserve">
+    <value>Chế độ an toàn đang ở mức Chỉ đọc trên kết nối này, nên không thể chèn dòng nào.</value>
+  </data>
+  <data name="GenReadOnlyTitle" xml:space="preserve">
+    <value>Kết nối chỉ đọc</value>
+  </data>
+  <data name="GenReferenceNote" xml:space="preserve">
+    <value>Lấy một giá trị của khóa được tham chiếu.</value>
+  </data>
+  <data name="GenReferenceSampledNote_One" xml:space="preserve">
+    <value>Lấy một giá trị từ {1}, được lấy mẫu từ {0:N0} dòng của bảng đó. Mọi cột của khóa đều đến từ cùng một dòng.</value>
+  </data>
+  <data name="GenReferenceSampledNote_Other" xml:space="preserve">
+    <value>Lấy một giá trị từ {1}, được lấy mẫu từ {0:N0} dòng của bảng đó. Mọi cột của khóa đều đến từ cùng một dòng.</value>
+  </data>
+  <data name="GenRows" xml:space="preserve">
+    <value>Dòng</value>
+  </data>
+  <data name="GenSeed" xml:space="preserve">
+    <value>Seed</value>
+  </data>
+  <data name="GenServerDefaultNote" xml:space="preserve">
+    <value>Bị bỏ ra khỏi mọi câu INSERT, nên cột sẽ nhận giá trị mặc định hoặc NULL.</value>
+  </data>
+  <data name="GenServerFillsNote" xml:space="preserve">
+    <value>Máy chủ tự điền cột này.</value>
+  </data>
+  <data name="GenShortest" xml:space="preserve">
+    <value>Ngắn nhất</value>
+  </data>
+  <data name="GenStart" xml:space="preserve">
+    <value>Bắt đầu</value>
+  </data>
+  <data name="GenStep" xml:space="preserve">
+    <value>Bước</value>
+  </data>
+  <data name="GenStoppedAfter_One" xml:space="preserve">
+    <value>Đã dừng sau {0:N0} dòng; dòng đó vẫn nằm trong {1}.</value>
+  </data>
+  <data name="GenStoppedAfter_Other" xml:space="preserve">
+    <value>Đã dừng sau {0:N0} dòng; các dòng đó vẫn nằm trong {1}.</value>
+  </data>
+  <data name="GenStoppedMessage_One" xml:space="preserve">
+    <value>{1}
+
+{0:N0} dòng đã được chèn trước lỗi này và vẫn nằm trong bảng.</value>
+  </data>
+  <data name="GenStoppedMessage_Other" xml:space="preserve">
+    <value>{1}
+
+{0:N0} dòng đã được chèn trước lỗi này và vẫn nằm trong bảng.</value>
+  </data>
+  <data name="GenStoppedTitle" xml:space="preserve">
+    <value>Đã dừng tạo dòng</value>
+  </data>
+  <data name="GenTitle" xml:space="preserve">
+    <value>Tạo dòng cho {0}</value>
+  </data>
+  <data name="GenTrueValues" xml:space="preserve">
+    <value>Giá trị true</value>
+  </data>
+  <data name="GenUuidVersion" xml:space="preserve">
+    <value>Phiên bản</value>
+  </data>
+  <data name="GenUuidVersion4" xml:space="preserve">
+    <value>Phiên bản 4 (ngẫu nhiên)</value>
+  </data>
+  <data name="GenUuidVersion7" xml:space="preserve">
+    <value>Phiên bản 7 (theo thời gian)</value>
+  </data>
+  <data name="GenVocabularyNote" xml:space="preserve">
+    <value>Tạo giá trị {0} từ một bộ từ vựng cố định, giống nhau cho cùng một seed trong mọi phiên bản TablePro.</value>
+  </data>
+  <data name="GeneratorBoolean" xml:space="preserve">
+    <value>Boolean</value>
+  </data>
+  <data name="GeneratorCity" xml:space="preserve">
+    <value>Thành phố</value>
+  </data>
+  <data name="GeneratorCountry" xml:space="preserve">
+    <value>Quốc gia</value>
+  </data>
+  <data name="GeneratorDate" xml:space="preserve">
+    <value>Ngày</value>
+  </data>
+  <data name="GeneratorDateTime" xml:space="preserve">
+    <value>Ngày và giờ</value>
+  </data>
+  <data name="GeneratorDecimalRange" xml:space="preserve">
+    <value>Khoảng số thập phân</value>
+  </data>
+  <data name="GeneratorEmail" xml:space="preserve">
+    <value>Email</value>
+  </data>
+  <data name="GeneratorFirstName" xml:space="preserve">
+    <value>Tên</value>
+  </data>
+  <data name="GeneratorFullName" xml:space="preserve">
+    <value>Họ và tên</value>
+  </data>
+  <data name="GeneratorIntegerRange" xml:space="preserve">
+    <value>Khoảng số nguyên</value>
+  </data>
+  <data name="GeneratorJson" xml:space="preserve">
+    <value>JSON</value>
+  </data>
+  <data name="GeneratorLastName" xml:space="preserve">
+    <value>Họ</value>
+  </data>
+  <data name="GeneratorList" xml:space="preserve">
+    <value>Danh sách giá trị</value>
+  </data>
+  <data name="GeneratorPattern" xml:space="preserve">
+    <value>Mẫu</value>
+  </data>
+  <data name="GeneratorPhone" xml:space="preserve">
+    <value>Số điện thoại</value>
+  </data>
+  <data name="GeneratorReference" xml:space="preserve">
+    <value>Giá trị tham chiếu</value>
+  </data>
+  <data name="GeneratorSequence" xml:space="preserve">
+    <value>Sequence</value>
+  </data>
+  <data name="GeneratorServerDefault" xml:space="preserve">
+    <value>Mặc định của máy chủ</value>
+  </data>
+  <data name="GeneratorStreetAddress" xml:space="preserve">
+    <value>Địa chỉ đường phố</value>
+  </data>
+  <data name="GeneratorText" xml:space="preserve">
+    <value>Văn bản</value>
+  </data>
+  <data name="GeneratorTime" xml:space="preserve">
+    <value>Thời gian</value>
+  </data>
+  <data name="GeneratorUuid" xml:space="preserve">
+    <value>UUID</value>
+  </data>
+  <data name="JoinAddFilter" xml:space="preserve">
+    <value>Thêm bộ lọc</value>
+  </data>
+  <data name="JoinAddSort" xml:space="preserve">
+    <value>Thêm sắp xếp</value>
+  </data>
+  <data name="JoinAscending" xml:space="preserve">
+    <value>Tăng dần</value>
+  </data>
+  <data name="JoinCannotReadTables" xml:space="preserve">
+    <value>Không thể đọc các bảng</value>
+  </data>
+  <data name="JoinClearQuery" xml:space="preserve">
+    <value>Xoá truy vấn</value>
+  </data>
+  <data name="JoinColumn" xml:space="preserve">
+    <value>Cột</value>
+  </data>
+  <data name="JoinConditionFor" xml:space="preserve">
+    <value>Điều kiện join cho {0}</value>
+  </data>
+  <data name="JoinCopySql" xml:space="preserve">
+    <value>Sao chép SQL</value>
+  </data>
+  <data name="JoinCrossJoin" xml:space="preserve">
+    <value>Cross join (không có điều kiện)</value>
+  </data>
+  <data name="JoinDescending" xml:space="preserve">
+    <value>Giảm dần</value>
+  </data>
+  <data name="JoinFilterTables" xml:space="preserve">
+    <value>Lọc bảng</value>
+  </data>
+  <data name="JoinGeneratedSql" xml:space="preserve">
+    <value>SQL được tạo</value>
+  </data>
+  <data name="JoinHintCrossJoined_One" xml:space="preserve">
+    <value>Không có khóa ngoại nào liên kết {1} với các bảng trước nó, nên bảng này được cross join.</value>
+  </data>
+  <data name="JoinHintCrossJoined_Other" xml:space="preserve">
+    <value>Không có khóa ngoại nào liên kết {1} với các bảng trước chúng, nên các bảng này được cross join.</value>
+  </data>
+  <data name="JoinHintStart" xml:space="preserve">
+    <value>Chọn các bảng cần join. Khóa ngoại của chúng sẽ trở thành điều kiện join.</value>
+  </data>
+  <data name="JoinKindFull" xml:space="preserve">
+    <value>Full Join</value>
+  </data>
+  <data name="JoinKindInner" xml:space="preserve">
+    <value>Inner Join</value>
+  </data>
+  <data name="JoinKindLeft" xml:space="preserve">
+    <value>Left Join</value>
+  </data>
+  <data name="JoinKindRight" xml:space="preserve">
+    <value>Right Join</value>
+  </data>
+  <data name="JoinNoTables" xml:space="preserve">
+    <value>Schema này không có bảng nào để join.</value>
+  </data>
+  <data name="JoinOpenInQueryTab" xml:space="preserve">
+    <value>Mở trong tab truy vấn</value>
+  </data>
+  <data name="JoinOperator" xml:space="preserve">
+    <value>Toán tử</value>
+  </data>
+  <data name="JoinPickSecondTable" xml:space="preserve">
+    <value>Chọn bảng thứ hai để join.</value>
+  </data>
+  <data name="JoinReadingTables" xml:space="preserve">
+    <value>Đang đọc các bảng…</value>
+  </data>
+  <data name="JoinReadingTablesProgress" xml:space="preserve">
+    <value>Đang đọc các bảng… {0}/{1}</value>
+  </data>
+  <data name="JoinReloadTables" xml:space="preserve">
+    <value>Tải lại các bảng</value>
+  </data>
+  <data name="JoinRemoveFilter" xml:space="preserve">
+    <value>Xóa bộ lọc</value>
+  </data>
+  <data name="JoinRemoveSort" xml:space="preserve">
+    <value>Xóa sắp xếp</value>
+  </data>
+  <data name="JoinRemoveTable" xml:space="preserve">
+    <value>Gỡ {0}</value>
+  </data>
+  <data name="JoinSecondValue" xml:space="preserve">
+    <value>Giá trị thứ hai</value>
+  </data>
+  <data name="JoinSectionFilters" xml:space="preserve">
+    <value>Bộ lọc</value>
+  </data>
+  <data name="JoinSectionJoins" xml:space="preserve">
+    <value>Join</value>
+  </data>
+  <data name="JoinSectionSort" xml:space="preserve">
+    <value>Sắp xếp</value>
+  </data>
+  <data name="JoinSelectColumn" xml:space="preserve">
+    <value>Chọn {0}.{1}</value>
+  </data>
+  <data name="JoinShowingTables_One" xml:space="preserve">
+    <value>Đang hiện {1}/{0} bảng</value>
+  </data>
+  <data name="JoinShowingTables_Other" xml:space="preserve">
+    <value>Đang hiện {1}/{0} bảng</value>
+  </data>
+  <data name="JoinSortDirection" xml:space="preserve">
+    <value>Hướng sắp xếp</value>
+  </data>
+  <data name="JoinSqlPlaceholder" xml:space="preserve">
+    <value>-- Chọn một bảng để bắt đầu.</value>
+  </data>
+  <data name="JoinTabTitle" xml:space="preserve">
+    <value>Trình tạo Join</value>
+  </data>
+  <data name="JoinTableCount_One" xml:space="preserve">
+    <value>{0} bảng</value>
+  </data>
+  <data name="JoinTableCount_Other" xml:space="preserve">
+    <value>{0} bảng</value>
+  </data>
+  <data name="JoinTryAgain" xml:space="preserve">
+    <value>Thử lại</value>
+  </data>
+  <data name="JoinTypeFor" xml:space="preserve">
+    <value>Kiểu join cho {0}</value>
+  </data>
+  <data name="JoinValueFrom" xml:space="preserve">
+    <value>Từ</value>
+  </data>
+  <data name="JoinValueTo" xml:space="preserve">
+    <value>Đến</value>
+  </data>
+  <data name="JoinZoomIn" xml:space="preserve">
+    <value>Phóng to</value>
+  </data>
+  <data name="JoinZoomOut" xml:space="preserve">
+    <value>Thu nhỏ</value>
+  </data>
+  <data name="Starting" xml:space="preserve">
+    <value>Đang khởi động…</value>
+  </data>
+</root>

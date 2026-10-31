@@ -1,0 +1,405 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AccessReadOnly" xml:space="preserve">
+    <value>Read only</value>
+    <comment>Access level an MCP client is given.</comment>
+  </data>
+  <data name="AccessReadWrite" xml:space="preserve">
+    <value>Read and write, asking before each write</value>
+    <comment>Access level an MCP client is given: TablePro asks the user before each change the client makes.</comment>
+  </data>
+  <data name="ActionClientAdded" xml:space="preserve">
+    <value>Client added</value>
+    <comment>Kind of entry in the MCP activity log.</comment>
+  </data>
+  <data name="ActionClientRemoved" xml:space="preserve">
+    <value>Client removed</value>
+    <comment>Kind of entry in the MCP activity log.</comment>
+  </data>
+  <data name="ActionClientRevoked" xml:space="preserve">
+    <value>Client revoked</value>
+    <comment>Kind of entry in the MCP activity log: the client's access was withdrawn.</comment>
+  </data>
+  <data name="ActionPairingApproved" xml:space="preserve">
+    <value>Pairing approved</value>
+    <comment>Kind of entry in the MCP activity log. Pairing is how a client asks for and gets access.</comment>
+  </data>
+  <data name="ActionPairingDenied" xml:space="preserve">
+    <value>Pairing declined</value>
+    <comment>Kind of entry in the MCP activity log.</comment>
+  </data>
+  <data name="ActionPairingRequest" xml:space="preserve">
+    <value>Pairing request</value>
+    <comment>Kind of entry in the MCP activity log.</comment>
+  </data>
+  <data name="ActionSignInRefused" xml:space="preserve">
+    <value>Sign-in refused</value>
+    <comment>Kind of entry in the MCP activity log: a client presented a token that was not accepted.</comment>
+  </data>
+  <data name="ActionTokenCollected" xml:space="preserve">
+    <value>Token collected</value>
+    <comment>Kind of entry in the MCP activity log: a paired client picked up its access token.</comment>
+  </data>
+  <data name="ActivityHeading" xml:space="preserve">
+    <value>Activity</value>
+    <comment>Section heading in Settings &gt; MCP.</comment>
+  </data>
+  <data name="ActivityListName" xml:space="preserve">
+    <value>MCP activity</value>
+    <comment>Screen reader name of the activity log list.</comment>
+  </data>
+  <data name="ActivityNote_One" xml:space="preserve">
+    <value>Every tool call, pairing and client change, kept for {0} day in mcp-audit.db. Statements are kept as a SHA-256 digest, never as text; the query history has the statements themselves.</value>
+    <comment>{0} is the number of days the log keeps entries. mcp-audit.db is a file name and stays as is.</comment>
+  </data>
+  <data name="ActivityNote_Other" xml:space="preserve">
+    <value>Every tool call, pairing and client change, kept for {0} days in mcp-audit.db. Statements are kept as a SHA-256 digest, never as text; the query history has the statements themselves.</value>
+    <comment>{0} is the number of days the log keeps entries. mcp-audit.db is a file name and stays as is.</comment>
+  </data>
+  <data name="AddClient" xml:space="preserve">
+    <value>Add client</value>
+    <comment>Button in Settings &gt; MCP.</comment>
+  </data>
+  <data name="AddClientTitle" xml:space="preserve">
+    <value>Add an MCP client</value>
+    <comment>Dialog title.</comment>
+  </data>
+  <data name="AddClientTooltip" xml:space="preserve">
+    <value>Issue a token by hand, for a client that cannot pair</value>
+    <comment>Tooltip of the Add client button.</comment>
+  </data>
+  <data name="AllClients" xml:space="preserve">
+    <value>All clients</value>
+    <comment>First choice of the activity log's client filter.</comment>
+  </data>
+  <data name="Allow" xml:space="preserve">
+    <value>Allow</value>
+    <comment>Button that lets an MCP client pair.</comment>
+  </data>
+  <data name="CategoryAdmin" xml:space="preserve">
+    <value>Client changes</value>
+    <comment>Choice of the activity log's kind filter.</comment>
+  </data>
+  <data name="CategoryAll" xml:space="preserve">
+    <value>All activity</value>
+    <comment>Choice of the activity log's kind filter.</comment>
+  </data>
+  <data name="CategoryAuth" xml:space="preserve">
+    <value>Pairing and sign-in</value>
+    <comment>Choice of the activity log's kind filter.</comment>
+  </data>
+  <data name="CategoryFilterName" xml:space="preserve">
+    <value>Kind of activity</value>
+    <comment>Screen reader name of the activity log's kind filter.</comment>
+  </data>
+  <data name="CategoryTools" xml:space="preserve">
+    <value>Tool calls</value>
+    <comment>Choice of the activity log's kind filter. A tool call is a request an MCP client makes, such as running a query.</comment>
+  </data>
+  <data name="ChangeClientFailed" xml:space="preserve">
+    <value>The client could not be changed</value>
+    <comment>Error title; the system's error text follows.</comment>
+  </data>
+  <data name="ClearLog" xml:space="preserve">
+    <value>Clear log</value>
+    <comment>Button in Settings &gt; MCP.</comment>
+  </data>
+  <data name="ClearLogConfirmMessage" xml:space="preserve">
+    <value>Every logged call, pairing and client change is deleted. Paired clients keep their access.</value>
+  </data>
+  <data name="ClearLogConfirmTitle" xml:space="preserve">
+    <value>Clear the MCP activity log?</value>
+  </data>
+  <data name="ClearLogFailed" xml:space="preserve">
+    <value>The log could not be cleared</value>
+    <comment>Error title; the system's error text follows.</comment>
+  </data>
+  <data name="ClientFilterName" xml:space="preserve">
+    <value>Client</value>
+    <comment>Screen reader name of the activity log's client filter.</comment>
+  </data>
+  <data name="Copied" xml:space="preserve">
+    <value>Copied</value>
+    <comment>Replaces the "Copy token" button text after the token was copied.</comment>
+  </data>
+  <data name="CopyToken" xml:space="preserve">
+    <value>Copy token</value>
+    <comment>Button.</comment>
+  </data>
+  <data name="CreateToken" xml:space="preserve">
+    <value>Create token</value>
+    <comment>Button.</comment>
+  </data>
+  <data name="CreateTokenFailed" xml:space="preserve">
+    <value>The token could not be created</value>
+    <comment>Error title; the system's error text follows.</comment>
+  </data>
+  <data name="Deny" xml:space="preserve">
+    <value>Deny</value>
+    <comment>Button that turns down an MCP client's request to pair.</comment>
+  </data>
+  <data name="ExpiredOn" xml:space="preserve">
+    <value>expired {0:d}</value>
+    <comment>Part of a client's summary line, after a middle dot. {0:d} is a date. Starts lowercase in English.</comment>
+  </data>
+  <data name="ExpiresOn" xml:space="preserve">
+    <value>until {0:d}</value>
+    <comment>Part of a client's summary line, after a middle dot: the token is valid until this date. {0:d} is a date.</comment>
+  </data>
+  <data name="ExpiryIn30Days" xml:space="preserve">
+    <value>In 30 days</value>
+    <comment>Choice for when a client's token expires.</comment>
+  </data>
+  <data name="ExpiryIn90Days" xml:space="preserve">
+    <value>In 90 days</value>
+    <comment>Choice for when a client's token expires.</comment>
+  </data>
+  <data name="ExpiryInAYear" xml:space="preserve">
+    <value>In a year</value>
+    <comment>Choice for when a client's token expires.</comment>
+  </data>
+  <data name="ExpiryNever" xml:space="preserve">
+    <value>Never</value>
+    <comment>Choice for when a client's token expires.</comment>
+  </data>
+  <data name="FormAccessHeader" xml:space="preserve">
+    <value>Access</value>
+    <comment>Header of the access level choice for an MCP client.</comment>
+  </data>
+  <data name="FormAccessNote" xml:space="preserve">
+    <value>Each connection's External Clients level still applies; a client never gets more than it allows.</value>
+    <comment>"External Clients" is the name of a setting in the connection editor; use its translated name.</comment>
+  </data>
+  <data name="FormClientNameHeader" xml:space="preserve">
+    <value>Client name</value>
+  </data>
+  <data name="FormClientNamePlaceholder" xml:space="preserve">
+    <value>For example, Claude Desktop</value>
+    <comment>Claude Desktop is a product name and stays as is.</comment>
+  </data>
+  <data name="FormConnectionsHeader" xml:space="preserve">
+    <value>Connections</value>
+    <comment>Header of the choice of which saved connections a client may use.</comment>
+  </data>
+  <data name="FormExpiryHeader" xml:space="preserve">
+    <value>Token expires</value>
+  </data>
+  <data name="FormNoConnections" xml:space="preserve">
+    <value>No connection lets MCP clients in yet.</value>
+  </data>
+  <data name="FormRequestMessage" xml:space="preserve">
+    <value>"{0}" asks to use your saved connections through TablePro's MCP server. Any program on this PC can ask under any name, so allow it only if you just started pairing in that app.</value>
+    <comment>{0} is the name the client gave itself.</comment>
+  </data>
+  <data name="FormScopeAll" xml:space="preserve">
+    <value>All connections</value>
+  </data>
+  <data name="FormScopeTicked" xml:space="preserve">
+    <value>Only the ones ticked below</value>
+    <comment>Choice: only the connections whose check boxes are ticked.</comment>
+  </data>
+  <data name="IntegrityBroken_One" xml:space="preserve">
+    <value>Entry {1} was changed or removed outside TablePro; the {0:N0} entry before it is intact.</value>
+    <comment>{1} is the number of the damaged log entry, {0} the count of entries before it.</comment>
+  </data>
+  <data name="IntegrityBroken_Other" xml:space="preserve">
+    <value>Entry {1} was changed or removed outside TablePro; the {0:N0} entries before it are intact.</value>
+    <comment>{1} is the number of the damaged log entry, {0} the count of entries before it.</comment>
+  </data>
+  <data name="IntegrityIntactShowingLatest_One" xml:space="preserve">
+    <value>{0:N0} entry kept. Each entry's hash chains to the one before, and the chain is intact. Showing the latest {1}.</value>
+    <comment>{0} is the number of log entries, {1} how many of the newest are listed.</comment>
+  </data>
+  <data name="IntegrityIntactShowingLatest_Other" xml:space="preserve">
+    <value>{0:N0} entries kept. Each entry's hash chains to the one before, and the chain is intact. Showing the latest {1}.</value>
+    <comment>{0} is the number of log entries, {1} how many of the newest are listed.</comment>
+  </data>
+  <data name="IntegrityIntact_One" xml:space="preserve">
+    <value>{0:N0} entry kept. Each entry's hash chains to the one before, and the chain is intact.</value>
+    <comment>{0} is the number of log entries.</comment>
+  </data>
+  <data name="IntegrityIntact_Other" xml:space="preserve">
+    <value>{0:N0} entries kept. Each entry's hash chains to the one before, and the chain is intact.</value>
+    <comment>{0} is the number of log entries.</comment>
+  </data>
+  <data name="LastUsed" xml:space="preserve">
+    <value>last used {0:g}</value>
+    <comment>Part of a client's summary line. {0:g} is a date and time. Starts lowercase in English.</comment>
+  </data>
+  <data name="ListSeparator" xml:space="preserve">
+    <value>, </value>
+    <comment>Separator between connection names in a short list: a comma and a space in English.</comment>
+  </data>
+  <data name="NeverUsed" xml:space="preserve">
+    <value>never used</value>
+    <comment>Part of a client's summary line. Starts lowercase in English.</comment>
+  </data>
+  <data name="NoClients" xml:space="preserve">
+    <value>No client has paired yet.</value>
+  </data>
+  <data name="NoExpiry" xml:space="preserve">
+    <value>no expiry</value>
+    <comment>Part of a client's summary line, after a middle dot. Starts lowercase in English.</comment>
+  </data>
+  <data name="NothingLogged" xml:space="preserve">
+    <value>Nothing logged yet.</value>
+  </data>
+  <data name="OutcomeDeclined" xml:space="preserve">
+    <value>Declined</value>
+    <comment>Outcome of an MCP activity log entry: the user said no.</comment>
+  </data>
+  <data name="OutcomeDenied" xml:space="preserve">
+    <value>Denied</value>
+    <comment>Outcome of an MCP activity log entry: the client's access level did not allow it.</comment>
+  </data>
+  <data name="OutcomeFailed" xml:space="preserve">
+    <value>Failed</value>
+    <comment>Outcome of an MCP activity log entry.</comment>
+  </data>
+  <data name="OutcomeRefused" xml:space="preserve">
+    <value>Refused</value>
+    <comment>Outcome of an MCP activity log entry: the caller had no valid token.</comment>
+  </data>
+  <data name="OutcomeSucceeded" xml:space="preserve">
+    <value>Succeeded</value>
+    <comment>Outcome of an MCP activity log entry.</comment>
+  </data>
+  <data name="PairedClientsHeading" xml:space="preserve">
+    <value>Paired clients</value>
+    <comment>Section heading in Settings &gt; MCP.</comment>
+  </data>
+  <data name="PairedClientsNote" xml:space="preserve">
+    <value>A client pairs by asking TablePro for access; you approve it in a dialog and the client gets a token of its own. Only a SHA-256 of each token is kept, in Windows Credential Manager. Revoking a client turns it away from its next request.</value>
+    <comment>Windows Credential Manager is a Windows feature; use the name Windows uses in this language.</comment>
+  </data>
+  <data name="PairedSummary" xml:space="preserve">
+    <value>Paired {0:g} · {1} · token {2}…</value>
+    <comment>{0:g} is the date and time the client paired, {1} is "last used ..." or "never used", {2} is the first characters of the token.</comment>
+  </data>
+  <data name="PairingApprovalTitle" xml:space="preserve">
+    <value>Allow an MCP client?</value>
+    <comment>Dialog title.</comment>
+  </data>
+  <data name="PairingHint" xml:space="preserve">
+    <value>Clients start pairing with POST {0} and collect their token from /v1/integrations/exchange.</value>
+    <comment>{0} is a URL. POST and /v1/integrations/exchange are protocol terms and stay as is.</comment>
+  </data>
+  <data name="PairingHintServerOff" xml:space="preserve">
+    <value>Turn the server on to let clients pair.</value>
+  </data>
+  <data name="ReachAllConnections" xml:space="preserve">
+    <value>all connections</value>
+    <comment>Part of a client's summary line, after a middle dot. Starts lowercase in English.</comment>
+  </data>
+  <data name="ReachConnectionCount_One" xml:space="preserve">
+    <value>{0} connection</value>
+    <comment>Part of a client's summary line. {0} is the number of connections the client may use.</comment>
+  </data>
+  <data name="ReachConnectionCount_Other" xml:space="preserve">
+    <value>{0} connections</value>
+    <comment>Part of a client's summary line. {0} is the number of connections the client may use.</comment>
+  </data>
+  <data name="ReachDeletedConnection" xml:space="preserve">
+    <value>a deleted connection</value>
+    <comment>Stands in a list of connection names for one that no longer exists. Starts lowercase in English.</comment>
+  </data>
+  <data name="ReachNoConnections" xml:space="preserve">
+    <value>no connections</value>
+    <comment>Part of a client's summary line. Starts lowercase in English.</comment>
+  </data>
+  <data name="ReadActivityFailed" xml:space="preserve">
+    <value>The MCP activity log could not be read</value>
+    <comment>Error title; the system's error text follows.</comment>
+  </data>
+  <data name="ReadClientsFailed" xml:space="preserve">
+    <value>Paired clients could not be read</value>
+    <comment>Error title; the system's error text follows.</comment>
+  </data>
+  <data name="RemoveClientName" xml:space="preserve">
+    <value>Remove {0}</value>
+    <comment>Screen reader name of a client's Remove button. {0} is the client name.</comment>
+  </data>
+  <data name="RemoveConfirmMessage" xml:space="preserve">
+    <value>Its grant and the token's hash in Credential Manager are deleted. Its past activity stays in the log.</value>
+    <comment>Credential Manager is the Windows feature; use the name Windows uses in this language.</comment>
+  </data>
+  <data name="RemoveConfirmTitle" xml:space="preserve">
+    <value>Remove "{0}"?</value>
+    <comment>{0} is the client name.</comment>
+  </data>
+  <data name="Revoke" xml:space="preserve">
+    <value>Revoke</value>
+    <comment>Button (a verb): withdraw a client's access.</comment>
+  </data>
+  <data name="RevokeClientName" xml:space="preserve">
+    <value>Revoke {0}</value>
+    <comment>Screen reader name of a client's Revoke button. {0} is the client name.</comment>
+  </data>
+  <data name="RevokeConfirmMessage" xml:space="preserve">
+    <value>The client is turned away from its next request. It stays in the list as revoked; pair it again to give it access back.</value>
+  </data>
+  <data name="RevokeConfirmTitle" xml:space="preserve">
+    <value>Revoke "{0}"?</value>
+    <comment>{0} is the client name.</comment>
+  </data>
+  <data name="StatementDigest" xml:space="preserve">
+    <value>Statement SHA-256 {0}</value>
+    <comment>Tooltip of an activity log entry. {0} is the hash of the SQL statement.</comment>
+  </data>
+  <data name="StatusActive" xml:space="preserve">
+    <value>Active</value>
+    <comment>State of a paired client.</comment>
+  </data>
+  <data name="StatusExpired" xml:space="preserve">
+    <value>Expired</value>
+    <comment>State of a paired client.</comment>
+  </data>
+  <data name="StatusRevoked" xml:space="preserve">
+    <value>Revoked</value>
+    <comment>State of a paired client whose access was withdrawn.</comment>
+  </data>
+  <data name="StatusTokenMissing" xml:space="preserve">
+    <value>Token missing</value>
+    <comment>State of a paired client.</comment>
+  </data>
+  <data name="TokenCopyMessage" xml:space="preserve">
+    <value>Copy the token for "{0}" now. TablePro keeps only its hash, so it cannot show it again.</value>
+    <comment>{0} is the client name.</comment>
+  </data>
+  <data name="TokenCreatedTitle" xml:space="preserve">
+    <value>Token created</value>
+    <comment>Dialog title.</comment>
+  </data>
+  <data name="TokenHeader" xml:space="preserve">
+    <value>Token</value>
+    <comment>Header of the box showing the new access token.</comment>
+  </data>
+  <data name="UnknownCaller" xml:space="preserve">
+    <value>Unknown caller</value>
+    <comment>Shown in the activity log when the request came from an unidentified client.</comment>
+  </data>
+  <data name="WriteApprovalMessage" xml:space="preserve">
+    <value>"{0}", connected to TablePro's MCP server, asks to run this on {1}.</value>
+    <comment>{0} is the client name, {1} the connection name. The SQL statement is shown below the message.</comment>
+  </data>
+  <data name="WriteApprovalMessageUnnamed" xml:space="preserve">
+    <value>A client, connected to TablePro's MCP server, asks to run this on {0}.</value>
+    <comment>{0} is the connection name. The SQL statement is shown below the message.</comment>
+  </data>
+  <data name="WriteApprovalTitle" xml:space="preserve">
+    <value>An MCP client wants to run a statement</value>
+    <comment>Dialog title. The statement is a SQL statement.</comment>
+  </data>
+</root>

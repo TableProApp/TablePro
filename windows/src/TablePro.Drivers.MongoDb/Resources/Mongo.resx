@@ -1,0 +1,445 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AggregateCursorUnsupported" xml:space="preserve">
+    <value>.{0}() is not supported on an aggregation cursor.</value>
+    <comment>{0} is a method name.</comment>
+  </data>
+  <data name="ArgumentMustBeDocument" xml:space="preserve">
+    <value>Argument {0} of {1} must be a document</value>
+    <comment>{0} is the argument's position from 1, {1} a method name.</comment>
+  </data>
+  <data name="AssignmentsUnsupported" xml:space="preserve">
+    <value>Assignments are not supported</value>
+  </data>
+  <data name="BinaryArgs" xml:space="preserve">
+    <value>takes a subtype number and a string</value>
+  </data>
+  <data name="BracketNameQuoted" xml:space="preserve">
+    <value>A name in brackets must be a quoted string</value>
+  </data>
+  <data name="BulkWriteShape" xml:space="preserve">
+    <value>Each bulkWrite operation is one of {insertOne: ...}, {updateOne: ...} and the like</value>
+    <comment>Read with Get, so the braces are literal.</comment>
+  </data>
+  <data name="BulkWriteUnknown" xml:space="preserve">
+    <value>bulkWrite does not know the operation {0}.</value>
+    <comment>{0} is the operation name.</comment>
+  </data>
+  <data name="CollectionMethodUnsupported" xml:space="preserve">
+    <value>db.{0}.{1}() is not supported.</value>
+    <comment>{0} is a collection, {1} a method name.</comment>
+  </data>
+  <data name="CommentNotClosed" xml:space="preserve">
+    <value>The comment is not closed</value>
+  </data>
+  <data name="ConcernNotMet" xml:space="preserve">
+    <value>The write ran but its write concern was not met: {0}</value>
+    <comment>{0} is the server's message.</comment>
+  </data>
+  <data name="ConcernUnknownWithStatement" xml:space="preserve">
+    <value>The write ran but its write concern was not met, so whether it lasts is unknown: {0}. Statement: {1}</value>
+    <comment>{0} the server's message, {1} the shell statement.</comment>
+  </data>
+  <data name="ConstructorUnsupported" xml:space="preserve">
+    <value>{0}() is not supported</value>
+    <comment>{0} is a constructor name.</comment>
+  </data>
+  <data name="DateArgs" xml:space="preserve">
+    <value>takes one argument: an ISO date or milliseconds since 1970</value>
+  </data>
+  <data name="DbAlone" xml:space="preserve">
+    <value>db alone runs nothing: name a collection or call a method</value>
+  </data>
+  <data name="DbMethodUnsupported" xml:space="preserve">
+    <value>db.{0}() is not supported.</value>
+    <comment>{0} is a method name.</comment>
+  </data>
+  <data name="DropIndexNeeds" xml:space="preserve">
+    <value>dropIndex needs the index name or its keys</value>
+  </data>
+  <data name="ErrorWithCode" xml:space="preserve">
+    <value>{0} (code {1})</value>
+    <comment>{0} is the server's message, {1} its error code.</comment>
+  </data>
+  <data name="ErrorWithStatement" xml:space="preserve">
+    <value>{0} (code {1}). Statement: {2}</value>
+    <comment>{0} the server's message, {1} its code, {2} the shell statement.</comment>
+  </data>
+  <data name="ExpectedChar" xml:space="preserve">
+    <value>Expected '{0}'</value>
+    <comment>{0} is a punctuation mark.</comment>
+  </data>
+  <data name="ExpectedColon" xml:space="preserve">
+    <value>Expected ':' after the field name</value>
+  </data>
+  <data name="ExpectedCommaOr" xml:space="preserve">
+    <value>Expected ',' or '{0}'</value>
+    <comment>{0} is a closing bracket.</comment>
+  </data>
+  <data name="ExpectedConstructor" xml:space="preserve">
+    <value>Expected a constructor after new</value>
+  </data>
+  <data name="ExpectedDocument" xml:space="preserve">
+    <value>Expected a document in braces</value>
+  </data>
+  <data name="ExpectedFieldName" xml:space="preserve">
+    <value>Expected a field name</value>
+  </data>
+  <data name="ExpectedMethodName" xml:space="preserve">
+    <value>Expected a method name before the parentheses</value>
+  </data>
+  <data name="ExpectedNameAfterDot" xml:space="preserve">
+    <value>Expected a name after '.'</value>
+  </data>
+  <data name="ExpectedNumberAfterSign" xml:space="preserve">
+    <value>Expected a number after the sign</value>
+  </data>
+  <data name="ExpectedParenAfter" xml:space="preserve">
+    <value>Expected '(' after {0}</value>
+    <comment>{0} is a method or constructor name.</comment>
+  </data>
+  <data name="ExpectedValue" xml:space="preserve">
+    <value>Expected a value</value>
+  </data>
+  <data name="FindCursorUnsupported" xml:space="preserve">
+    <value>.{0}() is not supported on a find cursor.</value>
+    <comment>{0} is a method name.</comment>
+  </data>
+  <data name="FunctionsUnsupported" xml:space="preserve">
+    <value>Functions are not supported</value>
+  </data>
+  <data name="HelpersUnsupported" xml:space="preserve">
+    <value>{0}.* helpers are not supported; use db.adminCommand with the command they send.</value>
+    <comment>{0} is a shell object such as rs.</comment>
+  </data>
+  <data name="IdImmutable" xml:space="preserve">
+    <value>MongoDB does not change a document's _id. Delete the row and insert it with the new _id instead.</value>
+  </data>
+  <data name="InvalidEscape" xml:space="preserve">
+    <value>Invalid escape sequence in the string</value>
+  </data>
+  <data name="InvalidUnicodeEscape" xml:space="preserve">
+    <value>Invalid Unicode escape</value>
+  </data>
+  <data name="MoreThanFirstBatch" xml:space="preserve">
+    <value>The command returned more documents than its first batch; run the matching method, such as find(), to read them all.</value>
+    <comment>find() stays English.</comment>
+  </data>
+  <data name="MultiNeedsOperators" xml:space="preserve">
+    <value>update with multi: true needs update operators such as $set</value>
+  </data>
+  <data name="NameAfterNumber" xml:space="preserve">
+    <value>A name cannot start right after a number</value>
+  </data>
+  <data name="Needs" xml:space="preserve">
+    <value>{0} needs {1}</value>
+    <comment>{0} is a method name, {1} one of the What phrases or a field name.</comment>
+  </data>
+  <data name="NeedsBraces" xml:space="preserve">
+    <value>{0} needs {1} in braces</value>
+    <comment>{0} is a method name, {1} one of the What phrases.</comment>
+  </data>
+  <data name="NeedsCommandDocument" xml:space="preserve">
+    <value>{0} needs a command document</value>
+    <comment>{0} is a method name.</comment>
+  </data>
+  <data name="NeedsDocumentsInArray" xml:space="preserve">
+    <value>{0} needs documents in its array</value>
+    <comment>{0} is a method name.</comment>
+  </data>
+  <data name="NeedsFilter" xml:space="preserve">
+    <value>{0} needs a filter; pass {{}} to match every document</value>
+    <comment>{0} is a method name. {{}} shows as {} and stays as is.</comment>
+  </data>
+  <data name="NeedsOperatorsOrPipeline" xml:space="preserve">
+    <value>{0} needs update operators such as $set, or a pipeline; use replaceOne to replace a document</value>
+    <comment>{0} is a method name.</comment>
+  </data>
+  <data name="NeedsPipeline" xml:space="preserve">
+    <value>{0} needs an array of pipeline stages</value>
+    <comment>{0} is a method name.</comment>
+  </data>
+  <data name="NeedsQuoted" xml:space="preserve">
+    <value>{0} needs {1} as a quoted string</value>
+    <comment>{0} is a method name, {1} one of the What phrases.</comment>
+  </data>
+  <data name="NeedsWholeNumber" xml:space="preserve">
+    <value>{0} needs a whole number</value>
+    <comment>{0} is a method name.</comment>
+  </data>
+  <data name="NoDocumentMatched" xml:space="preserve">
+    <value>No document matched.</value>
+  </data>
+  <data name="NoOperatorsAllowed" xml:space="preserve">
+    <value>{0} takes a document without update operators; use updateOne to apply $set</value>
+    <comment>{0} is a method name.</comment>
+  </data>
+  <data name="NotAChange" xml:space="preserve">
+    <value>{0} is not a change MongoDB can apply.</value>
+    <comment>{0} is an internal type name.</comment>
+  </data>
+  <data name="NotACursor" xml:space="preserve">
+    <value>The method before .{0}() does not return a cursor, so .{0}() cannot follow it.</value>
+    <comment>{0} is a method name.</comment>
+  </data>
+  <data name="NotADate" xml:space="preserve">
+    <value>{0} is not a date</value>
+    <comment>{0} is the value.</comment>
+  </data>
+  <data name="NotANumber" xml:space="preserve">
+    <value>{0} is not a number</value>
+    <comment>{0} is the text, already quoted.</comment>
+  </data>
+  <data name="NotAValue" xml:space="preserve">
+    <value>'{0}' is not a value: variables are not supported</value>
+    <comment>{0} is the name the user typed.</comment>
+  </data>
+  <data name="NotDecimal" xml:space="preserve">
+    <value>{0} is not a decimal number</value>
+    <comment>{0} is the text, already quoted.</comment>
+  </data>
+  <data name="NotDefined" xml:space="preserve">
+    <value>'{0}' is not defined: a statement starts with db, use or show</value>
+    <comment>{0} is the name the user typed.</comment>
+  </data>
+  <data name="NotJson" xml:space="preserve">
+    <value>{0} holds JSON, and its new value does not read as JSON: {1} at column {2}.</value>
+    <comment>{0} column name, {1} the reason, {2} the column of the error.</comment>
+  </data>
+  <data name="NotObjectIdHex" xml:space="preserve">
+    <value>{0} is not 24 hexadecimal digits</value>
+    <comment>{0} is the text, already quoted.</comment>
+  </data>
+  <data name="NotRegexFlag" xml:space="preserve">
+    <value>'{0}' is not a regular expression flag</value>
+    <comment>{0} is a flag letter.</comment>
+  </data>
+  <data name="NotUuid" xml:space="preserve">
+    <value>{0} is not a UUID</value>
+    <comment>{0} is the text, already quoted.</comment>
+  </data>
+  <data name="NotWholeNumber" xml:space="preserve">
+    <value>{0} is not a whole number</value>
+    <comment>{0} is the value.</comment>
+  </data>
+  <data name="OneArgument" xml:space="preserve">
+    <value>takes one argument</value>
+  </data>
+  <data name="OperationsFailed" xml:space="preserve">
+    <value>{0} of {1} operations failed: {2}</value>
+    <comment>{0} failed count, {1} operations in all, {2} the server's messages.</comment>
+  </data>
+  <data name="OutOfRange" xml:space="preserve">
+    <value>{0} is out of range</value>
+    <comment>{0} is the value.</comment>
+  </data>
+  <data name="QuotedStringExpected" xml:space="preserve">
+    <value>expects a quoted string</value>
+  </data>
+  <data name="ReadOnlyCannotSave" xml:space="preserve">
+    <value>The connection is read-only, so changes cannot be saved.</value>
+  </data>
+  <data name="ReadOnlyStatement" xml:space="preserve">
+    <value>The connection is read-only, and this statement may change data. Only reads run on a read-only connection.</value>
+  </data>
+  <data name="RegexArgs" xml:space="preserve">
+    <value>takes a pattern and optional flags</value>
+  </data>
+  <data name="RegexNotClosed" xml:space="preserve">
+    <value>The regular expression is not closed</value>
+  </data>
+  <data name="ShorthandUnsupported" xml:space="preserve">
+    <value>Field '{0}' needs a value: shorthand properties are not supported</value>
+    <comment>{0} is a field name.</comment>
+  </data>
+  <data name="ShowNeedsWhat" xml:space="preserve">
+    <value>show needs what to list, such as dbs or collections</value>
+  </data>
+  <data name="ShowUnsupported" xml:space="preserve">
+    <value>show {0} is not supported. Try show dbs, show collections, show users or show roles.</value>
+    <comment>{0} is what follows show. The show commands stay English.</comment>
+  </data>
+  <data name="SpreadUnsupported" xml:space="preserve">
+    <value>Spread syntax is not supported</value>
+  </data>
+  <data name="SrvThroughTunnel" xml:space="preserve">
+    <value>A DNS seed list (mongodb+srv) cannot run through an SSH tunnel: the tunnel carries one host, and the seed list names the servers by DNS. Turn off the seed list and connect to one member's host and port.</value>
+    <comment>mongodb+srv stays English.</comment>
+  </data>
+  <data name="StatementEmpty" xml:space="preserve">
+    <value>The statement is empty</value>
+  </data>
+  <data name="StatementStart" xml:space="preserve">
+    <value>A statement starts with db, use or show</value>
+  </data>
+  <data name="StatementUnsupported" xml:space="preserve">
+    <value>The statement is not supported.</value>
+  </data>
+  <data name="StringNotClosed" xml:space="preserve">
+    <value>The string is not closed</value>
+  </data>
+  <data name="StringNotClosedLine" xml:space="preserve">
+    <value>The string is not closed before the end of the line</value>
+  </data>
+  <data name="SubtypeOutOfRange" xml:space="preserve">
+    <value>subtype {0} is out of range</value>
+    <comment>{0} is the subtype number.</comment>
+  </data>
+  <data name="SyntaxAt" xml:space="preserve">
+    <value>SyntaxError: {0} (line {1}, column {2})</value>
+    <comment>{0} is the reason, {1} the line, {2} the column. SyntaxError stays English, as mongosh prints it.</comment>
+  </data>
+  <data name="TimestampArgs" xml:space="preserve">
+    <value>takes the seconds and the increment, or {t, i}</value>
+    <comment>Read with Get, so {t, i} is literal.</comment>
+  </data>
+  <data name="UnexpectedAfterStatement" xml:space="preserve">
+    <value>Unexpected text after the statement</value>
+  </data>
+  <data name="UnexpectedAfterValue" xml:space="preserve">
+    <value>Unexpected text after the value</value>
+  </data>
+  <data name="UnexpectedToken" xml:space="preserve">
+    <value>Unexpected '{0}'</value>
+    <comment>{0} is the text found.</comment>
+  </data>
+  <data name="UnknownError" xml:space="preserve">
+    <value>unknown error</value>
+    <comment>Stands in when the server gave no message.</comment>
+  </data>
+  <data name="UseNeedsDatabase" xml:space="preserve">
+    <value>use needs a database name</value>
+  </data>
+  <data name="WhatCollationDocument" xml:space="preserve">
+    <value>a collation document</value>
+    <comment>Fills Needs, NeedsQuoted or NeedsBraces.</comment>
+  </data>
+  <data name="WhatCollectionName" xml:space="preserve">
+    <value>a collection name</value>
+    <comment>Fills Needs, NeedsQuoted or NeedsBraces.</comment>
+  </data>
+  <data name="WhatCommandDocument" xml:space="preserve">
+    <value>a command document</value>
+    <comment>Fills Needs, NeedsQuoted or NeedsBraces.</comment>
+  </data>
+  <data name="WhatComment" xml:space="preserve">
+    <value>a comment</value>
+    <comment>Fills Needs, NeedsQuoted or NeedsBraces.</comment>
+  </data>
+  <data name="WhatDatabaseName" xml:space="preserve">
+    <value>a database name</value>
+    <comment>Fills Needs, NeedsQuoted or NeedsBraces.</comment>
+  </data>
+  <data name="WhatDocument" xml:space="preserve">
+    <value>a document</value>
+    <comment>Fills Needs, NeedsQuoted or NeedsBraces.</comment>
+  </data>
+  <data name="WhatDocumentArray" xml:space="preserve">
+    <value>an array of documents</value>
+    <comment>Fills Needs, NeedsQuoted or NeedsBraces.</comment>
+  </data>
+  <data name="WhatDocumentOrArray" xml:space="preserve">
+    <value>a document or an array of documents</value>
+    <comment>Fills Needs, NeedsQuoted or NeedsBraces.</comment>
+  </data>
+  <data name="WhatFieldName" xml:space="preserve">
+    <value>a field name</value>
+    <comment>Fills Needs, NeedsQuoted or NeedsBraces.</comment>
+  </data>
+  <data name="WhatFilter" xml:space="preserve">
+    <value>a filter</value>
+    <comment>Fills Needs, NeedsQuoted or NeedsBraces.</comment>
+  </data>
+  <data name="WhatFindAndModifyDocument" xml:space="preserve">
+    <value>a document of query, update and options</value>
+    <comment>Fills Needs, NeedsQuoted or NeedsBraces.</comment>
+  </data>
+  <data name="WhatHint" xml:space="preserve">
+    <value>an index name or keys</value>
+    <comment>Fills Needs, NeedsQuoted or NeedsBraces.</comment>
+  </data>
+  <data name="WhatIndexKeys" xml:space="preserve">
+    <value>the index keys</value>
+    <comment>Fills Needs, NeedsQuoted or NeedsBraces.</comment>
+  </data>
+  <data name="WhatIndexKeysArray" xml:space="preserve">
+    <value>an array of index keys</value>
+    <comment>Fills Needs, NeedsQuoted or NeedsBraces.</comment>
+  </data>
+  <data name="WhatIndexNameOrKeys" xml:space="preserve">
+    <value>the index name or keys</value>
+    <comment>Fills Needs, NeedsQuoted or NeedsBraces.</comment>
+  </data>
+  <data name="WhatNewName" xml:space="preserve">
+    <value>the new name</value>
+    <comment>Fills Needs, NeedsQuoted or NeedsBraces.</comment>
+  </data>
+  <data name="WhatOperationArray" xml:space="preserve">
+    <value>an array of operations</value>
+    <comment>Fills Needs, NeedsQuoted or NeedsBraces.</comment>
+  </data>
+  <data name="WhatOperationId" xml:space="preserve">
+    <value>the operation id</value>
+    <comment>Fills Needs, NeedsQuoted or NeedsBraces.</comment>
+  </data>
+  <data name="WhatProjectionDocument" xml:space="preserve">
+    <value>a projection document</value>
+    <comment>Fills Needs, NeedsQuoted or NeedsBraces.</comment>
+  </data>
+  <data name="WhatReplacementDocument" xml:space="preserve">
+    <value>a replacement document</value>
+    <comment>Fills Needs, NeedsQuoted or NeedsBraces.</comment>
+  </data>
+  <data name="WhatRoleArray" xml:space="preserve">
+    <value>an array of roles</value>
+    <comment>Fills Needs, NeedsQuoted or NeedsBraces.</comment>
+  </data>
+  <data name="WhatSortDocument" xml:space="preserve">
+    <value>a sort document</value>
+    <comment>Fills Needs, NeedsQuoted or NeedsBraces.</comment>
+  </data>
+  <data name="WhatSourceCollection" xml:space="preserve">
+    <value>the source collection</value>
+    <comment>Fills Needs, NeedsQuoted or NeedsBraces.</comment>
+  </data>
+  <data name="WhatUpdateDocument" xml:space="preserve">
+    <value>an update document</value>
+    <comment>Fills Needs, NeedsQuoted or NeedsBraces.</comment>
+  </data>
+  <data name="WhatUpdateOrPipeline" xml:space="preserve">
+    <value>an update document or pipeline</value>
+    <comment>Fills Needs, NeedsQuoted or NeedsBraces.</comment>
+  </data>
+  <data name="WhatUserDocument" xml:space="preserve">
+    <value>a user document</value>
+    <comment>Fills Needs, NeedsQuoted or NeedsBraces.</comment>
+  </data>
+  <data name="WhatUserName" xml:space="preserve">
+    <value>a user name</value>
+    <comment>Fills Needs, NeedsQuoted or NeedsBraces.</comment>
+  </data>
+  <data name="WhatViewName" xml:space="preserve">
+    <value>a view name</value>
+    <comment>Fills Needs, NeedsQuoted or NeedsBraces.</comment>
+  </data>
+  <data name="WhatWholeNumber" xml:space="preserve">
+    <value>a whole number</value>
+    <comment>Fills Needs, NeedsQuoted or NeedsBraces.</comment>
+  </data>
+  <data name="WriteFailed" xml:space="preserve">
+    <value>The write failed</value>
+    <comment>Stands in when the server gave no message.</comment>
+  </data>
+</root>

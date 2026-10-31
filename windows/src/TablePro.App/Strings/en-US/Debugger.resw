@@ -1,0 +1,171 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="BreakpointGutter.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Toggle breakpoint</value>
+    <comment>Tooltip of the margin beside each source line; clicking it sets or clears a breakpoint.</comment>
+  </data>
+  <data name="CallStackHeader.Text" xml:space="preserve">
+    <value>Call Stack</value>
+    <comment>Pane heading.</comment>
+  </data>
+  <data name="ContinueButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Continue</value>
+    <comment>Debugger command: run until the next breakpoint (verb).</comment>
+  </data>
+  <data name="ContinueButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Continue (F5)</value>
+    <comment>Debugger command: run until the next breakpoint (verb). F5 is the keyboard shortcut and stays as is.</comment>
+  </data>
+  <data name="DebugButton" xml:space="preserve">
+    <value>Debug</value>
+    <comment>Primary button of the start dialog (verb).</comment>
+  </data>
+  <data name="EntryPoint" xml:space="preserve">
+    <value>Entry point</value>
+    <comment>Header of the list of routines a debug run can start in.</comment>
+  </data>
+  <data name="FrameAtLine" xml:space="preserve">
+    <value>{0}  line {1}</value>
+    <comment>Call stack entry. {0} is the routine name, {1} the line number.</comment>
+  </data>
+  <data name="FrameLevel" xml:space="preserve">
+    <value>Frame {0}</value>
+    <comment>Call stack entry without a known location. {0} is the frame's depth.</comment>
+  </data>
+  <data name="NoArguments" xml:space="preserve">
+    <value>This routine takes no arguments.</value>
+  </data>
+  <data name="OutputBox.PlaceholderText" xml:space="preserve">
+    <value>Notices and DBMS_OUTPUT lines appear here</value>
+    <comment>DBMS_OUTPUT is the name of an Oracle package and stays untranslated.</comment>
+  </data>
+  <data name="OutputBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Debug output</value>
+  </data>
+  <data name="OutputParameter" xml:space="preserve">
+    <value>Output</value>
+    <comment>Placeholder of an OUT parameter's box, which takes no value.</comment>
+  </data>
+  <data name="OutputTab.Text" xml:space="preserve">
+    <value>Output</value>
+    <comment>Tab that shows what the routine printed (noun).</comment>
+  </data>
+  <data name="RemoveAllBreakpointsButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Remove All Breakpoints</value>
+  </data>
+  <data name="RemoveAllBreakpointsButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Remove All Breakpoints (Ctrl+Shift+F9)</value>
+    <comment>Ctrl+Shift+F9 is the keyboard shortcut and stays as is.</comment>
+  </data>
+  <data name="ResultTab.Text" xml:space="preserve">
+    <value>Result</value>
+    <comment>Tab that shows the rows the routine returned (noun).</comment>
+  </data>
+  <data name="SafeModeBlocks" xml:space="preserve">
+    <value>Safe Mode blocks writes on this connection, and the routine may change data, so it can't be debugged here.</value>
+    <comment>"Safe Mode" names a connection setting; use the same words as the connection settings.</comment>
+  </data>
+  <data name="SourceList.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Routine source</value>
+  </data>
+  <data name="StackList.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Call stack</value>
+  </data>
+  <data name="StartDialogTitle" xml:space="preserve">
+    <value>Debug {0}</value>
+    <comment>Title of the dialog that starts a debug run. {0} is the routine name.</comment>
+  </data>
+  <data name="StatusCantDebug" xml:space="preserve">
+    <value>Can't debug</value>
+    <comment>Debugger status bar.</comment>
+  </data>
+  <data name="StatusPreparing" xml:space="preserve">
+    <value>Preparing…</value>
+    <comment>Debugger status bar.</comment>
+  </data>
+  <data name="StepIntoButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Step Into</value>
+    <comment>Debugger command.</comment>
+  </data>
+  <data name="StepIntoButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Step Into (F11)</value>
+    <comment>Debugger command. F11 is the keyboard shortcut and stays as is.</comment>
+  </data>
+  <data name="StepOutButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Step Out</value>
+    <comment>Debugger command.</comment>
+  </data>
+  <data name="StepOutButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Step Out (Shift+F11)</value>
+    <comment>Debugger command. Shift+F11 is the keyboard shortcut and stays as is.</comment>
+  </data>
+  <data name="StepOverButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Step Over</value>
+    <comment>Debugger command.</comment>
+  </data>
+  <data name="StepOverButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Step Over (F10)</value>
+    <comment>Debugger command. F10 is the keyboard shortcut and stays as is.</comment>
+  </data>
+  <data name="StopButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Stop Debugging</value>
+  </data>
+  <data name="StopButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Stop Debugging (Shift+F5)</value>
+    <comment>Shift+F5 is the keyboard shortcut and stays as is.</comment>
+  </data>
+  <data name="TabTitle" xml:space="preserve">
+    <value>Debug {0}</value>
+    <comment>Title of the debugger tab. {0} is the routine name. Keep it short.</comment>
+  </data>
+  <data name="ToggleBreakpointButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Toggle Breakpoint</value>
+  </data>
+  <data name="ToggleBreakpointButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Toggle Breakpoint on the selected line (F9)</value>
+    <comment>F9 is the keyboard shortcut and stays as is.</comment>
+  </data>
+  <data name="TypeColumn.Text" xml:space="preserve">
+    <value>Type</value>
+    <comment>Column header in the variables list: the variable's data type.</comment>
+  </data>
+  <data name="ValueColumn.Text" xml:space="preserve">
+    <value>Value</value>
+    <comment>Column header in the variables list.</comment>
+  </data>
+  <data name="VariableColumn.Text" xml:space="preserve">
+    <value>Variable</value>
+    <comment>Column header in the variables list: the variable's name.</comment>
+  </data>
+  <data name="VariableKindArgument" xml:space="preserve">
+    <value>Argument</value>
+    <comment>Tooltip on a variable that is one of the routine's parameters.</comment>
+  </data>
+  <data name="VariableKindConstant" xml:space="preserve">
+    <value>Constant</value>
+    <comment>Tooltip on a variable declared as a constant.</comment>
+  </data>
+  <data name="VariableKindLocal" xml:space="preserve">
+    <value>Local</value>
+    <comment>Tooltip on a local variable of the routine.</comment>
+  </data>
+  <data name="VariableKindPackage" xml:space="preserve">
+    <value>Package</value>
+    <comment>Tooltip on an Oracle package variable.</comment>
+  </data>
+  <data name="VariablesList.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Variables</value>
+  </data>
+</root>

@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="EncodingCannotHold" xml:space="preserve">
+    <value>Dosyanın kodlaması ({0}) bu karakterleri içeremez. Hiçbir şey değiştirilmedi.</value>
+  </data>
+  <data name="FileNoLongerExists" xml:space="preserve">
+    <value>Dosya artık mevcut değil.</value>
+  </data>
+  <data name="FileTooLargeForGit" xml:space="preserve">
+    <value>Dosya Git'ten okunamayacak kadar büyük.</value>
+  </data>
+  <data name="FolderNotInRepository" xml:space="preserve">
+    <value>Bu klasör bir Git deposunda değil.</value>
+  </data>
+  <data name="GitAdded" xml:space="preserve">
+    <value>Eklendi</value>
+  </data>
+  <data name="GitBusy" xml:space="preserve">
+    <value>Bu depoda başka bir Git komutu hâlâ çalışıyor.</value>
+  </data>
+  <data name="GitConflicted" xml:space="preserve">
+    <value>Çakışmalı</value>
+  </data>
+  <data name="GitCouldNotStart" xml:space="preserve">
+    <value>Git başlatılamadı.</value>
+  </data>
+  <data name="GitExitStatus" xml:space="preserve">
+    <value>Git {0} durum koduyla çıktı.</value>
+  </data>
+  <data name="GitHistoryUnavailable" xml:space="preserve">
+    <value>Git geçmişi kullanılamıyor: {0}</value>
+  </data>
+  <data name="GitModified" xml:space="preserve">
+    <value>Değiştirildi</value>
+  </data>
+  <data name="GitNotInstalled" xml:space="preserve">
+    <value>Git yüklü değil.</value>
+  </data>
+  <data name="GitOutputTooLarge" xml:space="preserve">
+    <value>Git, TablePro'nun okuyabileceğinden fazla çıktı üretti.</value>
+  </data>
+  <data name="GitPartlyStaged" xml:space="preserve">
+    <value>{0}, kısmen hazırlanmış</value>
+  </data>
+  <data name="GitRenamed" xml:space="preserve">
+    <value>Yeniden adlandırıldı</value>
+  </data>
+  <data name="GitStaged" xml:space="preserve">
+    <value>{0}, hazırlanmış</value>
+  </data>
+  <data name="GitTimedOut" xml:space="preserve">
+    <value>Git zamanında yanıt vermedi.</value>
+  </data>
+  <data name="GitUntracked" xml:space="preserve">
+    <value>İzlenmiyor</value>
+  </data>
+  <data name="HistoryChangedBeforeWriting" xml:space="preserve">
+    <value>Dosya veya hazırlanmış sürümü yazılamadan önce değişti. Hiçbir şey değiştirilmedi.</value>
+  </data>
+  <data name="HistoryFileGone" xml:space="preserve">
+    <value>Bu dosya artık mevcut değil.</value>
+  </data>
+  <data name="HistoryGitFailed" xml:space="preserve">
+    <value>Git başarısız oldu.</value>
+  </data>
+  <data name="HistoryGitUnavailable" xml:space="preserve">
+    <value>Git yüklü değil. Dosyanın işlemelerini görmek için Git for Windows'u yükleyin.</value>
+  </data>
+  <data name="HistoryInLfs" xml:space="preserve">
+    <value>Bu dosya Git LFS ile depolanıyor. Git istemcinizle geri yükleyin.</value>
+  </data>
+  <data name="HistoryNotInRepository" xml:space="preserve">
+    <value>Bu dosya bir Git deposunda değil.</value>
+  </data>
+  <data name="HistoryNotText" xml:space="preserve">
+    <value>Bu sürüm metin olarak okunamıyor.</value>
+  </data>
+  <data name="HistoryRestoreFailed" xml:space="preserve">
+    <value>Sürüm geri yüklenemedi: {0}</value>
+  </data>
+  <data name="HistoryVersionGone" xml:space="preserve">
+    <value>Bu sürüm artık kullanılamıyor.</value>
+  </data>
+  <data name="KeepsLatestSnapshots_One" xml:space="preserve">
+    <value>TablePro bir dosyanın kaydedilen son {0} sürümünü saklar.</value>
+  </data>
+  <data name="KeepsLatestSnapshots_Other" xml:space="preserve">
+    <value>TablePro bir dosyanın kaydedilen son {0} sürümünü saklar.</value>
+  </data>
+  <data name="NameAlreadyExists" xml:space="preserve">
+    <value>Burada bu ada sahip bir dosya zaten var.</value>
+  </data>
+  <data name="NameEmpty" xml:space="preserve">
+    <value>Bir ad girin.</value>
+  </data>
+  <data name="NameInvalidCharacters" xml:space="preserve">
+    <value>Dosya adı \ / : * ? " &lt; &gt; veya | karakterlerini içeremez.</value>
+  </data>
+  <data name="NameReserved" xml:space="preserve">
+    <value>Windows bu adı bir aygıt için ayırır.</value>
+  </data>
+  <data name="RecycleBinFailed" xml:space="preserve">
+    <value>Dosya Geri Dönüşüm Kutusu'na taşınamadı.</value>
+  </data>
+  <data name="RequestFailed" xml:space="preserve">
+    <value>İstek başarısız oldu.</value>
+  </data>
+  <data name="SavedInTablePro" xml:space="preserve">
+    <value>TablePro'da kaydedildi</value>
+  </data>
+  <data name="ShowsLatestCommits_One" xml:space="preserve">
+    <value>Son {0} işleme gösteriliyor.</value>
+  </data>
+  <data name="ShowsLatestCommits_Other" xml:space="preserve">
+    <value>Son {0} işleme gösteriliyor.</value>
+  </data>
+  <data name="TeamEmptyResponse" xml:space="preserve">
+    <value>Ekip kitaplığı boş bir yanıt döndürdü.</value>
+  </data>
+  <data name="TeamNeedsLicense" xml:space="preserve">
+    <value>Ekip kitaplığında yayımlamak için bir Team lisansı etkinleştirin.</value>
+  </data>
+  <data name="TeamTimedOut" xml:space="preserve">
+    <value>Ekip kitaplığı zamanında yanıt vermedi.</value>
+  </data>
+  <data name="TeamUnreachable" xml:space="preserve">
+    <value>Ekip kitaplığına ulaşılamadı: {0}</value>
+  </data>
+  <data name="TeamUnreadable" xml:space="preserve">
+    <value>Ekip kitaplığı TablePro'nun okuyamadığı bir yanıt döndürdü.</value>
+  </data>
+  <data name="UntitledFile" xml:space="preserve">
+    <value>Adsız</value>
+  </data>
+</root>

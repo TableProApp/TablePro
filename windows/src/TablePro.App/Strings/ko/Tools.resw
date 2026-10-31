@@ -1,0 +1,565 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="CopyActionAppend" xml:space="preserve">
+    <value>행 추가 대상</value>
+  </data>
+  <data name="CopyActionCreate" xml:space="preserve">
+    <value>생성</value>
+  </data>
+  <data name="CopyActionEmptyAndFill" xml:space="preserve">
+    <value>비운 후 채우기</value>
+  </data>
+  <data name="CopyActionReplace" xml:space="preserve">
+    <value>바꾸기</value>
+  </data>
+  <data name="CopyActionSkip" xml:space="preserve">
+    <value>건너뛰기</value>
+  </data>
+  <data name="CopyCannotConnect" xml:space="preserve">
+    <value>{0}에 연결할 수 없습니다</value>
+  </data>
+  <data name="CopyContentData" xml:space="preserve">
+    <value>데이터만</value>
+  </data>
+  <data name="CopyContentHeader" xml:space="preserve">
+    <value>복사</value>
+  </data>
+  <data name="CopyContentStructure" xml:space="preserve">
+    <value>구조만</value>
+  </data>
+  <data name="CopyContentStructureAndData" xml:space="preserve">
+    <value>구조 및 데이터</value>
+  </data>
+  <data name="CopyCrossEngineNote" xml:space="preserve">
+    <value>{0}과(와) {1}은(는) 서로 다른 엔진이므로 열 형식이 변환됩니다. 복사하기 전에 확인하세요.</value>
+  </data>
+  <data name="CopyFailedTitle" xml:space="preserve">
+    <value>복사 실패</value>
+  </data>
+  <data name="CopyFinishedTitle" xml:space="preserve">
+    <value>복사 완료</value>
+  </data>
+  <data name="CopyFinishedWithProblemsTitle" xml:space="preserve">
+    <value>복사가 완료되었지만 문제가 있음</value>
+  </data>
+  <data name="CopyKindFunction" xml:space="preserve">
+    <value>함수</value>
+  </data>
+  <data name="CopyKindMaterializedView" xml:space="preserve">
+    <value>구체화된 뷰</value>
+  </data>
+  <data name="CopyKindProcedure" xml:space="preserve">
+    <value>프로시저</value>
+  </data>
+  <data name="CopyKindSequence" xml:space="preserve">
+    <value>시퀀스</value>
+  </data>
+  <data name="CopyKindTable" xml:space="preserve">
+    <value>테이블</value>
+  </data>
+  <data name="CopyKindView" xml:space="preserve">
+    <value>뷰</value>
+  </data>
+  <data name="CopyObjectsCopied_One" xml:space="preserve">
+    <value>객체 {0}개를 복사했습니다. {1}</value>
+  </data>
+  <data name="CopyObjectsCopied_Other" xml:space="preserve">
+    <value>객체 {0}개를 복사했습니다. {1}</value>
+  </data>
+  <data name="CopyObjectsFrom" xml:space="preserve">
+    <value>{0}의 객체</value>
+  </data>
+  <data name="CopyObjectsTitle" xml:space="preserve">
+    <value>객체 복사</value>
+  </data>
+  <data name="CopyOnError" xml:space="preserve">
+    <value>오류 발생 시</value>
+  </data>
+  <data name="CopyOnErrorSkip" xml:space="preserve">
+    <value>실패한 객체를 건너뛰고 계속</value>
+  </data>
+  <data name="CopyOnErrorStop" xml:space="preserve">
+    <value>첫 번째 실패 시 중지</value>
+  </data>
+  <data name="CopyOutcomeCopied" xml:space="preserve">
+    <value>복사됨</value>
+  </data>
+  <data name="CopyOutcomeFailed" xml:space="preserve">
+    <value>실패</value>
+  </data>
+  <data name="CopyOutcomeNameRows_One" xml:space="preserve">
+    <value>{1}, {0:N0}행</value>
+  </data>
+  <data name="CopyOutcomeNameRows_Other" xml:space="preserve">
+    <value>{1}, {0:N0}행</value>
+  </data>
+  <data name="CopyOutcomeSkipped" xml:space="preserve">
+    <value>건너뜀</value>
+  </data>
+  <data name="CopyOutcomeStopped" xml:space="preserve">
+    <value>중지됨</value>
+  </data>
+  <data name="CopyPhaseCopyingRows" xml:space="preserve">
+    <value>{0}의 행을 복사하는 중</value>
+  </data>
+  <data name="CopyPhaseCreating" xml:space="preserve">
+    <value>{0}을(를) 만드는 중</value>
+  </data>
+  <data name="CopyPhaseDropping" xml:space="preserve">
+    <value>{0}을(를) 삭제하는 중</value>
+  </data>
+  <data name="CopyPhaseFinishing" xml:space="preserve">
+    <value>마무리하는 중</value>
+  </data>
+  <data name="CopyPhaseIndexing" xml:space="preserve">
+    <value>{0}의 인덱스를 만드는 중</value>
+  </data>
+  <data name="CopyPhaseLinkingKeys" xml:space="preserve">
+    <value>{0}의 키를 추가하는 중</value>
+  </data>
+  <data name="CopyPhasePreparing" xml:space="preserve">
+    <value>준비하는 중</value>
+  </data>
+  <data name="CopyPolicyAppend" xml:space="preserve">
+    <value>행 추가</value>
+  </data>
+  <data name="CopyPolicyHeader" xml:space="preserve">
+    <value>대상에 같은 이름의 객체가 이미 있는 경우</value>
+  </data>
+  <data name="CopyPolicyReplace" xml:space="preserve">
+    <value>바꾸기</value>
+  </data>
+  <data name="CopyPolicySkip" xml:space="preserve">
+    <value>건너뛰기</value>
+  </data>
+  <data name="CopyProgressName" xml:space="preserve">
+    <value>복사 진행률</value>
+  </data>
+  <data name="CopyProgressTitle" xml:space="preserve">
+    <value>복사하는 중</value>
+  </data>
+  <data name="CopyReviewButton" xml:space="preserve">
+    <value>복사</value>
+  </data>
+  <data name="CopyReviewTitle" xml:space="preserve">
+    <value>{0}(으)로 복사</value>
+  </data>
+  <data name="CopyRowsCopiedTo_One" xml:space="preserve">
+    <value>{1}에 {0:N0}행을 복사했습니다.</value>
+  </data>
+  <data name="CopyRowsCopiedTo_Other" xml:space="preserve">
+    <value>{1}에 {0:N0}행을 복사했습니다.</value>
+  </data>
+  <data name="CopyRowsCopied_One" xml:space="preserve">
+    <value>{0:N0}행 복사됨</value>
+  </data>
+  <data name="CopyRowsCopied_Other" xml:space="preserve">
+    <value>{0:N0}행 복사됨</value>
+  </data>
+  <data name="CopySelectNone" xml:space="preserve">
+    <value>모두 선택 해제</value>
+  </data>
+  <data name="CopyStoppedTitle" xml:space="preserve">
+    <value>복사 중지됨</value>
+  </data>
+  <data name="CopyTargetSchema" xml:space="preserve">
+    <value>대상 스키마</value>
+  </data>
+  <data name="CopyThisConnection" xml:space="preserve">
+    <value>{0}(현재 연결)</value>
+  </data>
+  <data name="CopyTo" xml:space="preserve">
+    <value>복사 대상</value>
+  </data>
+  <data name="GenCannotReadTable" xml:space="preserve">
+    <value>테이블을 읽을 수 없습니다</value>
+  </data>
+  <data name="GenColumns" xml:space="preserve">
+    <value>열</value>
+  </data>
+  <data name="GenDateFrom" xml:space="preserve">
+    <value>시작</value>
+  </data>
+  <data name="GenDateTo" xml:space="preserve">
+    <value>끝</value>
+  </data>
+  <data name="GenDecimalPlaces" xml:space="preserve">
+    <value>소수 자릿수</value>
+  </data>
+  <data name="GenFixIssues" xml:space="preserve">
+    <value>생성하기 전에 다음 문제를 해결하세요</value>
+  </data>
+  <data name="GenGenerate" xml:space="preserve">
+    <value>생성</value>
+  </data>
+  <data name="GenGenerator" xml:space="preserve">
+    <value>생성기</value>
+  </data>
+  <data name="GenInsert" xml:space="preserve">
+    <value>삽입</value>
+  </data>
+  <data name="GenInsertConfirmMessage_One" xml:space="preserve">
+    <value>생성된 {0:N0}행을 {1}에 삽입하시겠습니까?</value>
+  </data>
+  <data name="GenInsertConfirmMessage_Other" xml:space="preserve">
+    <value>생성된 {0:N0}행을 {1}에 삽입하시겠습니까?</value>
+  </data>
+  <data name="GenInsertConfirmTitle" xml:space="preserve">
+    <value>행을 삽입하시겠습니까?</value>
+  </data>
+  <data name="GenInserted_One" xml:space="preserve">
+    <value>{1}에 {0:N0}행을 삽입했습니다.</value>
+  </data>
+  <data name="GenInserted_Other" xml:space="preserve">
+    <value>{1}에 {0:N0}행을 삽입했습니다.</value>
+  </data>
+  <data name="GenListValues" xml:space="preserve">
+    <value>값(한 줄에 하나씩)</value>
+  </data>
+  <data name="GenLongest" xml:space="preserve">
+    <value>최대 길이</value>
+  </data>
+  <data name="GenMaximum" xml:space="preserve">
+    <value>최댓값</value>
+  </data>
+  <data name="GenMinimum" xml:space="preserve">
+    <value>최솟값</value>
+  </data>
+  <data name="GenNewSeed" xml:space="preserve">
+    <value>새 시드</value>
+  </data>
+  <data name="GenNewSeedTip" xml:space="preserve">
+    <value>새 시드: 시드와 설정이 같으면 항상 같은 행이 생성됩니다</value>
+  </data>
+  <data name="GenNoGenerator" xml:space="preserve">
+    <value>이 형식을 채울 수 있는 생성기가 없습니다.</value>
+  </data>
+  <data name="GenNullValues" xml:space="preserve">
+    <value>NULL 값</value>
+  </data>
+  <data name="GenOpenAsSql" xml:space="preserve">
+    <value>SQL로 열기</value>
+  </data>
+  <data name="GenPattern" xml:space="preserve">
+    <value>패턴</value>
+  </data>
+  <data name="GenPatternHelp" xml:space="preserve">
+    <value>#은 숫자, ?는 문자, *는 둘 중 하나를 나타내며, \는 다음 문자를 그대로 사용합니다.</value>
+  </data>
+  <data name="GenPreview" xml:space="preserve">
+    <value>미리보기</value>
+  </data>
+  <data name="GenPreviewName" xml:space="preserve">
+    <value>처음 몇 행 미리보기</value>
+  </data>
+  <data name="GenPreviewNote" xml:space="preserve">
+    <value>{0:N0}행 중 처음 몇 행입니다. 서버에 맡긴 열은 표시되지 않습니다.</value>
+  </data>
+  <data name="GenPreviewWaiting" xml:space="preserve">
+    <value>설정에 문제가 없으면 미리보기가 표시됩니다.</value>
+  </data>
+  <data name="GenProgressTitle" xml:space="preserve">
+    <value>행 생성 중</value>
+  </data>
+  <data name="GenProgress_One" xml:space="preserve">
+    <value>{1:N0}/{0:N0}행</value>
+  </data>
+  <data name="GenProgress_Other" xml:space="preserve">
+    <value>{1:N0}/{0:N0}행</value>
+  </data>
+  <data name="GenReadOnlyMessage" xml:space="preserve">
+    <value>이 연결의 안전 모드가 읽기 전용이므로 행을 삽입할 수 없습니다.</value>
+  </data>
+  <data name="GenReadOnlyTitle" xml:space="preserve">
+    <value>읽기 전용 연결</value>
+  </data>
+  <data name="GenReferenceNote" xml:space="preserve">
+    <value>참조된 키의 값을 사용합니다.</value>
+  </data>
+  <data name="GenReferenceSampledNote_One" xml:space="preserve">
+    <value>{1}의 행 {0:N0}개에서 샘플링한 값을 사용합니다. 키의 모든 열은 같은 행에서 가져옵니다.</value>
+  </data>
+  <data name="GenReferenceSampledNote_Other" xml:space="preserve">
+    <value>{1}의 행 {0:N0}개에서 샘플링한 값을 사용합니다. 키의 모든 열은 같은 행에서 가져옵니다.</value>
+  </data>
+  <data name="GenRows" xml:space="preserve">
+    <value>행</value>
+  </data>
+  <data name="GenSeed" xml:space="preserve">
+    <value>시드</value>
+  </data>
+  <data name="GenServerDefaultNote" xml:space="preserve">
+    <value>모든 INSERT에서 제외되므로 열에는 기본값 또는 NULL이 들어갑니다.</value>
+  </data>
+  <data name="GenServerFillsNote" xml:space="preserve">
+    <value>서버가 이 열을 직접 채웁니다.</value>
+  </data>
+  <data name="GenShortest" xml:space="preserve">
+    <value>최소 길이</value>
+  </data>
+  <data name="GenStart" xml:space="preserve">
+    <value>시작값</value>
+  </data>
+  <data name="GenStep" xml:space="preserve">
+    <value>단계</value>
+  </data>
+  <data name="GenStoppedAfter_One" xml:space="preserve">
+    <value>{0:N0}행 후 중지되었습니다. 해당 행은 {1}에 남아 있습니다.</value>
+  </data>
+  <data name="GenStoppedAfter_Other" xml:space="preserve">
+    <value>{0:N0}행 후 중지되었습니다. 해당 행은 {1}에 남아 있습니다.</value>
+  </data>
+  <data name="GenStoppedMessage_One" xml:space="preserve">
+    <value>{1}
+
+그 전에 {0:N0}행이 삽입되었으며 테이블에 남아 있습니다.</value>
+  </data>
+  <data name="GenStoppedMessage_Other" xml:space="preserve">
+    <value>{1}
+
+그 전에 {0:N0}행이 삽입되었으며 테이블에 남아 있습니다.</value>
+  </data>
+  <data name="GenStoppedTitle" xml:space="preserve">
+    <value>행 생성이 중지됨</value>
+  </data>
+  <data name="GenTitle" xml:space="preserve">
+    <value>{0}의 행 생성</value>
+  </data>
+  <data name="GenTrueValues" xml:space="preserve">
+    <value>true 값</value>
+  </data>
+  <data name="GenUuidVersion" xml:space="preserve">
+    <value>버전</value>
+  </data>
+  <data name="GenUuidVersion4" xml:space="preserve">
+    <value>버전 4(무작위)</value>
+  </data>
+  <data name="GenUuidVersion7" xml:space="preserve">
+    <value>버전 7(시간순)</value>
+  </data>
+  <data name="GenVocabularyNote" xml:space="preserve">
+    <value>고정된 어휘에서 {0} 값을 만들며, 시드가 같으면 모든 TablePro 버전에서 같은 값이 생성됩니다.</value>
+  </data>
+  <data name="GeneratorBoolean" xml:space="preserve">
+    <value>불리언</value>
+  </data>
+  <data name="GeneratorCity" xml:space="preserve">
+    <value>도시</value>
+  </data>
+  <data name="GeneratorCountry" xml:space="preserve">
+    <value>국가</value>
+  </data>
+  <data name="GeneratorDate" xml:space="preserve">
+    <value>날짜</value>
+  </data>
+  <data name="GeneratorDateTime" xml:space="preserve">
+    <value>날짜 및 시간</value>
+  </data>
+  <data name="GeneratorDecimalRange" xml:space="preserve">
+    <value>소수 범위</value>
+  </data>
+  <data name="GeneratorEmail" xml:space="preserve">
+    <value>이메일</value>
+  </data>
+  <data name="GeneratorFirstName" xml:space="preserve">
+    <value>이름</value>
+  </data>
+  <data name="GeneratorFullName" xml:space="preserve">
+    <value>전체 이름</value>
+  </data>
+  <data name="GeneratorIntegerRange" xml:space="preserve">
+    <value>정수 범위</value>
+  </data>
+  <data name="GeneratorJson" xml:space="preserve">
+    <value>JSON</value>
+  </data>
+  <data name="GeneratorLastName" xml:space="preserve">
+    <value>성</value>
+  </data>
+  <data name="GeneratorList" xml:space="preserve">
+    <value>값 목록</value>
+  </data>
+  <data name="GeneratorPattern" xml:space="preserve">
+    <value>패턴</value>
+  </data>
+  <data name="GeneratorPhone" xml:space="preserve">
+    <value>전화번호</value>
+  </data>
+  <data name="GeneratorReference" xml:space="preserve">
+    <value>참조 값</value>
+  </data>
+  <data name="GeneratorSequence" xml:space="preserve">
+    <value>시퀀스</value>
+  </data>
+  <data name="GeneratorServerDefault" xml:space="preserve">
+    <value>서버 기본값</value>
+  </data>
+  <data name="GeneratorStreetAddress" xml:space="preserve">
+    <value>도로명 주소</value>
+  </data>
+  <data name="GeneratorText" xml:space="preserve">
+    <value>텍스트</value>
+  </data>
+  <data name="GeneratorTime" xml:space="preserve">
+    <value>시간</value>
+  </data>
+  <data name="GeneratorUuid" xml:space="preserve">
+    <value>UUID</value>
+  </data>
+  <data name="JoinAddFilter" xml:space="preserve">
+    <value>필터 추가</value>
+  </data>
+  <data name="JoinAddSort" xml:space="preserve">
+    <value>정렬 추가</value>
+  </data>
+  <data name="JoinAscending" xml:space="preserve">
+    <value>오름차순</value>
+  </data>
+  <data name="JoinCannotReadTables" xml:space="preserve">
+    <value>테이블을 읽을 수 없습니다</value>
+  </data>
+  <data name="JoinClearQuery" xml:space="preserve">
+    <value>쿼리 지우기</value>
+  </data>
+  <data name="JoinColumn" xml:space="preserve">
+    <value>열</value>
+  </data>
+  <data name="JoinConditionFor" xml:space="preserve">
+    <value>{0}의 조인 조건</value>
+  </data>
+  <data name="JoinCopySql" xml:space="preserve">
+    <value>SQL 복사</value>
+  </data>
+  <data name="JoinCrossJoin" xml:space="preserve">
+    <value>교차 조인(조건 없음)</value>
+  </data>
+  <data name="JoinDescending" xml:space="preserve">
+    <value>내림차순</value>
+  </data>
+  <data name="JoinFilterTables" xml:space="preserve">
+    <value>테이블 필터링</value>
+  </data>
+  <data name="JoinGeneratedSql" xml:space="preserve">
+    <value>생성된 SQL</value>
+  </data>
+  <data name="JoinHintCrossJoined_One" xml:space="preserve">
+    <value>{1}을(를) 앞의 테이블과 연결하는 외래 키가 없어 교차 조인됩니다.</value>
+  </data>
+  <data name="JoinHintCrossJoined_Other" xml:space="preserve">
+    <value>{1}을(를) 앞의 테이블과 연결하는 외래 키가 없어 교차 조인됩니다.</value>
+  </data>
+  <data name="JoinHintStart" xml:space="preserve">
+    <value>조인할 테이블을 선택하세요. 테이블의 외래 키가 조인 조건이 됩니다.</value>
+  </data>
+  <data name="JoinKindFull" xml:space="preserve">
+    <value>전체 조인</value>
+  </data>
+  <data name="JoinKindInner" xml:space="preserve">
+    <value>내부 조인</value>
+  </data>
+  <data name="JoinKindLeft" xml:space="preserve">
+    <value>왼쪽 조인</value>
+  </data>
+  <data name="JoinKindRight" xml:space="preserve">
+    <value>오른쪽 조인</value>
+  </data>
+  <data name="JoinNoTables" xml:space="preserve">
+    <value>이 스키마에는 조인할 테이블이 없습니다.</value>
+  </data>
+  <data name="JoinOpenInQueryTab" xml:space="preserve">
+    <value>쿼리 탭에서 열기</value>
+  </data>
+  <data name="JoinOperator" xml:space="preserve">
+    <value>연산자</value>
+  </data>
+  <data name="JoinPickSecondTable" xml:space="preserve">
+    <value>조인할 두 번째 테이블을 선택하세요.</value>
+  </data>
+  <data name="JoinReadingTables" xml:space="preserve">
+    <value>테이블을 읽는 중…</value>
+  </data>
+  <data name="JoinReadingTablesProgress" xml:space="preserve">
+    <value>테이블을 읽는 중… {0}/{1}</value>
+  </data>
+  <data name="JoinReloadTables" xml:space="preserve">
+    <value>테이블 다시 불러오기</value>
+  </data>
+  <data name="JoinRemoveFilter" xml:space="preserve">
+    <value>필터 제거</value>
+  </data>
+  <data name="JoinRemoveSort" xml:space="preserve">
+    <value>정렬 제거</value>
+  </data>
+  <data name="JoinRemoveTable" xml:space="preserve">
+    <value>{0} 제거</value>
+  </data>
+  <data name="JoinSecondValue" xml:space="preserve">
+    <value>두 번째 값</value>
+  </data>
+  <data name="JoinSectionFilters" xml:space="preserve">
+    <value>필터</value>
+  </data>
+  <data name="JoinSectionJoins" xml:space="preserve">
+    <value>조인</value>
+  </data>
+  <data name="JoinSectionSort" xml:space="preserve">
+    <value>정렬</value>
+  </data>
+  <data name="JoinSelectColumn" xml:space="preserve">
+    <value>{0}.{1} 선택</value>
+  </data>
+  <data name="JoinShowingTables_One" xml:space="preserve">
+    <value>테이블 {0}개 중 {1}개 표시</value>
+  </data>
+  <data name="JoinShowingTables_Other" xml:space="preserve">
+    <value>테이블 {0}개 중 {1}개 표시</value>
+  </data>
+  <data name="JoinSortDirection" xml:space="preserve">
+    <value>정렬 방향</value>
+  </data>
+  <data name="JoinSqlPlaceholder" xml:space="preserve">
+    <value>-- 시작하려면 테이블을 선택하세요.</value>
+  </data>
+  <data name="JoinTabTitle" xml:space="preserve">
+    <value>조인 빌더</value>
+  </data>
+  <data name="JoinTableCount_One" xml:space="preserve">
+    <value>{0}개 테이블</value>
+  </data>
+  <data name="JoinTableCount_Other" xml:space="preserve">
+    <value>{0}개 테이블</value>
+  </data>
+  <data name="JoinTryAgain" xml:space="preserve">
+    <value>다시 시도</value>
+  </data>
+  <data name="JoinTypeFor" xml:space="preserve">
+    <value>{0}의 조인 유형</value>
+  </data>
+  <data name="JoinValueFrom" xml:space="preserve">
+    <value>시작</value>
+  </data>
+  <data name="JoinValueTo" xml:space="preserve">
+    <value>끝</value>
+  </data>
+  <data name="JoinZoomIn" xml:space="preserve">
+    <value>확대</value>
+  </data>
+  <data name="JoinZoomOut" xml:space="preserve">
+    <value>축소</value>
+  </data>
+  <data name="Starting" xml:space="preserve">
+    <value>시작 중…</value>
+  </data>
+</root>

@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AuthFailed" xml:space="preserve">
+    <value>身份验证失败。请检查“密码”字段中的身份验证令牌。</value>
+  </data>
+  <data name="BeginFailed" xml:space="preserve">
+    <value>保存无法开始事务：{0}</value>
+  </data>
+  <data name="BeginNoAnswer" xml:space="preserve">
+    <value>保存无法开始事务：服务器没有响应。</value>
+  </data>
+  <data name="CommitFailed" xml:space="preserve">
+    <value>保存无法提交：{0}</value>
+  </data>
+  <data name="FewerAnswers" xml:space="preserve">
+    <value>服务器响应的语句少于保存发送的语句。</value>
+  </data>
+  <data name="FileUrlNoFile" xml:space="preserve">
+    <value>file: URL 未指定数据库文件。</value>
+  </data>
+  <data name="LocalNeedsFile" xml:space="preserve">
+    <value>本地 libSQL 连接需要数据库文件。</value>
+  </data>
+  <data name="NoLocalFiles" xml:space="preserve">
+    <value>此版本无法打开本地 libSQL 文件，请改为连接到服务器 URL。</value>
+  </data>
+  <data name="NoPipeline" xml:space="preserve">
+    <value>服务器在此 URL 上没有 Hrana 管道。请检查数据库 URL。</value>
+  </data>
+  <data name="NotAUrl" xml:space="preserve">
+    <value>“{0}”不是 libSQL 数据库 URL。请使用 libsql://、https:// 或 http://。</value>
+  </data>
+  <data name="StreamClosedBeforeCommit" xml:space="preserve">
+    <value>服务器在提交之前关闭了保存的流，因此未保存任何内容。</value>
+  </data>
+  <data name="StreamEnded" xml:space="preserve">
+    <value>{0} 此标签页的流已结束，因此所有打开的事务都已回滚。</value>
+  </data>
+  <data name="Unreadable" xml:space="preserve">
+    <value>服务器返回了 TablePro 无法读取的响应。</value>
+  </data>
+</root>

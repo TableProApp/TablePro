@@ -1,0 +1,489 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AddCheckNote" xml:space="preserve">
+    <value>Việc thêm ràng buộc kiểm tra sẽ đọc mọi dòng, và thất bại nếu có dòng không đạt.</value>
+  </data>
+  <data name="AddCheckTitle" xml:space="preserve">
+    <value>Thêm ràng buộc kiểm tra</value>
+  </data>
+  <data name="AddColumnTitle" xml:space="preserve">
+    <value>Thêm cột</value>
+  </data>
+  <data name="AddForeignKeyTitle" xml:space="preserve">
+    <value>Thêm khóa ngoại</value>
+  </data>
+  <data name="AddIndexTitle" xml:space="preserve">
+    <value>Thêm chỉ mục</value>
+  </data>
+  <data name="AddPartitionTitle" xml:space="preserve">
+    <value>Thêm phân vùng</value>
+  </data>
+  <data name="AllowsNull" xml:space="preserve">
+    <value>Cho phép NULL</value>
+  </data>
+  <data name="AnyColumn" xml:space="preserve">
+    <value>Bất kỳ cột nào</value>
+  </data>
+  <data name="CannotChangeStructure" xml:space="preserve">
+    <value>Engine này không thể thay đổi cấu trúc từ ứng dụng.</value>
+  </data>
+  <data name="CannotExpressChange" xml:space="preserve">
+    <value>Engine này không thể biểu diễn thay đổi đó.</value>
+  </data>
+  <data name="CannotMakeChangeTitle" xml:space="preserve">
+    <value>Không thể thực hiện thay đổi này</value>
+  </data>
+  <data name="CellNo" xml:space="preserve">
+    <value>KHÔNG</value>
+  </data>
+  <data name="CellYes" xml:space="preserve">
+    <value>CÓ</value>
+  </data>
+  <data name="ChangeFailedTitle" xml:space="preserve">
+    <value>Thay đổi không thành công</value>
+  </data>
+  <data name="CheckExpressionHeader" xml:space="preserve">
+    <value>Biểu thức</value>
+  </data>
+  <data name="CheckExpressionPlaceholder" xml:space="preserve">
+    <value>ví dụ price &gt; 0 AND quantity &gt;= 0</value>
+  </data>
+  <data name="CheckIncomplete" xml:space="preserve">
+    <value>Ràng buộc kiểm tra cần có cả tên và biểu thức.</value>
+  </data>
+  <data name="CheckNotSavedTitle" xml:space="preserve">
+    <value>Chưa lưu ràng buộc kiểm tra</value>
+  </data>
+  <data name="ChecksNotEditable" xml:space="preserve">
+    <value>Máy chủ này không thể thêm hoặc thay đổi ràng buộc kiểm tra tại đây.</value>
+  </data>
+  <data name="CommentHeader" xml:space="preserve">
+    <value>Ghi chú</value>
+  </data>
+  <data name="DataAddRow.Label" xml:space="preserve">
+    <value>Thêm dòng</value>
+  </data>
+  <data name="DataDelete.Label" xml:space="preserve">
+    <value>Xóa</value>
+  </data>
+  <data name="DataDiscard.Label" xml:space="preserve">
+    <value>Hủy bỏ</value>
+  </data>
+  <data name="DataExport.Label" xml:space="preserve">
+    <value>Xuất</value>
+  </data>
+  <data name="DataFilter.Label" xml:space="preserve">
+    <value>Bộ lọc</value>
+  </data>
+  <data name="DataImport.Label" xml:space="preserve">
+    <value>Nhập</value>
+  </data>
+  <data name="DataRedo.Label" xml:space="preserve">
+    <value>Làm lại</value>
+  </data>
+  <data name="DataRefresh.Label" xml:space="preserve">
+    <value>Làm mới</value>
+  </data>
+  <data name="DataUndo.Label" xml:space="preserve">
+    <value>Hoàn tác</value>
+  </data>
+  <data name="DefaultExpressionHeader" xml:space="preserve">
+    <value>Biểu thức mặc định</value>
+  </data>
+  <data name="DefaultExpressionPlaceholder" xml:space="preserve">
+    <value>ví dụ 0, 'text' hoặc now()</value>
+  </data>
+  <data name="DefinitionCopy.Label" xml:space="preserve">
+    <value>Sao chép</value>
+  </data>
+  <data name="DefinitionOpenInQueryTab.Label" xml:space="preserve">
+    <value>Mở trong tab truy vấn</value>
+  </data>
+  <data name="DeleteRows" xml:space="preserve">
+    <value>Xoá dòng</value>
+  </data>
+  <data name="DetailsReadFailed" xml:space="preserve">
+    <value>Không thể đọc ràng buộc kiểm tra, phân vùng và tùy chọn: {0}</value>
+  </data>
+  <data name="DiscardChangesTitle" xml:space="preserve">
+    <value>Hủy bỏ thay đổi?</value>
+  </data>
+  <data name="DuplicateRow" xml:space="preserve">
+    <value>Nhân bản dòng</value>
+  </data>
+  <data name="EditCell" xml:space="preserve">
+    <value>Sửa ô</value>
+  </data>
+  <data name="EditCheckNote" xml:space="preserve">
+    <value>Biểu thức mới sẽ xoá ràng buộc kiểm tra rồi thêm lại, việc này đọc mọi dòng. Chỉ đổi tên thì không.</value>
+  </data>
+  <data name="EditCheckTitle" xml:space="preserve">
+    <value>Sửa ràng buộc CHECK</value>
+  </data>
+  <data name="EditColumnTitle" xml:space="preserve">
+    <value>Sửa cột</value>
+  </data>
+  <data name="EngineReadOnly" xml:space="preserve">
+    <value>Kết nối {0} là chỉ đọc.</value>
+  </data>
+  <data name="ExcludeValue" xml:space="preserve">
+    <value>Loại trừ giá trị này</value>
+  </data>
+  <data name="FilterAddCondition.Content" xml:space="preserve">
+    <value>Thêm điều kiện</value>
+  </data>
+  <data name="FilterApply.Content" xml:space="preserve">
+    <value>Áp dụng</value>
+  </data>
+  <data name="FilterByValue" xml:space="preserve">
+    <value>Lọc theo giá trị này</value>
+  </data>
+  <data name="FilterClear.Content" xml:space="preserve">
+    <value>Xóa</value>
+  </data>
+  <data name="FilterMatchMode.OffContent" xml:space="preserve">
+    <value>Khớp bất kỳ</value>
+  </data>
+  <data name="FilterMatchMode.OnContent" xml:space="preserve">
+    <value>Khớp tất cả</value>
+  </data>
+  <data name="FilterRawWhere.PlaceholderText" xml:space="preserve">
+    <value>Mệnh đề WHERE thô, ví dụ: price &gt; 10 AND status = 'open'</value>
+  </data>
+  <data name="FilterRemoveCondition.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Xoá điều kiện</value>
+  </data>
+  <data name="FilterRemoveCondition.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Xoá điều kiện</value>
+  </data>
+  <data name="FilterValue.PlaceholderText" xml:space="preserve">
+    <value>Giá trị</value>
+  </data>
+  <data name="ForeignKeyColumnHeader" xml:space="preserve">
+    <value>Cột</value>
+  </data>
+  <data name="ForeignKeyOnDeleteHeader" xml:space="preserve">
+    <value>Khi xóa</value>
+  </data>
+  <data name="ForeignKeyTargetColumnHeader" xml:space="preserve">
+    <value>Cột tham chiếu</value>
+  </data>
+  <data name="ForeignKeyTargetTableHeader" xml:space="preserve">
+    <value>Bảng tham chiếu</value>
+  </data>
+  <data name="HeaderBound" xml:space="preserve">
+    <value>Giới hạn phân vùng</value>
+  </data>
+  <data name="HeaderColumns" xml:space="preserve">
+    <value>Cột</value>
+  </data>
+  <data name="HeaderComment" xml:space="preserve">
+    <value>Ghi chú</value>
+  </data>
+  <data name="HeaderDefault" xml:space="preserve">
+    <value>Mặc định</value>
+  </data>
+  <data name="HeaderDefinition" xml:space="preserve">
+    <value>Định nghĩa</value>
+  </data>
+  <data name="HeaderEditable" xml:space="preserve">
+    <value>Có thể sửa</value>
+  </data>
+  <data name="HeaderEvent" xml:space="preserve">
+    <value>Sự kiện</value>
+  </data>
+  <data name="HeaderExpression" xml:space="preserve">
+    <value>Biểu thức</value>
+  </data>
+  <data name="HeaderIdentity" xml:space="preserve">
+    <value>Danh tính</value>
+  </data>
+  <data name="HeaderKey" xml:space="preserve">
+    <value>Khóa</value>
+  </data>
+  <data name="HeaderMethod" xml:space="preserve">
+    <value>Phương thức</value>
+  </data>
+  <data name="HeaderNullable" xml:space="preserve">
+    <value>Cho phép NULL</value>
+  </data>
+  <data name="HeaderOnDelete" xml:space="preserve">
+    <value>Khi xóa</value>
+  </data>
+  <data name="HeaderOnUpdate" xml:space="preserve">
+    <value>Khi cập nhật</value>
+  </data>
+  <data name="HeaderOption" xml:space="preserve">
+    <value>Tùy chọn</value>
+  </data>
+  <data name="HeaderPrimary" xml:space="preserve">
+    <value>Primary</value>
+  </data>
+  <data name="HeaderReferencedColumns" xml:space="preserve">
+    <value>Các cột được tham chiếu</value>
+  </data>
+  <data name="HeaderReferences" xml:space="preserve">
+    <value>Tham chiếu</value>
+  </data>
+  <data name="HeaderRows" xml:space="preserve">
+    <value>Dòng</value>
+  </data>
+  <data name="HeaderSize" xml:space="preserve">
+    <value>Kích thước</value>
+  </data>
+  <data name="HeaderSubpartitionOf" xml:space="preserve">
+    <value>Phân vùng con của</value>
+  </data>
+  <data name="HeaderTiming" xml:space="preserve">
+    <value>Thời điểm</value>
+  </data>
+  <data name="HeaderUnique" xml:space="preserve">
+    <value>Duy nhất</value>
+  </data>
+  <data name="HeaderValidated" xml:space="preserve">
+    <value>Đã xác thực</value>
+  </data>
+  <data name="IndexColumnsHeader" xml:space="preserve">
+    <value>Các cột, theo thứ tự khóa</value>
+  </data>
+  <data name="IndexUnique" xml:space="preserve">
+    <value>Duy nhất</value>
+  </data>
+  <data name="InspectValue" xml:space="preserve">
+    <value>Kiểm tra giá trị</value>
+  </data>
+  <data name="KeyPatternPlaceholder" xml:space="preserve">
+    <value>Mẫu khóa, ví dụ user:*</value>
+  </data>
+  <data name="KeyTypeAll" xml:space="preserve">
+    <value>Tất cả kiểu</value>
+  </data>
+  <data name="LoadFailedTitle" xml:space="preserve">
+    <value>Không thể tải {0}</value>
+  </data>
+  <data name="Loading" xml:space="preserve">
+    <value>Đang tải…</value>
+  </data>
+  <data name="NoPrimaryKey" xml:space="preserve">
+    <value>Không có khóa chính: các dòng được so khớp theo mọi cột, và lần lưu nào gặp dòng trùng lặp sẽ bị từ chối.</value>
+  </data>
+  <data name="NoRows" xml:space="preserve">
+    <value>Không có dòng</value>
+  </data>
+  <data name="NoRowsOnPage" xml:space="preserve">
+    <value>Không có dòng nào trên trang này</value>
+  </data>
+  <data name="NotSupportedTitle" xml:space="preserve">
+    <value>Không được hỗ trợ</value>
+  </data>
+  <data name="NothingSavedTitle" xml:space="preserve">
+    <value>Không có gì được lưu</value>
+  </data>
+  <data name="ObjectReadOnly" xml:space="preserve">
+    <value>Đối tượng này là chỉ đọc.</value>
+  </data>
+  <data name="OpenReferencedTable" xml:space="preserve">
+    <value>Mở {0}</value>
+  </data>
+  <data name="OperatorBetween" xml:space="preserve">
+    <value>giữa</value>
+  </data>
+  <data name="OperatorContains" xml:space="preserve">
+    <value>chứa</value>
+  </data>
+  <data name="OperatorEndsWith" xml:space="preserve">
+    <value>kết thúc bằng</value>
+  </data>
+  <data name="OperatorIn" xml:space="preserve">
+    <value>trong danh sách</value>
+  </data>
+  <data name="OperatorIsEmpty" xml:space="preserve">
+    <value>trống</value>
+  </data>
+  <data name="OperatorIsNotEmpty" xml:space="preserve">
+    <value>không trống</value>
+  </data>
+  <data name="OperatorIsNotNull" xml:space="preserve">
+    <value>không phải NULL</value>
+  </data>
+  <data name="OperatorIsNull" xml:space="preserve">
+    <value>là NULL</value>
+  </data>
+  <data name="OperatorNotContains" xml:space="preserve">
+    <value>không chứa</value>
+  </data>
+  <data name="OperatorNotIn" xml:space="preserve">
+    <value>không trong danh sách</value>
+  </data>
+  <data name="OperatorStartsWith" xml:space="preserve">
+    <value>bắt đầu bằng</value>
+  </data>
+  <data name="PageRangeOfTotal_One" xml:space="preserve">
+    <value>{1:N0}–{2:N0} trong số {0:N0}</value>
+  </data>
+  <data name="PageRangeOfTotal_Other" xml:space="preserve">
+    <value>{1:N0}–{2:N0} trong số {0:N0}</value>
+  </data>
+  <data name="PagerFirst.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Trang đầu</value>
+  </data>
+  <data name="PagerFirst.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Trang đầu</value>
+  </data>
+  <data name="PagerLast.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Trang cuối</value>
+  </data>
+  <data name="PagerLast.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Trang cuối</value>
+  </data>
+  <data name="PagerNext.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Trang sau</value>
+  </data>
+  <data name="PagerNext.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Trang sau</value>
+  </data>
+  <data name="PagerPageSize.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Số hàng mỗi trang</value>
+  </data>
+  <data name="PagerPrevious.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Trang trước</value>
+  </data>
+  <data name="PagerPrevious.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Trang trước</value>
+  </data>
+  <data name="PartitionBoundHeader" xml:space="preserve">
+    <value>Giới hạn phân vùng</value>
+  </data>
+  <data name="PartitionBoundNote" xml:space="preserve">
+    <value>Viết giới hạn phân vùng giống như cột Giới hạn phân vùng hiển thị. Để trống đối với phân vùng HASH hoặc KEY.</value>
+  </data>
+  <data name="PartitionBoundPlaceholder" xml:space="preserve">
+    <value>ví dụ VALUES LESS THAN (2026), hoặc FOR VALUES FROM ('2026-01-01') TO ('2027-01-01')</value>
+  </data>
+  <data name="PartitionedBy" xml:space="preserve">
+    <value>Phân vùng theo {0}.</value>
+  </data>
+  <data name="PartitionedBySubpartitioned" xml:space="preserve">
+    <value>Phân vùng theo {0}, phân vùng con theo {1}.</value>
+  </data>
+  <data name="ReadOnlyCannotSave" xml:space="preserve">
+    <value>Chế độ an toàn đang ở mức Chỉ đọc trên kết nối này, nên không thể lưu các chỉnh sửa.</value>
+  </data>
+  <data name="ReadOnlyConnectionTitle" xml:space="preserve">
+    <value>Kết nối chỉ đọc</value>
+  </data>
+  <data name="ReloadDropsChanges_One" xml:space="preserve">
+    <value>Tải lại sẽ bỏ {0} thay đổi chưa lưu.</value>
+  </data>
+  <data name="ReloadDropsChanges_Other" xml:space="preserve">
+    <value>Tải lại sẽ bỏ {0} thay đổi chưa lưu.</value>
+  </data>
+  <data name="ReviewStructureChangeTitle" xml:space="preserve">
+    <value>Xem lại thay đổi cấu trúc</value>
+  </data>
+  <data name="RowCount_One" xml:space="preserve">
+    <value>{0:N0} dòng</value>
+  </data>
+  <data name="RowCount_Other" xml:space="preserve">
+    <value>{0:N0} dòng</value>
+  </data>
+  <data name="RowsSelected_One" xml:space="preserve">
+    <value>Đã chọn {0:N0} dòng</value>
+  </data>
+  <data name="RowsSelected_Other" xml:space="preserve">
+    <value>Đã chọn {0:N0} dòng</value>
+  </data>
+  <data name="SafeModeReadOnly" xml:space="preserve">
+    <value>Chế độ an toàn đang ở mức Chỉ đọc trên kết nối này.</value>
+  </data>
+  <data name="SaveChangesButton_One" xml:space="preserve">
+    <value>Lưu {0:N0}</value>
+  </data>
+  <data name="SaveChangesButton_Other" xml:space="preserve">
+    <value>Lưu {0:N0}</value>
+  </data>
+  <data name="SaveChangesReviewTitle" xml:space="preserve">
+    <value>Lưu thay đổi</value>
+  </data>
+  <data name="SavedChanges_One" xml:space="preserve">
+    <value>Đã lưu {0:N0} thay đổi ({1}).</value>
+  </data>
+  <data name="SavedChanges_Other" xml:space="preserve">
+    <value>Đã lưu {0:N0} thay đổi ({1}).</value>
+  </data>
+  <data name="Saving" xml:space="preserve">
+    <value>Đang lưu…</value>
+  </data>
+  <data name="SectionData.Text" xml:space="preserve">
+    <value>Dữ liệu</value>
+  </data>
+  <data name="SectionDefinition.Text" xml:space="preserve">
+    <value>Định nghĩa</value>
+  </data>
+  <data name="SectionStructure.Text" xml:space="preserve">
+    <value>Cấu trúc</value>
+  </data>
+  <data name="SetToNull" xml:space="preserve">
+    <value>Đặt thành NULL</value>
+  </data>
+  <data name="StructureAdd.Label" xml:space="preserve">
+    <value>Thêm</value>
+  </data>
+  <data name="StructureChecks.Text" xml:space="preserve">
+    <value>Ràng buộc kiểm tra</value>
+  </data>
+  <data name="StructureColumns.Text" xml:space="preserve">
+    <value>Cột</value>
+  </data>
+  <data name="StructureDrop.Label" xml:space="preserve">
+    <value>Xóa</value>
+  </data>
+  <data name="StructureEdit.Label" xml:space="preserve">
+    <value>Sửa</value>
+  </data>
+  <data name="StructureForeignKeys.Text" xml:space="preserve">
+    <value>Khóa ngoại</value>
+  </data>
+  <data name="StructureIndexes.Text" xml:space="preserve">
+    <value>Chỉ mục</value>
+  </data>
+  <data name="StructureOptions.Text" xml:space="preserve">
+    <value>Tùy chọn</value>
+  </data>
+  <data name="StructurePartitions.Text" xml:space="preserve">
+    <value>Phân vùng</value>
+  </data>
+  <data name="StructureRefresh.Label" xml:space="preserve">
+    <value>Làm mới</value>
+  </data>
+  <data name="StructureTriggers.Text" xml:space="preserve">
+    <value>Trigger</value>
+  </data>
+  <data name="StructureTruncate.Label" xml:space="preserve">
+    <value>Truncate</value>
+  </data>
+  <data name="TableOptionsTitle" xml:space="preserve">
+    <value>Tùy chọn bảng</value>
+  </data>
+  <data name="UnsavedChanges_One" xml:space="preserve">
+    <value>{1} có {0} thay đổi chưa lưu.</value>
+  </data>
+  <data name="UnsavedChanges_Other" xml:space="preserve">
+    <value>{1} có {0} thay đổi chưa lưu.</value>
+  </data>
+  <data name="ViewsReadOnly" xml:space="preserve">
+    <value>View là chỉ đọc.</value>
+  </data>
+</root>

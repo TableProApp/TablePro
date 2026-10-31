@@ -1,0 +1,238 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AskPassMissing" xml:space="preserve">
+    <value>The SSH password helper is missing from {0}. Reinstall TablePro.</value>
+    <comment>{0} is a file path.</comment>
+  </data>
+  <data name="BatchScript" xml:space="preserve">
+    <value>{0} is a batch script, which Windows would run through cmd.exe. Give the path of the program's .exe instead.</value>
+    <comment>{0} is a file path.</comment>
+  </data>
+  <data name="CloudflaredNotFound" xml:space="preserve">
+    <value>cloudflared was not found. Install it with “winget install Cloudflare.cloudflared”, or set its path in the connection's Cloudflare Tunnel settings.</value>
+  </data>
+  <data name="CloudflareSignIn" xml:space="preserve">
+    <value>Cloudflare Access needs a browser sign-in. Sign in at {0}, then connect again.</value>
+    <comment>{0} is a sign-in address.</comment>
+  </data>
+  <data name="CloudflareTokenRequired" xml:space="preserve">
+    <value>Service token ID and secret are required.</value>
+  </data>
+  <data name="CloudSqlKeyRequired" xml:space="preserve">
+    <value>A service account key is required. Paste the key's JSON in the connection's Cloud SQL settings.</value>
+  </data>
+  <data name="CloudSqlProxyName" xml:space="preserve">
+    <value>The Cloud SQL Auth Proxy</value>
+    <comment>The subject of HelperCouldNotListen, HelperExitedEarly and HelperTimedOut.</comment>
+  </data>
+  <data name="CloudSqlProxyNotFound" xml:space="preserve">
+    <value>cloud-sql-proxy was not found. Install it with “gcloud components install cloud-sql-proxy”, or set its path in the connection's Cloud SQL settings.</value>
+  </data>
+  <data name="CommandNotFound" xml:space="preserve">
+    <value>{0} was not found. Give its full path in the connection.</value>
+    <comment>{0} is a program name.</comment>
+  </data>
+  <data name="CouldNotStart" xml:space="preserve">
+    <value>Could not start {0}: {1}</value>
+    <comment>{0} is a program path, {1} the system's reason.</comment>
+  </data>
+  <data name="DatabaseHostEmpty" xml:space="preserve">
+    <value>The database host is empty.</value>
+  </data>
+  <data name="DatabaseHostUnsafe" xml:space="preserve">
+    <value>The database host "{0}" contains characters ssh does not accept.</value>
+    <comment>{0} is the host as entered.</comment>
+  </data>
+  <data name="FixedPortInUse" xml:space="preserve">
+    <value>Another program is already listening on local port {0}. Choose another port, or leave it empty.</value>
+    <comment>{0} is a port number.</comment>
+  </data>
+  <data name="HelperCouldNotListen" xml:space="preserve">
+    <value>{0} could not listen on local port {1}.</value>
+    <comment>{0} is a helper such as TunnelCommandName or cloudflared, {1} a port number.</comment>
+  </data>
+  <data name="HelperExitedEarly" xml:space="preserve">
+    <value>{0} exited before its local port was open.</value>
+    <comment>{0} is a helper such as TunnelCommandName or cloudflared.</comment>
+  </data>
+  <data name="HelperTimedOut" xml:space="preserve">
+    <value>{0} did not open its local port in time.</value>
+    <comment>{0} is a helper such as TunnelCommandName or cloudflared.</comment>
+  </data>
+  <data name="JumpHostEmpty" xml:space="preserve">
+    <value>The jump host is empty.</value>
+  </data>
+  <data name="JumpHostUnsafe" xml:space="preserve">
+    <value>The jump host "{0}" contains characters ssh does not accept.</value>
+    <comment>{0} is the host as entered.</comment>
+  </data>
+  <data name="NoFreePort" xml:space="preserve">
+    <value>No local port was free for the tunnel.</value>
+  </data>
+  <data name="NotAProxyOrHelper" xml:space="preserve">
+    <value>The connection does not use a proxy or a tunnel helper.</value>
+  </data>
+  <data name="NotHttpProxy" xml:space="preserve">
+    <value>The proxy did not answer as an HTTP proxy.</value>
+  </data>
+  <data name="NotSocks5" xml:space="preserve">
+    <value>The proxy did not answer as a SOCKS5 proxy.</value>
+  </data>
+  <data name="NotSsh" xml:space="preserve">
+    <value>The connection does not use SSH.</value>
+  </data>
+  <data name="PortOutOfRange" xml:space="preserve">
+    <value>A port is between 1 and 65535.</value>
+  </data>
+  <data name="ProxyClosed" xml:space="preserve">
+    <value>The proxy closed the connection.</value>
+  </data>
+  <data name="ProxyConnectFailed" xml:space="preserve">
+    <value>Could not connect through the proxy at {0}. {1}</value>
+    <comment>{0} is host:port, {1} the system's reason.</comment>
+  </data>
+  <data name="ProxyCouldNotConnect" xml:space="preserve">
+    <value>The proxy could not connect to {0}:{1}: {2}.</value>
+    <comment>{0} is a host, {1} a port, {2} the reason: a Socks* phrase or the proxy's own status line.</comment>
+  </data>
+  <data name="ProxyIncomplete" xml:space="preserve">
+    <value>The proxy configuration is incomplete. Enter a proxy host and port.</value>
+  </data>
+  <data name="ProxyLocalPortFailed" xml:space="preserve">
+    <value>Could not open a local port for the proxy: {0}</value>
+    <comment>{0} is the system's reason.</comment>
+  </data>
+  <data name="ProxyNeedsLogin" xml:space="preserve">
+    <value>The proxy requires a user name and password.</value>
+  </data>
+  <data name="ProxyNoMethod" xml:space="preserve">
+    <value>The proxy accepts none of the sign-in methods offered.</value>
+  </data>
+  <data name="ProxyRejectedLogin" xml:space="preserve">
+    <value>The proxy rejected the user name and password.</value>
+  </data>
+  <data name="ProxyReplyTooLong" xml:space="preserve">
+    <value>The proxy's reply was too long.</value>
+  </data>
+  <data name="ProxyTimedOut" xml:space="preserve">
+    <value>Timed out connecting through the proxy at {0}. Check that the proxy is reachable and the credentials are correct.</value>
+    <comment>{0} is host:port.</comment>
+  </data>
+  <data name="ProxyUnreachable" xml:space="preserve">
+    <value>Could not reach the proxy at {0}. {1}</value>
+    <comment>{0} is host:port, {1} the system's reason.</comment>
+  </data>
+  <data name="ProxyUnreadableReply" xml:space="preserve">
+    <value>The proxy sent a reply TablePro cannot read.</value>
+  </data>
+  <data name="ProxyUnsupportedMethod" xml:space="preserve">
+    <value>The proxy asked for a sign-in method TablePro does not support.</value>
+  </data>
+  <data name="Socks5CredentialsTooLong" xml:space="preserve">
+    <value>A SOCKS5 user name and password are at most 255 bytes each.</value>
+  </data>
+  <data name="Socks5HostTooLong" xml:space="preserve">
+    <value>The host name {0} is too long for a SOCKS5 proxy.</value>
+    <comment>{0} is a host name.</comment>
+  </data>
+  <data name="SocksAddressTypeNotSupported" xml:space="preserve">
+    <value>address type not supported</value>
+    <comment>A reason in ProxyCouldNotConnect.</comment>
+  </data>
+  <data name="SocksCommandNotSupported" xml:space="preserve">
+    <value>command not supported</value>
+    <comment>A reason in ProxyCouldNotConnect.</comment>
+  </data>
+  <data name="SocksConnectionRefused" xml:space="preserve">
+    <value>connection refused</value>
+    <comment>A reason in ProxyCouldNotConnect.</comment>
+  </data>
+  <data name="SocksError" xml:space="preserve">
+    <value>error {0}</value>
+    <comment>A reason in ProxyCouldNotConnect. {0} is the SOCKS reply code.</comment>
+  </data>
+  <data name="SocksGeneralFailure" xml:space="preserve">
+    <value>general failure</value>
+    <comment>A reason in ProxyCouldNotConnect.</comment>
+  </data>
+  <data name="SocksHostUnreachable" xml:space="preserve">
+    <value>host unreachable</value>
+    <comment>A reason in ProxyCouldNotConnect.</comment>
+  </data>
+  <data name="SocksNetworkUnreachable" xml:space="preserve">
+    <value>network unreachable</value>
+    <comment>A reason in ProxyCouldNotConnect.</comment>
+  </data>
+  <data name="SocksNotAllowed" xml:space="preserve">
+    <value>not allowed by the proxy's rules</value>
+    <comment>A reason in ProxyCouldNotConnect.</comment>
+  </data>
+  <data name="SocksTimedOut" xml:space="preserve">
+    <value>timed out</value>
+    <comment>A reason in ProxyCouldNotConnect.</comment>
+  </data>
+  <data name="SshClosed" xml:space="preserve">
+    <value>The SSH tunnel through {0} closed.</value>
+    <comment>{0} is a host.</comment>
+  </data>
+  <data name="SshFailed" xml:space="preserve">
+    <value>ssh could not open a tunnel through {0}.</value>
+    <comment>{0} is a host.</comment>
+  </data>
+  <data name="SshHostEmpty" xml:space="preserve">
+    <value>The SSH host is empty.</value>
+  </data>
+  <data name="SshHostKeyMismatch" xml:space="preserve">
+    <value>The host key of {0} does not match the one in known_hosts. Check it with the server's administrator, then remove the old entry.</value>
+    <comment>{0} is a host.</comment>
+  </data>
+  <data name="SshHostNotFound" xml:space="preserve">
+    <value>The SSH host {0} could not be found.</value>
+    <comment>{0} is a host.</comment>
+  </data>
+  <data name="SshHostUnsafe" xml:space="preserve">
+    <value>The SSH host "{0}" contains characters ssh does not accept.</value>
+    <comment>{0} is the host as entered.</comment>
+  </data>
+  <data name="SshLocalPort" xml:space="preserve">
+    <value>ssh could not listen on the local end of the tunnel.</value>
+  </data>
+  <data name="SshLoginRejected" xml:space="preserve">
+    <value>The SSH server {0} rejected the login.</value>
+    <comment>{0} is a host.</comment>
+  </data>
+  <data name="SshNotFound" xml:space="preserve">
+    <value>ssh.exe was not found. Install the OpenSSH Client from Settings &gt; System &gt; Optional features.</value>
+  </data>
+  <data name="SshTimedOut" xml:space="preserve">
+    <value>The SSH tunnel through {0} did not open in time.</value>
+    <comment>{0} is a host.</comment>
+  </data>
+  <data name="SshUnreachable" xml:space="preserve">
+    <value>Could not reach the SSH server {0}.</value>
+    <comment>{0} is a host.</comment>
+  </data>
+  <data name="SshUserEmpty" xml:space="preserve">
+    <value>The SSH user is empty.</value>
+  </data>
+  <data name="SshUserUnsafe" xml:space="preserve">
+    <value>The SSH user "{0}" contains characters ssh does not accept.</value>
+    <comment>{0} is the user as entered.</comment>
+  </data>
+  <data name="TunnelCommandName" xml:space="preserve">
+    <value>The tunnel command</value>
+    <comment>The subject of HelperCouldNotListen, HelperExitedEarly and HelperTimedOut.</comment>
+  </data>
+</root>

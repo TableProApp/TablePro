@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="CannotDeleteFirst" xml:space="preserve">
+    <value>Kết nối này không thể làm trống bảng và nhập dữ liệu vào trong cùng một giao dịch, nên không thể xóa các dòng hiện có trước.</value>
+  </data>
+  <data name="CannotMatchRows" xml:space="preserve">
+    <value>Kết nối này không thể so khớp các dòng được nhập với các dòng hiện có.</value>
+  </data>
+  <data name="ChooseMatchKey" xml:space="preserve">
+    <value>Hãy chọn khóa dùng để so khớp các dòng.</value>
+  </data>
+  <data name="ColumnMappedTwice" xml:space="preserve">
+    <value>Mỗi cột chỉ có thể được ánh xạ từ một trường.</value>
+  </data>
+  <data name="ColumnNamesUnique" xml:space="preserve">
+    <value>Tên cột không được trùng nhau.</value>
+  </data>
+  <data name="CouldNotReadExistingRows" xml:space="preserve">
+    <value>Không thể đọc được những dòng nào đã có trong bảng.</value>
+  </data>
+  <data name="DeleteFirstCannotMatch" xml:space="preserve">
+    <value>"Xóa các dòng hiện có trước" sẽ làm trống bảng, nên không dòng nào khớp được. Hãy tắt tùy chọn này, hoặc nhập theo chế độ "Chèn".</value>
+  </data>
+  <data name="IncludeAtLeastOneColumn" xml:space="preserve">
+    <value>Hãy bao gồm ít nhất một cột.</value>
+  </data>
+  <data name="IncludedColumnNeedsName" xml:space="preserve">
+    <value>Mỗi cột được bao gồm cần có tên.</value>
+  </data>
+  <data name="IncludedColumnNeedsType" xml:space="preserve">
+    <value>Mỗi cột được bao gồm cần có kiểu dữ liệu.</value>
+  </data>
+  <data name="KeyMatchedSeveralRows" xml:space="preserve">
+    <value>Khóa {0} khớp với {1} dòng, nên dòng này không được ghi.</value>
+  </data>
+  <data name="KeyNeedsValuePerColumn" xml:space="preserve">
+    <value>Mỗi khóa cần một giá trị cho mỗi cột khóa.</value>
+  </data>
+  <data name="KeyValueMissing" xml:space="preserve">
+    <value>Dòng này không có giá trị cho cột khóa {0}, nên không thể so khớp.</value>
+  </data>
+  <data name="MapAtLeastOneField" xml:space="preserve">
+    <value>Hãy ánh xạ ít nhất một trường vào một cột.</value>
+  </data>
+  <data name="NoFieldMapped" xml:space="preserve">
+    <value>Không có trường nào trong tệp được ánh xạ vào cột của bảng này.</value>
+  </data>
+  <data name="RollbackAlsoFailed" xml:space="preserve">
+    <value>Việc rollback giao dịch cũng thất bại: {0}</value>
+  </data>
+  <data name="ScriptErrorLine" xml:space="preserve">
+    <value>Dòng {0}: {1}</value>
+  </data>
+  <data name="SqlFileIsScript" xml:space="preserve">
+    <value>Tệp SQL được chạy như một tập lệnh, không được đọc thành các dòng.</value>
+  </data>
+</root>

@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="CannotDeleteFirst" xml:space="preserve">
+    <value>Bu bağlantı tek bir işlemde tabloyu boşaltıp içine aktaramadığından mevcut satırları önce silemez.</value>
+  </data>
+  <data name="CannotMatchRows" xml:space="preserve">
+    <value>Bu bağlantı içe aktarılan satırları mevcut satırlarla eşleştiremez.</value>
+  </data>
+  <data name="ChooseMatchKey" xml:space="preserve">
+    <value>Satırların eşleştirileceği anahtarı seçin.</value>
+  </data>
+  <data name="ColumnMappedTwice" xml:space="preserve">
+    <value>Her sütun yalnızca bir alandan eşlenebilir.</value>
+  </data>
+  <data name="ColumnNamesUnique" xml:space="preserve">
+    <value>Sütun adları benzersiz olmalıdır.</value>
+  </data>
+  <data name="CouldNotReadExistingRows" xml:space="preserve">
+    <value>Tabloda zaten hangi satırların bulunduğu okunamadı.</value>
+  </data>
+  <data name="DeleteFirstCannotMatch" xml:space="preserve">
+    <value>"Önce mevcut satırları sil" tabloyu boşalttığından hiçbir satır eşleşmez. Bu seçeneği kapatın veya "Ekle" olarak içe aktarın.</value>
+  </data>
+  <data name="IncludeAtLeastOneColumn" xml:space="preserve">
+    <value>En az bir sütun dahil edin.</value>
+  </data>
+  <data name="IncludedColumnNeedsName" xml:space="preserve">
+    <value>Dahil edilen her sütunun bir adı olmalıdır.</value>
+  </data>
+  <data name="IncludedColumnNeedsType" xml:space="preserve">
+    <value>Dahil edilen her sütunun bir türü olmalıdır.</value>
+  </data>
+  <data name="KeyMatchedSeveralRows" xml:space="preserve">
+    <value>{0} anahtarı {1} satırla eşleştiğinden satır yazılmadı.</value>
+  </data>
+  <data name="KeyNeedsValuePerColumn" xml:space="preserve">
+    <value>Her anahtarın her anahtar sütunu için bir değeri olmalıdır.</value>
+  </data>
+  <data name="KeyValueMissing" xml:space="preserve">
+    <value>Bu satırda {0} anahtar sütunu için değer olmadığından eşleştirilemez.</value>
+  </data>
+  <data name="MapAtLeastOneField" xml:space="preserve">
+    <value>En az bir alanı bir sütuna eşleyin.</value>
+  </data>
+  <data name="NoFieldMapped" xml:space="preserve">
+    <value>Dosyadaki hiçbir alan bu tablonun bir sütununa eşlenmedi.</value>
+  </data>
+  <data name="RollbackAlsoFailed" xml:space="preserve">
+    <value>İşlemin geri alınması da başarısız oldu: {0}</value>
+  </data>
+  <data name="ScriptErrorLine" xml:space="preserve">
+    <value>Satır {0}: {1}</value>
+  </data>
+  <data name="SqlFileIsScript" xml:space="preserve">
+    <value>SQL dosyası satır olarak okunmaz, betik olarak çalıştırılır.</value>
+  </data>
+</root>

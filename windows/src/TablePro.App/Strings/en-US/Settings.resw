@@ -1,0 +1,323 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AiConsentAllow" xml:space="preserve">
+    <value>Allow</value>
+    <comment>Button in the dialog that asks before the AI assistant sends anything to the provider.</comment>
+  </data>
+  <data name="AiConsentMessage" xml:space="preserve">
+    <value>The assistant sends your question, the SQL it acts on and the structure of the tables involved from {0} to {1} ({2}). It reads no rows.</value>
+    <comment>{0} is the connection name, {1} the AI provider's name, {2} the provider's host name.</comment>
+  </data>
+  <data name="AiConsentTitle" xml:space="preserve">
+    <value>Send to the AI provider?</value>
+  </data>
+  <data name="AiEndpointDescription" xml:space="preserve">
+    <value>Leave empty for the provider's public address. Ollama defaults to http://localhost:11434/v1.</value>
+  </data>
+  <data name="AiEndpointTitle" xml:space="preserve">
+    <value>Endpoint</value>
+  </data>
+  <data name="AiIntro" xml:space="preserve">
+    <value>The assistant sends your questions, the SQL it acts on and the structure of the tables involved to the provider you choose. It never sends rows. Each connection's AI setting decides whether it may be used.</value>
+  </data>
+  <data name="AiKeyDescription" xml:space="preserve">
+    <value>Stored in Windows Credential Manager.</value>
+  </data>
+  <data name="AiKeyNotNeeded" xml:space="preserve">
+    <value>Not needed for Ollama</value>
+  </data>
+  <data name="AiKeyTitle" xml:space="preserve">
+    <value>API key</value>
+  </data>
+  <data name="AiLoadModels" xml:space="preserve">
+    <value>Load models</value>
+  </data>
+  <data name="AiModelDefault" xml:space="preserve">
+    <value>Provider default</value>
+  </data>
+  <data name="AiModelTitle" xml:space="preserve">
+    <value>Model</value>
+  </data>
+  <data name="AiNoKey" xml:space="preserve">
+    <value>Add an API key for {0} in Settings &gt; AI to use the assistant.</value>
+    <comment>{0} is the AI provider's name. "Settings &gt; AI" is the Settings window's AI page; use the translated page names.</comment>
+  </data>
+  <data name="AiNotSetUp" xml:space="preserve">
+    <value>Not set up</value>
+  </data>
+  <data name="AiProviderOpenAICompatible" xml:space="preserve">
+    <value>OpenAI-compatible server</value>
+  </data>
+  <data name="AiProviderTitle" xml:space="preserve">
+    <value>Provider</value>
+  </data>
+  <data name="AiSuggestDescription" xml:space="preserve">
+    <value>Asks for a completion when you pause at the end of a line. Each pause sends the text around the cursor.</value>
+  </data>
+  <data name="AiSuggestTitle" xml:space="preserve">
+    <value>Suggest while typing</value>
+  </data>
+  <data name="AutocompleteDescription" xml:space="preserve">
+    <value>Suggest keywords, tables and columns while typing.</value>
+  </data>
+  <data name="AutocompleteTitle" xml:space="preserve">
+    <value>Autocomplete</value>
+  </data>
+  <data name="BackdropAcrylic" xml:space="preserve">
+    <value>Acrylic</value>
+    <comment>The Windows Fluent material; use the name Windows uses in this language.</comment>
+  </data>
+  <data name="BackdropDescription" xml:space="preserve">
+    <value>Acrylic shows the desktop through the window, Mica tints it with the wallpaper.</value>
+  </data>
+  <data name="BackdropMica" xml:space="preserve">
+    <value>Mica</value>
+    <comment>The Windows Fluent material; use the name Windows uses in this language.</comment>
+  </data>
+  <data name="BackdropMicaAlt" xml:space="preserve">
+    <value>Mica Alt</value>
+    <comment>The Windows Fluent material; use the name Windows uses in this language.</comment>
+  </data>
+  <data name="BackdropTitle" xml:space="preserve">
+    <value>Window material</value>
+  </data>
+  <data name="ClearAllHistory" xml:space="preserve">
+    <value>Clear all history</value>
+  </data>
+  <data name="ClearHistoryConfirmMessage" xml:space="preserve">
+    <value>Every connection's query history is deleted.</value>
+  </data>
+  <data name="ClearHistoryConfirmTitle" xml:space="preserve">
+    <value>Clear history?</value>
+  </data>
+  <data name="ClearRewindConfirmMessage" xml:space="preserve">
+    <value>Data Rewind can no longer undo saves made before now.</value>
+  </data>
+  <data name="ClearRewindConfirmTitle" xml:space="preserve">
+    <value>Clear saved changes?</value>
+  </data>
+  <data name="ConfirmCloseTitle" xml:space="preserve">
+    <value>Ask before closing unsaved tabs</value>
+  </data>
+  <data name="DataFolderTitle" xml:space="preserve">
+    <value>Data folder</value>
+  </data>
+  <data name="DateFormatDescription" xml:space="preserve">
+    <value>.NET format string for dates in exports.</value>
+  </data>
+  <data name="DateFormatTitle" xml:space="preserve">
+    <value>Date format</value>
+  </data>
+  <data name="EmacsDescription" xml:space="preserve">
+    <value>Ctrl+F, B, N, P, A, E move, Alt+F and Alt+B move by word, Ctrl+K, Alt+D and Ctrl+W kill, Ctrl+Y and Alt+Y yank, Ctrl+Space sets the mark. Those keys lose their Windows meaning in the editor: redo with Ctrl+Shift+Z, find with Ctrl+H or the context menu.</value>
+  </data>
+  <data name="EmacsTitle" xml:space="preserve">
+    <value>Emacs keybindings</value>
+  </data>
+  <data name="FontDescription" xml:space="preserve">
+    <value>A monospaced font installed on this PC.</value>
+  </data>
+  <data name="FontSizeTitle" xml:space="preserve">
+    <value>Font size</value>
+  </data>
+  <data name="FontTitle" xml:space="preserve">
+    <value>Font</value>
+  </data>
+  <data name="KeyboardConflictMessage" xml:space="preserve">
+    <value>{0} Reassigning removes it from that command.</value>
+    <comment>{0} is a full sentence saying which command already uses the shortcut.</comment>
+  </data>
+  <data name="KeyboardConflictTitle" xml:space="preserve">
+    <value>Shortcut conflict</value>
+    <comment>Dialog title on the Keyboard page.</comment>
+  </data>
+  <data name="KeyboardIntro" xml:space="preserve">
+    <value>Click a shortcut, then press the keys to use. Esc cancels, Backspace removes the shortcut. Editor commands work while the SQL editor has focus; the others anywhere in a connection window.</value>
+    <comment>Esc and Backspace are key names; use the names printed on keyboards in this language.</comment>
+  </data>
+  <data name="KeyboardModifierRequired" xml:space="preserve">
+    <value>Modifier key required</value>
+    <comment>Warning title on the Keyboard page. Modifier keys are Ctrl, Alt and Shift.</comment>
+  </data>
+  <data name="KeyboardNoMatches" xml:space="preserve">
+    <value>No shortcuts match.</value>
+    <comment>Shown on the Keyboard page when the search finds nothing.</comment>
+  </data>
+  <data name="KeyboardReassign" xml:space="preserve">
+    <value>Reassign</value>
+    <comment>Button (a verb) that moves a shortcut from another command to this one.</comment>
+  </data>
+  <data name="KeyboardReservedShortcut" xml:space="preserve">
+    <value>Reserved shortcut</value>
+    <comment>Warning title on the Keyboard page.</comment>
+  </data>
+  <data name="KeyboardResetAll" xml:space="preserve">
+    <value>Reset All to Defaults</value>
+    <comment>Button on the Keyboard page.</comment>
+  </data>
+  <data name="KeyboardResetToDefault" xml:space="preserve">
+    <value>Reset to default ({0})</value>
+    <comment>Tooltip and screen reader name of a reset button. {0} is the default key combination, such as Ctrl+T (stays as is).</comment>
+  </data>
+  <data name="KeyboardResetToDefaultNone" xml:space="preserve">
+    <value>Reset to default (none)</value>
+    <comment>Tooltip and screen reader name of a reset button, for a command that has no shortcut by default.</comment>
+  </data>
+  <data name="KeyboardSearch" xml:space="preserve">
+    <value>Search shortcuts</value>
+    <comment>Placeholder of the search box on the Keyboard page.</comment>
+  </data>
+  <data name="KeyboardShortcutFor" xml:space="preserve">
+    <value>Shortcut for {0}</value>
+    <comment>Screen reader name of the shortcut recorder button. {0} is the command name.</comment>
+  </data>
+  <data name="LanguageDescription" xml:space="preserve">
+    <value>The language TablePro uses. A change applies after a restart.</value>
+  </data>
+  <data name="LanguageRestartMessage" xml:space="preserve">
+    <value>TablePro shows the new language after it restarts. Restart now?</value>
+  </data>
+  <data name="LanguageRestartTitle" xml:space="preserve">
+    <value>Restart TablePro?</value>
+  </data>
+  <data name="LanguageTitle" xml:space="preserve">
+    <value>Language</value>
+  </data>
+  <data name="McpCopyCommand" xml:space="preserve">
+    <value>Copy command</value>
+  </data>
+  <data name="McpEnableTitle" xml:space="preserve">
+    <value>Enable MCP server</value>
+  </data>
+  <data name="McpIntro" xml:space="preserve">
+    <value>MCP clients on this computer, such as Claude Code or Cursor, can use your saved connections through TablePro. The server listens on 127.0.0.1 only, while TablePro runs. Each connection's External Clients level decides what a client may do.</value>
+  </data>
+  <data name="McpPortTitle" xml:space="preserve">
+    <value>Port</value>
+  </data>
+  <data name="McpRegenerateToken" xml:space="preserve">
+    <value>Regenerate access token</value>
+  </data>
+  <data name="McpRunningAt" xml:space="preserve">
+    <value>Running at {0}</value>
+    <comment>{0} is the server's URL.</comment>
+  </data>
+  <data name="McpStatusTitle" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="McpStopped" xml:space="preserve">
+    <value>Stopped</value>
+  </data>
+  <data name="NullDisplayDescription" xml:space="preserve">
+    <value>What empty cells show.</value>
+  </data>
+  <data name="NullDisplayTitle" xml:space="preserve">
+    <value>NULL display</value>
+    <comment>NULL is the SQL keyword and stays untranslated.</comment>
+  </data>
+  <data name="OpenFolder" xml:space="preserve">
+    <value>Open folder</value>
+  </data>
+  <data name="PageAI" xml:space="preserve">
+    <value>AI</value>
+  </data>
+  <data name="PageData" xml:space="preserve">
+    <value>Data</value>
+  </data>
+  <data name="PageEditor" xml:space="preserve">
+    <value>Editor</value>
+  </data>
+  <data name="PageGeneral" xml:space="preserve">
+    <value>General</value>
+  </data>
+  <data name="PageKeyboard" xml:space="preserve">
+    <value>Keyboard</value>
+  </data>
+  <data name="PageMCP" xml:space="preserve">
+    <value>MCP</value>
+  </data>
+  <data name="PageSizeDescription" xml:space="preserve">
+    <value>Rows a table tab shows per page.</value>
+  </data>
+  <data name="PageSizeTitle" xml:space="preserve">
+    <value>Table page size</value>
+  </data>
+  <data name="QueryHistoryDescription" xml:space="preserve">
+    <value>Kept in a local SQLite database.</value>
+  </data>
+  <data name="QueryHistoryTitle" xml:space="preserve">
+    <value>Query history</value>
+  </data>
+  <data name="RestartLater" xml:space="preserve">
+    <value>Later</value>
+  </data>
+  <data name="RestartNow" xml:space="preserve">
+    <value>Restart now</value>
+  </data>
+  <data name="RestoreTabsDescription" xml:space="preserve">
+    <value>Restore each connection's open tabs the next time it connects.</value>
+  </data>
+  <data name="RestoreTabsTitle" xml:space="preserve">
+    <value>Reopen tabs on launch</value>
+  </data>
+  <data name="RewindJournalDescription" xml:space="preserve">
+    <value>Each grid save is journaled on this PC, encrypted, for 7 days, so it can be undone.</value>
+  </data>
+  <data name="RewindJournalTitle" xml:space="preserve">
+    <value>Keep saved changes for Data Rewind</value>
+  </data>
+  <data name="RowLimitDescription" xml:space="preserve">
+    <value>Rows an editor query reads before it stops. The status bar says when a result was cut.</value>
+  </data>
+  <data name="RowLimitTitle" xml:space="preserve">
+    <value>Query result limit</value>
+  </data>
+  <data name="SavedChangesDescription" xml:space="preserve">
+    <value>Removes every journaled save and its key.</value>
+  </data>
+  <data name="SavedChangesTitle" xml:space="preserve">
+    <value>Saved changes</value>
+  </data>
+  <data name="TabSizeTitle" xml:space="preserve">
+    <value>Tab size</value>
+  </data>
+  <data name="ThemeDark" xml:space="preserve">
+    <value>Dark</value>
+  </data>
+  <data name="ThemeDescription" xml:space="preserve">
+    <value>Light, dark, or follow Windows.</value>
+  </data>
+  <data name="ThemeLight" xml:space="preserve">
+    <value>Light</value>
+  </data>
+  <data name="ThemeTitle" xml:space="preserve">
+    <value>App theme</value>
+  </data>
+  <data name="UseSystemSetting" xml:space="preserve">
+    <value>Use system setting</value>
+  </data>
+  <data name="VimDescription" xml:space="preserve">
+    <value>Edit with Vim's modes, motions, operators, registers and macros. Ctrl+C, Ctrl+V, Ctrl+Z and the other Windows shortcuts keep working.</value>
+  </data>
+  <data name="VimTitle" xml:space="preserve">
+    <value>Vim keybindings</value>
+  </data>
+  <data name="WindowTitle" xml:space="preserve">
+    <value>Settings - TablePro</value>
+  </data>
+  <data name="WordWrapTitle" xml:space="preserve">
+    <value>Word wrap</value>
+  </data>
+</root>

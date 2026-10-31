@@ -1,0 +1,126 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AlreadyExists" xml:space="preserve">
+    <value>{0} hedefte zaten var.</value>
+  </data>
+  <data name="CannotCreateTables" xml:space="preserve">
+    <value>{0}, TablePro'dan tablo oluşturamaz; bu yüzden yalnızca zaten var olan tablolar satır alır.</value>
+  </data>
+  <data name="CannotExpressChange" xml:space="preserve">
+    <value>{0} bu değişikliği ifade edemez.</value>
+  </data>
+  <data name="ColumnNotInTarget" xml:space="preserve">
+    <value>{0}: hedef tabloda böyle bir sütun olmadığından kopyalanmaz.</value>
+  </data>
+  <data name="DefaultLeftOut" xml:space="preserve">
+    <value>{0}: {1} varsayılanının karşılığı yok ve dışarıda bırakılır.</value>
+  </data>
+  <data name="DefinitionHasNoRows" xml:space="preserve">
+    <value>{0} bir tablo olmadığından kopyalanacak satırı yok.</value>
+  </data>
+  <data name="DefinitionOtherEngine" xml:space="preserve">
+    <value>{0}, {1} için yazılmış SQL olduğundan {2} bunu olduğu gibi çalıştıramaz.</value>
+  </data>
+  <data name="ForeignKeyFailed" xml:space="preserve">
+    <value>{0} yabancı anahtarı oluşturulamadı: {1}</value>
+  </data>
+  <data name="ForeignKeyLeftOut" xml:space="preserve">
+    <value>{0} yabancı anahtarı hedefte olmayan {1} tablosunu gösterdiğinden dışarıda bırakılır.</value>
+  </data>
+  <data name="ForeignKeyNotAdded" xml:space="preserve">
+    <value>{1} kopyalanmadığından {0} yabancı anahtarı eklenmedi.</value>
+  </data>
+  <data name="IndexFailed" xml:space="preserve">
+    <value>{0} dizini oluşturulamadı: {1}</value>
+  </data>
+  <data name="NoSourceDefinition" xml:space="preserve">
+    <value>Kaynak {0} için tanım döndürmedi.</value>
+  </data>
+  <data name="NoTableToAddRows" xml:space="preserve">
+    <value>Hedefte satır eklenecek {0} adlı bir tablo yok.</value>
+  </data>
+  <data name="NotFinished" xml:space="preserve">
+    <value>Kopyalama daha önceki bir hatada durduğundan tamamlanmadı.</value>
+  </data>
+  <data name="SequenceBecomesIdentity" xml:space="preserve">
+    <value>{0}: dizi varsayılanı bir kimlik sütununa dönüşür.</value>
+  </data>
+  <data name="ServerWritten" xml:space="preserve">
+    <value>{0}: sunucu bunu kendisi yazdığından değerleri kopyalanmaz.</value>
+  </data>
+  <data name="SqlServerIdentityDropped" xml:space="preserve">
+    <value>{0}: SQL Server kimlik sütununa kopyalanan değerleri reddettiğinden sütun IDENTITY olmadan oluşturulur.</value>
+  </data>
+  <data name="SqlServerIdentityLeftOut" xml:space="preserve">
+    <value>{0}: SQL Server kimlik sütununu kendisi numaralandırdığından kaynağın değerleri dışarıda bırakılır.</value>
+  </data>
+  <data name="StoppedBeforeFinished" xml:space="preserve">
+    <value>Bitmeden durduruldu.</value>
+  </data>
+  <data name="TargetCannotChangeStructure" xml:space="preserve">
+    <value>Hedef, yapısını TablePro'dan değiştiremez.</value>
+  </data>
+  <data name="TargetCannotCreate" xml:space="preserve">
+    <value>Hedef bunu oluşturamaz.</value>
+  </data>
+  <data name="TargetHasOtherObject" xml:space="preserve">
+    <value>Hedefte zaten tablo olmayan {0} adlı bir nesne var.</value>
+  </data>
+  <data name="TargetReadOnly" xml:space="preserve">
+    <value>Hedef bağlantı salt okunur olduğundan ona hiçbir şey yazılamaz.</value>
+  </data>
+  <data name="TypeAsText" xml:space="preserve">
+    <value>{0}: {1}, metin olarak {2} olur.</value>
+  </data>
+  <data name="TypeCutTo255" xml:space="preserve">
+    <value>{0}: bir anahtarın parçası olabilmesi için {1}, 255 karaktere kısaltılarak {2} olur.</value>
+  </data>
+  <data name="TypeCutTo4000" xml:space="preserve">
+    <value>{0}: bir anahtarın parçası olabilmesi için {1}, 4.000 karaktere kısaltılarak {2} olur.</value>
+  </data>
+  <data name="TypeCutTo450" xml:space="preserve">
+    <value>{0}: bir anahtarın parçası olabilmesi için {1}, 450 karaktere kısaltılarak {2} olur.</value>
+  </data>
+  <data name="TypeEnumerationAsText" xml:space="preserve">
+    <value>{0}: {1}, izin verilen değerler listesi olmadan metin olarak {2} olur.</value>
+  </data>
+  <data name="TypeJsonAsText" xml:space="preserve">
+    <value>{0}: {1}, {2} olur ve metin olarak tutulur.</value>
+  </data>
+  <data name="TypeNoBoolean" xml:space="preserve">
+    <value>{0}: bu Oracle sürümünde BOOLEAN olmadığından {1}, {2} olur.</value>
+  </data>
+  <data name="TypeNoEquivalent" xml:space="preserve">
+    <value>{0}: karşılığı olmadığından {1}, metin olarak {2} olur.</value>
+  </data>
+  <data name="TypeNoTime" xml:space="preserve">
+    <value>{0}: Oracle'da TIME olmadığından {1}, {2} olur.</value>
+  </data>
+  <data name="TypeRowVersionAsBytes" xml:space="preserve">
+    <value>{0}: {1}, {2} olur; sunucunun satır sürümleri bayt olarak kopyalanır.</value>
+  </data>
+  <data name="TypeTimeZoneDropped" xml:space="preserve">
+    <value>{0}: {1}, saat dilimi olmadan {2} olur.</value>
+  </data>
+  <data name="TypeUtc" xml:space="preserve">
+    <value>{0}: {1}, saatleri UTC olan {2} olur.</value>
+  </data>
+  <data name="TypeUtcNoTimeZone" xml:space="preserve">
+    <value>{0}: DATETIME saat dilimi tutmadığından {1}, saatleri UTC olan {2} olur.</value>
+  </data>
+  <data name="UnknownTypeSystem" xml:space="preserve">
+    <value>Başka bir motora kopyalamak, TablePro'nun çevirebileceği bir tür sistemi gerektirir ve TablePro {0} için böyle bir sistem bilmiyor. Aynı türde bir hedefe kopyalayın.</value>
+  </data>
+</root>

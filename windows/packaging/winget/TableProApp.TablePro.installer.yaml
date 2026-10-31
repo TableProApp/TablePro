@@ -1,0 +1,40 @@
+# Template, filled per stable release by windows/packaging/winget-manifest.ps1. See README.md here.
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.installer.1.10.0.schema.json
+PackageIdentifier: TableProApp.TablePro
+PackageVersion: "{{Version}}"
+MinimumOSVersion: 10.0.19041.0
+ReleaseDate: "{{ReleaseDate}}"
+Installers:
+  - Architecture: x64
+    InstallerType: msix
+    InstallerUrl: "{{X64MsixUrl}}"
+    InstallerSha256: "{{X64MsixSha256}}"
+    SignatureSha256: "{{X64MsixSignatureSha256}}"
+    PackageFamilyName: "{{PackageFamilyName}}"
+  - Architecture: arm64
+    InstallerType: msix
+    InstallerUrl: "{{Arm64MsixUrl}}"
+    InstallerSha256: "{{Arm64MsixSha256}}"
+    SignatureSha256: "{{Arm64MsixSignatureSha256}}"
+    PackageFamilyName: "{{PackageFamilyName}}"
+  # For PCs that cannot install MSIX packages: winget install TableProApp.TablePro --installer-type zip
+  - Architecture: x64
+    InstallerType: zip
+    NestedInstallerType: portable
+    NestedInstallerFiles:
+      - RelativeFilePath: TablePro\TablePro.exe
+        PortableCommandAlias: tablepro
+    ArchiveBinariesDependOnPath: true
+    InstallerUrl: "{{X64ZipUrl}}"
+    InstallerSha256: "{{X64ZipSha256}}"
+  - Architecture: arm64
+    InstallerType: zip
+    NestedInstallerType: portable
+    NestedInstallerFiles:
+      - RelativeFilePath: TablePro\TablePro.exe
+        PortableCommandAlias: tablepro
+    ArchiveBinariesDependOnPath: true
+    InstallerUrl: "{{Arm64ZipUrl}}"
+    InstallerSha256: "{{Arm64ZipSha256}}"
+ManifestType: installer
+ManifestVersion: 1.10.0

@@ -1,0 +1,315 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AccessReadOnly" xml:space="preserve">
+    <value>Lecture seule</value>
+  </data>
+  <data name="AccessReadWrite" xml:space="preserve">
+    <value>Lecture et écriture, avec confirmation avant chaque écriture</value>
+  </data>
+  <data name="ActionClientAdded" xml:space="preserve">
+    <value>Client ajouté</value>
+  </data>
+  <data name="ActionClientRemoved" xml:space="preserve">
+    <value>Client supprimé</value>
+  </data>
+  <data name="ActionClientRevoked" xml:space="preserve">
+    <value>Client révoqué</value>
+  </data>
+  <data name="ActionPairingApproved" xml:space="preserve">
+    <value>Appairage approuvé</value>
+  </data>
+  <data name="ActionPairingDenied" xml:space="preserve">
+    <value>Appairage refusé</value>
+  </data>
+  <data name="ActionPairingRequest" xml:space="preserve">
+    <value>Demande d’appairage</value>
+  </data>
+  <data name="ActionSignInRefused" xml:space="preserve">
+    <value>Connexion refusée</value>
+  </data>
+  <data name="ActionTokenCollected" xml:space="preserve">
+    <value>Jeton récupéré</value>
+  </data>
+  <data name="ActivityHeading" xml:space="preserve">
+    <value>Activité</value>
+  </data>
+  <data name="ActivityListName" xml:space="preserve">
+    <value>Activité MCP</value>
+  </data>
+  <data name="ActivityNote_One" xml:space="preserve">
+    <value>Chaque appel d’outil, appairage et modification de client, conservé {0} jour dans mcp-audit.db. Les instructions sont conservées sous forme d’empreinte SHA-256, jamais en texte&#160;; l’historique des requêtes contient les instructions elles-mêmes.</value>
+  </data>
+  <data name="ActivityNote_Other" xml:space="preserve">
+    <value>Chaque appel d’outil, appairage et modification de client, conservé {0} jours dans mcp-audit.db. Les instructions sont conservées sous forme d’empreinte SHA-256, jamais en texte&#160;; l’historique des requêtes contient les instructions elles-mêmes.</value>
+  </data>
+  <data name="AddClient" xml:space="preserve">
+    <value>Ajouter un client</value>
+  </data>
+  <data name="AddClientTitle" xml:space="preserve">
+    <value>Ajouter un client MCP</value>
+  </data>
+  <data name="AddClientTooltip" xml:space="preserve">
+    <value>Émettre un jeton manuellement, pour un client qui ne peut pas s’appairer</value>
+  </data>
+  <data name="AllClients" xml:space="preserve">
+    <value>Tous les clients</value>
+  </data>
+  <data name="Allow" xml:space="preserve">
+    <value>Autoriser</value>
+  </data>
+  <data name="CategoryAdmin" xml:space="preserve">
+    <value>Modifications de clients</value>
+  </data>
+  <data name="CategoryAll" xml:space="preserve">
+    <value>Toute l’activité</value>
+  </data>
+  <data name="CategoryAuth" xml:space="preserve">
+    <value>Appairage et connexion</value>
+  </data>
+  <data name="CategoryFilterName" xml:space="preserve">
+    <value>Type d’activité</value>
+  </data>
+  <data name="CategoryTools" xml:space="preserve">
+    <value>Appels d’outils</value>
+  </data>
+  <data name="ChangeClientFailed" xml:space="preserve">
+    <value>Impossible de modifier le client</value>
+  </data>
+  <data name="ClearLog" xml:space="preserve">
+    <value>Effacer le journal</value>
+  </data>
+  <data name="ClearLogConfirmMessage" xml:space="preserve">
+    <value>Tous les appels, appairages et modifications de clients journalisés sont supprimés. Les clients appairés conservent leur accès.</value>
+  </data>
+  <data name="ClearLogConfirmTitle" xml:space="preserve">
+    <value>Effacer le journal d’activité MCP&#160;?</value>
+  </data>
+  <data name="ClearLogFailed" xml:space="preserve">
+    <value>Impossible d’effacer le journal</value>
+  </data>
+  <data name="ClientFilterName" xml:space="preserve">
+    <value>Client</value>
+  </data>
+  <data name="Copied" xml:space="preserve">
+    <value>Copié</value>
+  </data>
+  <data name="CopyToken" xml:space="preserve">
+    <value>Copier le jeton</value>
+  </data>
+  <data name="CreateToken" xml:space="preserve">
+    <value>Créer un jeton</value>
+  </data>
+  <data name="CreateTokenFailed" xml:space="preserve">
+    <value>Impossible de créer le jeton</value>
+  </data>
+  <data name="Deny" xml:space="preserve">
+    <value>Refuser</value>
+  </data>
+  <data name="ExpiredOn" xml:space="preserve">
+    <value>expiré le {0:d}</value>
+  </data>
+  <data name="ExpiresOn" xml:space="preserve">
+    <value>jusqu’au {0:d}</value>
+  </data>
+  <data name="ExpiryIn30Days" xml:space="preserve">
+    <value>Dans 30 jours</value>
+  </data>
+  <data name="ExpiryIn90Days" xml:space="preserve">
+    <value>Dans 90 jours</value>
+  </data>
+  <data name="ExpiryInAYear" xml:space="preserve">
+    <value>Dans un an</value>
+  </data>
+  <data name="ExpiryNever" xml:space="preserve">
+    <value>Jamais</value>
+  </data>
+  <data name="FormAccessHeader" xml:space="preserve">
+    <value>Accès</value>
+  </data>
+  <data name="FormAccessNote" xml:space="preserve">
+    <value>Le niveau «&#160;Clients externes&#160;» de chaque connexion s’applique toujours&#160;; un client n’obtient jamais plus que ce qu’il autorise.</value>
+  </data>
+  <data name="FormClientNameHeader" xml:space="preserve">
+    <value>Nom du client</value>
+  </data>
+  <data name="FormClientNamePlaceholder" xml:space="preserve">
+    <value>Par exemple, Claude Desktop</value>
+  </data>
+  <data name="FormConnectionsHeader" xml:space="preserve">
+    <value>Connexions</value>
+  </data>
+  <data name="FormExpiryHeader" xml:space="preserve">
+    <value>Expiration du jeton</value>
+  </data>
+  <data name="FormNoConnections" xml:space="preserve">
+    <value>Aucune connexion n’autorise encore les clients MCP.</value>
+  </data>
+  <data name="FormRequestMessage" xml:space="preserve">
+    <value>«&#160;{0}&#160;» demande à utiliser vos connexions enregistrées via le serveur MCP de TablePro. N’importe quel programme sur ce PC peut faire cette demande sous n’importe quel nom&#160;: n’autorisez-la que si vous venez de lancer l’appairage dans cette application.</value>
+  </data>
+  <data name="FormScopeAll" xml:space="preserve">
+    <value>Toutes les connexions</value>
+  </data>
+  <data name="FormScopeTicked" xml:space="preserve">
+    <value>Uniquement celles cochées ci-dessous</value>
+  </data>
+  <data name="IntegrityBroken_One" xml:space="preserve">
+    <value>L’entrée {1} a été modifiée ou supprimée en dehors de TablePro&#160;; {0:N0} entrée antérieure est intacte.</value>
+  </data>
+  <data name="IntegrityBroken_Other" xml:space="preserve">
+    <value>L’entrée {1} a été modifiée ou supprimée en dehors de TablePro&#160;; les {0:N0} entrées antérieures sont intactes.</value>
+  </data>
+  <data name="IntegrityIntactShowingLatest_One" xml:space="preserve">
+    <value>{0:N0} entrée conservée. Le hachage de chaque entrée est chaîné à celui de la précédente, et la chaîne est intacte. Affichage des {1} plus récentes.</value>
+  </data>
+  <data name="IntegrityIntactShowingLatest_Other" xml:space="preserve">
+    <value>{0:N0} entrées conservées. Le hachage de chaque entrée est chaîné à celui de la précédente, et la chaîne est intacte. Affichage des {1} plus récentes.</value>
+  </data>
+  <data name="IntegrityIntact_One" xml:space="preserve">
+    <value>{0:N0} entrée conservée. Le hachage de chaque entrée est chaîné à celui de la précédente, et la chaîne est intacte.</value>
+  </data>
+  <data name="IntegrityIntact_Other" xml:space="preserve">
+    <value>{0:N0} entrées conservées. Le hachage de chaque entrée est chaîné à celui de la précédente, et la chaîne est intacte.</value>
+  </data>
+  <data name="LastUsed" xml:space="preserve">
+    <value>dernière utilisation&#160;: {0:g}</value>
+  </data>
+  <data name="ListSeparator" xml:space="preserve">
+    <value>, </value>
+  </data>
+  <data name="NeverUsed" xml:space="preserve">
+    <value>jamais utilisé</value>
+  </data>
+  <data name="NoClients" xml:space="preserve">
+    <value>Aucun client n’est encore appairé.</value>
+  </data>
+  <data name="NoExpiry" xml:space="preserve">
+    <value>sans expiration</value>
+  </data>
+  <data name="NothingLogged" xml:space="preserve">
+    <value>Rien n’a encore été journalisé.</value>
+  </data>
+  <data name="OutcomeDeclined" xml:space="preserve">
+    <value>Décliné</value>
+  </data>
+  <data name="OutcomeDenied" xml:space="preserve">
+    <value>Refusé</value>
+  </data>
+  <data name="OutcomeFailed" xml:space="preserve">
+    <value>Échec</value>
+  </data>
+  <data name="OutcomeRefused" xml:space="preserve">
+    <value>Rejeté</value>
+  </data>
+  <data name="OutcomeSucceeded" xml:space="preserve">
+    <value>Réussi</value>
+  </data>
+  <data name="PairedClientsHeading" xml:space="preserve">
+    <value>Clients appairés</value>
+  </data>
+  <data name="PairedClientsNote" xml:space="preserve">
+    <value>Un client s’appaire en demandant l’accès à TablePro&#160;; vous l’approuvez dans une boîte de dialogue et le client reçoit son propre jeton. Seule une empreinte SHA-256 de chaque jeton est conservée, dans le Gestionnaire d’identification Windows. Un client révoqué est refusé dès sa requête suivante.</value>
+  </data>
+  <data name="PairedSummary" xml:space="preserve">
+    <value>Appairé le {0:g} · {1} · jeton {2}…</value>
+  </data>
+  <data name="PairingApprovalTitle" xml:space="preserve">
+    <value>Autoriser un client MCP&#160;?</value>
+  </data>
+  <data name="PairingHint" xml:space="preserve">
+    <value>Les clients lancent l’appairage avec POST {0} et récupèrent leur jeton depuis /v1/integrations/exchange.</value>
+  </data>
+  <data name="PairingHintServerOff" xml:space="preserve">
+    <value>Activez le serveur pour permettre aux clients de s’appairer.</value>
+  </data>
+  <data name="ReachAllConnections" xml:space="preserve">
+    <value>toutes les connexions</value>
+  </data>
+  <data name="ReachConnectionCount_One" xml:space="preserve">
+    <value>{0} connexion</value>
+  </data>
+  <data name="ReachConnectionCount_Other" xml:space="preserve">
+    <value>{0} connexions</value>
+  </data>
+  <data name="ReachDeletedConnection" xml:space="preserve">
+    <value>une connexion supprimée</value>
+  </data>
+  <data name="ReachNoConnections" xml:space="preserve">
+    <value>aucune connexion</value>
+  </data>
+  <data name="ReadActivityFailed" xml:space="preserve">
+    <value>Impossible de lire le journal d’activité MCP</value>
+  </data>
+  <data name="ReadClientsFailed" xml:space="preserve">
+    <value>Impossible de lire les clients appairés</value>
+  </data>
+  <data name="RemoveClientName" xml:space="preserve">
+    <value>Supprimer {0}</value>
+  </data>
+  <data name="RemoveConfirmMessage" xml:space="preserve">
+    <value>Son autorisation et l’empreinte du jeton dans le Gestionnaire d’identification sont supprimées. Son activité passée reste dans le journal.</value>
+  </data>
+  <data name="RemoveConfirmTitle" xml:space="preserve">
+    <value>Supprimer «&#160;{0}&#160;»&#160;?</value>
+  </data>
+  <data name="Revoke" xml:space="preserve">
+    <value>Révoquer</value>
+  </data>
+  <data name="RevokeClientName" xml:space="preserve">
+    <value>Révoquer {0}</value>
+  </data>
+  <data name="RevokeConfirmMessage" xml:space="preserve">
+    <value>Le client sera refusé dès sa prochaine requête. Il reste dans la liste comme révoqué&#160;; appairez-le à nouveau pour lui rendre l’accès.</value>
+  </data>
+  <data name="RevokeConfirmTitle" xml:space="preserve">
+    <value>Révoquer «&#160;{0}&#160;»&#160;?</value>
+  </data>
+  <data name="StatementDigest" xml:space="preserve">
+    <value>SHA-256 de l’instruction&#160;: {0}</value>
+  </data>
+  <data name="StatusActive" xml:space="preserve">
+    <value>Actif</value>
+  </data>
+  <data name="StatusExpired" xml:space="preserve">
+    <value>Expiré</value>
+  </data>
+  <data name="StatusRevoked" xml:space="preserve">
+    <value>Révoqué</value>
+  </data>
+  <data name="StatusTokenMissing" xml:space="preserve">
+    <value>Jeton manquant</value>
+  </data>
+  <data name="TokenCopyMessage" xml:space="preserve">
+    <value>Copiez le jeton de «&#160;{0}&#160;» maintenant. TablePro ne conserve que son empreinte et ne pourra plus l’afficher.</value>
+  </data>
+  <data name="TokenCreatedTitle" xml:space="preserve">
+    <value>Jeton créé</value>
+  </data>
+  <data name="TokenHeader" xml:space="preserve">
+    <value>Jeton</value>
+  </data>
+  <data name="UnknownCaller" xml:space="preserve">
+    <value>Appelant inconnu</value>
+  </data>
+  <data name="WriteApprovalMessage" xml:space="preserve">
+    <value>«&#160;{0}&#160;», connecté au serveur MCP de TablePro, demande à exécuter ceci sur {1}.</value>
+  </data>
+  <data name="WriteApprovalMessageUnnamed" xml:space="preserve">
+    <value>Un client, connecté au serveur MCP de TablePro, demande à exécuter ceci sur {0}.</value>
+  </data>
+  <data name="WriteApprovalTitle" xml:space="preserve">
+    <value>Un client MCP veut exécuter une instruction</value>
+  </data>
+</root>

@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AuthFailed" xml:space="preserve">
+    <value>Kimlik doğrulama başarısız oldu. Parola alanındaki kimlik doğrulama belirtecini denetleyin.</value>
+  </data>
+  <data name="BeginFailed" xml:space="preserve">
+    <value>Kaydetme bir işlem başlatamadı: {0}</value>
+  </data>
+  <data name="BeginNoAnswer" xml:space="preserve">
+    <value>Kaydetme bir işlem başlatamadı: sunucu yanıt vermedi.</value>
+  </data>
+  <data name="CommitFailed" xml:space="preserve">
+    <value>Kaydetme işlenemedi: {0}</value>
+  </data>
+  <data name="FewerAnswers" xml:space="preserve">
+    <value>Sunucu, kaydetmenin gönderdiğinden daha az deyime yanıt verdi.</value>
+  </data>
+  <data name="FileUrlNoFile" xml:space="preserve">
+    <value>file: URL'si bir veritabanı dosyası belirtmiyor.</value>
+  </data>
+  <data name="LocalNeedsFile" xml:space="preserve">
+    <value>Yerel bir libSQL bağlantısı için veritabanı dosyası gerekir.</value>
+  </data>
+  <data name="NoLocalFiles" xml:space="preserve">
+    <value>Bu sürüm yerel libSQL dosyalarını açamaz; bunun yerine bir sunucu URL'sine bağlanın.</value>
+  </data>
+  <data name="NoPipeline" xml:space="preserve">
+    <value>Sunucunun bu URL'de bir Hrana işlem hattı yok. Veritabanı URL'sini denetleyin.</value>
+  </data>
+  <data name="NotAUrl" xml:space="preserve">
+    <value>'{0}' bir libSQL veritabanı URL'si değil. libsql://, https:// veya http:// kullanın.</value>
+  </data>
+  <data name="StreamClosedBeforeCommit" xml:space="preserve">
+    <value>Sunucu, kaydetmenin akışını işlenmeden önce kapattı, bu nedenle hiçbir şey kaydedilmedi.</value>
+  </data>
+  <data name="StreamEnded" xml:space="preserve">
+    <value>{0} Sekmenin akışı sona erdi, bu nedenle açık işlemler geri alındı.</value>
+  </data>
+  <data name="Unreadable" xml:space="preserve">
+    <value>Sunucu, TablePro'nun okuyamadığı bir yanıt döndürdü.</value>
+  </data>
+</root>

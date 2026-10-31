@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AddExtension" xml:space="preserve">
+    <value>添加扩展…</value>
+  </data>
+  <data name="ApprovedTestAgain" xml:space="preserve">
+    <value>扩展已获批准。再次选择“测试”以连接。</value>
+  </data>
+  <data name="ChooseAgainRecovery" xml:space="preserve">
+    <value>编辑连接时重新选择扩展的文件。</value>
+  </data>
+  <data name="ControlCharacterInPath" xml:space="preserve">
+    <value>列表中某个扩展的路径包含换行符或其他控制字符。</value>
+  </data>
+  <data name="CouldNotLoad" xml:space="preserve">
+    <value>无法加载扩展“{0}”。</value>
+  </data>
+  <data name="CouldNotLoadList" xml:space="preserve">
+    <value>无法加载此连接的 SQLite 扩展。</value>
+  </data>
+  <data name="Duplicate" xml:space="preserve">
+    <value>“{0}”在列表中出现了多次。</value>
+  </data>
+  <data name="DuplicateRecovery" xml:space="preserve">
+    <value>删除第二个条目。</value>
+  </data>
+  <data name="EntryPointLabel" xml:space="preserve">
+    <value>入口点</value>
+  </data>
+  <data name="EntryPointNotFound" xml:space="preserve">
+    <value>该文件没有名为 {0} 的函数。</value>
+  </data>
+  <data name="EntryPointNotFoundRecovery" xml:space="preserve">
+    <value>输入扩展文档中指明的入口点。</value>
+  </data>
+  <data name="EntryPointPlaceholder" xml:space="preserve">
+    <value>默认入口点</value>
+  </data>
+  <data name="EntryPointTooltip" xml:space="preserve">
+    <value>要调用的初始化函数。留空则使用 SQLite 根据文件名推断的函数。</value>
+  </data>
+  <data name="FileLabel" xml:space="preserve">
+    <value>扩展文件</value>
+  </data>
+  <data name="FileNotFound" xml:space="preserve">
+    <value>“{0}”处没有文件。</value>
+  </data>
+  <data name="FileWithEntryPoint" xml:space="preserve">
+    <value>{0}（入口点 {1}）</value>
+  </data>
+  <data name="Footer" xml:space="preserve">
+    <value>每次在此电脑上打开数据库文件时按此顺序加载。扩展以完全访问你电脑的权限运行，因此只添加你信任的文件。</value>
+  </data>
+  <data name="Header" xml:space="preserve">
+    <value>扩展</value>
+  </data>
+  <data name="InitializationFailed" xml:space="preserve">
+    <value>扩展启动失败：{0}</value>
+  </data>
+  <data name="InvalidEntryPoint" xml:space="preserve">
+    <value>“{0}”不是有效的入口点名称。</value>
+  </data>
+  <data name="InvalidEntryPointRecovery" xml:space="preserve">
+    <value>使用 C 函数的名称（例如 sqlite3_vec_init），或留空。</value>
+  </data>
+  <data name="LoadingNotClosed" xml:space="preserve">
+    <value>SQLite 在加载后没有再次关闭扩展加载。</value>
+  </data>
+  <data name="LoadingUnavailable" xml:space="preserve">
+    <value>SQLite 不允许在此连接上加载扩展。</value>
+  </data>
+  <data name="MalformedList" xml:space="preserve">
+    <value>已保存的扩展列表不是 TablePro 可读取的格式。</value>
+  </data>
+  <data name="MissingDependencyRecovery" xml:space="preserve">
+    <value>缺少此扩展所需的 DLL。请将随附的 DLL 放在与扩展相同的文件夹中。</value>
+  </data>
+  <data name="MissingPath" xml:space="preserve">
+    <value>列表中的某个扩展没有文件。</value>
+  </data>
+  <data name="MoveDown" xml:space="preserve">
+    <value>下移</value>
+  </data>
+  <data name="MoveUp" xml:space="preserve">
+    <value>上移</value>
+  </data>
+  <data name="NoExtensions" xml:space="preserve">
+    <value>无扩展</value>
+  </data>
+  <data name="NotAFile" xml:space="preserve">
+    <value>“{0}”不是文件。</value>
+  </data>
+  <data name="NotApproved" xml:space="preserve">
+    <value>此连接会加载未在此电脑上批准的 SQLite 扩展。</value>
+  </data>
+  <data name="NotApprovedRecovery" xml:space="preserve">
+    <value>从 TablePro 欢迎窗口连接以查看它们。</value>
+  </data>
+  <data name="PathTooLong" xml:space="preserve">
+    <value>路径“{0}”太长。</value>
+  </data>
+  <data name="PromptConfirm" xml:space="preserve">
+    <value>加载扩展</value>
+  </data>
+  <data name="PromptIntro" xml:space="preserve">
+    <value>连接“{0}”会加载未在此电脑上添加的 SQLite 扩展：</value>
+  </data>
+  <data name="PromptTitle" xml:space="preserve">
+    <value>加载扩展</value>
+  </data>
+  <data name="PromptWarning" xml:space="preserve">
+    <value>扩展在 TablePro 内运行，拥有完全访问你电脑的权限。仅在你信任这些文件时才加载它们。</value>
+  </data>
+  <data name="RelativePath" xml:space="preserve">
+    <value>“{0}”不是完整路径。</value>
+  </data>
+  <data name="RelativePathRecovery" xml:space="preserve">
+    <value>请重新选择文件，或输入完整路径，例如 C:\Tools\extension.dll。</value>
+  </data>
+  <data name="RemoveExtension" xml:space="preserve">
+    <value>移除扩展</value>
+  </data>
+  <data name="Unreadable" xml:space="preserve">
+    <value>无法读取已保存的列表。添加扩展将替换它。</value>
+  </data>
+  <data name="WrongArchitectureRecovery" xml:space="preserve">
+    <value>请使用为此电脑处理器构建的扩展版本。</value>
+  </data>
+</root>

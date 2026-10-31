@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AmbiguousOverload" xml:space="preserve">
+    <value>Cet appel correspond à plusieurs surcharges de {0}, Oracle ne peut donc pas l’exécuter (PLS-00307).</value>
+  </data>
+  <data name="BreakpointHasNoCode" xml:space="preserve">
+    <value>La ligne {0} de {1} ne contient pas de code où s’arrêter.</value>
+  </data>
+  <data name="CannotPassType" xml:space="preserve">
+    <value>TablePro ne peut transmettre aucune valeur de type {0} à {1}.</value>
+  </data>
+  <data name="CannotPassTypeDetail" xml:space="preserve">
+    <value>Déboguez-la depuis une routine qui l’appelle avec cette valeur.</value>
+  </data>
+  <data name="CompileForDebug" xml:space="preserve">
+    <value>TablePro le recompile avec les informations de débogage (PLSQL_OPTIMIZE_LEVEL=1) et conserve ses autres paramètres. La compilation valide la transaction.</value>
+  </data>
+  <data name="CompileForDebugAction" xml:space="preserve">
+    <value>Compiler pour le débogage</value>
+  </data>
+  <data name="CompileForDebugPackage" xml:space="preserve">
+    <value>TablePro le recompile avec les informations de débogage (PLSQL_OPTIMIZE_LEVEL=1) et conserve ses autres paramètres. La compilation valide la transaction. Les autres sessions qui utilisent le package perdent son état, et leur prochain appel échoue une fois avec ORA-04068.</value>
+  </data>
+  <data name="ConnectionLost" xml:space="preserve">
+    <value>La connexion de la session de débogage s’est fermée.</value>
+  </data>
+  <data name="CouldNotFinishStep" xml:space="preserve">
+    <value>Le débogueur n’a pas pu terminer cette étape.</value>
+  </data>
+  <data name="CouldNotStart" xml:space="preserve">
+    <value>Le débogueur n’a pas pu démarrer.</value>
+  </data>
+  <data name="DebugFromCallerOverload" xml:space="preserve">
+    <value>Déboguez-la depuis une routine qui l’appelle avec des arguments que seule cette surcharge accepte.</value>
+  </data>
+  <data name="Ended" xml:space="preserve">
+    <value>La session de débogage est terminée.</value>
+  </data>
+  <data name="GiveParameterValue" xml:space="preserve">
+    <value>Donnez une valeur à {0}. Laissé à sa valeur par défaut, l’appel correspond aussi à une autre surcharge de {1}.</value>
+  </data>
+  <data name="GiveParameterValues" xml:space="preserve">
+    <value>Donnez des valeurs à {0}. Laissés à leurs valeurs par défaut, l’appel correspond aussi à une autre surcharge de {1}.</value>
+  </data>
+  <data name="GrantDebug" xml:space="preserve">
+    <value>Un administrateur de base de données peut l’accorder avec GRANT DEBUG ON {0} TO {1}, ou accorder DEBUG ANY PROCEDURE.</value>
+  </data>
+  <data name="GrantDebugConnectSession" xml:space="preserve">
+    <value>Un administrateur de base de données peut l’accorder avec GRANT DEBUG CONNECT SESSION TO {0}.</value>
+  </data>
+  <data name="HostBadCharacter" xml:space="preserve">
+    <value>L’hôte « {0} » contient un caractère que les descripteurs de connexion Oracle n’autorisent pas.</value>
+  </data>
+  <data name="NeedsDebugConnectSession" xml:space="preserve">
+    <value>Le débogage nécessite le privilège DEBUG CONNECT SESSION.</value>
+  </data>
+  <data name="NeedsDebugPrivilege" xml:space="preserve">
+    <value>Le débogage de {0} nécessite le privilège DEBUG sur cet objet.</value>
+  </data>
+  <data name="NoEntryPoints" xml:space="preserve">
+    <value>{0} n’a aucune procédure ou fonction publique par laquelle commencer.</value>
+  </data>
+  <data name="NotASessionId" xml:space="preserve">
+    <value>« {0} » n’est pas un identifiant de session Oracle de la forme sid,serial#.</value>
+  </data>
+  <data name="NotCompiledForDebug" xml:space="preserve">
+    <value>{0} n’est pas compilé pour le débogage.</value>
+  </data>
+  <data name="OverloadDefaultUnreadable" xml:space="preserve">
+    <value>Oracle ne peut pas distinguer les surcharges sans cette valeur (PLS-00307), et TablePro ne peut pas lire la valeur par défaut pour la transmettre.</value>
+  </data>
+  <data name="RoutineFailed" xml:space="preserve">
+    <value>La routine a déclenché une erreur. Ses modifications ont été annulées.</value>
+  </data>
+  <data name="RunNote" xml:space="preserve">
+    <value>Les modifications effectuées par la routine sont validées à la fin de son exécution. Arrêter les annule.</value>
+  </data>
+  <data name="ServiceNameBadCharacter" xml:space="preserve">
+    <value>Le nom de service « {0} » contient un caractère que les descripteurs de connexion Oracle n’autorisent pas.</value>
+  </data>
+  <data name="SidBadCharacter" xml:space="preserve">
+    <value>Le SID « {0} » contient un caractère que les descripteurs de connexion Oracle n’autorisent pas.</value>
+  </data>
+  <data name="SourceUnreadable" xml:space="preserve">
+    <value>TablePro ne peut pas lire le code source de cette unité.</value>
+  </data>
+  <data name="StillRunning" xml:space="preserve">
+    <value>TablePro n’a pas pu confirmer que la routine s’est terminée. Elle est peut-être toujours en cours d’exécution sur le serveur.</value>
+  </data>
+  <data name="StillRunningNoSession" xml:space="preserve">
+    <value>Son travail non validé est annulé à la fin de son exécution. Un utilisateur disposant d’ALTER SYSTEM peut trouver sa session dans V$SESSION et y mettre fin avec ALTER SYSTEM KILL SESSION.</value>
+  </data>
+  <data name="StillRunningSid" xml:space="preserve">
+    <value>Session SID {0}. Son travail non validé est annulé à la fin de son exécution.</value>
+  </data>
+  <data name="StillRunningWithKill" xml:space="preserve">
+    <value>Session SID {0}, SERIAL# {1}. Son travail non validé est annulé à la fin de son exécution. Un utilisateur disposant d’ALTER SYSTEM peut y mettre fin maintenant avec {2}.</value>
+  </data>
+  <data name="Stopped" xml:space="preserve">
+    <value>Arrêtée. Les modifications de la routine ont été annulées.</value>
+  </data>
+  <data name="TextToType" xml:space="preserve">
+    <value>TablePro ne peut pas convertir du texte en valeur {0} pour {1}.</value>
+  </data>
+  <data name="TextToTypeDetail" xml:space="preserve">
+    <value>Transmettez NULL ou laissez la valeur par défaut.</value>
+  </data>
+  <data name="UnitUnreadable" xml:space="preserve">
+    <value>TablePro ne peut pas lire {0}. Vérifiez que ce compte peut voir son code source.</value>
+  </data>
+  <data name="Unreadable" xml:space="preserve">
+    <value>La base de données a répondu au débogueur avec des données que TablePro ne peut pas lire.</value>
+  </data>
+  <data name="UsingDbmsDebug" xml:space="preserve">
+    <value>Débogage via DBMS_DEBUG.</value>
+  </data>
+  <data name="ValueCollection" xml:space="preserve">
+    <value>Collection</value>
+  </data>
+  <data name="ValueNotReadable" xml:space="preserve">
+    <value>Illisible</value>
+  </data>
+</root>

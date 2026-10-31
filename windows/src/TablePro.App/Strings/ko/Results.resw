@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="ChartAllNumericColumns" xml:space="preserve">
+    <value>모든 숫자 열</value>
+  </data>
+  <data name="ChartBarTooltip" xml:space="preserve">
+    <value>{0}: {1:N}</value>
+  </data>
+  <data name="ChartBy" xml:space="preserve">
+    <value>기준</value>
+  </data>
+  <data name="ChartFirstRows_One" xml:space="preserve">
+    <value>{0:N0}행 중 처음 {1:N0}행</value>
+  </data>
+  <data name="ChartFirstRows_Other" xml:space="preserve">
+    <value>{0:N0}행 중 처음 {1:N0}행</value>
+  </data>
+  <data name="ChartKindArea" xml:space="preserve">
+    <value>영역</value>
+  </data>
+  <data name="ChartKindBar" xml:space="preserve">
+    <value>막대</value>
+  </data>
+  <data name="ChartKindLine" xml:space="preserve">
+    <value>선</value>
+  </data>
+  <data name="ChartLead" xml:space="preserve">
+    <value>차트</value>
+  </data>
+  <data name="ChartNoNumericColumn" xml:space="preserve">
+    <value>이 결과에는 차트로 표시할 숫자 열이 없습니다.</value>
+  </data>
+  <data name="ChartOf" xml:space="preserve">
+    <value>값</value>
+  </data>
+  <data name="MapEast" xml:space="preserve">
+    <value>E</value>
+  </data>
+  <data name="MapFitToResult" xml:space="preserve">
+    <value>결과에 맞추기</value>
+  </data>
+  <data name="MapName" xml:space="preserve">
+    <value>지도</value>
+  </data>
+  <data name="MapNameWithCounts" xml:space="preserve">
+    <value>{1}의 {0} 지도</value>
+  </data>
+  <data name="MapNoRows" xml:space="preserve">
+    <value>행을 지도에 표시하려면 쿼리를 실행하세요.</value>
+  </data>
+  <data name="MapNoSource" xml:space="preserve">
+    <value>지도에는 지오메트리 열이나 위도 및 경도 열이 필요합니다. 이 결과에는 해당 열이 없습니다.</value>
+  </data>
+  <data name="MapNorth" xml:space="preserve">
+    <value>N</value>
+  </data>
+  <data name="MapRows_One" xml:space="preserve">
+    <value>{0:N0}행</value>
+  </data>
+  <data name="MapRows_Other" xml:space="preserve">
+    <value>{0:N0}행</value>
+  </data>
+  <data name="MapShapes_One" xml:space="preserve">
+    <value>{0:N0}개 도형</value>
+  </data>
+  <data name="MapShapes_Other" xml:space="preserve">
+    <value>{0:N0}개 도형</value>
+  </data>
+  <data name="MapSourceName" xml:space="preserve">
+    <value>지도 원본</value>
+  </data>
+  <data name="MapSouth" xml:space="preserve">
+    <value>S</value>
+  </data>
+  <data name="MapWest" xml:space="preserve">
+    <value>W</value>
+  </data>
+  <data name="MapZoomIn" xml:space="preserve">
+    <value>확대</value>
+  </data>
+  <data name="MapZoomOut" xml:space="preserve">
+    <value>축소</value>
+  </data>
+</root>

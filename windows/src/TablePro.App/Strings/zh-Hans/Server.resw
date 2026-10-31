@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AutoRefreshSwitch.OffContent" xml:space="preserve">
+    <value>自动刷新</value>
+  </data>
+  <data name="AutoRefreshSwitch.OnContent" xml:space="preserve">
+    <value>自动刷新</value>
+  </data>
+  <data name="EndSessionFailed" xml:space="preserve">
+    <value>无法结束会话</value>
+  </data>
+  <data name="EndSessionMessage" xml:space="preserve">
+    <value>要终止服务器会话 {0} 吗？其正在运行的语句将被取消，连接将被关闭。</value>
+  </data>
+  <data name="EndSessionTitle" xml:space="preserve">
+    <value>结束会话？</value>
+  </data>
+  <data name="NoActivityView" xml:space="preserve">
+    <value>{0} 没有活动视图。</value>
+  </data>
+  <data name="NoUsersView" xml:space="preserve">
+    <value>{0} 没有用户视图。</value>
+  </data>
+  <data name="NoVariablesView" xml:space="preserve">
+    <value>{0} 没有变量视图。</value>
+  </data>
+  <data name="RefreshButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>刷新</value>
+  </data>
+  <data name="RefreshButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>刷新</value>
+  </data>
+  <data name="SearchButton.Content" xml:space="preserve">
+    <value>搜索</value>
+  </data>
+  <data name="SearchHitRowsMore_One" xml:space="preserve">
+    <value>{0:N0}+ 行</value>
+  </data>
+  <data name="SearchHitRowsMore_Other" xml:space="preserve">
+    <value>{0:N0}+ 行</value>
+  </data>
+  <data name="SearchHitRows_One" xml:space="preserve">
+    <value>{0:N0} 行</value>
+  </data>
+  <data name="SearchHitRows_Other" xml:space="preserve">
+    <value>{0:N0} 行</value>
+  </data>
+  <data name="SearchProgress_One" xml:space="preserve">
+    <value>已搜索 {1:N0}/{0:N0} 个表 · {2:N0} 个有匹配</value>
+  </data>
+  <data name="SearchProgress_Other" xml:space="preserve">
+    <value>已搜索 {1:N0}/{0:N0} 个表 · {2:N0} 个有匹配</value>
+  </data>
+  <data name="SearchQueryBox.PlaceholderText" xml:space="preserve">
+    <value>在此 Schema 的所有表中查找值</value>
+  </data>
+  <data name="SearchStopButton.Content" xml:space="preserve">
+    <value>停止</value>
+  </data>
+  <data name="SearchStopped" xml:space="preserve">
+    <value>搜索已停止。</value>
+  </data>
+  <data name="SearchTabTitle" xml:space="preserve">
+    <value>搜索</value>
+  </data>
+  <data name="SectionActivity.Text" xml:space="preserve">
+    <value>活动</value>
+  </data>
+  <data name="SectionUsers.Text" xml:space="preserve">
+    <value>用户</value>
+  </data>
+  <data name="SectionVariables.Text" xml:space="preserve">
+    <value>变量</value>
+  </data>
+  <data name="StatusRows_One" xml:space="preserve">
+    <value>{0:N0} 行 · {1:T}</value>
+  </data>
+  <data name="StatusRows_Other" xml:space="preserve">
+    <value>{0:N0} 行 · {1:T}</value>
+  </data>
+  <data name="TabTitle" xml:space="preserve">
+    <value>服务器</value>
+  </data>
+  <data name="Terminate" xml:space="preserve">
+    <value>终止</value>
+  </data>
+  <data name="TerminateSession" xml:space="preserve">
+    <value>终止会话</value>
+  </data>
+</root>

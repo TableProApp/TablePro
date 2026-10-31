@@ -1,0 +1,201 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AskPassMissing" xml:space="preserve">
+    <value>Thiếu chương trình hỗ trợ mật khẩu SSH tại {0}. Hãy cài đặt lại TablePro.</value>
+  </data>
+  <data name="BatchScript" xml:space="preserve">
+    <value>{0} là một tập lệnh batch mà Windows sẽ chạy qua cmd.exe. Hãy nhập đường dẫn tệp .exe của chương trình.</value>
+  </data>
+  <data name="CloudflaredNotFound" xml:space="preserve">
+    <value>Không tìm thấy cloudflared. Hãy cài bằng “winget install Cloudflare.cloudflared”, hoặc đặt đường dẫn của nó trong phần cài đặt Cloudflare Tunnel của kết nối.</value>
+  </data>
+  <data name="CloudflareSignIn" xml:space="preserve">
+    <value>Cloudflare Access cần đăng nhập qua trình duyệt. Hãy đăng nhập tại {0}, rồi kết nối lại.</value>
+  </data>
+  <data name="CloudflareTokenRequired" xml:space="preserve">
+    <value>Cần có ID và bí mật của mã thông báo dịch vụ.</value>
+  </data>
+  <data name="CloudSqlKeyRequired" xml:space="preserve">
+    <value>Cần có khóa tài khoản dịch vụ. Hãy dán JSON của khóa vào phần cài đặt Cloud SQL của kết nối.</value>
+  </data>
+  <data name="CloudSqlProxyName" xml:space="preserve">
+    <value>Cloud SQL Auth Proxy</value>
+  </data>
+  <data name="CloudSqlProxyNotFound" xml:space="preserve">
+    <value>Không tìm thấy cloud-sql-proxy. Hãy cài bằng “gcloud components install cloud-sql-proxy”, hoặc đặt đường dẫn của nó trong phần cài đặt Cloud SQL của kết nối.</value>
+  </data>
+  <data name="CommandNotFound" xml:space="preserve">
+    <value>Không tìm thấy {0}. Hãy nhập đường dẫn đầy đủ của nó trong kết nối.</value>
+  </data>
+  <data name="CouldNotStart" xml:space="preserve">
+    <value>Không thể khởi động {0}: {1}</value>
+  </data>
+  <data name="DatabaseHostEmpty" xml:space="preserve">
+    <value>Máy chủ cơ sở dữ liệu đang trống.</value>
+  </data>
+  <data name="DatabaseHostUnsafe" xml:space="preserve">
+    <value>Máy chủ cơ sở dữ liệu "{0}" chứa ký tự mà ssh không chấp nhận.</value>
+  </data>
+  <data name="FixedPortInUse" xml:space="preserve">
+    <value>Một chương trình khác đang lắng nghe trên cổng cục bộ {0}. Hãy chọn cổng khác hoặc để trống.</value>
+  </data>
+  <data name="HelperCouldNotListen" xml:space="preserve">
+    <value>{0} không thể lắng nghe trên cổng cục bộ {1}.</value>
+  </data>
+  <data name="HelperExitedEarly" xml:space="preserve">
+    <value>{0} đã thoát trước khi cổng cục bộ của nó được mở.</value>
+  </data>
+  <data name="HelperTimedOut" xml:space="preserve">
+    <value>{0} không mở cổng cục bộ kịp thời.</value>
+  </data>
+  <data name="JumpHostEmpty" xml:space="preserve">
+    <value>Máy chủ trung gian đang trống.</value>
+  </data>
+  <data name="JumpHostUnsafe" xml:space="preserve">
+    <value>Máy chủ trung gian "{0}" chứa ký tự mà ssh không chấp nhận.</value>
+  </data>
+  <data name="NoFreePort" xml:space="preserve">
+    <value>Không có cổng cục bộ nào trống cho đường hầm.</value>
+  </data>
+  <data name="NotAProxyOrHelper" xml:space="preserve">
+    <value>Kết nối không dùng proxy hay chương trình hỗ trợ đường hầm.</value>
+  </data>
+  <data name="NotHttpProxy" xml:space="preserve">
+    <value>Proxy không phản hồi như một HTTP proxy.</value>
+  </data>
+  <data name="NotSocks5" xml:space="preserve">
+    <value>Proxy không phản hồi như một SOCKS5 proxy.</value>
+  </data>
+  <data name="NotSsh" xml:space="preserve">
+    <value>Kết nối không dùng SSH.</value>
+  </data>
+  <data name="PortOutOfRange" xml:space="preserve">
+    <value>Cổng phải nằm trong khoảng từ 1 đến 65535.</value>
+  </data>
+  <data name="ProxyClosed" xml:space="preserve">
+    <value>Proxy đã đóng kết nối.</value>
+  </data>
+  <data name="ProxyConnectFailed" xml:space="preserve">
+    <value>Không thể kết nối qua proxy tại {0}. {1}</value>
+  </data>
+  <data name="ProxyCouldNotConnect" xml:space="preserve">
+    <value>Proxy không thể kết nối tới {0}:{1}: {2}.</value>
+  </data>
+  <data name="ProxyIncomplete" xml:space="preserve">
+    <value>Cấu hình proxy chưa đầy đủ. Hãy nhập máy chủ và cổng proxy.</value>
+  </data>
+  <data name="ProxyLocalPortFailed" xml:space="preserve">
+    <value>Không thể mở cổng cục bộ cho proxy: {0}</value>
+  </data>
+  <data name="ProxyNeedsLogin" xml:space="preserve">
+    <value>Proxy yêu cầu tên người dùng và mật khẩu.</value>
+  </data>
+  <data name="ProxyNoMethod" xml:space="preserve">
+    <value>Proxy không chấp nhận phương thức đăng nhập nào được đề xuất.</value>
+  </data>
+  <data name="ProxyRejectedLogin" xml:space="preserve">
+    <value>Proxy đã từ chối tên người dùng và mật khẩu.</value>
+  </data>
+  <data name="ProxyReplyTooLong" xml:space="preserve">
+    <value>Phản hồi của proxy quá dài.</value>
+  </data>
+  <data name="ProxyTimedOut" xml:space="preserve">
+    <value>Hết thời gian khi kết nối qua proxy tại {0}. Hãy kiểm tra proxy có truy cập được không và thông tin xác thực có đúng không.</value>
+  </data>
+  <data name="ProxyUnreachable" xml:space="preserve">
+    <value>Không thể kết nối tới proxy tại {0}. {1}</value>
+  </data>
+  <data name="ProxyUnreadableReply" xml:space="preserve">
+    <value>Proxy đã gửi phản hồi mà TablePro không đọc được.</value>
+  </data>
+  <data name="ProxyUnsupportedMethod" xml:space="preserve">
+    <value>Proxy yêu cầu một phương thức đăng nhập mà TablePro không hỗ trợ.</value>
+  </data>
+  <data name="Socks5CredentialsTooLong" xml:space="preserve">
+    <value>Tên người dùng và mật khẩu SOCKS5 mỗi thứ tối đa 255 byte.</value>
+  </data>
+  <data name="Socks5HostTooLong" xml:space="preserve">
+    <value>Tên máy chủ {0} quá dài đối với SOCKS5 proxy.</value>
+  </data>
+  <data name="SocksAddressTypeNotSupported" xml:space="preserve">
+    <value>loại địa chỉ không được hỗ trợ</value>
+  </data>
+  <data name="SocksCommandNotSupported" xml:space="preserve">
+    <value>lệnh không được hỗ trợ</value>
+  </data>
+  <data name="SocksConnectionRefused" xml:space="preserve">
+    <value>kết nối bị từ chối</value>
+  </data>
+  <data name="SocksError" xml:space="preserve">
+    <value>lỗi {0}</value>
+  </data>
+  <data name="SocksGeneralFailure" xml:space="preserve">
+    <value>lỗi chung</value>
+  </data>
+  <data name="SocksHostUnreachable" xml:space="preserve">
+    <value>không thể truy cập máy chủ</value>
+  </data>
+  <data name="SocksNetworkUnreachable" xml:space="preserve">
+    <value>không thể truy cập mạng</value>
+  </data>
+  <data name="SocksNotAllowed" xml:space="preserve">
+    <value>không được quy tắc của proxy cho phép</value>
+  </data>
+  <data name="SocksTimedOut" xml:space="preserve">
+    <value>hết thời gian chờ</value>
+  </data>
+  <data name="SshClosed" xml:space="preserve">
+    <value>Đường hầm SSH qua {0} đã đóng.</value>
+  </data>
+  <data name="SshFailed" xml:space="preserve">
+    <value>ssh không thể mở đường hầm qua {0}.</value>
+  </data>
+  <data name="SshHostEmpty" xml:space="preserve">
+    <value>Máy chủ SSH đang trống.</value>
+  </data>
+  <data name="SshHostKeyMismatch" xml:space="preserve">
+    <value>Khóa máy chủ của {0} không khớp với khóa trong known_hosts. Hãy xác minh với quản trị viên máy chủ, rồi xóa mục cũ.</value>
+  </data>
+  <data name="SshHostNotFound" xml:space="preserve">
+    <value>Không tìm thấy máy chủ SSH {0}.</value>
+  </data>
+  <data name="SshHostUnsafe" xml:space="preserve">
+    <value>Máy chủ SSH "{0}" chứa ký tự mà ssh không chấp nhận.</value>
+  </data>
+  <data name="SshLocalPort" xml:space="preserve">
+    <value>ssh không thể lắng nghe ở đầu cục bộ của đường hầm.</value>
+  </data>
+  <data name="SshLoginRejected" xml:space="preserve">
+    <value>Máy chủ SSH {0} đã từ chối đăng nhập.</value>
+  </data>
+  <data name="SshNotFound" xml:space="preserve">
+    <value>Không tìm thấy ssh.exe. Hãy cài OpenSSH Client từ Cài đặt &gt; Hệ thống &gt; Tính năng tùy chọn.</value>
+  </data>
+  <data name="SshTimedOut" xml:space="preserve">
+    <value>Đường hầm SSH qua {0} không mở kịp thời.</value>
+  </data>
+  <data name="SshUnreachable" xml:space="preserve">
+    <value>Không thể kết nối tới máy chủ SSH {0}.</value>
+  </data>
+  <data name="SshUserEmpty" xml:space="preserve">
+    <value>Người dùng SSH đang trống.</value>
+  </data>
+  <data name="SshUserUnsafe" xml:space="preserve">
+    <value>Người dùng SSH "{0}" chứa ký tự mà ssh không chấp nhận.</value>
+  </data>
+  <data name="TunnelCommandName" xml:space="preserve">
+    <value>Lệnh đường hầm</value>
+  </data>
+</root>

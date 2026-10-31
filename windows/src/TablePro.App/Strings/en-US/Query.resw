@@ -1,0 +1,230 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AnalyzedPlanTab" xml:space="preserve">
+    <value>Analyzed Plan</value>
+    <comment>Result tab showing a query plan measured by actually running the statement (EXPLAIN ANALYZE).</comment>
+  </data>
+  <data name="ChartToggle.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Chart</value>
+    <comment>Screen reader name of the toggle that shows the result as a chart.</comment>
+  </data>
+  <data name="ChartToggle.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Show as chart</value>
+  </data>
+  <data name="ConfirmRunMessage" xml:space="preserve">
+    <value>Safe Mode asks before running statements on {0}.</value>
+    <comment>{0} is the connection name. "Safe Mode" is the name of a connection setting.</comment>
+  </data>
+  <data name="ConfirmRunTitle" xml:space="preserve">
+    <value>Run these statements?</value>
+  </data>
+  <data name="DoneAfter" xml:space="preserve">
+    <value>Done · {0}</value>
+    <comment>Status after a statement that returned nothing. {0} is the elapsed time, such as "12 ms".</comment>
+  </data>
+  <data name="ElapsedMilliseconds" xml:space="preserve">
+    <value>{0:N0} ms</value>
+    <comment>Elapsed time in milliseconds. {0} is the number.</comment>
+  </data>
+  <data name="ElapsedSeconds" xml:space="preserve">
+    <value>{0:N2} s</value>
+    <comment>Elapsed time in seconds. {0} is the number with two decimals.</comment>
+  </data>
+  <data name="ElapsedUnderOneMillisecond" xml:space="preserve">
+    <value>&lt;1 ms</value>
+    <comment>Elapsed time shorter than one millisecond.</comment>
+  </data>
+  <data name="EmptyHint.Text" xml:space="preserve">
+    <value>Ctrl+Enter runs the statement at the caret, F5 runs everything</value>
+    <comment>The key names Ctrl+Enter and F5 stay as they are.</comment>
+  </data>
+  <data name="EmptyTitle.Text" xml:space="preserve">
+    <value>Run a query to see results</value>
+  </data>
+  <data name="ErrorBar.Title" xml:space="preserve">
+    <value>The statement failed</value>
+  </data>
+  <data name="ExplainAnalyzeItem.Text" xml:space="preserve">
+    <value>Explain Analyze</value>
+    <comment>Menu command that shows a query plan measured by running the statement, after the SQL EXPLAIN ANALYZE.</comment>
+  </data>
+  <data name="ExplainAnalyzeItem.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Runs the statement to measure its plan</value>
+  </data>
+  <data name="ExplainItem.Text" xml:space="preserve">
+    <value>Explain</value>
+    <comment>Menu command (verb) that shows the query plan of a statement, after the SQL EXPLAIN.</comment>
+  </data>
+  <data name="ExportButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Export this result</value>
+  </data>
+  <data name="ExportButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Export this result</value>
+  </data>
+  <data name="FailedAfter" xml:space="preserve">
+    <value>Failed after {0}</value>
+    <comment>{0} is the elapsed time, such as "12 ms".</comment>
+  </data>
+  <data name="FixWithAiButton.Content" xml:space="preserve">
+    <value>Fix with AI</value>
+  </data>
+  <data name="FormatButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Format SQL</value>
+  </data>
+  <data name="FormatButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Format SQL (Ctrl+Shift+F)</value>
+    <comment>The shortcut Ctrl+Shift+F stays as it is.</comment>
+  </data>
+  <data name="InspectValue" xml:space="preserve">
+    <value>Inspect Value</value>
+    <comment>Context menu command on a result cell.</comment>
+  </data>
+  <data name="MapToggle.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Map</value>
+    <comment>Screen reader name of the toggle that shows the result on a map (noun).</comment>
+  </data>
+  <data name="MapToggle.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Show on a map</value>
+  </data>
+  <data name="OpenFileButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Open SQL file</value>
+  </data>
+  <data name="OpenFileButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Open SQL file</value>
+  </data>
+  <data name="ParametersMessage_One" xml:space="preserve">
+    <value>The statement has a placeholder. Enter its value.</value>
+    <comment>{0} is the number of distinct parameter placeholders in the statements.</comment>
+  </data>
+  <data name="ParametersMessage_Other" xml:space="preserve">
+    <value>The statements have {0} placeholders. Enter their values.</value>
+    <comment>{0} is the number of distinct parameter placeholders in the statements.</comment>
+  </data>
+  <data name="ParametersTitle" xml:space="preserve">
+    <value>Parameters</value>
+    <comment>Title of the dialog that asks for the values of query parameters.</comment>
+  </data>
+  <data name="PlanTab" xml:space="preserve">
+    <value>Plan</value>
+    <comment>Result tab showing the estimated query plan.</comment>
+  </data>
+  <data name="QueryCancelled" xml:space="preserve">
+    <value>Query cancelled.</value>
+  </data>
+  <data name="ReadOnlyMessage" xml:space="preserve">
+    <value>This connection's Safe Mode is Read-Only, so statements that change data or structure do not run.</value>
+    <comment>"Safe Mode" is the name of a connection setting and "Read-Only" one of its levels; use the same words as in the connection settings.</comment>
+  </data>
+  <data name="ReadOnlyTitle" xml:space="preserve">
+    <value>Read-only connection</value>
+  </data>
+  <data name="ResultTabTitle" xml:space="preserve">
+    <value>Result {0}</value>
+    <comment>Tab title for a result set. {0} is its 1-based position.</comment>
+  </data>
+  <data name="RowsAffected_One" xml:space="preserve">
+    <value>{0:N0} row affected · {1}</value>
+    <comment>{0} is the number of rows the statement changed, {1} the elapsed time.</comment>
+  </data>
+  <data name="RowsAffected_Other" xml:space="preserve">
+    <value>{0:N0} rows affected · {1}</value>
+    <comment>{0} is the number of rows the statement changed, {1} the elapsed time.</comment>
+  </data>
+  <data name="RowsReturned_One" xml:space="preserve">
+    <value>{0:N0} row · {1}</value>
+    <comment>{0} is the number of rows returned, {1} the elapsed time.</comment>
+  </data>
+  <data name="RowsReturned_Other" xml:space="preserve">
+    <value>{0:N0} rows · {1}</value>
+    <comment>{0} is the number of rows returned, {1} the elapsed time.</comment>
+  </data>
+  <data name="RowsTruncated_One" xml:space="preserve">
+    <value>{0:N0} row (limit reached, more on the server) · {1}</value>
+    <comment>{0} is the number of rows fetched before the row limit stopped the fetch, {1} the elapsed time.</comment>
+  </data>
+  <data name="RowsTruncated_Other" xml:space="preserve">
+    <value>{0:N0} rows (limit reached, more on the server) · {1}</value>
+    <comment>{0} is the number of rows fetched before the row limit stopped the fetch, {1} the elapsed time.</comment>
+  </data>
+  <data name="RunAllItem.Text" xml:space="preserve">
+    <value>Run All</value>
+  </data>
+  <data name="RunButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Run the selection or the statement at the caret</value>
+  </data>
+  <data name="RunButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Run the selection or the statement at the caret (Ctrl+Enter)</value>
+    <comment>The shortcut Ctrl+Enter stays as it is.</comment>
+  </data>
+  <data name="RunCurrentItem.Text" xml:space="preserve">
+    <value>Run Current</value>
+    <comment>Menu command that runs the statement at the caret.</comment>
+  </data>
+  <data name="RunLabel.Text" xml:space="preserve">
+    <value>Run</value>
+    <comment>Label of the main toolbar button (verb).</comment>
+  </data>
+  <data name="RunningStatements_One" xml:space="preserve">
+    <value>Running…</value>
+    <comment>{0} is the number of statements being run.</comment>
+  </data>
+  <data name="RunningStatements_Other" xml:space="preserve">
+    <value>Running {0} statements…</value>
+    <comment>{0} is the number of statements being run.</comment>
+  </data>
+  <data name="SaveFavoriteButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Save as favorite</value>
+  </data>
+  <data name="SaveFavoriteButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Save as favorite</value>
+  </data>
+  <data name="SaveFileButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Save SQL file</value>
+  </data>
+  <data name="SaveFileButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Save SQL file (Ctrl+S)</value>
+    <comment>The shortcut Ctrl+S stays as it is.</comment>
+  </data>
+  <data name="SavedFile" xml:space="preserve">
+    <value>Saved {0}</value>
+    <comment>Notification after saving. {0} is the file name.</comment>
+  </data>
+  <data name="SqlFileType" xml:space="preserve">
+    <value>SQL file</value>
+    <comment>File type name in the save dialog.</comment>
+  </data>
+  <data name="StatementTabTitle" xml:space="preserve">
+    <value>Statement {0}</value>
+    <comment>Tab title for a statement that returned no rows. {0} is its 1-based position.</comment>
+  </data>
+  <data name="StopButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Stop the running query</value>
+  </data>
+  <data name="StopButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Stop the running query</value>
+  </data>
+  <data name="StoppedWithError" xml:space="preserve">
+    <value>Stopped with an error · {0}</value>
+    <comment>{0} is the elapsed time, such as "12 ms".</comment>
+  </data>
+  <data name="TabTitle" xml:space="preserve">
+    <value>Query {0}</value>
+    <comment>Title of a new query editor tab. {0} is the tab number.</comment>
+  </data>
+  <data name="UnsavedChanges" xml:space="preserve">
+    <value>{0} has unsaved changes.</value>
+    <comment>{0} is the tab or file name.</comment>
+  </data>
+</root>

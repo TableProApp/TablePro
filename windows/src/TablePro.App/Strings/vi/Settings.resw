@@ -1,0 +1,303 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AiConsentAllow" xml:space="preserve">
+    <value>Cho phép</value>
+  </data>
+  <data name="AiConsentMessage" xml:space="preserve">
+    <value>Trợ lý sẽ gửi câu hỏi của bạn, câu SQL mà nó xử lý và cấu trúc của các bảng liên quan từ {0} tới {1} ({2}). Trợ lý không đọc dòng dữ liệu nào.</value>
+  </data>
+  <data name="AiConsentTitle" xml:space="preserve">
+    <value>Gửi tới nhà cung cấp AI?</value>
+  </data>
+  <data name="AiEndpointDescription" xml:space="preserve">
+    <value>Để trống để dùng địa chỉ công khai của nhà cung cấp. Ollama mặc định là http://localhost:11434/v1.</value>
+  </data>
+  <data name="AiEndpointTitle" xml:space="preserve">
+    <value>Endpoint</value>
+  </data>
+  <data name="AiIntro" xml:space="preserve">
+    <value>Trợ lý gửi câu hỏi của bạn, câu SQL mà nó xử lý và cấu trúc của các bảng liên quan tới nhà cung cấp bạn chọn. Trợ lý không bao giờ gửi dòng dữ liệu. Cài đặt AI của từng kết nối quyết định kết nối đó có được dùng trợ lý hay không.</value>
+  </data>
+  <data name="AiKeyDescription" xml:space="preserve">
+    <value>Được lưu trong Trình quản lý thông tin xác thực của Windows.</value>
+  </data>
+  <data name="AiKeyNotNeeded" xml:space="preserve">
+    <value>Không cần cho Ollama</value>
+  </data>
+  <data name="AiKeyTitle" xml:space="preserve">
+    <value>API key</value>
+  </data>
+  <data name="AiLoadModels" xml:space="preserve">
+    <value>Tải danh sách model</value>
+  </data>
+  <data name="AiModelDefault" xml:space="preserve">
+    <value>Mặc định của nhà cung cấp</value>
+  </data>
+  <data name="AiModelTitle" xml:space="preserve">
+    <value>Model</value>
+  </data>
+  <data name="AiNoKey" xml:space="preserve">
+    <value>Hãy thêm API key cho {0} trong Cài đặt &gt; AI để dùng trợ lý.</value>
+  </data>
+  <data name="AiNotSetUp" xml:space="preserve">
+    <value>Chưa thiết lập</value>
+  </data>
+  <data name="AiProviderOpenAICompatible" xml:space="preserve">
+    <value>Máy chủ tương thích OpenAI</value>
+  </data>
+  <data name="AiProviderTitle" xml:space="preserve">
+    <value>Nhà cung cấp</value>
+  </data>
+  <data name="AiSuggestDescription" xml:space="preserve">
+    <value>Yêu cầu gợi ý hoàn thành khi bạn dừng ở cuối dòng. Mỗi lần dừng sẽ gửi đoạn văn bản quanh con trỏ.</value>
+  </data>
+  <data name="AiSuggestTitle" xml:space="preserve">
+    <value>Gợi ý khi đang gõ</value>
+  </data>
+  <data name="AutocompleteDescription" xml:space="preserve">
+    <value>Gợi ý từ khoá, bảng và cột khi đang gõ.</value>
+  </data>
+  <data name="AutocompleteTitle" xml:space="preserve">
+    <value>Tự động hoàn thành</value>
+  </data>
+  <data name="BackdropAcrylic" xml:space="preserve">
+    <value>Acrylic</value>
+  </data>
+  <data name="BackdropDescription" xml:space="preserve">
+    <value>Acrylic cho thấy màn hình nền xuyên qua cửa sổ, Mica phủ màu theo hình nền.</value>
+  </data>
+  <data name="BackdropMica" xml:space="preserve">
+    <value>Mica</value>
+  </data>
+  <data name="BackdropMicaAlt" xml:space="preserve">
+    <value>Mica Alt</value>
+  </data>
+  <data name="BackdropTitle" xml:space="preserve">
+    <value>Chất liệu cửa sổ</value>
+  </data>
+  <data name="ClearAllHistory" xml:space="preserve">
+    <value>Xóa toàn bộ lịch sử</value>
+  </data>
+  <data name="ClearHistoryConfirmMessage" xml:space="preserve">
+    <value>Lịch sử truy vấn của mọi kết nối sẽ bị xoá.</value>
+  </data>
+  <data name="ClearHistoryConfirmTitle" xml:space="preserve">
+    <value>Xoá lịch sử?</value>
+  </data>
+  <data name="ClearRewindConfirmMessage" xml:space="preserve">
+    <value>Tua lại dữ liệu sẽ không thể hoàn tác các lần lưu được thực hiện trước thời điểm này.</value>
+  </data>
+  <data name="ClearRewindConfirmTitle" xml:space="preserve">
+    <value>Xoá các thay đổi đã lưu?</value>
+  </data>
+  <data name="ConfirmCloseTitle" xml:space="preserve">
+    <value>Hỏi trước khi đóng tab chưa lưu</value>
+  </data>
+  <data name="DataFolderTitle" xml:space="preserve">
+    <value>Thư mục dữ liệu</value>
+  </data>
+  <data name="DateFormatDescription" xml:space="preserve">
+    <value>Chuỗi định dạng .NET cho ngày tháng khi xuất.</value>
+  </data>
+  <data name="DateFormatTitle" xml:space="preserve">
+    <value>Định dạng ngày</value>
+  </data>
+  <data name="EmacsDescription" xml:space="preserve">
+    <value>Ctrl+F, B, N, P, A, E để di chuyển, Alt+F và Alt+B di chuyển theo từ, Ctrl+K, Alt+D và Ctrl+W để cắt (kill), Ctrl+Y và Alt+Y để dán lại (yank), Ctrl+Space để đặt mốc (mark). Các phím này mất chức năng thông thường của Windows trong trình soạn thảo: làm lại bằng Ctrl+Shift+Z, tìm bằng Ctrl+H hoặc menu ngữ cảnh.</value>
+  </data>
+  <data name="EmacsTitle" xml:space="preserve">
+    <value>Tổ hợp phím Emacs</value>
+  </data>
+  <data name="FontDescription" xml:space="preserve">
+    <value>Một phông chữ đơn cách đã cài trên PC này.</value>
+  </data>
+  <data name="FontSizeTitle" xml:space="preserve">
+    <value>Cỡ chữ</value>
+  </data>
+  <data name="FontTitle" xml:space="preserve">
+    <value>Phông chữ</value>
+  </data>
+  <data name="KeyboardConflictMessage" xml:space="preserve">
+    <value>{0} Gán lại sẽ gỡ phím tắt khỏi lệnh đó.</value>
+  </data>
+  <data name="KeyboardConflictTitle" xml:space="preserve">
+    <value>Xung đột phím tắt</value>
+  </data>
+  <data name="KeyboardIntro" xml:space="preserve">
+    <value>Bấm vào một phím tắt, rồi nhấn các phím muốn dùng. Esc để huỷ, Backspace để gỡ phím tắt. Lệnh của trình soạn thảo hoạt động khi trình soạn thảo SQL đang được chọn; các lệnh khác hoạt động ở bất kỳ đâu trong cửa sổ kết nối.</value>
+  </data>
+  <data name="KeyboardModifierRequired" xml:space="preserve">
+    <value>Cần phím bổ trợ</value>
+  </data>
+  <data name="KeyboardNoMatches" xml:space="preserve">
+    <value>Không có phím tắt nào khớp.</value>
+  </data>
+  <data name="KeyboardReassign" xml:space="preserve">
+    <value>Gán lại</value>
+  </data>
+  <data name="KeyboardReservedShortcut" xml:space="preserve">
+    <value>Phím tắt dành riêng</value>
+  </data>
+  <data name="KeyboardResetAll" xml:space="preserve">
+    <value>Đặt lại tất cả về mặc định</value>
+  </data>
+  <data name="KeyboardResetToDefault" xml:space="preserve">
+    <value>Đặt lại về mặc định ({0})</value>
+  </data>
+  <data name="KeyboardResetToDefaultNone" xml:space="preserve">
+    <value>Đặt lại về mặc định (không có)</value>
+  </data>
+  <data name="KeyboardSearch" xml:space="preserve">
+    <value>Tìm phím tắt</value>
+  </data>
+  <data name="KeyboardShortcutFor" xml:space="preserve">
+    <value>Phím tắt cho {0}</value>
+  </data>
+  <data name="LanguageDescription" xml:space="preserve">
+    <value>Ngôn ngữ mà TablePro sử dụng. Thay đổi có hiệu lực sau khi khởi động lại.</value>
+  </data>
+  <data name="LanguageRestartMessage" xml:space="preserve">
+    <value>TablePro sẽ hiển thị ngôn ngữ mới sau khi khởi động lại. Khởi động lại ngay?</value>
+  </data>
+  <data name="LanguageRestartTitle" xml:space="preserve">
+    <value>Khởi động lại TablePro?</value>
+  </data>
+  <data name="LanguageTitle" xml:space="preserve">
+    <value>Ngôn ngữ</value>
+  </data>
+  <data name="McpCopyCommand" xml:space="preserve">
+    <value>Sao chép lệnh</value>
+  </data>
+  <data name="McpEnableTitle" xml:space="preserve">
+    <value>Bật MCP server</value>
+  </data>
+  <data name="McpIntro" xml:space="preserve">
+    <value>Các MCP client trên máy tính này, như Claude Code hoặc Cursor, có thể dùng các kết nối đã lưu của bạn thông qua TablePro. Máy chủ chỉ lắng nghe trên 127.0.0.1, trong khi TablePro đang chạy. Mức Client bên ngoài của từng kết nối quyết định client được phép làm gì.</value>
+  </data>
+  <data name="McpPortTitle" xml:space="preserve">
+    <value>Cổng</value>
+  </data>
+  <data name="McpRegenerateToken" xml:space="preserve">
+    <value>Tạo lại access token</value>
+  </data>
+  <data name="McpRunningAt" xml:space="preserve">
+    <value>Đang chạy tại {0}</value>
+  </data>
+  <data name="McpStatusTitle" xml:space="preserve">
+    <value>Trạng thái</value>
+  </data>
+  <data name="McpStopped" xml:space="preserve">
+    <value>Đã dừng</value>
+  </data>
+  <data name="NullDisplayDescription" xml:space="preserve">
+    <value>Nội dung hiển thị trong ô trống.</value>
+  </data>
+  <data name="NullDisplayTitle" xml:space="preserve">
+    <value>Hiển thị NULL</value>
+  </data>
+  <data name="OpenFolder" xml:space="preserve">
+    <value>Mở thư mục</value>
+  </data>
+  <data name="PageAI" xml:space="preserve">
+    <value>AI</value>
+  </data>
+  <data name="PageData" xml:space="preserve">
+    <value>Dữ liệu</value>
+  </data>
+  <data name="PageEditor" xml:space="preserve">
+    <value>Trình soạn thảo</value>
+  </data>
+  <data name="PageGeneral" xml:space="preserve">
+    <value>Tổng quát</value>
+  </data>
+  <data name="PageKeyboard" xml:space="preserve">
+    <value>Bàn phím</value>
+  </data>
+  <data name="PageMCP" xml:space="preserve">
+    <value>MCP</value>
+  </data>
+  <data name="PageSizeDescription" xml:space="preserve">
+    <value>Số dòng một tab bảng hiển thị trên mỗi trang.</value>
+  </data>
+  <data name="PageSizeTitle" xml:space="preserve">
+    <value>Kích thước trang bảng</value>
+  </data>
+  <data name="QueryHistoryDescription" xml:space="preserve">
+    <value>Được lưu trong một cơ sở dữ liệu SQLite cục bộ.</value>
+  </data>
+  <data name="QueryHistoryTitle" xml:space="preserve">
+    <value>Lịch sử truy vấn</value>
+  </data>
+  <data name="RestartLater" xml:space="preserve">
+    <value>Để sau</value>
+  </data>
+  <data name="RestartNow" xml:space="preserve">
+    <value>Khởi động lại ngay</value>
+  </data>
+  <data name="RestoreTabsDescription" xml:space="preserve">
+    <value>Khôi phục các tab đang mở của từng kết nối vào lần kết nối tiếp theo.</value>
+  </data>
+  <data name="RestoreTabsTitle" xml:space="preserve">
+    <value>Mở lại tab khi khởi động</value>
+  </data>
+  <data name="RewindJournalDescription" xml:space="preserve">
+    <value>Mỗi lần lưu trên lưới được ghi nhật ký trên PC này, có mã hoá, trong 7 ngày, để có thể hoàn tác.</value>
+  </data>
+  <data name="RewindJournalTitle" xml:space="preserve">
+    <value>Giữ các thay đổi đã lưu cho Tua lại dữ liệu</value>
+  </data>
+  <data name="RowLimitDescription" xml:space="preserve">
+    <value>Số dòng một truy vấn trong trình soạn thảo đọc trước khi dừng. Thanh trạng thái sẽ báo khi kết quả bị cắt bớt.</value>
+  </data>
+  <data name="RowLimitTitle" xml:space="preserve">
+    <value>Giới hạn kết quả truy vấn</value>
+  </data>
+  <data name="SavedChangesDescription" xml:space="preserve">
+    <value>Xoá mọi lần lưu đã ghi nhật ký cùng khoá của chúng.</value>
+  </data>
+  <data name="SavedChangesTitle" xml:space="preserve">
+    <value>Thay đổi đã lưu</value>
+  </data>
+  <data name="TabSizeTitle" xml:space="preserve">
+    <value>Độ rộng tab</value>
+  </data>
+  <data name="ThemeDark" xml:space="preserve">
+    <value>Tối</value>
+  </data>
+  <data name="ThemeDescription" xml:space="preserve">
+    <value>Sáng, tối hoặc theo Windows.</value>
+  </data>
+  <data name="ThemeLight" xml:space="preserve">
+    <value>Sáng</value>
+  </data>
+  <data name="ThemeTitle" xml:space="preserve">
+    <value>Chủ đề ứng dụng</value>
+  </data>
+  <data name="UseSystemSetting" xml:space="preserve">
+    <value>Dùng cài đặt hệ thống</value>
+  </data>
+  <data name="VimDescription" xml:space="preserve">
+    <value>Chỉnh sửa với các chế độ, chuyển động, toán tử, thanh ghi và macro của Vim. Ctrl+C, Ctrl+V, Ctrl+Z và các phím tắt Windows khác vẫn hoạt động.</value>
+  </data>
+  <data name="VimTitle" xml:space="preserve">
+    <value>Tổ hợp phím Vim</value>
+  </data>
+  <data name="WindowTitle" xml:space="preserve">
+    <value>Cài đặt - TablePro</value>
+  </data>
+  <data name="WordWrapTitle" xml:space="preserve">
+    <value>Tự động xuống dòng</value>
+  </data>
+</root>

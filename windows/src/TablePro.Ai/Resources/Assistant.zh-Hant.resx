@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="Declined" xml:space="preserve">
+    <value>沒有任何來自「{0}」的內容傳送給 {1}。</value>
+  </data>
+  <data name="NoWayToAsk" xml:space="preserve">
+    <value>「{0}」要求在傳送任何內容給 {1} 之前先詢問，但目前無法詢問。</value>
+  </data>
+  <data name="TurnedOff" xml:space="preserve">
+    <value>已為「{0}」關閉 AI 助理。請在連線選項中變更「AI 助理」以使用它。</value>
+  </data>
+</root>

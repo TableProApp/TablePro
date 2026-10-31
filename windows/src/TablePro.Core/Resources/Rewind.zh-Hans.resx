@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="Added_One" xml:space="preserve">
+    <value>已添加 {0:N0} 个</value>
+  </data>
+  <data name="Added_Other" xml:space="preserve">
+    <value>已添加 {0:N0} 个</value>
+  </data>
+  <data name="Deleted_One" xml:space="preserve">
+    <value>已删除 {0:N0} 个</value>
+  </data>
+  <data name="Deleted_Other" xml:space="preserve">
+    <value>已删除 {0:N0} 个</value>
+  </data>
+  <data name="Edited_One" xml:space="preserve">
+    <value>已编辑 {0:N0} 个</value>
+  </data>
+  <data name="Edited_Other" xml:space="preserve">
+    <value>已编辑 {0:N0} 个</value>
+  </data>
+  <data name="RecordedByNewerVersion" xml:space="preserve">
+    <value>此保存由更新版本的 TablePro 记录。</value>
+  </data>
+  <data name="RefusalNoPrimaryKey" xml:space="preserve">
+    <value>该表没有主键，因此无法识别这一行。</value>
+  </data>
+  <data name="RefusalServerAssignedKey" xml:space="preserve">
+    <value>这一行的键由服务器选定。</value>
+  </data>
+  <data name="RefusalValueTooLarge" xml:space="preserve">
+    <value>有一个值太大，无法保留。</value>
+  </data>
+  <data name="StepPutRowBack" xml:space="preserve">
+    <value>把该行放回去</value>
+  </data>
+  <data name="StepRemoveAddedRow" xml:space="preserve">
+    <value>移除新增的行</value>
+  </data>
+  <data name="StepRestoreValues" xml:space="preserve">
+    <value>恢复之前的值</value>
+  </data>
+  <data name="SummarySeparator" xml:space="preserve">
+    <value>，</value>
+  </data>
+</root>

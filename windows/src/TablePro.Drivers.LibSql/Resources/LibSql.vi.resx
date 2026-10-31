@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AuthFailed" xml:space="preserve">
+    <value>Xác thực thất bại. Hãy kiểm tra token xác thực trong trường Mật khẩu.</value>
+  </data>
+  <data name="BeginFailed" xml:space="preserve">
+    <value>Lần lưu không thể bắt đầu giao dịch: {0}</value>
+  </data>
+  <data name="BeginNoAnswer" xml:space="preserve">
+    <value>Lần lưu không thể bắt đầu giao dịch: máy chủ không trả lời.</value>
+  </data>
+  <data name="CommitFailed" xml:space="preserve">
+    <value>Không thể commit lần lưu: {0}</value>
+  </data>
+  <data name="FewerAnswers" xml:space="preserve">
+    <value>Máy chủ trả lời ít câu lệnh hơn số câu lệnh mà lần lưu đã gửi.</value>
+  </data>
+  <data name="FileUrlNoFile" xml:space="preserve">
+    <value>URL file: không nêu tệp cơ sở dữ liệu nào.</value>
+  </data>
+  <data name="LocalNeedsFile" xml:space="preserve">
+    <value>Kết nối libSQL cục bộ cần một tệp cơ sở dữ liệu.</value>
+  </data>
+  <data name="NoLocalFiles" xml:space="preserve">
+    <value>Bản dựng này không thể mở tệp libSQL cục bộ; hãy kết nối tới URL máy chủ.</value>
+  </data>
+  <data name="NoPipeline" xml:space="preserve">
+    <value>Máy chủ không có pipeline Hrana tại URL này. Hãy kiểm tra URL cơ sở dữ liệu.</value>
+  </data>
+  <data name="NotAUrl" xml:space="preserve">
+    <value>'{0}' không phải là URL cơ sở dữ liệu libSQL. Hãy dùng libsql://, https:// hoặc http://.</value>
+  </data>
+  <data name="StreamClosedBeforeCommit" xml:space="preserve">
+    <value>Máy chủ đã đóng luồng lưu trước khi có thể commit, nên không có gì được lưu.</value>
+  </data>
+  <data name="StreamEnded" xml:space="preserve">
+    <value>{0} Luồng của tab đã kết thúc, nên mọi giao dịch đang mở đã được hoàn tác.</value>
+  </data>
+  <data name="Unreadable" xml:space="preserve">
+    <value>Máy chủ đã trả về phản hồi mà TablePro không đọc được.</value>
+  </data>
+</root>

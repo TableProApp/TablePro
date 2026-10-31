@@ -1,0 +1,157 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AmbiguousOverload" xml:space="preserve">
+    <value>This call matches more than one overload of {0}, so Oracle can't run it (PLS-00307).</value>
+    <comment>{0} is a subprogram name.</comment>
+  </data>
+  <data name="BreakpointHasNoCode" xml:space="preserve">
+    <value>Line {0} of {1} has no code to stop at.</value>
+    <comment>{0} is a line number, {1} a unit name.</comment>
+  </data>
+  <data name="CannotPassType" xml:space="preserve">
+    <value>TablePro can't pass any value of type {0} to {1}.</value>
+    <comment>{0} is a PL/SQL type name, {1} a parameter name.</comment>
+  </data>
+  <data name="CannotPassTypeDetail" xml:space="preserve">
+    <value>Debug it from a routine that calls it with that value.</value>
+  </data>
+  <data name="CompileForDebug" xml:space="preserve">
+    <value>TablePro compiles it again with debug information (PLSQL_OPTIMIZE_LEVEL=1) and keeps its other settings. Compiling commits.</value>
+  </data>
+  <data name="CompileForDebugAction" xml:space="preserve">
+    <value>Compile for Debug</value>
+    <comment>A button that recompiles the routine with debug information.</comment>
+  </data>
+  <data name="CompileForDebugPackage" xml:space="preserve">
+    <value>TablePro compiles it again with debug information (PLSQL_OPTIMIZE_LEVEL=1) and keeps its other settings. Compiling commits. Other sessions using the package lose its state, and their next call to it fails once with ORA-04068.</value>
+  </data>
+  <data name="ConnectionLost" xml:space="preserve">
+    <value>The debug session's connection closed.</value>
+  </data>
+  <data name="CouldNotFinishStep" xml:space="preserve">
+    <value>The debugger couldn't finish this step.</value>
+  </data>
+  <data name="CouldNotStart" xml:space="preserve">
+    <value>The debugger couldn't start.</value>
+  </data>
+  <data name="DebugFromCallerOverload" xml:space="preserve">
+    <value>Debug it from a routine that calls it with arguments only this overload takes.</value>
+  </data>
+  <data name="Ended" xml:space="preserve">
+    <value>The debug session has ended.</value>
+  </data>
+  <data name="GiveParameterValue" xml:space="preserve">
+    <value>Give {0} a value. Left at its default, the call also matches another overload of {1}.</value>
+    <comment>{0} is a parameter name, {1} a subprogram name.</comment>
+  </data>
+  <data name="GiveParameterValues" xml:space="preserve">
+    <value>Give {0} values. Left at their defaults, the call also matches another overload of {1}.</value>
+    <comment>{0} is a comma-separated list of parameter names, {1} a subprogram name.</comment>
+  </data>
+  <data name="GrantDebug" xml:space="preserve">
+    <value>A DBA can grant it with GRANT DEBUG ON {0} TO {1}, or grant DEBUG ANY PROCEDURE.</value>
+    <comment>{0} is owner.name of a routine or package, {1} a user name. The GRANT statements are SQL.</comment>
+  </data>
+  <data name="GrantDebugConnectSession" xml:space="preserve">
+    <value>A DBA can grant it with GRANT DEBUG CONNECT SESSION TO {0}.</value>
+    <comment>{0} is a user name. The GRANT statement is SQL.</comment>
+  </data>
+  <data name="HostBadCharacter" xml:space="preserve">
+    <value>The host "{0}" holds a character Oracle connect descriptors do not allow.</value>
+    <comment>{0} is the host entered.</comment>
+  </data>
+  <data name="NeedsDebugConnectSession" xml:space="preserve">
+    <value>Debugging needs the DEBUG CONNECT SESSION privilege.</value>
+  </data>
+  <data name="NeedsDebugPrivilege" xml:space="preserve">
+    <value>Debugging {0} needs the DEBUG privilege on it.</value>
+    <comment>{0} is owner.name of a routine or package.</comment>
+  </data>
+  <data name="NoEntryPoints" xml:space="preserve">
+    <value>{0} has no public procedure or function to start from.</value>
+    <comment>{0} is a package name.</comment>
+  </data>
+  <data name="NotASessionId" xml:space="preserve">
+    <value>"{0}" is not an Oracle session id of the form sid,serial#.</value>
+    <comment>{0} is the value given as a session id. sid,serial# is literal.</comment>
+  </data>
+  <data name="NotCompiledForDebug" xml:space="preserve">
+    <value>{0} isn't compiled for debugging.</value>
+    <comment>{0} is a routine or package name.</comment>
+  </data>
+  <data name="OverloadDefaultUnreadable" xml:space="preserve">
+    <value>Oracle can't tell the overloads apart without it (PLS-00307), and TablePro can't read the default to pass it.</value>
+  </data>
+  <data name="RoutineFailed" xml:space="preserve">
+    <value>The routine raised an error. Its changes were rolled back.</value>
+  </data>
+  <data name="RunNote" xml:space="preserve">
+    <value>Changes the routine makes are committed when it finishes. Stop rolls them back.</value>
+  </data>
+  <data name="ServiceNameBadCharacter" xml:space="preserve">
+    <value>The service name "{0}" holds a character Oracle connect descriptors do not allow.</value>
+    <comment>{0} is the service name entered.</comment>
+  </data>
+  <data name="SidBadCharacter" xml:space="preserve">
+    <value>The SID "{0}" holds a character Oracle connect descriptors do not allow.</value>
+    <comment>{0} is the SID entered.</comment>
+  </data>
+  <data name="SourceUnreadable" xml:space="preserve">
+    <value>TablePro can't read this unit's source.</value>
+  </data>
+  <data name="StillRunning" xml:space="preserve">
+    <value>TablePro couldn't confirm that the routine ended. It may still be running on the server.</value>
+  </data>
+  <data name="StillRunningNoSession" xml:space="preserve">
+    <value>Its uncommitted work rolls back when it ends. A user with ALTER SYSTEM can find its session in V$SESSION and end it with ALTER SYSTEM KILL SESSION.</value>
+    <comment>V$SESSION and ALTER SYSTEM KILL SESSION are SQL.</comment>
+  </data>
+  <data name="StillRunningSid" xml:space="preserve">
+    <value>Session SID {0}. Its uncommitted work rolls back when it ends.</value>
+    <comment>{0} is the session SID.</comment>
+  </data>
+  <data name="StillRunningWithKill" xml:space="preserve">
+    <value>Session SID {0}, SERIAL# {1}. Its uncommitted work rolls back when it ends. A user with ALTER SYSTEM can end it now with {2}.</value>
+    <comment>{0} is the session SID, {1} its SERIAL#, {2} the ALTER SYSTEM KILL SESSION statement that ends it.</comment>
+  </data>
+  <data name="Stopped" xml:space="preserve">
+    <value>Stopped. The routine's changes were rolled back.</value>
+  </data>
+  <data name="TextToType" xml:space="preserve">
+    <value>TablePro can't turn text into a {0} value for {1}.</value>
+    <comment>{0} is a PL/SQL type name, {1} a parameter name.</comment>
+  </data>
+  <data name="TextToTypeDetail" xml:space="preserve">
+    <value>Pass NULL or leave it at its default.</value>
+  </data>
+  <data name="UnitUnreadable" xml:space="preserve">
+    <value>TablePro can't read {0}. Check that this account can see its source.</value>
+    <comment>{0} is a routine or package name.</comment>
+  </data>
+  <data name="Unreadable" xml:space="preserve">
+    <value>The database answered the debugger with data TablePro can't read.</value>
+  </data>
+  <data name="UsingDbmsDebug" xml:space="preserve">
+    <value>Debugging through DBMS_DEBUG.</value>
+  </data>
+  <data name="ValueCollection" xml:space="preserve">
+    <value>Collection</value>
+    <comment>Shown in the debugger in place of a collection's value.</comment>
+  </data>
+  <data name="ValueNotReadable" xml:space="preserve">
+    <value>Not readable</value>
+    <comment>Shown in the debugger in place of a value it cannot read.</comment>
+  </data>
+</root>

@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="BadConsistencyLevel" xml:space="preserve">
+    <value>{0}은(는) 연결에서 사용할 수 있는 일관성 수준이 아닙니다. LOCAL_ONE, ONE, QUORUM, LOCAL_QUORUM, EACH_QUORUM, ALL, TWO, THREE 또는 ANY를 사용하세요.</value>
+  </data>
+  <data name="CannotChangePrimaryKey" xml:space="preserve">
+    <value>Cassandra는 기본 키 열 {0}을(를) 변경할 수 없습니다. 행을 삭제하고 새 키로 다시 추가하세요.</value>
+  </data>
+  <data name="ChooseKeyspace" xml:space="preserve">
+    <value>{0}의 키스페이스를 선택하세요.</value>
+  </data>
+  <data name="ClientRules_One" xml:space="preserve">
+    <value>CQL에서 평가할 수 없는 필터 규칙 {0}개를 읽은 행에 페이지별로 적용했습니다.</value>
+  </data>
+  <data name="ClientRules_Other" xml:space="preserve">
+    <value>CQL에서 평가할 수 없는 필터 규칙 {0}개를 읽은 행에 페이지별로 적용했습니다.</value>
+  </data>
+  <data name="ClientRulesNoAllowFiltering_One" xml:space="preserve">
+    <value>CQL은 ALLOW FILTERING이 있을 때만 다른 열을 필터링하므로 필터 규칙 {0}개를 읽은 행에 페이지별로 적용했습니다. 서버에서 필터링하려면 연결 옵션에서 allowFiltering=true를 설정하세요.</value>
+  </data>
+  <data name="ClientRulesNoAllowFiltering_Other" xml:space="preserve">
+    <value>CQL은 ALLOW FILTERING이 있을 때만 다른 열을 필터링하므로 필터 규칙 {0}개를 읽은 행에 페이지별로 적용했습니다. 서버에서 필터링하려면 연결 옵션에서 allowFiltering=true를 설정하세요.</value>
+  </data>
+  <data name="CounterColumns" xml:space="preserve">
+    <value>카운터 열은 증분으로만 변경됩니다. 편집기에서 UPDATE ... SET c = c + n을 실행하세요.</value>
+  </data>
+  <data name="EnterPrimaryKeyValue" xml:space="preserve">
+    <value>기본 키 열 {0}의 값을 입력하세요.</value>
+  </data>
+  <data name="KeyspacesNeedsAccessKey" xml:space="preserve">
+    <value>Amazon Keyspaces에는 액세스 키 ID(사용자 이름)와 보안 액세스 키(암호)가 필요합니다.</value>
+  </data>
+  <data name="KeyspacesNeedsRegion" xml:space="preserve">
+    <value>연결 옵션(awsRegion)에서 Amazon Keyspaces의 AWS 리전을 설정하세요.</value>
+  </data>
+  <data name="KeyspacesNeedsTls" xml:space="preserve">
+    <value>Amazon Keyspaces는 TLS를 통해서만 로그인에 서명합니다. SSL을 필수 이상으로 설정하세요.</value>
+  </data>
+  <data name="KeyspacesSignInUnavailable" xml:space="preserve">
+    <value>Amazon Keyspaces 로그인 방식 "{0}"은(는) 아직 Windows에서 사용할 수 없습니다. 액세스 키를 사용하세요.</value>
+  </data>
+  <data name="NoKeyspace" xml:space="preserve">
+    <value>{0}(이)라는 키스페이스를 찾을 수 없습니다.</value>
+  </data>
+  <data name="NoOffset" xml:space="preserve">
+    <value>CQL에는 OFFSET이 없으므로 {0:N0}번째 행에 도달하려면 먼저 {1:N0}개 행을 읽어야 합니다. 처음부터 페이지를 넘기거나 파티션 키로 필터링하세요.</value>
+  </data>
+  <data name="NoTableOrView" xml:space="preserve">
+    <value>{0}(이)라는 테이블이나 뷰를 찾을 수 없습니다.</value>
+  </data>
+  <data name="PrimaryKeyNotLoaded" xml:space="preserve">
+    <value>기본 키 열 {0}에 대한 행의 값이 로드되지 않았으므로 행을 찾을 수 없습니다.</value>
+  </data>
+  <data name="PrimaryKeyUnreadable" xml:space="preserve">
+    <value>{0}의 기본 키를 읽을 수 없으므로 행을 변경할 수 없습니다.</value>
+  </data>
+  <data name="QueryCancelledServerMayFinish" xml:space="preserve">
+    <value>쿼리가 취소되었습니다. 서버에서는 계속 완료될 수 있습니다.</value>
+  </data>
+  <data name="RawConditionAnd" xml:space="preserve">
+    <value>CQL은 조건을 AND로만 결합하므로 원시 조건도 규칙과 함께 일치해야 합니다.</value>
+  </data>
+  <data name="SigV4NoNonce" xml:space="preserve">
+    <value>Amazon Keyspaces가 nonce 없이 SigV4 챌린지를 보냈습니다.</value>
+  </data>
+  <data name="SortNotApplied" xml:space="preserve">
+    <value>Cassandra는 토큰 순서로 행을 반환하고 한 파티션 안에서만 정렬하므로 정렬이 적용되지 않았습니다.</value>
+  </data>
+  <data name="StoppedAfterScanning" xml:space="preserve">
+    <value>페이지를 채우기 위해 {0:N0}개 행을 읽은 후 중지했습니다. 전체 테이블을 검색하려면 파티션 키로 필터링하세요.</value>
+  </data>
+  <data name="UdtAsJson" xml:space="preserve">
+    <value>사용자 정의 형식 값은 개체로 바인딩되지 않고 fromJson()을 통해 JSON으로 작성됩니다.</value>
+  </data>
+</root>

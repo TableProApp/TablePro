@@ -1,0 +1,642 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AppliedStatements_One" xml:space="preserve">
+    <value>Applied {0:N0} user and role statement.</value>
+    <comment>Notification after the staged user and role changes ran. {0} is the number of SQL statements.</comment>
+  </data>
+  <data name="AppliedStatements_Other" xml:space="preserve">
+    <value>Applied {0:N0} user and role statements.</value>
+    <comment>Notification after the staged user and role changes ran. {0} is the number of SQL statements.</comment>
+  </data>
+  <data name="AttributeBypassRls" xml:space="preserve">
+    <value>Bypass row level security</value>
+    <comment>PostgreSQL role attribute BYPASSRLS, shown as a check box.</comment>
+  </data>
+  <data name="AttributeCreateDatabases" xml:space="preserve">
+    <value>Create databases</value>
+    <comment>PostgreSQL role attribute CREATEDB, shown as a check box.</comment>
+  </data>
+  <data name="AttributeCreateRoles" xml:space="preserve">
+    <value>Create roles</value>
+    <comment>PostgreSQL role attribute CREATEROLE, shown as a check box.</comment>
+  </data>
+  <data name="AttributeInherit" xml:space="preserve">
+    <value>Inherit privileges</value>
+    <comment>PostgreSQL role attribute INHERIT, shown as a check box.</comment>
+  </data>
+  <data name="AttributeReplication" xml:space="preserve">
+    <value>Replication</value>
+    <comment>PostgreSQL role attribute REPLICATION, shown as a check box.</comment>
+  </data>
+  <data name="AttributeSuperuser" xml:space="preserve">
+    <value>Superuser</value>
+    <comment>PostgreSQL role attribute SUPERUSER, shown as a check box.</comment>
+  </data>
+  <data name="AttributesSegment.Text" xml:space="preserve">
+    <value>Attributes</value>
+    <comment>Tab of the detail pane that shows a user's or role's attributes (login, password, membership).</comment>
+  </data>
+  <data name="AuthenticationHeader" xml:space="preserve">
+    <value>Authentication</value>
+    <comment>Section heading in the attributes form.</comment>
+  </data>
+  <data name="AvailableAfterSetRole" xml:space="preserve">
+    <value>Available after SET ROLE {0}.</value>
+    <comment>Tooltip on an inherited privilege. {0} is the role name. SET ROLE is SQL and stays untranslated.</comment>
+  </data>
+  <data name="BulkActionsButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Bulk actions</value>
+  </data>
+  <data name="BulkActionsButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Bulk actions</value>
+  </data>
+  <data name="CanLogIn" xml:space="preserve">
+    <value>Can log in</value>
+    <comment>Toggle switch header: whether the user or role may log in.</comment>
+  </data>
+  <data name="CannotApplyTitle" xml:space="preserve">
+    <value>Cannot apply these changes</value>
+    <comment>Error dialog title; the message is the reason from the server or engine.</comment>
+  </data>
+  <data name="CategoryAdministration" xml:space="preserve">
+    <value>Administration</value>
+    <comment>Group of privileges in the checklist.</comment>
+  </data>
+  <data name="CategoryData" xml:space="preserve">
+    <value>Data</value>
+    <comment>Group of privileges in the checklist (reading and changing rows).</comment>
+  </data>
+  <data name="CategoryDynamic" xml:space="preserve">
+    <value>Dynamic</value>
+    <comment>Group of privileges in the checklist: MySQL dynamic privileges.</comment>
+  </data>
+  <data name="CategoryOther" xml:space="preserve">
+    <value>Other</value>
+    <comment>Group of privileges in the checklist.</comment>
+  </data>
+  <data name="CategoryStructure" xml:space="preserve">
+    <value>Structure</value>
+    <comment>Group of privileges in the checklist (creating and changing objects).</comment>
+  </data>
+  <data name="ChangePasswordButton" xml:space="preserve">
+    <value>Change password…</value>
+    <comment>Button in the attributes form.</comment>
+  </data>
+  <data name="ChangePasswordMenu" xml:space="preserve">
+    <value>Change Password…</value>
+    <comment>Context menu item on a user or role.</comment>
+  </data>
+  <data name="ChangePasswordTitle" xml:space="preserve">
+    <value>Change password</value>
+    <comment>Dialog title.</comment>
+  </data>
+  <data name="ChangesFailedMessage" xml:space="preserve">
+    <value>{0} {1}
+
+{2}</value>
+    <comment>Error dialog body. {0} says which statement failed, {1} what happened to the earlier ones, {2} is the server's error message.</comment>
+  </data>
+  <data name="ChangesFailedTitle" xml:space="preserve">
+    <value>The changes failed</value>
+    <comment>Error dialog title.</comment>
+  </data>
+  <data name="CheckOwnedFailedTitle" xml:space="preserve">
+    <value>Could not check owned objects</value>
+    <comment>Error dialog title when the app could not find out whether a role owns database objects.</comment>
+  </data>
+  <data name="ChecklistNoMatch" xml:space="preserve">
+    <value>No privileges match the filter.</value>
+  </data>
+  <data name="ChecklistNoScope" xml:space="preserve">
+    <value>Select an object on the left to edit its privileges.</value>
+  </data>
+  <data name="ChecklistNoneGrantable" xml:space="preserve">
+    <value>No privileges can be granted at this level.</value>
+  </data>
+  <data name="ConnectionLimit" xml:space="preserve">
+    <value>Connection limit</value>
+    <comment>Number box header: the most connections the role may open at once.</comment>
+  </data>
+  <data name="CopyNameMenu" xml:space="preserve">
+    <value>Copy Name</value>
+    <comment>Context menu item that copies the user or role name to the clipboard.</comment>
+  </data>
+  <data name="CopyPrivilegesFromMenu" xml:space="preserve">
+    <value>Copy Privileges From…</value>
+    <comment>Context menu item on a user or role.</comment>
+  </data>
+  <data name="CopyPrivilegesPrompt" xml:space="preserve">
+    <value>Copy privileges to {0} from:</value>
+    <comment>Text above a list of users and roles to copy from. {0} is the user or role receiving the privileges.</comment>
+  </data>
+  <data name="CopyPrivilegesTitle" xml:space="preserve">
+    <value>Copy privileges</value>
+    <comment>Dialog title.</comment>
+  </data>
+  <data name="CreateButton" xml:space="preserve">
+    <value>Create</value>
+    <comment>Primary button of the New user or role dialog (verb).</comment>
+  </data>
+  <data name="DiscardButton.Content" xml:space="preserve">
+    <value>Discard</value>
+    <comment>Button that throws away every staged change (verb).</comment>
+  </data>
+  <data name="DropButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Drop</value>
+    <comment>Icon button that stages dropping (deleting) the selected user or role. "Drop" as in SQL DROP USER.</comment>
+  </data>
+  <data name="DropButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Drop</value>
+    <comment>Icon button that stages dropping (deleting) the selected user or role. "Drop" as in SQL DROP USER.</comment>
+  </data>
+  <data name="DropMenu" xml:space="preserve">
+    <value>Drop…</value>
+    <comment>Context menu item that stages dropping (deleting) the user or role.</comment>
+  </data>
+  <data name="DropOwned" xml:space="preserve">
+    <value>Drop owned objects</value>
+    <comment>Radio button: delete the objects the role owns along with it.</comment>
+  </data>
+  <data name="DropOwnedPrompt" xml:space="preserve">
+    <value>Choose what happens to them when the role is dropped.</value>
+    <comment>"them" refers to the database objects named in the dialog title.</comment>
+  </data>
+  <data name="DropOwnedWarning" xml:space="preserve">
+    <value>Tables, views and functions owned by this role in the current database will be deleted.</value>
+  </data>
+  <data name="DropRoleButton" xml:space="preserve">
+    <value>Drop Role</value>
+    <comment>Primary button of the owned objects dialog (verb).</comment>
+  </data>
+  <data name="EarlierStatementsApplied_One" xml:space="preserve">
+    <value>The statement before it was applied.</value>
+    <comment>Follows "Statement N of M failed". {0} is the number of statements that ran before the failing one.</comment>
+  </data>
+  <data name="EarlierStatementsApplied_Other" xml:space="preserve">
+    <value>The {0} statements before it were applied.</value>
+    <comment>Follows "Statement N of M failed". {0} is the number of statements that ran before the failing one.</comment>
+  </data>
+  <data name="EditMembershipButton" xml:space="preserve">
+    <value>Edit membership…</value>
+    <comment>Button in the attributes form that picks the roles this user or role belongs to.</comment>
+  </data>
+  <data name="ExecuteButton" xml:space="preserve">
+    <value>Execute</value>
+    <comment>Primary button of the review dialog when no statement is destructive (verb).</comment>
+  </data>
+  <data name="FilterRoles" xml:space="preserve">
+    <value>Filter roles</value>
+    <comment>Placeholder of the search box in the Member of dialog.</comment>
+  </data>
+  <data name="GenerateButton" xml:space="preserve">
+    <value>Generate</value>
+    <comment>Button beside a password box that fills it with a random password (verb).</comment>
+  </data>
+  <data name="GrantAllItem.Text" xml:space="preserve">
+    <value>Grant all</value>
+    <comment>Menu item that grants every privilege in the list (verb).</comment>
+  </data>
+  <data name="GrantManyAction_One" xml:space="preserve">
+    <value>Grant {0} privilege on {1}</value>
+    <comment>Name of an undoable action, shown after "Undo". {0} is the number of privileges, {1} the object they apply to.</comment>
+  </data>
+  <data name="GrantManyAction_Other" xml:space="preserve">
+    <value>Grant {0} privileges on {1}</value>
+    <comment>Name of an undoable action, shown after "Undo". {0} is the number of privileges, {1} the object they apply to.</comment>
+  </data>
+  <data name="GrantOneAction" xml:space="preserve">
+    <value>Grant {0} on {1}</value>
+    <comment>Name of an undoable action, shown after "Undo". {0} is a privilege keyword such as SELECT (stays untranslated), {1} the object it applies to.</comment>
+  </data>
+  <data name="GrantableName" xml:space="preserve">
+    <value>Can grant to others</value>
+    <comment>Screen reader name of the icon beside a privilege held WITH GRANT OPTION.</comment>
+  </data>
+  <data name="GrantableToolTip" xml:space="preserve">
+    <value>Can grant this privilege to others</value>
+    <comment>Tooltip of the icon beside a privilege held WITH GRANT OPTION.</comment>
+  </data>
+  <data name="GrantedOn" xml:space="preserve">
+    <value>Granted on {0}</value>
+    <comment>Beside a privilege held through a grant on a parent object. {0} is that object, such as a database or schema name.</comment>
+  </data>
+  <data name="GrantsErrorBar.Title" xml:space="preserve">
+    <value>Unable to load privileges</value>
+  </data>
+  <data name="GrantsRetryButton.Content" xml:space="preserve">
+    <value>Retry</value>
+  </data>
+  <data name="Host" xml:space="preserve">
+    <value>Host</value>
+    <comment>Label of a MySQL account's host part, as in user@host.</comment>
+  </data>
+  <data name="HostDescription" xml:space="preserve">
+    <value>Use % to allow any host.</value>
+    <comment>Help under the Host box. % is the MySQL wildcard and stays as is.</comment>
+  </data>
+  <data name="HostRequired" xml:space="preserve">
+    <value>Enter a host, or % for any host.</value>
+    <comment>Validation message. % is the MySQL wildcard and stays as is.</comment>
+  </data>
+  <data name="IdentityHeader" xml:space="preserve">
+    <value>Identity</value>
+    <comment>Section heading in the attributes form (name and host).</comment>
+  </data>
+  <data name="InheritedAutomatically" xml:space="preserve">
+    <value>Inherited automatically.</value>
+    <comment>Tooltip on a privilege inherited from a role.</comment>
+  </data>
+  <data name="InheritedFrom" xml:space="preserve">
+    <value>Inherited from {0}</value>
+    <comment>Beside a privilege held through a role. {0} is the role name.</comment>
+  </data>
+  <data name="KindHeader" xml:space="preserve">
+    <value>Kind</value>
+    <comment>Header of the User / Role choice in the New user or role dialog.</comment>
+  </data>
+  <data name="KindRole" xml:space="preserve">
+    <value>Role</value>
+    <comment>A database role (noun).</comment>
+  </data>
+  <data name="KindUser" xml:space="preserve">
+    <value>User</value>
+    <comment>A database user (noun).</comment>
+  </data>
+  <data name="LimitsHeader" xml:space="preserve">
+    <value>Limits</value>
+    <comment>Section heading in the attributes form.</comment>
+  </data>
+  <data name="LoadErrorBar.Title" xml:space="preserve">
+    <value>Unable to load users and roles</value>
+  </data>
+  <data name="LoadRetryButton.Content" xml:space="preserve">
+    <value>Retry</value>
+  </data>
+  <data name="LoadingPrivileges" xml:space="preserve">
+    <value>Loading privileges…</value>
+  </data>
+  <data name="MemberOf" xml:space="preserve">
+    <value>Member of</value>
+    <comment>Label and dialog title: the roles this user or role belongs to.</comment>
+  </data>
+  <data name="MembershipHeader" xml:space="preserve">
+    <value>Membership</value>
+    <comment>Section heading in the attributes form.</comment>
+  </data>
+  <data name="NameTaken" xml:space="preserve">
+    <value>A user or role with this name already exists.</value>
+  </data>
+  <data name="NewPassword" xml:space="preserve">
+    <value>New password</value>
+  </data>
+  <data name="NewPrincipalButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>New user or role</value>
+  </data>
+  <data name="NewPrincipalButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>New user or role</value>
+  </data>
+  <data name="NewPrincipalTitle" xml:space="preserve">
+    <value>New user or role</value>
+    <comment>Dialog title.</comment>
+  </data>
+  <data name="NoRolesMatch" xml:space="preserve">
+    <value>No roles match the filter.</value>
+  </data>
+  <data name="NoRolesToJoin" xml:space="preserve">
+    <value>There are no roles to join.</value>
+  </data>
+  <data name="NoSelection.Text" xml:space="preserve">
+    <value>Select a user or role to view its privileges.</value>
+  </data>
+  <data name="NotCommittedTitle" xml:space="preserve">
+    <value>The changes were not committed</value>
+    <comment>Error dialog title when the transaction's COMMIT failed.</comment>
+  </data>
+  <data name="NothingApplied" xml:space="preserve">
+    <value>Nothing was applied.</value>
+    <comment>Follows "Statement N of M failed".</comment>
+  </data>
+  <data name="NothingAppliedTitle" xml:space="preserve">
+    <value>Nothing was applied</value>
+    <comment>Error dialog title when the transaction could not begin.</comment>
+  </data>
+  <data name="OwnsObjectsTitle" xml:space="preserve">
+    <value>“{0}” owns database objects</value>
+    <comment>Dialog title. {0} is the role name.</comment>
+  </data>
+  <data name="Password" xml:space="preserve">
+    <value>Password</value>
+  </data>
+  <data name="PasswordsDoNotMatch" xml:space="preserve">
+    <value>The passwords do not match.</value>
+  </data>
+  <data name="PendingChanges_One" xml:space="preserve">
+    <value>{0:N0} pending change</value>
+    <comment>Status bar of the Users and Roles editor. {0} is the number of staged changes.</comment>
+  </data>
+  <data name="PendingChanges_Other" xml:space="preserve">
+    <value>{0:N0} pending changes</value>
+    <comment>Status bar of the Users and Roles editor. {0} is the number of staged changes.</comment>
+  </data>
+  <data name="PendingPasswordNote" xml:space="preserve">
+    <value>A new password will be set when you apply changes.</value>
+  </data>
+  <data name="PrincipalFilterBox.PlaceholderText" xml:space="preserve">
+    <value>Filter users and roles</value>
+  </data>
+  <data name="PrincipalFilterBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Filter users and roles</value>
+  </data>
+  <data name="PrincipalList.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Users and roles</value>
+  </data>
+  <data name="PrivilegeFilterBox.PlaceholderText" xml:space="preserve">
+    <value>Filter privileges</value>
+  </data>
+  <data name="PrivilegeFilterBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Filter privileges</value>
+  </data>
+  <data name="PrivilegesSegment.Text" xml:space="preserve">
+    <value>Privileges</value>
+    <comment>Tab of the detail pane that shows the privilege checklist.</comment>
+  </data>
+  <data name="ReadOnlyMessage" xml:space="preserve">
+    <value>Safe Mode is Read-Only on this connection, so users and roles cannot be changed.</value>
+    <comment>"Safe Mode" and "Read-Only" name a connection setting and its level; use the same words as the connection settings.</comment>
+  </data>
+  <data name="ReadOnlyTitle" xml:space="preserve">
+    <value>Read-only connection</value>
+  </data>
+  <data name="ReassignOwned" xml:space="preserve">
+    <value>Reassign owned objects</value>
+    <comment>Radio button: give the dropped role's objects to another user or role.</comment>
+  </data>
+  <data name="ReassignTo" xml:space="preserve">
+    <value>Reassign to</value>
+    <comment>Header of the list of users and roles that can take over the objects.</comment>
+  </data>
+  <data name="RedoAction" xml:space="preserve">
+    <value>Redo {0}</value>
+    <comment>Tooltip of the Redo button. {0} is the name of the action, such as "Grant SELECT on orders".</comment>
+  </data>
+  <data name="RefreshButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Refresh</value>
+  </data>
+  <data name="RefreshButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Refresh</value>
+  </data>
+  <data name="RenameEllipsis" xml:space="preserve">
+    <value>Rename…</value>
+    <comment>Button and context menu item that opens the rename dialog (verb).</comment>
+  </data>
+  <data name="RenameTitle" xml:space="preserve">
+    <value>Rename {0}</value>
+    <comment>Dialog title. {0} is the user or role name.</comment>
+  </data>
+  <data name="ReviewApplyButton.Content" xml:space="preserve">
+    <value>Review &amp; Apply…</value>
+    <comment>Button that shows the SQL for every staged change before running it.</comment>
+  </data>
+  <data name="ReviewTitle" xml:space="preserve">
+    <value>Review user and role changes</value>
+    <comment>Title of the dialog that lists the SQL statements about to run.</comment>
+  </data>
+  <data name="ReviewTitlePasswordsHidden" xml:space="preserve">
+    <value>Review user and role changes (passwords hidden)</value>
+    <comment>Title of the dialog that lists the SQL statements about to run, when passwords in them are masked.</comment>
+  </data>
+  <data name="RevokeAllItem.Text" xml:space="preserve">
+    <value>Revoke all</value>
+    <comment>Menu item that revokes every privilege in the list (verb).</comment>
+  </data>
+  <data name="RevokeManyAction_One" xml:space="preserve">
+    <value>Revoke {0} privilege on {1}</value>
+    <comment>Name of an undoable action, shown after "Undo". {0} is the number of privileges, {1} the object they apply to.</comment>
+  </data>
+  <data name="RevokeManyAction_Other" xml:space="preserve">
+    <value>Revoke {0} privileges on {1}</value>
+    <comment>Name of an undoable action, shown after "Undo". {0} is the number of privileges, {1} the object they apply to.</comment>
+  </data>
+  <data name="RevokeOneAction" xml:space="preserve">
+    <value>Revoke {0} on {1}</value>
+    <comment>Name of an undoable action, shown after "Undo". {0} is a privilege keyword such as SELECT (stays untranslated), {1} the object it applies to.</comment>
+  </data>
+  <data name="RoleAttributesHeader" xml:space="preserve">
+    <value>Role attributes</value>
+    <comment>Section heading in the attributes form.</comment>
+  </data>
+  <data name="RoleCount_One" xml:space="preserve">
+    <value>{0:N0} role</value>
+    <comment>Part of the status bar text "N users, N roles". {0} is the number of roles.</comment>
+  </data>
+  <data name="RoleCount_Other" xml:space="preserve">
+    <value>{0:N0} roles</value>
+    <comment>Part of the status bar text "N users, N roles". {0} is the number of roles.</comment>
+  </data>
+  <data name="RolledBack" xml:space="preserve">
+    <value>Every change was rolled back.</value>
+    <comment>Follows "Statement N of M failed".</comment>
+  </data>
+  <data name="ScopeModeAll.Content" xml:space="preserve">
+    <value>All objects</value>
+    <comment>Choice of the object tree: show every database object.</comment>
+  </data>
+  <data name="ScopeModeGranted.Content" xml:space="preserve">
+    <value>Granted</value>
+    <comment>Choice of the object tree: show only objects the selected user or role holds privileges on.</comment>
+  </data>
+  <data name="ScopeModes.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Show</value>
+    <comment>Screen reader name of the All objects / Granted choice.</comment>
+  </data>
+  <data name="ScopeSearch.PlaceholderText" xml:space="preserve">
+    <value>Search tables</value>
+  </data>
+  <data name="ScopeSearch.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Search tables</value>
+  </data>
+  <data name="ScopeSummaryAll" xml:space="preserve">
+    <value>All ({0})</value>
+    <comment>Beside an object in the tree when every privilege is granted. {0} is how many. Keep it short.</comment>
+  </data>
+  <data name="ScopeSummaryConnectToBrowse" xml:space="preserve">
+    <value>Connect to this database to browse it</value>
+    <comment>Beside a database in the tree that can be browsed only while connected to it.</comment>
+  </data>
+  <data name="ScopeSummaryGrantable" xml:space="preserve">
+    <value>{0} (grantable)</value>
+    <comment>{0} is a list of privilege keywords such as "SELECT, INSERT". "grantable" means held WITH GRANT OPTION. Keep it short.</comment>
+  </data>
+  <data name="ScopeSummaryGrantsInside_One" xml:space="preserve">
+    <value>{0} grant inside</value>
+    <comment>Beside an object in the tree whose child objects carry grants. {0} is how many. Keep it short.</comment>
+  </data>
+  <data name="ScopeSummaryGrantsInside_Other" xml:space="preserve">
+    <value>{0} grants inside</value>
+    <comment>Beside an object in the tree whose child objects carry grants. {0} is how many. Keep it short.</comment>
+  </data>
+  <data name="ScopeSummaryNone" xml:space="preserve">
+    <value>None</value>
+    <comment>Beside an object in the tree when no privilege on it is granted.</comment>
+  </data>
+  <data name="ScopeSummaryOverflow" xml:space="preserve">
+    <value>{0} +{1}</value>
+    <comment>{0} is a short list of privilege keywords, {1} how many more are granted but not listed.</comment>
+  </data>
+  <data name="ScopeTree.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Objects</value>
+    <comment>Screen reader name of the tree of databases, schemas and tables.</comment>
+  </data>
+  <data name="SearchFailedTitle" xml:space="preserve">
+    <value>Could not search objects</value>
+  </data>
+  <data name="SectionGranted" xml:space="preserve">
+    <value>Granted</value>
+    <comment>Screen reader status of a privilege group whose privileges are all granted.</comment>
+  </data>
+  <data name="SectionNotGranted" xml:space="preserve">
+    <value>Not granted</value>
+    <comment>Screen reader status of a privilege group with nothing granted.</comment>
+  </data>
+  <data name="SectionPartlyGranted" xml:space="preserve">
+    <value>Partly granted</value>
+    <comment>Screen reader status of a privilege group with some privileges granted.</comment>
+  </data>
+  <data name="SelfImpactMessage" xml:space="preserve">
+    <value>{0} You may lose access to this server.</value>
+    <comment>{0} is a sentence describing how the changes affect the account this connection uses.</comment>
+  </data>
+  <data name="SelfImpactTitle" xml:space="preserve">
+    <value>This affects your own account</value>
+  </data>
+  <data name="SetPasswordButton" xml:space="preserve">
+    <value>Set Password</value>
+    <comment>Primary button of the Change password dialog (verb).</comment>
+  </data>
+  <data name="StageCreated" xml:space="preserve">
+    <value>Will be created when you apply changes</value>
+    <comment>Tooltip on a user or role that is staged to be created.</comment>
+  </data>
+  <data name="StageDropped" xml:space="preserve">
+    <value>Will be dropped when you apply changes</value>
+    <comment>Tooltip on a user or role that is staged to be dropped (deleted).</comment>
+  </data>
+  <data name="StageModified" xml:space="preserve">
+    <value>Has unsaved changes</value>
+    <comment>Tooltip on a user or role with staged edits.</comment>
+  </data>
+  <data name="StageModifiedShort" xml:space="preserve">
+    <value>Modified</value>
+    <comment>Caption beside the selected user or role's name when it has staged edits (adjective).</comment>
+  </data>
+  <data name="StatementDidNotRun" xml:space="preserve">
+    <value>The statement did not run.</value>
+  </data>
+  <data name="StatementFailed" xml:space="preserve">
+    <value>Statement {0} of {1} failed ({2}).</value>
+    <comment>{0} is the failing statement's position, {1} the number of statements, {2} a short description of the statement.</comment>
+  </data>
+  <data name="SuperuserNote" xml:space="preserve">
+    <value>A superuser bypasses all permission checks.</value>
+  </data>
+  <data name="UndoAction" xml:space="preserve">
+    <value>Undo {0}</value>
+    <comment>Tooltip of the Undo button. {0} is the name of the action, such as "Grant SELECT on orders".</comment>
+  </data>
+  <data name="UndoStagedDropMenu" xml:space="preserve">
+    <value>Undo Staged Drop</value>
+    <comment>Context menu item that keeps a user or role that was staged to be dropped.</comment>
+  </data>
+  <data name="Unlimited" xml:space="preserve">
+    <value>Unlimited</value>
+    <comment>Placeholder of the Connection limit box when no limit is set.</comment>
+  </data>
+  <data name="UnsavedWork_One" xml:space="preserve">
+    <value>{0:N0} pending change to users and roles</value>
+    <comment>Shown when closing the tab would lose staged changes; followed by another sentence. {0} is the number of changes.</comment>
+  </data>
+  <data name="UnsavedWork_Other" xml:space="preserve">
+    <value>{0:N0} pending changes to users and roles</value>
+    <comment>Shown when closing the tab would lose staged changes; followed by another sentence. {0} is the number of changes.</comment>
+  </data>
+  <data name="UserCount_One" xml:space="preserve">
+    <value>{0:N0} user</value>
+    <comment>Status bar of the Users and Roles editor. {0} is the number of users.</comment>
+  </data>
+  <data name="UserCount_Other" xml:space="preserve">
+    <value>{0:N0} users</value>
+    <comment>Status bar of the Users and Roles editor. {0} is the number of users.</comment>
+  </data>
+  <data name="UsersAndRoles" xml:space="preserve">
+    <value>{0}, {1}</value>
+    <comment>Status bar of the Users and Roles editor. {0} is the user count text ("3 users"), {1} the role count text ("2 roles").</comment>
+  </data>
+  <data name="VerifyPassword" xml:space="preserve">
+    <value>Verify</value>
+    <comment>Header of the box where the new password is typed again.</comment>
+  </data>
+  <data name="DropOneAction" xml:space="preserve">
+    <value>Drop {0}</value>
+    <comment>Name of an undoable action, shown after "Undo". {0} is the user or role staged to be dropped.</comment>
+  </data>
+  <data name="DropManyAction_One" xml:space="preserve">
+    <value>Drop {0} user or role</value>
+    <comment>Name of an undoable action, shown after "Undo". {0} is how many users and roles are staged to be dropped.</comment>
+  </data>
+  <data name="DropManyAction_Other" xml:space="preserve">
+    <value>Drop {0} users and roles</value>
+    <comment>Name of an undoable action, shown after "Undo". {0} is how many users and roles are staged to be dropped.</comment>
+  </data>
+  <data name="ManyOwnObjectsTitle_One" xml:space="preserve">
+    <value>{0} role owns database objects</value>
+    <comment>Dialog title when several roles being dropped own objects. {0} is the number of roles.</comment>
+  </data>
+  <data name="ManyOwnObjectsTitle_Other" xml:space="preserve">
+    <value>{0} roles own database objects</value>
+    <comment>Dialog title when several roles being dropped own objects. {0} is the number of roles.</comment>
+  </data>
+  <data name="ScopesSelected_One" xml:space="preserve">
+    <value>{0} object selected</value>
+    <comment>Header of the privilege checklist when several objects are selected in the tree. {0} is their number.</comment>
+  </data>
+  <data name="ScopesSelected_Other" xml:space="preserve">
+    <value>{0} objects selected</value>
+    <comment>Header of the privilege checklist when several objects are selected in the tree. {0} is their number.</comment>
+  </data>
+  <data name="ObjectCount_One" xml:space="preserve">
+    <value>{0} object</value>
+    <comment>Used as {1} in "Grant {0} privileges on {1}" when a grant applies to several objects.</comment>
+  </data>
+  <data name="ObjectCount_Other" xml:space="preserve">
+    <value>{0} objects</value>
+    <comment>Used as {1} in "Grant {0} privileges on {1}" when a grant applies to several objects.</comment>
+  </data>
+  <data name="ChecklistMixedSelection" xml:space="preserve">
+    <value>Select objects of the same kind to edit their privileges.</value>
+    <comment>Shown instead of the checklist when the selected objects are of different kinds, such as a schema and a table.</comment>
+  </data>
+  <data name="ScopeMultiSelectButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Select several objects</value>
+    <comment>Toggle button that lets the object tree select several objects, to grant or revoke privileges on all of them at once.</comment>
+  </data>
+  <data name="ScopeMultiSelectButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Select several objects</value>
+    <comment>Toggle button that lets the object tree select several objects, to grant or revoke privileges on all of them at once.</comment>
+  </data>
+  <data name="ImmutableNote" xml:space="preserve">
+    <value>API keys cannot be changed after they are created. To change what a key may do, create a new key and drop the old one.</value>
+    <comment>Note on a Typesense connection, where each API key is shown as a user and its permissions are read-only.</comment>
+  </data>
+</root>

@@ -1,0 +1,1095 @@
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
+using TablePro.App.Helpers;
+using TablePro.App.Services;
+using TablePro.Core.Connections;
+using TablePro.Storage.Connections;
+
+namespace TablePro.App.Views;
+
+/// <summary>
+/// The connection form, in the sections the macOS sheet has: General, SSL, Network and Advanced. Test connects with
+/// what is typed without saving; Save stores the profile and its secrets in Credential Manager.
+/// </summary>
+internal static class ConnectionEditor
+{
+    public static async Task<ConnectionProfile?> ShowAsync(DialogService dialogs, AppHost host, ConnectionProfile? existing)
+    {
+        var form = new Form(host, existing, dialogs);
+        var title = existing is null ? Strings.Get("Connection/NewConnectionTitle") : Strings.Format("Connection/EditConnectionTitle", existing.Name);
+        var dialog = dialogs.Create(title, form.Root, Strings.Get("Common/Save"), Strings.Get("Common/Cancel"), Strings.Get("Connection/TestButton"));
+        dialog.IsPrimaryButtonEnabled = true;
+        dialog.PrimaryButtonClick += (_, args) =>
+        {
+            if (form.Validate() is { } problem)
+            {
+                form.ShowStatus(problem, InfoBarSeverity.Error);
+                args.Cancel = true;
+            }
+        };
+        dialog.SecondaryButtonClick += async (_, args) =>
+        {
+            args.Cancel = true;
+            var deferral = args.GetDeferral();
+            try
+            {
+                if (form.Validate() is { } problem)
+                {
+                    form.ShowStatus(problem, InfoBarSeverity.Error);
+                    return;
+                }
+
+                form.ShowStatus(Strings.Get("Connection/Testing"), InfoBarSeverity.Informational);
+                using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+                var profile = form.Build();
+                var restore = form.StoreSecretsForTest(host.Connector, profile);
+                try
+                {
+                    // A test loads the extensions for real, so it clears the same approval a connect does.
+                    if (await form.AuthorizeExtensionsForTestAsync(host.Connector.ExtensionApprovals, profile))
+                    {
+                        var message = await host.Connector.TestAsync(profile, form.Password, timeout.Token);
+                        form.ShowStatus(message, InfoBarSeverity.Success);
+                    }
+                }
+                finally
+                {
+                    if (existing is null)
+                    {
+                        restore();
+                        await host.Connector.ExtensionApprovals.RevokeAsync([profile.Id]);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                form.ShowStatus(ex is LoadableExtensionException extension ? ExtensionNames.Describe(extension) : ex.Message, InfoBarSeverity.Error);
+            }
+            finally
+            {
+                deferral.Complete();
+            }
+        };
+
+        if (await dialogs.ShowAsync(dialog) != ContentDialogResult.Primary)
+        {
+            return null;
+        }
+
+        var saved = form.Build();
+        host.Connector.SavePassword(saved, saved.UsesSecret() ? form.Password : null);
+        if (form.SshSecret is { Length: > 0 } secret || saved.Ssh is not { Enabled: true })
+        {
+            host.Connector.SaveSshSecret(saved, saved.Ssh is { Enabled: true } ? form.SshSecret : null);
+        }
+
+        form.SaveTransportSecrets(host.Connector, saved);
+        await host.Connections.UpsertAsync(saved);
+
+        // Entries added or changed in this form were chosen on this PC, so saving approves them; an imported list does not.
+        if (LoadableExtensionList.AppliesTo(saved))
+        {
+            await host.Connector.ExtensionApprovals.ApproveAsync(form.EditedExtensions, saved.Id);
+        }
+
+        return saved;
+    }
+
+    private sealed class Form
+    {
+        private const string RdsEndpointPlaceholder = "mydb.abc123.us-east-1.rds.amazonaws.com:5432";
+        private const string RedshiftEndpointPlaceholder = "my-cluster.abc123.us-east-1.redshift.amazonaws.com";
+
+        private readonly AppHost _host;
+        private readonly ConnectionProfile? _existing;
+        private readonly DialogService _dialogs;
+        private readonly TextBox _name = new() { Header = Strings.Get("Common/Name"), PlaceholderText = Strings.Get("Connection/NamePlaceholder") };
+        private readonly ComboBox _engine = new() { Header = Strings.Get("Connection/EngineHeader"), HorizontalAlignment = HorizontalAlignment.Stretch };
+        private readonly TextBox _host_ = new() { Header = Strings.Get("Connection/HostHeader"), PlaceholderText = "localhost" };
+        private readonly NumberBox _port = new() { Header = Strings.Get("Connection/PortHeader"), SpinButtonPlacementMode = NumberBoxSpinButtonPlacementMode.Hidden, Minimum = 0, Maximum = 65535, Width = 110 };
+        private readonly ComboBox _auth = new() { Header = Strings.Get("Connection/AuthenticationHeader"), HorizontalAlignment = HorizontalAlignment.Stretch };
+        private readonly TextBox _user = new() { Header = Strings.Get("Connection/UserHeader") };
+        private readonly PasswordBox _password = new() { Header = Strings.Get("Connection/PasswordHeader") };
+        private readonly CheckBox _savePassword = new() { Content = Strings.Get("Connection/SavePassword"), IsChecked = true };
+        private readonly TextBox _database = new() { Header = Strings.Get("Connection/DatabaseHeader"), PlaceholderText = Strings.Get("Connection/OptionalPlaceholder") };
+        private readonly TextBox _file = new() { Header = Strings.Get("Connection/FileHeader"), PlaceholderText = "C:\\data\\app.sqlite" };
+        private readonly Button _browse = new() { Content = Strings.Get("Connection/BrowseButton"), VerticalAlignment = VerticalAlignment.Bottom };
+        private readonly ComboBox _group = new() { Header = Strings.Get("Connection/GroupHeader"), HorizontalAlignment = HorizontalAlignment.Stretch };
+        private readonly StackPanel _colors = new() { Orientation = Orientation.Horizontal, Spacing = 6 };
+        private readonly ComboBox _ssl = new() { Header = Strings.Get("Connection/SslModeHeader"), HorizontalAlignment = HorizontalAlignment.Stretch };
+
+        // Sign-in fields beyond user and password.
+        private readonly StackPanel _awsFields = new() { Spacing = 12 };
+        private readonly TextBox _awsRegion = new() { Header = Strings.Get("Connection/AwsRegionHeader"), PlaceholderText = Strings.Get("Connection/AwsRegionPlaceholder") };
+        private readonly TextBox _awsAccessKey = new() { Header = Strings.Get("Connection/AccessKeyIdHeader"), PlaceholderText = "AKIA..." };
+        private readonly TextBox _awsProfile = new() { Header = Strings.Get("Connection/AwsProfileHeader"), PlaceholderText = "default" };
+        private readonly TextBox _awsEndpoint = new() { Header = Strings.Get("Connection/AwsEndpointHeader"), PlaceholderText = RdsEndpointPlaceholder };
+
+        // A key file is long and has line breaks, so it gets a text box of its own rather than the password box.
+        private readonly TextBox _googleKey = new() { Header = Strings.Get("Connection/GoogleServiceAccountKeyHeader"), PlaceholderText = Strings.Get("Connection/GoogleServiceAccountKeyPlaceholder"), AcceptsReturn = true, Height = 96, TextWrapping = TextWrapping.Wrap };
+        private readonly StackPanel _entraFields = new() { Spacing = 12 };
+        private readonly ComboBox _entraMode = new() { Header = Strings.Get("Connection/EntraModeHeader"), HorizontalAlignment = HorizontalAlignment.Stretch };
+        private readonly TextBox _entraTenant = new() { Header = Strings.Get("Connection/EntraTenantHeader"), PlaceholderText = Strings.Get("Connection/EntraTenantPlaceholder") };
+        private readonly TextBox _entraClient = new() { Header = Strings.Get("Connection/EntraClientHeader"), PlaceholderText = "00000000-0000-0000-0000-000000000000" };
+        private readonly StackPanel _kerberosFields = new() { Spacing = 12 };
+        private readonly TextBox _kerberosService = new() { Header = Strings.Get("Connection/KerberosServiceHeader") };
+        private readonly ComboBox _gssEncryption = new() { Header = Strings.Get("Connection/GssEncryptionHeader"), HorizontalAlignment = HorizontalAlignment.Stretch };
+        private readonly TextBlock _authNote = Note(string.Empty);
+
+        // Network page.
+        private readonly ComboBox _transport = new() { Header = Strings.Get("Connection/TransportHeader"), HorizontalAlignment = HorizontalAlignment.Stretch };
+        private readonly TextBlock _transportNote = Note(string.Empty);
+        private readonly StackPanel _sshFields = new() { Spacing = 12 };
+        private readonly TextBox _sshHost = new() { Header = Strings.Get("Connection/SshHostHeader") };
+        private readonly NumberBox _sshPort = new() { Header = Strings.Get("Connection/PortHeader"), Value = 22, SpinButtonPlacementMode = NumberBoxSpinButtonPlacementMode.Hidden, Width = 110 };
+        private readonly TextBox _sshUser = new() { Header = Strings.Get("Connection/SshUserHeader") };
+        private readonly ComboBox _sshAuth = new() { Header = Strings.Get("Connection/AuthenticationHeader"), HorizontalAlignment = HorizontalAlignment.Stretch };
+        private readonly TextBox _sshKey = new() { Header = Strings.Get("Connection/SshKeyHeader"), PlaceholderText = "%USERPROFILE%\\.ssh\\id_ed25519" };
+        private readonly PasswordBox _sshSecret = new() { Header = Strings.Get("Connection/SshSecretHeader") };
+        private readonly TextBox _jump = new() { Header = Strings.Get("Connection/JumpHostsHeader"), PlaceholderText = Strings.Get("Connection/JumpHostsPlaceholder") };
+
+        private readonly StackPanel _proxyFields = new() { Spacing = 12 };
+        private readonly ComboBox _proxyProtocol = new() { Header = Strings.Get("Connection/ProxyTypeHeader"), HorizontalAlignment = HorizontalAlignment.Stretch };
+        private readonly TextBox _proxyHost = new() { Header = Strings.Get("Connection/ProxyHostHeader"), PlaceholderText = "proxy.example.com" };
+        private readonly NumberBox _proxyPort = new() { Header = Strings.Get("Connection/PortHeader"), Value = 1080, SpinButtonPlacementMode = NumberBoxSpinButtonPlacementMode.Hidden, Minimum = 1, Maximum = 65535, Width = 110 };
+        private readonly TextBox _proxyUser = new() { Header = Strings.Get("Connection/ProxyUserHeader"), PlaceholderText = Strings.Get("Connection/OptionalPlaceholder") };
+        private readonly PasswordBox _proxyPassword = new() { Header = Strings.Get("Connection/ProxyPasswordHeader") };
+
+        private readonly StackPanel _cloudSqlFields = new() { Spacing = 12 };
+        private readonly TextBox _cloudSqlInstance = new() { Header = Strings.Get("Connection/CloudSqlInstanceHeader"), PlaceholderText = "project:region:instance" };
+        private readonly ComboBox _cloudSqlAuth = new() { Header = Strings.Get("Connection/CloudSqlAuthHeader"), HorizontalAlignment = HorizontalAlignment.Stretch };
+        private readonly TextBox _cloudSqlKey = new() { Header = Strings.Get("Connection/CloudSqlKeyHeader"), AcceptsReturn = true, Height = 96, TextWrapping = TextWrapping.Wrap };
+        private readonly TextBlock _cloudSqlAdcNote = Note(Strings.Get("Connection/CloudSqlAdcNote"));
+        private readonly CheckBox _cloudSqlIam = new() { Content = Strings.Get("Connection/CloudSqlIam") };
+        private readonly CheckBox _cloudSqlPrivateIp = new() { Content = Strings.Get("Connection/CloudSqlPrivateIp") };
+        private readonly NumberBox _cloudSqlPort = new() { Header = Strings.Get("Connection/LocalPortHeader"), PlaceholderText = Strings.Get("Connection/AutomaticPlaceholder"), SpinButtonPlacementMode = NumberBoxSpinButtonPlacementMode.Hidden, Minimum = 1, Maximum = 65535 };
+        private readonly TextBox _cloudSqlPath = new() { Header = "cloud-sql-proxy.exe", PlaceholderText = Strings.Get("Connection/AutomaticPlaceholder") };
+
+        private readonly StackPanel _cloudflareFields = new() { Spacing = 12 };
+        private readonly TextBox _cloudflareHost = new() { Header = Strings.Get("Connection/CloudflareHostHeader"), PlaceholderText = "db.example.com" };
+        private readonly ComboBox _cloudflareAuth = new() { Header = Strings.Get("Connection/MethodHeader"), HorizontalAlignment = HorizontalAlignment.Stretch };
+        private readonly Button _cloudflareSignIn = new() { Content = Strings.Get("Connection/CloudflareSignInButton") };
+        private readonly PasswordBox _cloudflareTokenId = new() { Header = Strings.Get("Connection/ClientIdHeader") };
+        private readonly PasswordBox _cloudflareTokenSecret = new() { Header = Strings.Get("Connection/ClientSecretHeader") };
+        private readonly NumberBox _cloudflarePort = new() { Header = Strings.Get("Connection/LocalPortHeader"), PlaceholderText = Strings.Get("Connection/AutomaticPlaceholder"), SpinButtonPlacementMode = NumberBoxSpinButtonPlacementMode.Hidden, Minimum = 1, Maximum = 65535 };
+        private readonly CheckBox _cloudflareLan = new() { Content = Strings.Get("Connection/CloudflareLan") };
+        private readonly TextBox _cloudflarePath = new() { Header = "cloudflared.exe", PlaceholderText = Strings.Get("Connection/AutomaticPlaceholder") };
+
+        private readonly StackPanel _commandFields = new() { Spacing = 12 };
+        private readonly ComboBox _commandMethod = new() { Header = Strings.Get("Connection/MethodHeader"), HorizontalAlignment = HorizontalAlignment.Stretch };
+        private readonly StackPanel _kubectlFields = new() { Spacing = 12 };
+        private readonly TextBox _kubeResource = new() { Header = Strings.Get("Connection/KubeResourceHeader"), PlaceholderText = "service/postgres" };
+        private readonly TextBox _kubeNamespace = new() { Header = Strings.Get("Connection/KubeNamespaceHeader"), PlaceholderText = Strings.Get("Connection/OptionalPlaceholder") };
+        private readonly TextBox _kubeContext = new() { Header = Strings.Get("Connection/KubeContextHeader"), PlaceholderText = Strings.Get("Connection/OptionalPlaceholder") };
+        private readonly StackPanel _ssmFields = new() { Spacing = 12 };
+        private readonly TextBox _ssmTarget = new() { Header = Strings.Get("Connection/SsmTargetHeader"), PlaceholderText = "i-0123456789abcdef0" };
+        private readonly TextBox _ssmProfile = new() { Header = Strings.Get("Connection/SsmProfileHeader"), PlaceholderText = Strings.Get("Connection/OptionalPlaceholder") };
+        private readonly TextBox _ssmRegion = new() { Header = Strings.Get("Connection/RegionHeader"), PlaceholderText = Strings.Get("Connection/OptionalPlaceholder") };
+        private readonly TextBox _commandPath = new() { Header = Strings.Get("Connection/ExecutablePathHeader"), PlaceholderText = Strings.Get("Connection/ExecutablePathPlaceholder") };
+        private readonly TextBox _command = new()
+        {
+            Header = Strings.Get("Connection/CommandHeader"),
+            AcceptsReturn = true,
+            Height = 72,
+            TextWrapping = TextWrapping.Wrap,
+            PlaceholderText = "ssh -N -L {port}:{host}:{remotePort} bastion",
+            FontFamily = new FontFamily("Cascadia Mono, Consolas"),
+        };
+
+        private readonly TextBlock _commandPreview = new() { TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true, FontFamily = new FontFamily("Cascadia Mono, Consolas") };
+
+        private readonly ComboBox _safeMode = new() { Header = Strings.Get("Connection/SafeModeHeader"), HorizontalAlignment = HorizontalAlignment.Stretch };
+        private readonly ComboBox _ai = new() { Header = Strings.Get("Connection/AiHeader"), HorizontalAlignment = HorizontalAlignment.Stretch };
+        private readonly ComboBox _mcp = new() { Header = Strings.Get("Connection/McpHeader"), HorizontalAlignment = HorizontalAlignment.Stretch };
+        private readonly NumberBox _timeout = new() { Header = Strings.Get("Connection/TimeoutHeader"), Minimum = 1, Maximum = 600, SpinButtonPlacementMode = NumberBoxSpinButtonPlacementMode.Compact };
+        private readonly TextBox _startup = new() { Header = Strings.Get("Connection/StartupHeader"), AcceptsReturn = true, Height = 96, PlaceholderText = "SET search_path TO app, public;" };
+        private readonly TextBox _options = new() { Header = Strings.Get("Connection/OptionsHeader"), AcceptsReturn = true, Height = 96, PlaceholderText = Strings.Get("Connection/OptionsPlaceholder") };
+        private readonly InfoBar _status = new() { IsClosable = false, IsOpen = false };
+        private readonly StackPanel _network = new() { Spacing = 12 };
+        private readonly Grid _fileRow = new() { ColumnSpacing = 8 };
+        private readonly RedisConnectionFields _redis;
+        private readonly EngineDescriptor[] _engines;
+        private readonly LoadableExtensionListEditor _extensions;
+        private IReadOnlyList<SignInMethod> _authChoices = [SignInMethod.Password];
+        private IReadOnlyList<EntraAuthMode> _entraChoices = [];
+        private IReadOnlyList<ConnectionTransport> _transportChoices = [ConnectionTransport.Direct];
+        private ConnectionColor _color;
+        private bool _filling;
+
+        public Form(AppHost host, ConnectionProfile? existing, DialogService dialogs)
+        {
+            _host = host;
+            _dialogs = dialogs;
+            _redis = new RedisConnectionFields(_database, Note);
+            _extensions = new LoadableExtensionListEditor(dialogs);
+
+            // Only engines this build has a driver for, grouped by family as tablepro.app lists them.
+            _engines = EngineDescriptor.Engines.Where(d => host.Connector.Drivers.Supports(d.Engine)).ToArray();
+            _existing = existing;
+            Root = Build(out var sections);
+            Fill(existing);
+            sections.SelectedItem = sections.Items[0];
+        }
+
+        public FrameworkElement Root { get; }
+
+        public string? Password
+        {
+            get
+            {
+                var secret = _authChoices.Count > 0 && SelectedSignIn == SignInMethod.GoogleCloudServiceAccount ? _googleKey.Text.Trim() : _password.Password;
+                return string.IsNullOrEmpty(secret) ? null : secret;
+            }
+        }
+
+        public string? SshSecret => string.IsNullOrEmpty(_sshSecret.Password) ? null : _sshSecret.Password;
+
+        private EngineDescriptor SelectedDescriptor => _engines[Math.Max(0, _engine.SelectedIndex)];
+
+        private SignInMethod SelectedSignIn => _authChoices[Math.Clamp(_auth.SelectedIndex, 0, _authChoices.Count - 1)];
+
+        private EntraAuthMode SelectedEntraMode => _entraChoices.Count == 0 ? EntraAuthMode.Interactive : _entraChoices[Math.Clamp(_entraMode.SelectedIndex, 0, _entraChoices.Count - 1)];
+
+        private ConnectionTransport SelectedTransport => _transportChoices[Math.Clamp(_transport.SelectedIndex, 0, _transportChoices.Count - 1)];
+
+        public void ShowStatus(string message, InfoBarSeverity severity)
+        {
+            _status.ActionButton = null;
+            _status.Message = message;
+            _status.Severity = severity;
+            _status.IsOpen = true;
+        }
+
+        public string? Validate()
+        {
+            var descriptor = SelectedDescriptor;
+            if (string.IsNullOrWhiteSpace(_name.Text))
+            {
+                return Strings.Get("Connection/NameRequired");
+            }
+
+            if (descriptor.IsFileBased && string.IsNullOrWhiteSpace(_file.Text))
+            {
+                return Strings.Get("Connection/FileRequired");
+            }
+
+            if (!descriptor.IsFileBased && string.IsNullOrWhiteSpace(_host_.Text))
+            {
+                return Strings.Get("Connection/HostRequired");
+            }
+
+            if (_extensions.Root.Visibility == Visibility.Visible && _extensions.Problem is { } extensionProblem)
+            {
+                return extensionProblem;
+            }
+
+            var profile = Build();
+            if (profile.Validate() is { } transportProblem)
+            {
+                return transportProblem;
+            }
+
+            return SignInProblem(profile);
+        }
+
+        /// <summary>
+        /// The test connects before anything is saved, so the typed SSH and transport secrets are stored under the
+        /// profile id for its length. The returned action puts back what was stored before.
+        /// </summary>
+        public Action StoreSecretsForTest(ConnectionService connector, ConnectionProfile profile)
+        {
+            var savedSsh = connector.SavedSshSecret(profile);
+            var savedTransport = Enum.GetValues<TransportSecret>().ToDictionary(s => s, s => connector.SavedTransportSecret(profile, s));
+            if (SshSecret is { } secret)
+            {
+                connector.SaveSshSecret(profile, secret);
+            }
+
+            SaveTransportSecrets(connector, profile);
+            return () =>
+            {
+                connector.SaveSshSecret(profile, savedSsh);
+                foreach (var (kind, value) in savedTransport)
+                {
+                    connector.SaveTransportSecret(profile, kind, value);
+                }
+            };
+        }
+
+        /// <summary>Stores the secrets of the transport in use and drops the ones a transport turned off no longer needs.</summary>
+        public void SaveTransportSecrets(ConnectionService connector, ConnectionProfile profile)
+        {
+            var transport = profile.ActiveTransport();
+            connector.SaveTransportSecret(profile, TransportSecret.ProxyPassword, transport == ConnectionTransport.Proxy && !string.IsNullOrEmpty(profile.Proxy?.Username) ? _proxyPassword.Password : null);
+            connector.SaveTransportSecret(profile, TransportSecret.CloudSqlServiceAccountKey, transport == ConnectionTransport.CloudSqlProxy && profile.CloudSqlProxy!.AuthMode == CloudSqlAuthMode.ServiceAccountKey ? _cloudSqlKey.Text.Trim() : null);
+            var token = transport == ConnectionTransport.CloudflareTunnel && profile.CloudflareTunnel!.AuthMethod == CloudflareAuthMethod.ServiceToken;
+            connector.SaveTransportSecret(profile, TransportSecret.CloudflareTokenId, token ? _cloudflareTokenId.Password : null);
+            connector.SaveTransportSecret(profile, TransportSecret.CloudflareTokenSecret, token ? _cloudflareTokenSecret.Password : null);
+            connector.SaveTransportSecret(profile, TransportSecret.RedisSentinelPassword, _redis.SentinelPasswordFor(profile));
+        }
+
+        public IReadOnlyList<LoadableExtension> EditedExtensions => _extensions.Edited;
+
+        /// <summary>
+        /// Approves the entries edited here for the test's profile, and shows the ones that arrived with the connection
+        /// for approval in the status bar, since the form is itself a dialog and cannot open a second one.
+        /// </summary>
+        public async Task<bool> AuthorizeExtensionsForTestAsync(LoadableExtensionApprovalStore approvals, ConnectionProfile profile)
+        {
+            await approvals.ApproveAsync(EditedExtensions, profile.Id);
+            var pending = approvals.Pending(profile);
+            if (pending.Count == 0)
+            {
+                return true;
+            }
+
+            var approve = new Button { Content = Strings.Get("Extensions/PromptConfirm") };
+            approve.Click += async (_, _) =>
+            {
+                await approvals.ApproveAsync(pending, profile.Id);
+                ShowStatus(Strings.Get("Extensions/ApprovedTestAgain"), InfoBarSeverity.Informational);
+            };
+            ShowStatus(LoadableExtensionConsent.Message(profile, pending), InfoBarSeverity.Warning);
+            _status.ActionButton = approve;
+            return false;
+        }
+
+        public ConnectionProfile Build()
+        {
+            var descriptor = SelectedDescriptor;
+            var options = ParseOptions();
+
+            // The list has its own editor, so one typed into the options box is not taken, and a form that hides the
+            // list (a remote libSQL server) drops it, as macOS drops a hidden field.
+            options.Remove(LoadableExtensionList.OptionKey);
+            if (LoadableExtensionList.AppliesTo(descriptor.Engine, _host_.Text, options) && _extensions.Stored is { Length: > 0 } extensions)
+            {
+                options[LoadableExtensionList.OptionKey] = extensions;
+            }
+
+            var groups = _host.Connections.Groups;
+            _redis.Apply(options, descriptor.Engine);
+            var transport = descriptor.IsFileBased ? ConnectionTransport.Direct : SelectedTransport;
+            var profile = (_existing ?? new ConnectionProfile { Name = string.Empty, Engine = descriptor.Engine }) with
+            {
+                Name = _name.Text.Trim(),
+                Engine = descriptor.Engine,
+                Host = descriptor.IsFileBased ? "localhost" : _host_.Text.Trim(),
+                Port = descriptor.IsFileBased || double.IsNaN(_port.Value) ? 0 : (int)_port.Value,
+                Username = string.IsNullOrWhiteSpace(_user.Text) ? null : _user.Text.Trim(),
+                Database = string.IsNullOrWhiteSpace(_database.Text) ? null : _database.Text.Trim(),
+                FilePath = descriptor.IsFileBased || EngineForm.For(descriptor.Engine).FileLabel is not null
+                    ? NullIfEmpty(Environment.ExpandEnvironmentVariables(_file.Text.Trim()))
+                    : null,
+                SavePassword = _savePassword.IsChecked == true,
+                SslMode = (SslMode)Math.Max(0, _ssl.SelectedIndex),
+                SafeMode = (SafeModeLevel)Math.Max(0, _safeMode.SelectedIndex),
+                AiPolicy = (AiPolicy)Math.Max(0, _ai.SelectedIndex),
+                ExternalAccess = (ExternalAccessLevel)Math.Max(0, _mcp.SelectedIndex),
+                Color = _color,
+                Group = _group.SelectedIndex > 0 ? groups[_group.SelectedIndex - 1].Key : null,
+                ConnectTimeoutSeconds = double.IsNaN(_timeout.Value) ? 15 : (int)_timeout.Value,
+                StartupCommands = string.IsNullOrWhiteSpace(_startup.Text) ? null : _startup.Text,
+                AdditionalOptions = options,
+                Auth = BuildAuth(),
+
+                // A transport's settings are kept, turned off, once something was typed, so switching back restores them.
+                Ssh = Keep(_existing?.Ssh, transport == ConnectionTransport.Ssh, !string.IsNullOrWhiteSpace(_sshHost.Text), on => new SshTunnelSettings
+                {
+                    Enabled = on,
+                    Host = _sshHost.Text.Trim(),
+                    Port = double.IsNaN(_sshPort.Value) ? 22 : (int)_sshPort.Value,
+                    Username = NullIfEmpty(_sshUser.Text.Trim()),
+                    AuthMethod = (SshAuthMethod)Math.Max(0, _sshAuth.SelectedIndex),
+                    PrivateKeyPath = string.IsNullOrWhiteSpace(_sshKey.Text) ? null : Environment.ExpandEnvironmentVariables(_sshKey.Text.Trim()),
+                    JumpHosts = NullIfEmpty(_jump.Text.Trim()),
+                }),
+                Proxy = Keep(_existing?.Proxy, transport == ConnectionTransport.Proxy, !string.IsNullOrWhiteSpace(_proxyHost.Text), on => new ProxySettings
+                {
+                    Enabled = on,
+                    Protocol = _proxyProtocol.SelectedIndex == 1 ? ProxyProtocol.HttpConnect : ProxyProtocol.Socks5,
+                    Host = _proxyHost.Text.Trim(),
+                    Port = double.IsNaN(_proxyPort.Value) ? 1080 : (int)_proxyPort.Value,
+                    Username = NullIfEmpty(_proxyUser.Text.Trim()),
+                }),
+                CloudSqlProxy = Keep(_existing?.CloudSqlProxy, transport == ConnectionTransport.CloudSqlProxy, !string.IsNullOrWhiteSpace(_cloudSqlInstance.Text), on => new CloudSqlProxySettings
+                {
+                    Enabled = on,
+                    InstanceConnectionName = _cloudSqlInstance.Text.Trim(),
+                    AuthMode = _cloudSqlAuth.SelectedIndex == 1 ? CloudSqlAuthMode.ServiceAccountKey : CloudSqlAuthMode.ApplicationDefault,
+                    UseIamAuth = _cloudSqlIam.IsChecked == true,
+                    UsePrivateIp = _cloudSqlPrivateIp.IsChecked == true,
+                    LocalPort = PortOrNull(_cloudSqlPort),
+                    ExecutablePath = NullIfEmpty(Environment.ExpandEnvironmentVariables(_cloudSqlPath.Text.Trim())),
+                }),
+                CloudflareTunnel = Keep(_existing?.CloudflareTunnel, transport == ConnectionTransport.CloudflareTunnel, !string.IsNullOrWhiteSpace(_cloudflareHost.Text), on => new CloudflareTunnelSettings
+                {
+                    Enabled = on,
+                    AccessHostname = _cloudflareHost.Text.Trim(),
+                    AuthMethod = _cloudflareAuth.SelectedIndex == 1 ? CloudflareAuthMethod.ServiceToken : CloudflareAuthMethod.BrowserSso,
+                    LocalPort = PortOrNull(_cloudflarePort),
+                    ExposeToLan = _cloudflareLan.IsChecked == true,
+                    ExecutablePath = NullIfEmpty(Environment.ExpandEnvironmentVariables(_cloudflarePath.Text.Trim())),
+                }),
+                TunnelCommand = Keep(_existing?.TunnelCommand, transport == ConnectionTransport.TunnelCommand, HasTunnelCommandInput(), on => BuildTunnelCommand() with { Enabled = on }),
+            };
+            return profile;
+        }
+
+        private bool HasTunnelCommandInput() =>
+            !string.IsNullOrWhiteSpace(_command.Text) || !string.IsNullOrWhiteSpace(_kubeResource.Text) || !string.IsNullOrWhiteSpace(_ssmTarget.Text);
+
+        private TunnelCommandSettings BuildTunnelCommand() => new()
+        {
+            Method = (TunnelCommandMethod)Math.Max(0, _commandMethod.SelectedIndex),
+            Command = NullIfEmpty(_command.Text.Trim()),
+            ExecutablePath = NullIfEmpty(Environment.ExpandEnvironmentVariables(_commandPath.Text.Trim())),
+            KubernetesResource = NullIfEmpty(_kubeResource.Text.Trim()),
+            KubernetesNamespace = NullIfEmpty(_kubeNamespace.Text.Trim()),
+            KubernetesContext = NullIfEmpty(_kubeContext.Text.Trim()),
+            AwsTarget = NullIfEmpty(_ssmTarget.Text.Trim()),
+            AwsProfile = NullIfEmpty(_ssmProfile.Text.Trim()),
+            AwsRegion = NullIfEmpty(_ssmRegion.Text.Trim()),
+        };
+
+        private ConnectionAuthSettings? BuildAuth()
+        {
+            var method = SelectedSignIn;
+            if (method == SignInMethod.Password && _existing?.Auth is null)
+            {
+                return null;
+            }
+
+            return new ConnectionAuthSettings
+            {
+                Method = method,
+                AwsRegion = NullIfEmpty(_awsRegion.Text.Trim()),
+                AwsAccessKeyId = NullIfEmpty(_awsAccessKey.Text.Trim()),
+                AwsProfileName = NullIfEmpty(_awsProfile.Text.Trim()),
+                AwsRdsEndpoint = SelectedDescriptor.Engine is DatabaseEngine.Redshift or DatabaseEngine.Redis ? _existing?.Auth?.AwsRdsEndpoint : NullIfEmpty(_awsEndpoint.Text.Trim()),
+                AwsElastiCacheName = SelectedDescriptor.Engine == DatabaseEngine.Redis ? NullIfEmpty(_awsEndpoint.Text.Trim()) : _existing?.Auth?.AwsElastiCacheName,
+                AwsRedshiftEndpoint = SelectedDescriptor.Engine == DatabaseEngine.Redshift ? NullIfEmpty(_awsEndpoint.Text.Trim()) : _existing?.Auth?.AwsRedshiftEndpoint,
+                EntraMode = SelectedEntraMode,
+                EntraTenantId = NullIfEmpty(_entraTenant.Text.Trim()),
+                EntraClientId = NullIfEmpty(_entraClient.Text.Trim()),
+                KerberosServiceName = NullIfEmpty(_kerberosService.Text.Trim()),
+                GssEncryption = (GssEncryptionMode)Math.Max(0, _gssEncryption.SelectedIndex),
+            };
+        }
+
+        private string? SignInProblem(ConnectionProfile profile)
+        {
+            var method = profile.EffectiveSignIn();
+            var auth = profile.Auth;
+            // An RDS or Cloud SQL token signs in a named user; Redshift can take the user from the IAM identity.
+            if ((method.IsAwsIam() && !profile.IssuesSignInUser()) || method.IsGoogleCloudIam())
+            {
+                if (string.IsNullOrWhiteSpace(profile.Username))
+                {
+                    return Strings.Get("Connection/IamUserRequired");
+                }
+            }
+
+            if (method.IsAwsIam() && profile.Engine == DatabaseEngine.Redis && string.IsNullOrWhiteSpace(auth?.AwsElastiCacheName))
+            {
+                return Strings.Get("Connection/ElastiCacheNameRequired");
+            }
+
+            if (method == SignInMethod.GoogleCloudServiceAccount && profile.SavePassword && string.IsNullOrWhiteSpace(_googleKey.Text))
+            {
+                return Strings.Get("Connection/GoogleServiceAccountKeyRequired");
+            }
+
+            if (method == SignInMethod.AwsIamAccessKey && string.IsNullOrWhiteSpace(auth?.AwsAccessKeyId))
+            {
+                return Strings.Get("Connection/AccessKeyRequired");
+            }
+
+            if (method == SignInMethod.EntraId && auth?.EntraMode == EntraAuthMode.ServicePrincipal && string.IsNullOrWhiteSpace(auth.EntraClientId))
+            {
+                return Strings.Get("Connection/EntraClientRequired");
+            }
+
+            if (method == SignInMethod.EntraId && auth?.EntraMode == EntraAuthMode.ServicePrincipal && profile.Engine != DatabaseEngine.SqlServer && string.IsNullOrWhiteSpace(auth.EntraTenantId))
+            {
+                return Strings.Get("Connection/EntraTenantRequired");
+            }
+
+            return null;
+        }
+
+        private FrameworkElement Build(out SelectorBar sections)
+        {
+            foreach (var engine in _engines)
+            {
+                _engine.Items.Add(engine.QueryLanguage is "SQL" ? engine.DisplayName : $"{engine.DisplayName}  ({engine.QueryLanguage})");
+            }
+
+            // Items follow the enums' order, since the form reads them back by index.
+            AddItems(_ssl, Strings.Get("Connection/SslDisabled"), Strings.Get("Connection/SslPreferred"), Strings.Get("Connection/SslRequired"), Strings.Get("Connection/SslVerifyCa"), Strings.Get("Connection/SslVerifyIdentity"));
+            AddItems(_safeMode, Strings.Get("Connection/SafeModeSilent"), Strings.Get("Connection/SafeModeAlert"), Strings.Get("Connection/SafeModeAlertFull"), Strings.Get("Connection/SafeModeSafe"), Strings.Get("Connection/SafeModeSafeFull"), Strings.Get("Connection/SafeModeReadOnly"));
+            AddItems(_ai, Strings.Get("Connection/AiAsk"), Strings.Get("Connection/AiAllow"), Strings.Get("Connection/AiNever"));
+            AddItems(_mcp, Strings.Get("Connection/McpBlocked"), Strings.Get("Connection/McpReadOnly"), Strings.Get("Connection/McpReadWrite"));
+            AddItems(_sshAuth, Strings.Get("Connection/SshAuthAgent"), Strings.Get("Connection/SshAuthPrivateKey"), Strings.Get("Connection/SshAuthPassword"));
+            AddItems(_gssEncryption, Strings.Get("Connection/GssDisabled"), Strings.Get("Connection/GssPreferred"), Strings.Get("Connection/GssRequired"));
+            AddItems(_proxyProtocol, "SOCKS5", "HTTP (CONNECT)");
+            AddItems(_cloudSqlAuth, Strings.Get("Connection/CloudSqlAuthAdc"), Strings.Get("Connection/CloudSqlAuthKey"));
+            AddItems(_cloudflareAuth, Strings.Get("Connection/CloudflareAuthBrowser"), Strings.Get("Connection/CloudflareAuthToken"));
+            AddItems(_commandMethod, "kubectl port-forward", Strings.Get("Connection/CommandMethodSsm"), Strings.Get("Connection/CommandMethodCustom"));
+
+            _group.Items.Add(Strings.Get("Connection/NoGroup"));
+            foreach (var group in _host.Connections.Groups)
+            {
+                _group.Items.Add(group.Name);
+            }
+
+            foreach (var color in Enum.GetValues<ConnectionColor>())
+            {
+                var swatch = new RadioButton
+                {
+                    GroupName = "connection-color",
+                    Tag = color,
+                    Style = (Style)Application.Current.Resources["ColorSwatchRadioButtonStyle"],
+                    Content = new Microsoft.UI.Xaml.Shapes.Ellipse
+                    {
+                        Width = 18,
+                        Height = 18,
+                        Fill = color == ConnectionColor.None ? new SolidColorBrush(Microsoft.UI.Colors.Transparent) : ConnectionColors.Brush(color),
+                        Stroke = (Brush)Application.Current.Resources["ControlStrongStrokeColorDefaultBrush"],
+                        StrokeThickness = color == ConnectionColor.None ? 1 : 0,
+                    },
+                };
+                ToolTipService.SetToolTip(swatch, ConnectionNames.Color(color));
+                Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(swatch, ConnectionNames.Color(color));
+                swatch.Checked += (_, _) => _color = color;
+                _colors.Children.Add(swatch);
+            }
+
+            _engine.SelectionChanged += (_, _) => OnEngineChanged();
+            _auth.SelectionChanged += (_, _) => UpdateSignInFields();
+            _entraMode.SelectionChanged += (_, _) => UpdateSignInFields();
+            _transport.SelectionChanged += (_, _) => UpdateTransportFields();
+            _sshAuth.SelectionChanged += (_, _) => _sshKey.Visibility = Visible(_sshAuth.SelectedIndex == 1);
+            _proxyUser.TextChanged += (_, _) => _proxyPassword.Visibility = Visible(!string.IsNullOrWhiteSpace(_proxyUser.Text));
+            _cloudSqlAuth.SelectionChanged += (_, _) => UpdateTransportFields();
+            _cloudflareAuth.SelectionChanged += (_, _) => UpdateTransportFields();
+            _commandMethod.SelectionChanged += (_, _) => UpdateTransportFields();
+            _command.TextChanged += (_, _) => UpdateCommandPreview();
+            _kubeResource.TextChanged += (_, _) => UpdateCommandPreview();
+            _ssmTarget.TextChanged += (_, _) => UpdateCommandPreview();
+            _host_.TextChanged += (_, _) => UpdateCommandPreview();
+            _host_.TextChanged += (_, _) => UpdateExtensionsVisibility();
+            _options.TextChanged += (_, _) => UpdateExtensionsVisibility();
+            _cloudflareSignIn.Click += async (_, _) => await SignInToCloudflareAsync();
+            _browse.Click += async (_, _) =>
+            {
+                var file = SelectedDescriptor.IsFileBased
+                    ? await _dialogs.PickOpenFileAsync(".sqlite", ".sqlite3", ".db", ".db3", ".duckdb", ".ddb", ".beancount", "*")
+                    : await _dialogs.PickOpenFileAsync(".json", ".p8", ".pem", "*");
+                if (file is not null)
+                {
+                    _file.Text = file.Path;
+                    if (string.IsNullOrWhiteSpace(_name.Text) && SelectedDescriptor.IsFileBased)
+                    {
+                        _name.Text = Path.GetFileNameWithoutExtension(file.Path);
+                    }
+                }
+            };
+
+            _network.Children.Add(Row(_host_, _port));
+            _network.Children.Add(_redis.Panel);
+            _network.Children.Add(_auth);
+            _network.Children.Add(_user);
+            _network.Children.Add(_password);
+            _network.Children.Add(_googleKey);
+            _network.Children.Add(_savePassword);
+            AddChildren(_awsFields, _awsRegion, _awsAccessKey, _awsProfile, _awsEndpoint);
+            AddChildren(_entraFields, _entraMode, _entraTenant, _entraClient);
+            AddChildren(_kerberosFields, _kerberosService, _gssEncryption);
+            _network.Children.Add(_awsFields);
+            _network.Children.Add(_entraFields);
+            _network.Children.Add(_kerberosFields);
+            _network.Children.Add(_authNote);
+            _network.Children.Add(_database);
+
+            _fileRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            _fileRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            _fileRow.Children.Add(_file);
+            Grid.SetColumn(_browse, 1);
+            _fileRow.Children.Add(_browse);
+
+            var general = Section(_name, _engine, _network, _fileRow, _group, Labeled(Strings.Get("Connection/ColorLabel"), _colors));
+
+            var ssl = Section(_ssl, Note(Strings.Get("Connection/SslNote")));
+
+            AddChildren(_sshFields, Row(_sshHost, _sshPort), _sshUser, _sshAuth, _sshKey, _sshSecret, _jump,
+                Note(Strings.Get("Connection/SshNote")));
+            AddChildren(_proxyFields, _proxyProtocol, Row(_proxyHost, _proxyPort), _proxyUser, _proxyPassword,
+                Note(Strings.Get("Connection/ProxyNote")));
+            AddChildren(_cloudSqlFields, _cloudSqlInstance, Note(Strings.Get("Connection/CloudSqlInstanceNote")),
+                _cloudSqlAuth, _cloudSqlAdcNote, _cloudSqlKey, _cloudSqlIam, _cloudSqlPrivateIp, _cloudSqlPort, _cloudSqlPath,
+                Note(Strings.Get("Connection/CloudSqlIamNote")));
+            AddChildren(_cloudflareFields, _cloudflareHost, _cloudflareAuth, _cloudflareSignIn, _cloudflareTokenId, _cloudflareTokenSecret,
+                _cloudflarePort, _cloudflareLan, _cloudflarePath,
+                Note(Strings.Get("Connection/CloudflareNote")));
+            AddChildren(_kubectlFields, _kubeResource, _kubeNamespace, _kubeContext);
+            AddChildren(_ssmFields, _ssmTarget, _ssmProfile, _ssmRegion);
+            AddChildren(_commandFields, _commandMethod, _kubectlFields, _ssmFields, _command, _commandPath,
+                Note(Strings.Get("Connection/CommandNote")),
+                Labeled(Strings.Get("Connection/WillRunLabel"), _commandPreview));
+            var networkPage = Section(_transport, _transportNote, _sshFields, _proxyFields, _cloudSqlFields, _cloudflareFields, _commandFields);
+
+            var advanced = Section(_safeMode, _ai, _mcp, _timeout, _startup, _redis.Separator, _options, _extensions.Root);
+
+            var pages = new Dictionary<string, FrameworkElement> { ["General"] = general, ["SSL"] = ssl, ["Network"] = networkPage, ["Advanced"] = advanced };
+            var host = new ContentControl { HorizontalContentAlignment = HorizontalAlignment.Stretch };
+            sections = new SelectorBar();
+            foreach (var name in pages.Keys)
+            {
+                sections.Items.Add(new SelectorBarItem { Text = SectionTitle(name), Tag = name });
+            }
+
+            sections.SelectionChanged += (bar, _) => host.Content = pages[(string)bar.SelectedItem.Tag];
+
+            var root = new StackPanel { Spacing = 12, Width = 480 };
+            root.Children.Add(sections);
+            root.Children.Add(new ScrollViewer { Content = host, MaxHeight = 460, Padding = new Thickness(0, 0, 12, 0) });
+            root.Children.Add(_status);
+            return root;
+        }
+
+        private void Fill(ConnectionProfile? profile)
+        {
+            _filling = true;
+            var p = profile ?? new ConnectionProfile { Name = string.Empty, Engine = DatabaseEngine.PostgreSql };
+            _name.Text = p.Name;
+            _engine.SelectedIndex = Math.Max(0, Array.FindIndex(_engines, d => d.Engine == p.Engine));
+            _host_.Text = p.Host;
+            _port.Value = p.Port > 0 ? p.Port : p.Descriptor.DefaultPort;
+            _user.Text = p.Username ?? (profile is null ? p.Descriptor.DefaultUser : string.Empty);
+            var savedSecret = profile is null ? string.Empty : _host.Connector.SavedPassword(p) ?? string.Empty;
+            var keyInPassword = p.EffectiveSignIn() == SignInMethod.GoogleCloudServiceAccount;
+            _password.Password = keyInPassword ? string.Empty : savedSecret;
+            _googleKey.Text = keyInPassword ? savedSecret : string.Empty;
+            _savePassword.IsChecked = p.SavePassword;
+            _database.Text = p.Database ?? string.Empty;
+            _file.Text = p.FilePath ?? string.Empty;
+            _ssl.SelectedIndex = (int)p.SslMode;
+            _safeMode.SelectedIndex = (int)p.SafeMode;
+            _ai.SelectedIndex = (int)p.AiPolicy;
+            _mcp.SelectedIndex = (int)p.ExternalAccess;
+            _timeout.Value = p.ConnectTimeoutSeconds;
+            _startup.Text = p.StartupCommands ?? string.Empty;
+            _options.Text = string.Join("\n", RedisConnectionFields.Unowned(p).Where(o => !string.Equals(o.Key, LoadableExtensionList.OptionKey, StringComparison.OrdinalIgnoreCase)).Select(o => $"{o.Key}={o.Value}"));
+            _redis.Fill(p, profile is null ? null : _host.Connector.SavedTransportSecret(profile, TransportSecret.RedisSentinelPassword));
+            _extensions.Load(p.AdditionalOptions.GetValueOrDefault(LoadableExtensionList.OptionKey));
+            var groupIndex = _host.Connections.Groups.ToList().FindIndex(g => g.Key == p.Group);
+            _group.SelectedIndex = groupIndex + 1;
+            _color = p.Color;
+            foreach (var swatch in _colors.Children.OfType<RadioButton>())
+            {
+                swatch.IsChecked = (ConnectionColor)swatch.Tag == p.Color;
+            }
+
+            var auth = p.Auth ?? new ConnectionAuthSettings();
+            _awsRegion.Text = auth.AwsRegion ?? string.Empty;
+            _awsAccessKey.Text = auth.AwsAccessKeyId ?? string.Empty;
+            _awsProfile.Text = auth.AwsProfileName ?? string.Empty;
+            _awsEndpoint.Text = p.Engine switch
+            {
+                DatabaseEngine.Redshift => auth.AwsRedshiftEndpoint,
+                DatabaseEngine.Redis => auth.AwsElastiCacheName,
+                _ => auth.AwsRdsEndpoint,
+            } ?? string.Empty;
+            _entraTenant.Text = auth.EntraTenantId ?? string.Empty;
+            _entraClient.Text = auth.EntraClientId ?? string.Empty;
+            _kerberosService.Text = auth.KerberosServiceName ?? string.Empty;
+            _gssEncryption.SelectedIndex = (int)auth.GssEncryption;
+
+            var ssh = p.Ssh ?? new SshTunnelSettings();
+            _sshHost.Text = ssh.Host;
+            _sshPort.Value = ssh.Port;
+            _sshUser.Text = ssh.Username ?? string.Empty;
+            _sshAuth.SelectedIndex = (int)ssh.AuthMethod;
+            _sshKey.Text = ssh.PrivateKeyPath ?? string.Empty;
+            _sshKey.Visibility = Visible(ssh.AuthMethod == SshAuthMethod.PrivateKey);
+            _jump.Text = ssh.JumpHosts ?? string.Empty;
+
+            var proxy = p.Proxy ?? new ProxySettings();
+            _proxyProtocol.SelectedIndex = proxy.Protocol == ProxyProtocol.HttpConnect ? 1 : 0;
+            _proxyHost.Text = proxy.Host;
+            _proxyPort.Value = proxy.Port;
+            _proxyUser.Text = proxy.Username ?? string.Empty;
+            _proxyPassword.Visibility = Visible(!string.IsNullOrWhiteSpace(proxy.Username));
+
+            var cloudSql = p.CloudSqlProxy ?? new CloudSqlProxySettings();
+            _cloudSqlInstance.Text = cloudSql.InstanceConnectionName;
+            _cloudSqlAuth.SelectedIndex = cloudSql.AuthMode == CloudSqlAuthMode.ServiceAccountKey ? 1 : 0;
+            _cloudSqlIam.IsChecked = cloudSql.UseIamAuth;
+            _cloudSqlPrivateIp.IsChecked = cloudSql.UsePrivateIp;
+            _cloudSqlPort.Value = cloudSql.LocalPort ?? double.NaN;
+            _cloudSqlPath.Text = cloudSql.ExecutablePath ?? string.Empty;
+
+            var cloudflare = p.CloudflareTunnel ?? new CloudflareTunnelSettings();
+            _cloudflareHost.Text = cloudflare.AccessHostname;
+            _cloudflareAuth.SelectedIndex = cloudflare.AuthMethod == CloudflareAuthMethod.ServiceToken ? 1 : 0;
+            _cloudflarePort.Value = cloudflare.LocalPort ?? double.NaN;
+            _cloudflareLan.IsChecked = cloudflare.ExposeToLan;
+            _cloudflarePath.Text = cloudflare.ExecutablePath ?? string.Empty;
+
+            var command = p.TunnelCommand ?? new TunnelCommandSettings();
+            _commandMethod.SelectedIndex = (int)command.Method;
+            _command.Text = command.Command ?? string.Empty;
+            _commandPath.Text = command.ExecutablePath ?? string.Empty;
+            _kubeResource.Text = command.KubernetesResource ?? string.Empty;
+            _kubeNamespace.Text = command.KubernetesNamespace ?? string.Empty;
+            _kubeContext.Text = command.KubernetesContext ?? string.Empty;
+            _ssmTarget.Text = command.AwsTarget ?? string.Empty;
+            _ssmProfile.Text = command.AwsProfile ?? string.Empty;
+            _ssmRegion.Text = command.AwsRegion ?? string.Empty;
+
+            if (profile is not null)
+            {
+                _proxyPassword.Password = _host.Connector.SavedTransportSecret(profile, TransportSecret.ProxyPassword) ?? string.Empty;
+                _cloudSqlKey.Text = _host.Connector.SavedTransportSecret(profile, TransportSecret.CloudSqlServiceAccountKey) ?? string.Empty;
+                _cloudflareTokenId.Password = _host.Connector.SavedTransportSecret(profile, TransportSecret.CloudflareTokenId) ?? string.Empty;
+                _cloudflareTokenSecret.Password = _host.Connector.SavedTransportSecret(profile, TransportSecret.CloudflareTokenSecret) ?? string.Empty;
+            }
+
+            _filling = false;
+            OnEngineChanged();
+            _auth.SelectedIndex = Math.Max(0, IndexOf(_authChoices, p.EffectiveSignIn()));
+            _entraMode.SelectedIndex = Math.Max(0, IndexOf(_entraChoices, auth.EntraMode));
+            _transport.SelectedIndex = Math.Max(0, IndexOf(_transportChoices, p.ActiveTransport()));
+            UpdateSignInFields();
+            UpdateTransportFields();
+        }
+
+        private void OnEngineChanged()
+        {
+            if (_filling)
+            {
+                return;
+            }
+
+            var descriptor = SelectedDescriptor;
+            var form = EngineForm.For(descriptor.Engine);
+            _network.Visibility = Visible(!descriptor.IsFileBased);
+            _fileRow.Visibility = Visible(descriptor.IsFileBased || form.FileLabel is not null);
+            _file.Header = form.FileLabel ?? Strings.Get("Connection/FileHeader");
+            _file.PlaceholderText = form.FilePlaceholder;
+            _host_.Header = form.HostLabel;
+            _host_.PlaceholderText = form.HostPlaceholder;
+            _port.Visibility = Visible(form.ShowPort);
+            _user.Header = form.UserLabel;
+            _database.Header = form.DatabaseLabel;
+            _redis.SetEngine(descriptor.Engine);
+            _options.PlaceholderText = form.OptionsHint ?? Strings.Get("Connection/OptionsPlaceholder");
+            UpdateExtensionsVisibility();
+            _kerberosService.Header = form.KerberosServiceHeader ?? Strings.Get("Connection/KerberosServiceHeader");
+            _kerberosService.PlaceholderText = form.KerberosServicePlaceholder ?? string.Empty;
+            _gssEncryption.Visibility = Visible(form.ShowGssEncryption);
+
+            // Keep the chosen sign-in and transport when the new engine offers them too.
+            var signIn = _authChoices.Count > 0 ? SelectedSignIn : SignInMethod.Password;
+            _authChoices = form.SignInMethods;
+            _auth.Items.Clear();
+            foreach (var method in _authChoices)
+            {
+                _auth.Items.Add(ConnectionNames.SignIn(method, descriptor.Engine));
+            }
+
+            _auth.SelectedIndex = Math.Max(0, IndexOf(_authChoices, signIn));
+            _auth.Visibility = Visible(_authChoices.Count > 1);
+
+            var entra = SelectedEntraMode;
+            _entraChoices = SignInMethods.EntraModes(descriptor.Engine);
+            _entraMode.Items.Clear();
+            foreach (var mode in _entraChoices)
+            {
+                _entraMode.Items.Add(ConnectionNames.Entra(mode));
+            }
+
+            _entraMode.SelectedIndex = Math.Max(0, IndexOf(_entraChoices, entra));
+
+            var transport = _transportChoices.Count > 0 ? SelectedTransport : ConnectionTransport.Direct;
+            _transportChoices = form.Transports;
+            _transport.Items.Clear();
+            foreach (var choice in _transportChoices)
+            {
+                _transport.Items.Add(ConnectionNames.Transport(choice));
+            }
+
+            _transport.SelectedIndex = Math.Max(0, IndexOf(_transportChoices, transport));
+
+            if (_existing is null || _existing.Engine != descriptor.Engine)
+            {
+                _port.Value = descriptor.DefaultPort;
+                if (string.IsNullOrWhiteSpace(_user.Text) || EngineDescriptor.Engines.Any(d => d.DefaultUser == _user.Text))
+                {
+                    _user.Text = descriptor.DefaultUser;
+                }
+            }
+
+            UpdateSignInFields();
+            UpdateTransportFields();
+        }
+
+        /// <summary>Shows the fields the chosen sign-in uses, and names the secret field for what it holds.</summary>
+        private void UpdateSignInFields()
+        {
+            if (_filling || _authChoices.Count == 0)
+            {
+                return;
+            }
+
+            var engine = SelectedDescriptor.Engine;
+            var form = EngineForm.For(engine);
+            var method = SelectedSignIn;
+            var entraMode = SelectedEntraMode;
+            var probe = new ConnectionProfile
+            {
+                Name = string.Empty,
+                Engine = engine,
+                Auth = new ConnectionAuthSettings { Method = method, EntraMode = entraMode },
+            };
+
+            _user.Visibility = Visible(form.ShowUser && probe.UsesUsername());
+            _user.Header = method switch
+            {
+                SignInMethod.EntraId when engine == DatabaseEngine.SqlServer => Strings.Get("Connection/EntraLoginHintHeader"),
+                SignInMethod.EntraId => Strings.Get("Connection/EntraUserHeader"),
+                _ when method.IsAwsIam() && engine == DatabaseEngine.Redshift => Strings.Get("Connection/RedshiftUserHeader"),
+                _ when method.IsAwsIam() => Strings.Get("Connection/DatabaseUserHeader"),
+                _ when method.IsGoogleCloudIam() => Strings.Get("Connection/GoogleIamUserHeader"),
+                _ => form.UserLabel,
+            };
+            var usesSecret = probe.UsesSecret();
+            _password.Visibility = Visible(usesSecret && method != SignInMethod.GoogleCloudServiceAccount);
+            _googleKey.Visibility = Visible(method == SignInMethod.GoogleCloudServiceAccount);
+            _savePassword.Visibility = Visible(usesSecret);
+            _password.Header = method == SignInMethod.Password ? form.PasswordLabel : ConnectionNames.SecretLabel(method, entraMode);
+
+            _awsFields.Visibility = Visible(method.IsAwsIam());
+            _awsAccessKey.Visibility = Visible(method == SignInMethod.AwsIamAccessKey);
+            _awsProfile.Visibility = Visible(method is SignInMethod.AwsIamProfile or SignInMethod.AwsIamSso);
+            // The same field names what the token is signed for: an RDS endpoint, a Redshift endpoint, or an ElastiCache cache.
+            (_awsEndpoint.Header, _awsEndpoint.PlaceholderText) = engine switch
+            {
+                DatabaseEngine.Redshift => (Strings.Get("Connection/RedshiftEndpointHeader"), RedshiftEndpointPlaceholder),
+                DatabaseEngine.Redis => (Strings.Get("Connection/ElastiCacheNameHeader"), "my-cache"),
+                _ => (Strings.Get("Connection/AwsEndpointHeader"), RdsEndpointPlaceholder),
+            };
+            _entraFields.Visibility = Visible(method == SignInMethod.EntraId);
+            _entraTenant.Visibility = Visible(engine != DatabaseEngine.SqlServer && entraMode is not EntraAuthMode.ManagedIdentity);
+            _entraClient.Visibility = Visible(entraMode is EntraAuthMode.ServicePrincipal or EntraAuthMode.ManagedIdentity or EntraAuthMode.Default
+                || (engine != DatabaseEngine.SqlServer && entraMode is EntraAuthMode.Interactive or EntraAuthMode.DeviceCode));
+            _entraClient.Header = entraMode is EntraAuthMode.ManagedIdentity or EntraAuthMode.Default
+                ? Strings.Get("Connection/ManagedIdentityClientHeader")
+                : Strings.Get(entraMode == EntraAuthMode.ServicePrincipal ? "Connection/EntraClientHeader" : "Connection/EntraClientOptionalHeader");
+            _kerberosFields.Visibility = Visible(method == SignInMethod.Kerberos);
+
+            var note = method switch
+            {
+                SignInMethod.Kerberos => Strings.Get("Connection/KerberosNote"),
+                SignInMethod.WindowsIntegrated => Strings.Get("Connection/WindowsAuthNote"),
+                _ when method.IsAwsIam() && engine == DatabaseEngine.Redshift => Strings.Get("Connection/RedshiftIamNote"),
+                _ when method.IsAwsIam() && engine == DatabaseEngine.Redis => Strings.Get("Connection/ElastiCacheIamNote"),
+                SignInMethod.GoogleCloudApplicationDefault => Strings.Get("Connection/GoogleAdcNote"),
+                SignInMethod.GoogleCloudServiceAccount => Strings.Get("Connection/GoogleServiceAccountNote"),
+                SignInMethod.AwsIamProfile => Strings.Get("Connection/AwsProfileNote"),
+                SignInMethod.AwsIamSso => Strings.Get("Connection/AwsSsoNote"),
+                SignInMethod.AwsIamAccessKey => Strings.Get("Connection/AwsAccessKeyNote"),
+                SignInMethod.EntraId when entraMode == EntraAuthMode.DeviceCode => Strings.Get("Connection/EntraDeviceCodeNote"),
+                SignInMethod.EntraId => Strings.Get("Connection/EntraNote"),
+                _ => string.Empty,
+            };
+            _authNote.Text = note;
+            _authNote.Visibility = Visible(note.Length > 0);
+        }
+
+        private void UpdateTransportFields()
+        {
+            if (_filling || _transportChoices.Count == 0)
+            {
+                return;
+            }
+
+            var transport = SelectedDescriptor.IsFileBased ? ConnectionTransport.Direct : SelectedTransport;
+            _transportNote.Text = ConnectionNames.TransportSummary(transport);
+            _sshFields.Visibility = Visible(transport == ConnectionTransport.Ssh);
+            _proxyFields.Visibility = Visible(transport == ConnectionTransport.Proxy);
+            _cloudSqlFields.Visibility = Visible(transport == ConnectionTransport.CloudSqlProxy);
+            _cloudflareFields.Visibility = Visible(transport == ConnectionTransport.CloudflareTunnel);
+            _commandFields.Visibility = Visible(transport == ConnectionTransport.TunnelCommand);
+
+            var serviceAccount = _cloudSqlAuth.SelectedIndex == 1;
+            _cloudSqlKey.Visibility = Visible(serviceAccount);
+            _cloudSqlAdcNote.Visibility = Visible(!serviceAccount);
+
+            var token = _cloudflareAuth.SelectedIndex == 1;
+            _cloudflareTokenId.Visibility = Visible(token);
+            _cloudflareTokenSecret.Visibility = Visible(token);
+            _cloudflareSignIn.Visibility = Visible(!token);
+
+            var method = (TunnelCommandMethod)Math.Max(0, _commandMethod.SelectedIndex);
+            _kubectlFields.Visibility = Visible(method == TunnelCommandMethod.Kubectl);
+            _ssmFields.Visibility = Visible(method == TunnelCommandMethod.AwsSsm);
+            _command.Visibility = Visible(method == TunnelCommandMethod.Custom);
+            _commandPath.Visibility = Visible(method != TunnelCommandMethod.Custom);
+            _commandPath.PlaceholderText = Strings.Get(method == TunnelCommandMethod.AwsSsm ? "Connection/AwsExecutablePlaceholder" : "Connection/KubectlExecutablePlaceholder");
+            UpdateCommandPreview();
+        }
+
+        private void UpdateCommandPreview()
+        {
+            if (_filling)
+            {
+                return;
+            }
+
+            var settings = BuildTunnelCommand();
+            var port = double.IsNaN(_port.Value) || _port.Value <= 0 ? SelectedDescriptor.DefaultPort : (int)_port.Value;
+            var problem = TunnelCommandLine.Validate(settings);
+            _commandPreview.Text = problem ?? TunnelCommandLine.Preview(settings, string.IsNullOrWhiteSpace(_host_.Text) ? "localhost" : _host_.Text.Trim(), port);
+        }
+
+        private async Task SignInToCloudflareAsync()
+        {
+            if (string.IsNullOrWhiteSpace(_cloudflareHost.Text))
+            {
+                ShowStatus(Strings.Get("Connection/CloudflareHostRequired"), InfoBarSeverity.Error);
+                return;
+            }
+
+            _cloudflareSignIn.IsEnabled = false;
+            try
+            {
+                ShowStatus(Strings.Get("Connection/CloudflareSigningIn"), InfoBarSeverity.Informational);
+                using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(5));
+                var settings = new CloudflareTunnelSettings
+                {
+                    AccessHostname = _cloudflareHost.Text.Trim(),
+                    ExecutablePath = NullIfEmpty(Environment.ExpandEnvironmentVariables(_cloudflarePath.Text.Trim())),
+                };
+                var (signedIn, message) = await ConnectionService.SignInToCloudflareAsync(settings, timeout.Token);
+                ShowStatus(message, signedIn ? InfoBarSeverity.Success : InfoBarSeverity.Error);
+            }
+            catch (Exception ex)
+            {
+                ShowStatus(ex.Message, InfoBarSeverity.Error);
+            }
+            finally
+            {
+                _cloudflareSignIn.IsEnabled = true;
+            }
+        }
+
+        /// <summary>
+        /// The settings for a transport: on when chosen, kept turned off when the profile had them or something was
+        /// typed, and absent otherwise so a profile that never used the transport stays as small as before.
+        /// </summary>
+        private static T? Keep<T>(T? existing, bool chosen, bool typed, Func<bool, T> build)
+            where T : class =>
+            !chosen && existing is null && !typed ? null : build(chosen);
+
+        private static int? PortOrNull(NumberBox box) =>
+            double.IsNaN(box.Value) || box.Value <= 0 ? null : (int)box.Value;
+
+        private static int IndexOf<T>(IReadOnlyList<T> list, T value)
+        {
+            for (var i = 0; i < list.Count; i++)
+            {
+                if (EqualityComparer<T>.Default.Equals(list[i], value))
+                {
+                    return i;
+                }
+            }
+
+            return -1;
+        }
+
+        /// <summary>The options box's <c>key=value</c> lines; a key typed twice keeps its last value.</summary>
+        private Dictionary<string, string> ParseOptions()
+        {
+            var options = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var line in _options.Text.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            {
+                var parts = line.Split('=', 2);
+                if (parts.Length == 2 && parts[0].Trim().Length > 0)
+                {
+                    options[parts[0].Trim()] = parts[1].Trim();
+                }
+            }
+
+            return options;
+        }
+
+        /// <summary>SQLite and a local libSQL file load extensions; a remote libSQL server never does.</summary>
+        private void UpdateExtensionsVisibility() =>
+            _extensions.Root.Visibility = Visible(LoadableExtensionList.AppliesTo(SelectedDescriptor.Engine, _host_.Text, ParseOptions()));
+
+        private static string SectionTitle(string page) => page switch
+        {
+            "SSL" => Strings.Get("Connection/SectionSsl"),
+            "Network" => Strings.Get("Connection/SectionNetwork"),
+            "Advanced" => Strings.Get("Connection/SectionAdvanced"),
+            _ => Strings.Get("Connection/SectionGeneral"),
+        };
+
+        private static Visibility Visible(bool visible) => visible ? Visibility.Visible : Visibility.Collapsed;
+
+        private static string? NullIfEmpty(string text) => string.IsNullOrWhiteSpace(text) ? null : text;
+
+        private static void AddItems(ComboBox box, params string[] items)
+        {
+            foreach (var item in items)
+            {
+                box.Items.Add(item);
+            }
+        }
+
+        private static void AddChildren(Panel panel, params UIElement[] children)
+        {
+            foreach (var child in children)
+            {
+                panel.Children.Add(child);
+            }
+        }
+
+        private static Grid Row(FrameworkElement main, FrameworkElement side)
+        {
+            var row = new Grid { ColumnSpacing = 8 };
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            row.Children.Add(main);
+            Grid.SetColumn(side, 1);
+            row.Children.Add(side);
+            return row;
+        }
+
+        private static StackPanel Section(params UIElement[] children)
+        {
+            var panel = new StackPanel { Spacing = 12, Padding = new Thickness(0, 4, 0, 4) };
+            AddChildren(panel, children);
+            return panel;
+        }
+
+        private static StackPanel Labeled(string label, UIElement content)
+        {
+            var panel = new StackPanel { Spacing = 6 };
+            panel.Children.Add(new TextBlock { Text = label });
+            panel.Children.Add(content);
+            return panel;
+        }
+
+        private static TextBlock Note(string text) => new()
+        {
+            Text = text,
+            TextWrapping = TextWrapping.Wrap,
+            Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
+            Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
+        };
+    }
+}

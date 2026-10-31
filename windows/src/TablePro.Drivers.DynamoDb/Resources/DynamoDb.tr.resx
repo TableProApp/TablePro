@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="CannotChangeKey" xml:space="preserve">
+    <value>DynamoDB {0} anahtar özniteliğini değiştiremez. Öğeyi silin ve yeni anahtarla yeniden ekleyin.</value>
+  </data>
+  <data name="ClientRules_One" xml:space="preserve">
+    <value>DynamoDB'nin değerlendiremediği {0} filtre kuralı, okunan öğelere sayfa sayfa uygulandı.</value>
+  </data>
+  <data name="ClientRules_Other" xml:space="preserve">
+    <value>DynamoDB'nin değerlendiremediği {0} filtre kuralı, okunan öğelere sayfa sayfa uygulandı.</value>
+  </data>
+  <data name="ConsumedCapacity_One" xml:space="preserve">
+    <value>Tüketilen kapasite: {0} istekte {1:0.##} birim.</value>
+  </data>
+  <data name="ConsumedCapacity_Other" xml:space="preserve">
+    <value>Tüketilen kapasite: {0} istekte {1:0.##} birim.</value>
+  </data>
+  <data name="EmptyKeyAttribute" xml:space="preserve">
+    <value>Bir anahtar özniteliği boş olamaz.</value>
+  </data>
+  <data name="EndpointScheme" xml:space="preserve">
+    <value>Uç nokta https:// veya http:// ile başlamalıdır.</value>
+  </data>
+  <data name="EnterSecretKey" xml:space="preserve">
+    <value>{0} erişim anahtarı kimliğinin parolası olarak gizli erişim anahtarını girin.</value>
+  </data>
+  <data name="ItemExists" xml:space="preserve">
+    <value>Bu anahtara sahip bir öğe zaten var ({1} değişiklikten {0}.).</value>
+  </data>
+  <data name="ItemGone" xml:space="preserve">
+    <value>Öğe artık mevcut değil ({1} değişiklikten {0}.).</value>
+  </data>
+  <data name="KeyNotLoaded" xml:space="preserve">
+    <value>Öğenin {0} anahtar özniteliği yüklenmediğinden öğe bulunamıyor.</value>
+  </data>
+  <data name="MapTakesObject" xml:space="preserve">
+    <value>Bir map özniteliği JSON nesnesi alır.</value>
+  </data>
+  <data name="NoKeySchema" xml:space="preserve">
+    <value>DynamoDB, {0} tablosunun anahtar şemasını bildirmedi.</value>
+  </data>
+  <data name="NoOffset" xml:space="preserve">
+    <value>DynamoDB'de OFFSET yoktur ve {0:N0}. öğeye ulaşmak için önce {1:N0} öğe okunması gerekir. Baştan itibaren sayfa sayfa ilerleyin veya tabloyu filtreleyin.</value>
+  </data>
+  <data name="NoProfile" xml:space="preserve">
+    <value>Paylaşılan config veya credentials dosyasında "{0}" adlı bir AWS profili bulunamadı.</value>
+  </data>
+  <data name="NotANumber" xml:space="preserve">
+    <value>"{0}" bir sayı değil.</value>
+  </data>
+  <data name="NotARegion" xml:space="preserve">
+    <value>"{0}", us-east-1 gibi bir AWS bölgesi değil.</value>
+  </data>
+  <data name="NotAUrl" xml:space="preserve">
+    <value>"{0}" bir URL değil. http://localhost:8000 gibi bir uç nokta girin.</value>
+  </data>
+  <data name="NumberKeyMismatch" xml:space="preserve">
+    <value>Filtreyle hiçbir öğe eşleşemez: bir Number anahtarı sayı olmayan bir metinle karşılaştırıldı.</value>
+  </data>
+  <data name="PlainHttpLocalOnly" xml:space="preserve">
+    <value>Düz HTTP'ye yalnızca bu bilgisayardaki (localhost) bir uç nokta için izin verilir. Diğer ana bilgisayarlar için https:// kullanın.</value>
+  </data>
+  <data name="RawConditionAnd" xml:space="preserve">
+    <value>Ham koşulun da kurallarla birlikte eşleşmesi gerekir.</value>
+  </data>
+  <data name="SortNotApplied" xml:space="preserve">
+    <value>DynamoDB taraması öğeleri tablonun kendi sırasıyla döndürür, bu nedenle sıralama uygulanmadı.</value>
+  </data>
+  <data name="StoppedAfterScanning" xml:space="preserve">
+    <value>Sayfayı doldurmak için {0:N0} öğe okunduktan sonra durduruldu. Tüm tabloda aramak için filtreyi daraltın.</value>
+  </data>
+  <data name="TooManyItems" xml:space="preserve">
+    <value>DynamoDB bir işlemde en fazla {0} öğe yazar ve bu kaydetmede {1} öğe var. Tek seferde daha az satır kaydedin.</value>
+  </data>
+</root>

@@ -1,0 +1,159 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AppendOnly" xml:space="preserve">
+    <value>Topic Kafka chỉ cho phép ghi thêm: không thể sửa hay xóa tin nhắn. Hãy thêm một hàng để tạo tin nhắn mới, hoặc tạo tombstone (giá trị null) cho khóa của nó trên topic được nén.</value>
+  </data>
+  <data name="AtLeastOne" xml:space="preserve">
+    <value>{0} phải ít nhất là 1.</value>
+  </data>
+  <data name="DescribeNeeds" xml:space="preserve">
+    <value>DESCRIBE cần GROUP hoặc TOPIC.</value>
+  </data>
+  <data name="DescribeNeedsName" xml:space="preserve">
+    <value>DESCRIBE cần một tên.</value>
+  </data>
+  <data name="DescribeUnsupported" xml:space="preserve">
+    <value>DESCRIBE {0} không được hỗ trợ. Hãy thử GROUP hoặc TOPIC.</value>
+  </data>
+  <data name="DropTakesOne" xml:space="preserve">
+    <value>DROP TOPIC chỉ nhận một tên topic.</value>
+  </data>
+  <data name="EmptyStatement" xml:space="preserve">
+    <value>Câu lệnh trống.</value>
+  </data>
+  <data name="FromNeeds" xml:space="preserve">
+    <value>FROM cần NEWEST, OLDEST, OFFSET, TIME, ANCHOR hoặc TAIL.</value>
+  </data>
+  <data name="GroupNotDeletable_One" xml:space="preserve">
+    <value>Nhóm consumer {1} đang ở trạng thái {2} với {0} thành viên. Kafka chỉ xóa nhóm không có thành viên; hãy dừng các consumer của nhóm trước.</value>
+  </data>
+  <data name="GroupNotDeletable_Other" xml:space="preserve">
+    <value>Nhóm consumer {1} đang ở trạng thái {2} với {0} thành viên. Kafka chỉ xóa nhóm không có thành viên; hãy dừng các consumer của nhóm trước.</value>
+  </data>
+  <data name="GroupNote_One" xml:space="preserve">
+    <value>Nhóm {1} đang ở trạng thái {2} với {0} thành viên.</value>
+  </data>
+  <data name="GroupNote_Other" xml:space="preserve">
+    <value>Nhóm {1} đang ở trạng thái {2} với {0} thành viên.</value>
+  </data>
+  <data name="HeadersJson" xml:space="preserve">
+    <value>Header phải là một đối tượng JSON, chẳng hạn {"trace":"abc"}.</value>
+  </data>
+  <data name="NeedsKeyValue" xml:space="preserve">
+    <value>{0} cần khóa=giá trị, chẳng hạn cleanup.policy=compact.</value>
+  </data>
+  <data name="NeedsOffsetList" xml:space="preserve">
+    <value>{0} cần một danh sách partition:offset.</value>
+  </data>
+  <data name="NeedsTopicKeyword" xml:space="preserve">
+    <value>{0} cần TOPIC và một tên topic.</value>
+  </data>
+  <data name="NeedsTopicName" xml:space="preserve">
+    <value>{0} cần một tên topic.</value>
+  </data>
+  <data name="NeedsValue" xml:space="preserve">
+    <value>{0} cần một giá trị.</value>
+  </data>
+  <data name="NeedsWholeNumber" xml:space="preserve">
+    <value>{0} cần một số nguyên, không phải {1}.</value>
+  </data>
+  <data name="NoConsumerGroup" xml:space="preserve">
+    <value>Không có nhóm consumer nào tên {0}.</value>
+  </data>
+  <data name="NoPartition" xml:space="preserve">
+    <value>Topic {0} không có phân vùng {1}.</value>
+  </data>
+  <data name="NoSuchColumn" xml:space="preserve">
+    <value>Tin nhắn Kafka không có cột {0}.</value>
+  </data>
+  <data name="NotACommand" xml:space="preserve">
+    <value>{0} không phải là lệnh Kafka. Hãy thử CONSUME, TAIL, PRODUCE, SHOW, DESCRIBE, CREATE hoặc DROP.</value>
+  </data>
+  <data name="NotATime" xml:space="preserve">
+    <value>{0} không phải là thời gian.</value>
+  </data>
+  <data name="NotATimeHint" xml:space="preserve">
+    <value>{0} không phải là thời gian. Hãy dùng số mili giây kể từ epoch hoặc một thời điểm ISO 8601.</value>
+  </data>
+  <data name="NotOffsetPair" xml:space="preserve">
+    <value>{0} không phải là cặp partition:offset.</value>
+  </data>
+  <data name="NoTopic" xml:space="preserve">
+    <value>Không có topic nào tên {0}.</value>
+  </data>
+  <data name="NotPartitionNumber" xml:space="preserve">
+    <value>{0} không phải là số phân vùng.</value>
+  </data>
+  <data name="NotSaslMechanism" xml:space="preserve">
+    <value>{0} không phải là cơ chế SASL. Hãy dùng PLAIN, SCRAM-SHA-256 hoặc SCRAM-SHA-512.</value>
+  </data>
+  <data name="NotSecurityProtocol" xml:space="preserve">
+    <value>{0} không phải là giao thức bảo mật Kafka. Hãy dùng PLAINTEXT, SSL, SASL_PLAINTEXT hoặc SASL_SSL.</value>
+  </data>
+  <data name="NotStartPosition" xml:space="preserve">
+    <value>{0} không phải là vị trí bắt đầu. Hãy dùng NEWEST, OLDEST, OFFSET, TIME, ANCHOR hoặc TAIL.</value>
+  </data>
+  <data name="OffsetAssigned" xml:space="preserve">
+    <value>Broker gán offset cho tin nhắn; hãy để trống offset.</value>
+  </data>
+  <data name="PageTooLarge" xml:space="preserve">
+    <value>Trang này cần đọc hơn {0:N0} tin nhắn trên {1} phân vùng. Hãy đọc ít phân vùng hơn, hoặc bắt đầu gần các hàng hơn bằng FROM OFFSET hay FROM TIME.</value>
+  </data>
+  <data name="PartitionNeedsNumber" xml:space="preserve">
+    <value>PARTITION cần ít nhất một số phân vùng.</value>
+  </data>
+  <data name="ProduceNeedsValueOrKey" xml:space="preserve">
+    <value>PRODUCE cần ít nhất một VALUE hoặc một KEY.</value>
+  </data>
+  <data name="RangeBetween" xml:space="preserve">
+    <value>{0} phải nằm trong khoảng {1} đến {2}.</value>
+  </data>
+  <data name="ServerVersion_One" xml:space="preserve">
+    <value>Apache Kafka, {0} broker (librdkafka {1})</value>
+  </data>
+  <data name="ServerVersion_Other" xml:space="preserve">
+    <value>Apache Kafka, {0} broker (librdkafka {1})</value>
+  </data>
+  <data name="ShowNeeds" xml:space="preserve">
+    <value>SHOW cần TOPICS, BROKERS, GROUPS hoặc CLUSTER.</value>
+  </data>
+  <data name="ShowUnsupported" xml:space="preserve">
+    <value>SHOW {0} không được hỗ trợ. Hãy thử TOPICS, BROKERS, GROUPS hoặc CLUSTER.</value>
+  </data>
+  <data name="StoppedPartial" xml:space="preserve">
+    <value>Đã dừng sau {0:0} giây khi một số phân vùng chưa đọc hết; các hàng hiển thị là những gì đã nhận được.</value>
+  </data>
+  <data name="TakesNothingAfter" xml:space="preserve">
+    <value>{0} không nhận gì phía sau, nhưng đã có {1}.</value>
+  </data>
+  <data name="TimestampComment" xml:space="preserve">
+    <value>Thời gian của producer hoặc broker, theo UTC.</value>
+  </data>
+  <data name="TopicCreated" xml:space="preserve">
+    <value>Đã tạo topic {0}.</value>
+  </data>
+  <data name="TopicDeleted" xml:space="preserve">
+    <value>Đã xóa topic {0}.</value>
+  </data>
+  <data name="Unexpected" xml:space="preserve">
+    <value>{0} không mong đợi trong câu lệnh {1}.</value>
+  </data>
+  <data name="UnexpectedInTail" xml:space="preserve">
+    <value>{0} không mong đợi trong câu lệnh TAIL. TAIL nhận LIMIT và PARTITION.</value>
+  </data>
+  <data name="ValueComment" xml:space="preserve">
+    <value>Null là tombstone; giá trị rỗng là một tin nhắn rỗng.</value>
+  </data>
+</root>

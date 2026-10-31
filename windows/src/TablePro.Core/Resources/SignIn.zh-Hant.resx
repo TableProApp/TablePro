@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="ElastiCacheNameRequired" xml:space="preserve">
+    <value>請輸入 ElastiCache 快取名稱（複寫群組 ID）以使用 IAM 驗證。</value>
+  </data>
+  <data name="ElastiCacheRegionRequired" xml:space="preserve">
+    <value>請輸入 ElastiCache 快取所在的 AWS 區域。</value>
+  </data>
+  <data name="EntraDefault" xml:space="preserve">
+    <value>預設（Azure CLI、Visual Studio、環境）</value>
+  </data>
+  <data name="EntraDeviceCode" xml:space="preserve">
+    <value>裝置代碼</value>
+  </data>
+  <data name="EntraIntegrated" xml:space="preserve">
+    <value>整合式（Windows 帳戶）</value>
+  </data>
+  <data name="EntraInteractive" xml:space="preserve">
+    <value>互動式（瀏覽器）</value>
+  </data>
+  <data name="EntraManagedIdentity" xml:space="preserve">
+    <value>受控識別</value>
+  </data>
+  <data name="EntraServicePrincipal" xml:space="preserve">
+    <value>服務主體</value>
+  </data>
+  <data name="MethodAwsAccessKey" xml:space="preserve">
+    <value>AWS IAM (Access Key)</value>
+  </data>
+  <data name="MethodAwsProfile" xml:space="preserve">
+    <value>AWS IAM（設定檔）</value>
+  </data>
+  <data name="MethodAwsSso" xml:space="preserve">
+    <value>AWS IAM (SSO)</value>
+  </data>
+  <data name="MethodEntra" xml:space="preserve">
+    <value>Microsoft Entra ID</value>
+  </data>
+  <data name="MethodGoogleAdc" xml:space="preserve">
+    <value>Google Cloud IAM（應用程式預設憑證）</value>
+  </data>
+  <data name="MethodGoogleServiceAccount" xml:space="preserve">
+    <value>Google Cloud IAM（服務帳戶）</value>
+  </data>
+  <data name="MethodKerberos" xml:space="preserve">
+    <value>Kerberos (GSSAPI)</value>
+  </data>
+  <data name="MethodPassword" xml:space="preserve">
+    <value>密碼</value>
+  </data>
+  <data name="MethodSqlServer" xml:space="preserve">
+    <value>SQL Server 驗證</value>
+  </data>
+  <data name="MethodWindows" xml:space="preserve">
+    <value>Windows 驗證</value>
+  </data>
+  <data name="NoDatabaseUser" xml:space="preserve">
+    <value>{0} 不會簽發資料庫使用者。</value>
+  </data>
+  <data name="NotInThisBuild" xml:space="preserve">
+    <value>此版本不支援 {0} 登入。</value>
+  </data>
+  <data name="RdsEndpointFormat" xml:space="preserve">
+    <value>RDS 端點必須為 host 或 host:port。</value>
+  </data>
+  <data name="RdsRegionRequired" xml:space="preserve">
+    <value>主機不是包含區域的 RDS 端點，請輸入 AWS 區域。</value>
+  </data>
+  <data name="RedshiftEndpointInvalid" xml:space="preserve">
+    <value>「{0}」不是 Redshift 叢集或 Serverless 工作群組端點。</value>
+  </data>
+  <data name="RedshiftEndpointNotApplicable" xml:space="preserve">
+    <value>僅當主機是本機連接埠轉送或同一端點時，Redshift 端點才適用，而「{0}」兩者皆非。</value>
+  </data>
+  <data name="RedshiftEndpointUnknown" xml:space="preserve">
+    <value>TablePro 無法判斷「{0}」是哪個 Redshift 叢集或工作群組。請將主機設為 AWS 核發的端點，例如 my-cluster.abc123.us-east-1.redshift.amazonaws.com；如果你透過連接埠轉送連線，請將該端點填為 Redshift 端點。</value>
+  </data>
+</root>

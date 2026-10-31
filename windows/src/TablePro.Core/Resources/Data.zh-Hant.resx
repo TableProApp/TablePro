@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="NoChangeTransactions" xml:space="preserve">
+    <value>{0} 無法在一個交易中執行多項變更。</value>
+  </data>
+  <data name="NoDriver" xml:space="preserve">
+    <value>未註冊 {0} 的驅動程式。</value>
+  </data>
+  <data name="QueryCancelled" xml:space="preserve">
+    <value>查詢已取消。</value>
+  </data>
+  <data name="QueryCancelledWithReason" xml:space="preserve">
+    <value>查詢已取消。{0}</value>
+  </data>
+</root>

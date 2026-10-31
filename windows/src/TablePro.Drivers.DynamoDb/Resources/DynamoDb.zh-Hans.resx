@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="CannotChangeKey" xml:space="preserve">
+    <value>DynamoDB 无法更改键属性 {0}。请删除该项目，然后用新键重新添加。</value>
+  </data>
+  <data name="ClientRules_One" xml:space="preserve">
+    <value>DynamoDB 无法计算的 {0} 条筛选规则已逐页应用到读取的项目。</value>
+  </data>
+  <data name="ClientRules_Other" xml:space="preserve">
+    <value>DynamoDB 无法计算的 {0} 条筛选规则已逐页应用到读取的项目。</value>
+  </data>
+  <data name="ConsumedCapacity_One" xml:space="preserve">
+    <value>消耗容量：{0} 个请求共 {1:0.##} 个单位。</value>
+  </data>
+  <data name="ConsumedCapacity_Other" xml:space="preserve">
+    <value>消耗容量：{0} 个请求共 {1:0.##} 个单位。</value>
+  </data>
+  <data name="EmptyKeyAttribute" xml:space="preserve">
+    <value>键属性不能为空。</value>
+  </data>
+  <data name="EndpointScheme" xml:space="preserve">
+    <value>终结点必须以 https:// 或 http:// 开头。</value>
+  </data>
+  <data name="EnterSecretKey" xml:space="preserve">
+    <value>请输入秘密访问密钥作为访问密钥 ID {0} 的密码。</value>
+  </data>
+  <data name="ItemExists" xml:space="preserve">
+    <value>已存在具有此键的项目（第 {0} 项更改，共 {1} 项）。</value>
+  </data>
+  <data name="ItemGone" xml:space="preserve">
+    <value>该项目已不存在（第 {0} 项更改，共 {1} 项）。</value>
+  </data>
+  <data name="KeyNotLoaded" xml:space="preserve">
+    <value>该项目的键属性 {0} 未加载，因此找不到该项目。</value>
+  </data>
+  <data name="MapTakesObject" xml:space="preserve">
+    <value>映射属性需要一个 JSON 对象。</value>
+  </data>
+  <data name="NoKeySchema" xml:space="preserve">
+    <value>DynamoDB 未报告 {0} 的键架构。</value>
+  </data>
+  <data name="NoOffset" xml:space="preserve">
+    <value>DynamoDB 没有 OFFSET，要到达第 {0:N0} 个项目需要先读取 {1:N0} 个项目。请从头开始翻页，或筛选该表。</value>
+  </data>
+  <data name="NoProfile" xml:space="preserve">
+    <value>在共享的 config 或 credentials 文件中未找到名为“{0}”的 AWS 配置文件。</value>
+  </data>
+  <data name="NotANumber" xml:space="preserve">
+    <value>“{0}”不是数字。</value>
+  </data>
+  <data name="NotARegion" xml:space="preserve">
+    <value>“{0}”不是 AWS 区域，例如 us-east-1。</value>
+  </data>
+  <data name="NotAUrl" xml:space="preserve">
+    <value>“{0}”不是 URL。请输入终结点，例如 http://localhost:8000。</value>
+  </data>
+  <data name="NumberKeyMismatch" xml:space="preserve">
+    <value>没有项目能匹配该筛选器：Number 键与非数字文本进行了比较。</value>
+  </data>
+  <data name="PlainHttpLocalOnly" xml:space="preserve">
+    <value>仅本机（localhost）上的终结点允许使用未加密的 HTTP。其他主机请使用 https://。</value>
+  </data>
+  <data name="RawConditionAnd" xml:space="preserve">
+    <value>原始条件必须与规则同时匹配。</value>
+  </data>
+  <data name="SortNotApplied" xml:space="preserve">
+    <value>DynamoDB 扫描按表自身的顺序返回项目，因此未应用排序。</value>
+  </data>
+  <data name="StoppedAfterScanning" xml:space="preserve">
+    <value>为填满本页读取 {0:N0} 个项目后已停止。请缩小筛选范围以搜索整个表。</value>
+  </data>
+  <data name="TooManyItems" xml:space="preserve">
+    <value>DynamoDB 在一个事务中最多写入 {0} 个项目，而此次保存有 {1} 个。请每次保存较少的行。</value>
+  </data>
+</root>

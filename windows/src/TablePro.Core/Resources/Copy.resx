@@ -1,0 +1,158 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AlreadyExists" xml:space="preserve">
+    <value>{0} already exists in the target.</value>
+    <comment>{0} is an object name.</comment>
+  </data>
+  <data name="CannotCreateTables" xml:space="preserve">
+    <value>{0} cannot create tables from TablePro, so only tables that already exist receive rows.</value>
+    <comment>{0} is an engine name.</comment>
+  </data>
+  <data name="CannotExpressChange" xml:space="preserve">
+    <value>{0} cannot express this change.</value>
+    <comment>{0} is an engine name.</comment>
+  </data>
+  <data name="ColumnNotInTarget" xml:space="preserve">
+    <value>{0}: the target table has no such column, so it is not copied.</value>
+    <comment>{0} is a column name.</comment>
+  </data>
+  <data name="DefaultLeftOut" xml:space="preserve">
+    <value>{0}: the default {1} has no equivalent and is left out.</value>
+    <comment>{0} is a column name, {1} its default expression.</comment>
+  </data>
+  <data name="DefinitionHasNoRows" xml:space="preserve">
+    <value>{0} is not a table, so it has no rows to copy.</value>
+    <comment>{0} is the name of a view, function or other object that holds no rows.</comment>
+  </data>
+  <data name="DefinitionOtherEngine" xml:space="preserve">
+    <value>{0} is SQL written for {1}, which {2} cannot run as it is.</value>
+    <comment>{0} is an object name, {1} the source engine, {2} the target engine.</comment>
+  </data>
+  <data name="ForeignKeyFailed" xml:space="preserve">
+    <value>Could not create the foreign key {0}: {1}</value>
+    <comment>{0} is a foreign key name, {1} the error the server returned.</comment>
+  </data>
+  <data name="ForeignKeyLeftOut" xml:space="preserve">
+    <value>The foreign key {0} points at {1}, which the target does not have, so it is left out.</value>
+    <comment>{0} is a foreign key name, {1} the table it references.</comment>
+  </data>
+  <data name="ForeignKeyNotAdded" xml:space="preserve">
+    <value>The foreign key {0} was not added, since {1} was not copied.</value>
+    <comment>{0} is a foreign key name, {1} the table it references.</comment>
+  </data>
+  <data name="IndexFailed" xml:space="preserve">
+    <value>Could not create the index {0}: {1}</value>
+    <comment>{0} is an index name, {1} the error the server returned.</comment>
+  </data>
+  <data name="NoSourceDefinition" xml:space="preserve">
+    <value>The source returned no definition for {0}.</value>
+    <comment>{0} is an object name.</comment>
+  </data>
+  <data name="NoTableToAddRows" xml:space="preserve">
+    <value>The target has no table named {0} to add rows to.</value>
+    <comment>{0} is a table name.</comment>
+  </data>
+  <data name="NotFinished" xml:space="preserve">
+    <value>Not finished, since the copy stopped at an earlier failure.</value>
+  </data>
+  <data name="SequenceBecomesIdentity" xml:space="preserve">
+    <value>{0}: its sequence default becomes an identity column.</value>
+    <comment>{0} is a column name.</comment>
+  </data>
+  <data name="ServerWritten" xml:space="preserve">
+    <value>{0}: the server writes it, so its values are not copied.</value>
+    <comment>{0} is a column name.</comment>
+  </data>
+  <data name="SqlServerIdentityDropped" xml:space="preserve">
+    <value>{0}: SQL Server refuses copied values for an identity column, so it is created without IDENTITY.</value>
+    <comment>{0} is a column name.</comment>
+  </data>
+  <data name="SqlServerIdentityLeftOut" xml:space="preserve">
+    <value>{0}: SQL Server numbers its identity column itself, so the source's values are left out.</value>
+    <comment>{0} is a column name.</comment>
+  </data>
+  <data name="StoppedBeforeFinished" xml:space="preserve">
+    <value>Stopped before it was finished.</value>
+  </data>
+  <data name="TargetCannotChangeStructure" xml:space="preserve">
+    <value>The target cannot change its structure from TablePro.</value>
+  </data>
+  <data name="TargetCannotCreate" xml:space="preserve">
+    <value>The target cannot create it.</value>
+  </data>
+  <data name="TargetHasOtherObject" xml:space="preserve">
+    <value>The target already has an object named {0} that is not a table.</value>
+    <comment>{0} is an object name in the target that is a view, function or other object rather than a table.</comment>
+  </data>
+  <data name="TargetReadOnly" xml:space="preserve">
+    <value>The target connection is read-only, so nothing can be written to it.</value>
+  </data>
+  <data name="TypeAsText" xml:space="preserve">
+    <value>{0}: {1} becomes {2}, as text.</value>
+    <comment>{0} is a column name, {1} its source type, {2} its target type.</comment>
+  </data>
+  <data name="TypeCutTo255" xml:space="preserve">
+    <value>{0}: {1} becomes {2}, cut to 255 characters so it can be part of a key.</value>
+    <comment>{0} is a column name, {1} its source type, {2} its target type.</comment>
+  </data>
+  <data name="TypeCutTo4000" xml:space="preserve">
+    <value>{0}: {1} becomes {2}, cut to 4,000 characters so it can be part of a key.</value>
+    <comment>{0} is a column name, {1} its source type, {2} its target type.</comment>
+  </data>
+  <data name="TypeCutTo450" xml:space="preserve">
+    <value>{0}: {1} becomes {2}, cut to 450 characters so it can be part of a key.</value>
+    <comment>{0} is a column name, {1} its source type, {2} its target type.</comment>
+  </data>
+  <data name="TypeEnumerationAsText" xml:space="preserve">
+    <value>{0}: {1} becomes {2}, as text, without its list of allowed values.</value>
+    <comment>{0} is a column name, {1} its source type, {2} its target type.</comment>
+  </data>
+  <data name="TypeJsonAsText" xml:space="preserve">
+    <value>{0}: {1} becomes {2}, kept as text.</value>
+    <comment>{0} is a column name, {1} its source type, {2} its target type.</comment>
+  </data>
+  <data name="TypeNoBoolean" xml:space="preserve">
+    <value>{0}: {1} becomes {2}, since this Oracle release has no BOOLEAN.</value>
+    <comment>{0} is a column name, {1} its source type, {2} its target type.</comment>
+  </data>
+  <data name="TypeNoEquivalent" xml:space="preserve">
+    <value>{0}: {1} becomes {2}, as text, since it has no equivalent.</value>
+    <comment>{0} is a column name, {1} its source type, {2} its target type.</comment>
+  </data>
+  <data name="TypeNoTime" xml:space="preserve">
+    <value>{0}: {1} becomes {2}, since Oracle has no TIME.</value>
+    <comment>{0} is a column name, {1} its source type, {2} its target type.</comment>
+  </data>
+  <data name="TypeRowVersionAsBytes" xml:space="preserve">
+    <value>{0}: {1} becomes {2}, with the server's row versions copied as bytes.</value>
+    <comment>{0} is a column name, {1} its source type, {2} its target type.</comment>
+  </data>
+  <data name="TypeTimeZoneDropped" xml:space="preserve">
+    <value>{0}: {1} becomes {2}, without its time zone.</value>
+    <comment>{0} is a column name, {1} its source type, {2} its target type.</comment>
+  </data>
+  <data name="TypeUtc" xml:space="preserve">
+    <value>{0}: {1} becomes {2}, with times in UTC.</value>
+    <comment>{0} is a column name, {1} its source type, {2} its target type.</comment>
+  </data>
+  <data name="TypeUtcNoTimeZone" xml:space="preserve">
+    <value>{0}: {1} becomes {2}, with times in UTC, since DATETIME keeps no time zone.</value>
+    <comment>{0} is a column name, {1} its source type, {2} its target type.</comment>
+  </data>
+  <data name="UnknownTypeSystem" xml:space="preserve">
+    <value>A copy to another engine needs a type system TablePro can translate, and {0} has none it knows. Copy to a target of the same type.</value>
+    <comment>{0} is an engine name.</comment>
+  </data>
+</root>

@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AmbiguousOverload" xml:space="preserve">
+    <value>Lời gọi này khớp với nhiều overload của {0}, nên Oracle không thể chạy nó (PLS-00307).</value>
+  </data>
+  <data name="BreakpointHasNoCode" xml:space="preserve">
+    <value>Dòng {0} của {1} không có mã để dừng lại.</value>
+  </data>
+  <data name="CannotPassType" xml:space="preserve">
+    <value>TablePro không thể truyền giá trị nào kiểu {0} cho {1}.</value>
+  </data>
+  <data name="CannotPassTypeDetail" xml:space="preserve">
+    <value>Hãy gỡ lỗi nó từ một thủ tục gọi nó với giá trị đó.</value>
+  </data>
+  <data name="CompileForDebug" xml:space="preserve">
+    <value>TablePro biên dịch lại nó với thông tin gỡ lỗi (PLSQL_OPTIMIZE_LEVEL=1) và giữ các thiết lập khác. Việc biên dịch sẽ commit.</value>
+  </data>
+  <data name="CompileForDebugAction" xml:space="preserve">
+    <value>Biên dịch để gỡ lỗi</value>
+  </data>
+  <data name="CompileForDebugPackage" xml:space="preserve">
+    <value>TablePro biên dịch lại nó với thông tin gỡ lỗi (PLSQL_OPTIMIZE_LEVEL=1) và giữ các thiết lập khác. Việc biên dịch sẽ commit. Các phiên khác đang dùng package sẽ mất trạng thái của nó, và lần gọi kế tiếp của chúng sẽ thất bại một lần với ORA-04068.</value>
+  </data>
+  <data name="ConnectionLost" xml:space="preserve">
+    <value>Kết nối của phiên gỡ lỗi đã đóng.</value>
+  </data>
+  <data name="CouldNotFinishStep" xml:space="preserve">
+    <value>Trình gỡ lỗi không thể hoàn tất bước này.</value>
+  </data>
+  <data name="CouldNotStart" xml:space="preserve">
+    <value>Không thể khởi động trình gỡ lỗi.</value>
+  </data>
+  <data name="DebugFromCallerOverload" xml:space="preserve">
+    <value>Hãy gỡ lỗi nó từ một thủ tục gọi nó với các đối số chỉ overload này nhận.</value>
+  </data>
+  <data name="Ended" xml:space="preserve">
+    <value>Phiên gỡ lỗi đã kết thúc.</value>
+  </data>
+  <data name="GiveParameterValue" xml:space="preserve">
+    <value>Hãy cho {0} một giá trị. Nếu để mặc định, lời gọi cũng khớp với một overload khác của {1}.</value>
+  </data>
+  <data name="GiveParameterValues" xml:space="preserve">
+    <value>Hãy cho {0} các giá trị. Nếu để mặc định, lời gọi cũng khớp với một overload khác của {1}.</value>
+  </data>
+  <data name="GrantDebug" xml:space="preserve">
+    <value>DBA có thể cấp quyền này bằng GRANT DEBUG ON {0} TO {1}, hoặc cấp DEBUG ANY PROCEDURE.</value>
+  </data>
+  <data name="GrantDebugConnectSession" xml:space="preserve">
+    <value>DBA có thể cấp quyền này bằng GRANT DEBUG CONNECT SESSION TO {0}.</value>
+  </data>
+  <data name="HostBadCharacter" xml:space="preserve">
+    <value>Máy chủ "{0}" chứa ký tự mà bộ mô tả kết nối Oracle không cho phép.</value>
+  </data>
+  <data name="NeedsDebugConnectSession" xml:space="preserve">
+    <value>Gỡ lỗi cần quyền DEBUG CONNECT SESSION.</value>
+  </data>
+  <data name="NeedsDebugPrivilege" xml:space="preserve">
+    <value>Gỡ lỗi {0} cần quyền DEBUG trên đối tượng đó.</value>
+  </data>
+  <data name="NoEntryPoints" xml:space="preserve">
+    <value>{0} không có procedure hoặc hàm công khai nào để bắt đầu.</value>
+  </data>
+  <data name="NotASessionId" xml:space="preserve">
+    <value>"{0}" không phải là mã phiên Oracle có dạng sid,serial#.</value>
+  </data>
+  <data name="NotCompiledForDebug" xml:space="preserve">
+    <value>{0} chưa được biên dịch để gỡ lỗi.</value>
+  </data>
+  <data name="OverloadDefaultUnreadable" xml:space="preserve">
+    <value>Oracle không phân biệt được các overload khi thiếu nó (PLS-00307), và TablePro không đọc được giá trị mặc định để truyền vào.</value>
+  </data>
+  <data name="RoutineFailed" xml:space="preserve">
+    <value>Thủ tục đã phát sinh lỗi. Các thay đổi của nó đã được hoàn tác.</value>
+  </data>
+  <data name="RunNote" xml:space="preserve">
+    <value>Các thay đổi do thủ tục thực hiện được commit khi nó kết thúc. Dừng sẽ hoàn tác chúng.</value>
+  </data>
+  <data name="ServiceNameBadCharacter" xml:space="preserve">
+    <value>Tên dịch vụ "{0}" chứa ký tự mà bộ mô tả kết nối Oracle không cho phép.</value>
+  </data>
+  <data name="SidBadCharacter" xml:space="preserve">
+    <value>SID "{0}" chứa ký tự mà bộ mô tả kết nối Oracle không cho phép.</value>
+  </data>
+  <data name="SourceUnreadable" xml:space="preserve">
+    <value>TablePro không đọc được mã nguồn của đơn vị này.</value>
+  </data>
+  <data name="StillRunning" xml:space="preserve">
+    <value>TablePro không xác nhận được thủ tục đã kết thúc. Nó có thể vẫn đang chạy trên máy chủ.</value>
+  </data>
+  <data name="StillRunningNoSession" xml:space="preserve">
+    <value>Phần việc chưa commit sẽ được hoàn tác khi nó kết thúc. Người dùng có ALTER SYSTEM có thể tìm phiên của nó trong V$SESSION và kết thúc bằng ALTER SYSTEM KILL SESSION.</value>
+  </data>
+  <data name="StillRunningSid" xml:space="preserve">
+    <value>Phiên SID {0}. Phần việc chưa commit sẽ được hoàn tác khi nó kết thúc.</value>
+  </data>
+  <data name="StillRunningWithKill" xml:space="preserve">
+    <value>Phiên SID {0}, SERIAL# {1}. Phần việc chưa commit sẽ được hoàn tác khi nó kết thúc. Người dùng có ALTER SYSTEM có thể kết thúc nó ngay bằng {2}.</value>
+  </data>
+  <data name="Stopped" xml:space="preserve">
+    <value>Đã dừng. Các thay đổi của thủ tục đã được hoàn tác.</value>
+  </data>
+  <data name="TextToType" xml:space="preserve">
+    <value>TablePro không thể chuyển văn bản thành giá trị {0} cho {1}.</value>
+  </data>
+  <data name="TextToTypeDetail" xml:space="preserve">
+    <value>Hãy truyền NULL hoặc để giá trị mặc định.</value>
+  </data>
+  <data name="UnitUnreadable" xml:space="preserve">
+    <value>TablePro không đọc được {0}. Hãy kiểm tra tài khoản này có thể xem mã nguồn của nó.</value>
+  </data>
+  <data name="Unreadable" xml:space="preserve">
+    <value>Cơ sở dữ liệu đã trả lời trình gỡ lỗi bằng dữ liệu mà TablePro không đọc được.</value>
+  </data>
+  <data name="UsingDbmsDebug" xml:space="preserve">
+    <value>Đang gỡ lỗi qua DBMS_DEBUG.</value>
+  </data>
+  <data name="ValueCollection" xml:space="preserve">
+    <value>Tập hợp</value>
+  </data>
+  <data name="ValueNotReadable" xml:space="preserve">
+    <value>Không đọc được</value>
+  </data>
+</root>

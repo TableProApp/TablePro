@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="Added_One" xml:space="preserve">
+    <value>{0:N0} eklendi</value>
+  </data>
+  <data name="Added_Other" xml:space="preserve">
+    <value>{0:N0} eklendi</value>
+  </data>
+  <data name="Deleted_One" xml:space="preserve">
+    <value>{0:N0} silindi</value>
+  </data>
+  <data name="Deleted_Other" xml:space="preserve">
+    <value>{0:N0} silindi</value>
+  </data>
+  <data name="Edited_One" xml:space="preserve">
+    <value>{0:N0} düzenlendi</value>
+  </data>
+  <data name="Edited_Other" xml:space="preserve">
+    <value>{0:N0} düzenlendi</value>
+  </data>
+  <data name="RecordedByNewerVersion" xml:space="preserve">
+    <value>Bu kayıt TablePro'nun daha yeni bir sürümü tarafından tutuldu.</value>
+  </data>
+  <data name="RefusalNoPrimaryKey" xml:space="preserve">
+    <value>Tablonun birincil anahtarı yok, bu yüzden bu satır tanımlanamıyor.</value>
+  </data>
+  <data name="RefusalServerAssignedKey" xml:space="preserve">
+    <value>Bu satırın anahtarını sunucu seçti.</value>
+  </data>
+  <data name="RefusalValueTooLarge" xml:space="preserve">
+    <value>Bir değer saklanamayacak kadar büyüktü.</value>
+  </data>
+  <data name="StepPutRowBack" xml:space="preserve">
+    <value>Satırı geri koy</value>
+  </data>
+  <data name="StepRemoveAddedRow" xml:space="preserve">
+    <value>Eklenen satırı kaldır</value>
+  </data>
+  <data name="StepRestoreValues" xml:space="preserve">
+    <value>Önceki değerleri geri yükle</value>
+  </data>
+  <data name="SummarySeparator" xml:space="preserve">
+    <value>, </value>
+  </data>
+</root>

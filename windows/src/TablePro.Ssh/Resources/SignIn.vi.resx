@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AwsProfileMissing" xml:space="preserve">
+    <value>Hồ sơ AWS {0} không có trong %USERPROFILE%\.aws\config hoặc credentials.</value>
+  </data>
+  <data name="AwsProfileNoCredentials" xml:space="preserve">
+    <value>Hồ sơ AWS {0} không cung cấp thông tin xác thực: {1}</value>
+  </data>
+  <data name="AwsProfileNoCredentialsSso" xml:space="preserve">
+    <value>Hồ sơ AWS {0} không cung cấp thông tin xác thực: {1} Hãy chạy “aws sso login --profile {0}” rồi kết nối lại.</value>
+  </data>
+  <data name="EnterAccessKey" xml:space="preserve">
+    <value>Hãy nhập ID khóa truy cập và khóa truy cập bí mật.</value>
+  </data>
+  <data name="EnterIamUser" xml:space="preserve">
+    <value>Hãy nhập người dùng cơ sở dữ liệu mà mã thông báo IAM dùng để đăng nhập.</value>
+  </data>
+  <data name="EntraFailed" xml:space="preserve">
+    <value>Đăng nhập Microsoft Entra ID không thành công: {0}</value>
+  </data>
+  <data name="EntraIntegratedSqlServerOnly" xml:space="preserve">
+    <value>Đăng nhập Entra tích hợp chỉ dùng được cho SQL Server.</value>
+  </data>
+  <data name="GcloudScope" xml:space="preserve">
+    <value>Phiên đăng nhập gcloud không cho phép đăng nhập Cloud SQL. Hãy chạy lại gcloud auth application-default login, không kèm --scopes.</value>
+  </data>
+  <data name="GoogleFailed" xml:space="preserve">
+    <value>Đăng nhập Google Cloud IAM không thành công: {0}</value>
+  </data>
+  <data name="GoogleRefused" xml:space="preserve">
+    <value>Google đã từ chối thông tin xác thực: {0} Hãy chạy gcloud auth application-default login hoặc kiểm tra khóa tài khoản dịch vụ, rồi kết nối lại.</value>
+  </data>
+  <data name="KeyFileUnreadable" xml:space="preserve">
+    <value>Không thể đọc tệp khóa tài khoản dịch vụ {0}: {1}</value>
+  </data>
+  <data name="KeyNotJson" xml:space="preserve">
+    <value>Khóa tài khoản dịch vụ không phải JSON hợp lệ.</value>
+  </data>
+  <data name="KeyWrongType" xml:space="preserve">
+    <value>Khóa này là thông tin xác thực "{0}", không phải khóa tài khoản dịch vụ.</value>
+  </data>
+  <data name="NoAdc" xml:space="preserve">
+    <value>Không tìm thấy thông tin xác thực mặc định ứng dụng của Google. Hãy chạy gcloud auth application-default login rồi kết nối lại.</value>
+  </data>
+  <data name="NoSignInToken" xml:space="preserve">
+    <value>{0} không dùng mã thông báo đăng nhập.</value>
+  </data>
+  <data name="PemKey" xml:space="preserve">
+    <value>Đây là khóa riêng PEM. Hãy dùng tệp khóa JSON mà Google Cloud đã tạo cho tài khoản dịch vụ.</value>
+  </data>
+  <data name="RedshiftNotIssued" xml:space="preserve">
+    <value>AWS không cấp thông tin xác thực Redshift: {0}</value>
+  </data>
+  <data name="RedshiftNoUser" xml:space="preserve">
+    <value>AWS phản hồi mà không có người dùng và mật khẩu Redshift.</value>
+  </data>
+  <data name="ServiceAccountKeyRequired" xml:space="preserve">
+    <value>Nhập khóa tài khoản dịch vụ: đường dẫn tệp JSON của khóa, hoặc chính nội dung JSON.</value>
+  </data>
+  <data name="ServicePrincipalIncomplete" xml:space="preserve">
+    <value>Service principal cần ID thư mục (tenant), ID ứng dụng (client) và bí mật client.</value>
+  </data>
+  <data name="UnknownCredentialType" xml:space="preserve">
+    <value>không xác định</value>
+  </data>
+</root>

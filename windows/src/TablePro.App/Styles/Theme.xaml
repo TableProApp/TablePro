@@ -1,0 +1,158 @@
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:converters="using:TablePro.App.Converters">
+
+    <!--
+        App-wide resources on top of the WinUI Fluent theme. Colors come from the system theme brushes wherever one
+        exists, so light, dark and high contrast follow Windows. Only the SQL syntax palette is our own.
+    -->
+
+    <ResourceDictionary.ThemeDictionaries>
+        <ResourceDictionary x:Key="Light">
+            <Color x:Key="SqlKeywordColor">#FF0F54D6</Color>
+            <Color x:Key="SqlFunctionColor">#FF8A3FC7</Color>
+            <Color x:Key="SqlStringColor">#FFB3261E</Color>
+            <Color x:Key="SqlNumberColor">#FF0B7A5C</Color>
+            <Color x:Key="SqlCommentColor">#FF6B7280</Color>
+            <Color x:Key="SqlIdentifierColor">#FF9A5B00</Color>
+            <Color x:Key="SqlParameterColor">#FFC2185B</Color>
+            <Color x:Key="SqlPlainColor">#FF1B1B1B</Color>
+            <SolidColorBrush x:Key="GridAlternateRowBrush" Color="#08000000" />
+            <SolidColorBrush x:Key="GridLineBrush" Color="#14000000" />
+            <SolidColorBrush x:Key="GridSelectionBrush" Color="#290F6CBD" />
+            <SolidColorBrush x:Key="GridInsertedRowBrush" Color="#1F0F7B0F" />
+            <SolidColorBrush x:Key="GridDeletedRowBrush" Color="#1FC42B1C" />
+            <SolidColorBrush x:Key="GridModifiedCellBrush" Color="#FF9D5D00" />
+        </ResourceDictionary>
+        <ResourceDictionary x:Key="Dark">
+            <Color x:Key="SqlKeywordColor">#FF6CB6FF</Color>
+            <Color x:Key="SqlFunctionColor">#FFD2A8FF</Color>
+            <Color x:Key="SqlStringColor">#FFFF9E8A</Color>
+            <Color x:Key="SqlNumberColor">#FF7EE2B8</Color>
+            <Color x:Key="SqlCommentColor">#FF8B949E</Color>
+            <Color x:Key="SqlIdentifierColor">#FFF2CC60</Color>
+            <Color x:Key="SqlParameterColor">#FFFF7AB6</Color>
+            <Color x:Key="SqlPlainColor">#FFE6E6E6</Color>
+            <SolidColorBrush x:Key="GridAlternateRowBrush" Color="#0AFFFFFF" />
+            <SolidColorBrush x:Key="GridLineBrush" Color="#17FFFFFF" />
+            <SolidColorBrush x:Key="GridSelectionBrush" Color="#3360CDFF" />
+            <SolidColorBrush x:Key="GridInsertedRowBrush" Color="#2A6CCB5F" />
+            <SolidColorBrush x:Key="GridDeletedRowBrush" Color="#2AFF99A4" />
+            <SolidColorBrush x:Key="GridModifiedCellBrush" Color="#FFFCE100" />
+        </ResourceDictionary>
+        <ResourceDictionary x:Key="HighContrast">
+            <Color x:Key="SqlKeywordColor">#FFFFFF00</Color>
+            <Color x:Key="SqlFunctionColor">#FF00FFFF</Color>
+            <Color x:Key="SqlStringColor">#FF00FF00</Color>
+            <Color x:Key="SqlNumberColor">#FF00FF00</Color>
+            <Color x:Key="SqlCommentColor">#FFC0C0C0</Color>
+            <Color x:Key="SqlIdentifierColor">#FFFFFFFF</Color>
+            <Color x:Key="SqlParameterColor">#FF00FFFF</Color>
+            <Color x:Key="SqlPlainColor">#FFFFFFFF</Color>
+            <SolidColorBrush x:Key="GridAlternateRowBrush" Color="Transparent" />
+            <SolidColorBrush x:Key="GridLineBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="GridSelectionBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+            <SolidColorBrush x:Key="GridInsertedRowBrush" Color="Transparent" />
+            <SolidColorBrush x:Key="GridDeletedRowBrush" Color="Transparent" />
+            <SolidColorBrush x:Key="GridModifiedCellBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+        </ResourceDictionary>
+    </ResourceDictionary.ThemeDictionaries>
+
+    <FontFamily x:Key="CodeFontFamily">Cascadia Mono, Cascadia Code, Consolas</FontFamily>
+    <x:Double x:Key="GridFontSize">13</x:Double>
+    <x:Double x:Key="GridRowHeight">28</x:Double>
+    <x:Double x:Key="SidebarWidth">272</x:Double>
+    <converters:ObjectToStringConverter x:Key="ObjectToStringConverter" />
+    <converters:NotNullConverter x:Key="NotNullConverter" />
+    <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
+    <converters:BoolToVisibilityConverter x:Key="InverseBoolToVisibilityConverter" Invert="True" />
+    <CornerRadius x:Key="PaneCornerRadius">8</CornerRadius>
+    <Thickness x:Key="PanePadding">12</Thickness>
+
+    <!--
+        A colour swatch in a row of radio choices, as the macOS connection form draws its colour picker: the swatch
+        itself, with an accent ring around the chosen one and a faint ring under the pointer, no radio circle.
+    -->
+    <Style x:Key="ColorSwatchRadioButtonStyle" TargetType="RadioButton">
+        <Setter Property="MinWidth" Value="0" />
+        <Setter Property="MinHeight" Value="0" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="UseSystemFocusVisuals" Value="True" />
+        <Setter Property="FocusVisualMargin" Value="-2" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="RadioButton">
+                    <Grid x:Name="RootGrid" Width="28" Height="28" Background="Transparent">
+                        <Ellipse x:Name="Ring" Stroke="{ThemeResource AccentFillColorDefaultBrush}" StrokeThickness="2" Opacity="0" />
+                        <Ellipse x:Name="HoverRing" Stroke="{ThemeResource ControlStrongStrokeColorDefaultBrush}" StrokeThickness="1" Opacity="0" />
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Content="{TemplateBinding Content}" />
+                        <VisualStateManager.VisualStateGroups>
+                            <VisualStateGroup x:Name="CommonStates">
+                                <VisualState x:Name="Normal" />
+                                <VisualState x:Name="PointerOver">
+                                    <VisualState.Setters>
+                                        <Setter Target="HoverRing.Opacity" Value="1" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="Pressed">
+                                    <VisualState.Setters>
+                                        <Setter Target="HoverRing.Opacity" Value="1" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="Disabled">
+                                    <VisualState.Setters>
+                                        <Setter Target="RootGrid.Opacity" Value="0.4" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                            </VisualStateGroup>
+                            <VisualStateGroup x:Name="CheckStates">
+                                <VisualState x:Name="Checked">
+                                    <VisualState.Setters>
+                                        <Setter Target="Ring.Opacity" Value="1" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="Unchecked" />
+                                <VisualState x:Name="Indeterminate" />
+                            </VisualStateGroup>
+                        </VisualStateManager.VisualStateGroups>
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- A card on the backdrop: the Fluent layer fill with its hairline stroke. -->
+    <Style x:Key="PaneBorderStyle" TargetType="Border">
+        <Setter Property="Background" Value="{ThemeResource LayerFillColorDefaultBrush}" />
+        <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="{StaticResource PaneCornerRadius}" />
+    </Style>
+
+    <Style x:Key="CardBorderStyle" TargetType="Border">
+        <Setter Property="Background" Value="{ThemeResource CardBackgroundFillColorDefaultBrush}" />
+        <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="{StaticResource OverlayCornerRadius}" />
+        <Setter Property="Padding" Value="16" />
+    </Style>
+
+    <Style x:Key="ToolbarButtonStyle" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
+        <Setter Property="Padding" Value="8,5" />
+        <Setter Property="MinHeight" Value="32" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+    </Style>
+
+    <Style x:Key="SectionHeaderTextStyle" TargetType="TextBlock" BasedOn="{StaticResource CaptionTextBlockStyle}">
+        <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Margin" Value="12,12,12,4" />
+    </Style>
+
+    <Style x:Key="StatusTextStyle" TargetType="TextBlock" BasedOn="{StaticResource CaptionTextBlockStyle}">
+        <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+</ResourceDictionary>

@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>$(TableProTargetFramework)</TargetFramework>
+    <RootNamespace>TablePro.Mcp</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Kestrel binds 127.0.0.1 without the URL ACL reservation http.sys (HttpListener) needs for a non-admin user. -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\TablePro.Core\TablePro.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="TablePro.Mcp.Tests" />
+  </ItemGroup>
+</Project>

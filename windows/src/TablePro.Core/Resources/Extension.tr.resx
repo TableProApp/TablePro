@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="ControlCharacterInPath" xml:space="preserve">
+    <value>Listedeki bir uzantının yolu satır sonu veya başka bir denetim karakteri içeriyor.</value>
+  </data>
+  <data name="CouldNotLoad" xml:space="preserve">
+    <value>"{0}" uzantısı yüklenemedi.</value>
+  </data>
+  <data name="CouldNotLoadList" xml:space="preserve">
+    <value>Bu bağlantının SQLite uzantıları yüklenemedi.</value>
+  </data>
+  <data name="Duplicate" xml:space="preserve">
+    <value>"{0}" listede birden fazla kez yer alıyor.</value>
+  </data>
+  <data name="EntryPointNotFound" xml:space="preserve">
+    <value>Dosyada {0} adlı bir işlev yok.</value>
+  </data>
+  <data name="FileNotFound" xml:space="preserve">
+    <value>"{0}" konumunda dosya yok.</value>
+  </data>
+  <data name="InitializationFailed" xml:space="preserve">
+    <value>Uzantı başlatılamadı: {0}</value>
+  </data>
+  <data name="InvalidEntryPoint" xml:space="preserve">
+    <value>"{0}" geçerli bir giriş noktası adı değil.</value>
+  </data>
+  <data name="LoadingNotClosed" xml:space="preserve">
+    <value>SQLite yüklemeden sonra uzantı yüklemeyi yeniden kapatmadı.</value>
+  </data>
+  <data name="LoadingUnavailable" xml:space="preserve">
+    <value>SQLite bu bağlantıda uzantı yüklemeye izin vermedi.</value>
+  </data>
+  <data name="MalformedList" xml:space="preserve">
+    <value>Kayıtlı uzantı listesi TablePro'nun okuyabileceği bir biçimde değil.</value>
+  </data>
+  <data name="MissingPath" xml:space="preserve">
+    <value>Listedeki bir uzantının dosyası yok.</value>
+  </data>
+  <data name="NotAFile" xml:space="preserve">
+    <value>"{0}" bir dosya değil.</value>
+  </data>
+  <data name="PathTooLong" xml:space="preserve">
+    <value>"{0}" yolu çok uzun.</value>
+  </data>
+  <data name="RelativePath" xml:space="preserve">
+    <value>"{0}" tam bir yol değil.</value>
+  </data>
+</root>

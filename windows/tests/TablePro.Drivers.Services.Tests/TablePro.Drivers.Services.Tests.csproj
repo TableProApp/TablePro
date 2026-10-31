@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>$(TableProTargetFramework)</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <RootNamespace>TablePro.Drivers.Services.Tests</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/TablePro.Core/TablePro.Core.csproj" />
+    <ProjectReference Include="../../src/TablePro.Drivers.Kafka/TablePro.Drivers.Kafka.csproj" />
+    <ProjectReference Include="../../src/TablePro.Drivers.Etcd/TablePro.Drivers.Etcd.csproj" />
+    <ProjectReference Include="../../src/TablePro.Drivers.Cloudflare/TablePro.Drivers.Cloudflare.csproj" />
+    <ProjectReference Include="../../src/TablePro.Drivers.LibSql/TablePro.Drivers.LibSql.csproj" />
+    <!-- libSQL's local file mode opens through the SQLite driver, as the app composes them. -->
+    <ProjectReference Include="../../src/TablePro.Drivers.Sqlite/TablePro.Drivers.Sqlite.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+</Project>

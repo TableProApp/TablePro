@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AuthFailed" xml:space="preserve">
+    <value>인증에 실패했습니다. {0}</value>
+  </data>
+  <data name="AuthFailedWith" xml:space="preserve">
+    <value>{0}. {1}</value>
+  </data>
+  <data name="CheckTokenAndAccount" xml:space="preserve">
+    <value>API 토큰과 계정 ID를 확인하세요.</value>
+  </data>
+  <data name="ColumnsNotRecognized" xml:space="preserve">
+    <value>{0}이(가) TablePro에서 인식할 수 없는 열을 반환했습니다: {1}.</value>
+  </data>
+  <data name="D1AuthHint" xml:space="preserve">
+    <value>API 토큰에는 이 계정에 대한 D1 Read 권한과, 데이터를 변경하려면 D1 Edit 권한이 필요합니다.</value>
+  </data>
+  <data name="D1Stats" xml:space="preserve">
+    <value>D1이 {2:0.###}ms 동안 {0:N0}개 행을 읽고 {1:N0}개 행을 썼습니다.</value>
+  </data>
+  <data name="EmptyBody" xml:space="preserve">
+    <value>본문 없음</value>
+  </data>
+  <data name="EmptyResult" xml:space="preserve">
+    <value>Cloudflare가 빈 결과를 반환했습니다.</value>
+  </data>
+  <data name="EnterAccountId" xml:space="preserve">
+    <value>호스트 필드에 Cloudflare 계정 ID를 입력하세요.</value>
+  </data>
+  <data name="EnterApiToken" xml:space="preserve">
+    <value>암호 필드에 Cloudflare API 토큰을 입력하세요.</value>
+  </data>
+  <data name="EnterD1Database" xml:space="preserve">
+    <value>데이터베이스 필드에 D1 데이터베이스 이름 또는 ID를 입력하세요.</value>
+  </data>
+  <data name="EnterR2Bucket" xml:space="preserve">
+    <value>데이터베이스 필드에 R2 버킷 이름을 입력하세요.</value>
+  </data>
+  <data name="HttpStatus" xml:space="preserve">
+    <value>Cloudflare가 HTTP {0}을(를) 반환했습니다: {1}</value>
+  </data>
+  <data name="KeyedChangeInBatch" xml:space="preserve">
+    <value>일괄 처리의 키 기반 변경</value>
+  </data>
+  <data name="NoD1Database" xml:space="preserve">
+    <value>이 계정에 '{0}'(이)라는 D1 데이터베이스가 없습니다.</value>
+  </data>
+  <data name="NotACloudflareEngine" xml:space="preserve">
+    <value>{0}은(는) Cloudflare 엔진이 아닙니다.</value>
+  </data>
+  <data name="R2AuthHint" xml:space="preserve">
+    <value>API 토큰에는 이 계정에 대한 R2 SQL, R2 Data Catalog 및 R2 Storage 권한이 필요합니다.</value>
+  </data>
+  <data name="R2NoOffset" xml:space="preserve">
+    <value>R2 SQL은 쿼리당 최대 {0:N0}개 행을 반환하고 OFFSET이 없으므로 {0:N0}번째 이후의 행으로는 페이지를 이동할 수 없습니다. 대신 필터나 정렬로 행을 좁히세요.</value>
+  </data>
+  <data name="R2ReadOnly" xml:space="preserve">
+    <value>R2 SQL은 읽기 전용입니다. Spark나 PyIceberg 같은 쓰기 도구로 Iceberg 테이블을 변경하세요.</value>
+  </data>
+  <data name="R2StoppedAt" xml:space="preserve">
+    <value>R2 SQL이 한 쿼리에서 반환하는 최대치인 {0:N0}개 행에서 중지했습니다.</value>
+  </data>
+  <data name="RateLimited" xml:space="preserve">
+    <value>Cloudflare가 이 토큰의 요청 속도를 제한하고 있습니다. 잠시 후 다시 시도하세요.</value>
+  </data>
+  <data name="RateLimitedRetryAfter" xml:space="preserve">
+    <value>Cloudflare가 이 토큰의 요청 속도를 제한하고 있습니다. {0:0}초 후에 다시 시도하세요.</value>
+  </data>
+  <data name="Unreadable" xml:space="preserve">
+    <value>Cloudflare가 TablePro에서 읽을 수 없는 응답을 반환했습니다(HTTP {0}): {1}</value>
+  </data>
+</root>

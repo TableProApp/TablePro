@@ -1,0 +1,255 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="CategoryApp" xml:space="preserve">
+    <value>앱</value>
+  </data>
+  <data name="CategoryConnections" xml:space="preserve">
+    <value>연결</value>
+  </data>
+  <data name="CategoryDataGrid" xml:space="preserve">
+    <value>데이터 그리드</value>
+  </data>
+  <data name="CategoryEditor" xml:space="preserve">
+    <value>편집기 및 쿼리</value>
+  </data>
+  <data name="CategoryNavigation" xml:space="preserve">
+    <value>탐색</value>
+  </data>
+  <data name="CommandCloseAllTabs" xml:space="preserve">
+    <value>모든 탭 닫기</value>
+  </data>
+  <data name="CommandCloseOtherTabs" xml:space="preserve">
+    <value>다른 탭 닫기</value>
+  </data>
+  <data name="CommandCloseTab" xml:space="preserve">
+    <value>탭 닫기</value>
+  </data>
+  <data name="CommandDisconnect" xml:space="preserve">
+    <value>연결 해제</value>
+  </data>
+  <data name="CommandErDiagram" xml:space="preserve">
+    <value>ER 다이어그램</value>
+  </data>
+  <data name="CommandExecuteAllStatements" xml:space="preserve">
+    <value>모든 문 실행</value>
+  </data>
+  <data name="CommandExecuteQuery" xml:space="preserve">
+    <value>현재 문 실행</value>
+  </data>
+  <data name="CommandExplainQuery" xml:space="preserve">
+    <value>쿼리 설명</value>
+  </data>
+  <data name="CommandExportDatabase" xml:space="preserve">
+    <value>데이터베이스 내보내기</value>
+  </data>
+  <data name="CommandFind" xml:space="preserve">
+    <value>찾기</value>
+  </data>
+  <data name="CommandFindAndReplace" xml:space="preserve">
+    <value>찾기 및 바꾸기</value>
+  </data>
+  <data name="CommandFindNext" xml:space="preserve">
+    <value>다음 찾기</value>
+  </data>
+  <data name="CommandFindPrevious" xml:space="preserve">
+    <value>이전 찾기</value>
+  </data>
+  <data name="CommandFocusObjectList" xml:space="preserve">
+    <value>객체 목록에 포커스</value>
+  </data>
+  <data name="CommandFocusSidebarSearch" xml:space="preserve">
+    <value>사이드바 필터에 포커스</value>
+  </data>
+  <data name="CommandFormatQuery" xml:space="preserve">
+    <value>쿼리 서식 지정</value>
+  </data>
+  <data name="CommandGoToDefinition" xml:space="preserve">
+    <value>정의로 이동</value>
+  </data>
+  <data name="CommandManageConnections" xml:space="preserve">
+    <value>연결 관리</value>
+  </data>
+  <data name="CommandNewTab" xml:space="preserve">
+    <value>새 탭</value>
+  </data>
+  <data name="CommandNextQueryIssue" xml:space="preserve">
+    <value>다음 쿼리 문제</value>
+  </data>
+  <data name="CommandOpenSettings" xml:space="preserve">
+    <value>설정</value>
+  </data>
+  <data name="CommandPreviousQueryIssue" xml:space="preserve">
+    <value>이전 쿼리 문제</value>
+  </data>
+  <data name="CommandQuickSwitcher" xml:space="preserve">
+    <value>빠르게 열기</value>
+  </data>
+  <data name="CommandRenameSymbol" xml:space="preserve">
+    <value>기호 이름 바꾸기</value>
+  </data>
+  <data name="CommandRunSqlFile" xml:space="preserve">
+    <value>SQL 파일 실행</value>
+  </data>
+  <data name="CommandSaveFile" xml:space="preserve">
+    <value>파일 저장</value>
+  </data>
+  <data name="CommandSearchDatabase" xml:space="preserve">
+    <value>데이터베이스 검색</value>
+  </data>
+  <data name="CommandServerDashboard" xml:space="preserve">
+    <value>서버 대시보드</value>
+  </data>
+  <data name="CommandShowFavoritesList" xml:space="preserve">
+    <value>즐겨찾기 표시</value>
+  </data>
+  <data name="CommandShowNextTab" xml:space="preserve">
+    <value>다음 탭 보기</value>
+  </data>
+  <data name="CommandShowPreviousTab" xml:space="preserve">
+    <value>이전 탭 보기</value>
+  </data>
+  <data name="CommandShowQuickInfo" xml:space="preserve">
+    <value>요약 정보 표시</value>
+  </data>
+  <data name="CommandToggleAssistant" xml:space="preserve">
+    <value>어시스턴트 표시/숨기기</value>
+  </data>
+  <data name="CommandToggleComment" xml:space="preserve">
+    <value>주석 전환</value>
+  </data>
+  <data name="CommandToggleHistory" xml:space="preserve">
+    <value>기록 표시/숨기기</value>
+  </data>
+  <data name="CommandToggleSqlFiles" xml:space="preserve">
+    <value>SQL 파일 표시/숨기기</value>
+  </data>
+  <data name="CommandToggleTableBrowser" xml:space="preserve">
+    <value>사이드바 표시/숨기기</value>
+  </data>
+  <data name="ConflictCommand" xml:space="preserve">
+    <value>{0}은(는) 이미 {2}의 "{1}"에서 사용 중입니다.</value>
+  </data>
+  <data name="ConflictNeedsModifier" xml:space="preserve">
+    <value>기능 키가 아니면 단축키에는 Ctrl 또는 Alt가 필요합니다. Shift는 함께 사용할 수 있지만 단독으로는 단축키가 될 수 없습니다.</value>
+  </data>
+  <data name="ConflictReserved" xml:space="preserve">
+    <value>{0}은(는) "{1}"용으로 예약되어 있어 할당할 수 없습니다.</value>
+  </data>
+  <data name="ConflictSystemReserved" xml:space="preserve">
+    <value>{0}은(는) Windows에서 예약되어 있어 할당할 수 없습니다.</value>
+  </data>
+  <data name="RecorderHelpText" xml:space="preserve">
+    <value>눌러서 단축키를 기록하세요. Esc를 누르면 취소되고 Backspace를 누르면 지워집니다.</value>
+  </data>
+  <data name="RecorderPrompt" xml:space="preserve">
+    <value>단축키를 누르세요</value>
+  </data>
+  <data name="RecorderRecording" xml:space="preserve">
+    <value>기록 중</value>
+  </data>
+  <data name="ReservedAddRow" xml:space="preserve">
+    <value>행 추가</value>
+  </data>
+  <data name="ReservedCloseWindow" xml:space="preserve">
+    <value>창 닫기</value>
+  </data>
+  <data name="ReservedContextMenu" xml:space="preserve">
+    <value>상황에 맞는 메뉴</value>
+  </data>
+  <data name="ReservedCopyWithHeaders" xml:space="preserve">
+    <value>헤더와 함께 복사</value>
+  </data>
+  <data name="ReservedCycleWindows" xml:space="preserve">
+    <value>창 순환</value>
+  </data>
+  <data name="ReservedDeleteWordBackward" xml:space="preserve">
+    <value>이전 단어 삭제</value>
+  </data>
+  <data name="ReservedDeleteWordForward" xml:space="preserve">
+    <value>다음 단어 삭제</value>
+  </data>
+  <data name="ReservedDuplicateLine" xml:space="preserve">
+    <value>줄 복제</value>
+  </data>
+  <data name="ReservedMenuBar" xml:space="preserve">
+    <value>메뉴 모음</value>
+  </data>
+  <data name="ReservedMoveToBeginningOfDocument" xml:space="preserve">
+    <value>문서 시작 부분으로 이동</value>
+  </data>
+  <data name="ReservedMoveToEndOfDocument" xml:space="preserve">
+    <value>문서 끝으로 이동</value>
+  </data>
+  <data name="ReservedMoveToNextParagraph" xml:space="preserve">
+    <value>다음 단락으로 이동</value>
+  </data>
+  <data name="ReservedMoveToPreviousParagraph" xml:space="preserve">
+    <value>이전 단락으로 이동</value>
+  </data>
+  <data name="ReservedMoveWordLeft" xml:space="preserve">
+    <value>단어 단위로 왼쪽 이동</value>
+  </data>
+  <data name="ReservedMoveWordRight" xml:space="preserve">
+    <value>단어 단위로 오른쪽 이동</value>
+  </data>
+  <data name="ReservedNextProblem" xml:space="preserve">
+    <value>다음 문제</value>
+  </data>
+  <data name="ReservedPreviousProblem" xml:space="preserve">
+    <value>이전 문제</value>
+  </data>
+  <data name="ReservedPrintScreen" xml:space="preserve">
+    <value>Print Screen</value>
+  </data>
+  <data name="ReservedQuickInfo" xml:space="preserve">
+    <value>요약 정보</value>
+  </data>
+  <data name="ReservedSaveChanges" xml:space="preserve">
+    <value>변경 사항 저장</value>
+  </data>
+  <data name="ReservedSecurityOptions" xml:space="preserve">
+    <value>보안 옵션</value>
+  </data>
+  <data name="ReservedSelectTab" xml:space="preserve">
+    <value>탭 {0} 선택</value>
+  </data>
+  <data name="ReservedSelectToBeginningOfDocument" xml:space="preserve">
+    <value>문서 시작 부분까지 선택</value>
+  </data>
+  <data name="ReservedSelectToEndOfDocument" xml:space="preserve">
+    <value>문서 끝까지 선택</value>
+  </data>
+  <data name="ReservedSelectWordLeft" xml:space="preserve">
+    <value>단어 단위로 왼쪽 선택</value>
+  </data>
+  <data name="ReservedSelectWordRight" xml:space="preserve">
+    <value>단어 단위로 오른쪽 선택</value>
+  </data>
+  <data name="ReservedShowCompletions" xml:space="preserve">
+    <value>자동 완성 표시</value>
+  </data>
+  <data name="ReservedStartMenu" xml:space="preserve">
+    <value>시작 메뉴</value>
+  </data>
+  <data name="ReservedSwitchApps" xml:space="preserve">
+    <value>앱 전환</value>
+  </data>
+  <data name="ReservedTaskManager" xml:space="preserve">
+    <value>작업 관리자</value>
+  </data>
+  <data name="ReservedWindowMenu" xml:space="preserve">
+    <value>창 메뉴</value>
+  </data>
+</root>

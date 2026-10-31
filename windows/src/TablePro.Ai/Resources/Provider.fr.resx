@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="EmptyBody" xml:space="preserve">
+    <value>{0} a répondu avec un corps vide.</value>
+  </data>
+  <data name="KeyOverHttp" xml:space="preserve">
+    <value>Une clé API n’est envoyée en http non chiffré qu’à cet ordinateur. Utilisez une adresse https.</value>
+  </data>
+  <data name="ModelNotFound" xml:space="preserve">
+    <value>{0} ne connaît pas ce modèle ou cette adresse</value>
+  </data>
+  <data name="NeedsApiKey" xml:space="preserve">
+    <value>{0} nécessite une clé API.</value>
+  </data>
+  <data name="RateLimited" xml:space="preserve">
+    <value>{0} limite le débit des requêtes</value>
+  </data>
+  <data name="RefusedKey" xml:space="preserve">
+    <value>{0} a refusé la clé API</value>
+  </data>
+  <data name="RefusedRequest" xml:space="preserve">
+    <value>{0} a refusé la requête</value>
+  </data>
+  <data name="ServerError" xml:space="preserve">
+    <value>{0} a rencontré une erreur de serveur</value>
+  </data>
+  <data name="StoppedReply" xml:space="preserve">
+    <value>{0} a interrompu la réponse : {1}</value>
+  </data>
+  <data name="UnknownError" xml:space="preserve">
+    <value>erreur inconnue</value>
+  </data>
+  <data name="Unreachable" xml:space="preserve">
+    <value>Impossible de joindre {0} à l’adresse {1} : {2}</value>
+  </data>
+  <data name="UnreadableEvent" xml:space="preserve">
+    <value>{0} a envoyé un événement que l’application ne peut pas lire.</value>
+  </data>
+  <data name="UnreadableJson" xml:space="preserve">
+    <value>{0} a répondu avec un JSON que l’application ne peut pas lire.</value>
+  </data>
+  <data name="WithStatus" xml:space="preserve">
+    <value>{0} (HTTP {1}).</value>
+  </data>
+  <data name="WithStatusDetail" xml:space="preserve">
+    <value>{0} (HTTP {1}) : {2}</value>
+  </data>
+</root>

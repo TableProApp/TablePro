@@ -1,0 +1,315 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AccessReadOnly" xml:space="preserve">
+    <value>只读</value>
+  </data>
+  <data name="AccessReadWrite" xml:space="preserve">
+    <value>读写，每次写入前询问</value>
+  </data>
+  <data name="ActionClientAdded" xml:space="preserve">
+    <value>已添加客户端</value>
+  </data>
+  <data name="ActionClientRemoved" xml:space="preserve">
+    <value>已移除客户端</value>
+  </data>
+  <data name="ActionClientRevoked" xml:space="preserve">
+    <value>已撤销客户端</value>
+  </data>
+  <data name="ActionPairingApproved" xml:space="preserve">
+    <value>已批准配对</value>
+  </data>
+  <data name="ActionPairingDenied" xml:space="preserve">
+    <value>已拒绝配对</value>
+  </data>
+  <data name="ActionPairingRequest" xml:space="preserve">
+    <value>配对请求</value>
+  </data>
+  <data name="ActionSignInRefused" xml:space="preserve">
+    <value>登录被拒绝</value>
+  </data>
+  <data name="ActionTokenCollected" xml:space="preserve">
+    <value>已领取令牌</value>
+  </data>
+  <data name="ActivityHeading" xml:space="preserve">
+    <value>活动</value>
+  </data>
+  <data name="ActivityListName" xml:space="preserve">
+    <value>MCP 活动</value>
+  </data>
+  <data name="ActivityNote_One" xml:space="preserve">
+    <value>每次工具调用、配对和客户端更改都会在 mcp-audit.db 中保留 {0} 天。语句仅以 SHA-256 摘要形式保存，绝不保存文本；语句本身可在查询历史记录中查看。</value>
+  </data>
+  <data name="ActivityNote_Other" xml:space="preserve">
+    <value>每次工具调用、配对和客户端更改都会在 mcp-audit.db 中保留 {0} 天。语句仅以 SHA-256 摘要形式保存，绝不保存文本；语句本身可在查询历史记录中查看。</value>
+  </data>
+  <data name="AddClient" xml:space="preserve">
+    <value>添加客户端</value>
+  </data>
+  <data name="AddClientTitle" xml:space="preserve">
+    <value>添加 MCP 客户端</value>
+  </data>
+  <data name="AddClientTooltip" xml:space="preserve">
+    <value>为无法配对的客户端手动签发令牌</value>
+  </data>
+  <data name="AllClients" xml:space="preserve">
+    <value>所有客户端</value>
+  </data>
+  <data name="Allow" xml:space="preserve">
+    <value>允许</value>
+  </data>
+  <data name="CategoryAdmin" xml:space="preserve">
+    <value>客户端更改</value>
+  </data>
+  <data name="CategoryAll" xml:space="preserve">
+    <value>所有活动</value>
+  </data>
+  <data name="CategoryAuth" xml:space="preserve">
+    <value>配对和登录</value>
+  </data>
+  <data name="CategoryFilterName" xml:space="preserve">
+    <value>活动类型</value>
+  </data>
+  <data name="CategoryTools" xml:space="preserve">
+    <value>工具调用</value>
+  </data>
+  <data name="ChangeClientFailed" xml:space="preserve">
+    <value>无法更改客户端</value>
+  </data>
+  <data name="ClearLog" xml:space="preserve">
+    <value>清除日志</value>
+  </data>
+  <data name="ClearLogConfirmMessage" xml:space="preserve">
+    <value>所有已记录的调用、配对和客户端更改都将被删除。已配对的客户端仍保留其访问权限。</value>
+  </data>
+  <data name="ClearLogConfirmTitle" xml:space="preserve">
+    <value>清除 MCP 活动日志？</value>
+  </data>
+  <data name="ClearLogFailed" xml:space="preserve">
+    <value>无法清除日志</value>
+  </data>
+  <data name="ClientFilterName" xml:space="preserve">
+    <value>客户端</value>
+  </data>
+  <data name="Copied" xml:space="preserve">
+    <value>已复制</value>
+  </data>
+  <data name="CopyToken" xml:space="preserve">
+    <value>复制令牌</value>
+  </data>
+  <data name="CreateToken" xml:space="preserve">
+    <value>创建令牌</value>
+  </data>
+  <data name="CreateTokenFailed" xml:space="preserve">
+    <value>无法创建令牌</value>
+  </data>
+  <data name="Deny" xml:space="preserve">
+    <value>拒绝</value>
+  </data>
+  <data name="ExpiredOn" xml:space="preserve">
+    <value>已于 {0:d} 过期</value>
+  </data>
+  <data name="ExpiresOn" xml:space="preserve">
+    <value>有效期至 {0:d}</value>
+  </data>
+  <data name="ExpiryIn30Days" xml:space="preserve">
+    <value>30 天后</value>
+  </data>
+  <data name="ExpiryIn90Days" xml:space="preserve">
+    <value>90 天后</value>
+  </data>
+  <data name="ExpiryInAYear" xml:space="preserve">
+    <value>1 年后</value>
+  </data>
+  <data name="ExpiryNever" xml:space="preserve">
+    <value>从不</value>
+  </data>
+  <data name="FormAccessHeader" xml:space="preserve">
+    <value>访问权限</value>
+  </data>
+  <data name="FormAccessNote" xml:space="preserve">
+    <value>每个连接的“外部客户端”级别仍然适用；客户端获得的权限绝不会超过该级别允许的范围。</value>
+  </data>
+  <data name="FormClientNameHeader" xml:space="preserve">
+    <value>客户端名称</value>
+  </data>
+  <data name="FormClientNamePlaceholder" xml:space="preserve">
+    <value>例如 Claude Desktop</value>
+  </data>
+  <data name="FormConnectionsHeader" xml:space="preserve">
+    <value>连接</value>
+  </data>
+  <data name="FormExpiryHeader" xml:space="preserve">
+    <value>令牌过期时间</value>
+  </data>
+  <data name="FormNoConnections" xml:space="preserve">
+    <value>目前还没有允许 MCP 客户端访问的连接。</value>
+  </data>
+  <data name="FormRequestMessage" xml:space="preserve">
+    <value>“{0}”请求通过 TablePro 的 MCP 服务器使用你保存的连接。此电脑上的任何程序都可以用任意名称发出请求，因此仅当你刚刚在该应用中发起配对时才允许。</value>
+  </data>
+  <data name="FormScopeAll" xml:space="preserve">
+    <value>所有连接</value>
+  </data>
+  <data name="FormScopeTicked" xml:space="preserve">
+    <value>仅限下方勾选的连接</value>
+  </data>
+  <data name="IntegrityBroken_One" xml:space="preserve">
+    <value>第 {1} 条记录已在 TablePro 之外被更改或删除；其之前的 {0:N0} 条记录完好。</value>
+  </data>
+  <data name="IntegrityBroken_Other" xml:space="preserve">
+    <value>第 {1} 条记录已在 TablePro 之外被更改或删除；其之前的 {0:N0} 条记录完好。</value>
+  </data>
+  <data name="IntegrityIntactShowingLatest_One" xml:space="preserve">
+    <value>已保留 {0:N0} 条记录。每条记录的哈希都链接到前一条记录，且哈希链完整。显示最新的 {1} 条。</value>
+  </data>
+  <data name="IntegrityIntactShowingLatest_Other" xml:space="preserve">
+    <value>已保留 {0:N0} 条记录。每条记录的哈希都链接到前一条记录，且哈希链完整。显示最新的 {1} 条。</value>
+  </data>
+  <data name="IntegrityIntact_One" xml:space="preserve">
+    <value>已保留 {0:N0} 条记录。每条记录的哈希都链接到前一条记录，且哈希链完整。</value>
+  </data>
+  <data name="IntegrityIntact_Other" xml:space="preserve">
+    <value>已保留 {0:N0} 条记录。每条记录的哈希都链接到前一条记录，且哈希链完整。</value>
+  </data>
+  <data name="LastUsed" xml:space="preserve">
+    <value>上次使用 {0:g}</value>
+  </data>
+  <data name="ListSeparator" xml:space="preserve">
+    <value>、</value>
+  </data>
+  <data name="NeverUsed" xml:space="preserve">
+    <value>从未使用</value>
+  </data>
+  <data name="NoClients" xml:space="preserve">
+    <value>尚无客户端配对。</value>
+  </data>
+  <data name="NoExpiry" xml:space="preserve">
+    <value>永不过期</value>
+  </data>
+  <data name="NothingLogged" xml:space="preserve">
+    <value>尚无日志记录。</value>
+  </data>
+  <data name="OutcomeDeclined" xml:space="preserve">
+    <value>已拒绝</value>
+  </data>
+  <data name="OutcomeDenied" xml:space="preserve">
+    <value>无权限</value>
+  </data>
+  <data name="OutcomeFailed" xml:space="preserve">
+    <value>失败</value>
+  </data>
+  <data name="OutcomeRefused" xml:space="preserve">
+    <value>已拒绝访问</value>
+  </data>
+  <data name="OutcomeSucceeded" xml:space="preserve">
+    <value>成功</value>
+  </data>
+  <data name="PairedClientsHeading" xml:space="preserve">
+    <value>已配对的客户端</value>
+  </data>
+  <data name="PairedClientsNote" xml:space="preserve">
+    <value>客户端通过向 TablePro 请求访问权限来配对；你在对话框中批准后，客户端会获得自己的令牌。每个令牌仅以 SHA-256 形式保存在 Windows 凭据管理器中。撤销客户端后，它的下一个请求将被拒绝。</value>
+  </data>
+  <data name="PairedSummary" xml:space="preserve">
+    <value>配对于 {0:g} · {1} · 令牌 {2}…</value>
+  </data>
+  <data name="PairingApprovalTitle" xml:space="preserve">
+    <value>允许 MCP 客户端？</value>
+  </data>
+  <data name="PairingHint" xml:space="preserve">
+    <value>客户端通过 POST {0} 发起配对，并从 /v1/integrations/exchange 领取令牌。</value>
+  </data>
+  <data name="PairingHintServerOff" xml:space="preserve">
+    <value>开启服务器以允许客户端配对。</value>
+  </data>
+  <data name="ReachAllConnections" xml:space="preserve">
+    <value>所有连接</value>
+  </data>
+  <data name="ReachConnectionCount_One" xml:space="preserve">
+    <value>{0} 个连接</value>
+  </data>
+  <data name="ReachConnectionCount_Other" xml:space="preserve">
+    <value>{0} 个连接</value>
+  </data>
+  <data name="ReachDeletedConnection" xml:space="preserve">
+    <value>已删除的连接</value>
+  </data>
+  <data name="ReachNoConnections" xml:space="preserve">
+    <value>没有连接</value>
+  </data>
+  <data name="ReadActivityFailed" xml:space="preserve">
+    <value>无法读取 MCP 活动日志</value>
+  </data>
+  <data name="ReadClientsFailed" xml:space="preserve">
+    <value>无法读取已配对的客户端</value>
+  </data>
+  <data name="RemoveClientName" xml:space="preserve">
+    <value>移除{0}</value>
+  </data>
+  <data name="RemoveConfirmMessage" xml:space="preserve">
+    <value>其授权以及凭据管理器中的令牌哈希将被删除。其过往活动仍保留在日志中。</value>
+  </data>
+  <data name="RemoveConfirmTitle" xml:space="preserve">
+    <value>要移除“{0}”吗？</value>
+  </data>
+  <data name="Revoke" xml:space="preserve">
+    <value>撤销</value>
+  </data>
+  <data name="RevokeClientName" xml:space="preserve">
+    <value>撤销 {0}</value>
+  </data>
+  <data name="RevokeConfirmMessage" xml:space="preserve">
+    <value>该客户端的下一个请求将被拒绝。它会以“已撤销”状态保留在列表中；重新配对即可恢复其访问权限。</value>
+  </data>
+  <data name="RevokeConfirmTitle" xml:space="preserve">
+    <value>要撤销“{0}”吗？</value>
+  </data>
+  <data name="StatementDigest" xml:space="preserve">
+    <value>语句 SHA-256 {0}</value>
+  </data>
+  <data name="StatusActive" xml:space="preserve">
+    <value>活跃</value>
+  </data>
+  <data name="StatusExpired" xml:space="preserve">
+    <value>已过期</value>
+  </data>
+  <data name="StatusRevoked" xml:space="preserve">
+    <value>已撤销</value>
+  </data>
+  <data name="StatusTokenMissing" xml:space="preserve">
+    <value>令牌缺失</value>
+  </data>
+  <data name="TokenCopyMessage" xml:space="preserve">
+    <value>请立即复制“{0}”的令牌。TablePro 只保存其哈希，因此无法再次显示该令牌。</value>
+  </data>
+  <data name="TokenCreatedTitle" xml:space="preserve">
+    <value>已创建令牌</value>
+  </data>
+  <data name="TokenHeader" xml:space="preserve">
+    <value>令牌</value>
+  </data>
+  <data name="UnknownCaller" xml:space="preserve">
+    <value>未知调用方</value>
+  </data>
+  <data name="WriteApprovalMessage" xml:space="preserve">
+    <value>已连接到 TablePro MCP 服务器的“{0}”请求在 {1} 上运行以下内容。</value>
+  </data>
+  <data name="WriteApprovalMessageUnnamed" xml:space="preserve">
+    <value>一个已连接到 TablePro MCP 服务器的客户端请求在 {0} 上运行以下内容。</value>
+  </data>
+  <data name="WriteApprovalTitle" xml:space="preserve">
+    <value>MCP 客户端想要运行一条语句</value>
+  </data>
+</root>

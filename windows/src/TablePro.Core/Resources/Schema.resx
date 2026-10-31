@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="OptionAutoIncrement" xml:space="preserve">
+    <value>Next auto increment</value>
+    <comment>Table option name: the next value AUTO_INCREMENT hands out.</comment>
+  </data>
+  <data name="OptionCharset" xml:space="preserve">
+    <value>Character set</value>
+    <comment>Table option name.</comment>
+  </data>
+  <data name="OptionCollation" xml:space="preserve">
+    <value>Collation</value>
+    <comment>Table option name.</comment>
+  </data>
+  <data name="OptionComment" xml:space="preserve">
+    <value>Comment</value>
+    <comment>Table option name.</comment>
+  </data>
+  <data name="OptionCompression" xml:space="preserve">
+    <value>Compression</value>
+    <comment>Table option name.</comment>
+  </data>
+  <data name="OptionDataCompression" xml:space="preserve">
+    <value>Data compression</value>
+    <comment>Table option name (SQL Server).</comment>
+  </data>
+  <data name="OptionEngine" xml:space="preserve">
+    <value>Engine</value>
+    <comment>Table option name shown in the structure tab: the storage engine, such as InnoDB.</comment>
+  </data>
+  <data name="OptionFilegroup" xml:space="preserve">
+    <value>Filegroup</value>
+    <comment>Table option name (SQL Server).</comment>
+  </data>
+  <data name="OptionFillFactor" xml:space="preserve">
+    <value>Fill factor</value>
+    <comment>Table option name (PostgreSQL fillfactor).</comment>
+  </data>
+  <data name="OptionLockEscalation" xml:space="preserve">
+    <value>Lock escalation</value>
+    <comment>Table option name (SQL Server).</comment>
+  </data>
+  <data name="OptionLogging" xml:space="preserve">
+    <value>Logging</value>
+    <comment>Table option name (Oracle LOGGING).</comment>
+  </data>
+  <data name="OptionPctFree" xml:space="preserve">
+    <value>Percent free</value>
+    <comment>Table option name (Oracle PCTFREE).</comment>
+  </data>
+  <data name="OptionPersistence" xml:space="preserve">
+    <value>Persistence</value>
+    <comment>Table option name: logged, unlogged or temporary.</comment>
+  </data>
+  <data name="OptionPrimaryKey" xml:space="preserve">
+    <value>Primary key</value>
+    <comment>Table option name (ClickHouse PRIMARY KEY).</comment>
+  </data>
+  <data name="OptionRowFormat" xml:space="preserve">
+    <value>Row format</value>
+    <comment>Table option name (MySQL ROW_FORMAT).</comment>
+  </data>
+  <data name="OptionRowMovement" xml:space="preserve">
+    <value>Row movement</value>
+    <comment>Table option name (Oracle ROW MOVEMENT).</comment>
+  </data>
+  <data name="OptionSamplingKey" xml:space="preserve">
+    <value>Sampling key</value>
+    <comment>Table option name (ClickHouse SAMPLE BY key).</comment>
+  </data>
+  <data name="OptionSortingKey" xml:space="preserve">
+    <value>Sorting key</value>
+    <comment>Table option name (ClickHouse ORDER BY key).</comment>
+  </data>
+  <data name="OptionStorageParameters" xml:space="preserve">
+    <value>Storage parameters</value>
+    <comment>Table option name.</comment>
+  </data>
+  <data name="OptionStrict" xml:space="preserve">
+    <value>Strict</value>
+    <comment>Table option name (SQLite STRICT).</comment>
+  </data>
+  <data name="OptionTablespace" xml:space="preserve">
+    <value>Tablespace</value>
+    <comment>Table option name.</comment>
+  </data>
+  <data name="OptionWithoutRowid" xml:space="preserve">
+    <value>Without rowid</value>
+    <comment>Table option name (SQLite WITHOUT ROWID).</comment>
+  </data>
+</root>

@@ -1,0 +1,408 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AlreadyLinked" xml:space="preserve">
+    <value>"{0}" zaten bağlı</value>
+  </data>
+  <data name="ChangedFilesIn" xml:space="preserve">
+    <value>"{0}" içindeki değişen dosyalar</value>
+  </data>
+  <data name="ChangesMode" xml:space="preserve">
+    <value>Değişiklikler</value>
+  </data>
+  <data name="Collapsed" xml:space="preserve">
+    <value>Daraltılmış</value>
+  </data>
+  <data name="CommitButton" xml:space="preserve">
+    <value>İşle</value>
+  </data>
+  <data name="CommitDialogTitle" xml:space="preserve">
+    <value>İşle</value>
+  </data>
+  <data name="CommitFailedInline" xml:space="preserve">
+    <value>İşlenemedi</value>
+  </data>
+  <data name="CommitFailedTitle" xml:space="preserve">
+    <value>İşlenemedi</value>
+  </data>
+  <data name="CommitMenu" xml:space="preserve">
+    <value>İşle…</value>
+  </data>
+  <data name="CommitMessageHeader" xml:space="preserve">
+    <value>İleti</value>
+  </data>
+  <data name="CommitMessagePlaceholder" xml:space="preserve">
+    <value>Değişikliği açıklayın</value>
+  </data>
+  <data name="CommitVersion" xml:space="preserve">
+    <value>{0} işlemesi</value>
+  </data>
+  <data name="Committed" xml:space="preserve">
+    <value>İşlendi</value>
+  </data>
+  <data name="ContentMode" xml:space="preserve">
+    <value>İçerik</value>
+  </data>
+  <data name="CopyPath" xml:space="preserve">
+    <value>Yolu Kopyala</value>
+  </data>
+  <data name="CopyQuery" xml:space="preserve">
+    <value>Sorguyu Kopyala</value>
+  </data>
+  <data name="CopyRelativePath" xml:space="preserve">
+    <value>Göreli Yolu Kopyala</value>
+  </data>
+  <data name="CreateButton" xml:space="preserve">
+    <value>Oluştur</value>
+  </data>
+  <data name="CreateFailedTitle" xml:space="preserve">
+    <value>Dosya Oluşturulamadı</value>
+  </data>
+  <data name="CurrentVersion" xml:space="preserve">
+    <value>Geçerli sürüm</value>
+  </data>
+  <data name="DeleteButton" xml:space="preserve">
+    <value>Geri Dönüşüm Kutusuna Taşı</value>
+  </data>
+  <data name="DeleteFailedTitle" xml:space="preserve">
+    <value>Geri Dönüşüm Kutusuna Taşınamadı</value>
+  </data>
+  <data name="DeleteMessage" xml:space="preserve">
+    <value>"{0}" Geri Dönüşüm Kutusuna taşınacak. Kaydedilen sürümleri korunur.</value>
+  </data>
+  <data name="DeleteTitle" xml:space="preserve">
+    <value>Geri Dönüşüm Kutusuna taşınsın mı?</value>
+  </data>
+  <data name="Description" xml:space="preserve">
+    <value>Açıklama</value>
+  </data>
+  <data name="DetailsExplanation" xml:space="preserve">
+    <value>Dosyanın başlığına -- @name, -- @keyword ve -- @description satırları olarak kaydedilir; macOS uygulaması da bunları okur.</value>
+  </data>
+  <data name="DiffLayout" xml:space="preserve">
+    <value>Fark düzeni</value>
+  </data>
+  <data name="DiffSideBySide" xml:space="preserve">
+    <value>Yan yana</value>
+  </data>
+  <data name="DiffUnified" xml:space="preserve">
+    <value>Tek Sütun</value>
+  </data>
+  <data name="DiscardChangesMenu" xml:space="preserve">
+    <value>Değişiklikleri At…</value>
+  </data>
+  <data name="DiscardFailedTitle" xml:space="preserve">
+    <value>Değişiklikler Atılamadı</value>
+  </data>
+  <data name="DiscardMessage" xml:space="preserve">
+    <value>"{0}" dosyasındaki hazırlanmamış değişiklikler kaybolacak. Bir kopyası sürüm geçmişinde tutulur.</value>
+  </data>
+  <data name="DiscardTitle" xml:space="preserve">
+    <value>Değişiklikler Atılsın mı?</value>
+  </data>
+  <data name="EditDetailsMenu" xml:space="preserve">
+    <value>Ayrıntıları Düzenle…</value>
+  </data>
+  <data name="EditDetailsTitle" xml:space="preserve">
+    <value>Ayrıntıları Düzenle</value>
+  </data>
+  <data name="EmptyState" xml:space="preserve">
+    <value>.sql dosyalarını burada açmak, yeniden adlandırmak ve izlemek için bunları içeren bir klasörü bağlayın. Dosyalar bulundukları yerde kalır.</value>
+  </data>
+  <data name="Expanded" xml:space="preserve">
+    <value>Genişletilmiş</value>
+  </data>
+  <data name="GitAdded" xml:space="preserve">
+    <value>Eklendi</value>
+  </data>
+  <data name="GitCommandFailed" xml:space="preserve">
+    <value>Git aşağıdaki iletiyle durdu.</value>
+  </data>
+  <data name="GitConflicted" xml:space="preserve">
+    <value>Çakışmalı</value>
+  </data>
+  <data name="GitModified" xml:space="preserve">
+    <value>Değiştirildi</value>
+  </data>
+  <data name="GitOutputTooLarge" xml:space="preserve">
+    <value>Git, TablePro'nun okuyabileceğinden fazla çıktı üretti.</value>
+  </data>
+  <data name="GitPartlyStaged" xml:space="preserve">
+    <value>{0}, kısmen hazırlanmış</value>
+  </data>
+  <data name="GitPullDiverged" xml:space="preserve">
+    <value>Dalda ve yukarı akış dalında, diğerinde bulunmayan işlemeler var. Bu çekme işlemini bir Git istemcisinde tamamlayın.</value>
+  </data>
+  <data name="GitRenamed" xml:space="preserve">
+    <value>Yeniden adlandırıldı</value>
+  </data>
+  <data name="GitStaged" xml:space="preserve">
+    <value>{0}, hazırlanmış</value>
+  </data>
+  <data name="GitTimedOut" xml:space="preserve">
+    <value>Git zamanında yanıt vermedi.</value>
+  </data>
+  <data name="GitUnavailable" xml:space="preserve">
+    <value>Git yüklü değil. Bağlı klasörlerde Git kullanmak için Git for Windows'u yükleyin.</value>
+  </data>
+  <data name="GitUntracked" xml:space="preserve">
+    <value>İzlenmiyor</value>
+  </data>
+  <data name="HistoryTitle" xml:space="preserve">
+    <value>{0} Geçmişi</value>
+  </data>
+  <data name="HistoryWindowTitle" xml:space="preserve">
+    <value>{0} Geçmişi - TablePro</value>
+  </data>
+  <data name="InsertIntoEditor" xml:space="preserve">
+    <value>Düzenleyiciye Ekle</value>
+  </data>
+  <data name="KeepsLatestSnapshots_One" xml:space="preserve">
+    <value>TablePro bir dosyanın kaydedilen son {0} sürümünü saklar.</value>
+  </data>
+  <data name="KeepsLatestSnapshots_Other" xml:space="preserve">
+    <value>TablePro bir dosyanın kaydedilen son {0} sürümünü saklar.</value>
+  </data>
+  <data name="Keyword" xml:space="preserve">
+    <value>Anahtar Kelime</value>
+  </data>
+  <data name="KeywordPlaceholder" xml:space="preserve">
+    <value>Bu sorguyu eklemek için düzenleyicide yazılır</value>
+  </data>
+  <data name="LinkFolder" xml:space="preserve">
+    <value>SQL dosyaları içeren bir klasör bağla</value>
+  </data>
+  <data name="ListName" xml:space="preserve">
+    <value>SQL dosyaları</value>
+  </data>
+  <data name="LoadingVersions" xml:space="preserve">
+    <value>Sürümler yükleniyor…</value>
+  </data>
+  <data name="MoveToRecycleBinMenu" xml:space="preserve">
+    <value>Geri Dönüşüm Kutusuna Taşı…</value>
+  </data>
+  <data name="NameAlreadyExists" xml:space="preserve">
+    <value>Burada bu ada sahip bir dosya zaten var.</value>
+  </data>
+  <data name="NameEmpty" xml:space="preserve">
+    <value>Bir ad girin.</value>
+  </data>
+  <data name="NameInvalidCharacters" xml:space="preserve">
+    <value>Dosya adı \ / : * ? " &lt; &gt; veya | karakterlerini içeremez.</value>
+  </data>
+  <data name="NameReserved" xml:space="preserve">
+    <value>Windows bu adı bir aygıt için ayırır.</value>
+  </data>
+  <data name="NewFileMenu" xml:space="preserve">
+    <value>Yeni Dosya</value>
+  </data>
+  <data name="NewFileTitle" xml:space="preserve">
+    <value>Yeni SQL Dosyası</value>
+  </data>
+  <data name="NoChangesFrom" xml:space="preserve">
+    <value>{0} ile arasında değişiklik yok.</value>
+  </data>
+  <data name="NoSearchMatch" xml:space="preserve">
+    <value>Aramayla eşleşen SQL dosyası yok.</value>
+  </data>
+  <data name="NotARepository" xml:space="preserve">
+    <value>Bu klasör bir Git deposunda değil.</value>
+  </data>
+  <data name="NothingToCommitMessage" xml:space="preserve">
+    <value>"{0}" içinde değişiklik içeren dosya yok.</value>
+  </data>
+  <data name="NothingToCommitTitle" xml:space="preserve">
+    <value>İşlenecek Bir Şey Yok</value>
+  </data>
+  <data name="NothingToPublishMessage" xml:space="preserve">
+    <value>Yayınlanacak kayıtlı sorgunuz yok.</value>
+  </data>
+  <data name="NothingToPublishTitle" xml:space="preserve">
+    <value>Yayınlanacak Bir Şey Yok</value>
+  </data>
+  <data name="OnlyInConnection" xml:space="preserve">
+    <value>Yalnızca {0} bağlantısında</value>
+  </data>
+  <data name="OnlyVersion" xml:space="preserve">
+    <value>Bu tek sürüm olduğundan karşılaştırılacak başka bir sürüm yok.</value>
+  </data>
+  <data name="OpenFailedTitle" xml:space="preserve">
+    <value>Dosya Açılamadı</value>
+  </data>
+  <data name="OpenInEditor" xml:space="preserve">
+    <value>Düzenleyicide Aç</value>
+  </data>
+  <data name="OpenInFileExplorer" xml:space="preserve">
+    <value>Dosya Gezgini'nde Aç</value>
+  </data>
+  <data name="OpenInNewTab" xml:space="preserve">
+    <value>Yeni Sekmede Aç</value>
+  </data>
+  <data name="PublishButton" xml:space="preserve">
+    <value>Yayınla</value>
+  </data>
+  <data name="PublishFailedTitle" xml:space="preserve">
+    <value>Takım Kitaplığına Yayınlanamadı</value>
+  </data>
+  <data name="PublishMessage_One" xml:space="preserve">
+    <value>Takımınızdaki herkes {0} kayıtlı sorgunuzu görecek. Bu, daha önce yayınladığınız kayıtlı sorguların yerini alır.</value>
+  </data>
+  <data name="PublishMessage_Other" xml:space="preserve">
+    <value>Takımınızdaki herkes {0} kayıtlı sorgunuzu görecek. Bu, daha önce yayınladığınız kayıtlı sorguların yerini alır.</value>
+  </data>
+  <data name="PublishTitle" xml:space="preserve">
+    <value>Kayıtlı Sorgular Takımınıza Yayınlansın mı?</value>
+  </data>
+  <data name="PublishToTeamMenu" xml:space="preserve">
+    <value>Kayıtlı Sorguları Takıma Yayınla…</value>
+  </data>
+  <data name="PublishedBy" xml:space="preserve">
+    <value>Yayınlayan: {0}</value>
+  </data>
+  <data name="Published_One" xml:space="preserve">
+    <value>{0} kayıtlı sorgu takımınıza yayınlandı</value>
+  </data>
+  <data name="Published_Other" xml:space="preserve">
+    <value>{0} kayıtlı sorgu takımınıza yayınlandı</value>
+  </data>
+  <data name="Publishing" xml:space="preserve">
+    <value>Yayınlanıyor…</value>
+  </data>
+  <data name="PullFailedTitle" xml:space="preserve">
+    <value>"{0}" Çekilemedi</value>
+  </data>
+  <data name="PullMenu" xml:space="preserve">
+    <value>Çek</value>
+  </data>
+  <data name="Pulled" xml:space="preserve">
+    <value>"{0}" çekildi</value>
+  </data>
+  <data name="PushFailedTitle" xml:space="preserve">
+    <value>"{0}" Gönderilemedi</value>
+  </data>
+  <data name="PushMenu" xml:space="preserve">
+    <value>Gönder</value>
+  </data>
+  <data name="Pushed" xml:space="preserve">
+    <value>"{0}" gönderildi</value>
+  </data>
+  <data name="RefreshTeamLibrary" xml:space="preserve">
+    <value>Takım Kitaplığını Yenile</value>
+  </data>
+  <data name="RenameFailedTitle" xml:space="preserve">
+    <value>Yeniden Adlandırılamadı</value>
+  </data>
+  <data name="RenameMenu" xml:space="preserve">
+    <value>Yeniden Adlandır…</value>
+  </data>
+  <data name="ResolveConflictFirst" xml:space="preserve">
+    <value>Bu dosyayı işlemeden önce çakışmayı bir Git istemcisinde çözün.</value>
+  </data>
+  <data name="RestoreButton" xml:space="preserve">
+    <value>Geri Yükle</value>
+  </data>
+  <data name="RestoreConfirmMessage" xml:space="preserve">
+    <value>Dosyada, kaydedilmiş hiçbir sürümde veya işlemede bulunmayan değişiklikler var. Geri yükleme bunların yerini alır; önce kaydedilmiş bir sürüm olarak saklanırlar.</value>
+  </data>
+  <data name="RestoreConfirmTitle" xml:space="preserve">
+    <value>Geçerli metin değiştirilsin mi?</value>
+  </data>
+  <data name="RestoreFailed" xml:space="preserve">
+    <value>Sürüm geri yüklenemedi.</value>
+  </data>
+  <data name="RestoreFailedTitle" xml:space="preserve">
+    <value>Geri Yüklenemedi</value>
+  </data>
+  <data name="SaveDetailsFailedTitle" xml:space="preserve">
+    <value>Ayrıntılar Kaydedilemedi</value>
+  </data>
+  <data name="SavedVersion" xml:space="preserve">
+    <value>Kaydedilmiş sürüm</value>
+  </data>
+  <data name="SearchPlaceholder" xml:space="preserve">
+    <value>SQL dosyalarında ara</value>
+  </data>
+  <data name="SelectVersion" xml:space="preserve">
+    <value>Bir sürüm seçin.</value>
+  </data>
+  <data name="ShowInFileExplorer" xml:space="preserve">
+    <value>Dosya Gezgini'nde Göster</value>
+  </data>
+  <data name="ShowsLatestCommits_One" xml:space="preserve">
+    <value>Son {0} işleme gösteriliyor.</value>
+  </data>
+  <data name="ShowsLatestCommits_Other" xml:space="preserve">
+    <value>Son {0} işleme gösteriliyor.</value>
+  </data>
+  <data name="StatusCommitting" xml:space="preserve">
+    <value>İşleniyor…</value>
+  </data>
+  <data name="StatusNotFound" xml:space="preserve">
+    <value>Bulunamadı</value>
+  </data>
+  <data name="StatusPulling" xml:space="preserve">
+    <value>Çekiliyor…</value>
+  </data>
+  <data name="StatusPushing" xml:space="preserve">
+    <value>Gönderiliyor…</value>
+  </data>
+  <data name="TeamEmpty" xml:space="preserve">
+    <value>Takımınız henüz kayıtlı sorgu yayınlamadı.</value>
+  </data>
+  <data name="TeamLibraryHeader" xml:space="preserve">
+    <value>TAKIM KİTAPLIĞI</value>
+  </data>
+  <data name="TeamRefreshFailedTitle" xml:space="preserve">
+    <value>Takım Kitaplığı Yenilenemedi</value>
+  </data>
+  <data name="TooLargeToCompare_One" xml:space="preserve">
+    <value>Bu dosya {0} satırdan uzun olduğu için değişiklikleri gösterilmiyor. Okumak için İçerik sekmesine geçin.</value>
+  </data>
+  <data name="TooLargeToCompare_Other" xml:space="preserve">
+    <value>Bu dosya {0} satırdan uzun olduğu için değişiklikleri gösterilmiyor. Okumak için İçerik sekmesine geçin.</value>
+  </data>
+  <data name="TurnOff" xml:space="preserve">
+    <value>Kapat</value>
+  </data>
+  <data name="TurnOn" xml:space="preserve">
+    <value>Aç</value>
+  </data>
+  <data name="TurnedBackOn" xml:space="preserve">
+    <value>"{0}" yeniden açıldı</value>
+  </data>
+  <data name="UncommittedChanges" xml:space="preserve">
+    <value>İşlenmemiş değişiklikler</value>
+  </data>
+  <data name="UnlinkButton" xml:space="preserve">
+    <value>Bağlantıyı Kaldır</value>
+  </data>
+  <data name="UnlinkFolderMenu" xml:space="preserve">
+    <value>Klasör Bağlantısını Kaldır…</value>
+  </data>
+  <data name="UnlinkMessage" xml:space="preserve">
+    <value>"{0}" artık listelenmeyecek. Dosyaları diskte kalır.</value>
+  </data>
+  <data name="UnlinkTitle" xml:space="preserve">
+    <value>Klasör Bağlantısı Kaldırılsın mı?</value>
+  </data>
+  <data name="VersionHistoryMenu" xml:space="preserve">
+    <value>Sürüm Geçmişi…</value>
+  </data>
+  <data name="VersionReadFailed" xml:space="preserve">
+    <value>Bu sürüm okunamadı.</value>
+  </data>
+  <data name="VersionsReadFailed" xml:space="preserve">
+    <value>Sürümler okunamadı.</value>
+  </data>
+</root>

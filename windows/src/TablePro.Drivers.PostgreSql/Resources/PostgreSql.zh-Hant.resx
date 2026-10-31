@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="Abandoned" xml:space="preserve">
+    <value>無法在伺服器上停止該常式。</value>
+  </data>
+  <data name="AbandonedRunning" xml:space="preserve">
+    <value>伺服器處理程序 {0} 可能仍在執行並持有鎖定。</value>
+  </data>
+  <data name="AbandonedSession" xml:space="preserve">
+    <value>其伺服器工作階段可能仍在執行並持有鎖定。</value>
+  </data>
+  <data name="AbandonedWaiting" xml:space="preserve">
+    <value>伺服器處理程序 {0} 可能仍在等待偵錯工具並持有鎖定。若要結束它，請執行 SELECT pldbg_attach_to_port({1})，然後將傳回的數字傳給 pldbg_abort_target。</value>
+  </data>
+  <data name="CannotStepOut" xml:space="preserve">
+    <value>PL/pgSQL 偵錯工具無法跳離常式。</value>
+  </data>
+  <data name="DefaultNotReadable" xml:space="preserve">
+    <value>此伺服器無法顯示 {0} 的預設值，請為其輸入一個值。</value>
+  </data>
+  <data name="ExtensionMissing" xml:space="preserve">
+    <value>「{0}」中未安裝 PL/pgSQL 偵錯工具。</value>
+  </data>
+  <data name="ExtensionMissingDetail" xml:space="preserve">
+    <value>請讓超級使用者在此資料庫中執行 CREATE EXTENSION pldbgapi。</value>
+  </data>
+  <data name="HidesDebuggerNotice" xml:space="preserve">
+    <value>此常式將 client_min_messages 設為 {0}，這會隱藏偵錯工具啟動時依賴的通知。</value>
+  </data>
+  <data name="HidesDebuggerNoticeDetail" xml:space="preserve">
+    <value>請從常式中移除 SET client_min_messages 後再偵錯。</value>
+  </data>
+  <data name="Interrupted" xml:space="preserve">
+    <value>偵錯工具工作階段在等待時被中斷，因此常式已停止，其未認可的變更已復原。取消操作或伺服器的 transaction_timeout 都可能導致這種情況。</value>
+  </data>
+  <data name="LimitsTransactionTime" xml:space="preserve">
+    <value>此常式將 transaction_timeout 設為 {0}，這會在它於中斷點等待時將其結束。</value>
+  </data>
+  <data name="LimitsTransactionTimeDetail" xml:space="preserve">
+    <value>請從常式中移除 SET transaction_timeout 後再偵錯。</value>
+  </data>
+  <data name="NoDefault" xml:space="preserve">
+    <value>{0} 沒有預設值。</value>
+  </data>
+  <data name="NoOverloads" xml:space="preserve">
+    <value>{0} 沒有可偵錯的 PL/pgSQL 多載。</value>
+  </data>
+  <data name="NoOverloadsDetail" xml:space="preserve">
+    <value>只能偵錯不帶多型、record 或 trigger 簽章的 PL/pgSQL 函式和預存程序。</value>
+  </data>
+  <data name="NotAStorageParameter" xml:space="preserve">
+    <value>「{0}」不是儲存參數。請將每個參數寫成 name=value。</value>
+  </data>
+  <data name="NotDebuggable" xml:space="preserve">
+    <value>只能偵錯 PL/pgSQL 函式和預存程序。</value>
+  </data>
+  <data name="NotOwner" xml:space="preserve">
+    <value>只有 {0} 的擁有者或超級使用者才能偵錯它。</value>
+  </data>
+  <data name="NotPaused" xml:space="preserve">
+    <value>常式未暫停。</value>
+  </data>
+  <data name="PseudoTypeParameter" xml:space="preserve">
+    <value>無法偵錯帶有多型或 record 參數的常式。</value>
+  </data>
+  <data name="RoutineNotFound" xml:space="preserve">
+    <value>{0} 已不存在。</value>
+  </data>
+  <data name="RunNoteFunction" xml:space="preserve">
+    <value>常式所做的變更會在其結束時認可。停止會復原這些變更。</value>
+  </data>
+  <data name="RunNoteProcedure" xml:space="preserve">
+    <value>預存程序所做的變更會在其認可或結束時認可。停止會復原尚未認可的內容。</value>
+  </data>
+  <data name="ServerPackageMissing" xml:space="preserve">
+    <value>此伺服器沒有 PL/pgSQL 偵錯工具。</value>
+  </data>
+  <data name="ServerPackageMissingDetail" xml:space="preserve">
+    <value>請在伺服器上安裝適用於此 PostgreSQL 版本的 pldebugger 套件，然後在此資料庫中執行 CREATE EXTENSION pldbgapi。</value>
+  </data>
+  <data name="SharedMemoryUnavailable" xml:space="preserve">
+    <value>伺服器無法啟動偵錯工具。</value>
+  </data>
+  <data name="SharedMemoryUnavailableDetail" xml:space="preserve">
+    <value>請將 plugin_debugger 新增到 shared_preload_libraries 並重新啟動伺服器。</value>
+  </data>
+  <data name="Stopped" xml:space="preserve">
+    <value>常式已停止，其未認可的變更已復原。</value>
+  </data>
+  <data name="Unavailable" xml:space="preserve">
+    <value>此連線無法執行 PL/pgSQL 偵錯工具。</value>
+  </data>
+</root>

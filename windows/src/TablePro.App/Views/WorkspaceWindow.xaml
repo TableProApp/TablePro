@@ -1,0 +1,266 @@
+<Window
+    x:Class="TablePro.App.Views.WorkspaceWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:vm="using:TablePro.App.ViewModels"
+    xmlns:views="using:TablePro.App.Views"
+    xmlns:controls="using:TablePro.App.Controls">
+
+    <Grid x:Name="Root">
+        <Grid.Resources>
+            <DataTemplate x:Key="SidebarHeaderTemplate" x:DataType="vm:SidebarEntry">
+                <Grid Padding="4,10,8,2" IsHitTestVisible="False">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="{x:Bind Text}" Style="{StaticResource CaptionTextBlockStyle}" FontWeight="SemiBold" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    <TextBlock Grid.Column="1" Text="{x:Bind Detail}" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+                </Grid>
+            </DataTemplate>
+            <DataTemplate x:Key="SidebarItemTemplate" x:DataType="vm:SidebarEntry">
+                <Grid ColumnSpacing="10" Padding="0,0,4,0" Margin="{x:Bind Indent}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <FontIcon FontSize="14" Glyph="{x:Bind Glyph}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    <TextBlock Grid.Column="1" Text="{x:Bind Text}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                    <TextBlock Grid.Column="2" Text="{x:Bind Detail}" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorTertiaryBrush}" VerticalAlignment="Center" />
+                </Grid>
+            </DataTemplate>
+            <views:SidebarTemplateSelector x:Key="SidebarSelector" Header="{StaticResource SidebarHeaderTemplate}" Item="{StaticResource SidebarItemTemplate}" />
+        </Grid.Resources>
+
+        <Grid.RowDefinitions>
+            <RowDefinition Height="48" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!--  Title bar: drawn by the app over the acrylic backdrop  -->
+        <Grid x:Name="AppTitleBar" ColumnSpacing="12" Padding="16,0,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition x:Name="CaptionButtonsColumn" Width="140" />
+            </Grid.ColumnDefinitions>
+            <Image Source="ms-appx:///Assets/Logo.png" Width="18" Height="18" VerticalAlignment="Center" />
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                <TextBlock Text="TablePro" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" />
+                <Border Width="1" Height="14" Background="{ThemeResource DividerStrokeColorDefaultBrush}" />
+                <Ellipse x:Name="ColorDot" Width="10" Height="10" VerticalAlignment="Center" />
+                <TextBlock Text="{x:Bind ViewModel.Title}" Style="{StaticResource BodyStrongTextBlockStyle}" VerticalAlignment="Center" />
+                <TextBlock Text="{x:Bind ViewModel.ServerText, Mode=OneWay}" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorTertiaryBrush}" VerticalAlignment="Center" />
+                <Border x:Name="SafeModeBadge" Padding="8,2" CornerRadius="10" Background="{ThemeResource SystemFillColorCautionBackgroundBrush}" VerticalAlignment="Center">
+                    <TextBlock Text="{x:Bind ViewModel.SafeModeText}" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource SystemFillColorCautionBrush}" />
+                </Border>
+            </StackPanel>
+        </Grid>
+
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition x:Name="SidebarColumn" Width="272" MinWidth="0" />
+                <ColumnDefinition Width="6" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition x:Name="SidePaneColumn" Width="0" />
+            </Grid.ColumnDefinitions>
+
+            <!--  Sidebar  -->
+            <Grid x:Name="Sidebar" Padding="8,0,0,8" RowSpacing="6">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <ComboBox x:Uid="/Workspace/DatabaseBox" x:Name="DatabaseBox" HorizontalAlignment="Stretch" ItemsSource="{x:Bind ViewModel.Databases}" SelectedItem="{x:Bind ViewModel.SelectedDatabaseItem, Mode=TwoWay}" Visibility="{x:Bind ViewModel.ShowDatabaseSwitcher, Mode=OneWay}" />
+                <ComboBox x:Uid="/Workspace/SchemaBox" x:Name="SchemaBox" Grid.Row="1" HorizontalAlignment="Stretch" ItemsSource="{x:Bind ViewModel.Schemas}" SelectedItem="{x:Bind ViewModel.SelectedSchemaItem, Mode=TwoWay}" Visibility="{x:Bind ViewModel.HasSchemas}" />
+                <AutoSuggestBox Grid.Row="2" QueryIcon="Find" Text="{x:Bind ViewModel.SearchText, Mode=TwoWay}" x:Name="SearchBox" />
+                <InfoBar Grid.Row="3" Severity="Error" IsClosable="False" IsOpen="{x:Bind ViewModel.HasSidebarError, Mode=OneWay}" Message="{x:Bind ViewModel.SidebarError, Mode=OneWay}" />
+                <ListView
+                    x:Name="ObjectList"
+                    Grid.Row="4"
+                    ItemsSource="{x:Bind ViewModel.Sidebar}"
+                    ItemTemplateSelector="{StaticResource SidebarSelector}"
+                    SelectionMode="Single"
+                    IsItemClickEnabled="True"
+                    ItemClick="OnObjectClicked"
+                    DoubleTapped="OnObjectDoubleTapped"
+                    RightTapped="OnObjectRightTapped"
+                    KeyDown="OnObjectKeyDown"
+                    Padding="0,0,4,0" />
+                <ProgressBar Grid.Row="4" VerticalAlignment="Top" IsIndeterminate="True" Visibility="{x:Bind ViewModel.IsLoading, Mode=OneWay}" />
+                <!--  Equal columns, so every button fits the default sidebar width and shrinks with it instead of the last one being cut off.  -->
+                <Grid Grid.Row="5" ColumnSpacing="2">
+                    <Grid.Resources>
+                        <Style TargetType="Button" BasedOn="{StaticResource ToolbarButtonStyle}">
+                            <Setter Property="HorizontalAlignment" Value="Stretch" />
+                            <Setter Property="MinWidth" Value="0" />
+                            <Setter Property="Padding" Value="4,5" />
+                        </Style>
+                    </Grid.Resources>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Button Grid.Column="0" x:Uid="/Workspace/NewQueryButton" x:Name="NewQueryButton" Command="{x:Bind ViewModel.NewQueryTabCommand}">
+                        <FontIcon FontSize="16" Glyph="&#xE710;" />
+                    </Button>
+                    <Button Grid.Column="1" x:Uid="/Workspace/RefreshButton" Command="{x:Bind ViewModel.RefreshCommand}">
+                        <FontIcon FontSize="16" Glyph="&#xE72C;" />
+                    </Button>
+                    <Button Grid.Column="2" x:Uid="/Workspace/CreateTableButton" Click="OnCreateTable" Visibility="{x:Bind ViewModel.CanEditStructure}">
+                        <FontIcon FontSize="16" Glyph="&#xE8F4;" />
+                    </Button>
+                    <Button Grid.Column="3" x:Uid="/Workspace/HistoryButton" x:Name="HistoryButton" Click="OnShowHistory">
+                        <FontIcon FontSize="16" Glyph="&#xE81C;" />
+                    </Button>
+                    <Button Grid.Column="4" x:Uid="/Workspace/SqlFilesButton" x:Name="SqlFilesButton" Click="OnShowSqlFiles">
+                        <FontIcon FontSize="16" Glyph="&#xE8B7;" />
+                    </Button>
+                    <Button Grid.Column="5" x:Uid="/Workspace/FavoritesButton" x:Name="FavoritesButton" Click="OnShowFavorites">
+                        <FontIcon FontSize="16" Glyph="&#xE734;" />
+                    </Button>
+                    <Button Grid.Column="6" x:Uid="/Workspace/AssistantButton" x:Name="AssistantButton" Click="OnShowAssistant">
+                        <FontIcon FontSize="16" Glyph="&#xE8BD;" />
+                    </Button>
+                    <Button Grid.Column="7" x:Uid="/Workspace/MoreButton">
+                        <FontIcon FontSize="16" Glyph="&#xE712;" />
+                        <Button.Flyout>
+                            <MenuFlyout Placement="TopEdgeAlignedLeft">
+                                <MenuFlyoutItem x:Uid="/Workspace/MenuServerDashboard" x:Name="ServerDashboardItem" Click="OnServerDashboard">
+                                    <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE9D9;" /></MenuFlyoutItem.Icon>
+                                </MenuFlyoutItem>
+                                <MenuFlyoutItem x:Uid="/Workspace/MenuOpenQuickly" x:Name="OpenQuicklyItem" Click="OnOpenQuickly">
+                                    <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8A7;" /></MenuFlyoutItem.Icon>
+                                </MenuFlyoutItem>
+                                <MenuFlyoutItem x:Uid="/Workspace/MenuSearchDatabase" x:Name="SearchDatabaseItem" Click="OnSearchDatabase">
+                                    <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE721;" /></MenuFlyoutItem.Icon>
+                                </MenuFlyoutItem>
+                                <MenuFlyoutItem x:Uid="/Workspace/MenuJoinBuilder" x:Name="JoinBuilderItem" Click="OnJoinBuilder" Visibility="{x:Bind ViewModel.IsSql}">
+                                    <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE71B;" /></MenuFlyoutItem.Icon>
+                                </MenuFlyoutItem>
+                                <MenuFlyoutItem x:Uid="/Workspace/MenuCopyObjects" x:Name="CopyObjectsItem" Click="OnCopyObjects" Visibility="{x:Bind ViewModel.IsSql}">
+                                    <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8C8;" /></MenuFlyoutItem.Icon>
+                                </MenuFlyoutItem>                                <MenuFlyoutItem x:Uid="/Workspace/MenuCompare" x:Name="CompareItem" Click="OnCompare">
+                                    <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8F1;" /></MenuFlyoutItem.Icon>
+                                </MenuFlyoutItem>
+                                <MenuFlyoutItem x:Uid="/Workspace/MenuDataRewind" x:Name="RewindItem" Click="OnDataRewind">
+                                    <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE7A7;" /></MenuFlyoutItem.Icon>
+                                </MenuFlyoutItem>
+                                <MenuFlyoutItem x:Uid="/Workspace/MenuErDiagram" x:Name="DiagramItem" Click="OnDiagram">
+                                    <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8A1;" /></MenuFlyoutItem.Icon>
+                                </MenuFlyoutItem>
+                                <MenuFlyoutItem x:Uid="/Workspace/MenuExportDatabase" x:Name="ExportDatabaseItem" Click="OnDumpDatabase">
+                                    <MenuFlyoutItem.Icon><FontIcon Glyph="&#xEDE1;" /></MenuFlyoutItem.Icon>
+                                </MenuFlyoutItem>
+                                <MenuFlyoutItem x:Uid="/Workspace/MenuRunSqlFile" x:Name="RunSqlFileItem" Click="OnRunSqlFile">
+                                    <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8E5;" /></MenuFlyoutItem.Icon>
+                                </MenuFlyoutItem>
+                                <MenuFlyoutSeparator />
+                                <MenuFlyoutItem x:Uid="/Workspace/MenuCheckForUpdates" x:Name="UpdatesItem" Click="OnCheckForUpdates" Loaded="OnUpdatesItemLoaded">
+                                    <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE895;" /></MenuFlyoutItem.Icon>
+                                </MenuFlyoutItem>
+                                <MenuFlyoutItem x:Uid="/Workspace/MenuSettings" x:Name="SettingsItem" Click="OnSettings">
+                                    <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE713;" /></MenuFlyoutItem.Icon>
+                                </MenuFlyoutItem>
+                                <MenuFlyoutItem x:Uid="/Workspace/MenuDisconnect" x:Name="DisconnectItem" Click="OnDisconnect">
+                                    <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8CD;" /></MenuFlyoutItem.Icon>
+                                </MenuFlyoutItem>
+                            </MenuFlyout>
+                        </Button.Flyout>
+                    </Button>
+                </Grid>
+            </Grid>
+
+            <controls:PaneSplitter Grid.Column="1" Orientation="Vertical" TargetIndex="0" />
+
+            <!--  Content layer  -->
+            <Border
+                Grid.Column="2"
+                Background="{ThemeResource LayerFillColorDefaultBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1,1,0,0"
+                CornerRadius="8,0,0,0">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <TabView
+                        x:Name="Tabs"
+                        VerticalAlignment="Stretch"
+                        HorizontalAlignment="Stretch"
+                        TabWidthMode="SizeToContent"
+                        CloseButtonOverlayMode="OnPointerOver"
+                        AddTabButtonClick="OnAddTab"
+                        TabCloseRequested="OnTabCloseRequested"
+                        SelectionChanged="OnTabSelectionChanged"
+                        IsAddTabButtonVisible="True"
+                        CanReorderTabs="True"
+                        CanDragTabs="False"
+                        Padding="0" />
+
+                    <Grid Grid.Row="1" Padding="12,4" ColumnSpacing="16" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,1,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <Ellipse Width="8" Height="8" Fill="{ThemeResource SystemFillColorSuccessBrush}" VerticalAlignment="Center" />
+                            <TextBlock x:Name="ConnectionStatus" Style="{StaticResource StatusTextStyle}" />
+                        </StackPanel>
+                        <TextBlock x:Name="TabStatus" Grid.Column="2" Style="{StaticResource StatusTextStyle}" />
+                    </Grid>
+
+                    <InfoBar
+                        x:Name="Toast"
+                        Grid.RowSpan="2"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Bottom"
+                        Margin="0,0,16,40"
+                        MaxWidth="420"
+                        Severity="Success"
+                        IsOpen="False" />
+                </Grid>
+            </Border>
+
+            <!--  Side pane: value inspector, history, favorites or the assistant  -->
+            <Border
+                x:Name="SidePane"
+                Grid.Column="3"
+                Background="{ThemeResource LayerFillColorDefaultBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1,1,0,0">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <Grid Padding="16,8,8,8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock x:Name="SidePaneTitle" Style="{StaticResource SubtitleTextBlockStyle}" FontSize="16" VerticalAlignment="Center" />
+                        <Button x:Uid="/Workspace/CloseSidePaneButton" Grid.Column="1" Style="{StaticResource ToolbarButtonStyle}" Click="OnCloseSidePane">
+                            <FontIcon FontSize="12" Glyph="&#xE711;" />
+                        </Button>
+                    </Grid>
+                    <ContentControl x:Name="SidePaneContent" Grid.Row="1" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" />
+                </Grid>
+            </Border>
+        </Grid>
+    </Grid>
+</Window>

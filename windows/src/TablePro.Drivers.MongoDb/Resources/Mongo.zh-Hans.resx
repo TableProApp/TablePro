@@ -1,0 +1,366 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AggregateCursorUnsupported" xml:space="preserve">
+    <value>聚合游标不支持 .{0}()。</value>
+  </data>
+  <data name="ArgumentMustBeDocument" xml:space="preserve">
+    <value>{1} 的第 {0} 个参数必须是文档</value>
+  </data>
+  <data name="AssignmentsUnsupported" xml:space="preserve">
+    <value>不支持赋值</value>
+  </data>
+  <data name="BinaryArgs" xml:space="preserve">
+    <value>接受子类型编号和字符串</value>
+  </data>
+  <data name="BracketNameQuoted" xml:space="preserve">
+    <value>方括号中的名称必须是带引号的字符串</value>
+  </data>
+  <data name="BulkWriteShape" xml:space="preserve">
+    <value>每个 bulkWrite 操作应为 {insertOne: ...}、{updateOne: ...} 等形式之一</value>
+  </data>
+  <data name="BulkWriteUnknown" xml:space="preserve">
+    <value>bulkWrite 不认识操作 {0}。</value>
+  </data>
+  <data name="CollectionMethodUnsupported" xml:space="preserve">
+    <value>不支持 db.{0}.{1}()。</value>
+  </data>
+  <data name="CommentNotClosed" xml:space="preserve">
+    <value>注释未闭合</value>
+  </data>
+  <data name="ConcernNotMet" xml:space="preserve">
+    <value>写入已执行，但未满足其写关注（write concern）：{0}</value>
+  </data>
+  <data name="ConcernUnknownWithStatement" xml:space="preserve">
+    <value>写入已执行，但未满足其写关注（write concern），因此不确定是否会持久保留：{0}。语句：{1}</value>
+  </data>
+  <data name="ConstructorUnsupported" xml:space="preserve">
+    <value>不支持 {0}()</value>
+  </data>
+  <data name="DateArgs" xml:space="preserve">
+    <value>接受一个参数：ISO 日期或自 1970 年以来的毫秒数</value>
+  </data>
+  <data name="DbAlone" xml:space="preserve">
+    <value>单独的 db 不执行任何操作：请指定集合或调用方法</value>
+  </data>
+  <data name="DbMethodUnsupported" xml:space="preserve">
+    <value>不支持 db.{0}()。</value>
+  </data>
+  <data name="DropIndexNeeds" xml:space="preserve">
+    <value>dropIndex 需要索引名称或其键</value>
+  </data>
+  <data name="ErrorWithCode" xml:space="preserve">
+    <value>{0}（代码 {1}）</value>
+  </data>
+  <data name="ErrorWithStatement" xml:space="preserve">
+    <value>{0}（代码 {1}）。语句：{2}</value>
+  </data>
+  <data name="ExpectedChar" xml:space="preserve">
+    <value>应为 '{0}'</value>
+  </data>
+  <data name="ExpectedColon" xml:space="preserve">
+    <value>字段名称后应为 ':'</value>
+  </data>
+  <data name="ExpectedCommaOr" xml:space="preserve">
+    <value>应为 ',' 或 '{0}'</value>
+  </data>
+  <data name="ExpectedConstructor" xml:space="preserve">
+    <value>new 后应为构造函数</value>
+  </data>
+  <data name="ExpectedDocument" xml:space="preserve">
+    <value>应为大括号括起的文档</value>
+  </data>
+  <data name="ExpectedFieldName" xml:space="preserve">
+    <value>应为字段名称</value>
+  </data>
+  <data name="ExpectedMethodName" xml:space="preserve">
+    <value>括号前应为方法名</value>
+  </data>
+  <data name="ExpectedNameAfterDot" xml:space="preserve">
+    <value>'.' 后应为名称</value>
+  </data>
+  <data name="ExpectedNumberAfterSign" xml:space="preserve">
+    <value>符号后应为数字</value>
+  </data>
+  <data name="ExpectedParenAfter" xml:space="preserve">
+    <value>{0} 后应为 '('</value>
+  </data>
+  <data name="ExpectedValue" xml:space="preserve">
+    <value>应为值</value>
+  </data>
+  <data name="FindCursorUnsupported" xml:space="preserve">
+    <value>find 游标不支持 .{0}()。</value>
+  </data>
+  <data name="FunctionsUnsupported" xml:space="preserve">
+    <value>不支持函数</value>
+  </data>
+  <data name="HelpersUnsupported" xml:space="preserve">
+    <value>不支持 {0}.* 辅助函数；请使用 db.adminCommand 并传入它们发送的命令。</value>
+  </data>
+  <data name="IdImmutable" xml:space="preserve">
+    <value>MongoDB 不会更改文档的 _id。请删除该行，然后用新的 _id 插入。</value>
+  </data>
+  <data name="InvalidEscape" xml:space="preserve">
+    <value>字符串中有无效的转义序列</value>
+  </data>
+  <data name="InvalidUnicodeEscape" xml:space="preserve">
+    <value>无效的 Unicode 转义</value>
+  </data>
+  <data name="MoreThanFirstBatch" xml:space="preserve">
+    <value>该命令返回的文档多于第一批；请运行对应的方法（例如 find()）以读取全部文档。</value>
+  </data>
+  <data name="MultiNeedsOperators" xml:space="preserve">
+    <value>multi: true 的 update 需要 $set 等更新运算符</value>
+  </data>
+  <data name="NameAfterNumber" xml:space="preserve">
+    <value>名称不能紧跟在数字之后</value>
+  </data>
+  <data name="Needs" xml:space="preserve">
+    <value>{0} 需要{1}</value>
+  </data>
+  <data name="NeedsBraces" xml:space="preserve">
+    <value>{0} 需要用大括号括起的{1}</value>
+  </data>
+  <data name="NeedsCommandDocument" xml:space="preserve">
+    <value>{0} 需要命令文档</value>
+  </data>
+  <data name="NeedsDocumentsInArray" xml:space="preserve">
+    <value>{0} 的数组中需要文档</value>
+  </data>
+  <data name="NeedsFilter" xml:space="preserve">
+    <value>{0} 需要筛选条件；传入 {{}} 可匹配所有文档</value>
+  </data>
+  <data name="NeedsOperatorsOrPipeline" xml:space="preserve">
+    <value>{0} 需要 $set 等更新运算符或管道；要替换文档请使用 replaceOne</value>
+  </data>
+  <data name="NeedsPipeline" xml:space="preserve">
+    <value>{0} 需要管道阶段数组</value>
+  </data>
+  <data name="NeedsQuoted" xml:space="preserve">
+    <value>{0} 需要以带引号字符串形式提供的{1}</value>
+  </data>
+  <data name="NeedsWholeNumber" xml:space="preserve">
+    <value>{0} 需要整数</value>
+  </data>
+  <data name="NoDocumentMatched" xml:space="preserve">
+    <value>没有匹配的文档。</value>
+  </data>
+  <data name="NoOperatorsAllowed" xml:space="preserve">
+    <value>{0} 接受不含更新运算符的文档；要应用 $set 请使用 updateOne</value>
+  </data>
+  <data name="NotAChange" xml:space="preserve">
+    <value>{0} 不是 MongoDB 可以应用的更改。</value>
+  </data>
+  <data name="NotACursor" xml:space="preserve">
+    <value>.{0}() 之前的方法不返回游标，因此 .{0}() 不能跟在其后。</value>
+  </data>
+  <data name="NotADate" xml:space="preserve">
+    <value>{0} 不是日期</value>
+  </data>
+  <data name="NotANumber" xml:space="preserve">
+    <value>{0} 不是数字</value>
+  </data>
+  <data name="NotAValue" xml:space="preserve">
+    <value>“{0}”不是值：不支持变量</value>
+  </data>
+  <data name="NotDecimal" xml:space="preserve">
+    <value>{0} 不是十进制数</value>
+  </data>
+  <data name="NotDefined" xml:space="preserve">
+    <value>“{0}”未定义：语句以 db、use 或 show 开头</value>
+  </data>
+  <data name="NotJson" xml:space="preserve">
+    <value>{0} 保存的是 JSON，但其新值无法按 JSON 读取：第 {2} 列处{1}。</value>
+  </data>
+  <data name="NotObjectIdHex" xml:space="preserve">
+    <value>{0} 不是 24 位十六进制数字</value>
+  </data>
+  <data name="NotRegexFlag" xml:space="preserve">
+    <value>“{0}”不是正则表达式标志</value>
+  </data>
+  <data name="NotUuid" xml:space="preserve">
+    <value>{0} 不是 UUID</value>
+  </data>
+  <data name="NotWholeNumber" xml:space="preserve">
+    <value>{0} 不是整数</value>
+  </data>
+  <data name="OneArgument" xml:space="preserve">
+    <value>接受一个参数</value>
+  </data>
+  <data name="OperationsFailed" xml:space="preserve">
+    <value>{1} 个操作中有 {0} 个失败：{2}</value>
+  </data>
+  <data name="OutOfRange" xml:space="preserve">
+    <value>{0} 超出范围</value>
+  </data>
+  <data name="QuotedStringExpected" xml:space="preserve">
+    <value>需要带引号的字符串</value>
+  </data>
+  <data name="ReadOnlyCannotSave" xml:space="preserve">
+    <value>连接为只读，因此无法保存更改。</value>
+  </data>
+  <data name="ReadOnlyStatement" xml:space="preserve">
+    <value>连接为只读，而此语句可能会更改数据。只读连接上只运行读取操作。</value>
+  </data>
+  <data name="RegexArgs" xml:space="preserve">
+    <value>接受模式和可选标志</value>
+  </data>
+  <data name="RegexNotClosed" xml:space="preserve">
+    <value>正则表达式未闭合</value>
+  </data>
+  <data name="ShorthandUnsupported" xml:space="preserve">
+    <value>字段“{0}”需要值：不支持简写属性</value>
+  </data>
+  <data name="ShowNeedsWhat" xml:space="preserve">
+    <value>show 需要指定要列出的内容，例如 dbs 或 collections</value>
+  </data>
+  <data name="ShowUnsupported" xml:space="preserve">
+    <value>不支持 show {0}。请尝试 show dbs、show collections、show users 或 show roles。</value>
+  </data>
+  <data name="SpreadUnsupported" xml:space="preserve">
+    <value>不支持展开语法</value>
+  </data>
+  <data name="SrvThroughTunnel" xml:space="preserve">
+    <value>DNS 种子列表（mongodb+srv）无法通过 SSH 隧道运行：隧道只承载一个主机，而种子列表通过 DNS 命名服务器。请关闭种子列表，并连接到某个成员的主机和端口。</value>
+  </data>
+  <data name="StatementEmpty" xml:space="preserve">
+    <value>语句为空</value>
+  </data>
+  <data name="StatementStart" xml:space="preserve">
+    <value>语句以 db、use 或 show 开头</value>
+  </data>
+  <data name="StatementUnsupported" xml:space="preserve">
+    <value>不支持该语句。</value>
+  </data>
+  <data name="StringNotClosed" xml:space="preserve">
+    <value>字符串未闭合</value>
+  </data>
+  <data name="StringNotClosedLine" xml:space="preserve">
+    <value>字符串在行尾之前未闭合</value>
+  </data>
+  <data name="SubtypeOutOfRange" xml:space="preserve">
+    <value>子类型 {0} 超出范围</value>
+  </data>
+  <data name="SyntaxAt" xml:space="preserve">
+    <value>SyntaxError：{0}（第 {1} 行，第 {2} 列）</value>
+  </data>
+  <data name="TimestampArgs" xml:space="preserve">
+    <value>接受秒数和增量，或 {t, i}</value>
+  </data>
+  <data name="UnexpectedAfterStatement" xml:space="preserve">
+    <value>语句后有意外的文本</value>
+  </data>
+  <data name="UnexpectedAfterValue" xml:space="preserve">
+    <value>值后有意外的文本</value>
+  </data>
+  <data name="UnexpectedToken" xml:space="preserve">
+    <value>意外的 '{0}'</value>
+  </data>
+  <data name="UnknownError" xml:space="preserve">
+    <value>未知错误</value>
+  </data>
+  <data name="UseNeedsDatabase" xml:space="preserve">
+    <value>use 需要数据库名称</value>
+  </data>
+  <data name="WhatCollationDocument" xml:space="preserve">
+    <value>排序规则文档</value>
+  </data>
+  <data name="WhatCollectionName" xml:space="preserve">
+    <value>集合名称</value>
+  </data>
+  <data name="WhatCommandDocument" xml:space="preserve">
+    <value>命令文档</value>
+  </data>
+  <data name="WhatComment" xml:space="preserve">
+    <value>注释</value>
+  </data>
+  <data name="WhatDatabaseName" xml:space="preserve">
+    <value>数据库名称</value>
+  </data>
+  <data name="WhatDocument" xml:space="preserve">
+    <value>文档</value>
+  </data>
+  <data name="WhatDocumentArray" xml:space="preserve">
+    <value>文档数组</value>
+  </data>
+  <data name="WhatDocumentOrArray" xml:space="preserve">
+    <value>文档或文档数组</value>
+  </data>
+  <data name="WhatFieldName" xml:space="preserve">
+    <value>字段名称</value>
+  </data>
+  <data name="WhatFilter" xml:space="preserve">
+    <value>筛选条件</value>
+  </data>
+  <data name="WhatFindAndModifyDocument" xml:space="preserve">
+    <value>包含查询、更新和选项的文档</value>
+  </data>
+  <data name="WhatHint" xml:space="preserve">
+    <value>索引名称或键</value>
+  </data>
+  <data name="WhatIndexKeys" xml:space="preserve">
+    <value>索引键</value>
+  </data>
+  <data name="WhatIndexKeysArray" xml:space="preserve">
+    <value>索引键数组</value>
+  </data>
+  <data name="WhatIndexNameOrKeys" xml:space="preserve">
+    <value>索引名称或键</value>
+  </data>
+  <data name="WhatNewName" xml:space="preserve">
+    <value>新名称</value>
+  </data>
+  <data name="WhatOperationArray" xml:space="preserve">
+    <value>操作数组</value>
+  </data>
+  <data name="WhatOperationId" xml:space="preserve">
+    <value>操作 ID</value>
+  </data>
+  <data name="WhatProjectionDocument" xml:space="preserve">
+    <value>投影文档</value>
+  </data>
+  <data name="WhatReplacementDocument" xml:space="preserve">
+    <value>替换文档</value>
+  </data>
+  <data name="WhatRoleArray" xml:space="preserve">
+    <value>角色数组</value>
+  </data>
+  <data name="WhatSortDocument" xml:space="preserve">
+    <value>排序文档</value>
+  </data>
+  <data name="WhatSourceCollection" xml:space="preserve">
+    <value>源集合</value>
+  </data>
+  <data name="WhatUpdateDocument" xml:space="preserve">
+    <value>更新文档</value>
+  </data>
+  <data name="WhatUpdateOrPipeline" xml:space="preserve">
+    <value>更新文档或管道</value>
+  </data>
+  <data name="WhatUserDocument" xml:space="preserve">
+    <value>用户文档</value>
+  </data>
+  <data name="WhatUserName" xml:space="preserve">
+    <value>用户名</value>
+  </data>
+  <data name="WhatViewName" xml:space="preserve">
+    <value>视图名称</value>
+  </data>
+  <data name="WhatWholeNumber" xml:space="preserve">
+    <value>整数</value>
+  </data>
+  <data name="WriteFailed" xml:space="preserve">
+    <value>写入失败</value>
+  </data>
+</root>

@@ -1,0 +1,136 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AutoCheckDescription" xml:space="preserve">
+    <value>Looks once a day for a new version.</value>
+    <comment>Settings &gt; General, under "Check for updates automatically".</comment>
+  </data>
+  <data name="AutoCheckTitle" xml:space="preserve">
+    <value>Check for updates automatically</value>
+    <comment>Settings &gt; General, title of an on/off setting.</comment>
+  </data>
+  <data name="AvailableVersion" xml:space="preserve">
+    <value>TablePro {0} is available. You have {1}.</value>
+    <comment>{0} is the new version number, {1} the installed version number.</comment>
+  </data>
+  <data name="BetaDescription" xml:space="preserve">
+    <value>Betas come before a stable release and may have rough edges.</value>
+    <comment>Settings &gt; General, under "Get beta updates".</comment>
+  </data>
+  <data name="BetaTitle" xml:space="preserve">
+    <value>Get beta updates</value>
+    <comment>Settings &gt; General, title of an on/off setting.</comment>
+  </data>
+  <data name="CheckNow" xml:space="preserve">
+    <value>Check Now</value>
+    <comment>Button in Settings &gt; General that checks for updates at once.</comment>
+  </data>
+  <data name="CheckTitle" xml:space="preserve">
+    <value>Check for Updates</value>
+    <comment>Title of the error dialog shown when a check for updates fails.</comment>
+  </data>
+  <data name="ErrorChecksumMismatch" xml:space="preserve">
+    <value>The downloaded update does not match the checksum the release published. Nothing was installed.</value>
+  </data>
+  <data name="ErrorFeedTooLarge" xml:space="preserve">
+    <value>The update feed is larger than expected.</value>
+    <comment>The feed is the online list of releases the app reads.</comment>
+  </data>
+  <data name="ErrorHttpsOnly" xml:space="preserve">
+    <value>Updates are only downloaded over HTTPS.</value>
+  </data>
+  <data name="ErrorNoInstallScript" xml:space="preserve">
+    <value>The update has no install script.</value>
+  </data>
+  <data name="ImportantUpdateTitle" xml:space="preserve">
+    <value>Important Update</value>
+    <comment>Dialog title for a critical update that cannot be skipped.</comment>
+  </data>
+  <data name="InstallAndRestart" xml:space="preserve">
+    <value>Install and Restart</value>
+    <comment>Button in the update dialog.</comment>
+  </data>
+  <data name="InstallFailedTitle" xml:space="preserve">
+    <value>Could not install the update</value>
+    <comment>Error dialog title; the system's error text follows in the message.</comment>
+  </data>
+  <data name="Later" xml:space="preserve">
+    <value>Later</value>
+    <comment>Button in the update dialog that closes it without installing.</comment>
+  </data>
+  <data name="MenuCheckForUpdates" xml:space="preserve">
+    <value>Check for Updates…</value>
+    <comment>Menu item.</comment>
+  </data>
+  <data name="MenuUpdateAvailable" xml:space="preserve">
+    <value>Update Available…</value>
+    <comment>Menu item shown instead of "Check for Updates…" when an update is waiting.</comment>
+  </data>
+  <data name="RestartToUpdate" xml:space="preserve">
+    <value>Restart to Update</value>
+    <comment>Button in the update dialog.</comment>
+  </data>
+  <data name="SettingsTitle" xml:space="preserve">
+    <value>Updates</value>
+    <comment>Settings &gt; General, title of the card shown when this copy cannot update itself.</comment>
+  </data>
+  <data name="SkipThisVersion" xml:space="preserve">
+    <value>Skip This Version</value>
+    <comment>Button in the update dialog.</comment>
+  </data>
+  <data name="StatusAvailable" xml:space="preserve">
+    <value>An update is available.</value>
+  </data>
+  <data name="StatusChecking" xml:space="preserve">
+    <value>Checking for updates…</value>
+  </data>
+  <data name="StatusDisabled" xml:space="preserve">
+    <value>Updates are off in this build.</value>
+  </data>
+  <data name="StatusDownloading" xml:space="preserve">
+    <value>Downloading the update: {0:P0}</value>
+    <comment>{0:P0} is the download progress as a percentage, such as 42 %.</comment>
+  </data>
+  <data name="StatusFailed" xml:space="preserve">
+    <value>The update check failed: {0}</value>
+    <comment>{0} is the error message.</comment>
+  </data>
+  <data name="StatusInstalling" xml:space="preserve">
+    <value>Starting the installer…</value>
+  </data>
+  <data name="StatusLastChecked" xml:space="preserve">
+    <value>Last checked {0:g}.</value>
+    <comment>{0:g} is the date and time of the last check.</comment>
+  </data>
+  <data name="StatusStore" xml:space="preserve">
+    <value>The Microsoft Store keeps TablePro up to date.</value>
+    <comment>Microsoft Store is a product name; use the name Windows uses in this language.</comment>
+  </data>
+  <data name="StatusUpToDate" xml:space="preserve">
+    <value>TablePro {0} is the latest version.</value>
+    <comment>{0} is the installed version number.</comment>
+  </data>
+  <data name="StatusVersion" xml:space="preserve">
+    <value>TablePro {0}.</value>
+    <comment>{0} is the installed version number.</comment>
+  </data>
+  <data name="UpdateAvailableTitle" xml:space="preserve">
+    <value>Update Available</value>
+    <comment>Dialog title.</comment>
+  </data>
+  <data name="VersionTitle" xml:space="preserve">
+    <value>TablePro {0}</value>
+    <comment>Settings &gt; General, card title. {0} is the installed version number.</comment>
+  </data>
+</root>

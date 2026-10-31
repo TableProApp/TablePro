@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="EncodingCannotHold" xml:space="preserve">
+    <value>文件的编码（{0}）无法容纳这些字符。未做任何更改。</value>
+  </data>
+  <data name="FileNoLongerExists" xml:space="preserve">
+    <value>该文件已不存在。</value>
+  </data>
+  <data name="FileTooLargeForGit" xml:space="preserve">
+    <value>文件太大，无法从 Git 读取。</value>
+  </data>
+  <data name="FolderNotInRepository" xml:space="preserve">
+    <value>此文件夹不在 Git 仓库中。</value>
+  </data>
+  <data name="GitAdded" xml:space="preserve">
+    <value>新增</value>
+  </data>
+  <data name="GitBusy" xml:space="preserve">
+    <value>此仓库中仍有另一个 Git 命令在运行。</value>
+  </data>
+  <data name="GitConflicted" xml:space="preserve">
+    <value>有冲突</value>
+  </data>
+  <data name="GitCouldNotStart" xml:space="preserve">
+    <value>无法启动 Git。</value>
+  </data>
+  <data name="GitExitStatus" xml:space="preserve">
+    <value>Git 已退出，状态码为 {0}。</value>
+  </data>
+  <data name="GitHistoryUnavailable" xml:space="preserve">
+    <value>Git 历史记录不可用：{0}</value>
+  </data>
+  <data name="GitModified" xml:space="preserve">
+    <value>已修改</value>
+  </data>
+  <data name="GitNotInstalled" xml:space="preserve">
+    <value>未安装 Git。</value>
+  </data>
+  <data name="GitOutputTooLarge" xml:space="preserve">
+    <value>Git 输出的内容超出了 TablePro 能够读取的范围。</value>
+  </data>
+  <data name="GitPartlyStaged" xml:space="preserve">
+    <value>{0}，部分已暂存</value>
+  </data>
+  <data name="GitRenamed" xml:space="preserve">
+    <value>已重命名</value>
+  </data>
+  <data name="GitStaged" xml:space="preserve">
+    <value>{0}，已暂存</value>
+  </data>
+  <data name="GitTimedOut" xml:space="preserve">
+    <value>Git 未及时响应。</value>
+  </data>
+  <data name="GitUntracked" xml:space="preserve">
+    <value>未跟踪</value>
+  </data>
+  <data name="HistoryChangedBeforeWriting" xml:space="preserve">
+    <value>文件或其暂存版本在写入前已更改。未替换任何内容。</value>
+  </data>
+  <data name="HistoryFileGone" xml:space="preserve">
+    <value>此文件已不存在。</value>
+  </data>
+  <data name="HistoryGitFailed" xml:space="preserve">
+    <value>Git 失败。</value>
+  </data>
+  <data name="HistoryGitUnavailable" xml:space="preserve">
+    <value>未安装 Git。请安装 Git for Windows 以查看文件的提交。</value>
+  </data>
+  <data name="HistoryInLfs" xml:space="preserve">
+    <value>此文件使用 Git LFS 存储。请使用你的 Git 客户端还原。</value>
+  </data>
+  <data name="HistoryNotInRepository" xml:space="preserve">
+    <value>此文件不在 Git 仓库中。</value>
+  </data>
+  <data name="HistoryNotText" xml:space="preserve">
+    <value>此版本无法作为文本读取。</value>
+  </data>
+  <data name="HistoryRestoreFailed" xml:space="preserve">
+    <value>无法还原该版本：{0}</value>
+  </data>
+  <data name="HistoryVersionGone" xml:space="preserve">
+    <value>此版本已不可用。</value>
+  </data>
+  <data name="KeepsLatestSnapshots_One" xml:space="preserve">
+    <value>TablePro 会保留文件最近的 {0} 个已保存版本。</value>
+  </data>
+  <data name="KeepsLatestSnapshots_Other" xml:space="preserve">
+    <value>TablePro 会保留文件最近的 {0} 个已保存版本。</value>
+  </data>
+  <data name="NameAlreadyExists" xml:space="preserve">
+    <value>此处已存在同名文件。</value>
+  </data>
+  <data name="NameEmpty" xml:space="preserve">
+    <value>请输入名称。</value>
+  </data>
+  <data name="NameInvalidCharacters" xml:space="preserve">
+    <value>文件名不能包含 \ / : * ? " &lt; &gt; 或 |。</value>
+  </data>
+  <data name="NameReserved" xml:space="preserve">
+    <value>此名称已被 Windows 保留给设备使用。</value>
+  </data>
+  <data name="RecycleBinFailed" xml:space="preserve">
+    <value>无法将文件移到回收站。</value>
+  </data>
+  <data name="RequestFailed" xml:space="preserve">
+    <value>请求失败。</value>
+  </data>
+  <data name="SavedInTablePro" xml:space="preserve">
+    <value>在 TablePro 中保存</value>
+  </data>
+  <data name="ShowsLatestCommits_One" xml:space="preserve">
+    <value>显示最近的 {0} 次提交。</value>
+  </data>
+  <data name="ShowsLatestCommits_Other" xml:space="preserve">
+    <value>显示最近的 {0} 次提交。</value>
+  </data>
+  <data name="TeamEmptyResponse" xml:space="preserve">
+    <value>团队资料库返回了空响应。</value>
+  </data>
+  <data name="TeamNeedsLicense" xml:space="preserve">
+    <value>请激活 Team 许可证以发布到团队资料库。</value>
+  </data>
+  <data name="TeamTimedOut" xml:space="preserve">
+    <value>团队资料库未及时响应。</value>
+  </data>
+  <data name="TeamUnreachable" xml:space="preserve">
+    <value>无法连接团队资料库：{0}</value>
+  </data>
+  <data name="TeamUnreadable" xml:space="preserve">
+    <value>团队资料库返回了 TablePro 无法读取的响应。</value>
+  </data>
+  <data name="UntitledFile" xml:space="preserve">
+    <value>未命名</value>
+  </data>
+</root>

@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="EncodingCannotHold" xml:space="preserve">
+    <value>Bảng mã của tệp ({0}) không chứa được các ký tự này. Không có gì bị thay đổi.</value>
+  </data>
+  <data name="FileNoLongerExists" xml:space="preserve">
+    <value>Tệp không còn tồn tại.</value>
+  </data>
+  <data name="FileTooLargeForGit" xml:space="preserve">
+    <value>Tệp quá lớn để đọc từ Git.</value>
+  </data>
+  <data name="FolderNotInRepository" xml:space="preserve">
+    <value>Thư mục này không nằm trong kho Git.</value>
+  </data>
+  <data name="GitAdded" xml:space="preserve">
+    <value>Đã thêm</value>
+  </data>
+  <data name="GitBusy" xml:space="preserve">
+    <value>Một lệnh Git khác vẫn đang chạy trong kho này.</value>
+  </data>
+  <data name="GitConflicted" xml:space="preserve">
+    <value>Xung đột</value>
+  </data>
+  <data name="GitCouldNotStart" xml:space="preserve">
+    <value>Không thể khởi động Git.</value>
+  </data>
+  <data name="GitExitStatus" xml:space="preserve">
+    <value>Git đã thoát với mã trạng thái {0}.</value>
+  </data>
+  <data name="GitHistoryUnavailable" xml:space="preserve">
+    <value>Không có lịch sử Git: {0}</value>
+  </data>
+  <data name="GitModified" xml:space="preserve">
+    <value>Đã sửa đổi</value>
+  </data>
+  <data name="GitNotInstalled" xml:space="preserve">
+    <value>Git chưa được cài đặt.</value>
+  </data>
+  <data name="GitOutputTooLarge" xml:space="preserve">
+    <value>Git xuất ra nhiều nội dung hơn mức TablePro có thể đọc.</value>
+  </data>
+  <data name="GitPartlyStaged" xml:space="preserve">
+    <value>{0}, đã stage một phần</value>
+  </data>
+  <data name="GitRenamed" xml:space="preserve">
+    <value>Đã đổi tên</value>
+  </data>
+  <data name="GitStaged" xml:space="preserve">
+    <value>{0}, đã stage</value>
+  </data>
+  <data name="GitTimedOut" xml:space="preserve">
+    <value>Git không phản hồi kịp thời.</value>
+  </data>
+  <data name="GitUntracked" xml:space="preserve">
+    <value>Chưa theo dõi</value>
+  </data>
+  <data name="HistoryChangedBeforeWriting" xml:space="preserve">
+    <value>Tệp hoặc phiên bản đã stage của nó đã thay đổi trước khi được ghi. Không có gì bị thay thế.</value>
+  </data>
+  <data name="HistoryFileGone" xml:space="preserve">
+    <value>Tệp này không còn tồn tại.</value>
+  </data>
+  <data name="HistoryGitFailed" xml:space="preserve">
+    <value>Git gặp lỗi.</value>
+  </data>
+  <data name="HistoryGitUnavailable" xml:space="preserve">
+    <value>Git chưa được cài đặt. Hãy cài Git for Windows để xem các commit của tệp.</value>
+  </data>
+  <data name="HistoryInLfs" xml:space="preserve">
+    <value>Tệp này được lưu bằng Git LFS. Hãy khôi phục bằng Git client của bạn.</value>
+  </data>
+  <data name="HistoryNotInRepository" xml:space="preserve">
+    <value>Tệp này không nằm trong kho Git.</value>
+  </data>
+  <data name="HistoryNotText" xml:space="preserve">
+    <value>Không thể đọc phiên bản này dưới dạng văn bản.</value>
+  </data>
+  <data name="HistoryRestoreFailed" xml:space="preserve">
+    <value>Không thể khôi phục phiên bản: {0}</value>
+  </data>
+  <data name="HistoryVersionGone" xml:space="preserve">
+    <value>Phiên bản này không còn khả dụng.</value>
+  </data>
+  <data name="KeepsLatestSnapshots_One" xml:space="preserve">
+    <value>TablePro giữ {0} phiên bản đã lưu gần nhất của một tệp.</value>
+  </data>
+  <data name="KeepsLatestSnapshots_Other" xml:space="preserve">
+    <value>TablePro giữ {0} phiên bản đã lưu gần nhất của một tệp.</value>
+  </data>
+  <data name="NameAlreadyExists" xml:space="preserve">
+    <value>Đã có tệp trùng tên ở đây.</value>
+  </data>
+  <data name="NameEmpty" xml:space="preserve">
+    <value>Hãy nhập tên.</value>
+  </data>
+  <data name="NameInvalidCharacters" xml:space="preserve">
+    <value>Tên tệp không được chứa \ / : * ? " &lt; &gt; hoặc |.</value>
+  </data>
+  <data name="NameReserved" xml:space="preserve">
+    <value>Windows dành riêng tên này cho một thiết bị.</value>
+  </data>
+  <data name="RecycleBinFailed" xml:space="preserve">
+    <value>Không thể chuyển tệp vào Thùng rác.</value>
+  </data>
+  <data name="RequestFailed" xml:space="preserve">
+    <value>Yêu cầu không thành công.</value>
+  </data>
+  <data name="SavedInTablePro" xml:space="preserve">
+    <value>Đã lưu trong TablePro</value>
+  </data>
+  <data name="ShowsLatestCommits_One" xml:space="preserve">
+    <value>Đang hiện {0} commit gần nhất.</value>
+  </data>
+  <data name="ShowsLatestCommits_Other" xml:space="preserve">
+    <value>Đang hiện {0} commit gần nhất.</value>
+  </data>
+  <data name="TeamEmptyResponse" xml:space="preserve">
+    <value>Thư viện nhóm trả về phản hồi trống.</value>
+  </data>
+  <data name="TeamNeedsLicense" xml:space="preserve">
+    <value>Hãy kích hoạt giấy phép Team để xuất bản lên thư viện nhóm.</value>
+  </data>
+  <data name="TeamTimedOut" xml:space="preserve">
+    <value>Thư viện nhóm không phản hồi kịp thời.</value>
+  </data>
+  <data name="TeamUnreachable" xml:space="preserve">
+    <value>Không thể kết nối tới thư viện nhóm: {0}</value>
+  </data>
+  <data name="TeamUnreadable" xml:space="preserve">
+    <value>Thư viện nhóm trả về phản hồi mà TablePro không đọc được.</value>
+  </data>
+  <data name="UntitledFile" xml:space="preserve">
+    <value>Không có tiêu đề</value>
+  </data>
+</root>

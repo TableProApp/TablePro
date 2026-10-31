@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="DebuggerFailed" xml:space="preserve">
+    <value>Hata ayıklayıcı başarısız oldu.</value>
+  </data>
+  <data name="FinishedBeforeStop" xml:space="preserve">
+    <value>Yordam, durdurma isteği ulaşmadan önce tamamlandı.</value>
+  </data>
+  <data name="StatusFailed" xml:space="preserve">
+    <value>Başarısız</value>
+  </data>
+  <data name="StatusFinished" xml:space="preserve">
+    <value>Bitti</value>
+  </data>
+  <data name="StatusPaused" xml:space="preserve">
+    <value>Duraklatıldı</value>
+  </data>
+  <data name="StatusPausedAt" xml:space="preserve">
+    <value>{1} içinde {0}. satırda duraklatıldı</value>
+  </data>
+  <data name="StatusPreparing" xml:space="preserve">
+    <value>Hazırlanıyor…</value>
+  </data>
+  <data name="StatusRunning" xml:space="preserve">
+    <value>Çalışıyor…</value>
+  </data>
+  <data name="StatusStarting" xml:space="preserve">
+    <value>Başlatılıyor…</value>
+  </data>
+  <data name="StatusStopped" xml:space="preserve">
+    <value>Durduruldu</value>
+  </data>
+  <data name="StatusStopping" xml:space="preserve">
+    <value>Durduruluyor…</value>
+  </data>
+  <data name="StopNotConfirmed" xml:space="preserve">
+    <value>Hata ayıklayıcı durdurmayı onaylamadı. Yordam sunucuda hâlâ çalışıyor olabilir.</value>
+  </data>
+</root>

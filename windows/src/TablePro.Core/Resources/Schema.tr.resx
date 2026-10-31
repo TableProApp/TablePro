@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="OptionAutoIncrement" xml:space="preserve">
+    <value>Sonraki otomatik artış</value>
+  </data>
+  <data name="OptionCharset" xml:space="preserve">
+    <value>Karakter kümesi</value>
+  </data>
+  <data name="OptionCollation" xml:space="preserve">
+    <value>Karşılaştırma</value>
+  </data>
+  <data name="OptionComment" xml:space="preserve">
+    <value>Yorum</value>
+  </data>
+  <data name="OptionCompression" xml:space="preserve">
+    <value>Sıkıştırma</value>
+  </data>
+  <data name="OptionDataCompression" xml:space="preserve">
+    <value>Veri sıkıştırma</value>
+  </data>
+  <data name="OptionEngine" xml:space="preserve">
+    <value>Motor</value>
+  </data>
+  <data name="OptionFilegroup" xml:space="preserve">
+    <value>Dosya grubu</value>
+  </data>
+  <data name="OptionFillFactor" xml:space="preserve">
+    <value>Doluluk oranı</value>
+  </data>
+  <data name="OptionLockEscalation" xml:space="preserve">
+    <value>Kilit yükseltme</value>
+  </data>
+  <data name="OptionLogging" xml:space="preserve">
+    <value>Günlüğe kaydetme</value>
+  </data>
+  <data name="OptionPctFree" xml:space="preserve">
+    <value>Boş yüzde</value>
+  </data>
+  <data name="OptionPersistence" xml:space="preserve">
+    <value>Kalıcılık</value>
+  </data>
+  <data name="OptionPrimaryKey" xml:space="preserve">
+    <value>Birincil anahtar</value>
+  </data>
+  <data name="OptionRowFormat" xml:space="preserve">
+    <value>Satır biçimi</value>
+  </data>
+  <data name="OptionRowMovement" xml:space="preserve">
+    <value>Satır taşıma</value>
+  </data>
+  <data name="OptionSamplingKey" xml:space="preserve">
+    <value>Örnekleme anahtarı</value>
+  </data>
+  <data name="OptionSortingKey" xml:space="preserve">
+    <value>Sıralama anahtarı</value>
+  </data>
+  <data name="OptionStorageParameters" xml:space="preserve">
+    <value>Depolama parametreleri</value>
+  </data>
+  <data name="OptionStrict" xml:space="preserve">
+    <value>Katı</value>
+  </data>
+  <data name="OptionTablespace" xml:space="preserve">
+    <value>Tablo alanı</value>
+  </data>
+  <data name="OptionWithoutRowid" xml:space="preserve">
+    <value>rowid olmadan</value>
+  </data>
+</root>

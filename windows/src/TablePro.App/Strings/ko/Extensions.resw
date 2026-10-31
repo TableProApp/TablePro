@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AddExtension" xml:space="preserve">
+    <value>확장 추가…</value>
+  </data>
+  <data name="ApprovedTestAgain" xml:space="preserve">
+    <value>확장이 승인되었습니다. 연결하려면 테스트를 다시 선택하세요.</value>
+  </data>
+  <data name="ChooseAgainRecovery" xml:space="preserve">
+    <value>연결을 편집할 때 확장 파일을 다시 선택하세요.</value>
+  </data>
+  <data name="ControlCharacterInPath" xml:space="preserve">
+    <value>목록에 있는 확장의 경로에 줄 바꿈 또는 다른 제어 문자가 있습니다.</value>
+  </data>
+  <data name="CouldNotLoad" xml:space="preserve">
+    <value>확장 "{0}"을(를) 로드할 수 없습니다.</value>
+  </data>
+  <data name="CouldNotLoadList" xml:space="preserve">
+    <value>이 연결의 SQLite 확장을 로드할 수 없습니다.</value>
+  </data>
+  <data name="Duplicate" xml:space="preserve">
+    <value>"{0}"이(가) 목록에 두 번 이상 있습니다.</value>
+  </data>
+  <data name="DuplicateRecovery" xml:space="preserve">
+    <value>두 번째 항목을 제거하세요.</value>
+  </data>
+  <data name="EntryPointLabel" xml:space="preserve">
+    <value>진입점</value>
+  </data>
+  <data name="EntryPointNotFound" xml:space="preserve">
+    <value>파일에 {0}(이)라는 함수가 없습니다.</value>
+  </data>
+  <data name="EntryPointNotFoundRecovery" xml:space="preserve">
+    <value>확장 문서에 명시된 진입점을 입력하세요.</value>
+  </data>
+  <data name="EntryPointPlaceholder" xml:space="preserve">
+    <value>기본 진입점</value>
+  </data>
+  <data name="EntryPointTooltip" xml:space="preserve">
+    <value>호출할 초기화 함수입니다. 비워 두면 SQLite가 파일 이름에서 유추한 함수를 사용합니다.</value>
+  </data>
+  <data name="FileLabel" xml:space="preserve">
+    <value>확장 파일</value>
+  </data>
+  <data name="FileNotFound" xml:space="preserve">
+    <value>"{0}"에 파일이 없습니다.</value>
+  </data>
+  <data name="FileWithEntryPoint" xml:space="preserve">
+    <value>{0}(진입점 {1})</value>
+  </data>
+  <data name="Footer" xml:space="preserve">
+    <value>이 PC에서 데이터베이스 파일을 열 때마다 이 순서대로 로드됩니다. 확장은 PC에 대한 전체 접근 권한으로 실행되므로 신뢰하는 파일만 추가하세요.</value>
+  </data>
+  <data name="Header" xml:space="preserve">
+    <value>확장</value>
+  </data>
+  <data name="InitializationFailed" xml:space="preserve">
+    <value>확장을 시작하지 못했습니다: {0}</value>
+  </data>
+  <data name="InvalidEntryPoint" xml:space="preserve">
+    <value>"{0}"은(는) 올바른 진입점 이름이 아닙니다.</value>
+  </data>
+  <data name="InvalidEntryPointRecovery" xml:space="preserve">
+    <value>sqlite3_vec_init과 같은 C 함수 이름을 사용하거나 비워 두세요.</value>
+  </data>
+  <data name="LoadingNotClosed" xml:space="preserve">
+    <value>SQLite가 로드 후 확장 로드를 다시 끄지 않았습니다.</value>
+  </data>
+  <data name="LoadingUnavailable" xml:space="preserve">
+    <value>SQLite가 이 연결에서 확장 로드를 허용하지 않았습니다.</value>
+  </data>
+  <data name="MalformedList" xml:space="preserve">
+    <value>저장된 확장 목록이 TablePro가 읽을 수 있는 형식이 아닙니다.</value>
+  </data>
+  <data name="MissingDependencyRecovery" xml:space="preserve">
+    <value>이 확장에 필요한 DLL이 없습니다. 함께 제공된 DLL을 확장과 같은 폴더에 두세요.</value>
+  </data>
+  <data name="MissingPath" xml:space="preserve">
+    <value>목록의 확장 중 하나에 파일이 없습니다.</value>
+  </data>
+  <data name="MoveDown" xml:space="preserve">
+    <value>아래로 이동</value>
+  </data>
+  <data name="MoveUp" xml:space="preserve">
+    <value>위로 이동</value>
+  </data>
+  <data name="NoExtensions" xml:space="preserve">
+    <value>확장 없음</value>
+  </data>
+  <data name="NotAFile" xml:space="preserve">
+    <value>"{0}"은(는) 파일이 아닙니다.</value>
+  </data>
+  <data name="NotApproved" xml:space="preserve">
+    <value>이 연결은 이 PC에서 승인되지 않은 SQLite 확장을 로드합니다.</value>
+  </data>
+  <data name="NotApprovedRecovery" xml:space="preserve">
+    <value>검토하려면 TablePro 시작 창에서 연결하세요.</value>
+  </data>
+  <data name="PathTooLong" xml:space="preserve">
+    <value>경로 "{0}"이(가) 너무 깁니다.</value>
+  </data>
+  <data name="PromptConfirm" xml:space="preserve">
+    <value>확장 로드</value>
+  </data>
+  <data name="PromptIntro" xml:space="preserve">
+    <value>연결 "{0}"은(는) 이 PC에서 추가되지 않은 SQLite 확장을 로드합니다:</value>
+  </data>
+  <data name="PromptTitle" xml:space="preserve">
+    <value>확장 로드</value>
+  </data>
+  <data name="PromptWarning" xml:space="preserve">
+    <value>확장은 PC에 대한 전체 접근 권한으로 TablePro 안에서 실행됩니다. 이 파일들을 신뢰하는 경우에만 로드하세요.</value>
+  </data>
+  <data name="RelativePath" xml:space="preserve">
+    <value>"{0}"은(는) 전체 경로가 아닙니다.</value>
+  </data>
+  <data name="RelativePathRecovery" xml:space="preserve">
+    <value>파일을 다시 선택하거나 C:\Tools\extension.dll과 같은 전체 경로를 입력하세요.</value>
+  </data>
+  <data name="RemoveExtension" xml:space="preserve">
+    <value>확장 제거</value>
+  </data>
+  <data name="Unreadable" xml:space="preserve">
+    <value>저장된 목록을 읽을 수 없습니다. 확장을 추가하면 목록이 대체됩니다.</value>
+  </data>
+  <data name="WrongArchitectureRecovery" xml:space="preserve">
+    <value>이 PC의 프로세서용으로 빌드된 확장을 사용하세요.</value>
+  </data>
+</root>

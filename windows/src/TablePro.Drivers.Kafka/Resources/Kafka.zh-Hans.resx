@@ -1,0 +1,159 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AppendOnly" xml:space="preserve">
+    <value>Kafka 主题只能追加：消息无法编辑或删除。添加一行以生成新消息，或在压缩主题上为其键生成墓碑消息（null 值）。</value>
+  </data>
+  <data name="AtLeastOne" xml:space="preserve">
+    <value>{0} 必须至少为 1。</value>
+  </data>
+  <data name="DescribeNeeds" xml:space="preserve">
+    <value>DESCRIBE 需要 GROUP 或 TOPIC。</value>
+  </data>
+  <data name="DescribeNeedsName" xml:space="preserve">
+    <value>DESCRIBE 需要一个名称。</value>
+  </data>
+  <data name="DescribeUnsupported" xml:space="preserve">
+    <value>不支持 DESCRIBE {0}。请尝试 GROUP 或 TOPIC。</value>
+  </data>
+  <data name="DropTakesOne" xml:space="preserve">
+    <value>DROP TOPIC 只接受一个主题名称。</value>
+  </data>
+  <data name="EmptyStatement" xml:space="preserve">
+    <value>语句为空。</value>
+  </data>
+  <data name="FromNeeds" xml:space="preserve">
+    <value>FROM 需要 NEWEST、OLDEST、OFFSET、TIME、ANCHOR 或 TAIL。</value>
+  </data>
+  <data name="GroupNotDeletable_One" xml:space="preserve">
+    <value>消费者组 {1} 处于 {2} 状态，有 {0} 个成员。Kafka 只删除没有成员的组；请先停止其消费者。</value>
+  </data>
+  <data name="GroupNotDeletable_Other" xml:space="preserve">
+    <value>消费者组 {1} 处于 {2} 状态，有 {0} 个成员。Kafka 只删除没有成员的组；请先停止其消费者。</value>
+  </data>
+  <data name="GroupNote_One" xml:space="preserve">
+    <value>组 {1} 处于 {2} 状态，有 {0} 个成员。</value>
+  </data>
+  <data name="GroupNote_Other" xml:space="preserve">
+    <value>组 {1} 处于 {2} 状态，有 {0} 个成员。</value>
+  </data>
+  <data name="HeadersJson" xml:space="preserve">
+    <value>标头必须是 JSON 对象，例如 {"trace":"abc"}。</value>
+  </data>
+  <data name="NeedsKeyValue" xml:space="preserve">
+    <value>{0} 需要“键=值”，例如 cleanup.policy=compact。</value>
+  </data>
+  <data name="NeedsOffsetList" xml:space="preserve">
+    <value>{0} 需要 partition:offset 列表。</value>
+  </data>
+  <data name="NeedsTopicKeyword" xml:space="preserve">
+    <value>{0} 需要 TOPIC 和一个主题名称。</value>
+  </data>
+  <data name="NeedsTopicName" xml:space="preserve">
+    <value>{0} 需要一个主题名称。</value>
+  </data>
+  <data name="NeedsValue" xml:space="preserve">
+    <value>{0} 需要一个值。</value>
+  </data>
+  <data name="NeedsWholeNumber" xml:space="preserve">
+    <value>{0} 需要整数，而不是 {1}。</value>
+  </data>
+  <data name="NoConsumerGroup" xml:space="preserve">
+    <value>没有名为 {0} 的消费者组。</value>
+  </data>
+  <data name="NoPartition" xml:space="preserve">
+    <value>主题 {0} 没有分区 {1}。</value>
+  </data>
+  <data name="NoSuchColumn" xml:space="preserve">
+    <value>Kafka 消息没有 {0} 列。</value>
+  </data>
+  <data name="NotACommand" xml:space="preserve">
+    <value>{0} 不是 Kafka 命令。请尝试 CONSUME、TAIL、PRODUCE、SHOW、DESCRIBE、CREATE 或 DROP。</value>
+  </data>
+  <data name="NotATime" xml:space="preserve">
+    <value>{0} 不是时间。</value>
+  </data>
+  <data name="NotATimeHint" xml:space="preserve">
+    <value>{0} 不是时间。请使用自纪元以来的毫秒数或 ISO 8601 时刻。</value>
+  </data>
+  <data name="NotOffsetPair" xml:space="preserve">
+    <value>{0} 不是 partition:offset 对。</value>
+  </data>
+  <data name="NoTopic" xml:space="preserve">
+    <value>没有名为 {0} 的主题。</value>
+  </data>
+  <data name="NotPartitionNumber" xml:space="preserve">
+    <value>{0} 不是分区编号。</value>
+  </data>
+  <data name="NotSaslMechanism" xml:space="preserve">
+    <value>{0} 不是 SASL 机制。请使用 PLAIN、SCRAM-SHA-256 或 SCRAM-SHA-512。</value>
+  </data>
+  <data name="NotSecurityProtocol" xml:space="preserve">
+    <value>{0} 不是 Kafka 安全协议。请使用 PLAINTEXT、SSL、SASL_PLAINTEXT 或 SASL_SSL。</value>
+  </data>
+  <data name="NotStartPosition" xml:space="preserve">
+    <value>{0} 不是起始位置。请使用 NEWEST、OLDEST、OFFSET、TIME、ANCHOR 或 TAIL。</value>
+  </data>
+  <data name="OffsetAssigned" xml:space="preserve">
+    <value>消息的偏移量由代理分配；请将偏移量留空。</value>
+  </data>
+  <data name="PageTooLarge" xml:space="preserve">
+    <value>此页需要跨 {1} 个分区读取超过 {0:N0} 条消息。请读取更少的分区，或使用 FROM OFFSET 或 FROM TIME 从更接近这些行的位置开始。</value>
+  </data>
+  <data name="PartitionNeedsNumber" xml:space="preserve">
+    <value>PARTITION 至少需要一个分区编号。</value>
+  </data>
+  <data name="ProduceNeedsValueOrKey" xml:space="preserve">
+    <value>PRODUCE 至少需要 VALUE 或 KEY。</value>
+  </data>
+  <data name="RangeBetween" xml:space="preserve">
+    <value>{0} 必须介于 {1} 和 {2} 之间。</value>
+  </data>
+  <data name="ServerVersion_One" xml:space="preserve">
+    <value>Apache Kafka，{0} 个代理（librdkafka {1}）</value>
+  </data>
+  <data name="ServerVersion_Other" xml:space="preserve">
+    <value>Apache Kafka，{0} 个代理（librdkafka {1}）</value>
+  </data>
+  <data name="ShowNeeds" xml:space="preserve">
+    <value>SHOW 需要 TOPICS、BROKERS、GROUPS 或 CLUSTER。</value>
+  </data>
+  <data name="ShowUnsupported" xml:space="preserve">
+    <value>不支持 SHOW {0}。请尝试 TOPICS、BROKERS、GROUPS 或 CLUSTER。</value>
+  </data>
+  <data name="StoppedPartial" xml:space="preserve">
+    <value>{0:0} 秒后停止，部分分区未读完；显示的行是已收到的内容。</value>
+  </data>
+  <data name="TakesNothingAfter" xml:space="preserve">
+    <value>{0} 后面不能有任何内容，但给出了 {1}。</value>
+  </data>
+  <data name="TimestampComment" xml:space="preserve">
+    <value>生产者或代理的时间，采用 UTC。</value>
+  </data>
+  <data name="TopicCreated" xml:space="preserve">
+    <value>已创建主题 {0}。</value>
+  </data>
+  <data name="TopicDeleted" xml:space="preserve">
+    <value>已删除主题 {0}。</value>
+  </data>
+  <data name="Unexpected" xml:space="preserve">
+    <value>{1} 语句中出现意外的 {0}。</value>
+  </data>
+  <data name="UnexpectedInTail" xml:space="preserve">
+    <value>TAIL 语句中出现意外的 {0}。TAIL 接受 LIMIT 和 PARTITION。</value>
+  </data>
+  <data name="ValueComment" xml:space="preserve">
+    <value>Null 表示墓碑消息；空值表示空消息。</value>
+  </data>
+</root>

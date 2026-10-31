@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="NoColumnToFilter" xml:space="preserve">
+    <value>Filtrelenecek {0} adlı bir sütun yok.</value>
+  </data>
+  <data name="OperatorBetween" xml:space="preserve">
+    <value>arasında</value>
+  </data>
+  <data name="OperatorContains" xml:space="preserve">
+    <value>içerir</value>
+  </data>
+  <data name="OperatorEndsWith" xml:space="preserve">
+    <value>ile biter</value>
+  </data>
+  <data name="OperatorIn" xml:space="preserve">
+    <value>listede</value>
+  </data>
+  <data name="OperatorIsEmpty" xml:space="preserve">
+    <value>boş</value>
+  </data>
+  <data name="OperatorIsNotEmpty" xml:space="preserve">
+    <value>boş değil</value>
+  </data>
+  <data name="OperatorIsNotNull" xml:space="preserve">
+    <value>NULL değil</value>
+  </data>
+  <data name="OperatorIsNull" xml:space="preserve">
+    <value>NULL</value>
+  </data>
+  <data name="OperatorNotContains" xml:space="preserve">
+    <value>içermez</value>
+  </data>
+  <data name="OperatorNotIn" xml:space="preserve">
+    <value>listede değil</value>
+  </data>
+  <data name="OperatorStartsWith" xml:space="preserve">
+    <value>ile başlar</value>
+  </data>
+  <data name="RawWhereUnsupported" xml:space="preserve">
+    <value>{0} ham WHERE yan tümcesi çalıştıramaz; bunun yerine filtre kurallarını kullanın.</value>
+  </data>
+</root>

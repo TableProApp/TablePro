@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="CappedRows_One" xml:space="preserve">
+    <value>{0:N0} satır çizim sınırını aşıyor.</value>
+  </data>
+  <data name="CappedRows_Other" xml:space="preserve">
+    <value>{0:N0} satır çizim sınırını aşıyor.</value>
+  </data>
+  <data name="DrawingPoints_One" xml:space="preserve">
+    <value>Enlem ve boylam sütunlarından {0:N0} nokta çiziliyor.</value>
+  </data>
+  <data name="DrawingPoints_Other" xml:space="preserve">
+    <value>Enlem ve boylam sütunlarından {0:N0} nokta çiziliyor.</value>
+  </data>
+  <data name="DrawingShapes_One" xml:space="preserve">
+    <value>{0:N0} şekil çiziliyor.</value>
+  </data>
+  <data name="DrawingShapes_Other" xml:space="preserve">
+    <value>{0:N0} şekil çiziliyor.</value>
+  </data>
+  <data name="DrawingShapesInSrid_One" xml:space="preserve">
+    <value>SRID {1} içinde {0:N0} şekil çiziliyor.</value>
+  </data>
+  <data name="DrawingShapesInSrid_Other" xml:space="preserve">
+    <value>SRID {1} içinde {0:N0} şekil çiziliyor.</value>
+  </data>
+  <data name="DrawingShapesNoSrid_One" xml:space="preserve">
+    <value>SRID'si olmayan {0:N0} şekil, boylam ve enlem olarak okunarak çiziliyor.</value>
+  </data>
+  <data name="DrawingShapesNoSrid_Other" xml:space="preserve">
+    <value>SRID'si olmayan {0:N0} şekil, boylam ve enlem olarak okunarak çiziliyor.</value>
+  </data>
+  <data name="DroppedParts_One" xml:space="preserve">
+    <value>Çok parçalı bir geometrinin {0:N0} parçası çizilemiyor ve dışarıda bırakıldı.</value>
+  </data>
+  <data name="DroppedParts_Other" xml:space="preserve">
+    <value>Çok parçalı geometrilerin {0:N0} parçası çizilemiyor ve dışarıda bırakıldı.</value>
+  </data>
+  <data name="EmptyCoordinatesNull" xml:space="preserve">
+    <value>Bu sütunlardaki tüm enlem veya boylam değerleri null.</value>
+  </data>
+  <data name="EmptyGeometriesNull" xml:space="preserve">
+    <value>Bu sütundaki tüm geometriler boş veya null.</value>
+  </data>
+  <data name="EmptyNoSridOutOfRange" xml:space="preserve">
+    <value>Bu sütunun SRID'si yok ve koordinatları boylam ile enlem aralığının dışında, bu yüzden harita onları yerleştiremiyor.</value>
+  </data>
+  <data name="EmptyNothingDrawable" xml:space="preserve">
+    <value>Bu sütunda çizilebilecek bir şey yok. Koordinatlar kendi koordinat sistemlerinin aralığı dışında veya bir çizgi ya da halkanın çok az noktası var.</value>
+  </data>
+  <data name="EmptyUnreadable_One" xml:space="preserve">
+    <value>Bu sütundaki {0:N0} değer haritanın okuyabileceği bir biçimde değil. Tablo, veritabanının döndürdüğü haliyle göstermeye devam eder.</value>
+  </data>
+  <data name="EmptyUnreadable_Other" xml:space="preserve">
+    <value>Bu sütundaki {0:N0} değer haritanın okuyabileceği bir biçimde değil. Tablo, veritabanının döndürdüğü haliyle göstermeye devam eder.</value>
+  </data>
+  <data name="EmptyUnsupportedSrid" xml:space="preserve">
+    <value>Harita SRID {0} değerini yerleştiremiyor. SRID 4326 gibi boylam ve enlemi ve Web Mercator'ı okur. Bu şekilleri görmek için ST_Transform(geom, 4326) sorgulayın.</value>
+  </data>
+  <data name="EmptyUnsupportedTypes" xml:space="preserve">
+    <value>Bu sütun, haritanın çizemediği {0} içeriyor.</value>
+  </data>
+  <data name="OtherSridRows_One" xml:space="preserve">
+    <value>Başka bir koordinat sistemindeki {0:N0} satır çizilmedi.</value>
+  </data>
+  <data name="OtherSridRows_Other" xml:space="preserve">
+    <value>Başka koordinat sistemlerindeki {0:N0} satır çizilmedi.</value>
+  </data>
+  <data name="UnreadableRows_One" xml:space="preserve">
+    <value>{0:N0} satır okunamadı.</value>
+  </data>
+  <data name="UnreadableRows_Other" xml:space="preserve">
+    <value>{0:N0} satır okunamadı.</value>
+  </data>
+  <data name="UnsupportedTypeRows_One" xml:space="preserve">
+    <value>{0:N0} satır çizilemeyen {1} kullanıyor.</value>
+  </data>
+  <data name="UnsupportedTypeRows_Other" xml:space="preserve">
+    <value>{0:N0} satır çizilemeyen {1} kullanıyor.</value>
+  </data>
+</root>

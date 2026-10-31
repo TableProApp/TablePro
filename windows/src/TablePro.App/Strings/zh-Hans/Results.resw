@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="ChartAllNumericColumns" xml:space="preserve">
+    <value>所有数值列</value>
+  </data>
+  <data name="ChartBarTooltip" xml:space="preserve">
+    <value>{0}: {1:N}</value>
+  </data>
+  <data name="ChartBy" xml:space="preserve">
+    <value>按</value>
+  </data>
+  <data name="ChartFirstRows_One" xml:space="preserve">
+    <value>前 {1:N0} 行，共 {0:N0} 行</value>
+  </data>
+  <data name="ChartFirstRows_Other" xml:space="preserve">
+    <value>前 {1:N0} 行，共 {0:N0} 行</value>
+  </data>
+  <data name="ChartKindArea" xml:space="preserve">
+    <value>面积</value>
+  </data>
+  <data name="ChartKindBar" xml:space="preserve">
+    <value>条形</value>
+  </data>
+  <data name="ChartKindLine" xml:space="preserve">
+    <value>折线</value>
+  </data>
+  <data name="ChartLead" xml:space="preserve">
+    <value>图表</value>
+  </data>
+  <data name="ChartNoNumericColumn" xml:space="preserve">
+    <value>此结果没有可绘制图表的数值列。</value>
+  </data>
+  <data name="ChartOf" xml:space="preserve">
+    <value>数据</value>
+  </data>
+  <data name="MapEast" xml:space="preserve">
+    <value>E</value>
+  </data>
+  <data name="MapFitToResult" xml:space="preserve">
+    <value>缩放至全部结果</value>
+  </data>
+  <data name="MapName" xml:space="preserve">
+    <value>地图</value>
+  </data>
+  <data name="MapNameWithCounts" xml:space="preserve">
+    <value>地图：{0}，来自 {1}</value>
+  </data>
+  <data name="MapNoRows" xml:space="preserve">
+    <value>运行查询以在地图上显示其行。</value>
+  </data>
+  <data name="MapNoSource" xml:space="preserve">
+    <value>地图需要一个几何列，或经度和纬度列。此结果中没有。</value>
+  </data>
+  <data name="MapNorth" xml:space="preserve">
+    <value>N</value>
+  </data>
+  <data name="MapRows_One" xml:space="preserve">
+    <value>{0:N0} 行</value>
+  </data>
+  <data name="MapRows_Other" xml:space="preserve">
+    <value>{0:N0} 行</value>
+  </data>
+  <data name="MapShapes_One" xml:space="preserve">
+    <value>{0:N0} 个图形</value>
+  </data>
+  <data name="MapShapes_Other" xml:space="preserve">
+    <value>{0:N0} 个图形</value>
+  </data>
+  <data name="MapSourceName" xml:space="preserve">
+    <value>地图数据源</value>
+  </data>
+  <data name="MapSouth" xml:space="preserve">
+    <value>S</value>
+  </data>
+  <data name="MapWest" xml:space="preserve">
+    <value>W</value>
+  </data>
+  <data name="MapZoomIn" xml:space="preserve">
+    <value>放大</value>
+  </data>
+  <data name="MapZoomOut" xml:space="preserve">
+    <value>缩小</value>
+  </data>
+</root>

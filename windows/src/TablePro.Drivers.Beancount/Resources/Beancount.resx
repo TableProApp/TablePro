@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="BqlNeedsRledger" xml:space="preserve">
+    <value>BQL queries need rledger. Install rustledger so rledger.exe is on PATH, or set the connection's rledger option to its path.</value>
+  </data>
+  <data name="CannotImport" xml:space="preserve">
+    <value>{0} cannot import beancount. Run "{0}" -m pip install beancount, or set the python option to a Python that has it.</value>
+    <comment>{0} is the path of a Python. The command stays English.</comment>
+  </data>
+  <data name="ConnectTimedOut" xml:space="preserve">
+    <value>Connection timed out after {0:0} seconds</value>
+    <comment>{0} is a number of seconds.</comment>
+  </data>
+  <data name="CouldNotRead" xml:space="preserve">
+    <value>Could not read {0}: {1}</value>
+    <comment>{0} is a path, {1} the system's message.</comment>
+  </data>
+  <data name="CouldNotStart" xml:space="preserve">
+    <value>Could not start {0}: {1}</value>
+    <comment>{0} is a program, {1} the system's message.</comment>
+  </data>
+  <data name="FileMissing" xml:space="preserve">
+    <value>File does not exist at {0}</value>
+    <comment>{0} is a path.</comment>
+  </data>
+  <data name="IncludeCycle" xml:space="preserve">
+    <value>Beancount include cycle detected at {0}</value>
+    <comment>{0} is a path.</comment>
+  </data>
+  <data name="InvalidInclude" xml:space="preserve">
+    <value>Invalid include path "{0}" in {1}: {2}</value>
+    <comment>{0} the include path, {1} the file, {2} the system's message.</comment>
+  </data>
+  <data name="InvalidPythonOutput" xml:space="preserve">
+    <value>Invalid Python Beancount JSON output</value>
+  </data>
+  <data name="InvalidRledgerOutput" xml:space="preserve">
+    <value>Invalid rustledger JSON output</value>
+  </data>
+  <data name="LedgerChanged" xml:space="preserve">
+    <value>Beancount ledger changed while building its SQL projection</value>
+  </data>
+  <data name="MissingTransaction" xml:space="preserve">
+    <value>Beancount posting references missing transaction ID {0}</value>
+    <comment>{0} is an ID.</comment>
+  </data>
+  <data name="NeedsLedger" xml:space="preserve">
+    <value>A Beancount connection needs a ledger file.</value>
+  </data>
+  <data name="NoBackend" xml:space="preserve">
+    <value>Beancount needs Python Beancount or rledger, and neither was found. Install the Python package with "py -3 -m pip install beancount" (or "pip install beancount"), or install rustledger so rledger.exe is on PATH, or set the connection's python or rledger option to its path.</value>
+    <comment>The commands stay English.</comment>
+  </data>
+  <data name="NoDdl" xml:space="preserve">
+    <value>Failed to fetch DDL for table '{0}'</value>
+    <comment>{0} is a table name.</comment>
+  </data>
+  <data name="OpenFailed" xml:space="preserve">
+    <value>Failed to open Beancount ledger: {0}</value>
+    <comment>{0} says why.</comment>
+  </data>
+  <data name="PadNoDate" xml:space="preserve">
+    <value>The pad directive carries no date, so its accounts were not projected.</value>
+  </data>
+  <data name="PadsUnrendered" xml:space="preserve">
+    <value>rledger could not render the ledger's directives, so the pads table is empty: {0}</value>
+    <comment>{0} is rledger's message.</comment>
+  </data>
+  <data name="PadUnmatched" xml:space="preserve">
+    <value>The pad directive could not be matched to a rendered directive, so its accounts were not projected.</value>
+  </data>
+  <data name="PythonFailed" xml:space="preserve">
+    <value>Python Beancount projection failed</value>
+  </data>
+  <data name="PythonMissing" xml:space="preserve">
+    <value>The python option points to a missing Python at {0}.</value>
+    <comment>{0} is a path.</comment>
+  </data>
+  <data name="PythonNeedsPackage" xml:space="preserve">
+    <value>The Python Beancount backend needs Python 3 with the beancount package. Run "py -3 -m pip install beancount", or set the connection's python option to a Python that has it.</value>
+    <comment>The command stays English.</comment>
+  </data>
+  <data name="ReadOnly" xml:space="preserve">
+    <value>Beancount ledgers are exposed as a read-only SQL database.</value>
+  </data>
+  <data name="RledgerMissing" xml:space="preserve">
+    <value>The rledger option points to a missing rledger at {0}.</value>
+    <comment>{0} is a path.</comment>
+  </data>
+  <data name="RledgerNeedsRustledger" xml:space="preserve">
+    <value>The rledger backend needs rustledger. Install it so rledger.exe is on PATH, or set the connection's rledger option to its path.</value>
+  </data>
+  <data name="RledgerVersionFailed" xml:space="preserve">
+    <value>rledger version check failed</value>
+  </data>
+  <data name="RustledgerFailed" xml:space="preserve">
+    <value>rustledger command failed</value>
+  </data>
+  <data name="RustledgerValidationFailed" xml:space="preserve">
+    <value>rustledger validation failed</value>
+  </data>
+  <data name="UnknownBackend" xml:space="preserve">
+    <value>Unknown Beancount backend "{0}". Use "python" or "rledger".</value>
+    <comment>{0} is what was set. python and rledger stay English.</comment>
+  </data>
+</root>

@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="CellControlType" xml:space="preserve">
+    <value>ô</value>
+  </data>
+  <data name="CellEmpty" xml:space="preserve">
+    <value>trống</value>
+  </data>
+  <data name="CellName" xml:space="preserve">
+    <value>{0}, dòng {1}</value>
+  </data>
+  <data name="ColumnCount_One" xml:space="preserve">
+    <value>{0} cột</value>
+  </data>
+  <data name="ColumnCount_Other" xml:space="preserve">
+    <value>{0} cột</value>
+  </data>
+  <data name="DefaultName" xml:space="preserve">
+    <value>Kết quả</value>
+  </data>
+  <data name="InvalidValueForType" xml:space="preserve">
+    <value>'{0}' không phải là giá trị {1} hợp lệ.</value>
+  </data>
+  <data name="ResultReadOnly" xml:space="preserve">
+    <value>Kết quả này ở chế độ chỉ đọc.</value>
+  </data>
+  <data name="RowCount_One" xml:space="preserve">
+    <value>{0:N0} dòng</value>
+  </data>
+  <data name="RowCount_Other" xml:space="preserve">
+    <value>{0:N0} dòng</value>
+  </data>
+  <data name="RowsAndColumns" xml:space="preserve">
+    <value>{0}, {1}</value>
+  </data>
+  <data name="SelectAll" xml:space="preserve">
+    <value>Chọn tất cả</value>
+  </data>
+  <data name="SortedAscending" xml:space="preserve">
+    <value>đã sắp xếp tăng dần</value>
+  </data>
+  <data name="SortedDescending" xml:space="preserve">
+    <value>đã sắp xếp giảm dần</value>
+  </data>
+  <data name="StatusDeletedRow" xml:space="preserve">
+    <value>dòng đã xóa</value>
+  </data>
+  <data name="StatusModified" xml:space="preserve">
+    <value>đã sửa đổi</value>
+  </data>
+  <data name="StatusNewRow" xml:space="preserve">
+    <value>dòng mới</value>
+  </data>
+  <data name="StatusNull" xml:space="preserve">
+    <value>null</value>
+  </data>
+  <data name="TableReadOnly" xml:space="preserve">
+    <value>Bảng này ở chế độ chỉ đọc.</value>
+  </data>
+  <data name="ValueNotAccepted" xml:space="preserve">
+    <value>Giá trị không được chấp nhận.</value>
+  </data>
+</root>

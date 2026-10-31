@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="CloseFind" xml:space="preserve">
+    <value>닫기 (Esc)</value>
+  </data>
+  <data name="CompletionColumn" xml:space="preserve">
+    <value>열</value>
+  </data>
+  <data name="CompletionFunction" xml:space="preserve">
+    <value>함수</value>
+  </data>
+  <data name="CompletionKeyword" xml:space="preserve">
+    <value>키워드</value>
+  </data>
+  <data name="CompletionSchema" xml:space="preserve">
+    <value>스키마</value>
+  </data>
+  <data name="CompletionSnippet" xml:space="preserve">
+    <value>스니펫</value>
+  </data>
+  <data name="CompletionTable" xml:space="preserve">
+    <value>테이블</value>
+  </data>
+  <data name="CompletionView" xml:space="preserve">
+    <value>뷰</value>
+  </data>
+  <data name="ErrorAnnouncement" xml:space="preserve">
+    <value>오류: {0}</value>
+  </data>
+  <data name="Explain" xml:space="preserve">
+    <value>설명</value>
+  </data>
+  <data name="Find" xml:space="preserve">
+    <value>찾기</value>
+  </data>
+  <data name="FindMatches_One" xml:space="preserve">
+    <value>일치 항목 {0}개</value>
+  </data>
+  <data name="FindMatches_Other" xml:space="preserve">
+    <value>일치 항목 {0}개</value>
+  </data>
+  <data name="FindNoResults" xml:space="preserve">
+    <value>결과 없음</value>
+  </data>
+  <data name="FindPlaceholder" xml:space="preserve">
+    <value>찾기</value>
+  </data>
+  <data name="FormatSql" xml:space="preserve">
+    <value>SQL 서식 지정</value>
+  </data>
+  <data name="GoToDefinition" xml:space="preserve">
+    <value>정의로 이동</value>
+  </data>
+  <data name="MatchCase" xml:space="preserve">
+    <value>대/소문자 구분</value>
+  </data>
+  <data name="NextMatch" xml:space="preserve">
+    <value>다음 일치 항목 (F3)</value>
+  </data>
+  <data name="NoDefinitionFound" xml:space="preserve">
+    <value>'{0}'의 정의를 찾을 수 없습니다.</value>
+  </data>
+  <data name="NoProblems" xml:space="preserve">
+    <value>문제가 없습니다.</value>
+  </data>
+  <data name="NoSymbolAtCaret" xml:space="preserve">
+    <value>캐럿 위치에 기호가 없습니다.</value>
+  </data>
+  <data name="NothingAtCaret" xml:space="preserve">
+    <value>캐럿 위치에 표시할 항목이 없습니다.</value>
+  </data>
+  <data name="PreviousMatch" xml:space="preserve">
+    <value>이전 일치 항목 (Shift+F3)</value>
+  </data>
+  <data name="ReferencesSelected_One" xml:space="preserve">
+    <value>참조 1개 선택됨</value>
+  </data>
+  <data name="ReferencesSelected_Other" xml:space="preserve">
+    <value>참조 {0}개 선택됨</value>
+  </data>
+  <data name="RenameNeedsInsertMode" xml:space="preserve">
+    <value>이름 변경은 삽입 모드에서 작동합니다.</value>
+  </data>
+  <data name="RenameSymbol" xml:space="preserve">
+    <value>기호 이름 변경</value>
+  </data>
+  <data name="Replace" xml:space="preserve">
+    <value>바꾸기</value>
+  </data>
+  <data name="ReplaceAllButton" xml:space="preserve">
+    <value>모두 바꾸기</value>
+  </data>
+  <data name="ReplaceButton" xml:space="preserve">
+    <value>바꾸기</value>
+  </data>
+  <data name="ReplacePlaceholder" xml:space="preserve">
+    <value>바꾸기</value>
+  </data>
+  <data name="ReplacedCount_One" xml:space="preserve">
+    <value>{0}개 바꿈</value>
+  </data>
+  <data name="ReplacedCount_Other" xml:space="preserve">
+    <value>{0}개 바꿈</value>
+  </data>
+  <data name="RunAll" xml:space="preserve">
+    <value>모두 실행</value>
+  </data>
+  <data name="RunCurrent" xml:space="preserve">
+    <value>현재 문 실행</value>
+  </data>
+  <data name="SuggestionAcceptHint" xml:space="preserve">
+    <value>Tab 키로 수락</value>
+  </data>
+  <data name="ToggleComment" xml:space="preserve">
+    <value>주석 전환</value>
+  </data>
+  <data name="WarningAnnouncement" xml:space="preserve">
+    <value>경고: {0}</value>
+  </data>
+  <data name="WentTo" xml:space="preserve">
+    <value>{0}(으)로 이동함</value>
+  </data>
+</root>

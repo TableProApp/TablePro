@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="ComparisonNeedsName" xml:space="preserve">
+    <value>So sánh đã lưu cần có tên.</value>
+  </data>
+  <data name="FolderContainsItself" xml:space="preserve">
+    <value>Một thư mục không thể chứa chính nó.</value>
+  </data>
+  <data name="FolderIntoSubfolder" xml:space="preserve">
+    <value>Không thể di chuyển một thư mục vào bên trong thư mục con của chính nó.</value>
+  </data>
+  <data name="KeywordContainsSpaces" xml:space="preserve">
+    <value>Từ khoá không được chứa dấu cách.</value>
+  </data>
+  <data name="KeywordTooLong_One" xml:space="preserve">
+    <value>Từ khoá phải ngắn hơn {0} ký tự.</value>
+  </data>
+  <data name="KeywordTooLong_Other" xml:space="preserve">
+    <value>Từ khoá phải ngắn hơn {0} ký tự.</value>
+  </data>
+  <data name="KeywordUsed" xml:space="preserve">
+    <value>Một mục yêu thích khác đã dùng từ khoá này.</value>
+  </data>
+  <data name="UntitledQuery" xml:space="preserve">
+    <value>Truy vấn chưa đặt tên</value>
+  </data>
+</root>

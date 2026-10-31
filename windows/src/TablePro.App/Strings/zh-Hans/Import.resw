@@ -1,0 +1,372 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AcceptsNullFieldName" xml:space="preserve">
+    <value>{0} 允许为 null</value>
+  </data>
+  <data name="CannotCreateTable" xml:space="preserve">
+    <value>此引擎无法在应用中创建该表。</value>
+  </data>
+  <data name="CannotImportYetTitle" xml:space="preserve">
+    <value>暂时无法导入</value>
+  </data>
+  <data name="CannotReadFileTitle" xml:space="preserve">
+    <value>无法读取此文件</value>
+  </data>
+  <data name="ColumnForFieldName" xml:space="preserve">
+    <value>{0} 对应的列</value>
+  </data>
+  <data name="ColumnNameForFieldName" xml:space="preserve">
+    <value>{0} 的列名</value>
+  </data>
+  <data name="CreateAllColumns" xml:space="preserve">
+    <value>创建所有列</value>
+  </data>
+  <data name="CreateAndImport" xml:space="preserve">
+    <value>创建并导入</value>
+  </data>
+  <data name="CreateFieldName" xml:space="preserve">
+    <value>创建 {0}</value>
+  </data>
+  <data name="CreateTableFailedTitle" xml:space="preserve">
+    <value>无法创建表</value>
+  </data>
+  <data name="CreateTableReviewTitle" xml:space="preserve">
+    <value>为导入创建表</value>
+  </data>
+  <data name="DefaultSqlFieldName" xml:space="preserve">
+    <value>{0} 的默认 SQL</value>
+  </data>
+  <data name="DefaultSqlPlaceholder" xml:space="preserve">
+    <value>默认 SQL</value>
+  </data>
+  <data name="DefaultSqlToolTip" xml:space="preserve">
+    <value>DEFAULT 之后的 SQL。文本值需要自带引号。</value>
+  </data>
+  <data name="DelimiterComma" xml:space="preserve">
+    <value>逗号</value>
+  </data>
+  <data name="DelimiterDetect" xml:space="preserve">
+    <value>自动检测</value>
+  </data>
+  <data name="DelimiterHeader" xml:space="preserve">
+    <value>分隔符</value>
+  </data>
+  <data name="DelimiterPipe" xml:space="preserve">
+    <value>竖线</value>
+  </data>
+  <data name="DelimiterSemicolon" xml:space="preserve">
+    <value>分号</value>
+  </data>
+  <data name="DelimiterTab" xml:space="preserve">
+    <value>制表符</value>
+  </data>
+  <data name="DisableForeignKeyChecks" xml:space="preserve">
+    <value>禁用外键检查</value>
+  </data>
+  <data name="DisableForeignKeyChecksToolTip" xml:space="preserve">
+    <value>导入时临时禁用外键约束。适用于导入具有循环依赖的数据。</value>
+  </data>
+  <data name="EnterNewTableName" xml:space="preserve">
+    <value>请输入新表的名称。</value>
+  </data>
+  <data name="ErrorLine" xml:space="preserve">
+    <value>第 {0} 行：{1}</value>
+  </data>
+  <data name="ExistingTable" xml:space="preserve">
+    <value>现有表 {0}</value>
+  </data>
+  <data name="FieldTypeBoolean" xml:space="preserve">
+    <value>布尔值</value>
+  </data>
+  <data name="FieldTypeInteger" xml:space="preserve">
+    <value>整数</value>
+  </data>
+  <data name="FieldTypeJson" xml:space="preserve">
+    <value>JSON</value>
+  </data>
+  <data name="FieldTypeReal" xml:space="preserve">
+    <value>小数</value>
+  </data>
+  <data name="FieldTypeText" xml:space="preserve">
+    <value>文本</value>
+  </data>
+  <data name="FirstRowIsHeader" xml:space="preserve">
+    <value>首行为标题</value>
+  </data>
+  <data name="FirstRows" xml:space="preserve">
+    <value>前几行</value>
+  </data>
+  <data name="HeaderColumn" xml:space="preserve">
+    <value>列</value>
+  </data>
+  <data name="HeaderDefault" xml:space="preserve">
+    <value>默认</value>
+  </data>
+  <data name="HeaderField" xml:space="preserve">
+    <value>字段</value>
+  </data>
+  <data name="HeaderKey" xml:space="preserve">
+    <value>键</value>
+  </data>
+  <data name="HeaderNull" xml:space="preserve">
+    <value>Null</value>
+  </data>
+  <data name="ImportAllFields" xml:space="preserve">
+    <value>导入所有字段</value>
+  </data>
+  <data name="ImportFailedTitle" xml:space="preserve">
+    <value>导入失败</value>
+  </data>
+  <data name="ImportFieldName" xml:space="preserve">
+    <value>导入 {0}</value>
+  </data>
+  <data name="ImportFileTitle" xml:space="preserve">
+    <value>导入 {0}</value>
+  </data>
+  <data name="ImportIntoHeader" xml:space="preserve">
+    <value>导入到</value>
+  </data>
+  <data name="ImportSqlFileTitle" xml:space="preserve">
+    <value>导入 SQL 文件</value>
+  </data>
+  <data name="ImportStoppedRowsKept" xml:space="preserve">
+    <value>{0}
+
+在此之前保存的行会保留在表中。</value>
+  </data>
+  <data name="ImportStoppedTitle" xml:space="preserve">
+    <value>导入已停止</value>
+  </data>
+  <data name="ImportedRows_One" xml:space="preserve">
+    <value>已将 {0:N0} 行导入到 {1}。</value>
+  </data>
+  <data name="ImportedRows_Other" xml:space="preserve">
+    <value>已将 {0:N0} 行导入到 {1}。</value>
+  </data>
+  <data name="ImportedWithSkipped" xml:space="preserve">
+    <value>{0} {1}</value>
+  </data>
+  <data name="Importing" xml:space="preserve">
+    <value>导入中…</value>
+  </data>
+  <data name="ImportingRows_One" xml:space="preserve">
+    <value>导入中… {0:N0} 行</value>
+  </data>
+  <data name="ImportingRows_Other" xml:space="preserve">
+    <value>导入中… {0:N0} 行</value>
+  </data>
+  <data name="ImportingSqlTitle" xml:space="preserve">
+    <value>正在导入 SQL</value>
+  </data>
+  <data name="MatchByName" xml:space="preserve">
+    <value>按名称匹配</value>
+  </data>
+  <data name="MatchByPosition" xml:space="preserve">
+    <value>按位置匹配</value>
+  </data>
+  <data name="MatchColumns" xml:space="preserve">
+    <value>匹配列</value>
+  </data>
+  <data name="NewTable" xml:space="preserve">
+    <value>新建表</value>
+  </data>
+  <data name="NewTableName" xml:space="preserve">
+    <value>新表名称</value>
+  </data>
+  <data name="NoFields" xml:space="preserve">
+    <value>该文件没有可导入的字段。</value>
+  </data>
+  <data name="NoTransactionsToolTip" xml:space="preserve">
+    <value>此数据库会单独运行每条语句。</value>
+  </data>
+  <data name="NullTextHeader" xml:space="preserve">
+    <value>Null 文本</value>
+  </data>
+  <data name="NullTextToolTip" xml:space="preserve">
+    <value>导入为 null 的值，例如 NULL 或 \N。空字段始终导入为 null。</value>
+  </data>
+  <data name="OnErrorHeader" xml:space="preserve">
+    <value>出错时</value>
+  </data>
+  <data name="OnErrorSkipAndContinue" xml:space="preserve">
+    <value>跳过并继续</value>
+  </data>
+  <data name="OnErrorStopAndCommit" xml:space="preserve">
+    <value>停止并提交</value>
+  </data>
+  <data name="OnErrorStopAndRollback" xml:space="preserve">
+    <value>停止并回滚</value>
+  </data>
+  <data name="PreviewNote" xml:space="preserve">
+    <value>{0}；{1}</value>
+  </data>
+  <data name="PrimaryKeyFieldName" xml:space="preserve">
+    <value>{0} 是主键</value>
+  </data>
+  <data name="ReadOnlyCannotImportSql" xml:space="preserve">
+    <value>此连接的安全模式为“只读”，因此无法导入 SQL 文件。</value>
+  </data>
+  <data name="RecordsSkipped_One" xml:space="preserve">
+    <value>{0:N0} 条记录没有已映射的字段，已跳过。</value>
+  </data>
+  <data name="RecordsSkipped_Other" xml:space="preserve">
+    <value>{0:N0} 条记录没有已映射的字段，已跳过。</value>
+  </data>
+  <data name="RowsShown_One" xml:space="preserve">
+    <value>显示 {0:N0} 行</value>
+  </data>
+  <data name="RowsShown_Other" xml:space="preserve">
+    <value>显示 {0:N0} 行</value>
+  </data>
+  <data name="Skip" xml:space="preserve">
+    <value>跳过</value>
+  </data>
+  <data name="SqlFileSummary" xml:space="preserve">
+    <value>在 {2} 上运行 {0} ({1:N0} KB) 中的所有语句。</value>
+  </data>
+  <data name="SqlImportedSkipped_One" xml:space="preserve">
+    <value>已导入 {1}：{2:N1} 秒内运行 {0:N0} 条语句，跳过 {3:N0} 条。</value>
+  </data>
+  <data name="SqlImportedSkipped_Other" xml:space="preserve">
+    <value>已导入 {1}：{2:N1} 秒内运行 {0:N0} 条语句，跳过 {3:N0} 条。</value>
+  </data>
+  <data name="SqlImported_One" xml:space="preserve">
+    <value>已导入 {1}：{2:N1} 秒内运行 {0:N0} 条语句。</value>
+  </data>
+  <data name="SqlImported_Other" xml:space="preserve">
+    <value>已导入 {1}：{2:N1} 秒内运行 {0:N0} 条语句。</value>
+  </data>
+  <data name="Starting" xml:space="preserve">
+    <value>正在启动…</value>
+  </data>
+  <data name="StatementsFailedTitle_One" xml:space="preserve">
+    <value>{0:N0} 条语句失败</value>
+  </data>
+  <data name="StatementsFailedTitle_Other" xml:space="preserve">
+    <value>{0:N0} 条语句失败</value>
+  </data>
+  <data name="StatementsKept_One" xml:space="preserve">
+    <value>之前的语句已保留。</value>
+  </data>
+  <data name="StatementsKept_Other" xml:space="preserve">
+    <value>之前的 {0:N0} 条语句已保留。</value>
+  </data>
+  <data name="StatementsRunSkipped_One" xml:space="preserve">
+    <value>已运行 {0:N0} 条语句，跳过 {1:N0} 条</value>
+  </data>
+  <data name="StatementsRunSkipped_Other" xml:space="preserve">
+    <value>已运行 {0:N0} 条语句，跳过 {1:N0} 条</value>
+  </data>
+  <data name="StatementsRun_One" xml:space="preserve">
+    <value>已运行 {0:N0} 条语句</value>
+  </data>
+  <data name="StatementsRun_Other" xml:space="preserve">
+    <value>已运行 {0:N0} 条语句</value>
+  </data>
+  <data name="StoppedImporting" xml:space="preserve">
+    <value>已停止导入 {0}。</value>
+  </data>
+  <data name="TrimSpaces" xml:space="preserve">
+    <value>去除首尾空格</value>
+  </data>
+  <data name="TypeOfFieldName" xml:space="preserve">
+    <value>{0} 的类型</value>
+  </data>
+  <data name="TypesFromRows_One" xml:space="preserve">
+    <value>类型取自第一行</value>
+  </data>
+  <data name="TypesFromRows_Other" xml:space="preserve">
+    <value>类型取自前 {0:N0} 行</value>
+  </data>
+  <data name="WrapInTransaction" xml:space="preserve">
+    <value>包裹在事务中 (BEGIN/COMMIT)</value>
+  </data>
+  <data name="WrapInTransactionToolTip" xml:space="preserve">
+    <value>在一个事务中运行所有语句，因此发生失败时会回滚导入所做的更改。在运行时即提交 CREATE、ALTER 和 DROP 的数据库（例如 MySQL）会保留这些语句及其之前的所有内容。</value>
+  </data>
+  <data name="ImportAsHeader" xml:space="preserve">
+    <value>导入方式</value>
+  </data>
+  <data name="WriteModeInsert" xml:space="preserve">
+    <value>插入</value>
+  </data>
+  <data name="WriteModeUpdate" xml:space="preserve">
+    <value>更新</value>
+  </data>
+  <data name="WriteModeUpsert" xml:space="preserve">
+    <value>插入或更新</value>
+  </data>
+  <data name="WriteModeSkipExisting" xml:space="preserve">
+    <value>插入，跳过已有行</value>
+  </data>
+  <data name="WriteModeToolTip" xml:space="preserve">
+    <value>“更新”会修改键出现在文件中的行。“插入或更新”还会添加其余行，“插入，跳过已有行”只添加键不在表中的行。未映射的列保留原值。</value>
+  </data>
+  <data name="MatchOnHeader" xml:space="preserve">
+    <value>匹配依据</value>
+  </data>
+  <data name="MatchKeyPrimary" xml:space="preserve">
+    <value>主键（{0}）</value>
+  </data>
+  <data name="MatchKeyIndex" xml:space="preserve">
+    <value>{0} ({1})</value>
+  </data>
+  <data name="ProblemNoKey" xml:space="preserve">
+    <value>此表没有可用于匹配行的主键或唯一索引。</value>
+  </data>
+  <data name="ProblemUnmappedKey" xml:space="preserve">
+    <value>请将一个字段映射到 {0}，以便按它匹配行。</value>
+  </data>
+  <data name="ProblemNothingToUpdate" xml:space="preserve">
+    <value>请将字段映射到键以外的列，才有内容可更新。</value>
+  </data>
+  <data name="UseSavedMapping" xml:space="preserve">
+    <value>使用已保存的映射</value>
+  </data>
+  <data name="RestoredSavedMapping" xml:space="preserve">
+    <value>已恢复为 {0} 保存的映射。</value>
+  </data>
+  <data name="ImportedMatching" xml:space="preserve">
+    <value>已导入到 {0}。匹配：{1:N0}，更新：{2:N0}，插入：{3:N0}，跳过：{4:N0}。</value>
+  </data>
+  <data name="EncodingHeader" xml:space="preserve">
+    <value>编码</value>
+    <comment>Header of the SQL import's text encoding picker.</comment>
+  </data>
+  <data name="EncodingToolTip" xml:space="preserve">
+    <value>文件字节的读取方式。用 SET NAMES 或 client_encoding 声明了编码的转储文件会预选该编码；字节顺序标记始终优先。</value>
+    <comment>Tooltip of the encoding picker. SET NAMES and client_encoding are SQL and stay untranslated.</comment>
+  </data>
+  <data name="DeleteExistingRows" xml:space="preserve">
+    <value>先删除现有行</value>
+    <comment>Check box in the import sheet that empties the table before the rows are imported.</comment>
+  </data>
+  <data name="DeleteExistingRowsToolTip" xml:space="preserve">
+    <value>清空表并在同一个事务中导入文件，因此失败时旧行会保留原样。只有“插入”模式可以使用，因为清空后没有可匹配的行。</value>
+    <comment>Tooltip of the Delete existing rows first check box. Insert is the import mode of that name.</comment>
+  </data>
+  <data name="ImportStoppedNothingChanged" xml:space="preserve">
+    <value>{0}
+
+导入在同一个事务中运行，因此表保持原样。</value>
+    <comment>Error message when an import that emptied the table first fails. {0} is the error's own message.</comment>
+  </data>
+  <data name="RowsInTransactionToolTip" xml:space="preserve">
+    <value>在一个事务中写入所有行，因此任何一行失败时，表都会保持原样。关闭后每批写完即提交。</value>
+  </data>
+  <data name="BatchesCommitNote" xml:space="preserve">
+    <value>此连接无法在一个事务中完成整个导入，因此每 {0:N0} 行单独提交，出错时之前的行会保留。</value>
+  </data>
+</root>

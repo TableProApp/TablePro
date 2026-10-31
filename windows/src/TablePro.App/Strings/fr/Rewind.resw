@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="CannotRestoreMessage" xml:space="preserve">
+    <value>Cet enregistrement ne peut plus être lu. Son historique a été effacé, ou la clé qui protège les modifications enregistrées a disparu.</value>
+  </data>
+  <data name="CannotRestoreTitle" xml:space="preserve">
+    <value>Impossible de restaurer</value>
+  </data>
+  <data name="ClearConfirmMessage" xml:space="preserve">
+    <value>Les enregistrements déjà validés le restent. Vous ne pourrez pas restaurer leurs valeurs précédentes.</value>
+  </data>
+  <data name="ClearConfirmTitle" xml:space="preserve">
+    <value>Effacer les modifications enregistrées&#160;?</value>
+  </data>
+  <data name="ClearSavedChanges" xml:space="preserve">
+    <value>Effacer les modifications enregistrées…</value>
+  </data>
+  <data name="DifferentDatabaseMessage" xml:space="preserve">
+    <value>Cet enregistrement a été effectué dans {0}. Basculez vers cette base de données, puis restaurez.</value>
+  </data>
+  <data name="DifferentDatabaseTitle" xml:space="preserve">
+    <value>Base de données différente</value>
+  </data>
+  <data name="EmptyDisabled" xml:space="preserve">
+    <value>La conservation des modifications enregistrées est désactivée.</value>
+  </data>
+  <data name="EmptyEnabled" xml:space="preserve">
+    <value>Aucune modification enregistrée pour l’instant. Les enregistrements effectués depuis la grille de la table apparaissent ici pendant 7 jours.</value>
+  </data>
+  <data name="Explanation" xml:space="preserve">
+    <value>Conserve l’état des lignes avant chaque enregistrement dans la grille, sur ce PC uniquement, pendant 7 jours. Ces données sont chiffrées et jamais synchronisées.</value>
+  </data>
+  <data name="IsRestore" xml:space="preserve">
+    <value>une restauration</value>
+  </data>
+  <data name="NoRowToPutBack" xml:space="preserve">
+    <value>L’enregistrement ne contient aucune ligne pouvant être rétablie.</value>
+  </data>
+  <data name="NothingCanBeRestoredTitle" xml:space="preserve">
+    <value>Rien ne peut être restauré</value>
+  </data>
+  <data name="NothingRestoredTitle" xml:space="preserve">
+    <value>Rien n’a été restauré</value>
+  </data>
+  <data name="ReadOnlyMessage" xml:space="preserve">
+    <value>Le Mode sécurisé est en Lecture seule sur cette connexion&#160;: un enregistrement ne peut donc pas être restauré.</value>
+  </data>
+  <data name="ReadOnlyTitle" xml:space="preserve">
+    <value>Connexion en lecture seule</value>
+  </data>
+  <data name="RefusalNoPrimaryKey" xml:space="preserve">
+    <value>La table n’a pas de clé primaire&#160;: cette ligne ne peut donc pas être identifiée.</value>
+  </data>
+  <data name="RefusalServerAssignedKey" xml:space="preserve">
+    <value>Le serveur a choisi la clé de cette ligne.</value>
+  </data>
+  <data name="RefusalValueTooLarge" xml:space="preserve">
+    <value>Une valeur était trop volumineuse pour être conservée.</value>
+  </data>
+  <data name="RestoreButton" xml:space="preserve">
+    <value>Restaurer</value>
+  </data>
+  <data name="RestoreButtonName" xml:space="preserve">
+    <value>Restaurer {0} à son état d’avant cet enregistrement</value>
+  </data>
+  <data name="RestoreButtonTip" xml:space="preserve">
+    <value>Restaurer les valeurs précédentes</value>
+  </data>
+  <data name="RestoreReviewTitle" xml:space="preserve">
+    <value>Restaurer {0} à son état d’avant l’enregistrement</value>
+  </data>
+  <data name="RestoredAt" xml:space="preserve">
+    <value>restauré à {0}</value>
+  </data>
+  <data name="Restored_One" xml:space="preserve">
+    <value>{0:N0} ligne restaurée dans {1}.</value>
+  </data>
+  <data name="Restored_Other" xml:space="preserve">
+    <value>{0:N0} lignes restaurées dans {1}.</value>
+  </data>
+  <data name="ReviewNothingIfChanged" xml:space="preserve">
+    <value>{0} Si l’une de ces lignes a changé depuis l’enregistrement, rien n’est restauré.</value>
+  </data>
+  <data name="ReviewRowsSkipped_One" xml:space="preserve">
+    <value>{1} {0:N0} ligne est ignorée&#160;: {2}</value>
+  </data>
+  <data name="ReviewRowsSkipped_Other" xml:space="preserve">
+    <value>{1} {0:N0} lignes sont ignorées&#160;: {2}</value>
+  </data>
+  <data name="RowChangedMessage" xml:space="preserve">
+    <value>Une ligne a changé ou disparu depuis cet enregistrement&#160;: la restaurer écraserait le travail de quelqu’un d’autre. Rien n’a été modifié.</value>
+  </data>
+  <data name="RowsCannotBeRestored_One" xml:space="preserve">
+    <value>{0:N0} ligne ne peut pas être restaurée</value>
+  </data>
+  <data name="RowsCannotBeRestored_Other" xml:space="preserve">
+    <value>{0:N0} lignes ne peuvent pas être restaurées</value>
+  </data>
+  <data name="ThisTableOnly" xml:space="preserve">
+    <value>Cette table uniquement</value>
+  </data>
+</root>

@@ -1,0 +1,159 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AppendOnly" xml:space="preserve">
+    <value>Kafka konuları yalnızca eklemeye açıktır: bir ileti düzenlenemez veya silinemez. Yeni bir ileti üretmek için bir satır ekleyin ya da sıkıştırılmış bir konuda anahtarı için bir mezar taşı (null değer) üretin.</value>
+  </data>
+  <data name="AtLeastOne" xml:space="preserve">
+    <value>{0} en az 1 olmalıdır.</value>
+  </data>
+  <data name="DescribeNeeds" xml:space="preserve">
+    <value>DESCRIBE için GROUP veya TOPIC gerekir.</value>
+  </data>
+  <data name="DescribeNeedsName" xml:space="preserve">
+    <value>DESCRIBE için bir ad gerekir.</value>
+  </data>
+  <data name="DescribeUnsupported" xml:space="preserve">
+    <value>DESCRIBE {0} desteklenmiyor. GROUP veya TOPIC deneyin.</value>
+  </data>
+  <data name="DropTakesOne" xml:space="preserve">
+    <value>DROP TOPIC tek bir konu adı alır.</value>
+  </data>
+  <data name="EmptyStatement" xml:space="preserve">
+    <value>Boş deyim.</value>
+  </data>
+  <data name="FromNeeds" xml:space="preserve">
+    <value>FROM için NEWEST, OLDEST, OFFSET, TIME, ANCHOR veya TAIL gerekir.</value>
+  </data>
+  <data name="GroupNotDeletable_One" xml:space="preserve">
+    <value>{1} tüketici grubu {2} durumunda, {0} üyesi var. Kafka yalnızca üyesi olmayan bir grubu siler; önce tüketicilerini durdurun.</value>
+  </data>
+  <data name="GroupNotDeletable_Other" xml:space="preserve">
+    <value>{1} tüketici grubu {2} durumunda, {0} üyesi var. Kafka yalnızca üyesi olmayan bir grubu siler; önce tüketicilerini durdurun.</value>
+  </data>
+  <data name="GroupNote_One" xml:space="preserve">
+    <value>{1} grubu {2} durumunda, {0} üyesi var.</value>
+  </data>
+  <data name="GroupNote_Other" xml:space="preserve">
+    <value>{1} grubu {2} durumunda, {0} üyesi var.</value>
+  </data>
+  <data name="HeadersJson" xml:space="preserve">
+    <value>Üst bilgiler bir JSON nesnesi olmalıdır, örneğin {"trace":"abc"}.</value>
+  </data>
+  <data name="NeedsKeyValue" xml:space="preserve">
+    <value>{0} için anahtar=değer gerekir, örneğin cleanup.policy=compact.</value>
+  </data>
+  <data name="NeedsOffsetList" xml:space="preserve">
+    <value>{0} için bir partition:offset listesi gerekir.</value>
+  </data>
+  <data name="NeedsTopicKeyword" xml:space="preserve">
+    <value>{0} için TOPIC ve bir konu adı gerekir.</value>
+  </data>
+  <data name="NeedsTopicName" xml:space="preserve">
+    <value>{0} için bir konu adı gerekir.</value>
+  </data>
+  <data name="NeedsValue" xml:space="preserve">
+    <value>{0} için bir değer gerekir.</value>
+  </data>
+  <data name="NeedsWholeNumber" xml:space="preserve">
+    <value>{0} için {1} değil, bir tam sayı gerekir.</value>
+  </data>
+  <data name="NoConsumerGroup" xml:space="preserve">
+    <value>{0} adlı bir tüketici grubu yok.</value>
+  </data>
+  <data name="NoPartition" xml:space="preserve">
+    <value>{0} konusunun {1} bölümü yok.</value>
+  </data>
+  <data name="NoSuchColumn" xml:space="preserve">
+    <value>Bir Kafka iletisinde {0} sütunu yoktur.</value>
+  </data>
+  <data name="NotACommand" xml:space="preserve">
+    <value>{0} bir Kafka komutu değil. CONSUME, TAIL, PRODUCE, SHOW, DESCRIBE, CREATE veya DROP deneyin.</value>
+  </data>
+  <data name="NotATime" xml:space="preserve">
+    <value>{0} bir zaman değil.</value>
+  </data>
+  <data name="NotATimeHint" xml:space="preserve">
+    <value>{0} bir zaman değil. Unix döneminden bu yana milisaniye veya bir ISO 8601 anı kullanın.</value>
+  </data>
+  <data name="NotOffsetPair" xml:space="preserve">
+    <value>{0} bir partition:offset çifti değil.</value>
+  </data>
+  <data name="NoTopic" xml:space="preserve">
+    <value>{0} adlı bir konu yok.</value>
+  </data>
+  <data name="NotPartitionNumber" xml:space="preserve">
+    <value>{0} bir bölüm numarası değil.</value>
+  </data>
+  <data name="NotSaslMechanism" xml:space="preserve">
+    <value>{0} bir SASL mekanizması değil. PLAIN, SCRAM-SHA-256 veya SCRAM-SHA-512 kullanın.</value>
+  </data>
+  <data name="NotSecurityProtocol" xml:space="preserve">
+    <value>{0} bir Kafka güvenlik protokolü değil. PLAINTEXT, SSL, SASL_PLAINTEXT veya SASL_SSL kullanın.</value>
+  </data>
+  <data name="NotStartPosition" xml:space="preserve">
+    <value>{0} bir başlangıç konumu değil. NEWEST, OLDEST, OFFSET, TIME, ANCHOR veya TAIL kullanın.</value>
+  </data>
+  <data name="OffsetAssigned" xml:space="preserve">
+    <value>Bir iletinin ofsetini aracı atar; ofseti boş bırakın.</value>
+  </data>
+  <data name="PageTooLarge" xml:space="preserve">
+    <value>Bu sayfa {1} bölüm boyunca {0:N0} iletiden fazlasının okunmasını gerektiriyor. Daha az bölüm okuyun ya da FROM OFFSET veya FROM TIME ile satırlara daha yakın bir yerden başlayın.</value>
+  </data>
+  <data name="PartitionNeedsNumber" xml:space="preserve">
+    <value>PARTITION için en az bir bölüm numarası gerekir.</value>
+  </data>
+  <data name="ProduceNeedsValueOrKey" xml:space="preserve">
+    <value>PRODUCE için en az bir VALUE veya KEY gerekir.</value>
+  </data>
+  <data name="RangeBetween" xml:space="preserve">
+    <value>{0}, {1} ile {2} arasında olmalıdır.</value>
+  </data>
+  <data name="ServerVersion_One" xml:space="preserve">
+    <value>Apache Kafka, {0} aracı (librdkafka {1})</value>
+  </data>
+  <data name="ServerVersion_Other" xml:space="preserve">
+    <value>Apache Kafka, {0} aracı (librdkafka {1})</value>
+  </data>
+  <data name="ShowNeeds" xml:space="preserve">
+    <value>SHOW için TOPICS, BROKERS, GROUPS veya CLUSTER gerekir.</value>
+  </data>
+  <data name="ShowUnsupported" xml:space="preserve">
+    <value>SHOW {0} desteklenmiyor. TOPICS, BROKERS, GROUPS veya CLUSTER deneyin.</value>
+  </data>
+  <data name="StoppedPartial" xml:space="preserve">
+    <value>{0:0} saniye sonra bazı bölümler tam okunmadan durduruldu; gösterilen satırlar gelenlerdir.</value>
+  </data>
+  <data name="TakesNothingAfter" xml:space="preserve">
+    <value>{0} sonrasında hiçbir şey almaz, ancak {1} verildi.</value>
+  </data>
+  <data name="TimestampComment" xml:space="preserve">
+    <value>Üretici veya aracı zamanı, UTC olarak.</value>
+  </data>
+  <data name="TopicCreated" xml:space="preserve">
+    <value>{0} konusu oluşturuldu.</value>
+  </data>
+  <data name="TopicDeleted" xml:space="preserve">
+    <value>{0} konusu silindi.</value>
+  </data>
+  <data name="Unexpected" xml:space="preserve">
+    <value>{1} deyiminde beklenmeyen {0}.</value>
+  </data>
+  <data name="UnexpectedInTail" xml:space="preserve">
+    <value>TAIL deyiminde beklenmeyen {0}. TAIL, LIMIT ve PARTITION alır.</value>
+  </data>
+  <data name="ValueComment" xml:space="preserve">
+    <value>Null bir mezar taşıdır (tombstone); boş değer boş bir iletidir.</value>
+  </data>
+</root>

@@ -1,0 +1,904 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AccessKeyIdHeader" xml:space="preserve">
+    <value>Access key ID</value>
+    <comment>Field label for an AWS access key ID.</comment>
+  </data>
+  <data name="AccessKeyIdOptionalHeader" xml:space="preserve">
+    <value>Access key ID (optional)</value>
+    <comment>Field label for an AWS access key ID (DynamoDB).</comment>
+  </data>
+  <data name="AccessKeyRequired" xml:space="preserve">
+    <value>Enter the access key ID.</value>
+    <comment>Validation message for the AWS access key ID field.</comment>
+  </data>
+  <data name="AccountHeader" xml:space="preserve">
+    <value>Account</value>
+    <comment>Field label for a Snowflake account identifier, shown where other engines say Host.</comment>
+  </data>
+  <data name="AccountIdHeader" xml:space="preserve">
+    <value>Account ID</value>
+    <comment>Field label for a Cloudflare account ID, shown where other engines say Host.</comment>
+  </data>
+  <data name="AclUserHeader" xml:space="preserve">
+    <value>ACL user (optional)</value>
+    <comment>Field label for a Redis ACL user name. ACL stays as is.</comment>
+  </data>
+  <data name="AiAllow" xml:space="preserve">
+    <value>Allow</value>
+    <comment>AI assistant policy choice: the assistant may read this connection.</comment>
+  </data>
+  <data name="AiAsk" xml:space="preserve">
+    <value>Ask each time</value>
+    <comment>AI assistant policy choice.</comment>
+  </data>
+  <data name="AiHeader" xml:space="preserve">
+    <value>AI assistant</value>
+    <comment>Label of the picker for whether the AI assistant may use this connection.</comment>
+  </data>
+  <data name="AiNever" xml:space="preserve">
+    <value>Never</value>
+    <comment>AI assistant policy choice.</comment>
+  </data>
+  <data name="ApiKeyHeader" xml:space="preserve">
+    <value>API key</value>
+    <comment>Field label, shown where other engines say Password.</comment>
+  </data>
+  <data name="ApiTokenHeader" xml:space="preserve">
+    <value>API token</value>
+    <comment>Field label, shown where other engines say Password.</comment>
+  </data>
+  <data name="AuthTokenHeader" xml:space="preserve">
+    <value>Auth token</value>
+    <comment>Field label for a libSQL or Turso authentication token, shown where other engines say Password.</comment>
+  </data>
+  <data name="AuthenticationHeader" xml:space="preserve">
+    <value>Authentication</value>
+    <comment>Label of the picker for how to sign in, to the database or to the SSH server.</comment>
+  </data>
+  <data name="AutomaticPlaceholder" xml:space="preserve">
+    <value>Automatic</value>
+    <comment>Placeholder in an empty port or path field: the app picks the value itself.</comment>
+  </data>
+  <data name="AwsAccessKeyNote" xml:space="preserve">
+    <value>Signs a 15-minute RDS token with the key on every new connection. The secret is stored in Windows Credential Manager.</value>
+    <comment>RDS is an AWS product name.</comment>
+  </data>
+  <data name="AwsEndpointHeader" xml:space="preserve">
+    <value>RDS endpoint (optional)</value>
+    <comment>Field label. RDS is an AWS product name.</comment>
+  </data>
+  <data name="AwsExecutablePlaceholder" xml:space="preserve">
+    <value>aws.exe on PATH when empty</value>
+    <comment>Placeholder of the executable path field. aws.exe and PATH stay as is.</comment>
+  </data>
+  <data name="AwsProfileHeader" xml:space="preserve">
+    <value>Profile name</value>
+    <comment>Field label for an AWS configuration profile.</comment>
+  </data>
+  <data name="AwsProfileNote" xml:space="preserve">
+    <value>Reads the profile from %USERPROFILE%\.aws\config and credentials, including assumed roles and credential_process.</value>
+    <comment>%USERPROFILE%\.aws\config, credentials and credential_process are file and setting names; keep them as is.</comment>
+  </data>
+  <data name="AwsRegionHeader" xml:space="preserve">
+    <value>AWS region</value>
+  </data>
+  <data name="AwsRegionPlaceholder" xml:space="preserve">
+    <value>Read from the RDS host name when empty</value>
+    <comment>Placeholder of the AWS region field. RDS is an AWS product name.</comment>
+  </data>
+  <data name="AwsSsoNote" xml:space="preserve">
+    <value>Uses the IAM Identity Center session that “aws sso login” left in the cache.</value>
+    <comment>“aws sso login” is a command; keep it as is. IAM Identity Center is an AWS product name.</comment>
+  </data>
+  <data name="BigQueryKeyFileHeader" xml:space="preserve">
+    <value>Service account JSON (empty uses gcloud sign-in)</value>
+    <comment>Field label for a Google service account key file. gcloud is a program name.</comment>
+  </data>
+  <data name="BootstrapServerHeader" xml:space="preserve">
+    <value>Bootstrap server</value>
+    <comment>Field label for a Kafka bootstrap server, shown where other engines say Host.</comment>
+  </data>
+  <data name="BrowseButton" xml:space="preserve">
+    <value>Browse…</value>
+    <comment>Button that opens a file picker.</comment>
+  </data>
+  <data name="CatalogHeader" xml:space="preserve">
+    <value>Catalog</value>
+    <comment>Field label for a Trino catalog, shown where other engines say Database.</comment>
+  </data>
+  <data name="ClientIdHeader" xml:space="preserve">
+    <value>Client ID</value>
+    <comment>Field label for a Cloudflare service token's client ID.</comment>
+  </data>
+  <data name="ClientSecretHeader" xml:space="preserve">
+    <value>Client secret</value>
+    <comment>Field label for a service token's or service principal's secret.</comment>
+  </data>
+  <data name="CloudSqlAdcNote" xml:space="preserve">
+    <value>Run “gcloud auth application-default login” first, or set GOOGLE_APPLICATION_CREDENTIALS.</value>
+    <comment>The quoted command and GOOGLE_APPLICATION_CREDENTIALS stay as is.</comment>
+  </data>
+  <data name="CloudSqlAuthAdc" xml:space="preserve">
+    <value>Application Default Credentials</value>
+    <comment>Google Cloud credential choice; Application Default Credentials is Google's name for it.</comment>
+  </data>
+  <data name="CloudSqlAuthHeader" xml:space="preserve">
+    <value>Credentials</value>
+    <comment>Label of the picker for which Google credentials the Cloud SQL Auth Proxy uses.</comment>
+  </data>
+  <data name="CloudSqlAuthKey" xml:space="preserve">
+    <value>Service Account Key</value>
+    <comment>Google Cloud credential choice.</comment>
+  </data>
+  <data name="CloudSqlIam" xml:space="preserve">
+    <value>Use IAM database authentication</value>
+    <comment>Check box. IAM stays as is.</comment>
+  </data>
+  <data name="CloudSqlIamNote" xml:space="preserve">
+    <value>With IAM database authentication on, set the user to the IAM principal; the password is not used. The proxy listens only on 127.0.0.1.</value>
+  </data>
+  <data name="CloudSqlInstanceHeader" xml:space="preserve">
+    <value>Instance connection name</value>
+    <comment>Field label for a Google Cloud SQL instance connection name.</comment>
+  </data>
+  <data name="CloudSqlInstanceNote" xml:space="preserve">
+    <value>Find this on the instance's overview page in the Google Cloud console.</value>
+  </data>
+  <data name="CloudSqlKeyHeader" xml:space="preserve">
+    <value>Service account key (JSON)</value>
+    <comment>Field label for a pasted Google service account key.</comment>
+  </data>
+  <data name="CloudSqlPrivateIp" xml:space="preserve">
+    <value>Connect over private IP</value>
+    <comment>Check box.</comment>
+  </data>
+  <data name="CloudflareAuthBrowser" xml:space="preserve">
+    <value>Browser sign-in</value>
+    <comment>Cloudflare Access sign-in method choice.</comment>
+  </data>
+  <data name="CloudflareAuthToken" xml:space="preserve">
+    <value>Service token</value>
+    <comment>Cloudflare Access sign-in method choice.</comment>
+  </data>
+  <data name="CloudflareHostHeader" xml:space="preserve">
+    <value>Access application hostname</value>
+    <comment>Field label. Access is the Cloudflare Access product.</comment>
+  </data>
+  <data name="CloudflareHostRequired" xml:space="preserve">
+    <value>Enter the Access application's hostname first.</value>
+    <comment>Access is the Cloudflare Access product.</comment>
+  </data>
+  <data name="CloudflareLan" xml:space="preserve">
+    <value>Expose to the local network (listen on 0.0.0.0)</value>
+    <comment>Check box. 0.0.0.0 stays as is.</comment>
+  </data>
+  <data name="CloudflareLoginFailed" xml:space="preserve">
+    <value>cloudflared access login failed: {0}</value>
+    <comment>{0} is the program's own output, in English. "cloudflared access login" is a command; keep it as is.</comment>
+  </data>
+  <data name="CloudflareNote" xml:space="preserve">
+    <value>A service token needs an Access policy with a Service Auth rule, or Cloudflare still asks for a browser sign-in.</value>
+    <comment>Access policy and Service Auth are Cloudflare's terms.</comment>
+  </data>
+  <data name="CloudflareSignInButton" xml:space="preserve">
+    <value>Sign in with browser…</value>
+    <comment>Button.</comment>
+  </data>
+  <data name="CloudflareSignedIn" xml:space="preserve">
+    <value>Signed in to Cloudflare Access.</value>
+  </data>
+  <data name="CloudflareSigningIn" xml:space="preserve">
+    <value>Finish signing in in your browser…</value>
+    <comment>Status shown while the browser sign-in is open.</comment>
+  </data>
+  <data name="CloudflaredDidNotStart" xml:space="preserve">
+    <value>cloudflared did not start.</value>
+    <comment>cloudflared is a program name.</comment>
+  </data>
+  <data name="CloudflaredNotFound" xml:space="preserve">
+    <value>cloudflared was not found. Install it with “winget install Cloudflare.cloudflared”, or set its path.</value>
+    <comment>cloudflared is a program name; the quoted command stays as is.</comment>
+  </data>
+  <data name="ColorBlue" xml:space="preserve">
+    <value>Blue</value>
+    <comment>Connection color, shown as a tooltip on a color swatch.</comment>
+  </data>
+  <data name="ColorGray" xml:space="preserve">
+    <value>Gray</value>
+    <comment>Connection color, shown as a tooltip on a color swatch.</comment>
+  </data>
+  <data name="ColorGreen" xml:space="preserve">
+    <value>Green</value>
+    <comment>Connection color, shown as a tooltip on a color swatch.</comment>
+  </data>
+  <data name="ColorLabel" xml:space="preserve">
+    <value>Color</value>
+    <comment>Label above the connection color swatches.</comment>
+  </data>
+  <data name="ColorOrange" xml:space="preserve">
+    <value>Orange</value>
+    <comment>Connection color, shown as a tooltip on a color swatch.</comment>
+  </data>
+  <data name="ColorPink" xml:space="preserve">
+    <value>Pink</value>
+    <comment>Connection color, shown as a tooltip on a color swatch.</comment>
+  </data>
+  <data name="ColorPurple" xml:space="preserve">
+    <value>Purple</value>
+    <comment>Connection color, shown as a tooltip on a color swatch.</comment>
+  </data>
+  <data name="ColorRed" xml:space="preserve">
+    <value>Red</value>
+    <comment>Connection color, shown as a tooltip on a color swatch.</comment>
+  </data>
+  <data name="ColorYellow" xml:space="preserve">
+    <value>Yellow</value>
+    <comment>Connection color, shown as a tooltip on a color swatch.</comment>
+  </data>
+  <data name="CommandHeader" xml:space="preserve">
+    <value>Command</value>
+    <comment>Field label for a custom tunnel command line.</comment>
+  </data>
+  <data name="CommandMethodCustom" xml:space="preserve">
+    <value>Custom command</value>
+    <comment>Tunnel command method choice.</comment>
+  </data>
+  <data name="CommandMethodSsm" xml:space="preserve">
+    <value>AWS SSM session</value>
+    <comment>Tunnel command method choice. AWS SSM is a product name.</comment>
+  </data>
+  <data name="CommandNote" xml:space="preserve">
+    <value>{port} is the local port TablePro picks; {host} and {remotePort} are the database's. The command runs as a program with its arguments, never through a shell.</value>
+    <comment>{port}, {host} and {remotePort} are placeholders the user types in the command, not format arguments; keep them exactly as is.</comment>
+  </data>
+  <data name="DatabaseHeader" xml:space="preserve">
+    <value>Database</value>
+    <comment>Field label for the database name on the server.</comment>
+  </data>
+  <data name="DatabaseIdHeader" xml:space="preserve">
+    <value>Database ID or name</value>
+    <comment>Field label for a Cloudflare database.</comment>
+  </data>
+  <data name="DatabaseIndexHeader" xml:space="preserve">
+    <value>Database index</value>
+    <comment>Field label for a Redis database number.</comment>
+  </data>
+  <data name="DatabasePathHeader" xml:space="preserve">
+    <value>Database path</value>
+    <comment>Field label for a Spanner database path, shown where other engines say Host.</comment>
+  </data>
+  <data name="DatabaseUserHeader" xml:space="preserve">
+    <value>Database user</value>
+    <comment>Field label for the database user an IAM token signs in as.</comment>
+  </data>
+  <data name="DefaultDatabaseHeader" xml:space="preserve">
+    <value>Default database</value>
+    <comment>Field label (Teradata).</comment>
+  </data>
+  <data name="EditConnectionTitle" xml:space="preserve">
+    <value>Edit {0}</value>
+    <comment>Dialog title. {0} is the connection name.</comment>
+  </data>
+  <data name="ElastiCacheIamNote" xml:space="preserve">
+    <value>Signs a 15-minute ElastiCache token with your AWS credentials on every new connection and sends it as the user’s password over TLS. The user needs IAM authentication turned on.</value>
+    <comment>ElastiCache, AWS and IAM are product names; TLS is a protocol name.</comment>
+  </data>
+  <data name="ElastiCacheNameHeader" xml:space="preserve">
+    <value>Cache name / replication group ID</value>
+    <comment>Field label for the Amazon ElastiCache cache an IAM token is signed for.</comment>
+  </data>
+  <data name="ElastiCacheNameRequired" xml:space="preserve">
+    <value>Enter the ElastiCache cache name (replication group ID) to use IAM authentication.</value>
+    <comment>ElastiCache and IAM are AWS product names.</comment>
+  </data>
+  <data name="EngineHeader" xml:space="preserve">
+    <value>Database</value>
+    <comment>Label of the picker for the database product (PostgreSQL, MySQL, ...), not the database name.</comment>
+  </data>
+  <data name="EntraClientHeader" xml:space="preserve">
+    <value>Application (client) ID</value>
+    <comment>Field label for a Microsoft Entra app registration's client ID.</comment>
+  </data>
+  <data name="EntraClientOptionalHeader" xml:space="preserve">
+    <value>Application (client) ID (optional)</value>
+    <comment>Field label for a Microsoft Entra app registration's client ID.</comment>
+  </data>
+  <data name="EntraClientRequired" xml:space="preserve">
+    <value>Enter the service principal's application (client) ID.</value>
+  </data>
+  <data name="EntraDefault" xml:space="preserve">
+    <value>Default (Azure CLI, Visual Studio, environment)</value>
+    <comment>Microsoft Entra credential choice: whatever the environment offers.</comment>
+  </data>
+  <data name="EntraDeviceCode" xml:space="preserve">
+    <value>Device code</value>
+    <comment>Microsoft Entra credential choice.</comment>
+  </data>
+  <data name="EntraDeviceCodeNote" xml:space="preserve">
+    <value>The code is copied to the clipboard and the sign-in page opens; paste the code there.</value>
+  </data>
+  <data name="EntraIntegrated" xml:space="preserve">
+    <value>Integrated (Windows account)</value>
+    <comment>Microsoft Entra credential choice.</comment>
+  </data>
+  <data name="EntraInteractive" xml:space="preserve">
+    <value>Interactive (browser)</value>
+    <comment>Microsoft Entra credential choice.</comment>
+  </data>
+  <data name="EntraLoginHintHeader" xml:space="preserve">
+    <value>Account (login hint, optional)</value>
+    <comment>Field label for the account suggested on the Microsoft sign-in page.</comment>
+  </data>
+  <data name="EntraManagedIdentity" xml:space="preserve">
+    <value>Managed identity</value>
+    <comment>Microsoft Entra credential choice; Azure's term.</comment>
+  </data>
+  <data name="EntraModeHeader" xml:space="preserve">
+    <value>Entra credential</value>
+    <comment>Label of the picker for which Microsoft Entra credential signs in.</comment>
+  </data>
+  <data name="EntraNote" xml:space="preserve">
+    <value>Signs in with Microsoft Entra ID and refreshes the token as connections open.</value>
+  </data>
+  <data name="EntraServicePrincipal" xml:space="preserve">
+    <value>Service principal</value>
+    <comment>Microsoft Entra credential choice; Azure's term.</comment>
+  </data>
+  <data name="EntraTenantHeader" xml:space="preserve">
+    <value>Directory (tenant) ID</value>
+    <comment>Field label for a Microsoft Entra tenant ID.</comment>
+  </data>
+  <data name="EntraTenantPlaceholder" xml:space="preserve">
+    <value>Optional, for a single-tenant directory</value>
+    <comment>Placeholder of the tenant ID field.</comment>
+  </data>
+  <data name="EntraTenantRequired" xml:space="preserve">
+    <value>Enter the directory (tenant) ID for the service principal.</value>
+  </data>
+  <data name="EntraUserHeader" xml:space="preserve">
+    <value>Entra user or group</value>
+    <comment>Field label for the Microsoft Entra user or group the database knows as a role.</comment>
+  </data>
+  <data name="ExecutablePathHeader" xml:space="preserve">
+    <value>Executable path</value>
+    <comment>Field label for the path of the kubectl or aws program.</comment>
+  </data>
+  <data name="ExecutablePathPlaceholder" xml:space="preserve">
+    <value>Found on PATH when empty</value>
+    <comment>PATH is the environment variable; keep it as is.</comment>
+  </data>
+  <data name="FileHeader" xml:space="preserve">
+    <value>File</value>
+    <comment>Field label for a database file path.</comment>
+  </data>
+  <data name="FileRequired" xml:space="preserve">
+    <value>Choose a database file.</value>
+  </data>
+  <data name="GroupHeader" xml:space="preserve">
+    <value>Group</value>
+    <comment>Label of the picker for the connection's group (noun).</comment>
+  </data>
+  <data name="GssDisabled" xml:space="preserve">
+    <value>Disabled</value>
+    <comment>GSS encryption choice.</comment>
+  </data>
+  <data name="GssEncryptionHeader" xml:space="preserve">
+    <value>GSS encryption</value>
+    <comment>Label of the picker for PostgreSQL's GSSAPI encryption. GSS stays as is.</comment>
+  </data>
+  <data name="GssPreferred" xml:space="preserve">
+    <value>Preferred</value>
+    <comment>GSS encryption choice.</comment>
+  </data>
+  <data name="GssRequired" xml:space="preserve">
+    <value>Required</value>
+    <comment>GSS encryption choice.</comment>
+  </data>
+  <data name="HostHeader" xml:space="preserve">
+    <value>Host</value>
+    <comment>Field label for the server's host name.</comment>
+  </data>
+  <data name="HostRequired" xml:space="preserve">
+    <value>Enter the server's host name.</value>
+  </data>
+  <data name="IamUserRequired" xml:space="preserve">
+    <value>Enter the database user the IAM token signs in as.</value>
+  </data>
+  <data name="JumpHostsHeader" xml:space="preserve">
+    <value>Jump hosts</value>
+    <comment>Field label for SSH jump (bastion) hosts.</comment>
+  </data>
+  <data name="JumpHostsPlaceholder" xml:space="preserve">
+    <value>user@bastion:22, optional</value>
+    <comment>Placeholder. user@bastion:22 is an example value; keep it as is and translate only "optional".</comment>
+  </data>
+  <data name="KerberosNote" xml:space="preserve">
+    <value>Signs in with your Windows logon's Kerberos ticket. The host must be the server's name, not an IP address, for the ticket to be found.</value>
+  </data>
+  <data name="KerberosServiceHeader" xml:space="preserve">
+    <value>Kerberos service name</value>
+    <comment>Field label (PostgreSQL krbsrvname).</comment>
+  </data>
+  <data name="KerberosSpnHeader" xml:space="preserve">
+    <value>Server principal (SPN)</value>
+    <comment>Field label for MariaDB's Kerberos server principal name. SPN stays as is.</comment>
+  </data>
+  <data name="KerberosSpnPlaceholder" xml:space="preserve">
+    <value>Optional, the server's gssapi_principal_name</value>
+    <comment>gssapi_principal_name is a server setting name; keep it as is.</comment>
+  </data>
+  <data name="KeyspaceHeader" xml:space="preserve">
+    <value>Keyspace</value>
+    <comment>Field label for a Cassandra keyspace, shown where other engines say Database.</comment>
+  </data>
+  <data name="KubeContextHeader" xml:space="preserve">
+    <value>Context</value>
+    <comment>Field label for a Kubernetes context.</comment>
+  </data>
+  <data name="KubeNamespaceHeader" xml:space="preserve">
+    <value>Namespace</value>
+    <comment>Field label for a Kubernetes namespace.</comment>
+  </data>
+  <data name="KubeResourceHeader" xml:space="preserve">
+    <value>Resource</value>
+    <comment>Field label for a Kubernetes resource such as service/postgres.</comment>
+  </data>
+  <data name="KubectlExecutablePlaceholder" xml:space="preserve">
+    <value>kubectl.exe on PATH when empty</value>
+    <comment>Placeholder of the executable path field. kubectl.exe and PATH stay as is.</comment>
+  </data>
+  <data name="LocalPortHeader" xml:space="preserve">
+    <value>Local port</value>
+    <comment>Field label for the loopback port a helper program listens on.</comment>
+  </data>
+  <data name="ManagedIdentityClientHeader" xml:space="preserve">
+    <value>Managed identity client ID (optional)</value>
+    <comment>Field label; managed identity is Azure's term.</comment>
+  </data>
+  <data name="McpBlocked" xml:space="preserve">
+    <value>Blocked</value>
+    <comment>External client (MCP) access choice.</comment>
+  </data>
+  <data name="McpHeader" xml:space="preserve">
+    <value>External clients (MCP)</value>
+    <comment>Label of the picker for what MCP clients may do with this connection. MCP stays as is.</comment>
+  </data>
+  <data name="McpReadOnly" xml:space="preserve">
+    <value>Read only</value>
+    <comment>External client (MCP) access choice.</comment>
+  </data>
+  <data name="McpReadWrite" xml:space="preserve">
+    <value>Read and write, each write approved</value>
+    <comment>External client (MCP) access choice: writes need the user's approval each time.</comment>
+  </data>
+  <data name="MethodHeader" xml:space="preserve">
+    <value>Method</value>
+    <comment>Label of a picker for how a tunnel signs in or which command it runs.</comment>
+  </data>
+  <data name="NamePlaceholder" xml:space="preserve">
+    <value>Production</value>
+    <comment>Example connection name shown in the empty Name field.</comment>
+  </data>
+  <data name="NameRequired" xml:space="preserve">
+    <value>Give the connection a name.</value>
+  </data>
+  <data name="NamespaceDatabaseHeader" xml:space="preserve">
+    <value>Namespace/database</value>
+    <comment>Field label for a SurrealDB namespace and database, shown where other engines say Database.</comment>
+  </data>
+  <data name="NewConnectionTitle" xml:space="preserve">
+    <value>New Connection</value>
+    <comment>Dialog title.</comment>
+  </data>
+  <data name="NoGroup" xml:space="preserve">
+    <value>No group</value>
+    <comment>Group picker choice for a connection outside any group.</comment>
+  </data>
+  <data name="OptionalPlaceholder" xml:space="preserve">
+    <value>Optional</value>
+    <comment>Placeholder in a field that may stay empty.</comment>
+  </data>
+  <data name="OptionsHeader" xml:space="preserve">
+    <value>Extra connection string options</value>
+  </data>
+  <data name="OptionsPlaceholder" xml:space="preserve">
+    <value>one key=value per line</value>
+    <comment>Placeholder. key=value shows the format; keep the = sign.</comment>
+  </data>
+  <data name="PasswordHeader" xml:space="preserve">
+    <value>Password</value>
+    <comment>Field label.</comment>
+  </data>
+  <data name="PasswordOrApiKeyHeader" xml:space="preserve">
+    <value>Password or API key</value>
+    <comment>Field label (Elasticsearch).</comment>
+  </data>
+  <data name="PasswordUnusedHeader" xml:space="preserve">
+    <value>Password (unused)</value>
+    <comment>Field label (BigQuery), where the password is ignored.</comment>
+  </data>
+  <data name="PortHeader" xml:space="preserve">
+    <value>Port</value>
+    <comment>Field label for a network port number. Narrow field.</comment>
+  </data>
+  <data name="ProjectHeader" xml:space="preserve">
+    <value>Project</value>
+    <comment>Field label for a Google Cloud project, shown where other engines say Host.</comment>
+  </data>
+  <data name="ProxyHostHeader" xml:space="preserve">
+    <value>Proxy host</value>
+  </data>
+  <data name="ProxyNote" xml:space="preserve">
+    <value>Leave the user blank to connect without authentication. The proxy resolves the database host name. The password is stored in Windows Credential Manager.</value>
+  </data>
+  <data name="ProxyPasswordHeader" xml:space="preserve">
+    <value>Proxy password</value>
+  </data>
+  <data name="ProxyTypeHeader" xml:space="preserve">
+    <value>Proxy type</value>
+    <comment>Label of the picker between SOCKS5 and HTTP (CONNECT).</comment>
+  </data>
+  <data name="ProxyUserHeader" xml:space="preserve">
+    <value>Proxy user</value>
+  </data>
+  <data name="RedisClusterHostsHeader" xml:space="preserve">
+    <value>Cluster seed nodes</value>
+  </data>
+  <data name="RedisModeCluster" xml:space="preserve">
+    <value>Cluster</value>
+    <comment>A Redis connection mode: Redis Cluster.</comment>
+  </data>
+  <data name="RedisModeHeader" xml:space="preserve">
+    <value>Connection mode</value>
+  </data>
+  <data name="RedisModeSentinel" xml:space="preserve">
+    <value>Sentinel</value>
+    <comment>A Redis connection mode: Redis Sentinel names the primary.</comment>
+  </data>
+  <data name="RedisModeStandalone" xml:space="preserve">
+    <value>Standalone</value>
+    <comment>A Redis connection mode: one server.</comment>
+  </data>
+  <data name="RedisNodesNote" xml:space="preserve">
+    <value>Separate nodes with commas, as host:port. The host above is one of them.</value>
+    <comment>host:port is a format; keep it as is.</comment>
+  </data>
+  <data name="RedisPrimaryGroupHeader" xml:space="preserve">
+    <value>Primary group name</value>
+    <comment>The name Sentinel monitors the primary under, such as mymaster.</comment>
+  </data>
+  <data name="RedisSentinelHostsHeader" xml:space="preserve">
+    <value>Sentinel nodes</value>
+  </data>
+  <data name="RedisSentinelPasswordHeader" xml:space="preserve">
+    <value>Sentinel password</value>
+  </data>
+  <data name="RedisSentinelUserHeader" xml:space="preserve">
+    <value>Sentinel username</value>
+  </data>
+  <data name="RedisSeparatorHeader" xml:space="preserve">
+    <value>Key separator</value>
+    <comment>The text the sidebar splits Redis key names at to group them, such as a colon.</comment>
+  </data>
+  <data name="RegionHeader" xml:space="preserve">
+    <value>Region</value>
+    <comment>Field label for an AWS region.</comment>
+  </data>
+  <data name="SafeModeAlert" xml:space="preserve">
+    <value>Alert</value>
+    <comment>Safe Mode level: confirms statements that change data.</comment>
+  </data>
+  <data name="SafeModeAlertFull" xml:space="preserve">
+    <value>Alert (Full)</value>
+    <comment>Safe Mode level: confirms every statement.</comment>
+  </data>
+  <data name="SafeModeHeader" xml:space="preserve">
+    <value>Safe Mode</value>
+    <comment>Label of the picker for the connection's Safe Mode level. Safe Mode is a feature name.</comment>
+  </data>
+  <data name="SafeModeReadOnly" xml:space="preserve">
+    <value>Read-Only</value>
+    <comment>Safe Mode level: nothing that changes data may run.</comment>
+  </data>
+  <data name="SafeModeSafe" xml:space="preserve">
+    <value>Safe Mode</value>
+    <comment>Safe Mode level, stricter than Alert: confirms statements that change data.</comment>
+  </data>
+  <data name="SafeModeSafeFull" xml:space="preserve">
+    <value>Safe Mode (Full)</value>
+    <comment>Safe Mode level, stricter than Alert (Full): confirms every statement.</comment>
+  </data>
+  <data name="SafeModeSilent" xml:space="preserve">
+    <value>Silent</value>
+    <comment>Safe Mode level: runs everything without asking.</comment>
+  </data>
+  <data name="SaslPasswordHeader" xml:space="preserve">
+    <value>SASL password</value>
+    <comment>Field label (Kafka). SASL stays as is.</comment>
+  </data>
+  <data name="SaslUserHeader" xml:space="preserve">
+    <value>SASL user (optional)</value>
+    <comment>Field label (Kafka). SASL stays as is.</comment>
+  </data>
+  <data name="SavePassword" xml:space="preserve">
+    <value>Save password in Windows Credential Manager</value>
+    <comment>Check box. Windows Credential Manager is the Windows feature's name.</comment>
+  </data>
+  <data name="SecretAccessKeyHeader" xml:space="preserve">
+    <value>Secret access key</value>
+    <comment>Field label for an AWS secret access key.</comment>
+  </data>
+  <data name="SectionAdvanced" xml:space="preserve">
+    <value>Advanced</value>
+    <comment>Tab of the connection dialog.</comment>
+  </data>
+  <data name="SectionGeneral" xml:space="preserve">
+    <value>General</value>
+    <comment>Tab of the connection dialog.</comment>
+  </data>
+  <data name="SectionNetwork" xml:space="preserve">
+    <value>Network</value>
+    <comment>Tab of the connection dialog.</comment>
+  </data>
+  <data name="SectionSsl" xml:space="preserve">
+    <value>SSL</value>
+    <comment>Tab of the connection dialog with the TLS settings.</comment>
+  </data>
+  <data name="ServiceAccountJsonHeader" xml:space="preserve">
+    <value>Service account JSON</value>
+    <comment>Field label for a Google service account key file.</comment>
+  </data>
+  <data name="ServiceNameHeader" xml:space="preserve">
+    <value>Service name</value>
+    <comment>Field label for an Oracle service name, shown where other engines say Database.</comment>
+  </data>
+  <data name="SignInAwsAccessKey" xml:space="preserve">
+    <value>AWS IAM (Access Key)</value>
+    <comment>Sign-in method choice.</comment>
+  </data>
+  <data name="SignInAwsProfile" xml:space="preserve">
+    <value>AWS IAM (Profile)</value>
+    <comment>Sign-in method choice.</comment>
+  </data>
+  <data name="SignInAwsSso" xml:space="preserve">
+    <value>AWS IAM (SSO)</value>
+    <comment>Sign-in method choice.</comment>
+  </data>
+  <data name="SignInEntra" xml:space="preserve">
+    <value>Microsoft Entra ID</value>
+    <comment>Sign-in method choice; a Microsoft product name.</comment>
+  </data>
+  <data name="SignInKerberos" xml:space="preserve">
+    <value>Kerberos (GSSAPI)</value>
+    <comment>Sign-in method choice.</comment>
+  </data>
+  <data name="SignInPassword" xml:space="preserve">
+    <value>Password</value>
+    <comment>Sign-in method choice: user name and password.</comment>
+  </data>
+  <data name="SignInSqlServer" xml:space="preserve">
+    <value>SQL Server Authentication</value>
+    <comment>Sign-in method choice for SQL Server; Microsoft's name for a SQL login with a password.</comment>
+  </data>
+  <data name="SignInWindows" xml:space="preserve">
+    <value>Windows Authentication</value>
+    <comment>Sign-in method choice for SQL Server; Microsoft's name for it.</comment>
+  </data>
+  <data name="SnowflakeKeyFileHeader" xml:space="preserve">
+    <value>Private key file (key-pair sign-in)</value>
+    <comment>Field label (Snowflake).</comment>
+  </data>
+  <data name="SshAuthAgent" xml:space="preserve">
+    <value>SSH agent</value>
+    <comment>SSH sign-in method choice.</comment>
+  </data>
+  <data name="SshAuthPassword" xml:space="preserve">
+    <value>Password</value>
+    <comment>SSH sign-in method choice.</comment>
+  </data>
+  <data name="SshAuthPrivateKey" xml:space="preserve">
+    <value>Private key</value>
+    <comment>SSH sign-in method choice.</comment>
+  </data>
+  <data name="SshHostHeader" xml:space="preserve">
+    <value>SSH host</value>
+  </data>
+  <data name="SshKeyHeader" xml:space="preserve">
+    <value>Private key</value>
+    <comment>Field label for the SSH private key file path.</comment>
+  </data>
+  <data name="SshNote" xml:space="preserve">
+    <value>TablePro runs the OpenSSH client that ships with Windows, so your ~/.ssh/config, known_hosts and agent apply.</value>
+    <comment>~/.ssh/config and known_hosts are file names; keep them as is.</comment>
+  </data>
+  <data name="SshSecretHeader" xml:space="preserve">
+    <value>Password or key passphrase</value>
+    <comment>Field label for the SSH password or the private key's passphrase.</comment>
+  </data>
+  <data name="SshUserHeader" xml:space="preserve">
+    <value>SSH user</value>
+  </data>
+  <data name="SslDisabled" xml:space="preserve">
+    <value>Disabled</value>
+    <comment>SSL mode choice.</comment>
+  </data>
+  <data name="SslModeHeader" xml:space="preserve">
+    <value>SSL mode</value>
+  </data>
+  <data name="SslNote" xml:space="preserve">
+    <value>Preferred encrypts when the server offers it. The Verify modes check the server's certificate against the Windows certificate store, and Verify identity also checks the host name. IAM and Entra sign-ins always encrypt.</value>
+    <comment>"Preferred", "Verify" and "Verify identity" refer to the SSL mode choices; translate them the same way as those choices.</comment>
+  </data>
+  <data name="SslPreferred" xml:space="preserve">
+    <value>Preferred</value>
+    <comment>SSL mode choice.</comment>
+  </data>
+  <data name="SslRequired" xml:space="preserve">
+    <value>Required (skip verify)</value>
+    <comment>SSL mode choice: encrypt, without checking the certificate.</comment>
+  </data>
+  <data name="SslVerifyCa" xml:space="preserve">
+    <value>Verify CA</value>
+    <comment>SSL mode choice: check the certificate authority. CA stays as is.</comment>
+  </data>
+  <data name="SslVerifyIdentity" xml:space="preserve">
+    <value>Verify identity</value>
+    <comment>SSL mode choice: check the certificate and the host name.</comment>
+  </data>
+  <data name="SsmProfileHeader" xml:space="preserve">
+    <value>Profile</value>
+    <comment>Field label for an AWS configuration profile.</comment>
+  </data>
+  <data name="SsmTargetHeader" xml:space="preserve">
+    <value>Target</value>
+    <comment>Field label for the AWS SSM target, such as an EC2 instance ID.</comment>
+  </data>
+  <data name="StartupHeader" xml:space="preserve">
+    <value>Run on connect</value>
+    <comment>Field label for SQL statements run after connecting.</comment>
+  </data>
+  <data name="TestButton" xml:space="preserve">
+    <value>Test</value>
+    <comment>Dialog button (verb) that tries the connection without saving it.</comment>
+  </data>
+  <data name="TestSucceeded" xml:space="preserve">
+    <value>Connected to {0} {1}</value>
+    <comment>{0} is the database product name, {1} the server version, which can be empty.</comment>
+  </data>
+  <data name="Testing" xml:space="preserve">
+    <value>Testing…</value>
+    <comment>Status shown while the connection test runs.</comment>
+  </data>
+  <data name="TimeoutHeader" xml:space="preserve">
+    <value>Connect timeout (seconds)</value>
+  </data>
+  <data name="TransportCloudSql" xml:space="preserve">
+    <value>Cloud SQL Auth Proxy</value>
+    <comment>Connection method choice; a Google product name.</comment>
+  </data>
+  <data name="TransportCloudSqlSummary" xml:space="preserve">
+    <value>Runs the Google Cloud SQL Auth Proxy against an instance connection name.</value>
+  </data>
+  <data name="TransportCloudflare" xml:space="preserve">
+    <value>Cloudflare Tunnel</value>
+    <comment>Connection method choice; a Cloudflare product name.</comment>
+  </data>
+  <data name="TransportCloudflareSummary" xml:space="preserve">
+    <value>Runs cloudflared against a Cloudflare Access application.</value>
+    <comment>cloudflared is a program name.</comment>
+  </data>
+  <data name="TransportCommand" xml:space="preserve">
+    <value>Tunnel Command</value>
+    <comment>Connection method choice: a program that forwards a port.</comment>
+  </data>
+  <data name="TransportCommandSummary" xml:space="preserve">
+    <value>Runs a command that forwards a local port, such as kubectl port-forward.</value>
+    <comment>kubectl port-forward is a command; keep it as is.</comment>
+  </data>
+  <data name="TransportDirect" xml:space="preserve">
+    <value>Direct</value>
+    <comment>Connection method choice: no tunnel or proxy.</comment>
+  </data>
+  <data name="TransportDirectSummary" xml:space="preserve">
+    <value>Connects straight to the host and port.</value>
+  </data>
+  <data name="TransportHeader" xml:space="preserve">
+    <value>Connect via</value>
+    <comment>Label of the picker for the connection method (direct, SSH tunnel, proxy, ...).</comment>
+  </data>
+  <data name="TransportProxy" xml:space="preserve">
+    <value>Proxy</value>
+    <comment>Connection method choice.</comment>
+  </data>
+  <data name="TransportProxySummary" xml:space="preserve">
+    <value>Routes through a SOCKS5 or HTTP proxy, which also resolves the database host name.</value>
+  </data>
+  <data name="TransportSsh" xml:space="preserve">
+    <value>SSH Tunnel</value>
+    <comment>Connection method choice.</comment>
+  </data>
+  <data name="TransportSshSummary" xml:space="preserve">
+    <value>Forwards a local port through an SSH server with the OpenSSH client that ships with Windows.</value>
+  </data>
+  <data name="UrlHeader" xml:space="preserve">
+    <value>URL</value>
+    <comment>Field label for a libSQL or Turso database URL, shown where other engines say Host.</comment>
+  </data>
+  <data name="LibSqlUrlHeader" xml:space="preserve">
+    <value>URL or file: path</value>
+    <comment>Field label for a libSQL or Turso connection: a server URL, or file: followed by a local database path. Keep "file:" as is.</comment>
+  </data>
+  <data name="UserHeader" xml:space="preserve">
+    <value>User</value>
+    <comment>Field label for the database user name.</comment>
+  </data>
+  <data name="UserOptionalHeader" xml:space="preserve">
+    <value>User (optional)</value>
+    <comment>Field label for the database user name.</comment>
+  </data>
+  <data name="WillRunLabel" xml:space="preserve">
+    <value>Will run</value>
+    <comment>Label above the preview of the tunnel command line that will run.</comment>
+  </data>
+  <data name="WindowsAuthNote" xml:space="preserve">
+    <value>Signs in as your Windows account, by Kerberos when the domain offers it.</value>
+  </data>
+  <data name="RedisHostHeader" xml:space="preserve">
+    <value>Host or first node</value>
+  </data>
+  <data name="SignInGoogleAdc" xml:space="preserve">
+    <value>Google Cloud IAM (Application Default)</value>
+    <comment>Sign-in method choice. Google Cloud IAM is a product name; Application Default refers to Google application default credentials.</comment>
+  </data>
+  <data name="SignInGoogleServiceAccount" xml:space="preserve">
+    <value>Google Cloud IAM (Service Account)</value>
+    <comment>Sign-in method choice. Google Cloud IAM is a product name.</comment>
+  </data>
+  <data name="GoogleServiceAccountKeyHeader" xml:space="preserve">
+    <value>Service account key</value>
+    <comment>Field label for a Google Cloud service account key.</comment>
+  </data>
+  <data name="GoogleServiceAccountKeyPlaceholder" xml:space="preserve">
+    <value>File path or paste JSON</value>
+    <comment>Placeholder of the service account key field.</comment>
+  </data>
+  <data name="GoogleServiceAccountKeyRequired" xml:space="preserve">
+    <value>Enter the service account key: the path of its JSON file, or the JSON itself.</value>
+  </data>
+  <data name="GoogleIamUserHeader" xml:space="preserve">
+    <value>IAM database user</value>
+    <comment>Field label for the Cloud SQL IAM user a token signs in as.</comment>
+  </data>
+  <data name="GoogleAdcNote" xml:space="preserve">
+    <value>Signs in with a Cloud SQL IAM token from the credentials that “gcloud auth application-default login” saved, from GOOGLE_APPLICATION_CREDENTIALS, or from the metadata server. Enter the IAM user as Cloud SQL lists it.</value>
+    <comment>“gcloud auth application-default login” is a command and GOOGLE_APPLICATION_CREDENTIALS an environment variable; keep both as is.</comment>
+  </data>
+  <data name="GoogleServiceAccountNote" xml:space="preserve">
+    <value>Signs in with a Cloud SQL IAM token for the service account. Enter the IAM user as Cloud SQL lists it.</value>
+  </data>
+  <data name="RedshiftUserHeader" xml:space="preserve">
+    <value>Database user (optional)</value>
+    <comment>Field label for the Redshift database user IAM credentials are issued for.</comment>
+  </data>
+  <data name="RedshiftEndpointHeader" xml:space="preserve">
+    <value>Redshift endpoint (optional)</value>
+    <comment>Field label. Redshift is an AWS product name.</comment>
+  </data>
+  <data name="RedshiftIamNote" xml:space="preserve">
+    <value>AWS issues a temporary user and password for the cluster or Serverless workgroup the host names. Leave the user empty to sign in as your IAM identity. Enter the Redshift endpoint only when the host is a local port forward.</value>
+    <comment>Redshift and Serverless are AWS product names.</comment>
+  </data>
+</root>

@@ -3,7 +3,7 @@ set -euo pipefail
 
 # Prints "true" when a suite has to run for the changes from <base> to <head>, "false" when it can skip.
 # Usage: detect-changed-paths.sh [--base <sha>] [--head <rev>] [--ref <git ref>] <suite>
-# Suites: macos, plugins, ios, oracle, hana, release, shipped, swiftlint, linux, linux-docs.
+# Suites: macos, plugins, ios, oracle, hana, release, shipped, swiftlint, linux, linux-docs, windows.
 
 BASE=""
 HEAD_REV="HEAD"
@@ -96,8 +96,12 @@ case "$SUITE" in
             SKIP='linux/.*\.md$'
             KEEP='linux/CHANGELOG\.md$|linux/docs/regression-tests\.md$|linux/data/'
         fi ;;
+    windows)
+        PATTERNS=('windows/' 'scripts/ci/detect-changed-paths\.sh$' '\.github/workflows/(ci|build-windows)\.yml$')
+        # The Windows build and tests read no Markdown.
+        SKIP='windows/.*\.md$' ;;
     *)
-        echo "detect-changed-paths.sh: expected macos, plugins, ios, oracle, hana, release, shipped, swiftlint, linux or linux-docs, got '$SUITE'" >&2
+        echo "detect-changed-paths.sh: expected macos, plugins, ios, oracle, hana, release, shipped, swiftlint, linux, linux-docs or windows, got '$SUITE'" >&2
         exit 2 ;;
 esac
 
