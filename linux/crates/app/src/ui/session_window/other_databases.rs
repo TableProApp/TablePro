@@ -156,7 +156,12 @@ impl SessionWindow {
             .find(|open| open.claim.key() == &SessionKey::Saved(id) && Arc::ptr_eq(&open.session, origin))
             .and_then(|open| open.databases.take_opening(&database));
         match (claim, opened) {
-            (Some(claim), Ok(Ok(session))) => self.join_database(id, claim, session),
+            (Some(claim), Ok(Ok(session))) => {
+                // A level picked once the open had read the connection's
+                // went only to the databases already open.
+                session.set_safe_mode(origin.safe_mode());
+                self.join_database(id, claim, session);
+            }
             (None, Ok(Ok(session))) => drop(session.begin_shutdown()),
             (Some(_), Ok(Err(error))) if !matches!(error, ConnectError::Cancelled) => {
                 self.show_toast(&gettext_f(
