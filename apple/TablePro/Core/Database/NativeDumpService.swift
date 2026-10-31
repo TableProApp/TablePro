@@ -43,6 +43,7 @@ enum NativeDumpError: LocalizedError, Equatable {
     case engineStatementUnavailable
     case incompatibleTool(message: String)
     case unreachableServer(message: String)
+    case nulInArgument
 
     var errorDescription: String? {
         switch self {
@@ -64,6 +65,8 @@ enum NativeDumpError: LocalizedError, Equatable {
             return String(localized: "TablePro could not read the database's own name from the connection.")
         case .incompatibleTool(let message), .unreachableServer(let message):
             return message
+        case .nulInArgument:
+            return String(localized: "The database name or a sign-in value holds a NUL character, which a command line cannot carry.")
         }
     }
 }
@@ -141,6 +144,15 @@ struct NativeDumpStatementJob: Sendable, Equatable {
     /// fails too, and the caller has the real error to report instead of this one.
     let cleanupStatements: [String]
     let scope: DatabaseScope
+    var isolatedImport: NativeDumpIsolatedImport?
+}
+
+// The driver imports `archive` into `file` in an isolated engine instance before `statements` run. `directory` holds
+// only that file and is removed when the run ends.
+struct NativeDumpIsolatedImport: Sendable, Equatable {
+    let archive: URL
+    let directory: URL
+    let file: URL
 }
 
 /// What a run is, so the service can pick a runner without either runner accepting a shape it
@@ -163,8 +175,14 @@ internal extension NativeDumpJob {
 
     // For a job that never reaches a runner, which is what removes these otherwise.
     func discardTemporaryFiles() {
-        guard case .process(let command) = self else { return }
-        for url in [command.temporaryCredentialsFileURL, command.clientPluginFolder?.url].compactMap(\.self) {
+        let urls: [URL?]
+        switch self {
+        case .process(let command):
+            urls = [command.temporaryCredentialsFileURL, command.clientPluginFolder?.url]
+        case .statements(let job):
+            urls = [job.isolatedImport?.directory]
+        }
+        for url in urls.compactMap(\.self) {
             try? FileManager.default.removeItem(at: url)
         }
     }
@@ -175,6 +193,7 @@ struct NativeDumpRunResult: Equatable {
     let exitCode: Int32
     let stderr: String
     let wasCancelled: Bool
+    var targetUntouched = false
 }
 
 /// Runs one backup or restore and reports how it ended. Abstracted so the state machine can be
@@ -339,25 +358,18 @@ final class NativeDumpService: ObservableObject {
             try run(job: .process(command), database: database, fileURL: fileURL, totalBytesEstimate: totalBytesEstimate)
 
         case .engineStatements(let engine):
-            let alias = Self.backupAlias()
-            let statements = engine.statements(for: kind, request: request, alias: alias)
-            guard !statements.isEmpty else { throw NativeDumpError.engineStatementUnavailable }
-            toolName = connection.type.rawValue
             let scopeForRun = DatabaseManager.shared.resolvedScope(
                 database: database, schema: nil, for: connection.id
             ) ?? DatabaseScope(connectionId: connection.id, database: database, schema: nil)
-            try run(
-                job: .statements(
-                    NativeDumpStatementJob(
-                        statements: statements,
-                        cleanupStatements: engine.cleanupStatements(alias),
-                        scope: scopeForRun
-                    )
-                ),
-                database: database,
-                fileURL: fileURL,
-                totalBytesEstimate: totalBytesEstimate
+            let job = try Self.statementJob(
+                kind: kind,
+                engine: engine,
+                request: request,
+                alias: Self.backupAlias(),
+                scope: scopeForRun
             )
+            toolName = connection.type.rawValue
+            try run(job: .statements(job), database: database, fileURL: fileURL, totalBytesEstimate: totalBytesEstimate)
         }
 
         jobStarted = true
@@ -555,6 +567,45 @@ final class NativeDumpService: ObservableObject {
         return picked.isEmpty ? nil : picked
     }
 
+    nonisolated static func statementJob(
+        kind: NativeDumpKind,
+        engine: NativeDumpDescriptor.EngineStatements,
+        request: NativeDumpDescriptor.Request,
+        alias: String,
+        scope: DatabaseScope
+    ) throws -> NativeDumpStatementJob {
+        guard kind == .restore, let format = engine.isolatedImportFormat else {
+            let statements = engine.statements(for: kind, request: request, alias: alias)
+            guard !statements.isEmpty else { throw NativeDumpError.engineStatementUnavailable }
+            return NativeDumpStatementJob(
+                statements: statements,
+                cleanupStatements: engine.cleanupStatements(alias),
+                scope: scope
+            )
+        }
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("tablepro-restore-\(UUID().uuidString)", isDirectory: true)
+        var imported = request
+        imported.fileURL = directory.appendingPathComponent("import").appendingPathExtension(format.fileExtension)
+        let statements = engine.restoreStatements(imported, alias)
+        guard !statements.isEmpty else { throw NativeDumpError.engineStatementUnavailable }
+        try FileManager.default.createDirectory(
+            at: directory,
+            withIntermediateDirectories: false,
+            attributes: [.posixPermissions: 0o700]
+        )
+        return NativeDumpStatementJob(
+            statements: statements,
+            cleanupStatements: engine.cleanupStatements(alias),
+            scope: scope,
+            isolatedImport: NativeDumpIsolatedImport(
+                archive: request.fileURL,
+                directory: directory,
+                file: imported.fileURL
+            )
+        )
+    }
+
     /// Unique per run, so a `DETACH` that could not execute leaves nothing behind that blocks the
     /// next attempt with "database with name already exists".
     static func backupAlias() -> String {
@@ -633,8 +684,8 @@ final class NativeDumpService: ObservableObject {
     /// can hold without the value changing meaning.
     nonisolated static func mongoYAMLQuoted(_ value: String) -> String {
         let escaped = value
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\"", with: "\\\"")
+            .replacingOccurrences(of: "\\", with: "\\\\", options: .literal)
+            .replacingOccurrences(of: "\"", with: "\\\"", options: .literal)
         return "\"\(escaped)\""
     }
 
@@ -723,7 +774,7 @@ final class NativeDumpService: ObservableObject {
             ?? (result.stderr.isEmpty
                 ? String(format: String(localized: "Process exited with code %d"), Int(result.exitCode))
                 : result.stderr)
-        setState(.failed(message: summary, targetMayBeModified: kind == .restore))
+        setState(.failed(message: summary, targetMayBeModified: kind == .restore && !result.targetUntouched))
         Self.logger.error("\(self.toolName, privacy: .public) failed code=\(result.exitCode) db=\(database, privacy: .private(mask: .hash)) stderr=\(result.stderr)")
     }
 

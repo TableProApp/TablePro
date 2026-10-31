@@ -1,5 +1,6 @@
 import Foundation
 import TableProConnectionLibrary
+import TableProSSHTransport
 import UniformTypeIdentifiers
 
 public extension UTType {
@@ -240,6 +241,15 @@ public struct ExportableTunnelCommand: Codable, Sendable, Equatable {
         self.awsTarget = awsTarget
         self.awsProfile = awsProfile
         self.awsRegion = awsRegion
+    }
+}
+
+public extension ExportableConnection {
+    // Match exec hands the host and user to /bin/sh, and the host key store is one entry per line.
+    var refusedSSHDestination: SSHDestinationName.Problem? {
+        guard let ssh = sshConfig, ssh.enabled else { return nil }
+        let hops = [(ssh.host, ssh.username)] + (ssh.jumpHosts ?? []).map { ($0.host, $0.username) }
+        return hops.lazy.compactMap { SSHDestinationName.problem(host: $0.0, user: $0.1) }.first
     }
 }
 

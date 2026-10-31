@@ -394,6 +394,10 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         try await pluginDriver.releaseIdleResource()
     }
 
+    func importExportedDatabase(from folder: URL, into file: URL) async throws {
+        try await pluginDriver.importExportedDatabase(from: folder, into: file)
+    }
+
     func resolveQueryCompletionProfile(
         databaseTypeId: String,
         base: QueryCompletionProfile

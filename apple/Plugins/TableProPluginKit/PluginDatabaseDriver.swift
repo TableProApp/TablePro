@@ -278,6 +278,10 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     /// temporary objects, an open transaction, or settings the user changed are all reasons to keep
     /// it and say so. Throwing is reserved for a release that was attempted and failed.
     func releaseIdleResource() async throws -> PluginResourceRelease
+
+    // Builds a new database file from a folder the engine exported, in an engine instance of its own that can reach no
+    // file outside `folder`, because the folder's SQL is untrusted. Nothing runs on this connection.
+    func importExportedDatabase(from folder: URL, into file: URL) async throws
     var serverVersion: String? { get }
     /// The warning the server sent with a login that succeeded, in the server's own words, such as an Oracle
     /// password in its grace period, or `nil` when there was none. The app reads it once `connect()` returns.

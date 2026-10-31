@@ -56,6 +56,18 @@
     "The row's loaded values are missing, so it cannot be found again." : {
 
     },
+    "The SSH host %@ contains characters ssh does not allow in a host name." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "the SSH host or user of “%@” contains characters ssh does not allow" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The SSH user %@ contains characters ssh does not allow in a user name." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "“%@” has an open transaction. Deleting the connection rolls it back and discards its uncommitted changes." : {
 
     },
@@ -26893,6 +26905,10 @@
 
     },
     "This driver cannot explain a statement" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "This driver cannot restore an exported folder. Update it in Settings > Extensions." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
