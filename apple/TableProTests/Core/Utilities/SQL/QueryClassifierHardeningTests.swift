@@ -953,6 +953,48 @@ struct QueryClassifierNonSqlTests {
         #expect(load.reachesFilesystemOrExecutesCode)
     }
 
+    @Test("A Cypher keyword or backtick written as a unicode escape is tiered as the server decodes it")
+    func cypherUnicodeEscapes() {
+        let escapedDelete = "MATCH (n) \\u0044ETACH \\u0044ELETE n"
+        #expect(QueryClassifier.classifyTier(escapedDelete, databaseType: .neo4j) == .write)
+        let closedBacktick = "MATCH (n:`x\\u0060) DETACH DELETE n //`) RETURN n"
+        #expect(QueryClassifier.classifyTier(closedBacktick, databaseType: .neo4j) == .write)
+        let repeatedU = "MATCH (n) \\uuu0053ET n.x = 1"
+        #expect(QueryClassifier.classifyTier(repeatedU, databaseType: .neo4j) == .write)
+        let escapedBackslash = "RETURN '\\\\u0044ELETE' AS x"
+        #expect(!QueryClassifier.isWriteQuery(escapedBackslash, databaseType: .neo4j))
+        #expect(QueryClassifier.cypherDecodingUnicodeEscapes("a\\u0041\\\\u0041\\u00") == "aA\\\\u0041\\u00")
+    }
+
+    @Test("A Cypher DELETE that nothing narrows gets the dangerous-query confirmation")
+    func cypherUnfilteredDelete() {
+        let dangerous = [
+            "MATCH (n) DETACH DELETE n",
+            "MATCH (n:Temp) DELETE n",
+            "MATCH (n) WHERE n.x = 1 SET n.y = 2; MATCH (m) DELETE m",
+            "DROP INDEX person_name"
+        ]
+        for query in dangerous {
+            #expect(QueryClassifier.isDangerousQuery(query, databaseType: .neo4j), "\(query)")
+        }
+        let narrowed = [
+            "MATCH (n:Temp) WHERE n.age > 3 DELETE n",
+            "MATCH (n {id: 1}) DETACH DELETE n",
+            "MATCH (n) WITH n LIMIT 10 DELETE n",
+            "MATCH (n) RETURN n {delete: n.x}",
+            "MATCH (n) SET n.seen = true"
+        ]
+        for query in narrowed {
+            #expect(!QueryClassifier.isDangerousQuery(query, databaseType: .neo4j), "\(query)")
+        }
+    }
+
+    @Test("Cypher's -- is a pattern, so a ; after it still ends the statement")
+    func cypherDashesAreCode() {
+        #expect(QueryClassifier.isMultiStatement("MATCH (a)-- (b) RETURN a; MATCH (n) RETURN n", databaseType: .neo4j))
+        #expect(!QueryClassifier.isMultiStatement("MATCH (a)-- (b) RETURN a", databaseType: .neo4j))
+    }
+
     @Test("Firebase request lines are tiered by their verb, and a grid page is a read")
     func firebaseTiers() {
         for type in [DatabaseType.firestore, .firebaseRealtimeDatabase] {

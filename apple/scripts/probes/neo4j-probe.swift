@@ -130,6 +130,8 @@ func run() async throws {
                && pathStep?["endElementId"] as? String == pathNodes.first,
            "a path walked against its relationship keeps the relationship's direction")
 
+    try await checkReadModeFiltersExportAndCancel(columns: columns, nameIndex: nameIndex)
+
     try driver.cancelQuery()
     let afterIdleCancel = try await driver.execute(query: "RETURN 4 AS ok")
     expect(text(afterIdleCancel) == [["4"]], "a cancel with nothing running leaves the next statement alone")
@@ -154,6 +156,104 @@ func run() async throws {
     }
     let afterCancel = try await driver.execute(query: "RETURN 2 AS ok")
     expect(text(afterCancel) == [["2"]], "the connection recovers after a cancel")
+}
+
+func checkReadModeFiltersExportAndCancel(columns: [String], nameIndex: Int) async throws {
+    var readContext = PluginStatementContext()
+    readContext.readOnly = true
+    do {
+        _ = try await driver.execute(query: "CREATE (n:\(label) {probe: 'read mode'})", context: readContext)
+        expect(false, "a statement marked read-only cannot write")
+    } catch {
+        expect(true, "a statement marked read-only cannot write: \(error.localizedDescription.prefix(70))")
+    }
+    let rawWrite = [PluginQueryFilter(column: "__RAW__", op: "", value: "true WITH n SET n.raw = 1 WITH n WHERE true")]
+    do {
+        _ = try await driver.execute(query: try require(driver.buildFilteredQuery(
+            table: label, schema: "Labels", queryFilters: rawWrite, logicMode: "and",
+            sortColumns: [], columns: columns, limit: 200, offset: 0, columnKinds: [:]
+        )))
+        expect(false, "a raw filter cannot write through a grid page")
+    } catch {
+        expect(true, "a raw filter cannot write through a grid page")
+    }
+    let rawCount = try await driver.execute(query: "MATCH (n:\(label)) WHERE n.raw IS NOT NULL RETURN count(n)")
+    expect(text(rawCount) == [["0"]], "no property was set by the raw filter")
+
+    func filteredNames(_ filters: [PluginQueryFilter]) async throws -> [String?] {
+        let page = try await driver.execute(query: try require(driver.buildFilteredQuery(
+            table: label, schema: "Labels", queryFilters: filters, logicMode: "and",
+            sortColumns: [(nameIndex, true)], columns: columns, limit: 200, offset: 0, columnKinds: [:]
+        )))
+        return text(page).map { $0[nameIndex] }
+    }
+    let between = try await filteredNames([PluginQueryFilter(column: "age", op: "BETWEEN", value: "20,40", secondValue: "40", elementScope: nil)])
+    expect(between == ["Ann"], "BETWEEN uses both bounds: \(between)")
+    let byLabel = try await filteredNames([PluginQueryFilter(column: "<labels>", op: "=", value: label)])
+    expect(byLabel == ["Ann", "Bo"], "<labels> = matches a node carrying the label: \(byLabel)")
+    let notLabel = try await filteredNames([PluginQueryFilter(column: "<labels>", op: "!=", value: label)])
+    expect(notLabel.isEmpty, "<labels> != excludes it: \(notLabel)")
+    let regex = try await filteredNames([PluginQueryFilter(column: "age", op: "REGEX", value: "3.*")])
+    expect(regex == ["Ann"], "REGEX on an integer property matches it as text: \(regex)")
+
+    _ = try await driver.execute(query: "UNWIND range(1, 2500) AS x CREATE (:\(label)_Bulk {seq: x})")
+    let export = try require(driver.defaultExportQuery(table: "\(label)_Bulk", schema: "Labels"))
+    var exportColumns: [String] = []
+    var exportRows = 0
+    var exportBatches = 0
+    for try await element in driver.streamRows(query: export) {
+        switch element {
+        case .header(let header): exportColumns = header.columns
+        case .rows(let rows):
+            exportRows += rows.count
+            exportBatches += 1
+        }
+    }
+    expect(exportColumns == ["<id>", "<labels>", "seq"], "an export spreads entities: \(exportColumns)")
+    expect(exportRows == 2_500 && exportBatches == 3, "an export pulls in batches: \(exportRows) rows in \(exportBatches)")
+    let slowFilter = [PluginQueryFilter(
+        column: "__RAW__", op: "", value: "size([x IN range(1, 200000) WHERE x < 0]) = 0"
+    )]
+    let countStarted = Date()
+    let slowCount = Task {
+        try await driver.fetchFilteredRowCount(table: "\(label)_Bulk", queryFilters: slowFilter, logicMode: "and")
+    }
+    try await Task.sleep(nanoseconds: 300_000_000)
+    let queued = Task { try await driver.execute(query: "RETURN 5 AS queued") }
+    try await Task.sleep(nanoseconds: 300_000_000)
+    try driver.cancelQuery()
+    let countAfterCancel = try? await slowCount.value
+    print("info the slow count took \(Int(Date().timeIntervalSince(countStarted) * 1_000)) ms")
+    expect(countAfterCancel == 2_500, "a cancel leaves metadata work holding the connection alone: \(String(describing: countAfterCancel))")
+    do {
+        _ = try await queued.value
+        expect(false, "a cancel stops the user statement waiting for its turn")
+    } catch {
+        expect(true, "a cancel stops the user statement waiting for its turn")
+    }
+    _ = try await driver.execute(query: "MATCH (n:\(label)_Bulk) DELETE n")
+
+    let decoded = try await driver.execute(query: "RETURN 1 AS \\u0061bc")
+    print("info the server decodes unicode escapes outside strings: \(decoded.columns == ["abc"])")
+
+    var preferred = SSLConfiguration()
+    preferred.mode = .preferred
+    let fallback = Neo4jPluginDriver(config: DriverConnectionConfig(
+        host: environment["TP_NEO4J_HOST"] ?? "127.0.0.1",
+        port: Int(environment["TP_NEO4J_PORT"] ?? "") ?? 7_687,
+        username: environment["TP_NEO4J_USER"] ?? "neo4j",
+        password: environment["TP_NEO4J_PASSWORD"] ?? "",
+        database: "",
+        ssl: preferred
+    ))
+    do {
+        try await fallback.connect()
+        let ping = try await fallback.execute(query: "RETURN 6 AS ok")
+        expect(text(ping) == [["6"]], "SSL Preferred connects to a server without TLS")
+    } catch {
+        expect(ssl.mode != .disabled, "SSL Preferred connects to a server without TLS: \(error.localizedDescription)")
+    }
+    fallback.disconnect()
 }
 
 struct RequireError: Error {}

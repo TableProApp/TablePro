@@ -107,6 +107,60 @@ struct Neo4jCypherTests {
         #expect(list == "n.`zip` IN [1, '1', 'a']")
     }
 
+    @Test("BETWEEN takes its bounds from the joined value the host sends, not the whole of it")
+    func betweenBounds() throws {
+        let joined = Neo4jFilter(column: "age", op: "BETWEEN", value: "10,20", secondValue: "20")
+        #expect(try Neo4jCypher.condition(for: joined, usesElementId: true) == "n.`age` >= 10 AND n.`age` <= 20")
+        let unsplit = Neo4jFilter(column: "name", op: "BETWEEN", value: "a, m")
+        #expect(try Neo4jCypher.condition(for: unsplit, usesElementId: true) == "n.`name` >= 'a' AND n.`name` <= 'm'")
+        let commaInBound = Neo4jFilter(column: "tag", op: "BETWEEN", value: "a,b,c", secondValue: "c")
+        #expect(try Neo4jCypher.condition(for: commaInBound, usesElementId: true) == "n.`tag` >= 'a,b' AND n.`tag` <= 'c'")
+        #expect(throws: Neo4jCypherError.incompleteRange) {
+            try Neo4jCypher.condition(for: Neo4jFilter(column: "age", op: "BETWEEN", value: "10"), usesElementId: true)
+        }
+    }
+
+    @Test("Every operator on <labels> matches against each label, since labels(n) is a list")
+    func labelOperators() throws {
+        func clause(_ op: String, _ value: String = "Person", caseSensitive: Bool = true) throws -> String {
+            try Neo4jCypher.condition(
+                for: Neo4jFilter(column: "<labels>", op: op, value: value, isCaseSensitive: caseSensitive),
+                usesElementId: true
+            )
+        }
+        #expect(try clause("=") == "any(label IN labels(n) WHERE label = 'Person')")
+        #expect(try clause("!=") == "NOT (any(label IN labels(n) WHERE label = 'Person'))")
+        #expect(try clause("=", caseSensitive: false) == "any(label IN labels(n) WHERE toLower(label) = 'person')")
+        #expect(try clause("IN", "A, B") == "any(label IN labels(n) WHERE label IN ['A', 'B'])")
+        #expect(try clause("NOT IN", "A, B") == "NOT (any(label IN labels(n) WHERE label IN ['A', 'B']))")
+        #expect(try clause("REGEX", "Per.*") == "any(label IN labels(n) WHERE label =~ 'Per.*')")
+        #expect(try clause(">", "M") == "any(label IN labels(n) WHERE label > 'M')")
+        #expect(try clause("IS EMPTY", "") == "size(labels(n)) = 0")
+        #expect(try clause("IS NOT EMPTY", "") == "size(labels(n)) > 0")
+    }
+
+    @Test("REGEX reads the value as text, like the other text operators")
+    func regexReadsText() throws {
+        let sensitive = try Neo4jCypher.condition(for: Neo4jFilter(column: "zip", op: "REGEX", value: "9.*"), usesElementId: true)
+        #expect(sensitive == "toStringOrNull(n.`zip`) =~ '9.*'")
+        let folded = try Neo4jCypher.condition(
+            for: Neo4jFilter(column: "zip", op: "REGEX", value: "a.*", isCaseSensitive: false), usesElementId: true
+        )
+        #expect(folded == "toStringOrNull(n.`zip`) =~ '(?i)a.*'")
+    }
+
+    @Test("A string literal escapes a backslash, so the server's unicode-escape pass cannot reopen it")
+    func literalEscapes() {
+        let value = "\\" + "u0027) DETACH DELETE n //"
+        #expect(Neo4jCypher.literal(value) == "'\\\\" + "u0027) DETACH DELETE n //'")
+    }
+
+    @Test("An export reads every entity, with no page limit")
+    func exportQuery() throws {
+        #expect(try Neo4jCypher.exportQuery(kind: .node, name: "Person") == "// TablePro browse: node\nMATCH (n:`Person`)\nRETURN n")
+        #expect(Neo4jCypher.browsedName(in: try Neo4jCypher.exportQuery(kind: .relationship, name: "we`ird")) == "we`ird")
+    }
+
     @Test("Only canonical numbers become number literals")
     func numberLiterals() {
         #expect(Neo4jCypher.typedLiteral("42") == "42")

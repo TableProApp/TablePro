@@ -17,6 +17,11 @@ enum Neo4jError: Error, LocalizedError, Sendable {
         }
     }
 
+    static func detail(of error: Error) -> String {
+        if case .connectionFailed(let detail) = error as? Neo4jError { return detail }
+        return PluginNIOChannel.describe(error)
+    }
+
     var errorDescription: String? {
         switch self {
         case .notConnected:
@@ -30,8 +35,16 @@ enum Neo4jError: Error, LocalizedError, Sendable {
         }
     }
 
+    // Only a failure of the session's own credentials; Forbidden on one database is not one.
     var isAuthenticationFailure: Bool {
-        if case .server(let code, _) = self { return code.hasPrefix("Neo.ClientError.Security") }
-        return false
+        guard case .server(let code, _) = self else { return false }
+        return Self.authenticationCodes.contains(code)
     }
+
+    private static let authenticationCodes: Set<String> = [
+        "Neo.ClientError.Security.Unauthorized",
+        "Neo.ClientError.Security.CredentialsExpired",
+        "Neo.ClientError.Security.TokenExpired",
+        "Neo.ClientError.Security.AuthenticationRateLimit"
+    ]
 }

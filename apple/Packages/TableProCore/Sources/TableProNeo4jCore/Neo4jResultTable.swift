@@ -11,7 +11,6 @@ public struct Neo4jResultTable: Equatable, Sendable {
         self.rows = rows
     }
 
-    /// One column per returned key, typed by the first value that is not null.
     public static func records(keys: [String], records: [[PackStreamValue]]) -> Neo4jResultTable {
         let typeNames = keys.indices.map { index -> String in
             for record in records where index < record.count && record[index] != .null {
@@ -25,16 +24,17 @@ public struct Neo4jResultTable: Equatable, Sendable {
         return Neo4jResultTable(columns: keys, typeNames: typeNames, rows: rows)
     }
 
-    /// Spreads the entity each record returns into one column per property. Known keys keep
-    /// their order; keys first seen on this page follow, sorted.
+    // Known keys keep their order; keys first seen on this page follow, sorted. A stream's columns are fixed by its
+    // header, so it passes `addsUnseenProperties: false`.
     public static func entities(
         kind: Neo4jEntityKind,
         records: [[PackStreamValue]],
-        knownProperties: [String]
+        knownProperties: [String],
+        addsUnseenProperties: Bool = true
     ) -> Neo4jResultTable {
         let entities = records.compactMap { $0.first.flatMap(Neo4jEntity.init) }
         let known = Set(knownProperties)
-        let extra = Set(entities.flatMap(\.properties.keys)).subtracting(known).sorted()
+        let extra = addsUnseenProperties ? Set(entities.flatMap(\.properties.keys)).subtracting(known).sorted() : []
         let properties = knownProperties + extra
         let fixed = Neo4jCypher.fixedColumns(for: kind)
 

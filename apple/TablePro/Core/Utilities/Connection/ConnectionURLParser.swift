@@ -111,6 +111,7 @@ struct ConnectionURLParser {
         }
 
         var scheme = trimmed[trimmed.startIndex..<schemeEnd.lowerBound].lowercased()
+        let transportSuffix = scheme.lastIndex(of: "+").map { String(scheme[$0...]) }
 
         var isSSH = false
         if scheme.hasSuffix("+ssh") {
@@ -225,7 +226,7 @@ struct ConnectionURLParser {
         if scheme == "etcds" {
             sslMode = sslMode ?? .required
         }
-        sslMode = sslMode ?? neo4jSchemeSSLMode(trimmed, type: dbType)
+        sslMode = sslMode ?? transportSSLMode(transportSuffix)
 
         // Oracle-specific: path component is the service name, not the database name
         var oracleServiceName: String?
@@ -396,13 +397,13 @@ struct ConnectionURLParser {
         return .success(path)
     }
 
-    /// Neo4j's `+s` verifies the server's certificate; `+ssc` accepts a self-signed one.
-    private static func neo4jSchemeSSLMode(_ url: String, type: DatabaseType) -> SSLMode? {
-        guard type == .neo4j else { return nil }
-        let scheme = url.prefix { $0 != ":" }.lowercased()
-        if scheme.hasSuffix("+s") { return .verifyIdentity }
-        if scheme.hasSuffix("+ssc") { return .required }
-        return nil
+    // The Bolt convention, as in `neo4j+s://`: `+s` verifies the certificate, `+ssc` accepts a self-signed one.
+    private static func transportSSLMode(_ suffix: String?) -> SSLMode? {
+        switch suffix {
+        case "+s": return .verifyIdentity
+        case "+ssc": return .required
+        default: return nil
+        }
     }
 
     private static func resolveDBType(from scheme: String) -> DatabaseType? {

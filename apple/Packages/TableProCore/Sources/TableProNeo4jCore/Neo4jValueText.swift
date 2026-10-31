@@ -1,7 +1,5 @@
 import Foundation
 
-/// Renders Bolt values as grid text. Scalars and temporals read the way Cypher's `toString`
-/// writes them; nodes, relationships, paths, lists and maps become JSON.
 public enum Neo4jValueText {
     public static func text(_ value: PackStreamValue) -> String? {
         switch value {
@@ -93,9 +91,8 @@ public enum Neo4jValueText {
         }
     }
 
-    /// Bolt sends a path's distinct nodes and relationships plus a sequence of (relationship, node)
-    /// index pairs. A positive relationship index walks it forward, a negative one backward, and
-    /// both are 1-based. The result lists every step in order, repeats included.
+    // Bolt sends a path's distinct nodes and relationships plus (relationship, node) index pairs; a positive
+    // 1-based relationship index walks forward, a negative one backward.
     private static func pathObject(_ fields: [PackStreamValue]) -> [String: Any]? {
         let nodes = (fields[0].listValue ?? []).compactMap(Neo4jEntity.init)
         let relationships = fields[1].listValue ?? []
@@ -292,7 +289,7 @@ public enum Neo4jValueText {
         return (value % divisor != 0 && (value < 0) != (divisor < 0)) ? quotient - 1 : quotient
     }
 
-    /// Proleptic Gregorian date from days since 1970-01-01 (Howard Hinnant's `civil_from_days`).
+    // Howard Hinnant's `civil_from_days`.
     private static func civilDate(daysSinceEpoch: Int64) -> (Int64, Int64, Int64) {
         let shifted = daysSinceEpoch + 719_468
         let era = floorDivide(shifted, 146_097)

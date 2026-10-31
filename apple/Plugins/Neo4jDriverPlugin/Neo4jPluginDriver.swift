@@ -7,13 +7,7 @@ import TableProPluginKit
 final class Neo4jPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     static let logger = Logger(subsystem: "com.TablePro", category: "Neo4jPluginDriver")
     static let defaultConnectTimeoutMilliseconds = 15_000
-
-    struct Statement {
-        let keys: [String]
-        let records: [[PackStreamValue]]
-        let summary: [String: PackStreamValue]
-        let isTruncated: Bool
-    }
+    static let streamBatchSize: Int64 = 1_000
 
     private let config: DriverConnectionConfig
     private let lock = NSLock()
@@ -38,7 +32,7 @@ final class Neo4jPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     var parameterStyle: ParameterStyle { .dollar }
 
     var currentDatabase: String { lock.withLock { database } }
-    var usesElementId: Bool { lock.withLock { boltVersion.major >= 5 } }
+    var usesElementId: Bool { lock.withLock { boltVersion.hasElementIds } }
 
     func beginTransaction() async throws {}
     func commitTransaction() async throws {}
@@ -56,25 +50,24 @@ final class Neo4jPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             default: Self.defaultConnectTimeoutMilliseconds
         )
         let connection = Neo4jConnection(host: config.host, port: config.port)
-        let credentials = Neo4jCredentials(username: config.username, password: config.password)
         try await connection.open(
             ssl: config.ssl,
-            credentials: credentials,
+            credentials: Neo4jCredentials(username: config.username, password: config.password),
             userAgent: "TablePro/\(Neo4jPlugin.pluginVersion)",
             timeout: .milliseconds(Int64(milliseconds))
         )
         let agent = await connection.serverAgent
         let version = await connection.version
         let replaced = lock.withLock { () -> Neo4jConnection? in
-            defer { self.connection = connection }
+            defer {
+                self.connection = connection
+                serverAgent = agent
+                boltVersion = version
+                propertyCache.removeAll()
+            }
             return self.connection
         }
         if let replaced { await replaced.close() }
-        lock.withLock {
-            serverAgent = agent
-            boltVersion = version
-            propertyCache.removeAll()
-        }
         if currentDatabase.isEmpty, let home = try? await homeDatabase() {
             lock.withLock { database = home }
         }
@@ -112,7 +105,7 @@ final class Neo4jPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         lock.withLock { self.schema = schema }
     }
 
-    private func requireConnection() throws -> Neo4jConnection {
+    func requireConnection() throws -> Neo4jConnection {
         guard let connection = lock.withLock({ connection }) else { throw Neo4jError.notConnected }
         return connection
     }
@@ -123,78 +116,163 @@ final class Neo4jPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     // MARK: - Running Cypher
 
-    /// Runs one statement and pulls at most `rowCap` records, discarding the rest on the server.
+    // Internal reads go out in Bolt's read mode, where the server refuses a write.
     func run(
         _ query: String,
         parameters: [String: PackStreamValue] = [:],
+        database override: String? = nil
+    ) async throws -> BoltResult {
+        try await requireConnection().run(
+            request(query, parameters: parameters, database: override, readOnly: true),
+            pull: -1,
+            interruptible: false
+        )
+    }
+
+    private func request(
+        _ query: String,
+        parameters: [String: PackStreamValue],
         database override: String? = nil,
-        rowCap: Int? = nil
-    ) async throws -> Statement {
-        let connection = try requireConnection()
+        readOnly: Bool
+    ) -> BoltRequest {
         let (database, timeout) = lock.withLock { (self.database, transactionTimeoutSeconds) }
         var extra: [String: PackStreamValue] = [:]
         let target = override ?? database
         if !target.isEmpty { extra["db"] = .string(target) }
         if timeout > 0 { extra["tx_timeout"] = .int(Int64(timeout) * 1_000) }
+        if readOnly { extra["mode"] = .string("r") }
+        return .run(query: query, parameters: parameters, extra: extra)
+    }
 
-        let pullCount = rowCap.map { Int64($0) + 1 } ?? -1
-        let replies = try await connection.send([
-            .run(query: query, parameters: parameters, extra: extra),
-            .pull(count: pullCount)
-        ])
-        guard replies.count >= 2 else { throw Neo4jError.notConnected }
-        if let error = replies.lazy.compactMap(Neo4jError.init(reply:)).first {
-            throw error
-        }
-        guard case .success(let header) = replies[0].outcome,
-              case .success(let summary) = replies[1].outcome,
-              case .success(let finalSummary) = replies[replies.count - 1].outcome else { throw Neo4jError.cancelled }
-
-        var records = replies[1].records
-        var isTruncated = false
-        if let rowCap, records.count > rowCap {
-            records.removeLast(records.count - rowCap)
-            isTruncated = true
-        }
-        if summary["has_more"]?.boolValue == true {
-            isTruncated = true
-        }
-        let keys = header["fields"]?.listValue?.compactMap(\.stringValue) ?? []
-        return Statement(keys: keys, records: records, summary: finalSummary, isTruncated: isTruncated)
+    // A grid page never writes, whatever a raw filter in it says.
+    private static func readsOnly(_ query: String, _ context: PluginStatementContext) -> Bool {
+        context.readOnly || Neo4jCypher.browseKind(of: query) != nil
     }
 
     func execute(query: String) async throws -> PluginQueryResult {
-        try await executeUserQuery(query: query, rowCap: nil, parameters: nil)
+        try await execute(query: query, context: PluginStatementContext())
+    }
+
+    func execute(query: String, context: PluginStatementContext) async throws -> PluginQueryResult {
+        try await executeUserQuery(query: query, rowCap: nil, parameters: nil, context: context)
+    }
+
+    func executeParameterized(query: String, parameters: [PluginCellValue]) async throws -> PluginQueryResult {
+        try await executeParameterized(query: query, parameters: parameters, context: PluginStatementContext())
+    }
+
+    func executeParameterized(
+        query: String,
+        parameters: [PluginCellValue],
+        context: PluginStatementContext
+    ) async throws -> PluginQueryResult {
+        try await executeUserQuery(query: query, rowCap: nil, parameters: parameters, context: context)
     }
 
     func executeUserQuery(query: String, rowCap: Int?, parameters: [PluginCellValue]?) async throws -> PluginQueryResult {
+        try await executeUserQuery(query: query, rowCap: rowCap, parameters: parameters, context: PluginStatementContext())
+    }
+
+    func executeUserQuery(
+        query: String,
+        rowCap: Int?,
+        parameters: [PluginCellValue]?,
+        context: PluginStatementContext
+    ) async throws -> PluginQueryResult {
         let started = Date()
-        let statement = try await run(
-            Self.trimmed(query),
-            parameters: Self.boltParameters(parameters),
-            rowCap: rowCap.flatMap { $0 > 0 ? $0 : nil }
+        let cap = rowCap.flatMap { $0 > 0 ? $0 : nil }
+        let result = try await requireConnection().run(
+            request(Self.trimmed(query), parameters: Self.boltParameters(parameters), readOnly: Self.readsOnly(query, context)),
+            pull: cap.map { Int64($0) + 1 } ?? -1,
+            interruptible: true
         )
-        let table: Neo4jResultTable
-        if let kind = Neo4jCypher.browseKind(of: query), statement.keys.count == 1 {
-            let name = Self.browsedName(in: query) ?? ""
-            table = Neo4jResultTable.entities(
-                kind: kind,
-                records: statement.records,
-                knownProperties: lock.withLock { propertyCache[Self.cacheKey(kind, name)] } ?? []
-            )
-        } else {
-            table = Neo4jResultTable.records(keys: statement.keys, records: statement.records)
+        var records = result.records
+        var isTruncated = result.hasMore
+        if let cap, records.count > cap {
+            records.removeLast(records.count - cap)
+            isTruncated = true
         }
-        let counts = Neo4jUpdateCounts(summary: statement.summary)
+        let table = resultTable(query: query, keys: result.keys, records: records)
+        let counts = Neo4jUpdateCounts(summary: result.summary)
         return PluginQueryResult(
             columns: table.columns,
             columnTypeNames: table.typeNames,
-            rows: table.rows.map { $0.map { $0.map(PluginCellValue.text) ?? .null } },
+            rows: Self.cells(table.rows),
             rowsAffected: counts.entitiesChanged,
             executionTime: Date().timeIntervalSince(started),
-            isTruncated: statement.isTruncated,
+            isTruncated: isTruncated,
             statusMessage: Self.countersText(counts)
         )
+    }
+
+    private func resultTable(query: String, keys: [String], records: [[PackStreamValue]]) -> Neo4jResultTable {
+        guard let kind = Neo4jCypher.browseKind(of: query), keys.count == 1 else {
+            return .records(keys: keys, records: records)
+        }
+        let name = Neo4jCypher.browsedName(in: query) ?? ""
+        let known = lock.withLock { propertyCache[Self.cacheKey(kind, name)] } ?? []
+        return .entities(kind: kind, records: records, knownProperties: known)
+    }
+
+    // MARK: - Streaming
+
+    func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        streamRows(query: query, context: PluginStatementContext())
+    }
+
+    // Pulls a batch at a time, so an export never holds the whole result.
+    func streamRows(query: String, context: PluginStatementContext) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task {
+                do {
+                    try await self.stream(query, context: context, into: continuation)
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
+
+    private func stream(
+        _ query: String,
+        context: PluginStatementContext,
+        into continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
+    ) async throws {
+        let connection = try requireConnection()
+        var entityColumns: (kind: Neo4jEntityKind, properties: [String])?
+        if let kind = Neo4jCypher.browseKind(of: query), let name = Neo4jCypher.browsedName(in: query) {
+            let keys = try await run(Neo4jCypher.propertyKeysQuery(kind: kind, name: name))
+            entityColumns = (kind, keys.records.compactMap { $0.first?.stringValue })
+        }
+        let spread = entityColumns
+        try await connection.stream(
+            request(Self.trimmed(query), parameters: [:], readOnly: Self.readsOnly(query, context)),
+            batchSize: Self.streamBatchSize,
+            interruptible: true
+        ) { keys, records, isFirst in
+            let table: Neo4jResultTable
+            if let spread, keys.count == 1 {
+                table = .entities(
+                    kind: spread.kind, records: records, knownProperties: spread.properties, addsUnseenProperties: false
+                )
+            } else {
+                table = .records(keys: keys, records: records)
+            }
+            if isFirst {
+                continuation.yield(.header(PluginStreamHeader(columns: table.columns, columnTypeNames: table.typeNames)))
+            }
+            guard !table.rows.isEmpty else { return true }
+            if case .terminated = continuation.yield(.rows(Self.cells(table.rows))) { return false }
+            return true
+        }
+    }
+
+    // MARK: - Helpers
+
+    private static func cells(_ rows: [[String?]]) -> [[PluginCellValue]] {
+        rows.map { $0.map { $0.map(PluginCellValue.text) ?? .null } }
     }
 
     static func trimmed(_ query: String) -> String {
@@ -206,7 +284,7 @@ final class Neo4jPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return text
     }
 
-    /// Host parameters are positional; Cypher reads them as `$1`, `$2` and so on.
+    // Host parameters are positional; Cypher reads them as `$1`, `$2` and so on.
     static func boltParameters(_ values: [PluginCellValue]?) -> [String: PackStreamValue] {
         guard let values else { return [:] }
         var parameters: [String: PackStreamValue] = [:]
@@ -216,8 +294,7 @@ final class Neo4jPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return parameters
     }
 
-    /// Every counter Neo4j reported, so a statement that only set properties or labels says
-    /// what changed instead of a row count.
+    // A statement that only set properties or labels says what changed instead of a row count.
     static func countersText(_ counts: Neo4jUpdateCounts) -> String? {
         guard !counts.counters.isEmpty else { return nil }
         return counts.counters.map { counter, count in
@@ -240,26 +317,6 @@ final class Neo4jPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         case .constraintsRemoved: return String(localized: "%lld constraint(s) removed")
         case .systemUpdates: return String(localized: "%lld system update(s)")
         }
-    }
-
-    /// The label or type a browse query matches, read back from its MATCH line.
-    static func browsedName(in query: String) -> String? {
-        guard let start = query.range(of: ":`") else { return nil }
-        var name = ""
-        var index = start.upperBound
-        while index < query.endIndex {
-            let character = query[index]
-            let next = query.index(after: index)
-            if character == "`" {
-                guard next < query.endIndex, query[next] == "`" else { return name }
-                name.append("`")
-                index = query.index(after: next)
-                continue
-            }
-            name.append(character)
-            index = next
-        }
-        return nil
     }
 
     static func cacheKey(_ kind: Neo4jEntityKind, _ name: String) -> String {

@@ -14,7 +14,9 @@ extension Neo4jPluginDriver {
             )
             let names = statement.records.compactMap { $0.first?.stringValue }
             if !names.isEmpty { return names }
-        } catch let error as Neo4jError where !error.isAuthenticationFailure {
+        } catch let error as Neo4jError {
+            // A user without access to `system` still has the database they connected to.
+            guard case .server = error, !error.isAuthenticationFailure else { throw error }
             Self.logger.info("SHOW DATABASES failed, listing the current database only")
         }
         let current = currentDatabase
@@ -75,7 +77,7 @@ extension Neo4jPluginDriver {
         return fixed + properties.map { PluginColumnInfo(name: $0.0, dataType: $0.1, isNullable: true) }
     }
 
-    /// Bolt 5 servers name an index's constraint in `owningConstraint`; 4.4 has only `uniqueness`.
+    // Neo4j 5 names an index's constraint in `owningConstraint`; 4.4 has only `uniqueness`.
     func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] {
         let kind = Neo4jEntityKind(schemaName: schema ?? currentSchema) ?? .node
         let unique = usesElementId ? "owningConstraint IS NOT NULL" : "uniqueness = 'UNIQUE'"
@@ -84,9 +86,9 @@ extension Neo4jPluginDriver {
         WHERE $name IN labelsOrTypes AND entityType = $entityType
         RETURN name, type, properties, \(unique) AS isUnique
         """
-        let statement: Statement
+        let statement: BoltResult
         do {
-            statement = try await run(query, parameters: ["name": .string(table), "entityType": .string(Self.entityType(kind))])
+            statement = try await run(query, parameters: ["name": .string(table), "entityType": .string(kind.entityType)])
         } catch {
             Self.logger.info("SHOW INDEXES failed: \(error.localizedDescription, privacy: .private)")
             return []
@@ -100,13 +102,6 @@ extension Neo4jPluginDriver {
                 isPrimary: false,
                 type: record[1].stringValue ?? ""
             )
-        }
-    }
-
-    private static func entityType(_ kind: Neo4jEntityKind) -> String {
-        switch kind {
-        case .node: "NODE"
-        case .relationship: "RELATIONSHIP"
         }
     }
 
@@ -158,11 +153,12 @@ extension Neo4jPluginDriver {
     func fetchTableDDL(table: String, schema: String?) async throws -> String {
         let kind = Neo4jEntityKind(schemaName: schema ?? currentSchema) ?? .node
         let query = """
-        SHOW CONSTRAINTS YIELD labelsOrTypes, createStatement
-        WHERE $name IN labelsOrTypes
+        SHOW CONSTRAINTS YIELD labelsOrTypes, entityType, createStatement
+        WHERE $name IN labelsOrTypes AND entityType = $entityType
         RETURN createStatement
         """
-        let statements = (try? await run(query, parameters: ["name": .string(table)]))?
+        let parameters: [String: PackStreamValue] = ["name": .string(table), "entityType": .string(kind.entityType)]
+        let statements = (try? await run(query, parameters: parameters))?
             .records.compactMap { $0.first?.stringValue } ?? []
         let pattern = Neo4jCypher.pattern(for: kind, name: table) + " RETURN n LIMIT 25;"
         return (statements.map { $0 + ";" } + [pattern]).joined(separator: "\n")
@@ -241,8 +237,10 @@ extension Neo4jPluginDriver {
 
     func defaultExportQuery(table: String, schema: String?) -> String? {
         let kind = Neo4jEntityKind(schemaName: schema ?? currentSchema) ?? .node
-        return try? Neo4jCypher.browseQuery(
-            kind: kind, name: table, limit: Int(Int32.max), offset: 0, usesElementId: usesElementId
-        )
+        return try? Neo4jCypher.exportQuery(kind: kind, name: table)
+    }
+
+    func defaultExportQuery(table: String) -> String? {
+        defaultExportQuery(table: table, schema: nil)
     }
 }

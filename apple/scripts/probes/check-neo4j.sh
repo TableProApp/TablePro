@@ -19,6 +19,7 @@ for source in "$ROOT/Plugins/Neo4jDriverPlugin"/*.swift; do
     ln -s "$source" "$SOURCES/$(basename "$source")"
 done
 ln -s "$ROOT/Plugins/Shared/PluginConnectTimeout.swift" "$SOURCES/PluginConnectTimeout.swift"
+ln -s "$ROOT/Plugins/SharedNIO/PluginNIOChannel.swift" "$SOURCES/PluginNIOChannel.swift"
 ln -s "$ROOT/scripts/probes/neo4j-probe.swift" "$SOURCES/main.swift"
 cat > "$WORK/Package.swift" <<MANIFEST
 // swift-tools-version: 6.0

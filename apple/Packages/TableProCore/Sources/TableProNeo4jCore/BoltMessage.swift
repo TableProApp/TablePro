@@ -17,14 +17,13 @@ public struct BoltVersion: Comparable, Hashable, Sendable, CustomStringConvertib
 
     public var separatesLogon: Bool { self >= BoltVersion(major: 5, minor: 1) }
     public var sendsBoltAgent: Bool { self >= BoltVersion(major: 5, minor: 3) }
-    public var usesUTCDateTime: Bool { major >= 5 }
+    public var hasElementIds: Bool { major >= 5 }
 }
 
 public enum BoltHandshake {
     public static let magic: [UInt8] = [0x60, 0x60, 0xB0, 0x17]
 
-    /// Each proposal is [0, range, minor, major]: the server picks the highest it supports from
-    /// major.minor down to major.(minor - range).
+    // Each proposal is [0, range, minor, major]: major.minor down to major.(minor - range).
     public static let proposals: [UInt8] = [
         0x00, 0x04, 0x04, 0x05,
         0x00, 0x02, 0x04, 0x04,
@@ -48,18 +47,6 @@ public enum BoltRequest: Equatable, Sendable {
     case discard
     case reset
     case goodbye
-
-    public var name: String {
-        switch self {
-        case .hello: "HELLO"
-        case .logon: "LOGON"
-        case .run: "RUN"
-        case .pull: "PULL"
-        case .discard: "DISCARD"
-        case .reset: "RESET"
-        case .goodbye: "GOODBYE"
-        }
-    }
 
     public var structure: PackStreamValue {
         switch self {
@@ -149,8 +136,7 @@ public enum BoltChunker {
     }
 }
 
-/// Joins chunks back into whole messages. A zero-size chunk ends a message; one that arrives
-/// with nothing before it is a NOOP keep-alive and yields nothing.
+// A zero-size chunk with nothing before it is a NOOP keep-alive, not an empty message.
 public struct BoltDechunker: Sendable {
     public static let maximumMessageSize = 512 * 1_024 * 1_024
 

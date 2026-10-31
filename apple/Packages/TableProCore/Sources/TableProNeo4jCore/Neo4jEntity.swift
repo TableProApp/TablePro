@@ -18,8 +18,7 @@ public enum Neo4jStructureTag {
     public static let point3D: UInt8 = 0x59
 }
 
-/// A node or relationship as the grid sees it. Bolt 4 has no element id, so the numeric id
-/// stands in, written as text either way.
+// Bolt 4 has no element id, so the numeric id stands in, written as text.
 public struct Neo4jEntity: Equatable, Sendable {
     public enum Kind: Equatable, Sendable {
         case node(labels: [String])

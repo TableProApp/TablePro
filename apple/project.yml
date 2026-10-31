@@ -1059,6 +1059,8 @@ targets:
     templateAttributes:
       folder: KafkaDriverPlugin
       principalClass: KafkaPlugin
+    sources:
+      - Plugins/SharedNIO
     dependencies:
       - package: zstd
         product: libzstd
@@ -1172,6 +1174,8 @@ targets:
     templateAttributes:
       folder: Neo4jDriverPlugin
       principalClass: Neo4jPlugin
+    sources:
+      - Plugins/SharedNIO
     dependencies:
       - package: TableProCore
         product: TableProNeo4jCore

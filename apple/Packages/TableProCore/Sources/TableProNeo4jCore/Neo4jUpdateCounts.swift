@@ -1,6 +1,5 @@
 import Foundation
 
-/// The update counters a statement's summary reports, in the order Neo4j lists them.
 public struct Neo4jUpdateCounts: Equatable, Sendable {
     public enum Counter: String, CaseIterable, Sendable {
         case nodesCreated = "nodes-created"
@@ -17,7 +16,6 @@ public struct Neo4jUpdateCounts: Equatable, Sendable {
         case systemUpdates = "system-updates"
     }
 
-    /// Every counter above zero.
     public let counters: [(counter: Counter, count: Int)]
 
     public init(summary: [String: PackStreamValue]) {
@@ -32,8 +30,7 @@ public struct Neo4jUpdateCounts: Equatable, Sendable {
         counters.first { $0.counter == counter }?.count ?? 0
     }
 
-    /// Nodes and relationships created or deleted. A property or label change is not counted:
-    /// its counter says how many values changed, not how many entities.
+    // A property or label counter counts values, not entities.
     public var entitiesChanged: Int {
         [.nodesCreated, .nodesDeleted, .relationshipsCreated, .relationshipsDeleted].reduce(0) { $0 + count($1) }
     }

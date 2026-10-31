@@ -7,8 +7,7 @@ import Foundation
 import TableProPluginKit
 
 extension PluginMetadataRegistry {
-    /// Kept identical to `Neo4jPlugin`: the type has to be in the New Connection picker before
-    /// the registry plugin is installed.
+    // Kept identical to `Neo4jPlugin`, so the type is in the New Connection picker before the plugin is installed.
     func neo4jPluginDefaults() -> [(typeId: String, snapshot: PluginMetadataSnapshot)] {
         [
             ("Neo4j", PluginMetadataSnapshot(

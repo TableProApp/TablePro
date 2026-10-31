@@ -42,6 +42,7 @@ public enum PackStreamError: Error, Equatable, Sendable {
     case unknownMarker(UInt8)
     case invalidString
     case nonStringKey
+    case nestedTooDeeply
 }
 
 public enum PackStreamEncoder {
@@ -79,7 +80,8 @@ public enum PackStreamEncoder {
                 write(entries[key] ?? .null, into: &data)
             }
         case .structure(let tag, let fields):
-            data.append(0xB0 | UInt8(min(fields.count, 15)))
+            precondition(fields.count < 16, "Bolt has no marker for a structure over 15 fields")
+            data.append(0xB0 | UInt8(fields.count))
             data.append(tag)
             for field in fields { write(field, into: &data) }
         }
@@ -130,8 +132,12 @@ public enum PackStreamEncoder {
 }
 
 public struct PackStreamDecoder {
+    // Each level is a stack frame, so a server cannot overflow the stack with a deeply nested list.
+    public static let maximumDepth = 64
+
     private let bytes: [UInt8]
     private var index = 0
+    private var depth = 0
 
     public init(_ data: Data) {
         bytes = [UInt8](data)
@@ -145,6 +151,9 @@ public struct PackStreamDecoder {
     }
 
     public mutating func next() throws -> PackStreamValue {
+        depth += 1
+        defer { depth -= 1 }
+        guard depth <= Self.maximumDepth else { throw PackStreamError.nestedTooDeeply }
         let marker = try byte()
         switch marker {
         case 0x00 ... 0x7F:

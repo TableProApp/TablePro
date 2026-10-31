@@ -114,6 +114,7 @@ enum QueryClassifier {
         if classification.tier == .destructive { return true }
         // A MongoDB statement is JavaScript, where `delete d.x` removes a field from a local object.
         guard databaseType != .redis, databaseType != .mongodb else { return false }
+        if databaseType == .neo4j { return cypherDeletesUnfiltered(sql) }
         guard documentStoreClassification(sql, databaseType: databaseType, readings: readings) == nil else {
             let trimmed = StatementBlank.trimming(SQLLeadingComments.stripping(sql, grammar: readings.execution))
             let code = SQLCodeProjection.code(of: trimmed, grammar: readings.execution).uppercased()

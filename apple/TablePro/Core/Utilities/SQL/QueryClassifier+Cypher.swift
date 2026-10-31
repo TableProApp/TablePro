@@ -6,10 +6,29 @@
 import Foundation
 
 extension QueryClassifier {
-    /// Cypher reads unless one of its clauses writes, so every clause word is checked, not only the
-    /// first.
     static func cypherClassification(_ text: String) -> QueryClassification {
-        let code = cypherCode(text)
+        cypherReadings(of: text).reduce(.safe) { worst, code in
+            worst.escalated(with: cypherClassification(code: code))
+        }
+    }
+
+    static func cypherDeletesUnfiltered(_ text: String) -> Bool {
+        cypherReadings(of: text).contains { code in
+            code.split(separator: ";").contains { statement in
+                let words = Set(cypherClauseWords(in: Array(statement)).map(\.text))
+                return words.contains("DELETE") && words.isDisjoint(with: ["WHERE", "LIMIT"]) && !statement.contains("{")
+            }
+        }
+    }
+
+    // Neo4j's parser decodes `\uXXXX` before it lexes, so `\u0044ELETE` is DELETE and `\u0060` closes a backtick
+    // name. A server that does not decode reads the text as written, so both readings are tiered.
+    private static func cypherReadings(of text: String) -> [[Character]] {
+        let decoded = cypherDecodingUnicodeEscapes(text)
+        return decoded == text ? [cypherCode(text)] : [cypherCode(text), cypherCode(decoded)]
+    }
+
+    private static func cypherClassification(code: [Character]) -> QueryClassification {
         var result = QueryClassification.safe
         for word in cypherClauseWords(in: code) {
             switch word.text {
@@ -18,16 +37,13 @@ extension QueryClassifier {
             case "CREATE", "INSERT", "MERGE", "SET", "REMOVE", "DELETE", "FOREACH", "GRANT":
                 result = result.escalated(to: .write)
             case let admin where cypherAdminObjects[admin] != nil:
-                // These lead an administration command and are otherwise ordinary names, so a
-                // variable called `start` or `stop` stays a read.
+                // Only before the object it administers, so a variable named `start` stays a read.
                 if let next = cypherNextWord(in: code, after: word.end), cypherAdminObjects[admin]?.contains(next) == true {
                     result = result.escalated(to: .write)
                 }
             case "LOAD":
                 result = result.markingUnsafeSurface()
             case "CALL":
-                // `CALL { ... }` and `CALL (x) { ... }` are subqueries whose own clauses are
-                // checked; a procedure is trusted only when it is known to read.
                 if let procedure = cypherProcedureName(in: code, after: word.end),
                    !cypherReadProcedures.contains(where: procedure.hasPrefix) {
                     result = result.escalated(to: .write)
@@ -39,7 +55,6 @@ extension QueryClassifier {
         return result
     }
 
-    /// Administration commands that write, keyed by their leading word, with the words that may follow it.
     static let cypherAdminObjects: [String: Set<String>] = [
         "ALTER": ["USER", "CURRENT", "DATABASE", "SERVER", "ALIAS"],
         "RENAME": ["USER", "ROLE", "SERVER"],
@@ -51,16 +66,43 @@ extension QueryClassifier {
         "REALLOCATE": ["DATABASE", "DATABASES"]
     ]
 
-    /// Procedures that only read, matched by prefix on the lowercased name.
     static let cypherReadProcedures: [String] = [
         "db.labels", "db.relationshiptypes", "db.propertykeys", "db.schema.", "db.info", "db.ping",
         "db.indexes", "db.constraints", "db.index.fulltext.query", "db.index.vector.query",
         "dbms.components", "dbms.showcurrentuser", "dbms.procedures", "dbms.functions", "apoc.meta."
     ]
 
-    /// The text with strings and comments blanked and each backtick-quoted name replaced by `_q`,
-    /// which no clause or read-only procedure matches. Cypher has no `--` comment: `(a)-- (b)` is
-    /// a pattern, so the SQL comment rules cannot be reused here.
+    // JavaCC's unicode-escape rule: a backslash after an even run of backslashes, one or more `u`, four hex digits.
+    static func cypherDecodingUnicodeEscapes(_ text: String) -> String {
+        let units = Array(text.utf16)
+        let backslash = UInt16(UInt8(ascii: "\\"))
+        let letterU = UInt16(UInt8(ascii: "u"))
+        var decoded: [UInt16] = []
+        decoded.reserveCapacity(units.count)
+        var backslashRun = 0
+        var index = 0
+        while index < units.count {
+            let unit = units[index]
+            if unit == backslash, backslashRun.isMultiple(of: 2), index + 1 < units.count, units[index + 1] == letterU {
+                var hexStart = index + 1
+                while hexStart < units.count, units[hexStart] == letterU { hexStart += 1 }
+                if hexStart + 4 <= units.count,
+                   let scalar = UInt16(String(decoding: units[hexStart ..< hexStart + 4], as: UTF16.self), radix: 16) {
+                    decoded.append(scalar)
+                    backslashRun = 0
+                    index = hexStart + 4
+                    continue
+                }
+            }
+            backslashRun = unit == backslash ? backslashRun + 1 : 0
+            decoded.append(unit)
+            index += 1
+        }
+        return String(decoding: decoded, as: UTF16.self)
+    }
+
+    // Strings and comments blanked, each backtick name replaced by `_q`, which no clause or procedure matches.
+    // Cypher has no `--` comment: `(a)-- (b)` is a pattern.
     private static func cypherCode(_ text: String) -> [Character] {
         let characters = Array(text)
         var code: [Character] = []
@@ -104,8 +146,7 @@ extension QueryClassifier {
         return code
     }
 
-    /// The clause words, uppercased. A word after `.`, `:` or `$`, or before `:`, is a property, a
-    /// label, a parameter or a map key, so `n.set` or `{delete: 1}` is never read as a clause.
+    // A word after `.`, `:` or `$`, or before `:`, is a property, a label, a parameter or a map key.
     private static func cypherClauseWords(in code: [Character]) -> [(text: String, end: Int)] {
         var words: [(text: String, end: Int)] = []
         var index = 0
@@ -131,7 +172,7 @@ extension QueryClassifier {
         return word.isEmpty ? nil : String(word).uppercased()
     }
 
-    /// The procedure a `CALL` names, or nil for a subquery.
+    // Nil for a `CALL { ... }` or `CALL (x) { ... }` subquery, whose own clauses are tiered.
     private static func cypherProcedureName(in code: [Character], after end: Int) -> String? {
         guard let start = code[end...].firstIndex(where: { !$0.isWhitespace }), code[start] != "{" else { return nil }
         if code[start] == "(" {

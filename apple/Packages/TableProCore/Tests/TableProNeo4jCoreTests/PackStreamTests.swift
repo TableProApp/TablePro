@@ -44,6 +44,17 @@ struct PackStreamTests {
 }
 
 struct BoltMessageTests {
+    @Test("A list nested deeper than the limit is refused instead of overflowing the stack")
+    func depthLimit() throws {
+        func nested(_ depth: Int) -> Data {
+            Data(Array(repeating: 0x91, count: depth - 1) + [0x01])
+        }
+        #expect(try PackStreamDecoder.decode(nested(PackStreamDecoder.maximumDepth)) != .null)
+        #expect(throws: PackStreamError.nestedTooDeeply) {
+            try PackStreamDecoder.decode(nested(PackStreamDecoder.maximumDepth + 1))
+        }
+    }
+
     @Test("The handshake offers 5.4 down to 5.0, then 4.4 down to 4.2")
     func handshake() {
         #expect([UInt8](BoltHandshake.request.prefix(8)) == [0x60, 0x60, 0xB0, 0x17, 0x00, 0x04, 0x04, 0x05])

@@ -200,12 +200,11 @@ public struct SQLLexicalProfile: Sendable, Hashable {
         .doubleSlashLineComments, .statementsAsValues,
     ]
 
-    /// Cypher, from the Neo4j manual: a backslash escapes in both quotes, backticks quote names, and `//` starts a
-    /// comment. `--` is not a comment, but `(a)--(b)` is a pattern, so a dash comment needs the space after it. Not
-    /// measured.
+    // Cypher, from the Neo4j manual: a backslash escapes in both quotes, backticks quote names, `//` is a comment and
+    // `--` is a pattern. Not measured.
     static let cypher: SQLLexicalGrammar = [
         .backslashEscapesInSingleQuotes, .backslashEscapesInDoubleQuotes, .backtickQuotes, .doubleSlashLineComments,
-        .dashCommentsNeedWhitespace,
+        .withoutDashComments,
     ]
 
     /// DynamoDB, from the driver's statement forms: a request is `<Action> {JSON}`, and a backslash escapes inside a
