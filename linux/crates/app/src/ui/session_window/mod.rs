@@ -1346,7 +1346,8 @@ impl SessionWindow {
                     self.show_toast(&crate::i18n::gettext("The connection was deleted."));
                 }
             },
-            source => self.connect_with(claim, source, demand),
+            // An edited connection's retry brings its databases back too.
+            source => self.connect_reopening(claim, source, demand, databases),
         }
     }
 
