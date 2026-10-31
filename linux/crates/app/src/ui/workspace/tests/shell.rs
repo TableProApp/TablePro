@@ -419,11 +419,10 @@ fn the_overview_opens_a_tab_in_a_session_that_came_forward_from_its_own_input() 
     );
 }
 
-/// Choose New Connection… in the main menu of `test`'s window, as a
-/// click does, and wait for the connection dialog.
-fn choose_new_connection(test: &TestWindow) {
-    let content = test.window.content().expect("the window's content");
-    let button = descendants(&content)
+/// Choose New Connection… in the main menu under `header`, as a click
+/// does, and wait for the connection dialog.
+fn choose_new_connection(test: &TestWindow, header: &impl IsA<gtk::Widget>) {
+    let button = descendants(header)
         .into_iter()
         .filter_map(|widget| widget.downcast::<gtk::MenuButton>().ok())
         .find(gtk::MenuButton::is_primary)
@@ -448,7 +447,10 @@ fn choose_new_connection(test: &TestWindow) {
 
 #[gtk4::test]
 fn the_main_menu_adds_a_connection_beside_an_open_one() {
-    choose_new_connection(&TestWindow::connected("MainMenuNewConnection"));
+    let test = TestWindow::connected("MainMenuNewConnection");
+    // The overview's own menu button is a primary one too.
+    let header = shell_of(&test.workspace()).imp().sidebar_header.get();
+    choose_new_connection(&test, &header);
 }
 
 #[gtk4::test]
@@ -465,5 +467,5 @@ fn the_main_menu_adds_a_connection_with_none_open() {
         "New Connection… does not lead the menu"
     );
 
-    choose_new_connection(&test);
+    choose_new_connection(&test, &test.window.content().expect("the picker"));
 }
