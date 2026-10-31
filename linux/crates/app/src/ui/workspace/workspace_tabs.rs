@@ -530,6 +530,13 @@ impl WorkspaceModel {
         self.persist_workspace_state();
     }
 
+    /// A tab that moved to another database is restored there and names
+    /// it in its title.
+    pub(super) fn on_editor_tab_database_changed(&self, id: Uuid) {
+        self.retitle_tab(id);
+        self.persist_workspace_state();
+    }
+
     pub(super) fn on_editor_tab_run_state_changed(&self, id: Uuid, running: bool) {
         if let Some(WorkspaceTab::Editor(slot)) = self.workspace_tabs.borrow().get(&id) {
             slot.page.set_loading(running);

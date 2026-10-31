@@ -2850,6 +2850,41 @@ fn a_connection_in_no_database_offers_one() {
     assert_eq!(harness.editor.imp().scope_button_label.label(), "analytics");
 }
 
+/// A tab in the database the server names as the connection's own once
+/// it lists them again is no longer a moved one, for its title and its
+/// record.
+#[gtk4::test]
+fn a_tab_in_the_database_the_server_then_calls_its_own_is_not_moved() {
+    let database = |name: &str, is_default: bool| tablepro_core::meta::SchemaInfo {
+        name: name.to_owned(),
+        is_default,
+        is_system: false,
+    };
+    let harness = scoped_editor_with(mysql_dialect(), &[], answering(), |script, request| {
+        if let tablepro_session::connect::RequestTarget::Network { database, .. } = &mut request.target {
+            *database = None;
+        }
+        script
+            .list_databases
+            .once(FakeReply::ok(vec![
+                database("analytics", false),
+                database("app", false),
+            ]))
+            .always(FakeReply::ok(vec![database("analytics", false), database("app", true)]));
+    });
+    let button = harness.editor.imp().scope_button.get();
+    wait_until(WAIT, || button.is_visible()).expect("the database menu");
+    let changed = SignalLog::connect(&harness.editor, "database-changed", |_| ());
+    pick_database(&harness, "app");
+    assert_eq!(harness.editor.tab_database().as_deref(), Some("app"));
+
+    harness.editor.buffer().set_text("CREATE DATABASE scratch");
+    run_and_wait(&harness);
+
+    wait_until(WAIT, || changed.count() == 2).expect("the workspace to hear the tab is in its own database");
+    assert_eq!(harness.editor.tab_database(), None);
+}
+
 /// All Rows runs the statement again on the connection, in another
 /// database than a moved tab's, so only the rows shown are offered.
 #[gtk4::test]
