@@ -175,6 +175,10 @@ struct RestoreDatabaseFlow: View {
     /// A restore replays a dump into a database that already has contents, and the tools it drives
     /// do not ask. Picking a database in the list used to be the last step before the first write.
     private func startRestore(database: String) async {
+        if NativeDumpRegistry.descriptor(for: connection.type, formatId: formatId)?.archiveFormat.restores == false {
+            phase = .failed(message: NativeDumpError.formatCannotRestore.localizedDescription, targetMayBeModified: false)
+            return
+        }
         guard let message = RestoreConfirmationText.message(for: connection.type, formatId: formatId) else {
             phase = .failed(
                 message: NativeDumpError.unsupportedDatabase.localizedDescription, targetMayBeModified: false)

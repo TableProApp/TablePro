@@ -185,6 +185,11 @@ struct LibPQConnectionStringTests {
         #expect(conninfo.contains("options='-c application_name=\\'x\\''"))
     }
 
+    @Test("A quote a combining mark follows is still escaped")
+    func escapesAQuoteBeforeACombiningMark() {
+        #expect(LibPQConnectionString.escape("a'\u{301} host=evil") == "a\\'\u{301} host=evil")
+    }
+
     @Test("The application name reaches libpq as a fallback, ahead of the connection options")
     func sendsFallbackApplicationName() {
         let conninfo = build(options: "-c search_path=app", applicationName: "TablePro Metadata")

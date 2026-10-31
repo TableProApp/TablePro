@@ -10,6 +10,7 @@
 import CryptoKit
 import Foundation
 import os
+import TableProSSHTransport
 
 /// Manages SSH host key verification for known hosts
 internal final class HostKeyStore: @unchecked Sendable {
@@ -21,6 +22,9 @@ internal final class HostKeyStore: @unchecked Sendable {
         case trusted
         case unknown(fingerprint: String, keyType: String)
         case mismatch(expected: String, actual: String)
+        // The file is one entry per line split on spaces, so a host with a line break would plant
+        // an entry for another host.
+        case invalidHost(SSHDestinationName.Problem)
     }
 
     private let filePath: String
@@ -39,18 +43,13 @@ internal final class HostKeyStore: @unchecked Sendable {
 
     // MARK: - Public API
 
-    /// Verify a host key against the known_hosts store
-    /// - Parameters:
-    ///   - keyData: The raw host key bytes
-    ///   - keyType: The key type string (e.g. "ssh-rsa", "ssh-ed25519")
-    ///   - hostname: The remote hostname
-    ///   - port: The remote port
-    /// - Returns: The verification result
     func verify(keyData: Data, keyType: String, hostname: String, port: Int) -> VerificationResult {
         lock.lock()
         defer { lock.unlock() }
 
-        let hostKey = hostIdentifier(hostname, port)
+        guard let hostKey = hostIdentifier(hostname, port) else {
+            return .invalidHost(.host(hostname))
+        }
         let currentFingerprint = Self.fingerprint(of: keyData)
         let entries = loadEntries()
 
@@ -72,17 +71,11 @@ internal final class HostKeyStore: @unchecked Sendable {
         return .mismatch(expected: storedFingerprint, actual: currentFingerprint)
     }
 
-    /// Add or update a trusted host key
-    /// - Parameters:
-    ///   - hostname: The remote hostname
-    ///   - port: The remote port
-    ///   - key: The raw host key bytes
-    ///   - keyType: The key type string
     func trust(hostname: String, port: Int, key: Data, keyType: String) {
         lock.lock()
         defer { lock.unlock() }
 
-        let hostKey = hostIdentifier(hostname, port)
+        guard let hostKey = hostIdentifier(hostname, port) else { return }
         var entries = loadEntries()
 
         entries.removeAll { $0.host == hostKey && $0.keyType == keyType }
@@ -93,15 +86,11 @@ internal final class HostKeyStore: @unchecked Sendable {
         Self.logger.info("Trusted host key for \(hostKey) (\(keyType))")
     }
 
-    /// Remove a stored host key
-    /// - Parameters:
-    ///   - hostname: The remote hostname
-    ///   - port: The remote port
     func remove(hostname: String, port: Int) {
         lock.lock()
         defer { lock.unlock() }
 
-        let hostKey = hostIdentifier(hostname, port)
+        guard let hostKey = hostIdentifier(hostname, port) else { return }
         var entries = loadEntries()
 
         let countBefore = entries.count
@@ -143,9 +132,12 @@ internal final class HostKeyStore: @unchecked Sendable {
 
     // MARK: - Private Helpers
 
-    /// Build the host identifier string: [hostname]:port
-    private func hostIdentifier(_ hostname: String, _ port: Int) -> String {
-        "[\(hostname)]:\(port)"
+    private func hostIdentifier(_ hostname: String, _ port: Int) -> String? {
+        guard SSHDestinationName.isValidHost(hostname) else {
+            Self.logger.warning("Refusing a host key entry for a host ssh would refuse")
+            return nil
+        }
+        return "[\(hostname)]:\(port)"
     }
 
     /// Load all entries from the known_hosts file

@@ -43,6 +43,8 @@ enum NativeDumpError: LocalizedError, Equatable {
     case engineStatementUnavailable
     case incompatibleTool(message: String)
     case unreachableServer(message: String)
+    case nulInArgument
+    case formatCannotRestore
 
     var errorDescription: String? {
         switch self {
@@ -64,6 +66,10 @@ enum NativeDumpError: LocalizedError, Equatable {
             return String(localized: "TablePro could not read the database's own name from the connection.")
         case .incompatibleTool(let message), .unreachableServer(let message):
             return message
+        case .nulInArgument:
+            return String(localized: "The database name or a sign-in value holds a NUL character, which a command line cannot carry.")
+        case .formatCannotRestore:
+            return String(localized: "A folder of Parquet files cannot be restored. Back up to a .duckdb file and restore that file instead.")
         }
     }
 }
@@ -271,6 +277,9 @@ final class NativeDumpService: ObservableObject {
 
         guard let descriptor = NativeDumpRegistry.descriptor(for: connection.type, formatId: formatId) else {
             throw NativeDumpError.unsupportedDatabase
+        }
+        if kind == .restore, !descriptor.archiveFormat.restores {
+            throw NativeDumpError.formatCannotRestore
         }
 
         let session = DatabaseManager.shared.session(for: connection.id)
@@ -633,8 +642,8 @@ final class NativeDumpService: ObservableObject {
     /// can hold without the value changing meaning.
     nonisolated static func mongoYAMLQuoted(_ value: String) -> String {
         let escaped = value
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\"", with: "\\\"")
+            .replacingOccurrences(of: "\\", with: "\\\\", options: .literal)
+            .replacingOccurrences(of: "\"", with: "\\\"", options: .literal)
         return "\"\(escaped)\""
     }
 
