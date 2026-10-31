@@ -14,6 +14,12 @@ import Testing
 struct MySQLLiteralSpellingTests {
     private let session = MySQLLiteralSpelling.quoteDoubling
 
+    @Test("A quote a combining mark follows is doubled for a session that reads backslashes literally")
+    func quoteBeforeMarkIsDoubled() {
+        let escaped = session.escaped("x'\u{301} OR 1 = 1 #")
+        #expect(Array(escaped.unicodeScalars) == Array("x''\u{301} OR 1 = 1 #".unicodeScalars))
+    }
+
     @Test("Only a session that reports NO_BACKSLASH_ESCAPES loses backslash escapes")
     func spellingFollowsTheStatusFlag() {
         #expect(MySQLLiteralSpelling(noBackslashEscapes: true) == .quoteDoubling)
@@ -71,6 +77,8 @@ struct MySQLLiteralSpellingTests {
         #expect(session.respelled(#"`we'ird\\col` = 'a\\b'"#) == #"`we'ird\\col` = 'a\b'"#)
         #expect(session.respelled(#""it's\\" = 'a\\b'"#) == #""it's\\" = 'a\b'"#)
         #expect(session.respelled("-- it's\n'a\\\\b'") == "-- it's\n'a\\b'")
+        #expect(session.respelled("--\u{01}it's\n'a\\\\b'") == "--\u{01}it's\n'a\\b'")
+        #expect(session.respelled("--\u{7F}it's\n'a\\\\b'") == "--\u{7F}it's\n'a\\b'")
         #expect(session.respelled("# it's\n'a\\\\b'") == "# it's\n'a\\b'")
         #expect(session.respelled("/* it's */ 'a\\\\b'") == "/* it's */ 'a\\b'")
         #expect(session.respelled("5--1 'a\\\\b'") == "5--1 'a\\b'")

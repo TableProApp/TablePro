@@ -62,7 +62,7 @@ enum DotenvParser {
 
     static func parse(
         _ contents: String,
-        processEnvironment: [String: String] = ProcessInfo.processInfo.environment
+        processEnvironment: [String: String]
     ) -> DotenvDocument {
         var document = DotenvDocument()
         let characters = Array(normalize(contents))

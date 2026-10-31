@@ -22,9 +22,9 @@ public enum LibPQStringConformance {
 
     public static func escape(_ value: String, standardConformingStrings: Bool) -> String {
         let quoted = value
-            .replacingOccurrences(of: "\0", with: "")
-            .replacingOccurrences(of: "'", with: "''")
+            .replacingOccurrences(of: "\0", with: "", options: .literal)
+            .replacingOccurrences(of: "'", with: "''", options: .literal)
         guard !standardConformingStrings else { return quoted }
-        return quoted.replacingOccurrences(of: "\\", with: "\\\\")
+        return quoted.replacingOccurrences(of: "\\", with: "\\\\", options: .literal)
     }
 }

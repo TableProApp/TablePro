@@ -613,6 +613,40 @@ struct RemoteDatabaseFileCorrectnessTests {
         #expect(session.effectiveImmediateRemovals == [snapshotPath])
     }
 
+    // MARK: - Snapshot command quoting
+
+    @Test("A quote that a combining mark follows is still escaped for the shell")
+    func shellQuotedEscapesAQuoteBeforeACombiningMark() {
+        #expect(LibSSH2ExecChannel.shellQuoted("a'\u{301}b") == "'a'\\''\u{301}b'")
+    }
+
+    @Test("A remote path with quotes and combining marks adds no command to the snapshot command")
+    func snapshotCommandRunsNothingFromThePath() throws {
+        let directory = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let injectionMarker = directory.appendingPathComponent("INJECTED")
+        let remotePath = directory.appendingPathComponent("app.db'\u{301};: > INJECTED;: '\u{301}x").path
+
+        let shell = Process()
+        shell.executableURL = URL(fileURLWithPath: "/bin/sh")
+        shell.arguments = [
+            "-c",
+            RemoteDatabaseFileTransfer.remoteSnapshotCommand(
+                executable: "/usr/bin/true",
+                remotePath: remotePath,
+                snapshotPath: remotePath + ".tablepro-snapshot-test",
+                cleanupDelaySeconds: 0
+            )
+        ]
+        shell.currentDirectoryURL = directory
+        shell.standardOutput = FileHandle.nullDevice
+        shell.standardError = FileHandle.nullDevice
+        try shell.run()
+        shell.waitUntilExit()
+
+        #expect(!FileManager.default.fileExists(atPath: injectionMarker.path))
+    }
+
     // MARK: - Killed remote command
 
     @Test("A signal-killed remote command does not report success")

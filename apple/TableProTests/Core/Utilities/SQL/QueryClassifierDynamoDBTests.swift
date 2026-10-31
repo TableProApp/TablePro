@@ -101,7 +101,8 @@ struct QueryClassifierDynamoDBTests {
         #"Scan {"TableName": "orders"} DELETE FROM orders"#,
         "Scan {\"TableName\": \"orders\"}\nDeleteItem {\"TableName\": \"orders\"}",
         #"Scan {"TableName": "orders"} LIMIT ten"#,
-        #"Scan {"TableName": "orders"} ORDER BY"#
+        #"Scan {"TableName": "orders"} ORDER BY"#,
+        #"Scan {"TableName": "orders"} /*/ -- */ DELETE FROM orders"#
     ])
     func unreadableRequestsAreWrites(_ sql: String) {
         #expect(tier(sql) == .write)

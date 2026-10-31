@@ -312,6 +312,67 @@ struct SSHConfigResolverTests {
         #expect(resolvedHost(mode: "always") == "db.corp.example")
     }
 
+    private func canonicalized(host: String, fallbackLocal: String, known: Set<String> = []) -> ResolvedSSHTarget {
+        let env = ResolverEnvironment(
+            runShell: { _ in true },
+            canonicalize: { host, options in
+                SSHHostnameCanonicalizer.canonicalize(host: host, options: options) { known.contains($0) ? $0 : nil }
+            },
+            currentLocalUser: { "tester" }
+        )
+        let document = SSHConfigParser.parseDocumentContent("""
+        CanonicalizeHostname yes
+        CanonicalDomains corp.example
+        CanonicalizeFallbackLocal \(fallbackLocal)
+        """)
+        return SSHConfigResolver.resolve(makeConfig(host: host), document: document, env: env)
+    }
+
+    @Test("CanonicalizeFallbackLocal no stops the connection when no CanonicalDomains suffix resolves")
+    func canonicalizeFallbackLocalNoRefusesAnUnresolvedHost() {
+        #expect(canonicalized(host: "db", fallbackLocal: "yes").expansionFailure == nil)
+        #expect(canonicalized(host: "db", fallbackLocal: "yes").host == "db")
+        #expect(canonicalized(host: "db", fallbackLocal: "no").expansionFailure == .hostNotInCanonicalDomains(host: "db"))
+
+        let found = canonicalized(host: "db", fallbackLocal: "no", known: ["db.corp.example"])
+        #expect(found.expansionFailure == nil)
+        #expect(found.host == "db.corp.example")
+        #expect(found.dialHost == "db.corp.example.")
+    }
+
+    @Test("An anchored host keeps ssh's undotted identity and is dialed anchored")
+    func anchoredHostIsMatchedUndottedAndDialedAnchored() {
+        let env = ResolverEnvironment(
+            runShell: { _ in true },
+            canonicalize: { host, options in
+                SSHHostnameCanonicalizer.canonicalize(host: host, options: options) { $0 == "db.corp.example" ? $0 : nil }
+            },
+            currentLocalUser: { "tester" }
+        )
+        let document = SSHConfigParser.parseDocumentContent("""
+        CanonicalizeHostname yes
+        CanonicalDomains corp.example
+        CanonicalizeFallbackLocal no
+        Match canonical host db.corp.example
+            Port 2200
+        """)
+        let resolved = SSHConfigResolver.resolve(makeConfig(host: "db.corp.example."), document: document, env: env)
+        #expect(resolved.expansionFailure == nil)
+        #expect(resolved.host == "db.corp.example")
+        #expect(resolved.dialHost == "db.corp.example.")
+        #expect(resolved.port == 2_200)
+        #expect(canonicalized(host: "db.other.example", fallbackLocal: "no").dialHost == "db.other.example")
+    }
+
+    @Test("CanonicalizeFallbackLocal no leaves an address and a qualified name alone", arguments: [
+        "fd00::5", "fe80::1%en0", "10.0.0.5", "127.1", "db.other.example"
+    ])
+    func canonicalizeFallbackLocalNoAcceptsWhatIsNotCanonicalized(host: String) {
+        let resolved = canonicalized(host: host, fallbackLocal: "no")
+        #expect(resolved.expansionFailure == nil)
+        #expect(resolved.host == host)
+    }
+
     private func user(for content: String, addresses: [String] = []) -> String {
         let env = ResolverEnvironment(
             runShell: { _ in true },

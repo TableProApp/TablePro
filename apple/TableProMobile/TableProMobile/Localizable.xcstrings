@@ -56,6 +56,18 @@
     "The row's loaded values are missing, so it cannot be found again." : {
 
     },
+    "The SSH host %@ contains characters ssh does not allow in a host name." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "the SSH host or user of “%@” contains characters ssh does not allow" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The SSH user %@ contains characters ssh does not allow in a user name." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "“%@” has an open transaction. Deleting the connection rolls it back and discards its uncommitted changes." : {
 
     },
@@ -21263,6 +21275,9 @@
         }
       }
     },
+    "SQL Server on this device cannot check the server's certificate. Set SSL Mode to Required in the connection's settings, or connect from the Mac app." : {
+
+    },
     "SQL Server returned no plan for this statement." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -22595,6 +22610,9 @@
 
     },
     "This cursor has already been closed." : {
+
+    },
+    "This device cannot check a SQL Server certificate, so it does not connect in this mode. Choose Required to connect without the check." : {
 
     },
     "This document has no _id, so it cannot be edited here." : {
@@ -26893,6 +26911,10 @@
 
     },
     "This driver cannot explain a statement" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "This driver cannot restore an exported folder. Update it in Settings > Extensions." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
     },

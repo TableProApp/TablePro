@@ -9,10 +9,10 @@ import TableProPluginKit
 
 internal enum DatabendCatalog {
     static func quoteIdentifier(_ name: String) -> String {
-        guard name.contains("`") else { return "`\(name)`" }
+        guard name.unicodeScalars.contains("`") else { return "`\(name)`" }
         let escaped = name
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\"", with: "\"\"")
+            .replacingOccurrences(of: "\\", with: "\\\\", options: .literal)
+            .replacingOccurrences(of: "\"", with: "\"\"", options: .literal)
         return "\"\(escaped)\""
     }
 

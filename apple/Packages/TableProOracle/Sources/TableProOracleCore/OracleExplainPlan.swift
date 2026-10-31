@@ -13,29 +13,29 @@ public enum OracleExplainPlan {
     }
 
     public static func explainStatement(_ statement: String, statementId: String) -> String {
-        "EXPLAIN PLAN SET STATEMENT_ID = '\(statementId)' FOR \(bare(statement))"
+        "EXPLAIN PLAN SET STATEMENT_ID = '\(statementId)' INTO \(OracleDictionary.planTable) FOR \(bare(statement))"
     }
 
     public static func planRowsQuery(statementId: String) -> String {
         """
         SELECT \(planColumns.joined(separator: ", "))
-        FROM PLAN_TABLE
+        FROM \(OracleDictionary.planTable)
         WHERE STATEMENT_ID = '\(statementId)'
         ORDER BY ID
         """
     }
 
     public static func deleteStatement(statementId: String) -> String {
-        "DELETE FROM PLAN_TABLE WHERE STATEMENT_ID = '\(statementId)'"
+        "DELETE FROM \(OracleDictionary.planTable) WHERE STATEMENT_ID = '\(statementId)'"
     }
 
     // Fails at parse time when a view is out of reach, before the statement runs. V$PARAMETER holds session values.
     public static let actualPlanProbe = """
         SELECT p.VALUE
-        FROM V$PARAMETER p
+        FROM \(OracleDictionary.parameterView) p
         WHERE p.NAME = 'statistics_level'
-        AND EXISTS (SELECT 1 FROM V$SESSION s WHERE s.SID = SYS_CONTEXT('USERENV', 'SID'))
-        AND NOT EXISTS (SELECT 1 FROM V$SQL_PLAN_STATISTICS_ALL WHERE 1 = 0)
+        AND EXISTS (SELECT 1 FROM \(OracleDictionary.sessionView) s WHERE s.SID = SYS_CONTEXT('USERENV', 'SID'))
+        AND NOT EXISTS (SELECT 1 FROM \(OracleDictionary.sqlPlanStatisticsView) WHERE 1 = 0)
         """
 
     // Only Oracle's three levels, so a value read back is never spliced into a statement.
@@ -51,7 +51,7 @@ public enum OracleExplainPlan {
     public static let lastCursorPlanQuery = """
         SELECT \(planColumns.map { "p.\($0)" }.joined(separator: ", ")), \
         \(actualColumns.map { "p.\($0)" }.joined(separator: ", "))
-        FROM V$SQL_PLAN_STATISTICS_ALL p, V$SESSION s
+        FROM \(OracleDictionary.sqlPlanStatisticsView) p, \(OracleDictionary.sessionView) s
         WHERE s.SID = SYS_CONTEXT('USERENV', 'SID')
         AND p.SQL_ID = s.PREV_SQL_ID
         AND p.CHILD_NUMBER = s.PREV_CHILD_NUMBER

@@ -4,6 +4,12 @@ import Testing
 @testable import TableProMySQLCore
 
 struct MySQLObjectQueryTests {
+    @Test("A backtick a combining mark follows is still doubled", arguments: ["\u{301}", "\u{200C}", "\u{FE0F}"])
+    func backtickBeforeMarkIsDoubled(mark: String) {
+        let quoted = MySQLObjectQueries.quoteIdentifier("t`\(mark);DROP DATABASE prod;#")
+        #expect(Array(quoted.unicodeScalars) == Array("`t``\(mark);DROP DATABASE prod;#`".unicodeScalars))
+    }
+
     @Test("The DDL statement is schema-qualified")
     func routineDefinitionIsQualified() {
         let sql = MySQLObjectQueries.routineDefinition(kind: "PROCEDURE", schema: "analytics", name: "cleanup")

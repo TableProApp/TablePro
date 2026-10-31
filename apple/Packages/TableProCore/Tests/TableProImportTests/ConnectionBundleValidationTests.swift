@@ -192,6 +192,54 @@ struct ConnectionBundleValidationTests {
         #expect(bundle.replacingSettings(renamed, of: "c9") == bundle)
     }
 
+    @Test("A tunnel host or user ssh would refuse is refused", arguments: [
+        ("replica.attacker.example\n[prod.corp.example", "deploy", nil),
+        ("db$(touch /tmp/pwned).example.com", "deploy", nil),
+        ("db.example.com", "x; touch /tmp/pwned", nil),
+        ("db.example.com", "deploy", "jump`id`.example.com"),
+    ] as [(String, String, String?)])
+    func invalidSSHDestinationIsRefused(host: String, user: String, jumpHost: String?) {
+        let settings = Self.tunneled(host: host, user: user, jumpHost: jumpHost)
+        expectRefused(.invalidSSHDestination(connection: "Tunneled")) {
+            try Self.bundle(connections: [BundleConnection(ref: "c1", settings: settings)])
+        }
+    }
+
+    @Test("A tunnel host and user ssh accepts are kept, and a tunnel that is off is not checked")
+    func validOrDisabledSSHDestinationIsKept() throws {
+        let valid = Self.tunneled(host: "db.example.com", user: "DOMAIN\\deploy", jumpHost: "jump.example.com")
+        var disabled = Self.tunneled(host: "db .example.com", user: "deploy", jumpHost: nil)
+        disabled.sshConfig?.enabled = false
+        let bundle = try Self.bundle(connections: [
+            BundleConnection(ref: "c1", settings: valid),
+            BundleConnection(ref: "c2", settings: disabled)
+        ])
+        #expect(bundle.connections.count == 2)
+    }
+
+    private static func tunneled(host: String, user: String, jumpHost: String?) -> ExportableConnection {
+        var settings = ExportableConnection(
+            name: "Tunneled", host: "127.0.0.1", port: 5_432, database: "d", username: "u", type: "PostgreSQL"
+        )
+        settings.sshConfig = ExportableSSHConfig(
+            enabled: true,
+            host: host,
+            port: 22,
+            username: user,
+            authMethod: "password",
+            privateKeyPath: "",
+            agentSocketPath: "",
+            jumpHosts: jumpHost.map {
+                [ExportableJumpHost(host: $0, port: 22, username: "deploy", authMethod: "sshAgent", privateKeyPath: "")]
+            },
+            totpMode: nil,
+            totpAlgorithm: nil,
+            totpDigits: nil,
+            totpPeriod: nil
+        )
+        return settings
+    }
+
     private static let settings = ExportableConnection(
         name: "X", host: "h", port: 5_432, database: "d", username: "u", type: "PostgreSQL"
     )

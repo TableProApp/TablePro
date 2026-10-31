@@ -5,15 +5,15 @@
   <menu id="options_menu">
     <section>
       <item>
-        <attribute name="label" translatable="yes">Match Case</attribute>
+        <attribute name="label" translatable="yes">Match _Case</attribute>
         <attribute name="action">find.case-sensitive</attribute>
       </item>
       <item>
-        <attribute name="label" translatable="yes">Match Whole Word</attribute>
+        <attribute name="label" translatable="yes">Match _Whole Word</attribute>
         <attribute name="action">find.at-word-boundaries</attribute>
       </item>
       <item>
-        <attribute name="label" translatable="yes">Regular Expressions</attribute>
+        <attribute name="label" translatable="yes">_Regular Expressions</attribute>
         <attribute name="action">find.regex-enabled</attribute>
       </item>
     </section>

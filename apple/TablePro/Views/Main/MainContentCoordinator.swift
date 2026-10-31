@@ -597,7 +597,7 @@ final class MainContentCoordinator: ObservableObject {
             databaseType: connection.type,
             dialect: dialect,
             pagination: services.pluginManager.paginationCapability(for: connection.type),
-            dialectQuote: dialect.map { quoteIdentifierFromDialect($0) }
+            dialectQuote: dialect.map { quoteIdentifierFromDialect($0) } ?? { SQLEscaping.quoteIdentifier($0) }
         )
         self.persistence = TabPersistenceCoordinator.forConnection(connection.id)
 
@@ -1347,7 +1347,7 @@ final class MainContentCoordinator: ObservableObject {
     }
 
     internal func resolveTableEditability(tab: QueryTab, sql: String) -> (tableName: String?, isEditable: Bool) {
-        if tab.tabType != .table, QueryClassifier.isExplainStatement(sql) {
+        if tab.tabType != .table, QueryClassifier.isExplainStatement(sql, grammar: lexicalGrammar) {
             return (nil, false)
         }
         let editorLanguage = services.pluginManager.editorLanguage(for: connection.type)

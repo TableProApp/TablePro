@@ -71,6 +71,7 @@ extension PluginMetadataRegistry {
                     supportsAddIndex: false,
                     supportsDropIndex: false,
                     supportsOpportunisticTLS: false,
+                    supportsClientKeyPassphrase: true,
                     authenticationIsDatabaseScoped: true,
                     columnsAreSampled: true,
                     patternFiltersReadAnyColumn: true,
@@ -105,6 +106,13 @@ extension PluginMetadataRegistry {
                         ),
                         ConnectionField(
                             id: "mongoAuthSource", label: "Auth Database", placeholder: "admin"
+                        ),
+                        ConnectionField(
+                            id: "mongoAWSSessionToken",
+                            label: "AWS Session Token",
+                            fieldType: .secure,
+                            section: .authentication,
+                            visibleWhen: FieldVisibilityRule(fieldId: "mongoAuthMechanism", values: ["MONGODB-AWS"])
                         ),
                         ConnectionField(
                             id: "mongoReadPreference",

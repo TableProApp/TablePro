@@ -80,5 +80,5 @@ trap 'rm -rf "$WORK_DIR"' EXIT
 } > "$WORK_DIR/probe.c"
 
 ARCH="$(uname -m)"
-clang -arch "$ARCH" -I "$HEADERS" "$WORK_DIR/probe.c" "$LIB" -lc++ -o "$WORK_DIR/probe"
+clang -arch "$ARCH" -I "$HEADERS" "$WORK_DIR/probe.c" -Wl,-force_load,"$LIB" -lc++ -o "$WORK_DIR/probe"
 "$WORK_DIR/probe"

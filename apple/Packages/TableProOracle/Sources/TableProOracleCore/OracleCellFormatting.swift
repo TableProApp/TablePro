@@ -126,8 +126,8 @@ public enum OracleCellFormatting {
 
     /// A BFILE spelled as the call that creates it, so the text names the file and can be written back.
     public static func bfileText(directory: String, fileName: String) -> String {
-        "BFILENAME('\(directory.replacingOccurrences(of: "'", with: "''"))', "
-            + "'\(fileName.replacingOccurrences(of: "'", with: "''"))')"
+        "BFILENAME('\(directory.replacingOccurrences(of: "'", with: "''", options: .literal))', "
+            + "'\(fileName.replacingOccurrences(of: "'", with: "''", options: .literal))')"
     }
 
     public static func hexEncode(_ bytes: [UInt8]) -> String {

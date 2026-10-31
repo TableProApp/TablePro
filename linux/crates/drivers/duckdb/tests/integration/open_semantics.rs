@@ -136,6 +136,43 @@ async fn an_editor_session_outlives_its_workspace() {
 /// The app makes no requests of its own, so DuckDB fetches and loads no
 /// extension by itself.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_new_or_attached_database_stays_readable_by_duckdb_1() {
+    let file = TestFile::new();
+    let attached = file.path.with_extension("side.duckdb");
+    let created = connect(FileEndpoint::create_new(file.path.clone()).unwrap(), writable())
+        .await
+        .unwrap();
+    apply(created.as_ref(), &["CREATE TABLE facts (a INTEGER)"])
+        .await
+        .unwrap();
+    // A transaction writes to one database, so the attached one gets its own.
+    apply(
+        created.as_ref(),
+        &[
+            &format!("ATTACH '{}' AS side", attached.display()),
+            "CREATE TABLE side.facts (a INTEGER)",
+        ],
+    )
+    .await
+    .unwrap();
+
+    let versions = query(
+        created.as_ref(),
+        "SELECT tags['storage_version'] FROM duckdb_databases() WHERE NOT internal ORDER BY database_name = 'side'",
+    )
+    .await;
+
+    assert_eq!(versions.rows.len(), 2);
+    for row in &versions.rows {
+        assert!(
+            matches!(&row[0], Value::Text(version) if version.starts_with("v1.")),
+            "a file DuckDB 1.x cannot open: {row:?}"
+        );
+    }
+    created.close().await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn extensions_are_never_installed_or_loaded_on_their_own() {
     let file = TestFile::new();
     let connection = file.open().await;
@@ -301,10 +338,10 @@ async fn a_file_open_in_one_place_is_not_opened_in_another() {
     connection.close().await.unwrap();
 }
 
-/// DuckDB reads an ATTACH path in every string form it has, and each
+/// DuckDB 2.0 reads an ATTACH path in every string form it has and as an
+/// expression, opening the text a BLOB or a number casts to, and each
 /// spelling of a file another window has open names that file. A
-/// `U&'...'` string and a `\u` escape DuckDB refuses itself, as it
-/// refuses an expression.
+/// `U&'...'` string DuckDB refuses itself.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn every_spelling_of_an_open_file_is_refused() {
     let file = TestFile::new();
@@ -321,6 +358,9 @@ async fn every_spelling_of_an_open_file_is_refused() {
         format!("ATTACH 'duckdb:{path}' AS o"),
         format!("ATTACH IF NOT EXISTS $p${path}$p$ -- why\n AS o"),
         format!("ATTACH '{directory}/missing/../{name}' AS o"),
+        format!("ATTACH '{directory}/' || ('{name}') AS o"),
+        format!("ATTACH concat('{directory}/', '{name}') (READ_ONLY)"),
+        format!("ATTACH '{path}'::BLOB AS o"),
     ];
 
     for sql in &spellings {
@@ -331,22 +371,17 @@ async fn every_spelling_of_an_open_file_is_refused() {
             "{sql}"
         );
     }
-    for sql in [
-        "ATTACH 40 + 2 AS o".to_owned(),
-        format!("ATTACH U&'{path}' AS o"),
-        format!("ATTACH E'{}' AS o", path.replace('/', "\\u002f")),
-    ] {
-        let (malformed, _) = run(editor.as_ref(), &sql).await;
-        assert!(
-            matches!(
-                &malformed.end,
-                RunEnd::Failed(DriverError::Server(diagnostics))
-                    if diagnostics.code == Some(ServerCode::DuckDb { error_type: "Parser".to_owned() })
-            ),
-            "{sql}: {:?}",
-            malformed.end
-        );
-    }
+    let sql = format!("ATTACH U&'{path}' AS o");
+    let (malformed, _) = run(editor.as_ref(), &sql).await;
+    assert!(
+        matches!(
+            &malformed.end,
+            RunEnd::Failed(DriverError::Server(diagnostics))
+                if diagnostics.code == Some(ServerCode::DuckDb { error_type: "Binder".to_owned() })
+        ),
+        "{sql}: {:?}",
+        malformed.end
+    );
     editor.close().await;
     opened.close().await.unwrap();
     connection.close().await.unwrap();

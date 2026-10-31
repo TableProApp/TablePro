@@ -329,7 +329,9 @@ public enum MongoShellValueTranslator {
     }
 
     private static func escaped(_ value: String) -> String {
-        value.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
+        value
+            .replacingOccurrences(of: "\\", with: "\\\\", options: .literal)
+            .replacingOccurrences(of: "\"", with: "\\\"", options: .literal)
     }
 
     private static func hexData(_ value: String) -> Data? {

@@ -10,6 +10,8 @@ internal struct GitProcessResult: Sendable {
     let exitCode: Int32
     let standardOutput: Data
     let standardError: Data
+    // False when a child of git still held the output open after the grace period, so more may have followed.
+    var isComplete = true
 
     var succeeded: Bool { exitCode == 0 }
 
@@ -98,7 +100,8 @@ internal struct GitProcessRunner: Sendable {
             throw GitProcessError.timedOut
         }
         // A hook's background job or an SSH ControlPersist master keeps the pipes open after git exits.
-        if readers.wait(timeout: .now() + Self.pipeDrainGrace) == .timedOut {
+        let drained = readers.wait(timeout: .now() + Self.pipeDrainGrace) == .success
+        if !drained {
             Self.logger.debug("git \(command.arguments.first ?? "", privacy: .public) left its output open in a child process")
         }
 
@@ -108,7 +111,8 @@ internal struct GitProcessRunner: Sendable {
         return GitProcessResult(
             exitCode: process.terminationStatus,
             standardOutput: output.data,
-            standardError: errors.data
+            standardError: errors.data,
+            isComplete: drained
         )
     }
 

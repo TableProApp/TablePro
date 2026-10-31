@@ -25,7 +25,7 @@ extension PostgreSQLPluginDriver {
         let query = PostgreSQLIndexQueries.indexList(
             schema: resolvedSchema, table: nil, capabilities: catalogCapabilities
         )
-        let result = try await execute(query: query)
+        let result = try await catalogRead(query, namesRelativeTo: resolvedSchema)
         let ddl = try await fetchIndexSpellings(schema: resolvedSchema, table: nil)
 
         var indexes: [String: [PluginIndexInfo]] = [:]
@@ -39,21 +39,8 @@ extension PostgreSQLPluginDriver {
     var providesBulkTableMetadataFetch: Bool { true }
 
     func fetchAllTableMetadata(schema: String?) async throws -> [String: PluginTableMetadata] {
-        let schemaLiteral = PostgreSQLObjectQueries.quoteLiteral(schema ?? core.currentSchema)
-        let query = """
-            SELECT
-                c.relname AS table_name,
-                pg_total_relation_size(c.oid) AS total_size,
-                pg_table_size(c.oid) AS data_size,
-                pg_indexes_size(c.oid) AS index_size,
-                c.reltuples::bigint AS row_count,
-                obj_description(c.oid, 'pg_class') AS comment
-            FROM pg_class c
-            JOIN pg_namespace n ON n.oid = c.relnamespace
-            WHERE n.nspname = \(schemaLiteral) AND c.relkind IN ('r', 'p', 'm', 'f')
-            ORDER BY c.relname
-            """
-        let result = try await execute(query: query)
+        let query = PostgreSQLSchemaQueries.allTableMetadata(schema: schema ?? core.currentSchema)
+        let result = try await catalogRead(query)
 
         var metadata: [String: PluginTableMetadata] = [:]
         for row in result.rows {

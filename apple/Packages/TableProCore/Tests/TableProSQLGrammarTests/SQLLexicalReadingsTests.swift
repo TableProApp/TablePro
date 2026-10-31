@@ -112,6 +112,19 @@ struct SQLLexicalReadingsTests {
         #expect(counts.max() == 3)
     }
 
+    @Test("SQL Server's `1E--` is read as a comment and as a signed exponent, and any other `--` once")
+    func sqlServerReadsASignedEmptyExponentBothWays() {
+        let readings = SQLLexicalReadings.resolve(databaseTypeId: "SQL Server", declared: nil, session: nil)
+        func statements(_ text: String) -> [Int] {
+            readings.distinct(for: text).map { SQLStatementScanner.executableStatements(in: text, grammar: $0).count }
+        }
+
+        #expect(!readings.execution.contains(.exponentSignsNeedNoDigits))
+        #expect(statements("SELECT 1E--1; DROP TABLE t") == [1, 2])
+        #expect(statements("SELECT 1E--'\n; DROP TABLE t --'") == [2, 1])
+        #expect(statements("SELECT 1 --1; DROP TABLE t") == [1])
+    }
+
     @Test("PartiQL's doubled quote still closes nothing under DynamoDB's execution grammar")
     func dynamoDBPartiQLDoubledQuoteStillLexes() {
         let readings = SQLLexicalReadings.resolve(databaseTypeId: "DynamoDB", declared: nil, session: nil)
@@ -120,6 +133,52 @@ struct SQLLexicalReadingsTests {
         let executed = SQLStatementScanner.executableStatements(in: text, grammar: readings.execution).map(\.sql)
 
         #expect(executed == [#"SELECT * FROM "a""b""#, #"DELETE FROM "t""#])
+    }
+
+    @Test("ClickHouse reads // as a line comment, so a quote behind it opens no string")
+    func clickHouseReadsDoubleSlashComments() {
+        let readings = SQLLexicalReadings.resolve(databaseTypeId: "ClickHouse", declared: nil, session: nil)
+        let hidden = "WITH y AS (SELECT 1 AS id) //'\nINSERT INTO orders SELECT * FROM y --'"
+
+        #expect(readings.all.allSatisfy { SQLCodeProjection.code(of: hidden, grammar: $0).contains("INSERT INTO orders") })
+    }
+
+    @Test(
+        "A statement after a quote inside a SurrealQL ⟨...⟩ identifier is counted, however a backslash is read",
+        arguments: [
+            "SELECT ⟨'⟩ FROM person; REMOVE TABLE person; --'",
+            "SELECT ⟨\\⟩'⟩ FROM person; REMOVE TABLE person; --'",
+            "SELECT ⟨\\⟩ FROM person; REMOVE TABLE person; --⟩",
+            "SELECT `'` FROM person; REMOVE TABLE person; --'",
+        ]
+    )
+    func surrealQLQuotedIdentifiersHideNoStatement(text: String) {
+        let readings = SQLLexicalReadings.resolve(databaseTypeId: "SurrealDB", declared: nil, session: nil)
+
+        let counts = readings.distinct(for: text).map {
+            SQLStatementScanner.executableStatements(in: text, grammar: $0).count
+        }
+
+        #expect(counts.max() == 2)
+    }
+
+    @Test("A quote or a semicolon inside a SurrealQL ⟨...⟩ identifier stays in its one statement")
+    func surrealQLAngleQuotedIdentifierIsOneToken() {
+        let readings = SQLLexicalReadings.resolve(databaseTypeId: "SurrealDB", declared: nil, session: nil)
+        let text = "SELECT ⟨it's;⟩ FROM person:⟨8424486b-85b3⟩"
+
+        #expect(readings.distinct(for: text).count == 1)
+        #expect(SQLStatementScanner.executableStatements(in: text, grammar: readings.execution).map(\.sql) == [text])
+    }
+
+    @Test("A form feed ends a Databend line comment, so the statement after it is counted")
+    func databendFormFeedEndsALineComment() {
+        let readings = SQLLexicalReadings.resolve(databaseTypeId: "Databend", declared: nil, session: nil)
+        let text = "-- note\u{0C}DROP TABLE customers /*\nSELECT 1 -- */"
+
+        let codes = readings.distinct(for: text).map { SQLCodeProjection.code(of: text, grammar: $0) }
+
+        #expect(codes.contains { $0.contains("DROP TABLE customers") })
     }
 
     @Test("Every combination of the undetermined facts is a reading")

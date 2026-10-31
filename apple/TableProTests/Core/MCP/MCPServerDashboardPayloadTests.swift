@@ -128,7 +128,7 @@ struct MCPSessionControlStatementTests {
         #expect(
             try MCPConnectionBridge.sessionControlStatement(
                 provider: try provider(.postgresql), processId: "52", cancelOnly: true
-            ) == "SELECT pg_cancel_backend(52)"
+            ) == "SELECT pg_catalog.pg_cancel_backend(52)"
         )
         #expect(
             try MCPConnectionBridge.sessionControlStatement(

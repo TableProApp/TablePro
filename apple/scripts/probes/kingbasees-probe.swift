@@ -61,8 +61,8 @@ struct KingbaseESProbe {
             let readings = SQLLexicalReadings.resolve(
                 databaseTypeId: "KingbaseES", declared: nil,
                 session: SQLSessionLexicalFacts(
-                    determined: SQLLexicalGrammar(rawValue: facts.determined.rawValue),
-                    enabled: SQLLexicalGrammar(rawValue: facts.enabled.rawValue)
+                    determined: SQLLexicalGrammar(rawValue: UInt64(facts.determined.rawValue)),
+                    enabled: SQLLexicalGrammar(rawValue: UInt64(facts.enabled.rawValue))
                 )
             )
             let sql = mode == "oracle"

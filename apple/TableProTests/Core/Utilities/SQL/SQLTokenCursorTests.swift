@@ -78,6 +78,13 @@ struct SQLTokenCursorTests {
         #expect(Self.words("[Sales Db]", grammar: TestGrammar.postgres) == ["SALES", "DB"])
     }
 
+    @Test("SurrealQL's angle quotes quote an identifier only where the grammar says they do")
+    func angleQuotesFollowTheGrammar() {
+        let angled = TestGrammar.standard.union(.angleQuotedIdentifiers)
+        #expect(Self.tokens("⟨it's⟩", grammar: angled) == [.quotedIdentifier("it's")])
+        #expect(Self.tokens("⟨it's⟩", grammar: TestGrammar.postgres) == [.word("⟨IT"), .literal])
+    }
+
     @Test("A doubled delimiter inside a quoted identifier is one character")
     func doubledDelimiterIsUnescaped() {
         #expect(Self.tokens("\"a\"\"b\"", grammar: TestGrammar.postgres) == [.quotedIdentifier("a\"b")])

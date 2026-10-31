@@ -332,7 +332,7 @@ public enum SyncRecordMapper {
     }
 
     private static func syncedAdditionalFields(for connection: DatabaseConnection) -> [String: String] {
-        var fields = connection.additionalFields
+        var fields = ConnectionSecretOptions.removingSecrets(from: connection.additionalFields)
         fields.removeValue(forKey: DatabaseConnection.connectTimeoutSecondsKey)
         fields.removeValue(forKey: DatabaseConnection.queryTimeoutSecondsKey)
         if let connectTimeoutSeconds = validConnectTimeout(connection.connectTimeoutSeconds) {

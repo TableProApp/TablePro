@@ -69,6 +69,8 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// not restore what the session is currently holding.
     func releaseIdleResource() async throws -> PluginResourceRelease
 
+    func importExportedDatabase(from folder: URL, into file: URL) async throws
+
     func resolveQueryCompletionProfile(
         databaseTypeId: String,
         base: QueryCompletionProfile
@@ -684,6 +686,10 @@ extension DatabaseDriver {
     var releasableResourceCommandTitle: String? { nil }
 
     func releaseIdleResource() async throws -> PluginResourceRelease { .nothingToRelease }
+
+    func importExportedDatabase(from folder: URL, into file: URL) async throws {
+        throw PluginDriverUnsupportedOperation.importExportedDatabase
+    }
 
     func testConnection() async throws -> Bool {
         try await connect()

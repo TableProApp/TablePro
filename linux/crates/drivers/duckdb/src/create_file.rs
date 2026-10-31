@@ -10,7 +10,7 @@ use tablepro_core::{BusyReason, DriverError};
 use tokio_util::sync::CancellationToken;
 
 use crate::errors::map_error;
-use crate::instance::file_error;
+use crate::instance::{config, file_error};
 
 /// The write-ahead log DuckDB keeps beside a database. One left from the
 /// database being replaced would be replayed into the new one.
@@ -74,7 +74,7 @@ fn beside(parent: &Path, name: &OsStr, suffix: &str) -> PathBuf {
 /// An empty database, checkpointed into the file so no log goes with
 /// it, readable by its owner only.
 fn build_empty(temporary: &Path, target: &Path) -> Result<(), DriverError> {
-    let connection = duckdb::Connection::open(temporary).map_err(map_error)?;
+    let connection = duckdb::Connection::open_with_flags(temporary, config(false)?).map_err(map_error)?;
     connection.execute_batch("CHECKPOINT").map_err(map_error)?;
     connection.close().map_err(|(_, error)| map_error(error))?;
     std::fs::set_permissions(temporary, std::fs::Permissions::from_mode(0o600))

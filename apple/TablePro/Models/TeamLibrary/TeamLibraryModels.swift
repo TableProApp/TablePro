@@ -110,7 +110,7 @@ struct TeamLibraryPullResponse: Codable {
     /// confirmation step, so anything the app would act on by itself is dropped before caching.
     func sanitized() -> TeamLibraryPullResponse {
         TeamLibraryPullResponse(
-            connections: connections.map {
+            connections: connections.filter { $0.payload.refusedSSHDestination == nil }.map {
                 Connection(
                     id: $0.id,
                     sourceConnectionId: $0.sourceConnectionId,

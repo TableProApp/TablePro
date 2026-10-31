@@ -508,7 +508,8 @@ impl<'a> Lexer<'a> {
     /// A numeric constant as SQL spells it: digits, an optional fraction
     /// and an optional exponent, so `0.5` and `1.5e-3` stay one token.
     /// Letters and underscores glued on after that (`0x1F`, `1_000`, a
-    /// malformed `1abc`) stay part of it, as they did before.
+    /// malformed `1abc`) stay part of it, as they did before. An exponent
+    /// needs a digit, but for the reading that signs an empty one.
     fn number_end(&self, start: usize, delimiter: Option<&str>) -> usize {
         let digit_at = |at: usize| self.bytes.get(at).is_some_and(u8::is_ascii_digit);
         let digits_end = |mut at: usize| {
@@ -532,7 +533,7 @@ impl<'a> Lexer<'a> {
         }
         if matches!(self.bytes.get(end), Some(b'e' | b'E')) {
             let sign = usize::from(matches!(self.bytes.get(end + 1), Some(b'+' | b'-')));
-            if digit_at(end + 1 + sign) {
+            if digit_at(end + 1 + sign) || self.reading.signs_empty_exponents() {
                 end = digits_end(end + 1 + sign);
             }
         }

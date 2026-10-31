@@ -235,5 +235,5 @@ enum PostgreSQLPrincipalQueries {
     }
 
     static let currentPrincipal = "SELECT current_user"
-    static let currentDatabase = "SELECT current_database()"
+    static let currentDatabase = "SELECT pg_catalog.current_database()"
 }

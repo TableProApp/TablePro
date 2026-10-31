@@ -311,3 +311,26 @@ fn an_editor_asking_to_close_closes_its_own_tab_not_the_one_in_front() {
     assert!(tab_is_open(&test, front));
     assert_eq!(workspace.selected_tab(), Some(front));
 }
+
+/// Close All Tabs asks about each tab as its close button would.
+#[gtk4::test]
+fn close_all_tabs_asks_before_closing_unsaved_work() {
+    let test = TestWindow::connected("CloseAllUnsavedFile");
+    let path = test.dir().join("daily.sql");
+    crate::test_support::write_text_file(&path, "SELECT 1;");
+    let (id, _editor) = editor_on_file(&test, &path);
+    let workspace = test.workspace();
+    super::open_editor(&workspace);
+    let view = shell_of(&workspace).tab_view();
+
+    WidgetExt::activate_action(&test.window, "win.close-all-tabs", None).expect("win.close-all-tabs");
+
+    wait_until(WAIT, || {
+        visible_alert(&test.window).is_some_and(|alert| alert.heading().as_deref() == Some("Save Changes?"))
+    })
+    .expect("the close asks about the file");
+    assert!(answer(&test.window, "cancel"));
+    wait_until(WAIT, || view.n_pages() == 1).expect("the tabs with nothing to lose to close");
+    assert!(tab_is_open(&test, id), "the tab with unsaved changes closed");
+    assert_eq!(crate::test_support::read_text_file(&path), "SELECT 1;");
+}

@@ -32,14 +32,16 @@ struct RewindExecutor {
         factory: RowChangeStatementFactory,
         browseBuilder: (any PluginDatabaseDriver)?
     ) async throws -> RewindPlan {
+        let dialect = PluginManager.shared.sqlDialect(for: connection.type)
         let planner = RewindPlanner(
             record: record,
             factory: factory,
             queryBuilder: TableQueryBuilder(
                 databaseType: connection.type,
                 pluginDriver: browseBuilder,
-                dialect: PluginManager.shared.sqlDialect(for: connection.type),
-                pagination: PluginManager.shared.paginationCapability(for: connection.type)
+                dialect: dialect,
+                pagination: PluginManager.shared.paginationCapability(for: connection.type),
+                dialectQuote: dialect.map { quoteIdentifierFromDialect($0) } ?? { SQLEscaping.quoteIdentifier($0) }
             )
         )
         let queries = planner.readQueries()

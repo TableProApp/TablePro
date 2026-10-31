@@ -59,7 +59,7 @@ internal struct InClauseConverter {
     }
 
     private func quoted(_ value: String) -> String {
-        let escaped = escapeStringLiteral?(value) ?? value.replacingOccurrences(of: "'", with: "''")
+        let escaped = escapeStringLiteral?(value) ?? value.replacingOccurrences(of: "'", with: "''", options: .literal)
         return "\(stringLiteralPrefix)'\(escaped)'"
     }
 }

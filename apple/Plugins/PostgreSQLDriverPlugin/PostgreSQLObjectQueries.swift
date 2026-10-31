@@ -87,7 +87,8 @@ nonisolated public enum PostgreSQLObjectQueries {
                 AND \(kindFilter)
                 AND NOT EXISTS (
                     SELECT 1 FROM pg_catalog.pg_depend d
-                    WHERE d.classid = 'pg_catalog.pg_proc'::pg_catalog.regclass AND d.objid = p.oid AND d.deptype = 'e'
+                    WHERE d.classid = 'pg_catalog.pg_proc'::pg_catalog.regclass::pg_catalog.oid
+                        AND d.objid = p.oid AND d.deptype = 'e'
                 )
             ORDER BY p.proname, arguments
             """
@@ -97,7 +98,7 @@ nonisolated public enum PostgreSQLObjectQueries {
     /// instead of whichever row the planner happened to return first.
     public static func routineDefinition(identity: String) -> String {
         """
-        SELECT pg_catalog.pg_get_functiondef(\(quoteLiteral(identity))::oid)
+        SELECT pg_catalog.pg_get_functiondef(\(quoteLiteral(identity))::pg_catalog.oid)
         """
     }
 
@@ -129,16 +130,16 @@ nonisolated public enum PostgreSQLObjectQueries {
                 t.tgname AS name,
                 c.relname AS table_name,
                 n.nspname AS schema,
-                CASE WHEN (t.tgtype & 64) != 0 THEN 'INSTEAD OF'
-                     WHEN (t.tgtype & 2)  != 0 THEN 'BEFORE'
+                CASE WHEN (t.tgtype::pg_catalog.int4 & 64) <> 0 THEN 'INSTEAD OF'
+                     WHEN (t.tgtype::pg_catalog.int4 & 2)  <> 0 THEN 'BEFORE'
                      ELSE 'AFTER' END AS timing,
-                concat_ws(' OR ',
-                    CASE WHEN (t.tgtype & 4)  != 0 THEN 'INSERT' END,
-                    CASE WHEN (t.tgtype & 8)  != 0 THEN 'DELETE' END,
-                    CASE WHEN (t.tgtype & 16) != 0 THEN 'UPDATE' END,
-                    CASE WHEN (t.tgtype & 32) != 0 THEN 'TRUNCATE' END
+                pg_catalog.concat_ws(' OR ',
+                    CASE WHEN (t.tgtype::pg_catalog.int4 & 4)  <> 0 THEN 'INSERT' END,
+                    CASE WHEN (t.tgtype::pg_catalog.int4 & 8)  <> 0 THEN 'DELETE' END,
+                    CASE WHEN (t.tgtype::pg_catalog.int4 & 16) <> 0 THEN 'UPDATE' END,
+                    CASE WHEN (t.tgtype::pg_catalog.int4 & 32) <> 0 THEN 'TRUNCATE' END
                 ) AS event,
-                CASE WHEN (t.tgtype & 1) != 0 THEN 'ROW' ELSE 'STATEMENT' END AS orientation,
+                CASE WHEN (t.tgtype::pg_catalog.int4 & 1) <> 0 THEN 'ROW' ELSE 'STATEMENT' END AS orientation,
                 t.tgenabled <> 'D' AS enabled,
                 pg_catalog.pg_get_triggerdef(t.oid) AS definition,
                 pg_catalog.pg_get_userbyid(c.relowner) AS owner
@@ -166,7 +167,7 @@ nonisolated public enum PostgreSQLObjectQueries {
     static func userDefinedTypeList(schema: String?, identity: String?, capabilities: PostgreSQLCapabilities) -> String {
         let predicates = [
             schema.map { "AND n.nspname = \(quoteLiteral($0))" },
-            identity.flatMap { UInt32($0) }.map { "AND t.oid = \($0)::oid" }
+            identity.flatMap { UInt32($0) }.map { "AND t.oid = \($0)::pg_catalog.oid" }
         ].compactMap { $0 }
         return userDefinedTypeList(predicates: predicates, orderBy: "t.typname", capabilities: capabilities)
     }
@@ -186,7 +187,7 @@ nonisolated public enum PostgreSQLObjectQueries {
     ) -> String {
         let kinds = capabilities.hasRangeTypes ? "('e', 'c', 'd', 'r')" : "('e', 'c', 'd')"
         let fieldCollation = """
-            CASE WHEN a.attcollation <> 0 AND a.attcollation <> ty.typcollation
+            CASE WHEN a.attcollation <> 0::pg_catalog.oid AND a.attcollation <> ty.typcollation
                     THEN \(collationName("a.attcollation")) END
             """
         let rangeJoin = capabilities.hasRangeTypes ? "LEFT JOIN pg_catalog.pg_range r ON r.rngtypid = t.oid" : ""
@@ -194,10 +195,10 @@ nonisolated public enum PostgreSQLObjectQueries {
             ? "CASE WHEN t.typtype = 'r' THEN pg_catalog.format_type(r.rngsubtype, NULL) END"
             : "NULL::text"
         let rangeCanonical = capabilities.hasRangeTypes
-            ? "CASE WHEN t.typtype = 'r' AND r.rngcanonical <> 0 THEN r.rngcanonical::regproc::text END"
+            ? "CASE WHEN t.typtype = 'r' AND r.rngcanonical::pg_catalog.oid <> 0::pg_catalog.oid THEN r.rngcanonical::pg_catalog.text END"
             : "NULL::text"
         let rangeSubtypeDiff = capabilities.hasRangeTypes
-            ? "CASE WHEN t.typtype = 'r' AND r.rngsubdiff <> 0 THEN r.rngsubdiff::regproc::text END"
+            ? "CASE WHEN t.typtype = 'r' AND r.rngsubdiff::pg_catalog.oid <> 0::pg_catalog.oid THEN r.rngsubdiff::pg_catalog.text END"
             : "NULL::text"
         let rangeOpclass = capabilities.hasRangeTypes ? """
             CASE WHEN t.typtype = 'r' THEN
@@ -208,7 +209,7 @@ nonisolated public enum PostgreSQLObjectQueries {
             END
             """ : "NULL::text"
         let rangeCollation = capabilities.hasRangeTypes ? """
-            CASE WHEN t.typtype = 'r' AND r.rngcollation <> 0
+            CASE WHEN t.typtype = 'r' AND r.rngcollation <> 0::pg_catalog.oid
                  AND r.rngcollation <> (SELECT st.typcollation FROM pg_catalog.pg_type st WHERE st.oid = r.rngsubtype)
                  THEN \(collationName("r.rngcollation"))
             END
@@ -229,13 +230,13 @@ nonisolated public enum PostgreSQLObjectQueries {
                 t.typtype::text AS kind,
                 pg_catalog.pg_get_userbyid(t.typowner) AS owner,
                 pg_catalog.obj_description(t.oid, 'pg_type') AS comment,
-                (SELECT array_agg(e.enumlabel ORDER BY e.enumsortorder)
+                (SELECT pg_catalog.array_agg(e.enumlabel ORDER BY e.enumsortorder)
                     FROM pg_catalog.pg_enum e WHERE e.enumtypid = t.oid)::text AS enum_labels,
                 \(compositeFieldArray("a.attname")) AS field_names,
                 \(compositeFieldArray("pg_catalog.format_type(a.atttypid, a.atttypmod)")) AS field_types,
                 \(compositeFieldArray(fieldCollation, joinsType: true)) AS field_collations,
                 CASE WHEN t.typtype = 'd' THEN pg_catalog.format_type(t.typbasetype, t.typtypmod) END AS base_type,
-                CASE WHEN t.typtype = 'd' AND t.typcollation <> 0
+                CASE WHEN t.typtype = 'd' AND t.typcollation <> 0::pg_catalog.oid
                      AND t.typcollation <> (SELECT b.typcollation FROM pg_catalog.pg_type b WHERE b.oid = t.typbasetype)
                      THEN \(collationName("t.typcollation"))
                 END AS collation,
@@ -259,7 +260,8 @@ nonisolated public enum PostgreSQLObjectQueries {
                 AND (t.typtype <> 'c' OR c.relkind = 'c')
                 AND NOT EXISTS (
                     SELECT 1 FROM pg_catalog.pg_depend d
-                    WHERE d.classid = 'pg_catalog.pg_type'::regclass AND d.objid = t.oid AND d.deptype = 'e'
+                    WHERE d.classid = 'pg_catalog.pg_type'::pg_catalog.regclass::pg_catalog.oid
+                        AND d.objid = t.oid AND d.deptype = 'e'
                 )
                 \(predicates.joined(separator: "\n    "))
             ORDER BY \(orderBy)
@@ -271,7 +273,7 @@ nonisolated public enum PostgreSQLObjectQueries {
     private static func compositeFieldArray(_ expression: String, joinsType: Bool = false) -> String {
         let typeJoin = joinsType ? "\n                    JOIN pg_catalog.pg_type ty ON ty.oid = a.atttypid" : ""
         return """
-        (SELECT array_agg(\(expression) ORDER BY a.attnum)
+        (SELECT pg_catalog.array_agg(\(expression) ORDER BY a.attnum)
                     FROM pg_catalog.pg_attribute a\(typeJoin)
                     WHERE a.attrelid = t.typrelid AND a.attnum > 0 AND NOT a.attisdropped)::text
         """
@@ -279,7 +281,7 @@ nonisolated public enum PostgreSQLObjectQueries {
 
     private static func domainCheckArray(_ expression: String) -> String {
         """
-        (SELECT array_agg(\(expression) ORDER BY con.conname)
+        (SELECT pg_catalog.array_agg(\(expression) ORDER BY con.conname)
                     FROM pg_catalog.pg_constraint con
                     WHERE con.contypid = t.oid AND con.contype = 'c')::text
         """

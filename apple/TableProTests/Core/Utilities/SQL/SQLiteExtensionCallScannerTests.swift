@@ -62,6 +62,7 @@ struct SQLiteExtensionCallScannerTests {
             "INSERT OR REPLACE INTO \"users\"(id) VALUES (1)",
             "WITH ids(id) AS (SELECT 1) SELECT * FROM ids",
             "WITH RECURSIVE n(i) AS MATERIALIZED (SELECT 1) SELECT i FROM n",
+            "WITH a(x) AS (SELECT 1), b(y) AS NOT MATERIALIZED (SELECT 2) SELECT * FROM a, b",
             "CREATE TABLE IF NOT EXISTS t(a, b)",
             "CREATE VIEW v(x) AS SELECT 1",
             "CREATE TABLE c(p INTEGER REFERENCES t(id))"
@@ -82,6 +83,31 @@ struct SQLiteExtensionCallScannerTests {
         for sql in statements {
             #expect(!onlyBuiltins(sql), "\(sql)")
         }
+    }
+
+    @Test("A call followed by AS is a column list only where a common table expression is declared")
+    func aliasAndCastDoNotPassForCommonTableExpression() {
+        let statements = [
+            "SELECT eval('DELETE FROM t') AS materialized",
+            "SELECT 1, eval('DELETE FROM t') AS materialized",
+            "SELECT * FROM vec_each(x'00') AS materialized",
+            "SELECT CAST(eval('DELETE FROM t') AS materialized(1))",
+            "SELECT CAST(eval('DELETE FROM t') AS 'int'(1))",
+            "SELECT CAST(eval('DELETE FROM t') AS \"char\"(1))",
+            "ATTACH eval('DELETE FROM t') AS ('a')"
+        ]
+        for sql in statements {
+            #expect(!onlyBuiltins(sql), "\(sql)")
+        }
+    }
+
+    @Test("A MySQL executable comment is a plain comment to SQLite, so the call behind it is still seen", arguments: [
+        "SELECT eval/*!*/('DROP TABLE orders')",
+        "SELECT eval/*!50000 */('DROP TABLE orders')",
+        "SELECT eval /*M!*/ ('DROP TABLE orders')",
+    ])
+    func executableCommentHidesNoCall(sql: String) {
+        #expect(!onlyBuiltins(sql))
     }
 
     @Test("A quoted callee the scanner cannot read cleanly counts against the statement")

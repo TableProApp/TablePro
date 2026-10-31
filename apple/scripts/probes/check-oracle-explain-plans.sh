@@ -9,16 +9,22 @@
 # driver returns with the one V$SQL holds for a marker unique to the run, and checks the grants message an account
 # without V$ access gets, and that the grants it names are enough.
 #
+# Oracle resolves a bare PLAN_TABLE or V$ name in the session's current schema before the public synonym, and a tab pins
+# its schema with ALTER SESSION SET CURRENT_SCHEMA. So it also plants a PLAN_TABLE and the three V$ views as BEQUEATH
+# CURRENT_USER views in one account's schema, each calling an AUTHID CURRENT_USER function that logs its calls, and runs
+# both plans as a CREATE SESSION-only account switched into that schema: the log must stay empty. And it runs the
+# estimated plan as an account that keeps its own PLAN_TABLE from utlxplan.sql: the plan must not be written there.
+#
 # Usage:
 #   scripts/probes/check-oracle-explain-plans.sh [host] [port] [service] [user] [password] [sys-password]
 #
 # Defaults suit a throwaway Oracle Free container:
 #   docker run -d --name oracle-probe -p 1521:1521 -e ORACLE_PASSWORD=probe_pw gvenzl/oracle-free:23-slim-faststart
 #
-# The user needs DBA rights (SYSTEM): it creates tables prefixed TP_XP_ in its own schema and a user TP_XP_PLAIN, and
-# drops all of it again. Only SYS can grant the V$ views, so that check logs in AS SYSDBA with sys-password (default:
-# the password) and is skipped when it cannot. Set TP_CHECK_SCRATCH to a directory to reuse the build between
-# runs. Exits 1 when a check fails, 3 when it cannot run.
+# The user needs DBA rights (SYSTEM): it creates tables prefixed TP_XP_ in its own schema and the users TP_XP_PLAIN,
+# TP_XP_MALLORY, TP_XP_READER and TP_XP_KEEPER, and drops all of it again. Only SYS can grant the V$ views, so that
+# check logs in AS SYSDBA with sys-password (default: the password) and is skipped when it cannot. Set TP_CHECK_SCRATCH
+# to a directory to reuse the build between runs. Exits 1 when a check fails, 3 when it cannot run.
 
 set -uo pipefail
 
@@ -103,6 +109,9 @@ enum Check {
     static let owner = (environment["TP_CHECK_USER"] ?? "system").uppercased()
     static let plainUser = "TP_XP_PLAIN"
     static let plainPassword = "TpXp" + UUID().uuidString.replacingOccurrences(of: "-", with: "").prefix(12)
+    static let mallory = "TP_XP_MALLORY"
+    static let reader = "TP_XP_READER"
+    static let keeper = "TP_XP_KEEPER"
 
     static func expect(_ condition: Bool, _ label: String, _ detail: @autoclosure () -> String = "") {
         if condition {
@@ -236,6 +245,8 @@ enum Check {
         await estimated(admin)
         await actual(admin)
         await withoutGrants(admin)
+        await plantedSchema(admin)
+        await ownPlanTable(admin)
 
         await cleanUp(admin)
         admin.disconnect()
@@ -244,7 +255,7 @@ enum Check {
     }
 
     static func estimated(_ admin: OraclePluginDriver) async {
-        let planRowsBefore = await scalar(admin, "SELECT TO_CHAR(COUNT(*)) FROM PLAN_TABLE")
+        let planRowsBefore = await scalar(admin, "SELECT TO_CHAR(COUNT(*)) FROM SYS.PLAN_TABLE$")
         do {
             let explained = try await explain(admin, join(region: "north", terminator: ";"), OracleExplainPlan.estimatedVariantId)
             expect(explained.plan != nil, "the estimated plan of a three-table join parses into a tree")
@@ -260,8 +271,8 @@ enum Check {
         } catch {
             expect(false, "the estimated plan of a three-table join", message(error))
         }
-        let planRowsAfter = await scalar(admin, "SELECT TO_CHAR(COUNT(*)) FROM PLAN_TABLE")
-        expect(planRowsBefore != nil && planRowsBefore == planRowsAfter, "the estimated plan leaves no rows in PLAN_TABLE",
+        let planRowsAfter = await scalar(admin, "SELECT TO_CHAR(COUNT(*)) FROM SYS.PLAN_TABLE$")
+        expect(planRowsBefore != nil && planRowsBefore == planRowsAfter, "the estimated plan leaves no rows in SYS.PLAN_TABLE$",
                "\(planRowsBefore ?? "nil") -> \(planRowsAfter ?? "nil")")
 
         _ = try? await admin.explainPlan(statement: "INSERT INTO TP_XP_LOG VALUES (1)", variantId: OracleExplainPlan.estimatedVariantId)
@@ -405,11 +416,171 @@ enum Check {
         }
     }
 
+    static func createUser(_ admin: OraclePluginDriver, _ name: String, _ privileges: String, quota: Bool = false) async -> Bool {
+        for statement in [
+            "CREATE USER \(name) IDENTIFIED BY \"\(plainPassword)\"\(quota ? " QUOTA UNLIMITED ON USERS" : "")",
+            "GRANT \(privileges) TO \(name)",
+        ] + joinedTables.sorted().map({ "GRANT SELECT ON \($0) TO \(name)" }) {
+            if let failure = await run(admin, statement) {
+                print("SKIP: cannot create \(name): \(message(failure))")
+                return false
+            }
+        }
+        return true
+    }
+
+    // The attacker's part: views named as Explain names its tables, in TP_XP_MALLORY's own schema. Each calls an
+    // AUTHID CURRENT_USER function that logs who ran it, so a call is code running with the reader's privileges.
+    static let planted = [
+        "CREATE TABLE CALLS (WHO VARCHAR2(128), WHAT VARCHAR2(30))",
+        "GRANT INSERT ON CALLS TO PUBLIC",
+        """
+        CREATE OR REPLACE FUNCTION PAYLOAD(WHAT VARCHAR2) RETURN NUMBER AUTHID CURRENT_USER IS
+          PRAGMA AUTONOMOUS_TRANSACTION;
+        BEGIN
+          INSERT INTO \(mallory).CALLS VALUES (SYS_CONTEXT('USERENV', 'CURRENT_USER'), WHAT);
+          COMMIT;
+          RETURN 0;
+        END;
+        """,
+        "GRANT EXECUTE ON PAYLOAD TO PUBLIC",
+        """
+        CREATE VIEW PLAN_TABLE BEQUEATH CURRENT_USER AS
+        SELECT * FROM SYS.PLAN_TABLE$ WHERE \(mallory).PAYLOAD('PLAN_TABLE') = 0
+        """,
+        "GRANT SELECT, INSERT, DELETE ON PLAN_TABLE TO PUBLIC",
+        """
+        CREATE VIEW V$PARAMETER BEQUEATH CURRENT_USER AS
+        SELECT 'statistics_level' AS NAME, 'TYPICAL' AS VALUE FROM SYS.DUAL WHERE \(mallory).PAYLOAD('V$PARAMETER') = 0
+        """,
+        """
+        CREATE VIEW V$SESSION BEQUEATH CURRENT_USER AS
+        SELECT TO_NUMBER(SYS_CONTEXT('USERENV', 'SID')) AS SID, CAST(NULL AS VARCHAR2(13)) AS PREV_SQL_ID,
+        0 AS PREV_CHILD_NUMBER FROM SYS.DUAL WHERE \(mallory).PAYLOAD('V$SESSION') = 0
+        """,
+        """
+        CREATE VIEW V$SQL_PLAN_STATISTICS_ALL BEQUEATH CURRENT_USER AS
+        SELECT p.*, 1 AS LAST_STARTS, 1 AS LAST_OUTPUT_ROWS, 1 AS LAST_ELAPSED_TIME, 1 AS LAST_CR_BUFFER_GETS,
+        1 AS LAST_DISK_READS, 1 AS LAST_MEMORY_USED, 1 AS LAST_TEMPSEG_SIZE, CAST(NULL AS VARCHAR2(13)) AS SQL_ID,
+        0 AS CHILD_NUMBER FROM SYS.PLAN_TABLE$ p WHERE \(mallory).PAYLOAD('V$SQL_PLAN_STATISTICS_ALL') = 0
+        """,
+        "GRANT SELECT ON V$PARAMETER TO PUBLIC",
+        "GRANT SELECT ON V$SESSION TO PUBLIC",
+        "GRANT SELECT ON V$SQL_PLAN_STATISTICS_ALL TO PUBLIC",
+    ]
+
+    static func plantedSchema(_ admin: OraclePluginDriver) async {
+        guard await createUser(admin, mallory, "CREATE SESSION, CREATE TABLE, CREATE VIEW, CREATE PROCEDURE", quota: true),
+              await createUser(admin, reader, "CREATE SESSION")
+        else { return }
+        let attacker: OraclePluginDriver
+        let victim: OraclePluginDriver
+        do {
+            attacker = try await connect(user: mallory, password: plainPassword)
+            victim = try await connect(user: reader, password: plainPassword)
+        } catch {
+            expect(false, "a login as \(mallory) and \(reader)", message(error))
+            return
+        }
+        defer {
+            attacker.disconnect()
+            victim.disconnect()
+        }
+        for statement in planted {
+            if let failure = await run(attacker, statement) {
+                // BEQUEATH CURRENT_USER needs 12.1.
+                print("SKIP: the planted schema check, \(mallory) cannot plant its views: \(message(failure))")
+                return
+            }
+        }
+
+        do {
+            try await victim.switchSchema(to: mallory)
+        } catch {
+            expect(false, "\(reader) switches into \(mallory) as a tab does", message(error))
+            return
+        }
+        do {
+            let explained = try await explain(victim, join(region: "north"), OracleExplainPlan.estimatedVariantId)
+            expect(relations(explained.plan) == joinedTables, "Estimated Plan in \(mallory)'s schema shows the statement's plan",
+                   "\(relations(explained.plan))")
+        } catch {
+            expect(false, "Estimated Plan in \(mallory)'s schema", message(error))
+        }
+        do {
+            _ = try await victim.explainPlan(statement: join(region: "north"), variantId: OracleExplainPlan.actualVariantId)
+            expect(false, "Actual Plan in \(mallory)'s schema, without V$ grants, gets the grants message", "the plan ran")
+        } catch {
+            expect(message(error) == OracleExplainPlan.missingGrantsMessage,
+                   "Actual Plan in \(mallory)'s schema, without V$ grants, gets the grants message", message(error))
+        }
+
+        let calls = await values(admin, "SELECT WHAT, WHO, TO_CHAR(COUNT(*)) FROM \(mallory).CALLS GROUP BY WHAT, WHO ORDER BY WHAT")
+        let total = calls.compactMap { Int($0[2]) }.reduce(0, +)
+        print("INFO: \(mallory)'s functions ran \(total) time(s): \(calls.map { "\($0[0]) as \($0[1]) x\($0[2])" })")
+        expect(total == 0, "Explain in \(mallory)'s schema runs none of \(mallory)'s functions")
+    }
+
+    // utlxplan.sql as Oracle 23ai ships it, without SHARING, which only an application container takes.
+    static let utlxplanColumns = """
+        STATEMENT_ID VARCHAR2(30), PLAN_ID NUMBER, TIMESTAMP DATE, REMARKS VARCHAR2(4000), OPERATION VARCHAR2(30),
+        OPTIONS VARCHAR2(255), OBJECT_NODE VARCHAR2(128), OBJECT_OWNER VARCHAR2(128), OBJECT_NAME VARCHAR2(128),
+        OBJECT_ALIAS VARCHAR2(261), OBJECT_INSTANCE NUMERIC, OBJECT_TYPE VARCHAR2(30), OPTIMIZER VARCHAR2(255),
+        SEARCH_COLUMNS NUMBER, ID NUMERIC, PARENT_ID NUMERIC, DEPTH NUMERIC, POSITION NUMERIC, COST NUMERIC,
+        CARDINALITY NUMERIC, BYTES NUMERIC, OTHER_TAG VARCHAR2(255), PARTITION_START VARCHAR2(255),
+        PARTITION_STOP VARCHAR2(255), PARTITION_ID NUMERIC, OTHER LONG, DISTRIBUTION VARCHAR2(30), CPU_COST NUMERIC,
+        IO_COST NUMERIC, TEMP_SPACE NUMERIC, ACCESS_PREDICATES VARCHAR2(4000), FILTER_PREDICATES VARCHAR2(4000),
+        PROJECTION VARCHAR2(4000), TIME NUMERIC, QBLOCK_NAME VARCHAR2(128), OTHER_XML CLOB
+        """
+
+    static func ownPlanTable(_ admin: OraclePluginDriver) async {
+        guard await createUser(admin, keeper, "CREATE SESSION, CREATE TABLE", quota: true) else { return }
+        for statement in [
+            "CREATE TABLE \(keeper).PLAN_TABLE (\(utlxplanColumns))",
+            "INSERT INTO \(keeper).PLAN_TABLE (STATEMENT_ID, OPERATION) VALUES ('KEEP', 'the account''s own row')",
+            "COMMIT",
+            "CREATE TABLE \(keeper).TP_XP_WRITES (N NUMBER)",
+            """
+            CREATE TRIGGER \(keeper).TP_XP_WRITES_SEEN AFTER INSERT ON \(keeper).PLAN_TABLE FOR EACH ROW
+            DECLARE PRAGMA AUTONOMOUS_TRANSACTION;
+            BEGIN INSERT INTO \(keeper).TP_XP_WRITES VALUES (1); COMMIT; END;
+            """,
+        ] {
+            if let failure = await run(admin, statement) {
+                print("SKIP: the check with a private PLAN_TABLE: \(message(failure))")
+                return
+            }
+        }
+        let owner: OraclePluginDriver
+        do {
+            owner = try await connect(user: keeper, password: plainPassword)
+        } catch {
+            expect(false, "a login as \(keeper)", message(error))
+            return
+        }
+        defer { owner.disconnect() }
+
+        do {
+            let explained = try await explain(owner, join(region: "north"), OracleExplainPlan.estimatedVariantId)
+            expect(relations(explained.plan) == joinedTables, "Estimated Plan works for an account with its own PLAN_TABLE",
+                   "\(relations(explained.plan))")
+        } catch {
+            expect(false, "Estimated Plan works for an account with its own PLAN_TABLE", message(error))
+        }
+        let writes = await scalar(admin, "SELECT TO_CHAR(COUNT(*)) FROM \(keeper).TP_XP_WRITES") ?? "nil"
+        print("INFO: Estimated Plan wrote \(writes) row(s) to \(keeper).PLAN_TABLE")
+        expect(writes == "0", "Estimated Plan writes nothing to the account's own PLAN_TABLE")
+        let kept = await values(admin, "SELECT STATEMENT_ID FROM \(keeper).PLAN_TABLE").map { $0.first ?? "" }
+        expect(kept == ["KEEP"], "the account's own PLAN_TABLE keeps exactly its own rows", "\(kept)")
+    }
+
     static func cleanUp(_ admin: OraclePluginDriver) async {
         for table in ["TP_XP_ITEMS", "TP_XP_ORDERS", "TP_XP_CUSTOMERS", "TP_XP_LOG"] {
             await run(admin, "BEGIN EXECUTE IMMEDIATE 'DROP TABLE \(table) PURGE'; EXCEPTION WHEN OTHERS THEN NULL; END;")
         }
-        await run(admin, "BEGIN EXECUTE IMMEDIATE 'DROP USER \(plainUser) CASCADE'; EXCEPTION WHEN OTHERS THEN NULL; END;")
+        for user in [plainUser, reader, keeper, mallory] {
+            await run(admin, "BEGIN EXECUTE IMMEDIATE 'DROP USER \(user) CASCADE'; EXCEPTION WHEN OTHERS THEN NULL; END;")
+        }
     }
 }
 SWIFT

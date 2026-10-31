@@ -67,7 +67,7 @@ nonisolated final class PostgreSQLDriver: DatabaseDriver, @unchecked Sendable {
     private func probeCatalogPresence() async -> PostgreSQLCatalogPresence {
         guard databaseType != .redshift else { return Self.presence(probedRows: nil) }
         do {
-            let rows = try await actor.execute(PostgreSQLCatalogPresence.probeQuery).rows
+            let rows = try await catalogRead(PostgreSQLCatalogPresence.probeQuery).rows
             return Self.presence(probedRows: rows)
         } catch {
             Self.logger.warning(
@@ -78,7 +78,7 @@ nonisolated final class PostgreSQLDriver: DatabaseDriver, @unchecked Sendable {
     }
 
     private func adoptServerSchema() async {
-        guard let schema = try? await actor.execute("SELECT current_schema()").rows.first?.first ?? nil,
+        guard let schema = try? await actor.execute("SELECT pg_catalog.current_schema()").rows.first?.first ?? nil,
               !schema.isEmpty else { return }
         currentSchema = schema
     }
@@ -95,8 +95,18 @@ nonisolated final class PostgreSQLDriver: DatabaseDriver, @unchecked Sendable {
     // MARK: - Query Execution
 
     func execute(query: String) async throws -> QueryResult {
-        let raw = try await actor.execute(query)
-        return QueryResult(
+        Self.queryResult(from: try await actor.execute(query))
+    }
+
+    /// Every statement this driver writes against the catalogs runs here, under `PostgreSQLCatalogSearchPath`, so a
+    /// function or operator in the schema the session is switched to cannot stand in for a `pg_catalog` one. Redshift
+    /// has no user-defined operators and was never measured with that path, so its statements run as they are.
+    func catalogRead(_ statement: String) async throws -> QueryResult {
+        Self.queryResult(from: try await actor.executeCatalogRead(statement, pinsSearchPath: databaseType != .redshift))
+    }
+
+    private static func queryResult(from raw: RawPGResult) -> QueryResult {
+        QueryResult(
             columns: raw.columns.enumerated().map { i, name in
                 ColumnInfo(
                     name: name,
@@ -182,7 +192,7 @@ nonisolated final class PostgreSQLDriver: DatabaseDriver, @unchecked Sendable {
     // MARK: - Schema
 
     func fetchForeignKeys(table: String, schema: String?) async throws -> [ForeignKeyInfo] {
-        let raw = try await actor.execute(
+        let result = try await catalogRead(
             Self.foreignKeysQuery(
                 schema: schema ?? effectiveSchema,
                 table: table,
@@ -190,7 +200,7 @@ nonisolated final class PostgreSQLDriver: DatabaseDriver, @unchecked Sendable {
             )
         )
 
-        return PostgreSQLCatalogForeignKeys.foreignKeys(from: raw.rows).map { key in
+        return PostgreSQLCatalogForeignKeys.foreignKeys(from: result.rows).map { key in
             ForeignKeyInfo(
                 name: key.name,
                 column: key.column,
@@ -214,10 +224,10 @@ nonisolated final class PostgreSQLDriver: DatabaseDriver, @unchecked Sendable {
     }
 
     func fetchDatabases() async throws -> [String] {
-        let raw = try await actor.execute(
-            "SELECT datname FROM pg_database WHERE datistemplate = false ORDER BY datname"
+        let result = try await catalogRead(
+            "SELECT datname FROM pg_catalog.pg_database WHERE datistemplate = false ORDER BY datname"
         )
-        return raw.rows.compactMap { $0.first ?? nil }
+        return result.rows.compactMap { $0.first ?? nil }
     }
 
     func switchDatabase(to name: String) async throws {
@@ -225,13 +235,13 @@ nonisolated final class PostgreSQLDriver: DatabaseDriver, @unchecked Sendable {
     }
 
     func switchSchema(to name: String) async throws {
-        let safe = name.replacingOccurrences(of: "\"", with: "\"\"")
+        let safe = name.replacingOccurrences(of: "\"", with: "\"\"", options: .literal)
         _ = try await actor.execute("SET search_path TO \"\(safe)\"")
         currentSchema = name
     }
 
     func fetchSchemas() async throws -> [String] {
-        let result = try await execute(query: "SELECT schema_name FROM information_schema.schemata ORDER BY schema_name")
+        let result = try await catalogRead("SELECT schema_name FROM information_schema.schemata ORDER BY schema_name")
         return result.rows.compactMap { $0.first ?? nil }
     }
 
@@ -279,6 +289,11 @@ nonisolated enum PostgreSQLSessionTransaction {
         default:
             return .unknown
         }
+    }
+
+    // A SET LOCAL sent inside an open or aborted block would outlast the statement that needed it.
+    static func isInsideBlock(_ status: PGTransactionStatusType) -> Bool {
+        status == PQTRANS_INTRANS || status == PQTRANS_INERROR
     }
 
     // An aborted block refuses SELECT 1 on a live session, an open one takes its snapshot from it, and a stream would end.
@@ -457,6 +472,32 @@ private actor PostgreSQLActor {
         }
         return "\(major).\(minor).\(patch)"
     }
+
+    /// The search path lasts only as long as the read: outside a transaction block the pair is one implicit
+    /// transaction, and inside one a savepoint rolled back straight after scopes it. One actor call, so no other
+    /// statement on this session runs between the savepoint and its rollback.
+    func executeCatalogRead(_ statement: String, pinsSearchPath: Bool) throws -> RawPGResult {
+        guard pinsSearchPath else { return try execute(statement) }
+        endLeftoverStream()
+        let scoped = PostgreSQLCatalogSearchPath.pinned + statement
+        guard let conn, PostgreSQLSessionTransaction.isInsideBlock(PQtransactionStatus(conn)) else {
+            return try execute(scoped)
+        }
+        _ = try execute(Self.catalogReadSavepoint)
+        let result: RawPGResult
+        do {
+            result = try execute(scoped)
+        } catch {
+            _ = try? execute(Self.catalogReadRollback)
+            throw error
+        }
+        _ = try execute(Self.catalogReadRollback)
+        return result
+    }
+
+    private static let catalogReadSavepoint = "SAVEPOINT tablepro_catalog_read"
+    private static let catalogReadRollback =
+        "ROLLBACK TO SAVEPOINT tablepro_catalog_read; RELEASE SAVEPOINT tablepro_catalog_read"
 
     func execute(_ query: String) throws -> RawPGResult {
         endLeftoverStream()
