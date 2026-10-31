@@ -20,7 +20,7 @@ use crate::ui::handler_guard::HandlerGuard;
 
 /// Rows sampled for a column's opening width.
 const WIDTH_SAMPLE: usize = 200;
-/// Cell padding Adwaita gives a data table's cell, both sides, and the
+/// The padding `style.css` gives a cell's child, both sides, and the
 /// column separator.
 const CELL_CHROME_PX: i32 = 13;
 /// A resize step, in digits of the font the cells draw in, so a step is
@@ -204,6 +204,7 @@ impl DataGrid {
             let grid_cell = GridCell::new(setup_paint.clone());
             grid_cell.attach(cell);
             cell.set_child(Some(&grid_cell));
+            super::stripes::follow(cell);
         });
         factory.connect_bind(|_, item| {
             let Some(cell) = item.downcast_ref::<gtk::ColumnViewCell>() else {
@@ -754,8 +755,20 @@ impl DataGrid {
 
 // GTK makes the header and rows only as wide as the columns unless one
 // expands, and never resizes the last column; this one takes both.
+// Its empty child carries the stripe out to the view's edge.
 fn filler_column() -> gtk::ColumnViewColumn {
-    let column = gtk::ColumnViewColumn::builder().expand(true).build();
+    let factory = gtk::SignalListItemFactory::new();
+    factory.connect_setup(|_, item| {
+        let Some(cell) = item.downcast_ref::<gtk::ColumnViewCell>() else {
+            return;
+        };
+        let blank = adw::Bin::builder()
+            .accessible_role(gtk::AccessibleRole::Presentation)
+            .build();
+        cell.set_child(Some(&blank));
+        super::stripes::follow(cell);
+    });
+    let column = gtk::ColumnViewColumn::builder().expand(true).factory(&factory).build();
     column.set_id(Some("filler"));
     column
 }

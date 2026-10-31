@@ -276,6 +276,7 @@ crates/app/src/ui/data_grid/row_number_column.rs
 crates/app/src/ui/data_grid/selection.rs
 crates/app/src/ui/data_grid/selection_summary.rs
 crates/app/src/ui/data_grid/server_sorter.rs
+crates/app/src/ui/data_grid/stripes.rs
 crates/app/src/ui/data_grid/table_keys.rs
 crates/app/src/ui/data_grid/test_grid.rs
 crates/app/src/ui/data_grid/tests/cells.rs

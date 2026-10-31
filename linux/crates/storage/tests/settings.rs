@@ -45,6 +45,7 @@ fn defaults_match_schema() -> TestResult {
 
     assert_eq!(fixture.settings.default_page_size(), 1_000);
     assert!(fixture.settings.confirm_bulk_delete());
+    assert!(fixture.settings.show_alternate_rows());
     assert_eq!(fixture.settings.history_retention_days(), 30);
     assert_eq!(fixture.settings.query_timeout(), Some(Duration::from_secs(60)));
     assert_eq!(fixture.settings.style_scheme(), "Adwaita");
@@ -149,6 +150,17 @@ fn confirm_bulk_delete_round_trip() -> TestResult {
     assert!(!fixture.settings.confirm_bulk_delete());
     fixture.settings.set_confirm_bulk_delete(true)?;
     assert!(fixture.settings.confirm_bulk_delete());
+    Ok(())
+}
+
+#[test]
+fn show_alternate_rows_round_trip() -> TestResult {
+    let fixture = Fixture::new()?;
+
+    fixture.settings.set_show_alternate_rows(false)?;
+    assert!(!fixture.settings.show_alternate_rows());
+    fixture.settings.set_show_alternate_rows(true)?;
+    assert!(fixture.settings.show_alternate_rows());
     Ok(())
 }
 

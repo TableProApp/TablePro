@@ -80,6 +80,14 @@ impl AppSettings {
         self.set_boolean(keys::CONFIRM_BULK_DELETE, confirm)
     }
 
+    pub fn show_alternate_rows(&self) -> bool {
+        self.settings.boolean(keys::SHOW_ALTERNATE_ROWS)
+    }
+
+    pub fn set_show_alternate_rows(&self, show: bool) -> Result<(), SettingsError> {
+        self.set_boolean(keys::SHOW_ALTERNATE_ROWS, show)
+    }
+
     /// Whether runs go into the query history. Off records nothing and
     /// leaves the entries already there.
     pub fn save_query_history(&self) -> bool {
