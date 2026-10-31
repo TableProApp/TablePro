@@ -441,6 +441,11 @@ final class ConnectionFormCoordinator: ObservableObject {
             }
             edits.additionalFields.removeValue(forKey: field.id)
         }
+        // An installed plugin older than the field still must not leave the token in the record.
+        let sessionTokenId = ConnectionSecretOptions.mongoSessionTokenFieldId
+        if let token = edits.additionalFields.removeValue(forKey: sessionTokenId), !token.isEmpty {
+            storage.savePluginSecureField(token, fieldId: sessionTokenId, for: finalId)
+        }
 
         var connectionToSave = edits.applied(to: baseConnection(id: finalId))
 
@@ -995,13 +1000,30 @@ final class ConnectionFormCoordinator: ObservableObject {
             writeFieldByRegistry("mongoUseSrv", value: "true")
         }
         for (key, value) in parsed.mongoQueryParams where !value.isEmpty {
-            switch key {
-            case "authMechanism":
+            switch key.lowercased() {
+            case "authmechanism":
                 writeFieldByRegistry("mongoAuthMechanism", value: value)
-            case "replicaSet":
+            case "replicaset":
                 writeFieldByRegistry("mongoReplicaSet", value: value)
-            case "uuidRepresentation":
+            case "uuidrepresentation":
                 writeFieldByRegistry("mongoUuidRepresentation", value: value)
+            // Secrets go to the Keychain through the SSL pane and a secure field, never into a plain option.
+            case "tlscertificatekeyfile", "sslclientcertificatekeyfile":
+                ssl.clientCertPath = value
+                ssl.clientKeyPath = value
+            case "tlscertificatekeyfilepassword", "sslclientcertificatekeypassword":
+                ssl.clientKeyPassphrase = value
+            case "authmechanismproperties":
+                let split = ConnectionSecretOptions.splitSessionToken(from: value)
+                if let remaining = split.remaining {
+                    writeFieldByRegistry("mongoParam_\(key)", value: remaining)
+                }
+                if let token = split.sessionToken {
+                    writeFieldByRegistry(ConnectionSecretOptions.mongoSessionTokenFieldId, value: token)
+                }
+            case "proxypassword":
+                // libmongoc has no proxy options, so the password would only sit in the record.
+                continue
             default:
                 writeFieldByRegistry("mongoParam_\(key)", value: value)
             }

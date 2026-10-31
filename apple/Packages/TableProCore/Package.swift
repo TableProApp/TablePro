@@ -274,6 +274,11 @@ let package = Package(
             path: "Tests/TableProBigtableCoreTests"
         ),
         .testTarget(
+            name: "TableProFirebaseCoreTests",
+            dependencies: ["TableProFirebaseCore"],
+            path: "Tests/TableProFirebaseCoreTests"
+        ),
+        .testTarget(
             name: "TableProSpannerCoreTests",
             dependencies: ["TableProSpannerCore"],
             path: "Tests/TableProSpannerCoreTests"

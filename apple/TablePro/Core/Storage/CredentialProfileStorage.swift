@@ -134,8 +134,8 @@ final class CredentialProfileStorage {
             let added = CredentialProfile(
                 name: profile.name,
                 username: profile.username,
-                // A profile never arrives with a password, so `stored` would sign in with nothing.
-                passwordMode: profile.passwordMode == .pgpass ? .pgpass : .prompt,
+                // A file never chooses how this Mac finds a password: pgpass would read ~/.pgpass for its host.
+                passwordMode: .prompt,
                 secureFieldIds: profile.secureFieldIds,
                 sortOrder: nextSortOrder
             )
