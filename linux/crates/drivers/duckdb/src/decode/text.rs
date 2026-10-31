@@ -52,7 +52,8 @@ pub(super) fn scalar_text(array: &dyn Array, duck: &DuckType, row: usize) -> Opt
 
 /// Whether DuckDB quotes this text inside a nested value: an empty or
 /// padded string, the word null, or one holding a character that would
-/// read as part of the nesting.
+/// read as part of the nesting or as an escape. DuckDB 2.0 added the
+/// backslash.
 pub(super) fn needs_quotes(text: &str, key: bool) -> bool {
     let bytes = text.as_bytes();
     let space = |byte: &u8| matches!(byte, b' ' | b'\t' | b'\n' | 0x0b | 0x0c | b'\r');
@@ -63,7 +64,7 @@ pub(super) fn needs_quotes(text: &str, key: bool) -> bool {
         || bytes.iter().any(|byte| {
             matches!(
                 byte,
-                b'"' | b'\'' | b'(' | b')' | b',' | b':' | b'=' | b'[' | b']' | b'{' | b'}'
+                b'"' | b'\'' | b'(' | b')' | b',' | b':' | b'=' | b'[' | b'\\' | b']' | b'{' | b'}'
             )
         })
 }
@@ -224,7 +225,7 @@ mod tests {
             ("b c", "b c"),
             ("", "''"),
             ("it's", "'it\\'s'"),
-            ("a\\b", "a\\b"),
+            ("a\\b", "'a\\\\b'"),
             ("a,b", "'a,b'"),
             (" lead", "' lead'"),
             ("trail ", "'trail '"),
