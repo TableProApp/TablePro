@@ -43,7 +43,17 @@ public protocol SQLStatementBoundaryTracking {
     /// Returns whether this `;` ends the statement.
     mutating func observeSemicolon() -> Bool
 
+    /// Whether a block this statement opened is still open, which at the end of a text means everything after it was
+    /// swallowed by a body that never closed.
+    var holdsOpenBlock: Bool { get }
+
     mutating func reset()
+}
+
+public extension SQLStatementBoundaryTracking {
+    var holdsOpenBlock: Bool {
+        false
+    }
 }
 
 public enum SQLStatementBoundaries {

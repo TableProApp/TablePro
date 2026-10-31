@@ -7,7 +7,8 @@ import Foundation
 /// feed stays, so an offset into the projection is an offset into the original text.
 public enum SQLCodeProjection {
     /// - Parameter revealingExecutableComments: whether a MySQL `/*! ... */` body is kept as code, as a server that runs
-    ///   it reads it. What a server that skips it runs is ``SQLExecutableCommentReadings``'s question.
+    ///   it reads it. Only a grammar with ``SQLLexicalGrammar/executableComments`` reads one; anywhere else it is a
+    ///   comment. What a server that skips it runs is ``SQLExecutableCommentReadings``'s question.
     public static func code(
         of text: String,
         grammar: SQLLexicalGrammar,
@@ -19,9 +20,10 @@ public enum SQLCodeProjection {
         var units = [UInt16](repeating: 0, count: length)
         source.getCharacters(&units, range: NSRange(location: 0, length: length))
 
+        let reveals = revealingExecutableComments && grammar.contains(.executableComments)
         var index = 0
         while index < length {
-            if revealingExecutableComments,
+            if reveals,
                let opener = SqlLexer.executableCommentOpenerLength(source, at: index, length: length) {
                 index += opener
                 continue

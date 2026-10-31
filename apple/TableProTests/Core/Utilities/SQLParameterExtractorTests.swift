@@ -214,6 +214,11 @@ struct SQLParameterExtractorTests {
     }
 
     @Test
+    func canonicallyEquivalentTagDoesNotCloseDollarQuotedString() {
+        #expect(SQLParameterExtractor.extractParameters(from: "SELECT $K$ x $\u{212A}$ :name $K$, :id") == ["id"])
+    }
+
+    @Test
     func parameterAfterDollarQuotedString() {
         #expect(SQLParameterExtractor.extractParameters(from: "$$ body $$ SELECT :id") == ["id"])
     }

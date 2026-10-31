@@ -140,11 +140,12 @@ public enum MySQLLiteralSpelling: Equatable, Sendable {
         return scalars.count
     }
 
+    /// `--` opens a comment only when a space or a control character follows it, U+007F among them.
     private static func opensDashComment(_ scalars: [Unicode.Scalar], at index: Int) -> Bool {
         guard index + 1 < scalars.count, scalars[index + 1] == "-" else { return false }
         guard index + 2 < scalars.count else { return true }
         let next = scalars[index + 2]
-        return next == " " || next == "\t" || next == "\n" || next == "\r"
+        return next <= " " || next == "\u{7F}"
     }
 
     private static func endOfLine(in scalars: [Unicode.Scalar], from start: Int) -> Int {
