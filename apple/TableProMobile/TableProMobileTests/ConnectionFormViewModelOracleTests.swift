@@ -83,12 +83,12 @@ struct ConnectionFormViewModelOracleTests {
         #expect(viewModel.oracleSID == "XE")
     }
 
-    @Test("Oracle SSL mode is kept verbatim rather than coerced like SQL Server")
+    @Test("A stored verify mode is kept verbatim in the Oracle and SQL Server pickers")
     func keepsVerifyModes() {
         let connection = makeOracleConnection(additionalFields: [:], sslMode: .verifyFull)
         let viewModel = ConnectionFormViewModel(editing: connection)
         #expect(viewModel.oracleSSLMode == .verifyFull)
-        #expect(viewModel.mssqlSSLMode == .require)
+        #expect(viewModel.mssqlSSLMode == .verifyFull)
     }
 
     @Test("Saving writes the same additionalFields keys the Mac app reads")

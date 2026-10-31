@@ -11,6 +11,7 @@
 import Combine
 import Foundation
 import os
+import TableProConnectionLibrary
 import TableProPluginKit
 
 // MARK: - Public Types
@@ -292,13 +293,20 @@ final class NativeDumpService: ObservableObject {
         }
 
         var effective = session?.effectiveConnection ?? connection
+        let resolvedFields = DatabaseDriverFactory.resolvedAdditionalFields(for: effective) ?? effective.additionalFields
         // The connect's own resolution, errors included: a Keychain read misses every other source.
         let signIn = try await ConnectionCredentialResolver.resolveSignIn(
             for: effective,
-            fields: DatabaseDriverFactory.resolvedAdditionalFields(for: effective)
-                ?? effective.additionalFields,
+            fields: resolvedFields,
             override: session?.cachedPassword
         )
+        // A tool signs in with the Keychain secrets the driver gets beside the password.
+        if let token = resolvedFields[ConnectionSecretOptions.mongoSessionTokenFieldId], !token.isEmpty {
+            effective.additionalFields[ConnectionSecretOptions.mongoSessionTokenFieldId] = token
+        }
+        if let passphrase = ConnectionStorage.shared.loadSSLClientKeyPassphrase(for: effective.id), !passphrase.isEmpty {
+            effective.additionalFields["sslClientKeyPassphrase"] = passphrase
+        }
         if let username = signIn.username {
             effective.username = username
         }

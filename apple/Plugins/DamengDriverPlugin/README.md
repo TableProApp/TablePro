@@ -27,4 +27,4 @@ Use `scripts/build-dameng.sh arm64` or `x86_64` only for architecture-specific d
 
 ## Security and Limitations
 
-The parameter binder recognizes placeholders only in SQL code, escapes text literals, and encodes bytes with `HEXTORAW`. Response bodies and LOB content are capped at 64 MiB. Native TLS is not available; use SSH, SOCKS, or Cloudflare tunneling for untrusted networks. Native binary and off-row LOB reads remain unsupported by the transport; use `RAWTOHEX` for binary values and cast CLOB values to `VARCHAR`.
+The parameter binder recognizes placeholders only in SQL code, escapes text literals, and encodes bytes with `HEXTORAW`. Response bodies and LOB content are capped at 64 MiB. Native TLS is not available; use SSH, SOCKS, or Cloudflare tunneling for untrusted networks. A connection whose SSL mode is Required, Verify CA, or Verify Identity, which a `dm://` URL or an import can store, is refused before the sign-in is sent. Native binary and off-row LOB reads remain unsupported by the transport; use `RAWTOHEX` for binary values and cast CLOB values to `VARCHAR`.

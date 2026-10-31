@@ -323,7 +323,19 @@ struct SyncRecordMapper {
         let baseAsWritten = base.flatMap { try? toConnection($0) }.map { toCKRecord($0, in: zone) }
         return SyncRecordEdit(ConnectionSyncField.self, record: record, base: base, baseAsWritten: baseAsWritten) { merged, server in
             settleRoute(in: merged, server: server, publisher: publisher)
+            removeSecretOptions(from: merged)
         }
+    }
+
+    // A rebase keeps the server's additional fields when this edit left them alone, and an older build may have
+    // written a connection string's secret into them.
+    static func removeSecretOptions(from record: CKRecord) {
+        let fields = record.fields(ConnectionSyncField.self)
+        guard let data = fields[.additionalFieldsJson] as? Data,
+              let stored = try? decoder.decode([String: String].self, from: data) else { return }
+        let kept = ConnectionSecretOptions.removingSecrets(from: stored)
+        guard kept != stored else { return }
+        fields[.additionalFieldsJson] = kept.isEmpty ? nil : try? encoder.encode(kept)
     }
 
     // An edit judged its route against an older copy, so the route lands on the server's by the rules a dial uses.
@@ -352,7 +364,7 @@ struct SyncRecordMapper {
     }
 
     private static func syncedAdditionalFields(for connection: DatabaseConnection) -> [String: String] {
-        var fields = connection.additionalFields
+        var fields = ConnectionSecretOptions.removingSecrets(from: connection.additionalFields)
         fields.removeValue(forKey: DatabaseConnection.connectTimeoutSecondsKey)
         fields.removeValue(forKey: DatabaseConnection.queryTimeoutSecondsKey)
         if let connectTimeoutSeconds = validConnectTimeout(connection.connectTimeoutSeconds) {

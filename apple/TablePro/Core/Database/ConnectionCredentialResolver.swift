@@ -72,7 +72,7 @@ enum ConnectionCredentialResolver {
             }
             return try await resolveSource(passwordSource, for: connection)
         }
-        if connection.usePgpass {
+        if connection.usePgpass, readsPgpass(connection) {
             return ResolvedSignIn(username: nil, password: pgpassPassword(for: connection, username: resolveUsername(for: connection)))
         }
         return ResolvedSignIn(username: nil, password: ConnectionStorage.shared.loadPassword(for: connection.id) ?? "")
@@ -111,8 +111,16 @@ enum ConnectionCredentialResolver {
         guard case .profile(let profileId) = connection.credentialMode,
               let profile = CredentialProfileStorage.shared.profile(for: profileId)
         else { return connection.promptForPassword }
-        if case .prompt = profile.passwordMode { return true }
-        return false
+        switch profile.passwordMode {
+        case .prompt: return true
+        case .pgpass: return !readsPgpass(connection)
+        case .stored, .source: return false
+        }
+    }
+
+    // ~/.pgpass is libpq's file. Another engine can dial a host list the lookup never saw, so it asks instead.
+    static func readsPgpass(_ connection: DatabaseConnection) -> Bool {
+        PluginManager.shared.additionalConnectionFields(for: connection.type).contains { $0.id == "usePgpass" }
     }
 
     private static func resolveProfileSignIn(
@@ -126,6 +134,7 @@ enum ConnectionCredentialResolver {
             // The prompt's answer arrives as `override`; reaching here means it was declined or the connect is unattended.
             return ResolvedSignIn(username: nil, password: "")
         case .pgpass:
+            guard readsPgpass(connection) else { return ResolvedSignIn(username: nil, password: "") }
             return ResolvedSignIn(username: nil, password: pgpassPassword(for: connection, username: profile.username))
         case .source(let source):
             // A source can name a shell command, or a Vault address to send a token to.

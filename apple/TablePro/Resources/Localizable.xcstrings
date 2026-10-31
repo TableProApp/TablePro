@@ -105347,6 +105347,9 @@
     "Longest" : {
 
     },
+    "Looked up in ~/.pgpass by the host, port, database and username of the PostgreSQL-family connection that is opening. Other connections ask for the password." : {
+
+    },
     "Looked up in ~/.pgpass by the host, port, database and username of whichever connection is opening." : {
       "localizations" : {
         "fr" : {
@@ -180941,6 +180944,10 @@
     "Temporary Table" : {
 
     },
+    "Teradata uses TLS on its HTTPS port, which the tunnel does not forward. Set SSL Mode to Disabled or Preferred to connect through the tunnel, or turn the tunnel off." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Teradata Vantage data warehouse" : {
       "localizations" : {
         "fr" : {
@@ -192843,6 +192850,9 @@
         }
       }
     },
+    "These connections run commands every time they connect: a tunnel command on this Mac, SQL on the server, or both." : {
+
+    },
     "These connections run commands every time they connect: a tunnel command on this Mac, SQL on the server, or both.\n\n%@" : {
 
     },
@@ -193417,6 +193427,10 @@
           }
         }
       }
+    },
+    "This connection asks for TLS, which the Dameng driver does not support. Add the connection again without an SSL mode, and use an SSH, SOCKS or Cloudflare tunnel on a network you do not trust." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "This connection called a stored routine, so TablePro cannot tell what the session is holding." : {
       "extractionState" : "manual",
