@@ -106,10 +106,10 @@ struct PostgreSQLCatalogSQLPinTests {
     }
 
     private static let storedGenerationArm =
-        "WHEN a.attgenerated = 's' THEN ' GENERATED ALWAYS AS (' || pg_get_expr(d.adbin, d.adrelid) || ') STORED'"
+        "WHEN a.attgenerated = 's' THEN ' GENERATED ALWAYS AS (' || pg_catalog.pg_get_expr(d.adbin, d.adrelid) || ') STORED'"
 
     private static let virtualGenerationArm =
-        "WHEN a.attgenerated = 'v' THEN ' GENERATED ALWAYS AS (' || pg_get_expr(d.adbin, d.adrelid) || ') VIRTUAL'"
+        "WHEN a.attgenerated = 'v' THEN ' GENERATED ALWAYS AS (' || pg_catalog.pg_get_expr(d.adbin, d.adrelid) || ') VIRTUAL'"
 
     private static let iOSListing = """
         SELECT c.relname AS table_name,
@@ -269,7 +269,7 @@ struct PostgreSQLCatalogSQLPinTests {
             c.column_name AS column_name,
             c.data_type AS data_type,
             c.is_nullable AS is_nullable,
-            c.column_default AS column_default,
+            NULL::text AS column_default,
             c.collation_name AS collation_name,
             pg_catalog.col_description(rel.oid, c.ordinal_position) AS column_comment,
             c.udt_name AS udt_name,
@@ -277,27 +277,8 @@ struct PostgreSQLCatalogSQLPinTests {
             a.attidentity AS identity_kind,
             a.attgenerated AS generated_kind,
             c.udt_schema AS udt_schema,
-            c.generation_expression AS generation_expression,
-            CASE WHEN EXISTS (
-                        SELECT 1
-                        FROM pg_catalog.pg_type dt
-                        JOIN pg_catalog.pg_namespace dtn ON dtn.oid = dt.typnamespace
-                        WHERE dt.oid = a.atttypid
-                          AND dtn.nspname <> 'pg_catalog'
-                          AND pg_catalog.pg_type_is_visible(dt.oid)
-                          AND EXISTS (
-                              SELECT 1
-                              FROM pg_catalog.pg_depend dd
-                              WHERE dd.classid = 'pg_catalog.pg_type'::pg_catalog.regclass
-                                AND dd.deptype = 'e'
-                                AND dd.objid = CASE WHEN dt.typlen = -1 AND dt.typelem <> 0
-                                                    THEN dt.typelem ELSE dt.oid END))
-                   THEN (SELECT pg_catalog.quote_ident(dtn.nspname) || '.'
-                           FROM pg_catalog.pg_type dt
-                           JOIN pg_catalog.pg_namespace dtn ON dtn.oid = dt.typnamespace
-                          WHERE dt.oid = a.atttypid)
-                   ELSE '' END
-                || pg_catalog.format_type(a.atttypid, a.atttypmod) AS declared_type,
+            NULL::text AS generation_expression,
+            NULL::text AS declared_type,
             c.domain_name AS domain_name,
             c.ordinal_position AS ordinal_position
         FROM information_schema.columns c
@@ -343,26 +324,7 @@ struct PostgreSQLCatalogSQLPinTests {
             mva.attgenerated AS generated_kind,
             COALESCE(mvbtn.nspname, mvtn.nspname) AS udt_schema,
             NULL::text AS generation_expression,
-            CASE WHEN EXISTS (
-                        SELECT 1
-                        FROM pg_catalog.pg_type dt
-                        JOIN pg_catalog.pg_namespace dtn ON dtn.oid = dt.typnamespace
-                        WHERE dt.oid = mva.atttypid
-                          AND dtn.nspname <> 'pg_catalog'
-                          AND pg_catalog.pg_type_is_visible(dt.oid)
-                          AND EXISTS (
-                              SELECT 1
-                              FROM pg_catalog.pg_depend dd
-                              WHERE dd.classid = 'pg_catalog.pg_type'::pg_catalog.regclass
-                                AND dd.deptype = 'e'
-                                AND dd.objid = CASE WHEN dt.typlen = -1 AND dt.typelem <> 0
-                                                    THEN dt.typelem ELSE dt.oid END))
-                   THEN (SELECT pg_catalog.quote_ident(dtn.nspname) || '.'
-                           FROM pg_catalog.pg_type dt
-                           JOIN pg_catalog.pg_namespace dtn ON dtn.oid = dt.typnamespace
-                          WHERE dt.oid = mva.atttypid)
-                   ELSE '' END
-                || pg_catalog.format_type(mva.atttypid, mva.atttypmod) AS declared_type,
+            NULL::text AS declared_type,
             CASE WHEN mvt.typtype = 'd' THEN mvt.typname END AS domain_name,
             mva.attnum AS ordinal_position
         FROM pg_catalog.pg_class mvc

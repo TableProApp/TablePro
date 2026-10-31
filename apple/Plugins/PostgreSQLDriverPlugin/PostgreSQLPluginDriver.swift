@@ -71,7 +71,7 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
 
     private func probeCatalogPresence() async {
         do {
-            let result = try await core.execute(query: PostgreSQLCatalogPresence.probeQuery)
+            let result = try await core.executeCatalogRead(PostgreSQLCatalogPresence.probeQuery)
             let relationNames = result.rows.compactMap { $0.first?.asText }
             catalogPresence = PostgreSQLCatalogPresence(relationNames: relationNames)
         } catch {
@@ -81,7 +81,7 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
 
     private func probePostgisOids() async {
         do {
-            let result = try await core.execute(query: PostGISSpatialRewrite.probeQuery)
+            let result = try await core.executeCatalogRead(PostGISSpatialRewrite.probeQuery)
             var map: [UInt32: PostGISType] = [:]
             for row in result.rows {
                 guard row.count >= 3,
@@ -99,7 +99,7 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
 
     private func probeVectorTypes() async {
         do {
-            let result = try await core.execute(query: PgvectorTypes.probeQuery)
+            let result = try await core.executeCatalogRead(PgvectorTypes.probeQuery)
             let rows = result.rows.map { row in row.map(\.asText) }
             core.mergeCatalogTypeNames(PgvectorTypes.names(fromProbeRows: rows))
         } catch {
@@ -191,7 +191,7 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     }
 
     func fetchTemporaryTables() async throws -> [PluginTableInfo] {
-        let result = try await execute(query: PostgreSQLTableListing.temporaryTables)
+        let result = try await catalogRead(PostgreSQLTableListing.temporaryTables)
         return result.rows.compactMap { PostgreSQLTableListing.table(fromRow: $0.map(\.asText)) }
     }
 
@@ -211,14 +211,14 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         var answered = PostgreSQLTableListingLadder.leastCapableAttempt
         for attempt in PostgreSQLTableListingLadder.degradableAttempts where result == nil {
             do {
-                result = try await execute(query: query(attempt))
+                result = try await catalogRead(query(attempt))
                 answered = attempt
             } catch let error as LibPQPluginError where PostgreSQLTableListingLadder.isDegradable(sqlState: error.sqlState) {
                 reportListingDegrade(past: attempt, error: error)
             }
         }
         if result == nil {
-            result = try await execute(query: query(PostgreSQLTableListingLadder.leastCapableAttempt))
+            result = try await catalogRead(query(PostgreSQLTableListingLadder.leastCapableAttempt))
         }
 
         guard let result else { return [] }
@@ -293,11 +293,10 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
 
     private func partitionRows(table: String, schema: String?) async throws -> [PostgreSQLPartitionRow] {
         guard versionedCapabilities.hasDeclarativePartitioning else { return [] }
-        let result = try await execute(
-            query: PostgreSQLSchemaQueries.fetchPartitions(
-                schema: schema ?? core.currentSchema,
-                table: table
-            )
+        let resolvedSchema = schema ?? core.currentSchema
+        let result = try await catalogRead(
+            PostgreSQLSchemaQueries.fetchPartitions(schema: resolvedSchema, table: table),
+            namesRelativeTo: resolvedSchema
         )
         return result.rows.compactMap { row -> PostgreSQLPartitionRow? in
             guard let name = row[0].asText else { return nil }
@@ -320,7 +319,7 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         let query = PostgreSQLIndexQueries.indexList(
             schema: resolvedSchema, table: table, capabilities: catalogCapabilities
         )
-        let result = try await execute(query: query)
+        let result = try await catalogRead(query, namesRelativeTo: resolvedSchema)
         let ddl = try await fetchIndexSpellings(schema: resolvedSchema, table: table)
         return result.rows.compactMap { PostgreSQLIndexRow.index(from: $0, ddl: ddl)?.index }
     }
@@ -330,7 +329,7 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         table: String?
     ) async throws -> [String: [String: PostgreSQLCatalogIndexDDL]] {
         let query = PostgreSQLIndexQueries.indexDDLQuery(schema: schema, table: table)
-        let result = try await executeQualifiedRead(query)
+        let result = try await catalogRead(query)
         return PostgreSQLIndexQueries.indexDDL(rows: result.rows)
     }
 
@@ -339,7 +338,7 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         let query = PostgreSQLForeignKeyQueries.foreignKeyList(
             schema: resolvedSchema, table: table, capabilities: catalogCapabilities
         )
-        let result = try await execute(query: query)
+        let result = try await catalogRead(query)
         let foreignKeys = result.rows.compactMap { PostgreSQLForeignKeyRow($0)?.foreignKey }
         Self.logger.info("[fk] postgres fetchForeignKeys schema=\(resolvedSchema, privacy: .public) table=\(table, privacy: .public) rows=\(result.rows.count) parsed=\(foreignKeys.count)")
         return foreignKeys
@@ -350,7 +349,7 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     func fetchTriggers(table: String, schema: String?) async throws -> [PluginTriggerInfo] {
         let resolvedSchema = schema ?? core.currentSchema
         let query = PostgreSQLObjectQueries.triggerList(schema: resolvedSchema, table: table)
-        let result = try await execute(query: query)
+        let result = try await catalogRead(query)
         let triggers = result.rows.compactMap {
             Self.trigger(from: $0, fallbackSchema: resolvedSchema)
         }
@@ -377,7 +376,7 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         let query = PostgreSQLForeignKeyQueries.foreignKeyList(
             schema: schema ?? core.currentSchema, table: nil, capabilities: catalogCapabilities
         )
-        let result = try await execute(query: query)
+        let result = try await catalogRead(query)
         var grouped: [String: [PluginForeignKeyInfo]] = [:]
         for row in result.rows {
             guard let decoded = PostgreSQLForeignKeyRow(row) else { continue }
@@ -390,7 +389,7 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         let query = PostgreSQLSchemaQueries.approximateRowCount(
             schema: schema ?? core.currentSchema, table: table
         )
-        let result = try await execute(query: query)
+        let result = try await catalogRead(query)
         return PostgreSQLSchemaQueries.rowEstimate(reltuples: result.rows.first?[safe: 0]?.asText).map { Int($0) }
     }
 
@@ -405,8 +404,8 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
             schema: resolvedSchema, table: table
         )
 
-        async let columnsResult = execute(query: columnsQuery)
-        async let constraintsResult = execute(query: constraintsQuery)
+        async let columnsResult = catalogRead(columnsQuery)
+        async let constraintsResult = catalogRead(constraintsQuery)
 
         let (cols, cons) = try await (columnsResult, constraintsResult)
 
@@ -448,7 +447,9 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
 
     func fetchStandaloneIndexes(table: String, schema: String) async throws -> PostgreSQLStandaloneIndexes {
         let query = PostgreSQLIndexQueries.standaloneIndexQuery(schema: schema, table: table)
-        let indexes = PostgreSQLIndexQueries.standaloneIndexes(rows: try await execute(query: query).rows)
+        let indexes = PostgreSQLIndexQueries.standaloneIndexes(
+            rows: try await catalogRead(query).rows
+        )
         if !indexes.invalidNames.isEmpty {
             Self.logger.info(
                 "Left out \(indexes.invalidNames.count) invalid index(es) on \(table, privacy: .private(mask: .hash))"
@@ -458,20 +459,8 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     }
 
     func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
-        let schemaLiteral = PostgreSQLObjectQueries.quoteLiteral(schema ?? core.currentSchema)
-        let query = """
-            SELECT
-                pg_total_relation_size(c.oid) AS total_size,
-                pg_table_size(c.oid) AS data_size,
-                pg_indexes_size(c.oid) AS index_size,
-                c.reltuples::bigint AS row_count,
-                obj_description(c.oid, 'pg_class') AS comment
-            FROM pg_class c
-            JOIN pg_namespace n ON n.oid = c.relnamespace
-            WHERE c.relname = \(PostgreSQLObjectQueries.quoteLiteral(table))
-              AND n.nspname = \(schemaLiteral)
-            """
-        let result = try await execute(query: query)
+        let query = PostgreSQLSchemaQueries.tableMetadata(schema: schema ?? core.currentSchema, table: table)
+        let result = try await catalogRead(query)
         guard let row = result.rows.first else {
             return PluginTableMetadata(tableName: table)
         }
@@ -494,17 +483,17 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     }
 
     func fetchDatabases() async throws -> [String] {
-        let result = try await execute(query: "SELECT datname FROM pg_database WHERE datistemplate = false ORDER BY datname")
+        let result = try await catalogRead(PostgreSQLSchemaQueries.databases)
         return result.rows.compactMap { row in row.first?.asText }
     }
 
     func fetchSchemas() async throws -> [String] {
-        let result = try await execute(query: PostgreSQLSchemaQueries.listSchemas)
+        let result = try await catalogRead(PostgreSQLSchemaQueries.listSchemas)
         return result.rows.compactMap { row in row.first?.asText }
     }
 
     func fetchDatabaseMetadata(_ database: String) async throws -> PluginDatabaseMetadata {
-        let result = try await execute(query: PostgreSQLSchemaQueries.databaseMetadata(database: database))
+        let result = try await catalogRead(PostgreSQLSchemaQueries.databaseMetadata(database: database))
         let row = result.rows.first
         return PluginDatabaseMetadata(
             name: database,
@@ -515,7 +504,7 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     }
 
     func fetchAllDatabaseMetadata() async throws -> [PluginDatabaseMetadata] {
-        let result = try await execute(query: PostgreSQLSchemaQueries.allDatabaseMetadata)
+        let result = try await catalogRead(PostgreSQLSchemaQueries.allDatabaseMetadata)
         return result.rows.compactMap { row -> PluginDatabaseMetadata? in
             guard let dbName = row[safe: 0]?.asText else { return nil }
             return PluginDatabaseMetadata(
@@ -526,31 +515,9 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         }
     }
 
-    /// The kinds `fetchTableDDL` writes a `CREATE TABLE` for. A view's DDL is its own statement, so
-    /// the enum types and sequences its columns happen to use are not a preamble to it: written in
-    /// front of a `CREATE VIEW` they recreated objects the view only reads.
-    private static let relkindsCreatedByTableDDL = "('r', 'p', 'f')"
-
     func fetchDependentTypes(table: String, schema: String?) async throws -> [(name: String, labels: [String])] {
-        let tableLiteral = PostgreSQLObjectQueries.quoteLiteral(table)
-        let schemaLiteral = PostgreSQLObjectQueries.quoteLiteral(schema ?? core.currentSchema)
-        let query = """
-            SELECT DISTINCT t.typname,
-                   array_agg(e.enumlabel ORDER BY e.enumsortorder)::text
-            FROM pg_attribute a
-            JOIN pg_class c ON c.oid = a.attrelid
-            JOIN pg_namespace n ON n.oid = c.relnamespace
-            JOIN pg_type t ON t.oid = a.atttypid
-            JOIN pg_enum e ON e.enumtypid = t.oid
-            WHERE c.relname = \(tableLiteral)
-              AND n.nspname = \(schemaLiteral)
-              AND c.relkind IN \(Self.relkindsCreatedByTableDDL)
-              AND a.attnum > 0
-              AND NOT a.attisdropped
-            GROUP BY t.typname
-            ORDER BY t.typname
-            """
-        let result = try await execute(query: query)
+        let query = PostgreSQLSchemaQueries.dependentEnumTypes(schema: schema ?? core.currentSchema, table: table)
+        let result = try await catalogRead(query)
         return result.rows.compactMap { row -> (name: String, labels: [String])? in
             guard let typeName = row[0].asText, let labelsStr = row[1].asText else { return nil }
             return (name: typeName, labels: PostgreSQLTextArray.values(labelsStr))
@@ -755,8 +722,8 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
             selectColumns = "datcollate, datctype, NULL, NULL"
         }
         do {
-            let result = try await execute(
-                query: "SELECT \(selectColumns) FROM pg_database WHERE datname = 'template1'"
+            let result = try await catalogRead(
+                "SELECT \(selectColumns) FROM pg_catalog.pg_database WHERE datname = 'template1'"
             )
             guard let row = result.rows.first,
                   row.count >= 4,
@@ -780,7 +747,7 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
 
     private func fetchCollations() async -> (libc: [String], icu: [String]) {
         do {
-            let result = try await execute(query: PostgreSQLSchemaQueries.collationList(capabilities: catalogCapabilities))
+            let result = try await catalogRead(PostgreSQLSchemaQueries.collationList(capabilities: catalogCapabilities))
             var libc: [String] = []
             var icu: [String] = []
             for row in result.rows {

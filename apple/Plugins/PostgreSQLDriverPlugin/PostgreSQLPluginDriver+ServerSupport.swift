@@ -29,7 +29,7 @@ internal extension PostgreSQLPluginDriver {
 
     func probeSessionFacts() async {
         do {
-            let result = try await core.execute(query: PostgreSQLSessionFacts.probeQuery)
+            let result = try await core.executeCatalogRead(PostgreSQLSessionFacts.probeQuery)
             let row = result.rows.first?.map(\.asText) ?? []
             let facts = PostgreSQLSessionFacts(probeRow: row)
             sessionFacts.withLock { $0 = facts }
