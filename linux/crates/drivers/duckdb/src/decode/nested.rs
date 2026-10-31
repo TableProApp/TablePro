@@ -13,8 +13,7 @@ pub(super) fn text(array: &dyn Array, duck: &DuckType, row: usize) -> Option<Str
         DuckType::Array(element, _) => {
             let values = array.as_fixed_size_list_opt()?;
             let width = usize::try_from(values.value_length()).ok()?;
-            let start = values.value_offset(row);
-            let start = usize::try_from(start).ok()?;
+            let start = values.value_offset_at(row);
             items(values.values().as_ref(), element, start..start + width)
         }
         DuckType::Struct(fields) => {
