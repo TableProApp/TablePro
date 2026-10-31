@@ -11,6 +11,7 @@
 		<string>TiDB</string>
 		<string>Databend</string>
 		<string>OceanBase</string>
+		<string>StarRocks</string>
 	</array>
 </dict>
 </plist>

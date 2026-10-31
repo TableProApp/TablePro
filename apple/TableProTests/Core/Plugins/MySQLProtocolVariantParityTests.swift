@@ -10,7 +10,7 @@ import Testing
 
 @MainActor
 struct MySQLProtocolVariantParityTests {
-    nonisolated private static let variants: [DatabaseType] = [.mariadb, .tidb, .databend, .oceanbase]
+    nonisolated private static let variants: [DatabaseType] = [.mariadb, .tidb, .databend, .oceanbase, .starrocks]
     nonisolated private static let outsideMySQLDialect: Set<DatabaseType> = [.databend]
 
     @Test("The pinned variants are exactly the types the registry sends to the MySQL plugin")
@@ -68,6 +68,7 @@ struct MySQLProtocolVariantParityTests {
             "information_schema", "performance_schema"
         ],
         .databend: ["information_schema", "system"],
+        .starrocks: [],
         .oceanbase: [
             "information_schema", "mysql", "oceanbase", "__recyclebin", "__public", "SYS", "LBACSYS", "ORAAUDITOR"
         ]

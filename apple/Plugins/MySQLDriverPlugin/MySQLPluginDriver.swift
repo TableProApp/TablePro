@@ -25,6 +25,14 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         sessionLock.withLock { _activeDatabase }
     }
 
+    /// The StarRocks catalog the session is in, which every reconnect enters again before its `USE`.
+    /// Nil only before the first connect has settled what the Database field named.
+    private var _activeCatalog: String?
+
+    var activeCatalogName: String? {
+        sessionLock.withLock { _activeCatalog }
+    }
+
     internal var cachedPrivilegeCatalog: PluginPrivilegeCatalog?
 
     /// One verdict per database about whether `information_schema` describes it, learned from the
@@ -99,7 +107,17 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     internal static let logger = Logger(subsystem: "com.TablePro", category: "MySQLPluginDriver")
 
-    var currentSchema: String? { nil }
+    /// StarRocks browses a catalog's databases as schemas. Every other flavor has no schema level.
+    var currentSchema: String? {
+        guard flavor.isStarRocks else { return nil }
+        return activeDatabaseName.nilIfEmpty
+    }
+
+    var currentDatabase: String? {
+        guard flavor.isStarRocks else { return nil }
+        return activeCatalogName
+    }
+
     var serverVersion: String? { sessionLock.withLock { _serverVersion } }
 
     /// The banner and the flavor together, taken under one lock. `connect()` writes both in the
@@ -113,8 +131,8 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let identity = serverIdentity
         return MySQLServerVersion.quotesColumnDefault(banner: identity.banner, flavor: identity.flavor)
     }
-    var supportsSchemas: Bool { false }
-    var supportsTransactions: Bool { true }
+    var supportsSchemas: Bool { flavor.isStarRocks }
+    var supportsTransactions: Bool { !flavor.isStarRocks }
     var requiresBackslashEscapingInLiterals: Bool { true }
 
     /// `NO_BACKSLASH_ESCAPES` from the status flags of the last reply the connection read. Databend reports no such
@@ -143,6 +161,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     /// Read live by the app, after `connect()` has written the banner it is gated on.
     var capabilities: PluginCapabilities {
         guard !flavor.isDatabend else { return Self.databendCapabilities }
+        guard !flavor.isStarRocks else { return Self.starrocksCapabilities }
         var capabilities: PluginCapabilities = [
             .parameterizedQueries,
             .transactions,
@@ -172,9 +191,30 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     init(config: DriverConnectionConfig) {
+        let flavor = Self.initialFlavor(for: config)
         self.config = config
-        self._activeDatabase = config.database
-        self._flavor = Self.initialFlavor(for: config)
+        self._flavor = flavor
+        guard flavor.isStarRocks else {
+            self._activeDatabase = config.database
+            return
+        }
+        switch StarRocksCatalog.target(fromConfiguredDatabase: config.database) {
+        case .qualified(let catalog, let database):
+            self._activeCatalog = catalog
+            self._activeDatabase = database
+        case .bareName(let name):
+            self._activeDatabase = name
+        case .serverDefault:
+            self._activeDatabase = ""
+        }
+    }
+
+    /// Written once the session has entered the scope, so a reconnect enters the same one.
+    func adoptStarRocksScope(catalog: String, database: String) {
+        sessionLock.withLock {
+            _activeCatalog = catalog
+            _activeDatabase = database
+        }
     }
 
     /// The timer's task outlives the driver it was started for, so a driver dropped without
@@ -199,11 +239,13 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             deadline: connectDeadline
         )
 
+        // A StarRocks handshake database is read in `default_catalog`, so the scope is entered after connecting.
+        let enterStarRocksScope = Self.initialFlavor(for: config).isStarRocks
         let conn = MariaDBPluginConnection(
             transport: MySQLTransport(host: config.host, port: config.port, additionalFields: config.additionalFields),
             user: config.username,
             password: kerberos == nil ? password : nil,
-            database: activeDatabaseName,
+            database: enterStarRocksScope ? "" : activeDatabaseName,
             sslConfig: sslConfig,
             enableCleartextPlugin: config.additionalFields["enableCleartextPlugin"] == "true",
             tunnelSecuresTransport: config.additionalFields["tunnelSecuresTransport"] == "true",
@@ -234,6 +276,9 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 return true
             })
             try await conn.completeConnect(deadline: connectDeadline)
+            if enterStarRocksScope {
+                try await enterStarRocksSessionScope(on: conn, deadline: connectDeadline)
+            }
         } catch {
             conn.disconnect()
             throw error
@@ -737,6 +782,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             )
         }
         guard !database.isEmpty else { return [] }
+        guard !flavor.isStarRocks else { return try await starrocksTables(database: database) }
 
         let rows: [[PluginCellValue]]
         if serverHasInformationSchema {
@@ -784,7 +830,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     /// shape, and `PARTITION_DESCRIPTION` on such a row repeats the parent's bound rather than
     /// describing the subpartition, so a subpartition reports no bound of its own.
     func fetchPartitionDetails(table: String, schema: String?) async throws -> [PluginPartitionInfo] {
-        guard !flavor.isDatabend,
+        guard flavor.hasMySQLObjectCatalogs,
               holdsForServer(MySQLServerVersion.hasPartitionAndEventCatalogs(banner:flavor:))
         else { return [] }
         let query = MySQLObjectQueries.partitionList(
@@ -832,7 +878,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] {
-        guard !flavor.isDatabend else { return [] }
+        guard flavor.hasMySQLObjectCatalogs else { return [] }
         let result = try await execute(query: "SHOW INDEX FROM \(qualifiedName(table, schema: schema))")
         let expressionColumn = result.columns.firstIndex(of: "Expression")
 
@@ -855,7 +901,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     /// The same builder the schema-wide list uses, with one more predicate.
     func fetchTriggers(table: String, schema: String?) async throws -> [PluginTriggerInfo] {
         // A temporary table cannot carry a trigger.
-        guard !flavor.isDatabend, await !resolvesToTemporaryTable(table, schema: schema) else { return [] }
+        guard flavor.hasMySQLObjectCatalogs, await !resolvesToTemporaryTable(table, schema: schema) else { return [] }
         let dbName = effectiveSchema(schema)
         let triggers = try await triggerList(schema: dbName, table: table)
         Self.logger.info("[trigger] mysql fetchTriggers db=\(dbName, privacy: .public) table=\(table, privacy: .public) parsed=\(triggers.count)")
@@ -863,7 +909,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func createTriggerTemplate(table: String, schema: String?) -> String? {
-        guard !flavor.isDatabend else { return nil }
+        guard flavor.hasMySQLObjectCatalogs else { return nil }
         return """
         CREATE TRIGGER \(qualifiedName("trigger_name", schema: schema)) BEFORE INSERT
         ON \(qualifiedName(table, schema: schema)) FOR EACH ROW
@@ -878,7 +924,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func fetchApproximateRowCount(table: String, schema: String?) async throws -> Int? {
-        guard await !resolvesToTemporaryTable(table, schema: schema) else { return nil }
+        guard !flavor.isStarRocks, await !resolvesToTemporaryTable(table, schema: schema) else { return nil }
         guard serverHasInformationSchema else {
             return try await tableStatusRow(table: table, schema: schema)?[safe: 4]?.asText.flatMap { Int($0) }
         }
@@ -916,7 +962,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     /// Scheduled events. `information_schema.EVENTS` lists them for the current database, and
     /// `SHOW CREATE EVENT` is the only thing that produces a runnable definition.
     func fetchEvents(schema: String?) async throws -> [PluginEventInfo] {
-        guard !flavor.isDatabend,
+        guard flavor.hasMySQLObjectCatalogs,
               holdsForServer(MySQLServerVersion.hasPartitionAndEventCatalogs(banner:flavor:))
         else { return [] }
         let exactSchema = await schemaNamesAreCaseSensitive()
@@ -957,6 +1003,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
         guard !flavor.isDatabend else { return try await databendTableMetadata(table: table, schema: schema) }
+        guard !flavor.isStarRocks else { return PluginTableMetadata(tableName: table) }
         guard await !resolvesToTemporaryTable(table, schema: schema),
               let row = try await tableStatusRow(table: table, schema: schema) else {
             return PluginTableMetadata(tableName: table)
@@ -993,9 +1040,18 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     // MARK: - Database Operations
 
+    /// StarRocks lists catalogs here, the level above its databases.
     func fetchDatabases() async throws -> [String] {
+        guard !flavor.isStarRocks else {
+            return StarRocksCatalog.names(from: try await execute(query: StarRocksCatalog.showCatalogs).rows)
+        }
         let result = try await execute(query: "SHOW DATABASES")
         return result.rows.compactMap { row in row[safe: 0]?.asText }
+    }
+
+    func fetchSchemas() async throws -> [String] {
+        guard flavor.isStarRocks else { return [] }
+        return StarRocksCatalog.names(from: try await execute(query: StarRocksCatalog.showDatabases).rows)
     }
 
     /// Classified by the type the connection was saved as, the same list the app classifies the database list by,
@@ -1044,16 +1100,31 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     /// The clock still moves, because a database switch is the user using the connection: leaving
     /// it alone let the idle timer fire seconds after a switch and charge the next click a full
     /// reconnect.
+    ///
+    /// On StarRocks the database level is the catalog. Entering one leaves no database selected,
+    /// so the schema list that follows is the new catalog's.
     func switchDatabase(to database: String) async throws {
-        _ = try await executeWithReconnect(
-            query: "USE \(quoteIdentifier(database))",
-            isRetry: false,
-            countsAsActivity: false
-        )
-        sessionLock.withLock {
-            _activeDatabase = database
-            lastActivity = ContinuousClock.now
+        guard !flavor.isStarRocks else {
+            try await runSessionSetup(StarRocksCatalog.setCatalog(database))
+            sessionLock.withLock {
+                _activeCatalog = database
+                _activeDatabase = ""
+            }
+            return
         }
+        try await runSessionSetup("USE \(quoteIdentifier(database))")
+        sessionLock.withLock { _activeDatabase = database }
+    }
+
+    func switchSchema(to schema: String) async throws {
+        guard flavor.isStarRocks else { return }
+        try await runSessionSetup(StarRocksCatalog.useDatabase(schema))
+        sessionLock.withLock { _activeDatabase = schema }
+    }
+
+    private func runSessionSetup(_ statement: String) async throws {
+        _ = try await executeWithReconnect(query: statement, isRetry: false, countsAsActivity: false)
+        sessionLock.withLock { lastActivity = ContinuousClock.now }
     }
 
     // MARK: - Query Timeout
@@ -1316,10 +1387,10 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Foreign Key Checks
 
     func foreignKeyDisableStatements() -> [String]? {
-        flavor.isDatabend ? nil : ["SET FOREIGN_KEY_CHECKS=0"]
+        flavor.hasMySQLObjectCatalogs ? ["SET FOREIGN_KEY_CHECKS=0"] : nil
     }
 
     func foreignKeyEnableStatements() -> [String]? {
-        flavor.isDatabend ? nil : ["SET FOREIGN_KEY_CHECKS=1"]
+        flavor.hasMySQLObjectCatalogs ? ["SET FOREIGN_KEY_CHECKS=1"] : nil
     }
 }
