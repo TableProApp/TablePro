@@ -550,9 +550,10 @@ enum NativeDumpRegistry {
 
     /// One `.duckdb` file, written by the engine already in front of the app.
     ///
-    /// Measured against the vendored libduckdb v1.5.2: `ATTACH` plus `COPY FROM DATABASE` carries
-    /// tables, views, indexes, foreign keys and sequences, and restores with the same statement
-    /// reversed. The source catalog comes from `current_database()`, because DuckDB derives a
+    /// Measured against the vendored libduckdb v2.0.0: `ATTACH` plus `COPY FROM DATABASE` carries
+    /// tables, views, indexes, foreign keys and sequences, copying tables in foreign-key order, and
+    /// restores with the same statement reversed. A table whose foreign key references itself, with
+    /// rows that use it, still fails to copy. The source catalog comes from `current_database()`, because DuckDB derives a
     /// catalog name from the file's basename: a file `my-weird.name.db` attaches as `my-weird`, and
     /// `COPY FROM DATABASE main` fails with `Catalog "main" does not exist`.
     private static var duckDBFile: NativeDumpDescriptor {

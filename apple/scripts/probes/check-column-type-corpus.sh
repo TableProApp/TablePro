@@ -94,7 +94,7 @@ case "$ENGINE" in
         ;;
     duckdb)
         FOLDER=DuckDBDriverPlugin CLASS=DuckDBPlugin C_MODULE=CDuckDB PRODUCTS=""
-        LINK="$ROOT/Libs/libduckdb.a -lc++"
+        LINK="-Xlinker -force_load -Xlinker $ROOT/Libs/libduckdb.a -lc++"
         ;;
     mssql)
         FOLDER=MSSQLDriverPlugin CLASS=MSSQLPlugin C_MODULE=CFreeTDS

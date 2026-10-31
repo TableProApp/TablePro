@@ -38,8 +38,6 @@ nonisolated final class DuckDBDriver: DatabaseDriver, @unchecked Sendable {
             fileAccess.end()
             throw error
         }
-        try? await actor.query("SET autoinstall_known_extensions=false")
-        try? await actor.query("SET autoload_known_extensions=false")
     }
 
     func disconnect() async throws {
@@ -176,10 +174,31 @@ actor DuckDBActor {
     var streamColumns: [DuckDBStreamColumn] = []
     var streamGeneration: UInt64 = 0
 
+    // The linked extensions, core_functions among them, exist only once DuckDB's generated loader has registered them.
+    private nonisolated static let registeredExtensions: Int32 = duckdb_register_static_extensions()
+
+    // v0.10.2 is DuckDB 1.x's default, so a file this creates stays readable by DuckDB 1.x (macOS:
+    // DuckDBStorageCompatibility). Automatic installs stay off: iOS may not load downloaded code.
+    private nonisolated static let openOptions = [
+        ("storage_compatibility_version", "v0.10.2"),
+        ("autoinstall_known_extensions", "false"),
+        ("autoload_known_extensions", "false"),
+    ]
+
     func open(path: String) throws {
+        _ = Self.registeredExtensions
+        var config: duckdb_config?
+        guard duckdb_create_config(&config) != DuckDBError else {
+            throw DuckDBDriverError.connectionFailed("Failed to allocate a DuckDB configuration")
+        }
+        defer { duckdb_destroy_config(&config) }
+        for (option, value) in Self.openOptions where duckdb_set_config(config, option, value) == DuckDBError {
+            throw DuckDBDriverError.connectionFailed("DuckDB refused \(option) = \(value)")
+        }
+
         var db: duckdb_database?
         var errorPtr: UnsafeMutablePointer<CChar>?
-        let state = duckdb_open_ext(path, &db, nil, &errorPtr)
+        let state = duckdb_open_ext(path, &db, config, &errorPtr)
 
         if state == DuckDBError {
             let detail: String

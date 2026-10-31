@@ -136,6 +136,40 @@ async fn an_editor_session_outlives_its_workspace() {
 /// The app makes no requests of its own, so DuckDB fetches and loads no
 /// extension by itself.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_new_or_attached_database_stays_readable_by_duckdb_1() {
+    let file = TestFile::new();
+    let attached = file.path.with_extension("side.duckdb");
+    let created = connect(FileEndpoint::create_new(file.path.clone()).unwrap(), writable())
+        .await
+        .unwrap();
+    apply(
+        created.as_ref(),
+        &[
+            "CREATE TABLE facts (a INTEGER)",
+            &format!("ATTACH '{}' AS side", attached.display()),
+            "CREATE TABLE side.facts (a INTEGER)",
+        ],
+    )
+    .await
+    .unwrap();
+
+    let versions = query(
+        created.as_ref(),
+        "SELECT tags['storage_version'] FROM duckdb_databases() WHERE NOT internal ORDER BY database_name = 'side'",
+    )
+    .await;
+
+    assert_eq!(versions.rows.len(), 2);
+    for row in &versions.rows {
+        assert!(
+            matches!(&row[0], Value::Text(version) if version.starts_with("v1.")),
+            "a file DuckDB 1.x cannot open: {row:?}"
+        );
+    }
+    created.close().await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn extensions_are_never_installed_or_loaded_on_their_own() {
     let file = TestFile::new();
     let connection = file.open().await;

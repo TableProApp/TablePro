@@ -394,16 +394,21 @@ pub(crate) fn attach_unless_open<T>(
     Ok(result)
 }
 
+/// DuckDB 1.x's default. DuckDB 2.0 writes files 1.x cannot open, and
+/// this keeps every file a connection creates or attaches readable there.
+const STORAGE_VERSION: &str = "v0.10.2";
+
 /// Every connection opens the same way. Extensions are never fetched:
 /// a query that needs one DuckDB does not link in fails instead of
 /// downloading it, as the app makes no requests of its own.
-fn config(read_only: bool) -> Result<Config, DriverError> {
+pub(crate) fn config(read_only: bool) -> Result<Config, DriverError> {
     let mode = match read_only {
         true => AccessMode::ReadOnly,
         false => AccessMode::ReadWrite,
     };
     Config::default()
         .access_mode(mode)
+        .and_then(|config| config.with("storage_compatibility_version", STORAGE_VERSION))
         .and_then(|config| config.with("autoinstall_known_extensions", "false"))
         .and_then(|config| config.with("autoload_known_extensions", "false"))
         .map_err(map_error)
