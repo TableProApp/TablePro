@@ -61,6 +61,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
     private let suppressServerSideCancel: Bool
     private let connectTimeout: LibPQConnectTimeout
     private let kerberos: LibPQKerberosSignIn?
+    private let pinsCatalogSearchPath: Bool
 
     private let stateLock = NSLock()
     let cancellationGate = PluginQueryCancellationGate()
@@ -124,7 +125,8 @@ final class LibPQPluginConnection: @unchecked Sendable {
         connectTimeout: LibPQConnectTimeout = LibPQConnectTimeout(
             milliseconds: LibPQConnectTimeout.defaultMilliseconds
         ),
-        kerberos: LibPQKerberosSignIn? = nil
+        kerberos: LibPQKerberosSignIn? = nil,
+        pinsCatalogSearchPath: Bool = true
     ) {
         self.host = host
         self.port = port
@@ -137,6 +139,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
         self.suppressServerSideCancel = suppressServerSideCancel
         self.connectTimeout = connectTimeout
         self.kerberos = kerberos
+        self.pinsCatalogSearchPath = pinsCatalogSearchPath
     }
 
     deinit {
@@ -665,6 +668,10 @@ final class LibPQPluginConnection: @unchecked Sendable {
 
         return try await pluginDispatchAsync(on: queue) { [self] in
             guard !isShuttingDown else { throw LibPQPluginError.notConnected }
+            // The post-connect probes read the catalogs too; no transaction can be open yet.
+            if let deadline = activeConnectDeadline {
+                return try executeConnectQuerySync(statementToRun, deadline: deadline)
+            }
             guard isInsideTransactionBlockOnQueue() else {
                 return try executeQuerySync(statementToRun)
             }
@@ -679,6 +686,22 @@ final class LibPQPluginConnection: @unchecked Sendable {
             _ = try executeQuerySync(Self.scopedReadRollback)
             return result
         }
+    }
+
+    /// A catalog query the driver sends on its own while reading a result, on the connection's queue, scoped the way
+    /// `executeTransactionScopedRead` scopes one. The caller clears the result. Inside an aborted block it hands back
+    /// the savepoint's own `25P02` failure.
+    func pinnedCatalogSideQueryOnQueue(_ statement: String, conn: OpaquePointer) -> OpaquePointer? {
+        preconditionOnQueue()
+        guard pinsCatalogSearchPath else { return statement.withCString { PQexec(conn, $0) } }
+        let pinned = PostgreSQLCatalogSearchPath.pinned + statement
+        guard isInsideTransactionBlockOnQueue() else { return pinned.withCString { PQexec(conn, $0) } }
+        guard let savepoint = Self.scopedReadSavepoint.withCString({ PQexec(conn, $0) }) else { return nil }
+        guard PQresultStatus(savepoint) == PGRES_COMMAND_OK else { return savepoint }
+        PQclear(savepoint)
+        let result = pinned.withCString { PQexec(conn, $0) }
+        if let rollback = Self.scopedReadRollback.withCString({ PQexec(conn, $0) }) { PQclear(rollback) }
+        return result
     }
 
     private static let scopedReadSavepoint = "SAVEPOINT tablepro_scoped_read"

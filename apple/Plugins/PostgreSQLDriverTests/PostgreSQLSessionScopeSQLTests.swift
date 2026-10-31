@@ -46,7 +46,7 @@ struct PostgreSQLSessionScopeSQLTests {
         let statement = PostgreSQLSessionScopeSQL.captureStatement(names: ["DateStyle", "search_path", "TimeZone"])
         #expect(statement.sql == """
             SELECT name, setting FROM pg_catalog.pg_settings \
-            WHERE pg_catalog.lower(name) IN ('datestyle', 'search_path', 'timezone')
+            WHERE pg_catalog.lower(name) OPERATOR(pg_catalog.=) ANY (ARRAY['datestyle', 'search_path', 'timezone']::pg_catalog.text[])
             """)
         #expect(statement.parameters.isEmpty)
     }

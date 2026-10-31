@@ -19,12 +19,12 @@ enum PostgreSQLSchemaProbe: Equatable {
 enum PostgreSQLSchemaQueries {
     /// Returns the first schema on the effective search path, or SQL NULL
     /// when the path is empty (neither `$user` nor `public` exists).
-    static let currentSchema = "SELECT current_schema()"
+    static let currentSchema = "SELECT pg_catalog.current_schema()"
 
     /// Like `current_schema()`, but resolves via `current_schemas(false)`,
     /// which omits search path entries that do not correspond to existing,
     /// searchable schemas.
-    static let firstSearchPathSchema = "SELECT (current_schemas(false))[1]"
+    static let firstSearchPathSchema = "SELECT (pg_catalog.current_schemas(false))[1]"
 
     /// Queries tried in order when `current_schema()` resolves to NULL, so a
     /// database without a `public` schema still gets a usable default schema
@@ -56,10 +56,10 @@ enum PostgreSQLSchemaQueries {
     /// Redshift variant: queries `pg_namespace` directly and additionally
     /// requires the connected role to hold `USAGE` on the schema.
     static let listSchemasRedshift = """
-        SELECT nspname FROM pg_namespace
+        SELECT nspname FROM pg_catalog.pg_namespace
         WHERE nspname NOT LIKE 'pg!_%' ESCAPE '!'
           AND nspname NOT IN ('information_schema', 'catalog_history')
-          AND has_schema_privilege(current_user, nspname, 'USAGE')
+          AND pg_catalog.has_schema_privilege(current_user, nspname, 'USAGE')
         ORDER BY nspname
         """
 
@@ -143,19 +143,66 @@ enum PostgreSQLSchemaQueries {
         """
     }
 
-    static func setSearchPath(toSchema schema: String) -> String {
-        "SET search_path TO \(quotedSchemaIdentifier(schema))"
+    static func tableMetadata(schema: String, table: String) -> String {
+        """
+        SELECT
+            pg_catalog.pg_total_relation_size(c.oid) AS total_size,
+            pg_catalog.pg_table_size(c.oid) AS data_size,
+            pg_catalog.pg_indexes_size(c.oid) AS index_size,
+            c.reltuples::bigint AS row_count,
+            pg_catalog.obj_description(c.oid, 'pg_class') AS comment
+        FROM pg_catalog.pg_class c
+        JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+        WHERE c.relname = \(PostgreSQLObjectQueries.quoteLiteral(table))
+          AND n.nspname = \(PostgreSQLObjectQueries.quoteLiteral(schema))
+        """
     }
 
-    /// Narrows `search_path` to `pg_catalog` and one schema for the statement that follows, so every
-    /// name the server deparses is written the way that schema's own `CREATE TABLE` writes it: its
-    /// own types bare, every other schema's qualified. That is what `psql \d` shows, and it does not
-    /// depend on what the session's path happens to be.
-    ///
-    /// Run through `LibPQPluginConnection.executeTransactionScopedRead`, which is what confines the
-    /// setting to the read.
-    static func schemaRelativeReadPrefix(schema: String) -> String {
-        "SET LOCAL search_path = pg_catalog, \(quotedSchemaIdentifier(schema)); "
+    /// `tableMetadata(schema:table:)` for every table of one schema, the table's name first.
+    static func allTableMetadata(schema: String) -> String {
+        """
+        SELECT
+            c.relname AS table_name,
+            pg_catalog.pg_total_relation_size(c.oid) AS total_size,
+            pg_catalog.pg_table_size(c.oid) AS data_size,
+            pg_catalog.pg_indexes_size(c.oid) AS index_size,
+            c.reltuples::bigint AS row_count,
+            pg_catalog.obj_description(c.oid, 'pg_class') AS comment
+        FROM pg_catalog.pg_class c
+        JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = \(PostgreSQLObjectQueries.quoteLiteral(schema)) AND c.relkind IN ('r', 'p', 'm', 'f')
+        ORDER BY c.relname
+        """
+    }
+
+    static let databases = "SELECT datname FROM pg_catalog.pg_database WHERE NOT datistemplate ORDER BY datname"
+
+    /// The kinds `fetchTableDDL` writes a `CREATE TABLE` for. A view's DDL is its own statement, so
+    /// the enum types and sequences its columns happen to use are not a preamble to it: written in
+    /// front of a `CREATE VIEW` they recreated objects the view only reads.
+    private static let relkindsCreatedByTableDDL = "('r', 'p', 'f')"
+
+    static func dependentEnumTypes(schema: String, table: String) -> String {
+        """
+        SELECT DISTINCT t.typname,
+               pg_catalog.array_agg(e.enumlabel ORDER BY e.enumsortorder)::text
+        FROM pg_catalog.pg_attribute a
+        JOIN pg_catalog.pg_class c ON c.oid = a.attrelid
+        JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+        JOIN pg_catalog.pg_type t ON t.oid = a.atttypid
+        JOIN pg_catalog.pg_enum e ON e.enumtypid = t.oid
+        WHERE c.relname = \(PostgreSQLObjectQueries.quoteLiteral(table))
+          AND n.nspname = \(PostgreSQLObjectQueries.quoteLiteral(schema))
+          AND c.relkind IN \(relkindsCreatedByTableDDL)
+          AND a.attnum > 0
+          AND NOT a.attisdropped
+        GROUP BY t.typname
+        ORDER BY t.typname
+        """
+    }
+
+    static func setSearchPath(toSchema schema: String) -> String {
+        "SET search_path TO \(quotedSchemaIdentifier(schema))"
     }
 
     private static func quotedSchemaIdentifier(_ schema: String) -> String {
@@ -169,6 +216,8 @@ enum PostgreSQLSchemaQueries {
         return "SELECT collname, collprovider FROM pg_catalog.pg_collation WHERE collprovider IN ('b', 'c', 'i') ORDER BY collname"
     }
 
+    /// The app runs this itself, on the session's own path, which may name another schema before `pg_catalog`: every
+    /// call, relation and operator names `pg_catalog`.
     static func allTablesMetadata(schema: String) -> String {
         """
         SELECT
@@ -176,12 +225,12 @@ enum PostgreSQLSchemaQueries {
             relname as name,
             'TABLE' as kind,
             n_live_tup as estimated_rows,
-            pg_size_pretty(pg_total_relation_size(relid)) as total_size,
-            pg_size_pretty(pg_relation_size(relid)) as data_size,
-            pg_size_pretty(pg_indexes_size(relid)) as index_size,
-            obj_description(relid, 'pg_class') as comment
-        FROM pg_stat_user_tables
-        WHERE schemaname = \(PostgreSQLObjectQueries.quoteLiteral(schema))
+            pg_catalog.pg_size_pretty(pg_catalog.pg_total_relation_size(relid)) as total_size,
+            pg_catalog.pg_size_pretty(pg_catalog.pg_relation_size(relid)) as data_size,
+            pg_catalog.pg_size_pretty(pg_catalog.pg_indexes_size(relid)) as index_size,
+            pg_catalog.obj_description(relid, 'pg_class') as comment
+        FROM pg_catalog.pg_stat_user_tables
+        WHERE schemaname OPERATOR(pg_catalog.=) \(PostgreSQLObjectQueries.quoteLiteral(schema))
         ORDER BY relname
         """
     }
@@ -249,7 +298,7 @@ enum PostgreSQLSchemaQueries {
     /// `public.geometry(Point,4326)` as `USER-DEFINED` and `geometry`, and `varchar(50)` as
     /// `character varying`. Both `format_type` and `pg_get_expr` leave out the schema of anything the
     /// reading session resolves without one, so the caller runs this with `search_path` narrowed
-    /// (see `PostgreSQLViewDefinition.qualifiedReadPrefix`).
+    /// (`PostgreSQLCatalogSearchPath.pinned`).
     ///
     /// A query of its own rather than columns of `columnsQuery`, because a narrowed path would
     /// change what that query reports for display and comparison. The relation kinds are the ones
@@ -287,8 +336,49 @@ enum PostgreSQLSchemaQueries {
             """
     }
 
+    /// What a person reads for each column in the Structure tab: its default, generation expression and declared type,
+    /// spelled relative to the table's schema the way `psql \d` shows them. Run under
+    /// `PostgreSQLCatalogSearchPath.relative(to:)`, so this statement calls `pg_catalog` functions by their qualified
+    /// name and compares only operands a `pg_catalog` operator takes exactly: the browsed schema is on the path.
+    ///
+    /// The default is `information_schema.columns.column_default`'s own expression: none for a generated column.
+    static func columnSpellingQuery(schema: String, table: String?, capabilities: PostgreSQLCapabilities) -> String {
+        let tableFilter = table.map { "\n  AND c.relname = \(PostgreSQLObjectQueries.quoteLiteral($0))" } ?? ""
+        let isGenerated = capabilities.hasGeneratedColumns ? "a.attgenerated IN ('s', 'v')" : "false"
+        return """
+            SELECT
+                c.relname,
+                a.attname,
+                CASE WHEN NOT (\(isGenerated)) THEN pg_catalog.pg_get_expr(ad.adbin, ad.adrelid) END,
+                CASE WHEN \(isGenerated) THEN pg_catalog.pg_get_expr(ad.adbin, ad.adrelid) END,
+                \(declaredType(attribute: "a"))
+            FROM pg_catalog.pg_attribute a
+            JOIN pg_catalog.pg_class c ON c.oid = a.attrelid
+            JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+            LEFT JOIN pg_catalog.pg_attrdef ad ON ad.adrelid = a.attrelid AND ad.adnum = a.attnum
+            WHERE n.nspname = \(PostgreSQLObjectQueries.quoteLiteral(schema))\(tableFilter)
+              AND c.relkind IN ('r', 'v', 'f', 'p', 'm')
+              AND a.attnum > 0
+              AND NOT a.attisdropped
+            """
+    }
+
+    /// Keyed by relation, then by column, with exact spellings, like `columnDDL(rows:)`.
+    static func columnSpellings(rows: [[PluginCellValue]]) -> [String: [String: PostgreSQLColumnSpelling]] {
+        var spellings: [String: [String: PostgreSQLColumnSpelling]] = [:]
+        for row in rows {
+            guard let table = row[safe: 0]?.asText, let column = row[safe: 1]?.asText else { continue }
+            spellings[table, default: [:]][column] = PostgreSQLColumnSpelling(
+                defaultValue: row[safe: 2]?.asText,
+                generationExpression: row[safe: 3]?.asText?.nilIfEmpty,
+                declaredType: row[safe: 4]?.asText
+            )
+        }
+        return spellings
+    }
+
     /// The column's type as the table's own schema declares it, read under
-    /// `schemaRelativeReadPrefix`. `format_type` is the only spelling that keeps the modifier, and
+    /// `PostgreSQLCatalogSearchPath.relative(to:)`. `format_type` is the only spelling that keeps the modifier, and
     /// under that path it writes the table's own types bare and every other schema's qualified.
     ///
     /// A type an extension owns is qualified even in its own schema. PostGIS and citext install into
@@ -310,9 +400,9 @@ enum PostgreSQLSchemaQueries {
                           AND EXISTS (
                               SELECT 1
                               FROM pg_catalog.pg_depend dd
-                              WHERE dd.classid = 'pg_catalog.pg_type'::pg_catalog.regclass
+                              WHERE dd.classid = 'pg_catalog.pg_type'::pg_catalog.regclass::pg_catalog.oid
                                 AND dd.deptype = 'e'
-                                AND dd.objid = CASE WHEN dt.typlen = -1 AND dt.typelem <> 0
+                                AND dd.objid = CASE WHEN dt.typlen = -1 AND dt.typelem <> 0::pg_catalog.oid
                                                     THEN dt.typelem ELSE dt.oid END))
                    THEN (SELECT pg_catalog.quote_ident(dtn.nspname) || '.'
                            FROM pg_catalog.pg_type dt
@@ -340,7 +430,7 @@ enum PostgreSQLSchemaQueries {
 
     private static func declaredCollation(_ value: String, otherwise fallback: String? = nil) -> String {
         """
-        CASE WHEN a.attcollation <> 0
+        CASE WHEN a.attcollation <> 0::pg_catalog.oid
                   AND a.attcollation <> (SELECT ty.typcollation FROM pg_catalog.pg_type ty WHERE ty.oid = a.atttypid)
                  THEN \(value)\(fallback.map { "\n         ELSE \($0)" } ?? "")
             END
@@ -394,10 +484,10 @@ enum PostgreSQLSchemaQueries {
         return """
         SELECT
             con.conname,
-            pg_get_constraintdef(con.oid),
+            pg_catalog.pg_get_constraintdef(con.oid),
             con.convalidated,
             COALESCE((
-                SELECT array_agg(att.attname ORDER BY att.attnum)::text
+                SELECT pg_catalog.array_agg(att.attname ORDER BY att.attnum)::text
                 FROM pg_catalog.pg_attribute att
                 WHERE att.attrelid = con.conrelid AND att.attnum = ANY (con.conkey)
             ), \'{}\')
@@ -416,10 +506,10 @@ enum PostgreSQLSchemaQueries {
         let tableLiteral = PostgreSQLObjectQueries.quoteLiteral(table)
         return """
             SELECT
-                pg_get_constraintdef(con.oid, true)
-            FROM pg_constraint con
-            JOIN pg_class c ON c.oid = con.conrelid
-            JOIN pg_namespace n ON n.oid = c.relnamespace
+                pg_catalog.pg_get_constraintdef(con.oid, true)
+            FROM pg_catalog.pg_constraint con
+            JOIN pg_catalog.pg_class c ON c.oid = con.conrelid
+            JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
             WHERE c.relname = \(tableLiteral)
               AND n.nspname = \(schemaLiteral)
               AND con.contype IN ('p', 'u', 'c', 'x')
@@ -460,8 +550,8 @@ enum PostgreSQLSchemaQueries {
             """ : ""
         let generationClause = capabilities.hasGeneratedColumns ? """
             CASE
-                  WHEN a.attgenerated = 's' THEN ' GENERATED ALWAYS AS (' || pg_get_expr(d.adbin, d.adrelid) || ') STORED'
-                  WHEN a.attgenerated = 'v' THEN ' GENERATED ALWAYS AS (' || pg_get_expr(d.adbin, d.adrelid) || ') VIRTUAL'
+                  WHEN a.attgenerated = 's' THEN ' GENERATED ALWAYS AS (' || pg_catalog.pg_get_expr(d.adbin, d.adrelid) || ') STORED'
+                  WHEN a.attgenerated = 'v' THEN ' GENERATED ALWAYS AS (' || pg_catalog.pg_get_expr(d.adbin, d.adrelid) || ') VIRTUAL'
                   ELSE ''
                 END ||
             """ : ""
@@ -471,13 +561,13 @@ enum PostgreSQLSchemaQueries {
             capabilities.hasGeneratedColumns ? "AND a.attgenerated NOT IN ('s', 'v')" : ""
         ].filter { !$0.isEmpty }.joined(separator: " ")
         return """
-            quote_ident(a.attname) || ' ' || format_type(a.atttypid, a.atttypmod) || \(columnCollateClause) ||
+            pg_catalog.quote_ident(a.attname) || ' ' || pg_catalog.format_type(a.atttypid, a.atttypmod) || \(columnCollateClause) ||
                 \(identityClause)
                 \(generationClause)
                 CASE WHEN a.attnotnull THEN ' NOT NULL' ELSE '' END ||
                 CASE
                   WHEN a.atthasdef \(defaultGuard)
-                    THEN ' DEFAULT ' || pg_get_expr(d.adbin, d.adrelid)
+                    THEN ' DEFAULT ' || pg_catalog.pg_get_expr(d.adbin, d.adrelid)
                   ELSE ''
                 END
             """
@@ -485,10 +575,10 @@ enum PostgreSQLSchemaQueries {
 
     private static func relationColumns(schema: String, table: String) -> String {
         """
-            FROM pg_attribute a
-            JOIN pg_class c ON c.oid = a.attrelid
-            JOIN pg_namespace n ON n.oid = c.relnamespace
-            LEFT JOIN pg_attrdef d ON d.adrelid = c.oid AND d.adnum = a.attnum
+            FROM pg_catalog.pg_attribute a
+            JOIN pg_catalog.pg_class c ON c.oid = a.attrelid
+            JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+            LEFT JOIN pg_catalog.pg_attrdef d ON d.adrelid = c.oid AND d.adnum = a.attnum
             WHERE c.relname = \(PostgreSQLObjectQueries.quoteLiteral(table))
               AND n.nspname = \(PostgreSQLObjectQueries.quoteLiteral(schema))
               AND a.attnum > 0
@@ -497,7 +587,9 @@ enum PostgreSQLSchemaQueries {
             """
     }
 
-    /// Column introspection for one schema, read under `schemaRelativeReadPrefix(schema:)`.
+    /// Column introspection for one schema, read under `PostgreSQLCatalogSearchPath.pinned`. The default, the
+    /// generation expression and the declared type depend on the path the server deparses them under, so they are
+    /// NULL here and come from `columnSpellingQuery`.
     ///
     /// `declared_type` is what the column shows and `data_type` is what the app classifies by, which
     /// are two different spellings: `information_schema` reports `character varying` for a
@@ -532,15 +624,6 @@ enum PostgreSQLSchemaQueries {
         let identityProjection = capabilities.hasIdentityColumns ? "a.attidentity" : "NULL::text"
         let generatedProjection = capabilities.hasGeneratedColumns ? "a.attgenerated" : "NULL::text"
         // Not `c.generation_expression`: KingbaseES's Oracle-mode view compares `attgenerated <> NULL`, so it is always NULL.
-        let generationExpressionProjection = capabilities.hasGeneratedColumns
-            ? """
-                CASE WHEN a.attgenerated IN ('s', 'v')
-                         THEN (SELECT pg_catalog.pg_get_expr(ad.adbin, ad.adrelid)
-                                 FROM pg_catalog.pg_attrdef ad
-                                WHERE ad.adrelid = a.attrelid AND ad.adnum = a.attnum)
-                    END
-                """
-            : "NULL::text"
         let attributeJoin = """
 
                 LEFT JOIN pg_catalog.pg_attribute a
@@ -552,7 +635,7 @@ enum PostgreSQLSchemaQueries {
                 \(includesTableName ? "c.table_name AS table_name,\n    " : "")c.column_name AS column_name,
                 c.data_type AS data_type,
                 c.is_nullable AS is_nullable,
-                c.column_default AS column_default,
+                NULL::text AS column_default,
                 c.collation_name AS collation_name,
                 pg_catalog.col_description(rel.oid, c.ordinal_position) AS column_comment,
                 c.udt_name AS udt_name,
@@ -560,8 +643,8 @@ enum PostgreSQLSchemaQueries {
                 \(identityProjection) AS identity_kind,
                 \(generatedProjection) AS generated_kind,
                 c.udt_schema AS udt_schema,
-                \(generationExpressionProjection) AS generation_expression,
-                \(declaredType(attribute: "a")) AS declared_type,
+                NULL::text AS generation_expression,
+                NULL::text AS declared_type,
                 c.domain_name AS domain_name,
                 c.ordinal_position AS ordinal_position
             FROM information_schema.columns c
@@ -651,12 +734,18 @@ enum PostgreSQLSchemaQueries {
             \(generatedProjection) AS generated_kind,
             COALESCE(mvbtn.nspname, mvtn.nspname) AS udt_schema,
             NULL::text AS generation_expression,
-            \(declaredType(attribute: "mva")) AS declared_type,
+            NULL::text AS declared_type,
             CASE WHEN mvt.typtype = 'd' THEN mvt.typname END AS domain_name,
             \(source.ordinalPosition) AS ordinal_position
         \(source.relation(schemaLiteral: schemaLiteral, table: table))
         """
     }
+}
+
+struct PostgreSQLColumnSpelling: Equatable {
+    let defaultValue: String?
+    let generationExpression: String?
+    let declaredType: String?
 }
 
 /// One column's clauses as the server spells them, read under a narrowed `search_path`.

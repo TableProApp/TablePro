@@ -13,7 +13,7 @@ extension PostgreSQLPluginDriver {
     func fetchViewDefinition(view: String, schema: String?) async throws -> String {
         let resolvedSchema = schema ?? core.currentSchema
         let query = PostgreSQLViewDefinition.catalogQuery(name: view, schema: resolvedSchema)
-        let result = try await executeQualifiedRead(query)
+        let result = try await catalogRead(query)
         guard let row = result.rows.first,
               let catalogRow = PostgreSQLViewDefinition.parse(row: row.map(\.asText))
         else {
@@ -47,7 +47,7 @@ extension PostgreSQLPluginDriver {
             name: materializedView,
             schema: schema ?? core.currentSchema
         )
-        let result = try await execute(query: query)
+        let result = try await catalogRead(query)
         guard let row = result.rows.first, row.count >= 2 else {
             throw LibPQPluginError(
                 message: "Materialized view '\(materializedView)' was not found",

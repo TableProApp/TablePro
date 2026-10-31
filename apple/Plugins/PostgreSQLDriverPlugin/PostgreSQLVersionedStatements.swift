@@ -42,7 +42,7 @@ internal enum PostgreSQLVersionedStatements {
         }
         let nameLiteral = PostgreSQLObjectQueries.quoteLiteral(name)
         let createLiteral = PostgreSQLObjectQueries.quoteLiteral("CREATE SCHEMA \(identifier)")
-        let body = "BEGIN IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_namespace WHERE nspname = \(nameLiteral)) "
+        let body = "BEGIN IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_namespace WHERE nspname OPERATOR(pg_catalog.=) \(nameLiteral)) "
             + "THEN EXECUTE \(createLiteral); END IF; END"
         let tag = dollarQuoteTag(avoiding: body)
         return "DO \(tag) \(body) \(tag)"
