@@ -8,13 +8,12 @@ import Foundation
 import Testing
 
 struct ResultSetMenuModelTests {
-    /// The count is what the deleted strip showed at a glance and a closed menu cannot. Carrying it
-    /// in the button's own title is the whole mitigation, so it is worth a test.
+    // A position rather than a name: "Result 2 of 4" read as the name of a result counted "Result 3" after a close.
     @Test("The title counts the results when there is more than one")
     func titleCountsResults() {
         let model = Self.make(count: 4, activeIndex: 1)
 
-        #expect(model.title == "Result 2 of 4")
+        #expect(model.title == "2 of 4")
     }
 
     @Test("A single result is named rather than counted")
@@ -79,6 +78,54 @@ struct ResultSetMenuModelTests {
 
         #expect(model.isEmpty)
         #expect(model.activeEntry == nil)
+    }
+
+    @Test("Tabs are offered from two results up to six, the HIG's limit for a tab view")
+    func tabsNeedTwoToSixResults() {
+        #expect(Self.make(count: 1, activeIndex: 0).offersTabs == false)
+        #expect(Self.make(count: 2, activeIndex: 0).offersTabs)
+        #expect(Self.make(count: 6, activeIndex: 0).offersTabs)
+        #expect(Self.make(count: 7, activeIndex: 0).offersTabs == false)
+    }
+
+    @Test("Two results from one table get names that tell them apart")
+    func duplicateLabelsAreNumbered() {
+        let model = Self.make(labels: ["users", "orders", "users", "users"], activeIndex: 0)
+
+        #expect(model.entries.map(model.displayLabel(of:)) == ["users", "orders", "users (2)", "users (3)"])
+    }
+
+    @Test("A long name is cut on a whole character, never inside an emoji")
+    func truncationKeepsWholeCharacters() {
+        let label = "Monthly revenue per region 📈 for Q3"
+        let cut = ResultSetMenuModel.truncated(label, limit: 28)
+
+        #expect(cut == "Monthly revenue per region 📈…")
+        #expect(cut.unicodeScalars.contains("\u{FFFD}") == false)
+        #expect(ResultSetMenuModel.truncated("orders", limit: 28) == "orders")
+    }
+
+    @Test("A tab's title is the disambiguated name, cut to fit")
+    func tabTitleIsBounded() throws {
+        let model = Self.make(labels: ["a_table_name_long_enough_to_need_cutting"], activeIndex: 0)
+        let entry = try #require(model.entries.first)
+
+        #expect(model.tabTitle(of: entry).count <= 25)
+        #expect(model.tabTitle(of: entry).hasSuffix("…"))
+    }
+
+    private static func make(labels: [String], activeIndex: Int) -> ResultSetMenuModel {
+        let entries = labels.enumerated().map { index, label in
+            ResultSetMenuEntry(
+                id: UUID(),
+                label: label,
+                isPinned: false,
+                isActive: index == activeIndex,
+                ordinal: index + 1,
+                isComparable: true
+            )
+        }
+        return ResultSetMenuModel(entries: entries, activeOrdinal: activeIndex + 1, total: labels.count)
     }
 
     private static func make(

@@ -145,6 +145,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         SyncCoordinator.shared.start()
         LinkedFolderWatcher.shared.start()
         TeamLibrarySyncCoordinator.shared.start()
+        SupportAskCoordinator.shared.start()
 
         Task {
             LicenseManager.shared.startPeriodicValidation()

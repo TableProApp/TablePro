@@ -20,6 +20,8 @@ enum DiscardAction {
     case pagination
     case filter
     case resultSwitch
+    case resultClose
+    case clearResults
     case navigation
     case displayOrder
     case columnVisibility

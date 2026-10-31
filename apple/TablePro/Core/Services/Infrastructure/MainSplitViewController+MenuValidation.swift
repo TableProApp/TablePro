@@ -80,6 +80,9 @@ struct MenuValidationContext: Equatable {
     var hasOtherWindowTabs = false
     var canPinResultTab = false
     var canCompareResult = false
+    var canShowPreviousResult = false
+    var canShowNextResult = false
+    var canCloseResultTab = false
     // Separate flags: Back and Forward run out independently and a disabled item has to say which one it is.
     var canNavigateBack = false
     var canNavigateForward = false
@@ -154,9 +157,6 @@ extension MainSplitViewController: NSMenuItemValidation {
              #selector(refreshDatabase(_:)),
              #selector(openQuickSwitcher(_:)),
              #selector(toggleQueryHistory(_:)),
-             #selector(showPreviousResult(_:)),
-             #selector(showNextResult(_:)),
-             #selector(closeResultTab(_:)),
              #selector(focusSidebarFilter(_:)),
              #selector(showERDiagram(_:)):
             return context.isConnected
@@ -296,6 +296,12 @@ extension MainSplitViewController: NSMenuItemValidation {
             return context.canPinResultTab
         case #selector(compareResult(_:)):
             return context.canCompareResult
+        case #selector(showPreviousResult(_:)):
+            return context.canShowPreviousResult
+        case #selector(showNextResult(_:)):
+            return context.canShowNextResult
+        case #selector(closeResultTab(_:)):
+            return context.canCloseResultTab
         case #selector(navigateBack(_:)):
             return context.isConnected && context.canNavigateBack
         case #selector(navigateForward(_:)):
@@ -461,6 +467,11 @@ extension MainSplitViewController: NSMenuItemValidation {
         #selector(moveTabToConnection(_:)),
         #selector(searchDatabase(_:)),
         #selector(buildJoinQuery(_:)),
+        #selector(pinResult(_:)),
+        #selector(compareResult(_:)),
+        #selector(showPreviousResult(_:)),
+        #selector(showNextResult(_:)),
+        #selector(closeResultTab(_:)),
     ]
 
     // A command this window does not own stays enabled, which keeps `performClose:` and the system's own items working.
@@ -614,6 +625,9 @@ extension MainSplitViewController: NSMenuItemValidation {
             hasOtherWindowTabs: hasOtherWindowTabs,
             canPinResultTab: actions.canPinResultTab,
             canCompareResult: actions.canCompareResult,
+            canShowPreviousResult: actions.canShowPreviousResult,
+            canShowNextResult: actions.canShowNextResult,
+            canCloseResultTab: actions.canCloseResultTab,
             canNavigateBack: actions.canNavigateBack,
             canNavigateForward: actions.canNavigateForward,
             canNavigatePages: actions.canNavigatePages,

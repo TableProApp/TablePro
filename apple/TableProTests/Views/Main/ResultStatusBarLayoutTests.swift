@@ -90,11 +90,7 @@ struct ResultStatusBarLayoutTests {
             isRefreshingSchema: false,
             viewMode: .constant(viewMode),
             resultSetMenu: ResultSetMenuModel(entries: [], activeOrdinal: 0, total: 0),
-            onActivateResultSet: { _ in },
-            onToggleResultSetPin: { _ in },
-            onCompareResultSet: { _ in },
-            onCloseResultSet: { _ in },
-            onCloseOtherResultSets: { _ in },
+            resultSetActions: .none,
             onToggleFilters: {},
             onFetchAll: {}
         )
@@ -351,11 +347,7 @@ struct ResultStatusBarLayoutTests {
             isRefreshingSchema: false,
             viewMode: .constant(.data),
             resultSetMenu: ResultSetMenuModel(entries: [], activeOrdinal: 0, total: 0),
-            onActivateResultSet: { _ in },
-            onToggleResultSetPin: { _ in },
-            onCompareResultSet: { _ in },
-            onCloseResultSet: { _ in },
-            onCloseOtherResultSets: { _ in },
+            resultSetActions: .none,
             onToggleFilters: {},
             onFetchAll: {}
         )
