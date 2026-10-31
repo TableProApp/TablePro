@@ -924,7 +924,12 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func fetchApproximateRowCount(table: String, schema: String?) async throws -> Int? {
-        guard !flavor.isStarRocks, await !resolvesToTemporaryTable(table, schema: schema) else { return nil }
+        guard !flavor.isStarRocks else {
+            return try await starrocksCatalogRead(fallback: nil) {
+                try await self.tableStatusRow(table: table, schema: schema).flatMap(StarRocksCatalog.rowCount(fromStatusRow:))
+            }
+        }
+        guard await !resolvesToTemporaryTable(table, schema: schema) else { return nil }
         guard serverHasInformationSchema else {
             return try await tableStatusRow(table: table, schema: schema)?[safe: 4]?.asText.flatMap { Int($0) }
         }
@@ -990,7 +995,10 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func fetchViewDefinition(view: String, schema: String?) async throws -> String {
         guard !flavor.isDatabend else { return try await databendViewDefinition(view: view, schema: schema) }
-        let result = try await execute(query: "SHOW CREATE VIEW \(qualifiedName(view, schema: schema))")
+        // StarRocks's `SHOW CREATE VIEW` rewrites a materialized view as a plain `CREATE VIEW`, while
+        // `SHOW CREATE TABLE` gives each kind its own statement.
+        let show = flavor.isStarRocks ? "SHOW CREATE TABLE" : "SHOW CREATE VIEW"
+        let result = try await execute(query: "\(show) \(qualifiedName(view, schema: schema))")
 
         guard let firstRow = result.rows.first,
               let ddl = firstRow[safe: 1]?.asText
@@ -1003,7 +1011,13 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
         guard !flavor.isDatabend else { return try await databendTableMetadata(table: table, schema: schema) }
-        guard !flavor.isStarRocks else { return PluginTableMetadata(tableName: table) }
+        guard !flavor.isStarRocks else {
+            let row = try await starrocksCatalogRead(fallback: nil) {
+                try await self.tableStatusRow(table: table, schema: schema)
+            }
+            return row.map { StarRocksCatalog.tableMetadata(fromStatusRow: $0, tableName: table) }
+                ?? PluginTableMetadata(tableName: table)
+        }
         guard await !resolvesToTemporaryTable(table, schema: schema),
               let row = try await tableStatusRow(table: table, schema: schema) else {
             return PluginTableMetadata(tableName: table)

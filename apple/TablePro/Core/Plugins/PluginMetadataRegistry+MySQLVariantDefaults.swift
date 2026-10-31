@@ -23,6 +23,15 @@ extension PluginMetadataRegistry {
         ExplainVariant(id: "explain", label: "EXPLAIN", sqlPrefix: "EXPLAIN", format: .plainText),
     ]
 
+    /// Measured on StarRocks 4.1.7. No `EXPLAIN ANALYZE`: it colors its report with terminal escape
+    /// codes, which a plain-text plan shows as `[0m` throughout.
+    static let starrocksExplainVariants: [ExplainVariant] = [
+        ExplainVariant(id: "explain", label: "EXPLAIN", sqlPrefix: "EXPLAIN", format: .plainText),
+        ExplainVariant(id: "logical", label: "EXPLAIN LOGICAL", sqlPrefix: "EXPLAIN LOGICAL", format: .plainText),
+        ExplainVariant(id: "verbose", label: "EXPLAIN VERBOSE", sqlPrefix: "EXPLAIN VERBOSE", format: .plainText),
+        ExplainVariant(id: "costs", label: "EXPLAIN COSTS", sqlPrefix: "EXPLAIN COSTS", format: .plainText),
+    ]
+
     /// A grid reads every cell back as text and a keyless save compares that text to the stored
     /// value. Measured on MySQL 8.4.11 and OceanBase CE 4.4.2.1, on these three types it does not
     /// compare equal to what it was read from, so the save matched no row and was reported as a
@@ -92,7 +101,7 @@ extension PluginMetadataRegistry {
             displayName: "StarRocks", iconName: "starrocks-icon", defaultPort: 9_030,
             requiresAuthentication: true, supportsForeignKeys: false, supportsSchemaEditing: false,
             isDownloadable: false, primaryUrlScheme: "", parameterStyle: .questionMark,
-            navigationModel: .standard, explainVariants: mysqlVariantExplainVariants, pathFieldRole: .database,
+            navigationModel: .standard, explainVariants: starrocksExplainVariants, pathFieldRole: .database,
             supportsHealthMonitor: true, urlSchemes: [],
             postConnectActions: [.selectDatabaseFromLastSession, .selectSchemaFromLastSession],
             brandColorHex: "#01808F",

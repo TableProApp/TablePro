@@ -47,7 +47,8 @@ extension MySQLPluginDriver {
     }
 
     /// `SHOW FULL TABLES` tells views apart, but a connector behind an external catalog may refuse
-    /// it, and plain `SHOW TABLES` still lists what is there.
+    /// it, and plain `SHOW TABLES` still lists what is there. It types a materialized view as `VIEW`,
+    /// so those are named from `information_schema.materialized_views`.
     func starrocksTables(database: String) async throws -> [PluginTableInfo] {
         let source = mysqlQuoteIdentifier(database)
         let rows: [[PluginCellValue]]
@@ -58,6 +59,32 @@ extension MySQLPluginDriver {
         } catch {
             rows = try await execute(query: "SHOW TABLES FROM \(source)").rows
         }
-        return MySQLTableListing.tables(from: rows, listsSequencesAsTables: false)
+        let tables = MySQLTableListing.tables(from: rows, listsSequencesAsTables: false)
+        let materialized = try await starrocksCatalogRead(fallback: []) {
+            StarRocksCatalog.names(from: try await self.execute(
+                ownStatement: StarRocksCatalog.materializedViewNames(database: database)
+            ).rows)
+        }
+        return StarRocksCatalog.markingMaterializedViews(Set(materialized), in: tables)
+    }
+
+    /// Keyed by table. An external catalog's `SHOW FULL COLUMNS` adds the connector's `_file` and
+    /// `_pos`, which `SELECT *` never returns; `information_schema.columns` lists what the table holds.
+    func starrocksColumns(database: String, table: String?) async throws -> [String: [PluginColumnInfo]] {
+        let rows = try await execute(
+            ownStatement: StarRocksCatalog.columns(database: database, table: table)
+        ).rows
+        return StarRocksCatalog.columnsByTable(from: rows)
+    }
+
+    /// `information_schema.tables_config`, `materialized_views` and the table status of an external
+    /// catalog are missing or empty, so a refusal there reads as nothing to report.
+    func starrocksCatalogRead<T>(fallback: T, _ read: () async throws -> T) async throws -> T {
+        do {
+            return try await read()
+        } catch let error as MariaDBPluginError
+            where !error.isConnectionTimeout && MySQLTableListing.showFullTablesSettlesCatalogFailure(code: error.code) {
+            return fallback
+        }
     }
 }

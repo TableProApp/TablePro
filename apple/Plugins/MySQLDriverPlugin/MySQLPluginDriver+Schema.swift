@@ -54,9 +54,10 @@ internal extension MySQLPluginDriver {
             let columnsByTable = try await informationSchemaColumns(schema: schema, table: table)
             return columnsByTable[table] ?? (columnsByTable.count == 1 ? columnsByTable.values.first ?? [] : [])
         }
+        guard !flavor.isStarRocks else {
+            return try await starrocksColumns(database: effectiveSchema(schema), table: table)[table] ?? []
+        }
         let result = try await execute(query: "SHOW FULL COLUMNS FROM \(qualifiedName(table, schema: schema))")
-        // Both lookups read MySQL's `information_schema` and `SHOW CREATE TABLE` shapes, which an external
-        // StarRocks catalog is not held to, and a failed lookup would fail the whole column read.
         var catalogDetails: [String: MySQLCatalogColumnDetail] = [:]
         var createTableDefaults: MySQLCreateTableDefaults?
         if flavor.hasMySQLObjectCatalogs {
@@ -329,7 +330,8 @@ internal extension MySQLPluginDriver {
         }
     }
 
-    /// StarRocks reads one table at a time, which a caller weighing the bulk read should not mistake for one query.
+    /// StarRocks answers the bulk read in one query, but an external catalog loads every table's schema
+    /// from the lake behind it to do so, which a caller weighing the bulk read should not mistake for cheap.
     var providesBulkColumnFetch: Bool { !flavor.isStarRocks }
 
     /// `GENERATION_EXPRESSION` is projected here rather than looked up per table, because a caller
@@ -339,7 +341,7 @@ internal extension MySQLPluginDriver {
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
         guard !flavor.isDatabend else { return try await databendAllColumns(schema: schema) }
         let database = effectiveSchema(schema)
-        guard !flavor.isStarRocks else { return try await showColumnsByTable(database: database) }
+        guard !flavor.isStarRocks else { return try await starrocksColumns(database: database, table: nil) }
         return try await catalogOrShow(
             database: database,
             catalogExists: serverHasInformationSchema,

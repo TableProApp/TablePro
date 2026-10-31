@@ -120,6 +120,90 @@ struct StarRocksCatalogTests {
         #expect(driver.activeDatabaseName == "a.b")
     }
 
+    /// `information_schema.columns` rows as StarRocks 4.1.7 answers them, one table per key model.
+    @Test("A primary, unique or aggregate key picks out a row, and a duplicate key does not")
+    func keyModels() {
+        let row: (String, String, String, String, String) -> [PluginCellValue] = { table, column, type, nullable, key in
+            [.text(table), .text(column), .text(type), .text(nullable), .text(key), .null, .text("")]
+        }
+        let columns = StarRocksCatalog.columnsByTable(from: [
+            row("pk", "id", "bigint(20)", "NO", "PRI"),
+            row("pk", "v", "varchar(20)", "YES", ""),
+            row("uq", "a", "int(11)", "YES", "UNI"),
+            row("agg", "a", "int(11)", "YES", "AGG"),
+            row("dup", "a", "int(11)", "YES", "DUP"),
+        ])
+        #expect(columns["pk"]?.map(\.isPrimaryKey) == [true, false])
+        #expect(columns["pk"]?.first?.isNullable == false)
+        #expect(columns["pk"]?.first?.dataType == "BIGINT(20)")
+        #expect(columns["pk"]?.first?.comment == nil)
+        #expect(columns["pk"]?.first?.defaultValue == nil)
+        #expect(columns["uq"]?.first?.isPrimaryKey == true)
+        #expect(columns["agg"]?.first?.isPrimaryKey == true)
+        #expect(columns["dup"]?.first?.isPrimaryKey == false)
+    }
+
+    @Test("A column keeps its default and comment")
+    func columnDetails() {
+        let columns = StarRocksCatalog.columnsByTable(from: [
+            [.text("cm"), .text("id"), .text("int(11)"), .text("NO"), .text("PRI"), .null, .text("the id")],
+            [.text("cm"), .text("d"), .text("datetime"), .text("YES"), .text(""), .text("CURRENT_TIMESTAMP"), .text("")],
+        ])
+        #expect(columns["cm"]?.map(\.name) == ["id", "d"])
+        #expect(columns["cm"]?.first?.comment == "the id")
+        #expect(columns["cm"]?.last?.defaultValue == "CURRENT_TIMESTAMP")
+    }
+
+    @Test("Catalog reads escape the names they filter on")
+    func catalogReadsEscape() {
+        #expect(StarRocksCatalog.columns(database: "o'b", table: "t'1").contains("TABLE_SCHEMA = 'o''b' AND TABLE_NAME = 't''1'"))
+        #expect(!StarRocksCatalog.columns(database: "db", table: nil).contains("TABLE_NAME ="))
+        #expect(StarRocksCatalog.materializedViewNames(database: "o'b").contains("TABLE_SCHEMA = 'o''b'"))
+    }
+
+    @Test("A materialized view listed as VIEW is retyped, and the rest keep their type")
+    func materializedViews() {
+        let tables = [
+            PluginTableInfo(name: "dup", type: "TABLE", comment: nil, partitionCount: nil, ownedByTable: nil, ownedByColumn: nil),
+            PluginTableInfo(name: "mv1", type: "VIEW", comment: nil, partitionCount: nil, ownedByTable: nil, ownedByColumn: nil),
+            PluginTableInfo(name: "v1", type: "VIEW", comment: nil, partitionCount: nil, ownedByTable: nil, ownedByColumn: nil),
+        ]
+        let marked = StarRocksCatalog.markingMaterializedViews(["mv1"], in: tables)
+        #expect(marked.map(\.type) == ["TABLE", "MATERIALIZED VIEW", "VIEW"])
+    }
+
+    /// `SHOW TABLE STATUS` rows as StarRocks 4.1.7 answers them: MySQL's positions, a view at -1,
+    /// and no index length.
+    @Test("Table status reads the data length as the whole size, and a view's -1 as unknown")
+    func tableStatus() {
+        let table = Self.statusRow(name: "pk", engine: "StarRocks", rows: "42", avgRowLength: "12", dataLength: "504")
+        let metadata = StarRocksCatalog.tableMetadata(fromStatusRow: table, tableName: "pk")
+        #expect(metadata.rowCount == 42)
+        #expect(metadata.dataSize == 504)
+        #expect(metadata.totalSize == 504)
+        #expect(metadata.indexSize == nil)
+        #expect(metadata.engine == "StarRocks")
+        #expect(metadata.collation == "utf8_general_ci")
+        #expect(StarRocksCatalog.rowCount(fromStatusRow: table) == 42)
+
+        let view = Self.statusRow(name: "v1", engine: nil, rows: "-1", avgRowLength: "-1", dataLength: "-1")
+        let viewMetadata = StarRocksCatalog.tableMetadata(fromStatusRow: view, tableName: "v1")
+        #expect(viewMetadata.rowCount == nil)
+        #expect(viewMetadata.dataSize == nil)
+        #expect(viewMetadata.engine == nil)
+        #expect(StarRocksCatalog.rowCount(fromStatusRow: view) == nil)
+    }
+
+    private static func statusRow(
+        name: String, engine: String?, rows: String, avgRowLength: String, dataLength: String
+    ) -> [PluginCellValue] {
+        [
+            .text(name), engine.map { .text($0) } ?? .null, .null, .text(""), .text(rows), .text(avgRowLength),
+            .text(dataLength), .null, .null, .null, .null, .text("2026-10-31 15:19:44"), .text("2026-10-31 15:19:44"),
+            .null, .text("utf8_general_ci"), .null, .text(""), .text(""),
+        ]
+    }
+
     private static func config(database: String) -> DriverConnectionConfig {
         DriverConnectionConfig(
             host: "localhost", port: 9_030, username: "root", password: "", database: database,
