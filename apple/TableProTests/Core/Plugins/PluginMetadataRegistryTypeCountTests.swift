@@ -34,7 +34,6 @@ struct PluginMetadataRegistryTypeCountTests {
         "TiDB": "MySQL",
         "Databend": "MySQL",
         "OceanBase": "MySQL",
-        "StarRocks": "MySQL",
         "Redshift": "PostgreSQL",
         "CockroachDB": "PostgreSQL",
         "PGlite": "PostgreSQL",

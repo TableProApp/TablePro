@@ -32,7 +32,7 @@ struct DatabaseTypeTests {
         #expect(DatabaseType.tidb.pluginTypeId == "MySQL")
         #expect(DatabaseType.databend.pluginTypeId == "MySQL")
         #expect(DatabaseType.oceanbase.pluginTypeId == "MySQL")
-        #expect(DatabaseType.starrocks.pluginTypeId == "MySQL")
+        #expect(DatabaseType.starrocks.pluginTypeId == "StarRocks")
         #expect(DatabaseType.postgresql.pluginTypeId == "PostgreSQL")
         #expect(DatabaseType.redshift.pluginTypeId == "PostgreSQL")
         #expect(DatabaseType.sqlite.pluginTypeId == "SQLite")

@@ -58,14 +58,10 @@ internal extension MySQLPluginDriver {
             return try await starrocksColumns(database: effectiveSchema(schema), table: table)[table] ?? []
         }
         let result = try await execute(query: "SHOW FULL COLUMNS FROM \(qualifiedName(table, schema: schema))")
-        var catalogDetails: [String: MySQLCatalogColumnDetail] = [:]
-        var createTableDefaults: MySQLCreateTableDefaults?
-        if flavor.hasMySQLObjectCatalogs {
-            catalogDetails = try await fetchCatalogColumnDetails(table: table, schema: schema)
-            createTableDefaults = try await self.createTableDefaults(
-                table: table, schema: schema, showRows: result.rows, catalogDetails: catalogDetails
-            )
-        }
+        let catalogDetails = try await fetchCatalogColumnDetails(table: table, schema: schema)
+        let createTableDefaults = try await createTableDefaults(
+            table: table, schema: schema, showRows: result.rows, catalogDetails: catalogDetails
+        )
 
         let columns = result.rows.compactMap { row -> PluginColumnInfo? in
             guard let name = row[safe: 0]?.asText,
@@ -330,8 +326,7 @@ internal extension MySQLPluginDriver {
         }
     }
 
-    /// StarRocks answers the bulk read in one query, but an external catalog loads every table's schema
-    /// from the lake behind it to do so, which a caller weighing the bulk read should not mistake for cheap.
+    // StarRocks answers the bulk read by loading every table's schema from the lake behind an external catalog.
     var providesBulkColumnFetch: Bool { !flavor.isStarRocks }
 
     /// `GENERATION_EXPRESSION` is projected here rather than looked up per table, because a caller

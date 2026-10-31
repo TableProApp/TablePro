@@ -13,7 +13,7 @@ import TableProPluginKit
 internal extension MySQLPluginDriver {
     func fetchDatabaseMetadata(_ database: String) async throws -> PluginDatabaseMetadata {
         let isSystem = systemDatabaseNamesForConnectionType.contains(database)
-        // A StarRocks database here is a catalog, and sizing an external one means a scan of the lake behind it.
+        // A StarRocks catalog is sized only by scanning the lake behind it.
         guard !flavor.isStarRocks else { return PluginDatabaseMetadata(name: database, isSystemDatabase: isSystem) }
         guard serverHasInformationSchema else {
             return try await tableStatusMetadata(of: database, isSystem: isSystem)

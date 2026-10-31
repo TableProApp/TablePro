@@ -97,7 +97,7 @@ public struct DatabaseType: Hashable, Codable, Sendable, RawRepresentable {
 
     public var pluginTypeId: String {
         switch self {
-        case .mariadb, .tidb, .databend, .oceanbase, .starrocks: return DatabaseType.mysql.rawValue
+        case .mariadb, .tidb, .databend, .oceanbase: return DatabaseType.mysql.rawValue
         case .redshift: return DatabaseType.postgresql.rawValue
         default: return rawValue
         }

@@ -1187,6 +1187,17 @@ targets:
       - package: TableProCore
         product: TableProNumberFormatting
 
+  StarRocksDriverPlugin:
+    templates: [DriverPlugin, MySQLLinkage]
+    templateAttributes:
+      folder: StarRocksDriverPlugin
+      principalClass: StarRocksPlugin
+    sources:
+      - path: Plugins/MySQLDriverPlugin
+        excludes:
+          - Info.plist
+          - README.md
+
   SurrealDBDriverPlugin:
     templates: [DriverPlugin]
     templateAttributes:
@@ -1308,6 +1319,7 @@ aggregateTargets:
       - ParquetExport
       - SnowflakeDriverPlugin
       - SpannerDriverPlugin
+      - StarRocksDriverPlugin
       - SurrealDBDriverPlugin
       - TeradataDriver
       - TrinoDriverPlugin

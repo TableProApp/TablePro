@@ -67,6 +67,9 @@
     "SpannerDriverPlugin": {
       "name": "Spanner Driver"
     },
+    "StarRocksDriverPlugin": {
+      "name": "StarRocks Driver"
+    },
     "SurrealDBDriverPlugin": {
       "name": "SurrealDB Driver"
     },

@@ -310,6 +310,7 @@ private class DatabaseSwitchBaseDriver {
 
 private final class DatabaseSwitchingDriver: DatabaseSwitchBaseDriver, PluginDatabaseDriver, @unchecked Sendable {
     private(set) var switchedDatabases: [String] = []
+    private(set) var switches: [String] = []
     private var schema: String?
 
     override var currentSchema: String? { schema }
@@ -321,10 +322,12 @@ private final class DatabaseSwitchingDriver: DatabaseSwitchBaseDriver, PluginDat
 
     func switchDatabase(to database: String) async throws {
         switchedDatabases.append(database)
+        switches.append("database \(database)")
     }
 
     func switchSchema(to schema: String) async throws {
         self.schema = schema
+        switches.append("schema \(schema)")
     }
 }
 
@@ -364,9 +367,8 @@ struct DatabaseManagerDatabaseSwitchTests {
         #expect(DatabaseManager.shared.session(for: connection.id)?.browseSchema == adapter.currentSchema)
     }
 
-    /// StarRocks: `idb` lives in the `ice` catalog, and pinning it to a `default_catalog`
-    /// connection ran `USE idb` there, which failed every metadata read.
-    @Test("A catalog switch that leaves the driver on no schema leaves the session on none")
+    // `idb` lives in the `ice` catalog; kept, the pool ran `USE idb` in default_catalog and every read failed.
+    @Test("A catalog switch that leaves the driver on no schema leaves the session and the saved schema on none")
     func hierarchicalSwitchDropsSchemaTheDriverLeft() async throws {
         let connection = TestFixtures.makeConnection(type: .starrocks)
         let pluginDriver = DatabaseSwitchingDriver(currentSchema: nil)
@@ -374,13 +376,19 @@ struct DatabaseManagerDatabaseSwitchTests {
         var session = ConnectionSession(connection: connection, driver: adapter)
         session.browseSchema = "idb"
         DatabaseManager.shared.injectSession(session, for: connection.id)
-        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+        AppSettingsStorage.shared.saveLastSchema("idb", for: connection.id)
+        defer {
+            DatabaseManager.shared.removeSession(for: connection.id)
+            AppSettingsStorage.shared.saveLastSchema(nil, for: connection.id)
+            AppSettingsStorage.shared.saveLastDatabase(nil, for: connection.id)
+        }
 
-        try await DatabaseManager.shared.switchDatabase(to: "default_catalog", for: connection.id, persist: false)
+        try await DatabaseManager.shared.switchDatabase(to: "default_catalog", for: connection.id, persist: true)
 
         let updated = DatabaseManager.shared.session(for: connection.id)
         #expect(updated?.browseDatabase == "default_catalog")
         #expect(updated?.browseSchema == nil)
+        #expect(AppSettingsStorage.shared.loadLastSchema(for: connection.id) == nil)
     }
 
     @Test("A catalog switch that keeps the driver's schema keeps the session's")
@@ -396,5 +404,16 @@ struct DatabaseManagerDatabaseSwitchTests {
         try await DatabaseManager.shared.switchDatabase(to: "hive", for: connection.id, persist: false)
 
         #expect(DatabaseManager.shared.session(for: connection.id)?.browseSchema == "web")
+    }
+
+    @Test("A reconnect enters the database before the schema that lives in it")
+    func reconnectRestoresDatabaseThenSchema() async {
+        let connection = TestFixtures.makeConnection(type: .starrocks)
+        let pluginDriver = DatabaseSwitchingDriver()
+        let adapter = PluginDriverAdapter(connection: connection, pluginDriver: pluginDriver)
+
+        await DatabaseManager.shared.restoreSchemaAndDatabase(on: adapter, savedSchema: "idb", savedDatabase: "ice")
+
+        #expect(pluginDriver.switches == ["database ice", "schema idb"])
     }
 }

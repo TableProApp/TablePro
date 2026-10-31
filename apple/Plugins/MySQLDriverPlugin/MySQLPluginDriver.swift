@@ -25,12 +25,11 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         sessionLock.withLock { _activeDatabase }
     }
 
-    /// The StarRocks catalog the session is in, which every reconnect enters again before its `USE`.
-    /// Nil only before the first connect has settled what the Database field named.
-    private var _activeCatalog: String?
+    // StarRocks only: the catalog `_activeDatabase` lives in, which every reconnect enters again.
+    private var _activeCatalog: String
 
-    var activeCatalogName: String? {
-        sessionLock.withLock { _activeCatalog }
+    var starrocksScope: StarRocksCatalog.Scope {
+        sessionLock.withLock { StarRocksCatalog.Scope(catalog: _activeCatalog, database: _activeDatabase) }
     }
 
     internal var cachedPrivilegeCatalog: PluginPrivilegeCatalog?
@@ -107,7 +106,6 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     internal static let logger = Logger(subsystem: "com.TablePro", category: "MySQLPluginDriver")
 
-    /// StarRocks browses a catalog's databases as schemas. Every other flavor has no schema level.
     var currentSchema: String? {
         guard flavor.isStarRocks else { return nil }
         return activeDatabaseName.nilIfEmpty
@@ -115,7 +113,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     var currentDatabase: String? {
         guard flavor.isStarRocks else { return nil }
-        return activeCatalogName
+        return starrocksScope.catalog
     }
 
     var serverVersion: String? { sessionLock.withLock { _serverVersion } }
@@ -192,29 +190,11 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     init(config: DriverConnectionConfig) {
         let flavor = Self.initialFlavor(for: config)
+        let scope = flavor.isStarRocks ? StarRocksCatalog.Scope(configuredDatabase: config.database) : nil
         self.config = config
         self._flavor = flavor
-        guard flavor.isStarRocks else {
-            self._activeDatabase = config.database
-            return
-        }
-        switch StarRocksCatalog.target(fromConfiguredDatabase: config.database) {
-        case .qualified(let catalog, let database):
-            self._activeCatalog = catalog
-            self._activeDatabase = database
-        case .bareName(let name):
-            self._activeDatabase = name
-        case .serverDefault:
-            self._activeDatabase = ""
-        }
-    }
-
-    /// Written once the session has entered the scope, so a reconnect enters the same one.
-    func adoptStarRocksScope(catalog: String, database: String) {
-        sessionLock.withLock {
-            _activeCatalog = catalog
-            _activeDatabase = database
-        }
+        self._activeDatabase = scope?.database ?? config.database
+        self._activeCatalog = scope?.catalog ?? StarRocksCatalog.defaultCatalog
     }
 
     /// The timer's task outlives the driver it was started for, so a driver dropped without
@@ -239,13 +219,13 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             deadline: connectDeadline
         )
 
-        // A StarRocks handshake database is read in `default_catalog`, so the scope is entered after connecting.
-        let enterStarRocksScope = Self.initialFlavor(for: config).isStarRocks
+        // A StarRocks handshake database is read in default_catalog, so the scope is entered after connecting.
+        let entersStarRocksScope = Self.initialFlavor(for: config).isStarRocks
         let conn = MariaDBPluginConnection(
             transport: MySQLTransport(host: config.host, port: config.port, additionalFields: config.additionalFields),
             user: config.username,
             password: kerberos == nil ? password : nil,
-            database: enterStarRocksScope ? "" : activeDatabaseName,
+            database: entersStarRocksScope ? "" : activeDatabaseName,
             sslConfig: sslConfig,
             enableCleartextPlugin: config.additionalFields["enableCleartextPlugin"] == "true",
             tunnelSecuresTransport: config.additionalFields["tunnelSecuresTransport"] == "true",
@@ -276,8 +256,11 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 return true
             })
             try await conn.completeConnect(deadline: connectDeadline)
-            if enterStarRocksScope {
-                try await enterStarRocksSessionScope(on: conn, deadline: connectDeadline)
+            if entersStarRocksScope {
+                let scope = starrocksScope
+                if !scope.isServerDefault {
+                    _ = try await conn.executeConnectQuery(scope.enterStatement, deadline: connectDeadline)
+                }
             }
         } catch {
             conn.disconnect()
@@ -925,9 +908,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func fetchApproximateRowCount(table: String, schema: String?) async throws -> Int? {
         guard !flavor.isStarRocks else {
-            return try await starrocksCatalogRead(fallback: nil) {
-                try await self.tableStatusRow(table: table, schema: schema).flatMap(StarRocksCatalog.rowCount(fromStatusRow:))
-            }
+            return try await starrocksTableStatus(table: table, schema: schema)?.rowCount.map { Int($0) }
         }
         guard await !resolvesToTemporaryTable(table, schema: schema) else { return nil }
         guard serverHasInformationSchema else {
@@ -995,8 +976,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func fetchViewDefinition(view: String, schema: String?) async throws -> String {
         guard !flavor.isDatabend else { return try await databendViewDefinition(view: view, schema: schema) }
-        // StarRocks's `SHOW CREATE VIEW` rewrites a materialized view as a plain `CREATE VIEW`, while
-        // `SHOW CREATE TABLE` gives each kind its own statement.
+        // StarRocks's `SHOW CREATE VIEW` rewrites a materialized view as a plain `CREATE VIEW`.
         let show = flavor.isStarRocks ? "SHOW CREATE TABLE" : "SHOW CREATE VIEW"
         let result = try await execute(query: "\(show) \(qualifiedName(view, schema: schema))")
 
@@ -1012,11 +992,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
         guard !flavor.isDatabend else { return try await databendTableMetadata(table: table, schema: schema) }
         guard !flavor.isStarRocks else {
-            let row = try await starrocksCatalogRead(fallback: nil) {
-                try await self.tableStatusRow(table: table, schema: schema)
-            }
-            return row.map { StarRocksCatalog.tableMetadata(fromStatusRow: $0, tableName: table) }
-                ?? PluginTableMetadata(tableName: table)
+            return try await starrocksTableStatus(table: table, schema: schema) ?? PluginTableMetadata(tableName: table)
         }
         guard await !resolvesToTemporaryTable(table, schema: schema),
               let row = try await tableStatusRow(table: table, schema: schema) else {
@@ -1054,7 +1030,6 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     // MARK: - Database Operations
 
-    /// StarRocks lists catalogs here, the level above its databases.
     func fetchDatabases() async throws -> [String] {
         guard !flavor.isStarRocks else {
             return StarRocksCatalog.names(from: try await execute(query: StarRocksCatalog.showCatalogs).rows)
@@ -1114,31 +1089,34 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     /// The clock still moves, because a database switch is the user using the connection: leaving
     /// it alone let the idle timer fire seconds after a switch and charge the next click a full
     /// reconnect.
-    ///
-    /// On StarRocks the database level is the catalog. Entering one leaves no database selected,
-    /// so the schema list that follows is the new catalog's.
     func switchDatabase(to database: String) async throws {
         guard !flavor.isStarRocks else {
-            try await runSessionSetup(StarRocksCatalog.setCatalog(database))
-            sessionLock.withLock {
-                _activeCatalog = database
-                _activeDatabase = ""
-            }
-            return
+            return try await enterStarRocks(starrocksScope.entering(catalog: database))
         }
-        try await runSessionSetup("USE \(quoteIdentifier(database))")
-        sessionLock.withLock { _activeDatabase = database }
+        _ = try await executeWithReconnect(
+            query: "USE \(quoteIdentifier(database))",
+            isRetry: false,
+            countsAsActivity: false
+        )
+        sessionLock.withLock {
+            _activeDatabase = database
+            lastActivity = ContinuousClock.now
+        }
     }
 
     func switchSchema(to schema: String) async throws {
         guard flavor.isStarRocks else { return }
-        try await runSessionSetup(StarRocksCatalog.useDatabase(schema))
-        sessionLock.withLock { _activeDatabase = schema }
+        try await enterStarRocks(StarRocksCatalog.Scope(catalog: starrocksScope.catalog, database: schema))
     }
 
-    private func runSessionSetup(_ statement: String) async throws {
-        _ = try await executeWithReconnect(query: statement, isRetry: false, countsAsActivity: false)
-        sessionLock.withLock { lastActivity = ContinuousClock.now }
+    // One statement re-asserts both levels, as `USE` does on MySQL.
+    private func enterStarRocks(_ scope: StarRocksCatalog.Scope) async throws {
+        _ = try await executeWithReconnect(query: scope.enterStatement, isRetry: false, countsAsActivity: false)
+        sessionLock.withLock {
+            _activeCatalog = scope.catalog
+            _activeDatabase = scope.database
+            lastActivity = ContinuousClock.now
+        }
     }
 
     // MARK: - Query Timeout

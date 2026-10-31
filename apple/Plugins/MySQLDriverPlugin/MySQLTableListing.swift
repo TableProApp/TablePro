@@ -122,14 +122,16 @@ enum MySQLTableStatusRow {
     static func metadata(
         from row: [PluginCellValue],
         tableName: String,
-        appendsInnoDBStatus: Bool = false
+        appendsInnoDBStatus: Bool = false,
+        reportsIndexLength: Bool = true
     ) -> PluginTableMetadata {
-        let dataSize = (row[safe: 6]?.asText).flatMap { Int64($0) }
-        let indexSize = (row[safe: 8]?.asText).flatMap { Int64($0) }
+        let dataSize = measured(row[safe: 6])
+        let indexSize = reportsIndexLength ? measured(row[safe: 8]) : nil
 
         let totalSize: Int64? = {
-            guard let data = dataSize, let index = indexSize else { return nil }
-            return data + index
+            guard let data = dataSize else { return nil }
+            guard reportsIndexLength else { return data }
+            return indexSize.map { data + $0 }
         }()
 
         return PluginTableMetadata(
@@ -137,10 +139,15 @@ enum MySQLTableStatusRow {
             dataSize: dataSize,
             indexSize: indexSize,
             totalSize: totalSize,
-            rowCount: (row[safe: 4]?.asText).flatMap { Int64($0) },
+            rowCount: measured(row[safe: 4]),
             comment: MySQLTableListing.userComment(row[safe: 17]?.asText, appendsInnoDBStatus: appendsInnoDBStatus),
             engine: row[safe: 1]?.asText,
             collation: row[safe: 14]?.asText?.nilIfEmpty
         )
+    }
+
+    // StarRocks reports a view's rows and lengths as -1.
+    private static func measured(_ cell: PluginCellValue?) -> Int64? {
+        cell?.asText.flatMap { Int64($0) }.flatMap { $0 >= 0 ? $0 : nil }
     }
 }

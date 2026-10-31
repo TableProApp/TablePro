@@ -506,7 +506,6 @@ final class PluginMetadataRegistry: @unchecked Sendable {
         reverseTypeIndex["TiDB"] = "MySQL"
         reverseTypeIndex["Databend"] = "MySQL"
         reverseTypeIndex["OceanBase"] = "MySQL"
-        reverseTypeIndex["StarRocks"] = "MySQL"
         reverseTypeIndex["Redshift"] = "PostgreSQL"
         reverseTypeIndex["CockroachDB"] = "PostgreSQL"
         reverseTypeIndex["PGlite"] = "PostgreSQL"

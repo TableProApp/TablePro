@@ -20,7 +20,7 @@ enum ImportTypeMapper {
                     for: databaseType, serverVersion: serverVersion
                 )
             )
-        case .mysql, .mariadb, .tidb, .oceanbase, .starrocks:
+        case .mysql, .mariadb, .tidb, .oceanbase:
             return mysqlType(type)
         case .sqlite:
             return sqliteType(type)

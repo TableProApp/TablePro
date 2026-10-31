@@ -80,17 +80,8 @@ extension MySQLPluginDriver {
     /// so a caller asking about another one is answered about the one it asked about.
     func fetchAllTableMetadata(schema: String?) async throws -> [String: PluginTableMetadata] {
         guard !flavor.isDatabend else { return try await databendAllTableMetadata(database: routineSchema(schema)) }
-        let statement = Self.tableStatusStatement(database: routineSchema(schema))
-        guard !flavor.isStarRocks else {
-            let rows = try await starrocksCatalogRead(fallback: []) { try await self.execute(query: statement).rows }
-            var metadata: [String: PluginTableMetadata] = [:]
-            for row in rows {
-                guard let name = row[safe: 0]?.asText else { continue }
-                metadata[name] = StarRocksCatalog.tableMetadata(fromStatusRow: row, tableName: name)
-            }
-            return metadata
-        }
-        let result = try await execute(query: statement)
+        guard !flavor.isStarRocks else { return try await starrocksTableStatus(database: routineSchema(schema)) }
+        let result = try await execute(query: Self.tableStatusStatement(database: routineSchema(schema)))
         let appendsInnoDBStatus = serverAppendsInnoDBStatus
         var metadata: [String: PluginTableMetadata] = [:]
         for row in result.rows {

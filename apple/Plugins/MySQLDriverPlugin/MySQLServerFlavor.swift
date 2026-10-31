@@ -43,7 +43,7 @@ nonisolated internal enum MySQLServerFlavor: Equatable, Sendable {
 
     static let oceanbaseUnlimitedQueryTimeoutMicroseconds: Int64 = 3_216_672_000_000_000
 
-    /// StarRocks takes `query_timeout` in seconds from 1 to 259200 and has no spelling for unlimited.
+    // StarRocks takes `query_timeout` in seconds up to 259200 and has no spelling for unlimited.
     static let starrocksMaximumQueryTimeoutSeconds = 259_200
 
     static func fromBanner(_ banner: String?) -> MySQLServerFlavor {
@@ -102,8 +102,7 @@ nonisolated internal enum MySQLServerFlavor: Equatable, Sendable {
 
     var isStarRocks: Bool { self == .starrocks }
 
-    /// Databend and StarRocks speak the protocol without MySQL's object catalogs, so there are no
-    /// indexes, foreign keys, triggers, routines, events or partitions to read or write the MySQL way.
+    // No indexes, foreign keys, triggers, routines, events or partitions to read the MySQL way.
     var hasMySQLObjectCatalogs: Bool { !isDatabend && !isStarRocks }
 
     var tidbVersion: MySQLEngineVersion? {
@@ -122,7 +121,7 @@ nonisolated internal enum MySQLServerFlavor: Equatable, Sendable {
         case .oceanbase:
             return ["information_schema", "mysql", "oceanbase", "__recyclebin", "__public", "SYS", "LBACSYS", "ORAAUDITOR"]
         case .starrocks:
-            // The database level of a StarRocks connection is its catalogs, and none of them is a system one.
+            // The database level is the catalogs, and none of them is a system one.
             return []
         }
     }
@@ -147,11 +146,10 @@ nonisolated internal enum MySQLServerFlavor: Equatable, Sendable {
 
     var dropsIdleSessionOnKillQuery: Bool { isTiDB }
 
-    /// StarRocks labels a JSON or an Iceberg VARIANT result charset 63 although it sends UTF-8 text,
-    /// so the grid showed `{"` as `0x7B22`. A VARBINARY value that is not UTF-8 still reads as bytes.
+    // Iceberg VARIANT arrives as a charset 63 string of UTF-8 text; VARBINARY arrives as a BLOB and stays bytes.
     var labelsTextResultsAsBinary: Bool { isStarRocks }
 
-    /// StarRocks took `COM_STMT_PREPARE` only in 3.2, and a 3.1 frontend refuses it.
+    // A StarRocks frontend before 3.2 refuses `COM_STMT_PREPARE`.
     var preparesOnServer: Bool { !isDatabend && !isStarRocks }
 
     func beginTransactionStatement(mode: PluginTransactionAccessMode) -> String {
@@ -218,8 +216,7 @@ nonisolated internal enum MySQLFlavorResolution {
         variant == MySQLServerFlavor.databendVariant && !MySQLServerFlavor.fromBanner(banner).isDatabend
     }
 
-    /// The StarRocks handshake carries `mysql_server_version`, which defaults to a plain MySQL
-    /// version, so only a function MySQL lacks tells the two apart.
+    // The StarRocks handshake reports a plain MySQL version, so only a function MySQL lacks tells them apart.
     static let starrocksProbe = "SELECT current_version()"
 
     static func oceanbaseFlavor(versionComment: String?, serverVersion: String?) -> MySQLServerFlavor? {

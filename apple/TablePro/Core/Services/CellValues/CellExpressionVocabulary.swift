@@ -62,7 +62,7 @@ enum CellExpressionVocabulary {
         case .postgresql, .pglite, .kingbasees: postgreSQL
         case .cockroachdb: cockroachDB
         case .redshift: redshift
-        case .mysql, .mariadb, .tidb, .oceanbase, .starrocks: mySQL
+        case .mysql, .mariadb, .tidb, .oceanbase: mySQL
         case .databend: databend
         case .sqlite, .libsql, .turso, .cloudflareD1: sqlite
         case .duckdb: duckDB

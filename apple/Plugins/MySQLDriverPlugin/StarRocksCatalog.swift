@@ -2,15 +2,13 @@
 //  StarRocksCatalog.swift
 //  MySQLDriverPlugin
 //
-//  StarRocks puts catalogs above databases: `default_catalog` holds its own tables, and an external
-//  catalog fronts Iceberg, Hive, Delta Lake or another engine. The connection browses catalogs where
-//  MySQL browses databases, and a catalog's databases where a schema-switching engine browses schemas.
-//
 
 import Foundation
 import TableProMySQLCore
 import TableProPluginKit
 
+// StarRocks puts catalogs above databases, so its catalogs fill the database level and a catalog's
+// databases the schema level.
 nonisolated internal enum StarRocksCatalog {
     static let defaultCatalog = "default_catalog"
 
@@ -18,36 +16,49 @@ nonisolated internal enum StarRocksCatalog {
 
     static let showDatabases = "SHOW DATABASES"
 
-    static func setCatalog(_ catalog: String) -> String {
-        "SET CATALOG \(mysqlQuoteIdentifier(catalog))"
-    }
+    struct Scope: Equatable, Sendable {
+        let catalog: String
+        let database: String
 
-    static func useDatabase(_ database: String) -> String {
-        "USE \(mysqlQuoteIdentifier(database))"
-    }
+        init(catalog: String, database: String) {
+            self.catalog = catalog
+            self.database = database
+        }
 
-    /// What the Database field of a connection names.
-    ///
-    /// `catalog.database` is the form StarRocks itself takes in its handshake and in `USE`, and the one
-    /// a connection imported from another client carries. Sent whole as one quoted name, the server
-    /// reads it as a database called `catalog.database` and an Iceberg REST catalog refuses it as a
-    /// malformed namespace. A name without a dot is ambiguous: a pooled metadata connection fills the
-    /// field with the browsed catalog, while a connection typed by hand means a database in
-    /// `default_catalog`, so it is settled against the server when the session opens.
-    enum ConfiguredTarget: Equatable, Sendable {
-        case serverDefault
-        case qualified(catalog: String, database: String)
-        case bareName(String)
-    }
+        // `catalog.database`, the form StarRocks clients take; a bare name is a database in default_catalog.
+        init(configuredDatabase text: String) {
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard let dot = trimmed.firstIndex(of: ".") else {
+                self.init(catalog: StarRocksCatalog.defaultCatalog, database: trimmed)
+                return
+            }
+            let catalog = String(trimmed[..<dot])
+            self.init(
+                catalog: catalog.isEmpty ? StarRocksCatalog.defaultCatalog : catalog,
+                database: String(trimmed[trimmed.index(after: dot)...])
+            )
+        }
 
-    static func target(fromConfiguredDatabase text: String) -> ConfiguredTarget {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return .serverDefault }
-        guard let dot = trimmed.firstIndex(of: ".") else { return .bareName(trimmed) }
-        let catalog = String(trimmed[..<dot])
-        let database = String(trimmed[trimmed.index(after: dot)...])
-        guard !catalog.isEmpty else { return .bareName(database) }
-        return .qualified(catalog: catalog, database: database)
+        // `USE` splits one identifier at its dot; quoting each part fails with 5501 Unknown database.
+        var enterStatement: String {
+            guard !database.isEmpty else { return "SET CATALOG \(mysqlQuoteIdentifier(catalog))" }
+            return "USE \(mysqlQuoteIdentifier("\(catalog).\(database)"))"
+        }
+
+        var isServerDefault: Bool {
+            catalog == StarRocksCatalog.defaultCatalog && database.isEmpty
+        }
+
+        // Table status and materialized views exist only in default_catalog. Elsewhere `SHOW TABLE STATUS`
+        // answers for the default_catalog database of the same name.
+        var keepsTableStatus: Bool {
+            catalog == StarRocksCatalog.defaultCatalog
+        }
+
+        // Entering the catalog again keeps the database; entering another leaves none selected.
+        func entering(catalog target: String) -> Scope {
+            Scope(catalog: target, database: target == catalog ? database : "")
+        }
     }
 
     static func names(from rows: [[PluginCellValue]]) -> [String] {
@@ -61,6 +72,7 @@ nonisolated internal enum StarRocksCatalog {
         """
     }
 
+    // `SHOW FULL TABLES` types a materialized view as `VIEW`.
     static func markingMaterializedViews(_ names: Set<String>, in tables: [PluginTableInfo]) -> [PluginTableInfo] {
         guard !names.isEmpty else { return tables }
         return tables.map { table in
@@ -72,30 +84,7 @@ nonisolated internal enum StarRocksCatalog {
         }
     }
 
-    /// A `SHOW TABLE STATUS` row, at MySQL's positions. StarRocks reports a view's rows and sizes as
-    /// -1 and never an index length, so the data length is the whole size.
-    static func tableMetadata(fromStatusRow row: [PluginCellValue], tableName: String) -> PluginTableMetadata {
-        let dataSize = measured(row[safe: 6])
-        return PluginTableMetadata(
-            tableName: tableName,
-            dataSize: dataSize,
-            totalSize: dataSize,
-            avgRowLength: measured(row[safe: 5]),
-            rowCount: measured(row[safe: 4]),
-            comment: row[safe: 17]?.asText?.nilIfEmpty,
-            engine: row[safe: 1]?.asText?.nilIfEmpty,
-            collation: row[safe: 14]?.asText?.nilIfEmpty
-        )
-    }
-
-    static func rowCount(fromStatusRow row: [PluginCellValue]) -> Int? {
-        measured(row[safe: 4]).map { Int($0) }
-    }
-
-    private static func measured(_ cell: PluginCellValue?) -> Int64? {
-        cell?.asText.flatMap { Int64($0) }.flatMap { $0 >= 0 ? $0 : nil }
-    }
-
+    // `SHOW FULL COLUMNS` on an Iceberg table adds the connector's `_file` and `_pos`, which `SELECT *` never returns.
     static func columns(database: String, table: String?) -> String {
         let tableFilter = table.map { " AND TABLE_NAME = '\(mysqlEscapeStringLiteral($0))'" } ?? ""
         return """
@@ -106,8 +95,7 @@ nonisolated internal enum StarRocksCatalog {
             """
     }
 
-    /// `COLUMN_KEY` names the table's key model on each key column. A primary, unique or aggregate key
-    /// holds one row per key, so it picks out the row a grid edit means; a duplicate key holds any number.
+    // `COLUMN_KEY` names the key model. A duplicate key (`DUP`) holds any number of equal rows.
     static let rowIdentifyingKeys: Set<String> = ["PRI", "UNI", "AGG"]
 
     static func columnsByTable(from rows: [[PluginCellValue]]) -> [String: [PluginColumnInfo]] {
@@ -117,12 +105,15 @@ nonisolated internal enum StarRocksCatalog {
                   let name = row[safe: 1]?.asText,
                   let dataType = row[safe: 2]?.asText
             else { continue }
+            let isNullable = row[safe: 3]?.asText == "YES"
             columns[table, default: []].append(PluginColumnInfo(
                 name: name,
                 dataType: dataType.uppercased(),
-                isNullable: row[safe: 3]?.asText == "YES",
+                isNullable: isNullable,
                 isPrimaryKey: rowIdentifyingKeys.contains(row[safe: 4]?.asText ?? ""),
-                defaultValue: row[safe: 5]?.asText,
+                defaultValue: mysqlColumnDefault(
+                    .bare(row[safe: 5]?.asText), extra: nil, dataType: dataType, isNullable: isNullable
+                ),
                 comment: row[safe: 6]?.asText?.nilIfEmpty
             ))
         }
