@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import os
 @testable import TablePro
 import Testing
 
@@ -46,6 +47,31 @@ struct AvroSchemaStoreTests {
             #expect(ValueDisplayFormat(rawValue: "avro:") == nil)
             let id = try store.add(Self.schema)
             #expect(ValueDisplayFormat(rawValue: "avro:" + id) == .avro(schemaID: id))
+        }
+    }
+
+    @Test("Adding a schema that was looked up and missing announces it, and only then")
+    func restoreIsAnnounced() throws {
+        try withDirectory { directory in
+            let store = AvroSchemaStore(directory: directory)
+            let announced = OSAllocatedUnfairLock<[String]>(initialState: [])
+            let observer = NotificationCenter.default.addObserver(
+                forName: AvroSchemaStore.didRestoreSchema, object: store, queue: nil
+            ) { notification in
+                let schemaID = notification.userInfo?[AvroSchemaStore.schemaIDKey] as? String ?? ""
+                announced.withLock { $0.append(schemaID) }
+            }
+            defer { NotificationCenter.default.removeObserver(observer) }
+
+            _ = try store.add(#""int""#)
+            #expect(announced.withLock { $0 }.isEmpty)
+
+            let lost = AvroSchemaStore.schemaID(of: Self.schema)
+            #expect(store.schema(id: lost) == nil)
+            #expect(try store.add(Self.schema) == lost)
+            #expect(announced.withLock { $0 } == [lost])
+            _ = try store.add(Self.schema)
+            #expect(announced.withLock { $0 } == [lost])
         }
     }
 

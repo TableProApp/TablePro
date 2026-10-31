@@ -73,8 +73,12 @@ internal final class AvroSchemaStore: Sendable {
               let data = try? Data(contentsOf: fileURL(id)),
               let text = String(data: data, encoding: .utf8),
               let schema = try? AvroSchema.parse(text) else {
-            state.withLock { _ = $0.missing.insert(id) }
-            return nil
+            // An add() may have landed since the read failed; recorded as missing only if it did not.
+            return state.withLock { state in
+                if let added = state.parsed[id] { return added }
+                state.missing.insert(id)
+                return nil
+            }
         }
         state.withLock { $0.parsed[id] = schema }
         return schema

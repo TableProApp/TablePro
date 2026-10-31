@@ -3,6 +3,7 @@
 //  TablePro
 //
 
+import Combine
 import SwiftUI
 import TableProTheme
 
@@ -41,8 +42,11 @@ internal struct BinaryValueViewerView: View {
         .task(id: TaskKey(data: data, format: format, schemaRevision: schemaRevision)) {
             await decode()
         }
-        .onReceive(NotificationCenter.default.publisher(for: AvroSchemaStore.didRestoreSchema)) { _ in
-            if case .missingSchema? = document { schemaRevision += 1 }
+        // Matched on the format, not the document: a decode still running may be about to report it missing.
+        .onReceive(NotificationCenter.default.publisher(for: AvroSchemaStore.didRestoreSchema).receive(on: RunLoop.main)) { notification in
+            guard case .avro(let schemaID) = format,
+                  notification.userInfo?[AvroSchemaStore.schemaIDKey] as? String == schemaID else { return }
+            schemaRevision += 1
         }
     }
 
