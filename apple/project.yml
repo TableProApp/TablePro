@@ -1006,6 +1006,9 @@ targets:
     templateAttributes:
       folder: DamengDriverPlugin
       principalClass: DamengPlugin
+    dependencies:
+      - package: TableProCore
+        product: TableProDamengCore
     settings:
       base:
         HEADER_SEARCH_PATHS:
