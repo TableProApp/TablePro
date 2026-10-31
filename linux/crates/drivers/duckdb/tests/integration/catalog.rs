@@ -346,9 +346,11 @@ async fn a_rowid_moves_when_a_checkpoint_compacts_the_table() {
     run(editor.as_ref(), "CHECKPOINT").await;
     let before = query(connection.as_ref(), "SELECT rowid FROM k WHERE a = 390000").await;
 
+    // Enough deletes that a checkpoint compacts the table in both storage
+    // formats: DuckDB 2.0's own leaves a lighter delete where it was.
     run(
         editor.as_ref(),
-        "DELETE FROM k WHERE a < 240000 AND a % 100 <> 0; CHECKPOINT",
+        "DELETE FROM k WHERE a < 390000 AND a % 1000 <> 0; CHECKPOINT",
     )
     .await;
     let after = query(connection.as_ref(), "SELECT rowid FROM k WHERE a = 390000").await;

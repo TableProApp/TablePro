@@ -1,5 +1,6 @@
 mod notification;
 mod open_file;
+mod other_databases;
 mod sessions;
 
 use std::rc::Rc;

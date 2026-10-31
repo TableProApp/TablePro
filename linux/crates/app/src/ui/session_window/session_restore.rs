@@ -62,52 +62,66 @@ impl SessionWindow {
         });
     }
 
-    /// Another database of a connection reopens beside it once the
-    /// connection has (0030), and goes unopened with it.
+    /// Another database of a connection reopens beside it (0030): with the
+    /// connection's restore, which takes it, or beside the connection open
+    /// or connecting already. One with no connection to open beside is
+    /// forgotten.
     fn restore_database(&self, id: Uuid, database: String) {
         let key = SessionKey::SavedIn {
             id,
             database: database.clone(),
         };
         let connection = SessionKey::Saved(id);
+        if self.imp().restoring.borrow().contains(&connection) {
+            return;
+        }
+        self.end_restore(&key);
         if self.held_session(&connection).is_some() {
-            self.end_restore(&key);
             self.open_database(id, database);
-        } else if !self.imp().restoring.borrow().contains(&connection) {
-            self.end_restore(&key);
+            return;
+        }
+        let joined = {
+            let mut connects = self.imp().connects.borrow_mut();
+            match connects.iter_mut().find(|pending| pending.claim.key() == &connection) {
+                Some(pending) => {
+                    pending.databases.push(database);
+                    true
+                }
+                None => false,
+            }
+        };
+        if !joined {
             self.forget_session(&key);
         }
     }
 
-    /// The connection `id` joined: open its databases restored with it.
-    pub(super) fn open_waiting_databases(&self, id: Uuid) {
-        for (id, database) in self.take_waiting_databases(id) {
-            self.open_database(id, database);
-        }
-    }
-
-    /// The databases of the connection `id` that wait for it to reopen.
-    fn take_waiting_databases(&self, id: Uuid) -> Vec<(Uuid, String)> {
+    /// The databases restored with the connection `id`, which its restore
+    /// takes.
+    fn take_restored_databases(&self, id: Uuid) -> Vec<String> {
         let Ok(mut restoring) = self.imp().restoring.try_borrow_mut() else {
             return Vec::new();
         };
-        let mut waiting = Vec::new();
+        let mut databases = Vec::new();
         restoring.retain(|key| match key {
             SessionKey::SavedIn { id: of, database } if *of == id => {
-                waiting.push((id, database.clone()));
+                databases.push(database.clone());
                 false
             }
             _ => true,
         });
-        waiting
+        databases
     }
 
     pub(super) fn on_restore_saved(&self, id: Uuid, saved: Option<SavedConnection>) {
         self.end_restore(&SessionKey::Saved(id));
+        let databases = self.take_restored_databases(id);
         match saved {
-            Some(saved) => self.on_open_saved(saved),
+            Some(saved) => self.connect_saved(saved, databases),
             None => {
                 self.forget_session(&SessionKey::Saved(id));
+                for database in databases {
+                    self.forget_session(&SessionKey::SavedIn { id, database });
+                }
                 self.show_toast(&crate::i18n::gettext("The connection was deleted."));
             }
         }
@@ -128,20 +142,9 @@ impl SessionWindow {
         }
     }
 
-    /// A connection forgotten takes the databases waiting to reopen with
-    /// it, which have nothing to open beside.
     pub(super) fn forget_session(&self, key: &SessionKey) {
-        let Some(state) = self.state() else {
-            return;
-        };
-        state.services.open_sessions().remove(key);
-        if let SessionKey::Saved(id) = key {
-            for (id, database) in self.take_waiting_databases(*id) {
-                state
-                    .services
-                    .open_sessions()
-                    .remove(&SessionKey::SavedIn { id, database });
-            }
+        if let Some(state) = self.state() {
+            state.services.open_sessions().remove(key);
         }
     }
 

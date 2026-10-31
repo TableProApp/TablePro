@@ -1090,18 +1090,18 @@ fn row_menu(entry: &HistoryEntryObject) -> gio::Menu {
         item
     };
     let open = gio::Menu::new();
-    open.append_item(&item(gettext("Open in New Tab"), "history.open"));
-    open.append_item(&item(gettext("Replace Current Tab"), "history.replace"));
+    open.append_item(&item(gettext("_Open in New Tab"), "history.open"));
+    open.append_item(&item(gettext("_Replace Current Tab"), "history.replace"));
     let keep = gio::Menu::new();
     let pin = if entry.is_pinned() {
-        gettext("Unpin")
+        gettext("_Unpin")
     } else {
-        gettext("Pin")
+        gettext("_Pin")
     };
     keep.append_item(&item(pin, "history.pin"));
-    keep.append_item(&item(gettext("Copy SQL"), "history.copy"));
+    keep.append_item(&item(gettext("_Copy SQL"), "history.copy"));
     let remove = gio::Menu::new();
-    remove.append_item(&item(gettext("Delete"), "history.delete"));
+    remove.append_item(&item(gettext("_Delete"), "history.delete"));
     let menu = gio::Menu::new();
     menu.append_section(None, &open);
     menu.append_section(None, &keep);

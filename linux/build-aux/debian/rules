@@ -33,6 +33,10 @@ export DEB_BUILD_MAINT_OPTIONS = hardening=+all optimize=-lto
 %:
 	dh $@ --buildsystem=meson
 
+# DuckDB 2.0's C++ debug info passes dwz's limit of 50 million DIEs, and
+# dwz then fails the build instead of leaving the file as it is.
+override_dh_dwz:
+
 # dh_clean deletes *.orig files, and every vendored crate ships a
 # Cargo.toml.orig that its .cargo-checksum.json lists.
 override_dh_clean:

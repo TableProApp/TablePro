@@ -853,21 +853,20 @@ License: Apache-2.0 or Expat or Zlib
  IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
  DEALINGS IN THE SOFTWARE.
 
-Files: vendor/arrow-58.4.0/*
- vendor/arrow-arith-58.4.0/*
- vendor/arrow-buffer-58.4.0/*
- vendor/arrow-cast-58.4.0/*
- vendor/arrow-data-58.4.0/*
- vendor/arrow-ord-58.4.0/*
- vendor/arrow-row-58.4.0/*
- vendor/arrow-schema-58.4.0/*
- vendor/arrow-select-58.4.0/*
- vendor/arrow-string-58.4.0/*
- vendor/flagset-0.4.7/*
- vendor/fragile-2.1.0/*
-Copyright: the authors of arrow, arrow-arith, arrow-buffer, arrow-cast, arrow-data,
- arrow-ord, arrow-row, arrow-schema, arrow-select, arrow-string, flagset,
- fragile
+Files: vendor/arrow-60.1.0/*
+ vendor/arrow-arith-60.1.0/*
+ vendor/arrow-buffer-60.1.0/*
+ vendor/arrow-cast-60.1.0/*
+ vendor/arrow-cmp-60.1.0/*
+ vendor/arrow-data-60.1.0/*
+ vendor/arrow-ord-60.1.0/*
+ vendor/arrow-row-60.1.0/*
+ vendor/arrow-schema-60.1.0/*
+ vendor/arrow-select-60.1.0/*
+ vendor/arrow-string-60.1.0/*
+Copyright: the authors of arrow, arrow-arith, arrow-buffer, arrow-cast, arrow-cmp,
+ arrow-data, arrow-ord, arrow-row, arrow-schema, arrow-select,
+ arrow-string
 License: Apache-2.0
  On Debian systems, the complete text of the Apache License, Version 2.0
  can be found in "/usr/share/common-licenses/Apache-2.0".
@@ -896,8 +895,15 @@ License: Apache-2.0
     WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
     See the License for the specific language governing permissions and
     limitations under the License.
+ .
+ --------------------------------------------------------------------------------
+ .
+ arrow-array/src/delta.rs: MIT
+ .
+ This file is derived from the chronoutil crate. The full MIT license
+ text is in arrow-array/LICENSE-MIT.
 
-Files: vendor/arrow-array-58.4.0/*
+Files: vendor/arrow-array-60.1.0/*
 Copyright: 2020-2022 Oliver Margetts
 License: Apache-2.0 and Expat
  On Debian systems, the complete text of the Apache License, Version 2.0
@@ -927,6 +933,13 @@ License: Apache-2.0 and Expat
     WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
     See the License for the specific language governing permissions and
     limitations under the License.
+ .
+ --------------------------------------------------------------------------------
+ .
+ arrow-array/src/delta.rs: MIT
+ .
+ This file is derived from the chronoutil crate. The full MIT license
+ text is in arrow-array/LICENSE-MIT.
  .
  MIT License
  .
@@ -1150,6 +1163,7 @@ License: Expat
  SOFTWARE.
 
 Files: vendor/atoi-2.0.0/*
+ vendor/atoi-3.1.1/*
 Copyright: 2017
 License: Expat
  MIT License
@@ -1655,6 +1669,7 @@ Files: vendor/bitflags-2.13.2/*
  vendor/log-0.4.34/*
  vendor/num-0.4.3/*
  vendor/num-bigint-0.4.8/*
+ vendor/num-bigint-0.5.1/*
  vendor/num-bigint-dig-0.9.1/*
  vendor/num-complex-0.4.6/*
  vendor/num-integer-0.1.47/*
@@ -2259,7 +2274,7 @@ License: Expat
  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  THE SOFTWARE.
 
-Files: vendor/comfy-table-7.1.4/*
+Files: vendor/comfy-table-8.0.1/*
 Copyright: 2019 Arne Beer
 License: Expat
  MIT License
@@ -2631,7 +2646,7 @@ License: Apache-2.0 or Expat
  IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
  DEALINGS IN THE SOFTWARE.
 
-Files: vendor/crossterm-0.28.1/*
+Files: vendor/crossterm-0.29.0/*
 Copyright: 2019 Timon
 License: Expat
  MIT License
@@ -3102,6 +3117,29 @@ License: Expat
  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  THE SOFTWARE.
 
+Files: vendor/document-features-0.2.12/*
+Copyright: 2020 Olivier Goffart <ogoffart@sixtyfps.io>
+License: Apache-2.0 or Expat
+ Copyright (c) 2020 Olivier Goffart <ogoffart@sixtyfps.io>
+ .
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+ .
+ The above copyright notice and this permission notice shall be included in all
+ copies or substantial portions of the Software.
+ .
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ SOFTWARE.
+
 Files: vendor/dotenvy-0.15.7/*
 Copyright: 2014 Santiago Lapresta and contributors
 License: Expat
@@ -3127,7 +3165,7 @@ License: Expat
  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  THE SOFTWARE.
 
-Files: vendor/duckdb-1.10506.1/*
+Files: vendor/duckdb-1.20000.1/*
 Copyright: 2021-2026 Stichting DuckDB Foundation
 License: Expat
  Copyright 2021-2026 Stichting DuckDB Foundation
@@ -3597,6 +3635,38 @@ License: Unicode-3.0
  .
  Portions of ICU4X may have been adapted from ICU4C and/or ICU4J.
  ICU 1.8.1 to ICU 57.1 © 1995-2016 International Business Machines Corporation and others.
+
+Files: vendor/flagset-0.4.7/*
+ vendor/fragile-2.1.0/*
+Copyright: the authors of flagset, fragile
+License: Apache-2.0
+ On Debian systems, the complete text of the Apache License, Version 2.0
+ can be found in "/usr/share/common-licenses/Apache-2.0".
+ .
+    APPENDIX: How to apply the Apache License to your work.
+ .
+       To apply the Apache License to your work, attach the following
+       boilerplate notice, with the fields enclosed by brackets "[]"
+       replaced with your own identifying information. (Don't include
+       the brackets!)  The text should be enclosed in the appropriate
+       comment syntax for the file format. We also recommend that a
+       file or class name and description of purpose be included on the
+       same "printed page" as the copyright notice for easier
+       identification within third-party archives.
+ .
+    Copyright [yyyy] [name of copyright owner]
+ .
+    Licensed under the Apache License, Version 2.0 (the "License");
+    you may not use this file except in compliance with the License.
+    You may obtain a copy of the License at
+ .
+        http://www.apache.org/licenses/LICENSE-2.0
+ .
+    Unless required by applicable law or agreed to in writing, software
+    distributed under the License is distributed on an "AS IS" BASIS,
+    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+    See the License for the specific language governing permissions and
+    limitations under the License.
 
 Files: vendor/flate2-1.1.10/*
 Copyright: 2014-2026 Alex Crichton
@@ -4948,9 +5018,9 @@ License: Apache-2.0 or Expat
  IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
  DEALINGS IN THE SOFTWARE.
 
-Files: vendor/libduckdb-sys-1.10506.1/*
+Files: vendor/libduckdb-sys-1.20000.1/*
 Copyright: 2021-2026 Stichting DuckDB Foundation
- 2018-2025 Stichting DuckDB Foundation
+ 2018-2026 Stichting DuckDB Foundation
  2009, 2010, 2013-2016 by the Brotli Authors.
  2013-2016, Cameron Desrochers.
  2012 - present, Victor Zverovich
@@ -4958,7 +5028,6 @@ Copyright: 2021-2026 Stichting DuckDB Foundation
  2017 yhirose
  2012 Art.sy, Inc.
  2022 Max Bachmann
- 2015, Lukas Fittl <lukas@fittl.com>
  2011-2020, Yann Collet
  2013-2014 RAD Game Tools and Valve Software
  2010-2014 Rich Geldreich and Tenacious Software LLC
@@ -4982,7 +5051,7 @@ License: Apache-2.0, and Apache-2.0 or GPL-2.0+, and BSD-2-Clause, and BSD-2-Cla
  .
  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  .
- Copyright 2018-2025 Stichting DuckDB Foundation
+ Copyright 2018-2026 Stichting DuckDB Foundation
  .
  Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
  .
@@ -5235,35 +5304,6 @@ License: Apache-2.0, and Apache-2.0 or GPL-2.0+, and BSD-2-Clause, and BSD-2-Cla
  LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
  OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
  WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
- .
- Copyright (c) 2015, Lukas Fittl <lukas@fittl.com>
- All rights reserved.
- .
- Redistribution and use in source and binary forms, with or without
- modification, are permitted provided that the following conditions are met:
- .
- * Redistributions of source code must retain the above copyright notice, this
- list of conditions and the following disclaimer.
- .
- * Redistributions in binary form must reproduce the above copyright notice,
- this list of conditions and the following disclaimer in the documentation
- and/or other materials provided with the distribution.
- .
- * Neither the name of pg_query nor the names of its contributors may be used
- to endorse or promote products derived from this software without specific
- prior written permission.
- .
- THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
- LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- POSSIBILITY OF SUCH DAMAGE.
  .
  LZ4 Library
  Copyright (c) 2011-2020, Yann Collet
@@ -6000,11 +6040,38 @@ License: Expat
  THE SOFTWARE.
 
 Files: vendor/linux-raw-sys-0.12.1/*
- vendor/linux-raw-sys-0.4.15/*
- vendor/rustix-0.38.44/*
  vendor/rustix-1.1.4/*
 Copyright: the authors of linux-raw-sys, rustix
 License: Apache-2.0 or Apache-2.0 with LLVM exception or Expat
+ Permission is hereby granted, free of charge, to any
+ person obtaining a copy of this software and associated
+ documentation files (the "Software"), to deal in the
+ Software without restriction, including without
+ limitation the rights to use, copy, modify, merge,
+ publish, distribute, sublicense, and/or sell copies of
+ the Software, and to permit persons to whom the Software
+ is furnished to do so, subject to the following
+ conditions:
+ .
+ The above copyright notice and this permission notice
+ shall be included in all copies or substantial portions
+ of the Software.
+ .
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+ TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+ PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+ SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+ CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+ OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+ DEALINGS IN THE SOFTWARE.
+
+Files: vendor/litrs-1.0.1/*
+Copyright: 2020 Project Developers
+License: Apache-2.0 or Expat
+ Copyright (c) 2020 Project Developers
+ .
  Permission is hereby granted, free of charge, to any
  person obtaining a copy of this software and associated
  documentation files (the "Software"), to deal in the

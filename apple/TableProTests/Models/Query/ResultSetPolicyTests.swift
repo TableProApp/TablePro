@@ -99,6 +99,13 @@ struct ResultSetPolicyTests {
             display.resultsViewMode = mode
             states.append(display)
 
+            for count in 2 ... 8 {
+                var several = display
+                several.resultSets = (1 ... count).map { ResultSet(label: "Result \($0)") }
+                several.activeResultSetId = several.resultSets.first?.id
+                states.append(several)
+            }
+
             var withoutResults = display
             withoutResults.resultSets = []
             withoutResults.activeResultSetId = nil

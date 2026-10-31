@@ -20,7 +20,7 @@ TablePro supports the server releases their vendors still support. CI runs each 
 | Apache Cassandra | 4.0 and 5.0 | 3.11 and older, past end of life. 6.0 until it is released |
 | ScyllaDB | 2025.1 and 2026.1 | Feature releases between long-term ones, such as 2026.3. Enterprise 2024.1 and older, past end of life |
 | SQLite | the system library, 3.37.0 or newer | older libraries, which the driver refuses when it opens a file |
-| DuckDB | 1.5.6, compiled into the app ([ADR 0025](docs/decisions/0025-bundled-duckdb.md)) | files a newer DuckDB wrote in a storage format 1.5.6 cannot read |
+| DuckDB | 2.0.0, compiled into the app ([ADR 0031](docs/decisions/0031-duckdb-2.md)) | files a newer DuckDB wrote in a storage format 2.0.0 cannot read |
 | Redis | 7.4 and 8.10 | 7.2 and older, past end of life. Cluster and Sentinel deployments. Valkey answers the same commands and is not tested |
 | MongoDB | 7.0 and 8.0 | 6.0 and older, past end of life (6.0 on 2025-07-31). Minor releases between major ones, such as 8.2, are not tested. A sharded cluster is reached through `mongos` and is not tested |
 

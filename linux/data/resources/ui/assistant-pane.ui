@@ -5,7 +5,7 @@
   <menu id="assistant_menu">
     <section>
       <item>
-        <attribute name="label" translatable="yes">New Conversation</attribute>
+        <attribute name="label" translatable="yes">_New Conversation</attribute>
         <attribute name="action">assistant.new-conversation</attribute>
       </item>
     </section>

@@ -213,12 +213,22 @@ actor DuckDBConnectionActor {
 
     private func openHandle(spec: DuckDBOpenSpec) throws {
         var config: duckdb_config?
+        guard duckdb_create_config(&config) != DuckDBError else {
+            throw DuckDBPluginError.connectionFailed(
+                String(localized: "DuckDB could not allocate a configuration to open the file")
+            )
+        }
+        defer { duckdb_destroy_config(&config) }
+        guard duckdb_set_config(
+            config,
+            DuckDBStorageCompatibility.configurationOption,
+            DuckDBStorageCompatibility.version
+        ) != DuckDBError else {
+            throw DuckDBPluginError.connectionFailed(
+                String(localized: "This build of DuckDB does not accept the storage version that keeps files readable by DuckDB 1.x")
+            )
+        }
         if spec.accessMode == .readOnly {
-            guard duckdb_create_config(&config) != DuckDBError else {
-                throw DuckDBPluginError.connectionFailed(
-                    String(localized: "DuckDB could not allocate a configuration to open the file read-only")
-                )
-            }
             /// Measured: a value `duckdb_set_config` rejects leaves the option unset and the open
             /// then succeeds read-write with writes allowed, so an unchecked return here is a
             /// read-only setting that silently does nothing.
@@ -227,13 +237,11 @@ actor DuckDBConnectionActor {
                 DuckDBAccessMode.configurationOption,
                 spec.accessMode.rawValue
             ) != DuckDBError else {
-                duckdb_destroy_config(&config)
                 throw DuckDBPluginError.connectionFailed(
                     String(localized: "This build of DuckDB does not accept a read-only access mode")
                 )
             }
         }
-        defer { duckdb_destroy_config(&config) }
 
         var db: duckdb_database?
         var errorPtr: UnsafeMutablePointer<CChar>?

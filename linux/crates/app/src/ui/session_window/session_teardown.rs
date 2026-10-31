@@ -39,7 +39,7 @@ impl SessionWindow {
             return;
         }
         for open in &sessions {
-            open.workspace.flush();
+            open.flush();
         }
         self.set_content(gtk::Widget::NONE);
         imp.page_toasts.replace(None);
@@ -57,32 +57,25 @@ impl SessionWindow {
     }
 
     /// Take down the one session under `key` while the window keeps the
-    /// others and its connects. With the last one the shell goes too.
-    /// False when the window holds no such session.
+    /// others and its connects. A connection's other databases go with
+    /// it. With the last one the shell goes too. False when the window
+    /// holds no such session.
     pub(super) fn tear_down_session(&self, key: &SessionKey) -> bool {
         let imp = self.imp();
-        // A database still opening from this connection opens for nobody;
-        // one asked of the next connection opens anew.
-        if let SessionKey::Saved(id) = key {
-            imp.opening_databases.borrow_mut().retain(|opening, cancel| {
-                let goes = matches!(opening, SessionKey::SavedIn { id: of, .. } if of == id);
-                if goes {
-                    cancel.cancel();
-                }
-                !goes
-            });
-        }
         let open = {
             let Ok(mut sessions) = imp.sessions.try_borrow_mut() else {
                 tracing::warn!("a session was torn down while the sessions were read");
                 return false;
             };
-            let Some(position) = sessions.iter().position(|open| open.claim.key() == key) else {
-                return false;
-            };
-            sessions.remove(position)
+            match sessions.iter().position(|open| open.claim.key() == key) {
+                Some(position) => Some(sessions.remove(position)),
+                None => sessions.iter_mut().find_map(|open| open.databases.take(key)),
+            }
         };
-        open.workspace.flush();
+        let Some(open) = open else {
+            return false;
+        };
+        open.flush();
         let shell = self.shell();
         self.close_open_session(shell.as_ref(), open, true);
         if imp.sessions.borrow().is_empty() {
@@ -98,9 +91,10 @@ impl SessionWindow {
         true
     }
 
-    /// Take `open`'s workspace off the shell when one is given, shut it
-    /// down, drop its claim and record, and close its session. Its pages
-    /// leave the tab view when `close_pages`.
+    /// Close the other databases open beside `open` and stop those still
+    /// opening, then take `open`'s workspace off the shell when one is
+    /// given, shut it down, drop its claim and record, and close its
+    /// session. Its pages leave the tab view when `close_pages`.
     fn close_open_session(&self, shell: Option<&WorkspaceShell>, open: OpenSession, close_pages: bool) {
         let Some(state) = self.state() else {
             return;
@@ -109,7 +103,11 @@ impl SessionWindow {
             claim,
             session,
             workspace,
+            databases,
         } = open;
+        for database in databases.close() {
+            self.close_open_session(shell, database, close_pages);
+        }
         let editor_sessions = workspace.take_editor_sessions();
         let key = claim.key().clone();
         if let Some(shell) = shell {

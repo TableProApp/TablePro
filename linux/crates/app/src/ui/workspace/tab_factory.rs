@@ -190,7 +190,8 @@ impl TabFactory {
             editor.move_to_database(&database);
         }
         connect_editor(&editor, id, &parts.input, &parts.toasts);
-        // A restored or reopened tab brings its database's session in too.
+        // It moved before the workspace heard it, which follows it once
+        // the tab is in.
         if moved {
             parts.input.deliver(WorkspaceInput::EditorTabDatabaseChanged(id));
         }

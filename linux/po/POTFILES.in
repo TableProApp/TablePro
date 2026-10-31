@@ -126,6 +126,7 @@ crates/app/src/services/tracker_delta.rs
 crates/app/src/services/tracker_edit.rs
 crates/app/src/services/undo_op.rs
 crates/app/src/storage.rs
+crates/app/src/test_support/access_keys.rs
 crates/app/src/test_support/accessible_label.rs
 crates/app/src/test_support/alert_response.rs
 crates/app/src/test_support/application_end.rs
@@ -276,6 +277,7 @@ crates/app/src/ui/data_grid/row_number_column.rs
 crates/app/src/ui/data_grid/selection.rs
 crates/app/src/ui/data_grid/selection_summary.rs
 crates/app/src/ui/data_grid/server_sorter.rs
+crates/app/src/ui/data_grid/stripes.rs
 crates/app/src/ui/data_grid/table_keys.rs
 crates/app/src/ui/data_grid/test_grid.rs
 crates/app/src/ui/data_grid/tests/cells.rs
@@ -475,6 +477,7 @@ crates/app/src/ui/session_window/mod.rs
 crates/app/src/ui/session_window/notification_request.rs
 crates/app/src/ui/session_window/notification_sink.rs
 crates/app/src/ui/session_window/notifications.rs
+crates/app/src/ui/session_window/other_databases.rs
 crates/app/src/ui/session_window/picker_page.rs
 crates/app/src/ui/session_window/resolve_file_identity.rs
 crates/app/src/ui/session_window/secret_retry.rs
@@ -483,10 +486,10 @@ crates/app/src/ui/session_window/session_restore.rs
 crates/app/src/ui/session_window/session_teardown.rs
 crates/app/src/ui/session_window/session_window_command.rs
 crates/app/src/ui/session_window/session_window_input.rs
-crates/app/src/ui/session_window/sibling_sessions.rs
 crates/app/src/ui/session_window/tests/mod.rs
 crates/app/src/ui/session_window/tests/notification.rs
 crates/app/src/ui/session_window/tests/open_file.rs
+crates/app/src/ui/session_window/tests/other_databases.rs
 crates/app/src/ui/session_window/tests/sessions.rs
 crates/app/src/ui/session_window/window_actions.rs
 crates/app/src/ui/session_window/work_notifier.rs

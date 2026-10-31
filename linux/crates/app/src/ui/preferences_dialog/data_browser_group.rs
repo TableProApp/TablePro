@@ -17,6 +17,8 @@ mod imp {
         #[template_child]
         pub page_size_row: TemplateChild<adw::SpinRow>,
         #[template_child]
+        pub alternate_rows_row: TemplateChild<adw::SwitchRow>,
+        #[template_child]
         pub confirm_row: TemplateChild<adw::SwitchRow>,
     }
 
@@ -73,6 +75,9 @@ impl DataBrowserGroup {
             .bind(keys::DEFAULT_PAGE_SIZE, &imp.page_size_row.get(), "value")
             .build();
         gio_settings
+            .bind(keys::SHOW_ALTERNATE_ROWS, &imp.alternate_rows_row.get(), "active")
+            .build();
+        gio_settings
             .bind(keys::CONFIRM_BULK_DELETE, &imp.confirm_row.get(), "active")
             .build();
     }
@@ -97,18 +102,25 @@ mod tests {
         let settings = MemorySettings::new();
         settings.get().set_default_page_size(500).expect("store the page size");
         settings.get().set_confirm_bulk_delete(false).expect("store the flag");
+        settings
+            .get()
+            .set_show_alternate_rows(false)
+            .expect("store the stripes");
 
         let group = bound_group(&settings);
         let imp = group.imp();
 
         assert_eq!(imp.page_size_row.value(), 500.0);
         assert!(!imp.confirm_row.is_active());
+        assert!(!imp.alternate_rows_row.is_active());
 
         imp.page_size_row.set_value(2_500.0);
         imp.confirm_row.set_active(true);
+        imp.alternate_rows_row.set_active(true);
 
         assert_eq!(settings.get().default_page_size(), 2_500);
         assert!(settings.get().confirm_bulk_delete());
+        assert!(settings.get().show_alternate_rows());
     }
 
     #[gtk4::test]

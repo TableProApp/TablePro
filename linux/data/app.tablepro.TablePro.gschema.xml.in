@@ -65,6 +65,12 @@
       <description>Ask before deleting 10 or more rows at once in a table tab. Deleted rows stay marked until Save, and Undo brings them back.</description>
     </key>
 
+    <key name="show-alternate-rows" type="b">
+      <default>true</default>
+      <summary>Show alternate row backgrounds</summary>
+      <description>Shade every other row of a data grid so a row reads across its columns.</description>
+    </key>
+
     <key name="save-query-history" type="b">
       <default>true</default>
       <summary>Save query history</summary>

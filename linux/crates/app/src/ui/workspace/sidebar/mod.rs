@@ -273,20 +273,23 @@ impl WorkspaceModel {
     /// A run that sent DDL, or a commit that may publish it, changes what
     /// the sidebar and the completion list.
     pub(super) fn on_editor_run_finished(&mut self, id: uuid::Uuid) {
-        let changed = match self.workspace_tabs.borrow().get(&id) {
+        let moved_to = match self.workspace_tabs.borrow().get(&id) {
             Some(super::WorkspaceTab::Editor(slot)) if slot.editor.last_run_changes_catalog() => {
                 Some(slot.editor.tab_database())
             }
             _ => None,
         };
-        let Some(moved_to) = changed else {
+        let Some(moved_to) = moved_to else {
             return;
         };
         self.refresh_catalog();
-        // The statement ran in the tab's database, whose own session the
-        // window holds beside this one (0030).
-        if let Some(database) = moved_to {
-            self.refresh_database(database);
+        // The statement ran in the tab's database, whose session the
+        // window may hold beside this one (0030).
+        if let (Some(database), Some(shell)) = (moved_to, self.shell.upgrade()) {
+            shell.tell_window(crate::ui::SessionWindowInput::MovedTab(crate::ui::MovedTab::Refresh {
+                key: self.key.clone(),
+                database,
+            }));
         }
     }
 
