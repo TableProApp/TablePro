@@ -1,5 +1,5 @@
 // Single source of truth for the iOS app version.
 // The app and its widget extension must ship the same values, so both read this file.
 
-MARKETING_VERSION = 1.1
-CURRENT_PROJECT_VERSION = 23
+MARKETING_VERSION = 1.1.1
+CURRENT_PROJECT_VERSION = 24
