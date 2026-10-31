@@ -98,8 +98,8 @@ INSERT INTO healthy SELECT g FROM generate_series(1, 5000) g;
 DELETE FROM healthy WHERE id <= 10;
 SQL
 
-    local bloat="" attempt
-    for attempt in 1 2 3 4 5 6 7 8 9 10; do
+    local bloat=""
+    for _ in 1 2 3 4 5 6 7 8 9 10; do
         bloat="$(pg -d "$DATABASE" -c "$(query_of "$source" bloatQuery)")"
         grep -qF "bloated" <<< "$bloat" && break
         sleep 1
@@ -164,7 +164,7 @@ PART
 
     fk="$(pg -d "$DATABASE" -c "$(query_of "$source" unindexedForeignKeyQuery)")"
     expect "the previewed index clears its finding" "$fk" "child_unindexed_parent_id_fkey" no
-    for attempt in 1 2 3 4 5 6 7 8 9 10; do
+    for _ in 1 2 3 4 5 6 7 8 9 10; do
         bloat="$(pg -d "$DATABASE" -c "$(query_of "$source" bloatQuery)")"
         grep -qF "bloated" <<< "$bloat" || break
         sleep 1
