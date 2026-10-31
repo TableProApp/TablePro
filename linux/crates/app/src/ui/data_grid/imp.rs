@@ -137,6 +137,7 @@ impl WidgetImpl for DataGrid {
     fn root(&self) {
         self.parent_root();
         self.obj().watch_focus();
+        self.obj().rooted();
     }
 
     fn unroot(&self) {
@@ -145,7 +146,6 @@ impl WidgetImpl for DataGrid {
     }
 
     fn system_setting_changed(&self, setting: &gtk4::SystemSetting) {
-        // First, since on its way down GTK gives the view the new font.
         self.parent_system_setting_changed(setting);
         if matches!(
             setting,

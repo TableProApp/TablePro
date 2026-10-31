@@ -496,6 +496,34 @@ fn a_text_size_change_measures_the_grids_columns_again() {
     );
 }
 
+/// A grid out of its window hears of no text size change, so it measures
+/// again when it is back if its fonts are not the ones it measured in.
+#[gtk4::test]
+fn a_grid_back_in_its_window_takes_a_text_size_it_missed() {
+    let grid = laid_out(Grid::open(
+        vec![
+            named("id", "integer", true),
+            named("code", "text", false),
+            named("note", "text", false),
+        ],
+        vec![vec![Value::Int(1), text("CF-1001"), text("Ships in two days")]],
+    ));
+    let code = data_column(&grid, 1);
+    let opened = code.fixed_width();
+    data_column(&grid, 2).set_fixed_width(300);
+
+    grid.window.set_child(None::<&gtk::Widget>);
+    let _scaled = TextScale::times(1.5);
+    grid.window.set_child(Some(&grid.grid));
+
+    wait_until(WAIT, || code.fixed_width() > opened).expect("the column widened with the text");
+    assert_eq!(
+        data_column(&grid, 2).fixed_width(),
+        300,
+        "the width the user gave changed"
+    );
+}
+
 /// libadwaita announces a new monospace font; the grid measures the
 /// columns it sized again, from the rows it holds now.
 #[gtk4::test]

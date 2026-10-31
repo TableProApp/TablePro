@@ -82,6 +82,8 @@ pub struct ColumnSet {
     /// keep: a better guess from other rows should still reach them.
     auto_widths: std::collections::HashMap<usize, i32>,
     pages: Pages,
+    /// The fonts the grid last sized its columns in.
+    measured_in: Option<String>,
     handlers: Vec<(glib::WeakRef<glib::Object>, glib::SignalHandlerId)>,
 }
 
@@ -261,6 +263,15 @@ impl DataGrid {
         row_number_column::fit(self);
     }
 
+    /// A grid out of any window hears of no font change, and one sized
+    /// before it had a window measured in no theme's font.
+    pub(super) fn rooted(&self) {
+        let measured_in = self.imp().columns.borrow().measured_in.clone();
+        if measured_in.is_some_and(|fonts| fonts != fonts_now(&self.column_view())) {
+            self.fonts_changed();
+        }
+    }
+
     /// The interface font and the text size reach the grid as GTK system
     /// settings; the monospace font is libadwaita's.
     pub(super) fn watch_fonts(&self) {
@@ -275,6 +286,7 @@ impl DataGrid {
 
     fn size_columns(&self, measure: Measure) {
         let widths = self.opening_widths(measure);
+        self.imp().columns.borrow_mut().measured_in = Some(fonts_now(&self.column_view()));
         for (index, view_column, width) in widths {
             self.imp().columns.borrow_mut().auto_widths.insert(index, width);
             view_column.set_fixed_width(width);
@@ -286,8 +298,9 @@ impl DataGrid {
         let sample: Vec<Option<Arc<[Value]>>> = self.store().rows().take(WIDTH_SAMPLE).map(|row| row.cells()).collect();
         let by_type = set.pages == Pages::Empty;
         let view = self.column_view();
-        let font = value_font(&view);
-        let metrics = view.pango_context().metrics(Some(&font), None);
+        let context = view.create_pango_context();
+        let font = value_font(&context);
+        let metrics = context.metrics(Some(&font), None);
         let char_px = pango::units_to_double(metrics.approximate_char_width());
         let null = editable_null_sentinel();
         let mut widths = Vec::new();
@@ -312,15 +325,19 @@ impl DataGrid {
             // no rows a value its type spells out, as a UUID or an enum's
             // label, so those are measured as the cell draws them.
             let sampled = match (by_type, paint.numbers.get()) {
-                (_, true) => tabular_width(&view, &font, &"0".repeat(usize::try_from(chars).unwrap_or_default())),
+                (_, true) => tabular_width(&context, &font, &"0".repeat(usize::try_from(chars).unwrap_or_default())),
                 (true, false) => 0,
                 // One line each, so one layout measures them all.
-                (false, false) => drawn_width(&view, &font, &sampled_texts(column, values.iter().copied()).join("\n")),
+                (false, false) => drawn_width(
+                    &context,
+                    &font,
+                    &sampled_texts(column, values.iter().copied()).join("\n"),
+                ),
             };
             let spelled = match by_type || column.display() == CellDisplay::Temporal {
                 true => typical_texts(column)
                     .iter()
-                    .map(|typical| tabular_width(&view, &font, typical))
+                    .map(|typical| tabular_width(&context, &font, typical))
                     .max()
                     .unwrap_or(0),
                 false => 0,
@@ -329,11 +346,11 @@ impl DataGrid {
                 Some(_) => SORT_INDICATOR_PX,
                 None => 0,
             };
-            let header = header_width(&view, header_text(column)) + indicator;
+            let header = header_width(&context, header_text(column)) + indicator;
             // A NULL the user can replace draws as `<NULL>`, wider than the
             // fewest cells a column takes.
             let placeholder = match paint.tracked.tracks_changes() && values.iter().any(|value| value.is_null()) {
-                true => drawn_width(&view, &font, &null),
+                true => drawn_width(&context, &font, &null),
                 false => 0,
             };
             let text = estimate.max(sampled).max(spelled).max(header).max(placeholder);
@@ -535,7 +552,8 @@ impl DataGrid {
             return;
         };
         let view = self.column_view();
-        let metrics = view.pango_context().metrics(Some(&value_font(&view)), None);
+        let context = view.create_pango_context();
+        let metrics = context.metrics(Some(&value_font(&context)), None);
         let step = (pango::units_to_double(metrics.approximate_digit_width()) * f64::from(STEP_DIGITS)).ceil() as i32;
         let width = column.fixed_width();
         let width = match wider {
@@ -763,31 +781,44 @@ fn same_names(layout: &ColumnLayout, columns: &[GridColumn]) -> bool {
 
 /// The font a cell draws its value in: libadwaita's `monospace` class
 /// sets only the family and size of the desktop's monospace font.
-fn value_font(view: &gtk::ColumnView) -> pango::FontDescription {
+fn value_font(context: &pango::Context) -> pango::FontDescription {
     let mut monospace = pango::FontDescription::from_string(&adw::StyleManager::default().monospace_font_name());
     monospace.unset_fields(!(pango::FontMask::FAMILY | pango::FontMask::SIZE));
-    let mut font = view.pango_context().font_description().unwrap_or_default();
+    let mut font = context.font_description().unwrap_or_default();
     font.merge(Some(&monospace), true);
     font
 }
 
 /// How wide a header draws `title`. The scaled size rounds up, since GTK
 /// scales the size before it rounds and the view's font is rounded.
-fn header_width(view: &gtk::ColumnView, title: &str) -> i32 {
-    let mut font = view.pango_context().font_description().unwrap_or_default();
+fn header_width(context: &pango::Context, title: &str) -> i32 {
+    let mut font = context.font_description().unwrap_or_default();
     font.set_weight(pango::Weight::Bold);
     let size = (f64::from(font.size()) * HEADER_SCALE).ceil();
     match font.is_size_absolute() {
         true => font.set_absolute_size(size),
         false => font.set_size(size as i32),
     }
-    drawn_width(view, &font, title)
+    drawn_width(context, &font, title)
+}
+
+/// The grid's font, the text size in it, and the monospace font. A
+/// widget's own context follows a change only at the next frame, so a
+/// fresh one is read.
+fn fonts_now(view: &gtk::ColumnView) -> String {
+    let grid = view
+        .create_pango_context()
+        .font_description()
+        .map(|font| font.to_string())
+        .unwrap_or_default();
+    format!("{grid}; {}", adw::StyleManager::default().monospace_font_name())
 }
 
 /// How wide `text` is in the tabular figures libadwaita's `numeric`
 /// class draws.
-fn tabular_width(widget: &impl IsA<gtk::Widget>, font: &pango::FontDescription, text: &str) -> i32 {
-    let layout = widget.create_pango_layout(Some(text));
+fn tabular_width(context: &pango::Context, font: &pango::FontDescription, text: &str) -> i32 {
+    let layout = pango::Layout::new(context);
+    layout.set_text(text);
     layout.set_font_description(Some(font));
     let tabular = pango::AttrList::new();
     tabular.insert(pango::AttrFontFeatures::new("tnum"));
@@ -795,8 +826,9 @@ fn tabular_width(widget: &impl IsA<gtk::Widget>, font: &pango::FontDescription, 
     layout.pixel_size().0
 }
 
-fn drawn_width(widget: &impl IsA<gtk::Widget>, font: &pango::FontDescription, text: &str) -> i32 {
-    let layout = widget.create_pango_layout(Some(text));
+fn drawn_width(context: &pango::Context, font: &pango::FontDescription, text: &str) -> i32 {
+    let layout = pango::Layout::new(context);
+    layout.set_text(text);
     layout.set_font_description(Some(font));
     layout.pixel_size().0
 }
