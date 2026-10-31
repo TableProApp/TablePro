@@ -73,6 +73,7 @@ let package = Package(
             name: "TableProSSHConfigTests",
             dependencies: [
                 "TableProSSHConfig",
+                .product(name: "TableProSSHTransport", package: "TableProCore"),
                 .product(name: "TableProTestSupport", package: "TableProCore")
             ],
             path: "Tests/TableProSSHConfigTests",

@@ -57,6 +57,18 @@ struct MySQLDumpToolIdentifierTests {
         #expect(MySQLDumpToolIdentifier.majorVersion(fromVersionText: nil) == nil)
     }
 
+    @Test("The full release is read from either family's banner")
+    func release() {
+        #expect(MySQLDumpToolIdentifier.release(fromVersionText: Self.mysql84) == NativeDumpToolRelease(8, 4, 11))
+        #expect(MySQLDumpToolIdentifier.release(fromVersionText: Self.mysql57) == NativeDumpToolRelease(5, 7, 44))
+        #expect(MySQLDumpToolIdentifier.release(fromVersionText: Self.mariaDB) == NativeDumpToolRelease(12, 3, 3))
+        let mariaDB10 = "mysql  Ver 15.1 Distrib 10.6.18-MariaDB, for osx10.19 (arm64) using readline 5.1"
+        #expect(MySQLDumpToolIdentifier.release(fromVersionText: mariaDB10) == NativeDumpToolRelease(10, 6, 18))
+        #expect(MySQLDumpToolIdentifier.release(fromVersionText: "mysql  Ver 9.1 for macos") == NativeDumpToolRelease(9, 1, 0))
+        #expect(MySQLDumpToolIdentifier.release(fromVersionText: "no version here") == nil)
+        #expect(MySQLDumpToolIdentifier.release(fromVersionText: nil) == nil)
+    }
+
     @Test("Identifying a tool keeps what it said, so nothing probes it twice")
     func identifyCarriesTheBanner() {
         let resolved = MySQLDumpToolIdentifier.identify(

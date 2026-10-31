@@ -45,7 +45,7 @@ enum LibSSH2ExecChannel {
     /// and the only character they cannot carry is a single quote, which is closed, escaped and
     /// reopened. A remote path is the only thing the app ever passes through here.
     static func shellQuoted(_ value: String) -> String {
-        "'" + value.replacingOccurrences(of: "'", with: "'\\''") + "'"
+        "'" + value.replacingOccurrences(of: "'", with: "'\\''", options: .literal) + "'"
     }
 
     static func runSerialized(

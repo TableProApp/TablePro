@@ -59,6 +59,26 @@ struct TeamLibraryModelsTests {
         #expect(response.connections[1].payload.iconName == nil)
     }
 
+    @Test("A pulled connection whose SSH host ssh would refuse is dropped")
+    func sanitizedPullDropsARefusedSSHHost() throws {
+        let ssh = #""sshConfig":{"enabled":true,"port":22,"username":"deploy","authMethod":"password","privateKeyPath":"","agentSocketPath":"""#
+        let json = """
+        {
+          "connections": [
+            {"id":"01A","payload":{"name":"Prod","host":"db","port":5432,"database":"app","username":"deploy","type":"PostgreSQL",\(ssh),"host":"bastion.example.com"}}},
+            {"id":"01B","payload":{"name":"Planted","host":"db","port":5432,"database":"app","username":"deploy","type":"PostgreSQL",\(ssh),"host":"replica.example\\n[prod.example"}}}
+          ],
+          "query_folders": [],
+          "queries": [],
+          "fetched_at":"2026-07-08T00:00:00Z"
+        }
+        """
+
+        let response = try JSONDecoder().decode(TeamLibraryPullResponse.self, from: Data(json.utf8)).sanitized()
+
+        #expect(response.connections.map { $0.payload.name } == ["Prod"])
+    }
+
     @Test("publish request encodes snake_case keys and preserves the payload encoding")
     func encodesPublishRequest() throws {
         let payloadJson = """
