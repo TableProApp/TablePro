@@ -66,6 +66,10 @@ internal enum ExternalStatementGate {
     /// The refusals a connection's own settings make, before anyone is prompted about anything.
     @discardableResult
     internal static func classify(_ statement: Statement) throws -> QueryClassification {
+        if let refusal = privateRequestRefusal(sql: statement.sql) {
+            throw ExternalStatementGateError.denied(refusal)
+        }
+
         let classification = QueryClassifier.classify(statement.sql, databaseType: statement.databaseType)
 
         guard !classification.reachesFilesystemOrExecutesCode else {
@@ -154,6 +158,29 @@ internal enum ExternalStatementGate {
             """
         )
     }
+
+    // Drivers decode these from any caller, some through a lexer of their own, so a UTF-16 match anywhere counts.
+    internal static func privateRequestRefusal(sql: String) -> String? {
+        guard driverRequestMarkers.contains(where: { sql.range(of: $0, options: .literal) != nil }) else { return nil }
+        return String(
+            localized: """
+            TablePro builds this request for its own grid, so it cannot be sent from outside the app. \
+            Send the statement it stands for instead.
+            """
+        )
+    }
+
+    private static let driverRequestMarkers = [
+        "BIGQUERY_BROWSE:", "BIGQUERY_COMBINED:", "BIGQUERY_FILTER:", "BIGQUERY_SEARCH:",
+        "BIGTABLE_BROWSE:",
+        "ELASTICSEARCH_EXPORT:", "ELASTICSEARCH_SEARCH:", "ELASTICSEARCH_WRITE:",
+        "ETCD_COUNT:", "ETCD_RANGE:", "ETCD_REFUSAL:",
+        "FIREBASE_BROWSE:",
+        "SPANNER_BROWSE:",
+        "TYPESENSE_EXPORT:", "TYPESENSE_SEARCH:", "TYPESENSE_WRITE:",
+        "WEAVIATE_EXPORT:", "WEAVIATE_SEARCH:", "WEAVIATE_WRITE:",
+        "/* TablePro browse ",
+    ]
 
     /// Safe Mode, and the confirmation or biometric prompt it asks for.
     internal static func authorizeExecution(

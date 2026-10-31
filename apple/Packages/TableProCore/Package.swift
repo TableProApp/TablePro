@@ -31,6 +31,7 @@ let package = Package(
         .library(name: "TableProKerberos", targets: ["TableProKerberos"]),
         .library(name: "TableProTeradataCore", targets: ["TableProTeradataCore"]),
         .library(name: "TableProTrinoCore", targets: ["TableProTrinoCore"]),
+        .library(name: "TableProDamengCore", targets: ["TableProDamengCore"]),
         .library(name: "TableProTLSClientIdentity", targets: ["TableProTLSClientIdentity"]),
         .library(name: "TableProTLSTestFixtures", targets: ["TableProTLSTestFixtures"]),
         .library(name: "TableProGoogleCloud", targets: ["TableProGoogleCloud"]),
@@ -152,8 +153,14 @@ let package = Package(
         ),
         .target(
             name: "TableProTrinoCore",
-            dependencies: [],
+            dependencies: ["TableProSQLGrammar"],
             path: "Sources/TableProTrinoCore"
+        ),
+        .target(
+            name: "TableProDamengCore",
+            dependencies: ["TableProSQLGrammar"],
+            path: "Sources/TableProDamengCore",
+            swiftSettings: pluginCoreSettings
         ),
         .target(
             name: "TableProTLSClientIdentity",
@@ -290,8 +297,14 @@ let package = Package(
         ),
         .testTarget(
             name: "TableProTrinoCoreTests",
-            dependencies: ["TableProTrinoCore"],
+            dependencies: ["TableProTrinoCore", "TableProSQLGrammar"],
             path: "Tests/TableProTrinoCoreTests"
+        ),
+        .testTarget(
+            name: "TableProDamengCoreTests",
+            dependencies: ["TableProDamengCore", "TableProSQLGrammar"],
+            path: "Tests/TableProDamengCoreTests",
+            swiftSettings: pluginCoreSettings
         ),
         .testTarget(
             name: "TableProTabularIOTests",
