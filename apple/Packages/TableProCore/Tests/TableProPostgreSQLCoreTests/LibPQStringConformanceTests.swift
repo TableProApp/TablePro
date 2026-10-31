@@ -9,6 +9,15 @@ import Testing
 @testable import TableProPostgreSQLCore
 
 struct LibPQStringConformanceTests {
+    @Test("A quote or backslash a combining mark follows is still escaped", arguments: [true, false])
+    func combiningMarkCannotHideAnEscape(standardConformingStrings: Bool) {
+        let value = "thanks'\u{301}); DROP TABLE victims; --\\\u{301}"
+        let escaped = LibPQStringConformance.escape(value, standardConformingStrings: standardConformingStrings)
+        let backslash = standardConformingStrings ? "\\" : "\\\\"
+        let expected = "thanks''\u{301}); DROP TABLE victims; --\(backslash)\u{301}"
+        #expect(Array(escaped.unicodeScalars) == Array(expected.unicodeScalars))
+    }
+
     @Test("Every session turns standard_conforming_strings on")
     func sessionSetupForcesStandardConformingStrings() {
         #expect(LibPQStringConformance.enableStatement == "SET standard_conforming_strings TO on")

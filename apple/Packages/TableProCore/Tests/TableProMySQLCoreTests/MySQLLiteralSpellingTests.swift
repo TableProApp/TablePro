@@ -14,6 +14,12 @@ import Testing
 struct MySQLLiteralSpellingTests {
     private let session = MySQLLiteralSpelling.quoteDoubling
 
+    @Test("A quote a combining mark follows is doubled for a session that reads backslashes literally")
+    func quoteBeforeMarkIsDoubled() {
+        let escaped = session.escaped("x'\u{301} OR 1 = 1 #")
+        #expect(Array(escaped.unicodeScalars) == Array("x''\u{301} OR 1 = 1 #".unicodeScalars))
+    }
+
     @Test("Only a session that reports NO_BACKSLASH_ESCAPES loses backslash escapes")
     func spellingFollowsTheStatusFlag() {
         #expect(MySQLLiteralSpelling(noBackslashEscapes: true) == .quoteDoubling)

@@ -736,7 +736,7 @@ final class MainContentCoordinator: ObservableObject {
             databaseType: connection.type,
             dialect: dialect,
             pagination: services.pluginManager.paginationCapability(for: connection.type),
-            dialectQuote: dialect.map { quoteIdentifierFromDialect($0) }
+            dialectQuote: dialect.map { quoteIdentifierFromDialect($0) } ?? { SQLEscaping.quoteIdentifier($0) }
         )
         self.persistence = TabPersistenceCoordinator.forConnection(connection.id)
 

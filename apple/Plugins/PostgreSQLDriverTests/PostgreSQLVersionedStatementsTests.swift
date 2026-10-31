@@ -111,6 +111,13 @@ struct PostgreSQLVersionedStatementsTests {
         #expect(statement.hasSuffix(" $tablepro_$"))
     }
 
+    @Test("A tag a combining mark follows inside the name still counts as a collision")
+    func createSchemaLegacyAvoidsTagBeforeCombiningMark() {
+        let statement = PostgreSQLVersionedStatements.createSchema("s$tablepro$\u{301}", capabilities: Self.v91)
+        #expect(statement.hasPrefix("DO $tablepro_$ "))
+        #expect(statement.hasSuffix(" $tablepro_$"))
+    }
+
     @Test("REINDEX DATABASE names the current database where the server requires it")
     func reindexDatabase() {
         #expect(PostgreSQLVersionedStatements.reindexDatabase(currentDatabase: "app", verbose: false, capabilities: Self.v91)

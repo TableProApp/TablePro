@@ -840,11 +840,11 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
     }
 
     private func escapeIdentifier(_ value: String) -> String {
-        value.replacingOccurrences(of: "\"", with: "\"\"")
+        value.replacingOccurrences(of: "\"", with: "\"\"", options: .literal)
     }
 
     private func escapeSingleQuote(_ value: String) -> String {
-        value.replacingOccurrences(of: "'", with: "''")
+        value.replacingOccurrences(of: "'", with: "''", options: .literal)
     }
 
     private func stripTrailingSemicolon(_ query: String) -> String {

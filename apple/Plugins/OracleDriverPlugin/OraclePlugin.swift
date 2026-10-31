@@ -589,7 +589,7 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     var replacesDefinitionsInPlace: Bool { true }
 
     func createTriggerTemplate(table: String, schema: String?) -> String? {
-        let quotedTable = "\"\(table.replacingOccurrences(of: "\"", with: "\"\""))\""
+        let quotedTable = "\"\(table.replacingOccurrences(of: "\"", with: "\"\"", options: .literal))\""
         return """
         CREATE OR REPLACE TRIGGER \("\"TRIGGER_NAME\"")
         BEFORE INSERT ON \(quotedTable)

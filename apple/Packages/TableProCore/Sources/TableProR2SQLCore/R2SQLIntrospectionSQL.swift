@@ -33,7 +33,7 @@ public enum R2SQLIntrospectionSQL {
     }
 
     public static func quoteIdentifier(_ identifier: String) -> String {
-        "\"" + identifier.replacingOccurrences(of: "\"", with: "\"\"") + "\""
+        "\"" + identifier.replacingOccurrences(of: "\"", with: "\"\"", options: .literal) + "\""
     }
 
     static let namespaceColumns = ["namespace", "namespace_name", "database_name", "schema_name", "databaseName"]

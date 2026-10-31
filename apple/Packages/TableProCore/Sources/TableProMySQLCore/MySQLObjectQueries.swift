@@ -14,7 +14,7 @@ public enum MySQLObjectQueries {
     }
 
     public static func quoteIdentifier(_ value: String) -> String {
-        "`\(value.replacingOccurrences(of: "`", with: "``"))`"
+        "`\(value.replacingOccurrences(of: "`", with: "``", options: .literal))`"
     }
 
     /// The database a catalog read means.
@@ -129,9 +129,9 @@ public enum MySQLObjectQueries {
 
     public static func likePattern(matching name: String) -> String {
         name
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "%", with: "\\%")
-            .replacingOccurrences(of: "_", with: "\\_")
+            .replacingOccurrences(of: "\\", with: "\\\\", options: .literal)
+            .replacingOccurrences(of: "%", with: "\\%", options: .literal)
+            .replacingOccurrences(of: "_", with: "\\_", options: .literal)
     }
 
     /// Whether `information_schema` describes this database at all, in one scalar.

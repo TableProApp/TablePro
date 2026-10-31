@@ -470,7 +470,7 @@ public final class SQLCompletionProvider {
             var item = SQLCompletionItem(
                 label: "'\(value)'",
                 kind: .keyword,
-                insertText: "'\(value.replacingOccurrences(of: "'", with: "''"))'",
+                insertText: "'\(value.replacingOccurrences(of: "'", with: "''", options: .literal))'",
                 detail: column,
                 filterText: value.lowercased()
             )
@@ -575,13 +575,13 @@ public final class SQLCompletionProvider {
 
     // `AS 'Total'` names the column on MySQL and SQLite, but ORDER BY 'Total' sorts by a constant.
     private func identifierSpelling(of spelling: String, name: String) -> String {
-        guard spelling.hasPrefix("'") else { return spelling }
+        guard spelling.unicodeScalars.first == "'" else { return spelling }
         let isBare = name.unicodeScalars.first.map { CharacterSet.letters.contains($0) || $0 == "_" } == true
             && name.unicodeScalars.allSatisfy { CharacterSet.alphanumerics.contains($0) || $0 == "_" }
         guard !isBare || SQLKeywords.isKeyword(name) else { return name }
         // The analyzer reads a backslash-escaped `"` as a string, which is where a backtick quotes a name instead.
         let quote = grammar.isSuperset(of: [.backslashEscapesInDoubleQuotes, .backtickQuotes]) ? "`" : "\""
-        return quote + name.replacingOccurrences(of: quote, with: quote + quote) + quote
+        return quote + name.replacingOccurrences(of: quote, with: quote + quote, options: .literal) + quote
     }
 
     // CTEs were bound to their own scope by the parser, so what is left to expand is a table the catalog knows.
