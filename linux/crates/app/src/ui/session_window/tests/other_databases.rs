@@ -6,7 +6,7 @@ use tablepro_session::SessionKey;
 use tablepro_session::fakes::FakeEstablish;
 use tablepro_test_support::{ConnectionScript, FakeReply};
 
-use super::{Script, TestWindow, WAIT, pick_level};
+use super::{Script, TestWindow, WAIT, editors, pick_level};
 use crate::test_support::{drain_main_context, wait_until};
 use crate::ui::SessionWindowInput;
 
@@ -16,12 +16,21 @@ const ANALYTICS: &str = "analytics";
 /// databases opens with, unasked. `establish` is what each connect gets
 /// before the test's connection from then on.
 fn network_window(name: &str, establish: Vec<FakeEstablish>) -> TestWindow {
+    network_window_with(
+        name,
+        Script {
+            establish,
+            ..Script::default()
+        },
+    )
+}
+
+fn network_window_with(name: &str, script: Script) -> TestWindow {
     let test = TestWindow::with_script(
         name,
         Script {
             network: true,
-            establish,
-            ..Script::default()
+            ..script
         },
     );
     let (vault, id) = (test.vault.clone(), test.saved.id);
@@ -181,4 +190,81 @@ fn a_level_picked_in_another_database_moves_the_connection() {
         .unwrap_or_else(|_| panic!("{key:?} kept its level"));
     }
     assert_eq!(test.connector.calls().len(), 2, "a level that writes reconnected");
+}
+
+fn on_engine(name: &str, dialect: std::sync::Arc<dyn tablepro_core::dialect::SqlDialect>) -> TestWindow {
+    network_window_with(
+        name,
+        Script {
+            connection: ConnectionScript {
+                dialect,
+                ..ConnectionScript::default()
+            },
+            ..Script::default()
+        },
+    )
+}
+
+/// Each editor tab of the connection, `count` of them, moved to
+/// `ANALYTICS` from the editor bar.
+fn move_new_tabs(test: &TestWindow, count: usize) -> Vec<crate::ui::editor::SqlEditor> {
+    let connection = crate::ui::session_target::to_variant(&test.key());
+    for _ in 0..count {
+        WidgetExt::activate_action(&test.window, "win.new-query-in", Some(&connection)).expect("win.new-query-in");
+    }
+    wait_until(WAIT, || editors(&test.window).len() == count).expect("the tabs");
+    let tabs = editors(&test.window);
+    for editor in &tabs {
+        WidgetExt::activate_action(editor, "editor.database", Some(&ANALYTICS.to_variant())).expect("editor.database");
+    }
+    tabs
+}
+
+/// Tabs moved to a database whose engine's catalog holds only the
+/// connection's own read that database's session, which opens once for
+/// all of them.
+#[gtk4::test]
+fn tabs_moved_to_another_database_read_its_session() {
+    let test = on_engine(
+        "FollowDatabase",
+        std::sync::Arc::new(tablepro_driver_postgres::PgDialect::new(
+            &tablepro_core::ServerInfo::new("PostgreSQL", "18.0", 18, 0, 0),
+        )),
+    );
+    connect(&test);
+    let sibling = analytics(&test);
+
+    let tabs = move_new_tabs(&test, 2);
+
+    wait_until(WAIT, || test.window.held_session(&sibling).is_some()).expect("the database to open");
+    wait_until(WAIT, || {
+        tabs.iter()
+            .all(|editor| editor.followed_catalog().as_deref() == Some(ANALYTICS))
+    })
+    .expect("every moved tab to read the database's catalog");
+    assert_eq!(test.connector.calls().len(), 2, "the database opened once per tab");
+}
+
+/// An engine whose connection lists every database already opens no
+/// session for a moved tab.
+#[gtk4::test]
+fn a_tab_moved_where_the_catalog_lists_every_database_opens_nothing() {
+    let test = on_engine(
+        "FollowDatabaseListed",
+        std::sync::Arc::new(tablepro_driver_mysql::MySqlDialect::new(
+            tablepro_driver_mysql::MySqlFlavour::MySql,
+            &tablepro_core::ServerInfo::new("MySQL", "8.4.0", 8, 4, 0),
+        )),
+    );
+    connect(&test);
+
+    let tabs = move_new_tabs(&test, 1);
+    drain_main_context();
+
+    assert!(
+        test.window.held_session(&analytics(&test)).is_none(),
+        "the database opened"
+    );
+    assert_eq!(test.connector.calls().len(), 1, "a session opened for the database");
+    assert_eq!(tabs[0].followed_catalog(), None);
 }

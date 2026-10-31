@@ -1,6 +1,8 @@
 //! The database the tab works on, named in the editor bar, and the menu
 //! that moves the tab to another of the server's databases.
 
+use std::sync::Arc;
+
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use gtk4::{gio, glib};
@@ -90,6 +92,9 @@ impl SqlEditor {
         self.follow_in_completion(catalog_home(layout, own.as_deref(), &database));
         let moved = self.imp().named_database.replace(Some(database.clone())) != Some(database.clone());
         if moved {
+            // The last database's session answers no more; the window
+            // hands over this one's.
+            self.follow_catalog(None);
             self.emit_by_name::<()>("database-changed", &[]);
         }
         if let Some(action) = super::imp_action(self, MOVE_ACTION) {
@@ -229,6 +234,36 @@ impl SqlEditor {
             false,
             glib::closure_local!(move |editor: &Self| f(editor)),
         )
+    }
+
+    /// Completion reads `session`'s catalog: the session the window holds
+    /// for the tab's database, or `None` back on the connection's own.
+    pub(crate) fn follow_catalog(&self, session: Option<Arc<Session>>) {
+        // A session opened late for a database the tab has since left
+        // changes nothing; the one it is in may have answered first.
+        let current = self.imp().named_database.borrow().clone();
+        if session
+            .as_ref()
+            .is_some_and(|session| session.database() != current.as_deref())
+        {
+            return;
+        }
+        for provider in self.imp().completion_providers.borrow().iter() {
+            if let Some(provider) = provider.downcast_ref::<SqlCompletionProvider>() {
+                provider.set_catalog_session(session.clone());
+            }
+        }
+    }
+
+    /// The database of the session whose catalog completion reads, when
+    /// the window handed one over.
+    #[cfg(test)]
+    pub(crate) fn followed_catalog(&self) -> Option<String> {
+        self.imp().completion_providers.borrow().iter().find_map(|provider| {
+            let provider = provider.downcast_ref::<SqlCompletionProvider>()?;
+            let session = provider.imp().catalog_session.borrow().clone()?;
+            session.database().map(str::to_owned)
+        })
     }
 
     /// Where unqualified names in this tab resolve, for what the assistant

@@ -49,6 +49,11 @@ impl SqlCompletionProvider {
         self.imp().home.replace(home);
     }
 
+    /// Read `session`'s catalog, the tab's database's, while it is open.
+    pub fn set_catalog_session(&self, session: Option<Arc<Session>>) {
+        self.imp().catalog_session.replace(session);
+    }
+
     pub fn new(session: ActiveSession, tasks: Tasks, snippets: Rc<SnippetLibrary>) -> Self {
         let provider: Self = glib::Object::new();
         let _ = provider.imp().deps.set(ProviderDeps {
@@ -72,7 +77,16 @@ impl SqlCompletionProvider {
         let ranking = match (request.session.clone(), tasks.clone()) {
             (Some(session), Some(tasks)) if request.grammar.is_sql() => {
                 let fallback = request.clone();
-                let home = self.imp().home.borrow().clone();
+                let followed = self
+                    .imp()
+                    .catalog_session
+                    .borrow()
+                    .clone()
+                    .filter(|followed| !followed.is_shut_down());
+                let (session, home) = match followed {
+                    Some(followed) => (followed, CatalogHome::Connection),
+                    None => (session, self.imp().home.borrow().clone()),
+                };
                 let ranked_for = needle.clone();
                 let blocking = tasks.clone();
                 tasks

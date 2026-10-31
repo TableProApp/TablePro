@@ -66,6 +66,13 @@ pub(super) fn describe_buttons(shell: &WorkspaceShell) {
 }
 
 impl WorkspaceShell {
+    /// Hand `input` to the window that holds the shell.
+    pub(crate) fn tell_window(&self, input: SessionWindowInput) {
+        if let Some(sender) = self.imp().sender.get() {
+            sender.deliver(input);
+        }
+    }
+
     /// A shell for `window`, with what it needs beyond the template: the
     /// connection tree and the picker's actions its rows name, the main
     /// menu, the window's actions, the tab menu and the overview's new

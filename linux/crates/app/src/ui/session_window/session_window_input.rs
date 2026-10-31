@@ -72,6 +72,7 @@ pub(crate) enum SessionWindowInput {
     /// Open Database… on a connection's row: pick another of its server's
     /// databases to open beside it.
     ChooseDatabaseIn(SessionKey),
+    MovedTab(MovedTab),
     /// The prompts approved closing the session under the key.
     SessionTeardownApproved(SessionKey),
     /// Bring the session under the key to the front.
@@ -168,4 +169,21 @@ pub(crate) enum SessionWindowInput {
     /// What importing that file would do, for the user to agree to.
     ImportPreviewed(Box<tablepro_storage::ImportPreview>),
     ShowToast(String),
+}
+
+/// What an editor tab that moved to another database asks of the window
+/// (0030).
+#[derive(Debug)]
+pub(crate) enum MovedTab {
+    /// Tab `tab_id` of the session under `key` moved to `database`,
+    /// `None` for its connection's own: its completion reads that
+    /// database's session.
+    Follow {
+        key: SessionKey,
+        tab_id: uuid::Uuid,
+        database: Option<String>,
+    },
+    /// A tab of the session under `key` changed the catalog of
+    /// `database`, which another session of its connection may hold.
+    Refresh { key: SessionKey, database: String },
 }
