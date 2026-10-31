@@ -273,9 +273,14 @@ final class DataGridModel: ObservableObject {
         redrawFormatted(column, in: current)
     }
 
-    // The format is unchanged but its decoder now reads what it could not, as when a lost Avro schema is chosen again.
+    // The format is unchanged but now decodes values it showed as stored bytes, as when a lost Avro schema is chosen
+    // again. A value filter picked from those bytes follows them to the decoded text.
     func redisplay(_ column: DataGridColumn) {
-        redrawFormatted(column, in: rows)
+        let current = rows
+        if let remapped = remappedValueFilter(column: column, from: nil, to: displayFormat(for: column), in: current) {
+            store.valueFilter = remapped
+        }
+        redrawFormatted(column, in: current)
     }
 
     private func redrawFormatted(_ column: DataGridColumn, in current: TableRows) {

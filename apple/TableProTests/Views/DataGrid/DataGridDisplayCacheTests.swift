@@ -121,8 +121,14 @@ struct DataGridDisplayCacheTests {
         #expect(try AvroSchemaStore.shared.add(text) == schemaID)
         #expect(grid.text(row: 0) == Self.rawBinaryText)
 
+        var filter = GridValueFilterState()
+        filter.set(ColumnValueFilter(selectedValues: [Self.rawBinaryText], includesNull: false), columnName: "id", forColumn: 0)
+        grid.model.setValueFilter(filter)
+
         grid.model.redisplay(column)
         #expect(grid.text(row: 0) == "\"" + Self.rawBinaryText + "\"")
+        #expect(grid.model.store.valueFilter.filter(forColumn: 0)?.selectedValues == ["\"" + Self.rawBinaryText + "\""])
+        #expect(grid.model.rowCount == 1)
     }
 
     @Test("A display format is kept in the grid's store, where its owner reads it")

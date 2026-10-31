@@ -23,6 +23,7 @@ internal struct BinaryValueViewerView: View {
     @State private var hexDump = ""
     @State private var decodedKey: TaskKey?
     @State private var searchText = ""
+    @State private var schemaRevision = 0
 
     init(data: Data, format: BinaryValueFormat, onPopOut: (() -> Void)? = nil) {
         self.data = data
@@ -37,14 +38,18 @@ internal struct BinaryValueViewerView: View {
             content
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .task(id: TaskKey(data: data, format: format)) {
+        .task(id: TaskKey(data: data, format: format, schemaRevision: schemaRevision)) {
             await decode()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: AvroSchemaStore.didAddSchema)) { _ in
+            if case .missingSchema? = document { schemaRevision += 1 }
         }
     }
 
     private struct TaskKey: Equatable {
         let data: Data
         let format: BinaryValueFormat
+        let schemaRevision: Int
     }
 
     // MARK: - Toolbar
@@ -189,7 +194,7 @@ internal struct BinaryValueViewerView: View {
 
     // A pane added back restarts the task with the same key.
     private func decode() async {
-        let key = TaskKey(data: data, format: format)
+        let key = TaskKey(data: data, format: format, schemaRevision: schemaRevision)
         guard decodedKey != key else { return }
         let data = data
         let format = format

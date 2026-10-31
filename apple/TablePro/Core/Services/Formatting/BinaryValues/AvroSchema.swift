@@ -55,6 +55,8 @@ internal struct AvroSchema: Equatable, Sendable {
     let namedTypes: [String: AvroType]
     // CRC-64-AVRO of the Parsing Canonical Form, what a single-object encoded value names its writer schema by.
     let fingerprint: UInt64
+    // Named types whose values take no bytes, worked out once: walking a shared type on every check is exponential.
+    let zeroByteNames: Set<String>
 
     static func parse(_ text: String) throws -> AvroSchema {
         let json: Any
@@ -65,7 +67,36 @@ internal struct AvroSchema: Equatable, Sendable {
         }
         var parser = Parser()
         let root = try parser.type(json, namespace: nil)
-        return AvroSchema(root: root, namedTypes: parser.namedTypes, fingerprint: fingerprint(of: canonicalForm(root)))
+        return AvroSchema(
+            root: root,
+            namedTypes: parser.namedTypes,
+            fingerprint: fingerprint(of: canonicalForm(root)),
+            zeroByteNames: zeroByteNames(parser.namedTypes)
+        )
+    }
+
+    private static func zeroByteNames(_ namedTypes: [String: AvroType]) -> Set<String> {
+        var known: [String: Bool] = [:]
+        func takesNoBytes(_ type: AvroType, visiting: Set<String>) -> Bool {
+            switch type {
+            case .null: return true
+            case .fixed(_, let size): return size == 0
+            case .logical(_, let base): return takesNoBytes(base, visiting: visiting)
+            case .named(let name):
+                if let answer = known[name] { return answer }
+                guard !visiting.contains(name), let defined = namedTypes[name] else { return false }
+                let answer = takesNoBytes(defined, visiting: visiting.union([name]))
+                known[name] = answer
+                return answer
+            case .record(let name, let fields):
+                if let answer = known[name] { return answer }
+                let answer = fields.allSatisfy { takesNoBytes($0.type, visiting: visiting.union([name])) }
+                known[name] = answer
+                return answer
+            default: return false
+            }
+        }
+        return Set(namedTypes.keys.filter { takesNoBytes(.named($0), visiting: []) })
     }
 
     // https://avro.apache.org/docs/1.12.0/specification/#parsing-canonical-form-for-schemas
@@ -140,14 +171,12 @@ internal struct AvroSchema: Equatable, Sendable {
     }
 
     // Items of these types take no bytes, so an array of them can hold more items than bytes remain.
-    func takesNoBytes(_ type: AvroType, visiting: Set<String> = []) -> Bool {
-        switch resolve(type) {
+    func takesNoBytes(_ type: AvroType) -> Bool {
+        switch type {
         case .null: return true
         case .fixed(_, let size): return size == 0
-        case .logical(_, let base): return takesNoBytes(base, visiting: visiting)
-        case .record(let name, let fields):
-            guard !visiting.contains(name) else { return false }
-            return fields.allSatisfy { takesNoBytes($0.type, visiting: visiting.union([name])) }
+        case .logical(_, let base): return takesNoBytes(base)
+        case .named(let name), .record(let name, _): return zeroByteNames.contains(name)
         default: return false
         }
     }

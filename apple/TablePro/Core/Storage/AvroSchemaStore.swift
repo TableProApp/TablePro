@@ -18,6 +18,9 @@ internal final class AvroSchemaStore: Sendable {
     // Far past any real schema; a file this large is the wrong file.
     static let maxFileBytes = 4_000_000
 
+    // Posted after a schema is kept, so a viewer that found it missing decodes again.
+    static let didAddSchema = Notification.Name("com.TablePro.avroSchemaStore.didAddSchema")
+
     private static let fileExtension = "avsc"
 
     private struct State {
@@ -37,10 +40,14 @@ internal final class AvroSchemaStore: Sendable {
         text.utf8.count == 32 && text.utf8.allSatisfy { (0x30...0x39).contains($0) || (0x61...0x66).contains($0) }
     }
 
+    static func schemaID(of text: String) -> String {
+        SHA256.hash(data: Data(text.utf8)).prefix(16).map { String(format: "%02x", $0) }.joined()
+    }
+
     // Parses first, so nothing is kept for a file that is not a schema.
     func add(_ text: String) throws -> String {
         let schema = try AvroSchema.parse(text)
-        let id = SHA256.hash(data: Data(text.utf8)).prefix(16).map { String(format: "%02x", $0) }.joined()
+        let id = Self.schemaID(of: text)
         let url = fileURL(id)
         if !FileManager.default.fileExists(atPath: url.path) {
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -50,6 +57,7 @@ internal final class AvroSchemaStore: Sendable {
             $0.parsed[id] = schema
             $0.addedThisLaunch.insert(id)
         }
+        NotificationCenter.default.post(name: Self.didAddSchema, object: self)
         return id
     }
 

@@ -178,6 +178,24 @@ struct AvroDecoderTests {
         #expect(message.value == .binary(Data([0xDE, 0xAD])))
     }
 
+    @Test("Records that take no bytes, nested two to a level, are refused rather than walked exponentially")
+    func zeroByteRecordsDoNotExpand() throws {
+        var definitions = [#"{"type":"record","name":"R0","fields":[]}"#]
+        for level in 1...30 {
+            definitions.append(#"{"type":"record","name":"R"# + "\(level)" + #"","fields":[{"name":"a","type":"R"#
+                + "\(level - 1)" + #""},{"name":"b","type":"R"# + "\(level - 1)" + #""}]}"#)
+        }
+        let fields = definitions.enumerated().map { #"{"name":"f"# + "\($0.offset)" + #"","type":"# + $0.element + "}" }
+        let holder = #"{"type":"record","name":"Holder","fields":["# + fields.dropLast().joined(separator: ",") + "]}"
+        let schema = try AvroSchema.parse(#"{"type":"array","items":{"type":"record","name":"Wrap","fields":[{"name":"h","type":"#
+            + holder + #"},{"name":"r","type":"# + definitions[30] + "}]}}")
+        #expect(try AvroDecoder.decode(Data([0x00]), schema: schema).value == .array([]))
+        let error = #expect(throws: BinaryValueDecodeError.self) {
+            try AvroDecoder.decode(Data([0x02, 0x00]), schema: schema)
+        }
+        #expect(error?.kind == .tooLarge)
+    }
+
     @Test("A huge zero-byte block after a small one is refused, not added up until it overflows")
     func zeroByteCountOverflow() throws {
         let nulls = try AvroSchema.parse(#"{"type":"array","items":"null"}"#)

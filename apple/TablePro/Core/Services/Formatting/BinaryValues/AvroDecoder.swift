@@ -23,6 +23,9 @@ internal enum AvroDecoder {
     static let maxDepth = 256
     // Items that take no bytes (null, an empty record) are bounded by this, not by the bytes left.
     static let maxZeroByteItems: Int64 = 1_000_000
+    // Records of records that take no bytes describe exponentially many values in a short schema, so every value
+    // read counts, built or not.
+    static let maxValuesRead = 10_000_000
 
     // A single-object header that names this schema's fingerprint is certain, so it goes first. A Confluent
     // prefix proves nothing (a plain datum can start with zero), so it is only tried once the plain read fails.
@@ -75,6 +78,7 @@ internal enum AvroDecoder {
         private var budget: Int
         private var isTruncated = false
         private var zeroByteItems: Int64 = 0
+        private var valuesRead = 0
 
         init(reader: BinaryValueReader, schema: AvroSchema, budget: Int) {
             self.reader = reader
@@ -85,6 +89,8 @@ internal enum AvroDecoder {
         // Only a dispatch: every kind of type is its own function, so the frames a deep value stacks up stay small.
         mutating func value(_ type: AvroType, depth: Int) throws -> MessagePackValue {
             guard depth <= AvroDecoder.maxDepth else { throw reader.error(.nestingTooDeep) }
+            valuesRead += 1
+            guard valuesRead <= AvroDecoder.maxValuesRead else { throw reader.error(.tooLarge) }
             if !isTruncated {
                 budget -= 1
                 isTruncated = budget < 0
