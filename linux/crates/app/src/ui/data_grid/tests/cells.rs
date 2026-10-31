@@ -136,11 +136,7 @@ fn a_row_with_a_boolean_is_as_tall_as_one_without() {
 #[gtk4::test]
 fn every_other_row_carries_the_stripe() {
     let grid = two_text_rows();
-    let striped = |position| {
-        grid.cell_at(position, 0)
-            .parent()
-            .is_some_and(|cell| cell.has_css_class("tp-stripe"))
-    };
+    let striped = |position| grid.cell_at(position, 0).has_css_class("tp-stripe");
 
     assert!(!striped(0), "the first row is plain");
     assert!(striped(1), "the second row is shaded");

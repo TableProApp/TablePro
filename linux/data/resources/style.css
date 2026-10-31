@@ -22,6 +22,16 @@ columnview > listview > row > cell > tp-grid-cell > text:focus-within {
   }
 }
 
+/* The cell's child carries the padding, as in GTK's file chooser, so an
+   alternate row's shade on the child spans the whole cell. */
+columnview.data-table > listview > row > cell {
+  padding: 0;
+}
+
+columnview.data-table > listview > row > cell > * {
+  padding: 2px 6px;
+}
+
 /* Connection colour tags. The palette is libadwaita's accent set, kept
    as literal values rather than the accent variables: a tag names a
    specific colour, so it must not follow whatever accent the user has

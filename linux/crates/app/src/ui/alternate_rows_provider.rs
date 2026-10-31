@@ -2,10 +2,9 @@ use std::cell::RefCell;
 
 use tablepro_storage::AppSettings;
 
-/// Shades the cells `data_grid::stripes` marks. Not on the row: GTK draws
-/// a selected or hovered row beneath its cells, so the shade stays off a
-/// selected row and lets the hover show through.
-const CSS: &str = "columnview.data-table > listview > row:not(:selected) > cell.tp-stripe { \
+/// Shades the cells `data_grid::stripes` marks. Kept off a selected row,
+/// whose background GTK draws beneath its cells.
+const CSS: &str = "columnview.data-table > listview > row:not(:selected) > cell > .tp-stripe { \
 background-color: color-mix(in srgb, currentColor 4%, transparent); }";
 
 thread_local! {
