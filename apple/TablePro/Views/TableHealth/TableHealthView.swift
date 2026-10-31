@@ -12,6 +12,7 @@ struct TableHealthActions {
 
 struct TableHealthView: View {
     @ObservedObject var viewModel: TableHealthViewModel
+    let databaseType: DatabaseType
     let actions: TableHealthActions
 
     // A VStack, not safeAreaInset: the inset does not reach a List hosted inside the split view.
@@ -44,7 +45,7 @@ struct TableHealthView: View {
             ) {
                 TableHealthFindingsList(viewModel: viewModel, actions: actions)
             } secondary: {
-                TableHealthDetailPane(viewModel: viewModel, actions: actions)
+                TableHealthDetailPane(viewModel: viewModel, databaseType: databaseType, actions: actions)
             }
         } else if let error = viewModel.loadError {
             UnavailableStateView {
@@ -186,6 +187,7 @@ private struct TableHealthFindingsList: View {
 
 private struct TableHealthDetailPane: View {
     @ObservedObject var viewModel: TableHealthViewModel
+    let databaseType: DatabaseType
     let actions: TableHealthActions
 
     var body: some View {
@@ -201,12 +203,11 @@ private struct TableHealthDetailPane: View {
                     Button(String(localized: "Copy")) { actions.copyFix(finding) }
                     Button(String(localized: "Open in Editor")) { actions.openFix(finding, database) }
                 }
-                ScrollView {
-                    Text(verbatim: finding.fixSQL)
-                        .font(.system(.callout, design: .monospaced))
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
+                SQLStatementPreview(
+                    prepared: SQLReviewSheet.build(statements: [finding.fixSQL], databaseType: databaseType),
+                    databaseType: databaseType
+                )
+                .id(finding.id)
                 Text("This SQL is a preview. TablePro never runs it; review it in the editor and run it yourself.")
                     .font(.caption)
                     .foregroundStyle(.secondary)

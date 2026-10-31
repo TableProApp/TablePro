@@ -329,7 +329,7 @@ struct MainEditorContentView: View {
     private func tableHealthContent(tab: QueryTab) -> some View {
         Group {
             if let vm = tableHealthViewModels[tab.id] {
-                TableHealthView(viewModel: vm, actions: tableHealthActions)
+                TableHealthView(viewModel: vm, databaseType: connection.type, actions: tableHealthActions)
                     .onReceive(AppEvents.shared.tabRefreshRequested) { requestedTabId in
                         guard requestedTabId == tab.id else { return }
                         Task { await vm.refresh() }

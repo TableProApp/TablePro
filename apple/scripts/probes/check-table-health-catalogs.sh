@@ -215,10 +215,10 @@ check_mysql() {
     my -e "SELECT 1" > /dev/null || { echo "no MySQL at $HOST:$PORT" >&2; exit 3; }
 
     echo "$(my -e 'SELECT VERSION()') at $HOST:$PORT"
-    my -e "DROP DATABASE IF EXISTS $DATABASE; CREATE DATABASE $DATABASE; DROP DATABASE IF EXISTS $OTHER_DATABASE; CREATE DATABASE $OTHER_DATABASE"
-    trap 'mysql --protocol=TCP -h "$HOST" -P "$PORT" -u "$USER_NAME" -e "DROP DATABASE IF EXISTS '"$DATABASE"'; DROP DATABASE IF EXISTS '"$OTHER_DATABASE"'; UPDATE performance_schema.setup_instruments SET ENABLED = '"'YES'"' WHERE NAME = '"'wait/io/table/sql/handler'"'; DELETE FROM performance_schema.setup_objects WHERE OBJECT_SCHEMA = '"'$DATABASE'"'" > /dev/null 2>&1' EXIT
+    # The other database holds a key into this one, so it is dropped first.
+    my -e "DROP DATABASE IF EXISTS $OTHER_DATABASE; DROP DATABASE IF EXISTS $DATABASE; CREATE DATABASE $DATABASE; CREATE DATABASE $OTHER_DATABASE"
+    trap 'mysql --protocol=TCP -h "$HOST" -P "$PORT" -u "$USER_NAME" -e "DROP DATABASE IF EXISTS '"$OTHER_DATABASE"'; DROP DATABASE IF EXISTS '"$DATABASE"'; UPDATE performance_schema.setup_instruments SET ENABLED = '"'YES'"' WHERE NAME = '"'wait/io/table/sql/handler'"'; DELETE FROM performance_schema.setup_objects WHERE OBJECT_SCHEMA = '"'$DATABASE'"'" > /dev/null 2>&1' EXIT
 
-    my "$OTHER_DATABASE" -e "CREATE TABLE other_no_pk (v INT, KEY other_v_idx (v)); INSERT INTO other_no_pk VALUES (1)"
     # A table setup_objects leaves out keeps zero-count index rows even after a read through the index.
     my -e "INSERT INTO performance_schema.setup_objects (OBJECT_TYPE, OBJECT_SCHEMA, OBJECT_NAME, ENABLED, TIMED) VALUES ('TABLE', '$DATABASE', 'uncounted', 'NO', 'NO')" 2> /dev/null
     my "$DATABASE" > /dev/null <<'SQL' || exit 1
@@ -237,6 +237,8 @@ INSERT INTO healthy VALUES (1, 1), (2, 2), (3, 3);
 INSERT INTO no_pk VALUES (1, 1), (2, 2);
 SELECT COUNT(*) FROM healthy FORCE INDEX (healthy_v_idx) WHERE v = 2;
 SQL
+    my "$OTHER_DATABASE" -e "CREATE TABLE other_no_pk (v INT, KEY other_v_idx (v)); INSERT INTO other_no_pk VALUES (1)" || exit 1
+    my "$OTHER_DATABASE" -e "CREATE TABLE other_child (id INT PRIMARY KEY, parent_id INT, CONSTRAINT other_child_fk FOREIGN KEY (parent_id) REFERENCES \`$DATABASE\`.parent (id))" || exit 1
 
     local ps
     ps="$(my "$DATABASE" -e "$(query_of "$source" performanceSchemaQuery)")"
@@ -285,7 +287,8 @@ SQL
 
     local keys
     keys="$(my "$DATABASE" -e "$(query_of "$source" foreignKeyQuery)")"
-    expect "foreign key rows name both ends" "$keys" "child	child_fk	parent_id	parent	id" yes
+    expect "foreign key rows name both ends of a local key" "$keys" "$DATABASE	child	child_fk	parent_id	parent	id	1	1" yes
+    expect "foreign key rows include a key from another database into this one" "$keys" "$OTHER_DATABASE	other_child	other_child_fk	parent_id	parent	id	0	1" yes
 
     local nopk
     nopk="$(my "$DATABASE" -e "$(query_of "$source" missingPrimaryKeyQuery)")"

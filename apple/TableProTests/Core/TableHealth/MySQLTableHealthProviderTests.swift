@@ -41,12 +41,21 @@ struct MySQLTableHealthProviderTests {
     }
 
     private struct KeyRow {
+        var schema = "shop"
         let table: String
         let constraint: String
         let column: String
-        var referencedTable: String?
-        var referencedColumn: String?
+        var referencedTable = "parent"
+        var referencedColumn = "id"
+        var referencesHere = false
+
+        var isLocal: Bool { schema == "shop" }
     }
+
+    private static let keyColumns = [
+        "table_schema", "table_name", "constraint_name", "column_name",
+        "referenced_table_name", "referenced_column_name", "is_local", "references_here"
+    ]
 
     private func unused(
         candidates: [(table: String, index: String)],
@@ -60,9 +69,12 @@ struct MySQLTableHealthProviderTests {
             ),
             Self.indexResult(indexes),
             TableHealthFixture.result(
-                columns: ["table_name", "constraint_name", "column_name", "referenced_table_name", "referenced_column_name"],
+                columns: Self.keyColumns,
                 rows: foreignKeys.map { key -> [String?] in
-                    [key.table, key.constraint, key.column, key.referencedTable, key.referencedColumn]
+                    [
+                        key.schema, key.table, key.constraint, key.column, key.referencedTable, key.referencedColumn,
+                        key.isLocal ? "1" : "0", key.referencesHere ? "1" : "0"
+                    ]
                 }
             )
         ]
@@ -151,8 +163,8 @@ struct MySQLTableHealthProviderTests {
         #expect(found.isEmpty)
     }
 
-    @Test("A full-text index is redundant only to an identical one, never to a longer one")
-    func fullTextNeedsExactColumns() {
+    @Test("A full-text index is never redundant: two on the same columns can tokenize with different parsers")
+    func fullTextIsNeverRedundant() {
         let prefix = redundant([
             IndexRow(index: "ft_a", nonUnique: "1", type: "FULLTEXT", column: "a", collation: nil),
             IndexRow(index: "ft_ab", nonUnique: "1", type: "FULLTEXT", column: "a", collation: nil),
@@ -163,7 +175,7 @@ struct MySQLTableHealthProviderTests {
             IndexRow(index: "ft_a2", nonUnique: "1", type: "FULLTEXT", column: "a", collation: nil)
         ])
         #expect(prefix.isEmpty)
-        #expect(Array(identical.keys) == ["ft_a2"])
+        #expect(identical.isEmpty)
     }
 
     @Test("A key part sorted the other way keeps an index apart")
@@ -260,20 +272,43 @@ struct MySQLTableHealthProviderTests {
         #expect(found == ["line_late_idx", "line_short_idx"])
     }
 
-    @Test("A non-unique index a foreign key references in this database is not unused")
+    @Test("A non-unique index a foreign key references, from this database or another, is not unused")
     func unusedSkipsReferencedIndex() {
         let found = unused(
-            candidates: [("orders", "orders_code_idx"), ("orders", "orders_note_idx")],
+            candidates: [("orders", "orders_code_idx"), ("orders", "orders_note_idx"), ("orders", "orders_misc_idx")],
             indexes: [
                 IndexRow(index: "orders_code_idx", nonUnique: "1", column: "code"),
+                IndexRow(index: "orders_misc_idx", nonUnique: "1", column: "misc"),
                 IndexRow(index: "orders_note_idx", nonUnique: "1", column: "note")
             ],
             foreignKeys: [
-                KeyRow(table: "line", constraint: "line_code_fk", column: "order_code", referencedTable: "orders", referencedColumn: "code"),
-                KeyRow(table: "audit", constraint: "audit_note_fk", column: "note", referencedTable: nil, referencedColumn: "note")
+                KeyRow(
+                    schema: "archive", table: "audit", constraint: "audit_note_fk", column: "note",
+                    referencedTable: "orders", referencedColumn: "note", referencesHere: true
+                ),
+                KeyRow(
+                    table: "line", constraint: "line_code_fk", column: "order_code",
+                    referencedTable: "orders", referencedColumn: "code", referencesHere: true
+                ),
+                KeyRow(table: "orders", constraint: "orders_misc_fk", column: "misc", referencedTable: "misc", referencedColumn: "id")
             ]
         )
-        #expect(found == ["orders_note_idx"])
+        #expect(found == [])
+    }
+
+    @Test("A key that leaves this database protects only its referencing end here")
+    func outgoingKeyProtectsOnlyItsOwnEnd() {
+        let found = unused(
+            candidates: [("orders", "orders_ref_idx"), ("refs", "refs_id_idx")],
+            indexes: [
+                IndexRow(index: "orders_ref_idx", nonUnique: "1", column: "ref_id"),
+                IndexRow(table: "refs", index: "refs_id_idx", nonUnique: "1", column: "id")
+            ],
+            foreignKeys: [
+                KeyRow(table: "orders", constraint: "orders_ref_fk", column: "ref_id", referencedTable: "refs", referencedColumn: "id")
+            ]
+        )
+        #expect(found == ["refs_id_idx"])
     }
 
     @Test("An unused index and a table without a primary key preview their fixes")
@@ -283,10 +318,7 @@ struct MySQLTableHealthProviderTests {
             from: [
                 TableHealthFixture.result(columns: ["table_name", "index_name"], rows: [["orders", "orders_note_idx"]]),
                 Self.indexResult([IndexRow(index: "orders_note_idx", nonUnique: "1", column: "note")]),
-                TableHealthFixture.result(
-                    columns: ["table_name", "constraint_name", "column_name", "referenced_table_name", "referenced_column_name"],
-                    rows: []
-                )
+                TableHealthFixture.result(columns: Self.keyColumns, rows: [])
             ],
             context: context
         ).first)

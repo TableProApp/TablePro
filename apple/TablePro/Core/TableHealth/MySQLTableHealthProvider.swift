@@ -48,18 +48,21 @@ struct MySQLTableHealthProvider: TableHealthProvider {
         ORDER BY TABLE_NAME, INDEX_NAME, SEQ_IN_INDEX
         """
 
-    // Both ends: InnoDB checks a key through an index on each side, and MariaDB lets the referenced
-    // one be non-unique. A key from another database is not read: on MariaDB that scans every database.
+    // Both ends, from any database: InnoDB checks a key through an index on each side, and MariaDB
+    // lets the referenced one be non-unique.
     static let foreignKeyQuery = """
-        SELECT k.TABLE_NAME AS table_name,
+        SELECT k.TABLE_SCHEMA AS table_schema,
+               k.TABLE_NAME AS table_name,
                k.CONSTRAINT_NAME AS constraint_name,
                k.COLUMN_NAME AS column_name,
-               CASE WHEN k.REFERENCED_TABLE_SCHEMA = DATABASE() THEN k.REFERENCED_TABLE_NAME END AS referenced_table_name,
-               k.REFERENCED_COLUMN_NAME AS referenced_column_name
+               k.REFERENCED_TABLE_NAME AS referenced_table_name,
+               k.REFERENCED_COLUMN_NAME AS referenced_column_name,
+               k.TABLE_SCHEMA = DATABASE() AS is_local,
+               k.REFERENCED_TABLE_SCHEMA = DATABASE() AS references_here
         FROM information_schema.KEY_COLUMN_USAGE k
-        WHERE k.TABLE_SCHEMA = DATABASE()
-          AND k.REFERENCED_TABLE_NAME IS NOT NULL
-        ORDER BY k.TABLE_NAME, k.CONSTRAINT_NAME, k.ORDINAL_POSITION
+        WHERE k.REFERENCED_TABLE_NAME IS NOT NULL
+          AND (k.TABLE_SCHEMA = DATABASE() OR k.REFERENCED_TABLE_SCHEMA = DATABASE())
+        ORDER BY k.TABLE_SCHEMA, k.TABLE_NAME, k.CONSTRAINT_NAME, k.ORDINAL_POSITION
         """
 
     // MariaDB lists a system-versioned table under its own type.
@@ -221,9 +224,10 @@ struct MySQLIndexShape {
         var isPrimary: Bool { name == "PRIMARY" }
 
         // Only a B-tree serves a lookup on its leading columns, so another type is redundant only
-        // to an identical index. Of two equal indexes the unique one stays, else the first by name.
+        // to an identical index. A full-text index never is: STATISTICS does not name its parser.
+        // Of two equal indexes the unique one stays, else the first by name.
         func isRedundant(to other: Index) -> Bool {
-            guard other.name != name, other.isVisible, !isPrimary, !hasExpression, !other.hasExpression,
+            guard other.name != name, other.isVisible, type != "FULLTEXT", !isPrimary, !hasExpression, !other.hasExpression,
                   other.type == type, columns.count <= other.columns.count,
                   type == "BTREE" || columns.count == other.columns.count,
                   Array(other.columns.prefix(columns.count)) == columns
@@ -276,32 +280,40 @@ struct MySQLIndexShape {
         return tables
     }
 
-    // Per table, the columns each foreign key reads through it, on the referencing or the referenced end, in key order.
+    // Per table of this database, the columns each foreign key reads through it, on the referencing
+    // or the referenced end, in key order.
     static func foreignKeys(from rows: [TableHealthRow]) -> [String: [[String]]] {
         struct Key {
+            let schema: String
             let table: String
             let constraint: String
+            let isLocal: Bool
+            let referencesHere: Bool
             let referencedTable: String
             var columns: [String]
             var referencedColumns: [String]
         }
         var keys: [Key] = []
         for row in rows {
-            let table = row["table_name"], constraint = row["constraint_name"]
-            if let last = keys.last, last.table == table, last.constraint == constraint {
+            let schema = row["table_schema"], table = row["table_name"], constraint = row["constraint_name"]
+            if let last = keys.last, last.schema == schema, last.table == table, last.constraint == constraint {
                 keys[keys.count - 1].columns.append(row["column_name"])
                 keys[keys.count - 1].referencedColumns.append(row["referenced_column_name"])
             } else {
                 keys.append(Key(
-                    table: table, constraint: constraint, referencedTable: row["referenced_table_name"],
+                    schema: schema, table: table, constraint: constraint,
+                    isLocal: row["is_local"] == "1", referencesHere: row["references_here"] == "1",
+                    referencedTable: row["referenced_table_name"],
                     columns: [row["column_name"]], referencedColumns: [row["referenced_column_name"]]
                 ))
             }
         }
         var byTable: [String: [[String]]] = [:]
         for key in keys {
-            byTable[key.table, default: []].append(key.columns)
-            if !key.referencedTable.isEmpty {
+            if key.isLocal {
+                byTable[key.table, default: []].append(key.columns)
+            }
+            if key.referencesHere {
                 byTable[key.referencedTable, default: []].append(key.referencedColumns)
             }
         }
