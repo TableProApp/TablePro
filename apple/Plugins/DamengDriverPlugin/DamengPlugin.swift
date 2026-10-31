@@ -173,6 +173,16 @@ final class DamengPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func connect() async throws {
+        // The bridge opens plain TCP only. The form offers no SSL mode, but a dm:// URL or an import can store one.
+        switch config.ssl.mode {
+        case .disabled, .preferred:
+            break
+        case .required, .verifyCa, .verifyIdentity:
+            throw DamengError(message: String(localized: """
+                This connection asks for TLS, which the Dameng driver does not support. Add the connection again \
+                without an SSL mode, and use an SSH, SOCKS or Cloudflare tunnel on a network you do not trust.
+                """))
+        }
         try await connection.connect(
             host: config.host,
             port: config.port,

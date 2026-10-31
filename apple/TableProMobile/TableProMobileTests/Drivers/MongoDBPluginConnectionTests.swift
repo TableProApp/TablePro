@@ -209,6 +209,32 @@ struct MongoDBConnectionURITests {
         #expect(!mongoc_uri_get_option_as_bool(parsed, MONGOC_URI_TLSINSECURE, false))
     }
 
+    @Test("The Keychain's passphrase and session token replace any spelling a pasted string left")
+    func keychainSecretsReplacePastedSpellings() {
+        var params = [
+            "sslClientCertificateKeyPassword": "old",
+            "authmechanismproperties": "AWS_SESSION_TOKEN:old,SERVICE_NAME:mongodb",
+            "retryWrites": "true"
+        ]
+
+        MongoDBConnectionURI.applySecrets(to: &params, keyPassphrase: "new", sessionToken: "FQoG")
+
+        #expect(params == [
+            "tlsCertificateKeyFilePassword": "new",
+            "authMechanismProperties": "SERVICE_NAME:mongodb,AWS_SESSION_TOKEN:FQoG",
+            "retryWrites": "true"
+        ])
+    }
+
+    @Test("Without a Keychain secret the options are left as they are")
+    func noKeychainSecretLeavesOptions() {
+        var params = ["authMechanismProperties": "SERVICE_NAME:mongodb"]
+
+        MongoDBConnectionURI.applySecrets(to: &params, keyPassphrase: nil, sessionToken: "")
+
+        #expect(params == ["authMechanismProperties": "SERVICE_NAME:mongodb"])
+    }
+
     @Test("A typed parameter named like a field's key in any case never overrides the field")
     func typedParameterKeysCompareWithoutCase() throws {
         let options = MongoDBConnectionURI.options(

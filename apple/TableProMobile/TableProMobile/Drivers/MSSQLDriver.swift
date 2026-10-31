@@ -33,8 +33,15 @@ nonisolated final class MSSQLDriver: DatabaseDriver, @unchecked Sendable {
     nonisolated(unsafe) private(set) var currentSchema: String? = "dbo"
     nonisolated(unsafe) private(set) var serverVersion: String?
 
+    // This form collects no CA for FreeTDS, so a verify mode from the Mac or an import cannot be honoured here.
+    static let verifyModeUnavailableMessage = String(localized: """
+        SQL Server on this device cannot check the server's certificate. Set SSL Mode to Required in the \
+        connection's settings, or connect from the Mac app.
+        """)
+
     init(connection: DatabaseConnection, password: String?) {
         let authMethod = MSSQLConnectionOptions.authMethod(from: connection.additionalFields)
+        let ssl = DriverSSLConfiguration(sslEnabled: connection.sslEnabled, configuration: connection.sslConfiguration)
         let options = MSSQLConnectionOptions(
             host: connection.host,
             port: connection.port,
@@ -42,10 +49,8 @@ nonisolated final class MSSQLDriver: DatabaseDriver, @unchecked Sendable {
             password: password ?? "",
             database: connection.database,
             schema: MSSQLConnectionOptions.schema(from: connection.additionalFields),
-            encryptionLevel: DriverSSLConfiguration(
-                sslEnabled: connection.sslEnabled,
-                configuration: connection.sslConfiguration
-            ).mssqlEncryptionLevel,
+            encryptionLevel: ssl.mssqlEncryptionLevel,
+            certificateVerification: ssl.mssqlCertificateVerification,
             loginTimeoutSeconds: Int(connection.additionalFields["mssqlLoginTimeout"] ?? "") ?? MSSQLConnectionOptions.defaultLoginTimeoutSeconds,
             authMethod: authMethod
         )
@@ -60,6 +65,9 @@ nonisolated final class MSSQLDriver: DatabaseDriver, @unchecked Sendable {
     // MARK: - Connection
 
     func connect() async throws {
+        guard !options.certificateVerification.needsAuthority else {
+            throw DatabaseError(message: Self.verifyModeUnavailableMessage)
+        }
         guard authMethod != .windows else {
             throw DatabaseError(message: String(localized: "Windows Authentication (Kerberos) isn't supported on iOS yet. Use SQL Server Authentication, or connect from the Mac app."))
         }
