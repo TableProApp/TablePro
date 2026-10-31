@@ -410,8 +410,7 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
     }
 
     func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
-        let safeTableName = table.replacingOccurrences(of: "\"", with: "\"\"")
-        let countQuery = "SELECT COUNT(*) FROM (SELECT 1 FROM \"\(safeTableName)\" LIMIT 100001)"
+        let countQuery = "SELECT COUNT(*) FROM (SELECT 1 FROM \(quoteIdentifier(table)) LIMIT 100001)"
         let countResult = try await execute(query: countQuery)
         let rowCount: Int64? = {
             guard let row = countResult.rows.first, let countStr = row.first else { return nil }
@@ -508,20 +507,6 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
         }
 
         lock.withLock { httpClient?.databaseId = resolvedUuid }
-    }
-
-    // MARK: - Identifier Quoting
-
-    func quoteIdentifier(_ name: String) -> String {
-        let escaped = name.replacingOccurrences(of: "\"", with: "\"\"")
-        return "\"\(escaped)\""
-    }
-
-    func escapeStringLiteral(_ value: String) -> String {
-        var result = value
-        result = result.replacingOccurrences(of: "'", with: "''")
-        result = result.replacingOccurrences(of: "\0", with: "")
-        return result
     }
 
     func castColumnToText(_ column: String) -> String {

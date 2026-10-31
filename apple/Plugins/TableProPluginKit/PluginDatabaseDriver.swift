@@ -1392,7 +1392,7 @@ public extension PluginDatabaseDriver {
     func defaultExportQuery(table: String, schema: String?) -> String? { defaultExportQuery(table: table) }
 
     func quoteIdentifier(_ name: String) -> String {
-        let escaped = name.replacingOccurrences(of: "\"", with: "\"\"")
+        let escaped = name.replacingOccurrences(of: "\"", with: "\"\"", options: .literal)
         return "\"\(escaped)\""
     }
 
@@ -1711,10 +1711,10 @@ public extension PluginDatabaseDriver {
 public enum PluginSQLFilter {
     public static func escapeForLike(_ text: String) -> String {
         text
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "%", with: "\\%")
-            .replacingOccurrences(of: "_", with: "\\_")
-            .replacingOccurrences(of: "'", with: "''")
+            .replacingOccurrences(of: "\\", with: "\\\\", options: .literal)
+            .replacingOccurrences(of: "%", with: "\\%", options: .literal)
+            .replacingOccurrences(of: "_", with: "\\_", options: .literal)
+            .replacingOccurrences(of: "'", with: "''", options: .literal)
     }
 
     public static func buildOrderByClause(

@@ -46,7 +46,7 @@ final class DynamoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func escapeStringLiteral(_ value: String) -> String {
-        value.replacingOccurrences(of: "'", with: "''")
+        value.replacingOccurrences(of: "'", with: "''", options: .literal)
     }
 
     // MARK: - Connection

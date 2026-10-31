@@ -499,14 +499,14 @@ nonisolated struct MongoDBQueryBuilder {
     }
 
     private func escapeRegexChars(_ str: String) -> String {
-        let specialChars = "\\^$.|?*+()[]{}"
-        var result = ""
-        for char in str {
-            if specialChars.contains(char) {
+        let specialChars = "\\^$.|?*+()[]{}".unicodeScalars
+        var result = String.UnicodeScalarView()
+        for scalar in str.unicodeScalars {
+            if specialChars.contains(scalar) {
                 result.append("\\")
             }
-            result.append(char)
+            result.append(scalar)
         }
-        return result
+        return String(result)
     }
 }

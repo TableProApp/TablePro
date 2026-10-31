@@ -711,7 +711,7 @@ internal actor SQLFavoriteStorage {
         let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
         if let searchText = searchText, !searchText.isEmpty {
-            let sanitized = "\"\(searchText.replacingOccurrences(of: "\"", with: "\"\""))\""
+            let sanitized = "\"\(searchText.replacingOccurrences(of: "\"", with: "\"\"", options: .literal))\""
             sqlite3_bind_text(statement, bindIndex, sanitized, -1, SQLITE_TRANSIENT)
             bindIndex += 1
         }

@@ -150,11 +150,11 @@ nonisolated extension DuckDBDriver {
     }
 
     private func escapeLiteral(_ value: String) -> String {
-        value.replacingOccurrences(of: "'", with: "''")
+        value.replacingOccurrences(of: "'", with: "''", options: .literal)
     }
 
     private func escapeIdentifier(_ value: String) -> String {
-        value.replacingOccurrences(of: "\"", with: "\"\"")
+        value.replacingOccurrences(of: "\"", with: "\"\"", options: .literal)
     }
 
     private static let indexColumnsRegex = try? NSRegularExpression(

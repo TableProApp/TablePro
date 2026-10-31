@@ -268,7 +268,7 @@ public enum FirestoreQueryBuilder {
         if column == nameField { return column }
         let simple = column.range(of: "^[A-Za-z_][A-Za-z0-9_]*$", options: .regularExpression) != nil
         if simple { return column }
-        let escaped = column.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "`", with: "\\`")
+        let escaped = column.replacingOccurrences(of: "\\", with: "\\\\", options: .literal).replacingOccurrences(of: "`", with: "\\`", options: .literal)
         return "`" + escaped + "`"
     }
 
