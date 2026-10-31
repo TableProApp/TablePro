@@ -28,7 +28,8 @@ pub(super) enum InWindow {
 /// The connection's menu section for the window: the session's own
 /// actions while it is open, Stop Connecting while it connects, else
 /// Connect for a saved connection, and the reason a connect failed.
-pub(super) fn session_section(key: &SessionKey, state: InWindow) -> gio::Menu {
+/// `opens_databases` offers Open Database… on an open one.
+pub(super) fn session_section(key: &SessionKey, state: InWindow, opens_databases: bool) -> gio::Menu {
     let target = crate::ui::session_target::to_variant(key);
     let menu = gio::Menu::new();
     let add = |label: String, action: &str| {
@@ -40,8 +41,7 @@ pub(super) fn session_section(key: &SessionKey, state: InWindow) -> gio::Menu {
         InWindow::Open => {
             add(crate::i18n::gettext("New Query"), NEW_QUERY_IN);
             add(crate::i18n::gettext("Refresh"), REFRESH_IN);
-            // Another of the server's databases, beside this one (0030).
-            if let SessionKey::Saved(_) = key {
+            if opens_databases {
                 add(crate::i18n::gettext("Open Database…"), OPEN_DATABASE_IN);
             }
             add(crate::i18n::gettext("Disconnect"), DISCONNECT_SESSION);

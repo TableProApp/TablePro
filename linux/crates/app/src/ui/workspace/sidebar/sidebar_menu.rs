@@ -141,6 +141,7 @@ mod tests {
             can_create_table: true,
             can_edit_structure: true,
             speaks_sql: true,
+            opens_databases: true,
         }
     }
 

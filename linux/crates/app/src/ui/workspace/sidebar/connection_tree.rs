@@ -1127,7 +1127,15 @@ impl TreeInner {
                 stored: self.stored(node).is_some(),
             }
         };
-        let lead = session_section(&key, state);
+        // A saved connection's own row, on an engine whose catalog holds
+        // one database (0030).
+        let opens_databases = matches!(key, SessionKey::Saved(_))
+            && self
+                .branches
+                .borrow()
+                .get(&key)
+                .is_some_and(|branch| branch.view.affordances().opens_databases);
+        let lead = session_section(&key, state, opens_databases);
         let saved = match &key {
             SessionKey::Saved(id) => self.saved.get(*id),
             SessionKey::SavedIn { .. } | SessionKey::File(_) => None,
