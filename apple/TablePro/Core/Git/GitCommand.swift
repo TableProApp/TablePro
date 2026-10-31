@@ -16,6 +16,7 @@ internal struct GitCommand: Equatable, Sendable {
     let workingDirectory: URL
     var access: Access = .read
     var timeout: TimeInterval?
+    var disabledFilters: [String] = []
 
     static let writeTimeout: TimeInterval = 300
 
@@ -35,8 +36,16 @@ internal struct GitCommand: Equatable, Sendable {
         "GIT_OPTIONAL_LOCKS": "0",
         "GIT_TERMINAL_PROMPT": "0",
         "GIT_PAGER": "cat",
-        "GIT_NO_LAZY_FETCH": "1",
     ]
+
+    // Git before 2.44 ignores GIT_NO_LAZY_FETCH; an empty allow list stops the transport a lazy fetch would use.
+    static let readOnlyEnvironment: [String: String] = [
+        "GIT_NO_LAZY_FETCH": "1",
+        "GIT_ALLOW_PROTOCOL": "",
+    ]
+
+    static let emptyValueVariable = "TABLEPRO_GIT_EMPTY_VALUE"
+    static let disabledFilterVariables = ["clean", "process", "required"]
 
     static let inheritedRepositoryVariables: Set<String> = [
         "GIT_DIR",
@@ -49,17 +58,33 @@ internal struct GitCommand: Equatable, Sendable {
         "GIT_CEILING_DIRECTORIES",
         "GIT_CONFIG_PARAMETERS",
         "GIT_CONFIG_COUNT",
+        // Points `git config` alone at another file, so the filter listing would miss the repository's drivers.
+        "GIT_CONFIG",
         "GIT_EXTERNAL_DIFF",
     ]
 
     static let historyFormat = "%x1e%H%x1f%an%x1f%aI%x1f%s"
 
     var processArguments: [String] {
-        Self.hardeningArguments + (access == .read ? Self.readOnlyArguments : []) + arguments
+        Self.hardeningArguments + (access == .read ? Self.readOnlyArguments : []) + filterArguments + arguments
+    }
+
+    // `--config-env` splits at the last `=`, unlike `-c`, and git before 2.31 stops on it rather than run the filter.
+    private var filterArguments: [String] {
+        disabledFilters.flatMap { driver in
+            Self.disabledFilterVariables.map { "--config-env=filter.\(driver).\($0)=\(Self.emptyValueVariable)" }
+        }
     }
 
     func environment(base: [String: String]) -> [String: String] {
-        Self.environment(base: access == .write ? CLIToolEnvironment.augmented(base) : base)
+        var environment = Self.environment(base: access == .write ? CLIToolEnvironment.augmented(base) : base)
+        if access == .read {
+            environment.merge(Self.readOnlyEnvironment) { _, override in override }
+        }
+        if !disabledFilters.isEmpty {
+            environment[Self.emptyValueVariable] = ""
+        }
+        return environment
     }
 
     static func environment(base: [String: String]) -> [String: String] {
@@ -79,10 +104,19 @@ internal struct GitCommand: Equatable, Sendable {
         GitCommand(arguments: ["rev-parse", "--verify", "--quiet", "HEAD"], workingDirectory: directory)
     }
 
-    static func status(in directory: URL, pathspec: String = ".") -> GitCommand {
+    static func configuration(in directory: URL) -> GitCommand {
+        GitCommand(arguments: ["config", "--list", "--name-only", "-z"], workingDirectory: directory)
+    }
+
+    // Status pipes a stale file through its filter driver and runs its own status inside a nested repository.
+    static func status(in directory: URL, pathspec: String = ".", disablingFilters filters: [String] = []) -> GitCommand {
         GitCommand(
-            arguments: ["status", "--porcelain=v2", "-z", "--untracked-files=all", "--find-renames", "--", pathspec],
-            workingDirectory: directory
+            arguments: [
+                "status", "--porcelain=v2", "-z", "--untracked-files=all", "--find-renames",
+                "--ignore-submodules=dirty", "--", pathspec,
+            ],
+            workingDirectory: directory,
+            disabledFilters: filters
         )
     }
 
