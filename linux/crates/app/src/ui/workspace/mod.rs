@@ -1275,10 +1275,7 @@ impl WorkspaceModel {
             }
             WorkspaceInput::EditorTabContentChanged(id) => self.on_editor_tab_content_changed(id),
             WorkspaceInput::EditorTabFileChanged(id) => self.on_editor_tab_file_changed(id),
-            WorkspaceInput::EditorTabDatabaseChanged(id) => {
-                self.persist_workspace_state();
-                self.retitle_tab(id);
-            }
+            WorkspaceInput::EditorTabDatabaseChanged(id) => self.on_editor_tab_database_changed(id),
             WorkspaceInput::WorkspaceLoaded(loaded) => self.on_workspace_loaded(loaded),
             WorkspaceInput::ResetWorkspaceLayout => self.on_reset_workspace_layout(),
             WorkspaceInput::SafeModeChanged => self.refresh_title(),
