@@ -492,7 +492,7 @@ impl SessionWindow {
             return;
         };
         let saved = match key {
-            SessionKey::Saved(id) | SessionKey::SavedIn { id, .. } => self.stored_connection(*id),
+            SessionKey::Saved(id) => self.stored_connection(*id),
             SessionKey::File(_) => None,
         };
         // The saved level can differ from the session's after a reconnect
@@ -571,19 +571,20 @@ impl SessionWindow {
 
     /// Ask the tabs, as Disconnect does, then connect again.
     fn reopen_after_teardown(&self, id: Uuid) {
-        // The connection's other databases go with it, since they took
-        // its level when they opened (0030).
-        let keys = self.with_siblings(&SessionKey::Saved(id));
-        let (Some((handles, guards)), Some(input)) = (self.teardown_handles(&keys), self.input()) else {
+        let Some(workspace) = self.session_workspace(&SessionKey::Saved(id)) else {
+            return;
+        };
+        let (Some(handle), Some(guards), Some(input)) = (workspace.prompt_handle(), self.close_guards(), self.input())
+        else {
             return;
         };
         guards.begin_teardown();
-        if guards.may_tear_down(&handles) {
+        if guards.may_tear_down(&handle) {
             input.deliver(SessionWindowInput::ReopenApproved(id));
             return;
         }
         let window = self.downgrade();
-        guards.ask_tear_down(self.upcast_ref(), &handles, move |decision| match decision {
+        guards.ask_tear_down(self.upcast_ref(), &handle, move |decision| match decision {
             CloseDecision::Approved => input.deliver(SessionWindowInput::ReopenApproved(id)),
             _ => {
                 if let Some(window) = window.upgrade() {
@@ -598,9 +599,6 @@ impl SessionWindow {
     /// sessions and connects go on.
     pub(super) fn on_reopen_approved(&self, id: Uuid) {
         let stored = self.stored_connection(id);
-        for sibling in self.siblings_of(id) {
-            self.tear_down_session(&sibling);
-        }
         if !self.tear_down_session(&SessionKey::Saved(id)) {
             return;
         }

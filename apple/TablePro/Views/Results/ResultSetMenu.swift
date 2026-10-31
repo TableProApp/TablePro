@@ -5,27 +5,32 @@
 
 import SwiftUI
 
-/// A pull-down in the status bar rather than a strip of its own, which spent 32pt in every query tab, even with one result.
+struct ResultSetActions {
+    let activate: (UUID) -> Void
+    let togglePin: (UUID) -> Void
+    let compare: (UUID) -> Void
+    let close: (UUID) -> Void
+    let closeOthers: (UUID) -> Void
+
+    static var none: ResultSetActions {
+        ResultSetActions(activate: { _ in }, togglePin: { _ in }, compare: { _ in }, close: { _ in }, closeOthers: { _ in })
+    }
+}
+
+// Lists every result and acts on the current one. A tab row cannot do the second: no stock control tells which segment was right-clicked.
 struct ResultSetMenu: View {
     let model: ResultSetMenuModel
-    /// Spelled out where the bar has room, counted in figures where it does not.
     let isSpelledOut: Bool
-    let onActivate: (UUID) -> Void
-    let onTogglePin: (UUID) -> Void
-    let onCompare: (UUID) -> Void
-    let onClose: (UUID) -> Void
-    let onCloseOthers: (UUID) -> Void
+    let actions: ResultSetActions
 
     var body: some View {
         Menu {
             ForEach(model.entries) { entry in
                 Button {
-                    onActivate(entry.id)
+                    actions.activate(entry.id)
                 } label: {
-                    /// A checkmark on the active one and a pin glyph on the pinned ones, which is
-                    /// the menu vocabulary for "this is current" and "this is held".
                     Label {
-                        Text(entry.label)
+                        Text(model.displayLabel(of: entry))
                     } icon: {
                         if entry.isActive {
                             Image(systemName: "checkmark")
@@ -43,16 +48,16 @@ struct ResultSetMenu: View {
                     ? String(localized: "Unpin Result")
                     : String(localized: "Pin Result")
                 ) {
-                    onTogglePin(active.id)
+                    actions.togglePin(active.id)
                 }
 
-                Button(String(localized: "Compare Result With…")) { onCompare(active.id) }
+                Button(String(localized: "Compare Result With…")) { actions.compare(active.id) }
                     .disabled(!model.canCompare(active))
 
-                Button(String(localized: "Close Result")) { onClose(active.id) }
+                Button(String(localized: "Close Result")) { actions.close(active.id) }
                     .disabled(!model.canClose(active))
 
-                Button(String(localized: "Close Other Results")) { onCloseOthers(active.id) }
+                Button(String(localized: "Close Other Results")) { actions.closeOthers(active.id) }
                     .disabled(!model.canCloseOthers(active))
             }
         } label: {

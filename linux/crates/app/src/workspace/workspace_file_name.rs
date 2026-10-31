@@ -15,13 +15,6 @@ impl WorkspaceFileName {
     pub fn for_key(key: &SessionKey) -> Self {
         let stem = match key {
             SessionKey::Saved(id) => id.to_string(),
-            // A database name can hold a slash, so it goes in as a digest.
-            SessionKey::SavedIn { id, database } => {
-                let digest = glib::compute_checksum_for_string(glib::ChecksumType::Sha256, database.as_str())
-                    .map(|digest| digest.to_string())
-                    .unwrap_or_default();
-                format!("{}{digest}", Self::databases_prefix(*id))
-            }
             SessionKey::File(uri) => {
                 // GLib returns no digest only for a checksum type it
                 // does not know, which SHA-256 is not.
@@ -32,11 +25,6 @@ impl WorkspaceFileName {
             }
         };
         Self { stem }
-    }
-
-    /// What the names of the connection `id`'s other databases start with.
-    pub fn databases_prefix(id: uuid::Uuid) -> String {
-        format!("{id}-database-")
     }
 
     pub fn file_name(&self) -> String {

@@ -31,6 +31,8 @@ final class ResultSet: ObservableObject, Identifiable {
     @Published var executionTime: TimeInterval?
     @Published var rowsAffected: Int = 0
     @Published var errorMessage: String?
+    // The statement an Error result reports on, so Fix with AI sends that statement rather than the whole script.
+    @Published var failedQuery: String?
     @Published var statusMessage: String?
     /// What the statement printed on the server, such as Oracle's `DBMS_OUTPUT`, read right after it ran.
     @Published var serverOutput: PluginServerOutput = .none

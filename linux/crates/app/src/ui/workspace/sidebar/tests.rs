@@ -1270,13 +1270,8 @@ fn the_connection_menu_holds_the_pickers_items() {
             )
     );
     assert_eq!(
-        open[..4],
-        [
-            "win.new-query-in",
-            "win.refresh-in",
-            "win.open-database-in",
-            "win.disconnect-session"
-        ],
+        open[..3],
+        ["win.new-query-in", "win.refresh-in", "win.disconnect-session"],
         "{open:?}"
     );
     assert!(!open.contains(&"picker.connect".to_owned()));

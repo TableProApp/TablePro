@@ -44,13 +44,12 @@ const ACTIONS: [(&str, ActionInput); 11] = [
 
 /// The actions a connection tree row or a toast fires for its own
 /// session, which take the session as their target (`session_target`).
-const SESSION_ACTIONS: [(&str, SessionInput); 8] = [
+const SESSION_ACTIONS: [(&str, SessionInput); 7] = [
     ("show-session", SessionWindowInput::ShowSession),
     ("disconnect-session", SessionWindowInput::DisconnectSession),
     ("stop-connecting", SessionWindowInput::StopConnecting),
     ("new-query-in", SessionWindowInput::NewQueryIn),
     ("refresh-in", SessionWindowInput::RefreshIn),
-    ("open-database-in", SessionWindowInput::ChooseDatabaseIn),
     ("show-connect-failure", SessionWindowInput::ShowConnectFailure),
     ("forget-connect-failure", SessionWindowInput::ForgetConnectFailure),
 ];

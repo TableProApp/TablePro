@@ -24,8 +24,6 @@ use crate::physical::PgEndpoint;
 /// are enforced with cancel requests.
 pub(crate) struct PgEditorSession {
     id: EditorSessionId,
-    /// A connection stays in the database it opened in.
-    database: Option<String>,
     commands: mpsc::Sender<Command>,
     status: Arc<SessionStatus>,
     shutdown: CancellationToken,
@@ -41,7 +39,6 @@ impl PgEditorSession {
         cancel: CancellationToken,
     ) -> Result<Arc<Self>, DriverError> {
         let (client, connection) = endpoint.open(&cancel).await?;
-        let database = endpoint.database().map(str::to_owned);
         let close_timeout = endpoint.liveness().close_timeout;
         let (notice_sender, notices) = mpsc::unbounded_channel();
         // PostgreSQL has defaulted to on since 9.1; the server reports
@@ -71,7 +68,6 @@ impl PgEditorSession {
         ));
         Ok(Arc::new(Self {
             id: EditorSessionId::new(),
-            database,
             commands,
             status,
             shutdown,
@@ -89,10 +85,6 @@ impl EditorSession for PgEditorSession {
 
     fn state(&self) -> EditorSessionState {
         self.status.state()
-    }
-
-    fn database(&self) -> Option<String> {
-        self.database.clone()
     }
 
     async fn run(

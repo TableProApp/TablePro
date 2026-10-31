@@ -29,7 +29,6 @@ mod session_restore;
 mod session_teardown;
 mod session_window_command;
 mod session_window_input;
-mod sibling_sessions;
 #[cfg(test)]
 pub(crate) mod tests;
 mod window_actions;
@@ -466,10 +465,6 @@ impl SessionWindow {
             SessionWindowInput::ConnectionSaved(id) => self.on_connection_saved(id),
             SessionWindowInput::Disconnect => self.on_disconnect_front(),
             SessionWindowInput::DisconnectSession(key) => self.on_disconnect(key),
-            SessionWindowInput::ChooseDatabaseIn(key) => self.choose_database_in(key),
-            SessionWindowInput::FollowDatabase { key, tab_id, database } => {
-                self.follow_database(&key, tab_id, database);
-            }
             SessionWindowInput::SessionTeardownApproved(key) => self.on_session_teardown_approved(&key),
             SessionWindowInput::ShowSession(key) => self.show_session(&key),
             SessionWindowInput::NewQueryIn(key) => self.deliver_to(&key, WorkspaceInput::NewEditorTab),
@@ -764,13 +759,14 @@ impl SessionWindow {
             warnings,
             session_only,
         } = connected;
-        let (Some(state), Some(_), Some(_)) = (self.state(), self.close_guards(), self.input()) else {
+        let (Some(state), Some(guards), Some(input)) = (self.state(), self.close_guards(), self.input()) else {
             self.discard_pending(pending);
             return;
         };
         let key = claim.key().clone();
         let credentials = state.context.session_credentials(saved.as_ref(), &session_only);
         let session = Session::start(pending, state.context.session_deps(credentials));
+        claim.attach(&session);
         self.remember_session(&key, saved.as_ref());
         if let ConnectSource::Intent(intent) = &source
             && let Err(error) = state
@@ -780,18 +776,6 @@ impl SessionWindow {
         {
             tracing::warn!(%error, "could not remember the connect dialog driver");
         }
-        self.join(claim, session, &warnings);
-    }
-
-    /// Build the workspace of a session that started, in the window's
-    /// shell, which the first session builds. A connect and a sibling of
-    /// another database both join this way.
-    pub(super) fn join(&self, claim: SessionClaim, session: Arc<Session>, warnings: &[String]) {
-        let (Some(state), Some(guards), Some(input)) = (self.state(), self.close_guards(), self.input()) else {
-            return;
-        };
-        let key = claim.key().clone();
-        claim.attach(&session);
         let shell = self.shell().unwrap_or_else(|| self.new_shell(state, &input));
         let workspace = Workspace::new(WorkspaceInit {
             key: key.clone(),
@@ -813,7 +797,7 @@ impl SessionWindow {
         workspace.start();
         self.sync_actions();
         for warning in warnings {
-            self.show_toast(warning);
+            self.show_toast(&warning);
         }
         if let SessionKey::Saved(id) = key {
             self.touch_last_opened(id);
@@ -1272,72 +1256,34 @@ impl SessionWindow {
     }
 
     fn on_session_teardown_approved(&self, key: &SessionKey) {
-        // A database that joined while the question was up has nothing
-        // unsaved yet, and goes with its connection too.
-        if let SessionKey::Saved(id) = key {
-            for sibling in self.siblings_of(*id) {
-                self.tear_down_session(&sibling);
-            }
-        }
         if self.tear_down_session(key) {
             tracing::info!("disconnected");
         }
     }
 
     /// Close the session under `key` through its own prompts, then tear
-    /// it down. A connection's other databases go with it, under one
-    /// question for all of them (0030). The window's other sessions and
-    /// connects go on.
+    /// it down. The window's other sessions and connects go on.
     fn on_disconnect(&self, key: SessionKey) {
-        let keys = self.with_siblings(&key);
-        let Some((handles, guards)) = self.teardown_handles(&keys) else {
+        let Some(workspace) = self.session_workspace(&key) else {
             return;
         };
-        let approved = move || {
-            keys.iter()
-                .cloned()
-                .map(SessionWindowInput::SessionTeardownApproved)
-                .collect::<Vec<_>>()
+        let (Some(handle), Some(guards)) = (workspace.prompt_handle(), self.close_guards()) else {
+            return;
         };
+        let approved = move || SessionWindowInput::SessionTeardownApproved(key.clone());
         guards.begin_teardown();
-        if guards.may_tear_down(&handles) {
-            for input in approved() {
-                self.send(input);
-            }
+        if guards.may_tear_down(&handle) {
+            self.send(approved());
             return;
         }
         let input = self.input();
-        guards.ask_tear_down(self.upcast_ref(), &handles, move |decision| {
+        guards.ask_tear_down(self.upcast_ref(), &handle, move |decision| {
             if decision == CloseDecision::Approved
                 && let Some(input) = input
             {
-                for approved in approved() {
-                    input.deliver(approved);
-                }
+                input.deliver(approved());
             }
         });
-    }
-
-    /// `key`, after the other databases of its connection.
-    pub(super) fn with_siblings(&self, key: &SessionKey) -> Vec<SessionKey> {
-        let mut keys = match key {
-            SessionKey::Saved(id) => self.siblings_of(*id),
-            _ => Vec::new(),
-        };
-        keys.push(key.clone());
-        keys
-    }
-
-    /// The prompt handles of the workspaces open under `keys`. `None`
-    /// when the last of them, the one asked about, is not open.
-    pub(super) fn teardown_handles(&self, keys: &[SessionKey]) -> Option<(Vec<WorkspaceHandle>, Rc<CloseGuards>)> {
-        let guards = self.close_guards()?.clone();
-        self.session_workspace(keys.last()?)?;
-        let handles = keys
-            .iter()
-            .filter_map(|key| self.session_workspace(key)?.prompt_handle())
-            .collect();
-        Some((handles, guards))
     }
 
     /// Ctrl+W: the tab on screen closes through its session's prompts,

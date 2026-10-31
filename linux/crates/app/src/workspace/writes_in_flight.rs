@@ -27,16 +27,6 @@ impl OutsideWrites {
         }
     }
 
-    /// The sessions with writes still in flight that `keep` picks.
-    pub(super) fn keys_in_flight(&self, keep: impl Fn(&SessionKey) -> bool) -> Vec<SessionKey> {
-        self.sessions
-            .borrow()
-            .iter()
-            .filter(|(key, landing)| landing.writes > 0 && keep(key))
-            .map(|(key, _)| key.clone())
-            .collect()
-    }
-
     /// Resolves once every write for `key` has landed, or `None` when
     /// none is in flight.
     pub(super) fn landing(&self, key: &SessionKey) -> Option<oneshot::Receiver<()>> {

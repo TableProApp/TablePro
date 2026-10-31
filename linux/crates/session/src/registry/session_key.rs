@@ -13,15 +13,6 @@ use super::FileIdentity;
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum SessionKey {
     Saved(Uuid),
-    /// Another of a saved connection's databases, opened in the window
-    /// that holds the connection ([0030]). Its sibling sessions share the
-    /// window and never another's.
-    ///
-    /// [0030]: ../../../docs/decisions/0030-a-database-is-a-session-of-its-own.md
-    SavedIn {
-        id: Uuid,
-        database: String,
-    },
     /// The canonical file URI when there is one, else the URI the file
     /// arrived as.
     File(String),

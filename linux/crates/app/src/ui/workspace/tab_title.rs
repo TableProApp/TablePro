@@ -33,10 +33,6 @@ pub(crate) struct ConnectionLabel {
 }
 
 impl ConnectionLabel {
-    pub(crate) fn key(&self) -> &SessionKey {
-        &self.key
-    }
-
     pub(crate) fn new(key: SessionKey, saved: Rc<SavedConnectionList>, session: ActiveSession) -> Self {
         Self {
             key,
@@ -47,72 +43,30 @@ impl ConnectionLabel {
     }
 
     pub(crate) fn name(&self) -> String {
-        let connection = self.connection_name().unwrap_or_default();
-        match &self.key {
-            SessionKey::SavedIn { database, .. } => in_database(&connection, database),
-            _ => connection,
-        }
-    }
-
-    /// The connection's name alone, without a database.
-    fn connection_name(&self) -> Option<String> {
         let saved = match &self.key {
-            SessionKey::Saved(id) | SessionKey::SavedIn { id, .. } => self.saved.get(*id).map(|saved| saved.name),
+            SessionKey::Saved(id) => self.saved.get(*id).map(|saved| saved.name),
             SessionKey::File(_) => None,
         };
-        saved.or_else(|| self.session.metadata().map(|metadata| metadata.name))
+        saved
+            .or_else(|| self.session.metadata().map(|metadata| metadata.name))
+            .unwrap_or_default()
     }
 
-    /// The database a tab names in its title: the one the editor bar moved
-    /// it to, unless that is its session's own, else its sibling session's.
-    /// The connection's own database goes unnamed (0030).
-    fn database(&self, moved_to: Option<&str>) -> Option<String> {
-        let own = self.session.get();
-        let sibling = match &self.key {
-            SessionKey::SavedIn { database, .. } => Some(database.as_str()),
-            _ => None,
-        };
-        named_database(moved_to, own.as_ref().and_then(|session| session.database()), sibling)
+    pub(crate) fn shares_bar(&self) -> bool {
+        self.shares_bar.get()
     }
 
     /// What a tab names after its title: the connection while the bar is
-    /// shared, the database when it is not the connection's own, as
-    /// "orders (prod, analytics)" or "Query 1 (analytics)".
+    /// shared, and the tab's database when it moved off the connection's.
     fn suffix(&self, moved_to: Option<&str>) -> Option<String> {
-        let connection = self.shares_bar().then(|| self.connection_name().unwrap_or_default());
-        suffix(connection, self.database(moved_to))
-    }
-
-    fn shares_bar(&self) -> bool {
-        self.shares_bar.get()
+        let connection = self.shares_bar().then(|| self.name());
+        suffix(connection, moved_to)
     }
 
     /// True when that changed, and the tabs have to be titled again.
     pub(crate) fn set_shares_bar(&self, shares: bool) -> bool {
         self.shares_bar.replace(shares) != shares
     }
-}
-
-fn named_database(moved_to: Option<&str>, own: Option<&str>, sibling: Option<&str>) -> Option<String> {
-    moved_to
-        .filter(|database| Some(*database) != own)
-        .or(sibling)
-        .map(str::to_owned)
-}
-
-fn suffix(connection: Option<String>, database: Option<String>) -> Option<String> {
-    match (connection, database) {
-        (Some(connection), Some(database)) => Some(in_database(&connection, &database)),
-        (connection, database) => connection.or(database),
-    }
-}
-
-fn in_database(connection: &str, database: &str) -> String {
-    // Translators: a connection and one of its databases, after a tab's title.
-    crate::i18n::gettext_f(
-        "{connection}, {database}",
-        &[("connection", connection), ("database", database)],
-    )
 }
 
 /// Give `page` its title, tooltip and keyword. libadwaita treats an
@@ -129,7 +83,7 @@ pub(crate) fn apply_tab_title(
     // The overview's search finds a connection's tabs by its name.
     page.set_keyword(&connection.name());
     let title = match connection.suffix(moved_to) {
-        Some(suffix) => name_connection(title.clone(), &suffix),
+        Some(suffix) => name_place(title.clone(), &suffix),
         None => title.clone(),
     };
     page.set_title(&title.label);
@@ -141,17 +95,29 @@ pub(crate) fn apply_tab_title(
     page.set_tooltip(&glib::markup_escape_text(&lines.join("\n")));
 }
 
+/// The connection, the database, or both, as "prod, analytics".
+fn suffix(connection: Option<String>, database: Option<&str>) -> Option<String> {
+    match (connection, database) {
+        // Translators: a connection and one of its databases, after a tab's title.
+        (Some(connection), Some(database)) => Some(crate::i18n::gettext_f(
+            "{connection}, {database}",
+            &[("connection", &connection), ("database", database)],
+        )),
+        (connection, database) => connection.or_else(|| database.map(str::to_owned)),
+    }
+}
+
 /// A tab beside another connection's names its own after its title, and
-/// its database when not the connection's own, since the title stays the
-/// useful part once ellipsized. The tooltip names it on a
-/// line of its own, which a cut label loses.
-fn name_connection(title: TabTitle, connection: &str) -> TabTitle {
-    let tooltip = [title.tooltip.as_deref().unwrap_or(&title.label), connection].join("\n");
+/// a tab in another database names that, since the title stays the
+/// useful part once ellipsized. The tooltip names them on a line of its
+/// own, which a cut label loses.
+fn name_place(title: TabTitle, place: &str) -> TabTitle {
+    let tooltip = [title.tooltip.as_deref().unwrap_or(&title.label), place].join("\n");
     TabTitle {
-        // Translators: a tab's title and its connection, while several connections share the tab bar.
+        // Translators: a tab's title and its connection while several connections share the tab bar, or the database it runs in when not the connection's.
         label: crate::i18n::gettext_f(
             "{title} ({connection})",
-            &[("title", &title.label), ("connection", connection)],
+            &[("title", &title.label), ("connection", place)],
         ),
         tooltip: Some(tooltip),
     }
@@ -332,7 +298,7 @@ mod tests {
 
     #[test]
     fn a_tab_beside_another_connections_names_its_own_after_its_title() {
-        let title = name_connection(
+        let title = name_place(
             resolve_tab_title(&TabIdentity::Table(orders()), TableNaming::Bare),
             "Shop",
         );
@@ -343,24 +309,10 @@ mod tests {
     }
 
     #[test]
-    fn a_tab_names_its_database_when_not_the_connections_own() {
+    fn a_tab_names_its_database_and_the_connection_it_shares_the_bar_with() {
+        assert_eq!(suffix(None, Some("analytics")).as_deref(), Some("analytics"));
         assert_eq!(
-            named_database(Some("analytics"), Some("shop"), None).as_deref(),
-            Some("analytics")
-        );
-        assert_eq!(
-            named_database(Some("shop"), Some("shop"), None),
-            None,
-            "the connection's own"
-        );
-        assert_eq!(named_database(None, Some("shop"), None), None);
-        assert_eq!(
-            named_database(None, Some("analytics"), Some("analytics")).as_deref(),
-            Some("analytics")
-        );
-        assert_eq!(suffix(None, Some("analytics".to_owned())).as_deref(), Some("analytics"));
-        assert_eq!(
-            suffix(Some("Shop".to_owned()), Some("analytics".to_owned())).as_deref(),
+            suffix(Some("Shop".to_owned()), Some("analytics")).as_deref(),
             Some("Shop, analytics")
         );
         assert_eq!(suffix(Some("Shop".to_owned()), None).as_deref(), Some("Shop"));

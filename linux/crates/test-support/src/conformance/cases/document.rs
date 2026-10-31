@@ -605,7 +605,6 @@ pub async fn a_timed_out_statement_is_stopped_by_the_server<E: DocumentEngine>(
     let table = filled(TIMEOUT_CASE, &engine, connection.as_ref(), 50).await?;
     let options = EditorSessionOptions {
         statement_timeout: Some(SETTLE),
-        database: None,
     };
     let session = connection
         .open_editor_session(options, CancellationToken::new())

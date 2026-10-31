@@ -254,11 +254,6 @@ impl Connection for PgConnection {
         outcome
     }
 
-    async fn list_databases(&self, options: CallOptions) -> Result<Vec<SchemaInfo>, DriverError> {
-        self.read(options, read_op(|client| Box::pin(metadata::list_databases(client))))
-            .await
-    }
-
     async fn list_schemas(&self, options: CallOptions) -> Result<Vec<SchemaInfo>, DriverError> {
         self.read(options, read_op(|client| Box::pin(metadata::list_schemas(client))))
             .await
@@ -467,13 +462,7 @@ impl Connection for PgConnection {
         cancel: CancellationToken,
     ) -> Result<Arc<dyn EditorSession>, DriverError> {
         self.ensure_open()?;
-        // A connection stays in the database it opened in, so a tab moved
-        // to another one gets a session opened there.
-        let endpoint = match options.database.as_deref() {
-            Some(database) => Arc::new(self.endpoint.in_database(database)),
-            None => self.endpoint.clone(),
-        };
-        let session = PgEditorSession::open(endpoint, self.settings.read_only, options, cancel).await?;
+        let session = PgEditorSession::open(self.endpoint.clone(), self.settings.read_only, options, cancel).await?;
         Ok(session)
     }
 

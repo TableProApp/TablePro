@@ -77,7 +77,7 @@ pub fn resolve_file_blocking(
                 Some(connection) => FileTarget::Saved(Box::new(connection)),
                 None => FileTarget::File(identity),
             },
-            SessionKey::SavedIn { .. } | SessionKey::File(_) => FileTarget::File(identity),
+            SessionKey::File(_) => FileTarget::File(identity),
         }
     });
     ResolvedFile { uri, target }

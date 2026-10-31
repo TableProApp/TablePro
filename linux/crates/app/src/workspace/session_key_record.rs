@@ -7,7 +7,6 @@ use uuid::Uuid;
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum SessionKeyRecord {
     Saved { id: Uuid },
-    SavedIn { id: Uuid, database: String },
     File { uri: String },
 }
 
@@ -15,10 +14,6 @@ impl From<&SessionKey> for SessionKeyRecord {
     fn from(key: &SessionKey) -> Self {
         match key {
             SessionKey::Saved(id) => Self::Saved { id: *id },
-            SessionKey::SavedIn { id, database } => Self::SavedIn {
-                id: *id,
-                database: database.clone(),
-            },
             SessionKey::File(uri) => Self::File { uri: uri.clone() },
         }
     }
@@ -28,7 +23,6 @@ impl SessionKeyRecord {
     pub fn into_key(self) -> SessionKey {
         match self {
             Self::Saved { id } => SessionKey::Saved(id),
-            Self::SavedIn { id, database } => SessionKey::SavedIn { id, database },
             Self::File { uri } => SessionKey::File(uri),
         }
     }
@@ -42,10 +36,6 @@ mod tests {
     fn each_key_comes_back_as_it_went_in() {
         for key in [
             SessionKey::Saved(Uuid::new_v4()),
-            SessionKey::SavedIn {
-                id: Uuid::new_v4(),
-                database: "analytics".to_owned(),
-            },
             SessionKey::File("file:///srv/app.db".to_owned()),
         ] {
             assert_eq!(SessionKeyRecord::from(&key).into_key(), key);

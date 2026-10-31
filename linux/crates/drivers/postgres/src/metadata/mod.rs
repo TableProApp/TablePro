@@ -12,7 +12,7 @@ pub(crate) use estimate::table_estimate;
 pub(crate) use foreign_keys::{fetch_foreign_keys, fetch_outbound_foreign_keys};
 pub(crate) use identity::row_identity;
 pub(crate) use indexes::fetch_indexes;
-pub(crate) use objects::{list_databases, list_objects, list_schemas};
+pub(crate) use objects::{list_objects, list_schemas};
 
 use futures_util::TryStreamExt;
 use postgres_types::{ToSql, Type};

@@ -483,7 +483,6 @@ crates/app/src/ui/session_window/session_restore.rs
 crates/app/src/ui/session_window/session_teardown.rs
 crates/app/src/ui/session_window/session_window_command.rs
 crates/app/src/ui/session_window/session_window_input.rs
-crates/app/src/ui/session_window/sibling_sessions.rs
 crates/app/src/ui/session_window/tests/mod.rs
 crates/app/src/ui/session_window/tests/notification.rs
 crates/app/src/ui/session_window/tests/open_file.rs

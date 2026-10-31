@@ -184,7 +184,6 @@ async fn run_read(session: &Session, text: &str, limit: usize, timeout: Duration
 async fn run_write(session: &Session, text: &str, limit: usize, timeout: Duration, cancel: &CancellationToken) -> Ran {
     let options = EditorSessionOptions {
         statement_timeout: Some(timeout),
-        database: None,
     };
     let editor = session
         .open_editor_session(options, cancel)

@@ -174,13 +174,9 @@ impl CloseGuards {
         self.teardown_acknowledged.borrow_mut().clear();
     }
 
-    /// Whether every tab of `handles` may go with their connection
-    /// without asking.
-    pub(crate) fn may_tear_down(&self, handles: &[WorkspaceHandle]) -> bool {
-        let acknowledged = self.teardown_acknowledged.borrow();
-        handles
-            .iter()
-            .all(|handle| handle.close_step(CloseScope::Window, &acknowledged) == CloseStep::Approve)
+    /// Whether every tab may go with the connection without asking.
+    pub(crate) fn may_tear_down(&self, handle: &WorkspaceHandle) -> bool {
+        handle.close_step(CloseScope::Window, &self.teardown_acknowledged.borrow()) == CloseStep::Approve
     }
 
     /// Ask whether every tab may go with the connection; `decided` hears
@@ -188,14 +184,19 @@ impl CloseGuards {
     pub(crate) fn ask_tear_down(
         self: &Rc<Self>,
         parent: &gtk::Widget,
-        handles: &[WorkspaceHandle],
+        handle: &WorkspaceHandle,
         decided: impl FnOnce(CloseDecision) + 'static,
     ) {
-        let (guards, handles, parent) = (self.clone(), handles.to_vec(), parent.clone());
+        let (guards, handle, parent) = (self.clone(), handle.clone(), parent.clone());
         glib::spawn_future_local(async move {
             let mut acknowledged = guards.teardown_acknowledged.borrow().clone();
             let decision = guards
-                .run(&parent, &handles, CloseScope::Window, &mut acknowledged)
+                .run(
+                    &parent,
+                    std::slice::from_ref(&handle),
+                    CloseScope::Window,
+                    &mut acknowledged,
+                )
                 .await;
             if decision == CloseDecision::Approved {
                 guards.teardown_acknowledged.replace(acknowledged);
@@ -464,21 +465,21 @@ mod tests {
         let guards = CloseGuards::new();
         let window = window();
         let parent = window.clone().upcast::<gtk::Widget>();
-        assert!(!guards.may_tear_down(std::slice::from_ref(&workspace.handle)));
+        assert!(!guards.may_tear_down(&workspace.handle));
 
         let (kept, sink) = decision_sink();
-        guards.ask_tear_down(&parent, std::slice::from_ref(&workspace.handle), sink);
+        guards.ask_tear_down(&parent, &workspace.handle, sink);
         let first = answer_next(&window, "Save Changes?", "cancel", None);
         wait_until(WAIT, || kept.get().is_some()).expect("a decision");
         assert_eq!(kept.get(), Some(CloseDecision::Cancelled));
-        assert!(!guards.may_tear_down(std::slice::from_ref(&workspace.handle)));
+        assert!(!guards.may_tear_down(&workspace.handle));
 
         let (approved, sink) = decision_sink();
-        guards.ask_tear_down(&parent, std::slice::from_ref(&workspace.handle), sink);
+        guards.ask_tear_down(&parent, &workspace.handle, sink);
         answer_next(&window, "Save Changes?", "discard", Some(&first));
         wait_until(WAIT, || approved.get().is_some()).expect("a decision");
         assert_eq!(approved.get(), Some(CloseDecision::Approved));
-        assert!(guards.may_tear_down(std::slice::from_ref(&workspace.handle)));
+        assert!(guards.may_tear_down(&workspace.handle));
     }
 
     /// A switch asks once before it connects and again before the new
@@ -493,26 +494,26 @@ mod tests {
 
         guards.begin_teardown();
         let (approved, sink) = decision_sink();
-        guards.ask_tear_down(&parent, std::slice::from_ref(&workspace.handle), sink);
+        guards.ask_tear_down(&parent, &workspace.handle, sink);
         answer_next(&window, "Close With Open Transactions?", "close", None);
         let first = answer_next(&window, "Save Changes?", "discard", None);
         wait_until(WAIT, || approved.get().is_some()).expect("a decision");
-        assert!(guards.may_tear_down(std::slice::from_ref(&workspace.handle)));
+        assert!(guards.may_tear_down(&workspace.handle));
 
         edit_again(&workspace);
         assert!(
-            !guards.may_tear_down(std::slice::from_ref(&workspace.handle)),
+            !guards.may_tear_down(&workspace.handle),
             "an edit made while connecting went unasked"
         );
         let (again, sink) = decision_sink();
-        guards.ask_tear_down(&parent, std::slice::from_ref(&workspace.handle), sink);
+        guards.ask_tear_down(&parent, &workspace.handle, sink);
         answer_next(&window, "Save Changes?", "discard", Some(&first));
         wait_until(WAIT, || again.get().is_some()).expect("a decision");
         assert_eq!(again.get(), Some(CloseDecision::Approved));
 
         guards.begin_teardown();
         assert!(
-            !guards.may_tear_down(std::slice::from_ref(&workspace.handle)),
+            !guards.may_tear_down(&workspace.handle),
             "a new switch skipped the transaction"
         );
     }
