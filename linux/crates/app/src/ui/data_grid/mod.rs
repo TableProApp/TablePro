@@ -87,6 +87,7 @@ impl DataGrid {
         find_bar::install(&grid);
         imp.detail_pane.attach(&grid);
         grid.set_columns(columns, sorting, rules);
+        grid.watch_fonts();
         grid
     }
 

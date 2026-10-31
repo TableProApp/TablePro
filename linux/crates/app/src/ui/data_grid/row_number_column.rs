@@ -139,7 +139,9 @@ pub fn fit(grid: &DataGrid) {
     };
     let largest = grid.row_base() + u64::from(grid.store().len());
     let digits = largest.max(1).ilog10() as i32 + 1;
-    let metrics = grid.column_view().pango_context().metrics(None, None);
+    // A fresh context, since the view's own follows a font change only at
+    // the next frame.
+    let metrics = grid.column_view().create_pango_context().metrics(None, None);
     let digit_px = pango::units_to_double(metrics.approximate_digit_width());
     column.set_fixed_width((f64::from(digits.max(2)) * digit_px).ceil() as i32 + CHROME_PX);
 }

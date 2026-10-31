@@ -139,6 +139,7 @@ impl TabFactory {
             &page,
             &resolve_tab_title(&slot.identity(), self.parts.naming.get()),
             &self.parts.label,
+            slot.moved_to().as_deref(),
         );
         self.parts.tabs.borrow_mut().insert(id, slot);
         self.parts.input.deliver(WorkspaceInput::WorkspaceTabsChanged);
@@ -497,7 +498,7 @@ pub(super) fn connect_editor(
     let file = input.clone();
     editor.connect_file_changed(move |_| file.deliver(WorkspaceInput::EditorTabFileChanged(tab_id)));
     let database = input.clone();
-    editor.connect_database_changed(move |_| database.deliver(WorkspaceInput::EditorTabDatabaseChanged));
+    editor.connect_database_changed(move |_| database.deliver(WorkspaceInput::EditorTabDatabaseChanged(tab_id)));
     let transaction = input.clone();
     editor.connect_transaction_changed(move |_, _| transaction.deliver(WorkspaceInput::EditorTransactionChanged));
     let toast = input.clone();
