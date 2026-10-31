@@ -21,7 +21,7 @@ use tokio::sync::mpsc;
 use crate::decode::value_at;
 use crate::duck_type::DuckType;
 use crate::encode::bind_all;
-use crate::errors::{is_parse_error, map_error};
+use crate::errors::map_error;
 use crate::instance::{Link, attach_unless_open};
 
 /// How many rows travel in one `Rows` event: enough that a large read
@@ -436,50 +436,93 @@ pub(crate) fn controls_transaction(sql: &str) -> bool {
 /// The words an ATTACH may carry before its path.
 const ATTACH_WORDS: [&str; 6] = ["DATABASE", "IF", "NOT", "EXISTS", "OR", "REPLACE"];
 
-/// The source text of the path an ATTACH statement names: a string
-/// constant in any of DuckDB's forms, which only an alias or the options
-/// may follow.
+/// The source text of the path an ATTACH statement names, which only an
+/// alias or the options may follow. DuckDB 2.0 takes an expression there:
+/// a parenthesis right after a word is a call's or a type's, and the
+/// options are a last group of their own.
 fn attach_literal(statement: &str) -> Option<&str> {
     let grammar = SqlGrammar::DuckDb;
     let plan = ScriptPlan::build(statement, grammar, LexicalSettings::default_for(grammar));
-    let mut tokens = plan.tokens(0..statement.len()).filter(|token| !token.kind.is_trivia());
+    let tokens: Vec<ScriptToken> = plan
+        .tokens(0..statement.len())
+        .filter(|token| !token.kind.is_trivia() && token.kind != ScriptTokenKind::Semicolon)
+        .collect();
     let word = |token: &ScriptToken, words: &[&str]| {
         token.kind == ScriptTokenKind::Word
             && statement
                 .get(token.range.clone())
                 .is_some_and(|text| words.iter().any(|word| text.eq_ignore_ascii_case(word)))
     };
-    let first = tokens.next()?;
-    if !word(&first, &["ATTACH"]) {
+    if !word(tokens.first()?, &["ATTACH"]) {
         return None;
     }
-    let start = tokens.find(|token| !word(token, &ATTACH_WORDS))?.range.start;
-    let end = tokens
-        .find(|token| token.kind == ScriptTokenKind::OpenParen || word(token, &["AS"]))
-        .map_or(statement.len(), |token| token.range.start);
+    let first = 1 + tokens.get(1..)?.iter().position(|token| !word(token, &ATTACH_WORDS))?;
+    let start = tokens.get(first)?.range.start;
+    let mut depth = 0usize;
+    let mut end = statement.len();
+    for (index, token) in tokens.iter().enumerate().skip(first) {
+        match token.kind {
+            ScriptTokenKind::OpenParen => {
+                let glued = index > first
+                    && tokens.get(index - 1).is_some_and(|before| {
+                        before.kind == ScriptTokenKind::Word && before.range.end == token.range.start
+                    });
+                if depth == 0 && index > first && !glued && closes_last(&tokens, index) {
+                    end = token.range.start;
+                    break;
+                }
+                depth += 1;
+            }
+            ScriptTokenKind::CloseParen => depth = depth.saturating_sub(1),
+            _ if depth == 0 && index > first && word(token, &["AS"]) => {
+                end = token.range.start;
+                break;
+            }
+            _ => {}
+        }
+    }
     statement.get(start..end).map(str::trim_end)
 }
 
-/// The files an ATTACH may open. DuckDB decodes the path itself, so its
-/// escapes and continued strings read as DuckDB reads them, then it is
-/// expanded the way DuckDB opens it. Both readings of a
-/// `name:` prefix are kept, since a TYPE option leaves it in the name.
+/// Whether the group the parenthesis at `open` starts is the last thing
+/// in the statement.
+fn closes_last(tokens: &[ScriptToken], open: usize) -> bool {
+    let mut depth = 0usize;
+    for (index, token) in tokens.iter().enumerate().skip(open) {
+        match token.kind {
+            ScriptTokenKind::OpenParen => depth += 1,
+            ScriptTokenKind::CloseParen => {
+                depth = depth.saturating_sub(1);
+                if depth == 0 {
+                    return index + 1 == tokens.len();
+                }
+            }
+            _ => {}
+        }
+    }
+    false
+}
+
+/// The files an ATTACH may open. DuckDB evaluates the path and opens its
+/// text, so escapes, continued strings and expressions, a BLOB's or a
+/// number's included, read as DuckDB reads them, then it is expanded the
+/// way DuckDB opens it. Both readings of a `name:` prefix are kept, since
+/// a TYPE option leaves it in the name.
 ///
-/// Text DuckDB cannot read as a string is no string constant, so DuckDB
-/// refuses the ATTACH while parsing it and opens nothing.
+/// A path that does not evaluate refuses the ATTACH: a misread boundary
+/// would otherwise let DuckDB open a file nothing checked.
 fn attach_targets(link: &Link, literal: &str) -> Result<Vec<PathBuf>, DriverError> {
-    // The path goes last, on a line of its own, so a comment after it
-    // hides nothing.
+    // The path stands on lines of its own, so a comment after it hides
+    // nothing.
     let read = link.connection.query_row(
-        &format!("SELECT current_setting('home_directory'),\n{literal}\n"),
+        &format!("SELECT current_setting('home_directory'), CAST(path AS VARCHAR) FROM (SELECT\n{literal}\n) AS attach_path(path)"),
         [],
-        |row| Ok((row.get::<_, Option<String>>(0)?, row.get::<_, duckdb::types::Value>(1)?)),
+        |row| Ok((row.get::<_, Option<String>>(0)?, row.get::<_, Option<String>>(1)?)),
     );
-    let (home, path) = match read.map_err(map_error) {
-        Ok((home, duckdb::types::Value::Text(path))) => (home, path),
-        Ok(_) => return Ok(Vec::new()),
-        Err(error) if is_parse_error(&error) => return Ok(Vec::new()),
-        Err(error) => return Err(error),
+    let (home, path) = match read.map_err(map_error)? {
+        (home, Some(path)) => (home, path),
+        // DuckDB refuses a NULL path itself.
+        (_, None) => return Ok(Vec::new()),
     };
     let home = home
         .filter(|home| !home.is_empty())
@@ -712,7 +755,7 @@ mod tests {
     }
 
     #[test]
-    fn an_attach_names_its_path_with_a_string_constant() {
+    fn an_attach_path_runs_up_to_its_alias_or_options() {
         assert_eq!(
             attach_literal("ATTACH $db$/srv/b.db$db$ AS b"),
             Some("$db$/srv/b.db$db$")
@@ -730,6 +773,23 @@ mod tests {
             attach_literal("ATTACH '/srv/'\n-- more\n'a.db' AS a"),
             Some("'/srv/'\n-- more\n'a.db'")
         );
+        assert_eq!(
+            attach_literal("ATTACH '/srv/' || ('a.db') AS a"),
+            Some("'/srv/' || ('a.db')")
+        );
+        assert_eq!(
+            attach_literal("ATTACH concat('/srv/', 'a.db') (READ_ONLY)"),
+            Some("concat('/srv/', 'a.db')")
+        );
+        assert_eq!(
+            attach_literal("ATTACH concat('/srv/', 'a.db')"),
+            Some("concat('/srv/', 'a.db')")
+        );
+        assert_eq!(
+            attach_literal("ATTACH '/srv/a.db'::BLOB (READ_ONLY);"),
+            Some("'/srv/a.db'::BLOB")
+        );
+        assert_eq!(attach_literal("ATTACH ('/srv/a.db') AS a"), Some("('/srv/a.db')"));
         assert_eq!(attach_literal("SELECT 'ATTACH x'"), None);
         assert_eq!(attach_literal("DETACH s"), None);
     }

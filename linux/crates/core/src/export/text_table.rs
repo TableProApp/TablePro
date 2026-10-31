@@ -1,6 +1,6 @@
 use std::fmt::Write;
 
-use comfy_table::{Cell, CellAlignment, Table};
+use comfy_table::{Cell, CellAlignment, ContentLineStyle, LineStyle, Table, TableStyle};
 use thiserror::Error;
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
@@ -14,7 +14,12 @@ use super::value_text::value_text;
 /// The borders psql draws with `\pset border 2`. ASCII, since box drawing
 /// characters are East Asian Ambiguous and some fonts draw them two
 /// columns wide.
-const BORDERS: &str = "||--+-++|    ++++++";
+const BORDERS: TableStyle = TableStyle::new()
+    .top_border(LineStyle::new('+', '-', '+', '+'))
+    .header_lines(ContentLineStyle::new('|', '|', '|'))
+    .header_separator(LineStyle::new('+', '-', '+', '+'))
+    .content_lines(ContentLineStyle::new('|', '|', '|'))
+    .bottom_border(LineStyle::new('+', '-', '+', '+'));
 
 /// Every row is padded to each column's widest cell, so one long value
 /// is repeated as spaces down the whole column, and comfy-table holds
@@ -94,7 +99,7 @@ where
     // comfy-table otherwise asks whether stdout is a terminal for every
     // line it draws, and this text never goes there.
     table.force_no_tty();
-    table.load_preset(BORDERS);
+    table.load_style(BORDERS);
     table.set_header(
         header
             .into_iter()

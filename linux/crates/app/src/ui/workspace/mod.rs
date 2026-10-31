@@ -73,7 +73,6 @@ use crate::runtime::{DeliverInput, InputSender};
 use crate::services::change_tracker_registry::ChangeTrackerRegistry;
 use crate::services::session_context::SessionContext;
 use crate::services::structure_tracker_registry::StructureTrackerRegistry;
-use crate::ui::SessionWindowInput;
 use crate::workspace::{ApplicationInhibit, CloseBlocker, CloseGuards, WindowInhibitor, WorkspaceHandle};
 
 glib::wrapper! {
@@ -413,6 +412,14 @@ impl WorkspaceTab {
         }
     }
 
+    /// The database an editor tab moved to off the connection's.
+    pub(crate) fn moved_to(&self) -> Option<String> {
+        match self {
+            WorkspaceTab::Editor(slot) => slot.editor.tab_database(),
+            _ => None,
+        }
+    }
+
     /// What the tab's title is made from.
     pub(crate) fn identity(&self) -> tab_identity::TabIdentity {
         use tab_identity::TabIdentity;
@@ -502,7 +509,7 @@ pub(crate) enum WorkspaceInput {
     /// differ from its file's or match it again.
     EditorTabFileChanged(Uuid),
     /// An editor tab moved to another database, which its record keeps
-    /// and the window follows (0030).
+    /// and its title names.
     EditorTabDatabaseChanged(Uuid),
     /// The session's saved tabs and their editor text, read off the GTK
     /// thread.
@@ -511,6 +518,14 @@ pub(crate) enum WorkspaceInput {
     ResetWorkspaceLayout,
     /// The session moved to another Safe Mode level, which the title names.
     SafeModeChanged,
+    /// Completion in editor tab `tab_id` reads `session`'s catalog, its
+    /// database's, or its own connection's again with `None`.
+    FollowCatalog {
+        tab_id: Uuid,
+        session: Option<Arc<Session>>,
+    },
+    /// Another database of the connection opened beside it.
+    DatabaseOpened(Arc<Session>),
     /// The saved connections changed, the title's icon perhaps with them.
     SavedConnectionsChanged,
     WorkspaceLayoutReset(Result<Option<std::path::PathBuf>, crate::workspace::WorkspaceSaveError>),
@@ -572,15 +587,6 @@ pub(crate) enum WorkspaceInput {
         body: String,
     },
     ShowToast(String),
-    /// Another database of the connection opened: its query tabs read
-    /// its catalog.
-    DatabaseOpened(Arc<Session>),
-    /// Completion in the editor tab reads `session`'s catalog, the tab's
-    /// database's, or the connection's again with `None`.
-    FollowCatalog {
-        tab_id: Uuid,
-        session: Option<Arc<Session>>,
-    },
     /// A table or structure tab gained or lost unsaved changes.
     TabDirtyChanged,
     NewTableTab {
@@ -1053,65 +1059,6 @@ fn replace_text(cell: &RefCell<String>, text: &str) -> bool {
 }
 
 impl WorkspaceModel {
-    /// The record keeps the tab's database, and the window follows it.
-    fn on_editor_tab_database_changed(&self, tab_id: Uuid) {
-        self.persist_workspace_state();
-        self.follow_editor_database(tab_id);
-    }
-
-    fn on_database_opened(&self, session: &Arc<Session>) {
-        for tab in self.workspace_tabs.borrow().values() {
-            // A tab in another database lets it pass.
-            if let WorkspaceTab::Editor(slot) = tab {
-                slot.editor.follow_catalog(Some(session.clone()));
-            }
-        }
-    }
-
-    fn follow_catalog(&self, tab_id: Uuid, session: Option<Arc<Session>>) {
-        if let Some(WorkspaceTab::Editor(slot)) = self.workspace_tabs.borrow().get(&tab_id) {
-            slot.editor.follow_catalog(session);
-        }
-    }
-
-    /// Ask the window to reach the session of the database an editor tab
-    /// is in, and to hand it back for the tab's completion.
-    fn follow_editor_database(&self, tab_id: Uuid) {
-        let database = match self.workspace_tabs.borrow().get(&tab_id) {
-            Some(WorkspaceTab::Editor(slot)) => slot.editor.tab_database().unwrap_or_default(),
-            _ => return,
-        };
-        let Some(shell) = self.shell.upgrade() else {
-            return;
-        };
-        if let Some(sender) = shell.imp().sender.get() {
-            sender.deliver(SessionWindowInput::FollowDatabase {
-                key: self.key.clone(),
-                tab_id,
-                database,
-            });
-        }
-    }
-
-    /// Ask the window to read the catalog of this connection's database
-    /// `database` again, where a tab's statement changed it.
-    fn refresh_database(&self, database: String) {
-        let id = match &self.key {
-            SessionKey::Saved(id) | SessionKey::SavedIn { id, .. } => *id,
-            SessionKey::File(_) => return,
-        };
-        let Some(shell) = self.shell.upgrade() else {
-            return;
-        };
-        if let Some(sender) = shell.imp().sender.get() {
-            // The connection's own database has no row of its own beside it.
-            if matches!(self.key, SessionKey::SavedIn { .. }) {
-                sender.deliver(SessionWindowInput::RefreshIn(SessionKey::Saved(id)));
-            }
-            sender.deliver(SessionWindowInput::RefreshIn(SessionKey::SavedIn { id, database }));
-        }
-    }
-
     /// The window this workspace is in, for dialogs to sit over.
     pub(super) fn window(&self) -> Option<adw::ApplicationWindow> {
         self.window.upgrade()
@@ -1194,7 +1141,7 @@ impl WorkspaceModel {
             return;
         };
         if let Some(tab) = self.workspace_tabs.borrow().get(&id) {
-            tab_title::apply_tab_title(tab.page(), &title, &self.label);
+            tab_title::apply_tab_title(tab.page(), &title, &self.label, tab.moved_to().as_deref());
         }
         if self.index.last_selected() == Some(id) {
             self.refresh_title();
@@ -1315,8 +1262,6 @@ impl WorkspaceModel {
             WorkspaceInput::CloseActiveWorkspaceTab => self.close_active_workspace_tab(),
             WorkspaceInput::ShowAlert { title, body } => self.show_error_alert(&title, &body),
             WorkspaceInput::ShowToast(msg) => self.show_toast(&msg),
-            WorkspaceInput::FollowCatalog { tab_id, session } => self.follow_catalog(tab_id, session),
-            WorkspaceInput::DatabaseOpened(session) => self.on_database_opened(&session),
             WorkspaceInput::TabDirtyChanged => self.refresh_unsaved(),
             WorkspaceInput::NewTableTab { schema } => self.on_new_table_tab(schema),
             WorkspaceInput::ShowDiagram { schema } => self.show_diagram(schema, Vec::new()),
@@ -1341,6 +1286,8 @@ impl WorkspaceModel {
             WorkspaceInput::EditorTabContentChanged(id) => self.on_editor_tab_content_changed(id),
             WorkspaceInput::EditorTabFileChanged(id) => self.on_editor_tab_file_changed(id),
             WorkspaceInput::EditorTabDatabaseChanged(id) => self.on_editor_tab_database_changed(id),
+            WorkspaceInput::FollowCatalog { tab_id, session } => self.follow_catalog(tab_id, session),
+            WorkspaceInput::DatabaseOpened(session) => self.on_database_opened(&session),
             WorkspaceInput::WorkspaceLoaded(loaded) => self.on_workspace_loaded(loaded),
             WorkspaceInput::ResetWorkspaceLayout => self.on_reset_workspace_layout(),
             WorkspaceInput::SafeModeChanged => self.refresh_title(),

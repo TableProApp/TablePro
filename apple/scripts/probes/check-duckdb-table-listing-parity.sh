@@ -166,7 +166,7 @@ SWIFT
 SOURCES=()
 while IFS= read -r source; do
     SOURCES+=("$source")
-done < <(find "$PLUGIN" -maxdepth 1 -name '*.swift' | sort)
+done < <(find "$PLUGIN" "$ROOT/Plugins/Shared" -maxdepth 1 -name '*.swift' | sort)
 
 # The plugin reads its completion vocabulary from this TableProCore module.
 VOCABULARY="$ROOT/Packages/TableProCore/Sources/TableProSQLVocabulary"

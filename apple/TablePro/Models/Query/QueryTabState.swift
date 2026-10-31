@@ -668,10 +668,17 @@ struct TabDisplayState: Equatable {
         leaveOutputModeWithoutOutput()
     }
 
+    // New results join after the pinned ones, so a counted name starts there and never repeats a pinned one.
     @MainActor
-    mutating func removeUnpinnedResults() {
+    var pinnedResultCount: Int {
+        resultSets.filter(\.isPinned).count
+    }
+
+    @MainActor
+    mutating func removeUnpinnedResults(keepingActive: Bool = false) {
+        let activeId = activeResultSet?.id
         resultSets = resultSets.filter { $0.isPinned }
-        activeResultSetId = resultSets.last?.id
+        activeResultSetId = keepingActive && resultSets.contains { $0.id == activeId } ? activeId : resultSets.last?.id
         leaveOutputModeWithoutOutput()
     }
 

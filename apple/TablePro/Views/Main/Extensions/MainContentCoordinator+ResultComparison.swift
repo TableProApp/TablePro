@@ -41,8 +41,10 @@ extension MainContentCoordinator {
         return position > 0 ? ids[position - 1] : nil
     }
 
-    static func comparisonTitle(label: String, ordinal: Int) -> String {
-        String(format: String(localized: "Result %1$d: %2$@"), ordinal, label)
+    // The chooser's own name for the result, so a counted name never sits beside a different count.
+    static func comparisonTitle(of resultSet: ResultSet, in display: TabDisplayState) -> String {
+        guard let index = display.resultSets.firstIndex(where: { $0.id == resultSet.id }) else { return resultSet.label }
+        return ResultSetMenuModel.displayLabel(at: index, in: display.resultSets.map(\.label))
     }
 
     // Every result of the tab the comparison starts from, and every pinned result of any other query tab.
@@ -53,13 +55,13 @@ extension MainContentCoordinator {
             for tab in coordinator.tabManager.tabs where tab.tabType == .query {
                 let isHome = tab.id == homeTabId
                 let tabId = tab.id
-                for (index, resultSet) in tab.display.resultSets.enumerated()
+                for resultSet in tab.display.resultSets
                     where resultSet.id != leftId && (isHome || resultSet.isPinned)
                     && coordinator.isComparable(resultSet, in: tab) {
                     let resultId = resultSet.id
                     let candidate = ResultComparisonCandidate(
                         id: resultId,
-                        title: comparisonTitle(label: resultSet.label, ordinal: index + 1),
+                        title: comparisonTitle(of: resultSet, in: tab.display),
                         group: isHome ? String(localized: "This Tab") : coordinator.comparisonDetail(for: tab),
                         isPinned: resultSet.isPinned,
                         read: { [weak coordinator] in
@@ -87,7 +89,6 @@ extension MainContentCoordinator {
         guard !resultSet.isExplainResult else { return nil }
         let rows = comparisonRows(of: resultSet, in: tab)
         guard !rows.columns.isEmpty else { return nil }
-        let ordinal = (tab.display.resultSets.firstIndex { $0.id == resultSet.id } ?? 0) + 1
         let primaryKey: [String]
         if let origin = resultSet.origin, origin.keysResolved, origin.tableName?.isEmpty == false {
             primaryKey = origin.primaryKeyColumns
@@ -95,7 +96,7 @@ extension MainContentCoordinator {
             primaryKey = []
         }
         return ResultComparisonSide(
-            title: Self.comparisonTitle(label: resultSet.label, ordinal: ordinal),
+            title: Self.comparisonTitle(of: resultSet, in: tab.display),
             detail: comparisonDetail(for: tab),
             columns: rows.columns,
             columnTypes: rows.columnTypes,

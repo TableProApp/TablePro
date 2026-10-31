@@ -26,6 +26,7 @@ mod row_number_column;
 mod selection;
 mod selection_summary;
 mod server_sorter;
+mod stripes;
 mod table_keys;
 #[cfg(test)]
 pub(crate) mod test_grid;
@@ -87,6 +88,8 @@ impl DataGrid {
         find_bar::install(&grid);
         imp.detail_pane.attach(&grid);
         grid.set_columns(columns, sorting, rules);
+        grid.watch_fonts();
+        grid.watch_stripes();
         grid
     }
 

@@ -141,6 +141,7 @@ mod tests {
             can_create_table: true,
             can_edit_structure: true,
             speaks_sql: true,
+            opens_databases: true,
         }
     }
 
@@ -210,6 +211,7 @@ mod tests {
             can_create_table: false,
             can_edit_structure: false,
             speaks_sql: false,
+            opens_databases: false,
         };
 
         assert_eq!(

@@ -191,11 +191,18 @@ impl SqlEditor {
             };
             if let Some(editor) = editor.upgrade() {
                 let imp = editor.imp();
-                let own = databases.iter().find(|database| database.is_default);
-                imp.listed_own_database
-                    .replace(own.map(|database| database.name.clone()));
+                let own = databases
+                    .iter()
+                    .find(|database| database.is_default)
+                    .map(|database| database.name.clone());
+                let own_changed = imp.listed_own_database.replace(own.clone()) != own;
                 imp.scope_button.set_menu_model(database_menu(&databases).as_ref());
                 editor.show_scope();
+                // A tab already in the database the server now calls the
+                // connection's own is no longer a moved one.
+                if own_changed {
+                    editor.emit_by_name::<()>("database-changed", &[]);
+                }
             }
         });
     }

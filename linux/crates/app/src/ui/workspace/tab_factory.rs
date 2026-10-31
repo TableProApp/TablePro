@@ -140,6 +140,7 @@ impl TabFactory {
             &page,
             &resolve_tab_title(&slot.identity(), self.parts.naming.get()),
             &self.parts.label,
+            slot.moved_to().as_deref(),
         );
         self.parts.tabs.borrow_mut().insert(id, slot);
         self.parts.input.deliver(WorkspaceInput::WorkspaceTabsChanged);
@@ -184,15 +185,10 @@ impl TabFactory {
             close_timeout: parts.context.close_timeout(),
             snippets: parts.snippets.clone(),
         });
-        let moved = database.is_some();
         if let Some(database) = database {
             editor.move_to_database(&database);
         }
         connect_editor(&editor, id, &parts.input, &parts.toasts);
-        // A restored or reopened tab brings its database's session in too.
-        if moved {
-            parts.input.deliver(WorkspaceInput::EditorTabDatabaseChanged(id));
-        }
         editor.attach_assistant(parts.assistant.clone());
         // After the signals are connected, so the workspace marks a tab
         // restored with unsaved changes.

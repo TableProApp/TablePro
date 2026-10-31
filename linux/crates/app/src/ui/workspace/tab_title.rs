@@ -33,10 +33,6 @@ pub(crate) struct ConnectionLabel {
 }
 
 impl ConnectionLabel {
-    pub(crate) fn key(&self) -> &SessionKey {
-        &self.key
-    }
-
     pub(crate) fn new(key: SessionKey, saved: Rc<SavedConnectionList>, session: ActiveSession) -> Self {
         Self {
             key,
@@ -46,14 +42,17 @@ impl ConnectionLabel {
         }
     }
 
+    pub(crate) fn key(&self) -> &SessionKey {
+        &self.key
+    }
+
     pub(crate) fn name(&self) -> String {
         let saved = match &self.key {
             SessionKey::Saved(id) => self.saved.get(*id).map(|saved| saved.name),
-            // Another database of the connection names both, as
-            // "orders (prod, analytics)" (0030).
             SessionKey::SavedIn { id, database } => self.saved.get(*id).map(|saved| {
+                // Translators: a connection and another of its server's databases, open beside it.
                 crate::i18n::gettext_f(
-                    "{connection}, {database}",
+                    "{connection} · {database}",
                     &[("connection", &saved.name), ("database", database)],
                 )
             }),
@@ -68,6 +67,13 @@ impl ConnectionLabel {
         self.shares_bar.get()
     }
 
+    /// What a tab names after its title: the connection while the bar is
+    /// shared, and the tab's database when it moved off the connection's.
+    fn suffix(&self, moved_to: Option<&str>) -> Option<String> {
+        let connection = self.shares_bar().then(|| self.name());
+        suffix(connection, moved_to)
+    }
+
     /// True when that changed, and the tabs have to be titled again.
     pub(crate) fn set_shares_bar(&self, shares: bool) -> bool {
         self.shares_bar.replace(shares) != shares
@@ -79,13 +85,17 @@ impl ConnectionLabel {
 /// what the unsaved icon shows, since a screen reader reads a tab's
 /// tooltip and not its icon, and it is escaped: AdwTab shows it as Pango
 /// markup.
-pub(crate) fn apply_tab_title(page: &adw::TabPage, title: &TabTitle, connection: &ConnectionLabel) {
-    let name = connection.name();
+pub(crate) fn apply_tab_title(
+    page: &adw::TabPage,
+    title: &TabTitle,
+    connection: &ConnectionLabel,
+    moved_to: Option<&str>,
+) {
     // The overview's search finds a connection's tabs by its name.
-    page.set_keyword(&name);
-    let title = match connection.shares_bar() {
-        true => name_connection(title.clone(), &name),
-        false => title.clone(),
+    page.set_keyword(&connection.name());
+    let title = match connection.suffix(moved_to) {
+        Some(suffix) => name_place(title.clone(), &suffix),
+        None => title.clone(),
     };
     page.set_title(&title.label);
     let unsaved = page.icon().is_some().then(|| crate::i18n::gettext("Unsaved changes"));
@@ -96,16 +106,29 @@ pub(crate) fn apply_tab_title(page: &adw::TabPage, title: &TabTitle, connection:
     page.set_tooltip(&glib::markup_escape_text(&lines.join("\n")));
 }
 
-/// A tab beside another connection's names its own after its title,
-/// which stays the useful part once ellipsized. The tooltip names it on a
-/// line of its own, which a cut label loses.
-fn name_connection(title: TabTitle, connection: &str) -> TabTitle {
-    let tooltip = [title.tooltip.as_deref().unwrap_or(&title.label), connection].join("\n");
+/// The connection, the database, or both, as "prod, analytics".
+fn suffix(connection: Option<String>, database: Option<&str>) -> Option<String> {
+    match (connection, database) {
+        // Translators: a connection and one of its databases, after a tab's title.
+        (Some(connection), Some(database)) => Some(crate::i18n::gettext_f(
+            "{connection}, {database}",
+            &[("connection", &connection), ("database", database)],
+        )),
+        (connection, database) => connection.or_else(|| database.map(str::to_owned)),
+    }
+}
+
+/// A tab beside another connection's names its own after its title, and
+/// a tab in another database names that, since the title stays the
+/// useful part once ellipsized. The tooltip names them on a line of its
+/// own, which a cut label loses.
+fn name_place(title: TabTitle, place: &str) -> TabTitle {
+    let tooltip = [title.tooltip.as_deref().unwrap_or(&title.label), place].join("\n");
     TabTitle {
-        // Translators: a tab's title and its connection, while several connections share the tab bar.
+        // Translators: a tab's title and its connection while several connections share the tab bar, or the database it runs in when not the connection's.
         label: crate::i18n::gettext_f(
             "{title} ({connection})",
-            &[("title", &title.label), ("connection", connection)],
+            &[("title", &title.label), ("connection", place)],
         ),
         tooltip: Some(tooltip),
     }
@@ -286,7 +309,7 @@ mod tests {
 
     #[test]
     fn a_tab_beside_another_connections_names_its_own_after_its_title() {
-        let title = name_connection(
+        let title = name_place(
             resolve_tab_title(&TabIdentity::Table(orders()), TableNaming::Bare),
             "Shop",
         );
@@ -294,6 +317,17 @@ mod tests {
         assert_eq!(title.label, "orders (Shop)");
         assert_eq!(title.tooltip.as_deref(), Some("public.orders\nShop"));
         assert!(!title.label.contains('·'));
+    }
+
+    #[test]
+    fn a_tab_names_its_database_and_the_connection_it_shares_the_bar_with() {
+        assert_eq!(suffix(None, Some("analytics")).as_deref(), Some("analytics"));
+        assert_eq!(
+            suffix(Some("Shop".to_owned()), Some("analytics")).as_deref(),
+            Some("Shop, analytics")
+        );
+        assert_eq!(suffix(Some("Shop".to_owned()), None).as_deref(), Some("Shop"));
+        assert_eq!(suffix(None, None), None);
     }
 
     #[test]

@@ -32,7 +32,7 @@ What the shipped drivers use:
 | PostgreSQL | tokio-postgres 0.7.18, tokio-postgres-rustls 0.14 | deadpool-postgres 0.14.2 | `Transport::open` |
 | MySQL, MariaDB | sqlx 0.9 (`mysql`) | deadpool 0.13 | `Transport::route`, dialled by sqlx |
 | SQLite | sqlx 0.9 (`sqlite-unbundled`) | sqlx, one connection | a file path |
-| DuckDB | duckdb 1.10506 (`bundled`), DuckDB 1.5.6 compiled in ([ADR 0025](decisions/0025-bundled-duckdb.md)) | deadpool 0.13, connections to the one instance the process keeps per file | a file path |
+| DuckDB | duckdb 1.20000.1 (`bundled`), DuckDB 2.0.0 compiled in ([ADR 0031](decisions/0031-duckdb-2.md)) | deadpool 0.13, connections to the one instance the process keeps per file | a file path |
 | SQL Server | tiberius 0.13 | deadpool 0.13 | `Transport::open` |
 | ClickHouse | clickhouse 0.15 over hyper-util and hyper-rustls | hyper's connection pool | `Transport::open` |
 | Cassandra, ScyllaDB | scylla 1.9 (`rustls-023`) | none: one multiplexed connection per session | a loopback relay over `Transport::open` |

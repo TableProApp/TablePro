@@ -30,7 +30,7 @@ use gtk4::prelude::*;
 use tablepro_core::DataModel;
 use tablepro_core::meta::{ObjectInfo, ObjectScope, SchemaInfo, TableRef};
 use tablepro_session::runtime::{TaskFailure, Tasks};
-use tablepro_session::{ObjectListSnapshot, Session};
+use tablepro_session::{ObjectListSnapshot, Session, SessionKey};
 
 pub(super) use catalog_watch::{catalog_watch, reconnect_watch, spawn_local};
 pub(crate) use connection_tree::{ConnectionTree, SessionRowState};
@@ -273,20 +273,27 @@ impl WorkspaceModel {
     /// A run that sent DDL, or a commit that may publish it, changes what
     /// the sidebar and the completion list.
     pub(super) fn on_editor_run_finished(&mut self, id: uuid::Uuid) {
-        let changed = match self.workspace_tabs.borrow().get(&id) {
+        let moved_to = match self.workspace_tabs.borrow().get(&id) {
             Some(super::WorkspaceTab::Editor(slot)) if slot.editor.last_run_changes_catalog() => {
                 Some(slot.editor.tab_database())
             }
             _ => None,
         };
-        let Some(moved_to) = changed else {
+        let Some(moved_to) = moved_to else {
             return;
         };
         self.refresh_catalog();
-        // The statement ran in the tab's database, whose own session the
-        // window holds beside this one (0030).
-        if let Some(database) = moved_to {
-            self.refresh_database(database);
+        // The statement ran in the tab's database, whose session the
+        // window may hold beside this one (0030).
+        let connection = match &self.key {
+            SessionKey::Saved(id) | SessionKey::SavedIn { id, .. } => Some(*id),
+            SessionKey::File(_) => None,
+        };
+        if let (Some(id), Some(database), Some(shell)) = (connection, moved_to, self.shell.upgrade()) {
+            shell.tell_window(crate::ui::SessionWindowInput::RefreshIn(SessionKey::SavedIn {
+                id,
+                database,
+            }));
         }
     }
 

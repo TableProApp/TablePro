@@ -5,6 +5,10 @@
   <menu id="primary_menu">
     <section>
       <item>
+        <attribute name="label" translatable="yes">New Connection…</attribute>
+        <attribute name="action">win.new-connection</attribute>
+      </item>
+      <item>
         <attribute name="label" translatable="yes">New Window</attribute>
         <attribute name="action">app.new-window</attribute>
       </item>
@@ -64,6 +68,10 @@
       <item>
         <attribute name="label" translatable="yes">Reopen Closed Tab</attribute>
         <attribute name="action">win.reopen-closed-tab</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">Close All Tabs</attribute>
+        <attribute name="action">win.close-all-tabs</attribute>
       </item>
     </section>
   </menu>

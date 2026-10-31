@@ -12,7 +12,7 @@ import Testing
 
 struct SupportLinksTests {
     private static let everyReferrer: [SupportReferrer] =
-        [.supportWindow, .aboutPanel, .licenseSettings, .activationSheet]
+        [.supportWindow, .aboutPanel, .licenseSettings, .activationSheet, .ask]
             + ProFeature.allCases.map { .featureGate($0) }
 
     private static func components(_ url: URL) -> URLComponents? {

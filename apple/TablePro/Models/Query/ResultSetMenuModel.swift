@@ -16,52 +16,63 @@ struct ResultSetMenuEntry: Equatable, Identifiable {
     let isComparable: Bool
 }
 
-// A pull-down rather than tabs: macOS has no native tab control that closes or pins anything but windows.
+// Backs both the tab row and the pull-down, so the two never disagree on names or on what can close.
 struct ResultSetMenuModel: Equatable {
     let entries: [ResultSetMenuEntry]
     let activeOrdinal: Int
     let total: Int
 
+    // HIG, Tab views: "Avoid providing more than six tabs". Past that the pull-down alone lists them.
+    static let maximumTabCount = 6
+
     var isEmpty: Bool { entries.isEmpty }
 
-    /// The button's own words. A closed menu hides the count that the strip showed at a glance, so
-    /// the title carries it: this is the whole mitigation for the one thing the strip did better.
-    var title: String {
-        guard total > 1 else { return entries.first?.label ?? "" }
-        return String(
-            format: String(localized: "Result %1$d of %2$d"),
-            activeOrdinal,
-            total
-        )
+    var offersTabs: Bool {
+        (2 ... Self.maximumTabCount).contains(total)
     }
 
-    /// The same count in figures, for the tiers where the bar has no room for the sentence. The
-    /// chooser never leaves the bar entirely, because Pin and Close have no other one-click route.
-    ///
-    /// A single result is named rather than counted, and a result is named after its table or its
-    /// leading comment, so the name is as long as the identifier. The chooser is `fixedSize`, so an
-    /// unbounded name here sets the bar's own floor and pushes the grid out of a narrow pane.
+    // A position, not a name: a counted name such as "Result 3" keeps its number after an earlier result closes.
+    var title: String {
+        guard total > 1 else { return entries.first.map(displayLabel(of:)) ?? "" }
+        return String(format: String(localized: "%1$d of %2$d"), activeOrdinal, total)
+    }
+
+    // The chooser is `fixedSize`, so an unbounded name here would set the bar's floor and push the grid out of a narrow pane.
     var compactTitle: String {
-        guard total > 1 else { return Self.truncated(entries.first?.label ?? "") }
+        guard total > 1 else { return Self.truncated(title, limit: Self.compactTitleCharacterLimit) }
         return "\(activeOrdinal)/\(total)"
     }
-
-    /// Long enough to tell two results apart, short enough that no name decides the bar's width.
-    /// The full name stays on the menu entry and on the control's accessibility label.
-    private static func truncated(_ label: String) -> String {
-        let value = label as NSString
-        guard value.length > compactTitleCharacterLimit else { return label }
-        return value.substring(to: compactTitleCharacterLimit) + "…"
-    }
-
-    private static let compactTitleCharacterLimit = 16
 
     var activeEntry: ResultSetMenuEntry? {
         entries.first { $0.isActive }
     }
 
-    /// Whether closing this entry is offered. A pinned result is pinned precisely so that nothing
-    /// takes it away, which the strip enforced by withholding its close button.
+    func displayLabel(of entry: ResultSetMenuEntry) -> String {
+        guard let index = entries.firstIndex(where: { $0.id == entry.id }) else { return entry.label }
+        return Self.displayLabel(at: index, in: entries.map(\.label))
+    }
+
+    // The name is cut before the occurrence is added, so "(2)" always survives.
+    func tabTitle(of entry: ResultSetMenuEntry) -> String {
+        guard let index = entries.firstIndex(where: { $0.id == entry.id }) else { return entry.label }
+        let labels = entries.map(\.label)
+        let name = Self.truncated(entry.label, limit: Self.tabTitleCharacterLimit)
+        guard let occurrence = Self.occurrence(at: index, in: labels) else { return name }
+        return String(format: String(localized: "%1$@ (%2$d)"), name, occurrence)
+    }
+
+    // Two results read from one table share a name; the later ones carry their occurrence so two never look alike.
+    static func displayLabel(at index: Int, in labels: [String]) -> String {
+        guard let occurrence = occurrence(at: index, in: labels) else { return labels[index] }
+        return String(format: String(localized: "%1$@ (%2$d)"), labels[index], occurrence)
+    }
+
+    private static func occurrence(at index: Int, in labels: [String]) -> Int? {
+        let earlier = labels[..<index].filter { $0 == labels[index] }.count
+        return earlier > 0 ? earlier + 1 : nil
+    }
+
+    // A pinned result is pinned precisely so that nothing takes it away.
     func canClose(_ entry: ResultSetMenuEntry) -> Bool {
         !entry.isPinned
     }
@@ -73,4 +84,13 @@ struct ResultSetMenuModel: Equatable {
     func canCompare(_ entry: ResultSetMenuEntry) -> Bool {
         entry.isComparable
     }
+
+    // Counts Characters, so an emoji or a combining mark is never cut into a replacement character.
+    static func truncated(_ label: String, limit: Int) -> String {
+        guard label.count > limit else { return label }
+        return String(label.prefix(limit)).trimmingCharacters(in: .whitespaces) + "…"
+    }
+
+    private static let compactTitleCharacterLimit = 16
+    private static let tabTitleCharacterLimit = 24
 }
