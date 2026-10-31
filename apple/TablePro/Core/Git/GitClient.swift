@@ -55,9 +55,24 @@ internal struct GitClient: Sendable {
     }
 
     func status(in directory: URL, pathspec: String = ".") async throws -> [GitStatusRecord] {
-        let result = try await runner.run(.status(in: directory, pathspec: pathspec))
+        let filters = try await filterDrivers(in: directory)
+        let result = try await runner.run(.status(in: directory, pathspec: pathspec, disablingFilters: filters))
         guard result.succeeded else { throw failure(result) }
         return GitStatusParser.parse(result.standardOutput)
+    }
+
+    // Every scope: the user's own Git LFS driver runs commands the repository's configuration names.
+    private func filterDrivers(in directory: URL) async throws -> [String] {
+        let result = try await runner.run(.configuration(in: directory))
+        guard result.succeeded else { throw failure(result) }
+        guard result.isComplete else { throw GitProcessError.timedOut }
+        guard let drivers = GitFilterDriverParser.parse(result.standardOutput) else {
+            throw GitCommandFailure(
+                exitCode: result.exitCode,
+                message: String(localized: "This repository defines a Git filter that TablePro cannot switch off.")
+            )
+        }
+        return drivers
     }
 
     func trackedFiles(in directory: URL) async throws -> [String] {
