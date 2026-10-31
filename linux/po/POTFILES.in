@@ -476,6 +476,7 @@ crates/app/src/ui/session_window/mod.rs
 crates/app/src/ui/session_window/notification_request.rs
 crates/app/src/ui/session_window/notification_sink.rs
 crates/app/src/ui/session_window/notifications.rs
+crates/app/src/ui/session_window/other_databases.rs
 crates/app/src/ui/session_window/picker_page.rs
 crates/app/src/ui/session_window/resolve_file_identity.rs
 crates/app/src/ui/session_window/secret_retry.rs
@@ -487,6 +488,7 @@ crates/app/src/ui/session_window/session_window_input.rs
 crates/app/src/ui/session_window/tests/mod.rs
 crates/app/src/ui/session_window/tests/notification.rs
 crates/app/src/ui/session_window/tests/open_file.rs
+crates/app/src/ui/session_window/tests/other_databases.rs
 crates/app/src/ui/session_window/tests/sessions.rs
 crates/app/src/ui/session_window/window_actions.rs
 crates/app/src/ui/session_window/work_notifier.rs

@@ -42,9 +42,20 @@ impl ConnectionLabel {
         }
     }
 
+    pub(crate) fn key(&self) -> &SessionKey {
+        &self.key
+    }
+
     pub(crate) fn name(&self) -> String {
         let saved = match &self.key {
             SessionKey::Saved(id) => self.saved.get(*id).map(|saved| saved.name),
+            SessionKey::SavedIn { id, database } => self.saved.get(*id).map(|saved| {
+                // Translators: a connection and another of its server's databases, open beside it.
+                crate::i18n::gettext_f(
+                    "{connection} · {database}",
+                    &[("connection", &saved.name), ("database", database)],
+                )
+            }),
             SessionKey::File(_) => None,
         };
         saved

@@ -21,6 +21,7 @@ mod locate_file;
 mod notification_request;
 mod notification_sink;
 mod notifications;
+mod other_databases;
 mod picker_page;
 mod resolve_file_identity;
 mod secret_retry;
@@ -333,10 +334,14 @@ impl SessionWindow {
     }
 
     fn holds_session(&self, key: &SessionKey) -> bool {
-        self.imp()
-            .sessions
-            .try_borrow()
-            .is_ok_and(|sessions| sessions.iter().any(|open| open.claim.key() == key))
+        self.find_open(|open| (open.claim.key() == key).then_some(())).is_some()
+    }
+
+    /// What `pick` finds first among the window's sessions, the other
+    /// databases open beside them included.
+    fn find_open<R>(&self, pick: impl FnMut(&OpenSession) -> Option<R>) -> Option<R> {
+        let sessions = self.imp().sessions.try_borrow().ok()?;
+        sessions.iter().flat_map(OpenSession::with_databases).find_map(pick)
     }
 
     fn is_connecting(&self, key: &SessionKey) -> bool {
@@ -356,7 +361,13 @@ impl SessionWindow {
     pub(crate) fn workspaces(&self) -> Vec<Workspace> {
         self.imp().sessions.try_borrow().map_or_else(
             |_| Vec::new(),
-            |sessions| sessions.iter().map(|open| open.workspace.clone()).collect(),
+            |sessions| {
+                sessions
+                    .iter()
+                    .flat_map(OpenSession::with_databases)
+                    .map(|open| open.workspace.clone())
+                    .collect()
+            },
         )
     }
 
@@ -374,21 +385,13 @@ impl SessionWindow {
 
     /// The workspace of the session under `key`.
     fn session_workspace(&self, key: &SessionKey) -> Option<Workspace> {
-        let sessions = self.imp().sessions.try_borrow().ok()?;
-        sessions
-            .iter()
-            .find(|open| open.claim.key() == key)
-            .map(|open| open.workspace.clone())
+        self.find_open(|open| (open.claim.key() == key).then(|| open.workspace.clone()))
     }
 
     /// The key and session of the session in front.
     pub(super) fn front_session(&self) -> Option<(SessionKey, Arc<Session>)> {
         let front = self.workspace()?;
-        let sessions = self.imp().sessions.try_borrow().ok()?;
-        sessions
-            .iter()
-            .find(|open| open.workspace == front)
-            .map(|open| (open.claim.key().clone(), open.session.clone()))
+        self.find_open(|open| (open.workspace == front).then(|| (open.claim.key().clone(), open.session.clone())))
     }
 
     /// The shell for the window's first session, which the later ones
@@ -465,6 +468,7 @@ impl SessionWindow {
             SessionWindowInput::ConnectionSaved(id) => self.on_connection_saved(id),
             SessionWindowInput::Disconnect => self.on_disconnect_front(),
             SessionWindowInput::DisconnectSession(key) => self.on_disconnect(key),
+            SessionWindowInput::ChooseDatabaseIn(key) => self.choose_database_in(key),
             SessionWindowInput::SessionTeardownApproved(key) => self.on_session_teardown_approved(&key),
             SessionWindowInput::ShowSession(key) => self.show_session(&key),
             SessionWindowInput::NewQueryIn(key) => self.deliver_to(&key, WorkspaceInput::NewEditorTab),
@@ -659,12 +663,24 @@ impl SessionWindow {
             self.ask_about_location(id, kind);
             return;
         }
-        let PendingConnect { claim, source, .. } = self.imp().connects.borrow_mut().remove(position);
+        let PendingConnect {
+            claim,
+            source,
+            databases,
+            ..
+        } = self.imp().connects.borrow_mut().remove(position);
         match result {
             Ok(connected) => {
                 // The tree never shows a key both connecting and open.
                 self.sync_tree();
+                let reopens = match claim.key() {
+                    SessionKey::Saved(id) => Some(*id),
+                    SessionKey::SavedIn { .. } | SessionKey::File(_) => None,
+                };
                 self.adopt(claim, source, connected);
+                for (id, database) in databases.into_iter().filter_map(|database| Some((reopens?, database))) {
+                    self.open_database(id, database);
+                }
             }
             Err(AttemptError::Failed(failure)) => self.on_connect_failed(claim, source, failure),
             // A location question was asked above, so this is a stop.
@@ -759,7 +775,7 @@ impl SessionWindow {
             warnings,
             session_only,
         } = connected;
-        let (Some(state), Some(guards), Some(input)) = (self.state(), self.close_guards(), self.input()) else {
+        let (Some(state), Some(_), Some(input)) = (self.state(), self.close_guards(), self.input()) else {
             self.discard_pending(pending);
             return;
         };
@@ -777,21 +793,14 @@ impl SessionWindow {
             tracing::warn!(%error, "could not remember the connect dialog driver");
         }
         let shell = self.shell().unwrap_or_else(|| self.new_shell(state, &input));
-        let workspace = Workspace::new(WorkspaceInit {
-            key: key.clone(),
-            session: session.clone(),
-            services: state.services.clone(),
-            context: state.context.clone(),
-            window: self.clone().upcast(),
-            close_guards: guards.clone(),
-            shell: shell.clone(),
-        });
-        self.connect_workspace(&workspace, &input);
-        self.imp().sessions.borrow_mut().push(OpenSession {
-            claim,
-            session,
-            workspace: workspace.clone(),
-        });
+        let Some(workspace) = self.new_workspace(key.clone(), &session, &shell) else {
+            drop(session.begin_shutdown());
+            return;
+        };
+        self.imp()
+            .sessions
+            .borrow_mut()
+            .push(OpenSession::new(claim, session, workspace.clone()));
         self.render();
         shell.add_session(&workspace);
         workspace.start();
@@ -802,6 +811,25 @@ impl SessionWindow {
         if let SessionKey::Saved(id) = key {
             self.touch_last_opened(id);
         }
+    }
+
+    /// The workspace that shows `session` in `shell`, wired to the
+    /// window.
+    fn new_workspace(&self, key: SessionKey, session: &Arc<Session>, shell: &WorkspaceShell) -> Option<Workspace> {
+        let (Some(state), Some(guards), Some(input)) = (self.state(), self.close_guards(), self.input()) else {
+            return None;
+        };
+        let workspace = Workspace::new(WorkspaceInit {
+            key,
+            session: session.clone(),
+            services: state.services.clone(),
+            context: state.context.clone(),
+            window: self.clone().upcast(),
+            close_guards: guards.clone(),
+            shell: shell.clone(),
+        });
+        self.connect_workspace(&workspace, &input);
+        Some(workspace)
     }
 
     fn connect_workspace(&self, workspace: &Workspace, input: &InputSender<SessionWindowInput>) {
@@ -1033,6 +1061,7 @@ impl SessionWindow {
             source,
             cancel,
             demand,
+            databases: Vec::new(),
         })
     }
 
@@ -1262,28 +1291,39 @@ impl SessionWindow {
     }
 
     /// Close the session under `key` through its own prompts, then tear
-    /// it down. The window's other sessions and connects go on.
+    /// it down. A connection's other databases go with it, under one
+    /// question for all of them. The window's other sessions and connects
+    /// go on.
     fn on_disconnect(&self, key: SessionKey) {
-        let Some(workspace) = self.session_workspace(&key) else {
-            return;
-        };
-        let (Some(handle), Some(guards)) = (workspace.prompt_handle(), self.close_guards()) else {
+        let (Some(handles), Some(guards)) = (self.teardown_handles(&key), self.close_guards()) else {
             return;
         };
         let approved = move || SessionWindowInput::SessionTeardownApproved(key.clone());
         guards.begin_teardown();
-        if guards.may_tear_down(&handle) {
+        if guards.may_tear_down(&handles) {
             self.send(approved());
             return;
         }
         let input = self.input();
-        guards.ask_tear_down(self.upcast_ref(), &handle, move |decision| {
+        guards.ask_tear_down(self.upcast_ref(), &handles, move |decision| {
             if decision == CloseDecision::Approved
                 && let Some(input) = input
             {
                 input.deliver(approved());
             }
         });
+    }
+
+    /// The prompt handles of the session under `key` and of the other
+    /// databases open beside it, which a teardown of it takes too.
+    fn teardown_handles(&self, key: &SessionKey) -> Option<Vec<WorkspaceHandle>> {
+        self.find_open(|open| {
+            (open.claim.key() == key).then(|| {
+                open.with_databases()
+                    .filter_map(|open| open.workspace.prompt_handle())
+                    .collect()
+            })
+        })
     }
 
     /// Ctrl+W: the tab on screen closes through its session's prompts,

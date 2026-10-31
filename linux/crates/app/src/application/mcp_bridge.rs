@@ -138,7 +138,9 @@ fn answer(app: &TableProApplication, request: McpRequest) {
                 .into_iter()
                 .filter_map(|(key, _)| match key {
                     SessionKey::Saved(id) => Some(id),
-                    SessionKey::File(_) => None,
+                    // Another database of an open connection is no other
+                    // connection.
+                    SessionKey::SavedIn { .. } | SessionKey::File(_) => None,
                 })
                 .collect();
             let _ = reply.send(open);
