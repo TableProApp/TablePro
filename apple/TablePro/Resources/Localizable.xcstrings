@@ -149729,6 +149729,9 @@
         }
       }
     },
+    "Restoring a save that already committed needs a paid plan." : {
+
+    },
     "Restoring a save that already committed needs a Starter license." : {
       "localizations" : {
         "fr" : {
@@ -179251,6 +179254,9 @@
           }
         }
       }
+    },
+    "TablePro could not verify your license with the server. Connect to the internet, then check again." : {
+
     },
     "TablePro couldn't check which rows in other tables reference these rows." : {
 

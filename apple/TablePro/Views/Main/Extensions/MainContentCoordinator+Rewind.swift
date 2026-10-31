@@ -91,7 +91,7 @@ extension MainContentCoordinator {
         services.telemetry.featureGateShown(.dataRewind, access: services.featureAccess.check(.dataRewind))
         Task { @MainActor in
             let alert = NSAlert()
-            alert.messageText = String(localized: "Data Rewind needs a Starter license")
+            alert.messageText = ProFeature.dataRewind.paidPlanRequirement
             alert.informativeText = String(
                 localized: "Restore the previous values of rows you already saved. Saves are kept on this Mac for 7 days, encrypted, and never leave it."
             )

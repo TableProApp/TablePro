@@ -188,7 +188,7 @@ private extension SyncStatusPresentation {
     }
 
     static var licenseUnverifiedMessage: String {
-        String(localized: "TablePro has not confirmed this license with the server in 30 days.")
+        String(localized: "TablePro could not verify your license with the server. Connect to the internet, then check again.")
     }
 
     static func symbolName(for blocker: SyncBlocker) -> String {

@@ -45,7 +45,7 @@ struct DataRewindSection: View {
 
     private var explanation: String {
         guard isAvailable else {
-            return String(localized: "Restoring a save that already committed needs a Starter license.")
+            return String(localized: "Restoring a save that already committed needs a paid plan.")
         }
         return String(
             localized: "Keeps what rows looked like before each save, on this Mac only, for 7 days. It is encrypted, and never synced."
