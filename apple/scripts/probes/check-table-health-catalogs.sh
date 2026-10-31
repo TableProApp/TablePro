@@ -287,8 +287,8 @@ SQL
 
     local keys
     keys="$(my "$DATABASE" -e "$(query_of "$source" foreignKeyQuery)")"
-    expect "foreign key rows name both ends of a local key" "$keys" "$DATABASE	child	child_fk	parent_id	parent	id	1	1" yes
-    expect "foreign key rows include a key from another database into this one" "$keys" "$OTHER_DATABASE	other_child	other_child_fk	parent_id	parent	id	0	1" yes
+    expect "foreign key rows name both ends of a local key" "$keys" "$DATABASE	child	child_fk	parent_id	parent	id	1	1	1" yes
+    expect "foreign key rows include a key from another database into this one" "$keys" "$OTHER_DATABASE	other_child	other_child_fk	parent_id	parent	id	1	0	1" yes
 
     local nopk
     nopk="$(my "$DATABASE" -e "$(query_of "$source" missingPrimaryKeyQuery)")"

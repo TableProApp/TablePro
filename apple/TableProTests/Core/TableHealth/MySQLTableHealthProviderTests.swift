@@ -16,18 +16,28 @@ struct MySQLTableHealthProviderTests {
         var subPart: String?
         var collation: String? = "A"
         var visible: String?
+        var position: Int?
     }
 
     // The columns a SELECT * on STATISTICS returns, as MySQL 8 names them.
     private static let indexColumns = [
-        "TABLE_NAME", "INDEX_NAME", "NON_UNIQUE", "INDEX_TYPE", "COLUMN_NAME", "SUB_PART", "COLLATION", "IS_VISIBLE"
+        "TABLE_NAME", "INDEX_NAME", "SEQ_IN_INDEX", "NON_UNIQUE", "INDEX_TYPE", "COLUMN_NAME", "SUB_PART", "COLLATION",
+        "IS_VISIBLE"
     ]
 
+    // A row's position defaults to its place among the earlier rows of its index.
     private static func indexResult(_ rows: [IndexRow]) -> QueryResult {
-        TableHealthFixture.result(
+        var seen: [String: Int] = [:]
+        return TableHealthFixture.result(
             columns: indexColumns,
             rows: rows.map { row -> [String?] in
-                [row.table, row.index, row.nonUnique, row.type, row.column, row.subPart, row.collation, row.visible]
+                let key = row.table + "." + row.index
+                seen[key, default: 0] += 1
+                let position = row.position ?? seen[key, default: 1]
+                return [
+                    row.table, row.index, String(position), row.nonUnique, row.type, row.column, row.subPart,
+                    row.collation, row.visible
+                ]
             }
         )
     }
@@ -54,7 +64,7 @@ struct MySQLTableHealthProviderTests {
 
     private static let keyColumns = [
         "table_schema", "table_name", "constraint_name", "column_name",
-        "referenced_table_name", "referenced_column_name", "is_local", "references_here"
+        "referenced_table_name", "referenced_column_name", "ordinal_position", "is_local", "references_here"
     ]
 
     private func unused(
@@ -62,6 +72,7 @@ struct MySQLTableHealthProviderTests {
         indexes: [IndexRow],
         foreignKeys: [KeyRow] = []
     ) -> [String] {
+        var seen: [String: Int] = [:]
         let results = [
             TableHealthFixture.result(
                 columns: ["table_name", "index_name"],
@@ -71,9 +82,11 @@ struct MySQLTableHealthProviderTests {
             TableHealthFixture.result(
                 columns: Self.keyColumns,
                 rows: foreignKeys.map { key -> [String?] in
-                    [
+                    let identity = key.schema + "." + key.table + "." + key.constraint
+                    seen[identity, default: 0] += 1
+                    return [
                         key.schema, key.table, key.constraint, key.column, key.referencedTable, key.referencedColumn,
-                        key.isLocal ? "1" : "0", key.referencesHere ? "1" : "0"
+                        String(seen[identity, default: 1]), key.isLocal ? "1" : "0", key.referencesHere ? "1" : "0"
                     ]
                 }
             )
@@ -199,17 +212,41 @@ struct MySQLTableHealthProviderTests {
         let ignored = provider.findings(
             for: .redundantIndex,
             from: [TableHealthFixture.result(
-                columns: ["TABLE_NAME", "INDEX_NAME", "NON_UNIQUE", "INDEX_TYPE", "COLUMN_NAME", "SUB_PART", "COLLATION", "IGNORED"],
+                columns: [
+                    "TABLE_NAME", "INDEX_NAME", "SEQ_IN_INDEX", "NON_UNIQUE", "INDEX_TYPE", "COLUMN_NAME", "SUB_PART", "COLLATION",
+                    "IGNORED"
+                ],
                 rows: [
-                    ["orders", "idx_a", "1", "BTREE", "a", nil, "A", "NO"],
-                    ["orders", "idx_ab", "1", "BTREE", "a", nil, "A", "YES"],
-                    ["orders", "idx_ab", "1", "BTREE", "b", nil, "A", "YES"]
+                    ["orders", "idx_a", "1", "1", "BTREE", "a", nil, "A", "NO"],
+                    ["orders", "idx_ab", "1", "1", "BTREE", "a", nil, "A", "YES"],
+                    ["orders", "idx_ab", "2", "1", "BTREE", "b", nil, "A", "YES"]
                 ]
             )],
             context: context
         )
         #expect(invisible.isEmpty)
         #expect(ignored.isEmpty)
+    }
+
+    @Test("Rows group by exact table name, so tables whose names differ only in case cannot split an index")
+    func caseDistinctTablesStayWhole() {
+        let found = redundant([
+            IndexRow(table: "orders", index: "idx_xy", nonUnique: "1", column: "x"),
+            IndexRow(table: "Orders", index: "idx_q", nonUnique: "1", column: "q"),
+            IndexRow(table: "orders", index: "idx_xy", nonUnique: "1", column: "y"),
+            IndexRow(table: "orders", index: "idx_y", nonUnique: "1", column: "y")
+        ])
+        #expect(found.isEmpty)
+    }
+
+    @Test("Key parts compare in index order, whatever order the rows arrive in")
+    func keyPartsFollowPosition() {
+        let found = redundant([
+            IndexRow(index: "idx_ab", nonUnique: "1", column: "b", position: 2),
+            IndexRow(index: "idx_ab", nonUnique: "1", column: "a", position: 1),
+            IndexRow(index: "idx_a", nonUnique: "1", column: "a")
+        ])
+        #expect(Array(found.keys) == ["idx_a"])
     }
 
     @Test("Indexes compare only within their own table")
@@ -237,11 +274,14 @@ struct MySQLTableHealthProviderTests {
         #expect(finding.fixSQL == "ALTER TABLE `shop`.`odd``name` DROP INDEX `idx_a`;")
     }
 
-    @Test("An unread plain index is unused; a unique index and one gone from the catalog are not")
-    func unusedSkipsUniqueAndDropped() {
+    @Test("An unread plain index is unused; a unique, a full-text and a dropped index are not")
+    func unusedSkipsUniqueFullTextAndDropped() {
         let found = unused(
-            candidates: [("orders", "orders_note_idx"), ("orders", "orders_code_uniq"), ("orders", "dropped_idx")],
+            candidates: [
+                ("orders", "orders_note_idx"), ("orders", "orders_code_uniq"), ("orders", "dropped_idx"), ("orders", "orders_body_ft")
+            ],
             indexes: [
+                IndexRow(index: "orders_body_ft", nonUnique: "1", type: "FULLTEXT", column: "body", collation: nil),
                 IndexRow(index: "orders_code_uniq", nonUnique: "0", column: "code"),
                 IndexRow(index: "orders_note_idx", nonUnique: "1", column: "note")
             ]

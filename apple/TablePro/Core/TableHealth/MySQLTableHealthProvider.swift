@@ -57,6 +57,7 @@ struct MySQLTableHealthProvider: TableHealthProvider {
                k.COLUMN_NAME AS column_name,
                k.REFERENCED_TABLE_NAME AS referenced_table_name,
                k.REFERENCED_COLUMN_NAME AS referenced_column_name,
+               k.ORDINAL_POSITION AS ordinal_position,
                k.TABLE_SCHEMA = DATABASE() AS is_local,
                k.REFERENCED_TABLE_SCHEMA = DATABASE() AS references_here
         FROM information_schema.KEY_COLUMN_USAGE k
@@ -149,8 +150,9 @@ struct MySQLTableHealthProvider: TableHealthProvider {
         }
     }
 
-    // A unique index enforces something no read counts. InnoDB checks a foreign key through an
-    // index that leads with its columns on either end without counting a read, and refuses to drop the last one.
+    // A unique index enforces something no read counts, and a MATCH search reads a full-text index
+    // uncounted. InnoDB checks a foreign key through an index that leads with its columns on either
+    // end without counting a read, and refuses to drop the last one.
     private func unusedIndexFindings(
         candidates: [TableHealthRow],
         tables: [MySQLIndexShape],
@@ -162,6 +164,7 @@ struct MySQLTableHealthProvider: TableHealthProvider {
             let table = row["table_name"], indexName = row["index_name"]
             guard let index = shapes[table]?.indexes.first(where: { $0.name == indexName }),
                   !index.isUnique,
+                  index.type != "FULLTEXT",
                   !(foreignKeys[table] ?? []).contains(where: index.serves)
             else { return nil }
             return TableHealthFinding(
@@ -249,16 +252,24 @@ struct MySQLIndexShape {
     let name: String
     var indexes: [Index]
 
+    // Grouped by exact name and ordered by position: the catalog sorts names without case, so on a
+    // case-sensitive server the rows of `Orders` and `orders` can interleave.
     static func tables(from rows: [TableHealthRow]) -> [MySQLIndexShape] {
         var tables: [MySQLIndexShape] = []
+        var tablePositions: [String: Int] = [:]
+        var keyParts: [String: [(position: Int, column: Column?)]] = [:]
         for row in rows {
             let table = row["table_name"], indexName = row["index_name"]
-            if tables.last?.name != table {
+            let tablePosition: Int
+            if let known = tablePositions[table] {
+                tablePosition = known
+            } else {
+                tablePosition = tables.count
+                tablePositions[table] = tablePosition
                 tables.append(MySQLIndexShape(name: table, indexes: []))
             }
-            let tableIndex = tables.count - 1
-            if tables[tableIndex].indexes.last?.name != indexName {
-                tables[tableIndex].indexes.append(Index(
+            if !tables[tablePosition].indexes.contains(where: { $0.name == indexName }) {
+                tables[tablePosition].indexes.append(Index(
                     name: indexName,
                     isUnique: row["non_unique"] == "0",
                     type: row["index_type"],
@@ -267,54 +278,57 @@ struct MySQLIndexShape {
                     hasExpression: false
                 ))
             }
-            let last = tables[tableIndex].indexes.count - 1
             let column = row["column_name"]
-            if column.isEmpty {
-                tables[tableIndex].indexes[last].hasExpression = true
-            } else {
-                tables[tableIndex].indexes[last].columns.append(
-                    Column(name: column, prefixLength: row["sub_part"], sortOrder: row["collation"])
-                )
+            keyParts[table + "\u{1F}" + indexName, default: []].append((
+                Int(row["seq_in_index"]) ?? 0,
+                column.isEmpty ? nil : Column(name: column, prefixLength: row["sub_part"], sortOrder: row["collation"])
+            ))
+        }
+        for tablePosition in tables.indices {
+            let table = tables[tablePosition].name
+            for indexPosition in tables[tablePosition].indexes.indices {
+                let parts = (keyParts[table + "\u{1F}" + tables[tablePosition].indexes[indexPosition].name] ?? [])
+                    .sorted { $0.position < $1.position }
+                tables[tablePosition].indexes[indexPosition].hasExpression = parts.contains { $0.column == nil }
+                tables[tablePosition].indexes[indexPosition].columns = parts.compactMap(\.column)
             }
         }
         return tables
     }
 
     // Per table of this database, the columns each foreign key reads through it, on the referencing
-    // or the referenced end, in key order.
+    // or the referenced end, in key order. Grouped by exact name, like the index rows.
     static func foreignKeys(from rows: [TableHealthRow]) -> [String: [[String]]] {
         struct Key {
-            let schema: String
-            let table: String
-            let constraint: String
             let isLocal: Bool
             let referencesHere: Bool
+            let table: String
             let referencedTable: String
-            var columns: [String]
-            var referencedColumns: [String]
+            var parts: [(position: Int, column: String, referencedColumn: String)]
         }
         var keys: [Key] = []
+        var keyPositions: [String: Int] = [:]
         for row in rows {
-            let schema = row["table_schema"], table = row["table_name"], constraint = row["constraint_name"]
-            if let last = keys.last, last.schema == schema, last.table == table, last.constraint == constraint {
-                keys[keys.count - 1].columns.append(row["column_name"])
-                keys[keys.count - 1].referencedColumns.append(row["referenced_column_name"])
+            let identity = [row["table_schema"], row["table_name"], row["constraint_name"]].joined(separator: "\u{1F}")
+            let part = (Int(row["ordinal_position"]) ?? 0, row["column_name"], row["referenced_column_name"])
+            if let known = keyPositions[identity] {
+                keys[known].parts.append(part)
             } else {
+                keyPositions[identity] = keys.count
                 keys.append(Key(
-                    schema: schema, table: table, constraint: constraint,
                     isLocal: row["is_local"] == "1", referencesHere: row["references_here"] == "1",
-                    referencedTable: row["referenced_table_name"],
-                    columns: [row["column_name"]], referencedColumns: [row["referenced_column_name"]]
+                    table: row["table_name"], referencedTable: row["referenced_table_name"], parts: [part]
                 ))
             }
         }
         var byTable: [String: [[String]]] = [:]
         for key in keys {
+            let parts = key.parts.sorted { $0.position < $1.position }
             if key.isLocal {
-                byTable[key.table, default: []].append(key.columns)
+                byTable[key.table, default: []].append(parts.map(\.column))
             }
             if key.referencesHere {
-                byTable[key.referencedTable, default: []].append(key.referencedColumns)
+                byTable[key.referencedTable, default: []].append(parts.map(\.referencedColumn))
             }
         }
         return byTable
