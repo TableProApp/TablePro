@@ -42,7 +42,8 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         self.connectedDatabase = config.database
         self.core = LibPQDriverCore(
             config: config,
-            schemaFallbackQueries: PostgreSQLSchemaQueries.schemaFallbackQueriesRedshift
+            schemaFallbackQueries: PostgreSQLSchemaQueries.schemaFallbackQueriesRedshift,
+            pinsCatalogSearchPath: false
         )
         core.onPostConnect = { [weak self] in
             await self?.probeExternalSchemas()
@@ -57,7 +58,7 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     /// an empty one. A cluster with no external catalog answers in one cheap read.
     private func probeExternalSchemas() async {
         do {
-            let result = try await execute(query: RedshiftExternalSchemaQueries.listExternalSchemaNames)
+            let result = try await catalogRead(RedshiftExternalSchemaQueries.listExternalSchemaNames)
             let names = Set(result.rows.compactMap { $0.first?.asText })
             externalSchemaLock.withLock { externalSchemaCache = names }
         } catch {
@@ -78,7 +79,7 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
 
     func fetchTables(schema: String?) async throws -> [PluginTableInfo] {
         let resolvedSchema = schema ?? core.currentSchema
-        let result = try await execute(query: RedshiftTableCatalog.listingQuery(schema: resolvedSchema))
+        let result = try await catalogRead(RedshiftTableCatalog.listingQuery(schema: resolvedSchema))
         let localTables = result.rows.compactMap { RedshiftTableCatalog.table(fromListingRow: $0.map(\.asText)) }
 
         guard isExternalSchema(resolvedSchema) else { return localTables }
@@ -93,7 +94,7 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
 
     func fetchTables(inSchemas schemas: [String]) async throws -> [PluginTableInfo]? {
         guard !schemas.isEmpty else { return [] }
-        let result = try await execute(query: RedshiftTableCatalog.listingQuery(inSchemas: schemas))
+        let result = try await catalogRead(RedshiftTableCatalog.listingQuery(inSchemas: schemas))
         var tables = result.rows.compactMap { RedshiftTableCatalog.table(fromListingRow: $0.map(\.asText)) }
         for schema in schemas where isExternalSchema(schema) {
             let localNames = Set(tables.lazy.filter { $0.schema == schema }.map(\.name))
@@ -104,8 +105,8 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
 
     private func fetchExternalTables(schema: String) async -> [PluginTableInfo] {
         do {
-            let result = try await execute(
-                query: RedshiftExternalSchemaQueries.listExternalTables(
+            let result = try await catalogRead(
+                RedshiftExternalSchemaQueries.listExternalTables(
                     schema: schema,
                     database: connectedDatabase
                 )
@@ -138,8 +139,8 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
 
     private func fetchExternalColumns(schema: String, table: String) async -> [PluginColumnInfo] {
         do {
-            let result = try await execute(
-                query: RedshiftExternalSchemaQueries.listExternalColumns(
+            let result = try await catalogRead(
+                RedshiftExternalSchemaQueries.listExternalColumns(
                     schema: schema,
                     table: table,
                     database: connectedDatabase
@@ -181,7 +182,7 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
 
     private func fetchLocalColumns(table: String, schema: String) async throws -> [PluginColumnInfo] {
         let query = RedshiftSchemaQueries.columnsQuery(schema: schema, table: table)
-        let result = try await execute(query: query)
+        let result = try await catalogRead(query)
         return result.rows.compactMap { row -> PluginColumnInfo? in
             guard row.count >= 4,
                   let name = row[0].asText,
@@ -234,8 +235,8 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
 
     private func fetchExternalAllColumns(schema: String) async -> [String: [PluginColumnInfo]] {
         do {
-            let result = try await execute(
-                query: RedshiftExternalSchemaQueries.listExternalColumns(
+            let result = try await catalogRead(
+                RedshiftExternalSchemaQueries.listExternalColumns(
                     schema: schema,
                     table: nil,
                     database: connectedDatabase
@@ -262,7 +263,7 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
 
     private func fetchLocalAllColumns(schema: String) async throws -> [String: [PluginColumnInfo]] {
         let query = RedshiftSchemaQueries.columnsQuery(schema: schema, table: nil)
-        let result = try await execute(query: query)
+        let result = try await catalogRead(query)
         var allColumns: [String: [PluginColumnInfo]] = [:]
         for row in result.rows {
             guard row.count >= 5,
@@ -310,7 +311,7 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
 
     func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] {
         let query = RedshiftTableCatalog.keysQuery(schema: schema ?? core.currentSchema, table: table)
-        let result = try await execute(query: query)
+        let result = try await catalogRead(query)
         return RedshiftTableCatalog.keys(fromRows: result.rows.map { $0.map(\.asText) })
     }
 
@@ -324,7 +325,7 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
                 serverVersionNumber: core.serverVersionNumber
             )
         )
-        let result = try await execute(query: query)
+        let result = try await catalogRead(query)
         return PostgreSQLCatalogForeignKeys.foreignKeys(from: result.rows.map { $0.map(\.asText) })
     }
 
@@ -343,7 +344,7 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
             WHERE "table" = \(tableLiteral)
               AND schema = \(schemaLiteral)
             """
-        let result = try await execute(query: query)
+        let result = try await catalogRead(query)
         guard let firstRow = result.rows.first, let value = firstRow[0].asText, let count = Int(value) else { return nil }
         return count >= 0 ? count : nil
     }
@@ -356,7 +357,7 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         let quotedSchema = quoteIdentifier(resolvedSchema)
 
         do {
-            let showResult = try await execute(query: "SHOW TABLE \(quotedSchema).\(quotedTable)")
+            let showResult = try await catalogRead("SHOW TABLE \(quotedSchema).\(quotedTable)")
             if let firstRow = showResult.rows.first, let ddl = firstRow[0].asText, !ddl.isEmpty {
                 return ddl
             }
@@ -366,27 +367,27 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
 
         /// `pg_attribute` lists a view's columns as it lists a table's, so a view is looked up before
         /// the reconstruction below, which rebuilt a view as a `CREATE TABLE` of its columns.
-        let view = try await execute(query: Self.viewDefinitionQuery(view: table, schema: resolvedSchema))
+        let view = try await catalogRead(Self.viewDefinitionQuery(view: table, schema: resolvedSchema))
         if let ddl = view.rows.first?[safe: 0]?.asText {
             return ddl
         }
 
         let columnsQuery = """
             SELECT
-                quote_ident(a.attname) || ' ' || format_type(a.atttypid, a.atttypmod) ||
+                pg_catalog.quote_ident(a.attname) || ' ' || pg_catalog.format_type(a.atttypid, a.atttypmod) ||
                 CASE WHEN a.attnotnull THEN ' NOT NULL' ELSE '' END ||
-                CASE WHEN a.atthasdef THEN ' DEFAULT ' || pg_get_expr(d.adbin, d.adrelid) ELSE '' END
-            FROM pg_attribute a
-            JOIN pg_class c ON c.oid = a.attrelid
-            JOIN pg_namespace n ON n.oid = c.relnamespace
-            LEFT JOIN pg_attrdef d ON d.adrelid = c.oid AND d.adnum = a.attnum
+                CASE WHEN a.atthasdef THEN ' DEFAULT ' || pg_catalog.pg_get_expr(d.adbin, d.adrelid) ELSE '' END
+            FROM pg_catalog.pg_attribute a
+            JOIN pg_catalog.pg_class c ON c.oid = a.attrelid
+            JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+            LEFT JOIN pg_catalog.pg_attrdef d ON d.adrelid = c.oid AND d.adnum = a.attnum
             WHERE c.relname = \(tableLiteral)
               AND n.nspname = \(schemaLiteral)
               AND a.attnum > 0
               AND NOT a.attisdropped
             ORDER BY a.attnum
             """
-        let columnsResult = try await execute(query: columnsQuery)
+        let columnsResult = try await catalogRead(columnsQuery)
         let columnDefs = columnsResult.rows.compactMap { $0[0].asText }
         guard !columnDefs.isEmpty else {
             throw LibPQPluginError(message: "Failed to fetch DDL for table '\(table)'", sqlState: nil, detail: nil)
@@ -446,7 +447,7 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     }
 
     func fetchViewDefinition(view: String, schema: String?) async throws -> String {
-        let result = try await execute(query: Self.viewDefinitionQuery(view: view, schema: schema ?? core.currentSchema))
+        let result = try await catalogRead(Self.viewDefinitionQuery(view: view, schema: schema ?? core.currentSchema))
         guard let firstRow = result.rows.first, let ddl = firstRow[0].asText else {
             throw LibPQPluginError(message: "Failed to fetch definition for view '\(view)'", sqlState: nil, detail: nil)
         }
@@ -455,8 +456,8 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
 
     private static func viewDefinitionQuery(view: String, schema: String) -> String {
         """
-        SELECT 'CREATE OR REPLACE VIEW ' || quote_ident(schemaname) || '.' || quote_ident(viewname) || ' AS ' || E'\\n' || definition AS ddl
-        FROM pg_views
+        SELECT 'CREATE OR REPLACE VIEW ' || pg_catalog.quote_ident(schemaname) || '.' || pg_catalog.quote_ident(viewname) || ' AS ' || E'\\n' || definition AS ddl
+        FROM pg_catalog.pg_views
         WHERE viewname = \(PostgreSQLObjectQueries.quoteLiteral(view))
           AND schemaname = \(PostgreSQLObjectQueries.quoteLiteral(schema))
         """
@@ -481,7 +482,7 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
             WHERE "table" = \(tableLiteral)
               AND schema = \(schemaLiteral)
             """
-        let result = try await execute(query: query)
+        let result = try await catalogRead(query)
         guard let row = result.rows.first else {
             return PluginTableMetadata(tableName: table, comment: comment)
         }
@@ -523,14 +524,14 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     }
 
     func fetchDatabases() async throws -> [String] {
-        let result = try await execute(
-            query: "SELECT datname FROM pg_database WHERE datistemplate = false ORDER BY datname"
+        let result = try await catalogRead(
+            "SELECT datname FROM pg_database WHERE datistemplate = false ORDER BY datname"
         )
         return result.rows.compactMap { row in row.first?.asText }
     }
 
     func fetchSchemas() async throws -> [String] {
-        let result = try await execute(query: PostgreSQLSchemaQueries.listSchemasRedshift)
+        let result = try await catalogRead(PostgreSQLSchemaQueries.listSchemasRedshift)
         await probeExternalSchemas()
         return result.rows.compactMap { row in row.first?.asText }
     }
@@ -546,8 +547,8 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         let sizeQuery = """
             SELECT SUM(size) FROM svv_table_info WHERE database = current_database()
             """
-        async let countResult = execute(query: countQuery)
-        async let sizeResult = execute(query: sizeQuery)
+        async let countResult = catalogRead(countQuery)
+        async let sizeResult = catalogRead(sizeQuery)
         let (countRes, sizeRes) = try await (countResult, sizeResult)
 
         let tableCount = Int(countRes.rows.first?[0].asText ?? "0") ?? 0
@@ -563,8 +564,8 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     }
 
     func fetchAllDatabaseMetadata() async throws -> [PluginDatabaseMetadata] {
-        let dbResult = try await execute(
-            query: "SELECT datname FROM pg_database WHERE datistemplate = false ORDER BY datname"
+        let dbResult = try await catalogRead(
+            "SELECT datname FROM pg_database WHERE datistemplate = false ORDER BY datname"
         )
         let dbNames = dbResult.rows.compactMap { $0.first?.asText }
 
@@ -574,7 +575,7 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
             WHERE schema NOT IN ('pg_internal', 'pg_catalog', 'information_schema')
             GROUP BY database
             """
-        let infoResult = try await execute(query: infoQuery)
+        let infoResult = try await catalogRead(infoQuery)
         var metadataByName: [String: (tableCount: Int, sizeMb: Int64)] = [:]
         for row in infoResult.rows {
             guard let dbName = row[0].asText else { continue }
