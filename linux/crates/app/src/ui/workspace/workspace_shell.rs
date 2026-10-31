@@ -170,12 +170,6 @@ impl WorkspaceShell {
     /// says left or right, as the GNOME HIG asks.
     fn connect_tab_menu(&self) {
         let imp = self.imp();
-        let target = self.downgrade();
-        imp.tab_view.connect_setup_menu(move |_, page| {
-            if let Some(shell) = target.upgrade() {
-                shell.imp().menu_target.replace(page.cloned());
-            }
-        });
         let group = gio::SimpleActionGroup::new();
         let menu_action = |name: &str, close: fn(&adw::TabView, &adw::TabPage)| {
             let action = gio::SimpleAction::new(name, None);
@@ -191,13 +185,37 @@ impl WorkspaceShell {
             });
             action
         };
-        group.add_action(&menu_action("close-others", |view, page| view.close_other_pages(page)));
-        group.add_action(&menu_action("close-after", |view, page| view.close_pages_after(page)));
+        let close_others = menu_action("close-others", |view, page| view.close_other_pages(page));
+        let close_after = menu_action("close-after", |view, page| view.close_pages_after(page));
+        group.add_action(&close_others);
+        group.add_action(&close_after);
+        group.add_action(&menu_action("close-all", |view, _| {
+            let pages: Vec<adw::TabPage> = (0..view.n_pages()).map(|position| view.nth_page(position)).collect();
+            for page in &pages {
+                view.close_page(page);
+            }
+        }));
         group.add_action(&menu_action("close", |view, page| view.close_page(page)));
-        imp.tab_view.insert_action_group("tab", Some(&group));
+        // The menu's popover belongs to the tab bar or the overview, never
+        // to the view, so the actions live on the shell above all three.
+        self.insert_action_group("tab", Some(&group));
+        imp.tab_actions.set(group).ok();
+        let target = self.downgrade();
+        imp.tab_view.connect_setup_menu(move |view, page| {
+            let Some(shell) = target.upgrade() else {
+                return;
+            };
+            shell.imp().menu_target.replace(page.cloned());
+            if let Some(page) = page {
+                let last = view.n_pages() - 1;
+                close_others.set_enabled(last > 0);
+                close_after.set_enabled(view.page_position(page) < last);
+            }
+        });
         let others = gio::Menu::new();
         others.append(Some(&gettext("Close Other Tabs")), Some("tab.close-others"));
         others.append(Some(&gettext("Close Tabs After This One")), Some("tab.close-after"));
+        others.append(Some(&gettext("Close All Tabs")), Some("tab.close-all"));
         let close = gio::Menu::new();
         close.append(Some(&gettext("Close")), Some("tab.close"));
         let menu = gio::Menu::new();

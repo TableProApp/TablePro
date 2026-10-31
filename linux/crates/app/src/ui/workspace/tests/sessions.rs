@@ -154,3 +154,70 @@ fn the_tab_menu_closes_later_tabs_of_any_session_and_ends_with_close() {
         }
     }
 }
+
+#[gtk4::test]
+fn the_tab_bar_and_the_overview_reach_every_tab_menu_action() {
+    let sessions = two_sessions("TabMenuReach", "Other");
+    let shell = &sessions.shell;
+    open_editor(&sessions.first);
+    let imp = shell.imp();
+    for widget in [
+        imp.tab_bar.get().upcast::<gtk4::Widget>(),
+        imp.tab_overview.get().upcast(),
+    ] {
+        for action in ["close-others", "close-after", "close-all", "close"] {
+            assert!(
+                widget.activate_action(&format!("tab.{action}"), None).is_ok(),
+                "tab.{action} is out of reach of {}",
+                widget.type_().name()
+            );
+        }
+    }
+}
+
+#[gtk4::test]
+fn close_all_tabs_closes_the_tabs_of_every_session() {
+    let sessions = two_sessions("CloseAllAcross", "Other");
+    let (shell, first, second) = (&sessions.shell, &sessions.first, &sessions.second);
+    let view = shell.tab_view();
+    let target = open_editor(first);
+    open_editor(second);
+    open_editor(first);
+    shell.imp().menu_target.replace(Some(target));
+
+    WidgetExt::activate_action(&shell.imp().tab_bar.get(), "tab.close-all", None).expect("Close All Tabs");
+
+    wait_until(WAIT, || view.n_pages() == 0).expect("every tab to close");
+    assert!(!first.has_tabs() && !second.has_tabs());
+}
+
+#[gtk4::test]
+fn the_tab_menu_dims_what_would_close_nothing() {
+    let sessions = two_sessions("TabMenuDims", "Other");
+    let shell = &sessions.shell;
+    let view = shell.tab_view();
+    let only = open_editor(&sessions.first);
+    let enabled = |action: &str| {
+        shell
+            .imp()
+            .tab_actions
+            .get()
+            .is_some_and(|group| group.is_action_enabled(action))
+    };
+
+    view.emit_by_name::<()>("setup-menu", &[&Some(only.clone())]);
+    assert!(
+        !enabled("close-others") && !enabled("close-after"),
+        "one tab has nothing else to close"
+    );
+    assert!(enabled("close-all") && enabled("close"));
+
+    let last = open_editor(&sessions.second);
+    view.emit_by_name::<()>("setup-menu", &[&Some(only)]);
+    assert!(enabled("close-others") && enabled("close-after"));
+    view.emit_by_name::<()>("setup-menu", &[&Some(last)]);
+    assert!(
+        enabled("close-others") && !enabled("close-after"),
+        "the last tab has none after it"
+    );
+}
