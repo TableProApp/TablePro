@@ -9,7 +9,8 @@ public enum R2SQLResponseDecoder {
             throw R2SQLError.malformedResponse(status: response.statusCode, detail: snippet(response.body))
         }
 
-        guard envelope.success else {
+        // A refused redirect arrives as its 3xx, whatever the body says.
+        guard envelope.success, (200 ..< 300).contains(response.statusCode) else {
             switch response.statusCode {
             case 401, 403:
                 throw R2SQLError.authentication(status: response.statusCode, errors: envelope.errors)

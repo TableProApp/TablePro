@@ -157,7 +157,7 @@ public struct BigtableRequest: Sendable, Equatable {
 
     /// Text that would not read back as one bare word goes in JSON quotes.
     static func token(_ text: String, reserved: String) -> String {
-        let plain = !text.isEmpty && !text.hasPrefix("\"") && text.unicodeScalars.allSatisfy { scalar in
+        let plain = !text.isEmpty && text.unicodeScalars.first != "\"" && text.unicodeScalars.allSatisfy { scalar in
             !CharacterSet.whitespacesAndNewlines.contains(scalar) && !reserved.unicodeScalars.contains(scalar)
         }
         if plain { return text }
@@ -173,22 +173,23 @@ public struct BigtableRequest: Sendable, Equatable {
     static let missingTable = BigtableError.configuration(String(localized: "Name the table before the key, as in GET events/user#42."))
 }
 
-/// Reads a request line one token at a time.
+// Read by scalar, as `token` writes: a key that starts with a combining mark joins the quote or slash before it
+// into one Character.
 private struct RequestScanner {
-    private var text: Substring
+    private var text: Substring.UnicodeScalarView
     private var query: [String: String] = [:]
 
     init(_ text: String) {
-        self.text = Substring(text)
+        self.text = Substring(text).unicodeScalars
     }
 
     var isAtEnd: Bool {
-        text.allSatisfy(\.isWhitespace)
+        text.allSatisfy(\.properties.isWhitespace)
     }
 
-    mutating func word(stoppingAt stop: Character? = nil) -> String? {
+    mutating func word(stoppingAt stop: Unicode.Scalar? = nil) -> String? {
         skipSpace()
-        let word = text.prefix { !$0.isWhitespace && $0 != stop }
+        let word = text.prefix { !$0.properties.isWhitespace && $0 != stop }
         guard !word.isEmpty else { return nil }
         text = text.dropFirst(word.count)
         return String(word)
@@ -196,7 +197,7 @@ private struct RequestScanner {
 
     mutating func rest() -> String {
         let remaining = String(text).trimmingCharacters(in: .whitespacesAndNewlines)
-        text = ""
+        text.removeAll()
         return remaining
     }
 
@@ -204,7 +205,7 @@ private struct RequestScanner {
     /// no slash is a table alone, as in `SCAN events`.
     mutating func target(tableOnly: Bool) throws -> (table: String, key: Data?) {
         skipSpace()
-        let head = text.prefix { !$0.isWhitespace && $0 != "\"" && $0 != "?" }
+        let head = text.prefix { !$0.properties.isWhitespace && $0 != "\"" && $0 != "?" }
         let table: String
         if let slash = head.firstIndex(of: "/") {
             table = String(text[..<slash])
@@ -221,12 +222,12 @@ private struct RequestScanner {
         if text.first == "\"" {
             keyText = try quoted()
         } else {
-            let raw = text.prefix { !$0.isWhitespace && $0 != "?" }
+            let raw = text.prefix { !$0.properties.isWhitespace && $0 != "?" }
             text = text.dropFirst(raw.count)
             keyText = raw.isEmpty ? nil : String(raw)
         }
         if text.first == "?" {
-            let raw = text.dropFirst().prefix { !$0.isWhitespace }
+            let raw = text.dropFirst().prefix { !$0.properties.isWhitespace }
             text = text.dropFirst(raw.count + 1)
             for pair in raw.split(separator: "&") {
                 let parts = pair.split(separator: "=", maxSplits: 1).map(String.init)
@@ -259,9 +260,9 @@ private struct RequestScanner {
         var index = text.index(after: text.startIndex)
         var escaped = false
         while index < text.endIndex {
-            let character = text[index]
-            if character == "\"" && !escaped { break }
-            escaped = character == "\\" && !escaped
+            let scalar = text[index]
+            if scalar == "\"" && !escaped { break }
+            escaped = scalar == "\\" && !escaped
             index = text.index(after: index)
         }
         guard index < text.endIndex else {
@@ -277,6 +278,6 @@ private struct RequestScanner {
     }
 
     private mutating func skipSpace() {
-        text = text.drop { $0.isWhitespace }
+        text = text.drop { $0.properties.isWhitespace }
     }
 }

@@ -63,10 +63,9 @@ public final class SurrealRPCClient: NSObject, @unchecked Sendable {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.httpAdditionalHeaders = [:]
         configuration.timeoutIntervalForRequest = deadline.remainingSeconds()
-        let delegate = config.skipTLSVerify ? self : nil
         lock.withLock {
             connectDeadline = deadline
-            session = URLSession(configuration: configuration, delegate: delegate, delegateQueue: nil)
+            session = URLSession(configuration: configuration, delegate: self, delegateQueue: nil)
         }
     }
 
@@ -331,7 +330,7 @@ public final class SurrealRPCClient: NSObject, @unchecked Sendable {
     }
 }
 
-extension SurrealRPCClient: URLSessionDelegate {
+extension SurrealRPCClient: URLSessionTaskDelegate {
     public func urlSession(
         _ session: URLSession,
         didReceive challenge: URLAuthenticationChallenge,
@@ -344,5 +343,16 @@ extension SurrealRPCClient: URLSessionDelegate {
             return
         }
         completionHandler(.useCredential, URLCredential(trust: trust))
+    }
+
+    // A redirect would carry the credentials to wherever it points.
+    public func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        willPerformHTTPRedirection response: HTTPURLResponse,
+        newRequest request: URLRequest,
+        completionHandler: @escaping (URLRequest?) -> Void
+    ) {
+        completionHandler(nil)
     }
 }
