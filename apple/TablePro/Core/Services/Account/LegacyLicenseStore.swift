@@ -3,6 +3,7 @@
 //  TablePro
 //
 
+import CryptoKit
 import Foundation
 import os
 
@@ -47,6 +48,8 @@ internal struct LegacyEntitlement: Equatable, Sendable {
 internal struct LegacyLicenseStore: Sendable {
     static let keychainKey = "com.TablePro.license.key"
     static let payloadKey = "com.TablePro.license.payload"
+    // The digest of a key set aside on this Mac, so a different key stored later is not.
+    static let setAsideKey = "com.TablePro.license.setAside"
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "LegacyLicenseStore")
 
@@ -65,12 +68,31 @@ internal struct LegacyLicenseStore: Sendable {
     }
 
     func entitlement() -> LegacyEntitlement? {
-        verifiedPayload().flatMap(LegacyEntitlement.init(payload:))
+        guard !isSetAside() else { return nil }
+        return verifiedPayload().flatMap(LegacyEntitlement.init(payload:))
     }
 
+    // A key the server refused, or whose session was signed out: it stays stored, for Use License Key…, but grants
+    // nothing and is not exchanged on its own. The server keeps only its hash, so a deleted key cannot be sent again.
+    func setAside() {
+        guard let key = licenseKey() else { return }
+        defaults.set(Self.digest(of: key), forKey: Self.setAsideKey)
+    }
+
+    func isSetAside() -> Bool {
+        guard let key = licenseKey(), let digest = defaults.string(forKey: Self.setAsideKey) else { return false }
+        return digest == Self.digest(of: key)
+    }
+
+    // Only once the key was exchanged for its account.
     func clear() {
         keychain.delete(forKey: Self.keychainKey)
         defaults.removeObject(forKey: Self.payloadKey)
+        defaults.removeObject(forKey: Self.setAsideKey)
+    }
+
+    private static func digest(of key: String) -> String {
+        Base64URL.encode(Data(SHA256.hash(data: Data(key.utf8))))
     }
 
     private func verifiedPayload() -> LicensePayloadData? {

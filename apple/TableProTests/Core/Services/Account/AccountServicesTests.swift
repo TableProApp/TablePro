@@ -398,15 +398,59 @@ struct AccountServicesTests {
         #expect(fixture.hasLegacyLicense)
     }
 
-    @Test("A key the server refuses is deleted and the app is signed out")
+    @Test("A key the server refuses is kept aside: the app is signed out, and the key is offered but not exchanged again")
     func legacyKeyRejected() async throws {
+        let refused = "ZZZZZ-ZZZZZ-ZZZZZ-ZZZZZ-ZZZZZ"
         let fixture = try AccountFixture()
-        try fixture.storeLegacyLicense(key: "ZZZZZ-ZZZZZ-ZZZZZ-ZZZZZ-ZZZZZ")
+        try fixture.storeLegacyLicense(key: refused)
         fixture.services.loadStoredState()
 
         #expect(await fixture.services.migrateLegacyKeyIfNeeded() == .keyRejected)
-        #expect(!fixture.hasLegacyLicense)
+        #expect(fixture.hasLegacyLicense)
+        #expect(fixture.services.storedLicenseKey == refused)
+        #expect(!fixture.services.hasLicenseKeyToExchange)
         #expect(fixture.access.check(.iCloudSync) == .signedOut)
+
+        // The next launch reads the old payload again, which grants nothing now.
+        fixture.services.loadStoredState()
+        #expect(fixture.access.check(.iCloudSync) == .signedOut)
+        #expect(await fixture.services.migrateLegacyKeyIfNeeded() == .keptAside)
+        let exchanges = await fixture.server.requests(to: "/oauth/token")
+            .filter { $0.form["grant_type"] == OAuthTokenClient.tokenExchangeGrant }
+        #expect(exchanges.count == 1)
+    }
+
+    @Test("Sign-out keeps a key that was never exchanged, aside; Use License Key… exchanges it and deletes it")
+    func signOutKeepsAStoredKeyAside() async throws {
+        let fixture = try AccountFixture()
+        try await fixture.signIn()
+        try fixture.storeLegacyLicense(key: FakeAccountServer.validKey)
+        fixture.services.loadStoredState()
+
+        await fixture.services.signOut()
+
+        #expect(fixture.hasLegacyLicense)
+        #expect(fixture.services.storedLicenseKey == FakeAccountServer.validKey)
+        #expect(fixture.access.check(.iCloudSync) == .signedOut)
+        #expect(await fixture.services.migrateLegacyKeyIfNeeded() == .keptAside)
+        #expect(!fixture.access.state.isSignedIn)
+
+        _ = try await fixture.services.useLicenseKey(FakeAccountServer.validKey)
+        #expect(!fixture.hasLegacyLicense)
+        #expect(fixture.access.state.isSignedIn)
+    }
+
+    @Test("A key stored after another was set aside is exchanged as usual")
+    func aDifferentKeyIsNotSetAside() async throws {
+        let fixture = try AccountFixture()
+        try fixture.storeLegacyLicense(key: "ZZZZZ-ZZZZZ-ZZZZZ-ZZZZZ-ZZZZZ")
+        #expect(await fixture.services.migrateLegacyKeyIfNeeded() == .keyRejected)
+
+        try fixture.storeLegacyLicense(key: FakeAccountServer.validKey)
+
+        #expect(fixture.services.hasLicenseKeyToExchange)
+        #expect(await fixture.services.migrateLegacyKeyIfNeeded() == .migrated)
+        #expect(!fixture.hasLegacyLicense)
     }
 
     @Test("A payload whose signature fails grants nothing and is never exchanged")

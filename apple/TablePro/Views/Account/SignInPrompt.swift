@@ -33,7 +33,7 @@ internal struct SignInPrompt {
                 )
             },
             isSignedIn: { AccountServices.shared.session.isSignedIn },
-            hasStoredLicenseKey: { AccountServices.shared.storedLicenseKey != nil },
+            hasStoredLicenseKey: { AccountServices.shared.hasLicenseKeyToExchange },
             present: { SignInWindowController.present(purpose: .firstLaunch) }
         )
     }

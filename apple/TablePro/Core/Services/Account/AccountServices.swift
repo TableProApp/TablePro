@@ -29,6 +29,8 @@ internal enum LegacyMigrationOutcome: Equatable, Sendable {
     case nothingToMigrate
     // An interactive sign-in owns this Mac's session, so the key is neither exchanged nor deleted.
     case keptWhileSignedIn
+    // Refused before, or its session signed out: kept for Use License Key…, not exchanged on its own.
+    case keptAside
     case migrated
     case keyRejected
     case retryLater(AccountError)
@@ -154,7 +156,7 @@ internal final class AccountServices {
         refreshTask = nil
         await session.signOut()
         dropEntitlement()
-        legacy.clear()
+        legacy.setAside()
         legacyEntitlement = nil
         publish(refresh: .idle)
         if wasSignedIn {
@@ -205,6 +207,11 @@ internal final class AccountServices {
         legacy.licenseKey()
     }
 
+    // A stored key the next check exchanges, signing this Mac in without asking.
+    var hasLicenseKeyToExchange: Bool {
+        legacy.licenseKey() != nil && !legacy.isSetAside()
+    }
+
     var machineID: String {
         machine.machineID
     }
@@ -239,6 +246,7 @@ internal final class AccountServices {
 
     func migrateLegacyKeyIfNeeded() async -> LegacyMigrationOutcome {
         guard let key = legacy.licenseKey() else { return .nothingToMigrate }
+        guard !legacy.isSetAside() else { return .keptAside }
         if session.isSignedIn {
             // Resumes this key's own exchange; a session from another key typed into Use License Key… leaves it stored.
             guard session.wasExchanged(from: key) else { return .keptWhileSignedIn }
@@ -247,8 +255,8 @@ internal final class AccountServices {
                 try await session.signIn(licenseKey: key, machine: machine)
                 await announceSignIn(.migration)
             } catch .oauth("invalid_grant", _) {
-                Self.logger.notice("The stored license key was refused; removing it")
-                legacy.clear()
+                Self.logger.notice("The stored license key was refused; keeping it aside")
+                legacy.setAside()
                 legacyEntitlement = nil
                 publish()
                 return .keyRejected
@@ -322,7 +330,7 @@ internal final class AccountServices {
             return false
         case .migrated, .keyRejected:
             return true
-        case .nothingToMigrate, .keptWhileSignedIn:
+        case .nothingToMigrate, .keptWhileSignedIn, .keptAside:
             break
         }
         guard session.isSignedIn else {
