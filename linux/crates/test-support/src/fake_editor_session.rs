@@ -26,6 +26,8 @@ pub struct FakeEditorSession {
     state: Mutex<EditorSessionState>,
     transaction_state: Mutex<TransactionState>,
     database: Mutex<Option<String>>,
+    moves: Mutex<Vec<String>>,
+    refused_moves: Mutex<Option<DriverError>>,
     close_behaviour: CloseBehaviour,
     closes: AtomicUsize,
     closed: AtomicBool,
@@ -46,6 +48,8 @@ impl FakeEditorSession {
             state: Mutex::new(EditorSessionState::Ready),
             transaction_state: Mutex::new(TransactionState::Idle),
             database: Mutex::new(None),
+            moves: Mutex::new(Vec::new()),
+            refused_moves: Mutex::new(None),
             close_behaviour,
             closes: AtomicUsize::new(0),
             closed: AtomicBool::new(false),
@@ -80,6 +84,16 @@ impl FakeEditorSession {
     /// Where the session says it is, as after a `USE`.
     pub fn set_database(&self, database: Option<&str>) {
         *lock(&self.database) = database.map(str::to_owned);
+    }
+
+    /// The databases `use_database` moved the session to, in order.
+    pub fn moves(&self) -> Vec<String> {
+        lock(&self.moves).clone()
+    }
+
+    /// Every later `use_database` fails with `error`.
+    pub fn refuse_moves(&self, error: DriverError) {
+        *lock(&self.refused_moves) = Some(error);
     }
 
     /// The connection goes while no run is on it, as when the server
@@ -197,6 +211,15 @@ impl EditorSession for FakeEditorSession {
 
     fn database(&self) -> Option<String> {
         lock(&self.database).clone()
+    }
+
+    async fn use_database(&self, database: &str, _options: CallOptions) -> Result<(), DriverError> {
+        if let Some(error) = lock(&self.refused_moves).clone() {
+            return Err(error);
+        }
+        lock(&self.moves).push(database.to_owned());
+        *lock(&self.database) = Some(database.to_owned());
+        Ok(())
     }
 
     async fn close(&self) {

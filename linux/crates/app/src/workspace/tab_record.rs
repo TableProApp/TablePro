@@ -44,6 +44,10 @@ pub enum TabRecord {
         draft: DraftId,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         file: Option<EditorFileRecord>,
+        /// The database the editor bar moved the tab to. `None` keeps the
+        /// connection's own, as in a record written before tabs kept one.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        database: Option<String>,
     },
     /// A key-value engine's key, by the name the sidebar lists it as.
     Key {
@@ -106,7 +110,7 @@ impl TabRecord {
             }
             Self::Structure { schema, table } => (!table.is_empty()).then_some(Self::Structure { schema, table }),
             Self::Diagram { schema, places } => Some(Self::Diagram { schema, places }),
-            Self::Editor { draft, file } => Some(Self::Editor { draft, file }),
+            Self::Editor { draft, file, database } => Some(Self::Editor { draft, file, database }),
             // A key's name can be empty, as Redis lets one be.
             Self::Key { key } => Some(Self::Key { key }),
         }

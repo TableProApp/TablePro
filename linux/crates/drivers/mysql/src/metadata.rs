@@ -85,6 +85,41 @@ pub(crate) async fn list_schemas(
         .collect())
 }
 
+/// The databases MySQL and MariaDB keep for themselves.
+const SYSTEM_DATABASES: [&str; 4] = ["information_schema", "mysql", "performance_schema", "sys"];
+
+/// Every database the login can see, the connection's own the default.
+pub(crate) async fn list_databases(
+    connection: &mut MySqlConnection,
+    flavour: MySqlFlavour,
+) -> Result<Vec<SchemaInfo>, DriverError> {
+    let current = list_schemas(connection, flavour)
+        .await?
+        .into_iter()
+        .next()
+        .map(|schema| schema.name);
+    let rows = catalog_rows(
+        connection,
+        flavour,
+        "SELECT SCHEMA_NAME FROM information_schema.SCHEMATA ORDER BY SCHEMA_NAME",
+        "SCHEMATA",
+        &[],
+    )
+    .await?;
+    let mut databases = Vec::with_capacity(rows.len());
+    for row in rows {
+        let Some(name) = row.text(0)? else {
+            continue;
+        };
+        databases.push(SchemaInfo {
+            is_default: current.as_deref() == Some(name.as_str()),
+            is_system: SYSTEM_DATABASES.contains(&name.as_str()),
+            name,
+        });
+    }
+    Ok(databases)
+}
+
 const TABLES_IN_SCHEMA_SQL: &str = "\
 SELECT TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE FROM information_schema.TABLES
 WHERE TABLE_SCHEMA = COALESCE(?, DATABASE()) ORDER BY TABLE_NAME";

@@ -16,6 +16,8 @@ pub(crate) enum TabSpec {
         draft: Option<DraftId>,
         /// The `.sql` file a restored or reopened tab is saved to.
         file: Option<EditorFileRecord>,
+        /// The database the editor bar moved a restored tab to.
+        database: Option<String>,
     },
     Table {
         table: TableRef,

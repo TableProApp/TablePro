@@ -100,7 +100,8 @@ impl TabFactory {
                 initial_query,
                 draft,
                 file,
-            } => self.editor(id, initial_query, draft, file),
+                database,
+            } => self.editor(id, initial_query, draft, file, database),
             TabSpec::Table { table, page, filter } => self.table(
                 id,
                 TableOpening {
@@ -128,7 +129,7 @@ impl TabFactory {
     /// The overview's new-tab button needs its page back at once.
     pub(super) fn create_editor(&self) -> adw::TabPage {
         let id = Uuid::new_v4();
-        let slot = self.editor(id, None, None, None);
+        let slot = self.editor(id, None, None, None, None);
         self.insert(id, slot)
     }
 
@@ -167,6 +168,7 @@ impl TabFactory {
         initial_query: Option<String>,
         draft: Option<DraftId>,
         file: Option<EditorFileRecord>,
+        database: Option<String>,
     ) -> WorkspaceTab {
         let parts = &self.parts;
         // Such a tab shows the editor's sample query, which names nothing.
@@ -181,6 +183,9 @@ impl TabFactory {
             close_timeout: parts.context.close_timeout(),
             snippets: parts.snippets.clone(),
         });
+        if let Some(database) = database {
+            editor.move_to_database(&database);
+        }
         connect_editor(&editor, id, &parts.input, &parts.toasts);
         editor.attach_assistant(parts.assistant.clone());
         // After the signals are connected, so the workspace marks a tab
@@ -491,6 +496,8 @@ pub(super) fn connect_editor(
     editor.connect_content_changed(move |_| content.deliver(WorkspaceInput::EditorTabContentChanged(tab_id)));
     let file = input.clone();
     editor.connect_file_changed(move |_| file.deliver(WorkspaceInput::EditorTabFileChanged(tab_id)));
+    let database = input.clone();
+    editor.connect_database_changed(move |_| database.deliver(WorkspaceInput::EditorTabDatabaseChanged));
     let transaction = input.clone();
     editor.connect_transaction_changed(move |_, _| transaction.deliver(WorkspaceInput::EditorTransactionChanged));
     let toast = input.clone();

@@ -120,6 +120,7 @@ mod tests {
                 TabRecord::Editor {
                     draft: DraftId::new(),
                     file: None,
+                    database: None,
                 },
                 TabRecord::Diagram {
                     schema: Some("sales".to_owned()),
@@ -182,6 +183,7 @@ mod tests {
                     TabRecord::Editor {
                         draft: DraftId::from_uuid(draft),
                         file: None,
+                        database: None,
                     },
                     TabRecord::Structure {
                         schema: Some("sales".to_owned()),
@@ -231,6 +233,7 @@ mod tests {
                     TabRecord::Editor {
                         draft: DraftId::from_uuid(draft),
                         file: None,
+                        database: None,
                     },
                     TabRecord::Structure {
                         schema: Some("sales".to_owned()),
@@ -262,6 +265,7 @@ mod tests {
                     0 => TabRecord::Editor {
                         draft: DraftId::new(),
                         file: None,
+                        database: None,
                     },
                     _ => table(&format!("t{index}")),
                 })

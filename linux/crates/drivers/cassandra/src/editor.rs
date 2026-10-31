@@ -4,8 +4,8 @@
 //! only that tab, as cqlsh moves only its own connection. CQL keeps no
 //! other state on a connection: no transaction, no temporary table.
 
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU8, Ordering};
+use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
 use async_trait::async_trait;
@@ -21,7 +21,7 @@ use tablepro_core::{
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 
-use crate::errors::execution_error;
+use crate::errors::{execution_error, use_keyspace_error};
 use crate::rows::{ColumnsRead, MAX_PAGE_ROWS, next_state, page_size};
 use crate::session::{CqlLink, LinkSlot};
 
@@ -40,12 +40,17 @@ pub(crate) struct CqlEditorSession {
     statement_timeout: Option<Duration>,
     state: Arc<AtomicU8>,
     shutdown: CancellationToken,
+    /// The keyspace the server confirmed. The driver records one it is
+    /// still moving to, or failed to.
+    keyspace: Arc<Mutex<Option<String>>>,
 }
 
 impl CqlEditorSession {
     pub(crate) fn new(link: CqlLink, read_only: bool, statement_timeout: Option<Duration>) -> Self {
+        let keyspace = link.session().get_keyspace().map(|keyspace| keyspace.to_string());
         Self {
             id: EditorSessionId::new(),
+            keyspace: Arc::new(Mutex::new(keyspace)),
             link: LinkSlot::new(link),
             read_only,
             statement_timeout,
@@ -74,10 +79,39 @@ impl EditorSession for CqlEditorSession {
         self.id
     }
 
-    /// The driver moves the session itself when a `USE` answers.
     fn database(&self) -> Option<String> {
-        let link = self.link.get().ok()?;
-        link.session().get_keyspace().map(|keyspace| keyspace.to_string())
+        self.keyspace.lock().unwrap_or_else(PoisonError::into_inner).clone()
+    }
+
+    /// The driver checks the name, which CQL takes as letters, digits and
+    /// `_` alone, and moves every connection of the session. A move that
+    /// does not finish leaves them in keyspaces nothing knows, so the
+    /// session ends.
+    async fn use_database(&self, database: &str, options: CallOptions) -> Result<(), DriverError> {
+        let link = self.link.get()?;
+        self.begin()?;
+        let using = link.session().use_keyspace(database, true);
+        let used = tokio::select! {
+            biased;
+            () = options.cancel().cancelled() => Err(DriverError::Cancelled),
+            () = until(options.deadline()) => Err(DriverError::Timeout {
+                phase: tablepro_core::TimeoutPhase::Statement,
+                server_cancelled: false,
+            }),
+            used = using => used.map_err(|error| use_keyspace_error(error, LossPhase::Statement)),
+        };
+        match used {
+            Ok(()) => {
+                *self.keyspace.lock().unwrap_or_else(PoisonError::into_inner) = Some(database.to_owned());
+                self.state.store(READY, Ordering::SeqCst);
+                Ok(())
+            }
+            Err(error) => {
+                self.state.store(LOST, Ordering::SeqCst);
+                self.link.release();
+                Err(error)
+            }
+        }
     }
 
     fn state(&self) -> EditorSessionState {
@@ -106,8 +140,15 @@ impl EditorSession for CqlEditorSession {
             shutdown: self.shutdown.clone(),
         };
         let state = self.state.clone();
+        let (keyspace, link) = (self.keyspace.clone(), run.link.clone());
+        let follows = tablepro_core::sql_syntax::may_change_database(sql.as_str(), SqlGrammar::Cql);
         let running = tokio::spawn(async move {
             let outcome = run.run(sql, options, sink).await;
+            // The driver records a keyspace once the server confirms it.
+            if outcome.is_ok() && follows {
+                *keyspace.lock().unwrap_or_else(PoisonError::into_inner) =
+                    link.session().get_keyspace().map(|keyspace| keyspace.to_string());
+            }
             let next = match &outcome {
                 Ok(_) => READY,
                 Err(_) => LOST,
@@ -374,4 +415,11 @@ fn lost(error: &DriverError) -> bool {
         error.category(),
         ErrorCategory::Network | ErrorCategory::ConnectionLost | ErrorCategory::Tls
     )
+}
+
+async fn until(deadline: Option<Instant>) {
+    match deadline {
+        Some(at) => tokio::time::sleep_until(at).await,
+        None => std::future::pending().await,
+    }
 }

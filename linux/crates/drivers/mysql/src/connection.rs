@@ -271,6 +271,14 @@ impl Connection for MysqlConnection {
         .await
     }
 
+    async fn list_databases(&self, options: CallOptions) -> Result<Vec<SchemaInfo>, DriverError> {
+        self.read(
+            options,
+            read_op(|connection, flavour| Box::pin(metadata::list_databases(connection, flavour))),
+        )
+        .await
+    }
+
     async fn list_objects(&self, scope: &ObjectScope, options: CallOptions) -> Result<Vec<ObjectInfo>, DriverError> {
         let scope = scope.clone();
         self.read(

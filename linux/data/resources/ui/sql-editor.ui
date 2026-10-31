@@ -116,6 +116,33 @@
               </object>
             </child>
             <child>
+              <object class="GtkMenuButton" id="scope_button">
+                <property name="visible">false</property>
+                <property name="always-show-arrow">true</property>
+                <property name="tooltip-text" translatable="yes">Database</property>
+                <style>
+                  <class name="flat"/>
+                </style>
+                <property name="child">
+                  <object class="GtkBox">
+                    <property name="spacing">6</property>
+                    <child>
+                      <object class="GtkImage">
+                        <property name="icon-name">drive-harddisk-symbolic</property>
+                        <property name="accessible-role">presentation</property>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkLabel" id="scope_button_label">
+                        <property name="ellipsize">middle</property>
+                        <property name="accessible-role">presentation</property>
+                      </object>
+                    </child>
+                  </object>
+                </property>
+              </object>
+            </child>
+            <child>
               <object class="GtkLabel" id="cursor_info">
                 <property name="hexpand">true</property>
                 <property name="halign">end</property>

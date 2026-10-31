@@ -24,6 +24,33 @@ async fn use_database_persists_across_runs() {
     );
 }
 
+/// The editor bar's move: a bracketed name carries a `]`, and a database
+/// the server refuses leaves the session where it was.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn a_session_moves_to_a_database_by_its_name() {
+    let fixture = start().await;
+    let connection = connect(&fixture, false).await;
+    let session = session(connection.as_ref()).await;
+    // CREATE DATABASE runs outside a transaction, as the editor runs it.
+    run_ok(
+        session.as_ref(),
+        "IF DB_ID(N'odd]name') IS NULL CREATE DATABASE [odd]]name]",
+    )
+    .await;
+    let options = || tablepro_core::CallOptions::new(None, CancellationToken::new());
+
+    session.use_database("odd]name", options()).await.expect("a move");
+    let database = run_ok(session.as_ref(), "SELECT DB_NAME()").await.rows();
+    assert_eq!(database, vec![vec![Value::Text("odd]name".to_owned())]]);
+    assert_eq!(session.database().as_deref(), Some("odd]name"));
+
+    let refused = session.use_database("no_such_database", options()).await;
+    assert!(refused.is_err(), "{refused:?}");
+    let database = run_ok(session.as_ref(), "SELECT DB_NAME()").await.rows();
+    assert_eq!(database, vec![vec![Value::Text("odd]name".to_owned())]]);
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires docker"]
 async fn begin_tran_insert_big_select_commit_persists() {

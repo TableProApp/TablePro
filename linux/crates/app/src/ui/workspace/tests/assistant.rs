@@ -93,6 +93,7 @@ fn insert_goes_to_the_editor_in_front_or_a_new_one() {
             initial_query: Some("-- ".to_owned()),
             draft: None,
             file: None,
+            database: None,
         })
     });
     input.deliver(WorkspaceInput::InsertFromAssistant("SELECT 2;".to_owned()));
