@@ -5,14 +5,18 @@
 
 import Foundation
 
-internal enum BinaryValueFormat: String, Equatable, Sendable {
+internal enum BinaryValueFormat: Hashable, Sendable {
     case messagePack
     case protobuf
+    case igbinary
+    case avro(schemaID: String)
 
     var displayName: String {
         switch self {
         case .messagePack: return "MessagePack"
         case .protobuf: return "Protobuf"
+        case .igbinary: return "igbinary"
+        case .avro: return "Avro"
         }
     }
 }
@@ -20,6 +24,7 @@ internal enum BinaryValueFormat: String, Equatable, Sendable {
 internal enum BinaryValueTree: Sendable {
     case json(JSONTreeNode)
     case protobuf(ProtobufTreeNode)
+    case php(PhpTreeNode)
 }
 
 internal enum BinaryValueDocument: Sendable {
@@ -48,6 +53,12 @@ internal enum BinaryValueDecoding {
             case .protobuf:
                 let fields = try ProtobufWireDecoder.decode(data, maxValues: budget).fields
                 text = ProtobufTextWriter.text(fields, multiLine: false, limit: limit)
+            case .igbinary:
+                text = PhpSerializeWriter.text(try IgbinaryDecoder.decode(data, maxValues: budget), limit: limit)
+            case .avro(let schemaID):
+                guard let schema = AvroSchemaLibrary.shared.schema(id: schemaID) else { return nil }
+                let value = try AvroDecoder.decode(data, schema: schema, maxValues: budget).value
+                text = MessagePackTextWriter.json(value, pretty: false, limit: limit)
             }
         } catch {
             return nil
@@ -92,12 +103,39 @@ internal enum BinaryValueDecoding {
                     ),
                     note: message.framing.map(framingNote)
                 )
+            case .igbinary:
+                let value = try IgbinaryDecoder.decode(data)
+                return .decoded(
+                    tree: .php(PhpTreeBuilder.build(from: value)),
+                    text: capped(
+                        PhpSerializeWriter.text(value, limit: writerLimit(forCap: maxViewerTextLength)),
+                        at: maxViewerTextLength
+                    ),
+                    note: nil
+                )
+            case .avro(let schemaID):
+                guard let schema = AvroSchemaLibrary.shared.schema(id: schemaID) else {
+                    return .failed(BinaryValueDecodeError(kind: .schemaMissing, offset: 0))
+                }
+                let message = try AvroDecoder.decode(data, schema: schema)
+                return .decoded(
+                    tree: .json(MessagePackTreeBuilder.build(from: message.value)),
+                    text: capped(
+                        MessagePackTextWriter.json(message.value, pretty: true, limit: writerLimit(forCap: maxViewerTextLength)),
+                        at: maxViewerTextLength
+                    ),
+                    note: message.schemaID.map(schemaIDNote)
+                )
             }
         } catch let error as BinaryValueDecodeError {
             return .failed(error)
         } catch {
             return .failed(BinaryValueDecodeError(kind: .unexpectedEnd, offset: 0))
         }
+    }
+
+    private static func schemaIDNote(_ schemaID: UInt32) -> String {
+        String(format: String(localized: "Schema Registry framing: schema ID %lld"), Int(schemaID))
     }
 
     private static func framingNote(_ framing: ProtobufFraming) -> String {

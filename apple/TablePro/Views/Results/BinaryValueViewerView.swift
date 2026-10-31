@@ -129,6 +129,12 @@ internal struct BinaryValueViewerView: View {
                 searchText: $searchText,
                 fullValueModeName: String(localized: "Text")
             )
+        case .php(let root):
+            FilterableTreeView(
+                rootNode: root,
+                searchText: $searchText,
+                fullValueModeName: String(localized: "Text")
+            )
         }
     }
 

@@ -214,7 +214,7 @@ private struct Cursor {
         properties.reserveCapacity(count)
         for _ in 0..<count {
             guard case let .string(rawKey)? = parseValue(depth: depth + 1) else { return nil }
-            let decoded = decodePropertyKey(rawKey)
+            let decoded = decodePhpPropertyKey(rawKey)
             guard let value = parseValue(depth: depth + 1) else { return nil }
             properties.append(PhpProperty(name: decoded.name, visibility: decoded.visibility, value: value))
         }
@@ -276,7 +276,7 @@ private struct Cursor {
     }
 }
 
-private func decodePropertyKey(_ raw: String) -> (name: String, visibility: PhpVisibility) {
+internal func decodePhpPropertyKey(_ raw: String) -> (name: String, visibility: PhpVisibility) {
     let scalars = Array(raw.unicodeScalars)
     guard scalars.first?.value == 0 else {
         return (raw, .publicVisibility)

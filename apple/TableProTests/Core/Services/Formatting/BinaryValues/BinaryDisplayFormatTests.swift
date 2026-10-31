@@ -131,4 +131,51 @@ struct BinaryDisplayFormatTests {
         #expect(text == "1: 150\n")
         #expect(note?.contains("42") == true)
     }
+
+    @Test("igbinary and Avro render in the cell, and a broken value falls back to hex")
+    func igbinaryAndAvroRender() throws {
+        let blob = ColumnType.blob(rawType: "BLOB")
+        let igbinary = BinaryFixture.data("000000021705506f696e7414011101780601")
+        #expect(CellDisplayFormatter.format(.bytes(igbinary), columnType: blob, displayFormat: .igbinary)
+            == #"O:5:"Point":1:{s:1:"x";i:1;}"#)
+        #expect(CellDisplayFormatter.format(.bytes(BinaryFixture.data("0000000211")), columnType: blob, displayFormat: .igbinary)
+            == "0x0000000211")
+
+        let schemaID = try AvroSchemaLibrary.shared.register(
+            text: #"{"type":"record","name":"R","fields":[{"name":"id","type":"long"}]}"#,
+            name: "r.avsc"
+        )
+        let avro = ValueDisplayFormat.avro(schemaID: schemaID)
+        #expect(avro.displayName.contains("r.avsc"))
+        #expect(CellDisplayFormatter.format(.bytes(BinaryFixture.data("54")), columnType: blob, displayFormat: avro) == #"{"id":42}"#)
+        #expect(CellDisplayFormatter.format(.bytes(BinaryFixture.data("80")), columnType: blob, displayFormat: avro) == "0x80")
+    }
+
+    @Test("The viewer shows igbinary in the PHP tree and Avro with its frame's schema ID")
+    func igbinaryAndAvroDocuments() throws {
+        let igbinary = BinaryValueDecoding.document(BinaryFixture.data("000000020607"), format: .igbinary)
+        guard case .decoded(.php, let text, nil) = igbinary else {
+            Issue.record("expected a decoded PHP tree")
+            return
+        }
+        #expect(text == "i:7;")
+
+        let schemaID = try AvroSchemaLibrary.shared.register(text: #"{"type":"array","items":"int"}"#, name: "ints.avsc")
+        let framed = BinaryValueDecoding.document(BinaryFixture.data("000000002a020200"), format: .avro(schemaID: schemaID))
+        guard case .decoded(.json, _, let note) = framed else {
+            Issue.record("expected a decoded JSON tree")
+            return
+        }
+        #expect(note?.contains("42") == true)
+    }
+
+    @Test("An Avro column whose schema is gone says so")
+    func avroSchemaMissing() {
+        let document = BinaryValueDecoding.document(Data([0x02]), format: .avro(schemaID: "0000000000000000"))
+        guard case .failed(let error) = document else {
+            Issue.record("expected a failure")
+            return
+        }
+        #expect(error.kind == .schemaMissing)
+    }
 }
