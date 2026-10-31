@@ -55,6 +55,7 @@ struct MainEditorContentView: View {
     @State private var serverDashboardViewModels: [UUID: ServerDashboardViewModel] = [:]
     @State private var usersRolesViewModels: [UUID: UsersRolesViewModel] = [:]
     @State private var queryInsightsViewModels: [UUID: QueryInsightsViewModel] = [:]
+    @State private var tableHealthViewModels: [UUID: TableHealthViewModel] = [:]
     @State private var tableListingModels = TableListingModelStore()
 
     @ObservedObject private var treeService = DatabaseTreeMetadataService.shared
@@ -154,6 +155,7 @@ struct MainEditorContentView: View {
             serverDashboardViewModels = serverDashboardViewModels.filter { openTabIds.contains($0.key) }
             usersRolesViewModels = usersRolesViewModels.filter { openTabIds.contains($0.key) }
             queryInsightsViewModels = queryInsightsViewModels.filter { openTabIds.contains($0.key) }
+            tableHealthViewModels = tableHealthViewModels.filter { openTabIds.contains($0.key) }
             tableListingModels.retainTabs(openTabIds)
             SchemaProviderRegistry.shared.reclaimUnheldProviders(for: connectionId)
         }
@@ -204,6 +206,8 @@ struct MainEditorContentView: View {
             usersRolesContent(tab: tab)
         case .insights:
             queryInsightsContent(tab: tab)
+        case .tableHealth:
+            tableHealthContent(tab: tab)
         case .objectSource:
             objectSourceContent(tab: tab)
         case .versionHistory:
@@ -307,6 +311,27 @@ struct MainEditorContentView: View {
                         queryInsightsViewModels[tab.id] = QueryInsightsViewModel(
                             connectionId: connection.id,
                             history: QueryHistoryManager.shared
+                        )
+                    }
+            }
+        }
+        .id(tab.id)
+    }
+
+    // MARK: - Table Health Tab Content
+
+    private func tableHealthContent(tab: QueryTab) -> some View {
+        Group {
+            if let vm = tableHealthViewModels[tab.id] {
+                TableHealthView(viewModel: vm, coordinator: coordinator)
+            } else {
+                ProgressView(String(localized: "Loading table health…"))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .onAppear {
+                        guard tableHealthViewModels[tab.id] == nil else { return }
+                        tableHealthViewModels[tab.id] = TableHealthViewModel(
+                            connectionId: connection.id,
+                            databaseType: connection.type
                         )
                     }
             }

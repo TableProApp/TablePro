@@ -529,6 +529,18 @@ final class QueryTabManager: ObservableObject {
         selectedTabId = newTab.id
     }
 
+    func addTableHealthTab() {
+        if let existing = tabs.first(where: { $0.tabType == .tableHealth }) {
+            selectedTabId = existing.id
+            return
+        }
+        var newTab = QueryTab(title: String(localized: "Table Health"), tabType: .tableHealth)
+        newTab.tableContext.isEditable = false
+        newTab.hasUserInteraction = true
+        tabs.append(newTab)
+        selectedTabId = newTab.id
+    }
+
     func addObjectSourceTab(objectRef: DatabaseObjectRef) {
         if let existing = tabs.first(where: {
             $0.tabType == .objectSource && $0.display.objectRef?.namesSameObject(as: objectRef) == true
@@ -833,7 +845,7 @@ extension QueryTabManager {
         case .query, .table, .createTable, .erDiagram, .objectSource, .tableListing:
             return true
         // A paused debug target holds locks, so its tab stays in sight whichever entry the sidebar shows.
-        case .serverDashboard, .usersRoles, .insights, .versionHistory, .routineDebug:
+        case .serverDashboard, .usersRoles, .insights, .tableHealth, .versionHistory, .routineDebug:
             return false
         }
     }

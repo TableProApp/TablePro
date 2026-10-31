@@ -31,6 +31,10 @@ extension MainContentCommandActions {
         coordinator?.showQueryInsights()
     }
 
+    func showTableHealth() {
+        coordinator?.showTableHealth()
+    }
+
     var supportsServerDashboard: Bool {
         guard let type = coordinator?.connection.type else { return false }
         return ServerDashboardQueryProviderFactory.supportsDashboard(for: type)

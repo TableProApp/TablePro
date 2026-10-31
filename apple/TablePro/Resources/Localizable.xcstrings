@@ -3535,6 +3535,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "%@ has no recorded reads." : {
+
+    },
     "%@ holds a document or an array, and this text is not valid JSON." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -6934,6 +6937,12 @@
         }
       }
     },
+    "%1$@ dead rows, %2$@ live. Last vacuumed %3$@." : {
+
+    },
+    "%1$@ dead rows, %2$@ live. Never vacuumed." : {
+
+    },
     "%1$@ does not apply to a %2$@." : {
       "localizations" : {
         "fr" : {
@@ -6981,6 +6990,9 @@
           }
         }
       }
+    },
+    "%1$@ has never been scanned. It takes %2$@." : {
+
     },
     "%1$@ has no equivalent here, so the values arrive as %2$@." : {
       "localizations" : {
@@ -7081,6 +7093,9 @@
 
     },
     "%1$@ is a light theme, so %2$@ is used." : {
+
+    },
+    "%1$@ is covered by %2$@." : {
 
     },
     "%1$@ is not a level %2$@ accepts. Use one of %3$@." : {
@@ -7243,6 +7258,9 @@
       }
     },
     "%1$@ of more than %2$@ rows" : {
+
+    },
+    "%1$@ on (%2$@) has no index, so deletes and updates on the referenced table scan this one." : {
 
     },
     "%1$@ on %2$@" : {
@@ -10482,6 +10500,9 @@
 
     },
     "%lld files" : {
+
+    },
+    "%lld findings" : {
 
     },
     "%lld in, %lld out" : {
@@ -31262,6 +31283,9 @@
     "Binary values limit must be between 1 and 1,048,576 KB." : {
 
     },
+    "Bloated Tables" : {
+
+    },
     "Block" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -50741,6 +50765,9 @@
         }
       }
     },
+    "Copy Fix SQL" : {
+
+    },
     "Copy ID" : {
       "localizations" : {
         "fr" : {
@@ -53517,6 +53544,9 @@
           }
         }
       }
+    },
+    "Could Not Read Table Health" : {
+
     },
     "Could not read the AppRole secret ID file: %@" : {
 
@@ -84175,6 +84205,9 @@
         }
       }
     },
+    "Foreign Keys Without an Index" : {
+
+    },
     "Foreign Table" : {
       "localizations" : {
         "fr" : {
@@ -93524,6 +93557,15 @@
           }
         }
       }
+    },
+    "Index usage counts since the server started at %@." : {
+
+    },
+    "Index usage counts since the statistics were first collected; they have never been reset." : {
+
+    },
+    "Index usage counts since the statistics were last reset at %@." : {
+
     },
     "Indexed columns in order" : {
       "extractionState" : "manual",
@@ -104666,6 +104708,9 @@
           }
         }
       }
+    },
+    "Loading table health…" : {
+
     },
     "Loading team…" : {
       "localizations" : {
@@ -116586,6 +116631,9 @@
         }
       }
     },
+    "No findings." : {
+
+    },
     "No foreign key links %@ to the tables before it, so it is cross joined." : {
 
     },
@@ -118096,6 +118144,9 @@
           }
         }
       }
+    },
+    "No primary key. Replace column_name with the columns that identify a row." : {
+
     },
     "No privileges" : {
       "localizations" : {
@@ -126787,6 +126838,9 @@
         }
       }
     },
+    "Open Fix in Editor" : {
+
+    },
     "Open in Agent Mode" : {
       "localizations" : {
         "fr" : {
@@ -132507,6 +132561,9 @@
           }
         }
       }
+    },
+    "Performance Schema is off, so the server records no index usage and no index can show as unused." : {
+
     },
     "period" : {
       "extractionState" : "manual",
@@ -143787,6 +143844,9 @@
       }
     },
     "Redshift Endpoint" : {
+
+    },
+    "Redundant Indexes" : {
 
     },
     "Ref Columns" : {
@@ -159684,6 +159744,9 @@
           }
         }
       }
+    },
+    "Select a finding to preview the SQL that fixes it." : {
+
     },
     "Select a Library" : {
       "localizations" : {
@@ -177747,6 +177810,15 @@
         }
       }
     },
+    "Table Health" : {
+
+    },
+    "Table health is available for PostgreSQL, MySQL and MariaDB." : {
+
+    },
+    "Table Health Not Available" : {
+
+    },
     "Table Info" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -180702,6 +180774,9 @@
           }
         }
       }
+    },
+    "Tables Without a Primary Key" : {
+
     },
     "Tables, views, and functions owned by this role will be deleted." : {
       "localizations" : {
@@ -199131,6 +199206,9 @@
         }
       }
     },
+    "This SQL is a preview. TablePro never runs it; review it in the editor and run it yourself." : {
+
+    },
     "This statement changed %1$d rows where at most %2$d was expected." : {
       "localizations" : {
         "fr" : {
@@ -206705,6 +206783,9 @@
           }
         }
       }
+    },
+    "Unused Indexes" : {
+
     },
     "Up to Date" : {
 
