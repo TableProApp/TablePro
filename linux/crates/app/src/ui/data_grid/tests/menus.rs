@@ -8,7 +8,7 @@ use super::{
     accel_of, action_names, cell_menu, close_menus, data_column, keyed, menu_actions, none, press, selected_ids,
     submenu, text,
 };
-use crate::test_support::{FocusThief, after_next_frame, drain_main_context, wait_until};
+use crate::test_support::{FocusThief, after_next_frame, assert_access_keys, drain_main_context, wait_until};
 use crate::ui::data_grid::test_grid::{
     Grid, GridSpec, WAIT, focus_in_grid, key, named, results, two_text_columns, two_text_values,
 };
@@ -61,7 +61,7 @@ fn every_header_action_is_in_the_cell_menus_column_submenu() {
     let grid = people();
     let header = data_column(&grid, 1).header_menu().expect("the header's menu");
     let menu = cell_menu(&grid);
-    let in_column = action_names(&submenu(&menu, "Column").expect("the cell menu's Column submenu"));
+    let in_column = action_names(&submenu(&menu, "Colu_mn").expect("the cell menu's Column submenu"));
     let in_cell = action_names(&menu);
     let header_actions = menu_actions(&header);
 
@@ -79,6 +79,21 @@ fn every_header_action_is_in_the_cell_menus_column_submenu() {
             "{action} has no {counterpart} in the cell menu"
         );
     }
+}
+
+#[gtk4::test]
+fn every_grid_menu_gives_each_item_its_own_access_key() {
+    let grid = people();
+    let empty = grid
+        .grid
+        .menus()
+        .and_then(|menus| menus.empty.as_ref()?.menu_model())
+        .expect("the menu below the rows");
+
+    assert_access_keys(&cell_menu(&grid));
+    assert_access_keys(&empty);
+    assert_access_keys(&data_column(&grid, 1).header_menu().expect("the header's menu"));
+    assert_access_keys(&crate::ui::data_grid::grid_menu::row_numbers_header_menu());
 }
 
 #[gtk4::test]
