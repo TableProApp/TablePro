@@ -19,9 +19,13 @@ import Foundation
 public enum SQLUnterminatedStatements {
     /// Every text a gate has to tier for `statement`: the statement itself, then, when `grammar` needs no terminator,
     /// the text of each statement that begins inside it, less the statements nested in that one, which come on their
-    /// own.
+    /// own. A grammar that takes a statement in place of a value or a table adds what ``SQLEmbeddedStatements`` finds,
+    /// and one with a pipe operator each statement ``SQLPipeOperatorChain`` finds.
     public static func runnable(in statement: String, grammar: SQLLexicalGrammar) -> [String] {
-        guard grammar.contains(.unterminatedStatements) else { return [statement] }
+        guard grammar.contains(.unterminatedStatements) else {
+            return [statement] + SQLEmbeddedStatements.texts(in: statement, grammar: grammar)
+                + SQLPipeOperatorChain.statements(in: statement, grammar: grammar)
+        }
         let text = statement as NSString
         let tokens = TSQLTokens.read(text, grammar: grammar)
         guard !definesRoutine(tokens) else { return [statement] }
@@ -108,7 +112,7 @@ public enum SQLUnterminatedStatements {
         return kind.map(routineKinds.contains) ?? false
     }
 
-    private struct StatementSpan {
+    struct StatementSpan {
         var range: NSRange
         let parent: Int?
     }
@@ -161,7 +165,7 @@ public enum SQLUnterminatedStatements {
 
     /// Each statement's text without the statements nested in it, so every character is tiered once however deep the
     /// nesting goes. Read whole at every level, 100 KB of nested `SELECT`s took 45 seconds to classify.
-    private static func ownTexts(of spans: [StatementSpan], in text: NSString) -> [String] {
+    static func ownTexts(of spans: [StatementSpan], in text: NSString) -> [String] {
         var nested = [[NSRange]](repeating: [], count: spans.count)
         for span in spans {
             guard let parent = span.parent else { continue }

@@ -47,7 +47,7 @@ enum ExplainResultRouter {
 
         guard columns.count == 1 || plan != nil else { return nil }
 
-        let subjectSQL = QueryClassifier.explainedStatement(in: explainSQL, grammar: grammar) ?? sql
+        let subjectSQL = QueryClassifier.explainedStatement(in: explainSQL, databaseType: databaseType) ?? sql
         return RoutedPlan(
             rawText: text,
             plan: plan,
