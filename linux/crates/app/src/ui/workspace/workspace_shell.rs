@@ -170,12 +170,6 @@ impl WorkspaceShell {
     /// says left or right, as the GNOME HIG asks.
     fn connect_tab_menu(&self) {
         let imp = self.imp();
-        let target = self.downgrade();
-        imp.tab_view.connect_setup_menu(move |_, page| {
-            if let Some(shell) = target.upgrade() {
-                shell.imp().menu_target.replace(page.cloned());
-            }
-        });
         let group = gio::SimpleActionGroup::new();
         let menu_action = |name: &str, close: fn(&adw::TabView, &adw::TabPage)| {
             let action = gio::SimpleAction::new(name, None);
@@ -194,7 +188,20 @@ impl WorkspaceShell {
         group.add_action(&menu_action("close-others", |view, page| view.close_other_pages(page)));
         group.add_action(&menu_action("close-after", |view, page| view.close_pages_after(page)));
         group.add_action(&menu_action("close", |view, page| view.close_page(page)));
-        imp.tab_view.insert_action_group("tab", Some(&group));
+        // The bar and the overview parent the menu's popover, and the view
+        // is an ancestor of neither.
+        self.insert_action_group("tab", Some(&group));
+        let _ = imp.tab_actions.set(group);
+        let target = self.downgrade();
+        imp.tab_view.connect_setup_menu(move |view, page| {
+            let Some(shell) = target.upgrade() else {
+                return;
+            };
+            shell.imp().menu_target.replace(page.cloned());
+            if let Some(page) = page {
+                shell.dim_tab_menu(view, page);
+            }
+        });
         let others = gio::Menu::new();
         others.append(Some(&gettext("Close Other Tabs")), Some("tab.close-others"));
         others.append(Some(&gettext("Close Tabs After This One")), Some("tab.close-after"));
@@ -204,6 +211,34 @@ impl WorkspaceShell {
         menu.append_section(None, &others);
         menu.append_section(None, &close);
         imp.tab_view.set_menu_model(Some(&menu));
+    }
+
+    /// Dim what would close nothing for `page`, whose menu opens.
+    fn dim_tab_menu(&self, view: &adw::TabView, page: &adw::TabPage) {
+        let Some(group) = self.imp().tab_actions.get() else {
+            return;
+        };
+        let last = view.n_pages() - 1;
+        for (name, enabled) in [
+            ("close-others", last > 0),
+            ("close-after", view.page_position(page) < last),
+        ] {
+            if let Some(action) = group.lookup_action(name).and_downcast::<gio::SimpleAction>() {
+                action.set_enabled(enabled);
+            }
+        }
+    }
+
+    /// Close every session's tabs, each through its own session's
+    /// prompts.
+    pub(super) fn close_all_tabs(&self) {
+        let view = self.tab_view();
+        // The selected page goes last, so the view does not select each
+        // neighbour in turn and bring its session forward.
+        if let Some(selected) = view.selected_page() {
+            view.close_other_pages(&selected);
+            view.close_page(&selected);
+        }
     }
 
     fn connect_view(&self) {
