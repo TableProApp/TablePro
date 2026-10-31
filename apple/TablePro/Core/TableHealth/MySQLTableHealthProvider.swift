@@ -71,6 +71,8 @@ struct MySQLTableHealthProvider: TableHealthProvider {
 
     var statisticsQueries: [String] { [Self.performanceSchemaQuery, Self.uptimeQuery] }
 
+    var databaseQuery: String? { nil }
+
     func query(for check: TableHealthCheckKind) -> String {
         switch check {
         case .unusedIndex: return Self.unusedIndexQuery

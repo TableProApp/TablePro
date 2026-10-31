@@ -85,6 +85,7 @@ CREATE TABLE child_partial (id int PRIMARY KEY, parent_id int REFERENCES parent 
 CREATE INDEX ON child_partial (parent_id) WHERE parent_id > 0;
 CREATE TABLE child_second (id int PRIMARY KEY, other int, parent_id int REFERENCES parent (id));
 CREATE INDEX ON child_second (other, parent_id);
+CREATE TABLE child_include (id int PRIMARY KEY, x int, y int, CONSTRAINT child_include_fk FOREIGN KEY (x, y) REFERENCES pair (x, y));
 CREATE TABLE no_pk (v int);
 CREATE INDEX no_pk_unused_idx ON no_pk (v);
 CREATE UNIQUE INDEX no_pk_unique_idx ON no_pk ((v + 1));
@@ -127,7 +128,19 @@ SQL
     expect "foreign key on an index's second column" "$fk" "child_second_parent_id_fkey" yes
     expect "composite key columns in key order" "$fk" "child_pair_unindexed_fk|y" yes
     expect "foreign key with an index" "$fk" "child_indexed_parent_id_fkey" no
+    if [ "$(pg -d "$DATABASE" -c 'SHOW server_version_num')" -ge 110000 ]; then
+        pg -d "$DATABASE" -c 'CREATE INDEX ON child_include (x) INCLUDE (y)' > /dev/null
+        fk="$(pg -d "$DATABASE" -c "$(query_of "$source" unindexedForeignKeyQuery)")"
+        expect "an INCLUDE column does not cover a key column" "$fk" "child_include_fk" yes
+        pg -d "$DATABASE" -c 'CREATE INDEX ON child_include (y, x)' > /dev/null
+        fk="$(pg -d "$DATABASE" -c "$(query_of "$source" unindexedForeignKeyQuery)")"
+        expect "key columns in an index cover the key" "$fk" "child_include_fk" no
+    fi
     expect "composite key an index covers in another order" "$fk" "child_pair_fk|" no
+
+    local name
+    name="$(pg -d "$DATABASE" -c "$(swift_line_literal "$source" databaseNameQuery)")"
+    expect "the database name query names this database" "$name" "$DATABASE" yes
 
     local stats
     stats="$(pg -d "$DATABASE" -c "$(query_of "$source" statisticsResetQuery)")"

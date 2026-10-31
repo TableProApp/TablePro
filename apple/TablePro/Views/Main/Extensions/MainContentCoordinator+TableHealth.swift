@@ -24,20 +24,21 @@ extension MainContentCoordinator {
         WindowManager.shared.openTab(payload: payload)
     }
 
-    func openTableHealthFinding(_ finding: TableHealthFinding, schemaNamesDatabase: Bool) {
+    /// `reportDatabase` is the database the report was read from, which the sidebar may have left since.
+    func openTableHealthFinding(_ finding: TableHealthFinding, reportDatabase: String?, schemaNamesDatabase: Bool) {
         if schemaNamesDatabase {
             openTableTab(finding.table, database: finding.schema)
         } else {
-            openTableTab(finding.table, schema: finding.schema)
+            openTableTab(finding.table, schema: finding.schema, database: reportDatabase)
         }
     }
 
     /// Puts the fix in an editor tab and stops there: the user reads it and runs it themselves.
-    func openTableHealthFix(_ finding: TableHealthFinding, schemaNamesDatabase: Bool) {
+    func openTableHealthFix(_ finding: TableHealthFinding, reportDatabase: String?, schemaNamesDatabase: Bool) {
         openQuery(
             finding.fixSQL,
             on: connectionId,
-            databaseName: schemaNamesDatabase ? finding.schema : browseDatabaseName,
+            databaseName: schemaNamesDatabase ? finding.schema : reportDatabase ?? browseDatabaseName,
             intent: .loadIntoFrontTab
         )
     }

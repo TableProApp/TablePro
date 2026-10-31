@@ -55,8 +55,10 @@ struct PostgreSQLTableHealthProvider: TableHealthProvider {
         LIMIT 500
         """
 
-    // One row per referencing column. An index covers the key when its leading columns are the
-    // key's columns in any order; a partial index does not, since it skips rows.
+    // One row per referencing column. An index covers the key when its leading key columns are the
+    // key's columns in any order. A partial or invalid index does not, and neither does an INCLUDE
+    // column, which is stored but not searchable; indnkeyatts is read through row_to_json because
+    // servers before 11 have no such column.
     static let unindexedForeignKeyQuery = """
         SELECT n.nspname AS schema_name,
                c.relname AS table_name,
@@ -72,6 +74,9 @@ struct PostgreSQLTableHealthProvider: TableHealthProvider {
               SELECT 1 FROM pg_catalog.pg_index i
               WHERE i.indrelid = con.conrelid
                 AND i.indpred IS NULL
+                AND i.indisvalid
+                AND pg_catalog.array_length(con.conkey, 1)
+                    <= COALESCE((pg_catalog.row_to_json(i) ->> 'indnkeyatts')::pg_catalog.int4, i.indnatts)
                 AND (i.indkey::pg_catalog.int2[])[0:pg_catalog.array_length(con.conkey, 1) - 1] @> con.conkey
           )
         ORDER BY n.nspname, c.relname, con.conname, k.position
@@ -83,7 +88,11 @@ struct PostgreSQLTableHealthProvider: TableHealthProvider {
         WHERE datname = pg_catalog.current_database()
         """
 
+    static let databaseNameQuery = "SELECT pg_catalog.current_database() AS database_name"
+
     var statisticsQueries: [String] { [Self.statisticsResetQuery] }
+
+    var databaseQuery: String? { Self.databaseNameQuery }
 
     func query(for check: TableHealthCheckKind) -> String {
         switch check {

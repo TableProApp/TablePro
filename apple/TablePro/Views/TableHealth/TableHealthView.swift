@@ -51,6 +51,10 @@ struct TableHealthView: View {
         VStack(spacing: 0) {
             HStack(spacing: 8) {
                 if let report = viewModel.report {
+                    if let database = report.databaseName {
+                        Text(verbatim: database)
+                            .font(.callout.weight(.semibold))
+                    }
                     Text(String(format: String(localized: "%lld findings"), report.findingCount))
                         .font(.callout)
                         .monospacedDigit()
@@ -208,11 +212,19 @@ struct TableHealthView: View {
     }
 
     private func openTable(_ finding: TableHealthFinding) {
-        coordinator.openTableHealthFinding(finding, schemaNamesDatabase: schemaNamesDatabase)
+        coordinator.openTableHealthFinding(
+            finding,
+            reportDatabase: viewModel.report?.databaseName,
+            schemaNamesDatabase: schemaNamesDatabase
+        )
     }
 
     private func openFix(_ finding: TableHealthFinding) {
-        coordinator.openTableHealthFix(finding, schemaNamesDatabase: schemaNamesDatabase)
+        coordinator.openTableHealthFix(
+            finding,
+            reportDatabase: viewModel.report?.databaseName,
+            schemaNamesDatabase: schemaNamesDatabase
+        )
     }
 
     private func copyFix(_ finding: TableHealthFinding) {

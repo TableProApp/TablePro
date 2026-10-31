@@ -62,6 +62,8 @@ struct TableHealthCheckResult: Identifiable {
 
 struct TableHealthReport {
     var checks: [TableHealthCheckResult]
+    /// The database the server answered for, so a finding opens and fixes there even after the sidebar moves on.
+    var databaseName: String?
     /// Index usage counts only since the statistics were last reset, so an index can look unused because they were.
     var statisticsNote: String?
 

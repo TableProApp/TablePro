@@ -13,6 +13,8 @@ protocol TableHealthProvider: Sendable {
     /// MySQL calls a database a schema, so a finding's schema is the database its table opens in.
     var schemaNamesDatabase: Bool { get }
     var statisticsQueries: [String] { get }
+    /// Names the database the catalogs describe, for an engine whose report covers one database only.
+    var databaseQuery: String? { get }
     func query(for check: TableHealthCheckKind) -> String
     func findings(for check: TableHealthCheckKind, from result: QueryResult) -> [TableHealthFinding]
     func statisticsNote(from results: [QueryResult], now: Date) -> String?
@@ -25,6 +27,12 @@ extension TableHealthProvider {
         execute: @MainActor (String) async throws -> QueryResult,
         now: Date = Date()
     ) async throws -> TableHealthReport {
+        var databaseName: String?
+        if let databaseQuery {
+            let result = try await execute(databaseQuery)
+            databaseName = TableHealthRow.rows(of: result).first?["database_name"]
+        }
+
         var results: [TableHealthCheckResult] = []
         for check in checks {
             do {
@@ -51,7 +59,7 @@ extension TableHealthProvider {
             ? statisticsNote(from: statisticsResults, now: now)
             : nil
 
-        return TableHealthReport(checks: results, statisticsNote: note)
+        return TableHealthReport(checks: results, databaseName: databaseName, statisticsNote: note)
     }
 }
 

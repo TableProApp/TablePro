@@ -20,12 +20,16 @@ struct TableHealthViewModelTests {
         var tablesWithoutKey: [String] = ["logs"]
         var isOnline = true
         var failsMissingKeyCheck = false
+        var database = "shop"
         private(set) var queryCount = 0
 
         func executorSource() throws -> TableHealthViewModel.Execute {
             guard isOnline else { throw Offline() }
             return { [self] query in
                 queryCount += 1
+                if query == PostgreSQLTableHealthProvider.databaseNameQuery {
+                    return TableHealthFixture.result(columns: ["database_name"], rows: [[database]])
+                }
                 guard query == PostgreSQLTableHealthProvider.missingPrimaryKeyQuery else {
                     return TableHealthFixture.result(columns: [], rows: [])
                 }
@@ -116,6 +120,21 @@ struct TableHealthViewModelTests {
         #expect(check.error == "No active connection")
         #expect(check.findings.map { $0.table } == ["logs"])
         #expect(viewModel.selectedFinding?.table == "logs")
+    }
+
+    @Test("Findings from another database are not carried over when a check fails")
+    func otherDatabaseFindingsDropped() async {
+        let server = FakeServer()
+        let viewModel = makeViewModel(server)
+        await viewModel.refresh()
+
+        server.database = "archive"
+        server.failsMissingKeyCheck = true
+        await viewModel.refresh()
+
+        #expect(viewModel.report?.databaseName == "archive")
+        #expect(viewModel.report?.findingCount == 0)
+        #expect(viewModel.selectedFindingId == nil)
     }
 
     @Test("A refresh drops the selection when its finding is gone and keeps it otherwise")

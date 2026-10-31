@@ -128,6 +128,27 @@ struct PostgreSQLTableHealthProviderTests {
         #expect(report.findingCount == 1)
     }
 
+    @Test("The report names the database the server answered for")
+    func reportNamesDatabase() async throws {
+        let report = try await provider.fetchReport { query in
+            if query == PostgreSQLTableHealthProvider.databaseNameQuery {
+                return TableHealthFixture.result(columns: ["database_name"], rows: [["shop"]])
+            }
+            return TableHealthFixture.result(columns: [], rows: [])
+        }
+        #expect(report.databaseName == "shop")
+    }
+
+    @Test("Without the database name the refresh fails, rather than act on a database it cannot name")
+    func databaseNameRequired() async {
+        await #expect(throws: QueryFailure.self) {
+            _ = try await provider.fetchReport { query in
+                if query == PostgreSQLTableHealthProvider.databaseNameQuery { throw QueryFailure() }
+                return TableHealthFixture.result(columns: [], rows: [])
+            }
+        }
+    }
+
     @Test("A cancelled refresh stops instead of reporting every check as failed")
     func cancellationPropagates() async {
         await #expect(throws: CancellationError.self) {

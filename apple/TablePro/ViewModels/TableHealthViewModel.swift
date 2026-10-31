@@ -94,7 +94,7 @@ final class TableHealthViewModel: ObservableObject {
 
     /// A check that failed this time keeps the findings it had, shown under its new error.
     static func merging(_ fresh: TableHealthReport, over previous: TableHealthReport?) -> TableHealthReport {
-        guard let previous else { return fresh }
+        guard let previous, previous.databaseName == fresh.databaseName else { return fresh }
         var merged = fresh
         for index in merged.checks.indices where merged.checks[index].error != nil {
             if let prior = previous.checks.first(where: { $0.kind == merged.checks[index].kind }) {
