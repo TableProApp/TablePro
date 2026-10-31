@@ -12,4 +12,12 @@ internal enum ConnectionMenuPolicy {
     internal static func showsDisconnect(status: ConnectionStatus) -> Bool {
         status.isConnected
     }
+
+    internal static func showsServerDashboard(status: ConnectionStatus, type: DatabaseType) -> Bool {
+        status.isConnected && ServerDashboardQueryProviderFactory.supportsDashboard(for: type)
+    }
+
+    internal static func showsQueryInsights(status: ConnectionStatus) -> Bool {
+        status.isConnected
+    }
 }

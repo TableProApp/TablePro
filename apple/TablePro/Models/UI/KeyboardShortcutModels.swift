@@ -67,6 +67,8 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
     case openDatabase
     case switchConnection
     case moveTabToConnection
+    case showServerDashboard
+    case showQueryInsights
 
     // Editor & Query
     case openFile
@@ -194,7 +196,8 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
 
     var category: ShortcutCategory {
         switch self {
-        case .manageConnections, .newConnection, .openDatabase, .switchConnection, .moveTabToConnection:
+        case .manageConnections, .newConnection, .openDatabase, .switchConnection, .moveTabToConnection,
+             .showServerDashboard, .showQueryInsights:
             return .connections
         case .openFile, .saveChanges, .saveAs, .copyPath, .copyRelativePath,
              .executeQuery, .executeAllStatements, .executeQueryWithoutLimit, .cancelQuery, .explainQuery, .formatQuery,
@@ -302,6 +305,8 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
         case .openFile: return String(localized: "Open File")
         case .switchConnection: return String(localized: "Switch Connection")
         case .moveTabToConnection: return String(localized: "Move Tab to Connection")
+        case .showServerDashboard: return String(localized: "Server Dashboard")
+        case .showQueryInsights: return String(localized: "Query Insights")
         case .saveChanges: return String(localized: "Save Changes")
         case .saveAs: return String(localized: "Save As")
         case .copyPath: return String(localized: "Copy Path")
@@ -662,6 +667,8 @@ struct KeyboardSettings: Codable, Equatable {
         .openDatabase: .character("k", command: true),
         .switchConnection: .character("c", command: true, control: true),
         .moveTabToConnection: .character("c", command: true, option: true, control: true),
+        .showServerDashboard: .character("d", command: true, shift: true, option: true),
+        .showQueryInsights: .character("i", command: true, shift: true, option: true),
 
         // Editor & Query
         .openFile: .character("o", command: true),

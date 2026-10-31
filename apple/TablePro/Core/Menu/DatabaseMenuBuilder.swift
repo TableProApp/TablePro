@@ -133,7 +133,9 @@ enum DatabaseMenuBuilder {
             ),
             MenuItemFactory.item(
                 String(localized: "Server Dashboard"),
-                action: #selector(MainSplitViewController.showServerDashboard(_:))
+                action: #selector(MainSplitViewController.showServerDashboard(_:)),
+                shortcut: .showServerDashboard,
+                keyboard: keyboard
             ),
             MenuItemFactory.item(
                 String(localized: "Users & Roles"),
@@ -141,7 +143,9 @@ enum DatabaseMenuBuilder {
             ),
             MenuItemFactory.item(
                 String(localized: "Query Insights"),
-                action: #selector(MainSplitViewController.showQueryInsights(_:))
+                action: #selector(MainSplitViewController.showQueryInsights(_:)),
+                shortcut: .showQueryInsights,
+                keyboard: keyboard
             ),
             MenuItemFactory.separator,
             /// No ellipsis: the HIG reserves one for an action that needs more information before

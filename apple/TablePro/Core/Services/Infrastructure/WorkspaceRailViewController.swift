@@ -618,6 +618,30 @@ internal final class WorkspaceRailViewController: NSViewController {
         WindowManager.shared.moveToNewWindow(connectionId: workspace.connectionId)
     }
 
+    /// Named for the rail, not `showServerDashboard(_:)`: that is the menu bar's nil-target action,
+    /// and the rail sits ahead of `MainSplitViewController` in the responder chain.
+    @objc
+    private func showWorkspaceServerDashboard(_ sender: NSMenuItem) {
+        guard let workspace = sender.representedObject as? WorkspaceID else { return }
+        showTool(of: workspace) { $0.showServerDashboard() }
+    }
+
+    @objc
+    private func showWorkspaceQueryInsights(_ sender: NSMenuItem) {
+        guard let workspace = sender.representedObject as? WorkspaceID else { return }
+        showTool(of: workspace) { $0.showQueryInsights() }
+    }
+
+    /// Switches to the clicked row first, so the tool opens beside the work it belongs to.
+    private func showTool(of workspace: WorkspaceID, _ open: (MainContentCoordinator) -> Void) {
+        if let row = entries.firstIndex(where: { $0.workspace == workspace }) {
+            tableView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+            commit(row: row)
+        }
+        guard let coordinator = WindowManager.shared.coordinator(for: workspace.connectionId) else { return }
+        open(coordinator)
+    }
+
     @objc
     private func closeWorkspace(_ sender: NSMenuItem) {
         guard let workspace = sender.representedObject as? WorkspaceID else { return }
@@ -746,6 +770,8 @@ extension WorkspaceRailViewController: NSMenuDelegate {
             menu.addItem(.separator())
         }
 
+        addToolItems(to: menu, for: entry)
+
         if let releaseTitle = ConnectionFileLockAction.commandTitle(
             connectionId: entry.workspace.connectionId
         ) {
@@ -784,11 +810,42 @@ extension WorkspaceRailViewController: NSMenuDelegate {
         )
     }
 
-    private func addItem(to menu: NSMenu, title: String, action: Selector, workspace: WorkspaceID) {
+    /// Spelled as the Database menu spells them, and showing the same shortcut it does.
+    private func addToolItems(to menu: NSMenu, for entry: WorkspaceRailEntry) {
+        let keyboard = AppSettingsManager.shared.keyboard
+        var added = false
+        if ConnectionMenuPolicy.showsServerDashboard(status: entry.status, type: entry.connection.type) {
+            let item = addItem(
+                to: menu,
+                title: String(localized: "Server Dashboard"),
+                action: #selector(showWorkspaceServerDashboard(_:)),
+                workspace: entry.workspace
+            )
+            MenuItemFactory.apply(shortcut: .showServerDashboard, keyboard: keyboard, to: item)
+            added = true
+        }
+        if ConnectionMenuPolicy.showsQueryInsights(status: entry.status) {
+            let item = addItem(
+                to: menu,
+                title: String(localized: "Query Insights"),
+                action: #selector(showWorkspaceQueryInsights(_:)),
+                workspace: entry.workspace
+            )
+            MenuItemFactory.apply(shortcut: .showQueryInsights, keyboard: keyboard, to: item)
+            added = true
+        }
+        if added {
+            menu.addItem(.separator())
+        }
+    }
+
+    @discardableResult
+    private func addItem(to menu: NSMenu, title: String, action: Selector, workspace: WorkspaceID) -> NSMenuItem {
         let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
         item.target = self
         item.representedObject = workspace
         menu.addItem(item)
+        return item
     }
 }
 
