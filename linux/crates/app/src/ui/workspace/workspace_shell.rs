@@ -202,15 +202,7 @@ impl WorkspaceShell {
                 shell.dim_tab_menu(view, page);
             }
         });
-        let others = gio::Menu::new();
-        others.append(Some(&gettext("Close Other Tabs")), Some("tab.close-others"));
-        others.append(Some(&gettext("Close Tabs After This One")), Some("tab.close-after"));
-        let close = gio::Menu::new();
-        close.append(Some(&gettext("Close")), Some("tab.close"));
-        let menu = gio::Menu::new();
-        menu.append_section(None, &others);
-        menu.append_section(None, &close);
-        imp.tab_view.set_menu_model(Some(&menu));
+        imp.tab_view.set_menu_model(Some(&tab_menu()));
     }
 
     /// Dim what would close nothing for `page`, whose menu opens.
@@ -718,12 +710,24 @@ fn assistant_action(shell: &WorkspaceShell) -> gio::SimpleAction {
     action
 }
 
+fn tab_menu() -> gio::Menu {
+    let others = gio::Menu::new();
+    others.append(Some(&gettext("Close _Other Tabs")), Some("tab.close-others"));
+    others.append(Some(&gettext("Close Tabs _After This One")), Some("tab.close-after"));
+    let close = gio::Menu::new();
+    close.append(Some(&gettext("_Close")), Some("tab.close"));
+    let menu = gio::Menu::new();
+    menu.append_section(None, &others);
+    menu.append_section(None, &close);
+    menu
+}
+
 /// The main menu with the session's Safe Mode levels on top, as radio
 /// items of the window's stateful `safe-mode` action.
 fn with_safe_mode(menu: &gio::MenuModel) -> gio::Menu {
     let levels = gio::Menu::new();
     for level in tablepro_core::SafeModeLevel::ALL {
-        let item = gio::MenuItem::new(Some(&crate::ui::safe_mode::label(level)), None);
+        let item = gio::MenuItem::new(Some(&crate::ui::safe_mode::menu_label(level)), None);
         item.set_action_and_target_value(
             Some("win.safe-mode"),
             Some(&crate::ui::safe_mode::action_target(level).to_variant()),
@@ -731,7 +735,7 @@ fn with_safe_mode(menu: &gio::MenuModel) -> gio::Menu {
         levels.append_item(&item);
     }
     let section = gio::Menu::new();
-    section.append_submenu(Some(&gettext("Safe Mode")), &levels);
+    section.append_submenu(Some(&gettext("_Safe Mode")), &levels);
     let whole = gio::Menu::new();
     whole.append_section(None, &section);
     whole.append_section(None, menu);
@@ -757,4 +761,21 @@ fn follow_sidebar(split_view: &adw::OverlaySplitView, toggle: &gtk::ToggleButton
         glib::closure!(|_: Option<glib::Object>, collapsed: bool, shown: bool| collapsed || !shown),
     );
     visible.bind(toggle, "visible", Some(split_view))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::RESOURCE_BASE_PATH;
+    use crate::test_support::assert_access_keys;
+
+    #[gtk4::test]
+    fn the_tab_menu_and_the_main_menu_give_each_item_its_own_access_key() {
+        crate::register_test_resources();
+        let builder = gtk::Builder::from_resource(&format!("{RESOURCE_BASE_PATH}/gtk/menus.ui"));
+        let main: gio::MenuModel = builder.object(PRIMARY_MENU).expect("the main menu");
+
+        assert_access_keys(&tab_menu());
+        assert_access_keys(&with_safe_mode(&main));
+    }
 }

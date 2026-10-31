@@ -5,11 +5,11 @@
   <menu id="primary_menu">
     <section>
       <item>
-        <attribute name="label" translatable="yes">New Connection…</attribute>
+        <attribute name="label" translatable="yes">_New Connection…</attribute>
         <attribute name="action">win.new-connection</attribute>
       </item>
       <item>
-        <attribute name="label" translatable="yes">New Window</attribute>
+        <attribute name="label" translatable="yes">New _Window</attribute>
         <attribute name="action">app.new-window</attribute>
       </item>
     </section>
@@ -17,48 +17,48 @@
       <!-- A workspace adds these; the picker has no session to show
            history for. -->
       <item>
-        <attribute name="label" translatable="yes">Query History</attribute>
+        <attribute name="label" translatable="yes">Query _History</attribute>
         <attribute name="action">win.show-history</attribute>
         <attribute name="hidden-when">action-missing</attribute>
       </item>
       <item>
-        <attribute name="label" translatable="yes">Saved Queries</attribute>
+        <attribute name="label" translatable="yes">Saved _Queries</attribute>
         <attribute name="action">win.show-saved-queries</attribute>
         <attribute name="hidden-when">action-missing</attribute>
       </item>
       <!-- The window always has it, enabled only while it shows a
            session. -->
       <item>
-        <attribute name="label" translatable="yes">Disconnect</attribute>
+        <attribute name="label" translatable="yes">_Disconnect</attribute>
         <attribute name="action">win.disconnect</attribute>
         <attribute name="hidden-when">action-disabled</attribute>
       </item>
     </section>
     <section>
       <item>
-        <attribute name="label" translatable="yes">Import Connections…</attribute>
+        <attribute name="label" translatable="yes">_Import Connections…</attribute>
         <attribute name="action">win.import-connections</attribute>
       </item>
       <item>
-        <attribute name="label" translatable="yes">Export Connections…</attribute>
+        <attribute name="label" translatable="yes">_Export Connections…</attribute>
         <attribute name="action">win.export-connections</attribute>
       </item>
       <item>
-        <attribute name="label" translatable="yes">Manage Tags…</attribute>
+        <attribute name="label" translatable="yes">_Manage Tags…</attribute>
         <attribute name="action">win.manage-tags</attribute>
       </item>
     </section>
     <section>
       <item>
-        <attribute name="label" translatable="yes">Preferences</attribute>
+        <attribute name="label" translatable="yes">_Preferences</attribute>
         <attribute name="action">app.preferences</attribute>
       </item>
       <item>
-        <attribute name="label" translatable="yes">Keyboard Shortcuts</attribute>
+        <attribute name="label" translatable="yes">_Keyboard Shortcuts</attribute>
         <attribute name="action">app.shortcuts</attribute>
       </item>
       <item>
-        <attribute name="label" translatable="yes">About TablePro</attribute>
+        <attribute name="label" translatable="yes">_About TablePro</attribute>
         <attribute name="action">app.about</attribute>
       </item>
     </section>
@@ -66,11 +66,11 @@
   <menu id="tab_overview_menu">
     <section>
       <item>
-        <attribute name="label" translatable="yes">Reopen Closed Tab</attribute>
+        <attribute name="label" translatable="yes">_Reopen Closed Tab</attribute>
         <attribute name="action">win.reopen-closed-tab</attribute>
       </item>
       <item>
-        <attribute name="label" translatable="yes">Close All Tabs</attribute>
+        <attribute name="label" translatable="yes">Close _All Tabs</attribute>
         <attribute name="action">win.close-all-tabs</attribute>
       </item>
     </section>

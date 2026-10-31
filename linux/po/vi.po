@@ -180,6 +180,10 @@ msgstr "Chùm khóa không lưu mật khẩu."
 msgid "Insert Row"
 msgstr "Thêm dòng"
 
+#: crates/app/src/ui/data_grid/grid_menu.rs
+msgid "_Insert Row"
+msgstr "Thê_m dòng"
+
 #: crates/app/src/ui/browse_tab/browse_actions.rs
 #: crates/app/src/ui/browse_tab/selection_handlers.rs
 msgid "Delete Selected Rows"
@@ -189,6 +193,10 @@ msgstr "Xóa các dòng đã chọn"
 #: crates/app/src/ui/browse_tab/layout.rs
 msgid "Export Rows…"
 msgstr "Xuất các dòng…"
+
+#: crates/app/src/ui/browse_tab/layout.rs
+msgid "_Export Rows…"
+msgstr "_Xuất các dòng…"
 
 #: crates/app/src/ui/browse_tab/clipboard_handlers.rs
 #: crates/app/src/ui/editor/mod.rs
@@ -254,6 +262,12 @@ msgstr "Hủy"
 msgid "Delete"
 msgstr "Xóa"
 
+#: crates/app/src/ui/data_grid/grid_menu.rs
+#: crates/app/src/ui/history_dialog/mod.rs
+#: crates/app/src/ui/saved_queries_dialog.rs
+msgid "_Delete"
+msgstr "_Xóa"
+
 #: crates/app/src/ui/browse_tab/edit_handlers.rs
 msgid ""
 "The table's primary key changed, so no rows were marked for deletion. Select "
@@ -269,9 +283,17 @@ msgid "Filter Rows"
 msgstr "Lọc dòng"
 
 #: crates/app/src/ui/browse_tab/layout.rs
+msgid "_Filter Rows"
+msgstr "_Lọc dòng"
+
+#: crates/app/src/ui/browse_tab/layout.rs
 #: crates/app/src/ui/browse_tab/pager_bar.rs data/resources/ui/pager-bar.ui
 msgid "Count Rows"
 msgstr "Đếm dòng"
+
+#: crates/app/src/ui/browse_tab/layout.rs
+msgid "_Count Rows"
+msgstr "Đế_m dòng"
 
 #: crates/app/src/ui/browse_tab/layout.rs
 msgid "Rows per Page"
@@ -666,6 +688,10 @@ msgstr "Nhập mật khẩu cơ sở dữ liệu cho {target}."
 #: data/resources/ui/connect-dialog.ui
 msgid "Connect"
 msgstr "Kết nối"
+
+#: crates/app/src/ui/picker/connection_menu.rs
+msgid "_Connect"
+msgstr "_Kết nối"
 
 #: crates/app/src/ui/credential_prompt/prompt_text.rs
 #, rust-format
@@ -2547,13 +2573,25 @@ msgstr "Tùy chọn CSV"
 msgid "Rows"
 msgstr "Dòng"
 
+#: crates/app/src/ui/data_grid/grid_menu.rs
+msgid "_Rows"
+msgstr "Dòn_g"
+
 #: crates/app/src/ui/export/dialog.rs data/resources/ui/sql-editor.ui
 msgid "Format"
 msgstr "Định dạng"
 
+#: data/resources/ui/sql-editor.ui
+msgid "Forma_t"
+msgstr "Định _dạng"
+
 #: crates/app/src/ui/export/dialog.rs crates/app/src/ui/grid/grid_menus.rs
 msgid "Export…"
 msgstr "Xuất…"
+
+#: crates/app/src/ui/data_grid/grid_menu.rs
+msgid "E_xport…"
+msgstr "Xuấ_t…"
 
 #: crates/app/src/ui/export/dialog.rs
 msgid "Reset to Defaults"
@@ -2705,6 +2743,10 @@ msgstr "Không tạo được tệp."
 #: data/resources/ui/preferences-history-group.ui
 msgid "Show in Files"
 msgstr "Hiện trong Tệp"
+
+#: data/resources/ui/history-dialog.ui
+msgid "_Show in Files"
+msgstr "_Hiện trong Tệp"
 
 #: crates/app/src/ui/export/export_failure_text.rs
 #: crates/app/src/ui/history_dialog/history_export.rs
@@ -2899,78 +2941,81 @@ msgstr[0] "… (thêm {count} byte)"
 msgid "Required"
 msgstr "Bắt buộc"
 
-#: crates/app/src/ui/grid/grid_menus.rs
-msgid "Edit Cell"
-msgstr "Sửa ô"
+#: crates/app/src/ui/data_grid/grid_menu.rs
+msgid "_Edit Cell"
+msgstr "Sử_a ô"
 
-#: crates/app/src/ui/grid/grid_menus.rs
-msgid "Set to Empty"
-msgstr "Đặt thành rỗng"
+#: crates/app/src/ui/data_grid/grid_menu.rs
+#: data/resources/ui/row-detail-pane.ui
+msgid "Set _to Empty"
+msgstr "Đặt thành rỗn_g"
 
-#: crates/app/src/ui/grid/grid_menus.rs
-msgid "Set to NULL"
-msgstr "Đặt thành NULL"
+#: crates/app/src/ui/data_grid/grid_menu.rs
+#: data/resources/ui/row-detail-pane.ui
+msgid "Set to _NULL"
+msgstr "Đặt thành _NULL"
 
-#: crates/app/src/ui/grid/grid_menus.rs
-msgid "Set to DEFAULT"
-msgstr "Đặt thành DEFAULT"
+#: crates/app/src/ui/data_grid/grid_menu.rs
+#: data/resources/ui/row-detail-pane.ui
+msgid "Set to DEFAU_LT"
+msgstr "Đặt thành DEFAU_LT"
 
-#: crates/app/src/ui/grid/grid_menus.rs
-msgid "With Headers"
-msgstr "Kèm tiêu đề"
+#: crates/app/src/ui/data_grid/grid_menu.rs
+msgid "_With Headers"
+msgstr "Kè_m tiêu đề"
 
-#: crates/app/src/ui/grid/grid_menus.rs
-msgid "JSON"
-msgstr "JSON"
+#: crates/app/src/ui/data_grid/grid_menu.rs
+msgid "_JSON"
+msgstr "_JSON"
 
-#: crates/app/src/ui/grid/grid_menus.rs
-msgid "CSV"
-msgstr "CSV"
+#: crates/app/src/ui/data_grid/grid_menu.rs
+msgid "_CSV"
+msgstr "_CSV"
 
-#: crates/app/src/ui/grid/grid_menus.rs
-msgid "CSV With Headers"
-msgstr "CSV kèm tiêu đề"
+#: crates/app/src/ui/data_grid/grid_menu.rs
+msgid "CSV With _Headers"
+msgstr "C_SV kèm tiêu đề"
 
-#: crates/app/src/ui/grid/grid_menus.rs
-msgid "Markdown"
-msgstr "Markdown"
+#: crates/app/src/ui/data_grid/grid_menu.rs
+msgid "_Markdown"
+msgstr "Ma_rkdown"
 
-#: crates/app/src/ui/grid/grid_menus.rs
-msgid "IN Clause"
-msgstr "Mệnh đề IN"
+#: crates/app/src/ui/data_grid/grid_menu.rs
+msgid "_IN Clause"
+msgstr "Mệnh đề _IN"
 
-#: crates/app/src/ui/grid/grid_menus.rs
-msgid "INSERT Statement"
-msgstr "Câu lệnh INSERT"
+#: crates/app/src/ui/data_grid/grid_menu.rs
+msgid "INSERT _Statement"
+msgstr "Câu lện_h INSERT"
 
 #: crates/app/src/ui/grid/grid_menus.rs
 #: crates/app/src/ui/grid/row_json_dialog.rs
 msgid "Copy"
 msgstr "Sao chép"
 
-#: crates/app/src/ui/grid/grid_menus.rs
-msgid "Copy As"
-msgstr "Sao chép dưới dạng"
+#: crates/app/src/ui/data_grid/grid_menu.rs
+msgid "_Copy"
+msgstr "Sao c_hép"
 
-#: crates/app/src/ui/grid/grid_menus.rs
-msgid "Copy Column Name"
-msgstr "Sao chép tên cột"
+#: crates/app/src/ui/data_grid/grid_menu.rs
+msgid "Copy _As"
+msgstr "Sao chép _dưới dạng"
 
-#: crates/app/src/ui/grid/grid_menus.rs
-msgid "Show Row as JSON"
-msgstr "Hiện dòng dạng JSON"
+#: crates/app/src/ui/data_grid/grid_menu.rs
+msgid "Copy Column _Name"
+msgstr "Sao chép tên _cột"
 
-#: crates/app/src/ui/grid/grid_menus.rs
-msgid "Sort Ascending"
-msgstr "Sắp xếp tăng dần"
+#: crates/app/src/ui/data_grid/grid_menu.rs
+msgid "Show Row as _JSON"
+msgstr "Hiện dòng dạng _JSON"
 
-#: crates/app/src/ui/grid/grid_menus.rs
-msgid "Sort Descending"
-msgstr "Sắp xếp giảm dần"
+#: crates/app/src/ui/data_grid/grid_menu.rs
+msgid "Sort _Ascending"
+msgstr "Sắp xếp _tăng dần"
 
-#: crates/app/src/ui/grid/grid_menus.rs
-msgid "Clear Sort"
-msgstr "Bỏ sắp xếp"
+#: crates/app/src/ui/data_grid/grid_menu.rs
+msgid "_Clear Sort"
+msgstr "_Bỏ sắp xếp"
 
 #: crates/app/src/ui/grid/grid_menus.rs data/resources/shortcuts-dialog.ui
 msgid "Widen Column"
@@ -2984,10 +3029,10 @@ msgstr "Thu hẹp cột"
 msgid "Reset Column Width"
 msgstr "Đặt lại độ rộng cột"
 
-#: crates/app/src/ui/grid/grid_menus.rs
+#: crates/app/src/ui/data_grid/grid_menu.rs
 #: crates/app/src/ui/picker/connection_menu.rs
-msgid "Duplicate"
-msgstr "Nhân bản"
+msgid "D_uplicate"
+msgstr "Nhân _bản"
 
 #: crates/app/src/ui/grid/row_json_dialog.rs
 #, rust-format
@@ -3116,10 +3161,18 @@ msgstr[0] "{n} ngày trước"
 msgid "Unpin"
 msgstr "Bỏ ghim"
 
+#: crates/app/src/ui/history_dialog/mod.rs
+msgid "_Unpin"
+msgstr "_Bỏ ghim"
+
 #: crates/app/src/ui/history_dialog/history_row.rs
 #: crates/app/src/ui/history_dialog/mod.rs
 msgid "Pin"
 msgstr "Ghim"
+
+#: crates/app/src/ui/history_dialog/mod.rs
+msgid "_Pin"
+msgstr "_Ghim"
 
 #: crates/app/src/ui/history_dialog/mod.rs
 #, rust-format
@@ -3214,19 +3267,24 @@ msgstr "Mọi truy vấn"
 #: crates/app/src/ui/history_dialog/mod.rs
 #: crates/app/src/ui/saved_queries_dialog.rs
 #: crates/app/src/ui/workspace/sidebar/sidebar_menu.rs
-msgid "Open in New Tab"
-msgstr "Mở trong tab mới"
+msgid "_Open in New Tab"
+msgstr "_Mở trong tab mới"
 
 #: crates/app/src/ui/history_dialog/mod.rs
 #: crates/app/src/ui/saved_queries_dialog.rs
-msgid "Replace Current Tab"
-msgstr "Thay thế tab hiện tại"
+msgid "_Replace Current Tab"
+msgstr "_Thay thế tab hiện tại"
 
 #: crates/app/src/ui/history_dialog/mod.rs
 #: crates/app/src/ui/saved_queries_dialog.rs
 #: crates/app/src/ui/structure_tab/imp.rs
 msgid "Copy SQL"
 msgstr "Sao chép SQL"
+
+#: crates/app/src/ui/history_dialog/mod.rs
+#: crates/app/src/ui/saved_queries_dialog.rs
+msgid "_Copy SQL"
+msgstr "Sao _chép SQL"
 
 #: crates/app/src/ui/host_key_review.rs
 #: crates/app/src/ui/session_window/connections.rs
@@ -3490,68 +3548,108 @@ msgid "No values in the file"
 msgstr "Không có giá trị nào trong tệp"
 
 #: crates/app/src/ui/picker/connection_menu.rs
-msgid "Edit…"
-msgstr "Sửa…"
+msgid "_Edit…"
+msgstr "Sử_a…"
 
 #: crates/app/src/ui/picker/connection_menu.rs
 msgid "Colour"
 msgstr "Màu"
 
 #: crates/app/src/ui/picker/connection_menu.rs
-msgid "Move to Group"
-msgstr "Di chuyển vào nhóm"
+msgid "Colou_r"
+msgstr "_Màu"
 
 #: crates/app/src/ui/picker/connection_menu.rs
-msgid "Delete…"
-msgstr "Xóa…"
+msgid "_Move to Group"
+msgstr "_Di chuyển vào nhóm"
 
 #: crates/app/src/ui/picker/connection_menu.rs
-msgid "No Colour"
-msgstr "Không màu"
+msgid "Dele_te…"
+msgstr "_Xóa…"
 
 #: crates/app/src/ui/picker/connection_menu.rs
-msgid "No Group"
-msgstr "Không nhóm"
+msgid "_No Colour"
+msgstr "_Không màu"
 
 #: crates/app/src/ui/picker/connection_menu.rs
-msgid "New Group…"
-msgstr "Nhóm mới…"
+msgid "_No Group"
+msgstr "_Không nhóm"
+
+#: crates/app/src/ui/picker/connection_menu.rs
+msgid "New _Group…"
+msgstr "_Nhóm mới…"
 
 #: crates/app/src/ui/picker/connection_menu.rs
 msgid "Blue"
 msgstr "Xanh dương"
 
+#: crates/app/src/ui/connection_appearance.rs
+msgid "_Blue"
+msgstr "Xanh _dương"
+
 #: crates/app/src/ui/picker/connection_menu.rs
 msgid "Teal"
 msgstr "Xanh mòng két"
+
+#: crates/app/src/ui/connection_appearance.rs
+msgid "_Teal"
+msgstr "Xanh mòn_g két"
 
 #: crates/app/src/ui/picker/connection_menu.rs
 msgid "Green"
 msgstr "Xanh lá"
 
+#: crates/app/src/ui/connection_appearance.rs
+msgid "_Green"
+msgstr "Xanh _lá"
+
 #: crates/app/src/ui/picker/connection_menu.rs
 msgid "Yellow"
 msgstr "Vàng"
+
+#: crates/app/src/ui/connection_appearance.rs
+msgid "_Yellow"
+msgstr "_Vàng"
 
 #: crates/app/src/ui/picker/connection_menu.rs
 msgid "Orange"
 msgstr "Cam"
 
+#: crates/app/src/ui/connection_appearance.rs
+msgid "_Orange"
+msgstr "_Cam"
+
 #: crates/app/src/ui/picker/connection_menu.rs
 msgid "Red"
 msgstr "Đỏ"
+
+#: crates/app/src/ui/connection_appearance.rs
+msgid "Re_d"
+msgstr "_Đỏ"
 
 #: crates/app/src/ui/picker/connection_menu.rs
 msgid "Pink"
 msgstr "Hồng"
 
+#: crates/app/src/ui/connection_appearance.rs
+msgid "Pin_k"
+msgstr "_Hồng"
+
 #: crates/app/src/ui/picker/connection_menu.rs
 msgid "Purple"
 msgstr "Tím"
 
+#: crates/app/src/ui/connection_appearance.rs
+msgid "_Purple"
+msgstr "_Tím"
+
 #: crates/app/src/ui/picker/connection_menu.rs
 msgid "Slate"
 msgstr "Xám đá"
+
+#: crates/app/src/ui/connection_appearance.rs
+msgid "_Slate"
+msgstr "_Xám đá"
 
 #: crates/app/src/ui/picker/connection_row.rs
 msgid "Connection Options"
@@ -3649,12 +3747,24 @@ msgid "Off"
 msgstr "Tắt"
 
 #: crates/app/src/ui/safe_mode.rs
+msgid "_Off"
+msgstr "_Tắt"
+
+#: crates/app/src/ui/safe_mode.rs
 msgid "Confirm Writes"
 msgstr "Xác nhận ghi"
 
 #: crates/app/src/ui/safe_mode.rs
+msgid "_Confirm Writes"
+msgstr "_Xác nhận ghi"
+
+#: crates/app/src/ui/safe_mode.rs
 msgid "Read-Only"
 msgstr "Chỉ đọc"
+
+#: crates/app/src/ui/safe_mode.rs
+msgid "_Read-Only"
+msgstr "C_hỉ đọc"
 
 #: crates/app/src/ui/safe_mode.rs
 msgid "Asks only before DROP, TRUNCATE, and DELETE or UPDATE without WHERE."
@@ -3688,6 +3798,10 @@ msgstr ""
 msgid "Saved Queries"
 msgstr "Truy vấn đã lưu"
 
+#: data/resources/gtk/menus.ui
+msgid "Saved _Queries"
+msgstr "Truy _vấn đã lưu"
+
 #: crates/app/src/ui/saved_queries_dialog.rs
 msgid "Search saved queries"
 msgstr "Tìm truy vấn đã lưu"
@@ -3713,8 +3827,8 @@ msgid "Try a different search term."
 msgstr "Hãy thử từ khóa tìm kiếm khác."
 
 #: crates/app/src/ui/saved_queries_dialog.rs
-msgid "Rename…"
-msgstr "Đổi tên…"
+msgid "Re_name…"
+msgstr "Đổ_i tên…"
 
 #: crates/app/src/ui/saved_queries_dialog.rs
 msgid "Saved Query Options"
@@ -4671,6 +4785,10 @@ msgstr "Hiện thanh bên"
 msgid "New Query"
 msgstr "Truy vấn mới"
 
+#: crates/app/src/ui/workspace/sidebar/tree_menu.rs
+msgid "_New Query"
+msgstr "_Truy vấn mới"
+
 #: crates/app/src/ui/workspace/shell.rs
 msgid "View Open Tabs"
 msgstr "Xem các tab đang mở"
@@ -4678,6 +4796,10 @@ msgstr "Xem các tab đang mở"
 #: crates/app/src/ui/workspace/shell.rs data/resources/ui/connect-dialog.ui
 msgid "Safe Mode"
 msgstr "Chế độ an toàn"
+
+#: crates/app/src/ui/workspace/workspace_shell.rs
+msgid "_Safe Mode"
+msgstr "_Chế độ an toàn"
 
 #: crates/app/src/ui/workspace/sidebar/mod.rs
 #, rust-format
@@ -4689,26 +4811,30 @@ msgstr "Không làm mới được danh sách bảng: {error}"
 msgid "New Table in {schema}…"
 msgstr "Bảng mới trong {schema}…"
 
-#: crates/app/src/ui/workspace/sidebar/sidebar_header_factory.rs
-msgid "New Table…"
-msgstr "Bảng mới…"
+#: crates/app/src/ui/workspace/sidebar/sidebar_menu.rs
+msgid "_New Table…"
+msgstr "_Bảng mới…"
 
 #: crates/app/src/ui/workspace/sidebar/sidebar_menu.rs
-msgid "Edit Structure"
-msgstr "Sửa cấu trúc"
+msgid "_Edit Structure"
+msgstr "_Sửa cấu trúc"
 
 #: crates/app/src/ui/workspace/sidebar/sidebar_menu.rs
-msgid "Show CREATE TABLE"
-msgstr "Hiện CREATE TABLE"
+msgid "Show _CREATE TABLE"
+msgstr "_Hiện CREATE TABLE"
 
 #: crates/app/src/ui/workspace/sidebar/sidebar_menu.rs
-msgid "Import CSV…"
-msgstr "Nhập CSV…"
+msgid "_Import CSV…"
+msgstr "_Nhập CSV…"
 
 #: crates/app/src/ui/workspace/sidebar/sidebar_menu.rs
 #: data/resources/ui/structure-tab.ui
 msgid "Drop Table…"
 msgstr "Xóa bảng…"
+
+#: crates/app/src/ui/workspace/sidebar/sidebar_menu.rs
+msgid "Drop _Table…"
+msgstr "_Xóa bảng…"
 
 #: crates/app/src/ui/workspace/sidebar/sidebar_object.rs
 msgctxt "object kind"
@@ -4927,9 +5053,9 @@ msgstr ""
 msgid "Discard and Refresh"
 msgstr "Loại bỏ và làm mới"
 
-#: crates/app/src/ui/workspace/workspace_tabs.rs
-msgid "Close Other Tabs"
-msgstr "Đóng các tab khác"
+#: crates/app/src/ui/workspace/workspace_shell.rs
+msgid "Close _Other Tabs"
+msgstr "Đóng các tab _khác"
 
 #: crates/app/src/ui/workspace/workspace_tabs.rs
 msgid "Close Tabs to the Right"
@@ -5208,6 +5334,10 @@ msgstr ""
 #: data/resources/shortcuts-dialog.ui
 msgid "New Window"
 msgstr "Cửa sổ mới"
+
+#: data/resources/gtk/menus.ui
+msgid "New _Window"
+msgstr "Cửa _sổ mới"
 
 #: data/app.tablepro.TablePro.gschema.xml.in
 msgid "Window width"
@@ -5518,33 +5648,50 @@ msgid "Query History"
 msgstr "Lịch sử truy vấn"
 
 #: data/resources/gtk/menus.ui
+msgid "Query _History"
+msgstr "_Lịch sử truy vấn"
+
+#: data/resources/gtk/menus.ui
 msgid "Disconnect"
 msgstr "Ngắt kết nối"
 
+#: crates/app/src/ui/workspace/sidebar/tree_menu.rs
 #: data/resources/gtk/menus.ui
-msgid "Import Connections…"
-msgstr "Nhập kết nối…"
+msgid "_Disconnect"
+msgstr "Ngắt _kết nối"
 
 #: data/resources/gtk/menus.ui
-msgid "Export Connections…"
-msgstr "Xuất kết nối…"
+msgid "_Import Connections…"
+msgstr "N_hập kết nối…"
+
+#: data/resources/gtk/menus.ui
+msgid "_Export Connections…"
+msgstr "_Xuất kết nối…"
 
 #: data/resources/gtk/menus.ui data/resources/shortcuts-dialog.ui
 #: data/resources/ui/preferences-dialog.ui
 msgid "Preferences"
 msgstr "Tùy chỉnh"
 
+#: data/resources/gtk/menus.ui
+msgid "_Preferences"
+msgstr "_Tùy chỉnh"
+
 #: data/resources/gtk/menus.ui data/resources/shortcuts-dialog.ui
 msgid "Keyboard Shortcuts"
 msgstr "Phím tắt"
 
 #: data/resources/gtk/menus.ui
-msgid "About TablePro"
-msgstr "Giới thiệu TablePro"
+msgid "_Keyboard Shortcuts"
+msgstr "_Phím tắt"
 
 #: data/resources/gtk/menus.ui
-msgid "Reopen Closed Tab"
-msgstr "Mở lại tab đã đóng"
+msgid "_About TablePro"
+msgstr "_Giới thiệu TablePro"
+
+#: data/resources/gtk/menus.ui
+msgid "_Reopen Closed Tab"
+msgstr "_Mở lại tab đã đóng"
 
 #: data/resources/shortcuts-dialog.ui
 #: data/resources/ui/preferences-general-page.ui
@@ -5618,6 +5765,10 @@ msgstr "Làm lại thay đổi gần nhất"
 #: data/resources/shortcuts-dialog.ui
 msgid "Select All Rows"
 msgstr "Chọn tất cả các dòng"
+
+#: crates/app/src/ui/data_grid/grid_menu.rs
+msgid "Select _All Rows"
+msgstr "_Chọn tất cả các dòng"
 
 #: data/resources/shortcuts-dialog.ui
 msgid "Clear the Selection"
@@ -5828,6 +5979,10 @@ msgstr "Các bản xuất đang chạy"
 msgid "Column"
 msgstr "Cột"
 
+#: crates/app/src/ui/data_grid/grid_menu.rs
+msgid "Colu_mn"
+msgstr "_Cột"
+
 #: data/resources/ui/filter-rule-row.ui
 msgid "Operator"
 msgstr "Toán tử"
@@ -5871,16 +6026,16 @@ msgid "Add Rule"
 msgstr "Thêm quy tắc"
 
 #: data/resources/ui/find-bar.ui
-msgid "Match Case"
-msgstr "Phân biệt hoa thường"
+msgid "Match _Case"
+msgstr "Phân biệt _hoa thường"
 
 #: data/resources/ui/find-bar.ui
-msgid "Match Whole Word"
-msgstr "Khớp nguyên từ"
+msgid "Match _Whole Word"
+msgstr "_Khớp nguyên từ"
 
 #: data/resources/ui/find-bar.ui
-msgid "Regular Expressions"
-msgstr "Biểu thức chính quy"
+msgid "_Regular Expressions"
+msgstr "_Biểu thức chính quy"
 
 #: data/resources/ui/find-bar.ui
 msgid "Replace with"
@@ -5919,16 +6074,16 @@ msgid "Export"
 msgstr "Xuất"
 
 #: data/resources/ui/history-dialog.ui
-msgid "Clear All History…"
-msgstr "Xóa toàn bộ lịch sử…"
+msgid "_Clear All History…"
+msgstr "_Xóa toàn bộ lịch sử…"
 
 #: data/resources/ui/history-dialog.ui
-msgid "Export as SQL…"
-msgstr "Xuất dưới dạng SQL…"
+msgid "Export as _SQL…"
+msgstr "Xuất dưới dạng _SQL…"
 
 #: data/resources/ui/history-dialog.ui
-msgid "Export as CSV…"
-msgstr "Xuất dưới dạng CSV…"
+msgid "Export as _CSV…"
+msgstr "Xuất dưới dạng _CSV…"
 
 #: data/resources/ui/history-row.ui
 msgid "Select Query"
@@ -6062,24 +6217,24 @@ msgid "Run a query to see what it returns."
 msgstr "Chạy một truy vấn để xem nó trả về gì."
 
 #: data/resources/ui/sql-editor.ui
-msgid "Open SQL File…"
-msgstr "Mở tệp SQL…"
+msgid "_Open SQL File…"
+msgstr "Mở tệp _SQL…"
 
 #: data/resources/ui/sql-editor.ui
-msgid "Save As…"
-msgstr "Lưu thành…"
+msgid "Save _As…"
+msgstr "Lư_u thành…"
 
 #: data/resources/ui/sql-editor.ui
-msgid "Save Query…"
-msgstr "Lưu truy vấn…"
+msgid "Save _Query…"
+msgstr "Lưu t_ruy vấn…"
 
 #: data/resources/ui/sql-editor.ui
-msgid "Find…"
-msgstr "Tìm…"
+msgid "_Find…"
+msgstr "_Tìm…"
 
 #: data/resources/ui/sql-editor.ui
-msgid "Find and Replace…"
-msgstr "Tìm và thay thế…"
+msgid "Find and _Replace…"
+msgstr "Tìm và t_hay thế…"
 
 #: data/resources/ui/sql-editor.ui
 msgid "Editor Options"
