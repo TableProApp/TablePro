@@ -6,7 +6,7 @@ use tablepro_session::SessionKey;
 use tablepro_session::fakes::FakeEstablish;
 use tablepro_test_support::{ConnectionScript, FakeReply};
 
-use super::{Script, TestWindow, WAIT, editors, pick_level};
+use super::{Script, TestWindow, WAIT, editors, pick_level, refused};
 use crate::test_support::{drain_main_context, wait_until};
 use crate::ui::SessionWindowInput;
 
@@ -62,14 +62,19 @@ fn analytics(test: &TestWindow) -> SessionKey {
     }
 }
 
-/// The connection connects; another of its databases never answers
-/// until its open is stopped.
-fn opening_never_ends() -> Vec<FakeEstablish> {
+/// A connection that answers what a workspace asks as it opens.
+fn answering() -> FakeEstablish {
     let mut connection = ConnectionScript::default();
     connection.probe.always(FakeReply::ok(()));
     connection.list_schemas.always(FakeReply::ok(Vec::new()));
     connection.list_objects.always(FakeReply::ok(Vec::new()));
-    vec![FakeEstablish::Connect(connection), FakeEstablish::UntilCancelled]
+    FakeEstablish::Connect(connection)
+}
+
+/// The connection connects; another of its databases never answers
+/// until its open is stopped.
+fn opening_never_ends() -> Vec<FakeEstablish> {
+    vec![answering(), FakeEstablish::UntilCancelled]
 }
 
 #[gtk4::test]
@@ -164,6 +169,24 @@ fn read_only_reopens_the_other_databases_at_the_new_level() {
     assert_eq!(reopened.safe_mode(), tablepro_core::SafeModeLevel::ReadOnly);
     let request = test.connector.calls().pop().expect("the database's connect").request;
     assert!(request.workspace_settings.read_only);
+}
+
+/// A reconnect for Read-Only that fails keeps the connection's other
+/// databases with its failure, and Retry opens them beside it again.
+#[gtk4::test]
+fn a_failed_reconnect_reopens_the_other_databases_on_retry() {
+    let test = network_window("OtherDatabaseRetry", vec![answering(), answering(), refused()]);
+    connect(&test);
+    let sibling = analytics(&test);
+    test.window.open_database(test.saved.id, ANALYTICS.to_owned());
+    wait_until(WAIT, || test.window.held_session(&sibling).is_some()).expect("the database to open");
+
+    pick_level(&test, "read-only");
+    test.wait_for_page("connect-failed");
+    assert!(test.window.held_session(&sibling).is_none());
+    test.window.send(SessionWindowInput::RetryConnect);
+
+    wait_until(WAIT, || test.window.held_session(&sibling).is_some()).expect("the database to open again");
 }
 
 /// A level picked while one of the connection's other databases is in

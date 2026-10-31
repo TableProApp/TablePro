@@ -628,16 +628,12 @@ impl SessionWindow {
     /// Connect `saved` through the window's one connect path, and open
     /// `databases` beside it once it joins.
     pub(super) fn connect_saved(&self, saved: SavedConnection, databases: Vec<String>) {
-        let key = SessionKey::Saved(saved.id);
-        let source = ConnectSource::Saved(Box::new(saved));
-        let Some(claim) = self.claim_for(&key) else {
-            return;
-        };
-        if let Some(mut pending) = self.spawn_connect(claim, source, None, CredentialDemand::default()) {
-            pending.databases = databases;
-            self.imp().connects.borrow_mut().push(pending);
-        }
-        self.connects_changed();
+        self.connect_reopening(
+            None,
+            ConnectSource::Saved(Box::new(saved)),
+            CredentialDemand::default(),
+            databases,
+        );
     }
 
     /// Tick the level of the session in front in the main menu.

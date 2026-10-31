@@ -53,7 +53,7 @@ pub struct SessionWindow {
     pub(super) failed: RefCell<Option<FailedConnect>>,
     /// The last failure of each connect that failed beside something
     /// else, until the key connects again, for its Details.
-    pub(super) failures: RefCell<HashMap<SessionKey, (ConnectSource, ConnectFailure)>>,
+    pub(super) failures: RefCell<HashMap<SessionKey, (ConnectSource, ConnectFailure, Vec<String>)>>,
     /// The shell, from the first session the window adopts to the last
     /// one it tears down.
     pub(super) shell: RefCell<Option<WorkspaceShell>>,
