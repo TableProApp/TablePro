@@ -259,7 +259,7 @@ final class QueryCompletionAdapter: CodeSuggestionDelegate {
         }
 
         let closeText = String(decoding: [closer], as: UTF16.self)
-        let name = item.label.replacingOccurrences(of: closeText, with: closeText + closeText)
+        let name = item.label.replacingOccurrences(of: closeText, with: closeText + closeText, options: .literal)
         let inner = NSRange(location: open + 1, length: (close ?? cursor) - open - 1)
         return Edit(
             range: inner,

@@ -88,7 +88,8 @@ extension ImportPlanner {
                         ref: profile.ref,
                         name: profile.name,
                         username: profile.username,
-                        passwordMode: profile.passwordMode == .pgpass ? .pgpass : .prompt,
+                        // A file never chooses how this Mac finds a password: pgpass would read ~/.pgpass for its host.
+                        passwordMode: .prompt,
                         secureFieldIds: profile.secureFieldIds
                     ))
                 }

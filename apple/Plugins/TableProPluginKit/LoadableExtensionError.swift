@@ -118,6 +118,6 @@ extension LoadableExtensionError: LocalizedError {
     /// One shell word, single-quoted, so a path that came from an import cannot add a command
     /// substitution or a second command to a line the user pastes into Terminal.
     static func shellQuoted(_ text: String) -> String {
-        "'" + text.replacingOccurrences(of: "'", with: "'\\''") + "'"
+        "'" + text.replacingOccurrences(of: "'", with: "'\\''", options: .literal) + "'"
     }
 }

@@ -260,6 +260,39 @@ struct SyncRecordMapperConnectionTests {
         #expect(additionalFields["schema"] == "public")
     }
 
+    @Test("A MongoDB connection-string secret never reaches the record")
+    func mongoURISecretsStayOffTheRecord() throws {
+        var connection = TestFixtures.makeConnection(type: .mongodb)
+        connection.additionalFields = [
+            "mongoParam_tlsCertificateKeyFilePassword": "hunter2",
+            "mongoParam_proxyPassword": "proxy-secret",
+            "mongoParam_authMechanismProperties": "AWS_SESSION_TOKEN:FQoG",
+            "mongoParam_retryWrites": "true"
+        ]
+
+        let record = SyncRecordMapper.toCKRecord(connection, in: zoneID)
+        let data = try #require(record[ConnectionSyncField.additionalFieldsJson.key] as? Data)
+        let additionalFields = try JSONDecoder().decode([String: String].self, from: data)
+
+        #expect(additionalFields == ["mongoParam_retryWrites": "true"])
+    }
+
+    @Test("A rebased record loses a secret an older build left in the server's additional fields")
+    func rebasedRecordLosesLegacySecret() throws {
+        var legacy = TestFixtures.makeConnection(type: .mongodb)
+        legacy.additionalFields = ["mongoParam_retryWrites": "true"]
+        let record = SyncRecordMapper.toCKRecord(legacy, in: zoneID)
+        record[ConnectionSyncField.additionalFieldsJson.key] = try JSONEncoder().encode([
+            "mongoParam_tlsCertificateKeyFilePassword": "hunter2",
+            "mongoParam_retryWrites": "true"
+        ]) as CKRecordValue
+
+        SyncRecordMapper.removeSecretOptions(from: record)
+
+        let data = try #require(record[ConnectionSyncField.additionalFieldsJson.key] as? Data)
+        #expect(try JSONDecoder().decode([String: String].self, from: data) == ["mongoParam_retryWrites": "true"])
+    }
+
     @Test("Clearing timeouts and other additional fields clears the based record")
     func clearingTimeoutsClearsBasedRecord() {
         var connection = makeFullyPopulatedConnection()

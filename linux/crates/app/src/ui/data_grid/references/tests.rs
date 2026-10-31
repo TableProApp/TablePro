@@ -8,7 +8,7 @@ use tablepro_core::{ColumnInfo, ForeignKeyInfo, Value};
 
 use crate::application::ShortcutOwner;
 use crate::test_support::shortcut_keys::{keystroke, owner_controller, shortcuts, trigger_keys};
-use crate::test_support::wait_until;
+use crate::test_support::{access_key_problems, menu_pages, wait_until};
 use crate::ui::data_grid::test_grid::{Grid, GridSpec, WAIT, named, persisted};
 use crate::ui::data_grid::{GridRequest, KeysHandle, TableKeys};
 
@@ -168,7 +168,7 @@ fn a_key_cell_offers_open_referenced_row_and_sends_the_rows_it_names() {
 
     assert_eq!(
         offered,
-        [item("Open Referenced Row", Some("grid.open-reference"), Some(0))]
+        [item("_Open Referenced Row", Some("grid.open-reference"), Some(0))]
     );
     assert_eq!(followed(&grid), [(public("customers"), filter(&[("id", "42")]))]);
 }
@@ -244,7 +244,7 @@ fn a_column_in_two_keys_offers_each_and_follows_the_one_chosen() {
     assert_eq!(
         offered,
         [
-            item("Open Referenced Row", None, None),
+            item("_Open Referenced Row", None, None),
             item("tenants (tenant__id)", Some("grid.open-reference"), Some(0)),
             item(
                 "crm.customers (tenant__id, customer__id)",
@@ -273,7 +273,7 @@ fn keys_from_the_same_columns_into_one_table_name_their_constraints() {
     assert_eq!(
         offered,
         [
-            item("Open Referenced Row", None, None),
+            item("_Open Referenced Row", None, None),
             item(
                 "customers (customer__id) through by__id",
                 Some("grid.open-reference"),
@@ -354,7 +354,7 @@ fn referencing_rows_are_offered_for_a_saved_row_and_not_for_a_draft() {
     assert_eq!(
         offered,
         [
-            item("Show Referencing Rows", None, None),
+            item("_Show Referencing Rows", None, None),
             item(
                 "sales.orders (customer__id)",
                 Some("grid.show-referencing-rows"),
@@ -364,6 +364,45 @@ fn referencing_rows_are_offered_for_a_saved_row_and_not_for_a_draft() {
     );
     assert_eq!(opened, [(orders, filter(&[("customer_id", "1")]))]);
     assert_eq!(on_draft, [], "a draft is offered rows that point at it");
+}
+
+/// The reference items join the cell menu's own page, so their keys
+/// must be free there.
+#[gtk4::test]
+fn the_reference_items_keep_an_access_key_of_their_own() {
+    let grid = with_keys(
+        vec![named("id", "integer", true), named("customer_id", "integer", false)],
+        vec![vec![Value::Int(1), Value::Int(42)]],
+        TableKeys {
+            table: public("orders"),
+            outbound: vec![OutboundForeignKey {
+                key: key(&["customer_id"], public("customers"), &["id"]),
+                parent_compares_alike: true,
+            }],
+            inbound: vec![InboundForeignKey {
+                child_compares_alike: true,
+                name: "invoices_order_id_fkey".to_owned(),
+                table: public("invoices"),
+                columns: vec!["order_id".to_owned()],
+                referenced_columns: vec!["id".to_owned()],
+            }],
+        },
+    );
+
+    open_menu(&grid, 1, 1);
+    let menu = grid
+        .grid
+        .menus()
+        .and_then(|menus| menus.cell.menu_model())
+        .expect("the cell menu");
+    let pages = menu_pages(&menu);
+    close_menus(&grid);
+
+    let cell = &pages[0].labels;
+    assert!(cell.iter().any(|label| label == "_Open Referenced Row"), "{cell:?}");
+    assert!(cell.iter().any(|label| label == "_Show Referencing Rows"), "{cell:?}");
+    // The referencing tables' names fill the submenu, and a name takes no key.
+    assert_eq!(access_key_problems(&pages[..1]), Vec::<String>::new());
 }
 
 #[gtk4::test]

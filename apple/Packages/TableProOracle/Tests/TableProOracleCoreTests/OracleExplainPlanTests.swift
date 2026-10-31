@@ -16,13 +16,13 @@ struct OracleExplainPlanTests {
     @Test("EXPLAIN PLAN takes the statement without its terminator, under the run's own statement id")
     func explainStatementDropsTerminator() {
         let statement = OracleExplainPlan.explainStatement("SELECT * FROM t ;\n", statementId: "TP1")
-        #expect(statement == "EXPLAIN PLAN SET STATEMENT_ID = 'TP1' FOR SELECT * FROM t")
+        #expect(statement == "EXPLAIN PLAN SET STATEMENT_ID = 'TP1' INTO SYS.PLAN_TABLE$ FOR SELECT * FROM t")
     }
 
     @Test("The plan rows are read and deleted by the run's statement id only")
     func readsAndDeletesOwnRows() {
         #expect(OracleExplainPlan.planRowsQuery(statementId: "TP1").contains("WHERE STATEMENT_ID = 'TP1'"))
-        #expect(OracleExplainPlan.deleteStatement(statementId: "TP1") == "DELETE FROM PLAN_TABLE WHERE STATEMENT_ID = 'TP1'")
+        #expect(OracleExplainPlan.deleteStatement(statementId: "TP1") == "DELETE FROM SYS.PLAN_TABLE$ WHERE STATEMENT_ID = 'TP1'")
     }
 
     @Test("Only Oracle's three statistics levels are ever put back", arguments: [

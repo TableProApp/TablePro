@@ -12,7 +12,7 @@ use libadwaita::prelude::*;
 use super::{served_table, shell_of};
 use crate::test_support::{descendants, wait_until};
 use crate::ui::SessionWindowInput;
-use crate::ui::session_window::tests::{Script, TestWindow};
+use crate::ui::session_window::tests::{Script, TestWindow, WAIT};
 use crate::ui::workspace::{WorkspaceShell, WorkspaceTab};
 
 fn overview_new_tab_button(overview: &adw::TabOverview) -> gtk::Button {
@@ -417,4 +417,55 @@ fn the_overview_opens_a_tab_in_a_session_that_came_forward_from_its_own_input() 
         Some(second),
         "the new tab went to a session behind"
     );
+}
+
+/// Choose New Connection… in the main menu under `header`, as a click
+/// does, and wait for the connection dialog.
+fn choose_new_connection(test: &TestWindow, header: &impl IsA<gtk::Widget>) {
+    let button = descendants(header)
+        .into_iter()
+        .filter_map(|widget| widget.downcast::<gtk::MenuButton>().ok())
+        .find(gtk::MenuButton::is_primary)
+        .expect("the main menu button");
+    button.popup();
+    let menu = button.popover().expect("the main menu");
+    wait_until(WAIT, || menu.is_visible()).expect("the main menu to open");
+    // GTK keeps a menu item private and gives it no action name.
+    let item = descendants(&menu)
+        .into_iter()
+        .find(|widget| {
+            widget.type_().name() == "GtkModelButton"
+                && widget.property::<Option<String>>("text").as_deref() == Some("New Connection…")
+        })
+        .expect("New Connection… in the main menu");
+    wait_until(WAIT, || item.is_sensitive()).expect("New Connection… to be enabled");
+
+    item.emit_by_name::<()>("clicked", &[]);
+
+    wait_until(WAIT, || test.window.visible_dialog().is_some()).expect("the connection dialog");
+}
+
+#[gtk4::test]
+fn the_main_menu_adds_a_connection_beside_an_open_one() {
+    let test = TestWindow::connected("MainMenuNewConnection");
+    // The overview's own menu button is a primary one too.
+    let header = shell_of(&test.workspace()).imp().sidebar_header.get();
+    choose_new_connection(&test, &header);
+}
+
+#[gtk4::test]
+fn the_main_menu_adds_a_connection_with_none_open() {
+    let test = TestWindow::picker("PickerMenuNewConnection");
+    let menu = test.app.menu_by_id("primary_menu").expect("the primary menu");
+    let first = menu.item_link(0, "section").expect("a first section");
+    assert_eq!(
+        first
+            .item_attribute_value(0, "action", None)
+            .and_then(|value| value.get::<String>())
+            .as_deref(),
+        Some("win.new-connection"),
+        "New Connection… does not lead the menu"
+    );
+
+    choose_new_connection(&test, &test.window.content().expect("the picker"));
 }

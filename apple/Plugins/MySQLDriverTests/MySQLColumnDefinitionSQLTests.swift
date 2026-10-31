@@ -12,6 +12,12 @@ import TableProPluginKit
 import Testing
 
 struct MySQLColumnDefinitionSQLTests {
+    @Test("A backtick a combining mark follows is still doubled", arguments: ["\u{301}", "\u{200C}", "\u{FE0F}"])
+    func backtickBeforeCombiningMark(mark: String) {
+        let quoted = mysqlQuoteIdentifier("a`\(mark) UNION SELECT attacker_function() -- x")
+        #expect(Array(quoted.unicodeScalars) == Array("`a``\(mark) UNION SELECT attacker_function() -- x`".unicodeScalars))
+    }
+
     private func timestampColumn(
         dataType: String = "TIMESTAMP",
         defaultValue: String? = nil,

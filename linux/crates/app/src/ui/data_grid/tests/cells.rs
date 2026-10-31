@@ -133,6 +133,77 @@ fn a_row_with_a_boolean_is_as_tall_as_one_without() {
     assert_eq!(height(&flags), height(&texts));
 }
 
+// Every cell of the row, the gutter and the filler included.
+fn stripes_across(cell: &GridCell) -> Vec<bool> {
+    let row = row_widget(cell);
+    std::iter::successors(row.first_child(), |column| column.next_sibling())
+        .map(|column| {
+            column
+                .first_child()
+                .is_some_and(|child| child.has_css_class("tp-stripe"))
+        })
+        .collect()
+}
+
+fn striped_rows(ids: &[i64]) -> Grid {
+    Grid::build(GridSpec::table(two_text_columns()), keyed(ids))
+}
+
+#[gtk4::test]
+fn every_other_row_is_striped_out_to_the_filler() {
+    let grid = striped_rows(&[1, 2, 3, 4]);
+
+    assert!(grid.grid.column_view().has_css_class("tp-striped"), "on by default");
+    for position in 0..4 {
+        let row = stripes_across(&grid.cell_at(position, 1));
+        assert_eq!(row.len(), 4, "gutter, two columns and the filler");
+        assert!(
+            row.iter().all(|striped| *striped == (position % 2 == 1)),
+            "row {position}: {row:?}"
+        );
+    }
+}
+
+#[gtk4::test]
+fn a_row_added_above_moves_the_stripes() {
+    let grid = two_text_rows();
+
+    grid.insert_draft();
+
+    assert!(stripes_across(&grid.cell_of(1, 1)).iter().all(|striped| *striped));
+    assert!(stripes_across(&grid.cell_of(2, 1)).iter().all(|striped| !striped));
+}
+
+#[gtk4::test]
+fn recycled_rows_take_the_stripe_of_their_new_position() {
+    let ids: Vec<i64> = (1..=300).collect();
+    let grid = striped_rows(&ids);
+
+    grid.focus(250, 1);
+
+    let drawn = grid.cells();
+    assert!(drawn.iter().any(|cell| cell.position() == Some(250)));
+    for cell in drawn {
+        let position = cell.position().expect("a bound cell");
+        assert_eq!(cell.has_css_class("tp-stripe"), position % 2 == 1, "row {position}");
+    }
+}
+
+#[gtk4::test]
+fn open_grids_follow_the_stripes_preference() {
+    let grid = two_text_rows();
+    let settings = grid.grid.config().expect("a configured grid").settings.clone();
+    let striped = || grid.grid.column_view().has_css_class("tp-striped");
+
+    settings.set_show_alternate_rows(false).expect("store the flag");
+    drain_main_context();
+    assert!(!striped());
+
+    settings.set_show_alternate_rows(true).expect("store the flag");
+    drain_main_context();
+    assert!(striped());
+}
+
 #[gtk4::test]
 fn column_view_carries_data_table_class() {
     let grid = two_text_rows();

@@ -22,8 +22,8 @@ impl SessionWindow {
         if !offered {
             return;
         }
-        if let Some((claim, source, _)) = self.take_failure(key) {
-            self.reconnect(claim, source, CredentialDemand::reenter(kind));
+        if let Some(taken) = self.take_failure(key) {
+            self.reconnect(taken, CredentialDemand::reenter(kind));
         }
     }
 }

@@ -267,6 +267,7 @@ internal actor DatabaseAccessBridge {
                 timeoutSeconds: timeoutSeconds
             ) { driver in
                 let answer: QueryResult
+                // A user statement, so a driver with a one-statement API sends it through that.
                 if shouldCap {
                     answer = try await driver.executeUserQuery(
                         query: statement.sql,
@@ -274,7 +275,7 @@ internal actor DatabaseAccessBridge {
                         parameters: nil
                     )
                 } else {
-                    answer = try await driver.execute(query: normalizedQuery)
+                    answer = try await driver.executeUserQuery(query: normalizedQuery, rowCap: nil, parameters: nil)
                 }
                 let edits = await SucceededStatements.single(
                     normalizedQuery, scope: scope, databaseType: databaseType, grammar: grammar, ranOn: driver

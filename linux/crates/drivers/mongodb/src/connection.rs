@@ -282,6 +282,12 @@ impl Connection for MongoConnection {
         outcome
     }
 
+    /// The schemas this engine lists are the server's databases, which a
+    /// query tab can move between.
+    async fn list_databases(&self, options: CallOptions) -> Result<Vec<SchemaInfo>, DriverError> {
+        self.list_schemas(options).await
+    }
+
     async fn list_schemas(&self, options: CallOptions) -> Result<Vec<SchemaInfo>, DriverError> {
         let default = self.database.clone();
         self.read(options, move |context, session| {

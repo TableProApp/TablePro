@@ -2,6 +2,7 @@ import Foundation
 import os
 import SQLite3
 import TableProPluginKit
+import TableProSQLGrammar
 
 actor QueryHistoryStorage {
     private static let logger = Logger(subsystem: "com.TablePro", category: "QueryHistoryStorage")
@@ -355,7 +356,8 @@ actor QueryHistoryStorage {
             guard let id = sqlite3_column_text(statement, 0).map({ String(cString: $0) }),
                   let query = sqlite3_column_text(statement, 1).map({ String(cString: $0) })
             else { continue }
-            pending.append((id, QueryHistoryStatementType.classify(query).rawValue))
+            // A legacy row has no engine; standard SQL comments are enough to find a label's keyword.
+            pending.append((id, QueryHistoryStatementType.classify(query, grammar: .ansi).rawValue))
         }
         return pending
     }
@@ -653,10 +655,10 @@ actor QueryHistoryStorage {
     static func ftsQuery(for searchText: String) -> String {
         let terms = searchText
             .split(whereSeparator: { $0.isWhitespace })
-            .map { $0.replacingOccurrences(of: "\"", with: "\"\"") }
+            .map { $0.replacingOccurrences(of: "\"", with: "\"\"", options: .literal) }
             .filter { !$0.isEmpty }
 
-        guard !terms.isEmpty else { return "\"\(searchText.replacingOccurrences(of: "\"", with: "\"\""))\"*" }
+        guard !terms.isEmpty else { return "\"\(searchText.replacingOccurrences(of: "\"", with: "\"\"", options: .literal))\"*" }
         return terms.map { "\"\($0)\"*" }.joined(separator: " AND ")
     }
 

@@ -5483,6 +5483,18 @@
         }
       }
     },
+    "%@ was not found in any of the CanonicalDomains in ~/.ssh/config, and CanonicalizeFallbackLocal is set to no." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ est introuvable dans les CanonicalDomains de ~/.ssh/config, et CanonicalizeFallbackLocal vaut no."
+          }
+        }
+      }
+    },
     "%@ was not found." : {
       "localizations" : {
         "fr" : {
@@ -39904,6 +39916,9 @@
         }
       }
     },
+    "Clearing the results will discard all unsaved changes." : {
+
+    },
     "CLI Connection Name" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -41547,6 +41562,9 @@
           }
         }
       }
+    },
+    "Closing this result will discard all unsaved changes." : {
+
     },
     "Cloud" : {
       "extractionState" : "manual",
@@ -68094,6 +68112,10 @@
           }
         }
       }
+    },
+    "DuckDB could not allocate a configuration to open the file" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "DuckDB could not allocate a configuration to open the file read-only" : {
       "extractionState" : "manual",
@@ -105281,6 +105303,9 @@
     "Longest" : {
 
     },
+    "Looked up in ~/.pgpass by the host, port, database and username of the PostgreSQL-family connection that is opening. Other connections ask for the password." : {
+
+    },
     "Looked up in ~/.pgpass by the host, port, database and username of whichever connection is opening." : {
       "localizations" : {
         "fr" : {
@@ -133143,6 +133168,9 @@
         }
       }
     },
+    "Pinned" : {
+
+    },
     "Pipe" : {
       "localizations" : {
         "fr" : {
@@ -160860,6 +160888,8 @@
       }
     },
     "Send one statement at a time." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -178968,6 +178998,16 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "TablePro builds this request for its own grid, so it cannot be sent from outside the app. Send the statement it stands for instead." : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TablePro construit cette requête pour sa propre grille, elle ne peut donc pas être envoyée depuis l’extérieur de l’app. Envoyez plutôt l’instruction qu’elle représente."
+          }
+        }
+      }
+    },
     "TablePro can't pass any value of type %2$@ to %1$@." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -181446,6 +181486,10 @@
     "Temporary Table" : {
 
     },
+    "Teradata uses TLS on its HTTPS port, which the tunnel does not forward. Set SSL Mode to Disabled or Preferred to connect through the tunnel, or turn the tunnel off." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Teradata Vantage data warehouse" : {
       "localizations" : {
         "fr" : {
@@ -182150,46 +182194,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "文字：%@"
-          }
-        }
-      }
-    },
-    "Thanks to these license holders" : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Merci à ces détenteurs de licence"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "라이선스를 구매해 주신 분들께 감사드립니다"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Bu lisans sahiplerine teşekkürler"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cảm ơn những người đã mua giấy phép"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "感谢这些许可证持有者"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "感謝這些授權持有者"
           }
         }
       }
@@ -183416,6 +183420,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "La connexion AWS SSO a été refusée."
+          }
+        }
+      }
+    },
+    "The backup could not be imported, so this database was not changed. %@" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La sauvegarde n’a pas pu être importée, cette base de données n’a donc pas été modifiée. %@"
           }
         }
       }
@@ -185532,6 +185546,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Le nom de la base de données dépasse les 128 octets acceptés par FreeTDS."
+          }
+        }
+      }
+    },
+    "The database name or a sign-in value holds a NUL character, which a command line cannot carry." : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le nom de la base de données ou une valeur de connexion contient un caractère NUL, qu’une ligne de commande ne peut pas transmettre."
           }
         }
       }
@@ -191247,6 +191271,30 @@
         }
       }
     },
+    "The SSH host %@ contains characters ssh does not allow in a host name." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "L’hôte SSH %@ contient des caractères que ssh n’accepte pas dans un nom d’hôte."
+          }
+        }
+      }
+    },
+    "the SSH host or user of “%@” contains characters ssh does not allow" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "l’hôte ou l’utilisateur SSH de « %@ » contient des caractères que ssh n’accepte pas"
+          }
+        }
+      }
+    },
     "The SSH server closed the connection during the handshake." : {
 
     },
@@ -191527,6 +191575,18 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "SSH 伺服器未轉送 socket %1$@。請檢查該路徑在伺服器上是否存在，以及 sshd 是否允許 socket 轉送（AllowStreamLocalForwarding）。(%2$@)"
+          }
+        }
+      }
+    },
+    "The SSH user %@ contains characters ssh does not allow in a user name." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "L’utilisateur SSH %@ contient des caractères que ssh n’accepte pas dans un nom d’utilisateur."
           }
         }
       }
@@ -193701,6 +193761,9 @@
         }
       }
     },
+    "These connections run commands every time they connect: a tunnel command on this Mac, SQL on the server, or both." : {
+
+    },
     "These connections run commands every time they connect: a tunnel command on this Mac, SQL on the server, or both.\n\n%@" : {
 
     },
@@ -194098,6 +194161,10 @@
         }
       }
     },
+    "This build of DuckDB does not accept the storage version that keeps files readable by DuckDB 1.x" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "This call matches more than one overload of %@, so Oracle can't run it (PLS-00307)." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -194298,6 +194365,10 @@
           }
         }
       }
+    },
+    "This connection asks for TLS, which the Dameng driver does not support. Add the connection again without an SSL mode, and use an SSH, SOCKS or Cloudflare tunnel on a network you do not trust." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "This connection called a stored routine, so TablePro cannot tell what the session is holding." : {
       "extractionState" : "manual",
@@ -195867,6 +195938,18 @@
     "This driver cannot explain a statement" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "This driver cannot restore an exported folder. Update it in Settings > Extensions." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ce pilote ne peut pas restaurer un dossier exporté. Mettez-le à jour dans Réglages > Extensions."
+          }
+        }
+      }
     },
     "This driver has no TLS fallback. Preferred forces TLS, same as Required." : {
       "localizations" : {
@@ -198476,6 +198559,9 @@
           }
         }
       }
+    },
+    "This repository defines a Git filter that TablePro cannot switch off." : {
+
     },
     "This repository has no commits yet." : {
       "localizations" : {

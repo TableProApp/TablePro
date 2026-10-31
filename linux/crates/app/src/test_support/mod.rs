@@ -1,3 +1,4 @@
+mod access_keys;
 mod accessible_label;
 mod alert_response;
 mod application_end;
@@ -22,6 +23,7 @@ mod unlabelled_widget;
 mod wait_timed_out;
 mod widget_lookup;
 
+pub(crate) use access_keys::{access_key_problems, assert_access_keys, menu_pages};
 pub(crate) use accessible_label::{assert_labelled, test_backend_records_properties};
 pub(crate) use alert_response::{click_response, respond};
 pub(crate) use application_end::end_application;

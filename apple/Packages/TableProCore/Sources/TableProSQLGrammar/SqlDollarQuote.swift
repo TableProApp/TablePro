@@ -72,7 +72,9 @@ public enum SqlDollarQuote {
     }
 
     /// Whether the closing delimiter for `tag` starts at `pos`. The tag match is
-    /// exact and case-sensitive, per PostgreSQL.
+    /// exact and case-sensitive, per PostgreSQL, whose lexer compares the bytes (`strcmp` in `scan.l`).
+    /// `String ==` compares by canonical equivalence instead and would let `$\u{212A}$` (KELVIN SIGN) close
+    /// `$K$`, so the units are compared one by one like the rest of the scan.
     public static func matchesClose(at pos: Int, tag: String, in buffer: NSString, bufLen: Int) -> Bool {
         let closeLen = (tag as NSString).length + 2
         guard pos + closeLen <= bufLen else { return false }
@@ -80,7 +82,7 @@ public enum SqlDollarQuote {
         if buffer.character(at: pos + closeLen - 1) != dollar { return false }
         if tag.isEmpty { return true }
         let tagRange = NSRange(location: pos + 1, length: (tag as NSString).length)
-        return buffer.substring(with: tagRange) == tag
+        return buffer.substring(with: tagRange).utf16.elementsEqual(tag.utf16)
     }
 
     private static func isTagStart(_ ch: unichar) -> Bool {

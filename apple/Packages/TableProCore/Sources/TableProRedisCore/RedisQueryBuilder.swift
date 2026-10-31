@@ -119,15 +119,15 @@ public struct RedisQueryBuilder: Sendable {
     }
 
     private func quoteForCommand(_ str: String) -> String {
-        var result = ""
-        for char in str {
-            switch char {
-            case "\\": result += "\\\\"
-            case "\"": result += "\\\""
-            default: result.append(char)
+        var result = String.UnicodeScalarView()
+        for scalar in str.unicodeScalars {
+            switch scalar {
+            case "\\", "\"": result.append("\\")
+            default: break
             }
+            result.append(scalar)
         }
-        return result
+        return String(result)
     }
 
     /// Try to extract a SCAN-compatible glob pattern from key-column filters
@@ -158,18 +158,14 @@ public struct RedisQueryBuilder: Sendable {
     /// Escape Redis glob special characters in user input.
     /// Redis SCAN MATCH uses glob-style patterns where *, ?, and [ are special.
     private func escapeGlobChars(_ str: String) -> String {
-        var result = ""
-        for char in str {
-            switch char {
-            case "*", "?", "[", "]":
-                result.append("\\")
-                result.append(char)
-            case "\\":
-                result.append("\\\\")
-            default:
-                result.append(char)
+        var result = String.UnicodeScalarView()
+        for scalar in str.unicodeScalars {
+            switch scalar {
+            case "*", "?", "[", "]", "\\": result.append("\\")
+            default: break
             }
+            result.append(scalar)
         }
-        return result
+        return String(result)
     }
 }

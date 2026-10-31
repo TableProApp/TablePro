@@ -65,7 +65,7 @@ struct TableQueryBuilderSortScopeTests {
     private let displayColumns = ["_id", "name", "email", "createdAt"]
 
     private func makeBuilder(_ driver: SortRecordingDriver) -> TableQueryBuilder {
-        TableQueryBuilder(databaseType: .mongodb, pluginDriver: driver, pagination: .offset)
+        TableQueryBuilder(databaseType: .mongodb, pluginDriver: driver, pagination: .offset, dialectQuote: SQLEscaping.quoteIdentifier)
     }
 
     /// Issue #2234: after hiding columns, the sort index landed outside the scoped list and the
@@ -170,7 +170,7 @@ struct TableQueryBuilderSortScopeTests {
         let sortState = SortState(columns: [
             SortColumn(columnIndex: 99, direction: .descending, columnName: "createdAt"),
         ])
-        let query = TableQueryBuilder(databaseType: .mysql, pagination: .offset).buildBaseQuery(
+        let query = TableQueryBuilder(databaseType: .mysql, pagination: .offset, dialectQuote: SQLEscaping.quoteIdentifier).buildBaseQuery(
             tableName: "events",
             sortState: sortState,
             columns: displayColumns,

@@ -14,7 +14,7 @@ import TableProSQLGrammar
 import Testing
 
 struct SQLLexicalFeatureMappingTests {
-    @Test("Every grammar fact but the app-curated SQLScript blocks, CQL batches and T-SQL name characters has exactly one kit feature, on the same bit")
+    @Test("Every grammar fact but the app-curated ones has exactly one kit feature, on the same bit")
     func everyFactHasAPartner() {
         let pairs = SQLLexicalGrammar.pluginFeaturePairs
         let grammarBits = pairs.reduce(into: SQLLexicalGrammar()) { $0.formUnion($1.1) }
@@ -25,8 +25,13 @@ struct SQLLexicalFeatureMappingTests {
         #expect(grammarBits.rawValue == (1 << 25) - 1)
         #expect(grammarBits.isDisjoint(with: .sqlScriptBlocks))
         #expect(grammarBits.isDisjoint(with: .cqlBatches))
-        #expect(grammarBits.isDisjoint(with: .hashAndAtInIdentifiers))
-        #expect(grammarBits.union([.sqlScriptBlocks, .cqlBatches, .hashAndAtInIdentifiers]).rawValue == (1 << 28) - 1)
+        let curatedOnly: SQLLexicalGrammar = [
+            .sqlScriptBlocks, .cqlBatches, .hashAndAtInIdentifiers, .angleQuotedIdentifiers,
+            .backslashEscapesInAngleQuotes, .escapeBytesPrefix, .exponentSignsNeedNoDigits, .formFeedEndsLineComments,
+            .atomicRoutineBodies, .triggerBodies, .statementsAsValues, .bracketedStatementSources, .pipeOperatorChains,
+        ]
+        #expect(grammarBits.isDisjoint(with: curatedOnly))
+        #expect(grammarBits.union(curatedOnly).rawValue == (1 << 38) - 1)
     }
 
     @Test("SAP HANA's SQLScript blocks stay in the app's curated grammar and never reach the kit")
@@ -52,10 +57,41 @@ struct SQLLexicalFeatureMappingTests {
         #expect(SQLLexicalGrammar(pluginFeatures: tsql.pluginFeatures) == tsql.subtracting(.hashAndAtInIdentifiers))
     }
 
-    @Test("A grammar survives the trip through the kit's features")
+    @Test("SurrealQL's angle quotes stay in the app's curated grammar and never reach the kit")
+    func angleQuotesAreAppCurated() {
+        let surrealQL = DatabaseType.surrealdb.lexicalGrammar
+        let curatedOnly: SQLLexicalGrammar = [.angleQuotedIdentifiers, .backslashEscapesInAngleQuotes]
+        #expect(surrealQL.isSuperset(of: curatedOnly))
+        #expect(
+            SQLLexicalGrammar(pluginFeatures: surrealQL.pluginFeatures)
+                == surrealQL.subtracting(curatedOnly.union(.statementsAsValues))
+        )
+    }
+
+    @Test("CockroachDB's byte literal stays in the app's curated grammar and never reaches the kit")
+    func escapeBytesPrefixIsAppCurated() {
+        let cockroach = DatabaseType.cockroachdb.lexicalGrammar
+        #expect(cockroach.contains(.escapeBytesPrefix))
+        #expect(cockroach.pluginFeatures == DatabaseType.postgresql.lexicalGrammar.pluginFeatures)
+        #expect(
+            SQLLexicalGrammar(pluginFeatures: cockroach.pluginFeatures)
+                == cockroach.subtracting([.escapeBytesPrefix, .atomicRoutineBodies, .bracketedStatementSources])
+        )
+    }
+
+    @Test("Databend's form feed rule stays in the app's curated grammar and never reaches the kit")
+    func formFeedRuleIsAppCurated() {
+        let databend = DatabaseType.databend.lexicalGrammar
+        #expect(databend.contains(.formFeedEndsLineComments))
+        #expect(SQLLexicalGrammar(pluginFeatures: databend.pluginFeatures) == databend.subtracting(.formFeedEndsLineComments))
+    }
+
+    @Test("A grammar survives the trip through the kit's features, less the facts only the curated table sets")
     func roundTrip() {
         let grammar = DatabaseType.postgresql.lexicalGrammar
-        #expect(SQLLexicalGrammar(pluginFeatures: grammar.pluginFeatures) == grammar)
+        #expect(grammar.contains(.atomicRoutineBodies))
+        #expect(SQLLexicalGrammar(pluginFeatures: grammar.pluginFeatures) == grammar.subtracting(.atomicRoutineBodies))
+        #expect(SQLLexicalGrammar(pluginFeatures: DatabaseType.mysql.lexicalGrammar.pluginFeatures) == DatabaseType.mysql.lexicalGrammar)
     }
 
     /// MySQLDriverTests' MySQLLexicalFeatureListTests pins MySQLLexicalFeatures to these same sets.
@@ -69,7 +105,8 @@ struct SQLLexicalFeatureMappingTests {
             .backslashEscapesInSingleQuotes, .backslashEscapesInDoubleQuotes, .backtickQuotes, .untaggedDollarQuotes,
         ]
         #expect(SQLLexicalGrammar(pluginFeatures: mySQL) == DatabaseType.mysql.lexicalGrammar)
-        #expect(SQLLexicalGrammar(pluginFeatures: databend) == DatabaseType.databend.lexicalGrammar)
+        let curatedDatabend = DatabaseType.databend.lexicalGrammar.subtracting(.formFeedEndsLineComments)
+        #expect(SQLLexicalGrammar(pluginFeatures: databend) == curatedDatabend)
     }
 
     static let corpus = [
@@ -86,7 +123,10 @@ struct SQLLexicalFeatureMappingTests {
         "SELECT 1 FROM DUAL // '\n; DELETE FROM t; -- '",
         "SELECT 1 -- x\r; DROP TABLE t",
         "SELECT 1 --x; DROP TABLE t",
+        "SELECT 1 --\u{7F}'\n; DROP TABLE t; -- '",
         "SELECT $a('); DROP TABLE t; --'",
+        "SELECT $a(\u{01}'); DROP TABLE t; --'",
+        "SELECT x$y(\"')\"); DROP TABLE t; --\"",
         "SELECT '''it's'''; DROP TABLE t; SELECT 'x'",
         "SELECT 1 /*! , '*/' */; SELECT 2",
         "/*! /* ' */ SELECT 1 */; SELECT 2",

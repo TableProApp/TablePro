@@ -9,6 +9,7 @@
 import AppKit
 import Foundation
 import os
+import TableProSSHTransport
 
 /// Handles host key verification with UI prompts
 internal enum HostKeyVerifier {
@@ -41,6 +42,9 @@ internal enum HostKeyVerifier {
         case .trusted:
             logger.debug("Host key trusted for [\(hostname)]:\(port)")
             return
+
+        case .invalidHost(let problem):
+            throw SSHTunnelError.tunnelCreationFailed(problem.explanation)
 
         case .unknown(let fingerprint, let keyType):
             logger.info("Unknown host key for [\(hostname)]:\(port), prompting user")

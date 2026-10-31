@@ -33,7 +33,7 @@ public enum PostgreSQLViewDefinition {
         }
     }
 
-    /// Run with `search_path` narrowed first (see `qualifiedReadPrefix`). `pg_get_viewdef` writes a
+    /// Run under `PostgreSQLCatalogSearchPath.pinned`. `pg_get_viewdef` writes a
     /// table name bare whenever the reading session could resolve it without its schema, and the
     /// scoped connection this runs on has its path set to the view's own schema, so the body came
     /// back naming `orders` rather than `sales.orders`. Run anywhere else, that text silently bound
@@ -55,16 +55,6 @@ public enum PostgreSQLViewDefinition {
           AND c.relname = \(PostgreSQLObjectQueries.quoteLiteral(name))
         """
     }
-
-    /// `SET LOCAL` lasts only as long as the transaction it runs in. Sent in the same query string
-    /// as the read, the pair is one implicit transaction, so the path is back to what it was as
-    /// soon as the read returns. Inside a transaction the caller already holds, it would last until
-    /// that transaction ends, which is why the driver wraps the read in a savepoint there.
-    ///
-    /// `pg_catalog` rather than an empty path: PostgreSQL 9.1 rejects `''` ("schema "" does not
-    /// exist"), and `pg_catalog` is searched implicitly anyway, so every user relation is still
-    /// written with its schema. Measured identical output on 9.2, 9.3, 9.6 and 17.
-    public static let qualifiedReadPrefix = "SET LOCAL search_path = pg_catalog; "
 
     public static func parse(row: [String?]) -> CatalogRow? {
         guard row.count >= 5,

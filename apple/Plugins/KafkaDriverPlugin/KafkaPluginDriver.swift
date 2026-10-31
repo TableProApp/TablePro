@@ -226,8 +226,8 @@ final class KafkaPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     /// as further clauses.
     func escapeStringLiteral(_ value: String) -> String {
         value
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\"", with: "\\\"")
+            .replacingOccurrences(of: "\\", with: "\\\\", options: .literal)
+            .replacingOccurrences(of: "\"", with: "\\\"", options: .literal)
     }
 
     // MARK: - Browse

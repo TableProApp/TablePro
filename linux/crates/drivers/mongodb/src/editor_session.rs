@@ -68,6 +68,17 @@ impl EditorSession for MongoEditorSession {
         Some(self.database.lock().unwrap_or_else(PoisonError::into_inner).clone())
     }
 
+    /// As the shell's `use`: the next statements name the database.
+    async fn use_database(&self, database: &str, _options: CallOptions) -> Result<(), DriverError> {
+        if self.status.state() == EditorSessionState::Lost {
+            return Err(DriverError::ConnectionLost {
+                during: LossPhase::Idle,
+            });
+        }
+        *self.database.lock().unwrap_or_else(PoisonError::into_inner) = database.to_owned();
+        Ok(())
+    }
+
     fn state(&self) -> EditorSessionState {
         self.status.state()
     }

@@ -15,7 +15,7 @@ extension PostgreSQLPluginDriver {
     func fetchCommentDDL(table: String, schema: String?) async throws -> [String] {
         let resolvedSchema = schema ?? core.currentSchema
         let query = PostgreSQLCommentStatements.catalogQuery(name: table, schema: resolvedSchema)
-        let result = try await execute(query: query)
+        let result = try await catalogRead(query)
         return PostgreSQLCommentStatements.statements(
             name: table,
             schema: resolvedSchema,

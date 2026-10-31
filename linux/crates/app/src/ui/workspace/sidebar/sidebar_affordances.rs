@@ -1,4 +1,4 @@
-use tablepro_core::dialect::SqlDialect;
+use tablepro_core::dialect::{DatabaseLayout, SqlDialect};
 use tablepro_session::Session;
 
 /// What the sidebar offers for the connection: the structure tab's
@@ -12,6 +12,9 @@ pub(crate) struct SidebarAffordances {
     pub can_create_table: bool,
     pub can_edit_structure: bool,
     pub speaks_sql: bool,
+    /// Another of the server's databases opens beside the connection,
+    /// where a connection's catalog describes only its own (0030).
+    pub opens_databases: bool,
 }
 
 impl SidebarAffordances {
@@ -22,6 +25,7 @@ impl SidebarAffordances {
             can_create_table: ddl.is_some_and(|ddl| ddl.capabilities().create_table),
             can_edit_structure: ddl.is_some(),
             speaks_sql: dialect.is_some_and(|dialect| dialect.grammar().is_sql()),
+            opens_databases: dialect.is_some_and(|dialect| dialect.database_layout() == DatabaseLayout::WithSchemas),
         }
     }
 
@@ -57,6 +61,8 @@ mod tests {
 
         assert!(!none.can_edit_structure && !none.offers_new_table());
         assert!(creates.speaks_sql);
+        assert!(creates.opens_databases, "PostgreSQL lists one database's schemas");
+        assert!(!edits_only.opens_databases, "ClickHouse lists every database already");
         let mongo = SidebarAffordances::of(false, Some(&tablepro_driver_mongodb::MongoDialect));
         assert!(
             !mongo.can_edit_structure && !mongo.speaks_sql,

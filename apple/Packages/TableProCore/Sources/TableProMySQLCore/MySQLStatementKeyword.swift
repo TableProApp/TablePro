@@ -20,7 +20,8 @@ nonisolated public func mysqlLeadingKeyword(_ query: String) -> String {
     while true {
         rest = rest.drop(while: { $0.isWhitespace })
         if rest.hasPrefix("/*"), !rest.hasPrefix("/*!") {
-            guard let end = rest.range(of: "*/") else { return "" }
+            // Past the opener: its `*` closes nothing, so `/*/` is still open.
+            guard let end = rest.dropFirst(2).range(of: "*/") else { return "" }
             rest = rest[end.upperBound...]
         } else if rest.hasPrefix("#") || (rest.hasPrefix("--") && rest.dropFirst(2).first?.isWhitespace != false) {
             guard let end = rest.firstIndex(where: { $0.isNewline }) else { return "" }

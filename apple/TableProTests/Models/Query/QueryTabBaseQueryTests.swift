@@ -27,7 +27,7 @@ struct QueryTabBaseQueryTests {
             pluginDriver: PluginManager.shared.queryBuildingDriver(for: .mssql),
             dialect: dialect,
             pagination: .offset,
-            dialectQuote: quote
+            dialectQuote: quote ?? { SQLEscaping.quoteIdentifier($0) }
         ).buildBaseQuery(tableName: "users", schemaName: nil, limit: pageSize, offset: 0)
 
         #expect(editorQuery == executed)

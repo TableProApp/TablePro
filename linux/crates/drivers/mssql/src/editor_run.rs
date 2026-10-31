@@ -247,6 +247,15 @@ pub(crate) async fn transaction_state(client: &mut MssqlClient) -> Result<Transa
     Ok(state_of(cells.int(0), cells.int(1)))
 }
 
+/// Move the session to `database`. A bracketed name carries any name: a
+/// `]` in it is doubled.
+pub(crate) async fn use_database(client: &mut MssqlClient, database: &str) -> Result<(), DriverError> {
+    let statement = format!("USE {}", crate::dialect::quote(database));
+    let stream = client.simple_query(statement).await.map_err(map_error)?;
+    stream.into_results().await.map_err(map_error)?;
+    Ok(())
+}
+
 /// The database the session is in, from the server itself.
 pub(crate) async fn current_database(client: &mut MssqlClient) -> Result<Option<String>, DriverError> {
     let stream = client.simple_query("SELECT DB_NAME()").await.map_err(map_error)?;

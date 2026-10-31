@@ -6,20 +6,20 @@ set -euo pipefail
 # Usage: ./scripts/build-duckdb.sh [arm64|x86_64|both]
 #
 # This compiles DuckDB from source with CMake so the extensions in
-# scripts/duckdb-macos-extensions.cmake link in statically. The amalgamation carries
-# none, so core_functions (`sum`, `avg`, `date_trunc` and most of the rest) would
-# download from extensions.duckdb.org on first use and fail offline.
+# scripts/duckdb-macos-extensions.cmake link in statically. Without them core_functions
+# (`sum`, `avg`, `date_trunc` and most of the rest) would download from
+# extensions.duckdb.org on first use and fail offline.
 #
 # Runtime autoloading stays on, unlike the iOS build, so httpfs and quack still
 # download on demand for remote Quack connections.
 #
-# Requirements: macOS, Xcode command line tools, cmake, git, libtool, lipo.
+# Requirements: macOS, Xcode command line tools, cmake, git, libtool, lipo, python3.
 #
 # After building, publish with scripts/publish-libs.sh (never regenerate
 # Libs/checksums.sha256 by hand):
 #   scripts/publish-libs.sh libduckdb_arm64.a libduckdb_x86_64.a libduckdb_universal.a libduckdb.a
 
-DUCKDB_VERSION="v1.5.2"
+DUCKDB_VERSION="v2.0.0"
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/deployment-target.sh"
 DEPLOYMENT_TARGET="${MACOSX_DEPLOYMENT_TARGET:-$DEPLOY_TARGET}"
 
@@ -32,14 +32,27 @@ EXTENSION_CONFIG="$REPO_ROOT/scripts/duckdb-macos-extensions.cmake"
 ARCH="${1:-both}"
 WORK_DIR="${DUCKDB_BUILD_DIR:-$(mktemp -d /tmp/duckdb-macos.XXXXXX)}"
 
-for tool in cmake git libtool lipo; do
+# Linked and registered the way extensions are. httplib is the HTTP client automatic installs
+# download with, loadable_extensions loads what they download. local_extension_repository is left
+# out: it points automatic installs at the build machine's own extension directory.
+CAPABILITIES=(httplib loadable_extensions)
+read -r -a EXTENSIONS <<< "$(sed -nE 's/^duckdb_extension_load\(([a-z_]+)\)?.*/\1/p' "$EXTENSION_CONFIG" | paste -sd ' ' -)"
+[ "${#EXTENSIONS[@]}" -gt 0 ] || {
+    echo "error: no duckdb_extension_load entries in $EXTENSION_CONFIG" >&2
+    exit 1
+}
+
+# Byte-identical archives on a rebuild.
+export ZERO_AR_DATE=1
+
+for tool in cmake git libtool lipo python3; do
     command -v "$tool" > /dev/null 2>&1 || {
         echo "error: '$tool' is required" >&2
         exit 1
     }
 done
 
-echo "Building DuckDB $DUCKDB_VERSION for macOS (extensions: $EXTENSION_CONFIG)"
+echo "Building DuckDB $DUCKDB_VERSION for macOS (extensions: ${EXTENSIONS[*]})"
 echo "Work dir: $WORK_DIR"
 
 if [ ! -d "$WORK_DIR/duckdb" ]; then
@@ -47,85 +60,70 @@ if [ ! -d "$WORK_DIR/duckdb" ]; then
     git clone --depth 1 --branch "$DUCKDB_VERSION" https://github.com/duckdb/duckdb.git "$WORK_DIR/duckdb"
 fi
 
-# The linked-extension registration in DuckDB core (extension_helper.cpp) is gated
-# on GENERATED_EXTENSION_HEADERS plus a DUCKDB_EXTENSION_<NAME>_LINKED define per
-# extension. CMake enables those only inside the extension/ subdir scope, which is
-# processed after src/, so core compiles with the registration call sites disabled
-# and the extensions never self-register. Enabling the defines globally makes core
-# register them at startup. The header gate pulls in
-# <build>/codegen/include/generated_extension_headers.hpp, which includes each
-# extension's entry header, so core also needs those include dirs.
-linked_defines_for() {
-    local build_dir="$1"
-    local ext_root="$WORK_DIR/duckdb/extension"
-    local defines="-DGENERATED_EXTENSION_HEADERS=1"
-    defines+=" -DDUCKDB_EXTENSION_CORE_FUNCTIONS_LINKED=1"
-    defines+=" -DDUCKDB_EXTENSION_JSON_LINKED=1"
-    defines+=" -DDUCKDB_EXTENSION_PARQUET_LINKED=1"
-    defines+=" -DDUCKDB_EXTENSION_ICU_LINKED=1"
-    defines+=" -DDUCKDB_EXTENSION_AUTOCOMPLETE_LINKED=1"
-    defines+=" -I$build_dir/codegen/include"
-    defines+=" -I$ext_root/core_functions/include"
-    defines+=" -I$ext_root/json/include"
-    defines+=" -I$ext_root/parquet/include"
-    defines+=" -I$ext_root/icu/include"
-    defines+=" -I$ext_root/autocomplete/include"
-    echo "$defines"
+# Each extension archive carries a describe function that nothing references. DuckDB's
+# generated loader passes them to duckdb_register_static_extension, and its autoregister
+# object calls the loader before main. Both go into the archive: the plugin links it with
+# -force_load, so neither is dropped (extension/README.md, Linking the static archives by hand).
+build_loader() {
+    local arch=$1 loader_dir=$2
+    mkdir -p "$loader_dir"
+    python3 "$WORK_DIR/duckdb/scripts/generate_static_extension_loader.py" \
+        --output "$loader_dir/static_extension_loader.c" "${CAPABILITIES[@]}" "${EXTENSIONS[@]}"
+    clang -arch "$arch" -mmacosx-version-min="$DEPLOYMENT_TARGET" -O2 \
+        -I "$WORK_DIR/duckdb/src/include" \
+        -c "$loader_dir/static_extension_loader.c" -o "$loader_dir/static_extension_loader.o"
+    clang++ -arch "$arch" -mmacosx-version-min="$DEPLOYMENT_TARGET" -O2 -std=c++17 \
+        -c "$WORK_DIR/duckdb/extension/loader/static_extension_autoregister.cpp" \
+        -o "$loader_dir/static_extension_autoregister.o"
+}
+
+# Exactly one archive per name, or the merge would silently drop or duplicate one.
+one_archive() {
+    local dir=$1 name=$2 found
+    found=$(find "$dir" -name "$name" -type f)
+    if [ "$(printf '%s\n' "$found" | grep -c .)" -ne 1 ]; then
+        echo "error: expected one $name under $dir, found: ${found:-none}" >&2
+        exit 1
+    fi
+    echo "$found"
 }
 
 build_arch() {
     local arch=$1
     local build_dir="$WORK_DIR/build-$arch"
     local out_lib="$LIBS_DIR/libduckdb_${arch}.a"
-    local defines
-    defines=$(linked_defines_for "$build_dir")
 
     echo "Building for $arch..."
+    # Without an explicit version DuckDB 2.0 names itself v2.0.0-dev<n>, and automatic installs then
+    # look for httpfs and quack in a folder named after the commit instead of the release.
     cmake -S "$WORK_DIR/duckdb" -B "$build_dir" -G "Unix Makefiles" \
         -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_OSX_ARCHITECTURES="$arch" \
         -DCMAKE_OSX_DEPLOYMENT_TARGET="$DEPLOYMENT_TARGET" \
-        -DCMAKE_C_FLAGS="$defines" \
-        -DCMAKE_CXX_FLAGS="$defines" \
         -DBUILD_SHELL=0 \
         -DBUILD_UNITTESTS=0 \
         -DBUILD_BENCHMARKS=0 \
-        -DENABLE_EXTENSION_AUTOLOADING=1 \
-        -DENABLE_EXTENSION_AUTOINSTALL=1 \
-        -DEXTENSION_CONFIGS="$EXTENSION_CONFIG"
+        -DDUCKDB_EXPLICIT_VERSION="$DUCKDB_VERSION" \
+        -DDUCKDB_EXTENSION_CONFIGS="$EXTENSION_CONFIG"
 
-    cmake --build "$build_dir" --config Release -j "$BUILD_JOBS"
+    local targets=(duckdb_static)
+    local name
+    for name in "${CAPABILITIES[@]}"; do targets+=("duckdb_$name"); done
+    for name in "${EXTENSIONS[@]}"; do targets+=("${name}_extension"); done
+    cmake --build "$build_dir" --config Release -j "$BUILD_JOBS" --target "${targets[@]}"
 
-    # Merge exactly three kinds of archive and nothing else.
-    #
-    # libduckdb_static.a already contains every third_party object, so adding
-    # third_party/*.a as well duplicates them: `libtool -static` accepts it silently and
-    # the plugin then fails to link with 1821 duplicate symbols, because it links this
-    # library with -force_load and that pulls in every member.
-    #
-    # libdummy_static_extension_loader.a is left out on purpose. DuckDB ships two
-    # definitions of ExtensionHelper::LoadAllExtensions: the real
-    # generated_extension_loader, which registers the statically linked extensions, and
-    # this no-op fallback for builds without them. With both present the linker may
-    # resolve the no-op, leaving the extensions unregistered and DuckDB back on the
-    # network, which is the whole failure this build exists to remove.
-    local archives
-    archives=$(
-        find "$build_dir/src" -name 'libduckdb_static.a' -type f
-        find "$build_dir/extension" -name 'libduckdb_generated_extension_loader.a' -type f
-        find "$build_dir/extension" -name 'lib*_extension.a' -type f
-    )
-    if [ -z "$archives" ]; then
-        echo "error: no static archives produced for $arch" >&2
-        exit 1
-    fi
-    # shellcheck disable=SC2086
-    libtool -static -o "$out_lib" $archives
+    local loader_dir="$build_dir/tablepro-loader"
+    build_loader "$arch" "$loader_dir"
 
-    if ar -t "$out_lib" | grep -q '^dummy_static_extension_loader.cpp.o$'; then
-        echo "error: $out_lib contains the no-op extension loader; the merge picked up the wrong archive." >&2
-        exit 1
-    fi
+    # libduckdb_static.a already holds every third_party object, so a third_party/*.a on top
+    # duplicates them: `libtool -static` accepts that silently and the plugin then fails to
+    # link with duplicate symbols under -force_load.
+    local archives=()
+    archives+=("$(one_archive "$build_dir/src" libduckdb_static.a)")
+    for name in "${CAPABILITIES[@]}"; do archives+=("$(one_archive "$build_dir/src" "libduckdb_$name.a")"); done
+    for name in "${EXTENSIONS[@]}"; do archives+=("$(one_archive "$build_dir/extension" "lib${name}_extension.a")"); done
+    libtool -static -o "$out_lib" "${archives[@]}" \
+        "$loader_dir/static_extension_loader.o" "$loader_dir/static_extension_autoregister.o"
 
     # A library with no core_functions in it is the bug this script exists to fix, and it
     # fails silently at runtime on whichever Mac cannot reach the registry.
@@ -136,21 +134,49 @@ build_arch() {
     core_symbols=$(nm -jU "$out_lib" 2> /dev/null | grep -ci corefunctions || true)
     if [ "$core_symbols" -eq 0 ]; then
         echo "error: $out_lib links no core_functions extension." >&2
-        echo "       Check EXTENSION_CONFIGS and the DUCKDB_EXTENSION_*_LINKED defines." >&2
+        echo "       Check $EXTENSION_CONFIG." >&2
         exit 1
     fi
     echo "Verified $core_symbols core_functions symbol(s) in $(basename "$out_lib")"
 
-    # The plugin links this with -force_load, so a duplicated symbol is a hard link failure
-    # that `libtool -static` never reports: link the way the plugin links. Member names are
-    # not the test: brotli and DuckDB core both ship a `platform.cpp.o` and coexist fine.
+    # Link the way the plugin links, -force_load included: a duplicated symbol is a hard link
+    # failure `libtool -static` never reports. Then run it, offline, where this Mac can: an
+    # extension that links but never registers fails only at runtime.
     local link_dir
     link_dir=$(mktemp -d)
-    cat > "$link_dir/link_probe.c" <<'PROBE'
+    local expected
+    expected=$(printf "'%s'," "${EXTENSIONS[@]}")
+    cat > "$link_dir/link_probe.c" << PROBE
+#include <stdio.h>
+#include <string.h>
 #include "duckdb.h"
-int main(void) { return duckdb_library_version() == 0; }
+static int run(duckdb_connection con, const char *sql) {
+    duckdb_result result;
+    duckdb_state state = duckdb_query(con, sql, &result);
+    if (state == DuckDBError) fprintf(stderr, "%s: %s\n", sql, duckdb_result_error(&result));
+    duckdb_destroy_result(&result);
+    return state == DuckDBError;
+}
+int main(void) {
+    duckdb_database db;
+    duckdb_connection con;
+    if (duckdb_open(NULL, &db) == DuckDBError || duckdb_connect(db, &con) == DuckDBError) return 2;
+    int failed = run(con, "SET autoinstall_known_extensions = false");
+    failed |= run(con, "SET autoload_known_extensions = false");
+    failed |= run(con, "SELECT sum(1)");
+    failed |= run(con, "SELECT CASE WHEN count(*) = ${#EXTENSIONS[@]} THEN 1 ELSE error('a linked extension did not load') END "
+                       "FROM duckdb_extensions() WHERE loaded AND install_mode = 'STATICALLY_LINKED' "
+                       "AND extension_name IN (${expected%,})");
+    if (strcmp(duckdb_library_version(), "$DUCKDB_VERSION") != 0) {
+        fprintf(stderr, "reports %s, not $DUCKDB_VERSION\n", duckdb_library_version());
+        failed = 1;
+    }
+    duckdb_disconnect(&con);
+    duckdb_close(&db);
+    return failed;
+}
 PROBE
-    if ! clang -arch "$arch" -I "$WORK_DIR/duckdb/src/include" \
+    if ! clang -arch "$arch" -mmacosx-version-min="$DEPLOYMENT_TARGET" -I "$WORK_DIR/duckdb/src/include" \
         -o "$link_dir/link_probe" "$link_dir/link_probe.c" \
         -Wl,-force_load,"$out_lib" -lc++ 2> "$link_dir/link.log"; then
         echo "error: $out_lib does not link under -force_load, which is how the plugin links it:" >&2
@@ -158,8 +184,18 @@ PROBE
         rm -rf "$link_dir"
         exit 1
     fi
-    rm -rf "$link_dir"
     echo "Verified $(basename "$out_lib") links under -force_load"
+    if arch "-$arch" /usr/bin/true 2> /dev/null; then
+        if ! arch "-$arch" "$link_dir/link_probe"; then
+            echo "error: $out_lib links but does not load ${EXTENSIONS[*]} without the network, or misreports its version." >&2
+            rm -rf "$link_dir"
+            exit 1
+        fi
+        echo "Verified $(basename "$out_lib") loads ${EXTENSIONS[*]} offline"
+    else
+        echo "warning: this Mac cannot run $arch, so the offline load check was skipped" >&2
+    fi
+    rm -rf "$link_dir"
 
     echo "Created $(basename "$out_lib") ($(du -h "$out_lib" | cut -f1))"
 }
@@ -198,5 +234,5 @@ echo
 echo "DuckDB static library built successfully."
 ls -lh "$LIBS_DIR"/libduckdb*.a
 echo
-echo "Verify with: scripts/probes/check-duckdb-offline-metadata.sh"
+echo "Verify with: scripts/probes/check-duckdb-extensions.sh"
 echo "Publish with: scripts/publish-libs.sh libduckdb_arm64.a libduckdb_x86_64.a libduckdb_universal.a libduckdb.a"

@@ -7,6 +7,7 @@ use gtk4::{gio, glib};
 use libadwaita as adw;
 use libadwaita::prelude::*;
 use tablepro_core::meta::TableRef;
+use tablepro_session::SessionKey;
 use tablepro_storage::{DraftId, DraftScope};
 use uuid::Uuid;
 
@@ -139,6 +140,7 @@ impl TabFactory {
             &page,
             &resolve_tab_title(&slot.identity(), self.parts.naming.get()),
             &self.parts.label,
+            slot.moved_to().as_deref(),
         );
         self.parts.tabs.borrow_mut().insert(id, slot);
         self.parts.input.deliver(WorkspaceInput::WorkspaceTabsChanged);
@@ -183,10 +185,16 @@ impl TabFactory {
             close_timeout: parts.context.close_timeout(),
             snippets: parts.snippets.clone(),
         });
+        let moved = database.is_some();
         if let Some(database) = database {
             editor.move_to_database(&database);
         }
         connect_editor(&editor, id, &parts.input, &parts.toasts);
+        // It moved before the workspace heard it, which follows it once
+        // the tab is in.
+        if moved {
+            parts.input.deliver(WorkspaceInput::EditorTabDatabaseChanged(id));
+        }
         editor.attach_assistant(parts.assistant.clone());
         // After the signals are connected, so the workspace marks a tab
         // restored with unsaved changes.
@@ -230,7 +238,14 @@ impl TabFactory {
             tracker: parts.change_trackers.register(id),
             schema: schema.clone(),
             table: name.clone(),
-            connection_id: parts.context.active.metadata().map(|metadata| metadata.id),
+            // Column widths and filters are kept per connection and table;
+            // another database's table of the same name is not that one.
+            connection_id: match parts.label.key() {
+                SessionKey::SavedIn { .. } => None,
+                SessionKey::Saved(_) | SessionKey::File(_) => {
+                    parts.context.active.metadata().map(|metadata| metadata.id)
+                }
+            },
             read_only: parts.read_only,
             page_size: page.page_size,
             initial_offset: page.offset,
@@ -497,7 +512,7 @@ pub(super) fn connect_editor(
     let file = input.clone();
     editor.connect_file_changed(move |_| file.deliver(WorkspaceInput::EditorTabFileChanged(tab_id)));
     let database = input.clone();
-    editor.connect_database_changed(move |_| database.deliver(WorkspaceInput::EditorTabDatabaseChanged));
+    editor.connect_database_changed(move |_| database.deliver(WorkspaceInput::EditorTabDatabaseChanged(tab_id)));
     let transaction = input.clone();
     editor.connect_transaction_changed(move |_, _| transaction.deliver(WorkspaceInput::EditorTransactionChanged));
     let toast = input.clone();

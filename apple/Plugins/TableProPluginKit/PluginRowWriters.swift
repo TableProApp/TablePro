@@ -68,9 +68,9 @@ public enum PluginRowWriters {
         var processed = value
         if options.flattensLineBreaks {
             processed = processed
-                .replacingOccurrences(of: "\r\n", with: " ")
-                .replacingOccurrences(of: "\n", with: " ")
-                .replacingOccurrences(of: "\r", with: " ")
+                .replacingOccurrences(of: "\r\n", with: " ", options: .literal)
+                .replacingOccurrences(of: "\n", with: " ", options: .literal)
+                .replacingOccurrences(of: "\r", with: " ", options: .literal)
         }
         var wasNeutralised = false
         // Scalars, not Characters: `\r\n` is one Character, so a Character test misses a Windows line break.

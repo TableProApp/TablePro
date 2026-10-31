@@ -52,6 +52,6 @@ internal struct CommandLineShim: Sendable {
     }
 
     internal static func quote(_ value: String) -> String {
-        "'" + value.replacingOccurrences(of: "'", with: "'\\''") + "'"
+        "'" + value.replacingOccurrences(of: "'", with: "'\\''", options: .literal) + "'"
     }
 }

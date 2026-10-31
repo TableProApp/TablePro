@@ -27,6 +27,10 @@ use crate::ui::welcome_view::WelcomeView;
 use crate::ui::workspace::WorkspaceShell;
 use crate::workspace::{CloseGuards, WindowInhibitor};
 
+/// A connect that failed beside the window's sessions: where it came
+/// from, why it failed, and the other databases its next connect opens.
+pub(super) type FailureBeside = (ConnectSource, ConnectFailure, Vec<String>);
+
 #[derive(Default, gtk::CompositeTemplate, glib::Properties)]
 #[template(resource = "/app/tablepro/TablePro/ui/session-window.ui")]
 #[properties(wrapper_type = super::SessionWindow)]
@@ -53,7 +57,7 @@ pub struct SessionWindow {
     pub(super) failed: RefCell<Option<FailedConnect>>,
     /// The last failure of each connect that failed beside something
     /// else, until the key connects again, for its Details.
-    pub(super) failures: RefCell<HashMap<SessionKey, (ConnectSource, ConnectFailure)>>,
+    pub(super) failures: RefCell<HashMap<SessionKey, FailureBeside>>,
     /// The shell, from the first session the window adopts to the last
     /// one it tears down.
     pub(super) shell: RefCell<Option<WorkspaceShell>>,

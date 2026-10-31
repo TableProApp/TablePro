@@ -39,6 +39,7 @@ struct NativeDumpRegistryTests {
         _ type: DatabaseType,
         kind: NativeDumpKind = .backup,
         connection overrideConnection: DatabaseConnection? = nil,
+        database: String = "sales",
         password: String? = "s3cret",
         fileURL: URL = URL(fileURLWithPath: "/tmp/out.bin"),
         scope: NativeDumpScope = .wholeDatabase,
@@ -60,7 +61,7 @@ struct NativeDumpRegistryTests {
             ),
             request: NativeDumpDescriptor.Request(
                 connection: effective,
-                database: "sales",
+                database: database,
                 fileURL: fileURL,
                 password: password,
                 scope: scope,
@@ -224,6 +225,24 @@ struct NativeDumpRegistryTests {
         #expect(!built.arguments.contains { $0.hasPrefix("--host") || $0.hasPrefix("--port") })
     }
 
+    @Test("The tools sign in with the Keychain's key passphrase and session token, never a plain copy")
+    func mongoToolsGetTheKeychainSecrets() throws {
+        var aws = connection(type: .mongodb, sslMode: .required, sslEnabled: true)
+        aws.sslConfig.clientCertificatePath = "/Users/alice/client.pem"
+        aws.mongoAuthMechanism = "MONGODB-AWS"
+        aws.additionalFields["sslClientKeyPassphrase"] = "hunter2"
+        aws.additionalFields["mongoAWSSessionToken"] = "FQoG"
+        aws.additionalFields["mongoParam_authMechanismProperties"] = "AWS_SESSION_TOKEN:stale"
+        aws.additionalFields["mongoParam_proxyPassword"] = "proxy-secret"
+
+        let uri = try configurationValue("uri", in: configuration(of: command(.mongodb, connection: aws)))
+
+        #expect(uri.contains("tlsCertificateKeyFilePassword=hunter2"))
+        #expect(uri.contains("authMechanismProperties=AWS_SESSION_TOKEN%3AFQoG"))
+        #expect(!uri.contains("stale"))
+        #expect(!uri.contains("proxy-secret"))
+    }
+
     @Test("A host list and its replica set reach the tool whole, not as the first host")
     func mongoHostListUsesAConnectionString() throws {
         var replicaSet = connection(type: .mongodb, host: "a.example.com", port: 27_017)
@@ -337,11 +356,37 @@ struct NativeDumpRegistryTests {
     func sqliteUsesTheFilePath() throws {
         let file = connection(type: .sqlite, host: "", port: 0, database: "/tmp/app.sqlite", username: "")
         let backup = try command(.sqlite, connection: file)
-        #expect(backup.arguments == ["/tmp/app.sqlite", ".dump"])
+        #expect(backup.arguments == ["-safe", "/tmp/app.sqlite", ".dump"])
 
         let restore = try command(.sqlite, kind: .restore, connection: file)
-        #expect(restore.arguments == ["/tmp/app.sqlite"])
+        #expect(restore.arguments == ["-safe", "-bail", "/tmp/app.sqlite"])
         #expect(restore.isRestore)
+    }
+
+    @Test("A SQLite restore refuses a dump's shell commands and stops at its first error")
+    func sqliteRestoreRunsNoShellCommand() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("sqlite-safe-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let marker = directory.appendingPathComponent("ran")
+        let dump = directory.appendingPathComponent("hostile.sql")
+        try "CREATE TABLE t(a);\n.shell touch '\(marker.path)'\nINSERT INTO t VALUES(1);\n"
+            .write(to: dump, atomically: true, encoding: .utf8)
+        let database = directory.appendingPathComponent("app.sqlite").path
+        let file = connection(type: .sqlite, host: "", port: 0, database: database, username: "")
+        let restore = try command(.sqlite, kind: .restore, connection: file)
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/sqlite3")
+        process.arguments = restore.arguments
+        process.standardInput = try FileHandle(forReadingFrom: dump)
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        try process.run()
+        process.waitUntilExit()
+
+        #expect(process.terminationStatus != 0)
+        #expect(!FileManager.default.fileExists(atPath: marker.path))
     }
 
     /// libSQL claims the SQLite descriptor and keeps its path in a plugin-declared additional
@@ -354,7 +399,7 @@ struct NativeDumpRegistryTests {
         let backup = try command(
             .libsql, connection: remote, localFilePath: "/tmp/turso.db"
         )
-        #expect(backup.arguments == ["/tmp/turso.db", ".dump"])
+        #expect(backup.arguments == ["-safe", "/tmp/turso.db", ".dump"])
     }
 
     /// A libSQL connection to a Turso URL has no local file, so `sqlite3` cannot reach it at all.
@@ -368,6 +413,76 @@ struct NativeDumpRegistryTests {
         var local = remote
         local.additionalFields["libsqlFilePath"] = "/tmp/turso.db"
         #expect(NativeDumpRegistry.supports(local, localFilePath: "/tmp/turso.db"))
+    }
+
+    @Test("Every value of the SQL Server connection string is quoted", arguments: [
+        (NativeDumpKind.backup, "/SourceConnectionString:"), (.restore, "/TargetConnectionString:")
+    ])
+    func sqlServerConnectionStringQuotesItsValues(kind: NativeDumpKind, flag: String) throws {
+        #expect(try NativeDumpArgumentQuoting.sqlServerConnectionStringValue(#"a;b"c"#) == #""a;b""c""#)
+        let built = try command(
+            .mssql,
+            kind: kind,
+            connection: connection(type: .mssql, port: 1_433, sslMode: .verifyIdentity),
+            database: "x;Server=elsewhere;TrustServerCertificate=true",
+            password: "p;w"
+        )
+        let argument = try #require(built.arguments.first { $0.hasPrefix(flag) })
+        #expect(
+            argument.dropFirst(flag.count) == """
+                Server="db.example.com,1433";Database="x;Server=elsewhere;TrustServerCertificate=true";\
+                User ID="alice";Password="p;w";Encrypt=true
+                """
+        )
+    }
+
+    @Test("A NUL in a SQL Server or PostgreSQL value is refused before anything runs")
+    func nulInAConnectionValueIsRefused() {
+        #expect(throws: NativeDumpError.nulInArgument) {
+            try command(.mssql, connection: connection(type: .mssql, port: 1_433), password: "p\u{0}w")
+        }
+        #expect(throws: NativeDumpError.nulInArgument) {
+            try command(.postgresql, database: "sa\u{0}les")
+        }
+    }
+
+    // libpq reads a -d value holding `=` as a conninfo whose host overrides -h. Measured with
+    // pg_dump 17.11: the raw name dialed 127.0.0.66, the quoted one dumped the named database.
+    @Test("A PostgreSQL database name reaches -d as a quoted dbname, in both directions", arguments: [
+        NativeDumpKind.backup, .restore
+    ])
+    func postgresDatabaseNameIsQuoted(kind: NativeDumpKind) throws {
+        let hostile = try command(.postgresql, kind: kind, database: "host=127.0.0.66 port=15433 sslmode=disable")
+        let value = try #require(hostile.arguments.firstIndex(of: "-d").map { hostile.arguments[$0 + 1] })
+        #expect(value == "dbname='host=127.0.0.66 port=15433 sslmode=disable'")
+        #expect(hostile.arguments.starts(with: ["--no-password", "-h", "db.example.com", "-p", "5432"]))
+
+        let quoted = try command(.postgresql, kind: kind, database: "a'b\\c'\u{301}")
+        let escaped = try #require(quoted.arguments.firstIndex(of: "-d").map { quoted.arguments[$0 + 1] })
+        #expect(escaped == "dbname='a\\'b\\\\c\\'\u{301}'")
+    }
+
+    // `\!` and `system` in piped input run a shell command, with MYSQL_PWD in its environment.
+    // Measured with MariaDB 13.0.2: --binary-mode refuses both and `\.`, and a mariadb-dump of
+    // routines, triggers, events and binary data restores the same under these flags.
+    @Test("A MySQL or MariaDB restore turns the client's own commands off", arguments: [
+        (NativeDumpToolFlavor.mysql, "mysql  Ver 8.4.6 for macos15 on arm64 (Homebrew)", "--skip-system-command"),
+        (.mysql, "mysql  Ver 8.0.39 for macos14 on arm64", nil),
+        (.mariadb, "mysql from 13.0.2-MariaDB, client 15.2 for osx10.23 (arm64) using  EditLine wrapper", "--sandbox"),
+        (.mariadb, "mysql  Ver 15.1 Distrib 10.6.17-MariaDB, for osx10.19 (arm64)", nil),
+        (.unidentified, nil, nil),
+    ] as [(NativeDumpToolFlavor, String?, String?)])
+    func mysqlRestoreTurnsClientCommandsOff(flavor: NativeDumpToolFlavor, versionText: String?, switchFlag: String?) throws {
+        let restore = try command(.mysql, kind: .restore, flavor: flavor, toolVersionText: versionText)
+        let terminator = try #require(restore.arguments.firstIndex(of: "--"))
+        let options = restore.arguments[..<terminator]
+        #expect(options.contains("--binary-mode"))
+        #expect(options.contains("--local-infile=0"))
+        #expect(options.contains("--skip-system-command") == (switchFlag == "--skip-system-command"))
+        #expect(options.contains("--sandbox") == (switchFlag == "--sandbox"))
+
+        let backup = try command(.mysql, kind: .backup, flavor: flavor, toolVersionText: versionText)
+        #expect(!backup.arguments.contains("--binary-mode"))
     }
 
     @Test("An empty host falls back to loopback on every engine that takes one")

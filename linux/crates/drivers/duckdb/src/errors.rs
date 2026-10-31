@@ -9,7 +9,6 @@ use std::path::Path;
 use tablepro_core::{BusyReason, DriverError, LossPhase, ReadOnlyRefusal, ServerCode, ServerDiagnostics};
 
 const INTERRUPT: &str = "INTERRUPT";
-const PARSER: &str = "Parser";
 
 /// A message split into its kind and the rest, where it has a kind.
 fn split_kind(message: &str) -> (Option<&str>, &str) {
@@ -92,17 +91,6 @@ pub(crate) fn is_interrupt(error: &DriverError) -> bool {
             Some(ServerCode::DuckDb { error_type }) if error_type == INTERRUPT
         ),
         DriverError::RolledBack { source, .. } => is_interrupt(source),
-        _ => false,
-    }
-}
-
-/// Whether DuckDB refused the text of a statement before running it.
-pub(crate) fn is_parse_error(error: &DriverError) -> bool {
-    match error {
-        DriverError::Server(diagnostics) => matches!(
-            &diagnostics.code,
-            Some(ServerCode::DuckDb { error_type }) if error_type == PARSER
-        ),
         _ => false,
     }
 }

@@ -12,6 +12,7 @@ struct TransactionRollBackClassifierTests {
             "Rollback Tran;",
             "-- note\nROLLBACK",
             "/* undo */ ROLLBACK;",
+            "/*/ COMMIT */ ROLLBACK",
             "ROLLBACK AND CHAIN",
             "rollback work and no chain",
             "ROLLBACK RELEASE",
