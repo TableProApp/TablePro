@@ -33,7 +33,8 @@ struct MenuValidationContext: Equatable {
     var isQueryTab = false
     var hasResultRows = false
     var canExportDataDictionary = false
-    var isCurrentTabEditable = false
+    var canInsertRows = false
+    var canDeleteRows = false
     // Add and Duplicate Row stage DEFAULT from the table schema; result metadata alone stages NULL the server refuses for identity.
     var isCurrentTabSchemaResolved = false
     var canRestorePreviousValues = false
@@ -63,7 +64,7 @@ struct MenuValidationContext: Equatable {
     // An engine with no drop DDL for the object must not offer Delete, or the app invents SQL it cannot run.
     var canDropSelectedTables = false
     // Without the row check Delete stayed lit with no selection and fell through to the sidebar's drop path, doing nothing.
-    var canDeleteSelectedRows: Bool { isCurrentTabEditable && hasRowSelection }
+    var canDeleteSelectedRows: Bool { canDeleteRows && hasRowSelection }
     // AppKit sends the key equivalent anyway, so enabling over a handler that bails at its first guard swallows Cmd+V silently.
     var canPasteRows = false
     var canCloseOtherTabs = false
@@ -230,7 +231,7 @@ extension MainSplitViewController: NSMenuItemValidation {
             return context.isConnected && context.isQueryTab
 
         case #selector(addRow(_:)), #selector(duplicateRow(_:)):
-            return context.isConnected && context.isCurrentTabEditable && !context.isReadOnly
+            return context.isConnected && context.canInsertRows && !context.isReadOnly
                 && context.isCurrentTabSchemaResolved
         case #selector(restorePreviousValues(_:)):
             return context.isConnected && context.canRestorePreviousValues && !context.isReadOnly
@@ -593,7 +594,8 @@ extension MainSplitViewController: NSMenuItemValidation {
             isQueryTab: actions.isQueryTab,
             hasResultRows: actions.hasResultRows,
             canExportDataDictionary: actions.canExportDataDictionary,
-            isCurrentTabEditable: actions.isCurrentTabEditable,
+            canInsertRows: actions.currentTabAllows(.insert),
+            canDeleteRows: actions.currentTabAllows(.delete),
             isCurrentTabSchemaResolved: actions.isCurrentTabSchemaResolved,
             canRestorePreviousValues: actions.canRestorePreviousValues,
             canInsertDocument: actions.canInsertDocument,

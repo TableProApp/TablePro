@@ -254,20 +254,24 @@ final class QueryExecutor {
     static func fetchTableSchema(
         scope: DatabaseScope,
         tableName: String,
-        isView: Bool = false
+        isView: Bool
     ) async throws -> FetchedTableSchema {
         queryExecutorLog.info(
             "[fk] schema fetch start table=\(tableName, privacy: .private(mask: .hash)) db=\(scope.database, privacy: .public) schema=\(scope.schema ?? "default", privacy: .public)"
         )
-        let (columns, approximateRowCount) = try await DatabaseManager.shared.withMetadataDriver(
+        let (columns, approximateRowCount, viewRowEditing) = try await DatabaseManager.shared.withMetadataDriver(
             scope: scope
         ) { driver in
             let columns = try await driver.fetchColumns(table: tableName, schema: scope.schema)
             let approximateRowCount = try? await driver.fetchApproximateRowCount(table: tableName, schema: scope.schema)
-            return (columns, approximateRowCount)
+            // A view has no key of its own; a tab that does not know its kind asks whenever none shows.
+            let asksView = isView || !columns.contains { $0.isPrimaryKey }
+            let viewRowEditing = asksView
+                ? await fetchViewRowEditing(viewName: tableName, scope: scope, on: driver)
+                : nil
+            return (columns, approximateRowCount, viewRowEditing)
         }
         let foreignKeys = await fetchForeignKeys(scope: scope, tableName: tableName)
-        let viewRowEditing = isView ? await fetchViewRowEditing(scope: scope, viewName: tableName) : nil
         queryExecutorLog.info(
             "[fk] schema fetch done table=\(tableName, privacy: .private(mask: .hash)) columns=\(columns.count) fks=\(foreignKeys.map { String($0.count) } ?? "failed", privacy: .public)"
         )
@@ -279,12 +283,14 @@ final class QueryExecutor {
         )
     }
 
-    // A failed check leaves the view read-only, as it was before views could be edited.
-    private static func fetchViewRowEditing(scope: DatabaseScope, viewName: String) async -> PluginViewRowEditing? {
+    // A failed check leaves the view read-only, as every view was before the check existed.
+    nonisolated private static func fetchViewRowEditing(
+        viewName: String,
+        scope: DatabaseScope,
+        on driver: DatabaseDriver
+    ) async -> PluginViewRowEditing? {
         do {
-            return try await DatabaseManager.shared.withMetadataDriver(scope: scope) { driver in
-                try await driver.fetchViewRowEditing(view: viewName, schema: scope.schema)
-            }
+            return try await driver.fetchViewRowEditing(view: viewName, schema: scope.schema)
         } catch {
             queryExecutorLog.error(
                 "View row editing check failed for \(viewName, privacy: .private(mask: .hash)): \(error.publicLogShape, privacy: .public)"
@@ -329,6 +335,10 @@ final class QueryExecutor {
             }
             fks = byColumn
         }
+        let viewTarget = schema.viewRowEditing?.writeTarget
+        if let viewTarget {
+            overlayBaseColumns(of: viewTarget, defaults: &defaults, nullable: &nullable, identity: &identity)
+        }
         var enumValues: [String: [String]] = [:]
         var comments: [String: String] = [:]
         for col in schema.columns {
@@ -345,12 +355,12 @@ final class QueryExecutor {
             columnDefaults: defaults,
             columnForeignKeys: fks,
             columnNullable: nullable,
-            primaryKeyColumns: schema.viewRowEditing?.keyColumns ?? schema.columns.filter { $0.isPrimaryKey }.map(\.name),
+            primaryKeyColumns: viewTarget?.keyColumns ?? schema.columns.filter { $0.isPrimaryKey }.map(\.name),
             generatedColumns: Set(
                 schema.columns
                     .filter { $0.isGenerated || $0.identityKind == .always }
                     .map(\.name)
-            ),
+            ).union(viewTarget?.readOnlyColumns ?? []),
             columnIdentity: identity,
             approximateRowCount: schema.approximateRowCount,
             columnEnumValues: enumValues,
@@ -363,6 +373,20 @@ final class QueryExecutor {
             columnDeclaredTypes: declaredTypes,
             viewRowEditing: schema.viewRowEditing
         )
+    }
+
+    // A view's own catalog entry knows nothing of the defaults, identity and nullability of the table it writes.
+    private static func overlayBaseColumns(
+        of target: PluginViewWriteTarget,
+        defaults: inout [String: String?],
+        nullable: inout [String: Bool],
+        identity: inout [String: IdentityKind]
+    ) {
+        for (viewColumn, base) in target.baseColumns {
+            if (defaults[viewColumn] ?? nil) == nil, let value = base.defaultValue { defaults[viewColumn] = value }
+            nullable[viewColumn] = base.isNullable
+            if base.assignsValue { identity[viewColumn] = base.acceptsWrites ? .byDefault : .always }
+        }
     }
 
     /// Both halves of a `RowMatchPolicy` are the columns whose declared type starts with one of the

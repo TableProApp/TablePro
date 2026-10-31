@@ -33,10 +33,11 @@ struct ParseSchemaMetadataTests {
             foreignKeys: nil,
             approximateRowCount: nil
         )
-        schema.viewRowEditing = .editable(keyColumns: ["key_id"])
+        let answer = PluginViewRowEditing.editable(TestFixtures.viewTarget(keys: ["key_id"]))
+        schema.viewRowEditing = answer
         let parsed = QueryExecutor.parseSchemaMetadata(schema)
         #expect(parsed.primaryKeyColumns == ["key_id"])
-        #expect(parsed.viewRowEditing == .editable(keyColumns: ["key_id"]))
+        #expect(parsed.viewRowEditing == answer)
     }
 
     @Test("A read-only view keeps no key and carries its reason")
@@ -46,6 +47,40 @@ struct ParseSchemaMetadataTests {
         let parsed = QueryExecutor.parseSchemaMetadata(schema)
         #expect(parsed.primaryKeyColumns.isEmpty)
         #expect(parsed.viewRowEditing == .readOnly(.readsSeveralTables))
+    }
+
+    @Test("A view's computed and server-owned columns are never written, and its base table's defaults apply")
+    func editableViewTakesItsBaseColumns() {
+        var schema = FetchedTableSchema(
+            columns: ["id", "name", "q2", "ident", "note"].map { column($0, comment: nil) },
+            foreignKeys: nil,
+            approximateRowCount: nil
+        )
+        let serial = PluginViewBaseColumn(
+            name: "id", isNullable: false, defaultValue: "nextval('t_id_seq')", assignsValue: false, acceptsWrites: true
+        )
+        let name = PluginViewBaseColumn(
+            name: "name", isNullable: false, defaultValue: nil, assignsValue: false, acceptsWrites: true
+        )
+        let ident = PluginViewBaseColumn(
+            name: "ident", isNullable: false, defaultValue: nil, assignsValue: true, acceptsWrites: false
+        )
+        let note = PluginViewBaseColumn(
+            name: "note", isNullable: true, defaultValue: "'n/a'", assignsValue: false, acceptsWrites: true
+        )
+        schema.viewRowEditing = .editable(TestFixtures.viewTarget(
+            keys: ["id"],
+            readOnly: ["q2", "ident"],
+            baseColumnNames: ["id": "id", "name": "name", "ident": "ident", "note": "note"],
+            baseColumns: ["id": serial, "name": name, "ident": ident, "note": note]
+        ))
+        let parsed = QueryExecutor.parseSchemaMetadata(schema)
+        #expect(parsed.generatedColumns == ["q2", "ident"])
+        #expect((parsed.columnDefaults["id"] ?? nil) == "nextval('t_id_seq')")
+        #expect((parsed.columnDefaults["note"] ?? nil) == "'n/a'")
+        #expect(parsed.columnNullable["name"] == false)
+        #expect(parsed.columnIdentity["ident"] == .always)
+        #expect(parsed.columnIdentity["name"] == nil)
     }
 
     @Test("Excludes nil and empty comments")

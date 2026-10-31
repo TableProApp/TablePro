@@ -325,9 +325,9 @@ extension QueryExecutionCoordinator {
 
         parent.tabManager.mutate(at: idx) { tab in
             tab.tableContext.primaryKeyColumns = resolvedPKs
-            if let viewRowEditing = metadata?.viewRowEditing {
-                tab.tableContext.viewRowEditing = viewRowEditing
-            }
+            // Cached and inline metadata carry no answer, so the last one stands unless the relation changed.
+            let kept = tableName == previousTableName ? tab.tableContext.viewRowEditing : nil
+            tab.tableContext.adoptViewAnswer(metadata?.viewRowEditing ?? kept, tabType: tab.tabType)
         }
         captureOrigin(
             tabIndex: idx,
@@ -574,9 +574,7 @@ extension QueryExecutionCoordinator {
             resultSet.origin?.keysResolved = true
         }
         // Phase 2 always read the schema afresh, so a nil answer replaces a stale one.
-        if resultSet.origin?.isView == true {
-            resultSet.origin?.viewRowEditing = parsed.viewRowEditing
-        }
+        resultSet.origin?.viewRowEditing = parsed.viewRowEditing
     }
 
     private func applyEnumValues(
@@ -625,10 +623,10 @@ extension QueryExecutionCoordinator {
                 tab.display.activeResultSet?.origin?.primaryKeyColumns = parsed.primaryKeyColumns
                 tab.display.activeResultSet?.origin?.keysResolved = true
             }
-            if tab.tableContext.resolvedObjectKind() == .view {
-                tab.tableContext.viewRowEditing = parsed.viewRowEditing
-                tab.display.activeResultSet?.origin?.viewRowEditing = parsed.viewRowEditing
-            }
+            tab.tableContext.adoptViewAnswer(parsed.viewRowEditing, tabType: tab.tabType)
+            tab.display.activeResultSet?.origin?.viewRowEditing = parsed.viewRowEditing
+            tab.display.activeResultSet?.origin?.isView = tab.tableContext.isView
+            tab.display.activeResultSet?.origin?.objectType = tab.tableContext.objectType
             if let approxCount = parsed.approximateRowCount, approxCount > 0,
                !tab.filterState.narrowsRows(browseSearchIsSupported: usesBrowseSearch) {
                 tab.pagination.applyDerivedRowCount(approxCount, isApproximate: true)

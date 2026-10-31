@@ -4,18 +4,14 @@
 //
 
 import Foundation
+import TableProPluginKit
 
 extension MainContentCoordinator {
-    /// Why the rows on screen cannot be written back, or nil when they can.
-    ///
-    /// Only a query tab holds more than one result, so only a query tab can be showing rows that
-    /// its own table context no longer describes. A table tab has exactly one result and keeps the
-    /// gate it always had.
-    ///
-    /// This is fail-closed on purpose: a result that never captured where its rows came from
-    /// refuses the edit instead of borrowing whichever table the tab ran last (#2243).
+    // A query tab can show a result its table context no longer describes, so it asks the result's own
+    // origin, fail-closed (#2243). A table tab has one result and only a view there explains a refusal.
     var activeResultEditRefusal: ResultEditRefusal? {
-        guard let tab = tabManager.selectedTab, tab.tabType == .query else { return nil }
+        guard let tab = tabManager.selectedTab else { return nil }
+        guard tab.tabType == .query else { return tab.tableContext.viewEditRefusal }
         return ResultEditability.refusal(
             for: tab.display.activeResultSet?.origin,
             currentDatabaseName: scope(for: tab)?.database ?? browseDatabaseName
@@ -35,5 +31,19 @@ extension MainContentCoordinator {
             && !safeModeLevel.blocksAllWrites
             && activeResultEditRefusal == nil
             && !tabExecution.isExecuting(tab.id)
+    }
+
+    // A query tab learns its result reads a view from the result's origin; a table tab from its context.
+    var activeViewWriteTarget: PluginViewWriteTarget? {
+        guard let tab = tabManager.selectedTab else { return nil }
+        guard tab.tabType == .query else { return tab.tableContext.viewWriteTarget }
+        guard let origin = tab.display.activeResultSet?.origin else { return nil }
+        return origin.viewRowEditing?.writeTarget(keyedOn: origin.primaryKeyColumns)
+    }
+
+    // A view can allow updates while the server refuses inserts or deletes through it.
+    func canEditActiveResult(_ operation: PluginViewWriteOperations) -> Bool {
+        guard canEditActiveResult else { return false }
+        return (activeViewWriteTarget?.operations ?? .all).contains(operation)
     }
 }

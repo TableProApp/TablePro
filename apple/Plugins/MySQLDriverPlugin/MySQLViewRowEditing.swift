@@ -2,232 +2,433 @@
 //  MySQLViewRowEditing.swift
 //  MySQLDriverPlugin
 //
-//  Works out whether the grid may write rows through a MySQL or MariaDB view. The server answers
-//  whether the view is updatable; the definition it stores names every column fully qualified,
-//  as in "select `db`.`t`.`id` AS `key_id` from `db`.`t`", which says which base column each view
-//  column shows. Pure, so it is testable without a server.
-//
 
 import Foundation
 import TableProPluginKit
 
 enum MySQLViewRowEditing {
-    struct BaseTable: Equatable {
-        let database: String?
+    static let maximumDepth = 8
+
+    struct Relation: Hashable {
+        let database: String
         let name: String
     }
 
-    struct Definition: Equatable {
-        /// Nil when the FROM clause is anything but one table: a join, a list or a derived table.
-        let baseTable: BaseTable?
-        let origins: [PluginViewColumnOrigin]
+    struct View: Equatable {
+        let relation: Relation
+        let isUpdatable: Bool
+        let definition: String
     }
 
-    static func viewQuery(name: String, database: String?, escape: (String) -> String) -> String {
-        """
-        SELECT IS_UPDATABLE, VIEW_DEFINITION FROM information_schema.VIEWS \
-        WHERE TABLE_SCHEMA = \(schemaExpression(database, escape: escape)) AND TABLE_NAME = '\(escape(name))'
-        """
+    struct Level: Equatable {
+        let base: Relation
+        let columns: [String]
+        // Per view column, the column of `base` it shows; nil for a computed one.
+        let sources: [String?]
+
+        func source(of column: String) -> String? {
+            guard let index = columns.firstIndex(where: { MySQLViewRowEditing.sameName($0, column) }) else {
+                return nil
+            }
+            return sources[index]
+        }
     }
 
-    static func primaryKeyQuery(table: BaseTable, viewDatabase: String?, escape: (String) -> String) -> String {
+    enum Step: Equatable {
+        case readOnly(PluginViewReadOnlyReason)
+        case reads(Level)
+    }
+
+    enum Select: Equatable {
+        case oneTable(Relation, sources: [String?])
+        case severalTables
+        case noTable
+    }
+
+    struct ColumnCountMismatch: Error, Equatable {
+        let view: Relation
+        let items: Int
+        let columns: Int
+    }
+
+    struct Token: Equatable {
+        enum Kind: Equatable {
+            case word
+            case quoted
+            case literal
+            case symbol
+        }
+
+        let kind: Kind
+        let text: String
+        let depth: Int
+
+        func isWord(_ word: String) -> Bool {
+            kind == .word && text.lowercased() == word
+        }
+
+        func isWord(in words: Set<String>) -> Bool {
+            kind == .word && words.contains(text.lowercased())
+        }
+
+        func isSymbol(_ symbol: String) -> Bool {
+            kind == .symbol && text == symbol
+        }
+
+        var identifier: String? {
+            switch kind {
+            case .quoted:
+                return text
+            case .word:
+                guard let first = text.unicodeScalars.first, !(48...57).contains(first.value) else { return nil }
+                return text
+            case .literal, .symbol:
+                return nil
+            }
+        }
+    }
+
+    static func viewQuery(database: String?, name: String, escape: (String) -> String) -> String {
+        let schema = database.map { "'\(escape($0))'" } ?? "DATABASE()"
+        return """
+            SELECT TABLE_SCHEMA, TABLE_NAME, IS_UPDATABLE, VIEW_DEFINITION FROM information_schema.VIEWS \
+            WHERE TABLE_SCHEMA = \(schema) AND TABLE_NAME = '\(escape(name))'
+            """
+    }
+
+    static func columnsQuery(_ relation: Relation, escape: (String) -> String) -> String {
         """
-        SELECT COLUMN_NAME FROM information_schema.KEY_COLUMN_USAGE \
-        WHERE TABLE_SCHEMA = \(schemaExpression(table.database ?? viewDatabase, escape: escape)) \
-        AND TABLE_NAME = '\(escape(table.name))' AND CONSTRAINT_NAME = 'PRIMARY' \
+        SELECT COLUMN_NAME, IS_NULLABLE, COLUMN_DEFAULT, EXTRA, COLUMN_TYPE FROM information_schema.COLUMNS \
+        WHERE TABLE_SCHEMA = '\(escape(relation.database))' AND TABLE_NAME = '\(escape(relation.name))' \
         ORDER BY ORDINAL_POSITION
         """
     }
 
-    private static func schemaExpression(_ database: String?, escape: (String) -> String) -> String {
-        database.map { "'\(escape($0))'" } ?? "DATABASE()"
+    static func primaryKeyQuery(_ relation: Relation, escape: (String) -> String) -> String {
+        """
+        SELECT COLUMN_NAME FROM information_schema.KEY_COLUMN_USAGE \
+        WHERE TABLE_SCHEMA = '\(escape(relation.database))' AND TABLE_NAME = '\(escape(relation.name))' \
+        AND CONSTRAINT_NAME = 'PRIMARY' ORDER BY ORDINAL_POSITION
+        """
     }
 
-    /// A nil definition is one the server withheld or that is not a SELECT.
-    static func resolve(isUpdatable: Bool, definition: Definition?, baseKeyColumns: [String]) -> PluginViewRowEditing {
-        guard let definition else { return .readOnly(.notUpdatable) }
-        return PluginViewRowEditing.resolve(
-            isUpdatable: isUpdatable,
-            baseTableCount: definition.baseTable == nil ? 2 : 1,
-            baseKeyColumns: baseKeyColumns,
-            origins: definition.origins
+    static func view(rows: [[String?]]) -> View? {
+        guard let row = rows.first, let database = cell(row, 0), let name = cell(row, 1) else { return nil }
+        return View(
+            relation: Relation(database: database, name: name),
+            isUpdatable: cell(row, 2)?.uppercased() == "YES",
+            definition: cell(row, 3) ?? ""
         )
     }
 
-    static func parse(definition text: String) -> Definition? {
-        let tokens = Token.tokenize(text)
-        guard let first = tokens.first, first.isWord("select") else { return nil }
-        let fromIndex = tokens.firstIndex { $0.depth == 0 && $0.isWord("from") } ?? tokens.endIndex
-        let baseTable = singleTable(in: Array(tokens[fromIndex...].dropFirst()))
-        let alias = baseTable?.alias
-
-        var origins: [PluginViewColumnOrigin] = []
-        for item in split(Array(tokens[1..<fromIndex]), separator: ",") {
-            guard item.count >= 3,
-                  item[item.count - 2].isWord("as"),
-                  let viewColumn = item.last?.identifier,
-                  let reference = columnReference(Array(item.dropLast(2))),
-                  let table = baseTable?.table
-            else { continue }
-            let qualifier = reference.qualifier
-            let matches: Bool
-            switch qualifier.count {
-            case 2: matches = alias == nil && qualifier[0] == table.database && qualifier[1] == table.name
-            case 1: matches = qualifier[0] == (alias ?? table.name)
-            default: matches = alias == nil
+    static func step(view: View, columnRows: [[String?]]) throws -> Step {
+        guard view.isUpdatable else { return .readOnly(.notUpdatable) }
+        // The server sends an empty definition to a user without the SHOW VIEW privilege.
+        guard !view.definition.isEmpty else { return .readOnly(.baseTableHidden) }
+        switch select(definition: view.definition) {
+        case .severalTables:
+            return .readOnly(.readsSeveralTables)
+        case .noTable:
+            return .readOnly(.notUpdatable)
+        case .oneTable(let base, let sources):
+            // By position: MySQL keeps a CREATE VIEW column list apart from the AS aliases it stores.
+            let columns = columnRows.compactMap { cell($0, 0) }
+            guard sources.count == columns.count else {
+                throw ColumnCountMismatch(view: view.relation, items: sources.count, columns: columns.count)
             }
-            if matches {
-                origins.append(PluginViewColumnOrigin(viewColumn: viewColumn, baseColumn: reference.column))
-            }
+            return .reads(Level(base: base, columns: columns, sources: sources))
         }
-        return Definition(baseTable: baseTable?.table, origins: origins)
     }
 
-    private static let clauseKeywords: Set<String> = [
-        "where", "group", "having", "order", "limit", "window", "union", "for", "lock", "into",
+    static func baseColumn(row: [String?], quotesDefaults: Bool) -> PluginViewBaseColumn? {
+        guard let name = cell(row, 0) else { return nil }
+        let isNullable = cell(row, 1)?.uppercased() == "YES"
+        let extra = cell(row, 3)
+        let catalogDefault: MySQLCatalogDefault = quotesDefaults ? .quoted(cell(row, 2)) : .bare(cell(row, 2))
+        return PluginViewBaseColumn(
+            name: name,
+            isNullable: isNullable,
+            defaultValue: mysqlColumnDefault(
+                catalogDefault,
+                extra: extra,
+                dataType: cell(row, 4) ?? "",
+                isNullable: isNullable
+            ),
+            assignsValue: mysqlIdentityKind(extra: extra) != nil,
+            acceptsWrites: !mysqlColumnIsGenerated(extra: extra)
+        )
+    }
+
+    static func answer(
+        levels: [Level],
+        keyRows: [[String?]],
+        columnRows: [[String?]],
+        quotesDefaults: Bool
+    ) -> PluginViewRowEditing {
+        guard let top = levels.first, let base = levels.last?.base else { return .readOnly(.notUpdatable) }
+        let baseColumns = columnRows.compactMap { baseColumn(row: $0, quotesDefaults: quotesDefaults) }
+        let isVisible = !baseColumns.isEmpty
+
+        var sources = top.sources
+        for level in levels.dropFirst() {
+            sources = sources.map { $0.flatMap(level.source(of:)) }
+        }
+        if isVisible {
+            sources = sources.map { source in
+                source.flatMap { name in baseColumns.first { sameName($0.name, name) }?.name }
+            }
+        }
+
+        var operations: PluginViewWriteOperations = [.update, .delete]
+        // MySQL refuses an INSERT (1471) once a view column is not a base column or shows one twice.
+        let shown = sources.compactMap { $0?.lowercased() }
+        if shown.count == sources.count, Set(shown).count == shown.count {
+            operations.insert(.insert)
+        }
+
+        return PluginViewRowEditing.resolve(
+            operations: operations,
+            baseTable: PluginViewBaseTable(database: base.database, name: base.name),
+            columns: zip(top.columns, sources).map {
+                PluginViewColumn(name: $0, baseColumn: $1, acceptsWrites: $1 != nil)
+            },
+            baseKeyColumns: isVisible ? keyRows.compactMap { cell($0, 0) } : nil,
+            baseColumns: isVisible ? baseColumns : nil
+        )
+    }
+
+    static func select(definition: String) -> Select {
+        var tokens = unwrapped(tokenize(definition))
+        if tokens.first?.isWord("with") == true {
+            guard let main = tokens.firstIndex(where: { $0.depth == 0 && $0.isWord("select") }) else {
+                return .noTable
+            }
+            tokens = Array(tokens[main...])
+        }
+        guard tokens.first?.isWord("select") == true else { return .noTable }
+
+        var listStart = 1
+        while listStart < tokens.count, tokens[listStart].isWord(in: selectModifiers) {
+            listStart += 1
+        }
+        guard let from = tokens[listStart...].firstIndex(where: { $0.depth == 0 && $0.isWord("from") }) else {
+            return .noTable
+        }
+
+        let base: Relation
+        let alias: String?
+        switch fromClause(tokens[(from + 1)...]) {
+        case .severalTables:
+            return .severalTables
+        case .noTable:
+            return .noTable
+        case .table(let relation, let tableAlias):
+            base = relation
+            alias = tableAlias
+        }
+
+        let sources = items(tokens[listStart..<from]).map { item -> String? in
+            guard let reference = columnReference(item),
+                  namesBase(reference.qualifier, base: base, alias: alias)
+            else { return nil }
+            return reference.column
+        }
+        return .oneTable(base, sources: sources)
+    }
+
+    // Scalar by scalar: a backquote followed by a combining mark is one Character but still opens a name.
+    static func tokenize(_ text: String) -> [Token] {
+        let scalars = Array(text.unicodeScalars)
+        var tokens: [Token] = []
+        var depth = 0
+        var index = 0
+
+        while index < scalars.count {
+            let scalar = scalars[index]
+            switch scalar {
+            case "`":
+                var name = String.UnicodeScalarView()
+                index += 1
+                while index < scalars.count {
+                    if scalars[index] == "`" {
+                        guard index + 1 < scalars.count, scalars[index + 1] == "`" else { break }
+                        index += 1
+                    }
+                    name.append(scalars[index])
+                    index += 1
+                }
+                index += 1
+                tokens.append(Token(kind: .quoted, text: String(name), depth: depth))
+            case "'", "\"":
+                let start = index
+                index += 1
+                while index < scalars.count {
+                    if scalars[index] == "\\" {
+                        index += 2
+                        continue
+                    }
+                    if scalars[index] == scalar {
+                        guard index + 1 < scalars.count, scalars[index + 1] == scalar else { break }
+                        index += 1
+                    }
+                    index += 1
+                }
+                index = min(index + 1, scalars.count)
+                let literal = String(String.UnicodeScalarView(scalars[start..<index]))
+                tokens.append(Token(kind: .literal, text: literal, depth: depth))
+            case "(":
+                tokens.append(Token(kind: .symbol, text: "(", depth: depth))
+                depth += 1
+                index += 1
+            case ")":
+                depth -= 1
+                tokens.append(Token(kind: .symbol, text: ")", depth: depth))
+                index += 1
+            case _ where scalar.properties.isWhitespace:
+                index += 1
+            case _ where isWordScalar(scalar):
+                var word = String.UnicodeScalarView()
+                while index < scalars.count, isWordScalar(scalars[index]) {
+                    word.append(scalars[index])
+                    index += 1
+                }
+                tokens.append(Token(kind: .word, text: String(word), depth: depth))
+            default:
+                tokens.append(Token(kind: .symbol, text: String(scalar), depth: depth))
+                index += 1
+            }
+        }
+        return tokens
+    }
+
+    private static let selectModifiers: Set<String> = [
+        "all", "distinct", "distinctrow", "high_priority", "straight_join", "sql_small_result",
+        "sql_big_result", "sql_buffer_result", "sql_cache", "sql_no_cache", "sql_calc_found_rows",
     ]
 
-    private static func singleTable(in tokens: [Token]) -> (table: BaseTable, alias: String?)? {
-        let clause = Array(tokens.prefix { !($0.depth == 0 && clauseKeywords.contains($0.text.lowercased())) })
-        var parts: [String] = []
-        var index = 0
-        while index < clause.count, let name = clause[index].identifier {
-            parts.append(name)
-            guard index + 1 < clause.count, clause[index + 1].text == "." else {
-                index += 1
-                break
-            }
-            index += 2
-        }
-        let rest = clause[index...]
-        guard (1...2).contains(parts.count), rest.count <= 1 else { return nil }
-        let alias: String?
-        if let aliasToken = rest.first {
-            guard let name = aliasToken.identifier else { return nil }
-            alias = name
-        } else {
-            alias = nil
-        }
-        let table = parts.count == 2
-            ? BaseTable(database: parts[0], name: parts[1])
-            : BaseTable(database: nil, name: parts[0])
-        return (table, alias)
+    private static let clauseEnds: Set<String> = [
+        "where", "group", "having", "order", "limit", "window", "union", "except", "intersect",
+        "for", "lock", "into", "procedure",
+    ]
+
+    private enum FromClause {
+        case table(Relation, alias: String?)
+        case severalTables
+        case noTable
     }
 
-    private static func columnReference(_ tokens: [Token]) -> (qualifier: [String], column: String)? {
+    private static func fromClause(_ tokens: ArraySlice<Token>) -> FromClause {
+        let clause = Array(tokens.prefix { !($0.depth == 0 && $0.isWord(in: clauseEnds)) })
+        if let reference = tableReference(clause) { return reference }
+        return joinsTables(clause) ? .severalTables : .noTable
+    }
+
+    private static func tableReference(_ clause: [Token]) -> FromClause? {
+        var names: [String] = []
+        var index = 0
+        while index < clause.count, names.count < 3, let name = clause[index].identifier {
+            names.append(name)
+            index += 1
+            guard index < clause.count, clause[index].isSymbol(".") else { break }
+            index += 1
+        }
+        guard (1...2).contains(names.count) else { return nil }
+        if index < clause.count, clause[index].isWord("as") { index += 1 }
+        var alias: String?
+        if index < clause.count {
+            guard let name = clause[index].identifier else { return nil }
+            alias = name
+            index += 1
+        }
+        guard index == clause.count else { return nil }
+        // The server qualifies every table it stores, so a bare name is a common table expression.
+        guard names.count == 2 else { return .noTable }
+        return .table(Relation(database: names[0], name: names[1]), alias: alias)
+    }
+
+    private static func joinsTables(_ clause: [Token]) -> Bool {
+        var subqueryDepths: [Int] = []
+        var previous: Token?
+        for token in clause {
+            defer { previous = token }
+            if let open = previous, open.isSymbol("("), token.isWord("select") || token.isWord("with") {
+                subqueryDepths.append(open.depth)
+            }
+            if token.isSymbol(")"), subqueryDepths.last == token.depth {
+                subqueryDepths.removeLast()
+                continue
+            }
+            guard subqueryDepths.isEmpty else { continue }
+            if token.isWord("join") || token.isWord("straight_join") { return true }
+            if token.depth == 0, token.isSymbol(",") { return true }
+        }
+        return false
+    }
+
+    private static func items(_ tokens: ArraySlice<Token>) -> [[Token]] {
+        var items: [[Token]] = [[]]
+        for token in tokens {
+            if token.depth == 0, token.isSymbol(",") {
+                items.append([])
+            } else {
+                items[items.count - 1].append(token)
+            }
+        }
+        return items
+    }
+
+    private static func columnReference(_ item: [Token]) -> (qualifier: [String], column: String)? {
+        var tokens = item[...]
+        if tokens.count >= 3, tokens[tokens.endIndex - 2].isWord("as"), tokens.last?.identifier != nil {
+            tokens = tokens.dropLast(2)
+        }
         guard tokens.count % 2 == 1, tokens.count <= 5 else { return nil }
         var names: [String] = []
         for (offset, token) in tokens.enumerated() {
-            if offset % 2 == 1 {
-                guard token.text == "." else { return nil }
-            } else {
+            if offset.isMultiple(of: 2) {
                 guard let name = token.identifier else { return nil }
                 names.append(name)
+            } else if !token.isSymbol(".") {
+                return nil
             }
         }
         guard let column = names.popLast() else { return nil }
         return (names, column)
     }
 
-    private static func split(_ tokens: [Token], separator: String) -> [[Token]] {
-        var items: [[Token]] = [[]]
-        for token in tokens {
-            if token.depth == 0, token.text == separator, !token.isQuoted {
-                items.append([])
-            } else {
-                items[items.count - 1].append(token)
-            }
+    // MariaDB leaves the database out of a reference to an inner view; MySQL writes `db`.`alias`
+    // for an aliased one. The server qualifies every column, so a bare name is a keyword.
+    private static func namesBase(_ qualifier: [String], base: Relation, alias: String?) -> Bool {
+        let table = alias ?? base.name
+        switch qualifier.count {
+        case 1:
+            return sameName(qualifier[0], table)
+        case 2:
+            return sameName(qualifier[0], base.database) && sameName(qualifier[1], table)
+        default:
+            return false
         }
-        return items.filter { !$0.isEmpty }
-    }
-}
-
-private struct Token {
-    let text: String
-    let depth: Int
-    let isQuoted: Bool
-
-    var identifier: String? {
-        if isQuoted { return text }
-        guard let first = text.unicodeScalars.first,
-              CharacterSet.letters.contains(first) || first == "_" else { return nil }
-        return text
     }
 
-    func isWord(_ word: String) -> Bool {
-        !isQuoted && text.caseInsensitiveCompare(word) == .orderedSame
-    }
-
-    /// Backquoted identifiers are kept as identifiers with their doubled backquotes undone. A
-    /// string literal becomes one opaque token, so a comma or keyword inside it never counts.
-    static func tokenize(_ text: String) -> [Token] {
-        var tokens: [Token] = []
-        var depth = 0
-        let characters = Array(text)
-        var index = 0
-
-        while index < characters.count {
-            let character = characters[index]
-            switch character {
-            case "`":
-                var name = ""
-                index += 1
-                while index < characters.count {
-                    if characters[index] == "`" {
-                        if index + 1 < characters.count, characters[index + 1] == "`" {
-                            name.append("`")
-                            index += 2
-                            continue
-                        }
-                        break
-                    }
-                    name.append(characters[index])
-                    index += 1
-                }
-                tokens.append(Token(text: name, depth: depth, isQuoted: true))
-                index += 1
-            case "'", "\"":
-                index += 1
-                while index < characters.count {
-                    if characters[index] == "\\" {
-                        index += 2
-                        continue
-                    }
-                    if characters[index] == character {
-                        if index + 1 < characters.count, characters[index + 1] == character {
-                            index += 2
-                            continue
-                        }
-                        break
-                    }
-                    index += 1
-                }
-                tokens.append(Token(text: "''", depth: depth, isQuoted: false))
-                index += 1
-            case "(":
-                tokens.append(Token(text: "(", depth: depth, isQuoted: false))
-                depth += 1
-                index += 1
-            case ")":
-                depth -= 1
-                tokens.append(Token(text: ")", depth: depth, isQuoted: false))
-                index += 1
-            case _ where character.isWhitespace:
-                index += 1
-            case _ where character.isLetter || character.isNumber || character == "_" || character == "$":
-                var word = ""
-                while index < characters.count,
-                      characters[index].isLetter || characters[index].isNumber
-                      || characters[index] == "_" || characters[index] == "$" {
-                    word.append(characters[index])
-                    index += 1
-                }
-                tokens.append(Token(text: word, depth: depth, isQuoted: false))
-            default:
-                tokens.append(Token(text: String(character), depth: depth, isQuoted: false))
-                index += 1
-            }
+    private static func unwrapped(_ tokens: [Token]) -> [Token] {
+        var tokens = tokens
+        while tokens.count >= 2, tokens[0].isSymbol("("),
+              tokens.dropFirst().firstIndex(where: { $0.depth == 0 && $0.isSymbol(")") }) == tokens.count - 1 {
+            tokens = tokens.dropFirst().dropLast().map { Token(kind: $0.kind, text: $0.text, depth: $0.depth - 1) }
         }
         return tokens
+    }
+
+    private static func isWordScalar(_ scalar: Unicode.Scalar) -> Bool {
+        guard scalar.isASCII else { return !scalar.properties.isWhitespace }
+        return scalar.properties.isAlphabetic || (48...57).contains(scalar.value) || scalar == "_" || scalar == "$"
+    }
+
+    private static func sameName(_ lhs: String, _ rhs: String) -> Bool {
+        lhs.caseInsensitiveCompare(rhs) == .orderedSame
+    }
+
+    private static func cell(_ row: [String?], _ index: Int) -> String? {
+        row.indices.contains(index) ? row[index] : nil
     }
 }

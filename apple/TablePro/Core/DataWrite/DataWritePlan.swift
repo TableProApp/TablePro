@@ -220,6 +220,9 @@ struct DataWritePlan: Sendable {
     /// SQL Server's `IDENTITY_INSERT` is not, since every restoring INSERT then fails, so the run stops first.
     let prologueIsRequired: Bool
 
+    // Rows written through a view land in its table, which cascade preview, rewind and other tabs reason about.
+    var viewTarget: PluginViewWriteTarget?
+
     init(
         scope: DatabaseScope,
         databaseType: DatabaseType,
@@ -268,5 +271,18 @@ struct DataWritePlan: Sendable {
 
     var displaySQL: String {
         displayStatements.joined(separator: "\n")
+    }
+}
+
+extension DataWritePlan {
+    // Nil when the view's table lives in another database, which the cascade preview cannot follow.
+    var cascadeScope: DatabaseScope? {
+        guard let base = viewTarget?.baseTable else { return scope }
+        guard base.database == nil || base.database == scope.database else { return nil }
+        return DatabaseScope(
+            connectionId: scope.connectionId,
+            database: scope.database,
+            schema: base.schema ?? scope.schema
+        )
     }
 }

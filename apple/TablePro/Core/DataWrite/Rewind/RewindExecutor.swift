@@ -141,7 +141,8 @@ struct RewindExecutor {
                 generatedColumns: plan.record.generatedColumns,
                 identityColumns: plan.record.identityColumns,
                 columnTypeNames: plan.record.columnTypeNames,
-                operations: operations
+                operations: operations,
+                writtenThroughView: plan.record.writtenThroughView
             )
         )
     }

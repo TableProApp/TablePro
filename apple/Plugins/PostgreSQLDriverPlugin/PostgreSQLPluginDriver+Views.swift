@@ -5,11 +5,10 @@
 
 import Foundation
 import TableProPluginKit
+import TableProPostgreSQLCore
 
 extension PostgreSQLPluginDriver {
-    /// `pg_views` and `pg_matviews` return the query alone, so the definition this used to build
-    /// from them lost the view's options and check option, and read the body under the connection's
-    /// own search path. The statement is now rebuilt from the catalog with every name qualified.
+    // Rebuilt from the catalog with every name qualified: pg_views lost the options and the check option.
     func fetchViewDefinition(view: String, schema: String?) async throws -> String {
         let resolvedSchema = schema ?? core.currentSchema
         let query = PostgreSQLViewDefinition.catalogQuery(name: view, schema: resolvedSchema)
@@ -23,36 +22,33 @@ extension PostgreSQLPluginDriver {
     }
 
     func fetchViewRowEditing(view: String, schema: String?) async throws -> PluginViewRowEditing? {
-        let resolvedSchema = schema ?? core.currentSchema
-        let viewResult = try await catalogRead(PostgreSQLViewRowEditing.viewQuery(name: view, schema: resolvedSchema))
-        guard let row = viewResult.rows.first, let viewOID = row[safe: 0]?.asText else { return nil }
-        let isUpdatable = row[safe: 1]?.asText == "true"
-        let origins = PostgreSQLViewRowEditing.targetOrigins(nodeTree: row[safe: 2]?.asText ?? "")
-        guard isUpdatable, let baseTableOID = origins.first?.tableOID else {
-            return PostgreSQLViewRowEditing.resolve(
-                isUpdatable: isUpdatable, origins: origins, viewColumnNames: [:], baseKeyColumnNumbers: []
-            )
-        }
-
-        let detail = try await catalogRead(
-            PostgreSQLViewRowEditing.columnsAndKeyQuery(viewOID: viewOID, baseTableOID: baseTableOID)
-        )
-        var viewColumnNames: [Int: String] = [:]
-        var baseKeyColumnNumbers: [Int] = []
-        for detailRow in detail.rows {
-            guard let number = detailRow[safe: 1]?.asText.flatMap(Int.init) else { continue }
-            switch detailRow[safe: 0]?.asText {
-            case "v": viewColumnNames[number] = detailRow[safe: 2]?.asText
-            case "k": baseKeyColumnNumbers.append(number)
-            default: break
+        let capabilities = catalogCapabilities
+        guard capabilities.serverVersion >= PostgreSQLViewRowEditing.minimumServerVersion else { return nil }
+        var chain: [PostgreSQLViewRowEditing.Relation] = []
+        var query = PostgreSQLViewRowEditing.relationQuery(name: view, schema: schema ?? core.currentSchema)
+        while true {
+            let row = try await catalogRead(query).rows.first?.map(\.asText)
+            switch PostgreSQLViewRowEditing.step(&chain, row: row) {
+            case .notAView:
+                return nil
+            case .readOnly(let reason):
+                return .readOnly(reason)
+            case .readRelation(let oid):
+                query = PostgreSQLViewRowEditing.relationQuery(oid: oid)
+            case .readColumns(let viewOID, let baseOID, let baseSchema):
+                let viewColumns = try await catalogRead(PostgreSQLViewRowEditing.viewColumnsQuery(viewOID: viewOID))
+                // Relative, so a default reads as it does in the base table's own tab.
+                let baseColumns = try await catalogRead(
+                    PostgreSQLViewRowEditing.baseColumnsQuery(baseOID: baseOID, capabilities: capabilities),
+                    namesRelativeTo: baseSchema
+                )
+                return PostgreSQLViewRowEditing.resolve(
+                    chain: chain,
+                    viewColumns: viewColumns.rows.map { $0.map(\.asText) },
+                    baseColumns: baseColumns.rows.map { $0.map(\.asText) }
+                )
             }
         }
-        return PostgreSQLViewRowEditing.resolve(
-            isUpdatable: isUpdatable,
-            origins: origins,
-            viewColumnNames: viewColumnNames,
-            baseKeyColumnNumbers: baseKeyColumnNumbers
-        )
     }
 
     func objectCommentStatement(name: String, objectType: String, schema: String?, comment: String?) -> String? {

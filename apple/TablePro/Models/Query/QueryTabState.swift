@@ -533,7 +533,7 @@ struct TabTableContext: Equatable {
     // Browse only: a staged row edit would land on whatever table the name reaches once the temporary one is dropped.
     var isTemporary = false
 
-    // Nil until the driver has answered, and for an engine that never does.
+    // Nil until the driver answers, and on an engine that never does.
     var viewRowEditing: PluginViewRowEditing?
 
     func resolvedObjectKind() -> TableInfo.TableType {
@@ -542,11 +542,26 @@ struct TabTableContext: Equatable {
 
     var allowsRowEditing: Bool {
         guard !isTemporary else { return false }
-        if resolvedObjectKind() == .view {
-            guard let keys = viewRowEditing?.keyColumns else { return false }
-            return !keys.isEmpty && keys == primaryKeyColumns
-        }
+        if resolvedObjectKind() == .view { return viewEditRefusal == nil }
         return !isView && resolvedObjectKind().allowsRowEditing
+    }
+
+    var viewEditRefusal: ResultEditRefusal? {
+        guard resolvedObjectKind() == .view else { return nil }
+        return ResultEditRefusal.forView(answer: viewRowEditing, keyedOn: primaryKeyColumns)
+    }
+
+    var viewWriteTarget: PluginViewWriteTarget? {
+        guard resolvedObjectKind() == .view else { return nil }
+        return viewRowEditing?.writeTarget(keyedOn: primaryKeyColumns)
+    }
+
+    // A driver answers only for a view, so a table tab opened without a kind (a deep link, a script) learns it here.
+    mutating func adoptViewAnswer(_ answer: PluginViewRowEditing?, tabType: TabType) {
+        viewRowEditing = answer
+        guard answer != nil, tabType == .table, resolvedObjectKind() == .table else { return }
+        objectType = .view
+        isView = true
     }
 
     var primaryKeyColumn: String? { primaryKeyColumns.first }

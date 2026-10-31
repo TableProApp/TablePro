@@ -30,7 +30,7 @@ struct ResultOrigin: Equatable {
     /// first is safe to write to, so the two cannot share a representation.
     var keysResolved: Bool
 
-    /// The driver's answer for a view, nil for a table or before the answer arrives.
+    // Nil for a table, before the driver answers, and on an engine that never does.
     var viewRowEditing: PluginViewRowEditing?
 
     init(
@@ -80,9 +80,13 @@ enum ResultEditRefusal: Equatable {
     private static func viewMessage(_ reason: PluginViewReadOnlyReason?) -> String {
         switch reason {
         case .notUpdatable:
-            return String(localized: "These rows come from a view the server reports as not updatable.")
+            return String(localized: "These rows come from a view the server cannot write through.")
+        case .writesRunTriggers:
+            return String(localized: "These rows come from a view whose writes run rules or triggers, so an edit may not change the row shown.")
         case .readsSeveralTables:
             return String(localized: "These rows come from a view that reads more than one table, so an edit cannot target one row.")
+        case .baseTableHidden:
+            return String(localized: "These rows come from a view whose table or key is hidden from this connection, so an edit cannot target one row.")
         case .baseTableHasNoKey:
             return String(localized: "These rows come from a view whose table has no primary key, so an edit could change more than one row.")
         case .keyNotExposed:
@@ -93,18 +97,33 @@ enum ResultEditRefusal: Equatable {
             return String(localized: "These rows come from a view, which cannot be edited.")
         }
     }
+
+    // A stale answer must not key a write on whatever keys the tab holds now.
+    static func forView(answer: PluginViewRowEditing?, keyedOn primaryKeyColumns: [String]) -> ResultEditRefusal? {
+        if answer?.writeTarget(keyedOn: primaryKeyColumns) != nil { return nil }
+        if case .readOnly(let reason)? = answer { return .view(reason) }
+        return .view(nil)
+    }
 }
 
-/// The single decision about whether a result's rows may be written back.
-///
-/// It is pure so the rule can be tested without a coordinator, and it is fail-closed: a result
-/// with no captured origin refuses rather than borrowing the tab's current table.
+extension PluginViewRowEditing {
+    func writeTarget(keyedOn primaryKeyColumns: [String]) -> PluginViewWriteTarget? {
+        guard let target = writeTarget, !target.keyColumns.isEmpty, target.keyColumns == primaryKeyColumns else {
+            return nil
+        }
+        return target
+    }
+}
+
+// Fail-closed: a result with no captured origin refuses rather than borrowing the tab's current table.
 enum ResultEditability {
     static func refusal(for origin: ResultOrigin?, currentDatabaseName: String) -> ResultEditRefusal? {
         guard let origin else { return .unknownTable }
-        if origin.isView, !writesThroughView(origin) {
-            if case .readOnly(let reason) = origin.viewRowEditing { return .view(reason) }
-            return .view(nil)
+        // A query tab learns its relation is a view only from the driver's answer.
+        if origin.isView || origin.viewRowEditing != nil {
+            guard (origin.objectType ?? .view) == .view else { return .view(nil) }
+            let refusal = ResultEditRefusal.forView(answer: origin.viewRowEditing, keyedOn: origin.primaryKeyColumns)
+            if let refusal { return refusal }
         }
         guard origin.isEditable, let tableName = origin.tableName, !tableName.isEmpty else {
             return .unknownTable
@@ -116,12 +135,5 @@ enum ResultEditability {
             return .databaseMoved
         }
         return nil
-    }
-
-    /// The keys the edit will use must be the ones the driver named, or a stale answer would key
-    /// the write on whatever the tab last held.
-    private static func writesThroughView(_ origin: ResultOrigin) -> Bool {
-        guard (origin.objectType ?? .view) == .view, let keys = origin.viewRowEditing?.keyColumns else { return false }
-        return !keys.isEmpty && keys == origin.primaryKeyColumns
     }
 }

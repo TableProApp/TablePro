@@ -84,11 +84,7 @@ extension MainContentCoordinator {
         activeSheet = nil
     }
 
-    /// Everything one press of Save is about to do, in execution order.
-    ///
-    /// Save and Preview SQL both read this, so what the user is shown is what runs. Each step
-    /// carries the rows it should touch, which is what lets the executor hold the server to that
-    /// number, and the row operations carry the before and after images a later rewind needs.
+    // Save and Preview SQL both read this, so what the user is shown is what runs.
     func buildDataWritePlan(
         pendingTruncates: Set<DatabaseTreeTableRef>,
         pendingDeletes: Set<DatabaseTreeTableRef>,
@@ -114,6 +110,7 @@ extension MainContentCoordinator {
         )
 
         var rowOperations: [RowWriteOperation] = []
+        let viewTarget = changeManager.hasChanges ? activeViewWriteTarget : nil
         if changeManager.hasChanges {
             /// The scope's schema, not the tab's: the scope has already fallen back to the session's
             /// browse schema, and a record stored under one spelling is never found under the other.
@@ -121,7 +118,8 @@ extension MainContentCoordinator {
                 database: scope.database,
                 schema: scope.schema,
                 containsTableOperation: hasPendingTableOps,
-                rowsWithUnloadedValues: rowsWithUnloadedValues()
+                rowsWithUnloadedValues: rowsWithUnloadedValues(),
+                writesThroughView: viewTarget != nil
             )
             steps.append(contentsOf: rowWrite.steps)
             rowOperations = rowWrite.operations
@@ -139,7 +137,7 @@ extension MainContentCoordinator {
             })
         }
 
-        return DataWritePlan(
+        var plan = DataWritePlan(
             scope: scope,
             databaseType: dbType,
             steps: steps,
@@ -147,6 +145,8 @@ extension MainContentCoordinator {
             prologue: prologue,
             epilogue: epilogue
         )
+        plan.viewTarget = viewTarget
+        return plan
     }
 
     private func writeScope(

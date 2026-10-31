@@ -10,6 +10,10 @@ import Testing
 @testable import TablePro
 
 struct ResultEditabilityTests {
+    private func editable(keys: [String]) -> PluginViewRowEditing {
+        .editable(TestFixtures.viewTarget(keys: keys))
+    }
+
     private func origin(
         tableName: String? = "users",
         databaseName: String = "app",
@@ -58,14 +62,14 @@ struct ResultEditabilityTests {
     func editableViewIsEditable() {
         var view = origin(isView: true)
         view.objectType = .view
-        view.viewRowEditing = .editable(keyColumns: ["id"])
+        view.viewRowEditing = editable(keys: ["id"])
         #expect(ResultEditability.refusal(for: view, currentDatabaseName: "app") == nil)
     }
 
     @Test("A view refuses when the keys the edit would use are not the driver's")
     func viewWithStaleKeysRefuses() {
         var view = origin(isView: true)
-        view.viewRowEditing = .editable(keyColumns: ["id"])
+        view.viewRowEditing = editable(keys: ["id"])
         view.primaryKeyColumns = []
         #expect(ResultEditability.refusal(for: view, currentDatabaseName: "app") == .view(nil))
         view.primaryKeyColumns = ["code"]
@@ -83,7 +87,7 @@ struct ResultEditabilityTests {
     func materializedViewStaysReadOnly() {
         var matview = origin(isView: true)
         matview.objectType = .materializedView
-        matview.viewRowEditing = .editable(keyColumns: ["id"])
+        matview.viewRowEditing = editable(keys: ["id"])
         #expect(ResultEditability.refusal(for: matview, currentDatabaseName: "app") == .view(nil))
     }
 
@@ -118,9 +122,11 @@ struct ResultEditabilityTests {
 
     @Test("Every refusal carries a sentence for the user")
     func everyRefusalExplainsItself() {
-        let viewRefusals: [ResultEditRefusal] = [
-            .view(nil), .view(.notUpdatable), .view(.readsSeveralTables), .view(.baseTableHasNoKey), .view(.keyNotExposed),
+        let reasons: [PluginViewReadOnlyReason?] = [
+            nil, .notUpdatable, .writesRunTriggers, .readsSeveralTables,
+            .baseTableHidden, .baseTableHasNoKey, .keyNotExposed,
         ]
+        let viewRefusals = reasons.map { ResultEditRefusal.view($0) }
         for refusal in [ResultEditRefusal.unknownTable, .databaseMoved, .keysUnresolved] + viewRefusals {
             #expect(!refusal.message.isEmpty)
         }

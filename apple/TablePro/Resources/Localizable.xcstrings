@@ -193780,18 +193780,6 @@
         }
       }
     },
-    "These rows come from a view that does not show every primary key column of its table, so an edit could change more than one row." : {
-
-    },
-    "These rows come from a view that reads more than one table, so an edit cannot target one row." : {
-
-    },
-    "These rows come from a view the server reports as not updatable." : {
-
-    },
-    "These rows come from a view whose table has no primary key, so an edit could change more than one row." : {
-
-    },
     "These rows come from a view, which cannot be edited." : {
       "localizations" : {
         "fr" : {

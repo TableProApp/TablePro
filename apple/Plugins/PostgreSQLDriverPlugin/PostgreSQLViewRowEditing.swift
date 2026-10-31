@@ -1,101 +1,222 @@
-//
-//  PostgreSQLViewRowEditing.swift
-//  PostgreSQLDriverPlugin
-//
-//  Works out whether the grid may write rows through a view. The server answers whether the view
-//  is updatable; the view's stored query says which base column each view column shows. Pure, so
-//  it is testable without a server.
-//
-
 import Foundation
 import TableProPluginKit
+import TableProPostgreSQLCore
 
 enum PostgreSQLViewRowEditing {
-    /// The base column one view column shows, as `pg_rewrite` stores it: `resorigtbl` and
-    /// `resorigcol` are the table's OID and attribute number, zero for a computed column.
-    struct TargetOrigin: Equatable {
-        let viewAttributeNumber: Int
-        let tableOID: String
-        let columnNumber: Int
+    static let maxViewDepth = 8
+    // pg_relation_is_updatable is 9.3, unnest WITH ORDINALITY is 9.4.
+    static let minimumServerVersion: Int32 = 90_400
+
+    struct ColumnOrigin: Hashable {
+        let relationOID: String
+        let attributeNumber: Int
     }
 
-    /// Bits 4 (UPDATE) and 16 (DELETE) of `pg_relation_is_updatable`, the test
-    /// `information_schema.views.is_updatable` applies, read directly so a view the user may not
-    /// see in `information_schema` still gets an answer.
-    static func viewQuery(name: String, schema: String) -> String {
+    struct Relation: Equatable {
+        let oid: String
+        let kind: String
+        let schema: String
+        let name: String
+        let events: Int
+        let hasRules: Bool
+        let hasInsteadTrigger: Bool
+        // Keyed by the view's attribute number; a computed column has no entry.
+        let origins: [Int: ColumnOrigin]
+
+        var isView: Bool { kind == "v" }
+
+        init?(row: [String?]) {
+            guard let oid = cell(row, 0), let kind = cell(row, 1), let schema = cell(row, 2), let name = cell(row, 3)
+            else { return nil }
+            self.oid = oid
+            self.kind = kind
+            self.schema = schema
+            self.name = name
+            events = cell(row, 4).flatMap(Int.init) ?? 0
+            hasRules = PostgreSQLCatalogBoolean.isTrue(cell(row, 5))
+            hasInsteadTrigger = PostgreSQLCatalogBoolean.isTrue(cell(row, 6))
+            origins = kind == "v" ? targetOrigins(nodeTree: cell(row, 7) ?? "") : [:]
+        }
+    }
+
+    enum Step: Equatable {
+        case notAView
+        case readOnly(PluginViewReadOnlyReason)
+        case readRelation(oid: String)
+        case readColumns(viewOID: String, baseOID: String, baseSchema: String)
+    }
+
+    static func relationQuery(name: String, schema: String) -> String {
+        relationQuery(matching: """
+            n.nspname = \(PostgreSQLObjectQueries.quoteLiteral(schema)) \
+            AND c.relname = \(PostgreSQLObjectQueries.quoteLiteral(name))
+            """)
+    }
+
+    static func relationQuery(oid: String) -> String {
+        relationQuery(matching: "c.oid = \(PostgreSQLObjectQueries.quoteLiteral(oid))::oid")
+    }
+
+    // Every INSTEAD OF trigger counts: one marked disabled still answers UPDATE 1 and changes nothing.
+    private static func relationQuery(matching condition: String) -> String {
         """
         SELECT
             c.oid::text,
-            (pg_catalog.pg_relation_is_updatable(c.oid, false) & 20) = 20,
-            r.ev_action::text
+            c.relkind::text,
+            n.nspname::text,
+            c.relname::text,
+            pg_catalog.pg_relation_is_updatable(c.oid, false)::text,
+            EXISTS (
+                SELECT 1 FROM pg_catalog.pg_rewrite r
+                WHERE r.ev_class = c.oid AND r.rulename <> '_RETURN'
+            ),
+            EXISTS (
+                SELECT 1 FROM pg_catalog.pg_trigger tg
+                WHERE tg.tgrelid = c.oid AND (tg.tgtype & 64) <> 0
+            ),
+            rt.ev_action::text
         FROM pg_catalog.pg_class c
         JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-        LEFT JOIN pg_catalog.pg_rewrite r ON r.ev_class = c.oid AND r.rulename = '_RETURN'
-        WHERE c.relkind = 'v'
-          AND n.nspname = \(PostgreSQLObjectQueries.quoteLiteral(schema))
-          AND c.relname = \(PostgreSQLObjectQueries.quoteLiteral(name))
+        LEFT JOIN pg_catalog.pg_rewrite rt ON rt.ev_class = c.oid AND rt.rulename = '_RETURN'
+        WHERE \(condition)
         """
     }
 
-    /// The view's column names by number, then the base table's primary key column numbers in key
-    /// order, told apart by the first column.
-    static func columnsAndKeyQuery(viewOID: String, baseTableOID: String) -> String {
+    static func viewColumnsQuery(viewOID: String) -> String {
         """
-        SELECT 'v', a.attnum::text, a.attname::text, 0
+        SELECT
+            a.attnum::text,
+            a.attname::text,
+            pg_catalog.pg_column_is_updatable(a.attrelid, a.attnum, false)
         FROM pg_catalog.pg_attribute a
         WHERE a.attrelid = \(PostgreSQLObjectQueries.quoteLiteral(viewOID))::oid
-          AND a.attnum > 0 AND NOT a.attisdropped
-        UNION ALL
-        SELECT 'k', k.attnum::text, NULL, k.ord
-        FROM pg_catalog.pg_index i
-        CROSS JOIN LATERAL unnest(i.indkey) WITH ORDINALITY AS k(attnum, ord)
-        WHERE i.indrelid = \(PostgreSQLObjectQueries.quoteLiteral(baseTableOID))::oid
-          AND i.indisprimary
-        ORDER BY 1, 4
+          AND a.attnum > 0
+          AND NOT a.attisdropped
+        ORDER BY a.attnum
         """
+    }
+
+    static func baseColumnsQuery(baseOID: String, capabilities: PostgreSQLCapabilities) -> String {
+        let oid = "\(PostgreSQLObjectQueries.quoteLiteral(baseOID))::oid"
+        let identity = capabilities.hasIdentityColumns ? "a.attidentity::text" : "''"
+        let generated = capabilities.hasGeneratedColumns ? "a.attgenerated::text" : "''"
+        return """
+            SELECT
+                a.attnum::text,
+                a.attname::text,
+                a.attnotnull,
+                pg_catalog.pg_get_expr(d.adbin, d.adrelid),
+                \(identity),
+                \(generated),
+                k.ord::text
+            FROM pg_catalog.pg_attribute a
+            LEFT JOIN pg_catalog.pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
+            LEFT JOIN (
+                SELECT key.attnum, key.ord
+                FROM pg_catalog.pg_index i
+                CROSS JOIN LATERAL pg_catalog.unnest(i.indkey) WITH ORDINALITY AS key(attnum, ord)
+                WHERE i.indrelid = \(oid) AND i.indisprimary
+            ) k ON k.attnum = a.attnum
+            WHERE a.attrelid = \(oid)
+              AND a.attnum > 0
+              AND NOT a.attisdropped
+            ORDER BY a.attnum
+            """
+    }
+
+    static func step(_ chain: inout [Relation], row: [String?]?) -> Step {
+        guard let relation = row.flatMap(Relation.init(row:)) else {
+            return chain.isEmpty ? .notAView : .readOnly(.notUpdatable)
+        }
+        guard relation.isView else {
+            guard let outer = chain.first else { return .notAView }
+            chain.append(relation)
+            guard operations(events: outer.events).contains(.update) else { return .readOnly(.notUpdatable) }
+            return .readColumns(viewOID: outer.oid, baseOID: relation.oid, baseSchema: relation.schema)
+        }
+        chain.append(relation)
+        if relation.hasRules || relation.hasInsteadTrigger { return .readOnly(.writesRunTriggers) }
+        let bases = Set(relation.origins.values.map(\.relationOID))
+        guard bases.count <= 1 else { return .readOnly(.readsSeveralTables) }
+        guard let base = bases.first, chain.count <= maxViewDepth else { return .readOnly(.notUpdatable) }
+        return .readRelation(oid: base)
+    }
+
+    // Bits are 1 << CmdType: UPDATE 2, INSERT 3, DELETE 4.
+    static func operations(events: Int) -> PluginViewWriteOperations {
+        var operations: PluginViewWriteOperations = []
+        if events & 4 != 0 { operations.insert(.update) }
+        if events & 8 != 0 { operations.insert(.insert) }
+        if events & 16 != 0 { operations.insert(.delete) }
+        return operations
+    }
+
+    static func baseAttributeNumbers(_ chain: [Relation]) -> [Int: Int] {
+        let views = chain.prefix(while: \.isView)
+        guard let outer = views.first else { return [:] }
+        return views.dropFirst().reduce(outer.origins.mapValues(\.attributeNumber)) { numbers, view in
+            numbers.compactMapValues { view.origins[$0]?.attributeNumber }
+        }
     }
 
     static func resolve(
-        isUpdatable: Bool,
-        origins: [TargetOrigin],
-        viewColumnNames: [Int: String],
-        baseKeyColumnNumbers: [Int]
+        chain: [Relation],
+        viewColumns viewRows: [[String?]],
+        baseColumns baseRows: [[String?]]
     ) -> PluginViewRowEditing {
-        let baseTables = Set(origins.map(\.tableOID))
-        let columnOrigins = origins.compactMap { origin -> PluginViewColumnOrigin? in
-            guard let name = viewColumnNames[origin.viewAttributeNumber] else { return nil }
-            return PluginViewColumnOrigin(viewColumn: name, baseColumn: String(origin.columnNumber))
+        let attributes = baseRows.compactMap(BaseAttribute.init(row:))
+        guard let outer = chain.first, let base = chain.last, !base.isView, !attributes.isEmpty else {
+            return .readOnly(.notUpdatable)
         }
+        // A target entry with no view attribute means the tree was misread, so no mapping is trusted.
+        let viewNumbers = Set(viewRows.compactMap { cell($0, 0).flatMap(Int.init) })
+        guard Set(outer.origins.keys).isSubset(of: viewNumbers) else { return .readOnly(.notUpdatable) }
+
+        var baseNames: [Int: String] = [:]
+        for attribute in attributes { baseNames[attribute.number] = attribute.column.name }
+        let baseNumbers = baseAttributeNumbers(chain)
+        let columns = viewRows.compactMap { row -> PluginViewColumn? in
+            guard let number = cell(row, 0).flatMap(Int.init), let name = cell(row, 1) else { return nil }
+            return PluginViewColumn(
+                name: name,
+                baseColumn: baseNumbers[number].flatMap { baseNames[$0] },
+                acceptsWrites: PostgreSQLCatalogBoolean.isTrue(cell(row, 2))
+            )
+        }
+        let keyColumns = attributes
+            .compactMap { attribute in attribute.keyPosition.map { (position: $0, name: attribute.column.name) } }
+            .sorted { $0.position < $1.position }
+            .map(\.name)
+
         return PluginViewRowEditing.resolve(
-            isUpdatable: isUpdatable,
-            baseTableCount: baseTables.count,
-            baseKeyColumns: baseKeyColumnNumbers.map(String.init),
-            origins: columnOrigins
+            operations: operations(events: outer.events),
+            baseTable: PluginViewBaseTable(schema: base.schema, name: base.name),
+            columns: columns,
+            baseKeyColumns: keyColumns,
+            baseColumns: attributes.map(\.column)
         )
     }
 
-    /// The origins of the outermost query's target list. A sub-select in the view's WHERE clause
-    /// stores a target list of its own earlier in the text, so this follows the nesting rather
-    /// than matching the first `:targetList`.
-    static func targetOrigins(nodeTree: String) -> [TargetOrigin] {
+    // A WHERE sub-select stores its own target list first, so only the outermost query's list is read.
+    static func targetOrigins(nodeTree: String) -> [Int: ColumnOrigin] {
         let tokens = NodeTreeToken.tokenize(nodeTree)
-        guard let queryIndex = tokens.firstIndex(where: { $0.text == "QUERY" }) else { return [] }
+        guard let queryIndex = tokens.firstIndex(where: { $0.text == "QUERY" }) else { return [:] }
         let queryDepth = tokens[queryIndex].depth
         guard let listIndex = tokens[queryIndex...].firstIndex(where: {
             $0.depth == queryDepth && $0.text == ":targetList"
-        }) else { return [] }
+        }) else { return [:] }
 
         let entryDepth = queryDepth + 2
-        var origins: [TargetOrigin] = []
+        var origins: [Int: ColumnOrigin] = [:]
         var fields: [String: String] = [:]
         var index = tokens.index(after: listIndex)
-        guard index < tokens.count, tokens[index].text == "(" else { return [] }
+        guard index < tokens.count, tokens[index].text == "(" else { return [:] }
         index += 1
 
         while index < tokens.count, tokens[index].depth > queryDepth {
             let token = tokens[index]
             if token.text == "}", token.depth == entryDepth - 1 {
-                if let origin = origin(from: fields) { origins.append(origin) }
+                if let entry = origin(from: fields) { origins[entry.number] = entry.origin }
                 fields = [:]
             } else if token.depth == entryDepth, token.text.hasPrefix(":"), index + 1 < tokens.count {
                 let value = tokens[index + 1]
@@ -108,18 +229,43 @@ enum PostgreSQLViewRowEditing {
         return origins
     }
 
-    private static func origin(from fields: [String: String]) -> TargetOrigin? {
+    private static func origin(from fields: [String: String]) -> (number: Int, origin: ColumnOrigin)? {
         guard fields[":resjunk"] != "true",
-              let resno = fields[":resno"].flatMap(Int.init),
+              let number = fields[":resno"].flatMap(Int.init),
               let table = fields[":resorigtbl"], table != "0",
               let column = fields[":resorigcol"].flatMap(Int.init), column > 0
         else { return nil }
-        return TargetOrigin(viewAttributeNumber: resno, tableOID: table, columnNumber: column)
+        return (number, ColumnOrigin(relationOID: table, attributeNumber: column))
+    }
+
+    private struct BaseAttribute {
+        let number: Int
+        let column: PluginViewBaseColumn
+        let keyPosition: Int?
+
+        init?(row: [String?]) {
+            guard let number = cell(row, 0).flatMap(Int.init), let name = cell(row, 1) else { return nil }
+            let identity = cell(row, 4) ?? ""
+            let generated = cell(row, 5) ?? ""
+            self.number = number
+            // pg_attrdef holds a generated column's expression too, which is no default.
+            column = PluginViewBaseColumn(
+                name: name,
+                isNullable: !PostgreSQLCatalogBoolean.isTrue(cell(row, 2)),
+                defaultValue: generated.isEmpty ? cell(row, 3) : nil,
+                assignsValue: identity == "a" || identity == "d",
+                acceptsWrites: generated.isEmpty && identity != "a"
+            )
+            keyPosition = cell(row, 6).flatMap(Int.init)
+        }
     }
 }
 
-/// One token of a `pg_node_tree` text, with the number of brackets open before it. A closing
-/// bracket carries the depth of its opening one.
+private func cell(_ row: [String?], _ index: Int) -> String? {
+    row[safe: index] ?? nil
+}
+
+// depth counts the brackets open before a token; a closing bracket carries its opening one's depth.
 private struct NodeTreeToken {
     let text: String
     let depth: Int
@@ -129,15 +275,16 @@ private struct NodeTreeToken {
     static func tokenize(_ text: String) -> [NodeTreeToken] {
         var tokens: [NodeTreeToken] = []
         var depth = 0
-        var word = ""
+        var word = String.UnicodeScalarView()
         var escaped = false
 
         func flush() {
-            if !word.isEmpty { tokens.append(NodeTreeToken(text: word, depth: depth)) }
-            word = ""
+            if !word.isEmpty { tokens.append(NodeTreeToken(text: String(word), depth: depth)) }
+            word = String.UnicodeScalarView()
         }
 
-        for character in text {
+        // Scalars, not Characters: a combining mark after a space or bracket would fuse the two into one Character.
+        for character in text.unicodeScalars {
             if escaped {
                 word.append(character)
                 escaped = false

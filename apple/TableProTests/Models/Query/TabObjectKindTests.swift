@@ -53,20 +53,36 @@ struct TabObjectKindTests {
 
     @Test("A view allows row edits only once its driver keyed it on the base table")
     func viewFollowsItsEditingAnswer() {
+        let target = TestFixtures.viewTarget(keys: ["id"], operations: [.update, .delete])
+        let answer = PluginViewRowEditing.editable(target)
         var view = TabTableContext(isView: true, objectType: .view)
         #expect(!view.allowsRowEditing)
+        #expect(view.viewEditRefusal == .view(nil))
         view.viewRowEditing = .readOnly(.notUpdatable)
         #expect(!view.allowsRowEditing)
-        view.viewRowEditing = .editable(keyColumns: ["id"])
+        #expect(view.viewEditRefusal == .view(.notUpdatable))
+        #expect(view.viewWriteTarget == nil)
+        view.viewRowEditing = answer
         #expect(!view.allowsRowEditing, "the tab does not key its edits on the driver's columns yet")
         view.primaryKeyColumns = ["id"]
         #expect(view.allowsRowEditing)
+        #expect(view.viewEditRefusal == nil)
+        #expect(view.viewWriteTarget?.operations == [.update, .delete])
         view.isTemporary = true
         #expect(!view.allowsRowEditing)
 
         var matview = TabTableContext(isView: true, objectType: .materializedView)
-        matview.viewRowEditing = .editable(keyColumns: ["id"])
+        matview.viewRowEditing = answer
+        matview.primaryKeyColumns = ["id"]
         #expect(!matview.allowsRowEditing)
+        #expect(matview.viewEditRefusal == nil)
+    }
+
+    @Test("A table never explains a view refusal")
+    func tableOffersEveryOperation() {
+        let table = TabTableContext(isView: false, objectType: .table)
+        #expect(table.viewEditRefusal == nil)
+        #expect(table.viewWriteTarget == nil)
     }
 
     @Test("A writable kind, or no kind at all, keeps the rows writable")
