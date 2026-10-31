@@ -90,14 +90,8 @@ internal enum EditorTabOpener {
                 databaseName: payload.databaseName ?? openingDatabaseName,
                 schemaName: payload.schemaName
             )
-        case .serverDashboard:
-            tabManager.addServerDashboardTab()
-        case .usersRoles:
-            tabManager.addUsersRolesTab()
-        case .insights:
-            tabManager.addQueryInsightsTab()
-        case .tableHealth:
-            tabManager.addTableHealthTab()
+        case .serverDashboard, .usersRoles, .insights, .tableHealth:
+            tabManager.addSingletonTab(payload.tabType)
         case .objectSource:
             guard let objectRef = payload.objectRef else { return }
             tabManager.addObjectSourceTab(objectRef: objectRef)

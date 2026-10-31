@@ -1,22 +1,20 @@
-//
-//  TableHealthViewModel.swift
-//  TablePro
-//
-
 import Combine
 import Foundation
 import os
 
+enum TableHealthError: LocalizedError {
+    case noDatabase
+
+    var errorDescription: String? {
+        String(localized: "Select a database in the sidebar to check its tables.")
+    }
+}
+
 @MainActor
 final class TableHealthViewModel: ObservableObject {
-    typealias Execute = @MainActor (String) async throws -> QueryResult
-    /// Throws when the connection has no live driver, so the report says so once instead of once per check.
-    typealias ExecutorSource = @MainActor () throws -> Execute
-
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "TableHealth")
 
-    let databaseType: DatabaseType
-    let provider: TableHealthProvider?
+    let provider: (any TableHealthProvider)?
 
     @Published private(set) var report: TableHealthReport?
     @Published private(set) var isRefreshing = false
@@ -24,49 +22,26 @@ final class TableHealthViewModel: ObservableObject {
     @Published private(set) var loadError: String?
     @Published var selectedFindingId: TableHealthFinding.ID?
 
-    private let executorSource: ExecutorSource
+    private let connectionId: UUID
+    private let metadata: any ScopedMetadataProviding
 
     var isSupported: Bool { provider != nil }
 
     var selectedFinding: TableHealthFinding? {
-        guard let selectedFindingId, let report else { return nil }
-        for check in report.checks {
-            if let finding = check.findings.first(where: { $0.id == selectedFindingId }) {
-                return finding
-            }
-        }
-        return nil
+        selectedFindingId.flatMap { report?.finding(id: $0) }
     }
 
     init(
-        databaseType: DatabaseType,
-        provider: TableHealthProvider?,
-        executorSource: @escaping ExecutorSource
+        connectionId: UUID,
+        provider: (any TableHealthProvider)?,
+        metadata: any ScopedMetadataProviding = DatabaseManager.shared
     ) {
-        self.databaseType = databaseType
+        self.connectionId = connectionId
         self.provider = provider
-        self.executorSource = executorSource
+        self.metadata = metadata
     }
 
-    convenience init(connectionId: UUID, databaseType: DatabaseType, services: AppServices = .live) {
-        self.init(
-            databaseType: databaseType,
-            provider: TableHealthProviderFactory.provider(for: databaseType),
-            executorSource: {
-                guard services.databaseManager.driver(for: connectionId) != nil else {
-                    throw DatabaseError.connectionFailed(String(localized: "No active connection"))
-                }
-                return { query in
-                    guard let driver = services.databaseManager.driver(for: connectionId) else {
-                        throw DatabaseError.connectionFailed(String(localized: "No active connection"))
-                    }
-                    return try await driver.executeRead(query: query)
-                }
-            }
-        )
-    }
-
-    /// A pane switch re-runs `.task`, so only the first appearance loads.
+    // A pane switch restarts `.task`, so only the first appearance loads.
     func loadIfNeeded() async {
         guard report == nil, loadError == nil else { return }
         await refresh()
@@ -78,8 +53,15 @@ final class TableHealthViewModel: ObservableObject {
         defer { isRefreshing = false }
 
         do {
-            let execute = try executorSource()
-            let fresh = try await provider.fetchReport(execute: execute)
+            guard let scope = metadata.browseScope(for: connectionId) else { throw DatabaseError.notConnected }
+            guard !scope.isServerScoped else { throw TableHealthError.noDatabase }
+            let fresh = try await metadata.withMetadataDriver(scope: scope, workload: .bulk) { driver in
+                let context = TableHealthQueryContext(database: scope.database) { driver.quoteIdentifier($0) }
+                return try await provider.fetchReport(context: context) { query in
+                    try await driver.executeRead(query: query)
+                }
+            }
+            try Task.checkCancellation()
             report = Self.merging(fresh, over: report)
             loadError = nil
             lastRefreshDate = Date()
@@ -92,17 +74,15 @@ final class TableHealthViewModel: ObservableObject {
         }
     }
 
-    /// A check that failed this time keeps the findings it had, shown under its new error.
+    // A check that failed this time keeps the findings it had, shown under its new error.
     static func merging(_ fresh: TableHealthReport, over previous: TableHealthReport?) -> TableHealthReport {
-        guard let previous, previous.databaseName == fresh.databaseName else { return fresh }
+        guard let previous, previous.database == fresh.database else { return fresh }
         var merged = fresh
-        for index in merged.checks.indices where merged.checks[index].error != nil {
-            if let prior = previous.checks.first(where: { $0.kind == merged.checks[index].kind }) {
-                merged.checks[index].findings = prior.findings
-            }
-        }
-        if merged.statisticsNote == nil {
-            merged.statisticsNote = previous.statisticsNote
+        for index in merged.checks.indices {
+            guard case .failed = merged.checks[index].outcome,
+                  let prior = previous.checks.first(where: { $0.kind == merged.checks[index].kind })
+            else { continue }
+            merged.checks[index].findings = prior.findings
         }
         return merged
     }

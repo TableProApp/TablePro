@@ -503,38 +503,13 @@ final class QueryTabManager: ObservableObject {
         selectedTabId = newTab.id
     }
 
-    func addServerDashboardTab() {
-        if let existing = tabs.first(where: { $0.tabType == .serverDashboard }) {
+    // Server Dashboard, Users & Roles, Query Insights and Table Health: one per connection.
+    func addSingletonTab(_ tabType: TabType) {
+        if let existing = tabs.first(where: { $0.tabType == tabType }) {
             selectedTabId = existing.id
             return
         }
-        let tabTitle = String(localized: "Server Dashboard")
-        var newTab = QueryTab(title: tabTitle, tabType: .serverDashboard)
-        newTab.tableContext.isEditable = false
-        newTab.hasUserInteraction = true
-        tabs.append(newTab)
-        selectedTabId = newTab.id
-    }
-
-    func addQueryInsightsTab() {
-        if let existing = tabs.first(where: { $0.tabType == .insights }) {
-            selectedTabId = existing.id
-            return
-        }
-        let tabTitle = String(localized: "Query Insights")
-        var newTab = QueryTab(title: tabTitle, tabType: .insights)
-        newTab.tableContext.isEditable = false
-        newTab.hasUserInteraction = true
-        tabs.append(newTab)
-        selectedTabId = newTab.id
-    }
-
-    func addTableHealthTab() {
-        if let existing = tabs.first(where: { $0.tabType == .tableHealth }) {
-            selectedTabId = existing.id
-            return
-        }
-        var newTab = QueryTab(title: String(localized: "Table Health"), tabType: .tableHealth)
+        var newTab = QueryTab(title: WindowTitleResolver.title(for: tabType), tabType: tabType)
         newTab.tableContext.isEditable = false
         newTab.hasUserInteraction = true
         tabs.append(newTab)
@@ -637,19 +612,6 @@ final class QueryTabManager: ObservableObject {
         case .materializedView: format = String(localized: "Materialized View: %@")
         }
         return String(format: format, objectRef.displayIdentity)
-    }
-
-    func addUsersRolesTab() {
-        if let existing = tabs.first(where: { $0.tabType == .usersRoles }) {
-            selectedTabId = existing.id
-            return
-        }
-        let tabTitle = String(localized: "Users & Roles")
-        var newTab = QueryTab(title: tabTitle, tabType: .usersRoles)
-        newTab.tableContext.isEditable = false
-        newTab.hasUserInteraction = true
-        tabs.append(newTab)
-        selectedTabId = newTab.id
     }
 
     // Returns false when no tab is selected; on true the caller runs the query.

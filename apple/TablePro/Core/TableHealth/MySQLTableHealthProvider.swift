@@ -1,169 +1,194 @@
-//
-//  MySQLTableHealthProvider.swift
-//  TablePro
-//
-
 import Foundation
 
-/// Reads every user schema on the server. InnoDB indexes a foreign key's columns itself, so there
-/// is no unindexed foreign key check. `scripts/probes/check-table-health-catalogs.sh` runs these
-/// queries against a real server, so keep each one a plain literal with no interpolation.
+// InnoDB indexes a foreign key's columns itself, so there is no unindexed foreign key check.
+// scripts/probes/check-table-health-catalogs.sh runs these literals against real servers: keep them free of interpolation.
 struct MySQLTableHealthProvider: TableHealthProvider {
     let checks: [TableHealthCheckKind] = [.unusedIndex, .redundantIndex, .missingPrimaryKey]
-    let schemaNamesDatabase = true
 
-    // The table sys.schema_unused_indexes reads, queried directly since MariaDB before 10.6 has no sys
-    // schema. A unique index enforces something even when no query reads it.
+    static let performanceSchemaQuery = "SELECT @@GLOBAL.performance_schema AS performance_schema"
+
+    static let uptimeQuery = "SHOW GLOBAL STATUS LIKE 'Uptime'"
+
+    // Each of these stops index reads being counted with Performance Schema on: the handler
+    // instrument, the global consumer, or setup_objects and setup_actors leaving this database out.
+    static let usageCountingQuery = """
+        SELECT (SELECT i.ENABLED FROM performance_schema.setup_instruments i
+                WHERE i.NAME = 'wait/io/table/sql/handler') AS table_io_instrument,
+               (SELECT c.ENABLED FROM performance_schema.setup_consumers c
+                WHERE c.NAME = 'global_instrumentation') AS global_instrumentation,
+               (SELECT COUNT(*) FROM performance_schema.table_io_waits_summary_by_table t
+                WHERE t.OBJECT_SCHEMA = DATABASE() AND t.COUNT_STAR > 0) AS counted_tables
+        """
+
+    // The table sys.schema_unused_indexes reads; MariaDB before 10.6 has no sys schema.
     static let unusedIndexQuery = """
-        SELECT u.OBJECT_SCHEMA AS schema_name,
-               u.OBJECT_NAME AS table_name,
+        SELECT u.OBJECT_NAME AS table_name,
                u.INDEX_NAME AS index_name
         FROM performance_schema.table_io_waits_summary_by_index_usage u
-        WHERE u.INDEX_NAME IS NOT NULL
+        WHERE u.OBJECT_SCHEMA = DATABASE()
+          AND u.INDEX_NAME IS NOT NULL
           AND u.INDEX_NAME <> 'PRIMARY'
           AND u.COUNT_STAR = 0
-          AND u.OBJECT_SCHEMA NOT IN ('mysql', 'sys', 'performance_schema', 'information_schema')
-          AND NOT EXISTS (
-              SELECT 1 FROM information_schema.STATISTICS s
-              WHERE s.TABLE_SCHEMA = u.OBJECT_SCHEMA
-                AND s.TABLE_NAME = u.OBJECT_NAME
-                AND s.INDEX_NAME = u.INDEX_NAME
-                AND s.NON_UNIQUE = 0
-          )
-        ORDER BY u.OBJECT_SCHEMA, u.OBJECT_NAME, u.INDEX_NAME
-        LIMIT 500
+        ORDER BY u.OBJECT_NAME, u.INDEX_NAME
         """
 
-    // The prefix comparison sys.schema_redundant_indexes makes, done in Swift so it needs no sys schema.
-    static let redundantIndexQuery = """
-        SELECT s.TABLE_SCHEMA AS schema_name,
-               s.TABLE_NAME AS table_name,
-               s.INDEX_NAME AS index_name,
-               s.NON_UNIQUE AS non_unique,
-               s.INDEX_TYPE AS index_type,
-               s.COLUMN_NAME AS column_name,
-               s.SUB_PART AS sub_part,
-               s.COLLATION AS sort_order
-        FROM information_schema.STATISTICS s
-        WHERE s.TABLE_SCHEMA NOT IN ('mysql', 'sys', 'performance_schema', 'information_schema')
-        ORDER BY s.TABLE_SCHEMA, s.TABLE_NAME, s.INDEX_NAME, s.SEQ_IN_INDEX
+    // Every column, so MySQL 8's IS_VISIBLE and MariaDB 10.6's IGNORED come back where the server has them.
+    static let indexQuery = """
+        SELECT *
+        FROM information_schema.STATISTICS
+        WHERE TABLE_SCHEMA = DATABASE()
+        ORDER BY TABLE_NAME, INDEX_NAME, SEQ_IN_INDEX
         """
 
+    static let foreignKeyQuery = """
+        SELECT k.TABLE_NAME AS table_name,
+               k.CONSTRAINT_NAME AS constraint_name,
+               k.COLUMN_NAME AS column_name
+        FROM information_schema.KEY_COLUMN_USAGE k
+        WHERE k.TABLE_SCHEMA = DATABASE()
+          AND k.REFERENCED_TABLE_NAME IS NOT NULL
+        ORDER BY k.TABLE_NAME, k.CONSTRAINT_NAME, k.ORDINAL_POSITION
+        """
+
+    // MariaDB lists a system-versioned table under its own type.
     static let missingPrimaryKeyQuery = """
-        SELECT t.TABLE_SCHEMA AS schema_name,
-               t.TABLE_NAME AS table_name
+        SELECT t.TABLE_NAME AS table_name
         FROM information_schema.TABLES t
-        WHERE t.TABLE_TYPE = 'BASE TABLE'
-          AND t.TABLE_SCHEMA NOT IN ('mysql', 'sys', 'performance_schema', 'information_schema')
+        WHERE t.TABLE_SCHEMA = DATABASE()
+          AND t.TABLE_TYPE IN ('BASE TABLE', 'SYSTEM VERSIONED')
           AND NOT EXISTS (
               SELECT 1 FROM information_schema.TABLE_CONSTRAINTS c
               WHERE c.TABLE_SCHEMA = t.TABLE_SCHEMA
                 AND c.TABLE_NAME = t.TABLE_NAME
                 AND c.CONSTRAINT_TYPE = 'PRIMARY KEY'
           )
-        ORDER BY t.TABLE_SCHEMA, t.TABLE_NAME
-        LIMIT 500
+        ORDER BY t.TABLE_NAME
         """
 
-    static let performanceSchemaQuery = "SELECT @@GLOBAL.performance_schema AS performance_schema"
+    var statisticsQueries: [String] {
+        [Self.performanceSchemaQuery, Self.uptimeQuery, Self.usageCountingQuery]
+    }
 
-    static let uptimeQuery = "SHOW GLOBAL STATUS LIKE 'Uptime'"
-
-    var statisticsQueries: [String] { [Self.performanceSchemaQuery, Self.uptimeQuery] }
-
-    var databaseQuery: String? { nil }
-
-    func query(for check: TableHealthCheckKind) -> String {
+    func queries(for check: TableHealthCheckKind) -> [String] {
         switch check {
-        case .unusedIndex: return Self.unusedIndexQuery
-        case .redundantIndex: return Self.redundantIndexQuery
-        case .missingPrimaryKey: return Self.missingPrimaryKeyQuery
-        case .bloat, .unindexedForeignKey: return ""
+        case .unusedIndex: return [Self.unusedIndexQuery, Self.indexQuery, Self.foreignKeyQuery]
+        case .redundantIndex: return [Self.indexQuery]
+        case .missingPrimaryKey: return [Self.missingPrimaryKeyQuery]
+        case .bloat, .unindexedForeignKey: return []
         }
     }
 
-    func findings(for check: TableHealthCheckKind, from result: QueryResult) -> [TableHealthFinding] {
-        let rows = TableHealthRow.rows(of: result)
+    func statistics(from results: [QueryResult?], now: Date) -> TableHealthStatistics {
+        func value(_ position: Int, _ column: String) -> String? {
+            guard position < results.count, let result = results[position] else { return nil }
+            return TableHealthRow.rows(of: result).first?[column]
+        }
+        func skippingUnused(_ reason: String) -> TableHealthStatistics {
+            TableHealthStatistics(skippedChecks: [.unusedIndex: reason])
+        }
+
+        if let enabled = value(0, "performance_schema"), enabled != "1", enabled.uppercased() != "ON" {
+            return skippingUnused(String(localized: "Performance Schema is off, so the server records no index reads."))
+        }
+        if value(2, "table_io_instrument") == "NO" {
+            return skippingUnused(String(localized: "The wait/io/table/sql/handler instrument is disabled, so the server records no index reads."))
+        }
+        if value(2, "global_instrumentation") == "NO" {
+            return skippingUnused(String(localized: "The global_instrumentation consumer is disabled, so the server records no index reads."))
+        }
+        if value(2, "counted_tables") == "0" {
+            return skippingUnused(String(
+                localized: "No table in this database has a recorded read or write since the server started, so an unread index cannot be told from an uncounted one."
+            ))
+        }
+
+        guard let uptime = value(1, "value").flatMap(Double.init) else { return TableHealthStatistics() }
+        let start = now.addingTimeInterval(-uptime).formatted(date: .abbreviated, time: .shortened)
+        return TableHealthStatistics(
+            note: String(format: String(localized: "Index usage counts since the server started at %@."), start)
+        )
+    }
+
+    func findings(
+        for check: TableHealthCheckKind,
+        from results: [QueryResult],
+        context: TableHealthQueryContext
+    ) -> [TableHealthFinding] {
         switch check {
         case .unusedIndex:
-            return rows.map(unusedIndexFinding)
+            guard results.count == 3 else { return [] }
+            return unusedIndexFindings(
+                candidates: TableHealthRow.rows(of: results[0]),
+                tables: MySQLIndexShape.tables(from: TableHealthRow.rows(of: results[1])),
+                foreignKeys: MySQLIndexShape.foreignKeys(from: TableHealthRow.rows(of: results[2])),
+                context: context
+            )
         case .redundantIndex:
-            return redundantIndexFindings(rows)
+            guard let result = results.first else { return [] }
+            return redundantIndexFindings(MySQLIndexShape.tables(from: TableHealthRow.rows(of: result)), context)
         case .missingPrimaryKey:
-            return rows.map(missingPrimaryKeyFinding)
+            guard let result = results.first else { return [] }
+            return TableHealthRow.rows(of: result).map { missingPrimaryKeyFinding($0["table_name"], context) }
         case .bloat, .unindexedForeignKey:
             return []
         }
     }
 
-    /// Performance Schema counts index reads from the server start, and records none while it is off.
-    func statisticsNote(from results: [QueryResult], now: Date) -> String? {
-        guard results.count == 2 else { return nil }
-        let enabled = TableHealthRow.rows(of: results[0]).first?["performance_schema"] ?? ""
-        guard enabled == "1" || enabled.uppercased() == "ON" else {
-            return String(localized: "Performance Schema is off, so the server records no index usage and no index can show as unused.")
+    // A unique index enforces something no read counts. InnoDB checks a foreign key through the
+    // index that leads with its columns without counting a read, and refuses to drop the last one.
+    private func unusedIndexFindings(
+        candidates: [TableHealthRow],
+        tables: [MySQLIndexShape],
+        foreignKeys: [String: [[String]]],
+        context: TableHealthQueryContext
+    ) -> [TableHealthFinding] {
+        let shapes = Dictionary(tables.map { ($0.name, $0) }, uniquingKeysWith: { first, _ in first })
+        return candidates.compactMap { row in
+            let table = row["table_name"], indexName = row["index_name"]
+            guard let index = shapes[table]?.indexes.first(where: { $0.name == indexName }),
+                  !index.isUnique,
+                  !(foreignKeys[table] ?? []).contains(where: index.serves)
+            else { return nil }
+            return TableHealthFinding(
+                kind: .unusedIndex, schema: nil, table: table, objectName: indexName,
+                detail: String(format: String(localized: "%@ has no recorded reads."), indexName),
+                fixSQL: dropIndexSQL(table: table, index: indexName, context)
+            )
         }
-        guard let uptime = TableHealthRow.rows(of: results[1]).first.flatMap({ Double($0["value"]) }) else { return nil }
-        let start = now.addingTimeInterval(-uptime).formatted(date: .abbreviated, time: .shortened)
-        return String(format: String(localized: "Index usage counts since the server started at %@."), start)
     }
 
-    // MARK: - Fix SQL
-
-    static func dropIndexSQL(schema: String, table: String, index: String) -> String {
-        "ALTER TABLE \(qualified(schema, table)) DROP INDEX \(quote(index));"
-    }
-
-    static func addPrimaryKeySQL(schema: String, table: String) -> String {
-        "ALTER TABLE \(qualified(schema, table)) ADD PRIMARY KEY (column_name);"
-    }
-
-    static func quote(_ identifier: String) -> String {
-        "`" + identifier.replacingOccurrences(of: "`", with: "``") + "`"
-    }
-
-    private static func qualified(_ schema: String, _ name: String) -> String {
-        "\(quote(schema)).\(quote(name))"
-    }
-
-    // MARK: - Parsing
-
-    private func unusedIndexFinding(_ row: TableHealthRow) -> TableHealthFinding {
-        let schema = row["schema_name"], table = row["table_name"], index = row["index_name"]
-        return TableHealthFinding(
-            kind: .unusedIndex, schema: schema, table: table, objectName: index,
-            detail: String(format: String(localized: "%@ has no recorded reads."), index),
-            fixSQL: Self.dropIndexSQL(schema: schema, table: table, index: index)
-        )
-    }
-
-    private func redundantIndexFindings(_ rows: [TableHealthRow]) -> [TableHealthFinding] {
+    private func redundantIndexFindings(
+        _ tables: [MySQLIndexShape],
+        _ context: TableHealthQueryContext
+    ) -> [TableHealthFinding] {
         var findings: [TableHealthFinding] = []
-        for table in MySQLIndexShape.tables(from: rows) {
+        for table in tables {
             for index in table.indexes {
                 guard let dominant = table.indexes.first(where: { index.isRedundant(to: $0) }) else { continue }
                 findings.append(TableHealthFinding(
-                    kind: .redundantIndex, schema: table.schema, table: table.name, objectName: index.name,
+                    kind: .redundantIndex, schema: nil, table: table.name, objectName: index.name,
                     detail: String(format: String(localized: "%1$@ is covered by %2$@."), index.name, dominant.name),
-                    fixSQL: Self.dropIndexSQL(schema: table.schema, table: table.name, index: index.name)
+                    fixSQL: dropIndexSQL(table: table.name, index: index.name, context)
                 ))
-                if findings.count == TableHealthCheckResult.findingLimit { return findings }
             }
         }
         return findings
     }
 
-    private func missingPrimaryKeyFinding(_ row: TableHealthRow) -> TableHealthFinding {
-        let schema = row["schema_name"], table = row["table_name"]
-        return TableHealthFinding(
-            kind: .missingPrimaryKey, schema: schema, table: table, objectName: nil,
+    private func missingPrimaryKeyFinding(_ table: String, _ context: TableHealthQueryContext) -> TableHealthFinding {
+        TableHealthFinding(
+            kind: .missingPrimaryKey, schema: nil, table: table, objectName: nil,
             detail: String(localized: "No primary key. Replace column_name with the columns that identify a row."),
-            fixSQL: Self.addPrimaryKeySQL(schema: schema, table: table)
+            fixSQL: "ALTER TABLE \(context.qualified(context.database, table)) ADD PRIMARY KEY (column_name);"
         )
+    }
+
+    private func dropIndexSQL(table: String, index: String, _ context: TableHealthQueryContext) -> String {
+        "ALTER TABLE \(context.qualified(context.database, table)) DROP INDEX \(context.quote(index));"
     }
 }
 
-/// The indexes of one table, read from `information_schema.STATISTICS` rows ordered by index and position.
+// The indexes of one table, from information_schema.STATISTICS rows ordered by table, index and position.
 struct MySQLIndexShape {
     struct Column: Equatable {
         let name: String
@@ -175,18 +200,18 @@ struct MySQLIndexShape {
         let name: String
         let isUnique: Bool
         let type: String
+        // An invisible (MySQL) or ignored (MariaDB) index serves no query.
+        let isVisible: Bool
         var columns: [Column]
-        /// A functional key part has no column name and cannot be compared by prefix.
+        // A functional key part has no column name and cannot be compared by prefix.
         var hasExpression: Bool
 
         var isPrimary: Bool { name == "PRIMARY" }
 
-        /// Redundant when another index of the same type starts with the same columns in the same
-        /// directions. Only a B-tree serves a lookup on its leading columns, so any other type is
-        /// redundant only to an identical index. Of two equal indexes, the unique one stays; of two
-        /// equal unique or two equal plain ones, the first by name stays.
+        // Only a B-tree serves a lookup on its leading columns, so another type is redundant only
+        // to an identical index. Of two equal indexes the unique one stays, else the first by name.
         func isRedundant(to other: Index) -> Bool {
-            guard other.name != name, !isPrimary, !hasExpression, !other.hasExpression,
+            guard other.name != name, other.isVisible, !isPrimary, !hasExpression, !other.hasExpression,
                   other.type == type, columns.count <= other.columns.count,
                   type == "BTREE" || columns.count == other.columns.count,
                   Array(other.columns.prefix(columns.count)) == columns
@@ -195,38 +220,65 @@ struct MySQLIndexShape {
             if isUnique != other.isUnique { return other.isUnique }
             return other.isPrimary || other.name < name
         }
+
+        // InnoDB needs the key's columns first, in order, and whole.
+        func serves(foreignKey keyColumns: [String]) -> Bool {
+            guard !hasExpression, columns.count >= keyColumns.count else { return false }
+            return zip(columns, keyColumns).allSatisfy { column, key in
+                column.prefixLength.isEmpty && column.name.lowercased() == key.lowercased()
+            }
+        }
     }
 
-    let schema: String
     let name: String
     var indexes: [Index]
 
     static func tables(from rows: [TableHealthRow]) -> [MySQLIndexShape] {
         var tables: [MySQLIndexShape] = []
         for row in rows {
-            let schema = row["schema_name"], table = row["table_name"], indexName = row["index_name"]
-            if tables.last?.schema != schema || tables.last?.name != table {
-                tables.append(MySQLIndexShape(schema: schema, name: table, indexes: []))
+            let table = row["table_name"], indexName = row["index_name"]
+            if tables.last?.name != table {
+                tables.append(MySQLIndexShape(name: table, indexes: []))
             }
-            let column = row["column_name"]
-            if tables[tables.count - 1].indexes.last?.name != indexName {
-                tables[tables.count - 1].indexes.append(Index(
+            let tableIndex = tables.count - 1
+            if tables[tableIndex].indexes.last?.name != indexName {
+                tables[tableIndex].indexes.append(Index(
                     name: indexName,
                     isUnique: row["non_unique"] == "0",
                     type: row["index_type"],
+                    isVisible: row["is_visible"] != "NO" && row["ignored"] != "YES",
                     columns: [],
                     hasExpression: false
                 ))
             }
-            let last = tables[tables.count - 1].indexes.count - 1
+            let last = tables[tableIndex].indexes.count - 1
+            let column = row["column_name"]
             if column.isEmpty {
-                tables[tables.count - 1].indexes[last].hasExpression = true
+                tables[tableIndex].indexes[last].hasExpression = true
             } else {
-                tables[tables.count - 1].indexes[last].columns.append(
-                    Column(name: column, prefixLength: row["sub_part"], sortOrder: row["sort_order"])
+                tables[tableIndex].indexes[last].columns.append(
+                    Column(name: column, prefixLength: row["sub_part"], sortOrder: row["collation"])
                 )
             }
         }
         return tables
+    }
+
+    // Each table's foreign keys, as their columns in key order.
+    static func foreignKeys(from rows: [TableHealthRow]) -> [String: [[String]]] {
+        var keys: [String: [[String]]] = [:]
+        var previous: (table: String, constraint: String)?
+        for row in rows {
+            let table = row["table_name"], constraint = row["constraint_name"]
+            var tableKeys = keys[table] ?? []
+            if previous?.table == table, previous?.constraint == constraint, !tableKeys.isEmpty {
+                tableKeys[tableKeys.count - 1].append(row["column_name"])
+            } else {
+                tableKeys.append([row["column_name"]])
+            }
+            keys[table] = tableKeys
+            previous = (table, constraint)
+        }
+        return keys
     }
 }

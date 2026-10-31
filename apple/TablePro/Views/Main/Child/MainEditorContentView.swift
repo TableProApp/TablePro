@@ -281,6 +281,7 @@ struct MainEditorContentView: View {
             userTypeContent(tab: tab, objectRef: objectRef)
         } else if let objectRef = tab.display.objectRef {
             ObjectSourceTabView(
+                tabId: tab.id,
                 connectionId: connection.id,
                 databaseType: connection.type,
                 objectRef: objectRef,
@@ -303,6 +304,11 @@ struct MainEditorContentView: View {
         Group {
             if let vm = queryInsightsViewModels[tab.id] {
                 QueryInsightsView(viewModel: vm, coordinator: coordinator)
+                    .onReceive(AppEvents.shared.tabRefreshRequested) { requestedTabId in
+                        guard requestedTabId == tab.id,
+                              LicenseManager.shared.isFeatureAvailable(.queryInsights) else { return }
+                        Task { await vm.reload() }
+                    }
             } else {
                 ProgressView(String(localized: "Loading insights…"))
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -323,7 +329,11 @@ struct MainEditorContentView: View {
     private func tableHealthContent(tab: QueryTab) -> some View {
         Group {
             if let vm = tableHealthViewModels[tab.id] {
-                TableHealthView(viewModel: vm, coordinator: coordinator)
+                TableHealthView(viewModel: vm, actions: tableHealthActions)
+                    .onReceive(AppEvents.shared.tabRefreshRequested) { requestedTabId in
+                        guard requestedTabId == tab.id else { return }
+                        Task { await vm.refresh() }
+                    }
             } else {
                 ProgressView(String(localized: "Loading table health…"))
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -331,12 +341,28 @@ struct MainEditorContentView: View {
                         guard tableHealthViewModels[tab.id] == nil else { return }
                         tableHealthViewModels[tab.id] = TableHealthViewModel(
                             connectionId: connection.id,
-                            databaseType: connection.type
+                            provider: TableHealthProviderFactory.provider(for: connection.type)
                         )
                     }
             }
         }
         .id(tab.id)
+    }
+
+    private var tableHealthActions: TableHealthActions {
+        TableHealthActions(
+            openTable: { finding, database in
+                coordinator.openTableTab(finding.table, schema: finding.schema, database: database)
+            },
+            openFix: { finding, database in
+                coordinator.openQuery(
+                    finding.fixSQL,
+                    on: connection.id,
+                    databaseName: database,
+                    intent: .loadIntoFrontTab
+                )
+            }
+        )
     }
 
     // MARK: - Users & Roles Tab Content
@@ -369,6 +395,10 @@ struct MainEditorContentView: View {
         Group {
             if let vm = serverDashboardViewModels[tab.id] {
                 ServerDashboardView(viewModel: vm)
+                    .onReceive(AppEvents.shared.tabRefreshRequested) { requestedTabId in
+                        guard requestedTabId == tab.id else { return }
+                        Task { await vm.refreshNow() }
+                    }
             } else {
                 ProgressView(String(localized: "Loading dashboard…"))
                     .frame(maxWidth: .infinity, maxHeight: .infinity)

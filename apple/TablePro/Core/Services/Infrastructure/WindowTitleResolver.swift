@@ -91,6 +91,18 @@ enum WindowTitleResolver {
         return ResolvedWindowTitle(title: sessionTitle, subtitle: "")
     }
 
+    static func title(for tabType: TabType) -> String {
+        resolveTitle(
+            tabType: tabType,
+            tableName: nil,
+            schemaName: nil,
+            explicitTitle: nil,
+            sourceFileURL: nil,
+            databaseType: nil,
+            queryLanguageName: nil
+        )
+    }
+
     static func resolveTitle(
         payload: EditorTabPayload?,
         databaseType: DatabaseType?,

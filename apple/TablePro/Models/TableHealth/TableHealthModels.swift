@@ -1,18 +1,11 @@
-//
-//  TableHealthModels.swift
-//  TablePro
-//
-
 import Foundation
 
-enum TableHealthCheckKind: String, CaseIterable, Identifiable {
+enum TableHealthCheckKind: String, Sendable {
     case bloat
     case unusedIndex
     case redundantIndex
     case missingPrimaryKey
     case unindexedForeignKey
-
-    var id: String { rawValue }
 
     var title: String {
         switch self {
@@ -35,39 +28,60 @@ enum TableHealthCheckKind: String, CaseIterable, Identifiable {
     }
 }
 
-struct TableHealthFinding: Identifiable, Hashable {
+struct TableHealthFinding: Identifiable, Hashable, Sendable {
     let kind: TableHealthCheckKind
-    let schema: String
+    // Nil where the engine has no schema level below the database.
+    let schema: String?
     let table: String
-    /// The index or constraint the finding is about, nil when it is about the whole table.
     let objectName: String?
     let detail: String
-    /// Shown as a preview only: nothing in the report runs it.
     let fixSQL: String
 
     var id: String {
-        [kind.rawValue, schema, table, objectName ?? ""].joined(separator: "\u{1F}")
+        [kind.rawValue, schema ?? "", table, objectName ?? ""].joined(separator: "\u{1F}")
+    }
+
+    var qualifiedTable: String {
+        guard let schema else { return table }
+        return "\(schema).\(table)"
     }
 }
 
-struct TableHealthCheckResult: Identifiable {
-    static let findingLimit = 500
+struct TableHealthCheckResult: Identifiable, Sendable {
+    enum Outcome: Equatable, Sendable {
+        case completed
+        case failed(String)
+        // The server records nothing the check could read, so it did not run.
+        case skipped(String)
+    }
 
     let kind: TableHealthCheckKind
     var findings: [TableHealthFinding]
-    var error: String?
+    var outcome: Outcome
 
-    var id: String { kind.id }
+    var id: String { kind.rawValue }
 }
 
-struct TableHealthReport {
+struct TableHealthReport: Sendable {
+    let database: String
     var checks: [TableHealthCheckResult]
-    /// The database the server answered for, so a finding opens and fixes there even after the sidebar moves on.
-    var databaseName: String?
-    /// Index usage counts only since the statistics were last reset, so an index can look unused because they were.
     var statisticsNote: String?
 
     var findingCount: Int {
         checks.reduce(0) { $0 + $1.findings.count }
     }
+
+    func finding(id: TableHealthFinding.ID) -> TableHealthFinding? {
+        for check in checks {
+            if let finding = check.findings.first(where: { $0.id == id }) {
+                return finding
+            }
+        }
+        return nil
+    }
+}
+
+struct TableHealthStatistics: Equatable, Sendable {
+    var note: String?
+    var skippedChecks: [TableHealthCheckKind: String] = [:]
 }

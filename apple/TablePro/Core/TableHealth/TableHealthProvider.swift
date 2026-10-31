@@ -1,86 +1,89 @@
-//
-//  TableHealthProvider.swift
-//  TablePro
-//
-
 import Foundation
 import TableProPluginKit
 
-/// Reads one engine's catalogs into table and index health findings. Every query only reads;
-/// the fixes it builds are text for the user to review.
-protocol TableHealthProvider: Sendable {
-    var checks: [TableHealthCheckKind] { get }
-    /// MySQL calls a database a schema, so a finding's schema is the database its table opens in.
-    var schemaNamesDatabase: Bool { get }
-    var statisticsQueries: [String] { get }
-    /// Names the database the catalogs describe, for an engine whose report covers one database only.
-    var databaseQuery: String? { get }
-    func query(for check: TableHealthCheckKind) -> String
-    func findings(for check: TableHealthCheckKind, from result: QueryResult) -> [TableHealthFinding]
-    func statisticsNote(from results: [QueryResult], now: Date) -> String?
-}
+struct TableHealthQueryContext {
+    let database: String
+    let quote: (String) -> String
 
-extension TableHealthProvider {
-    /// One failing check (a privilege, Performance Schema access) leaves the others standing.
-    @MainActor
-    func fetchReport(
-        execute: @MainActor (String) async throws -> QueryResult,
-        now: Date = Date()
-    ) async throws -> TableHealthReport {
-        var databaseName: String?
-        if let databaseQuery {
-            let result = try await execute(databaseQuery)
-            databaseName = TableHealthRow.rows(of: result).first?["database_name"]
-        }
-
-        var results: [TableHealthCheckResult] = []
-        for check in checks {
-            do {
-                let result = try await execute(query(for: check))
-                results.append(TableHealthCheckResult(kind: check, findings: findings(for: check, from: result)))
-            } catch is CancellationError {
-                throw CancellationError()
-            } catch {
-                results.append(TableHealthCheckResult(kind: check, findings: [], error: error.localizedDescription))
-            }
-        }
-
-        var statisticsResults: [QueryResult] = []
-        do {
-            for query in statisticsQueries {
-                statisticsResults.append(try await execute(query))
-            }
-        } catch is CancellationError {
-            throw CancellationError()
-        } catch {
-            statisticsResults = []
-        }
-        let note = statisticsResults.count == statisticsQueries.count
-            ? statisticsNote(from: statisticsResults, now: now)
-            : nil
-
-        // The connection can move to another database between queries; a report that spans two would
-        // send one database's fixes to the other.
-        if let databaseQuery {
-            let result = try await execute(databaseQuery)
-            let finalName = TableHealthRow.rows(of: result).first?["database_name"]
-            guard finalName == databaseName else { throw TableHealthError.databaseChanged }
-        }
-
-        return TableHealthReport(checks: results, databaseName: databaseName, statisticsNote: note)
+    func qualified(_ parts: String...) -> String {
+        parts.map(quote).joined(separator: ".")
     }
 }
 
-enum TableHealthError: LocalizedError {
-    case databaseChanged
+protocol TableHealthProvider: Sendable {
+    var checks: [TableHealthCheckKind] { get }
+    var statisticsQueries: [String] { get }
+    func statistics(from results: [QueryResult?], now: Date) -> TableHealthStatistics
+    func queries(for check: TableHealthCheckKind) -> [String]
+    func findings(
+        for check: TableHealthCheckKind,
+        from results: [QueryResult],
+        context: TableHealthQueryContext
+    ) -> [TableHealthFinding]
+}
 
-    var errorDescription: String? {
-        String(localized: "The connection switched databases during the refresh. Refresh again.")
+extension TableHealthProvider {
+    // One failing check, a missing privilege say, leaves the others standing.
+    func fetchReport(
+        context: TableHealthQueryContext,
+        now: Date = Date(),
+        execute: (String) async throws -> QueryResult
+    ) async throws -> TableHealthReport {
+        var answered: [String: Result<QueryResult, any Error>] = [:]
+        func run(_ query: String) async throws -> QueryResult {
+            if let answer = answered[query] { return try answer.get() }
+            try Task.checkCancellation()
+            do {
+                let result = try await execute(query)
+                answered[query] = .success(result)
+                return result
+            } catch let error as CancellationError {
+                throw error
+            } catch {
+                answered[query] = .failure(error)
+                throw error
+            }
+        }
+
+        var statisticsResults: [QueryResult?] = []
+        for query in statisticsQueries {
+            do {
+                statisticsResults.append(try await run(query))
+            } catch let error as CancellationError {
+                throw error
+            } catch {
+                statisticsResults.append(nil)
+            }
+        }
+        let statistics = statistics(from: statisticsResults, now: now)
+
+        var results: [TableHealthCheckResult] = []
+        for check in checks {
+            if let reason = statistics.skippedChecks[check] {
+                results.append(TableHealthCheckResult(kind: check, findings: [], outcome: .skipped(reason)))
+                continue
+            }
+            do {
+                var inputs: [QueryResult] = []
+                for query in queries(for: check) {
+                    inputs.append(try await run(query))
+                }
+                let found = findings(for: check, from: inputs, context: context)
+                results.append(TableHealthCheckResult(kind: check, findings: found, outcome: .completed))
+            } catch let error as CancellationError {
+                throw error
+            } catch {
+                results.append(TableHealthCheckResult(
+                    kind: check, findings: [], outcome: .failed(error.localizedDescription)
+                ))
+            }
+        }
+        return TableHealthReport(database: context.database, checks: results, statisticsNote: statistics.note)
     }
 }
 
 enum TableHealthProviderFactory {
-    static func provider(for databaseType: DatabaseType) -> TableHealthProvider? {
+    static func provider(for databaseType: DatabaseType) -> (any TableHealthProvider)? {
         switch databaseType {
         case .postgresql:
             return PostgreSQLTableHealthProvider()
@@ -92,7 +95,7 @@ enum TableHealthProviderFactory {
     }
 }
 
-/// A result row read by column name, so a reordered SELECT list cannot shift a value.
+// Read by column name, so a reordered SELECT list cannot shift a value.
 struct TableHealthRow {
     private let values: [PluginCellValue]
     private let columns: [String: Int]
@@ -108,5 +111,12 @@ struct TableHealthRow {
     subscript(_ name: String) -> String {
         guard let index = columns[name], index < values.count else { return "" }
         return values[index].asText ?? ""
+    }
+}
+
+enum TableHealthFormatting {
+    static func count(_ text: String) -> String {
+        guard let value = Int64(text) else { return text }
+        return value.formatted()
     }
 }

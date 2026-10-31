@@ -24,15 +24,15 @@ extension MainContentCommandActions {
     }
 
     func showServerDashboard() {
-        coordinator?.showServerDashboard()
+        coordinator?.showSingletonTab(.serverDashboard)
     }
 
     func showQueryInsights() {
-        coordinator?.showQueryInsights()
+        coordinator?.showSingletonTab(.insights)
     }
 
     func showTableHealth() {
-        coordinator?.showTableHealth()
+        coordinator?.showSingletonTab(.tableHealth)
     }
 
     var supportsServerDashboard: Bool {
@@ -40,8 +40,13 @@ extension MainContentCommandActions {
         return ServerDashboardQueryProviderFactory.supportsDashboard(for: type)
     }
 
+    var supportsTableHealth: Bool {
+        guard let type = coordinator?.connection.type else { return false }
+        return TableHealthProviderFactory.provider(for: type) != nil
+    }
+
     func showUsersAndRoles() {
-        coordinator?.showUsersAndRoles()
+        coordinator?.showSingletonTab(.usersRoles)
     }
 
     var supportsUserManagement: Bool {
