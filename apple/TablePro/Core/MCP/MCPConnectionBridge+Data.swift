@@ -439,7 +439,7 @@ extension MCPConnectionBridge {
         guard !trimmed.isEmpty else {
             throw DatabaseAccessError.invalidArgument(String(localized: "The query is empty."))
         }
-        guard !QueryClassifier.isExplainStatement(trimmed) else {
+        guard !QueryClassifier.isExplainStatement(trimmed, grammar: databaseType.lexicalGrammar) else {
             return MCPExplainRequest(statement: trimmed, gatedSQL: trimmed, subjectSQL: trimmed, driverStep: nil)
         }
         guard let first = variants.first else {

@@ -501,6 +501,7 @@ extension QueryExecutionCoordinator {
                 entry.batch,
                 resultSetCount: output.resultSets.count,
                 hasErrors: !output.errors.isEmpty,
+                grammar: grammar,
                 isPlainQuery: isPlainQuery
             ) {
                 let queries = entry.batch.statements.filter { isPlainQuery($0.sql) }

@@ -16,8 +16,11 @@ import Foundation
 /// Inside a unit the tracker counts the constructs that one bare `END` closes: a block, a subprogram or package body,
 /// a compound trigger and a `CASE`. A `BEGIN` continues the innermost construct when that construct is still in its
 /// declaration section, because `DECLARE ... BEGIN ... END` and `PROCEDURE p IS ... BEGIN ... END` each end once.
-/// `END IF` and `END LOOP` close constructs that never opened one, and a word after `.` is a member name, never a
-/// keyword. A `;` ends the unit only once every construct has closed.
+/// `END IF` and `END LOOP` close constructs that never opened one, except between a loop's `FOR` or `WHILE` and its
+/// `LOOP`: no statement ends there, so `CASE ... END LOOP` is a `CASE` expression and the `LOOP` that opens the loop.
+/// A word after the `.` of `v.END` is a member name, never a keyword. The `..` of a range and the `.` that ends a
+/// number name no member, so the word after `1..` or `2.` is a keyword. A `;` ends the unit only once every construct
+/// has closed.
 ///
 /// The final `;` of a unit belongs to it, except after a trigger whose body is a `CALL`: measured on Oracle 23ai,
 /// `CREATE TRIGGER ... CALL p(:NEW.a);` is stored INVALID and the same text without the `;` compiles.
@@ -50,6 +53,7 @@ public struct PLSQLUnitTracker: SQLStatementBoundaryTracking {
     private static let lessThan = UInt16(UnicodeScalar("<").value)
     private static let greaterThan = UInt16(UnicodeScalar(">").value)
     private static let period = UInt16(UnicodeScalar(".").value)
+    private static let digits = UInt16(UnicodeScalar("0").value)...UInt16(UnicodeScalar("9").value)
 
     private static let createModifiers: Set<String> = [
         "OR", "REPLACE", "EDITIONABLE", "NONEDITIONABLE", "AND", "RESOLVE", "COMPILE", "NOFORCE",
@@ -61,6 +65,10 @@ public struct PLSQLUnitTracker: SQLStatementBoundaryTracking {
 
     /// One entry per construct a bare `END` will close, true while that construct still waits for its `BEGIN`.
     private var constructs: [Bool] = []
+
+    /// The open `CASE`s that have held no `;`, which only a `CASE` statement can. The next `END` closes one of them,
+    /// whatever word follows it.
+    private var openCaseExpressions = 0
     private var parenDepth = 0
     private var pendingEnd = false
     private var pendingBodyKeyword = false
@@ -94,6 +102,18 @@ public struct PLSQLUnitTracker: SQLStatementBoundaryTracking {
             return false
         case .sql, .anonymousBlock, .inlineDeclarations:
             return true
+        }
+    }
+
+    // An `END` still waiting for the word after it closes a construct when the text ends.
+    public var holdsOpenBlock: Bool {
+        switch kind {
+        case .anonymousBlock, .storedUnit:
+            return constructs.count > (pendingEnd ? 1 : 0)
+        case .inlineDeclarations:
+            return !inlineQueryStarted && constructs.count > (pendingEnd ? 1 : 0)
+        case .sql, .embeddedSourceHeader, .opaque:
+            return false
         }
     }
 
@@ -153,6 +173,7 @@ public struct PLSQLUnitTracker: SQLStatementBoundaryTracking {
     }
 
     public mutating func observeSymbol(_ symbol: UInt16) {
+        let precedingSymbol = previousSymbol
         if symbol == Self.lessThan, previousSymbol == Self.lessThan {
             inLabel = true
             previousSymbol = nil
@@ -174,7 +195,7 @@ public struct PLSQLUnitTracker: SQLStatementBoundaryTracking {
         default:
             break
         }
-        followsPeriod = symbol == Self.period
+        followsPeriod = symbol == Self.period && !Self.isPeriodOrDigit(precedingSymbol)
     }
 
     public mutating func observeOpaqueToken() {
@@ -190,6 +211,7 @@ public struct PLSQLUnitTracker: SQLStatementBoundaryTracking {
     public mutating func observeSemicolon() -> Bool {
         previousSymbol = nil
         followsPeriod = false
+        openCaseExpressions = 0
         guard lead == .decided else { return true }
 
         switch kind {
@@ -217,6 +239,12 @@ public struct PLSQLUnitTracker: SQLStatementBoundaryTracking {
     }
 
     // MARK: - Private
+
+    /// A name that ends in a digit arrives as a word, which leaves no preceding symbol, so `t1.END` is still a member.
+    private static func isPeriodOrDigit(_ symbol: UInt16?) -> Bool {
+        guard let symbol else { return false }
+        return symbol == period || digits.contains(symbol)
+    }
 
     private var tracksConstructs: Bool {
         guard lead == .decided else { return false }
@@ -329,6 +357,7 @@ public struct PLSQLUnitTracker: SQLStatementBoundaryTracking {
             constructs.append(true)
         case "CASE":
             constructs.append(false)
+            openCaseExpressions += 1
         case "END":
             pendingEnd = true
         case "PROCEDURE", "FUNCTION":
@@ -342,7 +371,7 @@ public struct PLSQLUnitTracker: SQLStatementBoundaryTracking {
 
     /// Returns whether `word` was consumed by the `END` before it.
     private mutating func closeEnd(followedBy word: String) -> Bool {
-        switch SqlBlockStructure.endingFollowedBy(word) {
+        switch SqlBlockStructure.endingFollowedBy(word, closesCaseExpression: openCaseExpressions > 0) {
         case .closesControlFlow:
             return true
         case .closesCaseStatement:
@@ -376,5 +405,6 @@ public struct PLSQLUnitTracker: SQLStatementBoundaryTracking {
     private mutating func closeConstruct() {
         guard !constructs.isEmpty else { return }
         constructs.removeLast()
+        openCaseExpressions = max(0, openCaseExpressions - 1)
     }
 }

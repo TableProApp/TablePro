@@ -147,6 +147,21 @@ struct SQLExecutableCommentReadingsTests {
         #expect(Self.dropsTable(SQLExecutableCommentReadings.text(of: sql, grammar: Self.mySQL, on: galera)))
     }
 
+    @Test("A MySQL Galera node runs /*!99997 and still skips the versions between its own and that one")
+    func mySQLGaleraRunsItsOwnVersion() {
+        let sql = "/*!50700 # */ \"\n*/ /*!90000 ' */ /*!99997 DROP TABLE t # */ ' \"\n*/"
+        let nodes: [(SQLExecutableCommentReadings.Family, SQLExecutableCommentReadings.Family, Int)] = [
+            (.mySQL5, .mySQL5Galera, 80_036), (.mySQL81, .mySQL81Galera, 80_403),
+        ]
+        for (family, galeraFamily, version) in nodes {
+            let mySQL = SQLExecutableCommentReadings.Server(family: family, version: version)
+            let galera = SQLExecutableCommentReadings.Server(family: galeraFamily, version: version)
+            #expect(!Self.dropsTable(SQLExecutableCommentReadings.text(of: sql, grammar: Self.mySQL, on: mySQL)))
+            #expect(Self.dropsTable(SQLExecutableCommentReadings.text(of: sql, grammar: Self.mySQL, on: galera)))
+        }
+        #expect(Self.texts(sql).contains(where: Self.dropsTable))
+    }
+
     @Test(
         "A text with no executable comment, or a grammar that reads none, is read once",
         arguments: ["SELECT 1", "SELECT '/*!99999 x */'", "/*m! x */ SELECT 1", "SELECT 1 -- /*!99999"]

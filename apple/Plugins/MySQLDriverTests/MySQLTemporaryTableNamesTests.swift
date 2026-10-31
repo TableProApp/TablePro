@@ -23,6 +23,7 @@ struct MySQLTemporaryTableNamesTests {
         #expect(names(after: "create temporary table IF NOT EXISTS `my t` (a int)") == ["my t"])
         #expect(names(after: "CREATE OR REPLACE TEMPORARY TABLE shop.`odd``name` (a INT)") == ["odd`name"])
         #expect(names(after: "CREATE TEMPORARY\n  TABLE /* note */ staging LIKE orders") == ["staging"])
+        #expect(names(after: "CREATE TEMPORARY --\u{7F}note\n TABLE noted (a INT)") == ["noted"])
         #expect(names(after: "/*!40101 CREATE TEMPORARY TABLE dumped (a INT) */") == ["dumped"])
         #expect(names(after: "CREATE /*!32312 TEMPORARY */ TABLE inline (a INT)") == ["inline"])
         #expect(names(after: "CREATE /*M!100100 TEMPORARY */ TABLE maria (a INT)") == ["maria"])

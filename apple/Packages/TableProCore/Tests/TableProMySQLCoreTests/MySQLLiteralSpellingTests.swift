@@ -77,6 +77,8 @@ struct MySQLLiteralSpellingTests {
         #expect(session.respelled(#"`we'ird\\col` = 'a\\b'"#) == #"`we'ird\\col` = 'a\b'"#)
         #expect(session.respelled(#""it's\\" = 'a\\b'"#) == #""it's\\" = 'a\b'"#)
         #expect(session.respelled("-- it's\n'a\\\\b'") == "-- it's\n'a\\b'")
+        #expect(session.respelled("--\u{01}it's\n'a\\\\b'") == "--\u{01}it's\n'a\\b'")
+        #expect(session.respelled("--\u{7F}it's\n'a\\\\b'") == "--\u{7F}it's\n'a\\b'")
         #expect(session.respelled("# it's\n'a\\\\b'") == "# it's\n'a\\b'")
         #expect(session.respelled("/* it's */ 'a\\\\b'") == "/* it's */ 'a\\b'")
         #expect(session.respelled("5--1 'a\\\\b'") == "5--1 'a\\b'")

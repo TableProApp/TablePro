@@ -7,6 +7,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProSQLGrammar
 
 struct ExplainRequest: Equatable {
     struct DriverStep: Equatable {
@@ -77,6 +78,7 @@ struct ExplainRequest: Equatable {
     static func gatedSQL(subject: String, runsStatement: Bool) -> String {
         guard !runsStatement else { return subject }
         let planned = "EXPLAIN \(subject)"
-        return QueryClassifier.explainedStatement(in: planned) == nil ? subject : planned
+        // `planned` opens with its keyword, so no engine's comment rule changes where it starts.
+        return QueryClassifier.explainedStatement(in: planned, grammar: .ansi) == nil ? subject : planned
     }
 }

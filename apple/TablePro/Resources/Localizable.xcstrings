@@ -160566,6 +160566,8 @@
       }
     },
     "Send one statement at a time." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {

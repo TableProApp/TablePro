@@ -39,6 +39,19 @@ struct SQLFileParserPLSQLTests {
         #expect(try await Self.parse(example.script, grammar: TestGrammar.oracle) == example.statements)
     }
 
+    @Test("A q-quote delimiter outside the BMP closes at that delimiter, wherever a chunk boundary falls")
+    func nonBMPAlternativeQuoteDelimiter() async throws {
+        let script = "SELECT q'\u{1F600}x\u{1F600}' FROM dual;\nDROP TABLE users;\nSELECT q'\u{1F600}a'b\u{1F600}' FROM dual;"
+        let expected = [
+            "SELECT q'\u{1F600}x\u{1F600}' FROM dual", "DROP TABLE users", "SELECT q'\u{1F600}a'b\u{1F600}' FROM dual",
+        ]
+        #expect(try await Self.parse(script, grammar: TestGrammar.oracle) == expected)
+        for boundary in 0..<(script as NSString).length {
+            let padding = "--" + String(repeating: "x", count: Self.chunkSize - boundary - 3) + "\n"
+            #expect(try await Self.parse(padding + script, grammar: TestGrammar.oracle) == expected, "boundary at \(boundary)")
+        }
+    }
+
     @Test("A chunk boundary anywhere in a unit changes nothing")
     func chunkBoundaryAnywhere() async throws {
         let script = """

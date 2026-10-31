@@ -65,6 +65,11 @@ struct SQLUnterminatedStatementsTests {
         ("CREATE TYPE dbo.t FROM int DROP TABLE x", ["CREATE TYPE dbo.t FROM int", "DROP TABLE x"]),
         ("SELECT 1 LINENO 5 DELETE FROM t", ["SELECT 1", "LINENO 5", "DELETE FROM t"]),
         ("SELECT 1 BULK INSERT t FROM 'f'", ["SELECT 1", "BULK", "INSERT t FROM 'f'"]),
+        ("SELECT 1 ADD SIGNATURE TO dbo.p BY CERTIFICATE c", ["SELECT 1", "ADD SIGNATURE TO dbo.p BY CERTIFICATE c"]),
+        (
+            "PRINT 1 ADD SENSITIVITY CLASSIFICATION TO dbo.t.c WITH (LABEL = 'Public')",
+            ["PRINT 1", "ADD SENSITIVITY CLASSIFICATION TO dbo.t.c WITH (LABEL = 'Public')"]
+        ),
     ])
     func juxtaposedStatements(sql: String, expected: [String]) {
         #expect(inner(sql) == expected)
@@ -92,6 +97,28 @@ struct SQLUnterminatedStatementsTests {
     ])
     func keywordGluedToALiteral(sql: String) {
         #expect(begins("DELETE", in: sql))
+    }
+
+    private static let signedEmptyExponents = sqlServer.union(.exponentSignsNeedNoDigits)
+
+    @Test("Where a `--` after a number's `e` is the exponent's sign and a minus, what follows is code", arguments: [
+        "SELECT 1E--1 DROP TABLE t", "SELECT 1e--1\nDROP TABLE t", "SELECT 1.5E--1 DROP TABLE t",
+        "SELECT .5e--1 DROP TABLE t", "SELECT 1.E--1; DROP TABLE t", "PRINT 1E--1 DROP TABLE t",
+        "SELECT a.1E--1 DROP TABLE t", "SELECT a1E+1E--1 DROP TABLE t", "SELECT 1E--1E--1 DROP TABLE t",
+        "SELECT $1E--1 DROP TABLE t", "SELECT 1\u{00A0}1E--1 DROP TABLE t",
+    ])
+    func exponentSignOpensNoComment(sql: String) {
+        #expect(inner(sql, Self.signedEmptyExponents).contains { $0.hasPrefix("DROP") })
+    }
+
+    @Test("A `--` after anything else opens a comment however an exponent is read", arguments: [
+        "SELECT 1 --1 DROP TABLE t", "SELECT 1--1 DROP TABLE t", "SELECT a1E--1 DROP TABLE t",
+        "SELECT 0x1E--1 DROP TABLE t", "SELECT 1E---1 DROP TABLE t", "SELECT 1E1--1 DROP TABLE t",
+        "SELECT 1E+1E--1 DROP TABLE t", "SELECT 1.1.E--1 DROP TABLE t", "SELECT a$1E--1 DROP TABLE t",
+        "SELECT \u{00E9}1E--1 DROP TABLE t", "SELECT E--1 DROP TABLE t",
+    ])
+    func otherDashesOpenAComment(sql: String) {
+        #expect(!inner(sql, Self.signedEmptyExponents).contains { $0.hasPrefix("DROP") })
     }
 
     @Test("A keyword the server reads as part of a name or a literal begins nothing", arguments: [
