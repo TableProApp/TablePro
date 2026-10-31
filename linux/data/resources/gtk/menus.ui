@@ -4,8 +4,6 @@
        startup; the windows read the menus with menu_by_id. -->
   <menu id="primary_menu">
     <section>
-      <!-- A window showing sessions has no other way to add a
-           connection. -->
       <item>
         <attribute name="label" translatable="yes">New Connection…</attribute>
         <attribute name="action">win.new-connection</attribute>
