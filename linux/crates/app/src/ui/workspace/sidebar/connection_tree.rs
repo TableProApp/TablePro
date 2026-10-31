@@ -425,8 +425,26 @@ impl TreeInner {
     fn saved_name(&self, key: &SessionKey) -> Option<String> {
         match key {
             SessionKey::Saved(id) => self.saved.get(*id).map(|saved| saved.name),
+            SessionKey::SavedIn { id, database } => {
+                self.saved.get(*id).map(|saved| sibling_title(&saved.name, database))
+            }
             SessionKey::File(_) => None,
         }
+    }
+
+    /// The open databases of the connection `id` beside its own, by name.
+    fn siblings_of(&self, id: uuid::Uuid) -> Vec<(SessionKey, String)> {
+        let mut siblings: Vec<(SessionKey, String)> = self
+            .branches
+            .borrow()
+            .keys()
+            .filter_map(|key| match key {
+                SessionKey::SavedIn { id: of, database } if *of == id => Some((key.clone(), database.clone())),
+                _ => None,
+            })
+            .collect();
+        siblings.sort_by_cached_key(|(_, database)| (database.to_lowercase(), database.clone()));
+        siblings
     }
 
     /// The node of the connection under `key`, made under `title` for a
@@ -485,11 +503,25 @@ impl TreeInner {
                 saved.color.map_or("", crate::ui::connection_appearance::color_class),
             );
             kept.insert(key);
+            // The connection's other open databases come right after it,
+            // in its group, by name ([0030]).
+            let mut rows = vec![node];
+            for (sibling, database) in self.siblings_of(saved.id) {
+                let title = sibling_title(&saved.name, &database);
+                let node = self.node_for(&sibling, &title);
+                node.update(
+                    &title,
+                    crate::ui::icons::DRIVE_HARDDISK,
+                    saved.color.map_or("", crate::ui::connection_appearance::color_class),
+                );
+                kept.insert(sibling);
+                rows.push(node);
+            }
             match &saved.group {
-                None => ungrouped.push(node),
+                None => ungrouped.extend(rows),
                 Some(group) => match grouped.last_mut() {
-                    Some((name, members)) if *name == group.as_str() => members.push(node),
-                    _ => grouped.push((group.as_str().to_owned(), vec![node])),
+                    Some((name, members)) if *name == group.as_str() => members.extend(rows),
+                    _ => grouped.push((group.as_str().to_owned(), rows)),
                 },
             }
         }
@@ -787,7 +819,7 @@ impl TreeInner {
                 Some(saved) => search.matches(&saved, &self.saved.tags()),
                 None => search.matches_name(&node.title()),
             },
-            SessionKey::File(_) => search.matches_name(&node.title()),
+            SessionKey::SavedIn { .. } | SessionKey::File(_) => search.matches_name(&node.title()),
         }
     }
 
@@ -1076,7 +1108,8 @@ impl TreeInner {
     fn stored(&self, node: &TreeNode) -> Option<Uuid> {
         match node.key()? {
             SessionKey::Saved(id) => self.saved.get(id).map(|_| id),
-            SessionKey::File(_) => None,
+            // A database's row is not the connection's: it has no editing.
+            SessionKey::SavedIn { .. } | SessionKey::File(_) => None,
         }
     }
 
@@ -1094,10 +1127,18 @@ impl TreeInner {
                 stored: self.stored(node).is_some(),
             }
         };
-        let lead = session_section(&key, state);
+        // A saved connection's own row, on an engine whose catalog holds
+        // one database (0030).
+        let opens_databases = matches!(key, SessionKey::Saved(_))
+            && self
+                .branches
+                .borrow()
+                .get(&key)
+                .is_some_and(|branch| branch.view.affordances().opens_databases);
+        let lead = session_section(&key, state, opens_databases);
         let saved = match &key {
             SessionKey::Saved(id) => self.saved.get(*id),
-            SessionKey::File(_) => None,
+            SessionKey::SavedIn { .. } | SessionKey::File(_) => None,
         };
         let Some(saved) = saved else {
             if lead.n_items() == 0 {
@@ -1504,4 +1545,13 @@ fn open_when_made(row: &gtk::TreeListRow, schema: &TreeNode) {
 fn index_in(model: &impl IsA<gio::ListModel>, object: &impl IsA<glib::Object>) -> Option<u32> {
     let object = object.upcast_ref::<glib::Object>();
     (0..model.n_items()).find(|&at| model.item(at).as_ref() == Some(object))
+}
+
+/// A sibling database's row: its connection and the database, apart.
+fn sibling_title(connection: &str, database: &str) -> String {
+    // Translators: a connection and another of its server's databases, open beside it.
+    crate::i18n::gettext_f(
+        "{connection} · {database}",
+        &[("connection", connection), ("database", database)],
+    )
 }

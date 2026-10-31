@@ -40,7 +40,9 @@ pub(super) fn access(
     let saved = services.saved_connections.clone();
     let key = key.clone();
     AssistantAccess::new(services.ai.clone(), session, engine, move || match &key {
-        SessionKey::Saved(id) => saved.get(*id).map_or_else(AiPolicy::default, |saved| saved.ai_policy),
+        SessionKey::Saved(id) | SessionKey::SavedIn { id, .. } => {
+            saved.get(*id).map_or_else(AiPolicy::default, |saved| saved.ai_policy)
+        }
         SessionKey::File(_) => AiPolicy::default(),
     })
 }

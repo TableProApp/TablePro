@@ -101,6 +101,7 @@ fn every_affordance() -> SidebarAffordances {
         can_create_table: true,
         can_edit_structure: true,
         speaks_sql: true,
+        opens_databases: true,
     }
 }
 
@@ -1270,8 +1271,13 @@ fn the_connection_menu_holds_the_pickers_items() {
             )
     );
     assert_eq!(
-        open[..3],
-        ["win.new-query-in", "win.refresh-in", "win.disconnect-session"],
+        open[..4],
+        [
+            "win.new-query-in",
+            "win.refresh-in",
+            "win.open-database-in",
+            "win.disconnect-session"
+        ],
         "{open:?}"
     );
     assert!(!open.contains(&"picker.connect".to_owned()));
@@ -1279,6 +1285,29 @@ fn the_connection_menu_holds_the_pickers_items() {
     assert!(group.is_some(), "Move to Group has no choices");
     let state = WidgetExt::activate_action(&popover, "picker-row.group", Some(&"Work".to_variant()));
     assert!(state.is_ok(), "the menu's choices reach no action");
+}
+
+/// An engine whose connection already lists every database offers none
+/// to open beside it.
+#[gtk4::test]
+fn a_connection_listing_every_database_offers_none_to_open() {
+    let alpha = connection("Alpha", None);
+    let shown = Shown::new(std::slice::from_ref(&alpha));
+    let (view, _) = session(
+        &[object("public", "orders")],
+        SidebarAffordances {
+            opens_databases: false,
+            ..every_affordance()
+        },
+    );
+    shown.open(&alpha, &view);
+    let popover = shown.popover();
+
+    shown.menu("Alpha");
+
+    let open = menu_actions(&popover);
+    assert!(open.contains(&"win.new-query-in".to_owned()), "{open:?}");
+    assert!(!open.contains(&"win.open-database-in".to_owned()), "{open:?}");
 }
 
 #[gtk4::test]

@@ -29,4 +29,12 @@ pub(super) enum WriteJob {
         drafts: DraftScope,
         purged: oneshot::Sender<Result<(), WorkspaceSaveError>>,
     },
+    /// Purge, as `Purge` does, every session whose name starts with
+    /// `prefix`: those found in `dir` as a file or a copy moved aside,
+    /// and those with drafts only.
+    PurgeNamed {
+        dir: PathBuf,
+        prefix: String,
+        purged: oneshot::Sender<Result<(), WorkspaceSaveError>>,
+    },
 }

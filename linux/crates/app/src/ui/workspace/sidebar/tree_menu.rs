@@ -6,6 +6,7 @@ use tablepro_session::SessionKey;
 pub(super) const SHOW_SESSION: &str = "win.show-session";
 const NEW_QUERY_IN: &str = "win.new-query-in";
 const REFRESH_IN: &str = "win.refresh-in";
+const OPEN_DATABASE_IN: &str = "win.open-database-in";
 pub(super) const DISCONNECT_SESSION: &str = "win.disconnect-session";
 const STOP_CONNECTING: &str = "win.stop-connecting";
 pub(super) const SHOW_CONNECT_FAILURE: &str = "win.show-connect-failure";
@@ -27,7 +28,8 @@ pub(super) enum InWindow {
 /// The connection's menu section for the window: the session's own
 /// actions while it is open, Stop Connecting while it connects, else
 /// Connect for a saved connection, and the reason a connect failed.
-pub(super) fn session_section(key: &SessionKey, state: InWindow) -> gio::Menu {
+/// `opens_databases` offers Open Database… on an open one.
+pub(super) fn session_section(key: &SessionKey, state: InWindow, opens_databases: bool) -> gio::Menu {
     let target = crate::ui::session_target::to_variant(key);
     let menu = gio::Menu::new();
     let add = |label: String, action: &str| {
@@ -39,6 +41,9 @@ pub(super) fn session_section(key: &SessionKey, state: InWindow) -> gio::Menu {
         InWindow::Open => {
             add(crate::i18n::gettext("_New Query"), NEW_QUERY_IN);
             add(crate::i18n::gettext("Re_fresh"), REFRESH_IN);
+            if opens_databases {
+                add(crate::i18n::gettext("_Open Database…"), OPEN_DATABASE_IN);
+            }
             add(crate::i18n::gettext("_Disconnect"), DISCONNECT_SESSION);
         }
         // A connect can wait for a host that never answers.
@@ -81,7 +86,7 @@ mod tests {
 
         for state in stored {
             assert_access_keys(&crate::ui::picker::connection_menu_with(
-                &session_section(&key, state),
+                &session_section(&key, state, true),
                 id,
                 &[],
                 &[],
@@ -94,6 +99,7 @@ mod tests {
                 failed: true,
                 stored: false,
             },
+            true,
         ));
     }
 }
