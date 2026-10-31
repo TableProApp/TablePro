@@ -442,3 +442,47 @@ async fn stream_read_sends_every_row_and_refuses_writes() {
     assert_eq!(rows.rows[0][0], Value::Int(10));
     connection.close().await.unwrap();
 }
+
+/// A read-only open still lets SQLite attach another file, write a copy
+/// of the database with `VACUUM INTO`, and set pragmas, and sqlx runs
+/// every statement a text holds.
+#[tokio::test]
+async fn a_read_attaches_nothing_sets_no_pragma_and_runs_one_statement() {
+    let file = TestFile::new().await;
+    let connection = file.open().await;
+    apply(connection.as_ref(), &["CREATE TABLE t (a)", "INSERT INTO t VALUES (1)"])
+        .await
+        .unwrap();
+    let copy = file.directory().join("copy.db");
+    let copy_name = copy.display().to_string();
+    let attach = format!("ATTACH '{}' AS other", file.path.display());
+    let vacuum = format!("VACUUM INTO '{copy_name}'");
+    let hidden = format!("SELECT $1('); VACUUM INTO '{copy_name}'; --'");
+
+    for sql in [
+        vacuum.as_str(),
+        attach.as_str(),
+        hidden.as_str(),
+        "PRAGMA foreign_keys = OFF",
+        "EXPLAIN PRAGMA hard_heap_limit = 1",
+        "PRAGMA user_version = 7",
+        "SELECT 1; SELECT 2",
+    ] {
+        let collected = Collected::default();
+        let refused = connection
+            .stream_read(&ReadStatement::User(UserSql::new(sql)), collected.sink(), call())
+            .await;
+        assert!(refused.is_err(), "{sql}: {refused:?}");
+    }
+    assert!(!copy.exists());
+
+    for sql in ["PRAGMA table_info(t)", "SELECT a FROM t", "SELECT a FROM t; -- note"] {
+        let collected = Collected::default();
+        let read = connection
+            .stream_read(&ReadStatement::User(UserSql::new(sql)), collected.sink(), call())
+            .await;
+        assert!(read.is_ok(), "{sql}: {read:?}");
+        assert!(!collected.rows().is_empty(), "{sql}");
+    }
+    connection.close().await.unwrap();
+}

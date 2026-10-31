@@ -58,7 +58,7 @@ extension MainContentCoordinator {
             return
         }
         if tab.display.resultsViewMode == .structure {
-            structureActions?.refresh?()
+            activeStructureSession?.refresh()
             return
         }
         reloadActiveTableData(hasPendingTableOps: hasPendingTableOps, onDiscard: onDiscard)

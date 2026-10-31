@@ -92,6 +92,23 @@ mod tests {
     }
 
     #[test]
+    fn a_byte_order_mark_does_not_hide_a_sqlite_statement_from_the_question() {
+        // SQLite reads U+FEFF as a space where a token starts, so both
+        // statements run as written without the mark.
+        let drop = gated("\u{feff}DROP TABLE t", SqlGrammar::Sqlite, SafeModeLevel::Off);
+        let delete = gated(
+            "WITH stale AS (SELECT 1) \u{feff}DELETE FROM t",
+            SqlGrammar::Sqlite,
+            SafeModeLevel::ConfirmWrites,
+        );
+
+        assert_eq!(drop.confirm.len(), 1);
+        assert!(drop.destructive);
+        assert_eq!(delete.confirm, ["WITH stale AS (SELECT 1) \u{feff}DELETE FROM t"]);
+        assert!(delete.destructive);
+    }
+
+    #[test]
     fn a_repeated_batch_shows_how_many_times_it_runs() {
         let run = gated(
             "UPDATE accounts SET balance = balance - 10 WHERE id = 1\nGO 100",

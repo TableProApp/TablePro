@@ -38,6 +38,17 @@ struct SQLContextAnalyzerTableReferenceTests {
         #expect(tables("ALTER TABLE invoices ADD COLUMN due DATE") == ["invoices"])
     }
 
+    @Test("A path that ends in a dot names no table yet")
+    func unfinishedPath() {
+        #expect(tables("SELECT * FROM sales.").isEmpty)
+        #expect(tables("SELECT * FROM orders o JOIN sales.") == ["orders"])
+        #expect(tables("UPDATE sales.").isEmpty)
+        #expect(tables("INSERT INTO sales.").isEmpty)
+        #expect(tables("ALTER TABLE sales.").isEmpty)
+        #expect(analyzer.analyze(query: "SELECT * FROM sales.", cursorPosition: 20).tableReferences.isEmpty)
+        #expect(tables("SELECT * FROM sales.orders") == ["orders"])
+    }
+
     @Test("A schema-qualified ALTER target keeps its schema")
     func qualifiedAlterTarget() {
         let references = analyzer.tableReferences(in: "ALTER TABLE archive.orders ADD COLUMN due DATE", grammar: .ansi)

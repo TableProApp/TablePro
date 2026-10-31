@@ -2,9 +2,6 @@
 //  MainContentView+Helpers.swift
 //  TablePro
 //
-//  Extension containing helper methods and inspector context
-//  for MainContentView. Extracted to reduce main view complexity.
-//
 
 import SwiftUI
 import TableProPluginKit
@@ -75,7 +72,7 @@ extension MainContentView {
             isRowDeleted: isSelectedRowDeleted,
             tableMetadata: tableMetadataForCurrentTab,
             jsonRow: jsonRowSnapshotForSidebar,
-            userDefinedTypeScope: structureTypeScope
+            structure: structureInspectorSource
         )
         updateAssistantContext()
     }
@@ -94,17 +91,6 @@ extension MainContentView {
     // Per-tab cache: a single latest-wins slot showed whichever table loaded last, even on a query tab or another database.
     var tableMetadataForCurrentTab: TableMetadata? {
         currentTab.flatMap { coordinator.currentTableMetadata(for: $0) }
-    }
-
-    // The tab's own database and schema, never the sidebar's: a tab bound to another database edits that one.
-    private var structureTypeScope: DatabaseScope? {
-        guard let tab = currentTab, tab.tabType == .table || tab.tabType == .createTable else { return nil }
-        let database = tab.tableContext.databaseName ?? coordinator.browseDatabaseName
-        return DatabaseScope(
-            connectionId: coordinator.connection.id,
-            database: database,
-            schema: tab.tableContext.schemaName
-        )
     }
 
     private func cachedQueryResultsSummary() -> String? {

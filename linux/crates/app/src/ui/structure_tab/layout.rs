@@ -63,6 +63,7 @@ pub(super) fn build(
     columns_page(tab, context, stores.columns);
     indexes_page(tab, context, stores);
     foreign_keys_page(tab, context, stores, init.schema, init.session, init.tasks);
+    let options = super::table_options::build(tab);
     StructureTabWidgets {
         inner_stack: imp.inner_stack.get(),
         error_status: imp.error_status.get(),
@@ -76,6 +77,7 @@ pub(super) fn build(
         add_column_row: imp.add_column_row.get(),
         add_index_row: imp.add_index_row.get(),
         add_fk_row: imp.add_fk_row.get(),
+        options,
         sql_buffer,
         pending_label: imp.pending_label.get(),
         save_button: imp.save_button.get(),

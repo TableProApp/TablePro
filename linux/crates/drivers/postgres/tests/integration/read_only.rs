@@ -153,11 +153,9 @@ async fn stream_read_user_sql_cannot_turn_the_transaction_writable() {
     setup(owner.as_ref(), &["CREATE TABLE t (id int)", "INSERT INTO t VALUES (1)"]).await;
 
     for sql in [
-        "SET TRANSACTION READ WRITE; DELETE FROM t",
-        "SET transaction_read_only = off; DELETE FROM t",
-        "SET LOCAL transaction_read_only TO false; DELETE FROM t",
-        "SELECT set_config('transaction_read_only', 'off', true); DELETE FROM t",
-        "SET SESSION CHARACTERISTICS AS TRANSACTION READ WRITE; DELETE FROM t",
+        "SET TRANSACTION READ WRITE",
+        "SELECT set_config('transaction_read_only', 'off', true)",
+        "DELETE FROM t",
     ] {
         let outcome = stream_user_sql(owner.as_ref(), sql).await;
 
@@ -166,7 +164,70 @@ async fn stream_read_user_sql_cannot_turn_the_transaction_writable() {
             "{sql}: {outcome:?}"
         );
     }
+    // A read is one statement, so the server refuses a second before it
+    // runs the first.
+    for sql in [
+        "SET TRANSACTION READ WRITE; DELETE FROM t",
+        "SET transaction_read_only = off; DELETE FROM t",
+        "SET LOCAL transaction_read_only TO false; DELETE FROM t",
+        "SELECT set_config('transaction_read_only', 'off', true); DELETE FROM t",
+        "SET SESSION CHARACTERISTICS AS TRANSACTION READ WRITE; DELETE FROM t",
+    ] {
+        let outcome = stream_user_sql(owner.as_ref(), sql).await;
+
+        assert!(outcome.is_err(), "{sql}: {outcome:?}");
+    }
     assert_eq!(scalar(owner.as_ref(), "SELECT count(*) FROM t").await, Value::Int(1));
+}
+
+/// A string on the line after `E'x'` continues it, so the server reads
+/// its `\'` as an escaped quote whatever `standard_conforming_strings`
+/// says, and the COMMIT is a statement of its own. The read is refused
+/// whichever way the text is split.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn stream_read_refuses_a_continued_escape_string_that_hides_a_commit() {
+    let fixture = start().await;
+    let owner = connect(&fixture, false).await;
+    setup(owner.as_ref(), &["CREATE TABLE t (id int)", "INSERT INTO t VALUES (1)"]).await;
+
+    let outcome = stream_user_sql(
+        owner.as_ref(),
+        "SELECT E'x'\n'\\' || ' || '\\' ; COMMIT; DELETE FROM t; --'",
+    )
+    .await;
+
+    assert!(outcome.is_err(), "{outcome:?}");
+    assert_eq!(scalar(owner.as_ref(), "SELECT count(*) FROM t").await, Value::Int(1));
+}
+
+/// The rows of user SQL come back typed, and a statement with no rows
+/// still has its columns.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn stream_read_of_user_sql_keeps_its_columns() {
+    let fixture = start().await;
+    let owner = connect(&fixture, false).await;
+    setup(owner.as_ref(), &["CREATE TABLE t (id int, note text)"]).await;
+
+    let events = Events::default();
+    let outcome = owner
+        .stream_read(
+            &ReadStatement::User(UserSql::new("SELECT id, note FROM t WHERE id > 0")),
+            Box::new(EventSink::new(&events)),
+            within(CALL),
+        )
+        .await;
+
+    assert!(outcome.is_ok(), "{outcome:?}");
+    assert!(
+        events.all().iter().any(|event| matches!(
+            event,
+            tablepro_core::ResultEvent::ResultSetStarted { columns } if columns.len() == 2
+        )),
+        "{:?}",
+        events.all()
+    );
 }
 
 /// With `standard_conforming_strings` off the server reads `\'` as an

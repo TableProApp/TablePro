@@ -37,10 +37,6 @@ impl StructureModel {
             SaveInput::Discard => {
                 // This also lets go of a save whose outcome was unknown.
                 self.tracker.clear();
-                if self.mode() == StructureMode::Edit && self.definition_stale {
-                    fx.input(SaveInput::Reload);
-                    return;
-                }
                 // New mode clears everything but the name, since a new
                 // table starts empty.
                 let restored = match self.context.borrow().original() {
@@ -49,6 +45,11 @@ impl StructureModel {
                 };
                 self.show_draft(restored);
                 self.recompute_dirty_state(fx);
+                // The read keeps the restored definition on screen while it
+                // runs and through a failure, never the discarded edits.
+                if self.mode() == StructureMode::Edit && self.definition_stale {
+                    fx.input(SaveInput::Reload);
+                }
             }
             SaveInput::SaveCompleted { new_table_name } => self.save_completed(new_table_name, fx),
             SaveInput::SaveFailed(message) => {
@@ -142,6 +143,7 @@ impl StructureModel {
             self.widgets.columns_box.upcast_ref(),
             self.widgets.indexes_box.upcast_ref(),
             self.widgets.fks_box.upcast_ref(),
+            self.widgets.options.controls.upcast_ref(),
         ] {
             widget.set_sensitive(editable);
         }
@@ -152,6 +154,7 @@ impl StructureModel {
     /// off yet: the controls go back to what the draft holds.
     pub(super) fn refuse_edit(&self, msg: &StructureTabInput, fx: &mut StructureEffects) {
         self.show_table_name();
+        self.show_table_options();
         if let StructureTabInput::Columns(ColumnsInput::ColumnEdited { column, .. }) = msg
             && let Some(position) = self.columns.find(column)
         {

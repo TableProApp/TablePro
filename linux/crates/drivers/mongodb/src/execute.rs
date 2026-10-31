@@ -73,7 +73,7 @@ pub(crate) async fn start(
                 });
             }
             let first = match cursor.advance(session).await {
-                Ok(true) => cursor.deserialize_current().ok(),
+                Ok(true) => crate::nested_document::current_document(&cursor).ok(),
                 Ok(false) => None,
                 Err(error) => return Err(endpoint.explain(&error, LossPhase::Statement).await),
             };

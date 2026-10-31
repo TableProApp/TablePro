@@ -5,19 +5,27 @@ use tablepro_core::{DriverError, WriteAtomicity};
 use crate::flavour::MySqlFlavour;
 use crate::metadata::catalog_rows;
 
-/// The storage engine of a table, and whether that engine can roll back.
+/// The storage engine of a table, whether that engine can roll back, and
+/// the table's collation and counter as TABLES lists them.
 pub(crate) const TABLE_ENGINE_SQL: &str = "\
-SELECT t.ENGINE, e.TRANSACTIONS
+SELECT t.ENGINE, e.TRANSACTIONS, t.TABLE_COLLATION, t.AUTO_INCREMENT
 FROM information_schema.TABLES t
 LEFT JOIN information_schema.ENGINES e ON e.ENGINE = t.ENGINE
 WHERE t.TABLE_SCHEMA = COALESCE(?, DATABASE()) AND t.TABLE_NAME = ?";
 
-/// What a table's engine can promise a write.
+/// What a table's engine can promise a write, and the options TABLES
+/// lists beside it.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub(crate) struct TableEngine {
     /// `None` for a view, or a table that is not there.
     pub engine: Option<String>,
     pub transactions: Option<String>,
+    /// `None` for a view.
+    pub collation: Option<String>,
+    /// Live on MariaDB. MySQL 8 caches it for up to a day
+    /// (`information_schema_stats_expiry`), so its counter is taken from
+    /// SHOW CREATE TABLE instead.
+    pub auto_increment: Option<u64>,
 }
 
 impl TableEngine {
@@ -57,6 +65,8 @@ pub(crate) async fn lookup(
     Ok(TableEngine {
         engine: row.text(0)?,
         transactions: row.text(1)?,
+        collation: row.text(2)?,
+        auto_increment: row.number(3)?,
     })
 }
 
@@ -68,6 +78,7 @@ mod tests {
         TableEngine {
             engine: Some("Engine".to_owned()),
             transactions: transactions.map(str::to_owned),
+            ..TableEngine::default()
         }
     }
 
@@ -84,7 +95,8 @@ mod tests {
         assert!(
             TableEngine {
                 engine: Some("ndbcluster".to_owned()),
-                transactions: Some("YES".to_owned())
+                transactions: Some("YES".to_owned()),
+                ..TableEngine::default()
             }
             .is_ndb()
         );

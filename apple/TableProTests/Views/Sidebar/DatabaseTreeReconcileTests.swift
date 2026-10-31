@@ -162,7 +162,7 @@ struct DatabaseTreeReconcileTests {
         await tearDown(fixture)
     }
 
-    @Test("An all-schema listing starting to load changes nothing the outline draws, and its rows landing do")
+    @Test("An all-schema listing starting to load changes nothing the outline draws, and its rows landing do only under a search")
     func listingStartingToLoadIsNoChange() async throws {
         let connection = TestFixtures.makeConnection(database: "shop", type: .pglite)
         let driver = MockDatabaseDriver(connection: connection)
@@ -172,17 +172,19 @@ struct DatabaseTreeReconcileTests {
         session.status = .connected
         DatabaseManager.shared.injectSession(session, for: connection.id)
         let service = DatabaseTreeMetadataService.shared
-        func inputs() -> DatabaseTreeRenderInputs {
+        func inputs(searchText: String = "time") -> DatabaseTreeRenderInputs {
             DatabaseTreeRenderInputs(
                 connectionId: connection.id,
                 treeMetadata: service,
                 schemaService: .shared,
                 temporaryTables: .shared,
                 sidebarState: nil,
-                rootShape: .flat
+                rootShape: .flat,
+                searchText: searchText
             )
         }
         let unread = inputs()
+        let unsearched = inputs(searchText: "")
 
         let load = Task { await service.loadAllSchemaTables(connectionId: connection.id, database: "shop") }
         try await waitUntil {
@@ -196,6 +198,7 @@ struct DatabaseTreeReconcileTests {
         await load.value
         #expect(service.allSchemaTablesLoadState(connectionId: connection.id, database: "shop").value != nil)
         #expect(inputs() != unread)
+        #expect(inputs(searchText: "") == unsearched)
         await service.handleDisconnect(connectionId: connection.id)
         DatabaseManager.shared.removeSession(for: connection.id)
     }
@@ -216,7 +219,8 @@ struct DatabaseTreeReconcileTests {
                 schemaService: .shared,
                 temporaryTables: .shared,
                 sidebarState: nil,
-                rootShape: shape
+                rootShape: shape,
+                searchText: ""
             )
         }
         let flat = inputs(.flat)

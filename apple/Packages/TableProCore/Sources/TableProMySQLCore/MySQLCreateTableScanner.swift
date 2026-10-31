@@ -30,6 +30,28 @@ nonisolated public enum MySQLCreateTableScanner {
         return clauses
     }
 
+    /// The `NAME=value` options on the line that closes the column list, keyed by the upper-cased name,
+    /// or nil when the statement does not create a table. `DEFAULT CHARSET=x` is keyed `CHARSET`.
+    ///
+    /// The column list is skipped as one quote-aware group, so a column comment holding
+    /// `) AUTO_INCREMENT=7` is never read, and a quoted value such as the table comment is one token.
+    /// MariaDB under `NO_TABLE_OPTIONS` prints the line as a bare `)`, which reads as no options.
+    public static func tableOptions(fromCreateTable sql: String) -> [String: String]? {
+        let text = Substring(sql)
+        guard let header = text.split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: false).first,
+              declaresTable(header),
+              let body = firstGroup(in: text),
+              body.endIndex < text.endIndex
+        else { return nil }
+        let line = text[text.index(after: body.endIndex)...].prefix { $0 != "\n" }
+        var options: [String: String] = [:]
+        for token in topLevelTokens(of: line) {
+            guard let equals = token.firstIndex(of: "="), equals > token.startIndex else { continue }
+            options[token[..<equals].uppercased()] = String(token[token.index(after: equals)...])
+        }
+        return options
+    }
+
     public static func firstGroup(in text: Substring) -> Substring? {
         var depth = 0
         var start: Substring.Index?

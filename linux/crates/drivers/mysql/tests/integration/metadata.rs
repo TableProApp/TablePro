@@ -1,14 +1,14 @@
 //! The catalogue as the structure tab and the filters read it.
 
 use tablepro_core::column::{BoolStorage, ColumnKind, IntegerKind, IntegerWidth};
-use tablepro_core::ddl::{ColumnVisibility, GeneratedStorage, IdentityStyle};
+use tablepro_core::ddl::{ColumnVisibility, GeneratedStorage, IdentityStyle, TableOptions};
 use tablepro_core::dialect::{BindTarget, LikeForm, SqlDialect};
 use tablepro_core::meta::{ObjectKind, ObjectScope};
 use tablepro_core::statement::StatementBuilder;
 use tablepro_core::{Connection, RowLimit, Value};
 use tablepro_test_fixtures::MysqlFlavour;
 
-use crate::support::{CALL, FLAVOURS, connect, rows, setup, start, table, within};
+use crate::support::{CALL, FLAVOURS, connect, connect_root, rows, setup, start, table, within};
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires docker"]
@@ -145,6 +145,102 @@ async fn fetch_table_definition_reports_pk_name_collation_comment() {
             source.create_statement.starts_with("CREATE TABLE `described`"),
             "{flavour:?}"
         );
+        connection.close().await.expect("a close");
+    }
+}
+
+fn options(character_set: &str, collation: &str, next_auto_increment: Option<u64>) -> Option<TableOptions> {
+    Some(TableOptions {
+        character_set: Some(character_set.to_owned()),
+        collation: Some(collation.to_owned()),
+        next_auto_increment,
+    })
+}
+
+async fn options_of(connection: &dyn Connection, name: &str) -> Option<TableOptions> {
+    connection
+        .fetch_table_definition(&table(name), within(CALL))
+        .await
+        .expect("the definition")
+        .options
+}
+
+/// MySQL caches TABLES.AUTO_INCREMENT for a day, so the counter it
+/// reports after inserts has to come from SHOW CREATE TABLE.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn fetch_table_definition_reads_the_table_options() {
+    for flavour in FLAVOURS {
+        let fixture = start(flavour).await;
+        let connection = connect(&fixture, false).await;
+        setup(
+            connection.as_ref(),
+            &[
+                "CREATE TABLE counted (id int AUTO_INCREMENT PRIMARY KEY, code varchar(20)) DEFAULT CHARSET=latin1 \
+                 COLLATE=latin1_bin",
+                "CREATE TABLE fresh (id bigint AUTO_INCREMENT PRIMARY KEY) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin",
+                "CREATE TABLE plain (id int PRIMARY KEY) DEFAULT CHARSET=ascii",
+                "CREATE VIEW seen AS SELECT id FROM plain",
+                "INSERT INTO counted (code) VALUES ('a'), ('b')",
+                "INSERT INTO counted (code) VALUES ('c')",
+            ],
+        )
+        .await;
+        let connection = connection.as_ref();
+
+        assert_eq!(
+            options_of(connection, "counted").await,
+            options("latin1", "latin1_bin", Some(4)),
+            "{flavour:?}"
+        );
+        assert_eq!(
+            options_of(connection, "fresh").await,
+            options("utf8mb4", "utf8mb4_bin", Some(1)),
+            "{flavour:?}"
+        );
+        assert_eq!(
+            options_of(connection, "plain").await,
+            options("ascii", "ascii_general_ci", None),
+            "{flavour:?}"
+        );
+        assert_eq!(options_of(connection, "seen").await, None, "{flavour:?}");
+        connection.close().await.expect("a close");
+    }
+}
+
+/// MariaDB 10.10 and later list a UCA 14 collation in COLLATIONS with
+/// no character set, so the list has to come from where the server
+/// spells the names its tables carry.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn character_sets_list_every_collation_a_table_can_carry() {
+    for flavour in FLAVOURS {
+        let fixture = start(flavour).await;
+        let connection = connect(&fixture, false).await;
+        setup(
+            connection.as_ref(),
+            &["CREATE TABLE defaulted (id int PRIMARY KEY) DEFAULT CHARSET=utf8mb4"],
+        )
+        .await;
+
+        let sets = connection
+            .fetch_character_sets(within(CALL))
+            .await
+            .expect("the character sets");
+        let collation = options_of(connection.as_ref(), "defaulted")
+            .await
+            .and_then(|options| options.collation)
+            .expect("the table's collation");
+
+        let utf8mb4 = sets.iter().find(|set| set.name == "utf8mb4").expect("utf8mb4");
+        assert!(utf8mb4.collations.contains(&collation), "{flavour:?}: {collation}");
+        assert!(utf8mb4.collations.contains(&utf8mb4.default_collation), "{flavour:?}");
+        assert!(
+            utf8mb4.collations.iter().all(|name| name.starts_with("utf8mb4_")),
+            "{flavour:?}"
+        );
+        assert!(sets.iter().any(|set| set.name == "latin1"), "{flavour:?}");
+        assert!(sets.windows(2).all(|pair| pair[0].name < pair[1].name), "{flavour:?}");
         connection.close().await.expect("a close");
     }
 }
@@ -399,4 +495,38 @@ async fn insensitive_filter_matches_mixed_case() {
     assert!(sensitive.is_empty(), "a _bin collation compares case: {sensitive:?}");
     assert_eq!(insensitive, ["Alpha"]);
     connection.close().await.expect("a close");
+}
+
+/// The databases a query tab can move to: the login's own marked as the
+/// default, another one it can see, and the server's own marked as
+/// system, which the editor bar lists after the user's.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn the_servers_databases_are_listed_for_a_query_tab() {
+    for flavour in FLAVOURS {
+        let fixture = start(flavour).await;
+        let root = connect_root(&fixture).await;
+        let grant = format!(
+            "GRANT ALL ON analytics.* TO '{}'@'%'",
+            fixture.password_credentials().username
+        );
+        setup(
+            root.as_ref(),
+            &["CREATE DATABASE IF NOT EXISTS analytics", grant.as_str()],
+        )
+        .await;
+        root.close().await.expect("a close");
+        let connection = connect(&fixture, false).await;
+
+        let databases = connection.list_databases(within(CALL)).await.expect("the databases");
+
+        let find = |name: &str| databases.iter().find(|database| database.name == name);
+        let own = find("tablepro").expect("the login's database");
+        assert!(own.is_default && !own.is_system, "{flavour:?}: {own:?}");
+        let other = find("analytics").expect("another database");
+        assert!(!other.is_default && !other.is_system, "{flavour:?}: {other:?}");
+        let system = find("information_schema").expect("information_schema");
+        assert!(system.is_system, "{flavour:?}: {system:?}");
+        connection.close().await.expect("a close");
+    }
 }

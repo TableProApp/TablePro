@@ -117,7 +117,7 @@ struct TableCommentStatementTests {
             _ = try generator.generate(changes: [.modifyTableComment(old: nil, new: "Orders")])
             Issue.record("Expected the save to be refused")
         } catch {
-            #expect(error.localizedDescription.contains("Change comment on table"))
+            #expect(error.localizedDescription.contains(String(localized: "Change the table comment")))
         }
     }
 

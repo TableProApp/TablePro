@@ -17,7 +17,6 @@ internal struct InspectorFieldListView: View {
     @ObservedObject internal var editState: MultiRowEditState
     internal let isEditable: Bool
     internal let databaseType: DatabaseType
-    internal let userDefinedTypeScope: DatabaseScope?
     internal var offersDatabaseValues = true
 
     private var offersFieldRemoval: Bool {
@@ -93,14 +92,12 @@ internal struct InspectorFieldListView: View {
         case .phpSerialized, .binaryValue:
             return false
         case .json, .image, .geometry, .blobHex, .boolean, .enumPicker, .setPicker, .arrayElements, .vector,
-             .typePicker, .valuePicker, .schemaText, .multiLine, .singleLine:
+             .multiLine, .singleLine:
             return true
         }
     }
 
-    /// A structure row's edits are recorded by its own grid, so `hasEdits` stays false while
-    /// `hasCommittedEdit` is true. Gating on pending edits alone left the filter permanently
-    /// unusable on exactly the rows it lists as modified.
+    // Rows that disagree carry an edit made elsewhere as `hasCommittedEdit`, with no pending value.
     private var hasAnyModification: Bool {
         editState.fields.contains { $0.hasEdit || $0.hasCommittedEdit }
     }
@@ -156,19 +153,15 @@ internal struct InspectorFieldListView: View {
         let commands = editState.setValueCommands(for: field, isWritable: editable && offersDatabaseValues)
         InspectorFieldRow(
             context: context(for: field, kind: kind, isEditable: editable),
-            layout: InspectorFieldLayout.resolve(for: kind, isSchemaField: field.isSchemaField),
             kind: kind,
             isModified: field.hasEdit || field.hasCommittedEdit,
             isPrimaryKey: field.isPrimaryKey,
             isForeignKey: field.isForeignKey,
-            databaseType: databaseType,
             isExpanded: expandedFieldID == field.id,
             commands: commands,
             isPendingExpression: field.isPendingExpression,
             onSetValue: { editState.setValue($0, at: field.columnIndex) },
-            onRemoveField: offersFieldRemoval && !field.isSchemaField
-                ? { editState.removeField(at: field.columnIndex) }
-                : nil,
+            onRemoveField: offersFieldRemoval ? { editState.removeField(at: field.columnIndex) } : nil,
             onToggleExpand: FieldEditorContent.canExpand(kind: kind, state: FieldValueState.resolve(field))
                 ? { expandedFieldID = expandedFieldID == field.id ? nil : field.id }
                 : nil,
@@ -208,9 +201,7 @@ internal struct InspectorFieldListView: View {
                 ? { editState.setFieldToBytes(at: field.columnIndex, data: $0) }
                 : nil,
             editor: kind,
-            allowsNullAndDefault: offersDatabaseValues && !field.isSchemaField,
-            showsTypeBadge: !field.isSchemaField,
-            userDefinedTypeScope: field.isSchemaField ? userDefinedTypeScope : nil
+            allowsNullAndDefault: offersDatabaseValues
         )
     }
 
@@ -251,7 +242,6 @@ internal struct InspectorFieldListView: View {
               offersDatabaseValues,
               let focusedField,
               let field = editState.fields.first(where: { $0.id == focusedField }),
-              !field.isSchemaField,
               Self.isFieldEditable(field, kind: FieldEditorResolver.resolve(field: field), rowIsEditable: isEditable),
               let command = Self.stateShortcutCommand(
                   for: key, offered: editState.setValueCommands(for: field, isWritable: true)

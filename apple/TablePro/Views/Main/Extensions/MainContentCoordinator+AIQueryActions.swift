@@ -43,8 +43,8 @@ extension MainContentCoordinator {
             target: AssistantEditorTarget(
                 tabId: tab.id,
                 scope: scope(for: tab),
-                errorMessage: tab.display.activeResultSet?.errorMessage ?? tab.execution.errorMessage,
-                errorQuery: tab.execution.errorQuery
+                errorMessage: tab.latestError?.message,
+                errorQuery: tab.latestError?.query
             )
         )
     }

@@ -55,6 +55,7 @@ fn a_column_added() -> Option<PendingStructure> {
         draft,
         changes: TableChanges::default(),
         unparsed_defaults: Vec::new(),
+        invalid_auto_increment: false,
     })
 }
 
@@ -183,6 +184,7 @@ fn restored_workspace_selects_saved_active_tab() {
                     TabRecord::Editor {
                         draft: DraftId::new(),
                         file: None,
+                        database: None,
                     },
                     orders,
                 ],
@@ -228,6 +230,7 @@ fn a_restored_editor_tab_keeps_its_file_and_its_unsaved_changes() {
                         uri: gio::File::for_path(&path).uri().to_string(),
                         modified: true,
                     }),
+                    database: None,
                 }],
             },
         )

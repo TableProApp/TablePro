@@ -131,6 +131,17 @@ fn restore_session_round_trip() -> TestResult {
 }
 
 #[test]
+fn last_seen_version_starts_empty_and_round_trips() -> TestResult {
+    let fixture = Fixture::new()?;
+    assert_eq!(fixture.settings.last_seen_version(), "");
+
+    fixture.settings.set_last_seen_version("0.2.0")?;
+
+    assert_eq!(fixture.settings.last_seen_version(), "0.2.0");
+    Ok(())
+}
+
+#[test]
 fn confirm_bulk_delete_round_trip() -> TestResult {
     let fixture = Fixture::new()?;
 

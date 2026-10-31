@@ -14,6 +14,7 @@ use tablepro_core::{AiPolicy, AiProvider};
 
 use crate::services::active_session::ActiveSession;
 use crate::services::ai_service::AiService;
+use crate::ui::editor::CatalogHome;
 
 const CANCEL: &str = "cancel";
 const ALLOW: &str = "allow";
@@ -54,6 +55,9 @@ pub(crate) struct AssistantAccess {
     /// Each Time.
     granted: RefCell<Option<Destination>>,
     asking: Cell<bool>,
+    /// Where the editor tab in front resolves names: its database, when
+    /// it moved off the connection's.
+    front: RefCell<Option<Box<dyn Fn() -> CatalogHome>>>,
 }
 
 impl AssistantAccess {
@@ -72,7 +76,13 @@ impl AssistantAccess {
             policy: Box::new(policy),
             granted: RefCell::new(None),
             asking: Cell::new(false),
+            front: RefCell::new(None),
         })
+    }
+
+    /// Describe the database of the editor tab `front` says is in front.
+    pub(crate) fn follow_front(&self, front: impl Fn() -> CatalogHome + 'static) {
+        self.front.replace(Some(Box::new(front)));
     }
 
     pub(crate) fn ai(&self) -> &AiService {
@@ -196,10 +206,15 @@ impl AssistantAccess {
             };
         };
         let engine = self.engine.clone();
+        let home = self
+            .front
+            .borrow()
+            .as_ref()
+            .map_or_else(CatalogHome::default, |front| front());
         let read = self
             .ai
             .tasks()
-            .spawn_task(async move { super::schema_reader::read(session, engine, text).await })
+            .spawn_task(async move { super::schema_reader::read(session, engine, text, home).await })
             .await;
         read.unwrap_or_else(|failure| {
             tracing::warn!(%failure, "the schema for the assistant could not be read");

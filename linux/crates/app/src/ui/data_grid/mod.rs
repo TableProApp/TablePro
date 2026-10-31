@@ -19,10 +19,12 @@ mod keys;
 mod layout_binding;
 mod pointer;
 mod references;
+mod reversed_list;
 mod row_detail;
 mod row_json_dialog;
 mod row_number_column;
 mod selection;
+mod selection_summary;
 mod server_sorter;
 mod table_keys;
 #[cfg(test)]
@@ -47,6 +49,7 @@ pub(crate) use self::grid_request::GridRequest;
 pub(crate) use self::grid_row::{GridRow, PinnedRow, RowData};
 pub(crate) use self::grid_store::GridStore;
 pub(crate) use self::layout_binding::LayoutBinding;
+use self::reversed_list::ReversedList;
 #[cfg(test)]
 pub(crate) use self::row_detail::RowDetailPane;
 pub(crate) use self::row_json_dialog::{RowJsonRequest, present_row_json};
@@ -177,6 +180,7 @@ impl DataGrid {
     pub fn set_columns(&self, columns: Arc<[GridColumn]>, sorting: GridSorting, rules: Option<EditRules>) {
         self.commit_editors();
         self.store().clear();
+        self.imp().summary.forget_column();
         self.edit().set_rules(self, rules);
         self.rebuild_columns(columns, sorting);
         self.show_rows_or_empty();
@@ -341,10 +345,12 @@ impl DataGrid {
             GridSorting::Client => {
                 // At once rather than in steps, so a copy right after a
                 // click takes the order on screen.
-                let sorted = gtk::SortListModel::new(Some(list), imp.column_view.sorter());
+                let sorted = gtk::SortListModel::new(Some(list), None::<gtk::Sorter>);
                 sorted.set_incremental(false);
-                let _ = imp.sort_model.set(sorted.clone());
-                sorted.upcast()
+                let shown = ReversedList::new(&sorted);
+                let _ = imp.sort_model.set(sorted);
+                let _ = imp.shown.set(shown.clone());
+                shown.upcast()
             }
             GridSorting::Server { .. } | GridSorting::None => list,
         };

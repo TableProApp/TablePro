@@ -9,8 +9,8 @@ use sqlx::mysql::MySqlConnection;
 use sqlx::{AssertSqlSafe, Executor as _, Row as _};
 use tablepro_core::column::{ColumnDefault, ColumnInfo, ColumnKind, SqlExpression, TemporalZone};
 use tablepro_core::ddl::{
-    ColumnDefinition, InboundForeignKey, OutboundForeignKey, PrimaryKeyConstraint, ReferentialAction, TableDefinition,
-    TableSource, UnmodeledAttribute,
+    CharacterSet, ColumnDefinition, InboundForeignKey, OutboundForeignKey, PrimaryKeyConstraint, ReferentialAction,
+    TableDefinition, TableOptions, TableSource, UnmodeledAttribute,
 };
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::meta::{
@@ -20,10 +20,11 @@ use tablepro_core::meta::{
 use tablepro_core::{DriverError, ForeignKeyInfo, Value};
 
 use crate::catalog::{
-    COLUMN_COMPARISONS_SQL, COLUMN_ENGINE_ATTRIBUTES_SQL, CatalogCells, ColumnCheck, INBOUND_FOREIGN_KEYS_SQL,
-    ListedSrid, MARIADB_COLUMN_CHECKS_SQL, MARIADB_GEOMETRY_SRIDS_SQL, MySqlColumnRow, TableComparisons, column_checks,
-    column_comparisons, column_definition, column_info, columns_sql, compares_alike, geometry_srids,
-    inbound_foreign_keys, place_column_checks, quoted_default,
+    CHARACTER_SETS_SQL, COLLATIONS_SQL, COLUMN_COMPARISONS_SQL, COLUMN_ENGINE_ATTRIBUTES_SQL, CatalogCells,
+    ColumnCheck, FULL_COLLATION_NAMES_SQL, FULL_COLLATIONS_SQL, INBOUND_FOREIGN_KEYS_SQL, ListedOptions, ListedSrid,
+    MARIADB_COLUMN_CHECKS_SQL, MARIADB_GEOMETRY_SRIDS_SQL, MySqlColumnRow, TableComparisons, character_sets,
+    column_checks, column_comparisons, column_definition, column_info, columns_sql, compares_alike, geometry_srids,
+    inbound_foreign_keys, place_column_checks, quoted_default, table_options,
 };
 use crate::decode::decode_row;
 use crate::dialect::MySqlDialect;
@@ -31,7 +32,7 @@ use crate::errors::map_error;
 use crate::flavour::MySqlFlavour;
 use crate::mysql_timestamp_mode::MySqlTimestampMode;
 use crate::mysql_wire_format::MySqlWireFormat;
-use crate::table_engine;
+use crate::table_engine::{self, TableEngine};
 
 /// Rows of a catalogue query whose parameters are all text or NULL.
 pub(crate) async fn catalog_rows(
@@ -82,6 +83,41 @@ pub(crate) async fn list_schemas(
             is_system: false,
         })
         .collect())
+}
+
+/// The databases MySQL and MariaDB keep for themselves.
+const SYSTEM_DATABASES: [&str; 4] = ["information_schema", "mysql", "performance_schema", "sys"];
+
+/// Every database the login can see, the connection's own the default.
+pub(crate) async fn list_databases(
+    connection: &mut MySqlConnection,
+    flavour: MySqlFlavour,
+) -> Result<Vec<SchemaInfo>, DriverError> {
+    let current = list_schemas(connection, flavour)
+        .await?
+        .into_iter()
+        .next()
+        .map(|schema| schema.name);
+    let rows = catalog_rows(
+        connection,
+        flavour,
+        "SELECT SCHEMA_NAME FROM information_schema.SCHEMATA ORDER BY SCHEMA_NAME",
+        "SCHEMATA",
+        &[],
+    )
+    .await?;
+    let mut databases = Vec::with_capacity(rows.len());
+    for row in rows {
+        let Some(name) = row.text(0)? else {
+            continue;
+        };
+        databases.push(SchemaInfo {
+            is_default: current.as_deref() == Some(name.as_str()),
+            is_system: SYSTEM_DATABASES.contains(&name.as_str()),
+            name,
+        });
+    }
+    Ok(databases)
 }
 
 const TABLES_IN_SCHEMA_SQL: &str = "\
@@ -483,6 +519,7 @@ pub(crate) async fn fetch_table_definition(
         });
     let foreign_keys = fetch_foreign_keys(connection, flavour, table).await?;
     let inbound_foreign_keys = fetch_inbound_foreign_keys(connection, flavour, table).await?;
+    let options = definition_options(&engine, flavour, &create_statement, &columns);
     Ok(TableDefinition {
         table: table.clone(),
         columns,
@@ -494,7 +531,57 @@ pub(crate) async fn fetch_table_definition(
             create_statement,
             dependents: Vec::new(),
         }),
+        options,
     })
+}
+
+/// NDB's table options were never measured, so none are offered.
+fn definition_options(
+    engine: &TableEngine,
+    flavour: MySqlFlavour,
+    create_statement: &str,
+    columns: &[ColumnDefinition],
+) -> Option<TableOptions> {
+    if engine.is_ndb() {
+        return None;
+    }
+    let listed = ListedOptions {
+        collation: engine.collation.as_deref(),
+        auto_increment: engine.auto_increment,
+        create_statement,
+        numbered: columns.iter().any(|column| column.info.is_auto_increment),
+    };
+    table_options(listed, flavour)
+}
+
+/// The character sets and collations the server offers. Collations come
+/// from where the server spells the names tables carry.
+pub(crate) async fn fetch_character_sets(
+    connection: &mut MySqlConnection,
+    flavour: MySqlFlavour,
+) -> Result<Vec<CharacterSet>, DriverError> {
+    let sets = catalog_rows(connection, flavour, CHARACTER_SETS_SQL, "CHARACTER_SETS", &[]).await?;
+    let full_names = catalog_rows(connection, flavour, FULL_COLLATION_NAMES_SQL, "COLUMNS", &[]).await?;
+    let listed_apart = full_names
+        .first()
+        .map(|row| row.number(0))
+        .transpose()?
+        .flatten()
+        .is_some_and(|count| count > 0);
+    let collations = match listed_apart {
+        true => {
+            catalog_rows(
+                connection,
+                flavour,
+                FULL_COLLATIONS_SQL,
+                "COLLATION_CHARACTER_SET_APPLICABILITY",
+                &[],
+            )
+            .await?
+        }
+        false => catalog_rows(connection, flavour, COLLATIONS_SQL, "COLLATIONS", &[]).await?,
+    };
+    character_sets(&sets, &collations)
 }
 
 /// A TIMESTAMP's constant default as wall time in the server's zone,

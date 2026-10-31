@@ -8,7 +8,8 @@ pub struct ChangeReview {
     /// The edits the user made, counted as the action bar counts them.
     pub operations: usize,
     pub statements: Vec<String>,
-    /// The rebuild first, then the drops, type changes and new NOT NULLs.
+    /// The rebuild first, then the dropped columns, a convert, type and
+    /// character set changes, and new NOT NULLs.
     pub destructive: Vec<DestructiveChange>,
 }
 
@@ -30,6 +31,9 @@ impl ChangeReview {
                     column: column.name().to_owned(),
                 }),
         );
+        if changes.options.as_ref().is_some_and(|options| options.converts_columns) {
+            destructive.push(DestructiveChange::ConvertCharacterSet);
+        }
         destructive.extend(
             changes
                 .altered_columns
@@ -46,6 +50,22 @@ impl ChangeReview {
                         from,
                         to: alteration.draft.column_type.text().to_owned(),
                     }
+                }),
+        );
+        // A collation within the same character set sorts the values
+        // differently but keeps them as they are.
+        destructive.extend(
+            changes
+                .altered_columns
+                .iter()
+                .filter(|alteration| {
+                    let character_set = &alteration.draft.character_set;
+                    alteration.changed.collation
+                        && character_set.is_some()
+                        && *character_set != alteration.original.attributes.character_set
+                })
+                .map(|alteration| DestructiveChange::ChangeColumnCharacterSet {
+                    column: alteration.original.name().to_owned(),
                 }),
         );
         destructive.extend(

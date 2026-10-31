@@ -354,7 +354,7 @@ final class D1HttpClient: @unchecked Sendable {
             throw D1HttpError(message: "Invalid response from server")
         }
 
-        if httpResponse.statusCode >= 400 {
+        if !(200 ..< 300).contains(httpResponse.statusCode) {
             try handleHttpError(statusCode: httpResponse.statusCode, data: data, response: httpResponse)
         }
 
@@ -404,7 +404,7 @@ final class D1HttpClient: @unchecked Sendable {
     }
 }
 
-private final class D1TaskTracker: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
+private final class D1TaskTracker: PluginRedirectRefusingDelegate, @unchecked Sendable {
     private weak var client: D1HttpClient?
     private let lock = NSLock()
     private var task: URLSessionTask?

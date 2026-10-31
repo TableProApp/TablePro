@@ -82,11 +82,15 @@ final class SnowflakeConnection: @unchecked Sendable {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.timeoutIntervalForRequest = Self.requestTimeout
         configuration.timeoutIntervalForResource = 600
-        self.session = URLSession(configuration: configuration)
+        self.session = URLSession(
+            configuration: configuration, delegate: PluginRedirectRefusingDelegate(), delegateQueue: nil
+        )
         let connectConfiguration = URLSessionConfiguration.ephemeral
         connectConfiguration.timeoutIntervalForRequest = TimeInterval(PluginConnectTimeout.maximumMilliseconds) / 1_000
         connectConfiguration.timeoutIntervalForResource = TimeInterval(PluginConnectTimeout.maximumMilliseconds) / 1_000
-        self.connectSession = URLSession(configuration: connectConfiguration)
+        self.connectSession = URLSession(
+            configuration: connectConfiguration, delegate: PluginRedirectRefusingDelegate(), delegateQueue: nil
+        )
 
         self._currentDatabase = params.database.isEmpty ? nil : params.database
         self._currentSchema = params.schema.isEmpty ? nil : params.schema

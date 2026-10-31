@@ -736,3 +736,82 @@ async fn alter_add_column_then_query_bound_on_all_four_pooled_connections() {
         assert_eq!(read.rows[0][1], Value::Text("x".to_owned()));
     }
 }
+
+/// Another user's functions and operators in `public` whose signatures
+/// match the catalog reads' arguments better than the built-ins do. A
+/// catalog read never runs one, and a table named without its schema is
+/// still found on the session's own path.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn lookalikes_in_public_never_run_in_a_catalog_read() {
+    let fixture = start().await;
+    let connection = connect(&fixture, false).await;
+    let trap = |name: &str, arguments: &str, returns: &str| {
+        format!(
+            "CREATE FUNCTION public.{name}({arguments}) RETURNS {returns} LANGUAGE plpgsql AS \
+             $$ BEGIN RAISE EXCEPTION 'public.{name} ran as %', current_user; END $$"
+        )
+    };
+    let statements = [
+        "CREATE TYPE mood AS ENUM ('sad', 'ok')".to_owned(),
+        "CREATE TABLE accounts (id int PRIMARY KEY, state mood)".to_owned(),
+        "CREATE TABLE orders (id int PRIMARY KEY, account int REFERENCES accounts (id))".to_owned(),
+        "CREATE INDEX orders_account ON orders (account)".to_owned(),
+        trap("starts_with", "name, text", "boolean"),
+        trap("unnest", "int2[]", "SETOF int2"),
+        trap("to_jsonb", "pg_catalog.pg_constraint", "jsonb"),
+        trap("array_agg_step", "text[], text", "text[]"),
+        "CREATE AGGREGATE public.array_agg(text) (SFUNC = public.array_agg_step, STYPE = text[])".to_owned(),
+        trap("oid_is_regclass", "oid, regclass", "boolean"),
+        "CREATE OPERATOR public.= (LEFTARG = oid, RIGHTARG = regclass, FUNCTION = public.oid_is_regclass)".to_owned(),
+        trap("oid_is_regtype", "oid, regtype", "boolean"),
+        "CREATE OPERATOR public.= (LEFTARG = oid, RIGHTARG = regtype, FUNCTION = public.oid_is_regtype)".to_owned(),
+        trap("jsonb_field", "jsonb, text", "text"),
+        "CREATE OPERATOR public.->> (LEFTARG = jsonb, RIGHTARG = text, FUNCTION = public.jsonb_field)".to_owned(),
+        trap("oid_is_not_int", "oid, integer", "boolean"),
+        "CREATE OPERATOR public.<> (LEFTARG = oid, RIGHTARG = integer, FUNCTION = public.oid_is_not_int)".to_owned(),
+        trap("real_below_int", "real, integer", "boolean"),
+        "CREATE OPERATOR public.< (LEFTARG = real, RIGHTARG = integer, FUNCTION = public.real_below_int)".to_owned(),
+    ];
+    let statements: Vec<&str> = statements.iter().map(String::as_str).collect();
+    setup(connection.as_ref(), &statements).await;
+
+    let schemas = connection.list_schemas(within(CALL)).await.unwrap();
+    assert!(
+        schemas
+            .iter()
+            .any(|schema| schema.name == "public" && schema.is_default)
+    );
+    connection
+        .list_objects(&ObjectScope::DefaultSchema, within(CALL))
+        .await
+        .unwrap();
+    connection
+        .list_objects(&ObjectScope::AllSchemas, within(CALL))
+        .await
+        .unwrap();
+    for name in ["orders", "accounts"] {
+        connection.fetch_columns(&table(name), within(CALL)).await.unwrap();
+        connection.fetch_indexes(&table(name), within(CALL)).await.unwrap();
+        connection.fetch_foreign_keys(&table(name), within(CALL)).await.unwrap();
+        connection
+            .fetch_inbound_foreign_keys(&table(name), within(CALL))
+            .await
+            .unwrap();
+        connection
+            .fetch_table_definition(&table(name), within(CALL))
+            .await
+            .unwrap();
+        connection.row_identity(&table(name), within(CALL)).await.unwrap();
+        connection.table_estimate(&table(name), within(CALL)).await.unwrap();
+    }
+    let unqualified = TableRef::new(None, "orders");
+    let columns = connection.fetch_columns(&unqualified, within(CALL)).await.unwrap();
+    assert_eq!(columns.len(), 2);
+    assert!(
+        connection
+            .fetch_columns(&TableRef::new(None, "missing"), within(CALL))
+            .await
+            .is_err()
+    );
+}

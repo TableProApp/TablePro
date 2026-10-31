@@ -36,6 +36,18 @@ extension UITestCase {
         window.descendants(matching: .any).matching(identifier: "result-set-menu").firstMatch
     }
 
+    internal func resultSetTabs(in window: XCUIElement) -> XCUIElement {
+        window.descendants(matching: .any).matching(identifier: "result-set-tabs").firstMatch
+    }
+
+    // A tab is a `Tab` element under the tabs role on macOS 27 and a radio button before it, like a view switcher's.
+    internal func resultSetTab(containing text: String, in tabs: XCUIElement) -> XCUIElement {
+        let types = [XCUIElement.ElementType.tab, .radioButton].map(\.rawValue)
+        return tabs.descendants(matching: .any)
+            .matching(NSPredicate(format: "label CONTAINS %@ AND elementType IN %@", text, types))
+            .firstMatch
+    }
+
     internal func gridCell(showing text: String, in grid: XCUIElement) -> XCUIElement {
         grid.staticTexts.matching(NSPredicate(format: "value == %@", text)).firstMatch
     }

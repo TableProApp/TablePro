@@ -522,6 +522,7 @@ mod tests {
             foreign_keys: Vec::<ForeignKeyInfo>::new(),
             inbound_foreign_keys: Vec::new(),
             source: None,
+            options: None,
         }
     }
 

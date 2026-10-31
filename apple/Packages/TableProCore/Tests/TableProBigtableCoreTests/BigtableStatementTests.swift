@@ -72,6 +72,23 @@ struct BigtableStatementTests {
         #expect(try BigtableStatement.parse(BigtableStatement.encode(spec)) == .browse(spec))
     }
 
+    @Test("A key or column that starts or ends with a joining scalar reads back from its own text")
+    func roundTripBesideJoiningScalars() throws {
+        for text in ["\u{301}audit?", "\u{301}a/b", "\u{301}audit cf:a", "\u{301}audit", "\"\u{301}audit", "a b\u{600}", "a\u{600}", "x \u{600}\\"] {
+            let key = Data(text.utf8)
+            for request in [
+                BigtableRequest(verb: .delete, table: "events", key: key),
+                BigtableRequest(verb: .delete, table: "events", key: key, column: "cf:" + text),
+                BigtableRequest(verb: .put, table: "events", key: key, body: #"{"cf:a":"v"}"#),
+                BigtableRequest(verb: .scan, table: "events", key: key, limit: 5)
+            ] {
+                #expect(try BigtableRequest.parse(request.text) == request, "\(request.text)")
+            }
+        }
+        let column = BigtableRequest(verb: .delete, table: "events", key: Data("k".utf8), column: "\u{200D}")
+        #expect(try BigtableRequest.parse(column.text) == column)
+    }
+
     @Test("A write body sets cells, deletes nulled ones under PUT, and writes numbers and booleans as text")
     func mutations() throws {
         let put = BigtableRequest(verb: .put, table: "t", key: Data("k".utf8), body: #"{"cf:name": null, "cf:n": 42, "cf:on": true, "cf:raw": "b64:AAE="}"#)

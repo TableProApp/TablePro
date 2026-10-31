@@ -34,13 +34,14 @@ COMMIT
 - Reads always run in a `READ ONLY` transaction, also on a read-write connection.
 - `statement_timeout` is the nearer of the call's deadline and the workspace's 60 s. `lock_timeout` is 10 s, so a blocked edit reports the lock instead of a generic timeout.
 - `SET LOCAL` ends with the transaction, so nothing is left on a server connection a pooler shares.
+- A catalog read runs under the session's own search_path, so names print as the user's session sees them, and resolves nothing through it: every function is written `pg_catalog.<name>`, and every operator compares two values of one built-in type, cast where they differ (`attrelid = $1::text::regclass::oid`), or is written `OPERATOR(pg_catalog.<op>)`. A lookalike another user creates on the path can then only tie with the built-in, and `pg_catalog`, searched first, wins the tie. `bare_calls` in `metadata/mod.rs` checks every catalog statement for an unqualified call.
 - Generated SQL runs on the unnamed statement (`query_typed_raw`, `execute_typed`) with typed parameters. Nothing is prepared under a name.
 - A connection whose flight did not end with an acknowledged COMMIT or ROLLBACK is taken out of the pool, because deadpool's recycle check (`RecyclingMethod::Verified`) passes inside a half-finished transaction.
 - A read that returns no rows still has its columns: the statement runs once more as a subquery right-joined to one row on a false condition, in a read-only transaction of its own.
 - A column of a type tokio-postgres does not know (an enum, `citext`, a domain) would make it prepare a type lookup under a name. Pages project such columns as text, so a read never does.
 - chrono ends at 262143 AD, and the server keeps dates to 5874897 AD and timestamps to 294276 AD. A value past chrono's end reads as the text the server would print for it, so the cell shows it rather than saying it cannot. A cell edit or a CSV import takes such text back, and it binds as text cast to the column's type.
 
-`probe` takes a pool slot without waiting; when every slot is busy it opens a connection of its own and runs `SELECT 1`. `stream_read` opens a connection of its own, runs `START TRANSACTION READ ONLY` with no statement timeout, and refuses user SQL that would end that transaction (transaction control, `CALL`, `DO`) before sending anything.
+`probe` takes a pool slot without waiting; when every slot is busy it opens a connection of its own and runs `SELECT 1`. `stream_read` opens a connection of its own, runs `START TRANSACTION READ ONLY` with no statement timeout, and refuses user SQL that would end that transaction (transaction control, `CALL`, `DO`) before sending anything. User SQL is first parsed with the extended protocol, whose Parse refuses a text that holds more than one statement, and then runs as a simple query, which splits text with the same parser and keeps every value as the server's text, so nothing can follow the read inside its transaction. The Parse prepares under a name, which is safe because the connection is the call's own.
 
 ## Stops and timeouts
 

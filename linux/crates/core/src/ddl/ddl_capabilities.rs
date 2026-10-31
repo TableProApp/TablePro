@@ -37,4 +37,11 @@ pub struct DdlCapabilities {
     /// Whether a table lists its columns in the order they were declared
     /// and added. CQL lists the key columns first and the rest by name.
     pub declared_column_order: bool,
+    /// Whether the user picks a column's character set and collation from
+    /// the server's list (`Connection::fetch_character_sets`).
+    pub column_collations: bool,
+    /// Whether the table's default character set and collation, a
+    /// convert of every column to them, and the next AUTO_INCREMENT value
+    /// can change (`TableChanges::options`).
+    pub table_options: bool,
 }

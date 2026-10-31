@@ -399,6 +399,35 @@ struct TelemetryTests {
         ])
     }
 
+    @Test("A failed editor query or a table browse sends no first_query_executed; a successful editor query does")
+    func onlyASuccessfulEditorQueryCounts() async throws {
+        let fixture = try TelemetryFixture()
+        fixture.start()
+        let window = CoordinatorFixture(services: fixture.appServices())
+        func request(_ source: QueryHistorySource, succeeded: Bool) -> QueryHistoryRecordRequest {
+            QueryHistoryRecordRequest(
+                query: "SELECT 1",
+                connectionId: window.connection.id,
+                databaseName: "db",
+                databaseType: .postgresql,
+                source: source,
+                executionTime: 0.01,
+                rowCount: 1,
+                wasSuccessful: succeeded,
+                errorMessage: succeeded ? nil : "syntax error"
+            )
+        }
+
+        let failed = window.coordinator.recordHistory(request(.editor, succeeded: false))
+        let browsed = window.coordinator.recordHistory(request(.tableBrowse, succeeded: true))
+        #expect(fixture.client?.captured.isEmpty == true)
+
+        let ran = window.coordinator.recordHistory(request(.editor, succeeded: true))
+        #expect(fixture.client?.captured == ["first_query_executed"])
+
+        _ = await (failed.value, browsed.value, ran.value)
+    }
+
     @Test("A Mac updated after connecting sends no first_query_executed; a new Mac still sends it on a later launch")
     func firstQueryCarriedOver() throws {
         let updated = try TelemetryFixture()

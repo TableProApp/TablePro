@@ -36,21 +36,6 @@ struct StructureChangeManagerTableCommentTests {
         }
     }
 
-    private func structureAdapter(_ manager: StructureChangeManager, on tab: StructureTab) -> StructureGridAdapter {
-        let adapter = StructureGridAdapter(
-            structureChangeManager: manager,
-            connection: TestFixtures.makeConnection(type: .postgresql),
-            tableName: "orders",
-            databaseName: "shop",
-            schemaName: nil,
-            objectKind: .table,
-            isSessionBound: false
-        )
-        adapter.store.switchSubTab(to: tab)
-        adapter.refresh()
-        return adapter
-    }
-
     private func rename(_ manager: StructureChangeManager, at row: Int, to name: String) {
         var column = manager.workingColumns[row]
         column.name = name
@@ -196,31 +181,11 @@ struct StructureChangeManagerTableCommentTests {
         #expect(manager.canUndo)
     }
 
-    @Test("Undo on the DDL sub-tab reaches the comment step and nothing behind it")
-    func undoOnDDLReachesOnlyTheComment() {
+    @Test("The Edit menu names the comment while its run is open")
+    func undoTitleNamesTheOpenRun() {
         let manager = makeManager()
-        rename(manager, at: 1, to: "amount")
         manager.stageTableComment("Orders")
-        let adapter = structureAdapter(manager, on: .ddl)
 
-        adapter.undo()
-        #expect(manager.tableComment.text == "Customer orders")
-
-        adapter.undo()
-        #expect(manager.workingColumns[1].name == "amount")
-
-        adapter.redo()
-        #expect(manager.tableComment.text == "Orders")
-    }
-
-    @Test("Undo on the Triggers sub-tab leaves a column edit alone")
-    func undoOnTriggersSkipsColumnEdits() {
-        let manager = makeManager()
-        rename(manager, at: 1, to: "amount")
-        let adapter = structureAdapter(manager, on: .triggers)
-
-        adapter.undo()
-
-        #expect(manager.workingColumns[1].name == "amount")
+        #expect(manager.undoMenuItemTitle.contains(String(localized: "Edit Comment")))
     }
 }

@@ -2,6 +2,7 @@ use tablepro_core::DriverError;
 use tokio_postgres::Row;
 
 use super::type_facts::{TypeFacts, TypeShape};
+use crate::codec::TextArray;
 
 /// One column of a table, as the catalogue query returns it. Every
 /// projected type is built in, so the read never needs a type lookup.
@@ -19,7 +20,7 @@ macro_rules! columns_sql {
 WITH RECURSIVE resolved AS (
     SELECT a.attnum, a.atttypid AS type_oid, a.atttypmod AS typmod, 0 AS depth
     FROM pg_catalog.pg_attribute a
-    WHERE a.attrelid = $1::text::regclass AND a.attnum > 0 AND NOT a.attisdropped
+    WHERE a.attrelid = $1::text::regclass::oid AND a.attnum > 0 AND NOT a.attisdropped
   UNION ALL
     SELECT r.attnum, t.typbasetype,
            CASE WHEN r.typmod = -1 THEN t.typtypmod ELSE r.typmod END,
@@ -43,7 +44,7 @@ SELECT a.attname::text,
        et.oid::int8,
        et.typtype::text,
        et.typname::text,
-       (SELECT array_agg(e.enumlabel::text ORDER BY e.enumsortorder)
+       (SELECT pg_catalog.array_agg(e.enumlabel::text ORDER BY e.enumsortorder)
           FROM pg_catalog.pg_enum e
          WHERE e.enumtypid = COALESCE(et.oid, bt.oid)),
        a.attnotnull,
@@ -52,8 +53,8 @@ SELECT a.attname::text,
        a.attidentity::text,
        a.attgenerated::text,
        pg_catalog.col_description(a.attrelid, a.attnum::int4)::text,
-       CASE WHEN a.attcollation <> 0 AND a.attcollation <> at.typcollation THEN cn.nspname::text END,
-       CASE WHEN a.attcollation <> 0 AND a.attcollation <> at.typcollation THEN co.collname::text END,
+       CASE WHEN a.attcollation <> 0::oid AND a.attcollation <> at.typcollation THEN cn.nspname::text END,
+       CASE WHEN a.attcollation <> 0::oid AND a.attcollation <> at.typcollation THEN co.collname::text END,
        CASE WHEN a.attstorage <> at.typstorage THEN a.attstorage::text END,
        ",
             $compression,
@@ -67,7 +68,7 @@ LEFT JOIN pg_catalog.pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attn
 LEFT JOIN pg_catalog.pg_constraint pk ON pk.conrelid = a.attrelid AND pk.contype = 'p'
 LEFT JOIN pg_catalog.pg_collation co ON co.oid = a.attcollation
 LEFT JOIN pg_catalog.pg_namespace cn ON cn.oid = co.collnamespace
-WHERE a.attrelid = $1::text::regclass AND a.attnum > 0 AND NOT a.attisdropped
+WHERE a.attrelid = $1::text::regclass::oid AND a.attnum > 0 AND NOT a.attisdropped
 ORDER BY a.attnum"
         )
     };
@@ -108,7 +109,10 @@ impl PgColumnRow {
         let element_oid: Option<i64> = row.try_get(7).map_err(field)?;
         let element_shape: Option<String> = row.try_get(8).map_err(field)?;
         let element_name: Option<String> = row.try_get(9).map_err(field)?;
-        let enum_labels: Option<Vec<String>> = row.try_get(10).map_err(field)?;
+        let enum_labels = row
+            .try_get::<_, Option<TextArray>>(10)
+            .map_err(field)?
+            .map(|labels| labels.0);
         let enum_labels = enum_labels.unwrap_or_default();
         let element = match element_oid {
             Some(element_oid) => Some(Box::new(TypeFacts {

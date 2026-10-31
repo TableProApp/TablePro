@@ -5,8 +5,8 @@ use tablepro_core::column::{
 };
 use tablepro_core::ddl::DdlDialect;
 use tablepro_core::dialect::{
-    BindError, BindTarget, DialectCapabilities, InsertConflict, KeysetDirection, LikeCase, LikeForm, LiteralError,
-    Placeholder, SqlDialect,
+    BindError, BindTarget, DatabaseLayout, DialectCapabilities, InsertConflict, KeysetDirection, LikeCase, LikeForm,
+    LiteralError, Placeholder, SqlDialect,
 };
 use tablepro_core::export::value_to_text;
 use tablepro_core::meta::{EngineRowId, EngineRowIdPart};
@@ -60,7 +60,15 @@ impl MySqlDialect {
     }
 }
 
+pub(crate) fn quote(name: &str) -> String {
+    format!("`{}`", name.replace('`', "``"))
+}
+
 impl SqlDialect for MySqlDialect {
+    fn database_layout(&self) -> DatabaseLayout {
+        DatabaseLayout::AsSchemas
+    }
+
     fn capabilities(&self) -> DialectCapabilities {
         // CLIENT_FOUND_ROWS is on, so an UPDATE reports the rows it
         // matched, including ones it left unchanged.
@@ -75,7 +83,7 @@ impl SqlDialect for MySqlDialect {
     }
 
     fn quote_identifier(&self, name: &str) -> String {
-        format!("`{}`", name.replace('`', "``"))
+        quote(name)
     }
 
     fn placeholder(&self, _ordinal: usize, value: Value, target: BindTarget<'_>) -> Result<Placeholder, BindError> {
@@ -155,7 +163,8 @@ impl SqlDialect for MySqlDialect {
 
     fn parse_type(&self, text: &str) -> Result<ColumnType, TypeSyntaxError> {
         let parsed = parse_type(SqlGrammar::MySql, text, MAX_TYPE_LEN)?;
-        let declared = parsed.text.as_str();
+        let spelled = catalog_spelling(&parsed.text);
+        let declared = spelled.as_str();
         let data_type = data_type_of(declared);
         let args = arguments(declared);
         let first = args.first().copied();
@@ -200,6 +209,29 @@ impl SqlDialect for MySqlDialect {
     fn insert_default_row(&self, table_sql: &str) -> Option<String> {
         Some(format!("INSERT INTO {table_sql} () VALUES ()"))
     }
+}
+
+/// A typed type as COLUMN_TYPE would spell it, so it classifies as the
+/// catalogue's does: no space before the parentheses, and the standard
+/// names of CHAR and VARCHAR in MySQL's own words. A national spelling
+/// stays as typed, since it takes no CHARACTER SET.
+fn catalog_spelling(typed: &str) -> String {
+    let typed = typed.trim();
+    let (head, arguments) = typed.split_at(typed.find('(').unwrap_or(typed.len()));
+    let words: Vec<&str> = head.split_whitespace().collect();
+    let is = |index: usize, word: &str| words.get(index).is_some_and(|found| found.eq_ignore_ascii_case(word));
+    let (name, rest) = if (is(0, "character") || is(0, "char")) && is(1, "varying") {
+        ("varchar", words.get(2..).unwrap_or_default())
+    } else if is(0, "character") {
+        ("char", words.get(1..).unwrap_or_default())
+    } else {
+        return format!("{}{arguments}", head.trim_end());
+    };
+    let name = std::iter::once(name)
+        .chain(rest.iter().copied())
+        .collect::<Vec<_>>()
+        .join(" ");
+    format!("{name}{arguments}")
 }
 
 /// The type's leading name, as DATA_TYPE would spell it.
@@ -408,6 +440,7 @@ const CREDENTIAL_RULES: CredentialRules = CredentialRules {
         "ENCODE",
         "DECODE",
     ],
+    secret_parameters: &[],
 };
 
 #[cfg(test)]
@@ -460,6 +493,7 @@ mod tests {
             &dialect(MySqlFlavour::MySql),
             &tablepro_core::meta::TableRef::unqualified("t"),
             &columns,
+            &[],
             &[],
             &[vec![Value::Int(1)]],
         );
@@ -696,6 +730,43 @@ mod tests {
             })
         );
         assert!(dialect.parse_type("int; DROP TABLE t").is_err());
+    }
+
+    #[test]
+    fn a_standard_or_spaced_text_spelling_holds_text() {
+        let dialect = dialect(MySqlFlavour::MySql);
+        let kind = |typed: &str| dialect.parse_type(typed).map(|column| column.kind);
+        let varying = Ok(ColumnKind::Text {
+            length: TextLength::Varying(64),
+        });
+
+        assert_eq!(kind("VARCHAR (64)"), varying);
+        assert_eq!(kind("character varying(64)"), varying);
+        assert_eq!(kind("CHAR VARYING (64)"), varying);
+        assert_eq!(
+            kind("character(10)"),
+            Ok(ColumnKind::Text {
+                length: TextLength::Fixed(10)
+            })
+        );
+        assert_eq!(
+            kind("ENUM ('a','b')"),
+            Ok(ColumnKind::Enum {
+                labels: vec!["a".to_owned(), "b".to_owned()],
+                multiple: false
+            })
+        );
+        assert!(matches!(
+            kind("TIMESTAMP (6)"),
+            Ok(ColumnKind::Timestamp {
+                fractional_digits: Some(6),
+                ..
+            })
+        ));
+        assert_eq!(kind("nvarchar(10)"), Ok(ColumnKind::Other));
+        assert_eq!(kind("nchar(10)"), Ok(ColumnKind::Other));
+        assert_eq!(catalog_spelling("int(10) unsigned"), "int(10) unsigned");
+        assert_eq!(catalog_spelling("double precision"), "double precision");
     }
 
     #[test]

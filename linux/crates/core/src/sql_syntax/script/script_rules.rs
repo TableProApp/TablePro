@@ -82,6 +82,14 @@ pub(crate) struct ScriptSyntax {
     /// `1_000.5e1_0`: PostgreSQL 16, SQLite 3.46 and ClickHouse read it
     /// so. MySQL reads `1_0e` as a name.
     pub digit_separators: bool,
+    /// A parameter is named as a Tcl variable is, so after `$`, `@`, `:`
+    /// or `#` the name can hold `::` and end in `(…)`, which runs to the
+    /// next `)` whatever it holds: SQLite's `$space::name(index)`.
+    pub tcl_parameters: bool,
+    /// A UTF-8 byte-order mark where a token starts is a space, as
+    /// SQLite's `sqlite3GetToken` reads it. Inside a name it stays a name
+    /// character, there as elsewhere.
+    pub byte_order_mark_is_space: bool,
     pub word_start_extra: &'static [u8],
     pub word_part_extra: &'static [u8],
 }
@@ -118,6 +126,8 @@ const POSTGRESQL: ScriptRules = ScriptRules {
         executable_comments: false,
         dollar_quote: DollarQuote::Tagged,
         digit_separators: true,
+        tcl_parameters: false,
+        byte_order_mark_is_space: false,
         word_start_extra: b"",
         word_part_extra: b"$",
     },
@@ -142,6 +152,8 @@ const MYSQL: ScriptRules = ScriptRules {
         executable_comments: true,
         dollar_quote: DollarQuote::None,
         digit_separators: false,
+        tcl_parameters: false,
+        byte_order_mark_is_space: false,
         word_start_extra: b"$",
         word_part_extra: b"$",
     },
@@ -166,6 +178,8 @@ const SQLITE: ScriptRules = ScriptRules {
         executable_comments: false,
         dollar_quote: DollarQuote::None,
         digit_separators: true,
+        tcl_parameters: true,
+        byte_order_mark_is_space: true,
         word_start_extra: b"$",
         word_part_extra: b"$",
     },
@@ -190,6 +204,8 @@ const MSSQL: ScriptRules = ScriptRules {
         executable_comments: false,
         dollar_quote: DollarQuote::None,
         digit_separators: false,
+        tcl_parameters: false,
+        byte_order_mark_is_space: false,
         word_start_extra: b"@#",
         word_part_extra: b"@#$",
     },
@@ -214,6 +230,8 @@ const CLICKHOUSE: ScriptRules = ScriptRules {
         executable_comments: false,
         dollar_quote: DollarQuote::Heredoc,
         digit_separators: true,
+        tcl_parameters: false,
+        byte_order_mark_is_space: false,
         word_start_extra: b"",
         word_part_extra: b"",
     },
@@ -238,6 +256,8 @@ const CQL: ScriptRules = ScriptRules {
         executable_comments: false,
         dollar_quote: DollarQuote::Untagged,
         digit_separators: false,
+        tcl_parameters: false,
+        byte_order_mark_is_space: false,
         word_start_extra: b"",
         word_part_extra: b"",
     },
@@ -265,6 +285,8 @@ const DUCKDB: ScriptRules = ScriptRules {
         executable_comments: false,
         dollar_quote: DollarQuote::Tagged,
         digit_separators: true,
+        tcl_parameters: false,
+        byte_order_mark_is_space: false,
         word_start_extra: b"",
         word_part_extra: b"$",
     },

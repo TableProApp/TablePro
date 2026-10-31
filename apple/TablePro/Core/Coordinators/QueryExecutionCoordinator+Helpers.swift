@@ -284,7 +284,7 @@ extension QueryExecutionCoordinator {
             }
 
             let rs = ResultSet(
-                label: ResultSet.label(tableName: tableName, anchor: anchor, index: 0),
+                label: ResultSet.label(tableName: tableName, anchor: anchor, index: tab.display.pinnedResultCount),
                 tableRows: newTableRows
             )
             rs.statementAnchor = anchor

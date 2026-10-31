@@ -45,4 +45,10 @@ struct DataGridConfiguration: Equatable {
 
     // VoiceOver's name for the grid ("Active Sessions"); nil reads "Data grid".
     var accessibilityLabel: String?
+
+    // As tall as its rows, inside a page that scrolls vertically for it; the grid scrolls only sideways.
+    var fitsRows = false
+
+    // Off where an empty cell means "none set", as a structure list's Default or Comment does, not an empty string.
+    var marksEmptyText = true
 }

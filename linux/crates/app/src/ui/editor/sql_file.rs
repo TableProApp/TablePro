@@ -20,7 +20,12 @@ pub async fn load_text(file: &gio::File) -> Result<String, String> {
         }
         Err(FileReadError::Io(error)) => return Err(unreadable(error)),
     };
-    String::from_utf8(bytes).map_err(|_| crate::i18n::gettext("That file is not UTF-8 text."))
+    let text = String::from_utf8(bytes).map_err(|_| crate::i18n::gettext("That file is not UTF-8 text."))?;
+    // A byte-order mark says the file is UTF-8; it is not part of the SQL.
+    Ok(match text.strip_prefix('\u{feff}') {
+        Some(rest) => rest.to_owned(),
+        None => text,
+    })
 }
 
 fn unreadable(error: glib::Error) -> String {
@@ -72,6 +77,15 @@ mod tests {
         let refused = load(gio::File::for_path(&path)).expect_err("a refusal");
 
         assert!(refused.contains("too large"), "{refused}");
+    }
+
+    #[gtk4::test]
+    fn a_byte_order_mark_is_not_part_of_the_text() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let path = root.path().join("bom.sql");
+        std::fs::write(&path, "\u{feff}DROP TABLE t;\n").expect("write");
+
+        assert_eq!(load(gio::File::for_path(&path)).as_deref(), Ok("DROP TABLE t;\n"));
     }
 
     #[gtk4::test]

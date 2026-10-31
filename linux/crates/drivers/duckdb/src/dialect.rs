@@ -377,6 +377,7 @@ const CREDENTIAL_RULES: CredentialRules = CredentialRules {
         "mysql_execute",
         "add_parquet_key",
     ],
+    secret_parameters: &[],
 };
 
 #[cfg(test)]

@@ -131,10 +131,11 @@ impl WorkspaceModel {
             TabRecord::Diagram { schema, places } => TabSpec::Diagram { schema, places },
             // Its text is on disk already, or there is none to keep, so
             // nothing is written until the user types.
-            TabRecord::Editor { draft, file } => TabSpec::Editor {
+            TabRecord::Editor { draft, file, database } => TabSpec::Editor {
                 initial_query: Some(drafts.remove(&draft).unwrap_or_default()),
                 draft: Some(draft),
                 file,
+                database,
             },
             TabRecord::Key { key } => TabSpec::Key { key },
         };
@@ -188,6 +189,7 @@ impl WorkspaceModel {
             initial_query,
             draft: None,
             file: None,
+            database: None,
         });
     }
 
@@ -662,6 +664,7 @@ fn describe_closed_tab(slot: &WorkspaceTab) -> Option<ClosedTabDescriptor> {
         WorkspaceTab::Editor(s) => Some(ClosedTabDescriptor::Editor {
             query: whole_text(&s.editor.buffer()),
             file: editor_file_record(&s.editor),
+            database: s.editor.tab_database(),
         }),
         WorkspaceTab::Table(s) => Some(ClosedTabDescriptor::Table {
             schema: s.schema.clone(),
@@ -693,12 +696,13 @@ impl WorkspaceModel {
     /// Open again a tab this session closed, which the shell kept.
     pub(super) fn on_reopen_closed_tab(&mut self, descriptor: ClosedTabDescriptor) {
         match descriptor {
-            ClosedTabDescriptor::Editor { query, file } => {
+            ClosedTabDescriptor::Editor { query, file, database } => {
                 let initial = if query.is_empty() { None } else { Some(query) };
                 self.open_editor(TabSpec::Editor {
                     initial_query: initial,
                     draft: None,
                     file,
+                    database,
                 });
             }
             ClosedTabDescriptor::Table {

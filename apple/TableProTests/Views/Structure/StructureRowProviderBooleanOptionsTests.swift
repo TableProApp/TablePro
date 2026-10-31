@@ -36,7 +36,7 @@ struct StructureRowProviderBooleanOptionsTests {
         return manager
     }
 
-    private func makeProvider(tab: StructureTab = .columns) -> StructureRowProvider {
+    private func makeProvider(tab: StructureSection = .columns) -> StructureRowProvider {
         StructureRowProvider(
             changeManager: makeManager(),
             tab: tab,
@@ -62,9 +62,7 @@ struct StructureRowProviderBooleanOptionsTests {
         }
     }
 
-    /// A closed vocabulary has to contain whatever the grid drew, or the menu cannot show the
-    /// current value as the selected one. The Default column is deliberately not closed: it holds
-    /// an open-ended SQL expression, which is what its `Custom…` entry marks it as.
+    // A menu can show the current value as selected only if it holds what the grid drew. Default is open: `Custom…`.
     @Test("A closed column's options are exactly what the grid draws")
     func optionsMatchRenderedValues() {
         let provider = makeProvider()
@@ -109,7 +107,7 @@ struct StructureRowProviderBooleanOptionsTests {
     @Test("No structure column reports itself as nullable, so Set NULL is never offered")
     func structureColumnsAreNeverNullable() {
         let provider = makeProvider()
-        let rows = provider.asTableRows()
+        let rows = provider.asTableRows { RowID.existing($0) }
         #expect(!rows.columnNullable.isEmpty)
         for column in provider.columns {
             #expect(rows.columnNullable[column] == false)

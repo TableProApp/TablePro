@@ -65,6 +65,8 @@ The workspace statement timeout (60 s) becomes a deadline the flag enforces. The
 
 `ReadOnlyEnforcement::EngineEnforced`: the file is opened read-only, so SQLite refuses every write, whatever the SQL (`SQLITE_READONLY`, reported as `ReadOnly(ServerRejected)`). Saves on a read-only connection are refused before anything is sent. Exports always open their connection read-only.
 
+A read-only open still lets SQLite attach another file and write a copy with `VACUUM INTO`, and a pragma such as `foreign_keys` or `hard_heap_limit` changes the connection while SQLite compiles it, `EXPLAIN PRAGMA` included. The connection `stream_read` opens for user SQL (exports and MCP reads) therefore allows no attached database (`SQLITE_LIMIT_ATTACHED` 0), its authorizer denies ATTACH and every pragma but the reporting ones, and the text must prepare to one statement with nothing but comments after it, since sqlx runs every statement a text holds.
+
 ## Writes
 
 `WriteAtomicity::Transactional` for row and schema changes. A save is one transaction that starts with `BEGIN IMMEDIATE`, which takes the write lock before the first probe reads anything. Grid saves, structure changes and imports all go through it. Another connection holding the lock shows up in one of two places, each as `Busy(FileLocked)` after the lock timeout, and the file keeps none of the save:

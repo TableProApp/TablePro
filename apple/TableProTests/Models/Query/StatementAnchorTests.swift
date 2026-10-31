@@ -118,6 +118,16 @@ struct StatementAnchorTests {
         #expect(subject.label.count <= 29)
     }
 
+    @Test("A comment cut at the limit keeps an emoji whole")
+    func labelIsCutOnWholeCharacters() {
+        let subject = StatementAnchor(
+            range: NSRange(location: 0, length: 8),
+            preview: "-- Monthly revenue per region 📈 for Q3\nSELECT 1"
+        )
+        #expect(subject.label == "Monthly revenue per region 📈…")
+        #expect(subject.label.unicodeScalars.contains("\u{FFFD}") == false)
+    }
+
     // MARK: - What a result is called
 
     @Test("The table wins when there is one")

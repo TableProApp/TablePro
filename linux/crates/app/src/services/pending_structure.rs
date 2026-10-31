@@ -16,6 +16,9 @@ pub struct PendingStructure {
     /// draft still holds the default from before, so saving it would
     /// drop what the user typed without a word.
     pub unparsed_defaults: Vec<String>,
+    /// The Next Auto Increment the user typed is no value the numbered
+    /// column takes, so the draft holds the table's own.
+    pub invalid_auto_increment: bool,
 }
 
 /// Why a structure cannot be saved as it stands.
@@ -23,6 +26,7 @@ pub struct PendingStructure {
 pub enum SaveBlocker {
     Draft(DraftProblem),
     UnparsedDefault(String),
+    InvalidAutoIncrement,
 }
 
 impl PendingStructure {
@@ -30,28 +34,36 @@ impl PendingStructure {
     /// never pass the tab's own Save button.
     pub fn check(&self) -> Result<(), SaveBlocker> {
         self.draft.validate().map_err(SaveBlocker::Draft)?;
-        match self.unparsed_defaults.first() {
-            Some(column) => Err(SaveBlocker::UnparsedDefault(column.clone())),
-            None => Ok(()),
+        if let Some(column) = self.unparsed_defaults.first() {
+            return Err(SaveBlocker::UnparsedDefault(column.clone()));
+        }
+        match self.invalid_auto_increment {
+            true => Err(SaveBlocker::InvalidAutoIncrement),
+            false => Ok(()),
         }
     }
 
-    /// A default the parser refused is still the user's edit: the draft
-    /// cannot hold it, so without counting it here a close would drop it
-    /// without asking.
+    /// Whether the draft holds every value the user typed.
+    pub fn typed_values_hold(&self) -> bool {
+        self.unparsed_defaults.is_empty() && !self.invalid_auto_increment
+    }
+
+    /// A value the draft cannot hold is still the user's edit, so
+    /// without counting it here a close would drop it without asking.
     pub fn has_changes(&self) -> bool {
         let drafted = match self.original {
             Some(_) => !self.changes.is_empty(),
             None => !self.draft.columns.is_empty(),
         };
-        drafted || !self.unparsed_defaults.is_empty()
+        drafted || !self.typed_values_hold()
     }
 
     /// The edits the action bar counts. A new table is one.
     pub fn change_count(&self) -> usize {
+        let unheld = self.unparsed_defaults.len() + usize::from(self.invalid_auto_increment);
         match self.original {
-            Some(_) => self.changes.change_count() + self.unparsed_defaults.len(),
-            None => usize::from(!self.draft.columns.is_empty() || !self.unparsed_defaults.is_empty()),
+            Some(_) => self.changes.change_count() + unheld,
+            None => usize::from(!self.draft.columns.is_empty() || unheld > 0),
         }
     }
 
@@ -109,7 +121,8 @@ mod tests {
     use tablepro_core::ServerInfo;
     use tablepro_core::column::{ColumnDefault, ColumnInfo};
     use tablepro_core::ddl::{
-        ColumnAttributes, ColumnDefinition, DraftColumn, DraftType, PrimaryKeyConstraint, diff_table,
+        CollationName, ColumnAttributes, ColumnDefinition, DraftColumn, DraftTableOptions, DraftType,
+        PrimaryKeyConstraint, TableOptions, diff_table,
     };
     use tablepro_core::dialect::SqlDialect;
 
@@ -130,6 +143,7 @@ mod tests {
             draft: draft(),
             changes: TableChanges::default(),
             unparsed_defaults: Vec::new(),
+            invalid_auto_increment: false,
         }
     }
 
@@ -185,6 +199,7 @@ mod tests {
             foreign_keys: Vec::new(),
             inbound_foreign_keys: Vec::new(),
             source: None,
+            options: None,
         }
     }
 
@@ -197,6 +212,7 @@ mod tests {
             original: Some(original),
             draft,
             unparsed_defaults: Vec::new(),
+            invalid_auto_increment: false,
         }
     }
 
@@ -232,6 +248,17 @@ mod tests {
     }
 
     #[test]
+    fn an_invalid_next_auto_increment_is_a_pending_change_that_holds_the_save() {
+        let mut typed_counter = edited(|_| {});
+        typed_counter.invalid_auto_increment = true;
+
+        assert!(typed_counter.has_changes());
+        assert_eq!(typed_counter.change_count(), 1);
+        assert!(!typed_counter.typed_values_hold());
+        assert_eq!(typed_counter.check(), Err(SaveBlocker::InvalidAutoIncrement));
+    }
+
+    #[test]
     fn an_edit_counts_its_changes_and_follows_a_rename() {
         let original = TableDefinition {
             table: TableRef::new(Some("app".to_owned()), "orders"),
@@ -241,6 +268,7 @@ mod tests {
             foreign_keys: Vec::new(),
             inbound_foreign_keys: Vec::new(),
             source: None,
+            options: None,
         };
         let mut renamed = TableDraft::from_definition(&original);
         renamed.table.name = "purchases".to_owned();
@@ -249,12 +277,14 @@ mod tests {
             original: Some(original.clone()),
             draft: renamed,
             unparsed_defaults: Vec::new(),
+            invalid_auto_increment: false,
         };
         let unchanged = PendingStructure {
             changes: TableChanges::default(),
             draft: TableDraft::from_definition(&original),
             original: Some(original),
             unparsed_defaults: Vec::new(),
+            invalid_auto_increment: false,
         };
 
         assert!(pending.has_changes());
@@ -272,13 +302,15 @@ mod tests {
     }
 
     /// One engine's dialect with the integer and text types its catalogue
-    /// would report, and the name it gives a primary key.
+    /// would report, the name it gives a primary key, and the character
+    /// set and collation it reports for a table and its text columns.
     struct Engine {
         name: &'static str,
         dialect: Box<dyn SqlDialect>,
         integer: &'static str,
         text: &'static str,
         key_name: Option<&'static str>,
+        collation: Option<(&'static str, &'static str)>,
     }
 
     fn engines() -> Vec<Engine> {
@@ -289,6 +321,7 @@ mod tests {
             integer,
             text,
             key_name,
+            collation: None,
         };
         vec![
             engine(
@@ -298,26 +331,32 @@ mod tests {
                 "text",
                 Some("t_pkey"),
             ),
-            engine(
-                "MySQL",
-                Box::new(tablepro_driver_mysql::MySqlDialect::new(
-                    tablepro_driver_mysql::MySqlFlavour::MySql,
-                    &ServerInfo::new("MySQL", "8.4.3", 8, 4, 3),
-                )),
-                "int",
-                "varchar(40)",
-                Some("PRIMARY"),
-            ),
-            engine(
-                "MariaDB",
-                Box::new(tablepro_driver_mysql::MySqlDialect::new(
-                    tablepro_driver_mysql::MySqlFlavour::MariaDb,
-                    &ServerInfo::new("MariaDB", "11.4.5", 11, 4, 5),
-                )),
-                "int",
-                "varchar(40)",
-                Some("PRIMARY"),
-            ),
+            Engine {
+                collation: Some(("utf8mb4", "utf8mb4_0900_ai_ci")),
+                ..engine(
+                    "MySQL",
+                    Box::new(tablepro_driver_mysql::MySqlDialect::new(
+                        tablepro_driver_mysql::MySqlFlavour::MySql,
+                        &ServerInfo::new("MySQL", "8.4.3", 8, 4, 3),
+                    )),
+                    "int",
+                    "varchar(40)",
+                    Some("PRIMARY"),
+                )
+            },
+            Engine {
+                collation: Some(("utf8mb4", "utf8mb4_uca1400_ai_ci")),
+                ..engine(
+                    "MariaDB",
+                    Box::new(tablepro_driver_mysql::MySqlDialect::new(
+                        tablepro_driver_mysql::MySqlFlavour::MariaDb,
+                        &ServerInfo::new("MariaDB", "11.4.5", 11, 4, 5),
+                    )),
+                    "int",
+                    "varchar(40)",
+                    Some("PRIMARY"),
+                )
+            },
             engine(
                 "SQL Server",
                 Box::new(tablepro_driver_mssql::MssqlDialect::new(16)),
@@ -352,6 +391,7 @@ mod tests {
     fn table(engine: &Engine) -> TableDefinition {
         let column = |name: &str, declaration: &str| {
             let column_type = engine.dialect.parse_type(declaration).expect("the engine's own type");
+            let collation = engine.collation.filter(|_| declaration == engine.text);
             ColumnDefinition::new(
                 ColumnInfo {
                     name: name.to_owned(),
@@ -364,7 +404,11 @@ mod tests {
                     default: ColumnDefault::None,
                     comment: None,
                 },
-                ColumnAttributes::default(),
+                ColumnAttributes {
+                    character_set: collation.map(|(character_set, _)| character_set.to_owned()),
+                    collation: collation.map(|(_, collation)| CollationName::new(None, collation)),
+                    ..ColumnAttributes::default()
+                },
             )
         };
         let mut score = column("score", engine.integer);
@@ -383,6 +427,11 @@ mod tests {
             foreign_keys: Vec::new(),
             inbound_foreign_keys: Vec::new(),
             source: None,
+            options: engine.collation.map(|(character_set, collation)| TableOptions {
+                character_set: Some(character_set.to_owned()),
+                collation: Some(collation.to_owned()),
+                next_auto_increment: None,
+            }),
         }
     }
 
@@ -400,6 +449,10 @@ mod tests {
         Comment(usize),
         Drop(usize),
         Add(usize),
+        TableCharacterSet,
+        ConvertColumns,
+        NextAutoIncrement(u64),
+        ColumnCharacterSet(usize),
     }
 
     const NAMES: [&str; 6] = ["id", "name", "score", "note", "fresh", "Score"];
@@ -416,8 +469,12 @@ mod tests {
             (column.clone(), proptest::option::of(-2i64..3)).prop_map(|(column, value)| Edit::Default(column, value)),
             (column.clone(), any::<bool>()).prop_map(|(column, integer)| Edit::Retype(column, integer)),
             column.clone().prop_map(Edit::Comment),
-            column.prop_map(Edit::Drop),
+            column.clone().prop_map(Edit::Drop),
             name.prop_map(Edit::Add),
+            Just(Edit::TableCharacterSet),
+            Just(Edit::ConvertColumns),
+            (1u64..1_000_000).prop_map(Edit::NextAutoIncrement),
+            column.prop_map(Edit::ColumnCharacterSet),
         ]
     }
 
@@ -479,6 +536,30 @@ mod tests {
                     };
                 }
             }
+            Edit::ColumnCharacterSet(index) => {
+                if let Some(column) = column(draft, index) {
+                    column.character_set = Some("latin1".to_owned());
+                    column.collation = Some("latin1_bin".to_owned());
+                }
+            }
+            Edit::TableCharacterSet | Edit::ConvertColumns | Edit::NextAutoIncrement(_) => {
+                if let Some(options) = draft.options.as_mut() {
+                    edit_options(options, edit);
+                }
+            }
+        }
+    }
+
+    /// The table's options are offered only where the engine read them.
+    fn edit_options(options: &mut DraftTableOptions, edit: &Edit) {
+        match *edit {
+            Edit::TableCharacterSet => {
+                options.character_set = Some("latin1".to_owned());
+                options.collation = Some("latin1_swedish_ci".to_owned());
+            }
+            Edit::ConvertColumns => options.converts_columns = !options.converts_columns,
+            Edit::NextAutoIncrement(value) => options.next_auto_increment = Some(value),
+            _ => {}
         }
     }
 

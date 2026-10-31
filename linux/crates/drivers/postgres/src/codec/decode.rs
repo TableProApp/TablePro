@@ -249,11 +249,12 @@ fn path_text(raw: &[u8]) -> Result<String, WireError> {
     use fallible_iterator::FallibleIterator;
 
     let path = wire::path_from_sql(raw).map_err(malformed)?;
-    let points: Vec<String> = path
-        .points()
-        .map(|point| Ok(point_text(point.x(), point.y())))
-        .collect()
-        .map_err(malformed)?;
+    // Not `collect`, which would reserve room for the header's count.
+    let mut wire_points = path.points();
+    let mut points = Vec::new();
+    while let Some(point) = wire_points.next().map_err(malformed)? {
+        points.push(point_text(point.x(), point.y()));
+    }
     let (open, close) = if path.closed() { ('(', ')') } else { ('[', ']') };
     Ok(format!("{open}{}{close}", points.join(",")))
 }
@@ -348,6 +349,20 @@ mod tests {
         let mut out = BytesMut::new();
         value.to_sql(ty, &mut out).expect("an encodable value");
         out
+    }
+
+    #[test]
+    fn a_path_declaring_points_it_does_not_carry_is_undecodable() {
+        for declared in [i32::MAX, -1] {
+            let mut lying = BytesMut::new();
+            lying.extend_from_slice(&[1]);
+            lying.extend_from_slice(&declared.to_be_bytes());
+
+            assert!(
+                matches!(decode_binary(&Type::PATH, &lying), Value::Undecodable(_)),
+                "{declared}"
+            );
+        }
     }
 
     #[test]

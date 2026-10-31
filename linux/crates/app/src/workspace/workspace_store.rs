@@ -536,6 +536,7 @@ mod tests {
             tabs: vec![TabRecord::Editor {
                 draft: DraftId::new(),
                 file: None,
+                database: None,
             }],
         };
 
@@ -684,6 +685,7 @@ mod tests {
                 .map(|_| TabRecord::Editor {
                     draft: DraftId::new(),
                     file: None,
+                    database: None,
                 })
                 .collect(),
         };

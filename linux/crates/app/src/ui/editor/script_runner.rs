@@ -126,7 +126,8 @@ pub struct AfterRun {
 }
 
 /// Send each batch in turn, reporting each one as it ends. `transaction`
-/// is where the session's transaction stood before the run.
+/// is where the session's transaction stood before the run. The caller
+/// says `Finished` once the tab knows where the run left it.
 pub async fn run_batches(
     editor: &Arc<dyn EditorSession>,
     run: &ScriptRun,
@@ -201,7 +202,6 @@ pub async fn run_batches(
             }
         }
     }
-    let _ = events.send(RunEvent::Finished).await;
     after
 }
 
@@ -243,6 +243,14 @@ pub async fn run_in_tab(
             refuse(&events, message, true).await;
             return;
         }
+        Err(AcquireError::Moved { database, reason }) => {
+            let message = crate::i18n::gettext_f(
+                "Could not move this tab to the database “{database}”: {reason}",
+                &[("database", &database), ("reason", &reason)],
+            );
+            refuse(&events, message, false).await;
+            return;
+        }
         Err(AcquireError::Failed(message)) => {
             refuse(&events, message, false).await;
             return;
@@ -250,14 +258,18 @@ pub async fn run_in_tab(
     };
     let before = slot.transaction(&editor);
     let after = run_batches(&editor, &run, &cancel, &events, before).await;
+    slot.follow(&editor);
     if editor.state() != EditorSessionState::Lost {
         slot.note_transaction(&editor, after.transaction);
+        let _ = events.send(RunEvent::Finished).await;
         return;
     }
     let generation = *session.link_changes().borrow();
     session.signal(MonitorSignal::ProbeRequested { generation });
     let refuse_next = transaction_open(after.transaction) && !after.rollback_told;
-    if slot.forget(&editor, refuse_next) {
+    let forgotten = slot.forget(&editor, refuse_next);
+    let _ = events.send(RunEvent::Finished).await;
+    if forgotten {
         close_quietly(editor, close_timeout).await;
     }
 }
@@ -390,7 +402,11 @@ mod tests {
             }
             log
         };
-        let (_, log) = tokio::join!(run_batches(&session, run, cancel, &events, None), collect);
+        let running = async {
+            run_batches(&session, run, cancel, &events, None).await;
+            let _ = events.send(RunEvent::Finished).await;
+        };
+        let (_, log) = tokio::join!(running, collect);
         log
     }
 

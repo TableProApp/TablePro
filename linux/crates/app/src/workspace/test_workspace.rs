@@ -89,6 +89,7 @@ pub(crate) fn edited_table(edit: impl FnOnce(&mut TableDraft)) -> PendingStructu
             create_statement: "CREATE TABLE t (id INTEGER, n INTEGER)".to_owned(),
             dependents: Vec::new(),
         }),
+        options: None,
     };
     let mut draft = TableDraft::from_definition(&original);
     edit(&mut draft);
@@ -97,6 +98,7 @@ pub(crate) fn edited_table(edit: impl FnOnce(&mut TableDraft)) -> PendingStructu
         original: Some(original),
         draft,
         unparsed_defaults: Vec::new(),
+        invalid_auto_increment: false,
     }
 }
 

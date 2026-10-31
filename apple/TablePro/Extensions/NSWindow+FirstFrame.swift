@@ -61,11 +61,14 @@ internal extension NSWindow {
 /// Work that must not share a run loop turn with the frame this turn builds.
 @MainActor
 internal enum CommittedTurn {
-    /// Runs `body` after this turn's frame is committed, in a later turn. A main-queue hop alone can run
-    /// before the run loop waits, so the hang would still be one: both pieces between two waits.
-    static func after(_ body: @escaping @MainActor () -> Void) {
-        CATransaction.setCompletionBlock {
-            DispatchQueue.main.async { MainActor.assumeIsolated(body) }
+    /// Runs `body` once `window` has shown its next frame, or after `nextFrame`'s limit; with no window, on the
+    /// next main-actor turn. A main-queue hop alone can run before the run loop waits, so the hang would still be
+    /// one: both pieces between two waits. A transaction's completion block is no end either: it waits for every
+    /// animation the turn adds, and a spinning progress indicator's never finishes.
+    static func after(in window: NSWindow?, _ body: @escaping @MainActor () -> Void) {
+        Task { @MainActor in
+            await window?.nextFrame()
+            body()
         }
     }
 }

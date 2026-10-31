@@ -23,6 +23,7 @@ enum DatabaseObjectToolEligibility {
         var creatableTypeKinds: Set<UserDefinedTypeInfo.Kind> = []
         var canSetSequenceValues = false
         var canAlterSequences = false
+        var canSetTableOptions = false
 
         static let none = Support()
 
@@ -66,7 +67,11 @@ enum DatabaseObjectToolEligibility {
                     } != nil
                 }),
                 canSetSequenceValues: driver.sequenceNextValueStatement(for: sequenceProbe, nextValue: .value(1)) != nil,
-                canAlterSequences: driver.alterSequenceStatement(for: sequenceProbe, settings: changed) != nil
+                canAlterSequences: driver.alterSequenceStatement(for: sequenceProbe, settings: changed) != nil,
+                canSetTableOptions: driver.tableOptionsStatement(
+                    tableName: "t", schema: "s",
+                    change: PluginTableOptionsChange(characterSet: "utf8mb4", collation: "utf8mb4_bin")
+                ) != nil
             )
         }
 
@@ -120,5 +125,11 @@ enum DatabaseObjectToolEligibility {
 
     static func canEditSequence(_ type: TableInfo.TableType?, support: Support, isReadOnly: Bool) -> Bool {
         !isReadOnly && type == .sequence && support.canAlterSequences
+    }
+
+    /// Asked of the live driver, which answers per server flavor. A view refuses `ALTER TABLE` with ERROR 1347.
+    @MainActor
+    static func offersTableOptions(driver: DatabaseDriver?, objectKind: TableInfo.TableType) -> Bool {
+        (objectKind == .table || objectKind == .partitionedTable) && Support.of(driver).canSetTableOptions
     }
 }

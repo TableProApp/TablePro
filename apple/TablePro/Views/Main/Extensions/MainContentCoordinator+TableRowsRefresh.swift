@@ -76,8 +76,8 @@ extension MainContentCoordinator {
         for tab in tabs {
             guard let session = structureSessions[tab.id] else { continue }
             let isOnScreen = tab.id == selectedId && tab.display.resultsViewMode == .structure
-            if isOnScreen, !session.changeManager.hasChanges, let refresh = structureActions?.refresh {
-                refresh()
+            if isOnScreen, !session.hasChanges {
+                session.refresh()
             } else {
                 session.markStructureStale()
             }

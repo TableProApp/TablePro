@@ -352,14 +352,18 @@ pub async fn sql_insert_export_runs_back_as_the_same_rows<E: ValueCorpusEngine>(
         let what = format!("`{}` as SQL INSERT", column.declaration);
         let expected = read_rows(connection.as_ref(), &source, typed_texts, KeepValues::No).await?;
         let copy = corpus_table(&engine, connection.as_ref(), &format!("sql_{index}_copy"), column, &[]).await?;
-        let generated = connection
-            .fetch_columns(&source, within(CALL_DEADLINE))
-            .await?
-            .into_iter()
+        let catalog = connection.fetch_columns(&source, within(CALL_DEADLINE)).await?;
+        let generated = catalog
+            .iter()
             .filter(|info| info.is_generated)
-            .map(|info| info.name)
+            .map(|info| info.name.clone())
             .collect();
-        let encoder = insert_encoder(connection.dialect(), copy.clone(), generated);
+        let numbered = catalog
+            .iter()
+            .filter(|info| info.is_auto_increment)
+            .map(|info| info.name.clone())
+            .collect();
+        let encoder = insert_encoder(connection.dialect(), copy.clone(), generated, numbered);
         let script = export_file(connection.as_ref(), &source, encoder).await?;
         let script = String::from_utf8(script).map_err(ConformanceFailure::setup)?;
         if let Some(failure) = run_script(session.as_ref(), &*connection.dialect(), &script).await? {
@@ -495,9 +499,23 @@ fn csv_encoder(options: CsvOptions) -> EncoderFor {
 }
 
 /// INSERT statements into `table`, leaving out the columns the server
-/// computes, as a table tab's export does.
-fn insert_encoder(dialect: Arc<dyn SqlDialect>, table: TableRef, generated: Vec<String>) -> EncoderFor {
-    Box::new(move |columns| Box::new(SqlInsertEncoder::new(dialect.clone(), &table, columns, &generated)))
+/// computes and writing the ones it numbers, as a table tab's export
+/// does.
+fn insert_encoder(
+    dialect: Arc<dyn SqlDialect>,
+    table: TableRef,
+    generated: Vec<String>,
+    numbered: Vec<String>,
+) -> EncoderFor {
+    Box::new(move |columns| {
+        Box::new(SqlInsertEncoder::new(
+            dialect.clone(),
+            &table,
+            columns,
+            &generated,
+            &numbered,
+        ))
+    })
 }
 
 /// Rows an export read, encoded one at a time from the columns the read

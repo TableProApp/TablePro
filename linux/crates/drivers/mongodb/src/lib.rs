@@ -25,6 +25,7 @@ mod errors;
 mod execute;
 mod extended_json;
 mod field_types;
+mod nested_document;
 mod relay;
 mod rows;
 mod server_version;

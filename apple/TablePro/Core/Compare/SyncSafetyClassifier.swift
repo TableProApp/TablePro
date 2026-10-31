@@ -71,8 +71,16 @@ internal struct SyncSafetyClassifier {
                     constraint.name
                 )
             )]
+        case .modifyTableCharacterSet(_, let new) where new.convertsColumns:
+            return [SyncHazard(
+                kind: .collationOrCharsetChange,
+                severity: .refusedByDefault,
+                explanation: String(
+                    localized: "Converting the table's character set rewrites every text column and loses characters the new one cannot hold."
+                )
+            )]
         case .deleteForeignKey, .addForeignKey, .modifyForeignKey, .addColumn, .addIndex, .modifyIndex,
-             .modifyTableComment:
+             .modifyTableComment, .modifyTableCharacterSet, .modifyAutoIncrement:
             return []
         }
     }

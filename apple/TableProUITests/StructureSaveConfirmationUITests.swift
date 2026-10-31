@@ -21,7 +21,7 @@ final class StructureSaveConfirmationUITests: UITestCase {
             waitForPredicate(timeout: 10) { grid.element.tableRows.element(boundBy: 1).isSelected },
             "The click must select the tag row"
         )
-        let remove = window.buttons["structure-footer-remove"].firstMatch
+        let remove = window.buttons["structure-columns-remove"].firstMatch
         XCTAssertTrue(remove.waitToExist(timeout: 20), "The Columns tab must offer a remove button")
         XCTAssertTrue(waitForPredicate(timeout: 10) { remove.isEnabled }, "Removing the selected column must be offered")
         // On the 1024pt runner the structure editor overflows its pane and this button ends past the window edge.

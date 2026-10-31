@@ -526,19 +526,20 @@ struct MainEditorContentView: View {
 
     @ViewBuilder
     private func executionErrorBanner(tab: QueryTab) -> some View {
-        if let error = tab.display.activeResultSet?.errorMessage ?? tab.execution.errorMessage {
+        if let error = tab.shownError {
             InlineErrorBanner(
-                message: error,
+                message: error.message,
                 onFixWithAI: coordinator.aiQueryActionAvailability(for: tab).isVisible
-                    ? { coordinator.fixErrorWithAI(query: tab.execution.errorQuery ?? tab.content.query, error: error) }
+                    ? { coordinator.fixErrorWithAI(query: error.query ?? tab.content.query, error: error.message) }
                     : nil,
-                onDismiss: {
-                    tabManager.mutate(tabId: tab.id) {
-                        $0.display.activeResultSet?.errorMessage = nil
-                        $0.execution.errorMessage = nil
-                        $0.execution.errorQuery = nil
+                onDismiss: error.isDismissible
+                    ? {
+                        tabManager.mutate(tabId: tab.id) {
+                            $0.execution.errorMessage = nil
+                            $0.execution.errorQuery = nil
+                        }
                     }
-                }
+                    : nil
             )
             Divider()
         }
@@ -553,15 +554,15 @@ struct MainEditorContentView: View {
     private func createTableContent(tab: QueryTab) -> some View {
         Group {
             if let draft = coordinator.createTableDrafts[tab.id] {
-                CreateTableView(
-                    connection: connection,
-                    scope: structureScope(for: tab),
-                    coordinator: coordinator,
-                    draft: draft
-                )
+                CreateTableView(draft: draft, coordinator: coordinator)
             } else {
                 Color.clear
-                    .onAppear { coordinator.createTableDrafts[tab.id] = CreateTableDraft() }
+                    .onAppear {
+                        coordinator.createTableDrafts[tab.id] = CreateTableDraft(
+                            connection: connection,
+                            scope: structureScope(for: tab)
+                        )
+                    }
             }
         }
         .id(tab.id)
@@ -576,13 +577,9 @@ struct MainEditorContentView: View {
         Group {
             if let session = coordinator.structureSessions[tab.id], session.identity == identity {
                 TableStructureView(
-                    tableName: tableName,
-                    connection: connection,
-                    databaseName: scope?.database ?? "",
-                    schemaName: scope?.schema,
+                    session: session,
                     toolbarState: coordinator.toolbarState,
-                    coordinator: coordinator,
-                    session: session
+                    coordinator: coordinator
                 )
             } else {
                 Color.clear
@@ -610,6 +607,13 @@ struct MainEditorContentView: View {
         let presentation = resultPresentation(for: tab, rows: rows)
 
         VStack(spacing: 0) {
+            if presentation.resultSetChooser == .tabRow {
+                ResultSetTabBar(
+                    model: resultSetMenuModel(for: tab, placedIn: .tabRow),
+                    actions: resultSetActions(for: tab)
+                )
+            }
+
             if presentation.showsErrorBanner {
                 executionErrorBanner(tab: tab)
             }
@@ -880,14 +884,12 @@ struct MainEditorContentView: View {
 
     private func statusBar(tab: QueryTab, selectedRowCount: Int) -> some View {
         let resolvedRows = resolvedTableRows(for: tab)
-        let structureFooter = coordinator.structureSessions[tab.id]?.footer ?? StructureFooterCapability()
         let isExecuting = coordinator.tabExecution.isBusy(tab.id)
         let snapshot = StatusBarSnapshot(
             tab: tab,
             tableRows: resolvedRows,
             displayRowCount: coordinator.displayIDs(forTab: tab.id)?.count,
             isFetching: isExecuting,
-            hasStructureActions: structureFooter.isActive,
             isQueryPlan: tab.display.activeExplainResult != nil,
             paginationCapability: coordinator.paginationCapability,
             hasServerOutput: !(tab.display.activeResultSet?.serverOutput.isEmpty ?? true),
@@ -935,7 +937,6 @@ struct MainEditorContentView: View {
                 onGoToPage: onGoToPage,
                 onRequestExactCount: { coordinator.paginationCoordinator.requestExactRowCount() }
             ),
-            structureFooter: structureFooter,
             execution: ExecutionReadout(
                 tabId: tab.id,
                 execution: coordinator.tabExecution,
@@ -945,30 +946,35 @@ struct MainEditorContentView: View {
             selectionSummary: coordinator.selectionSummary,
             isRefreshingSchema: schemaService.isRefreshing(connectionId: connectionId),
             viewMode: resultsViewModeBinding(for: tab),
-            resultSetMenu: resultSetMenuModel(for: tab),
-            onActivateResultSet: { coordinator.switchActiveResultSet(to: $0, in: tab.id) },
-            onToggleResultSetPin: { coordinator.togglePinResultSet(id: $0) },
-            onCompareResultSet: { coordinator.compareResultSet(id: $0) },
-            onCloseResultSet: { coordinator.closeResultSet(id: $0) },
-            onCloseOtherResultSets: { keptId in
-                for other in tab.display.resultSets where other.id != keptId && !other.isPinned {
-                    coordinator.closeResultSet(id: other.id)
-                }
-            },
+            resultSetMenu: resultSetMenuModel(for: tab, placedIn: .statusBar),
+            resultSetActions: resultSetActions(for: tab),
             onToggleFilters: { coordinator.toggleFilterPanel() },
-            onFetchAll: { coordinator.fetchAllRows() },
-            onStructureAdd: { coordinator.structureActions?.addRow?() },
-            onStructureRemove: { coordinator.structureActions?.removeRow?() }
+            onFetchAll: { coordinator.fetchAllRows() }
+        )
+    }
+
+    private func resultSetActions(for tab: QueryTab) -> ResultSetActions {
+        let tabId = tab.id
+        return ResultSetActions(
+            activate: { coordinator.switchActiveResultSet(to: $0, in: tabId) },
+            togglePin: { coordinator.togglePinResultSet(id: $0) },
+            compare: { coordinator.compareResultSet(id: $0) },
+            close: { coordinator.closeResultSet(id: $0) },
+            closeOthers: { coordinator.closeOtherResultSets(keeping: $0) }
         )
     }
 
     // Only the three deciding fields, not a full `resultPresentation`, which would pull the whole row buffer for a row-free answer.
-    private func resultSetMenuModel(for tab: QueryTab) -> ResultSetMenuModel {
+    private func resultSetChooser(for tab: QueryTab) -> ResultSetChooserPlacement {
         var selectorInputs = QueryResultInputs()
         selectorInputs.tabType = tab.tabType
         selectorInputs.viewMode = tab.display.resultsViewMode
         selectorInputs.resultSetCount = tab.display.resultSets.count
-        guard QueryResultPresentation(inputs: selectorInputs).showsResultSetSelector else {
+        return QueryResultPresentation(inputs: selectorInputs).resultSetChooser
+    }
+
+    private func resultSetMenuModel(for tab: QueryTab, placedIn placement: ResultSetChooserPlacement) -> ResultSetMenuModel {
+        guard resultSetChooser(for: tab) == placement else {
             return ResultSetMenuModel(entries: [], activeOrdinal: 0, total: 0)
         }
         let activeId = tab.display.activeResultSet?.id

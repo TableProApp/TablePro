@@ -70,7 +70,7 @@ extension MySQLPluginDriver {
             )
         }
 
-        guard isSafeCharsetIdentifier(charset) else {
+        guard mysqlIsSafeCharsetIdentifier(charset) else {
             throw MariaDBPluginError(
                 code: 0,
                 message: String(format: String(localized: "Invalid character set: %@"), charset),
@@ -90,7 +90,7 @@ extension MySQLPluginDriver {
         let collationValue = request.values["collation"].flatMap { $0.isEmpty ? nil : $0 }
 
         if let collation = collationValue {
-            guard isSafeCharsetIdentifier(collation) else {
+            guard mysqlIsSafeCharsetIdentifier(collation) else {
                 throw MariaDBPluginError(
                     code: 0,
                     message: String(format: String(localized: "Invalid collation: %@"), collation),
@@ -130,59 +130,9 @@ extension MySQLPluginDriver {
 }
 
 private extension MySQLPluginDriver {
-    struct CharsetDefault {
-        let charset: String
-        let defaultCollation: String
-    }
-
-    struct CollationEntry {
-        let collation: String
-        let charset: String
-    }
-
     struct ServerCharsetDefaults {
         let charset: String?
         let collation: String?
-    }
-
-    /// Before 5.0.2 the list comes from `SHOW CHARACTER SET`, whose columns are `Charset`,
-    /// `Description`, `Default collation` and `Maxlen`, in no promised order.
-    func fetchCharsetDefaults() async throws -> [CharsetDefault] {
-        let hasCatalog = serverHasInformationSchema
-        let query = hasCatalog ? """
-            SELECT character_set_name, default_collate_name
-            FROM information_schema.character_sets
-            ORDER BY character_set_name
-            """ : "SHOW CHARACTER SET"
-        let collationColumn = hasCatalog ? 1 : 2
-        let result = try await execute(query: query)
-        return result.rows.compactMap { row -> CharsetDefault? in
-            guard let charset = row[safe: 0]?.asText,
-                  let collation = row[safe: collationColumn]?.asText else {
-                return nil
-            }
-            return CharsetDefault(charset: charset, defaultCollation: collation)
-        }
-        .sorted { $0.charset < $1.charset }
-    }
-
-    /// Before 5.0.2 the list comes from `SHOW COLLATION`, whose first two columns are `Collation` and
-    /// `Charset`, in no promised order.
-    func fetchCollationCatalog() async throws -> [CollationEntry] {
-        let query = serverHasInformationSchema ? """
-            SELECT collation_name, character_set_name
-            FROM information_schema.collations
-            ORDER BY collation_name
-            """ : "SHOW COLLATION"
-        let result = try await execute(query: query)
-        return result.rows.compactMap { row -> CollationEntry? in
-            guard let collation = row[safe: 0]?.asText,
-                  let charset = row[safe: 1]?.asText else {
-                return nil
-            }
-            return CollationEntry(collation: collation, charset: charset)
-        }
-        .sorted { $0.collation < $1.collation }
     }
 
     enum SessionVariable: String {
@@ -209,11 +159,5 @@ private extension MySQLPluginDriver {
             )
             return nil
         }
-    }
-
-    func isSafeCharsetIdentifier(_ value: String) -> Bool {
-        guard !value.isEmpty else { return false }
-        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "_"))
-        return value.unicodeScalars.allSatisfy { allowed.contains($0) }
     }
 }

@@ -46,6 +46,8 @@ pub(super) fn unsupported_message(feature: UnsupportedFeature) -> String {
         UnsupportedFeature::ServerPaging => gettext("This database does not page tables on the server."),
         UnsupportedFeature::Tables => gettext("This database holds keys, not tables."),
         UnsupportedFeature::Keys => gettext("This database holds tables, not keys."),
+        UnsupportedFeature::CharacterSets => gettext("This database has no character sets to pick from."),
+        UnsupportedFeature::DatabaseSwitching => gettext("This connection cannot switch to another database."),
         UnsupportedFeature::EditorCommand { command } => gettext_f(
             "{command} cannot run in the editor: it turns the connection into a stream the editor cannot show.",
             &[("command", command)],
@@ -82,6 +84,8 @@ mod tests {
             UnsupportedFeature::ServerPaging,
             UnsupportedFeature::Tables,
             UnsupportedFeature::Keys,
+            UnsupportedFeature::CharacterSets,
+            UnsupportedFeature::DatabaseSwitching,
             UnsupportedFeature::EditorCommand { command: "MONITOR" },
         ];
 

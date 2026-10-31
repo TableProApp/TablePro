@@ -22,7 +22,6 @@ struct MainContentView: View {
     @Binding var windowSubtitle: String
     @Binding var windowRepresentedURL: URL?
     @ObservedObject var schemaService = SchemaService.shared
-    @ObservedObject var sidebarState: SharedSidebarState
     @Binding var pendingTruncates: Set<DatabaseTreeTableRef>
     @Binding var pendingDeletes: Set<DatabaseTreeTableRef>
     @Binding var tableOperationOptions: [DatabaseTreeTableRef: TableOperationOptions]
@@ -59,7 +58,6 @@ struct MainContentView: View {
         windowTitle: Binding<String>,
         windowSubtitle: Binding<String>,
         windowRepresentedURL: Binding<URL?>,
-        sidebarState: SharedSidebarState,
         pendingTruncates: Binding<Set<DatabaseTreeTableRef>>,
         pendingDeletes: Binding<Set<DatabaseTreeTableRef>>,
         tableOperationOptions: Binding<[DatabaseTreeTableRef: TableOperationOptions]>,
@@ -74,7 +72,6 @@ struct MainContentView: View {
         self._windowTitle = windowTitle
         self._windowSubtitle = windowSubtitle
         self._windowRepresentedURL = windowRepresentedURL
-        self.sidebarState = sidebarState
         self._pendingTruncates = pendingTruncates
         self._pendingDeletes = pendingDeletes
         self._tableOperationOptions = tableOperationOptions
@@ -266,11 +263,7 @@ struct MainContentView: View {
                 }
             )
         case .sqlPreview:
-            SQLReviewSheet(
-                isPresented: dismissBinding,
-                statements: coordinator.toolbarState.previewStatements,
-                databaseType: coordinator.toolbarState.databaseType
-            )
+            sqlPreviewSheet(dismiss: dismissBinding)
         case .rewind:
             if let plan = coordinator.rewindPlan {
                 RewindReviewSheet(plan: plan) {
@@ -306,12 +299,32 @@ struct MainContentView: View {
         }
     }
 
+    // A structure session's preview offers its Save; a grid preview only shows what Save would write.
+    private func sqlPreviewSheet(dismiss: Binding<Bool>) -> SQLReviewSheet {
+        SQLReviewSheet(
+            isPresented: dismiss,
+            statements: coordinator.toolbarState.previewStatements,
+            databaseType: coordinator.toolbarState.databaseType,
+            primaryAction: coordinator.activeStructureSession.flatMap { session -> SQLReviewSheet.PrimaryAction? in
+                guard session.hasChanges else { return nil }
+                return SQLReviewSheet.PrimaryAction(
+                    title: String(localized: "Save Changes"),
+                    isDestructive: false,
+                    work: .immediate {
+                        coordinator.activeSheet = nil
+                        session.save()
+                    }
+                )
+            }
+        )
+    }
+
     private var pendingChangeTrigger: PendingChangeTrigger {
         PendingChangeTrigger(
             hasDataChanges: changeManager.hasChanges,
             pendingTruncates: pendingTruncates,
             pendingDeletes: pendingDeletes,
-            hasStructureChanges: toolbarState.hasStructureChanges,
+            hasStructureChanges: selectedStructureSession?.hasChanges ?? false,
             diagramEditsRevision: toolbarState.diagramEditsRevision,
             selectedTabId: tabManager.selectedTabId,
             isFileDirty: tabManager.selectedTab?.content.isFileDirty ?? false,
@@ -345,13 +358,29 @@ struct MainContentView: View {
                 await coordinator.loadInspectorRowValues(tabId: tabId, rowID: rowID)
             })
             .background {
-                if let model = coordinator.activeGridModel {
+                if let editor = coordinator.activeStructureEditor {
+                    StructureSelectionWatcher(
+                        editor: editor,
+                        onAttach: { scheduleInspectorUpdate() },
+                        onChange: { rowsChanged in handleGridSelectionChange(rowsChanged: rowsChanged) }
+                    )
+                    .id(ObjectIdentifier(editor))
+                } else if let model = coordinator.activeGridModel {
                     GridSelectionWatcher(
                         model: model,
                         onAttach: { scheduleInspectorUpdate() },
                         onChange: { rowsChanged in handleGridSelectionChange(rowsChanged: rowsChanged) }
                     )
                     .id(ObjectIdentifier(model))
+                }
+            }
+            .background {
+                if let session = selectedStructureSession {
+                    StructureChangeWatcher(session: session) {
+                        updateToolbarPendingState()
+                        coordinator.refreshUnsavedIndicator()
+                    }
+                    .id(ObjectIdentifier(session))
                 }
             }
             .onReceive(coordinator.gridCellsEdited) { _ in
@@ -523,5 +552,37 @@ struct MainContentView: View {
                 coordinator.goToPage(page)
             }
         )
+    }
+}
+
+// No view of this window observes a session whose Structure view is not on screen, yet Discard and Save change it there.
+// The selection moves between four grids, and the window reads only the one holding it.
+private struct StructureSelectionWatcher: View {
+    @ObservedObject var editor: StructureDefinitionEditor
+    let onAttach: () -> Void
+    let onChange: (_ rowsChanged: Bool) -> Void
+
+    var body: some View {
+        let model = editor.focusedModel ?? editor.adapter(for: .columns).model
+        Color.clear
+            .frame(width: 0, height: 0)
+            .accessibilityHidden(true)
+            .background {
+                GridSelectionWatcher(model: model, onAttach: onAttach, onChange: onChange)
+                    .id(ObjectIdentifier(model))
+            }
+            .onChange(of: editor.focusedSection) { _ in onChange(true) }
+    }
+}
+
+private struct StructureChangeWatcher: View {
+    @ObservedObject var session: StructureEditingSession
+    let onChange: () -> Void
+
+    var body: some View {
+        Color.clear
+            .frame(width: 0, height: 0)
+            .accessibilityHidden(true)
+            .onChange(of: session.hasChanges) { _ in onChange() }
     }
 }

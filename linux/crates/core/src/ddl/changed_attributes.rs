@@ -10,6 +10,8 @@ pub struct ChangedAttributes {
     pub primary_key: bool,
     pub auto_increment: bool,
     pub comment: bool,
+    /// The character set, the collation or both.
+    pub collation: bool,
 }
 
 impl ChangedAttributes {
@@ -35,10 +37,17 @@ impl ChangedAttributes {
             primary_key: info.primary_key != draft.primary_key,
             auto_increment: info.is_auto_increment != draft.auto_increment,
             comment,
+            collation: draft.collation_differs(Some(&original.attributes)),
         }
     }
 
     pub fn any(&self) -> bool {
-        self.column_type || self.nullability || self.default || self.primary_key || self.auto_increment || self.comment
+        self.column_type
+            || self.nullability
+            || self.default
+            || self.primary_key
+            || self.auto_increment
+            || self.comment
+            || self.collation
     }
 }

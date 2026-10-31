@@ -334,7 +334,7 @@ struct SchemaOperationRefusalTests {
         let composed = CreateTableStatementComposer.compose(plan: plan, driver: legacyDriver(), schema: nil)
         #expect(composed.statements.isEmpty)
         #expect(composed.issues.map(\.message) == [Self.generatedReason])
-        #expect(composed.issues.first?.tab == .columns)
+        #expect(composed.issues.first?.section == .columns)
     }
 
     @Test("Create Table flags a refused index on its own row and still creates the table")
@@ -351,7 +351,7 @@ struct SchemaOperationRefusalTests {
         let composed = CreateTableStatementComposer.compose(plan: plan, driver: legacyDriver(), schema: nil)
         #expect(composed.statements == ["CREATE TABLE orders (...)", "CREATE INDEX ix_btree ON orders"])
         #expect(composed.issues.count == 1)
-        #expect(composed.issues.first?.tab == .indexes)
+        #expect(composed.issues.first?.section == .indexes)
         #expect(composed.issues.first?.row == 1)
         #expect(composed.issues.first?.message == Self.brinReason)
     }

@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use futures_util::TryStreamExt;
-use sqlx::mysql::MySqlConnection;
-use sqlx::{AssertSqlSafe, Either, Executor as _, Row as _};
+use sqlx::mysql::{MySqlConnection, MySqlDatabaseError};
+use sqlx::{AssertSqlSafe, Either, Executor as _, Row as _, SqlSafeStr as _};
 use tablepro_core::column::ResultColumn;
 use tablepro_core::sql_syntax::{SqlGrammar, StatementAccess, statement_access};
 use tablepro_core::{
@@ -30,6 +30,7 @@ pub(crate) async fn stream(
 ) -> Result<StreamSummary, DriverError> {
     if let ReadStatement::User(sql) = read {
         refuse_writes(sql.as_str())?;
+        refuse_more_than_one(connection, flavour, sql.as_str()).await?;
     }
     connection
         .execute("START TRANSACTION READ ONLY")
@@ -82,6 +83,35 @@ pub(crate) fn refuse_writes(sql: &str) -> Result<(), DriverError> {
         StatementAccess::Write | StatementAccess::Destructive => {
             Err(DriverError::ReadOnly(ReadOnlyRefusal::ClientGuard))
         }
+    }
+}
+
+/// MySQL's ER_UNSUPPORTED_PS: the statement parsed, as one, but the
+/// prepared-statement protocol does not run its kind.
+const UNSUPPORTED_IN_PREPARE: u16 = 1295;
+
+/// The read runs over the text protocol, which runs every statement a
+/// text holds. A prepare parses the text the way the server will, with
+/// multiple statements off, so a text the server reads as more than one
+/// fails here whatever the client's lexer made of it.
+async fn refuse_more_than_one(
+    connection: &mut MySqlConnection,
+    flavour: MySqlFlavour,
+    sql: &str,
+) -> Result<(), DriverError> {
+    let prepared = (&mut *connection)
+        .prepare(AssertSqlSafe(sql.to_owned()).into_sql_str())
+        .await;
+    match prepared {
+        Ok(_) => Ok(()),
+        Err(sqlx::Error::Database(error))
+            if error
+                .try_downcast_ref::<MySqlDatabaseError>()
+                .is_some_and(|mysql| mysql.number() == UNSUPPORTED_IN_PREPARE) =>
+        {
+            Ok(())
+        }
+        Err(error) => Err(map_error(&error, flavour)),
     }
 }
 

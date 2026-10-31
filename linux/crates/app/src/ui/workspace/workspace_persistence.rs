@@ -191,6 +191,7 @@ fn tab_record(tab: &WorkspaceTab) -> Option<TabRecord> {
         WorkspaceTab::Editor(slot) => Some(TabRecord::Editor {
             draft: slot.draft,
             file: super::workspace_tabs::editor_file_record(&slot.editor),
+            database: slot.editor.tab_database(),
         }),
         WorkspaceTab::Structure(slot) => match slot.mode {
             // A draft for a table that does not exist yet has nothing to
@@ -504,6 +505,7 @@ mod tests {
                 TabRecord::Editor {
                     draft: DraftId::new(),
                     file: None,
+                    database: None,
                 },
             ],
         };

@@ -12,6 +12,8 @@ pub struct ColumnCapabilities {
     pub alter_primary_key: Permission,
     pub alter_auto_increment: Permission,
     pub alter_comment: Permission,
+    /// The column's own character set and collation.
+    pub alter_collation: Permission,
 }
 
 impl ColumnCapabilities {
@@ -54,6 +56,7 @@ impl ColumnCapabilities {
             alter_primary_key: primary_key_permission(capabilities, table),
             alter_auto_increment: engine(capabilities.alter_auto_increment).and(restatement),
             alter_comment: engine(capabilities.column_comments),
+            alter_collation: engine(capabilities.column_collations).and(restatement),
         }
     }
 

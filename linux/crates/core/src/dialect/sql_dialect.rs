@@ -6,8 +6,8 @@ use crate::sql_syntax::{ExpressionSyntaxError, HistoryRecording, SqlGrammar, Typ
 use crate::value::Value;
 
 use super::{
-    BindError, BindTarget, DialectCapabilities, InsertBatchLimits, KeysetDirection, LikeCase, LikeForm, LiteralError,
-    Placeholder, TablePaging,
+    BindError, BindTarget, DatabaseLayout, DialectCapabilities, InsertBatchLimits, KeysetDirection, LikeCase, LikeForm,
+    LiteralError, Placeholder, TablePaging,
 };
 
 /// How one engine spells SQL.
@@ -30,6 +30,10 @@ pub trait SqlDialect: Send + Sync + std::fmt::Debug {
     /// Wrap an identifier so it cannot be read as anything else,
     /// whatever it contains.
     fn quote_identifier(&self, name: &str) -> String;
+
+    fn database_layout(&self) -> DatabaseLayout {
+        DatabaseLayout::Single
+    }
 
     /// Bind one value, giving back the SQL that names it.
     ///
@@ -233,6 +237,21 @@ pub trait SqlDialect: Send + Sync + std::fmt::Debug {
     /// spelling for it.
     fn insert_default_row(&self, table_sql: &str) -> Option<String> {
         Some(format!("INSERT INTO {table_sql} DEFAULT VALUES"))
+    }
+
+    /// The clause between an INSERT's columns and VALUES that lets it set
+    /// a column the engine numbers, where the engine refuses one without.
+    fn insert_overriding_clause(&self) -> Option<&'static str> {
+        None
+    }
+
+    /// The lines, `;` and all, that let the INSERTs after them set the
+    /// table's identity column, or end that (`on` false), where the engine
+    /// refuses a value there otherwise. An engine that runs a script batch
+    /// by batch ends it in a batch of its own, so a run that fails partway
+    /// still turns it off.
+    fn identity_insert(&self, _table_sql: &str, _on: bool) -> Option<String> {
+        None
     }
 
     /// Count the rows a predicate matches, stopping at two: the caller

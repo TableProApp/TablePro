@@ -166,6 +166,9 @@ impl Grid {
 
     pub(crate) fn build(spec: GridSpec, rows: Vec<RowData>) -> Self {
         crate::register_test_resources();
+        // The stylesheet the app draws the grid with, cell padding and the
+        // monospace font included.
+        libadwaita::init().expect("libadwaita initialises under the test backend");
         let runtime = crate::test_support::test_runtime();
         let settings = MemorySettings::new();
         let tracker = TabTrackerHandle::default();

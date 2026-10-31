@@ -79,6 +79,15 @@ struct InspectorTriggerTests {
     func differentGridDisplayRevision() {
         #expect(trigger(gridDisplayRevision: 0) != trigger(gridDisplayRevision: 1))
     }
+
+    // A Structure view's session appears after its view first mounts, and the inspector has to pick it up.
+    @Test("A structure editor appearing produces unequal triggers")
+    func structureEditorAppearing() {
+        let editor = NSObject()
+        var withEditor = trigger(resultsViewMode: .structure)
+        withEditor.structureEditor = ObjectIdentifier(editor)
+        #expect(trigger(resultsViewMode: .structure) != withEditor)
+    }
 }
 
 // MARK: - PendingChangeTrigger Tests

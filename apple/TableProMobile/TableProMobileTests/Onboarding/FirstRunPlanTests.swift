@@ -88,4 +88,28 @@ struct FirstRunPlanTests {
         let presentation = plan(hasSeenWelcome: true, syncChoice: true, lastSeenVersion: "1.0")
         #expect(presentation == .firstRun([.usageData]))
     }
+
+    @Test("An older version shows nothing")
+    func olderVersionShowsNothing() {
+        let presentation = plan(
+            hasSeenWelcome: true,
+            syncChoice: true,
+            usageDataChoice: false,
+            lastSeenVersion: "1.1",
+            currentVersion: "1.0"
+        )
+        #expect(presentation == .none)
+    }
+
+    @Test("Versions compare as numbers, not as text")
+    func versionsCompareAsNumbers() {
+        let presentation = plan(
+            hasSeenWelcome: true,
+            syncChoice: true,
+            usageDataChoice: false,
+            lastSeenVersion: "1.9",
+            currentVersion: "1.10"
+        )
+        #expect(presentation == .whatsNew(version: "1.10"))
+    }
 }

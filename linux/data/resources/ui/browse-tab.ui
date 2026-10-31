@@ -95,7 +95,7 @@
           </object>
         </property>
         <child type="bottom">
-          <object class="GtkActionBar">
+          <object class="GtkActionBar" id="action_bar">
             <child type="start">
               <object class="GtkButton" id="insert_button">
                 <property name="icon-name">list-add-symbolic</property>

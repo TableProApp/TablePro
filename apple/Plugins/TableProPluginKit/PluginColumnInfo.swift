@@ -89,6 +89,11 @@ public struct PluginColumnInfo: Codable, Sendable {
     /// geometry. This is the classified name for exactly those columns, `ENUM`, `INTEGER`,
     /// `geometry`, and nil wherever the declared spelling classifies the same.
     public let classificationTypeName: String?
+    /// The expression of a `CHECK` written on the column itself, or nil for none.
+    ///
+    /// MariaDB keeps such a check apart from the table's constraints and drops it on any `MODIFY` that
+    /// does not restate it, the `json_valid` check on a `JSON` column included, so a driver restates it.
+    public let columnCheck: String?
 
     public var isIdentity: Bool { identityKind != nil }
 
@@ -133,6 +138,7 @@ public struct PluginColumnInfo: Codable, Sendable {
         self.ddlGenerationExpression = nil
         self.ddlCollation = nil
         self.classificationTypeName = nil
+        self.columnCheck = nil
     }
 
     /// The signature published before the DDL spellings existed, kept byte-identical and disfavoured
@@ -173,6 +179,7 @@ public struct PluginColumnInfo: Codable, Sendable {
         self.ddlGenerationExpression = nil
         self.ddlCollation = nil
         self.classificationTypeName = nil
+        self.columnCheck = nil
     }
 
     /// The signature published before `ddlCollation` existed, kept byte-identical and disfavoured for
@@ -216,6 +223,7 @@ public struct PluginColumnInfo: Codable, Sendable {
         self.ddlGenerationExpression = ddlGenerationExpression
         self.ddlCollation = nil
         self.classificationTypeName = nil
+        self.columnCheck = nil
     }
 
     /// The signature published before `classificationTypeName` existed, kept byte-identical and
@@ -260,8 +268,12 @@ public struct PluginColumnInfo: Codable, Sendable {
         self.ddlGenerationExpression = ddlGenerationExpression
         self.ddlCollation = ddlCollation
         self.classificationTypeName = nil
+        self.columnCheck = nil
     }
 
+    /// The signature published before `columnCheck` existed, kept byte-identical and disfavoured for
+    /// the same reason as the ones above.
+    @_disfavoredOverload
     public init(
         name: String,
         dataType: String,
@@ -302,5 +314,50 @@ public struct PluginColumnInfo: Codable, Sendable {
         self.ddlGenerationExpression = ddlGenerationExpression
         self.ddlCollation = ddlCollation
         self.classificationTypeName = classificationTypeName
+        self.columnCheck = nil
+    }
+
+    public init(
+        name: String,
+        dataType: String,
+        isNullable: Bool = true,
+        isPrimaryKey: Bool = false,
+        defaultValue: String? = nil,
+        extra: String? = nil,
+        charset: String? = nil,
+        collation: String? = nil,
+        comment: String? = nil,
+        identityKind: IdentityKind? = nil,
+        isGenerated: Bool = false,
+        allowedValues: [String]? = nil,
+        generationExpression: String?,
+        generationKind: GenerationKind?,
+        ddlSpelling: String?,
+        ddlDefault: String?,
+        ddlGenerationExpression: String?,
+        ddlCollation: String?,
+        classificationTypeName: String?,
+        columnCheck: String?
+    ) {
+        self.name = name
+        self.dataType = dataType
+        self.isNullable = isNullable
+        self.isPrimaryKey = isPrimaryKey
+        self.defaultValue = defaultValue
+        self.extra = extra
+        self.charset = charset
+        self.collation = collation
+        self.comment = comment
+        self.identityKind = identityKind
+        self.isGenerated = isGenerated
+        self.allowedValues = allowedValues
+        self.generationExpression = generationExpression
+        self.generationKind = generationKind
+        self.ddlSpelling = ddlSpelling
+        self.ddlDefault = ddlDefault
+        self.ddlGenerationExpression = ddlGenerationExpression
+        self.ddlCollation = ddlCollation
+        self.classificationTypeName = classificationTypeName
+        self.columnCheck = columnCheck
     }
 }

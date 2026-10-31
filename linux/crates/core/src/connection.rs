@@ -6,7 +6,7 @@ use tokio_util::sync::{CancellationToken, WaitForCancellationFutureOwned};
 use crate::call_options::CallOptions;
 use crate::column::ColumnInfo;
 use crate::commit::{CommitResolution, CommitToken};
-use crate::ddl::{InboundForeignKey, OutboundForeignKey, TableDefinition};
+use crate::ddl::{CharacterSet, InboundForeignKey, OutboundForeignKey, TableDefinition};
 use crate::dialect::SqlDialect;
 use crate::editor_session::{EditorSession, EditorSessionOptions};
 use crate::error::DriverError;
@@ -92,6 +92,24 @@ pub trait Connection: Send + Sync {
         table: &TableRef,
         options: CallOptions,
     ) -> Result<TableDefinition, DriverError>;
+
+    /// The character sets the server offers, each with its collations,
+    /// for the structure tab's pickers. The list is the server's, not one
+    /// table's, and is a read of its own: a failure leaves the definition
+    /// as it was read.
+    async fn fetch_character_sets(&self, _options: CallOptions) -> Result<Vec<CharacterSet>, DriverError> {
+        Err(DriverError::Unsupported {
+            feature: UnsupportedFeature::CharacterSets,
+        })
+    }
+
+    /// The server's databases the login can open, the connection's own
+    /// marked as the default and the engine's own as system.
+    async fn list_databases(&self, _options: CallOptions) -> Result<Vec<SchemaInfo>, DriverError> {
+        Err(DriverError::Unsupported {
+            feature: UnsupportedFeature::DatabaseSwitching,
+        })
+    }
 
     async fn row_identity(&self, table: &TableRef, options: CallOptions) -> Result<RowIdentity, DriverError>;
 

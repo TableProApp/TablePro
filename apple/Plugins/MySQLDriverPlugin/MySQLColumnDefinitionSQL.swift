@@ -91,18 +91,72 @@ internal func mysqlIsNullLiteral(_ value: String) -> Bool {
     value.trimmingCharacters(in: .whitespaces).caseInsensitiveCompare("NULL") == .orderedSame
 }
 
+/// Which of `CHARACTER SET` and `COLLATE` a column type takes. Measured on MySQL 8.4 and MariaDB 11.4:
+/// `CHARACTER SET` on `INT`, `VARBINARY`, `BLOB` or `JSON` is ERROR 1064, and so is `CHARACTER SET` on a
+/// national spelling (`NVARCHAR`), which takes `COLLATE` alone. A type outside the list takes neither.
+internal enum MySQLColumnTextType: Equatable {
+    case none
+    case collationOnly
+    case characterSetAndCollation
+
+    init(dataType: String) {
+        let words = dataType.uppercased()
+            .prefix { $0 != "(" }
+            .split(whereSeparator: \.isWhitespace)
+        guard let first = words.first else {
+            self = .none
+            return
+        }
+        let second = words.dropFirst().first
+        switch first {
+        case "NATIONAL", "NCHAR", "NVARCHAR":
+            self = .collationOnly
+        case "CHAR", "CHARACTER":
+            self = second == "BYTE" ? .none : .characterSetAndCollation
+        case "LONG":
+            self = second == "VARBINARY" ? .none : .characterSetAndCollation
+        case "VARCHAR", "VARCHARACTER", "TINYTEXT", "TEXT", "MEDIUMTEXT", "LONGTEXT", "ENUM", "SET":
+            self = .characterSetAndCollation
+        default:
+            self = .none
+        }
+    }
+
+    var takesCharacterSet: Bool { self == .characterSetAndCollation }
+    var takesCollation: Bool { self != .none }
+}
+
+/// A name the catalog lists is a bare word; anything else is backticked, so the server refuses it as
+/// unknown rather than reading the rest of it as SQL.
+internal func mysqlCharsetName(_ name: String) -> String {
+    mysqlIsSafeCharsetIdentifier(name) ? name : mysqlQuoteIdentifier(name)
+}
+
+internal func mysqlIsSafeCharsetIdentifier(_ value: String) -> Bool {
+    guard !value.isEmpty else { return false }
+    let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "_"))
+    return value.unicodeScalars.allSatisfy { allowed.contains($0) }
+}
+
+internal func mysqlCharacterSetClauses(_ column: PluginColumnDefinition) -> String {
+    let textType = MySQLColumnTextType(dataType: column.dataType)
+    var clauses = ""
+    if textType.takesCharacterSet, let charset = column.charset?.nilIfEmpty {
+        clauses += " CHARACTER SET \(mysqlCharsetName(charset))"
+    }
+    if textType.takesCollation, let collation = column.collation?.nilIfEmpty {
+        clauses += " COLLATE \(mysqlCharsetName(collation))"
+    }
+    return clauses
+}
+
 internal func mysqlColumnAttributesSQL(_ column: PluginColumnDefinition, isMariaDB: Bool) -> String {
     var def = ""
 
     if column.unsigned {
         def += " UNSIGNED"
     }
-    if let charset = column.charset, !charset.isEmpty {
-        def += " CHARACTER SET \(charset)"
-    }
-    if let collation = column.collation, !collation.isEmpty {
-        def += " COLLATE \(collation)"
-    }
+    def += mysqlCharacterSetClauses(column)
     def += column.isNullable ? " NULL" : " NOT NULL"
 
     if let defaultValue = column.defaultValue {
@@ -122,7 +176,18 @@ internal func mysqlColumnAttributesSQL(_ column: PluginColumnDefinition, isMaria
     return def
 }
 
-internal func mysqlColumnDefinitionSQL(_ column: PluginColumnDefinition, isMariaDB: Bool = false) -> String {
+/// `columnCheck` is the column's own `CHECK` as the statement restates it, printed last on the line as
+/// MariaDB prints it. Only a `MODIFY` or a move of a column that already has one passes it.
+internal func mysqlColumnDefinitionSQL(
+    _ column: PluginColumnDefinition,
+    isMariaDB: Bool = false,
+    columnCheck: String? = nil
+) -> String {
+    let check = columnCheck?.nilIfEmpty.map { " CHECK (\($0))" } ?? ""
+    return mysqlColumnBodySQL(column, isMariaDB: isMariaDB) + check
+}
+
+private func mysqlColumnBodySQL(_ column: PluginColumnDefinition, isMariaDB: Bool) -> String {
     let name = mysqlQuoteIdentifier(column.name)
     guard let expression = column.generationExpression?.nilIfEmpty else {
         return "\(name) \(column.dataType)" + mysqlColumnAttributesSQL(column, isMariaDB: isMariaDB)
@@ -134,13 +199,7 @@ internal func mysqlColumnDefinitionSQL(_ column: PluginColumnDefinition, isMaria
     // out reset a generated string column to the table defaults, because MODIFY COLUMN replaces
     // the whole definition and a reorder restates it.
     let kind = (column.generationKind ?? .virtual).rawValue
-    var definition = "\(name) \(column.dataType)"
-    if let charset = column.charset, !charset.isEmpty {
-        definition += " CHARACTER SET \(charset)"
-    }
-    if let collation = column.collation, !collation.isEmpty {
-        definition += " COLLATE \(collation)"
-    }
+    var definition = "\(name) \(column.dataType)" + mysqlCharacterSetClauses(column)
     definition += " GENERATED ALWAYS AS (\(expression)) \(kind)"
     if !column.isNullable { definition += " NOT NULL" }
     if let comment = column.comment, !comment.isEmpty {

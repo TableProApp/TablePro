@@ -17,7 +17,6 @@ struct ResultStatusModelTests {
         isValueFiltered: Bool = false,
         hasColumns: Bool? = nil,
         hasTableName: Bool = true,
-        hasStructureActions: Bool = false,
         pagination: PaginationState = PaginationState(),
         statusMessage: String? = nil
     ) -> StatusBarSnapshot {
@@ -35,7 +34,6 @@ struct ResultStatusModelTests {
                 hasTableName: hasTableName,
                 hasColumns: hasColumns ?? (rowCount > 0)
             ),
-            hasStructureActions: hasStructureActions,
             pagination: pagination,
             statusMessage: statusMessage
         )
@@ -396,18 +394,6 @@ struct ResultStatusModelTests {
         #expect(result.controls.showsColumns)
     }
 
-    /// The pair belongs to the structure list, so it appears only while that list is the content and
-    /// only once the structure editor has said what it can do.
-    @Test("The structure pair appears only in Structure mode, and only when published")
-    func structureActionsFollowTheMode() {
-        let published = makeSnapshot(rowCount: 9, hasStructureActions: true)
-        #expect(model(published, viewMode: .structure).controls.showsStructureActions)
-        #expect(!model(published, viewMode: .data).controls.showsStructureActions)
-
-        let unpublished = makeSnapshot(rowCount: 9, hasStructureActions: false)
-        #expect(!model(unpublished, viewMode: .structure).controls.showsStructureActions)
-    }
-
     @Test("A status message rides with the readout")
     func statusMessageFollowsReadout() {
         let withReadout = model(makeSnapshot(rowCount: 5, statusMessage: "OK"))
@@ -470,7 +456,6 @@ struct ResultStatusModelTests {
             controls.showsFilters,
             controls.showsPagination,
             controls.showsFetchAll,
-            controls.showsStructureActions,
             controls.showsSelectionSummary,
         ]
     }

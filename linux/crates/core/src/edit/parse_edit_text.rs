@@ -83,6 +83,34 @@ mod tests {
     }
 
     #[test]
+    fn an_empty_set_is_a_value_and_an_empty_enum_is_not() {
+        let set = column(
+            ColumnKind::Enum {
+                labels: vec!["a".to_owned(), "b".to_owned()],
+                multiple: true,
+            },
+            true,
+        );
+        let enumeration = column(
+            ColumnKind::Enum {
+                labels: vec!["a".to_owned(), "b".to_owned()],
+                multiple: false,
+            },
+            true,
+        );
+
+        assert_eq!(
+            parse_edit_text("", &set, EditContext::UpdateRow),
+            Ok(CellInput::Value(Value::Text(String::new()))),
+            "clearing a set wrote NULL instead of the empty set"
+        );
+        assert_eq!(
+            parse_edit_text("", &enumeration, EditContext::UpdateRow),
+            Ok(CellInput::Value(Value::Null))
+        );
+    }
+
+    #[test]
     fn an_empty_draft_cell_asks_for_the_servers_default() {
         let mut defaulted = integer(false);
         defaulted.default = ColumnDefault::Expression(SqlExpression::from_catalog_text("0"));

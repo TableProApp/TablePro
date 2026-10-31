@@ -32,7 +32,7 @@ The user is trusted: the SQL they type, the connections they create, the plugins
 7. Secrets: `apple/TablePro/Core/Storage/KeychainHelper.swift`, `apple/TablePro/Core/Sync/SyncRecordMapper.swift` (passwords must never reach CloudKit), `linux/crates/storage/src/secrets`, `TableProLogRedaction`, the MCP error redactor.
 8. SQL the app builds from data: `apple/TablePro/Core/ChangeTracking/SQLStatementGenerator.swift`, `apple/TablePro/Core/Database/FilterSQLGenerator.swift`, `SQLEscaping.swift`, `DialectQuoteHelper.swift`, each driver's `quoteIdentifier`; on Linux `linux/crates/core/src/dml`, `linux/crates/core/src/filter/validate_raw_predicate.rs` and each driver's `dialect.rs`. A crafted table or column name that escapes quoting runs SQL with the user's privileges.
 9. SSH and TLS: `apple/TablePro/Core/SSH/` (libssh2, host key prompts), `apple/Packages/TableProMacCore/Sources/TableProSSHConfig`, `linux/crates/ssh` (drives the system `ssh`, so watch for option injection from connection fields), `linux/crates/net/src/tls`.
-10. Rendering of cell values: the out-of-process image renderer (`apple/TablePro/CLI/ImageRenderMain.swift`), `apple/TablePro/Core/Services/Formatting/PhpSerializeParser.swift`, the MongoDB shell's JavaScriptCore runtime.
+10. Rendering of cell values: the out-of-process image renderer (`apple/TablePro/CLI/ImageRenderMain.swift`), the Linux Row Details picture, which glycin decodes in a sandbox (`linux/crates/app/src/ui/data_grid/row_detail/picture.rs`), `apple/TablePro/Core/Services/Formatting/PhpSerializeParser.swift`, the MongoDB shell's JavaScriptCore runtime.
 
 Matter least: layout, theming and localization code, `linux/crates/test-fixtures`, `linux/crates/test-support`, `apple/TableProUITests`, `scripts/`, `.github/`, docs.
 

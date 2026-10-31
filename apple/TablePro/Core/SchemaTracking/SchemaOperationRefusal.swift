@@ -35,13 +35,14 @@ internal enum SchemaOperationRefusal {
             return driver.schemaOperationRefusal(.modifyColumn(old: old.toPlugin(), new: new.toPlugin()))
         case .deleteColumn(let column):
             return driver.schemaOperationRefusal(.dropColumn(column.toPlugin()))
-        case .addForeignKey, .modifyForeignKey, .deleteForeignKey, .modifyPrimaryKey, .modifyTableComment:
+        case .addForeignKey, .modifyForeignKey, .deleteForeignKey, .modifyPrimaryKey, .modifyTableComment,
+             .modifyTableCharacterSet, .modifyAutoIncrement:
             return nil
         }
     }
 
-    /// A check constraint is an operation only when it is renamed, and foreign key, primary key and
-    /// comment changes have no case at all.
+    /// A check constraint is an operation only when it is renamed, and foreign key, primary key,
+    /// comment and table option changes have no case at all.
     static func operations(for change: SchemaChange) -> [PluginSchemaOperation] {
         switch change {
         case .addColumn(let column):
@@ -60,7 +61,7 @@ internal enum SchemaOperationRefusal {
             guard old.expression == new.expression, old.name != new.name else { return [] }
             return [.renameCheckConstraint(from: old.name, to: new.name)]
         case .addCheckConstraint, .deleteCheckConstraint, .addForeignKey, .modifyForeignKey, .deleteForeignKey,
-             .modifyPrimaryKey, .modifyTableComment:
+             .modifyPrimaryKey, .modifyTableComment, .modifyTableCharacterSet, .modifyAutoIncrement:
             return []
         }
     }

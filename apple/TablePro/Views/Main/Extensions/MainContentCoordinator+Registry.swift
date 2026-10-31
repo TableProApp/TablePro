@@ -40,6 +40,10 @@ extension MainContentCoordinator {
             .contains { $0.hasAnyUnsavedWork() }
     }
 
+    static var isAnyQueryRunning: Bool {
+        activeCoordinators.values.contains { $0.tabExecution.isAnyExecuting }
+    }
+
     static func hasRunningQuery(forConnection connectionId: UUID) -> Bool {
         activeCoordinators.values
             .filter { $0.connectionId == connectionId }

@@ -46,8 +46,9 @@ final class OnboardingPreferences {
         defaults.set(true, forKey: Self.hasSeenWelcomeKey)
     }
 
+    // An older build writes nothing, so going back to the newer one does not show its highlights again.
     func recordLaunch(version: String) {
-        guard lastSeenVersion != version else { return }
+        if let lastSeenVersion, !FirstRunPlan.isNewer(version, than: lastSeenVersion) { return }
         lastSeenVersion = version
         defaults.set(version, forKey: Self.lastSeenVersionKey)
     }

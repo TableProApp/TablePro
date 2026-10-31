@@ -409,9 +409,17 @@ struct CreateTableFormStateTests {
 
 @MainActor
 struct CreateTableDraftFormTests {
+    private func makeDraft() -> CreateTableDraft {
+        let connection = TestFixtures.makeConnection(type: .postgresql)
+        return CreateTableDraft(
+            connection: connection,
+            scope: DatabaseScope(connectionId: connection.id, database: "shop", schema: nil)
+        )
+    }
+
     @Test("A draft resolves its form once and keeps it")
     func resolvesFormOnce() {
-        let draft = CreateTableDraft()
+        let draft = makeDraft()
         #expect(!draft.hasResolvedForm)
 
         draft.resolveForm(from: FormFixture.spec)
@@ -425,7 +433,7 @@ struct CreateTableDraftFormTests {
 
     @Test("Renaming the table clears what the driver said about the last attempt")
     func renameClearsSubmissionError() {
-        let draft = CreateTableDraft()
+        let draft = makeDraft()
         draft.resolveForm(from: FormFixture.spec)
         draft.tableName = "a"
         draft.form?.recordSubmissionError(PluginCreateTableFormError(message: "A table name is too short"))
@@ -437,19 +445,35 @@ struct CreateTableDraftFormTests {
         #expect(draft.form?.submissionError == nil)
     }
 
-    @Test("A driver without a form leaves the draft on the column grid")
+    @Test("A driver without a form leaves the draft on the definition, seeded with one blank column")
     func noSpecMeansGrid() {
-        let draft = CreateTableDraft()
+        let draft = makeDraft()
 
         draft.resolveForm(from: nil)
 
         #expect(draft.hasResolvedForm)
         #expect(draft.form == nil)
+        #expect(draft.changeManager.workingColumns.count == 1)
+        #expect(draft.editor.adapter(for: .columns).visibleRowCount == 1)
+        #expect(!draft.holdsWork)
+    }
+
+    @Test("A driver's form takes no definition commands and seeds no column")
+    func formTakesNoDefinitionCommands() {
+        let draft = makeDraft()
+        draft.resolveForm(from: FormFixture.spec)
+
+        draft.addRow()
+
+        #expect(!draft.canAddRow)
+        #expect(!draft.canUndo)
+        #expect(draft.changeManager.workingColumns.isEmpty)
+        #expect(draft.activeGridModel == nil)
     }
 
     @Test("An edited form counts as work worth protecting")
     func editedFormHoldsWork() {
-        let draft = CreateTableDraft()
+        let draft = makeDraft()
         draft.resolveForm(from: FormFixture.spec)
         #expect(!draft.holdsWork)
 

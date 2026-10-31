@@ -198,6 +198,44 @@ fn a_refresh_keeps_the_grid_and_its_sort() {
     assert_eq!(shown_elements(&tab), ["element2", "element1", "element0"]);
 }
 
+#[gtk4::test]
+fn the_footer_sums_the_selected_entries() {
+    let mut script = ConnectionScript::default();
+    script.read_key.always(FakeReply::ok(Some(list_page(0, 3, None))));
+    let (tab, _fake, _runtime) = opened(script);
+    let window = crate::test_support::OwnedWindow::presented(gtk::Window::builder().child(tab.widget()).build());
+    wait_until(WAIT, || tab.rows() == 3 && tab.grid().width() > 0).expect("the key, laid out");
+    let readout = tab
+        .grid()
+        .selection_summary()
+        .downcast::<gtk::Revealer>()
+        .expect("the readout");
+    assert!(
+        readout.is_ancestor(tab.widget()),
+        "the readout is not in the key's footer"
+    );
+
+    wait_until(WAIT, || tab.grid().focus_cell(0, 0).is_some()).expect("a cell takes the focus");
+    tab.grid().selection().select_all();
+
+    let button = readout
+        .child()
+        .and_downcast::<gtk::MenuButton>()
+        .expect("the menu button");
+    wait_until(WAIT, || button.label().as_deref() == Some("Sum 3, Average 1, Count 3")).expect("the index summed");
+
+    button.popup();
+
+    // The figures are in place before the popover opens and takes the focus.
+    let first_copy = || {
+        gtk::prelude::GtkWindowExt::focus(&*window)
+            .and_downcast::<gtk::Button>()
+            .and_then(|focused| focused.tooltip_text())
+            .is_some_and(|tooltip| tooltip == "Copy Count")
+    };
+    wait_until(WAIT, first_copy).expect("the popover's first Copy button takes the focus");
+}
+
 /// The header's Row Details toggle reaches the tab's grid.
 #[gtk4::test]
 fn row_details_reaches_the_key_s_grid() {

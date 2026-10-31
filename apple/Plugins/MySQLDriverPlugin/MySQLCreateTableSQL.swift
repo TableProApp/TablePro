@@ -40,10 +40,10 @@ internal func mysqlCreateTableSQL(
         tableOptions.append("ENGINE=\(engine)")
     }
     if let charset = definition.charset, !charset.isEmpty {
-        tableOptions.append("DEFAULT CHARSET=\(charset)")
+        tableOptions.append("DEFAULT CHARSET=\(mysqlCharsetName(charset))")
     }
     if let collation = definition.collation, !collation.isEmpty {
-        tableOptions.append("COLLATE=\(collation)")
+        tableOptions.append("COLLATE=\(mysqlCharsetName(collation))")
     }
     if !tableOptions.isEmpty {
         sql += " " + tableOptions.joined(separator: " ")

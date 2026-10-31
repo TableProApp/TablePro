@@ -11,7 +11,8 @@ use super::sql_server_type::{CatalogFacts, SqlServerType};
 /// name. A collation is reported only where it differs from the
 /// database's, which is the default a column takes, and the column after
 /// it says whether its code page differs too. The last is the function
-/// of the column's data mask, if it has one.
+/// of the column's data mask, if it has one, and the one after whether
+/// the server writes it as a system-versioned table's period column.
 pub(crate) const COLUMNS_SQL: &str = "SELECT \
         c.name, \
         t.name, \
@@ -40,7 +41,8 @@ pub(crate) const COLUMNS_SQL: &str = "SELECT \
         CAST(CASE WHEN COLLATIONPROPERTY(c.collation_name, 'CodePage') \
                   <> COLLATIONPROPERTY(CAST(DATABASEPROPERTYEX(DB_NAME(), 'Collation') AS nvarchar(128)), 'CodePage') \
              THEN 1 ELSE 0 END AS int), \
-        mc.masking_function \
+        mc.masking_function, \
+        CAST(CASE WHEN c.generated_always_type <> 0 THEN 1 ELSE 0 END AS int) \
     FROM sys.columns c \
     JOIN sys.types t ON t.user_type_id = c.user_type_id \
     LEFT JOIN sys.default_constraints dc ON dc.object_id = c.default_object_id \
@@ -76,6 +78,8 @@ pub(crate) struct MssqlColumnRow {
     pub(crate) computed_definition: Option<String>,
     pub(crate) persisted: bool,
     pub(crate) masking_function: Option<String>,
+    /// `GENERATED ALWAYS AS ROW START` or `END`, or a ledger column.
+    pub(crate) server_generated: bool,
 }
 
 impl MssqlColumnRow {
@@ -111,6 +115,7 @@ impl MssqlColumnRow {
             computed_definition: cells.text(19),
             persisted: cells.flag(20),
             masking_function: cells.text(22),
+            server_generated: cells.flag(23),
         })
     }
 }
@@ -148,6 +153,8 @@ mod tests {
             Value::Null,
             Value::Int(0),
             Value::Int(0),
+            Value::Null,
+            Value::Int(1),
         ];
 
         let row = MssqlColumnRow::from_values(&values).unwrap();
@@ -159,6 +166,7 @@ mod tests {
         assert_eq!(row.default_constraint.as_deref(), Some("DF_items_price"));
         assert_eq!(row.comment.as_deref(), Some("what it costs"));
         assert_eq!(row.collation, None);
+        assert!(row.server_generated);
     }
 
     #[test]

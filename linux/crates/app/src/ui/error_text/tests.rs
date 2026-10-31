@@ -763,3 +763,31 @@ fn a_rebuild_refusal_names_the_dependent_rather_than_a_column() {
     assert!(!unreplayable.contains("Column"), "{unreplayable}");
     assert!(numbered.contains("primary key"), "{numbered}");
 }
+
+#[test]
+fn a_refused_character_set_change_says_which_one() {
+    use tablepro_core::ddl::{BuildDdlError, DdlOperation};
+
+    let table = build_error_text(&BuildDdlError::Unsupported(DdlOperation::AlterTableOptions));
+    let column = build_error_text(&BuildDdlError::Unsupported(DdlOperation::AlterColumnCollation));
+
+    assert!(table.contains("table's character set"), "{table}");
+    assert!(column.contains("column's character set"), "{column}");
+}
+
+#[test]
+fn a_column_change_beside_a_convert_says_to_save_it_first() {
+    use tablepro_core::ddl::{BuildDdlError, DdlOperation, RefusalReason};
+
+    let text = build_error_text(&BuildDdlError::Refused {
+        column: "email".to_owned(),
+        operation: DdlOperation::AlterTableOptions,
+        reason: RefusalReason::ColumnsConverted,
+    });
+
+    assert_eq!(
+        text,
+        "Column email can't be changed this way. Save column and primary key changes before converting existing \
+         columns."
+    );
+}

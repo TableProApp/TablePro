@@ -72,6 +72,23 @@ impl KeyInjector {
         Ok(())
     }
 
+    /// Keep `keyval` down until the guard drops, so a failed test does
+    /// not leave it held for the next one.
+    pub(crate) fn hold(&self, keyval: gdk::Key) -> Result<Held<'_>, KeyInjectionError> {
+        let keycode = self.keycode(keyval)?;
+        self.fake(KEY_PRESS_EVENT, keycode)?;
+        self.connection.flush()?;
+        self.connection.get_input_focus()?.reply()?;
+        Ok(Held { keys: self, keycode })
+    }
+
+    fn let_go(&self, keycode: u8) -> Result<(), KeyInjectionError> {
+        self.fake(KEY_RELEASE_EVENT, keycode)?;
+        self.connection.flush()?;
+        self.connection.get_input_focus()?.reply()?;
+        Ok(())
+    }
+
     /// Click the primary button `count` times at `at` in `widget`'s own
     /// coordinates, in the window that has the keyboard. A widget not laid
     /// out yet sits at the window's corner, so it is refused.
@@ -138,6 +155,19 @@ impl KeyInjector {
         self.connection
             .xtest_fake_input(kind, keycode, x11rb::CURRENT_TIME, x11rb::NONE, 0, 0, 0)?;
         Ok(())
+    }
+}
+
+pub(crate) struct Held<'a> {
+    keys: &'a KeyInjector,
+    keycode: u8,
+}
+
+impl Drop for Held<'_> {
+    fn drop(&mut self) {
+        if let Err(error) = self.keys.let_go(self.keycode) {
+            tracing::error!(%error, "a held key was not let go");
+        }
     }
 }
 

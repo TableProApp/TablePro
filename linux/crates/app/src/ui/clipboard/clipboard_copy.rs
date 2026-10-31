@@ -77,7 +77,7 @@ impl Copied {
                 ..
             } => Self::Value,
             CopyRequest::InClause { .. } => Self::InList,
-            CopyRequest::Rows { .. } | CopyRequest::Insert(_) => Self::Rows,
+            CopyRequest::Rows { .. } | CopyRequest::Insert(_) | CopyRequest::Values { .. } => Self::Rows,
         }
     }
 
@@ -180,6 +180,7 @@ fn copy_error_text(error: &CopyError) -> String {
         CopyError::Insert(RenderInsertError::NoValues) => gettext("This row has no value to put in an INSERT"),
         CopyError::Literal(_) => gettext("This column has a value that can't be written as SQL"),
         CopyError::EmptyInClause => gettext("Nothing to copy: an IN clause can't carry NULL or binary values"),
+        CopyError::TextTableTooLarge => gettext("Too much to copy as a text table. Copy fewer rows or use CSV."),
         CopyError::ContainsNul => ClipboardError::ContainsNul.message(),
     }
 }

@@ -148,9 +148,17 @@ The app is free under AGPLv3. If you use TablePro at work, please buy a [license
 
 ## Sponsors
 
-Thanks to these amazing people for supporting TablePro:
+TablePro is funded by its users and these sponsors. [Become a sponsor](https://tablepro.app/sponsors).
 
-**[SimpleLocalize](https://simplelocalize.io?ref=tablepro)** · **[CodeRabbit](https://coderabbit.ai?ref=tablepro)** · **[Nimbus](https://getnimbus.io?ref=tablepro)** · **[Dwarves Foundation](https://dwarves.foundation/?ref=tablepro)**
+<p>
+  <a href="https://coderabbit.link/tablepro"><img src=".github/assets/sponsors/coderabbit.svg" height="44" alt="CodeRabbit"></a>
+  <a href="https://simplelocalize.io?ref=tablepro"><img src=".github/assets/sponsors/simplelocalize.svg" height="44" alt="SimpleLocalize"></a>
+  <a href="https://getnimbus.io?ref=tablepro"><img src=".github/assets/sponsors/nimbus.svg" height="44" alt="Nimbus"></a>
+  <a href="https://dwarves.foundation?ref=tablepro"><img src=".github/assets/sponsors/dwarves-foundation.svg" height="44" alt="Dwarves Foundation"></a>
+  <a href="https://pyto.com?ref=tablepro"><img src=".github/assets/sponsors/pyto.svg" height="44" alt="Pyto"></a>
+</p>
+
+Individual sponsors: [朱文锦](https://github.com/zhuwjin)
 
 ## Contributors
 
@@ -174,5 +182,5 @@ Want to join them? Read [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
-This project is licensed under the [GNU Affero General Public License v3.0 (AGPLv3)](LICENSE).
+This project is licensed under the [GNU Affero General Public License v3.0 (AGPLv3)](LICENSE). The TablePro name and icon are not part of that license: [TRADEMARKS.md](TRADEMARKS.md) says how you can use them.
 

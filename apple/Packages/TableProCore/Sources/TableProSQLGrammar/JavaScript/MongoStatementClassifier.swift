@@ -58,11 +58,15 @@ public enum MongoStatementClassifier {
     // Server-side JavaScript, plus the two stages that write to a collection the statement names.
     private static let codeExecutionKeys: Set<String> = ["$where", "$function", "$accumulator", "$out", "$merge"]
 
+    // The server accepts its own operators from any client, and rewrites `mapReduce` into two of them that run a
+    // function: `$_internalJsEmit` and `$_internalJsReduce`. Nothing a person writes names one.
+    private static let internalOperatorPrefix = "$_internal"
+
     private static let codeExecutionCalls: Set<String> = ["mapreduce", "eval"]
 
     // For text the grammar rejects, where a false alarm only stops an external client sending code nobody could read.
     private static let codeExecutionMarkers: [String] = [
-        "$where", "$function", "$accumulator", "mapreduce", ".eval(", "$out", "$merge"
+        "$where", "$function", "$accumulator", "$_internal", "mapreduce", ".eval(", "$out", "$merge"
     ]
 
     private static func statementVerdict(
@@ -78,6 +82,7 @@ public enum MongoStatementClassifier {
 
     private static func verdict(of statement: MongoStatement) -> MongoStatementVerdict {
         let reachesCode = !statement.objectKeys.isDisjoint(with: codeExecutionKeys)
+            || statement.objectKeys.contains { $0.hasPrefix(internalOperatorPrefix) }
             || statement.calls.contains { call in
                 codeExecutionCalls.contains(call.name.lowercased())
                     || call.commandName.map { codeExecutionCalls.contains($0.lowercased()) } == true

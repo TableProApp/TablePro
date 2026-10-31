@@ -30,7 +30,6 @@ struct UserTypeTabStateTests {
         model.stage(.addEnumLabel("glad", placement: nil))
 
         fixture.coordinator.publishUserTypeEditorState(tabId: tab.id, hasChanges: model.hasChanges)
-        fixture.coordinator.toolbarState.hasStructureChanges = false
 
         #expect(fixture.coordinator.toolbarState.hasTypeChanges)
     }

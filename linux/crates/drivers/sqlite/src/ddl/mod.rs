@@ -58,6 +58,8 @@ static CAPABILITIES: DdlCapabilities = DdlCapabilities {
     column_defaults: true,
     required_columns: true,
     declared_column_order: true,
+    column_collations: false,
+    table_options: false,
 };
 
 const TYPE_SUGGESTIONS: &[&str] = &[

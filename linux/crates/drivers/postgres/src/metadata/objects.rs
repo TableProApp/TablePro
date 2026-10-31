@@ -6,16 +6,16 @@ use super::{decode_error, text_rows};
 
 /// Schemas this session can use: no TOAST schemas, and no other
 /// session's temporary schema.
-const SCHEMAS_SQL: &str = "\
+pub(super) const SCHEMAS_SQL: &str = "\
 SELECT n.nspname::text,
-       COALESCE(n.nspname = current_schema(), false),
-       n.nspname = 'information_schema' OR starts_with(n.nspname, 'pg_')
+       COALESCE(n.nspname = pg_catalog.current_schema(), false),
+       n.nspname = 'information_schema' OR pg_catalog.starts_with(n.nspname, 'pg_')
 FROM pg_catalog.pg_namespace n
-WHERE NOT starts_with(n.nspname, 'pg_toast')
+WHERE NOT pg_catalog.starts_with(n.nspname, 'pg_toast')
   AND NOT pg_catalog.pg_is_other_temp_schema(n.oid)
 ORDER BY n.nspname";
 
-const OBJECTS_SQL: &str = "\
+pub(super) const OBJECTS_SQL: &str = "\
 SELECT DISTINCT n.nspname::text, o.name, o.kind
 FROM (
     SELECT c.relnamespace AS namespace, c.relname::text AS name, c.relkind::text AS kind
@@ -29,9 +29,9 @@ FROM (
 JOIN pg_catalog.pg_namespace n ON n.oid = o.namespace
 WHERE NOT pg_catalog.pg_is_other_temp_schema(n.oid)
   AND CASE $1
-        WHEN 'default' THEN n.nspname = current_schema()
+        WHEN 'default' THEN n.nspname = pg_catalog.current_schema()
         WHEN 'schema' THEN n.nspname = $2
-        ELSE n.nspname <> 'information_schema' AND NOT starts_with(n.nspname, 'pg_')
+        ELSE n.nspname <> 'information_schema' AND NOT pg_catalog.starts_with(n.nspname, 'pg_')
       END
 ORDER BY 1, 2, 3";
 

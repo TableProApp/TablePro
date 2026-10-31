@@ -21,7 +21,16 @@ impl StructureTabInput {
     pub(super) fn edits_draft(&self) -> bool {
         matches!(
             self,
-            Self::Columns(_) | Self::Indexes(_) | Self::ForeignKeys(_) | Self::Table(TableInput::TableNameEdited(_))
+            Self::Columns(_)
+                | Self::Indexes(_)
+                | Self::ForeignKeys(_)
+                | Self::Table(
+                    TableInput::TableNameEdited(_)
+                        | TableInput::CharacterSetPicked(_)
+                        | TableInput::CollationPicked(_)
+                        | TableInput::ConvertColumnsToggled(_)
+                        | TableInput::NextAutoIncrementEdited(_)
+                )
         )
     }
 }

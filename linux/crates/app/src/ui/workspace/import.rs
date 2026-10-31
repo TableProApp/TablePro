@@ -591,6 +591,7 @@ mod tests {
             foreign_keys: Vec::new(),
             inbound_foreign_keys: Vec::new(),
             source: None,
+            options: None,
         }));
         let (session, connection) = session(script);
 

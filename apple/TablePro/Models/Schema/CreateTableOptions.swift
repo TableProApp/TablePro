@@ -4,42 +4,69 @@
 //
 
 import Foundation
+import TableProPluginKit
 
+// Nil engine, charset and collation write no clause, so the table takes what the server and its database give it.
 struct CreateTableOptions: Hashable {
-    var engine: String = "InnoDB"
-    var charset: String = "utf8mb4"
-    var collation: String = "utf8mb4_unicode_ci"
+    var engine: String?
+    var charset: String?
+    var collation: String?
     var ifNotExists: Bool = false
     var comment: String = ""
 
-    static let engines = [
-        "InnoDB", "MyISAM", "MEMORY", "CSV", "ARCHIVE",
-        "BLACKHOLE", "MERGE", "FEDERATED", "NDB"
-    ]
+    // A character set without a collation takes its default, and one from the previous set is an error (1253).
+    func selectingCharacterSet(_ charset: String?, collation: String?) -> CreateTableOptions {
+        var next = self
+        next.charset = charset
+        next.collation = collation
+        return next
+    }
 
-    static let charsets = [
-        "utf8mb4", "utf8mb3", "utf8", "latin1", "ascii",
-        "binary", "utf16", "utf32", "cp1251", "big5",
-        "euckr", "gb2312", "gbk", "sjis"
-    ]
+    // Starts from what a table in the target database takes anyway, which the builder then leaves unwritten.
+    func seeded(with defaults: CreateTableOptionDefaults) -> CreateTableOptions {
+        var next = self
+        if next.charset == nil {
+            next.charset = defaults.characterSet
+            next.collation = defaults.collation
+        }
+        if next.engine == nil {
+            next.engine = defaults.engine
+        }
+        return next
+    }
+}
 
-    static let collations: [String: [String]] = [
-        "utf8mb4": [
-            "utf8mb4_unicode_ci", "utf8mb4_general_ci", "utf8mb4_bin",
-            "utf8mb4_0900_ai_ci", "utf8mb4_unicode_520_ci"
-        ],
-        "utf8mb3": ["utf8mb3_unicode_ci", "utf8mb3_general_ci", "utf8mb3_bin"],
-        "utf8": ["utf8_unicode_ci", "utf8_general_ci", "utf8_bin"],
-        "latin1": ["latin1_swedish_ci", "latin1_general_ci", "latin1_bin"],
-        "ascii": ["ascii_general_ci", "ascii_bin"],
-        "binary": ["binary"],
-        "utf16": ["utf16_unicode_ci", "utf16_general_ci", "utf16_bin"],
-        "utf32": ["utf32_unicode_ci", "utf32_general_ci", "utf32_bin"],
-        "cp1251": ["cp1251_general_ci", "cp1251_ukrainian_ci", "cp1251_bin"],
-        "big5": ["big5_chinese_ci", "big5_bin"],
-        "euckr": ["euckr_korean_ci", "euckr_bin"],
-        "gb2312": ["gb2312_chinese_ci", "gb2312_bin"],
-        "gbk": ["gbk_chinese_ci", "gbk_bin"],
-        "sjis": ["sjis_japanese_ci", "sjis_bin"],
-    ]
+// What a new table in the target database takes when its statement names nothing: the database's default pair and
+// the server's default engine.
+struct CreateTableOptionDefaults: Hashable {
+    var characterSet: String?
+    var collation: String?
+    var engine: String?
+
+    // The pair is written whole or not at all: COLLATE alone moves the charset, and CHARACTER SET alone resets the
+    // collation to the charset's default.
+    func characterSetClause(for options: CreateTableOptions) -> (charset: String, collation: String?)? {
+        guard let charset = options.charset?.nilIfEmpty else { return nil }
+        let collation = options.collation?.nilIfEmpty
+        if Self.matches(charset, characterSet), Self.matches(collation, self.collation) {
+            return nil
+        }
+        return (charset, collation)
+    }
+
+    func engineClause(for options: CreateTableOptions) -> String? {
+        guard let engine = options.engine?.nilIfEmpty, !Self.matches(engine, self.engine) else { return nil }
+        return engine
+    }
+
+    private static func matches(_ lhs: String?, _ rhs: String?) -> Bool {
+        switch (lhs, rhs) {
+        case (nil, nil):
+            return true
+        case (let lhs?, let rhs?):
+            return lhs.caseInsensitiveCompare(rhs) == .orderedSame
+        default:
+            return false
+        }
+    }
 }

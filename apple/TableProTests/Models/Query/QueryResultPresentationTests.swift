@@ -297,6 +297,81 @@ struct QueryResultPresentationTests {
         #expect(QueryResultPresentation(inputs: inputs).showsResultSetSelector == false)
     }
 
+    @Test("One result is chosen from the bar, two or more from a tab row")
+    func chooserPlacementFollowsTheCount() {
+        var inputs = QueryResultInputs()
+        let placements = (0 ... 8).map { count -> ResultSetChooserPlacement in
+            inputs.resultSetCount = count
+            return QueryResultPresentation(inputs: inputs).resultSetChooser
+        }
+
+        #expect(placements == [.hidden, .statusBar, .tabRow, .tabRow, .tabRow, .tabRow, .tabRow, .tabRow, .tabRow])
+    }
+
+    @Test("A table tab and the structure editor place no chooser whatever the count")
+    func chooserPlacementNeedsAQueryResult() {
+        var table = QueryResultInputs()
+        table.tabType = .table
+        table.resultSetCount = 3
+        #expect(QueryResultPresentation(inputs: table).resultSetChooser == .hidden)
+
+        var structure = QueryResultInputs()
+        structure.viewMode = .structure
+        structure.tableName = "orders"
+        structure.resultSetCount = 3
+        #expect(QueryResultPresentation(inputs: structure).resultSetChooser == .hidden)
+    }
+
+    // Dismissing the Error result's own message used to turn it into "Query executed successfully".
+    @Test("An Error result's banner cannot be dismissed, the tab's own message can")
+    @MainActor
+    func onlyTheTabsMessageIsDismissible() throws {
+        let failed = ResultSet(label: "Error")
+        failed.errorMessage = "relation \"nope\" does not exist"
+        failed.failedQuery = "SELECT * FROM nope"
+        var tab = QueryTab(title: "Query", query: "SELECT 1;\nSELECT * FROM nope;", tabType: .query)
+        tab.display.resultSets = [ResultSet(label: "Result 1"), failed]
+        tab.display.activeResultSetId = failed.id
+
+        let resultError = try #require(tab.shownError)
+        #expect(resultError.message == "relation \"nope\" does not exist")
+        #expect(resultError.query == "SELECT * FROM nope")
+        #expect(resultError.isDismissible == false)
+
+        tab.execution.errorMessage = "syntax error"
+        tab.execution.errorQuery = "SELEC 2"
+        let newer = try #require(tab.shownError)
+        #expect(newer.message == "syntax error")
+        #expect(newer.query == "SELEC 2")
+        #expect(newer.isDismissible)
+    }
+
+    @Test("A sibling of an Error result shows no banner, and Fix with AI still finds the failure")
+    @MainActor
+    func siblingOfAnErrorResultHasNoBanner() throws {
+        let first = ResultSet(label: "Result 1")
+        let failed = ResultSet(label: "Error")
+        failed.errorMessage = "relation \"nope\" does not exist"
+        failed.failedQuery = "SELECT * FROM nope"
+        var tab = QueryTab(title: "Query", query: "SELECT 1;\nSELECT * FROM nope;", tabType: .query)
+        tab.display.resultSets = [first, failed]
+        tab.display.activeResultSetId = first.id
+
+        #expect(tab.shownError == nil)
+        #expect(try #require(tab.latestError).query == "SELECT * FROM nope")
+    }
+
+    @Test("The tab's newer message shows ahead of the active result's own")
+    func tabMessageShowsFirst() {
+        var inputs = QueryResultInputs()
+        inputs.hasExecuted = true
+        inputs.hasActiveResultSet = true
+        inputs.activeResultErrorMessage = "older"
+        inputs.executionErrorMessage = "newer"
+
+        #expect(QueryResultPresentation.resolvedError(inputs) == "newer")
+    }
+
     @Test("Filter chrome follows the mode that can be filtered")
     func filterChromeFollowsMode() {
         var inputs = QueryResultInputs()

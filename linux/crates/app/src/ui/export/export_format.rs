@@ -44,6 +44,7 @@ impl RowFormat {
                 &target.table,
                 columns,
                 &target.generated,
+                &target.numbered,
             )),
         }
     }
@@ -97,5 +98,8 @@ pub(crate) struct InsertTarget {
     pub table: TableRef,
     /// The columns the server computes, which the statements leave out.
     pub generated: Arc<[String]>,
+    /// The columns the server numbers, written with the engine's
+    /// override.
+    pub numbered: Arc<[String]>,
     pub dialect: Arc<dyn SqlDialect>,
 }

@@ -70,6 +70,31 @@ struct SQLBuilderFilterLiteralTests {
         ) == "SELECT COUNT(*) FROM `files` WHERE `path` = 'C:\\\\temp\\\\'")
     }
 
+    private func search(_ type: DatabaseType, _ text: String) -> String {
+        SQLBuilder.buildSearchCount(
+            table: "t", schema: nil, type: type, searchText: text, searchColumns: [ColumnInfo(name: "name", typeName: "TEXT")]
+        )
+    }
+
+    @Test("A MySQL search keeps a backslash literal through the string and the pattern")
+    func mysqlSearchBackslashIsLiteral() {
+        #expect(search(.mysql, #"a\b"#) == #"SELECT COUNT(*) FROM `t` WHERE (CAST(`name` AS CHAR) LIKE '%a\\\\b%')"#)
+    }
+
+    @Test("A SQL Server search escapes an opening bracket")
+    func mssqlSearchEscapesBracket() {
+        #expect(search(.mssql, "[a]") == "SELECT COUNT(*) FROM [t] WHERE (CAST([name] AS NVARCHAR(MAX)) LIKE '%![a]%' ESCAPE '!')")
+    }
+
+    // A combining mark joins the quote into one grapheme cluster.
+    @Test("A search quote fused with a combining mark is still escaped")
+    func searchFusedQuoteIsEscaped() {
+        #expect(
+            search(.postgresql, "x'\u{0301})")
+                == "SELECT COUNT(*) FROM \"t\" WHERE (CAST(\"name\" AS TEXT) ILIKE '%x''\u{0301})%' ESCAPE '!')"
+        )
+    }
+
     // ClickHouse reads backslash escapes inside backticks, so a name ending in a backslash would leave the quote open.
     @Test("A ClickHouse filter quotes its column the way the table and the writes do")
     func clickHouseColumnEndingInABackslash() {

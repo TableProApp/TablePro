@@ -114,7 +114,13 @@ internal final class QuickSwitcherPanelController: NSObject, NSWindowDelegate {
 
     private static let topOffsetRatio: CGFloat = 0.20
 
+    private struct RetainedPanel {
+        let panel: QuickSwitcherPanel
+        let hostingController: NSHostingController<AnyView>
+    }
+
     private var panel: QuickSwitcherPanel?
+    private var retainedPanels: [String: RetainedPanel] = [:]
     private var anchor: Anchor?
     private var presentedIdentity: String?
     private var onClose: (() -> Void)?
@@ -132,32 +138,43 @@ internal final class QuickSwitcherPanelController: NSObject, NSWindowDelegate {
 
     /// `onClose` runs however the panel goes, including when another presentation replaces it,
     /// which is how a caller that keeps state of its own alongside the panel learns to drop it.
+    /// `retainsPanel` keeps the window and view tree for the next presentation under the same identity,
+    /// so content must take its model from the caller: a `@StateObject` would survive the root swap.
     func present(
         _ content: some View,
         over parentWindow: NSWindow?,
         identity: String? = nil,
         focus: QuickSwitcherPanelFocus = .key,
         accessibilityIdentifier: String = "quick-switcher-panel",
+        retainsPanel: Bool = false,
         onClose: (() -> Void)? = nil
     ) {
         dismiss()
         presentedIdentity = identity
         self.onClose = onClose
 
-        let sizeReportingContent = content.onGeometryChange(for: CGSize.self) { proxy in
+        let root = AnyView(content.onGeometryChange(for: CGSize.self) { proxy in
             proxy.size
         } action: { [weak self] size in
             self?.contentSizeDidChange(size)
+        })
+        let panel: QuickSwitcherPanel
+        if retainsPanel, let identity, let retained = retainedPanels[identity] {
+            retained.hostingController.rootView = root
+            panel = retained.panel
+        } else {
+            let hostingController = NSHostingController(rootView: root)
+            panel = QuickSwitcherPanel(
+                hostingController: hostingController,
+                surfaceCornerRadius: QuickSwitcherMetrics.cornerRadius,
+                focus: focus,
+                accessibilityIdentifier: accessibilityIdentifier
+            )
+            panel.delegate = self
+            if retainsPanel, let identity {
+                retainedPanels[identity] = RetainedPanel(panel: panel, hostingController: hostingController)
+            }
         }
-        let hostingController = NSHostingController(rootView: sizeReportingContent)
-
-        let panel = QuickSwitcherPanel(
-            hostingController: hostingController,
-            surfaceCornerRadius: QuickSwitcherMetrics.cornerRadius,
-            focus: focus,
-            accessibilityIdentifier: accessibilityIdentifier
-        )
-        panel.delegate = self
         self.panel = panel
 
         let reference = parentWindow?.frame
@@ -182,7 +199,9 @@ internal final class QuickSwitcherPanelController: NSObject, NSWindowDelegate {
 
     func windowWillClose(_ notification: Notification) {
         panel?.keyCommandHandler = nil
-        panel?.contentViewController = nil
+        if let panel, !retainedPanels.values.contains(where: { $0.panel === panel }) {
+            panel.contentViewController = nil
+        }
         panel = nil
         anchor = nil
         presentedIdentity = nil

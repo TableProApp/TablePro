@@ -19,6 +19,11 @@ pub struct CredentialRules {
     /// Functions, procedures and table engines whose arguments can hold
     /// a login or a connection string.
     pub carriers: &'static [&'static str],
+    /// Words that mark a named argument or variable as a secret wherever
+    /// they stand in its name, such as PASSWORD in T-SQL's
+    /// `@monitor_server_password`. No list of procedures is complete, and
+    /// a password passed by name is one whatever the procedure is called.
+    pub secret_parameters: &'static [&'static str],
 }
 
 /// The word before a name being declared or written to, where a carrier
@@ -47,8 +52,24 @@ const INDEX_MODIFIERS: [&str; 11] = [
 impl CredentialRules {
     pub(crate) fn matches(&self, grammar: SqlGrammar, tokens: &[StatementToken<'_>]) -> bool {
         (0..tokens.len()).any(|at| {
-            self.prefix_at(tokens, at) || self.conditional_at(tokens, at) || self.carrier_at(grammar, tokens, at)
+            self.prefix_at(tokens, at)
+                || self.conditional_at(grammar, tokens, at)
+                || self.carrier_at(grammar, tokens, at)
+                || self.secret_parameter_at(tokens, at)
         })
+    }
+
+    fn secret_parameter_at(&self, tokens: &[StatementToken<'_>], at: usize) -> bool {
+        let Some(StatementToken::Word(word)) = tokens.get(at) else {
+            return false;
+        };
+        let Some(name) = word.strip_prefix('@') else {
+            return false;
+        };
+        let name = name.to_ascii_uppercase();
+        self.secret_parameters
+            .iter()
+            .any(|secret| name.contains(&secret.to_ascii_uppercase()))
     }
 
     fn prefix_at(&self, tokens: &[StatementToken<'_>], at: usize) -> bool {
@@ -57,13 +78,14 @@ impl CredentialRules {
             .any(|prefix| words_at(tokens, at, prefix).is_some())
     }
 
-    fn conditional_at(&self, tokens: &[StatementToken<'_>], at: usize) -> bool {
+    fn conditional_at(&self, grammar: SqlGrammar, tokens: &[StatementToken<'_>], at: usize) -> bool {
         self.conditional_prefixes.iter().any(|(prefix, triggers)| {
             words_at(tokens, at, prefix).is_some_and(|end| {
-                tokens.get(end..).unwrap_or_default().iter().any(|token| {
-                    token
-                        .name()
-                        .is_some_and(|name| triggers.iter().any(|trigger| trigger.eq_ignore_ascii_case(name)))
+                (end..tokens.len()).any(|at| {
+                    (decodes_unicode_names(grammar) && spelled_in_escapes(tokens, at))
+                        || tokens[at]
+                            .name()
+                            .is_some_and(|name| triggers.iter().any(|trigger| trigger.eq_ignore_ascii_case(name)))
                 })
             })
         })
@@ -76,6 +98,10 @@ impl CredentialRules {
         let Some(name) = token.name() else {
             return false;
         };
+        if decodes_unicode_names(grammar) && spelled_in_escapes(tokens, at) {
+            return tokens.get(after_uescape(tokens, at + 1)) == Some(&StatementToken::OpenParen)
+                && !names_an_object(tokens, qualified_name_start(tokens, at - 2));
+        }
         if !self.carriers.iter().any(|carrier| carrier.eq_ignore_ascii_case(name)) {
             return false;
         }
@@ -95,6 +121,39 @@ impl CredentialRules {
         // its arguments, the batch fails, and history keeps failed runs.
         starts_statement(tokens, start) || follows_exec(tokens, start) || arguments_start(tokens, at + 1)
     }
+}
+
+/// The grammars whose scanner is PostgreSQL's, which decodes the escapes
+/// of a `U&"…"` name before it looks the name up, so such a name is
+/// compared with nothing and may be any carrier.
+fn decodes_unicode_names(grammar: SqlGrammar) -> bool {
+    matches!(grammar, SqlGrammar::PostgreSql | SqlGrammar::DuckDb)
+}
+
+/// A `U&"…"` name, whose prefix the lexer reads as the word `U` and `&`,
+/// written with nothing between them, since `u & "f"(1)` is an AND.
+fn spelled_in_escapes(tokens: &[StatementToken<'_>], at: usize) -> bool {
+    let (Some(StatementToken::QuotedName(name)), Some(StatementToken::Word(prefix))) =
+        (tokens.get(at), at.checked_sub(2).and_then(|before| tokens.get(before)))
+    else {
+        return false;
+    };
+    tokens[at - 1].is_punct('&')
+        && prefix.eq_ignore_ascii_case("U")
+        && prefix.as_ptr() as usize + 3 == name.as_ptr() as usize
+}
+
+/// The index past a `UESCAPE '!'` at `at`, or `at` where there is none.
+/// The string can go on in another on the next line, so it is as many
+/// tokens as stand there.
+fn after_uescape(tokens: &[StatementToken<'_>], at: usize) -> usize {
+    if !tokens.get(at).is_some_and(|token| token.is_word("UESCAPE")) {
+        return at;
+    }
+    let strings = tokens[at + 1..]
+        .iter()
+        .take_while(|token| matches!(token, StatementToken::StringLiteral(_) | StatementToken::DollarBody(_)));
+    at + 1 + strings.count()
 }
 
 fn starts_statement(tokens: &[StatementToken<'_>], start: usize) -> bool {

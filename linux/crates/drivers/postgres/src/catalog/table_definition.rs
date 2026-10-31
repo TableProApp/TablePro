@@ -3,15 +3,17 @@ use tablepro_core::ddl::InboundForeignKey;
 use tablepro_core::meta::TableRef;
 use tokio_postgres::Row;
 
+use crate::codec::TextArray;
+
 /// The primary key constraint's name and its columns in key order.
 pub(crate) const PRIMARY_KEY_NAME_SQL: &str = "\
 SELECT c.conname::text,
        ARRAY(SELECT a.attname::text
-               FROM unnest(c.conkey) WITH ORDINALITY AS k(attnum, ord)
+               FROM pg_catalog.unnest(c.conkey) WITH ORDINALITY AS k(attnum, ord)
                JOIN pg_catalog.pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = k.attnum
               ORDER BY k.ord)
 FROM pg_catalog.pg_constraint c
-WHERE c.conrelid = $1::text::regclass AND c.contype = 'p'";
+WHERE c.conrelid = $1::text::regclass::oid AND c.contype = 'p'";
 
 /// Foreign keys on other tables that point at this one. A partition of
 /// a partitioned table that points here holds a clone of its parent's
@@ -22,18 +24,18 @@ SELECT c.conname::text,
        n.nspname::text,
        t.relname::text,
        ARRAY(SELECT a.attname::text
-               FROM unnest(c.conkey) WITH ORDINALITY AS k(attnum, ord)
+               FROM pg_catalog.unnest(c.conkey) WITH ORDINALITY AS k(attnum, ord)
                JOIN pg_catalog.pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = k.attnum
               ORDER BY k.ord),
        ARRAY(SELECT a.attname::text
-               FROM unnest(c.confkey) WITH ORDINALITY AS k(attnum, ord)
+               FROM pg_catalog.unnest(c.confkey) WITH ORDINALITY AS k(attnum, ord)
                JOIN pg_catalog.pg_attribute a ON a.attrelid = c.confrelid AND a.attnum = k.attnum
               ORDER BY k.ord),
        {child_compares_alike}
 FROM pg_catalog.pg_constraint c
 JOIN pg_catalog.pg_class t ON t.oid = c.conrelid
 JOIN pg_catalog.pg_namespace n ON n.oid = t.relnamespace
-WHERE c.confrelid = $1::text::regclass AND c.contype = 'f'
+WHERE c.confrelid = $1::text::regclass::oid AND c.contype = 'f'
   AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_constraint p
                    WHERE p.oid = c.conparentid AND p.confrelid = c.confrelid)
 ORDER BY n.nspname, t.relname, c.conname";
@@ -52,22 +54,22 @@ pub(crate) fn inbound_foreign_keys_sql() -> String {
 /// no such column. `{narrowing}` is the integer condition, in `ct`
 /// (child) and `pt` (parent) widths.
 const COMPARES_ALIKE_SQL: &str = "\
-NOT coalesce((to_jsonb(c) ->> 'conperiod')::boolean, false)
+NOT coalesce((pg_catalog.to_jsonb(c) OPERATOR(pg_catalog.->>) 'conperiod')::boolean, false)
    AND NOT EXISTS (
          SELECT 1
-           FROM unnest(c.conkey, c.confkey) AS k(child, parent)
+           FROM ROWS FROM (pg_catalog.unnest(c.conkey), pg_catalog.unnest(c.confkey)) AS k(child, parent)
            JOIN pg_catalog.pg_attribute ca ON ca.attrelid = c.conrelid AND ca.attnum = k.child
            JOIN pg_catalog.pg_attribute pa ON pa.attrelid = c.confrelid AND pa.attnum = k.parent
            JOIN pg_catalog.pg_type ct ON ct.oid = ca.atttypid
            JOIN pg_catalog.pg_type pt ON pt.oid = pa.atttypid
           WHERE NOT (ca.attcollation = pa.attcollation
-                     OR (SELECT bool_and(l.collisdeterministic) FROM pg_catalog.pg_collation l
+                     OR (SELECT pg_catalog.bool_and(l.collisdeterministic) FROM pg_catalog.pg_collation l
                           WHERE l.oid IN (ca.attcollation, pa.attcollation)))
              OR NOT (ca.atttypid = pa.atttypid
-                     OR (ca.atttypid IN ('pg_catalog.text'::regtype, 'pg_catalog.varchar'::regtype)
-                         AND pa.atttypid IN ('pg_catalog.text'::regtype, 'pg_catalog.varchar'::regtype))
-                     OR (ca.atttypid IN ('pg_catalog.int2'::regtype, 'pg_catalog.int4'::regtype, 'pg_catalog.int8'::regtype)
-                         AND pa.atttypid IN ('pg_catalog.int2'::regtype, 'pg_catalog.int4'::regtype, 'pg_catalog.int8'::regtype)
+                     OR (ca.atttypid IN ('pg_catalog.text'::regtype::oid, 'pg_catalog.varchar'::regtype::oid)
+                         AND pa.atttypid IN ('pg_catalog.text'::regtype::oid, 'pg_catalog.varchar'::regtype::oid))
+                     OR (ca.atttypid IN ('pg_catalog.int2'::regtype::oid, 'pg_catalog.int4'::regtype::oid, 'pg_catalog.int8'::regtype::oid)
+                         AND pa.atttypid IN ('pg_catalog.int2'::regtype::oid, 'pg_catalog.int4'::regtype::oid, 'pg_catalog.int8'::regtype::oid)
                          AND {narrowing})))";
 
 /// For a filter on the parent: it holds the child's values.
@@ -89,8 +91,8 @@ pub(crate) fn inbound_foreign_key(row: &Row) -> Result<InboundForeignKey, Driver
     Ok(InboundForeignKey {
         name: row.try_get(0).map_err(field)?,
         table: TableRef::new(Some(schema), table),
-        columns: row.try_get(3).map_err(field)?,
-        referenced_columns: row.try_get(4).map_err(field)?,
+        columns: row.try_get::<_, TextArray>(3).map_err(field)?.0,
+        referenced_columns: row.try_get::<_, TextArray>(4).map_err(field)?.0,
         child_compares_alike: row.try_get(5).map_err(field)?,
     })
 }

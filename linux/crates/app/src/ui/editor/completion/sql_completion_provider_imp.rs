@@ -19,6 +19,7 @@ const PRIORITY: i32 = 100;
 #[derive(Default)]
 pub struct SqlCompletionProvider {
     pub deps: OnceCell<ProviderDeps>,
+    pub home: std::cell::RefCell<super::catalog_read::CatalogHome>,
 }
 
 #[glib::object_subclass]

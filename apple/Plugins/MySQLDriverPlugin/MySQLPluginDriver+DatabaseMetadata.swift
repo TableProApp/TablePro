@@ -75,6 +75,8 @@ internal extension MySQLPluginDriver {
         }
     }
 
+    /// The character set is the collation's prefix (`MySQLTableOptions.characterSet(ofCollation:)`): MariaDB
+    /// 10.10+ reports `utf8mb4_uca1400_ai_ci`, which no `COLLATION_NAME` matches.
     func allTablesMetadataSQL(schema: String?) -> String? {
         guard !flavor.isDatabend else { return DatabendCatalog.allTablesMetadataSQL }
         guard serverHasInformationSchema else { return Self.tableStatusStatement(database: effectiveSchema(schema)) }
@@ -83,7 +85,7 @@ internal extension MySQLPluginDriver {
             TABLE_SCHEMA as `schema`,
             TABLE_NAME as name,
             TABLE_TYPE as kind,
-            IFNULL(CCSA.CHARACTER_SET_NAME, '') as charset,
+            IFNULL(SUBSTRING_INDEX(TABLE_COLLATION, '_', 1), '') as charset,
             TABLE_COLLATION as collation,
             TABLE_ROWS as estimated_rows,
             CONCAT(ROUND((DATA_LENGTH + INDEX_LENGTH) / 1024 / 1024, 2), ' MB') as total_size,
@@ -91,8 +93,6 @@ internal extension MySQLPluginDriver {
             CONCAT(ROUND(INDEX_LENGTH / 1024 / 1024, 2), ' MB') as index_size,
             TABLE_COMMENT as comment
         FROM information_schema.TABLES
-        LEFT JOIN information_schema.COLLATION_CHARACTER_SET_APPLICABILITY CCSA
-            ON TABLE_COLLATION = CCSA.COLLATION_NAME
         WHERE TABLE_SCHEMA = '\(effectiveSchemaLiteral(schema))'
         ORDER BY TABLE_NAME
         """)

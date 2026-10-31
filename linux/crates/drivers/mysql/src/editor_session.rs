@@ -1,22 +1,27 @@
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
 use async_trait::async_trait;
 use sqlx::mysql::MySqlConnection;
 use sqlx::{AssertSqlSafe, Connection as _, Executor as _};
+use tablepro_core::sql_syntax::{SqlGrammar, may_change_database};
 use tablepro_core::{
     CallOptions, DriverError, EditorSession, EditorSessionId, EditorSessionOptions, EditorSessionState, LivenessPolicy,
-    LossPhase, ResultSink, RowLimit, RunEnd, RunOptions, RunSummary, TimeoutPhase, TransactionState, UserSql,
+    LossPhase, ResultSink, RowLimit, RunEnd, RunOptions, RunSummary, TimeoutPhase, TransactionState, UserSql, Value,
 };
 use tokio::sync::OwnedMutexGuard;
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 
 use crate::cancel::ControlLink;
+use crate::decode::decode_row;
+use crate::dialect::quote;
 use crate::editor_run::{RunOutcome, run_script};
 use crate::errors::map_error;
 use crate::flavour::MySqlFlavour;
+use crate::mysql_timestamp_mode::MySqlTimestampMode;
+use crate::mysql_wire_format::MySqlWireFormat;
 use crate::physical::{MysqlEndpoint, SessionKind};
 use crate::session_statements::{SessionLimits, select_limit};
 use crate::transaction_probe::TransactionProbe;
@@ -47,6 +52,8 @@ struct Shared {
     flavour: MySqlFlavour,
     control: ControlLink,
     probe: TransactionProbe,
+    /// Where a `USE` left the session, once one ran.
+    database: Mutex<Option<String>>,
     running: AtomicBool,
     lost: AtomicBool,
     /// Cancelled when the session closes, so a running statement stops.
@@ -85,6 +92,7 @@ impl MysqlEditorSession {
                 flavour: physical.flavour,
                 control: ControlLink::new(endpoint),
                 probe: TransactionProbe::new(physical.flavour),
+                database: Mutex::new(None),
                 running: AtomicBool::new(false),
                 lost: AtomicBool::new(false),
                 closing: CancellationToken::new(),
@@ -124,8 +132,16 @@ impl Shared {
         let started = Instant::now();
         self.running.store(true, Ordering::SeqCst);
         let supervised = self.supervise(held, &sql, &options, sink.as_mut()).await;
+        // A session in a database nothing knows would run the next script
+        // in the wrong one, so it ends instead.
+        let placed = match &supervised {
+            Ok((_, true)) if may_change_database(sql.as_str(), SqlGrammar::MySql) => {
+                self.follow_database(&mut held.connection).await
+            }
+            _ => true,
+        };
         let transaction_state = match &supervised {
-            Ok((_, true)) => {
+            Ok((_, true)) if placed => {
                 let asking = self.probe.state(&mut held.connection);
                 tokio::time::timeout(self.liveness.cancel_grace, asking)
                     .await
@@ -135,8 +151,8 @@ impl Shared {
         };
         self.running.store(false, Ordering::SeqCst);
         let end = match supervised {
-            Ok((end, true)) => end,
-            Ok((end, false)) => {
+            Ok((end, true)) if placed => end,
+            Ok((end, _)) => {
                 self.lost.store(true, Ordering::SeqCst);
                 *guard = None;
                 end
@@ -152,6 +168,21 @@ impl Shared {
             end,
             transaction_state,
         })
+    }
+
+    /// Ask where a `USE` left the session. False when the answer did not
+    /// come.
+    async fn follow_database(&self, connection: &mut MySqlConnection) -> bool {
+        let asking = connection.fetch_one(sqlx::raw_sql("SELECT DATABASE()"));
+        let Ok(Ok(row)) = tokio::time::timeout(self.liveness.cancel_grace, asking).await else {
+            return false;
+        };
+        let current = match decode_row(&row, MySqlWireFormat::Text, MySqlTimestampMode::SessionLocal).first() {
+            Some(Value::Text(name)) => Some(name.clone()),
+            _ => None,
+        };
+        *self.database.lock().unwrap_or_else(PoisonError::into_inner) = current;
+        true
     }
 
     /// Run the script, stopping it on a cancel, at the deadline, when
@@ -315,6 +346,66 @@ impl EditorSession for MysqlEditorSession {
         });
         drop(cancel_on_drop.disarm());
         outcome
+    }
+
+    fn database(&self) -> Option<String> {
+        self.shared
+            .database
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
+    }
+
+    /// `USE` carries any name: a backtick in it is doubled.
+    async fn use_database(&self, database: &str, options: CallOptions) -> Result<(), DriverError> {
+        let shared = &self.shared;
+        let stopped = || match options.cancel().is_cancelled() {
+            true => DriverError::Cancelled,
+            false => DriverError::Timeout {
+                phase: TimeoutPhase::Statement,
+                server_cancelled: false,
+            },
+        };
+        let mut guard = tokio::select! {
+            biased;
+            () = options.cancel().cancelled() => return Err(stopped()),
+            () = elapsed(options.deadline()) => return Err(stopped()),
+            guard = shared.held.lock() => guard,
+        };
+        let Some(held) = guard.as_mut().filter(|_| !shared.lost.load(Ordering::SeqCst)) else {
+            return Err(DriverError::ConnectionLost {
+                during: LossPhase::Idle,
+            });
+        };
+        let statement = format!("USE {}", quote(database));
+        let using = held.connection.execute(sqlx::raw_sql(AssertSqlSafe(statement)));
+        let used = tokio::select! {
+            biased;
+            () = options.cancel().cancelled() => None,
+            () = elapsed(options.deadline()) => None,
+            used = using => Some(used),
+        };
+        match used {
+            Some(Ok(_)) => {
+                *shared.database.lock().unwrap_or_else(PoisonError::into_inner) = Some(database.to_owned());
+                Ok(())
+            }
+            Some(Err(error)) => {
+                let error = map_error(&error, shared.flavour);
+                if error.category() == tablepro_core::ErrorCategory::ConnectionLost {
+                    shared.lost.store(true, Ordering::SeqCst);
+                    *guard = None;
+                }
+                Err(error)
+            }
+            // The answer is still on the wire, so the connection is in no
+            // state anything knows.
+            None => {
+                shared.lost.store(true, Ordering::SeqCst);
+                *guard = None;
+                Err(stopped())
+            }
+        }
     }
 
     async fn transaction_state(&self, options: CallOptions) -> Result<TransactionState, DriverError> {

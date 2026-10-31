@@ -11,6 +11,16 @@ final class DataGridScrollView: NSScrollView {
     var onTile: (() -> Void)?
     // The frozen pane hands every wheel event to the main pane, so one momentum engine moves both.
     weak var wheelTarget: NSScrollView?
+    private var wheelRouting = DataGridWheelRouting()
+
+    // The page the grid sits in scrolls vertically for it, so the main pane keeps only its sideways scroll.
+    var fitsRows = false {
+        didSet {
+            guard fitsRows != oldValue, paneKind == .main else { return }
+            hasVerticalScroller = !fitsRows
+            verticalScrollElasticity = fitsRows ? .none : .automatic
+        }
+    }
 
     init(kind: DataGridPane.Kind) {
         paneKind = kind
@@ -43,11 +53,23 @@ final class DataGridScrollView: NSScrollView {
     }
 
     override func scrollWheel(with event: NSEvent) {
-        guard let wheelTarget else {
-            super.scrollWheel(with: event)
+        if let wheelTarget {
+            wheelTarget.scrollWheel(with: event)
             return
         }
-        wheelTarget.scrollWheel(with: event)
+        if fitsRows, let page = superview?.enclosingScrollView {
+            let axis = wheelRouting.axis(
+                phase: event.phase,
+                momentumPhase: event.momentumPhase,
+                deltaX: event.scrollingDeltaX,
+                deltaY: event.scrollingDeltaY
+            )
+            if axis == .vertical {
+                page.scrollWheel(with: event)
+                return
+            }
+        }
+        super.scrollWheel(with: event)
     }
 
     // The frozen pane repeats cells the main table already publishes, so VoiceOver sees one table.
@@ -59,5 +81,34 @@ final class DataGridScrollView: NSScrollView {
         guard scrollerStyle == .legacy, hasHorizontalScroller,
               let scroller = horizontalScroller, !scroller.isHidden else { return 0 }
         return scroller.frame.height
+    }
+}
+
+// One axis per trackpad gesture, momentum included, so a swipe never splits between the grid and its page.
+// A wheel with no phases is a mouse, and each notch decides alone.
+struct DataGridWheelRouting {
+    enum Axis {
+        case vertical
+        case horizontal
+    }
+
+    private var gestureAxis: Axis?
+
+    mutating func axis(phase: NSEvent.Phase, momentumPhase: NSEvent.Phase, deltaX: CGFloat, deltaY: CGFloat) -> Axis {
+        if phase.isEmpty, momentumPhase.isEmpty {
+            return Self.axis(deltaX: deltaX, deltaY: deltaY) ?? .vertical
+        }
+        if phase.contains(.began) || phase.contains(.mayBegin) {
+            gestureAxis = Self.axis(deltaX: deltaX, deltaY: deltaY)
+        } else if gestureAxis == nil, !phase.isEmpty {
+            // A gesture can begin with no movement; its first move decides.
+            gestureAxis = Self.axis(deltaX: deltaX, deltaY: deltaY)
+        }
+        return gestureAxis ?? .vertical
+    }
+
+    static func axis(deltaX: CGFloat, deltaY: CGFloat) -> Axis? {
+        guard deltaX != 0 || deltaY != 0 else { return nil }
+        return abs(deltaY) >= abs(deltaX) ? .vertical : .horizontal
     }
 }

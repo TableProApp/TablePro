@@ -70,6 +70,7 @@ fn table(name: &str, columns: Vec<ColumnDefinition>, create: &str) -> TableDefin
             create_statement: create.to_owned(),
             dependents: Vec::new(),
         }),
+        options: None,
     }
 }
 

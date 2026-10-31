@@ -8,6 +8,7 @@ publish.workspace = true
 [dependencies]
 async-trait.workspace = true
 chrono.workspace = true
+comfy-table.workspace = true
 csv.workspace = true
 futures.workspace = true
 num-bigint.workspace = true
@@ -20,6 +21,7 @@ sqlparser.workspace = true
 thiserror.workspace = true
 tokio = { workspace = true, features = ["io-util", "rt"] }
 tokio-util.workspace = true
+unicode-width.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]

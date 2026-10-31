@@ -10,12 +10,10 @@ import SwiftUI
 internal struct InspectorFieldRow: View {
     @ObservedObject private var themeEngine = ThemeEngine.shared
     internal let context: FieldEditorContext
-    internal let layout: InspectorFieldLayout
     internal let kind: FieldEditorKind
     internal let isModified: Bool
     internal let isPrimaryKey: Bool
     internal let isForeignKey: Bool
-    internal let databaseType: DatabaseType
     internal let isExpanded: Bool
     internal let commands: [SetValueCommand]
     internal var isPendingExpression = false
@@ -29,51 +27,24 @@ internal struct InspectorFieldRow: View {
     internal let fieldID: UUID
 
     var body: some View {
-        Group {
-            switch layout {
-            case .inline: inlineRow
-            case .stacked: stackedRow
-            }
-        }
-        .contentShape(Rectangle())
-        .contextMenu { menuContent }
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel(accessibilityLabel)
+        row
+            .contentShape(Rectangle())
+            .contextMenu { menuContent }
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel(accessibilityLabel)
     }
 
-    // MARK: - Layouts
+    // MARK: - Layout
 
-    /// A schema row: the label in a fixed trailing-aligned lane, the editor filling what is left.
-    /// The lane is a constant because the label vocabulary is closed and authored; its widest member
-    /// renders at 66.4pt, so 96 carries every one of them with room for a longer translation.
-    private var inlineRow: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 6) {
-            HStack(spacing: 3) {
-                statusGlyphs
-                fieldLabel
-            }
-            .frame(width: Self.schemaLabelLaneWidth, alignment: .trailing)
-            editor
-                .frame(maxWidth: .infinity, alignment: .leading)
-            modifiedGlyph
-            valueMenu
-        }
-        .padding(.vertical, InspectorMetrics.betweenFields / 2)
-    }
-
-    /// A data row: name and type on their own line, the value at full width beneath. Every value in
-    /// the pane then starts at the same x and gets the whole content width, against the 24 to 31pt a
-    /// long column name used to leave it.
-    private var stackedRow: some View {
+    // Always stacked: a column name has no length bound, so a label lane beside the value truncated both.
+    private var row: some View {
         VStack(alignment: .leading, spacing: InspectorMetrics.labelToValue) {
             HStack(spacing: 4) {
                 statusGlyphs
                 fieldLabel
                 Spacer(minLength: 4)
                 modifiedGlyph
-                if context.showsTypeBadge {
-                    TypeBadge(context.columnType.badgeLabel)
-                }
+                TypeBadge(context.columnType.badgeLabel)
                 if let onToggleExpand {
                     Button(
                         isExpanded ? String(localized: "Collapse") : String(localized: "Expand"),
@@ -146,7 +117,7 @@ internal struct InspectorFieldRow: View {
         var parts = [context.columnName]
         if isPrimaryKey { parts.append(String(localized: "Primary key")) }
         if isForeignKey { parts.append(String(localized: "Foreign key")) }
-        if context.showsTypeBadge { parts.append(context.columnType.badgeLabel) }
+        parts.append(context.columnType.badgeLabel)
         if isModified { parts.append(String(localized: "Modified")) }
         return parts.joined(separator: ", ")
     }
@@ -198,7 +169,6 @@ internal struct InspectorFieldRow: View {
         FieldEditorContent(
             context: context,
             kind: kind,
-            databaseType: databaseType,
             onSetNull: context.canMutate && commands.contains(.null) ? { onSetValue(.null) } : nil,
             onSetDefault: context.canMutate && commands.contains(.defaultValue) ? { onSetValue(.defaultValue) } : nil,
             onPopOut: onPopOut,
@@ -218,20 +188,8 @@ internal struct InspectorFieldRow: View {
             return nil
         case .geometry:
             return nil
-        case .blobHex, .boolean, .enumPicker, .setPicker, .arrayElements, .vector, .typePicker, .valuePicker,
-             .schemaText, .multiLine, .singleLine:
+        case .blobHex, .boolean, .enumPicker, .setPicker, .arrayElements, .vector, .multiLine, .singleLine:
             return ThemeEngine.shared.valueFontSwiftUI
         }
     }
-
-
-    /// The lane a schema row's label sits in. The vocabulary is closed and authored, and its widest
-    /// member, "Ref Columns", renders at 66.4pt in `.subheadline`, so this carries every label with
-    /// 45% left over for a longer translation. A label that still overruns truncates in the middle
-    /// and keeps its tooltip rather than taking the width from its own value.
-    ///
-    /// It is a constant, not a measurement. A lane derived from the rows on screen would change
-    /// width as the user scrolls, because a `PreferenceKey` max-reduce inside a `List` only ever
-    /// sees the realized rows.
-    private static let schemaLabelLaneWidth: CGFloat = 96
 }

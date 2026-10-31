@@ -13,8 +13,10 @@ use super::edit::EditController;
 use super::find_bar::FindState;
 use super::grid_menu::GridMenus;
 use super::references::Armed;
+use super::reversed_list::ReversedList;
 use super::row_detail::RowDetailPane;
 use super::selection::Target;
+use super::selection_summary::SummaryState;
 use super::{GridConfig, GridStore};
 
 /// The grid's selection model, made with the grid and given its rows once
@@ -57,13 +59,20 @@ pub struct DataGrid {
     pub selection: Selection,
     /// Set for a grid that sorts the rows it holds.
     pub sort_model: OnceCell<gtk4::SortListModel>,
+    /// The sorted rows as the grid shows them, last first for a
+    /// descending sort.
+    pub shown: OnceCell<ReversedList>,
     pub columns: RefCell<ColumnSet>,
     pub actions: gio::SimpleActionGroup,
     pub menus: OnceCell<GridMenus>,
+    pub summary: SummaryState,
     pub edit: EditController,
     pub find: FindState,
     /// What a menu was opened on, until it closes.
     pub menu_target: RefCell<Option<Target>>,
+    /// How many targets menus have held, so a closing menu lets go of its
+    /// own and not of one a later menu holds.
+    pub menu_targets_held: Cell<u64>,
     /// The key choices the latest menu or chooser offered, which its items
     /// act on whatever the keys or rows are by then.
     pub armed_references: RefCell<Armed>,
@@ -109,6 +118,9 @@ impl ObjectImpl for DataGrid {
     }
 
     fn dispose(&self) {
+        // A run still out on the task pool would go on over every row.
+        self.find.stop();
+        self.summary.stop();
         self.obj().stop_watching_focus();
         if let Some(menus) = self.menus.get() {
             menus.unparent();

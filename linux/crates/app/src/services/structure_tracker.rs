@@ -105,6 +105,7 @@ mod tests {
             draft,
             changes: TableChanges::default(),
             unparsed_defaults: Vec::new(),
+            invalid_auto_increment: false,
         }
     }
 

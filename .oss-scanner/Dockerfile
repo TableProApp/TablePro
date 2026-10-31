@@ -12,7 +12,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       ca-certificates curl git \
       build-essential pkgconf meson ninja-build gettext desktop-file-utils appstream libglib2.0-bin \
       libxml2-utils libgtk-4-dev libadwaita-1-dev libgtksourceview-5-dev libsqlite3-dev libkrb5-dev \
-      clang libclang-dev adwaita-icon-theme locales gnome-keyring openssh-client xvfb xauth dbus-daemon \
+      liblcms2-dev libseccomp-dev clang libclang-dev adwaita-icon-theme glycin-loaders locales gnome-keyring \
+      openssh-client xvfb xauth dbus-daemon \
     && rm -rf /var/lib/apt/lists/* \
     && localedef -i en_US -f UTF-8 en_US.UTF-8
 

@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, HashSet};
 
 use super::table_changes::{check_actions, check_new_column, check_new_indexes, require};
-use super::{BuildDdlError, DdlDialect, DdlOperation, DraftColumn, DraftProblem, TableDefinition};
+use super::{BuildDdlError, DdlDialect, DdlOperation, DraftColumn, DraftProblem, DraftTableOptions, TableDefinition};
 use crate::foreign_key_info::ForeignKeyInfo;
 use crate::meta::{IndexInfo, TableRef};
 
@@ -15,6 +15,8 @@ pub struct TableDraft {
     /// primary-key flags, and no plan restates it.
     pub indexes: Vec<IndexInfo>,
     pub foreign_keys: Vec<ForeignKeyInfo>,
+    /// `None` where the definition carries no options.
+    pub options: Option<DraftTableOptions>,
 }
 
 impl TableDraft {
@@ -24,6 +26,7 @@ impl TableDraft {
             columns: Vec::new(),
             indexes: Vec::new(),
             foreign_keys: Vec::new(),
+            options: None,
         }
     }
 
@@ -38,6 +41,7 @@ impl TableDraft {
                 .collect(),
             indexes: definition.indexes.clone(),
             foreign_keys: definition.foreign_keys.clone(),
+            options: definition.options.as_ref().map(DraftTableOptions::from_options),
         }
     }
 
@@ -105,6 +109,9 @@ impl TableDraft {
         self.validate()?;
         if self.columns.iter().any(|column| column.comment_text().is_some()) {
             require(capabilities.column_comments, DdlOperation::SetColumnComment)?;
+        }
+        if self.options.as_ref().is_some_and(DraftTableOptions::sets_anything) {
+            require(capabilities.table_options, DdlOperation::AlterTableOptions)?;
         }
         for column in &self.columns {
             check_new_column(capabilities, column)?;

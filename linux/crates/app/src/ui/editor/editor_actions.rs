@@ -1,6 +1,6 @@
-use gtk4::gio;
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
+use gtk4::{gio, glib};
 use libadwaita as adw;
 use libadwaita::prelude::*;
 
@@ -68,6 +68,18 @@ impl SqlEditor {
             // Hidden until a workspace attaches an assistant that may send.
             set_enabled(&actions, name, false);
         }
+        let editor = self.downgrade();
+        let database = gio::SimpleAction::new_stateful(
+            super::tab_scope::MOVE_ACTION,
+            Some(glib::VariantTy::STRING),
+            &"".to_variant(),
+        );
+        database.connect_change_state(move |_, value| {
+            if let (Some(editor), Some(name)) = (editor.upgrade(), value.and_then(|value| value.str())) {
+                editor.move_to_database(name);
+            }
+        });
+        actions.add_action(&database);
         sync_run_actions(&actions, false, None);
         sync_caret_actions(&actions, &self.imp().source_view);
         // Commands have no comments, and no layout to format them into.
@@ -238,6 +250,8 @@ fn close_view_popups(view: &impl IsA<gtk4::Widget>) -> bool {
 /// its completion popup. The session takes one run at a time, so a
 /// commit or rollback waits for the run in flight.
 fn sync_run_actions(actions: &gio::SimpleActionGroup, running: bool, open: Option<OpenTransaction>) {
+    // A tab moves between runs, and never away from its transaction.
+    set_enabled(actions, super::tab_scope::MOVE_ACTION, !running && open.is_none());
     set_enabled(actions, "cancel", running);
     set_enabled(actions, "roll-back", !running && open.is_some());
     set_enabled(actions, "commit", !running && open == Some(OpenTransaction::Open));

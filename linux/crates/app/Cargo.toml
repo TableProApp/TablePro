@@ -87,6 +87,7 @@ cairo-rs.workspace = true
 libadwaita.workspace = true
 sourceview5.workspace = true
 glib.workspace = true
+glycin.workspace = true
 relm4.workspace = true
 # CLOCK_BOOTTIME, which std does not expose, tells a suspend apart.
 rustix = { workspace = true, features = ["time"] }
@@ -95,13 +96,20 @@ tokio.workspace = true
 tokio-util.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
+# Cells a value takes in the grid's monospace font.
+unicode-width.workspace = true
 uuid.workspace = true
 gettext-rs = { version = "0.8", features = ["gettext-system"] }
 # Counts grouped the way the user's locale groups digits.
 icu_decimal = { version = "2.3", features = ["alloc"] }
 icu_locale_core = { version = "2.3", features = ["alloc"] }
+# Pending drafts, found by id and kept in order.
+indexmap = "2.14"
+# A selection's sum and average, exact past what i128 holds.
+num-bigint.workspace = true
 # The assistant's replies are Markdown; the HTML writer stays off.
 pulldown-cmark = { version = "0.13", default-features = false }
+semver = "1"
 sqlformat = "0.5"
 
 [dev-dependencies]

@@ -114,6 +114,30 @@ async fn lists_objects_and_names_rows_by_key() {
     assert!(schemas.iter().any(|schema| schema.name == "sys" && schema.is_system));
 }
 
+/// The databases a query tab can move to: the login's own marked as the
+/// default and the server's four as system ones.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn the_servers_databases_are_listed_for_a_query_tab() {
+    let fixture = start().await;
+    let connection = connect(&fixture, false).await;
+
+    let databases = connection.list_databases(within(CALL)).await.expect("the databases");
+
+    let find = |name: &str| databases.iter().find(|database| database.name == name);
+    assert!(
+        databases.iter().filter(|database| database.is_default).count() == 1,
+        "{databases:?}"
+    );
+    let master = find("master").expect("master");
+    assert!(master.is_system, "{master:?}");
+    let own = databases
+        .iter()
+        .find(|database| database.is_default)
+        .expect("the login's database");
+    assert!(!own.is_system || own.name == "master", "{own:?}");
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires docker"]
 async fn fetch_table_definition_reports_pk_name_collation_comment() {

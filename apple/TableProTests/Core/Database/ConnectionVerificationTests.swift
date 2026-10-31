@@ -184,6 +184,19 @@ struct ConnectionVerificationTests {
         await cleanUp(connection.id)
     }
 
+    @Test("an engine that opts out of health checks is still checked once its driver reports the connection lost")
+    func optedOutEngineWithALostDriverIsChecked() async {
+        let driver = MockDatabaseDriver()
+        driver.hasLostConnection = true
+        let connection = makeSession(driver: driver, typeId: DatabaseType.sqlite.rawValue)
+        DatabaseManager.shared.markSessionVerified(connection.id)
+
+        await DatabaseManager.shared.verifyBeforeUse(connection.id)
+
+        #expect(driver.pingCallCount == 1)
+        await cleanUp(connection.id)
+    }
+
     @Test("a check that fails reconnects the connection")
     func aFailedCheckReconnects() async {
         let driver = MockDatabaseDriver()

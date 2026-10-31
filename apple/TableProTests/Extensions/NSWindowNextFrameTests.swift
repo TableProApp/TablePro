@@ -53,11 +53,27 @@ struct NSWindowNextFrameTests {
 
     @Test("Work after the committed turn never runs in the turn that asked for it")
     func committedTurnRunsLater() async throws {
+        let window = Self.window()
         var ran = false
 
-        CommittedTurn.after { ran = true }
+        CommittedTurn.after(in: window) { ran = true }
 
         #expect(!ran)
+        try await waitUntil { ran }
+    }
+
+    // The sidebar held its list behind this while its own spinner started in the same turn, and kept the spinner.
+    @Test("Work after the committed turn runs even when that turn starts a spinner that never stops")
+    func committedTurnOutlastsASpinner() async throws {
+        let window = Self.window()
+        var ran = false
+
+        CommittedTurn.after(in: window) { ran = true }
+        let spinner = NSProgressIndicator(frame: NSRect(x: 0, y: 0, width: 32, height: 32))
+        spinner.style = .spinning
+        window.contentView?.addSubview(spinner)
+        spinner.startAnimation(nil)
+
         try await waitUntil { ran }
     }
 }

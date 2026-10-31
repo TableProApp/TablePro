@@ -213,20 +213,26 @@ impl CqlType {
 
     /// The type a result's metadata gives a column.
     pub(crate) fn from_wire(wire: &WireType<'_>) -> Self {
+        Self::from_wire_at(wire, 0)
+    }
+
+    fn from_wire_at(wire: &WireType<'_>, depth: usize) -> Self {
+        if depth > MAX_NESTING {
+            return Self::Custom("a type nested too deep".to_owned());
+        }
+        let inner = |wire: &WireType<'_>| Box::new(Self::from_wire_at(wire, depth + 1));
         match wire {
             WireType::Native(native) => Self::Native(native_of(native)),
             WireType::Collection { frozen, typ } => {
                 let collection = match typ {
-                    CollectionType::List(element) => Self::List(Box::new(Self::from_wire(element))),
-                    CollectionType::Set(element) => Self::Set(Box::new(Self::from_wire(element))),
-                    CollectionType::Map(key, value) => {
-                        Self::Map(Box::new(Self::from_wire(key)), Box::new(Self::from_wire(value)))
-                    }
+                    CollectionType::List(element) => Self::List(inner(element)),
+                    CollectionType::Set(element) => Self::Set(inner(element)),
+                    CollectionType::Map(key, value) => Self::Map(inner(key), inner(value)),
                     _ => Self::Custom(format!("{typ:?}")),
                 };
                 frozen_if(*frozen, collection)
             }
-            WireType::Vector { typ, dimensions } => Self::Vector(Box::new(Self::from_wire(typ)), *dimensions),
+            WireType::Vector { typ, dimensions } => Self::Vector(inner(typ), *dimensions),
             WireType::UserDefinedType { frozen, definition } => {
                 let udt = Self::Udt {
                     keyspace: None,
@@ -234,9 +240,12 @@ impl CqlType {
                 };
                 frozen_if(*frozen, udt)
             }
-            WireType::Tuple(elements) => {
-                Self::Frozen(Box::new(Self::Tuple(elements.iter().map(Self::from_wire).collect())))
-            }
+            WireType::Tuple(elements) => Self::Frozen(Box::new(Self::Tuple(
+                elements
+                    .iter()
+                    .map(|element| Self::from_wire_at(element, depth + 1))
+                    .collect(),
+            ))),
             other => Self::Custom(format!("{other:?}")),
         }
     }
@@ -244,7 +253,7 @@ impl CqlType {
     /// The type `system_schema.columns` writes, such as
     /// `frozen<map<text, int>>`. `None` for text no type grammar reads.
     pub(crate) fn parse(text: &str) -> Option<Self> {
-        let mut parser = Parser { text, at: 0 };
+        let mut parser = Parser { text, at: 0, depth: 0 };
         let parsed = parser.cql_type()?;
         parser.skip_space();
         (parser.at == text.len()).then_some(parsed)
@@ -325,9 +334,15 @@ fn quote_type_name(name: &str) -> String {
     }
 }
 
+/// Deeper than any type a schema declares, and shallow enough that the
+/// walkers over a type, its drop included, stay well inside a worker's
+/// stack whatever the server sends.
+const MAX_NESTING: usize = 32;
+
 struct Parser<'a> {
     text: &'a str,
     at: usize,
+    depth: usize,
 }
 
 impl Parser<'_> {
@@ -377,6 +392,16 @@ impl Parser<'_> {
     }
 
     fn cql_type(&mut self) -> Option<CqlType> {
+        if self.depth >= MAX_NESTING {
+            return None;
+        }
+        self.depth += 1;
+        let parsed = self.nested_type();
+        self.depth -= 1;
+        parsed
+    }
+
+    fn nested_type(&mut self) -> Option<CqlType> {
         self.skip_space();
         if self.text[self.at..].starts_with('\'') {
             let rest = &self.text[self.at + 1..];
@@ -543,5 +568,24 @@ mod tests {
         assert!(parsed("counter").is_counter());
         assert!(parsed("frozen<map<int, int>>").is_opaque_composite());
         assert!(!parsed("frozen<tuple<int, int>>").is_opaque_composite());
+    }
+
+    #[test]
+    fn a_type_nested_past_the_limit_is_not_read() {
+        let deep = format!("{}int{}", "list<".repeat(100_000), ">".repeat(100_000));
+        assert_eq!(CqlType::parse(&deep), None);
+
+        let worker = std::thread::Builder::new().stack_size(2 << 20);
+        let handle = worker
+            .spawn(|| {
+                // The element is a level too.
+                let levels = MAX_NESTING - 1;
+                let limit = format!("{}int{}", "list<".repeat(levels), ">".repeat(levels));
+                let parsed = CqlType::parse(&limit);
+                assert!(parsed.is_some());
+                assert_eq!(parsed.map(|parsed| parsed.to_string()), Some(limit));
+            })
+            .unwrap();
+        handle.join().unwrap();
     }
 }

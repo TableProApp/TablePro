@@ -298,7 +298,7 @@ final class HranaHttpClient: @unchecked Sendable {
             throw HranaHttpError(message: "Invalid response from server")
         }
 
-        if httpResponse.statusCode >= 400 {
+        if !(200 ..< 300).contains(httpResponse.statusCode) {
             try handleHttpError(statusCode: httpResponse.statusCode, data: data, response: httpResponse)
         }
 
@@ -357,7 +357,7 @@ final class HranaHttpClient: @unchecked Sendable {
     }
 }
 
-private final class HranaTaskTracker: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
+private final class HranaTaskTracker: PluginRedirectRefusingDelegate, @unchecked Sendable {
     private weak var client: HranaHttpClient?
     private let lock = NSLock()
     private var task: URLSessionTask?

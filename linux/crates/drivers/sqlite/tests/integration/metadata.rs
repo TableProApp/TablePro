@@ -205,19 +205,24 @@ async fn integer_primary_key_no_autoincrement_is_rowid_alias() {
 }
 
 #[tokio::test]
-async fn integer_primary_key_with_default_is_not_auto_increment() {
+async fn integer_primary_key_with_default_still_numbers_itself() {
     let file = TestFile::new().await;
     let connection = file.open().await;
     apply(
         connection.as_ref(),
-        &["CREATE TABLE t (id INTEGER PRIMARY KEY DEFAULT 0, name TEXT)"],
+        &[
+            "CREATE TABLE t (id INTEGER PRIMARY KEY DEFAULT 5, name TEXT)",
+            "INSERT INTO t (name) VALUES ('a'), ('b')",
+        ],
     )
     .await
     .unwrap();
 
     let columns = connection.fetch_columns(&table("t"), call()).await.unwrap();
+    let stored = query(connection.as_ref(), "SELECT id FROM t ORDER BY id").await;
 
-    assert!(!columns[0].is_auto_increment);
+    assert_eq!(stored.rows, [[Value::Int(1)], [Value::Int(2)]]);
+    assert!(columns[0].is_auto_increment);
     connection.close().await.unwrap();
 }
 

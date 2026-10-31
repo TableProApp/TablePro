@@ -241,12 +241,12 @@ struct ColumnJumpPanelContent: View {
 
     private var footer: some View {
         HStack(spacing: 14) {
-            QuickSwitcherKeyHint(symbol: "\u{21A9}", label: String(localized: "Jump"))
+            QuickSwitcherKeyHint(keys: [.returnKey], label: String(localized: "Jump"))
 
             Spacer(minLength: 0)
 
             QuickSwitcherKeyHint(
-                symbol: "\u{238B}",
+                keys: [.text("\u{238B}")],
                 label: escapeDismissesPanel ? String(localized: "Close") : String(localized: "Clear")
             )
         }

@@ -62,6 +62,13 @@ extension TeradataPluginDriver {
         return statements.isEmpty ? nil : statements
     }
 
+    func generateIdentityPreservingInsert(
+        table: String, schema: String?, columns: [String], primaryKeyColumns: [String], rows: [[PluginCellValue]]
+    ) -> [(statement: String, parameters: [PluginCellValue])]? {
+        let target = TeradataSchemaQueries.qualifiedName(database: effectiveDatabaseForSchema(schema), table: table)
+        return rows.map { (TeradataRowEditSQL.insert(target: target, columns: columns, values: $0), []) }
+    }
+
     private func quote(_ name: String) -> String {
         TeradataSchemaQueries.quoteIdentifier(name)
     }

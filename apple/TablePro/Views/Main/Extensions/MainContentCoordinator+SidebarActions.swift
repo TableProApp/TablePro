@@ -26,28 +26,82 @@ extension MainContentCoordinator {
         tabManager.mutate(at: tabIdx) { $0.display.togglePin(resultSetId: id) }
     }
 
+    // Closing and stepping need what pinning needs: a query tab showing a result, not the structure editor.
+    var canCloseActiveResultSet: Bool {
+        guard canPinActiveResultSet, let active = tabManager.selectedTab?.display.activeResultSet else { return false }
+        return !active.isPinned
+    }
+
+    func canStepActiveResultSet(by offset: Int) -> Bool {
+        guard canPinActiveResultSet, let tab = tabManager.selectedTab,
+              let activeId = tab.display.activeResultSet?.id,
+              let index = tab.display.resultSets.firstIndex(where: { $0.id == activeId }) else { return false }
+        return tab.display.resultSets.indices.contains(index + offset)
+    }
+
+    // A table tab's one result is its rows; closing it would blank the table until a reload.
     func closeResultSet(id: UUID) {
-        guard let tabIdx = tabManager.selectedTabIndex else { return }
-        let rs = tabManager.tabs[tabIdx].display.resultSets.first { $0.id == id }
-        guard rs?.isPinned != true else { return }
+        guard let (tab, tabIdx) = tabManager.selectedTabAndIndex, tab.tabType == .query,
+              tab.display.resultSets.contains(where: { $0.id == id && !$0.isPinned }) else { return }
+        removeResultSets([id], at: tabIdx) { display in
+            // The result that slides into the closed one's place, as with editor tabs.
+            guard let index = display.resultSets.firstIndex(where: { $0.id == id }) else { return display.activeResultSet?.id }
+            let remaining = display.resultSets.filter { $0.id != id }
+            return remaining.indices.contains(index) ? remaining[index].id : remaining.last?.id
+        }
+    }
+
+    // One removal rather than a close per result, so the active result is replaced once and by the one kept.
+    func closeOtherResultSets(keeping keptId: UUID) {
+        guard let (tab, tabIdx) = tabManager.selectedTabAndIndex, tab.tabType == .query,
+              tab.display.resultSets.contains(where: { $0.id == keptId }) else { return }
+        let closing = Set(tab.display.resultSets.filter { $0.id != keptId && !$0.isPinned }.map(\.id))
+        guard !closing.isEmpty else { return }
+        removeResultSets(closing, at: tabIdx) { _ in keptId }
+    }
+
+    private func removeResultSets(
+        _ ids: Set<UUID>,
+        at tabIdx: Int,
+        replacement: @escaping (TabDisplayState) -> UUID?
+    ) {
         let tabId = tabManager.tabs[tabIdx].id
-        tabManager.mutate(at: tabIdx) { $0.display.resultSets.removeAll { $0.id == id } }
-        if tabManager.tabs[tabIdx].display.activeResultSetId == id {
-            let newActiveId = tabManager.tabs[tabIdx].display.resultSets.last?.id
-            applyResultSetSwitch(to: newActiveId, in: tabId)
-        }
-        if tabManager.tabs[tabIdx].display.resultSets.isEmpty {
-            setActiveTableRows(TableRows(), for: tabId)
+        let activeId = tabManager.tabs[tabIdx].display.activeResultSet?.id
+        guard let activeId, ids.contains(activeId) else {
             tabManager.mutate(at: tabIdx) { tab in
-                tab.execution.errorMessage = nil
-                tab.execution.rowsAffected = 0
-                tab.execution.executionTime = nil
-                tab.execution.statusMessage = nil
-                tab.schemaVersion += 1
-                tab.display.isResultsCollapsed = true
+                tab.display.resultSets.removeAll { ids.contains($0.id) && !$0.isPinned }
+                tab.display.activeResultSetId = activeId
             }
-            toolbarState.isResultsCollapsed = true
+            return
         }
+        // The active result's unsaved edits leave with it, so this asks first, as switching does.
+        confirmDiscardChangesIfNeeded(action: .resultClose) { [weak self] confirmed in
+            guard confirmed, let self,
+                  let tabIdx = self.tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
+            let replacementId = replacement(self.tabManager.tabs[tabIdx].display)
+            self.tabManager.mutate(at: tabIdx) { tab in
+                tab.display.resultSets.removeAll { ids.contains($0.id) && !$0.isPinned }
+            }
+            if self.tabManager.tabs[tabIdx].display.resultSets.isEmpty {
+                self.clearEmptiedResults(at: tabIdx)
+            } else {
+                self.applyResultSetSwitch(to: replacementId, in: tabId)
+            }
+        }
+    }
+
+    private func clearEmptiedResults(at tabIdx: Int) {
+        setActiveTableRows(TableRows(), for: tabManager.tabs[tabIdx].id)
+        tabManager.mutate(at: tabIdx) { tab in
+            tab.display.activeResultSetId = nil
+            tab.execution.errorMessage = nil
+            tab.execution.rowsAffected = 0
+            tab.execution.executionTime = nil
+            tab.execution.statusMessage = nil
+            tab.schemaVersion += 1
+            tab.display.isResultsCollapsed = true
+        }
+        toolbarState.isResultsCollapsed = true
     }
 
     var canClearActiveQueryResults: Bool {
@@ -55,17 +109,31 @@ extension MainContentCoordinator {
         return !tabSessionRegistry.tableRows(for: tab.id).rows.isEmpty || tab.execution.lastExecutedAt != nil
     }
 
+    // A pinned result on screen stays; any other goes with its unsaved edits, so that case asks first.
     func clearActiveQueryResults() {
-        guard let tabIdx = tabManager.selectedTabIndex else { return }
-        let tabId = tabManager.tabs[tabIdx].id
+        guard let tab = tabManager.selectedTab else { return }
+        let tabId = tab.id
+        guard tab.display.activeResultSet?.isPinned != true else {
+            clearUnpinnedResults(in: tabId)
+            return
+        }
+        confirmDiscardChangesIfNeeded(action: .clearResults) { [weak self] confirmed in
+            if confirmed { self?.clearUnpinnedResults(in: tabId) }
+        }
+    }
 
-        if let lastPinned = tabManager.tabs[tabIdx].display.resultSets.last(where: \.isPinned) {
-            applyResultSetSwitch(to: lastPinned.id, in: tabId)
+    private func clearUnpinnedResults(in tabId: UUID) {
+        guard let tabIdx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
+        let display = tabManager.tabs[tabIdx].display
+
+        if let lastPinned = display.resultSets.last(where: \.isPinned) {
+            let keepsActive = display.activeResultSet?.isPinned == true
+            if !keepsActive {
+                applyResultSetSwitch(to: lastPinned.id, in: tabId)
+            }
             tabManager.mutate(at: tabIdx) { tab in
-                tab.display.removeUnpinnedResults()
-                /// A failed execution records its message on the tab rather than on a result set,
-                /// so returning here without clearing it left the banner over the pinned result the
-                /// switch just revealed, and only the banner's own Dismiss could take it away.
+                tab.display.removeUnpinnedResults(keepingActive: keepsActive)
+                // A failed run's message sits on the tab, and would otherwise stay over the pinned result.
                 tab.execution.errorMessage = nil
                 tab.execution.errorQuery = nil
             }

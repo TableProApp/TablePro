@@ -121,6 +121,8 @@ internal final class QuickSwitcherViewModel: ObservableObject {
     private var activeCrossConnectionQueryLoadId = UUID()
     private var loadedCrossConnectionVersion: CrossConnectionCatalogVersion?
     private var loadedCrossConnectionQueryVersion: CrossConnectionQueryVersion?
+    // The retained Open Quickly panel keeps showing this model until its next presentation.
+    private var isReleased = false
 
     @Published private(set) var groups: [Group] = []
     @Published private(set) var isLoading = true
@@ -252,6 +254,8 @@ internal final class QuickSwitcherViewModel: ObservableObject {
         openTables: Set<QuickSwitcherOpenTable> = [],
         browseSchema: String? = nil
     ) async {
+        // A task that starts after the panel already closed would set up the observers again.
+        guard !isReleased, !Task.isCancelled else { return }
         isLoading = true
 
         let loadId = UUID()
@@ -520,7 +524,7 @@ internal final class QuickSwitcherViewModel: ObservableObject {
     /// task that drives this, and the refresh it just ran has already moved the version, so
     /// the panel refreshes that connection forever.
     func loadCrossConnectionItems() async {
-        guard scope.usesCrossConnectionCatalog else { return }
+        guard !isReleased, scope.usesCrossConnectionCatalog else { return }
         guard loadedCrossConnectionVersion != crossConnectionCatalogVersion else { return }
 
         let loadId = UUID()
@@ -554,7 +558,7 @@ internal final class QuickSwitcherViewModel: ObservableObject {
     }
 
     func loadCrossConnectionQueryItems() async {
-        guard scope.usesCrossConnectionQueries else { return }
+        guard !isReleased, scope.usesCrossConnectionQueries else { return }
 
         let version = crossConnectionQueryVersion
         guard loadedCrossConnectionQueryVersion != version else { return }
@@ -716,6 +720,36 @@ internal final class QuickSwitcherViewModel: ObservableObject {
         return covered
     }
 
+    /// Run when the panel closes. Loads still in flight see the bumped ids and drop what they bring.
+    func releaseResults() {
+        isReleased = true
+        activeLoadId = UUID()
+        activeCrossConnectionLoadId = UUID()
+        activeCrossConnectionQueryLoadId = UUID()
+        listingRequestId = nil
+        tableSourceObservations = []
+        tableSource = nil
+        tableInputs = nil
+        pendingTableBuild?.task.cancel()
+        pendingTableBuild = nil
+        filterTask?.cancel()
+        filterTask = nil
+        baseItems = nil
+        tableItems = []
+        tableItemKeys = []
+        allItems = []
+        crossConnectionItems = []
+        crossConnectionQueryItems = []
+        groups = []
+        selectedItemId = nil
+        isFiltering = false
+        isLoadingBrowseCatalog = false
+        isListingInFlight = false
+        isSharedListingLoading = false
+        isLoadingCrossConnections = false
+        isLoadingCrossConnectionQueries = false
+    }
+
     func canOpenStructure(_ item: QuickSwitcherItem) -> Bool {
         guard let target = item.target else { return true }
         return target.connectionId == connectionId
@@ -762,6 +796,7 @@ internal final class QuickSwitcherViewModel: ObservableObject {
     /// build off the main actor so neither can stall the panel while it is being typed into.
     private func scheduleFilter(debounced: Bool) {
         filterTask?.cancel()
+        guard !isReleased else { return }
         let query = searchText.trimmingCharacters(in: .whitespaces)
         let items = scopedItems()
         let scope = scope

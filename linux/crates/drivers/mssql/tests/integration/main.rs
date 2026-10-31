@@ -13,6 +13,7 @@ mod csv_import;
 mod ddl;
 mod decode;
 mod filter;
+mod identity_insert;
 mod metadata;
 mod read_only;
 mod round_trip;

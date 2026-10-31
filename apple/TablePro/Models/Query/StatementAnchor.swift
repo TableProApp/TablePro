@@ -48,9 +48,7 @@ struct StatementAnchor: Equatable {
         let collapsed = source.split(whereSeparator: \.isWhitespace).joined(separator: " ")
         guard !collapsed.isEmpty else { return "" }
 
-        let text = collapsed as NSString
-        guard text.length > Self.labelLimit else { return collapsed }
-        return text.substring(to: Self.labelLimit).trimmingCharacters(in: .whitespaces) + "…"
+        return ResultSetMenuModel.truncated(collapsed, limit: Self.labelLimit)
     }
 
     private static let labelLimit = 28

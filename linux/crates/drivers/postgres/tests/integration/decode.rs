@@ -181,6 +181,7 @@ async fn an_exported_array_inserts_back_as_it_was() {
         &tablepro_core::TableRef::unqualified("copied"),
         &read.columns,
         &[],
+        &[],
         &read.rows,
     );
     crate::support::apply(

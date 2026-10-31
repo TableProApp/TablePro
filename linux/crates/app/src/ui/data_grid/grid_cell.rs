@@ -154,6 +154,8 @@ impl GridCell {
         display.set_valign(gtk::Align::Center);
         display.set_text_overflow(gtk::InscriptionOverflow::EllipsizeEnd);
         display.set_min_chars(1);
+        // A column of codes or times lines up character for character.
+        display.add_css_class("monospace");
         display.set_parent(&cell);
         let _ = cell.imp().display.set(display);
         let _ = cell.imp().paint.set(paint);

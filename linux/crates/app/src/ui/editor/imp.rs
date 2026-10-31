@@ -30,6 +30,14 @@ pub struct RunningScript {
 #[template(resource = "/app/tablepro/TablePro/ui/sql-editor.ui")]
 pub struct SqlEditor {
     #[template_child]
+    pub scope_box: TemplateChild<gtk4::Box>,
+    #[template_child]
+    pub scope_label: TemplateChild<gtk4::Label>,
+    #[template_child]
+    pub scope_button: TemplateChild<gtk4::MenuButton>,
+    #[template_child]
+    pub scope_button_label: TemplateChild<gtk4::Label>,
+    #[template_child]
     pub cursor_info: TemplateChild<gtk4::Label>,
     #[template_child]
     pub menu_button: TemplateChild<gtk4::MenuButton>,
@@ -56,6 +64,14 @@ pub struct SqlEditor {
     /// This tab's own connection, which keeps its transaction and
     /// temporary tables between runs.
     pub slot: Arc<EditorSessionSlot>,
+    /// The database the bar names, to tell the workspace when it changes.
+    pub named_database: RefCell<Option<String>>,
+    /// Where completion resolves unqualified names, which the assistant
+    /// describes too.
+    pub catalog_home: RefCell<super::completion::CatalogHome>,
+    /// The server's name for the connection's database, for one opened
+    /// without a name.
+    pub listed_own_database: RefCell<Option<String>>,
     pub running: RefCell<Option<RunningScript>>,
     pub log: RefCell<Option<RunLog>>,
     /// Whether the last run left a transaction open, as last reported.
@@ -132,6 +148,9 @@ impl ObjectImpl for SqlEditor {
                     .param_types([bool::static_type()])
                     .build(),
                 Signal::builder("file-changed").build(),
+                // The tab is in another database: picked from the bar, or
+                // where a `USE` took its session.
+                Signal::builder("database-changed").build(),
                 // Vim's :q, which closes the tab through its close prompts.
                 Signal::builder("close-requested").build(),
                 Signal::builder("assistant-requested")

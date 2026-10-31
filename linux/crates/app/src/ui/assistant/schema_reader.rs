@@ -10,12 +10,12 @@ use tablepro_core::sql_syntax::script::LexicalSettings;
 use tablepro_core::{ColumnInfo, TableRef};
 use tablepro_session::Session;
 
-use crate::ui::editor::{CompletionScope, read_catalog, tables_named};
+use crate::ui::editor::{CatalogHome, CompletionScope, read_catalog, tables_named};
 
 /// The schema the user is in, its tables, and the structure of the
 /// tables `text` names. Shares the catalog's reads with the sidebar and
 /// completion, so it rarely reaches the server.
-pub(crate) async fn read(session: Arc<Session>, engine: String, text: String) -> SchemaContext {
+pub(crate) async fn read(session: Arc<Session>, engine: String, text: String, home: CatalogHome) -> SchemaContext {
     let grammar = session
         .current_dialect()
         .map_or(SqlGrammar::PostgreSql, |dialect| dialect.grammar());
@@ -24,9 +24,22 @@ pub(crate) async fn read(session: Arc<Session>, engine: String, text: String) ->
     } else {
         QueryLanguage::Commands
     };
+    // Nothing the connection's catalog holds is in that database.
+    if let CatalogHome::Elsewhere(database) = home {
+        return SchemaContext {
+            engine,
+            language,
+            database: Some(database),
+            ..SchemaContext::default()
+        };
+    }
     let mut named = tables_named(&text, grammar, LexicalSettings::default_for(grammar));
     // A question in words names tables as words, which no SQL parse sees.
-    if let Ok(objects) = session.objects(ObjectScope::DefaultSchema).await {
+    let listed = match &home {
+        CatalogHome::Schema(database) => ObjectScope::Schema(database.clone()),
+        CatalogHome::Connection | CatalogHome::Elsewhere(_) => ObjectScope::DefaultSchema,
+    };
+    if let Ok(objects) = session.objects(listed).await {
         for table in named_in_words(&text, &objects) {
             if !named.contains(&table) {
                 named.push(table);
@@ -39,14 +52,18 @@ pub(crate) async fn read(session: Arc<Session>, engine: String, text: String) ->
         CompletionScope::General {
             tables_in_statement: named,
         },
+        home.clone(),
     )
     .await;
-    let schema = session.schemas().await.ok().and_then(|schemas| {
-        schemas
-            .iter()
-            .find(|schema| schema.is_default)
-            .map(|schema| schema.name.clone())
-    });
+    let schema = match &home {
+        CatalogHome::Schema(database) => Some(database.clone()),
+        CatalogHome::Connection | CatalogHome::Elsewhere(_) => session.schemas().await.ok().and_then(|schemas| {
+            schemas
+                .iter()
+                .find(|schema| schema.is_default)
+                .map(|schema| schema.name.clone())
+        }),
+    };
     let tables = answer
         .objects
         .map(|objects| {
@@ -66,7 +83,10 @@ pub(crate) async fn read(session: Arc<Session>, engine: String, text: String) ->
     SchemaContext {
         engine,
         language,
-        database: session.database().map(str::to_owned),
+        database: match home {
+            CatalogHome::Schema(database) => Some(database),
+            CatalogHome::Connection | CatalogHome::Elsewhere(_) => session.database().map(str::to_owned),
+        },
         schema,
         tables,
         described,

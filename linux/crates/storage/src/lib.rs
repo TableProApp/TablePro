@@ -26,8 +26,8 @@ pub use connection_icon::ConnectionIcon;
 pub use connection_tag::ConnectionTag;
 pub use connection_tag_name::ConnectionTagName;
 pub use connections::{
-    ConnectionList, ConnectionListSnapshot, ConnectionListState, ConnectionStore, ImportReport, RemoveOutcome,
-    SavedConnection, SavedSshAuth, SavedSshConfig,
+    ConnectionList, ConnectionListSnapshot, ConnectionListState, ConnectionStore, ImportChange, ImportEntry,
+    ImportPreview, ImportReport, RemoveOutcome, SavedConnection, SavedSshAuth, SavedSshConfig,
 };
 pub use credentials::{
     CredentialDemand, CredentialError, KeyringCredentials, KeyringError, ResolvedSecret, SecretLabeler,

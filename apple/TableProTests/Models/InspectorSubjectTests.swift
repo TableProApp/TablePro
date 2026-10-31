@@ -19,7 +19,7 @@ struct InspectorSubjectTests {
         #expect(subject.subtitle?.contains("500") == true)
     }
 
-    /// A result of several thousand rows reads as a quantity, the way the grid's own counter does.
+    // A result of several thousand rows reads as a quantity, the way the grid's own counter does.
     @Test("A large row count is grouped")
     func largeCountsAreGrouped() {
         let subject = InspectorSubject.tableRow(
@@ -44,20 +44,39 @@ struct InspectorSubjectTests {
         #expect(subject.subtitle?.contains("3") == true)
     }
 
-    /// A schema grid's selection is a column definition, not a row of a result: it has no position
-    /// and no identity, so a subject that assumed one would render "Row 0 of 0" over a good column.
-    @Test("A column definition names the column, not a row")
+    @Test("A column definition names the column and its table")
     func columnDefinitionNamesTheColumn() {
-        let subject = InspectorSubject.columnDefinition(column: "user_id", table: "public.users")
+        let subject = InspectorSubject.definition(name: "user_id", section: .columns, table: "users")
         #expect(subject.title == "user_id")
-        #expect(subject.subtitle?.contains("public.users") == true)
+        #expect(subject.subtitle == String(format: String(localized: "Column of %@"), "users"))
     }
 
-    @Test("A column with no known table still names itself")
-    func columnWithoutTable() {
-        let subject = InspectorSubject.columnDefinition(column: "user_id", table: nil)
+    @Test("An index names itself as an index, not a column")
+    func indexIsNotAColumn() {
+        let subject = InspectorSubject.definition(name: "idx_email", section: .indexes, table: "users")
+        #expect(subject.title == "idx_email")
+        #expect(subject.subtitle == String(format: String(localized: "Index of %@"), "users"))
+    }
+
+    @Test("Foreign keys and check constraints say what they are")
+    func otherDefinitionKinds() {
+        let foreignKey = InspectorSubject.definition(name: "fk_user", section: .foreignKeys, table: "orders")
+        #expect(foreignKey.subtitle == String(format: String(localized: "Foreign Key of %@"), "orders"))
+        let check = InspectorSubject.definition(name: "positive_total", section: .checkConstraints, table: "orders")
+        #expect(check.subtitle == String(format: String(localized: "Check Constraint of %@"), "orders"))
+    }
+
+    @Test("A definition with no name yet reads as new")
+    func unnamedDefinitionIsNew() {
+        #expect(InspectorSubject.definition(name: "", section: .columns, table: "t").title == String(localized: "New Column"))
+        #expect(InspectorSubject.definition(name: "", section: .indexes, table: "t").title == String(localized: "New Index"))
+    }
+
+    @Test("A definition with no known table still names its kind")
+    func definitionWithoutTable() {
+        let subject = InspectorSubject.definition(name: "user_id", section: .foreignKeys, table: nil)
         #expect(subject.title == "user_id")
-        #expect(subject.subtitle != nil)
+        #expect(subject.subtitle == String(localized: "Foreign Key"))
     }
 
     @Test("A table with no row selected names the table")

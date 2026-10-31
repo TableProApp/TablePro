@@ -88,7 +88,7 @@ fn pool_error(error: ConnectionPoolError, during: LossPhase) -> DriverError {
     }
 }
 
-fn use_keyspace_error(error: UseKeyspaceError, during: LossPhase) -> DriverError {
+pub(crate) fn use_keyspace_error(error: UseKeyspaceError, during: LossPhase) -> DriverError {
     match error {
         UseKeyspaceError::RequestError(attempt) => attempt_error(attempt, during),
         other => DriverError::server(other.to_string()),

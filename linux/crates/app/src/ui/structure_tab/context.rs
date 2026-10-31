@@ -1,13 +1,15 @@
 //! What the Structure tab knows about the table it edits: whether it
-//! exists, the definition the last read returned, and the dialect whose
-//! DDL rules decide which changes each row offers.
+//! exists, the definition the last read returned, the dialect whose
+//! DDL rules decide which changes each row offers, and the character
+//! sets the server offers.
 
+use std::rc::Rc;
 use std::sync::Arc;
 
-use tablepro_core::column::{ColumnDefault, ColumnType};
+use tablepro_core::column::{BoolStorage, ColumnDefault, ColumnKind, ColumnType};
 use tablepro_core::ddl::{
-    ColumnCapabilities, DdlCapabilities, DdlDialect, DraftColumn, Permission, RefusalReason, TableDefinition,
-    default_text, parse_default, primary_key_permission,
+    CharacterSet, ColumnCapabilities, DdlCapabilities, DdlDialect, DraftColumn, Permission, RefusalReason,
+    TableDefinition, default_text, parse_default, primary_key_permission,
 };
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::meta::IndexInfo;
@@ -24,6 +26,19 @@ pub(super) struct StructureContext {
     /// The table as the last read returned it, which Save plans against
     /// and Discard restores. `None` for a new table.
     pub definition: Option<TableDefinition>,
+    pub character_sets: CharacterSets,
+}
+
+/// The server's character sets, read apart from the definition, so a
+/// table opens without waiting for them and stays editable when they
+/// cannot be read.
+#[derive(Debug, Clone, Default)]
+pub(super) enum CharacterSets {
+    /// Not read yet, or the engine offers none.
+    #[default]
+    Unread,
+    Read(Rc<[CharacterSet]>),
+    Unreadable,
 }
 
 impl StructureContext {
@@ -74,6 +89,7 @@ impl StructureContext {
                 alter_primary_key: primary_key,
                 alter_auto_increment: Permission::Allowed,
                 alter_comment: Permission::unless(capabilities.column_comments, RefusalReason::EngineUnsupported),
+                alter_collation: Permission::unless(capabilities.column_collations, RefusalReason::EngineUnsupported),
             };
         };
         ddl.column_capabilities(definition, original)
@@ -120,6 +136,44 @@ impl StructureContext {
             StructureMode::Edit => capabilities.add_foreign_key,
         };
         allowed && self.ddl().is_some()
+    }
+
+    /// Whether the rows need the server's character sets: a text
+    /// column's, or the table's own on an engine that changes them.
+    pub(super) fn offers_character_sets(&self) -> bool {
+        let capabilities = self.capabilities();
+        capabilities.column_collations || (self.mode == StructureMode::Edit && capabilities.table_options)
+    }
+
+    /// The character sets as read, empty until they are.
+    pub(super) fn character_set_catalog(&self) -> Rc<[CharacterSet]> {
+        match &self.character_sets {
+            CharacterSets::Read(sets) => sets.clone(),
+            CharacterSets::Unread | CharacterSets::Unreadable => Rc::from(Vec::new()),
+        }
+    }
+
+    /// The largest value the counter of an AUTO_INCREMENT column of this
+    /// type reaches. A type this build cannot place is left to the
+    /// server.
+    pub(super) fn auto_increment_maximum(&self, column: &DraftColumn) -> u64 {
+        let Some(column_type) = self.default_column_type(column) else {
+            return u64::MAX;
+        };
+        match column_type.kind {
+            ColumnKind::Integer(integer) => {
+                let bits = integer.width.bits().saturating_sub(u32::from(integer.signed));
+                1u64.checked_shl(bits).map_or(u64::MAX, |limit| limit - 1)
+            }
+            // MySQL reads TINYINT(1) as a boolean, which keeps no sign, so the declaration says which byte it is.
+            ColumnKind::Bool(BoolStorage::Integer) => {
+                match column_type.name.to_ascii_lowercase().contains("unsigned") {
+                    true => u64::from(u8::MAX),
+                    false => 127,
+                }
+            }
+            _ => u64::MAX,
+        }
     }
 
     /// The type a default's literal is read against: the column's own, or

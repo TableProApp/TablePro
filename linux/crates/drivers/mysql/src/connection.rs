@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use deadpool::managed::{PoolError, TimeoutType};
 use sqlx::Executor as _;
 use tablepro_core::column::ColumnInfo;
-use tablepro_core::ddl::{InboundForeignKey, OutboundForeignKey, TableDefinition};
+use tablepro_core::ddl::{CharacterSet, InboundForeignKey, OutboundForeignKey, TableDefinition};
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::meta::{IndexInfo, ObjectInfo, ObjectScope, RowIdentity, SchemaInfo, TableEstimate, TableRef};
 use tablepro_core::statement::Statement;
@@ -271,6 +271,14 @@ impl Connection for MysqlConnection {
         .await
     }
 
+    async fn list_databases(&self, options: CallOptions) -> Result<Vec<SchemaInfo>, DriverError> {
+        self.read(
+            options,
+            read_op(|connection, flavour| Box::pin(metadata::list_databases(connection, flavour))),
+        )
+        .await
+    }
+
     async fn list_objects(&self, scope: &ObjectScope, options: CallOptions) -> Result<Vec<ObjectInfo>, DriverError> {
         let scope = scope.clone();
         self.read(
@@ -361,6 +369,16 @@ impl Connection for MysqlConnection {
             options,
             read_op(move |connection, _| {
                 Box::pin(async move { metadata::fetch_table_definition(connection, &dialect, &table).await })
+            }),
+        )
+        .await
+    }
+
+    async fn fetch_character_sets(&self, options: CallOptions) -> Result<Vec<CharacterSet>, DriverError> {
+        self.read(
+            options,
+            read_op(move |connection, flavour| {
+                Box::pin(async move { metadata::fetch_character_sets(connection, flavour).await })
             }),
         )
         .await

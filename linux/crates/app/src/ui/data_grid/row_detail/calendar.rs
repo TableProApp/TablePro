@@ -1,47 +1,64 @@
-use chrono::{Datelike, FixedOffset, Local, NaiveDate, NaiveTime, Offset, TimeDelta, TimeZone};
+use chrono::{Datelike, FixedOffset, Local, NaiveDate, NaiveDateTime, NaiveTime, Offset, TimeDelta, TimeZone};
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use gtk4::{self as gtk, glib};
 use tablepro_core::column::{ColumnKind, TemporalZone};
+use tablepro_core::edit::{parse_timestamp_with_offset, temporal_parts};
 
 use super::RowDetailPane;
 use super::value_editor::Commit;
 use crate::application::component_matches;
 
-/// The day a value's text starts with, when it starts with one the
-/// calendar can show.
+// GtkCalendar shows the years 1 to 9999 only, so it opens on today for any other.
 pub fn day_of(text: &str) -> Option<NaiveDate> {
-    let head = text.get(..10)?;
-    NaiveDate::parse_from_str(head, "%Y-%m-%d")
-        .ok()
-        .filter(|day| (1..=9999).contains(&day.year()))
+    temporal_parts(text).date.filter(|day| (1..=9999).contains(&day.year()))
 }
 
-/// The value's text with `day` picked: a date, or a timestamp in `zone`,
-/// which keeps the time it had. A new zoned timestamp starts the day at
-/// `offset`, as one without an offset is refused.
+// Only the day changes, and the era with it, since a picked day is AD. Text with no day takes one
+// before its clock, or becomes a new value; a zoned timestamp lacking an offset takes `offset`.
 pub fn with_day(text: &str, day: NaiveDate, zone: Option<&TemporalZone>, offset: FixedOffset) -> String {
     let date = day.format("%Y-%m-%d").to_string();
-    match (zone, day_of(text)) {
-        (None, _) => date,
-        (Some(_), Some(_)) => format!("{date}{}", text.get(10..).unwrap_or_default()),
-        (Some(TemporalZone::Offset), None) => format!("{date} 00:00:00{offset}"),
-        (Some(_), None) => format!("{date} 00:00:00"),
+    let parts = temporal_parts(text);
+    let mut text = text.to_owned();
+    if let Some(era) = parts.era {
+        text.replace_range(era, "");
+    }
+    match (parts.day, parts.clock, zone) {
+        (Some(old), _, _) => {
+            text.replace_range(old, &date);
+            text
+        }
+        (None, Some(clock), Some(zone)) => {
+            text.insert_str(clock.start, &format!("{date} "));
+            let (body, tail) = text.split_at(text.trim_end().len());
+            let zoned = format!("{body}{offset}{tail}");
+            match zone == &TemporalZone::Offset
+                && parse_timestamp_with_offset(&text).is_err()
+                && parse_timestamp_with_offset(&zoned).is_ok()
+            {
+                true => zoned,
+                false => text,
+            }
+        }
+        (None, _, None) => date,
+        (None, None, Some(TemporalZone::Offset)) => format!("{date} 00:00:00{offset}"),
+        (None, None, Some(_)) => format!("{date} 00:00:00"),
     }
 }
 
-/// The offset `zone` has as `day` starts. Where a clock change skips
-/// midnight, the day starts at the change, which is midnight at the
-/// offset before it.
 pub fn day_start_offset<Tz: TimeZone>(zone: &Tz, day: NaiveDate) -> FixedOffset {
-    let midnight = day.and_time(NaiveTime::MIN);
-    [midnight, midnight - TimeDelta::hours(1)]
-        .iter()
-        .find_map(|local| zone.from_local_datetime(local).earliest())
-        .map_or_else(
-            || zone.offset_from_utc_datetime(&midnight).fix(),
-            |at| at.offset().fix(),
-        )
+    offset_at(zone, day.and_time(NaiveTime::MIN))
+}
+
+// A wall-clock time a clock change skips takes the offset before the change.
+pub fn offset_at<Tz: TimeZone>(zone: &Tz, local: NaiveDateTime) -> FixedOffset {
+    zone.from_local_datetime(&local)
+        .earliest()
+        .or_else(|| {
+            let before = local.checked_sub_signed(TimeDelta::hours(1))?;
+            zone.from_local_datetime(&before).earliest()
+        })
+        .map_or_else(|| zone.offset_from_utc_datetime(&local).fix(), |at| at.offset().fix())
 }
 
 impl RowDetailPane {
@@ -50,10 +67,7 @@ impl RowDetailPane {
         // Dropped below a button halfway down the pane, the calendar fits
         // neither below nor above it on a short screen and GTK closes it;
         // opened toward the rows, it slides up or down to fit.
-        imp.calendar_button.set_direction(match self.direction() {
-            gtk::TextDirection::Rtl => gtk::ArrowType::Right,
-            _ => gtk::ArrowType::Left,
-        });
+        imp.calendar_button.set_direction(self.toward_rows());
         imp.calendar_popover.connect_show(glib::clone!(
             #[weak(rename_to = pane)]
             self,
@@ -97,6 +111,13 @@ impl RowDetailPane {
             }
         ));
         imp.calendar.add_controller(keys);
+    }
+
+    pub(super) fn toward_rows(&self) -> gtk::ArrowType {
+        match self.direction() {
+            gtk::TextDirection::Rtl => gtk::ArrowType::Right,
+            _ => gtk::ArrowType::Left,
+        }
     }
 
     /// The calendar opens on the value's day, else on today, for the row
@@ -143,7 +164,12 @@ impl RowDetailPane {
             ColumnKind::Timestamp { zone, .. } => Some(zone.clone()),
             _ => None,
         });
-        let text = with_day(&self.typed_text(), day, zone.as_ref(), day_start_offset(&Local, day));
+        let typed = self.typed_text();
+        let offset = temporal_parts(&typed).time.map_or_else(
+            || day_start_offset(&Local, day),
+            |time| offset_at(&Local, day.and_time(time)),
+        );
+        let text = with_day(&typed, day, zone.as_ref(), offset);
         imp.calendar_popover.popdown();
         imp.value_buffer.set_text(&text);
         self.commit(Commit::Keep);

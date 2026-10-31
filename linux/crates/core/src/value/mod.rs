@@ -55,6 +55,22 @@ impl Value {
         matches!(self, Self::Null)
     }
 
+    /// Whether the value reads as a number, so a column of no declared
+    /// type holding only such values lines up as numbers do.
+    pub fn is_number(&self) -> bool {
+        match self {
+            Self::Int(_)
+            | Self::UInt(_)
+            | Self::WideInt(_)
+            | Self::Float32(_)
+            | Self::Float64(_)
+            | Self::Decimal(_) => true,
+            Self::Text(text) => text.parse::<f64>().is_ok(),
+            Self::Other(other) => other.text.parse::<f64>().is_ok(),
+            _ => false,
+        }
+    }
+
     pub fn variant_name(&self) -> &'static str {
         match self {
             Self::Null => "Null",

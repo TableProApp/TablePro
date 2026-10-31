@@ -10,7 +10,8 @@ import Foundation
 /// A reference type because `NSOutlineView` tracks rows by object identity, which is what lets a
 /// reload keep the expansion and selection a user set. The coordinator caches these by `id` and
 /// mutates the cached instance rather than building a new one, exactly as the object tree does.
-internal final class FavoritesOutlineNode: SidebarOutlineNode {
+/// An `NSObject` for the same cheap hashing as `DatabaseTreeNode`.
+internal final class FavoritesOutlineNode: NSObject, SidebarOutlineNode {
     internal enum Kind {
         case header(String)
         case databaseEnvironment(FavoriteDatabaseGroup)
@@ -26,6 +27,7 @@ internal final class FavoritesOutlineNode: SidebarOutlineNode {
     internal init(id: String, kind: Kind) {
         self.id = id
         self.kind = kind
+        super.init()
     }
 
     internal var isExpandable: Bool {

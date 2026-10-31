@@ -45,6 +45,11 @@ nonisolated struct FirstRunPlan: Sendable {
 
     private var isUpgrade: Bool {
         guard let lastSeenVersion else { return false }
-        return lastSeenVersion != currentVersion
+        return Self.isNewer(currentVersion, than: lastSeenVersion)
+    }
+
+    // The App Store takes only period-separated integers as a version, which a numeric comparison orders.
+    static func isNewer(_ version: String, than seen: String) -> Bool {
+        seen.compare(version, options: .numeric) == .orderedAscending
     }
 }

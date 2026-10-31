@@ -1235,6 +1235,26 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         try await pluginDriver.concurrentRefreshAvailability(materializedView: materializedView, schema: schema)
     }
 
+    // MARK: - Table Options
+
+    func fetchTableOptions(tableName: String) async throws -> TableOptions? {
+        try await pluginDriver.fetchTableOptions(table: tableName, schema: pluginDriver.currentSchema)
+            .map(TableOptions.init)
+    }
+
+    func fetchTableOptionsCatalog() async throws -> TableOptionsCatalog? {
+        try await pluginDriver.fetchTableOptionsCatalog().map(TableOptionsCatalog.init)
+    }
+
+    func fetchDefaultTableOptions(schema: String?) async throws -> TableOptions? {
+        try await pluginDriver.fetchDefaultTableOptions(schema: schema ?? pluginDriver.currentSchema)
+            .map(TableOptions.init)
+    }
+
+    func tableOptionsStatement(tableName: String, schema: String?, change: PluginTableOptionsChange) -> String? {
+        pluginDriver.tableOptionsStatement(table: tableName, schema: schema, change: change)
+    }
+
     // MARK: - Sequences
 
     func fetchSequenceDetails(sequence: String, schema: String?) async throws -> PluginSequenceDetails? {

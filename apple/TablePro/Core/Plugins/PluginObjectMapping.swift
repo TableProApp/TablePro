@@ -3,7 +3,7 @@
 //  TablePro
 //
 //  The single crossing between PluginKit's column, index, foreign key, check constraint, table
-//  metadata, routine, trigger and type transfer types and the app's.
+//  metadata, table options, routine, trigger and type transfer types and the app's.
 //
 
 import Foundation
@@ -30,7 +30,8 @@ extension ColumnInfo {
             ddlDefault: column.ddlDefault,
             ddlGenerationExpression: column.ddlGenerationExpression,
             ddlCollation: column.ddlCollation,
-            classificationTypeName: column.classificationTypeName
+            classificationTypeName: column.classificationTypeName,
+            columnCheck: column.columnCheck
         )
     }
 }
@@ -94,6 +95,37 @@ extension TableMetadata {
             collation: metadata.collation,
             createTime: metadata.createTime,
             updateTime: metadata.updateTime
+        )
+    }
+}
+
+extension TableOptions {
+    init(_ options: PluginTableOptions) {
+        self.init(
+            characterSet: options.characterSet,
+            collation: options.collation,
+            autoIncrement: options.autoIncrement
+        )
+    }
+}
+
+extension TableCharacterSet {
+    init(_ characterSet: PluginCharacterSet) {
+        self.init(
+            name: characterSet.name,
+            defaultCollation: characterSet.defaultCollation,
+            collations: characterSet.collations,
+            description: characterSet.description
+        )
+    }
+}
+
+extension TableOptionsCatalog {
+    init(_ catalog: PluginTableOptionsCatalog) {
+        self.init(
+            characterSets: catalog.characterSets.map(TableCharacterSet.init),
+            engines: catalog.engines,
+            defaultEngine: catalog.defaultEngine
         )
     }
 }

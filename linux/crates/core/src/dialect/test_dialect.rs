@@ -295,6 +295,7 @@ impl SqlDialect for TestDialect {
             statement_prefixes: &[&["CREATE", "USER"], &["ALTER", "USER"]],
             conditional_prefixes: &[],
             carriers: &[],
+            secret_parameters: &[],
         };
         classify_for_history(self.grammar, &RULES, sql)
     }

@@ -64,6 +64,7 @@ struct SQLUnterminatedStatementsTests {
         ("DELETE FROM t SELECT 1 WHERE 1 = 1", ["DELETE FROM t", "SELECT 1 WHERE 1 = 1"]),
         ("CREATE TYPE dbo.t FROM int DROP TABLE x", ["CREATE TYPE dbo.t FROM int", "DROP TABLE x"]),
         ("SELECT 1 LINENO 5 DELETE FROM t", ["SELECT 1", "LINENO 5", "DELETE FROM t"]),
+        ("SELECT 1 BULK INSERT t FROM 'f'", ["SELECT 1", "BULK", "INSERT t FROM 'f'"]),
     ])
     func juxtaposedStatements(sql: String, expected: [String]) {
         #expect(inner(sql) == expected)
@@ -159,6 +160,8 @@ struct SQLUnterminatedStatementsTests {
         ),
         ("CREATE TABLE t (a int REFERENCES p (id) ON DELETE SET NULL ON UPDATE SET DEFAULT)", "CREATE"),
         ("GRANT SELECT, UPDATE ON [t] TO [u]", "GRANT"),
+        ("GRANT ADMINISTER BULK OPERATIONS TO u", "GRANT"),
+        ("DENY ADMINISTER DATABASE BULK OPERATIONS TO u", "DENY"),
         ("ALTER TABLE [t] ADD FOREIGN KEY ([a]) REFERENCES [p] ([id]) ON DELETE CASCADE ON UPDATE SET NULL", "ALTER"),
         (
             "MERGE t USING s ON t.id = s.id WHEN MATCHED THEN DELETE WHEN NOT MATCHED THEN INSERT (id) VALUES (s.id);",
@@ -170,6 +173,7 @@ struct SQLUnterminatedStatementsTests {
         #expect(found.first?.uppercased().hasPrefix(keyword) == true)
         #expect(!found.contains { $0.uppercased().hasPrefix("DELETE") })
         #expect(!found.contains { $0.uppercased().hasPrefix("INSERT") })
+        #expect(!found.contains { $0.uppercased().hasPrefix("BULK") })
     }
 
     @Test("A procedure, function or trigger runs nothing written after its header", arguments: [
@@ -188,6 +192,14 @@ struct SQLUnterminatedStatementsTests {
     func nestedStatementEndsAtItsParenthesis() {
         let sql = "INSERT INTO log SELECT id FROM (DELETE FROM t OUTPUT deleted.id) AS d"
         #expect(inner(sql) == ["INSERT INTO log", "SELECT id FROM () AS d", "DELETE FROM t OUTPUT deleted.id"])
+    }
+
+    @Test("The BULK of an OPENROWSET comes on its own, whatever stands before it", arguments: [
+        "SELECT BulkColumn FROM OPENROWSET(BULK 'f', SINGLE_CLOB) AS d",
+        "SELECT BulkColumn FROM OPENROWSET ( /* */ bulk N'f', SINGLE_CLOB) AS d",
+    ])
+    func openRowsetBulkComesOnItsOwn(sql: String) {
+        #expect(begins("BULK", in: sql))
     }
 
     @Test("A subquery does not end the statement around it, so its WHERE stays with it")

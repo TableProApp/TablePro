@@ -67,6 +67,7 @@ mod tests {
             page(Some(TabRecord::Editor {
                 draft: DraftId::new(),
                 file: None,
+                database: None,
             })),
             page(None),
         ];

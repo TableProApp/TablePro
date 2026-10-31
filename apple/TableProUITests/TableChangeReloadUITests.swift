@@ -62,7 +62,7 @@ final class TableChangeReloadUITests: UITestCase {
         XCTAssertTrue(grid.header("label").waitToExist(timeout: 30), "The Data view must show document's columns")
 
         showStructure(in: app, window: window)
-        let add = window.buttons["structure-footer-add"].firstMatch
+        let add = window.buttons["structure-columns-add"].firstMatch
         XCTAssertTrue(add.waitToExist(timeout: 20), "The Columns tab must offer an add button")
         XCTAssertTrue(waitForPredicate(timeout: 10) { add.isEnabled }, "SQLite adds a column with ALTER TABLE")
         add.click()

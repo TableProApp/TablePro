@@ -116,6 +116,8 @@ struct BigtableBytesTests {
         let column = try BigtableColumn(name: "cf:a:b")
         #expect(column.family == "cf" && column.qualifier == Data("a:b".utf8))
         #expect(try BigtableColumn(name: "cf:b64:/wA=").qualifier == Data([0xFF, 0x00]))
+        let marked = try BigtableColumn(name: "cf:\u{301}a:b")
+        #expect(marked.family == "cf" && marked.qualifier == Data("\u{301}a:b".utf8))
         #expect(throws: BigtableError.self) { try BigtableColumn(name: "nocolon") }
         #expect(throws: BigtableError.self) { try BigtableColumn(name: ":q") }
     }

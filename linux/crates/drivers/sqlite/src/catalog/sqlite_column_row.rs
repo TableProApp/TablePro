@@ -26,9 +26,6 @@ pub(crate) struct SqliteColumnRow {
 pub(crate) struct TableFacts {
     pub strict: bool,
     pub without_rowid: bool,
-    /// The table was declared with AUTOINCREMENT, which SQLite records
-    /// as a row in `sqlite_sequence`.
-    pub autoincrement: bool,
     /// Exactly one column is in the primary key.
     pub single_column_key: bool,
     /// The CREATE TABLE text declares the key column `PRIMARY KEY DESC`
@@ -81,9 +78,10 @@ impl SqliteColumnRow {
 
     pub(crate) fn column_info(&self, table: &TableFacts) -> ColumnInfo {
         let is_generated = self.generated_storage().is_some();
-        // The rowid fills itself in unless a default says otherwise.
-        // AUTOINCREMENT adds only the promise never to reuse a number.
-        let is_auto_increment = self.is_rowid_alias(table) && (table.autoincrement || self.default.is_none());
+        // The rowid fills itself in, a default or not: SQLite 3.54
+        // numbers `INTEGER PRIMARY KEY DEFAULT 5` from 1. AUTOINCREMENT
+        // adds only the promise never to reuse a number.
+        let is_auto_increment = self.is_rowid_alias(table);
         let default = match (is_generated, self.default.as_deref()) {
             (false, Some(text)) => classify_default(text),
             _ => ColumnDefault::None,
@@ -137,7 +135,6 @@ mod tests {
         TableFacts {
             strict: false,
             without_rowid: false,
-            autoincrement: false,
             single_column_key,
             descending_key: false,
         }
@@ -160,9 +157,10 @@ mod tests {
                 .is_auto_increment
         );
         assert!(
-            !row("id", "INTEGER", 1, Some("0"))
+            row("id", "INTEGER", 1, Some("0"))
                 .column_info(&facts(true))
-                .is_auto_increment
+                .is_auto_increment,
+            "SQLite numbers the rowid whatever its default says"
         );
         let without_rowid = TableFacts {
             without_rowid: true,

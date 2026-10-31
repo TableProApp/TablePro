@@ -57,7 +57,7 @@ struct StructureServerSupportTests {
         return manager
     }
 
-    private func provider(tab: StructureTab, support: StructureServerSupport) -> StructureRowProvider {
+    private func provider(tab: StructureSection, support: StructureServerSupport) -> StructureRowProvider {
         StructureRowProvider(
             changeManager: makeManager(),
             tab: tab,
@@ -154,7 +154,7 @@ struct StructureServerSupportTests {
         let support = StructureServerSupport(driver: adapter)
         #expect(support.checkConstraintRefusal == "Check constraints need MySQL 8.0.16 or later.")
         #expect(!support.offers(.checkConstraints))
-        for tab in StructureTab.allCases where tab != .checkConstraints {
+        for tab in StructureSection.allCases where tab != .checkConstraints {
             #expect(support.offers(tab), "\(tab)")
         }
         #expect(StructureServerSupport.unrestricted.offers(.checkConstraints))

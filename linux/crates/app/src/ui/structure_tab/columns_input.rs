@@ -21,4 +21,11 @@ pub enum ColumnField {
     /// SQL text; empty is no default.
     Default(String),
     Comment(Option<String>),
+    /// A character set and the collation that goes with it, written
+    /// together. `None` takes the table's.
+    CharacterSet {
+        character_set: Option<String>,
+        collation: Option<String>,
+    },
+    Collation(Option<String>),
 }

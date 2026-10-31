@@ -108,6 +108,8 @@ struct TriggerDetailView: View {
     let connection: DatabaseConnection
     let tableName: String
     let isLoading: Bool
+    var failure: String?
+    var onRetry: () -> Void = {}
     let canEdit: Bool
     let onOpenInEditor: (TriggerInfo) -> Void
 
@@ -117,7 +119,17 @@ struct TriggerDetailView: View {
     @State private var actionError: String?
 
     var body: some View {
-        if isLoading {
+        if let failure, triggers.isEmpty {
+            UnavailableStateView {
+                Label(String(localized: "Couldn't Read the Triggers"), systemImage: "exclamationmark.triangle")
+            } description: {
+                Text(failure)
+            } actions: {
+                Button(String(localized: "Try Again"), action: onRetry)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .gridStandInBackground()
+        } else if isLoading {
             ProgressView()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .gridStandInBackground()
@@ -279,7 +291,7 @@ internal struct TriggerListPane: View {
     @ObservedObject internal var state: TriggerInspectorState
 
     @StateObject private var grid = StructureListGridModel<TriggerInfo.ID>(
-        accessibilityLabel: StructureTab.triggers.displayName
+        accessibilityLabel: StructurePane.triggers.displayName
     )
 
     private var showsEnabled: Bool { triggers.contains { $0.enabled != nil } }

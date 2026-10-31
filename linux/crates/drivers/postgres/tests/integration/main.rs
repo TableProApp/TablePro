@@ -14,6 +14,7 @@ mod decode;
 mod editor_session;
 mod filter;
 mod flight;
+mod identity_insert;
 mod liveness;
 mod metadata;
 mod paging;

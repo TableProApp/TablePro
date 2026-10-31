@@ -31,7 +31,7 @@ struct SplitItemGlassBackgroundTests {
             columnTypes: [.integer(rawType: "INTEGER"), .text(rawType: "TEXT")],
             externallyModifiedColumns: []
         )
-        return InspectorFieldListView(editState: state, isEditable: true, databaseType: .sqlite, userDefinedTypeScope: nil)
+        return InspectorFieldListView(editState: state, isEditable: true, databaseType: .sqlite)
     }
 
     @Test("A plain list keeps its material where split items are not glass and drops it where they are")

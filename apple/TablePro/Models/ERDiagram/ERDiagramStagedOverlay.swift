@@ -148,7 +148,8 @@ extension ERDiagramStagedOverlay.TableEdits {
             case .deleteForeignKey(let foreignKey):
                 foreignKeyEdits[foreignKey.id] = .dropped
             case .addIndex, .modifyIndex, .deleteIndex, .addCheckConstraint, .modifyCheckConstraint,
-                 .deleteCheckConstraint, .modifyPrimaryKey, .modifyTableComment:
+                 .deleteCheckConstraint, .modifyPrimaryKey, .modifyTableComment, .modifyTableCharacterSet,
+                 .modifyAutoIncrement:
                 continue
             }
         }

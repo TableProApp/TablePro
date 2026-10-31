@@ -115,6 +115,10 @@ pub struct WorkspaceShell {
     pub(super) menu_target: RefCell<Option<adw::TabPage>>,
     /// The tabs closed last, the newest at the back.
     pub(super) closed_tabs: RefCell<VecDeque<ClosedTab>>,
+    /// The tabs the window showed, the latest first.
+    pub(super) recent_tabs: RefCell<Vec<glib::WeakRef<adw::TabPage>>>,
+    pub(super) recent_walk: RefCell<Option<super::recent_tabs::RecentWalk>>,
+    pub(super) walk_hooks: RefCell<Option<super::recent_tabs::WalkHooks>>,
     /// Flips the window's history actions as the query database opens.
     pub(super) history_gate: RefCell<Option<glib::JoinHandle<()>>>,
     /// What follows the session in front, let go of at shutdown.

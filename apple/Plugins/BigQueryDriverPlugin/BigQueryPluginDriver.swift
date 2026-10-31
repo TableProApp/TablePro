@@ -70,6 +70,7 @@ internal final class BigQueryPluginDriver: PluginDatabaseDriver, @unchecked Send
             .dataCompare,
             .cellExpressions,
             .uuidCellText,
+            .rowWrites,
         ]
     }
 

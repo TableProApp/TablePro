@@ -33,11 +33,11 @@ pub(crate) fn render(dialect: &MySqlDialect, column: &DraftColumn) -> Result<Str
         parts.push(format!("REF_SYSTEM_ID={srid}"));
     }
     if holds_text(column, kind) {
-        if let Some(character_set) = &kept.character_set {
+        if let Some(character_set) = &column.character_set {
             parts.push(format!("CHARACTER SET {}", dialect.quote_identifier(character_set)));
         }
-        if let Some(collation) = &kept.collation {
-            parts.push(format!("COLLATE {}", dialect.quote_identifier(&collation.name)));
+        if let Some(collation) = &column.collation {
+            parts.push(format!("COLLATE {}", dialect.quote_identifier(collation)));
         }
     }
     let nullability = if column.nullable { "NULL" } else { "NOT NULL" };
@@ -60,17 +60,25 @@ pub(crate) fn render(dialect: &MySqlDialect, column: &DraftColumn) -> Result<Str
             if !column.auto_increment
                 && let Some(default) = default_sql(dialect, &column.name, &column.default, &resolved.column_type)?
             {
+                let default = match kind {
+                    ColumnKind::Timestamp { fractional_digits, .. } if default_as_read(column) => {
+                        current_timestamp_sql(&default, *fractional_digits)
+                    }
+                    // A default the user typed goes as they wrote it.
+                    _ => default,
+                };
                 parts.push(format!(
                     "DEFAULT {}",
                     default_clause(&column.default, &default, &resolved.sql)
                 ));
             }
-            if let Some(expression) = kept
-                .on_update
-                .as_ref()
-                .filter(|_| matches!(kind, ColumnKind::Timestamp { .. }))
+            if let Some(expression) = &kept.on_update
+                && let ColumnKind::Timestamp { fractional_digits, .. } = kind
             {
-                parts.push(format!("ON UPDATE {}", expression.as_sql()));
+                parts.push(format!(
+                    "ON UPDATE {}",
+                    current_timestamp_sql(expression.as_sql(), *fractional_digits)
+                ));
             }
             if column.auto_increment {
                 parts.push("AUTO_INCREMENT".to_owned());
@@ -154,6 +162,24 @@ fn holds_text(column: &DraftColumn, kind: &ColumnKind) -> bool {
         || matches!(kind, ColumnKind::Text { .. } | ColumnKind::Enum { .. })
 }
 
+fn default_as_read(column: &DraftColumn) -> bool {
+    column
+        .original
+        .as_ref()
+        .is_some_and(|original| original.info.default == column.default)
+}
+
+/// MySQL takes a CURRENT_TIMESTAMP default or ON UPDATE only at the
+/// column's own precision (1067, 1294), so a restated one follows the
+/// type the column now has.
+fn current_timestamp_sql(expression: &str, fractional_digits: Option<u8>) -> String {
+    match fractional_digits {
+        Some(0) if is_current_timestamp(expression) => "CURRENT_TIMESTAMP".to_owned(),
+        Some(digits) if is_current_timestamp(expression) => format!("CURRENT_TIMESTAMP({digits})"),
+        _ => expression.to_owned(),
+    }
+}
+
 /// MySQL takes an expression default only in parentheses, apart from the
 /// CURRENT_TIMESTAMP family, and takes a literal on a BLOB, TEXT, JSON or
 /// spatial column only as an expression.
@@ -231,6 +257,27 @@ mod tests {
         assert!(!is_current_timestamp("now() + interval 1 day"));
         assert!(!is_current_timestamp("uuid()"));
         assert!(!is_current_timestamp("current_timestamp(),"));
+    }
+
+    #[test]
+    fn current_timestamp_takes_the_precision_of_the_type() {
+        assert_eq!(
+            current_timestamp_sql("CURRENT_TIMESTAMP", Some(6)),
+            "CURRENT_TIMESTAMP(6)"
+        );
+        assert_eq!(
+            current_timestamp_sql("current_timestamp(6)", Some(0)),
+            "CURRENT_TIMESTAMP"
+        );
+        assert_eq!(current_timestamp_sql("now(3)", Some(3)), "CURRENT_TIMESTAMP(3)");
+        assert_eq!(
+            current_timestamp_sql("CURRENT_TIMESTAMP(3)", None),
+            "CURRENT_TIMESTAMP(3)"
+        );
+        assert_eq!(
+            current_timestamp_sql("'2024-01-01 00:00:00'", Some(6)),
+            "'2024-01-01 00:00:00'"
+        );
     }
 
     #[test]

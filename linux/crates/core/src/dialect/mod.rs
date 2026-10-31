@@ -3,6 +3,7 @@
 
 mod bind_error;
 mod bind_target;
+mod database_layout;
 mod dialect_capabilities;
 mod insert_batch_limits;
 mod keyset_direction;
@@ -16,6 +17,7 @@ mod test_dialect;
 
 pub use bind_error::BindError;
 pub use bind_target::BindTarget;
+pub use database_layout::DatabaseLayout;
 pub use dialect_capabilities::{DialectCapabilities, InsertConflict};
 pub use insert_batch_limits::InsertBatchLimits;
 pub use keyset_direction::KeysetDirection;

@@ -28,6 +28,9 @@ pub struct SqlTarget {
     pub table: TableRef,
     /// The columns the server computes, which the statements leave out.
     pub generated: Arc<[String]>,
+    /// The columns the server numbers, written with the engine's
+    /// override.
+    pub numbered: Arc<[String]>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -351,6 +354,7 @@ pub(crate) fn present(init: ExportDialogInit<'_>) {
     let target = target.zip(dialect).map(|(target, dialect)| InsertTarget {
         table: target.table,
         generated: target.generated,
+        numbered: target.numbered,
         dialect,
     });
     let formats = Format::offered(target.as_ref());

@@ -1,6 +1,7 @@
 use super::{
     BuildDdlError, ColumnAlteration, ColumnDefinition, ColumnRename, DdlCapabilities, DdlDialect, DdlOperation,
-    DraftColumn, Permission, PrimaryKeyChange, RefusalReason, TableDefinition, order_renames, primary_key_permission,
+    DraftColumn, Permission, PrimaryKeyChange, RefusalReason, TableDefinition, TableOptionsChange, order_renames,
+    primary_key_permission,
 };
 use crate::column::ColumnDefault;
 use crate::foreign_key_info::ForeignKeyInfo;
@@ -22,6 +23,7 @@ pub struct TableChanges {
     pub primary_key: Option<PrimaryKeyChange>,
     pub added_indexes: Vec<IndexInfo>,
     pub added_foreign_keys: Vec<ForeignKeyInfo>,
+    pub options: Option<TableOptionsChange>,
 }
 
 impl TableChanges {
@@ -29,8 +31,12 @@ impl TableChanges {
         self.change_count() == 0 && self.primary_key.is_none()
     }
 
-    /// One per edit the user made: a column renamed and retyped is two.
+    /// One per edit the user made: a column renamed and retyped is two,
+    /// and so are a new character set and a new AUTO_INCREMENT value.
     pub fn change_count(&self) -> usize {
+        let options = self.options.as_ref().map_or(0, |options| {
+            usize::from(options.character_set.is_some()) + usize::from(options.next_auto_increment.is_some())
+        });
         usize::from(self.renamed_table.is_some())
             + self.dropped_foreign_keys.len()
             + self.dropped_indexes.len()
@@ -40,6 +46,7 @@ impl TableChanges {
             + self.added_columns.len()
             + self.added_indexes.len()
             + self.added_foreign_keys.len()
+            + options
     }
 
     /// The table as it is named once the changes have run.
@@ -87,6 +94,15 @@ impl TableChanges {
         if self.renamed_table.is_some() {
             require(capabilities.rename_table, DdlOperation::RenameTable)?;
         }
+        if let Some(options) = &self.options {
+            require(
+                ddl.table_capabilities(original).table_options,
+                DdlOperation::AlterTableOptions,
+            )?;
+            if options.converts_columns {
+                self.check_convert()?;
+            }
+        }
         if !self.dropped_foreign_keys.is_empty() {
             require(capabilities.drop_foreign_key, DdlOperation::DropForeignKey)?;
         }
@@ -109,41 +125,7 @@ impl TableChanges {
             }
         }
         for alteration in &self.altered_columns {
-            let permissions = ddl.column_capabilities(original, &alteration.original);
-            let name = alteration.original.name();
-            let changed = alteration.changed;
-            let checks = [
-                (
-                    changed.column_type,
-                    permissions.alter_type,
-                    DdlOperation::AlterColumnType,
-                ),
-                (
-                    changed.nullability,
-                    permissions.alter_nullability,
-                    DdlOperation::AlterColumnNullability,
-                ),
-                (
-                    changed.default,
-                    permissions.alter_default,
-                    DdlOperation::AlterColumnDefault,
-                ),
-                (
-                    changed.auto_increment,
-                    permissions.alter_auto_increment,
-                    DdlOperation::AlterAutoIncrement,
-                ),
-                (
-                    changed.comment,
-                    permissions.alter_comment,
-                    DdlOperation::SetColumnComment,
-                ),
-            ];
-            for (changed, permission, operation) in checks {
-                if changed {
-                    permit(permission, name, operation)?;
-                }
-            }
+            check_alteration(ddl, original, alteration)?;
         }
         for column in &self.added_columns {
             require(capabilities.add_column, DdlOperation::AddColumn)?;
@@ -153,14 +135,9 @@ impl TableChanges {
             check_new_column(capabilities, column)?;
         }
         if let Some(change) = &self.primary_key {
-            let column = change
-                .to
-                .first()
-                .or_else(|| change.from.as_ref().and_then(|key| key.columns.first()))
-                .map_or("", String::as_str);
             permit(
                 primary_key_permission(capabilities, original),
-                column,
+                key_column(change),
                 DdlOperation::AlterPrimaryKey,
             )?;
         }
@@ -170,13 +147,93 @@ impl TableChanges {
         }
         check_actions(ddl, &self.added_foreign_keys)
     }
+
+    /// A convert widens types that a column restated after it would
+    /// narrow again, and converts a key before the key moves.
+    fn check_convert(&self) -> Result<(), BuildDdlError> {
+        let changed = self
+            .renamed_columns
+            .iter()
+            .map(|rename| rename.from.as_str())
+            .chain(self.altered_columns.iter().map(|alteration| alteration.original.name()))
+            .chain(self.primary_key.iter().map(key_column))
+            .next();
+        match changed {
+            Some(column) => Err(BuildDdlError::Refused {
+                column: column.to_owned(),
+                operation: DdlOperation::AlterTableOptions,
+                reason: RefusalReason::ColumnsConverted,
+            }),
+            None => Ok(()),
+        }
+    }
 }
 
-/// A new column asks only for what the engine has: a default, and NOT
-/// NULL outside the primary key.
+fn key_column(change: &PrimaryKeyChange) -> &str {
+    change
+        .to
+        .first()
+        .or_else(|| change.from.as_ref().and_then(|key| key.columns.first()))
+        .map_or("", String::as_str)
+}
+
+/// Each attribute the edit changed has to be one the column takes.
+fn check_alteration(
+    ddl: &dyn DdlDialect,
+    original: &TableDefinition,
+    alteration: &ColumnAlteration,
+) -> Result<(), BuildDdlError> {
+    let permissions = ddl.column_capabilities(original, &alteration.original);
+    let name = alteration.original.name();
+    let changed = alteration.changed;
+    let checks = [
+        (
+            changed.column_type,
+            permissions.alter_type,
+            DdlOperation::AlterColumnType,
+        ),
+        (
+            changed.nullability,
+            permissions.alter_nullability,
+            DdlOperation::AlterColumnNullability,
+        ),
+        (
+            changed.default,
+            permissions.alter_default,
+            DdlOperation::AlterColumnDefault,
+        ),
+        (
+            changed.auto_increment,
+            permissions.alter_auto_increment,
+            DdlOperation::AlterAutoIncrement,
+        ),
+        (
+            changed.comment,
+            permissions.alter_comment,
+            DdlOperation::SetColumnComment,
+        ),
+        (
+            changed.collation,
+            permissions.alter_collation,
+            DdlOperation::AlterColumnCollation,
+        ),
+    ];
+    for (changed, permission, operation) in checks {
+        if changed {
+            permit(permission, name, operation)?;
+        }
+    }
+    Ok(())
+}
+
+/// A new column asks only for what the engine has: a default, NOT NULL
+/// outside the primary key, and a character set or collation of its own.
 pub(super) fn check_new_column(capabilities: &DdlCapabilities, column: &DraftColumn) -> Result<(), BuildDdlError> {
     if column.default != ColumnDefault::None {
         require(capabilities.column_defaults, DdlOperation::ColumnDefault)?;
+    }
+    if column.collation_edited() {
+        require(capabilities.column_collations, DdlOperation::AlterColumnCollation)?;
     }
     if !column.nullable && !column.primary_key {
         require(capabilities.required_columns, DdlOperation::RequiredColumn)?;

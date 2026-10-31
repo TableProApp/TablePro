@@ -47,7 +47,9 @@ internal extension StructureEditingSession {
             plan = try await stagedSavePlan(for: changes)
         } catch {
             guard mayPresentPreview(on: coordinator) else { return }
-            coordinator.toolbarState.previewStatements = ["-- Error generating SQL: \(error.localizedDescription)"]
+            coordinator.toolbarState.previewStatements = [
+                String(format: String(localized: "-- Error generating SQL: %@"), error.localizedDescription)
+            ]
             coordinator.activeSheet = .sqlPreview
             return
         }

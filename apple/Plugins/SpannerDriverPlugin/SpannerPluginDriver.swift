@@ -37,7 +37,7 @@ internal final class SpannerPluginDriver: PluginDatabaseDriver, @unchecked Senda
     }
 
     var capabilities: PluginCapabilities {
-        [.multiSchema, .cancelQuery, .transactions, .truncateTable, .cellExpressions, .uuidCellText]
+        [.multiSchema, .cancelQuery, .transactions, .truncateTable, .cellExpressions, .uuidCellText, .rowWrites]
     }
 
     var serverVersion: String? {

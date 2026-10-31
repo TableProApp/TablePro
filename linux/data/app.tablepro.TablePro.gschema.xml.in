@@ -115,6 +115,12 @@
       <description>Whether the connections open when TablePro quit are opened again at the next launch.</description>
     </key>
 
+    <key name="last-seen-version" type="s">
+      <default>''</default>
+      <summary>Newest version launched</summary>
+      <description>The newest TablePro release that has run, so the first launch of a later one can point to its release notes. Empty before the first launch.</description>
+    </key>
+
     <key name="mcp-server-enabled" type="b">
       <default>false</default>
       <summary>Run the MCP server</summary>

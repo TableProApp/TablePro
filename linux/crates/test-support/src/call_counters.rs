@@ -7,6 +7,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 pub struct CallCounters {
     pub probe: Arc<AtomicUsize>,
     pub list_schemas: Arc<AtomicUsize>,
+    pub list_databases: Arc<AtomicUsize>,
     pub list_objects: Arc<AtomicUsize>,
     pub fetch_columns: Arc<AtomicUsize>,
     pub fetch_indexes: Arc<AtomicUsize>,
@@ -14,6 +15,7 @@ pub struct CallCounters {
     pub fetch_outbound_foreign_keys: Arc<AtomicUsize>,
     pub fetch_inbound_foreign_keys: Arc<AtomicUsize>,
     pub fetch_table_definition: Arc<AtomicUsize>,
+    pub fetch_character_sets: Arc<AtomicUsize>,
     pub row_identity: Arc<AtomicUsize>,
     pub table_estimate: Arc<AtomicUsize>,
     pub query_bound: Arc<AtomicUsize>,

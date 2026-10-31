@@ -27,8 +27,8 @@ pub fn compare(a: &Value, b: &Value) -> Ordering {
 
 /// The order of a column that can hold text: NULL, then numbers by
 /// value, then text, then blobs, then the rest as `compare` orders
-/// them. Two texts are `Equal` here, so the collating sorter after this
-/// one orders them.
+/// them. Two texts are `Equal` here, since the collating sorter orders
+/// them.
 pub fn storage_class_order(a: &Value, b: &Value) -> Ordering {
     let class = storage_class(a);
     match class.cmp(&storage_class(b)) {
@@ -39,6 +39,12 @@ pub fn storage_class_order(a: &Value, b: &Value) -> Ordering {
         },
         unequal => unequal,
     }
+}
+
+/// Where `value`'s storage class sorts among the others, as
+/// `storage_class_order` places them.
+pub fn storage_class_rank(value: &Value) -> i32 {
+    storage_class(value) as i32
 }
 
 /// The text a collating sorter orders `value` by. `None` for a value
@@ -209,7 +215,7 @@ fn integer_of(value: &Value) -> Option<i128> {
 /// The value as an exact decimal, for comparing numbers of different
 /// kinds. A float is taken at the decimal its shortest form spells. A
 /// decimal is borrowed, since a sort compares each one many times.
-fn decimal_of(value: &Value) -> Option<Cow<'_, SqlDecimal>> {
+pub(crate) fn decimal_of(value: &Value) -> Option<Cow<'_, SqlDecimal>> {
     let owned = match value {
         Value::Decimal(decimal) => return Some(Cow::Borrowed(decimal)),
         Value::Float32(_) | Value::Float64(_) => {

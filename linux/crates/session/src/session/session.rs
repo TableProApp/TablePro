@@ -2,18 +2,21 @@ use std::future::Future;
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
+use tablepro_core::credentials::CredentialInteraction;
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::meta::{ObjectInfo, ObjectScope, SchemaInfo};
 use tablepro_core::{
-    CallOptions, ColumnInfo, EditorSession, EditorSessionOptions, SafeModeLevel, TableRef, WorkspaceSettings,
+    CallOptions, ColumnInfo, DriverError, EditorSession, EditorSessionOptions, SafeModeLevel, TableRef,
+    UnsupportedFeature, WorkspaceSettings,
 };
+use tablepro_storage::CredentialDemand;
 use tokio::sync::watch;
 use tokio_util::sync::{CancellationToken, DropGuard};
 use tokio_util::task::AbortOnDropHandle;
 use uuid::Uuid;
 
 use super::{ObjectListSnapshot, SchemaCatalog, SessionDeps};
-use crate::connect::{ConnectError, ConnectionMetadata, PendingSession, RequestTarget};
+use crate::connect::{ConnectError, ConnectRequest, ConnectionMetadata, PendingSession, RequestTarget};
 use crate::health::{
     LinkGeneration, MonitorContext, MonitorMailbox, MonitorSignal, ReachabilityTarget, ReconnectPlan, ReviewedHostKey,
     SessionHealth, run_monitor,
@@ -41,6 +44,9 @@ pub struct Session {
     /// The database the connection was asked to open, as the user named
     /// it.
     database: Option<String>,
+    /// What opens this connection's sessions in the server's other
+    /// databases: its request and the app's parts, as a reconnect has them.
+    origin: SessionOrigin,
     runner: OperationRunner,
     mailbox: Arc<MonitorMailbox>,
     health: watch::Receiver<SessionHealth>,
@@ -53,9 +59,20 @@ pub struct Session {
     _monitor: AbortOnDropHandle<()>,
 }
 
+/// What a session was opened with, kept to open its siblings in the
+/// server's other databases.
+struct SessionOrigin {
+    request: ConnectRequest,
+    deps: SessionDeps,
+}
+
 impl Session {
     pub fn start(pending: PendingSession, deps: SessionDeps) -> Arc<Session> {
         let parts = pending.into_parts();
+        let origin = SessionOrigin {
+            request: parts.request.for_reconnect(),
+            deps: deps.clone(),
+        };
         let close_timeout = deps
             .deadlines
             .deadline(OperationKind::Close)
@@ -116,6 +133,7 @@ impl Session {
             trusted_host_key,
             ssh,
             database,
+            origin,
             runner,
             mailbox,
             health,
@@ -263,6 +281,41 @@ impl Session {
         self.database.as_deref()
     }
 
+    /// A session of this connection in another of the server's databases,
+    /// for a window that follows a query tab there. Opened as a reconnect
+    /// is: the stored secret, never a prompt. A file has no other
+    /// database.
+    pub async fn open_in_database(
+        &self,
+        database: &str,
+        cancel: CancellationToken,
+    ) -> Result<Arc<Session>, ConnectError> {
+        let request =
+            self.origin
+                .request
+                .in_database(database)
+                .ok_or(ConnectError::Driver(DriverError::Unsupported {
+                    feature: UnsupportedFeature::NetworkConnection,
+                }))?;
+        let refreshed = self
+            .origin
+            .deps
+            .credentials
+            .refresh(request, CredentialInteraction::Unattended, CredentialDemand::default())
+            .await?;
+        let pending = self
+            .origin
+            .deps
+            .connector
+            .establish(refreshed.request, CredentialInteraction::Unattended, cancel)
+            .await?;
+        let sibling = Session::start(pending, self.origin.deps.clone());
+        // The level the user chose since the connection opened, which a
+        // read-only connection's sibling shares by opening read-only too.
+        sibling.set_safe_mode(self.safe_mode());
+        Ok(sibling)
+    }
+
     /// The SSH tunnel the connection was made through, if any.
     pub fn ssh_config(&self) -> Option<&tablepro_ssh::SshConfig> {
         self.ssh.as_ref()
@@ -369,7 +422,7 @@ mod tests {
     };
 
     use super::*;
-    use crate::fakes::{FakeConnector, FakeCredentialSource};
+    use crate::fakes::{FakeConnector, FakeCredentialSource, FakeEstablish};
     use crate::operation::DefaultDeadlines;
     use crate::test_support::paused_tasks;
 
@@ -429,7 +482,8 @@ mod tests {
         let session = Session::start(pending, deps(credentials.clone()));
         let weak: Weak<Session> = Arc::downgrade(&session);
         let mut health = session.health();
-        assert_eq!(Arc::strong_count(&credentials), 2, "the monitor holds no plan");
+        // The test's, the monitor's, and the session's own for its siblings.
+        assert_eq!(Arc::strong_count(&credentials), 3, "the monitor holds no plan");
 
         drop(session);
         for _ in 0..10 {
@@ -466,6 +520,58 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(count, 7);
+    }
+
+    /// A window following a query tab to another database opens a sibling
+    /// session there: the same server and user, the other database, the
+    /// stored secret and no prompt.
+    #[tokio::test(start_paused = true)]
+    async fn a_sibling_session_opens_in_another_database() {
+        let connector = FakeConnector::new([]).always(FakeEstablish::Connect(ConnectionScript::default()));
+        let mut request = FakeConnector::network_request("db.example", 5432).unwrap();
+        if let RequestTarget::Network { database, .. } = &mut request.target {
+            *database = Some("shop".to_owned());
+        }
+        let (pending, _) = FakeConnector::pending_session(request, ConnectionScript::default());
+        let session = Session::start(
+            pending,
+            SessionDeps {
+                connector: Arc::new(connector.clone()),
+                ..deps(Arc::new(FakeCredentialSource::new()))
+            },
+        );
+
+        assert!(session.set_safe_mode(SafeModeLevel::ConfirmWrites));
+
+        let sibling = session
+            .open_in_database("analytics", CancellationToken::new())
+            .await
+            .expect("a session in analytics");
+
+        assert_eq!(
+            sibling.safe_mode(),
+            SafeModeLevel::ConfirmWrites,
+            "the sibling dropped the level"
+        );
+        assert_eq!(session.database(), Some("shop"));
+        assert_eq!(sibling.database(), Some("analytics"));
+        let call = connector.calls().pop().expect("an attempt");
+        assert!(!call.attended, "the sibling asked for a secret");
+        assert_eq!(call.request.metadata.id, session.id(), "another connection's request");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_file_has_no_other_database_to_open() {
+        let (session, _) = start(ConnectionScript::default());
+
+        let refused = session.open_in_database("analytics", CancellationToken::new()).await;
+
+        assert!(matches!(
+            refused,
+            Err(ConnectError::Driver(DriverError::Unsupported {
+                feature: UnsupportedFeature::NetworkConnection
+            }))
+        ));
     }
 
     #[tokio::test(start_paused = true)]

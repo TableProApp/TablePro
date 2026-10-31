@@ -87,15 +87,35 @@ fn carries_credentials(
         depth < MAX_BODY_DEPTH
             && carries_credentials(grammar, rules, &lex_statements(body, grammar).statements, depth + 1)
     };
+    let runs_text = runs_text_as_sql(grammar, statements);
     statements.iter().any(|tokens| {
         rules.matches(grammar, tokens)
             || tokens.iter().enumerate().any(|(at, token)| match token {
                 StatementToken::DollarBody(body) => body_carries(body),
-                StatementToken::StringLiteral(text) if quoted_routine_body(grammar, tokens, at) => {
-                    body_carries(&string_value(text))
+                StatementToken::StringLiteral(text) if runs_text || quoted_routine_body(grammar, tokens, at) => {
+                    body_carries(&string_value(text, grammar))
                 }
                 _ => false,
             })
+    })
+}
+
+/// Whether the script hands the server text to run as a statement:
+/// T-SQL `EXEC ('...')` and `sp_executesql`, MySQL `PREPARE ... FROM`,
+/// MariaDB `EXECUTE IMMEDIATE`, PL/pgSQL `EXECUTE`. The text can reach
+/// them through a variable or a concatenation, so every string of such a
+/// script is read for the statements it holds.
+fn runs_text_as_sql(grammar: SqlGrammar, statements: &[Vec<StatementToken<'_>>]) -> bool {
+    let runners: &[&str] = match grammar {
+        SqlGrammar::MsSql => &["EXEC", "EXECUTE", "sp_executesql"],
+        SqlGrammar::MySql => &["PREPARE", "EXECUTE"],
+        SqlGrammar::PostgreSql => &["EXECUTE"],
+        _ => return false,
+    };
+    statements.iter().flatten().any(|token| {
+        token
+            .name()
+            .is_some_and(|name| runners.iter().any(|runner| runner.eq_ignore_ascii_case(name)))
     })
 }
 
@@ -120,24 +140,35 @@ fn defines_routine(tokens: &[StatementToken<'_>]) -> bool {
     })
 }
 
-/// The text a PostgreSQL string literal stands for: `'it''s'` and
-/// `E'it\'s'` both give `it's`.
-fn string_value(text: &str) -> String {
+/// The text a string literal stands for: `'it''s'` and PostgreSQL's
+/// `E'it\'s'` both give `it's`, and so does MySQL's `"it's"`. A string
+/// continued on the next line, `E'a'` then `'b'`, gives `ab`. MySQL
+/// escapes with a backslash in every string.
+fn string_value(text: &str, grammar: SqlGrammar) -> String {
     let (escapes, quoted) = match text.strip_prefix(['E', 'e']) {
-        Some(rest) => (true, rest),
-        None => (false, text),
+        Some(rest) if rest.starts_with('\'') => (true, rest),
+        _ => (grammar == SqlGrammar::MySql, text),
     };
+    let quote = if quoted.starts_with('"') { '"' } else { '\'' };
     let inner = quoted
-        .strip_prefix('\'')
-        .and_then(|rest| rest.strip_suffix('\''))
+        .strip_prefix(quote)
+        .and_then(|rest| rest.strip_suffix(quote))
         .unwrap_or_default();
     let mut value = String::with_capacity(inner.len());
-    let mut chars = inner.chars();
+    let mut chars = inner.chars().peekable();
     while let Some(c) = chars.next() {
         match c {
-            '\'' => {
+            _ if c == quote && chars.peek() == Some(&quote) => {
                 chars.next();
-                value.push('\'');
+                value.push(quote);
+            }
+            // A piece ends here and the next one starts at its quote.
+            _ if c == quote => {
+                for skipped in chars.by_ref() {
+                    if skipped == quote {
+                        break;
+                    }
+                }
             }
             '\\' if escapes => match chars.next() {
                 Some('n') => value.push('\n'),
@@ -166,6 +197,7 @@ mod tests {
         ],
         conditional_prefixes: &[(&["GRANT"], &["IDENTIFIED"])],
         carriers: &["dblink_connect", "sp_addlogin", "s3", "OPENROWSET"],
+        secret_parameters: &[],
     };
 
     const WITHHELD: HistoryRecording = HistoryRecording::Withhold(WithholdReason::CredentialStatement);
@@ -462,6 +494,84 @@ mod tests {
         ) {
             let sql = format!("SELECT {before};\nCREATE USER u PASSWORD 'p'");
             prop_assert_eq!(classify(SqlGrammar::PostgreSql, &sql), WITHHELD);
+        }
+    }
+
+    #[test]
+    fn a_call_of_a_name_spelled_in_escapes_may_be_a_carrier() {
+        for sql in [
+            r#"SELECT U&"dblink_connec\0074"('password=x')"#,
+            r#"SELECT public.u&"dblink_connec\+000074" ('password=x')"#,
+            r#"SELECT U&"dblink_connec!0074" UESCAPE '!' ('password=x')"#,
+            r#"SELECT U&"dblink_connec!0074" UESCAPE $$!$$ ('password=x')"#,
+            "SELECT U&\"dblink_connec!0074\" UESCAPE '!'\n'' ('password=x')",
+            r#"GRANT SELECT ON t TO u U&"IDENTIFIE\0044" BY 'p'"#,
+        ] {
+            assert_eq!(classify(SqlGrammar::PostgreSql, sql), WITHHELD, "{sql}");
+        }
+        for sql in [
+            r#"SELECT U&"d\0061ta", u & "mask" FROM orders"#,
+            r#"SELECT U&"d!0061ta" UESCAPE '!' FROM orders WHERE id IN (1, 2)"#,
+            r#"INSERT INTO public.U&"d\0061ta" (id) VALUES (1)"#,
+            r#"CREATE TABLE U&"s\0033" (id int)"#,
+        ] {
+            assert_eq!(classify(SqlGrammar::PostgreSql, sql), HistoryRecording::Record, "{sql}");
+        }
+        assert_eq!(
+            classify(SqlGrammar::Sqlite, r#"SELECT u & "f"('x') FROM t"#),
+            HistoryRecording::Record
+        );
+        assert_eq!(
+            classify(SqlGrammar::PostgreSql, r#"SELECT u & "abs"(-3) FROM t"#),
+            HistoryRecording::Record
+        );
+    }
+
+    #[test]
+    fn text_run_as_dynamic_sql_is_read_for_statements() {
+        for (grammar, sql) in [
+            (SqlGrammar::MsSql, "EXEC('CREATE USER u WITH PASSWORD = ''p''')"),
+            (
+                SqlGrammar::MsSql,
+                "EXEC sp_executesql N'CREATE USER u WITH PASSWORD = ''p'''",
+            ),
+            (
+                SqlGrammar::MsSql,
+                "DECLARE @s nvarchar(99) = N'CREATE USER u WITH PASSWORD = ''p'''; EXEC (@s)",
+            ),
+            (SqlGrammar::MySql, "PREPARE s FROM 'CREATE USER u IDENTIFIED BY ''p'''"),
+            (SqlGrammar::MySql, "PREPARE s FROM \"CREATE USER u IDENTIFIED BY 'p'\""),
+            (SqlGrammar::MySql, r"PREPARE s FROM 'CREATE USER u IDENTIFIED BY \'p\''"),
+            (
+                SqlGrammar::MySql,
+                "EXECUTE IMMEDIATE 'CREATE USER u IDENTIFIED BY ''p'''",
+            ),
+            (
+                SqlGrammar::MySql,
+                "SET @s = 'CREATE USER u IDENTIFIED BY ''p'''; PREPARE s FROM @s",
+            ),
+            (
+                SqlGrammar::PostgreSql,
+                "DO $$ BEGIN EXECUTE 'CREATE USER u PASSWORD ''p'''; END $$",
+            ),
+            (
+                SqlGrammar::PostgreSql,
+                "DO $$ BEGIN EXECUTE format('CREATE USER %I PASSWORD %L', 'u', 'p'); END $$",
+            ),
+            (
+                SqlGrammar::PostgreSql,
+                "DO $$ BEGIN EXECUTE E'CREATE USER u '\n'PASSWORD ''p'''; END $$",
+            ),
+        ] {
+            assert_eq!(classify(grammar, sql), WITHHELD, "{sql}");
+        }
+        for (grammar, sql) in [
+            (SqlGrammar::MsSql, "EXEC sp_who 'active'"),
+            (SqlGrammar::MySql, "PREPARE s FROM 'SELECT ''CREATE USER u'''"),
+            (SqlGrammar::PostgreSql, "DO $$ BEGIN EXECUTE 'SELECT 1'; END $$"),
+            (SqlGrammar::Sqlite, "SELECT 'CREATE USER u' AS execute"),
+        ] {
+            assert_eq!(classify(grammar, sql), HistoryRecording::Record, "{sql}");
         }
     }
 }

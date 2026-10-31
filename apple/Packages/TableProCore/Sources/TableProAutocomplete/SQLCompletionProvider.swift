@@ -150,22 +150,25 @@ public final class SQLCompletionProvider {
 
         // A dot prefix is a table or alias first, then a schema (its tables) or a database (its schemas, or its
         // tables on an engine with none). The namespace fallback also covers an alias that resolves to a schema
-        // name parsed out of the FROM clause.
+        // name parsed out of the FROM clause. In a table slot it can only qualify the table being named, so a table
+        // that shares the name is never read for columns.
         if let dotPrefix = context.dotPrefix {
             guard let catalog else { return [] }
-            if let derived = context.tableReferences.first(where: {
-                $0.isDerived && $0.identifier.caseInsensitiveCompare(dotPrefix) == .orderedSame
-            }) {
-                let columns = await derivedColumns(of: derived)
-                if !columns.isEmpty {
-                    return [columns.map { SQLCompletionItem.column($0, dataType: nil, tableName: derived.identifier) }]
+            if !context.expectsObjectName {
+                if let derived = context.tableReferences.first(where: {
+                    $0.isDerived && $0.identifier.caseInsensitiveCompare(dotPrefix) == .orderedSame
+                }) {
+                    let columns = await derivedColumns(of: derived)
+                    if !columns.isEmpty {
+                        return [columns.map { SQLCompletionItem.column($0, dataType: nil, tableName: derived.identifier) }]
+                    }
                 }
-            }
-            if let tableName = await catalog.resolveAlias(dotPrefix, in: context.tableReferences) {
-                let schema = context.tableReferences.first {
-                    $0.tableName.caseInsensitiveCompare(tableName) == .orderedSame
-                }?.schema
-                items = await catalog.columnCompletionItems(for: tableName, schema: schema)
+                if let tableName = await catalog.resolveAlias(dotPrefix, in: context.tableReferences) {
+                    let schema = context.tableReferences.first {
+                        $0.tableName.caseInsensitiveCompare(tableName) == .orderedSame
+                    }?.schema
+                    items = await catalog.columnCompletionItems(for: tableName, schema: schema)
+                }
             }
             if items.isEmpty {
                 if await catalog.isKnownSchema(dotPrefix) {

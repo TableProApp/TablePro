@@ -31,7 +31,6 @@ struct DataFileRowDetailsView: View {
                     editState: editState,
                     isEditable: controller.isEditable && !controller.isBusy,
                     databaseType: Self.databaseType,
-                    userDefinedTypeScope: nil,
                     offersDatabaseValues: false
                 )
             }

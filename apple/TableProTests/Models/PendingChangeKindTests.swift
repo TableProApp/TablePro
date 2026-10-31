@@ -166,4 +166,17 @@ struct PendingChangeKindTests {
             ) == nil
         )
     }
+
+    // A session previews only from its Structure view; lit over ALTERs staged behind Data, Preview showed nothing.
+    @Test("Preview SQL needs statements it can show")
+    func previewNeedsStatementsItCanShow() {
+        #expect(!PendingChangeKind.offersPreview(of: .structure, hasDataChanges: false, previewsSchemaChanges: false))
+        #expect(PendingChangeKind.offersPreview(of: .structure, hasDataChanges: false, previewsSchemaChanges: true))
+        #expect(PendingChangeKind.offersPreview(of: .structure, hasDataChanges: true, previewsSchemaChanges: false))
+        #expect(PendingChangeKind.offersPreview(of: .data, hasDataChanges: true, previewsSchemaChanges: false))
+        #expect(PendingChangeKind.offersPreview(of: .createTable, hasDataChanges: false, previewsSchemaChanges: false))
+        #expect(!PendingChangeKind.offersPreview(of: .file, hasDataChanges: false, previewsSchemaChanges: false))
+        #expect(!PendingChangeKind.offersPreview(of: .principals, hasDataChanges: false, previewsSchemaChanges: false))
+        #expect(!PendingChangeKind.offersPreview(of: nil, hasDataChanges: false, previewsSchemaChanges: false))
+    }
 }

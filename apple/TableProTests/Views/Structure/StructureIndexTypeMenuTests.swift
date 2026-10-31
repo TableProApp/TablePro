@@ -13,6 +13,12 @@ import Testing
 
 @MainActor
 struct StructureIndexTypeMenuTests {
+    private let suite: EphemeralDefaults
+
+    init() throws {
+        suite = try EphemeralDefaults()
+    }
+
     private func connection() -> DatabaseConnection {
         DatabaseConnection(name: "Test", host: "localhost", port: 5_432, database: "test", username: "u", type: .postgresql)
     }
@@ -31,34 +37,30 @@ struct StructureIndexTypeMenuTests {
         return manager
     }
 
-    private func structureAdapter(_ manager: StructureChangeManager) -> StructureGridAdapter {
-        let adapter = StructureGridAdapter(
-            structureChangeManager: manager,
-            connection: connection(),
-            tableName: "items",
-            databaseName: "test",
-            schemaName: nil,
-            objectKind: .table,
-            isSessionBound: false
-        )
-        adapter.store.switchSubTab(to: .indexes)
-        adapter.refresh()
-        return adapter
+    private func makeEditor(_ manager: StructureChangeManager, creatingTable: Bool = false) -> StructureDefinitionEditor {
+        let context: StructureEditingContext = creatingTable
+            ? .newTable(connection: connection(), databaseName: "test", schemaName: nil)
+            : .existingTable(
+                connection: connection(),
+                databaseName: "test",
+                schemaName: nil,
+                tableName: "items",
+                objectKind: .table,
+                isSessionBound: false
+            )
+        let editor = StructureDefinitionEditor(manager: manager, context: context, defaults: suite.defaults)
+        editor.refresh()
+        return editor
     }
 
     private func column(_ model: DataGridModel, dataIndex: Int) throws -> DataGridColumn {
         try #require(model.columns.columns.first { $0.dataIndex == dataIndex })
     }
 
-    private func options(
-        _ source: any DataGridDataSource,
-        model: DataGridModel,
-        sourceIndex: Int,
-        dataIndex: Int
-    ) throws -> [String]? {
-        source.gridMenuOptions(
-            for: StructureRowProvider.rowID(forSourceIndex: sourceIndex),
-            column: try column(model, dataIndex: dataIndex)
+    private func options(_ adapter: StructureSectionAdapter, sourceIndex: Int, dataIndex: Int) throws -> [String]? {
+        adapter.gridMenuOptions(
+            for: adapter.rowID(forEntity: adapter.manager.workingIndexes[sourceIndex].id),
+            column: try column(adapter.model, dataIndex: dataIndex)
         )?.compactMap(\.sql)
     }
 
@@ -66,30 +68,30 @@ struct StructureIndexTypeMenuTests {
 
     @Test("A bloom row offers BLOOM after the known types, and a b-tree row offers the known types alone")
     func rowOffersItsOwnType() throws {
-        let adapter = structureAdapter(manager(indexTypes: ["bloom", "btree"]))
+        let editor = makeEditor(manager(indexTypes: ["bloom", "btree"]))
+        let adapter = editor.adapter(for: .indexes)
         let typeColumn = StructureRowProvider.indexTypeColumn
 
-        #expect(try options(adapter, model: adapter.model, sourceIndex: 0, dataIndex: typeColumn) == Self.knownNames + ["BLOOM"])
-        #expect(try options(adapter, model: adapter.model, sourceIndex: 1, dataIndex: typeColumn) == Self.knownNames)
-        #expect(try options(adapter, model: adapter.model, sourceIndex: 0, dataIndex: 3) == nil)
+        #expect(try options(adapter, sourceIndex: 0, dataIndex: typeColumn) == Self.knownNames + ["BLOOM"])
+        #expect(try options(adapter, sourceIndex: 1, dataIndex: typeColumn) == Self.knownNames)
+        #expect(try options(adapter, sourceIndex: 0, dataIndex: 3) == nil)
     }
 
-    @Test("The inspector's Type picker for a CLUSTERED row holds the value it shows")
-    func inspectorPickerHoldsTheRowType() throws {
-        let adapter = structureAdapter(manager(indexTypes: ["CLUSTERED"]))
-        let row = try #require(adapter.inspectorRow(atDisplayRow: 0))
-        let typeField = row.fields[StructureRowProvider.indexTypeColumn]
+    @Test("The inspector's Type menu for a CLUSTERED row holds the value it shows")
+    func inspectorMenuHoldsTheRowType() throws {
+        let editor = makeEditor(manager(indexTypes: ["CLUSTERED"]))
+        let form = try #require(editor.inspectorForm(for: .indexes, id: editor.manager.workingIndexes[0].id))
+        let typeField = form.fields[StructureRowProvider.indexTypeColumn]
 
         #expect(typeField.value == "CLUSTERED")
-        #expect(typeField.editor == .enumPicker(values: Self.knownNames + ["CLUSTERED"]))
+        #expect(typeField.kind == .menu(GridMenuOption.values(Self.knownNames + ["CLUSTERED"])))
     }
 
     @Test("The new-table grid offers a pasted index its own type the same way")
     func createTableOffersItsOwnType() throws {
-        let adapter = CreateTableGridAdapter(structureChangeManager: manager(indexTypes: ["hnsw"]), connection: connection())
-        adapter.select(.indexes)
+        let editor = makeEditor(manager(indexTypes: ["hnsw"]), creatingTable: true)
 
-        #expect(try options(adapter, model: adapter.model, sourceIndex: 0, dataIndex: StructureRowProvider.indexTypeColumn)
+        #expect(try options(editor.adapter(for: .indexes), sourceIndex: 0, dataIndex: StructureRowProvider.indexTypeColumn)
             == Self.knownNames + ["HNSW"])
     }
 

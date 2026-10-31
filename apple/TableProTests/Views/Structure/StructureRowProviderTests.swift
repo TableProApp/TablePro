@@ -141,7 +141,7 @@ struct StructureRowProviderChangeStateTests {
 
     private func provider(
         _ manager: StructureChangeManager,
-        tab: StructureTab = .columns,
+        tab: StructureSection = .columns,
         filterText: String? = nil
     ) -> StructureRowProvider {
         StructureRowProvider(

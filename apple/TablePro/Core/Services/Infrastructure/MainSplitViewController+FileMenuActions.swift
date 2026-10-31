@@ -14,6 +14,10 @@ extension MainSplitViewController {
         commandActions?.saveFileAs()
     }
 
+    @objc func discardChanges(_ sender: Any?) {
+        commandActions?.discardChanges()
+    }
+
     /// New Tab and Close Tab used to run AppKit's own `newWindowForTab:` and `performClose:`,
     /// which named windows because a tab was a window. They act on the tab list now, so the
     /// menu and the strip's own controls cannot disagree.

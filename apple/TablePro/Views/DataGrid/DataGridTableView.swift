@@ -51,7 +51,22 @@ final class DataGridTableView: NSTableView {
     // A revealed column must never park under the frozen pane, so the rect widens leftward by its width.
     override func scrollToVisible(_ rect: NSRect) -> Bool {
         guard paneKind == .main, let controller else { return super.scrollToVisible(rect) }
-        return super.scrollToVisible(controller.revealRect(for: rect, in: self))
+        let widened = controller.revealRect(for: rect, in: self)
+        guard controller.model.configuration.fitsRows else { return super.scrollToVisible(widened) }
+        // Only sideways. AppKit calls this itself while the pane resizes, with rects spanning the header, so the page
+        // moves only for a reveal the grid starts (`scrollRowToVisible`, `reveal(row:displayColumn:)`).
+        let visible = visibleRect
+        return super.scrollToVisible(NSRect(x: widened.minX, y: visible.midY, width: widened.width, height: 1))
+    }
+
+    // Up, Down and type-select reveal through here; a table that fits its rows has nothing to scroll, so the page moves.
+    override func scrollRowToVisible(_ row: Int) {
+        guard paneKind == .main, let controller, controller.model.configuration.fitsRows else {
+            super.scrollRowToVisible(row)
+            return
+        }
+        guard row >= 0, row < numberOfRows else { return }
+        controller.revealOnPage(rect(ofRow: row))
     }
 
     // MARK: - Keyboard
@@ -243,15 +258,21 @@ final class DataGridTableView: NSTableView {
 
     override func accessibilityChildren() -> [Any]? {
         guard paneKind == .main else { return [] }
-        DataGridAccessibility.markActive()
+        noteAccessibilityRead()
         return super.accessibilityChildren()
     }
 
     override func accessibilityCell(forColumn column: Int, row: Int) -> Any? {
         guard paneKind == .main else { return nil }
-        DataGridAccessibility.markActive()
+        noteAccessibilityRead()
         return view(atColumn: column, row: row, makeIfNecessary: false) as? DataGridAccessibilityCellView
             ?? super.accessibilityCell(forColumn: column, row: row)
+    }
+
+    // A read prepares every row it walks, off screen ones without a stand-in, and some reach the screen with no scroll.
+    private func noteAccessibilityRead() {
+        DataGridAccessibility.markActive()
+        controller?.scheduleAccessibilityRemount()
     }
 
     override func accessibilitySelectedCells() -> [Any]? {

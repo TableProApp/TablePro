@@ -546,6 +546,7 @@ pub(crate) fn fetch_table_definition(
         foreign_keys: fetch_foreign_keys(link, catalog, table)?,
         inbound_foreign_keys: inbound_foreign_keys(link, catalog, table)?,
         source,
+        options: None,
     })
 }
 

@@ -7,7 +7,7 @@ use super::{decode_error, text_rows};
 /// One row per key column, the INCLUDE columns past `indnkeyatts` left
 /// out. Attribute number 0 marks an expression, which only
 /// `pg_get_indexdef` can print.
-const INDEXES_SQL: &str = "\
+pub(super) const INDEXES_SQL: &str = "\
 SELECT ic.relname::text,
        i.indisunique,
        i.indisprimary,
@@ -17,9 +17,9 @@ SELECT ic.relname::text,
        COALESCE(pg_catalog.pg_index_column_has_property(i.indexrelid, k.ord::int4, 'desc'), false)
 FROM pg_catalog.pg_index i
 JOIN pg_catalog.pg_class ic ON ic.oid = i.indexrelid
-CROSS JOIN LATERAL unnest(i.indkey::int2[]) WITH ORDINALITY AS k(attnum, ord)
+CROSS JOIN LATERAL pg_catalog.unnest(i.indkey::int2[]) WITH ORDINALITY AS k(attnum, ord)
 LEFT JOIN pg_catalog.pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = k.attnum AND k.attnum > 0
-WHERE i.indrelid = $1::text::regclass AND k.ord <= i.indnkeyatts
+WHERE i.indrelid = $1::text::regclass::oid AND k.ord <= i.indnkeyatts
 ORDER BY ic.relname, k.ord";
 
 pub(crate) async fn fetch_indexes(client: &Client, relation: &str) -> Result<Vec<IndexInfo>, DriverError> {

@@ -5,18 +5,37 @@
 
 import AppKit
 
-/// A connection hosts three undo domains, picked by the active tab: Users & Roles and
-/// the structure editor keep their own histories, and everything else registers on
-/// the window's `UndoManager`, which `TabWindowController` resolves to the selected
-/// connection's own history. Availability and the menu title both have to follow
-/// whichever one is live, so they resolve through the same branch the commands do.
+// The structure editor's own history, which the window's undo manager never sees.
+@MainActor
+protocol StructureUndoHistory: AnyObject {
+    var canUndo: Bool { get }
+    var canRedo: Bool { get }
+    var undoMenuItemTitle: String { get }
+    var redoMenuItemTitle: String { get }
+    func undo()
+    func redo()
+}
+
+extension StructureEditingSession: StructureUndoHistory {}
+
+extension CreateTableDraft: StructureUndoHistory {}
+
+// Users & Roles, the diagram and the structure editor keep their own histories; everything else registers on the
+// window's undo manager. Availability, title and command resolve through the same branch so they cannot disagree.
 extension MainContentCommandActions {
     private var windowUndoManager: UndoManager? {
         coordinator?.contentWindow?.undoManager
     }
 
-    private var isStructureMode: Bool {
-        coordinator?.tabManager.selectedTab?.display.resultsViewMode == .structure
+    // A Create Table tab keeps its view mode at Data, so it is asked for by tab type.
+    private var showsStructureEditor: Bool {
+        guard let tab = coordinator?.tabManager.selectedTab else { return false }
+        return tab.tabType == .createTable || tab.display.resultsViewMode == .structure
+    }
+
+    private var structureHistory: (any StructureUndoHistory)? {
+        if let session = coordinator?.activeStructureSession { return session }
+        return coordinator?.activeCreateTableDraft
     }
 
     // The diagram stages on one session per table, so it keeps its own order across them.
@@ -31,12 +50,11 @@ extension MainContentCommandActions {
         coordinator?.tabManager.selectedTab?.tabType == .erDiagram
     }
 
-    /// A field still being typed into has an undo step waiting rather than registered, and the menu
-    /// has to offer it: the command ends the run before it reaches the undo manager.
+    // A field still being typed into has its step waiting rather than registered; the command ends the run first.
     var canUndo: Bool {
         if isUsersRolesTab { return coordinator?.usersRolesActions?.canUndo() ?? false }
         if isDiagramTab { return selectedDiagram?.canUndoStagedEdit ?? false }
-        if isStructureMode { return coordinator?.structureActions?.undo != nil }
+        if showsStructureEditor { return structureHistory?.canUndo ?? false }
         if coordinator?.changeManager.hasCoalescedUndoRun == true { return true }
         return windowUndoManager?.canUndo ?? false
     }
@@ -44,13 +62,17 @@ extension MainContentCommandActions {
     var canRedo: Bool {
         if isUsersRolesTab { return coordinator?.usersRolesActions?.canRedo() ?? false }
         if isDiagramTab { return selectedDiagram?.canRedoStagedEdit ?? false }
-        if isStructureMode { return coordinator?.structureActions?.redo != nil }
+        if showsStructureEditor { return structureHistory?.canRedo ?? false }
         return windowUndoManager?.canRedo ?? false
     }
 
     var resolvedUndoTitle: String {
         if isUsersRolesTab { return undoMenuTitle }
         if isDiagramTab { return String(localized: "Undo") }
+        if showsStructureEditor {
+            guard let history = structureHistory, history.canUndo else { return String(localized: "Undo") }
+            return history.undoMenuItemTitle
+        }
         if coordinator?.changeManager.hasCoalescedUndoRun == true {
             return String(localized: "Undo Edit Cell")
         }
@@ -61,61 +83,47 @@ extension MainContentCommandActions {
     var resolvedRedoTitle: String {
         if isUsersRolesTab { return redoMenuTitle }
         if isDiagramTab { return String(localized: "Redo") }
+        if showsStructureEditor {
+            guard let history = structureHistory, history.canRedo else { return String(localized: "Redo") }
+            return history.redoMenuItemTitle
+        }
         guard let manager = windowUndoManager, manager.canRedo else { return String(localized: "Redo") }
         return manager.redoMenuItemTitle
     }
 
     // MARK: - Commands
 
-    /// A Create Table tab keeps its `resultsViewMode` at `.data`, so it needs its own arm. Without
-    /// one, Cmd+Z in the visual table editor reached the window's undo manager, which owns none of
-    /// the draft, and the grid's own undo had no caller at all.
     func undoChange() {
         coordinator?.endInspectorEditRun()
-        endTableCommentRun()
         if isUsersRolesTab {
             coordinator?.usersRolesActions?.undo()
-            return
-        }
-        if coordinator?.tabManager.selectedTab?.tabType == .createTable {
-            coordinator?.createTableActions?.undo?()
             return
         }
         if isDiagramTab {
             selectedDiagram?.undoStagedEdit()
             return
         }
-        if coordinator?.tabManager.selectedTab?.display.resultsViewMode == .structure {
-            coordinator?.structureActions?.undo?()
+        if showsStructureEditor {
+            structureHistory?.undo()
             return
         }
-        coordinator?.contentWindow?.undoManager?.undo()
+        windowUndoManager?.undo()
     }
 
     func redoChange() {
         coordinator?.endInspectorEditRun()
-        endTableCommentRun()
         if isUsersRolesTab {
             coordinator?.usersRolesActions?.redo()
-            return
-        }
-        if coordinator?.tabManager.selectedTab?.tabType == .createTable {
-            coordinator?.createTableActions?.redo?()
             return
         }
         if isDiagramTab {
             selectedDiagram?.redoStagedEdit()
             return
         }
-        if coordinator?.tabManager.selectedTab?.display.resultsViewMode == .structure {
-            coordinator?.structureActions?.redo?()
+        if showsStructureEditor {
+            structureHistory?.redo()
             return
         }
-        coordinator?.contentWindow?.undoManager?.redo()
-    }
-
-    private func endTableCommentRun() {
-        guard let coordinator, let tabId = coordinator.tabManager.selectedTabId else { return }
-        coordinator.structureSessions[tabId]?.changeManager.endTableCommentRun()
+        windowUndoManager?.redo()
     }
 }

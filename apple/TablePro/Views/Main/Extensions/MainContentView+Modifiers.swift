@@ -21,7 +21,6 @@ import SwiftUI
         windowTitle: .constant("SQL Query"),
         windowSubtitle: .constant(""),
         windowRepresentedURL: .constant(nil),
-        sidebarState: SharedSidebarState(),
         pendingTruncates: .constant([]),
         pendingDeletes: .constant([]),
         tableOperationOptions: .constant([:]),

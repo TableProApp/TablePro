@@ -171,9 +171,8 @@ final class MainContentCommandActions: ObservableObject {
     // MARK: - Row Operations (Group A: Called Directly)
 
     func addNewRow() {
-        // Structure inserts a column, index or FK row by sub-tab; the data path adds data rows only.
         switch selectionOwner {
-        case .schemaGrid: coordinator?.structureActions?.addRow?()
+        case .schemaGrid: addSchemaRow()
         case .dataGrid: coordinator?.addNewRow()
         case .none: break
         }
@@ -185,13 +184,13 @@ final class MainContentCommandActions: ObservableObject {
         return coordinator?.activeGridModel?.selectedRowIDs ?? []
     }
 
-    // A Create Table tab has no structure handler; claiming its selection would make commands inert and shadow sidebar delete.
-    private var selectionOwner: GridSelectionOwner {
+    // A structure grid with no session or draft behind it takes no commands; claiming it would shadow sidebar delete.
+    var selectionOwner: GridSelectionOwner {
         let owner = GridSelectionOwner.resolve(
             tabType: coordinator?.tabManager.selectedTab?.tabType,
             resultsViewMode: coordinator?.tabManager.selectedTab?.display.resultsViewMode
         )
-        guard owner == .schemaGrid, coordinator?.structureActions == nil else { return owner }
+        guard owner == .schemaGrid, coordinator?.activeStructureEditor == nil else { return owner }
         return .none
     }
 
@@ -205,8 +204,9 @@ final class MainContentCommandActions: ObservableObject {
     }
 
     func deleteSelectedRows() {
-        if selectionOwner == .schemaGrid {
-            coordinator?.structureActions?.removeRow?()
+        // A selected definition that cannot be removed refuses here; Delete never reaches the sidebar's tables.
+        if selectsSchemaDefinition {
+            removeSchemaRows()
             return
         }
 
@@ -220,13 +220,17 @@ final class MainContentCommandActions: ObservableObject {
     }
 
     func duplicateRow() {
+        if selectionOwner == .schemaGrid {
+            duplicateSchemaRows()
+            return
+        }
         guard let rowID = singleSelectedDataGridRowID else { return }
         coordinator?.duplicateRow(rowID)
     }
 
     func copySelectedRows() {
         switch selectionOwner {
-        case .schemaGrid: coordinator?.structureActions?.copyRows?()
+        case .schemaGrid: copySchemaRows()
         case .dataGrid: coordinator?.copyRowsToClipboard(selectedDataRowIDs)
         case .none: break
         }
@@ -244,7 +248,7 @@ final class MainContentCommandActions: ObservableObject {
 
     func pasteRows() {
         switch selectionOwner {
-        case .schemaGrid: coordinator?.structureActions?.pasteRows?()
+        case .schemaGrid: pasteSchemaRows()
         case .dataGrid: coordinator?.pasteRows()
         case .none: break
         }
@@ -375,15 +379,20 @@ final class MainContentCommandActions: ObservableObject {
         SharedSidebarState.forConnection(connection.id).sidebarLayout = layout
     }
 
+    // Not the data tab's state in Structure: Add Row there used to light from the rows' editability.
     var isCurrentTabEditable: Bool {
-        guard let coordinator, coordinator.tabManager.selectedTab != nil, selectionOwner != .none else {
-            return false
+        guard let coordinator, coordinator.tabManager.selectedTab != nil else { return false }
+        switch selectionOwner {
+        case .schemaGrid: return canAddSchemaRow || canRemoveSchemaRows
+        case .dataGrid: return coordinator.canEditActiveResult
+        case .none: return false
         }
-        return coordinator.canEditActiveResult
     }
 
+    // Add and Duplicate Row gate on this; a structure grid adds only where its section allows it.
     var isCurrentTabSchemaResolved: Bool {
         guard let coordinator, let tabId = coordinator.tabManager.selectedTabId else { return false }
+        if selectionOwner == .schemaGrid { return canAddSchemaRow }
         return coordinator.tabSessionRegistry.tableRows(for: tabId).hasAuthoritativeSchema
     }
 
@@ -431,7 +440,7 @@ final class MainContentCommandActions: ObservableObject {
         }
         switch selectionOwner {
         case .schemaGrid:
-            return coordinator?.structureActions?.pasteRows != nil && TableStructureView.canPasteStructureRows
+            return canPasteSchemaRows
         case .dataGrid:
             return tab.tabType == .table && isCurrentTabEditable && isCurrentTabSchemaResolved
                 && ClipboardService.shared.hasText
@@ -480,7 +489,12 @@ final class MainContentCommandActions: ObservableObject {
 
     // Same check as the sidebar's Delete item, which the menu bar used to skip on engines with no statement for it.
     var canDropSelectedTables: Bool {
-        TableOperationEligibility.canDrop(selectedTables.wrappedValue, context: tableOperationEligibility)
+        guard !selectsSchemaDefinition else { return false }
+        return TableOperationEligibility.canDrop(selectedTables.wrappedValue, context: tableOperationEligibility)
+    }
+
+    private var selectsSchemaDefinition: Bool {
+        selectionOwner == .schemaGrid && coordinator?.activeStructureEditor?.focusedSection != nil
     }
 
     private var tableOperationEligibility: TableOperationEligibility.Context {
@@ -520,10 +534,6 @@ final class MainContentCommandActions: ObservableObject {
 
     var hasOpenGridEdit: Bool {
         coordinator?.isEditingActiveGrid == true
-    }
-
-    var hasStructureChanges: Bool {
-        coordinator?.toolbarState.hasStructureChanges ?? false
     }
 
     // MARK: - Unsaved Changes Check
@@ -777,10 +787,7 @@ final class MainContentCommandActions: ObservableObject {
         guard await applySelectedTypeChanges() else { return false }
 
         // Data grid changes or pending table operations take priority
-        let hasDataChanges = coordinator.changeManager.hasChanges
-            || !pendingTruncates.wrappedValue.isEmpty
-            || !pendingDeletes.wrappedValue.isEmpty
-        if hasDataChanges {
+        if hasDataWork {
             return await withCheckedContinuation { continuation in
                 coordinator.saveCompletionContinuation = continuation
                 saveChanges()
@@ -879,13 +886,19 @@ final class MainContentCommandActions: ObservableObject {
 
     // MARK: - Data Operations (Group A: Called Directly)
 
-    // Any Structure sub-tab saves: DDL, Parts and Triggers are read-only views, and refusing left Cmd+S silently inert.
-    private func applyStagedStructureChanges() {
-        guard let coordinator,
-              let tabId = coordinator.tabManager.selectedTabId,
-              let session = coordinator.structureSessions[tabId],
-              session.changeManager.hasChanges else { return }
-        Task { _ = await session.applyStagedChanges(coordinator: coordinator) }
+    var hasDataWork: Bool {
+        coordinator?.changeManager.hasChanges == true
+            || !pendingTruncates.wrappedValue.isEmpty
+            || !pendingDeletes.wrappedValue.isEmpty
+    }
+
+    // What Save would write for the grid: cell edits and the staged TRUNCATE and DROP.
+    func discardDataWork() {
+        var truncates = pendingTruncates.wrappedValue
+        var deletes = pendingDeletes.wrappedValue
+        coordinator?.handleDiscard(pendingTruncates: &truncates, pendingDeletes: &deletes)
+        pendingTruncates.wrappedValue = truncates
+        pendingDeletes.wrappedValue = deletes
     }
 
     func restorePreviousValues() {
@@ -899,18 +912,17 @@ final class MainContentCommandActions: ObservableObject {
             return
         }
         if coordinator?.tabManager.selectedTab?.tabType == .createTable {
-            coordinator?.createTableActions?.createTable?()
+            guard let coordinator, let draft = coordinator.activeCreateTableDraft else { return }
+            draft.create(coordinator: coordinator)
             return
         }
         if saveSelectedDiagram() {
             return
         }
         if saveSelectedTypeChanges() { return }
-        if coordinator?.tabManager.selectedTab?.display.resultsViewMode == .structure {
-            applyStagedStructureChanges()
-        } else if coordinator?.changeManager.hasChanges == true
-            || !pendingTruncates.wrappedValue.isEmpty
-            || !pendingDeletes.wrappedValue.isEmpty {
+        if let session = stagedStructureSession, let coordinator {
+            Task { _ = await session.applyStagedChanges(coordinator: coordinator) }
+        } else if hasDataWork {
             // Data grid first: its edits sync to the sidebar editState, and its path uses the plugin driver for statements.
             var truncates = pendingTruncates.wrappedValue
             var deletes = pendingDeletes.wrappedValue
@@ -1099,7 +1111,15 @@ final class MainContentCommandActions: ObservableObject {
     }
 
     func runQuery() {
+        if let coordinator, let draft = coordinator.activeCreateTableDraft {
+            draft.create(coordinator: coordinator)
+            return
+        }
         coordinator?.runQuery(viewport: .keepPlace)
+    }
+
+    var canCreateDraftTable: Bool {
+        coordinator?.activeCreateTableDraft?.isReadyToCreate ?? false
     }
 
     func runQueryWithoutLimit() {
@@ -1211,23 +1231,27 @@ final class MainContentCommandActions: ObservableObject {
     }
 
     func previousResultTab() {
-        guard let coordinator,
-              let (tab, _) = coordinator.tabManager.selectedTabAndIndex else { return }
-        guard tab.display.resultSets.count > 1,
-              let currentId = tab.display.activeResultSetId ?? tab.display.resultSets.last?.id,
-              let currentIndex = tab.display.resultSets.firstIndex(where: { $0.id == currentId }),
-              currentIndex > 0 else { return }
-        coordinator.switchActiveResultSet(to: tab.display.resultSets[currentIndex - 1].id, in: tab.id)
+        stepResultTab(by: -1)
     }
 
     func nextResultTab() {
-        guard let coordinator,
-              let (tab, _) = coordinator.tabManager.selectedTabAndIndex else { return }
-        guard tab.display.resultSets.count > 1,
-              let currentId = tab.display.activeResultSetId ?? tab.display.resultSets.last?.id,
-              let currentIndex = tab.display.resultSets.firstIndex(where: { $0.id == currentId }),
-              currentIndex < tab.display.resultSets.count - 1 else { return }
-        coordinator.switchActiveResultSet(to: tab.display.resultSets[currentIndex + 1].id, in: tab.id)
+        stepResultTab(by: 1)
+    }
+
+    var canShowPreviousResult: Bool {
+        coordinator?.canStepActiveResultSet(by: -1) ?? false
+    }
+
+    var canShowNextResult: Bool {
+        coordinator?.canStepActiveResultSet(by: 1) ?? false
+    }
+
+    private func stepResultTab(by offset: Int) {
+        guard let coordinator, coordinator.canStepActiveResultSet(by: offset),
+              let (tab, _) = coordinator.tabManager.selectedTabAndIndex,
+              let activeId = tab.display.activeResultSet?.id,
+              let index = tab.display.resultSets.firstIndex(where: { $0.id == activeId }) else { return }
+        coordinator.switchActiveResultSet(to: tab.display.resultSets[index + offset].id, in: tab.id)
     }
 
     var canPinResultTab: Bool {
@@ -1252,10 +1276,12 @@ final class MainContentCommandActions: ObservableObject {
         coordinator?.compareActiveResult()
     }
 
+    var canCloseResultTab: Bool {
+        coordinator?.canCloseActiveResultSet ?? false
+    }
+
     func closeResultTab() {
-        guard let coordinator else { return }
-        let tab = coordinator.tabManager.selectedTab
-        guard let activeId = tab?.display.activeResultSetId ?? tab?.display.resultSets.last?.id else { return }
+        guard let coordinator, let activeId = coordinator.tabManager.selectedTab?.display.activeResultSet?.id else { return }
         coordinator.closeResultSet(id: activeId)
     }
 

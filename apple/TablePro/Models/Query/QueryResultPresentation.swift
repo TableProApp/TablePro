@@ -32,6 +32,13 @@ enum QueryResultContent: Equatable {
     case unavailable(mode: ResultsViewMode)
 }
 
+// Where the result sets are chosen: the bar's pull-down for one, a tab row above the result for more.
+enum ResultSetChooserPlacement: Equatable {
+    case hidden
+    case statusBar
+    case tabRow
+}
+
 // A plain struct, not a `QueryTab`, so tests reach every state without a tab manager, coordinator or session registry.
 struct QueryResultInputs: Equatable {
     var tabType: TabType = .query
@@ -63,23 +70,25 @@ struct QueryResultInputs: Equatable {
 // Pure: every branch is decidable from `QueryResultInputs` alone, like `ResultStatusModel` and `ResultSetPolicy`.
 struct QueryResultPresentation: Equatable {
     let content: QueryResultContent
-    let showsResultSetSelector: Bool
+    let resultSetChooser: ResultSetChooserPlacement
     let showsFilterChrome: Bool
     // Always: a plan without the bar can't be switched away from or pinned. Its row readout hides via `StatusBarSnapshot.isQueryPlan`.
     let showsStatusBar: Bool
     let showsErrorBanner: Bool
 
+    var showsResultSetSelector: Bool { resultSetChooser != .hidden }
+
     init(inputs: QueryResultInputs) {
         content = Self.resolveContent(inputs)
-        showsResultSetSelector = Self.resolvesResultSetSelector(inputs)
+        resultSetChooser = Self.resolveResultSetChooser(inputs)
         showsFilterChrome = Self.resolvesFilterChrome(inputs)
         showsStatusBar = true
         showsErrorBanner = Self.resolvedError(inputs) != nil
     }
 
-    // The active result's message wins since it describes the result on screen; the tab's covers a failure with no result set.
+    // Same order as `QueryTab.shownError`: the tab's message is the newer failure.
     static func resolvedError(_ inputs: QueryResultInputs) -> String? {
-        inputs.activeResultErrorMessage ?? inputs.executionErrorMessage
+        inputs.executionErrorMessage ?? inputs.activeResultErrorMessage
     }
 
     private static func resolveContent(_ inputs: QueryResultInputs) -> QueryResultContent {
@@ -167,11 +176,14 @@ struct QueryResultPresentation: Equatable {
         return .noRows(executionTime: inputs.activeResultExecutionTime ?? inputs.executionTime)
     }
 
-    // Shown even for one result: Pin, Unpin and Close live in its menu, and it costs no height inside the status bar.
-    private static func resolvesResultSetSelector(_ inputs: QueryResultInputs) -> Bool {
-        guard inputs.tabType == .query else { return false }
-        guard inputs.viewMode != .structure else { return false }
-        return inputs.resultSetCount > 0
+    // One result still gets the pull-down: Pin, Unpin and Close live in its menu, and it costs no height inside the bar.
+    private static func resolveResultSetChooser(_ inputs: QueryResultInputs) -> ResultSetChooserPlacement {
+        guard inputs.tabType == .query, inputs.viewMode != .structure else { return .hidden }
+        switch inputs.resultSetCount {
+        case 0: return .hidden
+        case 1: return .statusBar
+        default: return .tabRow
+        }
     }
 
     private static func resolvesFilterChrome(_ inputs: QueryResultInputs) -> Bool {

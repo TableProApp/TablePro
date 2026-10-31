@@ -9,16 +9,16 @@ use super::{decode_error, text_rows};
 /// analysed has `reltuples` -1 from PostgreSQL 14 on (0 before), which is
 /// no estimate at all. The heap size in blocks is what sizes a ctid
 /// window.
-const ESTIMATE_SQL: &str = "\
+pub(super) const ESTIMATE_SQL: &str = "\
 WITH RECURSIVE tree AS (
     SELECT $1::text::regclass::oid AS oid
   UNION
     SELECT i.inhrelid FROM pg_catalog.pg_inherits i JOIN tree t ON i.inhparent = t.oid
 )
-SELECT COALESCE(SUM(GREATEST(c.reltuples, 0)), 0)::float8,
-       COALESCE(bool_and(c.reltuples < 0), true),
+SELECT COALESCE(pg_catalog.sum(GREATEST(c.reltuples, 0)), 0)::float8,
+       COALESCE(pg_catalog.bool_and(c.reltuples < 0::float4), true),
        (pg_catalog.pg_relation_size($1::text::regclass)
-          / current_setting('block_size')::int8)::int8
+          / pg_catalog.current_setting('block_size')::int8)::int8
 FROM tree
 JOIN pg_catalog.pg_class c ON c.oid = tree.oid";
 

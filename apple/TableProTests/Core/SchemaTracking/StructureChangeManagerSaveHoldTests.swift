@@ -8,10 +8,8 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-/// A save writes the edits staged when it was pressed and clears them when it lands. Staging stayed
-/// open in between, so on MongoDB, where the save reads every document it changes before writing,
-/// an edit made during that read was left out of the script and then cleared with the edits that
-/// did run.
+// Staging stayed open during a save, so on MongoDB an edit made while the save read the documents was left out
+// of the script and then cleared with the edits that ran.
 @MainActor
 struct StructureChangeManagerSaveHoldTests {
     private func makeManager() -> StructureChangeManager {
@@ -75,7 +73,7 @@ struct StructureChangeManagerSaveHoldTests {
         rename(manager, at: 2, to: "mail")
         manager.deleteColumn(id: manager.workingColumns[2].id)
         manager.performAsOneUndoStep { manager.deleteColumn(id: manager.workingColumns[0].id) }
-        manager.undoDelete(for: .columns, at: 2)
+        manager.undoDelete(section: .columns, id: manager.workingColumns[2].id)
         manager.stageTableComment("Users of the shop")
         manager.undo()
         manager.redo()
@@ -120,8 +118,7 @@ struct StructureChangeManagerSaveHoldTests {
         #expect(manager.getChangesArray().count == 2)
     }
 
-    /// A completion that arrives for a hold that has already ended must not clear what was staged
-    /// after it. Only the hold a save still owns can clear, and only the edits it took.
+    // Only the hold a save still owns can clear, and only the edits it took.
     @Test("An ended hold cannot clear edits staged after it")
     func endedHoldClearsNothing() throws {
         let manager = makeManager()

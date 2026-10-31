@@ -47,10 +47,15 @@ struct CreateTableDraftBuilderTests {
         )
     }
 
+    private func check(_ name: String, _ expression: String) -> EditableCheckConstraintDefinition {
+        EditableCheckConstraintDefinition(id: UUID(), name: name, expression: expression, columns: [], isValidated: true)
+    }
+
     private func plan(
         columns: [EditableColumnDefinition] = [],
         indexes: [EditableIndexDefinition] = [],
         foreignKeys: [EditableForeignKeyDefinition] = [],
+        checkConstraints: [EditableCheckConstraintDefinition] = [],
         databaseType: DatabaseType = .sqlite,
         tableName: String = "child"
     ) -> CreateTablePlan {
@@ -60,6 +65,7 @@ struct CreateTableDraftBuilderTests {
             columns: columns.isEmpty ? [column("id"), column("parent_id")] : columns,
             indexes: indexes,
             foreignKeys: foreignKeys,
+            checkConstraints: checkConstraints,
             dialect: ForeignKeyDialect.forType(databaseType),
             includesEngineOptions: false
         )
@@ -118,7 +124,7 @@ struct CreateTableDraftBuilderTests {
     func unnamedIndexIsReported() {
         let result = plan(indexes: [index(name: "")])
         #expect(result.indexes.isEmpty)
-        #expect(result.issues.contains { $0.tab == .indexes })
+        #expect(result.issues.contains { $0.section == .indexes })
         #expect(!result.isReadyToCreate)
     }
 
@@ -158,14 +164,14 @@ struct CreateTableDraftBuilderTests {
     @Test("a foreign key with no referenced table is reported")
     func missingReferencedTableIsReported() {
         let result = plan(foreignKeys: [foreignKey(referencedTable: "")])
-        #expect(result.issues.contains { $0.tab == .foreignKeys })
+        #expect(result.issues.contains { $0.section == .foreignKeys })
         #expect(result.definition?.foreignKeys.isEmpty == true)
     }
 
     @Test("a foreign key naming a column the table lacks is reported")
     func unknownColumnIsReported() {
         let result = plan(foreignKeys: [foreignKey(columns: ["nope"])])
-        #expect(result.issues.contains { $0.tab == .foreignKeys })
+        #expect(result.issues.contains { $0.section == .foreignKeys })
     }
 
     @Test("mismatched composite column counts are reported")
@@ -174,13 +180,13 @@ struct CreateTableDraftBuilderTests {
             columns: [column("id"), column("a"), column("b")],
             foreignKeys: [foreignKey(columns: ["a", "b"], referencedColumns: ["id"])]
         )
-        #expect(result.issues.contains { $0.tab == .foreignKeys })
+        #expect(result.issues.contains { $0.section == .foreignKeys })
     }
 
     @Test("a duplicate column name is reported")
     func duplicateColumnIsReported() {
         let result = plan(columns: [column("id"), column("id")])
-        #expect(result.issues.contains { $0.tab == .columns })
+        #expect(result.issues.contains { $0.section == .columns })
     }
 
     @Test("a table with no name is reported")
@@ -203,13 +209,13 @@ struct CreateTableDraftBuilderTests {
     @Test("MySQL reports a foreign key with no referenced columns")
     func mysqlRequiresReferencedColumns() {
         let result = plan(foreignKeys: [foreignKey(referencedColumns: [])], databaseType: .mysql)
-        #expect(result.issues.contains { $0.tab == .foreignKeys })
+        #expect(result.issues.contains { $0.section == .foreignKeys })
     }
 
     @Test("DuckDB reports ON DELETE CASCADE")
     func duckdbRejectsCascade() {
         let result = plan(foreignKeys: [foreignKey(onDelete: .cascade)], databaseType: .duckdb)
-        #expect(result.issues.contains { $0.tab == .foreignKeys })
+        #expect(result.issues.contains { $0.section == .foreignKeys })
     }
 
     @Test("SQLite accepts ON DELETE CASCADE")
@@ -221,7 +227,7 @@ struct CreateTableDraftBuilderTests {
     @Test("SQLite reports a referenced table in another schema")
     func sqliteRejectsQualifiedReference() {
         let result = plan(foreignKeys: [foreignKey(referencedSchema: "other")], databaseType: .sqlite)
-        #expect(result.issues.contains { $0.tab == .foreignKeys })
+        #expect(result.issues.contains { $0.section == .foreignKeys })
     }
 
     /// Every foreign key starts at `.noAction`, and Oracle, Dameng and Teradata declare an empty
@@ -328,5 +334,152 @@ struct CreateTableDraftBuilderTests {
     @Test("a blank comment plans no comment", arguments: ["", "   ", "\n\t"])
     func blankCommentIsNil(comment: String) {
         #expect(plan(comment: comment).tableComment == nil)
+    }
+
+    // MARK: - Table options against the target database's defaults
+
+    private static let shopDefaults = CreateTableOptionDefaults(
+        characterSet: "utf8mb4", collation: "utf8mb4_0900_ai_ci", engine: "InnoDB"
+    )
+
+    private func plan(
+        options: CreateTableOptions,
+        defaults: CreateTableOptionDefaults = CreateTableDraftBuilderTests.shopDefaults,
+        includesEngineOptions: Bool = true
+    ) throws -> PluginCreateTableDefinition {
+        try #require(CreateTableDraftBuilder.plan(
+            tableName: "child",
+            options: options,
+            columns: [column("id")],
+            indexes: [],
+            foreignKeys: [],
+            dialect: ForeignKeyDialect.forType(.mysql),
+            includesEngineOptions: includesEngineOptions,
+            defaults: defaults
+        ).definition)
+    }
+
+    // A fresh draft used to write `DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`, which broke FKs and joins
+    // against every table that took the database's own default.
+    @Test("A fresh draft names no character set, collation or engine")
+    func freshDraftWritesNoOptions() throws {
+        let definition = try plan(options: CreateTableOptions())
+        #expect(definition.charset == nil)
+        #expect(definition.collation == nil)
+        #expect(definition.engine == nil)
+    }
+
+    @Test("Options equal to the database's defaults write no clause")
+    func defaultsWriteNothing() throws {
+        let seeded = CreateTableOptions().seeded(with: Self.shopDefaults)
+        #expect(seeded.charset == "utf8mb4")
+        let definition = try plan(options: seeded)
+        #expect(definition.charset == nil)
+        #expect(definition.collation == nil)
+        #expect(definition.engine == nil)
+    }
+
+    @Test("Another character set writes the pair")
+    func otherCharacterSetWritesThePair() throws {
+        let options = CreateTableOptions().selectingCharacterSet("latin1", collation: "latin1_swedish_ci")
+        let definition = try plan(options: options)
+        #expect(definition.charset == "latin1")
+        #expect(definition.collation == "latin1_swedish_ci")
+    }
+
+    @Test("Another collation of the default set still writes both clauses")
+    func otherCollationWritesThePair() throws {
+        let options = CreateTableOptions().selectingCharacterSet("utf8mb4", collation: "utf8mb4_bin")
+        let definition = try plan(options: options)
+        #expect(definition.charset == "utf8mb4")
+        #expect(definition.collation == "utf8mb4_bin")
+    }
+
+    @Test("The comparison ignores case, as the server does")
+    func comparisonIgnoresCase() throws {
+        let options = CreateTableOptions().selectingCharacterSet("UTF8MB4", collation: "UTF8MB4_0900_AI_CI")
+        #expect(try plan(options: options).charset == nil)
+    }
+
+    @Test("Only an engine other than the server's default is written")
+    func engineOnlyWhenItDiffers() throws {
+        var options = CreateTableOptions().seeded(with: Self.shopDefaults)
+        #expect(try plan(options: options).engine == nil)
+        options.engine = "MyISAM"
+        #expect(try plan(options: options).engine == "MyISAM")
+    }
+
+    @Test("Without the database's defaults every pick is written")
+    func unknownDefaultsWriteThePick() throws {
+        let options = CreateTableOptions().selectingCharacterSet("utf8mb4", collation: "utf8mb4_0900_ai_ci")
+        let definition = try plan(options: options, defaults: CreateTableOptionDefaults())
+        #expect(definition.charset == "utf8mb4")
+        #expect(definition.collation == "utf8mb4_0900_ai_ci")
+    }
+
+    @Test("A driver without a catalog gets no table options, whatever the draft holds")
+    func noCatalogWritesNothing() throws {
+        var options = CreateTableOptions().selectingCharacterSet("latin1", collation: "latin1_bin")
+        options.engine = "MyISAM"
+        let definition = try plan(options: options, includesEngineOptions: false)
+        #expect(definition.charset == nil)
+        #expect(definition.collation == nil)
+        #expect(definition.engine == nil)
+    }
+
+    @Test("Seeding keeps what the user already picked")
+    func seedingKeepsPicks() {
+        var options = CreateTableOptions().selectingCharacterSet("latin1", collation: "latin1_bin")
+        options.engine = "MyISAM"
+        let seeded = options.seeded(with: Self.shopDefaults)
+        #expect(seeded.charset == "latin1")
+        #expect(seeded.collation == "latin1_bin")
+        #expect(seeded.engine == "MyISAM")
+    }
+
+    // MARK: - Check constraints
+
+    @Test("A named check with an expression is planned, trimmed, after the CREATE")
+    func completeCheckIsPlanned() {
+        let result = plan(checkConstraints: [check(" positive_id ", " id > 0\n")])
+        #expect(result.issues.isEmpty)
+        #expect(result.checkConstraints.map { $0.name } == ["positive_id"])
+        #expect(result.checkConstraints.map { $0.expression } == ["id > 0"])
+    }
+
+    @Test("A blank check row is ignored")
+    func blankCheckIsIgnored() {
+        let result = plan(checkConstraints: [check("", "  ")])
+        #expect(result.issues.isEmpty)
+        #expect(result.checkConstraints.isEmpty)
+    }
+
+    @Test("A begun check names what it lacks on its own row", arguments: [("", "id > 0"), ("positive_id", "")])
+    func incompleteCheckIsReported(name: String, expression: String) {
+        let result = plan(checkConstraints: [check("", ""), check(name, expression)])
+        #expect(result.checkConstraints.isEmpty)
+        #expect(result.issues.map { $0.section } == [.checkConstraints])
+        #expect(result.issues.first?.row == 1)
+        #expect(!result.isReadyToCreate)
+    }
+
+    @Test("A second check with the same name is flagged on its own row")
+    func duplicateCheckNameIsReported() {
+        let result = plan(checkConstraints: [check("positive", "id > 0"), check("", ""), check("positive", "id < 9")])
+        #expect(result.issues.count == 1)
+        #expect(result.issues.first?.section == .checkConstraints)
+        #expect(result.issues.first?.row == 2)
+    }
+
+    @Test("Planned indexes and checks keep the working rows they came from")
+    func plannedRowsMapToWorkingRows() {
+        let result = plan(
+            indexes: [index(name: "", columns: []), index(name: "idx_parent")],
+            checkConstraints: [check("", ""), check("", ""), check("positive", "id > 0")]
+        )
+        #expect(result.indexRows == [1])
+        #expect(result.indexRow(at: 0) == 1)
+        #expect(result.checkConstraintRows == [2])
+        #expect(result.checkConstraintRow(at: 0) == 2)
     }
 }

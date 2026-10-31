@@ -48,9 +48,6 @@ struct ResultStatusControls: Equatable {
     /// First, Previous, Next, Last and the page number, which an engine that cannot skip rows has
     /// no use for. The rows-per-page menu stays, because it still sets how many leading rows load.
     var showsPageNavigation = false
-    /// The structure editor's add and remove pair, which is this bar's trailing cluster while the
-    /// structure editor is the content.
-    var showsStructureActions = false
     /// Only the data grid has cells to sum. JSON and Map report the row selection, not cells.
     var showsSelectionSummary = false
 }
@@ -95,7 +92,6 @@ struct ResultStatusModel: Equatable {
         let isTable = snapshot.tabType == .table
 
         controls.showsModeSwitcher = snapshot.availableModes.count > 1
-        controls.showsStructureActions = viewMode == .structure && snapshot.hasStructureActions
         controls.showsExecution = viewMode.reportsExecution
 
         /// A plan keeps the bar so it stays choosable and pinnable, and gives up everything the bar

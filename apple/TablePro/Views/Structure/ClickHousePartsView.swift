@@ -21,7 +21,7 @@ struct ClickHousePartsView: View {
     @State private var isLoading = true
     @State private var errorMessage: String?
     @State private var loadedToken: Int?
-    @StateObject private var grid = StructureListGridModel<UUID>(accessibilityLabel: StructureTab.parts.displayName)
+    @StateObject private var grid = StructureListGridModel<UUID>(accessibilityLabel: StructurePane.parts.displayName)
     @StateObject private var selection = StructureListSelection<UUID>()
 
     var body: some View {

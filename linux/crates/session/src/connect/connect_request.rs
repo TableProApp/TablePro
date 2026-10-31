@@ -25,6 +25,18 @@ impl ConnectRequest {
         self.workspace_settings.read_only = true;
     }
 
+    /// The same server, user and settings opening another of the server's
+    /// databases, for a window that follows a query tab there. `None` for
+    /// a file, which is the one database it opens.
+    pub fn in_database(&self, database: &str) -> Option<Self> {
+        let mut request = self.for_reconnect();
+        match &mut request.target {
+            RequestTarget::Network { database: opened, .. } => *opened = Some(database.to_owned()),
+            RequestTarget::File(_) => return None,
+        }
+        Some(request)
+    }
+
     /// The request a reconnect sends: the same server, user and
     /// settings, never a retarget.
     pub fn for_reconnect(&self) -> Self {

@@ -11,7 +11,7 @@ import TableProPluginKit
 extension MainContentCoordinator {
     // MARK: - SQL Preview
 
-    /// Routes SQL preview request to the appropriate handler based on current tab mode
+    // A Structure view with nothing staged previews the grid edits, which is what its Save would write.
     func handlePreviewSQL(
         pendingTruncates: Set<DatabaseTreeTableRef>,
         pendingDeletes: Set<DatabaseTreeTableRef>,
@@ -24,9 +24,10 @@ extension MainContentCoordinator {
         }
         if let tabId = tabManager.selectedTabId, userTypeEditors[tabId]?.hasChanges == true {
             previewUserTypeChanges(tabId: tabId)
-        } else if tabManager.selectedTab?.display.resultsViewMode == .structure {
-            // Structure view handles its own preview via direct call
-            structureActions?.previewSQL?()
+        } else if tabManager.selectedTab?.tabType == .createTable {
+            activeCreateTableDraft?.previewSQL(coordinator: self)
+        } else if let session = activeStructureSession, session.hasChanges {
+            session.previewChanges()
         } else {
             generatePreviewSQL(
                 pendingTruncates: pendingTruncates,
@@ -36,7 +37,6 @@ extension MainContentCoordinator {
         }
     }
 
-    /// Generate SQL preview of all pending changes with inlined parameters
     func generatePreviewSQL(
         pendingTruncates: Set<DatabaseTreeTableRef>,
         pendingDeletes: Set<DatabaseTreeTableRef>,
@@ -50,7 +50,9 @@ extension MainContentCoordinator {
             )
             toolbarState.previewStatements = plan.displayStatements
         } catch {
-            toolbarState.previewStatements = ["-- Error generating SQL: \(error.localizedDescription)"]
+            toolbarState.previewStatements = [
+                String(format: String(localized: "-- Error generating SQL: %@"), error.localizedDescription)
+            ]
         }
         activeSheet = .sqlPreview
     }

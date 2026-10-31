@@ -86,14 +86,10 @@ pub(crate) fn inbound_keys_sql(schema_sql: &str) -> String {
     )
 }
 
-/// `sqlite_sequence` exists only once some table was declared with
-/// AUTOINCREMENT, so its presence is checked before it is read.
+/// `sqlite_stat1` exists only once ANALYZE has run, so its presence is
+/// checked before it is read.
 pub(crate) fn has_table_sql(schema_sql: &str) -> String {
     format!("SELECT count(*) FROM {schema_sql}.sqlite_schema WHERE type = 'table' AND name = ?1")
-}
-
-pub(crate) fn sequence_sql(schema_sql: &str) -> String {
-    format!("SELECT count(*) FROM {schema_sql}.sqlite_sequence WHERE name = ?1")
 }
 
 /// The first number of a `sqlite_stat1` row is the row count ANALYZE

@@ -51,6 +51,8 @@ final class DataGridModel: ObservableObject {
     @Published private(set) var displayRevision = 0
     @Published private(set) var selectionRevision = 0
     @Published private(set) var editabilityRevision = 0
+    // What a fitsRows grid needs to show every row; the mounted view measures it.
+    @Published private(set) var fittingHeight: CGFloat = 0
 
     private(set) weak var mountedView: (any DataGridMountedView)?
     private var orderRevision = 0
@@ -455,6 +457,11 @@ final class DataGridModel: ObservableObject {
     }
 
     var isMounted: Bool { mountedView != nil }
+
+    func setFittingHeight(_ height: CGFloat) {
+        guard height != fittingHeight else { return }
+        fittingHeight = height
+    }
 
     func revealColumn(_ id: DataGridColumnID) {
         guard let position = columns.displayPosition(of: id) else { return }

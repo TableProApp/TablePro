@@ -214,7 +214,7 @@ custom_rules:
     severity: error
   appstorage_key_namespace:
     name: "AppStorage Key Namespace"
-    regex: '@AppStorage\(\s*"(?!com\.TablePro)(?!(?:hideExportSuccessDialog|skipSchemaPreview|structureCodeFontSize)")[^"\\]+"'
+    regex: '@AppStorage\(\s*"(?!com\.TablePro)(?!(?:hideExportSuccessDialog|structureCodeFontSize)")[^"\\]+"'
     excluded: ['.*/(Packages|Plugins)/']
     message: "Route an @AppStorage key through the preferences layer, under com.TablePro."
     severity: error

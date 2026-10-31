@@ -343,7 +343,7 @@ fn parse_timestamp(input: &str) -> Result<Value, EditParseError> {
 /// `+10000` and `-4712`: there is no year 0 between 1 BC and AD 1, so
 /// 1 BC is chrono's 0. `None` for a ` BC` value with no year to count
 /// back from.
-fn chrono_year(input: &str) -> Option<Cow<'_, str>> {
+pub(super) fn chrono_year(input: &str) -> Option<Cow<'_, str>> {
     let (dated, before_christ) = match input.strip_suffix(" BC").or_else(|| input.strip_suffix(" bc")) {
         Some(dated) => (dated, true),
         None => (input, false),
@@ -378,11 +378,7 @@ fn far_temporal(
     purpose: Purpose,
     parse: fn(&str) -> Result<Value, EditParseError>,
 ) -> Option<Result<Value, EditParseError>> {
-    let year_digits = input.bytes().take_while(u8::is_ascii_digit).count();
-    let (year, rest) = input.split_at(year_digits);
-    let last_year = u64::try_from(NaiveDate::MAX.year()).ok()?;
-    let year = year.parse::<u64>().ok().filter(|year| *year > last_year)?;
-    let stand_in = parse(&format!("{}{rest}", 2000 + year % 400)).ok()?;
+    let stand_in = parse(&far_year_stand_in(input)?).ok()?;
     if purpose == Purpose::Store
         && let Err(error) = check_declared_fraction(&stand_in, column.kind.fractional_digits())
     {
@@ -392,6 +388,15 @@ fn far_temporal(
         type_name: column.name.clone(),
         text: input.to_owned(),
     }))))
+}
+
+// The text with a year past chrono's last moved into its range, keeping the rest as written.
+pub(super) fn far_year_stand_in(input: &str) -> Option<String> {
+    let year_digits = input.bytes().take_while(u8::is_ascii_digit).count();
+    let (year, rest) = input.split_at(year_digits);
+    let last_year = u64::try_from(NaiveDate::MAX.year()).ok()?;
+    let year = year.parse::<u64>().ok().filter(|year| *year > last_year)?;
+    Some(format!("{}{rest}", 2000 + year % 400))
 }
 
 fn infinite_temporal<T>(input: &str) -> Option<Temporal<T>> {

@@ -24,6 +24,8 @@ struct EditableColumnDefinition: Hashable, Codable, Identifiable {
     var extra: String?
     var generationExpression: String?
     var generationKind: GenerationKind?
+    /// Not encoded: it names columns of the table it was read from.
+    var columnCheck: String?
 
     var isPrimaryKey: Bool
 
@@ -83,6 +85,7 @@ struct EditableColumnDefinition: Hashable, Codable, Identifiable {
         extra: String?,
         generationExpression: String? = nil,
         generationKind: GenerationKind? = nil,
+        columnCheck: String? = nil,
         isPrimaryKey: Bool,
         ddlSpelling: String? = nil,
         ddlDefault: String? = nil,
@@ -104,6 +107,7 @@ struct EditableColumnDefinition: Hashable, Codable, Identifiable {
         self.extra = extra
         self.generationExpression = generationExpression
         self.generationKind = generationKind
+        self.columnCheck = columnCheck
         self.isPrimaryKey = isPrimaryKey
         self.catalogType = ddlSpelling.map { CatalogSpelling(value: dataType, spelling: $0) }
         self.catalogDefault = Self.catalogSpelling(value: defaultValue, spelling: ddlDefault)
@@ -198,6 +202,19 @@ struct EditableColumnDefinition: Hashable, Codable, Identifiable {
         defaultValue = nil
     }
 
+    /// One write for the pair, since MySQL refuses a collation from another character set.
+    mutating func setCharacterSet(_ name: String?, collation: String?) {
+        charset = name
+        self.collation = collation
+    }
+
+    /// MySQL refuses `INT CHARACTER SET latin1` with ERROR 1064, so the pair goes in the same edit.
+    mutating func setDataType(_ dataType: String) {
+        self.dataType = dataType
+        guard !ColumnTextType.takesCharacterSet(dataType) else { return }
+        setCharacterSet(nil, collation: nil)
+    }
+
     var hasName: Bool { !name.trimmingCharacters(in: .whitespaces).isEmpty }
 
     var hasDataType: Bool { !dataType.trimmingCharacters(in: .whitespaces).isEmpty }
@@ -246,6 +263,7 @@ struct EditableColumnDefinition: Hashable, Codable, Identifiable {
             extra: columnInfo.extra,
             generationExpression: columnInfo.generationExpression,
             generationKind: columnInfo.generationKind,
+            columnCheck: columnInfo.columnCheck,
             isPrimaryKey: columnInfo.isPrimaryKey,
             ddlSpelling: columnInfo.ddlSpelling,
             ddlDefault: columnInfo.ddlDefault,
@@ -271,7 +289,8 @@ struct EditableColumnDefinition: Hashable, Codable, Identifiable {
             ddlSpelling: ddlSpelling,
             ddlDefault: ddlDefault,
             ddlGenerationExpression: ddlGenerationExpression,
-            ddlCollation: ddlCollation
+            ddlCollation: ddlCollation,
+            columnCheck: columnCheck
         )
     }
 
@@ -294,7 +313,8 @@ struct EditableColumnDefinition: Hashable, Codable, Identifiable {
             ddlDefault: ddlDefault,
             ddlGenerationExpression: ddlGenerationExpression,
             ddlCollation: ddlCollation,
-            classificationTypeName: classificationTypeName
+            classificationTypeName: classificationTypeName,
+            columnCheck: columnCheck
         )
     }
 

@@ -105,6 +105,29 @@ struct DatabaseTreeFilterMemoTests {
         #expect(other.matched == ["sales"])
     }
 
+    @Test("A new search over the same listing keeps its grouping, and a new listing groups again")
+    func listingGroupingOutlivesTheSearch() {
+        var memo = DatabaseTreeFilter.SchemaListingMatchesMemo()
+        let listing = CatalogTableListing.Result(
+            tables: [table("timesheet", "attendance"), table("orders", "sales"), table("refunds", "sales")],
+            unlistedSchemas: []
+        )
+
+        let first = memo.matches(listing: listing, database: "shop", searchText: "time", covered: nil)
+        let refined = memo.matches(listing: listing, database: "shop", searchText: "ref", covered: nil)
+        let reread = memo.matches(
+            listing: CatalogTableListing.Result(tables: listing.tables.map { $0 }, unlistedSchemas: []),
+            database: "shop", searchText: "ref", covered: nil
+        )
+
+        #expect(first.matched == ["attendance"])
+        #expect(refined.matched == ["sales"])
+        #expect(refined.listed == ["attendance", "sales"])
+        #expect(SameRows(rows: refined.rowsBySchema["sales"] ?? []) == SameRows(rows: first.rowsBySchema["sales"] ?? []))
+        #expect(SameRows(rows: reread.rowsBySchema["sales"] ?? []) != SameRows(rows: refined.rowsBySchema["sales"] ?? []))
+        #expect(reread.matched == ["sales"])
+    }
+
     // MARK: - Outline
 
     private struct Fixture {

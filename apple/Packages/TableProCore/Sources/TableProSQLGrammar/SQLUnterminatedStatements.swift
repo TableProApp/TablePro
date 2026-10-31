@@ -73,6 +73,9 @@ public enum SQLUnterminatedStatements {
             return tokens[index].depth == 0 || (next?.word != "HINT" && next?.word != "PLAN")
         case "END":
             return next?.word == "CONVERSATION"
+        case "BULK":
+            // `ADMINISTER BULK OPERATIONS` is a permission, and neither `BULK INSERT` nor `OPENROWSET(BULK ...)` goes on so.
+            return next?.word != "OPERATIONS"
         default:
             return true
         }
