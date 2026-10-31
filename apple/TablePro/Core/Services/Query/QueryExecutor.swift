@@ -65,6 +65,13 @@ struct ParsedSchemaMetadata {
     /// Reading it again when the result finally lands reads whichever result is active *then*, and
     /// selecting a pinned result in between made a cached rerun adopt that other result's identity
     /// and non-writable sets, with no schema fetch behind it to repair the mistake.
+    // The view answer travels with the keys: a pinned result selected before the rerun lands repoints the context.
+    static func cached(rows: TableRows, context: TabTableContext) -> ParsedSchemaMetadata {
+        var metadata = cached(rows: rows, primaryKeyColumns: context.primaryKeyColumns)
+        metadata.viewRowEditing = context.viewRowEditing
+        return metadata
+    }
+
     static func cached(rows: TableRows, primaryKeyColumns: [String]) -> ParsedSchemaMetadata {
         ParsedSchemaMetadata(
             columnDefaults: rows.columnDefaults,

@@ -1186,7 +1186,7 @@ final class MainContentCoordinator: ObservableObject {
         // Captured now, while the result this decision was made against is still the active one.
         let cachedMetadata: ParsedSchemaMetadata? = needsMetadataFetch ? nil : ParsedSchemaMetadata.cached(
             rows: tabSessionRegistry.tableRows(for: tabId),
-            primaryKeyColumns: tabManager.tabs[index].tableContext.primaryKeyColumns
+            context: tabManager.tabs[index].tableContext
         )
         if let tableName {
             Self.logger.info(

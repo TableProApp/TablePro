@@ -113,6 +113,19 @@ struct ParseSchemaMetadataTests {
         #expect(ParsedSchemaMetadata.cached(rows: rows, primaryKeyColumns: ["id"]).columnDeclaredTypes == parsed.columnDeclaredTypes)
     }
 
+    @Test("Cached metadata keeps the view answer captured with the keys")
+    func cachedMetadataKeepsTheViewAnswer() {
+        var context = TabTableContext(isView: true, objectType: .view)
+        context.primaryKeyColumns = ["id"]
+        context.viewRowEditing = .editable(TestFixtures.viewTarget(keys: ["id"]))
+        let rows = TableRows.from(queryRows: [], columns: ["id"], columnTypes: [.text(rawType: nil)])
+
+        let cached = ParsedSchemaMetadata.cached(rows: rows, context: context)
+
+        #expect(cached.primaryKeyColumns == ["id"])
+        #expect(cached.viewRowEditing == context.viewRowEditing)
+    }
+
     @Test("Returns an empty dictionary when no column has a comment")
     func emptyWhenNoComments() {
         let schema = FetchedTableSchema(
