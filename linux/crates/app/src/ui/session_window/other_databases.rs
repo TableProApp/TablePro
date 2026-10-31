@@ -242,9 +242,14 @@ impl SessionWindow {
     /// the session the window holds for that database, opened beside
     /// the connection where a connection's catalog holds one database.
     fn follow_database(&self, key: &SessionKey, tab_id: Uuid, database: Option<String>) {
-        let Some(id) = connection_of(key).filter(|id| self.opens_databases(*id)) else {
+        // A tab of another database's own workspace keeps that catalog:
+        // the connection's session may not know the name of its own.
+        let SessionKey::Saved(id) = *key else {
             return;
         };
+        if !self.opens_databases(id) {
+            return;
+        }
         let session = match self.holding(id, database.as_deref()) {
             // The tab's own workspace reads that catalog already.
             Some((held, _)) if &held == key => None,
