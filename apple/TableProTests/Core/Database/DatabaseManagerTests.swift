@@ -363,4 +363,38 @@ struct DatabaseManagerDatabaseSwitchTests {
 
         #expect(DatabaseManager.shared.session(for: connection.id)?.browseSchema == adapter.currentSchema)
     }
+
+    /// StarRocks: `idb` lives in the `ice` catalog, and pinning it to a `default_catalog`
+    /// connection ran `USE idb` there, which failed every metadata read.
+    @Test("A catalog switch that leaves the driver on no schema leaves the session on none")
+    func hierarchicalSwitchDropsSchemaTheDriverLeft() async throws {
+        let connection = TestFixtures.makeConnection(type: .starrocks)
+        let pluginDriver = DatabaseSwitchingDriver(currentSchema: nil)
+        let adapter = PluginDriverAdapter(connection: connection, pluginDriver: pluginDriver)
+        var session = ConnectionSession(connection: connection, driver: adapter)
+        session.browseSchema = "idb"
+        DatabaseManager.shared.injectSession(session, for: connection.id)
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+
+        try await DatabaseManager.shared.switchDatabase(to: "default_catalog", for: connection.id, persist: false)
+
+        let updated = DatabaseManager.shared.session(for: connection.id)
+        #expect(updated?.browseDatabase == "default_catalog")
+        #expect(updated?.browseSchema == nil)
+    }
+
+    @Test("A catalog switch that keeps the driver's schema keeps the session's")
+    func hierarchicalSwitchKeepsSchemaTheDriverKept() async throws {
+        let connection = TestFixtures.makeConnection(type: .trino)
+        let pluginDriver = DatabaseSwitchingDriver(currentSchema: "web")
+        let adapter = PluginDriverAdapter(connection: connection, pluginDriver: pluginDriver)
+        var session = ConnectionSession(connection: connection, driver: adapter)
+        session.browseSchema = "web"
+        DatabaseManager.shared.injectSession(session, for: connection.id)
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+
+        try await DatabaseManager.shared.switchDatabase(to: "hive", for: connection.id, persist: false)
+
+        #expect(DatabaseManager.shared.session(for: connection.id)?.browseSchema == "web")
+    }
 }

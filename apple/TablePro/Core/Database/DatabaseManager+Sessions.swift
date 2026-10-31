@@ -461,9 +461,13 @@ extension DatabaseManager {
             }
             updateSession(connectionId) { session in
                 session.browseDatabase = database
-                if grouping == .bySchema {
-                    session.browseSchema = adapter.currentSchema
-                }
+            if grouping == .bySchema {
+                session.browseSchema = adapter.currentSchema
+            } else if grouping == .hierarchicalSchema, adapter.currentSchema == nil {
+                // The old schema may not exist in the new catalog; keeping it pins pooled
+                // metadata connections to it and every read fails.
+                session.browseSchema = nil
+            }
             }
         }
 
