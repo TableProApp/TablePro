@@ -124,7 +124,7 @@ struct IgbinaryDecoderTests {
     @Test("Arrays nested by value forty deep are refused rather than expanded")
     func exponentialCopiesAreRefused() {
         func level(_ depth: Int, of total: Int) -> String {
-            guard depth > 0 else { return "140206000601060106010601" }
+            guard depth > 0 else { return "14020600060106010601" }
             return "14020600" + level(depth - 1, of: total) + "060101" + String(format: "%02x", total - depth + 1)
         }
         let error = #expect(throws: BinaryValueDecodeError.self) {
