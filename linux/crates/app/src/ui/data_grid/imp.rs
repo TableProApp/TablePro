@@ -87,6 +87,7 @@ pub struct DataGrid {
     /// The window's focus handler, while the grid is in a window.
     pub focus_watch: RefCell<Option<(glib::WeakRef<gtk4::Window>, glib::SignalHandlerId)>>,
     pub(super) font_watch: RefCell<Option<HandlerGuard>>,
+    pub(super) stripes_watch: RefCell<Option<HandlerGuard>>,
 }
 
 #[glib::object_subclass]

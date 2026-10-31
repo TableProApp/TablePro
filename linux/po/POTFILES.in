@@ -156,7 +156,6 @@ crates/app/src/ui/a11y/key_shortcuts.rs
 crates/app/src/ui/a11y/mod.rs
 crates/app/src/ui/a11y/tests.rs
 crates/app/src/ui/ai_policy.rs
-crates/app/src/ui/alternate_rows_provider.rs
 crates/app/src/ui/assistant/assistant_access.rs
 crates/app/src/ui/assistant/assistant_pane.rs
 crates/app/src/ui/assistant/code_block.rs

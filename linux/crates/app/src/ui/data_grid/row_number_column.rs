@@ -51,7 +51,6 @@ pub fn build(grid: &DataGrid) -> gtk::ColumnViewColumn {
                 return;
             };
             bind_cell(&grid, cell, &row, &watches);
-            super::stripes::mark(cell);
         });
     }
     factory.connect_unbind(move |_, item| unwatch(&watches, item.upcast_ref()));

@@ -748,17 +748,6 @@ impl SqlEditor {
             HandlerGuard::new(settings.gio(), scheme),
         ];
         crate::ui::editor_font_provider::apply(settings);
-        crate::ui::alternate_rows_provider::apply(settings);
-        let settings_for_stripes = Rc::downgrade(settings);
-        let stripes = settings.gio().connect_changed(
-            Some(tablepro_storage::settings::keys::SHOW_ALTERNATE_ROWS),
-            move |_, _| {
-                if let Some(settings) = settings_for_stripes.upgrade() {
-                    crate::ui::alternate_rows_provider::apply(&settings);
-                }
-            },
-        );
-        handlers.push(HandlerGuard::new(settings.gio(), stripes));
         for key in [
             tablepro_storage::settings::keys::USE_SYSTEM_FONT,
             tablepro_storage::settings::keys::CUSTOM_FONT,

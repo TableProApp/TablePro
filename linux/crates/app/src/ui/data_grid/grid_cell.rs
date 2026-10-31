@@ -344,7 +344,7 @@ fn shown_text<'a>(
     }
 }
 
-fn set_class(widget: &impl IsA<gtk::Widget>, class: &str, on: bool) {
+pub(super) fn set_class(widget: &impl IsA<gtk::Widget>, class: &str, on: bool) {
     match on {
         true => widget.as_ref().add_css_class(class),
         false => widget.as_ref().remove_css_class(class),

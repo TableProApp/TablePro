@@ -1,24 +1,46 @@
-use gtk4 as gtk;
 use gtk4::prelude::*;
+use gtk4::subclass::prelude::*;
+use gtk4::{self as gtk, glib};
+use tablepro_storage::settings::keys;
 
-/// The class `alternate_rows_provider` shades.
-pub(super) const STRIPE: &str = "tp-stripe";
+use super::DataGrid;
+use super::grid_cell::set_class;
+use crate::ui::handler_guard::HandlerGuard;
 
-/// GTK recycles row widgets as the view scrolls, so the stripe follows
-/// the row's position in the result, never the widget's place among the
-/// rows on screen. The class goes on the cell's child: GTK aborts when a
-/// factory restyles the cell widget it is setting up.
+const STRIPE: &str = "tp-stripe";
+const STRIPED: &str = "tp-striped";
+
+// Rows are recycled, so `:nth-child` cannot stripe them and GTK has no API
+// to class a row: each cell's child follows its row's position instead.
 pub(super) fn follow(cell: &gtk::ColumnViewCell) {
-    cell.connect_notify_local(Some("position"), |cell, _| mark(cell));
+    cell.connect_notify_local(Some("position"), |cell, _| {
+        if let Some(child) = cell.child() {
+            let position = cell.position();
+            let odd = position != gtk::INVALID_LIST_POSITION && !position.is_multiple_of(2);
+            set_class(&child, STRIPE, odd);
+        }
+    });
 }
 
-pub(super) fn mark(cell: &gtk::ColumnViewCell) {
-    let Some(widget) = cell.child() else {
-        return;
-    };
-    let position = cell.position();
-    match position != gtk::INVALID_LIST_POSITION && position % 2 == 1 {
-        true => widget.add_css_class(STRIPE),
-        false => widget.remove_css_class(STRIPE),
+impl DataGrid {
+    pub(super) fn watch_stripes(&self) {
+        let Some(settings) = self.config().map(|config| config.settings.clone()) else {
+            return;
+        };
+        let view = self.column_view();
+        // Connected before the read: GSettings emits `changed` only for a key
+        // read while a handler was connected.
+        let handler = settings.gio().connect_changed(
+            Some(keys::SHOW_ALTERNATE_ROWS),
+            glib::clone!(
+                #[weak]
+                view,
+                move |settings, key| set_class(&view, STRIPED, settings.boolean(key))
+            ),
+        );
+        self.imp()
+            .stripes_watch
+            .replace(Some(HandlerGuard::new(settings.gio(), handler)));
+        set_class(&view, STRIPED, settings.show_alternate_rows());
     }
 }

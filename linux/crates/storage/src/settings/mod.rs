@@ -80,7 +80,6 @@ impl AppSettings {
         self.set_boolean(keys::CONFIRM_BULK_DELETE, confirm)
     }
 
-    /// Whether every other row of a data grid is shaded.
     pub fn show_alternate_rows(&self) -> bool {
         self.settings.boolean(keys::SHOW_ALTERNATE_ROWS)
     }
