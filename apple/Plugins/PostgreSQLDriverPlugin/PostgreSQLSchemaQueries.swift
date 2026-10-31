@@ -206,7 +206,7 @@ enum PostgreSQLSchemaQueries {
     }
 
     private static func quotedSchemaIdentifier(_ schema: String) -> String {
-        "\"\(schema.replacingOccurrences(of: "\"", with: "\"\""))\""
+        "\"\(schema.replacingOccurrences(of: "\"", with: "\"\"", options: .literal))\""
     }
 
     static func collationList(capabilities: PostgreSQLCapabilities) -> String {

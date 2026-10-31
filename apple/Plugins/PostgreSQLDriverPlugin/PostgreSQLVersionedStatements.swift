@@ -195,7 +195,7 @@ internal enum PostgreSQLVersionedStatements {
 
     private static func dollarQuoteTag(avoiding body: String) -> String {
         var label = "tablepro"
-        while body.contains("$\(label)$") {
+        while body.range(of: "$\(label)$", options: .literal) != nil {
             label += "_"
         }
         return "$\(label)$"

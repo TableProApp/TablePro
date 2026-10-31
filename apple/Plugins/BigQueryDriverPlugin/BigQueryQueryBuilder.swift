@@ -479,7 +479,7 @@ internal struct BigQueryQueryBuilder {
     }
 
     private static func foldedLiteral(_ literal: String, folding: PluginSQLCaseFolding) -> String {
-        guard folding.foldsComparisonOperands, literal.hasPrefix("'") else { return literal }
+        guard folding.foldsComparisonOperands, literal.unicodeScalars.first == "'" else { return literal }
         return folding.fold(literal)
     }
 

@@ -136,11 +136,11 @@ final class DuckDBStagingDatabase {
     }
 
     private static func quote(_ identifier: String) -> String {
-        "\"\(identifier.replacingOccurrences(of: "\"", with: "\"\""))\""
+        "\"\(identifier.replacingOccurrences(of: "\"", with: "\"\"", options: .literal))\""
     }
 
     private static func escapeLiteral(_ value: String) -> String {
-        value.replacingOccurrences(of: "'", with: "''")
+        value.replacingOccurrences(of: "'", with: "''", options: .literal)
     }
 }
 

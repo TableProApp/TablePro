@@ -15,7 +15,8 @@ struct RewindPlannerTests {
     private let sqliteQueryBuilder = TableQueryBuilder(
         databaseType: .sqlite,
         dialect: PluginManager.shared.sqlDialect(for: .sqlite),
-        pagination: .offset
+        pagination: .offset,
+        dialectQuote: SQLEscaping.quoteIdentifier
     )
 
     private func operation(

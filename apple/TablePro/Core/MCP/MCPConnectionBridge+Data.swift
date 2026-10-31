@@ -98,7 +98,8 @@ extension MCPConnectionBridge {
                 databaseType: databaseType,
                 pluginDriver: driver.queryBuildingPluginDriver,
                 dialect: dialect,
-                pagination: pagination
+                pagination: pagination,
+                dialectQuote: dialect.map { quoteIdentifierFromDialect($0) } ?? { SQLEscaping.quoteIdentifier($0) }
             )
             let sortState = try MCPConnectionBridge.sortState(from: request.sort, columns: names)
             let requested = try MCPConnectionBridge.validatedSelection(request.columns, available: names)

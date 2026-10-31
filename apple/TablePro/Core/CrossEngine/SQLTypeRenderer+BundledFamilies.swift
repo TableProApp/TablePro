@@ -142,7 +142,7 @@ internal extension SQLTypeRenderer {
             return RenderedColumnType(spelling: "VARCHAR(255)", fidelity: .approximated, reason: enumBecomesText)
         }
         let labels = values
-            .map { "'\($0.replacingOccurrences(of: "'", with: "''"))'" }
+            .map { "'\($0.replacingOccurrences(of: "'", with: "''", options: .literal))'" }
             .joined(separator: ", ")
         return RenderedColumnType(spelling: "ENUM(\(labels))")
     }

@@ -1072,7 +1072,7 @@ actor CassandraConnectionActor {
     }
 
     private func escapeIdentifier(_ value: String) -> String {
-        value.replacingOccurrences(of: "\"", with: "\"\"")
+        value.replacingOccurrences(of: "\"", with: "\"\"", options: .literal)
     }
 
     private static func apply(_ consistency: CassandraConsistency?, to statement: OpaquePointer) throws {

@@ -235,7 +235,7 @@ nonisolated final class PostgreSQLDriver: DatabaseDriver, @unchecked Sendable {
     }
 
     func switchSchema(to name: String) async throws {
-        let safe = name.replacingOccurrences(of: "\"", with: "\"\"")
+        let safe = name.replacingOccurrences(of: "\"", with: "\"\"", options: .literal)
         _ = try await actor.execute("SET search_path TO \"\(safe)\"")
         currentSchema = name
     }
