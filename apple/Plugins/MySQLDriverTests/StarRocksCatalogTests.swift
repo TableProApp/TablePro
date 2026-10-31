@@ -65,9 +65,9 @@ struct StarRocksCatalogTests {
     func binaryLabelledStringsAreText() {
         #expect(MySQLServerFlavor.starrocks.labelsTextResultsAsBinary)
         #expect(!MySQLServerFlavor.mysql.labelsTextResultsAsBinary)
-        let longBlob: UInt32 = 251
+        let varString: UInt32 = 253
         let decoding = MySQLColumnDecoding(
-            typeRaw: longBlob, charsetnr: 63, characterSetName: "binary", flavor: .starrocks,
+            typeRaw: varString, charsetnr: 63, characterSetName: "binary", flavor: .starrocks,
             binaryStringsAreText: MySQLServerFlavor.starrocks.labelsTextResultsAsBinary
         )
         #expect(decoding == .utf8TextOrBytes)

@@ -8,9 +8,9 @@ import TableProMySQLCore
 import TableProPluginKit
 
 extension MySQLPluginDriver {
-    /// No transactions, because a StarRocks transaction is bound to one table's load and the grid's
-    /// `BEGIN` would not group its edits. No MySQL catalogs either: an external catalog answers
-    /// `information_schema` for itself, so compare, routines and accounts are left off.
+    /// No transactions: before 3.5 StarRocks has none across statements, and an external catalog has
+    /// none at all. Compare, routines and accounts read MySQL catalogs StarRocks does not keep, and
+    /// prepared statements are left off because a frontend before 3.2 refuses `COM_STMT_PREPARE`.
     static let starrocksCapabilities: PluginCapabilities = [
         .cancelQuery,
     ]

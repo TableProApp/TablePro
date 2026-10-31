@@ -13,8 +13,6 @@ import TableProPluginKit
 nonisolated internal enum StarRocksCatalog {
     static let defaultCatalog = "default_catalog"
 
-    static let systemDatabaseNames = ["_statistics_", "information_schema", "sys"]
-
     static let showCatalogs = "SHOW CATALOGS"
 
     static let showDatabases = "SHOW DATABASES"

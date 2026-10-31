@@ -55,8 +55,8 @@ internal extension MySQLPluginDriver {
             return columnsByTable[table] ?? (columnsByTable.count == 1 ? columnsByTable.values.first ?? [] : [])
         }
         let result = try await execute(query: "SHOW FULL COLUMNS FROM \(qualifiedName(table, schema: schema))")
-        // StarRocks answers both lookups for `default_catalog` alone, so an external table would read
-        // another table's details or fail outright.
+        // Both lookups read MySQL's `information_schema` and `SHOW CREATE TABLE` shapes, which an external
+        // StarRocks catalog is not held to, and a failed lookup would fail the whole column read.
         var catalogDetails: [String: MySQLCatalogColumnDetail] = [:]
         var createTableDefaults: MySQLCreateTableDefaults?
         if flavor.hasMySQLObjectCatalogs {
