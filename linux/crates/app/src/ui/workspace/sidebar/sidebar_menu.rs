@@ -211,6 +211,7 @@ mod tests {
             can_create_table: false,
             can_edit_structure: false,
             speaks_sql: false,
+            opens_databases: false,
         };
 
         assert_eq!(
