@@ -11,11 +11,16 @@ internal indirect enum PhpValue: Equatable {
     case int(Int)
     case float(Double)
     case string(String)
+    // A PHP string is bytes; igbinary hands over ones that are not UTF-8 as they are.
+    case binaryString(Data)
     case array([PhpKeyValue])
     case object(className: String, properties: [PhpProperty])
     case serializable(className: String, rawPayload: String)
     case enumCase(className: String, caseName: String)
+    // `R:`, a PHP reference to the value numbered `id`.
     case reference(id: Int)
+    // `r:`, the object numbered `id` again.
+    case objectReference(id: Int)
     case unsupported(token: String)
     case depthExceeded
     case tooLarge
@@ -29,6 +34,7 @@ internal indirect enum PhpValue: Equatable {
             if a.isNaN && b.isNaN { return true }
             return a == b
         case (.string(let a), .string(let b)): return a == b
+        case (.binaryString(let a), .binaryString(let b)): return a == b
         case (.array(let a), .array(let b)): return a == b
         case (.object(let aName, let aProps), .object(let bName, let bProps)):
             return aName == bName && aProps == bProps
@@ -37,6 +43,7 @@ internal indirect enum PhpValue: Equatable {
         case (.enumCase(let aName, let aCase), .enumCase(let bName, let bCase)):
             return aName == bName && aCase == bCase
         case (.reference(let a), .reference(let b)): return a == b
+        case (.objectReference(let a), .objectReference(let b)): return a == b
         case (.unsupported(let a), .unsupported(let b)): return a == b
         case (.depthExceeded, .depthExceeded): return true
         case (.tooLarge, .tooLarge): return true
@@ -54,6 +61,8 @@ internal struct PhpProperty: Equatable {
     let name: String
     let visibility: PhpVisibility
     let value: PhpValue
+    // An `i:` member, which __serialize data such as ArrayObject's holds; `name` spells the same number.
+    var index: Int?
 }
 
 internal enum PhpVisibility: Equatable {
@@ -111,7 +120,7 @@ private struct Cursor {
         case UInt8(ascii: "E"): return parseEnumCase()
         case UInt8(ascii: "o"):
             return .unsupported(token: "o")
-        case UInt8(ascii: "r"), UInt8(ascii: "R"): return parseReference()
+        case UInt8(ascii: "r"), UInt8(ascii: "R"): return parseReference(token: token)
         default: return nil
         }
     }
@@ -213,10 +222,17 @@ private struct Cursor {
         var properties: [PhpProperty] = []
         properties.reserveCapacity(count)
         for _ in 0..<count {
-            guard case let .string(rawKey)? = parseValue(depth: depth + 1) else { return nil }
-            let decoded = decodePhpPropertyKey(rawKey)
+            let key = parseValue(depth: depth + 1)
             guard let value = parseValue(depth: depth + 1) else { return nil }
-            properties.append(PhpProperty(name: decoded.name, visibility: decoded.visibility, value: value))
+            switch key {
+            case .string(let rawKey)?:
+                let decoded = decodePhpPropertyKey(rawKey)
+                properties.append(PhpProperty(name: decoded.name, visibility: decoded.visibility, value: value))
+            case .int(let index)?:
+                properties.append(PhpProperty(name: String(index), visibility: .publicVisibility, value: value, index: index))
+            default:
+                return nil
+            }
         }
         guard expect(UInt8(ascii: "}")) else { return nil }
         return .object(className: className, properties: properties)
@@ -257,13 +273,13 @@ private struct Cursor {
         return .enumCase(className: String(name[..<colon]), caseName: String(name[name.index(after: colon)...]))
     }
 
-    private mutating func parseReference() -> PhpValue? {
+    private mutating func parseReference(token: UInt8) -> PhpValue? {
         index += 1
         guard expect(UInt8(ascii: ":")) else { return nil }
         guard let raw = readUntil(UInt8(ascii: ";")) else { return nil }
         guard let value = Int(raw) else { return nil }
         guard expect(UInt8(ascii: ";")) else { return nil }
-        return .reference(id: value)
+        return token == UInt8(ascii: "R") ? .reference(id: value) : .objectReference(id: value)
     }
 
     private mutating func readUntil(_ terminator: UInt8) -> String? {

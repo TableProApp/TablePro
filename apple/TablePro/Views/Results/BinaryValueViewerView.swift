@@ -100,6 +100,15 @@ internal struct BinaryValueViewerView: View {
                 Divider()
                 hexBody
             }
+        case .missingSchema?:
+            VStack(spacing: 0) {
+                banner(
+                    String(localized: "This Mac no longer has the schema chosen for this column, so the stored bytes show. Choose it again with Display As > Avro Schema…"),
+                    systemImage: "questionmark.folder"
+                )
+                Divider()
+                hexBody
+            }
         case .decoded(let tree, let text, let note)?:
             VStack(spacing: 0) {
                 if let note {

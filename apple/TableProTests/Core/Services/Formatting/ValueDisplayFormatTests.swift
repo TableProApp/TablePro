@@ -28,13 +28,15 @@ struct ValueDisplayFormatTests {
     @Test("Every format reads back from its stored form, an Avro one with its schema ID")
     func codableRoundTrip() throws {
         let formats: [String: ValueDisplayFormat] = [
-            "a": .messagePack, "b": .igbinary, "c": .avro(schemaID: "ab12"), "d": .raw,
+            "a": .messagePack, "b": .igbinary, "c": .avro(schemaID: String(repeating: "ab12", count: 8)), "d": .raw,
         ]
         let data = try JSONEncoder().encode(formats)
         #expect(try JSONDecoder().decode([String: ValueDisplayFormat].self, from: data) == formats)
         #expect(try JSONDecoder().decode([String: ValueDisplayFormat].self, from: Data(#"{"x":"protobuf"}"#.utf8))
             == ["x": .protobuf])
         #expect(ValueDisplayFormat(rawValue: "avro:") == nil)
+        #expect(ValueDisplayFormat(rawValue: "avro:ab12") == nil)
+        #expect(ValueDisplayFormat(rawValue: "avro:" + String(repeating: "AB12", count: 8)) == nil)
         #expect(ValueDisplayFormat(rawValue: "nope") == nil)
     }
 

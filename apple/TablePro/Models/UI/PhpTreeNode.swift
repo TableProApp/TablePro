@@ -94,12 +94,12 @@ internal struct PhpTreeNode: Identifiable {
 }
 
 extension PhpTreeNode: FilterableTreeNode {
-    /// An integer key is stored in the value, unlike a JSON array index, so it stays searchable.
+    // An integer key is stored in the value, unlike a JSON array index, so it stays searchable.
     internal var searchableKey: String? {
         key
     }
 
-    /// A class name is data. A count and the cut marker are text the tree made up.
+    // A class name is data. A count and the cut marker are text the tree made up.
     internal var searchableText: String {
         switch nodeType {
         case .array, .truncated: return ""
@@ -121,7 +121,7 @@ extension PhpTreeNode: FilterableTreeNode {
         rawValue ?? displayValue
     }
 
-    /// An array or an object copies its summary: there is no serializer to write its members back out.
+    // An array or an object copies its summary: there is no serializer to write its members back out.
     internal var copyableValueIncludesDescendants: Bool {
         false
     }
@@ -201,6 +201,15 @@ internal enum PhpTreeBuilder {
                 rawValue: stringValue, visibilityBadge: badge
             )
 
+        case .binaryString(let bytes):
+            let hex = "0x" + bytes.uppercaseHex()
+            let display = TreeDisplayText.cut(hex, limit: maxDisplayLength)
+            return PhpTreeNode(
+                key: key, keyPath: keyPath, path: path, nodeType: .string,
+                displayValue: display.text, isDisplayCut: display.isCut,
+                rawValue: hex, visibilityBadge: badge
+            )
+
         case .array(let entries):
             var children: [PhpTreeNode] = []
             children.reserveCapacity(entries.count)
@@ -238,9 +247,10 @@ internal enum PhpTreeBuilder {
                 }
                 children.append(
                     makeNode(
-                        key: property.name,
-                        keyPath: "\(keyPath).\(TreeKeyPathSyntax.member(property.name))",
-                        path: path.appending(siblings.key(property.name)),
+                        key: property.index.map { "[\($0)]" } ?? property.name,
+                        keyPath: property.index.map { "\(keyPath)[\($0)]" }
+                            ?? "\(keyPath).\(TreeKeyPathSyntax.member(property.name))",
+                        path: path.appending(property.index.map { siblings.integerKey($0) } ?? siblings.key(property.name)),
                         value: property.value,
                         formats: formats,
                         nodeCount: &nodeCount,
@@ -267,7 +277,7 @@ internal enum PhpTreeBuilder {
                 displayValue: "\(className)::\(caseName)", className: className, visibilityBadge: badge
             )
 
-        case .reference(let identifier):
+        case .reference(let identifier), .objectReference(let identifier):
             return PhpTreeNode(
                 key: key, keyPath: keyPath, path: path, nodeType: .reference,
                 displayValue: "→ #\(identifier)", visibilityBadge: badge
@@ -307,6 +317,7 @@ internal enum PhpTreeBuilder {
         switch key {
         case .int(let intValue): return "[\(intValue)]"
         case .string(let stringValue): return stringValue
+        case .binaryString(let bytes): return "0x" + bytes.uppercaseHex()
         default: return "?"
         }
     }
@@ -315,6 +326,7 @@ internal enum PhpTreeBuilder {
         switch key {
         case .int(let intValue): return "\(parent)[\(intValue)]"
         case .string(let stringValue): return "\(parent).\(TreeKeyPathSyntax.member(stringValue))"
+        case .binaryString: return "\(parent)[\(arrayKeyDisplay(key))]"
         default: return parent
         }
     }

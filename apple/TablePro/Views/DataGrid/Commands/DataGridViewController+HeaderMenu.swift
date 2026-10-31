@@ -4,7 +4,6 @@
 //
 
 import AppKit
-import UniformTypeIdentifiers
 
 struct DataGridDisplayFormatChoice {
     let columnID: DataGridColumnID
@@ -101,8 +100,7 @@ extension DataGridViewController {
             item.state = format == current ? .on : .off
             submenu.addItem(item)
         }
-        let databaseType = model.configuration.traits.databaseType
-        if ValueDisplayFormat.avro(schemaID: "").isApplicable(to: column.type, databaseType: databaseType) {
+        if ValueDisplayFormat.offersAvro(for: column.type, databaseType: model.configuration.traits.databaseType) {
             if case .avro = current {
                 let item = menuItem(
                     current.displayName,
@@ -239,11 +237,15 @@ extension DataGridViewController {
 
     // Only a value filter can renumber rows on a format change, so only then does the owner confirm it.
     @objc func setDisplayFormatFromMenu(_ sender: Any?) {
-        guard let choice = (sender as? NSMenuItem)?.representedObject as? DataGridDisplayFormatChoice,
-              model.columns.column(id: choice.columnID) != nil else { return }
+        guard let choice = (sender as? NSMenuItem)?.representedObject as? DataGridDisplayFormatChoice else { return }
+        setDisplayFormat(choice.format, columnID: choice.columnID)
+    }
+
+    private func setDisplayFormat(_ format: ValueDisplayFormat, columnID: DataGridColumnID) {
+        guard model.columns.column(id: columnID) != nil else { return }
         let apply: @MainActor () -> Void = { [weak self] in
-            guard let self, let column = self.model.columns.column(id: choice.columnID) else { return }
-            self.model.setDisplayFormat(choice.format, for: column)
+            guard let self, let column = self.model.columns.column(id: columnID) else { return }
+            self.model.setDisplayFormat(format, for: column)
         }
         guard model.store.valueFilter.isActive, let actions = model.actions else {
             apply()
@@ -252,39 +254,25 @@ extension DataGridViewController {
         actions.gridConfirmDisplayOrderChange(then: apply)
     }
 
-    // The schema is read once and kept, so the column still decodes after the file moves.
+    // The schema is copied in, so the column still decodes after the file moves.
     @objc func chooseAvroSchemaFromMenu(_ sender: Any?) {
         guard let columnID = menuColumn(sender)?.id, let window = view.window else { return }
-        let panel = NSOpenPanel()
-        panel.canChooseFiles = true
-        panel.canChooseDirectories = false
-        panel.allowsMultipleSelection = false
-        panel.allowedContentTypes = [UTType(filenameExtension: "avsc") ?? .json, .json]
-        panel.prompt = String(localized: "Choose Schema")
-        panel.message = String(localized: "Choose the Avro schema the values in this column were written with.")
-        Task { [weak self] in
-            guard await panel.presentAsSheet(for: window) == .OK, let url = panel.url else { return }
-            self?.applyAvroSchema(at: url, columnID: columnID, window: window)
+        Task { @MainActor [weak self] in
+            guard let text = await AvroSchemaFilePanel.chooseSchemaText(in: window) else { return }
+            let format: ValueDisplayFormat
+            do {
+                format = .avro(schemaID: try AvroSchemaStore.shared.add(text))
+            } catch {
+                NSAlert(error: error).beginSheetModal(for: window, completionHandler: nil)
+                return
+            }
+            guard let self else { return }
+            if let column = model.columns.column(id: columnID), model.displayFormat(for: column) == format {
+                model.redisplay(column)
+            } else {
+                setDisplayFormat(format, columnID: columnID)
+            }
         }
-    }
-
-    private func applyAvroSchema(at url: URL, columnID: DataGridColumnID, window: NSWindow) {
-        let schemaID: String
-        do {
-            let text = try String(contentsOf: url, encoding: .utf8)
-            schemaID = try AvroSchemaLibrary.shared.register(text: text, name: url.lastPathComponent)
-        } catch {
-            let reason = (error as? AvroSchemaError)?.reason ?? error.localizedDescription
-            let alert = NSAlert()
-            alert.alertStyle = .warning
-            alert.messageText = String(format: String(localized: "%@ is not a usable Avro schema"), url.lastPathComponent)
-            alert.informativeText = reason
-            alert.beginSheetModal(for: window)
-            return
-        }
-        let item = NSMenuItem()
-        item.representedObject = DataGridDisplayFormatChoice(columnID: columnID, format: .avro(schemaID: schemaID))
-        setDisplayFormatFromMenu(item)
     }
 
     @objc func sizeColumnToFitFromMenu(_ sender: Any?) {

@@ -270,6 +270,15 @@ final class DataGridModel: ObservableObject {
             store.valueFilter = remapped
         }
         store.displayFormats = formats
+        redrawFormatted(column, in: current)
+    }
+
+    // The format is unchanged but its decoder now reads what it could not, as when a lost Avro schema is chosen again.
+    func redisplay(_ column: DataGridColumn) {
+        redrawFormatted(column, in: rows)
+    }
+
+    private func redrawFormatted(_ column: DataGridColumn, in current: TableRows) {
         display.cache.removeAll()
         if store.valueFilter.isActive {
             order = resolveOrder(in: current)

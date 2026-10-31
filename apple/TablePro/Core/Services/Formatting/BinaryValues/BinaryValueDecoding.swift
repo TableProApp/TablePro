@@ -30,6 +30,8 @@ internal enum BinaryValueTree: Sendable {
 internal enum BinaryValueDocument: Sendable {
     case decoded(tree: BinaryValueTree, text: String, note: String?)
     case failed(BinaryValueDecodeError)
+    // Nothing to judge the bytes by: the format names a schema this Mac no longer has.
+    case missingSchema
 }
 
 // Pure: the grid calls it per cell on the main actor, the viewer off it.
@@ -56,7 +58,7 @@ internal enum BinaryValueDecoding {
             case .igbinary:
                 text = PhpSerializeWriter.text(try IgbinaryDecoder.decode(data, maxValues: budget), limit: limit)
             case .avro(let schemaID):
-                guard let schema = AvroSchemaLibrary.shared.schema(id: schemaID) else { return nil }
+                guard let schema = AvroSchemaStore.shared.schema(id: schemaID) else { return nil }
                 let value = try AvroDecoder.decode(data, schema: schema, maxValues: budget).value
                 text = MessagePackTextWriter.json(value, pretty: false, limit: limit)
             }
@@ -114,9 +116,7 @@ internal enum BinaryValueDecoding {
                     note: nil
                 )
             case .avro(let schemaID):
-                guard let schema = AvroSchemaLibrary.shared.schema(id: schemaID) else {
-                    return .failed(BinaryValueDecodeError(kind: .schemaMissing, offset: 0))
-                }
+                guard let schema = AvroSchemaStore.shared.schema(id: schemaID) else { return .missingSchema }
                 let message = try AvroDecoder.decode(data, schema: schema)
                 return .decoded(
                     tree: .json(MessagePackTreeBuilder.build(from: message.value)),
@@ -124,7 +124,7 @@ internal enum BinaryValueDecoding {
                         MessagePackTextWriter.json(message.value, pretty: true, limit: writerLimit(forCap: maxViewerTextLength)),
                         at: maxViewerTextLength
                     ),
-                    note: message.schemaID.map(schemaIDNote)
+                    note: message.framing.map(framingNote)
                 )
             }
         } catch let error as BinaryValueDecodeError {
@@ -134,8 +134,16 @@ internal enum BinaryValueDecoding {
         }
     }
 
-    private static func schemaIDNote(_ schemaID: UInt32) -> String {
-        String(format: String(localized: "Schema Registry framing: schema ID %lld"), Int(schemaID))
+    private static func framingNote(_ framing: AvroFraming) -> String {
+        switch framing {
+        case .confluent(let schemaID):
+            return String(format: String(localized: "Schema Registry framing: schema ID %lld"), Int(schemaID))
+        case .singleObject(let fingerprint):
+            return String(
+                format: String(localized: "Avro single-object encoding: schema fingerprint %@"),
+                String(format: "%016llX", fingerprint)
+            )
+        }
     }
 
     private static func framingNote(_ framing: ProtobufFraming) -> String {

@@ -940,6 +940,9 @@
         }
       }
     },
+    "“%@” is not a usable Avro schema." : {
+
+    },
     "\"%@\" is not a valid %@. Example: %@" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -4011,9 +4014,6 @@
           }
         }
       }
-    },
-    "%@ is not a usable Avro schema" : {
-
     },
     "%@ is not a Vault address. Use a URL such as https://vault.example.com:8200." : {
 
@@ -29719,6 +29719,9 @@
 
     },
     "Avro Schema…" : {
+
+    },
+    "Avro single-object encoding: schema fingerprint %@" : {
 
     },
     "AWS answered without the Redshift user and password." : {
@@ -183357,9 +183360,6 @@
         }
       }
     },
-    "The Avro schema for this column is missing. Choose the schema file again." : {
-
-    },
     "The AWS credentials for this profile have expired. Sign in again and retry." : {
       "localizations" : {
         "fr" : {
@@ -186453,7 +186453,13 @@
     "The file is larger than %@, too large for a rules file." : {
 
     },
+    "The file is larger than any Avro schema." : {
+
+    },
     "The file is not a JSON object." : {
+
+    },
+    "The file is not UTF-8 text." : {
 
     },
     "The file is not valid JSON." : {
@@ -189981,7 +189987,7 @@
     "The schema changes staged in this diagram will be lost." : {
 
     },
-    "The schema could not be saved." : {
+    "The schema defines type %@ twice." : {
 
     },
     "The schema has a type that is not a name, an object or a union." : {
@@ -193223,6 +193229,9 @@
           }
         }
       }
+    },
+    "The value was written with the schema whose fingerprint is %@, not this column's." : {
+
     },
     "The values this save replaced are no longer being kept." : {
       "localizations" : {
@@ -197837,6 +197846,9 @@
           }
         }
       }
+    },
+    "This Mac no longer has the schema chosen for this column, so the stored bytes show. Choose it again with Display As > Avro Schema…" : {
+
     },
     "This Mac no longer holds a seat." : {
       "localizations" : {

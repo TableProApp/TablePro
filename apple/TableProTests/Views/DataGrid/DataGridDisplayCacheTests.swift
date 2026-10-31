@@ -4,6 +4,7 @@
 //
 
 import AppKit
+import CryptoKit
 import Foundation
 @testable import TablePro
 import TableProPluginKit
@@ -106,6 +107,22 @@ struct DataGridDisplayCacheTests {
 
         grid.model.setDisplayFormat(.raw, for: column)
         #expect(grid.text(row: 0) == Self.rawBinaryText)
+    }
+
+    @Test("A schema chosen again after this Mac lost it redraws the cells it had left as hex")
+    func redisplayAfterTheSchemaReturns() throws {
+        let grid = DisplayGrid(Self.binaryRows)
+        let column = try #require(grid.model.columns.column(at: 0))
+        let text = #"{"type":"fixed","name":"F"# + UUID().uuidString.filter(\.isLetter) + #"","size":16}"#
+        let schemaID = SHA256.hash(data: Data(text.utf8)).prefix(16).map { String(format: "%02x", $0) }.joined()
+        grid.model.setDisplayFormat(.avro(schemaID: schemaID), for: column)
+        #expect(grid.text(row: 0) == Self.rawBinaryText)
+
+        #expect(try AvroSchemaStore.shared.add(text) == schemaID)
+        #expect(grid.text(row: 0) == Self.rawBinaryText)
+
+        grid.model.redisplay(column)
+        #expect(grid.text(row: 0) == "\"" + Self.rawBinaryText + "\"")
     }
 
     @Test("A display format is kept in the grid's store, where its owner reads it")

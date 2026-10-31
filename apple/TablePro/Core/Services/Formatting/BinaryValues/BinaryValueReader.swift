@@ -19,7 +19,7 @@ internal struct BinaryValueDecodeError: Error, Equatable, Sendable {
         case unknownReference(Int)
         case indexOutOfRange(Int)
         case invalidLength
-        case schemaMissing
+        case otherSchema(fingerprint: UInt64)
     }
 
     let kind: Kind
@@ -59,8 +59,11 @@ internal struct BinaryValueDecodeError: Error, Equatable, Sendable {
             return String(format: String(localized: "Byte %lld picks entry %lld, which the schema does not have."), offset, index)
         case .invalidLength:
             return String(format: String(localized: "The length at byte %lld is negative."), offset)
-        case .schemaMissing:
-            return String(localized: "The Avro schema for this column is missing. Choose the schema file again.")
+        case .otherSchema(let fingerprint):
+            return String(
+                format: String(localized: "The value was written with the schema whose fingerprint is %@, not this column's."),
+                String(format: "%016llX", fingerprint)
+            )
         }
     }
 }
