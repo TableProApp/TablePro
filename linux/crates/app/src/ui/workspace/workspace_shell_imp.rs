@@ -2,9 +2,9 @@ use std::cell::{OnceCell, RefCell};
 use std::collections::VecDeque;
 
 use gtk4 as gtk;
+use gtk4::glib;
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
-use gtk4::{gio, glib};
 use libadwaita as adw;
 use libadwaita::subclass::prelude::*;
 
