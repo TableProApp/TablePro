@@ -1541,6 +1541,7 @@ fn index_in(model: &impl IsA<gio::ListModel>, object: &impl IsA<glib::Object>) -
 
 /// A sibling database's row: its connection and the database, apart.
 fn sibling_title(connection: &str, database: &str) -> String {
+    // Translators: a connection and another of its server's databases, open beside it.
     crate::i18n::gettext_f(
         "{connection} · {database}",
         &[("connection", connection), ("database", database)],

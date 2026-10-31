@@ -141,6 +141,156 @@ struct ResultPinningTests {
         #expect(coordinator.tabManager.selectedTab?.display.resultSets.map(\.id) == [pinned.id])
     }
 
+    @Test("Closing the active result selects the one that takes its place")
+    @MainActor
+    func closeSelectsTheNeighbour() throws {
+        let coordinator = Self.makeCoordinator()
+        defer { coordinator.teardown() }
+        let results = try Self.seed(coordinator, labels: ["a", "b", "c", "d"], activeIndex: 1)
+
+        coordinator.closeResultSet(id: results[1].id)
+
+        let display = try #require(coordinator.tabManager.selectedTab?.display)
+        #expect(display.resultSets.map(\.id) == [results[0].id, results[2].id, results[3].id])
+        #expect(display.activeResultSet?.id == results[2].id)
+    }
+
+    @Test("Closing the last result selects the one before it")
+    @MainActor
+    func closeLastSelectsThePrevious() throws {
+        let coordinator = Self.makeCoordinator()
+        defer { coordinator.teardown() }
+        let results = try Self.seed(coordinator, labels: ["a", "b", "c"], activeIndex: 2)
+
+        coordinator.closeResultSet(id: results[2].id)
+
+        #expect(coordinator.tabManager.selectedTab?.display.activeResultSet?.id == results[1].id)
+    }
+
+    @Test("Closing a result that is not shown keeps the one that is")
+    @MainActor
+    func closeBackgroundResultKeepsActive() throws {
+        let coordinator = Self.makeCoordinator()
+        defer { coordinator.teardown() }
+        let results = try Self.seed(coordinator, labels: ["a", "b", "c"], activeIndex: 0)
+
+        coordinator.closeResultSet(id: results[2].id)
+
+        let display = try #require(coordinator.tabManager.selectedTab?.display)
+        #expect(display.resultSets.map(\.id) == [results[0].id, results[1].id])
+        #expect(display.activeResultSet?.id == results[0].id)
+    }
+
+    @Test("Close Others keeps the pinned results and shows the one it kept")
+    @MainActor
+    func closeOthersShowsTheKeptResult() throws {
+        let coordinator = Self.makeCoordinator()
+        defer { coordinator.teardown() }
+        let results = try Self.seed(coordinator, labels: ["a", "b", "c", "d"], activeIndex: 3, pinnedIndices: [0])
+
+        coordinator.closeOtherResultSets(keeping: results[1].id)
+
+        let display = try #require(coordinator.tabManager.selectedTab?.display)
+        #expect(display.resultSets.map(\.id) == [results[0].id, results[1].id])
+        #expect(display.activeResultSet?.id == results[1].id)
+    }
+
+    @Test("Closing the active result waits for the answer about its unsaved edits")
+    @MainActor
+    func closeAsksBeforeDroppingEdits() throws {
+        let coordinator = Self.makeCoordinator()
+        defer { coordinator.teardown() }
+        let results = try Self.seed(coordinator, labels: ["a", "b"], activeIndex: 1)
+        Self.stageEdit(on: coordinator)
+        coordinator.isShowingConfirmAlert = true
+
+        coordinator.closeResultSet(id: results[1].id)
+        coordinator.closeOtherResultSets(keeping: results[0].id)
+
+        let display = try #require(coordinator.tabManager.selectedTab?.display)
+        #expect(display.resultSets.map(\.id) == [results[0].id, results[1].id])
+        #expect(coordinator.changeManager.hasChanges)
+    }
+
+    @Test("A table tab's rows cannot be closed as a result")
+    @MainActor
+    func tableTabRefusesClose() throws {
+        let coordinator = Self.makeCoordinator()
+        defer { coordinator.teardown() }
+        try coordinator.tabManager.addTableTab(tableName: "users")
+        let index = try #require(coordinator.tabManager.selectedTabIndex)
+        let rows = Self.makeResultSet(label: "users")
+        coordinator.tabManager.mutate(at: index) { tab in
+            tab.display.resultSets = [rows]
+            tab.display.activeResultSetId = rows.id
+        }
+
+        #expect(coordinator.canCloseActiveResultSet == false)
+        #expect(coordinator.canStepActiveResultSet(by: 1) == false)
+        coordinator.closeResultSet(id: rows.id)
+
+        #expect(coordinator.tabManager.selectedTab?.display.resultSets.map(\.id) == [rows.id])
+    }
+
+    @Test("The View menu offers only the result steps and close that would do something")
+    @MainActor
+    func resultCommandsMatchWhatTheyWouldDo() throws {
+        let coordinator = Self.makeCoordinator()
+        defer { coordinator.teardown() }
+        _ = try Self.seed(coordinator, labels: ["a", "b", "c"], activeIndex: 0, pinnedIndices: [0])
+
+        #expect(coordinator.canStepActiveResultSet(by: -1) == false)
+        #expect(coordinator.canStepActiveResultSet(by: 1))
+        #expect(coordinator.canCloseActiveResultSet == false)
+
+        let index = try #require(coordinator.tabManager.selectedTabIndex)
+        let last = try #require(coordinator.tabManager.selectedTab?.display.resultSets.last)
+        coordinator.tabManager.mutate(at: index) { $0.display.activeResultSetId = last.id }
+
+        #expect(coordinator.canStepActiveResultSet(by: -1))
+        #expect(coordinator.canStepActiveResultSet(by: 1) == false)
+        #expect(coordinator.canCloseActiveResultSet)
+    }
+
+    @MainActor
+    private static func seed(
+        _ coordinator: MainContentCoordinator,
+        labels: [String],
+        activeIndex: Int,
+        pinnedIndices: Set<Int> = []
+    ) throws -> [ResultSet] {
+        coordinator.tabManager.addTab(databaseName: "db")
+        let index = try #require(coordinator.tabManager.selectedTabIndex)
+        let results = labels.enumerated().map { offset, label in
+            makeResultSet(label: label, isPinned: pinnedIndices.contains(offset))
+        }
+        coordinator.tabManager.mutate(at: index) { tab in
+            tab.display.resultSets = results
+            tab.display.activeResultSetId = results[activeIndex].id
+        }
+        return results
+    }
+
+    @MainActor
+    private static func stageEdit(on coordinator: MainContentCoordinator) {
+        coordinator.changeManager.configureForTable(
+            tableName: "users",
+            columns: ["id", "name"],
+            primaryKeyColumns: ["id"],
+            databaseType: .mysql,
+            generatedColumns: [],
+            triggerReload: false
+        )
+        coordinator.changeManager.recordCellChange(
+            rowID: .existing(0),
+            columnIndex: 1,
+            columnName: "name",
+            oldValue: "Alice",
+            newValue: "Bob",
+            originalRow: ["1", "Alice"]
+        )
+    }
+
     @Test("Toggling pin flips the flag on the addressed result")
     @MainActor
     func togglePinFlipsFlag() throws {

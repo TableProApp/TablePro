@@ -22,7 +22,7 @@ impl SessionWindow {
                 return;
             }
             SessionKey::Saved(id) => id,
-            // Not recorded yet: a sibling reopens with its connection.
+            // Never recorded: another database opens from its connection.
             SessionKey::SavedIn { .. } => return,
         };
         let (Some(state), Some(input)) = (self.state(), self.input()) else {

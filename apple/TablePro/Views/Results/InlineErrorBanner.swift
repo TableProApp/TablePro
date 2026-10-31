@@ -14,9 +14,11 @@ struct InlineErrorBanner: View {
     var onDismiss: (() -> Void)?
 
     private let maxMessageHeight: CGFloat = 96
+    private let minMessageHeight: CGFloat = 16
     @State private var messageHeight: CGFloat = 0
+    @State private var shownHeight: CGFloat = 0
 
-    private var messageFits: Bool { messageHeight <= maxMessageHeight }
+    private var messageFits: Bool { messageHeight <= shownHeight + 0.5 }
 
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
@@ -34,7 +36,16 @@ struct InlineErrorBanner: View {
                         messageHeight = height
                     }
             }
-            .frame(height: min(messageHeight, maxMessageHeight))
+            // Gives way down to one line in a short pane, so the bars above and below it stay inside the pane.
+            .frame(
+                minHeight: min(messageHeight, minMessageHeight),
+                maxHeight: min(messageHeight, maxMessageHeight)
+            )
+            .onGeometryChange(for: CGFloat.self) { proxy in
+                proxy.size.height
+            } action: { height in
+                shownHeight = height
+            }
             .scrollDisabled(messageFits)
             .scrollBounceBasedOnSize()
             if let onFixWithAI {
