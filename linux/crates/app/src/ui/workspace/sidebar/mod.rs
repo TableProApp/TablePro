@@ -30,7 +30,7 @@ use gtk4::prelude::*;
 use tablepro_core::DataModel;
 use tablepro_core::meta::{ObjectInfo, ObjectScope, SchemaInfo, TableRef};
 use tablepro_session::runtime::{TaskFailure, Tasks};
-use tablepro_session::{ObjectListSnapshot, Session, SessionKey};
+use tablepro_session::{ObjectListSnapshot, Session};
 
 pub(super) use catalog_watch::{catalog_watch, reconnect_watch, spawn_local};
 pub(crate) use connection_tree::{ConnectionTree, SessionRowState};
@@ -285,13 +285,9 @@ impl WorkspaceModel {
         self.refresh_catalog();
         // The statement ran in the tab's database, whose session the
         // window may hold beside this one (0030).
-        let connection = match &self.key {
-            SessionKey::Saved(id) | SessionKey::SavedIn { id, .. } => Some(*id),
-            SessionKey::File(_) => None,
-        };
-        if let (Some(id), Some(database), Some(shell)) = (connection, moved_to, self.shell.upgrade()) {
-            shell.tell_window(crate::ui::SessionWindowInput::RefreshIn(SessionKey::SavedIn {
-                id,
+        if let (Some(database), Some(shell)) = (moved_to, self.shell.upgrade()) {
+            shell.tell_window(crate::ui::SessionWindowInput::MovedTab(crate::ui::MovedTab::Refresh {
+                key: self.key.clone(),
                 database,
             }));
         }

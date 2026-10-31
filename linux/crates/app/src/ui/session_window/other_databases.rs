@@ -19,8 +19,8 @@ use tablepro_session::{ConnectError, Session, SessionClaim, SessionKey};
 use tokio_util::sync::{CancellationToken, DropGuard};
 use uuid::Uuid;
 
-use super::SessionWindow;
 use super::session_page::OpenSession;
+use super::{MovedTab, SessionWindow};
 use crate::i18n::{gettext, gettext_f};
 use crate::runtime::DeliverInput;
 use crate::ui::error_text::{connect_error_message, operation_error_message};
@@ -69,6 +69,15 @@ impl OtherDatabases {
     fn take_opening(&mut self, database: &str) -> Option<SessionClaim> {
         let position = self.opening.iter().position(|opening| opening.database == database)?;
         Some(self.opening.remove(position).claim)
+    }
+}
+
+/// The saved connection a session belongs to, its own or another of
+/// its databases.
+fn connection_of(key: &SessionKey) -> Option<Uuid> {
+    match key {
+        SessionKey::Saved(id) | SessionKey::SavedIn { id, .. } => Some(*id),
+        SessionKey::File(_) => None,
     }
 }
 
@@ -219,36 +228,60 @@ impl SessionWindow {
         }
     }
 
+    /// What an editor tab that moved to another database asks of the
+    /// window.
+    pub(super) fn on_moved_tab(&self, asked: MovedTab) {
+        match asked {
+            MovedTab::Follow { key, tab_id, database } => self.follow_database(&key, tab_id, database),
+            MovedTab::Refresh { key, database } => self.refresh_database(&key, database),
+        }
+    }
+
     /// Editor tab `tab_id` of the session under `key` moved to
     /// `database`, `None` for the connection's own. Its completion reads
     /// the session the window holds for that database, opened beside
     /// the connection where a connection's catalog holds one database.
-    pub(super) fn follow_database(&self, key: &SessionKey, tab_id: Uuid, database: Option<String>) {
-        let id = match key {
-            SessionKey::Saved(id) | SessionKey::SavedIn { id, .. } => *id,
-            SessionKey::File(_) => return,
+    fn follow_database(&self, key: &SessionKey, tab_id: Uuid, database: Option<String>) {
+        let Some(id) = connection_of(key).filter(|id| self.opens_databases(*id)) else {
+            return;
         };
-        let held = self.find_open(|open| {
-            let holds = match (open.claim.key(), &database) {
-                (SessionKey::Saved(of), None) => *of == id,
-                (SessionKey::Saved(of), Some(name)) => *of == id && open.session.database() == Some(name.as_str()),
-                (SessionKey::SavedIn { id: of, database: held }, Some(name)) => *of == id && held == name,
-                _ => false,
-            };
-            holds.then(|| (open.claim.key().clone(), open.session.clone()))
-        });
-        let session = match held {
+        let session = match self.holding(id, database.as_deref()) {
             // The tab's own workspace reads that catalog already.
             Some((held, _)) if &held == key => None,
             Some((_, session)) => Some(session),
             None => {
-                if let Some(database) = database.filter(|_| self.opens_databases(id)) {
+                if let Some(database) = database {
                     self.open_database(id, database);
                 }
                 return;
             }
         };
         self.deliver_to(key, WorkspaceInput::FollowCatalog { tab_id, session });
+    }
+
+    /// A tab of the session under `key` changed the catalog of
+    /// `database`: the session holding it reads its catalog again.
+    fn refresh_database(&self, key: &SessionKey, database: String) {
+        let Some(id) = connection_of(key) else {
+            return;
+        };
+        if let Some((held, _)) = self.holding(id, Some(&database)).filter(|(held, _)| held != key) {
+            self.deliver_to(&held, WorkspaceInput::RefreshCatalog);
+        }
+    }
+
+    /// The key and session the window holds for the connection `id`'s
+    /// database `database`, `None` for its own.
+    fn holding(&self, id: Uuid, database: Option<&str>) -> Option<(SessionKey, Arc<Session>)> {
+        self.find_open(|open| {
+            let holds = match (open.claim.key(), database) {
+                (SessionKey::Saved(of), None) => *of == id,
+                (SessionKey::Saved(of), Some(name)) => *of == id && open.session.database() == Some(name),
+                (SessionKey::SavedIn { id: of, database: held }, Some(name)) => *of == id && held == name,
+                (SessionKey::SavedIn { .. } | SessionKey::File(_), _) => false,
+            };
+            holds.then(|| (open.claim.key().clone(), open.session.clone()))
+        })
     }
 
     /// Whether the connection `id`'s catalog holds only its own database,

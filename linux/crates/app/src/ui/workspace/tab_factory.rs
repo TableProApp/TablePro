@@ -185,10 +185,16 @@ impl TabFactory {
             close_timeout: parts.context.close_timeout(),
             snippets: parts.snippets.clone(),
         });
+        let moved = database.is_some();
         if let Some(database) = database {
             editor.move_to_database(&database);
         }
         connect_editor(&editor, id, &parts.input, &parts.toasts);
+        // It moved before the workspace heard it, which follows it once
+        // the tab is in.
+        if moved {
+            parts.input.deliver(WorkspaceInput::EditorTabDatabaseChanged(id));
+        }
         editor.attach_assistant(parts.assistant.clone());
         // After the signals are connected, so the workspace marks a tab
         // restored with unsaved changes.

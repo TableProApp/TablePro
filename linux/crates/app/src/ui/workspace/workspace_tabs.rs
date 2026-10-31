@@ -547,11 +547,11 @@ impl WorkspaceModel {
             _ => return,
         };
         if let Some(shell) = self.shell.upgrade() {
-            shell.tell_window(crate::ui::SessionWindowInput::FollowDatabase {
+            shell.tell_window(crate::ui::SessionWindowInput::MovedTab(crate::ui::MovedTab::Follow {
                 key: self.key.clone(),
                 tab_id,
                 database,
-            });
+            }));
         }
     }
 
