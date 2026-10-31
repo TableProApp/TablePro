@@ -13,10 +13,17 @@ struct MySQLTableHealthProviderTests {
 
     private typealias IndexRow = (index: String, nonUnique: String, type: String, column: String?, subPart: String?)
 
-    private func redundant(in rows: [IndexRow], table: String = "orders") -> [String: String] {
+    private static let indexColumns = [
+        "schema_name", "table_name", "index_name", "non_unique", "index_type", "column_name", "sub_part", "sort_order"
+    ]
+
+    private func redundant(in rows: [IndexRow], table: String = "orders", sortOrders: [String?]? = nil) -> [String: String] {
         let result = TableHealthFixture.result(
-            columns: ["schema_name", "table_name", "index_name", "non_unique", "index_type", "column_name", "sub_part"],
-            rows: rows.map { row -> [String?] in ["shop", table, row.index, row.nonUnique, row.type, row.column, row.subPart] }
+            columns: Self.indexColumns,
+            rows: rows.enumerated().map { position, row -> [String?] in
+                let sortOrder = sortOrders?[position] ?? (row.type == "BTREE" ? "A" : nil)
+                return ["shop", table, row.index, row.nonUnique, row.type, row.column, row.subPart, sortOrder]
+            }
         )
         var map: [String: String] = [:]
         for finding in provider.findings(for: .redundantIndex, from: result) {
@@ -88,14 +95,43 @@ struct MySQLTableHealthProviderTests {
         #expect(found.isEmpty)
     }
 
+    @Test("A full-text index is redundant only to an identical one, never to a longer one")
+    func fullTextNeedsExactColumns() {
+        let prefix = redundant(in: [
+            ("ft_a", "1", "FULLTEXT", "a", nil),
+            ("ft_ab", "1", "FULLTEXT", "a", nil),
+            ("ft_ab", "1", "FULLTEXT", "b", nil)
+        ])
+        let identical = redundant(in: [
+            ("ft_a", "1", "FULLTEXT", "a", nil),
+            ("ft_a2", "1", "FULLTEXT", "a", nil)
+        ])
+        #expect(prefix.isEmpty)
+        #expect(Array(identical.keys) == ["ft_a2"])
+    }
+
+    @Test("A key part sorted the other way keeps an index apart")
+    func sortDirectionMatters() {
+        let found = redundant(
+            in: [
+                ("idx_ab_desc", "1", "BTREE", "a", nil),
+                ("idx_ab_desc", "1", "BTREE", "b", nil),
+                ("idx_ab", "1", "BTREE", "a", nil),
+                ("idx_ab", "1", "BTREE", "b", nil)
+            ],
+            sortOrders: ["A", "D", "A", "A"]
+        )
+        #expect(found.isEmpty)
+    }
+
     @Test("Indexes compare only within their own table")
     func tablesStayApart() {
         let result = TableHealthFixture.result(
-            columns: ["schema_name", "table_name", "index_name", "non_unique", "index_type", "column_name", "sub_part"],
+            columns: Self.indexColumns,
             rows: [
-                ["shop", "a", "idx_x", "1", "BTREE", "c", nil],
-                ["shop", "b", "idx_xy", "1", "BTREE", "c", nil],
-                ["shop", "b", "idx_xy", "1", "BTREE", "d", nil]
+                ["shop", "a", "idx_x", "1", "BTREE", "c", nil, "A"],
+                ["shop", "b", "idx_xy", "1", "BTREE", "c", nil, "A"],
+                ["shop", "b", "idx_xy", "1", "BTREE", "d", nil, "A"]
             ]
         )
         #expect(provider.findings(for: .redundantIndex, from: result).isEmpty)
@@ -104,11 +140,11 @@ struct MySQLTableHealthProviderTests {
     @Test("A redundant index previews a drop with backtick quoting")
     func redundantFixQuotes() throws {
         let result = TableHealthFixture.result(
-            columns: ["schema_name", "table_name", "index_name", "non_unique", "index_type", "column_name", "sub_part"],
+            columns: Self.indexColumns,
             rows: [
-                ["shop", "odd`name", "idx_a", "1", "BTREE", "a", nil],
-                ["shop", "odd`name", "idx_ab", "1", "BTREE", "a", nil],
-                ["shop", "odd`name", "idx_ab", "1", "BTREE", "b", nil]
+                ["shop", "odd`name", "idx_a", "1", "BTREE", "a", nil, "A"],
+                ["shop", "odd`name", "idx_ab", "1", "BTREE", "a", nil, "A"],
+                ["shop", "odd`name", "idx_ab", "1", "BTREE", "b", nil, "A"]
             ]
         )
         let finding = try #require(provider.findings(for: .redundantIndex, from: result).first)

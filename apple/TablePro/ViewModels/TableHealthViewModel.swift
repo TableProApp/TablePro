@@ -80,7 +80,7 @@ final class TableHealthViewModel: ObservableObject {
         do {
             let execute = try executorSource()
             let fresh = try await provider.fetchReport(execute: execute)
-            report = fresh
+            report = Self.merging(fresh, over: report)
             loadError = nil
             lastRefreshDate = Date()
             if selectedFinding == nil { selectedFindingId = nil }
@@ -90,5 +90,20 @@ final class TableHealthViewModel: ObservableObject {
             Self.logger.warning("Table health refresh failed: \(error.publicLogShape, privacy: .public)")
             loadError = error.localizedDescription
         }
+    }
+
+    /// A check that failed this time keeps the findings it had, shown under its new error.
+    static func merging(_ fresh: TableHealthReport, over previous: TableHealthReport?) -> TableHealthReport {
+        guard let previous else { return fresh }
+        var merged = fresh
+        for index in merged.checks.indices where merged.checks[index].error != nil {
+            if let prior = previous.checks.first(where: { $0.kind == merged.checks[index].kind }) {
+                merged.checks[index].findings = prior.findings
+            }
+        }
+        if merged.statisticsNote == nil {
+            merged.statisticsNote = previous.statisticsNote
+        }
+        return merged
     }
 }

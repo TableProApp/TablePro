@@ -112,7 +112,7 @@ struct TableHealthView: View {
                     HStack {
                         Label(check.kind.title, systemImage: check.kind.systemImage)
                         Spacer()
-                        if check.error == nil {
+                        if check.error == nil || !check.findings.isEmpty {
                             Text(verbatim: "\(check.findings.count)")
                                 .monospacedDigit()
                         }
@@ -145,7 +145,8 @@ struct TableHealthView: View {
             Text("No findings.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
-        } else {
+        }
+        if !check.findings.isEmpty {
             ForEach(check.findings) { finding in
                 VStack(alignment: .leading, spacing: 2) {
                     Text(verbatim: Self.qualifiedName(finding))

@@ -42,7 +42,8 @@ struct MySQLTableHealthProvider: TableHealthProvider {
                s.NON_UNIQUE AS non_unique,
                s.INDEX_TYPE AS index_type,
                s.COLUMN_NAME AS column_name,
-               s.SUB_PART AS sub_part
+               s.SUB_PART AS sub_part,
+               s.COLLATION AS sort_order
         FROM information_schema.STATISTICS s
         WHERE s.TABLE_SCHEMA NOT IN ('mysql', 'sys', 'performance_schema', 'information_schema')
         ORDER BY s.TABLE_SCHEMA, s.TABLE_NAME, s.INDEX_NAME, s.SEQ_IN_INDEX
@@ -165,6 +166,7 @@ struct MySQLIndexShape {
     struct Column: Equatable {
         let name: String
         let prefixLength: String
+        let sortOrder: String
     }
 
     struct Index {
@@ -177,11 +179,14 @@ struct MySQLIndexShape {
 
         var isPrimary: Bool { name == "PRIMARY" }
 
-        /// Redundant when another index of the same type starts with the same columns. Of two equal
-        /// indexes, the unique one stays; of two equal unique or two equal plain ones, the first by name stays.
+        /// Redundant when another index of the same type starts with the same columns in the same
+        /// directions. Only a B-tree serves a lookup on its leading columns, so any other type is
+        /// redundant only to an identical index. Of two equal indexes, the unique one stays; of two
+        /// equal unique or two equal plain ones, the first by name stays.
         func isRedundant(to other: Index) -> Bool {
             guard other.name != name, !isPrimary, !hasExpression, !other.hasExpression,
                   other.type == type, columns.count <= other.columns.count,
+                  type == "BTREE" || columns.count == other.columns.count,
                   Array(other.columns.prefix(columns.count)) == columns
             else { return false }
             if columns.count < other.columns.count { return !isUnique }
@@ -215,7 +220,9 @@ struct MySQLIndexShape {
             if column.isEmpty {
                 tables[tables.count - 1].indexes[last].hasExpression = true
             } else {
-                tables[tables.count - 1].indexes[last].columns.append(Column(name: column, prefixLength: row["sub_part"]))
+                tables[tables.count - 1].indexes[last].columns.append(
+                    Column(name: column, prefixLength: row["sub_part"], sortOrder: row["sort_order"])
+                )
             }
         }
         return tables
