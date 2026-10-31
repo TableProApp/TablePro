@@ -16,6 +16,8 @@ internal indirect enum PhpValue: Equatable {
     case array([PhpKeyValue])
     case object(className: String, properties: [PhpProperty])
     case serializable(className: String, rawPayload: String)
+    // A Serializable payload that is not UTF-8, which igbinary hands over as it is.
+    case binarySerializable(className: String, payload: Data)
     case enumCase(className: String, caseName: String)
     // `R:`, a PHP reference to the value numbered `id`.
     case reference(id: Int)
@@ -39,6 +41,8 @@ internal indirect enum PhpValue: Equatable {
         case (.object(let aName, let aProps), .object(let bName, let bProps)):
             return aName == bName && aProps == bProps
         case (.serializable(let aName, let aPayload), .serializable(let bName, let bPayload)):
+            return aName == bName && aPayload == bPayload
+        case (.binarySerializable(let aName, let aPayload), .binarySerializable(let bName, let bPayload)):
             return aName == bName && aPayload == bPayload
         case (.enumCase(let aName, let aCase), .enumCase(let bName, let bCase)):
             return aName == bName && aCase == bCase

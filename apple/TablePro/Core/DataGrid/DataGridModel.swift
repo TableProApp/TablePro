@@ -56,6 +56,7 @@ final class DataGridModel: ObservableObject {
 
     private(set) weak var mountedView: (any DataGridMountedView)?
     private var orderRevision = 0
+    private var schemaReturned: AnyCancellable?
 
     init(
         store: any DataGridStateStore = InMemoryDataGridStateStore(),
@@ -67,6 +68,11 @@ final class DataGridModel: ObservableObject {
         self.configuration = configuration
         self.themeScope = themeScope
         self.selectionSummary = selectionSummary
+        // The model owns the cached text, so a grid that is not on screen catches up too.
+        schemaReturned = NotificationCenter.default.publisher(for: AvroSchemaStore.didRestoreSchema)
+            .compactMap { $0.userInfo?[AvroSchemaStore.schemaIDKey] as? String }
+            .receive(on: RunLoop.main)
+            .sink { [weak self] schemaID in self?.schemaDidReturn(schemaID) }
     }
 
     // MARK: - Rows
@@ -270,20 +276,32 @@ final class DataGridModel: ObservableObject {
             store.valueFilter = remapped
         }
         store.displayFormats = formats
-        redrawFormatted(column, in: current)
+        redrawFormatted([column], in: current)
     }
 
-    // The format is unchanged but now decodes values it showed as stored bytes, as when a lost Avro schema is chosen
-    // again. A value filter picked from those bytes follows them to the decoded text.
-    func redisplay(_ column: DataGridColumn) {
-        let current = rows
-        if let remapped = remappedValueFilter(column: column, from: nil, to: displayFormat(for: column), in: current) {
-            store.valueFilter = remapped
+    // Columns that showed the stored bytes for want of this schema now decode, the way a format change does: a value
+    // filter picked from those bytes follows them, behind the same confirmation.
+    private func schemaDidReturn(_ schemaID: String) {
+        let affected = columns.columns.filter { displayFormat(for: $0) == .avro(schemaID: schemaID) }
+        guard !affected.isEmpty else { return }
+        let apply: @MainActor () -> Void = { [weak self] in
+            guard let self else { return }
+            let current = rows
+            for column in affected {
+                if let remapped = remappedValueFilter(column: column, from: nil, to: displayFormat(for: column), in: current) {
+                    store.valueFilter = remapped
+                }
+            }
+            redrawFormatted(affected, in: current)
         }
-        redrawFormatted(column, in: current)
+        guard store.valueFilter.isActive, let actions else {
+            apply()
+            return
+        }
+        actions.gridConfirmDisplayOrderChange(then: apply)
     }
 
-    private func redrawFormatted(_ column: DataGridColumn, in current: TableRows) {
+    private func redrawFormatted(_ changed: [DataGridColumn], in current: TableRows) {
         display.cache.removeAll()
         if store.valueFilter.isActive {
             order = resolveOrder(in: current)
@@ -291,7 +309,8 @@ final class DataGridModel: ObservableObject {
             displayRevision &+= 1
             mountedView?.apply(.reload)
         } else {
-            mountedView?.apply(.rowsUpdated(IndexSet(0..<rowCount), columns: columns.displayPosition(of: column.id).map { IndexSet(integer: $0) }))
+            let positions = IndexSet(changed.compactMap { columns.displayPosition(of: $0.id) })
+            mountedView?.apply(.rowsUpdated(IndexSet(0..<rowCount), columns: positions.isEmpty ? nil : positions))
         }
         refreshFind()
     }

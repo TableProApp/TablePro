@@ -51,6 +51,8 @@ internal enum PhpSerializeWriter {
             output += "}"
         case .serializable(let className, let rawPayload):
             output += quoted("C", className) + ":\(rawPayload.utf8.count):{\(rawPayload)}"
+        case .binarySerializable(let className, let payload):
+            output += quoted("C", className) + ":\(payload.count):{\(String(data: payload, encoding: .isoLatin1) ?? "")}"
         case .enumCase(let className, let caseName):
             output += quoted("E", "\(className):\(caseName)") + ";"
         case .reference(let id):

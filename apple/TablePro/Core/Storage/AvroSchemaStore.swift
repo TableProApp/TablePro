@@ -18,8 +18,9 @@ internal final class AvroSchemaStore: Sendable {
     // Far past any real schema; a file this large is the wrong file.
     static let maxFileBytes = 4_000_000
 
-    // Posted after a schema is kept, so a viewer that found it missing decodes again.
-    static let didAddSchema = Notification.Name("com.TablePro.avroSchemaStore.didAddSchema")
+    // Posted when a schema this Mac did not have is kept, so grids and viewers that found it missing decode again.
+    static let didRestoreSchema = Notification.Name("com.TablePro.avroSchemaStore.didRestoreSchema")
+    static let schemaIDKey = "schemaID"
 
     private static let fileExtension = "avsc"
 
@@ -27,6 +28,8 @@ internal final class AvroSchemaStore: Sendable {
         var parsed: [String: AvroSchema] = [:]
         // Kept from a sweep: a schema can be added before the column's format is saved.
         var addedThisLaunch: Set<String> = []
+        // Asked for and not found, so adding one later is a restore that grids and viewers have to hear about.
+        var missing: Set<String> = []
     }
 
     private let directory: URL
@@ -53,11 +56,14 @@ internal final class AvroSchemaStore: Sendable {
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
             try Data(text.utf8).write(to: url, options: .atomic)
         }
-        state.withLock {
-            $0.parsed[id] = schema
-            $0.addedThisLaunch.insert(id)
+        let wasMissing = state.withLock { state -> Bool in
+            state.parsed[id] = schema
+            state.addedThisLaunch.insert(id)
+            return state.missing.remove(id) != nil
         }
-        NotificationCenter.default.post(name: Self.didAddSchema, object: self)
+        if wasMissing {
+            NotificationCenter.default.post(name: Self.didRestoreSchema, object: self, userInfo: [Self.schemaIDKey: id])
+        }
         return id
     }
 
@@ -66,7 +72,10 @@ internal final class AvroSchemaStore: Sendable {
         guard Self.isSchemaID(id),
               let data = try? Data(contentsOf: fileURL(id)),
               let text = String(data: data, encoding: .utf8),
-              let schema = try? AvroSchema.parse(text) else { return nil }
+              let schema = try? AvroSchema.parse(text) else {
+            state.withLock { _ = $0.missing.insert(id) }
+            return nil
+        }
         state.withLock { $0.parsed[id] = schema }
         return schema
     }

@@ -264,6 +264,14 @@ internal enum PhpTreeBuilder {
                 className: className, visibilityBadge: badge, children: children
             )
 
+        case .binarySerializable(let className, let payload):
+            let hex = "0x" + payload.uppercaseHex()
+            return PhpTreeNode(
+                key: key, keyPath: keyPath, path: path, nodeType: .serializable,
+                displayValue: serializableDisplay(className: className, payload: hex),
+                rawValue: hex, className: className, visibilityBadge: badge
+            )
+
         case .serializable(let className, let rawPayload):
             return PhpTreeNode(
                 key: key, keyPath: keyPath, path: path, nodeType: .serializable,

@@ -159,6 +159,13 @@ struct IgbinaryDecoderTests {
         )
     }
 
+    @Test("A Serializable payload that is not UTF-8 keeps its bytes and its byte count")
+    func binarySerializablePayload() throws {
+        let value = try IgbinaryDecoder.decode(BinaryFixture.data("0000000217034f6c641d01ff"))
+        #expect(value == .binarySerializable(className: "Old", payload: Data([0xFF])))
+        #expect(PhpSerializeWriter.text(value) == #"C:3:"Old":1:{"# + "\u{FF}}")
+    }
+
     @Test("A string of 300 bytes uses the 16-bit length")
     func longString() throws {
         let hex = "0000000212012c" + String(repeating: "61", count: 300)

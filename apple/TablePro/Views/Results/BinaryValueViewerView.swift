@@ -41,7 +41,7 @@ internal struct BinaryValueViewerView: View {
         .task(id: TaskKey(data: data, format: format, schemaRevision: schemaRevision)) {
             await decode()
         }
-        .onReceive(NotificationCenter.default.publisher(for: AvroSchemaStore.didAddSchema)) { _ in
+        .onReceive(NotificationCenter.default.publisher(for: AvroSchemaStore.didRestoreSchema)) { _ in
             if case .missingSchema? = document { schemaRevision += 1 }
         }
     }

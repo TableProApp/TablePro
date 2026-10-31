@@ -148,7 +148,7 @@ internal enum IgbinaryDecoder {
             if case .reference = target.value { return target }
             let copy = Copy.of(.reference(id: own), slots: 0)
             switch target.value {
-            case .array, .object, .serializable, .enumCase: break
+            case .array, .object, .serializable, .binarySerializable, .enumCase: break
             default: references.append(Reference(slot: own, copy: copy))
             }
             return Decoded(value: target.value, copy: copy)
@@ -216,7 +216,8 @@ internal enum IgbinaryDecoder {
                 value = .object(className: className, properties: properties)
             case .objectSer8, .objectSer16, .objectSer32:
                 let payload = try reader.readBytes(try length(tag))
-                value = .serializable(className: className, rawPayload: Self.text(Self.phpString(payload)))
+                value = String(data: payload, encoding: .utf8).map { .serializable(className: className, rawPayload: $0) }
+                    ?? .binarySerializable(className: className, payload: payload)
             case .enumCase:
                 let caseTag = try readTag()
                 switch caseTag {

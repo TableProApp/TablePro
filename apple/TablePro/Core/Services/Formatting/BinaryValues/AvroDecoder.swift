@@ -45,12 +45,24 @@ internal enum AvroDecoder {
             _ = try header.readByte()
             let framing = AvroFraming.confluent(schemaID: try header.readUInt32())
             let body = data.dropFirst(5)
-            // Confluent's serializer writes a bytes value as it is, with no length in front.
-            if case .bytes = schema.resolve(schema.root) {
-                return AvroMessage(value: .binary(Data(body)), framing: framing)
+            // Confluent's serializer writes a bytes value as it is, with no length in front, a decimal on bytes included.
+            if let raw = rawBytes(Data(body), schema: schema) {
+                return AvroMessage(value: raw, framing: framing)
             }
             guard let value = try? datum(body, schema: schema, maxValues: maxValues) else { throw plainError }
             return AvroMessage(value: value, framing: framing)
+        }
+    }
+
+    private static func rawBytes(_ body: Data, schema: AvroSchema) -> MessagePackValue? {
+        switch schema.resolve(schema.root) {
+        case .bytes:
+            return .binary(body)
+        case .logical(let logical, let base):
+            guard case .bytes = schema.resolve(base) else { return nil }
+            return AvroLogicalRendering.render(.binary(body), as: logical)
+        default:
+            return nil
         }
     }
 

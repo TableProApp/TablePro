@@ -4,7 +4,6 @@
 //
 
 import AppKit
-import CryptoKit
 import Foundation
 @testable import TablePro
 import TableProPluginKit
@@ -109,25 +108,22 @@ struct DataGridDisplayCacheTests {
         #expect(grid.text(row: 0) == Self.rawBinaryText)
     }
 
-    @Test("A schema chosen again after this Mac lost it redraws the cells it had left as hex")
-    func redisplayAfterTheSchemaReturns() throws {
+    @Test("A schema this Mac lost, chosen again, redraws the cells it left as hex and carries their value filter over")
+    func schemaReturnsToTheGrid() async throws {
         let grid = DisplayGrid(Self.binaryRows)
         let column = try #require(grid.model.columns.column(at: 0))
         let text = #"{"type":"fixed","name":"F"# + UUID().uuidString.filter(\.isLetter) + #"","size":16}"#
-        let schemaID = SHA256.hash(data: Data(text.utf8)).prefix(16).map { String(format: "%02x", $0) }.joined()
-        grid.model.setDisplayFormat(.avro(schemaID: schemaID), for: column)
+        grid.model.setDisplayFormat(.avro(schemaID: AvroSchemaStore.schemaID(of: text)), for: column)
         #expect(grid.text(row: 0) == Self.rawBinaryText)
-
-        #expect(try AvroSchemaStore.shared.add(text) == schemaID)
-        #expect(grid.text(row: 0) == Self.rawBinaryText)
-
         var filter = GridValueFilterState()
         filter.set(ColumnValueFilter(selectedValues: [Self.rawBinaryText], includesNull: false), columnName: "id", forColumn: 0)
         grid.model.setValueFilter(filter)
 
-        grid.model.redisplay(column)
-        #expect(grid.text(row: 0) == "\"" + Self.rawBinaryText + "\"")
-        #expect(grid.model.store.valueFilter.filter(forColumn: 0)?.selectedValues == ["\"" + Self.rawBinaryText + "\""])
+        _ = try AvroSchemaStore.shared.add(text)
+
+        let decoded = "\"" + Self.rawBinaryText + "\""
+        try await waitUntil { grid.text(row: 0) == decoded }
+        #expect(grid.model.store.valueFilter.filter(forColumn: 0)?.selectedValues == [decoded])
         #expect(grid.model.rowCount == 1)
     }
 

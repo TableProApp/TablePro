@@ -259,21 +259,12 @@ extension DataGridViewController {
         guard let columnID = menuColumn(sender)?.id, let window = view.window else { return }
         Task { @MainActor [weak self] in
             guard let text = await AvroSchemaFilePanel.chooseSchemaText(in: window) else { return }
-            let schemaID = AvroSchemaStore.schemaID(of: text)
-            let format = ValueDisplayFormat.avro(schemaID: schemaID)
-            let wasMissing = AvroSchemaStore.shared.schema(id: schemaID) == nil
+            // A schema this Mac had lost redraws every grid that names it through AvroSchemaStore.didRestoreSchema.
             do {
-                _ = try AvroSchemaStore.shared.add(text)
+                self?.setDisplayFormat(.avro(schemaID: try AvroSchemaStore.shared.add(text)), columnID: columnID)
             } catch {
                 NSAlert(error: error).beginSheetModal(for: window, completionHandler: nil)
-                return
             }
-            guard let self else { return }
-            guard let column = model.columns.column(id: columnID), model.displayFormat(for: column) == format else {
-                setDisplayFormat(format, columnID: columnID)
-                return
-            }
-            if wasMissing { model.redisplay(column) }
         }
     }
 

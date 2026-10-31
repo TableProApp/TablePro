@@ -176,6 +176,8 @@ struct AvroDecoderTests {
         let message = try AvroDecoder.decode(BinaryFixture.data("0000000007dead"), schema: try AvroSchema.parse(#""bytes""#))
         #expect(message.framing == .confluent(schemaID: 7))
         #expect(message.value == .binary(Data([0xDE, 0xAD])))
+        let decimal = try AvroSchema.parse(#"{"type":"bytes","logicalType":"decimal","precision":4,"scale":2}"#)
+        #expect(try AvroDecoder.decode(BinaryFixture.data("000000000704d2"), schema: decimal).value == .string("12.34"))
     }
 
     @Test("Records that take no bytes, nested two to a level, are refused rather than walked exponentially")
