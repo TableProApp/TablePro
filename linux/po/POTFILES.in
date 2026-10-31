@@ -156,6 +156,7 @@ crates/app/src/ui/a11y/key_shortcuts.rs
 crates/app/src/ui/a11y/mod.rs
 crates/app/src/ui/a11y/tests.rs
 crates/app/src/ui/ai_policy.rs
+crates/app/src/ui/alternate_rows_provider.rs
 crates/app/src/ui/assistant/assistant_access.rs
 crates/app/src/ui/assistant/assistant_pane.rs
 crates/app/src/ui/assistant/code_block.rs
@@ -276,6 +277,7 @@ crates/app/src/ui/data_grid/row_number_column.rs
 crates/app/src/ui/data_grid/selection.rs
 crates/app/src/ui/data_grid/selection_summary.rs
 crates/app/src/ui/data_grid/server_sorter.rs
+crates/app/src/ui/data_grid/stripes.rs
 crates/app/src/ui/data_grid/table_keys.rs
 crates/app/src/ui/data_grid/test_grid.rs
 crates/app/src/ui/data_grid/tests/cells.rs

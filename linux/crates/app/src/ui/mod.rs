@@ -1,5 +1,6 @@
 mod a11y;
 mod ai_policy;
+mod alternate_rows_provider;
 pub(crate) mod assistant;
 mod browse_tab;
 pub(crate) mod clipboard;

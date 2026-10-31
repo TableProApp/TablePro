@@ -204,6 +204,7 @@ impl DataGrid {
             let grid_cell = GridCell::new(setup_paint.clone());
             grid_cell.attach(cell);
             cell.set_child(Some(&grid_cell));
+            super::stripes::follow(cell);
         });
         factory.connect_bind(|_, item| {
             let Some(cell) = item.downcast_ref::<gtk::ColumnViewCell>() else {
@@ -215,6 +216,7 @@ impl DataGrid {
             ) {
                 grid_cell.bind(&row);
             }
+            super::stripes::mark(cell);
         });
         factory.connect_unbind(|_, item| {
             if let Some(grid_cell) = item
