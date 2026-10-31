@@ -1,6 +1,6 @@
 # 0025: DuckDB built from the duckdb crate's bundled sources
 
-- **Status**: Accepted
+- **Status**: Accepted; the crate version superseded by 0031
 - **Date**: 2026-10-23
 
 ## Context

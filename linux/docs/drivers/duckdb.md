@@ -1,6 +1,6 @@
 # DuckDB
 
-Driver id `duckdb`, crate `crates/drivers/duckdb`. It runs on the duckdb crate 1.10506 with `bundled`, so DuckDB 1.5.6 is compiled from the crate's sources into the app, with the `json` and `parquet` extensions linked in ([ADR 0025](../decisions/0025-bundled-duckdb.md)). The contract it implements is in [adding-drivers.md](../adding-drivers.md).
+Driver id `duckdb`, crate `crates/drivers/duckdb`. It runs on the duckdb crate 1.20000.1 with `bundled`, so DuckDB 2.0.0 is compiled from the crate's sources into the app, with the `json` and `parquet` extensions linked in ([ADR 0025](../decisions/0025-bundled-duckdb.md), [ADR 0031](../decisions/0031-duckdb-2.md)). The contract it implements is in [adding-drivers.md](../adding-drivers.md).
 
 There is no network, login or TLS: the target is a `FileEndpoint`, an absolute path with a `FileOpenMode`. A file is a DuckDB database when it holds `DUCK` at byte 8, which is how a file opened from Files or the command line finds this driver; `.duckdb` and `.ddb` are its suffixes for the file chooser and an empty file. shared-mime-info has no DuckDB type, so the desktop entry does not list one.
 
@@ -11,9 +11,10 @@ DuckDB keeps one database instance per open file, and every connection is a new 
 - A missing file is `FileNotFound`. DuckDB would create it, so the driver opens only a path that exists.
 - A read-only workspace opens the instance with `access_mode = READ_ONLY`. One instance is opened one way, so a window that asks the other way while another window holds the file gets `Busy(FileLocked)`.
 - Another process holding the file gets `Busy(FileLocked)`: DuckDB's lock lets one writer, or any number of readers, open a file.
-- A file is known by its device and inode, so a hard link or a second path joins the instance already open. A file an editor tab has attached counts as open, and an editor's `ATTACH` of a file open in another window is refused as `Busy(FileLocked)`: either way DuckDB would make a second database on the file. DuckDB reads the `ATTACH` path itself, then the driver expands it as DuckDB opens it, so escapes, continued strings, `~`, `file:` URLs, links and `..` all name the file. An `ATTACH` with the `HIDDEN` option, quoted or not, is refused unless its value is false: DuckDB lists such a database nowhere, so no window could see it is open.
+- A file is known by its device and inode, so a hard link or a second path joins the instance already open. A file an editor tab has attached counts as open, and an editor's `ATTACH` of a file open in another window is refused as `Busy(FileLocked)`: either way DuckDB would make a second database on the file. DuckDB 2.0 takes an expression as the `ATTACH` path and opens the text it casts to. The driver has DuckDB evaluate the same expression, then expands it as DuckDB opens it, so escapes, continued strings, expressions, a BLOB's text, `~`, `file:` URLs, links and `..` all name the file. A path the driver cannot evaluate refuses the `ATTACH`. An `ATTACH` with the `HIDDEN` option, quoted or not, is refused unless its value is false: DuckDB lists such a database nowhere, so no window could see it is open.
 - A file SQLite has open in the app, through a connection or an `ATTACH`, is `Busy(FileLocked)`, as is an `ATTACH` of one: DuckDB would close it again on finding no database of its own, which drops SQLite's POSIX locks. DuckDB claims its own files, and every file a tab attaches, until the database closes (`tablepro_core::claim_file`), so SQLite refuses them in turn.
 - `autoinstall_known_extensions` and `autoload_known_extensions` are off ([Extensions](#extensions)).
+- `storage_compatibility_version` is `v0.10.2`, DuckDB 1.x's default, so a file the driver creates or an `ATTACH` makes stays readable by DuckDB 1.x. A file that already exists keeps its own version.
 - A file DuckDB cannot read as a database is `NotADatabase`, a directory too; one the user may not read is `FileAccessDenied`.
 
 The connect reads `version()`, which also proves the file opened. The app names a table with the file's catalogue as well, `"sales"."main"."t"`: a schema may share a name with the catalogue, and DuckDB refuses `"sales"."t"` as ambiguous then. An export and a foreign key's `REFERENCES` leave the catalogue out (`portable_name`), since the file may be replayed under another name and DuckDB refuses a catalogue there; a foreign key inside a schema named like the file cannot be written at all. A database DuckDB could not replay fails the connect.
@@ -78,7 +79,7 @@ The grid names a row by its primary key, then by a UNIQUE constraint whose colum
 
 ## Structure changes
 
-DuckDB takes one action per `ALTER TABLE`, and the plan sends one statement per change. What it refuses, measured on DuckDB 1.5 in `tests/integration/ddl.rs`, the Structure tab does not offer:
+DuckDB takes one action per `ALTER TABLE`, and the plan sends one statement per change. What it refuses, measured on DuckDB 2.0 in `tests/integration/ddl.rs`, the Structure tab does not offer:
 
 - A table that something depends on, an index made with `CREATE INDEX` or another table's foreign key, takes only an added column, a column's default, a comment and its indexes. Renaming the table or a column, dropping a column, and changing a type or NULL are refused with the dependents named.
 - A column's type cannot change while a key, index, CHECK or generated column uses it, and a column a foreign key holds cannot be renamed.

@@ -13,8 +13,7 @@ pub(super) fn text(array: &dyn Array, duck: &DuckType, row: usize) -> Option<Str
         DuckType::Array(element, _) => {
             let values = array.as_fixed_size_list_opt()?;
             let width = usize::try_from(values.value_length()).ok()?;
-            let start = values.value_offset(row);
-            let start = usize::try_from(start).ok()?;
+            let start = values.value_offset_at(row);
             items(values.values().as_ref(), element, start..start + width)
         }
         DuckType::Struct(fields) => {
@@ -53,7 +52,7 @@ pub(super) fn text(array: &dyn Array, duck: &DuckType, row: usize) -> Option<Str
             let (_, member) = members.get(usize::try_from(tag).ok()?)?;
             let child = values.child(tag);
             let at = values.value_offset(row);
-            match child.is_null(at) {
+            match child.is_null(at) || matches!(member, DuckType::Null) {
                 true => Some("NULL".to_owned()),
                 false => whole(child.as_ref(), member, at),
             }
@@ -82,7 +81,9 @@ fn items(values: &dyn Array, element: &DuckType, range: std::ops::Range<usize>) 
 /// One member of a nested value: NULL, a nested value as it prints, or
 /// a scalar escaped as DuckDB escapes one there.
 fn part(values: &dyn Array, duck: &DuckType, row: usize) -> Option<String> {
-    if values.is_null(row) {
+    // A NULL-typed member, which DuckDB 2.0 gives an untyped NULL, is an
+    // Arrow NullArray, and that reports no nulls through is_null.
+    if values.is_null(row) || matches!(duck, DuckType::Null) {
         return Some("NULL".to_owned());
     }
     match duck.is_nested() {

@@ -24,10 +24,10 @@
   {
     "id": "duckdb",
     "name": "DuckDB",
-    "version": "v1.5.2",
+    "version": "v2.0.0",
     "spdx": "MIT",
     "copyrights": [
-      "Copyright 2018-2025 Stichting DuckDB Foundation"
+      "Copyright 2018-2026 Stichting DuckDB Foundation"
     ],
     "homepageURL": "https://duckdb.org",
     "textFile": "texts/duckdb.txt"

@@ -142,25 +142,24 @@
     project ships.
 - id: duckdb
   name: DuckDB
-  version: v1.5.2
+  version: v2.0.0
   spdx: MIT
   copyrights:
-  - Copyright 2018-2025 Stichting DuckDB Foundation
+  - Copyright 2018-2026 Stichting DuckDB Foundation
   homepageURL: https://duckdb.org
-  licenseTextURL: https://raw.githubusercontent.com/duckdb/duckdb/v1.5.2/LICENSE
+  licenseTextURL: https://raw.githubusercontent.com/duckdb/duckdb/v2.0.0/LICENSE
   textFile: texts/duckdb.txt
   source: sh:DUCKDB_VERSION
   patched: false
   platforms: [macos, ios]
-  notes: 'Built from the v1.5.2 git tag with CMake, linking core_functions, json,
+  notes: 'Built from the v2.0.0 git tag with CMake, linking core_functions, json,
     parquet, icu and autocomplete statically (scripts/duckdb-macos-extensions.cmake). The build compiles
-    the whole tree including third_party/, which holds 30 vendored projects (brotli, catch, concurrentqueue,
-    fast_float, fastpforlib, fmt, fsst, httplib, hyperloglog, imdb, jaro_winkler, jemalloc, libpg_query,
-    lz4, mbedtls, miniz, parquet, pcg, pdqsort, re2, ska_sort, skiplist, snappy, snowball, tdigest, thrift,
-    utf8proc, vergesort, yyjson, zstd), each under its own licence. Those sub-licences are NOT enumerated
-    here: UNVERIFIED. scripts/build-duckdb-ios.sh pins the same tag for the iOS xcframework. scripts/duckdb-ios-extensions.cmake
-    also names the out-of-tree httpfs and quack extensions; the xcframework in Libs/ios carries no symbol
-    from either today. Both are MIT under this same Stichting DuckDB Foundation notice, byte for byte.'
+    the whole tree including third_party/, which holds 28 vendored projects (brotli, catch, concurrentqueue,
+    fast_float, fastpforlib, fmt, fsst, httplib, hyperloglog, imdb, jaro_winkler, jemalloc, lz4, mbedtls,
+    miniz, parquet, pcg, pdqsort, re2, ska_sort, skiplist, snappy, tdigest, thrift, utf8proc, vergesort,
+    yyjson, zstd), each under its own licence. Those sub-licences are NOT enumerated here: UNVERIFIED.
+    scripts/build-duckdb-ios.sh pins the same tag for the iOS xcframework, with the same extensions
+    (scripts/duckdb-ios-extensions.cmake).'
 - id: freetds
   name: FreeTDS
   version: 1.4.22

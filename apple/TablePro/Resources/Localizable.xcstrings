@@ -68045,6 +68045,10 @@
         }
       }
     },
+    "DuckDB could not allocate a configuration to open the file" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "DuckDB could not allocate a configuration to open the file read-only" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -193967,6 +193971,10 @@
           }
         }
       }
+    },
+    "This build of DuckDB does not accept the storage version that keeps files readable by DuckDB 1.x" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "This call matches more than one overload of %@, so Oracle can't run it (PLS-00307)." : {
       "extractionState" : "manual",

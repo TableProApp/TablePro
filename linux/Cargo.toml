@@ -87,7 +87,7 @@ chrono = { version = "0.4", default-features = false, features = ["clock", "serd
 csv = "1.4"
 # Already built for duckdb's arrow, with its terminal support; a text
 # table turns that off itself (force_no_tty).
-comfy-table = "7.1"
+comfy-table = "8.0"
 unicode-width = "0.2"
 # No zlib feature: it pulls libz-sys, and the pure-Rust deflate keeps
 # the build free of another C dependency. Constant memory lets a sheet
@@ -108,10 +108,10 @@ clickhouse-types = "0.1.3"
 # provider feature is needed, and leaving both off keeps ring out.
 tokio-postgres-rustls = { version = "0.14.0", default-features = false }
 libsqlite3-sys = ">=0.30.1, <0.38.0"
-# DuckDB 1.5, compiled from the sources the crate ships, since only Ubuntu
-# 26.10 packages libduckdb (docs/decisions/0025-bundled-duckdb.md). json and
+# DuckDB 2.0, compiled from the sources the crate ships, since only Ubuntu
+# 26.10 packages libduckdb (docs/decisions/0031-duckdb-2.md). json and
 # parquet are linked in, since extensions are never downloaded.
-duckdb = { version = "~1.10506", default-features = false, features = ["bundled", "json", "parquet"] }
+duckdb = { version = "~1.20000.1", default-features = false, features = ["bundled", "json", "parquet"] }
 num-bigint = { version = "0.4", default-features = false, features = ["std"] }
 proptest = "1.11"
 rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs", "std", "tls12"] }

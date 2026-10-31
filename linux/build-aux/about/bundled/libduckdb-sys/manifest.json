@@ -1,7 +1,7 @@
 {
   "crate": "libduckdb-sys",
-  "version": "1.10506.1",
-  "source": "https://github.com/duckdb/duckdb/tree/069cc9f9b5be802405797faecc284961b07c70ef",
+  "version": "1.20000.1",
+  "source": "https://github.com/duckdb/duckdb/tree/d54cbbe3df17e8e5ce68312f483b4155836112aa",
   "components": [
     { "name": "DuckDB", "path": "LICENSE", "file": "duckdb.txt", "id": "MIT", "license": "MIT", "license_name": "MIT License" },
     { "name": "Brotli", "path": "third_party/brotli/LICENSE", "file": "brotli.txt", "id": "MIT", "license": "MIT", "license_name": "MIT License" },
@@ -13,7 +13,6 @@
     { "name": "cpp-httplib", "path": "third_party/httplib/LICENSE", "file": "httplib.txt", "id": "MIT", "license": "MIT", "license_name": "MIT License" },
     { "name": "HyperLogLog", "path": "third_party/hyperloglog/LICENSE", "file": "hyperloglog.txt", "id": "MIT", "license": "MIT", "license_name": "MIT License" },
     { "name": "jaro_winkler", "path": "third_party/jaro_winkler/LICENSE", "file": "jaro_winkler.txt", "id": "MIT", "license": "MIT", "license_name": "MIT License" },
-    { "name": "libpg_query", "path": "third_party/libpg_query/LICENSE", "file": "libpg_query.txt", "id": "BSD-3-Clause", "license": "BSD-3-Clause", "license_name": "BSD 3-Clause \"New\" or \"Revised\" License" },
     { "name": "LZ4", "path": "third_party/lz4/LICENSE", "file": "lz4.txt", "id": "BSD-2-Clause", "license": "BSD-2-Clause", "license_name": "BSD 2-Clause \"Simplified\" License" },
     { "name": "Mbed TLS", "path": "third_party/mbedtls/LICENSE", "file": "mbedtls.txt", "id": "Apache-2.0", "license": "Apache-2.0 OR GPL-2.0-or-later", "license_name": "Apache License 2.0" },
     { "name": "miniz", "path": "third_party/miniz/LICENSE", "file": "miniz.txt", "id": "MIT", "license": "MIT", "license_name": "MIT License" },
