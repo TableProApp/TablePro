@@ -1,5 +1,6 @@
 mod assistant;
 mod close_tab;
+mod definitions;
 mod diagram;
 mod keys;
 mod large_catalog;
@@ -90,7 +91,16 @@ pub(super) struct TwoSessions {
 }
 
 pub(super) fn two_sessions(name: &str, other: &str) -> TwoSessions {
-    let test = TestWindow::connected(name);
+    two_sessions_with(name, other, |_| {})
+}
+
+/// Both sessions answer as `script` says.
+pub(super) fn two_sessions_with(
+    name: &str,
+    other: &str,
+    script: impl FnOnce(&mut tablepro_test_support::ConnectionScript),
+) -> TwoSessions {
+    let test = TestWindow::connected_with(name, script);
     let first = test.workspace();
     let shell = shell_of(&first);
     let saved = SavedConnection {

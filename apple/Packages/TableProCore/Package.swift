@@ -38,6 +38,7 @@ let package = Package(
         .library(name: "TableProSpannerCore", targets: ["TableProSpannerCore"]),
         .library(name: "TableProWeaviateCore", targets: ["TableProWeaviateCore"]),
         .library(name: "TableProQdrantCore", targets: ["TableProQdrantCore"]),
+        .library(name: "TableProInfluxDBCore", targets: ["TableProInfluxDBCore"]),
         .library(name: "TableProNeo4jCore", targets: ["TableProNeo4jCore"]),
         .library(name: "TableProFirebaseCore", targets: ["TableProFirebaseCore"]),
         .library(name: "TableProBigtableCore", targets: ["TableProBigtableCore"]),
@@ -202,6 +203,11 @@ let package = Package(
             swiftSettings: pluginCoreSettings
         ),
         .target(
+            name: "TableProInfluxDBCore",
+            dependencies: [],
+            path: "Sources/TableProInfluxDBCore"
+        ),
+        .target(
             name: "TableProNeo4jCore",
             dependencies: [],
             path: "Sources/TableProNeo4jCore"
@@ -325,6 +331,11 @@ let package = Package(
             dependencies: ["TableProQdrantCore"],
             path: "Tests/TableProQdrantCoreTests",
             swiftSettings: pluginCoreSettings
+        ),
+        .testTarget(
+            name: "TableProInfluxDBCoreTests",
+            dependencies: ["TableProInfluxDBCore"],
+            path: "Tests/TableProInfluxDBCoreTests"
         ),
         .testTarget(
             name: "TableProTrinoCoreTests",

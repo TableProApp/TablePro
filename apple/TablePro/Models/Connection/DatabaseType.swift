@@ -56,6 +56,7 @@ extension DatabaseType {
     static let weaviate = DatabaseType(rawValue: "Weaviate")
     static let qdrant = DatabaseType(rawValue: "Qdrant")
     static let memcached = DatabaseType(rawValue: "Memcached")
+    static let influxdb = DatabaseType(rawValue: "InfluxDB")
     static let bigtable = DatabaseType(rawValue: "Bigtable")
     static let firestore = DatabaseType(rawValue: "Firestore")
     static let firebaseRealtimeDatabase = DatabaseType(rawValue: "Firebase Realtime Database")

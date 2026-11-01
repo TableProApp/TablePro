@@ -3,12 +3,12 @@
 use tablepro_core::column::{ColumnDefault, ColumnKind, ReadForm, TextLength};
 use tablepro_core::ddl::{DdlDialect, IdentityStyle, TableDraft, diff_table};
 use tablepro_core::dialect::{BindTarget, LikeForm};
-use tablepro_core::meta::{ObjectKind, ObjectScope, RowIdentity, TableRef};
+use tablepro_core::meta::{EditorRefusal, ObjectInfo, ObjectKind, ObjectScope, RowIdentity, TableRef};
 use tablepro_core::statement::StatementBuilder;
-use tablepro_core::{RowLimit, Value};
+use tablepro_core::{DriverError, RowLimit, UnsupportedFeature, Value};
 use tablepro_driver_mssql::MssqlDialect;
 
-use crate::support::{CALL, columns, connect, dbo, rows, scalar, setup, start, statement, within};
+use crate::support::{CALL, columns, connect, dbo, rows, run_ok, scalar, session, setup, start, statement, within};
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires docker"]
@@ -337,6 +337,194 @@ async fn like_escape_matches_literal_underscore_and_percent() {
         scalar(connection.as_ref(), "SELECT N'x'").await,
         Value::Text("x".to_owned())
     );
+}
+
+const ROUTINES: [&str; 10] = [
+    "CREATE TABLE dbo.orders (id int PRIMARY KEY, total int)",
+    "CREATE TABLE dbo.audit (id int PRIMARY KEY)",
+    "CREATE FUNCTION dbo.add_tax(@amount int) RETURNS int AS BEGIN RETURN @amount * 2 END",
+    "CREATE PROCEDURE clear_audit AS DELETE FROM dbo.audit",
+    "CREATE PROCEDURE dbo.hidden WITH ENCRYPTION AS SELECT 1",
+    "CREATE TRIGGER orders_total ON orders AFTER INSERT AS UPDATE dbo.orders SET total = total + 1000",
+    "CREATE SEQUENCE dbo.invoice_numbers AS bigint START WITH 100 INCREMENT BY 5 CYCLE CACHE 20",
+    // `GO` is a column alias to the server, and a batch's end to the editor.
+    "CREATE PROCEDURE dbo.go_line AS SELECT 1\nGO\nSELECT 2",
+    "CREATE TYPE dbo.InvoiceId FROM bigint NOT NULL",
+    "CREATE SEQUENCE dbo.typed AS dbo.InvoiceId START WITH 1",
+];
+
+async fn listed(connection: &dyn tablepro_core::Connection) -> Vec<ObjectInfo> {
+    connection
+        .list_objects(&ObjectScope::DefaultSchema, within(CALL))
+        .await
+        .expect("the objects")
+}
+
+async fn definition(connection: &dyn tablepro_core::Connection, object: &ObjectInfo) -> String {
+    let found = connection
+        .fetch_object_definition(object, within(CALL))
+        .await
+        .expect("the definition")
+        .expect("a definition");
+    assert_eq!(found.database, None);
+    assert_eq!(found.refusal, None, "{}", found.sql);
+    found.sql
+}
+
+fn named<'a>(objects: &'a [ObjectInfo], name: &str) -> &'a ObjectInfo {
+    objects
+        .iter()
+        .find(|object| object.name == name)
+        .expect("the object listed")
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn routines_sequences_and_triggers_are_listed_with_their_definitions() {
+    let fixture = start().await;
+    let connection = connect(&fixture, false).await;
+    setup(connection.as_ref(), &ROUTINES).await;
+
+    let objects = listed(connection.as_ref()).await;
+    let find = |name: &str| named(&objects, name);
+    assert_eq!(find("add_tax").kind, ObjectKind::Function);
+    assert_eq!(find("clear_audit").kind, ObjectKind::Procedure);
+    assert_eq!(find("invoice_numbers").kind, ObjectKind::Sequence);
+    assert_eq!(
+        find("orders_total"),
+        &ObjectInfo::trigger(Some("dbo".to_owned()), "orders_total", "orders")
+    );
+    assert!(
+        objects
+            .iter()
+            .filter(|object| object.kind != ObjectKind::Trigger)
+            .all(|object| object.parent_table.is_none())
+    );
+    for (name, body) in [
+        ("add_tax", "@amount * 2"),
+        ("clear_audit", "DELETE FROM dbo.audit"),
+        ("orders_total", "total + 1000"),
+        ("invoice_numbers", "START WITH 100 INCREMENT BY 5"),
+    ] {
+        let sql = definition(connection.as_ref(), find(name)).await;
+        assert!(sql.contains(body), "{name}: {sql}");
+    }
+    let typed = definition(connection.as_ref(), find("typed")).await;
+    assert!(
+        typed.contains(" AS [dbo].[InvoiceId] "),
+        "the alias type as declared: {typed}"
+    );
+    let sequence = definition(connection.as_ref(), find("invoice_numbers")).await;
+    assert!(
+        sequence.starts_with("CREATE SEQUENCE [dbo].[invoice_numbers] AS bigint")
+            && sequence.contains(" CYCLE CACHE 20;"),
+        "{sequence}"
+    );
+    let go_line = connection
+        .fetch_object_definition(find("go_line"), within(CALL))
+        .await
+        .expect("the definition")
+        .expect("a definition");
+    assert_eq!(
+        go_line.refusal,
+        Some(EditorRefusal::SplitsApart),
+        "the editor would run SELECT 2 on its own"
+    );
+    let hidden = connection.fetch_object_definition(find("hidden"), within(CALL)).await;
+    assert!(
+        matches!(
+            hidden,
+            Err(DriverError::Unsupported {
+                feature: UnsupportedFeature::EncryptedDefinition
+            })
+        ),
+        "{hidden:?}"
+    );
+    let table_object = ObjectInfo::new(Some("dbo".to_owned()), "orders", ObjectKind::Table);
+    assert!(matches!(
+        connection.fetch_object_definition(&table_object, within(CALL)).await,
+        Err(DriverError::Unsupported { .. })
+    ));
+    connection.close().await.expect("a close");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn a_module_written_without_its_schema_is_given_it_and_runs_again() {
+    let fixture = start().await;
+    let connection = connect(&fixture, false).await;
+    setup(connection.as_ref(), &ROUTINES).await;
+    let objects = listed(connection.as_ref()).await;
+    let trigger = named(&objects, "orders_total");
+
+    let procedure = definition(connection.as_ref(), named(&objects, "clear_audit")).await;
+    assert!(
+        procedure.starts_with("CREATE PROCEDURE [dbo].clear_audit AS"),
+        "a name written without its schema is given it: {procedure}"
+    );
+    setup(
+        connection.as_ref(),
+        &["ALTER PROCEDURE clear_audit AS DELETE FROM dbo.audit WHERE id > 0"],
+    )
+    .await;
+    let altered = definition(connection.as_ref(), named(&objects, "clear_audit")).await;
+    assert!(
+        altered.contains("PROCEDURE [dbo].clear_audit AS DELETE FROM dbo.audit WHERE id > 0"),
+        "the stored text after an ALTER is qualified too: {altered}"
+    );
+    let on_orders = definition(connection.as_ref(), trigger).await;
+    assert!(
+        on_orders.starts_with("CREATE TRIGGER [dbo].orders_total ON [dbo].orders AFTER INSERT"),
+        "{on_orders}"
+    );
+    setup(connection.as_ref(), &["DROP TRIGGER dbo.orders_total"]).await;
+    run_ok(session(connection.as_ref()).await.as_ref(), &on_orders).await;
+    assert!(
+        listed(connection.as_ref()).await.contains(trigger),
+        "the text made the trigger again where it was"
+    );
+
+    let mut elsewhere = trigger.clone();
+    elsewhere.parent_table = Some("audit".to_owned());
+    let missing = connection
+        .fetch_object_definition(&elsewhere, within(CALL))
+        .await
+        .expect("an answer");
+    assert_eq!(missing, None, "a trigger on another table is not this trigger");
+    connection.close().await.expect("a close");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn a_module_made_under_other_set_options_does_not_open_in_the_editor() {
+    let fixture = start().await;
+    let connection = connect(&fixture, false).await;
+    let quoted = scalar(
+        connection.as_ref(),
+        "SELECT CAST(SESSIONPROPERTY('QUOTED_IDENTIFIER') AS int)",
+    )
+    .await;
+    let other = if quoted == Value::Int(1) { "OFF" } else { "ON" };
+    let editor = session(connection.as_ref()).await;
+
+    run_ok(
+        editor.as_ref(),
+        &format!("SET QUOTED_IDENTIFIER {other}\nGO\nCREATE PROCEDURE dbo.made_elsewhere AS SELECT 1"),
+    )
+    .await;
+
+    let procedure = ObjectInfo::new(Some("dbo".to_owned()), "made_elsewhere", ObjectKind::Procedure);
+    let found = connection
+        .fetch_object_definition(&procedure, within(CALL))
+        .await
+        .expect("the definition")
+        .expect("a definition");
+    assert_eq!(
+        found.refusal,
+        Some(EditorRefusal::OtherSettings),
+        "made with QUOTED_IDENTIFIER {other}"
+    );
+    connection.close().await.expect("a close");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

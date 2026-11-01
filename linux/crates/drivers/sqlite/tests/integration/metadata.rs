@@ -2,9 +2,9 @@
 
 use tablepro_core::ddl::{IdentityStyle, ReferentialAction};
 use tablepro_core::meta::{
-    EngineRowId, IndexInfo, IndexKey, ObjectKind, ObjectScope, RowCountEstimate, RowIdentity, TableRef,
+    EngineRowId, IndexInfo, IndexKey, ObjectInfo, ObjectKind, ObjectScope, RowCountEstimate, RowIdentity, TableRef,
 };
-use tablepro_core::{Connection, RowLimit, Value};
+use tablepro_core::{Connection, DriverError, RowLimit, Value};
 
 use crate::sqlite_engine::create_database;
 use crate::support::{TestFile, apply, call, query, statement};
@@ -467,5 +467,111 @@ async fn a_missing_table_is_an_error_not_an_empty_list() {
     assert!(columns.is_err(), "{columns:?}");
     let count = query(connection.as_ref(), "SELECT count(*) FROM sqlite_schema").await;
     assert_eq!(count.rows[0][0], Value::Int(0));
+    connection.close().await.unwrap();
+}
+
+#[tokio::test]
+async fn triggers_listed_per_schema_with_their_stored_text() {
+    let file = TestFile::new().await;
+    let other = file.directory().join("other.sqlite3");
+    create_database(&other).await.unwrap();
+    let connection = file.open().await;
+    apply(
+        connection.as_ref(),
+        &[
+            "CREATE TABLE people (id INTEGER PRIMARY KEY, name TEXT)",
+            "CREATE TABLE log (note TEXT)",
+            "CREATE TRIGGER audit AFTER INSERT ON people BEGIN INSERT INTO log VALUES ('new person'); END",
+        ],
+    )
+    .await
+    .unwrap();
+    let attach = format!("ATTACH DATABASE '{}' AS archive", other.display());
+    connection
+        .query_bound(&statement(&attach), RowLimit::EDITOR_DEFAULT, call())
+        .await
+        .unwrap();
+    query(connection.as_ref(), "CREATE TABLE archive.old (id INTEGER)").await;
+    query(
+        connection.as_ref(),
+        "CREATE TRIGGER archive.audit AFTER DELETE ON old BEGIN SELECT 'gone'; END",
+    )
+    .await;
+
+    let main_objects = connection
+        .list_objects(&ObjectScope::DefaultSchema, call())
+        .await
+        .unwrap();
+    let archived = connection
+        .list_objects(&ObjectScope::Schema("archive".to_owned()), call())
+        .await
+        .unwrap();
+    let main_trigger = main_objects
+        .iter()
+        .find(|object| object.kind == ObjectKind::Trigger)
+        .unwrap();
+    assert_eq!(main_trigger, &ObjectInfo::trigger(None, "audit", "people"));
+    let archived_trigger = archived
+        .iter()
+        .find(|object| object.kind == ObjectKind::Trigger)
+        .unwrap();
+    assert_eq!(
+        archived_trigger,
+        &ObjectInfo::trigger(Some("archive".to_owned()), "audit", "old")
+    );
+    assert!(
+        main_objects
+            .iter()
+            .filter(|object| object.kind != ObjectKind::Trigger)
+            .all(|object| object.parent_table.is_none())
+    );
+
+    let main_text = connection
+        .fetch_object_definition(main_trigger, call())
+        .await
+        .unwrap()
+        .expect("the trigger's text");
+    assert_eq!(main_text.database, None);
+    assert!(
+        main_text
+            .sql
+            .starts_with("CREATE TRIGGER \"main\".audit AFTER INSERT ON people"),
+        "{}",
+        main_text.sql
+    );
+    assert!(main_text.sql.ends_with("END;"), "{}", main_text.sql);
+    let archived_text = connection
+        .fetch_object_definition(archived_trigger, call())
+        .await
+        .unwrap()
+        .expect("the trigger's text");
+    assert!(
+        archived_text
+            .sql
+            .starts_with("CREATE TRIGGER \"archive\".audit AFTER DELETE ON old"),
+        "{}",
+        archived_text.sql
+    );
+
+    // Run from the main schema, as an editor tab runs it, the text makes
+    // the trigger where it was.
+    query(connection.as_ref(), "DROP TRIGGER archive.audit").await;
+    query(connection.as_ref(), &archived_text.sql).await;
+    let again = connection
+        .list_objects(&ObjectScope::Schema("archive".to_owned()), call())
+        .await
+        .unwrap();
+    assert!(again.contains(archived_trigger), "{again:?}");
+
+    let missing = ObjectInfo::trigger(None, "audit", "log");
+    assert_eq!(
+        connection.fetch_object_definition(&missing, call()).await.unwrap(),
+        None
+    );
+    let table = ObjectInfo::new(None, "people", ObjectKind::Table);
+    assert!(matches!(
+        connection.fetch_object_definition(&table, call()).await,
+        Err(DriverError::Unsupported { .. })
+    ));
     connection.close().await.unwrap();
 }

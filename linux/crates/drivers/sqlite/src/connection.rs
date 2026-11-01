@@ -8,7 +8,9 @@ use sqlx::sqlite::{SqliteConnectOptions, SqliteConnection as SqlxConnection, Sql
 use sqlx::{Connection as _, Executor as _};
 use tablepro_core::ddl::{InboundForeignKey, OutboundForeignKey, TableDefinition};
 use tablepro_core::dialect::SqlDialect;
-use tablepro_core::meta::{IndexInfo, ObjectInfo, ObjectScope, RowIdentity, SchemaInfo, TableEstimate, TableRef};
+use tablepro_core::meta::{
+    IndexInfo, ObjectDefinition, ObjectInfo, ObjectScope, RowIdentity, SchemaInfo, TableEstimate, TableRef,
+};
 use tablepro_core::statement::Statement;
 use tablepro_core::{
     CallOptions, ColumnInfo, CommitResolution, CommitToken, Connection, DriverError, EditorSession,
@@ -323,6 +325,18 @@ impl Connection for SqliteConnection {
         let scope = scope.clone();
         self.read(options, move |connection| {
             Box::pin(async move { metadata::list_objects(connection, &scope).await })
+        })
+        .await
+    }
+
+    async fn fetch_object_definition(
+        &self,
+        object: &ObjectInfo,
+        options: CallOptions,
+    ) -> Result<Option<ObjectDefinition>, DriverError> {
+        let object = object.clone();
+        self.read(options, move |connection| {
+            Box::pin(async move { metadata::fetch_object_definition(connection, &object).await })
         })
         .await
     }

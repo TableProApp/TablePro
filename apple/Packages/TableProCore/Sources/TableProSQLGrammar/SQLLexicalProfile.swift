@@ -214,6 +214,12 @@ public struct SQLLexicalProfile: Sendable, Hashable {
 
     static let sapHana: SQLLexicalGrammar = [.dollarAndHashInIdentifiers, .sqlScriptBlocks]
 
+    // InfluxQL escapes with a backslash in both quotes (measured on 2.9.1 and 3.12.2), Flux comments with `//`, and
+    // 3.x SQL is plain ANSI, the alternative a gate also reads.
+    static let influxDB: SQLLexicalGrammar = [
+        .backslashEscapesInSingleQuotes, .backslashEscapesInDoubleQuotes, .doubleSlashLineComments,
+    ]
+
     /// Engines whose statements are commands or JSON documents rather than SQL. Their splitting is what it has always
     /// been: a backslash escapes inside any quote, as it does in JSON and in `redis-cli`.
     static let commandLine: SQLLexicalGrammar = [
@@ -322,6 +328,11 @@ public struct SQLLexicalProfile: Sendable, Hashable {
                 ]
             ),
             "Neo4j": SQLLexicalProfile(grammar: cypher, undetermined: [.carriageReturnEndsLineComments]),
+            "InfluxDB": SQLLexicalProfile(
+                grammar: influxDB,
+                alternatives: [.ansi],
+                undetermined: [.nestedBlockComments, .carriageReturnEndsLineComments]
+            ),
             "Redis": commandLineFamily,
             "MongoDB": commandLineFamily,
             "etcd": commandLineFamily,

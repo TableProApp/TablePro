@@ -7,6 +7,7 @@
 
 mod assistant;
 mod close_flow;
+mod definitions;
 mod diagram;
 mod editor_label;
 mod finished_work;
@@ -124,6 +125,9 @@ pub(crate) struct WorkspaceModel {
     /// The last schema read the sidebar asked for; an older one landing
     /// late is not shown.
     sidebar_read: u64,
+    definition_reads: u64,
+    /// The Show Definition read in flight, which a newer one supersedes.
+    definition_read: Option<definitions::DefinitionRead>,
     /// Whether every schema's list has landed once. Until then the
     /// sidebar shows the default schema's.
     all_schemas_listed: bool,
@@ -596,6 +600,8 @@ pub(crate) enum WorkspaceInput {
     ShowDiagram {
         schema: Option<String>,
     },
+    ShowDefinition(tablepro_core::meta::ObjectInfo),
+    DefinitionLoaded(definitions::DefinitionLoaded),
     EditStructureTab {
         schema: Option<String>,
         table: String,
@@ -604,7 +610,12 @@ pub(crate) enum WorkspaceInput {
         schema: Option<String>,
         table: String,
     },
-    OpenInEditor(String),
+    /// SQL to work on in a new editor tab, moved to `database` when the
+    /// text only runs there.
+    OpenInEditor {
+        sql: String,
+        database: Option<String>,
+    },
     DropTablePrompt {
         schema: Option<String>,
         table: String,
@@ -820,6 +831,8 @@ impl Workspace {
             sidebar,
             catalog_schemas: Arc::from([]),
             sidebar_read: 0,
+            definition_reads: 0,
+            definition_read: None,
             all_schemas_listed: false,
             reconnect_banner: imp.reconnect_banner.get(),
             transaction_banner: imp.transaction_banner.get(),
@@ -1074,8 +1087,13 @@ impl WorkspaceModel {
 
     /// Whether the shell has this session in front.
     pub(super) fn is_front(&self) -> bool {
-        let front = self.shell.upgrade().and_then(|shell| shell.front());
+        let front = self.front();
         front.is_some_and(|front| Some(front) == self.this.upgrade())
+    }
+
+    /// The session the shell has in front, this one or another.
+    pub(super) fn front(&self) -> Option<Workspace> {
+        self.shell.upgrade().and_then(|shell| shell.front())
     }
 
     /// Show the session it was built for: the sidebar, the empty tab
@@ -1265,9 +1283,11 @@ impl WorkspaceModel {
             WorkspaceInput::TabDirtyChanged => self.refresh_unsaved(),
             WorkspaceInput::NewTableTab { schema } => self.on_new_table_tab(schema),
             WorkspaceInput::ShowDiagram { schema } => self.show_diagram(schema, Vec::new()),
+            WorkspaceInput::ShowDefinition(object) => self.on_show_definition(object),
+            WorkspaceInput::DefinitionLoaded(loaded) => self.on_definition_loaded(loaded),
             WorkspaceInput::EditStructureTab { schema, table } => self.on_edit_structure_tab(schema, table),
             WorkspaceInput::ShowCreateTableForExisting { schema, table } => self.on_show_create_table(schema, table),
-            WorkspaceInput::OpenInEditor(sql) => self.open_editor_tab(Some(sql)),
+            WorkspaceInput::OpenInEditor { sql, database } => self.open_sql_in_editor(sql, database),
             WorkspaceInput::DropTablePrompt { schema, table } => self.on_drop_table_prompt(schema, table),
             WorkspaceInput::DropTableChecked { table, referencing } => self.on_drop_table_checked(table, &referencing),
             WorkspaceInput::DropTableConfirmed { schema, table } => self.on_drop_table_confirmed(schema, table),
