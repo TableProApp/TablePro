@@ -74348,6 +74348,9 @@
     "Everything selected was already in your library." : {
 
     },
+    "Evictions" : {
+
+    },
     "Exact value" : {
       "localizations" : {
         "fr" : {
@@ -89028,6 +89031,9 @@
         }
       }
     },
+    "Hit Ratio" : {
+
+    },
     "Holds a bidirectional control, which can change the order the text is shown in" : {
 
     },
@@ -92273,6 +92279,9 @@
           }
         }
       }
+    },
+    "In-memory key-value cache" : {
+
     },
     "Inactive" : {
       "localizations" : {
