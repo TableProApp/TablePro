@@ -14,10 +14,7 @@ pub struct IndexInfo {
     /// A partial index's WHERE clause. An index with one cannot
     /// identify a row, because it does not cover every row.
     pub predicate: Option<String>,
-    /// The statement that creates this index alone: the server's own
-    /// text where the engine keeps one, otherwise written by the driver
-    /// from its catalog, with no closing semicolon. `None` for an index
-    /// only a constraint makes.
+    // Guaranteed only from fetch_table_definition; None for an index a constraint owns.
     pub definition: Option<String>,
 }
 

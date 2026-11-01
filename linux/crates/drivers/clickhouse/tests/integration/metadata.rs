@@ -351,9 +351,6 @@ async fn a_user_function_lists_with_its_create_statement() {
     connection.close().await.expect("a close");
 }
 
-/// A skipping index's statement, run after the index is dropped, makes
-/// the same index again with its type and granularity. The sorting key
-/// has no statement of its own.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires docker"]
 async fn skipping_index_statements_recreate_their_indexes() {
@@ -364,7 +361,8 @@ async fn skipping_index_statements_recreate_their_indexes() {
         connection.as_ref(),
         &[&format!(
             "CREATE TABLE {} (id UInt32, s String, \
-             INDEX by_s lower(s) TYPE bloom_filter(0.01) GRANULARITY 4, INDEX by_id id TYPE minmax GRANULARITY 1) \
+             INDEX by_s lower(s) TYPE bloom_filter(0.01) GRANULARITY 4, INDEX by_id id TYPE minmax GRANULARITY 1, \
+             INDEX by_pair (id, s) TYPE set(100) GRANULARITY 2) \
              ENGINE = MergeTree ORDER BY id",
             quoted(&name)
         )],
@@ -387,10 +385,8 @@ async fn skipping_index_statements_recreate_their_indexes() {
     assert_eq!(
         by_s.definition.as_deref(),
         Some(
-            format!(
-                "ALTER TABLE `{DATABASE}`.`{name}` ADD INDEX `by_s` lower(s) TYPE bloom_filter(0.01) GRANULARITY 4"
-            )
-            .as_str()
+            format!("CREATE INDEX `by_s` ON `{DATABASE}`.`{name}` (lower(s)) TYPE bloom_filter(0.01) GRANULARITY 4")
+                .as_str()
         )
     );
     for index in indexes.iter().filter(|index| !index.primary) {

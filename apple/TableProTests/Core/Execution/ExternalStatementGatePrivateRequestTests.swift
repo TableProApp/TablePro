@@ -75,6 +75,8 @@ struct ExternalStatementGatePrivateRequestTests {
         (.weaviate, "WEAVIATE_SEARCH:"),
         (.weaviate, "WEAVIATE_WRITE:"),
         (.weaviate, "WEAVIATE_EXPORT:"),
+        (.memcached, "MEMCACHED_BROWSE:"),
+        (.memcached, "MEMCACHED_REFUSAL:"),
         (.etcd, "ETCD_RANGE:"),
         (.etcd, "ETCD_COUNT:"),
         (.etcd, "ETCD_REFUSAL:"),

@@ -11,8 +11,6 @@ internal struct JsonEditorView: View {
     var isExpanded = false
 
     @State private var model: JsonFieldEditingModel
-    @AppStorage(PreferenceKeys.rowInspectorJsonFieldHeight.name, store: AppStorageEnvironment.shared.defaults) private var fieldHeight = ResizableFieldMetrics
-        .defaultJsonHeight
 
     init(context: FieldEditorContext, onPopOut: ((String) -> Void)? = nil, isExpanded: Bool = false) {
         self.context = context
@@ -21,9 +19,7 @@ internal struct JsonEditorView: View {
         self._model = State(wrappedValue: JsonFieldEditingModel(storedValue: context.value.wrappedValue))
     }
 
-    /// The editor writes through the model, which decides whether the text is worth publishing.
-    /// Binding `$model.displayText` straight to the editor would publish the model's own
-    /// corrections back into the store.
+    // Through the model: binding `$model.displayText` directly would publish the model's own corrections.
     private var editorText: Binding<String> {
         Binding(
             get: { model.displayText },
@@ -36,7 +32,8 @@ internal struct JsonEditorView: View {
 
     var body: some View {
         ResizableEditorContainer(
-            height: $fieldHeight,
+            column: context.columnName,
+            defaultHeight: ResizableFieldMetrics.defaultJsonHeight,
             range: ResizableFieldMetrics.jsonHeightRange,
             expandedHeight: isExpanded ? ResizableFieldMetrics.expandedHeight : nil
         ) {
@@ -48,11 +45,7 @@ internal struct JsonEditorView: View {
                 .valueWell(clipsContent: true)
                 .overlay(alignment: .bottomTrailing) { actionButtons }
         }
-        /// `newValue`, never a re-read of `context.value.wrappedValue`. An `onChange` action
-        /// closure belongs to the render that registered it, so its captured context is a render
-        /// behind and answers with the value this edit has just replaced. Re-reading it made the
-        /// editor undo every keystroke and push the undone text back, at 75 rounds a second and
-        /// without ever settling (#3051).
+        // `newValue`, never `context.value`: the action's context is a render behind and undid every keystroke (#3051).
         .onChange(of: context.value.wrappedValue) { newValue in
             _ = model.received(newValue)
         }

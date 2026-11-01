@@ -198,6 +198,16 @@ final class DataTabGridAdapter: DataGridDataSource, DataGridActions {
 
     // MARK: - Menus
 
+    func gridColumnMenuItems(for column: DataGridColumn) -> [NSMenuItem] {
+        guard gridRows.masks.isMasked(column.dataIndex) else { return [] }
+        let tabId = tabId
+        return [ClosureMenuTarget.item(title: String(localized: "Reveal Masked Values…")) { [weak coordinator] in
+            Task { @MainActor [weak coordinator] in
+                await coordinator?.revealMaskedValues(tabId: tabId)
+            }
+        }]
+    }
+
     func gridRowMenuItems(for rowIDs: [RowID], clickedRow: RowID) -> [NSMenuItem] {
         guard let coordinator, ownsWindowState, coordinator.canInsertDocument else { return [] }
         var items: [NSMenuItem] = []

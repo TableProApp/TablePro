@@ -1071,6 +1071,21 @@ targets:
       - package: swift-nio-ssl
         product: NIOSSL
 
+  MemcachedDriverPlugin:
+    templates: [DriverPlugin]
+    templateAttributes:
+      folder: MemcachedDriverPlugin
+      principalClass: MemcachedPlugin
+    dependencies:
+      - package: TableProCore
+        product: TableProMemcachedCore
+      - package: swift-nio
+        product: NIOCore
+      - package: swift-nio
+        product: NIOPosix
+      - package: swift-nio-ssl
+        product: NIOSSL
+
   KingbaseESDriverPlugin:
     templates: [DriverPlugin, PostgreSQLLinkage]
     templateAttributes:
@@ -1332,6 +1347,7 @@ aggregateTargets:
       - KafkaDriverPlugin
       - KingbaseESDriverPlugin
       - LibSQLDriverPlugin
+      - MemcachedDriverPlugin
       - MSSQLDriver
       - MongoDBDriver
       - Neo4jDriverPlugin

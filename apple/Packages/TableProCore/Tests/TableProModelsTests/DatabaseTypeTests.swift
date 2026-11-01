@@ -63,7 +63,7 @@ struct DatabaseTypeTests {
 
     @Test("allKnownTypes contains all expected types")
     func allKnownTypesComplete() {
-        #expect(DatabaseType.allKnownTypes.count == 34)
+        #expect(DatabaseType.allKnownTypes.count == 35)
         #expect(DatabaseType.allKnownTypes.contains(.mysql))
         #expect(DatabaseType.allKnownTypes.contains(.tidb))
         #expect(DatabaseType.allKnownTypes.contains(.databend))
@@ -81,6 +81,7 @@ struct DatabaseTypeTests {
         #expect(DatabaseType.allKnownTypes.contains(.kafka))
         #expect(DatabaseType.allKnownTypes.contains(.cloudflareR2SQL))
         #expect(DatabaseType.allKnownTypes.contains(.weaviate))
+        #expect(DatabaseType.allKnownTypes.contains(.memcached))
         #expect(DatabaseType.allKnownTypes.contains(.firestore))
         #expect(DatabaseType.allKnownTypes.contains(.firebaseRealtimeDatabase))
         #expect(DatabaseType.allKnownTypes.contains(.bigtable))
@@ -106,6 +107,13 @@ struct DatabaseTypeTests {
         #expect(DatabaseType.weaviate.rawValue == "Weaviate")
         #expect(DatabaseType.weaviate.iconName == "weaviate-icon")
         #expect(DatabaseType.weaviate.pluginTypeId == "Weaviate")
+    }
+
+    @Test("Memcached resolves its icon and plugin type id")
+    func memcachedIdentity() {
+        #expect(DatabaseType.memcached.rawValue == "Memcached")
+        #expect(DatabaseType.memcached.iconName == "memorychip")
+        #expect(DatabaseType.memcached.pluginTypeId == "Memcached")
     }
 
     @Test("Both Firebase types resolve the Firebase icon and keep their own plugin type id")

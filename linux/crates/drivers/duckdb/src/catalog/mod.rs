@@ -275,6 +275,8 @@ pub(crate) fn fetch_indexes(link: &Link, catalog: &str, table: &TableRef) -> Res
          ORDER BY index_name",
         &[catalog, schema_of(table), &table.name],
     )?;
+    let quote = |name: &str| format!("\"{}\"", name.replace('"', "\"\""));
+    let target = format!("{}.{}.{}", quote(catalog), quote(schema_of(table)), quote(&table.name));
     indexes.extend(rows.iter().map(|row| {
         IndexInfo {
             name: text(row, 0),
@@ -285,16 +287,53 @@ pub(crate) fn fetch_indexes(link: &Link, catalog: &str, table: &TableRef) -> Res
             unique: flag(row, 1),
             primary: flag(row, 2),
             predicate: None,
-            definition: statement(&text(row, 4)),
+            definition: statement(&text(row, 4)).and_then(|sql| on_own_table(&sql, &target)),
         }
     }));
     Ok(indexes)
 }
 
-/// DuckDB keeps the text the index was created with, semicolon and all.
+// DuckDB ends its index text with a semicolon, which the app adds itself.
 fn statement(sql: &str) -> Option<String> {
     let sql = sql.trim().trim_end_matches(';').trim_end();
     (!sql.is_empty()).then(|| sql.to_owned())
+}
+
+// DuckDB writes a table of schema main bare, and a temp table of the same name catches that and
+// `main.t` alike: only the catalog's name reaches the database's own table.
+fn on_own_table(sql: &str, target: &str) -> Option<String> {
+    let rest = sql
+        .strip_prefix("CREATE UNIQUE INDEX ")
+        .or_else(|| sql.strip_prefix("CREATE INDEX "))?;
+    let rest = rest.get(identifier_length(rest)?..)?.strip_prefix(" ON ")?;
+    let start = sql.len() - rest.len();
+    let end = start + reference_length(rest)?;
+    Some(format!("{}{target}{}", &sql[..start], &sql[end..]))
+}
+
+fn reference_length(text: &str) -> Option<usize> {
+    let mut length = identifier_length(text)?;
+    while text.get(length..)?.starts_with('.') {
+        length += 1 + identifier_length(text.get(length + 1..)?)?;
+    }
+    Some(length)
+}
+
+fn identifier_length(text: &str) -> Option<usize> {
+    let Some(quoted) = text.strip_prefix('"') else {
+        let length = text
+            .find(|character: char| !(character.is_alphanumeric() || character == '_'))
+            .unwrap_or(text.len());
+        return (length > 0).then_some(length);
+    };
+    let mut position = 0;
+    loop {
+        let close = position + quoted.get(position..)?.find('"')?;
+        match quoted.get(close + 1..)?.starts_with('"') {
+            true => position = close + 2,
+            false => return Some(close + 2),
+        }
+    }
 }
 
 /// One key of an index: a column where the text names one, an
@@ -639,6 +678,25 @@ mod tests {
     use tablepro_core::column::{ColumnKind, IntegerKind, IntegerWidth};
 
     use super::*;
+
+    #[test]
+    fn an_index_statement_names_its_catalog() {
+        let target = "\"dd\".\"main\".\"t\"";
+
+        assert_eq!(
+            on_own_table("CREATE INDEX i0 ON t(a)", target).as_deref(),
+            Some("CREATE INDEX i0 ON \"dd\".\"main\".\"t\"(a)")
+        );
+        assert_eq!(
+            on_own_table(
+                "CREATE UNIQUE INDEX \"we\"\"ird\" ON s.\"T t\"((lower(b)))",
+                "\"dd\".\"s\".\"T t\""
+            )
+            .as_deref(),
+            Some("CREATE UNIQUE INDEX \"we\"\"ird\" ON \"dd\".\"s\".\"T t\"((lower(b)))")
+        );
+        assert_eq!(on_own_table("CREATE INDEX \"open ON t(a)", target), None);
+    }
 
     #[test]
     fn a_literal_default_reads_as_its_value() {

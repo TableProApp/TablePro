@@ -912,6 +912,8 @@ extension DatabaseManager {
         adopted.color = source.color
         adopted.iconName = source.iconName
         adopted.tagIds = source.tagIds
+        // Masking changes no route, and a rule saved while the window is open must hide values at once.
+        adopted.maskingRules = source.maskingRules
         return adopted
     }
 

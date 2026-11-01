@@ -91,13 +91,17 @@ pub(crate) async fn fetch_table_definition(
     // Every query is sent before the first answer is awaited, so all of
     // them run inside the flight's transaction, ahead of its COMMIT.
     let params = [relation];
-    let (columns, primary_key, indexes, foreign_keys, inbound_foreign_keys) = futures_util::try_join!(
+    let (columns, primary_key, mut indexes, mut statements, foreign_keys, inbound_foreign_keys) = futures_util::try_join!(
         column_rows(client, columns_sql, relation),
         text_rows(client, PRIMARY_KEY_NAME_SQL, &params),
         fetch_indexes(client, relation),
+        indexes::fetch_index_statements(client, relation),
         fetch_foreign_keys(client, relation),
         fetch_inbound_foreign_keys(client, relation),
     )?;
+    for index in &mut indexes {
+        index.definition = statements.remove(&index.name);
+    }
     let primary_key = primary_key
         .first()
         .map(|row| -> Result<PrimaryKeyConstraint, DriverError> {
@@ -180,6 +184,7 @@ mod tests {
             ("trigger definition", definitions::TRIGGER_SQL.to_owned()),
             ("identity", identity::IDENTITY_SQL.to_owned()),
             ("indexes", indexes::INDEXES_SQL.to_owned()),
+            ("index statements", indexes::INDEX_STATEMENTS_SQL.to_owned()),
             ("estimate", estimate::ESTIMATE_SQL.to_owned()),
             ("foreign keys", foreign_keys::foreign_keys_sql()),
             ("inbound foreign keys", inbound_foreign_keys_sql()),
