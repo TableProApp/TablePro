@@ -15,8 +15,9 @@ internal enum EditorTabDetachPolicy {
         isBusy: Bool,
         isConnected: Bool
     ) -> Bool {
-        // A debug run's prompts and its close on a declined start act on the coordinator that opened it.
-        guard tabType != .routineDebug else { return false }
+        // A debug run's prompts and its close on a declined start act on the coordinator that opened it; a live
+        // subscription is registered with that coordinator's tab.
+        guard tabType != .routineDebug, tabType != .liveMessages else { return false }
         // Moving the last tab is Move Connection to New Window.
         guard tabCount > 1 else { return false }
         guard !hasUnsavedWork else { return false }

@@ -45,7 +45,7 @@ internal enum ScriptEnumerations {
         case .objectSource: fourCharCode("TPk8")
         case .versionHistory: fourCharCode("TPk9")
         case .tableListing: fourCharCode("TPkl")
-        case .routineDebug: nil
+        case .routineDebug, .liveMessages: nil
         }
     }
 

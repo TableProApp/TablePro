@@ -9260,6 +9260,9 @@
         }
       }
     },
+    "%d messages" : {
+
+    },
     "%d more" : {
       "localizations" : {
         "fr" : {
@@ -9351,6 +9354,9 @@
           }
         }
       }
+    },
+    "%d new" : {
+
     },
     "%d of %d" : {
       "localizations" : {
@@ -32995,6 +33001,9 @@
     "Can't Debug %@" : {
 
     },
+    "Can't Export Messages" : {
+
+    },
     "Can't List Routines" : {
 
     },
@@ -36045,6 +36054,12 @@
           }
         }
       }
+    },
+    "Channel" : {
+
+    },
+    "Channels" : {
+
     },
     "Character Set" : {
       "extractionState" : "manual",
@@ -83740,6 +83755,12 @@
         }
       }
     },
+    "Follow" : {
+
+    },
+    "Follow Topics" : {
+
+    },
     "Follow-up on step %d \"%@\" (%@): %@" : {
       "localizations" : {
         "en" : {
@@ -84814,6 +84835,9 @@
           }
         }
       }
+    },
+    "Freeze the list; messages keep arriving underneath" : {
+
     },
     "Freeze Up to This Column" : {
 
@@ -103984,6 +104008,12 @@
         }
       }
     },
+    "Listen" : {
+
+    },
+    "Listen for Notifications" : {
+
+    },
     "Listens on all interfaces (0.0.0.0), reachable from your local network." : {
       "localizations" : {
         "fr" : {
@@ -104133,6 +104163,18 @@
           }
         }
       }
+    },
+    "Live Messages" : {
+
+    },
+    "Live Messages Ended" : {
+
+    },
+    "Live Messages…" : {
+
+    },
+    "Live: %@" : {
+
     },
     "Load" : {
       "localizations" : {
@@ -132103,6 +132145,9 @@
     "Pattern" : {
 
     },
+    "Patterns" : {
+
+    },
     "Pause" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -132242,6 +132287,9 @@
     "Paw Print" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "Payload" : {
+
     },
     "Pending approval for" : {
       "localizations" : {
@@ -137410,6 +137458,9 @@
     "Processor" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "Produce" : {
+
     },
     "PRODUCE needs a topic name." : {
       "extractionState" : "manual",
@@ -143422,6 +143473,9 @@
           }
         }
       }
+    },
+    "Reconnecting…" : {
+
     },
     "Record Access" : {
       "extractionState" : "manual",
@@ -160776,6 +160830,9 @@
         }
       }
     },
+    "Send" : {
+
+    },
     "Send Message" : {
       "localizations" : {
         "fr" : {
@@ -161168,6 +161225,18 @@
           }
         }
       }
+    },
+    "Separate names with commas." : {
+
+    },
+    "Separate names with commas. A separate session runs LISTEN and closes with the tab." : {
+
+    },
+    "Separate names with commas. Patterns use glob syntax, such as news.*. A separate connection subscribes and closes with the tab." : {
+
+    },
+    "Separate names with commas. Reading starts at the end of each partition, without a consumer group, so no committed offset moves." : {
+
     },
     "Separator" : {
       "localizations" : {
@@ -165306,6 +165375,9 @@
           }
         }
       }
+    },
+    "Show the messages that arrived while paused" : {
+
     },
     "Show Toolbar" : {
       "localizations" : {
@@ -174725,6 +174797,12 @@
           }
         }
       }
+    },
+    "Subscribe" : {
+
+    },
+    "Subscribe to Channels" : {
+
     },
     "Subtype" : {
 
@@ -184567,6 +184645,9 @@
         }
       }
     },
+    "The connection closed." : {
+
+    },
     "The connection failed while Spanner was committing, so the changes may have been saved. Check the data before running it again." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -187466,6 +187547,9 @@
           }
         }
       }
+    },
+    "The live message view has closed." : {
+
     },
     "The map cannot draw %@." : {
 
@@ -194283,6 +194367,9 @@
         }
       }
     },
+    "This connection can't open the separate session live messages need." : {
+
+    },
     "This connection can't open the separate sessions the debugger needs." : {
 
     },
@@ -194864,6 +194951,9 @@
       }
     },
     "This connection's driver can't debug routines." : {
+
+    },
+    "This connection's driver can't follow live messages." : {
 
     },
     "This connection's driver does not list its tables." : {
@@ -201924,6 +202014,9 @@
           }
         }
       }
+    },
+    "Topics" : {
+
     },
     "Tortoise" : {
       "extractionState" : "manual",
@@ -211615,6 +211708,9 @@
 
     },
     "Was %@" : {
+
+    },
+    "Watch PostgreSQL notifications, Redis channels and Kafka topics as messages arrive." : {
 
     },
     "Watch shared folders for connection files." : {

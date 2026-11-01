@@ -170,7 +170,7 @@ private extension TabType {
         case .objectSource: "objectSource"
         case .versionHistory: "versionHistory"
         case .tableListing: "tableListing"
-        case .routineDebug: nil
+        case .routineDebug, .liveMessages: nil
         }
     }
 }

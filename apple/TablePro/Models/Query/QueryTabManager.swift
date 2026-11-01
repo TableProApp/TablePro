@@ -599,6 +599,16 @@ final class QueryTabManager: ObservableObject {
         String(format: String(localized: "Debug %@"), name)
     }
 
+    @discardableResult
+    func addLiveMessagesTab(id: UUID = UUID(), title: String) -> UUID {
+        var newTab = QueryTab(id: id, title: title, tabType: .liveMessages)
+        newTab.tableContext.isEditable = false
+        newTab.hasUserInteraction = true
+        tabs.append(newTab)
+        selectedTabId = newTab.id
+        return newTab.id
+    }
+
     // Qualified by schema where tables are listed per schema, or two listings in one database would share a label.
     static func tableListingTitle(kindTitle: String, schemaName: String?) -> String {
         guard let schemaName, !schemaName.isEmpty else { return kindTitle }
@@ -833,7 +843,7 @@ extension QueryTabManager {
         case .query, .table, .createTable, .erDiagram, .objectSource, .tableListing:
             return true
         // A paused debug target holds locks, so its tab stays in sight whichever entry the sidebar shows.
-        case .serverDashboard, .usersRoles, .insights, .versionHistory, .routineDebug:
+        case .serverDashboard, .usersRoles, .insights, .versionHistory, .routineDebug, .liveMessages:
             return false
         }
     }
