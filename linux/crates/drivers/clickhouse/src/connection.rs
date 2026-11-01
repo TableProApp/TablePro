@@ -281,6 +281,14 @@ impl Connection for ClickHouseConnection {
         .await
     }
 
+    async fn fetch_object_definition(&self, object: &ObjectInfo, options: CallOptions) -> Result<String, DriverError> {
+        let object = object.clone();
+        self.workspace_read(options, move |calls| async move {
+            metadata::fetch_object_definition(&calls, &object).await
+        })
+        .await
+    }
+
     async fn fetch_columns(&self, table: &TableRef, options: CallOptions) -> Result<Vec<ColumnInfo>, DriverError> {
         let table = self.catalog_table(table);
         self.workspace_read(options, move |calls| async move {

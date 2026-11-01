@@ -271,6 +271,18 @@ impl Connection for MssqlConnection {
         .await
     }
 
+    async fn fetch_object_definition(&self, object: &ObjectInfo, options: CallOptions) -> Result<String, DriverError> {
+        let object = object.clone();
+        let dialect = *self.dialect;
+        self.read(
+            options,
+            read_op(move |client, watch| {
+                Box::pin(async move { metadata::fetch_object_definition(client, watch, &dialect, &object).await })
+            }),
+        )
+        .await
+    }
+
     async fn fetch_columns(&self, table: &TableRef, options: CallOptions) -> Result<Vec<ColumnInfo>, DriverError> {
         let relation = self.relation(table);
         self.read(

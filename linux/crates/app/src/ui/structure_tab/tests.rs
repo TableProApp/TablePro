@@ -1446,6 +1446,7 @@ fn add_foreign_key_from_the_tab_adds_the_key() {
         schema: Some("public".to_owned()),
         name: "accounts".to_owned(),
         kind: ObjectKind::Table,
+        table: None,
     }]));
     script
         .fetch_columns

@@ -76,6 +76,7 @@ fn object(schema: &str, name: &str) -> ObjectInfo {
         schema: Some(schema.to_owned()),
         name: name.to_owned(),
         kind: ObjectKind::Table,
+        table: None,
     }
 }
 
@@ -696,6 +697,7 @@ fn a_key_row_shows_its_type_beside_its_name() {
         schema: None,
         name: name.to_owned(),
         kind: ObjectKind::Key(kind),
+        table: None,
     };
     view.show_keys(
         SidebarIndex::keys(
@@ -1369,6 +1371,7 @@ fn collections_and_keys_offer_no_er_diagram() {
                 schema: None,
                 name: "user:1".to_owned(),
                 kind: ObjectKind::Key(KeyKind::Hash),
+                table: None,
             }],
             "db0".to_owned(),
         ),

@@ -273,6 +273,15 @@ impl Connection for PgConnection {
         .await
     }
 
+    async fn fetch_object_definition(&self, object: &ObjectInfo, options: CallOptions) -> Result<String, DriverError> {
+        let object = object.clone();
+        self.read(
+            options,
+            read_op(move |client| Box::pin(async move { metadata::fetch_object_definition(client, &object).await })),
+        )
+        .await
+    }
+
     async fn fetch_columns(&self, table: &TableRef, options: CallOptions) -> Result<Vec<ColumnInfo>, DriverError> {
         let relation = self.relation(table);
         let columns_sql = self.columns_sql();

@@ -2,7 +2,7 @@ use gtk4::gio;
 use gtk4::prelude::*;
 use tablepro_core::meta::ObjectKind;
 
-use super::object_key::ObjectKey;
+use super::object_key::{DefinitionKey, ObjectKey};
 use super::sidebar_affordances::SidebarAffordances;
 use super::sidebar_view::Holds;
 
@@ -15,6 +15,7 @@ pub(super) const NEW_TABLE: &str = "new-table";
 pub(super) const SHOW_DIAGRAM: &str = "show-diagram";
 /// A schema's diagram, whose target is the schema, as New Table's is.
 pub(super) const SHOW_SCHEMA_DIAGRAM: &str = "show-schema-diagram";
+pub(super) const SHOW_DEFINITION: &str = "show-definition";
 pub(super) const GROUP: &str = "sidebar";
 
 /// The menu of one table. Every item carries the table's key, so the one
@@ -59,6 +60,16 @@ pub(crate) fn object_menu(key: &ObjectKey, kind: ObjectKind, affordances: Sideba
         danger.append_item(&item(&crate::i18n::gettext("Drop _Table…"), DROP_TABLE, key));
         menu.append_section(None, &danger);
     }
+    menu
+}
+
+/// The menu of a routine, a sequence or a trigger: its definition is all
+/// there is to open, and changing it is the editor's work.
+pub(crate) fn definition_menu(key: &DefinitionKey) -> gio::Menu {
+    let menu = gio::Menu::new();
+    let item = gio::MenuItem::new(Some(&crate::i18n::gettext("_Show Definition")), None);
+    item.set_action_and_target_value(Some(&format!("{GROUP}.{SHOW_DEFINITION}")), Some(&key.to_variant()));
+    menu.append_item(&item);
     menu
 }
 
@@ -166,6 +177,27 @@ mod tests {
 
         assert_access_keys(&object_menu(&key, ObjectKind::Table, all()));
         assert_access_keys(&schema_menu(Some("sales"), all(), Holds::Tables).expect("a menu"));
+    }
+
+    #[test]
+    fn a_definition_offers_only_to_show_it_and_carries_its_trigger_table() {
+        let key = DefinitionKey(tablepro_core::meta::ObjectInfo::trigger(
+            Some("sales".to_owned()),
+            "audit",
+            "orders",
+        ));
+
+        let menu = definition_menu(&key);
+
+        let found = items(menu.upcast_ref());
+        assert_eq!(found.len(), 1);
+        let (action, target) = &found[0];
+        assert_eq!(action, "sidebar.show-definition");
+        assert_eq!(
+            target.as_ref().and_then(DefinitionKey::from_variant).as_ref(),
+            Some(&key)
+        );
+        assert_access_keys(&menu);
     }
 
     #[test]

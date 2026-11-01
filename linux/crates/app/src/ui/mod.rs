@@ -9,6 +9,7 @@ mod connection_appearance;
 mod connection_list_banner;
 pub(crate) mod credential_prompt;
 pub(crate) mod data_grid;
+mod definition_dialog;
 mod delete_connection_dialog;
 mod diagram;
 mod discard_alert;

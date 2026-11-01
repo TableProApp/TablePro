@@ -2,9 +2,9 @@
 
 use tablepro_core::ddl::{IdentityStyle, ReferentialAction};
 use tablepro_core::meta::{
-    EngineRowId, IndexInfo, IndexKey, ObjectKind, ObjectScope, RowCountEstimate, RowIdentity, TableRef,
+    EngineRowId, IndexInfo, IndexKey, ObjectInfo, ObjectKind, ObjectScope, RowCountEstimate, RowIdentity, TableRef,
 };
-use tablepro_core::{Connection, RowLimit, Value};
+use tablepro_core::{Connection, DriverError, RowLimit, Value};
 
 use crate::sqlite_engine::create_database;
 use crate::support::{TestFile, apply, call, query, statement};
@@ -395,5 +395,96 @@ async fn a_missing_table_is_an_error_not_an_empty_list() {
     assert!(columns.is_err(), "{columns:?}");
     let count = query(connection.as_ref(), "SELECT count(*) FROM sqlite_schema").await;
     assert_eq!(count.rows[0][0], Value::Int(0));
+    connection.close().await.unwrap();
+}
+
+#[tokio::test]
+async fn triggers_listed_per_schema_with_their_stored_text() {
+    let file = TestFile::new().await;
+    let other = file.directory().join("other.sqlite3");
+    create_database(&other).await.unwrap();
+    let connection = file.open().await;
+    apply(
+        connection.as_ref(),
+        &[
+            "CREATE TABLE people (id INTEGER PRIMARY KEY, name TEXT)",
+            "CREATE TABLE log (note TEXT)",
+            "CREATE TRIGGER audit AFTER INSERT ON people BEGIN INSERT INTO log VALUES ('new person'); END",
+        ],
+    )
+    .await
+    .unwrap();
+    let attach = format!("ATTACH DATABASE '{}' AS archive", other.display());
+    connection
+        .query_bound(&statement(&attach), RowLimit::EDITOR_DEFAULT, call())
+        .await
+        .unwrap();
+    query(connection.as_ref(), "CREATE TABLE archive.old (id INTEGER)").await;
+    query(
+        connection.as_ref(),
+        "CREATE TRIGGER archive.audit AFTER DELETE ON old BEGIN SELECT 'gone'; END",
+    )
+    .await;
+
+    let main_objects = connection
+        .list_objects(&ObjectScope::DefaultSchema, call())
+        .await
+        .unwrap();
+    let archived = connection
+        .list_objects(&ObjectScope::Schema("archive".to_owned()), call())
+        .await
+        .unwrap();
+    let main_trigger = main_objects
+        .iter()
+        .find(|object| object.kind == ObjectKind::Trigger)
+        .unwrap();
+    assert_eq!(
+        (
+            main_trigger.name.as_str(),
+            main_trigger.table.as_deref(),
+            main_trigger.schema.as_deref()
+        ),
+        ("audit", Some("people"), None)
+    );
+    let archived_trigger = archived
+        .iter()
+        .find(|object| object.kind == ObjectKind::Trigger)
+        .unwrap();
+    assert_eq!(
+        (archived_trigger.table.as_deref(), archived_trigger.schema.as_deref()),
+        (Some("old"), Some("archive"))
+    );
+    assert!(
+        main_objects
+            .iter()
+            .filter(|object| object.kind != ObjectKind::Trigger)
+            .all(|object| object.table.is_none())
+    );
+
+    let main_text = connection.fetch_object_definition(main_trigger, call()).await.unwrap();
+    assert!(
+        main_text.starts_with("CREATE TRIGGER audit AFTER INSERT ON people"),
+        "{main_text}"
+    );
+    assert!(
+        main_text.contains("new person") && main_text.ends_with(';'),
+        "{main_text}"
+    );
+    let archived_text = connection
+        .fetch_object_definition(archived_trigger, call())
+        .await
+        .unwrap();
+    assert!(
+        archived_text.contains("AFTER DELETE ON old") && archived_text.contains("gone"),
+        "{archived_text}"
+    );
+
+    let missing = ObjectInfo::trigger(None, "audit", "log");
+    assert_eq!(connection.fetch_object_definition(&missing, call()).await.unwrap(), "");
+    let table = ObjectInfo::new(None, "people", ObjectKind::Table);
+    assert!(matches!(
+        connection.fetch_object_definition(&table, call()).await,
+        Err(DriverError::Unsupported { .. })
+    ));
     connection.close().await.unwrap();
 }

@@ -34,6 +34,7 @@ fn sales(script: &mut ConnectionScript) {
         schema: Some("sales".to_owned()),
         name: name.to_owned(),
         kind: ObjectKind::Table,
+        table: None,
     };
     script
         .list_objects

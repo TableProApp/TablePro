@@ -97,6 +97,7 @@ mod tests {
             schema: schema.map(str::to_owned),
             name: name.to_owned(),
             kind,
+            table: None,
         }
     }
 

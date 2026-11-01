@@ -3,9 +3,9 @@
 use tablepro_core::column::{ColumnDefault, ColumnKind, ReadForm, TextLength};
 use tablepro_core::ddl::{DdlDialect, IdentityStyle, TableDraft, diff_table};
 use tablepro_core::dialect::{BindTarget, LikeForm};
-use tablepro_core::meta::{ObjectKind, ObjectScope, RowIdentity, TableRef};
+use tablepro_core::meta::{ObjectInfo, ObjectKind, ObjectScope, RowIdentity, TableRef};
 use tablepro_core::statement::StatementBuilder;
-use tablepro_core::{RowLimit, Value};
+use tablepro_core::{DriverError, RowLimit, Value};
 use tablepro_driver_mssql::MssqlDialect;
 
 use crate::support::{CALL, columns, connect, dbo, rows, scalar, setup, start, statement, within};
@@ -337,4 +337,76 @@ async fn like_escape_matches_literal_underscore_and_percent() {
         scalar(connection.as_ref(), "SELECT N'x'").await,
         Value::Text("x".to_owned())
     );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn routines_sequences_and_triggers_are_listed_with_their_definitions() {
+    let fixture = start().await;
+    let connection = connect(&fixture, false).await;
+    setup(
+        connection.as_ref(),
+        &[
+            "CREATE TABLE dbo.orders (id int PRIMARY KEY, total int)",
+            "CREATE TABLE dbo.audit (id int PRIMARY KEY)",
+            "CREATE FUNCTION dbo.add_tax(@amount int) RETURNS int AS BEGIN RETURN @amount * 2 END",
+            "CREATE PROCEDURE dbo.clear_audit AS DELETE FROM dbo.audit",
+            "CREATE TRIGGER dbo.orders_total ON dbo.orders AFTER INSERT AS UPDATE dbo.orders SET total = total + 1000",
+            "CREATE SEQUENCE dbo.invoice_numbers AS bigint START WITH 100 INCREMENT BY 5 CYCLE CACHE 20",
+        ],
+    )
+    .await;
+
+    let objects = connection
+        .list_objects(&ObjectScope::DefaultSchema, within(CALL))
+        .await
+        .expect("the objects");
+    let find = |name: &str| {
+        objects
+            .iter()
+            .find(|object| object.name == name)
+            .unwrap_or_else(|| panic!("{name} listed"))
+    };
+    assert_eq!(find("add_tax").kind, ObjectKind::Function);
+    assert_eq!(find("clear_audit").kind, ObjectKind::Procedure);
+    assert_eq!(find("invoice_numbers").kind, ObjectKind::Sequence);
+    let trigger = find("orders_total");
+    assert_eq!(trigger.kind, ObjectKind::Trigger);
+    assert_eq!(trigger.table.as_deref(), Some("orders"));
+    assert_eq!(trigger.schema.as_deref(), Some("dbo"));
+
+    for (object, body) in [
+        (find("add_tax"), "@amount * 2"),
+        (find("clear_audit"), "DELETE FROM dbo.audit"),
+        (trigger, "total + 1000"),
+        (find("invoice_numbers"), "START WITH 100 INCREMENT BY 5"),
+    ] {
+        let definition = connection
+            .fetch_object_definition(object, within(CALL))
+            .await
+            .expect("the definition");
+        assert!(definition.contains(body), "{}: {definition}", object.name);
+    }
+    let sequence = connection
+        .fetch_object_definition(find("invoice_numbers"), within(CALL))
+        .await
+        .expect("the sequence");
+    assert!(
+        sequence.contains("AS bigint") && sequence.contains(" CYCLE CACHE 20;"),
+        "{sequence}"
+    );
+
+    let mut elsewhere = trigger.clone();
+    elsewhere.table = Some("audit".to_owned());
+    let missing = connection
+        .fetch_object_definition(&elsewhere, within(CALL))
+        .await
+        .expect("an answer");
+    assert_eq!(missing, "", "a trigger on another table is not this trigger");
+    let table_object = ObjectInfo::new(trigger.schema.clone(), "orders", ObjectKind::Table);
+    assert!(matches!(
+        connection.fetch_object_definition(&table_object, within(CALL)).await,
+        Err(DriverError::Unsupported { .. })
+    ));
+    connection.close().await.expect("a close");
 }

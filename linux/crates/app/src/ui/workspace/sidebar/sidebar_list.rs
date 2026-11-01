@@ -143,6 +143,7 @@ mod tests {
                 schema: Some((*schema).to_owned()),
                 name: (*name).to_owned(),
                 kind: ObjectKind::Table,
+                table: None,
             })
             .collect();
         let schemas = [SchemaInfo {

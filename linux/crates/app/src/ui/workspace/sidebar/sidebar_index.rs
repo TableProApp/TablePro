@@ -40,6 +40,8 @@ pub(crate) struct SectionRun {
 pub(crate) struct IndexEntry {
     pub(crate) table: TableRef,
     pub(crate) kind: ObjectKind,
+    /// The table a trigger fires on.
+    pub(crate) owner: Option<String>,
     /// Its section, in `SidebarIndex::section`.
     pub(crate) section: u32,
 }
@@ -53,8 +55,9 @@ pub(crate) struct Section {
 }
 
 impl SidebarIndex {
-    /// The objects the grid can page through, in their sections: by rank,
-    /// then by title, then each section's tables by name. Titles and names
+    /// The objects the grid can page through, then the routines,
+    /// sequences and triggers, in their sections: by rank, then by title,
+    /// then each section's tables by name, then each other kind by name. Titles and names
     /// sort by the locale's collation ignoring case, ties in the order the
     /// server listed them.
     pub(crate) fn build(objects: &[ObjectInfo], schemas: &[SchemaInfo]) -> Self {
@@ -76,7 +79,7 @@ impl SidebarIndex {
         let mut keyed: Vec<(u32, glib::CollationKey, String, IndexEntry)> = Vec::new();
         for object in objects
             .iter()
-            .filter(|object| object.kind.is_browsable() || object.kind.is_key())
+            .filter(|object| object.kind.is_browsable() || object.kind.is_key() || object.kind.has_definition())
         {
             let (title, rank) = placement.section_of(object.schema.as_deref());
             let section = *section_ids.entry((rank, title)).or_insert_with(|| {
@@ -87,10 +90,16 @@ impl SidebarIndex {
                 u32::try_from(sections.len() - 1).unwrap_or(u32::MAX)
             });
             let table = TableRef::new(object.schema.clone(), object.name.clone());
-            let qualified = match &table.schema {
-                Some(schema) => format!("{schema}.{}", table.name),
-                None => table.name.clone(),
-            };
+            // A trigger is found by its table's name too.
+            let qualified = [
+                table.schema.as_deref(),
+                object.table.as_deref(),
+                Some(table.name.as_str()),
+            ]
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>()
+            .join(".");
             keyed.push((
                 section,
                 sort_key(&table.name),
@@ -98,16 +107,20 @@ impl SidebarIndex {
                 IndexEntry {
                     table,
                     kind: object.kind,
+                    owner: object.table.clone(),
                     section,
                 },
             ));
         }
         let order = section_order(&sections);
-        keyed.sort_by(|(left, left_name, ..), (right, right_name, ..)| {
-            order[*left as usize]
-                .cmp(&order[*right as usize])
-                .then_with(|| left_name.cmp(right_name))
-        });
+        keyed.sort_by(
+            |(left, left_name, _, left_entry), (right, right_name, _, right_entry)| {
+                order[*left as usize]
+                    .cmp(&order[*right as usize])
+                    .then_with(|| kind_rank(left_entry.kind).cmp(&kind_rank(right_entry.kind)))
+                    .then_with(|| left_name.cmp(right_name))
+            },
+        );
         let mut index = Self {
             sections,
             ..Self::default()
@@ -117,7 +130,11 @@ impl SidebarIndex {
             index.starts.push(index.search.len());
             index.search.push_str(&search);
             index.search.push('\0');
-            index.positions.entry(entry.table.clone()).or_insert(at);
+            // Table actions find their row by name, and a routine may
+            // share a table's name.
+            if !entry.kind.has_definition() {
+                index.positions.entry(entry.table.clone()).or_insert(at);
+            }
             match index.runs.last_mut() {
                 Some(run) if run.section == entry.section => run.end = at + 1,
                 _ => index.runs.push(SectionRun {
@@ -142,6 +159,19 @@ impl SidebarIndex {
     /// Where `table` is in the list order.
     pub(crate) fn find(&self, table: &TableRef) -> Option<u32> {
         self.positions.get(table).copied()
+    }
+
+    /// Where the routine, sequence or trigger `object` is in the list
+    /// order. Only a menu item asks, so a scan is enough.
+    pub(crate) fn find_definition(&self, object: &ObjectInfo) -> Option<u32> {
+        let at = self.entries.iter().position(|entry| {
+            entry.kind == object.kind
+                && entry.kind.has_definition()
+                && entry.table.schema == object.schema
+                && entry.table.name == object.name
+                && entry.owner == object.table
+        })?;
+        u32::try_from(at).ok()
     }
 
     /// Every section's entries, in list order.
@@ -220,6 +250,18 @@ impl<'a> Placement<'a> {
     }
 }
 
+/// Where a kind's objects go within their section: what the grid pages
+/// through first, then each kind that only has a definition.
+fn kind_rank(kind: ObjectKind) -> u8 {
+    match kind {
+        ObjectKind::Function => 1,
+        ObjectKind::Procedure => 2,
+        ObjectKind::Sequence => 3,
+        ObjectKind::Trigger => 4,
+        _ => 0,
+    }
+}
+
 /// Each section's place in the list, by its id.
 fn section_order(sections: &[Section]) -> Vec<usize> {
     let keys: Vec<glib::CollationKey> = sections.iter().map(|section| sort_key(&section.title)).collect();
@@ -261,6 +303,7 @@ mod tests {
             schema: schema.map(str::to_owned),
             name: name.to_owned(),
             kind,
+            table: None,
         }
     }
 
@@ -364,25 +407,105 @@ mod tests {
     }
 
     #[test]
-    fn only_what_the_grid_can_page_is_indexed() {
+    fn routines_sequences_and_triggers_follow_the_tables_of_their_schema() {
         let index = SidebarIndex::build(
             &[
+                ObjectInfo::trigger(Some("public".to_owned()), "audit", "users"),
                 table("public", "users"),
                 object(Some("public"), "refresh", ObjectKind::Function),
                 object(Some("public"), "active_users", ObjectKind::View),
                 object(Some("public"), "ids", ObjectKind::Sequence),
+                object(Some("public"), "archive", ObjectKind::Procedure),
+                object(Some("public"), "add", ObjectKind::Function),
+                ObjectInfo::trigger(Some("public".to_owned()), "audit", "orders"),
             ],
             &[],
         );
 
-        assert_eq!(len(&index), 2);
-        let found = index.find(&TableRef::new(Some("public".to_owned()), "active_users"));
-        assert_eq!(found, Some(0));
+        let kinds: Vec<(String, ObjectKind, Option<String>)> = (0..len(&index))
+            .filter_map(|at| index.entry(at))
+            .map(|entry| (entry.table.name.clone(), entry.kind, entry.owner.clone()))
+            .collect();
+        let row = |name: &str, kind, owner: Option<&str>| (name.to_owned(), kind, owner.map(str::to_owned));
+        assert_eq!(
+            kinds,
+            [
+                row("active_users", ObjectKind::View, None),
+                row("users", ObjectKind::Table, None),
+                row("add", ObjectKind::Function, None),
+                row("refresh", ObjectKind::Function, None),
+                row("archive", ObjectKind::Procedure, None),
+                row("ids", ObjectKind::Sequence, None),
+                row("audit", ObjectKind::Trigger, Some("users")),
+                row("audit", ObjectKind::Trigger, Some("orders")),
+            ]
+        );
+        assert_eq!(index.runs().len(), 1, "every kind shares its schema's section");
+    }
+
+    #[test]
+    fn a_table_action_never_finds_a_routine_of_the_same_name() {
+        let index = SidebarIndex::build(
+            &[
+                object(Some("public"), "users", ObjectKind::Function),
+                table("public", "users"),
+            ],
+            &[],
+        );
+
+        let found = index.find(&TableRef::new(Some("public".to_owned()), "users"));
         assert_eq!(
             found.and_then(|at| index.entry(at)).map(|entry| entry.kind),
-            Some(ObjectKind::View)
+            Some(ObjectKind::Table)
         );
-        assert_eq!(index.find(&TableRef::new(Some("public".to_owned()), "refresh")), None);
+        assert_eq!(index.find(&TableRef::new(Some("public".to_owned()), "nothing")), None);
+    }
+
+    #[test]
+    fn a_definition_is_found_by_kind_name_and_table() {
+        let on_users = ObjectInfo::trigger(Some("public".to_owned()), "audit", "users");
+        let on_orders = ObjectInfo::trigger(Some("public".to_owned()), "audit", "orders");
+        let index = SidebarIndex::build(&[on_users.clone(), on_orders.clone(), table("public", "users")], &[]);
+
+        let at = |object: &ObjectInfo| {
+            index
+                .find_definition(object)
+                .and_then(|at| index.entry(at))
+                .and_then(|entry| entry.owner.clone())
+        };
+        assert_eq!(at(&on_users).as_deref(), Some("users"));
+        assert_eq!(at(&on_orders).as_deref(), Some("orders"));
+        assert_eq!(
+            index.find_definition(&table("public", "users")),
+            None,
+            "a table has no definition to show"
+        );
+        assert_eq!(
+            index.find_definition(&ObjectInfo::trigger(Some("public".to_owned()), "audit", "carts")),
+            None
+        );
+    }
+
+    #[test]
+    fn a_trigger_is_found_by_its_table() {
+        let index = SidebarIndex::build(
+            &[
+                ObjectInfo::trigger(Some("public".to_owned()), "audit", "orders"),
+                table("public", "users"),
+            ],
+            &[],
+        );
+
+        let names = |query: &str| -> Vec<String> {
+            index
+                .matching(&search_key(query))
+                .into_iter()
+                .filter_map(|at| index.entry(at))
+                .map(|entry| entry.table.name.clone())
+                .collect()
+        };
+        assert_eq!(names("orders"), ["audit"]);
+        assert_eq!(names("orders.aud"), ["audit"]);
     }
 
     #[test]

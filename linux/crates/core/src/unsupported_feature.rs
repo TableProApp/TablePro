@@ -50,6 +50,8 @@ pub enum UnsupportedFeature {
     CharacterSets,
     /// Another of the server's databases for a query tab.
     DatabaseSwitching,
+    /// The SQL that defines a routine, a sequence or a trigger.
+    ObjectDefinitions,
     /// A command the editor cannot run, because it stops the one reply
     /// per command the editor reads, such as `SUBSCRIBE`.
     EditorCommand {
@@ -82,6 +84,7 @@ impl fmt::Display for UnsupportedFeature {
             Self::Keys => f.write_str("keys"),
             Self::CharacterSets => f.write_str("character sets"),
             Self::DatabaseSwitching => f.write_str("database switching"),
+            Self::ObjectDefinitions => f.write_str("object definitions"),
             Self::EditorCommand { command } => write!(f, "{command} in the editor"),
         }
     }

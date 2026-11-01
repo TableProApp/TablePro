@@ -103,6 +103,19 @@ pub trait Connection: Send + Sync {
         })
     }
 
+    /// The SQL that defines a routine, a sequence or a trigger, as the
+    /// server reports it. Every overload of a routine's name, one after
+    /// another, where the engine lets a name have several.
+    async fn fetch_object_definition(
+        &self,
+        _object: &ObjectInfo,
+        _options: CallOptions,
+    ) -> Result<String, DriverError> {
+        Err(DriverError::Unsupported {
+            feature: UnsupportedFeature::ObjectDefinitions,
+        })
+    }
+
     /// The server's databases the login can open, the connection's own
     /// marked as the default and the engine's own as system.
     async fn list_databases(&self, _options: CallOptions) -> Result<Vec<SchemaInfo>, DriverError> {

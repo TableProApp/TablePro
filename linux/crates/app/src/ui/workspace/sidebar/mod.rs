@@ -93,6 +93,7 @@ fn workspace_input(event: SidebarEvent) -> WorkspaceInput {
         },
         SidebarEvent::NewTable(schema) => WorkspaceInput::NewTableTab { schema },
         SidebarEvent::ShowDiagram(schema) => WorkspaceInput::ShowDiagram { schema },
+        SidebarEvent::ShowDefinition(object) => WorkspaceInput::ShowDefinition(object),
     }
 }
 
@@ -139,7 +140,7 @@ fn shown_schemas(schemas: &[SchemaInfo], objects: &[ObjectInfo]) -> Vec<SchemaIn
     let known: BTreeSet<&str> = schemas.iter().map(|schema| schema.name.as_str()).collect();
     let extra: BTreeSet<&str> = objects
         .iter()
-        .filter(|object| object.kind.is_browsable())
+        .filter(|object| object.kind.is_browsable() || object.kind.has_definition())
         .filter_map(|object| object.schema.as_deref())
         .filter(|schema| !known.contains(schema))
         .collect();

@@ -456,6 +456,7 @@ fn one_table() -> ConnectionScript {
         schema: Some("public".to_owned()),
         name: TABLE.to_owned(),
         kind: ObjectKind::Table,
+        table: None,
     }]));
     script.fetch_columns.always(FakeReply::ok(columns.clone()));
     script.fetch_indexes.always(FakeReply::ok(Vec::new()));

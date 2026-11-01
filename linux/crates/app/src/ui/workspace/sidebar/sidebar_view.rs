@@ -4,16 +4,16 @@ use std::sync::Arc;
 
 use gtk4::prelude::*;
 use gtk4::{gio, glib};
-use tablepro_core::meta::TableRef;
+use tablepro_core::meta::{ObjectInfo, TableRef};
 use tablepro_session::runtime::Tasks;
 
-use super::object_key::ObjectKey;
+use super::object_key::{DefinitionKey, ObjectKey};
 use super::sidebar_affordances::SidebarAffordances;
 use super::sidebar_event::SidebarEvent;
 use super::sidebar_index::SidebarIndex;
 use super::sidebar_menu::{
-    DROP_TABLE, EDIT_STRUCTURE, IMPORT_CSV, NEW_TABLE, OPEN_IN_NEW_TAB, SHOW_CREATE_TABLE, SHOW_DIAGRAM,
-    SHOW_SCHEMA_DIAGRAM, offers,
+    DROP_TABLE, EDIT_STRUCTURE, IMPORT_CSV, NEW_TABLE, OPEN_IN_NEW_TAB, SHOW_CREATE_TABLE, SHOW_DEFINITION,
+    SHOW_DIAGRAM, SHOW_SCHEMA_DIAGRAM, offers,
 };
 use super::sidebar_model::{RowsAsked, RowsWorkedOut, Search, SidebarModel};
 use super::tree_node::TreeNode;
@@ -182,6 +182,11 @@ impl SidebarView {
         (self.inner.events)(SidebarEvent::OpenInNewTab(table));
     }
 
+    /// Show the definition of a routine, a sequence or a trigger.
+    pub(crate) fn show_definition(&self, object: ObjectInfo) {
+        (self.inner.events)(SidebarEvent::ShowDefinition(object));
+    }
+
     /// Whether the session lists `table`, searched for or not.
     pub(crate) fn lists(&self, table: &TableRef) -> bool {
         self.inner.model.kind_of(table).is_some()
@@ -264,6 +269,20 @@ impl SidebarInner {
             return;
         }
         (self.events)(SidebarEvent::NewTable(schema.filter(|schema| !schema.is_empty())));
+    }
+
+    /// A Show Definition item: a target of the wrong shape, or for an
+    /// object the list no longer has, does nothing.
+    fn show_definition(&self, target: Option<&glib::Variant>) {
+        let Some(DefinitionKey(object)) = target.and_then(DefinitionKey::from_variant) else {
+            tracing::warn!("a definition was asked for without an object");
+            return;
+        };
+        if !self.model.lists_definition(&object) {
+            tracing::warn!("a definition was asked for an object the list no longer has");
+            return;
+        }
+        (self.events)(SidebarEvent::ShowDefinition(object));
     }
 
     fn show_schema_diagram(&self, target: Option<&glib::Variant>) {
@@ -366,4 +385,12 @@ fn install_actions(inner: &Rc<SidebarInner>) {
         }
     });
     inner.actions.add_action(&diagram);
+    let definition = gio::SimpleAction::new(SHOW_DEFINITION, Some(&DefinitionKey::variant_type()));
+    let view = Rc::downgrade(inner);
+    definition.connect_activate(move |_, target| {
+        if let Some(view) = view.upgrade() {
+            view.show_definition(target);
+        }
+    });
+    inner.actions.add_action(&definition);
 }

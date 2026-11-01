@@ -293,6 +293,7 @@ crates/app/src/ui/data_grid/tests/summary.rs
 crates/app/src/ui/data_grid/tests/values.rs
 crates/app/src/ui/data_grid/tests/view.rs
 crates/app/src/ui/data_grid/tracked_values.rs
+crates/app/src/ui/definition_dialog.rs
 crates/app/src/ui/delete_connection_dialog.rs
 crates/app/src/ui/diagram/canvas.rs
 crates/app/src/ui/diagram/canvas_imp.rs
@@ -554,6 +555,7 @@ crates/app/src/ui/welcome_view.rs
 crates/app/src/ui/window_geometry.rs
 crates/app/src/ui/workspace/assistant.rs
 crates/app/src/ui/workspace/close_flow.rs
+crates/app/src/ui/workspace/definitions.rs
 crates/app/src/ui/workspace/diagram.rs
 crates/app/src/ui/workspace/editor_label.rs
 crates/app/src/ui/workspace/finished_work.rs

@@ -225,6 +225,11 @@ impl SidebarModel {
         index.entry(entry).map(|entry| entry.kind)
     }
 
+    /// Whether the list on show holds the routine, sequence or trigger.
+    pub(crate) fn lists_definition(&self, object: &tablepro_core::meta::ObjectInfo) -> bool {
+        self.shown.borrow().find_definition(object).is_some()
+    }
+
     /// The schema whose tables hold `table`, and where among them.
     pub(crate) fn locate(&self, table: &TableRef) -> Option<(TreeNode, u32)> {
         self.locate_in(table, TreeNode::rows)
@@ -280,6 +285,7 @@ mod tests {
             schema: Some(schema.to_owned()),
             name: name.to_owned(),
             kind: ObjectKind::Table,
+            table: None,
         }
     }
 
@@ -455,7 +461,7 @@ mod tests {
     }
 
     #[gtk4::test]
-    fn only_what_the_grid_can_page_is_listed() {
+    fn a_routine_is_listed_but_table_actions_never_find_it() {
         let model = SidebarModel::new();
         let routine = ObjectInfo {
             kind: ObjectKind::Function,
@@ -466,13 +472,15 @@ mod tests {
             ..object("public", "active_users")
         };
 
-        replace(&model, &[object("public", "users"), routine, view], &[]);
+        replace(&model, &[object("public", "users"), routine.clone(), view], &[]);
 
-        assert_eq!(listed(&model.schemas())[0].1.len(), 2);
+        assert_eq!(listed(&model.schemas())[0].1.len(), 3);
         assert_eq!(
             model.kind_of(&TableRef::new(Some("public".to_owned()), "refresh")),
             None
         );
+        assert!(model.lists_definition(&routine));
+        assert!(!model.lists_definition(&object("public", "users")));
         assert_eq!(
             model.kind_of(&TableRef::new(Some("public".to_owned()), "active_users")),
             Some(ObjectKind::View)

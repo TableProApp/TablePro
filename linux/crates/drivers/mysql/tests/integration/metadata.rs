@@ -3,9 +3,9 @@
 use tablepro_core::column::{BoolStorage, ColumnKind, IntegerKind, IntegerWidth};
 use tablepro_core::ddl::{ColumnVisibility, GeneratedStorage, IdentityStyle, TableOptions};
 use tablepro_core::dialect::{BindTarget, LikeForm, SqlDialect};
-use tablepro_core::meta::{ObjectKind, ObjectScope};
+use tablepro_core::meta::{ObjectInfo, ObjectKind, ObjectScope};
 use tablepro_core::statement::StatementBuilder;
-use tablepro_core::{Connection, RowLimit, Value};
+use tablepro_core::{Connection, DriverError, RowLimit, Value};
 use tablepro_test_fixtures::MysqlFlavour;
 
 use crate::support::{CALL, FLAVOURS, connect, connect_root, rows, setup, start, table, within};
@@ -527,6 +527,78 @@ async fn the_servers_databases_are_listed_for_a_query_tab() {
         assert!(!other.is_default && !other.is_system, "{flavour:?}: {other:?}");
         let system = find("information_schema").expect("information_schema");
         assert!(system.is_system, "{flavour:?}: {system:?}");
+        connection.close().await.expect("a close");
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn routines_sequences_and_triggers_are_listed_with_their_definitions() {
+    for flavour in FLAVOURS {
+        let fixture = start(flavour).await;
+        let connection = connect(&fixture, false).await;
+        let mut statements = vec![
+            "CREATE TABLE orders (id int PRIMARY KEY, total int)",
+            "CREATE TABLE audit (id int PRIMARY KEY)",
+            "CREATE FUNCTION add_tax(amount int) RETURNS int DETERMINISTIC RETURN amount * 2",
+            "CREATE PROCEDURE clear_audit() DELETE FROM audit",
+            "CREATE TRIGGER orders_total BEFORE INSERT ON orders FOR EACH ROW SET NEW.total = NEW.total + 1000",
+        ];
+        if flavour == MysqlFlavour::Mariadb {
+            statements.push("CREATE SEQUENCE invoice_numbers START WITH 100 INCREMENT BY 5");
+        }
+        setup(connection.as_ref(), &statements).await;
+
+        let objects = connection
+            .list_objects(&ObjectScope::DefaultSchema, within(CALL))
+            .await
+            .expect("the objects");
+        let find = |name: &str| {
+            objects
+                .iter()
+                .find(|object| object.name == name)
+                .unwrap_or_else(|| panic!("{name} listed on {flavour:?}"))
+        };
+        assert_eq!(find("add_tax").kind, ObjectKind::Function);
+        assert_eq!(find("clear_audit").kind, ObjectKind::Procedure);
+        let trigger = find("orders_total");
+        assert_eq!(trigger.kind, ObjectKind::Trigger);
+        assert_eq!(trigger.table.as_deref(), Some("orders"));
+        assert_eq!(trigger.schema.as_deref(), Some("tablepro"));
+
+        let mut expected = vec![
+            (find("add_tax"), "amount * 2"),
+            (find("clear_audit"), "DELETE FROM audit"),
+            (trigger, "NEW.total + 1000"),
+        ];
+        if flavour == MysqlFlavour::Mariadb {
+            assert_eq!(find("invoice_numbers").kind, ObjectKind::Sequence);
+            expected.push((find("invoice_numbers"), "start with 100"));
+        }
+        for (object, body) in expected {
+            let definition = connection
+                .fetch_object_definition(object, within(CALL))
+                .await
+                .expect("the definition");
+            assert!(
+                definition.to_lowercase().contains(&body.to_lowercase()),
+                "{} on {flavour:?}: {definition}",
+                object.name
+            );
+        }
+
+        let mut elsewhere = trigger.clone();
+        elsewhere.table = Some("audit".to_owned());
+        let missing = connection
+            .fetch_object_definition(&elsewhere, within(CALL))
+            .await
+            .expect("an answer");
+        assert_eq!(missing, "", "a trigger on another table is not this trigger");
+        let table_object = ObjectInfo::new(trigger.schema.clone(), "orders", ObjectKind::Table);
+        assert!(matches!(
+            connection.fetch_object_definition(&table_object, within(CALL)).await,
+            Err(DriverError::Unsupported { .. })
+        ));
         connection.close().await.expect("a close");
     }
 }

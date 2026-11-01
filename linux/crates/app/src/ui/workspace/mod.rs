@@ -7,6 +7,7 @@
 
 mod assistant;
 mod close_flow;
+mod definitions;
 mod diagram;
 mod editor_label;
 mod finished_work;
@@ -596,6 +597,14 @@ pub(crate) enum WorkspaceInput {
     ShowDiagram {
         schema: Option<String>,
     },
+    /// Read and show the SQL that defines a routine, a sequence or a
+    /// trigger.
+    ShowDefinition(tablepro_core::meta::ObjectInfo),
+    DefinitionLoaded {
+        object: tablepro_core::meta::ObjectInfo,
+        sql: String,
+    },
+    OpenDefinitionInEditor(String),
     EditStructureTab {
         schema: Option<String>,
         table: String,
@@ -1265,6 +1274,9 @@ impl WorkspaceModel {
             WorkspaceInput::TabDirtyChanged => self.refresh_unsaved(),
             WorkspaceInput::NewTableTab { schema } => self.on_new_table_tab(schema),
             WorkspaceInput::ShowDiagram { schema } => self.show_diagram(schema, Vec::new()),
+            WorkspaceInput::ShowDefinition(object) => self.on_show_definition(object),
+            WorkspaceInput::DefinitionLoaded { object, sql } => self.on_definition_loaded(&object, &sql),
+            WorkspaceInput::OpenDefinitionInEditor(sql) => self.open_editor_tab(Some(sql)),
             WorkspaceInput::EditStructureTab { schema, table } => self.on_edit_structure_tab(schema, table),
             WorkspaceInput::ShowCreateTableForExisting { schema, table } => self.on_show_create_table(schema, table),
             WorkspaceInput::ShowCreateTableLoaded(sql) => self.open_editor_tab(Some(sql)),

@@ -54,8 +54,17 @@ pub(crate) const FOREIGN_KEY_CHECK_SQL: &str =
 /// `sqlite_schema` of one schema, which has to be named in the FROM.
 pub(crate) fn objects_sql(schema_sql: &str) -> String {
     format!(
-        "SELECT name, type FROM {schema_sql}.sqlite_schema \
-         WHERE type IN ('table', 'view') AND name NOT LIKE 'sqlite!_%' ESCAPE '!' ORDER BY name"
+        "SELECT name, type, tbl_name FROM {schema_sql}.sqlite_schema \
+         WHERE type IN ('table', 'view', 'trigger') AND name NOT LIKE 'sqlite!_%' ESCAPE '!' ORDER BY name"
+    )
+}
+
+/// A trigger's own text, found by its table too, since the name alone
+/// is only unique within a schema.
+pub(crate) fn trigger_sql(schema_sql: &str) -> String {
+    format!(
+        "SELECT sql FROM {schema_sql}.sqlite_schema \
+         WHERE type = 'trigger' AND name = ?1 AND tbl_name = ?2"
     )
 }
 

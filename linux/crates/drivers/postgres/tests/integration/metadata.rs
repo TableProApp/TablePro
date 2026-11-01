@@ -5,7 +5,9 @@ use tablepro_core::column::{
     BoolStorage, ColumnKind, FloatWidth, IntegerKind, IntegerWidth, NetworkFamily, ReadForm, TemporalZone, TextLength,
 };
 use tablepro_core::ddl::{CollationName, GeneratedStorage, IdentityStyle};
-use tablepro_core::meta::{EngineRowId, IndexKey, ObjectKind, ObjectScope, RowCountEstimate, RowIdentity, TableRef};
+use tablepro_core::meta::{
+    EngineRowId, IndexKey, ObjectInfo, ObjectKind, ObjectScope, RowCountEstimate, RowIdentity, TableRef,
+};
 use tablepro_core::save::{ChangeSet, RowChange, RowUpdate, plan_save};
 use tablepro_core::{DriverError, Value};
 use tablepro_test_fixtures::{HbaMode, PostgresFixture, PostgresVersion};
@@ -56,6 +58,106 @@ async fn object_kinds_listed() {
     assert_eq!(kind_of("f"), Some(ObjectKind::Function));
     assert_eq!(kind_of("p"), Some(ObjectKind::Procedure));
     assert!(objects.iter().all(|object| object.schema.as_deref() == Some("public")));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn routines_sequences_and_triggers_list_with_their_definitions() {
+    let fixture = start().await;
+    let connection = connect(&fixture, false).await;
+    setup(
+        connection.as_ref(),
+        &[
+            "CREATE TABLE a (id int)",
+            "CREATE TABLE b (id int)",
+            "CREATE FUNCTION stamp() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NEW; END $$",
+            "CREATE TRIGGER audit BEFORE INSERT ON a FOR EACH ROW EXECUTE FUNCTION stamp()",
+            "CREATE TRIGGER audit AFTER UPDATE ON b FOR EACH ROW EXECUTE FUNCTION stamp()",
+            "CREATE FUNCTION add_one(x int) RETURNS int LANGUAGE sql AS $$ SELECT x + 1 $$",
+            "CREATE FUNCTION add_one(x text) RETURNS text LANGUAGE sql AS $$ SELECT x || '1' $$",
+            "CREATE PROCEDURE log_it() LANGUAGE sql AS $$ SELECT 42 $$",
+            "CREATE SEQUENCE \"Odd Seq\" AS integer START 7 INCREMENT 3 MINVALUE 2 MAXVALUE 900 CACHE 4 CYCLE",
+        ],
+    )
+    .await;
+
+    let objects = connection
+        .list_objects(&ObjectScope::DefaultSchema, within(CALL))
+        .await
+        .expect("the objects");
+    let triggers: Vec<(&str, Option<&str>)> = objects
+        .iter()
+        .filter(|object| object.kind == ObjectKind::Trigger)
+        .map(|object| (object.name.as_str(), object.table.as_deref()))
+        .collect();
+    assert_eq!(triggers, [("audit", Some("a")), ("audit", Some("b"))]);
+    assert!(
+        objects
+            .iter()
+            .filter(|object| object.kind != ObjectKind::Trigger)
+            .all(|object| object.table.is_none())
+    );
+
+    let public = || Some("public".to_owned());
+    let definition = |object: ObjectInfo| {
+        let connection = &connection;
+        async move {
+            connection
+                .fetch_object_definition(&object, within(CALL))
+                .await
+                .expect("the definition")
+        }
+    };
+    let overloads = definition(ObjectInfo::new(public(), "add_one", ObjectKind::Function)).await;
+    assert!(
+        overloads.contains("SELECT x + 1") && overloads.contains("SELECT x || '1'"),
+        "{overloads}"
+    );
+    assert_eq!(
+        overloads.matches("CREATE OR REPLACE FUNCTION").count(),
+        2,
+        "{overloads}"
+    );
+    assert_eq!(overloads.matches(";\n\nCREATE").count(), 1, "{overloads}");
+    assert!(overloads.ends_with(';'));
+
+    let procedure = definition(ObjectInfo::new(public(), "log_it", ObjectKind::Procedure)).await;
+    assert!(
+        procedure.starts_with("CREATE OR REPLACE PROCEDURE") && procedure.contains("SELECT 42"),
+        "{procedure}"
+    );
+    assert_eq!(
+        definition(ObjectInfo::new(public(), "log_it", ObjectKind::Function)).await,
+        ""
+    );
+
+    let sequence = definition(ObjectInfo::new(public(), "Odd Seq", ObjectKind::Sequence)).await;
+    for part in [
+        "public.\"Odd Seq\"",
+        "AS integer",
+        "INCREMENT BY 3",
+        "MINVALUE 2",
+        "MAXVALUE 900",
+        "START WITH 7",
+        "CACHE 4",
+        "CYCLE",
+    ] {
+        assert!(sequence.contains(part), "{part} in {sequence}");
+    }
+
+    let on_a = definition(ObjectInfo::trigger(public(), "audit", "a")).await;
+    let on_b = definition(ObjectInfo::trigger(public(), "audit", "b")).await;
+    assert!(
+        on_a.contains("BEFORE INSERT ON a") && on_a.contains("stamp()"),
+        "{on_a}"
+    );
+    assert!(on_b.contains("AFTER UPDATE ON b"), "{on_b}");
+    assert_eq!(definition(ObjectInfo::trigger(public(), "audit", "gone")).await, "");
+
+    let table = connection
+        .fetch_object_definition(&ObjectInfo::new(public(), "a", ObjectKind::Table), within(CALL))
+        .await;
+    assert!(matches!(table, Err(DriverError::Unsupported { .. })), "{table:?}");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

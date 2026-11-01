@@ -4,11 +4,15 @@
 //! way the server does everywhere else.
 
 use tablepro_core::ddl::{InboundForeignKey, ReferentialAction, TableDefinition};
+use tablepro_core::dialect::SqlDialect;
 use tablepro_core::meta::{
     IndexInfo, IndexKey, ObjectInfo, ObjectKind, ObjectScope, RowCountEstimate, RowIdentity, SchemaInfo, TableEstimate,
     TableRef,
 };
-use tablepro_core::{ColumnInfo, DriverError, ForeignKeyInfo, Value};
+use tablepro_core::{ColumnInfo, DriverError, ForeignKeyInfo, UnsupportedFeature, Value};
+use tiberius::ColumnData;
+
+use crate::dialect::MssqlDialect;
 
 use crate::catalog::{
     COLUMNS_SQL, Cells, INBOUND_FOREIGN_KEYS_SQL, MssqlColumnRow, PRIMARY_KEY_SQL, column_definition, column_info,
@@ -35,6 +39,30 @@ const DATABASES_SQL: &str = "SELECT d.name, \
 const OBJECTS_SQL: &str = "SELECT SCHEMA_NAME(o.schema_id), o.name, RTRIM(o.type) \
     FROM sys.objects o \
     WHERE o.type IN ('U', 'V', 'SO', 'FN', 'IF', 'TF', 'FS', 'FT', 'P', 'PC') AND o.is_ms_shipped = 0";
+
+/// Table and view triggers only: `parent_class` 1 leaves out the
+/// database-level DDL triggers, which have no table.
+const TRIGGERS_SQL: &str = "SELECT SCHEMA_NAME(p.schema_id), t.name, p.name \
+    FROM sys.triggers t JOIN sys.objects p ON p.object_id = t.parent_id \
+    WHERE t.parent_class = 1 AND t.is_ms_shipped = 0";
+
+const ROUTINE_DEFINITION_SQL: &str = "SELECT OBJECT_DEFINITION(o.object_id) FROM sys.objects o \
+    WHERE o.schema_id = SCHEMA_ID(COALESCE(@P1, SCHEMA_NAME())) AND o.name = @P2 AND RTRIM(o.type) IN ({types}) \
+    ORDER BY o.object_id";
+
+const TRIGGER_DEFINITION_SQL: &str = "SELECT OBJECT_DEFINITION(t.object_id) FROM sys.triggers t \
+    JOIN sys.objects p ON p.object_id = t.parent_id \
+    WHERE t.parent_class = 1 AND t.name = @P2 AND p.name = @P3 \
+      AND p.schema_id = SCHEMA_ID(COALESCE(@P1, SCHEMA_NAME()))";
+
+/// The numbers are cast to text because the catalogue returns them as
+/// the sequence's own type, which can be wider than any integer here.
+const SEQUENCE_SQL: &str = "SELECT TYPE_NAME(s.system_type_id), CAST(s.start_value AS nvarchar(64)), \
+        CAST(s.increment AS nvarchar(64)), CAST(s.minimum_value AS nvarchar(64)), \
+        CAST(s.maximum_value AS nvarchar(64)), CAST(s.is_cycling AS int), CAST(s.is_cached AS int), \
+        CAST(s.cache_size AS bigint), CAST(s.precision AS int) \
+    FROM sys.sequences s \
+    WHERE s.schema_id = SCHEMA_ID(COALESCE(@P1, SCHEMA_NAME())) AND s.name = @P2";
 
 const INDEXES_SQL: &str = "SELECT i.name, CAST(i.is_unique AS int), CAST(i.is_primary_key AS int), c.name, \
         CAST(ic.is_descending_key AS int), i.filter_definition \
@@ -108,13 +136,18 @@ pub(crate) async fn list_objects(
     watch: &Watch,
     scope: &ObjectScope,
 ) -> Result<Vec<ObjectInfo>, Interrupt> {
-    let (sql, params) = match scope {
-        ObjectScope::DefaultSchema => (format!("{OBJECTS_SQL} AND o.schema_id = SCHEMA_ID()"), Vec::new()),
+    let (sql, triggers_sql, params) = match scope {
+        ObjectScope::DefaultSchema => (
+            format!("{OBJECTS_SQL} AND o.schema_id = SCHEMA_ID()"),
+            format!("{TRIGGERS_SQL} AND p.schema_id = SCHEMA_ID()"),
+            Vec::new(),
+        ),
         ObjectScope::Schema(schema) => (
             format!("{OBJECTS_SQL} AND o.schema_id = SCHEMA_ID(@P1)"),
+            format!("{TRIGGERS_SQL} AND p.schema_id = SCHEMA_ID(@P1)"),
             vec![text_param(schema)],
         ),
-        ObjectScope::AllSchemas => (OBJECTS_SQL.to_owned(), Vec::new()),
+        ObjectScope::AllSchemas => (OBJECTS_SQL.to_owned(), TRIGGERS_SQL.to_owned(), Vec::new()),
     };
     let sql = format!("{sql} ORDER BY 1, 2");
     let rows = catalogue_rows(client, watch, &sql, &params).await?;
@@ -124,13 +157,123 @@ pub(crate) async fn list_objects(
         let Some(kind) = cells.text(2).as_deref().and_then(object_kind) else {
             continue;
         };
-        objects.push(ObjectInfo {
-            schema: cells.text(0),
-            name: cells.required_text(1)?,
-            kind,
-        });
+        objects.push(ObjectInfo::new(cells.text(0), cells.required_text(1)?, kind));
+    }
+    let triggers_sql = format!("{triggers_sql} ORDER BY 1, 2, 3");
+    for row in &catalogue_rows(client, watch, &triggers_sql, &params).await? {
+        let cells = Cells::new(row, "sys.triggers");
+        objects.push(ObjectInfo::trigger(
+            cells.text(0),
+            cells.required_text(1)?,
+            cells.required_text(2)?,
+        ));
     }
     Ok(objects)
+}
+
+/// The CREATE text of a function, procedure, sequence or trigger. A
+/// definition the login cannot read comes back NULL from the server,
+/// and an object that is gone comes back as no row; both give an empty
+/// text.
+pub(crate) async fn fetch_object_definition(
+    client: &mut MssqlClient,
+    watch: &Watch,
+    dialect: &MssqlDialect,
+    object: &ObjectInfo,
+) -> Result<String, Interrupt> {
+    let schema = optional_text_param(object.schema.as_deref());
+    let name = text_param(&object.name);
+    let (sql, params) = match object.kind {
+        ObjectKind::Function => (
+            ROUTINE_DEFINITION_SQL.replace("{types}", "'FN', 'IF', 'TF', 'FS', 'FT'"),
+            vec![schema, name],
+        ),
+        ObjectKind::Procedure => (
+            ROUTINE_DEFINITION_SQL.replace("{types}", "'P', 'PC'"),
+            vec![schema, name],
+        ),
+        ObjectKind::Trigger => {
+            let Some(table) = object.table.as_deref() else {
+                return Ok(String::new());
+            };
+            (TRIGGER_DEFINITION_SQL.to_owned(), vec![schema, name, text_param(table)])
+        }
+        ObjectKind::Sequence => {
+            let rows = catalogue_rows(client, watch, SEQUENCE_SQL, &[schema, name]).await?;
+            let Some(row) = rows.first() else {
+                return Ok(String::new());
+            };
+            let cells = Cells::new(row, "sys.sequences");
+            let qualified = match object.schema.as_deref() {
+                Some(schema) => format!(
+                    "{}.{}",
+                    dialect.quote_identifier(schema),
+                    dialect.quote_identifier(&object.name)
+                ),
+                None => dialect.quote_identifier(&object.name),
+            };
+            return Ok(sequence_statement(&qualified, &SequenceRow::from_cells(&cells)?));
+        }
+        _ => {
+            return Err(Interrupt::Failed(DriverError::Unsupported {
+                feature: UnsupportedFeature::ObjectDefinitions,
+            }));
+        }
+    };
+    let rows = catalogue_rows(client, watch, &sql, &params).await?;
+    Ok(rows
+        .iter()
+        .filter_map(|row| Cells::new(row, "OBJECT_DEFINITION").text(0))
+        .collect::<Vec<_>>()
+        .join("\n\n"))
+}
+
+/// One row of sys.sequences, as `SEQUENCE_SQL` projects it.
+struct SequenceRow {
+    type_name: String,
+    start: String,
+    increment: String,
+    minimum: String,
+    maximum: String,
+    cycles: bool,
+    cached: bool,
+    cache_size: Option<i64>,
+    precision: i64,
+}
+
+impl SequenceRow {
+    fn from_cells(cells: &Cells<'_>) -> Result<Self, DriverError> {
+        Ok(Self {
+            type_name: cells.required_text(0)?,
+            start: cells.required_text(1)?,
+            increment: cells.required_text(2)?,
+            minimum: cells.required_text(3)?,
+            maximum: cells.required_text(4)?,
+            cycles: cells.flag(5),
+            cached: cells.flag(6),
+            cache_size: cells.int(7),
+            precision: cells.int(8).unwrap_or(0),
+        })
+    }
+}
+
+/// SQL Server has no function that prints a sequence, so the statement
+/// is rebuilt from the catalogue. `qualified` is already quoted.
+fn sequence_statement(qualified: &str, row: &SequenceRow) -> String {
+    let data_type = match row.type_name.as_str() {
+        "decimal" | "numeric" => format!("{}({})", row.type_name, row.precision),
+        other => other.to_owned(),
+    };
+    let cycle = if row.cycles { "CYCLE" } else { "NO CYCLE" };
+    let cache = match (row.cached, row.cache_size) {
+        (true, Some(size)) => format!("CACHE {size}"),
+        (true, None) => "CACHE".to_owned(),
+        (false, _) => "NO CACHE".to_owned(),
+    };
+    format!(
+        "CREATE SEQUENCE {qualified} AS {data_type} START WITH {} INCREMENT BY {} MINVALUE {} MAXVALUE {} {cycle} {cache};",
+        row.start, row.increment, row.minimum, row.maximum
+    )
 }
 
 fn object_kind(code: &str) -> Option<ObjectKind> {
@@ -142,6 +285,10 @@ fn object_kind(code: &str) -> Option<ObjectKind> {
         "P" | "PC" => Some(ObjectKind::Procedure),
         _ => None,
     }
+}
+
+fn optional_text_param(text: Option<&str>) -> ColumnData<'static> {
+    ColumnData::String(text.map(|text| text.to_owned().into()))
 }
 
 async fn column_rows(
@@ -332,6 +479,41 @@ mod tests {
 
     fn text(value: &str) -> Value {
         Value::Text(value.to_owned())
+    }
+
+    fn sequence(type_name: &str) -> SequenceRow {
+        SequenceRow {
+            type_name: type_name.to_owned(),
+            start: "100".to_owned(),
+            increment: "5".to_owned(),
+            minimum: "1".to_owned(),
+            maximum: "9999".to_owned(),
+            cycles: false,
+            cached: true,
+            cache_size: Some(20),
+            precision: 18,
+        }
+    }
+
+    #[test]
+    fn a_sequence_statement_names_every_catalogue_setting() {
+        assert_eq!(
+            sequence_statement("[dbo].[invoices]", &sequence("bigint")),
+            "CREATE SEQUENCE [dbo].[invoices] AS bigint START WITH 100 INCREMENT BY 5 MINVALUE 1 MAXVALUE 9999 \
+             NO CYCLE CACHE 20;"
+        );
+    }
+
+    #[test]
+    fn a_sequence_statement_keeps_precision_cycling_and_the_default_cache() {
+        let mut row = sequence("numeric");
+        row.cycles = true;
+        row.cache_size = None;
+        let statement = sequence_statement("[s]", &row);
+        assert!(statement.contains("AS numeric(18) "), "{statement}");
+        assert!(statement.ends_with(" CYCLE CACHE;"), "{statement}");
+        row.cached = false;
+        assert!(sequence_statement("[s]", &row).ends_with(" CYCLE NO CACHE;"));
     }
 
     #[test]

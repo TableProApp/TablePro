@@ -327,6 +327,14 @@ impl Connection for SqliteConnection {
         .await
     }
 
+    async fn fetch_object_definition(&self, object: &ObjectInfo, options: CallOptions) -> Result<String, DriverError> {
+        let object = object.clone();
+        self.read(options, move |connection| {
+            Box::pin(async move { metadata::fetch_object_definition(connection, &object).await })
+        })
+        .await
+    }
+
     async fn fetch_columns(&self, table: &TableRef, options: CallOptions) -> Result<Vec<ColumnInfo>, DriverError> {
         let table = table.clone();
         self.read(options, move |connection| {

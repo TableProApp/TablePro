@@ -19,8 +19,8 @@ use tablepro_core::meta::TableRef;
 use tablepro_session::SessionKey;
 use uuid::Uuid;
 
-use super::object_key::ObjectKey;
-use super::sidebar_menu::{GROUP, object_menu, schema_menu};
+use super::object_key::{DefinitionKey, ObjectKey};
+use super::sidebar_menu::{GROUP, definition_menu, object_menu, schema_menu};
 use super::sidebar_object::SidebarObject;
 use super::sidebar_view::{Holds, RowsObserverId, SidebarView};
 use super::store_sync;
@@ -977,7 +977,11 @@ impl TreeInner {
         };
         if let Some(object) = item.downcast_ref::<SidebarObject>() {
             if let Some(view) = key.and_then(|key| self.view_of(&key)) {
-                view.open(object.table_ref());
+                if object.kind().has_definition() {
+                    view.show_definition(object.object_info());
+                } else {
+                    view.open(object.table_ref());
+                }
             }
             return;
         }
@@ -1009,7 +1013,11 @@ impl TreeInner {
         let Some((item, key)) = self.item_at(which, position) else {
             return false;
         };
-        let table = item.downcast_ref::<SidebarObject>().map(SidebarObject::table_ref);
+        // A definition has no tab to open beside the others.
+        let table = item
+            .downcast_ref::<SidebarObject>()
+            .filter(|object| !object.kind().has_definition())
+            .map(SidebarObject::table_ref);
         match button {
             gdk::BUTTON_SECONDARY => {
                 self.pane(which).selection.set_selected(position);
@@ -1086,6 +1094,9 @@ impl TreeInner {
         if let Some(object) = item.downcast_ref::<SidebarObject>() {
             let view = view?;
             self.popover.insert_action_group(GROUP, Some(view.actions()));
+            if object.kind().has_definition() {
+                return Some(definition_menu(&DefinitionKey(object.object_info())));
+            }
             return Some(object_menu(
                 &ObjectKey(object.table_ref()),
                 object.kind(),

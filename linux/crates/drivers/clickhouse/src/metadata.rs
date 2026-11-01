@@ -1,5 +1,5 @@
-use tablepro_core::DriverError;
 use tablepro_core::meta::{ObjectInfo, ObjectKind, ObjectScope, SchemaInfo};
+use tablepro_core::{DriverError, UnsupportedFeature};
 
 use crate::call_client::CallClient;
 use crate::result_reader::{CatalogRow, read_table};
@@ -52,23 +52,40 @@ pub(crate) async fn list_objects(
     let mut objects = Vec::new();
     for row in &read_table(query, None).await?.rows {
         let row = CatalogRow(row);
-        objects.push(ObjectInfo {
-            schema: Some(row.text(0)?),
-            name: row.text(1)?,
-            kind: kind_of_engine(&row.text(2)?),
-        });
+        objects.push(ObjectInfo::new(
+            Some(row.text(0)?),
+            row.text(1)?,
+            kind_of_engine(&row.text(2)?),
+        ));
     }
     if !matches!(scope, ObjectScope::Schema(_)) {
         let sql = "SELECT name FROM system.functions WHERE origin = 'SQLUserDefined' ORDER BY name";
         for row in &read_table(calls.raw(sql)?, None).await?.rows {
-            objects.push(ObjectInfo {
-                schema: None,
-                name: CatalogRow(row).text(0)?,
-                kind: ObjectKind::Function,
-            });
+            objects.push(ObjectInfo::new(None, CatalogRow(row).text(0)?, ObjectKind::Function));
         }
     }
     Ok(objects)
+}
+
+/// The `CREATE FUNCTION` the server stored for a user-defined function.
+/// A function dropped since the list was read has no row.
+pub(crate) async fn fetch_object_definition(calls: &CallClient, object: &ObjectInfo) -> Result<String, DriverError> {
+    if object.kind != ObjectKind::Function {
+        return Err(DriverError::Unsupported {
+            feature: UnsupportedFeature::ObjectDefinitions,
+        });
+    }
+    let query = calls
+        .raw("SELECT create_query FROM system.functions WHERE origin = 'SQLUserDefined' AND name = {name:String}")?
+        .param("name", object.name.as_str());
+    match read_table(query, None).await?.rows.first() {
+        Some(row) => CatalogRow(row).text(0).map(|text| terminated(&text)),
+        None => Ok(String::new()),
+    }
+}
+
+fn terminated(sql: &str) -> String {
+    format!("{};", sql.trim_end().trim_end_matches(';'))
 }
 
 fn kind_of_engine(engine: &str) -> ObjectKind {
@@ -91,5 +108,17 @@ mod tests {
         assert_eq!(kind_of_engine("View"), ObjectKind::View);
         assert_eq!(kind_of_engine("MaterializedView"), ObjectKind::MaterializedView);
         assert_eq!(kind_of_engine("Dictionary"), ObjectKind::Dictionary);
+    }
+
+    #[test]
+    fn a_stored_statement_ends_in_one_semicolon() {
+        assert_eq!(
+            terminated("CREATE FUNCTION f AS x -> (x + 1)\n"),
+            "CREATE FUNCTION f AS x -> (x + 1);"
+        );
+        assert_eq!(
+            terminated("CREATE FUNCTION f AS x -> x;"),
+            "CREATE FUNCTION f AS x -> x;"
+        );
     }
 }

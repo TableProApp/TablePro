@@ -195,6 +195,7 @@ mod tests {
             schema: Some("public".to_owned()),
             name: name.to_owned(),
             kind,
+            table: None,
         }
     }
 

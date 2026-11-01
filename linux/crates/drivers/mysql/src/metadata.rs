@@ -17,7 +17,7 @@ use tablepro_core::meta::{
     IndexInfo, IndexKey, ObjectInfo, ObjectKind, ObjectScope, RowCountEstimate, RowIdentity, SchemaInfo, TableEstimate,
     TableRef,
 };
-use tablepro_core::{DriverError, ForeignKeyInfo, Value};
+use tablepro_core::{DriverError, ForeignKeyInfo, UnsupportedFeature, Value};
 
 use crate::catalog::{
     CHARACTER_SETS_SQL, COLLATIONS_SQL, COLUMN_COMPARISONS_SQL, COLUMN_ENGINE_ATTRIBUTES_SQL, CatalogCells,
@@ -136,18 +136,36 @@ SELECT ROUTINE_SCHEMA, ROUTINE_NAME, ROUTINE_TYPE FROM information_schema.ROUTIN
 WHERE ROUTINE_SCHEMA NOT IN ('mysql', 'information_schema', 'performance_schema', 'sys')
 ORDER BY ROUTINE_SCHEMA, ROUTINE_NAME";
 
-/// Tables, views and sequences, then routines. Two reads rather than a
-/// UNION, because the two catalogue tables collate their names
-/// differently and a UNION of them can refuse to sort.
+const TRIGGERS_IN_SCHEMA_SQL: &str = "\
+SELECT TRIGGER_SCHEMA, TRIGGER_NAME, EVENT_OBJECT_TABLE FROM information_schema.TRIGGERS
+WHERE TRIGGER_SCHEMA = COALESCE(?, DATABASE()) ORDER BY TRIGGER_NAME, EVENT_OBJECT_TABLE";
+const ALL_TRIGGERS_SQL: &str = "\
+SELECT TRIGGER_SCHEMA, TRIGGER_NAME, EVENT_OBJECT_TABLE FROM information_schema.TRIGGERS
+WHERE TRIGGER_SCHEMA NOT IN ('mysql', 'information_schema', 'performance_schema', 'sys')
+ORDER BY TRIGGER_SCHEMA, TRIGGER_NAME, EVENT_OBJECT_TABLE";
+
+/// Tables, views and sequences, then routines, then triggers. Separate
+/// reads rather than a UNION, because the catalogue tables collate their
+/// names differently and a UNION of them can refuse to sort.
 pub(crate) async fn list_objects(
     connection: &mut MySqlConnection,
     flavour: MySqlFlavour,
     scope: &ObjectScope,
 ) -> Result<Vec<ObjectInfo>, DriverError> {
-    let (tables_sql, routines_sql, binds): (_, _, Vec<Option<&str>>) = match scope {
-        ObjectScope::DefaultSchema => (TABLES_IN_SCHEMA_SQL, ROUTINES_IN_SCHEMA_SQL, vec![None]),
-        ObjectScope::Schema(name) => (TABLES_IN_SCHEMA_SQL, ROUTINES_IN_SCHEMA_SQL, vec![Some(name.as_str())]),
-        ObjectScope::AllSchemas => (ALL_TABLES_SQL, ALL_ROUTINES_SQL, Vec::new()),
+    let (tables_sql, routines_sql, triggers_sql, binds): (_, _, _, Vec<Option<&str>>) = match scope {
+        ObjectScope::DefaultSchema => (
+            TABLES_IN_SCHEMA_SQL,
+            ROUTINES_IN_SCHEMA_SQL,
+            TRIGGERS_IN_SCHEMA_SQL,
+            vec![None],
+        ),
+        ObjectScope::Schema(name) => (
+            TABLES_IN_SCHEMA_SQL,
+            ROUTINES_IN_SCHEMA_SQL,
+            TRIGGERS_IN_SCHEMA_SQL,
+            vec![Some(name.as_str())],
+        ),
+        ObjectScope::AllSchemas => (ALL_TABLES_SQL, ALL_ROUTINES_SQL, ALL_TRIGGERS_SQL, Vec::new()),
     };
     let mut objects = Vec::new();
     for (sql, table) in [(tables_sql, "TABLES"), (routines_sql, "ROUTINES")] {
@@ -160,14 +178,101 @@ pub(crate) async fn list_objects(
                 Some("PROCEDURE") => ObjectKind::Procedure,
                 _ => continue,
             };
-            objects.push(ObjectInfo {
-                schema: row.text(0)?,
-                name: row.required_text(1)?,
-                kind,
-            });
+            objects.push(ObjectInfo::new(row.text(0)?, row.required_text(1)?, kind));
         }
     }
+    for row in catalog_rows(connection, flavour, triggers_sql, "TRIGGERS", &binds).await? {
+        objects.push(ObjectInfo::trigger(
+            row.text(0)?,
+            row.required_text(1)?,
+            row.required_text(2)?,
+        ));
+    }
     Ok(objects)
+}
+
+const ROUTINE_EXISTS_SQL: &str = "\
+SELECT 1 FROM information_schema.ROUTINES
+WHERE ROUTINE_SCHEMA = COALESCE(?, DATABASE()) AND ROUTINE_NAME = ? AND ROUTINE_TYPE = ?";
+const SEQUENCE_EXISTS_SQL: &str = "\
+SELECT 1 FROM information_schema.TABLES
+WHERE TABLE_SCHEMA = COALESCE(?, DATABASE()) AND TABLE_NAME = ? AND TABLE_TYPE = 'SEQUENCE'";
+const TRIGGER_EXISTS_SQL: &str = "\
+SELECT 1 FROM information_schema.TRIGGERS
+WHERE TRIGGER_SCHEMA = COALESCE(?, DATABASE()) AND TRIGGER_NAME = ? AND EVENT_OBJECT_TABLE = ?";
+
+/// The server's CREATE text for a function, procedure, sequence or
+/// trigger. The name is looked up first as a bound parameter, so a
+/// dropped object gives an empty text rather than a server error, and
+/// SHOW, which cannot take a parameter, only ever sees a name the
+/// catalogue returned, quoted by the dialect.
+pub(crate) async fn fetch_object_definition(
+    connection: &mut MySqlConnection,
+    dialect: &MySqlDialect,
+    object: &ObjectInfo,
+) -> Result<String, DriverError> {
+    let flavour = dialect.flavour();
+    let schema = object.schema.as_deref();
+    let name = Some(object.name.as_str());
+    let (exists_sql, exists_table, extra, show, column) = match object.kind {
+        ObjectKind::Function => (
+            ROUTINE_EXISTS_SQL,
+            "ROUTINES",
+            Some("FUNCTION"),
+            "FUNCTION",
+            "Create Function",
+        ),
+        ObjectKind::Procedure => (
+            ROUTINE_EXISTS_SQL,
+            "ROUTINES",
+            Some("PROCEDURE"),
+            "PROCEDURE",
+            "Create Procedure",
+        ),
+        ObjectKind::Sequence => (SEQUENCE_EXISTS_SQL, "TABLES", None, "SEQUENCE", "Create Table"),
+        ObjectKind::Trigger => (
+            TRIGGER_EXISTS_SQL,
+            "TRIGGERS",
+            object.table.as_deref(),
+            "TRIGGER",
+            "SQL Original Statement",
+        ),
+        _ => {
+            return Err(DriverError::Unsupported {
+                feature: UnsupportedFeature::ObjectDefinitions,
+            });
+        }
+    };
+    if object.kind == ObjectKind::Trigger && extra.is_none() {
+        return Ok(String::new());
+    }
+    let mut binds = vec![schema, name];
+    binds.extend(extra.map(Some));
+    if catalog_rows(connection, flavour, exists_sql, exists_table, &binds)
+        .await?
+        .is_empty()
+    {
+        return Ok(String::new());
+    }
+    let sql = format!(
+        "SHOW CREATE {show} {}",
+        dialect.qualify(&TableRef::new(object.schema.clone(), object.name.clone()))
+    );
+    let row = connection
+        .fetch_one(sqlx::raw_sql(AssertSqlSafe(sql)))
+        .await
+        .map_err(|error| map_error(&error, flavour))?;
+    let text: Option<&[u8]> = row.try_get_unchecked(column).map_err(|error| DriverError::Decode {
+        column: column.to_owned(),
+        detail: error.to_string(),
+    })?;
+    match text {
+        Some(bytes) => String::from_utf8(bytes.to_vec()).map_err(|error| DriverError::Decode {
+            column: column.to_owned(),
+            detail: error.to_string(),
+        }),
+        None => Ok(String::new()),
+    }
 }
 
 async fn column_rows(

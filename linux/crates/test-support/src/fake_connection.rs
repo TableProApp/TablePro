@@ -588,6 +588,7 @@ mod tests {
                 schema: None,
                 name: "items".to_owned(),
                 kind: ObjectKind::Table,
+                table: None,
             }]))
             .once(FakeReply::err(DriverError::Busy(BusyReason::NoFreeConnection)));
         script.probe.always(FakeReply::ok(()));
