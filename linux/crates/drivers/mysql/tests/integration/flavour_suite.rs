@@ -528,10 +528,6 @@ async fn caching_sha2_without_tls_uses_rsa() {
     root.close().await.expect("a close");
 }
 
-/// Each index's statement, run after the index is dropped, makes the
-/// same index again: a full-text index, a prefix on a TEXT column, and
-/// on MySQL a functional key part with a quoted literal. A B-tree on a
-/// MEMORY table, whose default is a hash, says USING BTREE.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires docker"]
 async fn index_statements_recreate_their_indexes() {
@@ -539,56 +535,74 @@ async fn index_statements_recreate_their_indexes() {
         let fixture = start(flavour).await;
         let connection = connect(&fixture, false).await;
         let mut statements = vec![
-            "CREATE TABLE notes (id int PRIMARY KEY, title varchar(50), body text)",
-            "CREATE TABLE cache (id int PRIMARY KEY, k int, INDEX cache_k USING BTREE (k)) ENGINE=MEMORY",
+            "CREATE TABLE notes (id int PRIMARY KEY, title varchar(50), body text, `a\nb` int)",
+            "CREATE TABLE cache (id int PRIMARY KEY, k int, INDEX cache_tree USING BTREE (k), \
+             INDEX cache_hash (k)) ENGINE=MEMORY",
             "CREATE UNIQUE INDEX notes_title ON notes (title DESC, id)",
             "CREATE INDEX notes_body ON notes (body(12))",
             "CREATE FULLTEXT INDEX notes_search ON notes (title, body)",
+            "CREATE INDEX `notes\nbroken` ON notes (`a\nb`) COMMENT 'it''s a \\\\ back\\nslash'",
         ];
-        if flavour == MysqlFlavour::Mysql {
-            statements.push("CREATE INDEX notes_tagged ON notes ((concat(title, 'it''s')))");
-        }
+        let hidden = match flavour {
+            MysqlFlavour::Mysql => {
+                statements.extend([
+                    "CREATE TABLE shapes (id int PRIMARY KEY, p POINT NOT NULL SRID 0, SPATIAL INDEX shapes_p (p))",
+                    "CREATE INDEX notes_tagged ON notes ((concat(title, 'it''s')))",
+                    "CREATE FULLTEXT INDEX notes_words ON notes (body) WITH PARSER ngram",
+                    "CREATE INDEX notes_hidden ON notes (id) INVISIBLE",
+                ]);
+                "CREATE INDEX `notes_hidden` ON `tablepro`.`notes` (`id`) /*!80000 INVISIBLE */"
+            }
+            MysqlFlavour::Mariadb => {
+                statements.extend([
+                    "CREATE TABLE shapes (id int PRIMARY KEY, p POINT NOT NULL, SPATIAL INDEX shapes_p (p))",
+                    "CREATE INDEX notes_hidden ON notes (id) IGNORED",
+                ]);
+                "CREATE INDEX `notes_hidden` ON `tablepro`.`notes` (`id`) IGNORED"
+            }
+        };
         setup(connection.as_ref(), &statements).await;
-        let cache = crate::support::table("cache");
-        let cache_index = connection
-            .fetch_indexes(&cache, within(CALL))
-            .await
-            .expect("the indexes")
-            .into_iter()
-            .find(|index| index.name == "cache_k")
-            .expect("cache_k");
+        let read = |name: &'static str| {
+            let connection = connection.as_ref();
+            async move {
+                connection
+                    .fetch_table_definition(&crate::support::table(name), within(CALL))
+                    .await
+                    .expect("the table")
+                    .indexes
+            }
+        };
+        let notes = read("notes").await;
         assert_eq!(
-            cache_index.definition.as_deref(),
-            Some("CREATE INDEX `cache_k` ON `tablepro`.`cache` (`k`) USING BTREE"),
-            "{flavour:?}: a MEMORY table keeps its B-tree"
-        );
-        let table = crate::support::table("notes");
-        let indexes = connection
-            .fetch_indexes(&table, within(CALL))
-            .await
-            .expect("the indexes");
-
-        assert_eq!(
-            indexes
+            notes
                 .iter()
-                .find(|index| index.primary)
-                .map(|index| &index.definition),
-            Some(&None),
-            "{flavour:?}: the primary key is a constraint"
+                .find(|index| index.name == "notes_hidden")
+                .and_then(|index| index.definition.as_deref()),
+            Some(hidden),
+            "{flavour:?}"
         );
-        for index in indexes.iter().filter(|index| !index.primary) {
-            let statement = index.definition.clone().expect("a statement");
-            let drop = format!("DROP INDEX `{}` ON `notes`", index.name);
-            setup(connection.as_ref(), &[drop.as_str(), statement.as_str()]).await;
-            let remade = connection
-                .fetch_indexes(&table, within(CALL))
-                .await
-                .expect("the indexes");
+
+        for table in ["notes", "cache", "shapes"] {
+            let indexes = read(table).await;
             assert_eq!(
-                remade.iter().find(|remade| remade.name == index.name),
-                Some(index),
-                "{flavour:?}: {statement}"
+                indexes
+                    .iter()
+                    .find(|index| index.primary)
+                    .map(|index| &index.definition),
+                Some(&None),
+                "{flavour:?}: the primary key is a constraint"
             );
+            for index in indexes.iter().filter(|index| !index.primary) {
+                let statement = index.definition.clone().expect("a statement");
+                let drop = format!("DROP INDEX `{}` ON `{table}`", index.name);
+                setup(connection.as_ref(), &[drop.as_str(), statement.as_str()]).await;
+                let remade = read(table).await;
+                assert_eq!(
+                    remade.iter().find(|remade| remade.name == index.name),
+                    Some(index),
+                    "{flavour:?}: {statement}"
+                );
+            }
         }
         connection.close().await.expect("a close");
     }

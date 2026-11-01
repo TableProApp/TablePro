@@ -282,3 +282,43 @@ async fn a_new_type_keeps_the_columns_collation() {
     );
     connection.close().await.unwrap();
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_index_statement_makes_the_index_again_on_its_own_table() {
+    let file = TestFile::new();
+    let connection = file.open().await;
+    apply(
+        connection.as_ref(),
+        &[
+            "CREATE TABLE t (a INTEGER, b VARCHAR)",
+            "CREATE UNIQUE INDEX t_b ON t ((lower(b)))",
+            "CREATE SCHEMA s",
+            "CREATE TABLE s.t (a INTEGER)",
+            "CREATE INDEX \"s a\" ON s.t (a)",
+        ],
+    )
+    .await
+    .unwrap();
+    let nested = TableRef::new(Some("s".to_owned()), "t");
+    let read = |table: TableRef| {
+        let connection = connection.as_ref();
+        async move { connection.fetch_table_definition(&table, call()).await.unwrap().indexes }
+    };
+    let main = read(TableRef::unqualified("t")).await;
+    let catalog = file.path.file_stem().unwrap().to_string_lossy().into_owned();
+
+    assert_eq!(
+        main[0].definition,
+        Some(format!(
+            "CREATE UNIQUE INDEX t_b ON \"{catalog}\".\"main\".\"t\"((lower(b)))"
+        ))
+    );
+    for (table, drop, indexes) in [
+        (TableRef::unqualified("t"), "DROP INDEX t_b", main),
+        (nested.clone(), "DROP INDEX s.\"s a\"", read(nested).await),
+    ] {
+        let statement = indexes[0].definition.clone().expect("a statement");
+        apply(connection.as_ref(), &[drop, statement.as_str()]).await.unwrap();
+        assert_eq!(read(table).await, indexes, "{statement}");
+    }
+}

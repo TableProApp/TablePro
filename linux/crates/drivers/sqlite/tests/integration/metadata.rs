@@ -57,9 +57,6 @@ async fn expression_desc_partial_index_keys() {
     connection.close().await.unwrap();
 }
 
-/// An attached database's index keeps its SQL without the schema, so
-/// its statement names the schema, or it would index `main`'s table of
-/// the same name.
 #[tokio::test]
 async fn an_attached_index_statement_names_its_schema() {
     let file = TestFile::new().await;
@@ -100,6 +97,35 @@ async fn an_attached_index_statement_names_its_schema() {
             .iter()
             .all(|index| index.name != "by_name")
     );
+    connection.close().await.unwrap();
+}
+
+#[tokio::test]
+async fn a_main_index_statement_is_not_caught_by_a_temp_table() {
+    let file = TestFile::new().await;
+    let connection = file.open().await;
+    query(
+        connection.as_ref(),
+        "CREATE TABLE people (id INTEGER PRIMARY KEY, name TEXT)",
+    )
+    .await;
+    query(connection.as_ref(), "CREATE INDEX by_name ON people (name)").await;
+    query(connection.as_ref(), "CREATE TEMP TABLE people (id INTEGER, name TEXT)").await;
+    let main = TableRef::new(Some("main".to_owned()), "people");
+    let read = connection.fetch_indexes(&main, call()).await.unwrap();
+    let statement = read
+        .iter()
+        .find(|index| index.name == "by_name")
+        .and_then(|index| index.definition.clone())
+        .expect("a statement");
+
+    query(connection.as_ref(), "DROP INDEX main.by_name").await;
+    query(connection.as_ref(), &statement).await;
+
+    assert_eq!(statement, "CREATE INDEX \"main\".by_name ON people (name)");
+    assert_eq!(connection.fetch_indexes(&main, call()).await.unwrap(), read);
+    let temp = TableRef::new(Some("temp".to_owned()), "people");
+    assert!(connection.fetch_indexes(&temp, call()).await.unwrap().is_empty());
     connection.close().await.unwrap();
 }
 

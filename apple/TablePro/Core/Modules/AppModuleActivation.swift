@@ -31,6 +31,8 @@ enum AppModuleActivation {
         switch module {
         case .routineDebugger:
             Task { await RoutineDebugSessions.shared.stopAll() }
+        case .liveMessages:
+            LiveMessageSessions.shared.endAll(closingTabs: true)
         }
     }
 }

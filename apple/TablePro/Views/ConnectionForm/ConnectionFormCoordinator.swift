@@ -42,6 +42,7 @@ final class ConnectionFormCoordinator: ObservableObject {
     @Published var customization: CustomizationPaneViewModel
     @Published var advanced: AdvancedPaneViewModel
     @Published var aiRules: AIRulesPaneViewModel
+    @Published var maskingRules: MaskingRulesPaneViewModel
 
     @Published var selectedTab: ConnectionFormTab = .general
     @Published var hasLoadedData: Bool = false
@@ -129,6 +130,7 @@ final class ConnectionFormCoordinator: ObservableObject {
         self.customization = CustomizationPaneViewModel()
         self.advanced = AdvancedPaneViewModel()
         self.aiRules = AIRulesPaneViewModel()
+        self.maskingRules = MaskingRulesPaneViewModel()
 
         let ref = WeakCoordinatorRef(self)
         network.coordinator = ref
@@ -143,6 +145,7 @@ final class ConnectionFormCoordinator: ObservableObject {
         customization.coordinator = ref
         advanced.coordinator = ref
         aiRules.coordinator = ref
+        maskingRules.coordinator = ref
 
         childChangeForwarding = forwardChildChanges()
     }
@@ -167,6 +170,7 @@ final class ConnectionFormCoordinator: ObservableObject {
             Self.changes(of: $customization),
             Self.changes(of: $advanced),
             Self.changes(of: $aiRules),
+            Self.changes(of: $maskingRules),
         ])
         .sink { [weak self] in self?.objectWillChange.send() }
     }
@@ -231,6 +235,7 @@ final class ConnectionFormCoordinator: ObservableObject {
             customization.load(from: existing)
             advanced.load(from: existing)
             aiRules.load(from: existing)
+            maskingRules.load(from: existing)
             normalizeTransport()
         }
         hasLoadedData = true
@@ -371,7 +376,8 @@ final class ConnectionFormCoordinator: ObservableObject {
                 ? nil : advanced.startupCommands,
             localOnly: advanced.localOnly,
             additionalFields: fields,
-            ownedAdditionalFieldIDs: ownedAdditionalFieldIDs()
+            ownedAdditionalFieldIDs: ownedAdditionalFieldIDs(),
+            maskingRules: maskingRules.savedRules
         )
     }
 

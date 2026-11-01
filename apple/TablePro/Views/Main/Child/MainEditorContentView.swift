@@ -217,6 +217,9 @@ struct MainEditorContentView: View {
         case .routineDebug:
             RoutineDebugTabContent(tabId: tab.id, databaseType: connection.type)
                 .id(tab.id)
+        case .liveMessages:
+            LiveMessageTabContent(tabId: tab.id)
+                .id(tab.id)
         }
     }
 

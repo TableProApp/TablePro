@@ -68,7 +68,9 @@ enum ForeignKeyRowFetcher {
             )
             return try await driver.execute(query: query)
         }
-        guard let firstRow = result.rows.first else { return nil }
+        let policy = DatabaseManager.shared.session(for: origin.connectionId)?.connection.maskingPolicy ?? .none
+        let masked = result.masked(by: policy, table: reference.referencedTable)
+        guard let firstRow = masked.rows.first else { return nil }
 
         let foreignKeys = includeForeignKeys
             ? await referencedTableForeignKeys(target: target, reference: reference)

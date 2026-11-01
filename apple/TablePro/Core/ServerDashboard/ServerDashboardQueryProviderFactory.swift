@@ -48,6 +48,8 @@ enum ServerDashboardQueryProviderFactory {
             return MongoDBDashboardProvider()
         case .redis:
             return RedisDashboardProvider(serverVersion: serverVersion)
+        case .memcached:
+            return MemcachedDashboardProvider()
         }
     }
 }
@@ -64,6 +66,7 @@ private enum DashboardEngine {
     case oracle
     case mongodb
     case redis
+    case memcached
 
     init?(_ databaseType: DatabaseType) {
         switch databaseType {
@@ -87,6 +90,8 @@ private enum DashboardEngine {
             self = .mongodb
         case .redis:
             self = .redis
+        case .memcached:
+            self = .memcached
         default:
             return nil
         }
