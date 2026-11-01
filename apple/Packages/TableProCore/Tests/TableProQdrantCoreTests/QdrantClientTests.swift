@@ -129,6 +129,20 @@ struct QdrantSortedPagerTests {
         #expect(transport.recorded.filter { canonical(bodyObject($0)).contains("values_count") }.count == 1)
     }
 
+    @Test("A field Qdrant cannot order by is refused, never shown in id order as if sorted")
+    func unorderableFieldRefused() async throws {
+        let transport = RecordingTransport { request in
+            guard request.url.path.hasSuffix("/query") else { return jsonResponse(["result": ["count": 0]]) }
+            return jsonResponse(["status": ["error": "Wrong input: No range index for `order_by` key: `city`."]], status: 400)
+        }
+        await #expect(throws: QdrantError.api(status: 400, message: "Wrong input: No range index for `order_by` key: `city`.")) {
+            _ = try await makeClient(transport: transport).sortedPage(
+                collection: "docs", filter: nil, column: "city", key: "\"city\"", ascending: true,
+                offset: 0, limit: 4, cache: QdrantPagingCache()
+            )
+        }
+    }
+
     @Test("A field holding a list in some point is refused, since Qdrant would show that point once per value")
     func listedValuesRefused() async throws {
         let client = makeClient(transport: transport(listed: 2))

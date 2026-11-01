@@ -56,7 +56,47 @@ struct QdrantSchemaTests {
         #expect(columns == ["id", "city", "payload.id", "payload.vector", "vector"])
         #expect(row.row(columns: columns) == ["7", "Berlin", "external-1", "text", "[1,2]"])
         #expect(QdrantSchema.payloadKey(forColumn: "payload.id") == "id")
-        #expect(QdrantSchema.payloadKey(forColumn: "payload.city") == "payload.city")
+    }
+
+    @Test("Every payload key maps to one column and back, including one that starts with payload.")
+    func payloadKeysRoundTrip() {
+        let keys = ["city", "id", "score", "vector", "vector.image", "payload.id", "payload.city", "payload."]
+        let columns = keys.map(QdrantSchema.column(forPayloadKey:))
+        #expect(Set(columns).count == keys.count)
+        #expect(columns.map(QdrantSchema.payloadKey(forColumn:)) == keys)
+        #expect(QdrantSchema.column(forPayloadKey: "payload.id") == "payload.payload.id")
+    }
+
+    @Test("An indexed field holding lists stays a list in its cell, while filters compare its elements")
+    func indexedLists() throws {
+        let collection = QdrantCollection.parse(
+            name: "docs",
+            info: info(vectors: ["size": 2], payloadSchema: [
+                "tags": ["data_type": "keyword"], "mixed": ["data_type": "keyword"], "city": ["data_type": "keyword"]
+            ]),
+            sample: [
+                try point(#"{"id":1,"payload":{"tags":["a","b"],"mixed":["a"],"city":"Berlin"}}"#),
+                try point(#"{"id":2,"payload":{"tags":["c"],"mixed":"b"}}"#)
+            ]
+        )
+        let types = Dictionary(uniqueKeysWithValues: QdrantSchema.columns(for: collection).map { ($0.name, $0.type) })
+        #expect(types["tags"] == "array")
+        #expect(types["mixed"] == "json")
+        #expect(types["city"] == "keyword")
+        #expect(collection.fieldType(ofColumn: "tags") == .keyword)
+        let condition = try QdrantFilterBuilder.condition(
+            for: QdrantFilterSpec(column: "tags", op: "=", value: "42"), collection: collection
+        )
+        #expect(canonical(condition) == #"{"key":"\"tags\"","match":{"value":"42"}}"#)
+    }
+
+    @Test("A named vector called size is not mistaken for the unnamed vector's dimension")
+    func vectorNamedSize() {
+        let collection = QdrantCollection.parse(
+            name: "docs",
+            info: info(vectors: ["size": ["size": 3, "distance": "Cosine"], "text": ["size": 2, "distance": "Dot"]])
+        )
+        #expect(collection.vectors.map(\.column) == ["vector.size", "vector.text"])
     }
 
     @Test("Keys outside the sample join the collection, and a key first seen as null takes its later type")

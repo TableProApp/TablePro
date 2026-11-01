@@ -16,9 +16,25 @@ public extension QdrantClient {
     ) async throws -> [QdrantPoint] {
         let hasValue: [String: Any] = ["key": key, "range": [String: Any]()]
         let ordered = QdrantFilterBuilder.allOf(filter, hasValue)
+        func orderBody(offset: Int, limit: Int, withData: Bool) -> [String: Any] {
+            var body: [String: Any] = [
+                "query": ["order_by": ["key": key, "direction": ascending ? "asc" : "desc"]],
+                "limit": limit,
+                "offset": offset,
+                "with_payload": withData,
+                "with_vector": withData
+            ]
+            if let filter {
+                body["filter"] = filter
+            }
+            return body
+        }
 
         let checkKey = "\(collection)\u{0}\(key)\u{0}\((try? QdrantJSON.text(ordered)) ?? "")"
         if !cache.isSortChecked(checkKey) {
+            // A field with no range index matches no point, so without asking Qdrant to order by it
+            // every point would land in the remainder and the page would look sorted by id.
+            _ = try await query(collection: collection, body: orderBody(offset: 0, limit: 1, withData: false))
             let listed = try await count(
                 collection: collection,
                 filter: QdrantFilterBuilder.allOf(ordered, ["key": key, "values_count": ["gt": 1]])
@@ -35,17 +51,10 @@ public extension QdrantClient {
         let orderedCount = try await count(collection: collection, filter: ordered)
         var points: [QdrantPoint] = []
         if offset < orderedCount {
-            var body: [String: Any] = [
-                "query": ["order_by": ["key": key, "direction": ascending ? "asc" : "desc"]],
-                "limit": min(limit, orderedCount - offset),
-                "offset": offset,
-                "with_payload": true,
-                "with_vector": true
-            ]
-            if let filter {
-                body["filter"] = filter
-            }
-            points = try await query(collection: collection, body: body)
+            points = try await query(
+                collection: collection,
+                body: orderBody(offset: offset, limit: min(limit, orderedCount - offset), withData: true)
+            )
         }
         guard points.count < limit else { return points }
         let withoutValue = QdrantFilterBuilder.allOf(filter, QdrantFilterBuilder.negated([hasValue]))

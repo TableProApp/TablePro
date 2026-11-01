@@ -113,6 +113,12 @@ do {
     check(error.localizedDescription.contains("list"), "list values refuse the sort")
 }
 _ = try await run(#"POST \#(base)/points/payload?wait=true {"payload":{"n":3},"points":[3]}"#)
+do {
+    _ = try await client.sortedPage(collection: name, filter: nil, column: "city", key: "\"city\"", ascending: true, offset: 0, limit: 5, cache: QdrantPagingCache())
+    check(false, "a keyword field refuses the sort")
+} catch {
+    check(error.localizedDescription.contains("range index"), "a keyword field refuses the sort")
+}
 
 let types = Dictionary(uniqueKeysWithValues: columns.map { ($0.name, $0.type) })
 let writes = try QdrantRowWriter.writes(collection: name, changes: [

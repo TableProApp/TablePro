@@ -113,16 +113,34 @@ public struct QdrantVectorSpec: Sendable, Equatable {
 
 public struct QdrantPayloadField: Sendable, Equatable {
     public let name: String
+    // What a filter compares: an index types each element of a list, so this is the element's type.
     public let type: QdrantFieldType
     public let isIndexed: Bool
     // False while every sampled value was null, so the first real value sets the type outright.
     public let hasTypedValue: Bool
+    public let holdsLists: Bool
+    public let holdsScalars: Bool
 
-    public init(name: String, type: QdrantFieldType, isIndexed: Bool, hasTypedValue: Bool = true) {
+    public init(
+        name: String,
+        type: QdrantFieldType,
+        isIndexed: Bool,
+        hasTypedValue: Bool = true,
+        holdsLists: Bool = false,
+        holdsScalars: Bool = false
+    ) {
         self.name = name
         self.type = type
         self.isIndexed = isIndexed
         self.hasTypedValue = hasTypedValue
+        self.holdsLists = holdsLists
+        self.holdsScalars = holdsScalars
+    }
+
+    // What a cell holds and is written back as. An indexed field holding lists keeps them lists.
+    public var cellType: QdrantFieldType {
+        guard isIndexed, holdsLists else { return type }
+        return holdsScalars ? .json : .array
     }
 }
 
@@ -161,8 +179,16 @@ public struct QdrantCollection: Sendable, Equatable {
     }
 
     public func fieldType(ofColumn column: String) -> QdrantFieldType? {
+        field(ofColumn: column)?.type
+    }
+
+    public func cellType(ofColumn column: String) -> QdrantFieldType? {
+        field(ofColumn: column)?.cellType
+    }
+
+    private func field(ofColumn column: String) -> QdrantPayloadField? {
         let key = QdrantSchema.payloadKey(forColumn: column)
-        return payloadFields.first { $0.name == key }?.type
+        return payloadFields.first { $0.name == key }
     }
 
     public func including(_ points: [QdrantPoint]) -> QdrantCollection {
@@ -179,7 +205,15 @@ public struct QdrantCollection: Sendable, Equatable {
                     continue
                 }
                 let field = fields[index]
-                guard !field.isIndexed, let observed else { continue }
+                guard let observed else { continue }
+                if field.isIndexed {
+                    fields[index] = QdrantPayloadField(
+                        name: key, type: field.type, isIndexed: true,
+                        holdsLists: field.holdsLists || observed == .array,
+                        holdsScalars: field.holdsScalars || observed != .array
+                    )
+                    continue
+                }
                 let type = field.hasTypedValue ? field.type.merged(with: observed) : observed
                 fields[index] = QdrantPayloadField(name: key, type: type, isIndexed: false)
             }
@@ -197,7 +231,8 @@ public struct QdrantCollection: Sendable, Equatable {
 
         var vectors: [QdrantVectorSpec] = []
         if let config = params["vectors"] as? [String: Any] {
-            if config["size"] != nil {
+            // A named vector may itself be called `size`; only the unnamed one has a number there.
+            if config["size"] is NSNumber {
                 vectors.append(.dense(name: "", config: config))
             } else {
                 vectors += config.keys.sorted().map { key in
@@ -260,9 +295,10 @@ public enum QdrantSchema {
     }
 
     // A payload key named `id`, `score` or `vector...` would take a point column's name, so it shows as
-    // `payload.<key>` and maps back wherever a column is read or written.
+    // `payload.<key>`. A key already starting with `payload.` is prefixed too, so every column maps back
+    // to exactly one key.
     public static func isReserved(_ key: String) -> Bool {
-        key == idColumn || key == scoreColumn || isVectorColumn(key)
+        key == idColumn || key == scoreColumn || isVectorColumn(key) || key.hasPrefix(payloadPrefix)
     }
 
     public static func column(forPayloadKey key: String) -> String {
@@ -270,15 +306,13 @@ public enum QdrantSchema {
     }
 
     public static func payloadKey(forColumn column: String) -> String {
-        guard column.hasPrefix(payloadPrefix) else { return column }
-        let key = String(column.dropFirst(payloadPrefix.count))
-        return isReserved(key) ? key : column
+        column.hasPrefix(payloadPrefix) ? String(column.dropFirst(payloadPrefix.count)) : column
     }
 
     public static func columns(for collection: QdrantCollection) -> [QdrantColumn] {
         var columns = [QdrantColumn(name: idColumn, type: "id", isPrimaryKey: true)]
         columns += collection.payloadFields.map {
-            QdrantColumn(name: column(forPayloadKey: $0.name), type: $0.type.rawValue, isPrimaryKey: false)
+            QdrantColumn(name: column(forPayloadKey: $0.name), type: $0.cellType.rawValue, isPrimaryKey: false)
         }
         columns += collection.vectors.map { QdrantColumn(name: $0.column, type: $0.typeName, isPrimaryKey: false) }
         return columns
@@ -295,7 +329,7 @@ public enum QdrantSchema {
         if let spec = collection.vectors.first(where: { $0.column == column }) {
             return spec.typeName
         }
-        return collection.fieldType(ofColumn: column)?.rawValue
+        return collection.cellType(ofColumn: column)?.rawValue
     }
 }
 
