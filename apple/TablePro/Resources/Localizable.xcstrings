@@ -940,6 +940,9 @@
         }
       }
     },
+    "“%@” is not a usable Avro schema." : {
+
+    },
     "\"%@\" is not a valid %@. Example: %@" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -15600,6 +15603,9 @@
     "A field needs a type." : {
 
     },
+    "A field of record %@ has no name or type." : {
+
+    },
     "A file" : {
       "localizations" : {
         "fr" : {
@@ -15902,6 +15908,9 @@
           }
         }
       }
+    },
+    "A map has no \"values\"." : {
+
     },
     "A map needs a geometry or geography column. This result has none." : {
       "localizations" : {
@@ -16360,6 +16369,9 @@
         }
       }
     },
+    "A record, enum or fixed type has no name." : {
+
+    },
     "A record's id cannot be edited." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -16550,6 +16562,9 @@
       }
     },
     "A saved query with this name exists." : {
+
+    },
+    "A schema object has no \"type\"." : {
 
     },
     "A schema with this name already exists." : {
@@ -24093,6 +24108,9 @@
         }
       }
     },
+    "An array has no \"items\"." : {
+
+    },
     "An attribute value must name exactly one type" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -29770,6 +29788,15 @@
         }
       }
     },
+    "Avro (%@)" : {
+
+    },
+    "Avro Schema…" : {
+
+    },
+    "Avro single-object encoding: schema fingerprint %@" : {
+
+    },
     "AWS answered without the Redshift user and password." : {
 
     },
@@ -32485,6 +32512,26 @@
     },
     "Byte %lld does not start a valid field." : {
 
+    },
+    "Byte %lld picks entry %lld, which the schema does not have." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Byte %1$lld picks entry %2$lld, which the schema does not have."
+          }
+        }
+      }
+    },
+    "Byte %lld refers back to item %lld, which comes later or not at all." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Byte %1$lld refers back to item %2$lld, which comes later or not at all."
+          }
+        }
+      }
     },
     "Byte 0x%@ at offset %lld is not valid here." : {
       "localizations" : {
@@ -38435,6 +38482,12 @@
           }
         }
       }
+    },
+    "Choose Schema" : {
+
+    },
+    "Choose the Avro schema the values in this column were written with." : {
+
     },
     "Choose the base type." : {
 
@@ -72613,6 +72666,9 @@
         }
       }
     },
+    "Enum %@ has no symbols." : {
+
+    },
     "Enum Type" : {
       "localizations" : {
         "fr" : {
@@ -83491,6 +83547,9 @@
           }
         }
       }
+    },
+    "Fixed type %@ has no size." : {
+
     },
     "Flag" : {
       "extractionState" : "manual",
@@ -143557,6 +143616,9 @@
         }
       }
     },
+    "Record %@ has no fields list." : {
+
+    },
     "Record Access" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -157266,6 +157328,9 @@
           }
         }
       }
+    },
+    "Schema Registry framing: schema ID %lld" : {
+
     },
     "Schema Registry framing: schema ID %lld, message index %@" : {
       "localizations" : {
@@ -186547,7 +186612,13 @@
     "The file is larger than %@, too large for a rules file." : {
 
     },
+    "The file is larger than any Avro schema." : {
+
+    },
     "The file is not a JSON object." : {
+
+    },
+    "The file is not UTF-8 text." : {
 
     },
     "The file is not valid JSON." : {
@@ -186874,6 +186945,9 @@
     "The group end at byte %lld matches no group start." : {
 
     },
+    "The header names version %lld, which this format does not have." : {
+
+    },
     "The host cannot be passed to FreeTDS. Use a host name or an IP address, without spaces, brackets, “=”, “;” or “#”." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -187169,6 +187243,9 @@
       }
     },
     "The left result stopped at the row cap and is compared on the %@ rows it holds. A row past the cap can show as only on the right." : {
+
+    },
+    "The length at byte %lld is negative." : {
 
     },
     "The license has been suspended." : {
@@ -190080,6 +190157,18 @@
       }
     },
     "The schema changes staged in this diagram will be lost." : {
+
+    },
+    "The schema defines type %@ twice." : {
+
+    },
+    "The schema has a type that is not a name, an object or a union." : {
+
+    },
+    "The schema is not valid JSON." : {
+
+    },
+    "The schema names type %@ before defining it." : {
 
     },
     "The script already ran. Compare again to see where the target stands." : {
@@ -193332,6 +193421,9 @@
           }
         }
       }
+    },
+    "The value was written with the schema whose fingerprint is %@, not this column's." : {
+
     },
     "The values this save replaced are no longer being kept." : {
       "localizations" : {
@@ -197970,6 +198062,9 @@
           }
         }
       }
+    },
+    "This Mac no longer has the schema chosen for this column, so the stored bytes show. Choose it again with Display As > Avro Schema…" : {
+
     },
     "This Mac no longer holds a seat." : {
       "localizations" : {
