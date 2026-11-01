@@ -154,7 +154,12 @@ final class MemcachedPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 rows: rows, started: started
             )
         case .lines(let lines, _):
-            let rows: [PluginRow] = MemcachedKeyListing.statPairs(lines).map { [.text($0.name), .text($0.value)] }
+            let pairs = MemcachedKeyListing.statPairs(lines)
+            guard pairs.count == lines.count else {
+                let rows: [PluginRow] = lines.map { [.text($0)] }
+                return result(columns: ["Line"], types: ["String"], rows: rows, started: started)
+            }
+            let rows: [PluginRow] = pairs.map { [.text($0.name), .text($0.value)] }
             return result(columns: ["Name", "Value"], types: ["String", "String"], rows: rows, started: started)
         case .status(let line):
             let affected = ["STORED", "DELETED", "TOUCHED", "OK"].contains(line) || UInt64(line) != nil ? 1 : 0

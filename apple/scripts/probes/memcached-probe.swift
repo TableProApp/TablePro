@@ -164,6 +164,11 @@ do {
 }
 let leaked = try await driver.execute(query: "get tablepro")
 check(leaked.rows.isEmpty, "credentials given to an open server are not stored as an item")
+let slabs = try await driver.execute(query: "stats items")
+if let slab = texts(slabs).compactMap({ $0[0] }).first(where: { $0.hasSuffix(":number") })?.split(separator: ":").dropFirst().first {
+    let dump = try await driver.execute(query: "stats cachedump \(slab) 5")
+    check(dump.columns == ["Line"] && texts(dump).first?.first??.hasPrefix("ITEM ") == true, "stats cachedump shows its ITEM lines")
+}
 let reset = try await driver.execute(query: "stats reset")
 check(texts(reset).first?.first == "RESET", "stats reset answers one status line")
 let quotedKey = "\(prefix)it's \"quoted\""

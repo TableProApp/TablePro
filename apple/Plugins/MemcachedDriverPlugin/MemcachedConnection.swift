@@ -162,6 +162,9 @@ actor MemcachedConnection {
         }
         handler = replyHandler
 
+        let requestTimeoutAfterOpen = requestTimeout
+        requestTimeout = endpoint.connectTimeout
+        defer { requestTimeout = requestTimeoutAfterOpen }
         do {
             try await authenticate()
         } catch {
