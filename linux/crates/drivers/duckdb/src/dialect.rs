@@ -3,6 +3,7 @@ use tablepro_core::ddl::DdlDialect;
 use tablepro_core::dialect::{
     BindError, BindTarget, DialectCapabilities, InsertConflict, KeysetDirection, LiteralError, Placeholder, SqlDialect,
 };
+use tablepro_core::edit::{CellExpression, MomentKind};
 use tablepro_core::meta::{EngineRowId, EngineRowIdPart, TableRef};
 use tablepro_core::sql_syntax::{
     CredentialRules, ExpressionSyntaxError, HistoryRecording, MAX_EXPRESSION_LEN, MAX_TYPE_LEN, SqlGrammar,
@@ -59,6 +60,18 @@ impl SqlDialect for DuckDbDialect {
 
     fn grammar(&self) -> SqlGrammar {
         SqlGrammar::DuckDb
+    }
+
+    fn cell_expressions(&self) -> &'static [CellExpression] {
+        const MOMENT: &[MomentKind] = &[MomentKind::Timestamp];
+        // The bundled DuckDB has no ICU extension, which every other
+        // current date and time function needs.
+        const EXPRESSIONS: &[CellExpression] = &[CellExpression::new("now()", MOMENT, &["CURRENT_TIMESTAMP"])];
+        EXPRESSIONS
+    }
+
+    fn update_sets_default(&self) -> bool {
+        true
     }
 
     fn quote_identifier(&self, name: &str) -> String {

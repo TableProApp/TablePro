@@ -30,7 +30,7 @@ fn key(team: &str, id: i64) -> Vec<Value> {
 fn rename(team: &str, id: i64, name: &str) -> RowChange {
     RowChange::Update(RowUpdate {
         key: key(team, id),
-        assignments: vec![(2, Value::Text(name.to_owned()))],
+        assignments: vec![(2, CellInput::Value(Value::Text(name.to_owned())))],
     })
 }
 
@@ -164,7 +164,7 @@ async fn a_static_column_is_saved_for_its_partition<S: Server>() {
         &table,
         vec![RowChange::Update(RowUpdate {
             key: key("a", 1),
-            assignments: vec![(motto, Value::Text("new".to_owned()))],
+            assignments: vec![(motto, CellInput::Value(Value::Text("new".to_owned())))],
         })],
     )
     .await
@@ -255,4 +255,36 @@ async fn cassandra_counter_tables_are_read_only() {
 #[ignore = "requires docker"]
 async fn scylla_counter_tables_are_read_only() {
     a_counter_table_is_read_only::<ScyllaServer>().await;
+}
+
+async fn every_cell_expression_is_evaluated_by_the_server<S: Server>() {
+    let fixture = start::<S>().await;
+    let connection = connect(&fixture, false).await;
+    setup(
+        connection.as_ref(),
+        &[
+            "CREATE TABLE tablepro.stamps (id int PRIMARY KEY, seen timestamp, day date)",
+            "INSERT INTO tablepro.stamps (id) VALUES (1)",
+        ],
+    )
+    .await;
+    let table = TableRef::new(Some("tablepro".to_owned()), "stamps");
+
+    let checked = tablepro_test_support::check_cell_expressions(connection.as_ref(), &table, || within(CALL))
+        .await
+        .expect("every expression saves");
+
+    assert_eq!(checked, 2);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn cassandra_evaluates_every_cell_expression() {
+    every_cell_expression_is_evaluated_by_the_server::<CassandraServer>().await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn scylla_evaluates_every_cell_expression() {
+    every_cell_expression_is_evaluated_by_the_server::<ScyllaServer>().await;
 }

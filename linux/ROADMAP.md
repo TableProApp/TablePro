@@ -49,6 +49,7 @@ The app runs on GNOME 50 ([ADR 0015](docs/decisions/0015-gnome-50-platform-floor
 | Sorting | A header click sorts tables on the server and query results in the grid, one column at a time. A Cassandra or ScyllaDB table keeps the server's order, and pages by its paging state |
 | Cell editing | Editors by column kind: inline text, a multi-line editor, a calendar for dates, a toggle for booleans, JSON checked before saving; values are edited from their exact text, never from what the cell displays. Table tabs only, on tables with a primary key; key, generated and auto-increment columns, and binary, spatial, array and composite values, are read-only |
 | Rows | Insert, duplicate and delete; Paste (Ctrl+V) adds tab-separated rows from the clipboard, filling the columns from the focused one or by a header's names, or edits the focused cell with one value, and asks first above 1,000 rows, up to 100,000; Set NULL and Empty, and DEFAULT on a new row; undo and redo; save or discard pending changes, and stop a save. On ClickHouse, Cassandra and ScyllaDB a save is not atomic, and Stop takes effect between statements |
+| Server-computed values | A date, time or timestamp cell takes the engine's own `NOW()`, `CURRENT_TIMESTAMP`, `CURRENT_DATE` and the like, typed in any letter case or picked from the cell menu, and a saved row's cell takes DEFAULT where the engine has `SET c = DEFAULT` (PostgreSQL, MySQL and MariaDB, SQL Server, DuckDB). Only each engine's own list is offered, which on DuckDB is `now()` alone, since the bundled build has no ICU extension; the save writes the expression into the statement, so the Confirm Writes review and the history show it as written |
 | Bulk delete | Deleting 10 rows or more asks first, unless Confirm Before Deleting Rows is off in Preferences |
 | Copy | Copy; Copy As rows, with headers, CSV with or without headers, JSON, JSON Lines, Markdown, a text table, IN clause or one row of SQL values, and INSERT with or without generated keys in an editable table tab; Copy Column Name; Show Row as JSON |
 | Foreign keys | Open Referenced Row (Ctrl+J) on a key cell opens the table it points at in a new tab, filtered on every column of the key; Show Referencing Rows on a saved row opens a table whose key points at it. A tab already showing those rows comes to the front |
@@ -167,7 +168,6 @@ Not built yet, in no order.
 
 ### Browse, edit and structure
 
-- Set a cell to `NOW()` or `CURRENT_TIMESTAMP`, which needs SQL expressions as cell values.
 - Edit binary columns from and to a file. They are read-only today, as are array, spatial, composite and variant columns.
 - Time and timestamp pickers. Dates have a calendar; times and timestamps are typed.
 - Save the column order per table.

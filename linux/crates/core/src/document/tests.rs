@@ -366,7 +366,10 @@ fn a_change_names_its_document_by_id_and_sets_only_the_fields_changed() {
         &columns(),
         &by_id(),
         &[object_id()],
-        &[(1, Value::Text("ann".to_owned())), (2, Value::Null)],
+        &[
+            (1, CellInput::Value(Value::Text("ann".to_owned()))),
+            (2, CellInput::Value(Value::Null)),
+        ],
     )
     .expect("an update");
     assert_eq!(
@@ -427,11 +430,30 @@ fn a_dotted_field_cannot_be_updated_by_name() {
         &columns(),
         &by_id(),
         &[object_id()],
-        &[(3, Value::Text("x".to_owned()))],
+        &[(3, CellInput::Value(Value::Text("x".to_owned())))],
     );
 
     assert_eq!(
         refused,
         Err(BuildSqlError::UnaddressableField { name: "a.b".to_owned() })
+    );
+}
+
+#[test]
+fn a_document_field_is_never_set_to_a_value_the_server_computes() {
+    let refused = build_update(
+        &shell(),
+        &users(),
+        &columns(),
+        &by_id(),
+        &[object_id()],
+        &[(1, CellInput::Default)],
+    );
+
+    assert_eq!(
+        refused,
+        Err(BuildSqlError::ServerComputedValue {
+            name: "name".to_owned()
+        })
     );
 }

@@ -7,6 +7,7 @@
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
 mod call_counters;
+mod cell_expressions;
 mod close_behaviour;
 #[cfg(test)]
 mod close_race;
@@ -29,6 +30,7 @@ mod snippet_text;
 mod stream_end;
 
 pub use call_counters::CallCounters;
+pub use cell_expressions::{DEFAULTED_COLUMN, check_cell_expressions};
 pub use close_behaviour::CloseBehaviour;
 pub use connection_script::ConnectionScript;
 pub use csv_import::{CsvImportFailure, import_csv};

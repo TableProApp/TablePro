@@ -132,7 +132,7 @@ fn rename(tracker: &TabTrackerHandle, id: i64, from: &str, to: &str) -> crate::s
         row_key: key(id),
         col: 1,
         original: Value::Text(from.into()),
-        value: Value::Text(to.into()),
+        value: CellInput::Value(Value::Text(to.into())),
     })
 }
 
