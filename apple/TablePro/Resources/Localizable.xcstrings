@@ -3384,6 +3384,10 @@
         }
       }
     },
+    "%@ during the Bolt handshake. If the server requires TLS, turn on SSL." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "%@ failed" : {
       "comment" : "Failure count, %@ is a count",
       "localizations" : {
@@ -10472,6 +10476,14 @@
         }
       }
     },
+    "%lld constraint(s) added" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "%lld constraint(s) removed" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "%lld dims" : {
 
     },
@@ -10499,6 +10511,14 @@
           }
         }
       }
+    },
+    "%lld index(es) added" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "%lld index(es) removed" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "%lld inside" : {
       "localizations" : {
@@ -10552,6 +10572,14 @@
     },
     "%lld keys" : {
 
+    },
+    "%lld label(s) added" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "%lld label(s) removed" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "%lld large object values were longer than 64 MiB and were cut short." : {
       "extractionState" : "manual",
@@ -10707,6 +10735,14 @@
     },
     "%lld new columns" : {
 
+    },
+    "%lld node(s) created" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "%lld node(s) deleted" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "%lld objects" : {
       "localizations" : {
@@ -11151,6 +11187,18 @@
     },
     "%lld properties" : {
 
+    },
+    "%lld property value(s) set" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "%lld relationship(s) created" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "%lld relationship(s) deleted" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "%lld roles own database objects" : {
       "localizations" : {
@@ -11755,6 +11803,10 @@
           }
         }
       }
+    },
+    "%lld system update(s)" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "%lld table%@ to export" : {
       "extractionState" : "stale",
@@ -52367,6 +52419,10 @@
         }
       }
     },
+    "Could not connect to Neo4j: %@" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Could not connect to the database: %@" : {
 
     },
@@ -87058,6 +87114,9 @@
         }
       }
     },
+    "Graph database queried with Cypher" : {
+
+    },
     "Gray" : {
       "localizations" : {
         "fr" : {
@@ -112578,6 +112637,14 @@
         }
       }
     },
+    "Neo4j cannot query the name %@ because it contains \\u." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Neo4j has no views." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Nested field path" : {
       "localizations" : {
         "fr" : {
@@ -121464,6 +121531,10 @@
           }
         }
       }
+    },
+    "Not connected to Neo4j." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Not connected to Redis" : {
       "extractionState" : "manual",
@@ -182719,6 +182790,10 @@
         }
       }
     },
+    "The %@ filter is not available for Neo4j." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The %@ line in ~/.ssh/config does not accept the token %@." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -189126,6 +189201,10 @@
         }
       }
     },
+    "The query was cancelled." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The query was stopped by closing its connection, because MySQL before 5.0 cannot stop a query any other way. The session's open transaction, table locks and variables were discarded. Run the statements again." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -190195,6 +190274,10 @@
         }
       }
     },
+    "the server closed the connection" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The server computes this column, so it is left out." : {
 
     },
@@ -190245,6 +190328,10 @@
           }
         }
       }
+    },
+    "The server does not speak Bolt 4.2 to 5.4. Neo4j 4.2 or later is required." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "The server ended the session." : {
       "localizations" : {
@@ -190474,6 +190561,14 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "The server sent a %d-byte message, which is over the limit." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The server sent a message this client does not understand (%@)." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The server sent an unexpected message and the connection was reset. Run the query again." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -190547,6 +190642,10 @@
           }
         }
       }
+    },
+    "the server's certificate does not cover the hostname you connected to" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "The server's socket file on this Mac. SELECT @@socket in the mysql client shows it." : {
 
@@ -198335,6 +198434,10 @@
           }
         }
       }
+    },
+    "this port speaks HTTP; use the Bolt port, usually 7687" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "This private key belongs to a security key (FIDO), which TablePro signs with only through an SSH agent. Choose SSH Agent and add the key to it." : {
 

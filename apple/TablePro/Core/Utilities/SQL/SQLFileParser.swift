@@ -460,7 +460,7 @@ final class SQLFileParser: Sendable {
 
         processDelimiterChange(&ctx, char: char)
 
-        if char == kDash && nextChar == kDash {
+        if char == kDash && nextChar == kDash, !ctx.grammar.contains(.withoutDashComments) {
             if ctx.grammar.contains(.dashCommentsNeedWhitespace), i + 2 >= bufLen, !ctx.atEndOfInput {
                 return StepResult(advanced: false, deferred: true)
             }
