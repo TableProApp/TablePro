@@ -46,6 +46,8 @@ internal enum PhpSerializeWriter {
                 guard output.utf8.count < limit else { return }
                 if let index = property.index {
                     output += "i:\(index);"
+                } else if let binaryKey = property.binaryKey {
+                    output += "s:\(binaryKey.count):\"\(latin1(binaryKey.prefix(limit - output.utf8.count)))\";"
                 } else {
                     output += quoted("s", mangled(property), room: limit - output.utf8.count) + ";"
                 }

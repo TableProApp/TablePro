@@ -18,7 +18,7 @@ internal final class AvroSchemaStore: Sendable {
     // Far past any real schema; a file this large is the wrong file.
     static let maxFileBytes = 4_000_000
 
-    // Posted when a schema this Mac did not have is kept, so grids and viewers that found it missing decode again.
+    // Posted when a schema this Mac did not have is kept, so a viewer that found it missing decodes again.
     static let didRestoreSchema = Notification.Name("com.TablePro.avroSchemaStore.didRestoreSchema")
     static let schemaIDKey = "schemaID"
 
@@ -52,9 +52,11 @@ internal final class AvroSchemaStore: Sendable {
         let schema = try AvroSchema.parse(text)
         let id = Self.schemaID(of: text)
         let url = fileURL(id)
-        if !FileManager.default.fileExists(atPath: url.path) {
+        // A copy that went bad on disk is written over, or the next launch would find it missing again.
+        let contents = Data(text.utf8)
+        if (try? Data(contentsOf: url)) != contents {
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-            try Data(text.utf8).write(to: url, options: .atomic)
+            try contents.write(to: url, options: .atomic)
         }
         let wasMissing = state.withLock { state -> Bool in
             state.parsed[id] = schema

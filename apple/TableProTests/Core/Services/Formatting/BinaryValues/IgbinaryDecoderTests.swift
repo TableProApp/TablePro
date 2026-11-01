@@ -176,6 +176,12 @@ struct IgbinaryDecoderTests {
         #expect(bytes.utf8.count < 200)
     }
 
+    @Test("An object property name that is not UTF-8 is written with its own bytes")
+    func binaryPropertyName() throws {
+        let value = try IgbinaryDecoder.decode(BinaryFixture.data("000000021708737464436c617373140111" + "01ff" + "0601"))
+        #expect(PhpSerializeWriter.text(value) == #"O:8:"stdClass":1:{s:1:""# + "\u{FF}" + #"";i:1;}"#)
+    }
+
     @Test("A string of 300 bytes uses the 16-bit length")
     func longString() throws {
         let hex = "0000000212012c" + String(repeating: "61", count: 300)

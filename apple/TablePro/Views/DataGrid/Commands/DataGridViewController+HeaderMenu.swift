@@ -259,13 +259,32 @@ extension DataGridViewController {
         guard let columnID = menuColumn(sender)?.id, let window = view.window else { return }
         Task { @MainActor [weak self] in
             guard let text = await AvroSchemaFilePanel.chooseSchemaText(in: window) else { return }
-            // A schema this Mac had lost redraws every grid that names it through AvroSchemaStore.didRestoreSchema.
+            let schemaID = AvroSchemaStore.schemaID(of: text)
+            let wasMissing = AvroSchemaStore.shared.schema(id: schemaID) == nil
             do {
-                self?.setDisplayFormat(.avro(schemaID: try AvroSchemaStore.shared.add(text)), columnID: columnID)
+                _ = try AvroSchemaStore.shared.add(text)
             } catch {
                 NSAlert(error: error).beginSheetModal(for: window, completionHandler: nil)
+                return
             }
+            self?.schemaChosen(.avro(schemaID: schemaID), columnID: columnID, wasMissing: wasMissing)
         }
+    }
+
+    // The same file chosen again after this Mac lost it: the format stands, so this grid's columns that name it are
+    // redrawn instead, behind the confirmation a format change takes.
+    private func schemaChosen(_ format: ValueDisplayFormat, columnID: DataGridColumnID, wasMissing: Bool) {
+        let named = model.columns.columns.filter { model.displayFormat(for: $0) == format }
+        guard wasMissing, named.contains(where: { $0.id == columnID }) else {
+            setDisplayFormat(format, columnID: columnID)
+            return
+        }
+        let apply: @MainActor () -> Void = { [weak self] in self?.model.redisplay(named) }
+        guard model.store.valueFilter.isActive, let actions = model.actions else {
+            apply()
+            return
+        }
+        actions.gridConfirmDisplayOrderChange(then: apply)
     }
 
     @objc func sizeColumnToFitFromMenu(_ sender: Any?) {

@@ -71,32 +71,33 @@ internal struct AvroSchema: Equatable, Sendable {
             root: root,
             namedTypes: parser.namedTypes,
             fingerprint: fingerprint(of: canonicalForm(root)),
-            zeroByteNames: zeroByteNames(parser.namedTypes)
+            zeroByteNames: zeroByteNames(parser.completed)
         )
     }
 
-    private static func zeroByteNames(_ namedTypes: [String: AvroType]) -> Set<String> {
-        var known: [String: Bool] = [:]
-        func takesNoBytes(_ type: AvroType, visiting: Set<String>) -> Bool {
+    // In the order definitions finish, so every name a type refers to is settled before it, except its own and its
+    // enclosing types', which a value cannot hold without bytes anyway. No recursion: a schema can chain thousands.
+    private static func zeroByteNames(_ completed: [(name: String, type: AvroType)]) -> Set<String> {
+        var names: Set<String> = []
+        func takesNoBytes(_ type: AvroType) -> Bool {
             switch type {
             case .null: return true
             case .fixed(_, let size): return size == 0
-            case .logical(_, let base): return takesNoBytes(base, visiting: visiting)
-            case .named(let name):
-                if let answer = known[name] { return answer }
-                guard !visiting.contains(name), let defined = namedTypes[name] else { return false }
-                let answer = takesNoBytes(defined, visiting: visiting.union([name]))
-                known[name] = answer
-                return answer
-            case .record(let name, let fields):
-                if let answer = known[name] { return answer }
-                let answer = fields.allSatisfy { takesNoBytes($0.type, visiting: visiting.union([name])) }
-                known[name] = answer
-                return answer
+            case .named(let name), .record(let name, _), .enumeration(let name, _): return names.contains(name)
+            case .logical(_, let base): return takesNoBytes(base)
             default: return false
             }
         }
-        return Set(namedTypes.keys.filter { takesNoBytes(.named($0), visiting: []) })
+        for (name, type) in completed {
+            let base: AvroType
+            if case .logical(_, let inner) = type { base = inner } else { base = type }
+            switch base {
+            case .record(_, let fields) where fields.allSatisfy({ takesNoBytes($0.type) }): names.insert(name)
+            case .fixed(_, 0): names.insert(name)
+            default: break
+            }
+        }
+        return names
     }
 
     // https://avro.apache.org/docs/1.12.0/specification/#parsing-canonical-form-for-schemas
@@ -183,6 +184,7 @@ internal struct AvroSchema: Equatable, Sendable {
 
     private struct Parser {
         var namedTypes: [String: AvroType] = [:]
+        private(set) var completed: [(name: String, type: AvroType)] = []
 
         mutating func type(_ json: Any, namespace: String?) throws -> AvroType {
             if let name = json as? String {
@@ -224,6 +226,7 @@ internal struct AvroSchema: Equatable, Sendable {
                 }
                 let record = AvroType.record(name: name, fields: fields)
                 namedTypes[name] = record
+                completed.append((name, record))
                 return record
             case "enum":
                 let name = try newName(object, namespace: namespace)
@@ -232,6 +235,7 @@ internal struct AvroSchema: Equatable, Sendable {
                 }
                 let enumeration = AvroType.enumeration(name: name, symbols: symbols)
                 namedTypes[name] = enumeration
+                completed.append((name, enumeration))
                 return enumeration
             case "fixed":
                 let name = try newName(object, namespace: namespace)
@@ -240,6 +244,7 @@ internal struct AvroSchema: Equatable, Sendable {
                 }
                 let fixed = AvroType.fixed(name: name, size: size)
                 namedTypes[name] = fixed
+                completed.append((name, fixed))
                 return fixed
             case "array":
                 guard let items = object["items"] else {

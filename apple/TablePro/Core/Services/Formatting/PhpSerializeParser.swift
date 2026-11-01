@@ -67,6 +67,8 @@ internal struct PhpProperty: Equatable {
     let value: PhpValue
     // An `i:` member, which __serialize data such as ArrayObject's holds; `name` spells the same number.
     var index: Int?
+    // The key as igbinary stored it when it is not UTF-8, visibility prefix included; `name` shows it a byte a character.
+    var binaryKey: Data?
 }
 
 internal enum PhpVisibility: Equatable {

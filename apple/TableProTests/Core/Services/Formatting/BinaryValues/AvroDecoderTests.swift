@@ -209,6 +209,17 @@ struct AvroDecoderTests {
         #expect(error?.kind == .tooLarge)
     }
 
+    @Test("A schema that chains thousands of named records parses without walking the chain")
+    func longNamedChain() throws {
+        var records = [#"{"type":"record","name":"N0","fields":[]}"#]
+        for index in 1...20_000 {
+            records.append(#"{"type":"record","name":"N"# + "\(index)" + #"","fields":[{"name":"p","type":"N"# + "\(index - 1)" + #""}]}"#)
+        }
+        let schema = try AvroSchema.parse("[" + records.joined(separator: ",") + "]")
+        #expect(schema.takesNoBytes(.named("N20000")))
+        #expect(!schema.takesNoBytes(.union([.null])))
+    }
+
     @Test("A huge zero-byte block after a small one is refused, not added up until it overflows")
     func zeroByteCountOverflow() throws {
         let nulls = try AvroSchema.parse(#"{"type":"array","items":"null"}"#)

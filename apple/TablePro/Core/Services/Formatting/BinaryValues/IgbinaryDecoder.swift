@@ -211,7 +211,11 @@ internal enum IgbinaryDecoder {
                         return PhpProperty(name: String(index), visibility: .publicVisibility, value: entry.item.value, index: index)
                     }
                     let property = decodePhpPropertyKey(Self.text(entry.key))
-                    return PhpProperty(name: property.name, visibility: property.visibility, value: entry.item.value)
+                    var binaryKey: Data?
+                    if case .binaryString(let bytes) = entry.key { binaryKey = bytes }
+                    return PhpProperty(
+                        name: property.name, visibility: property.visibility, value: entry.item.value, binaryKey: binaryKey
+                    )
                 }
                 value = .object(className: className, properties: properties)
             case .objectSer8, .objectSer16, .objectSer32:
