@@ -1,5 +1,6 @@
-use tablepro_core::DriverError;
-use tablepro_core::meta::{ObjectInfo, ObjectKind, ObjectScope, SchemaInfo};
+use tablepro_core::meta::{ObjectDefinition, ObjectInfo, ObjectKind, ObjectScope, SchemaInfo};
+use tablepro_core::sql_syntax::terminated;
+use tablepro_core::{DriverError, UnsupportedFeature};
 
 use crate::call_client::CallClient;
 use crate::result_reader::{CatalogRow, read_table};
@@ -52,23 +53,42 @@ pub(crate) async fn list_objects(
     let mut objects = Vec::new();
     for row in &read_table(query, None).await?.rows {
         let row = CatalogRow(row);
-        objects.push(ObjectInfo {
-            schema: Some(row.text(0)?),
-            name: row.text(1)?,
-            kind: kind_of_engine(&row.text(2)?),
-        });
+        objects.push(ObjectInfo::new(
+            Some(row.text(0)?),
+            row.text(1)?,
+            kind_of_engine(&row.text(2)?),
+        ));
     }
     if !matches!(scope, ObjectScope::Schema(_)) {
         let sql = "SELECT name FROM system.functions WHERE origin = 'SQLUserDefined' ORDER BY name";
         for row in &read_table(calls.raw(sql)?, None).await?.rows {
-            objects.push(ObjectInfo {
-                schema: None,
-                name: CatalogRow(row).text(0)?,
-                kind: ObjectKind::Function,
-            });
+            objects.push(ObjectInfo::new(None, CatalogRow(row).text(0)?, ObjectKind::Function));
         }
     }
     Ok(objects)
+}
+
+/// User-defined functions belong to no database, so the text runs in any tab.
+pub(crate) async fn fetch_object_definition(
+    calls: &CallClient,
+    object: &ObjectInfo,
+) -> Result<Option<ObjectDefinition>, DriverError> {
+    if object.kind != ObjectKind::Function {
+        return Err(DriverError::Unsupported {
+            feature: UnsupportedFeature::ObjectDefinitions,
+        });
+    }
+    let query = calls
+        .raw("SELECT create_query FROM system.functions WHERE origin = 'SQLUserDefined' AND name = {name:String}")?
+        .param("name", object.name.as_str());
+    let Some(row) = read_table(query, None).await?.rows.into_iter().next() else {
+        return Ok(None);
+    };
+    Ok(Some(ObjectDefinition {
+        sql: terminated(&CatalogRow(&row).text(0)?),
+        database: None,
+        refusal: None,
+    }))
 }
 
 fn kind_of_engine(engine: &str) -> ObjectKind {

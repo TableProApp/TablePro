@@ -11,7 +11,7 @@ use super::sidebar_index::SidebarIndex;
 #[derive(Default, glib::Properties)]
 #[properties(wrapper_type = super::sidebar_object::SidebarObject)]
 pub struct SidebarObject {
-    /// The index the object reads its table from, shared by every row
+    /// The index the object reads its entry from, shared by every row
     /// of the list.
     pub(super) index: OnceCell<Arc<SidebarIndex>>,
     pub(super) entry: Cell<u32>,
@@ -34,7 +34,7 @@ impl SidebarObject {
         self.index
             .get()
             .and_then(|index| index.entry(self.entry.get()))
-            .map(|row| row.table.name.clone())
+            .map(|row| row.object.name.clone())
             .unwrap_or_default()
     }
 }

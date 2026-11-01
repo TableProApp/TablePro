@@ -36,6 +36,7 @@ pub(crate) static CAPABILITIES: DriverCapabilities = DriverCapabilities {
         ObjectKind::Sequence,
         ObjectKind::Function,
         ObjectKind::Procedure,
+        ObjectKind::Trigger,
     ],
     database_required: false,
     network_options: &[],
@@ -62,7 +63,7 @@ mod tests {
             CAPABILITIES.commit_resolution,
             CommitResolutionSupport::ServerTransactionStatus
         );
-        assert_eq!(CAPABILITIES.object_kinds.len(), 8);
+        assert_eq!(CAPABILITIES.object_kinds.len(), 9);
         assert!(!CAPABILITIES.database_required);
     }
 }

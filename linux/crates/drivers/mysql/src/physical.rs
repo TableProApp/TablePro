@@ -12,7 +12,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::errors::{map_connect_error, map_error};
 use crate::flavour::MySqlFlavour;
-use crate::session_statements::{SessionLimits, for_session};
+use crate::session_statements::{EDITOR_SQL_MODE_STATEMENT, SessionLimits, for_session};
 use crate::workspace_session::{WORKSPACE_SQL_MODE_STATEMENT, WORKSPACE_TIME_ZONE};
 
 /// Which session a physical connection opens as.
@@ -170,8 +170,10 @@ impl MysqlEndpoint {
             SessionKind::Control => Vec::new(),
             SessionKind::Workspace | SessionKind::Editor => for_session(flavour, limits),
         };
-        if kind == SessionKind::Workspace {
-            statements.push(WORKSPACE_SQL_MODE_STATEMENT.to_owned());
+        match kind {
+            SessionKind::Workspace => statements.push(WORKSPACE_SQL_MODE_STATEMENT.to_owned()),
+            SessionKind::Editor => statements.push(EDITOR_SQL_MODE_STATEMENT.to_owned()),
+            SessionKind::Control => {}
         }
         if !statements.is_empty() {
             connection

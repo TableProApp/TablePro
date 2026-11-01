@@ -102,6 +102,10 @@ SQL Server has no session statement timeout. A workspace call's deadline is the 
 - A `COMMIT` the server answers with an error rolled back; one whose connection dropped is `CommitOutcomeUnknown` with no token. There is nothing to ask the server afterwards (`CommitResolutionSupport::Unavailable`).
 - SQL Server cannot suspend foreign keys for one batch, so a batch that asks for it is refused before anything is sent.
 
+## Definitions
+
+The sidebar's objects and their table triggers come from one `UNION ALL` over `sys.objects` and `sys.triggers`. A definition is `OBJECT_DEFINITION`, the module's text as it was written, so a name written without its schema is given it, and a trigger's table too, before the text reaches the editor: the header rewrite the server's own scripting does. A module made with other `ANSI_NULLS` or `QUOTED_IDENTIFIER` than the session's (`sys.sql_modules` against `SESSIONPROPERTY`, in the same read; an editor tab's login sets the same) does not open in the editor, since its body would read otherwise there. Nor does a body that holds a line that is only `GO` (a column alias to the server), where the editor would end a batch and run the rest on its own. A sequence's type is named as declared, an alias type by its schema. A CLR module keeps its code in an assembly and an encrypted one keeps its text hidden, and each says so instead of reading as gone. A sequence's `CREATE SEQUENCE` is built from `sys.sequences`.
+
 ## Editor sessions
 
 - A script runs one `GO` batch at a time, as sqlcmd and SSMS do, including `GO <count>`. Each batch goes as a SQL batch, not through `sp_executesql`, so a `USE` or a `SET` in it lasts for the rest of the session. A failed batch does not stop the next one. Text the splitter cannot finish goes to the server whole, so the error is the server's own.

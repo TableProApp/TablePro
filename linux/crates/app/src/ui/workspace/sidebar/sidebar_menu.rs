@@ -3,6 +3,7 @@ use gtk4::prelude::*;
 use tablepro_core::meta::ObjectKind;
 
 use super::object_key::ObjectKey;
+use super::object_target::ObjectTarget;
 use super::sidebar_affordances::SidebarAffordances;
 use super::sidebar_view::Holds;
 
@@ -15,16 +16,23 @@ pub(super) const NEW_TABLE: &str = "new-table";
 pub(super) const SHOW_DIAGRAM: &str = "show-diagram";
 /// A schema's diagram, whose target is the schema, as New Table's is.
 pub(super) const SHOW_SCHEMA_DIAGRAM: &str = "show-schema-diagram";
+pub(super) const SHOW_DEFINITION: &str = "show-definition";
 pub(super) const GROUP: &str = "sidebar";
 
-/// The menu of one table. Every item carries the table's key, so the one
-/// popover serves every row and acts on the table it opened for, even
-/// after the list changes under it. What writes sits in sections of its
-/// own, and a read-only connection is not offered it. A view's shape
-/// comes from its query, so only a table offers to change or drop it.
+/// The menu of one object. Every item carries the object's key, so the
+/// one popover serves every row and acts on the object it opened for,
+/// even after the list changes under it. What writes sits in sections of
+/// its own, and a read-only connection is not offered it. A view's shape
+/// comes from its query, so only a table offers to change or drop it,
+/// and a routine, a sequence or a trigger is changed in the editor.
 pub(crate) fn object_menu(key: &ObjectKey, kind: ObjectKind, affordances: SidebarAffordances) -> gio::Menu {
     let menu = gio::Menu::new();
     let open = gio::Menu::new();
+    if let ObjectTarget::Definition(_) = key.0 {
+        open.append_item(&item(&crate::i18n::gettext("_Show Definition"), SHOW_DEFINITION, key));
+        menu.append_section(None, &open);
+        return menu;
+    }
     open.append_item(&item(&crate::i18n::gettext("_Open in New Tab"), OPEN_IN_NEW_TAB, key));
     // A key has no SQL to show, no structure to change and no diagram.
     if !kind.is_browsable() {
@@ -90,6 +98,9 @@ pub(crate) fn schema_menu(schema: Option<&str>, affordances: SidebarAffordances,
 /// `affordances`, as `object_menu` offers it.
 pub(super) fn offers(action: &str, kind: ObjectKind, affordances: SidebarAffordances) -> bool {
     let table = kind.is_structure_editable();
+    if kind.has_definition() {
+        return action == SHOW_DEFINITION;
+    }
     match action {
         OPEN_IN_NEW_TAB => true,
         SHOW_CREATE_TABLE | SHOW_DIAGRAM => kind.is_browsable() && affordances.speaks_sql,
@@ -148,7 +159,7 @@ mod tests {
 
     #[test]
     fn every_item_carries_the_object_key() {
-        let key = ObjectKey(TableRef::new(Some("sales".to_owned()), "orders"));
+        let key = ObjectKey::rows(TableRef::new(Some("sales".to_owned()), "orders"));
 
         let menu = object_menu(&key, ObjectKind::Table, all());
 
@@ -162,15 +173,45 @@ mod tests {
 
     #[test]
     fn every_item_has_an_access_key_of_its_own() {
-        let key = ObjectKey(TableRef::new(Some("sales".to_owned()), "orders"));
+        let key = ObjectKey::rows(TableRef::new(Some("sales".to_owned()), "orders"));
 
         assert_access_keys(&object_menu(&key, ObjectKind::Table, all()));
         assert_access_keys(&schema_menu(Some("sales"), all(), Holds::Tables).expect("a menu"));
     }
 
     #[test]
+    fn a_definition_offers_only_to_show_it_and_carries_its_trigger_table() {
+        let key = ObjectKey(ObjectTarget::Definition(tablepro_core::meta::ObjectInfo::trigger(
+            Some("sales".to_owned()),
+            "audit",
+            "orders",
+        )));
+
+        let menu = object_menu(&key, ObjectKind::Trigger, all());
+
+        let found = items(menu.upcast_ref());
+        assert_eq!(found.len(), 1);
+        let (action, target) = &found[0];
+        assert_eq!(action, "sidebar.show-definition");
+        assert_eq!(target.as_ref().and_then(ObjectKey::from_variant).as_ref(), Some(&key));
+        assert_access_keys(&menu);
+        for action in [
+            OPEN_IN_NEW_TAB,
+            SHOW_CREATE_TABLE,
+            SHOW_DIAGRAM,
+            EDIT_STRUCTURE,
+            IMPORT_CSV,
+            DROP_TABLE,
+        ] {
+            assert!(!offers(action, ObjectKind::Trigger, all()), "{action}");
+        }
+        assert!(offers(SHOW_DEFINITION, ObjectKind::Function, all()));
+        assert!(!offers(SHOW_DEFINITION, ObjectKind::Table, all()));
+    }
+
+    #[test]
     fn a_read_only_connection_is_offered_nothing_that_writes() {
-        let key = ObjectKey(TableRef::unqualified("orders"));
+        let key = ObjectKey::rows(TableRef::unqualified("orders"));
         let read_only = SidebarAffordances {
             read_only: true,
             ..all()
@@ -189,7 +230,7 @@ mod tests {
 
     #[test]
     fn edit_structure_follows_the_dialect() {
-        let key = ObjectKey(TableRef::unqualified("orders"));
+        let key = ObjectKey::rows(TableRef::unqualified("orders"));
         let without = SidebarAffordances {
             can_edit_structure: false,
             ..all()
@@ -203,7 +244,7 @@ mod tests {
 
     #[test]
     fn a_key_offers_only_to_open_it() {
-        let key = ObjectKey(TableRef::unqualified("user:1"));
+        let key = ObjectKey::rows(TableRef::unqualified("user:1"));
         let kind = ObjectKind::Key(tablepro_core::meta::KeyKind::Hash);
 
         assert_eq!(actions(&object_menu(&key, kind, all())), ["sidebar.open-in-new-tab"]);
@@ -214,7 +255,7 @@ mod tests {
 
     #[test]
     fn a_collection_offers_neither_sql_nor_a_drop_the_dialect_cannot_plan() {
-        let key = ObjectKey(TableRef::new(Some("shop".to_owned()), "orders"));
+        let key = ObjectKey::rows(TableRef::new(Some("shop".to_owned()), "orders"));
         let documents = SidebarAffordances {
             read_only: false,
             can_create_table: false,
@@ -271,7 +312,7 @@ mod tests {
 
     #[test]
     fn a_view_offers_no_structure_change() {
-        let key = ObjectKey(TableRef::unqualified("active_users"));
+        let key = ObjectKey::rows(TableRef::unqualified("active_users"));
 
         let offered = actions(&object_menu(&key, ObjectKind::View, all()));
 

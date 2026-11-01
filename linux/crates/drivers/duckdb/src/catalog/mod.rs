@@ -112,6 +112,7 @@ pub(crate) fn list_objects(link: &Link, catalog: &str, scope: &ObjectScope) -> R
                 "view" => ObjectKind::View,
                 _ => ObjectKind::Table,
             },
+            parent_table: None,
         });
     }
     Ok(objects)

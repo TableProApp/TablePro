@@ -13,10 +13,11 @@ use tablepro_core::ddl::{
     SchemaObjectKind, TableDefinition, TableSource,
 };
 use tablepro_core::meta::{
-    EngineRowId, IndexInfo, IndexKey, ObjectInfo, ObjectKind, ObjectScope, RowCountEstimate, RowIdentity, SchemaInfo,
-    TableEstimate, TableRef,
+    EngineRowId, IndexInfo, IndexKey, ObjectDefinition, ObjectInfo, ObjectKind, ObjectScope, RowCountEstimate,
+    RowIdentity, SchemaInfo, TableEstimate, TableRef,
 };
-use tablepro_core::{DriverError, ForeignKeyInfo, ServerCode, ServerDiagnostics};
+use tablepro_core::sql_syntax::{SqlGrammar, qualify_created_name, terminated};
+use tablepro_core::{DriverError, ForeignKeyInfo, ServerCode, ServerDiagnostics, UnsupportedFeature};
 
 use crate::catalog::{
     self, InboundKeyRow, MAIN_SCHEMA, SchemaRow, SqliteColumnRow, TableFacts, foreign_key_names, generated_expressions,
@@ -75,18 +76,45 @@ pub(crate) async fn list_objects(
             .await
             .map_err(map_error)?;
         for row in rows {
-            let kind = match text(&row, "type")?.as_str() {
-                "view" => ObjectKind::View,
-                _ => ObjectKind::Table,
-            };
-            objects.push(ObjectInfo {
-                schema: qualifier(&schema),
-                name: text(&row, "name")?,
-                kind,
+            let name = text(&row, "name")?;
+            objects.push(match text(&row, "type")?.as_str() {
+                "trigger" => ObjectInfo::trigger(qualifier(&schema), name, text(&row, "tbl_name")?),
+                "view" => ObjectInfo::new(qualifier(&schema), name, ObjectKind::View),
+                _ => ObjectInfo::new(qualifier(&schema), name, ObjectKind::Table),
             });
         }
     }
     Ok(objects)
+}
+
+/// SQLite keeps a trigger's text as it was written, less the schema
+/// before its name. The text gets it back: an attached or temporary
+/// trigger needs it to be made where it is, and a main one so a session's
+/// temporary table of its table's name cannot take it.
+pub(crate) async fn fetch_object_definition(
+    connection: &mut SqlxConnection,
+    object: &ObjectInfo,
+) -> Result<Option<ObjectDefinition>, DriverError> {
+    let (ObjectKind::Trigger, Some(table)) = (object.kind, object.parent_table.as_deref()) else {
+        return Err(DriverError::Unsupported {
+            feature: UnsupportedFeature::ObjectDefinitions,
+        });
+    };
+    let schema = object.schema.as_deref().filter(|schema| !schema.is_empty());
+    let sql: Option<Option<String>> = sqlx::query_scalar(AssertSqlSafe(catalog::trigger_sql(&quote(
+        schema.unwrap_or(MAIN_SCHEMA),
+    ))))
+    .bind(object.name.as_str())
+    .bind(table)
+    .fetch_optional(&mut *connection)
+    .await
+    .map_err(map_error)?;
+    let schema = quote(schema.unwrap_or(MAIN_SCHEMA));
+    Ok(sql.flatten().map(|sql| ObjectDefinition {
+        sql: terminated(&qualify_created_name(&sql, SqlGrammar::Sqlite, &schema)),
+        database: None,
+        refusal: None,
+    }))
 }
 
 pub(crate) async fn fetch_columns(

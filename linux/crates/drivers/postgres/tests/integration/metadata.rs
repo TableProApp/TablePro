@@ -6,7 +6,9 @@ use tablepro_core::column::{
 };
 use tablepro_core::ddl::{CollationName, GeneratedStorage, IdentityStyle};
 use tablepro_core::edit::CellInput;
-use tablepro_core::meta::{EngineRowId, IndexKey, ObjectKind, ObjectScope, RowCountEstimate, RowIdentity, TableRef};
+use tablepro_core::meta::{
+    EditorRefusal, EngineRowId, IndexKey, ObjectInfo, ObjectKind, ObjectScope, RowCountEstimate, RowIdentity, TableRef,
+};
 use tablepro_core::save::{ChangeSet, RowChange, RowUpdate, plan_save};
 use tablepro_core::{DriverError, Value};
 use tablepro_test_fixtures::{HbaMode, PostgresFixture, PostgresVersion};
@@ -57,6 +59,202 @@ async fn object_kinds_listed() {
     assert_eq!(kind_of("f"), Some(ObjectKind::Function));
     assert_eq!(kind_of("p"), Some(ObjectKind::Procedure));
     assert!(objects.iter().all(|object| object.schema.as_deref() == Some("public")));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn triggers_list_once_with_their_table() {
+    let fixture = start().await;
+    let connection = connect(&fixture, false).await;
+    setup(
+        connection.as_ref(),
+        &[
+            "CREATE TABLE a (id int)",
+            "CREATE TABLE b (id int)",
+            "CREATE FUNCTION stamp() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NEW; END $$",
+            "CREATE TRIGGER audit BEFORE INSERT ON a FOR EACH ROW EXECUTE FUNCTION stamp()",
+            "CREATE TRIGGER audit AFTER UPDATE ON b FOR EACH ROW EXECUTE FUNCTION stamp()",
+            "CREATE TABLE ev (id int, d date) PARTITION BY RANGE (d)",
+            "CREATE TABLE ev_2025 PARTITION OF ev FOR VALUES FROM ('2025-01-01') TO ('2026-01-01')",
+            "CREATE TABLE ev_2026 PARTITION OF ev FOR VALUES FROM ('2026-01-01') TO ('2027-01-01')",
+            "CREATE TRIGGER logged AFTER INSERT ON ev FOR EACH ROW EXECUTE FUNCTION stamp()",
+        ],
+    )
+    .await;
+
+    let objects = connection
+        .list_objects(&ObjectScope::DefaultSchema, within(CALL))
+        .await
+        .expect("the objects");
+    let triggers: Vec<(&str, Option<&str>)> = objects
+        .iter()
+        .filter(|object| object.kind == ObjectKind::Trigger)
+        .map(|object| (object.name.as_str(), object.parent_table.as_deref()))
+        .collect();
+    assert_eq!(
+        triggers,
+        [("audit", Some("a")), ("audit", Some("b")), ("logged", Some("ev"))],
+        "a partition's clone of its parent's trigger is not listed"
+    );
+    assert!(
+        objects
+            .iter()
+            .filter(|object| object.kind != ObjectKind::Trigger)
+            .all(|object| object.parent_table.is_none())
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn a_sequence_keeps_its_persistence_and_owner() {
+    let fixture = start().await;
+    let connection = connect(&fixture, false).await;
+    // Unlogged sequences came in PostgreSQL 15.
+    let unlogged = connection.server_info().major >= 15;
+    let scratch_sql = if unlogged {
+        "CREATE UNLOGGED SEQUENCE scratch"
+    } else {
+        "CREATE SEQUENCE scratch"
+    };
+    setup(
+        connection.as_ref(),
+        &[
+            scratch_sql,
+            "CREATE TABLE orders (id serial, n int GENERATED ALWAYS AS IDENTITY)",
+        ],
+    )
+    .await;
+    let read = |name: &str| {
+        let connection = connection.clone();
+        let sequence = ObjectInfo::new(Some("public".to_owned()), name, ObjectKind::Sequence);
+        async move {
+            connection
+                .fetch_object_definition(&sequence, within(CALL))
+                .await
+                .expect("the definition")
+                .expect("a definition")
+        }
+    };
+
+    let scratch = read("scratch").await;
+    let kind = if unlogged {
+        "CREATE UNLOGGED SEQUENCE"
+    } else {
+        "CREATE SEQUENCE"
+    };
+    assert!(
+        scratch.sql.starts_with(&format!("{kind} public.scratch")),
+        "{}",
+        scratch.sql
+    );
+    assert_eq!(scratch.refusal, None);
+    let serial = read("orders_id_seq").await;
+    assert!(serial.sql.ends_with("OWNED BY public.orders.id;"), "{}", serial.sql);
+    assert_eq!(serial.refusal, None);
+    let identity = read("orders_n_seq").await;
+    assert_eq!(identity.refusal, Some(EditorRefusal::MadeWithOther), "{}", identity.sql);
+
+    setup(connection.as_ref(), &["DROP SEQUENCE scratch"]).await;
+    setup(connection.as_ref(), &[scratch.sql.as_str()]).await;
+    let again = read("scratch").await;
+    assert_eq!(again.sql, scratch.sql, "the text makes the sequence again as it was");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn routines_sequences_and_triggers_list_with_their_definitions() {
+    let fixture = start().await;
+    let connection = connect(&fixture, false).await;
+    setup(
+        connection.as_ref(),
+        &[
+            "CREATE TABLE a (id int)",
+            "CREATE TABLE b (id int)",
+            "CREATE FUNCTION stamp() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NEW; END $$",
+            "CREATE TRIGGER audit BEFORE INSERT ON a FOR EACH ROW EXECUTE FUNCTION stamp()",
+            "CREATE TRIGGER audit AFTER UPDATE ON b FOR EACH ROW EXECUTE FUNCTION stamp()",
+            "CREATE FUNCTION add_one(x int) RETURNS int LANGUAGE sql AS $$ SELECT x + 1 $$",
+            "CREATE FUNCTION add_one(x text) RETURNS text LANGUAGE sql AS $$ SELECT x || '1' $$",
+            "CREATE PROCEDURE log_it() LANGUAGE sql AS $$ SELECT 42 $$",
+            "CREATE SEQUENCE \"Odd Seq\" AS integer START 7 INCREMENT 3 MINVALUE 2 MAXVALUE 900 CACHE 4 CYCLE",
+        ],
+    )
+    .await;
+
+    let public = || Some("public".to_owned());
+    let definition = |object: ObjectInfo| {
+        let connection = &connection;
+        async move {
+            let definition = connection
+                .fetch_object_definition(&object, within(CALL))
+                .await
+                .expect("the definition");
+            if let Some(definition) = &definition {
+                assert_eq!(definition.database, None, "{}", object.name);
+            }
+            definition.map(|definition| definition.sql)
+        }
+    };
+    let overloads = definition(ObjectInfo::new(public(), "add_one", ObjectKind::Function))
+        .await
+        .expect("the overloads");
+    assert!(
+        overloads.contains("SELECT x + 1") && overloads.contains("SELECT x || '1'"),
+        "{overloads}"
+    );
+    assert_eq!(
+        overloads.matches("CREATE OR REPLACE FUNCTION public.add_one").count(),
+        2,
+        "{overloads}"
+    );
+    assert_eq!(overloads.matches(";\n\nCREATE").count(), 1, "{overloads}");
+    assert!(overloads.ends_with(';'));
+
+    let procedure = definition(ObjectInfo::new(public(), "log_it", ObjectKind::Procedure))
+        .await
+        .expect("the procedure");
+    assert!(
+        procedure.starts_with("CREATE OR REPLACE PROCEDURE public.log_it") && procedure.contains("SELECT 42"),
+        "{procedure}"
+    );
+    assert_eq!(
+        definition(ObjectInfo::new(public(), "log_it", ObjectKind::Function)).await,
+        None
+    );
+
+    let sequence = definition(ObjectInfo::new(public(), "Odd Seq", ObjectKind::Sequence))
+        .await
+        .expect("the sequence");
+    for part in [
+        "public.\"Odd Seq\"",
+        "AS integer",
+        "INCREMENT BY 3",
+        "MINVALUE 2",
+        "MAXVALUE 900",
+        "START WITH 7",
+        "CACHE 4",
+        "CYCLE",
+    ] {
+        assert!(sequence.contains(part), "{part} in {sequence}");
+    }
+
+    let on_a = definition(ObjectInfo::trigger(public(), "audit", "a"))
+        .await
+        .expect("the trigger on a");
+    let on_b = definition(ObjectInfo::trigger(public(), "audit", "b"))
+        .await
+        .expect("the trigger on b");
+    assert!(
+        on_a.contains("BEFORE INSERT ON public.a") && on_a.contains("stamp()"),
+        "the table is named with its schema: {on_a}"
+    );
+    assert!(on_b.contains("AFTER UPDATE ON public.b"), "{on_b}");
+    assert_eq!(definition(ObjectInfo::trigger(public(), "audit", "gone")).await, None);
+
+    let table = connection
+        .fetch_object_definition(&ObjectInfo::new(public(), "a", ObjectKind::Table), within(CALL))
+        .await;
+    assert!(matches!(table, Err(DriverError::Unsupported { .. })), "{table:?}");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
