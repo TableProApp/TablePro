@@ -604,6 +604,63 @@ fn an_edit_opens_on_the_saved_ai_policy_and_keeps_it_across_a_driver_change() {
 }
 
 #[gtk4::test]
+fn a_new_connection_follows_the_preference_query_timeout() {
+    let harness = dialog();
+    let imp = harness.dialog.imp();
+
+    assert!(!imp.query_timeout_row.enables_expansion());
+    assert_eq!(harness.dialog.form().query_timeout_secs, None);
+
+    imp.query_timeout_row.set_enable_expansion(true);
+    imp.query_timeout_seconds_row.set_value(0.0);
+
+    assert_eq!(harness.dialog.form().query_timeout_secs, Some(0));
+}
+
+#[gtk4::test]
+fn an_edit_opens_on_the_saved_query_timeout_and_keeps_it_across_a_driver_change() {
+    let saved = SavedConnection {
+        query_timeout_secs: Some(300),
+        ..shop()
+    };
+    let harness = open(Options {
+        saved: vec![saved.clone()],
+        mode: ConnectDialogMode::Edit(Box::new(saved)),
+        ..Options::default()
+    });
+    let imp = harness.dialog.imp();
+
+    assert!(imp.query_timeout_row.enables_expansion());
+    assert_eq!(imp.query_timeout_seconds_row.value() as u32, 300);
+    select(&harness.dialog, "mysql");
+    assert_eq!(harness.dialog.form().query_timeout_secs, Some(300));
+
+    imp.query_timeout_row.set_enable_expansion(false);
+
+    assert_eq!(harness.dialog.form().query_timeout_secs, None);
+}
+
+#[gtk4::test]
+fn a_test_connect_runs_under_the_connection_query_timeout() {
+    let harness = open(Options {
+        connector: FakeConnector::new([FakeEstablish::Connect(ConnectionScript::default())]),
+        ..Options::default()
+    });
+    fill_network(&harness.dialog);
+    let imp = harness.dialog.imp();
+    imp.query_timeout_row.set_enable_expansion(true);
+    imp.query_timeout_seconds_row.set_value(90.0);
+
+    imp.test_button.emit_clicked();
+    wait_until(WAIT, || harness.connector.calls().len() == 1).expect("the test connect");
+
+    assert_eq!(
+        harness.connector.calls()[0].request.workspace_settings.editor_timeout,
+        tablepro_core::QueryTimeout::After(Duration::from_secs(90))
+    );
+}
+
+#[gtk4::test]
 fn connect_insensitive_while_pem_check_pending() {
     let harness = dialog();
     fill_network(&harness.dialog);
@@ -940,6 +997,8 @@ fn every_row_has_an_accessible_name() {
         imp.safe_mode_row.get().upcast(),
         imp.external_access_row.get().upcast(),
         imp.ai_policy_row.get().upcast(),
+        imp.query_timeout_row.get().upcast(),
+        imp.query_timeout_seconds_row.get().upcast(),
         tls.encryption_row.get().upcast(),
         tls.certificates_row.get().upcast(),
         tls.ca_row.get().upcast(),

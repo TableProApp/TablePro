@@ -17,7 +17,7 @@ use crate::catalog::{
     COLUMNS_SQL, Cells, INBOUND_FOREIGN_KEYS_SQL, MssqlColumnRow, PRIMARY_KEY_SQL, column_definition, column_info,
     inbound_foreign_keys, primary_key,
 };
-use crate::dialect::MssqlDialect;
+use crate::dialect::{MssqlDialect, quote};
 use crate::in_band_request::{Interrupt, Watch};
 use crate::physical::MssqlClient;
 use crate::workspace_call::{catalogue_rows, text_param};
@@ -85,8 +85,15 @@ const SEQUENCE_SQL: &str = "SELECT CASE WHEN t.is_user_defined = 1 \
     FROM sys.sequences s JOIN sys.types t ON t.user_type_id = s.user_type_id \
     WHERE s.schema_id = SCHEMA_ID(COALESCE(@P1, SCHEMA_NAME())) AND s.name = @P2";
 
+/// The INCLUDE columns come back as one quoted list, which `.value`
+/// reads out of the XML without escaping `&` or `<` in a name.
 const INDEXES_SQL: &str = "SELECT i.name, CAST(i.is_unique AS int), CAST(i.is_primary_key AS int), c.name, \
-        CAST(ic.is_descending_key AS int), i.filter_definition \
+        CAST(ic.is_descending_key AS int), i.filter_definition, i.type_desc, \
+        CAST(i.is_unique_constraint AS int), \
+        STUFF((SELECT N', ' + QUOTENAME(inc.name) FROM sys.index_columns iic \
+               JOIN sys.columns inc ON inc.object_id = iic.object_id AND inc.column_id = iic.column_id \
+               WHERE iic.object_id = i.object_id AND iic.index_id = i.index_id AND iic.is_included_column = 1 \
+               ORDER BY iic.index_column_id FOR XML PATH(''), TYPE).value('.', 'nvarchar(max)'), 1, 2, N'') \
     FROM sys.indexes i \
     JOIN sys.index_columns ic ON ic.object_id = i.object_id AND ic.index_id = i.index_id \
     JOIN sys.columns c ON c.object_id = ic.object_id AND c.column_id = ic.column_id \
@@ -367,11 +374,11 @@ pub(crate) async fn fetch_indexes(
     relation: &str,
 ) -> Result<Vec<IndexInfo>, Interrupt> {
     let rows = catalogue_rows(client, watch, INDEXES_SQL, &[text_param(relation)]).await?;
-    Ok(indexes(&rows)?)
+    Ok(indexes(&rows, relation)?)
 }
 
-fn indexes(rows: &[Vec<Value>]) -> Result<Vec<IndexInfo>, DriverError> {
-    let mut indexes: Vec<IndexInfo> = Vec::new();
+fn indexes(rows: &[Vec<Value>], relation: &str) -> Result<Vec<IndexInfo>, DriverError> {
+    let mut indexes: Vec<(IndexInfo, &[Value])> = Vec::new();
     for row in rows {
         let cells = Cells::new(row, "sys.indexes");
         let name = cells.required_text(0)?;
@@ -380,17 +387,66 @@ fn indexes(rows: &[Vec<Value>]) -> Result<Vec<IndexInfo>, DriverError> {
             descending: cells.flag(4),
         };
         match indexes.last_mut() {
-            Some(index) if index.name == name => index.keys.push(key),
-            _ => indexes.push(IndexInfo {
-                name,
-                keys: vec![key],
-                unique: cells.flag(1),
-                primary: cells.flag(2),
-                predicate: cells.text(5),
-            }),
+            Some((index, _)) if index.name == name => index.keys.push(key),
+            _ => indexes.push((
+                IndexInfo {
+                    name,
+                    keys: vec![key],
+                    unique: cells.flag(1),
+                    primary: cells.flag(2),
+                    predicate: cells.text(5),
+                    definition: None,
+                },
+                row,
+            )),
         }
     }
-    Ok(indexes)
+    Ok(indexes
+        .into_iter()
+        .map(|(mut index, row)| {
+            index.definition = create_index(relation, &index, &Cells::new(row, "sys.indexes"));
+            index
+        })
+        .collect())
+}
+
+/// SQL Server keeps no text for an index, so this writes it from
+/// sys.indexes: a UNIQUE constraint as the constraint it is, and only
+/// rowstore indexes, whose keys and INCLUDE list are all there is.
+fn create_index(relation: &str, index: &IndexInfo, cells: &Cells<'_>) -> Option<String> {
+    let kind = cells
+        .text(6)
+        .filter(|kind| kind == "CLUSTERED" || kind == "NONCLUSTERED")?;
+    if index.primary {
+        return None;
+    }
+    let keys = index
+        .keys
+        .iter()
+        .filter_map(|key| {
+            let column = quote(key.column_name()?);
+            Some(match key.descending() {
+                true => format!("{column} DESC"),
+                false => column,
+            })
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+    let name = quote(&index.name);
+    if cells.flag(7) {
+        return Some(format!(
+            "ALTER TABLE {relation} ADD CONSTRAINT {name} UNIQUE {kind} ({keys})"
+        ));
+    }
+    let unique = if index.unique { "UNIQUE " } else { "" };
+    let mut sql = format!("CREATE {unique}{kind} INDEX {name} ON {relation} ({keys})");
+    if let Some(included) = cells.text(8).filter(|included| !included.is_empty()) {
+        sql.push_str(&format!(" INCLUDE ({included})"));
+    }
+    if let Some(predicate) = &index.predicate {
+        sql.push_str(&format!(" WHERE {predicate}"));
+    }
+    Some(sql)
 }
 
 pub(crate) async fn fetch_foreign_keys(
@@ -612,7 +668,7 @@ mod tests {
             ],
         ];
 
-        let indexes = indexes(&rows).unwrap();
+        let indexes = indexes(&rows, "[dbo].[t]").unwrap();
 
         assert_eq!(indexes.len(), 2);
         assert_eq!(indexes[0].keys.len(), 2);
@@ -620,6 +676,42 @@ mod tests {
         assert_eq!(indexes[0].predicate.as_deref(), Some("([a]>(0))"));
         assert!(!indexes[0].can_identify_rows());
         assert!(indexes[1].primary && indexes[1].can_identify_rows());
+    }
+
+    #[test]
+    fn an_index_is_written_as_sql_server_makes_it() {
+        let row = |name: &str, kind: &str, constraint: i64, included: Value, filter: Value| {
+            vec![
+                text(name),
+                Value::Int(1),
+                Value::Int(0),
+                text("a"),
+                Value::Int(1),
+                filter,
+                text(kind),
+                Value::Int(constraint),
+                included,
+            ]
+        };
+        let rows = vec![
+            row("IX_a", "NONCLUSTERED", 0, text("[b], [c]"), text("([a]>(0))")),
+            row("UQ_a", "CLUSTERED", 1, Value::Null, Value::Null),
+            row("IX_x", "XML", 0, Value::Null, Value::Null),
+        ];
+
+        let indexes = indexes(&rows, "[dbo].[t]").unwrap();
+        let statements: Vec<Option<&str>> = indexes.iter().map(|index| index.definition.as_deref()).collect();
+
+        assert_eq!(
+            statements,
+            [
+                Some(
+                    "CREATE UNIQUE NONCLUSTERED INDEX [IX_a] ON [dbo].[t] ([a] DESC) INCLUDE ([b], [c]) WHERE ([a]>(0))"
+                ),
+                Some("ALTER TABLE [dbo].[t] ADD CONSTRAINT [UQ_a] UNIQUE CLUSTERED ([a] DESC)"),
+                None,
+            ]
+        );
     }
 
     #[test]

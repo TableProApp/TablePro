@@ -50,6 +50,7 @@ struct QueryEditorView: View {
     @State private var containerSize: CGSize = .zero
     @State private var savedQueriesRoute: SavedQueriesSheetRoute?
     @State private var savedQueryFolderExpansion: Set<UUID> = []
+    @AppStorage(AppPreferences.rowLayoutKey) private var preferredLayout: RowLayout?
 
     private var session: ConnectionSession? { coordinator.session }
     private var tables: [TableInfo] { coordinator.tables }
@@ -427,7 +428,7 @@ struct QueryEditorView: View {
             } else {
                 VStack(spacing: 0) {
                     resultNotices(includesTruncation: true)
-                    resultList
+                    resultRows
                 }
             }
         }
@@ -539,6 +540,42 @@ struct QueryEditorView: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
         .background(.thinMaterial)
+    }
+
+    private var rowLayout: RowLayout {
+        RowLayout.resolved(preferred: preferredLayout, idiom: UIDevice.current.userInterfaceIdiom)
+    }
+
+    @ViewBuilder
+    private var resultRows: some View {
+        switch rowLayout {
+        case .cards: resultList
+        case .grid: resultGrid
+        }
+    }
+
+    private var resultGrid: some View {
+        let columns = viewModel.columns
+        let rows = viewModel.legacyRows
+        return RowGrid(
+            columns: columns,
+            rows: rows,
+            keyColumn: RowKey.columnIndex(columns: columns, primaryKeys: [])
+        ) { index, line in
+            NavigationLink {
+                RowDetailView(columns: columns, rows: viewModel.window.rows, initialIndex: index)
+            } label: {
+                line
+            }
+            .hoverEffect()
+            .contextMenu {
+                resultRowContextMenu(columns: columns, rowIndex: index)
+            } preview: {
+                resultRowCard(columns: columns, row: rows.indices.contains(index) ? rows[index] : [])
+                    .padding()
+                    .frame(maxWidth: 360, alignment: .leading)
+            }
+        }
     }
 
     private var resultList: some View {
@@ -665,6 +702,7 @@ struct QueryEditorView: View {
             }
 
             if !viewModel.legacyRows.isEmpty {
+                RowLayoutPicker()
                 Section("Share Results") {
                     ForEach(ExportFormat.offered(for: databaseType)) { format in
                         Button {

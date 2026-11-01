@@ -17,6 +17,36 @@ struct ChatComposerScrollViewTests {
         return scrollView
     }
 
+    // The window's Undo routes into tab histories, so the composer answers Undo with its own typing.
+    @Test("Typing undoes in the composer's own history, never the window's")
+    func typingUndoStaysInTheComposer() {
+        let textView = ChatComposerNSTextView.make()
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 300, height: 100),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        window.isReleasedWhenClosed = false
+        window.contentView = textView
+        defer { window.orderOut(nil) }
+
+        #expect(textView.undoManager !== window.undoManager)
+        textView.insertText("select 1", replacementRange: NSRange(location: 0, length: 0))
+        textView.breakUndoCoalescing()
+        #expect(window.undoManager?.canUndo != true, "Typing landed in the window's history")
+
+        let undo = NSMenuItem(title: "Undo", action: #selector(ChatComposerNSTextView.undo(_:)), keyEquivalent: "z")
+        #expect(textView.validateMenuItem(undo))
+        textView.undo(nil)
+        #expect(textView.string.isEmpty)
+
+        let redo = NSMenuItem(title: "Redo", action: #selector(ChatComposerNSTextView.redo(_:)), keyEquivalent: "Z")
+        #expect(textView.validateMenuItem(redo))
+        textView.redo(nil)
+        #expect(textView.string == "select 1")
+    }
+
     @Test("The text view width follows the scroll view width")
     func documentWidthFollowsScrollView() throws {
         let scrollView = makeComposer(width: 420)

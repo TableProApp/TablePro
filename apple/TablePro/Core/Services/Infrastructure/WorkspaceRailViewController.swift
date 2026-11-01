@@ -87,6 +87,12 @@ internal final class WorkspaceRailTableView: NSTableView {
     }
 }
 
+internal struct WorkspaceRailServerTool: Equatable {
+    internal let title: String
+    internal let command: Selector
+    internal let railAction: Selector
+}
+
 @MainActor
 internal final class WorkspaceRailViewController: NSViewController {
     private var rowSizeObservation: AnyCancellable?
@@ -509,42 +515,32 @@ internal final class WorkspaceRailViewController: NSViewController {
         activate(workspace)
     }
 
-    /// Every rail entry is backed by a live window, so the window is raised directly rather
-    /// than routed through `TabRouter.openConnection`, which resolves the id against
-    /// `ConnectionStorage` and would fail for a connection opened from a URL that was never
-    /// saved. Moving between two containers of the same connection stays in one window and
-    /// only moves that window's browse cursor.
-    ///
-    /// One path, whichever window owns the entry. Selecting the connection in its own window comes
-    /// first and always: the cross-window case used to raise the target window and move the target
-    /// connection's browse cursor without ever telling that window to show it, so it came forward
-    /// still showing the connection it had, its tabs and toolbar named that one, and the work the
-    /// user clicked moved silently behind it.
-    ///
-    /// It ends at `applySelection`, which reads this window's own selection back: a workspace this
-    /// window hosts leaves the highlight on the row the user picked; one belonging to another window
-    /// leaves it where it was, because this window did not move.
+    // `applySelection` reads the window back, so a row another window hosts leaves this rail's highlight where it was.
     private func activate(_ workspace: WorkspaceID) {
+        guard let shown = show(workspace) else { return }
+        moveBrowseCursor(of: shown.window, to: workspace)
+        applySelection()
+    }
+
+    // Raised directly: `TabRouter.openConnection` resolves through `ConnectionStorage` and fails for an unsaved URL connection.
+    private func show(_ workspace: WorkspaceID) -> (window: NSWindow, host: MainSplitViewController)? {
         guard let window = WindowManager.shared.window(for: workspace.connectionId),
-              let target = window.contentViewController as? MainSplitViewController else {
+              let host = window.contentViewController as? MainSplitViewController else {
             Self.logger.error(
-                "activate has no window target=\(Self.describe(workspace), privacy: .public)"
+                "show has no window target=\(Self.describe(workspace), privacy: .public)"
             )
-            return
+            return nil
         }
 
-        target.selectHostedConnection(workspace.connectionId)
+        // Before the raise, or the window comes forward still showing the connection it had.
+        host.selectHostedConnection(workspace.connectionId)
 
-        guard window !== view.window else {
-            moveBrowseCursor(of: window, to: workspace)
-            applySelection()
-            return
-        }
+        guard window !== view.window else { return (window, host) }
 
         let group = window.tabGroup
         Self.logger.info(
             """
-            activate rail=\(self.railName, privacy: .public) \
+            show rail=\(self.railName, privacy: .public) \
             target=\(Self.describe(workspace), privacy: .public) \
             window=\(window.windowNumber, privacy: .public) visible=\(window.isVisible, privacy: .public) \
             tabs=\(group?.windows.count ?? 0, privacy: .public) \
@@ -552,16 +548,13 @@ internal final class WorkspaceRailViewController: NSViewController {
             """
         )
 
-        /// A background tab is a window AppKit will happily make key without bringing to the
-        /// front of its group, which reads as the click doing nothing. Selecting it in the
-        /// group first is the documented way to raise a specific tab.
+        // AppKit makes a background tab key without bringing it to the front of its group.
         if let group, group.selectedWindow !== window {
             group.selectedWindow = window
         }
         window.makeKeyAndOrderFront(nil)
         AppActivationPolicyController.shared.activate()
-        moveBrowseCursor(of: window, to: workspace)
-        applySelection()
+        return (window, host)
     }
 
     /// Going to an entry of a connection: its tabs come forward, and the object tree follows to its
@@ -616,6 +609,48 @@ internal final class WorkspaceRailViewController: NSViewController {
     private func openInNewWindow(_ sender: NSMenuItem) {
         guard let workspace = sender.representedObject as? WorkspaceID else { return }
         WindowManager.shared.moveToNewWindow(connectionId: workspace.connectionId)
+    }
+
+    // Not `showServerDashboard(_:)`: the rail sits ahead of the window in the responder chain and would take the menu bar's command.
+    @objc
+    private func showWorkspaceServerDashboard(_ sender: NSMenuItem) {
+        runServerTool(#selector(MainSplitViewController.showServerDashboard(_:)), from: sender)
+    }
+
+    @objc
+    private func showWorkspaceQueryInsights(_ sender: NSMenuItem) {
+        runServerTool(#selector(MainSplitViewController.showQueryInsights(_:)), from: sender)
+    }
+
+    // Both tools are server-wide, so the browse cursor stays: going to the row's container would switch databases for nothing.
+    private func runServerTool(_ command: Selector, from sender: NSMenuItem) {
+        guard let workspace = sender.representedObject as? WorkspaceID,
+              let shown = show(workspace) else { return }
+        applySelection()
+        guard MainSplitViewController.isEnabled(command, context: shown.host.menuValidationContext) else { return }
+        NSApp.sendAction(command, to: shown.host, from: sender)
+    }
+
+    // The Database menu's titles, order and commands, offered on the menu bar's own answer.
+    internal static func serverTools(offeredWith context: MenuValidationContext) -> [WorkspaceRailServerTool] {
+        [
+            WorkspaceRailServerTool(
+                title: String(localized: "Server Dashboard"),
+                command: #selector(MainSplitViewController.showServerDashboard(_:)),
+                railAction: #selector(showWorkspaceServerDashboard(_:))
+            ),
+            WorkspaceRailServerTool(
+                title: String(localized: "Query Insights"),
+                command: #selector(MainSplitViewController.showQueryInsights(_:)),
+                railAction: #selector(showWorkspaceQueryInsights(_:))
+            ),
+        ].filter { MainSplitViewController.isEnabled($0.command, context: context) }
+    }
+
+    private static func serverTools(for connectionId: UUID) -> [WorkspaceRailServerTool] {
+        let host = WindowManager.shared.window(for: connectionId)?.contentViewController as? MainSplitViewController
+        guard let context = host?.menuValidationContext(forHosted: connectionId) else { return [] }
+        return serverTools(offeredWith: context)
     }
 
     @objc
@@ -727,15 +762,16 @@ extension WorkspaceRailViewController: CloseCommandNaming {
 // MARK: - NSMenuDelegate
 
 extension WorkspaceRailViewController: NSMenuDelegate {
-    /// Lighter action first, the one that ends the connection last, which is the order Finder uses
-    /// on a Locations row and Mail on an account. Close carries the connection's own name because
-    /// a row can be one of several a connection has open, and the command takes all of them.
     internal func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
         let row = tableView.clickedRow
         guard entries.indices.contains(row) else { return }
         let entry = entries[row]
+        populate(menu, for: entry, serverTools: Self.serverTools(for: entry.workspace.connectionId))
+    }
 
+    // Lighter actions first and the one that ends the connection last, the order Finder and Mail keep.
+    internal func populate(_ menu: NSMenu, for entry: WorkspaceRailEntry, serverTools: [WorkspaceRailServerTool]) {
         if WindowManager.shared.canMoveToNewWindow(connectionId: entry.workspace.connectionId) {
             addItem(
                 to: menu,
@@ -743,6 +779,14 @@ extension WorkspaceRailViewController: NSMenuDelegate {
                 action: #selector(openInNewWindow(_:)),
                 workspace: entry.workspace
             )
+            menu.addItem(.separator())
+        }
+
+        // No key equivalent: a context item's chord would run on the window's connection, not the row's.
+        for tool in serverTools {
+            addItem(to: menu, title: tool.title, action: tool.railAction, workspace: entry.workspace)
+        }
+        if !serverTools.isEmpty {
             menu.addItem(.separator())
         }
 

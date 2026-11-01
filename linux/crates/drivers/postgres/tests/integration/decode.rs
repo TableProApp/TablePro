@@ -228,7 +228,7 @@ async fn set_null_saves_typed_null() {
     let changes = ChangeSet {
         changes: vec![RowChange::Update(RowUpdate {
             key: vec![Value::Int(1)],
-            assignments: (1..=4).map(|column| (column, Value::Null)).collect(),
+            assignments: (1..=4).map(|column| (column, CellInput::Value(Value::Null))).collect(),
         })],
     };
 
@@ -259,7 +259,7 @@ async fn char10_key_update_affects_one_row() {
     let changes = ChangeSet {
         changes: vec![RowChange::Update(RowUpdate {
             key: vec![Value::Text("ab".to_owned())],
-            assignments: vec![(1, Value::Text("changed".to_owned()))],
+            assignments: vec![(1, CellInput::Value(Value::Text("changed".to_owned())))],
         })],
     };
 
@@ -279,4 +279,27 @@ async fn char10_key_update_affects_one_row() {
         text(&scalar(connection.as_ref(), "SELECT v FROM c WHERE code = 'abc'").await),
         "y"
     );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn every_cell_expression_is_evaluated_by_the_server() {
+    let fixture = start().await;
+    let connection = connect(&fixture, false).await;
+    setup(
+        connection.as_ref(),
+        &[
+            "CREATE TABLE stamps (id int PRIMARY KEY, seen timestamp, seen_tz timestamptz, day date, clock time, \
+             clock_tz timetz, defaulted timestamp DEFAULT '2000-01-01')",
+            "INSERT INTO stamps (id) VALUES (1)",
+        ],
+    )
+    .await;
+    let table = TableRef::new(Some("public".to_owned()), "stamps");
+
+    let checked = tablepro_test_support::check_cell_expressions(connection.as_ref(), &table, || within(CALL))
+        .await
+        .expect("every expression saves");
+
+    assert_eq!(checked, 14);
 }

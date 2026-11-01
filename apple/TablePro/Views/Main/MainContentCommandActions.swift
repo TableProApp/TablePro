@@ -139,18 +139,25 @@ final class MainContentCommandActions: ObservableObject {
     // MARK: - Save Action
 
     private func saveInspectorEdits() {
-        let editState = trailingPaneState.inspector.editState
         Task { [weak self] in
-            guard let self else { return }
-            do {
-                try await self.coordinator?.saveSidebarEdits(editState: editState)
-            } catch {
-                AlertHelper.showErrorSheet(
-                    title: String(localized: "Failed to Save Changes"),
-                    message: error.localizedDescription,
-                    window: self.window
-                )
-            }
+            await self?.saveInspectorEditsAwaiting()
+        }
+    }
+
+    // A close waits on this: started and left, the write could land after the window it reports to closed.
+    @discardableResult
+    private func saveInspectorEditsAwaiting() async -> Bool {
+        let editState = trailingPaneState.inspector.editState
+        do {
+            try await coordinator?.saveSidebarEdits(editState: editState)
+            return true
+        } catch {
+            AlertHelper.showErrorSheet(
+                title: String(localized: "Failed to Save Changes"),
+                message: error.localizedDescription,
+                window: window
+            )
+            return false
         }
     }
 
@@ -677,14 +684,7 @@ final class MainContentCommandActions: ObservableObject {
             closeTab(id: selected.id)
             return
         }
-        if let entry = WorkspaceCloseAction.closableEntry(
-            connectionId: connectionId,
-            container: coordinator.tabManager.visibleContainer
-        ) {
-            Task { await WorkspaceCloseAction.close(entry.workspace) }
-            return
-        }
-        Task { await ConnectionCloseAction.close(connectionId: connectionId) }
+        closeWorkspace()
     }
 
     // asBatchSurvivor: nil for a lone close (the window decides), true for the window a batch keeps blank, false otherwise.
@@ -804,10 +804,8 @@ final class MainContentCommandActions: ObservableObject {
             }
         }
 
-        // Sidebar-only edits (made directly in the inspector panel)
         if trailingPaneState.inspector.editState.hasEdits {
-            saveInspectorEdits()
-            return true
+            return await saveInspectorEditsAwaiting()
         }
 
         // File save (query editor with source file)

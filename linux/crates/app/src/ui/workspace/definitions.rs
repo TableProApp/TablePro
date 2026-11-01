@@ -100,7 +100,7 @@ impl WorkspaceModel {
                 let input = self.input.clone();
                 let text = sql.clone();
                 Editor::Opens(Box::new(move || {
-                    input.deliver(WorkspaceInput::OpenSqlInEditor {
+                    input.deliver(WorkspaceInput::OpenInEditor {
                         sql: text.clone(),
                         database: database.clone(),
                     });

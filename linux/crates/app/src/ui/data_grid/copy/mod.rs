@@ -3,7 +3,6 @@ use std::sync::Arc;
 use gtk4::prelude::*;
 use gtk4::{self as gtk, glib};
 use tablepro_core::column::{ColumnInfo, ResultColumn};
-use tablepro_core::dialect::SqlDialect;
 use tablepro_core::edit::CellInput;
 use tablepro_core::{FilterRule, Value};
 
@@ -67,7 +66,7 @@ pub fn refresh_actions(grid: &DataGrid, target: Option<&Resolved>) {
     for (name, _) in ROW_COPIES {
         enable(grid, name, rows);
     }
-    let speaks_sql = sql_dialect(grid).is_some();
+    let speaks_sql = grid.sql_dialect().is_some();
     enable(grid, "copy-in-clause", cell.is_some() && speaks_sql);
     enable(grid, "copy-one-row", rows && speaks_sql);
     let inserts = rows && copies_inserts(grid);
@@ -211,7 +210,7 @@ fn copy_one_row(grid: &DataGrid) {
     let Some(target) = grid.target().filter(|target| !target.rows.is_empty()) else {
         return;
     };
-    let Some(dialect) = sql_dialect(grid) else {
+    let Some(dialect) = grid.sql_dialect() else {
         grid.toast(gettext("Connect to a database first."));
         return;
     };
@@ -226,7 +225,7 @@ fn copy_in_clause(grid: &DataGrid) {
     let Some((_, column)) = target.cell else {
         return;
     };
-    let Some(dialect) = sql_dialect(grid) else {
+    let Some(dialect) = grid.sql_dialect() else {
         grid.toast(gettext("Connect to a database first."));
         return;
     };
@@ -372,21 +371,17 @@ fn value_rule(grid: &DataGrid, row: &GridRow, column: usize, exclude: bool) -> O
     let config = grid.config().filter(|config| config.filter_by_value)?;
     let columns = grid.grid_columns();
     let grid_column = columns.get(column)?;
-    let rule = grid.tracked().with_value(row, column, |value, default| match default {
-        true => None,
-        false => cell_filter_rule(grid_column, value, exclude),
-    })?;
+    let rule = grid
+        .tracked()
+        .with_value(row, column, |value, computed| match computed {
+            Some(_) => None,
+            None => cell_filter_rule(grid_column, value, exclude),
+        })?;
     let dialect = config.dialect.as_ref().and_then(|dialect| dialect());
     FilterVocabulary::of(dialect)
         .operators(grid_column.catalog.as_ref()?)
         .contains(&rule.op)
         .then_some(rule)
-}
-
-/// The connection's dialect, where the rows have an SQL spelling.
-fn sql_dialect(grid: &DataGrid) -> Option<Arc<dyn SqlDialect>> {
-    let dialect = (grid.config()?.dialect.as_ref()?)()?;
-    dialect.grammar().is_sql().then_some(dialect)
 }
 
 /// An editing grid of a table, every column of it read from the

@@ -420,6 +420,8 @@ fn connect_structure(structure: &StructureTab, tab_id: Uuid, input: &WorkspaceSe
     structure.connect_toast(move |_, text| toast.deliver(WorkspaceInput::ShowToast(text)));
     let alert = input.clone();
     structure.connect_alert(move |_, title, body| alert.deliver(WorkspaceInput::ShowAlert { title, body }));
+    let open = input.clone();
+    structure.connect_open_in_editor(move |_, sql| open.deliver(WorkspaceInput::OpenInEditor { sql, database: None }));
 }
 
 /// The diagram's signals, as the workspace's inputs: a table it names

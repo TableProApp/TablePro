@@ -612,7 +612,7 @@ pub(crate) enum WorkspaceInput {
     },
     /// SQL to work on in a new editor tab, moved to `database` when the
     /// text only runs there.
-    OpenSqlInEditor {
+    OpenInEditor {
         sql: String,
         database: Option<String>,
     },
@@ -1287,7 +1287,7 @@ impl WorkspaceModel {
             WorkspaceInput::DefinitionLoaded(loaded) => self.on_definition_loaded(loaded),
             WorkspaceInput::EditStructureTab { schema, table } => self.on_edit_structure_tab(schema, table),
             WorkspaceInput::ShowCreateTableForExisting { schema, table } => self.on_show_create_table(schema, table),
-            WorkspaceInput::OpenSqlInEditor { sql, database } => self.open_sql_in_editor(sql, database),
+            WorkspaceInput::OpenInEditor { sql, database } => self.open_sql_in_editor(sql, database),
             WorkspaceInput::DropTablePrompt { schema, table } => self.on_drop_table_prompt(schema, table),
             WorkspaceInput::DropTableChecked { table, referencing } => self.on_drop_table_checked(table, &referencing),
             WorkspaceInput::DropTableConfirmed { schema, table } => self.on_drop_table_confirmed(schema, table),

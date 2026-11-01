@@ -1,5 +1,5 @@
 use tablepro_core::column::ColumnType;
-use tablepro_core::edit::{CellInput, new_draft_cell, parse_literal_text};
+use tablepro_core::edit::{CellInput, MomentKind, new_draft_cell, parse_literal_text};
 use tablepro_core::export::value_text;
 use tablepro_core::value::same_value;
 use tablepro_core::{ColumnInfo, Value};
@@ -87,10 +87,19 @@ impl<'a> ColumnRelayout<'a> {
         }
     }
 
-    /// Where a draft cell's input in old column `col` belongs now. A
-    /// cell left to the server fits anywhere, as NULL does.
+    /// Where a cell's input in old column `col` belongs now. A cell left
+    /// to the server fits anywhere, as NULL does, and an expression where
+    /// the column still takes it.
     pub(crate) fn input_cell(&self, col: usize, input: &CellInput) -> Result<usize, Misfit> {
-        self.cell(col, input.value().unwrap_or(&Value::Null))
+        let CellInput::Expression(expression) = input else {
+            return self.cell(col, input.value().unwrap_or(&Value::Null));
+        };
+        let moved = self.cell(col, &Value::Null)?;
+        let takes = MomentKind::of(&self.new[moved].column_type).is_some_and(|kind| expression.fills.contains(&kind));
+        match takes {
+            true => Ok(moved),
+            false => Err(Misfit::Columns(vec![self.new[moved].name.clone()])),
+        }
     }
 
     /// A new row's cells under the new columns. A value the user left
@@ -100,10 +109,12 @@ impl<'a> ColumnRelayout<'a> {
     pub(crate) fn draft(&self, cells: &[CellInput]) -> Result<Vec<CellInput>, Misfit> {
         let mut lost = Vec::new();
         for (col, input) in cells.iter().enumerate() {
-            let Some(value) = input.value().filter(|value| !matches!(value, Value::Null)) else {
-                continue;
+            let fits = match input {
+                CellInput::Expression(_) => self.input_cell(col, input),
+                CellInput::Value(value) if !value.is_null() => self.cell(col, value),
+                CellInput::Value(_) | CellInput::Default => continue,
             };
-            if let Err(Misfit::Columns(columns)) = self.cell(col, value) {
+            if let Err(Misfit::Columns(columns)) = fits {
                 lost.extend(columns);
             }
         }

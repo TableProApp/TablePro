@@ -498,6 +498,7 @@ fn index_fetch_failure_keeps_loaded_indexes() {
             unique: true,
             primary: false,
             predicate: None,
+            definition: None,
         }],
         ..definition("id")
     };
@@ -1557,6 +1558,7 @@ fn icon_buttons_are_labelled_without_accelerator_hints() {
             unique: false,
             primary: false,
             predicate: None,
+            definition: Some("CREATE INDEX users_team_idx ON public.users USING btree (team_id)".to_owned()),
         }],
         foreign_keys: vec![tablepro_core::ForeignKeyInfo {
             name: "users_team_fk".to_owned(),
@@ -1946,4 +1948,65 @@ fn a_failed_character_set_read_leaves_the_tab_editable() {
 
     assert!(imp.save_button.is_sensitive());
     assert_eq!(imp.pending_label.label(), "2 unsaved changes");
+}
+
+fn email_index(name: &str, definition: Option<&str>) -> tablepro_core::IndexInfo {
+    tablepro_core::IndexInfo {
+        name: name.to_owned(),
+        keys: vec![tablepro_core::meta::IndexKey::Column {
+            name: "email".to_owned(),
+            descending: false,
+        }],
+        unique: true,
+        primary: false,
+        predicate: None,
+        definition: definition.map(str::to_owned),
+    }
+}
+
+/// An index the table has offers its statement to copy or open; one
+/// only drafted in the tab has none to offer.
+#[gtk4::test]
+fn a_saved_index_shows_and_copies_its_create_statement() {
+    let statement = "CREATE UNIQUE INDEX users_email ON public.users USING btree (email)";
+    let mut table = definition("email");
+    table.indexes = vec![email_index("users_email", Some(statement))];
+    let mut script = postgres_script();
+    script.fetch_table_definition.always(FakeReply::ok(table));
+    let harness = Harness::open(StructureMode::Edit, script, []);
+    wait_until(WAIT, || harness.page().as_deref() == Some("editor")).expect("the structure");
+    let toasts = toasts(harness.tab());
+    let opened = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+    let sink = opened.clone();
+    harness
+        .tab()
+        .connect_open_in_editor(move |_, sql| sink.borrow_mut().push(sql));
+    harness
+        .tab()
+        .send(IndexesInput::AddIndex(email_index("users_email_draft", None)));
+    drain_main_context();
+
+    let menus: Vec<gtk::Widget> = descendants(harness.tab())
+        .into_iter()
+        .filter(|widget| widget.widget_name() == "index-statement")
+        .collect();
+    assert_eq!(menus.len(), 1, "only the saved index offers a statement");
+    menus[0]
+        .activate_action("index.copy-create", None)
+        .expect("the copy action");
+    menus[0]
+        .activate_action("index.show-create", None)
+        .expect("the show action");
+    drain_main_context();
+
+    let copied = harness
+        .tab()
+        .clipboard()
+        .content()
+        .and_then(|content| content.value(String::static_type()).ok())
+        .and_then(|value| value.get::<String>().ok());
+    let expected = format!("{statement};");
+    assert_eq!(copied.as_deref(), Some(expected.as_str()));
+    assert_eq!(*toasts.borrow(), ["Copied to clipboard"]);
+    assert_eq!(*opened.borrow(), [expected]);
 }

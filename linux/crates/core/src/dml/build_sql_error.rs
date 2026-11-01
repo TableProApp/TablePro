@@ -23,6 +23,10 @@ pub enum BuildSqlError {
     /// sort or an update would read as a path or an operator.
     #[error("field {name} has a name an update or a sort cannot write")]
     UnaddressableField { name: String },
+    /// A default or an expression where the engine's statement has no
+    /// place for one.
+    #[error("column {name} cannot be set to a value the server computes")]
+    ServerComputedValue { name: String },
     #[error(transparent)]
     Bind(#[from] BindError),
 }

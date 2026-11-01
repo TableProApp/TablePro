@@ -38,7 +38,9 @@ pub use self::copy_scope::{CopyScope, copy_scope};
 pub use self::delete_availability::{DeleteAvailability, delete_availability};
 pub use self::display_text::{auto_filled_sentinel, display_text};
 pub use self::edit_navigation::{EditDirection, next_edit_target};
-pub use self::edit_parse::{CommitResult, EditStart, commit_edit, commit_input, edit_context, empty_placeholder};
+pub use self::edit_parse::{
+    CommitResult, EditStart, commit_edit, commit_input, edit_context, empty_placeholder, opening_text, parse_cell_text,
+};
 pub use self::edit_policy::{EditPolicy, EditRefusal, edit_policy, selection_hint};
 pub use self::find_matches::{FindMatch, find_matches};
 pub use self::grid_column::{CellDisplay, GridColumn, grid_columns};

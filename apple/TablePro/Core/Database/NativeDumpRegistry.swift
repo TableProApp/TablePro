@@ -534,7 +534,7 @@ enum NativeDumpRegistry {
                 contentDescription: String(localized: "SQL statements")
             ),
             objectScope: .tables(caveat: nil),
-            restoreSemantics: .addsToExistingObjects,
+            restoreSemantics: .stopsAtFirstError,
             requiresLocalFile: true
         )
     }
