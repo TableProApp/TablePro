@@ -12,18 +12,18 @@ public enum MemcachedStatements {
     }
 
     public static func set(key: String, flags: UInt32, exptime: Int64, value: String) -> String {
-        "set \(key) \(flags) \(exptime) \(MemcachedCommandParser.quoted(value))"
+        "set \(MemcachedCommandParser.argument(key)) \(flags) \(exptime) \(MemcachedCommandParser.quoted(value))"
     }
 
     public static func set(key: String, flags: UInt32, exptime: Int64, bytes: Data) -> String {
-        "set \(key) \(flags) \(exptime) \(MemcachedCommandParser.quoted(bytes: bytes))"
+        "set \(MemcachedCommandParser.argument(key)) \(flags) \(exptime) \(MemcachedCommandParser.quoted(bytes: bytes))"
     }
 
     public static func touch(key: String, exptime: Int64) -> String {
-        "touch \(key) \(exptime)"
+        "touch \(MemcachedCommandParser.argument(key)) \(exptime)"
     }
 
     public static func delete(key: String) -> String {
-        "delete \(key)"
+        "delete \(MemcachedCommandParser.argument(key))"
     }
 }

@@ -19,6 +19,7 @@ final class MemcachedPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private var connection: MemcachedConnection?
     private var _serverVersion: String?
     private var keySource: MemcachedKeySource = .metadump
+    private var queryTimeout = 0
 
     init(config: DriverConnectionConfig) {
         endpoint = MemcachedEndpoint(
@@ -48,6 +49,7 @@ final class MemcachedPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let opened = MemcachedConnection(endpoint: endpoint)
         do {
             try await opened.open()
+            await opened.setRequestTimeout(seconds: lock.withLock { queryTimeout })
             let version = try await Self.version(on: opened)
             let source = try await Self.keySource(on: opened)
             lock.withLock {
@@ -72,6 +74,11 @@ final class MemcachedPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func ping() async throws {
         _ = try await Self.version(on: try liveConnection())
+    }
+
+    func applyQueryTimeout(_ seconds: Int) async throws {
+        lock.withLock { queryTimeout = seconds }
+        await lock.withLock({ connection })?.setRequestTimeout(seconds: seconds)
     }
 
     private func liveConnection() throws -> MemcachedConnection {
@@ -246,6 +253,7 @@ final class MemcachedPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let listing = MemcachedConnection(endpoint: endpoint)
         do {
             try await listing.open()
+            await listing.setRequestTimeout(seconds: lock.withLock { queryTimeout })
             let value = try await body(listing)
             await listing.close()
             return value

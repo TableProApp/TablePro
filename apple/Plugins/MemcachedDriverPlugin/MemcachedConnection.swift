@@ -121,6 +121,12 @@ actor MemcachedConnection {
     private var handler: MemcachedReplyHandler?
     private var wireSlotIsTaken = false
     private var waitingForWireSlot: [CheckedContinuation<Void, Never>] = []
+    private var requestTimeout: TimeAmount?
+
+    /// A reply that has not finished by then closes the connection, since the text protocol cannot skip it.
+    func setRequestTimeout(seconds: Int) {
+        requestTimeout = seconds > 0 ? .seconds(Int64(seconds)) : nil
+    }
 
     init(endpoint: MemcachedEndpoint) {
         self.endpoint = endpoint
@@ -164,9 +170,15 @@ actor MemcachedConnection {
         }
     }
 
-    /// A server started with `-Y <auth file>` takes the user and password as the data of the first `set`.
+    /// A server started with `-Y <auth file>` refuses every command until a `set` carries the user and password.
+    /// Any other server would store them as an ordinary item, so they are sent only after a refusal.
     private func authenticate() async throws {
-        guard !endpoint.username.isEmpty else { return }
+        do {
+            _ = try await send(.version)
+            return
+        } catch let error as MemcachedServerError where error.needsAuthentication {
+            guard !endpoint.username.isEmpty else { throw MemcachedError.authenticationRequired }
+        }
         let login = MemcachedCommand.store(
             .set, key: "tablepro", flags: 0, exptime: 0, value: Data("\(endpoint.username) \(endpoint.password)".utf8)
         )
@@ -208,7 +220,7 @@ actor MemcachedConnection {
 
     /// Sends one command and reads its reply. Cancelling closes the channel: once a request is written the text
     /// protocol has no way to skip its reply, so the connection cannot be reused for the next one.
-    func send(_ command: MemcachedCommand, lineLimit: Int = .max) async throws -> MemcachedReply {
+    func send(_ command: MemcachedCommand, lineLimit: Int = 1_000_000) async throws -> MemcachedReply {
         await claimWireSlot()
         defer { releaseWireSlot() }
 
@@ -218,6 +230,13 @@ actor MemcachedConnection {
         let bytes = command.wireBytes
         var buffer = channel.allocator.buffer(capacity: bytes.count)
         buffer.writeBytes(bytes)
+        let deadline = requestTimeout.map { timeout in
+            channel.eventLoop.scheduleTask(in: timeout) {
+                handler.finish(with: MemcachedError.timedOut)
+                channel.close(promise: nil)
+            }
+        }
+        defer { deadline?.cancel() }
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
                 guard handler.expect(command.replyShape, lineLimit: lineLimit, continuation: continuation) else { return }

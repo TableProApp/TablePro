@@ -30,6 +30,9 @@ func refusal(user: String, password: String) async -> String? {
         return error.localizedDescription
     }
 }
+if env["MEMCACHED_USER"]?.isEmpty ?? true {
+    _ = await refusal(user: "probe-user", password: "probe-password")
+}
 if let user = env["MEMCACHED_USER"], !user.isEmpty {
     let missing = await refusal(user: "", password: "")
     check(missing?.contains("requires a username") == true, "no credentials: \(missing ?? "connected")")
@@ -143,13 +146,27 @@ do {
 } catch {
     check(true, "a bad statement is refused: \(error.localizedDescription)")
 }
+let leaked = try await driver.execute(query: "get tablepro")
+check(leaked.rows.isEmpty, "credentials given to an open server are not stored as an item")
+let reset = try await driver.execute(query: "stats reset")
+check(texts(reset).first?.first == "RESET", "stats reset answers one status line")
+let quotedKey = "\(prefix)it's \"quoted\""
+let quotedWrites = try driver.generateRowWrites(
+    table: "keys", schema: nil, columns: columns, primaryKeyColumns: ["Key"],
+    changes: [PluginRowChange(rowIndex: 0, type: .insert, cellChanges: [], originalRow: nil)],
+    insertedRowData: [0: [.text(quotedKey.replacingOccurrences(of: " ", with: "_")), .text("q"), .null, .null]],
+    deletedRowIndices: [], insertedRowIndices: [0]
+) ?? []
+for write in quotedWrites { _ = try await driver.execute(query: write.statement) }
+let quotedRead = try await driver.execute(query: "get \(MemcachedCommandParser.argument(quotedKey.replacingOccurrences(of: " ", with: "_")))")
+check(texts(quotedRead).first?[1] == "q", "a key with quotes is written and read back")
 let notStored = try await driver.execute(query: "add \(prefix)00 0 0 \"x\"")
 check(texts(notStored).first?.first == "NOT_STORED", "add on an existing key replies NOT_STORED")
 
 let keys = try await driver.execute(query: MemcachedBrowseSpec(
     limit: 100, offset: 0, ascending: true, conditions: [condition]
 ).statement)
-for row in texts(keys) { _ = try await driver.execute(query: "delete \(row[0] ?? "")") }
+for row in texts(keys) { _ = try await driver.execute(query: MemcachedStatements.delete(key: row[0] ?? "")) }
 try await driver.ping()
 driver.disconnect()
 

@@ -69,6 +69,8 @@ public struct MemcachedReplyReader: Sendable {
     private var pendingValue: (key: String, flags: UInt32, length: Int, unique: UInt64?)?
 
     private static let maximumLineLength = 64 * 1_024
+    /// Memcached's largest item size setting, `-I 1024m`. A longer data block is not a Memcached reply.
+    public static let maximumValueLength = 1 << 30
 
     public init(shape: MemcachedReplyShape, lineLimit: Int = .max) {
         self.shape = shape
@@ -141,7 +143,7 @@ public struct MemcachedReplyReader: Sendable {
     private static func valueHeader(_ line: String) throws -> (key: String, flags: UInt32, length: Int, unique: UInt64?) {
         let parts = line.split(separator: " ", omittingEmptySubsequences: true)
         guard parts.count == 4 || parts.count == 5, parts[0] == "VALUE",
-              let flags = UInt32(parts[2]), let length = Int(parts[3]), length >= 0 else {
+              let flags = UInt32(parts[2]), let length = Int(parts[3]), (0 ... maximumValueLength).contains(length) else {
             throw MemcachedProtocolError.malformedLine(line)
         }
         let unique = parts.count == 5 ? UInt64(parts[4]) : nil

@@ -5,6 +5,7 @@ import TableProPluginKit
 enum MemcachedError: Error, PluginDriverError {
     case notConnected
     case connectionClosed
+    case timedOut
     case connectFailed(String)
     case authenticationRequired
     case authenticationFailed
@@ -20,6 +21,8 @@ enum MemcachedError: Error, PluginDriverError {
             return String(localized: "Not connected to Memcached")
         case .connectionClosed:
             return String(localized: "Memcached closed the connection")
+        case .timedOut:
+            return String(localized: "Memcached did not answer in time")
         case .connectFailed(let reason):
             return String(format: String(localized: "Could not connect to Memcached: %@"), reason)
         case .authenticationRequired:

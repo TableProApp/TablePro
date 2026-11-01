@@ -23,8 +23,20 @@ public enum MemcachedCommand: Equatable, Sendable {
     public var replyShape: MemcachedReplyShape {
         switch self {
         case .get, .getAndTouch: return .values
-        case .stats, .metadump: return .lines
+        case .stats(let arguments): return Self.statsChangingServer(arguments) ? .status : .lines
+        case .metadump: return .lines
         default: return .status
+        }
+    }
+
+    /// `stats reset`, `stats detail on|off` and `stats sizes_enable|sizes_disable` change the server and answer one
+    /// status line with no `END`. Every other `stats` form reads.
+    public static func statsChangingServer(_ arguments: [String]) -> Bool {
+        let words = arguments.map { $0.lowercased() }
+        switch words.first {
+        case "reset", "sizes_enable", "sizes_disable": return true
+        case "detail": return words.count > 1 && words[1] != "dump"
+        default: return false
         }
     }
 
@@ -142,6 +154,11 @@ public enum MemcachedCommandParser {
     /// Writes a value so `parse` reads it back byte for byte.
     public static func quoted(_ value: String) -> String {
         escaped(Array(value.utf8), keepingUTF8: true)
+    }
+
+    /// A key as one argument: as written unless it holds a quote or backslash, which the tokenizer would read.
+    public static func argument(_ key: String) -> String {
+        key.contains(where: { $0 == "\"" || $0 == "'" || $0 == "\\" }) ? quoted(key) : key
     }
 
     /// Writes bytes that may not be UTF-8, every byte past ASCII as `\xHH`.

@@ -70,8 +70,10 @@ struct MemcachedReplyReaderTests {
         #expect(try read(.status, ["VERSION 1.6.45\r\n"]) == .status("VERSION 1.6.45"))
     }
 
-    @Test("A malformed VALUE header is a protocol error")
-    func malformedHeader() {
-        #expect(throws: MemcachedProtocolError.self) { try read(.values, ["VALUE a x 1\r\n"]) }
+    @Test("A malformed VALUE header, or one announcing more than memcached can store, is a protocol error", arguments: [
+        "VALUE a x 1\r\n", "VALUE a 0 9223372036854775807\r\n", "VALUE a 0 -1\r\n",
+    ])
+    func malformedHeader(header: String) {
+        #expect(throws: MemcachedProtocolError.self) { try read(.values, [header]) }
     }
 }

@@ -101,3 +101,28 @@ struct MemcachedStatementsTests {
         #expect(try MemcachedCommandParser.parse(MemcachedStatements.delete(key: "k")) == .delete(key: "k"))
     }
 }
+
+struct MemcachedKeyQuotingTests {
+    @Test("A key holding a quote or backslash is quoted, so the statement addresses that key", arguments: [
+        "user'1", "a\"b\"", "back\\slash", "plain:key",
+    ])
+    func keysRoundTrip(key: String) throws {
+        #expect(try MemcachedCommandParser.parse(MemcachedStatements.delete(key: key)) == .delete(key: key))
+        #expect(try MemcachedCommandParser.parse(MemcachedStatements.touch(key: key, exptime: 5)) == .touch(key: key, exptime: 5))
+        #expect(try MemcachedCommandParser.parse(MemcachedStatements.set(key: key, flags: 0, exptime: 0, value: "v"))
+            == .store(.set, key: key, flags: 0, exptime: 0, value: Data("v".utf8)))
+    }
+
+    @Test("A plain key is written as it is")
+    func plainKey() {
+        #expect(MemcachedStatements.delete(key: "user:1") == "delete user:1")
+    }
+
+    @Test("stats forms that change the server answer one status line", arguments: [
+        ("stats reset", MemcachedReplyShape.status), ("stats detail on", .status), ("stats detail off", .status),
+        ("stats sizes_enable", .status), ("stats detail dump", .lines), ("stats items", .lines), ("stats", .lines),
+    ])
+    func statsShapes(statement: String, shape: MemcachedReplyShape) throws {
+        #expect(try MemcachedCommandParser.parse(statement).replyShape == shape)
+    }
+}
