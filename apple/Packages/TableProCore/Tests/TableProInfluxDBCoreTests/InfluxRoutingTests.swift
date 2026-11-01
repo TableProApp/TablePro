@@ -141,28 +141,22 @@ struct InfluxRoutingTests {
 
     @Test(arguments: [
         "SELECT host FROM cpu WHERE host =~ /--/; DELETE FROM cpu",
-        "SELECT host FROM cpu WHERE host =~ /it's/; DELETE FROM cpu",
-        #"SELECT * FROM cpu WHERE "note" =~ /\\/ AND "note" =~ /; DELETE FROM cpu --/"#,
-        "SELECT * FROM cpu WHERE host =~ /*/; DELETE FROM cpu",
+        "SELECT /'/ FROM cpu; DELETE FROM cpu -- '",
+        "SELECT * FROM cpu GROUP BY /'/; DROP MEASUREMENT cpu -- '",
+        "SELECT * FROM cpu WHERE host =~ /--/ AND value > 1./1; DELETE FROM cpu",
         "SHOW MEASUREMENTS; SHOW DATABASES",
-        "SELECT 'a;b' FROM cpu; DROP MEASUREMENT cpu",
+        "SELECT * FROM cpu WHERE note = 'a;b'",
+        "/* note\n; still a comment\n*/\nSHOW MEASUREMENTS",
+        "SELECT * FROM cpu;\u{301} DELETE FROM cpu",
     ])
-    func influxQLHoldingASecondStatementIsRefused(statement: String) {
+    func influxQLWithASemicolonBeforeItsEndIsRefused(statement: String) {
         #expect(throws: InfluxError.multipleStatements) {
             try InfluxStatement.route(statement, generation: .v2)
         }
     }
 
-    @Test(arguments: [
-        "SELECT * FROM cpu WHERE note =~ /a;b/",
-        "SELECT * FROM cpu WHERE note = 'it\\'s; fine'",
-        "SELECT * FROM \"a;b\"",
-        "SELECT usage / 2 FROM cpu;",
-        "SELECT * FROM cpu -- a; b",
-        "SELECT * FROM cpu /* a; b */",
-        "SELECT * FROM \"metrics\".\"autogen\"./cp;u/",
-    ])
-    func oneInfluxQLStatementRoutes(statement: String) throws {
+    @Test(arguments: ["SELECT usage / 2 FROM cpu;", "SELECT * FROM cpu ; \n", "SELECT * FROM cpu WHERE host =~ /a|b/"])
+    func influxQLEndingInASemicolonRoutes(statement: String) throws {
         #expect(try InfluxStatement.route(statement, generation: .v2).language == .influxQL)
     }
 
@@ -175,10 +169,5 @@ struct InfluxRoutingTests {
     @Test func aQuoteInsideAFluxRegexDoesNotHideThePipeline() throws {
         let flux = "p = /'/\nfrom(bucket: \"metrics\") |> range(start: -1h) |> filter(fn: (r) => r.host =~ p)"
         #expect(try InfluxStatement.route(flux, generation: .v2).language == .flux)
-    }
-
-    @Test func aLeadingBlockCommentHoldingASemicolonIsOneStatement() throws {
-        let statement = "/* note\n; still a comment\n*/\nSHOW MEASUREMENTS"
-        #expect(try InfluxStatement.route(statement, generation: .v2).language == .influxQL)
     }
 }

@@ -30,7 +30,6 @@ public struct InfluxStatement: Sendable, Equatable {
         guard generation.languages.contains(language) else {
             throw InfluxError.unsupportedLanguage(language, generation: generation)
         }
-        // `/query` runs every statement in the text, so a split the gate read differently would run unchecked.
         if language == .influxQL, !InfluxQLText.isSingleStatement(parsed.body) {
             throw InfluxError.multipleStatements
         }
@@ -143,82 +142,14 @@ enum InfluxNeutralCode {
     }
 }
 
-// InfluxQL's own scanner, enough to count statements: `--` and `/* */` comments, quotes with backslash pairs, and
-// regex literals, in which `\/` is always an escaped slash. After `=~`, `!~`, `FROM`, `,` or `.` the parser reads a
-// regex before it would see a `/*` comment, so there both readings must find one statement.
+// `/query` runs every statement in the text, and telling a separator from text needs InfluxQL's parser, which picks
+// regex or division from its state. So any `;` before the end is refused, inside a literal or a comment too.
 enum InfluxQLText {
     static func isSingleStatement(_ text: String) -> Bool {
-        let scalars = Array(text.unicodeScalars)
-        return [true, false].allSatisfy { statementCount(scalars, regexBeforeComment: $0) <= 1 }
-    }
-
-    private static let regexContexts: Set<String> = ["=~", "!~", "FROM", ",", "."]
-
-    static func statementCount(_ scalars: [Unicode.Scalar], regexBeforeComment: Bool) -> Int {
-        var index = 0
-        var count = 0
-        var hasCode = false
-        var operandEnded = false
-        var last = ""
-
-        func peek(_ offset: Int = 0) -> Unicode.Scalar? {
-            index + offset < scalars.count ? scalars[index + offset] : nil
+        var scalars = text.unicodeScalars[...]
+        while let last = scalars.last, last == ";" || last.properties.isWhitespace {
+            scalars.removeLast()
         }
-
-        func skipRegex() {
-            index += 1
-            while let next = peek(), next != "/", next != "\n" {
-                index += next == "\\" && peek(1) == "/" ? 2 : 1
-            }
-            index += 1
-        }
-
-        while let scalar = peek() {
-            let opensComment = scalar == "/" && peek(1) == "*"
-            if scalar.properties.isWhitespace {
-                index += 1
-            } else if scalar == "-", peek(1) == "-" {
-                while let next = peek(), next != "\n" { index += 1 }
-            } else if opensComment, !(regexBeforeComment && regexContexts.contains(last)) {
-                index += 2
-                while peek() != nil, !(peek() == "*" && peek(1) == "/") { index += 1 }
-                index += 2
-            } else if scalar == ";" {
-                if hasCode { count += 1 }
-                hasCode = false
-                operandEnded = false
-                last = ""
-                index += 1
-            } else {
-                hasCode = true
-                if scalar == "\'" || scalar == "\"" {
-                    index += 1
-                    while let next = peek(), next != scalar {
-                        index += next == "\\" ? 2 : 1
-                    }
-                    index += 1
-                    operandEnded = true
-                    last = "quoted"
-                } else if scalar == "/", !operandEnded {
-                    skipRegex()
-                    operandEnded = true
-                    last = "regex"
-                } else if scalar == "_" || scalar.properties.isAlphabetic || ("0" ... "9").contains(scalar) {
-                    var word = String.UnicodeScalarView()
-                    while let next = peek(), next == "_" || next.properties.isAlphabetic || ("0" ... "9").contains(next) {
-                        word.append(next)
-                        index += 1
-                    }
-                    last = String(word).uppercased()
-                    operandEnded = last != "FROM"
-                } else {
-                    let symbol = String(Character(scalar))
-                    last = scalar == "~" && (last == "=" || last == "!") ? last + symbol : symbol
-                    operandEnded = scalar == ")" || scalar == "]"
-                    index += 1
-                }
-            }
-        }
-        return hasCode ? count + 1 : count
+        return !scalars.contains(";")
     }
 }

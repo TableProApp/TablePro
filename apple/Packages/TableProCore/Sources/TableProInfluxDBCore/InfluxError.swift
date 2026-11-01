@@ -11,6 +11,7 @@ public enum InfluxError: Error, Equatable, LocalizedError {
     case missingOrganization
     case filterNotExpressible(InfluxQueryLanguage)
     case multipleStatements
+    case fluxReadDiffers
     case unknownVersion
     case unsupportedVersion(String)
     case unsupportedLanguage(InfluxQueryLanguage, generation: InfluxGeneration)
@@ -41,7 +42,11 @@ public enum InfluxError: Error, Equatable, LocalizedError {
                 language.displayName
             )
         case .multipleStatements:
-            return String(localized: "Run one InfluxQL statement at a time.")
+            return String(localized: "Run one InfluxQL statement at a time, with no ; inside it.")
+        case .fluxReadDiffers:
+            return String(
+                localized: "InfluxDB reads this Flux script as one that writes or reaches outside the database, which TablePro's check did not see, so it was not run."
+            )
         case .unknownVersion:
             return String(localized: "The server did not say which InfluxDB version it runs.")
         case .unsupportedVersion(let version):

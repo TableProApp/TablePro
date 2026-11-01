@@ -132,6 +132,18 @@ public enum InfluxRequests {
         )
     }
 
+    public static func v2FluxAST(_ script: String, organization: String, credentials: InfluxCredentials) throws -> InfluxRequest {
+        var headers = authHeaders(credentials, generation: .v2)
+        headers["Content-Type"] = "application/json"
+        return InfluxRequest(
+            method: "POST",
+            path: "/api/v2/query/ast",
+            query: [InfluxQueryItem("org", organization)],
+            headers: headers,
+            body: try JSONSerialization.data(withJSONObject: ["query": script], options: [.sortedKeys])
+        )
+    }
+
     public static func v2Organizations(credentials: InfluxCredentials) -> InfluxRequest {
         InfluxRequest(method: "GET", path: "/api/v2/orgs", headers: authHeaders(credentials, generation: .v2))
     }

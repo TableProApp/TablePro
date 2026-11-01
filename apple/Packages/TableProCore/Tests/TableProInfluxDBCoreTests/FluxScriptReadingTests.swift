@@ -191,4 +191,145 @@ struct FluxScriptReadingTests {
     func anUnclosedLiteralFailsClosed(script: String) {
         #expect(FluxScriptReading(script) == writesOutside)
     }
+
+    @Test func theServerASTOfHiddenTo() throws {
+        // import \"array\"\n/\"/\narray.from(rows: [{a: 1}]) |> to(bucket: \"x\")\n// \"
+        let ast = Data(#"""
+        {"ast":{"type":"Package","package":"main","files":[{"type":"File","package":null,"imports":[{"type":"ImportDeclaration",
+        "as":null,"path":{"type":"StringLiteral","value":"array"}}],"body":[{"type":"ExpressionStatement","expression":{"type":"RegexpLiteral",
+        "value":"\""}},{"type":"ExpressionStatement","expression":{"type":"PipeExpression","argument":{"type":"CallExpression",
+        "callee":{"type":"MemberExpression","object":{"type":"Identifier","name":"array"},"property":{"type":"Identifier",
+        "name":"from"}},"arguments":[{"type":"ObjectExpression","properties":[{"type":"Property","key":{"type":"Identifier",
+        "name":"rows"},"value":{"type":"ArrayExpression","elements":[{"type":"ObjectExpression","properties":[{"type":"Property",
+        "key":{"type":"Identifier","name":"a"},"value":{"type":"IntegerLiteral","value":"1"}}]}]}}]}]},"call":{"type":"CallExpression",
+        "callee":{"type":"Identifier","name":"to"},"arguments":[{"type":"ObjectExpression","properties":[{"type":"Property",
+        "key":{"type":"Identifier","name":"bucket"},"value":{"type":"StringLiteral","value":"x"}}]}]}}}],"eof":[{"text":"// \""}]}]}}
+        """#.utf8)
+        #expect(try FluxAST.reading(ast) == writesHere)
+    }
+
+    @Test func theServerASTOfRead() throws {
+        // from(bucket: \"m\") |> range(start: -1h) |> filter(fn: (r) => r.host == \"a\") |> map(fn: (r) => ({r
+        let ast = Data(#"""
+        {"ast":{"type":"Package","package":"main","files":[{"type":"File","package":null,"imports":null,"body":[{"type":"ExpressionStatement",
+        "expression":{"type":"PipeExpression","argument":{"type":"PipeExpression","argument":{"type":"PipeExpression",
+        "argument":{"type":"CallExpression","callee":{"type":"Identifier","name":"from"},"arguments":[{"type":"ObjectExpression",
+        "properties":[{"type":"Property","key":{"type":"Identifier","name":"bucket"},"value":{"type":"StringLiteral","value":"m"}}]}]},
+        "call":{"type":"CallExpression","callee":{"type":"Identifier","name":"range"},"arguments":[{"type":"ObjectExpression",
+        "properties":[{"type":"Property","key":{"type":"Identifier","name":"start"},"value":{"type":"UnaryExpression",
+        "operator":"-","argument":{"type":"DurationLiteral","values":[{"magnitude":1,"unit":"h"}]}}}]}]}},"call":{"type":"CallExpression",
+        "callee":{"type":"Identifier","name":"filter"},"arguments":[{"type":"ObjectExpression","properties":[{"type":"Property",
+        "key":{"type":"Identifier","name":"fn"},"value":{"type":"FunctionExpression","params":[{"type":"Property","key":{"type":"Identifier",
+        "name":"r"},"value":null}],"body":{"type":"BinaryExpression","operator":"==","left":{"type":"MemberExpression",
+        "object":{"type":"Identifier","name":"r"},"property":{"type":"Identifier","name":"host"}},"right":{"type":"StringLiteral",
+        "value":"a"}}}}]}]}},"call":{"type":"CallExpression","callee":{"type":"Identifier","name":"map"},"arguments":[{"type":"ObjectExpression",
+        "properties":[{"type":"Property","key":{"type":"Identifier","name":"fn"},"value":{"type":"FunctionExpression",
+        "params":[{"type":"Property","key":{"type":"Identifier","name":"r"},"value":null}],"body":{"type":"ParenExpression",
+        "expression":{"type":"ObjectExpression","with":{"type":"Identifier","name":"r"},"properties":[{"type":"Property",
+        "key":{"type":"Identifier","name":"host"},"value":{"type":"StringLiteral","value":"x"}},{"type":"Property","key":{"type":"Identifier",
+        "name":"to"},"value":{"type":"IntegerLiteral","value":"2"}}]}}}}]}]}}}]}]}}
+        """#.utf8)
+        #expect(try FluxAST.reading(ast) == readsHere)
+    }
+
+    @Test func theServerASTOfAliasHttp() throws {
+        // import h \"http\"\nh.post(url: \"x\", data: bytes(v: \"a\"))
+        let ast = Data(#"""
+        {"ast":{"type":"Package","package":"main","files":[{"type":"File","package":null,"imports":[{"type":"ImportDeclaration",
+        "as":{"type":"Identifier","name":"h"},"path":{"type":"StringLiteral","value":"http"}}],"body":[{"type":"ExpressionStatement",
+        "expression":{"type":"CallExpression","callee":{"type":"MemberExpression","object":{"type":"Identifier","name":"h"},
+        "property":{"type":"Identifier","name":"post"}},"arguments":[{"type":"ObjectExpression","properties":[{"type":"Property",
+        "key":{"type":"Identifier","name":"url"},"value":{"type":"StringLiteral","value":"x"}},{"type":"Property","key":{"type":"Identifier",
+        "name":"data"},"value":{"type":"CallExpression","callee":{"type":"Identifier","name":"bytes"},"arguments":[{"type":"ObjectExpression",
+        "properties":[{"type":"Property","key":{"type":"Identifier","name":"v"},"value":{"type":"StringLiteral","value":"a"}}]}]}}]}]}}]}]}}
+        """#.utf8)
+        #expect(try FluxAST.reading(ast) == writesOutside)
+    }
+
+    @Test func theServerASTOfShorthandHost() throws {
+        // host = \"h\"\nbuckets(host)
+        let ast = Data(#"""
+        {"ast":{"type":"Package","package":"main","files":[{"type":"File","package":null,"imports":null,"body":[{"type":"VariableAssignment",
+        "id":{"type":"Identifier","name":"host"},"init":{"type":"StringLiteral","value":"h"}},{"type":"ExpressionStatement",
+        "expression":{"type":"CallExpression","callee":{"type":"Identifier","name":"buckets"},"arguments":[{"type":"ObjectExpression",
+        "properties":[{"type":"Property","key":{"type":"Identifier","name":"host"},"value":null}]}]}}]}]}}
+        """#.utf8)
+        #expect(try FluxAST.reading(ast) == readsOutside)
+    }
+
+    @Test func theServerASTOfQuotedHost() throws {
+        // buckets(\"host\": \"h\")
+        let ast = Data(#"""
+        {"ast":{"type":"Package","package":"main","files":[{"type":"File","package":null,"imports":null,"body":[{"type":"ExpressionStatement",
+        "expression":{"type":"CallExpression","callee":{"type":"Identifier","name":"buckets"},"arguments":[{"type":"ObjectExpression",
+        "properties":[{"type":"Property","key":{"type":"StringLiteral","value":"host"},"value":{"type":"StringLiteral",
+        "value":"h"}}]}]}}]}]}}
+        """#.utf8)
+        #expect(try FluxAST.reading(ast) == readsOutside)
+    }
+
+    @Test func theServerASTOfPackageValue() throws {
+        // import \"influxdata/influxdb\"\nx = influxdb\nbuckets()
+        let ast = Data(#"""
+        {"ast":{"type":"Package","package":"main","files":[{"type":"File","package":null,"imports":[{"type":"ImportDeclaration",
+        "as":null,"path":{"type":"StringLiteral","value":"influxdata/influxdb"}}],"body":[{"type":"VariableAssignment",
+        "id":{"type":"Identifier","name":"x"},"init":{"type":"Identifier","name":"influxdb"}},{"type":"ExpressionStatement",
+        "expression":{"type":"CallExpression","callee":{"type":"Identifier","name":"buckets"}}}]}]}}
+        """#.utf8)
+        #expect(try FluxAST.reading(ast) == writesOutside)
+    }
+
+    @Test func theServerASTOfCsvFile() throws {
+        // import c \"csv\"\nc.from(mode: \"raw\", file: \"/x\")
+        let ast = Data(#"""
+        {"ast":{"type":"Package","package":"main","files":[{"type":"File","package":null,"imports":[{"type":"ImportDeclaration",
+        "as":{"type":"Identifier","name":"c"},"path":{"type":"StringLiteral","value":"csv"}}],"body":[{"type":"ExpressionStatement",
+        "expression":{"type":"CallExpression","callee":{"type":"MemberExpression","object":{"type":"Identifier","name":"c"},
+        "property":{"type":"Identifier","name":"from"}},"arguments":[{"type":"ObjectExpression","properties":[{"type":"Property",
+        "key":{"type":"Identifier","name":"mode"},"value":{"type":"StringLiteral","value":"raw"}},{"type":"Property","key":{"type":"Identifier",
+        "name":"file"},"value":{"type":"StringLiteral","value":"/x"}}]}]}}]}]}}
+        """#.utf8)
+        #expect(try FluxAST.reading(ast) == readsOutside)
+    }
+
+    @Test func theServerASTOfMemberString() throws {
+        // import \"influxdata/influxdb\"\nw = influxdb[\"wideTo\"]\nbuckets()
+        let ast = Data(#"""
+        {"ast":{"type":"Package","package":"main","files":[{"type":"File","package":null,"imports":[{"type":"ImportDeclaration",
+        "as":null,"path":{"type":"StringLiteral","value":"influxdata/influxdb"}}],"body":[{"type":"VariableAssignment",
+        "id":{"type":"Identifier","name":"w"},"init":{"type":"MemberExpression","object":{"type":"Identifier","name":"influxdb"},
+        "property":{"type":"StringLiteral","value":"wideTo"}}},{"type":"ExpressionStatement","expression":{"type":"CallExpression",
+        "callee":{"type":"Identifier","name":"buckets"}}}]}]}}
+        """#.utf8)
+        #expect(try FluxAST.reading(ast) == writesOutside)
+    }
+
+    @Test func theServerASTOfInterpolated() throws {
+        // import \"array\"\nx = \"${array.from(rows: [{a: 1}]) |> to(bucket: \"x\")}\"\nbuckets()
+        let ast = Data(#"""
+        {"ast":{"type":"Package","package":"main","files":[{"type":"File","package":null,"imports":[{"type":"ImportDeclaration",
+        "as":null,"path":{"type":"StringLiteral","value":"array"}}],"body":[{"type":"VariableAssignment","id":{"type":"Identifier",
+        "name":"x"},"init":{"type":"StringExpression","parts":[{"type":"InterpolatedPart","expression":{"type":"PipeExpression",
+        "argument":{"type":"CallExpression","callee":{"type":"MemberExpression","object":{"type":"Identifier","name":"array"},
+        "property":{"type":"Identifier","name":"from"}},"arguments":[{"type":"ObjectExpression","properties":[{"type":"Property",
+        "key":{"type":"Identifier","name":"rows"},"value":{"type":"ArrayExpression","elements":[{"type":"ObjectExpression",
+        "properties":[{"type":"Property","key":{"type":"Identifier","name":"a"},"value":{"type":"IntegerLiteral","value":"1"}}]}]}}]}]},
+        "call":{"type":"CallExpression","callee":{"type":"Identifier","name":"to"},"arguments":[{"type":"ObjectExpression",
+        "properties":[{"type":"Property","key":{"type":"Identifier","name":"bucket"},"value":{"type":"StringLiteral","value":"x"}}]}]}}}]}},
+        {"type":"ExpressionStatement","expression":{"type":"CallExpression","callee":{"type":"Identifier","name":"buckets"}}}]}]}}
+        """#.utf8)
+        #expect(try FluxAST.reading(ast) == writesHere)
+    }
+
+    @Test func anASTBodyThatIsNotJSONThrows() {
+        #expect(throws: InfluxError.self) { try FluxAST.reading(Data("nope".utf8)) }
+    }
+
+    @Test(arguments: [
+        "import \"array\"\nx = 1./ 2.0\narray.from(rows: [{a: 1}]) |> to(bucket: \"x\")\ny = 3.0 / 1.0",
+        "import \"array\"\nb = \"x\"\nr = /a\\\\/ \"/\narray.from(rows: [{a: 1}]) |> to(bucket: b)\n// \"",
+    ])
+    func theLexerReadsFloatsAndRegexEscapesTheWayFluxDoes(script: String) {
+        #expect(FluxScriptReading(script).writes)
+    }
 }

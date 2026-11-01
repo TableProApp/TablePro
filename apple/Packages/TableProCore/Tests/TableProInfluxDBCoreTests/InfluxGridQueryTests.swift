@@ -153,7 +153,7 @@ struct InfluxGridQueryTests {
         ("STARTS WITH", "x+", #""note" ~ '^x\+'"#, #""note" =~ /^x\+/"#),
         ("ENDS WITH", "x$", #""note" ~ 'x\$$'"#, #""note" =~ /x\$$/"#),
         ("NOT CONTAINS", "[a]", #""note" !~ '\[a\]'"#, #""note" !~ /\[a\]/"#),
-        ("CONTAINS", "a/b", #""note" ~ 'a/b'"#, #""note" =~ /a\x2fb/"#),
+        ("CONTAINS", "a/b", #""note" ~ 'a/b'"#, #""note" =~ /a\x{2f}b/"#),
     ])
     func textMatchingEscapesRegexMetacharacters(op: String, value: String, sql: String, influxQL: String) {
         let filter = InfluxFilter(column: "note", op: op, value: value)
@@ -256,11 +256,16 @@ struct InfluxGridQueryTests {
     }
 
     @Test(arguments: [
-        ("a/b", #"a\x2fb"#),
-        (#"a\"#, #"a\x5c"#),
-        (#"a\/b"#, #"a\x2fb"#),
-        (#"a\\b"#, #"a\x5cb"#),
+        ("a/b", #"a\x{2f}b"#),
+        (#"a\"#, #"a\x{5c}"#),
+        (#"a\/b"#, #"a\x{2f}b"#),
+        (#"a\\b"#, #"a\x{5c}b"#),
         (#"\d+"#, #"\d+"#),
+        ("\u{600}/", #"\x{600}\x{2f}"#),
+        ("\u{600}\\", #"\x{600}\x{5c}"#),
+        ("a\nb", #"a\x{a}b"#),
+        (#"x\Qé.*/\Ey"#, #"x\x{e9}\.\*\x{2f}y"#),
+        (#"\Qa+b"#, #"a\+b"#),
     ])
     func anInfluxQLRegexBodyHoldsNoSlashAndNoTrailingBackslash(pattern: String, body: String) {
         #expect(InfluxGridQuery.influxQLRegexBody(pattern) == body)
@@ -276,13 +281,29 @@ struct InfluxGridQueryTests {
             ],
             shape: .page(limit: 10, offset: 0)
         )
-        let text = try #require(query.statement(language: .influxQL, kinds: ["note": .text]))
-        #expect(try InfluxStatement.route(text, generation: .v2).language == .influxQL)
+        let text = try #require(query.statement(language: .influxQL, kinds: ["note": .text], marked: false))
+        #expect(text.unicodeScalars.filter { $0 == "/" }.count == 6)
+        #expect(!text.contains("\\/"))
+    }
+
+    @Test func aCombiningMarkCannotHideASlashOrAQuote() throws {
+        let value = "\u{0600}/ GROUP BY /\u{0301}'\u{0600}/; DROP MEASUREMENT cpu --'"
+        let body = InfluxGridQuery.influxQLRegexBody(InfluxGridQuery.escapedRegex(value))
+        #expect(!body.unicodeScalars.contains("/"))
+        #expect(body.unicodeScalars.allSatisfy { $0.isASCII })
+        #expect(InfluxGridQuery.stringLiteral("a'\u{301}", language: .influxQL) == "'a\\'\u{301}'")
+        #expect(InfluxGridQuery.stringLiteral("a'\u{301}", language: .sql) == "'a''\u{301}'")
+        #expect(InfluxGridQuery.quoteIdentifier("a\"\u{301}", language: .sql) == "\"a\"\"\u{301}\"")
     }
 
     @Test func anUnmarkedPageIsTheInfluxQLForm() {
         let query = InfluxGridQuery(measurement: "cpu", projection: ["time", "host"], shape: .page(limit: 10, offset: 0))
         #expect(query.statement(language: .influxQL, kinds: [:], marked: false)
             == #"SELECT * FROM "cpu" ORDER BY time DESC LIMIT 10 OFFSET 0"#)
+    }
+
+    @Test(arguments: [("-1", "-1"), (".5", ".5"), ("5.", "5."), ("1e5", "'1e5'"), ("1\u{0};--", "'1\u{0};--'"), ("٣", "'٣'")])
+    func onlyPlainNumbersGoOutUnquoted(value: String, literal: String) {
+        #expect(InfluxGridQuery.literal(value, kind: .number, language: .influxQL) == literal)
     }
 }

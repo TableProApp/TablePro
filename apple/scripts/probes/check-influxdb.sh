@@ -8,7 +8,7 @@
 # usage below writes; the probe adds a 2,500-point `load_<time>` measurement to each for the paging checks.
 #
 # Usage:
-#   INFLUX_V2_TOKEN=... INFLUX_V3_TOKEN=... scripts/probes/check-influxdb.sh [v2-url] [v3-url] [v3-auth-url]
+#   INFLUX_V2_TOKEN=... INFLUX_V3_TOKEN=... [INFLUX_V2_READ_TOKEN=...] scripts/probes/check-influxdb.sh [v2-url] [v3-url] [v3-auth-url]
 #
 # Defaults: http://127.0.0.1:28086 (2.x, org with one bucket "metrics"), http://127.0.0.1:28181 (3.x started with
 # --without-auth) and http://127.0.0.1:28182 (3.x with auth, INFLUX_V3_TOKEN an admin token). For example
@@ -192,8 +192,16 @@ func shared(_ tally: Tally, _ driver: InfluxDBPluginDriver, label: String, url: 
                 "\(show.columns) \(show.rows)")
     let marked = try await driver.execute(query: "// influxql\nSHOW MEASUREMENTS")
     tally.check(!marked.rows.isEmpty, "\(label): a // influxql marker is not sent", "\(marked.rows.count)")
-    let typed = try await driver.execute(query: "-- influxql\nSELECT * FROM cpu WHERE note = 'a;b'")
-    tally.check(typed.rows.count == 1, "\(label): typed InfluxQL holding ; runs", "\(typed.rows.count)")
+    await expectFailure(tally, "\(label): typed InfluxQL holding a ; is refused", contains: "one InfluxQL statement") {
+        _ = try await driver.execute(query: "-- influxql\nSELECT /'/ FROM cpu; DROP MEASUREMENT \(fresh) -- '")
+    }
+    let scratch = "scratch_\(Int(Date().timeIntervalSince1970))"
+    try await write(url, path: writePath, token: token, lines: "\(scratch),host=a v=1i 1730000000")
+    let exploit = "\u{0600}/ GROUP BY /\u{0301}'\u{0600}/; DROP MEASUREMENT \(scratch) --'"
+    _ = try? await grid(driver, "cpu", filters: [PluginQueryFilter(column: "host", op: "CONTAINS", value: exploit)])
+    let survivors = try await driver.fetchTables(schema: nil).map(\.name)
+    tally.check(survivors.contains(scratch), "\(label): a filter value cannot end the regex and run a DROP",
+                "\(survivors)")
     try await driver.ping()
     tally.check(true, "\(label): health ping")
 
@@ -295,6 +303,27 @@ struct Probe {
                         "2.x: Flux time typed", "\(flux.columnTypeNames)")
             await expectFailure(tally, "2.x: Flux error text reaches the user", contains: "undefined identifier") {
                 _ = try await v2.execute(query: "from(bucket: \"metrics\") |> nope()")
+            }
+            await expectFailure(tally, "2.x: a Flux write the lexer misreads is refused by the server's parse",
+                                contains: "reads this Flux script") {
+                _ = try await v2.execute(query: """
+                import "array"
+                /"/
+                array.from(rows: [{a: 1}]) |> to(bucket: "tp_probe_nonexistent")
+                // "
+                """)
+            }
+            if let readToken = ProcessInfo.processInfo.environment["INFLUX_V2_READ_TOKEN"], !readToken.isEmpty {
+                let reader = InfluxDBPluginDriver(config: DriverConnectionConfig(
+                    host: URLComponents(string: v2URL)?.host ?? "127.0.0.1", port: URLComponents(string: v2URL)?.port ?? 8086,
+                    username: "", password: "", database: "telegraf/weekly",
+                    additionalFields: [InfluxDBFieldID.token: readToken, InfluxDBFieldID.organization: "tp"]
+                ))
+                try await reader.connect()
+                let fluxRead = try await reader.execute(query: "from(bucket: \"telegraf/weekly\") |> range(start: 0)")
+                tally.check(!fluxRead.rows.isEmpty, "2.x: a read-only token runs Flux past the server parse",
+                            "\(fluxRead.rows.count)")
+                reader.disconnect()
             }
             await expectFailure(tally, "2.x: SQL refused", contains: "Flux, InfluxQL") {
                 _ = try await v2.execute(query: "-- sql\nSELECT 1 FROM cpu")

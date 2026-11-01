@@ -144,8 +144,10 @@ extension InfluxDBPluginDriver {
             matchesAll: logicMode.lowercased() != "or",
             shape: .count
         )
-        guard let text = grid.statement(language: language, kinds: Self.kinds(of: schema)) else { return nil }
-        let result = try await run(InfluxStatement.route(text, generation: server.generation))
+        guard let text = grid.statement(language: language, kinds: Self.kinds(of: schema), marked: false) else {
+            return nil
+        }
+        let result = try await run(InfluxStatement(language: language, text: text))
         return InfluxGridQuery.rowCount(from: result)
     }
 

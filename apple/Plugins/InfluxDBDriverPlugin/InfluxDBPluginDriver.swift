@@ -183,10 +183,10 @@ internal final class InfluxDBPluginDriver: PluginDatabaseDriver, @unchecked Send
         }
         let kinds = hostKinds.merging(Self.kinds(of: schema)) { _, schema in schema }
         let language = generation.gridLanguage
-        guard let text = grid.statement(language: language, kinds: kinds) else {
+        guard let text = grid.statement(language: language, kinds: kinds, marked: false) else {
             throw InfluxError.filterNotExpressible(language)
         }
-        var table = try await run(InfluxStatement.route(text, generation: generation)).typed(by: schema)
+        var table = try await run(InfluxStatement(language: language, text: text)).typed(by: schema)
         if table.columns.isEmpty {
             let names = grid.projection.isEmpty ? schema.map(\.name) : grid.projection
             let types = Dictionary(schema.map { ($0.name, $0.typeName) }, uniquingKeysWith: { first, _ in first })
@@ -207,6 +207,9 @@ internal final class InfluxDBPluginDriver: PluginDatabaseDriver, @unchecked Send
         }
         if statement.language == .flux, organization.isEmpty {
             throw InfluxError.missingOrganization
+        }
+        if statement.language == .flux {
+            try await checkFluxReading(statement.text, organization: organization, connection: connection)
         }
         var target = InfluxQLTarget(database: database, retentionPolicy: nil)
         if statement.language == .influxQL, let resolved = try await influxQLTarget() {
@@ -229,6 +232,20 @@ internal final class InfluxDBPluginDriver: PluginDatabaseDriver, @unchecked Send
             return try InfluxResponseDecoder.decodeFluxCSV(response.data)
         default:
             return try InfluxResponseDecoder.decodeV1JSON(response.data)
+        }
+    }
+
+    // Safe Mode read this script with TablePro's lexer. The server parses it first, and a script it reads as writing or
+    // reaching outside where the lexer did not is refused, since the gate's verdict rested on the lexer.
+    private func checkFluxReading(_ script: String, organization: String, connection: InfluxDBConnection) async throws {
+        let response = try await connection.send(
+            InfluxRequests.v2FluxAST(script, organization: organization, credentials: connection.credentials)
+        )
+        guard response.isSuccess else { throw response.error }
+        let server = try FluxAST.reading(response.data)
+        let local = FluxScriptReading(script)
+        if (server.writes && !local.writes) || (server.reachesOutside && !local.reachesOutside) {
+            throw InfluxError.fluxReadDiffers
         }
     }
 

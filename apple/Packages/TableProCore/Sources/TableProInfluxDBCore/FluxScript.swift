@@ -37,10 +37,10 @@ public struct FluxScriptReading: Sendable, Equatable {
     ]
 
     // `to` and `wideTo` are the writers in the read-only packages above: universe, `experimental` and `influxdb`.
-    private static let writingNames: Set<String> = ["to", "wideTo"]
+    static let writingNames: Set<String> = ["to", "wideTo"]
 
     // `from`, `buckets` and `to` take `host` to reach another server; `csv.from` takes `file` to read the server's disk.
-    private static let outsideLabels: Set<String> = ["host", "file"]
+    static let outsideLabels: Set<String> = ["host", "file"]
 
     private static func namesWritingFunction(_ tokens: [FluxToken]) -> Bool {
         tokens.indices.contains { index in
@@ -239,10 +239,10 @@ enum FluxLexer {
             emit(.identifier, String(text))
         }
 
-        // `1h30m` is one duration, but `1then` is the number 1 and the keyword `then`.
+        // `1h30m` is one duration and `1.` one float, but `1then` is the number 1 and the keyword `then`.
         mutating func readNumber() {
             skipDigits()
-            if peek() == ".", let next = peek(1), ("0" ... "9").contains(next) {
+            if peek() == "." {
                 position += 1
                 skipDigits()
             }
@@ -262,12 +262,12 @@ enum FluxLexer {
             unit.unicodeScalars.enumerated().allSatisfy { offset, scalar in peek(offset) == scalar }
         }
 
-        // A Flux regex may run over several lines.
+        // A Flux regex may run over several lines, and `\/` is an escaped slash even right after another backslash.
         mutating func readRegex() {
             position += 1
             while let scalar = peek() {
                 position += 1
-                if scalar == "\\" {
+                if scalar == "\\", peek() == "/" {
                     position += 1
                 } else if scalar == "/" {
                     emit(.regex, "")
@@ -313,6 +313,96 @@ enum FluxLexer {
             emit(.string, String(text))
             if isMemberName {
                 emit(.memberString, String(text))
+            }
+        }
+    }
+}
+
+// The server's own parse of a script, from `POST /api/v2/query/ast`, read with the same rules as `FluxScriptReading`.
+// The lexer above picks regex or division from the token before; Flux picks it from the parser state, so the driver
+// runs a script only when this reading finds nothing the lexer missed.
+public enum FluxAST {
+    public static func reading(_ data: Data) throws -> FluxScriptReading {
+        guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any], let ast = root["ast"] else {
+            throw InfluxError.malformedResponse(InfluxResponseDecoder.preview(of: data))
+        }
+        var walker = Walker()
+        walker.collectImports(ast)
+        walker.walk(ast, asMemberObject: false)
+        return FluxScriptReading(
+            writes: walker.writes || walker.unknownImport || walker.packageEscapes,
+            reachesOutside: walker.unknownImport || walker.packageEscapes || walker.outsideArgument
+        )
+    }
+
+    private struct Walker {
+        var packages: Set<String> = []
+        var unknownImport = false
+        var packageEscapes = false
+        var outsideArgument = false
+        var writes = false
+
+        mutating func collectImports(_ node: Any) {
+            if let object = node as? [String: Any] {
+                if object["type"] as? String == "ImportDeclaration" {
+                    let path = (object["path"] as? [String: Any])?["value"] as? String ?? ""
+                    let alias = (object["as"] as? [String: Any])?["name"] as? String
+                    packages.insert(alias ?? String(path.split(separator: "/").last ?? Substring(path)))
+                    if !FluxScriptReading.readOnlyPackages.contains(path) { unknownImport = true }
+                    return
+                }
+                object.values.forEach { collectImports($0) }
+            } else if let array = node as? [Any] {
+                array.forEach { collectImports($0) }
+            }
+        }
+
+        mutating func walk(_ node: Any?, asMemberObject: Bool) {
+            if let array = node as? [Any] {
+                array.forEach { walk($0, asMemberObject: false) }
+                return
+            }
+            guard let object = node as? [String: Any] else { return }
+            switch object["type"] as? String {
+            case "ImportDeclaration":
+                return
+            case "Identifier":
+                let name = object["name"] as? String ?? ""
+                if FluxScriptReading.writingNames.contains(name) { writes = true }
+                if packages.contains(name), !asMemberObject { packageEscapes = true }
+            case "MemberExpression":
+                let target = object["object"] as? [String: Any]
+                let property = object["property"] as? [String: Any]
+                let isPackage = target?["type"] as? String == "Identifier" && packages.contains(target?["name"] as? String ?? "")
+                if isPackage, property?["type"] as? String != "Identifier" { packageEscapes = true }
+                walk(target, asMemberObject: true)
+                let member = property?["name"] as? String ?? property?["value"] as? String ?? ""
+                if FluxScriptReading.writingNames.contains(member) { writes = true }
+                if property?["type"] as? String != "Identifier", property?["type"] as? String != "StringLiteral" {
+                    walk(property, asMemberObject: false)
+                }
+            case "Property":
+                let key = object["key"] as? [String: Any]
+                if let value = object["value"], !(value is NSNull) {
+                    walk(value, asMemberObject: false)
+                } else {
+                    walk(key, asMemberObject: false)
+                }
+            case "CallExpression":
+                for argument in object["arguments"] as? [[String: Any]] ?? [] {
+                    for property in argument["properties"] as? [[String: Any]] ?? [] {
+                        let key = property["key"] as? [String: Any]
+                        let name = key?["name"] as? String ?? key?["value"] as? String ?? ""
+                        if FluxScriptReading.outsideLabels.contains(name) { outsideArgument = true }
+                    }
+                }
+                for (key, value) in object where key != "type" {
+                    walk(value, asMemberObject: false)
+                }
+            default:
+                for (key, value) in object where key != "type" {
+                    walk(value, asMemberObject: false)
+                }
             }
         }
     }

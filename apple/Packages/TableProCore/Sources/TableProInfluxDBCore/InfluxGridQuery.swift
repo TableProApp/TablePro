@@ -179,12 +179,12 @@ public struct InfluxGridQuery: Sendable, Equatable, Hashable {
     // The metacharacters RE2 and the Rust regex crate share. NSRegularExpression's escaper also escapes `/`, which
     // InfluxQL's `/.../` literal would then escape twice.
     static func escapedRegex(_ text: String) -> String {
-        var escaped = ""
-        for character in text {
-            if "\\^$.|?*+()[]{}".contains(character) { escaped.append("\\") }
-            escaped.append(character)
+        var escaped = String.UnicodeScalarView()
+        for scalar in text.unicodeScalars {
+            if "\\^$.|?*+()[]{}".unicodeScalars.contains(scalar) { escaped.append("\\") }
+            escaped.append(scalar)
         }
-        return escaped
+        return String(escaped)
     }
 
     private static func regex(
@@ -203,29 +203,34 @@ public struct InfluxGridQuery: Sendable, Equatable, Hashable {
         }
     }
 
-    // InfluxQL reads `\/` as an escaped slash even after another backslash, so a value ending in `\` would run the
-    // literal past its closing `/`. A slash or a backslash of the pattern goes out as a hex escape instead.
+    // InfluxQL reads `\/` as an escaped slash even after another backslash, so the body holds no `/`, no newline and
+    // no backslash before either or at its end: those, and every non-ASCII code point, go out as hex escapes.
     static func influxQLRegexBody(_ pattern: String) -> String {
         var body = ""
-        var characters = pattern[...]
-        while let character = characters.popFirst() {
-            switch character {
-            case "/":
-                body += "\\x2f"
-            case "\\":
-                switch characters.first {
-                case "/"?:
-                    characters.removeFirst()
-                    body += "\\x2f"
-                case "\\"?, nil:
-                    if characters.first != nil { characters.removeFirst() }
-                    body += "\\x5c"
-                case let escaped?:
-                    characters.removeFirst()
-                    body += "\\" + String(escaped)
+        var scalars = pattern.unicodeScalars[...]
+        while let scalar = scalars.popFirst() {
+            // Inside `\Q...\E` a hex escape would be literal text, so the span is written out as escaped literals.
+            if scalar == "\\", scalars.first == "Q" {
+                scalars.removeFirst()
+                var quoted = String.UnicodeScalarView()
+                while let next = scalars.popFirst() {
+                    if next == "\\", scalars.first == "E" {
+                        scalars.removeFirst()
+                        break
+                    }
+                    quoted.append(next)
                 }
-            default:
-                body.append(character)
+                body += influxQLRegexBody(escapedRegex(String(quoted)))
+            } else if scalar == "\\", let next = scalars.first, next == "/" || next == "\\" {
+                scalars.removeFirst()
+                body += "\\x{" + String(next.value, radix: 16) + "}"
+            } else if scalar == "\\", let next = scalars.first, next.isASCII, next.value >= 0x20, next.value < 0x7F {
+                scalars.removeFirst()
+                body += "\\" + String(next)
+            } else if scalar.isASCII, scalar.value >= 0x20, scalar.value < 0x7F, scalar != "/", scalar != "\\" {
+                body.unicodeScalars.append(scalar)
+            } else {
+                body += "\\x{" + String(scalar.value, radix: 16) + "}"
             }
         }
         return body
@@ -246,27 +251,35 @@ public struct InfluxGridQuery: Sendable, Equatable, Hashable {
         }
     }
 
+    // `Double("1\u{0};--")` is 1, so a value goes out unquoted only when it is plain ASCII digits.
     private static func isNumber(_ value: String) -> Bool {
-        Double(value) != nil && value.rangeOfCharacter(from: .letters) == nil
+        value.range(of: #"^[+-]?(?:[0-9]+\.?[0-9]*|\.[0-9]+)$"#, options: .regularExpression) != nil
     }
 
+    // Escaped per code point: a quote followed by a combining mark is one Character, which a Character-wise replace skips.
     public static func quoteIdentifier(_ name: String, language: InfluxQueryLanguage) -> String {
         switch language {
-        case .sql:
-            return "\"" + name.replacingOccurrences(of: "\"", with: "\"\"") + "\""
-        case .influxQL, .flux:
-            let escaped = name.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
-            return "\"" + escaped + "\""
+        case .sql: return "\"" + escaping(name, ["\"": "\"\""]) + "\""
+        case .influxQL, .flux: return "\"" + escaping(name, ["\\": "\\\\", "\"": "\\\""]) + "\""
         }
     }
 
     public static func stringLiteral(_ value: String, language: InfluxQueryLanguage) -> String {
         switch language {
-        case .sql:
-            return "'" + value.replacingOccurrences(of: "'", with: "''") + "'"
-        case .influxQL, .flux:
-            let escaped = value.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "'", with: "\\'")
-            return "'" + escaped + "'"
+        case .sql: return "'" + escaping(value, ["'": "''"]) + "'"
+        case .influxQL, .flux: return "'" + escaping(value, ["\\": "\\\\", "'": "\\'"]) + "'"
         }
+    }
+
+    private static func escaping(_ text: String, _ replacements: [Unicode.Scalar: String]) -> String {
+        var escaped = ""
+        for scalar in text.unicodeScalars {
+            if let replacement = replacements[scalar] {
+                escaped += replacement
+            } else {
+                escaped.unicodeScalars.append(scalar)
+            }
+        }
+        return escaped
     }
 }

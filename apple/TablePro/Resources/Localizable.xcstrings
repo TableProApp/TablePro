@@ -93930,6 +93930,10 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "InfluxDB reads this Flux script as one that writes or reaches outside the database, which TablePro's check did not see, so it was not run." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "InfluxDB refused the token: %@" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -154180,7 +154184,7 @@
         }
       }
     },
-    "Run one InfluxQL statement at a time." : {
+    "Run one InfluxQL statement at a time, with no ; inside it." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
