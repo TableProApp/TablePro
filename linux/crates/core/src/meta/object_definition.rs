@@ -6,4 +6,8 @@ pub struct ObjectDefinition {
     /// none, as MySQL's `SHOW CREATE` does. `None` when it names the
     /// object in full, so any tab of the connection can run it.
     pub database: Option<String>,
+    /// False when running `sql` in an editor tab would not make the
+    /// object as it is, as when a SQL Server module's body holds a line
+    /// that is only `GO`, where the editor would end a batch.
+    pub opens_in_editor: bool,
 }

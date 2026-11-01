@@ -8,7 +8,9 @@ use tablepro_core::statement::StatementBuilder;
 use tablepro_core::{Connection, DriverError, RowLimit, Value};
 use tablepro_test_fixtures::MysqlFlavour;
 
-use crate::support::{CALL, FLAVOURS, connect, connect_root, rows, setup, start, table, within};
+use crate::support::{
+    CALL, FLAVOURS, connect, connect_root, rows, run_ok, session, session_scalar, setup, start, table, within,
+};
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires docker"]
@@ -595,12 +597,63 @@ async fn routines_sequences_and_triggers_are_listed_with_their_definitions() {
                 definition.sql
             );
             assert!(definition.sql.ends_with(';'), "{}", definition.sql);
+            assert!(definition.opens_in_editor);
+            if object.kind != ObjectKind::Sequence {
+                assert!(
+                    definition.sql.contains("SET sql_mode = '") && definition.sql.contains("DELIMITER ;;"),
+                    "a routine keeps the settings it was made under: {}",
+                    definition.sql
+                );
+            }
             assert_eq!(
                 definition.database.as_deref(),
                 Some("tablepro"),
                 "SHOW CREATE names no database, so the text runs in the object's"
             );
         }
+
+        connection.close().await.expect("a close");
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn a_routine_definition_runs_again_in_an_editor_session() {
+    for flavour in FLAVOURS {
+        let fixture = start(flavour).await;
+        let connection = connect(&fixture, false).await;
+        setup(
+            connection.as_ref(),
+            &[
+                "CREATE TABLE plain (id int)",
+                "CREATE FUNCTION add_tax(amount int) RETURNS int DETERMINISTIC \
+                 BEGIN DECLARE doubled int; SET doubled = amount * 2; RETURN doubled; END",
+            ],
+        )
+        .await;
+        let add_tax = ObjectInfo::new(Some("tablepro".to_owned()), "add_tax", ObjectKind::Function);
+        let add_tax = connection
+            .fetch_object_definition(&add_tax, within(CALL))
+            .await
+            .expect("the definition")
+            .expect("a definition");
+        let editor = session(connection.as_ref()).await;
+        let settings = "SELECT CONCAT(@@sql_mode, '/', @@collation_connection)";
+        let before = session_scalar(editor.as_ref(), settings).await;
+
+        run_ok(editor.as_ref(), "DROP FUNCTION add_tax").await;
+        run_ok(editor.as_ref(), &add_tax.sql).await;
+
+        assert_eq!(
+            session_scalar(editor.as_ref(), "SELECT add_tax(21)").await,
+            "42",
+            "on {flavour:?}"
+        );
+        assert_eq!(
+            session_scalar(editor.as_ref(), settings).await,
+            before,
+            "on {flavour:?}"
+        );
 
         let gone = [
             ObjectInfo::new(Some("tablepro".to_owned()), "no_such", ObjectKind::Function),
@@ -613,11 +666,11 @@ async fn routines_sequences_and_triggers_are_listed_with_their_definitions() {
             assert!(matches!(answer, Ok(None)), "{object:?} on {flavour:?}: {answer:?}");
         }
         if flavour == MysqlFlavour::Mariadb {
-            let table = ObjectInfo::new(Some("tablepro".to_owned()), "orders", ObjectKind::Sequence);
+            let table = ObjectInfo::new(Some("tablepro".to_owned()), "plain", ObjectKind::Sequence);
             let answer = connection.fetch_object_definition(&table, within(CALL)).await;
             assert!(matches!(answer, Ok(None)), "a table where a sequence was: {answer:?}");
         }
-        let table_object = ObjectInfo::new(trigger.schema.clone(), "orders", ObjectKind::Table);
+        let table_object = ObjectInfo::new(Some("tablepro".to_owned()), "add_tax", ObjectKind::Table);
         assert!(matches!(
             connection.fetch_object_definition(&table_object, within(CALL)).await,
             Err(DriverError::Unsupported { .. })

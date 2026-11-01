@@ -8,7 +8,7 @@ use tablepro_core::statement::StatementBuilder;
 use tablepro_core::{DriverError, RowLimit, UnsupportedFeature, Value};
 use tablepro_driver_mssql::MssqlDialect;
 
-use crate::support::{CALL, columns, connect, dbo, rows, scalar, setup, start, statement, within};
+use crate::support::{CALL, columns, connect, dbo, rows, run_ok, scalar, session, setup, start, statement, within};
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires docker"]
@@ -339,7 +339,7 @@ async fn like_escape_matches_literal_underscore_and_percent() {
     );
 }
 
-const ROUTINES: [&str; 7] = [
+const ROUTINES: [&str; 8] = [
     "CREATE TABLE dbo.orders (id int PRIMARY KEY, total int)",
     "CREATE TABLE dbo.audit (id int PRIMARY KEY)",
     "CREATE FUNCTION dbo.add_tax(@amount int) RETURNS int AS BEGIN RETURN @amount * 2 END",
@@ -347,6 +347,8 @@ const ROUTINES: [&str; 7] = [
     "CREATE PROCEDURE dbo.hidden WITH ENCRYPTION AS SELECT 1",
     "CREATE TRIGGER orders_total ON orders AFTER INSERT AS UPDATE dbo.orders SET total = total + 1000",
     "CREATE SEQUENCE dbo.invoice_numbers AS bigint START WITH 100 INCREMENT BY 5 CYCLE CACHE 20",
+    // `GO` is a column alias to the server, and a batch's end to the editor.
+    "CREATE PROCEDURE dbo.go_line AS SELECT 1\nGO\nSELECT 2",
 ];
 
 async fn listed(connection: &dyn tablepro_core::Connection) -> Vec<ObjectInfo> {
@@ -363,6 +365,7 @@ async fn definition(connection: &dyn tablepro_core::Connection, object: &ObjectI
         .expect("the definition")
         .expect("a definition");
     assert_eq!(found.database, None);
+    assert!(found.opens_in_editor);
     found.sql
 }
 
@@ -410,6 +413,12 @@ async fn routines_sequences_and_triggers_are_listed_with_their_definitions() {
             && sequence.contains(" CYCLE CACHE 20;"),
         "{sequence}"
     );
+    let go_line = connection
+        .fetch_object_definition(find("go_line"), within(CALL))
+        .await
+        .expect("the definition")
+        .expect("a definition");
+    assert!(!go_line.opens_in_editor, "the editor would run SELECT 2 on its own");
     let hidden = connection.fetch_object_definition(find("hidden"), within(CALL)).await;
     assert!(
         matches!(
@@ -439,8 +448,8 @@ async fn a_module_written_without_its_schema_is_given_it_and_runs_again() {
 
     let procedure = definition(connection.as_ref(), named(&objects, "clear_audit")).await;
     assert!(
-        procedure.starts_with("CREATE PROCEDURE [dbo].clear_audit AS"),
-        "{procedure}"
+        procedure.starts_with("SET ANSI_NULLS ") && procedure.contains("\nGO\nCREATE PROCEDURE [dbo].clear_audit AS"),
+        "the module's SET options, then its text with its schema: {procedure}"
     );
     setup(
         connection.as_ref(),
@@ -454,11 +463,11 @@ async fn a_module_written_without_its_schema_is_given_it_and_runs_again() {
     );
     let on_orders = definition(connection.as_ref(), trigger).await;
     assert!(
-        on_orders.starts_with("CREATE TRIGGER [dbo].orders_total ON [dbo].orders AFTER INSERT"),
+        on_orders.contains("\nGO\nCREATE TRIGGER [dbo].orders_total ON [dbo].orders AFTER INSERT"),
         "{on_orders}"
     );
     setup(connection.as_ref(), &["DROP TRIGGER dbo.orders_total"]).await;
-    setup(connection.as_ref(), &[on_orders.as_str()]).await;
+    run_ok(session(connection.as_ref()).await.as_ref(), &on_orders).await;
     assert!(
         listed(connection.as_ref()).await.contains(trigger),
         "the text made the trigger again where it was"

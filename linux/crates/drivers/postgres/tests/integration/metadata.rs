@@ -62,7 +62,7 @@ async fn object_kinds_listed() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires docker"]
-async fn routines_sequences_and_triggers_list_with_their_definitions() {
+async fn triggers_list_once_with_their_table() {
     let fixture = start().await;
     let connection = connect(&fixture, false).await;
     setup(
@@ -77,10 +77,6 @@ async fn routines_sequences_and_triggers_list_with_their_definitions() {
             "CREATE TABLE ev_2025 PARTITION OF ev FOR VALUES FROM ('2025-01-01') TO ('2026-01-01')",
             "CREATE TABLE ev_2026 PARTITION OF ev FOR VALUES FROM ('2026-01-01') TO ('2027-01-01')",
             "CREATE TRIGGER logged AFTER INSERT ON ev FOR EACH ROW EXECUTE FUNCTION stamp()",
-            "CREATE FUNCTION add_one(x int) RETURNS int LANGUAGE sql AS $$ SELECT x + 1 $$",
-            "CREATE FUNCTION add_one(x text) RETURNS text LANGUAGE sql AS $$ SELECT x || '1' $$",
-            "CREATE PROCEDURE log_it() LANGUAGE sql AS $$ SELECT 42 $$",
-            "CREATE SEQUENCE \"Odd Seq\" AS integer START 7 INCREMENT 3 MINVALUE 2 MAXVALUE 900 CACHE 4 CYCLE",
         ],
     )
     .await;
@@ -105,6 +101,28 @@ async fn routines_sequences_and_triggers_list_with_their_definitions() {
             .filter(|object| object.kind != ObjectKind::Trigger)
             .all(|object| object.parent_table.is_none())
     );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn routines_sequences_and_triggers_list_with_their_definitions() {
+    let fixture = start().await;
+    let connection = connect(&fixture, false).await;
+    setup(
+        connection.as_ref(),
+        &[
+            "CREATE TABLE a (id int)",
+            "CREATE TABLE b (id int)",
+            "CREATE FUNCTION stamp() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NEW; END $$",
+            "CREATE TRIGGER audit BEFORE INSERT ON a FOR EACH ROW EXECUTE FUNCTION stamp()",
+            "CREATE TRIGGER audit AFTER UPDATE ON b FOR EACH ROW EXECUTE FUNCTION stamp()",
+            "CREATE FUNCTION add_one(x int) RETURNS int LANGUAGE sql AS $$ SELECT x + 1 $$",
+            "CREATE FUNCTION add_one(x text) RETURNS text LANGUAGE sql AS $$ SELECT x || '1' $$",
+            "CREATE PROCEDURE log_it() LANGUAGE sql AS $$ SELECT 42 $$",
+            "CREATE SEQUENCE \"Odd Seq\" AS integer START 7 INCREMENT 3 MINVALUE 2 MAXVALUE 900 CACHE 4 CYCLE",
+        ],
+    )
+    .await;
 
     let public = || Some("public".to_owned());
     let definition = |object: ObjectInfo| {

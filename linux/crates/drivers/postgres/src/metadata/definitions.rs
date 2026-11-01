@@ -57,7 +57,11 @@ pub(crate) async fn fetch_object_definition(
             });
         }
     };
-    Ok(sql.map(|sql| ObjectDefinition { sql, database: None }))
+    Ok(sql.map(|sql| ObjectDefinition {
+        sql,
+        database: None,
+        opens_in_editor: true,
+    }))
 }
 
 async fn function_definitions(

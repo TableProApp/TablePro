@@ -4,7 +4,6 @@ use gtk4::glib;
 use gtk4::prelude::*;
 use libadwaita::prelude::*;
 use tablepro_core::meta::{ObjectDefinition, ObjectInfo};
-use tablepro_core::sql_syntax::{SqlGrammar, holds_client_directive};
 use tablepro_session::runtime::TaskFailure;
 use tablepro_session::{OperationError, OperationKind, Session};
 
@@ -78,7 +77,11 @@ impl WorkspaceModel {
             return;
         }
         let parent = self.dialog_parent();
-        let ObjectDefinition { sql, database } = match result {
+        let ObjectDefinition {
+            sql,
+            database,
+            opens_in_editor,
+        } = match result {
             Ok(Some(definition)) => definition,
             Ok(None) => {
                 no_definition_alert(object).present(parent.as_ref());
@@ -95,13 +98,7 @@ impl WorkspaceModel {
                 return;
             }
         };
-        let grammar = self
-            .context
-            .active
-            .get()
-            .and_then(|session| session.current_dialect())
-            .map_or(SqlGrammar::PostgreSql, |dialect| dialect.grammar());
-        let open_in_editor = (!holds_client_directive(&sql, grammar)).then(|| {
+        let open_in_editor = opens_in_editor.then(|| {
             let input = self.input.clone();
             let text = sql.clone();
             Box::new(move || {

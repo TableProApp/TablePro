@@ -151,7 +151,7 @@ The structure tab edits a table's default character set and collation, converts 
 
 The sidebar's objects, routines and triggers come from one `UNION ALL` over `information_schema`, every name converted to `utf8mb4_bin`, since the catalogue tables collate their names differently from one version to the next. TRIGGERS is narrowed by `EVENT_OBJECT_SCHEMA`: MariaDB then reads one schema's trigger files, where by `TRIGGER_SCHEMA` it reads every schema's.
 
-A definition is the server's `SHOW CREATE`, which names neither the object's database nor a trigger's table's, so Open in Editor moves the tab to the object's database before the text runs. An object that is not there answers 1305, 1360, 1146, 1049 or, on MariaDB, 4089 (a table where the sequence was), and reads as gone.
+A definition is the server's `SHOW CREATE`, which names neither the object's database nor a trigger's table's, so Open in Editor moves the tab to the object's database before the text runs. A routine or a trigger reads its body under the `sql_mode` and `collation_connection` it was made with, so the text sets both first, ends the statement at `;;` under `DELIMITER ;;`, and sets the session's own back after, as mysqldump writes it. An object that is not there answers 1305, 1360, 1146, 1049 or, on MariaDB, 4089 (a table where the sequence was), and reads as gone.
 
 ## Editor sessions
 

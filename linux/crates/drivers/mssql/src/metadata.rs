@@ -9,7 +9,7 @@ use tablepro_core::meta::{
     IndexInfo, IndexKey, ObjectDefinition, ObjectInfo, ObjectKind, ObjectScope, RowCountEstimate, RowIdentity,
     SchemaInfo, TableEstimate, TableRef,
 };
-use tablepro_core::sql_syntax::{SqlGrammar, qualify_created_name};
+use tablepro_core::sql_syntax::{SqlGrammar, holds_client_directive, qualify_created_name};
 use tablepro_core::{ColumnInfo, DriverError, ForeignKeyInfo, UnsupportedFeature, Value};
 use tiberius::ColumnData;
 
@@ -50,14 +50,19 @@ const OBJECTS_SQL: &str = "SELECT SCHEMA_NAME(o.schema_id), o.name, RTRIM(o.type
 
 /// A module's text with what tells why it may have none: a CLR one
 /// keeps its code in an assembly, and an encrypted one keeps it hidden.
+/// Then the two SET options the module was made under, which decide how
+/// its body reads.
 const ROUTINE_DEFINITION_SQL: &str = "SELECT OBJECT_DEFINITION(o.object_id), RTRIM(o.type), \
-        CAST(OBJECTPROPERTY(o.object_id, 'IsEncrypted') AS int) \
-    FROM sys.objects o \
+        CAST(OBJECTPROPERTY(o.object_id, 'IsEncrypted') AS int), \
+        CAST(m.uses_ansi_nulls AS int), CAST(m.uses_quoted_identifier AS int) \
+    FROM sys.objects o LEFT JOIN sys.sql_modules m ON m.object_id = o.object_id \
     WHERE o.schema_id = SCHEMA_ID(COALESCE(@P1, SCHEMA_NAME())) AND o.name = @P2 AND RTRIM(o.type) IN ({types})";
 
 const TRIGGER_DEFINITION_SQL: &str = "SELECT OBJECT_DEFINITION(t.object_id), RTRIM(t.type), \
-        CAST(OBJECTPROPERTY(t.object_id, 'IsEncrypted') AS int) \
+        CAST(OBJECTPROPERTY(t.object_id, 'IsEncrypted') AS int), \
+        CAST(m.uses_ansi_nulls AS int), CAST(m.uses_quoted_identifier AS int) \
     FROM sys.triggers t JOIN sys.objects p ON p.object_id = t.parent_id \
+    LEFT JOIN sys.sql_modules m ON m.object_id = t.object_id \
     WHERE t.parent_class = 1 AND t.name = @P2 AND p.name = @P3 \
       AND p.schema_id = SCHEMA_ID(COALESCE(@P1, SCHEMA_NAME()))";
 
@@ -181,7 +186,9 @@ pub(crate) async fn list_objects(
 /// A dropped object has no row, and one whose text the login may not
 /// read has a NULL text: both give `None`, which the server leaves no
 /// way to tell apart. The text is kept as written, so a name written
-/// without its schema is given it.
+/// without its schema is given it, and it follows the module's SET
+/// options, each in a batch of its own, as the server's own scripting
+/// writes them.
 pub(crate) async fn fetch_object_definition(
     client: &mut MssqlClient,
     watch: &Watch,
@@ -224,11 +231,21 @@ pub(crate) async fn fetch_object_definition(
         };
         return Err(Interrupt::Failed(DriverError::Unsupported { feature }));
     };
-    let sql = match object.schema.as_deref() {
+    let opens_in_editor = !holds_client_directive(&text, SqlGrammar::MsSql);
+    let module = match object.schema.as_deref() {
         Some(schema) => qualify_created_name(&text, SqlGrammar::MsSql, &dialect.quote_identifier(schema)),
         None => text,
     };
-    Ok(Some(ObjectDefinition { sql, database: None }))
+    let on_off = |at: usize| if cells.flag(at) { "ON" } else { "OFF" };
+    Ok(Some(ObjectDefinition {
+        sql: format!(
+            "SET ANSI_NULLS {}\nGO\nSET QUOTED_IDENTIFIER {}\nGO\n{module}",
+            on_off(3),
+            on_off(4)
+        ),
+        database: None,
+        opens_in_editor,
+    }))
 }
 
 /// SQL Server has no function that prints a sequence, so the statement
@@ -249,6 +266,7 @@ async fn sequence_definition(
     Ok(Some(ObjectDefinition {
         sql: sequence_statement(&qualified, &sequence),
         database: None,
+        opens_in_editor: true,
     }))
 }
 

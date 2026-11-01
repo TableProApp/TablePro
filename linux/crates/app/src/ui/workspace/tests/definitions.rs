@@ -52,6 +52,7 @@ fn open_in_editor_takes_the_text_to_the_database_it_runs_in() {
             .always(FakeReply::ok(Some(ObjectDefinition {
                 sql: SQL.to_owned(),
                 database: Some("analytics".to_owned()),
+                opens_in_editor: true,
             })));
     });
 
@@ -83,6 +84,7 @@ fn only_the_last_definition_asked_for_is_shown_once() {
         let answer = |name: &str| ObjectDefinition {
             sql: format!("CREATE FUNCTION {name}() RETURNS int RETURN 1;"),
             database: None,
+            opens_in_editor: true,
         };
         for name in ["total", "other"] {
             script.fetch_object_definition.when_sql_contains(
@@ -168,6 +170,7 @@ fn a_definition_asked_for_from_a_session_behind_shows_until_the_user_moves() {
                 outcome: Ok(Some(ObjectDefinition {
                     sql: SQL.to_owned(),
                     database: None,
+                    opens_in_editor: true,
                 })),
             },
         );
@@ -176,6 +179,7 @@ fn a_definition_asked_for_from_a_session_behind_shows_until_the_user_moves() {
             .always(FakeReply::ok(Some(ObjectDefinition {
                 sql: SQL.to_owned(),
                 database: None,
+                opens_in_editor: true,
             })));
     });
     let (test, first, second) = (&sessions.test, &sessions.first, &sessions.second);
@@ -208,15 +212,15 @@ fn a_definition_asked_for_from_a_session_behind_shows_until_the_user_moves() {
 }
 
 #[gtk4::test]
-fn text_the_editor_would_split_offers_no_editor() {
+fn text_that_cannot_run_as_it_is_offers_no_editor() {
     let test = TestWindow::connected_with("DefinitionSplit", |script| {
         listed(script);
-        script.dialect = std::sync::Arc::new(tablepro_driver_mssql::MssqlDialect::new(16));
         script
             .fetch_object_definition
             .always(FakeReply::ok(Some(ObjectDefinition {
                 sql: "CREATE PROCEDURE [sales].total AS SELECT 1\nGO\nSELECT 2".to_owned(),
                 database: None,
+                opens_in_editor: false,
             })));
     });
 

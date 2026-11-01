@@ -29,7 +29,7 @@ FROM (
     SELECT c.relnamespace, t.tgname::text, 'tg', c.relname::text
     FROM pg_catalog.pg_trigger t
     JOIN pg_catalog.pg_class c ON c.oid = t.tgrelid
-    WHERE NOT t.tgisinternal AND t.tgparentid = 0
+    WHERE NOT t.tgisinternal AND t.tgparentid = 0::oid
 ) o
 JOIN pg_catalog.pg_namespace n ON n.oid = o.namespace
 WHERE NOT pg_catalog.pg_is_other_temp_schema(n.oid)

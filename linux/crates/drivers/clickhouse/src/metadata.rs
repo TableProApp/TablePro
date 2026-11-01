@@ -87,6 +87,7 @@ pub(crate) async fn fetch_object_definition(
     Ok(Some(ObjectDefinition {
         sql: terminated(&CatalogRow(&row).text(0)?),
         database: None,
+        opens_in_editor: true,
     }))
 }
 

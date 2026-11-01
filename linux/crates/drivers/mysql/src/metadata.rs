@@ -194,17 +194,20 @@ pub(crate) async fn list_objects(
 const NOT_THERE: [u16; 5] = [1305, 1360, 1146, 1049, 4089];
 
 /// The text names neither the object's database nor a trigger's table's,
-/// so it runs in a tab moved to the object's database.
+/// so it runs in a tab moved to the object's database. A routine or a
+/// trigger keeps the `sql_mode` and connection collation it was made
+/// under, which decide how its body reads, so the text sets them around
+/// the statement and puts the session's back after, as mysqldump does.
 pub(crate) async fn fetch_object_definition(
     connection: &mut MySqlConnection,
     dialect: &MySqlDialect,
     object: &ObjectInfo,
 ) -> Result<Option<ObjectDefinition>, DriverError> {
-    let (show, column) = match object.kind {
-        ObjectKind::Function => ("FUNCTION", "Create Function"),
-        ObjectKind::Procedure => ("PROCEDURE", "Create Procedure"),
-        ObjectKind::Sequence => ("SEQUENCE", "Create Table"),
-        ObjectKind::Trigger => ("TRIGGER", "SQL Original Statement"),
+    let (show, column, program) = match object.kind {
+        ObjectKind::Function => ("FUNCTION", "Create Function", true),
+        ObjectKind::Procedure => ("PROCEDURE", "Create Procedure", true),
+        ObjectKind::Sequence => ("SEQUENCE", "Create Table", false),
+        ObjectKind::Trigger => ("TRIGGER", "SQL Original Statement", true),
         _ => {
             return Err(DriverError::Unsupported {
                 feature: UnsupportedFeature::ObjectDefinitions,
@@ -220,22 +223,60 @@ pub(crate) async fn fetch_object_definition(
         Err(error) if not_there(&error) => return Ok(None),
         Err(error) => return Err(map_error(&error, dialect.flavour())),
     };
+    // NULL when the login may not read the routine's body.
+    let Some(sql) = text_column(&row, column)? else {
+        return Ok(None);
+    };
+    // SHOW CREATE SEQUENCE has neither setting.
+    let context = match program {
+        true => (
+            text_column(&row, "sql_mode")?,
+            text_column(&row, "collation_connection")?,
+        ),
+        false => (None, None),
+    };
+    let sql = match context {
+        (Some(mode), Some(collation)) => in_session_of(&sql, &mode, &collation),
+        _ => terminated(&sql),
+    };
+    Ok(Some(ObjectDefinition {
+        sql,
+        database: object.schema.clone(),
+        opens_in_editor: true,
+    }))
+}
+
+fn text_column(row: &sqlx::mysql::MySqlRow, column: &str) -> Result<Option<String>, DriverError> {
     let decode = |detail: String| DriverError::Decode {
         column: column.to_owned(),
         detail,
     };
-    // NULL when the login may not read the routine's body.
-    let text: Option<&[u8]> = row
+    let bytes: Option<&[u8]> = row
         .try_get_unchecked(column)
         .map_err(|error| decode(error.to_string()))?;
-    let Some(bytes) = text else {
-        return Ok(None);
-    };
-    let sql = String::from_utf8(bytes.to_vec()).map_err(|error| decode(error.to_string()))?;
-    Ok(Some(ObjectDefinition {
-        sql: terminated(&sql),
-        database: object.schema.clone(),
-    }))
+    bytes
+        .map(|bytes| String::from_utf8(bytes.to_vec()).map_err(|error| decode(error.to_string())))
+        .transpose()
+}
+
+/// `create` between the settings it was made under and the session's
+/// own. A body holds `;`, so the statement ends at `;;`, as mysqldump
+/// writes it.
+fn in_session_of(create: &str, sql_mode: &str, collation: &str) -> String {
+    let create = create.trim_end().trim_end_matches(';').trim_end();
+    format!(
+        "SET @saved_sql_mode = @@sql_mode, @saved_collation_connection = @@collation_connection;\n\
+         SET sql_mode = {}, collation_connection = {};\n\
+         DELIMITER ;;\n{create};;\nDELIMITER ;\n\
+         SET sql_mode = @saved_sql_mode, collation_connection = @saved_collation_connection;",
+        string_literal(sql_mode),
+        string_literal(collation)
+    )
+}
+
+/// Mode and collation names are letters, digits, `_` and `,`.
+fn string_literal(text: &str) -> String {
+    format!("'{}'", text.replace('\'', "''"))
 }
 
 fn not_there(error: &sqlx::Error) -> bool {
@@ -783,6 +824,23 @@ mod tests {
     use tablepro_core::column::{ColumnDefault, ColumnType};
 
     use super::*;
+
+    #[test]
+    fn a_routine_runs_between_its_own_settings_and_the_sessions() {
+        let create = "CREATE DEFINER=`root`@`%` PROCEDURE `p`()\nBEGIN SELECT 'a;b'; SELECT 2; END";
+
+        let script = in_session_of(create, "ANSI_QUOTES,NO_BACKSLASH_ESCAPES", "latin1_swedish_ci");
+
+        assert_eq!(
+            crate::script_split::texts(&script),
+            [
+                "SET @saved_sql_mode = @@sql_mode, @saved_collation_connection = @@collation_connection",
+                "SET sql_mode = 'ANSI_QUOTES,NO_BACKSLASH_ESCAPES', collation_connection = 'latin1_swedish_ci'",
+                create,
+                "SET sql_mode = @saved_sql_mode, collation_connection = @saved_collation_connection",
+            ]
+        );
+    }
 
     #[test]
     fn a_converted_default_keeps_the_digits_the_column_declares() {

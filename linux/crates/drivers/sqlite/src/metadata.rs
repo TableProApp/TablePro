@@ -113,6 +113,7 @@ pub(crate) async fn fetch_object_definition(
     Ok(sql.flatten().map(|sql| ObjectDefinition {
         sql: terminated(&qualify_created_name(&sql, SqlGrammar::Sqlite, &schema)),
         database: None,
+        opens_in_editor: true,
     }))
 }
 

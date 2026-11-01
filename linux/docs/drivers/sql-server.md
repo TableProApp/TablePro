@@ -104,7 +104,7 @@ SQL Server has no session statement timeout. A workspace call's deadline is the 
 
 ## Definitions
 
-The sidebar's objects and their table triggers come from one `UNION ALL` over `sys.objects` and `sys.triggers`. A definition is `OBJECT_DEFINITION`, the module's text as it was written, so a name written without its schema is given it, and a trigger's table too, before the text reaches the editor: the header rewrite the server's own scripting does. A CLR module keeps its code in an assembly and an encrypted one keeps its text hidden, and each says so instead of reading as gone. A sequence's `CREATE SEQUENCE` is built from `sys.sequences`.
+The sidebar's objects and their table triggers come from one `UNION ALL` over `sys.objects` and `sys.triggers`. A definition is `OBJECT_DEFINITION`, the module's text as it was written, so a name written without its schema is given it, and a trigger's table too, before the text reaches the editor: the header rewrite the server's own scripting does. The text opens with the module's `SET ANSI_NULLS` and `SET QUOTED_IDENTIFIER` from `sys.sql_modules`, each in a batch of its own, since they decide how the body reads. A body that holds a line that is only `GO` (a column alias to the server) does not open in the editor, which would end a batch there and run the rest on its own. A CLR module keeps its code in an assembly and an encrypted one keeps its text hidden, and each says so instead of reading as gone. A sequence's `CREATE SEQUENCE` is built from `sys.sequences`.
 
 ## Editor sessions
 
