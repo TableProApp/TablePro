@@ -100,6 +100,8 @@ enum PostgreSQLViewRowEditing {
         let oid = "\(PostgreSQLObjectQueries.quoteLiteral(baseOID))::oid"
         let identity = capabilities.hasIdentityColumns ? "a.attidentity::text" : "''"
         let generated = capabilities.hasGeneratedColumns ? "a.attgenerated::text" : "''"
+        // indkey lists INCLUDE columns after the key from 11 on; indnkeyatts counts the key ones.
+        let keyCount = capabilities.hasCoveringIndexes ? "i.indnkeyatts" : "i.indnatts"
         return """
             SELECT
                 a.attnum::text,
@@ -115,7 +117,7 @@ enum PostgreSQLViewRowEditing {
                 SELECT key.attnum, key.ord
                 FROM pg_catalog.pg_index i
                 CROSS JOIN LATERAL pg_catalog.unnest(i.indkey) WITH ORDINALITY AS key(attnum, ord)
-                WHERE i.indrelid = \(oid) AND i.indisprimary
+                WHERE i.indrelid = \(oid) AND i.indisprimary AND key.ord <= \(keyCount)
             ) k ON k.attnum = a.attnum
             WHERE a.attrelid = \(oid)
               AND a.attnum > 0

@@ -252,6 +252,7 @@ struct PostgreSQLViewRowEditingTests {
         )
         #expect(modern.contains("i.indrelid = '16733'::oid"))
         #expect(modern.contains("a.attidentity") && modern.contains("a.attgenerated"))
+        #expect(modern.contains("key.ord <= i.indnkeyatts"))
     }
 
     @Test("Servers without identity or generated columns read neither")
@@ -262,6 +263,7 @@ struct PostgreSQLViewRowEditingTests {
         )
         #expect(!query.contains("attidentity"))
         #expect(!query.contains("attgenerated"))
+        #expect(query.contains("key.ord <= i.indnatts"))
     }
 }
 

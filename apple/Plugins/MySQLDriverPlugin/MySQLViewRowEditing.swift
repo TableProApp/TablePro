@@ -113,6 +113,20 @@ enum MySQLViewRowEditing {
         """
     }
 
+    // The user's own column grants on the base table: COLUMNS then lists only the columns they cover.
+    static func columnGrantsQuery(_ relation: Relation, escape: (String) -> String) -> String {
+        """
+        SELECT COUNT(*) FROM information_schema.COLUMN_PRIVILEGES \
+        WHERE TABLE_SCHEMA = '\(escape(relation.database))' AND TABLE_NAME = '\(escape(relation.name))' \
+        AND GRANTEE = CONCAT('''', SUBSTRING_INDEX(CURRENT_USER(), '@', 1), '''@''', \
+        SUBSTRING_INDEX(CURRENT_USER(), '@', -1), '''')
+        """
+    }
+
+    static func hasColumnGrants(rows: [[String?]]) -> Bool {
+        (rows.first.flatMap { cell($0, 0) }.flatMap { Int($0) } ?? 0) > 0
+    }
+
     static func view(rows: [[String?]]) -> View? {
         guard let row = rows.first, let database = cell(row, 0), let name = cell(row, 1) else { return nil }
         return View(
@@ -165,7 +179,8 @@ enum MySQLViewRowEditing {
         keyRows: [[String?]],
         columnRows: [[String?]],
         quotesDefaults: Bool,
-        insertNeedsPlainColumns: Bool
+        insertNeedsPlainColumns: Bool,
+        hasColumnGrants: Bool
     ) -> PluginViewRowEditing {
         guard let top = levels.first, let base = levels.last?.base else { return .readOnly(.notUpdatable) }
         let baseColumns = columnRows.compactMap { baseColumn(row: $0, quotesDefaults: quotesDefaults) }
@@ -199,7 +214,7 @@ enum MySQLViewRowEditing {
                 PluginViewColumn(name: $0, baseColumn: $1, acceptsWrites: $1 != nil)
             },
             baseKeyColumns: isVisible || !keyColumns.isEmpty ? keyColumns : nil,
-            baseColumns: isVisible && isComplete ? baseColumns : nil
+            baseColumns: isVisible && isComplete && !hasColumnGrants ? baseColumns : nil
         )
     }
 

@@ -48,12 +48,14 @@ extension MySQLPluginDriver {
         guard let base = levels.last?.base else { return .readOnly(.notUpdatable) }
         let keyRows = try await catalogRows(MySQLViewRowEditing.primaryKeyQuery(base, escape: escape))
         let baseColumnRows = try await catalogRows(MySQLViewRowEditing.columnsQuery(base, escape: escape))
+        let grantRows = try await catalogRows(MySQLViewRowEditing.columnGrantsQuery(base, escape: escape))
         return MySQLViewRowEditing.answer(
             levels: levels,
             keyRows: keyRows,
             columnRows: baseColumnRows,
             quotesDefaults: catalogQuotesDefaults,
-            insertNeedsPlainColumns: flavor == .mysql
+            insertNeedsPlainColumns: flavor == .mysql,
+            hasColumnGrants: MySQLViewRowEditing.hasColumnGrants(rows: grantRows)
         )
     }
 

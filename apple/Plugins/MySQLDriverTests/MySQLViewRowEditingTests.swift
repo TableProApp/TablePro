@@ -111,14 +111,16 @@ struct MySQLViewRowEditingTests {
         keys: [[String?]] = Fixture.keyRows,
         tableRows: [[String?]] = Fixture.mysqlTableRows,
         quotesDefaults: Bool = false,
-        insertNeedsPlainColumns: Bool = true
+        insertNeedsPlainColumns: Bool = true,
+        hasColumnGrants: Bool = false
     ) -> PluginViewRowEditing {
         MySQLViewRowEditing.answer(
             levels: levels,
             keyRows: keys,
             columnRows: tableRows,
             quotesDefaults: quotesDefaults,
-            insertNeedsPlainColumns: insertNeedsPlainColumns
+            insertNeedsPlainColumns: insertNeedsPlainColumns,
+            hasColumnGrants: hasColumnGrants
         )
     }
 
@@ -314,6 +316,15 @@ struct MySQLViewRowEditingTests {
             tableRows: [["id", "NO", nil, "", "int"], ["name", "YES", nil, "", "varchar(20)"]]
         )
         #expect(result == .readOnly(.keyNotExposed))
+    }
+
+    @Test("Column grants on the base table leave its column list partial, so Add Row stays off")
+    func columnGrantsDropInsert() throws {
+        let level = try level(Fixture.mysqlV, columns: Fixture.vColumns)
+        let target = try #require(answer([level], insertNeedsPlainColumns: false, hasColumnGrants: true).writeTarget)
+        #expect(target.operations == [.update, .delete])
+        #expect(MySQLViewRowEditing.hasColumnGrants(rows: [["2"]]))
+        #expect(!MySQLViewRowEditing.hasColumnGrants(rows: [["0"]]))
     }
 
     @Test("MariaDB inserts through a view with a computed column when the INSERT leaves it out")

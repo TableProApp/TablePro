@@ -98,6 +98,18 @@ struct RewindPlannerTests {
         #expect(decoded.blanketRefusal == .deletedThroughView)
     }
 
+    @Test("Undoing an insert through a view records a delete older builds refuse to restore")
+    func inverseOfAViewInsertRefusesItsDelete() throws {
+        let insert = operation(kind: .insert, preImage: nil, postImage: ["9", "Lin"], writtenColumns: columns)
+        let plan = try planner(operations: [insert], writtenThroughView: true)
+            .plan(currentRows: [RewindCurrentRow(values: ["9", "Lin"])])
+
+        let inverse = RewindExecutor.inverseOperations(of: plan)
+
+        #expect(inverse.map { $0.kind } == [.delete])
+        #expect(inverse.first?.refusal == .identityNotPreservable)
+    }
+
     @Test("A row a view no longer shows is refused, not reported as restored or gone")
     func rowThatLeftTheViewIsRefused() throws {
         let insert = operation(kind: .insert, preImage: nil, postImage: ["9", "Lin"], writtenColumns: columns)

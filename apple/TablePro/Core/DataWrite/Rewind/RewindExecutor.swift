@@ -113,21 +113,7 @@ struct RewindExecutor {
     /// rather than a special case.
     private func captureInverseRecord(for plan: RewindPlan) async {
         guard AppSettingsManager.shared.history.keepRewindHistory else { return }
-        let operations = plan.rows.filter { $0.outcome.restores }.map { row -> RowWriteOperation in
-            let source = row.operation
-            return RowWriteOperation(
-                kind: source.kind.inverted,
-                target: source.target,
-                columns: source.columns,
-                primaryKeyColumns: source.primaryKeyColumns,
-                preImage: source.postImage,
-                postImage: source.preImage,
-                writtenColumns: source.writtenColumns,
-                refusal: nil,
-                preImageAbsentColumns: source.postImageAbsentColumns,
-                postImageAbsentColumns: source.preImageAbsentColumns
-            )
-        }
+        let operations = Self.inverseOperations(of: plan)
         guard !operations.isEmpty else { return }
 
         await QueryHistoryManager.shared.recordRewindSnapshot(
@@ -145,6 +131,27 @@ struct RewindExecutor {
                 writtenThroughView: plan.record.writtenThroughView
             )
         )
+    }
+
+    static func inverseOperations(of plan: RewindPlan) -> [RowWriteOperation] {
+        plan.rows.filter { $0.outcome.restores }.map { row -> RowWriteOperation in
+            let source = row.operation
+            let kind = source.kind.inverted
+            // The same stored refusal a save through a view writes, so a build without the view flag refuses too.
+            let throughView = plan.record.writtenThroughView == true && kind == .delete
+            return RowWriteOperation(
+                kind: kind,
+                target: source.target,
+                columns: source.columns,
+                primaryKeyColumns: source.primaryKeyColumns,
+                preImage: source.postImage,
+                postImage: source.preImage,
+                writtenColumns: source.writtenColumns,
+                refusal: throughView ? .identityNotPreservable : nil,
+                preImageAbsentColumns: source.postImageAbsentColumns,
+                postImageAbsentColumns: source.preImageAbsentColumns
+            )
+        }
     }
 
     func apply(_ plan: RewindPlan) async throws -> RewindApplyResult {
