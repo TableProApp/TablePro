@@ -84873,6 +84873,9 @@
         }
       }
     },
+    "Full" : {
+
+    },
     "FULL (rewrites the whole object, blocks access)" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -88548,6 +88551,9 @@
           }
         }
       }
+    },
+    "Hides matching values in the grid, copies, exports, the AI assistant and MCP. A pattern is table.column or column, with * as a wildcard, such as *.email. Filters and sorts still run on the stored values, so masking does not replace database permissions." : {
+
     },
     "High" : {
       "localizations" : {
@@ -99425,6 +99431,9 @@
         }
       }
     },
+    "Last 4 Characters" : {
+
+    },
     "Last 4 Weeks" : {
       "localizations" : {
         "fr" : {
@@ -106384,6 +106393,21 @@
       }
     },
     "Marked for deletion. Undo or Undo Delete brings it back." : {
+
+    },
+    "Mask" : {
+
+    },
+    "masked" : {
+
+    },
+    "Masked" : {
+
+    },
+    "Masked by a masking rule" : {
+
+    },
+    "Masking" : {
 
     },
     "Match" : {
@@ -150669,6 +150693,9 @@
     "Reuse Result For" : {
 
     },
+    "Reveal Masked Values…" : {
+
+    },
     "Reveal token" : {
       "localizations" : {
         "fr" : {
@@ -164475,6 +164502,9 @@
         }
       }
     },
+    "show masked values" : {
+
+    },
     "SHOW needs TOPICS, BROKERS, GROUPS or CLUSTER." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -171692,6 +171722,9 @@
           }
         }
       }
+    },
+    "Stable Hash" : {
+
     },
     "Stack" : {
       "extractionState" : "manual",
@@ -193819,6 +193852,9 @@
           }
         }
       }
+    },
+    "These rows show masked values, which cannot be written back. Reveal them to edit." : {
+
     },
     "These two engines cannot share a script." : {
       "localizations" : {

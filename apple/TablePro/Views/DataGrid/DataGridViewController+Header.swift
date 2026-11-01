@@ -127,6 +127,7 @@ extension DataGridViewController {
     func refreshHeaders() {
         let columns = model.columns
         let filter = model.store.valueFilter
+        let masks = model.rows.masks
         let sortEntries = presentedSortEntries()
         let showsComments = AppSettingsManager.shared.general.showObjectComments
         var sortIndex: [DataGridColumnID: (direction: SortDirection, priority: Int)] = [:]
@@ -137,14 +138,17 @@ extension DataGridViewController {
             for tableColumn in pane.tableView.tableColumns {
                 guard let id = pane.columnID(of: tableColumn), let column = columns.column(id: id) else { continue }
                 let sort = sortIndex[id]
+                let isMasked = masks.isMasked(column.dataIndex)
                 applyHeaderTitle(
                     to: tableColumn,
                     column: column,
-                    isFiltered: model.configuration.supportsValueFilter && filter.isActive(column: column.dataIndex)
+                    isFiltered: model.configuration.supportsValueFilter && filter.isActive(column: column.dataIndex),
+                    isMasked: isMasked
                 )
                 let tooltip = headerToolTip(
                     for: column,
                     showsComment: showsComments,
+                    isMasked: isMasked,
                     sort: sort,
                     sortKeyCount: sortEntries.count
                 )
@@ -152,7 +156,7 @@ extension DataGridViewController {
                     tableColumn.headerToolTip = tooltip
                 }
                 let cell = tableColumn.headerCell
-                let label = headerAccessibilityLabel(for: column, showsComment: showsComments)
+                let label = headerAccessibilityLabel(for: column, showsComment: showsComments, isMasked: isMasked)
                 if cell.accessibilityLabel() != label {
                     cell.setAccessibilityLabel(label)
                 }
@@ -163,9 +167,9 @@ extension DataGridViewController {
         }
     }
 
-    private func applyHeaderTitle(to tableColumn: NSTableColumn, column: DataGridColumn, isFiltered: Bool) {
+    private func applyHeaderTitle(to tableColumn: NSTableColumn, column: DataGridColumn, isFiltered: Bool, isMasked: Bool) {
         let cell = tableColumn.headerCell
-        guard isFiltered else {
+        guard isFiltered || isMasked else {
             if cell.stringValue != column.name {
                 tableColumn.title = column.name
             }
@@ -179,10 +183,21 @@ extension DataGridViewController {
             .font: font,
             .paragraphStyle: paragraph,
         ]
-        let title = NSMutableAttributedString(string: column.name + " ", attributes: attributes)
-        if let funnel = Self.filterFunnel(for: font, color: model.themeScope.resolved[.gridHeaderText]) {
-            let attachment = NSAttributedString(attachment: funnel)
-            let marked = NSMutableAttributedString(attributedString: attachment)
+        let title = NSMutableAttributedString(string: column.name, attributes: attributes)
+        let color = model.themeScope.resolved[.gridHeaderText]
+        var symbols: [(name: String, description: String)] = []
+        if isMasked {
+            symbols.append(("eye.slash", String(localized: "Masked")))
+        }
+        if isFiltered {
+            symbols.append(("line.3.horizontal.decrease.circle.fill", String(localized: "Filtered")))
+        }
+        for symbol in symbols {
+            guard let image = Self.headerSymbol(symbol.name, description: symbol.description, font: font, color: color) else {
+                continue
+            }
+            title.append(NSAttributedString(string: " ", attributes: attributes))
+            let marked = NSMutableAttributedString(attributedString: NSAttributedString(attachment: image))
             marked.addAttributes(attributes, range: NSRange(location: 0, length: marked.length))
             title.append(marked)
         }
@@ -190,12 +205,12 @@ extension DataGridViewController {
     }
 
     // A symbol image keeps the color it was built with, so it takes the header text color here.
-    private static func filterFunnel(for font: NSFont, color: NSColor) -> NSTextAttachment? {
+    private static func headerSymbol(_ name: String, description: String, font: NSFont, color: NSColor) -> NSTextAttachment? {
         let configuration = NSImage.SymbolConfiguration(pointSize: font.pointSize, weight: .regular)
             .applying(.init(hierarchicalColor: color))
         guard let image = NSImage(
-            systemSymbolName: "line.3.horizontal.decrease.circle.fill",
-            accessibilityDescription: String(localized: "Filtered")
+            systemSymbolName: name,
+            accessibilityDescription: description
         )?.withSymbolConfiguration(configuration) else { return nil }
         let attachment = NSTextAttachment()
         attachment.image = image
@@ -207,6 +222,7 @@ extension DataGridViewController {
     private func headerToolTip(
         for column: DataGridColumn,
         showsComment: Bool,
+        isMasked: Bool,
         sort: (direction: SortDirection, priority: Int)?,
         sortKeyCount: Int
     ) -> String {
@@ -219,6 +235,9 @@ extension DataGridViewController {
         if showsComment, let comment = Self.displayableComment(column.comment) {
             tooltip += "\n" + comment
         }
+        if isMasked {
+            tooltip += "\n" + String(localized: "Masked by a masking rule")
+        }
         if let sort, sortKeyCount > 1 {
             tooltip += "\n" + String(
                 format: String(localized: "Sort key %d of %d, %@"),
@@ -230,8 +249,11 @@ extension DataGridViewController {
         return tooltip
     }
 
-    private func headerAccessibilityLabel(for column: DataGridColumn, showsComment: Bool) -> String {
-        let label = String(format: String(localized: "Column: %@"), column.name)
+    private func headerAccessibilityLabel(for column: DataGridColumn, showsComment: Bool, isMasked: Bool) -> String {
+        var label = String(format: String(localized: "Column: %@"), column.name)
+        if isMasked {
+            label += ", " + String(localized: "masked")
+        }
         guard showsComment, let comment = Self.displayableComment(column.comment) else { return label }
         return label + ", " + comment
     }

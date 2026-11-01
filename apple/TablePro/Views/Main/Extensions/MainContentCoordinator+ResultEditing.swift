@@ -15,7 +15,10 @@ extension MainContentCoordinator {
     /// This is fail-closed on purpose: a result that never captured where its rows came from
     /// refuses the edit instead of borrowing whichever table the tab ran last (#2243).
     var activeResultEditRefusal: ResultEditRefusal? {
-        guard let tab = tabManager.selectedTab, tab.tabType == .query else { return nil }
+        guard let tab = tabManager.selectedTab else { return nil }
+        // A masked value can neither be written back nor find its row, and a copied row would insert the mask.
+        if !tabSessionRegistry.tableRows(for: tab.id).masks.isEmpty { return .masked }
+        guard tab.tabType == .query else { return nil }
         return ResultEditability.refusal(
             for: tab.display.activeResultSet?.origin,
             currentDatabaseName: scope(for: tab)?.database ?? browseDatabaseName

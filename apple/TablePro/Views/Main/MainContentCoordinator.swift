@@ -332,6 +332,7 @@ final class MainContentCoordinator: ObservableObject {
     private var schemaSwitchCancellable: AnyCancellable?
     private var clearedEditsCancellable: AnyCancellable?
     private var gridRepaintCancellable: AnyCancellable?
+    var maskingRulesCancellable: AnyCancellable?
     private var browseContainerCancellable: AnyCancellable?
 
     @Published var fileConflictRequest: FileConflictRequest?
@@ -664,6 +665,7 @@ final class MainContentCoordinator: ObservableObject {
         self.rowEditingCoordinator = RowEditingCoordinator(parent: self)
         clearedEditsCancellable = resumeWhenEditsClear()
         gridRepaintCancellable = observeChangeManagerForGridRepaint()
+        maskingRulesCancellable = observeMaskingRuleChanges()
 
         Self.lifecycleLogger.info(
             "[open] MainContentCoordinator.init done connId=\(connection.id, privacy: .public) elapsedMs=\(Int(Date().timeIntervalSince(initStart) * 1_000))"

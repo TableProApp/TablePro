@@ -234,6 +234,11 @@ extension QueryExecutionCoordinator {
             tableName: tableName
         )
         let generatedColumns = resolved.generatedColumns
+        // A Reveal covers the table it was asked on, not the next one this tab opens.
+        if parent.tabManager.tabs[idx].revealsMaskedValues, parent.tabManager.tabs[idx].tableContext.tableName != tableName {
+            parent.tabManager.mutate(at: idx) { $0.revealsMaskedValues = false }
+        }
+        let masks = parent.columnMasks(forTabId: tabId, table: tableName, columns: columns, columnTypes: columnTypes)
 
         let newTableRows = TableRows.from(
             queryRows: rows,
@@ -252,7 +257,8 @@ extension QueryExecutionCoordinator {
             foreignKeysFetched: resolved.foreignKeysFetched,
             rowLocators: rowLocators,
             absentCells: absentCells,
-            unloadedCells: unloadedCells
+            unloadedCells: unloadedCells,
+            masks: masks
         )
         let previousTableName = parent.tabManager.tabs[idx].tableContext.tableName
         let definitionChanged = parent.tabSessionRegistry.needsDefinition(existingTabId)
