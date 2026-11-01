@@ -7,6 +7,7 @@ public enum MSSQLViewSources {
         case writesRunTriggers
         case readsSeveralTables
         case baseTableHidden
+        case couldNotCheck
     }
 
     public enum Operation: String, CaseIterable, Sendable {
@@ -127,7 +128,13 @@ public enum MSSQLViewSources {
                     FROM chain c
                     JOIN sys.triggers tr ON tr.parent_id = c.object_id
                     WHERE tr.is_instead_of_trigger = 1 AND tr.is_disabled = 0
-                ) THEN 1 ELSE 0 END AS runs_instead_of_trigger
+                ) THEN 1 ELSE 0 END AS runs_instead_of_trigger,
+                CASE WHEN EXISTS (
+                    SELECT 1
+                    FROM chain c
+                    JOIN @edges e ON e.referencing_id = c.object_id
+                    WHERE c.depth = \(maxViewDepth)
+                ) THEN 1 ELSE 0 END AS chain_continues
             FROM sys.views v
             WHERE v.object_id = @view
             """
@@ -136,22 +143,30 @@ public enum MSSQLViewSources {
     public struct ViewFacts: Equatable, Sendable {
         public let hasOpaqueMetadata: Bool
         public let runsInsteadOfTrigger: Bool
+        // Views nest deeper than the walk followed, so a trigger further down went unseen.
+        public let chainContinues: Bool
 
-        public init(hasOpaqueMetadata: Bool, runsInsteadOfTrigger: Bool) {
+        public init(hasOpaqueMetadata: Bool, runsInsteadOfTrigger: Bool, chainContinues: Bool = false) {
             self.hasOpaqueMetadata = hasOpaqueMetadata
             self.runsInsteadOfTrigger = runsInsteadOfTrigger
+            self.chainContinues = chainContinues
         }
 
         // Nil when no view of that name is visible to the user.
         public init?(rows: [[String?]]) {
             guard let row = rows.first else { return nil }
-            self.init(hasOpaqueMetadata: row.cell(0) == "1", runsInsteadOfTrigger: row.cell(1) == "1")
+            self.init(
+                hasOpaqueMetadata: row.cell(0) == "1",
+                runsInsteadOfTrigger: row.cell(1) == "1",
+                chainContinues: row.cell(2) == "1"
+            )
         }
 
         public var refusal: Refusal? {
             // WITH VIEW_METADATA makes browse mode name the view in place of its base table.
             if hasOpaqueMetadata { return .baseTableHidden }
             if runsInsteadOfTrigger { return .writesRunTriggers }
+            if chainContinues { return .couldNotCheck }
             return nil
         }
     }

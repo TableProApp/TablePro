@@ -450,6 +450,7 @@ func reason(_ refusal: MSSQLViewSources.Refusal) -> PluginViewReadOnlyReason {
     case .writesRunTriggers: return .writesRunTriggers
     case .readsSeveralTables: return .readsSeveralTables
     case .baseTableHidden: return .baseTableHidden
+    case .couldNotCheck: return .couldNotCheck
     }
 }
 

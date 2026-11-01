@@ -529,6 +529,7 @@ private extension PluginViewReadOnlyReason {
         case .writesRunTriggers: self = .writesRunTriggers
         case .readsSeveralTables: self = .readsSeveralTables
         case .baseTableHidden: self = .baseTableHidden
+        case .couldNotCheck: self = .couldNotCheck
         }
     }
 }

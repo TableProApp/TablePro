@@ -151,6 +151,13 @@ struct MSSQLViewSourcesTests {
         #expect(MSSQLViewSources.ViewFacts(rows: []) == nil)
     }
 
+    @Test("A view chain deeper than the walk follows is not called checked")
+    func viewChainPastTheWalk() throws {
+        let facts = try #require(MSSQLViewSources.ViewFacts(rows: [["0", "0", "1"]]))
+        #expect(facts.refusal == .couldNotCheck)
+        #expect(MSSQLViewSources.ViewFacts(rows: [["0", "1", "1"]])?.refusal == .writesRunTriggers)
+    }
+
     @Test("Browse mode maps shown columns to base columns and leaves computed ones without one")
     func browseOneTable() {
         let browse = MSSQLViewSources.BrowseFacts(rows: Rows.browseV)
