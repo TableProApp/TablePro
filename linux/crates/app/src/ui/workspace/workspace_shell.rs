@@ -66,6 +66,13 @@ pub(super) fn describe_buttons(shell: &WorkspaceShell) {
 }
 
 impl WorkspaceShell {
+    /// Hand `input` to the window that holds the shell.
+    pub(crate) fn tell_window(&self, input: SessionWindowInput) {
+        if let Some(sender) = self.imp().sender.get() {
+            sender.deliver(input);
+        }
+    }
+
     /// A shell for `window`, with what it needs beyond the template: the
     /// connection tree and the picker's actions its rows name, the main
     /// menu, the window's actions, the tab menu and the overview's new
@@ -105,6 +112,7 @@ impl WorkspaceShell {
         ));
         follow_sidebar(&imp.split_view, &imp.sidebar_toggle);
         window.add_action(&assistant_action(&shell));
+        imp.walk_hooks.replace(Some(shell.hook_recent_walk(window)));
 
         imp.tab_view
             .bind_property("n-pages", &imp.tab_stack.get(), "visible-child-name")
@@ -169,12 +177,6 @@ impl WorkspaceShell {
     /// says left or right, as the GNOME HIG asks.
     fn connect_tab_menu(&self) {
         let imp = self.imp();
-        let target = self.downgrade();
-        imp.tab_view.connect_setup_menu(move |_, page| {
-            if let Some(shell) = target.upgrade() {
-                shell.imp().menu_target.replace(page.cloned());
-            }
-        });
         let group = gio::SimpleActionGroup::new();
         let menu_action = |name: &str, close: fn(&adw::TabView, &adw::TabPage)| {
             let action = gio::SimpleAction::new(name, None);
@@ -193,16 +195,49 @@ impl WorkspaceShell {
         group.add_action(&menu_action("close-others", |view, page| view.close_other_pages(page)));
         group.add_action(&menu_action("close-after", |view, page| view.close_pages_after(page)));
         group.add_action(&menu_action("close", |view, page| view.close_page(page)));
-        imp.tab_view.insert_action_group("tab", Some(&group));
-        let others = gio::Menu::new();
-        others.append(Some(&gettext("Close Other Tabs")), Some("tab.close-others"));
-        others.append(Some(&gettext("Close Tabs After This One")), Some("tab.close-after"));
-        let close = gio::Menu::new();
-        close.append(Some(&gettext("Close")), Some("tab.close"));
-        let menu = gio::Menu::new();
-        menu.append_section(None, &others);
-        menu.append_section(None, &close);
-        imp.tab_view.set_menu_model(Some(&menu));
+        // The bar and the overview parent the menu's popover, and the view
+        // is an ancestor of neither.
+        self.insert_action_group("tab", Some(&group));
+        let _ = imp.tab_actions.set(group);
+        let target = self.downgrade();
+        imp.tab_view.connect_setup_menu(move |view, page| {
+            let Some(shell) = target.upgrade() else {
+                return;
+            };
+            shell.imp().menu_target.replace(page.cloned());
+            if let Some(page) = page {
+                shell.dim_tab_menu(view, page);
+            }
+        });
+        imp.tab_view.set_menu_model(Some(&tab_menu()));
+    }
+
+    /// Dim what would close nothing for `page`, whose menu opens.
+    fn dim_tab_menu(&self, view: &adw::TabView, page: &adw::TabPage) {
+        let Some(group) = self.imp().tab_actions.get() else {
+            return;
+        };
+        let last = view.n_pages() - 1;
+        for (name, enabled) in [
+            ("close-others", last > 0),
+            ("close-after", view.page_position(page) < last),
+        ] {
+            if let Some(action) = group.lookup_action(name).and_downcast::<gio::SimpleAction>() {
+                action.set_enabled(enabled);
+            }
+        }
+    }
+
+    /// Close every session's tabs, each through its own session's
+    /// prompts.
+    pub(super) fn close_all_tabs(&self) {
+        let view = self.tab_view();
+        // The selected page goes last, so the view does not select each
+        // neighbour in turn and bring its session forward.
+        if let Some(selected) = view.selected_page() {
+            view.close_other_pages(&selected);
+            view.close_page(&selected);
+        }
     }
 
     fn connect_view(&self) {
@@ -453,6 +488,7 @@ impl WorkspaceShell {
         let Some(page) = self.imp().tab_view.selected_page() else {
             return;
         };
+        self.note_shown_tab();
         if let Some((owner, _)) = self.owner_of(&page) {
             self.set_front(Some(&owner));
         }
@@ -630,6 +666,10 @@ impl WorkspaceShell {
             }
         }
         imp.closed_tabs.borrow_mut().clear();
+        imp.recent_walk.take();
+        if let Some(hooks) = imp.walk_hooks.take() {
+            hooks.release();
+        }
         if let Some(window) = imp.window.upgrade() {
             window.remove_action(SHOW_SIDEBAR);
             window.remove_action(SHOW_ASSISTANT);
@@ -677,12 +717,24 @@ fn assistant_action(shell: &WorkspaceShell) -> gio::SimpleAction {
     action
 }
 
+fn tab_menu() -> gio::Menu {
+    let others = gio::Menu::new();
+    others.append(Some(&gettext("Close _Other Tabs")), Some("tab.close-others"));
+    others.append(Some(&gettext("Close Tabs _After This One")), Some("tab.close-after"));
+    let close = gio::Menu::new();
+    close.append(Some(&gettext("_Close")), Some("tab.close"));
+    let menu = gio::Menu::new();
+    menu.append_section(None, &others);
+    menu.append_section(None, &close);
+    menu
+}
+
 /// The main menu with the session's Safe Mode levels on top, as radio
 /// items of the window's stateful `safe-mode` action.
 fn with_safe_mode(menu: &gio::MenuModel) -> gio::Menu {
     let levels = gio::Menu::new();
     for level in tablepro_core::SafeModeLevel::ALL {
-        let item = gio::MenuItem::new(Some(&crate::ui::safe_mode::label(level)), None);
+        let item = gio::MenuItem::new(Some(&crate::ui::safe_mode::menu_label(level)), None);
         item.set_action_and_target_value(
             Some("win.safe-mode"),
             Some(&crate::ui::safe_mode::action_target(level).to_variant()),
@@ -690,7 +742,7 @@ fn with_safe_mode(menu: &gio::MenuModel) -> gio::Menu {
         levels.append_item(&item);
     }
     let section = gio::Menu::new();
-    section.append_submenu(Some(&gettext("Safe Mode")), &levels);
+    section.append_submenu(Some(&gettext("_Safe Mode")), &levels);
     let whole = gio::Menu::new();
     whole.append_section(None, &section);
     whole.append_section(None, menu);
@@ -716,4 +768,21 @@ fn follow_sidebar(split_view: &adw::OverlaySplitView, toggle: &gtk::ToggleButton
         glib::closure!(|_: Option<glib::Object>, collapsed: bool, shown: bool| collapsed || !shown),
     );
     visible.bind(toggle, "visible", Some(split_view))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::RESOURCE_BASE_PATH;
+    use crate::test_support::assert_access_keys;
+
+    #[gtk4::test]
+    fn the_tab_menu_and_the_main_menu_give_each_item_its_own_access_key() {
+        crate::register_test_resources();
+        let builder = gtk::Builder::from_resource(&format!("{RESOURCE_BASE_PATH}/gtk/menus.ui"));
+        let main: gio::MenuModel = builder.object(PRIMARY_MENU).expect("the main menu");
+
+        assert_access_keys(&tab_menu());
+        assert_access_keys(&with_safe_mode(&main));
+    }
 }

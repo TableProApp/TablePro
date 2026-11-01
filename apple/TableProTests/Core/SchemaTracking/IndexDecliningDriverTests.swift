@@ -67,7 +67,7 @@ struct IndexDecliningDriverTests {
 
         #expect(composed.statements.count == 1)
         #expect(composed.issues.map(\.message) == ["Create Table cannot add an index on this database."])
-        #expect(composed.issues.first?.tab == .indexes)
+        #expect(composed.issues.first?.section == .indexes)
         #expect(composed.issues.first?.row == 0)
     }
 }

@@ -1,3 +1,8 @@
+use gtk4::prelude::*;
+use gtk4::subclass::prelude::*;
+use gtk4::{gio, glib};
+
+use super::expression_menu::SET_EXPRESSION;
 use super::{EditController, cell_widget};
 use crate::services::grid::{
     CellEditorKind, CellPreset, CellPresets, DeleteAvailability, GridRowId, cell_presets, delete_availability,
@@ -24,6 +29,14 @@ pub(super) fn install(grid: &DataGrid) {
     add(grid, "set-default", |grid| {
         grid.edit().set_preset(grid, CellPreset::Default)
     });
+    let action = gio::SimpleAction::new(SET_EXPRESSION, Some(glib::VariantTy::STRING));
+    let weak = grid.downgrade();
+    action.connect_activate(move |_, parameter| {
+        if let (Some(grid), Some(sql)) = (weak.upgrade(), parameter.and_then(glib::Variant::str)) {
+            grid.edit().set_expression(&grid, sql);
+        }
+    });
+    grid.imp().actions.add_action(&action);
     add(grid, "insert-row", |grid| grid.edit().insert_row(grid));
     add(grid, "duplicate-rows", |grid| grid.edit().duplicate_rows(grid));
     add(grid, "delete-rows", |grid| grid.edit().delete_rows(grid));
@@ -61,7 +74,12 @@ pub(super) fn refresh(controller: &EditController, grid: &DataGrid, target: Opti
     let edits = !typing
         && matches!(
             kind,
-            Some(CellEditorKind::Inline { .. } | CellEditorKind::Toggle | CellEditorKind::Details(_))
+            Some(
+                CellEditorKind::Inline { .. }
+                    | CellEditorKind::Toggle
+                    | CellEditorKind::Choice
+                    | CellEditorKind::Details(_)
+            )
         );
     enable(grid, "edit", edits);
     enable(grid, "toggle", !typing && kind == Some(CellEditorKind::Toggle));
@@ -90,7 +108,7 @@ fn cell_state(
     let lock = controller.tracked().lock(&grid_column, row);
     let kind = CellEditorKind::for_cell(&grid_column, lock.map_or(Ok(()), Err));
     let presets = match lock {
-        None => cell_presets(&grid_column, &row.id()),
+        None => cell_presets(&grid_column, &row.id(), grid.sql_dialect().as_deref()),
         Some(_) => CellPresets::default(),
     };
     (Some(kind), presets)

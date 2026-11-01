@@ -13,6 +13,15 @@ use super::FileIdentity;
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum SessionKey {
     Saved(Uuid),
+    /// Another of a saved connection's databases, opened in the window
+    /// that holds the connection ([0030]). Its sibling sessions share the
+    /// window and never another's.
+    ///
+    /// [0030]: ../../../docs/decisions/0030-a-database-is-a-session-of-its-own.md
+    SavedIn {
+        id: Uuid,
+        database: String,
+    },
     /// The canonical file URI when there is one, else the URI the file
     /// arrived as.
     File(String),
@@ -71,6 +80,7 @@ mod tests {
             safe_mode: tablepro_core::SafeModeLevel::Off,
             external_access: tablepro_core::ExternalAccess::ReadOnly,
             ai_policy: tablepro_core::AiPolicy::Ask,
+            query_timeout_secs: None,
             auth_mode: tablepro_core::AuthMode::Password,
             ssh: None,
             last_opened_at: None,

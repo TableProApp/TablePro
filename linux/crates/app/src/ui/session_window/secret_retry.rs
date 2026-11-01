@@ -22,8 +22,8 @@ impl SessionWindow {
         if !offered {
             return;
         }
-        if let Some((claim, source, _)) = self.take_failure(key) {
-            self.reconnect(claim, source, CredentialDemand::reenter(kind));
+        if let Some(taken) = self.take_failure(key) {
+            self.reconnect(taken, CredentialDemand::reenter(kind));
         }
     }
 }
@@ -91,6 +91,7 @@ mod tests {
             safe_mode: tablepro_core::SafeModeLevel::Off,
             external_access: tablepro_core::ExternalAccess::ReadOnly,
             ai_policy: tablepro_core::AiPolicy::Ask,
+            query_timeout_secs: None,
             auth_mode,
             ssh: ssh.map(|auth| SavedSshConfig {
                 host: "bastion.example.com".to_owned(),

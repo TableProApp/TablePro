@@ -28,7 +28,7 @@ public enum SnowflakeSQL {
     /// it matches objects the caller never named.
     public static func escapeLikePattern(_ value: String) -> String {
         escapeLiteral(value)
-            .replacingOccurrences(of: "_", with: "\\\\_")
-            .replacingOccurrences(of: "%", with: "\\\\%")
+            .replacingOccurrences(of: "_", with: "\\\\_", options: .literal)
+            .replacingOccurrences(of: "%", with: "\\\\%", options: .literal)
     }
 }

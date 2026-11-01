@@ -88,7 +88,7 @@ struct CreateTableCommentCompositionTests {
         )
 
         #expect(composed.issues.map(\.message) == ["This database cannot store a table comment."])
-        #expect(composed.issues.first?.tab == .columns)
+        #expect(composed.issues.first?.section == .columns)
     }
 
     @Test("Every statement the driver creates the table with arrives in order, ahead of the indexes")

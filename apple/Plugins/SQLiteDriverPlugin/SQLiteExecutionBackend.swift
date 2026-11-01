@@ -258,10 +258,7 @@ actor SQLiteLocalBackend: SQLiteExecutionBackend {
         busyState.beginOperation()
 
         let startTime = Date()
-        var statement: OpaquePointer?
-        guard sqlite3_prepare_v2(db, query, -1, &statement, nil) == SQLITE_OK else {
-            throw SQLitePluginError.queryFailed(String(cString: sqlite3_errmsg(db)))
-        }
+        let statement = try Self.prepareOnlyStatement(query, db: db)
         defer { sqlite3_finalize(statement) }
 
         if let parameters {
@@ -301,6 +298,24 @@ actor SQLiteLocalBackend: SQLiteExecutionBackend {
         )
     }
 
+    // SQLite compiles only a text's first statement; a second one in the tail would be dropped without a word. The
+    // tail is read, never prepared: preparing a PRAGMA already applies it.
+    static func prepareOnlyStatement(_ query: String, db: OpaquePointer) throws -> OpaquePointer? {
+        try query.withCString { text in
+            guard !SQLiteStatementTail.pragmaHoldsSecondStatement(text) else {
+                throw SQLitePluginError.queryFailed(String(localized: "Send one statement at a time."))
+            }
+            var statement: OpaquePointer?
+            var tail: UnsafePointer<CChar>?
+            guard sqlite3_prepare_v2(db, text, -1, &statement, &tail) == SQLITE_OK else {
+                throw SQLitePluginError.queryFailed(String(cString: sqlite3_errmsg(db)))
+            }
+            guard let tail, SQLiteStatementTail.holdsStatement(tail) else { return statement }
+            sqlite3_finalize(statement)
+            throw SQLitePluginError.queryFailed(String(localized: "Send one statement at a time."))
+        }
+    }
+
     /// `sqlite3_changes64` keeps the count of the last INSERT, UPDATE or DELETE, so a statement that
     /// wrote nothing, DDL included, would report it again. The total moves only when this one wrote.
     private static func changes(of db: OpaquePointer, sinceTotal totalBefore: Int64) -> Int {
@@ -315,10 +330,7 @@ actor SQLiteLocalBackend: SQLiteExecutionBackend {
         busyState.beginOperation()
         guard let db else { throw SQLitePluginError.notConnected }
 
-        var statement: OpaquePointer?
-        guard sqlite3_prepare_v2(db, query, -1, &statement, nil) == SQLITE_OK else {
-            throw SQLitePluginError.queryFailed(String(cString: sqlite3_errmsg(db)))
-        }
+        let statement = try Self.prepareOnlyStatement(query, db: db)
 
         let firstStep = SQLiteResultColumns.stepFirst(statement)
         let columnCount = firstStep.count

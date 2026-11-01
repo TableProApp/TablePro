@@ -7,7 +7,7 @@ enum KingbaseESCompatibilityMode: Equatable, Sendable {
     case oracle
 
     // The two-argument form answers NULL where the parameter does not exist, which reads as PostgreSQL mode.
-    static let probeQuery = "SELECT current_setting('database_mode', true)"
+    static let probeQuery = "SELECT pg_catalog.current_setting('database_mode', true)"
 
     static let lexicalFeaturesItDecides: SQLLexicalFeatures = [
         .alternativeQuoting, .plsqlBlocks, .slashLineTerminators, .dollarAndHashInIdentifiers,

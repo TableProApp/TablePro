@@ -18,7 +18,7 @@ enum TeradataRowEditSQL {
         case .null:
             return "NULL"
         case .text(let string):
-            return "'" + string.replacingOccurrences(of: "'", with: "''") + "'"
+            return "'" + string.replacingOccurrences(of: "'", with: "''", options: .literal) + "'"
         case .bytes(let data):
             return "'" + data.map { String(format: "%02X", $0) }.joined() + "'XB"
         }

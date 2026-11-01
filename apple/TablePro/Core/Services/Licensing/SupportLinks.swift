@@ -16,6 +16,7 @@ internal enum SupportReferrer: Equatable {
     case aboutPanel
     case licenseSettings
     case activationSheet
+    case ask
     case featureGate(ProFeature)
 
     internal var parameterValue: String {
@@ -28,6 +29,8 @@ internal enum SupportReferrer: Equatable {
             return "app-settings"
         case .activationSheet:
             return "app-activation"
+        case .ask:
+            return "app-ask"
         case .featureGate(let feature):
             return "app-gate-" + Self.slug(for: feature)
         }

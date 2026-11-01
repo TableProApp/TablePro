@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use tablepro_core::Value;
-use tablepro_core::edit::CellInput;
+use tablepro_core::edit::{CellExpression, CellInput};
 use tablepro_core::meta::RowIdentity;
 
 use super::GridRow;
@@ -178,18 +178,20 @@ impl TrackedValues {
         }
     }
 
-    /// Calls `f` with the value the cell shows. `default` is set for a
-    /// draft's cell left to the server, which then reads as NULL.
-    pub fn with_value<R>(&self, row: &GridRow, column: usize, f: impl FnOnce(&Value, bool) -> R) -> R {
+    /// Calls `f` with the value the cell shows. `computed` is set for a
+    /// cell whose value the server computes as it saves, which then reads
+    /// as NULL.
+    pub fn with_value<R>(&self, row: &GridRow, column: usize, f: impl FnOnce(&Value, Option<ServerValue>) -> R) -> R {
         let pending = self
             .tracked_key(row)
             .and_then(|(tracker, key)| tracker.cell_overlay(&key, column).pending);
         match pending {
-            Some(CellInput::Value(value)) => f(&value, false),
-            Some(CellInput::Default) => f(&Value::Null, true),
+            Some(CellInput::Value(value)) => f(&value, None),
+            Some(CellInput::Default) => f(&Value::Null, Some(ServerValue::Default)),
+            Some(CellInput::Expression(expression)) => f(&Value::Null, Some(ServerValue::Expression(expression))),
             None => match row.cells() {
-                Some(cells) => f(cells.get(column).unwrap_or(&Value::Null), false),
-                None => f(&Value::Null, false),
+                Some(cells) => f(cells.get(column).unwrap_or(&Value::Null), None),
+                None => f(&Value::Null, None),
             },
         }
     }
@@ -197,9 +199,10 @@ impl TrackedValues {
     /// What an editor opens on: a draft's cell as the tracker holds it, a
     /// saved row's pending value, else the value as it was read.
     pub fn edit_input(&self, row: &GridRow, column: usize) -> CellInput {
-        self.with_value(row, column, |value, default| match default {
-            true => CellInput::Default,
-            false => CellInput::Value(value.clone()),
+        self.with_value(row, column, |value, computed| match computed {
+            Some(ServerValue::Default) => CellInput::Default,
+            Some(ServerValue::Expression(expression)) => CellInput::Expression(expression),
+            None => CellInput::Value(value.clone()),
         })
     }
 
@@ -217,6 +220,17 @@ impl TrackedValues {
         RowSnapshot::new(cells, overrides)
     }
 
+    /// `snapshot` that reads only `column` through the tracker, for a
+    /// caller that reads no other column of the row.
+    pub fn column_snapshot(&self, row: &GridRow, column: usize) -> RowSnapshot {
+        let cells = row.cells().unwrap_or_else(|| Arc::from([]));
+        let pending = self
+            .tracked_key(row)
+            .and_then(|(tracker, key)| tracker.cell_overlay(&key, column).pending)
+            .map(|input| (column, input.value().cloned().unwrap_or(Value::Null)));
+        RowSnapshot::new(cells, pending.into_iter().collect())
+    }
+
     /// Like `snapshot`, except a draft's cell left to the server stays
     /// `Default`.
     pub fn inputs(&self, row: &GridRow) -> Vec<CellInput> {
@@ -229,6 +243,13 @@ impl TrackedValues {
             .map(CellInput::Value)
             .collect()
     }
+}
+
+/// A pending cell whose value the server computes as the save writes it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ServerValue {
+    Default,
+    Expression(CellExpression),
 }
 
 #[cfg(test)]
@@ -275,13 +296,27 @@ mod tests {
             row_key: key(1),
             col: 1,
             original: Value::Int(5),
-            value: Value::Int(6),
+            value: CellInput::Value(Value::Int(6)),
         });
 
         assert!(values.with_value(&row, 1, |value, _| *value == Value::Int(6)));
+        assert_eq!(values.column_snapshot(&row, 1).value(1), &Value::Int(6));
         assert_eq!(values.edit_input(&row, 1), CellInput::Value(Value::Int(6)));
         assert_eq!(values.row_state(&row), RowPendingState::Modified);
         assert_eq!(values.mark(&row, 1).state, CellState::Modified);
+    }
+
+    #[test]
+    fn a_column_snapshot_of_a_draft_reads_its_cell_and_a_default_as_null() {
+        let tracker = TabTrackerHandle::default();
+        let values = TrackedValues::tracked(tracker.clone(), keyed());
+        let delta = tracker.apply(TrackerEdit::InsertDrafts {
+            rows: vec![vec![CellInput::Default, CellInput::Value(Value::Int(7))]],
+        });
+        let row = GridRow::new(RowData::draft(delta.inserted_drafts[0]));
+
+        assert_eq!(values.column_snapshot(&row, 1).value(1), &Value::Int(7));
+        assert_eq!(values.column_snapshot(&row, 0).value(0), &Value::Null);
     }
 
     #[test]

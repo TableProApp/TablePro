@@ -1,9 +1,10 @@
 use tablepro_core::column::{ColumnInfo, ColumnType, SqlExpression};
 use tablepro_core::ddl::DdlDialect;
 use tablepro_core::dialect::{
-    BindError, BindTarget, DialectCapabilities, InsertBatchLimits, InsertConflict, KeysetDirection, LikeForm,
-    LiteralError, Placeholder, SqlDialect, TablePaging,
+    BindError, BindTarget, DatabaseLayout, DialectCapabilities, InsertBatchLimits, InsertConflict, KeysetDirection,
+    LikeForm, LiteralError, Placeholder, SqlDialect, TablePaging,
 };
+use tablepro_core::edit::{CellExpression, MomentKind};
 use tablepro_core::filter::{Combinator, FilterOp};
 use tablepro_core::meta::{EngineRowId, EngineRowIdPart, TableRef};
 use tablepro_core::sql_syntax::{
@@ -141,6 +142,10 @@ const DURATION: &[FilterOp] = &[FilterOp::Eq];
 const CASSANDRA_IN_OUTSIDE_KEY: (u32, u32) = (5, 0);
 
 impl SqlDialect for CqlDialect {
+    fn database_layout(&self) -> DatabaseLayout {
+        DatabaseLayout::AsSchemas
+    }
+
     fn capabilities(&self) -> DialectCapabilities {
         match self.conditional_writes {
             true => DialectCapabilities {
@@ -156,6 +161,17 @@ impl SqlDialect for CqlDialect {
 
     fn grammar(&self) -> SqlGrammar {
         SqlGrammar::Cql
+    }
+
+    fn cell_expressions(&self) -> &'static [CellExpression] {
+        const MOMENT: &[MomentKind] = &[MomentKind::Timestamp];
+        const DATE: &[MomentKind] = &[MomentKind::Date];
+        const EXPRESSIONS: &[CellExpression] = &[
+            // The spellings ScyllaDB and every Cassandra since 2.2 parse.
+            CellExpression::new("toTimestamp(now())", MOMENT, &["currentTimestamp()"]),
+            CellExpression::new("toDate(now())", DATE, &["currentDate()"]),
+        ];
+        EXPRESSIONS
     }
 
     fn quote_identifier(&self, name: &str) -> String {
@@ -457,6 +473,7 @@ const CREDENTIAL_RULES: CredentialRules = CredentialRules {
         (&["ALTER", "ROLE"], &["PASSWORD", "HASHED"]),
     ],
     carriers: &[],
+    secret_parameters: &[],
 };
 
 #[cfg(test)]
@@ -767,7 +784,7 @@ mod tests {
             ],
         ];
 
-        let sql = tablepro_core::export::render_sql_insert(&cql, &table, &columns, &[], &rows);
+        let sql = tablepro_core::export::render_sql_insert(&cql, &table, &columns, &[], &[], &rows);
 
         assert_eq!(
             sql,

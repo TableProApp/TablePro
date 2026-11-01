@@ -3,9 +3,10 @@ use std::ops::RangeInclusive;
 
 use crate::sql_syntax::SqlGrammar;
 
-/// How the lexer reads the MySQL text whose meaning hangs on who reads
-/// it: an executable comment (`/*! … */`, `/*!50100 … */`, MariaDB's
-/// `/*M!100100 … */`), a `$tag$` quote and a `DELIMITER` line.
+/// How the lexer reads the text whose meaning hangs on who reads it. On
+/// MySQL, an executable comment (`/*! … */`, `/*!50100 … */`, MariaDB's
+/// `/*M!100100 … */`), a `$tag$` quote and a `DELIMITER` line. On SQL
+/// Server, a `--` after a number's `e`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ServerReading {
     /// As the mysql client reads a script to split it: every executable
@@ -20,18 +21,27 @@ pub(crate) enum ServerReading {
         version: u32,
         quotes: NameQuotes,
     },
+    /// As the client reads it, but for an exponent with no digits. SQL
+    /// Server runs the DELETE of `1E+DELETE`, so the sign is the number's,
+    /// and the `--` of `1E--1` would be that sign and a minus where the
+    /// client reads a comment. Nobody measured that, so both are read.
+    SignedEmptyExponents,
 }
 
 impl ServerReading {
     pub(crate) fn reads_directives(self) -> bool {
-        self == Self::Client
+        !matches!(self, Self::Server { .. })
+    }
+
+    pub(crate) fn signs_empty_exponents(self) -> bool {
+        self == Self::SignedEmptyExponents
     }
 
     pub(crate) fn quotes_dollar_tags(self) -> bool {
         matches!(
             self,
             Self::Server {
-                server: Server::MySql81,
+                server: Server::MySql81 | Server::MySql81Galera,
                 ..
             }
         )
@@ -39,7 +49,7 @@ impl ServerReading {
 
     pub(crate) fn name_quotes(self) -> NameQuotes {
         match self {
-            Self::Client => NameQuotes::Default,
+            Self::Client | Self::SignedEmptyExponents => NameQuotes::Default,
             Self::Server { quotes, .. } => quotes,
         }
     }
@@ -67,13 +77,28 @@ pub(crate) enum Server {
     MariaDb,
     /// A Galera node also runs `/*!99997` comments.
     MariaDbGalera,
+    /// So does a Galera node built on MySQL, such as Percona XtraDB
+    /// Cluster, which otherwise reads as the MySQL it is built on.
+    MySql80Galera,
+    MySql81Galera,
 }
 
 impl Server {
-    const ALL: [Server; 4] = [Self::MySql80, Self::MySql81, Self::MariaDb, Self::MariaDbGalera];
+    const ALL: [Server; 6] = [
+        Self::MySql80,
+        Self::MySql81,
+        Self::MariaDb,
+        Self::MariaDbGalera,
+        Self::MySql80Galera,
+        Self::MySql81Galera,
+    ];
 
     fn mariadb(self) -> bool {
         matches!(self, Self::MariaDb | Self::MariaDbGalera)
+    }
+
+    fn galera(self) -> bool {
+        matches!(self, Self::MariaDbGalera | Self::MySql80Galera | Self::MySql81Galera)
     }
 }
 
@@ -128,7 +153,7 @@ pub(crate) fn read_at(bytes: &[u8], reading: ServerReading) -> Option<CommentRea
     Some(match skipped {
         // Galera runs a skipped 99997 past five digits only, a sixth
         // left as code.
-        true if server == Server::MariaDbGalera && gate == GALERA_RUNS => CommentRead::Runs {
+        true if server.galera() && gate == GALERA_RUNS => CommentRead::Runs {
             content_start: marker_len + 5,
         },
         true => CommentRead::Skipped,
@@ -148,8 +173,8 @@ fn version_gate(after: &[u8], server: Server) -> Option<(u32, usize)> {
     }
     let six = digit(5)
         && match server {
-            Server::MySql80 => false,
-            Server::MySql81 => after
+            Server::MySql80 | Server::MySql80Galera => false,
+            Server::MySql81 | Server::MySql81Galera => after
                 .get(6)
                 .is_some_and(|b| matches!(b, b' ' | b'\t' | b'\n' | b'\r' | 0x0b | 0x0c)),
             Server::MariaDb | Server::MariaDbGalera => true,
@@ -176,9 +201,13 @@ pub(crate) fn dollar_tag_end(bytes: &[u8], at: usize) -> Option<usize> {
 /// The client's reading of `text`, then each distinct one the servers it
 /// may meet give it: each kind of server at version 0 and at each version
 /// the text's comments name, since only those change which comments run.
-/// `None` when there are more than are worth trying.
+/// On SQL Server, one more where a `--` follows an `e`. `None` when there
+/// are more than are worth trying.
 pub(crate) fn server_readings(text: &str, grammar: SqlGrammar) -> Option<Vec<ServerReading>> {
     let mut readings = vec![ServerReading::Client];
+    if grammar == SqlGrammar::MsSql && (text.contains("e--") || text.contains("E--")) {
+        readings.push(ServerReading::SignedEmptyExponents);
+    }
     if grammar != SqlGrammar::MySql {
         return Some(readings);
     }
@@ -339,6 +368,26 @@ mod tests {
     }
 
     #[test]
+    fn a_mysql_galera_node_runs_99997_comments_mysql_skips() {
+        for (galera, mysql, version) in [
+            (Server::MySql80Galera, Server::MySql80, 80_036),
+            (Server::MySql81Galera, Server::MySql81, 80_403),
+        ] {
+            assert_eq!(
+                read("/*!99997 x */", galera, version),
+                Some(CommentRead::Runs { content_start: 8 })
+            );
+            assert_eq!(read("/*!99997 x */", mysql, version), Some(CommentRead::Skipped));
+            assert_eq!(
+                read("/*!50700 x */", galera, version),
+                Some(CommentRead::Runs { content_start: 8 })
+            );
+            assert_eq!(read("/*!90000 x */", galera, version), Some(CommentRead::Skipped));
+            assert_eq!(read("/*M!99997 x */", galera, version), None);
+        }
+    }
+
+    #[test]
     fn each_distinct_reading_is_tried_once() {
         let text = "/*!40101 a */ /*!101119 b */";
         let readings = server_readings(text, SqlGrammar::MySql).unwrap_or_default();
@@ -379,6 +428,18 @@ mod tests {
         );
         assert_eq!(
             server_readings("SELECT data->'$.a', $x FROM t", SqlGrammar::MySql),
+            Some(vec![ServerReading::Client])
+        );
+        assert_eq!(
+            server_readings("SELECT 1 -- e\nFROM t", SqlGrammar::MsSql),
+            Some(vec![ServerReading::Client])
+        );
+        assert_eq!(
+            server_readings("SELECT 1E--1", SqlGrammar::MsSql),
+            Some(vec![ServerReading::Client, ServerReading::SignedEmptyExponents])
+        );
+        assert_eq!(
+            server_readings("SELECT 1E--1", SqlGrammar::PostgreSql),
             Some(vec![ServerReading::Client])
         );
         assert_eq!(

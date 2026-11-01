@@ -7,6 +7,7 @@ use gtk4::{gio, glib};
 use libadwaita as adw;
 use libadwaita::prelude::*;
 use tablepro_core::meta::TableRef;
+use tablepro_session::SessionKey;
 use tablepro_storage::{DraftId, DraftScope};
 use uuid::Uuid;
 
@@ -100,7 +101,8 @@ impl TabFactory {
                 initial_query,
                 draft,
                 file,
-            } => self.editor(id, initial_query, draft, file),
+                database,
+            } => self.editor(id, initial_query, draft, file, database),
             TabSpec::Table { table, page, filter } => self.table(
                 id,
                 TableOpening {
@@ -128,7 +130,7 @@ impl TabFactory {
     /// The overview's new-tab button needs its page back at once.
     pub(super) fn create_editor(&self) -> adw::TabPage {
         let id = Uuid::new_v4();
-        let slot = self.editor(id, None, None, None);
+        let slot = self.editor(id, None, None, None, None);
         self.insert(id, slot)
     }
 
@@ -138,6 +140,7 @@ impl TabFactory {
             &page,
             &resolve_tab_title(&slot.identity(), self.parts.naming.get()),
             &self.parts.label,
+            slot.moved_to().as_deref(),
         );
         self.parts.tabs.borrow_mut().insert(id, slot);
         self.parts.input.deliver(WorkspaceInput::WorkspaceTabsChanged);
@@ -167,6 +170,7 @@ impl TabFactory {
         initial_query: Option<String>,
         draft: Option<DraftId>,
         file: Option<EditorFileRecord>,
+        database: Option<String>,
     ) -> WorkspaceTab {
         let parts = &self.parts;
         // Such a tab shows the editor's sample query, which names nothing.
@@ -181,7 +185,16 @@ impl TabFactory {
             close_timeout: parts.context.close_timeout(),
             snippets: parts.snippets.clone(),
         });
+        let moved = database.is_some();
+        if let Some(database) = database {
+            editor.move_to_database(&database);
+        }
         connect_editor(&editor, id, &parts.input, &parts.toasts);
+        // It moved before the workspace heard it, which follows it once
+        // the tab is in.
+        if moved {
+            parts.input.deliver(WorkspaceInput::EditorTabDatabaseChanged(id));
+        }
         editor.attach_assistant(parts.assistant.clone());
         // After the signals are connected, so the workspace marks a tab
         // restored with unsaved changes.
@@ -225,7 +238,14 @@ impl TabFactory {
             tracker: parts.change_trackers.register(id),
             schema: schema.clone(),
             table: name.clone(),
-            connection_id: parts.context.active.metadata().map(|metadata| metadata.id),
+            // Column widths and filters are kept per connection and table;
+            // another database's table of the same name is not that one.
+            connection_id: match parts.label.key() {
+                SessionKey::SavedIn { .. } => None,
+                SessionKey::Saved(_) | SessionKey::File(_) => {
+                    parts.context.active.metadata().map(|metadata| metadata.id)
+                }
+            },
             read_only: parts.read_only,
             page_size: page.page_size,
             initial_offset: page.offset,
@@ -400,6 +420,8 @@ fn connect_structure(structure: &StructureTab, tab_id: Uuid, input: &WorkspaceSe
     structure.connect_toast(move |_, text| toast.deliver(WorkspaceInput::ShowToast(text)));
     let alert = input.clone();
     structure.connect_alert(move |_, title, body| alert.deliver(WorkspaceInput::ShowAlert { title, body }));
+    let open = input.clone();
+    structure.connect_open_in_editor(move |_, sql| open.deliver(WorkspaceInput::OpenInEditor(sql)));
 }
 
 /// The diagram's signals, as the workspace's inputs: a table it names
@@ -491,6 +513,8 @@ pub(super) fn connect_editor(
     editor.connect_content_changed(move |_| content.deliver(WorkspaceInput::EditorTabContentChanged(tab_id)));
     let file = input.clone();
     editor.connect_file_changed(move |_| file.deliver(WorkspaceInput::EditorTabFileChanged(tab_id)));
+    let database = input.clone();
+    editor.connect_database_changed(move |_| database.deliver(WorkspaceInput::EditorTabDatabaseChanged(tab_id)));
     let transaction = input.clone();
     editor.connect_transaction_changed(move |_, _| transaction.deliver(WorkspaceInput::EditorTransactionChanged));
     let toast = input.clone();

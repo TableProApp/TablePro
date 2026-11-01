@@ -19,6 +19,7 @@ use crate::application::AppServices;
 use crate::runtime::DeliverInput;
 use crate::services::active_session::ActiveSession;
 use crate::ui::assistant::{AssistantAccess, AssistantPane, AssistantRequest, Availability, PaneHooks};
+use crate::ui::editor::CatalogHome;
 use crate::ui::handler_guard::HandlerGuard;
 
 pub(super) struct AssistantColumn {
@@ -39,7 +40,9 @@ pub(super) fn access(
     let saved = services.saved_connections.clone();
     let key = key.clone();
     AssistantAccess::new(services.ai.clone(), session, engine, move || match &key {
-        SessionKey::Saved(id) => saved.get(*id).map_or_else(AiPolicy::default, |saved| saved.ai_policy),
+        SessionKey::Saved(id) | SessionKey::SavedIn { id, .. } => {
+            saved.get(*id).map_or_else(AiPolicy::default, |saved| saved.ai_policy)
+        }
         SessionKey::File(_) => AiPolicy::default(),
     })
 }
@@ -52,6 +55,10 @@ pub(super) fn install(parts: &WorkspaceTabParts, input: &WorkspaceSender) -> Ass
         parts.index.clone(),
         parts.tab_view.downgrade(),
     );
+    {
+        let (tabs, index, view) = (tabs.clone(), index.clone(), view.clone());
+        access.follow_front(move || active_editor_home(&tabs, &index, &view));
+    }
     let pane: AssistantPane = glib::Object::new();
     pane.bind(PaneHooks {
         access: access.clone(),
@@ -78,6 +85,19 @@ pub(super) fn install(parts: &WorkspaceTabParts, input: &WorkspaceSender) -> Ass
         access,
         pane,
         _watches: watches,
+    }
+}
+
+/// Where this session's editor tab on screen resolves names: its
+/// database, when it moved off the connection's.
+fn active_editor_home(tabs: &WorkspaceTabs, index: &TabIndex, view: &glib::WeakRef<adw::TabView>) -> CatalogHome {
+    let id = view.upgrade().and_then(|view| index.id_of(&view.selected_page()?));
+    match id.and_then(|id| match tabs.borrow().get(&id) {
+        Some(WorkspaceTab::Editor(slot)) => Some(slot.editor.catalog_home()),
+        _ => None,
+    }) {
+        Some(home) => home,
+        None => CatalogHome::Connection,
     }
 }
 

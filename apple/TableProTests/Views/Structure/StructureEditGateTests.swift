@@ -119,7 +119,6 @@ struct StructureEditGateTests {
         #expect(gate(.materializedView).locksField(at: 0, on: .foreignKeys, orderedFields: []))
         #expect(gate(.materializedView).locksField(at: 0, on: .checkConstraints, orderedFields: []))
         #expect(!gate(.table).locksField(at: 0, on: .indexes, orderedFields: []))
-        #expect(!gate(.table).locksField(at: 0, on: .ddl, orderedFields: []))
     }
 
     @Test("The Columns list locks field by field")

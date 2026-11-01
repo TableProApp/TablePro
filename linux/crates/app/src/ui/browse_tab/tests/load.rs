@@ -250,6 +250,35 @@ fn a_failed_page_turn_hands_the_focus_to_try_again() {
     assert_eq!(focus().as_ref(), Some(retry.upcast_ref()));
 }
 
+/// The figures are of rows the error page hides, so the readout goes with
+/// the selected-row count.
+#[gtk4::test]
+fn the_selection_summary_hides_behind_the_error_page() {
+    let mut script = super::paging(full_page(0), rows(&["unused"]));
+    script.query_bound = Default::default();
+    script
+        .query_bound
+        .once(FakeReply::ok(full_page(0)))
+        .always(FakeReply::err(DriverError::server("denied")));
+    let harness = Harness::open(script, []);
+    wait_until(WAIT, || harness.shown().len() == 100).expect("the first page");
+    let _shown = Shown::new(harness.tab());
+    let readout = harness
+        .grid()
+        .selection_summary()
+        .downcast::<gtk4::Revealer>()
+        .expect("the readout");
+    wait_until(WAIT, || harness.grid().focus_cell(0, 0).is_some()).expect("a cell takes the focus");
+    harness.select(0..3);
+    wait_until(WAIT, || readout.reveals_child()).expect("the readout shows the selection");
+    assert!(readout.is_visible());
+
+    harness.tab().send(PagingInput::NextPage);
+
+    wait_until(WAIT, || harness.visible_page().as_deref() == Some("error")).expect("the error page");
+    assert!(!readout.is_visible(), "the readout summed rows the error page hides");
+}
+
 fn error_text(harness: &Harness) -> String {
     harness
         .tab()

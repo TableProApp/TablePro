@@ -69,6 +69,8 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// not restore what the session is currently holding.
     func releaseIdleResource() async throws -> PluginResourceRelease
 
+    func importExportedDatabase(from folder: URL, into file: URL) async throws
+
     func resolveQueryCompletionProfile(
         databaseTypeId: String,
         base: QueryCompletionProfile
@@ -407,6 +409,20 @@ protocol DatabaseDriver: AnyObject, Sendable {
         schema: String?
     ) async throws -> PluginConcurrentRefreshAvailability?
 
+    func fetchViewRowEditing(view: String, schema: String?) async throws -> PluginViewRowEditing?
+
+    // MARK: - Table Options
+
+    /// Nil where the engine has no table options.
+    func fetchTableOptions(tableName: String) async throws -> TableOptions?
+
+    func fetchTableOptionsCatalog() async throws -> TableOptionsCatalog?
+
+    func fetchDefaultTableOptions(schema: String?) async throws -> TableOptions?
+
+    /// Nil where the engine cannot make `change`. Takes the table's own schema, like `objectCommentStatement`.
+    func tableOptionsStatement(tableName: String, schema: String?, change: PluginTableOptionsChange) -> String?
+
     // MARK: - Sequences
 
     func fetchSequenceDetails(sequence: String, schema: String?) async throws -> PluginSequenceDetails?
@@ -673,6 +689,10 @@ extension DatabaseDriver {
 
     func releaseIdleResource() async throws -> PluginResourceRelease { .nothingToRelease }
 
+    func importExportedDatabase(from folder: URL, into file: URL) async throws {
+        throw PluginDriverUnsupportedOperation.importExportedDatabase
+    }
+
     func testConnection() async throws -> Bool {
         try await connect()
         disconnect()
@@ -891,6 +911,18 @@ extension DatabaseDriver {
         materializedView: String,
         schema: String?
     ) async throws -> PluginConcurrentRefreshAvailability? {
+        nil
+    }
+
+    func fetchViewRowEditing(view: String, schema: String?) async throws -> PluginViewRowEditing? { nil }
+
+    func fetchTableOptions(tableName: String) async throws -> TableOptions? { nil }
+
+    func fetchTableOptionsCatalog() async throws -> TableOptionsCatalog? { nil }
+
+    func fetchDefaultTableOptions(schema: String?) async throws -> TableOptions? { nil }
+
+    func tableOptionsStatement(tableName: String, schema: String?, change: PluginTableOptionsChange) -> String? {
         nil
     }
 

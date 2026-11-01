@@ -339,6 +339,7 @@ pub(crate) mod tests {
             unique: true,
             primary: false,
             predicate: None,
+            definition: None,
         });
         let mut partial = badge.clone();
         partial.table = TableRef::new(Some("public".to_owned()), "partial");
@@ -385,6 +386,7 @@ pub(crate) mod tests {
             unique: true,
             primary: false,
             predicate: None,
+            definition: None,
         });
         let mut shared = seats.clone();
         shared.table = TableRef::new(Some("public".to_owned()), "shared");

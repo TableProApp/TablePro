@@ -2,7 +2,7 @@ use std::rc::{Rc, Weak};
 
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
-use gtk4::{self as gtk, gdk, glib};
+use gtk4::{self as gtk, gdk, gio, glib};
 use libadwaita as adw;
 use sourceview5::prelude::*;
 use tablepro_core::Value;
@@ -13,9 +13,10 @@ use super::RowDetailPane;
 use crate::application::component_matches;
 use crate::i18n::{gettext, gettext_f};
 use crate::services::grid::{
-    CellLock, CommitResult, EDIT_MAX_BYTES, EditStart, GridColumn, GridRowId, auto_filled_sentinel, display_text,
-    empty_placeholder,
+    CellEditorKind, CellLock, CommitResult, EDIT_MAX_BYTES, EditStart, GridColumn, GridRowId, auto_filled_sentinel,
+    display_text, empty_placeholder, hex_dump,
 };
+use crate::ui::data_grid::edit::CHOICE_ACTIONS;
 use crate::ui::data_grid::selection::Target;
 use crate::ui::data_grid::{DataGrid, GridRow, PinnedRow};
 use crate::ui::error_text::edit_parse_message;
@@ -79,6 +80,11 @@ pub struct ValueContent {
     pub emptied_placeholder: Option<String>,
     pub language: Option<&'static str>,
     pub calendar: bool,
+    /// A hex dump lines up only unwrapped.
+    pub hex_dump: bool,
+    /// The column's labels to pick from.
+    pub choice: bool,
+    pub clock: bool,
 }
 
 pub fn value_content(column: &GridColumn, row: &GridRowId, lock: Option<CellLock>, input: &CellInput) -> ValueContent {
@@ -86,6 +92,11 @@ pub fn value_content(column: &GridColumn, row: &GridRowId, lock: Option<CellLock
     let (text, refusal) = match input {
         CellInput::Value(value) => typed_form(column, value),
         CellInput::Default => (String::new(), None),
+        CellInput::Expression(expression) => (expression.sql.to_owned(), None),
+    };
+    let decodable = match input {
+        CellInput::Value(value) => matches!(edit_text(value, column.value_type()), EditText::Editable(_)),
+        CellInput::Default | CellInput::Expression(_) => true,
     };
     let message = lock.map(|lock| lock.explanation(edit_parse_message)).or(refusal);
     let editable = message.is_none();
@@ -94,7 +105,14 @@ pub fn value_content(column: &GridColumn, row: &GridRowId, lock: Option<CellLock
         CellInput::Value(Value::Null) => Some("NULL".to_owned()),
         CellInput::Default if column.auto_filled() => Some(auto_filled_sentinel()),
         CellInput::Default => Some("DEFAULT".to_owned()),
+        // An empty dump would read as no value at all.
+        CellInput::Value(value @ Value::Bytes(bytes)) if bytes.is_empty() => Some(
+            display_text(value, &column.column_type, &mut String::new())
+                .text
+                .to_owned(),
+        ),
         CellInput::Value(_) => emptied_placeholder.clone(),
+        CellInput::Expression(_) => None,
     };
     ValueContent {
         text,
@@ -106,6 +124,11 @@ pub fn value_content(column: &GridColumn, row: &GridRowId, lock: Option<CellLock
             _ => None,
         },
         calendar: editable && matches!(kind, ColumnKind::Date | ColumnKind::Timestamp { .. }),
+        hex_dump: matches!(input, CellInput::Value(Value::Bytes(_))),
+        // The menu holds no text, so a value too long or with a NUL for the
+        // editor still opens it.
+        choice: lock.is_none() && decodable && CellEditorKind::for_cell(column, Ok(())) == CellEditorKind::Choice,
+        clock: editable && super::clock::ClockField::of(kind).is_some(),
         message,
     }
 }
@@ -124,6 +147,7 @@ fn typed_form(column: &GridColumn, value: &Value) -> (String, Option<String>) {
     };
     let text = match value {
         Value::Null => String::new(),
+        Value::Bytes(bytes) => hex_dump(bytes),
         value => {
             let mut scratch = String::new();
             display_text(value, &column.column_type, &mut scratch).text.to_owned()
@@ -328,6 +352,10 @@ impl RowDetailPane {
         let input = tracked.edit_input(&row, column.index);
         let content = value_content(&column, &row.id(), tracked.lock(&column, &row), &input);
         self.show_value(&column.name, &content);
+        self.show_picture(match input {
+            CellInput::Value(Value::Bytes(bytes)) => Some(bytes),
+            _ => None,
+        });
         imp.loaded.replace(Some(loaded));
     }
 
@@ -339,8 +367,12 @@ impl RowDetailPane {
             emptied_placeholder: None,
             language: None,
             calendar: false,
+            hex_dump: false,
+            choice: false,
+            clock: false,
         };
         self.show_value("", &content);
+        self.show_picture(None);
         self.imp().value_view.set_editable(false);
         self.imp().loaded.take();
     }
@@ -373,6 +405,14 @@ impl RowDetailPane {
             .update_property(&[gtk::accessible::Property::Label(name)]);
         self.show_message(content.message.as_deref(), false);
         imp.calendar_button.set_visible(content.calendar);
+        let (wrap, hscroll) = match content.hex_dump {
+            true => (gtk::WrapMode::None, gtk::PolicyType::Automatic),
+            false => (gtk::WrapMode::WordChar, gtk::PolicyType::Never),
+        };
+        view.set_wrap_mode(wrap);
+        imp.value_scroller.set_hscrollbar_policy(hscroll);
+        imp.choice_button.set_visible(content.choice);
+        imp.clock_button.set_visible(content.clock);
         self.update_placeholder();
     }
 
@@ -426,6 +466,32 @@ impl RowDetailPane {
                 grid,
                 move |_| grid.release_menu_target_soon()
             ));
+        }
+    }
+
+    /// The labels of the field shown, filled as the menu opens so they act
+    /// on that row and field.
+    pub(super) fn connect_choices(&self) {
+        let button = self.imp().choice_button.get();
+        button.set_menu_model(Some(&gio::Menu::new()));
+        button.set_create_popup_func(glib::clone!(
+            #[weak(rename_to = pane)]
+            self,
+            move |button| pane.fill_choices(button)
+        ));
+    }
+
+    fn fill_choices(&self, button: &gtk::MenuButton) {
+        let Some(model) = button.menu_model().and_downcast::<gio::Menu>() else {
+            return;
+        };
+        model.remove_all();
+        let (Some(grid), Some(pin), Some(column)) = (self.grid(), self.current_pin(), self.imp().field.get()) else {
+            return;
+        };
+        if let Some(menu) = grid.edit().choice_menu(&pin, column) {
+            button.insert_action_group(CHOICE_ACTIONS, Some(&menu.actions));
+            model.append_section(None, &menu.section);
         }
     }
 

@@ -54,13 +54,16 @@ internal extension MySQLPluginDriver {
             let columnsByTable = try await informationSchemaColumns(schema: schema, table: table)
             return columnsByTable[table] ?? (columnsByTable.count == 1 ? columnsByTable.values.first ?? [] : [])
         }
+        guard !flavor.isStarRocks else {
+            return try await starrocksColumns(database: effectiveSchema(schema), table: table)[table] ?? []
+        }
         let result = try await execute(query: "SHOW FULL COLUMNS FROM \(qualifiedName(table, schema: schema))")
         let catalogDetails = try await fetchCatalogColumnDetails(table: table, schema: schema)
         let createTableDefaults = try await createTableDefaults(
             table: table, schema: schema, showRows: result.rows, catalogDetails: catalogDetails
         )
 
-        return result.rows.compactMap { row in
+        let columns = result.rows.compactMap { row -> PluginColumnInfo? in
             guard let name = row[safe: 0]?.asText,
                   let dataType = row[safe: 1]?.asText
             else { return nil }
@@ -109,6 +112,9 @@ internal extension MySQLPluginDriver {
                 generationKind: mysqlGenerationKind(extra: extra)
             )
         }
+        let checks = try await mariadbColumnChecks(table: table, schema: schema, columns: columns.map(\.name))
+        guard !checks.isEmpty else { return columns }
+        return columns.map { $0.withColumnCheck(checks[$0.name]) }
     }
 
     /// What `INFORMATION_SCHEMA.COLUMNS` says about a table's columns that `SHOW FULL COLUMNS` cannot:
@@ -292,10 +298,13 @@ internal extension MySQLPluginDriver {
         let safeTable = mysqlEscapeStringLiteral(table)
         let query: String
         if flavor.isMariaDB {
+            // A column's own check is the column's, restated by its MODIFY: as a constraint here, its
+            // DROP CONSTRAINT fails with ERROR 1091.
+            let tableLevel = try await catalogHasColumn(.checkConstraintLevel) ? " AND LEVEL <> \'Column\'" : ""
             query = """
                 SELECT CONSTRAINT_NAME, CHECK_CLAUSE
                 FROM INFORMATION_SCHEMA.CHECK_CONSTRAINTS
-                WHERE CONSTRAINT_SCHEMA = \'\(database)\' AND TABLE_NAME = \'\(safeTable)\'
+                WHERE CONSTRAINT_SCHEMA = \'\(database)\' AND TABLE_NAME = \'\(safeTable)\'\(tableLevel)
                 ORDER BY CONSTRAINT_NAME
                 """
         } else {
@@ -317,7 +326,8 @@ internal extension MySQLPluginDriver {
         }
     }
 
-    var providesBulkColumnFetch: Bool { true }
+    // StarRocks answers the bulk read by loading every table's schema from the lake behind an external catalog.
+    var providesBulkColumnFetch: Bool { !flavor.isStarRocks }
 
     /// `GENERATION_EXPRESSION` is projected here rather than looked up per table, because a caller
     /// that takes the bulk list has to receive what `fetchColumns` would have given it. Without the
@@ -326,6 +336,7 @@ internal extension MySQLPluginDriver {
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
         guard !flavor.isDatabend else { return try await databendAllColumns(schema: schema) }
         let database = effectiveSchema(schema)
+        guard !flavor.isStarRocks else { return try await starrocksColumns(database: database, table: nil) }
         return try await catalogOrShow(
             database: database,
             catalogExists: serverHasInformationSchema,

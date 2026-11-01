@@ -11,7 +11,7 @@ import TableProPluginKit
 extension MainContentCoordinator {
     // MARK: - SQL Preview
 
-    /// Routes SQL preview request to the appropriate handler based on current tab mode
+    // A Structure view with nothing staged previews the grid edits, which is what its Save would write.
     func handlePreviewSQL(
         pendingTruncates: Set<DatabaseTreeTableRef>,
         pendingDeletes: Set<DatabaseTreeTableRef>,
@@ -24,9 +24,10 @@ extension MainContentCoordinator {
         }
         if let tabId = tabManager.selectedTabId, userTypeEditors[tabId]?.hasChanges == true {
             previewUserTypeChanges(tabId: tabId)
-        } else if tabManager.selectedTab?.display.resultsViewMode == .structure {
-            // Structure view handles its own preview via direct call
-            structureActions?.previewSQL?()
+        } else if tabManager.selectedTab?.tabType == .createTable {
+            activeCreateTableDraft?.previewSQL(coordinator: self)
+        } else if let session = activeStructureSession, session.hasChanges {
+            session.previewChanges()
         } else {
             generatePreviewSQL(
                 pendingTruncates: pendingTruncates,
@@ -36,7 +37,6 @@ extension MainContentCoordinator {
         }
     }
 
-    /// Generate SQL preview of all pending changes with inlined parameters
     func generatePreviewSQL(
         pendingTruncates: Set<DatabaseTreeTableRef>,
         pendingDeletes: Set<DatabaseTreeTableRef>,
@@ -50,7 +50,9 @@ extension MainContentCoordinator {
             )
             toolbarState.previewStatements = plan.displayStatements
         } catch {
-            toolbarState.previewStatements = ["-- Error generating SQL: \(error.localizedDescription)"]
+            toolbarState.previewStatements = [
+                String(format: String(localized: "-- Error generating SQL: %@"), error.localizedDescription)
+            ]
         }
         activeSheet = .sqlPreview
     }
@@ -82,11 +84,7 @@ extension MainContentCoordinator {
         activeSheet = nil
     }
 
-    /// Everything one press of Save is about to do, in execution order.
-    ///
-    /// Save and Preview SQL both read this, so what the user is shown is what runs. Each step
-    /// carries the rows it should touch, which is what lets the executor hold the server to that
-    /// number, and the row operations carry the before and after images a later rewind needs.
+    // Save and Preview SQL both read this, so what the user is shown is what runs.
     func buildDataWritePlan(
         pendingTruncates: Set<DatabaseTreeTableRef>,
         pendingDeletes: Set<DatabaseTreeTableRef>,
@@ -112,6 +110,7 @@ extension MainContentCoordinator {
         )
 
         var rowOperations: [RowWriteOperation] = []
+        let viewTarget = changeManager.hasChanges ? activeViewWriteTarget : nil
         if changeManager.hasChanges {
             /// The scope's schema, not the tab's: the scope has already fallen back to the session's
             /// browse schema, and a record stored under one spelling is never found under the other.
@@ -119,7 +118,8 @@ extension MainContentCoordinator {
                 database: scope.database,
                 schema: scope.schema,
                 containsTableOperation: hasPendingTableOps,
-                rowsWithUnloadedValues: rowsWithUnloadedValues()
+                rowsWithUnloadedValues: rowsWithUnloadedValues(),
+                writesThroughView: viewTarget != nil
             )
             steps.append(contentsOf: rowWrite.steps)
             rowOperations = rowWrite.operations
@@ -137,7 +137,7 @@ extension MainContentCoordinator {
             })
         }
 
-        return DataWritePlan(
+        var plan = DataWritePlan(
             scope: scope,
             databaseType: dbType,
             steps: steps,
@@ -145,6 +145,8 @@ extension MainContentCoordinator {
             prologue: prologue,
             epilogue: epilogue
         )
+        plan.viewTarget = viewTarget
+        return plan
     }
 
     private func writeScope(

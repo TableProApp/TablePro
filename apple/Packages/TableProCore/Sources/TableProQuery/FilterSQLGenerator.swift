@@ -87,13 +87,13 @@ public struct FilterSQLGenerator: Sendable {
             let escapedSecond = escapeValue(filter.secondValue, kind: kind)
             return "\(quotedColumn) BETWEEN \(escapedValue) AND \(escapedSecond)"
         case .contains:
-            let pattern = escapeLikePattern(filter.value)
+            let pattern = likePatternBody(filter.value)
             return likeCondition(operand, "'%\(pattern)%'", negated: false, folding: folding)
         case .startsWith:
-            let pattern = escapeLikePattern(filter.value)
+            let pattern = likePatternBody(filter.value)
             return likeCondition(operand, "'\(pattern)%'", negated: false, folding: folding)
         case .endsWith:
-            let pattern = escapeLikePattern(filter.value)
+            let pattern = likePatternBody(filter.value)
             return likeCondition(operand, "'%\(pattern)'", negated: false, folding: folding)
         }
     }
@@ -117,7 +117,7 @@ public struct FilterSQLGenerator: Sendable {
     private func comparisonCondition(
         _ column: String, _ operand: String, _ operatorText: String, _ literal: String, folding: PluginSQLCaseFolding
     ) -> String {
-        guard folding.foldsComparisonOperands, literal.hasPrefix("'") else {
+        guard folding.foldsComparisonOperands, literal.unicodeScalars.first == "'" else {
             return "\(column) \(operatorText) \(literal)"
         }
         return "\(folding.fold(operand)) \(operatorText) \(folding.fold(literal))"
@@ -159,7 +159,7 @@ public struct FilterSQLGenerator: Sendable {
         _ column: String, _ pattern: String, negated: Bool, folding: PluginSQLCaseFolding
     ) -> String {
         let keyword = negated ? folding.notLikeKeyword : folding.likeKeyword
-        return "\(folding.foldingLikeOperand(column)) \(keyword) \(folding.foldingLikeOperand(pattern))\(likeEscape)"
+        return "\(folding.foldingLikeOperand(column)) \(keyword) \(folding.foldingLikeOperand(pattern))\(likeEscapeClause)"
     }
 
     private func listCondition(
@@ -172,13 +172,13 @@ public struct FilterSQLGenerator: Sendable {
     ) -> String {
         let keyword = negated ? "NOT IN" : "IN"
         let items = listItems(rawValue).map { escapeValue($0, kind: kind) }
-        let foldable = folding.foldsComparisonOperands && items.allSatisfy { $0.hasPrefix("'") }
+        let foldable = folding.foldsComparisonOperands && items.allSatisfy { $0.unicodeScalars.first == "'" }
         let rendered = foldable ? items.map { folding.fold($0) } : items
         let subject = foldable ? folding.fold(operand) : column
         return "\(subject) \(keyword) (\(rendered.joined(separator: ", ")))"
     }
 
-    private var likeEscape: String {
+    public var likeEscapeClause: String {
         switch dialect.likeEscapeStyle {
         case .explicit:
             return " ESCAPE '!'"
@@ -187,11 +187,22 @@ public struct FilterSQLGenerator: Sendable {
         }
     }
 
+    // The LIKE layer first, with the escape `likeEscapeClause` names, then the literal rule over the whole pattern.
+    public func likePatternBody(_ value: String) -> String {
+        let escape = dialect.likeEscapeStyle == .implicit ? "\\" : "!"
+        // `[` opens a character class in a SQL Server LIKE pattern.
+        let metacharacters = [escape, "%", "_"] + (databaseType == .mssql ? ["["] : [])
+        let pattern = metacharacters.reduce(value) { pattern, metacharacter in
+            pattern.replacingOccurrences(of: metacharacter, with: escape + metacharacter, options: .literal)
+        }
+        return literalBody(pattern)
+    }
+
     private func quoteIdentifier(_ name: String) -> String {
         if let identifierQuoter { return identifierQuoter(name) }
         let open = dialect.identifierQuote
         let close = open == "[" ? "]" : open
-        let escaped = name.replacingOccurrences(of: close, with: "\(close)\(close)")
+        let escaped = name.replacingOccurrences(of: close, with: "\(close)\(close)", options: .literal)
         return "\(open)\(escaped)\(close)"
     }
 
@@ -199,32 +210,15 @@ public struct FilterSQLGenerator: Sendable {
         if FilterColumnKind.isBareNumber(value, kind: kind) {
             return value
         }
-        var escaped = value.replacingOccurrences(of: "\0", with: "")
-        if dialect.requiresBackslashEscaping {
-            escaped = escaped.replacingOccurrences(of: "\\", with: "\\\\")
-        }
-        escaped = escaped.replacingOccurrences(of: "'", with: "''")
-        return "'\(escaped)'"
+        return "'\(literalBody(value))'"
     }
 
-    private func escapeLikePattern(_ value: String) -> String {
-        var result = value
-            .replacingOccurrences(of: "'", with: "''")
-            .replacingOccurrences(of: "\0", with: "")
-        switch dialect.likeEscapeStyle {
-        case .explicit:
-            result = result
-                .replacingOccurrences(of: "!", with: "!!")
-                .replacingOccurrences(of: "%", with: "!%")
-                .replacingOccurrences(of: "_", with: "!_")
-        case .implicit:
-            if dialect.requiresBackslashEscaping {
-                result = result.replacingOccurrences(of: "\\", with: "\\\\")
-            }
-            result = result
-                .replacingOccurrences(of: "%", with: "\\%")
-                .replacingOccurrences(of: "_", with: "\\_")
+    // `.literal` compares code units: the default compares grapheme clusters and skips a quote a combining mark follows.
+    private func literalBody(_ value: String) -> String {
+        var body = value.replacingOccurrences(of: "\0", with: "", options: .literal)
+        if dialect.requiresBackslashEscaping {
+            body = body.replacingOccurrences(of: "\\", with: "\\\\", options: .literal)
         }
-        return result
+        return body.replacingOccurrences(of: "'", with: "''", options: .literal)
     }
 }

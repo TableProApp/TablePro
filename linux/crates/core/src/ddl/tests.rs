@@ -70,6 +70,7 @@ fn index(name: &str, columns: &[&str]) -> IndexInfo {
         unique: false,
         primary: false,
         predicate: None,
+        definition: None,
     }
 }
 
@@ -110,6 +111,7 @@ fn users() -> TableDefinition {
         foreign_keys: vec![foreign_key("users_account_fk", "account_id")],
         inbound_foreign_keys: Vec::new(),
         source: None,
+        options: None,
     }
 }
 
@@ -433,6 +435,8 @@ fn every_change() -> DdlCapabilities {
         column_defaults: true,
         required_columns: true,
         declared_column_order: true,
+        column_collations: true,
+        table_options: true,
     }
 }
 
@@ -896,4 +900,274 @@ fn a_review_matches_only_the_plan_it_read() {
         reviewed.sql(),
         DdlPlan::from_sql(["ALTER TABLE a".to_owned(), "ALTER TABLE b".to_owned()]).preview()
     );
+}
+
+fn optioned() -> TableDefinition {
+    let mut table = users();
+    table.options = Some(TableOptions {
+        character_set: Some("utf8mb4".to_owned()),
+        collation: Some("utf8mb4_bin".to_owned()),
+        next_auto_increment: Some(10),
+    });
+    for name in ["email", "legacy"] {
+        if let Some(column) = table.columns.iter_mut().find(|column| column.name() == name) {
+            column.attributes.character_set = Some("utf8mb4".to_owned());
+            column.attributes.collation = Some(CollationName::new(None, "utf8mb4_bin"));
+        }
+    }
+    table
+}
+
+fn draft_options(draft: &mut TableDraft) -> &mut DraftTableOptions {
+    draft.options.as_mut().expect("the table's options")
+}
+
+fn options_edit(table: &TableDefinition, edit: impl FnOnce(&mut DraftTableOptions)) -> TableChanges {
+    let mut draft = TableDraft::from_definition(table);
+    edit(draft_options(&mut draft));
+    diff_table(table, &draft)
+}
+
+fn choice(character_set: &str, collation: &str) -> CharacterSetChoice {
+    CharacterSetChoice {
+        character_set: character_set.to_owned(),
+        collation: collation.to_owned(),
+    }
+}
+
+#[test]
+fn a_draft_starts_from_the_table_options_and_each_columns_pair() {
+    let table = optioned();
+
+    let draft = TableDraft::from_definition(&table);
+
+    assert_eq!(
+        draft.options,
+        Some(DraftTableOptions {
+            character_set: Some("utf8mb4".to_owned()),
+            collation: Some("utf8mb4_bin".to_owned()),
+            converts_columns: false,
+            next_auto_increment: Some(10),
+        })
+    );
+    let email = draft.column("email").expect("email");
+    assert_eq!(
+        (email.character_set.as_deref(), email.collation.as_deref()),
+        (Some("utf8mb4"), Some("utf8mb4_bin"))
+    );
+    assert!(!email.collation_edited());
+    assert!(diff_table(&table, &draft).is_empty());
+}
+
+#[test]
+fn a_default_change_and_a_convert_name_both_halves() {
+    let table = optioned();
+
+    let collation = options_edit(&table, |options| {
+        options.collation = Some("utf8mb4_0900_ai_ci".to_owned());
+    });
+    let convert = options_edit(&table, |options| options.converts_columns = true);
+    let counter = options_edit(&table, |options| options.next_auto_increment = Some(500));
+    let half = options_edit(&table, |options| options.collation = None);
+
+    assert_eq!(
+        collation.options,
+        Some(TableOptionsChange {
+            character_set: Some(choice("utf8mb4", "utf8mb4_0900_ai_ci")),
+            converts_columns: false,
+            next_auto_increment: None,
+        })
+    );
+    assert_eq!(
+        convert.options,
+        Some(TableOptionsChange {
+            character_set: Some(choice("utf8mb4", "utf8mb4_bin")),
+            converts_columns: true,
+            next_auto_increment: None,
+        })
+    );
+    assert_eq!(
+        counter.options.as_ref().and_then(|options| options.next_auto_increment),
+        Some(500)
+    );
+    assert_eq!(half.options, None, "a pair named by half cannot be written");
+    assert_eq!(
+        [collation.change_count(), convert.change_count(), counter.change_count()],
+        [1, 1, 1]
+    );
+}
+
+#[test]
+fn a_new_pair_and_a_new_counter_are_two_changes() {
+    let changes = options_edit(&optioned(), |options| {
+        options.character_set = Some("latin1".to_owned());
+        options.collation = Some("latin1_bin".to_owned());
+        options.next_auto_increment = Some(500);
+    });
+
+    assert_eq!(changes.change_count(), 2);
+    assert!(!changes.is_empty());
+}
+
+#[test]
+fn table_options_need_the_capability() {
+    let table = optioned();
+    let changes = options_edit(&table, |options| options.next_auto_increment = Some(500));
+    let mut without = every_change();
+    without.table_options = false;
+    let mut created = TableDraft::new(TableRef::unqualified("t"));
+    created
+        .columns
+        .push(DraftColumn::new("a", DraftType::Typed("int".to_owned())));
+    created.options = Some(DraftTableOptions {
+        next_auto_increment: Some(5),
+        ..DraftTableOptions::default()
+    });
+
+    let unsupported = Err(BuildDdlError::Unsupported(DdlOperation::AlterTableOptions));
+    assert_eq!(checking(without).plan_alter_table(&table, &changes), unsupported);
+    assert_eq!(checking(without).plan_create_table(&created), unsupported);
+    assert!(checking(every_change()).plan_alter_table(&table, &changes).is_ok());
+    assert!(checking(every_change()).plan_create_table(&created).is_ok());
+}
+
+#[test]
+fn a_column_pair_edit_is_one_change_the_capabilities_gate() {
+    let table = optioned();
+    let mut draft = TableDraft::from_definition(&table);
+    let email = draft_column(&mut draft, "email");
+    email.character_set = Some("latin1".to_owned());
+    email.collation = Some("latin1_bin".to_owned());
+    let mut no_collations = every_change();
+    no_collations.column_collations = false;
+
+    let changes = diff_table(&table, &draft);
+
+    assert_eq!(changes.altered_columns.len(), 1);
+    assert!(changes.altered_columns[0].changed.collation);
+    assert_eq!(changes.change_count(), 1);
+    assert!(checking(every_change()).plan_alter_table(&table, &changes).is_ok());
+    assert_eq!(
+        checking(no_collations).plan_alter_table(&table, &changes),
+        Err(BuildDdlError::Refused {
+            column: "email".to_owned(),
+            operation: DdlOperation::AlterColumnCollation,
+            reason: RefusalReason::EngineUnsupported,
+        })
+    );
+}
+
+/// PostgreSQL and SQL Server read a column's collation and recreate a
+/// table from its definition, while the user picks none there.
+#[test]
+fn a_collation_read_back_as_it_is_needs_no_capability() {
+    let mut table = optioned();
+    table.options = None;
+    table.foreign_keys.clear();
+    let mut no_collations = every_change();
+    no_collations.column_collations = false;
+    let mut added = DraftColumn::new("nickname", DraftType::Typed("text".to_owned()));
+    added.collation = Some("C".to_owned());
+    let mut draft = TableDraft::from_definition(&table);
+    draft.columns.push(added);
+
+    assert!(
+        checking(no_collations)
+            .plan_create_table(&TableDraft::from_definition(&table))
+            .is_ok()
+    );
+    assert_eq!(
+        checking(no_collations).plan_alter_table(&table, &diff_table(&table, &draft)),
+        Err(BuildDdlError::Unsupported(DdlOperation::AlterColumnCollation))
+    );
+}
+
+#[test]
+fn a_convert_and_a_new_column_character_set_are_destructive() {
+    let table = optioned();
+    let mut draft = TableDraft::from_definition(&table);
+    draft_options(&mut draft).converts_columns = true;
+    let email = draft_column(&mut draft, "email");
+    email.character_set = Some("latin1".to_owned());
+    email.collation = Some("latin1_bin".to_owned());
+    // Another collation of the same character set keeps every value.
+    draft_column(&mut draft, "legacy").collation = Some("utf8mb4_0900_ai_ci".to_owned());
+    let plan = DdlPlan::from_sql(["ALTER TABLE users CONVERT TO CHARACTER SET utf8mb4".to_owned()]);
+
+    let reviewed = ChangeReview::review(&diff_table(&table, &draft), &plan);
+
+    assert_eq!(
+        reviewed.destructive,
+        [
+            DestructiveChange::ConvertCharacterSet,
+            DestructiveChange::ChangeColumnCharacterSet {
+                column: "email".to_owned()
+            },
+        ]
+    );
+    assert_eq!(reviewed.operations, 3);
+}
+
+fn converted(table: &TableDefinition, edit: impl FnOnce(&mut TableDraft)) -> Result<DdlPlan, BuildDdlError> {
+    let mut draft = TableDraft::from_definition(table);
+    draft_options(&mut draft).converts_columns = true;
+    edit(&mut draft);
+    checking(every_change()).plan_alter_table(table, &diff_table(table, &draft))
+}
+
+#[test]
+fn a_convert_refuses_a_column_or_primary_key_change_beside_it() {
+    let table = optioned();
+    let refused = |column: &str| {
+        Err(BuildDdlError::Refused {
+            column: column.to_owned(),
+            operation: DdlOperation::AlterTableOptions,
+            reason: RefusalReason::ColumnsConverted,
+        })
+    };
+
+    let altered = converted(&table, |draft| draft_column(draft, "email").nullable = false);
+    let picked = converted(&table, |draft| {
+        let email = draft_column(draft, "email");
+        email.character_set = Some("latin1".to_owned());
+        email.collation = Some("latin1_bin".to_owned());
+    });
+    let renamed = converted(&table, |draft| draft_column(draft, "legacy").name = "old".to_owned());
+    let rekeyed = converted(&table, |draft| {
+        let account = draft_column(draft, "account_id");
+        account.primary_key = true;
+        account.nullable = false;
+    });
+    let unkeyed = converted(&table, |draft| draft.columns.retain(|column| column.name != "id"));
+
+    assert_eq!(altered, refused("email"));
+    assert_eq!(picked, refused("email"));
+    assert_eq!(renamed, refused("legacy"));
+    assert_eq!(rekeyed, refused("account_id"));
+    assert_eq!(unkeyed, refused("id"), "dropping the key's column moves the key");
+}
+
+#[test]
+fn a_convert_takes_drops_and_additions_and_a_new_default_takes_column_changes() {
+    let table = optioned();
+
+    let convert = converted(&table, |draft| {
+        draft.columns.retain(|column| column.name != "legacy");
+        draft.indexes.retain(|index| index.name != "by_legacy");
+        draft
+            .columns
+            .push(DraftColumn::new("nickname", DraftType::Typed("text".to_owned())));
+        draft.indexes.push(index("by_nickname", &["nickname"]));
+        draft.foreign_keys = vec![ForeignKeyInfo {
+            on_delete: None,
+            ..foreign_key("users_owner_fk", "account_id")
+        }];
+    });
+    let mut draft = TableDraft::from_definition(&table);
+    draft_options(&mut draft).collation = Some("utf8mb4_0900_ai_ci".to_owned());
+    draft_column(&mut draft, "email").nullable = false;
+    let default = checking(every_change()).plan_alter_table(&table, &diff_table(&table, &draft));
+
+    assert!(convert.is_ok(), "{convert:?}");
+    assert!(default.is_ok(), "{default:?}");
 }

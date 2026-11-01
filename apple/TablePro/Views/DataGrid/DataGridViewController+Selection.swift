@@ -180,10 +180,13 @@ extension DataGridViewController {
     func reveal(row: Int, displayColumn: Int?) {
         let table = main.tableView
         guard row >= 0, row < table.numberOfRows else { return }
-        table.scrollRowToVisible(row)
-        if let displayColumn {
-            revealColumn(displayColumn)
+        revealingInGrid {
+            table.scrollRowToVisible(row)
+            if let displayColumn {
+                revealColumn(displayColumn)
+            }
         }
+        revealOnPage(table.rect(ofRow: row))
     }
 
     // Horizontal only; a frozen column is on screen at every offset.
@@ -193,7 +196,46 @@ extension DataGridViewController {
               let index = main.tableIndex(forDisplayPosition: displayColumn, columns: model.columns) else { return }
         let columnRect = table.rect(ofColumn: index)
         let visible = table.visibleRect
-        _ = table.scrollToVisible(NSRect(x: columnRect.minX, y: visible.midY, width: columnRect.width, height: 1))
+        revealingInGrid {
+            _ = table.scrollToVisible(NSRect(x: columnRect.minX, y: visible.midY, width: columnRect.width, height: 1))
+        }
+    }
+
+    private func revealingInGrid(_ body: () -> Void) {
+        let wasRevealing = isRevealingInGrid
+        isRevealingInGrid = true
+        body()
+        isRevealingInGrid = wasRevealing
+    }
+
+    // A grid sized to its rows shows them all, so a row it reveals is brought into view by the page it sits in.
+    // Kept until the grid has grown to a row it just took, since the page lays out after this turn.
+    // A reveal the grid cannot show within two turns is dropped, so a later layout never scrolls the page on its own.
+    func revealOnPage(_ rectInTable: NSRect) {
+        guard model.configuration.fitsRows, !isRevealingInGrid else { return }
+        pendingPageReveal = rectInTable
+        performPageReveal()
+        guard pendingPageReveal != nil else { return }
+        DispatchQueue.main.async { [weak self] in
+            DispatchQueue.main.async { [weak self] in
+                self?.performPageReveal()
+                self?.pendingPageReveal = nil
+            }
+        }
+    }
+
+    func performPageReveal() {
+        guard let rect = pendingPageReveal else { return }
+        let target = container.convert(rect, from: main.tableView)
+        let bounds = container.bounds
+        guard target.maxY <= bounds.maxY + 1 else { return }
+        pendingPageReveal = nil
+        let visible = container.visibleRect
+        guard target.minY < visible.minY || target.maxY > visible.maxY else { return }
+        // Kept within the grid's width: the grid already moved its columns, so the page moves only vertically.
+        let minX = min(max(target.minX, bounds.minX), bounds.maxX)
+        let maxX = max(min(target.maxX, bounds.maxX), minX)
+        _ = container.scrollToVisible(NSRect(x: minX, y: target.minY, width: maxX - minX, height: target.height))
     }
 
     func revealActiveCell() {
@@ -299,6 +341,9 @@ extension DataGridViewController {
         while let event = window.nextEvent(matching: [.leftMouseDragged, .leftMouseUp]) {
             if event.type == .leftMouseUp { break }
             _ = main.tableView.autoscroll(with: event)
+            if model.configuration.fitsRows {
+                _ = container.autoscroll(with: event)
+            }
             guard let cell = dragCell(at: event.locationInWindow, rowsOnly: drag.mode == .rows) else { continue }
             if drag.mode == .rows ? cell.row != start.row : cell != start {
                 moved = true

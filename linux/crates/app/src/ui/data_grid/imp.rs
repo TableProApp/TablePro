@@ -13,9 +13,12 @@ use super::edit::EditController;
 use super::find_bar::FindState;
 use super::grid_menu::GridMenus;
 use super::references::Armed;
+use super::reversed_list::ReversedList;
 use super::row_detail::RowDetailPane;
 use super::selection::Target;
+use super::selection_summary::SummaryState;
 use super::{GridConfig, GridStore};
+use crate::ui::handler_guard::HandlerGuard;
 
 /// The grid's selection model, made with the grid and given its rows once
 /// the grid knows how it sorts.
@@ -57,13 +60,20 @@ pub struct DataGrid {
     pub selection: Selection,
     /// Set for a grid that sorts the rows it holds.
     pub sort_model: OnceCell<gtk4::SortListModel>,
+    /// The sorted rows as the grid shows them, last first for a
+    /// descending sort.
+    pub shown: OnceCell<ReversedList>,
     pub columns: RefCell<ColumnSet>,
     pub actions: gio::SimpleActionGroup,
     pub menus: OnceCell<GridMenus>,
+    pub summary: SummaryState,
     pub edit: EditController,
     pub find: FindState,
     /// What a menu was opened on, until it closes.
     pub menu_target: RefCell<Option<Target>>,
+    /// How many targets menus have held, so a closing menu lets go of its
+    /// own and not of one a later menu holds.
+    pub menu_targets_held: Cell<u64>,
     /// The key choices the latest menu or chooser offered, which its items
     /// act on whatever the keys or rows are by then.
     pub armed_references: RefCell<Armed>,
@@ -76,6 +86,8 @@ pub struct DataGrid {
     pub editing: Cell<bool>,
     /// The window's focus handler, while the grid is in a window.
     pub focus_watch: RefCell<Option<(glib::WeakRef<gtk4::Window>, glib::SignalHandlerId)>>,
+    pub(super) font_watch: RefCell<Option<HandlerGuard>>,
+    pub(super) stripes_watch: RefCell<Option<HandlerGuard>>,
 }
 
 #[glib::object_subclass]
@@ -109,7 +121,11 @@ impl ObjectImpl for DataGrid {
     }
 
     fn dispose(&self) {
+        // A run still out on the task pool would go on over every row.
+        self.find.stop();
+        self.summary.stop();
         self.obj().stop_watching_focus();
+        drop(self.font_watch.take());
         if let Some(menus) = self.menus.get() {
             menus.unparent();
         }
@@ -122,11 +138,22 @@ impl WidgetImpl for DataGrid {
     fn root(&self) {
         self.parent_root();
         self.obj().watch_focus();
+        self.obj().rooted();
     }
 
     fn unroot(&self) {
         self.obj().stop_watching_focus();
         self.parent_unroot();
+    }
+
+    fn system_setting_changed(&self, setting: &gtk4::SystemSetting) {
+        self.parent_system_setting_changed(setting);
+        if matches!(
+            setting,
+            gtk4::SystemSetting::Dpi | gtk4::SystemSetting::FontName | gtk4::SystemSetting::FontConfig
+        ) {
+            self.obj().fonts_changed();
+        }
     }
 }
 

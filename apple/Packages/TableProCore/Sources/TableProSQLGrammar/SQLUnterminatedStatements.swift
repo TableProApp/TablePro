@@ -19,9 +19,13 @@ import Foundation
 public enum SQLUnterminatedStatements {
     /// Every text a gate has to tier for `statement`: the statement itself, then, when `grammar` needs no terminator,
     /// the text of each statement that begins inside it, less the statements nested in that one, which come on their
-    /// own.
+    /// own. A grammar that takes a statement in place of a value or a table adds what ``SQLEmbeddedStatements`` finds,
+    /// and one with a pipe operator each statement ``SQLPipeOperatorChain`` finds.
     public static func runnable(in statement: String, grammar: SQLLexicalGrammar) -> [String] {
-        guard grammar.contains(.unterminatedStatements) else { return [statement] }
+        guard grammar.contains(.unterminatedStatements) else {
+            return [statement] + SQLEmbeddedStatements.texts(in: statement, grammar: grammar)
+                + SQLPipeOperatorChain.statements(in: statement, grammar: grammar)
+        }
         let text = statement as NSString
         let tokens = TSQLTokens.read(text, grammar: grammar)
         guard !definesRoutine(tokens) else { return [statement] }
@@ -31,11 +35,12 @@ public enum SQLUnterminatedStatements {
     /// The reserved keywords that begin a T-SQL statement. `ELSE` and `FETCH` are left out because they also continue
     /// a `CASE` and an `OFFSET` clause, and the statement after an `ELSE` begins with a keyword of its own. `WITH` is
     /// left out because a common table expression cannot follow a statement without a `;`, and the word also opens
-    /// table hints.
+    /// table hints. `ADD` begins `ADD SIGNATURE` and `ADD SENSITIVITY CLASSIFICATION`, and like `DROP` it otherwise
+    /// only continues an `ALTER` or a `CREATE`, which already write.
     private static let statementKeywords: Set<String> = [
-        "ALTER", "BACKUP", "BEGIN", "BREAK", "BULK", "CHECKPOINT", "CLOSE", "COMMIT", "CONTINUE", "CREATE", "DBCC",
-        "DEALLOCATE", "DECLARE", "DELETE", "DENY", "DROP", "DUMP", "END", "EXEC", "EXECUTE", "GOTO", "GRANT", "IF",
-        "INSERT", "KILL", "LINENO", "LOAD", "MERGE", "OPEN", "PRINT", "RAISERROR", "READTEXT", "RECONFIGURE",
+        "ADD", "ALTER", "BACKUP", "BEGIN", "BREAK", "BULK", "CHECKPOINT", "CLOSE", "COMMIT", "CONTINUE", "CREATE",
+        "DBCC", "DEALLOCATE", "DECLARE", "DELETE", "DENY", "DROP", "DUMP", "END", "EXEC", "EXECUTE", "GOTO", "GRANT",
+        "IF", "INSERT", "KILL", "LINENO", "LOAD", "MERGE", "OPEN", "PRINT", "RAISERROR", "READTEXT", "RECONFIGURE",
         "RESTORE", "RETURN", "REVERT", "REVOKE", "ROLLBACK", "SAVE", "SELECT", "SET", "SETUSER", "SHUTDOWN",
         "TRUNCATE", "UPDATE", "UPDATETEXT", "USE", "WAITFOR", "WHILE", "WRITETEXT",
     ]
@@ -73,6 +78,9 @@ public enum SQLUnterminatedStatements {
             return tokens[index].depth == 0 || (next?.word != "HINT" && next?.word != "PLAN")
         case "END":
             return next?.word == "CONVERSATION"
+        case "BULK":
+            // `ADMINISTER BULK OPERATIONS` is a permission, and neither `BULK INSERT` nor `OPENROWSET(BULK ...)` goes on so.
+            return next?.word != "OPERATIONS"
         default:
             return true
         }
@@ -104,7 +112,7 @@ public enum SQLUnterminatedStatements {
         return kind.map(routineKinds.contains) ?? false
     }
 
-    private struct StatementSpan {
+    struct StatementSpan {
         var range: NSRange
         let parent: Int?
     }
@@ -157,7 +165,7 @@ public enum SQLUnterminatedStatements {
 
     /// Each statement's text without the statements nested in it, so every character is tiered once however deep the
     /// nesting goes. Read whole at every level, 100 KB of nested `SELECT`s took 45 seconds to classify.
-    private static func ownTexts(of spans: [StatementSpan], in text: NSString) -> [String] {
+    static func ownTexts(of spans: [StatementSpan], in text: NSString) -> [String] {
         var nested = [[NSRange]](repeating: [], count: spans.count)
         for span in spans {
             guard let parent = span.parent else { continue }
@@ -319,6 +327,38 @@ enum TSQLTokens {
         }
         advance(while: isDigit)
         return cursor
+    }
+
+    /// Whether the `-` at `index` is the sign of a number's exponent. Only reading forward tells that `e` from a name's
+    /// or a hex digit: `1E-` takes its sign, and `a1E-`, `0x1E-` and `1E+1E-` leave it. So the words and numbers
+    /// written with nothing between them up to `index` are read from the first one.
+    static func signsExponent(at index: Int, in text: NSString) -> Bool {
+        guard index > 0, [smallE, capitalE].contains(text.character(at: index - 1)) else { return false }
+        var cursor = index
+        while cursor > 0, continuesWordsAndNumbers(text, at: cursor - 1) {
+            cursor -= 1
+        }
+        let length = index + 1
+        while cursor < index {
+            if startsNumber(text, at: cursor, length: length) {
+                cursor = endOfNumber(text, from: cursor, length: length)
+            } else if startsWord(text, at: cursor) {
+                cursor = endOfWord(text, from: cursor, length: length)
+            } else {
+                cursor += StatementBlank.scalar(in: text, at: cursor).map { $0.utf16.count } ?? 1
+            }
+        }
+        return cursor > index
+    }
+
+    /// Whether the unit at `index` may belong to a word or a number, so a token may have begun before it. A sign does
+    /// only after an `e`, which is why a run never reaches back past a `--`.
+    private static func continuesWordsAndNumbers(_ text: NSString, at index: Int) -> Bool {
+        let unit = text.character(at: index)
+        if [plus, SqlLexer.dash].contains(unit) {
+            return index > 0 && [smallE, capitalE].contains(text.character(at: index - 1))
+        }
+        return SqlDollarQuote.isIdentifierContinuation(unit) || [at, SqlLexer.hash, period].contains(unit)
     }
 
     private static func startsWord(_ code: NSString, at index: Int) -> Bool {

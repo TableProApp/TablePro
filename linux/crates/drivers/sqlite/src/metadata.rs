@@ -505,6 +505,7 @@ pub(crate) async fn fetch_table_definition(
         foreign_keys,
         inbound_foreign_keys: inbound,
         source,
+        options: None,
     })
 }
 
@@ -613,6 +614,7 @@ async fn indexes(
             unique: unique != 0,
             primary,
             predicate,
+            definition: stored_sql.map(|sql| in_schema(&sql, schema)),
         });
     }
     // An INTEGER PRIMARY KEY is the rowid itself and has no index of its
@@ -631,6 +633,7 @@ async fn indexes(
             unique: true,
             primary: true,
             predicate: None,
+            definition: None,
         });
     }
     Ok(indexes)
@@ -664,7 +667,6 @@ async fn table_shape(connection: &mut SqlxConnection, table: &TableRef) -> Resul
     let mut facts = TableFacts {
         strict,
         without_rowid,
-        autoincrement: false,
         single_column_key,
         descending_key: false,
     };
@@ -672,24 +674,8 @@ async fn table_shape(connection: &mut SqlxConnection, table: &TableRef) -> Resul
         facts.descending_key = create_statement(connection, table)
             .await?
             .is_some_and(|sql| declared_descending_key(&sql, &candidate.name));
-        if !facts.descending_key {
-            facts.autoincrement = autoincrement(connection, schema, &table.name).await?;
-        }
     }
     Ok(TableShape { kind, facts, columns })
-}
-
-async fn autoincrement(connection: &mut SqlxConnection, schema: &str, table: &str) -> Result<bool, DriverError> {
-    let schema_sql = quote(schema);
-    if !has_table(connection, &schema_sql, "sqlite_sequence").await? {
-        return Ok(false);
-    }
-    let rows: i64 = sqlx::query_scalar(AssertSqlSafe(catalog::sequence_sql(&schema_sql)))
-        .bind(table)
-        .fetch_one(&mut *connection)
-        .await
-        .map_err(map_error)?;
-    Ok(rows > 0)
 }
 
 async fn has_table(connection: &mut SqlxConnection, schema_sql: &str, name: &str) -> Result<bool, DriverError> {
@@ -720,6 +706,23 @@ fn schema_of(table: &TableRef) -> &str {
 /// carry no schema.
 fn qualifier(schema: &str) -> Option<String> {
     (schema != MAIN_SCHEMA).then(|| schema.to_owned())
+}
+
+/// SQLite keeps an index's SQL with no schema and with its head
+/// normalized to `CREATE [UNIQUE] INDEX`, so the index name follows
+/// that head. Outside `main` the name takes its schema, or the
+/// statement would make the index on a table of `main`.
+fn in_schema(sql: &str, schema: &str) -> String {
+    let Some(schema) = qualifier(schema) else {
+        return sql.to_owned();
+    };
+    let head = ["CREATE UNIQUE INDEX ", "CREATE INDEX "]
+        .into_iter()
+        .find(|head| sql.starts_with(head));
+    match head {
+        Some(head) => format!("{head}{}.{}", quote(&schema), &sql[head.len()..]),
+        None => sql.to_owned(),
+    }
 }
 
 fn quote(name: &str) -> String {

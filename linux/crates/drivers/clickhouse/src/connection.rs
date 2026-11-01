@@ -261,6 +261,12 @@ impl Connection for ClickHouseConnection {
         outcome
     }
 
+    /// The schemas this engine lists are the server's databases, which a
+    /// query tab can move between.
+    async fn list_databases(&self, options: CallOptions) -> Result<Vec<SchemaInfo>, DriverError> {
+        self.list_schemas(options).await
+    }
+
     async fn list_schemas(&self, options: CallOptions) -> Result<Vec<SchemaInfo>, DriverError> {
         self.workspace_read(options, |calls| async move { metadata::list_schemas(&calls).await })
             .await

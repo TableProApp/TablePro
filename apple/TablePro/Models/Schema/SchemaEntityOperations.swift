@@ -2,17 +2,10 @@
 //  SchemaEntityOperations.swift
 //  TablePro
 //
-//  Describes one structure-editor entity kind to the generic staging path.
-//
 
 import Foundation
 
-/// What distinguishes one structure entity from another when it is staged.
-///
-/// Columns, indexes, foreign keys and check constraints are staged by an identical sequence:
-/// register an undo, record a pending change under the entity's identifier, then write the
-/// working array. Only the arrays, the enum cases and the undo action names differ, so those
-/// are supplied here and the sequence itself lives once in `StructureChangeManager`.
+// One structure entity kind, for the staging sequence `StructureChangeManager` runs once for all four.
 struct SchemaEntityOperations<Entity: Identifiable & Equatable> where Entity.ID == UUID {
     let working: ReferenceWritableKeyPath<StructureChangeManager, [Entity]>
     let current: KeyPath<StructureChangeManager, [Entity]>
@@ -26,4 +19,6 @@ struct SchemaEntityOperations<Entity: Identifiable & Equatable> where Entity.ID 
     let addActionName: String
     let editActionName: String
     let deleteActionName: String
+    // Whether the working copy needs a statement; a column's key flag is the table's key change, not the column's.
+    var needsStatement: (_ loaded: Entity, _ working: Entity) -> Bool = { $0 != $1 }
 }

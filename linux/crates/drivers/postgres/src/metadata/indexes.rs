@@ -6,20 +6,22 @@ use super::{decode_error, text_rows};
 
 /// One row per key column, the INCLUDE columns past `indnkeyatts` left
 /// out. Attribute number 0 marks an expression, which only
-/// `pg_get_indexdef` can print.
-const INDEXES_SQL: &str = "\
+/// `pg_get_indexdef` can print, and with no column number it prints the
+/// whole CREATE INDEX statement.
+pub(super) const INDEXES_SQL: &str = "\
 SELECT ic.relname::text,
        i.indisunique,
        i.indisprimary,
        pg_catalog.pg_get_expr(i.indpred, i.indrelid)::text,
        a.attname::text,
        pg_catalog.pg_get_indexdef(i.indexrelid, k.ord::int4, true)::text,
-       COALESCE(pg_catalog.pg_index_column_has_property(i.indexrelid, k.ord::int4, 'desc'), false)
+       COALESCE(pg_catalog.pg_index_column_has_property(i.indexrelid, k.ord::int4, 'desc'), false),
+       pg_catalog.pg_get_indexdef(i.indexrelid)::text
 FROM pg_catalog.pg_index i
 JOIN pg_catalog.pg_class ic ON ic.oid = i.indexrelid
-CROSS JOIN LATERAL unnest(i.indkey::int2[]) WITH ORDINALITY AS k(attnum, ord)
+CROSS JOIN LATERAL pg_catalog.unnest(i.indkey::int2[]) WITH ORDINALITY AS k(attnum, ord)
 LEFT JOIN pg_catalog.pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = k.attnum AND k.attnum > 0
-WHERE i.indrelid = $1::text::regclass AND k.ord <= i.indnkeyatts
+WHERE i.indrelid = $1::text::regclass::oid AND k.ord <= i.indnkeyatts
 ORDER BY ic.relname, k.ord";
 
 pub(crate) async fn fetch_indexes(client: &Client, relation: &str) -> Result<Vec<IndexInfo>, DriverError> {
@@ -45,6 +47,7 @@ pub(crate) async fn fetch_indexes(client: &Client, relation: &str) -> Result<Vec
                 unique: row.try_get(1).map_err(&field)?,
                 primary: row.try_get(2).map_err(&field)?,
                 predicate: row.try_get(3).map_err(&field)?,
+                definition: row.try_get(7).map_err(&field)?,
             }),
         }
     }

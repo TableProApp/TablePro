@@ -9,9 +9,7 @@ pub(super) fn preview_text(context: &StructureContext, pending: &PendingStructur
     match (&context.dialect, context.ddl()) {
         (None, _) => gettext("-- Connect to a database to see the SQL."),
         (Some(_), None) => gettext("-- This database's structure can't be edited here."),
-        (Some(_), Some(_)) if !pending.unparsed_defaults.is_empty() => {
-            gettext("-- Fix the highlighted fields to see the SQL.")
-        }
+        (Some(_), Some(_)) if !pending.typed_values_hold() => gettext("-- Fix the highlighted fields to see the SQL."),
         (Some(_), Some(_)) if !pending.has_changes() => no_pending_changes(),
         (Some(_), Some(ddl)) => match pending.plan(ddl) {
             Ok(plan) => plan.preview(),
@@ -56,6 +54,7 @@ mod tests {
             mode: StructureMode::New,
             dialect,
             definition: None,
+            character_sets: super::super::context::CharacterSets::Unread,
         }
     }
 
@@ -70,6 +69,7 @@ mod tests {
             draft,
             changes: TableChanges::default(),
             unparsed_defaults: Vec::new(),
+            invalid_auto_increment: false,
         }
     }
 
@@ -85,6 +85,19 @@ mod tests {
     fn an_unparsed_default_holds_the_preview() {
         let pending = PendingStructure {
             unparsed_defaults: vec!["id".to_owned()],
+            ..created(&["id"])
+        };
+
+        assert_eq!(
+            preview_text(&new_table(Some(postgres())), &pending),
+            "-- Fix the highlighted fields to see the SQL."
+        );
+    }
+
+    #[test]
+    fn an_invalid_next_auto_increment_holds_the_preview() {
+        let pending = PendingStructure {
+            invalid_auto_increment: true,
             ..created(&["id"])
         };
 

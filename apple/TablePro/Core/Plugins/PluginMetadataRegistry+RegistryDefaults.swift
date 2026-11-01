@@ -71,6 +71,7 @@ extension PluginMetadataRegistry {
                     supportsAddIndex: false,
                     supportsDropIndex: false,
                     supportsOpportunisticTLS: false,
+                    supportsClientKeyPassphrase: true,
                     authenticationIsDatabaseScoped: true,
                     columnsAreSampled: true,
                     patternFiltersReadAnyColumn: true,
@@ -105,6 +106,13 @@ extension PluginMetadataRegistry {
                         ),
                         ConnectionField(
                             id: "mongoAuthSource", label: "Auth Database", placeholder: "admin"
+                        ),
+                        ConnectionField(
+                            id: "mongoAWSSessionToken",
+                            label: "AWS Session Token",
+                            fieldType: .secure,
+                            section: .authentication,
+                            visibleWhen: FieldVisibilityRule(fieldId: "mongoAuthMechanism", values: ["MONGODB-AWS"])
                         ),
                         ConnectionField(
                             id: "mongoReadPreference",
@@ -1038,6 +1046,7 @@ extension PluginMetadataRegistry {
             + cloudPluginDefaults() + elasticsearchPluginDefaults() + surrealDBPluginDefaults()
             + kafkaPluginDefaults() + typesensePluginDefaults() + r2SQLPluginDefaults()
             + weaviatePluginDefaults() + hanaPluginDefaults() + firebasePluginDefaults() + bigtablePluginDefaults()
+            + neo4jPluginDefaults()
             + trinoPluginDefaults()
     }
     // swiftlint:enable function_body_length

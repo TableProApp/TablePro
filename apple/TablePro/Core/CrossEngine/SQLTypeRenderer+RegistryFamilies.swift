@@ -262,7 +262,7 @@ internal extension SQLTypeRenderer {
             return RenderedColumnType(spelling: "String", fidelity: .approximated, reason: enumBecomesText)
         }
         let labels = values.enumerated()
-            .map { "'\($0.element.replacingOccurrences(of: "'", with: "\\'"))' = \($0.offset + 1)" }
+            .map { "'\($0.element.replacingOccurrences(of: "'", with: "\\'", options: .literal))' = \($0.offset + 1)" }
             .joined(separator: ", ")
         return RenderedColumnType(spelling: "Enum8(\(labels))")
     }

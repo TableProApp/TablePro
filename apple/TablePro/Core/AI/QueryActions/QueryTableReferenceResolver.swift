@@ -136,6 +136,8 @@ enum QueryTokenScanner {
                 return .quotedIdentifier(body.replacingOccurrences(of: "``", with: "`"))
             case openBracket:
                 return .quotedIdentifier(body.replacingOccurrences(of: "]]", with: "]"))
+            case SqlLexer.openAngleQuote:
+                return .quotedIdentifier(body)
             case SqlLexer.singleQuote where literalsAsIdentifiers:
                 return .quotedIdentifier(body.replacingOccurrences(of: "''", with: "'"))
             default:

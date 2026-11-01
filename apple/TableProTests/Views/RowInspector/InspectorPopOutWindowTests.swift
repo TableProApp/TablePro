@@ -33,6 +33,5 @@ struct InspectorPopOutWindowTests {
         #expect(InspectorPopOutWindow.resolve(for: .binaryValue(.protobuf)) == .binary(.protobuf))
         #expect(InspectorPopOutWindow.resolve(for: .multiLine) == .text)
         #expect(InspectorPopOutWindow.resolve(for: .singleLine) == .text)
-        #expect(InspectorPopOutWindow.resolve(for: .schemaText) == .text)
     }
 }

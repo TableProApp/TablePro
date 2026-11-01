@@ -89,6 +89,7 @@ pub(crate) fn edited_table(edit: impl FnOnce(&mut TableDraft)) -> PendingStructu
             create_statement: "CREATE TABLE t (id INTEGER, n INTEGER)".to_owned(),
             dependents: Vec::new(),
         }),
+        options: None,
     };
     let mut draft = TableDraft::from_definition(&original);
     edit(&mut draft);
@@ -97,6 +98,7 @@ pub(crate) fn edited_table(edit: impl FnOnce(&mut TableDraft)) -> PendingStructu
         original: Some(original),
         draft,
         unparsed_defaults: Vec::new(),
+        invalid_auto_increment: false,
     }
 }
 
@@ -294,7 +296,7 @@ fn edit(tracker: &TabTrackerHandle, value: i64) {
         row_key: RowKey::from_pk_values(&[Value::Int(1)]).expect("a key"),
         col: 1,
         original: Value::Int(1),
-        value: Value::Int(value),
+        value: tablepro_core::edit::CellInput::Value(Value::Int(value)),
     });
 }
 

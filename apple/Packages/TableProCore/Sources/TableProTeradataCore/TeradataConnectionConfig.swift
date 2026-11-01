@@ -53,6 +53,13 @@ public struct TeradataTLSOptions: Sendable {
     }
 
     public static let disabled = TeradataTLSOptions()
+
+    // TLS goes to the HTTPS port, which a tunnel never forwards, so it would reach whatever listens on this Mac's
+    // port 443. Nil when the mode demands TLS; Preferred goes through the tunnel without it.
+    public func throughTunnel() -> TeradataTLSOptions? {
+        guard enabled else { return self }
+        return allowPlaintextFallback ? .disabled : nil
+    }
 }
 
 public struct TeradataConnectionConfig: Sendable {

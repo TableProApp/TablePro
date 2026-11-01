@@ -113,7 +113,7 @@ int main(void) {
 }
 PROBE
 
-cc -O1 -I "$HEADERS" "$WORK/probe.c" "$LIB" -lc++ -o "$WORK/probe"
+cc -O1 -I "$HEADERS" "$WORK/probe.c" -Wl,-force_load,"$LIB" -lc++ -o "$WORK/probe"
 "$WORK/probe" > "$WORK/measured.tsv"
 
 # Swift case identifier -> DuckDB type name, e.g. timestampMilliseconds=TIMESTAMP_MS

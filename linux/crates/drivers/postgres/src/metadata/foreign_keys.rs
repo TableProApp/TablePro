@@ -4,6 +4,7 @@ use tokio_postgres::{Client, Row};
 
 use super::{decode_error, text_rows};
 use crate::catalog::{PARENT_HOLDS_CHILD, compares_alike_sql};
+use crate::codec::TextArray;
 
 /// A key to a partitioned table has a clone on the same table for each
 /// partition it reaches, made and dropped with it, so only the key the
@@ -11,13 +12,13 @@ use crate::catalog::{PARENT_HOLDS_CHILD, compares_alike_sql};
 const FOREIGN_KEYS_SQL: &str = "\
 SELECT c.conname::text,
        ARRAY(SELECT a.attname::text
-               FROM unnest(c.conkey) WITH ORDINALITY AS k(attnum, ord)
+               FROM pg_catalog.unnest(c.conkey) WITH ORDINALITY AS k(attnum, ord)
                JOIN pg_catalog.pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = k.attnum
               ORDER BY k.ord),
        n.nspname::text,
        t.relname::text,
        ARRAY(SELECT a.attname::text
-               FROM unnest(c.confkey) WITH ORDINALITY AS k(attnum, ord)
+               FROM pg_catalog.unnest(c.confkey) WITH ORDINALITY AS k(attnum, ord)
                JOIN pg_catalog.pg_attribute a ON a.attrelid = c.confrelid AND a.attnum = k.attnum
               ORDER BY k.ord),
        c.confdeltype::text,
@@ -26,12 +27,12 @@ SELECT c.conname::text,
 FROM pg_catalog.pg_constraint c
 JOIN pg_catalog.pg_class t ON t.oid = c.confrelid
 JOIN pg_catalog.pg_namespace n ON n.oid = t.relnamespace
-WHERE c.conrelid = $1::text::regclass AND c.contype = 'f'
+WHERE c.conrelid = $1::text::regclass::oid AND c.contype = 'f'
   AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_constraint p
                    WHERE p.oid = c.conparentid AND p.conrelid = c.conrelid)
 ORDER BY c.conname";
 
-fn foreign_keys_sql() -> String {
+pub(super) fn foreign_keys_sql() -> String {
     FOREIGN_KEYS_SQL.replace("{parent_compares_alike}", &compares_alike_sql(PARENT_HOLDS_CHILD))
 }
 
@@ -61,10 +62,10 @@ fn outbound_foreign_key(row: &Row) -> Result<OutboundForeignKey, DriverError> {
     Ok(OutboundForeignKey {
         key: ForeignKeyInfo {
             name: row.try_get(0).map_err(&field)?,
-            columns: row.try_get(1).map_err(&field)?,
+            columns: row.try_get::<_, TextArray>(1).map_err(&field)?.0,
             ref_schema: Some(row.try_get(2).map_err(&field)?),
             ref_table: row.try_get(3).map_err(&field)?,
-            ref_columns: row.try_get(4).map_err(&field)?,
+            ref_columns: row.try_get::<_, TextArray>(4).map_err(&field)?.0,
             on_delete: referential_action(&on_delete),
             on_update: referential_action(&on_update),
         },

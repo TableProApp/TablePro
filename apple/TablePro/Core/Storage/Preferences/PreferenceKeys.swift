@@ -13,8 +13,10 @@ enum PreferenceKeys {
     static let queryPlanRawFontSize = DefaultsKey<Double>("com.TablePro.queryPlan.rawFontSize")
     static let queryPlanBarMetric = DefaultsKey<String>("com.TablePro.queryPlan.barMetric")
     static let lastBackupDirectory = DefaultsKey<String>("com.TablePro.backup.lastDirectory")
-    /// The app version this Mac last showed the welcome window for. Device-local: it records what
-    /// has been shown here, not a preference, so it must not sync to another Mac that has not.
+    /// The newest build this Mac has run, for the Welcome window's What's New link. Device-local: it
+    /// records what has been shown here, not a preference, so it must not sync to another Mac.
+    static let lastSeenAppBuild = DefaultsKey<Int>("com.TablePro.welcome.lastSeenAppBuild")
+    /// What a build before `lastSeenAppBuild` recorded instead, read once to carry it over.
     static let lastSeenAppVersion = DefaultsKey<String>("com.TablePro.welcome.lastSeenAppVersion")
     static let connectionListSortMode = DefaultsKey<String>("com.TablePro.connectionList.sortMode")
     static let connectionListFavoritesOrder = DefaultsKey<[String]>("com.TablePro.connectionList.favoritesOrder")
@@ -39,6 +41,7 @@ enum PreferenceKeys {
         queryPlanRawFontSize.name,
         queryPlanBarMetric.name,
         lastBackupDirectory.name,
+        lastSeenAppBuild.name,
         lastSeenAppVersion.name,
         receivesBetaUpdates.name,
     ]

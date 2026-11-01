@@ -243,7 +243,7 @@ struct StructureEditingSupportFieldDiffTests {
     }
 }
 
-// MARK: - undoDelete(for:at:)
+// MARK: - undoDelete(section:id:)
 
 @MainActor
 struct StructureChangeManagerUndoDeleteTests {
@@ -272,7 +272,7 @@ struct StructureChangeManagerUndoDeleteTests {
         manager.deleteColumn(id: emailColumn.id)
         #expect(manager.deleteInsertState(for: 1, tab: .columns).isDeleted)
 
-        manager.undoDelete(for: .columns, at: 1)
+        manager.undoDelete(section: .columns, id: emailColumn.id)
         #expect(!manager.deleteInsertState(for: 1, tab: .columns).isDeleted)
         #expect(manager.pendingChanges[.column(emailColumn.id)] == nil)
     }
@@ -285,29 +285,44 @@ struct StructureChangeManagerUndoDeleteTests {
         manager.updateColumn(id: renamed.id, with: renamed)
         let beforeChanges = manager.pendingChanges
 
-        manager.undoDelete(for: .columns, at: 1)
+        manager.undoDelete(section: .columns, id: renamed.id)
 
         #expect(manager.pendingChanges == beforeChanges)
     }
 
-    @Test("undoDelete bounds-checks the row index")
-    func undoDeleteOutOfRange() {
+    @Test("undoDelete ignores an id no definition has")
+    func undoDeleteUnknownID() {
         let manager = makeManagerWithSchema()
-        manager.undoDelete(for: .columns, at: 99)
-        manager.undoDelete(for: .indexes, at: 0)
-        manager.undoDelete(for: .foreignKeys, at: 0)
+        manager.undoDelete(section: .columns, id: UUID())
+        manager.undoDelete(section: .indexes, id: UUID())
+        manager.undoDelete(section: .foreignKeys, id: UUID())
+        manager.undoDelete(section: .checkConstraints, id: UUID())
         #expect(manager.pendingChanges.isEmpty)
     }
 
-    @Test("undoDelete on .ddl / .parts tabs is a no-op")
-    func undoDeleteDDLAndParts() {
+    @Test("undoDelete names a definition in its own section only")
+    func undoDeleteStaysInItsSection() {
         let manager = makeManagerWithSchema()
         let emailColumn = manager.workingColumns[1]
         manager.deleteColumn(id: emailColumn.id)
 
-        manager.undoDelete(for: .ddl, at: 1)
-        manager.undoDelete(for: .parts, at: 1)
+        manager.undoDelete(section: .indexes, id: emailColumn.id)
+        manager.undoDelete(section: .checkConstraints, id: emailColumn.id)
 
         #expect(manager.deleteInsertState(for: 1, tab: .columns).isDeleted)
+    }
+
+    @Test("undoDelete leaves the undo stack alone, and the delete it skipped undoes to nothing")
+    func undoDeleteLeavesTheStack() {
+        let manager = makeManagerWithSchema()
+        let emailColumn = manager.workingColumns[1]
+        manager.deleteColumn(id: emailColumn.id)
+
+        manager.undoDelete(section: .columns, id: emailColumn.id)
+        #expect(manager.canUndo)
+
+        manager.undo()
+        #expect(!manager.deleteInsertState(for: 1, tab: .columns).isDeleted)
+        #expect(!manager.hasChanges)
     }
 }

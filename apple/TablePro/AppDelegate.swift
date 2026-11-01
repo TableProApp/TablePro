@@ -139,12 +139,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         guard !AppStorageEnvironment.shared.isIsolated else { return }
 
         ConnectionStorage.shared.migratePluginSecureFieldsIfNeeded()
+        ConnectionStorage.shared.moveMongoURISecretsToKeychain()
         FavoriteTablesStorage.shared.migrateSyncIdentityIfNeeded()
         SoftwareUpdater.shared.start()
         AnalyticsService.shared.startPeriodicHeartbeat()
         SyncCoordinator.shared.start()
         LinkedFolderWatcher.shared.start()
         TeamLibrarySyncCoordinator.shared.start()
+        SupportAskCoordinator.shared.start()
 
         Task {
             LicenseManager.shared.startPeriodicValidation()

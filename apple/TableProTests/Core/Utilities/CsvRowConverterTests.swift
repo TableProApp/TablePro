@@ -97,6 +97,13 @@ struct CsvRowConverterTests {
         #expect(result == "\"line1\r\nline2\"\n\"a\rb\"\n")
     }
 
+    @Test("A quoted value led by a combining mark is not wrapped a second time")
+    func combiningMarkLedValueQuotedOnce() {
+        let converter = makeConverter(columns: ["note"], columnTypes: [.text(rawType: nil)])
+        let result = converter.generateCsv(rows: [["\u{301}, x "]], includeHeaders: false)
+        #expect(Array(result.unicodeScalars) == Array("\"\u{301}, x \"\n".unicodeScalars))
+    }
+
     @Test("A tab forces quoting and a formula-like value is copied as it is")
     func tabQuotingWithoutNeutralising() {
         let converter = makeConverter(columns: ["note"], columnTypes: [.text(rawType: nil)])

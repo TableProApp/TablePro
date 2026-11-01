@@ -484,6 +484,7 @@ fn one_table() -> ConnectionScript {
         foreign_keys: Vec::new(),
         inbound_foreign_keys: Vec::new(),
         source: None,
+        options: None,
     }));
     script
 }

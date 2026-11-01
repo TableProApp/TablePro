@@ -55,6 +55,7 @@ fn a_column_added() -> Option<PendingStructure> {
         draft,
         changes: TableChanges::default(),
         unparsed_defaults: Vec::new(),
+        invalid_auto_increment: false,
     })
 }
 
@@ -183,6 +184,7 @@ fn restored_workspace_selects_saved_active_tab() {
                     TabRecord::Editor {
                         draft: DraftId::new(),
                         file: None,
+                        database: None,
                     },
                     orders,
                 ],
@@ -228,6 +230,7 @@ fn a_restored_editor_tab_keeps_its_file_and_its_unsaved_changes() {
                         uri: gio::File::for_path(&path).uri().to_string(),
                         modified: true,
                     }),
+                    database: None,
                 }],
             },
         )
@@ -381,4 +384,23 @@ fn a_renamed_connection_retitles_its_tabs_and_the_window() {
     .expect("the window to take the new name");
     assert_eq!(page.keyword().as_deref(), Some("Shop"));
     assert_eq!(test.workspace().connection_name(), "Shop");
+}
+
+/// A tab moved off the connection's database names the one it runs in.
+#[gtk4::test]
+fn a_tab_moved_to_another_database_names_it() {
+    let test = TestWindow::connected_with("MovedTabTitle", |script| {
+        script.dialect = Arc::new(tablepro_driver_mysql::MySqlDialect::new(
+            tablepro_driver_mysql::MySqlFlavour::MySql,
+            &tablepro_core::ServerInfo::new("MySQL", "8.4.0", 8, 4, 0),
+        ));
+    });
+    let page = open_editor(&test.workspace());
+    let editor = editors(&test.window).pop().expect("the editor");
+
+    WidgetExt::activate_action(&editor, "editor.database", Some(&"analytics".to_variant())).expect("editor.database");
+
+    wait_until(WAIT, || page.title() == "Query 1 (analytics)").expect("the tab to name its database");
+    let tooltip = page.tooltip().map(|tooltip| tooltip.to_string()).unwrap_or_default();
+    assert_eq!(tooltip, "Query 1\nanalytics");
 }

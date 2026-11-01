@@ -14,13 +14,14 @@ mod connect_failure_view;
 mod connect_flow;
 mod connecting_page;
 mod connections;
-mod crash_notice;
 mod file_location_dialog;
 mod imp;
+mod launch_notice;
 mod locate_file;
 mod notification_request;
 mod notification_sink;
 mod notifications;
+mod other_databases;
 mod picker_page;
 mod resolve_file_identity;
 mod secret_retry;
@@ -61,11 +62,12 @@ pub(super) use self::connect_failed_page::ConnectFailedPage;
 use self::connect_failure_view::ConnectFailureView;
 pub(super) use self::connecting_page::ConnectingPage;
 use self::file_location_dialog::FileCheck;
+pub(crate) use self::launch_notice::LaunchNotice;
 pub(super) use self::picker_page::PickerPage;
 use self::resolve_file_identity::{FileResolveError, FileTarget, ResolvedFile, resolve_file_blocking};
-use self::session_page::{FailedConnect, OpenSession, PendingConnect, SessionPage, source_key};
+use self::session_page::{FailedConnect, OpenSession, PendingConnect, SessionPage, TakenFailure, source_key};
 use self::session_window_command::{AttemptError, ConnectFailure, Connected, SessionWindowCommand};
-pub(crate) use self::session_window_input::SessionWindowInput;
+pub(crate) use self::session_window_input::{MovedTab, SessionWindowInput};
 use crate::application::{AppServices, WindowHost, WindowLaunch};
 use crate::runtime::{DeliverInput, InputSender};
 use crate::services::session_context::SessionContext;
@@ -332,10 +334,14 @@ impl SessionWindow {
     }
 
     fn holds_session(&self, key: &SessionKey) -> bool {
-        self.imp()
-            .sessions
-            .try_borrow()
-            .is_ok_and(|sessions| sessions.iter().any(|open| open.claim.key() == key))
+        self.find_open(|open| (open.claim.key() == key).then_some(())).is_some()
+    }
+
+    /// What `pick` finds first among the window's sessions, the other
+    /// databases open beside them included.
+    fn find_open<R>(&self, pick: impl FnMut(&OpenSession) -> Option<R>) -> Option<R> {
+        let sessions = self.imp().sessions.try_borrow().ok()?;
+        sessions.iter().flat_map(OpenSession::with_databases).find_map(pick)
     }
 
     fn is_connecting(&self, key: &SessionKey) -> bool {
@@ -355,7 +361,13 @@ impl SessionWindow {
     pub(crate) fn workspaces(&self) -> Vec<Workspace> {
         self.imp().sessions.try_borrow().map_or_else(
             |_| Vec::new(),
-            |sessions| sessions.iter().map(|open| open.workspace.clone()).collect(),
+            |sessions| {
+                sessions
+                    .iter()
+                    .flat_map(OpenSession::with_databases)
+                    .map(|open| open.workspace.clone())
+                    .collect()
+            },
         )
     }
 
@@ -373,21 +385,13 @@ impl SessionWindow {
 
     /// The workspace of the session under `key`.
     fn session_workspace(&self, key: &SessionKey) -> Option<Workspace> {
-        let sessions = self.imp().sessions.try_borrow().ok()?;
-        sessions
-            .iter()
-            .find(|open| open.claim.key() == key)
-            .map(|open| open.workspace.clone())
+        self.find_open(|open| (open.claim.key() == key).then(|| open.workspace.clone()))
     }
 
     /// The key and session of the session in front.
     pub(super) fn front_session(&self) -> Option<(SessionKey, Arc<Session>)> {
         let front = self.workspace()?;
-        let sessions = self.imp().sessions.try_borrow().ok()?;
-        sessions
-            .iter()
-            .find(|open| open.workspace == front)
-            .map(|open| (open.claim.key().clone(), open.session.clone()))
+        self.find_open(|open| (open.workspace == front).then(|| (open.claim.key().clone(), open.session.clone())))
     }
 
     /// The shell for the window's first session, which the later ones
@@ -402,7 +406,7 @@ impl SessionWindow {
         self.imp().shell.replace(Some(shell.clone()));
         self.sync_tree();
         if let Some(tree) = shell.tree() {
-            for (key, (source, failure)) in self.imp().failures.borrow().iter() {
+            for (key, (source, failure, _)) in self.imp().failures.borrow().iter() {
                 tree.set_failure(key, Some((&source_name(source), failure.message.as_str())));
             }
         }
@@ -464,6 +468,8 @@ impl SessionWindow {
             SessionWindowInput::ConnectionSaved(id) => self.on_connection_saved(id),
             SessionWindowInput::Disconnect => self.on_disconnect_front(),
             SessionWindowInput::DisconnectSession(key) => self.on_disconnect(key),
+            SessionWindowInput::ChooseDatabaseIn(key) => self.choose_database_in(key),
+            SessionWindowInput::MovedTab(asked) => self.on_moved_tab(asked),
             SessionWindowInput::SessionTeardownApproved(key) => self.on_session_teardown_approved(&key),
             SessionWindowInput::ShowSession(key) => self.show_session(&key),
             SessionWindowInput::NewQueryIn(key) => self.deliver_to(&key, WorkspaceInput::NewEditorTab),
@@ -521,6 +527,7 @@ impl SessionWindow {
             SessionWindowInput::ExportConnections => self.on_export_connections(),
             SessionWindowInput::ImportConnections => self.on_import_connections(),
             SessionWindowInput::ConnectionsFileRead { path, bytes } => self.on_connections_file_read(path, bytes),
+            SessionWindowInput::ImportPreviewed(preview) => self.on_import_previewed(*preview),
             SessionWindowInput::ShowToast(message) => self.show_toast(&message),
         }
     }
@@ -616,7 +623,7 @@ impl SessionWindow {
             imp.opened_for_file.set(false);
         }
         imp.page_toasts.replace(toasts);
-        self.show_crash_notice();
+        self.show_launch_notices();
         // A Cancel or Retry left as the default would take Enter on a
         // page that no longer shows it.
         self.set_default_widget(None::<&gtk::Widget>);
@@ -657,14 +664,26 @@ impl SessionWindow {
             self.ask_about_location(id, kind);
             return;
         }
-        let PendingConnect { claim, source, .. } = self.imp().connects.borrow_mut().remove(position);
+        let PendingConnect {
+            claim,
+            source,
+            databases,
+            ..
+        } = self.imp().connects.borrow_mut().remove(position);
         match result {
             Ok(connected) => {
                 // The tree never shows a key both connecting and open.
                 self.sync_tree();
+                let reopens = match claim.key() {
+                    SessionKey::Saved(id) => Some(*id),
+                    SessionKey::SavedIn { .. } | SessionKey::File(_) => None,
+                };
                 self.adopt(claim, source, connected);
+                for (id, database) in databases.into_iter().filter_map(|database| Some((reopens?, database))) {
+                    self.open_database(id, database);
+                }
             }
-            Err(AttemptError::Failed(failure)) => self.on_connect_failed(claim, source, failure),
+            Err(AttemptError::Failed(failure)) => self.on_connect_failed(claim, source, failure, databases),
             // A location question was asked above, so this is a stop.
             Err(AttemptError::Cancelled | AttemptError::AskLocation(_)) => {
                 let key = claim.key().clone();
@@ -680,7 +699,15 @@ impl SessionWindow {
     /// toast says so and its Details say why. A session restored at
     /// launch that no longer opens is not tried again at the next one; a
     /// Retry that works records it again.
-    fn on_connect_failed(&self, claim: SessionClaim, source: ConnectSource, failure: ConnectFailure) {
+    /// The connection's other databases wait with the failure for the
+    /// connect that brings it back.
+    fn on_connect_failed(
+        &self,
+        claim: SessionClaim,
+        source: ConnectSource,
+        failure: ConnectFailure,
+        databases: Vec<String>,
+    ) {
         tracing::warn!(error = %failure.message, "connect failed");
         let imp = self.imp();
         let key = claim.key().clone();
@@ -691,7 +718,12 @@ impl SessionWindow {
                 ConnectSource::Saved(saved) => failure.missing_file.clone().map(|missing| (saved.id, missing)),
                 _ => None,
             };
-            self.show_failure(FailedConnect { claim, source, failure });
+            self.show_failure(FailedConnect {
+                claim,
+                source,
+                failure,
+                databases,
+            });
             if let Some((id, missing)) = missing {
                 self.offer_locate(id, missing);
             }
@@ -702,7 +734,9 @@ impl SessionWindow {
         if let Some(tree) = self.shell().and_then(|shell| shell.tree()) {
             tree.set_failure(&key, Some((&name, failure.message.as_str())));
         }
-        imp.failures.borrow_mut().insert(key.clone(), (source, failure));
+        imp.failures
+            .borrow_mut()
+            .insert(key.clone(), (source, failure, databases));
         // The toast goes to the page that shows from here on, which may
         // be another connect's progress.
         self.connects_changed();
@@ -757,7 +791,7 @@ impl SessionWindow {
             warnings,
             session_only,
         } = connected;
-        let (Some(state), Some(guards), Some(input)) = (self.state(), self.close_guards(), self.input()) else {
+        let (Some(state), Some(_), Some(input)) = (self.state(), self.close_guards(), self.input()) else {
             self.discard_pending(pending);
             return;
         };
@@ -775,21 +809,14 @@ impl SessionWindow {
             tracing::warn!(%error, "could not remember the connect dialog driver");
         }
         let shell = self.shell().unwrap_or_else(|| self.new_shell(state, &input));
-        let workspace = Workspace::new(WorkspaceInit {
-            key: key.clone(),
-            session: session.clone(),
-            services: state.services.clone(),
-            context: state.context.clone(),
-            window: self.clone().upcast(),
-            close_guards: guards.clone(),
-            shell: shell.clone(),
-        });
-        self.connect_workspace(&workspace, &input);
-        self.imp().sessions.borrow_mut().push(OpenSession {
-            claim,
-            session,
-            workspace: workspace.clone(),
-        });
+        let Some(workspace) = self.new_workspace(key.clone(), &session, &shell) else {
+            drop(session.begin_shutdown());
+            return;
+        };
+        self.imp()
+            .sessions
+            .borrow_mut()
+            .push(OpenSession::new(claim, session, workspace.clone()));
         self.render();
         shell.add_session(&workspace);
         workspace.start();
@@ -800,6 +827,25 @@ impl SessionWindow {
         if let SessionKey::Saved(id) = key {
             self.touch_last_opened(id);
         }
+    }
+
+    /// The workspace that shows `session` in `shell`, wired to the
+    /// window.
+    fn new_workspace(&self, key: SessionKey, session: &Arc<Session>, shell: &WorkspaceShell) -> Option<Workspace> {
+        let (Some(state), Some(guards), Some(input)) = (self.state(), self.close_guards(), self.input()) else {
+            return None;
+        };
+        let workspace = Workspace::new(WorkspaceInit {
+            key,
+            session: session.clone(),
+            services: state.services.clone(),
+            context: state.context.clone(),
+            window: self.clone().upcast(),
+            close_guards: guards.clone(),
+            shell: shell.clone(),
+        });
+        self.connect_workspace(&workspace, &input);
+        Some(workspace)
     }
 
     fn connect_workspace(&self, workspace: &Workspace, input: &InputSender<SessionWindowInput>) {
@@ -861,7 +907,20 @@ impl SessionWindow {
             return None;
         }
         match self.imp().failed.take() {
-            Some(failed) if failed.claim.key() == key => Some(failed.claim),
+            Some(FailedConnect {
+                claim,
+                source,
+                failure,
+                databases,
+            }) if claim.key() == key => {
+                // The connect this claim starts takes them, as it takes
+                // a failure beside the window's sessions.
+                self.imp()
+                    .failures
+                    .borrow_mut()
+                    .insert(key.clone(), (source, failure, databases));
+                Some(claim)
+            }
             failed => {
                 let left = failed.is_some();
                 drop(failed);
@@ -884,6 +943,76 @@ impl SessionWindow {
 
     /// Connect with the failed page's claim when there is one, else as
     /// any connect does.
+    /// Connect `source` with `claim`, or a claim of its own, and open
+    /// `databases` beside it once it joins: a reconnect's or a restore's.
+    pub(super) fn connect_reopening(
+        &self,
+        claim: Option<SessionClaim>,
+        source: ConnectSource,
+        demand: CredentialDemand,
+        databases: Vec<String>,
+    ) {
+        let key = source_key(&source);
+        let claim = match claim {
+            Some(claim) => claim,
+            None => match self.claim_for(&key) {
+                Some(claim) => claim,
+                None => {
+                    self.open_beside(&key, databases);
+                    return;
+                }
+            },
+        };
+        if let Some(mut pending) = self.spawn_connect(claim, source, None, demand) {
+            pending.databases.extend(databases);
+            self.imp().connects.borrow_mut().push(pending);
+        }
+        self.connects_changed();
+    }
+
+    /// Open `databases` beside the connection under `key` that is open or
+    /// connecting already, in this window or the one that holds it.
+    fn open_beside(&self, key: &SessionKey, databases: Vec<String>) {
+        let SessionKey::Saved(id) = *key else {
+            return;
+        };
+        if self.holds_session(key) {
+            for database in databases {
+                self.open_database(id, database);
+            }
+            return;
+        }
+        let joined = {
+            let mut connects = self.imp().connects.borrow_mut();
+            match connects.iter_mut().find(|pending| pending.claim.key() == key) {
+                Some(pending) => {
+                    pending.databases.extend(databases.iter().cloned());
+                    true
+                }
+                None => false,
+            }
+        };
+        if joined {
+            return;
+        }
+        // Another window holds the connection, and its databases open
+        // there.
+        let owner = self
+            .state()
+            .and_then(|state| state.context.sessions.window_for(key))
+            .filter(|owner| *owner != self.id());
+        let owner = owner.and_then(|owner| {
+            self.application()?
+                .windows()
+                .into_iter()
+                .filter_map(|window| window.downcast::<SessionWindow>().ok())
+                .find(|window| window.id() == owner)
+        });
+        if let Some(owner) = owner {
+            owner.open_beside(key, databases);
+        }
+    }
+
     fn connect_with(&self, claim: Option<SessionClaim>, source: ConnectSource, demand: CredentialDemand) {
         match claim {
             Some(claim) => self.start_connect(claim, source, None, demand),
@@ -960,6 +1089,7 @@ impl SessionWindow {
                     claim,
                     source: ConnectSource::File(FileIdentity::new(None, uri)),
                     failure: ConnectFailure::new(message),
+                    databases: Vec::new(),
                 });
             }
         }
@@ -1016,11 +1146,17 @@ impl SessionWindow {
         let id = imp.next_connect.get().wrapping_add(1);
         imp.next_connect.set(id);
         let key = claim.key();
-        if imp.failures.borrow_mut().remove(key).is_some()
-            && let Some(tree) = self.shell().and_then(|shell| shell.tree())
-        {
-            tree.set_failure(key, None);
-        }
+        // Whatever brings a failed connection back reopens the other
+        // databases its failure kept.
+        let databases = match imp.failures.borrow_mut().remove(key) {
+            Some((_, _, databases)) => {
+                if let Some(tree) = self.shell().and_then(|shell| shell.tree()) {
+                    tree.set_failure(key, None);
+                }
+                databases
+            }
+            None => Vec::new(),
+        };
         let cancel = CancellationToken::new();
         let check = self.file_check(&source, answer);
         let work = connect_work(state, &source, check, demand, cancel.clone());
@@ -1031,6 +1167,7 @@ impl SessionWindow {
             source,
             cancel,
             demand,
+            databases,
         })
     }
 
@@ -1154,25 +1291,36 @@ impl SessionWindow {
         imp.failures
             .borrow()
             .get(key)
-            .map(|(source, failure)| read(source, failure))
+            .map(|(source, failure, _)| read(source, failure))
     }
 
     /// Take the last failure for `key` to act on it, with the failed
     /// page's claim when it is the page's.
-    pub(super) fn take_failure(
-        &self,
-        key: &SessionKey,
-    ) -> Option<(Option<SessionClaim>, ConnectSource, ConnectFailure)> {
+    pub(super) fn take_failure(&self, key: &SessionKey) -> Option<TakenFailure> {
         let imp = self.imp();
         let page = imp.failed.borrow_mut().take_if(|failed| failed.claim.key() == key);
-        if let Some(FailedConnect { claim, source, failure }) = page {
-            return Some((Some(claim), source, failure));
+        if let Some(FailedConnect {
+            claim,
+            source,
+            databases,
+            ..
+        }) = page
+        {
+            return Some(TakenFailure {
+                claim: Some(claim),
+                source,
+                databases,
+            });
         }
-        let (source, failure) = imp.failures.borrow_mut().remove(key)?;
+        let (source, _, databases) = imp.failures.borrow_mut().remove(key)?;
         if let Some(tree) = self.shell().and_then(|shell| shell.tree()) {
             tree.set_failure(key, None);
         }
-        Some((None, source, failure))
+        Some(TakenFailure {
+            claim: None,
+            source,
+            databases,
+        })
     }
 
     /// Drop the last failure for `key` beside the window's sessions, and
@@ -1188,15 +1336,20 @@ impl SessionWindow {
     /// Connect again from where the failed connect came from, reading
     /// the keyring again.
     fn on_retry_connect(&self, key: &SessionKey) {
-        if let Some((claim, source, _)) = self.take_failure(key) {
-            self.reconnect(claim, source, CredentialDemand::default());
+        if let Some(taken) = self.take_failure(key) {
+            self.reconnect(taken, CredentialDemand::default());
         }
     }
 
     /// Connect `source` again as it is now: a file is resolved again,
     /// since it may have moved, and a saved connection read as saved now,
     /// since another window may have edited or deleted it.
-    fn reconnect(&self, claim: Option<SessionClaim>, source: ConnectSource, demand: CredentialDemand) {
+    fn reconnect(&self, taken: TakenFailure, demand: CredentialDemand) {
+        let TakenFailure {
+            claim,
+            source,
+            databases,
+        } = taken;
         match source {
             ConnectSource::File(identity) => {
                 drop(claim);
@@ -1204,14 +1357,17 @@ impl SessionWindow {
                 self.on_open_file(gio::File::for_uri(&identity.uri));
             }
             ConnectSource::Saved(saved) => match self.saved_as_stored(&saved) {
-                Some(current) => self.connect_with(claim, ConnectSource::Saved(Box::new(current)), demand),
+                Some(current) => {
+                    self.connect_reopening(claim, ConnectSource::Saved(Box::new(current)), demand, databases)
+                }
                 None => {
                     drop(claim);
                     self.render();
                     self.show_toast(&crate::i18n::gettext("The connection was deleted."));
                 }
             },
-            source => self.connect_with(claim, source, demand),
+            // An edited connection's retry brings its databases back too.
+            source => self.connect_reopening(claim, source, demand, databases),
         }
     }
 
@@ -1260,28 +1416,39 @@ impl SessionWindow {
     }
 
     /// Close the session under `key` through its own prompts, then tear
-    /// it down. The window's other sessions and connects go on.
+    /// it down. A connection's other databases go with it, under one
+    /// question for all of them. The window's other sessions and connects
+    /// go on.
     fn on_disconnect(&self, key: SessionKey) {
-        let Some(workspace) = self.session_workspace(&key) else {
-            return;
-        };
-        let (Some(handle), Some(guards)) = (workspace.prompt_handle(), self.close_guards()) else {
+        let (Some(handles), Some(guards)) = (self.teardown_handles(&key), self.close_guards()) else {
             return;
         };
         let approved = move || SessionWindowInput::SessionTeardownApproved(key.clone());
         guards.begin_teardown();
-        if guards.may_tear_down(&handle) {
+        if guards.may_tear_down(&handles) {
             self.send(approved());
             return;
         }
         let input = self.input();
-        guards.ask_tear_down(self.upcast_ref(), &handle, move |decision| {
+        guards.ask_tear_down(self.upcast_ref(), &handles, move |decision| {
             if decision == CloseDecision::Approved
                 && let Some(input) = input
             {
                 input.deliver(approved());
             }
         });
+    }
+
+    /// The prompt handles of the session under `key` and of the other
+    /// databases open beside it, which a teardown of it takes too.
+    fn teardown_handles(&self, key: &SessionKey) -> Option<Vec<WorkspaceHandle>> {
+        self.find_open(|open| {
+            (open.claim.key() == key).then(|| {
+                open.with_databases()
+                    .filter_map(|open| open.workspace.prompt_handle())
+                    .collect()
+            })
+        })
     }
 
     /// Ctrl+W: the tab on screen closes through its session's prompts,

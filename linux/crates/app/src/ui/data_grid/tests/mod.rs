@@ -6,6 +6,7 @@ mod layout;
 mod menus;
 mod selection;
 mod sorting;
+mod summary;
 mod values;
 mod view;
 
@@ -231,9 +232,10 @@ fn data_column(grid: &Grid, index: usize) -> gtk::ColumnViewColumn {
     grid.grid.data_view_column(index).expect("the column")
 }
 
-/// A resize step: two digits of the grid's font.
+/// A resize step: two digits of the font a value draws in.
 fn step(grid: &Grid) -> i32 {
-    let metrics = grid.grid.column_view().pango_context().metrics(None, None);
+    let display = grid.cell_at(0, 1).display().cloned().expect("a value's text");
+    let metrics = display.pango_context().metrics(None, None);
     (pango::units_to_double(metrics.approximate_digit_width()) * 2.0).ceil() as i32
 }
 
@@ -267,7 +269,7 @@ fn rename_first(grid: &Grid, to: &str) {
         row_key: key(1),
         col: 1,
         original: text("A"),
-        value: text(to),
+        value: tablepro_core::edit::CellInput::Value(text(to)),
     }));
 }
 

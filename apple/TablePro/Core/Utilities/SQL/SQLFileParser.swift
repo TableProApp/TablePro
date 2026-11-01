@@ -62,6 +62,7 @@ final class SQLFileParser: Sendable {
     private static let kDollar: unichar = 0x24
     private static let kCapitalE: unichar = 0x45
     private static let kSmallE: unichar = 0x65
+    private static let kSmallB: unichar = 0x62
     private static let kOpenBracket: unichar = 0x5B
     private static let kCloseBracket: unichar = 0x5D
     private static let kCapitalG: unichar = 0x47
@@ -83,6 +84,9 @@ final class SQLFileParser: Sendable {
                 result = true
             }
             if grammar.contains(.escapeStringPrefix) && (char == kCapitalE || char == kSmallE) {
+                result = true
+            }
+            if grammar.contains(.escapeBytesPrefix) && char == kSmallB {
                 result = true
             }
             if !isSingleCharDelimiter && char == delimiter.character(at: 0) {
@@ -217,6 +221,8 @@ final class SQLFileParser: Sendable {
         var boundaries: (any SQLStatementBoundaryTracking)?
         var word: [unichar] = []
         var alternativeQuoteCloser: unichar = 0
+        // A delimiter outside the Basic Multilingual Plane is two units, and the literal closes at both.
+        var alternativeQuoteCloserTrail: unichar?
         var lineHasCode = false
         var pendingSlashLine = false
         var pendingSlashTrailing: [unichar] = []
@@ -347,8 +353,11 @@ final class SQLFileParser: Sendable {
         guard cursor + 1 < bufLen else { return 0 }
         guard buffer.character(at: cursor + 1) == kSingleQuote else { return nil }
         guard cursor + 2 < bufLen else { return 0 }
-        guard !isWhitespace(buffer.character(at: cursor + 2)) else { return nil }
-        return cursor + 3 - i
+        let delimiter = buffer.character(at: cursor + 2)
+        guard !isWhitespace(delimiter) else { return nil }
+        guard UTF16.isLeadSurrogate(delimiter) else { return cursor + 3 - i }
+        guard cursor + 3 < bufLen else { return 0 }
+        return UTF16.isTrailSurrogate(buffer.character(at: cursor + 3)) ? cursor + 4 - i : cursor + 3 - i
     }
 
     private static func alternativeQuoteCloser(for opener: unichar) -> unichar {
@@ -433,7 +442,14 @@ final class SQLFileParser: Sendable {
             (ctx.hasStatementContent, ctx.statementStartLine) = markContent(
                 ctx.hasStatementContent, ctx.statementStartLine, ctx.currentLine)
             appendRange(&ctx, from: i, to: i + prefixLength, in: nsBuffer)
-            ctx.alternativeQuoteCloser = alternativeQuoteCloser(for: nsBuffer.character(at: i + prefixLength - 1))
+            let delimiterEnd = nsBuffer.character(at: i + prefixLength - 1)
+            if UTF16.isTrailSurrogate(delimiterEnd) {
+                ctx.alternativeQuoteCloser = nsBuffer.character(at: i + prefixLength - 2)
+                ctx.alternativeQuoteCloserTrail = delimiterEnd
+            } else {
+                ctx.alternativeQuoteCloser = alternativeQuoteCloser(for: delimiterEnd)
+                ctx.alternativeQuoteCloserTrail = nil
+            }
             ctx.state = .inAlternativeQuote
             ctx.boundaries?.observeQuotedToken(opener: char)
             i += prefixLength
@@ -444,7 +460,7 @@ final class SQLFileParser: Sendable {
 
         processDelimiterChange(&ctx, char: char)
 
-        if char == kDash && nextChar == kDash {
+        if char == kDash && nextChar == kDash, !ctx.grammar.contains(.withoutDashComments) {
             if ctx.grammar.contains(.dashCommentsNeedWhitespace), i + 2 >= bufLen, !ctx.atEndOfInput {
                 return StepResult(advanced: false, deferred: true)
             }
@@ -478,8 +494,9 @@ final class SQLFileParser: Sendable {
             return step
         }
 
-        if ctx.grammar.contains(.escapeStringPrefix)
-            && (char == kCapitalE || char == kSmallE)
+        let startsEscapeString = ctx.grammar.contains(.escapeStringPrefix) && (char == kCapitalE || char == kSmallE)
+        let startsEscapeBytes = ctx.grammar.contains(.escapeBytesPrefix) && char == kSmallB
+        if (startsEscapeString || startsEscapeBytes)
             && nextChar == kSingleQuote
             && !SQLNonCodeSpan.isWordUnit(ctx.previousUnit) {
             (ctx.hasStatementContent, ctx.statementStartLine) = markContent(
@@ -658,7 +675,8 @@ final class SQLFileParser: Sendable {
                 ctx.currentLine += 1
             }
             if ch == ctx.alternativeQuoteCloser {
-                if pos + 1 >= bufLen {
+                let quoteAt = pos + (ctx.alternativeQuoteCloserTrail == nil ? 1 : 2)
+                if quoteAt >= bufLen {
                     if ctx.atEndOfInput {
                         pos += 1
                         continue
@@ -667,8 +685,9 @@ final class SQLFileParser: Sendable {
                     i = pos
                     return StepResult(advanced: true, deferred: true)
                 }
-                if nsBuffer.character(at: pos + 1) == kSingleQuote {
-                    pos += 2
+                let trailMatches = ctx.alternativeQuoteCloserTrail.map { nsBuffer.character(at: pos + 1) == $0 } ?? true
+                if trailMatches, nsBuffer.character(at: quoteAt) == kSingleQuote {
+                    pos = quoteAt + 1
                     ctx.state = .normal
                     appendRange(&ctx, from: start, to: pos, in: nsBuffer)
                     i = pos
@@ -1257,7 +1276,8 @@ extension SQLFileParser {
                     }
                     if char == SQLFileParser.kNewline
                         || (char == SQLFileParser.kCarriageReturn
-                            && grammar.contains(.carriageReturnEndsLineComments)) {
+                            && grammar.contains(.carriageReturnEndsLineComments))
+                        || (char == SqlLexer.formFeed && grammar.contains(.formFeedEndsLineComments)) {
                         ctx.state = .normal
                     }
 

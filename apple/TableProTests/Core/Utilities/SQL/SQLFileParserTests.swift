@@ -73,6 +73,18 @@ struct SQLFileParserTests {
         #expect(stmts[1] == "SELECT 3")
     }
 
+    @Test("CockroachDB byte literal: backslash escape active")
+    func cockroach_byte_literal_backslash_escape() async throws {
+        let sql = """
+        SELECT b'has\\'quote;', xb'\\';
+        SELECT 3;
+        """
+        let stmts = try await Self.parse(sql, grammar: DatabaseType.cockroachdb.lexicalGrammar)
+        #expect(stmts.count == 2)
+        #expect(stmts[0].contains("b'has\\'quote;'"))
+        #expect(stmts[1] == "SELECT 3")
+    }
+
     @Test("Postgres dollar quote: semicolon inside body does not split")
     func postgres_dollar_quote_with_semicolons() async throws {
         let sql = """

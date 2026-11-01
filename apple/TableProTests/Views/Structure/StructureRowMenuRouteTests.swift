@@ -12,31 +12,38 @@ import Testing
 // Every row menu, from any click and either pane, is the grid's commands plus the owner's `gridRowMenuItems`.
 @MainActor
 struct StructureRowMenuRouteTests {
-    private func makeAdapter(
-        tab: StructureTab = .columns,
+    private let suite: EphemeralDefaults
+
+    init() throws {
+        suite = try EphemeralDefaults()
+    }
+
+    private func makeEditor(
         type: DatabaseType = .mysql,
         objectKind: TableInfo.TableType = .table,
         manager: StructureChangeManager = StructureChangeManager()
-    ) -> StructureGridAdapter {
+    ) -> StructureDefinitionEditor {
         if manager.workingColumns.isEmpty {
             manager.addColumn(.placeholder())
         }
-        let adapter = StructureGridAdapter(
-            structureChangeManager: manager,
-            connection: TestFixtures.makeConnection(type: type),
-            tableName: "orders",
-            databaseName: "shop",
-            schemaName: nil,
-            objectKind: objectKind,
-            isSessionBound: false
+        let editor = StructureDefinitionEditor(
+            manager: manager,
+            context: .existingTable(
+                connection: TestFixtures.makeConnection(type: type),
+                databaseName: "shop",
+                schemaName: nil,
+                tableName: "orders",
+                objectKind: objectKind,
+                isSessionBound: false
+            ),
+            defaults: suite.defaults
         )
-        adapter.store.switchSubTab(to: tab)
-        adapter.refresh()
-        return adapter
+        editor.refresh()
+        return editor
     }
 
-    private func row(_ sourceIndex: Int) -> RowID {
-        StructureRowProvider.rowID(forSourceIndex: sourceIndex)
+    private func row(_ sourceIndex: Int, in adapter: StructureSectionAdapter) -> RowID {
+        adapter.rowID(forEntity: StructureGridEdits.entityIDs(in: adapter.section, manager: adapter.manager)[sourceIndex])
     }
 
     private func titles(_ items: [NSMenuItem]) -> [String] {
@@ -45,22 +52,14 @@ struct StructureRowMenuRouteTests {
 
     @Test("A column row's menu is the schema's own items, with no result commands")
     func columnRowsGetTheStructureMenu() {
-        let adapter = makeAdapter()
-        let items = titles(adapter.gridRowMenuItems(for: [row(0)], clickedRow: row(0)))
+        let editor = makeEditor()
+        let adapter = editor.adapter(for: .columns)
+        let items = titles(adapter.gridRowMenuItems(for: [row(0, in: adapter)], clickedRow: row(0, in: adapter)))
 
         #expect(items.contains(String(localized: "Copy Name")))
         #expect(items.contains(String(localized: "Copy Definition")))
         let commands = adapter.model.configuration.commands
         #expect(commands.isDisjoint(with: [.exportResults, .showRowsAsJSON, .clearResults, .copyAsSQL, .filterWithColumn]))
-    }
-
-    @Test("A DDL tab row offers no row items and no row commands")
-    func theDdlTabRaisesNoMenu() {
-        let adapter = makeAdapter(tab: .ddl)
-
-        #expect(adapter.gridRowMenuItems(for: [row(0)], clickedRow: row(0)).isEmpty)
-        #expect(adapter.gridEmptySpaceMenu() == nil)
-        #expect(adapter.model.configuration.commands.isDisjoint(with: [.deleteRows, .duplicateRows, .addRow, .undoDelete]))
     }
 
     @Test("A row pending deletion offers none of the schema's items")
@@ -73,21 +72,25 @@ struct StructureRowMenuRouteTests {
             foreignKeys: [],
             primaryKey: ["id"]
         )
-        let adapter = makeAdapter(manager: manager)
-        adapter.gridDeleteRows([row(0)])
+        let editor = makeEditor(manager: manager)
+        let adapter = editor.adapter(for: .columns)
+        let id = row(0, in: adapter)
+        adapter.gridDeleteRows([id])
         try #require(manager.deleteInsertState(for: 0, tab: .columns).isDeleted)
 
-        #expect(adapter.gridRowMenuItems(for: [row(0)], clickedRow: row(0)).isEmpty)
+        #expect(adapter.gridRowMenuItems(for: [id], clickedRow: id).isEmpty)
     }
 
     // A materialized view refuses DROP COLUMN and ADD COLUMN; the menu used to offer both and do nothing.
     @Test("Delete and Duplicate are offered only where the object accepts them")
     func rowEditsFollowTheGate() {
-        let refused = makeAdapter(type: .postgresql, objectKind: .materializedView)
+        let refusedEditor = makeEditor(type: .postgresql, objectKind: .materializedView)
+        let refused = refusedEditor.adapter(for: .columns)
         #expect(refused.model.configuration.commands.isDisjoint(with: [.deleteRows, .duplicateRows]))
-        #expect(refused.gridRowMenuItems(for: [row(0)], clickedRow: row(0)).last?.isSeparatorItem == false)
+        #expect(refused.gridRowMenuItems(for: [row(0, in: refused)], clickedRow: row(0, in: refused)).last?.isSeparatorItem == false)
 
-        let accepted = makeAdapter()
+        let acceptedEditor = makeEditor()
+        let accepted = acceptedEditor.adapter(for: .columns)
         #expect(accepted.model.configuration.commands.isSuperset(of: [.deleteRows, .duplicateRows, .undoDelete]))
     }
 
@@ -100,13 +103,14 @@ struct StructureRowMenuRouteTests {
         second.referencedTable = "products"
         manager.addForeignKey(first)
         manager.addForeignKey(second)
-        let adapter = makeAdapter(tab: .foreignKeys, manager: manager)
+        let editor = makeEditor(manager: manager)
+        let adapter = editor.adapter(for: .foreignKeys)
         let openCustomers = String(format: String(localized: "Open %@"), "customers")
         let openProducts = String(format: String(localized: "Open %@"), "products")
 
-        #expect(titles(adapter.gridRowMenuItems(for: [row(0)], clickedRow: row(0))).contains(openCustomers))
+        #expect(titles(adapter.gridRowMenuItems(for: [row(0, in: adapter)], clickedRow: row(0, in: adapter))).contains(openCustomers))
 
-        let selection = titles(adapter.structureRowMenuItems(for: [row(0), row(1)], clickedRow: row(1)))
+        let selection = titles(adapter.rowMenuItems(for: [row(0, in: adapter), row(1, in: adapter)], clickedRow: row(1, in: adapter)))
         #expect(selection.contains(openProducts))
         #expect(!selection.contains(openCustomers))
     }
@@ -125,12 +129,16 @@ struct StructureRowMenuRouteTests {
             foreignKeys: [],
             primaryKey: ["id"]
         )
-        let adapter = makeAdapter(manager: manager)
+        let editor = makeEditor(manager: manager)
+        let adapter = editor.adapter(for: .columns)
         try #require(adapter.model.configuration.rowReorder.isEnabled)
         var moved: (from: Int, to: Int)?
-        adapter.moveRowHandler = { moved = ($0, $1) }
+        editor.moveColumnHandler = { moved = ($0, $1) }
 
-        let items = adapter.structureRowMenuItems(for: [row(0), row(1), row(2)], clickedRow: row(2))
+        let items = adapter.rowMenuItems(
+            for: [row(0, in: adapter), row(1, in: adapter), row(2, in: adapter)],
+            clickedRow: row(2, in: adapter)
+        )
         let up = try #require(items.first { $0.title == String(localized: "Move Column Up") })
         let down = try #require(items.first { $0.title == String(localized: "Move Column Down") })
         #expect(up.action != nil)
@@ -156,28 +164,17 @@ struct StructureRowMenuRouteTests {
             foreignKeys: [],
             primaryKey: ["id"]
         )
-        let adapter = makeAdapter(manager: manager)
-        adapter.gridDeleteRows([row(1)])
+        let editor = makeEditor(manager: manager)
+        let adapter = editor.adapter(for: .columns)
+        let rows = [row(0, in: adapter), row(1, in: adapter), row(2, in: adapter)]
+        adapter.gridDeleteRows([rows[1]])
         try #require(manager.deleteInsertState(for: 1, tab: .columns).isDeleted)
-        let selection = [row(0), row(1), row(2)]
 
-        let items = titles(adapter.gridRowMenuItems(for: selection, clickedRow: row(0)))
+        let items = titles(adapter.gridRowMenuItems(for: rows, clickedRow: rows[0]))
         #expect(items.contains(String(localized: "Copy Name")))
         #expect(items.contains(String(localized: "Copy Definition")))
         #expect(items.contains(String(localized: "Copy As")))
-        #expect(titles(adapter.structureRowMenuItems(for: selection, clickedRow: row(2))).contains(String(localized: "Copy Name")))
-        #expect(adapter.structureRowMenuItems(for: selection, clickedRow: row(1)).isEmpty)
-    }
-
-    @Test("The empty space below the rows offers the sub-tab's own Add")
-    func emptySpaceOffersAdd() {
-        let columns = makeAdapter(tab: .columns)
-        #expect(titles(columns.gridEmptySpaceMenu()?.items ?? []) == [String(localized: "Add Column")])
-
-        let indexes = makeAdapter(tab: .indexes)
-        #expect(titles(indexes.gridEmptySpaceMenu()?.items ?? []) == [String(localized: "Add Index")])
-
-        let view = makeAdapter(type: .postgresql, objectKind: .view)
-        #expect(view.gridEmptySpaceMenu() == nil)
+        #expect(titles(adapter.rowMenuItems(for: rows, clickedRow: rows[2])).contains(String(localized: "Copy Name")))
+        #expect(adapter.rowMenuItems(for: rows, clickedRow: rows[1]).isEmpty)
     }
 }

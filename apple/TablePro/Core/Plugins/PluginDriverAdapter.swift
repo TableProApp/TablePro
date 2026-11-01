@@ -394,6 +394,10 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         try await pluginDriver.releaseIdleResource()
     }
 
+    func importExportedDatabase(from folder: URL, into file: URL) async throws {
+        try await pluginDriver.importExportedDatabase(from: folder, into: file)
+    }
+
     func resolveQueryCompletionProfile(
         databaseTypeId: String,
         base: QueryCompletionProfile
@@ -1233,6 +1237,30 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         schema: String?
     ) async throws -> PluginConcurrentRefreshAvailability? {
         try await pluginDriver.concurrentRefreshAvailability(materializedView: materializedView, schema: schema)
+    }
+
+    func fetchViewRowEditing(view: String, schema: String?) async throws -> PluginViewRowEditing? {
+        try await pluginDriver.fetchViewRowEditing(view: view, schema: schema ?? pluginDriver.currentSchema)
+    }
+
+    // MARK: - Table Options
+
+    func fetchTableOptions(tableName: String) async throws -> TableOptions? {
+        try await pluginDriver.fetchTableOptions(table: tableName, schema: pluginDriver.currentSchema)
+            .map(TableOptions.init)
+    }
+
+    func fetchTableOptionsCatalog() async throws -> TableOptionsCatalog? {
+        try await pluginDriver.fetchTableOptionsCatalog().map(TableOptionsCatalog.init)
+    }
+
+    func fetchDefaultTableOptions(schema: String?) async throws -> TableOptions? {
+        try await pluginDriver.fetchDefaultTableOptions(schema: schema ?? pluginDriver.currentSchema)
+            .map(TableOptions.init)
+    }
+
+    func tableOptionsStatement(tableName: String, schema: String?, change: PluginTableOptionsChange) -> String? {
+        pluginDriver.tableOptionsStatement(table: tableName, schema: schema, change: change)
     }
 
     // MARK: - Sequences

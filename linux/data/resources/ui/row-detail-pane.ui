@@ -6,24 +6,24 @@
   <menu id="value_menu">
     <section>
       <item>
-        <attribute name="label" translatable="yes">Set to Empty</attribute>
+        <attribute name="label" translatable="yes">Set _to Empty</attribute>
         <attribute name="action">grid.set-empty</attribute>
         <attribute name="hidden-when">action-disabled</attribute>
       </item>
       <item>
-        <attribute name="label" translatable="yes">Set to NULL</attribute>
+        <attribute name="label" translatable="yes">Set to _NULL</attribute>
         <attribute name="action">grid.set-null</attribute>
         <attribute name="hidden-when">action-disabled</attribute>
       </item>
       <item>
-        <attribute name="label" translatable="yes">Set to DEFAULT</attribute>
+        <attribute name="label" translatable="yes">Set to DEFAU_LT</attribute>
         <attribute name="action">grid.set-default</attribute>
         <attribute name="hidden-when">action-disabled</attribute>
       </item>
     </section>
     <section>
       <item>
-        <attribute name="label" translatable="yes">Copy Value</attribute>
+        <attribute name="label" translatable="yes">_Copy Value</attribute>
         <attribute name="action">grid.copy</attribute>
       </item>
     </section>
@@ -161,6 +161,19 @@
                                   </object>
                                 </child>
                                 <child>
+                                  <!-- No icon: the menu button's own arrow, as a drop-down shows. -->
+                                  <object class="GtkMenuButton" id="choice_button">
+                                    <property name="visible">false</property>
+                                    <property name="tooltip-text" translatable="yes">Pick a Value</property>
+                                    <accessibility>
+                                      <property name="label" translatable="yes">Pick a Value</property>
+                                    </accessibility>
+                                    <style>
+                                      <class name="flat"/>
+                                    </style>
+                                  </object>
+                                </child>
+                                <child>
                                   <object class="GtkMenuButton" id="calendar_button">
                                     <property name="icon-name">x-office-calendar-symbolic</property>
                                     <property name="visible">false</property>
@@ -185,6 +198,110 @@
                                   </object>
                                 </child>
                                 <child>
+                                  <object class="GtkMenuButton" id="clock_button">
+                                    <property name="icon-name">preferences-system-time-symbolic</property>
+                                    <property name="visible">false</property>
+                                    <property name="tooltip-text" translatable="yes">Pick a Time</property>
+                                    <accessibility>
+                                      <property name="label" translatable="yes">Pick a Time</property>
+                                    </accessibility>
+                                    <style>
+                                      <class name="flat"/>
+                                    </style>
+                                    <property name="popover">
+                                      <object class="GtkPopover" id="clock_popover">
+                                        <property name="default-widget">clock_set</property>
+                                        <property name="child">
+                                          <object class="GtkBox">
+                                            <property name="spacing">6</property>
+                                            <property name="margin-top">6</property>
+                                            <property name="margin-bottom">6</property>
+                                            <property name="margin-start">6</property>
+                                            <property name="margin-end">6</property>
+                                            <child>
+                                              <object class="GtkSpinButton" id="hour">
+                                                <property name="orientation">vertical</property>
+                                                <property name="numeric">true</property>
+                                                <property name="wrap">true</property>
+                                                <property name="xalign">0.5</property>
+                                                <property name="activates-default">true</property>
+                                                <property name="adjustment">
+                                                  <object class="GtkAdjustment">
+                                                    <property name="upper">23</property>
+                                                    <property name="step-increment">1</property>
+                                                    <property name="page-increment">6</property>
+                                                  </object>
+                                                </property>
+                                                <accessibility>
+                                                  <property name="label" translatable="yes" context="clock">Hour</property>
+                                                </accessibility>
+                                              </object>
+                                            </child>
+                                            <child>
+                                              <object class="GtkLabel">
+                                                <property name="label">:</property>
+                                              </object>
+                                            </child>
+                                            <child>
+                                              <object class="GtkSpinButton" id="minute">
+                                                <property name="orientation">vertical</property>
+                                                <property name="numeric">true</property>
+                                                <property name="wrap">true</property>
+                                                <property name="xalign">0.5</property>
+                                                <property name="activates-default">true</property>
+                                                <property name="adjustment">
+                                                  <object class="GtkAdjustment">
+                                                    <property name="upper">59</property>
+                                                    <property name="step-increment">1</property>
+                                                    <property name="page-increment">10</property>
+                                                  </object>
+                                                </property>
+                                                <accessibility>
+                                                  <property name="label" translatable="yes" context="clock">Minute</property>
+                                                </accessibility>
+                                              </object>
+                                            </child>
+                                            <child>
+                                              <object class="GtkLabel">
+                                                <property name="label">:</property>
+                                              </object>
+                                            </child>
+                                            <child>
+                                              <object class="GtkSpinButton" id="second">
+                                                <property name="orientation">vertical</property>
+                                                <property name="numeric">true</property>
+                                                <property name="wrap">true</property>
+                                                <property name="xalign">0.5</property>
+                                                <property name="activates-default">true</property>
+                                                <property name="adjustment">
+                                                  <object class="GtkAdjustment">
+                                                    <property name="upper">59</property>
+                                                    <property name="step-increment">1</property>
+                                                    <property name="page-increment">10</property>
+                                                  </object>
+                                                </property>
+                                                <accessibility>
+                                                  <property name="label" translatable="yes" context="clock">Second</property>
+                                                </accessibility>
+                                              </object>
+                                            </child>
+                                            <child>
+                                              <object class="GtkButton" id="clock_set">
+                                                <property name="label" translatable="yes" context="clock">Set</property>
+                                                <property name="valign">center</property>
+                                                <property name="margin-start">6</property>
+                                                <style>
+                                                  <class name="suggested-action"/>
+                                                </style>
+                                              </object>
+                                            </child>
+                                          </object>
+                                        </property>
+                                      </object>
+                                    </property>
+                                  </object>
+                                </child>
+                                <child>
                                   <object class="GtkMenuButton" id="value_menu_button">
                                     <property name="icon-name">view-more-symbolic</property>
                                     <property name="menu-model">value_menu</property>
@@ -200,12 +317,22 @@
                               </object>
                             </child>
                             <child>
+                              <object class="GtkPicture" id="value_picture">
+                                <property name="visible">false</property>
+                                <property name="content-fit">scale-down</property>
+                                <property name="margin-top">6</property>
+                                <property name="margin-start">12</property>
+                                <property name="margin-end">12</property>
+                                <property name="alternative-text" translatable="yes">Image preview</property>
+                              </object>
+                            </child>
+                            <child>
                               <!-- A text view has no placeholder of its own, so
                                    one is drawn over it while it is empty. -->
                               <object class="GtkOverlay">
                                 <property name="vexpand">true</property>
                                 <property name="child">
-                                  <object class="GtkScrolledWindow">
+                                  <object class="GtkScrolledWindow" id="value_scroller">
                                     <property name="hscrollbar-policy">never</property>
                                     <property name="min-content-height">120</property>
                                     <property name="child">

@@ -28,7 +28,6 @@ struct ResultStatusBarLayoutTests {
         viewMode: ResultsViewMode,
         pagination: PaginationState = PaginationState(),
         statusMessage: String? = nil,
-        structureFooter: StructureFooterCapability = StructureFooterCapability(),
         selectionSummary: SelectionSummaryState? = nil,
         lastTiming: PluginQueryTiming? = nil
     ) -> ResultStatusBar {
@@ -44,7 +43,6 @@ struct ResultStatusBarLayoutTests {
                 hasTableName: tabType == .table,
                 hasColumns: hasColumns
             ),
-            hasStructureActions: structureFooter.isActive,
             pagination: pagination,
             statusMessage: statusMessage
         )
@@ -82,7 +80,6 @@ struct ResultStatusBarLayoutTests {
                 onGoToPage: { _ in },
                 onRequestExactCount: {}
             ),
-            structureFooter: structureFooter,
             execution: ExecutionReadout(
                 tabId: UUID(),
                 execution: TabExecutionRegistry(),
@@ -93,15 +90,9 @@ struct ResultStatusBarLayoutTests {
             isRefreshingSchema: false,
             viewMode: .constant(viewMode),
             resultSetMenu: ResultSetMenuModel(entries: [], activeOrdinal: 0, total: 0),
-            onActivateResultSet: { _ in },
-            onToggleResultSetPin: { _ in },
-            onCompareResultSet: { _ in },
-            onCloseResultSet: { _ in },
-            onCloseOtherResultSets: { _ in },
+            resultSetActions: .none,
             onToggleFilters: {},
-            onFetchAll: {},
-            onStructureAdd: {},
-            onStructureRemove: {}
+            onFetchAll: {}
         )
     }
 
@@ -290,13 +281,7 @@ struct ResultStatusBarLayoutTests {
             rowCount: 1_000,
             hasColumns: true,
             tabType: .table,
-            viewMode: .structure,
-            structureFooter: StructureFooterCapability(
-                canAdd: true,
-                canRemove: true,
-                addLabel: "Add Column",
-                removeLabel: "Remove Column"
-            )
+            viewMode: .structure
         )
         let host = NSHostingView(rootView: bar)
         host.sizingOptions = []
@@ -357,21 +342,14 @@ struct ResultStatusBarLayoutTests {
                 onGoToPage: { _ in },
                 onRequestExactCount: {}
             ),
-            structureFooter: StructureFooterCapability(),
             execution: ExecutionReadout(tabId: tab.id, execution: registry, lastTiming: timing, onCancel: {}),
             selectionSummary: SelectionSummaryState(),
             isRefreshingSchema: false,
             viewMode: .constant(.data),
             resultSetMenu: ResultSetMenuModel(entries: [], activeOrdinal: 0, total: 0),
-            onActivateResultSet: { _ in },
-            onToggleResultSetPin: { _ in },
-            onCompareResultSet: { _ in },
-            onCloseResultSet: { _ in },
-            onCloseOtherResultSets: { _ in },
+            resultSetActions: .none,
             onToggleFilters: {},
-            onFetchAll: {},
-            onStructureAdd: {},
-            onStructureRemove: {}
+            onFetchAll: {}
         )
     }
 
@@ -438,13 +416,7 @@ struct ResultStatusBarLayoutTests {
             rowCount: 1_000,
             hasColumns: true,
             tabType: .table,
-            viewMode: .structure,
-            structureFooter: StructureFooterCapability(
-                canAdd: true,
-                canRemove: true,
-                addLabel: "Add Column",
-                removeLabel: "Remove Column"
-            )
+            viewMode: .structure
         )
         expectFills(bar, at: width)
     }

@@ -5,6 +5,7 @@
 
 import Combine
 import Foundation
+import TableProPluginKit
 import TableProUtilities
 
 // The Structure and Create Table owners answer which of their grids is on screen.
@@ -143,6 +144,8 @@ extension MainContentCoordinator {
         if let schemaModel = activeGridModelProvider(for: tab)?.activeGridModel {
             committed = schemaModel.commitEditing() && committed
         }
+        // A run of typing in the structure inspector ends, so the command's undo step stands apart from it.
+        activeStructureEditor?.commitPendingEdits()
         return committed
     }
 
@@ -198,14 +201,16 @@ extension MainContentCoordinator {
             .hideColumns, .showRowsAsJSON, .exportResults, .navigateForeignKey,
             .highlightValues, .displayAs, .freezeColumns, .valueFilter
         ]
-        if isEditable {
-            commands.formUnion([.addRow, .deleteRows, .undoDelete])
+        let operations = isEditable ? (activeViewWriteTarget?.operations ?? .all) : []
+        if operations.contains(.insert) {
+            commands.insert(.addRow)
             // A duplicate copies values the result set alone cannot vouch for until the schema arrives.
             if tabSessionRegistry.existingTableRows(for: tab.id)?.hasAuthoritativeSchema == true {
                 commands.insert(.duplicateRows)
             }
             if tab.tabType == .table { commands.insert(.pasteRows) }
         }
+        if operations.contains(.delete) { commands.formUnion([.deleteRows, .undoDelete]) }
         if isSelected, canFilterRows { commands.insert(.filterWithColumn) }
         if tab.tableContext.tableName != nil { commands.insert(.copyAsSQL) }
         if tab.tabType == .table, !tab.tableContext.primaryKeyColumns.isEmpty { commands.insert(.loadUnloadedValues) }

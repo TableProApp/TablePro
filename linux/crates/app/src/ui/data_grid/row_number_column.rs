@@ -6,7 +6,7 @@ use gtk4::prelude::*;
 use gtk4::{self as gtk, glib, pango};
 
 use super::tracked_values::RowPendingState;
-use super::{DataGrid, GridRow};
+use super::{DataGrid, GridRow, grid_menu};
 
 /// Icon, spacing and the cell's padding beside the digits.
 const CHROME_PX: i32 = 16 + 4 + 13;
@@ -37,6 +37,7 @@ pub fn build(grid: &DataGrid) -> gtk::ColumnViewColumn {
         content.append(&icon);
         content.append(&number);
         cell.set_child(Some(&content));
+        super::stripes::follow(cell);
     });
     let watches: Watches = Rc::default();
     let weak = grid.downgrade();
@@ -56,6 +57,7 @@ pub fn build(grid: &DataGrid) -> gtk::ColumnViewColumn {
     let column = gtk::ColumnViewColumn::builder()
         .title(crate::i18n::pgettext("row number column", "#"))
         .factory(&factory)
+        .header_menu(&grid_menu::row_numbers_header_menu())
         .resizable(false)
         .build();
     column.set_id(Some("row-numbers"));
@@ -138,7 +140,9 @@ pub fn fit(grid: &DataGrid) {
     };
     let largest = grid.row_base() + u64::from(grid.store().len());
     let digits = largest.max(1).ilog10() as i32 + 1;
-    let metrics = grid.column_view().pango_context().metrics(None, None);
+    // A fresh context, since the view's own follows a font change only at
+    // the next frame.
+    let metrics = grid.column_view().create_pango_context().metrics(None, None);
     let digit_px = pango::units_to_double(metrics.approximate_digit_width());
     column.set_fixed_width((f64::from(digits.max(2)) * digit_px).ceil() as i32 + CHROME_PX);
 }

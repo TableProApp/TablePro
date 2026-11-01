@@ -45,7 +45,11 @@ struct CassandraBrowseStatement: Equatable, Sendable {
     static func parse(_ text: String) -> CassandraBrowseStatement? {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.hasPrefix(opening),
-              let end = trimmed.range(of: "*/", range: trimmed.index(trimmed.startIndex, offsetBy: opening.count)..<trimmed.endIndex)
+              let end = trimmed.range(
+                  of: "*/",
+                  options: .literal,
+                  range: trimmed.index(trimmed.startIndex, offsetBy: opening.count)..<trimmed.endIndex
+              )
         else { return nil }
         let header = trimmed[trimmed.index(trimmed.startIndex, offsetBy: opening.count)..<end.lowerBound]
         guard let data = header.trimmingCharacters(in: .whitespaces).data(using: .utf8),
@@ -130,7 +134,7 @@ enum CassandraBrowseRenderer {
     }
 
     static func quote(_ identifier: String) -> String {
-        "\"" + identifier.replacingOccurrences(of: "\"", with: "\"\"") + "\""
+        "\"" + identifier.replacingOccurrences(of: "\"", with: "\"\"", options: .literal) + "\""
     }
 
     static func qualifiedTable(keyspace: String?, table: String) -> String {

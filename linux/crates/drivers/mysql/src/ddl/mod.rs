@@ -4,8 +4,8 @@ use tablepro_core::column::ColumnDefault;
 use tablepro_core::ddl::ddl_sql::{column_list, create_index_sql, foreign_key_sql, index_keys_sql};
 use tablepro_core::ddl::{
     BuildDdlError, ChangedAttributes, ColumnAlteration, ColumnCapabilities, ColumnDefinition, DdlCapabilities,
-    DdlDialect, DdlOperation, DdlPlan, Permission, ReferentialAction, RefusalReason, TableChanges, TableDefinition,
-    TableDraft,
+    DdlDialect, DdlOperation, DdlPlan, DraftTableOptions, Permission, ReferentialAction, RefusalReason, TableChanges,
+    TableDefinition, TableDraft, TableOptionsChange,
 };
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::meta::TableRef;
@@ -41,6 +41,8 @@ const fn capabilities(expression_index_keys: bool) -> DdlCapabilities {
         column_defaults: true,
         required_columns: true,
         declared_column_order: true,
+        column_collations: true,
+        table_options: true,
     }
 }
 
@@ -84,6 +86,10 @@ const TYPE_SUGGESTIONS: &[&str] = &[
 /// drop and add a key of the same name in one statement. MySQL commits
 /// each DDL statement on its own, so a failure leaves the statements
 /// before it applied.
+///
+/// A CONVERT TO runs as a statement of its own after every drop and
+/// before every ADD, since a foreign key or index still on a column can
+/// refuse it. No column is restated beside it (`TableChanges::check`).
 impl DdlDialect for MySqlDialect {
     fn capabilities(&self) -> &DdlCapabilities {
         match self.has_functional_key_parts() {
@@ -94,6 +100,15 @@ impl DdlDialect for MySqlDialect {
 
     fn sql_dialect(&self) -> &dyn SqlDialect {
         self
+    }
+
+    /// The definition reads no options for a view or an NDB table, so
+    /// neither offers them.
+    fn table_capabilities(&self, table: &TableDefinition) -> DdlCapabilities {
+        DdlCapabilities {
+            table_options: table.options.is_some(),
+            ..*DdlDialect::capabilities(self)
+        }
     }
 
     /// Every change but a rename writes the column again whole, its
@@ -113,12 +128,14 @@ impl DdlDialect for MySqlDialect {
         permissions.alter_default = permissions.alter_default.and(restated);
         permissions.alter_auto_increment = permissions.alter_auto_increment.and(restated);
         permissions.alter_comment = engine(capabilities.column_comments).and(restated);
+        permissions.alter_collation = engine(capabilities.column_collations).and(restated);
         if column.info.column_type.catalog.is_none() {
             let unreadable = || Permission::Refused(RefusalReason::UnreadableDefinition);
             permissions.alter_nullability = permissions.alter_nullability.and(unreadable);
             permissions.alter_default = permissions.alter_default.and(unreadable);
             permissions.alter_auto_increment = permissions.alter_auto_increment.and(unreadable);
             permissions.alter_comment = permissions.alter_comment.and(unreadable);
+            permissions.alter_collation = permissions.alter_collation.and(unreadable);
         }
         permissions
     }
@@ -148,8 +165,13 @@ impl DdlDialect for MySqlDialect {
             definitions.push(format!("PRIMARY KEY ({})", column_list(self, &key)));
         }
         definitions.extend(draft.foreign_keys.iter().map(|key| foreign_key_sql(self, &table, key)));
+        let options = draft
+            .options
+            .as_ref()
+            .map(|options| create_options(self, options))
+            .unwrap_or_default();
         let mut statements = vec![format!(
-            "CREATE TABLE {} (\n  {}\n)",
+            "CREATE TABLE {} (\n  {}\n){options}",
             self.qualify(&table),
             definitions.join(",\n  ")
         )];
@@ -193,48 +215,24 @@ impl DdlDialect for MySqlDialect {
             statements.push(format!("ALTER TABLE {qualified} {}", drops.join(", ")));
         }
 
-        let mut actions = Vec::new();
-        for index in &changes.dropped_indexes {
-            actions.push(format!("DROP INDEX {}", self.quote_identifier(&index.name)));
-        }
-        if changes.primary_key.as_ref().is_some_and(|change| change.from.is_some()) {
-            actions.push("DROP PRIMARY KEY".to_owned());
-        }
-        for column in &changes.dropped_columns {
-            actions.push(format!("DROP COLUMN {}", self.quote_identifier(column.name())));
-        }
-        let restated = |from: &str| {
-            changes
-                .altered_columns
-                .iter()
-                .find(|alteration| alteration.original.name() == from && restates(alteration.changed))
-        };
-        // A renamed column that also changed goes through CHANGE, which
-        // renames and restates at once; one that only changed its name
-        // keeps every attribute through RENAME COLUMN.
-        for rename in &changes.renamed_columns {
-            match restated(&rename.from) {
-                Some(alteration) => actions.push(format!(
-                    "CHANGE COLUMN {} {}",
-                    self.quote_identifier(&rename.from),
-                    render(self, &alteration.draft)?
-                )),
-                None => actions.push(format!(
-                    "RENAME COLUMN {} TO {}",
-                    self.quote_identifier(&rename.from),
-                    self.quote_identifier(&rename.to)
-                )),
+        let convert = changes
+            .options
+            .as_ref()
+            .filter(|options| options.converts_columns)
+            .and_then(|options| options.character_set.as_ref());
+        let mut actions = drop_clauses(self, changes);
+        if let Some(choice) = convert {
+            let drops = std::mem::take(&mut actions);
+            if !drops.is_empty() {
+                statements.push(format!("ALTER TABLE {qualified} {}", drops.join(", ")));
             }
+            statements.push(format!(
+                "ALTER TABLE {qualified} CONVERT TO CHARACTER SET {} COLLATE {}",
+                self.quote_identifier(&choice.character_set),
+                self.quote_identifier(&choice.collation)
+            ));
         }
-        for alteration in &changes.altered_columns {
-            let renamed = alteration.original.name() != alteration.draft.name;
-            if !renamed && restates(alteration.changed) {
-                actions.push(format!("MODIFY COLUMN {}", render(self, &alteration.draft)?));
-            }
-        }
-        for column in &changes.added_columns {
-            actions.push(format!("ADD COLUMN {}", render(self, column)?));
-        }
+        actions.extend(column_clauses(self, changes)?);
         if let Some(change) = changes.primary_key.as_ref().filter(|change| !change.to.is_empty()) {
             actions.push(format!("ADD PRIMARY KEY ({})", column_list(self, &change.to)));
         }
@@ -245,6 +243,9 @@ impl DdlDialect for MySqlDialect {
                 self.quote_identifier(&index.name),
                 index_keys_sql(self, index)
             ));
+        }
+        if let Some(options) = &changes.options {
+            actions.extend(option_clauses(self, options));
         }
         if !actions.is_empty() {
             statements.push(format!("ALTER TABLE {qualified} {}", actions.join(", ")));
@@ -275,7 +276,106 @@ impl DdlDialect for MySqlDialect {
 /// Whether an alteration needs the column's definition restated. A
 /// primary-key flag alone is the table's key clause.
 fn restates(changed: ChangedAttributes) -> bool {
-    changed.column_type || changed.nullability || changed.default || changed.auto_increment || changed.comment
+    changed.column_type
+        || changed.nullability
+        || changed.default
+        || changed.auto_increment
+        || changed.comment
+        || changed.collation
+}
+
+fn drop_clauses(dialect: &MySqlDialect, changes: &TableChanges) -> Vec<String> {
+    let mut drops: Vec<String> = changes
+        .dropped_indexes
+        .iter()
+        .map(|index| format!("DROP INDEX {}", dialect.quote_identifier(&index.name)))
+        .collect();
+    if changes.primary_key.as_ref().is_some_and(|change| change.from.is_some()) {
+        drops.push("DROP PRIMARY KEY".to_owned());
+    }
+    drops.extend(
+        changes
+            .dropped_columns
+            .iter()
+            .map(|column| format!("DROP COLUMN {}", dialect.quote_identifier(column.name()))),
+    );
+    drops
+}
+
+/// A renamed column that also changed goes through CHANGE, which renames
+/// and restates at once; one that only changed its name keeps every
+/// attribute through RENAME COLUMN.
+fn column_clauses(dialect: &MySqlDialect, changes: &TableChanges) -> Result<Vec<String>, BuildDdlError> {
+    let restated = |from: &str| {
+        changes
+            .altered_columns
+            .iter()
+            .find(|alteration| alteration.original.name() == from && restates(alteration.changed))
+    };
+    let mut clauses = Vec::new();
+    for rename in &changes.renamed_columns {
+        match restated(&rename.from) {
+            Some(alteration) => clauses.push(format!(
+                "CHANGE COLUMN {} {}",
+                dialect.quote_identifier(&rename.from),
+                render(dialect, &alteration.draft)?
+            )),
+            None => clauses.push(format!(
+                "RENAME COLUMN {} TO {}",
+                dialect.quote_identifier(&rename.from),
+                dialect.quote_identifier(&rename.to)
+            )),
+        }
+    }
+    for alteration in &changes.altered_columns {
+        let renamed = alteration.original.name() != alteration.draft.name;
+        if !renamed && restates(alteration.changed) {
+            clauses.push(format!("MODIFY COLUMN {}", render(dialect, &alteration.draft)?));
+        }
+    }
+    for column in &changes.added_columns {
+        clauses.push(format!("ADD COLUMN {}", render(dialect, column)?));
+    }
+    Ok(clauses)
+}
+
+/// The table's default pair and counter, which MySQL takes anywhere in
+/// the ALTER: a column added beside a new default takes it, and a counter
+/// beside a MODIFY that turns numbering on is kept. Both names go
+/// together, since a character set alone resets the collation. A convert
+/// already set the default.
+fn option_clauses(dialect: &MySqlDialect, options: &TableOptionsChange) -> Vec<String> {
+    let mut clauses = Vec::new();
+    if let Some(choice) = options.character_set.as_ref().filter(|_| !options.converts_columns) {
+        clauses.push(format!(
+            "DEFAULT CHARACTER SET = {} COLLATE = {}",
+            dialect.quote_identifier(&choice.character_set),
+            dialect.quote_identifier(&choice.collation)
+        ));
+    }
+    if let Some(next) = options.next_auto_increment {
+        clauses.push(format!("AUTO_INCREMENT = {next}"));
+    }
+    clauses
+}
+
+/// The options a new table is created with, after its closing
+/// parenthesis.
+fn create_options(dialect: &MySqlDialect, options: &DraftTableOptions) -> String {
+    let mut clauses = Vec::new();
+    if let Some(character_set) = &options.character_set {
+        clauses.push(format!(
+            "DEFAULT CHARACTER SET = {}",
+            dialect.quote_identifier(character_set)
+        ));
+    }
+    if let Some(collation) = &options.collation {
+        clauses.push(format!("COLLATE = {}", dialect.quote_identifier(collation)));
+    }
+    if let Some(next) = options.next_auto_increment {
+        clauses.push(format!("AUTO_INCREMENT = {next}"));
+    }
+    clauses.iter().map(|clause| format!(" {clause}")).collect()
 }
 
 /// The server reads a restated column against the names the same ALTER
@@ -323,7 +423,8 @@ mod tests {
     use tablepro_core::column::{ColumnDefault, ColumnInfo, SqlExpression};
     use tablepro_core::ddl::{
         CollationName, ColumnAttributes, ColumnVisibility, DdlOperation, DraftColumn, DraftType, DropTableOptions,
-        GeneratedColumn, GeneratedStorage, InboundForeignKey, PrimaryKeyConstraint, UnmodeledAttribute, diff_table,
+        GeneratedColumn, GeneratedStorage, InboundForeignKey, PrimaryKeyConstraint, TableOptions, UnmodeledAttribute,
+        diff_table,
     };
     use tablepro_core::meta::{IndexInfo, IndexKey};
     use tablepro_core::value::Value;
@@ -372,6 +473,7 @@ mod tests {
             foreign_keys: vec![foreign_key("users_account_fk")],
             inbound_foreign_keys: Vec::new(),
             source: None,
+            options: None,
         }
     }
 
@@ -458,6 +560,7 @@ mod tests {
             unique: false,
             primary: false,
             predicate: None,
+            definition: None,
         }];
         draft.foreign_keys = vec![ForeignKeyInfo {
             ref_schema: None,
@@ -773,6 +876,7 @@ mod tests {
                 &permissions.alter_default,
                 &permissions.alter_auto_increment,
                 &permissions.alter_comment,
+                &permissions.alter_collation,
             ] {
                 assert_eq!(permission, &Permission::Refused(reason.clone()), "{}", column.name());
             }
@@ -949,6 +1053,309 @@ mod tests {
                 "ALTER TABLE `app`.`users` RENAME COLUMN `doc` TO `body`, MODIFY COLUMN `bounded` int NOT NULL CHECK \
                  (`bounded` > `base`)"
             ]
+        );
+    }
+
+    fn optioned(next_auto_increment: Option<u64>) -> TableDefinition {
+        let mut table = attributed();
+        table.options = Some(TableOptions {
+            character_set: Some("utf8mb4".to_owned()),
+            collation: Some("utf8mb4_0900_ai_ci".to_owned()),
+            next_auto_increment,
+        });
+        table
+    }
+
+    fn draft_options(draft: &mut TableDraft) -> &mut DraftTableOptions {
+        draft.options.as_mut().expect("the table's options")
+    }
+
+    fn convert_to(draft: &mut TableDraft, character_set: &str, collation: &str) {
+        let options = draft_options(draft);
+        options.character_set = Some(character_set.to_owned());
+        options.collation = Some(collation.to_owned());
+        options.converts_columns = true;
+    }
+
+    #[test]
+    fn a_default_change_names_both_and_joins_the_combined_alter() {
+        let edit = |draft: &mut TableDraft| {
+            draft_options(draft).character_set = Some("latin1".to_owned());
+            draft_options(draft).collation = Some("latin1_bin".to_owned());
+            draft.columns.push(typed("note", "varchar(40)"));
+        };
+
+        let expected = [
+            "ALTER TABLE `app`.`users` ADD COLUMN `note` varchar(40) NULL, DEFAULT CHARACTER SET = `latin1` COLLATE = \
+             `latin1_bin`",
+        ];
+        assert_eq!(sql(alter(&optioned(None), edit)), expected);
+        assert_eq!(sql(alter_on(&mariadb(), &optioned(None), edit)), expected);
+    }
+
+    fn converting(edit: impl FnOnce(&mut TableDraft)) -> Result<DdlPlan, BuildDdlError> {
+        alter(&optioned(Some(10)), |draft| {
+            convert_to(draft, "latin1", "latin1_bin");
+            edit(draft);
+        })
+    }
+
+    #[test]
+    fn a_convert_runs_after_the_foreign_key_drop_and_before_the_counter() {
+        let plan = converting(|draft| {
+            draft.foreign_keys.clear();
+            draft_options(draft).next_auto_increment = Some(500);
+        });
+
+        assert_eq!(
+            sql(plan),
+            [
+                "ALTER TABLE `app`.`users` DROP FOREIGN KEY `users_account_fk`",
+                "ALTER TABLE `app`.`users` CONVERT TO CHARACTER SET `latin1` COLLATE `latin1_bin`",
+                "ALTER TABLE `app`.`users` AUTO_INCREMENT = 500",
+            ]
+        );
+    }
+
+    #[test]
+    fn a_convert_runs_after_index_and_column_drops_and_before_the_added_columns() {
+        let mut table = optioned(None);
+        table.indexes = vec![IndexInfo {
+            name: "by_code".to_owned(),
+            keys: vec![IndexKey::Column {
+                name: "code".to_owned(),
+                descending: false,
+            }],
+            unique: false,
+            primary: false,
+            predicate: None,
+            definition: None,
+        }];
+
+        let plan = alter(&table, |draft| {
+            convert_to(draft, "utf8mb4", "utf8mb4_0900_ai_ci");
+            draft.indexes.clear();
+            draft.columns.retain(|column| column.name != "shape");
+            draft.columns.push(typed("note", "text"));
+            let mut tag = typed("tag", "varchar(10)");
+            tag.character_set = Some("ascii".to_owned());
+            tag.collation = Some("ascii_bin".to_owned());
+            draft.columns.push(tag);
+        });
+
+        assert_eq!(
+            sql(plan),
+            [
+                "ALTER TABLE `app`.`users` DROP INDEX `by_code`, DROP COLUMN `shape`",
+                "ALTER TABLE `app`.`users` CONVERT TO CHARACTER SET `utf8mb4` COLLATE `utf8mb4_0900_ai_ci`",
+                "ALTER TABLE `app`.`users` ADD COLUMN `note` text NULL, ADD COLUMN `tag` varchar(10) CHARACTER SET \
+                 `ascii` COLLATE `ascii_bin` NULL",
+            ]
+        );
+    }
+
+    /// A MODIFY after the convert would narrow a TEXT it widened, and a key
+    /// dropped after it is converted first and can outgrow the index limit.
+    #[test]
+    fn a_convert_refuses_a_restated_column_and_a_primary_key_change() {
+        let commented = converting(|draft| edit_column(draft, "code", |column| column.comment = Some("x".to_owned())));
+        let picked = converting(|draft| {
+            edit_column(draft, "code", |column| {
+                column.character_set = Some("ascii".to_owned());
+                column.collation = Some("ascii_bin".to_owned());
+            });
+        });
+        let renamed = converting(|draft| edit_column(draft, "email", |column| column.name = "mail".to_owned()));
+        let rekeyed = converting(|draft| {
+            draft.columns.retain(|column| column.name != "id");
+            edit_column(draft, "account_id", |column| {
+                column.primary_key = true;
+                column.nullable = false;
+            });
+        });
+        let unkeyed = converting(|draft| draft.columns.retain(|column| column.name != "id"));
+
+        for plan in [&commented, &picked, &renamed, &rekeyed, &unkeyed] {
+            assert!(
+                refused(plan, DdlOperation::AlterTableOptions, &RefusalReason::ColumnsConverted),
+                "{plan:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_column_takes_its_drafted_character_set() {
+        let plan = alter(&attributed(), |draft| {
+            edit_column(draft, "code", |column| {
+                column.character_set = Some("latin1".to_owned());
+                column.collation = Some("latin1_bin".to_owned());
+            });
+        });
+
+        assert_eq!(
+            sql(plan),
+            [
+                "ALTER TABLE `app`.`users` MODIFY COLUMN `code` varchar(20) CHARACTER SET `latin1` COLLATE \
+              `latin1_bin` NULL"
+            ]
+        );
+    }
+
+    #[test]
+    fn the_counter_joins_the_alter_that_turns_numbering_on() {
+        let alone = alter(&optioned(Some(10)), |draft| {
+            draft_options(draft).next_auto_increment = Some(500);
+        });
+        let numbered = alter(&optioned(None), |draft| {
+            edit_column(draft, "id", |column| column.auto_increment = true);
+            draft_options(draft).next_auto_increment = Some(500);
+        });
+
+        assert_eq!(sql(alone), ["ALTER TABLE `app`.`users` AUTO_INCREMENT = 500"]);
+        assert_eq!(
+            sql(numbered),
+            ["ALTER TABLE `app`.`users` MODIFY COLUMN `id` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT = 500"]
+        );
+    }
+
+    #[test]
+    fn a_table_read_without_options_offers_and_takes_none() {
+        let table = attributed();
+
+        let plan = alter(&table, |draft| {
+            draft.options = Some(DraftTableOptions {
+                next_auto_increment: Some(5),
+                ..DraftTableOptions::default()
+            });
+        });
+
+        assert!(!dialect().table_capabilities(&table).table_options);
+        assert!(dialect().table_capabilities(&optioned(None)).table_options);
+        assert_eq!(plan, Err(BuildDdlError::Unsupported(DdlOperation::AlterTableOptions)));
+    }
+
+    #[test]
+    fn a_new_table_is_created_with_its_options() {
+        let mut draft = TableDraft::new(TableRef::unqualified("notes"));
+        let mut id = typed("id", "BIGINT");
+        id.primary_key = true;
+        id.nullable = false;
+        id.auto_increment = true;
+        draft.columns = vec![id];
+        draft.options = Some(DraftTableOptions {
+            character_set: Some("utf8mb4".to_owned()),
+            collation: Some("utf8mb4_bin".to_owned()),
+            converts_columns: false,
+            next_auto_increment: Some(100),
+        });
+
+        assert_eq!(
+            sql(dialect().plan_create_table(&draft)),
+            [
+                "CREATE TABLE `notes` (\n  `id` BIGINT NOT NULL AUTO_INCREMENT,\n  PRIMARY KEY (`id`)\n) DEFAULT \
+                 CHARACTER SET = `utf8mb4` COLLATE = `utf8mb4_bin` AUTO_INCREMENT = 100"
+            ]
+        );
+    }
+
+    #[test]
+    fn every_text_spelling_keeps_its_character_set_and_a_national_one_takes_none() {
+        for (spelling, holds_text) in [
+            ("VARCHAR (64)", true),
+            ("character varying(64)", true),
+            ("char varying(64)", true),
+            ("character(10)", true),
+            ("ENUM ('a','b')", true),
+            ("nvarchar(10)", false),
+        ] {
+            let plan = alter(&attributed(), |draft| {
+                edit_column(draft, "code", |column| {
+                    column.column_type = DraftType::Typed(spelling.to_owned())
+                });
+            });
+
+            let character_set = match holds_text {
+                true => " CHARACTER SET `utf8mb4` COLLATE `utf8mb4_bin`",
+                false => "",
+            };
+            assert_eq!(
+                sql(plan),
+                [format!(
+                    "ALTER TABLE `app`.`users` MODIFY COLUMN `code` {spelling}{character_set} NULL"
+                )],
+                "{spelling}"
+            );
+        }
+    }
+
+    #[test]
+    fn on_update_follows_the_precision_of_the_new_type() {
+        for (spelling, on_update) in [
+            ("timestamp(6)", "CURRENT_TIMESTAMP(6)"),
+            ("TIMESTAMP (3)", "CURRENT_TIMESTAMP(3)"),
+            ("datetime", "CURRENT_TIMESTAMP"),
+        ] {
+            let plan = alter(&attributed(), |draft| {
+                edit_column(draft, "stamp", |column| {
+                    column.column_type = DraftType::Typed(spelling.to_owned())
+                });
+            });
+
+            assert_eq!(
+                sql(plan),
+                [format!(
+                    "ALTER TABLE `app`.`users` MODIFY COLUMN `stamp` {spelling} NULL ON UPDATE {on_update} INVISIBLE"
+                )],
+                "{spelling}"
+            );
+        }
+    }
+
+    fn stamped(read_as: &str) -> TableDefinition {
+        let mut table = users();
+        let mut made = column("made", "datetime(3)", false);
+        made.info.default = ColumnDefault::Expression(SqlExpression::from_catalog_text(read_as));
+        table.columns.push(made);
+        table
+    }
+
+    #[test]
+    fn a_current_timestamp_default_as_read_follows_the_precision_of_the_new_type() {
+        for (engine, read_as) in [(dialect(), "CURRENT_TIMESTAMP(3)"), (mariadb(), "current_timestamp(3)")] {
+            for (spelling, default) in [
+                ("datetime(6)", "CURRENT_TIMESTAMP(6)"),
+                ("datetime", "CURRENT_TIMESTAMP"),
+                ("TIMESTAMP (3)", "CURRENT_TIMESTAMP(3)"),
+            ] {
+                let plan = alter_on(&engine, &stamped(read_as), |draft| {
+                    edit_column(draft, "made", |column| {
+                        column.column_type = DraftType::Typed(spelling.to_owned())
+                    });
+                });
+
+                assert_eq!(
+                    sql(plan),
+                    [format!(
+                        "ALTER TABLE `app`.`users` MODIFY COLUMN `made` {spelling} NULL DEFAULT {default}"
+                    )],
+                    "{read_as} as {spelling}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_default_the_user_typed_keeps_its_text() {
+        let plan = alter(&stamped("CURRENT_TIMESTAMP(3)"), |draft| {
+            edit_column(draft, "made", |column| {
+                column.column_type = DraftType::Typed("datetime(6)".to_owned());
+                column.default = ColumnDefault::Expression(SqlExpression::from_catalog_text("now(6)"));
+            });
+        });
+
+        assert_eq!(
+            sql(plan),
+            ["ALTER TABLE `app`.`users` MODIFY COLUMN `made` datetime(6) NULL DEFAULT now(6)"]
         );
     }
 

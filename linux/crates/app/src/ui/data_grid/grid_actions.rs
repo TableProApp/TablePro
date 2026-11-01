@@ -52,6 +52,7 @@ pub fn install(grid: &DataGrid) {
     add(grid, "clear-selection", |grid| {
         grid.selection().unselect_all();
     });
+    add(grid, "select-all", DataGrid::select_all_rows);
     let details = gio::SimpleAction::new_stateful("show-details", None, &false.to_variant());
     let weak = grid.downgrade();
     details.connect_change_state(move |action, state| {
@@ -128,6 +129,20 @@ fn install_column_actions(grid: &DataGrid) {
         "narrow-column",
         on_target_column(|grid, index| grid.step_column(index, false)),
     );
+    add(
+        grid,
+        "move-column-left",
+        on_target_column(|grid, index| grid.move_column(index, true)),
+    );
+    add(
+        grid,
+        "move-column-right",
+        on_target_column(|grid, index| grid.move_column(index, false)),
+    );
+    add_for_column(grid, "move-column-left-at", |grid, index| grid.move_column(index, true));
+    add_for_column(grid, "move-column-right-at", |grid, index| {
+        grid.move_column(index, false)
+    });
 }
 
 impl DataGrid {
@@ -171,10 +186,18 @@ impl DataGrid {
         for name in ["hide-column", "size-to-fit", "widen-column", "narrow-column"] {
             enable(self, name, !editing && column.is_some());
         }
+        for (name, left) in [("move-column-left", true), ("move-column-right", false)] {
+            enable(
+                self,
+                name,
+                !editing && column.is_some_and(|index| self.can_move_column(index, left)),
+            );
+        }
         enable(self, "clear-selection", !editing && self.selected_count() > 1);
         self.edit().refresh_actions(self, target.as_ref());
         copy::refresh_actions(self, target.as_ref());
         references::refresh_actions(self, target.as_ref());
+        self.refresh_summary();
         find_bar::refresh_actions(self);
     }
 }

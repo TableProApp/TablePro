@@ -4,9 +4,10 @@ use tablepro_core::column::{
 };
 use tablepro_core::ddl::DdlDialect;
 use tablepro_core::dialect::{
-    BindError, BindTarget, DialectCapabilities, InsertBatchLimits, InsertConflict, KeysetDirection, LikeCase, LikeForm,
-    LiteralError, Placeholder, SqlDialect,
+    BindError, BindTarget, DatabaseLayout, DialectCapabilities, InsertBatchLimits, InsertConflict, KeysetDirection,
+    LikeCase, LikeForm, LiteralError, Placeholder, SqlDialect,
 };
+use tablepro_core::edit::{CellExpression, MomentKind};
 use tablepro_core::meta::{EngineRowId, EngineRowIdPart};
 use tablepro_core::sql_syntax::{
     CredentialRules, ExpressionSyntaxError, HistoryRecording, MAX_EXPRESSION_LEN, MAX_TYPE_LEN, SqlGrammar,
@@ -41,7 +42,15 @@ impl MssqlDialect {
     }
 }
 
+pub(crate) fn quote(name: &str) -> String {
+    format!("[{}]", name.replace(']', "]]"))
+}
+
 impl SqlDialect for MssqlDialect {
+    fn database_layout(&self) -> DatabaseLayout {
+        DatabaseLayout::WithSchemas
+    }
+
     /// SQL Server adds the rows its triggers touch to a statement's
     /// count, so a write proves itself with a probe instead.
     fn capabilities(&self) -> DialectCapabilities {
@@ -55,8 +64,26 @@ impl SqlDialect for MssqlDialect {
         SqlGrammar::MsSql
     }
 
+    fn cell_expressions(&self) -> &'static [CellExpression] {
+        const MOMENT: &[MomentKind] = &[MomentKind::Timestamp];
+        const ANY: &[MomentKind] = &[MomentKind::Timestamp, MomentKind::Date, MomentKind::Time];
+        const EXPRESSIONS: &[CellExpression] = &[
+            // Each type converts from datetime2, so these fill a date or a time too.
+            CellExpression::new("SYSDATETIME()", ANY, &[]),
+            CellExpression::new("GETDATE()", ANY, &[]),
+            CellExpression::new("GETUTCDATE()", MOMENT, &[]),
+            CellExpression::new("SYSUTCDATETIME()", MOMENT, &[]),
+            CellExpression::new("CURRENT_TIMESTAMP", MOMENT, &[]),
+        ];
+        EXPRESSIONS
+    }
+
+    fn update_sets_default(&self) -> bool {
+        true
+    }
+
     fn quote_identifier(&self, name: &str) -> String {
-        format!("[{}]", name.replace(']', "]]"))
+        quote(name)
     }
 
     fn placeholder(&self, ordinal: usize, value: Value, target: BindTarget<'_>) -> Result<Placeholder, BindError> {
@@ -287,6 +314,16 @@ impl SqlDialect for MssqlDialect {
             "SELECT COUNT_BIG(*) FROM (SELECT TOP (2) 1 AS one FROM {table_sql} WITH (UPDLOCK, HOLDLOCK) WHERE {predicate_sql}) AS probe"
         )
     }
+
+    // OFF opens a batch of its own: an error that ends a batch, as any
+    // does under XACT_ABORT ON, skips the rest of that batch, and sqlcmd,
+    // SSMS and the editor go on with the next one.
+    fn identity_insert(&self, table_sql: &str, on: bool) -> Option<String> {
+        Some(match on {
+            true => format!("SET IDENTITY_INSERT {table_sql} ON;"),
+            false => format!("GO\nSET IDENTITY_INSERT {table_sql} OFF;"),
+        })
+    }
 }
 
 /// The decimal a money column is read as: MONEY's own range and scale,
@@ -455,7 +492,49 @@ const CREDENTIAL_RULES: CredentialRules = CredentialRules {
         "DECRYPTBYKEYAUTOCERT",
         "SIGNBYASYMKEY",
         "SIGNBYCERT",
+        "CERTPRIVATEKEY",
+        "PWDCOMPARE",
+        "PWDENCRYPT",
+        "sp_xp_cmdshell_proxy_account",
+        "sysmail_add_account_sp",
+        "sysmail_update_account_sp",
+        // Replication and log shipping: the distributor_admin, Publisher,
+        // Subscriber, agent job and monitor passwords, as arguments or as
+        // a property value.
+        "sp_adddistributor",
+        "sp_changedistributor_password",
+        "sp_adddistributiondb",
+        "sp_adddistpublisher",
+        "sp_changedistpublisher",
+        "sp_addsubscriber",
+        "sp_changesubscriber",
+        "sp_addlogreader_agent",
+        "sp_changelogreader_agent",
+        "sp_addqreader_agent",
+        "sp_changeqreader_agent",
+        "sp_addpublication_snapshot",
+        "sp_changepublication_snapshot",
+        "sp_addpushsubscription_agent",
+        "sp_addpullsubscription_agent",
+        "sp_addmergepushsubscription_agent",
+        "sp_addmergepullsubscription_agent",
+        "sp_changesubscription",
+        "sp_changemergesubscription",
+        "sp_changemergepullsubscription",
+        "sp_change_subscription_properties",
+        "sp_changereplicationserverpasswords",
+        "sp_adddynamicsnapshot_job",
+        "sp_changedynamicsnapshot_job",
+        "sp_attachsubscription",
+        "sp_link_publication",
+        "sp_add_log_shipping_primary_database",
+        "sp_change_log_shipping_primary_database",
+        "sp_add_log_shipping_secondary_primary",
+        "sp_change_log_shipping_secondary_primary",
+        "sp_add_log_shipping_secondary_database",
+        "sp_change_log_shipping_secondary_database",
     ],
+    secret_parameters: &["PASSWORD", "PWD"],
 };
 
 #[cfg(test)]
@@ -468,6 +547,11 @@ mod tests {
 
     fn dialect() -> MssqlDialect {
         MssqlDialect::new(16)
+    }
+
+    #[test]
+    fn a_bracket_in_a_name_is_doubled() {
+        assert_eq!(quote("sales ]2026"), "[sales ]]2026]");
     }
 
     fn column(declared: &str) -> ColumnInfo {
@@ -694,6 +778,21 @@ mod tests {
     }
 
     #[test]
+    fn an_identity_column_is_written_with_identity_insert_switched_on() {
+        let dialect = dialect();
+
+        assert_eq!(
+            dialect.identity_insert("[dbo].[t]", true).as_deref(),
+            Some("SET IDENTITY_INSERT [dbo].[t] ON;")
+        );
+        assert_eq!(
+            dialect.identity_insert("[dbo].[t]", false).as_deref(),
+            Some("GO\nSET IDENTITY_INSERT [dbo].[t] OFF;")
+        );
+        assert_eq!(dialect.insert_overriding_clause(), None);
+    }
+
+    #[test]
     fn quote_ident_brackets_and_escapes() {
         let dialect = dialect();
 
@@ -754,6 +853,21 @@ mod tests {
             "SELECT DECRYPTBYPASSPHRASE('passphrase', secret) FROM t",
             "EXEC sp_addlinkedserver @server = 's', @srvproduct = '', @provider = 'MSOLEDBSQL', @provstr = 'Server=h;Uid=u;Pwd=p;'",
             "SELECT u.id FROM users u JOIN logins l ON DECRYPTBYPASSPHRASE('secret', l.hash) = u.token",
+            "EXEC sp_xp_cmdshell_proxy_account 'CORP\\svc-sql', 'p'",
+            "EXEC msdb.dbo.sysmail_add_account_sp @account_name = 'ops', @username = 'ops', @password = 'p'",
+            "EXEC msdb.dbo.sysmail_update_account_sp @account_name = 'ops', @password = 'p'",
+            "EXEC sp_adddistributor @distributor = 'd', @password = 'p'",
+            "EXEC sp_changedistributor_password @password = 'p'",
+            "EXEC sp_changedistpublisher @publisher = 'pub', @property = 'password', @value = 'p'",
+            "EXEC sp_addpullsubscription_agent @publisher = 'pub', @publisher_db = 'd', @publication = 'p', @distributor_password = 'p'",
+            "EXEC sp_add_log_shipping_primary_database @database = 'd', @monitor_server_password = 'p'",
+            "EXEC dbo.any_procedure @login = 'l', @pwd = 'p'",
+            "SELECT name FROM sys.sql_logins WHERE PWDCOMPARE('p', password_hash) = 1",
+            "SELECT PWDENCRYPT('p')",
+            "SELECT CERTPRIVATEKEY(CERT_ID('c'), 'encryption password', 'decryption password')",
+            "EXEC('CREATE LOGIN l WITH PASSWORD = ''p''')",
+            "EXEC sp_executesql N'CREATE USER u WITH PASSWORD = ''p'''",
+            "DECLARE @s nvarchar(99) = N'CREATE LOGIN l WITH PASSWORD = ''p'''; EXEC (@s)",
         ] {
             assert_eq!(
                 dialect().history_recording(sql),

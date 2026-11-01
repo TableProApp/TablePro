@@ -7,6 +7,7 @@ use libadwaita as adw;
 use libadwaita::subclass::prelude::*;
 
 use super::Shown;
+use super::picture::PictureLoad;
 use super::value_editor::{Loaded, OpenEdit, Placeholders};
 use crate::ui::data_grid::{DataGrid, PinnedRow};
 use crate::ui::handler_guard::HandlerGuard;
@@ -42,13 +43,31 @@ pub struct RowDetailPane {
     #[template_child]
     pub field_label: TemplateChild<gtk::Label>,
     #[template_child]
+    pub choice_button: TemplateChild<gtk::MenuButton>,
+    #[template_child]
     pub calendar_button: TemplateChild<gtk::MenuButton>,
     #[template_child]
     pub calendar_popover: TemplateChild<gtk::Popover>,
     #[template_child]
     pub calendar: TemplateChild<gtk::Calendar>,
     #[template_child]
+    pub value_picture: TemplateChild<gtk::Picture>,
+    #[template_child]
+    pub clock_button: TemplateChild<gtk::MenuButton>,
+    #[template_child]
+    pub clock_popover: TemplateChild<gtk::Popover>,
+    #[template_child]
+    pub hour: TemplateChild<gtk::SpinButton>,
+    #[template_child]
+    pub minute: TemplateChild<gtk::SpinButton>,
+    #[template_child]
+    pub second: TemplateChild<gtk::SpinButton>,
+    #[template_child]
+    pub clock_set: TemplateChild<gtk::Button>,
+    #[template_child]
     pub value_menu_button: TemplateChild<gtk::MenuButton>,
+    #[template_child]
+    pub value_scroller: TemplateChild<gtk::ScrolledWindow>,
     #[template_child]
     pub value_view: TemplateChild<sourceview5::View>,
     #[template_child]
@@ -70,6 +89,7 @@ pub struct RowDetailPane {
     pub loaded: RefCell<Option<Loaded>>,
     pub placeholders: RefCell<Placeholders>,
     pub edit: RefCell<Option<OpenEdit>>,
+    pub picture_load: RefCell<Option<PictureLoad>>,
     /// Set while the pane writes the buffer itself, which is no edit.
     pub loading: Cell<bool>,
     /// Set while the pane selects a field itself, which moves no focus.
@@ -81,6 +101,7 @@ pub struct RowDetailPane {
     pub quiet_calendar: Cell<bool>,
     /// The row and field the open calendar picks a day for.
     pub calendar_target: RefCell<Option<(PinnedRow, usize)>>,
+    pub clock_target: RefCell<Option<(PinnedRow, usize)>>,
     pub sync_queued: Cell<bool>,
     /// The field rows bound now, which redraw when the row changes.
     pub bound: RefCell<Vec<gtk::ListItem>>,
@@ -107,6 +128,9 @@ impl ObjectSubclass for RowDetailPane {
 
 impl ObjectImpl for RowDetailPane {
     fn dispose(&self) {
+        if let Some(load) = self.picture_load.take() {
+            load.stop();
+        }
         self.guards.take();
         self.obj().stop_watching_columns();
         self.obj().watch_row(None);

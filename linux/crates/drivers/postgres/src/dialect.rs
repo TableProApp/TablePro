@@ -6,8 +6,10 @@ use tablepro_core::column::{
 };
 use tablepro_core::ddl::DdlDialect;
 use tablepro_core::dialect::{
-    BindError, BindTarget, DialectCapabilities, InsertConflict, KeysetDirection, LiteralError, Placeholder, SqlDialect,
+    BindError, BindTarget, DatabaseLayout, DialectCapabilities, InsertConflict, KeysetDirection, LiteralError,
+    Placeholder, SqlDialect,
 };
+use tablepro_core::edit::{CellExpression, MomentKind};
 use tablepro_core::export::value_to_text;
 use tablepro_core::meta::{EngineRowId, EngineRowIdPart};
 use tablepro_core::sql_syntax::{
@@ -41,6 +43,10 @@ impl PgDialect {
 }
 
 impl SqlDialect for PgDialect {
+    fn database_layout(&self) -> DatabaseLayout {
+        DatabaseLayout::WithSchemas
+    }
+
     fn capabilities(&self) -> DialectCapabilities {
         DialectCapabilities {
             exact_row_counts: true,
@@ -50,6 +56,25 @@ impl SqlDialect for PgDialect {
 
     fn grammar(&self) -> SqlGrammar {
         SqlGrammar::PostgreSql
+    }
+
+    fn cell_expressions(&self) -> &'static [CellExpression] {
+        const MOMENT: &[MomentKind] = &[MomentKind::Timestamp];
+        const DATE: &[MomentKind] = &[MomentKind::Date];
+        const TIME: &[MomentKind] = &[MomentKind::Time];
+        const EXPRESSIONS: &[CellExpression] = &[
+            CellExpression::new("now()", MOMENT, &[]),
+            CellExpression::new("CURRENT_TIMESTAMP", MOMENT, &[]),
+            CellExpression::new("LOCALTIMESTAMP", MOMENT, &[]),
+            CellExpression::new("CURRENT_DATE", DATE, &[]),
+            CellExpression::new("CURRENT_TIME", TIME, &[]),
+            CellExpression::new("LOCALTIME", TIME, &[]),
+        ];
+        EXPRESSIONS
+    }
+
+    fn update_sets_default(&self) -> bool {
+        true
     }
 
     fn quote_identifier(&self, name: &str) -> String {
@@ -187,6 +212,13 @@ impl SqlDialect for PgDialect {
             column.column_type.kind,
             ColumnKind::Json { binary: false } | ColumnKind::Xml
         )
+    }
+
+    /// The clause came with identity columns in PostgreSQL 10, and an
+    /// INSERT into a serial or plain column takes it too, so a statement
+    /// needs no word on which kind of numbering the column has.
+    fn insert_overriding_clause(&self) -> Option<&'static str> {
+        (self.server_version_num >= 100_000).then_some("OVERRIDING SYSTEM VALUE")
     }
 }
 
@@ -425,6 +457,7 @@ const CREDENTIAL_RULES: CredentialRules = CredentialRules {
         "decrypt_iv",
         "hmac",
     ],
+    secret_parameters: &[],
 };
 
 #[cfg(test)]
@@ -758,5 +791,16 @@ mod tests {
         ] {
             assert_eq!(dialect().history_recording(sql), HistoryRecording::Record, "{sql}");
         }
+    }
+
+    #[test]
+    fn an_insert_overrides_a_numbered_column_from_postgresql_10() {
+        let nine = PgDialect::new(&ServerInfo::new("PostgreSQL", "9.6.24", 9, 624, 0));
+        let ten = PgDialect::new(&ServerInfo::new("PostgreSQL", "10.0", 10, 0, 0));
+
+        assert_eq!(nine.insert_overriding_clause(), None);
+        assert_eq!(ten.insert_overriding_clause(), Some("OVERRIDING SYSTEM VALUE"));
+        assert_eq!(dialect().insert_overriding_clause(), Some("OVERRIDING SYSTEM VALUE"));
+        assert_eq!(dialect().identity_insert("\"t\"", true), None);
     }
 }

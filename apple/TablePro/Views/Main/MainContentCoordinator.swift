@@ -20,6 +20,8 @@ enum DiscardAction {
     case pagination
     case filter
     case resultSwitch
+    case resultClose
+    case clearResults
     case navigation
     case displayOrder
     case columnVisibility
@@ -191,11 +193,6 @@ final class MainContentCoordinator: ObservableObject {
 
     weak var sidebarViewModel: SidebarViewModel?
 
-    weak var structureActions: StructureViewActionHandler?
-
-    // Lets Save Changes (Cmd+S) route to table creation. Set by `CreateTableView` on appear.
-    weak var createTableActions: CreateTableActionHandler?
-
     weak var usersRolesActions: UsersRolesActionHandler?
 
     // Not in the view: it dies on every tab and Data/Structure switch, and the close gate must see unseen tabs' staged work.
@@ -211,9 +208,6 @@ final class MainContentCoordinator: ObservableObject {
 
     // `saveCompletionContinuation` is one slot: a second close gesture would overwrite it and strand the first task forever.
     internal var tabClosesInFlight: Set<UUID> = []
-
-    // The non-data grid that owns the selection, read by the inspector. Set by `TableStructureView` and `CreateTableView`.
-    weak var inspectorRowSource: (any InspectorRowSource)?
 
     // Bumped when a published schema row changes, so the inspector re-reads it.
     @Published var inspectorRowSourceRevision: Int = 0
@@ -245,6 +239,12 @@ final class MainContentCoordinator: ObservableObject {
 
     // For alerts instead of NSApp.keyWindow, which may return a sheet window and leave dialogs stuck.
     weak var contentWindow: NSWindow?
+
+    // Its own workspace's browse history: the window's answer follows the connection and mode on screen.
+    var browseUndoManager: UndoManager? {
+        let host = contentWindow?.contentViewController as? MainSplitViewController
+        return host?.workspaces.workspace(for: connectionId)?.undoManager ?? contentWindow?.undoManager
+    }
 
     // No SwiftUI `Scene` in the AppKit lifecycle, so a focused value can't resolve; this reaches AppKit and SwiftUI callers.
     weak var commandActions: MainContentCommandActions?
@@ -603,12 +603,12 @@ final class MainContentCoordinator: ObservableObject {
             databaseType: connection.type,
             dialect: dialect,
             pagination: services.pluginManager.paginationCapability(for: connection.type),
-            dialectQuote: dialect.map { quoteIdentifierFromDialect($0) }
+            dialectQuote: dialect.map { quoteIdentifierFromDialect($0) } ?? { SQLEscaping.quoteIdentifier($0) }
         )
         self.persistence = TabPersistenceCoordinator.forConnection(connection.id)
 
         ConnectionDataCache.shared(for: connection.id).ensureLoaded()
-        changeManager.undoManagerProvider = { [weak self] in self?.contentWindow?.undoManager }
+        changeManager.undoManagerProvider = { [weak self] in self?.browseUndoManager }
         changeManager.onUndoApplied = { [weak self] result in self?.handleUndoResult(result) }
         tabManager.onVisibleContainerReconciled = { [weak self] in
             self?.browseCursorCoordinator.followVisibleContainer()
@@ -1192,7 +1192,7 @@ final class MainContentCoordinator: ObservableObject {
         // Captured now, while the result this decision was made against is still the active one.
         let cachedMetadata: ParsedSchemaMetadata? = needsMetadataFetch ? nil : ParsedSchemaMetadata.cached(
             rows: tabSessionRegistry.tableRows(for: tabId),
-            primaryKeyColumns: tabManager.tabs[index].tableContext.primaryKeyColumns
+            context: tabManager.tabs[index].tableContext
         )
         if let tableName {
             Self.logger.info(
@@ -1208,6 +1208,7 @@ final class MainContentCoordinator: ObservableObject {
             return
         }
         let isTableTab = tab.tabType == .table
+        let readsView = tab.tableContext.knowsView(named: tableName)
         let (grammar, lengthColumns) = (lexicalGrammar, unloadedValueLengthColumns(for: tab))
 
         let failureOutput = ServerOutputBox()
@@ -1218,8 +1219,7 @@ final class MainContentCoordinator: ObservableObject {
                 return
             }
 
-            if let tableName, !tableName.isEmpty { prefetchForeignKeys(scope: scope) }
-            let schemaTask = QueryExecutor.schemaFetch(tableName: needsMetadataFetch ? tableName : nil, scope: scope)
+            let schemaTask = startSchemaFetch(tableName, uncached: needsMetadataFetch, isView: readsView, scope: scope)
 
             let fetchBeganAt = ContinuousClock.now
             do {
@@ -1353,7 +1353,7 @@ final class MainContentCoordinator: ObservableObject {
     }
 
     internal func resolveTableEditability(tab: QueryTab, sql: String) -> (tableName: String?, isEditable: Bool) {
-        if tab.tabType != .table, QueryClassifier.isExplainStatement(sql) {
+        if tab.tabType != .table, QueryClassifier.isExplainStatement(sql, grammar: lexicalGrammar) {
             return (nil, false)
         }
         let editorLanguage = services.pluginManager.editorLanguage(for: connection.type)

@@ -65,9 +65,9 @@ pub(super) fn build(tab: &BrowseTab, init: &LayoutInit<'_>) -> BrowseTabWidgets 
 /// room for it.
 fn more_menu(page_sizes: &[u64]) -> gio::Menu {
     let actions = gio::Menu::new();
-    actions.append(Some(&gettext("Filter Rows")), Some("browse.filter"));
-    actions.append(Some(&gettext("Export Rows…")), Some("browse.export"));
-    actions.append(Some(&gettext("Count Rows")), Some("browse.count-rows"));
+    actions.append(Some(&gettext("_Filter Rows")), Some("browse.filter"));
+    actions.append(Some(&gettext("_Export Rows…")), Some("browse.export"));
+    actions.append(Some(&gettext("_Count Rows")), Some("browse.count-rows"));
     let sizes = gio::Menu::new();
     for size in page_sizes {
         let item = gio::MenuItem::new(Some(&format_thousands(*size)), None);
@@ -152,6 +152,7 @@ pub(super) fn grid(tab: &BrowseTab, init: GridInit) -> DataGrid {
     grid.set_hexpand(true);
     let imp = tab.imp();
     imp.grid_holder.append(&grid);
+    imp.action_bar.pack_start(&grid.selection_summary());
     let _ = imp.grid.set(grid.clone());
     connect_grid(tab, &grid);
     grid
@@ -282,6 +283,12 @@ fn collapse_top_bars_with(tab: &BrowseTab, filter: &FilterStrip) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn every_action_in_the_more_menu_has_an_access_key_of_its_own() {
+        // A page size is a number, which takes no key.
+        crate::test_support::assert_access_keys(&more_menu(&[]));
+    }
 
     #[gtk4::test]
     fn the_dropdown_shows_a_page_size_set_in_preferences() {

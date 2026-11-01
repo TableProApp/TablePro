@@ -1,6 +1,7 @@
 //! What the grid hands back when the user edits a row, and how the
 //! text they typed becomes a value.
 
+mod cell_expression;
 mod cell_input;
 mod edit_context;
 mod edit_parse_error;
@@ -10,7 +11,9 @@ mod is_unchanged;
 mod new_draft_cell;
 mod parse_edit_text;
 mod parse_literal_text;
+mod temporal_parts;
 
+pub use cell_expression::{CellExpression, MomentKind, cell_expressions, typed_cell_expression};
 pub use cell_input::CellInput;
 pub use edit_context::EditContext;
 pub use edit_parse_error::{EditParseError, ReadOnlyReason};
@@ -22,3 +25,4 @@ pub use parse_edit_text::parse_edit_text;
 pub use parse_literal_text::{
     parse_filter_text, parse_literal_text, parse_time_with_offset, parse_timestamp_with_offset,
 };
+pub use temporal_parts::{TemporalParts, temporal_parts};

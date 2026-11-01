@@ -69,7 +69,10 @@ pub(crate) fn result_set_page(
     let page = gtk::Box::builder().orientation(gtk::Orientation::Vertical).build();
     page.append(banner.widget());
     page.append(&grid);
-    page.append(&row_count_footer(view.row_count() as u64));
+    let footer = gtk::Box::builder().spacing(6).build();
+    footer.append(&row_count_footer(view.row_count() as u64));
+    footer.append(&grid.selection_summary());
+    page.append(&footer);
     (page.upcast(), grid)
 }
 
@@ -87,7 +90,7 @@ fn row_count_footer(shown: u64) -> gtk::Label {
         .margin_top(4)
         .margin_bottom(4)
         .build();
-    footer.add_css_class("dim-label");
+    footer.add_css_class("dimmed");
     footer.add_css_class("caption");
     footer
 }

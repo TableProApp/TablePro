@@ -5,9 +5,10 @@ use tablepro_core::Value;
 use tablepro_core::edit::CellInput;
 
 use super::{
-    accel_of, action_names, cell_menu, close_menus, data_column, keyed, menu_actions, none, press, submenu, text,
+    accel_of, action_names, cell_menu, close_menus, data_column, keyed, menu_actions, none, press, selected_ids,
+    submenu, text,
 };
-use crate::test_support::{FocusThief, after_next_frame, drain_main_context, wait_until};
+use crate::test_support::{FocusThief, after_next_frame, assert_access_keys, drain_main_context, wait_until};
 use crate::ui::data_grid::test_grid::{
     Grid, GridSpec, WAIT, focus_in_grid, key, named, results, two_text_columns, two_text_values,
 };
@@ -48,6 +49,8 @@ fn cell_menu_counterpart(header_action: &str) -> &str {
         "grid.sort-column-descending" => "grid.sort-descending",
         "grid.hide-column-at" => "grid.hide-column",
         "grid.size-column-to-fit" => "grid.size-to-fit",
+        "grid.move-column-left-at" => "grid.move-column-left",
+        "grid.move-column-right-at" => "grid.move-column-right",
         "grid.copy-column-name-at" => "grid.copy-column-name",
         other => other,
     }
@@ -60,11 +63,11 @@ fn every_header_action_is_in_the_cell_menus_column_submenu() {
     let grid = people();
     let header = data_column(&grid, 1).header_menu().expect("the header's menu");
     let menu = cell_menu(&grid);
-    let in_column = action_names(&submenu(&menu, "Column").expect("the cell menu's Column submenu"));
+    let in_column = action_names(&submenu(&menu, "Colu_mn").expect("the cell menu's Column submenu"));
     let in_cell = action_names(&menu);
     let header_actions = menu_actions(&header);
 
-    assert_eq!(header_actions.len(), 7, "{header_actions:?}");
+    assert_eq!(header_actions.len(), 9, "{header_actions:?}");
     for (action, column) in &header_actions {
         assert!(column.is_none_or(|column| column == 1), "{action} names another column");
         let counterpart = cell_menu_counterpart(action.as_str());
@@ -78,6 +81,21 @@ fn every_header_action_is_in_the_cell_menus_column_submenu() {
             "{action} has no {counterpart} in the cell menu"
         );
     }
+}
+
+#[gtk4::test]
+fn every_grid_menu_gives_each_item_its_own_access_key() {
+    let grid = people();
+    let empty = grid
+        .grid
+        .menus()
+        .and_then(|menus| menus.empty.as_ref()?.menu_model())
+        .expect("the menu below the rows");
+
+    assert_access_keys(&cell_menu(&grid));
+    assert_access_keys(&empty);
+    assert_access_keys(&data_column(&grid, 1).header_menu().expect("the header's menu"));
+    assert_access_keys(&crate::ui::data_grid::grid_menu::row_numbers_header_menu());
 }
 
 #[gtk4::test]
@@ -247,6 +265,70 @@ fn a_page_under_a_closed_menu_then_a_focus_in_keeps_the_focus_in_the_grid() {
     after_next_frame(&grid.window);
 
     assert!(focus_in_grid(&grid), "the focus left the grid");
+}
+
+/// GTK gives the focus a closed menu held to the first control an ancestor
+/// of the grid takes, so Escape or an item left the keyboard off the rows.
+#[gtk4::test]
+fn a_closed_cell_menu_gives_the_keyboard_back_to_its_cell() {
+    let grid = two_text_rows();
+    let cell = grid.cell_of(2, 1);
+    assert!(grid.grid.open_cell_menu(&cell, None));
+    gtk::prelude::GtkWindowExt::set_focus(&grid.window, None::<&gtk::Widget>);
+
+    close_menus(&grid);
+
+    assert_eq!(
+        grid.focused_cell(),
+        Some(cell),
+        "the keyboard did not come back to the cell"
+    );
+}
+
+/// The header gives the rows the keys that act on a selection, wherever
+/// the focus was.
+#[gtk4::test]
+fn the_row_number_headers_menu_selects_every_row() {
+    let grid = people();
+    let header = grid
+        .grid
+        .row_numbers_column()
+        .and_then(|column| column.header_menu())
+        .expect("the row number header's menu");
+    gtk::prelude::GtkWindowExt::set_focus(&grid.window, None::<&gtk::Widget>);
+
+    grid.activate("select-all");
+
+    assert_eq!(action_names(&header), ["grid.select-all", "grid.columns"]);
+    assert_eq!(
+        accel_of(&header, "grid.select-all"),
+        Some(Some("<Primary>a".to_owned()))
+    );
+    assert_eq!(selected_ids(&grid), [1, 2]);
+    wait_until(WAIT, || focus_in_grid(&grid)).expect("the focus stayed off the rows");
+}
+
+/// The editor ends its edit, keeping what was typed, and the keys go to
+/// the rows rather than to its text.
+#[gtk4::test]
+fn select_all_rows_takes_the_keyboard_from_an_open_editor() {
+    let grid = people();
+    let cell = grid.focus(0, 1);
+    assert!(grid.grid.edit().edit_cell(&cell), "the cell took no edit");
+    grid.grid.edit().open_text().expect("the editor").set_text("Ada L.");
+    wait_until(WAIT, || grid.grid.edit().editor_has_focus()).expect("the editor takes the keyboard");
+
+    grid.activate("select-all");
+
+    assert_eq!(selected_ids(&grid), [1, 2]);
+    wait_until(WAIT, || {
+        grid.grid.edit().editing_cell().is_none() && grid.focused_cell().is_some()
+    })
+    .expect("the editor kept the keyboard");
+    assert_eq!(
+        grid.tracker.cell_overlay(&key(1), 1).pending,
+        Some(CellInput::Value(Value::Text("Ada L.".to_owned())))
+    );
 }
 
 #[gtk4::test]

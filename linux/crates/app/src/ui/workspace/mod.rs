@@ -14,6 +14,7 @@ mod health_banner;
 mod imp;
 mod import;
 mod import_ledger;
+mod recent_tabs;
 mod references;
 mod saves;
 mod session_watches;
@@ -282,6 +283,7 @@ pub enum ClosedTabDescriptor {
     Editor {
         query: String,
         file: Option<crate::workspace::EditorFileRecord>,
+        database: Option<String>,
     },
     Table {
         schema: Option<String>,
@@ -410,6 +412,14 @@ impl WorkspaceTab {
         }
     }
 
+    /// The database an editor tab moved to off the connection's.
+    pub(crate) fn moved_to(&self) -> Option<String> {
+        match self {
+            WorkspaceTab::Editor(slot) => slot.editor.tab_database(),
+            _ => None,
+        }
+    }
+
     /// What the tab's title is made from.
     pub(crate) fn identity(&self) -> tab_identity::TabIdentity {
         use tab_identity::TabIdentity;
@@ -498,6 +508,9 @@ pub(crate) enum WorkspaceInput {
     /// An editor tab was saved, opened a file, or its text came to
     /// differ from its file's or match it again.
     EditorTabFileChanged(Uuid),
+    /// An editor tab moved to another database, which its record keeps
+    /// and its title names.
+    EditorTabDatabaseChanged(Uuid),
     /// The session's saved tabs and their editor text, read off the GTK
     /// thread.
     WorkspaceLoaded(workspace_tabs::LoadedWorkspace),
@@ -505,6 +518,14 @@ pub(crate) enum WorkspaceInput {
     ResetWorkspaceLayout,
     /// The session moved to another Safe Mode level, which the title names.
     SafeModeChanged,
+    /// Completion in editor tab `tab_id` reads `session`'s catalog, its
+    /// database's, or its own connection's again with `None`.
+    FollowCatalog {
+        tab_id: Uuid,
+        session: Option<Arc<Session>>,
+    },
+    /// Another database of the connection opened beside it.
+    DatabaseOpened(Arc<Session>),
     /// The saved connections changed, the title's icon perhaps with them.
     SavedConnectionsChanged,
     WorkspaceLayoutReset(Result<Option<std::path::PathBuf>, crate::workspace::WorkspaceSaveError>),
@@ -583,7 +604,8 @@ pub(crate) enum WorkspaceInput {
         schema: Option<String>,
         table: String,
     },
-    ShowCreateTableLoaded(String),
+    /// SQL the user asked to see, in a new editor tab of its own.
+    OpenInEditor(String),
     DropTablePrompt {
         schema: Option<String>,
         table: String,
@@ -1096,7 +1118,9 @@ impl WorkspaceModel {
             workspace.notify_connection_name();
         }
         let icon = match &self.key {
-            SessionKey::Saved(id) => self.saved_connections.get(*id).and_then(|saved| saved.icon),
+            SessionKey::Saved(id) | SessionKey::SavedIn { id, .. } => {
+                self.saved_connections.get(*id).and_then(|saved| saved.icon)
+            }
             SessionKey::File(_) => None,
         }
         .map(|icon| crate::ui::icons::connection_icon(icon).to_owned());
@@ -1118,7 +1142,7 @@ impl WorkspaceModel {
             return;
         };
         if let Some(tab) = self.workspace_tabs.borrow().get(&id) {
-            tab_title::apply_tab_title(tab.page(), &title, &self.label);
+            tab_title::apply_tab_title(tab.page(), &title, &self.label, tab.moved_to().as_deref());
         }
         if self.index.last_selected() == Some(id) {
             self.refresh_title();
@@ -1244,7 +1268,7 @@ impl WorkspaceModel {
             WorkspaceInput::ShowDiagram { schema } => self.show_diagram(schema, Vec::new()),
             WorkspaceInput::EditStructureTab { schema, table } => self.on_edit_structure_tab(schema, table),
             WorkspaceInput::ShowCreateTableForExisting { schema, table } => self.on_show_create_table(schema, table),
-            WorkspaceInput::ShowCreateTableLoaded(sql) => self.open_editor_tab(Some(sql)),
+            WorkspaceInput::OpenInEditor(sql) => self.open_editor_tab(Some(sql)),
             WorkspaceInput::DropTablePrompt { schema, table } => self.on_drop_table_prompt(schema, table),
             WorkspaceInput::DropTableChecked { table, referencing } => self.on_drop_table_checked(table, &referencing),
             WorkspaceInput::DropTableConfirmed { schema, table } => self.on_drop_table_confirmed(schema, table),
@@ -1262,6 +1286,9 @@ impl WorkspaceModel {
             }
             WorkspaceInput::EditorTabContentChanged(id) => self.on_editor_tab_content_changed(id),
             WorkspaceInput::EditorTabFileChanged(id) => self.on_editor_tab_file_changed(id),
+            WorkspaceInput::EditorTabDatabaseChanged(id) => self.on_editor_tab_database_changed(id),
+            WorkspaceInput::FollowCatalog { tab_id, session } => self.follow_catalog(tab_id, session),
+            WorkspaceInput::DatabaseOpened(session) => self.on_database_opened(&session),
             WorkspaceInput::WorkspaceLoaded(loaded) => self.on_workspace_loaded(loaded),
             WorkspaceInput::ResetWorkspaceLayout => self.on_reset_workspace_layout(),
             WorkspaceInput::SafeModeChanged => self.refresh_title(),

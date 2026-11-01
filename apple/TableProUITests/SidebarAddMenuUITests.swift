@@ -14,16 +14,11 @@ final class SidebarAddMenuUITests: UITestCase {
         XCTAssertTrue(newTable.waitToExist(timeout: 10), "The add button offers New Table…")
         newTable.click()
 
-        // By identifier: the editor tab named Create Table also matches a "Create Table" button query.
-        let commit = window.buttons["create-table-commit"].firstMatch
-        XCTAssertTrue(commit.waitToExist(timeout: 30), "New Table… from the add button opens the Create Table tab")
-        XCTAssertTrue(
-            window.staticTexts.matching(identifier: "create-table-validation").firstMatch.waitToExist(timeout: 10),
-            "A draft that cannot run yet must say what is missing"
-        )
-        XCTAssertFalse(commit.isEnabled, "An empty draft has no name and no column, so Create Table stays dimmed")
-
         let name = window.textFields["create-table-name"]
+        XCTAssertTrue(name.waitToExist(timeout: 30), "New Table… from the add button opens the Create Table tab")
+        let validation = window.descendants(matching: .any).matching(identifier: "create-table-validation").firstMatch
+        XCTAssertTrue(validation.waitToExist(timeout: 10), "A draft that cannot run yet must say what is missing")
+
         XCTAssertTrue(waitUntilHittable(name, timeout: 10))
         name.click()
         name.typeText("playlist")
@@ -31,10 +26,11 @@ final class SidebarAddMenuUITests: UITestCase {
         fillFirstColumn(named: "title", type: "TEXT", in: window, app: app)
 
         XCTAssertTrue(
-            waitForPredicate(timeout: 10) { commit.isEnabled },
-            "A named table with a named, typed column can be created"
+            waitForPredicate(timeout: 10) { !validation.exists },
+            "A named table with a named, typed column has nothing left to fix"
         )
-        commit.click()
+        // Create Table has no button of its own: the toolbar's commit item and Cmd+S run it.
+        app.typeShortcut(.save)
 
         XCTAssertTrue(
             objectBrowserRow("playlist", in: window).waitToExist(timeout: 30),
@@ -50,7 +46,9 @@ final class SidebarAddMenuUITests: UITestCase {
     // Cells are drawn, not mounted, so the row is reached through a point and edited from the keyboard:
     // Left until the cursor stops on the first column, Return opens its editor, Tab commits and opens the next.
     private func fillFirstColumn(named column: String, type: String, in window: XCUIElement, app: XCUIApplication) {
-        let grid = dataGrid(in: window)
+        let columns = window.descendants(matching: .any).matching(identifier: "structure-section-columns").firstMatch
+        XCTAssertTrue(columns.waitToExist(timeout: 10), "The Definition page lists the draft's columns")
+        let grid = dataGrid(in: columns)
         XCTAssertTrue(waitForClickableRows(in: grid), "The draft starts with one empty column row")
         let firstRow = grid.tableRows.firstMatch
         gridPoint(in: grid, of: window, dy: firstRow.frame.midY - grid.frame.minY).click()

@@ -36,7 +36,8 @@ nonisolated enum TransactionRollBackClassifier {
             if rest.hasPrefix("--") {
                 rest = rest.drop { !$0.isNewline }
             } else if rest.hasPrefix("/*") {
-                guard let end = rest.range(of: "*/") else { break }
+                // Past the opener: its `*` closes nothing, so `/*/` is still open.
+                guard let end = rest.dropFirst(2).range(of: "*/") else { break }
                 rest = rest[end.upperBound...]
             } else {
                 let word = rest.prefix { $0.isLetter || $0.isNumber || $0 == "_" }

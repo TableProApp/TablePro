@@ -21,14 +21,8 @@ struct FieldEditState: Identifiable {
     var isPrimaryKey: Bool = false
     var isForeignKey: Bool = false
 
-    // Set when the owning grid dictates the editor instead of the column type.
-    var editor: FieldEditorKind?
-
     // Resolved once: it costs a JSONSerialization and a PHP-serialized parse, and view bodies re-parsed it on every hover.
     var resolvedEditor: FieldEditorKind?
-
-    // A schema field has no data type, so it offers no type badge and no NULL or DEFAULT state.
-    var isSchemaField: Bool = false
 
     // Shown without an editor: refusing the edit further down left a pending value here that Save never writes.
     var isServerOwned: Bool = false
@@ -46,7 +40,7 @@ struct FieldEditState: Identifiable {
 
     var declaredType: String?
 
-    // Recorded by the grid owning a schema row, or the change manager for rows that disagree, which no pending value can hold.
+    // Recorded by the change manager for rows that disagree, which no pending value can hold.
     var hasCommittedEdit: Bool = false
 
     var originalValue: String?
@@ -124,8 +118,6 @@ final class MultiRowEditState: ObservableObject {
 
     // The rows an edit is staged against, captured when the selection was configured, never a display position.
     @Published private(set) var rowIDs: [RowID] = []
-    // The schema row the fields came from, for a grid whose rows have no identity.
-    private var schemaDisplayRow: Int?
 
     @Published private(set) var allRows: [[String?]] = []
     // Per row of allRows: the columns it has no field for.
@@ -177,9 +169,8 @@ final class MultiRowEditState: ObservableObject {
         cellWriter: CellWriterSupport = .none
     ) {
         let columnsChanged = self.columns != columns
-        let selectionChanged = self.rowIDs != rowIDs || schemaDisplayRow != nil
+        let selectionChanged = self.rowIDs != rowIDs
 
-        schemaDisplayRow = nil
         self.rowIDs = rowIDs
         self.allRows = allRows
         self.absentCells = absentCells
@@ -332,7 +323,7 @@ final class MultiRowEditState: ObservableObject {
         let reveals = AppSettingsManager.shared.dataGrid.showInvisibleCharacters
         guard reveals != revealsInvisibleCharacters else { return }
         revealsInvisibleCharacters = reveals
-        for index in fields.indices where !fields[index].isSchemaField && fields[index].editor == nil {
+        for index in fields.indices {
             let field = fields[index]
             let resolved = FieldEditorResolver.resolve(
                 for: field.columnTypeEnum,
@@ -348,54 +339,6 @@ final class MultiRowEditState: ObservableObject {
         }
     }
 
-    // Field ids survive a reconfigure of the same row so a commit does not rebuild the editors and drop focus.
-    func configure(schemaFields: [InspectorRowField], displayRow: Int) {
-        let names = schemaFields.map(\.name)
-        let reusedIds = schemaDisplayRow == displayRow && columns == names ? fields.map(\.id) : []
-
-        schemaDisplayRow = displayRow
-        rowIDs = []
-        absentCells = []
-        unloadedCells = []
-        expressionCells = []
-        databaseType = nil
-        cellWriter = .none
-        rowsAreInserted = false
-        columns = names
-        columnTypes = Array(repeating: .text(rawType: nil), count: names.count)
-        allRows = [schemaFields.map(\.value)]
-
-        fields = schemaFields.enumerated().map { index, field in
-            var state = FieldEditState(
-                columnIndex: index,
-                columnName: field.name,
-                columnTypeEnum: .text(rawType: nil),
-                isLongText: false,
-                isJson: false,
-                editor: field.editor,
-                isSchemaField: true,
-                hasCommittedEdit: field.isModified,
-                originalValue: field.value,
-                hasMultipleValues: false,
-                pendingValue: nil,
-                isPendingNull: false,
-                isPendingDefault: false
-            )
-            if index < reusedIds.count {
-                state.id = reusedIds[index]
-            }
-            if field.editor == nil {
-                state.resolvedEditor = FieldEditorResolver.resolve(
-                    for: .text(rawType: nil),
-                    isLongText: false,
-                    originalValue: field.value
-                )
-            }
-            state.isServerOwned = !field.isEditable
-            return state
-        }
-    }
-
     // Read from the store, not a copy an earlier render captured; a field's value binding answers with this.
     func currentText(at index: Int) -> String {
         guard fields.indices.contains(index) else { return "" }
@@ -408,7 +351,7 @@ final class MultiRowEditState: ObservableObject {
     }
 
     func setValueContext(for field: FieldEditState, isWritable: Bool) -> SetValueContext? {
-        guard let databaseType, !field.isSchemaField else { return nil }
+        guard let databaseType else { return nil }
         return SetValueContext(
             columnType: field.columnTypeEnum,
             isNullable: field.isNullable,
@@ -647,7 +590,6 @@ final class MultiRowEditState: ObservableObject {
         onFieldReverted = nil
         onFieldRemoved = nil
         onDetachedFieldChanged = nil
-        schemaDisplayRow = nil
         rowIDs = []
         allRows = []
         absentCells = []

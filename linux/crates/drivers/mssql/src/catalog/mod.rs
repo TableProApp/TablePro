@@ -37,7 +37,8 @@ pub(crate) fn column_info(row: &MssqlColumnRow) -> ColumnInfo {
         nullable: row.nullable,
         primary_key: row.primary_key,
         is_auto_increment: row.identity,
-        is_generated: row.computed || server_written,
+        // A period column refuses a value as a computed one does.
+        is_generated: row.computed || row.server_generated || server_written,
         partition_scoped: false,
         default,
         comment: row.comment.clone(),

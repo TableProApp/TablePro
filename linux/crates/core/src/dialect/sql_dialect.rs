@@ -1,13 +1,14 @@
 use crate::column::{ColumnInfo, ColumnType, SqlExpression};
 use crate::ddl::DdlDialect;
+use crate::edit::CellExpression;
 use crate::filter::{Combinator, FilterOp, operators_for};
 use crate::meta::{EngineRowId, EngineRowIdPart, TableRef};
 use crate::sql_syntax::{ExpressionSyntaxError, HistoryRecording, SqlGrammar, TypeSyntaxError};
 use crate::value::Value;
 
 use super::{
-    BindError, BindTarget, DialectCapabilities, InsertBatchLimits, KeysetDirection, LikeCase, LikeForm, LiteralError,
-    Placeholder, TablePaging,
+    BindError, BindTarget, DatabaseLayout, DialectCapabilities, InsertBatchLimits, KeysetDirection, LikeCase, LikeForm,
+    LiteralError, Placeholder, TablePaging,
 };
 
 /// How one engine spells SQL.
@@ -30,6 +31,10 @@ pub trait SqlDialect: Send + Sync + std::fmt::Debug {
     /// Wrap an identifier so it cannot be read as anything else,
     /// whatever it contains.
     fn quote_identifier(&self, name: &str) -> String;
+
+    fn database_layout(&self) -> DatabaseLayout {
+        DatabaseLayout::Single
+    }
 
     /// Bind one value, giving back the SQL that names it.
     ///
@@ -235,9 +240,35 @@ pub trait SqlDialect: Send + Sync + std::fmt::Debug {
         Some(format!("INSERT INTO {table_sql} DEFAULT VALUES"))
     }
 
+    /// The clause between an INSERT's columns and VALUES that lets it set
+    /// a column the engine numbers, where the engine refuses one without.
+    fn insert_overriding_clause(&self) -> Option<&'static str> {
+        None
+    }
+
+    /// The lines, `;` and all, that let the INSERTs after them set the
+    /// table's identity column, or end that (`on` false), where the engine
+    /// refuses a value there otherwise. An engine that runs a script batch
+    /// by batch ends it in a batch of its own, so a run that fails partway
+    /// still turns it off.
+    fn identity_insert(&self, _table_sql: &str, _on: bool) -> Option<String> {
+        None
+    }
+
     /// Count the rows a predicate matches, stopping at two: the caller
     /// only needs to know whether it is exactly one.
     fn key_probe(&self, table_sql: &str, predicate_sql: &str) -> String {
         format!("SELECT COUNT(*) FROM (SELECT 1 AS one FROM {table_sql} WHERE {predicate_sql} LIMIT 2) AS probe")
+    }
+
+    /// The expressions a cell may be set to, each one run against the
+    /// engine for the column kinds it lists.
+    fn cell_expressions(&self) -> &'static [CellExpression] {
+        &[]
+    }
+
+    /// Whether `UPDATE ... SET c = DEFAULT` parses.
+    fn update_sets_default(&self) -> bool {
+        false
     }
 }

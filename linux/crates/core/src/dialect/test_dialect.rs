@@ -1,6 +1,7 @@
 use std::sync::Mutex;
 
 use crate::column::{ColumnInfo, ColumnType, SqlExpression, SqlTypeExpr};
+use crate::edit::{CellExpression, MomentKind};
 use crate::meta::{EngineRowId, EngineRowIdPart};
 use crate::sql_syntax::{
     CredentialRules, ExpressionSyntaxError, HistoryRecording, SqlGrammar, TypeSyntaxError, classify_for_history,
@@ -31,6 +32,7 @@ pub struct TestDialect {
     grammar: SqlGrammar,
     insert_limits: InsertBatchLimits,
     insert_conflict: InsertConflict,
+    update_default: bool,
     binds: Mutex<Vec<RecordedBind>>,
 }
 
@@ -71,6 +73,7 @@ impl Default for TestDialect {
             grammar: SqlGrammar::PostgreSql,
             insert_limits: InsertBatchLimits::DEFAULT,
             insert_conflict: InsertConflict::Refused,
+            update_default: true,
             binds: Mutex::new(Vec::new()),
         }
     }
@@ -129,6 +132,13 @@ impl TestDialect {
         }
     }
 
+    pub fn without_update_default(self) -> Self {
+        Self {
+            update_default: false,
+            ..self
+        }
+    }
+
     pub fn targets(&self) -> Vec<RecordedTarget> {
         self.recorded().into_iter().map(|bind| bind.target).collect()
     }
@@ -166,6 +176,20 @@ impl SqlDialect for TestDialect {
 
     fn grammar(&self) -> SqlGrammar {
         self.grammar
+    }
+
+    fn cell_expressions(&self) -> &'static [CellExpression] {
+        const MOMENT: &[MomentKind] = &[MomentKind::Timestamp];
+        const EXPRESSIONS: &[CellExpression] = &[
+            CellExpression::new("NOW()", MOMENT, &[]),
+            CellExpression::new("CURRENT_TIMESTAMP", MOMENT, &["CURRENT_TIMESTAMP()"]),
+            CellExpression::new("CURRENT_DATE", &[MomentKind::Date], &[]),
+        ];
+        EXPRESSIONS
+    }
+
+    fn update_sets_default(&self) -> bool {
+        self.update_default
     }
 
     fn quote_identifier(&self, name: &str) -> String {
@@ -295,6 +319,7 @@ impl SqlDialect for TestDialect {
             statement_prefixes: &[&["CREATE", "USER"], &["ALTER", "USER"]],
             conditional_prefixes: &[],
             carriers: &[],
+            secret_parameters: &[],
         };
         classify_for_history(self.grammar, &RULES, sql)
     }

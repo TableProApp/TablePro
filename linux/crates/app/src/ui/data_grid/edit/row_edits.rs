@@ -4,7 +4,6 @@ use tablepro_core::Value;
 use tablepro_core::column::{BoolStorage, ColumnKind};
 use tablepro_core::edit::{CellInput, EditParseError, new_draft_cell, parse_edit_text};
 
-use super::cell_editor::Plan;
 use super::{EditController, edit_start};
 use crate::i18n::gettext;
 use crate::services::change_tracker::RowKey;
@@ -26,7 +25,9 @@ impl EditController {
         };
         grid.commit_editors();
         let tracked = self.tracked();
-        let next = tracked.with_value(row, column, |value, default| toggled(value, default, storage));
+        let next = tracked.with_value(row, column, |value, computed| {
+            toggled(value, computed.is_some(), storage)
+        });
         let start = edit_start(&tracked, row, column);
         self.commit_input(grid, &grid_column, &start, CellInput::Value(next));
     }
@@ -50,7 +51,7 @@ impl EditController {
         let Some(catalog) = grid_column.catalog.as_ref() else {
             return;
         };
-        let presets = cell_presets(&grid_column, &row.id());
+        let presets = cell_presets(&grid_column, &row.id(), grid.sql_dialect().as_deref());
         let input = match preset {
             CellPreset::Empty => {
                 parse_edit_text("", catalog, edit_context(&row.id())).map_err(|error| edit_parse_message(&error))
@@ -173,9 +174,9 @@ impl EditController {
         let column = grid
             .shown_columns()
             .into_iter()
-            .find(|column| matches!(self.plan(grid, &row, *column), Plan::Inline(_)));
+            .find(|column| self.plan(grid, &row, *column).in_place().is_some());
         if let Some(cell) = column.and_then(|column| grid.focus_cell(position, column)) {
-            self.edit_cell(&cell);
+            self.edit_in_place(&cell);
         }
     }
 

@@ -11,6 +11,24 @@ import Testing
 @testable import TablePro
 
 enum TestFixtures {
+    static func viewTarget(
+        base: PluginViewBaseTable = PluginViewBaseTable(name: "t"),
+        keys: [String],
+        readOnly: Set<String> = [],
+        operations: PluginViewWriteOperations = .all,
+        baseColumnNames: [String: String] = [:],
+        baseColumns: [String: PluginViewBaseColumn] = [:]
+    ) -> PluginViewWriteTarget {
+        PluginViewWriteTarget(
+            baseTable: base,
+            keyColumns: keys,
+            readOnlyColumns: readOnly,
+            operations: operations,
+            baseColumnNames: baseColumnNames,
+            baseColumns: baseColumns
+        )
+    }
+
     // MARK: - Database Types
 
     static let allDatabaseTypes: [DatabaseType] = [
@@ -274,5 +292,14 @@ enum TestFixtures {
             onDelete: onDelete,
             onUpdate: onUpdate
         )
+    }
+}
+
+@MainActor
+extension StructureEditingSession {
+    // What a finished load leaves behind, for a test that stages straight into the change manager.
+    func markBaselineAdopted() {
+        hasBaseline = true
+        editor.isAwaitingBaseline = false
     }
 }

@@ -323,7 +323,7 @@ pub async fn a_field_edit_saves_and_reads_back<E: DocumentEngine>(engine: E) -> 
         &table,
         vec![RowChange::Update(RowUpdate {
             key: vec![Value::Int(7)],
-            assignments: vec![(1, Value::Text("renamed".to_owned()))],
+            assignments: vec![(1, CellInput::Value(Value::Text("renamed".to_owned())))],
         })],
     )
     .await??;
@@ -362,7 +362,7 @@ pub async fn a_save_on_a_document_that_is_gone_changes_nothing<E: DocumentEngine
         &table,
         vec![RowChange::Update(RowUpdate {
             key: vec![Value::Int(2)],
-            assignments: vec![(1, Value::Text("ghost".to_owned()))],
+            assignments: vec![(1, CellInput::Value(Value::Text("ghost".to_owned())))],
         })],
     )
     .await?;
@@ -605,6 +605,7 @@ pub async fn a_timed_out_statement_is_stopped_by_the_server<E: DocumentEngine>(
     let table = filled(TIMEOUT_CASE, &engine, connection.as_ref(), 50).await?;
     let options = EditorSessionOptions {
         statement_timeout: Some(SETTLE),
+        database: None,
     };
     let session = connection
         .open_editor_session(options, CancellationToken::new())

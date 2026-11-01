@@ -59,10 +59,7 @@ impl Reader<'_> {
         let mut documents = Vec::new();
         loop {
             match cursor.advance(self.session).await {
-                Ok(true) => documents.push(cursor.deserialize_current().map_err(|error| DriverError::Decode {
-                    column: String::new(),
-                    detail: error.to_string(),
-                })?),
+                Ok(true) => documents.push(crate::nested_document::current_document(&cursor)?),
                 Ok(false) => return Ok(documents),
                 Err(error) => return Err(self.endpoint.explain(&error, LossPhase::Statement).await),
             }
@@ -303,6 +300,7 @@ fn index_info(entry: &Document) -> Option<IndexInfo> {
         name,
         keys,
         predicate,
+        definition: None,
     })
 }
 

@@ -19,11 +19,14 @@ mod keys;
 mod layout_binding;
 mod pointer;
 mod references;
+mod reversed_list;
 mod row_detail;
 mod row_json_dialog;
 mod row_number_column;
 mod selection;
+mod selection_summary;
 mod server_sorter;
+mod stripes;
 mod table_keys;
 #[cfg(test)]
 pub(crate) mod test_grid;
@@ -37,6 +40,7 @@ use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use gtk4::{self as gtk, gio, glib};
 use libadwaita as adw;
+use tablepro_core::dialect::SqlDialect;
 
 #[cfg(test)]
 pub(crate) use self::column_chooser::ColumnChooser;
@@ -47,11 +51,12 @@ pub(crate) use self::grid_request::GridRequest;
 pub(crate) use self::grid_row::{GridRow, PinnedRow, RowData};
 pub(crate) use self::grid_store::GridStore;
 pub(crate) use self::layout_binding::LayoutBinding;
+use self::reversed_list::ReversedList;
 #[cfg(test)]
 pub(crate) use self::row_detail::RowDetailPane;
 pub(crate) use self::row_json_dialog::{RowJsonRequest, present_row_json};
 pub(crate) use self::table_keys::{KeysHandle, TableKeys};
-pub(crate) use self::tracked_values::TrackedValues;
+pub(crate) use self::tracked_values::{ServerValue, TrackedValues};
 use crate::services::change_tracker::RowKey;
 use crate::services::grid::GridColumn;
 use crate::services::tracker_delta::TrackerDelta;
@@ -84,12 +89,20 @@ impl DataGrid {
         find_bar::install(&grid);
         imp.detail_pane.attach(&grid);
         grid.set_columns(columns, sorting, rules);
+        grid.watch_fonts();
+        grid.watch_stripes();
         grid
     }
 
     /// `None` only inside `glib::Object::new`, before `new` sets it.
     pub(crate) fn config(&self) -> Option<&GridConfig> {
         self.imp().config.get()
+    }
+
+    /// The connection's dialect, where the rows have an SQL spelling.
+    pub(crate) fn sql_dialect(&self) -> Option<Arc<dyn SqlDialect>> {
+        let dialect = (self.config()?.dialect.as_ref()?)()?;
+        dialect.grammar().is_sql().then_some(dialect)
     }
 
     pub fn connect_request<F: Fn(&Self, GridRequest) + 'static>(&self, f: F) -> glib::SignalHandlerId {
@@ -177,6 +190,7 @@ impl DataGrid {
     pub fn set_columns(&self, columns: Arc<[GridColumn]>, sorting: GridSorting, rules: Option<EditRules>) {
         self.commit_editors();
         self.store().clear();
+        self.imp().summary.forget_column();
         self.edit().set_rules(self, rules);
         self.rebuild_columns(columns, sorting);
         self.show_rows_or_empty();
@@ -341,10 +355,12 @@ impl DataGrid {
             GridSorting::Client => {
                 // At once rather than in steps, so a copy right after a
                 // click takes the order on screen.
-                let sorted = gtk::SortListModel::new(Some(list), imp.column_view.sorter());
+                let sorted = gtk::SortListModel::new(Some(list), None::<gtk::Sorter>);
                 sorted.set_incremental(false);
-                let _ = imp.sort_model.set(sorted.clone());
-                sorted.upcast()
+                let shown = ReversedList::new(&sorted);
+                let _ = imp.sort_model.set(sorted);
+                let _ = imp.shown.set(shown.clone());
+                shown.upcast()
             }
             GridSorting::Server { .. } | GridSorting::None => list,
         };

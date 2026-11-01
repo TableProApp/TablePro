@@ -414,6 +414,7 @@ extension QueryExecutionCoordinator {
 
         let errorResult = ResultSet(label: report.resultLabel)
         errorResult.errorMessage = message
+        errorResult.failedQuery = report.failedSQL
         errorResult.statementAnchor = failedBatch?.batch.anchor
 
         guard parent.tabExecution.settle(claim) else { return }
@@ -431,8 +432,9 @@ extension QueryExecutionCoordinator {
         let timing = PluginQueryTiming(total: outputs.reduce(0) { $0 + $1.executionTime })
         parent.flushBufferToActiveResult(tabId: tabId, pinnedOnly: true)
         parent.tabManager.mutate(tabId: tabId) { tab in
-            tab.execution.errorMessage = message
-            tab.execution.errorQuery = report.failedSQL
+            // The Error result carries the failure, so the banner stays on it rather than over every other result.
+            tab.execution.errorMessage = nil
+            tab.execution.errorQuery = nil
             tab.execution.executionTime = timing.total
             tab.execution.lastExecutedAt = Date()
             tab.display.replaceUnpinnedResults(
@@ -491,6 +493,7 @@ extension QueryExecutionCoordinator {
     ) -> [ResultSet] {
         let databaseType = parent.connection.type
         let grammar = parent.lexicalGrammar
+        let firstNumber = parent.tabManager.tabs.first { $0.id == tabId }?.display.pinnedResultCount ?? 0
         var resultSets: [ResultSet] = []
         for (entry, output) in zip(prepared, outputs) {
             let isPlainQuery = { (sql: String) in
@@ -501,6 +504,7 @@ extension QueryExecutionCoordinator {
                 entry.batch,
                 resultSetCount: output.resultSets.count,
                 hasErrors: !output.errors.isEmpty,
+                grammar: grammar,
                 isPlainQuery: isPlainQuery
             ) {
                 let queries = entry.batch.statements.filter { isPlainQuery($0.sql) }
@@ -510,7 +514,7 @@ extension QueryExecutionCoordinator {
                     return makeStatementResultSet(
                         result: result,
                         sql: statement.sql,
-                        index: resultSets.count,
+                        index: firstNumber + resultSets.count,
                         baseQuery: replayable ? statement.sql : nil,
                         tabId: tabId,
                         anchor: StatementAnchor(statement)
@@ -518,11 +522,11 @@ extension QueryExecutionCoordinator {
                 }
             } else if output.resultSets.isEmpty {
                 produced = output.errors.isEmpty
-                    ? [countResultSet(output, anchor: entry.batch.anchor, index: resultSets.count)]
+                    ? [countResultSet(output, anchor: entry.batch.anchor, index: firstNumber + resultSets.count)]
                     : []
             } else {
                 produced = output.resultSets.enumerated().map { offset, result in
-                    numberedResultSet(result, anchor: entry.batch.anchor, index: resultSets.count + offset)
+                    numberedResultSet(result, anchor: entry.batch.anchor, index: firstNumber + resultSets.count + offset)
                 }
             }
             produced.last?.serverOutput = output.serverOutput

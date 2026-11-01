@@ -206,6 +206,33 @@ impl WorkspaceStore {
         async move { purging.await.unwrap_or(Err(WorkspaceSaveError::WriterStopped)) }
     }
 
+    /// Remove the saved tabs and drafts of every other database of the
+    /// connection `id` that was ever open beside it, as `purge` does for
+    /// one session. Their names hold a digest of the database, so the
+    /// writer finds them by the connection's part.
+    pub fn purge_databases_of(&self, id: uuid::Uuid) -> impl Future<Output = Result<(), WorkspaceSaveError>> + use<> {
+        let of_connection = |key: &SessionKey| matches!(key, SessionKey::SavedIn { id: of, .. } if *of == id);
+        self.inner.blocked.borrow_mut().retain(|key| !of_connection(key));
+        self.inner.moved_aside.borrow_mut().retain(|key| !of_connection(key));
+        let landings: Vec<_> = self
+            .inner
+            .outside
+            .keys_in_flight(of_connection)
+            .iter()
+            .filter_map(|key| self.inner.outside.landing(key))
+            .collect();
+        let (dir, writer) = (self.inner.dir.clone(), self.inner.writer.clone());
+        let prefix = WorkspaceFileName::databases_prefix(id);
+        async move {
+            for landing in landings {
+                let _ = landing.await;
+            }
+            let (purged, receiver) = oneshot::channel();
+            let _ = writer.send(WriteJob::PurgeNamed { dir, prefix, purged });
+            receiver.await.unwrap_or(Err(WorkspaceSaveError::WriterStopped))
+        }
+    }
+
     /// Queue `record` as the sessions the windows show. A newer one
     /// replaces it if the writer has not reached it yet.
     pub fn schedule_open_sessions(&self, record: OpenSessionsRecord) -> Result<(), WorkspaceSaveError> {
@@ -298,6 +325,7 @@ struct Round {
     /// A purge wins over a record queued for its file in the same
     /// round, whichever came first.
     purges: Vec<(PathBuf, DraftScope, Reply)>,
+    named_purges: Vec<(PathBuf, String, Reply)>,
     open_sessions: Option<(PathBuf, OpenSessionsRecord)>,
     waiting: Vec<(PathBuf, Reply)>,
 }
@@ -311,8 +339,23 @@ impl Round {
             WriteJob::OpenSessions { path, record } => self.open_sessions = Some((path, record)),
             WriteJob::Flush { path, written } => self.waiting.push((path, written)),
             WriteJob::Purge { path, drafts, purged } => self.purges.push((path, drafts, purged)),
+            WriteJob::PurgeNamed { dir, prefix, purged } => self.named_purges.push((dir, prefix, purged)),
         }
     }
+
+    fn purges_path(&self, path: &Path) -> bool {
+        self.purges.iter().any(|(purged, ..)| purged == path)
+            || self
+                .named_purges
+                .iter()
+                .any(|(_, prefix, _)| file_name_starts_with(path, prefix))
+    }
+}
+
+fn file_name_starts_with(path: &Path, prefix: &str) -> bool {
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name.starts_with(prefix))
 }
 
 async fn run_writer(
@@ -328,9 +371,9 @@ async fn run_writer(
         while let Ok(job) = jobs.try_recv() {
             round.take(job);
         }
-        let purged: HashSet<PathBuf> = round.purges.iter().map(|(path, ..)| path.clone()).collect();
-        for (path, record) in round.records {
-            if purged.contains(&path) {
+        let records = std::mem::take(&mut round.records);
+        for (path, record) in records {
+            if round.purges_path(&path) {
                 continue;
             }
             let outcome = write_record(&tasks, &write, path.clone(), record).await;
@@ -352,6 +395,18 @@ async fn run_writer(
             }
             let _ = reply.send(outcome);
         }
+        for (dir, prefix, reply) in round.named_purges {
+            last.retain(|path, _| !file_name_starts_with(path, &prefix));
+            let store = drafts.clone();
+            let outcome = tasks
+                .spawn_blocking_task(move || purge_named_blocking(&dir, &store, &prefix))
+                .await
+                .unwrap_or_else(|failure| Err(WorkspaceSaveError::Purge(failure.to_string())));
+            if let Err(error) = &outcome {
+                tracing::warn!(%error, "could not delete the saved tabs of a deleted connection's databases");
+            }
+            let _ = reply.send(outcome);
+        }
         for (path, written) in round.waiting {
             let _ = written.send(last.get(&path).cloned().unwrap_or(Ok(())));
         }
@@ -370,6 +425,38 @@ fn purge_blocking(path: &Path, drafts: &DraftStore, scope: &DraftScope) -> Resul
         .map_err(|error| error.to_string());
     let drafts = drafts.delete_scope_blocking(scope).map_err(|error| error.to_string());
     file.and(copies).and(drafts).map_err(WorkspaceSaveError::Purge)
+}
+
+/// Every session named with `prefix` in `dir` or in the drafts, whether
+/// it left a file, only a copy moved aside as `<name>.json.corrupt-…`,
+/// or only drafts. Each is purged as `purge_blocking` does; the first
+/// failure is the one reported.
+fn purge_named_blocking(dir: &Path, drafts: &DraftStore, prefix: &str) -> Result<(), WorkspaceSaveError> {
+    let mut stems = std::collections::BTreeSet::new();
+    for root in [dir, drafts.root()] {
+        let entries = match std::fs::read_dir(root) {
+            Ok(entries) => entries,
+            Err(error) if error.kind() == ErrorKind::NotFound => continue,
+            Err(error) => return Err(WorkspaceSaveError::Purge(error.to_string())),
+        };
+        for entry in entries.flatten() {
+            let name = entry.file_name();
+            let Some(name) = name.to_str().filter(|name| name.starts_with(prefix)) else {
+                continue;
+            };
+            stems.insert(name.split_once(".json").map_or(name, |(stem, _)| stem).to_owned());
+        }
+    }
+    let mut outcome = Ok(());
+    for stem in stems {
+        let purged = DraftScope::new(&stem)
+            .map_err(|error| WorkspaceSaveError::Purge(error.to_string()))
+            .and_then(|scope| purge_blocking(&dir.join(format!("{stem}.json")), drafts, &scope));
+        if outcome.is_ok() {
+            outcome = purged;
+        }
+    }
+    outcome
 }
 
 async fn write_record<D: VersionedDocument + Send + 'static>(
@@ -536,6 +623,7 @@ mod tests {
             tabs: vec![TabRecord::Editor {
                 draft: DraftId::new(),
                 file: None,
+                database: None,
             }],
         };
 
@@ -684,6 +772,7 @@ mod tests {
                 .map(|_| TabRecord::Editor {
                     draft: DraftId::new(),
                     file: None,
+                    database: None,
                 })
                 .collect(),
         };
@@ -795,6 +884,61 @@ mod tests {
         );
         assert!(!fixture.store.has_moved_aside_copy(&key));
         fixture.store.flush(&other).await.expect("written");
+        assert_eq!(fixture.on_disk(&other), record(2));
+    }
+
+    /// A deleted connection's other databases leave nothing behind,
+    /// whether one left its saved tabs, only a copy Reset moved aside, or
+    /// only drafts.
+    #[tokio::test]
+    async fn a_connections_databases_go_whatever_each_left() {
+        let fixture = Fixture::new();
+        let id = Uuid::new_v4();
+        let in_database = |id: Uuid, database: &str| SessionKey::SavedIn {
+            id,
+            database: database.to_owned(),
+        };
+        let (saved, moved_aside, drafts_only) = (
+            in_database(id, "analytics"),
+            in_database(id, "archive"),
+            in_database(id, "staging"),
+        );
+        let other = in_database(Uuid::new_v4(), "analytics");
+        fixture.store.schedule(&saved, record(1)).expect("scheduled");
+        fixture.store.flush(&saved).await.expect("written");
+        let aside = fixture.seed(&moved_aside, b"{ not json");
+        assert!(matches!(
+            fixture.store.load(&moved_aside).await,
+            WorkspaceLoad::Blocked(_)
+        ));
+        fixture.store.reset(&moved_aside).await.expect("reset");
+        let store = drafts(fixture.root.path());
+        let scope_of = |key: &SessionKey| WorkspaceFileName::for_key(key).draft_scope();
+        for key in [&saved, &drafts_only, &other] {
+            store
+                .write_blocking(&scope_of(key), DraftId::new(), "SELECT 1")
+                .expect("a draft");
+        }
+        fixture.store.schedule(&other, record(2)).expect("scheduled");
+        fixture.store.flush(&other).await.expect("written");
+
+        fixture.store.purge_databases_of(id).await.expect("purged");
+
+        assert!(!fixture.path(&saved).exists(), "a database's saved tabs stayed");
+        assert!(
+            !tablepro_storage::fs::moved_aside_exists_blocking(&aside).expect("list"),
+            "a copy moved aside with no file beside it stayed"
+        );
+        for key in [&saved, &drafts_only] {
+            assert!(
+                !store.root().join(scope_of(key).as_str()).exists(),
+                "drafts with no file beside them stayed"
+            );
+        }
+        assert!(
+            store.root().join(scope_of(&other).as_str()).exists(),
+            "another connection's drafts went"
+        );
         assert_eq!(fixture.on_disk(&other), record(2));
     }
 

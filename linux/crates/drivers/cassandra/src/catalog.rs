@@ -320,16 +320,18 @@ fn primary_index(table: &CatalogTable, columns: &[ColumnRow]) -> Option<IndexInf
         unique: true,
         primary: true,
         predicate: None,
+        definition: None,
     })
 }
 
-fn secondary_index(index: &IndexRow) -> IndexInfo {
+fn secondary_index(table: &CatalogTable, index: &IndexRow) -> IndexInfo {
     IndexInfo {
         name: index.name.clone(),
         keys: vec![index_key(&index.target)],
         unique: false,
         primary: false,
         predicate: None,
+        definition: Some(create_index(table, index)),
     }
 }
 
@@ -338,7 +340,7 @@ pub(crate) async fn fetch_indexes(link: &CqlLink, table: &CatalogTable) -> Resul
     let indexes = index_rows(link, table).await?;
     Ok(primary_index(table, &columns)
         .into_iter()
-        .chain(indexes.iter().map(secondary_index))
+        .chain(indexes.iter().map(|index| secondary_index(table, index)))
         .collect())
 }
 
@@ -470,7 +472,7 @@ pub(crate) async fn fetch_table_definition(
         }),
         indexes: primary_index(table, &columns)
             .into_iter()
-            .chain(indexes.iter().map(secondary_index))
+            .chain(indexes.iter().map(|index| secondary_index(table, index)))
             .collect(),
         columns: columns.iter().map(ColumnRow::definition).collect(),
         foreign_keys: Vec::new(),
@@ -479,6 +481,7 @@ pub(crate) async fn fetch_table_definition(
             create_statement,
             dependents,
         }),
+        options: None,
     })
 }
 

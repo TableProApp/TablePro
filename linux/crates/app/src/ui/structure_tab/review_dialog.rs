@@ -99,6 +99,13 @@ fn destructive_text(change: &DestructiveChange) -> String {
             "Makes column “{column}” NOT NULL. A NULL already in it is converted or refused.",
             &[("column", column)],
         ),
+        DestructiveChange::ConvertCharacterSet => crate::i18n::gettext(
+            "Converts the text in every column to the new character set. A character it lacks is changed or refused, and a column's type can grow to hold longer characters.",
+        ),
+        DestructiveChange::ChangeColumnCharacterSet { column } => crate::i18n::gettext_f(
+            "Converts the text in column “{column}” to its new character set. A character that set lacks is changed or refused.",
+            &[("column", column)],
+        ),
         DestructiveChange::DropIndex { index } => crate::i18n::gettext_f("Drops index “{index}”.", &[("index", index)]),
         DestructiveChange::DropForeignKey { key } => {
             crate::i18n::gettext_f("Drops foreign key “{key}”.", &[("key", key)])
@@ -277,6 +284,22 @@ mod tests {
                 column: "email".to_owned()
             }),
             "Makes column “email” NOT NULL. A NULL already in it is converted or refused."
+        );
+    }
+
+    #[test]
+    fn a_character_set_change_says_what_happens_to_the_text() {
+        assert_eq!(
+            destructive_text(&DestructiveChange::ChangeColumnCharacterSet {
+                column: "title".to_owned()
+            }),
+            "Converts the text in column “title” to its new character set. A character that set lacks is changed or \
+             refused."
+        );
+        assert!(
+            destructive_text(&DestructiveChange::ConvertCharacterSet).starts_with("Converts the text in every column"),
+            "{}",
+            destructive_text(&DestructiveChange::ConvertCharacterSet)
         );
     }
 

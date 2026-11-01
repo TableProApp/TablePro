@@ -37,6 +37,8 @@ static CAPABILITIES: DdlCapabilities = DdlCapabilities {
     column_defaults: true,
     required_columns: true,
     declared_column_order: true,
+    column_collations: false,
+    table_options: false,
 };
 
 fn alter_table(dialect: &MssqlDialect, table: &TableRef, action: &str) -> String {
@@ -566,6 +568,7 @@ mod tests {
             foreign_keys: Vec::new(),
             inbound_foreign_keys: Vec::new(),
             source: None,
+            options: None,
         }
     }
 
@@ -650,6 +653,7 @@ mod tests {
             unique: false,
             primary: false,
             predicate: Some("([sku] IS NOT NULL)".to_owned()),
+            definition: None,
         }];
         draft.foreign_keys = vec![tablepro_core::ForeignKeyInfo {
             name: "lines_order_fk".to_owned(),

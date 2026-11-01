@@ -155,17 +155,19 @@ extension QueryExecutionCoordinator {
         /// Captured now, while the result this decision was made against is still the active one.
         let cachedMetadata: ParsedSchemaMetadata? = needsMetadataFetch ? nil : ParsedSchemaMetadata.cached(
             rows: parent.tabSessionRegistry.tableRows(for: tabId),
-            primaryKeyColumns: tab.tableContext.primaryKeyColumns
+            context: tab.tableContext
         )
 
+        let readsView = tab.tableContext.knowsView(named: tableName)
         let boundValues = BoundParameterValues(values: parameters)
         let failureOutput = ServerOutputBox()
         let grammar = parent.lexicalGrammar
         let parameterizedTask = Task { [weak self, parent] in
             guard let self else { return }
 
-            if let tableName, !tableName.isEmpty { parent.prefetchForeignKeys(scope: scope) }
-            let schemaTask = QueryExecutor.schemaFetch(tableName: needsMetadataFetch ? tableName : nil, scope: scope)
+            let schemaTask = parent.startSchemaFetch(
+                tableName, uncached: needsMetadataFetch, isView: readsView, scope: scope
+            )
 
             do {
                 let (fetchResult, tableEdits) = try await DatabaseManager.shared.withScopedDriver(
@@ -589,12 +591,13 @@ extension QueryExecutionCoordinator {
     }
 
     private func statementResultSets(_ history: ExecutedStatementHistory, tabId: UUID) -> [ResultSet] {
-        zip(history.prepared, history.results).enumerated().map { index, pair in
+        let firstNumber = parent.tabManager.tabs.first { $0.id == tabId }?.display.pinnedResultCount ?? 0
+        return zip(history.prepared, history.results).enumerated().map { index, pair in
             let (statement, result) = pair
             return makeStatementResultSet(
                 result: result,
                 sql: statement.originalSQL,
-                index: index,
+                index: firstNumber + index,
                 baseQuery: statement.executableSQL,
                 baseQueryParameterValues: statement.parameterValues?.map { $0 as? String },
                 namedParameterStatement: statement.parameterValues == nil
@@ -726,6 +729,7 @@ extension QueryExecutionCoordinator {
 
         let errorRS = ResultSet(label: report.resultLabel)
         errorRS.errorMessage = contextMsg
+        errorRS.failedQuery = report.failedSQL
         errorRS.statementAnchor = report.failedStatementIndex
             .flatMap { statements.indices.contains($0) ? statements[$0] : nil }
             .map(StatementAnchor.init)
@@ -746,8 +750,9 @@ extension QueryExecutionCoordinator {
 
         parent.flushBufferToActiveResult(tabId: tabId, pinnedOnly: true)
         parent.tabManager.mutate(tabId: tabId) { tab in
-            tab.execution.errorMessage = contextMsg
-            tab.execution.errorQuery = failedStatementSQL
+            // The Error result carries the failure, so the banner stays on it rather than over every other result.
+            tab.execution.errorMessage = nil
+            tab.execution.errorQuery = nil
             tab.execution.executionTime = cumulativeTime
             tab.execution.lastExecutedAt = Date()
 

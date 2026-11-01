@@ -57,6 +57,52 @@ async fn expression_desc_partial_index_keys() {
     connection.close().await.unwrap();
 }
 
+/// An attached database's index keeps its SQL without the schema, so
+/// its statement names the schema, or it would index `main`'s table of
+/// the same name.
+#[tokio::test]
+async fn an_attached_index_statement_names_its_schema() {
+    let file = TestFile::new().await;
+    let other = file.directory().join("other.sqlite3");
+    create_database(&other).await.unwrap();
+    let connection = file.open().await;
+    let attach = format!("ATTACH DATABASE '{}' AS archive", other.display());
+    query(connection.as_ref(), &attach).await;
+    query(
+        connection.as_ref(),
+        "CREATE TABLE people (id INTEGER PRIMARY KEY, name TEXT)",
+    )
+    .await;
+    query(
+        connection.as_ref(),
+        "CREATE TABLE archive.people (id INTEGER PRIMARY KEY, name TEXT)",
+    )
+    .await;
+    query(connection.as_ref(), "CREATE INDEX archive.by_name ON people (name)").await;
+    let archived = TableRef::new(Some("archive".to_owned()), "people");
+
+    let read = connection.fetch_indexes(&archived, call()).await.unwrap();
+    let statement = read
+        .iter()
+        .find(|index| index.name == "by_name")
+        .and_then(|index| index.definition.clone())
+        .expect("a statement");
+    query(connection.as_ref(), "DROP INDEX archive.by_name").await;
+    query(connection.as_ref(), &statement).await;
+
+    assert_eq!(statement, "CREATE INDEX \"archive\".by_name ON people (name)");
+    assert_eq!(connection.fetch_indexes(&archived, call()).await.unwrap(), read);
+    assert!(
+        connection
+            .fetch_indexes(&table("people"), call())
+            .await
+            .unwrap()
+            .iter()
+            .all(|index| index.name != "by_name")
+    );
+    connection.close().await.unwrap();
+}
+
 #[tokio::test]
 async fn views_listed_and_attached_schema_listed() {
     let file = TestFile::new().await;
@@ -205,19 +251,24 @@ async fn integer_primary_key_no_autoincrement_is_rowid_alias() {
 }
 
 #[tokio::test]
-async fn integer_primary_key_with_default_is_not_auto_increment() {
+async fn integer_primary_key_with_default_still_numbers_itself() {
     let file = TestFile::new().await;
     let connection = file.open().await;
     apply(
         connection.as_ref(),
-        &["CREATE TABLE t (id INTEGER PRIMARY KEY DEFAULT 0, name TEXT)"],
+        &[
+            "CREATE TABLE t (id INTEGER PRIMARY KEY DEFAULT 5, name TEXT)",
+            "INSERT INTO t (name) VALUES ('a'), ('b')",
+        ],
     )
     .await
     .unwrap();
 
     let columns = connection.fetch_columns(&table("t"), call()).await.unwrap();
+    let stored = query(connection.as_ref(), "SELECT id FROM t ORDER BY id").await;
 
-    assert!(!columns[0].is_auto_increment);
+    assert_eq!(stored.rows, [[Value::Int(1)], [Value::Int(2)]]);
+    assert!(columns[0].is_auto_increment);
     connection.close().await.unwrap();
 }
 

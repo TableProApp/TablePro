@@ -4,6 +4,7 @@
 
 import Combine
 import Foundation
+import TableProTestSupport
 import Testing
 
 @testable import TablePro
@@ -298,27 +299,21 @@ struct MainContentCoordinatorRefreshTests {
         }
     }
 
-    @Test("Refresh in structure view dispatches to the structure refresh handler")
-    func refreshInStructureViewDispatchesToHandler() {
+    @Test("Refresh in structure view reloads the tab's structure session, not its rows")
+    func refreshInStructureViewReloadsTheSession() async throws {
         let (coordinator, tabManager) = makeCoordinator()
         let tabId = addTableTab(to: tabManager)
-        guard let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else {
-            Issue.record("expected tab to exist")
-            return
-        }
+        let idx = try #require(tabManager.tabs.firstIndex(where: { $0.id == tabId }))
         tabManager.tabs[idx].display.resultsViewMode = .structure
-
-        let handler = StructureViewActionHandler()
-        var refreshCalled = false
-        handler.refresh = { refreshCalled = true }
-        coordinator.structureActions = handler
+        let session = TestFixtures.makeStructureSession()
+        coordinator.structureSessions[tabId] = session
 
         let initialEpoch = coordinator.tabExecution.contentEpoch(for: tabId)
         coordinator.handleRefresh(hasPendingTableOps: false, onDiscard: {})
 
-        #expect(refreshCalled == true)
         #expect(coordinator.tabExecution.contentEpoch(for: tabId) == initialEpoch)
         #expect(coordinator.queryTasks.hasTask(for: tabId) == false)
+        try await waitUntil { session.partsReloadToken == 1 }
     }
 
     @Test("requestRefresh fires immediately and coalesces a rapid second call")
@@ -375,11 +370,45 @@ struct MainContentCoordinatorRefreshTests {
         tabManager.addVersionHistoryTab(subject: .savedQuery(id: UUID()), title: "History: Revenue")
         let tabId = tabManager.selectedTabId
         var requested: [UUID] = []
-        let subscription = AppEvents.shared.versionHistoryRefreshRequested.sink { requested.append($0) }
+        let subscription = AppEvents.shared.tabRefreshRequested.sink { requested.append($0) }
         defer { subscription.cancel() }
 
         coordinator.handleRefresh(hasPendingTableOps: false, onDiscard: {})
 
         #expect(requested == [tabId].compactMap { $0 })
+    }
+
+    @Test("Refresh on a tab that loads its own content asks that tab to reload")
+    func refreshOnSelfLoadingTabsAsksThem() {
+        let (coordinator, tabManager) = makeCoordinator()
+        var requested: [UUID] = []
+        let subscription = AppEvents.shared.tabRefreshRequested.sink { requested.append($0) }
+        defer { subscription.cancel() }
+
+        var expected: [UUID] = []
+        for tabType in [TabType.serverDashboard, .insights, .tableHealth] {
+            tabManager.addSingletonTab(tabType)
+            expected += [tabManager.selectedTabId].compactMap { $0 }
+            coordinator.handleRefresh(hasPendingTableOps: false, onDiscard: {})
+        }
+        tabManager.addObjectSourceTab(objectRef: DatabaseObjectRef(kind: .view, name: "active_orders", database: "shop"))
+        expected += [tabManager.selectedTabId].compactMap { $0 }
+        coordinator.handleRefresh(hasPendingTableOps: false, onDiscard: {})
+
+        #expect(requested == expected)
+    }
+
+    @Test("Refresh on Users & Roles reloads the principals through the tab's own handler")
+    func refreshOnUsersRolesReloads() {
+        let (coordinator, tabManager) = makeCoordinator()
+        tabManager.addSingletonTab(.usersRoles)
+        let actions = UsersRolesActionHandler()
+        var reloads = 0
+        actions.refresh = { reloads += 1 }
+        coordinator.usersRolesActions = actions
+
+        coordinator.handleRefresh(hasPendingTableOps: false, onDiscard: {})
+
+        #expect(reloads == 1)
     }
 }

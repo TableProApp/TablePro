@@ -76,7 +76,7 @@ async fn duplicate_sorting_key_edit_sends_no_mutation_row_guard_failed() {
     let changes = ChangeSet {
         changes: vec![RowChange::Update(RowUpdate {
             key: vec![Value::Int(1)],
-            assignments: vec![(1, Value::Text("x".to_owned()))],
+            assignments: vec![(1, CellInput::Value(Value::Text("x".to_owned())))],
         })],
     };
     let batch = planned(connection.as_ref(), &table(&name), &changes).await;
@@ -127,7 +127,7 @@ async fn an_insert_then_an_update_of_the_same_key_stops_the_update() {
             },
             RowChange::Update(RowUpdate {
                 key: vec![Value::Int(5)],
-                assignments: vec![(1, Value::Text("edited".to_owned()))],
+                assignments: vec![(1, CellInput::Value(Value::Text("edited".to_owned())))],
             }),
         ],
     };
@@ -215,7 +215,7 @@ async fn write_statements_never_carry_max_execution_time() {
     let changes = ChangeSet {
         changes: vec![RowChange::Update(RowUpdate {
             key: vec![Value::Int(1)],
-            assignments: vec![(1, Value::Text("b".to_owned()))],
+            assignments: vec![(1, CellInput::Value(Value::Text("b".to_owned())))],
         })],
     };
     let batch = planned(connection.as_ref(), &table(&name), &changes).await;
@@ -420,15 +420,17 @@ async fn killed_mutation_unresolvable_despite_another_tables_mutation_in_its_win
         let update = batch_on(&held, &[&format!("ALTER TABLE {held_table} UPDATE n = 1 WHERE 1")]);
         tokio::spawn(async move { connection.write_batch(&update, within(CALL)).await })
     };
-    let waiting = format!(
-        "SELECT count() FROM system.processes WHERE query LIKE 'ALTER TABLE%{held}%' \
-         AND query NOT LIKE '%system.processes%'"
+    // The server lists the ALTER in system.processes before it registers
+    // the mutation, and KILL MUTATION only sees system.mutations.
+    let registered = format!(
+        "SELECT count() FROM system.mutations WHERE database = '{DATABASE}' AND table = '{held}' \
+         AND NOT is_done"
     );
     let give_up = Instant::now() + Duration::from_secs(10);
-    while count(connection.as_ref(), &waiting).await == 0 {
+    while count(connection.as_ref(), &registered).await == 0 {
         assert!(
             Instant::now() < give_up,
-            "the ALTER never showed up in system.processes"
+            "the ALTER's mutation never showed up in system.mutations"
         );
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
@@ -437,11 +439,12 @@ async fn killed_mutation_unresolvable_despite_another_tables_mutation_in_its_win
         &format!("ALTER TABLE {other_table} UPDATE n = 1 WHERE 1"),
     )
     .await;
-    admin(
+    let killed = admin(
         connection.as_ref(),
         &format!("KILL MUTATION WHERE database = '{DATABASE}' AND table = '{held}' SYNC"),
     )
     .await;
+    assert_eq!(killed.rows().len(), 1, "KILL MUTATION found no mutation on {held}");
 
     let outcome = writing.await.expect("the write task");
     let Err(DriverError::CommitOutcomeUnknown { token: Some(token), .. }) = outcome else {
@@ -652,4 +655,30 @@ async fn f001_read_only_insert_164() {
     editor.close().await;
     reader.close().await.expect("a close");
     owner.close().await.expect("a close");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn every_cell_expression_is_evaluated_by_the_server() {
+    let fixture = start().await;
+    let connection = connect(&fixture, false).await;
+    let name = unique("stamps");
+    let qualified = quoted(&name);
+    setup(
+        connection.as_ref(),
+        &[
+            &format!(
+                "CREATE TABLE {qualified} (id Int32, seen Nullable(DateTime), precise Nullable(DateTime64(3)), \
+                 day Nullable(Date), wide Nullable(Date32)) ENGINE = MergeTree ORDER BY id"
+            ),
+            &format!("INSERT INTO {qualified} (id) VALUES (1)"),
+        ],
+    )
+    .await;
+
+    let checked = tablepro_test_support::check_cell_expressions(connection.as_ref(), &table(&name), || within(CALL))
+        .await
+        .expect("every expression saves");
+
+    assert_eq!(checked, 4);
 }

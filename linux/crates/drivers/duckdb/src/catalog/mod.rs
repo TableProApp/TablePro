@@ -258,6 +258,7 @@ pub(crate) fn fetch_indexes(link: &Link, catalog: &str, table: &TableRef) -> Res
             unique: true,
             primary: kind == "PRIMARY KEY",
             predicate: None,
+            definition: None,
         })
         .collect();
     let columns: HashSet<String> = fetch_columns(link, catalog, table)?
@@ -268,7 +269,7 @@ pub(crate) fn fetch_indexes(link: &Link, catalog: &str, table: &TableRef) -> Res
         link,
         // DuckDB lists an index's keys as the text of a list.
         "SELECT index_name, CAST(is_unique AS VARCHAR), CAST(is_primary AS VARCHAR), \
-                array_to_string(CAST(expressions AS VARCHAR[]), chr(31)) \
+                array_to_string(CAST(expressions AS VARCHAR[]), chr(31)), sql \
          FROM duckdb_indexes() WHERE database_name = ? AND schema_name = ? AND table_name = ? \
          ORDER BY index_name",
         &[catalog, schema_of(table), &table.name],
@@ -283,9 +284,16 @@ pub(crate) fn fetch_indexes(link: &Link, catalog: &str, table: &TableRef) -> Res
             unique: flag(row, 1),
             primary: flag(row, 2),
             predicate: None,
+            definition: statement(&text(row, 4)),
         }
     }));
     Ok(indexes)
+}
+
+/// DuckDB keeps the text the index was created with, semicolon and all.
+fn statement(sql: &str) -> Option<String> {
+    let sql = sql.trim().trim_end_matches(';').trim_end();
+    (!sql.is_empty()).then(|| sql.to_owned())
 }
 
 /// One key of an index: a column where the text names one, an
@@ -546,6 +554,7 @@ pub(crate) fn fetch_table_definition(
         foreign_keys: fetch_foreign_keys(link, catalog, table)?,
         inbound_foreign_keys: inbound_foreign_keys(link, catalog, table)?,
         source,
+        options: None,
     })
 }
 

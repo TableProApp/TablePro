@@ -4,9 +4,10 @@ use tablepro_core::column::{
 };
 use tablepro_core::ddl::DdlDialect;
 use tablepro_core::dialect::{
-    BindError, BindTarget, DialectCapabilities, InsertBatchLimits, InsertConflict, KeysetDirection, LikeCase, LikeForm,
-    LiteralError, Placeholder, SqlDialect,
+    BindError, BindTarget, DatabaseLayout, DialectCapabilities, InsertBatchLimits, InsertConflict, KeysetDirection,
+    LikeCase, LikeForm, LiteralError, Placeholder, SqlDialect,
 };
+use tablepro_core::edit::{CellExpression, MomentKind};
 use tablepro_core::export::value_to_text;
 use tablepro_core::meta::{EngineRowId, EngineRowIdPart, TableRef};
 use tablepro_core::sql_syntax::{
@@ -53,6 +54,10 @@ impl ClickHouseDialect {
 }
 
 impl SqlDialect for ClickHouseDialect {
+    fn database_layout(&self) -> DatabaseLayout {
+        DatabaseLayout::AsSchemas
+    }
+
     fn capabilities(&self) -> DialectCapabilities {
         // A mutation reports nothing useful about how many rows it
         // touched, so a write proves itself with a probe instead.
@@ -66,12 +71,18 @@ impl SqlDialect for ClickHouseDialect {
         SqlGrammar::ClickHouse
     }
 
+    fn cell_expressions(&self) -> &'static [CellExpression] {
+        const MOMENT: &[MomentKind] = &[MomentKind::Timestamp];
+        const DATE: &[MomentKind] = &[MomentKind::Date];
+        const EXPRESSIONS: &[CellExpression] = &[
+            CellExpression::new("now()", MOMENT, &["CURRENT_TIMESTAMP()", "UTC_TIMESTAMP()"]),
+            CellExpression::new("today()", DATE, &["CURDATE()", "CURRENT_DATE()"]),
+        ];
+        EXPRESSIONS
+    }
+
     fn quote_identifier(&self, name: &str) -> String {
-        let mut quoted = String::with_capacity(name.len() + 2);
-        quoted.push('`');
-        escape_into(name, &mut quoted);
-        quoted.push('`');
-        quoted
+        quote(name)
     }
 
     fn placeholder(&self, ordinal: usize, value: Value, target: BindTarget<'_>) -> Result<Placeholder, BindError> {
@@ -207,6 +218,14 @@ impl SqlDialect for ClickHouseDialect {
     fn key_probe(&self, table_sql: &str, predicate_sql: &str) -> String {
         format!("SELECT count() FROM (SELECT 1 FROM {table_sql} WHERE {predicate_sql} LIMIT 2)")
     }
+}
+
+pub(crate) fn quote(name: &str) -> String {
+    let mut quoted = String::with_capacity(name.len() + 2);
+    quoted.push('`');
+    escape_into(name, &mut quoted);
+    quoted.push('`');
+    quoted
 }
 
 fn escape_into(text: &str, out: &mut String) {
@@ -424,6 +443,7 @@ const CREDENTIAL_RULES: CredentialRules = CredentialRules {
         "aes_encrypt_mysql",
         "aes_decrypt_mysql",
     ],
+    secret_parameters: &[],
 };
 
 #[cfg(test)]

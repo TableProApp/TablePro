@@ -49,6 +49,9 @@ pub fn refusal_text(reason: &RefusalReason) -> String {
             u32::try_from(triggers.len()).unwrap_or(u32::MAX),
             &[("triggers", &triggers.join(", "))],
         ),
+        RefusalReason::ColumnsConverted => {
+            crate::i18n::gettext("Save column and primary key changes before converting existing columns.")
+        }
     }
 }
 
@@ -86,7 +89,9 @@ fn draft_problem_text(problem: &DraftProblem) -> String {
 pub fn save_blocker_text(blocker: &SaveBlocker) -> String {
     match blocker {
         SaveBlocker::Draft(problem) => draft_problem_text(problem),
-        SaveBlocker::UnparsedDefault(_) => crate::i18n::gettext("Fix the highlighted fields first."),
+        SaveBlocker::UnparsedDefault(_) | SaveBlocker::InvalidAutoIncrement => {
+            crate::i18n::gettext("Fix the highlighted fields first.")
+        }
     }
 }
 
@@ -106,6 +111,12 @@ pub fn build_error_text(error: &BuildDdlError) -> String {
         }
         BuildDdlError::Unsupported(DdlOperation::RequiredColumn) => {
             crate::i18n::gettext("This database can make only primary key columns NOT NULL.")
+        }
+        BuildDdlError::Unsupported(DdlOperation::AlterTableOptions) => crate::i18n::gettext(
+            "This database can't change this table's character set, collation or next auto increment value.",
+        ),
+        BuildDdlError::Unsupported(DdlOperation::AlterColumnCollation) => {
+            crate::i18n::gettext("This database can't change a column's character set or collation.")
         }
         BuildDdlError::Unsupported(_) => crate::i18n::gettext("This database can't make this change."),
         BuildDdlError::InvalidType { column, error } => crate::i18n::gettext_f(

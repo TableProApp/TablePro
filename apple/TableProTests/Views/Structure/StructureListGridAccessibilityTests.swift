@@ -162,7 +162,7 @@ struct StructureListGridAccessibilityTests {
         }
         let table = try #require(Self.mainTable(in: window.contentView))
 
-        #expect(table.accessibilityLabel() == StructureTab.triggers.displayName)
+        #expect(table.accessibilityLabel() == StructurePane.triggers.displayName)
     }
 
     private static func mainTable(in view: NSView?) -> DataGridTableView? {

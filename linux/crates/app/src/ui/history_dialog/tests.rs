@@ -16,7 +16,7 @@ use uuid::Uuid;
 use super::*;
 use crate::runtime::AppRuntime;
 use crate::services::history_preferences::HistoryPreferences;
-use crate::test_support::{descendants, drain_main_context, test_runtime, wait_until};
+use crate::test_support::{assert_access_keys, descendants, drain_main_context, test_runtime, wait_until};
 use crate::ui::file_reveal::RecordingRevealer;
 
 /// Long enough that a loaded machine cannot decide the outcome; a
@@ -105,6 +105,7 @@ impl Harness {
                 safe_mode: tablepro_core::SafeModeLevel::Off,
                 external_access: tablepro_core::ExternalAccess::ReadOnly,
                 ai_policy: tablepro_core::AiPolicy::Ask,
+                query_timeout_secs: None,
                 auth_mode: tablepro_core::AuthMode::Password,
                 ssh: None,
                 last_opened_at: None,
@@ -359,7 +360,7 @@ fn row_context_menu_open_emits_output_for_clicked_id() {
     let menu = dialog.imp().parts.get().expect("parts").menu.clone();
     assert!(menu.is_visible(), "the menu did not open");
     let model = menu.menu_model().expect("a menu model");
-    let (action, target) = menu_item(&model, "Open in New Tab").expect("an Open item");
+    let (action, target) = menu_item(&model, "_Open in New Tab").expect("an Open item");
     menu.popdown();
     dialog.activate_action(&action, target.as_ref()).expect("the action");
 
@@ -601,6 +602,29 @@ fn the_open_search_bar_is_labelled() {
     );
 }
 
+#[test]
+fn every_row_menu_item_has_an_access_key_of_its_own() {
+    let entry = |pinned: bool| {
+        HistoryEntryObject::new(tablepro_storage::query_history::Entry {
+            id: 1,
+            query: "SELECT 1".to_owned(),
+            driver_id: "sqlite".to_owned(),
+            connection_id: Uuid::new_v4(),
+            connection_name: "Local".to_owned(),
+            executed_at: SystemTime::UNIX_EPOCH,
+            duration_ms: None,
+            rows_affected: None,
+            success: true,
+            cancelled: false,
+            pinned,
+            error: None,
+        })
+    };
+
+    assert_access_keys(&row_menu(&entry(false)));
+    assert_access_keys(&row_menu(&entry(true)));
+}
+
 #[gtk4::test]
 fn history_dialog_show_in_files_reveals_the_database_file() {
     let harness = Harness::new();
@@ -611,7 +635,7 @@ fn history_dialog_show_in_files_reveals_the_database_file() {
         .filter_map(|widget| widget.downcast::<gtk::MenuButton>().ok())
         .find_map(|button| button.menu_model())
         .expect("the dialog's menu");
-    let (action, target) = menu_item(&menu, "Show in Files").expect("a Show in Files item");
+    let (action, target) = menu_item(&menu, "_Show in Files").expect("a Show in Files item");
 
     dialog.activate_action(&action, target.as_ref()).expect("the action");
 
@@ -658,7 +682,7 @@ fn menu_key_opens_the_menu_of_the_focused_row() {
     let menu = dialog.imp().parts.get().expect("parts").menu.clone();
     assert!(menu.is_visible(), "the menu did not open");
     let model = menu.menu_model().expect("a menu model");
-    let (_, target) = menu_item(&model, "Delete").expect("a Delete item");
+    let (_, target) = menu_item(&model, "_Delete").expect("a Delete item");
     assert_eq!(target.and_then(|target| target.get::<i64>()), Some(first));
     menu.popdown();
 }

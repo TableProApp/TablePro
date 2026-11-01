@@ -1,3 +1,4 @@
+use tablepro_core::edit::CellInput;
 use tablepro_core::meta::RowIdentity;
 use tablepro_core::save::{ChangeSet, RowChange, RowUpdate, plan_save};
 use tablepro_core::statement::RowGuard;
@@ -85,7 +86,7 @@ fn relabel(
     let changes = ChangeSet {
         changes: vec![RowChange::Update(RowUpdate {
             key: vec![Value::Int(id)],
-            assignments: vec![(label, Value::Text("changed".to_owned()))],
+            assignments: vec![(label, CellInput::Value(Value::Text("changed".to_owned())))],
         })],
     };
     let plan = plan_save(connection.dialect().as_ref(), table, columns, identity, &changes)

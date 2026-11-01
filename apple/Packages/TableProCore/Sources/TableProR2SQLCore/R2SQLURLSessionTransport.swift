@@ -75,6 +75,17 @@ private final class TaskTracker: NSObject, URLSessionTaskDelegate, @unchecked Se
         transport?.register(task)
     }
 
+    // A redirect would carry the API token to wherever it points.
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        willPerformHTTPRedirection response: HTTPURLResponse,
+        newRequest request: URLRequest,
+        completionHandler: @escaping (URLRequest?) -> Void
+    ) {
+        completionHandler(nil)
+    }
+
     func finish() {
         guard let task = lock.withLock({ task }) else { return }
         transport?.unregister(task)

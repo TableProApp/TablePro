@@ -10,6 +10,9 @@ use crate::sql_syntax::script::{LexicalSettings, OpenConstruct, ScriptTokenKind}
 /// MariaDB's MSSQL mode ends a `[name]` at a `]` that is not doubled.
 const MARIADB_BRACKETS: BracketIdentifier = BracketIdentifier::Doubling;
 
+/// U+FEFF as UTF-8.
+const BYTE_ORDER_MARK: &[u8] = b"\xEF\xBB\xBF";
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct LexedToken {
     pub kind: ScriptTokenKind,
@@ -85,8 +88,16 @@ impl<'a> Lexer<'a> {
 
     fn lex_at(&mut self, start: usize, first: u8, delimiter: Option<&str>) -> LexedToken {
         let next = self.bytes.get(start + 1).copied();
+        if self.syntax.tcl_parameters
+            && let Some(end) = self.tcl_parameter_end(start, first)
+        {
+            return self.plain(ScriptTokenKind::Word, end);
+        }
         match first {
             b if is_space(b) => self.plain(ScriptTokenKind::Whitespace, self.whitespace_end(start)),
+            0xEF if self.syntax.byte_order_mark_is_space && self.bytes[start..].starts_with(BYTE_ORDER_MARK) => {
+                self.plain(ScriptTokenKind::Whitespace, start + BYTE_ORDER_MARK.len())
+            }
             b'-' if next == Some(b'-') && self.dash_comment_starts(start) => self.line_comment(start),
             b'#' if self.hash_comment_starts(next) => self.line_comment(start),
             b'/' if next == Some(b'*') => self.comment(start),
@@ -264,10 +275,43 @@ impl<'a> Lexer<'a> {
         None
     }
 
+    /// An `E'...'` string, with every `'...'` that continues it: the
+    /// server reads those by the rules of the first piece, so a backslash
+    /// escapes in them whatever `standard_conforming_strings` says.
     fn escape_string(&self, start: usize) -> LexedToken {
-        match self.quote_end(start + 2, b'\'', true) {
-            Some(end) => self.plain(ScriptTokenKind::StringLiteral, end),
-            None => self.unterminated(start, OpenConstruct::StringLiteral),
+        let mut from = start + 2;
+        loop {
+            let Some(end) = self.quote_end(from, b'\'', true) else {
+                return self.unterminated(start, OpenConstruct::StringLiteral);
+            };
+            match self.continuing_quote(end) {
+                Some(quote) => from = quote + 1,
+                None => return self.plain(ScriptTokenKind::StringLiteral, end),
+            }
+        }
+    }
+
+    /// The quote that carries on the string that closed just before
+    /// `from`, as PostgreSQL's `quotecontinue` rule finds it: only blanks
+    /// and `--` comments in between, a line break among them. Before the
+    /// first line break only a space, tab or form feed counts as a blank.
+    fn continuing_quote(&self, from: usize) -> Option<usize> {
+        let mut index = from;
+        let mut line_broke = false;
+        loop {
+            match *self.bytes.get(index)? {
+                b'\n' | b'\r' => {
+                    line_broke = true;
+                    index += 1;
+                }
+                b' ' | b'\t' | 0x0c => index += 1,
+                0x0b if line_broke => index += 1,
+                b'-' if self.bytes.get(index + 1) == Some(&b'-') => {
+                    index += self.bytes[index..].iter().position(|&b| b == b'\n' || b == b'\r')?;
+                }
+                b'\'' if line_broke => return Some(index),
+                _ => return None,
+            }
         }
     }
 
@@ -335,6 +379,42 @@ impl<'a> Lexer<'a> {
             return self.word(start, delimiter);
         }
         self.plain(ScriptTokenKind::Punct, start + 1)
+    }
+
+    /// SQLite reads `$space::name(…)` as one token, and the same after `@`,
+    /// `:` and `#`, as `sqlite3GetToken` reads it: a parameter whose name
+    /// runs from the parenthesis to the next `)` whatever stands between,
+    /// a quote or a `;` included. White space or the end of the text ends
+    /// it first, as a token SQLite refuses. `None` for a name that is one
+    /// word, which needs no rule of its own.
+    fn tcl_parameter_end(&self, start: usize, first: u8) -> Option<usize> {
+        if !matches!(first, b'$' | b'@' | b':' | b'#') {
+            return None;
+        }
+        let mut named = false;
+        let mut qualified = false;
+        let mut index = start + 1;
+        while let Some(&b) = self.bytes.get(index) {
+            match b {
+                b if self.is_word_part(b) => {
+                    named = true;
+                    index += 1;
+                }
+                b':' if self.bytes.get(index + 1) == Some(&b':') => {
+                    qualified = true;
+                    index += 2;
+                }
+                b'(' if named => {
+                    let stop = self.bytes[index..]
+                        .iter()
+                        .position(|&b| matches!(b, b')' | 0) || is_space(b))
+                        .map_or(self.bytes.len(), |offset| index + offset);
+                    return Some(stop + usize::from(self.bytes.get(stop) == Some(&b')')));
+                }
+                _ => break,
+            }
+        }
+        qualified.then_some(index)
     }
 
     /// MySQL 8.1 and later quote text in `$tag$ … $tag$` where a token
@@ -428,7 +508,8 @@ impl<'a> Lexer<'a> {
     /// A numeric constant as SQL spells it: digits, an optional fraction
     /// and an optional exponent, so `0.5` and `1.5e-3` stay one token.
     /// Letters and underscores glued on after that (`0x1F`, `1_000`, a
-    /// malformed `1abc`) stay part of it, as they did before.
+    /// malformed `1abc`) stay part of it, as they did before. An exponent
+    /// needs a digit, but for the reading that signs an empty one.
     fn number_end(&self, start: usize, delimiter: Option<&str>) -> usize {
         let digit_at = |at: usize| self.bytes.get(at).is_some_and(u8::is_ascii_digit);
         let digits_end = |mut at: usize| {
@@ -452,7 +533,7 @@ impl<'a> Lexer<'a> {
         }
         if matches!(self.bytes.get(end), Some(b'e' | b'E')) {
             let sign = usize::from(matches!(self.bytes.get(end + 1), Some(b'+' | b'-')));
-            if digit_at(end + 1 + sign) {
+            if digit_at(end + 1 + sign) || self.reading.signs_empty_exponents() {
                 end = digits_end(end + 1 + sign);
             }
         }

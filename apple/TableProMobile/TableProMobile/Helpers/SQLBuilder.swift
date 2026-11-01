@@ -11,17 +11,17 @@ nonisolated enum SQLBuilder {
 
     static func quoteIdentifier(_ name: String, for type: DatabaseType) -> String {
         if speaksMySQLDialect(type) {
-            return "`\(name.replacingOccurrences(of: "`", with: "``"))`"
+            return "`\(name.replacingOccurrences(of: "`", with: "``", options: .literal))`"
         }
         switch type {
         case .postgresql, .redshift:
-            return "\"\(name.replacingOccurrences(of: "\"", with: "\"\""))\""
+            return "\"\(name.replacingOccurrences(of: "\"", with: "\"\"", options: .literal))\""
         case .mssql:
-            return "[\(name.replacingOccurrences(of: "]", with: "]]"))]"
+            return "[\(name.replacingOccurrences(of: "]", with: "]]", options: .literal))]"
         case .clickhouse:
             return clickHouseQuotedIdentifier(name)
         default:
-            return "\"\(name.replacingOccurrences(of: "\"", with: "\"\""))\""
+            return "\"\(name.replacingOccurrences(of: "\"", with: "\"\"", options: .literal))\""
         }
     }
 
@@ -338,15 +338,14 @@ nonisolated enum SQLBuilder {
         let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, !columns.isEmpty else { return "" }
 
-        let dialect = dialectDescriptor(for: type)
-        let pattern = escapeLikePattern(trimmed, dialect: dialect)
-        let likeEscape: String = dialect.likeEscapeStyle == .explicit ? " ESCAPE '!'" : ""
+        let generator = filterGenerator(dialect: dialectDescriptor(for: type), type: type)
+        let pattern = generator.likePatternBody(trimmed)
 
         let conditions = columns.map { col -> String in
             let quotedCol = quoteIdentifier(col.name, for: type)
             let castExpr = searchCastExpression(quotedCol, for: type)
             let likeOp = (type == .postgresql || type == .redshift) ? "ILIKE" : "LIKE"
-            return "\(castExpr) \(likeOp) '%\(pattern)%'\(likeEscape)"
+            return "\(castExpr) \(likeOp) '%\(pattern)%'\(generator.likeEscapeClause)"
         }
 
         return "(\(conditions.joined(separator: " OR ")))"
@@ -368,25 +367,6 @@ nonisolated enum SQLBuilder {
         default:
             return "CAST(\(quotedColumn) AS TEXT)"
         }
-    }
-
-    private static func escapeLikePattern(_ value: String, dialect: SQLDialectDescriptor) -> String {
-        var result = value
-            .replacingOccurrences(of: "'", with: "''")
-            .replacingOccurrences(of: "\0", with: "")
-        if dialect.likeEscapeStyle == .explicit {
-            result = result
-                .replacingOccurrences(of: "!", with: "!!")
-                .replacingOccurrences(of: "%", with: "!%")
-                .replacingOccurrences(of: "_", with: "!_")
-        } else {
-            if dialect.requiresBackslashEscaping {
-                result = result.replacingOccurrences(of: "\\", with: "\\\\")
-            }
-            result = result.replacingOccurrences(of: "%", with: "\\%")
-            result = result.replacingOccurrences(of: "_", with: "\\_")
-        }
-        return result
     }
 
     private static func buildOrderByClause(_ sortState: SortState, for type: DatabaseType) -> String {

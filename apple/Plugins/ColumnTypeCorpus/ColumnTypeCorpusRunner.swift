@@ -45,14 +45,14 @@ struct ColumnTypeCorpusRunner: Sendable {
     var includes: @Sendable (ColumnTypeCorpus.Column) -> Bool = { _ in true }
 
     private var grammar: SQLLexicalGrammar {
-        let declared = dialect?.lexicalFeatures.map { SQLLexicalGrammar(rawValue: $0.rawValue) }
+        let declared = dialect?.lexicalFeatures.map { SQLLexicalGrammar(rawValue: UInt64($0.rawValue)) }
         return SQLLexicalReadings.resolve(databaseTypeId: corpus.databaseTypeId, declared: declared, session: nil)
             .execution
     }
 
     // The kit's features are the grammar facts below bit 25, bit for bit (SQLLexicalResolver.pluginFeaturePairs).
     private var lexicalFeatures: SQLLexicalFeatures {
-        SQLLexicalFeatures(rawValue: grammar.rawValue & ((1 << 25) - 1))
+        SQLLexicalFeatures(rawValue: UInt32(grammar.rawValue & ((1 << 25) - 1)))
     }
 
     func run(log: @escaping @Sendable (String) -> Void) async -> ColumnTypeCorpusReport {

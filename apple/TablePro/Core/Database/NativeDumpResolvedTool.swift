@@ -16,6 +16,26 @@ enum NativeDumpToolFlavor: String, Equatable, Sendable {
     case mariadb
 }
 
+struct NativeDumpToolRelease: Comparable, Sendable {
+    let major: Int
+    let minor: Int
+    let patch: Int
+
+    init(_ major: Int, _ minor: Int, _ patch: Int) {
+        self.init(major: major, minor: minor, patch: patch)
+    }
+
+    init(major: Int, minor: Int, patch: Int) {
+        self.major = major
+        self.minor = minor
+        self.patch = patch
+    }
+
+    static func < (lhs: Self, rhs: Self) -> Bool {
+        (lhs.major, lhs.minor, lhs.patch) < (rhs.major, rhs.minor, rhs.patch)
+    }
+}
+
 /// The binary a dump or restore is about to run, and what the app knows about it.
 ///
 /// It exists because an argument list is not a function of the connection alone. MariaDB renamed

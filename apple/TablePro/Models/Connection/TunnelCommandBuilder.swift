@@ -226,6 +226,6 @@ enum TunnelCommandBuilder {
 
     private static func displayQuoted(_ token: String) -> String {
         guard token.rangeOfCharacter(from: .whitespacesAndNewlines) != nil else { return token }
-        return "'" + token.replacingOccurrences(of: "'", with: "'\\''") + "'"
+        return "'" + token.replacingOccurrences(of: "'", with: "'\\''", options: .literal) + "'"
     }
 }

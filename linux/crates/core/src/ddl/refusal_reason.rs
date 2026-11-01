@@ -41,6 +41,9 @@ pub enum RefusalReason {
     /// Triggers insert into the table without naming its columns, so they
     /// take one value per column and break when one is added or dropped.
     InsertedByPosition(Vec<String>),
+    /// The same change converts every column's character set, so a column
+    /// or primary key change waits for a save of its own.
+    ColumnsConverted,
 }
 
 impl fmt::Display for RefusalReason {
@@ -61,6 +64,7 @@ impl fmt::Display for RefusalReason {
             Self::InsertedByPosition(triggers) => {
                 write!(f, "triggers {} insert into the table by position", triggers.join(", "))
             }
+            Self::ColumnsConverted => f.write_str("the same change converts every column's character set"),
         }
     }
 }

@@ -1,13 +1,16 @@
 use std::sync::Arc;
 
 use gtk4::glib;
-use tablepro_core::ddl::TableDraft;
-use tablepro_session::LinkGeneration;
+use tablepro_core::ddl::{CharacterSet, TableDraft};
+use tablepro_session::{LinkGeneration, OperationError};
 
+use super::character_set_fetch::fetch_character_sets;
+use super::context::CharacterSets;
+use super::draft_column_object::DraftColumnObject;
 use super::structure_fetch::fetch_structure;
 use super::{
     LoadInput, LoadedStructure, StructureCommand, StructureEffects, StructureMode, StructureModel,
-    StructureRequestKind, StructureTabOutput,
+    StructureRequestKind, StructureTabOutput, items, replace_items,
 };
 use crate::runtime::{RequestTicket, Stamped};
 use crate::ui::tab_load::{ContentPage, LoadFailure, LoadPresentation};
@@ -16,8 +19,9 @@ impl StructureModel {
     pub(super) fn on_load(&mut self, input: LoadInput, fx: &mut StructureEffects) {
         match input {
             LoadInput::Start => {
-                if self.mode() == StructureMode::Edit {
-                    self.read_definition(fx);
+                match self.mode() {
+                    StructureMode::Edit => self.read_definition(fx),
+                    StructureMode::New => self.read_character_sets(),
                 }
                 self.sync_add_rows();
                 self.regenerate_sql_preview(&self.pending());
@@ -109,6 +113,48 @@ impl StructureModel {
         self.refetching = false;
         self.sync_editable();
         self.recompute_dirty_state(fx);
+        self.read_character_sets();
+    }
+
+    /// Read the server's character sets once the dialect says the rows
+    /// list them. They stay for the tab's life once read; a failed read
+    /// is asked again with the next definition or reconnect.
+    pub(super) fn read_character_sets(&mut self) {
+        let wanted = {
+            let context = self.context.borrow();
+            context.offers_character_sets() && !matches!(context.character_sets, CharacterSets::Read(_))
+        };
+        if !wanted || self.sequencer.is_pending(StructureRequestKind::CharacterSets) {
+            return;
+        }
+        let RequestTicket { stamp, cancel } = self.sequencer.issue(StructureRequestKind::CharacterSets);
+        let work = fetch_character_sets(self.session.clone(), cancel);
+        let tab = self.this.clone();
+        let _delivery = crate::runtime::spawn_and_deliver(&self.tasks, work, move |joined| {
+            let value = joined.unwrap_or_else(|failure| Err(Arc::new(OperationError::from(failure))));
+            if let Some(tab) = tab.upgrade() {
+                tab.send(LoadInput::Command(Box::new(StructureCommand::CharacterSetsRead(
+                    Stamped { stamp, value },
+                ))));
+            }
+        });
+    }
+
+    /// The rows list the character sets as they are built, so the column
+    /// rows are built again, and the Options page refilled.
+    fn on_character_sets(&mut self, value: Result<Vec<CharacterSet>, Arc<OperationError>>) {
+        let lists_columns = {
+            let mut context = self.context.borrow_mut();
+            context.character_sets = match value {
+                Ok(sets) => CharacterSets::Read(sets.into()),
+                Err(_) => CharacterSets::Unreadable,
+            };
+            context.capabilities().column_collations
+        };
+        self.show_table_options();
+        if lists_columns {
+            replace_items(&self.columns, items::<DraftColumnObject>(&self.columns));
+        }
     }
 
     /// With a definition on screen it stays, under the banner. A read
@@ -129,7 +175,16 @@ impl StructureModel {
     }
 
     fn on_command(&mut self, command: StructureCommand, fx: &mut StructureEffects) {
-        let StructureCommand::Loaded(Stamped { stamp, value }) = command;
+        let (stamp, value) = match command {
+            StructureCommand::Loaded(Stamped { stamp, value }) => (stamp, value),
+            StructureCommand::CharacterSetsRead(Stamped { stamp, value }) => {
+                if self.sequencer.accept(StructureRequestKind::CharacterSets, stamp) {
+                    self.failed.record(StructureRequestKind::CharacterSets, &value);
+                    self.on_character_sets(value);
+                }
+                return;
+            }
+        };
         if !self.sequencer.accept(StructureRequestKind::Definition, stamp) {
             return;
         }
@@ -158,13 +213,18 @@ impl StructureModel {
             self.rebuild_rows();
             self.sync_add_rows();
             self.recompute_dirty_state(fx);
+            self.read_character_sets();
         }
         self.retry_failed(fx);
     }
 
     fn retry_failed(&mut self, fx: &mut StructureEffects) {
-        if self.failed.take().contains(&StructureRequestKind::Definition) {
+        let failed = self.failed.take();
+        if failed.contains(&StructureRequestKind::Definition) {
             self.read_definition(fx);
+        }
+        if failed.contains(&StructureRequestKind::CharacterSets) {
+            self.read_character_sets();
         }
     }
 }

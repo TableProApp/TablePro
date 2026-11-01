@@ -96,11 +96,11 @@ A call that timed out or lost its connection is checked before the link is decla
 
 `ReadOnlyEnforcement::SessionDefault`: `SET SESSION TRANSACTION READ ONLY` on every session. Saves are refused before anything is sent, and a write through generated SQL fails with 1792. At Safe Mode Read-Only the app refuses every editor statement that does not read before it is sent, `SET TRANSACTION READ WRITE` included; a function a `SELECT` calls is the server's to refuse. For a guarantee, connect with a login that has no write privileges.
 
-An export, on any connection, runs in `START TRANSACTION READ ONLY` and refuses user SQL that Safe Mode would not count as a read (`tablepro_core::sql_syntax::statement_access`).
+An export, on any connection, runs in `START TRANSACTION READ ONLY` and refuses user SQL that Safe Mode would not count as a read (`tablepro_core::sql_syntax::statement_access`). The text protocol runs every statement a text holds, so user SQL is first prepared, which the server parses with multiple statements off: a text it reads as two fails there, and one it parses but does not prepare (1295, such as some `SHOW`) still runs.
 
 Safe Mode reads text every way the client or a server may read it, and the strictest reading stands (`tablepro_core::sql_syntax::script::ScriptPlan::server_readings`):
 
-- A `/*!`, `/*!NNNNN` or `/*M!` comment as MySQL up to 8.0, MySQL 8.1 and later, MariaDB and a MariaDB Galera node run or skip it, at every version the text names. A comment that runs is code up to the first `*/` outside a string, a quoted name or a line comment. One that a version skips ends at the first `*/` past one nested `/* */`. MySQL reads `/*M!` as a plain comment, MariaDB skips `/*!50700` to `/*!99999`, and Galera runs `/*!99997`.
+- A `/*!`, `/*!NNNNN` or `/*M!` comment as MySQL up to 8.0, MySQL 8.1 and later, MariaDB and a Galera node of each run or skip it, at every version the text names. A comment that runs is code up to the first `*/` outside a string, a quoted name or a line comment. One that a version skips ends at the first `*/` past one nested `/* */`. MySQL reads `/*M!` as a plain comment, MariaDB skips `/*!50700` to `/*!99999`, and Galera runs `/*!99997`.
 - `$tag$ ... $tag$` as a quote, as MySQL 8.1 and later read it.
 - A `DELIMITER` line as SQL, since only a client reads it as a directive.
 - With backslash escapes on and off, `"` as a name (ANSI_QUOTES), and `[name]` as a name (MariaDB's MSSQL mode).
@@ -125,6 +125,27 @@ Whether a write can be undone depends on the table's storage engine, not on the 
 - Every step is prepared, also one with no parameters, so a stray `;` in generated SQL fails instead of running a second statement. The prepared statement is closed after it runs. A step with no parameters that the server cannot prepare (error 1295, such as `CREATE TRIGGER`) is sent again over the text protocol.
 - MySQL cannot suspend foreign keys for one batch, so a batch that asks for it is refused before anything is sent.
 - There is nothing to ask the server about a lost `COMMIT` (`CommitResolutionSupport::Unavailable`). `CommitOutcomeUnknown` carries no token, and the user reloads to see what landed.
+
+## Table options
+
+The structure tab edits a table's default character set and collation, converts every column to them, sets the next AUTO_INCREMENT value, and picks a column's own character set and collation (`column_collations`, `table_options`).
+
+| Read | Source |
+|---|---|
+| Default character set and collation | `information_schema.TABLES.TABLE_COLLATION`, which is live on both servers. The character set is the collation's first word. |
+| Next AUTO_INCREMENT, MySQL | The options line of SHOW CREATE TABLE. `TABLES.AUTO_INCREMENT` is cached for up to a day (`information_schema_stats_expiry`). |
+| Next AUTO_INCREMENT, MariaDB | `TABLES.AUTO_INCREMENT`, which is live. `NO_TABLE_OPTIONS`, part of `sql_mode = ORACLE`, prints SHOW CREATE TABLE without its options line. |
+| Character sets | `information_schema.CHARACTER_SETS`, with collations from `COLLATIONS`, or on MariaDB 10.10 and later from `COLLATION_CHARACTER_SET_APPLICABILITY.FULL_COLLATION_NAME`, told apart by that column. MariaDB lists a UCA 14 collation such as `utf8mb4_uca1400_ai_ci` in `COLLATIONS` once, with no character set. |
+
+- Neither server prints AUTO_INCREMENT= while the counter is 1, so a table with an AUTO_INCREMENT column and no clause reads as 1, and one without such a column has no counter.
+- A view and an NDB table carry no options, so `table_capabilities` turns them off.
+- A new default is `DEFAULT CHARACTER SET = cs COLLATE = coll` in the combined ALTER. Both clauses always go: a character set alone resets the collation to its default. Existing columns keep theirs, and a column added in the same ALTER takes the new one.
+- A convert, `CONVERT TO CHARACTER SET cs COLLATE coll`, is a statement of its own after the `DROP FOREIGN KEY` and before the combined ALTER. A foreign key on a converted column refuses it (MySQL 3780, MariaDB 1832), and so can an index the wider characters make too long (1071), so a save that drops indexes or columns runs those drops in an ALTER ahead of the convert.
+- A convert can widen a type, as a latin1 `TEXT` becomes `MEDIUMTEXT` in utf8mb4, and a MODIFY after it restates the old one. It also converts a primary key before a change in the same save moves it, which can push the key past the 3072-byte index limit. So a convert refuses a change to an existing column or to the primary key in the same save, and the tab says so before Save. Columns added in the same save come after it and take its pair unless the user picked one.
+- The review lists a convert, and a column given another character set, as destructive.
+- The counter is `AUTO_INCREMENT = n` in the combined ALTER. A counter set before a MODIFY that turns AUTO_INCREMENT on is lost, in the same ALTER it is kept. The server raises a value at or below the largest key to that key plus one, without a warning, so the tab reads the table again after a save.
+- A column takes CHARACTER SET and COLLATE only when its type holds text: `CHAR`, `VARCHAR`, the `TEXT` types, `ENUM` and `SET`, in any spelling the type parser takes, such as `character varying(64)` or `VARCHAR (64)`. A national spelling (`NCHAR`, `NVARCHAR`) refuses CHARACTER SET, so none is written for it.
+- A restated `ON UPDATE CURRENT_TIMESTAMP`, and a `CURRENT_TIMESTAMP` default as the catalogue read it, take the precision of the column's type, since MySQL refuses any other (1294, 1067). A default the user typed goes as written.
 
 ## Editor sessions
 

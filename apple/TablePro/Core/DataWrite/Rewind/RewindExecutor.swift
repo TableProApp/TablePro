@@ -32,14 +32,16 @@ struct RewindExecutor {
         factory: RowChangeStatementFactory,
         browseBuilder: (any PluginDatabaseDriver)?
     ) async throws -> RewindPlan {
+        let dialect = PluginManager.shared.sqlDialect(for: connection.type)
         let planner = RewindPlanner(
             record: record,
             factory: factory,
             queryBuilder: TableQueryBuilder(
                 databaseType: connection.type,
                 pluginDriver: browseBuilder,
-                dialect: PluginManager.shared.sqlDialect(for: connection.type),
-                pagination: PluginManager.shared.paginationCapability(for: connection.type)
+                dialect: dialect,
+                pagination: PluginManager.shared.paginationCapability(for: connection.type),
+                dialectQuote: dialect.map { quoteIdentifierFromDialect($0) } ?? { SQLEscaping.quoteIdentifier($0) }
             )
         )
         let queries = planner.readQueries()
@@ -111,21 +113,7 @@ struct RewindExecutor {
     /// rather than a special case.
     private func captureInverseRecord(for plan: RewindPlan) async {
         guard AppSettingsManager.shared.history.keepRewindHistory else { return }
-        let operations = plan.rows.filter { $0.outcome.restores }.map { row -> RowWriteOperation in
-            let source = row.operation
-            return RowWriteOperation(
-                kind: source.kind.inverted,
-                target: source.target,
-                columns: source.columns,
-                primaryKeyColumns: source.primaryKeyColumns,
-                preImage: source.postImage,
-                postImage: source.preImage,
-                writtenColumns: source.writtenColumns,
-                refusal: nil,
-                preImageAbsentColumns: source.postImageAbsentColumns,
-                postImageAbsentColumns: source.preImageAbsentColumns
-            )
-        }
+        let operations = Self.inverseOperations(of: plan)
         guard !operations.isEmpty else { return }
 
         await QueryHistoryManager.shared.recordRewindSnapshot(
@@ -139,9 +127,31 @@ struct RewindExecutor {
                 generatedColumns: plan.record.generatedColumns,
                 identityColumns: plan.record.identityColumns,
                 columnTypeNames: plan.record.columnTypeNames,
-                operations: operations
+                operations: operations,
+                writtenThroughView: plan.record.writtenThroughView
             )
         )
+    }
+
+    static func inverseOperations(of plan: RewindPlan) -> [RowWriteOperation] {
+        plan.rows.filter { $0.outcome.restores }.map { row -> RowWriteOperation in
+            let source = row.operation
+            let kind = source.kind.inverted
+            // The same stored refusal a save through a view writes, so a build without the view flag refuses too.
+            let throughView = plan.record.writtenThroughView == true && kind == .delete
+            return RowWriteOperation(
+                kind: kind,
+                target: source.target,
+                columns: source.columns,
+                primaryKeyColumns: source.primaryKeyColumns,
+                preImage: source.postImage,
+                postImage: source.preImage,
+                writtenColumns: source.writtenColumns,
+                refusal: throughView ? .identityNotPreservable : nil,
+                preImageAbsentColumns: source.postImageAbsentColumns,
+                postImageAbsentColumns: source.preImageAbsentColumns
+            )
+        }
     }
 
     func apply(_ plan: RewindPlan) async throws -> RewindApplyResult {

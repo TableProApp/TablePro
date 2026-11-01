@@ -101,7 +101,7 @@ enum StructureTableRebuildHandler {
     ) async throws -> StructureRebuildPlanRunner.Prepared {
         let partition = partition(changes)
         guard partition.unsupported.isEmpty else {
-            throw RebuildError.cannotExpress(partition.unsupported.map(\.description))
+            throw RebuildError.cannotExpress(partition.unsupported.map(\.localizedDescription))
         }
 
         let respecification = respecification(from: partition.rebuilt)
@@ -180,7 +180,8 @@ enum StructureTableRebuildHandler {
                     partition.rebuilt.append(change)
                 }
             case .addIndex, .modifyIndex, .deleteIndex,
-                 .addCheckConstraint, .modifyCheckConstraint, .deleteCheckConstraint, .modifyTableComment:
+                 .addCheckConstraint, .modifyCheckConstraint, .deleteCheckConstraint, .modifyTableComment,
+                 .modifyTableCharacterSet, .modifyAutoIncrement:
                 partition.trailing.append(change)
             case .modifyPrimaryKey:
                 partition.unsupported.append(change)

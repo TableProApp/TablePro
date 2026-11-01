@@ -1,5 +1,6 @@
 mod notification;
 mod open_file;
+mod other_databases;
 mod sessions;
 
 use std::rc::Rc;
@@ -341,6 +342,7 @@ pub(crate) fn saved_connection(database: &std::path::Path) -> SavedConnection {
         safe_mode: tablepro_core::SafeModeLevel::Off,
         external_access: tablepro_core::ExternalAccess::ReadOnly,
         ai_policy: tablepro_core::AiPolicy::Ask,
+        query_timeout_secs: None,
         auth_mode: AuthMode::Password,
         ssh: None,
         last_opened_at: None,
@@ -366,6 +368,7 @@ fn network_connection() -> SavedConnection {
         safe_mode: tablepro_core::SafeModeLevel::Off,
         external_access: tablepro_core::ExternalAccess::ReadOnly,
         ai_policy: tablepro_core::AiPolicy::Ask,
+        query_timeout_secs: None,
         auth_mode: AuthMode::Password,
         ssh: None,
         last_opened_at: None,
@@ -1216,5 +1219,6 @@ fn users_table() -> tablepro_core::ddl::TableDefinition {
         foreign_keys: Vec::new(),
         inbound_foreign_keys: Vec::new(),
         source: None,
+        options: None,
     }
 }

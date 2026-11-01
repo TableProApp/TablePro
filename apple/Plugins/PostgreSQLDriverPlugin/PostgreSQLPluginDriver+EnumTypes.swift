@@ -17,7 +17,7 @@ private let enumProbeLogger = Logger(
 extension PostgreSQLPluginDriver {
     func probeEnumOids() async {
         do {
-            let result = try await core.execute(query: PostgreSQLSchemaQueries.enumTypeOidQuery)
+            let result = try await core.executeCatalogRead(PostgreSQLSchemaQueries.enumTypeOidQuery)
             let rows = result.rows.map { row in row.map(\.asText) }
             core.mergeCatalogTypeNames(PostgreSQLCatalogTypeNames.enumProbeNames(rows: rows))
         } catch {

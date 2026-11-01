@@ -6,8 +6,8 @@ use tablepro_core::{ColumnInfo, Value};
 
 use super::{Layouts, data_column, text};
 use crate::services::grid::{ColumnLayout, LayoutSlot};
-use crate::test_support::drain_main_context;
-use crate::ui::data_grid::test_grid::{Grid, GridSpec, named, persisted, two_text_columns, two_text_values};
+use crate::test_support::{drain_main_context, wait_until};
+use crate::ui::data_grid::test_grid::{Grid, GridSpec, WAIT, named, persisted, two_text_columns, two_text_values};
 
 fn users() -> Vec<ColumnInfo> {
     vec![
@@ -126,6 +126,31 @@ fn a_column_missing_from_one_read_keeps_its_entry() {
     assert_eq!(data_column(&all, 2).fixed_width(), 222);
 }
 
+/// GTK drops a header let go over the space after the last column after
+/// the filler that holds that space, and lets the filler be dragged too.
+#[gtk4::test]
+fn the_space_after_the_last_column_stays_last() {
+    let layouts = Layouts::new();
+    let grid = open_users(&layouts, "users");
+    let view = grid.grid.column_view();
+    let last = || {
+        view.columns()
+            .item(view.columns().n_items() - 1)
+            .and_downcast::<gtk::ColumnViewColumn>()
+            .expect("a column")
+    };
+    let filler = last();
+
+    view.insert_column(position_in_view(&view, &filler), &data_column(&grid, 0));
+    wait_until(WAIT, || last() == filler).expect("the filler back at the end");
+    assert_eq!(grid.grid.shown_columns(), [1, 2, 0]);
+    assert_eq!(layouts.saved("users").order.last(), Some(&slot("id")));
+
+    view.insert_column(1, &filler);
+    wait_until(WAIT, || last() == filler).expect("the filler back at the end");
+    assert_eq!(grid.grid.shown_columns(), [1, 2, 0]);
+}
+
 /// A grid of no columns has nothing to focus and no header to bring one
 /// back from.
 #[gtk4::test]
@@ -144,4 +169,121 @@ fn the_last_shown_column_cannot_be_hidden() {
 
     assert_eq!(grid.grid.shown_columns(), [1], "the cell menu hid the last column");
     assert!(data_column(&grid, 1).is_visible());
+}
+
+/// The header takes no focus, so the focused cell's column moves from the
+/// keyboard, past hidden columns, and the table keeps the order.
+#[gtk4::test]
+fn a_column_moved_from_its_cell_skips_hidden_ones_and_is_kept() {
+    let layouts = Layouts::new();
+    let grid = open_users(&layouts, "users");
+    grid.grid.set_column_visible(1, false);
+    grid.focus(0, 2);
+    assert!(grid.is_enabled("move-column-left"));
+    assert!(
+        !grid.is_enabled("move-column-right"),
+        "the last column moves no further right"
+    );
+
+    grid.activate("move-column-left");
+
+    assert_eq!(grid.grid.shown_columns(), [2, 0]);
+    assert_eq!(
+        grid.focused_cell().map(|cell| (cell.position(), cell.column())),
+        Some((Some(0), 2)),
+        "the focus stays on the moved cell"
+    );
+    let saved = layouts.saved("users").order;
+    let at = |name: &str| saved.iter().position(|kept| *kept == slot(name));
+    assert!(at("email") < at("id"), "{saved:?}");
+    assert!(grid.is_enabled("move-column-right"));
+    drop(grid);
+
+    let again = open_users(&layouts, "users");
+    assert_eq!(again.grid.shown_columns(), [2, 0]);
+}
+
+#[gtk4::test]
+fn the_header_menu_moves_its_column_and_stops_at_the_edge() {
+    let layouts = Layouts::new();
+    let grid = open_users(&layouts, "users");
+    let move_right = |index: u32| {
+        grid.grid
+            .activate_action("grid.move-column-right-at", Some(&index.to_variant()))
+            .expect("the header's Move Column Right");
+        drain_main_context();
+    };
+
+    move_right(0);
+    assert_eq!(grid.grid.shown_columns(), [1, 0, 2]);
+    move_right(0);
+    move_right(0);
+    assert_eq!(
+        grid.grid.shown_columns(),
+        [1, 2, 0],
+        "the column passed the space after the last"
+    );
+    let view = grid.grid.column_view();
+    let last = view
+        .columns()
+        .item(view.columns().n_items() - 1)
+        .and_downcast::<gtk::ColumnViewColumn>();
+    assert_ne!(last, Some(data_column(&grid, 0)), "the filler stays last");
+}
+
+/// A header drag can give the focused column a neighbour it lacked.
+#[gtk4::test]
+fn a_move_elsewhere_updates_what_the_focused_column_can_do() {
+    let layouts = Layouts::new();
+    let grid = open_users(&layouts, "users");
+    grid.focus(0, 2);
+    assert!(!grid.is_enabled("move-column-right"));
+
+    let view = grid.grid.column_view();
+    let filler = view.columns().n_items() - 1;
+    view.insert_column(filler, &data_column(&grid, 0));
+    drain_main_context();
+
+    assert_eq!(grid.grid.shown_columns(), [1, 2, 0]);
+    assert!(grid.is_enabled("move-column-right"));
+}
+
+#[gtk4::test]
+fn left_and_right_follow_a_right_to_left_locale() {
+    let layouts = Layouts::new();
+    let grid = open_users(&layouts, "users");
+    grid.grid.set_direction(gtk::TextDirection::Rtl);
+    grid.focus(0, 1);
+
+    grid.activate("move-column-left");
+
+    assert_eq!(grid.grid.shown_columns(), [0, 2, 1]);
+}
+
+/// These press keys on the X display every test shares.
+mod real_keys {
+    use gtk4::gdk;
+    use gtk4::prelude::*;
+
+    use super::{Layouts, open_users};
+    use crate::test_support::{KeyInjector, wait_until};
+    use crate::ui::data_grid::test_grid::WAIT;
+
+    #[gtk4::test]
+    fn alt_and_an_arrow_move_the_focused_column() {
+        let layouts = Layouts::new();
+        let grid = open_users(&layouts, "users");
+        KeyInjector::focus_only(&grid.window);
+        wait_until(WAIT, || grid.window.is_active()).expect("the window to take the focus");
+        let keys = KeyInjector::connect().expect("an X11 display");
+        grid.focus(0, 1);
+
+        keys.press(gdk::Key::Left, gdk::ModifierType::ALT_MASK)
+            .expect("Alt+Left");
+        wait_until(WAIT, || grid.grid.shown_columns() == [1, 0, 2]).expect("the column to move left");
+
+        keys.press(gdk::Key::Right, gdk::ModifierType::ALT_MASK)
+            .expect("Alt+Right");
+        wait_until(WAIT, || grid.grid.shown_columns() == [0, 1, 2]).expect("the column to move back");
+    }
 }

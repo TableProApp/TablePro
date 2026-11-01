@@ -7,12 +7,15 @@ use tablepro_session::SessionKey;
 use uuid::Uuid;
 
 const SAVED: &str = "saved:";
+const SAVED_IN: &str = "saved-in:";
 const FILE: &str = "file:";
 
-/// `saved:<uuid>` or `file:<uri>`.
+/// `saved:<uuid>`, `saved-in:<uuid>/<database>` or `file:<uri>`. A uuid
+/// holds no `/`, so the database after it may hold any.
 pub(crate) fn to_variant(key: &SessionKey) -> glib::Variant {
     match key {
         SessionKey::Saved(id) => format!("{SAVED}{id}"),
+        SessionKey::SavedIn { id, database } => format!("{SAVED_IN}{id}/{database}"),
         SessionKey::File(uri) => format!("{FILE}{uri}"),
     }
     .to_variant()
@@ -23,6 +26,13 @@ pub(crate) fn from_variant(value: &glib::Variant) -> Option<SessionKey> {
     let text = value.str()?;
     if let Some(id) = text.strip_prefix(SAVED) {
         return Uuid::parse_str(id).ok().map(SessionKey::Saved);
+    }
+    if let Some(rest) = text.strip_prefix(SAVED_IN) {
+        let (id, database) = rest.split_once('/')?;
+        return Uuid::parse_str(id).ok().map(|id| SessionKey::SavedIn {
+            id,
+            database: database.to_owned(),
+        });
     }
     text.strip_prefix(FILE)
         .filter(|uri| glib::Uri::peek_scheme(uri).is_some())
@@ -37,6 +47,10 @@ mod tests {
     fn a_key_round_trips() {
         let keys = [
             SessionKey::Saved(Uuid::new_v4()),
+            SessionKey::SavedIn {
+                id: Uuid::new_v4(),
+                database: "sales/2026".to_owned(),
+            },
             SessionKey::File("file:///home/u/R%26D/sales.db".to_owned()),
             SessionKey::File("file:///srv/caf%C3%A9.sqlite3".to_owned()),
         ];

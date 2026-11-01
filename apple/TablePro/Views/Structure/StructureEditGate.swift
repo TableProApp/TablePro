@@ -117,21 +117,18 @@ struct StructureEditGate {
             && TriggerEditEligibility.kindAcceptsTriggers(objectKind)
     }
 
-    func locksField(at index: Int, on tab: StructureTab, orderedFields: [StructureColumnField]) -> Bool {
+    func locksField(at index: Int, on tab: StructureSection, orderedFields: [StructureColumnField]) -> Bool {
         switch tab {
         case .columns:
             guard orderedFields.indices.contains(index) else { return false }
             return !editableColumnFields.contains(orderedFields[index])
         case .indexes, .foreignKeys, .checkConstraints:
-            guard let adding = StructureFooterPolicy.operation(forAdding: tab) else { return false }
-            return !allows(adding)
-        case .ddl, .parts, .triggers:
-            return false
+            return !allows(StructureFooterPolicy.operation(forAdding: tab))
         }
     }
 
     func lockedFieldIndices(
-        on tab: StructureTab,
+        on tab: StructureSection,
         orderedFields: [StructureColumnField],
         fieldCount: Int
     ) -> Set<Int> {

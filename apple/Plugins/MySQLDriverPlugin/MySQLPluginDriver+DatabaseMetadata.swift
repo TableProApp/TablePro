@@ -13,6 +13,8 @@ import TableProPluginKit
 internal extension MySQLPluginDriver {
     func fetchDatabaseMetadata(_ database: String) async throws -> PluginDatabaseMetadata {
         let isSystem = systemDatabaseNamesForConnectionType.contains(database)
+        // A StarRocks catalog is sized only by scanning the lake behind it.
+        guard !flavor.isStarRocks else { return PluginDatabaseMetadata(name: database, isSystemDatabase: isSystem) }
         guard serverHasInformationSchema else {
             return try await tableStatusMetadata(of: database, isSystem: isSystem)
         }
@@ -38,6 +40,11 @@ internal extension MySQLPluginDriver {
 
     func fetchAllDatabaseMetadata() async throws -> [PluginDatabaseMetadata] {
         let systemDatabases = systemDatabaseNamesForConnectionType
+        guard !flavor.isStarRocks else {
+            return try await fetchDatabases().map {
+                PluginDatabaseMetadata(name: $0, isSystemDatabase: systemDatabases.contains($0))
+            }
+        }
         guard serverHasInformationSchema else {
             var metadata: [PluginDatabaseMetadata] = []
             for database in try await fetchDatabases() {
@@ -75,15 +82,18 @@ internal extension MySQLPluginDriver {
         }
     }
 
+    /// The character set is the collation's prefix (`MySQLTableOptions.characterSet(ofCollation:)`): MariaDB
+    /// 10.10+ reports `utf8mb4_uca1400_ai_ci`, which no `COLLATION_NAME` matches.
     func allTablesMetadataSQL(schema: String?) -> String? {
         guard !flavor.isDatabend else { return DatabendCatalog.allTablesMetadataSQL }
+        guard !flavor.isStarRocks else { return nil }
         guard serverHasInformationSchema else { return Self.tableStatusStatement(database: effectiveSchema(schema)) }
         return literalSpelling.respelled("""
         SELECT
             TABLE_SCHEMA as `schema`,
             TABLE_NAME as name,
             TABLE_TYPE as kind,
-            IFNULL(CCSA.CHARACTER_SET_NAME, '') as charset,
+            IFNULL(SUBSTRING_INDEX(TABLE_COLLATION, '_', 1), '') as charset,
             TABLE_COLLATION as collation,
             TABLE_ROWS as estimated_rows,
             CONCAT(ROUND((DATA_LENGTH + INDEX_LENGTH) / 1024 / 1024, 2), ' MB') as total_size,
@@ -91,8 +101,6 @@ internal extension MySQLPluginDriver {
             CONCAT(ROUND(INDEX_LENGTH / 1024 / 1024, 2), ' MB') as index_size,
             TABLE_COMMENT as comment
         FROM information_schema.TABLES
-        LEFT JOIN information_schema.COLLATION_CHARACTER_SET_APPLICABILITY CCSA
-            ON TABLE_COLLATION = CCSA.COLLATION_NAME
         WHERE TABLE_SCHEMA = '\(effectiveSchemaLiteral(schema))'
         ORDER BY TABLE_NAME
         """)

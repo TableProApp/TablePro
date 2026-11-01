@@ -4,6 +4,7 @@ use tablepro_core::dialect::{
     BindError, BindTarget, DialectCapabilities, InsertConflict, KeysetDirection, LikeCase, LikeForm, LiteralError,
     Placeholder, SqlDialect,
 };
+use tablepro_core::edit::{CellExpression, MomentKind};
 use tablepro_core::export::value_to_text;
 use tablepro_core::meta::{EngineRowId, EngineRowIdPart};
 use tablepro_core::sql_syntax::{
@@ -41,6 +42,22 @@ impl SqlDialect for SqliteDialect {
 
     fn grammar(&self) -> SqlGrammar {
         SqlGrammar::Sqlite
+    }
+
+    fn cell_expressions(&self) -> &'static [CellExpression] {
+        const MOMENT: &[MomentKind] = &[MomentKind::Timestamp];
+        const DATE: &[MomentKind] = &[MomentKind::Date];
+        const TIME: &[MomentKind] = &[MomentKind::Time];
+        const EXPRESSIONS: &[CellExpression] = &[
+            CellExpression::new("CURRENT_TIMESTAMP", MOMENT, &[]),
+            CellExpression::new("datetime('now')", MOMENT, &[]),
+            CellExpression::new("datetime('now','localtime')", MOMENT, &[]),
+            CellExpression::new("CURRENT_DATE", DATE, &[]),
+            CellExpression::new("date('now')", DATE, &[]),
+            CellExpression::new("CURRENT_TIME", TIME, &[]),
+            CellExpression::new("time('now')", TIME, &[]),
+        ];
+        EXPRESSIONS
     }
 
     fn quote_identifier(&self, name: &str) -> String {
@@ -253,6 +270,7 @@ const CREDENTIAL_RULES: CredentialRules = CredentialRules {
         (&["ATTACH"], &["KEY"]),
     ],
     carriers: &[],
+    secret_parameters: &[],
 };
 
 #[cfg(test)]

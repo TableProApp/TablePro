@@ -8,9 +8,10 @@ use futures_util::TryStreamExt;
 use sqlx::mysql::MySqlConnection;
 use sqlx::{AssertSqlSafe, Executor as _, Row as _};
 use tablepro_core::column::{ColumnDefault, ColumnInfo, ColumnKind, SqlExpression, TemporalZone};
+use tablepro_core::ddl::ddl_sql::parenthesized;
 use tablepro_core::ddl::{
-    ColumnDefinition, InboundForeignKey, OutboundForeignKey, PrimaryKeyConstraint, ReferentialAction, TableDefinition,
-    TableSource, UnmodeledAttribute,
+    CharacterSet, ColumnDefinition, InboundForeignKey, OutboundForeignKey, PrimaryKeyConstraint, ReferentialAction,
+    TableDefinition, TableOptions, TableSource, UnmodeledAttribute,
 };
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::meta::{
@@ -20,10 +21,11 @@ use tablepro_core::meta::{
 use tablepro_core::{DriverError, ForeignKeyInfo, Value};
 
 use crate::catalog::{
-    COLUMN_COMPARISONS_SQL, COLUMN_ENGINE_ATTRIBUTES_SQL, CatalogCells, ColumnCheck, INBOUND_FOREIGN_KEYS_SQL,
-    ListedSrid, MARIADB_COLUMN_CHECKS_SQL, MARIADB_GEOMETRY_SRIDS_SQL, MySqlColumnRow, TableComparisons, column_checks,
-    column_comparisons, column_definition, column_info, columns_sql, compares_alike, geometry_srids,
-    inbound_foreign_keys, place_column_checks, quoted_default,
+    CHARACTER_SETS_SQL, COLLATIONS_SQL, COLUMN_COMPARISONS_SQL, COLUMN_ENGINE_ATTRIBUTES_SQL, CatalogCells,
+    ColumnCheck, FULL_COLLATION_NAMES_SQL, FULL_COLLATIONS_SQL, INBOUND_FOREIGN_KEYS_SQL, ListedOptions, ListedSrid,
+    MARIADB_COLUMN_CHECKS_SQL, MARIADB_GEOMETRY_SRIDS_SQL, MySqlColumnRow, TableComparisons, character_sets,
+    column_checks, column_comparisons, column_definition, column_info, columns_sql, compares_alike, geometry_srids,
+    inbound_foreign_keys, place_column_checks, quoted_default, table_options, unescape_expression,
 };
 use crate::decode::decode_row;
 use crate::dialect::MySqlDialect;
@@ -31,7 +33,7 @@ use crate::errors::map_error;
 use crate::flavour::MySqlFlavour;
 use crate::mysql_timestamp_mode::MySqlTimestampMode;
 use crate::mysql_wire_format::MySqlWireFormat;
-use crate::table_engine;
+use crate::table_engine::{self, TableEngine};
 
 /// Rows of a catalogue query whose parameters are all text or NULL.
 pub(crate) async fn catalog_rows(
@@ -82,6 +84,41 @@ pub(crate) async fn list_schemas(
             is_system: false,
         })
         .collect())
+}
+
+/// The databases MySQL and MariaDB keep for themselves.
+const SYSTEM_DATABASES: [&str; 4] = ["information_schema", "mysql", "performance_schema", "sys"];
+
+/// Every database the login can see, the connection's own the default.
+pub(crate) async fn list_databases(
+    connection: &mut MySqlConnection,
+    flavour: MySqlFlavour,
+) -> Result<Vec<SchemaInfo>, DriverError> {
+    let current = list_schemas(connection, flavour)
+        .await?
+        .into_iter()
+        .next()
+        .map(|schema| schema.name);
+    let rows = catalog_rows(
+        connection,
+        flavour,
+        "SELECT SCHEMA_NAME FROM information_schema.SCHEMATA ORDER BY SCHEMA_NAME",
+        "SCHEMATA",
+        &[],
+    )
+    .await?;
+    let mut databases = Vec::with_capacity(rows.len());
+    for row in rows {
+        let Some(name) = row.text(0)? else {
+            continue;
+        };
+        databases.push(SchemaInfo {
+            is_default: current.as_deref() == Some(name.as_str()),
+            is_system: SYSTEM_DATABASES.contains(&name.as_str()),
+            name,
+        });
+    }
+    Ok(databases)
 }
 
 const TABLES_IN_SCHEMA_SQL: &str = "\
@@ -167,12 +204,12 @@ pub(crate) async fn fetch_columns(
 /// MySQL 8.0.13 and later name a functional key part in EXPRESSION;
 /// MariaDB has no such column, and no functional key parts.
 const MYSQL_INDEXES_SQL: &str = "\
-SELECT INDEX_NAME, NON_UNIQUE, COLUMN_NAME, COLLATION, EXPRESSION
+SELECT INDEX_NAME, NON_UNIQUE, COLUMN_NAME, COLLATION, EXPRESSION, INDEX_TYPE, SUB_PART
 FROM information_schema.STATISTICS
 WHERE TABLE_SCHEMA = COALESCE(?, DATABASE()) AND TABLE_NAME = ?
 ORDER BY INDEX_NAME = 'PRIMARY' DESC, INDEX_NAME, SEQ_IN_INDEX";
 const MARIADB_INDEXES_SQL: &str = "\
-SELECT INDEX_NAME, NON_UNIQUE, COLUMN_NAME, COLLATION, NULL AS EXPRESSION
+SELECT INDEX_NAME, NON_UNIQUE, COLUMN_NAME, COLLATION, NULL AS EXPRESSION, INDEX_TYPE, SUB_PART
 FROM information_schema.STATISTICS
 WHERE TABLE_SCHEMA = COALESCE(?, DATABASE()) AND TABLE_NAME = ?
 ORDER BY INDEX_NAME = 'PRIMARY' DESC, INDEX_NAME, SEQ_IN_INDEX";
@@ -188,33 +225,97 @@ pub(crate) async fn fetch_indexes(
         false => MARIADB_INDEXES_SQL,
     };
     let rows = catalog_rows(connection, flavour, sql, "STATISTICS", &table_binds(table)).await?;
-    let mut indexes: Vec<IndexInfo> = Vec::new();
+    let mut indexes: Vec<(IndexInfo, String, Vec<String>)> = Vec::new();
     for row in rows {
         let name = row.required_text(0)?;
         let descending = row.text(3)?.as_deref() == Some("D");
-        let key = match (row.text(2)?, row.text(4)?) {
-            (Some(column), _) => IndexKey::Column {
-                name: column,
-                descending,
-            },
-            (None, Some(expression)) => IndexKey::Expression {
-                sql: expression,
-                descending,
-            },
+        let (key, part) = match (row.text(2)?, row.text(4)?) {
+            (Some(column), _) => {
+                let prefix = row.number(6)?.map(|length| format!("({length})")).unwrap_or_default();
+                let part = format!("{}{prefix}", dialect.quote_identifier(&column));
+                (
+                    IndexKey::Column {
+                        name: column,
+                        descending,
+                    },
+                    part,
+                )
+            }
+            (None, Some(expression)) => {
+                let part = parenthesized(&unescape_expression(&expression));
+                (
+                    IndexKey::Expression {
+                        sql: expression,
+                        descending,
+                    },
+                    part,
+                )
+            }
             (None, None) => continue,
         };
-        match indexes.last_mut().filter(|index| index.name == name) {
-            Some(index) => index.keys.push(key),
-            None => indexes.push(IndexInfo {
-                unique: row.number(1)? == Some(0),
-                primary: name == "PRIMARY",
-                name,
-                keys: vec![key],
-                predicate: None,
-            }),
+        let part = match descending {
+            true => format!("{part} DESC"),
+            false => part,
+        };
+        match indexes.last_mut().filter(|(index, ..)| index.name == name) {
+            Some((index, _, parts)) => {
+                index.keys.push(key);
+                parts.push(part);
+            }
+            None => indexes.push((
+                IndexInfo {
+                    unique: row.number(1)? == Some(0),
+                    primary: name == "PRIMARY",
+                    name,
+                    keys: vec![key],
+                    predicate: None,
+                    definition: None,
+                },
+                row.text(5)?.unwrap_or_default(),
+                vec![part],
+            )),
         }
     }
-    Ok(indexes)
+    Ok(indexes
+        .into_iter()
+        .map(|(mut index, index_type, parts)| {
+            index.definition = create_index(dialect, table, &index, &index_type, &parts);
+            index
+        })
+        .collect())
+}
+
+/// The CREATE INDEX for an index STATISTICS lists, with the prefix
+/// length a TEXT or BLOB key needs, the kind a full-text or spatial
+/// index is made with, and the access method, since a MEMORY table
+/// would otherwise make a B-tree index as a hash. The primary key is
+/// only ever a constraint.
+fn create_index(
+    dialect: &MySqlDialect,
+    table: &TableRef,
+    index: &IndexInfo,
+    index_type: &str,
+    parts: &[String],
+) -> Option<String> {
+    if index.primary {
+        return None;
+    }
+    let kind = match index_type {
+        "FULLTEXT" => "FULLTEXT ",
+        "SPATIAL" => "SPATIAL ",
+        _ if index.unique => "UNIQUE ",
+        _ => "",
+    };
+    let method = match index_type {
+        "BTREE" | "HASH" => format!(" USING {index_type}"),
+        _ => String::new(),
+    };
+    Some(format!(
+        "CREATE {kind}INDEX {} ON {} ({}){method}",
+        dialect.quote_identifier(&index.name),
+        dialect.qualify(table),
+        parts.join(", ")
+    ))
 }
 
 const FOREIGN_KEYS_SQL: &str = "\
@@ -483,6 +584,7 @@ pub(crate) async fn fetch_table_definition(
         });
     let foreign_keys = fetch_foreign_keys(connection, flavour, table).await?;
     let inbound_foreign_keys = fetch_inbound_foreign_keys(connection, flavour, table).await?;
+    let options = definition_options(&engine, flavour, &create_statement, &columns);
     Ok(TableDefinition {
         table: table.clone(),
         columns,
@@ -494,7 +596,57 @@ pub(crate) async fn fetch_table_definition(
             create_statement,
             dependents: Vec::new(),
         }),
+        options,
     })
+}
+
+/// NDB's table options were never measured, so none are offered.
+fn definition_options(
+    engine: &TableEngine,
+    flavour: MySqlFlavour,
+    create_statement: &str,
+    columns: &[ColumnDefinition],
+) -> Option<TableOptions> {
+    if engine.is_ndb() {
+        return None;
+    }
+    let listed = ListedOptions {
+        collation: engine.collation.as_deref(),
+        auto_increment: engine.auto_increment,
+        create_statement,
+        numbered: columns.iter().any(|column| column.info.is_auto_increment),
+    };
+    table_options(listed, flavour)
+}
+
+/// The character sets and collations the server offers. Collations come
+/// from where the server spells the names tables carry.
+pub(crate) async fn fetch_character_sets(
+    connection: &mut MySqlConnection,
+    flavour: MySqlFlavour,
+) -> Result<Vec<CharacterSet>, DriverError> {
+    let sets = catalog_rows(connection, flavour, CHARACTER_SETS_SQL, "CHARACTER_SETS", &[]).await?;
+    let full_names = catalog_rows(connection, flavour, FULL_COLLATION_NAMES_SQL, "COLUMNS", &[]).await?;
+    let listed_apart = full_names
+        .first()
+        .map(|row| row.number(0))
+        .transpose()?
+        .flatten()
+        .is_some_and(|count| count > 0);
+    let collations = match listed_apart {
+        true => {
+            catalog_rows(
+                connection,
+                flavour,
+                FULL_COLLATIONS_SQL,
+                "COLLATION_CHARACTER_SET_APPLICABILITY",
+                &[],
+            )
+            .await?
+        }
+        false => catalog_rows(connection, flavour, COLLATIONS_SQL, "COLLATIONS", &[]).await?,
+    };
+    character_sets(&sets, &collations)
 }
 
 /// A TIMESTAMP's constant default as wall time in the server's zone,
@@ -660,6 +812,7 @@ mod tests {
             unique,
             primary: name == "PRIMARY",
             predicate: None,
+            definition: None,
         }
     }
 

@@ -6,57 +6,57 @@
   <menu id="editor_menu">
     <section>
       <item>
-        <attribute name="label" translatable="yes">Open SQL File…</attribute>
+        <attribute name="label" translatable="yes">_Open SQL File…</attribute>
         <attribute name="action">editor.open-file</attribute>
         <attribute name="accel">&lt;Primary&gt;o</attribute>
       </item>
       <item>
-        <attribute name="label" translatable="yes">Save</attribute>
+        <attribute name="label" translatable="yes">_Save</attribute>
         <attribute name="action">editor.save</attribute>
         <attribute name="accel">&lt;Primary&gt;s</attribute>
       </item>
       <item>
-        <attribute name="label" translatable="yes">Save As…</attribute>
+        <attribute name="label" translatable="yes">Save _As…</attribute>
         <attribute name="action">editor.save-as</attribute>
         <attribute name="accel">&lt;Primary&gt;&lt;Shift&gt;s</attribute>
       </item>
     </section>
     <section>
       <item>
-        <attribute name="label" translatable="yes">Save Query…</attribute>
+        <attribute name="label" translatable="yes">Save _Query…</attribute>
         <attribute name="action">win.save-query</attribute>
       </item>
       <item>
-        <attribute name="label" translatable="yes">Format</attribute>
+        <attribute name="label" translatable="yes">Forma_t</attribute>
         <attribute name="action">editor.format</attribute>
         <attribute name="accel">&lt;Primary&gt;&lt;Shift&gt;f</attribute>
       </item>
     </section>
     <section>
       <item>
-        <attribute name="label" translatable="yes">Explain with AI</attribute>
+        <attribute name="label" translatable="yes">Explain _with AI</attribute>
         <attribute name="action">editor.ai-explain</attribute>
         <attribute name="hidden-when">action-disabled</attribute>
       </item>
       <item>
-        <attribute name="label" translatable="yes">Review with AI</attribute>
+        <attribute name="label" translatable="yes">Re_view with AI</attribute>
         <attribute name="action">editor.ai-review</attribute>
         <attribute name="hidden-when">action-disabled</attribute>
       </item>
       <item>
-        <attribute name="label" translatable="yes">Optimize with AI</attribute>
+        <attribute name="label" translatable="yes">Opti_mize with AI</attribute>
         <attribute name="action">editor.ai-optimize</attribute>
         <attribute name="hidden-when">action-disabled</attribute>
       </item>
     </section>
     <section>
       <item>
-        <attribute name="label" translatable="yes">Find…</attribute>
+        <attribute name="label" translatable="yes">_Find…</attribute>
         <attribute name="action">editor.find</attribute>
         <attribute name="accel">&lt;Primary&gt;f</attribute>
       </item>
       <item>
-        <attribute name="label" translatable="yes">Find and Replace…</attribute>
+        <attribute name="label" translatable="yes">Find and _Replace…</attribute>
         <attribute name="action">editor.find-replace</attribute>
         <attribute name="accel">&lt;Primary&gt;h</attribute>
       </item>
@@ -66,17 +66,17 @@
   <menu id="assistant_menu">
     <section>
       <item>
-        <attribute name="label" translatable="yes">Explain with AI</attribute>
+        <attribute name="label" translatable="yes">Explain _with AI</attribute>
         <attribute name="action">editor.ai-explain</attribute>
         <attribute name="hidden-when">action-disabled</attribute>
       </item>
       <item>
-        <attribute name="label" translatable="yes">Review with AI</attribute>
+        <attribute name="label" translatable="yes">Re_view with AI</attribute>
         <attribute name="action">editor.ai-review</attribute>
         <attribute name="hidden-when">action-disabled</attribute>
       </item>
       <item>
-        <attribute name="label" translatable="yes">Optimize with AI</attribute>
+        <attribute name="label" translatable="yes">Opti_mize with AI</attribute>
         <attribute name="action">editor.ai-optimize</attribute>
         <attribute name="hidden-when">action-disabled</attribute>
       </item>
@@ -92,6 +92,56 @@
             <property name="margin-bottom">8</property>
             <property name="margin-start">8</property>
             <property name="margin-end">8</property>
+            <child>
+              <object class="GtkBox" id="scope_box">
+                <property name="visible">false</property>
+                <property name="spacing">6</property>
+                <property name="margin-start">4</property>
+                <property name="accessible-role">label</property>
+                <style>
+                  <class name="dim-label"/>
+                </style>
+                <child>
+                  <object class="GtkImage">
+                    <property name="icon-name">drive-harddisk-symbolic</property>
+                    <property name="accessible-role">presentation</property>
+                  </object>
+                </child>
+                <child>
+                  <object class="GtkLabel" id="scope_label">
+                    <property name="ellipsize">middle</property>
+                    <property name="accessible-role">presentation</property>
+                  </object>
+                </child>
+              </object>
+            </child>
+            <child>
+              <object class="GtkMenuButton" id="scope_button">
+                <property name="visible">false</property>
+                <property name="always-show-arrow">true</property>
+                <property name="tooltip-text" translatable="yes">Database</property>
+                <style>
+                  <class name="flat"/>
+                </style>
+                <property name="child">
+                  <object class="GtkBox">
+                    <property name="spacing">6</property>
+                    <child>
+                      <object class="GtkImage">
+                        <property name="icon-name">drive-harddisk-symbolic</property>
+                        <property name="accessible-role">presentation</property>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkLabel" id="scope_button_label">
+                        <property name="ellipsize">middle</property>
+                        <property name="accessible-role">presentation</property>
+                      </object>
+                    </child>
+                  </object>
+                </property>
+              </object>
+            </child>
             <child>
               <object class="GtkLabel" id="cursor_info">
                 <property name="hexpand">true</property>

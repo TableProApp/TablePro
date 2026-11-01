@@ -21,4 +21,14 @@ enum DataGridMetrics {
     static func rowHeight(_ setting: DataGridRowHeight, font: NSFont) -> CGFloat {
         max(CGFloat(setting.rawValue), (font.ascender - font.descender + font.leading).rounded(.up))
     }
+
+    // An overlay scroller floats over the last row, so only a legacy one adds height.
+    static func fittingHeight(
+        headerHeight: CGFloat,
+        rowCount: Int,
+        rowPitch: CGFloat,
+        horizontalScrollerHeight: CGFloat
+    ) -> CGFloat {
+        headerHeight + CGFloat(max(rowCount, 0)) * rowPitch + horizontalScrollerHeight
+    }
 }

@@ -12,7 +12,7 @@ use tablepro_session::{ConnectSource, SessionKey};
 use uuid::Uuid;
 
 use super::connections::LevelSave;
-use super::crash_notice::CrashNotice;
+use super::launch_notice::Said;
 use super::locate_file::LocateChooser;
 use super::picker_page::PickerPage;
 use super::session_page::{FailedConnect, OpenSession, PendingConnect, SessionPage};
@@ -26,6 +26,10 @@ use crate::ui::connect_dialog::ConnectDialog;
 use crate::ui::welcome_view::WelcomeView;
 use crate::ui::workspace::WorkspaceShell;
 use crate::workspace::{CloseGuards, WindowInhibitor};
+
+/// A connect that failed beside the window's sessions: where it came
+/// from, why it failed, and the other databases its next connect opens.
+pub(super) type FailureBeside = (ConnectSource, ConnectFailure, Vec<String>);
 
 #[derive(Default, gtk::CompositeTemplate, glib::Properties)]
 #[template(resource = "/app/tablepro/TablePro/ui/session-window.ui")]
@@ -53,7 +57,7 @@ pub struct SessionWindow {
     pub(super) failed: RefCell<Option<FailedConnect>>,
     /// The last failure of each connect that failed beside something
     /// else, until the key connects again, for its Details.
-    pub(super) failures: RefCell<HashMap<SessionKey, (ConnectSource, ConnectFailure)>>,
+    pub(super) failures: RefCell<HashMap<SessionKey, FailureBeside>>,
     /// The shell, from the first session the window adopts to the last
     /// one it tears down.
     pub(super) shell: RefCell<Option<WorkspaceShell>>,
@@ -88,8 +92,7 @@ pub struct SessionWindow {
     /// looked for.
     pub(super) dialog_opening: Cell<bool>,
     pub(super) shut_down: Cell<bool>,
-    /// The crash the last run ended in, until its toast is dismissed.
-    pub(super) crash_notice: RefCell<Option<CrashNotice>>,
+    pub(super) launch_notices: RefCell<Vec<Said>>,
     /// Every toast shown, which the overlay does not list.
     #[cfg(test)]
     pub(super) toasts: RefCell<Vec<adw::Toast>>,

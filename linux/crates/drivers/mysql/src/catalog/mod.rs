@@ -2,6 +2,7 @@
 //! type names.
 
 mod catalog_cells;
+mod character_sets;
 mod column_type_scan_error;
 mod escaped_expression;
 mod key_comparison;
@@ -9,8 +10,12 @@ mod mysql_column_row;
 mod mysql_column_type;
 mod mysql_extra;
 mod table_definition;
+mod table_options;
 
 pub(crate) use catalog_cells::CatalogCells;
+pub(crate) use character_sets::{
+    CHARACTER_SETS_SQL, COLLATIONS_SQL, FULL_COLLATION_NAMES_SQL, FULL_COLLATIONS_SQL, character_sets,
+};
 pub(crate) use key_comparison::{COLUMN_COMPARISONS_SQL, TableComparisons, column_comparisons, compares_alike};
 pub(crate) use mysql_column_row::{MySqlColumnRow, columns_sql};
 pub(crate) use mysql_extra::{ExtraGenerated, MySqlExtra};
@@ -19,6 +24,7 @@ pub(crate) use table_definition::{
     MARIADB_GEOMETRY_SRIDS_SQL, column_checks, geometry_srids, inbound_foreign_keys, place_column_checks,
     printed_names, quoted_default,
 };
+pub(crate) use table_options::{ListedOptions, table_options};
 
 use sqlx::mysql::{MySql, MySqlColumn};
 use sqlx::{Column as _, Type, TypeInfo as _};
@@ -38,7 +44,7 @@ use tablepro_core::value::Value;
 
 use crate::flavour::MySqlFlavour;
 use crate::mysql_timestamp_mode::MySqlTimestampMode;
-use escaped_expression::unescape_expression;
+pub(crate) use escaped_expression::unescape_expression;
 use mysql_column_type::scan;
 
 /// The catalogue's facts that decide a kind, apart from the rest of the

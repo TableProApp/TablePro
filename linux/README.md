@@ -20,7 +20,7 @@ TablePro supports the server releases their vendors still support. CI runs each 
 | Apache Cassandra | 4.0 and 5.0 | 3.11 and older, past end of life. 6.0 until it is released |
 | ScyllaDB | 2025.1 and 2026.1 | Feature releases between long-term ones, such as 2026.3. Enterprise 2024.1 and older, past end of life |
 | SQLite | the system library, 3.37.0 or newer | older libraries, which the driver refuses when it opens a file |
-| DuckDB | 1.5.6, compiled into the app ([ADR 0025](docs/decisions/0025-bundled-duckdb.md)) | files a newer DuckDB wrote in a storage format 1.5.6 cannot read |
+| DuckDB | 2.0.0, compiled into the app ([ADR 0031](docs/decisions/0031-duckdb-2.md)) | files a newer DuckDB wrote in a storage format 2.0.0 cannot read |
 | Redis | 7.4 and 8.10 | 7.2 and older, past end of life. Cluster and Sentinel deployments. Valkey answers the same commands and is not tested |
 | MongoDB | 7.0 and 8.0 | 6.0 and older, past end of life (6.0 on 2025-07-31). Minor releases between major ones, such as 8.2, are not tested. A sharded cluster is reached through `mongos` and is not tested |
 
@@ -85,28 +85,29 @@ System dependencies:
 
 ```bash
 # Ubuntu 26.04
-sudo apt install -y build-essential pkgconf meson ninja-build gettext desktop-file-utils appstream libglib2.0-bin libxml2-utils libgtk-4-dev libadwaita-1-dev libgtksourceview-5-dev libsqlite3-dev libkrb5-dev clang libclang-dev openssh-client
+sudo apt install -y build-essential pkgconf meson ninja-build gettext desktop-file-utils appstream libglib2.0-bin libxml2-utils libgtk-4-dev libadwaita-1-dev libgtksourceview-5-dev libsqlite3-dev libkrb5-dev liblcms2-dev libseccomp-dev clang libclang-dev openssh-client
 
 # Fedora 44
-sudo dnf install -y gcc gcc-c++ pkgconf meson ninja-build gettext desktop-file-utils appstream glib2-devel libxml2 gtk4-devel libadwaita-devel gtksourceview5-devel sqlite-devel krb5-devel clang-devel openssh-clients
+sudo dnf install -y gcc gcc-c++ pkgconf meson ninja-build gettext desktop-file-utils appstream glib2-devel libxml2 gtk4-devel libadwaita-devel gtksourceview5-devel sqlite-devel krb5-devel lcms2-devel libseccomp-devel clang-devel openssh-clients
 
 # Arch (not covered by CI)
-sudo pacman -S --needed base-devel pkgconf meson ninja gettext desktop-file-utils appstream libxml2 gtk4 libadwaita gtksourceview5 sqlite krb5 clang openssh
+sudo pacman -S --needed base-devel pkgconf meson ninja gettext desktop-file-utils appstream libxml2 gtk4 libadwaita gtksourceview5 sqlite krb5 lcms2 libseccomp clang openssh
 ```
 
 The Ubuntu list is the .deb's build dependencies in `build-aux/debian/control` and the Fedora list the RPM's in `build-aux/rpm/tablepro.spec`, less the ones only their tests need. CI builds both.
 
 The test suites need a few more: an X server for the GTK tests, a session
 bus, the icon theme, a generated `en_US.UTF-8` locale for the catalogue
-test, and gnome-keyring for the Secret Service tests.
+test, gnome-keyring for the Secret Service tests and the glycin loaders
+for the Row Details picture tests.
 
 ```bash
 # Ubuntu 26.04
-sudo apt install -y xvfb xauth dbus-daemon adwaita-icon-theme locales gnome-keyring
+sudo apt install -y xvfb xauth dbus-daemon adwaita-icon-theme locales gnome-keyring glycin-loaders
 sudo localedef -i en_US -f UTF-8 en_US.UTF-8
 
 # Fedora 44
-sudo dnf install -y xorg-x11-server-Xvfb xorg-x11-xauth dbus-daemon adwaita-icon-theme glibc-langpack-en gnome-keyring
+sudo dnf install -y xorg-x11-server-Xvfb xorg-x11-xauth dbus-daemon adwaita-icon-theme glibc-langpack-en gnome-keyring glycin-loaders
 ```
 
 Check the installed versions against the floors in
@@ -146,6 +147,11 @@ Before pushing, run the [fast-job commands](CONTRIBUTING.md#fast-job-commands). 
 link the system SQLite through sqlx's `sqlite-unbundled` feature rather
 than compiling a second copy into the binary. `libclang-dev` lets
 `libsqlite3-sys` run bindgen against the installed `sqlite3.h`.
+
+`libseccomp-dev` and `liblcms2-dev` are there for glycin, which decodes
+the picture of a binary value in Row Details in a sandbox
+([ADR 0029](docs/decisions/0029-images-decode-in-glycin.md)). At run time
+it needs the glycin loaders, which GNOME installs.
 
 A C++ compiler is there for DuckDB, which the `duckdb` crate compiles
 from its own sources: `build-essential` brings g++ on Ubuntu, `gcc-c++`

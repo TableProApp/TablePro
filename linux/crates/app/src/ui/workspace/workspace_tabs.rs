@@ -1,6 +1,7 @@
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
+use std::sync::Arc;
 
 use gtk4 as gtk;
 use gtk4::glib;
@@ -8,7 +9,7 @@ use libadwaita as adw;
 use libadwaita::prelude::*;
 
 use tablepro_core::meta::TableRef;
-use tablepro_session::SessionKey;
+use tablepro_session::{Session, SessionKey};
 use tablepro_storage::{DraftId, DraftScope};
 use uuid::Uuid;
 
@@ -131,10 +132,11 @@ impl WorkspaceModel {
             TabRecord::Diagram { schema, places } => TabSpec::Diagram { schema, places },
             // Its text is on disk already, or there is none to keep, so
             // nothing is written until the user types.
-            TabRecord::Editor { draft, file } => TabSpec::Editor {
+            TabRecord::Editor { draft, file, database } => TabSpec::Editor {
                 initial_query: Some(drafts.remove(&draft).unwrap_or_default()),
                 draft: Some(draft),
                 file,
+                database,
             },
             TabRecord::Key { key } => TabSpec::Key { key },
         };
@@ -188,6 +190,7 @@ impl WorkspaceModel {
             initial_query,
             draft: None,
             file: None,
+            database: None,
         });
     }
 
@@ -528,6 +531,46 @@ impl WorkspaceModel {
         self.persist_workspace_state();
     }
 
+    /// A tab that moved to another database is restored there and names
+    /// it in its title.
+    pub(super) fn on_editor_tab_database_changed(&self, id: Uuid) {
+        self.retitle_tab(id);
+        self.persist_workspace_state();
+        self.follow_editor_database(id);
+    }
+
+    /// Ask the window for the session of the database tab `tab_id` moved
+    /// to, whose catalog its completion reads (0030).
+    fn follow_editor_database(&self, tab_id: Uuid) {
+        let database = match self.workspace_tabs.borrow().get(&tab_id) {
+            Some(WorkspaceTab::Editor(slot)) => slot.editor.tab_database(),
+            _ => return,
+        };
+        if let Some(shell) = self.shell.upgrade() {
+            shell.tell_window(crate::ui::SessionWindowInput::MovedTab(crate::ui::MovedTab::Follow {
+                key: self.key.clone(),
+                tab_id,
+                database,
+            }));
+        }
+    }
+
+    pub(super) fn follow_catalog(&self, tab_id: Uuid, session: Option<Arc<Session>>) {
+        if let Some(WorkspaceTab::Editor(slot)) = self.workspace_tabs.borrow().get(&tab_id) {
+            slot.editor.follow_catalog(session);
+        }
+    }
+
+    /// Another database of the connection opened: each editor tab in it
+    /// reads its catalog.
+    pub(super) fn on_database_opened(&self, session: &Arc<Session>) {
+        for tab in self.workspace_tabs.borrow().values() {
+            if let WorkspaceTab::Editor(slot) = tab {
+                slot.editor.follow_catalog(Some(session.clone()));
+            }
+        }
+    }
+
     pub(super) fn on_editor_tab_run_state_changed(&self, id: Uuid, running: bool) {
         if let Some(WorkspaceTab::Editor(slot)) = self.workspace_tabs.borrow().get(&id) {
             slot.page.set_loading(running);
@@ -662,6 +705,7 @@ fn describe_closed_tab(slot: &WorkspaceTab) -> Option<ClosedTabDescriptor> {
         WorkspaceTab::Editor(s) => Some(ClosedTabDescriptor::Editor {
             query: whole_text(&s.editor.buffer()),
             file: editor_file_record(&s.editor),
+            database: s.editor.tab_database(),
         }),
         WorkspaceTab::Table(s) => Some(ClosedTabDescriptor::Table {
             schema: s.schema.clone(),
@@ -693,12 +737,13 @@ impl WorkspaceModel {
     /// Open again a tab this session closed, which the shell kept.
     pub(super) fn on_reopen_closed_tab(&mut self, descriptor: ClosedTabDescriptor) {
         match descriptor {
-            ClosedTabDescriptor::Editor { query, file } => {
+            ClosedTabDescriptor::Editor { query, file, database } => {
                 let initial = if query.is_empty() { None } else { Some(query) };
                 self.open_editor(TabSpec::Editor {
                     initial_query: initial,
                     draft: None,
                     file,
+                    database,
                 });
             }
             ClosedTabDescriptor::Table {

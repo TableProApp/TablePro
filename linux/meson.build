@@ -40,6 +40,9 @@ dependency('gtk4', version: '>= 4.22')
 dependency('libadwaita-1', version: '>= 1.9')
 dependency('gtksourceview-5', version: '>= 5.18')
 dependency('sqlite3', version: '>= 3.46')
+# glycin, which decodes a value's picture in a sandbox.
+dependency('libseccomp')
+dependency('lcms2')
 
 if get_option('kerberos')
   dependency('mit-krb5-gssapi')

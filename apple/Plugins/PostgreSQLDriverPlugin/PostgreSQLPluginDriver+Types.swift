@@ -15,7 +15,7 @@ extension PostgreSQLPluginDriver {
             identity: nil,
             capabilities: catalogCapabilities
         )
-        let result = try await execute(query: query)
+        let result = try await catalogRead(query)
         return result.rows
             .compactMap(PostgreSQLTypeDefinition.record(from:))
             .map(PostgreSQLTypeDefinition.info(from:))
@@ -24,7 +24,7 @@ extension PostgreSQLPluginDriver {
     func fetchUserDefinedTypes(inSchemas schemas: [String]) async throws -> [PluginUserDefinedTypeInfo]? {
         guard !schemas.isEmpty else { return [] }
         let query = PostgreSQLObjectQueries.userDefinedTypeList(schemas: schemas, capabilities: catalogCapabilities)
-        let result = try await execute(query: query)
+        let result = try await catalogRead(query)
         return result.rows
             .compactMap(PostgreSQLTypeDefinition.record(from:))
             .map(PostgreSQLTypeDefinition.info(from:))
@@ -42,7 +42,7 @@ extension PostgreSQLPluginDriver {
                 identity: String(oid),
                 capabilities: catalogCapabilities
             )
-            let result = try await execute(query: query)
+            let result = try await catalogRead(query)
             let match = result.rows
                 .compactMap(PostgreSQLTypeDefinition.record(from:))
                 .first { $0.identity == String(oid) }
@@ -55,7 +55,7 @@ extension PostgreSQLPluginDriver {
             identity: nil,
             capabilities: catalogCapabilities
         )
-        let result = try await execute(query: query)
+        let result = try await catalogRead(query)
         let match = result.rows
             .compactMap(PostgreSQLTypeDefinition.record(from:))
             .first { $0.name == type.name }

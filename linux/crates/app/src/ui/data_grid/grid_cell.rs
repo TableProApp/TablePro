@@ -8,7 +8,7 @@ use tablepro_core::Value;
 
 use super::columns::ColumnPaint;
 use super::tracked_values::cell_description;
-use super::{DataGrid, GridRow};
+use super::{DataGrid, GridRow, ServerValue};
 use crate::services::change_tracker::CellState;
 use crate::services::grid::display_text::{DisplayText, auto_filled_sentinel, display_text, editable_null_sentinel};
 use crate::services::grid::{CellLock, GridColumn};
@@ -154,6 +154,8 @@ impl GridCell {
         display.set_valign(gtk::Align::Center);
         display.set_text_overflow(gtk::InscriptionOverflow::EllipsizeEnd);
         display.set_min_chars(1);
+        // A column of codes or times lines up character for character.
+        display.add_css_class("monospace");
         display.set_parent(&cell);
         let _ = cell.imp().display.set(display);
         let _ = cell.imp().paint.set(paint);
@@ -256,9 +258,9 @@ impl GridCell {
             (false, CellState::Modified) => TextMark::Modified,
             (false, _) => TextMark::Plain,
         };
-        let null = paint.tracked.with_value(&row, column, |value, default| {
+        let null = paint.tracked.with_value(&row, column, |value, computed| {
             let mut scratch = self.imp().scratch.borrow_mut();
-            let shown = shown_text(&paint, value, default, lock.is_none(), &mut scratch);
+            let shown = shown_text(&paint, value, computed, lock.is_none(), &mut scratch);
             display.set_text(Some(shown.text));
             display.set_attributes(paint.attributes.for_text(text_mark, shown.placeholder));
             set_class(
@@ -266,7 +268,7 @@ impl GridCell {
                 "dimmed",
                 (value.is_null() && lock.is_some()) || mark.row_deleted,
             );
-            !default && value.is_null()
+            computed.is_none() && value.is_null()
         });
         if self.imp().scratch.borrow().capacity() > SCRATCH_KEPT_BYTES {
             self.imp().scratch.replace(String::new());
@@ -326,23 +328,28 @@ impl GridCell {
 }
 
 /// An editable cell shows NULL as `<NULL>`, so it reads apart from an
-/// empty string; a locked one dims a plain NULL.
+/// empty string; a locked one dims a plain NULL. A value the server
+/// computes shows as the SQL that computes it, in placeholder style, so
+/// `NOW()` reads apart from the text `NOW()`.
 fn shown_text<'a>(
     paint: &'a ColumnPaint,
     value: &'a Value,
-    default: bool,
+    computed: Option<ServerValue>,
     editable: bool,
     scratch: &'a mut String,
 ) -> DisplayText<'a> {
-    match (default, value) {
-        (true, _) if paint.column.auto_filled() => DisplayText::placeholder(&paint.attributes.auto_filled),
-        (true, _) => DisplayText::placeholder("DEFAULT"),
-        (false, Value::Null) if editable => DisplayText::placeholder(&paint.attributes.editable_null),
-        (false, value) => display_text(value, &paint.column.column_type, scratch),
+    match (computed, value) {
+        (Some(ServerValue::Default), _) if paint.column.auto_filled() => {
+            DisplayText::placeholder(&paint.attributes.auto_filled)
+        }
+        (Some(ServerValue::Default), _) => DisplayText::placeholder("DEFAULT"),
+        (Some(ServerValue::Expression(expression)), _) => DisplayText::placeholder(expression.sql),
+        (None, Value::Null) if editable => DisplayText::placeholder(&paint.attributes.editable_null),
+        (None, value) => display_text(value, &paint.column.column_type, scratch),
     }
 }
 
-fn set_class(widget: &impl IsA<gtk::Widget>, class: &str, on: bool) {
+pub(super) fn set_class(widget: &impl IsA<gtk::Widget>, class: &str, on: bool) {
     match on {
         true => widget.as_ref().add_css_class(class),
         false => widget.as_ref().remove_css_class(class),

@@ -5,13 +5,17 @@
 //!
 //!   ┌─ Content ────────────────────────────────────────────────┐
 //!   │   (New mode) AdwPreferencesGroup { name entry }          │
-//!   │   Centred AdwViewSwitcher: Columns | Indexes | FKs | SQL │
+//!   │   Centred AdwViewSwitcher: Columns | Indexes | FKs |     │
+//!   │                            Options | SQL                 │
 //!   │ ┌─ ViewStack ─────────────────────────────────────────┐  │
 //!   │ │ Columns: boxed-list of AdwExpanderRow (per column,  │  │
-//!   │ │   header = Name + summary, body = Name/Type/Null/   │  │
-//!   │ │   Default/PK/AutoInc rows), then an Add Column row  │  │
+//!   │ │   header = Name + summary, body = Name/Type/Charset/│  │
+//!   │ │   Collation/Null/Default/PK/AutoInc rows), then an  │  │
+//!   │ │   Add Column row                                    │  │
 //!   │ │ Indexes: boxed-list (Name, Cols, Unique, trash)     │  │
 //!   │ │ FKs: boxed-list (Name, Cols, Refs, RefCols, trash)  │  │
+//!   │ │ Options (where the engine has them): Character Set, │  │
+//!   │ │   Collation, Convert, Next Auto Increment           │  │
 //!   │ │ SQL Preview: SourceView5 (read-only, sql highlight) │  │
 //!   │ └─────────────────────────────────────────────────────┘  │
 //!   ├─ ActionBar { pending count | Discard | Save | Drop } ────┤
@@ -31,7 +35,9 @@
 //!
 //! The tab reads the table's definition itself, one request at a time,
 //! and reads it again once the session reconnects if the last read
-//! failed. A change to the table from elsewhere reads it again too,
+//! failed. The server's character sets are a read of their own after
+//! it, and a tab whose read of them failed edits everything else. A
+//! change to the table from elsewhere reads the definition again too,
 //! unless the draft has edits: then Discard reads it, and a plan that
 //! writes the table again from the old definition refuses to save. A
 //! read that fails with a definition on screen leaves it there under a
@@ -40,6 +46,8 @@
 //! An input belongs to the group of state it changes, and each group is
 //! handled in its own `*_handlers` module.
 
+mod character_set_choices;
+mod character_set_fetch;
 mod column_handlers;
 mod columns;
 mod columns_input;
@@ -77,6 +85,7 @@ mod structure_tab_widgets;
 mod table_choice_object;
 mod table_handlers;
 mod table_input;
+mod table_options;
 #[cfg(test)]
 mod tests;
 
@@ -91,13 +100,13 @@ use gtk4::subclass::prelude::*;
 use gtk4::{gio, glib};
 use libadwaita as adw;
 use sourceview5::prelude::BufferExt;
-use tablepro_core::ddl::{DraftColumn, TableChanges, TableDraft, diff_table};
+use tablepro_core::ddl::{DraftColumn, DraftTableOptions, TableChanges, TableDraft, diff_table};
 use tablepro_core::meta::TableRef;
 use tablepro_session::runtime::{Tasks, WatchForwarder};
 use tablepro_session::{LinkGeneration, Session};
 
 pub(crate) use self::columns_input::{ColumnField, ColumnsInput};
-use self::context::StructureContext;
+use self::context::{CharacterSets, StructureContext};
 use self::draft_column_object::DraftColumnObject;
 use self::foreign_key_object::ForeignKeyObject;
 pub(crate) use self::foreign_keys_input::ForeignKeysInput;
@@ -109,6 +118,7 @@ pub(crate) use self::structure_command::{LoadedStructure, StructureCommand, Stru
 pub(crate) use self::structure_tab_input::StructureTabInput;
 use self::structure_tab_widgets::StructureTabWidgets;
 pub(crate) use self::table_input::TableInput;
+use self::table_options::NextAutoIncrement;
 use crate::runtime::{FailedRequests, RequestSequencer};
 use crate::services::pending_structure::PendingStructure;
 use crate::services::structure_tracker_handle::StructureTrackerHandle;
@@ -168,6 +178,7 @@ impl StructureTab {
                 StructureMode::Edit => None,
             },
             definition: None,
+            character_sets: CharacterSets::Unread,
         }));
         let columns = gio::ListStore::new::<DraftColumnObject>();
         let indexes = gio::ListStore::new::<IndexObject>();
@@ -206,6 +217,8 @@ impl StructureTab {
             columns,
             indexes,
             foreign_keys,
+            options: None,
+            next_auto_increment: NextAutoIncrement::default(),
             read_only,
             saving: false,
             last_dirty: false,
@@ -342,6 +355,14 @@ impl StructureTab {
         )
     }
 
+    pub fn connect_open_in_editor<F: Fn(&Self, String) + 'static>(&self, f: F) -> glib::SignalHandlerId {
+        self.connect_closure(
+            "open-in-editor",
+            false,
+            glib::closure_local!(move |tab: &Self, sql: String| f(tab, sql)),
+        )
+    }
+
     /// A read of the table's definition started or ended.
     pub fn connect_loading_changed<F: Fn(&Self, bool) + 'static>(&self, f: F) -> glib::SignalHandlerId {
         self.connect_closure(
@@ -372,6 +393,7 @@ impl StructureTab {
             StructureTabOutput::ShowToast(text) => self.emit_by_name::<()>("toast", &[&text]),
             StructureTabOutput::ShowAlert { title, body } => self.emit_by_name::<()>("alert", &[&title, &body]),
             StructureTabOutput::LoadingChanged(loading) => self.emit_by_name::<()>("loading-changed", &[&loading]),
+            StructureTabOutput::OpenInEditor(sql) => self.emit_by_name::<()>("open-in-editor", &[&sql]),
         }
     }
 }
@@ -416,6 +438,9 @@ pub(crate) struct StructureModel {
     columns: gio::ListStore,
     indexes: gio::ListStore,
     foreign_keys: gio::ListStore,
+    /// The draft's own options, on an engine whose tables have them.
+    options: Option<DraftTableOptions>,
+    next_auto_increment: NextAutoIncrement,
     /// The connection refuses writes, so Drop is not offered.
     read_only: bool,
     /// A save of the tab is running, so Save and Discard stay off.
@@ -456,6 +481,8 @@ pub(crate) enum StructureTabOutput {
     },
     /// A read of the definition started or ended, for the tab bar.
     LoadingChanged(bool),
+    /// SQL the user asked to see in an editor tab.
+    OpenInEditor(String),
 }
 
 impl StructureModel {
@@ -476,6 +503,7 @@ impl StructureModel {
                 .iter()
                 .map(|key| key.info().clone())
                 .collect(),
+            options: self.options.clone(),
         }
     }
 
@@ -498,6 +526,7 @@ impl StructureModel {
             draft,
             changes,
             unparsed_defaults,
+            invalid_auto_increment: self.next_auto_increment.error.is_some(),
         }
     }
 
@@ -511,9 +540,10 @@ impl StructureModel {
         if self.refetching {
             return;
         }
+        self.sync_next_auto_increment();
         let pending = self.pending();
         let dirty = pending.has_changes();
-        self.refresh_buttons(pending.change_count(), pending.unparsed_defaults.is_empty());
+        self.refresh_buttons(pending.change_count(), pending.typed_values_hold());
         self.regenerate_sql_preview(&pending);
         self.tracker.set_pending(Some(pending));
         if self.last_dirty != dirty {
@@ -545,6 +575,9 @@ impl StructureModel {
             &self.foreign_keys,
             draft.foreign_keys.into_iter().map(ForeignKeyObject::new),
         );
+        self.next_auto_increment = NextAutoIncrement::showing(draft.options.as_ref());
+        self.options = draft.options;
+        self.show_table_options();
     }
 
     /// The lists build every row again, keeping the items, for rows
