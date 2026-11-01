@@ -20,7 +20,6 @@ public enum QdrantFilterError: Error, LocalizedError, Equatable, Sendable {
     case notAPointID(value: String)
     case emptyList(column: String)
     case comparisonNeedsNumberOrDate(column: String, op: String)
-    case textMatchNeedsText(column: String, type: String)
     case wholeValueNotMatchable(column: String, type: String)
     case vectorNotFilterable(column: String)
     case keyNotAddressable(column: String)
@@ -44,8 +43,6 @@ public enum QdrantFilterError: Error, LocalizedError, Equatable, Sendable {
                 format: String(localized: "Qdrant compares only numbers and dates with %@, and %@ holds neither."),
                 op, column
             )
-        case .textMatchNeedsText(let column, let type):
-            return String(format: String(localized: "%@ holds %@ values, and Qdrant matches words only in text."), column, type)
         case .wholeValueNotMatchable(let column, let type):
             return String(
                 format: String(localized: "Qdrant cannot match a whole %@ value in %@. Use a raw filter on one of its fields."),
@@ -83,10 +80,13 @@ public enum QdrantFilterBuilder {
         if filter.column == rawFilterColumn {
             return try raw(filter.value)
         }
+        let op = filter.op.uppercased()
         guard !QdrantSchema.isVectorColumn(filter.column) else {
+            // Search All Rows asks every column; a vector holds no text, so it finds nothing there.
+            if op == "CONTAINS" { return ["has_id": [Any]()] }
+            if op == "NOT CONTAINS" { return negated([["has_id": [Any]()]]) }
             throw QdrantFilterError.vectorNotFilterable(column: filter.column)
         }
-        let op = filter.op.uppercased()
         if filter.column == QdrantSchema.idColumn {
             if op == "CONTAINS" || op == "NOT CONTAINS" {
                 return idContains(op: op, value: filter.value)
@@ -115,9 +115,9 @@ public enum QdrantFilterBuilder {
         case "NOT IN":
             return negated(try field.anyOfConditions(list(filter.value, column: filter.column)))
         case "CONTAINS":
-            return try field.textMatch(filter.value)
+            return field.textMatch(filter.value)
         case "NOT CONTAINS":
-            return negated([try field.textMatch(filter.value)])
+            return negated([field.textMatch(filter.value)])
         case "IS NULL":
             return field.isEmpty
         case "IS NOT NULL":
@@ -213,12 +213,10 @@ public enum QdrantFilterBuilder {
             return ["key": key, "range": range]
         }
 
-        // Without a full-text index Qdrant still matches the words, lowercased.
-        func textMatch(_ value: String) throws -> [String: Any] {
-            if let type, !type.holdsText {
-                throw QdrantFilterError.textMatchNeedsText(column: column, type: type.rawValue)
-            }
-            return ["key": key, "match": ["text": value]]
+        // Without a full-text index Qdrant still matches the words, lowercased, and a value that is not
+        // text matches nothing rather than failing, so Search All Rows can ask every column.
+        func textMatch(_ value: String) -> [String: Any] {
+            ["key": key, "match": ["text": value]]
         }
 
         // `is_empty` covers a missing key, null and []; `is_null` would miss the missing key the grid shows as NULL.

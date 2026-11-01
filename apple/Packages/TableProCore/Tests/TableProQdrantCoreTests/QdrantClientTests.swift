@@ -50,15 +50,17 @@ struct QdrantClientTests {
         #expect((nearest.cursor as? NSNumber)?.intValue == 102)
     }
 
-    @Test("A changed point count drops the collection's cursors, so a page after another client's delete starts at the right row")
-    func pointCountDropsCursors() {
+    @Test("A changed count of the filtered list drops its cursors, so a page after another client's change starts at the right row")
+    func countDropsCursors() {
         let cache = QdrantPagingCache()
-        cache.revalidate(collection: "docs", pointCount: 400)
-        cache.storeCursor(NSNumber(value: 101), at: 100, key: "docs\u{0}")
-        cache.revalidate(collection: "docs", pointCount: 400)
-        #expect(cache.nearestCursor(at: 100, key: "docs\u{0}").offset == 100)
-        cache.revalidate(collection: "docs", pointCount: 399)
-        #expect(cache.nearestCursor(at: 100, key: "docs\u{0}").offset == 0)
+        cache.revalidate(key: "docs\u{0}f", count: 400)
+        cache.storeCursor(NSNumber(value: 101), at: 100, key: "docs\u{0}f")
+        cache.storeCursor(NSNumber(value: 7), at: 100, key: "docs\u{0}g")
+        cache.revalidate(key: "docs\u{0}f", count: 400)
+        #expect(cache.nearestCursor(at: 100, key: "docs\u{0}f").offset == 100)
+        cache.revalidate(key: "docs\u{0}f", count: 399)
+        #expect(cache.nearestCursor(at: 100, key: "docs\u{0}f").offset == 0)
+        #expect(cache.nearestCursor(at: 100, key: "docs\u{0}g").offset == 100)
     }
 
     @Test("An offset past the end answers an empty page")

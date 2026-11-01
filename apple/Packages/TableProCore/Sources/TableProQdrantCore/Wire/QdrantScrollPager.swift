@@ -9,7 +9,7 @@ public final class QdrantPagingCache: @unchecked Sendable {
     private var cursors: [String: [Int: Any]] = [:]
     private var order: [String] = []
     private var checkedSorts: Set<String> = []
-    private var pointCounts: [String: Int] = [:]
+    private var counts: [String: Int] = [:]
 
     public init() {}
 
@@ -39,17 +39,14 @@ public final class QdrantPagingCache: @unchecked Sendable {
         }
     }
 
-    // Another client's insert or delete shifts every later row, so cursors cached before it start pages
-    // at the wrong row. The point count is the one cheap signal of that the driver can read.
-    public func revalidate(collection: String, pointCount: Int) {
+    // Another client's insert, delete or payload change shifts every later row of a filtered list, so
+    // cursors cached before it start pages at the wrong row. The list's count is the cheap signal of it.
+    public func revalidate(key: String, count: Int) {
         lock.withLock {
-            defer { pointCounts[collection] = pointCount }
-            guard let known = pointCounts[collection], known != pointCount else { return }
-            let prefix = "\(collection)\u{0}"
-            for key in cursors.keys where key.hasPrefix(prefix) {
-                cursors[key] = nil
-            }
-            order.removeAll { $0.hasPrefix(prefix) }
+            defer { counts[key] = count }
+            guard let known = counts[key], known != count else { return }
+            cursors[key] = nil
+            order.removeAll { $0 == key }
         }
     }
 
@@ -66,7 +63,7 @@ public final class QdrantPagingCache: @unchecked Sendable {
             cursors.removeAll()
             order.removeAll()
             checkedSorts.removeAll()
-            pointCounts.removeAll()
+            counts.removeAll()
         }
     }
 }
@@ -82,7 +79,7 @@ public extension QdrantClient {
         cache: QdrantPagingCache
     ) async throws -> [QdrantPoint] {
         let key = "\(collection)\u{0}\(filter.flatMap { try? QdrantJSON.text($0) } ?? "")"
-        cache.revalidate(collection: collection, pointCount: try await count(collection: collection, filter: nil))
+        cache.revalidate(key: key, count: try await count(collection: collection, filter: filter))
         var (position, cursor) = cache.nearestCursor(at: offset, key: key)
         while position < offset {
             try Task.checkCancellation()

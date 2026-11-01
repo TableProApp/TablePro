@@ -86,13 +86,11 @@ struct QdrantFilterBuilderTests {
         }
     }
 
-    @Test("CONTAINS matches words in any text field, indexed or not, and refuses numbers")
+    @Test("CONTAINS matches words in any field, indexed or not, and a value that is not text matches nothing")
     func contains() throws {
         #expect(try condition("body", "CONTAINS", "vector") == #"{"key":"\"body\"","match":{"text":"vector"}}"#)
         #expect(try condition("note", "CONTAINS", "Ber") == #"{"key":"\"note\"","match":{"text":"Ber"}}"#)
-        #expect(throws: QdrantFilterError.textMatchNeedsText(column: "rank", type: "integer")) {
-            try condition("rank", "CONTAINS", "1")
-        }
+        #expect(try condition("rank", "CONTAINS", "1") == #"{"key":"\"rank\"","match":{"text":"1"}}"#)
         #expect(try condition("count", "CONTAINS", "1") == #"{"key":"\"count\"","match":{"text":"1"}}"#)
     }
 
@@ -116,8 +114,9 @@ struct QdrantFilterBuilderTests {
     }
 
     @Test("Vectors cannot be filtered and unsupported operators say so")
-    func refusals() {
+    func refusals() throws {
         #expect(throws: QdrantFilterError.vectorNotFilterable(column: "vector")) { try condition("vector", "=", "1") }
+        #expect(try condition("vector.sp", "CONTAINS", "a") == #"{"has_id":[]}"#)
         #expect(throws: QdrantFilterError.unsupportedOperator("STARTS WITH")) { try condition("city", "STARTS WITH", "B") }
     }
 

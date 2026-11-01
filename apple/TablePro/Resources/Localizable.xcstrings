@@ -3557,10 +3557,6 @@
     "%@ has no recorded reads." : {
 
     },
-    "%@ holds %@ values, and Qdrant matches words only in text." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
-    },
     "%@ holds a document or an array, and this text is not valid JSON." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,

@@ -101,6 +101,19 @@ let searchAll = [
     QdrantFilterSpec(column: "city", op: "CONTAINS", value: "even")
 ]
 check(try await filtered(searchAll, "OR") == 125, "search all rows skips the id column")
+let searchNumbers = [
+    QdrantFilterSpec(column: "n", op: "CONTAINS", value: "5"),
+    QdrantFilterSpec(column: "vector.sp", op: "CONTAINS", value: "5"),
+    QdrantFilterSpec(column: "city", op: "CONTAINS", value: "even")
+]
+check(try await filtered(searchNumbers, "OR") == 125, "search all rows runs on number and vector columns")
+let evenFilter = try QdrantFilterBuilder.filter([QdrantFilterSpec(column: "city", op: "=", value: "even")], logicMode: "AND", collection: collection)
+let evenCache = QdrantPagingCache()
+let evenBefore = try await client.scrollPage(collection: name, filter: evenFilter, offset: 10, limit: 2, cache: evenCache)
+_ = try await run(#"POST \#(base)/points/payload?wait=true {"payload":{"city":"odd"},"points":[2]}"#)
+let evenAfter = try await client.scrollPage(collection: name, filter: evenFilter, offset: 10, limit: 2, cache: evenCache)
+_ = try await run(#"POST \#(base)/points/payload?wait=true {"payload":{"city":"even"},"points":[2]}"#)
+check(evenBefore.map { $0.idText ?? "" } == ["22", "24"] && evenAfter.map { $0.idText ?? "" } == ["24", "26"], "a filtered page follows another client's payload change")
 check(try await filtered([QdrantFilterSpec(column: "n", op: "IN", value: "1,2,300")]) == 2, "match any")
 check(try await filtered([QdrantFilterSpec(column: "f", op: "IN", value: "1.5, 2.5")]) == 2, "IN on floats")
 check(try await filtered([QdrantFilterSpec(column: "f", op: "NOT IN", value: "1.5")]) == 249, "NOT IN on floats")
