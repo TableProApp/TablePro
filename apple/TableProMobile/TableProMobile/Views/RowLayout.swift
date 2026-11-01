@@ -1,21 +1,16 @@
-import Foundation
+import SwiftUI
+import UIKit
 
 nonisolated enum RowLayout: String, CaseIterable, Identifiable, Sendable {
     case cards
     case grid
 
-    static let storageKey = "com.TablePro.settings.rowLayout"
-
     var id: String { rawValue }
 
-    /// A choice the user made wins at every width; until then a regular width opens in the grid
-    /// and a compact one keeps the cards, which fit a phone held upright.
-    static func resolved(preferred: RowLayout?, widthClass: DuoWidthClass) -> RowLayout {
+    // The idiom, not the size class: a resize or rotation must not swap the layout under a pushed row.
+    static func resolved(preferred: RowLayout?, idiom: UIUserInterfaceIdiom) -> RowLayout {
         if let preferred { return preferred }
-        switch widthClass {
-        case .compact: return .cards
-        case .regular: return .grid
-        }
+        return idiom == .phone ? .cards : .grid
     }
 
     var title: String {
@@ -30,5 +25,21 @@ nonisolated enum RowLayout: String, CaseIterable, Identifiable, Sendable {
         case .cards: return "rectangle.grid.1x2"
         case .grid: return "tablecells"
         }
+    }
+}
+
+struct RowLayoutPicker: View {
+    @AppStorage(AppPreferences.rowLayoutKey) private var preferredLayout: RowLayout?
+
+    var body: some View {
+        let current = RowLayout.resolved(preferred: preferredLayout, idiom: UIDevice.current.userInterfaceIdiom)
+        Picker(selection: Binding(get: { current }, set: { preferredLayout = $0 })) {
+            ForEach(RowLayout.allCases) { layout in
+                Label(layout.title, systemImage: layout.systemImage).tag(layout)
+            }
+        } label: {
+            Label("Layout", systemImage: current.systemImage)
+        }
+        .pickerStyle(.inline)
     }
 }

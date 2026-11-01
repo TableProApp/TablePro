@@ -37,7 +37,7 @@ struct DataBrowserView: View {
     @State private var isCompletingCells = false
     @State private var hapticSuccess = false
     @State private var hapticError = false
-    @AppStorage(RowLayout.storageKey) private var preferredLayout: RowLayout?
+    @AppStorage(AppPreferences.rowLayoutKey) private var preferredLayout: RowLayout?
 
     private var activeSchema: String? {
         coordinator.supportsSchemas ? coordinator.activeSchema : nil
@@ -305,14 +305,7 @@ struct DataBrowserView: View {
     }
 
     private var rowLayout: RowLayout {
-        RowLayout.resolved(preferred: preferredLayout, widthClass: duoWidthClass)
-    }
-
-    private var rowLayoutBinding: Binding<RowLayout> {
-        Binding(
-            get: { rowLayout },
-            set: { preferredLayout = $0 }
-        )
+        RowLayout.resolved(preferred: preferredLayout, idiom: UIDevice.current.userInterfaceIdiom)
     }
 
     @ViewBuilder
@@ -336,16 +329,37 @@ struct DataBrowserView: View {
     }
 
     private var rowGrid: some View {
-        RowGrid(
+        let primaryKeys = primaryKeyNames
+        return RowGrid(
             columns: columns,
             rows: rows,
-            destination: { index in rowDetail(index: index) },
-            menuItems: { index in rowContextMenu(cells: viewModel.cells(at: index)) },
-            deleteAction: { index in
-                guard canDeleteRows, let locator = viewModel.rowLocator(forRowAt: index) else { return nil }
-                return { confirmDelete(locator) }
+            keyColumn: RowKey.columnIndex(columns: columns, primaryKeys: primaryKeys)
+        ) { index, line in
+            NavigationLink {
+                rowDetail(index: index)
+            } label: {
+                line
             }
-        )
+            .hoverEffect()
+            .contextMenu {
+                rowContextMenu(index: index)
+            } preview: {
+                // The row itself can be thousands of points wide; the lift preview shows its card.
+                RowCard(
+                    columns: columns,
+                    columnDetails: viewModel.columnDetails,
+                    row: rows.indices.contains(index) ? rows[index] : [],
+                    previewFieldCount: DuoLayoutResolver.regularPreviewFieldCount
+                )
+                .padding()
+                .frame(maxWidth: 360, alignment: .leading)
+            }
+            .accessibilityActions { deleteAccessibilityAction(index: index) }
+        }
+    }
+
+    private var primaryKeyNames: Set<String> {
+        Set(viewModel.columnDetails.filter(\.isPrimaryKey).map(\.name))
     }
 
     private func pageContainer(_ rows: some View) -> some View {
@@ -390,8 +404,7 @@ struct DataBrowserView: View {
     }
 
     private func rowLink(index: Int, row: [String?]) -> some View {
-        let cells = viewModel.cells(at: index)
-        let deleteKeys = canDeleteRows ? viewModel.rowLocator(forRowAt: index) : nil
+        let deleteKeys = deletableRow(at: index)
         return NavigationLink {
             rowDetail(index: index)
         } label: {
@@ -403,7 +416,7 @@ struct DataBrowserView: View {
             )
         }
         .hoverEffect()
-        .contextMenu { rowContextMenu(cells: cells) }
+        .contextMenu { rowContextMenu(index: index) }
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
             if let deleteKeys {
                 Button {
@@ -414,10 +427,17 @@ struct DataBrowserView: View {
                 .tint(.red)
             }
         }
-        .accessibilityActions {
-            if let deleteKeys {
-                Button("Delete row") { confirmDelete(deleteKeys) }
-            }
+        .accessibilityActions { deleteAccessibilityAction(index: index) }
+    }
+
+    private func deletableRow(at index: Int) -> RowLocator? {
+        canDeleteRows ? viewModel.rowLocator(forRowAt: index) : nil
+    }
+
+    @ViewBuilder
+    private func deleteAccessibilityAction(index: Int) -> some View {
+        if let locator = deletableRow(at: index) {
+            Button("Delete row") { confirmDelete(locator) }
         }
     }
 
@@ -427,7 +447,8 @@ struct DataBrowserView: View {
     }
 
     @ViewBuilder
-    private func rowContextMenu(cells: [Cell]) -> some View {
+    private func rowContextMenu(index: Int) -> some View {
+        let cells = viewModel.cells(at: index)
         if DataBrowserViewModel.canComplete(cells) {
             Menu("Share Row") {
                 ForEach(ExportFormat.offered(for: connection.type)) { format in
@@ -474,6 +495,10 @@ struct DataBrowserView: View {
                 }
             }
         }
+        if let locator = deletableRow(at: index) {
+            Divider()
+            Button("Delete Row", systemImage: "trash", role: .destructive) { confirmDelete(locator) }
+        }
     }
 
     @ToolbarContentBuilder
@@ -489,14 +514,7 @@ struct DataBrowserView: View {
                     }
                     Divider()
                 }
-                Picker(selection: rowLayoutBinding) {
-                    ForEach(RowLayout.allCases) { layout in
-                        Label(layout.title, systemImage: layout.systemImage).tag(layout)
-                    }
-                } label: {
-                    Label("Layout", systemImage: rowLayout.systemImage)
-                }
-                .pickerStyle(.inline)
+                RowLayoutPicker()
                 Divider()
                 Section("Export") {
                     ForEach(ExportFormat.offered(for: connection.type)) { format in
