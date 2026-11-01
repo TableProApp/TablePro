@@ -545,6 +545,52 @@ struct ProtobufSchemaDecoderTests {
         #expect(try Self.text("1a020801", schema: schema, message: "n.M") == "g {\n  1: 1\n}\n")
     }
 
+    @Test("A oneof message member that a later member replaces must still parse, as protoc parses it first")
+    func discardedOneofMemberIsParsed() throws {
+        let schema = try ProtobufSchema.parse(Data("""
+            syntax = "proto3";
+            package o2;
+            message Inner { int32 n = 1; }
+            message M { oneof c { Inner a = 1; int32 b = 2; } }
+            """.utf8))
+        // protoc --decode=o2.M fails on both: `a` holds a truncated varint.
+        for fixture in ["0a01081007", "10070a0108"] {
+            #expect(throws: BinaryValueDecodeError.self, "\(fixture)") {
+                try Self.text(fixture, schema: schema, message: "o2.M")
+            }
+        }
+        #expect(try Self.text("0a0208011007", schema: schema, message: "o2.M") == "b: 7\n")
+    }
+
+    @Test("An editions message field set DELIMITED reads its group framing, from a .proto and a descriptor set")
+    func delimitedMessageEncoding() throws {
+        let proto = """
+            edition = "2023";
+            package d;
+            message Inner { int32 n = 1; }
+            message M { Inner inner = 1 [features.message_encoding = DELIMITED]; Inner plain = 2; }
+            """
+        // protoc --descriptor_set_out=d.desc of the file above.
+        let descriptorSet = "0a7c0a07642e70726f746f12016422150a05496e6e6572120c0a016e18012001280552016e224a0a014d12250a05696e6e6572"
+            + "18012001280b32082e642e496e6e65724205aa010228025205696e6e6572121e0a05706c61696e18022001280b32082e642e496e6e"
+            + "65725205706c61696e620865646974696f6e7370e807"
+        for schema in [try ProtobufSchema.parse(Data(proto.utf8)), try ProtobufSchema.parse(BinaryFixture.data(descriptorSet))] {
+            // protoc --decode=d.M of 0b08070c, then of 0a020807 sent length-prefixed.
+            #expect(try Self.text("0b08070c", schema: schema, message: "d.M") == "inner {\n  n: 7\n}\n")
+            #expect(try Self.text("0a020807", schema: schema, message: "d.M") == "1 {\n  1: 7\n}\n")
+        }
+        let fileLevel = try ProtobufSchema.parse(Data("""
+            edition = "2023";
+            package d2;
+            option features.message_encoding = DELIMITED;
+            message Inner { int32 n = 1; }
+            message M { Inner inner = 1; repeated Inner many = 2; }
+            """.utf8))
+        // protoc --decode=d2.M of 0b08070c1308011413080214
+        #expect(try Self.text("0b08070c1308011413080214", schema: fileLevel, message: "d2.M")
+            == "inner {\n  n: 7\n}\nmany {\n  n: 1\n}\nmany {\n  n: 2\n}\n")
+    }
+
     @Test("The package qualifies the definitions written before it too")
     func packageAfterMessage() throws {
         let schema = try ProtobufSchema.parse(Data("""

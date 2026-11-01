@@ -30,6 +30,8 @@ internal struct ProtobufFieldDescriptor: Equatable, Sendable {
     let hasPresence: Bool
     // protoc refuses the whole value when such a string is not UTF-8.
     let validatesUTF8: Bool
+    // An editions message field sent with group framing.
+    let isDelimited: Bool
 }
 
 internal struct ProtobufMessageDescriptor: Equatable, Sendable {
@@ -147,7 +149,11 @@ internal struct ProtobufSchema: Equatable, Sendable {
             throw ProtobufSchemaError(reason: String(localized: "The file defines no message."))
         }
         let scopes = ProtobufFeatureScopes(files: files, messages: definitions, enums: enumDefinitions)
-        let resolver = ProtobufTypeResolver(messageNames: Set(definitions.keys), enumNames: Set(enumDefinitions.keys))
+        let resolver = ProtobufTypeResolver(
+            messageNames: Set(definitions.keys),
+            enumNames: Set(enumDefinitions.keys),
+            mapEntryNames: Set(definitions.values.filter(\.isMapEntry).map(\.fullName))
+        )
         var resolved: [String: ProtobufMessageDescriptor] = [:]
         for (name, message) in definitions {
             let features = scopes.messages[name] ?? ProtobufFeatures(syntax: .proto2)
@@ -182,6 +188,7 @@ internal struct ProtobufFeatureOverrides: Equatable, Sendable {
     var implicitPresence: Bool?
     var closedEnum: Bool?
     var validatesUTF8: Bool?
+    var delimitedMessages: Bool?
 }
 
 internal struct ProtobufFileDefinition: Sendable {
@@ -232,6 +239,7 @@ private struct ProtobufFeatures {
     var implicitPresence: Bool
     var closedEnum: Bool
     var validatesUTF8: Bool
+    var delimitedMessages = false
 
     init(syntax: ProtobufSyntax) {
         self.syntax = syntax
@@ -246,6 +254,7 @@ private struct ProtobufFeatures {
         if let implicitPresence = overrides.implicitPresence { result.implicitPresence = implicitPresence }
         if let closedEnum = overrides.closedEnum { result.closedEnum = closedEnum }
         if let validatesUTF8 = overrides.validatesUTF8 { result.validatesUTF8 = validatesUTF8 }
+        if let delimitedMessages = overrides.delimitedMessages { result.delimitedMessages = delimitedMessages }
         return result
     }
 }
@@ -289,6 +298,7 @@ private struct ProtobufFeatureScopes {
 private struct ProtobufTypeResolver {
     let messageNames: Set<String>
     let enumNames: Set<String>
+    let mapEntryNames: Set<String>
 
     func resolve(_ field: ProtobufFieldDefinition, scope: String, features: ProtobufFeatures) -> ProtobufFieldDescriptor {
         let type: ProtobufFieldType
@@ -314,8 +324,15 @@ private struct ProtobufTypeResolver {
             isRepeated: field.isRepeated,
             oneofIndex: field.oneofIndex,
             hasPresence: !field.isRepeated && (field.oneofIndex != nil || isMessage || !isImplicit),
-            validatesUTF8: fieldFeatures.validatesUTF8
+            validatesUTF8: fieldFeatures.validatesUTF8,
+            isDelimited: isDelimited(type, features: fieldFeatures)
         )
+    }
+
+    // A map's entries stay length-prefixed whatever the file sets.
+    private func isDelimited(_ type: ProtobufFieldType, features: ProtobufFeatures) -> Bool {
+        guard features.delimitedMessages, case .message(let name) = type else { return false }
+        return !mapEntryNames.contains(name)
     }
 
     private func resolve(_ reference: String, scope: String) -> ProtobufFieldType {
@@ -413,7 +430,7 @@ internal enum ProtobufDescriptorSetParser {
         return nil
     }
 
-    // FeatureSet: field_presence = 1 (2 IMPLICIT), enum_type = 2 (2 CLOSED), utf8_validation = 4 (3 NONE).
+    // FeatureSet: field_presence 1 (2 IMPLICIT), enum_type 2 (2 CLOSED), utf8_validation 4 (3 NONE), message_encoding 5.
     private static func features(_ entries: [(Int, Value)], options: Int, features: Int) throws -> ProtobufFeatureOverrides {
         guard let optionBytes = bytes(entries, options),
               let featureBytes = bytes(try fields(optionBytes), features) else { return ProtobufFeatureOverrides() }
@@ -422,6 +439,7 @@ internal enum ProtobufDescriptorSetParser {
         if let presence = varint(set, 1), (1...3).contains(presence) { overrides.implicitPresence = presence == 2 }
         if let enumType = varint(set, 2), (1...2).contains(enumType) { overrides.closedEnum = enumType == 2 }
         if let validation = varint(set, 4), (2...3).contains(validation) { overrides.validatesUTF8 = validation == 2 }
+        if let encoding = varint(set, 5), (1...2).contains(encoding) { overrides.delimitedMessages = encoding == 2 }
         return overrides
     }
 

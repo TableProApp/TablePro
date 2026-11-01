@@ -146,7 +146,7 @@ internal enum ProtobufSchemaDecoder {
                     if !asMapEntry { level.unknown.append(occurrence) }
                 }
             }
-            keepLastOneofMember(&accepted, message: message)
+            try parseDiscarded(keepLastOneofMember(&accepted, message: message), of: message, depth: depth)
             var numbers = Set(accepted.keys)
             // protoc prints an entry's key and value even when the bytes leave them out.
             if asMapEntry, !level.isCut { numbers.formUnion(message.fields.map(\.number)) }
@@ -203,9 +203,12 @@ internal enum ProtobufSchemaDecoder {
 
         private func match(_ payload: Occurrence.Payload, field: ProtobufFieldDescriptor) -> Match {
             switch (field.type, payload) {
-            case (.scalar(.string), .lengthDelimited), (.scalar(.bytes), .lengthDelimited),
-                 (.message, .lengthDelimited), (.group, .group):
+            case (.scalar(.string), .lengthDelimited), (.scalar(.bytes), .lengthDelimited), (.group, .group):
                 return .accepted
+            case (.message, .lengthDelimited):
+                return field.isDelimited ? .mismatched : .accepted
+            case (.message, .group):
+                return field.isDelimited ? .accepted : .mismatched
             case (.scalar(.string), _), (.scalar(.bytes), _):
                 return .mismatched
             case (.scalar, .lengthDelimited), (.enumeration, .lengthDelimited):
@@ -228,18 +231,43 @@ internal enum ProtobufSchemaDecoder {
             return enumeration.values[Int32(truncatingIfNeeded: raw)] != nil
         }
 
-        // The member set last wins, and only what follows the last switch to it counts.
-        private func keepLastOneofMember(_ accepted: inout [Int: [Occurrence]], message: ProtobufMessageDescriptor) {
+        // The member set last wins, and only what follows the last switch to it counts. Returns what it drops.
+        private func keepLastOneofMember(
+            _ accepted: inout [Int: [Occurrence]],
+            message: ProtobufMessageDescriptor
+        ) -> [Occurrence] {
             var oneofs: [Int: [Int]] = [:]
             for field in message.fields where accepted[field.number] != nil {
                 if let index = field.oneofIndex { oneofs[index, default: []].append(field.number) }
             }
+            var dropped: [Occurrence] = []
             for members in oneofs.values where members.count > 1 {
                 let lastPositions = members.map { (number: $0, position: accepted[$0]?.last?.position ?? -1) }
                 guard let winner = lastPositions.max(by: { $0.position < $1.position })?.number else { continue }
                 let cutoff = lastPositions.filter { $0.number != winner }.map { $0.position }.max() ?? -1
-                for number in members where number != winner { accepted[number] = nil }
+                for number in members where number != winner {
+                    dropped += accepted[number] ?? []
+                    accepted[number] = nil
+                }
+                dropped += accepted[winner]?.filter { $0.position <= cutoff } ?? []
                 accepted[winner] = accepted[winner]?.filter { $0.position > cutoff }
+            }
+            return dropped
+        }
+
+        // protoc parses a member before a later one replaces it, so a malformed one still fails the value.
+        private func parseDiscarded(_ dropped: [Occurrence], of message: ProtobufMessageDescriptor, depth: Int) throws {
+            for occurrence in dropped {
+                guard let field = message.field(number: occurrence.number) else { continue }
+                switch (field.type, occurrence.payload) {
+                case (.message(let name), .lengthDelimited(let window)), (.message(let name), .group(let window)),
+                     (.group(let name), .group(let window)):
+                    guard let nested = schema.messages[name] else { continue }
+                    var probe = self
+                    _ = try probe.members(of: [window], message: nested, depth: depth + 1, asMapEntry: false)
+                default:
+                    continue
+                }
             }
         }
 

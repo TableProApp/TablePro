@@ -96,6 +96,7 @@ final class DataGridModel: ObservableObject {
 
     func reloadRows() {
         let current = rows
+        prefetchSchemas(in: current, storageRows: nil, retryingFailures: true)
         store.valueFilter = store.valueFilter.remapped(toColumns: current.columns)
         let rebuilt = DataGridColumnSet(tableRows: current, layout: store.columnLayout)
         if rebuilt != columns {
@@ -108,7 +109,6 @@ final class DataGridModel: ObservableObject {
         displayRevision &+= 1
         mountedView?.apply(.reload)
         refreshFind()
-        prefetchSchemas(in: current, storageRows: nil, retryingFailures: true)
     }
 
     func apply(_ delta: Delta) {
@@ -117,6 +117,18 @@ final class DataGridModel: ObservableObject {
             return
         }
         let current = rows
+        switch delta {
+        case .rowsInserted(let inserted):
+            prefetchSchemas(in: current, storageRows: inserted, retryingFailures: false)
+        case .columnsReplaced:
+            prefetchSchemas(in: current, storageRows: nil, retryingFailures: false)
+        case .cellChanged(let row, _):
+            prefetchSchemas(in: current, storageRows: IndexSet(integer: row), retryingFailures: false)
+        case .cellsChanged(let positions):
+            prefetchSchemas(in: current, storageRows: IndexSet(positions.map(\.row)), retryingFailures: false)
+        case .rowsRemoved, .fullReplace:
+            break
+        }
         if delta.changesRowSet || delta == .columnsReplaced {
             if delta == .columnsReplaced {
                 columns = DataGridColumnSet(tableRows: current, layout: store.columnLayout)
@@ -131,20 +143,7 @@ final class DataGridModel: ObservableObject {
             displayRevision &+= 1
             mountedView?.apply(change)
             refreshFind()
-            if case .rowsInserted(let inserted) = delta {
-                prefetchSchemas(in: current, storageRows: inserted, retryingFailures: false)
-            } else if delta == .columnsReplaced {
-                prefetchSchemas(in: current, storageRows: nil, retryingFailures: false)
-            }
             return
-        }
-        switch delta {
-        case .cellChanged(let row, _):
-            prefetchSchemas(in: current, storageRows: IndexSet(integer: row), retryingFailures: false)
-        case .cellsChanged(let positions):
-            prefetchSchemas(in: current, storageRows: IndexSet(positions.map(\.row)), retryingFailures: false)
-        default:
-            break
         }
         let change = DataGridChange.from(delta, order: order, rows: current, columns: columns)
         guard !change.isNone else { return }
@@ -283,16 +282,16 @@ final class DataGridModel: ObservableObject {
         let current = rows
         let previous = displayFormat(for: column)
         guard previous != format else { return }
-        let formats = DisplayFormatArray.setting(
+        store.displayFormats = DisplayFormatArray.setting(
             format, at: column.dataIndex, in: store.displayFormats, columnCount: current.columns.count
         )
+        // Before the remap reads it: another connection may have loaded the schemas already.
+        prefetchSchemas(in: current, storageRows: nil, retryingFailures: true)
         // A filter stores the shown text, so the values the user picked follow the new format.
         if let remapped = remappedValueFilter(column: column, from: previous, to: format, in: current) {
             store.valueFilter = remapped
         }
-        store.displayFormats = formats
         redrawFormatted([column], in: current)
-        prefetchSchemas(in: current, storageRows: nil, retryingFailures: true)
     }
 
     private func redrawFormatted(_ changed: [DataGridColumn], in current: TableRows) {

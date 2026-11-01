@@ -327,6 +327,8 @@ internal enum ProtoFileParser {
             case ("features.enum_type", "OPEN"): overrides.closedEnum = false
             case ("features.utf8_validation", "VERIFY"): overrides.validatesUTF8 = true
             case ("features.utf8_validation", "NONE"): overrides.validatesUTF8 = false
+            case ("features.message_encoding", "DELIMITED"): overrides.delimitedMessages = true
+            case ("features.message_encoding", "LENGTH_PREFIXED"): overrides.delimitedMessages = false
             default: break
             }
         }

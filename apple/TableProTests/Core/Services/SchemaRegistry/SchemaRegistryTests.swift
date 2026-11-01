@@ -283,6 +283,25 @@ struct SchemaRegistryTests {
         #expect(held.calls.withLock { $0 } == SchemaRegistryCache.maxPendingFetches)
     }
 
+    @Test("A connection on a registry another one already read gets its schemas as soon as it prefetches")
+    @MainActor
+    func sharedEndpointAdoptsLoadedSchemas() async throws {
+        let transport = RecordedTransport()
+        let cache = SchemaRegistryCache(resolveEndpoint: Resolver(Self.endpoint).resolve, transport: transport.transport)
+        guard case .success = await cache.schema(connectionID: UUID(), schemaID: 1) else {
+            Issue.record("expected the schema for the first connection")
+            return
+        }
+        let second = UUID()
+        #expect(cache.cachedSchema(connectionID: second, schemaID: 1) == nil)
+        cache.prefetch(connectionID: second, schemaIDs: [1], retryingFailures: false)
+        guard case .success? = cache.cachedSchema(connectionID: second, schemaID: 1) else {
+            Issue.record("expected the second connection to read the loaded schema at once")
+            return
+        }
+        #expect(transport.requests.withLock { $0.count } == 1)
+    }
+
     @Test("A connection with no registry URL says so instead of fetching")
     @MainActor
     func noEndpoint() async {
