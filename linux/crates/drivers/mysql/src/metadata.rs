@@ -512,18 +512,7 @@ pub(crate) async fn fetch_table_definition(
         }
     }
     let mut indexes = fetch_indexes(connection, dialect, table).await?;
-    let (printed_in, editors_read_in) = sql_modes(connection, dialect).await?;
-    if !hides_index_options(&printed_in) {
-        let qualified = dialect.qualify(table);
-        let escapes = !has_mode(&editors_read_in, "NO_BACKSLASH_ESCAPES");
-        for index in indexes.iter_mut().filter(|index| !index.primary) {
-            index.definition =
-                index_statement(&create_statement, &qualified, &index.name).and_then(|statement| match escapes {
-                    true => Some(statement),
-                    false => without_backslash_escapes(&statement),
-                });
-        }
-    }
+    state_indexes(connection, dialect, table, &create_statement, &mut indexes).await?;
     let primary_key = indexes
         .iter()
         .find(|index| index.primary)
@@ -695,6 +684,29 @@ async fn engine_attributes(
 
 /// The table's own DDL as the server prints it. SHOW cannot take a
 /// parameter, so the name goes in quoted by the dialect.
+async fn state_indexes(
+    connection: &mut MySqlConnection,
+    dialect: &MySqlDialect,
+    table: &TableRef,
+    create_statement: &str,
+    indexes: &mut [IndexInfo],
+) -> Result<(), DriverError> {
+    let (printed_in, editors_read_in) = sql_modes(connection, dialect).await?;
+    if hides_index_options(&printed_in) {
+        return Ok(());
+    }
+    let qualified = dialect.qualify(table);
+    let escapes = !has_mode(&editors_read_in, "NO_BACKSLASH_ESCAPES");
+    for index in indexes.iter_mut().filter(|index| !index.primary) {
+        index.definition =
+            index_statement(create_statement, &qualified, &index.name).and_then(|statement| match escapes {
+                true => Some(statement),
+                false => without_backslash_escapes(&statement),
+            });
+    }
+    Ok(())
+}
+
 // The mode this session printed SHOW CREATE TABLE in, and the one an editor session starts in.
 async fn sql_modes(connection: &mut MySqlConnection, dialect: &MySqlDialect) -> Result<(String, String), DriverError> {
     let row = connection

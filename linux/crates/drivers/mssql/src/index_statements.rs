@@ -309,8 +309,7 @@ mod tests {
         ]
     }
 
-    #[test]
-    fn each_index_is_written_with_its_storage_and_options() {
+    fn written() -> HashMap<String, String> {
         let indexes = [
             index("cx_pt", &[("k", false)]),
             index("ix_filt", &[("a", true), ("c", false)]),
@@ -388,7 +387,12 @@ mod tests {
             partitions: &partitions,
         };
 
-        let mut statements = statements(&MssqlDialect::new(16), "[dbo].[t]", &indexes, &rows).expect("the statements");
+        statements(&MssqlDialect::new(16), "[dbo].[t]", &indexes, &rows).expect("the statements")
+    }
+
+    #[test]
+    fn an_index_is_written_with_its_storage_and_options() {
+        let mut statements = written();
         let mut statement = |name: &str| statements.remove(name).expect(name);
 
         assert_eq!(
@@ -406,6 +410,13 @@ mod tests {
              FILLFACTOR = 80, IGNORE_DUP_KEY = ON, STATISTICS_NORECOMPUTE = ON, ALLOW_PAGE_LOCKS = OFF, \
              OPTIMIZE_FOR_SEQUENTIAL_KEY = ON, DATA_COMPRESSION = PAGE, XML_COMPRESSION = ON) ON [PRIMARY]"
         );
+    }
+
+    #[test]
+    fn partitions_a_disabled_index_and_a_bracket_are_written() {
+        let mut statements = written();
+        let mut statement = |name: &str| statements.remove(name).expect(name);
+
         assert_eq!(
             statement("ix_ppc"),
             "CREATE NONCLUSTERED INDEX [ix_ppc] ON [dbo].[t] ([a]) WITH (STATISTICS_INCREMENTAL = ON, \
