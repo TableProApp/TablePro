@@ -195,6 +195,21 @@ fn diff_table_detects_each_change_kind() {
 }
 
 #[test]
+fn an_index_dropped_and_drafted_again_on_its_keys_is_replaced() {
+    let mut original = users();
+    original.indexes[1].definition = Some("CREATE INDEX by_email ON app.users USING gin (email)".to_owned());
+    let mut draft = TableDraft::from_definition(&original);
+    draft.indexes.retain(|index| index.name != "by_email");
+    draft.indexes.push(index("by_email", &["email"]));
+
+    let changes = diff_table(&original, &draft);
+
+    let names = |indexes: &[IndexInfo]| indexes.iter().map(|index| index.name.clone()).collect::<Vec<_>>();
+    assert_eq!(names(&changes.dropped_indexes), ["by_email"]);
+    assert_eq!(names(&changes.added_indexes), ["by_email"]);
+}
+
+#[test]
 fn an_unedited_draft_changes_nothing() {
     let original = users();
     let mut draft = TableDraft::from_definition(&original);

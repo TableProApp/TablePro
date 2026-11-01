@@ -79,6 +79,14 @@ pub trait DdlDialect: Send + Sync + std::fmt::Debug {
     /// server's own text where the engine keeps one, otherwise written
     /// from the definition.
     fn create_table_script(&self, definition: &TableDefinition) -> Result<DdlPlan, BuildDdlError> {
-        self.plan_create_table(&TableDraft::from_definition(definition))
+        let mut draft = TableDraft::from_definition(definition);
+        // Keys alone lose an index's method, operator classes and storage.
+        let (stated, written): (Vec<IndexInfo>, Vec<IndexInfo>) =
+            draft.indexes.into_iter().partition(|index| index.definition.is_some());
+        draft.indexes = written;
+        let mut plan = self.plan_create_table(&draft)?;
+        let stated = DdlPlan::from_sql(stated.into_iter().filter_map(|index| index.definition));
+        plan.statements.extend(stated.statements);
+        Ok(plan)
     }
 }
