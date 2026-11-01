@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="CannotChangeKey" xml:space="preserve">
+    <value>DynamoDB는 키 특성 {0}을(를) 변경할 수 없습니다. 항목을 삭제하고 새 키로 다시 추가하세요.</value>
+  </data>
+  <data name="ClientRules_One" xml:space="preserve">
+    <value>DynamoDB에서 평가할 수 없는 필터 규칙 {0}개를 읽은 항목에 페이지별로 적용했습니다.</value>
+  </data>
+  <data name="ClientRules_Other" xml:space="preserve">
+    <value>DynamoDB에서 평가할 수 없는 필터 규칙 {0}개를 읽은 항목에 페이지별로 적용했습니다.</value>
+  </data>
+  <data name="ConsumedCapacity_One" xml:space="preserve">
+    <value>사용된 용량: 요청 {0}개에서 {1:0.##}단위.</value>
+  </data>
+  <data name="ConsumedCapacity_Other" xml:space="preserve">
+    <value>사용된 용량: 요청 {0}개에서 {1:0.##}단위.</value>
+  </data>
+  <data name="EmptyKeyAttribute" xml:space="preserve">
+    <value>키 특성은 비워 둘 수 없습니다.</value>
+  </data>
+  <data name="EndpointScheme" xml:space="preserve">
+    <value>엔드포인트는 https:// 또는 http://로 시작해야 합니다.</value>
+  </data>
+  <data name="EnterSecretKey" xml:space="preserve">
+    <value>액세스 키 ID {0}의 암호로 보안 액세스 키를 입력하세요.</value>
+  </data>
+  <data name="ItemExists" xml:space="preserve">
+    <value>이 키를 가진 항목이 이미 있습니다(변경 {1}개 중 {0}번째).</value>
+  </data>
+  <data name="ItemGone" xml:space="preserve">
+    <value>항목이 더 이상 존재하지 않습니다(변경 {1}개 중 {0}번째).</value>
+  </data>
+  <data name="KeyNotLoaded" xml:space="preserve">
+    <value>항목의 키 특성 {0}이(가) 로드되지 않았으므로 항목을 찾을 수 없습니다.</value>
+  </data>
+  <data name="MapTakesObject" xml:space="preserve">
+    <value>맵 특성에는 JSON 개체가 필요합니다.</value>
+  </data>
+  <data name="NoKeySchema" xml:space="preserve">
+    <value>DynamoDB가 {0}의 키 스키마를 보고하지 않았습니다.</value>
+  </data>
+  <data name="NoOffset" xml:space="preserve">
+    <value>DynamoDB에는 OFFSET이 없으므로 {0:N0}번째 항목에 도달하려면 먼저 {1:N0}개 항목을 읽어야 합니다. 처음부터 페이지를 넘기거나 테이블을 필터링하세요.</value>
+  </data>
+  <data name="NoProfile" xml:space="preserve">
+    <value>공유 config 또는 credentials 파일에서 "{0}"(이)라는 AWS 프로필을 찾을 수 없습니다.</value>
+  </data>
+  <data name="NotANumber" xml:space="preserve">
+    <value>"{0}"은(는) 숫자가 아닙니다.</value>
+  </data>
+  <data name="NotARegion" xml:space="preserve">
+    <value>"{0}"은(는) us-east-1 같은 AWS 리전이 아닙니다.</value>
+  </data>
+  <data name="NotAUrl" xml:space="preserve">
+    <value>"{0}"은(는) URL이 아닙니다. http://localhost:8000 같은 엔드포인트를 입력하세요.</value>
+  </data>
+  <data name="NumberKeyMismatch" xml:space="preserve">
+    <value>필터와 일치하는 항목이 없습니다. Number 키를 숫자가 아닌 텍스트와 비교했습니다.</value>
+  </data>
+  <data name="PlainHttpLocalOnly" xml:space="preserve">
+    <value>암호화되지 않은 HTTP는 이 컴퓨터(localhost)의 엔드포인트에만 허용됩니다. 다른 호스트에는 https://를 사용하세요.</value>
+  </data>
+  <data name="RawConditionAnd" xml:space="preserve">
+    <value>원시 조건도 규칙과 함께 일치해야 합니다.</value>
+  </data>
+  <data name="SortNotApplied" xml:space="preserve">
+    <value>DynamoDB 스캔은 테이블 자체 순서로 항목을 반환하므로 정렬이 적용되지 않았습니다.</value>
+  </data>
+  <data name="StoppedAfterScanning" xml:space="preserve">
+    <value>페이지를 채우기 위해 {0:N0}개 항목을 읽은 후 중지했습니다. 전체 테이블을 검색하려면 필터 범위를 좁히세요.</value>
+  </data>
+  <data name="TooManyItems" xml:space="preserve">
+    <value>DynamoDB는 한 트랜잭션에서 최대 {0}개 항목을 쓰는데 이 저장에는 {1}개가 있습니다. 한 번에 더 적은 행을 저장하세요.</value>
+  </data>
+</root>

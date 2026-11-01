@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="ComparisonNeedsName" xml:space="preserve">
+    <value>已保存的比较需要名称。</value>
+  </data>
+  <data name="FolderContainsItself" xml:space="preserve">
+    <value>文件夹不能包含自身。</value>
+  </data>
+  <data name="FolderIntoSubfolder" xml:space="preserve">
+    <value>文件夹不能移动到它自己的子文件夹中。</value>
+  </data>
+  <data name="KeywordContainsSpaces" xml:space="preserve">
+    <value>关键字不能包含空格。</value>
+  </data>
+  <data name="KeywordTooLong_One" xml:space="preserve">
+    <value>关键字长度不能超过 {0} 个字符。</value>
+  </data>
+  <data name="KeywordTooLong_Other" xml:space="preserve">
+    <value>关键字长度不能超过 {0} 个字符。</value>
+  </data>
+  <data name="KeywordUsed" xml:space="preserve">
+    <value>其他收藏已在使用此关键字。</value>
+  </data>
+  <data name="UntitledQuery" xml:space="preserve">
+    <value>未命名查询</value>
+  </data>
+</root>

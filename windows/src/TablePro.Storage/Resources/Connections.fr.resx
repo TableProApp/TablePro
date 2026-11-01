@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="BundleCycle" xml:space="preserve">
+    <value>la référence « {0} » se contient elle-même</value>
+  </data>
+  <data name="BundleDuplicateReference" xml:space="preserve">
+    <value>la référence « {0} » est utilisée plusieurs fois</value>
+  </data>
+  <data name="BundleEmptyReference" xml:space="preserve">
+    <value>un élément a une référence vide</value>
+  </data>
+  <data name="BundleMissingTarget" xml:space="preserve">
+    <value>« {0} » fait référence à « {1} », qui n’est pas dans le fichier</value>
+  </data>
+  <data name="BundleOrphanCredentials" xml:space="preserve">
+    <value>les mots de passe de « {0} » n’appartiennent à aucune connexion du fichier</value>
+  </data>
+  <data name="BundleTooDeep" xml:space="preserve">
+    <value>la référence « {0} » est imbriquée trop profondément</value>
+  </data>
+  <data name="EncryptedCorrupt" xml:space="preserve">
+    <value>Le fichier chiffré est endommagé ou incomplet.</value>
+  </data>
+  <data name="EncryptionVersionUnsupported" xml:space="preserve">
+    <value>Version de chiffrement {0} non prise en charge. Mettez à jour TablePro pour ouvrir ce fichier.</value>
+  </data>
+  <data name="GroupContainsItself" xml:space="preserve">
+    <value>Un groupe ne peut pas se contenir lui-même.</value>
+  </data>
+  <data name="GroupIntoSubgroup" xml:space="preserve">
+    <value>Un groupe ne peut pas être déplacé dans l’un de ses propres sous-groupes.</value>
+  </data>
+  <data name="ImportedConnectionName" xml:space="preserve">
+    <value>Connexion importée</value>
+  </data>
+  <data name="ImportedGroupName" xml:space="preserve">
+    <value>Importé</value>
+  </data>
+  <data name="IncorrectPassphrase" xml:space="preserve">
+    <value>Phrase secrète incorrecte.</value>
+  </data>
+  <data name="NewerFormat" xml:space="preserve">
+    <value>Ce fichier nécessite une version plus récente de TablePro (version de format {0}).</value>
+  </data>
+  <data name="NoDriverFor" xml:space="preserve">
+    <value>TablePro pour Windows n’a pas de pilote pour {0}.</value>
+  </data>
+  <data name="NotAnExport" xml:space="preserve">
+    <value>Ce fichier n’est pas une exportation TablePro valide.</value>
+  </data>
+  <data name="NotAnExportBecause" xml:space="preserve">
+    <value>Ce fichier n’est pas une exportation TablePro valide : {0}.</value>
+  </data>
+  <data name="ParseFailed" xml:space="preserve">
+    <value>Impossible d’analyser le fichier de connexions : {0}</value>
+  </data>
+  <data name="PassphraseRequired" xml:space="preserve">
+    <value>Ce fichier est chiffré et nécessite une phrase secrète.</value>
+  </data>
+  <data name="PasswordsNeedEncryption" xml:space="preserve">
+    <value>Les mots de passe enregistrés ne peuvent être exportés que dans un fichier chiffré.</value>
+  </data>
+</root>

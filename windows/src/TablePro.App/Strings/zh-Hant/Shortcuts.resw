@@ -1,0 +1,255 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="CategoryApp" xml:space="preserve">
+    <value>App</value>
+  </data>
+  <data name="CategoryConnections" xml:space="preserve">
+    <value>連線</value>
+  </data>
+  <data name="CategoryDataGrid" xml:space="preserve">
+    <value>資料格</value>
+  </data>
+  <data name="CategoryEditor" xml:space="preserve">
+    <value>編輯器與查詢</value>
+  </data>
+  <data name="CategoryNavigation" xml:space="preserve">
+    <value>導覽</value>
+  </data>
+  <data name="CommandCloseAllTabs" xml:space="preserve">
+    <value>關閉所有分頁</value>
+  </data>
+  <data name="CommandCloseOtherTabs" xml:space="preserve">
+    <value>關閉其他分頁</value>
+  </data>
+  <data name="CommandCloseTab" xml:space="preserve">
+    <value>關閉分頁</value>
+  </data>
+  <data name="CommandDisconnect" xml:space="preserve">
+    <value>中斷連線</value>
+  </data>
+  <data name="CommandErDiagram" xml:space="preserve">
+    <value>ER 圖</value>
+  </data>
+  <data name="CommandExecuteAllStatements" xml:space="preserve">
+    <value>執行所有陳述式</value>
+  </data>
+  <data name="CommandExecuteQuery" xml:space="preserve">
+    <value>執行目前陳述式</value>
+  </data>
+  <data name="CommandExplainQuery" xml:space="preserve">
+    <value>解釋查詢</value>
+  </data>
+  <data name="CommandExportDatabase" xml:space="preserve">
+    <value>匯出資料庫</value>
+  </data>
+  <data name="CommandFind" xml:space="preserve">
+    <value>尋找</value>
+  </data>
+  <data name="CommandFindAndReplace" xml:space="preserve">
+    <value>尋找與取代</value>
+  </data>
+  <data name="CommandFindNext" xml:space="preserve">
+    <value>尋找下一個</value>
+  </data>
+  <data name="CommandFindPrevious" xml:space="preserve">
+    <value>尋找上一個</value>
+  </data>
+  <data name="CommandFocusObjectList" xml:space="preserve">
+    <value>聚焦物件清單</value>
+  </data>
+  <data name="CommandFocusSidebarSearch" xml:space="preserve">
+    <value>聚焦側邊欄篩選</value>
+  </data>
+  <data name="CommandFormatQuery" xml:space="preserve">
+    <value>格式化查詢</value>
+  </data>
+  <data name="CommandGoToDefinition" xml:space="preserve">
+    <value>移至定義</value>
+  </data>
+  <data name="CommandManageConnections" xml:space="preserve">
+    <value>管理連線</value>
+  </data>
+  <data name="CommandNewTab" xml:space="preserve">
+    <value>新增分頁</value>
+  </data>
+  <data name="CommandNextQueryIssue" xml:space="preserve">
+    <value>下一個查詢問題</value>
+  </data>
+  <data name="CommandOpenSettings" xml:space="preserve">
+    <value>設定</value>
+  </data>
+  <data name="CommandPreviousQueryIssue" xml:space="preserve">
+    <value>上一個查詢問題</value>
+  </data>
+  <data name="CommandQuickSwitcher" xml:space="preserve">
+    <value>快速打開</value>
+  </data>
+  <data name="CommandRenameSymbol" xml:space="preserve">
+    <value>重新命名符號</value>
+  </data>
+  <data name="CommandRunSqlFile" xml:space="preserve">
+    <value>執行 SQL 檔案</value>
+  </data>
+  <data name="CommandSaveFile" xml:space="preserve">
+    <value>儲存檔案</value>
+  </data>
+  <data name="CommandSearchDatabase" xml:space="preserve">
+    <value>搜尋資料庫</value>
+  </data>
+  <data name="CommandServerDashboard" xml:space="preserve">
+    <value>伺服器儀表板</value>
+  </data>
+  <data name="CommandShowFavoritesList" xml:space="preserve">
+    <value>顯示我的最愛</value>
+  </data>
+  <data name="CommandShowNextTab" xml:space="preserve">
+    <value>顯示下一個分頁</value>
+  </data>
+  <data name="CommandShowPreviousTab" xml:space="preserve">
+    <value>顯示上一個分頁</value>
+  </data>
+  <data name="CommandShowQuickInfo" xml:space="preserve">
+    <value>顯示快速資訊</value>
+  </data>
+  <data name="CommandToggleAssistant" xml:space="preserve">
+    <value>切換助理</value>
+  </data>
+  <data name="CommandToggleComment" xml:space="preserve">
+    <value>切換註解</value>
+  </data>
+  <data name="CommandToggleHistory" xml:space="preserve">
+    <value>切換歷程記錄</value>
+  </data>
+  <data name="CommandToggleSqlFiles" xml:space="preserve">
+    <value>切換 SQL 檔案</value>
+  </data>
+  <data name="CommandToggleTableBrowser" xml:space="preserve">
+    <value>切換側邊欄</value>
+  </data>
+  <data name="ConflictCommand" xml:space="preserve">
+    <value>{0} 已被「{2}」中的「{1}」使用。</value>
+  </data>
+  <data name="ConflictNeedsModifier" xml:space="preserve">
+    <value>除非是功能鍵，否則快速鍵必須包含 Ctrl 或 Alt。Shift 可以搭配使用，但無法單獨構成快速鍵。</value>
+  </data>
+  <data name="ConflictReserved" xml:space="preserve">
+    <value>{0} 已保留給「{1}」，無法指派。</value>
+  </data>
+  <data name="ConflictSystemReserved" xml:space="preserve">
+    <value>{0} 已由 Windows 保留，無法指派。</value>
+  </data>
+  <data name="RecorderHelpText" xml:space="preserve">
+    <value>按下以錄製快速鍵。Esc 取消，Backspace 清除。</value>
+  </data>
+  <data name="RecorderPrompt" xml:space="preserve">
+    <value>請按下快速鍵</value>
+  </data>
+  <data name="RecorderRecording" xml:space="preserve">
+    <value>正在錄製</value>
+  </data>
+  <data name="ReservedAddRow" xml:space="preserve">
+    <value>新增列</value>
+  </data>
+  <data name="ReservedCloseWindow" xml:space="preserve">
+    <value>關閉視窗</value>
+  </data>
+  <data name="ReservedContextMenu" xml:space="preserve">
+    <value>操作功能表</value>
+  </data>
+  <data name="ReservedCopyWithHeaders" xml:space="preserve">
+    <value>複製（含標題）</value>
+  </data>
+  <data name="ReservedCycleWindows" xml:space="preserve">
+    <value>循環切換視窗</value>
+  </data>
+  <data name="ReservedDeleteWordBackward" xml:space="preserve">
+    <value>刪除前一個單字</value>
+  </data>
+  <data name="ReservedDeleteWordForward" xml:space="preserve">
+    <value>刪除後一個單字</value>
+  </data>
+  <data name="ReservedDuplicateLine" xml:space="preserve">
+    <value>複製一行</value>
+  </data>
+  <data name="ReservedMenuBar" xml:space="preserve">
+    <value>功能表列</value>
+  </data>
+  <data name="ReservedMoveToBeginningOfDocument" xml:space="preserve">
+    <value>移到文件開頭</value>
+  </data>
+  <data name="ReservedMoveToEndOfDocument" xml:space="preserve">
+    <value>移到文件結尾</value>
+  </data>
+  <data name="ReservedMoveToNextParagraph" xml:space="preserve">
+    <value>移到下一個段落</value>
+  </data>
+  <data name="ReservedMoveToPreviousParagraph" xml:space="preserve">
+    <value>移到上一個段落</value>
+  </data>
+  <data name="ReservedMoveWordLeft" xml:space="preserve">
+    <value>向左移動一個單字</value>
+  </data>
+  <data name="ReservedMoveWordRight" xml:space="preserve">
+    <value>向右移動一個單字</value>
+  </data>
+  <data name="ReservedNextProblem" xml:space="preserve">
+    <value>下一個問題</value>
+  </data>
+  <data name="ReservedPreviousProblem" xml:space="preserve">
+    <value>上一個問題</value>
+  </data>
+  <data name="ReservedPrintScreen" xml:space="preserve">
+    <value>Print Screen</value>
+  </data>
+  <data name="ReservedQuickInfo" xml:space="preserve">
+    <value>快速資訊</value>
+  </data>
+  <data name="ReservedSaveChanges" xml:space="preserve">
+    <value>儲存變更</value>
+  </data>
+  <data name="ReservedSecurityOptions" xml:space="preserve">
+    <value>安全性選項</value>
+  </data>
+  <data name="ReservedSelectTab" xml:space="preserve">
+    <value>選擇分頁 {0}</value>
+  </data>
+  <data name="ReservedSelectToBeginningOfDocument" xml:space="preserve">
+    <value>選取至文件開頭</value>
+  </data>
+  <data name="ReservedSelectToEndOfDocument" xml:space="preserve">
+    <value>選取至文件結尾</value>
+  </data>
+  <data name="ReservedSelectWordLeft" xml:space="preserve">
+    <value>向左選取一個單字</value>
+  </data>
+  <data name="ReservedSelectWordRight" xml:space="preserve">
+    <value>向右選取一個單字</value>
+  </data>
+  <data name="ReservedShowCompletions" xml:space="preserve">
+    <value>顯示自動完成</value>
+  </data>
+  <data name="ReservedStartMenu" xml:space="preserve">
+    <value>開始功能表</value>
+  </data>
+  <data name="ReservedSwitchApps" xml:space="preserve">
+    <value>切換應用程式</value>
+  </data>
+  <data name="ReservedTaskManager" xml:space="preserve">
+    <value>工作管理員</value>
+  </data>
+  <data name="ReservedWindowMenu" xml:space="preserve">
+    <value>視窗功能表</value>
+  </data>
+</root>

@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="ControlCharacterInPath" xml:space="preserve">
+    <value>Le chemin d’une extension de la liste contient un saut de ligne ou un autre caractère de contrôle.</value>
+  </data>
+  <data name="CouldNotLoad" xml:space="preserve">
+    <value>Impossible de charger l’extension « {0} ».</value>
+  </data>
+  <data name="CouldNotLoadList" xml:space="preserve">
+    <value>Impossible de charger les extensions SQLite de cette connexion.</value>
+  </data>
+  <data name="Duplicate" xml:space="preserve">
+    <value>« {0} » figure plusieurs fois dans la liste.</value>
+  </data>
+  <data name="EntryPointNotFound" xml:space="preserve">
+    <value>Le fichier ne contient aucune fonction nommée {0}.</value>
+  </data>
+  <data name="FileNotFound" xml:space="preserve">
+    <value>Il n’existe aucun fichier à l’emplacement « {0} ».</value>
+  </data>
+  <data name="InitializationFailed" xml:space="preserve">
+    <value>Échec du démarrage de l’extension : {0}</value>
+  </data>
+  <data name="InvalidEntryPoint" xml:space="preserve">
+    <value>« {0} » n’est pas un nom de point d’entrée valide.</value>
+  </data>
+  <data name="LoadingNotClosed" xml:space="preserve">
+    <value>SQLite n’a pas désactivé à nouveau le chargement d’extensions après le chargement.</value>
+  </data>
+  <data name="LoadingUnavailable" xml:space="preserve">
+    <value>SQLite n’a pas autorisé le chargement d’extensions sur cette connexion.</value>
+  </data>
+  <data name="MalformedList" xml:space="preserve">
+    <value>La liste d’extensions enregistrée n’est pas dans un format que TablePro peut lire.</value>
+  </data>
+  <data name="MissingPath" xml:space="preserve">
+    <value>Une extension de la liste n’a pas de fichier.</value>
+  </data>
+  <data name="NotAFile" xml:space="preserve">
+    <value>« {0} » n’est pas un fichier.</value>
+  </data>
+  <data name="PathTooLong" xml:space="preserve">
+    <value>Le chemin « {0} » est trop long.</value>
+  </data>
+  <data name="RelativePath" xml:space="preserve">
+    <value>« {0} » n’est pas un chemin complet.</value>
+  </data>
+</root>

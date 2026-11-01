@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="BulkNotJson" xml:space="preserve">
+    <value>La réponse bulk n’était pas du JSON.</value>
+  </data>
+  <data name="CloudIdInvalid" xml:space="preserve">
+    <value>L’ID cloud n’est pas valide.</value>
+  </data>
+  <data name="DataStream" xml:space="preserve">
+    <value>flux de données</value>
+  </data>
+  <data name="IdColumnComment" xml:space="preserve">
+    <value>ID du document</value>
+  </data>
+  <data name="IndexColumnComment" xml:space="preserve">
+    <value>l’index qui contient le document</value>
+  </data>
+  <data name="KeywordSubField" xml:space="preserve">
+    <value>avec sous-champ keyword</value>
+  </data>
+  <data name="NoPointInTime" xml:space="preserve">
+    <value>Le cluster n’a pas ouvert de point dans le temps.</value>
+  </data>
+  <data name="NoTaskId" xml:space="preserve">
+    <value>Aucun ID de tâche.</value>
+  </data>
+</root>

@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="EmptyBody" xml:space="preserve">
+    <value>{0} 傳回了空白的回應本文。</value>
+  </data>
+  <data name="KeyOverHttp" xml:space="preserve">
+    <value>API 金鑰只會透過未加密的 http 傳送到這台電腦。請使用 https 位址。</value>
+  </data>
+  <data name="ModelNotFound" xml:space="preserve">
+    <value>{0} 無法辨識該模型或位址</value>
+  </data>
+  <data name="NeedsApiKey" xml:space="preserve">
+    <value>{0} 需要 API 金鑰。</value>
+  </data>
+  <data name="RateLimited" xml:space="preserve">
+    <value>{0} 正在限制要求速率</value>
+  </data>
+  <data name="RefusedKey" xml:space="preserve">
+    <value>{0} 拒絕了 API 金鑰</value>
+  </data>
+  <data name="RefusedRequest" xml:space="preserve">
+    <value>{0} 拒絕了要求</value>
+  </data>
+  <data name="ServerError" xml:space="preserve">
+    <value>{0} 發生伺服器錯誤</value>
+  </data>
+  <data name="StoppedReply" xml:space="preserve">
+    <value>{0} 中止了回覆：{1}</value>
+  </data>
+  <data name="UnknownError" xml:space="preserve">
+    <value>未知錯誤</value>
+  </data>
+  <data name="Unreachable" xml:space="preserve">
+    <value>無法連線至位於 {1} 的 {0}：{2}</value>
+  </data>
+  <data name="UnreadableEvent" xml:space="preserve">
+    <value>{0} 傳送了應用程式無法讀取的事件。</value>
+  </data>
+  <data name="UnreadableJson" xml:space="preserve">
+    <value>{0} 傳回了應用程式無法讀取的 JSON。</value>
+  </data>
+  <data name="WithStatus" xml:space="preserve">
+    <value>{0}（HTTP {1}）。</value>
+  </data>
+  <data name="WithStatusDetail" xml:space="preserve">
+    <value>{0}（HTTP {1}）：{2}</value>
+  </data>
+</root>

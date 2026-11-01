@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="ChooseTunnelMethod" xml:space="preserve">
+    <value>请选择打开隧道的方式。</value>
+  </data>
+  <data name="CloudflareHostRequired" xml:space="preserve">
+    <value>需要填写 Cloudflare 主机名。</value>
+  </data>
+  <data name="CommandNeedsLocalPort" xml:space="preserve">
+    <value>命令必须在本地端口的位置包含 {0}。</value>
+  </data>
+  <data name="CommandRequired" xml:space="preserve">
+    <value>需要填写命令。</value>
+  </data>
+  <data name="CommandUnclosedQuote" xml:space="preserve">
+    <value>命令中有未闭合的引号。</value>
+  </data>
+  <data name="InstanceConnectionNameFormat" xml:space="preserve">
+    <value>实例连接名称必须为 project:region:instance。</value>
+  </data>
+  <data name="KubernetesResourceRequired" xml:space="preserve">
+    <value>需要填写 Kubernetes 资源，例如 service/postgres。</value>
+  </data>
+  <data name="ListSeparator" xml:space="preserve">
+    <value>、</value>
+  </data>
+  <data name="LocalPortRange" xml:space="preserve">
+    <value>本地端口必须介于 1 到 65535 之间。</value>
+  </data>
+  <data name="OnlyOneTransport" xml:space="preserve">
+    <value>一个连接同时只能使用一种连接方式。已启用：{0}。</value>
+  </data>
+  <data name="ProxyHostRequired" xml:space="preserve">
+    <value>需要填写代理主机。</value>
+  </data>
+  <data name="ProxyPortRange" xml:space="preserve">
+    <value>代理端口必须介于 1 到 65535 之间。</value>
+  </data>
+  <data name="SshHostRequired" xml:space="preserve">
+    <value>请输入 SSH 主机，或关闭隧道。</value>
+  </data>
+  <data name="SsmTargetRequired" xml:space="preserve">
+    <value>需要填写 SSM 目标，例如 i-0123456789abcdef0。</value>
+  </data>
+  <data name="TransportCloudflare" xml:space="preserve">
+    <value>Cloudflare 隧道</value>
+  </data>
+  <data name="TransportCloudSql" xml:space="preserve">
+    <value>Cloud SQL Auth Proxy</value>
+  </data>
+  <data name="TransportCommand" xml:space="preserve">
+    <value>隧道命令</value>
+  </data>
+  <data name="TransportDirect" xml:space="preserve">
+    <value>直接连接</value>
+  </data>
+  <data name="TransportProxy" xml:space="preserve">
+    <value>代理</value>
+  </data>
+  <data name="TransportSsh" xml:space="preserve">
+    <value>SSH 隧道</value>
+  </data>
+  <data name="TransportUnavailable" xml:space="preserve">
+    <value>{0} 无法通过{1}连接。</value>
+  </data>
+  <data name="TunnelFieldContext" xml:space="preserve">
+    <value>上下文</value>
+  </data>
+  <data name="TunnelFieldInvalid" xml:space="preserve">
+    <value>{0} 不能以短划线开头，也不能包含空格。</value>
+  </data>
+  <data name="TunnelFieldNamespace" xml:space="preserve">
+    <value>命名空间</value>
+  </data>
+  <data name="TunnelFieldProfile" xml:space="preserve">
+    <value>配置</value>
+  </data>
+  <data name="TunnelFieldRegion" xml:space="preserve">
+    <value>区域</value>
+  </data>
+  <data name="TunnelFieldResource" xml:space="preserve">
+    <value>资源</value>
+  </data>
+  <data name="TunnelFieldTarget" xml:space="preserve">
+    <value>目标</value>
+  </data>
+</root>

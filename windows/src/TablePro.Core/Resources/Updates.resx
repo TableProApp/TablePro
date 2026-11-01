@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="FeedEmpty" xml:space="preserve">
+    <value>The update feed is empty.</value>
+  </data>
+  <data name="FeedNotJson" xml:space="preserve">
+    <value>The update feed is not valid JSON.</value>
+  </data>
+  <data name="FeedSchema" xml:space="preserve">
+    <value>The update feed uses schema {0}; this version of TablePro reads schema {1}.</value>
+    <comment>{0} is the feed's schema number, {1} the one this version reads.</comment>
+  </data>
+  <data name="NotAVersion" xml:space="preserve">
+    <value>'{0}' is not a TablePro version such as 0.2.0 or 0.2.0-beta.1.</value>
+    <comment>{0} is the text that was read. Keep the example versions.</comment>
+  </data>
+</root>

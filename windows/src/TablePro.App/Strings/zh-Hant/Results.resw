@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="ChartAllNumericColumns" xml:space="preserve">
+    <value>所有數值欄位</value>
+  </data>
+  <data name="ChartBarTooltip" xml:space="preserve">
+    <value>{0}: {1:N}</value>
+  </data>
+  <data name="ChartBy" xml:space="preserve">
+    <value>依據</value>
+  </data>
+  <data name="ChartFirstRows_One" xml:space="preserve">
+    <value>{0:N0} 列中的前 {1:N0} 列</value>
+  </data>
+  <data name="ChartFirstRows_Other" xml:space="preserve">
+    <value>{0:N0} 列中的前 {1:N0} 列</value>
+  </data>
+  <data name="ChartKindArea" xml:space="preserve">
+    <value>面積</value>
+  </data>
+  <data name="ChartKindBar" xml:space="preserve">
+    <value>長條</value>
+  </data>
+  <data name="ChartKindLine" xml:space="preserve">
+    <value>折線</value>
+  </data>
+  <data name="ChartLead" xml:space="preserve">
+    <value>圖表</value>
+  </data>
+  <data name="ChartNoNumericColumn" xml:space="preserve">
+    <value>此結果沒有可繪製圖表的數值欄位。</value>
+  </data>
+  <data name="ChartOf" xml:space="preserve">
+    <value>數值</value>
+  </data>
+  <data name="MapEast" xml:space="preserve">
+    <value>E</value>
+  </data>
+  <data name="MapFitToResult" xml:space="preserve">
+    <value>符合結果範圍</value>
+  </data>
+  <data name="MapName" xml:space="preserve">
+    <value>地圖</value>
+  </data>
+  <data name="MapNameWithCounts" xml:space="preserve">
+    <value>來自 {1} 的 {0} 地圖</value>
+  </data>
+  <data name="MapNoRows" xml:space="preserve">
+    <value>執行查詢以在地圖上顯示其列。</value>
+  </data>
+  <data name="MapNoSource" xml:space="preserve">
+    <value>地圖需要幾何欄位，或緯度與經度欄位。此結果沒有這些欄位。</value>
+  </data>
+  <data name="MapNorth" xml:space="preserve">
+    <value>N</value>
+  </data>
+  <data name="MapRows_One" xml:space="preserve">
+    <value>{0:N0} 列</value>
+  </data>
+  <data name="MapRows_Other" xml:space="preserve">
+    <value>{0:N0} 列</value>
+  </data>
+  <data name="MapShapes_One" xml:space="preserve">
+    <value>{0:N0} 個圖形</value>
+  </data>
+  <data name="MapShapes_Other" xml:space="preserve">
+    <value>{0:N0} 個圖形</value>
+  </data>
+  <data name="MapSourceName" xml:space="preserve">
+    <value>地圖來源</value>
+  </data>
+  <data name="MapSouth" xml:space="preserve">
+    <value>S</value>
+  </data>
+  <data name="MapWest" xml:space="preserve">
+    <value>W</value>
+  </data>
+  <data name="MapZoomIn" xml:space="preserve">
+    <value>放大</value>
+  </data>
+  <data name="MapZoomOut" xml:space="preserve">
+    <value>縮小</value>
+  </data>
+</root>

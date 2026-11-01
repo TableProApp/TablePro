@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AuthFailed" xml:space="preserve">
+    <value>인증에 실패했습니다. 암호 필드의 인증 토큰을 확인하세요.</value>
+  </data>
+  <data name="BeginFailed" xml:space="preserve">
+    <value>저장 작업에서 트랜잭션을 시작할 수 없습니다: {0}</value>
+  </data>
+  <data name="BeginNoAnswer" xml:space="preserve">
+    <value>저장 작업에서 트랜잭션을 시작할 수 없습니다. 서버가 응답하지 않았습니다.</value>
+  </data>
+  <data name="CommitFailed" xml:space="preserve">
+    <value>저장을 커밋할 수 없습니다: {0}</value>
+  </data>
+  <data name="FewerAnswers" xml:space="preserve">
+    <value>서버가 저장 작업에서 보낸 것보다 적은 수의 문에 응답했습니다.</value>
+  </data>
+  <data name="FileUrlNoFile" xml:space="preserve">
+    <value>file: URL에 데이터베이스 파일이 지정되지 않았습니다.</value>
+  </data>
+  <data name="LocalNeedsFile" xml:space="preserve">
+    <value>로컬 libSQL 연결에는 데이터베이스 파일이 필요합니다.</value>
+  </data>
+  <data name="NoLocalFiles" xml:space="preserve">
+    <value>이 빌드는 로컬 libSQL 파일을 열 수 없습니다. 대신 서버 URL에 연결하세요.</value>
+  </data>
+  <data name="NoPipeline" xml:space="preserve">
+    <value>서버의 이 URL에 Hrana 파이프라인이 없습니다. 데이터베이스 URL을 확인하세요.</value>
+  </data>
+  <data name="NotAUrl" xml:space="preserve">
+    <value>'{0}'은(는) libSQL 데이터베이스 URL이 아닙니다. libsql://, https:// 또는 http://를 사용하세요.</value>
+  </data>
+  <data name="StreamClosedBeforeCommit" xml:space="preserve">
+    <value>서버가 커밋하기 전에 저장 스트림을 닫았으므로 아무것도 저장되지 않았습니다.</value>
+  </data>
+  <data name="StreamEnded" xml:space="preserve">
+    <value>{0} 탭의 스트림이 종료되어 열려 있던 트랜잭션이 롤백되었습니다.</value>
+  </data>
+  <data name="Unreadable" xml:space="preserve">
+    <value>서버가 TablePro에서 읽을 수 없는 응답을 반환했습니다.</value>
+  </data>
+</root>

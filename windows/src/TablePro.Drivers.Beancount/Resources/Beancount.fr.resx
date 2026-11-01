@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="BqlNeedsRledger" xml:space="preserve">
+    <value>Les requêtes BQL nécessitent rledger. Installez rustledger pour que rledger.exe soit dans le PATH, ou réglez l’option rledger de la connexion sur son chemin.</value>
+  </data>
+  <data name="CannotImport" xml:space="preserve">
+    <value>{0} ne peut pas importer beancount. Exécutez "{0}" -m pip install beancount, ou réglez l’option python sur un Python qui l’a.</value>
+  </data>
+  <data name="ConnectTimedOut" xml:space="preserve">
+    <value>La connexion a expiré après {0:0} secondes</value>
+  </data>
+  <data name="CouldNotRead" xml:space="preserve">
+    <value>Impossible de lire {0} : {1}</value>
+  </data>
+  <data name="CouldNotStart" xml:space="preserve">
+    <value>Impossible de démarrer {0} : {1}</value>
+  </data>
+  <data name="FileMissing" xml:space="preserve">
+    <value>Le fichier n’existe pas à {0}</value>
+  </data>
+  <data name="IncludeCycle" xml:space="preserve">
+    <value>Cycle d’inclusion Beancount détecté à {0}</value>
+  </data>
+  <data name="InvalidInclude" xml:space="preserve">
+    <value>Chemin d’inclusion non valide « {0} » dans {1} : {2}</value>
+  </data>
+  <data name="InvalidPythonOutput" xml:space="preserve">
+    <value>Sortie JSON Python Beancount non valide</value>
+  </data>
+  <data name="InvalidRledgerOutput" xml:space="preserve">
+    <value>Sortie JSON rustledger non valide</value>
+  </data>
+  <data name="LedgerChanged" xml:space="preserve">
+    <value>Le registre Beancount a changé pendant la construction de sa projection SQL</value>
+  </data>
+  <data name="MissingTransaction" xml:space="preserve">
+    <value>Une écriture Beancount fait référence à un ID de transaction absent {0}</value>
+  </data>
+  <data name="NeedsLedger" xml:space="preserve">
+    <value>Une connexion Beancount nécessite un fichier de registre.</value>
+  </data>
+  <data name="NoBackend" xml:space="preserve">
+    <value>Beancount nécessite Python Beancount ou rledger, et aucun des deux n’a été trouvé. Installez le paquet Python avec « py -3 -m pip install beancount » (ou « pip install beancount »), installez rustledger pour que rledger.exe soit dans le PATH, ou réglez l’option python ou rledger de la connexion sur son chemin.</value>
+  </data>
+  <data name="NoDdl" xml:space="preserve">
+    <value>Impossible de récupérer le DDL de la table « {0} »</value>
+  </data>
+  <data name="OpenFailed" xml:space="preserve">
+    <value>Impossible d’ouvrir le registre Beancount : {0}</value>
+  </data>
+  <data name="PadNoDate" xml:space="preserve">
+    <value>La directive pad ne porte pas de date, ses comptes n’ont donc pas été projetés.</value>
+  </data>
+  <data name="PadsUnrendered" xml:space="preserve">
+    <value>rledger n’a pas pu rendre les directives du registre, la table pads est donc vide : {0}</value>
+  </data>
+  <data name="PadUnmatched" xml:space="preserve">
+    <value>La directive pad n’a pas pu être associée à une directive rendue, ses comptes n’ont donc pas été projetés.</value>
+  </data>
+  <data name="PythonFailed" xml:space="preserve">
+    <value>La projection Python Beancount a échoué</value>
+  </data>
+  <data name="PythonMissing" xml:space="preserve">
+    <value>L’option python désigne un Python introuvable à {0}.</value>
+  </data>
+  <data name="PythonNeedsPackage" xml:space="preserve">
+    <value>Le backend Python Beancount nécessite Python 3 avec le paquet beancount. Exécutez « py -3 -m pip install beancount », ou réglez l’option python de la connexion sur un Python qui l’a.</value>
+  </data>
+  <data name="ReadOnly" xml:space="preserve">
+    <value>Les registres Beancount sont présentés comme une base de données SQL en lecture seule.</value>
+  </data>
+  <data name="RledgerMissing" xml:space="preserve">
+    <value>L’option rledger désigne un rledger introuvable à {0}.</value>
+  </data>
+  <data name="RledgerNeedsRustledger" xml:space="preserve">
+    <value>Le backend rledger nécessite rustledger. Installez-le pour que rledger.exe soit dans le PATH, ou réglez l’option rledger de la connexion sur son chemin.</value>
+  </data>
+  <data name="RledgerVersionFailed" xml:space="preserve">
+    <value>La vérification de la version de rledger a échoué</value>
+  </data>
+  <data name="RustledgerFailed" xml:space="preserve">
+    <value>La commande rustledger a échoué</value>
+  </data>
+  <data name="RustledgerValidationFailed" xml:space="preserve">
+    <value>La validation rustledger a échoué</value>
+  </data>
+  <data name="UnknownBackend" xml:space="preserve">
+    <value>Backend Beancount inconnu « {0} ». Utilisez « python » ou « rledger ».</value>
+  </data>
+</root>

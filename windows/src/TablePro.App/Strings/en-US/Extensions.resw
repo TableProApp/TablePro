@@ -1,0 +1,183 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AddExtension" xml:space="preserve">
+    <value>Add Extension…</value>
+    <comment>Button that opens a file picker to add a SQLite extension library.</comment>
+  </data>
+  <data name="ApprovedTestAgain" xml:space="preserve">
+    <value>The extensions are approved. Select Test again to connect.</value>
+    <comment>Status in the connection form after the extensions were approved. Test is the form's Test button.</comment>
+  </data>
+  <data name="ChooseAgainRecovery" xml:space="preserve">
+    <value>Choose the extension's file again when you edit the connection.</value>
+    <comment>Advice for an extension file that is missing.</comment>
+  </data>
+  <data name="ControlCharacterInPath" xml:space="preserve">
+    <value>The path of an extension in the list contains a line break or another control character.</value>
+    <comment>Reason an extension list failed.</comment>
+  </data>
+  <data name="CouldNotLoad" xml:space="preserve">
+    <value>Could not load the extension "{0}".</value>
+    <comment>Connect error heading. {0} is the extension's file name.</comment>
+  </data>
+  <data name="CouldNotLoadList" xml:space="preserve">
+    <value>The SQLite extensions for this connection could not be loaded.</value>
+    <comment>Connect error heading when the whole extension list failed.</comment>
+  </data>
+  <data name="Duplicate" xml:space="preserve">
+    <value>"{0}" is in the list more than once.</value>
+    <comment>Reason an extension failed. {0} is the path.</comment>
+  </data>
+  <data name="DuplicateRecovery" xml:space="preserve">
+    <value>Remove the second entry.</value>
+    <comment>Advice for an extension listed twice.</comment>
+  </data>
+  <data name="EntryPointLabel" xml:space="preserve">
+    <value>Entry Point</value>
+    <comment>Accessible name of the entry point field of an extension row.</comment>
+  </data>
+  <data name="EntryPointNotFound" xml:space="preserve">
+    <value>The file has no function named {0}.</value>
+    <comment>Reason an extension failed. {0} is a C function name.</comment>
+  </data>
+  <data name="EntryPointNotFoundRecovery" xml:space="preserve">
+    <value>Enter the entry point the extension's documentation names.</value>
+    <comment>Advice when the entry point function is missing.</comment>
+  </data>
+  <data name="EntryPointPlaceholder" xml:space="preserve">
+    <value>Default entry point</value>
+    <comment>Placeholder of the entry point field of an extension row.</comment>
+  </data>
+  <data name="EntryPointTooltip" xml:space="preserve">
+    <value>The initialization function to call. Leave empty to use the one SQLite derives from the file name.</value>
+    <comment>Tooltip of the entry point field.</comment>
+  </data>
+  <data name="FileLabel" xml:space="preserve">
+    <value>Extension File</value>
+    <comment>Accessible name of the path field of an extension row.</comment>
+  </data>
+  <data name="FileNotFound" xml:space="preserve">
+    <value>There is no file at "{0}".</value>
+    <comment>Reason an extension failed. {0} is the path.</comment>
+  </data>
+  <data name="FileWithEntryPoint" xml:space="preserve">
+    <value>{0} (entry point {1})</value>
+    <comment>One extension in a list. {0} is the file path, {1} the entry point function name.</comment>
+  </data>
+  <data name="Footer" xml:space="preserve">
+    <value>Loaded in this order each time the database file opens on this PC. An extension runs with full access to your PC, so add only files you trust.</value>
+    <comment>Note under the SQLite extension list.</comment>
+  </data>
+  <data name="Header" xml:space="preserve">
+    <value>Extensions</value>
+    <comment>Header of the SQLite extension list in the connection form.</comment>
+  </data>
+  <data name="InitializationFailed" xml:space="preserve">
+    <value>The extension failed to start: {0}</value>
+    <comment>Reason an extension failed. {0} is the extension's own error text.</comment>
+  </data>
+  <data name="InvalidEntryPoint" xml:space="preserve">
+    <value>"{0}" is not a valid entry point name.</value>
+    <comment>Reason an extension failed. {0} is the entry point as typed.</comment>
+  </data>
+  <data name="InvalidEntryPointRecovery" xml:space="preserve">
+    <value>Use the name of a C function, such as sqlite3_vec_init, or leave it empty.</value>
+    <comment>Advice for an invalid entry point name. Keep sqlite3_vec_init as is.</comment>
+  </data>
+  <data name="LoadingNotClosed" xml:space="preserve">
+    <value>SQLite did not turn extension loading off again after loading.</value>
+    <comment>Reason the extension list failed.</comment>
+  </data>
+  <data name="LoadingUnavailable" xml:space="preserve">
+    <value>SQLite did not allow extension loading on this connection.</value>
+    <comment>Reason the extension list failed.</comment>
+  </data>
+  <data name="MalformedList" xml:space="preserve">
+    <value>The saved extension list is not in a format TablePro can read.</value>
+    <comment>Reason an extension list failed.</comment>
+  </data>
+  <data name="MissingDependencyRecovery" xml:space="preserve">
+    <value>A DLL this extension needs is missing. Put the DLLs that come with it in the same folder as the extension.</value>
+    <comment>Advice when a DLL the extension depends on is missing.</comment>
+  </data>
+  <data name="MissingPath" xml:space="preserve">
+    <value>An extension in the list has no file.</value>
+    <comment>Reason an extension list failed.</comment>
+  </data>
+  <data name="MoveDown" xml:space="preserve">
+    <value>Move Down</value>
+    <comment>Accessible name of the button that moves an extension down the list.</comment>
+  </data>
+  <data name="MoveUp" xml:space="preserve">
+    <value>Move Up</value>
+    <comment>Accessible name of the button that moves an extension up the list.</comment>
+  </data>
+  <data name="NoExtensions" xml:space="preserve">
+    <value>No Extensions</value>
+    <comment>Shown when the extension list is empty.</comment>
+  </data>
+  <data name="NotAFile" xml:space="preserve">
+    <value>"{0}" is not a file.</value>
+    <comment>Reason an extension failed. {0} is the path.</comment>
+  </data>
+  <data name="NotApproved" xml:space="preserve">
+    <value>This connection loads SQLite extensions that have not been approved on this PC.</value>
+    <comment>Connect error when a connection lists extensions nobody approved on this PC.</comment>
+  </data>
+  <data name="NotApprovedRecovery" xml:space="preserve">
+    <value>Connect from the TablePro welcome window to review them.</value>
+    <comment>Advice after the not-approved error.</comment>
+  </data>
+  <data name="PathTooLong" xml:space="preserve">
+    <value>The path "{0}" is too long.</value>
+    <comment>Reason an extension failed. {0} is the path.</comment>
+  </data>
+  <data name="PromptConfirm" xml:space="preserve">
+    <value>Load Extensions</value>
+    <comment>Button that approves loading the listed SQLite extensions.</comment>
+  </data>
+  <data name="PromptIntro" xml:space="preserve">
+    <value>Connection "{0}" loads SQLite extensions that were not added on this PC:</value>
+    <comment>First paragraph of the extension prompt. {0} is the connection name. A list of files follows.</comment>
+  </data>
+  <data name="PromptTitle" xml:space="preserve">
+    <value>Load Extensions</value>
+    <comment>Title of the dialog asking to load SQLite extensions that arrived with a connection.</comment>
+  </data>
+  <data name="PromptWarning" xml:space="preserve">
+    <value>An extension runs inside TablePro with full access to your PC. Load them only if you trust these files.</value>
+    <comment>Last paragraph of the extension prompt.</comment>
+  </data>
+  <data name="RelativePath" xml:space="preserve">
+    <value>"{0}" is not a full path.</value>
+    <comment>Reason an extension failed. {0} is the path as typed.</comment>
+  </data>
+  <data name="RelativePathRecovery" xml:space="preserve">
+    <value>Choose the file again, or type a full path such as C:\Tools\extension.dll.</value>
+    <comment>Advice for a path that is not full. Keep the example path as is.</comment>
+  </data>
+  <data name="RemoveExtension" xml:space="preserve">
+    <value>Remove Extension</value>
+    <comment>Accessible name of the button that removes one extension from the list.</comment>
+  </data>
+  <data name="Unreadable" xml:space="preserve">
+    <value>The saved list could not be read. Adding an extension replaces it.</value>
+    <comment>Shown when the saved extension list cannot be decoded.</comment>
+  </data>
+  <data name="WrongArchitectureRecovery" xml:space="preserve">
+    <value>Use the build of the extension made for this PC's processor.</value>
+    <comment>Advice when the library is built for another processor.</comment>
+  </data>
+</root>

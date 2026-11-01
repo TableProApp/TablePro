@@ -1,0 +1,255 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="CategoryApp" xml:space="preserve">
+    <value>应用</value>
+  </data>
+  <data name="CategoryConnections" xml:space="preserve">
+    <value>连接</value>
+  </data>
+  <data name="CategoryDataGrid" xml:space="preserve">
+    <value>数据网格</value>
+  </data>
+  <data name="CategoryEditor" xml:space="preserve">
+    <value>编辑器与查询</value>
+  </data>
+  <data name="CategoryNavigation" xml:space="preserve">
+    <value>导航</value>
+  </data>
+  <data name="CommandCloseAllTabs" xml:space="preserve">
+    <value>关闭所有标签页</value>
+  </data>
+  <data name="CommandCloseOtherTabs" xml:space="preserve">
+    <value>关闭其他标签页</value>
+  </data>
+  <data name="CommandCloseTab" xml:space="preserve">
+    <value>关闭标签页</value>
+  </data>
+  <data name="CommandDisconnect" xml:space="preserve">
+    <value>断开连接</value>
+  </data>
+  <data name="CommandErDiagram" xml:space="preserve">
+    <value>ER 图</value>
+  </data>
+  <data name="CommandExecuteAllStatements" xml:space="preserve">
+    <value>运行所有语句</value>
+  </data>
+  <data name="CommandExecuteQuery" xml:space="preserve">
+    <value>运行当前语句</value>
+  </data>
+  <data name="CommandExplainQuery" xml:space="preserve">
+    <value>解释查询</value>
+  </data>
+  <data name="CommandExportDatabase" xml:space="preserve">
+    <value>导出数据库</value>
+  </data>
+  <data name="CommandFind" xml:space="preserve">
+    <value>查找</value>
+  </data>
+  <data name="CommandFindAndReplace" xml:space="preserve">
+    <value>查找与替换</value>
+  </data>
+  <data name="CommandFindNext" xml:space="preserve">
+    <value>查找下一个</value>
+  </data>
+  <data name="CommandFindPrevious" xml:space="preserve">
+    <value>查找上一个</value>
+  </data>
+  <data name="CommandFocusObjectList" xml:space="preserve">
+    <value>聚焦对象列表</value>
+  </data>
+  <data name="CommandFocusSidebarSearch" xml:space="preserve">
+    <value>聚焦侧边栏筛选</value>
+  </data>
+  <data name="CommandFormatQuery" xml:space="preserve">
+    <value>格式化查询</value>
+  </data>
+  <data name="CommandGoToDefinition" xml:space="preserve">
+    <value>转到定义</value>
+  </data>
+  <data name="CommandManageConnections" xml:space="preserve">
+    <value>管理连接</value>
+  </data>
+  <data name="CommandNewTab" xml:space="preserve">
+    <value>新建标签页</value>
+  </data>
+  <data name="CommandNextQueryIssue" xml:space="preserve">
+    <value>下一个查询问题</value>
+  </data>
+  <data name="CommandOpenSettings" xml:space="preserve">
+    <value>设置</value>
+  </data>
+  <data name="CommandPreviousQueryIssue" xml:space="preserve">
+    <value>上一个查询问题</value>
+  </data>
+  <data name="CommandQuickSwitcher" xml:space="preserve">
+    <value>快速打开</value>
+  </data>
+  <data name="CommandRenameSymbol" xml:space="preserve">
+    <value>重命名符号</value>
+  </data>
+  <data name="CommandRunSqlFile" xml:space="preserve">
+    <value>运行 SQL 文件</value>
+  </data>
+  <data name="CommandSaveFile" xml:space="preserve">
+    <value>保存文件</value>
+  </data>
+  <data name="CommandSearchDatabase" xml:space="preserve">
+    <value>搜索数据库</value>
+  </data>
+  <data name="CommandServerDashboard" xml:space="preserve">
+    <value>服务器仪表盘</value>
+  </data>
+  <data name="CommandShowFavoritesList" xml:space="preserve">
+    <value>显示收藏</value>
+  </data>
+  <data name="CommandShowNextTab" xml:space="preserve">
+    <value>显示下一个标签页</value>
+  </data>
+  <data name="CommandShowPreviousTab" xml:space="preserve">
+    <value>显示上一个标签页</value>
+  </data>
+  <data name="CommandShowQuickInfo" xml:space="preserve">
+    <value>显示快速信息</value>
+  </data>
+  <data name="CommandToggleAssistant" xml:space="preserve">
+    <value>切换助手</value>
+  </data>
+  <data name="CommandToggleComment" xml:space="preserve">
+    <value>切换注释</value>
+  </data>
+  <data name="CommandToggleHistory" xml:space="preserve">
+    <value>切换历史记录</value>
+  </data>
+  <data name="CommandToggleSqlFiles" xml:space="preserve">
+    <value>切换 SQL 文件</value>
+  </data>
+  <data name="CommandToggleTableBrowser" xml:space="preserve">
+    <value>切换侧边栏</value>
+  </data>
+  <data name="ConflictCommand" xml:space="preserve">
+    <value>{0} 已被“{2}”中的“{1}”使用。</value>
+  </data>
+  <data name="ConflictNeedsModifier" xml:space="preserve">
+    <value>快捷键必须包含 Ctrl 或 Alt，功能键除外。Shift 可以与它们组合使用，但不能单独构成快捷键。</value>
+  </data>
+  <data name="ConflictReserved" xml:space="preserve">
+    <value>{0} 已保留给“{1}”，无法分配。</value>
+  </data>
+  <data name="ConflictSystemReserved" xml:space="preserve">
+    <value>{0} 已被 Windows 保留，无法分配。</value>
+  </data>
+  <data name="RecorderHelpText" xml:space="preserve">
+    <value>按下以录制快捷键。Esc 取消，Backspace 清除。</value>
+  </data>
+  <data name="RecorderPrompt" xml:space="preserve">
+    <value>请按快捷键</value>
+  </data>
+  <data name="RecorderRecording" xml:space="preserve">
+    <value>正在录制</value>
+  </data>
+  <data name="ReservedAddRow" xml:space="preserve">
+    <value>添加行</value>
+  </data>
+  <data name="ReservedCloseWindow" xml:space="preserve">
+    <value>关闭窗口</value>
+  </data>
+  <data name="ReservedContextMenu" xml:space="preserve">
+    <value>上下文菜单</value>
+  </data>
+  <data name="ReservedCopyWithHeaders" xml:space="preserve">
+    <value>复制（含表头）</value>
+  </data>
+  <data name="ReservedCycleWindows" xml:space="preserve">
+    <value>循环切换窗口</value>
+  </data>
+  <data name="ReservedDeleteWordBackward" xml:space="preserve">
+    <value>删除前一个单词</value>
+  </data>
+  <data name="ReservedDeleteWordForward" xml:space="preserve">
+    <value>删除后一个单词</value>
+  </data>
+  <data name="ReservedDuplicateLine" xml:space="preserve">
+    <value>复制行</value>
+  </data>
+  <data name="ReservedMenuBar" xml:space="preserve">
+    <value>菜单栏</value>
+  </data>
+  <data name="ReservedMoveToBeginningOfDocument" xml:space="preserve">
+    <value>移到文档开头</value>
+  </data>
+  <data name="ReservedMoveToEndOfDocument" xml:space="preserve">
+    <value>移到文档末尾</value>
+  </data>
+  <data name="ReservedMoveToNextParagraph" xml:space="preserve">
+    <value>移到下一段</value>
+  </data>
+  <data name="ReservedMoveToPreviousParagraph" xml:space="preserve">
+    <value>移到上一段</value>
+  </data>
+  <data name="ReservedMoveWordLeft" xml:space="preserve">
+    <value>向左移动一个单词</value>
+  </data>
+  <data name="ReservedMoveWordRight" xml:space="preserve">
+    <value>向右移动一个单词</value>
+  </data>
+  <data name="ReservedNextProblem" xml:space="preserve">
+    <value>下一个问题</value>
+  </data>
+  <data name="ReservedPreviousProblem" xml:space="preserve">
+    <value>上一个问题</value>
+  </data>
+  <data name="ReservedPrintScreen" xml:space="preserve">
+    <value>Print Screen</value>
+  </data>
+  <data name="ReservedQuickInfo" xml:space="preserve">
+    <value>快速信息</value>
+  </data>
+  <data name="ReservedSaveChanges" xml:space="preserve">
+    <value>保存更改</value>
+  </data>
+  <data name="ReservedSecurityOptions" xml:space="preserve">
+    <value>安全选项</value>
+  </data>
+  <data name="ReservedSelectTab" xml:space="preserve">
+    <value>选择标签页 {0}</value>
+  </data>
+  <data name="ReservedSelectToBeginningOfDocument" xml:space="preserve">
+    <value>选择到文档开头</value>
+  </data>
+  <data name="ReservedSelectToEndOfDocument" xml:space="preserve">
+    <value>选择到文档末尾</value>
+  </data>
+  <data name="ReservedSelectWordLeft" xml:space="preserve">
+    <value>向左选择一个单词</value>
+  </data>
+  <data name="ReservedSelectWordRight" xml:space="preserve">
+    <value>向右选择一个单词</value>
+  </data>
+  <data name="ReservedShowCompletions" xml:space="preserve">
+    <value>显示补全</value>
+  </data>
+  <data name="ReservedStartMenu" xml:space="preserve">
+    <value>开始菜单</value>
+  </data>
+  <data name="ReservedSwitchApps" xml:space="preserve">
+    <value>切换应用</value>
+  </data>
+  <data name="ReservedTaskManager" xml:space="preserve">
+    <value>任务管理器</value>
+  </data>
+  <data name="ReservedWindowMenu" xml:space="preserve">
+    <value>窗口菜单</value>
+  </data>
+</root>

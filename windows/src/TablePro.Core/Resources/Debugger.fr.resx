@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="DebuggerFailed" xml:space="preserve">
+    <value>Le débogueur a échoué.</value>
+  </data>
+  <data name="FinishedBeforeStop" xml:space="preserve">
+    <value>La routine s’est terminée avant d’atteindre l’arrêt.</value>
+  </data>
+  <data name="StatusFailed" xml:space="preserve">
+    <value>Échec</value>
+  </data>
+  <data name="StatusFinished" xml:space="preserve">
+    <value>Terminé</value>
+  </data>
+  <data name="StatusPaused" xml:space="preserve">
+    <value>En pause</value>
+  </data>
+  <data name="StatusPausedAt" xml:space="preserve">
+    <value>En pause à la ligne {0} dans {1}</value>
+  </data>
+  <data name="StatusPreparing" xml:space="preserve">
+    <value>Préparation…</value>
+  </data>
+  <data name="StatusRunning" xml:space="preserve">
+    <value>Exécution…</value>
+  </data>
+  <data name="StatusStarting" xml:space="preserve">
+    <value>Démarrage…</value>
+  </data>
+  <data name="StatusStopped" xml:space="preserve">
+    <value>Arrêté</value>
+  </data>
+  <data name="StatusStopping" xml:space="preserve">
+    <value>Arrêt en cours…</value>
+  </data>
+  <data name="StopNotConfirmed" xml:space="preserve">
+    <value>Le débogueur n’a pas confirmé l’arrêt. La routine est peut-être encore en cours d’exécution sur le serveur.</value>
+  </data>
+</root>

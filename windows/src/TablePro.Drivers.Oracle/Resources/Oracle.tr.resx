@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AmbiguousOverload" xml:space="preserve">
+    <value>Bu çağrı {0} işlevinin birden fazla aşırı yüklemesiyle eşleştiğinden Oracle onu çalıştıramaz (PLS-00307).</value>
+  </data>
+  <data name="BreakpointHasNoCode" xml:space="preserve">
+    <value>{1} içindeki {0}. satırda durulacak kod yok.</value>
+  </data>
+  <data name="CannotPassType" xml:space="preserve">
+    <value>TablePro, {1} için {0} türünde hiçbir değer geçiremiyor.</value>
+  </data>
+  <data name="CannotPassTypeDetail" xml:space="preserve">
+    <value>Bunu, o değerle çağıran bir yordamdan ayıklayın.</value>
+  </data>
+  <data name="CompileForDebug" xml:space="preserve">
+    <value>TablePro bunu hata ayıklama bilgileriyle (PLSQL_OPTIMIZE_LEVEL=1) yeniden derler ve diğer ayarlarını korur. Derleme işlemi işler.</value>
+  </data>
+  <data name="CompileForDebugAction" xml:space="preserve">
+    <value>Hata Ayıklama için Derle</value>
+  </data>
+  <data name="CompileForDebugPackage" xml:space="preserve">
+    <value>TablePro bunu hata ayıklama bilgileriyle (PLSQL_OPTIMIZE_LEVEL=1) yeniden derler ve diğer ayarlarını korur. Derleme işlemi işler. Paketi kullanan diğer oturumlar paketin durumunu kaybeder ve pakete yaptıkları bir sonraki çağrı bir kez ORA-04068 ile başarısız olur.</value>
+  </data>
+  <data name="ConnectionLost" xml:space="preserve">
+    <value>Hata ayıklama oturumunun bağlantısı kapandı.</value>
+  </data>
+  <data name="CouldNotFinishStep" xml:space="preserve">
+    <value>Hata ayıklayıcı bu adımı tamamlayamadı.</value>
+  </data>
+  <data name="CouldNotStart" xml:space="preserve">
+    <value>Hata ayıklayıcı başlatılamadı.</value>
+  </data>
+  <data name="DebugFromCallerOverload" xml:space="preserve">
+    <value>Bunu, yalnızca bu aşırı yüklemenin aldığı bağımsız değişkenlerle çağıran bir yordamdan ayıklayın.</value>
+  </data>
+  <data name="Ended" xml:space="preserve">
+    <value>Hata ayıklama oturumu sona erdi.</value>
+  </data>
+  <data name="GiveParameterValue" xml:space="preserve">
+    <value>{0} için bir değer verin. Varsayılan değerinde bırakılırsa çağrı {1} işlevinin başka bir aşırı yüklemesiyle de eşleşir.</value>
+  </data>
+  <data name="GiveParameterValues" xml:space="preserve">
+    <value>{0} için değerler verin. Varsayılan değerlerinde bırakılırsa çağrı {1} işlevinin başka bir aşırı yüklemesiyle de eşleşir.</value>
+  </data>
+  <data name="GrantDebug" xml:space="preserve">
+    <value>Bir DBA bunu GRANT DEBUG ON {0} TO {1} ile verebilir veya DEBUG ANY PROCEDURE verebilir.</value>
+  </data>
+  <data name="GrantDebugConnectSession" xml:space="preserve">
+    <value>Bir DBA bunu GRANT DEBUG CONNECT SESSION TO {0} ile verebilir.</value>
+  </data>
+  <data name="HostBadCharacter" xml:space="preserve">
+    <value>"{0}" sunucusu, Oracle bağlantı tanımlayıcılarının izin vermediği bir karakter içeriyor.</value>
+  </data>
+  <data name="NeedsDebugConnectSession" xml:space="preserve">
+    <value>Hata ayıklama DEBUG CONNECT SESSION ayrıcalığını gerektirir.</value>
+  </data>
+  <data name="NeedsDebugPrivilege" xml:space="preserve">
+    <value>{0} hata ayıklaması, onun üzerinde DEBUG ayrıcalığı gerektirir.</value>
+  </data>
+  <data name="NoEntryPoints" xml:space="preserve">
+    <value>{0} içinde başlanabilecek genel bir prosedür veya fonksiyon yok.</value>
+  </data>
+  <data name="NotASessionId" xml:space="preserve">
+    <value>"{0}", sid,serial# biçiminde bir Oracle oturum kimliği değil.</value>
+  </data>
+  <data name="NotCompiledForDebug" xml:space="preserve">
+    <value>{0} hata ayıklama için derlenmemiş.</value>
+  </data>
+  <data name="OverloadDefaultUnreadable" xml:space="preserve">
+    <value>Oracle bu olmadan aşırı yüklemeleri ayırt edemez (PLS-00307) ve TablePro varsayılan değeri okuyup iletemez.</value>
+  </data>
+  <data name="RoutineFailed" xml:space="preserve">
+    <value>Yordam bir hata verdi. Değişiklikleri geri alındı.</value>
+  </data>
+  <data name="RunNote" xml:space="preserve">
+    <value>Yordamın yaptığı değişiklikler rutin bittiğinde işlenir. Durdur bunları geri alır.</value>
+  </data>
+  <data name="ServiceNameBadCharacter" xml:space="preserve">
+    <value>"{0}" hizmet adı, Oracle bağlantı tanımlayıcılarının izin vermediği bir karakter içeriyor.</value>
+  </data>
+  <data name="SidBadCharacter" xml:space="preserve">
+    <value>"{0}" SID'si, Oracle bağlantı tanımlayıcılarının izin vermediği bir karakter içeriyor.</value>
+  </data>
+  <data name="SourceUnreadable" xml:space="preserve">
+    <value>TablePro bu birimin kaynağını okuyamıyor.</value>
+  </data>
+  <data name="StillRunning" xml:space="preserve">
+    <value>TablePro yordamın bittiğini doğrulayamadı. Yordam sunucuda hâlâ çalışıyor olabilir.</value>
+  </data>
+  <data name="StillRunningNoSession" xml:space="preserve">
+    <value>İşlenmemiş çalışması sona erdiğinde geri alınır. ALTER SYSTEM yetkisi olan bir kullanıcı oturumunu V$SESSION içinde bulup ALTER SYSTEM KILL SESSION ile sonlandırabilir.</value>
+  </data>
+  <data name="StillRunningSid" xml:space="preserve">
+    <value>Oturum SID {0}. İşlenmemiş çalışması sona erdiğinde geri alınır.</value>
+  </data>
+  <data name="StillRunningWithKill" xml:space="preserve">
+    <value>Oturum SID {0}, SERIAL# {1}. İşlenmemiş çalışması sona erdiğinde geri alınır. ALTER SYSTEM yetkisi olan bir kullanıcı onu şimdi {2} ile sonlandırabilir.</value>
+  </data>
+  <data name="Stopped" xml:space="preserve">
+    <value>Durduruldu. Yordamın değişiklikleri geri alındı.</value>
+  </data>
+  <data name="TextToType" xml:space="preserve">
+    <value>TablePro, {1} için metni {0} değerine dönüştüremiyor.</value>
+  </data>
+  <data name="TextToTypeDetail" xml:space="preserve">
+    <value>NULL geçirin veya varsayılan değerinde bırakın.</value>
+  </data>
+  <data name="UnitUnreadable" xml:space="preserve">
+    <value>TablePro {0} öğesini okuyamıyor. Bu hesabın kaynağını görebildiğini denetleyin.</value>
+  </data>
+  <data name="Unreadable" xml:space="preserve">
+    <value>Veritabanı hata ayıklayıcıya TablePro'nun okuyamadığı verilerle yanıt verdi.</value>
+  </data>
+  <data name="UsingDbmsDebug" xml:space="preserve">
+    <value>DBMS_DEBUG üzerinden hata ayıklanıyor.</value>
+  </data>
+  <data name="ValueCollection" xml:space="preserve">
+    <value>Koleksiyon</value>
+  </data>
+  <data name="ValueNotReadable" xml:space="preserve">
+    <value>Okunamıyor</value>
+  </data>
+</root>

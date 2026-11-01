@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="CategoryApp" xml:space="preserve">
+    <value>App</value>
+  </data>
+  <data name="CategoryConnections" xml:space="preserve">
+    <value>連線</value>
+  </data>
+  <data name="CategoryDataGrid" xml:space="preserve">
+    <value>資料格</value>
+  </data>
+  <data name="CategoryEditor" xml:space="preserve">
+    <value>編輯器與查詢</value>
+  </data>
+  <data name="CategoryNavigation" xml:space="preserve">
+    <value>導覽</value>
+  </data>
+  <data name="ConflictCommand" xml:space="preserve">
+    <value>{0} 已被「{2}」中的「{1}」使用。</value>
+  </data>
+  <data name="ConflictNeedsModifier" xml:space="preserve">
+    <value>除非是功能鍵，否則快速鍵必須包含 Ctrl 或 Alt。Shift 可以搭配使用，但無法單獨構成快速鍵。</value>
+  </data>
+  <data name="ConflictReserved" xml:space="preserve">
+    <value>{0} 已保留給「{1}」，無法指派。</value>
+  </data>
+  <data name="ConflictSystemReserved" xml:space="preserve">
+    <value>{0} 已由 Windows 保留，無法指派。</value>
+  </data>
+  <data name="NotAShortcut" xml:space="preserve">
+    <value>「{0}」不是鍵盤快速鍵。</value>
+  </data>
+  <data name="UnknownCommand" xml:space="preserve">
+    <value>沒有快速鍵指令「{0}」。</value>
+  </data>
+</root>

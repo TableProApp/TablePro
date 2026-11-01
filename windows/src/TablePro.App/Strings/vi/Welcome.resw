@@ -1,0 +1,207 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="CancelConnect.Content" xml:space="preserve">
+    <value>Hủy</value>
+  </data>
+  <data name="ConnectFailedTitle" xml:space="preserve">
+    <value>Không thể kết nối tới {0}</value>
+  </data>
+  <data name="ConnectNowMessage" xml:space="preserve">
+    <value>Kết nối tới {0} ngay bây giờ?</value>
+  </data>
+  <data name="ConnectToTitle" xml:space="preserve">
+    <value>Kết nối tới {0}</value>
+  </data>
+  <data name="ConnectingThroughProxy" xml:space="preserve">
+    <value>Đang kết nối qua proxy…</value>
+  </data>
+  <data name="ConnectingTo" xml:space="preserve">
+    <value>Đang kết nối tới {0}…</value>
+  </data>
+  <data name="ConnectionAnnouncement" xml:space="preserve">
+    <value>{0}, {1}</value>
+  </data>
+  <data name="ConnectionSavedTitle" xml:space="preserve">
+    <value>Đã lưu kết nối</value>
+  </data>
+  <data name="CreateGroup" xml:space="preserve">
+    <value>Tạo</value>
+  </data>
+  <data name="DaysAgo_One" xml:space="preserve">
+    <value>{0} ngày trước</value>
+  </data>
+  <data name="DaysAgo_Other" xml:space="preserve">
+    <value>{0} ngày trước</value>
+  </data>
+  <data name="DeleteConfirmMessage" xml:space="preserve">
+    <value>Kết nối đã lưu và các mật khẩu được lưu của nó sẽ bị xoá. Bản thân cơ sở dữ liệu không bị ảnh hưởng.</value>
+  </data>
+  <data name="DeleteConfirmTitle" xml:space="preserve">
+    <value>Xoá {0}?</value>
+  </data>
+  <data name="EmptyMessage.Text" xml:space="preserve">
+    <value>Hãy tạo một kết nối, hoặc mở một tệp SQLite hay DuckDB.</value>
+  </data>
+  <data name="EmptyTitle.Text" xml:space="preserve">
+    <value>Không có kết nối đã lưu</value>
+  </data>
+  <data name="EncryptedImportMessage" xml:space="preserve">
+    <value>Tệp này đã được mã hoá. Hãy nhập cụm mật khẩu đã dùng khi xuất tệp.</value>
+  </data>
+  <data name="EncryptedImportTitle" xml:space="preserve">
+    <value>Kết nối được mã hoá</value>
+  </data>
+  <data name="ExportFileType" xml:space="preserve">
+    <value>Kết nối TablePro</value>
+  </data>
+  <data name="ExportMessage" xml:space="preserve">
+    <value>Nhập cụm mật khẩu để mã hoá tệp và bao gồm các mật khẩu đã lưu. Để trống để xuất mà không kèm mật khẩu.</value>
+  </data>
+  <data name="ExportTitle" xml:space="preserve">
+    <value>Xuất kết nối</value>
+  </data>
+  <data name="HoursAgo_One" xml:space="preserve">
+    <value>{0} giờ trước</value>
+  </data>
+  <data name="HoursAgo_Other" xml:space="preserve">
+    <value>{0} giờ trước</value>
+  </data>
+  <data name="ImportConnections.Text" xml:space="preserve">
+    <value>Nhập Kết nối</value>
+  </data>
+  <data name="ImportFailedTitle" xml:space="preserve">
+    <value>Nhập thất bại</value>
+  </data>
+  <data name="ImportFinishedTitle" xml:space="preserve">
+    <value>Nhập xong</value>
+  </data>
+  <data name="ImportWrongPassphrase" xml:space="preserve">
+    <value>Cụm mật khẩu không đúng, hoặc tệp đã bị hỏng.</value>
+  </data>
+  <data name="ImportedConnections_One" xml:space="preserve">
+    <value>Đã nhập {0} kết nối.</value>
+  </data>
+  <data name="ImportedConnections_Other" xml:space="preserve">
+    <value>Đã nhập {0} kết nối.</value>
+  </data>
+  <data name="ImportedSavedQueries_One" xml:space="preserve">
+    <value>Đã thêm {0} truy vấn đã lưu vào Yêu thích.</value>
+  </data>
+  <data name="ImportedSavedQueries_Other" xml:space="preserve">
+    <value>Đã thêm {0} truy vấn đã lưu vào Yêu thích.</value>
+  </data>
+  <data name="JustNow" xml:space="preserve">
+    <value>vừa xong</value>
+  </data>
+  <data name="MinutesAgo_One" xml:space="preserve">
+    <value>{0} phút trước</value>
+  </data>
+  <data name="MinutesAgo_Other" xml:space="preserve">
+    <value>{0} phút trước</value>
+  </data>
+  <data name="MoveToGroup" xml:space="preserve">
+    <value>Di chuyển vào Nhóm</value>
+  </data>
+  <data name="NewConnection.Text" xml:space="preserve">
+    <value>Kết nối mới</value>
+  </data>
+  <data name="NewGroup.Text" xml:space="preserve">
+    <value>Nhóm mới</value>
+  </data>
+  <data name="NewGroupTitle" xml:space="preserve">
+    <value>Nhóm mới</value>
+  </data>
+  <data name="NoGroup" xml:space="preserve">
+    <value>Không có nhóm</value>
+  </data>
+  <data name="OpenDatabaseFile.Text" xml:space="preserve">
+    <value>Mở tệp cơ sở dữ liệu</value>
+  </data>
+  <data name="OpeningCloudflareTunnel" xml:space="preserve">
+    <value>Đang mở Cloudflare Tunnel…</value>
+  </data>
+  <data name="OpeningSshTunnel" xml:space="preserve">
+    <value>Đang mở đường hầm SSH tới {0}…</value>
+  </data>
+  <data name="PasswordForHeader" xml:space="preserve">
+    <value>Mật khẩu cho {0}@{1}</value>
+  </data>
+  <data name="RunningTunnelCommand" xml:space="preserve">
+    <value>Đang chạy lệnh đường hầm…</value>
+  </data>
+  <data name="SearchConnections.PlaceholderText" xml:space="preserve">
+    <value>Tìm kết nối</value>
+  </data>
+  <data name="Settings.Content" xml:space="preserve">
+    <value>Cài đặt</value>
+  </data>
+  <data name="SignInAndRetry" xml:space="preserve">
+    <value>Hãy đăng nhập tại {0} rồi kết nối lại.</value>
+  </data>
+  <data name="SkippedConnections_One" xml:space="preserve">
+    <value>Đã bỏ qua {0} kết nối mà bản dựng này không mở được.</value>
+  </data>
+  <data name="SkippedConnections_Other" xml:space="preserve">
+    <value>Đã bỏ qua {0} kết nối mà bản dựng này không mở được.</value>
+  </data>
+  <data name="Sort.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Sắp xếp</value>
+  </data>
+  <data name="SortLastConnected.Content" xml:space="preserve">
+    <value>Lần kết nối gần nhất</value>
+  </data>
+  <data name="SortManual.Content" xml:space="preserve">
+    <value>Thứ tự thủ công</value>
+  </data>
+  <data name="SortName.Content" xml:space="preserve">
+    <value>Tên</value>
+  </data>
+  <data name="StartingCloudSqlProxy" xml:space="preserve">
+    <value>Đang khởi động Cloud SQL Auth Proxy…</value>
+  </data>
+  <data name="TunnelCommandsTurnedOff" xml:space="preserve">
+    <value>Các lệnh đường hầm đã bị tắt cho đến khi bạn xem lại: {0}.</value>
+  </data>
+  <data name="Version" xml:space="preserve">
+    <value>Phiên bản {0}</value>
+  </data>
+  <data name="TeamLibraryHeader" xml:space="preserve">
+    <value>Thư viện nhóm</value>
+  </data>
+  <data name="PublishToTeam" xml:space="preserve">
+    <value>Xuất bản lên thư viện nhóm…</value>
+  </data>
+  <data name="PublishToTeamTitle" xml:space="preserve">
+    <value>Xuất bản “{0}” cho nhóm của bạn?</value>
+  </data>
+  <data name="PublishToTeamMessage" xml:space="preserve">
+    <value>Mọi người trong nhóm sẽ thấy máy chủ, cổng, người dùng, cơ sở dữ liệu và cài đặt SSH. Thao tác này thay thế các kết nối và truy vấn đã lưu mà bạn đã xuất bản trước đó. Mật khẩu không được đưa vào.</value>
+  </data>
+  <data name="PublishButton" xml:space="preserve">
+    <value>Xuất bản</value>
+  </data>
+  <data name="PublishedTitle" xml:space="preserve">
+    <value>Đã xuất bản lên thư viện nhóm</value>
+  </data>
+  <data name="PublishedMessage_One" xml:space="preserve">
+    <value>Nhóm của bạn giờ có thể thấy {0} kết nối được chia sẻ. Mật khẩu không được đưa vào.</value>
+  </data>
+  <data name="PublishedMessage_Other" xml:space="preserve">
+    <value>Nhóm của bạn giờ có thể thấy {0} kết nối được chia sẻ. Mật khẩu không được đưa vào.</value>
+  </data>
+  <data name="PublishFailedTitle" xml:space="preserve">
+    <value>Không thể xuất bản lên thư viện nhóm</value>
+  </data>
+</root>

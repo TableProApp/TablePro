@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="ComparisonNeedsName" xml:space="preserve">
+    <value>Une comparaison enregistrée doit avoir un nom.</value>
+  </data>
+  <data name="FolderContainsItself" xml:space="preserve">
+    <value>Un dossier ne peut pas se contenir lui-même.</value>
+  </data>
+  <data name="FolderIntoSubfolder" xml:space="preserve">
+    <value>Un dossier ne peut pas être déplacé dans l’un de ses propres sous-dossiers.</value>
+  </data>
+  <data name="KeywordContainsSpaces" xml:space="preserve">
+    <value>Un mot-clé ne peut pas contenir d’espaces.</value>
+  </data>
+  <data name="KeywordTooLong_One" xml:space="preserve">
+    <value>Le mot-clé doit comporter moins de {0} caractère.</value>
+  </data>
+  <data name="KeywordTooLong_Other" xml:space="preserve">
+    <value>Le mot-clé doit comporter moins de {0} caractères.</value>
+  </data>
+  <data name="KeywordUsed" xml:space="preserve">
+    <value>Un autre favori utilise déjà ce mot-clé.</value>
+  </data>
+  <data name="UntitledQuery" xml:space="preserve">
+    <value>Requête sans titre</value>
+  </data>
+</root>

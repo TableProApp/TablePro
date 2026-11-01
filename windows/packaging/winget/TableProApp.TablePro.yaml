@@ -1,0 +1,7 @@
+# Template, filled per stable release by windows/packaging/winget-manifest.ps1. See README.md here.
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.version.1.10.0.schema.json
+PackageIdentifier: TableProApp.TablePro
+PackageVersion: "{{Version}}"
+DefaultLocale: en-US
+ManifestType: version
+ManifestVersion: 1.10.0

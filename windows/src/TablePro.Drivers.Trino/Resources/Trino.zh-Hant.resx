@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AnsweredHttp" xml:space="preserve">
+    <value>Trino 傳回了 HTTP {0} {1}</value>
+  </data>
+  <data name="AnsweredHttpWith" xml:space="preserve">
+    <value>Trino 傳回了 HTTP {0} {1}：{2}</value>
+  </data>
+  <data name="CredentialsRefused" xml:space="preserve">
+    <value>Trino 拒絕了認證。</value>
+  </data>
+  <data name="CredentialsRefusedWith" xml:space="preserve">
+    <value>Trino 拒絕了認證：{0}</value>
+  </data>
+  <data name="NeedsComparableKey" xml:space="preserve">
+    <value>列至少需要一個可比較的索引鍵欄才能安全地變更。</value>
+  </data>
+  <data name="NotClientProtocol" xml:space="preserve">
+    <value>Trino 傳回的回應不符合用戶端通訊協定：{0}</value>
+  </data>
+  <data name="PasswordNeedsHttps" xml:space="preserve">
+    <value>Trino 僅透過 HTTPS 接受密碼或權杖。請將 SSL 模式設為「必要」，或為 {0} 使用 https:// URL。</value>
+  </data>
+  <data name="PlainHttpRedirect" xml:space="preserve">
+    <value>Trino 以未加密的 http:// 位址回應了 HTTPS 要求，因此未跟隨該位址。位於 TLS Proxy 後的協調器需要設定 http-server.process-forwarded=true。</value>
+  </data>
+</root>

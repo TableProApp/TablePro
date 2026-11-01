@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="MissingDatabase" xml:space="preserve">
+    <value>Spanner a besoin de la base de données : saisissez projects/p/instances/i/databases/d comme hôte, ou définissez les options project et instance ainsi que la base de données.</value>
+  </data>
+  <data name="MissingInstance" xml:space="preserve">
+    <value>Spanner a besoin de l’instance : saisissez projects/p/instances/i/databases/d comme hôte, ou définissez les options project et instance ainsi que la base de données.</value>
+  </data>
+  <data name="MissingProject" xml:space="preserve">
+    <value>Spanner a besoin du projet : saisissez projects/p/instances/i/databases/d comme hôte, ou définissez les options project et instance ainsi que la base de données.</value>
+  </data>
+  <data name="NoSchemaChangeInTransaction" xml:space="preserve">
+    <value>Spanner ne peut pas modifier le schéma dans une transaction. Exécutez d’abord COMMIT ou ROLLBACK.</value>
+  </data>
+  <data name="NotADatabasePath" xml:space="preserve">
+    <value>« {0} » n’est pas un chemin de base de données Spanner, tel que projects/my-project/instances/my-instance/databases/my-db.</value>
+  </data>
+  <data name="PostgreSqlDialect" xml:space="preserve">
+    <value>Cette base de données Spanner utilise le dialecte PostgreSQL, que TablePro pour Windows ne prend pas encore en charge. Les bases GoogleSQL fonctionnent.</value>
+  </data>
+  <data name="SchemaChangeApplied" xml:space="preserve">
+    <value>Modification du schéma appliquée via UpdateDatabaseDdl.</value>
+  </data>
+</root>

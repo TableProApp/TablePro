@@ -66,7 +66,7 @@ TablePro is the missing fourth: native, multi-database, and open source.
 | macOS 13+ | Stable |
 | iOS / iPadOS 18+ | Stable |
 | Linux (GNOME 50+) | In development in [`linux/`](linux/README.md), not released yet |
-| Windows | No |
+| Windows 10 / 11 | In development in [`windows/`](windows/README.md), not released yet |
 
 ## Supported Databases
 
@@ -104,7 +104,7 @@ Or download from [GitHub Releases](https://github.com/TableProApp/TablePro/relea
 
 ## How to Build
 
-These steps build the macOS and iOS apps; the Linux app builds with Meson and Cargo ([`linux/README.md`](linux/README.md)).
+These steps build the macOS and iOS apps; the Linux app builds with Meson and Cargo ([`linux/README.md`](linux/README.md)), and the Windows app with the .NET SDK ([`windows/README.md`](windows/README.md)).
 
 Building TablePro requires Xcode 26 or later and
 [XcodeGen](https://github.com/yonaskolb/XcodeGen).

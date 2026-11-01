@@ -1,0 +1,189 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="CharAmpersand" xml:space="preserve">
+    <value>dấu và</value>
+  </data>
+  <data name="CharApostrophe" xml:space="preserve">
+    <value>dấu nháy đơn</value>
+  </data>
+  <data name="CharAsterisk" xml:space="preserve">
+    <value>dấu sao</value>
+  </data>
+  <data name="CharAtSign" xml:space="preserve">
+    <value>ký hiệu a còng</value>
+  </data>
+  <data name="CharBackslash" xml:space="preserve">
+    <value>dấu gạch chéo ngược</value>
+  </data>
+  <data name="CharBacktick" xml:space="preserve">
+    <value>dấu nháy ngược</value>
+  </data>
+  <data name="CharCaret" xml:space="preserve">
+    <value>dấu mũ</value>
+  </data>
+  <data name="CharColon" xml:space="preserve">
+    <value>dấu hai chấm</value>
+  </data>
+  <data name="CharComma" xml:space="preserve">
+    <value>dấu phẩy</value>
+  </data>
+  <data name="CharDollarSign" xml:space="preserve">
+    <value>ký hiệu đô la</value>
+  </data>
+  <data name="CharEqualsSign" xml:space="preserve">
+    <value>dấu bằng</value>
+  </data>
+  <data name="CharExclamationMark" xml:space="preserve">
+    <value>dấu chấm than</value>
+  </data>
+  <data name="CharGreaterThanSign" xml:space="preserve">
+    <value>dấu lớn hơn</value>
+  </data>
+  <data name="CharHyphen" xml:space="preserve">
+    <value>dấu gạch nối</value>
+  </data>
+  <data name="CharLeftCurlyBracket" xml:space="preserve">
+    <value>dấu ngoặc nhọn mở</value>
+  </data>
+  <data name="CharLeftParenthesis" xml:space="preserve">
+    <value>dấu ngoặc đơn mở</value>
+  </data>
+  <data name="CharLeftSquareBracket" xml:space="preserve">
+    <value>dấu ngoặc vuông mở</value>
+  </data>
+  <data name="CharLessThanSign" xml:space="preserve">
+    <value>dấu nhỏ hơn</value>
+  </data>
+  <data name="CharNumberSign" xml:space="preserve">
+    <value>dấu thăng</value>
+  </data>
+  <data name="CharPercentSign" xml:space="preserve">
+    <value>dấu phần trăm</value>
+  </data>
+  <data name="CharPeriod" xml:space="preserve">
+    <value>dấu chấm</value>
+  </data>
+  <data name="CharPlusSign" xml:space="preserve">
+    <value>dấu cộng</value>
+  </data>
+  <data name="CharQuestionMark" xml:space="preserve">
+    <value>dấu chấm hỏi</value>
+  </data>
+  <data name="CharQuotationMark" xml:space="preserve">
+    <value>dấu ngoặc kép</value>
+  </data>
+  <data name="CharRightCurlyBracket" xml:space="preserve">
+    <value>dấu ngoặc nhọn đóng</value>
+  </data>
+  <data name="CharRightParenthesis" xml:space="preserve">
+    <value>dấu ngoặc đơn đóng</value>
+  </data>
+  <data name="CharRightSquareBracket" xml:space="preserve">
+    <value>dấu ngoặc vuông đóng</value>
+  </data>
+  <data name="CharSlash" xml:space="preserve">
+    <value>dấu gạch chéo</value>
+  </data>
+  <data name="CharTilde" xml:space="preserve">
+    <value>dấu ngã</value>
+  </data>
+  <data name="CharVerticalBar" xml:space="preserve">
+    <value>dấu gạch đứng</value>
+  </data>
+  <data name="CurlyQuote" xml:space="preserve">
+    <value>Dấu nháy cong ({0}). SQL cần dấu nháy thẳng ({1}).</value>
+  </data>
+  <data name="FullWidthPunctuation" xml:space="preserve">
+    <value>Ký tự toàn độ rộng: {0} ({1}). SQL cần {0} ASCII ({2}).</value>
+  </data>
+  <data name="FullWidthSemicolon" xml:space="preserve">
+    <value>Dấu chấm phẩy toàn độ rộng (U+FF1B). SQL chỉ đọc ; là dấu phân tách câu lệnh.</value>
+  </data>
+  <data name="FullWidthWord" xml:space="preserve">
+    <value>Chữ hoặc số toàn độ rộng. SQL cần {0} ASCII.</value>
+  </data>
+  <data name="HoverAliasOfCommonTableExpression" xml:space="preserve">
+    <value>{0}: bí danh của biểu thức bảng chung {1}</value>
+  </data>
+  <data name="HoverAliasOfSubquery" xml:space="preserve">
+    <value>{0}: bí danh của một truy vấn con</value>
+  </data>
+  <data name="HoverAliasOfTable" xml:space="preserve">
+    <value>{0}: bí danh của bảng {1}</value>
+  </data>
+  <data name="HoverAliasOfTableFunction" xml:space="preserve">
+    <value>{0}: bí danh của hàm bảng {1}</value>
+  </data>
+  <data name="HoverAliasOfView" xml:space="preserve">
+    <value>{0}: bí danh của view {1}</value>
+  </data>
+  <data name="HoverColumn" xml:space="preserve">
+    <value>Cột {0}</value>
+  </data>
+  <data name="HoverCommonTableExpression" xml:space="preserve">
+    <value>Biểu thức bảng chung {0}</value>
+  </data>
+  <data name="HoverMoreColumns_One" xml:space="preserve">
+    <value>và {0} cột nữa</value>
+  </data>
+  <data name="HoverMoreColumns_Other" xml:space="preserve">
+    <value>và {0} cột nữa</value>
+  </data>
+  <data name="HoverSubquery" xml:space="preserve">
+    <value>Truy vấn con {0}</value>
+  </data>
+  <data name="HoverTable" xml:space="preserve">
+    <value>Bảng {0}</value>
+  </data>
+  <data name="HoverTableFunction" xml:space="preserve">
+    <value>Hàm bảng {0}</value>
+  </data>
+  <data name="HoverView" xml:space="preserve">
+    <value>View {0}</value>
+  </data>
+  <data name="NoClosingBrace" xml:space="preserve">
+    <value>Không có dấu đóng ngoặc nhọn tương ứng</value>
+  </data>
+  <data name="NoClosingBracket" xml:space="preserve">
+    <value>Không có dấu đóng ngoặc vuông tương ứng</value>
+  </data>
+  <data name="NoClosingParenthesis" xml:space="preserve">
+    <value>Không có dấu đóng ngoặc đơn tương ứng</value>
+  </data>
+  <data name="NonAsciiSpace" xml:space="preserve">
+    <value>Khoảng trắng không phải ASCII ({0}). SQL cần khoảng trắng ASCII (U+0020).</value>
+  </data>
+  <data name="NoOpeningBracket" xml:space="preserve">
+    <value>Không có dấu mở ngoặc tương ứng</value>
+  </data>
+  <data name="UnknownColumn" xml:space="preserve">
+    <value>Bảng '{0}' không có cột '{1}'.</value>
+  </data>
+  <data name="UnknownQualifier" xml:space="preserve">
+    <value>Bảng hoặc bí danh '{0}' không xác định.</value>
+  </data>
+  <data name="UnknownTable" xml:space="preserve">
+    <value>Bảng '{0}' không xác định.</value>
+  </data>
+  <data name="UnterminatedComment" xml:space="preserve">
+    <value>Chú thích chưa đóng</value>
+  </data>
+  <data name="UnterminatedQuotedName" xml:space="preserve">
+    <value>Tên trong dấu nháy chưa đóng</value>
+  </data>
+  <data name="UnterminatedString" xml:space="preserve">
+    <value>Chuỗi chưa đóng</value>
+  </data>
+</root>

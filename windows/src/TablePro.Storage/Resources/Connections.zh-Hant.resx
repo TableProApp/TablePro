@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="BundleCycle" xml:space="preserve">
+    <value>參照「{0}」包含了自身</value>
+  </data>
+  <data name="BundleDuplicateReference" xml:space="preserve">
+    <value>參照「{0}」被使用了多次</value>
+  </data>
+  <data name="BundleEmptyReference" xml:space="preserve">
+    <value>有項目的參照為空</value>
+  </data>
+  <data name="BundleMissingTarget" xml:space="preserve">
+    <value>「{0}」參照了檔案中不存在的「{1}」</value>
+  </data>
+  <data name="BundleOrphanCredentials" xml:space="preserve">
+    <value>「{0}」的密碼不屬於檔案中的任何連線</value>
+  </data>
+  <data name="BundleTooDeep" xml:space="preserve">
+    <value>參照「{0}」巢狀過深</value>
+  </data>
+  <data name="EncryptedCorrupt" xml:space="preserve">
+    <value>加密檔案已損毀或不完整。</value>
+  </data>
+  <data name="EncryptionVersionUnsupported" xml:space="preserve">
+    <value>不支援加密版本 {0}。請更新 TablePro 以開啟此檔案。</value>
+  </data>
+  <data name="GroupContainsItself" xml:space="preserve">
+    <value>群組不能包含自身。</value>
+  </data>
+  <data name="GroupIntoSubgroup" xml:space="preserve">
+    <value>群組不能移到它自己的子群組中。</value>
+  </data>
+  <data name="ImportedConnectionName" xml:space="preserve">
+    <value>匯入的連線</value>
+  </data>
+  <data name="ImportedGroupName" xml:space="preserve">
+    <value>已匯入</value>
+  </data>
+  <data name="IncorrectPassphrase" xml:space="preserve">
+    <value>通關密語不正確。</value>
+  </data>
+  <data name="NewerFormat" xml:space="preserve">
+    <value>此檔案需要較新版本的 TablePro（格式版本 {0}）。</value>
+  </data>
+  <data name="NoDriverFor" xml:space="preserve">
+    <value>Windows 版 TablePro 沒有適用於 {0} 的驅動程式。</value>
+  </data>
+  <data name="NotAnExport" xml:space="preserve">
+    <value>此檔案不是有效的 TablePro 匯出檔案。</value>
+  </data>
+  <data name="NotAnExportBecause" xml:space="preserve">
+    <value>此檔案不是有效的 TablePro 匯出檔案：{0}。</value>
+  </data>
+  <data name="ParseFailed" xml:space="preserve">
+    <value>無法剖析連線檔案：{0}</value>
+  </data>
+  <data name="PassphraseRequired" xml:space="preserve">
+    <value>此檔案已加密，需要通關密語。</value>
+  </data>
+  <data name="PasswordsNeedEncryption" xml:space="preserve">
+    <value>已儲存的密碼只能匯出至加密檔案。</value>
+  </data>
+</root>

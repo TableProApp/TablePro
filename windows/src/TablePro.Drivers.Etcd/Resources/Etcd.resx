@@ -1,0 +1,210 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AuthDisabled" xml:space="preserve">
+    <value>Authentication disabled.</value>
+  </data>
+  <data name="AuthEnabled" xml:space="preserve">
+    <value>Authentication enabled.</value>
+  </data>
+  <data name="ChangeHasNoKey" xml:space="preserve">
+    <value>An etcd row is identified by its key, and this change has none.</value>
+  </data>
+  <data name="Compacted" xml:space="preserve">
+    <value>Compacted revision {0}.</value>
+    <comment>{0} is a revision number.</comment>
+  </data>
+  <data name="CompactionNeedsRevision" xml:space="preserve">
+    <value>compaction needs a revision.</value>
+  </data>
+  <data name="ConcurrentChange" xml:space="preserve">
+    <value>Another client changed these keys while the save ran, so nothing was saved. Refresh and try again.</value>
+  </data>
+  <data name="DescribeKey" xml:space="preserve">
+    <value>version {0}, revision {1}</value>
+    <comment>Sidebar detail of a key. {0} version, {1} revision.</comment>
+  </data>
+  <data name="DescribeKeyWithLease" xml:space="preserve">
+    <value>version {0}, revision {1}, lease {2}</value>
+    <comment>Sidebar detail of a key. {0} version, {1} revision, {2} lease ID.</comment>
+  </data>
+  <data name="EmptyCommand" xml:space="preserve">
+    <value>Empty etcd command.</value>
+  </data>
+  <data name="EmptyKey" xml:space="preserve">
+    <value>An etcd key cannot be empty.</value>
+  </data>
+  <data name="HttpStatus" xml:space="preserve">
+    <value>etcd returned HTTP {0}: {1}</value>
+    <comment>{0} is an HTTP status code, {1} the start of the body the server sent.</comment>
+  </data>
+  <data name="InvalidLeaseId" xml:space="preserve">
+    <value>Invalid lease ID: {0}</value>
+    <comment>{0} is what the user typed.</comment>
+  </data>
+  <data name="KeepsColumn" xml:space="preserve">
+    <value>etcd keeps {0} itself; only the key, value and lease can be changed.</value>
+    <comment>{0} is a column name.</comment>
+  </data>
+  <data name="KeyAlreadyExists" xml:space="preserve">
+    <value>The key {0} already exists, so nothing was saved. Edit that row instead.</value>
+    <comment>{0} is a key.</comment>
+  </data>
+  <data name="KeyChangedSinceRead" xml:space="preserve">
+    <value>The key {0} changed since it was read, so nothing was saved. Refresh and try again.</value>
+    <comment>{0} is a key.</comment>
+  </data>
+  <data name="KeyGoneStatement" xml:space="preserve">
+    <value>the key {0}, which no longer exists</value>
+    <comment>Stands in for the statement in a 'would affect 0 rows' message. {0} is a key.</comment>
+  </data>
+  <data name="LeaseComment" xml:space="preserve">
+    <value>The lease the key is attached to, in hex as etcdctl prints it.</value>
+  </data>
+  <data name="LeaseExpired" xml:space="preserve">
+    <value>The lease has expired or was never granted.</value>
+  </data>
+  <data name="LeaseGrantTtl" xml:space="preserve">
+    <value>lease grant needs a TTL in whole seconds.</value>
+  </data>
+  <data name="LeaseRefreshed" xml:space="preserve">
+    <value>Lease {0} refreshed once, TTL {1}s. Keeping it alive needs a client that repeats this, such as etcdctl.</value>
+    <comment>{0} is a lease ID, {1} its TTL in seconds.</comment>
+  </data>
+  <data name="LeaseRevoked" xml:space="preserve">
+    <value>Lease {0} revoked.</value>
+    <comment>{0} is a lease ID.</comment>
+  </data>
+  <data name="NeedsKey" xml:space="preserve">
+    <value>{0} needs a key.</value>
+    <comment>{0} is a command name such as get.</comment>
+  </data>
+  <data name="NeedsLeaseId" xml:space="preserve">
+    <value>{0} needs a lease ID.</value>
+    <comment>{0} is a command such as lease revoke.</comment>
+  </data>
+  <data name="NeedsRoleName" xml:space="preserve">
+    <value>{0} needs a role name.</value>
+    <comment>{0} is a command such as role add.</comment>
+  </data>
+  <data name="NeedsSubcommand" xml:space="preserve">
+    <value>{0} needs a subcommand: {1}.</value>
+    <comment>{0} is a command name, {1} its subcommands, which stay English.</comment>
+  </data>
+  <data name="NeedsUserAndRole" xml:space="preserve">
+    <value>{0} needs a user name and a role.</value>
+    <comment>{0} is a command such as user grant-role.</comment>
+  </data>
+  <data name="NeedsUserName" xml:space="preserve">
+    <value>{0} needs a user name.</value>
+    <comment>{0} is a command such as user add.</comment>
+  </data>
+  <data name="NegativeLimit" xml:space="preserve">
+    <value>--limit and --rev cannot be negative.</value>
+  </data>
+  <data name="NoApiAt" xml:space="preserve">
+    <value>No etcd v3 API found at {0}. Point the connection at the client port, 2379 by default, not the peer port 2380.</value>
+    <comment>{0} is the server address.</comment>
+  </data>
+  <data name="NoKeepAliveAnswer" xml:space="preserve">
+    <value>etcd sent no keep-alive answer.</value>
+  </data>
+  <data name="NotGateway" xml:space="preserve">
+    <value>The server answered but is not an etcd v3 JSON gateway.</value>
+  </data>
+  <data name="NoToken" xml:space="preserve">
+    <value>etcd signed in but returned no token.</value>
+  </data>
+  <data name="OrderFlag" xml:space="preserve">
+    <value>--order must be ASCEND or DESCEND.</value>
+  </data>
+  <data name="PrefixAndFromKey" xml:space="preserve">
+    <value>--prefix and --from-key cannot be used together.</value>
+  </data>
+  <data name="PutNeedsKeyAndValue" xml:space="preserve">
+    <value>put needs a key and a value.</value>
+  </data>
+  <data name="PutTakesOne" xml:space="preserve">
+    <value>put takes one key and one value; quote a value that holds spaces.</value>
+  </data>
+  <data name="RenameSourceGone" xml:space="preserve">
+    <value>The key {0} no longer exists, so it cannot be renamed.</value>
+    <comment>{0} is a key.</comment>
+  </data>
+  <data name="RoleCreated" xml:space="preserve">
+    <value>Role {0} created.</value>
+    <comment>{0} is a role name.</comment>
+  </data>
+  <data name="RoleDeleted" xml:space="preserve">
+    <value>Role {0} deleted.</value>
+    <comment>{0} is a role name.</comment>
+  </data>
+  <data name="RoleGranted" xml:space="preserve">
+    <value>Role {0} granted to {1}.</value>
+    <comment>{0} is a role, {1} a user name.</comment>
+  </data>
+  <data name="RoleRevoked" xml:space="preserve">
+    <value>Role {0} revoked from {1}.</value>
+    <comment>{0} is a role, {1} a user name.</comment>
+  </data>
+  <data name="SignInRefused" xml:space="preserve">
+    <value>etcd refused the user name or password: {0}</value>
+    <comment>{0} is the server's message.</comment>
+  </data>
+  <data name="SortByFlag" xml:space="preserve">
+    <value>--sort-by must be KEY, VERSION, CREATE, MOD or VALUE.</value>
+  </data>
+  <data name="TimeoutNumber" xml:space="preserve">
+    <value>--timeout must be a number of seconds.</value>
+  </data>
+  <data name="TimeoutRange" xml:space="preserve">
+    <value>--timeout must be between 0 and {0} seconds.</value>
+    <comment>{0} is the largest number of seconds.</comment>
+  </data>
+  <data name="UnknownCommand" xml:space="preserve">
+    <value>Unknown command: {0}.</value>
+    <comment>{0} is what the user typed.</comment>
+  </data>
+  <data name="UnknownCommandTry" xml:space="preserve">
+    <value>Unknown command: {0}. Try get, put, del, watch, lease, member, endpoint or compaction.</value>
+    <comment>{0} is what the user typed. The command names stay English.</comment>
+  </data>
+  <data name="UnreadableResponse" xml:space="preserve">
+    <value>etcd returned a response TablePro could not read for {0}.</value>
+    <comment>{0} is an API path.</comment>
+  </data>
+  <data name="UserCreated" xml:space="preserve">
+    <value>User {0} created.</value>
+    <comment>{0} is a user name.</comment>
+  </data>
+  <data name="UserDeleted" xml:space="preserve">
+    <value>User {0} deleted.</value>
+    <comment>{0} is a user name.</comment>
+  </data>
+  <data name="VersionComment" xml:space="preserve">
+    <value>How many times the key changed since it was created.</value>
+  </data>
+  <data name="Watched" xml:space="preserve">
+    <value>Watched for {0:0.#} seconds and saw {1:N0} events.</value>
+    <comment>{0} seconds watched, {1} number of events.</comment>
+  </data>
+  <data name="WholeNumber" xml:space="preserve">
+    <value>{0} must be a whole number.</value>
+    <comment>{0} is a flag such as --limit.</comment>
+  </data>
+  <data name="WithRevision" xml:space="preserve">
+    <value>{0} (revision {1})</value>
+    <comment>{0} is a result such as OK, {1} the revision number.</comment>
+  </data>
+</root>

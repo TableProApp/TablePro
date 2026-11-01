@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AddExtension" xml:space="preserve">
+    <value>Thêm tiện ích mở rộng…</value>
+  </data>
+  <data name="ApprovedTestAgain" xml:space="preserve">
+    <value>Các tiện ích mở rộng đã được phê duyệt. Chọn Kiểm tra lần nữa để kết nối.</value>
+  </data>
+  <data name="ChooseAgainRecovery" xml:space="preserve">
+    <value>Chọn lại tệp của tiện ích mở rộng khi bạn chỉnh sửa kết nối.</value>
+  </data>
+  <data name="ControlCharacterInPath" xml:space="preserve">
+    <value>Đường dẫn của một tiện ích mở rộng trong danh sách chứa ký tự xuống dòng hoặc ký tự điều khiển khác.</value>
+  </data>
+  <data name="CouldNotLoad" xml:space="preserve">
+    <value>Không thể tải tiện ích mở rộng "{0}".</value>
+  </data>
+  <data name="CouldNotLoadList" xml:space="preserve">
+    <value>Không thể tải các tiện ích mở rộng SQLite của kết nối này.</value>
+  </data>
+  <data name="Duplicate" xml:space="preserve">
+    <value>"{0}" xuất hiện trong danh sách nhiều lần.</value>
+  </data>
+  <data name="DuplicateRecovery" xml:space="preserve">
+    <value>Xóa mục thứ hai.</value>
+  </data>
+  <data name="EntryPointLabel" xml:space="preserve">
+    <value>Điểm vào</value>
+  </data>
+  <data name="EntryPointNotFound" xml:space="preserve">
+    <value>Tệp không có hàm nào tên là {0}.</value>
+  </data>
+  <data name="EntryPointNotFoundRecovery" xml:space="preserve">
+    <value>Nhập điểm vào được nêu trong tài liệu của tiện ích mở rộng.</value>
+  </data>
+  <data name="EntryPointPlaceholder" xml:space="preserve">
+    <value>Điểm vào mặc định</value>
+  </data>
+  <data name="EntryPointTooltip" xml:space="preserve">
+    <value>Hàm khởi tạo cần gọi. Để trống để dùng hàm mà SQLite suy ra từ tên tệp.</value>
+  </data>
+  <data name="FileLabel" xml:space="preserve">
+    <value>Tệp tiện ích mở rộng</value>
+  </data>
+  <data name="FileNotFound" xml:space="preserve">
+    <value>Không có tệp nào tại "{0}".</value>
+  </data>
+  <data name="FileWithEntryPoint" xml:space="preserve">
+    <value>{0} (điểm vào {1})</value>
+  </data>
+  <data name="Footer" xml:space="preserve">
+    <value>Được tải theo thứ tự này mỗi khi tệp cơ sở dữ liệu được mở trên PC này. Tiện ích mở rộng chạy với toàn quyền truy cập PC của bạn, vì vậy chỉ thêm các tệp bạn tin cậy.</value>
+  </data>
+  <data name="Header" xml:space="preserve">
+    <value>Tiện ích mở rộng</value>
+  </data>
+  <data name="InitializationFailed" xml:space="preserve">
+    <value>Tiện ích mở rộng không khởi động được: {0}</value>
+  </data>
+  <data name="InvalidEntryPoint" xml:space="preserve">
+    <value>"{0}" không phải là tên điểm vào hợp lệ.</value>
+  </data>
+  <data name="InvalidEntryPointRecovery" xml:space="preserve">
+    <value>Dùng tên của một hàm C, chẳng hạn sqlite3_vec_init, hoặc để trống.</value>
+  </data>
+  <data name="LoadingNotClosed" xml:space="preserve">
+    <value>SQLite không tắt lại việc tải tiện ích mở rộng sau khi tải.</value>
+  </data>
+  <data name="LoadingUnavailable" xml:space="preserve">
+    <value>SQLite không cho phép tải tiện ích mở rộng trên kết nối này.</value>
+  </data>
+  <data name="MalformedList" xml:space="preserve">
+    <value>Danh sách tiện ích mở rộng đã lưu không ở định dạng TablePro có thể đọc.</value>
+  </data>
+  <data name="MissingDependencyRecovery" xml:space="preserve">
+    <value>Thiếu một DLL mà tiện ích mở rộng này cần. Hãy đặt các DLL đi kèm vào cùng thư mục với tiện ích mở rộng.</value>
+  </data>
+  <data name="MissingPath" xml:space="preserve">
+    <value>Một tiện ích mở rộng trong danh sách không có tệp.</value>
+  </data>
+  <data name="MoveDown" xml:space="preserve">
+    <value>Di chuyển xuống</value>
+  </data>
+  <data name="MoveUp" xml:space="preserve">
+    <value>Di chuyển lên</value>
+  </data>
+  <data name="NoExtensions" xml:space="preserve">
+    <value>Không có tiện ích mở rộng</value>
+  </data>
+  <data name="NotAFile" xml:space="preserve">
+    <value>"{0}" không phải là tệp.</value>
+  </data>
+  <data name="NotApproved" xml:space="preserve">
+    <value>Kết nối này tải các tiện ích mở rộng SQLite chưa được phê duyệt trên PC này.</value>
+  </data>
+  <data name="NotApprovedRecovery" xml:space="preserve">
+    <value>Kết nối từ cửa sổ chào mừng của TablePro để xem lại chúng.</value>
+  </data>
+  <data name="PathTooLong" xml:space="preserve">
+    <value>Đường dẫn "{0}" quá dài.</value>
+  </data>
+  <data name="PromptConfirm" xml:space="preserve">
+    <value>Tải tiện ích mở rộng</value>
+  </data>
+  <data name="PromptIntro" xml:space="preserve">
+    <value>Kết nối "{0}" tải các tiện ích mở rộng SQLite không được thêm trên PC này:</value>
+  </data>
+  <data name="PromptTitle" xml:space="preserve">
+    <value>Tải tiện ích mở rộng</value>
+  </data>
+  <data name="PromptWarning" xml:space="preserve">
+    <value>Tiện ích mở rộng chạy bên trong TablePro với toàn quyền truy cập PC của bạn. Chỉ tải chúng nếu bạn tin cậy các tệp này.</value>
+  </data>
+  <data name="RelativePath" xml:space="preserve">
+    <value>"{0}" không phải là đường dẫn đầy đủ.</value>
+  </data>
+  <data name="RelativePathRecovery" xml:space="preserve">
+    <value>Chọn lại tệp hoặc nhập đường dẫn đầy đủ, chẳng hạn C:\Tools\extension.dll.</value>
+  </data>
+  <data name="RemoveExtension" xml:space="preserve">
+    <value>Xóa tiện ích mở rộng</value>
+  </data>
+  <data name="Unreadable" xml:space="preserve">
+    <value>Không thể đọc danh sách đã lưu. Thêm một tiện ích mở rộng sẽ thay thế danh sách đó.</value>
+  </data>
+  <data name="WrongArchitectureRecovery" xml:space="preserve">
+    <value>Dùng bản dựng của tiện ích mở rộng dành cho bộ xử lý của PC này.</value>
+  </data>
+</root>

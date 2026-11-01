@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="MissingDatabase" xml:space="preserve">
+    <value>Spanner veritabanını gerektirir: Sunucu olarak projects/p/instances/i/databases/d girin veya project ve instance seçenekleriyle veritabanını ayarlayın.</value>
+  </data>
+  <data name="MissingInstance" xml:space="preserve">
+    <value>Spanner örneği gerektirir: Sunucu olarak projects/p/instances/i/databases/d girin veya project ve instance seçenekleriyle veritabanını ayarlayın.</value>
+  </data>
+  <data name="MissingProject" xml:space="preserve">
+    <value>Spanner projeyi gerektirir: Sunucu olarak projects/p/instances/i/databases/d girin veya project ve instance seçenekleriyle veritabanını ayarlayın.</value>
+  </data>
+  <data name="NoSchemaChangeInTransaction" xml:space="preserve">
+    <value>Spanner bir işlem içinde şemayı değiştiremez. Önce COMMIT veya ROLLBACK çalıştırın.</value>
+  </data>
+  <data name="NotADatabasePath" xml:space="preserve">
+    <value>"{0}", projects/my-project/instances/my-instance/databases/my-db gibi bir Spanner veritabanı yolu değil.</value>
+  </data>
+  <data name="PostgreSqlDialect" xml:space="preserve">
+    <value>Bu Spanner veritabanı, Windows için TablePro'nun henüz desteklemediği PostgreSQL diyalektini kullanıyor. GoogleSQL veritabanları çalışır.</value>
+  </data>
+  <data name="SchemaChangeApplied" xml:space="preserve">
+    <value>Şema değişikliği UpdateDatabaseDdl ile uygulandı.</value>
+  </data>
+</root>

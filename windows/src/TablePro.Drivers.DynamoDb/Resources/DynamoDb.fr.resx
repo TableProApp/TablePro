@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="CannotChangeKey" xml:space="preserve">
+    <value>DynamoDB ne peut pas modifier l’attribut de clé {0}. Supprimez l’élément et ajoutez-le de nouveau avec la nouvelle clé.</value>
+  </data>
+  <data name="ClientRules_One" xml:space="preserve">
+    <value>{0} règle de filtre que DynamoDB ne peut pas évaluer a été appliquée aux éléments lus, page par page.</value>
+  </data>
+  <data name="ClientRules_Other" xml:space="preserve">
+    <value>{0} règles de filtre que DynamoDB ne peut pas évaluer ont été appliquées aux éléments lus, page par page.</value>
+  </data>
+  <data name="ConsumedCapacity_One" xml:space="preserve">
+    <value>Capacité consommée : {1:0.##} unités sur {0} requête.</value>
+  </data>
+  <data name="ConsumedCapacity_Other" xml:space="preserve">
+    <value>Capacité consommée : {1:0.##} unités sur {0} requêtes.</value>
+  </data>
+  <data name="EmptyKeyAttribute" xml:space="preserve">
+    <value>Un attribut de clé ne peut pas être vide.</value>
+  </data>
+  <data name="EndpointScheme" xml:space="preserve">
+    <value>Le point de terminaison doit commencer par https:// ou http://.</value>
+  </data>
+  <data name="EnterSecretKey" xml:space="preserve">
+    <value>Saisissez la clé d’accès secrète comme mot de passe de l’ID de clé d’accès {0}.</value>
+  </data>
+  <data name="ItemExists" xml:space="preserve">
+    <value>Un élément avec cette clé existe déjà (modification {0} sur {1}).</value>
+  </data>
+  <data name="ItemGone" xml:space="preserve">
+    <value>L’élément n’existe plus (modification {0} sur {1}).</value>
+  </data>
+  <data name="KeyNotLoaded" xml:space="preserve">
+    <value>L’attribut de clé {0} de l’élément n’est pas chargé, l’élément est donc introuvable.</value>
+  </data>
+  <data name="MapTakesObject" xml:space="preserve">
+    <value>Un attribut map attend un objet JSON.</value>
+  </data>
+  <data name="NoKeySchema" xml:space="preserve">
+    <value>DynamoDB n’a pas indiqué le schéma de clé de {0}.</value>
+  </data>
+  <data name="NoOffset" xml:space="preserve">
+    <value>DynamoDB n’a pas d’OFFSET, et atteindre l’élément {0:N0} obligerait à lire d’abord {1:N0} éléments. Avancez page par page depuis le début ou filtrez la table.</value>
+  </data>
+  <data name="NoProfile" xml:space="preserve">
+    <value>Aucun profil AWS nommé « {0} » n’a été trouvé dans le fichier config ou credentials partagé.</value>
+  </data>
+  <data name="NotANumber" xml:space="preserve">
+    <value>« {0} » n’est pas un nombre.</value>
+  </data>
+  <data name="NotARegion" xml:space="preserve">
+    <value>« {0} » n’est pas une région AWS, telle que us-east-1.</value>
+  </data>
+  <data name="NotAUrl" xml:space="preserve">
+    <value>« {0} » n’est pas une URL. Saisissez un point de terminaison, tel que http://localhost:8000.</value>
+  </data>
+  <data name="NumberKeyMismatch" xml:space="preserve">
+    <value>Aucun élément ne peut correspondre au filtre : une clé Number a été comparée à un texte qui n’est pas un nombre.</value>
+  </data>
+  <data name="PlainHttpLocalOnly" xml:space="preserve">
+    <value>Le HTTP non chiffré n’est autorisé que pour un point de terminaison sur cet ordinateur (localhost). Utilisez https:// pour tout autre hôte.</value>
+  </data>
+  <data name="RawConditionAnd" xml:space="preserve">
+    <value>La condition brute doit correspondre en plus des règles.</value>
+  </data>
+  <data name="SortNotApplied" xml:space="preserve">
+    <value>Une analyse DynamoDB renvoie les éléments dans l’ordre propre de la table, le tri n’a donc pas été appliqué.</value>
+  </data>
+  <data name="StoppedAfterScanning" xml:space="preserve">
+    <value>Arrêt après la lecture de {0:N0} éléments pour remplir la page. Affinez le filtre pour rechercher dans toute la table.</value>
+  </data>
+  <data name="TooManyItems" xml:space="preserve">
+    <value>DynamoDB écrit au plus {0} éléments par transaction, et cet enregistrement en contient {1}. Enregistrez moins de lignes à la fois.</value>
+  </data>
+</root>

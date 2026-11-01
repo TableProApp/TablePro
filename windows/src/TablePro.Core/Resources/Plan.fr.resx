@@ -1,0 +1,177 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AccessibleActualTime" xml:space="preserve">
+    <value>Temps réel {0}</value>
+  </data>
+  <data name="AccessibleCost" xml:space="preserve">
+    <value>Coût {0}</value>
+  </data>
+  <data name="AccessibleOnRelation" xml:space="preserve">
+    <value>sur {0}</value>
+  </data>
+  <data name="AccessibleRows_One" xml:space="preserve">
+    <value>{0} ligne</value>
+  </data>
+  <data name="AccessibleRows_Other" xml:space="preserve">
+    <value>{0} lignes</value>
+  </data>
+  <data name="AccessibleSeparator" xml:space="preserve">
+    <value>, </value>
+  </data>
+  <data name="AccessibleWarnings_One" xml:space="preserve">
+    <value>Avertissement : {0}</value>
+  </data>
+  <data name="AccessibleWarnings_Other" xml:space="preserve">
+    <value>Avertissements : {0}</value>
+  </data>
+  <data name="BarMetricSelfCost" xml:space="preserve">
+    <value>Coût propre</value>
+  </data>
+  <data name="BarMetricSelfTime" xml:space="preserve">
+    <value>Temps propre</value>
+  </data>
+  <data name="ColumnsWithNoStatistics" xml:space="preserve">
+    <value>Colonnes sans statistiques</value>
+  </data>
+  <data name="ImplicitConversion" xml:space="preserve">
+    <value>Conversion implicite : {0}</value>
+  </data>
+  <data name="ImplicitConversionIssue" xml:space="preserve">
+    <value>Conversion implicite ({0}) : {1}</value>
+  </data>
+  <data name="LabelActualRows" xml:space="preserve">
+    <value>Lignes réelles</value>
+  </data>
+  <data name="LabelActualTime" xml:space="preserve">
+    <value>Temps réel</value>
+  </data>
+  <data name="LabelCost" xml:space="preserve">
+    <value>Coût</value>
+  </data>
+  <data name="LabelLoops" xml:space="preserve">
+    <value>Boucles</value>
+  </data>
+  <data name="LabelMissingIndex" xml:space="preserve">
+    <value>Index manquant</value>
+  </data>
+  <data name="LabelRows" xml:space="preserve">
+    <value>Lignes</value>
+  </data>
+  <data name="LabelTable" xml:space="preserve">
+    <value>Table</value>
+  </data>
+  <data name="LabelValue" xml:space="preserve">
+    <value>{0} : {1}</value>
+  </data>
+  <data name="LabelWarning" xml:space="preserve">
+    <value>Avertissement</value>
+  </data>
+  <data name="LabelWidth" xml:space="preserve">
+    <value>Largeur</value>
+  </data>
+  <data name="MetricActualLoops" xml:space="preserve">
+    <value>Boucles réelles</value>
+  </data>
+  <data name="MetricActualRows" xml:space="preserve">
+    <value>Lignes réelles</value>
+  </data>
+  <data name="MetricActualStartupTime" xml:space="preserve">
+    <value>Temps de démarrage réel</value>
+  </data>
+  <data name="MetricActualTotalTime" xml:space="preserve">
+    <value>Temps total réel</value>
+  </data>
+  <data name="MetricEstimatedRows" xml:space="preserve">
+    <value>Lignes estimées</value>
+  </data>
+  <data name="MetricEstimatedStartupCost" xml:space="preserve">
+    <value>Coût de démarrage estimé</value>
+  </data>
+  <data name="MetricEstimatedTotalCost" xml:space="preserve">
+    <value>Coût total estimé</value>
+  </data>
+  <data name="MetricEstimatedWidth" xml:space="preserve">
+    <value>Largeur estimée</value>
+  </data>
+  <data name="NeverExecuted" xml:space="preserve">
+    <value>Jamais exécutée</value>
+  </data>
+  <data name="PlanRoot" xml:space="preserve">
+    <value>Plan de requête</value>
+  </data>
+  <data name="SeverityCritical" xml:space="preserve">
+    <value>Coût critique</value>
+  </data>
+  <data name="SeverityHigh" xml:space="preserve">
+    <value>Coût élevé</value>
+  </data>
+  <data name="SeverityLow" xml:space="preserve">
+    <value>Coût faible</value>
+  </data>
+  <data name="SeverityModerate" xml:space="preserve">
+    <value>Coût modéré</value>
+  </data>
+  <data name="ShareOfLargestStep" xml:space="preserve">
+    <value>{0} de la plus grande étape</value>
+  </data>
+  <data name="ShareOfPlan" xml:space="preserve">
+    <value>{0} du plan</value>
+  </data>
+  <data name="ShowplanTooDeep" xml:space="preserve">
+    <value>Le showplan est imbriqué trop profondément.</value>
+  </data>
+  <data name="SpillToTempDb" xml:space="preserve">
+    <value>Débordement dans tempdb</value>
+  </data>
+  <data name="SpillToTempDbLevel" xml:space="preserve">
+    <value>Débordement dans tempdb, niveau {0}</value>
+  </data>
+  <data name="SummaryEstimatedRows" xml:space="preserve">
+    <value>Lignes estimées</value>
+  </data>
+  <data name="SummaryExecutionTime" xml:space="preserve">
+    <value>Temps d’exécution</value>
+  </data>
+  <data name="SummaryNodeCount" xml:space="preserve">
+    <value>Nombre de nœuds</value>
+  </data>
+  <data name="SummaryPlanningTime" xml:space="preserve">
+    <value>Durée de planification</value>
+  </data>
+  <data name="SummaryTotalCost" xml:space="preserve">
+    <value>Coût</value>
+  </data>
+  <data name="UnknownOperation" xml:space="preserve">
+    <value>Inconnue</value>
+  </data>
+  <data name="ValueChanged" xml:space="preserve">
+    <value>Modifié</value>
+  </data>
+  <data name="VerdictFaster" xml:space="preserve">
+    <value>{0:0.#}x plus rapide que la référence</value>
+  </data>
+  <data name="VerdictShapeChanged" xml:space="preserve">
+    <value>La forme du plan a changé</value>
+  </data>
+  <data name="VerdictSlower" xml:space="preserve">
+    <value>{0:0.#}x plus lent que la référence</value>
+  </data>
+  <data name="VerdictUnchanged" xml:space="preserve">
+    <value>Aucun changement mesurable</value>
+  </data>
+  <data name="VerdictValuesChanged" xml:space="preserve">
+    <value>Même structure de plan, chiffres différents</value>
+  </data>
+</root>

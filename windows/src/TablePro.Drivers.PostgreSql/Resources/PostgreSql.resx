@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="Abandoned" xml:space="preserve">
+    <value>The routine couldn't be stopped on the server.</value>
+  </data>
+  <data name="AbandonedRunning" xml:space="preserve">
+    <value>Server process {0} may still be running and holding its locks.</value>
+    <comment>{0} is a server process id.</comment>
+  </data>
+  <data name="AbandonedSession" xml:space="preserve">
+    <value>Its server session may still be running and holding its locks.</value>
+  </data>
+  <data name="AbandonedWaiting" xml:space="preserve">
+    <value>Server process {0} may still be waiting for a debugger and holding its locks. To end it, run SELECT pldbg_attach_to_port({1}) and pass the number it returns to pldbg_abort_target.</value>
+    <comment>{0} is a server process id, {1} a port number. The SELECT and function names are SQL.</comment>
+  </data>
+  <data name="CannotStepOut" xml:space="preserve">
+    <value>The PL/pgSQL debugger can't step out of a routine.</value>
+  </data>
+  <data name="DefaultNotReadable" xml:space="preserve">
+    <value>This server can't show the default value of {0}, so enter a value for it.</value>
+    <comment>{0} is a parameter name.</comment>
+  </data>
+  <data name="ExtensionMissing" xml:space="preserve">
+    <value>The PL/pgSQL debugger isn't installed in "{0}".</value>
+    <comment>{0} is a database name.</comment>
+  </data>
+  <data name="ExtensionMissingDetail" xml:space="preserve">
+    <value>Ask a superuser to run CREATE EXTENSION pldbgapi in this database.</value>
+  </data>
+  <data name="HidesDebuggerNotice" xml:space="preserve">
+    <value>This routine sets client_min_messages to {0}, which hides the notice the debugger starts with.</value>
+    <comment>{0} is a client_min_messages level, such as warning.</comment>
+  </data>
+  <data name="HidesDebuggerNoticeDetail" xml:space="preserve">
+    <value>Remove SET client_min_messages from the routine to debug it.</value>
+  </data>
+  <data name="Interrupted" xml:space="preserve">
+    <value>The debugger's session was interrupted while it waited, so the routine was stopped and its uncommitted changes were rolled back. A cancel or the server's transaction_timeout can cause this.</value>
+  </data>
+  <data name="LimitsTransactionTime" xml:space="preserve">
+    <value>This routine sets transaction_timeout to {0}, which would end it while it waits at a breakpoint.</value>
+    <comment>{0} is a transaction_timeout value.</comment>
+  </data>
+  <data name="LimitsTransactionTimeDetail" xml:space="preserve">
+    <value>Remove SET transaction_timeout from the routine to debug it.</value>
+  </data>
+  <data name="NoDefault" xml:space="preserve">
+    <value>{0} has no default value.</value>
+    <comment>{0} is a parameter name.</comment>
+  </data>
+  <data name="NoOverloads" xml:space="preserve">
+    <value>{0} has no PL/pgSQL overload that can be debugged.</value>
+    <comment>{0} is a routine name.</comment>
+  </data>
+  <data name="NoOverloadsDetail" xml:space="preserve">
+    <value>Only PL/pgSQL functions and procedures without polymorphic, record or trigger signatures can be debugged.</value>
+  </data>
+  <data name="NotAStorageParameter" xml:space="preserve">
+    <value>"{0}" is not a storage parameter. Write each as name=value.</value>
+    <comment>{0} is the text entered. name=value is literal.</comment>
+  </data>
+  <data name="NotDebuggable" xml:space="preserve">
+    <value>Only PL/pgSQL functions and procedures can be debugged.</value>
+  </data>
+  <data name="NotOwner" xml:space="preserve">
+    <value>Only the owner of {0} or a superuser can debug it.</value>
+    <comment>{0} is a routine name.</comment>
+  </data>
+  <data name="NotPaused" xml:space="preserve">
+    <value>The routine isn't paused.</value>
+  </data>
+  <data name="PseudoTypeParameter" xml:space="preserve">
+    <value>Routines with polymorphic or record parameters can't be debugged.</value>
+  </data>
+  <data name="RoutineNotFound" xml:space="preserve">
+    <value>{0} no longer exists.</value>
+    <comment>{0} is a routine name.</comment>
+  </data>
+  <data name="RunNoteFunction" xml:space="preserve">
+    <value>Changes the routine makes are committed when it finishes. Stop rolls them back.</value>
+  </data>
+  <data name="RunNoteProcedure" xml:space="preserve">
+    <value>Changes the procedure makes are committed when it commits or finishes. Stop rolls back what it hasn't committed.</value>
+  </data>
+  <data name="ServerPackageMissing" xml:space="preserve">
+    <value>This server has no PL/pgSQL debugger.</value>
+  </data>
+  <data name="ServerPackageMissingDetail" xml:space="preserve">
+    <value>Install the pldebugger package for this PostgreSQL version on the server, then run CREATE EXTENSION pldbgapi in this database.</value>
+  </data>
+  <data name="SharedMemoryUnavailable" xml:space="preserve">
+    <value>The server couldn't start the debugger.</value>
+  </data>
+  <data name="SharedMemoryUnavailableDetail" xml:space="preserve">
+    <value>Add plugin_debugger to shared_preload_libraries and restart the server.</value>
+  </data>
+  <data name="Stopped" xml:space="preserve">
+    <value>The routine was stopped, and its uncommitted changes were rolled back.</value>
+  </data>
+  <data name="Unavailable" xml:space="preserve">
+    <value>This connection can't run the PL/pgSQL debugger.</value>
+  </data>
+</root>

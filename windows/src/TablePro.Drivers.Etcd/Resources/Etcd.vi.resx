@@ -1,0 +1,177 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AuthDisabled" xml:space="preserve">
+    <value>Đã tắt xác thực.</value>
+  </data>
+  <data name="AuthEnabled" xml:space="preserve">
+    <value>Đã bật xác thực.</value>
+  </data>
+  <data name="ChangeHasNoKey" xml:space="preserve">
+    <value>Một hàng etcd được xác định bằng khóa của nó, nhưng thay đổi này không có khóa.</value>
+  </data>
+  <data name="Compacted" xml:space="preserve">
+    <value>Đã nén revision {0}.</value>
+  </data>
+  <data name="CompactionNeedsRevision" xml:space="preserve">
+    <value>compaction cần một revision.</value>
+  </data>
+  <data name="ConcurrentChange" xml:space="preserve">
+    <value>Một client khác đã thay đổi các khóa này trong lúc lưu, nên không có gì được lưu. Hãy làm mới và thử lại.</value>
+  </data>
+  <data name="DescribeKey" xml:space="preserve">
+    <value>phiên bản {0}, revision {1}</value>
+  </data>
+  <data name="DescribeKeyWithLease" xml:space="preserve">
+    <value>phiên bản {0}, revision {1}, lease {2}</value>
+  </data>
+  <data name="EmptyCommand" xml:space="preserve">
+    <value>Lệnh etcd trống.</value>
+  </data>
+  <data name="EmptyKey" xml:space="preserve">
+    <value>Khóa etcd không được để trống.</value>
+  </data>
+  <data name="HttpStatus" xml:space="preserve">
+    <value>etcd trả về HTTP {0}: {1}</value>
+  </data>
+  <data name="InvalidLeaseId" xml:space="preserve">
+    <value>ID lease không hợp lệ: {0}</value>
+  </data>
+  <data name="KeepsColumn" xml:space="preserve">
+    <value>etcd tự quản lý {0}; chỉ có thể thay đổi khóa, giá trị và lease.</value>
+  </data>
+  <data name="KeyAlreadyExists" xml:space="preserve">
+    <value>Khóa {0} đã tồn tại, nên không có gì được lưu. Hãy sửa hàng đó.</value>
+  </data>
+  <data name="KeyChangedSinceRead" xml:space="preserve">
+    <value>Khóa {0} đã thay đổi kể từ khi được đọc, nên không có gì được lưu. Hãy làm mới và thử lại.</value>
+  </data>
+  <data name="KeyGoneStatement" xml:space="preserve">
+    <value>khóa {0}, vốn không còn tồn tại</value>
+  </data>
+  <data name="LeaseComment" xml:space="preserve">
+    <value>Lease mà khóa được gắn vào, ở dạng thập lục phân như etcdctl hiển thị.</value>
+  </data>
+  <data name="LeaseExpired" xml:space="preserve">
+    <value>Lease đã hết hạn hoặc chưa từng được cấp.</value>
+  </data>
+  <data name="LeaseGrantTtl" xml:space="preserve">
+    <value>lease grant cần TTL tính bằng số giây nguyên.</value>
+  </data>
+  <data name="LeaseRefreshed" xml:space="preserve">
+    <value>Đã gia hạn lease {0} một lần, TTL {1} giây. Để giữ lease hoạt động cần một client lặp lại thao tác này, chẳng hạn etcdctl.</value>
+  </data>
+  <data name="LeaseRevoked" xml:space="preserve">
+    <value>Đã thu hồi lease {0}.</value>
+  </data>
+  <data name="NeedsKey" xml:space="preserve">
+    <value>{0} cần một khóa.</value>
+  </data>
+  <data name="NeedsLeaseId" xml:space="preserve">
+    <value>{0} cần một ID lease.</value>
+  </data>
+  <data name="NeedsRoleName" xml:space="preserve">
+    <value>{0} cần một tên vai trò.</value>
+  </data>
+  <data name="NeedsSubcommand" xml:space="preserve">
+    <value>{0} cần một lệnh con: {1}.</value>
+  </data>
+  <data name="NeedsUserAndRole" xml:space="preserve">
+    <value>{0} cần một tên người dùng và một vai trò.</value>
+  </data>
+  <data name="NeedsUserName" xml:space="preserve">
+    <value>{0} cần một tên người dùng.</value>
+  </data>
+  <data name="NegativeLimit" xml:space="preserve">
+    <value>--limit và --rev không thể là số âm.</value>
+  </data>
+  <data name="NoApiAt" xml:space="preserve">
+    <value>Không tìm thấy API etcd v3 tại {0}. Hãy trỏ kết nối tới cổng client (mặc định 2379), không phải cổng peer 2380.</value>
+  </data>
+  <data name="NoKeepAliveAnswer" xml:space="preserve">
+    <value>etcd không gửi phản hồi keep-alive.</value>
+  </data>
+  <data name="NotGateway" xml:space="preserve">
+    <value>Máy chủ đã phản hồi nhưng không phải là cổng JSON etcd v3.</value>
+  </data>
+  <data name="NoToken" xml:space="preserve">
+    <value>etcd đã đăng nhập nhưng không trả về token.</value>
+  </data>
+  <data name="OrderFlag" xml:space="preserve">
+    <value>--order phải là ASCEND hoặc DESCEND.</value>
+  </data>
+  <data name="PrefixAndFromKey" xml:space="preserve">
+    <value>Không thể dùng --prefix và --from-key cùng nhau.</value>
+  </data>
+  <data name="PutNeedsKeyAndValue" xml:space="preserve">
+    <value>put cần một khóa và một giá trị.</value>
+  </data>
+  <data name="PutTakesOne" xml:space="preserve">
+    <value>put nhận một khóa và một giá trị; hãy đặt giá trị có khoảng trắng trong dấu ngoặc kép.</value>
+  </data>
+  <data name="RenameSourceGone" xml:space="preserve">
+    <value>Khóa {0} không còn tồn tại, nên không thể đổi tên.</value>
+  </data>
+  <data name="RoleCreated" xml:space="preserve">
+    <value>Đã tạo vai trò {0}.</value>
+  </data>
+  <data name="RoleDeleted" xml:space="preserve">
+    <value>Đã xóa vai trò {0}.</value>
+  </data>
+  <data name="RoleGranted" xml:space="preserve">
+    <value>Đã cấp vai trò {0} cho {1}.</value>
+  </data>
+  <data name="RoleRevoked" xml:space="preserve">
+    <value>Đã thu hồi vai trò {0} khỏi {1}.</value>
+  </data>
+  <data name="SignInRefused" xml:space="preserve">
+    <value>etcd đã từ chối tên người dùng hoặc mật khẩu: {0}</value>
+  </data>
+  <data name="SortByFlag" xml:space="preserve">
+    <value>--sort-by phải là KEY, VERSION, CREATE, MOD hoặc VALUE.</value>
+  </data>
+  <data name="TimeoutNumber" xml:space="preserve">
+    <value>--timeout phải là số giây.</value>
+  </data>
+  <data name="TimeoutRange" xml:space="preserve">
+    <value>--timeout phải nằm trong khoảng 0 đến {0} giây.</value>
+  </data>
+  <data name="UnknownCommand" xml:space="preserve">
+    <value>Lệnh không xác định: {0}.</value>
+  </data>
+  <data name="UnknownCommandTry" xml:space="preserve">
+    <value>Lệnh không xác định: {0}. Hãy thử get, put, del, watch, lease, member, endpoint hoặc compaction.</value>
+  </data>
+  <data name="UnreadableResponse" xml:space="preserve">
+    <value>etcd trả về phản hồi cho {0} mà TablePro không đọc được.</value>
+  </data>
+  <data name="UserCreated" xml:space="preserve">
+    <value>Đã tạo người dùng {0}.</value>
+  </data>
+  <data name="UserDeleted" xml:space="preserve">
+    <value>Đã xóa người dùng {0}.</value>
+  </data>
+  <data name="VersionComment" xml:space="preserve">
+    <value>Số lần khóa đã thay đổi kể từ khi được tạo.</value>
+  </data>
+  <data name="Watched" xml:space="preserve">
+    <value>Đã theo dõi trong {0:0.#} giây và thấy {1:N0} sự kiện.</value>
+  </data>
+  <data name="WholeNumber" xml:space="preserve">
+    <value>{0} phải là số nguyên.</value>
+  </data>
+  <data name="WithRevision" xml:space="preserve">
+    <value>{0} (revision {1})</value>
+  </data>
+</root>

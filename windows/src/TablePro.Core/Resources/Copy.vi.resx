@@ -1,0 +1,126 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AlreadyExists" xml:space="preserve">
+    <value>{0} đã tồn tại ở đích.</value>
+  </data>
+  <data name="CannotCreateTables" xml:space="preserve">
+    <value>{0} không thể tạo bảng từ TablePro, nên chỉ những bảng đã tồn tại mới nhận dòng.</value>
+  </data>
+  <data name="CannotExpressChange" xml:space="preserve">
+    <value>{0} không thể biểu diễn thay đổi này.</value>
+  </data>
+  <data name="ColumnNotInTarget" xml:space="preserve">
+    <value>{0}: bảng đích không có cột này, nên cột không được sao chép.</value>
+  </data>
+  <data name="DefaultLeftOut" xml:space="preserve">
+    <value>{0}: giá trị mặc định {1} không có tương đương nên bị bỏ qua.</value>
+  </data>
+  <data name="DefinitionHasNoRows" xml:space="preserve">
+    <value>{0} không phải là bảng, nên không có dòng nào để sao chép.</value>
+  </data>
+  <data name="DefinitionOtherEngine" xml:space="preserve">
+    <value>{0} là SQL viết cho {1}, mà {2} không thể chạy nguyên trạng.</value>
+  </data>
+  <data name="ForeignKeyFailed" xml:space="preserve">
+    <value>Không thể tạo khóa ngoại {0}: {1}</value>
+  </data>
+  <data name="ForeignKeyLeftOut" xml:space="preserve">
+    <value>Khóa ngoại {0} trỏ tới {1}, vốn không có ở đích, nên bị bỏ qua.</value>
+  </data>
+  <data name="ForeignKeyNotAdded" xml:space="preserve">
+    <value>Khóa ngoại {0} chưa được thêm vì {1} không được sao chép.</value>
+  </data>
+  <data name="IndexFailed" xml:space="preserve">
+    <value>Không thể tạo chỉ mục {0}: {1}</value>
+  </data>
+  <data name="NoSourceDefinition" xml:space="preserve">
+    <value>Nguồn không trả về định nghĩa nào cho {0}.</value>
+  </data>
+  <data name="NoTableToAddRows" xml:space="preserve">
+    <value>Đích không có bảng nào tên {0} để thêm dòng vào.</value>
+  </data>
+  <data name="NotFinished" xml:space="preserve">
+    <value>Chưa hoàn tất vì quá trình sao chép đã dừng ở một lỗi trước đó.</value>
+  </data>
+  <data name="SequenceBecomesIdentity" xml:space="preserve">
+    <value>{0}: giá trị mặc định từ sequence trở thành cột identity.</value>
+  </data>
+  <data name="ServerWritten" xml:space="preserve">
+    <value>{0}: máy chủ tự ghi cột này, nên các giá trị không được sao chép.</value>
+  </data>
+  <data name="SqlServerIdentityDropped" xml:space="preserve">
+    <value>{0}: SQL Server từ chối giá trị sao chép vào cột identity, nên cột được tạo không có IDENTITY.</value>
+  </data>
+  <data name="SqlServerIdentityLeftOut" xml:space="preserve">
+    <value>{0}: SQL Server tự đánh số cột identity của nó, nên các giá trị của nguồn bị bỏ qua.</value>
+  </data>
+  <data name="StoppedBeforeFinished" xml:space="preserve">
+    <value>Đã dừng trước khi hoàn tất.</value>
+  </data>
+  <data name="TargetCannotChangeStructure" xml:space="preserve">
+    <value>Đích không thể thay đổi cấu trúc từ TablePro.</value>
+  </data>
+  <data name="TargetCannotCreate" xml:space="preserve">
+    <value>Đích không thể tạo nó.</value>
+  </data>
+  <data name="TargetHasOtherObject" xml:space="preserve">
+    <value>Đích đã có một đối tượng tên {0} không phải là bảng.</value>
+  </data>
+  <data name="TargetReadOnly" xml:space="preserve">
+    <value>Kết nối đích ở chế độ chỉ đọc, nên không thể ghi gì vào đó.</value>
+  </data>
+  <data name="TypeAsText" xml:space="preserve">
+    <value>{0}: {1} trở thành {2}, dưới dạng văn bản.</value>
+  </data>
+  <data name="TypeCutTo255" xml:space="preserve">
+    <value>{0}: {1} trở thành {2}, cắt còn 255 ký tự để có thể là một phần của khóa.</value>
+  </data>
+  <data name="TypeCutTo4000" xml:space="preserve">
+    <value>{0}: {1} trở thành {2}, cắt còn 4.000 ký tự để có thể là một phần của khóa.</value>
+  </data>
+  <data name="TypeCutTo450" xml:space="preserve">
+    <value>{0}: {1} trở thành {2}, cắt còn 450 ký tự để có thể là một phần của khóa.</value>
+  </data>
+  <data name="TypeEnumerationAsText" xml:space="preserve">
+    <value>{0}: {1} trở thành {2}, dưới dạng văn bản, không kèm danh sách giá trị cho phép.</value>
+  </data>
+  <data name="TypeJsonAsText" xml:space="preserve">
+    <value>{0}: {1} trở thành {2}, được giữ dưới dạng văn bản.</value>
+  </data>
+  <data name="TypeNoBoolean" xml:space="preserve">
+    <value>{0}: {1} trở thành {2}, vì phiên bản Oracle này không có BOOLEAN.</value>
+  </data>
+  <data name="TypeNoEquivalent" xml:space="preserve">
+    <value>{0}: {1} trở thành {2}, dưới dạng văn bản, vì không có kiểu tương đương.</value>
+  </data>
+  <data name="TypeNoTime" xml:space="preserve">
+    <value>{0}: {1} trở thành {2}, vì Oracle không có TIME.</value>
+  </data>
+  <data name="TypeRowVersionAsBytes" xml:space="preserve">
+    <value>{0}: {1} trở thành {2}, với phiên bản dòng của máy chủ được sao chép dưới dạng byte.</value>
+  </data>
+  <data name="TypeTimeZoneDropped" xml:space="preserve">
+    <value>{0}: {1} trở thành {2}, không kèm múi giờ.</value>
+  </data>
+  <data name="TypeUtc" xml:space="preserve">
+    <value>{0}: {1} trở thành {2}, với thời gian theo UTC.</value>
+  </data>
+  <data name="TypeUtcNoTimeZone" xml:space="preserve">
+    <value>{0}: {1} trở thành {2}, với thời gian theo UTC, vì DATETIME không lưu múi giờ.</value>
+  </data>
+  <data name="UnknownTypeSystem" xml:space="preserve">
+    <value>Sao chép sang engine khác cần một hệ kiểu mà TablePro dịch được, và TablePro không biết hệ kiểu nào của {0}. Hãy sao chép sang đích cùng loại.</value>
+  </data>
+</root>

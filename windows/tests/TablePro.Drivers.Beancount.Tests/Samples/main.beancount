@@ -1,0 +1,22 @@
+; A small ledger that exercises every table the projection writes.
+option "title" "TablePro sample ledger"
+option "operating_currency" "USD"
+
+include "accounts.beancount"
+include "transactions/*.beancount"
+
+2026-01-01 commodity USD
+
+2026-01-01 event "location" "Bucharest"
+
+2026-01-01 custom "budget" Expenses:Food 400.00 USD TRUE "monthly"
+
+2026-01-01 query "food" "SELECT account, sum(position) WHERE account ~ 'Food' GROUP BY account"
+
+2026-01-15 note Assets:Checking "Opened online"
+
+2026-01-20 document Assets:Checking "docs/statement.pdf"
+
+2026-02-01 balance Assets:Checking 2450.00 ~ 0.01 USD
+
+2026-03-01 price EUR 1.08 USD

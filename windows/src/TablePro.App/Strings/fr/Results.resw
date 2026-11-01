@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="ChartAllNumericColumns" xml:space="preserve">
+    <value>Toutes les colonnes numériques</value>
+  </data>
+  <data name="ChartBarTooltip" xml:space="preserve">
+    <value>{0}&#160;: {1:N}</value>
+  </data>
+  <data name="ChartBy" xml:space="preserve">
+    <value>par</value>
+  </data>
+  <data name="ChartFirstRows_One" xml:space="preserve">
+    <value>{1:N0} première ligne sur {0:N0}</value>
+  </data>
+  <data name="ChartFirstRows_Other" xml:space="preserve">
+    <value>{1:N0} premières lignes sur {0:N0}</value>
+  </data>
+  <data name="ChartKindArea" xml:space="preserve">
+    <value>Aires</value>
+  </data>
+  <data name="ChartKindBar" xml:space="preserve">
+    <value>Barres</value>
+  </data>
+  <data name="ChartKindLine" xml:space="preserve">
+    <value>Ligne</value>
+  </data>
+  <data name="ChartLead" xml:space="preserve">
+    <value>Graphique</value>
+  </data>
+  <data name="ChartNoNumericColumn" xml:space="preserve">
+    <value>Ce résultat ne contient aucune colonne numérique à représenter.</value>
+  </data>
+  <data name="ChartOf" xml:space="preserve">
+    <value>de</value>
+  </data>
+  <data name="MapEast" xml:space="preserve">
+    <value>E</value>
+  </data>
+  <data name="MapFitToResult" xml:space="preserve">
+    <value>Ajuster au résultat</value>
+  </data>
+  <data name="MapName" xml:space="preserve">
+    <value>Carte</value>
+  </data>
+  <data name="MapNameWithCounts" xml:space="preserve">
+    <value>Carte de {0} à partir de {1}</value>
+  </data>
+  <data name="MapNoRows" xml:space="preserve">
+    <value>Exécutez une requête pour afficher ses lignes sur la carte.</value>
+  </data>
+  <data name="MapNoSource" xml:space="preserve">
+    <value>Une carte nécessite une colonne de géométrie, ou des colonnes de latitude et de longitude. Ce résultat n’en contient aucune.</value>
+  </data>
+  <data name="MapNorth" xml:space="preserve">
+    <value>N</value>
+  </data>
+  <data name="MapRows_One" xml:space="preserve">
+    <value>{0:N0} ligne</value>
+  </data>
+  <data name="MapRows_Other" xml:space="preserve">
+    <value>{0:N0} lignes</value>
+  </data>
+  <data name="MapShapes_One" xml:space="preserve">
+    <value>{0:N0} forme</value>
+  </data>
+  <data name="MapShapes_Other" xml:space="preserve">
+    <value>{0:N0} formes</value>
+  </data>
+  <data name="MapSourceName" xml:space="preserve">
+    <value>Source de la carte</value>
+  </data>
+  <data name="MapSouth" xml:space="preserve">
+    <value>S</value>
+  </data>
+  <data name="MapWest" xml:space="preserve">
+    <value>O</value>
+  </data>
+  <data name="MapZoomIn" xml:space="preserve">
+    <value>Zoom avant</value>
+  </data>
+  <data name="MapZoomOut" xml:space="preserve">
+    <value>Zoom arrière</value>
+  </data>
+</root>

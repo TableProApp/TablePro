@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="BacktickInFilter" xml:space="preserve">
+    <value>Typesense는 필터 값의 백틱을 이스케이프할 수 없으므로 이 텍스트로 {0}을(를) 필터링할 수 없습니다.</value>
+  </data>
+  <data name="ComparesNumbersOnly" xml:space="preserve">
+    <value>Typesense는 {0}(으)로 숫자만 비교하는데 {1}은(는) 숫자 필드가 아닙니다.</value>
+  </data>
+  <data name="SearchFailed" xml:space="preserve">
+    <value>검색에 실패했습니다.</value>
+  </data>
+</root>

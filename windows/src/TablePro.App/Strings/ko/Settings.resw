@@ -1,0 +1,303 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AiConsentAllow" xml:space="preserve">
+    <value>허용</value>
+  </data>
+  <data name="AiConsentMessage" xml:space="preserve">
+    <value>어시스턴트는 질문, 대상 SQL, 관련 테이블의 구조를 {0}에서 {1}({2})(으)로 보냅니다. 행은 읽지 않습니다.</value>
+  </data>
+  <data name="AiConsentTitle" xml:space="preserve">
+    <value>AI 공급자에게 보내시겠습니까?</value>
+  </data>
+  <data name="AiEndpointDescription" xml:space="preserve">
+    <value>공급자의 공개 주소를 사용하려면 비워 두세요. Ollama의 기본값은 http://localhost:11434/v1입니다.</value>
+  </data>
+  <data name="AiEndpointTitle" xml:space="preserve">
+    <value>엔드포인트</value>
+  </data>
+  <data name="AiIntro" xml:space="preserve">
+    <value>어시스턴트는 질문, 대상 SQL, 관련 테이블의 구조를 선택한 공급자에게 보냅니다. 행은 보내지 않습니다. 각 연결의 AI 설정에 따라 어시스턴트 사용 가능 여부가 결정됩니다.</value>
+  </data>
+  <data name="AiKeyDescription" xml:space="preserve">
+    <value>Windows 자격 증명 관리자에 저장됩니다.</value>
+  </data>
+  <data name="AiKeyNotNeeded" xml:space="preserve">
+    <value>Ollama에는 필요하지 않음</value>
+  </data>
+  <data name="AiKeyTitle" xml:space="preserve">
+    <value>API 키</value>
+  </data>
+  <data name="AiLoadModels" xml:space="preserve">
+    <value>모델 불러오기</value>
+  </data>
+  <data name="AiModelDefault" xml:space="preserve">
+    <value>공급자 기본값</value>
+  </data>
+  <data name="AiModelTitle" xml:space="preserve">
+    <value>모델</value>
+  </data>
+  <data name="AiNoKey" xml:space="preserve">
+    <value>어시스턴트를 사용하려면 설정 &gt; AI에서 {0}의 API 키를 추가하세요.</value>
+  </data>
+  <data name="AiNotSetUp" xml:space="preserve">
+    <value>설정되지 않음</value>
+  </data>
+  <data name="AiProviderOpenAICompatible" xml:space="preserve">
+    <value>OpenAI 호환 서버</value>
+  </data>
+  <data name="AiProviderTitle" xml:space="preserve">
+    <value>공급자</value>
+  </data>
+  <data name="AiSuggestDescription" xml:space="preserve">
+    <value>줄 끝에서 입력을 멈추면 완성을 요청합니다. 멈출 때마다 커서 주변의 텍스트가 전송됩니다.</value>
+  </data>
+  <data name="AiSuggestTitle" xml:space="preserve">
+    <value>입력하는 동안 제안</value>
+  </data>
+  <data name="AutocompleteDescription" xml:space="preserve">
+    <value>입력하는 동안 키워드, 테이블, 열을 제안합니다.</value>
+  </data>
+  <data name="AutocompleteTitle" xml:space="preserve">
+    <value>자동 완성</value>
+  </data>
+  <data name="BackdropAcrylic" xml:space="preserve">
+    <value>아크릴</value>
+  </data>
+  <data name="BackdropDescription" xml:space="preserve">
+    <value>아크릴은 창 너머로 바탕 화면을 보여 주고, Mica는 배경 화면 색으로 창에 색조를 입힙니다.</value>
+  </data>
+  <data name="BackdropMica" xml:space="preserve">
+    <value>Mica</value>
+  </data>
+  <data name="BackdropMicaAlt" xml:space="preserve">
+    <value>Mica Alt</value>
+  </data>
+  <data name="BackdropTitle" xml:space="preserve">
+    <value>창 재질</value>
+  </data>
+  <data name="ClearAllHistory" xml:space="preserve">
+    <value>모든 기록 지우기</value>
+  </data>
+  <data name="ClearHistoryConfirmMessage" xml:space="preserve">
+    <value>모든 연결의 쿼리 기록이 삭제됩니다.</value>
+  </data>
+  <data name="ClearHistoryConfirmTitle" xml:space="preserve">
+    <value>기록을 지우시겠습니까?</value>
+  </data>
+  <data name="ClearRewindConfirmMessage" xml:space="preserve">
+    <value>데이터 되감기로 지금까지 저장한 내용을 더 이상 실행 취소할 수 없습니다.</value>
+  </data>
+  <data name="ClearRewindConfirmTitle" xml:space="preserve">
+    <value>저장된 변경 사항을 지우시겠습니까?</value>
+  </data>
+  <data name="ConfirmCloseTitle" xml:space="preserve">
+    <value>저장되지 않은 탭을 닫기 전에 확인</value>
+  </data>
+  <data name="DataFolderTitle" xml:space="preserve">
+    <value>데이터 폴더</value>
+  </data>
+  <data name="DateFormatDescription" xml:space="preserve">
+    <value>내보내기에서 날짜에 사용할 .NET 서식 문자열입니다.</value>
+  </data>
+  <data name="DateFormatTitle" xml:space="preserve">
+    <value>날짜 형식</value>
+  </data>
+  <data name="EmacsDescription" xml:space="preserve">
+    <value>Ctrl+F, B, N, P, A, E로 이동하고, Alt+F와 Alt+B로 단어 단위로 이동하며, Ctrl+K, Alt+D, Ctrl+W로 잘라내고(kill), Ctrl+Y와 Alt+Y로 붙여넣고(yank), Ctrl+Space로 마크를 설정합니다. 편집기에서는 이 키의 Windows 기본 기능이 사라집니다. 다시 실행은 Ctrl+Shift+Z, 찾기는 Ctrl+H 또는 상황에 맞는 메뉴를 사용하세요.</value>
+  </data>
+  <data name="EmacsTitle" xml:space="preserve">
+    <value>Emacs 키 바인딩</value>
+  </data>
+  <data name="FontDescription" xml:space="preserve">
+    <value>이 PC에 설치된 고정 폭 글꼴입니다.</value>
+  </data>
+  <data name="FontSizeTitle" xml:space="preserve">
+    <value>글꼴 크기</value>
+  </data>
+  <data name="FontTitle" xml:space="preserve">
+    <value>글꼴</value>
+  </data>
+  <data name="KeyboardConflictMessage" xml:space="preserve">
+    <value>{0} 재할당하면 해당 명령에서 제거됩니다.</value>
+  </data>
+  <data name="KeyboardConflictTitle" xml:space="preserve">
+    <value>단축키 충돌</value>
+  </data>
+  <data name="KeyboardIntro" xml:space="preserve">
+    <value>단축키를 클릭한 다음 사용할 키를 누르세요. Esc를 누르면 취소되고 Backspace를 누르면 단축키가 제거됩니다. 편집기 명령은 SQL 편집기에 포커스가 있을 때 작동하며, 나머지 명령은 연결 창 어디에서나 작동합니다.</value>
+  </data>
+  <data name="KeyboardModifierRequired" xml:space="preserve">
+    <value>보조 키 필요</value>
+  </data>
+  <data name="KeyboardNoMatches" xml:space="preserve">
+    <value>일치하는 단축키가 없습니다.</value>
+  </data>
+  <data name="KeyboardReassign" xml:space="preserve">
+    <value>재할당</value>
+  </data>
+  <data name="KeyboardReservedShortcut" xml:space="preserve">
+    <value>예약된 단축키</value>
+  </data>
+  <data name="KeyboardResetAll" xml:space="preserve">
+    <value>모두 기본값으로 재설정</value>
+  </data>
+  <data name="KeyboardResetToDefault" xml:space="preserve">
+    <value>기본값으로 재설정({0})</value>
+  </data>
+  <data name="KeyboardResetToDefaultNone" xml:space="preserve">
+    <value>기본값으로 재설정(없음)</value>
+  </data>
+  <data name="KeyboardSearch" xml:space="preserve">
+    <value>단축키 검색</value>
+  </data>
+  <data name="KeyboardShortcutFor" xml:space="preserve">
+    <value>{0} 단축키</value>
+  </data>
+  <data name="LanguageDescription" xml:space="preserve">
+    <value>TablePro에서 사용하는 언어입니다. 변경 사항은 다시 시작한 후 적용됩니다.</value>
+  </data>
+  <data name="LanguageRestartMessage" xml:space="preserve">
+    <value>TablePro를 다시 시작하면 새 언어로 표시됩니다. 지금 다시 시작하시겠습니까?</value>
+  </data>
+  <data name="LanguageRestartTitle" xml:space="preserve">
+    <value>TablePro를 다시 시작하시겠습니까?</value>
+  </data>
+  <data name="LanguageTitle" xml:space="preserve">
+    <value>언어</value>
+  </data>
+  <data name="McpCopyCommand" xml:space="preserve">
+    <value>명령 복사</value>
+  </data>
+  <data name="McpEnableTitle" xml:space="preserve">
+    <value>MCP 서버 활성화</value>
+  </data>
+  <data name="McpIntro" xml:space="preserve">
+    <value>Claude Code나 Cursor 같은 이 컴퓨터의 MCP 클라이언트가 TablePro를 통해 저장된 연결을 사용할 수 있습니다. 서버는 TablePro가 실행 중인 동안 127.0.0.1에서만 수신 대기합니다. 각 연결의 외부 클라이언트 수준에 따라 클라이언트가 할 수 있는 작업이 결정됩니다.</value>
+  </data>
+  <data name="McpPortTitle" xml:space="preserve">
+    <value>포트</value>
+  </data>
+  <data name="McpRegenerateToken" xml:space="preserve">
+    <value>액세스 토큰 다시 생성</value>
+  </data>
+  <data name="McpRunningAt" xml:space="preserve">
+    <value>{0}에서 실행 중</value>
+  </data>
+  <data name="McpStatusTitle" xml:space="preserve">
+    <value>상태</value>
+  </data>
+  <data name="McpStopped" xml:space="preserve">
+    <value>중지됨</value>
+  </data>
+  <data name="NullDisplayDescription" xml:space="preserve">
+    <value>빈 셀에 표시할 내용입니다.</value>
+  </data>
+  <data name="NullDisplayTitle" xml:space="preserve">
+    <value>NULL 표시</value>
+  </data>
+  <data name="OpenFolder" xml:space="preserve">
+    <value>폴더 열기</value>
+  </data>
+  <data name="PageAI" xml:space="preserve">
+    <value>AI</value>
+  </data>
+  <data name="PageData" xml:space="preserve">
+    <value>데이터</value>
+  </data>
+  <data name="PageEditor" xml:space="preserve">
+    <value>편집기</value>
+  </data>
+  <data name="PageGeneral" xml:space="preserve">
+    <value>일반</value>
+  </data>
+  <data name="PageKeyboard" xml:space="preserve">
+    <value>키보드</value>
+  </data>
+  <data name="PageMCP" xml:space="preserve">
+    <value>MCP</value>
+  </data>
+  <data name="PageSizeDescription" xml:space="preserve">
+    <value>테이블 탭에서 페이지당 표시할 행 수입니다.</value>
+  </data>
+  <data name="PageSizeTitle" xml:space="preserve">
+    <value>테이블 페이지 크기</value>
+  </data>
+  <data name="QueryHistoryDescription" xml:space="preserve">
+    <value>로컬 SQLite 데이터베이스에 보관됩니다.</value>
+  </data>
+  <data name="QueryHistoryTitle" xml:space="preserve">
+    <value>쿼리 기록</value>
+  </data>
+  <data name="RestartLater" xml:space="preserve">
+    <value>나중에</value>
+  </data>
+  <data name="RestartNow" xml:space="preserve">
+    <value>지금 다시 시작</value>
+  </data>
+  <data name="RestoreTabsDescription" xml:space="preserve">
+    <value>다음에 연결할 때 각 연결에서 열려 있던 탭을 복원합니다.</value>
+  </data>
+  <data name="RestoreTabsTitle" xml:space="preserve">
+    <value>시작할 때 탭 다시 열기</value>
+  </data>
+  <data name="RewindJournalDescription" xml:space="preserve">
+    <value>그리드에서 저장할 때마다 실행 취소할 수 있도록 이 PC에 7일 동안 암호화하여 기록합니다.</value>
+  </data>
+  <data name="RewindJournalTitle" xml:space="preserve">
+    <value>데이터 되감기용으로 저장된 변경 사항 보관</value>
+  </data>
+  <data name="RowLimitDescription" xml:space="preserve">
+    <value>편집기 쿼리가 중지되기 전까지 읽는 행 수입니다. 결과가 잘리면 상태 표시줄에 표시됩니다.</value>
+  </data>
+  <data name="RowLimitTitle" xml:space="preserve">
+    <value>쿼리 결과 제한</value>
+  </data>
+  <data name="SavedChangesDescription" xml:space="preserve">
+    <value>기록된 모든 저장과 해당 키를 제거합니다.</value>
+  </data>
+  <data name="SavedChangesTitle" xml:space="preserve">
+    <value>저장된 변경 사항</value>
+  </data>
+  <data name="TabSizeTitle" xml:space="preserve">
+    <value>탭 크기</value>
+  </data>
+  <data name="ThemeDark" xml:space="preserve">
+    <value>다크</value>
+  </data>
+  <data name="ThemeDescription" xml:space="preserve">
+    <value>라이트, 다크 또는 Windows 설정을 따릅니다.</value>
+  </data>
+  <data name="ThemeLight" xml:space="preserve">
+    <value>라이트</value>
+  </data>
+  <data name="ThemeTitle" xml:space="preserve">
+    <value>앱 테마</value>
+  </data>
+  <data name="UseSystemSetting" xml:space="preserve">
+    <value>시스템 설정 사용</value>
+  </data>
+  <data name="VimDescription" xml:space="preserve">
+    <value>Vim의 모드, 모션, 연산자, 레지스터, 매크로로 편집합니다. Ctrl+C, Ctrl+V, Ctrl+Z 및 기타 Windows 단축키는 계속 작동합니다.</value>
+  </data>
+  <data name="VimTitle" xml:space="preserve">
+    <value>Vim 키 바인딩</value>
+  </data>
+  <data name="WindowTitle" xml:space="preserve">
+    <value>설정 - TablePro</value>
+  </data>
+  <data name="WordWrapTitle" xml:space="preserve">
+    <value>자동 줄 바꿈</value>
+  </data>
+</root>

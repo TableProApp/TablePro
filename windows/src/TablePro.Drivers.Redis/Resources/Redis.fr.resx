@@ -1,0 +1,285 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="Blocking" xml:space="preserve">
+    <value>{0} bloque la connexion partagée jusqu’à l’arrivée de données. Utilisez la forme non bloquante, comme LPOP ou XREAD sans BLOCK.</value>
+  </data>
+  <data name="Bytes_One" xml:space="preserve">
+    <value>{0} octet</value>
+  </data>
+  <data name="Bytes_Other" xml:space="preserve">
+    <value>{0} octets</value>
+  </data>
+  <data name="CannotStoreNull" xml:space="preserve">
+    <value>Redis ne peut pas stocker NULL. Saisissez plutôt une valeur vide.</value>
+  </data>
+  <data name="CannotStoreNullValue" xml:space="preserve">
+    <value>Redis ne peut pas stocker NULL comme valeur. Saisissez plutôt une valeur vide.</value>
+  </data>
+  <data name="ClientReply" xml:space="preserve">
+    <value>CLIENT REPLY arrêterait les réponses qu’attend chaque onglet.</value>
+  </data>
+  <data name="ClusterDatabaseOption" xml:space="preserve">
+    <value>Redis Cluster ne sert que la base de données 0. Effacez le numéro de base de données ou utilisez le mode autonome.</value>
+  </data>
+  <data name="ClusterDatabaseZero" xml:space="preserve">
+    <value>Redis Cluster ne sert que la base de données 0.</value>
+  </data>
+  <data name="CommandNotFinished" xml:space="preserve">
+    <value>La commande ne s’est pas terminée dans un délai de {0} secondes.</value>
+  </data>
+  <data name="ConnectionState" xml:space="preserve">
+    <value>{0} modifie l’identifiant ou l’état de la connexion partagée. Modifiez plutôt les paramètres de la connexion.</value>
+  </data>
+  <data name="CrossSlot" xml:space="preserve">
+    <value>Les commandes en file touchent des clés de plusieurs slots de hachage, ce qu’un cluster ne peut pas exécuter en une transaction. Donnez aux clés un {hash tag} commun pour qu’elles tombent dans un seul slot.</value>
+  </data>
+  <data name="CurrentValue" xml:space="preserve">
+    <value>(valeur actuelle)</value>
+  </data>
+  <data name="CursorRestarted" xml:space="preserve">
+    <value>Le curseur désignait un nœud que le cluster n’a plus ; l’analyse a donc repris depuis le premier nœud primaire.</value>
+  </data>
+  <data name="DatabaseSelected_One" xml:space="preserve">
+    <value>Base de données {1} sélectionnée, {0} clé.</value>
+  </data>
+  <data name="DatabaseSelected_Other" xml:space="preserve">
+    <value>Base de données {1} sélectionnée, {0} clés.</value>
+  </data>
+  <data name="DbBrowseWith" xml:space="preserve">
+    <value># Parcourir avec : {0}</value>
+  </data>
+  <data name="DbHeader" xml:space="preserve">
+    <value># Base de données Redis : {0}</value>
+  </data>
+  <data name="DbKeys" xml:space="preserve">
+    <value># Clés : {0}</value>
+  </data>
+  <data name="DbTypes_One" xml:space="preserve">
+    <value># Répartition des types ({0} clé échantillonnée) :</value>
+  </data>
+  <data name="DbTypes_Other" xml:space="preserve">
+    <value># Répartition des types ({0} clés échantillonnées) :</value>
+  </data>
+  <data name="EmptyCommand" xml:space="preserve">
+    <value>Commande vide.</value>
+  </data>
+  <data name="FieldsComment" xml:space="preserve">
+    <value>Un objet JSON associant des noms de champ à des valeurs</value>
+  </data>
+  <data name="HashFieldGone" xml:space="preserve">
+    <value>Le champ de hachage « {0} » n’existe plus, rien n’a donc été enregistré.</value>
+  </data>
+  <data name="HashRowNeedsField" xml:space="preserve">
+    <value>Une nouvelle ligne de hachage nécessite un nom de champ.</value>
+  </data>
+  <data name="IndexComment" xml:space="preserve">
+    <value>Position depuis le début, à partir de 0</value>
+  </data>
+  <data name="IsSentinel" xml:space="preserve">
+    <value>Il s’agit d’un Redis Sentinel et non d’un nœud de données ; il ne répond qu’aux commandes SENTINEL. Réglez le mode de connexion sur sentinel et ajoutez cette adresse aux nœuds Sentinel.</value>
+  </data>
+  <data name="JsonNeedsPath" xml:space="preserve">
+    <value>Un nouveau membre JSON nécessite un chemin, par exemple $.name.</value>
+  </data>
+  <data name="JsonPathFixed" xml:space="preserve">
+    <value>Le chemin d’un membre JSON ne peut pas être modifié. Supprimez-le et ajoutez la valeur sous le nouveau chemin.</value>
+  </data>
+  <data name="JsonTextComment" xml:space="preserve">
+    <value>Texte JSON</value>
+  </data>
+  <data name="KeyGone" xml:space="preserve">
+    <value>La clé « {0} » n’existe plus.</value>
+  </data>
+  <data name="KeyNameComment" xml:space="preserve">
+    <value>Le nom de la clé</value>
+  </data>
+  <data name="KeyNameNotText" xml:space="preserve">
+    <value>Le nom de cette clé n’est pas du texte, elle ne peut donc pas être ciblée depuis la grille.</value>
+  </data>
+  <data name="KeyTypeNotEditable" xml:space="preserve">
+    <value>La clé « {0} » contient un type que la grille ne peut pas modifier. Modifiez-la avec une commande dans l’éditeur de requêtes.</value>
+  </data>
+  <data name="KeyTypeNotShown" xml:space="preserve">
+    <value>La clé « {0} » contient un type que la grille ne peut pas afficher. Lisez-la avec une commande dans l’éditeur de requêtes.</value>
+  </data>
+  <data name="LengthComment" xml:space="preserve">
+    <value>Octets d’une chaîne, ou éléments d’une collection</value>
+  </data>
+  <data name="ListOneNode" xml:space="preserve">
+    <value>Indiquez au moins un nœud auquel se connecter, sous la forme hôte:port.</value>
+  </data>
+  <data name="ListPositionFixed" xml:space="preserve">
+    <value>La position d’un élément de liste ne peut pas être modifiée. Supprimez-le et ajoutez à nouveau la valeur.</value>
+  </data>
+  <data name="NewKeyNeedsName" xml:space="preserve">
+    <value>Une nouvelle clé nécessite un nom.</value>
+  </data>
+  <data name="NextCursor" xml:space="preserve">
+    <value>Curseur suivant : {0}</value>
+  </data>
+  <data name="NoListPosition" xml:space="preserve">
+    <value>La ligne n’a pas de position dans la liste et ne peut donc pas être ciblée.</value>
+  </data>
+  <data name="NoServer" xml:space="preserve">
+    <value>Aucun serveur Redis n’est connecté.</value>
+  </data>
+  <data name="NotACluster" xml:space="preserve">
+    <value>Ce serveur ne fonctionne pas en mode cluster. Réglez le mode de connexion sur autonome, ou dirigez le mode cluster vers un nœud démarré avec cluster-enabled yes.</value>
+  </data>
+  <data name="NotAScore" xml:space="preserve">
+    <value>« {0} » n’est pas un score. Un score est un nombre, inf ou -inf.</value>
+  </data>
+  <data name="NotClientId" xml:space="preserve">
+    <value>« {0} » n’est pas un ID de client Redis.</value>
+  </data>
+  <data name="NotDatabaseNumber" xml:space="preserve">
+    <value>« {0} » n’est pas un numéro de base de données Redis. Utilisez un nombre comme 0 ou un nom comme db0.</value>
+  </data>
+  <data name="NotHost" xml:space="preserve">
+    <value>« {0} » n’est ni un hôte ni un hôte:port.</value>
+  </data>
+  <data name="NotMode" xml:space="preserve">
+    <value>« {0} » n’est pas un mode de connexion Redis. Utilisez standalone, sentinel ou cluster.</value>
+  </data>
+  <data name="NotRun" xml:space="preserve">
+    <value>non exécutée</value>
+  </data>
+  <data name="NoWhereElements" xml:space="preserve">
+    <value>Redis n’a pas de clause WHERE. Utilisez les règles de filtre, ou SCAN avec MATCH dans l’éditeur de requêtes.</value>
+  </data>
+  <data name="NoWhereKeys" xml:space="preserve">
+    <value>Redis n’a pas de clause WHERE. Filtrez la colonne Key avec un motif comme user:*, ou filtrez sur Type.</value>
+  </data>
+  <data name="OnlyKeyTypeCounted" xml:space="preserve">
+    <value>Seuls les filtres sur la clé et le type sont comptés sur le serveur.</value>
+  </data>
+  <data name="PartialSlots" xml:space="preserve">
+    <value>{0} slots de hachage sur {1} ont exécuté leur partie avant qu’un autre ne refuse ; ces modifications restent appliquées.</value>
+  </data>
+  <data name="PartOfCluster" xml:space="preserve">
+    <value>Ce serveur fait partie d’un Redis Cluster, donc les requêtes sur des clés qu’il ne possède pas échoueraient. Réglez le mode de connexion sur cluster et ajoutez cette adresse aux nœuds du cluster.</value>
+  </data>
+  <data name="PathComment" xml:space="preserve">
+    <value>JSONPath du membre</value>
+  </data>
+  <data name="ReadOnlyNoDisconnect" xml:space="preserve">
+    <value>Cette connexion est en lecture seule, le client n’a donc pas été déconnecté.</value>
+  </data>
+  <data name="ReadOnlyNotSent" xml:space="preserve">
+    <value>Cette connexion est en lecture seule, {0} n’a donc pas été envoyé.</value>
+  </data>
+  <data name="RenameEmpty" xml:space="preserve">
+    <value>Une clé ne peut être renommée qu’en un texte non vide.</value>
+  </data>
+  <data name="RowHasNo" xml:space="preserve">
+    <value>La ligne n’a pas de {0} et ne peut donc pas être ciblée.</value>
+  </data>
+  <data name="SaveSomeFailed" xml:space="preserve">
+    <value>Redis a exécuté l’enregistrement, mais certaines commandes ont échoué et les autres restent appliquées : {0}</value>
+  </data>
+  <data name="ScanComplete" xml:space="preserve">
+    <value>Curseur 0 : l’analyse est terminée.</value>
+  </data>
+  <data name="Seconds_One" xml:space="preserve">
+    <value>{0} seconde</value>
+  </data>
+  <data name="Seconds_Other" xml:space="preserve">
+    <value>{0} secondes</value>
+  </data>
+  <data name="SelectInMulti" xml:space="preserve">
+    <value>SELECT ne peut pas être mis en file dans MULTI ici. Sélectionnez la base de données avant MULTI.</value>
+  </data>
+  <data name="SelectOneNumber" xml:space="preserve">
+    <value>SELECT accepte un seul numéro de base de données, par exemple SELECT 1</value>
+  </data>
+  <data name="SentinelThroughTunnel" xml:space="preserve">
+    <value>Un tunnel ne redirige qu’une adresse, et le nœud désigné par Sentinel se trouve sur le réseau du serveur ; le mode Sentinel ne peut donc pas passer par un tunnel. Connectez-vous directement à un nœud de données, ou désactivez le tunnel.</value>
+  </data>
+  <data name="SentinelToSentinel" xml:space="preserve">
+    <value>Sentinel a renvoyé vers un autre Sentinel plutôt que vers un nœud de données. Vérifiez le nom du groupe primaire dans votre configuration Sentinel.</value>
+  </data>
+  <data name="SlotsPartiallySaved" xml:space="preserve">
+    <value>{0} slots de hachage sur {1} ont été enregistrés et restent appliqués ; le suivant a échoué : {2}</value>
+  </data>
+  <data name="SortedSetMemberGone" xml:space="preserve">
+    <value>Le membre d’ensemble trié « {0} » n’existe plus, rien n’a donc été enregistré.</value>
+  </data>
+  <data name="StreamEntriesFixed" xml:space="preserve">
+    <value>Les entrées d’un stream ne peuvent plus changer une fois ajoutées. Supprimez l’entrée et ajoutez-en une nouvelle.</value>
+  </data>
+  <data name="StreamFieldsNotObject" xml:space="preserve">
+    <value>Les champs d’une entrée de stream doivent être un objet JSON : {0}</value>
+  </data>
+  <data name="StreamFieldsObject" xml:space="preserve">
+    <value>Les champs du stream doivent être un objet JSON, par exemple {"field": "value"}.</value>
+  </data>
+  <data name="StreamIdComment" xml:space="preserve">
+    <value>Laissez vide lors de l’ajout pour que le serveur en attribue un</value>
+  </data>
+  <data name="StreamNeedsFields" xml:space="preserve">
+    <value>Une nouvelle entrée de stream nécessite ses champs sous forme d’objet JSON, par exemple {"name": "value"}.</value>
+  </data>
+  <data name="StreamNeedsOneField" xml:space="preserve">
+    <value>Une entrée de stream nécessite au moins un champ.</value>
+  </data>
+  <data name="StringHoldsOneValue" xml:space="preserve">
+    <value>Une clé de type chaîne contient une seule valeur. Modifiez cette valeur au lieu d’ajouter une ligne.</value>
+  </data>
+  <data name="Subscription" xml:space="preserve">
+    <value>{0} transforme la connexion en flux de messages, que l’éditeur ne peut pas afficher. Utilisez redis-cli pour cela.</value>
+  </data>
+  <data name="TtlComment" xml:space="preserve">
+    <value>Secondes avant l’expiration de la clé ; -1 ou NULL pour aucune</value>
+  </data>
+  <data name="TtlInvalid" xml:space="preserve">
+    <value>Le TTL doit être un nombre entier de secondes supérieur à 0, ou -1 ou NULL pour ne pas expirer.</value>
+  </data>
+  <data name="TtlNoExpiry" xml:space="preserve">
+    <value>-1 (pas d’expiration)</value>
+  </data>
+  <data name="TtlNoKey" xml:space="preserve">
+    <value>-2 (la clé n’existe pas)</value>
+  </data>
+  <data name="TypeComment" xml:space="preserve">
+    <value>string, hash, list, set ou zset lors de l’ajout d’une clé</value>
+  </data>
+  <data name="TypeNotAddable" xml:space="preserve">
+    <value>Impossible d’ajouter une clé {0} depuis la grille. Ajoutez-la avec une commande dans l’éditeur de requêtes.</value>
+  </data>
+  <data name="Unknown" xml:space="preserve">
+    <value>inconnu</value>
+  </data>
+  <data name="ValueComment" xml:space="preserve">
+    <value>La valeur d’une chaîne, ou un aperçu des premiers éléments d’une collection</value>
+  </data>
+  <data name="ValueInListNotEditable" xml:space="preserve">
+    <value>La valeur d’une clé {0} ne peut pas être modifiée dans la liste des clés. Ouvrez la clé pour modifier ses éléments.</value>
+  </data>
+  <data name="WhatHashField" xml:space="preserve">
+    <value>champ de hachage</value>
+  </data>
+  <data name="WhatJsonPath" xml:space="preserve">
+    <value>chemin JSON</value>
+  </data>
+  <data name="WhatSetMember" xml:space="preserve">
+    <value>membre d’ensemble</value>
+  </data>
+  <data name="WhatSortedSetMember" xml:space="preserve">
+    <value>membre d’ensemble trié</value>
+  </data>
+  <data name="WhatStreamId" xml:space="preserve">
+    <value>ID d’entrée de stream</value>
+  </data>
+</root>

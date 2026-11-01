@@ -1,0 +1,126 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AlreadyExists" xml:space="preserve">
+    <value>{0} existe déjà dans la cible.</value>
+  </data>
+  <data name="CannotCreateTables" xml:space="preserve">
+    <value>{0} ne peut pas créer de tables depuis TablePro ; seules les tables qui existent déjà reçoivent donc des lignes.</value>
+  </data>
+  <data name="CannotExpressChange" xml:space="preserve">
+    <value>{0} ne peut pas exprimer cette modification.</value>
+  </data>
+  <data name="ColumnNotInTarget" xml:space="preserve">
+    <value>{0} : la table cible n’a pas cette colonne, elle n’est donc pas copiée.</value>
+  </data>
+  <data name="DefaultLeftOut" xml:space="preserve">
+    <value>{0} : la valeur par défaut {1} n’a pas d’équivalent et est ignorée.</value>
+  </data>
+  <data name="DefinitionHasNoRows" xml:space="preserve">
+    <value>{0} n’est pas une table et n’a donc aucune ligne à copier.</value>
+  </data>
+  <data name="DefinitionOtherEngine" xml:space="preserve">
+    <value>{0} est du SQL écrit pour {1}, que {2} ne peut pas exécuter tel quel.</value>
+  </data>
+  <data name="ForeignKeyFailed" xml:space="preserve">
+    <value>Impossible de créer la clé étrangère {0} : {1}</value>
+  </data>
+  <data name="ForeignKeyLeftOut" xml:space="preserve">
+    <value>La clé étrangère {0} pointe vers {1}, absente de la cible ; elle est donc ignorée.</value>
+  </data>
+  <data name="ForeignKeyNotAdded" xml:space="preserve">
+    <value>La clé étrangère {0} n’a pas été ajoutée, car {1} n’a pas été copiée.</value>
+  </data>
+  <data name="IndexFailed" xml:space="preserve">
+    <value>Impossible de créer l’index {0} : {1}</value>
+  </data>
+  <data name="NoSourceDefinition" xml:space="preserve">
+    <value>La source n’a renvoyé aucune définition pour {0}.</value>
+  </data>
+  <data name="NoTableToAddRows" xml:space="preserve">
+    <value>La cible n’a aucune table nommée {0} à laquelle ajouter des lignes.</value>
+  </data>
+  <data name="NotFinished" xml:space="preserve">
+    <value>Non terminé, car la copie s’est arrêtée sur un échec antérieur.</value>
+  </data>
+  <data name="SequenceBecomesIdentity" xml:space="preserve">
+    <value>{0} : sa valeur par défaut issue d’une séquence devient une colonne d’identité.</value>
+  </data>
+  <data name="ServerWritten" xml:space="preserve">
+    <value>{0} : le serveur l’écrit lui-même, ses valeurs ne sont donc pas copiées.</value>
+  </data>
+  <data name="SqlServerIdentityDropped" xml:space="preserve">
+    <value>{0} : SQL Server refuse les valeurs copiées dans une colonne d’identité ; elle est donc créée sans IDENTITY.</value>
+  </data>
+  <data name="SqlServerIdentityLeftOut" xml:space="preserve">
+    <value>{0} : SQL Server numérote lui-même sa colonne d’identité, les valeurs de la source sont donc ignorées.</value>
+  </data>
+  <data name="StoppedBeforeFinished" xml:space="preserve">
+    <value>Arrêté avant la fin.</value>
+  </data>
+  <data name="TargetCannotChangeStructure" xml:space="preserve">
+    <value>La cible ne peut pas modifier sa structure depuis TablePro.</value>
+  </data>
+  <data name="TargetCannotCreate" xml:space="preserve">
+    <value>La cible ne peut pas la créer.</value>
+  </data>
+  <data name="TargetHasOtherObject" xml:space="preserve">
+    <value>La cible contient déjà un objet nommé {0} qui n’est pas une table.</value>
+  </data>
+  <data name="TargetReadOnly" xml:space="preserve">
+    <value>La connexion cible est en lecture seule : rien ne peut donc y être écrit.</value>
+  </data>
+  <data name="TypeAsText" xml:space="preserve">
+    <value>{0} : {1} devient {2}, sous forme de texte.</value>
+  </data>
+  <data name="TypeCutTo255" xml:space="preserve">
+    <value>{0} : {1} devient {2}, tronqué à 255 caractères pour pouvoir faire partie d’une clé.</value>
+  </data>
+  <data name="TypeCutTo4000" xml:space="preserve">
+    <value>{0} : {1} devient {2}, tronqué à 4 000 caractères pour pouvoir faire partie d’une clé.</value>
+  </data>
+  <data name="TypeCutTo450" xml:space="preserve">
+    <value>{0} : {1} devient {2}, tronqué à 450 caractères pour pouvoir faire partie d’une clé.</value>
+  </data>
+  <data name="TypeEnumerationAsText" xml:space="preserve">
+    <value>{0} : {1} devient {2}, sous forme de texte, sans sa liste de valeurs autorisées.</value>
+  </data>
+  <data name="TypeJsonAsText" xml:space="preserve">
+    <value>{0} : {1} devient {2}, conservé sous forme de texte.</value>
+  </data>
+  <data name="TypeNoBoolean" xml:space="preserve">
+    <value>{0} : {1} devient {2}, car cette version d’Oracle n’a pas de BOOLEAN.</value>
+  </data>
+  <data name="TypeNoEquivalent" xml:space="preserve">
+    <value>{0} : {1} devient {2}, sous forme de texte, faute d’équivalent.</value>
+  </data>
+  <data name="TypeNoTime" xml:space="preserve">
+    <value>{0} : {1} devient {2}, car Oracle n’a pas de TIME.</value>
+  </data>
+  <data name="TypeRowVersionAsBytes" xml:space="preserve">
+    <value>{0} : {1} devient {2}, les versions de ligne du serveur étant copiées sous forme d’octets.</value>
+  </data>
+  <data name="TypeTimeZoneDropped" xml:space="preserve">
+    <value>{0} : {1} devient {2}, sans son fuseau horaire.</value>
+  </data>
+  <data name="TypeUtc" xml:space="preserve">
+    <value>{0} : {1} devient {2}, avec des heures en UTC.</value>
+  </data>
+  <data name="TypeUtcNoTimeZone" xml:space="preserve">
+    <value>{0} : {1} devient {2}, avec des heures en UTC, car DATETIME ne conserve pas de fuseau horaire.</value>
+  </data>
+  <data name="UnknownTypeSystem" xml:space="preserve">
+    <value>Une copie vers un autre moteur nécessite un système de types que TablePro sait traduire, et TablePro n’en connaît aucun pour {0}. Copiez vers une cible du même type.</value>
+  </data>
+</root>

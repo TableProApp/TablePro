@@ -1,0 +1,160 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AssistantActionBubble" xml:space="preserve">
+    <value>{0}&#160;:
+{1}</value>
+  </data>
+  <data name="AssistantExplain" xml:space="preserve">
+    <value>Expliquer</value>
+  </data>
+  <data name="AssistantFixBubble" xml:space="preserve">
+    <value>Corriger&#160;:
+{0}
+
+{1}</value>
+  </data>
+  <data name="AssistantInputPlaceholder" xml:space="preserve">
+    <value>Posez une question sur cette base de données</value>
+  </data>
+  <data name="AssistantInsert" xml:space="preserve">
+    <value>Insérer</value>
+  </data>
+  <data name="AssistantNewConversation" xml:space="preserve">
+    <value>Nouveau</value>
+  </data>
+  <data name="AssistantOptimize" xml:space="preserve">
+    <value>Optimiser</value>
+  </data>
+  <data name="AssistantReview" xml:space="preserve">
+    <value>Examiner</value>
+  </data>
+  <data name="AssistantSend" xml:space="preserve">
+    <value>Envoyer (Ctrl+Enter)</value>
+  </data>
+  <data name="AssistantSetUpTitle" xml:space="preserve">
+    <value>Configurer l’assistant</value>
+  </data>
+  <data name="AssistantStopped" xml:space="preserve">
+    <value>(arrêté)</value>
+  </data>
+  <data name="AssistantUsing" xml:space="preserve">
+    <value>Utilise {0} ({1}). Les questions, votre SQL et la structure des tables concernées sont envoyés&#160;; les lignes ne le sont pas.</value>
+  </data>
+  <data name="FavoriteEditTitle" xml:space="preserve">
+    <value>Modifier le favori</value>
+  </data>
+  <data name="FavoriteFolder" xml:space="preserve">
+    <value>Dossier</value>
+  </data>
+  <data name="FavoriteKeyword" xml:space="preserve">
+    <value>Mot-clé</value>
+  </data>
+  <data name="FavoriteKeywordPlaceholder" xml:space="preserve">
+    <value>Saisi dans l’éditeur pour insérer cette requête</value>
+  </data>
+  <data name="FavoriteKeywordSpaces" xml:space="preserve">
+    <value>Un mot-clé ne peut pas contenir d’espaces.</value>
+  </data>
+  <data name="FavoriteKeywordTooLong_One" xml:space="preserve">
+    <value>Le mot-clé doit comporter moins de {0} caractère.</value>
+  </data>
+  <data name="FavoriteKeywordTooLong_Other" xml:space="preserve">
+    <value>Le mot-clé doit comporter moins de {0} caractères.</value>
+  </data>
+  <data name="FavoriteKeywordUsed" xml:space="preserve">
+    <value>Un autre favori utilise déjà ce mot-clé.</value>
+  </data>
+  <data name="FavoriteOnlyFor" xml:space="preserve">
+    <value>Uniquement pour {0}</value>
+  </data>
+  <data name="FavoriteQuery" xml:space="preserve">
+    <value>Requête</value>
+  </data>
+  <data name="FavoriteSaveTitle" xml:space="preserve">
+    <value>Enregistrer le favori</value>
+  </data>
+  <data name="FavoritesCreate" xml:space="preserve">
+    <value>Créer</value>
+  </data>
+  <data name="FavoritesEmpty" xml:space="preserve">
+    <value>Enregistrez une requête avec l’étoile de la barre d’outils de l’éditeur.</value>
+  </data>
+  <data name="FavoritesNewFolderLink" xml:space="preserve">
+    <value>Nouveau dossier</value>
+  </data>
+  <data name="FavoritesNewFolderTitle" xml:space="preserve">
+    <value>Nouveau dossier</value>
+  </data>
+  <data name="FavoritesSearch" xml:space="preserve">
+    <value>Rechercher dans les favoris</value>
+  </data>
+  <data name="HistoryClear" xml:space="preserve">
+    <value>Effacer l’historique de cette connexion</value>
+  </data>
+  <data name="HistoryLoadMore" xml:space="preserve">
+    <value>Charger plus</value>
+  </data>
+  <data name="HistoryOutcomeAll" xml:space="preserve">
+    <value>Tous</value>
+  </data>
+  <data name="HistoryOutcomeFailed" xml:space="preserve">
+    <value>Échec</value>
+  </data>
+  <data name="HistoryOutcomeSucceeded" xml:space="preserve">
+    <value>Réussi</value>
+  </data>
+  <data name="HistoryRows_One" xml:space="preserve">
+    <value>{0:N0} ligne</value>
+  </data>
+  <data name="HistoryRows_Other" xml:space="preserve">
+    <value>{0:N0} lignes</value>
+  </data>
+  <data name="HistoryRunInNewTab" xml:space="preserve">
+    <value>Exécuter dans un nouvel onglet</value>
+  </data>
+  <data name="HistoryScopeAllConnections" xml:space="preserve">
+    <value>Toutes les connexions</value>
+  </data>
+  <data name="HistoryScopeThisConnection" xml:space="preserve">
+    <value>Cette connexion</value>
+  </data>
+  <data name="HistorySearch" xml:space="preserve">
+    <value>Rechercher dans l’historique</value>
+  </data>
+  <data name="InsertIntoEditor" xml:space="preserve">
+    <value>Insérer dans l’éditeur</value>
+  </data>
+  <data name="QuickSwitcherKindDatabase" xml:space="preserve">
+    <value>Base de données</value>
+  </data>
+  <data name="QuickSwitcherKindSchema" xml:space="preserve">
+    <value>Schéma</value>
+  </data>
+  <data name="QuickSwitcherKindTab" xml:space="preserve">
+    <value>Onglet ouvert</value>
+  </data>
+  <data name="QuickSwitcherNoMatches" xml:space="preserve">
+    <value>Aucun résultat</value>
+  </data>
+  <data name="QuickSwitcherPlaceholder" xml:space="preserve">
+    <value>Ouvrir une table, une vue, une routine, une base de données, un schéma ou un onglet</value>
+  </data>
+  <data name="QuickSwitcherRowName" xml:space="preserve">
+    <value>{0}, {1}</value>
+  </data>
+  <data name="QuickSwitcherTitle" xml:space="preserve">
+    <value>Ouverture rapide</value>
+  </data>
+</root>

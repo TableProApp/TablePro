@@ -1,0 +1,195 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AppendOnly" xml:space="preserve">
+    <value>Kafka topics are append-only: a message cannot be edited or deleted. Add a row to produce a new message, or produce a tombstone (a null value) for its key on a compacted topic.</value>
+  </data>
+  <data name="AtLeastOne" xml:space="preserve">
+    <value>{0} must be at least 1.</value>
+    <comment>{0} is a keyword such as PARTITIONS.</comment>
+  </data>
+  <data name="DescribeNeeds" xml:space="preserve">
+    <value>DESCRIBE needs GROUP or TOPIC.</value>
+  </data>
+  <data name="DescribeNeedsName" xml:space="preserve">
+    <value>DESCRIBE needs a name.</value>
+  </data>
+  <data name="DescribeUnsupported" xml:space="preserve">
+    <value>DESCRIBE {0} is not supported. Try GROUP or TOPIC.</value>
+    <comment>{0} is what the user typed after DESCRIBE.</comment>
+  </data>
+  <data name="DropTakesOne" xml:space="preserve">
+    <value>DROP TOPIC takes one topic name.</value>
+  </data>
+  <data name="EmptyStatement" xml:space="preserve">
+    <value>Empty statement.</value>
+  </data>
+  <data name="FromNeeds" xml:space="preserve">
+    <value>FROM needs NEWEST, OLDEST, OFFSET, TIME, ANCHOR or TAIL.</value>
+  </data>
+  <data name="GroupNotDeletable_One" xml:space="preserve">
+    <value>Consumer group {1} is {2} with {0} member. Kafka only deletes a group with no members; stop its consumers first.</value>
+    <comment>{0} member count, {1} group name, {2} Kafka's state name (stays English).</comment>
+  </data>
+  <data name="GroupNotDeletable_Other" xml:space="preserve">
+    <value>Consumer group {1} is {2} with {0} members. Kafka only deletes a group with no members; stop its consumers first.</value>
+    <comment>{0} member count, {1} group name, {2} Kafka's state name (stays English).</comment>
+  </data>
+  <data name="GroupNote_One" xml:space="preserve">
+    <value>Group {1} is {2} with {0} member.</value>
+    <comment>{0} member count, {1} group name, {2} Kafka's state name (stays English).</comment>
+  </data>
+  <data name="GroupNote_Other" xml:space="preserve">
+    <value>Group {1} is {2} with {0} members.</value>
+    <comment>{0} member count, {1} group name, {2} Kafka's state name (stays English).</comment>
+  </data>
+  <data name="HeadersJson" xml:space="preserve">
+    <value>Headers must be a JSON object, such as {"trace":"abc"}.</value>
+    <comment>Read with Get, so the JSON braces are literal.</comment>
+  </data>
+  <data name="NeedsKeyValue" xml:space="preserve">
+    <value>{0} needs key=value, such as cleanup.policy=compact.</value>
+    <comment>{0} is a keyword such as CONFIG.</comment>
+  </data>
+  <data name="NeedsOffsetList" xml:space="preserve">
+    <value>{0} needs a partition:offset list.</value>
+    <comment>{0} is a keyword such as ANCHOR.</comment>
+  </data>
+  <data name="NeedsTopicKeyword" xml:space="preserve">
+    <value>{0} needs TOPIC and a topic name.</value>
+    <comment>{0} is CREATE or DROP. TOPIC stays English.</comment>
+  </data>
+  <data name="NeedsTopicName" xml:space="preserve">
+    <value>{0} needs a topic name.</value>
+    <comment>{0} is a statement keyword such as CONSUME.</comment>
+  </data>
+  <data name="NeedsValue" xml:space="preserve">
+    <value>{0} needs a value.</value>
+    <comment>{0} is a keyword such as VALUE.</comment>
+  </data>
+  <data name="NeedsWholeNumber" xml:space="preserve">
+    <value>{0} needs a whole number, not {1}.</value>
+    <comment>{0} is a keyword such as LIMIT, {1} what the user typed.</comment>
+  </data>
+  <data name="NoConsumerGroup" xml:space="preserve">
+    <value>There is no consumer group named {0}.</value>
+    <comment>{0} is a consumer group name.</comment>
+  </data>
+  <data name="NoPartition" xml:space="preserve">
+    <value>Topic {0} has no partition {1}.</value>
+    <comment>{0} is a topic name, {1} a partition number.</comment>
+  </data>
+  <data name="NoSuchColumn" xml:space="preserve">
+    <value>A Kafka message has no {0} column.</value>
+    <comment>{0} is a column name.</comment>
+  </data>
+  <data name="NotACommand" xml:space="preserve">
+    <value>{0} is not a Kafka command. Try CONSUME, TAIL, PRODUCE, SHOW, DESCRIBE, CREATE or DROP.</value>
+    <comment>{0} is what the user typed. The command names stay English.</comment>
+  </data>
+  <data name="NotATime" xml:space="preserve">
+    <value>{0} is not a time.</value>
+    <comment>{0} is the value given.</comment>
+  </data>
+  <data name="NotATimeHint" xml:space="preserve">
+    <value>{0} is not a time. Use milliseconds since the epoch or an ISO 8601 instant.</value>
+    <comment>{0} is what the user typed.</comment>
+  </data>
+  <data name="NotOffsetPair" xml:space="preserve">
+    <value>{0} is not a partition:offset pair.</value>
+    <comment>{0} is what the user typed.</comment>
+  </data>
+  <data name="NoTopic" xml:space="preserve">
+    <value>There is no topic named {0}.</value>
+    <comment>{0} is a topic name.</comment>
+  </data>
+  <data name="NotPartitionNumber" xml:space="preserve">
+    <value>{0} is not a partition number.</value>
+    <comment>{0} is what the user typed.</comment>
+  </data>
+  <data name="NotSaslMechanism" xml:space="preserve">
+    <value>{0} is not a SASL mechanism. Use PLAIN, SCRAM-SHA-256 or SCRAM-SHA-512.</value>
+    <comment>{0} is what the user entered.</comment>
+  </data>
+  <data name="NotSecurityProtocol" xml:space="preserve">
+    <value>{0} is not a Kafka security protocol. Use PLAINTEXT, SSL, SASL_PLAINTEXT or SASL_SSL.</value>
+    <comment>{0} is what the user entered.</comment>
+  </data>
+  <data name="NotStartPosition" xml:space="preserve">
+    <value>{0} is not a start position. Use NEWEST, OLDEST, OFFSET, TIME, ANCHOR or TAIL.</value>
+    <comment>{0} is what the user typed.</comment>
+  </data>
+  <data name="OffsetAssigned" xml:space="preserve">
+    <value>The broker assigns a message's offset; leave the offset empty.</value>
+  </data>
+  <data name="PageTooLarge" xml:space="preserve">
+    <value>This page needs more than {0:N0} messages read across {1} partitions. Read fewer partitions, or start nearer the rows with FROM OFFSET or FROM TIME.</value>
+    <comment>{0} the most messages one page reads, {1} the number of partitions. FROM OFFSET and FROM TIME stay English.</comment>
+  </data>
+  <data name="PartitionNeedsNumber" xml:space="preserve">
+    <value>PARTITION needs at least one partition number.</value>
+  </data>
+  <data name="ProduceNeedsValueOrKey" xml:space="preserve">
+    <value>PRODUCE needs at least a VALUE or a KEY.</value>
+  </data>
+  <data name="RangeBetween" xml:space="preserve">
+    <value>{0} must be between {1} and {2}.</value>
+    <comment>{0} is a keyword such as LIMIT, {1} and {2} the bounds.</comment>
+  </data>
+  <data name="ServerVersion_One" xml:space="preserve">
+    <value>Apache Kafka, {0} broker (librdkafka {1})</value>
+    <comment>{0} broker count, {1} the librdkafka version.</comment>
+  </data>
+  <data name="ServerVersion_Other" xml:space="preserve">
+    <value>Apache Kafka, {0} brokers (librdkafka {1})</value>
+    <comment>{0} broker count, {1} the librdkafka version.</comment>
+  </data>
+  <data name="ShowNeeds" xml:space="preserve">
+    <value>SHOW needs TOPICS, BROKERS, GROUPS or CLUSTER.</value>
+  </data>
+  <data name="ShowUnsupported" xml:space="preserve">
+    <value>SHOW {0} is not supported. Try TOPICS, BROKERS, GROUPS or CLUSTER.</value>
+    <comment>{0} is what the user typed after SHOW.</comment>
+  </data>
+  <data name="StoppedPartial" xml:space="preserve">
+    <value>Stopped after {0:0} seconds with some partitions not fully read; the rows shown are what arrived.</value>
+    <comment>{0} is a number of seconds.</comment>
+  </data>
+  <data name="TakesNothingAfter" xml:space="preserve">
+    <value>{0} takes nothing after it, and {1} was given.</value>
+    <comment>{0} is a statement, {1} the extra word the user typed.</comment>
+  </data>
+  <data name="TimestampComment" xml:space="preserve">
+    <value>Producer or broker time, in UTC.</value>
+  </data>
+  <data name="TopicCreated" xml:space="preserve">
+    <value>Topic {0} created.</value>
+    <comment>{0} is a topic name.</comment>
+  </data>
+  <data name="TopicDeleted" xml:space="preserve">
+    <value>Topic {0} deleted.</value>
+    <comment>{0} is a topic name.</comment>
+  </data>
+  <data name="Unexpected" xml:space="preserve">
+    <value>Unexpected {0} in a {1} statement.</value>
+    <comment>{0} is the unexpected word, {1} the statement such as CONSUME.</comment>
+  </data>
+  <data name="UnexpectedInTail" xml:space="preserve">
+    <value>Unexpected {0} in a TAIL statement. TAIL takes LIMIT and PARTITION.</value>
+    <comment>{0} is the unexpected word.</comment>
+  </data>
+  <data name="ValueComment" xml:space="preserve">
+    <value>Null is a tombstone; an empty value is an empty message.</value>
+  </data>
+</root>

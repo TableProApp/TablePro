@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="BqlNeedsRledger" xml:space="preserve">
+    <value>BQL 查询需要 rledger。请安装 rustledger 使 rledger.exe 位于 PATH 中，或将连接的 rledger 选项设为其路径。</value>
+  </data>
+  <data name="CannotImport" xml:space="preserve">
+    <value>{0} 无法导入 beancount。请运行 "{0}" -m pip install beancount，或将 python 选项设为装有该包的 Python。</value>
+  </data>
+  <data name="ConnectTimedOut" xml:space="preserve">
+    <value>连接在 {0:0} 秒后超时</value>
+  </data>
+  <data name="CouldNotRead" xml:space="preserve">
+    <value>无法读取 {0}：{1}</value>
+  </data>
+  <data name="CouldNotStart" xml:space="preserve">
+    <value>无法启动 {0}：{1}</value>
+  </data>
+  <data name="FileMissing" xml:space="preserve">
+    <value>{0} 处不存在文件</value>
+  </data>
+  <data name="IncludeCycle" xml:space="preserve">
+    <value>在 {0} 检测到 Beancount include 循环</value>
+  </data>
+  <data name="InvalidInclude" xml:space="preserve">
+    <value>{1} 中的 include 路径“{0}”无效：{2}</value>
+  </data>
+  <data name="InvalidPythonOutput" xml:space="preserve">
+    <value>无效的 Python Beancount JSON 输出</value>
+  </data>
+  <data name="InvalidRledgerOutput" xml:space="preserve">
+    <value>无效的 rustledger JSON 输出</value>
+  </data>
+  <data name="LedgerChanged" xml:space="preserve">
+    <value>构建 SQL 投影时 Beancount 账本发生了更改</value>
+  </data>
+  <data name="MissingTransaction" xml:space="preserve">
+    <value>Beancount 过账引用了不存在的交易 ID {0}</value>
+  </data>
+  <data name="NeedsLedger" xml:space="preserve">
+    <value>Beancount 连接需要账本文件。</value>
+  </data>
+  <data name="NoBackend" xml:space="preserve">
+    <value>Beancount 需要 Python Beancount 或 rledger，但两者都未找到。请用“py -3 -m pip install beancount”（或“pip install beancount”）安装 Python 包，或安装 rustledger 使 rledger.exe 位于 PATH 中，或将连接的 python 或 rledger 选项设为其路径。</value>
+  </data>
+  <data name="NoDdl" xml:space="preserve">
+    <value>无法获取表“{0}”的 DDL</value>
+  </data>
+  <data name="OpenFailed" xml:space="preserve">
+    <value>无法打开 Beancount 账本：{0}</value>
+  </data>
+  <data name="PadNoDate" xml:space="preserve">
+    <value>pad 指令没有日期，因此未投影其账户。</value>
+  </data>
+  <data name="PadsUnrendered" xml:space="preserve">
+    <value>rledger 无法渲染账本的指令，因此 pads 表为空：{0}</value>
+  </data>
+  <data name="PadUnmatched" xml:space="preserve">
+    <value>无法将 pad 指令与已渲染的指令匹配，因此未投影其账户。</value>
+  </data>
+  <data name="PythonFailed" xml:space="preserve">
+    <value>Python Beancount 投影失败</value>
+  </data>
+  <data name="PythonMissing" xml:space="preserve">
+    <value>python 选项指向 {0} 处不存在的 Python。</value>
+  </data>
+  <data name="PythonNeedsPackage" xml:space="preserve">
+    <value>Python Beancount 后端需要装有 beancount 包的 Python 3。请运行“py -3 -m pip install beancount”，或将连接的 python 选项设为装有该包的 Python。</value>
+  </data>
+  <data name="ReadOnly" xml:space="preserve">
+    <value>Beancount 账本以只读 SQL 数据库的形式提供。</value>
+  </data>
+  <data name="RledgerMissing" xml:space="preserve">
+    <value>rledger 选项指向 {0} 处不存在的 rledger。</value>
+  </data>
+  <data name="RledgerNeedsRustledger" xml:space="preserve">
+    <value>rledger 后端需要 rustledger。请安装它使 rledger.exe 位于 PATH 中，或将连接的 rledger 选项设为其路径。</value>
+  </data>
+  <data name="RledgerVersionFailed" xml:space="preserve">
+    <value>rledger 版本检查失败</value>
+  </data>
+  <data name="RustledgerFailed" xml:space="preserve">
+    <value>rustledger 命令失败</value>
+  </data>
+  <data name="RustledgerValidationFailed" xml:space="preserve">
+    <value>rustledger 验证失败</value>
+  </data>
+  <data name="UnknownBackend" xml:space="preserve">
+    <value>未知的 Beancount 后端“{0}”。请使用“python”或“rledger”。</value>
+  </data>
+</root>

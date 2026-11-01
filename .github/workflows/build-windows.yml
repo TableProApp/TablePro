@@ -1,0 +1,38 @@
+name: Build Windows
+
+# CI calls it when the windows suite is true. A manual run builds and tests the current ref.
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build and test
+    runs-on: windows-2025
+    timeout-minutes: 30
+    env:
+      DOTNET_NOLOGO: "1"
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: windows
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: windows/global.json
+
+      - name: Build
+        run: dotnet build TablePro.slnx --configuration Release
+
+      # The SQLite and DuckDB driver suites run against real database files; the network engines'
+      # suites test connection strings and DDL without a server.
+      - name: Test
+        run: dotnet test TablePro.slnx --configuration Release --no-build

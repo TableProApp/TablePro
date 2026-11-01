@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="NoColumnToFilter" xml:space="preserve">
+    <value>Không có cột nào tên {0} để lọc.</value>
+  </data>
+  <data name="OperatorBetween" xml:space="preserve">
+    <value>giữa</value>
+  </data>
+  <data name="OperatorContains" xml:space="preserve">
+    <value>chứa</value>
+  </data>
+  <data name="OperatorEndsWith" xml:space="preserve">
+    <value>kết thúc bằng</value>
+  </data>
+  <data name="OperatorIn" xml:space="preserve">
+    <value>trong danh sách</value>
+  </data>
+  <data name="OperatorIsEmpty" xml:space="preserve">
+    <value>trống</value>
+  </data>
+  <data name="OperatorIsNotEmpty" xml:space="preserve">
+    <value>không trống</value>
+  </data>
+  <data name="OperatorIsNotNull" xml:space="preserve">
+    <value>không phải NULL</value>
+  </data>
+  <data name="OperatorIsNull" xml:space="preserve">
+    <value>là NULL</value>
+  </data>
+  <data name="OperatorNotContains" xml:space="preserve">
+    <value>không chứa</value>
+  </data>
+  <data name="OperatorNotIn" xml:space="preserve">
+    <value>không trong danh sách</value>
+  </data>
+  <data name="OperatorStartsWith" xml:space="preserve">
+    <value>bắt đầu bằng</value>
+  </data>
+  <data name="RawWhereUnsupported" xml:space="preserve">
+    <value>{0} không thể chạy mệnh đề WHERE thô; hãy dùng các quy tắc lọc.</value>
+  </data>
+</root>

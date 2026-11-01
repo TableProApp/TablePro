@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AutoCheckDescription" xml:space="preserve">
+    <value>Recherche une nouvelle version une fois par jour.</value>
+  </data>
+  <data name="AutoCheckTitle" xml:space="preserve">
+    <value>Rechercher automatiquement les mises à jour</value>
+  </data>
+  <data name="AvailableVersion" xml:space="preserve">
+    <value>TablePro {0} est disponible. Vous avez la version {1}.</value>
+  </data>
+  <data name="BetaDescription" xml:space="preserve">
+    <value>Les versions bêta précèdent une version stable et peuvent présenter des imperfections.</value>
+  </data>
+  <data name="BetaTitle" xml:space="preserve">
+    <value>Recevoir les mises à jour bêta</value>
+  </data>
+  <data name="CheckNow" xml:space="preserve">
+    <value>Rechercher maintenant</value>
+  </data>
+  <data name="CheckTitle" xml:space="preserve">
+    <value>Rechercher les mises à jour</value>
+  </data>
+  <data name="ErrorChecksumMismatch" xml:space="preserve">
+    <value>La mise à jour téléchargée ne correspond pas à la somme de contrôle publiée avec la version. Rien n’a été installé.</value>
+  </data>
+  <data name="ErrorFeedTooLarge" xml:space="preserve">
+    <value>Le flux des mises à jour est plus volumineux que prévu.</value>
+  </data>
+  <data name="ErrorHttpsOnly" xml:space="preserve">
+    <value>Les mises à jour ne sont téléchargées que via HTTPS.</value>
+  </data>
+  <data name="ErrorNoInstallScript" xml:space="preserve">
+    <value>La mise à jour ne contient pas de script d’installation.</value>
+  </data>
+  <data name="ImportantUpdateTitle" xml:space="preserve">
+    <value>Mise à jour importante</value>
+  </data>
+  <data name="InstallAndRestart" xml:space="preserve">
+    <value>Installer et redémarrer</value>
+  </data>
+  <data name="InstallFailedTitle" xml:space="preserve">
+    <value>Impossible d’installer la mise à jour</value>
+  </data>
+  <data name="Later" xml:space="preserve">
+    <value>Plus tard</value>
+  </data>
+  <data name="MenuCheckForUpdates" xml:space="preserve">
+    <value>Rechercher les mises à jour…</value>
+  </data>
+  <data name="MenuUpdateAvailable" xml:space="preserve">
+    <value>Mise à jour disponible…</value>
+  </data>
+  <data name="RestartToUpdate" xml:space="preserve">
+    <value>Redémarrer pour mettre à jour</value>
+  </data>
+  <data name="SettingsTitle" xml:space="preserve">
+    <value>Mises à jour</value>
+  </data>
+  <data name="SkipThisVersion" xml:space="preserve">
+    <value>Ignorer cette version</value>
+  </data>
+  <data name="StatusAvailable" xml:space="preserve">
+    <value>Une mise à jour est disponible.</value>
+  </data>
+  <data name="StatusChecking" xml:space="preserve">
+    <value>Recherche de mises à jour…</value>
+  </data>
+  <data name="StatusDisabled" xml:space="preserve">
+    <value>Les mises à jour sont désactivées dans cette version.</value>
+  </data>
+  <data name="StatusDownloading" xml:space="preserve">
+    <value>Téléchargement de la mise à jour&#160;: {0:P0}</value>
+  </data>
+  <data name="StatusFailed" xml:space="preserve">
+    <value>La recherche de mises à jour a échoué&#160;: {0}</value>
+  </data>
+  <data name="StatusInstalling" xml:space="preserve">
+    <value>Démarrage du programme d’installation…</value>
+  </data>
+  <data name="StatusLastChecked" xml:space="preserve">
+    <value>Dernière vérification&#160;: {0:g}.</value>
+  </data>
+  <data name="StatusStore" xml:space="preserve">
+    <value>Le Microsoft Store maintient TablePro à jour.</value>
+  </data>
+  <data name="StatusUpToDate" xml:space="preserve">
+    <value>TablePro {0} est la version la plus récente.</value>
+  </data>
+  <data name="StatusVersion" xml:space="preserve">
+    <value>TablePro {0}.</value>
+  </data>
+  <data name="UpdateAvailableTitle" xml:space="preserve">
+    <value>Mise à jour disponible</value>
+  </data>
+  <data name="VersionTitle" xml:space="preserve">
+    <value>TablePro {0}</value>
+  </data>
+</root>

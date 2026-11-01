@@ -1,0 +1,212 @@
+# Servers for the live driver tests. Start one group at a time, since several of them want gigabytes of memory:
+#
+#   docker compose -f tests/live/compose.yaml --profile kv up -d --wait
+#
+# Groups: kv, wide, search, sql, oracle, sqlserver. windows/AGENTS.md, Live tests, lists the variables each test reads.
+# Every password here is a throwaway for a local container; none of them is a real credential.
+name: tablepro-live
+
+services:
+  # kv: Redis standalone, Cluster and Sentinel, MongoDB, etcd, DynamoDB Local, Kafka, libSQL.
+  redis:
+    profiles: [kv]
+    image: redis:7.4.2
+    ports: ["6379:6379"]
+    command: redis-server --requirepass TablePro-test-1
+
+  # Three primaries in one container: each node announces 127.0.0.1, which is the container itself for the cluster
+  # bus and the published port for the test on the host.
+  redis-cluster:
+    profiles: [kv]
+    image: redis:7.4.2
+    ports: ["7001-7003:7001-7003"]
+    command:
+      - sh
+      - -c
+      - |
+        for p in 7001 7002 7003; do
+          redis-server --port $$p --cluster-enabled yes --cluster-config-file nodes-$$p.conf --appendonly no --save "" --daemonize yes
+        done
+        sleep 1
+        redis-cli --cluster create 127.0.0.1:7001 127.0.0.1:7002 127.0.0.1:7003 --cluster-yes
+        exec sleep infinity
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -p 7001 cluster info | grep -q cluster_state:ok"]
+      interval: 2s
+      retries: 30
+
+  # A primary and one Sentinel in one container, for the same reason as the cluster.
+  redis-sentinel:
+    profiles: [kv]
+    image: redis:7.4.2
+    ports: ["6380:6380", "26379:26379"]
+    command:
+      - sh
+      - -c
+      - |
+        redis-server --port 6380 --save "" --daemonize yes
+        printf 'port 26379\nsentinel monitor mymaster 127.0.0.1 6380 1\nsentinel down-after-milliseconds mymaster 5000\n' > /tmp/sentinel.conf
+        exec redis-server /tmp/sentinel.conf --sentinel
+
+  mongo:
+    profiles: [kv]
+    image: mongo:8.0.4
+    ports: ["27017:27017"]
+
+  etcd:
+    profiles: [kv]
+    image: quay.io/coreos/etcd:v3.5.17
+    ports: ["2379:2379"]
+    command:
+      - etcd
+      - --listen-client-urls=http://0.0.0.0:2379
+      - --advertise-client-urls=http://localhost:2379
+
+  dynamodb:
+    profiles: [kv]
+    image: amazon/dynamodb-local:2.5.4
+    ports: ["8000:8000"]
+    command: -jar DynamoDBLocal.jar -inMemory -sharedDb
+
+  # The image's default configuration is a single KRaft node that advertises localhost:9092.
+  kafka:
+    profiles: [kv]
+    image: apache/kafka:3.9.0
+    ports: ["9092:9092"]
+
+  libsql:
+    profiles: [kv]
+    image: ghcr.io/tursodatabase/libsql-server:v0.24.32
+    ports: ["8080:8080"]
+
+  # wide: Cassandra, ClickHouse, Trino.
+  cassandra:
+    profiles: [wide]
+    image: cassandra:5.0.2
+    ports: ["9042:9042"]
+    environment:
+      MAX_HEAP_SIZE: 1G
+      HEAP_NEWSIZE: 200M
+    healthcheck:
+      test: ["CMD-SHELL", "cqlsh -e 'describe keyspaces' > /dev/null"]
+      interval: 5s
+      retries: 40
+
+  clickhouse:
+    profiles: [wide]
+    image: clickhouse/clickhouse-server:24.8.11.5
+    ports: ["8123:8123"]
+    environment:
+      CLICKHOUSE_USER: tablepro
+      CLICKHOUSE_PASSWORD: TablePro-test-1
+      CLICKHOUSE_DB: tablepro
+    ulimits:
+      nofile: { soft: 262144, hard: 262144 }
+
+  trino:
+    profiles: [wide]
+    image: trinodb/trino:468
+    ports: ["8081:8080"]
+
+  # search: Elasticsearch, Typesense, Weaviate, SurrealDB, the Spanner emulator.
+  elasticsearch:
+    profiles: [search]
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.17.0
+    ports: ["9200:9200"]
+    environment:
+      discovery.type: single-node
+      ELASTIC_PASSWORD: TablePro-test-1
+      xpack.security.http.ssl.enabled: "false"
+      ES_JAVA_OPTS: -Xms512m -Xmx512m
+
+  typesense:
+    profiles: [search]
+    image: typesense/typesense:27.1
+    ports: ["8108:8108"]
+    command: --data-dir /tmp --api-key TablePro-test-1 --enable-cors
+
+  weaviate:
+    profiles: [search]
+    image: cr.weaviate.io/semitechnologies/weaviate:1.28.2
+    ports: ["8082:8080", "50051:50051"]
+    environment:
+      AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: "true"
+      PERSISTENCE_DATA_PATH: /var/lib/weaviate
+      DEFAULT_VECTORIZER_MODULE: none
+      CLUSTER_HOSTNAME: node1
+
+  surrealdb:
+    profiles: [search]
+    image: surrealdb/surrealdb:v2.1.4
+    ports: ["8001:8000"]
+    command: start --user root --pass TablePro-test-1 memory
+
+  # The emulator starts empty; tests/live/spanner-setup.ps1 creates the instance and database the test names.
+  spanner:
+    profiles: [search]
+    image: gcr.io/cloud-spanner-emulator/emulator:1.5.28
+    ports: ["9010:9010", "9020:9020"]
+
+  # sql: PostgreSQL, MySQL, MariaDB.
+  postgres:
+    profiles: [sql]
+    image: postgres:17.2
+    ports: ["5432:5432"]
+    environment:
+      POSTGRES_PASSWORD: TablePro-test-1
+      POSTGRES_DB: tablepro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d tablepro"]
+      interval: 2s
+      retries: 30
+
+  mysql:
+    profiles: [sql]
+    image: mysql:8.4.3
+    ports: ["3306:3306"]
+    environment:
+      MYSQL_ROOT_PASSWORD: TablePro-test-1
+      MYSQL_DATABASE: tablepro
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -pTablePro-test-1 --silent"]
+      interval: 2s
+      retries: 60
+
+  mariadb:
+    profiles: [sql]
+    image: mariadb:11.4.4
+    ports: ["3307:3306"]
+    environment:
+      MARIADB_ROOT_PASSWORD: TablePro-test-1
+      MARIADB_DATABASE: tablepro
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 2s
+      retries: 60
+
+  # oracle and sqlserver each want a few gigabytes; run them alone.
+  oracle:
+    profiles: [oracle]
+    image: gvenzl/oracle-free:23.6-slim
+    ports: ["1521:1521"]
+    environment:
+      ORACLE_PASSWORD: TablePro-test-1
+      APP_USER: tablepro
+      APP_USER_PASSWORD: TablePro-test-1
+    healthcheck:
+      test: ["CMD", "healthcheck.sh"]
+      interval: 5s
+      retries: 60
+
+  sqlserver:
+    profiles: [sqlserver]
+    image: mcr.microsoft.com/mssql/server:2022-CU16-ubuntu-22.04
+    ports: ["1433:1433"]
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: TablePro-test-1
+      MSSQL_PID: Developer
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P TablePro-test-1 -Q 'SELECT 1' > /dev/null"]
+      interval: 5s
+      retries: 60

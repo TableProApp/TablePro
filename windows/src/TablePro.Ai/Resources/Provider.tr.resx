@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="EmptyBody" xml:space="preserve">
+    <value>{0} boş bir gövdeyle yanıt verdi.</value>
+  </data>
+  <data name="KeyOverHttp" xml:space="preserve">
+    <value>API anahtarı düz http üzerinden yalnızca bu bilgisayara gönderilir. Bir https adresi kullanın.</value>
+  </data>
+  <data name="ModelNotFound" xml:space="preserve">
+    <value>{0} bu modeli veya adresi tanımıyor</value>
+  </data>
+  <data name="NeedsApiKey" xml:space="preserve">
+    <value>{0} bir API anahtarı gerektiriyor.</value>
+  </data>
+  <data name="RateLimited" xml:space="preserve">
+    <value>{0} istekleri hız sınırına tabi tutuyor</value>
+  </data>
+  <data name="RefusedKey" xml:space="preserve">
+    <value>{0} API anahtarını reddetti</value>
+  </data>
+  <data name="RefusedRequest" xml:space="preserve">
+    <value>{0} isteği reddetti</value>
+  </data>
+  <data name="ServerError" xml:space="preserve">
+    <value>{0} bir sunucu hatası verdi</value>
+  </data>
+  <data name="StoppedReply" xml:space="preserve">
+    <value>{0} yanıtı durdurdu: {1}</value>
+  </data>
+  <data name="UnknownError" xml:space="preserve">
+    <value>bilinmeyen hata</value>
+  </data>
+  <data name="Unreachable" xml:space="preserve">
+    <value>{1} adresindeki {0} hizmetine ulaşılamadı: {2}</value>
+  </data>
+  <data name="UnreadableEvent" xml:space="preserve">
+    <value>{0} uygulamanın okuyamadığı bir olay gönderdi.</value>
+  </data>
+  <data name="UnreadableJson" xml:space="preserve">
+    <value>{0} uygulamanın okuyamadığı bir JSON ile yanıt verdi.</value>
+  </data>
+  <data name="WithStatus" xml:space="preserve">
+    <value>{0} (HTTP {1}).</value>
+  </data>
+  <data name="WithStatusDetail" xml:space="preserve">
+    <value>{0} (HTTP {1}): {2}</value>
+  </data>
+</root>

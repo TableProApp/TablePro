@@ -1,0 +1,160 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AssistantActionBubble" xml:space="preserve">
+    <value>{0}:
+{1}</value>
+  </data>
+  <data name="AssistantExplain" xml:space="preserve">
+    <value>설명</value>
+  </data>
+  <data name="AssistantFixBubble" xml:space="preserve">
+    <value>수정:
+{0}
+
+{1}</value>
+  </data>
+  <data name="AssistantInputPlaceholder" xml:space="preserve">
+    <value>이 데이터베이스에 대해 질문하세요</value>
+  </data>
+  <data name="AssistantInsert" xml:space="preserve">
+    <value>삽입</value>
+  </data>
+  <data name="AssistantNewConversation" xml:space="preserve">
+    <value>새로 만들기</value>
+  </data>
+  <data name="AssistantOptimize" xml:space="preserve">
+    <value>최적화</value>
+  </data>
+  <data name="AssistantReview" xml:space="preserve">
+    <value>검토</value>
+  </data>
+  <data name="AssistantSend" xml:space="preserve">
+    <value>보내기 (Ctrl+Enter)</value>
+  </data>
+  <data name="AssistantSetUpTitle" xml:space="preserve">
+    <value>어시스턴트 설정</value>
+  </data>
+  <data name="AssistantStopped" xml:space="preserve">
+    <value>(중지됨)</value>
+  </data>
+  <data name="AssistantUsing" xml:space="preserve">
+    <value>{0}({1})을(를) 사용합니다. 질문, SQL 및 관련 테이블의 구조는 전송되지만 행은 전송되지 않습니다.</value>
+  </data>
+  <data name="FavoriteEditTitle" xml:space="preserve">
+    <value>즐겨찾기 편집</value>
+  </data>
+  <data name="FavoriteFolder" xml:space="preserve">
+    <value>폴더</value>
+  </data>
+  <data name="FavoriteKeyword" xml:space="preserve">
+    <value>키워드</value>
+  </data>
+  <data name="FavoriteKeywordPlaceholder" xml:space="preserve">
+    <value>편집기에 입력하면 이 쿼리가 삽입됩니다</value>
+  </data>
+  <data name="FavoriteKeywordSpaces" xml:space="preserve">
+    <value>키워드에는 공백을 포함할 수 없습니다.</value>
+  </data>
+  <data name="FavoriteKeywordTooLong_One" xml:space="preserve">
+    <value>키워드는 {0}자 미만이어야 합니다.</value>
+  </data>
+  <data name="FavoriteKeywordTooLong_Other" xml:space="preserve">
+    <value>키워드는 {0}자 미만이어야 합니다.</value>
+  </data>
+  <data name="FavoriteKeywordUsed" xml:space="preserve">
+    <value>다른 즐겨찾기에서 이미 이 키워드를 사용하고 있습니다.</value>
+  </data>
+  <data name="FavoriteOnlyFor" xml:space="preserve">
+    <value>{0}에만 적용</value>
+  </data>
+  <data name="FavoriteQuery" xml:space="preserve">
+    <value>쿼리</value>
+  </data>
+  <data name="FavoriteSaveTitle" xml:space="preserve">
+    <value>즐겨찾기 저장</value>
+  </data>
+  <data name="FavoritesCreate" xml:space="preserve">
+    <value>생성</value>
+  </data>
+  <data name="FavoritesEmpty" xml:space="preserve">
+    <value>편집기 도구 모음의 별표로 쿼리를 저장하세요.</value>
+  </data>
+  <data name="FavoritesNewFolderLink" xml:space="preserve">
+    <value>새 폴더</value>
+  </data>
+  <data name="FavoritesNewFolderTitle" xml:space="preserve">
+    <value>새 폴더</value>
+  </data>
+  <data name="FavoritesSearch" xml:space="preserve">
+    <value>즐겨찾기 검색</value>
+  </data>
+  <data name="HistoryClear" xml:space="preserve">
+    <value>이 연결의 기록 지우기</value>
+  </data>
+  <data name="HistoryLoadMore" xml:space="preserve">
+    <value>더 불러오기</value>
+  </data>
+  <data name="HistoryOutcomeAll" xml:space="preserve">
+    <value>전체</value>
+  </data>
+  <data name="HistoryOutcomeFailed" xml:space="preserve">
+    <value>실패</value>
+  </data>
+  <data name="HistoryOutcomeSucceeded" xml:space="preserve">
+    <value>성공</value>
+  </data>
+  <data name="HistoryRows_One" xml:space="preserve">
+    <value>{0:N0}행</value>
+  </data>
+  <data name="HistoryRows_Other" xml:space="preserve">
+    <value>{0:N0}행</value>
+  </data>
+  <data name="HistoryRunInNewTab" xml:space="preserve">
+    <value>새 탭에서 실행</value>
+  </data>
+  <data name="HistoryScopeAllConnections" xml:space="preserve">
+    <value>모든 연결</value>
+  </data>
+  <data name="HistoryScopeThisConnection" xml:space="preserve">
+    <value>이 연결</value>
+  </data>
+  <data name="HistorySearch" xml:space="preserve">
+    <value>기록 검색</value>
+  </data>
+  <data name="InsertIntoEditor" xml:space="preserve">
+    <value>편집기에 삽입</value>
+  </data>
+  <data name="QuickSwitcherKindDatabase" xml:space="preserve">
+    <value>데이터베이스</value>
+  </data>
+  <data name="QuickSwitcherKindSchema" xml:space="preserve">
+    <value>스키마</value>
+  </data>
+  <data name="QuickSwitcherKindTab" xml:space="preserve">
+    <value>열린 탭</value>
+  </data>
+  <data name="QuickSwitcherNoMatches" xml:space="preserve">
+    <value>일치 항목 없음</value>
+  </data>
+  <data name="QuickSwitcherPlaceholder" xml:space="preserve">
+    <value>테이블, 뷰, 루틴, 데이터베이스, 스키마 또는 탭 열기</value>
+  </data>
+  <data name="QuickSwitcherRowName" xml:space="preserve">
+    <value>{0}, {1}</value>
+  </data>
+  <data name="QuickSwitcherTitle" xml:space="preserve">
+    <value>빠르게 열기</value>
+  </data>
+</root>

@@ -1,0 +1,708 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="CopyActionAppend" xml:space="preserve">
+    <value>Add rows to</value>
+    <comment>Copy Objects review: bold label shown before an object name, saying what the copy will do to it.</comment>
+  </data>
+  <data name="CopyActionCreate" xml:space="preserve">
+    <value>Create</value>
+    <comment>Copy Objects review: bold label shown before an object name, saying what the copy will do to it.</comment>
+  </data>
+  <data name="CopyActionEmptyAndFill" xml:space="preserve">
+    <value>Empty and fill</value>
+    <comment>Copy Objects review: bold label shown before a table name; the table is emptied, then filled with the copied rows.</comment>
+  </data>
+  <data name="CopyActionReplace" xml:space="preserve">
+    <value>Replace</value>
+    <comment>Copy Objects review: bold label shown before an object name, saying what the copy will do to it.</comment>
+  </data>
+  <data name="CopyActionSkip" xml:space="preserve">
+    <value>Skip</value>
+    <comment>Copy Objects review: bold label shown before an object name, saying what the copy will do to it.</comment>
+  </data>
+  <data name="CopyCannotConnect" xml:space="preserve">
+    <value>Cannot connect to {0}</value>
+    <comment>{0} is the target connection name.</comment>
+  </data>
+  <data name="CopyContentData" xml:space="preserve">
+    <value>Data only</value>
+    <comment>Copy Objects: radio button under the "Copy" header.</comment>
+  </data>
+  <data name="CopyContentHeader" xml:space="preserve">
+    <value>Copy</value>
+    <comment>Copy Objects: header of the radio buttons choosing structure, data or both.</comment>
+  </data>
+  <data name="CopyContentStructure" xml:space="preserve">
+    <value>Structure only</value>
+    <comment>Copy Objects: radio button under the "Copy" header.</comment>
+  </data>
+  <data name="CopyContentStructureAndData" xml:space="preserve">
+    <value>Structure and data</value>
+    <comment>Copy Objects: radio button under the "Copy" header.</comment>
+  </data>
+  <data name="CopyCrossEngineNote" xml:space="preserve">
+    <value>{0} and {1} are different engines, so column types are translated. Check them before copying.</value>
+    <comment>{0} is the source connection name, {1} the target connection name.</comment>
+  </data>
+  <data name="CopyFailedTitle" xml:space="preserve">
+    <value>Copy failed</value>
+  </data>
+  <data name="CopyFinishedTitle" xml:space="preserve">
+    <value>Copy finished</value>
+  </data>
+  <data name="CopyFinishedWithProblemsTitle" xml:space="preserve">
+    <value>Copy finished with problems</value>
+  </data>
+  <data name="CopyKindFunction" xml:space="preserve">
+    <value>function</value>
+    <comment>Object kind shown in parentheses after an object name, lowercase.</comment>
+  </data>
+  <data name="CopyKindMaterializedView" xml:space="preserve">
+    <value>materialized view</value>
+    <comment>Object kind shown in parentheses after an object name, lowercase.</comment>
+  </data>
+  <data name="CopyKindProcedure" xml:space="preserve">
+    <value>procedure</value>
+    <comment>Object kind shown in parentheses after an object name, lowercase.</comment>
+  </data>
+  <data name="CopyKindSequence" xml:space="preserve">
+    <value>sequence</value>
+    <comment>Object kind shown in parentheses after an object name, lowercase.</comment>
+  </data>
+  <data name="CopyKindTable" xml:space="preserve">
+    <value>table</value>
+    <comment>Object kind shown in parentheses after an object name, lowercase.</comment>
+  </data>
+  <data name="CopyKindView" xml:space="preserve">
+    <value>view</value>
+    <comment>Object kind (a database view) shown in parentheses after an object name, lowercase.</comment>
+  </data>
+  <data name="CopyObjectsCopied_One" xml:space="preserve">
+    <value>Copied {0} object. {1}</value>
+    <comment>{0} is the number of objects copied; {1} is the sentence saying how many rows were copied where.</comment>
+  </data>
+  <data name="CopyObjectsCopied_Other" xml:space="preserve">
+    <value>Copied {0} objects. {1}</value>
+    <comment>{0} is the number of objects copied; {1} is the sentence saying how many rows were copied where.</comment>
+  </data>
+  <data name="CopyObjectsFrom" xml:space="preserve">
+    <value>Objects from {0}</value>
+    <comment>{0} is the source connection name.</comment>
+  </data>
+  <data name="CopyObjectsTitle" xml:space="preserve">
+    <value>Copy Objects</value>
+    <comment>Dialog title.</comment>
+  </data>
+  <data name="CopyOnError" xml:space="preserve">
+    <value>On error</value>
+  </data>
+  <data name="CopyOnErrorSkip" xml:space="preserve">
+    <value>Skip the failed object and continue</value>
+  </data>
+  <data name="CopyOnErrorStop" xml:space="preserve">
+    <value>Stop at the first failure</value>
+  </data>
+  <data name="CopyOutcomeCopied" xml:space="preserve">
+    <value>Copied</value>
+    <comment>Copy report: bold status label before an object name.</comment>
+  </data>
+  <data name="CopyOutcomeFailed" xml:space="preserve">
+    <value>Failed</value>
+    <comment>Copy report: bold status label before an object name.</comment>
+  </data>
+  <data name="CopyOutcomeNameRows_One" xml:space="preserve">
+    <value>{1}, {0:N0} row</value>
+    <comment>Copy report: {1} is the object name, {0} the number of rows copied into it.</comment>
+  </data>
+  <data name="CopyOutcomeNameRows_Other" xml:space="preserve">
+    <value>{1}, {0:N0} rows</value>
+    <comment>Copy report: {1} is the object name, {0} the number of rows copied into it.</comment>
+  </data>
+  <data name="CopyOutcomeSkipped" xml:space="preserve">
+    <value>Skipped</value>
+    <comment>Copy report: bold status label before an object name.</comment>
+  </data>
+  <data name="CopyOutcomeStopped" xml:space="preserve">
+    <value>Stopped</value>
+    <comment>Copy report: bold status label before an object name.</comment>
+  </data>
+  <data name="CopyPhaseCopyingRows" xml:space="preserve">
+    <value>Copying rows of {0}</value>
+    <comment>Copy progress. {0} is the object name.</comment>
+  </data>
+  <data name="CopyPhaseCreating" xml:space="preserve">
+    <value>Creating {0}</value>
+    <comment>Copy progress. {0} is the object name.</comment>
+  </data>
+  <data name="CopyPhaseDropping" xml:space="preserve">
+    <value>Dropping {0}</value>
+    <comment>Copy progress. {0} is the object name.</comment>
+  </data>
+  <data name="CopyPhaseFinishing" xml:space="preserve">
+    <value>Finishing</value>
+    <comment>Copy progress.</comment>
+  </data>
+  <data name="CopyPhaseIndexing" xml:space="preserve">
+    <value>Indexing {0}</value>
+    <comment>Copy progress. {0} is the table name.</comment>
+  </data>
+  <data name="CopyPhaseLinkingKeys" xml:space="preserve">
+    <value>Adding the keys of {0}</value>
+    <comment>Copy progress. {0} is the table name; the keys are its foreign keys.</comment>
+  </data>
+  <data name="CopyPhasePreparing" xml:space="preserve">
+    <value>Preparing</value>
+    <comment>Copy progress.</comment>
+  </data>
+  <data name="CopyPolicyAppend" xml:space="preserve">
+    <value>Add rows to it</value>
+    <comment>Radio button: what to do when the target already has an object of that name.</comment>
+  </data>
+  <data name="CopyPolicyHeader" xml:space="preserve">
+    <value>When the target already has an object of that name</value>
+  </data>
+  <data name="CopyPolicyReplace" xml:space="preserve">
+    <value>Replace it</value>
+    <comment>Radio button: what to do when the target already has an object of that name.</comment>
+  </data>
+  <data name="CopyPolicySkip" xml:space="preserve">
+    <value>Skip it</value>
+    <comment>Radio button: what to do when the target already has an object of that name.</comment>
+  </data>
+  <data name="CopyProgressName" xml:space="preserve">
+    <value>Copy progress</value>
+    <comment>Screen reader name of the progress bar.</comment>
+  </data>
+  <data name="CopyProgressTitle" xml:space="preserve">
+    <value>Copying</value>
+    <comment>Title of the progress dialog.</comment>
+  </data>
+  <data name="CopyReviewButton" xml:space="preserve">
+    <value>Copy</value>
+    <comment>Primary button (verb) of the Copy Objects review: starts copying the objects.</comment>
+  </data>
+  <data name="CopyReviewTitle" xml:space="preserve">
+    <value>Copy to {0}</value>
+    <comment>{0} is the target connection name.</comment>
+  </data>
+  <data name="CopyRowsCopiedTo_One" xml:space="preserve">
+    <value>{0:N0} row copied to {1}.</value>
+    <comment>{0} is the number of rows copied, {1} the target connection name.</comment>
+  </data>
+  <data name="CopyRowsCopiedTo_Other" xml:space="preserve">
+    <value>{0:N0} rows copied to {1}.</value>
+    <comment>{0} is the number of rows copied, {1} the target connection name.</comment>
+  </data>
+  <data name="CopyRowsCopied_One" xml:space="preserve">
+    <value>{0:N0} row copied</value>
+    <comment>Copy progress. {0} is the number of rows copied so far.</comment>
+  </data>
+  <data name="CopyRowsCopied_Other" xml:space="preserve">
+    <value>{0:N0} rows copied</value>
+    <comment>Copy progress. {0} is the number of rows copied so far.</comment>
+  </data>
+  <data name="CopySelectNone" xml:space="preserve">
+    <value>Select None</value>
+    <comment>Link that clears every object check box.</comment>
+  </data>
+  <data name="CopyStoppedTitle" xml:space="preserve">
+    <value>Copy stopped</value>
+  </data>
+  <data name="CopyTargetSchema" xml:space="preserve">
+    <value>Target schema</value>
+  </data>
+  <data name="CopyThisConnection" xml:space="preserve">
+    <value>{0} (this connection)</value>
+    <comment>{0} is the current connection name, the first choice in the target list.</comment>
+  </data>
+  <data name="CopyTo" xml:space="preserve">
+    <value>Copy to</value>
+    <comment>Header of the target connection picker.</comment>
+  </data>
+  <data name="GenCannotReadTable" xml:space="preserve">
+    <value>Cannot read the table</value>
+  </data>
+  <data name="GenColumns" xml:space="preserve">
+    <value>Columns</value>
+    <comment>Screen reader name of the column list in Generate Rows.</comment>
+  </data>
+  <data name="GenDateFrom" xml:space="preserve">
+    <value>From</value>
+    <comment>Header of the start date of a date range.</comment>
+  </data>
+  <data name="GenDateTo" xml:space="preserve">
+    <value>To</value>
+    <comment>Header of the end date of a date range.</comment>
+  </data>
+  <data name="GenDecimalPlaces" xml:space="preserve">
+    <value>Decimal places</value>
+  </data>
+  <data name="GenFixIssues" xml:space="preserve">
+    <value>Fix these before generating</value>
+    <comment>Title of the warning that lists problems in the Generate Rows settings.</comment>
+  </data>
+  <data name="GenGenerate" xml:space="preserve">
+    <value>Generate</value>
+    <comment>Primary button (verb) of Generate Rows.</comment>
+  </data>
+  <data name="GenGenerator" xml:space="preserve">
+    <value>Generator</value>
+    <comment>Header of the picker choosing how a column's values are made.</comment>
+  </data>
+  <data name="GenInsert" xml:space="preserve">
+    <value>Insert</value>
+    <comment>Button (verb) confirming the insert of generated rows.</comment>
+  </data>
+  <data name="GenInsertConfirmMessage_One" xml:space="preserve">
+    <value>Insert {0:N0} generated row into {1}?</value>
+    <comment>{0} is the number of rows, {1} the table name.</comment>
+  </data>
+  <data name="GenInsertConfirmMessage_Other" xml:space="preserve">
+    <value>Insert {0:N0} generated rows into {1}?</value>
+    <comment>{0} is the number of rows, {1} the table name.</comment>
+  </data>
+  <data name="GenInsertConfirmTitle" xml:space="preserve">
+    <value>Insert rows?</value>
+  </data>
+  <data name="GenInserted_One" xml:space="preserve">
+    <value>Inserted {0:N0} row into {1}.</value>
+    <comment>{0} is the number of rows inserted, {1} the table name.</comment>
+  </data>
+  <data name="GenInserted_Other" xml:space="preserve">
+    <value>Inserted {0:N0} rows into {1}.</value>
+    <comment>{0} is the number of rows inserted, {1} the table name.</comment>
+  </data>
+  <data name="GenListValues" xml:space="preserve">
+    <value>Values, one per line</value>
+  </data>
+  <data name="GenLongest" xml:space="preserve">
+    <value>Longest</value>
+    <comment>Header of the maximum text length.</comment>
+  </data>
+  <data name="GenMaximum" xml:space="preserve">
+    <value>Maximum</value>
+  </data>
+  <data name="GenMinimum" xml:space="preserve">
+    <value>Minimum</value>
+  </data>
+  <data name="GenNewSeed" xml:space="preserve">
+    <value>New seed</value>
+    <comment>Screen reader name of the button that picks a new random seed.</comment>
+  </data>
+  <data name="GenNewSeedTip" xml:space="preserve">
+    <value>New seed: the same seed and settings always give the same rows</value>
+    <comment>Tooltip of the button that picks a new random seed.</comment>
+  </data>
+  <data name="GenNoGenerator" xml:space="preserve">
+    <value>No generator can fill this type.</value>
+  </data>
+  <data name="GenNullValues" xml:space="preserve">
+    <value>NULL values</value>
+    <comment>Slider header: the share of rows that get NULL. NULL is the SQL keyword and stays untranslated.</comment>
+  </data>
+  <data name="GenOpenAsSql" xml:space="preserve">
+    <value>Open as SQL</value>
+    <comment>Button that opens the rows as INSERT statements in an editor tab.</comment>
+  </data>
+  <data name="GenPattern" xml:space="preserve">
+    <value>Pattern</value>
+  </data>
+  <data name="GenPatternHelp" xml:space="preserve">
+    <value># is a digit, ? a letter, * either, and \ makes the next character literal.</value>
+    <comment>Help under the Pattern box. The characters #, ?, * and \ are pattern syntax and stay as they are.</comment>
+  </data>
+  <data name="GenPreview" xml:space="preserve">
+    <value>Preview</value>
+    <comment>Heading above the preview grid (noun).</comment>
+  </data>
+  <data name="GenPreviewName" xml:space="preserve">
+    <value>Preview of the first rows</value>
+    <comment>Screen reader name of the preview grid.</comment>
+  </data>
+  <data name="GenPreviewNote" xml:space="preserve">
+    <value>The first rows of {0:N0}. Columns left to the server are not shown.</value>
+    <comment>Under the preview grid. {0} is the total number of rows that will be generated.</comment>
+  </data>
+  <data name="GenPreviewWaiting" xml:space="preserve">
+    <value>The preview appears once the settings have no problems.</value>
+  </data>
+  <data name="GenProgressTitle" xml:space="preserve">
+    <value>Generating Rows</value>
+    <comment>Title of the progress dialog.</comment>
+  </data>
+  <data name="GenProgress_One" xml:space="preserve">
+    <value>{1:N0} of {0:N0} row</value>
+    <comment>Progress text. {1} is the number of rows written so far, {0} the total.</comment>
+  </data>
+  <data name="GenProgress_Other" xml:space="preserve">
+    <value>{1:N0} of {0:N0} rows</value>
+    <comment>Progress text. {1} is the number of rows written so far, {0} the total.</comment>
+  </data>
+  <data name="GenReadOnlyMessage" xml:space="preserve">
+    <value>Safe Mode is Read-Only on this connection, so no rows can be inserted.</value>
+    <comment>"Safe Mode" and "Read-Only" are the names of the setting and its level elsewhere in the app; translate them the same way.</comment>
+  </data>
+  <data name="GenReadOnlyTitle" xml:space="preserve">
+    <value>Read-only connection</value>
+  </data>
+  <data name="GenReferenceNote" xml:space="preserve">
+    <value>Takes a value of the referenced key.</value>
+  </data>
+  <data name="GenReferenceSampledNote_One" xml:space="preserve">
+    <value>Takes a value from {1}, sampled from {0:N0} of its rows. Every column of the key comes from the same row.</value>
+    <comment>{1} is the referenced table name, {0} the number of its rows that were sampled.</comment>
+  </data>
+  <data name="GenReferenceSampledNote_Other" xml:space="preserve">
+    <value>Takes a value from {1}, sampled from {0:N0} of its rows. Every column of the key comes from the same row.</value>
+    <comment>{1} is the referenced table name, {0} the number of its rows that were sampled.</comment>
+  </data>
+  <data name="GenRows" xml:space="preserve">
+    <value>Rows</value>
+    <comment>Header of the number box for how many rows to generate.</comment>
+  </data>
+  <data name="GenSeed" xml:space="preserve">
+    <value>Seed</value>
+    <comment>Header of the random seed number box.</comment>
+  </data>
+  <data name="GenServerDefaultNote" xml:space="preserve">
+    <value>Left out of every INSERT, so the column takes its default or NULL.</value>
+    <comment>INSERT and NULL are SQL keywords and stay untranslated.</comment>
+  </data>
+  <data name="GenServerFillsNote" xml:space="preserve">
+    <value>The server fills this column itself.</value>
+  </data>
+  <data name="GenShortest" xml:space="preserve">
+    <value>Shortest</value>
+    <comment>Header of the minimum text length.</comment>
+  </data>
+  <data name="GenStart" xml:space="preserve">
+    <value>Start</value>
+    <comment>Header of a sequence's first value (noun).</comment>
+  </data>
+  <data name="GenStep" xml:space="preserve">
+    <value>Step</value>
+    <comment>Header of the amount a sequence grows by (noun).</comment>
+  </data>
+  <data name="GenStoppedAfter_One" xml:space="preserve">
+    <value>Stopped after {0:N0} row; it stays in {1}.</value>
+    <comment>{0} is the number of rows written before Stop, {1} the table name.</comment>
+  </data>
+  <data name="GenStoppedAfter_Other" xml:space="preserve">
+    <value>Stopped after {0:N0} rows; they stay in {1}.</value>
+    <comment>{0} is the number of rows written before Stop, {1} the table name.</comment>
+  </data>
+  <data name="GenStoppedMessage_One" xml:space="preserve">
+    <value>{1}
+
+{0:N0} row was inserted before it and stays in the table.</value>
+    <comment>{1} is the error message, {0} the number of rows inserted before the error.</comment>
+  </data>
+  <data name="GenStoppedMessage_Other" xml:space="preserve">
+    <value>{1}
+
+{0:N0} rows were inserted before it and stay in the table.</value>
+    <comment>{1} is the error message, {0} the number of rows inserted before the error.</comment>
+  </data>
+  <data name="GenStoppedTitle" xml:space="preserve">
+    <value>Generate Rows stopped</value>
+  </data>
+  <data name="GenTitle" xml:space="preserve">
+    <value>Generate Rows for {0}</value>
+    <comment>Dialog title. {0} is the table name.</comment>
+  </data>
+  <data name="GenTrueValues" xml:space="preserve">
+    <value>True values</value>
+    <comment>Slider header: the share of rows that get true.</comment>
+  </data>
+  <data name="GenUuidVersion" xml:space="preserve">
+    <value>Version</value>
+    <comment>Header of the UUID version picker.</comment>
+  </data>
+  <data name="GenUuidVersion4" xml:space="preserve">
+    <value>Version 4 (random)</value>
+  </data>
+  <data name="GenUuidVersion7" xml:space="preserve">
+    <value>Version 7 (time-ordered)</value>
+  </data>
+  <data name="GenVocabularyNote" xml:space="preserve">
+    <value>Makes {0} values from a fixed vocabulary, the same for a seed in every version of TablePro.</value>
+    <comment>{0} is a generator name in lowercase, such as "first name" or "city".</comment>
+  </data>
+  <data name="GeneratorBoolean" xml:space="preserve">
+    <value>Boolean</value>
+    <comment>Generator name in the Generate Rows picker.</comment>
+  </data>
+  <data name="GeneratorCity" xml:space="preserve">
+    <value>City</value>
+    <comment>Generator name in the Generate Rows picker.</comment>
+  </data>
+  <data name="GeneratorCountry" xml:space="preserve">
+    <value>Country</value>
+    <comment>Generator name in the Generate Rows picker.</comment>
+  </data>
+  <data name="GeneratorDate" xml:space="preserve">
+    <value>Date</value>
+    <comment>Generator name in the Generate Rows picker.</comment>
+  </data>
+  <data name="GeneratorDateTime" xml:space="preserve">
+    <value>Date and Time</value>
+    <comment>Generator name in the Generate Rows picker.</comment>
+  </data>
+  <data name="GeneratorDecimalRange" xml:space="preserve">
+    <value>Decimal Range</value>
+    <comment>Generator name in the Generate Rows picker.</comment>
+  </data>
+  <data name="GeneratorEmail" xml:space="preserve">
+    <value>Email</value>
+    <comment>Generator name in the Generate Rows picker.</comment>
+  </data>
+  <data name="GeneratorFirstName" xml:space="preserve">
+    <value>First Name</value>
+    <comment>Generator name in the Generate Rows picker.</comment>
+  </data>
+  <data name="GeneratorFullName" xml:space="preserve">
+    <value>Full Name</value>
+    <comment>Generator name in the Generate Rows picker.</comment>
+  </data>
+  <data name="GeneratorIntegerRange" xml:space="preserve">
+    <value>Number Range</value>
+    <comment>Generator name in the Generate Rows picker: whole numbers in a range.</comment>
+  </data>
+  <data name="GeneratorJson" xml:space="preserve">
+    <value>JSON</value>
+    <comment>Generator name in the Generate Rows picker.</comment>
+  </data>
+  <data name="GeneratorLastName" xml:space="preserve">
+    <value>Last Name</value>
+    <comment>Generator name in the Generate Rows picker.</comment>
+  </data>
+  <data name="GeneratorList" xml:space="preserve">
+    <value>List of Values</value>
+    <comment>Generator name in the Generate Rows picker.</comment>
+  </data>
+  <data name="GeneratorPattern" xml:space="preserve">
+    <value>Pattern</value>
+    <comment>Generator name in the Generate Rows picker.</comment>
+  </data>
+  <data name="GeneratorPhone" xml:space="preserve">
+    <value>Phone Number</value>
+    <comment>Generator name in the Generate Rows picker.</comment>
+  </data>
+  <data name="GeneratorReference" xml:space="preserve">
+    <value>Referenced Value</value>
+    <comment>Generator name in the Generate Rows picker: a value of a foreign key's parent row.</comment>
+  </data>
+  <data name="GeneratorSequence" xml:space="preserve">
+    <value>Sequence</value>
+    <comment>Generator name in the Generate Rows picker: counting numbers.</comment>
+  </data>
+  <data name="GeneratorServerDefault" xml:space="preserve">
+    <value>Server Default</value>
+    <comment>Generator name in the Generate Rows picker: the column is left to the server.</comment>
+  </data>
+  <data name="GeneratorStreetAddress" xml:space="preserve">
+    <value>Street Address</value>
+    <comment>Generator name in the Generate Rows picker.</comment>
+  </data>
+  <data name="GeneratorText" xml:space="preserve">
+    <value>Text</value>
+    <comment>Generator name in the Generate Rows picker.</comment>
+  </data>
+  <data name="GeneratorTime" xml:space="preserve">
+    <value>Time</value>
+    <comment>Generator name in the Generate Rows picker.</comment>
+  </data>
+  <data name="GeneratorUuid" xml:space="preserve">
+    <value>UUID</value>
+    <comment>Generator name in the Generate Rows picker.</comment>
+  </data>
+  <data name="JoinAddFilter" xml:space="preserve">
+    <value>Add Filter</value>
+  </data>
+  <data name="JoinAddSort" xml:space="preserve">
+    <value>Add Sort</value>
+  </data>
+  <data name="JoinAscending" xml:space="preserve">
+    <value>Ascending</value>
+    <comment>Sort direction.</comment>
+  </data>
+  <data name="JoinCannotReadTables" xml:space="preserve">
+    <value>Cannot read the tables</value>
+  </data>
+  <data name="JoinClearQuery" xml:space="preserve">
+    <value>Clear the query</value>
+    <comment>Tooltip and screen reader name of a toolbar button.</comment>
+  </data>
+  <data name="JoinColumn" xml:space="preserve">
+    <value>Column</value>
+    <comment>Screen reader name of a column picker.</comment>
+  </data>
+  <data name="JoinConditionFor" xml:space="preserve">
+    <value>Join condition for {0}</value>
+    <comment>Screen reader name. {0} is the table name.</comment>
+  </data>
+  <data name="JoinCopySql" xml:space="preserve">
+    <value>Copy SQL</value>
+  </data>
+  <data name="JoinCrossJoin" xml:space="preserve">
+    <value>Cross join (no condition)</value>
+    <comment>Last choice of the join condition picker.</comment>
+  </data>
+  <data name="JoinDescending" xml:space="preserve">
+    <value>Descending</value>
+    <comment>Sort direction.</comment>
+  </data>
+  <data name="JoinFilterTables" xml:space="preserve">
+    <value>Filter tables</value>
+    <comment>Placeholder of the box that filters the table list.</comment>
+  </data>
+  <data name="JoinGeneratedSql" xml:space="preserve">
+    <value>Generated SQL</value>
+    <comment>Screen reader name of the SQL preview.</comment>
+  </data>
+  <data name="JoinHintCrossJoined_One" xml:space="preserve">
+    <value>No foreign key links {1} to the tables before it, so it is cross joined.</value>
+    <comment>{1} is the table name; {0} is the number of such tables.</comment>
+  </data>
+  <data name="JoinHintCrossJoined_Other" xml:space="preserve">
+    <value>No foreign key links {1} to the tables before them, so they are cross joined.</value>
+    <comment>{1} is a comma-separated list of table names; {0} is how many there are.</comment>
+  </data>
+  <data name="JoinHintStart" xml:space="preserve">
+    <value>Pick the tables to join. Their foreign keys become the join conditions.</value>
+  </data>
+  <data name="JoinKindFull" xml:space="preserve">
+    <value>Full Join</value>
+    <comment>Join type in the picker. The SQL itself stays FULL JOIN.</comment>
+  </data>
+  <data name="JoinKindInner" xml:space="preserve">
+    <value>Inner Join</value>
+    <comment>Join type in the picker. The SQL itself stays INNER JOIN.</comment>
+  </data>
+  <data name="JoinKindLeft" xml:space="preserve">
+    <value>Left Join</value>
+    <comment>Join type in the picker. The SQL itself stays LEFT JOIN.</comment>
+  </data>
+  <data name="JoinKindRight" xml:space="preserve">
+    <value>Right Join</value>
+    <comment>Join type in the picker. The SQL itself stays RIGHT JOIN.</comment>
+  </data>
+  <data name="JoinNoTables" xml:space="preserve">
+    <value>This schema reports no tables to join.</value>
+  </data>
+  <data name="JoinOpenInQueryTab" xml:space="preserve">
+    <value>Open in Query Tab</value>
+  </data>
+  <data name="JoinOperator" xml:space="preserve">
+    <value>Operator</value>
+    <comment>Screen reader name of a filter's operator picker.</comment>
+  </data>
+  <data name="JoinPickSecondTable" xml:space="preserve">
+    <value>Pick a second table to join it.</value>
+  </data>
+  <data name="JoinReadingTables" xml:space="preserve">
+    <value>Reading the tables…</value>
+  </data>
+  <data name="JoinReadingTablesProgress" xml:space="preserve">
+    <value>Reading the tables… {0}/{1}</value>
+    <comment>{0} tables read so far, {1} in total.</comment>
+  </data>
+  <data name="JoinReloadTables" xml:space="preserve">
+    <value>Reload tables</value>
+    <comment>Tooltip and screen reader name of a toolbar button.</comment>
+  </data>
+  <data name="JoinRemoveFilter" xml:space="preserve">
+    <value>Remove filter</value>
+  </data>
+  <data name="JoinRemoveSort" xml:space="preserve">
+    <value>Remove sort</value>
+  </data>
+  <data name="JoinRemoveTable" xml:space="preserve">
+    <value>Remove {0}</value>
+    <comment>Tooltip of the button on a table card. {0} is the table name.</comment>
+  </data>
+  <data name="JoinSecondValue" xml:space="preserve">
+    <value>Second value</value>
+    <comment>Screen reader name of the upper bound of a "between" filter.</comment>
+  </data>
+  <data name="JoinSectionFilters" xml:space="preserve">
+    <value>Filters</value>
+    <comment>Section heading.</comment>
+  </data>
+  <data name="JoinSectionJoins" xml:space="preserve">
+    <value>Joins</value>
+    <comment>Section heading (noun).</comment>
+  </data>
+  <data name="JoinSectionSort" xml:space="preserve">
+    <value>Sort</value>
+    <comment>Section heading (noun).</comment>
+  </data>
+  <data name="JoinSelectColumn" xml:space="preserve">
+    <value>Select {0}.{1}</value>
+    <comment>Screen reader name of a column check box. {0} is the table name, {1} the column name.</comment>
+  </data>
+  <data name="JoinShowingTables_One" xml:space="preserve">
+    <value>Showing {1} of {0} table</value>
+    <comment>{1} is the number of tables listed, {0} the number in the schema.</comment>
+  </data>
+  <data name="JoinShowingTables_Other" xml:space="preserve">
+    <value>Showing {1} of {0} tables</value>
+    <comment>{1} is the number of tables listed, {0} the number in the schema.</comment>
+  </data>
+  <data name="JoinSortDirection" xml:space="preserve">
+    <value>Sort direction</value>
+  </data>
+  <data name="JoinSqlPlaceholder" xml:space="preserve">
+    <value>-- Pick a table to start.</value>
+    <comment>Shown in the SQL preview as a SQL comment; keep the leading "-- ".</comment>
+  </data>
+  <data name="JoinTabTitle" xml:space="preserve">
+    <value>Join Builder</value>
+    <comment>Tab title.</comment>
+  </data>
+  <data name="JoinTableCount_One" xml:space="preserve">
+    <value>{0} table</value>
+    <comment>{0} is the number of tables in the schema.</comment>
+  </data>
+  <data name="JoinTableCount_Other" xml:space="preserve">
+    <value>{0} tables</value>
+    <comment>{0} is the number of tables in the schema.</comment>
+  </data>
+  <data name="JoinTryAgain" xml:space="preserve">
+    <value>Try Again</value>
+  </data>
+  <data name="JoinTypeFor" xml:space="preserve">
+    <value>Join type for {0}</value>
+    <comment>Screen reader name. {0} is the table name.</comment>
+  </data>
+  <data name="JoinValueFrom" xml:space="preserve">
+    <value>From</value>
+    <comment>Placeholder of the lower bound of a "between" filter.</comment>
+  </data>
+  <data name="JoinValueTo" xml:space="preserve">
+    <value>To</value>
+    <comment>Placeholder of the upper bound of a "between" filter.</comment>
+  </data>
+  <data name="JoinZoomIn" xml:space="preserve">
+    <value>Zoom in</value>
+  </data>
+  <data name="JoinZoomOut" xml:space="preserve">
+    <value>Zoom out</value>
+  </data>
+  <data name="Starting" xml:space="preserve">
+    <value>Starting…</value>
+    <comment>Progress text before the first batch.</comment>
+  </data>
+</root>

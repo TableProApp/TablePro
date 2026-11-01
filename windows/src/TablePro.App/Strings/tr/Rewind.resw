@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="CannotRestoreMessage" xml:space="preserve">
+    <value>Bu kayıt artık okunamıyor. Kaydı temizlenmiş ya da kaydedilen değişiklikleri koruyan anahtar artık yok.</value>
+  </data>
+  <data name="CannotRestoreTitle" xml:space="preserve">
+    <value>Geri yüklenemiyor</value>
+  </data>
+  <data name="ClearConfirmMessage" xml:space="preserve">
+    <value>Zaten işlenmiş kayıtlar işlenmiş kalır. Önceki değerlerini geri yükleyemezsiniz.</value>
+  </data>
+  <data name="ClearConfirmTitle" xml:space="preserve">
+    <value>Kaydedilen değişiklikler silinsin mi?</value>
+  </data>
+  <data name="ClearSavedChanges" xml:space="preserve">
+    <value>Kaydedilen değişiklikleri sil…</value>
+  </data>
+  <data name="DifferentDatabaseMessage" xml:space="preserve">
+    <value>Bu kayıt {0} veritabanında yapıldı. Önce ona geçin, sonra geri yükleyin.</value>
+  </data>
+  <data name="DifferentDatabaseTitle" xml:space="preserve">
+    <value>Farklı veritabanı</value>
+  </data>
+  <data name="EmptyDisabled" xml:space="preserve">
+    <value>Kaydedilen değişiklikleri saklama özelliği kapalı.</value>
+  </data>
+  <data name="EmptyEnabled" xml:space="preserve">
+    <value>Henüz kaydedilen değişiklik yok. Tablo ızgarasından yapılan kayıtlar burada 7 gün boyunca görünür.</value>
+  </data>
+  <data name="Explanation" xml:space="preserve">
+    <value>Her ızgara kaydından önce satırların nasıl göründüğünü yalnızca bu bilgisayarda 7 gün boyunca saklar. Şifrelenir ve hiçbir zaman eşitlenmez.</value>
+  </data>
+  <data name="IsRestore" xml:space="preserve">
+    <value>geri yükleme</value>
+  </data>
+  <data name="NoRowToPutBack" xml:space="preserve">
+    <value>Bu kayıtta geri konulabilecek satır yok.</value>
+  </data>
+  <data name="NothingCanBeRestoredTitle" xml:space="preserve">
+    <value>Geri yüklenebilecek bir şey yok</value>
+  </data>
+  <data name="NothingRestoredTitle" xml:space="preserve">
+    <value>Hiçbir şey geri yüklenmedi</value>
+  </data>
+  <data name="ReadOnlyMessage" xml:space="preserve">
+    <value>Bu bağlantıda Güvenli Mod Salt Okunur olarak ayarlı, bu yüzden kayıt geri yüklenemez.</value>
+  </data>
+  <data name="ReadOnlyTitle" xml:space="preserve">
+    <value>Salt okunur bağlantı</value>
+  </data>
+  <data name="RefusalNoPrimaryKey" xml:space="preserve">
+    <value>Tablonun birincil anahtarı yok, bu yüzden bu satır tanımlanamıyor.</value>
+  </data>
+  <data name="RefusalServerAssignedKey" xml:space="preserve">
+    <value>Bu satırın anahtarını sunucu seçti.</value>
+  </data>
+  <data name="RefusalValueTooLarge" xml:space="preserve">
+    <value>Bir değer saklanamayacak kadar büyüktü.</value>
+  </data>
+  <data name="RestoreButton" xml:space="preserve">
+    <value>Geri Yükle</value>
+  </data>
+  <data name="RestoreButtonName" xml:space="preserve">
+    <value>{0} tablosunu bu kayıttan önceki haline geri yükle</value>
+  </data>
+  <data name="RestoreButtonTip" xml:space="preserve">
+    <value>Önceki değerleri geri yükle</value>
+  </data>
+  <data name="RestoreReviewTitle" xml:space="preserve">
+    <value>{0} tablosunu kayıttan önceki haline geri yükle</value>
+  </data>
+  <data name="RestoredAt" xml:space="preserve">
+    <value>{0} geri yüklendi</value>
+  </data>
+  <data name="Restored_One" xml:space="preserve">
+    <value>{1} tablosunda {0:N0} satır geri yüklendi.</value>
+  </data>
+  <data name="Restored_Other" xml:space="preserve">
+    <value>{1} tablosunda {0:N0} satır geri yüklendi.</value>
+  </data>
+  <data name="ReviewNothingIfChanged" xml:space="preserve">
+    <value>{0} Bu satırlardan herhangi biri kayıttan sonra değiştiyse hiçbir şey geri yüklenmez.</value>
+  </data>
+  <data name="ReviewRowsSkipped_One" xml:space="preserve">
+    <value>{1} {0:N0} satır atlanır: {2}</value>
+  </data>
+  <data name="ReviewRowsSkipped_Other" xml:space="preserve">
+    <value>{1} {0:N0} satır atlanır: {2}</value>
+  </data>
+  <data name="RowChangedMessage" xml:space="preserve">
+    <value>Bu kayıttan sonra bir satır değişti veya kayboldu; geri yüklemek başka birinin çalışmasının üzerine yazar. Hiçbir şey değiştirilmedi.</value>
+  </data>
+  <data name="RowsCannotBeRestored_One" xml:space="preserve">
+    <value>{0:N0} satır geri yüklenemiyor</value>
+  </data>
+  <data name="RowsCannotBeRestored_Other" xml:space="preserve">
+    <value>{0:N0} satır geri yüklenemiyor</value>
+  </data>
+  <data name="ThisTableOnly" xml:space="preserve">
+    <value>Yalnızca bu tablo</value>
+  </data>
+</root>

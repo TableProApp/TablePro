@@ -1,0 +1,160 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AssistantActionBubble" xml:space="preserve">
+    <value>{0}:
+{1}</value>
+  </data>
+  <data name="AssistantExplain" xml:space="preserve">
+    <value>解释</value>
+  </data>
+  <data name="AssistantFixBubble" xml:space="preserve">
+    <value>修复：
+{0}
+
+{1}</value>
+  </data>
+  <data name="AssistantInputPlaceholder" xml:space="preserve">
+    <value>询问有关此数据库的问题</value>
+  </data>
+  <data name="AssistantInsert" xml:space="preserve">
+    <value>插入</value>
+  </data>
+  <data name="AssistantNewConversation" xml:space="preserve">
+    <value>新建</value>
+  </data>
+  <data name="AssistantOptimize" xml:space="preserve">
+    <value>优化</value>
+  </data>
+  <data name="AssistantReview" xml:space="preserve">
+    <value>审查</value>
+  </data>
+  <data name="AssistantSend" xml:space="preserve">
+    <value>发送 (Ctrl+Enter)</value>
+  </data>
+  <data name="AssistantSetUpTitle" xml:space="preserve">
+    <value>设置助手</value>
+  </data>
+  <data name="AssistantStopped" xml:space="preserve">
+    <value>（已停止）</value>
+  </data>
+  <data name="AssistantUsing" xml:space="preserve">
+    <value>正在使用 {0} ({1})。会发送问题、你的 SQL 以及相关表的结构，但不会发送行数据。</value>
+  </data>
+  <data name="FavoriteEditTitle" xml:space="preserve">
+    <value>编辑收藏</value>
+  </data>
+  <data name="FavoriteFolder" xml:space="preserve">
+    <value>文件夹</value>
+  </data>
+  <data name="FavoriteKeyword" xml:space="preserve">
+    <value>关键字</value>
+  </data>
+  <data name="FavoriteKeywordPlaceholder" xml:space="preserve">
+    <value>在编辑器中输入以插入此查询</value>
+  </data>
+  <data name="FavoriteKeywordSpaces" xml:space="preserve">
+    <value>关键字不能包含空格。</value>
+  </data>
+  <data name="FavoriteKeywordTooLong_One" xml:space="preserve">
+    <value>关键字长度不能超过 {0} 个字符。</value>
+  </data>
+  <data name="FavoriteKeywordTooLong_Other" xml:space="preserve">
+    <value>关键字长度不能超过 {0} 个字符。</value>
+  </data>
+  <data name="FavoriteKeywordUsed" xml:space="preserve">
+    <value>其他收藏已在使用此关键字。</value>
+  </data>
+  <data name="FavoriteOnlyFor" xml:space="preserve">
+    <value>仅用于 {0}</value>
+  </data>
+  <data name="FavoriteQuery" xml:space="preserve">
+    <value>查询</value>
+  </data>
+  <data name="FavoriteSaveTitle" xml:space="preserve">
+    <value>保存收藏</value>
+  </data>
+  <data name="FavoritesCreate" xml:space="preserve">
+    <value>创建</value>
+  </data>
+  <data name="FavoritesEmpty" xml:space="preserve">
+    <value>使用编辑器工具栏中的星标保存查询。</value>
+  </data>
+  <data name="FavoritesNewFolderLink" xml:space="preserve">
+    <value>新建文件夹</value>
+  </data>
+  <data name="FavoritesNewFolderTitle" xml:space="preserve">
+    <value>新建文件夹</value>
+  </data>
+  <data name="FavoritesSearch" xml:space="preserve">
+    <value>搜索收藏</value>
+  </data>
+  <data name="HistoryClear" xml:space="preserve">
+    <value>清除此连接的历史记录</value>
+  </data>
+  <data name="HistoryLoadMore" xml:space="preserve">
+    <value>加载更多</value>
+  </data>
+  <data name="HistoryOutcomeAll" xml:space="preserve">
+    <value>全部</value>
+  </data>
+  <data name="HistoryOutcomeFailed" xml:space="preserve">
+    <value>失败</value>
+  </data>
+  <data name="HistoryOutcomeSucceeded" xml:space="preserve">
+    <value>成功</value>
+  </data>
+  <data name="HistoryRows_One" xml:space="preserve">
+    <value>{0:N0} 行</value>
+  </data>
+  <data name="HistoryRows_Other" xml:space="preserve">
+    <value>{0:N0} 行</value>
+  </data>
+  <data name="HistoryRunInNewTab" xml:space="preserve">
+    <value>在新标签页中运行</value>
+  </data>
+  <data name="HistoryScopeAllConnections" xml:space="preserve">
+    <value>所有连接</value>
+  </data>
+  <data name="HistoryScopeThisConnection" xml:space="preserve">
+    <value>此连接</value>
+  </data>
+  <data name="HistorySearch" xml:space="preserve">
+    <value>搜索历史记录</value>
+  </data>
+  <data name="InsertIntoEditor" xml:space="preserve">
+    <value>插入到编辑器</value>
+  </data>
+  <data name="QuickSwitcherKindDatabase" xml:space="preserve">
+    <value>数据库</value>
+  </data>
+  <data name="QuickSwitcherKindSchema" xml:space="preserve">
+    <value>Schema</value>
+  </data>
+  <data name="QuickSwitcherKindTab" xml:space="preserve">
+    <value>已打开的标签页</value>
+  </data>
+  <data name="QuickSwitcherNoMatches" xml:space="preserve">
+    <value>没有匹配</value>
+  </data>
+  <data name="QuickSwitcherPlaceholder" xml:space="preserve">
+    <value>打开表、视图、例程、数据库、Schema 或标签页</value>
+  </data>
+  <data name="QuickSwitcherRowName" xml:space="preserve">
+    <value>{0}, {1}</value>
+  </data>
+  <data name="QuickSwitcherTitle" xml:space="preserve">
+    <value>快速打开</value>
+  </data>
+</root>

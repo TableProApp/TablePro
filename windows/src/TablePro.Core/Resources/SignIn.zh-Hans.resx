@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="ElastiCacheNameRequired" xml:space="preserve">
+    <value>请输入 ElastiCache 缓存名称（复制组 ID）以使用 IAM 身份验证。</value>
+  </data>
+  <data name="ElastiCacheRegionRequired" xml:space="preserve">
+    <value>请输入 ElastiCache 缓存所在的 AWS 区域。</value>
+  </data>
+  <data name="EntraDefault" xml:space="preserve">
+    <value>默认（Azure CLI、Visual Studio、环境变量）</value>
+  </data>
+  <data name="EntraDeviceCode" xml:space="preserve">
+    <value>设备代码</value>
+  </data>
+  <data name="EntraIntegrated" xml:space="preserve">
+    <value>集成（Windows 账户）</value>
+  </data>
+  <data name="EntraInteractive" xml:space="preserve">
+    <value>交互式（浏览器）</value>
+  </data>
+  <data name="EntraManagedIdentity" xml:space="preserve">
+    <value>托管标识</value>
+  </data>
+  <data name="EntraServicePrincipal" xml:space="preserve">
+    <value>服务主体</value>
+  </data>
+  <data name="MethodAwsAccessKey" xml:space="preserve">
+    <value>AWS IAM（Access Key）</value>
+  </data>
+  <data name="MethodAwsProfile" xml:space="preserve">
+    <value>AWS IAM（配置）</value>
+  </data>
+  <data name="MethodAwsSso" xml:space="preserve">
+    <value>AWS IAM（SSO）</value>
+  </data>
+  <data name="MethodEntra" xml:space="preserve">
+    <value>Microsoft Entra ID</value>
+  </data>
+  <data name="MethodGoogleAdc" xml:space="preserve">
+    <value>Google Cloud IAM（应用默认凭据）</value>
+  </data>
+  <data name="MethodGoogleServiceAccount" xml:space="preserve">
+    <value>Google Cloud IAM（服务账号）</value>
+  </data>
+  <data name="MethodKerberos" xml:space="preserve">
+    <value>Kerberos (GSSAPI)</value>
+  </data>
+  <data name="MethodPassword" xml:space="preserve">
+    <value>密码</value>
+  </data>
+  <data name="MethodSqlServer" xml:space="preserve">
+    <value>SQL Server 身份验证</value>
+  </data>
+  <data name="MethodWindows" xml:space="preserve">
+    <value>Windows 身份验证</value>
+  </data>
+  <data name="NoDatabaseUser" xml:space="preserve">
+    <value>{0} 不会签发数据库用户。</value>
+  </data>
+  <data name="NotInThisBuild" xml:space="preserve">
+    <value>此版本不支持 {0} 登录。</value>
+  </data>
+  <data name="RdsEndpointFormat" xml:space="preserve">
+    <value>RDS 终端节点必须为 host 或 host:port。</value>
+  </data>
+  <data name="RdsRegionRequired" xml:space="preserve">
+    <value>主机不是包含区域的 RDS 终端节点，请输入 AWS 区域。</value>
+  </data>
+  <data name="RedshiftEndpointInvalid" xml:space="preserve">
+    <value>“{0}”不是 Redshift 集群或 Serverless 工作组终端节点。</value>
+  </data>
+  <data name="RedshiftEndpointNotApplicable" xml:space="preserve">
+    <value>仅当主机是本地端口转发或同一终端节点时，Redshift 终端节点才适用，而“{0}”两者都不是。</value>
+  </data>
+  <data name="RedshiftEndpointUnknown" xml:space="preserve">
+    <value>TablePro 无法判断“{0}”是哪个 Redshift 集群或工作组。请将主机设为 AWS 颁发的终端节点，例如 my-cluster.abc123.us-east-1.redshift.amazonaws.com；如果通过端口转发连接，请将该终端节点填为 Redshift 终端节点。</value>
+  </data>
+</root>

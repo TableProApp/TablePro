@@ -1,0 +1,160 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="EncodingCannotHold" xml:space="preserve">
+    <value>The file's encoding ({0}) cannot hold these characters. Nothing was changed.</value>
+    <comment>{0} is an encoding name, such as Western European (Windows).</comment>
+  </data>
+  <data name="FileNoLongerExists" xml:space="preserve">
+    <value>The file no longer exists.</value>
+  </data>
+  <data name="FileTooLargeForGit" xml:space="preserve">
+    <value>The file is too large to read from Git.</value>
+  </data>
+  <data name="FolderNotInRepository" xml:space="preserve">
+    <value>This folder is not in a Git repository.</value>
+  </data>
+  <data name="GitAdded" xml:space="preserve">
+    <value>Added</value>
+  </data>
+  <data name="GitBusy" xml:space="preserve">
+    <value>Another Git command is still running in this repository.</value>
+  </data>
+  <data name="GitConflicted" xml:space="preserve">
+    <value>Conflicted</value>
+  </data>
+  <data name="GitCouldNotStart" xml:space="preserve">
+    <value>Git could not be started.</value>
+  </data>
+  <data name="GitExitStatus" xml:space="preserve">
+    <value>Git exited with status {0}.</value>
+    <comment>{0} is the exit code.</comment>
+  </data>
+  <data name="GitHistoryUnavailable" xml:space="preserve">
+    <value>Git history is unavailable: {0}</value>
+    <comment>{0} is why, often what Git printed.</comment>
+  </data>
+  <data name="GitModified" xml:space="preserve">
+    <value>Modified</value>
+  </data>
+  <data name="GitNotInstalled" xml:space="preserve">
+    <value>Git is not installed.</value>
+  </data>
+  <data name="GitOutputTooLarge" xml:space="preserve">
+    <value>Git printed more output than TablePro can read.</value>
+  </data>
+  <data name="GitPartlyStaged" xml:space="preserve">
+    <value>{0}, partly staged</value>
+    <comment>{0} is a Git state such as Modified.</comment>
+  </data>
+  <data name="GitRenamed" xml:space="preserve">
+    <value>Renamed</value>
+  </data>
+  <data name="GitStaged" xml:space="preserve">
+    <value>{0}, staged</value>
+    <comment>{0} is a Git state such as Modified.</comment>
+  </data>
+  <data name="GitTimedOut" xml:space="preserve">
+    <value>Git did not respond in time.</value>
+  </data>
+  <data name="GitUntracked" xml:space="preserve">
+    <value>Untracked</value>
+  </data>
+  <data name="HistoryChangedBeforeWriting" xml:space="preserve">
+    <value>The file or its staged version changed before it could be written. Nothing was replaced.</value>
+  </data>
+  <data name="HistoryFileGone" xml:space="preserve">
+    <value>This file no longer exists.</value>
+  </data>
+  <data name="HistoryGitFailed" xml:space="preserve">
+    <value>Git failed.</value>
+  </data>
+  <data name="HistoryGitUnavailable" xml:space="preserve">
+    <value>Git is not installed. Install Git for Windows to see the file's commits.</value>
+  </data>
+  <data name="HistoryInLfs" xml:space="preserve">
+    <value>This file is stored with Git LFS. Restore it with your Git client.</value>
+  </data>
+  <data name="HistoryNotInRepository" xml:space="preserve">
+    <value>This file is not in a Git repository.</value>
+  </data>
+  <data name="HistoryNotText" xml:space="preserve">
+    <value>This version is not readable as text.</value>
+  </data>
+  <data name="HistoryRestoreFailed" xml:space="preserve">
+    <value>The version could not be restored: {0}</value>
+    <comment>{0} is the reason, often a system message.</comment>
+  </data>
+  <data name="HistoryVersionGone" xml:space="preserve">
+    <value>This version is no longer available.</value>
+  </data>
+  <data name="KeepsLatestSnapshots_One" xml:space="preserve">
+    <value>TablePro keeps the latest {0} saved version of a file.</value>
+    <comment>{0} is how many versions are kept.</comment>
+  </data>
+  <data name="KeepsLatestSnapshots_Other" xml:space="preserve">
+    <value>TablePro keeps the latest {0} saved versions of a file.</value>
+    <comment>{0} is how many versions are kept.</comment>
+  </data>
+  <data name="NameAlreadyExists" xml:space="preserve">
+    <value>A file with this name already exists here.</value>
+  </data>
+  <data name="NameEmpty" xml:space="preserve">
+    <value>Enter a name.</value>
+  </data>
+  <data name="NameInvalidCharacters" xml:space="preserve">
+    <value>A file name cannot contain \ / : * ? " &lt; &gt; or |.</value>
+  </data>
+  <data name="NameReserved" xml:space="preserve">
+    <value>Windows reserves this name for a device.</value>
+  </data>
+  <data name="RecycleBinFailed" xml:space="preserve">
+    <value>The file could not be moved to the Recycle Bin.</value>
+  </data>
+  <data name="RequestFailed" xml:space="preserve">
+    <value>The request failed.</value>
+  </data>
+  <data name="SavedInTablePro" xml:space="preserve">
+    <value>Saved in TablePro</value>
+    <comment>The description of a version TablePro kept when the file was saved.</comment>
+  </data>
+  <data name="ShowsLatestCommits_One" xml:space="preserve">
+    <value>Showing the latest {0} commit.</value>
+    <comment>{0} is how many commits are listed.</comment>
+  </data>
+  <data name="ShowsLatestCommits_Other" xml:space="preserve">
+    <value>Showing the latest {0} commits.</value>
+    <comment>{0} is how many commits are listed.</comment>
+  </data>
+  <data name="TeamEmptyResponse" xml:space="preserve">
+    <value>The team library returned an empty response.</value>
+  </data>
+  <data name="TeamNeedsLicense" xml:space="preserve">
+    <value>Activate a Team license to publish to the team library.</value>
+  </data>
+  <data name="TeamTimedOut" xml:space="preserve">
+    <value>The team library did not answer in time.</value>
+  </data>
+  <data name="TeamUnreachable" xml:space="preserve">
+    <value>The team library could not be reached: {0}</value>
+    <comment>{0} is the network error.</comment>
+  </data>
+  <data name="TeamUnreadable" xml:space="preserve">
+    <value>The team library returned a response TablePro cannot read.</value>
+  </data>
+  <data name="UntitledFile" xml:space="preserve">
+    <value>Untitled</value>
+    <comment>The name of a new SQL file, before .sql and any number.</comment>
+  </data>
+</root>

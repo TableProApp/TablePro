@@ -1,0 +1,129 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>$(TableProWindowsTargetFramework)</TargetFramework>
+    <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
+    <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
+    <RootNamespace>TablePro.App</RootNamespace>
+    <AssemblyName>TablePro</AssemblyName>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\TablePro.ico</ApplicationIcon>
+    <Platforms>x64;ARM64</Platforms>
+    <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
+    <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == '' and '$(PROCESSOR_ARCHITECTURE)' == 'ARM64'">win-arm64</RuntimeIdentifier>
+    <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == ''">win-x64</RuntimeIdentifier>
+    <UseWinUI>true</UseWinUI>
+    <!-- Unpackaged and self-contained: the app runs from its folder with no MSIX install or runtime installer. -->
+    <WindowsPackageType>None</WindowsPackageType>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <SelfContained>true</SelfContained>
+    <EnableMsixTooling>true</EnableMsixTooling>
+    <DefaultLanguage>en-US</DefaultLanguage>
+    <!-- XAML x:Bind and CsWinRT generate code these analyzers flag; the app's own code still follows them. -->
+    <NoWarn>$(NoWarn);CA1001;CA1822;CA1859;CA2213;CsWinRT1028;CsWinRT1030;IDE0005</NoWarn>
+    <PublishTrimmed>false</PublishTrimmed>
+    <PublishReadyToRun Condition="'$(Configuration)' == 'Release'">true</PublishReadyToRun>
+    <TieredPGO>true</TieredPGO>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- Program.Main answers ssh's askpass prompt before WinUI starts, so XAML's generated Main is replaced. -->
+    <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
+    <ServerGarbageCollector>false</ServerGarbageCollector>
+    <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Content Include="Assets\**\*" CopyToOutputDirectory="PreserveNewest" />
+    <Manifest Include="$(ApplicationManifest)" />
+  </ItemGroup>
+
+  <!-- Strings\<language>\<Area>.resw become PRI resources through the Windows App SDK's default items. -->
+  <ItemGroup>
+    <Using Include="TablePro.App.Localization" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.WindowsAppSDK" />
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" />
+    <PackageReference Include="CommunityToolkit.Mvvm" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\TablePro.Core\TablePro.Core.csproj" />
+    <ProjectReference Include="..\TablePro.Storage\TablePro.Storage.csproj" />
+    <ProjectReference Include="..\TablePro.Ssh\TablePro.Ssh.csproj" />
+    <ProjectReference Include="..\TablePro.Ai\TablePro.Ai.csproj" />
+    <ProjectReference Include="..\TablePro.Mcp\TablePro.Mcp.csproj" />
+    <ProjectReference Include="..\TablePro.Drivers.PostgreSql\TablePro.Drivers.PostgreSql.csproj" />
+    <ProjectReference Include="..\TablePro.Drivers.MySql\TablePro.Drivers.MySql.csproj" />
+    <ProjectReference Include="..\TablePro.Drivers.SqlServer\TablePro.Drivers.SqlServer.csproj" />
+    <ProjectReference Include="..\TablePro.Drivers.Sqlite\TablePro.Drivers.Sqlite.csproj" />
+    <ProjectReference Include="..\TablePro.Drivers.DuckDb\TablePro.Drivers.DuckDb.csproj" />
+    <ProjectReference Include="..\TablePro.Drivers.Redis\TablePro.Drivers.Redis.csproj" />
+    <ProjectReference Include="..\TablePro.Drivers.ClickHouse\TablePro.Drivers.ClickHouse.csproj" />
+    <ProjectReference Include="..\TablePro.Drivers.Oracle\TablePro.Drivers.Oracle.csproj" />
+    <ProjectReference Include="..\TablePro.Drivers.Teradata\TablePro.Drivers.Teradata.csproj" />
+    <ProjectReference Include="..\TablePro.Drivers.MongoDb\TablePro.Drivers.MongoDb.csproj" />
+    <ProjectReference Include="..\TablePro.Drivers.Cassandra\TablePro.Drivers.Cassandra.csproj" />
+    <ProjectReference Include="..\TablePro.Drivers.DynamoDb\TablePro.Drivers.DynamoDb.csproj" />
+    <ProjectReference Include="..\TablePro.Drivers.Snowflake\TablePro.Drivers.Snowflake.csproj" />
+    <ProjectReference Include="..\TablePro.Drivers.BigQuery\TablePro.Drivers.BigQuery.csproj" />
+    <ProjectReference Include="..\TablePro.Drivers.Spanner\TablePro.Drivers.Spanner.csproj" />
+    <ProjectReference Include="..\TablePro.Drivers.Trino\TablePro.Drivers.Trino.csproj" />
+    <ProjectReference Include="..\TablePro.Drivers.Elasticsearch\TablePro.Drivers.Elasticsearch.csproj" />
+    <ProjectReference Include="..\TablePro.Drivers.Typesense\TablePro.Drivers.Typesense.csproj" />
+    <ProjectReference Include="..\TablePro.Drivers.Weaviate\TablePro.Drivers.Weaviate.csproj" />
+    <ProjectReference Include="..\TablePro.Drivers.SurrealDb\TablePro.Drivers.SurrealDb.csproj" />
+    <ProjectReference Include="..\TablePro.Drivers.Kafka\TablePro.Drivers.Kafka.csproj" />
+    <ProjectReference Include="..\TablePro.Drivers.Etcd\TablePro.Drivers.Etcd.csproj" />
+    <ProjectReference Include="..\TablePro.Drivers.Cloudflare\TablePro.Drivers.Cloudflare.csproj" />
+    <ProjectReference Include="..\TablePro.Drivers.LibSql\TablePro.Drivers.LibSql.csproj" />
+    <ProjectReference Include="..\TablePro.Drivers.Beancount\TablePro.Drivers.Beancount.csproj" />
+    <ProjectReference Include="..\TablePro.Drivers.Dameng\TablePro.Drivers.Dameng.csproj" />
+    <ProjectReference Include="..\TablePro.Drivers.Hana\TablePro.Drivers.Hana.csproj" />
+  </ItemGroup>
+
+  <!--
+    MSIX packaging, opt-in: dotnet publish -c Release -r win-x64 -p:TableProPackage=msix. Every other build stays
+    unpackaged. The package is unsigned; the release workflow signs it with signtool afterwards.
+    windows/packaging/build-release.ps1 passes TableProPackageVersion and TableProPublisher for a release.
+  -->
+  <PropertyGroup Condition="'$(TableProPackage)' == 'msix'">
+    <WindowsPackageType>MSIX</WindowsPackageType>
+    <GenerateAppxPackageOnBuild>true</GenerateAppxPackageOnBuild>
+    <UapAppxPackageBuildMode>SideloadOnly</UapAppxPackageBuildMode>
+    <AppxBundle>Never</AppxBundle>
+    <AppxPackageSigningEnabled>false</AppxPackageSigningEnabled>
+    <AppxSymbolPackageEnabled>false</AppxSymbolPackageEnabled>
+    <!-- No symbol package is made, but without a tool path the SDK still looks for mspdbcmf.exe, a Visual Studio
+         tool, and warns when it is missing. A path that does not exist skips the search and the symbol step. -->
+    <MsPdbCmfExeFullpath>none</MsPdbCmfExeFullpath>
+    <GenerateTestArtifacts>false</GenerateTestArtifacts>
+    <AppxPackageDir Condition="'$(AppxPackageDir)' == ''">$(MSBuildProjectDirectory)\bin\msix\</AppxPackageDir>
+    <!-- A local package is X.Y.Z.0, below every release of the same version (betas are .1 to .98, a stable .99). -->
+    <TableProPackageVersion Condition="'$(TableProPackageVersion)' == ''">$([System.Text.RegularExpressions.Regex]::Match('$(Version)', '^\d+\.\d+\.\d+').Value).0</TableProPackageVersion>
+  </PropertyGroup>
+
+  <!-- The tile and Start menu logos only mean something inside a package. -->
+  <ItemGroup Condition="'$(TableProPackage)' != 'msix'">
+    <Content Remove="Assets\Package\**" />
+  </ItemGroup>
+
+  <!--
+    Stamps the release version and the signing certificate's subject into a copy of Package.appxmanifest, so the
+    checked-in file never changes per release. MSIX refuses a package whose Publisher differs from its signer.
+  -->
+  <Target Name="TableProStampPackageManifest" BeforeTargets="_ValidatePresenceOfAppxManifestItems" Condition="'$(TableProPackage)' == 'msix'">
+    <PropertyGroup>
+      <_TableProStampedManifest>$(IntermediateOutputPath)stamped\Package.appxmanifest</_TableProStampedManifest>
+      <_TableProManifestNamespace>&lt;Namespace Prefix='m' Uri='http://schemas.microsoft.com/appx/manifest/foundation/windows10' /&gt;</_TableProManifestNamespace>
+    </PropertyGroup>
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\Package.appxmanifest" DestinationFiles="$(_TableProStampedManifest)" />
+    <XmlPoke XmlInputPath="$(_TableProStampedManifest)" Query="/m:Package/m:Identity/@Version" Value="$(TableProPackageVersion)" Namespaces="$(_TableProManifestNamespace)" />
+    <XmlPoke Condition="'$(TableProPublisher)' != ''" XmlInputPath="$(_TableProStampedManifest)" Query="/m:Package/m:Identity/@Publisher" Value="$(TableProPublisher)" Namespaces="$(_TableProManifestNamespace)" />
+    <ItemGroup>
+      <AppxManifest Remove="@(AppxManifest)" />
+      <AppxManifest Include="$(_TableProStampedManifest)" />
+    </ItemGroup>
+  </Target>
+</Project>

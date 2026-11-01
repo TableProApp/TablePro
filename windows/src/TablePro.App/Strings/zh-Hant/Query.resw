@@ -1,0 +1,192 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AnalyzedPlanTab" xml:space="preserve">
+    <value>分析後執行計畫</value>
+  </data>
+  <data name="ChartToggle.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>圖表</value>
+  </data>
+  <data name="ChartToggle.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>以圖表顯示</value>
+  </data>
+  <data name="ConfirmRunMessage" xml:space="preserve">
+    <value>安全模式會在 {0} 上執行陳述式前先詢問。</value>
+  </data>
+  <data name="ConfirmRunTitle" xml:space="preserve">
+    <value>要執行這些陳述式嗎？</value>
+  </data>
+  <data name="DoneAfter" xml:space="preserve">
+    <value>完成 · {0}</value>
+  </data>
+  <data name="ElapsedMilliseconds" xml:space="preserve">
+    <value>{0:N0} 毫秒</value>
+  </data>
+  <data name="ElapsedSeconds" xml:space="preserve">
+    <value>{0:N2} 秒</value>
+  </data>
+  <data name="ElapsedUnderOneMillisecond" xml:space="preserve">
+    <value>&lt;1 毫秒</value>
+  </data>
+  <data name="EmptyHint.Text" xml:space="preserve">
+    <value>Ctrl+Enter 執行插入點所在的陳述式，F5 執行全部</value>
+  </data>
+  <data name="EmptyTitle.Text" xml:space="preserve">
+    <value>執行查詢以查看結果</value>
+  </data>
+  <data name="ErrorBar.Title" xml:space="preserve">
+    <value>陳述式執行失敗</value>
+  </data>
+  <data name="ExplainAnalyzeItem.Text" xml:space="preserve">
+    <value>解釋並分析</value>
+  </data>
+  <data name="ExplainAnalyzeItem.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>執行陳述式以測量其執行計畫</value>
+  </data>
+  <data name="ExplainItem.Text" xml:space="preserve">
+    <value>解釋</value>
+  </data>
+  <data name="ExportButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>匯出此結果</value>
+  </data>
+  <data name="ExportButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>匯出此結果</value>
+  </data>
+  <data name="FailedAfter" xml:space="preserve">
+    <value>{0} 後失敗</value>
+  </data>
+  <data name="FixWithAiButton.Content" xml:space="preserve">
+    <value>用 AI 修正</value>
+  </data>
+  <data name="FormatButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>格式化 SQL</value>
+  </data>
+  <data name="FormatButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>格式化 SQL (Ctrl+Shift+F)</value>
+  </data>
+  <data name="InspectValue" xml:space="preserve">
+    <value>檢查值</value>
+  </data>
+  <data name="MapToggle.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>地圖</value>
+  </data>
+  <data name="MapToggle.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>在地圖上顯示</value>
+  </data>
+  <data name="OpenFileButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>開啟 SQL 檔案</value>
+  </data>
+  <data name="OpenFileButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>開啟 SQL 檔案</value>
+  </data>
+  <data name="ParametersMessage_One" xml:space="preserve">
+    <value>此陳述式有一個預留位置。請輸入其值。</value>
+  </data>
+  <data name="ParametersMessage_Other" xml:space="preserve">
+    <value>這些陳述式有 {0} 個預留位置。請輸入其值。</value>
+  </data>
+  <data name="ParametersTitle" xml:space="preserve">
+    <value>參數</value>
+  </data>
+  <data name="PlanTab" xml:space="preserve">
+    <value>執行計畫</value>
+  </data>
+  <data name="QueryCancelled" xml:space="preserve">
+    <value>查詢已取消。</value>
+  </data>
+  <data name="ReadOnlyMessage" xml:space="preserve">
+    <value>此連線的安全模式為「唯讀」，因此不會執行變更資料或結構的陳述式。</value>
+  </data>
+  <data name="ReadOnlyTitle" xml:space="preserve">
+    <value>唯讀連線</value>
+  </data>
+  <data name="ResultTabTitle" xml:space="preserve">
+    <value>結果 {0}</value>
+  </data>
+  <data name="RowsAffected_One" xml:space="preserve">
+    <value>影響 {0:N0} 列 · {1}</value>
+  </data>
+  <data name="RowsAffected_Other" xml:space="preserve">
+    <value>影響 {0:N0} 列 · {1}</value>
+  </data>
+  <data name="RowsReturned_One" xml:space="preserve">
+    <value>{0:N0} 列 · {1}</value>
+  </data>
+  <data name="RowsReturned_Other" xml:space="preserve">
+    <value>{0:N0} 列 · {1}</value>
+  </data>
+  <data name="RowsTruncated_One" xml:space="preserve">
+    <value>{0:N0} 列（已達上限，伺服器上還有更多） · {1}</value>
+  </data>
+  <data name="RowsTruncated_Other" xml:space="preserve">
+    <value>{0:N0} 列（已達上限，伺服器上還有更多） · {1}</value>
+  </data>
+  <data name="RunAllItem.Text" xml:space="preserve">
+    <value>全部執行</value>
+  </data>
+  <data name="RunButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>執行選取範圍或插入點所在的陳述式</value>
+  </data>
+  <data name="RunButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>執行選取範圍或插入點所在的陳述式 (Ctrl+Enter)</value>
+  </data>
+  <data name="RunCurrentItem.Text" xml:space="preserve">
+    <value>執行目前陳述式</value>
+  </data>
+  <data name="RunLabel.Text" xml:space="preserve">
+    <value>執行</value>
+  </data>
+  <data name="RunningStatements_One" xml:space="preserve">
+    <value>正在執行…</value>
+  </data>
+  <data name="RunningStatements_Other" xml:space="preserve">
+    <value>正在執行 {0} 個陳述式…</value>
+  </data>
+  <data name="SaveFavoriteButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>儲存為我的最愛</value>
+  </data>
+  <data name="SaveFavoriteButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>儲存為我的最愛</value>
+  </data>
+  <data name="SaveFileButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>儲存 SQL 檔案</value>
+  </data>
+  <data name="SaveFileButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>儲存 SQL 檔案 (Ctrl+S)</value>
+  </data>
+  <data name="SavedFile" xml:space="preserve">
+    <value>已儲存 {0}</value>
+  </data>
+  <data name="SqlFileType" xml:space="preserve">
+    <value>SQL 檔案</value>
+  </data>
+  <data name="StatementTabTitle" xml:space="preserve">
+    <value>陳述式 {0}</value>
+  </data>
+  <data name="StopButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>停止執行中的查詢</value>
+  </data>
+  <data name="StopButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>停止執行中的查詢</value>
+  </data>
+  <data name="StoppedWithError" xml:space="preserve">
+    <value>因錯誤而停止 · {0}</value>
+  </data>
+  <data name="TabTitle" xml:space="preserve">
+    <value>查詢 {0}</value>
+  </data>
+  <data name="UnsavedChanges" xml:space="preserve">
+    <value>{0} 有未儲存的變更。</value>
+  </data>
+</root>

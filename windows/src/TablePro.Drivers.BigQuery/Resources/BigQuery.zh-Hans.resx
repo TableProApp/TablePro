@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="EstimatedScan" xml:space="preserve">
+    <value>预计扫描量：{0}。</value>
+  </data>
+  <data name="EstimatedScanWithLimit" xml:space="preserve">
+    <value>预计扫描量：{0}（上限 {1}）。</value>
+  </data>
+  <data name="NeedsProjectId" xml:space="preserve">
+    <value>BigQuery 需要项目 ID。请将其输入为数据库。</value>
+  </data>
+  <data name="NoComparableColumn" xml:space="preserve">
+    <value>该行没有 BigQuery 可比较的列，因此无法安全地更改。请在 keyColumns 选项中指定键列。</value>
+  </data>
+  <data name="NotAByteCount" xml:space="preserve">
+    <value>maxBytesBilled“{0}”不是字节数，例如 10000000000 或 10GB。</value>
+  </data>
+  <data name="NotConnected" xml:space="preserve">
+    <value>BigQuery 会话未连接。</value>
+  </data>
+  <data name="OverLimit" xml:space="preserve">
+    <value>未运行：该查询将扫描 {0}，超过 maxBytesBilled 上限 {1}。</value>
+  </data>
+</root>

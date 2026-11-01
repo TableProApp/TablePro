@@ -1,0 +1,285 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="Blocking" xml:space="preserve">
+    <value>{0} veri gelene kadar paylaşılan bağlantıyı engeller. LPOP veya BLOCK olmadan XREAD gibi engellemeyen biçimi kullanın.</value>
+  </data>
+  <data name="Bytes_One" xml:space="preserve">
+    <value>{0} bayt</value>
+  </data>
+  <data name="Bytes_Other" xml:space="preserve">
+    <value>{0} bayt</value>
+  </data>
+  <data name="CannotStoreNull" xml:space="preserve">
+    <value>Redis NULL saklayamaz. Bunun yerine boş bir değer girin.</value>
+  </data>
+  <data name="CannotStoreNullValue" xml:space="preserve">
+    <value>Redis NULL değerini saklayamaz. Bunun yerine boş bir değer girin.</value>
+  </data>
+  <data name="ClientReply" xml:space="preserve">
+    <value>CLIENT REPLY her sekmenin beklediği yanıtları durdurur.</value>
+  </data>
+  <data name="ClusterDatabaseOption" xml:space="preserve">
+    <value>Redis Cluster yalnızca 0 numaralı veritabanını sunar. Veritabanı numarasını temizleyin veya bağımsız modu kullanın.</value>
+  </data>
+  <data name="ClusterDatabaseZero" xml:space="preserve">
+    <value>Redis Cluster yalnızca 0 numaralı veritabanını sunar.</value>
+  </data>
+  <data name="CommandNotFinished" xml:space="preserve">
+    <value>Komut {0} saniye içinde tamamlanmadı.</value>
+  </data>
+  <data name="ConnectionState" xml:space="preserve">
+    <value>{0} paylaşılan bağlantının oturum bilgisini veya durumunu değiştirir. Bunun yerine bağlantının ayarlarını değiştirin.</value>
+  </data>
+  <data name="CrossSlot" xml:space="preserve">
+    <value>Kuyruktaki komutlar birden fazla hash yuvasındaki anahtarlara dokunuyor; küme bunu tek bir işlemde çalıştıramaz. Anahtarların tek yuvaya düşmesi için ortak bir {hash tag} verin.</value>
+  </data>
+  <data name="CurrentValue" xml:space="preserve">
+    <value>(geçerli değer)</value>
+  </data>
+  <data name="CursorRestarted" xml:space="preserve">
+    <value>İmleç kümede artık olmayan bir düğümü gösterdiğinden tarama ilk birincil düğümden yeniden başladı.</value>
+  </data>
+  <data name="DatabaseSelected_One" xml:space="preserve">
+    <value>{1} veritabanı seçildi, {0} anahtar.</value>
+  </data>
+  <data name="DatabaseSelected_Other" xml:space="preserve">
+    <value>{1} veritabanı seçildi, {0} anahtar.</value>
+  </data>
+  <data name="DbBrowseWith" xml:space="preserve">
+    <value># Gezinmek için: {0}</value>
+  </data>
+  <data name="DbHeader" xml:space="preserve">
+    <value># Redis veritabanı: {0}</value>
+  </data>
+  <data name="DbKeys" xml:space="preserve">
+    <value># Anahtarlar: {0}</value>
+  </data>
+  <data name="DbTypes_One" xml:space="preserve">
+    <value># Tür dağılımı ({0} anahtar örneklendi):</value>
+  </data>
+  <data name="DbTypes_Other" xml:space="preserve">
+    <value># Tür dağılımı ({0} anahtar örneklendi):</value>
+  </data>
+  <data name="EmptyCommand" xml:space="preserve">
+    <value>Boş komut.</value>
+  </data>
+  <data name="FieldsComment" xml:space="preserve">
+    <value>Alan adlarını değerlere eşleyen bir JSON nesnesi</value>
+  </data>
+  <data name="HashFieldGone" xml:space="preserve">
+    <value>'{0}' hash alanı artık mevcut olmadığından hiçbir şey kaydedilmedi.</value>
+  </data>
+  <data name="HashRowNeedsField" xml:space="preserve">
+    <value>Yeni bir hash satırı için alan adı gerekir.</value>
+  </data>
+  <data name="IndexComment" xml:space="preserve">
+    <value>Baştan konum, 0’dan başlar</value>
+  </data>
+  <data name="IsSentinel" xml:space="preserve">
+    <value>Bu bir veri düğümü değil, bir Redis Sentinel; yalnızca SENTINEL komutlarına yanıt verir. Bağlantı modunu sentinel olarak ayarlayın ve bu adresi Sentinel düğümleri arasında listeleyin.</value>
+  </data>
+  <data name="JsonNeedsPath" xml:space="preserve">
+    <value>Yeni bir JSON üyesi için bir yol gerekir, örneğin $.name.</value>
+  </data>
+  <data name="JsonPathFixed" xml:space="preserve">
+    <value>Bir JSON üyesinin yolu düzenlenemez. Üyeyi silip değeri yeni yolun altına ekleyin.</value>
+  </data>
+  <data name="JsonTextComment" xml:space="preserve">
+    <value>JSON metni</value>
+  </data>
+  <data name="KeyGone" xml:space="preserve">
+    <value>'{0}' anahtarı artık mevcut değil.</value>
+  </data>
+  <data name="KeyNameComment" xml:space="preserve">
+    <value>Anahtarın adı</value>
+  </data>
+  <data name="KeyNameNotText" xml:space="preserve">
+    <value>Bu anahtarın adı metin olmadığından ızgaradan ona erişilemez.</value>
+  </data>
+  <data name="KeyTypeNotEditable" xml:space="preserve">
+    <value>'{0}' anahtarı ızgaranın düzenleyemediği bir tür içeriyor. Sorgu düzenleyicisinde bir komutla değiştirin.</value>
+  </data>
+  <data name="KeyTypeNotShown" xml:space="preserve">
+    <value>'{0}' anahtarı ızgaranın gösteremediği bir tür içeriyor. Sorgu düzenleyicisinde bir komutla okuyun.</value>
+  </data>
+  <data name="LengthComment" xml:space="preserve">
+    <value>Bir dizenin bayt sayısı veya bir koleksiyonun öğe sayısı</value>
+  </data>
+  <data name="ListOneNode" xml:space="preserve">
+    <value>Bağlanılacak en az bir düğümü host:port biçiminde listeleyin.</value>
+  </data>
+  <data name="ListPositionFixed" xml:space="preserve">
+    <value>Bir liste öğesinin konumu düzenlenemez. Öğeyi silip değeri yeniden ekleyin.</value>
+  </data>
+  <data name="NewKeyNeedsName" xml:space="preserve">
+    <value>Yeni bir anahtar için ad gerekir.</value>
+  </data>
+  <data name="NextCursor" xml:space="preserve">
+    <value>Sonraki imleç: {0}</value>
+  </data>
+  <data name="NoListPosition" xml:space="preserve">
+    <value>Satırın liste konumu olmadığından ona erişilemez.</value>
+  </data>
+  <data name="NoServer" xml:space="preserve">
+    <value>Bağlı Redis sunucusu yok.</value>
+  </data>
+  <data name="NotACluster" xml:space="preserve">
+    <value>Bu sunucu küme modunda çalışmıyor. Bağlantı modunu bağımsız olarak ayarlayın veya küme modunu cluster-enabled yes ile başlatılmış bir düğüme yönlendirin.</value>
+  </data>
+  <data name="NotAScore" xml:space="preserve">
+    <value>'{0}' bir puan değil. Puan bir sayı, inf veya -inf olur.</value>
+  </data>
+  <data name="NotClientId" xml:space="preserve">
+    <value>'{0}' bir Redis istemci kimliği değil.</value>
+  </data>
+  <data name="NotDatabaseNumber" xml:space="preserve">
+    <value>'{0}' bir Redis veritabanı numarası değil. 0 gibi bir sayı veya db0 gibi bir ad kullanın.</value>
+  </data>
+  <data name="NotHost" xml:space="preserve">
+    <value>'{0}' bir host veya host:port değil.</value>
+  </data>
+  <data name="NotMode" xml:space="preserve">
+    <value>'{0}' bir Redis bağlantı modu değil. standalone, sentinel veya cluster kullanın.</value>
+  </data>
+  <data name="NotRun" xml:space="preserve">
+    <value>çalıştırılmadı</value>
+  </data>
+  <data name="NoWhereElements" xml:space="preserve">
+    <value>Redis’te WHERE yan tümcesi yoktur. Filtre kurallarını veya sorgu düzenleyicisinde MATCH ile SCAN kullanın.</value>
+  </data>
+  <data name="NoWhereKeys" xml:space="preserve">
+    <value>Redis’te WHERE yan tümcesi yoktur. Key sütununu user:* gibi bir desenle veya Type ile filtreleyin.</value>
+  </data>
+  <data name="OnlyKeyTypeCounted" xml:space="preserve">
+    <value>Sunucuda yalnızca anahtar ve tür filtreleri sayılır.</value>
+  </data>
+  <data name="PartialSlots" xml:space="preserve">
+    <value>{1} hash yuvasından {0} tanesi, bir başkası reddetmeden önce kendi bölümünü çalıştırdı; bu değişiklikler uygulanmış olarak kalır.</value>
+  </data>
+  <data name="PartOfCluster" xml:space="preserve">
+    <value>Bu sunucu bir Redis Cluster’ın parçası, bu yüzden sahip olmadığı anahtarlar için istekler başarısız olur. Bağlantı modunu küme olarak ayarlayın ve bu adresi küme düğümleri arasında listeleyin.</value>
+  </data>
+  <data name="PathComment" xml:space="preserve">
+    <value>Üyenin JSONPath değeri</value>
+  </data>
+  <data name="ReadOnlyNoDisconnect" xml:space="preserve">
+    <value>Bu bağlantı salt okunur olduğundan istemcinin bağlantısı kesilmedi.</value>
+  </data>
+  <data name="ReadOnlyNotSent" xml:space="preserve">
+    <value>Bu bağlantı salt okunur olduğundan {0} gönderilmedi.</value>
+  </data>
+  <data name="RenameEmpty" xml:space="preserve">
+    <value>Bir anahtar yalnızca boş olmayan bir metinle yeniden adlandırılabilir.</value>
+  </data>
+  <data name="RowHasNo" xml:space="preserve">
+    <value>Satırda {0} olmadığından ona erişilemez.</value>
+  </data>
+  <data name="SaveSomeFailed" xml:space="preserve">
+    <value>Redis kaydı çalıştırdı, ancak bazı komutlar başarısız oldu ve geri kalanı uygulanmış olarak kaldı: {0}</value>
+  </data>
+  <data name="ScanComplete" xml:space="preserve">
+    <value>İmleç 0: tarama tamamlandı.</value>
+  </data>
+  <data name="Seconds_One" xml:space="preserve">
+    <value>{0} saniye</value>
+  </data>
+  <data name="Seconds_Other" xml:space="preserve">
+    <value>{0} saniye</value>
+  </data>
+  <data name="SelectInMulti" xml:space="preserve">
+    <value>SELECT burada MULTI içinde kuyruğa alınamaz. Veritabanını MULTI’den önce seçin.</value>
+  </data>
+  <data name="SelectOneNumber" xml:space="preserve">
+    <value>SELECT tek bir veritabanı numarası alır, örneğin SELECT 1</value>
+  </data>
+  <data name="SentinelThroughTunnel" xml:space="preserve">
+    <value>Bir tünel tek bir adresi iletir ve Sentinel’in belirttiği düğüm sunucunun kendi ağındadır, bu yüzden Sentinel modu tünel üzerinden çalışamaz. Doğrudan bir veri düğümüne bağlanın veya tüneli kapatın.</value>
+  </data>
+  <data name="SentinelToSentinel" xml:space="preserve">
+    <value>Sentinel bir veri düğümü yerine başka bir Sentinel’e çözümlendi. Sentinel yapılandırmanızdaki birincil grup adını denetleyin.</value>
+  </data>
+  <data name="SlotsPartiallySaved" xml:space="preserve">
+    <value>{1} hash yuvasından {0} tanesi kaydedildi ve uygulanmış olarak kalıyor; sonraki başarısız oldu: {2}</value>
+  </data>
+  <data name="SortedSetMemberGone" xml:space="preserve">
+    <value>'{0}' sıralı küme üyesi artık mevcut olmadığından hiçbir şey kaydedilmedi.</value>
+  </data>
+  <data name="StreamEntriesFixed" xml:space="preserve">
+    <value>Akış girdileri eklendikten sonra değiştirilemez. Girdiyi silip yenisini ekleyin.</value>
+  </data>
+  <data name="StreamFieldsNotObject" xml:space="preserve">
+    <value>Bir akış girdisinin alanları bir JSON nesnesi olmalıdır: {0}</value>
+  </data>
+  <data name="StreamFieldsObject" xml:space="preserve">
+    <value>Akış alanları bir JSON nesnesi olmalıdır, örneğin {"field": "value"}.</value>
+  </data>
+  <data name="StreamIdComment" xml:space="preserve">
+    <value>Eklerken sunucunun atamasına izin vermek için boş bırakın</value>
+  </data>
+  <data name="StreamNeedsFields" xml:space="preserve">
+    <value>Yeni bir akış girdisi, alanlarını bir JSON nesnesi olarak ister, örneğin {"name": "value"}.</value>
+  </data>
+  <data name="StreamNeedsOneField" xml:space="preserve">
+    <value>Bir akış girdisi için en az bir alan gerekir.</value>
+  </data>
+  <data name="StringHoldsOneValue" xml:space="preserve">
+    <value>Bir dize anahtarı tek bir değer tutar. Satır eklemek yerine o değeri düzenleyin.</value>
+  </data>
+  <data name="Subscription" xml:space="preserve">
+    <value>{0} bağlantıyı düzenleyicinin gösteremediği bir ileti akışına dönüştürür. Bunun için redis-cli kullanın.</value>
+  </data>
+  <data name="TtlComment" xml:space="preserve">
+    <value>Anahtarın süresi dolana kadar saniye; süre yoksa -1 veya NULL</value>
+  </data>
+  <data name="TtlInvalid" xml:space="preserve">
+    <value>TTL, 0’dan büyük tam saniye sayısı ya da süresiz için -1 veya NULL olmalıdır.</value>
+  </data>
+  <data name="TtlNoExpiry" xml:space="preserve">
+    <value>-1 (süresiz)</value>
+  </data>
+  <data name="TtlNoKey" xml:space="preserve">
+    <value>-2 (anahtar mevcut değil)</value>
+  </data>
+  <data name="TypeComment" xml:space="preserve">
+    <value>Anahtar eklenirken string, hash, list, set veya zset</value>
+  </data>
+  <data name="TypeNotAddable" xml:space="preserve">
+    <value>{0} türünde bir anahtar ızgaradan eklenemez. Sorgu düzenleyicisinde bir komutla ekleyin.</value>
+  </data>
+  <data name="Unknown" xml:space="preserve">
+    <value>bilinmiyor</value>
+  </data>
+  <data name="ValueComment" xml:space="preserve">
+    <value>Bir dizenin değeri veya bir koleksiyonun ilk öğelerinin önizlemesi</value>
+  </data>
+  <data name="ValueInListNotEditable" xml:space="preserve">
+    <value>{0} türündeki bir anahtarın değeri anahtar listesinde düzenlenemez. Öğelerini düzenlemek için anahtarı açın.</value>
+  </data>
+  <data name="WhatHashField" xml:space="preserve">
+    <value>hash alanı</value>
+  </data>
+  <data name="WhatJsonPath" xml:space="preserve">
+    <value>JSON yolu</value>
+  </data>
+  <data name="WhatSetMember" xml:space="preserve">
+    <value>küme üyesi</value>
+  </data>
+  <data name="WhatSortedSetMember" xml:space="preserve">
+    <value>sıralı küme üyesi</value>
+  </data>
+  <data name="WhatStreamId" xml:space="preserve">
+    <value>akış girdisi kimliği</value>
+  </data>
+</root>

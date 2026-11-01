@@ -69,7 +69,7 @@ class DetectChangedPathsTests(unittest.TestCase):
         return out
 
     def test_unknown_suite_exits_2(self):
-        self.assertEqual(self.detect("windows")[0], 2)
+        self.assertEqual(self.detect("android")[0], 2)
 
     def test_linux_runs_on_the_linux_tree_and_what_its_jobs_read(self):
         for path in [
@@ -125,6 +125,21 @@ class DetectChangedPathsTests(unittest.TestCase):
                 self.assertEqual(self.verdict_after("linux-docs", path), "true")
         self.assertEqual(self.verdict_after("linux-docs", "apple/TablePro/App.swift"), "false")
 
+    def test_windows_runs_on_the_windows_tree_and_its_workflow(self):
+        for path in [
+            "windows/src/TablePro.App/App.xaml.cs",
+            "windows/Directory.Packages.props",
+            "windows/TablePro.slnx",
+            ".github/workflows/build-windows.yml",
+        ]:
+            with self.subTest(path=path):
+                self.assertEqual(self.verdict_after("windows", path), "true")
+
+    def test_windows_skips_markdown_and_the_other_apps(self):
+        for path in ["windows/README.md", "windows/ROADMAP.md", "linux/crates/app/src/main.rs", "apple/TablePro/App.swift"]:
+            with self.subTest(path=path):
+                self.assertEqual(self.verdict_after("windows", path), "false")
+
     def test_swiftlint_runs_on_swift_and_its_configs(self):
         for path in [
             "apple/TablePro/App.swift",
@@ -144,7 +159,7 @@ class DetectChangedPathsTests(unittest.TestCase):
         spec.parent.mkdir(parents=True)
         spec.write_text("sources:\n  - path: ../Packages/TableProCore\n", encoding="utf-8")
         self.seed = self.commit([])
-        for suite in ["macos", "plugins", "ios", "oracle", "hana", "release", "swiftlint", "linux", "linux-docs"]:
+        for suite in ["macos", "plugins", "ios", "oracle", "hana", "release", "swiftlint", "linux", "linux-docs", "windows"]:
             with self.subTest(suite=suite):
                 self.assertEqual(self.verdict_after(suite, ".github/workflows/ci.yml"), "true")
         self.assertEqual(self.verdict_after("shipped", ".github/workflows/ci.yml"), "false")
@@ -307,7 +322,7 @@ class DetectChangedPathsTests(unittest.TestCase):
         base = self.commit([])
         self.git("update-ref", "refs/remotes/origin/main", base)
         self.commit(["apple/CHANGELOG.md"])
-        for suite in ["macos", "plugins", "ios", "oracle", "hana", "release", "swiftlint", "linux", "linux-docs"]:
+        for suite in ["macos", "plugins", "ios", "oracle", "hana", "release", "swiftlint", "linux", "linux-docs", "windows"]:
             with self.subTest(suite=suite):
                 self.assertEqual(self.detect(suite, base), (0, "false"))
                 self.assertEqual(self.detect(suite, base, ref="refs/heads/release/0.83"), (0, "true"))

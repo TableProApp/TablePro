@@ -1,0 +1,168 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="ChooseAGenerator" xml:space="preserve">
+    <value>Choose a generator for at least one column.</value>
+  </data>
+  <data name="DecimalPlacesRange" xml:space="preserve">
+    <value>{0}: decimal places run from 0 to {1}.</value>
+    <comment>{0} is a column name, {1} the largest number of decimal places.</comment>
+  </data>
+  <data name="EnterAPattern" xml:space="preserve">
+    <value>Enter a pattern for {0}.</value>
+    <comment>{0} is a column name.</comment>
+  </data>
+  <data name="EnterAValue" xml:space="preserve">
+    <value>Enter at least one value for {0}.</value>
+    <comment>{0} is a column name.</comment>
+  </data>
+  <data name="FirstDateAfterLast" xml:space="preserve">
+    <value>{0}: the first date is after the last.</value>
+    <comment>{0} is a column name.</comment>
+  </data>
+  <data name="GeneratorNotAllowed" xml:space="preserve">
+    <value>{0} cannot use this generator.</value>
+    <comment>{0} is a column name.</comment>
+  </data>
+  <data name="HoldsNumbersFromTo" xml:space="preserve">
+    <value>{0} holds numbers from {1:N0} to {2:N0}.</value>
+    <comment>{0} is a column name, {1} and {2} the smallest and largest numbers it holds.</comment>
+  </data>
+  <data name="HoldsValuesUpTo" xml:space="preserve">
+    <value>{0} holds values up to {1:N0}.</value>
+    <comment>{0} is a column name, {1} the largest value it holds.</comment>
+  </data>
+  <data name="KeepsDecimalPlaces" xml:space="preserve">
+    <value>{0} keeps {1} decimal places.</value>
+    <comment>{0} is a column name, {1} the decimal places the column keeps.</comment>
+  </data>
+  <data name="KeyLeftToDefault" xml:space="preserve">
+    <value>({0}) must not repeat, but every column of it is left to its default.</value>
+    <comment>{0} lists the columns of a unique key.</comment>
+  </data>
+  <data name="KindBoolean" xml:space="preserve">
+    <value>Boolean</value>
+  </data>
+  <data name="KindCity" xml:space="preserve">
+    <value>City</value>
+  </data>
+  <data name="KindCountry" xml:space="preserve">
+    <value>Country</value>
+  </data>
+  <data name="KindDate" xml:space="preserve">
+    <value>Date</value>
+  </data>
+  <data name="KindDateTime" xml:space="preserve">
+    <value>Date and Time</value>
+  </data>
+  <data name="KindDecimalRange" xml:space="preserve">
+    <value>Decimal Range</value>
+  </data>
+  <data name="KindEmail" xml:space="preserve">
+    <value>Email</value>
+  </data>
+  <data name="KindFirstName" xml:space="preserve">
+    <value>First Name</value>
+  </data>
+  <data name="KindFullName" xml:space="preserve">
+    <value>Full Name</value>
+  </data>
+  <data name="KindIntegerRange" xml:space="preserve">
+    <value>Number Range</value>
+  </data>
+  <data name="KindJson" xml:space="preserve">
+    <value>JSON</value>
+  </data>
+  <data name="KindLastName" xml:space="preserve">
+    <value>Last Name</value>
+  </data>
+  <data name="KindList" xml:space="preserve">
+    <value>List of Values</value>
+  </data>
+  <data name="KindPattern" xml:space="preserve">
+    <value>Pattern</value>
+  </data>
+  <data name="KindPhone" xml:space="preserve">
+    <value>Phone Number</value>
+  </data>
+  <data name="KindReference" xml:space="preserve">
+    <value>Referenced Value</value>
+  </data>
+  <data name="KindSequence" xml:space="preserve">
+    <value>Sequence</value>
+  </data>
+  <data name="KindServerDefault" xml:space="preserve">
+    <value>Server Default</value>
+  </data>
+  <data name="KindStreetAddress" xml:space="preserve">
+    <value>Street Address</value>
+  </data>
+  <data name="KindText" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="KindTime" xml:space="preserve">
+    <value>Time</value>
+  </data>
+  <data name="KindUuid" xml:space="preserve">
+    <value>UUID</value>
+  </data>
+  <data name="ListSeparator" xml:space="preserve">
+    <value>, </value>
+    <comment>Joins the column names of a unique key.</comment>
+  </data>
+  <data name="MinimumAboveMaximum" xml:space="preserve">
+    <value>{0}: the minimum is larger than the maximum.</value>
+    <comment>{0} is a column name.</comment>
+  </data>
+  <data name="NoGeneratorFits" xml:space="preserve">
+    <value>No generator can fill {0} ({1}), and it cannot be left empty.</value>
+    <comment>{0} is a column name, {1} its data type.</comment>
+  </data>
+  <data name="RangeTooWide" xml:space="preserve">
+    <value>{0}: the range is too wide for that many decimal places.</value>
+    <comment>{0} is a column name.</comment>
+  </data>
+  <data name="ReferencedTableEmpty" xml:space="preserve">
+    <value>{0} references {1}, which has no rows.</value>
+    <comment>{0} is a column name, {1} the table it references.</comment>
+  </data>
+  <data name="RowCountRange" xml:space="preserve">
+    <value>Enter a number of rows from 1 to {0:N0}.</value>
+    <comment>{0} is the largest number of rows.</comment>
+  </data>
+  <data name="SequenceOverflows" xml:space="preserve">
+    <value>The sequence for {0} runs past the largest number it can hold.</value>
+    <comment>{0} is a column name.</comment>
+  </data>
+  <data name="ShortestAboveLongest" xml:space="preserve">
+    <value>{0}: the shortest length is longer than the longest.</value>
+    <comment>{0} is a column name.</comment>
+  </data>
+  <data name="StepIsZero" xml:space="preserve">
+    <value>{0}: the step cannot be 0.</value>
+    <comment>{0} is a column name.</comment>
+  </data>
+  <data name="TooFewCombinations" xml:space="preserve">
+    <value>({0}) must not repeat, but the generators make only {1:N0} combinations.</value>
+    <comment>{0} lists the columns of a unique key, {1} how many combinations the generators make.</comment>
+  </data>
+  <data name="TooFewDistinctValues" xml:space="preserve">
+    <value>{0} must not repeat, but its generator makes only {1:N0} different values.</value>
+    <comment>{0} is a column name, {1} how many different values the generator makes.</comment>
+  </data>
+  <data name="ValuesExhausted" xml:space="preserve">
+    <value>Could not make another value for ({0}) that does not repeat. Widen its range or generate fewer rows.</value>
+    <comment>{0} lists the columns that must not repeat.</comment>
+  </data>
+</root>

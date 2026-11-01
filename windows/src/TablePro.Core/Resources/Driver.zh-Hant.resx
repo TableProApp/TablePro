@@ -1,0 +1,237 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="Alias" xml:space="preserve">
+    <value>別名</value>
+  </data>
+  <data name="AliasOf" xml:space="preserve">
+    <value>{0} 的別名</value>
+  </data>
+  <data name="AnsweredNotJson" xml:space="preserve">
+    <value>{0} 傳回的不是 JSON。</value>
+  </data>
+  <data name="AuthenticationFailedWith" xml:space="preserve">
+    <value>身分驗證失敗：{0}</value>
+  </data>
+  <data name="BetweenNeedsUpperBound" xml:space="preserve">
+    <value>{0} 上的 BETWEEN 需要上限。</value>
+  </data>
+  <data name="BooleanFieldNotBoolean" xml:space="preserve">
+    <value>{0} 是布林欄位，只符合 true 或 false，不符合 {1}。</value>
+  </data>
+  <data name="CannotChangeFromGrid" xml:space="preserve">
+    <value>無法在格線中變更「{0}」。</value>
+  </data>
+  <data name="CannotFilterWith" xml:space="preserve">
+    <value>{0} 無法使用 {1} 進行篩選。</value>
+  </data>
+  <data name="CannotReadDefinition" xml:space="preserve">
+    <value>此帳戶無法讀取 {0} 的定義。</value>
+  </data>
+  <data name="ChooseDatasetFirst" xml:space="preserve">
+    <value>請先選擇一個資料集。</value>
+  </data>
+  <data name="ChooseNamespaceFirst" xml:space="preserve">
+    <value>請先選擇一個命名空間。</value>
+  </data>
+  <data name="CommandCancelled" xml:space="preserve">
+    <value>指令已取消。</value>
+  </data>
+  <data name="CommandNotSupported" xml:space="preserve">
+    <value>不支援該指令。</value>
+  </data>
+  <data name="CommandTimedOutAfter" xml:space="preserve">
+    <value>指令在 {0} 秒後逾時。</value>
+  </data>
+  <data name="Committed" xml:space="preserve">
+    <value>已認可。</value>
+  </data>
+  <data name="ConnectionNeedsDatabaseFile" xml:space="preserve">
+    <value>{0} 連線需要資料庫檔案。</value>
+  </data>
+  <data name="ConnectionNotOpen" xml:space="preserve">
+    <value>連線未開啟。</value>
+  </data>
+  <data name="CredentialsFileType" xml:space="preserve">
+    <value>憑證檔案的類型為「{0}」。請使用服務帳戶金鑰或 gcloud authorized_user 檔案。</value>
+  </data>
+  <data name="DefinitionMissingPrivilege" xml:space="preserve">
+    <value>{0} 未傳回 {1} 的定義；此登入可能沒有讀取它的權限。</value>
+  </data>
+  <data name="DocumentIdUnknown" xml:space="preserve">
+    <value>文件的 {0} 未知，因此無法定位該文件。</value>
+  </data>
+  <data name="EmptyResponse" xml:space="preserve">
+    <value>{0} 傳回了空白回應。</value>
+  </data>
+  <data name="EngineHasNoDefinitionFor" xml:space="preserve">
+    <value>{0} 無法顯示 {1} 的定義。</value>
+  </data>
+  <data name="EnterRequestLike" xml:space="preserve">
+    <value>請輸入類似這樣的要求：{0}</value>
+  </data>
+  <data name="InsertNeedsValue" xml:space="preserve">
+    <value>{0} 至少需要一個值才能插入列。</value>
+  </data>
+  <data name="InvalidTypedValue" xml:space="preserve">
+    <value>「{0}」不是有效的 {1} 值。</value>
+  </data>
+  <data name="KeyNoLongerExists" xml:space="preserve">
+    <value>鍵「{0}」已不存在，因此未儲存任何內容。</value>
+  </data>
+  <data name="ListedUnexpected" xml:space="preserve">
+    <value>{0} 將 {1} 列為非預期的類型 {2}。</value>
+  </data>
+  <data name="NeedsAccountIdentifier" xml:space="preserve">
+    <value>{0} 需要帳戶識別碼，例如 {1}。</value>
+  </data>
+  <data name="NoAnswerWithin" xml:space="preserve">
+    <value>{0} 未在 {1} 秒內回應。</value>
+  </data>
+  <data name="NoDatabaseGiven" xml:space="preserve">
+    <value>未指定資料庫，登入資訊也沒有預設資料庫。</value>
+  </data>
+  <data name="NoDefinitionFor" xml:space="preserve">
+    <value>找不到 {0} 的定義。</value>
+  </data>
+  <data name="NoResultForStatement" xml:space="preserve">
+    <value>伺服器未傳回該陳述式的結果。</value>
+  </data>
+  <data name="NoSchemaGiven" xml:space="preserve">
+    <value>未指定結構描述，登入資訊也未指定結構描述。</value>
+  </data>
+  <data name="NoTransactionOpen" xml:space="preserve">
+    <value>沒有開啟的交易。</value>
+  </data>
+  <data name="NumericFieldNotNumber" xml:space="preserve">
+    <value>{0} 是數值欄位，而 {1} 不是數字。</value>
+  </data>
+  <data name="OdbcDriverNotInstalled" xml:space="preserve">
+    <value>未安裝 {0} ODBC 驅動程式「{1}」。{2}</value>
+  </data>
+  <data name="OdbcDriverNotLoaded" xml:space="preserve">
+    <value>Windows 找到了 {0} ODBC 驅動程式「{1}」，但無法載入。TablePro 是 64 位元應用程式，需要 64 位元驅動程式。{2}</value>
+  </data>
+  <data name="OdbcInvalidKeyword" xml:space="preserve">
+    <value>「{0}」不是有效的 ODBC 連線關鍵字。</value>
+  </data>
+  <data name="OdbcOptionFromForm" xml:space="preserve">
+    <value>選項「{0}」由連線表單設定，請改為在那裡變更。</value>
+  </data>
+  <data name="OptionInvalidValue" xml:space="preserve">
+    <value>「{0}」不是 {1} 的有效值。</value>
+  </data>
+  <data name="OptionIsOneOf" xml:space="preserve">
+    <value>{0} 必須是下列值之一：{1}。</value>
+  </data>
+  <data name="OptionNeedsValue" xml:space="preserve">
+    <value>{0} 需要一個值。</value>
+  </data>
+  <data name="OptionPositiveWholeNumber" xml:space="preserve">
+    <value>{0} 必須是大於零的整數。</value>
+  </data>
+  <data name="OptionWholeNumberRange" xml:space="preserve">
+    <value>{0} 必須是 {1} 到 {2} 之間的整數。</value>
+  </data>
+  <data name="PartialSaveNoTransaction" xml:space="preserve">
+    <value>已儲存 {1} 項變更中的 {0} 項；{2} 沒有可復原這些變更的交易。{3}</value>
+  </data>
+  <data name="PathHasDotSegment" xml:space="preserve">
+    <value>路徑 {0} 含有 . 或 .. 區段，會指向其他資源。</value>
+  </data>
+  <data name="PathLeavesHost" xml:space="preserve">
+    <value>路徑 {0} 會超出 {1}。</value>
+  </data>
+  <data name="QueryCancelled" xml:space="preserve">
+    <value>查詢已取消。</value>
+  </data>
+  <data name="QueryTimedOut" xml:space="preserve">
+    <value>查詢逾時。</value>
+  </data>
+  <data name="QueryTimedOutAfter" xml:space="preserve">
+    <value>查詢在 {0} 秒後逾時。</value>
+  </data>
+  <data name="QuotedValueNotClosed" xml:space="preserve">
+    <value>加引號的值未閉合。</value>
+  </data>
+  <data name="RateLimited" xml:space="preserve">
+    <value>已達到速率限制。請稍後重試。</value>
+  </data>
+  <data name="RateLimitedRetryAfter" xml:space="preserve">
+    <value>已達到速率限制。請在 {0:0} 秒後重試。</value>
+  </data>
+  <data name="ReadOnlyNothingSaved" xml:space="preserve">
+    <value>此連線為唯讀，因此未儲存任何內容。</value>
+  </data>
+  <data name="ReadWriteTransactionStarted" xml:space="preserve">
+    <value>已開始讀寫交易。</value>
+  </data>
+  <data name="RequestTimedOutAfter" xml:space="preserve">
+    <value>要求在 {0} 秒後逾時。</value>
+  </data>
+  <data name="ReturnedNoResult" xml:space="preserve">
+    <value>{0} 未傳回結果。</value>
+  </data>
+  <data name="RolledBack" xml:space="preserve">
+    <value>已復原。</value>
+  </data>
+  <data name="RoutineKindFunction" xml:space="preserve">
+    <value>函式</value>
+  </data>
+  <data name="RoutineKindPackage" xml:space="preserve">
+    <value>套件</value>
+  </data>
+  <data name="RoutineKindProcedure" xml:space="preserve">
+    <value>預存程序</value>
+  </data>
+  <data name="RoutineKindTrigger" xml:space="preserve">
+    <value>觸發器</value>
+  </data>
+  <data name="RoutineKindType" xml:space="preserve">
+    <value>型別</value>
+  </data>
+  <data name="ServerErrorNoMessage" xml:space="preserve">
+    <value>伺服器回報了一個沒有訊息的錯誤。</value>
+  </data>
+  <data name="ServerHttpStatus" xml:space="preserve">
+    <value>伺服器傳回了 HTTP {0}。</value>
+  </data>
+  <data name="ServerReportedError" xml:space="preserve">
+    <value>伺服器回報了錯誤。</value>
+  </data>
+  <data name="ShowingOfKeys" xml:space="preserve">
+    <value>顯示 {1:N0} 個鍵中的 {0:N0} 個。</value>
+  </data>
+  <data name="StatementCancelled" xml:space="preserve">
+    <value>陳述式已取消。</value>
+  </data>
+  <data name="StatementNotSupported" xml:space="preserve">
+    <value>不支援該陳述式。</value>
+  </data>
+  <data name="TableHasNoColumn" xml:space="preserve">
+    <value>{0} 沒有欄 {1}。</value>
+  </data>
+  <data name="TransactionAlreadyOpen" xml:space="preserve">
+    <value>已有一個交易處於開啟狀態。</value>
+  </data>
+  <data name="TransactionLost" xml:space="preserve">
+    <value>連線已中斷，伺服器已復原尚未結束的交易。請重新執行其陳述式。</value>
+  </data>
+  <data name="TransactionStartedByWrite" xml:space="preserve">
+    <value>已開始交易。COMMIT 會保留變更，ROLLBACK 會復原變更。</value>
+  </data>
+  <data name="UpdateNeedsChangedColumn" xml:space="preserve">
+    <value>更新至少需要一個已變更的欄。</value>
+  </data>
+</root>

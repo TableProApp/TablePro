@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AutoRefreshSwitch.OffContent" xml:space="preserve">
+    <value>Auto refresh</value>
+    <comment>Toggle that rereads the server dashboard every few seconds. Shown both on and off.</comment>
+  </data>
+  <data name="AutoRefreshSwitch.OnContent" xml:space="preserve">
+    <value>Auto refresh</value>
+    <comment>Toggle that rereads the server dashboard every few seconds. Shown both on and off.</comment>
+  </data>
+  <data name="EndSessionFailed" xml:space="preserve">
+    <value>Could not end the session</value>
+  </data>
+  <data name="EndSessionMessage" xml:space="preserve">
+    <value>Terminate server session {0}? Its running statement is cancelled and its connection closed.</value>
+    <comment>{0} is the server's process or session id.</comment>
+  </data>
+  <data name="EndSessionTitle" xml:space="preserve">
+    <value>End session?</value>
+  </data>
+  <data name="NoActivityView" xml:space="preserve">
+    <value>{0} has no activity view.</value>
+    <comment>{0} is the database engine name, for example SQLite.</comment>
+  </data>
+  <data name="NoUsersView" xml:space="preserve">
+    <value>{0} has no users view.</value>
+    <comment>{0} is the database engine name, for example SQLite.</comment>
+  </data>
+  <data name="NoVariablesView" xml:space="preserve">
+    <value>{0} has no variables view.</value>
+    <comment>{0} is the database engine name, for example SQLite.</comment>
+  </data>
+  <data name="RefreshButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Refresh</value>
+  </data>
+  <data name="RefreshButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Refresh</value>
+  </data>
+  <data name="SearchButton.Content" xml:space="preserve">
+    <value>Search</value>
+    <comment>Verb: button that starts the database search.</comment>
+  </data>
+  <data name="SearchHitRowsMore_One" xml:space="preserve">
+    <value>{0:N0}+ rows</value>
+    <comment>A table with at least {0} matching rows, more than were read.</comment>
+  </data>
+  <data name="SearchHitRowsMore_Other" xml:space="preserve">
+    <value>{0:N0}+ rows</value>
+    <comment>A table with at least {0} matching rows, more than were read.</comment>
+  </data>
+  <data name="SearchHitRows_One" xml:space="preserve">
+    <value>{0:N0} row</value>
+    <comment>{0} is the number of matching rows in a table.</comment>
+  </data>
+  <data name="SearchHitRows_Other" xml:space="preserve">
+    <value>{0:N0} rows</value>
+    <comment>{0} is the number of matching rows in a table.</comment>
+  </data>
+  <data name="SearchProgress_One" xml:space="preserve">
+    <value>Searched {1:N0} of {0:N0} table · {2:N0} with matches</value>
+    <comment>{0} is the number of tables to search, {1} how many are done, {2} how many had matches.</comment>
+  </data>
+  <data name="SearchProgress_Other" xml:space="preserve">
+    <value>Searched {1:N0} of {0:N0} tables · {2:N0} with matches</value>
+    <comment>{0} is the number of tables to search, {1} how many are done, {2} how many had matches.</comment>
+  </data>
+  <data name="SearchQueryBox.PlaceholderText" xml:space="preserve">
+    <value>Find a value in every table of this schema</value>
+  </data>
+  <data name="SearchStopButton.Content" xml:space="preserve">
+    <value>Stop</value>
+    <comment>Verb: stops the running search.</comment>
+  </data>
+  <data name="SearchStopped" xml:space="preserve">
+    <value>Search stopped.</value>
+  </data>
+  <data name="SearchTabTitle" xml:space="preserve">
+    <value>Search</value>
+    <comment>Noun: title of the database search tab.</comment>
+  </data>
+  <data name="SectionActivity.Text" xml:space="preserve">
+    <value>Activity</value>
+    <comment>Server dashboard section: the sessions on the server and what they run.</comment>
+  </data>
+  <data name="SectionUsers.Text" xml:space="preserve">
+    <value>Users</value>
+    <comment>Server dashboard section: logins and roles.</comment>
+  </data>
+  <data name="SectionVariables.Text" xml:space="preserve">
+    <value>Variables</value>
+    <comment>Server dashboard section: server configuration variables.</comment>
+  </data>
+  <data name="StatusRows_One" xml:space="preserve">
+    <value>{0:N0} row · {1:T}</value>
+    <comment>{0} is the number of rows shown, {1} is the time they were read.</comment>
+  </data>
+  <data name="StatusRows_Other" xml:space="preserve">
+    <value>{0:N0} rows · {1:T}</value>
+    <comment>{0} is the number of rows shown, {1} is the time they were read.</comment>
+  </data>
+  <data name="TabTitle" xml:space="preserve">
+    <value>Server</value>
+    <comment>Title of the server dashboard tab.</comment>
+  </data>
+  <data name="Terminate" xml:space="preserve">
+    <value>Terminate</value>
+    <comment>Verb: button that ends a server session.</comment>
+  </data>
+  <data name="TerminateSession" xml:space="preserve">
+    <value>Terminate Session</value>
+  </data>
+</root>

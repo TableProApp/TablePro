@@ -1,0 +1,207 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="CancelConnect.Content" xml:space="preserve">
+    <value>取消</value>
+  </data>
+  <data name="ConnectFailedTitle" xml:space="preserve">
+    <value>無法連線到 {0}</value>
+  </data>
+  <data name="ConnectNowMessage" xml:space="preserve">
+    <value>要立即連線到 {0} 嗎？</value>
+  </data>
+  <data name="ConnectToTitle" xml:space="preserve">
+    <value>連線到 {0}</value>
+  </data>
+  <data name="ConnectingThroughProxy" xml:space="preserve">
+    <value>正在透過代理伺服器連線…</value>
+  </data>
+  <data name="ConnectingTo" xml:space="preserve">
+    <value>正在連線到 {0}…</value>
+  </data>
+  <data name="ConnectionAnnouncement" xml:space="preserve">
+    <value>{0}, {1}</value>
+  </data>
+  <data name="ConnectionSavedTitle" xml:space="preserve">
+    <value>已儲存連線</value>
+  </data>
+  <data name="CreateGroup" xml:space="preserve">
+    <value>建立</value>
+  </data>
+  <data name="DaysAgo_One" xml:space="preserve">
+    <value>{0} 天前</value>
+  </data>
+  <data name="DaysAgo_Other" xml:space="preserve">
+    <value>{0} 天前</value>
+  </data>
+  <data name="DeleteConfirmMessage" xml:space="preserve">
+    <value>已儲存的連線及其儲存的密碼將被移除。資料庫本身不受影響。</value>
+  </data>
+  <data name="DeleteConfirmTitle" xml:space="preserve">
+    <value>要刪除 {0} 嗎？</value>
+  </data>
+  <data name="EmptyMessage.Text" xml:space="preserve">
+    <value>建立一個連線，或開啟 SQLite 或 DuckDB 檔案。</value>
+  </data>
+  <data name="EmptyTitle.Text" xml:space="preserve">
+    <value>沒有已儲存的連線</value>
+  </data>
+  <data name="EncryptedImportMessage" xml:space="preserve">
+    <value>此檔案已加密。請輸入匯出時使用的通關密語。</value>
+  </data>
+  <data name="EncryptedImportTitle" xml:space="preserve">
+    <value>已加密的連線</value>
+  </data>
+  <data name="ExportFileType" xml:space="preserve">
+    <value>TablePro 連線</value>
+  </data>
+  <data name="ExportMessage" xml:space="preserve">
+    <value>輸入通關密語以加密檔案並包含已儲存的密碼。留空則匯出時不含密碼。</value>
+  </data>
+  <data name="ExportTitle" xml:space="preserve">
+    <value>匯出連線</value>
+  </data>
+  <data name="HoursAgo_One" xml:space="preserve">
+    <value>{0} 小時前</value>
+  </data>
+  <data name="HoursAgo_Other" xml:space="preserve">
+    <value>{0} 小時前</value>
+  </data>
+  <data name="ImportConnections.Text" xml:space="preserve">
+    <value>匯入連線</value>
+  </data>
+  <data name="ImportFailedTitle" xml:space="preserve">
+    <value>匯入失敗</value>
+  </data>
+  <data name="ImportFinishedTitle" xml:space="preserve">
+    <value>匯入完成</value>
+  </data>
+  <data name="ImportWrongPassphrase" xml:space="preserve">
+    <value>通關密語錯誤，或檔案已損毀。</value>
+  </data>
+  <data name="ImportedConnections_One" xml:space="preserve">
+    <value>已匯入 {0} 個連線。</value>
+  </data>
+  <data name="ImportedConnections_Other" xml:space="preserve">
+    <value>已匯入 {0} 個連線。</value>
+  </data>
+  <data name="ImportedSavedQueries_One" xml:space="preserve">
+    <value>已將 {0} 個已儲存的查詢加入我的最愛。</value>
+  </data>
+  <data name="ImportedSavedQueries_Other" xml:space="preserve">
+    <value>已將 {0} 個已儲存的查詢加入我的最愛。</value>
+  </data>
+  <data name="JustNow" xml:space="preserve">
+    <value>剛剛</value>
+  </data>
+  <data name="MinutesAgo_One" xml:space="preserve">
+    <value>{0} 分鐘前</value>
+  </data>
+  <data name="MinutesAgo_Other" xml:space="preserve">
+    <value>{0} 分鐘前</value>
+  </data>
+  <data name="MoveToGroup" xml:space="preserve">
+    <value>移動至群組</value>
+  </data>
+  <data name="NewConnection.Text" xml:space="preserve">
+    <value>新增連線</value>
+  </data>
+  <data name="NewGroup.Text" xml:space="preserve">
+    <value>新增群組</value>
+  </data>
+  <data name="NewGroupTitle" xml:space="preserve">
+    <value>新增群組</value>
+  </data>
+  <data name="NoGroup" xml:space="preserve">
+    <value>無群組</value>
+  </data>
+  <data name="OpenDatabaseFile.Text" xml:space="preserve">
+    <value>開啟資料庫檔案</value>
+  </data>
+  <data name="OpeningCloudflareTunnel" xml:space="preserve">
+    <value>正在開啟 Cloudflare 隧道…</value>
+  </data>
+  <data name="OpeningSshTunnel" xml:space="preserve">
+    <value>正在開啟到 {0} 的 SSH 隧道…</value>
+  </data>
+  <data name="PasswordForHeader" xml:space="preserve">
+    <value>{0}@{1} 的密碼</value>
+  </data>
+  <data name="RunningTunnelCommand" xml:space="preserve">
+    <value>正在執行隧道命令…</value>
+  </data>
+  <data name="SearchConnections.PlaceholderText" xml:space="preserve">
+    <value>搜尋連線</value>
+  </data>
+  <data name="Settings.Content" xml:space="preserve">
+    <value>設定</value>
+  </data>
+  <data name="SignInAndRetry" xml:space="preserve">
+    <value>請在 {0} 登入，然後再次連線。</value>
+  </data>
+  <data name="SkippedConnections_One" xml:space="preserve">
+    <value>已略過 {0} 個此組建無法開啟的連線。</value>
+  </data>
+  <data name="SkippedConnections_Other" xml:space="preserve">
+    <value>已略過 {0} 個此組建無法開啟的連線。</value>
+  </data>
+  <data name="Sort.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>排序</value>
+  </data>
+  <data name="SortLastConnected.Content" xml:space="preserve">
+    <value>上次連線時間</value>
+  </data>
+  <data name="SortManual.Content" xml:space="preserve">
+    <value>手動排序</value>
+  </data>
+  <data name="SortName.Content" xml:space="preserve">
+    <value>名稱</value>
+  </data>
+  <data name="StartingCloudSqlProxy" xml:space="preserve">
+    <value>正在啟動 Cloud SQL Auth Proxy…</value>
+  </data>
+  <data name="TunnelCommandsTurnedOff" xml:space="preserve">
+    <value>隧道命令已關閉，直到你檢閱它們為止：{0}。</value>
+  </data>
+  <data name="Version" xml:space="preserve">
+    <value>版本 {0}</value>
+  </data>
+  <data name="TeamLibraryHeader" xml:space="preserve">
+    <value>團隊庫</value>
+  </data>
+  <data name="PublishToTeam" xml:space="preserve">
+    <value>發佈到團隊庫…</value>
+  </data>
+  <data name="PublishToTeamTitle" xml:space="preserve">
+    <value>要將「{0}」發佈給你的團隊嗎？</value>
+  </data>
+  <data name="PublishToTeamMessage" xml:space="preserve">
+    <value>團隊中的每個人都會看到主機、連接埠、使用者、資料庫和 SSH 設定。這會取代你先前發佈的連線和已儲存的查詢。密碼不包含在內。</value>
+  </data>
+  <data name="PublishButton" xml:space="preserve">
+    <value>發佈</value>
+  </data>
+  <data name="PublishedTitle" xml:space="preserve">
+    <value>已發佈到團隊庫</value>
+  </data>
+  <data name="PublishedMessage_One" xml:space="preserve">
+    <value>你的團隊現在可以看到 {0} 個共享連線。密碼未包含在內。</value>
+  </data>
+  <data name="PublishedMessage_Other" xml:space="preserve">
+    <value>你的團隊現在可以看到 {0} 個共享連線。密碼未包含在內。</value>
+  </data>
+  <data name="PublishFailedTitle" xml:space="preserve">
+    <value>無法發佈到團隊庫</value>
+  </data>
+</root>

@@ -1,0 +1,366 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AccessibleActualTime" xml:space="preserve">
+    <value>실제 시간 {0}</value>
+  </data>
+  <data name="AccessibleCost" xml:space="preserve">
+    <value>비용 {0}</value>
+  </data>
+  <data name="AccessibleOnRelation" xml:space="preserve">
+    <value>{0}에서</value>
+  </data>
+  <data name="AccessibleRows_One" xml:space="preserve">
+    <value>{0}행</value>
+  </data>
+  <data name="AccessibleRows_Other" xml:space="preserve">
+    <value>{0}행</value>
+  </data>
+  <data name="AccessibleSeparator" xml:space="preserve">
+    <value>, </value>
+  </data>
+  <data name="AccessibleWarnings_One" xml:space="preserve">
+    <value>경고: {0}</value>
+  </data>
+  <data name="AccessibleWarnings_Other" xml:space="preserve">
+    <value>경고: {0}</value>
+  </data>
+  <data name="ActualEstimatedRowsHeader" xml:space="preserve">
+    <value>실제/예상 행</value>
+  </data>
+  <data name="ActualSection" xml:space="preserve">
+    <value>실제</value>
+  </data>
+  <data name="ActualTimeHeader.Text" xml:space="preserve">
+    <value>실제 시간</value>
+  </data>
+  <data name="BarMetricSelfCost" xml:space="preserve">
+    <value>자체 비용</value>
+  </data>
+  <data name="BarMetricSelfTime" xml:space="preserve">
+    <value>자체 시간</value>
+  </data>
+  <data name="Baseline" xml:space="preserve">
+    <value>기준</value>
+  </data>
+  <data name="CaptureTime" xml:space="preserve">
+    <value>{0:T}</value>
+  </data>
+  <data name="CaptureTimeAnalyzed" xml:space="preserve">
+    <value>{0:T}, 분석됨</value>
+  </data>
+  <data name="ChangeAdded" xml:space="preserve">
+    <value>추가됨</value>
+  </data>
+  <data name="ChangeChanged" xml:space="preserve">
+    <value>변경됨</value>
+  </data>
+  <data name="ChangeRemoved" xml:space="preserve">
+    <value>제거됨</value>
+  </data>
+  <data name="ChangeRowName" xml:space="preserve">
+    <value>{0}: {1}</value>
+  </data>
+  <data name="ColumnChange" xml:space="preserve">
+    <value>변경</value>
+  </data>
+  <data name="ColumnMetric" xml:space="preserve">
+    <value>지표</value>
+  </data>
+  <data name="CompareMode.Text" xml:space="preserve">
+    <value>비교</value>
+  </data>
+  <data name="ComparedAsTextMessage" xml:space="preserve">
+    <value>플랜 중 하나를 트리로 읽을 수 없어 두 실행을 한 줄씩 비교합니다.</value>
+  </data>
+  <data name="ComparedAsTextTitle" xml:space="preserve">
+    <value>텍스트로 비교함</value>
+  </data>
+  <data name="ComparisonCaption" xml:space="preserve">
+    <value>기준: {0}, 현재: {1}</value>
+  </data>
+  <data name="ComparisonName" xml:space="preserve">
+    <value>플랜 비교</value>
+  </data>
+  <data name="CopyButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>플랜 텍스트 복사</value>
+  </data>
+  <data name="CopyButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>서버가 반환한 플랜 텍스트 복사</value>
+  </data>
+  <data name="CopyCreateIndexButton" xml:space="preserve">
+    <value>CREATE INDEX 복사</value>
+  </data>
+  <data name="CopyOperation" xml:space="preserve">
+    <value>연산 복사</value>
+  </data>
+  <data name="CopyStepDetails" xml:space="preserve">
+    <value>단계 세부사항 복사</value>
+  </data>
+  <data name="CopyStepDetailsButton" xml:space="preserve">
+    <value>단계 세부사항 복사</value>
+  </data>
+  <data name="CostHeader.Text" xml:space="preserve">
+    <value>비용</value>
+  </data>
+  <data name="Current" xml:space="preserve">
+    <value>현재</value>
+  </data>
+  <data name="DiagramActualRows" xml:space="preserve">
+    <value>실제 {0:N0}</value>
+  </data>
+  <data name="DiagramMode.Text" xml:space="preserve">
+    <value>다이어그램</value>
+  </data>
+  <data name="DiagramName" xml:space="preserve">
+    <value>플랜 다이어그램</value>
+  </data>
+  <data name="DiagramRows_One" xml:space="preserve">
+    <value>{0:N0}행</value>
+  </data>
+  <data name="DiagramRows_Other" xml:space="preserve">
+    <value>{0:N0}행</value>
+  </data>
+  <data name="DifferentStatementTitle" xml:space="preserve">
+    <value>기준 플랜은 다른 문을 설명했습니다</value>
+  </data>
+  <data name="EstimatedRowsHeader" xml:space="preserve">
+    <value>행</value>
+  </data>
+  <data name="FieldChange" xml:space="preserve">
+    <value>{0}: {1} → {2}</value>
+  </data>
+  <data name="FitButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>플랜 맞춤</value>
+  </data>
+  <data name="FitButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>플랜 맞춤</value>
+  </data>
+  <data name="LabelActualRows" xml:space="preserve">
+    <value>실제 행</value>
+  </data>
+  <data name="LabelActualTime" xml:space="preserve">
+    <value>실제 시간</value>
+  </data>
+  <data name="LabelAlias" xml:space="preserve">
+    <value>별칭</value>
+  </data>
+  <data name="LabelCost" xml:space="preserve">
+    <value>비용</value>
+  </data>
+  <data name="LabelLoops" xml:space="preserve">
+    <value>반복 횟수</value>
+  </data>
+  <data name="LabelMissingIndex" xml:space="preserve">
+    <value>누락된 인덱스</value>
+  </data>
+  <data name="LabelRows" xml:space="preserve">
+    <value>행</value>
+  </data>
+  <data name="LabelSchema" xml:space="preserve">
+    <value>스키마</value>
+  </data>
+  <data name="LabelShare" xml:space="preserve">
+    <value>비율</value>
+  </data>
+  <data name="LabelStartup" xml:space="preserve">
+    <value>시작</value>
+  </data>
+  <data name="LabelTable" xml:space="preserve">
+    <value>테이블</value>
+  </data>
+  <data name="LabelTime" xml:space="preserve">
+    <value>시간</value>
+  </data>
+  <data name="LabelTotalRows" xml:space="preserve">
+    <value>총 행</value>
+  </data>
+  <data name="LabelValue" xml:space="preserve">
+    <value>{0}: {1}</value>
+  </data>
+  <data name="LabelWarning" xml:space="preserve">
+    <value>경고</value>
+  </data>
+  <data name="LabelWidth" xml:space="preserve">
+    <value>너비</value>
+  </data>
+  <data name="MetricActualLoops" xml:space="preserve">
+    <value>실제 루프</value>
+  </data>
+  <data name="MetricActualRows" xml:space="preserve">
+    <value>실제 행</value>
+  </data>
+  <data name="MetricActualStartupTime" xml:space="preserve">
+    <value>실제 시작 시간</value>
+  </data>
+  <data name="MetricActualTotalTime" xml:space="preserve">
+    <value>실제 총 시간</value>
+  </data>
+  <data name="MetricBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>막대 지표</value>
+  </data>
+  <data name="MetricBox.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>막대가 측정하는 항목</value>
+  </data>
+  <data name="MetricEstimatedRows" xml:space="preserve">
+    <value>예상 행</value>
+  </data>
+  <data name="MetricEstimatedStartupCost" xml:space="preserve">
+    <value>예상 시작 비용</value>
+  </data>
+  <data name="MetricEstimatedTotalCost" xml:space="preserve">
+    <value>예상 총 비용</value>
+  </data>
+  <data name="MetricEstimatedWidth" xml:space="preserve">
+    <value>예상 너비</value>
+  </data>
+  <data name="MissingIndex" xml:space="preserve">
+    <value>누락된 인덱스</value>
+  </data>
+  <data name="MissingIndexImpact" xml:space="preserve">
+    <value>누락된 인덱스, 예상 효과 {0:0.#}%</value>
+  </data>
+  <data name="Modes.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>플랜 보기 방식</value>
+  </data>
+  <data name="NoStepChanged" xml:space="preserve">
+    <value>변경된 단계가 없습니다.</value>
+  </data>
+  <data name="NoStepSelected" xml:space="preserve">
+    <value>선택한 단계 없음</value>
+  </data>
+  <data name="NoStepSelectedHint" xml:space="preserve">
+    <value>작업을 확인할 실행 계획 단계를 선택하십시오.</value>
+  </data>
+  <data name="NothingToCompareMessage" xml:space="preserve">
+    <value>쿼리나 스키마를 변경한 후 다시 설명을 실행하면 이번 실행이 기준이 됩니다.</value>
+  </data>
+  <data name="NothingToCompareTitle" xml:space="preserve">
+    <value>아직 비교할 항목 없음</value>
+  </data>
+  <data name="OperationHeader.Text" xml:space="preserve">
+    <value>작업</value>
+  </data>
+  <data name="RawMode.Text" xml:space="preserve">
+    <value>원시</value>
+  </data>
+  <data name="RawText.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>플랜 텍스트</value>
+  </data>
+  <data name="RowsHeader.Text" xml:space="preserve">
+    <value>행</value>
+  </data>
+  <data name="SeverityCritical" xml:space="preserve">
+    <value>심각한 비용</value>
+  </data>
+  <data name="SeverityHigh" xml:space="preserve">
+    <value>높은 비용</value>
+  </data>
+  <data name="SeverityLow" xml:space="preserve">
+    <value>낮은 비용</value>
+  </data>
+  <data name="SeverityModerate" xml:space="preserve">
+    <value>중간 비용</value>
+  </data>
+  <data name="StepChangesHeading" xml:space="preserve">
+    <value>단계 변경</value>
+  </data>
+  <data name="StepDetailsName" xml:space="preserve">
+    <value>플랜 단계 세부사항</value>
+  </data>
+  <data name="SummaryEstimatedRows" xml:space="preserve">
+    <value>예상 행</value>
+  </data>
+  <data name="SummaryExecutionTime" xml:space="preserve">
+    <value>실행 시간</value>
+  </data>
+  <data name="SummaryName" xml:space="preserve">
+    <value>플랜 요약</value>
+  </data>
+  <data name="SummaryNodeCount" xml:space="preserve">
+    <value>노드 수</value>
+  </data>
+  <data name="SummaryPlanningTime" xml:space="preserve">
+    <value>계획 수립 시간</value>
+  </data>
+  <data name="SummaryTotalCost" xml:space="preserve">
+    <value>비용</value>
+  </data>
+  <data name="TimingsAnalyzed" xml:space="preserve">
+    <value>분석된 플랜 · {0}</value>
+  </data>
+  <data name="TimingsCost" xml:space="preserve">
+    <value>비용 {0}</value>
+  </data>
+  <data name="TimingsEstimated" xml:space="preserve">
+    <value>예상 플랜 · {0}</value>
+  </data>
+  <data name="TimingsExecution" xml:space="preserve">
+    <value>실행 {0}</value>
+  </data>
+  <data name="TimingsPlanning" xml:space="preserve">
+    <value>계획 수립 {0}</value>
+  </data>
+  <data name="TimingsSteps_One" xml:space="preserve">
+    <value>1단계</value>
+  </data>
+  <data name="TimingsSteps_Other" xml:space="preserve">
+    <value>{0:N0}단계</value>
+  </data>
+  <data name="Tree.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>플랜 단계</value>
+  </data>
+  <data name="TreeMode.Text" xml:space="preserve">
+    <value>트리</value>
+  </data>
+  <data name="UnparsedBar.Message" xml:space="preserve">
+    <value>이 플랜을 트리로 읽을 수 없어 서버가 반환한 그대로 표시합니다.</value>
+  </data>
+  <data name="ValueChanged" xml:space="preserve">
+    <value>변경됨</value>
+  </data>
+  <data name="VerdictFaster" xml:space="preserve">
+    <value>기준보다 {0:0.#}배 빠름</value>
+  </data>
+  <data name="VerdictShapeChanged" xml:space="preserve">
+    <value>플랜 구조가 변경됨</value>
+  </data>
+  <data name="VerdictSlower" xml:space="preserve">
+    <value>기준보다 {0:0.#}배 느림</value>
+  </data>
+  <data name="VerdictUnchanged" xml:space="preserve">
+    <value>측정 가능한 변화 없음</value>
+  </data>
+  <data name="VerdictValuesChanged" xml:space="preserve">
+    <value>플랜 구조는 같고 수치만 다름</value>
+  </data>
+  <data name="WarningsTitle_One" xml:space="preserve">
+    <value>경고</value>
+  </data>
+  <data name="WarningsTitle_Other" xml:space="preserve">
+    <value>경고</value>
+  </data>
+  <data name="ZoomInButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>확대</value>
+  </data>
+  <data name="ZoomInButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>확대 (Ctrl+휠)</value>
+  </data>
+  <data name="ZoomOutButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>축소</value>
+  </data>
+  <data name="ZoomOutButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>축소 (Ctrl+휠)</value>
+  </data>
+</root>

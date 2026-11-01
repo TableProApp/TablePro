@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AnsweredHttp" xml:space="preserve">
+    <value>Trino가 HTTP {0} {1}(으)로 응답했습니다</value>
+  </data>
+  <data name="AnsweredHttpWith" xml:space="preserve">
+    <value>Trino가 HTTP {0} {1}(으)로 응답했습니다: {2}</value>
+  </data>
+  <data name="CredentialsRefused" xml:space="preserve">
+    <value>Trino가 자격 증명을 거부했습니다.</value>
+  </data>
+  <data name="CredentialsRefusedWith" xml:space="preserve">
+    <value>Trino가 자격 증명을 거부했습니다: {0}</value>
+  </data>
+  <data name="NeedsComparableKey" xml:space="preserve">
+    <value>행을 안전하게 변경하려면 비교 가능한 키 열이 하나 이상 필요합니다.</value>
+  </data>
+  <data name="NotClientProtocol" xml:space="preserve">
+    <value>Trino가 클라이언트 프로토콜이 아닌 응답을 반환했습니다: {0}</value>
+  </data>
+  <data name="PasswordNeedsHttps" xml:space="preserve">
+    <value>Trino는 HTTPS를 통해서만 암호나 토큰을 받습니다. SSL 모드를 필수로 설정하거나 {0}에 https:// URL을 사용하세요.</value>
+  </data>
+  <data name="PlainHttpRedirect" xml:space="preserve">
+    <value>Trino가 HTTPS 요청에 암호화되지 않은 http:// 주소로 응답했으므로 따라가지 않았습니다. TLS 프록시 뒤의 코디네이터에는 http-server.process-forwarded=true가 필요합니다.</value>
+  </data>
+</root>

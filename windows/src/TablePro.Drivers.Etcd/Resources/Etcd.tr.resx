@@ -1,0 +1,177 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AuthDisabled" xml:space="preserve">
+    <value>Kimlik doğrulama devre dışı bırakıldı.</value>
+  </data>
+  <data name="AuthEnabled" xml:space="preserve">
+    <value>Kimlik doğrulama etkinleştirildi.</value>
+  </data>
+  <data name="ChangeHasNoKey" xml:space="preserve">
+    <value>Bir etcd satırı anahtarıyla tanımlanır ve bu değişikliğin anahtarı yok.</value>
+  </data>
+  <data name="Compacted" xml:space="preserve">
+    <value>{0} revizyonu sıkıştırıldı.</value>
+  </data>
+  <data name="CompactionNeedsRevision" xml:space="preserve">
+    <value>compaction için bir revizyon gerekir.</value>
+  </data>
+  <data name="ConcurrentChange" xml:space="preserve">
+    <value>Kayıt sürerken başka bir istemci bu anahtarları değiştirdiğinden hiçbir şey kaydedilmedi. Yenileyip tekrar deneyin.</value>
+  </data>
+  <data name="DescribeKey" xml:space="preserve">
+    <value>sürüm {0}, revizyon {1}</value>
+  </data>
+  <data name="DescribeKeyWithLease" xml:space="preserve">
+    <value>sürüm {0}, revizyon {1}, kira {2}</value>
+  </data>
+  <data name="EmptyCommand" xml:space="preserve">
+    <value>Boş etcd komutu.</value>
+  </data>
+  <data name="EmptyKey" xml:space="preserve">
+    <value>Bir etcd anahtarı boş olamaz.</value>
+  </data>
+  <data name="HttpStatus" xml:space="preserve">
+    <value>etcd HTTP {0} döndürdü: {1}</value>
+  </data>
+  <data name="InvalidLeaseId" xml:space="preserve">
+    <value>Geçersiz kira kimliği: {0}</value>
+  </data>
+  <data name="KeepsColumn" xml:space="preserve">
+    <value>{0} değerini etcd kendisi tutar; yalnızca anahtar, değer ve kira değiştirilebilir.</value>
+  </data>
+  <data name="KeyAlreadyExists" xml:space="preserve">
+    <value>{0} anahtarı zaten mevcut olduğundan hiçbir şey kaydedilmedi. Bunun yerine o satırı düzenleyin.</value>
+  </data>
+  <data name="KeyChangedSinceRead" xml:space="preserve">
+    <value>{0} anahtarı okunduktan sonra değiştiğinden hiçbir şey kaydedilmedi. Yenileyip tekrar deneyin.</value>
+  </data>
+  <data name="KeyGoneStatement" xml:space="preserve">
+    <value>artık mevcut olmayan {0} anahtarı</value>
+  </data>
+  <data name="LeaseComment" xml:space="preserve">
+    <value>Anahtarın bağlı olduğu kira, etcdctl’nin yazdığı gibi onaltılık olarak.</value>
+  </data>
+  <data name="LeaseExpired" xml:space="preserve">
+    <value>Kiranın süresi doldu veya hiç verilmedi.</value>
+  </data>
+  <data name="LeaseGrantTtl" xml:space="preserve">
+    <value>lease grant için tam saniye cinsinden bir TTL gerekir.</value>
+  </data>
+  <data name="LeaseRefreshed" xml:space="preserve">
+    <value>{0} kirası bir kez yenilendi, TTL {1} sn. Canlı tutmak için bunu tekrarlayan bir istemci gerekir, örneğin etcdctl.</value>
+  </data>
+  <data name="LeaseRevoked" xml:space="preserve">
+    <value>{0} kirası iptal edildi.</value>
+  </data>
+  <data name="NeedsKey" xml:space="preserve">
+    <value>{0} için bir anahtar gerekir.</value>
+  </data>
+  <data name="NeedsLeaseId" xml:space="preserve">
+    <value>{0} için bir kira kimliği gerekir.</value>
+  </data>
+  <data name="NeedsRoleName" xml:space="preserve">
+    <value>{0} için bir rol adı gerekir.</value>
+  </data>
+  <data name="NeedsSubcommand" xml:space="preserve">
+    <value>{0} için bir alt komut gerekir: {1}.</value>
+  </data>
+  <data name="NeedsUserAndRole" xml:space="preserve">
+    <value>{0} için bir kullanıcı adı ve bir rol gerekir.</value>
+  </data>
+  <data name="NeedsUserName" xml:space="preserve">
+    <value>{0} için bir kullanıcı adı gerekir.</value>
+  </data>
+  <data name="NegativeLimit" xml:space="preserve">
+    <value>--limit ve --rev negatif olamaz.</value>
+  </data>
+  <data name="NoApiAt" xml:space="preserve">
+    <value>{0} adresinde etcd v3 API’si bulunamadı. Bağlantıyı eş bağlantı noktası 2380’e değil, istemci bağlantı noktasına (varsayılan 2379) yönlendirin.</value>
+  </data>
+  <data name="NoKeepAliveAnswer" xml:space="preserve">
+    <value>etcd keep-alive yanıtı göndermedi.</value>
+  </data>
+  <data name="NotGateway" xml:space="preserve">
+    <value>Sunucu yanıt verdi ancak bir etcd v3 JSON ağ geçidi değil.</value>
+  </data>
+  <data name="NoToken" xml:space="preserve">
+    <value>etcd oturum açtı ancak belirteç döndürmedi.</value>
+  </data>
+  <data name="OrderFlag" xml:space="preserve">
+    <value>--order, ASCEND veya DESCEND olmalıdır.</value>
+  </data>
+  <data name="PrefixAndFromKey" xml:space="preserve">
+    <value>--prefix ve --from-key birlikte kullanılamaz.</value>
+  </data>
+  <data name="PutNeedsKeyAndValue" xml:space="preserve">
+    <value>put için bir anahtar ve bir değer gerekir.</value>
+  </data>
+  <data name="PutTakesOne" xml:space="preserve">
+    <value>put bir anahtar ve bir değer alır; boşluk içeren bir değeri tırnak içine alın.</value>
+  </data>
+  <data name="RenameSourceGone" xml:space="preserve">
+    <value>{0} anahtarı artık mevcut olmadığından yeniden adlandırılamaz.</value>
+  </data>
+  <data name="RoleCreated" xml:space="preserve">
+    <value>{0} rolü oluşturuldu.</value>
+  </data>
+  <data name="RoleDeleted" xml:space="preserve">
+    <value>{0} rolü silindi.</value>
+  </data>
+  <data name="RoleGranted" xml:space="preserve">
+    <value>{0} rolü {1} kullanıcısına verildi.</value>
+  </data>
+  <data name="RoleRevoked" xml:space="preserve">
+    <value>{0} rolü {1} kullanıcısından geri alındı.</value>
+  </data>
+  <data name="SignInRefused" xml:space="preserve">
+    <value>etcd kullanıcı adını veya parolayı reddetti: {0}</value>
+  </data>
+  <data name="SortByFlag" xml:space="preserve">
+    <value>--sort-by, KEY, VERSION, CREATE, MOD veya VALUE olmalıdır.</value>
+  </data>
+  <data name="TimeoutNumber" xml:space="preserve">
+    <value>--timeout bir saniye sayısı olmalıdır.</value>
+  </data>
+  <data name="TimeoutRange" xml:space="preserve">
+    <value>--timeout 0 ile {0} saniye arasında olmalıdır.</value>
+  </data>
+  <data name="UnknownCommand" xml:space="preserve">
+    <value>Bilinmeyen komut: {0}.</value>
+  </data>
+  <data name="UnknownCommandTry" xml:space="preserve">
+    <value>Bilinmeyen komut: {0}. get, put, del, watch, lease, member, endpoint veya compaction deneyin.</value>
+  </data>
+  <data name="UnreadableResponse" xml:space="preserve">
+    <value>etcd, {0} için TablePro’nun okuyamadığı bir yanıt döndürdü.</value>
+  </data>
+  <data name="UserCreated" xml:space="preserve">
+    <value>{0} kullanıcısı oluşturuldu.</value>
+  </data>
+  <data name="UserDeleted" xml:space="preserve">
+    <value>{0} kullanıcısı silindi.</value>
+  </data>
+  <data name="VersionComment" xml:space="preserve">
+    <value>Anahtarın oluşturulduğundan bu yana kaç kez değiştiği.</value>
+  </data>
+  <data name="Watched" xml:space="preserve">
+    <value>{0:0.#} saniye izlendi ve {1:N0} olay görüldü.</value>
+  </data>
+  <data name="WholeNumber" xml:space="preserve">
+    <value>{0} bir tam sayı olmalıdır.</value>
+  </data>
+  <data name="WithRevision" xml:space="preserve">
+    <value>{0} (revizyon {1})</value>
+  </data>
+</root>

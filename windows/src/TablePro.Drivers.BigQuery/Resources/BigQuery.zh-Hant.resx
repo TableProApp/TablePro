@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="EstimatedScan" xml:space="preserve">
+    <value>預估掃描量：{0}。</value>
+  </data>
+  <data name="EstimatedScanWithLimit" xml:space="preserve">
+    <value>預估掃描量：{0}（上限 {1}）。</value>
+  </data>
+  <data name="NeedsProjectId" xml:space="preserve">
+    <value>BigQuery 需要專案 ID。請將其輸入為資料庫。</value>
+  </data>
+  <data name="NoComparableColumn" xml:space="preserve">
+    <value>該列沒有 BigQuery 可比較的欄，因此無法安全地變更。請在 keyColumns 選項中指定索引鍵欄。</value>
+  </data>
+  <data name="NotAByteCount" xml:space="preserve">
+    <value>maxBytesBilled「{0}」不是位元組數，例如 10000000000 或 10GB。</value>
+  </data>
+  <data name="NotConnected" xml:space="preserve">
+    <value>BigQuery 工作階段未連線。</value>
+  </data>
+  <data name="OverLimit" xml:space="preserve">
+    <value>未執行：此查詢將掃描 {0}，超過 maxBytesBilled 上限 {1}。</value>
+  </data>
+</root>

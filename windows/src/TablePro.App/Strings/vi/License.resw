@@ -1,0 +1,338 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="Activate" xml:space="preserve">
+    <value>Kích hoạt</value>
+    <comment>Button that activates the license key typed above it (verb).</comment>
+  </data>
+  <data name="BuyLicense" xml:space="preserve">
+    <value>Mua giấy phép</value>
+  </data>
+  <data name="CopyKey" xml:space="preserve">
+    <value>Sao chép khoá</value>
+    <comment>Button that copies the license key.</comment>
+  </data>
+  <data name="Deactivate" xml:space="preserve">
+    <value>Hủy kích hoạt</value>
+    <comment>Confirmation button (verb).</comment>
+  </data>
+  <data name="DeactivateButton" xml:space="preserve">
+    <value>Hủy kích hoạt trên máy tính này…</value>
+    <comment>Button that gives up this computer's seat on the license.</comment>
+  </data>
+  <data name="DeactivateMessage" xml:space="preserve">
+    <value>Các tính năng trả phí dừng ngay trên máy tính này. Bạn có thể kích hoạt lại giấy phép này sau.</value>
+  </data>
+  <data name="DeactivateTitle" xml:space="preserve">
+    <value>Hủy kích hoạt giấy phép này?</value>
+  </data>
+  <data name="DeviceCount" xml:space="preserve">
+    <value>{0} trên {1} thiết bị</value>
+    <comment>{0} is the number of activated devices, {1} the license's limit.</comment>
+  </data>
+  <data name="DevicesHeader" xml:space="preserve">
+    <value>Thiết bị</value>
+  </data>
+  <data name="ErrorActivationLimit" xml:space="preserve">
+    <value>Giấy phép này đã đạt giới hạn kích hoạt. Hãy gỡ một thiết bị khỏi tài khoản rồi kích hoạt lại.</value>
+  </data>
+  <data name="ErrorDecoding" xml:space="preserve">
+    <value>Không thể đọc phản hồi từ máy chủ. Vui lòng thử lại sau.</value>
+  </data>
+  <data name="ErrorExpired" xml:space="preserve">
+    <value>Giấy phép này đã hết hạn. Gia hạn để tiếp tục sử dụng các tính năng trả phí.</value>
+  </data>
+  <data name="ErrorInvalidKey" xml:space="preserve">
+    <value>Mã giấy phép không hợp lệ. Kiểm tra lỗi chính tả và thử lại.</value>
+  </data>
+  <data name="ErrorKeyFormat" xml:space="preserve">
+    <value>Định dạng mã giấy phép không hợp lệ. Kiểm tra lỗi chính tả và thử lại.</value>
+  </data>
+  <data name="ErrorMachineMismatch" xml:space="preserve">
+    <value>Giấy phép này đã được kích hoạt trên một máy tính khác. Kích hoạt tại đây để dùng các tính năng trả phí.</value>
+  </data>
+  <data name="ErrorNetwork" xml:space="preserve">
+    <value>Không thể kết nối đến máy chủ giấy phép. Kiểm tra kết nối internet và thử lại.</value>
+  </data>
+  <data name="ErrorNotActivated" xml:space="preserve">
+    <value>Máy này chưa được kích hoạt cho giấy phép này.</value>
+  </data>
+  <data name="ErrorSeatUnconfirmed" xml:space="preserve">
+    <value>Không kết nối được máy chủ giấy phép, nên chỗ đó có thể vẫn được dùng cho đến khi hết hạn.</value>
+  </data>
+  <data name="ErrorServer" xml:space="preserve">
+    <value>Đã xảy ra lỗi (mã {0}). Vui lòng thử lại.</value>
+    <comment>{0} is an HTTP status code.</comment>
+  </data>
+  <data name="ErrorSuspended" xml:space="preserve">
+    <value>Giấy phép này đã bị đình chỉ. Liên hệ hỗ trợ để được giúp đỡ.</value>
+  </data>
+  <data name="ErrorVerification" xml:space="preserve">
+    <value>Xác minh giấy phép thất bại. Hãy thử cập nhật ứng dụng lên phiên bản mới nhất.</value>
+  </data>
+  <data name="ExpiresOn" xml:space="preserve">
+    <value>Hết hạn {0}</value>
+    <comment>{0} is a date.</comment>
+  </data>
+  <data name="FeatureCompareSync" xml:space="preserve">
+    <value>So sánh &amp; Đồng bộ</value>
+  </data>
+  <data name="FeatureCompareSyncDescription" xml:space="preserve">
+    <value>So sánh cấu trúc hoặc dữ liệu giữa hai kết nối và tạo script đồng bộ.</value>
+  </data>
+  <data name="FeatureDataRewind" xml:space="preserve">
+    <value>Tua lại dữ liệu</value>
+  </data>
+  <data name="FeatureDataRewindDescription" xml:space="preserve">
+    <value>Khôi phục giá trị trước đó của các dòng bạn đã lưu.</value>
+  </data>
+  <data name="FeatureEncryptedExport" xml:space="preserve">
+    <value>Xuất Mã hóa</value>
+  </data>
+  <data name="FeatureEncryptedExportDescription" xml:space="preserve">
+    <value>Xuất kết nối với thông tin đăng nhập được mã hóa.</value>
+  </data>
+  <data name="FeatureResultCharts" xml:space="preserve">
+    <value>Biểu đồ kết quả</value>
+  </data>
+  <data name="FeatureResultChartsDescription" xml:space="preserve">
+    <value>Chuyển kết quả truy vấn đã tải thành biểu đồ cột, đường và miền.</value>
+  </data>
+  <data name="FeatureTeamLibrary" xml:space="preserve">
+    <value>Thư viện nhóm</value>
+  </data>
+  <data name="FeatureTeamLibraryDescription" xml:space="preserve">
+    <value>Chia sẻ kết nối và truy vấn đã lưu với nhóm của bạn thông qua tài khoản. Mật khẩu không bao giờ được đưa vào.</value>
+  </data>
+  <data name="Included" xml:space="preserve">
+    <value>Đã bao gồm</value>
+    <comment>Shown beside a plan the current license includes.</comment>
+  </data>
+  <data name="IncludesEverything" xml:space="preserve">
+    <value>Bao gồm mọi thứ trong {0}.</value>
+    <comment>{0} is a lower plan's name.</comment>
+  </data>
+  <data name="KeyPlaceholder" xml:space="preserve">
+    <value>Khóa giấy phép hoặc mã mời</value>
+    <comment>Placeholder of the box a license key or a team invite code is typed into.</comment>
+  </data>
+  <data name="LandingMessage" xml:space="preserve">
+    <value>Mọi thứ khác vẫn hoạt động khi không có giấy phép, và không có thời gian đếm ngược.</value>
+  </data>
+  <data name="LandingTitle" xml:space="preserve">
+    <value>Mở khóa các tính năng trả phí</value>
+    <comment>Heading on the license page when no license is active.</comment>
+  </data>
+  <data name="LastUsed" xml:space="preserve">
+    <value>Dùng lần cuối {0}</value>
+    <comment>{0} is a date.</comment>
+  </data>
+  <data name="LearnMore" xml:space="preserve">
+    <value>Tìm hiểu thêm về giấy phép</value>
+  </data>
+  <data name="LicenseKey" xml:space="preserve">
+    <value>Khóa giấy phép</value>
+  </data>
+  <data name="LicenseKeyHidden" xml:space="preserve">
+    <value>Khóa giấy phép, đã ẩn</value>
+    <comment>Screen reader text for the masked license key.</comment>
+  </data>
+  <data name="LoadingDevices" xml:space="preserve">
+    <value>Đang tải thiết bị…</value>
+  </data>
+  <data name="LoadingTeam" xml:space="preserve">
+    <value>Đang tải nhóm…</value>
+  </data>
+  <data name="ManageAccount" xml:space="preserve">
+    <value>Quản lý tài khoản</value>
+    <comment>Link to the account page on tablepro.app.</comment>
+  </data>
+  <data name="ManageDevices" xml:space="preserve">
+    <value>Quản lý thiết bị</value>
+    <comment>Link to the account page listing the devices a license is activated on.</comment>
+  </data>
+  <data name="MemberCount" xml:space="preserve">
+    <value>{0} trên {1} thành viên</value>
+    <comment>{0} is the number of members, {1} the team's seats.</comment>
+  </data>
+  <data name="NoDevices" xml:space="preserve">
+    <value>Chưa có thiết bị nào được kích hoạt với giấy phép này.</value>
+  </data>
+  <data name="NoMembers" xml:space="preserve">
+    <value>Chưa có ai tham gia nhóm này.</value>
+  </data>
+  <data name="NoticeExpiredMessage" xml:space="preserve">
+    <value>Hãy gia hạn để dùng lại các tính năng trả phí. Mọi thứ khác vẫn hoạt động.</value>
+  </data>
+  <data name="NoticeExpiredTitle" xml:space="preserve">
+    <value>Giấy phép đã hết hạn</value>
+  </data>
+  <data name="NoticeExpiresInDays" xml:space="preserve">
+    <value>Giấy phép này hết hạn sau {0} ngày.</value>
+    <comment>{0} is a number of days, from 2 to 7.</comment>
+  </data>
+  <data name="NoticeExpiresToday" xml:space="preserve">
+    <value>Giấy phép này hết hạn hôm nay.</value>
+  </data>
+  <data name="NoticeExpiresTomorrow" xml:space="preserve">
+    <value>Giấy phép này hết hạn vào ngày mai.</value>
+  </data>
+  <data name="NoticeExpiringTitle" xml:space="preserve">
+    <value>Giấy phép sắp hết hạn</value>
+  </data>
+  <data name="NoticeNotRecognizedMessage" xml:space="preserve">
+    <value>Máy chủ không còn nhận ra khóa giấy phép này.</value>
+  </data>
+  <data name="NoticeNotRecognizedTitle" xml:space="preserve">
+    <value>Không nhận ra giấy phép</value>
+  </data>
+  <data name="NoticeRemovedMessage" xml:space="preserve">
+    <value>Máy tính này không còn giữ chỗ nào.</value>
+  </data>
+  <data name="NoticeRemovedTitle" xml:space="preserve">
+    <value>Giấy phép đã xoá</value>
+  </data>
+  <data name="NoticeSuspendedMessage" xml:space="preserve">
+    <value>Hãy liên hệ và chúng tôi sẽ xử lý.</value>
+  </data>
+  <data name="NoticeSuspendedTitle" xml:space="preserve">
+    <value>Giấy phép đã bị tạm ngưng</value>
+  </data>
+  <data name="NoticeValidationMessage" xml:space="preserve">
+    <value>TablePro chưa kết nối được máy chủ giấy phép trong 30 ngày, nên các tính năng trả phí đã tạm dừng.</value>
+  </data>
+  <data name="NoticeValidationTitle" xml:space="preserve">
+    <value>Không kiểm tra được giấy phép này</value>
+  </data>
+  <data name="OneTime" xml:space="preserve">
+    <value>Mua một lần</value>
+    <comment>A license bought once that never expires.</comment>
+  </data>
+  <data name="PageTitle" xml:space="preserve">
+    <value>Giấy phép</value>
+    <comment>Settings page and navigation item for the TablePro license.</comment>
+  </data>
+  <data name="PlanTitle" xml:space="preserve">
+    <value>Gói {0}</value>
+    <comment>{0} is a plan name, Starter or Team.</comment>
+  </data>
+  <data name="Release" xml:space="preserve">
+    <value>Giải phóng</value>
+    <comment>Confirmation button that frees a device's seat (verb).</comment>
+  </data>
+  <data name="ReleaseAutomation" xml:space="preserve">
+    <value>Giải phóng chỗ trên {0}</value>
+    <comment>Screen reader name of the Release button. {0} is a device name.</comment>
+  </data>
+  <data name="ReleaseButton" xml:space="preserve">
+    <value>Giải phóng…</value>
+    <comment>Button that frees another device's seat (verb).</comment>
+  </data>
+  <data name="ReleaseMessage" xml:space="preserve">
+    <value>Thiết bị đó vẫn hoạt động cho đến lần kiểm tra kế tiếp trong vòng 7 ngày, sau đó các tính năng trả phí sẽ tạm dừng ở đó.</value>
+  </data>
+  <data name="ReleaseTitle" xml:space="preserve">
+    <value>Giải phóng chỗ trên “{0}”?</value>
+    <comment>{0} is a device name.</comment>
+  </data>
+  <data name="RenewLicense" xml:space="preserve">
+    <value>Gia hạn giấy phép</value>
+  </data>
+  <data name="RoleAdmin" xml:space="preserve">
+    <value>Quản trị viên</value>
+    <comment>Role on a team license.</comment>
+  </data>
+  <data name="RoleMember" xml:space="preserve">
+    <value>Thành viên</value>
+    <comment>Role on a team license.</comment>
+  </data>
+  <data name="RoleOwner" xml:space="preserve">
+    <value>Chủ sở hữu</value>
+    <comment>Role on a team license.</comment>
+  </data>
+  <data name="RoleYou" xml:space="preserve">
+    <value>{0} (Bạn)</value>
+    <comment>{0} is a role on the team, marking the license owner's row.</comment>
+  </data>
+  <data name="TeamHeader" xml:space="preserve">
+    <value>Team</value>
+    <comment>Heading of the team roster.</comment>
+  </data>
+  <data name="TeamSeatsFooter" xml:space="preserve">
+    <value>Các chỗ trên giấy phép nhóm được quản lý tại tablepro.app.</value>
+  </data>
+  <data name="ThisDevice" xml:space="preserve">
+    <value>Máy tính này</value>
+    <comment>Marks the computer the app is running on in the device list.</comment>
+  </data>
+  <data name="TierStarter" xml:space="preserve">
+    <value>Starter</value>
+    <comment>Name of the Starter plan.</comment>
+  </data>
+  <data name="TierTeam" xml:space="preserve">
+    <value>Team</value>
+    <comment>Name of the Team plan.</comment>
+  </data>
+  <data name="TryAgain" xml:space="preserve">
+    <value>Thử lại</value>
+  </data>
+  <data name="UpgradePlan" xml:space="preserve">
+    <value>Nâng cấp gói</value>
+  </data>
+  <data name="GatePlanRequirement" xml:space="preserve">
+    <value>{0} yêu cầu gói {1}</value>
+  </data>
+  <data name="GateExpired" xml:space="preserve">
+    <value>Giấy phép của bạn đã hết hạn</value>
+  </data>
+  <data name="GateValidationFailed" xml:space="preserve">
+    <value>Xác thực giấy phép thất bại</value>
+  </data>
+  <data name="GateValidationFailedMessage" xml:space="preserve">
+    <value>Kết nối internet để xác minh giấy phép của bạn.</value>
+  </data>
+  <data name="GateActivate" xml:space="preserve">
+    <value>Kích hoạt giấy phép…</value>
+  </data>
+  <data name="GateRetry" xml:space="preserve">
+    <value>Thử lại xác thực</value>
+  </data>
+  <data name="GatePurchase" xml:space="preserve">
+    <value>Mua giấy phép</value>
+  </data>
+  <data name="ViewLicense" xml:space="preserve">
+    <value>Xem giấy phép</value>
+  </data>
+  <data name="NotNow" xml:space="preserve">
+    <value>Để sau</value>
+  </data>
+  <data name="PromptNeedsLicense" xml:space="preserve">
+    <value>{0} cần giấy phép {1}</value>
+  </data>
+  <data name="RewindPromptMessage" xml:space="preserve">
+    <value>Khôi phục giá trị trước đó của các dòng bạn đã lưu. Các bản lưu được giữ trên PC này trong 7 ngày, được mã hoá và không bao giờ rời khỏi máy.</value>
+  </data>
+  <data name="RewindNeedsLicense" xml:space="preserve">
+    <value>Khôi phục một lần lưu đã commit cần giấy phép Starter.</value>
+  </data>
+  <data name="IncludeCredentials" xml:space="preserve">
+    <value>Bao gồm Thông tin Đăng nhập</value>
+  </data>
+  <data name="IncludeCredentialsCaption" xml:space="preserve">
+    <value>Mặc định tắt. Bật lên để mã hóa các mật khẩu đã lưu bằng một cụm mật khẩu.</value>
+  </data>
+  <data name="OpensPricing" xml:space="preserve">
+    <value>Mở trang giá của TablePro</value>
+  </data>
+</root>

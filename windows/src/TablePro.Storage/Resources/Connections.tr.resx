@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="BundleCycle" xml:space="preserve">
+    <value>“{0}” başvurusu kendi içinde yer alıyor</value>
+  </data>
+  <data name="BundleDuplicateReference" xml:space="preserve">
+    <value>“{0}” başvurusu birden fazla kez kullanılıyor</value>
+  </data>
+  <data name="BundleEmptyReference" xml:space="preserve">
+    <value>bir öğenin başvurusu boş</value>
+  </data>
+  <data name="BundleMissingTarget" xml:space="preserve">
+    <value>“{0}”, dosyada olmayan “{1}” öğesine başvuruyor</value>
+  </data>
+  <data name="BundleOrphanCredentials" xml:space="preserve">
+    <value>“{0}” için parolalar dosyadaki hiçbir bağlantıya ait değil</value>
+  </data>
+  <data name="BundleTooDeep" xml:space="preserve">
+    <value>“{0}” başvurusu çok derin iç içe geçmiş</value>
+  </data>
+  <data name="EncryptedCorrupt" xml:space="preserve">
+    <value>Şifreli dosya bozuk veya eksik.</value>
+  </data>
+  <data name="EncryptionVersionUnsupported" xml:space="preserve">
+    <value>Desteklenmeyen şifreleme sürümü {0}. Bu dosyayı açmak için TablePro'yu güncelleyin.</value>
+  </data>
+  <data name="GroupContainsItself" xml:space="preserve">
+    <value>Bir grup kendini içeremez.</value>
+  </data>
+  <data name="GroupIntoSubgroup" xml:space="preserve">
+    <value>Bir grup kendi alt gruplarından birinin içine taşınamaz.</value>
+  </data>
+  <data name="ImportedConnectionName" xml:space="preserve">
+    <value>İçe aktarılan bağlantı</value>
+  </data>
+  <data name="ImportedGroupName" xml:space="preserve">
+    <value>İçe aktarılan</value>
+  </data>
+  <data name="IncorrectPassphrase" xml:space="preserve">
+    <value>Parola yanlış.</value>
+  </data>
+  <data name="NewerFormat" xml:space="preserve">
+    <value>Bu dosya TablePro'nun daha yeni bir sürümünü gerektiriyor (biçim sürümü {0}).</value>
+  </data>
+  <data name="NoDriverFor" xml:space="preserve">
+    <value>Windows için TablePro'da {0} sürücüsü yok.</value>
+  </data>
+  <data name="NotAnExport" xml:space="preserve">
+    <value>Bu dosya geçerli bir TablePro dışa aktarımı değil.</value>
+  </data>
+  <data name="NotAnExportBecause" xml:space="preserve">
+    <value>Bu dosya geçerli bir TablePro dışa aktarımı değil: {0}.</value>
+  </data>
+  <data name="ParseFailed" xml:space="preserve">
+    <value>Bağlantı dosyası ayrıştırılamadı: {0}</value>
+  </data>
+  <data name="PassphraseRequired" xml:space="preserve">
+    <value>Bu dosya şifreli ve bir parola gerektiriyor.</value>
+  </data>
+  <data name="PasswordsNeedEncryption" xml:space="preserve">
+    <value>Kayıtlı parolalar yalnızca şifreli bir dosyaya dışa aktarılabilir.</value>
+  </data>
+</root>

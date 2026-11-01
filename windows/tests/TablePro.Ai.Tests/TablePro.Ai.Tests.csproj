@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>$(TableProTargetFramework)</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>TablePro.Ai.Tests</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <!-- global.json does not opt into the Microsoft.Testing.Platform runner, so dotnet test runs through VSTest. -->
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/TablePro.Ai/TablePro.Ai.csproj" />
+  </ItemGroup>
+</Project>

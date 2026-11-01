@@ -1,0 +1,237 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="Alias" xml:space="preserve">
+    <value>别名</value>
+  </data>
+  <data name="AliasOf" xml:space="preserve">
+    <value>{0} 的别名</value>
+  </data>
+  <data name="AnsweredNotJson" xml:space="preserve">
+    <value>{0} 返回的不是 JSON。</value>
+  </data>
+  <data name="AuthenticationFailedWith" xml:space="preserve">
+    <value>身份验证失败：{0}</value>
+  </data>
+  <data name="BetweenNeedsUpperBound" xml:space="preserve">
+    <value>{0} 上的 BETWEEN 需要上限。</value>
+  </data>
+  <data name="BooleanFieldNotBoolean" xml:space="preserve">
+    <value>{0} 是布尔字段，只匹配 true 或 false，不匹配 {1}。</value>
+  </data>
+  <data name="CannotChangeFromGrid" xml:space="preserve">
+    <value>无法在网格中更改“{0}”。</value>
+  </data>
+  <data name="CannotFilterWith" xml:space="preserve">
+    <value>{0} 无法使用 {1} 进行筛选。</value>
+  </data>
+  <data name="CannotReadDefinition" xml:space="preserve">
+    <value>该账户无法读取 {0} 的定义。</value>
+  </data>
+  <data name="ChooseDatasetFirst" xml:space="preserve">
+    <value>请先选择一个数据集。</value>
+  </data>
+  <data name="ChooseNamespaceFirst" xml:space="preserve">
+    <value>请先选择一个命名空间。</value>
+  </data>
+  <data name="CommandCancelled" xml:space="preserve">
+    <value>命令已取消。</value>
+  </data>
+  <data name="CommandNotSupported" xml:space="preserve">
+    <value>不支持该命令。</value>
+  </data>
+  <data name="CommandTimedOutAfter" xml:space="preserve">
+    <value>命令在 {0} 秒后超时。</value>
+  </data>
+  <data name="Committed" xml:space="preserve">
+    <value>已提交。</value>
+  </data>
+  <data name="ConnectionNeedsDatabaseFile" xml:space="preserve">
+    <value>{0} 连接需要数据库文件。</value>
+  </data>
+  <data name="ConnectionNotOpen" xml:space="preserve">
+    <value>连接未打开。</value>
+  </data>
+  <data name="CredentialsFileType" xml:space="preserve">
+    <value>凭据文件的类型为“{0}”。请使用服务账号密钥或 gcloud authorized_user 文件。</value>
+  </data>
+  <data name="DefinitionMissingPrivilege" xml:space="preserve">
+    <value>{0} 未返回 {1} 的定义；该登录可能没有读取它的权限。</value>
+  </data>
+  <data name="DocumentIdUnknown" xml:space="preserve">
+    <value>文档的 {0} 未知，因此无法定位该文档。</value>
+  </data>
+  <data name="EmptyResponse" xml:space="preserve">
+    <value>{0} 返回了空响应。</value>
+  </data>
+  <data name="EngineHasNoDefinitionFor" xml:space="preserve">
+    <value>{0} 无法显示 {1} 的定义。</value>
+  </data>
+  <data name="EnterRequestLike" xml:space="preserve">
+    <value>请输入类似这样的请求：{0}</value>
+  </data>
+  <data name="InsertNeedsValue" xml:space="preserve">
+    <value>{0} 至少需要一个值才能插入行。</value>
+  </data>
+  <data name="InvalidTypedValue" xml:space="preserve">
+    <value>“{0}”不是有效的 {1} 值。</value>
+  </data>
+  <data name="KeyNoLongerExists" xml:space="preserve">
+    <value>键“{0}”已不存在，因此未保存任何内容。</value>
+  </data>
+  <data name="ListedUnexpected" xml:space="preserve">
+    <value>{0} 将 {1} 列为意外的类型 {2}。</value>
+  </data>
+  <data name="NeedsAccountIdentifier" xml:space="preserve">
+    <value>{0} 需要账户标识符，例如 {1}。</value>
+  </data>
+  <data name="NoAnswerWithin" xml:space="preserve">
+    <value>{0} 未在 {1} 秒内响应。</value>
+  </data>
+  <data name="NoDatabaseGiven" xml:space="preserve">
+    <value>未指定数据库，登录信息也没有默认数据库。</value>
+  </data>
+  <data name="NoDefinitionFor" xml:space="preserve">
+    <value>未找到 {0} 的定义。</value>
+  </data>
+  <data name="NoResultForStatement" xml:space="preserve">
+    <value>服务器未返回该语句的结果。</value>
+  </data>
+  <data name="NoSchemaGiven" xml:space="preserve">
+    <value>未指定架构，登录信息也未指定架构。</value>
+  </data>
+  <data name="NoTransactionOpen" xml:space="preserve">
+    <value>没有打开的事务。</value>
+  </data>
+  <data name="NumericFieldNotNumber" xml:space="preserve">
+    <value>{0} 是数值字段，而 {1} 不是数字。</value>
+  </data>
+  <data name="OdbcDriverNotInstalled" xml:space="preserve">
+    <value>未安装 {0} ODBC 驱动程序“{1}”。{2}</value>
+  </data>
+  <data name="OdbcDriverNotLoaded" xml:space="preserve">
+    <value>Windows 找到了 {0} ODBC 驱动程序“{1}”，但无法加载。TablePro 是 64 位应用，需要 64 位驱动程序。{2}</value>
+  </data>
+  <data name="OdbcInvalidKeyword" xml:space="preserve">
+    <value>“{0}”不是有效的 ODBC 连接关键字。</value>
+  </data>
+  <data name="OdbcOptionFromForm" xml:space="preserve">
+    <value>选项“{0}”由连接表单设置，请改为在那里更改。</value>
+  </data>
+  <data name="OptionInvalidValue" xml:space="preserve">
+    <value>“{0}”不是 {1} 的有效值。</value>
+  </data>
+  <data name="OptionIsOneOf" xml:space="preserve">
+    <value>{0} 必须是以下值之一：{1}。</value>
+  </data>
+  <data name="OptionNeedsValue" xml:space="preserve">
+    <value>{0} 需要一个值。</value>
+  </data>
+  <data name="OptionPositiveWholeNumber" xml:space="preserve">
+    <value>{0} 必须是大于零的整数。</value>
+  </data>
+  <data name="OptionWholeNumberRange" xml:space="preserve">
+    <value>{0} 必须是 {1} 到 {2} 之间的整数。</value>
+  </data>
+  <data name="PartialSaveNoTransaction" xml:space="preserve">
+    <value>已保存 {1} 项更改中的 {0} 项；{2} 没有可撤销这些更改的事务。{3}</value>
+  </data>
+  <data name="PathHasDotSegment" xml:space="preserve">
+    <value>路径 {0} 含有 . 或 .. 段，会指向其他资源。</value>
+  </data>
+  <data name="PathLeavesHost" xml:space="preserve">
+    <value>路径 {0} 会超出 {1}。</value>
+  </data>
+  <data name="QueryCancelled" xml:space="preserve">
+    <value>查询已取消。</value>
+  </data>
+  <data name="QueryTimedOut" xml:space="preserve">
+    <value>查询超时。</value>
+  </data>
+  <data name="QueryTimedOutAfter" xml:space="preserve">
+    <value>查询在 {0} 秒后超时。</value>
+  </data>
+  <data name="QuotedValueNotClosed" xml:space="preserve">
+    <value>带引号的值未闭合。</value>
+  </data>
+  <data name="RateLimited" xml:space="preserve">
+    <value>已达到速率限制。请稍后重试。</value>
+  </data>
+  <data name="RateLimitedRetryAfter" xml:space="preserve">
+    <value>已达到速率限制。请在 {0:0} 秒后重试。</value>
+  </data>
+  <data name="ReadOnlyNothingSaved" xml:space="preserve">
+    <value>此连接为只读，因此未保存任何内容。</value>
+  </data>
+  <data name="ReadWriteTransactionStarted" xml:space="preserve">
+    <value>已开始读写事务。</value>
+  </data>
+  <data name="RequestTimedOutAfter" xml:space="preserve">
+    <value>请求在 {0} 秒后超时。</value>
+  </data>
+  <data name="ReturnedNoResult" xml:space="preserve">
+    <value>{0} 未返回结果。</value>
+  </data>
+  <data name="RolledBack" xml:space="preserve">
+    <value>已回滚。</value>
+  </data>
+  <data name="RoutineKindFunction" xml:space="preserve">
+    <value>函数</value>
+  </data>
+  <data name="RoutineKindPackage" xml:space="preserve">
+    <value>包</value>
+  </data>
+  <data name="RoutineKindProcedure" xml:space="preserve">
+    <value>存储过程</value>
+  </data>
+  <data name="RoutineKindTrigger" xml:space="preserve">
+    <value>触发器</value>
+  </data>
+  <data name="RoutineKindType" xml:space="preserve">
+    <value>类型</value>
+  </data>
+  <data name="ServerErrorNoMessage" xml:space="preserve">
+    <value>服务器报告了一个没有消息的错误。</value>
+  </data>
+  <data name="ServerHttpStatus" xml:space="preserve">
+    <value>服务器返回了 HTTP {0}。</value>
+  </data>
+  <data name="ServerReportedError" xml:space="preserve">
+    <value>服务器报告了错误。</value>
+  </data>
+  <data name="ShowingOfKeys" xml:space="preserve">
+    <value>显示 {1:N0} 个键中的 {0:N0} 个。</value>
+  </data>
+  <data name="StatementCancelled" xml:space="preserve">
+    <value>语句已取消。</value>
+  </data>
+  <data name="StatementNotSupported" xml:space="preserve">
+    <value>不支持该语句。</value>
+  </data>
+  <data name="TableHasNoColumn" xml:space="preserve">
+    <value>{0} 没有列 {1}。</value>
+  </data>
+  <data name="TransactionAlreadyOpen" xml:space="preserve">
+    <value>已有一个事务处于打开状态。</value>
+  </data>
+  <data name="TransactionLost" xml:space="preserve">
+    <value>连接已断开，服务器已回滚未结束的事务。请重新运行其语句。</value>
+  </data>
+  <data name="TransactionStartedByWrite" xml:space="preserve">
+    <value>已开始事务。COMMIT 保留更改，ROLLBACK 撤销更改。</value>
+  </data>
+  <data name="UpdateNeedsChangedColumn" xml:space="preserve">
+    <value>更新至少需要一个已更改的列。</value>
+  </data>
+</root>

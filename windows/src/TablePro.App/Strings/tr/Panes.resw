@@ -1,0 +1,160 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AssistantActionBubble" xml:space="preserve">
+    <value>{0}:
+{1}</value>
+  </data>
+  <data name="AssistantExplain" xml:space="preserve">
+    <value>Açıkla</value>
+  </data>
+  <data name="AssistantFixBubble" xml:space="preserve">
+    <value>Düzelt:
+{0}
+
+{1}</value>
+  </data>
+  <data name="AssistantInputPlaceholder" xml:space="preserve">
+    <value>Bu veritabanı hakkında soru sorun</value>
+  </data>
+  <data name="AssistantInsert" xml:space="preserve">
+    <value>Ekle</value>
+  </data>
+  <data name="AssistantNewConversation" xml:space="preserve">
+    <value>Yeni</value>
+  </data>
+  <data name="AssistantOptimize" xml:space="preserve">
+    <value>Optimize Et</value>
+  </data>
+  <data name="AssistantReview" xml:space="preserve">
+    <value>İncele</value>
+  </data>
+  <data name="AssistantSend" xml:space="preserve">
+    <value>Gönder (Ctrl+Enter)</value>
+  </data>
+  <data name="AssistantSetUpTitle" xml:space="preserve">
+    <value>Asistanı ayarlayın</value>
+  </data>
+  <data name="AssistantStopped" xml:space="preserve">
+    <value>(durduruldu)</value>
+  </data>
+  <data name="AssistantUsing" xml:space="preserve">
+    <value>{0} ({1}) kullanılıyor. Sorular, SQL'iniz ve ilgili tabloların yapısı gönderilir; satırlar gönderilmez.</value>
+  </data>
+  <data name="FavoriteEditTitle" xml:space="preserve">
+    <value>Favoriyi Düzenle</value>
+  </data>
+  <data name="FavoriteFolder" xml:space="preserve">
+    <value>Klasör</value>
+  </data>
+  <data name="FavoriteKeyword" xml:space="preserve">
+    <value>Anahtar Kelime</value>
+  </data>
+  <data name="FavoriteKeywordPlaceholder" xml:space="preserve">
+    <value>Bu sorguyu eklemek için düzenleyiciye yazılır</value>
+  </data>
+  <data name="FavoriteKeywordSpaces" xml:space="preserve">
+    <value>Anahtar kelime boşluk içeremez.</value>
+  </data>
+  <data name="FavoriteKeywordTooLong_One" xml:space="preserve">
+    <value>Anahtar kelime {0} karakterden kısa olmalıdır.</value>
+  </data>
+  <data name="FavoriteKeywordTooLong_Other" xml:space="preserve">
+    <value>Anahtar kelime {0} karakterden kısa olmalıdır.</value>
+  </data>
+  <data name="FavoriteKeywordUsed" xml:space="preserve">
+    <value>Bu anahtar kelimeyi başka bir favori zaten kullanıyor.</value>
+  </data>
+  <data name="FavoriteOnlyFor" xml:space="preserve">
+    <value>Yalnızca {0} için</value>
+  </data>
+  <data name="FavoriteQuery" xml:space="preserve">
+    <value>Sorgu</value>
+  </data>
+  <data name="FavoriteSaveTitle" xml:space="preserve">
+    <value>Favoriyi Kaydet</value>
+  </data>
+  <data name="FavoritesCreate" xml:space="preserve">
+    <value>Oluştur</value>
+  </data>
+  <data name="FavoritesEmpty" xml:space="preserve">
+    <value>Düzenleyici araç çubuğundaki yıldızla bir sorgu kaydedin.</value>
+  </data>
+  <data name="FavoritesNewFolderLink" xml:space="preserve">
+    <value>Yeni klasör</value>
+  </data>
+  <data name="FavoritesNewFolderTitle" xml:space="preserve">
+    <value>Yeni Klasör</value>
+  </data>
+  <data name="FavoritesSearch" xml:space="preserve">
+    <value>Favorilerde ara</value>
+  </data>
+  <data name="HistoryClear" xml:space="preserve">
+    <value>Bu bağlantının geçmişini temizle</value>
+  </data>
+  <data name="HistoryLoadMore" xml:space="preserve">
+    <value>Daha fazla yükle</value>
+  </data>
+  <data name="HistoryOutcomeAll" xml:space="preserve">
+    <value>Tümü</value>
+  </data>
+  <data name="HistoryOutcomeFailed" xml:space="preserve">
+    <value>Başarısız</value>
+  </data>
+  <data name="HistoryOutcomeSucceeded" xml:space="preserve">
+    <value>Başarılı</value>
+  </data>
+  <data name="HistoryRows_One" xml:space="preserve">
+    <value>{0:N0} satır</value>
+  </data>
+  <data name="HistoryRows_Other" xml:space="preserve">
+    <value>{0:N0} satır</value>
+  </data>
+  <data name="HistoryRunInNewTab" xml:space="preserve">
+    <value>Yeni Sekmede Çalıştır</value>
+  </data>
+  <data name="HistoryScopeAllConnections" xml:space="preserve">
+    <value>Tüm bağlantılar</value>
+  </data>
+  <data name="HistoryScopeThisConnection" xml:space="preserve">
+    <value>Bu bağlantı</value>
+  </data>
+  <data name="HistorySearch" xml:space="preserve">
+    <value>Geçmişte ara</value>
+  </data>
+  <data name="InsertIntoEditor" xml:space="preserve">
+    <value>Düzenleyiciye Ekle</value>
+  </data>
+  <data name="QuickSwitcherKindDatabase" xml:space="preserve">
+    <value>Veritabanı</value>
+  </data>
+  <data name="QuickSwitcherKindSchema" xml:space="preserve">
+    <value>Şema</value>
+  </data>
+  <data name="QuickSwitcherKindTab" xml:space="preserve">
+    <value>Açık sekme</value>
+  </data>
+  <data name="QuickSwitcherNoMatches" xml:space="preserve">
+    <value>Eşleşme yok</value>
+  </data>
+  <data name="QuickSwitcherPlaceholder" xml:space="preserve">
+    <value>Tablo, görünüm, yordam, veritabanı, şema veya sekme açın</value>
+  </data>
+  <data name="QuickSwitcherRowName" xml:space="preserve">
+    <value>{0}, {1}</value>
+  </data>
+  <data name="QuickSwitcherTitle" xml:space="preserve">
+    <value>Hızlı Aç</value>
+  </data>
+</root>

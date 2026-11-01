@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AwsProfileMissing" xml:space="preserve">
+    <value>Le profil AWS {0} ne figure pas dans %USERPROFILE%\.aws\config ni dans credentials.</value>
+  </data>
+  <data name="AwsProfileNoCredentials" xml:space="preserve">
+    <value>Le profil AWS {0} n’a fourni aucun identifiant : {1}</value>
+  </data>
+  <data name="AwsProfileNoCredentialsSso" xml:space="preserve">
+    <value>Le profil AWS {0} n’a fourni aucun identifiant : {1} Exécutez « aws sso login --profile {0} » et reconnectez-vous.</value>
+  </data>
+  <data name="EnterAccessKey" xml:space="preserve">
+    <value>Saisissez l’ID de clé d’accès et la clé d’accès secrète.</value>
+  </data>
+  <data name="EnterIamUser" xml:space="preserve">
+    <value>Saisissez l’utilisateur de base de données avec lequel le jeton IAM se connecte.</value>
+  </data>
+  <data name="EntraFailed" xml:space="preserve">
+    <value>La connexion Microsoft Entra ID a échoué : {0}</value>
+  </data>
+  <data name="EntraIntegratedSqlServerOnly" xml:space="preserve">
+    <value>La connexion Entra intégrée n’est disponible que pour SQL Server.</value>
+  </data>
+  <data name="GcloudScope" xml:space="preserve">
+    <value>La connexion gcloud n’autorise pas la connexion à Cloud SQL. Exécutez de nouveau gcloud auth application-default login, sans --scopes.</value>
+  </data>
+  <data name="GoogleFailed" xml:space="preserve">
+    <value>La connexion Google Cloud IAM a échoué : {0}</value>
+  </data>
+  <data name="GoogleRefused" xml:space="preserve">
+    <value>Google a refusé les identifiants : {0} Exécutez gcloud auth application-default login, ou vérifiez la clé du compte de service, puis reconnectez-vous.</value>
+  </data>
+  <data name="KeyFileUnreadable" xml:space="preserve">
+    <value>Le fichier de clé du compte de service {0} ne peut pas être lu : {1}</value>
+  </data>
+  <data name="KeyNotJson" xml:space="preserve">
+    <value>La clé du compte de service n’est pas un JSON valide.</value>
+  </data>
+  <data name="KeyWrongType" xml:space="preserve">
+    <value>La clé est un identifiant de type « {0} », et non une clé de compte de service.</value>
+  </data>
+  <data name="NoAdc" xml:space="preserve">
+    <value>Aucun identifiant par défaut de l’application Google n’a été trouvé. Exécutez gcloud auth application-default login et reconnectez-vous.</value>
+  </data>
+  <data name="NoSignInToken" xml:space="preserve">
+    <value>{0} n’utilise pas de jeton de connexion.</value>
+  </data>
+  <data name="PemKey" xml:space="preserve">
+    <value>Il s’agit d’une clé privée PEM. Utilisez le fichier de clé JSON que Google Cloud a créé pour le compte de service.</value>
+  </data>
+  <data name="RedshiftNotIssued" xml:space="preserve">
+    <value>AWS n’a pas délivré d’identifiants Redshift : {0}</value>
+  </data>
+  <data name="RedshiftNoUser" xml:space="preserve">
+    <value>AWS a répondu sans l’utilisateur ni le mot de passe Redshift.</value>
+  </data>
+  <data name="ServiceAccountKeyRequired" xml:space="preserve">
+    <value>Saisissez la clé du compte de service : le chemin de son fichier JSON, ou le JSON lui-même.</value>
+  </data>
+  <data name="ServicePrincipalIncomplete" xml:space="preserve">
+    <value>Un principal de service nécessite l’ID de l’annuaire (locataire), l’ID de l’application (client) et le secret client.</value>
+  </data>
+  <data name="UnknownCredentialType" xml:space="preserve">
+    <value>inconnu</value>
+  </data>
+</root>

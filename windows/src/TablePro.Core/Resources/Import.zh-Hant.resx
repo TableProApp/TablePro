@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="CannotDeleteFirst" xml:space="preserve">
+    <value>此連線無法在一個交易中清空資料表並匯入資料，因此無法先刪除現有列。</value>
+  </data>
+  <data name="CannotMatchRows" xml:space="preserve">
+    <value>此連線無法將匯入的列與現有的列比對。</value>
+  </data>
+  <data name="ChooseMatchKey" xml:space="preserve">
+    <value>請選擇用來比對列的鍵。</value>
+  </data>
+  <data name="ColumnMappedTwice" xml:space="preserve">
+    <value>每個資料行只能對應自一個欄位。</value>
+  </data>
+  <data name="ColumnNamesUnique" xml:space="preserve">
+    <value>欄位名稱必須是唯一的。</value>
+  </data>
+  <data name="CouldNotReadExistingRows" xml:space="preserve">
+    <value>無法讀取資料表中已有哪些列。</value>
+  </data>
+  <data name="DeleteFirstCannotMatch" xml:space="preserve">
+    <value>「先刪除現有列」會清空資料表，因此沒有列可以比對。請關閉該選項，或以「插入」方式匯入。</value>
+  </data>
+  <data name="IncludeAtLeastOneColumn" xml:space="preserve">
+    <value>請至少納入一個欄位。</value>
+  </data>
+  <data name="IncludedColumnNeedsName" xml:space="preserve">
+    <value>每個納入的欄位都需要名稱。</value>
+  </data>
+  <data name="IncludedColumnNeedsType" xml:space="preserve">
+    <value>每個納入的欄位都需要類型。</value>
+  </data>
+  <data name="KeyMatchedSeveralRows" xml:space="preserve">
+    <value>鍵 {0} 符合 {1} 列，因此未寫入該列。</value>
+  </data>
+  <data name="KeyNeedsValuePerColumn" xml:space="preserve">
+    <value>每個鍵的每個鍵欄位都需要一個值。</value>
+  </data>
+  <data name="KeyValueMissing" xml:space="preserve">
+    <value>此列沒有鍵欄位 {0} 的值，因此無法比對。</value>
+  </data>
+  <data name="MapAtLeastOneField" xml:space="preserve">
+    <value>請至少將一個欄位對應到資料行。</value>
+  </data>
+  <data name="NoFieldMapped" xml:space="preserve">
+    <value>檔案中沒有欄位對應到此資料表的資料行。</value>
+  </data>
+  <data name="RollbackAlsoFailed" xml:space="preserve">
+    <value>交易復原也失敗了：{0}</value>
+  </data>
+  <data name="ScriptErrorLine" xml:space="preserve">
+    <value>第 {0} 行：{1}</value>
+  </data>
+  <data name="SqlFileIsScript" xml:space="preserve">
+    <value>SQL 檔案會作為指令碼執行，而不是按列讀取。</value>
+  </data>
+</root>

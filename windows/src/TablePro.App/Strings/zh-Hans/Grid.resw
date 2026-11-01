@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="CellControlType" xml:space="preserve">
+    <value>单元格</value>
+  </data>
+  <data name="CellEmpty" xml:space="preserve">
+    <value>空</value>
+  </data>
+  <data name="CellName" xml:space="preserve">
+    <value>{0}，第 {1} 行</value>
+  </data>
+  <data name="ColumnCount_One" xml:space="preserve">
+    <value>{0}列</value>
+  </data>
+  <data name="ColumnCount_Other" xml:space="preserve">
+    <value>{0}列</value>
+  </data>
+  <data name="DefaultName" xml:space="preserve">
+    <value>结果</value>
+  </data>
+  <data name="InvalidValueForType" xml:space="preserve">
+    <value>“{0}”不是有效的 {1}。</value>
+  </data>
+  <data name="ResultReadOnly" xml:space="preserve">
+    <value>此结果为只读。</value>
+  </data>
+  <data name="RowCount_One" xml:space="preserve">
+    <value>{0:N0} 行</value>
+  </data>
+  <data name="RowCount_Other" xml:space="preserve">
+    <value>{0:N0} 行</value>
+  </data>
+  <data name="RowsAndColumns" xml:space="preserve">
+    <value>{0}, {1}</value>
+  </data>
+  <data name="SelectAll" xml:space="preserve">
+    <value>全选</value>
+  </data>
+  <data name="SortedAscending" xml:space="preserve">
+    <value>升序排序</value>
+  </data>
+  <data name="SortedDescending" xml:space="preserve">
+    <value>降序排序</value>
+  </data>
+  <data name="StatusDeletedRow" xml:space="preserve">
+    <value>已删除的行</value>
+  </data>
+  <data name="StatusModified" xml:space="preserve">
+    <value>已修改</value>
+  </data>
+  <data name="StatusNewRow" xml:space="preserve">
+    <value>新行</value>
+  </data>
+  <data name="StatusNull" xml:space="preserve">
+    <value>null</value>
+  </data>
+  <data name="TableReadOnly" xml:space="preserve">
+    <value>此表为只读。</value>
+  </data>
+  <data name="ValueNotAccepted" xml:space="preserve">
+    <value>该值未被接受。</value>
+  </data>
+</root>

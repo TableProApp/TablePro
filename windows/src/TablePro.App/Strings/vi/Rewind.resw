@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="CannotRestoreMessage" xml:space="preserve">
+    <value>Không thể đọc lần lưu này nữa. Bản ghi của nó đã bị xoá, hoặc khoá bảo vệ các thay đổi đã lưu không còn nữa.</value>
+  </data>
+  <data name="CannotRestoreTitle" xml:space="preserve">
+    <value>Không thể khôi phục</value>
+  </data>
+  <data name="ClearConfirmMessage" xml:space="preserve">
+    <value>Các lần lưu đã commit vẫn giữ nguyên. Bạn sẽ không thể khôi phục giá trị trước đó của chúng.</value>
+  </data>
+  <data name="ClearConfirmTitle" xml:space="preserve">
+    <value>Xoá các thay đổi đã lưu?</value>
+  </data>
+  <data name="ClearSavedChanges" xml:space="preserve">
+    <value>Xoá các thay đổi đã lưu…</value>
+  </data>
+  <data name="DifferentDatabaseMessage" xml:space="preserve">
+    <value>Lần lưu này được thực hiện trong {0}. Hãy chuyển sang cơ sở dữ liệu đó rồi khôi phục.</value>
+  </data>
+  <data name="DifferentDatabaseTitle" xml:space="preserve">
+    <value>Cơ sở dữ liệu khác</value>
+  </data>
+  <data name="EmptyDisabled" xml:space="preserve">
+    <value>Tính năng lưu giữ các thay đổi đã lưu đang tắt.</value>
+  </data>
+  <data name="EmptyEnabled" xml:space="preserve">
+    <value>Chưa có thay đổi đã lưu nào. Các lần lưu từ lưới bảng sẽ xuất hiện ở đây trong 7 ngày.</value>
+  </data>
+  <data name="Explanation" xml:space="preserve">
+    <value>Giữ lại trạng thái của các dòng trước mỗi lần lưu trên lưới, chỉ trên PC này, trong 7 ngày. Dữ liệu được mã hoá và không bao giờ được đồng bộ.</value>
+  </data>
+  <data name="IsRestore" xml:space="preserve">
+    <value>một lần khôi phục</value>
+  </data>
+  <data name="NoRowToPutBack" xml:space="preserve">
+    <value>Lần lưu này không có dòng nào có thể đưa trở lại.</value>
+  </data>
+  <data name="NothingCanBeRestoredTitle" xml:space="preserve">
+    <value>Không có gì để khôi phục</value>
+  </data>
+  <data name="NothingRestoredTitle" xml:space="preserve">
+    <value>Không có gì được khôi phục</value>
+  </data>
+  <data name="ReadOnlyMessage" xml:space="preserve">
+    <value>Chế độ an toàn đang ở mức Chỉ đọc trên kết nối này, nên không thể khôi phục lần lưu.</value>
+  </data>
+  <data name="ReadOnlyTitle" xml:space="preserve">
+    <value>Kết nối chỉ đọc</value>
+  </data>
+  <data name="RefusalNoPrimaryKey" xml:space="preserve">
+    <value>Bảng không có khoá chính nên không xác định được dòng này.</value>
+  </data>
+  <data name="RefusalServerAssignedKey" xml:space="preserve">
+    <value>Máy chủ đã chọn khoá cho dòng này.</value>
+  </data>
+  <data name="RefusalValueTooLarge" xml:space="preserve">
+    <value>Một giá trị quá lớn để giữ lại.</value>
+  </data>
+  <data name="RestoreButton" xml:space="preserve">
+    <value>Khôi phục</value>
+  </data>
+  <data name="RestoreButtonName" xml:space="preserve">
+    <value>Khôi phục {0} về trước lần lưu này</value>
+  </data>
+  <data name="RestoreButtonTip" xml:space="preserve">
+    <value>Khôi phục giá trị trước đó</value>
+  </data>
+  <data name="RestoreReviewTitle" xml:space="preserve">
+    <value>Khôi phục {0} về trước lần lưu</value>
+  </data>
+  <data name="RestoredAt" xml:space="preserve">
+    <value>đã khôi phục {0}</value>
+  </data>
+  <data name="Restored_One" xml:space="preserve">
+    <value>Đã khôi phục {0:N0} dòng trong {1}.</value>
+  </data>
+  <data name="Restored_Other" xml:space="preserve">
+    <value>Đã khôi phục {0:N0} dòng trong {1}.</value>
+  </data>
+  <data name="ReviewNothingIfChanged" xml:space="preserve">
+    <value>{0} Nếu bất kỳ dòng nào trong số này đã thay đổi kể từ lần lưu, sẽ không có gì được khôi phục.</value>
+  </data>
+  <data name="ReviewRowsSkipped_One" xml:space="preserve">
+    <value>{1} Bỏ qua {0:N0} dòng: {2}</value>
+  </data>
+  <data name="ReviewRowsSkipped_Other" xml:space="preserve">
+    <value>{1} Bỏ qua {0:N0} dòng: {2}</value>
+  </data>
+  <data name="RowChangedMessage" xml:space="preserve">
+    <value>Một dòng đã thay đổi hoặc biến mất kể từ lần lưu này, nên việc khôi phục sẽ ghi đè lên công việc của người khác. Không có gì bị thay đổi.</value>
+  </data>
+  <data name="RowsCannotBeRestored_One" xml:space="preserve">
+    <value>{0:N0} dòng không thể khôi phục</value>
+  </data>
+  <data name="RowsCannotBeRestored_Other" xml:space="preserve">
+    <value>{0:N0} dòng không thể khôi phục</value>
+  </data>
+  <data name="ThisTableOnly" xml:space="preserve">
+    <value>Chỉ bảng này</value>
+  </data>
+</root>

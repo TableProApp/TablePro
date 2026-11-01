@@ -1,0 +1,195 @@
+<UserControl
+    x:Class="TablePro.App.Views.TableTabView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:vm="using:TablePro.App.ViewModels"
+    xmlns:editor="using:TablePro.App.Controls.Editor"
+    xmlns:grid="using:TablePro.App.Controls.DataGrid">
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <Grid Padding="8,4,8,4" ColumnSpacing="8" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,0,0,1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <SelectorBar x:Name="Sections" SelectionChanged="OnSectionChanged">
+                <SelectorBarItem x:Uid="/Table/SectionData" Tag="Data" IsSelected="True">
+                    <SelectorBarItem.Icon><FontIcon Glyph="&#xE80A;" /></SelectorBarItem.Icon>
+                </SelectorBarItem>
+                <SelectorBarItem x:Uid="/Table/SectionStructure" Tag="Structure">
+                    <SelectorBarItem.Icon><FontIcon Glyph="&#xE8A9;" /></SelectorBarItem.Icon>
+                </SelectorBarItem>
+                <SelectorBarItem x:Uid="/Table/SectionDefinition" Tag="Definition">
+                    <SelectorBarItem.Icon><FontIcon Glyph="&#xE943;" /></SelectorBarItem.Icon>
+                </SelectorBarItem>
+            </SelectorBar>
+            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                <ProgressRing Width="16" Height="16" IsActive="{x:Bind ViewModel.IsBusy, Mode=OneWay}" />
+                <TextBlock Style="{StaticResource StatusTextStyle}" Text="{x:Bind ViewModel.StatusText, Mode=OneWay}" MaxWidth="360" TextTrimming="CharacterEllipsis" />
+            </StackPanel>
+        </Grid>
+
+        <!--  Data  -->
+        <Grid x:Name="DataPanel" Grid.Row="1">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <CommandBar DefaultLabelPosition="Right" HorizontalAlignment="Left" IsDynamicOverflowEnabled="True" Background="Transparent">
+                <AppBarButton x:Uid="/Table/DataRefresh" Icon="Refresh" Command="{x:Bind ViewModel.LoadCommand}">
+                    <AppBarButton.KeyboardAccelerators><KeyboardAccelerator Key="R" Modifiers="Control" /></AppBarButton.KeyboardAccelerators>
+                </AppBarButton>
+                <AppBarButton x:Uid="/Table/DataFilter" Icon="Filter" Command="{x:Bind ViewModel.AddFilterCommand}" />
+                <AppBarSeparator />
+                <AppBarButton x:Uid="/Table/DataAddRow" Icon="Add" Command="{x:Bind ViewModel.AddRowCommand}" IsEnabled="{x:Bind ViewModel.IsEditable, Mode=OneWay}">
+                    <AppBarButton.KeyboardAccelerators><KeyboardAccelerator Key="I" Modifiers="Control" /></AppBarButton.KeyboardAccelerators>
+                </AppBarButton>
+                <AppBarButton x:Uid="/Table/DataDelete" Icon="Delete" Click="OnDeleteRows" IsEnabled="{x:Bind ViewModel.IsEditable, Mode=OneWay}" />
+                <AppBarButton x:Uid="/Table/DataUndo" Icon="Undo" Command="{x:Bind ViewModel.UndoCommand}" LabelPosition="Collapsed">
+                    <AppBarButton.KeyboardAccelerators><KeyboardAccelerator Key="Z" Modifiers="Control" /></AppBarButton.KeyboardAccelerators>
+                </AppBarButton>
+                <AppBarButton x:Uid="/Table/DataRedo" Icon="Redo" Command="{x:Bind ViewModel.RedoCommand}" LabelPosition="Collapsed">
+                    <AppBarButton.KeyboardAccelerators><KeyboardAccelerator Key="Y" Modifiers="Control" /></AppBarButton.KeyboardAccelerators>
+                </AppBarButton>
+                <AppBarSeparator />
+                <AppBarButton Icon="Save" Label="{x:Bind ViewModel.SaveText, Mode=OneWay}" Command="{x:Bind ViewModel.SaveCommand}">
+                    <AppBarButton.KeyboardAccelerators><KeyboardAccelerator Key="S" Modifiers="Control" /></AppBarButton.KeyboardAccelerators>
+                </AppBarButton>
+                <AppBarButton x:Uid="/Table/DataDiscard" Icon="Cancel" Command="{x:Bind ViewModel.DiscardCommand}" />
+                <AppBarSeparator />
+                <AppBarButton x:Uid="/Table/DataExport" Click="OnExport">
+                    <AppBarButton.Icon><FontIcon Glyph="&#xEDE1;" /></AppBarButton.Icon>
+                </AppBarButton>
+                <AppBarButton x:Uid="/Table/DataImport" Click="OnImport" IsEnabled="{x:Bind ViewModel.IsEditable, Mode=OneWay}">
+                    <AppBarButton.Icon><FontIcon Glyph="&#xE8B5;" /></AppBarButton.Icon>
+                </AppBarButton>
+            </CommandBar>
+
+            <!--  Key pattern and type, for a key-value database's list of keys  -->
+            <ContentControl x:Name="KeySearchHost" Grid.Row="1" HorizontalContentAlignment="Stretch" Visibility="Collapsed" />
+
+            <!--  Filter strip  -->
+            <Grid x:Name="FilterStrip" Grid.Row="2" Padding="12,4,12,8" RowSpacing="6" Visibility="Collapsed">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <ItemsControl ItemsSource="{x:Bind ViewModel.Filters}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:FilterRuleViewModel">
+                            <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,0,0,6">
+                                <CheckBox IsChecked="{x:Bind Enabled, Mode=TwoWay}" MinWidth="0" />
+                                <ComboBox Width="180" ItemsSource="{x:Bind Columns}" SelectedItem="{x:Bind ColumnItem, Mode=TwoWay}" />
+                                <ComboBox Width="160" ItemsSource="{x:Bind Operators}" SelectedItem="{x:Bind OperatorItem, Mode=TwoWay}" />
+                                <TextBox x:Uid="/Table/FilterValue" Width="220" Text="{x:Bind Value, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" KeyDown="OnFilterKeyDown" />
+                                <Button x:Uid="/Table/FilterRemoveCondition" Style="{StaticResource ToolbarButtonStyle}" Click="OnRemoveFilter" Tag="{x:Bind}">
+                                    <FontIcon FontSize="12" Glyph="&#xE711;" />
+                                </Button>
+                            </StackPanel>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="8">
+                    <TextBox x:Uid="/Table/FilterRawWhere" Width="420" Text="{x:Bind ViewModel.RawWhere, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" FontFamily="{StaticResource CodeFontFamily}" KeyDown="OnFilterKeyDown" />
+                    <ToggleSwitch x:Uid="/Table/FilterMatchMode" IsOn="{x:Bind ViewModel.MatchAllFilters, Mode=TwoWay}" MinWidth="0" />
+                    <Button x:Uid="/Table/FilterApply" Style="{StaticResource AccentButtonStyle}" Command="{x:Bind ViewModel.ApplyFiltersCommand}" />
+                    <Button x:Uid="/Table/FilterClear" Command="{x:Bind ViewModel.ClearFiltersCommand}" />
+                    <Button x:Uid="/Table/FilterAddCondition" Command="{x:Bind ViewModel.AddFilterCommand}" />
+                </StackPanel>
+            </Grid>
+
+            <InfoBar x:Name="ReadOnlyBar" Grid.Row="3" IsOpen="False" IsClosable="True" Severity="Informational" Margin="8,0,8,6" />
+
+            <grid:DataGridView x:Name="RowsGrid" Grid.Row="4" />
+
+            <!--  Pager  -->
+            <Grid Grid.Row="5" Padding="12,4" ColumnSpacing="8" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,1,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock x:Name="SelectionText" Style="{StaticResource StatusTextStyle}" />
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
+                    <TextBlock Style="{StaticResource StatusTextStyle}" Text="{x:Bind ViewModel.PageText, Mode=OneWay}" Margin="0,0,8,0" />
+                    <Button x:Uid="/Table/PagerFirst" Style="{StaticResource ToolbarButtonStyle}" Command="{x:Bind ViewModel.FirstPageCommand}">
+                        <FontIcon FontSize="12" Glyph="&#xE892;" />
+                    </Button>
+                    <Button x:Uid="/Table/PagerPrevious" Style="{StaticResource ToolbarButtonStyle}" Command="{x:Bind ViewModel.PreviousPageCommand}">
+                        <FontIcon FontSize="12" Glyph="&#xE76B;" />
+                    </Button>
+                    <Button x:Uid="/Table/PagerNext" Style="{StaticResource ToolbarButtonStyle}" Command="{x:Bind ViewModel.NextPageCommand}">
+                        <FontIcon FontSize="12" Glyph="&#xE76C;" />
+                    </Button>
+                    <Button x:Uid="/Table/PagerLast" Style="{StaticResource ToolbarButtonStyle}" Command="{x:Bind ViewModel.LastPageCommand}">
+                        <FontIcon FontSize="12" Glyph="&#xE893;" />
+                    </Button>
+                    <ComboBox x:Name="PageSizeBox" x:Uid="/Table/PagerPageSize" SelectionChanged="OnPageSizeChanged" MinWidth="96" Margin="6,0,0,0" />
+                </StackPanel>
+            </Grid>
+        </Grid>
+
+        <!--  Structure  -->
+        <Grid x:Name="StructurePanel" Grid.Row="1" Visibility="Collapsed">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+            <Grid Padding="8,4" ColumnSpacing="8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <SelectorBar x:Name="StructureSections" SelectionChanged="OnStructureSectionChanged">
+                    <SelectorBarItem x:Uid="/Table/StructureColumns" Tag="Columns" IsSelected="True" />
+                    <SelectorBarItem x:Uid="/Table/StructureIndexes" Tag="Indexes" />
+                    <SelectorBarItem x:Uid="/Table/StructureForeignKeys" Tag="ForeignKeys" />
+                    <SelectorBarItem x:Name="ChecksSection" x:Uid="/Table/StructureChecks" Tag="Checks" Visibility="Collapsed" />
+                    <SelectorBarItem x:Uid="/Table/StructureTriggers" Tag="Triggers" />
+                    <SelectorBarItem x:Name="PartitionsSection" x:Uid="/Table/StructurePartitions" Tag="Partitions" Visibility="Collapsed" />
+                    <SelectorBarItem x:Name="OptionsSection" x:Uid="/Table/StructureOptions" Tag="Options" Visibility="Collapsed" />
+                </SelectorBar>
+                <CommandBar Grid.Column="1" DefaultLabelPosition="Right" HorizontalAlignment="Right" Background="Transparent">
+                    <AppBarButton x:Name="StructureAdd" x:Uid="/Table/StructureAdd" Icon="Add" Click="OnStructureAdd" />
+                    <AppBarButton x:Name="StructureEdit" x:Uid="/Table/StructureEdit" Icon="Edit" Click="OnStructureEdit" />
+                    <AppBarButton x:Name="StructureTruncate" x:Uid="/Table/StructureTruncate" Click="OnStructureTruncate" Visibility="Collapsed">
+                        <AppBarButton.Icon><FontIcon Glyph="&#xE894;" /></AppBarButton.Icon>
+                    </AppBarButton>
+                    <AppBarButton x:Name="StructureDrop" x:Uid="/Table/StructureDrop" Icon="Delete" Click="OnStructureDrop" />
+                    <AppBarButton x:Uid="/Table/StructureRefresh" Icon="Refresh" Command="{x:Bind ViewModel.RefreshStructureCommand}" />
+                </CommandBar>
+            </Grid>
+            <StackPanel Grid.Row="1" Margin="8,0,8,6" Spacing="6">
+                <TextBlock x:Name="StructureCaption" Style="{StaticResource StatusTextStyle}" TextWrapping="Wrap" Visibility="Collapsed" IsTextSelectionEnabled="True" />
+                <InfoBar x:Name="DetailsErrorBar" IsOpen="False" IsClosable="True" Severity="Warning" />
+            </StackPanel>
+            <grid:DataGridView x:Name="StructureGrid" Grid.Row="2" />
+        </Grid>
+
+        <!--  Definition  -->
+        <Grid x:Name="DefinitionPanel" Grid.Row="1" Visibility="Collapsed">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+            <CommandBar DefaultLabelPosition="Right" HorizontalAlignment="Left" Background="Transparent">
+                <AppBarButton x:Uid="/Table/DefinitionCopy" Icon="Copy" Click="OnCopyDefinition" />
+                <AppBarButton x:Uid="/Table/DefinitionOpenInQueryTab" Click="OnOpenDefinition">
+                    <AppBarButton.Icon><FontIcon Glyph="&#xE8A7;" /></AppBarButton.Icon>
+                </AppBarButton>
+            </CommandBar>
+            <editor:SqlEditor x:Name="DefinitionEditor" Grid.Row="1" />
+        </Grid>
+    </Grid>
+</UserControl>

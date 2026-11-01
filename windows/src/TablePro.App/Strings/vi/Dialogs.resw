@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="ConfirmPassphrase" xml:space="preserve">
+    <value>Xác nhận cụm mật khẩu</value>
+  </data>
+  <data name="ParameterValuePlaceholder" xml:space="preserve">
+    <value>Văn bản, số hoặc NULL</value>
+  </data>
+  <data name="Passphrase" xml:space="preserve">
+    <value>Cụm mật khẩu</value>
+  </data>
+  <data name="PassphrasesDoNotMatch" xml:space="preserve">
+    <value>Cụm mật khẩu không khớp.</value>
+  </data>
+  <data name="StatementsWillRun_One" xml:space="preserve">
+    <value>Câu lệnh này sẽ được chạy:</value>
+  </data>
+  <data name="StatementsWillRun_Other" xml:space="preserve">
+    <value>{0} câu lệnh này sẽ được chạy theo thứ tự:</value>
+  </data>
+</root>

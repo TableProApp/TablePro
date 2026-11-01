@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="BadConsistencyLevel" xml:space="preserve">
+    <value>{0} 不是连接可用的一致性级别。请使用 LOCAL_ONE、ONE、QUORUM、LOCAL_QUORUM、EACH_QUORUM、ALL、TWO、THREE 或 ANY。</value>
+  </data>
+  <data name="CannotChangePrimaryKey" xml:space="preserve">
+    <value>Cassandra 无法更改主键列 {0}。请删除该行，然后用新键重新添加。</value>
+  </data>
+  <data name="ChooseKeyspace" xml:space="preserve">
+    <value>请为 {0} 选择一个键空间。</value>
+  </data>
+  <data name="ClientRules_One" xml:space="preserve">
+    <value>CQL 无法计算的 {0} 条筛选规则已逐页应用到读取的行。</value>
+  </data>
+  <data name="ClientRules_Other" xml:space="preserve">
+    <value>CQL 无法计算的 {0} 条筛选规则已逐页应用到读取的行。</value>
+  </data>
+  <data name="ClientRulesNoAllowFiltering_One" xml:space="preserve">
+    <value>由于 CQL 只有在使用 ALLOW FILTERING 时才筛选其他列，{0} 条筛选规则已逐页应用到读取的行。要在服务器上筛选，请在连接选项中设置 allowFiltering=true。</value>
+  </data>
+  <data name="ClientRulesNoAllowFiltering_Other" xml:space="preserve">
+    <value>由于 CQL 只有在使用 ALLOW FILTERING 时才筛选其他列，{0} 条筛选规则已逐页应用到读取的行。要在服务器上筛选，请在连接选项中设置 allowFiltering=true。</value>
+  </data>
+  <data name="CounterColumns" xml:space="preserve">
+    <value>计数器列只能通过增量更改。请在编辑器中运行 UPDATE ... SET c = c + n。</value>
+  </data>
+  <data name="EnterPrimaryKeyValue" xml:space="preserve">
+    <value>请为主键列 {0} 输入一个值。</value>
+  </data>
+  <data name="KeyspacesNeedsAccessKey" xml:space="preserve">
+    <value>Amazon Keyspaces 需要访问密钥 ID（用户名）和秘密访问密钥（密码）。</value>
+  </data>
+  <data name="KeyspacesNeedsRegion" xml:space="preserve">
+    <value>请在连接选项（awsRegion）中设置 Amazon Keyspaces 的 AWS 区域。</value>
+  </data>
+  <data name="KeyspacesNeedsTls" xml:space="preserve">
+    <value>Amazon Keyspaces 仅通过 TLS 对登录进行签名。请将 SSL 设为“必需”或更严格的模式。</value>
+  </data>
+  <data name="KeyspacesSignInUnavailable" xml:space="preserve">
+    <value>Amazon Keyspaces 登录方式“{0}”在 Windows 上尚不可用。请使用访问密钥。</value>
+  </data>
+  <data name="NoKeyspace" xml:space="preserve">
+    <value>未找到名为 {0} 的键空间。</value>
+  </data>
+  <data name="NoOffset" xml:space="preserve">
+    <value>CQL 没有 OFFSET，要到达第 {0:N0} 行需要先读取 {1:N0} 行。请从头开始翻页，或按分区键筛选。</value>
+  </data>
+  <data name="NoTableOrView" xml:space="preserve">
+    <value>未找到名为 {0} 的表或视图。</value>
+  </data>
+  <data name="PrimaryKeyNotLoaded" xml:space="preserve">
+    <value>该行主键列 {0} 的值未加载，因此找不到该行。</value>
+  </data>
+  <data name="PrimaryKeyUnreadable" xml:space="preserve">
+    <value>无法读取 {0} 的主键，因此无法更改其行。</value>
+  </data>
+  <data name="QueryCancelledServerMayFinish" xml:space="preserve">
+    <value>查询已取消。服务器可能仍会完成该查询。</value>
+  </data>
+  <data name="RawConditionAnd" xml:space="preserve">
+    <value>CQL 只用 AND 连接条件，因此原始条件必须与规则同时匹配。</value>
+  </data>
+  <data name="SigV4NoNonce" xml:space="preserve">
+    <value>Amazon Keyspaces 发送了不含 nonce 的 SigV4 质询。</value>
+  </data>
+  <data name="SortNotApplied" xml:space="preserve">
+    <value>Cassandra 按令牌顺序返回行，且只在单个分区内排序，因此未应用排序。</value>
+  </data>
+  <data name="StoppedAfterScanning" xml:space="preserve">
+    <value>为填满本页读取 {0:N0} 行后已停止。请按分区键筛选以搜索整个表。</value>
+  </data>
+  <data name="UdtAsJson" xml:space="preserve">
+    <value>用户定义类型的值通过 fromJson() 以 JSON 写入，而不是作为对象绑定。</value>
+  </data>
+</root>

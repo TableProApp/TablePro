@@ -1,0 +1,285 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="Blocking" xml:space="preserve">
+    <value>{0} 会阻塞共享连接直到数据到达。请使用非阻塞形式，例如 LPOP 或不带 BLOCK 的 XREAD。</value>
+  </data>
+  <data name="Bytes_One" xml:space="preserve">
+    <value>{0} 字节</value>
+  </data>
+  <data name="Bytes_Other" xml:space="preserve">
+    <value>{0} 字节</value>
+  </data>
+  <data name="CannotStoreNull" xml:space="preserve">
+    <value>Redis 无法存储 NULL。请改为输入空值。</value>
+  </data>
+  <data name="CannotStoreNullValue" xml:space="preserve">
+    <value>Redis 无法将 NULL 存储为值。请改为输入空值。</value>
+  </data>
+  <data name="ClientReply" xml:space="preserve">
+    <value>CLIENT REPLY 会停止每个标签页等待的回复。</value>
+  </data>
+  <data name="ClusterDatabaseOption" xml:space="preserve">
+    <value>Redis Cluster 只提供数据库 0。请清除数据库编号，或使用独立模式。</value>
+  </data>
+  <data name="ClusterDatabaseZero" xml:space="preserve">
+    <value>Redis Cluster 只提供数据库 0。</value>
+  </data>
+  <data name="CommandNotFinished" xml:space="preserve">
+    <value>命令未在 {0} 秒内完成。</value>
+  </data>
+  <data name="ConnectionState" xml:space="preserve">
+    <value>{0} 会更改共享连接的登录或状态。请改为更改连接的设置。</value>
+  </data>
+  <data name="CrossSlot" xml:space="preserve">
+    <value>排队的命令涉及多个哈希槽中的键，集群无法在一个事务中运行。请为这些键指定共同的 {hash tag}，使它们落在同一个槽中。</value>
+  </data>
+  <data name="CurrentValue" xml:space="preserve">
+    <value>（当前值）</value>
+  </data>
+  <data name="CursorRestarted" xml:space="preserve">
+    <value>游标指向集群中已不存在的节点，因此扫描从第一个主节点重新开始。</value>
+  </data>
+  <data name="DatabaseSelected_One" xml:space="preserve">
+    <value>已选择数据库 {1}，{0} 个键。</value>
+  </data>
+  <data name="DatabaseSelected_Other" xml:space="preserve">
+    <value>已选择数据库 {1}，{0} 个键。</value>
+  </data>
+  <data name="DbBrowseWith" xml:space="preserve">
+    <value># 浏览方式：{0}</value>
+  </data>
+  <data name="DbHeader" xml:space="preserve">
+    <value># Redis 数据库：{0}</value>
+  </data>
+  <data name="DbKeys" xml:space="preserve">
+    <value># 键：{0}</value>
+  </data>
+  <data name="DbTypes_One" xml:space="preserve">
+    <value># 类型分布（抽样 {0} 个键）：</value>
+  </data>
+  <data name="DbTypes_Other" xml:space="preserve">
+    <value># 类型分布（抽样 {0} 个键）：</value>
+  </data>
+  <data name="EmptyCommand" xml:space="preserve">
+    <value>命令为空。</value>
+  </data>
+  <data name="FieldsComment" xml:space="preserve">
+    <value>字段名到值的 JSON 对象</value>
+  </data>
+  <data name="HashFieldGone" xml:space="preserve">
+    <value>哈希字段“{0}”已不存在，因此未保存任何内容。</value>
+  </data>
+  <data name="HashRowNeedsField" xml:space="preserve">
+    <value>新的哈希行需要字段名称。</value>
+  </data>
+  <data name="IndexComment" xml:space="preserve">
+    <value>从头开始的位置，从 0 起算</value>
+  </data>
+  <data name="IsSentinel" xml:space="preserve">
+    <value>这是 Redis Sentinel，不是数据节点，因此只响应 SENTINEL 命令。请将连接模式设为 sentinel，并将此地址列入 Sentinel 节点。</value>
+  </data>
+  <data name="JsonNeedsPath" xml:space="preserve">
+    <value>新的 JSON 成员需要路径，例如 $.name。</value>
+  </data>
+  <data name="JsonPathFixed" xml:space="preserve">
+    <value>JSON 成员的路径无法编辑。请删除该成员，并在新路径下添加值。</value>
+  </data>
+  <data name="JsonTextComment" xml:space="preserve">
+    <value>JSON 文本</value>
+  </data>
+  <data name="KeyGone" xml:space="preserve">
+    <value>键“{0}”已不存在。</value>
+  </data>
+  <data name="KeyNameComment" xml:space="preserve">
+    <value>键的名称</value>
+  </data>
+  <data name="KeyNameNotText" xml:space="preserve">
+    <value>此键的名称不是文本，因此无法在网格中定位。</value>
+  </data>
+  <data name="KeyTypeNotEditable" xml:space="preserve">
+    <value>键“{0}”的类型无法在网格中编辑。请在查询编辑器中用命令更改。</value>
+  </data>
+  <data name="KeyTypeNotShown" xml:space="preserve">
+    <value>键“{0}”的类型无法在网格中显示。请在查询编辑器中用命令读取。</value>
+  </data>
+  <data name="LengthComment" xml:space="preserve">
+    <value>字符串的字节数，或集合的元素数</value>
+  </data>
+  <data name="ListOneNode" xml:space="preserve">
+    <value>请以 host:port 的形式列出至少一个要连接的节点。</value>
+  </data>
+  <data name="ListPositionFixed" xml:space="preserve">
+    <value>列表元素的位置无法编辑。请删除该元素后重新添加值。</value>
+  </data>
+  <data name="NewKeyNeedsName" xml:space="preserve">
+    <value>新键需要名称。</value>
+  </data>
+  <data name="NextCursor" xml:space="preserve">
+    <value>下一个游标：{0}</value>
+  </data>
+  <data name="NoListPosition" xml:space="preserve">
+    <value>该行没有列表位置，因此无法定位。</value>
+  </data>
+  <data name="NoServer" xml:space="preserve">
+    <value>未连接 Redis 服务器。</value>
+  </data>
+  <data name="NotACluster" xml:space="preserve">
+    <value>此服务器未在集群模式下运行。请将连接模式设为独立模式，或将集群模式指向以 cluster-enabled yes 启动的节点。</value>
+  </data>
+  <data name="NotAScore" xml:space="preserve">
+    <value>“{0}”不是分数。分数是数字、inf 或 -inf。</value>
+  </data>
+  <data name="NotClientId" xml:space="preserve">
+    <value>“{0}”不是 Redis 客户端 ID。</value>
+  </data>
+  <data name="NotDatabaseNumber" xml:space="preserve">
+    <value>“{0}”不是 Redis 数据库编号。请使用 0 这样的数字或 db0 这样的名称。</value>
+  </data>
+  <data name="NotHost" xml:space="preserve">
+    <value>“{0}”不是 host 或 host:port。</value>
+  </data>
+  <data name="NotMode" xml:space="preserve">
+    <value>“{0}”不是 Redis 连接模式。请使用 standalone、sentinel 或 cluster。</value>
+  </data>
+  <data name="NotRun" xml:space="preserve">
+    <value>未运行</value>
+  </data>
+  <data name="NoWhereElements" xml:space="preserve">
+    <value>Redis 没有 WHERE 子句。请使用筛选规则，或在查询编辑器中使用带 MATCH 的 SCAN。</value>
+  </data>
+  <data name="NoWhereKeys" xml:space="preserve">
+    <value>Redis 没有 WHERE 子句。请用 user:* 这样的模式筛选 Key 列，或按 Type 筛选。</value>
+  </data>
+  <data name="OnlyKeyTypeCounted" xml:space="preserve">
+    <value>服务器只计算键和类型筛选条件。</value>
+  </data>
+  <data name="PartialSlots" xml:space="preserve">
+    <value>{1} 个哈希槽中有 {0} 个在另一个拒绝之前已运行各自的部分；这些更改仍然生效。</value>
+  </data>
+  <data name="PartOfCluster" xml:space="preserve">
+    <value>此服务器属于 Redis Cluster，因此对其不拥有的键的请求会失败。请将连接模式设为集群，并将此地址列入集群节点。</value>
+  </data>
+  <data name="PathComment" xml:space="preserve">
+    <value>成员的 JSONPath</value>
+  </data>
+  <data name="ReadOnlyNoDisconnect" xml:space="preserve">
+    <value>此连接为只读，因此未断开客户端。</value>
+  </data>
+  <data name="ReadOnlyNotSent" xml:space="preserve">
+    <value>此连接为只读，因此未发送 {0}。</value>
+  </data>
+  <data name="RenameEmpty" xml:space="preserve">
+    <value>键只能重命名为非空文本。</value>
+  </data>
+  <data name="RowHasNo" xml:space="preserve">
+    <value>该行没有{0}，因此无法定位。</value>
+  </data>
+  <data name="SaveSomeFailed" xml:space="preserve">
+    <value>Redis 已执行保存，但部分命令失败，其余命令仍然生效：{0}</value>
+  </data>
+  <data name="ScanComplete" xml:space="preserve">
+    <value>游标 0：扫描已完成。</value>
+  </data>
+  <data name="Seconds_One" xml:space="preserve">
+    <value>{0} 秒</value>
+  </data>
+  <data name="Seconds_Other" xml:space="preserve">
+    <value>{0} 秒</value>
+  </data>
+  <data name="SelectInMulti" xml:space="preserve">
+    <value>此处无法在 MULTI 中将 SELECT 排队。请在 MULTI 之前选择数据库。</value>
+  </data>
+  <data name="SelectOneNumber" xml:space="preserve">
+    <value>SELECT 只接受一个数据库编号，例如 SELECT 1</value>
+  </data>
+  <data name="SentinelThroughTunnel" xml:space="preserve">
+    <value>隧道只转发一个地址，而 Sentinel 指定的节点位于服务器自己的网络中，因此 Sentinel 模式无法通过隧道运行。请直接连接到数据节点，或关闭隧道。</value>
+  </data>
+  <data name="SentinelToSentinel" xml:space="preserve">
+    <value>Sentinel 解析到了另一个 Sentinel，而不是数据节点。请检查 Sentinel 配置中的主组名称。</value>
+  </data>
+  <data name="SlotsPartiallySaved" xml:space="preserve">
+    <value>{1} 个哈希槽中有 {0} 个已保存并保持生效；下一个失败：{2}</value>
+  </data>
+  <data name="SortedSetMemberGone" xml:space="preserve">
+    <value>有序集合成员“{0}”已不存在，因此未保存任何内容。</value>
+  </data>
+  <data name="StreamEntriesFixed" xml:space="preserve">
+    <value>流条目添加后无法更改。请删除该条目并添加新条目。</value>
+  </data>
+  <data name="StreamFieldsNotObject" xml:space="preserve">
+    <value>流条目的字段必须是 JSON 对象：{0}</value>
+  </data>
+  <data name="StreamFieldsObject" xml:space="preserve">
+    <value>流字段必须是 JSON 对象，例如 {"field": "value"}。</value>
+  </data>
+  <data name="StreamIdComment" xml:space="preserve">
+    <value>添加时留空，由服务器分配</value>
+  </data>
+  <data name="StreamNeedsFields" xml:space="preserve">
+    <value>新的流条目需要以 JSON 对象提供字段，例如 {"name": "value"}。</value>
+  </data>
+  <data name="StreamNeedsOneField" xml:space="preserve">
+    <value>流条目至少需要一个字段。</value>
+  </data>
+  <data name="StringHoldsOneValue" xml:space="preserve">
+    <value>字符串键只保存一个值。请编辑该值，而不是添加行。</value>
+  </data>
+  <data name="Subscription" xml:space="preserve">
+    <value>{0} 会将连接变为消息流，编辑器无法显示。请使用 redis-cli。</value>
+  </data>
+  <data name="TtlComment" xml:space="preserve">
+    <value>距键过期的秒数；不过期则为 -1 或 NULL</value>
+  </data>
+  <data name="TtlInvalid" xml:space="preserve">
+    <value>TTL 必须是大于 0 的整秒数，或用 -1 或 NULL 表示不过期。</value>
+  </data>
+  <data name="TtlNoExpiry" xml:space="preserve">
+    <value>-1（不过期）</value>
+  </data>
+  <data name="TtlNoKey" xml:space="preserve">
+    <value>-2（键不存在）</value>
+  </data>
+  <data name="TypeComment" xml:space="preserve">
+    <value>添加键时为 string、hash、list、set 或 zset</value>
+  </data>
+  <data name="TypeNotAddable" xml:space="preserve">
+    <value>无法在网格中添加 {0} 键。请在查询编辑器中用命令添加。</value>
+  </data>
+  <data name="Unknown" xml:space="preserve">
+    <value>未知</value>
+  </data>
+  <data name="ValueComment" xml:space="preserve">
+    <value>字符串的值，或集合前几个元素的预览</value>
+  </data>
+  <data name="ValueInListNotEditable" xml:space="preserve">
+    <value>无法在键列表中编辑 {0} 键的值。请打开该键以编辑其元素。</value>
+  </data>
+  <data name="WhatHashField" xml:space="preserve">
+    <value>哈希字段</value>
+  </data>
+  <data name="WhatJsonPath" xml:space="preserve">
+    <value>JSON 路径</value>
+  </data>
+  <data name="WhatSetMember" xml:space="preserve">
+    <value>集合成员</value>
+  </data>
+  <data name="WhatSortedSetMember" xml:space="preserve">
+    <value>有序集合成员</value>
+  </data>
+  <data name="WhatStreamId" xml:space="preserve">
+    <value>流条目 ID</value>
+  </data>
+</root>

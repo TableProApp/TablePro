@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="ControlCharacterInPath" xml:space="preserve">
+    <value>清單中某個擴充功能的路徑包含換行字元或其他控制字元。</value>
+  </data>
+  <data name="CouldNotLoad" xml:space="preserve">
+    <value>無法載入擴充功能「{0}」。</value>
+  </data>
+  <data name="CouldNotLoadList" xml:space="preserve">
+    <value>無法載入此連線的 SQLite 擴充功能。</value>
+  </data>
+  <data name="Duplicate" xml:space="preserve">
+    <value>「{0}」在清單中出現了多次。</value>
+  </data>
+  <data name="EntryPointNotFound" xml:space="preserve">
+    <value>該檔案沒有名為 {0} 的函式。</value>
+  </data>
+  <data name="FileNotFound" xml:space="preserve">
+    <value>「{0}」處沒有檔案。</value>
+  </data>
+  <data name="InitializationFailed" xml:space="preserve">
+    <value>擴充功能啟動失敗：{0}</value>
+  </data>
+  <data name="InvalidEntryPoint" xml:space="preserve">
+    <value>「{0}」不是有效的進入點名稱。</value>
+  </data>
+  <data name="LoadingNotClosed" xml:space="preserve">
+    <value>SQLite 在載入後沒有再次關閉擴充功能載入。</value>
+  </data>
+  <data name="LoadingUnavailable" xml:space="preserve">
+    <value>SQLite 不允許在此連線上載入擴充功能。</value>
+  </data>
+  <data name="MalformedList" xml:space="preserve">
+    <value>已儲存的擴充功能清單不是 TablePro 可讀取的格式。</value>
+  </data>
+  <data name="MissingPath" xml:space="preserve">
+    <value>清單中的某個擴充功能沒有檔案。</value>
+  </data>
+  <data name="NotAFile" xml:space="preserve">
+    <value>「{0}」不是檔案。</value>
+  </data>
+  <data name="PathTooLong" xml:space="preserve">
+    <value>路徑「{0}」太長。</value>
+  </data>
+  <data name="RelativePath" xml:space="preserve">
+    <value>「{0}」不是完整路徑。</value>
+  </data>
+</root>

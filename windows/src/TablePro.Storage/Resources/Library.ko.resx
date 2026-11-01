@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="EncodingCannotHold" xml:space="preserve">
+    <value>파일의 인코딩({0})으로는 이 문자를 저장할 수 없습니다. 아무것도 변경되지 않았습니다.</value>
+  </data>
+  <data name="FileNoLongerExists" xml:space="preserve">
+    <value>파일이 더 이상 존재하지 않습니다.</value>
+  </data>
+  <data name="FileTooLargeForGit" xml:space="preserve">
+    <value>파일이 너무 커서 Git에서 읽을 수 없습니다.</value>
+  </data>
+  <data name="FolderNotInRepository" xml:space="preserve">
+    <value>이 폴더는 Git 리포지토리에 있지 않습니다.</value>
+  </data>
+  <data name="GitAdded" xml:space="preserve">
+    <value>추가됨</value>
+  </data>
+  <data name="GitBusy" xml:space="preserve">
+    <value>이 저장소에서 다른 Git 명령이 아직 실행 중입니다.</value>
+  </data>
+  <data name="GitConflicted" xml:space="preserve">
+    <value>충돌</value>
+  </data>
+  <data name="GitCouldNotStart" xml:space="preserve">
+    <value>Git을 시작할 수 없습니다.</value>
+  </data>
+  <data name="GitExitStatus" xml:space="preserve">
+    <value>Git이 상태 코드 {0}(으)로 종료되었습니다.</value>
+  </data>
+  <data name="GitHistoryUnavailable" xml:space="preserve">
+    <value>Git 기록을 사용할 수 없습니다: {0}</value>
+  </data>
+  <data name="GitModified" xml:space="preserve">
+    <value>수정됨</value>
+  </data>
+  <data name="GitNotInstalled" xml:space="preserve">
+    <value>Git이 설치되어 있지 않습니다.</value>
+  </data>
+  <data name="GitOutputTooLarge" xml:space="preserve">
+    <value>Git 출력이 TablePro가 읽을 수 있는 양보다 많습니다.</value>
+  </data>
+  <data name="GitPartlyStaged" xml:space="preserve">
+    <value>{0}, 일부 스테이징됨</value>
+  </data>
+  <data name="GitRenamed" xml:space="preserve">
+    <value>이름 변경됨</value>
+  </data>
+  <data name="GitStaged" xml:space="preserve">
+    <value>{0}, 스테이징됨</value>
+  </data>
+  <data name="GitTimedOut" xml:space="preserve">
+    <value>Git이 제시간에 응답하지 않았습니다.</value>
+  </data>
+  <data name="GitUntracked" xml:space="preserve">
+    <value>추적되지 않음</value>
+  </data>
+  <data name="HistoryChangedBeforeWriting" xml:space="preserve">
+    <value>파일이나 스테이징된 버전이 기록되기 전에 변경되었습니다. 아무것도 바뀌지 않았습니다.</value>
+  </data>
+  <data name="HistoryFileGone" xml:space="preserve">
+    <value>이 파일이 더 이상 존재하지 않습니다.</value>
+  </data>
+  <data name="HistoryGitFailed" xml:space="preserve">
+    <value>Git이 실패했습니다.</value>
+  </data>
+  <data name="HistoryGitUnavailable" xml:space="preserve">
+    <value>Git이 설치되어 있지 않습니다. 파일의 커밋을 보려면 Git for Windows를 설치하세요.</value>
+  </data>
+  <data name="HistoryInLfs" xml:space="preserve">
+    <value>이 파일은 Git LFS로 저장되어 있습니다. Git 클라이언트로 복원하세요.</value>
+  </data>
+  <data name="HistoryNotInRepository" xml:space="preserve">
+    <value>이 파일은 Git 저장소에 있지 않습니다.</value>
+  </data>
+  <data name="HistoryNotText" xml:space="preserve">
+    <value>이 버전은 텍스트로 읽을 수 없습니다.</value>
+  </data>
+  <data name="HistoryRestoreFailed" xml:space="preserve">
+    <value>버전을 복원할 수 없습니다: {0}</value>
+  </data>
+  <data name="HistoryVersionGone" xml:space="preserve">
+    <value>이 버전은 더 이상 사용할 수 없습니다.</value>
+  </data>
+  <data name="KeepsLatestSnapshots_One" xml:space="preserve">
+    <value>TablePro는 파일마다 최근 저장된 버전 {0}개를 보관합니다.</value>
+  </data>
+  <data name="KeepsLatestSnapshots_Other" xml:space="preserve">
+    <value>TablePro는 파일마다 최근 저장된 버전 {0}개를 보관합니다.</value>
+  </data>
+  <data name="NameAlreadyExists" xml:space="preserve">
+    <value>이 위치에 같은 이름의 파일이 이미 있습니다.</value>
+  </data>
+  <data name="NameEmpty" xml:space="preserve">
+    <value>이름을 입력하세요.</value>
+  </data>
+  <data name="NameInvalidCharacters" xml:space="preserve">
+    <value>파일 이름에는 \ / : * ? " &lt; &gt; | 문자를 사용할 수 없습니다.</value>
+  </data>
+  <data name="NameReserved" xml:space="preserve">
+    <value>Windows에서 장치용으로 예약된 이름입니다.</value>
+  </data>
+  <data name="RecycleBinFailed" xml:space="preserve">
+    <value>파일을 휴지통으로 이동할 수 없습니다.</value>
+  </data>
+  <data name="RequestFailed" xml:space="preserve">
+    <value>요청이 실패했습니다.</value>
+  </data>
+  <data name="SavedInTablePro" xml:space="preserve">
+    <value>TablePro에서 저장됨</value>
+  </data>
+  <data name="ShowsLatestCommits_One" xml:space="preserve">
+    <value>최근 커밋 {0}개를 표시합니다.</value>
+  </data>
+  <data name="ShowsLatestCommits_Other" xml:space="preserve">
+    <value>최근 커밋 {0}개를 표시합니다.</value>
+  </data>
+  <data name="TeamEmptyResponse" xml:space="preserve">
+    <value>팀 라이브러리가 빈 응답을 반환했습니다.</value>
+  </data>
+  <data name="TeamNeedsLicense" xml:space="preserve">
+    <value>팀 라이브러리에 게시하려면 Team 라이선스를 활성화하세요.</value>
+  </data>
+  <data name="TeamTimedOut" xml:space="preserve">
+    <value>팀 라이브러리가 제시간에 응답하지 않았습니다.</value>
+  </data>
+  <data name="TeamUnreachable" xml:space="preserve">
+    <value>팀 라이브러리에 연결할 수 없습니다: {0}</value>
+  </data>
+  <data name="TeamUnreadable" xml:space="preserve">
+    <value>팀 라이브러리가 TablePro에서 읽을 수 없는 응답을 반환했습니다.</value>
+  </data>
+  <data name="UntitledFile" xml:space="preserve">
+    <value>제목 없음</value>
+  </data>
+</root>

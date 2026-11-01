@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="CannotDeleteFirst" xml:space="preserve">
+    <value>此连接无法在一个事务中清空表并导入数据，因此无法先删除现有行。</value>
+  </data>
+  <data name="CannotMatchRows" xml:space="preserve">
+    <value>此连接无法将导入的行与现有行匹配。</value>
+  </data>
+  <data name="ChooseMatchKey" xml:space="preserve">
+    <value>请选择用于匹配行的键。</value>
+  </data>
+  <data name="ColumnMappedTwice" xml:space="preserve">
+    <value>每列只能映射自一个字段。</value>
+  </data>
+  <data name="ColumnNamesUnique" xml:space="preserve">
+    <value>列名必须唯一。</value>
+  </data>
+  <data name="CouldNotReadExistingRows" xml:space="preserve">
+    <value>无法读取表中已有哪些行。</value>
+  </data>
+  <data name="DeleteFirstCannotMatch" xml:space="preserve">
+    <value>“先删除现有行”会清空表，因此没有行可以匹配。请关闭该选项，或以“插入”方式导入。</value>
+  </data>
+  <data name="IncludeAtLeastOneColumn" xml:space="preserve">
+    <value>请至少包含一列。</value>
+  </data>
+  <data name="IncludedColumnNeedsName" xml:space="preserve">
+    <value>每个包含的列都需要名称。</value>
+  </data>
+  <data name="IncludedColumnNeedsType" xml:space="preserve">
+    <value>每个包含的列都需要类型。</value>
+  </data>
+  <data name="KeyMatchedSeveralRows" xml:space="preserve">
+    <value>键 {0} 匹配了 {1} 行，因此未写入该行。</value>
+  </data>
+  <data name="KeyNeedsValuePerColumn" xml:space="preserve">
+    <value>每个键的每个键列都需要一个值。</value>
+  </data>
+  <data name="KeyValueMissing" xml:space="preserve">
+    <value>此行没有键列 {0} 的值，因此无法匹配。</value>
+  </data>
+  <data name="MapAtLeastOneField" xml:space="preserve">
+    <value>请至少将一个字段映射到列。</value>
+  </data>
+  <data name="NoFieldMapped" xml:space="preserve">
+    <value>文件中没有字段映射到此表的列。</value>
+  </data>
+  <data name="RollbackAlsoFailed" xml:space="preserve">
+    <value>事务回滚也失败了：{0}</value>
+  </data>
+  <data name="ScriptErrorLine" xml:space="preserve">
+    <value>第 {0} 行：{1}</value>
+  </data>
+  <data name="SqlFileIsScript" xml:space="preserve">
+    <value>SQL 文件会作为脚本运行，而不是按行读取。</value>
+  </data>
+</root>

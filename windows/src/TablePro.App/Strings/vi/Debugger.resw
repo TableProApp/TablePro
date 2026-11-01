@@ -1,0 +1,138 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="BreakpointGutter.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Bật/tắt điểm dừng</value>
+  </data>
+  <data name="CallStackHeader.Text" xml:space="preserve">
+    <value>Ngăn xếp lời gọi</value>
+  </data>
+  <data name="ContinueButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Tiếp tục</value>
+  </data>
+  <data name="ContinueButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Tiếp tục (F5)</value>
+  </data>
+  <data name="DebugButton" xml:space="preserve">
+    <value>Gỡ lỗi</value>
+  </data>
+  <data name="EntryPoint" xml:space="preserve">
+    <value>Điểm bắt đầu</value>
+  </data>
+  <data name="FrameAtLine" xml:space="preserve">
+    <value>{0}  dòng {1}</value>
+  </data>
+  <data name="FrameLevel" xml:space="preserve">
+    <value>Khung {0}</value>
+  </data>
+  <data name="NoArguments" xml:space="preserve">
+    <value>Thủ tục này không nhận đối số nào.</value>
+  </data>
+  <data name="OutputBox.PlaceholderText" xml:space="preserve">
+    <value>Các thông báo và dòng DBMS_OUTPUT sẽ xuất hiện ở đây</value>
+  </data>
+  <data name="OutputBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Đầu ra gỡ lỗi</value>
+  </data>
+  <data name="OutputParameter" xml:space="preserve">
+    <value>Đầu ra</value>
+  </data>
+  <data name="OutputTab.Text" xml:space="preserve">
+    <value>Đầu ra</value>
+  </data>
+  <data name="RemoveAllBreakpointsButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Gỡ tất cả điểm dừng</value>
+  </data>
+  <data name="RemoveAllBreakpointsButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Gỡ tất cả điểm dừng (Ctrl+Shift+F9)</value>
+  </data>
+  <data name="ResultTab.Text" xml:space="preserve">
+    <value>Kết quả</value>
+  </data>
+  <data name="SafeModeBlocks" xml:space="preserve">
+    <value>Chế độ an toàn chặn thao tác ghi trên kết nối này, và thủ tục có thể thay đổi dữ liệu, nên không thể gỡ lỗi tại đây.</value>
+  </data>
+  <data name="SourceList.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Mã nguồn thủ tục</value>
+  </data>
+  <data name="StackList.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Ngăn xếp lời gọi</value>
+  </data>
+  <data name="StartDialogTitle" xml:space="preserve">
+    <value>Gỡ lỗi {0}</value>
+  </data>
+  <data name="StatusCantDebug" xml:space="preserve">
+    <value>Không thể gỡ lỗi</value>
+  </data>
+  <data name="StatusPreparing" xml:space="preserve">
+    <value>Đang chuẩn bị…</value>
+  </data>
+  <data name="StepIntoButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Bước vào</value>
+  </data>
+  <data name="StepIntoButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Bước vào (F11)</value>
+  </data>
+  <data name="StepOutButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Bước ra</value>
+  </data>
+  <data name="StepOutButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Bước ra (Shift+F11)</value>
+  </data>
+  <data name="StepOverButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Bước qua</value>
+  </data>
+  <data name="StepOverButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Bước qua (F10)</value>
+  </data>
+  <data name="StopButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Dừng gỡ lỗi</value>
+  </data>
+  <data name="StopButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Dừng gỡ lỗi (Shift+F5)</value>
+  </data>
+  <data name="TabTitle" xml:space="preserve">
+    <value>Gỡ lỗi {0}</value>
+  </data>
+  <data name="ToggleBreakpointButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Bật/tắt điểm dừng</value>
+  </data>
+  <data name="ToggleBreakpointButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Bật/tắt điểm dừng trên dòng đã chọn (F9)</value>
+  </data>
+  <data name="TypeColumn.Text" xml:space="preserve">
+    <value>Kiểu</value>
+  </data>
+  <data name="ValueColumn.Text" xml:space="preserve">
+    <value>Giá trị</value>
+  </data>
+  <data name="VariableColumn.Text" xml:space="preserve">
+    <value>Biến</value>
+  </data>
+  <data name="VariableKindArgument" xml:space="preserve">
+    <value>Đối số</value>
+  </data>
+  <data name="VariableKindConstant" xml:space="preserve">
+    <value>Hằng số</value>
+  </data>
+  <data name="VariableKindLocal" xml:space="preserve">
+    <value>Cục bộ</value>
+  </data>
+  <data name="VariableKindPackage" xml:space="preserve">
+    <value>Package</value>
+  </data>
+  <data name="VariablesList.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Biến</value>
+  </data>
+</root>

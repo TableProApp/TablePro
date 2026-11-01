@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="NoColumnToFilter" xml:space="preserve">
+    <value>没有可用于筛选的列 {0}。</value>
+  </data>
+  <data name="OperatorBetween" xml:space="preserve">
+    <value>介于</value>
+  </data>
+  <data name="OperatorContains" xml:space="preserve">
+    <value>包含</value>
+  </data>
+  <data name="OperatorEndsWith" xml:space="preserve">
+    <value>结尾为</value>
+  </data>
+  <data name="OperatorIn" xml:space="preserve">
+    <value>在列表中</value>
+  </data>
+  <data name="OperatorIsEmpty" xml:space="preserve">
+    <value>为空</value>
+  </data>
+  <data name="OperatorIsNotEmpty" xml:space="preserve">
+    <value>不为空</value>
+  </data>
+  <data name="OperatorIsNotNull" xml:space="preserve">
+    <value>不为 NULL</value>
+  </data>
+  <data name="OperatorIsNull" xml:space="preserve">
+    <value>为 NULL</value>
+  </data>
+  <data name="OperatorNotContains" xml:space="preserve">
+    <value>不包含</value>
+  </data>
+  <data name="OperatorNotIn" xml:space="preserve">
+    <value>不在列表中</value>
+  </data>
+  <data name="OperatorStartsWith" xml:space="preserve">
+    <value>开头为</value>
+  </data>
+  <data name="RawWhereUnsupported" xml:space="preserve">
+    <value>{0} 无法运行原始 WHERE 子句，请改用筛选规则。</value>
+  </data>
+</root>

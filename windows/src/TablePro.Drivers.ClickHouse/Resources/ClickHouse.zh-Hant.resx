@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="KeyColumnUnchangeable" xml:space="preserve">
+    <value>ClickHouse 無法變更 {0}，因為它屬於資料表的排序鍵、主索引鍵或分割區索引鍵。未儲存任何內容。</value>
+  </data>
+  <data name="NeedsKeyColumn" xml:space="preserve">
+    <value>列至少需要一個索引鍵欄才能安全地變更。ClickHouse 依資料表的 ORDER BY 欄識別列。</value>
+  </data>
+</root>

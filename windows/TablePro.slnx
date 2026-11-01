@@ -1,0 +1,67 @@
+<Solution>
+  <Configurations>
+    <Platform Name="Any CPU" />
+    <Platform Name="x64" />
+    <Platform Name="ARM64" />
+  </Configurations>
+  <Folder Name="/src/">
+    <Project Path="src/TablePro.Core/TablePro.Core.csproj" />
+    <Project Path="src/TablePro.Storage/TablePro.Storage.csproj" />
+    <Project Path="src/TablePro.Ssh/TablePro.Ssh.csproj" />
+    <Project Path="src/TablePro.Ai/TablePro.Ai.csproj" />
+    <Project Path="src/TablePro.Mcp/TablePro.Mcp.csproj" />
+    <Project Path="src/TablePro.Drivers.PostgreSql/TablePro.Drivers.PostgreSql.csproj" />
+    <Project Path="src/TablePro.Drivers.MySql/TablePro.Drivers.MySql.csproj" />
+    <Project Path="src/TablePro.Drivers.SqlServer/TablePro.Drivers.SqlServer.csproj" />
+    <Project Path="src/TablePro.Drivers.Sqlite/TablePro.Drivers.Sqlite.csproj" />
+    <Project Path="src/TablePro.Drivers.DuckDb/TablePro.Drivers.DuckDb.csproj" />
+    <Project Path="src/TablePro.Drivers.Redis/TablePro.Drivers.Redis.csproj" />
+    <Project Path="src/TablePro.Drivers.ClickHouse/TablePro.Drivers.ClickHouse.csproj" />
+    <Project Path="src/TablePro.Drivers.Oracle/TablePro.Drivers.Oracle.csproj" />
+    <Project Path="src/TablePro.Drivers.Teradata/TablePro.Drivers.Teradata.csproj" />
+    <Project Path="src/TablePro.Drivers.MongoDb/TablePro.Drivers.MongoDb.csproj" />
+    <Project Path="src/TablePro.Drivers.Cassandra/TablePro.Drivers.Cassandra.csproj" />
+    <Project Path="src/TablePro.Drivers.DynamoDb/TablePro.Drivers.DynamoDb.csproj" />
+    <Project Path="src/TablePro.Drivers.Snowflake/TablePro.Drivers.Snowflake.csproj" />
+    <Project Path="src/TablePro.Drivers.BigQuery/TablePro.Drivers.BigQuery.csproj" />
+    <Project Path="src/TablePro.Drivers.Spanner/TablePro.Drivers.Spanner.csproj" />
+    <Project Path="src/TablePro.Drivers.Trino/TablePro.Drivers.Trino.csproj" />
+    <Project Path="src/TablePro.Drivers.Elasticsearch/TablePro.Drivers.Elasticsearch.csproj" />
+    <Project Path="src/TablePro.Drivers.Typesense/TablePro.Drivers.Typesense.csproj" />
+    <Project Path="src/TablePro.Drivers.Weaviate/TablePro.Drivers.Weaviate.csproj" />
+    <Project Path="src/TablePro.Drivers.SurrealDb/TablePro.Drivers.SurrealDb.csproj" />
+    <Project Path="src/TablePro.Drivers.Kafka/TablePro.Drivers.Kafka.csproj" />
+    <Project Path="src/TablePro.Drivers.Etcd/TablePro.Drivers.Etcd.csproj" />
+    <Project Path="src/TablePro.Drivers.Cloudflare/TablePro.Drivers.Cloudflare.csproj" />
+    <Project Path="src/TablePro.Drivers.LibSql/TablePro.Drivers.LibSql.csproj" />
+    <Project Path="src/TablePro.Drivers.Beancount/TablePro.Drivers.Beancount.csproj" />
+    <Project Path="src/TablePro.Drivers.Dameng/TablePro.Drivers.Dameng.csproj" />
+    <Project Path="src/TablePro.Drivers.Hana/TablePro.Drivers.Hana.csproj" />
+    <!-- The WinUI app has no Any CPU build; the solution's Any CPU builds it for x64. -->
+    <Project Path="src/TablePro.App/TablePro.App.csproj">
+      <Platform Solution="*|Any CPU" Project="x64" />
+      <Platform Solution="*|x64" Project="x64" />
+      <Platform Solution="*|ARM64" Project="ARM64" />
+    </Project>
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/TablePro.Core.Tests/TablePro.Core.Tests.csproj" />
+    <Project Path="tests/TablePro.Storage.Tests/TablePro.Storage.Tests.csproj" />
+    <Project Path="tests/TablePro.Ssh.Tests/TablePro.Ssh.Tests.csproj" />
+    <Project Path="tests/TablePro.Ssh.FakeSsh/TablePro.Ssh.FakeSsh.csproj" />
+    <Project Path="tests/TablePro.Ai.Tests/TablePro.Ai.Tests.csproj" />
+    <Project Path="tests/TablePro.Mcp.Tests/TablePro.Mcp.Tests.csproj" />
+    <Project Path="tests/TablePro.Drivers.Tests/TablePro.Drivers.Tests.csproj" />
+    <Project Path="tests/TablePro.Drivers.Sqlite.Tests/TablePro.Drivers.Sqlite.Tests.csproj" />
+    <Project Path="tests/TablePro.Drivers.DuckDb.Tests/TablePro.Drivers.DuckDb.Tests.csproj" />
+    <Project Path="tests/TablePro.Drivers.Redis.Tests/TablePro.Drivers.Redis.Tests.csproj" />
+    <Project Path="tests/TablePro.Drivers.Analytics.Tests/TablePro.Drivers.Analytics.Tests.csproj" />
+    <Project Path="tests/TablePro.Drivers.MongoDb.Tests/TablePro.Drivers.MongoDb.Tests.csproj" />
+    <Project Path="tests/TablePro.Drivers.WideColumn.Tests/TablePro.Drivers.WideColumn.Tests.csproj" />
+    <Project Path="tests/TablePro.Drivers.Warehouse.Tests/TablePro.Drivers.Warehouse.Tests.csproj" />
+    <Project Path="tests/TablePro.Drivers.Search.Tests/TablePro.Drivers.Search.Tests.csproj" />
+    <Project Path="tests/TablePro.Drivers.Services.Tests/TablePro.Drivers.Services.Tests.csproj" />
+    <Project Path="tests/TablePro.Drivers.Beancount.Tests/TablePro.Drivers.Beancount.Tests.csproj" />
+    <Project Path="tests/TablePro.Drivers.Odbc.Tests/TablePro.Drivers.Odbc.Tests.csproj" />
+  </Folder>
+</Solution>

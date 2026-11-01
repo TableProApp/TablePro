@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="InstallHint" xml:space="preserve">
+    <value>请安装达梦的 64 位 DM8 客户端（eco.dameng.com），它会注册 ODBC 驱动程序；或使用 odbcDriver 选项指定另一个已安装的驱动程序。</value>
+  </data>
+  <data name="NoSourcePrivilege" xml:space="preserve">
+    <value>达梦未返回 {0} 的源代码；该登录可能没有读取它的权限。</value>
+  </data>
+  <data name="NotASessionId" xml:space="preserve">
+    <value>“{0}”不是达梦会话 ID。</value>
+  </data>
+  <data name="SslPathRequired" xml:space="preserve">
+    <value>达梦使用客户端证书加密：请将 SSL_PATH 选项设为存放证书的目录（如证书受保护，还需设置 SSL_PWD）。</value>
+  </data>
+  <data name="VerifyIdentityUnsupported" xml:space="preserve">
+    <value>达梦的 TLS 会根据 SSL_PATH 中的 CA 检查服务器证书，但从不将其与主机名匹配。请选择“验证 CA”，或使用 SSH 隧道。</value>
+  </data>
+</root>

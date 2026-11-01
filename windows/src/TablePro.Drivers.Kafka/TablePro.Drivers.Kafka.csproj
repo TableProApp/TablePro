@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>$(TableProTargetFramework)</TargetFramework>
+    <RootNamespace>TablePro.Drivers.Kafka</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../TablePro.Core/TablePro.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- librdkafka.redist, which this pulls in, carries the native win-x64 and win-x86 librdkafka but no win-arm64
+         build (none up to 2.16.0), so the driver cannot load on Arm64 until Confluent ships one. -->
+    <PackageReference Include="Confluent.Kafka" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="TablePro.Drivers.Services.Tests" />
+  </ItemGroup>
+</Project>

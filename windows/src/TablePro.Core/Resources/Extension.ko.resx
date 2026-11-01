@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="ControlCharacterInPath" xml:space="preserve">
+    <value>목록에 있는 확장의 경로에 줄 바꿈 또는 다른 제어 문자가 있습니다.</value>
+  </data>
+  <data name="CouldNotLoad" xml:space="preserve">
+    <value>확장 "{0}"을(를) 로드할 수 없습니다.</value>
+  </data>
+  <data name="CouldNotLoadList" xml:space="preserve">
+    <value>이 연결의 SQLite 확장을 로드할 수 없습니다.</value>
+  </data>
+  <data name="Duplicate" xml:space="preserve">
+    <value>"{0}"이(가) 목록에 두 번 이상 있습니다.</value>
+  </data>
+  <data name="EntryPointNotFound" xml:space="preserve">
+    <value>파일에 {0}(이)라는 함수가 없습니다.</value>
+  </data>
+  <data name="FileNotFound" xml:space="preserve">
+    <value>"{0}"에 파일이 없습니다.</value>
+  </data>
+  <data name="InitializationFailed" xml:space="preserve">
+    <value>확장을 시작하지 못했습니다: {0}</value>
+  </data>
+  <data name="InvalidEntryPoint" xml:space="preserve">
+    <value>"{0}"은(는) 올바른 진입점 이름이 아닙니다.</value>
+  </data>
+  <data name="LoadingNotClosed" xml:space="preserve">
+    <value>SQLite가 로드 후 확장 로드를 다시 끄지 않았습니다.</value>
+  </data>
+  <data name="LoadingUnavailable" xml:space="preserve">
+    <value>SQLite가 이 연결에서 확장 로드를 허용하지 않았습니다.</value>
+  </data>
+  <data name="MalformedList" xml:space="preserve">
+    <value>저장된 확장 목록이 TablePro가 읽을 수 있는 형식이 아닙니다.</value>
+  </data>
+  <data name="MissingPath" xml:space="preserve">
+    <value>목록의 확장 중 하나에 파일이 없습니다.</value>
+  </data>
+  <data name="NotAFile" xml:space="preserve">
+    <value>"{0}"은(는) 파일이 아닙니다.</value>
+  </data>
+  <data name="PathTooLong" xml:space="preserve">
+    <value>경로 "{0}"이(가) 너무 깁니다.</value>
+  </data>
+  <data name="RelativePath" xml:space="preserve">
+    <value>"{0}"은(는) 전체 경로가 아닙니다.</value>
+  </data>
+</root>

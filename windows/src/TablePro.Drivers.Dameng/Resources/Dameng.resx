@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="InstallHint" xml:space="preserve">
+    <value>Install the 64-bit DM8 client from Dameng (eco.dameng.com), which registers the ODBC driver, or name another installed driver with the odbcDriver option.</value>
+  </data>
+  <data name="NoSourcePrivilege" xml:space="preserve">
+    <value>Dameng returned no source for {0}; the login may lack the privilege to read it.</value>
+    <comment>{0} is a routine name.</comment>
+  </data>
+  <data name="NotASessionId" xml:space="preserve">
+    <value>"{0}" is not a Dameng session id.</value>
+    <comment>{0} is the value given as a session id.</comment>
+  </data>
+  <data name="SslPathRequired" xml:space="preserve">
+    <value>Dameng encrypts with client certificates: set the SSL_PATH option to the directory holding them (and SSL_PWD if they are protected).</value>
+  </data>
+  <data name="VerifyIdentityUnsupported" xml:space="preserve">
+    <value>Dameng's TLS checks the server certificate against the CA in SSL_PATH but never matches it to the host name. Choose Verify CA, or use an SSH tunnel.</value>
+  </data>
+</root>

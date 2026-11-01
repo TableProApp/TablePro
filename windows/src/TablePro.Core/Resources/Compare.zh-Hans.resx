@@ -1,0 +1,150 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="ChangeAddColumn" xml:space="preserve">
+    <value>添加列 {0} {1}</value>
+  </data>
+  <data name="ChangeAddForeignKey" xml:space="preserve">
+    <value>添加指向 {1} 的外键 {0}</value>
+  </data>
+  <data name="ChangeAlterColumn" xml:space="preserve">
+    <value>将列 {0} 更改为 {1}</value>
+  </data>
+  <data name="ChangeCreateIndex" xml:space="preserve">
+    <value>创建索引 {0}</value>
+  </data>
+  <data name="ChangeCreateTable" xml:space="preserve">
+    <value>创建表 {0}</value>
+  </data>
+  <data name="ChangeCreateUniqueIndex" xml:space="preserve">
+    <value>创建唯一索引 {0}</value>
+  </data>
+  <data name="ChangeDropColumn" xml:space="preserve">
+    <value>删除列 {0}</value>
+  </data>
+  <data name="ChangeDropForeignKey" xml:space="preserve">
+    <value>删除外键 {0}</value>
+  </data>
+  <data name="ChangeDropFunction" xml:space="preserve">
+    <value>删除函数 {0}</value>
+  </data>
+  <data name="ChangeDropIndex" xml:space="preserve">
+    <value>删除索引 {0}</value>
+  </data>
+  <data name="ChangeDropMaterializedView" xml:space="preserve">
+    <value>删除物化视图 {0}</value>
+  </data>
+  <data name="ChangeDropObject" xml:space="preserve">
+    <value>删除 {0}</value>
+  </data>
+  <data name="ChangeDropProcedure" xml:space="preserve">
+    <value>删除存储过程 {0}</value>
+  </data>
+  <data name="ChangeDropSequence" xml:space="preserve">
+    <value>删除序列 {0}</value>
+  </data>
+  <data name="ChangeDropTable" xml:space="preserve">
+    <value>删除表 {0}</value>
+  </data>
+  <data name="ChangeDropTrigger" xml:space="preserve">
+    <value>删除触发器 {0}</value>
+  </data>
+  <data name="ChangeDropView" xml:space="preserve">
+    <value>删除视图 {0}</value>
+  </data>
+  <data name="ChangeRenameColumn" xml:space="preserve">
+    <value>将列 {0} 重命名为 {1}</value>
+  </data>
+  <data name="ChangeRenameTable" xml:space="preserve">
+    <value>将表重命名为 {0}</value>
+  </data>
+  <data name="ChangeTruncateTable" xml:space="preserve">
+    <value>清空表</value>
+  </data>
+  <data name="ChooseKeyColumn" xml:space="preserve">
+    <value>请至少选择一个能在两侧标识行的键列。</value>
+  </data>
+  <data name="ColumnGone" xml:space="preserve">
+    <value>{0} 已不再有列 {1}。请重新比较以读取其当前的列。</value>
+  </data>
+  <data name="ColumnOnlyInTarget" xml:space="preserve">
+    <value>列 {0} 仅存在于目标中，将保留。</value>
+  </data>
+  <data name="DuplicateKeyInSource" xml:space="preserve">
+    <value>键 {0} 在源中匹配多行。请选择能标识单一行的键列。</value>
+  </data>
+  <data name="DuplicateKeyInTarget" xml:space="preserve">
+    <value>键 {0} 在目标中匹配多行。请选择能标识单一行的键列。</value>
+  </data>
+  <data name="ForeignKeyCycle" xml:space="preserve">
+    <value>{0} 相互引用，因此没有任何顺序能满足所有外键。违反其中一个外键的同步会回滚该表。</value>
+  </data>
+  <data name="IdentityColumnWarning" xml:space="preserve">
+    <value>{0} 是目标上的标识列。SQL Server 等引擎会拒绝在此写入显式值，从而导致同步回滚。</value>
+  </data>
+  <data name="KeyColumnNotOnBoth" xml:space="preserve">
+    <value>键列 {0} 并不同时存在于两个表中。</value>
+  </data>
+  <data name="NoPrimaryKey" xml:space="preserve">
+    <value>{0} 没有主键。请选择用于标识行的列。</value>
+  </data>
+  <data name="PrimaryKeyDiffers" xml:space="preserve">
+    <value>主键不同：({0}) 对比 ({1})。请手动更改。</value>
+  </data>
+  <data name="RowLimitCutShort" xml:space="preserve">
+    <value>行数上限使比较提前结束，因此超出上限的行保持不变。</value>
+  </data>
+  <data name="RowsDeletedForGood_One" xml:space="preserve">
+    <value>将从 {1} 中永久删除 {0:N0} 行。</value>
+  </data>
+  <data name="RowsDeletedForGood_Other" xml:space="preserve">
+    <value>将从 {1} 中永久删除 {0:N0} 行。</value>
+  </data>
+  <data name="SortOrderSource" xml:space="preserve">
+    <value>源在键 {0} 附近的行排序与比较预期的不同。请选择数值键，或排序规则按字节值排序的键。</value>
+  </data>
+  <data name="SortOrderSourceHint" xml:space="preserve">
+    <value>源在键 {0} 附近的行排序与比较预期的不同。请选择数值键，或排序规则按字节值排序的键，或开启不区分大小写的键。</value>
+  </data>
+  <data name="SortOrderTarget" xml:space="preserve">
+    <value>目标在键 {0} 附近的行排序与比较预期的不同。请选择数值键，或排序规则按字节值排序的键。</value>
+  </data>
+  <data name="SortOrderTargetHint" xml:space="preserve">
+    <value>目标在键 {0} 附近的行排序与比较预期的不同。请选择数值键，或排序规则按字节值排序的键，或开启不区分大小写的键。</value>
+  </data>
+  <data name="SourceColumnCount" xml:space="preserve">
+    <value>源返回了 {0} 列，而预期为 {1} 列。</value>
+  </data>
+  <data name="TableLeftOutTooMany" xml:space="preserve">
+    <value>{0}：{1:N0} 处差异超出了同步可以审阅的数量，因此该表被排除。请使用筛选条件或行数上限缩小范围。</value>
+  </data>
+  <data name="TableNote" xml:space="preserve">
+    <value>{0}：{1}</value>
+  </data>
+  <data name="TargetColumnCount" xml:space="preserve">
+    <value>目标返回了 {0} 列，而预期为 {1} 列。</value>
+  </data>
+  <data name="TooManyToSync" xml:space="preserve">
+    <value>比较发现了 {0:N0} 处差异，超出了同步可以审阅的 {1:N0} 处。请使用筛选条件或行数上限缩小范围，然后重新比较。</value>
+  </data>
+  <data name="NonTransactionalTables_One" xml:space="preserve">
+    <value>{1} 使用的存储引擎无法回滚，因此如果同步失败，已写入其中的行会保留。</value>
+  </data>
+  <data name="NonTransactionalTables_Other" xml:space="preserve">
+    <value>{1} 使用的存储引擎无法回滚，因此如果同步失败，已写入其中的行会保留。</value>
+  </data>
+  <data name="RollbackLeftWrites" xml:space="preserve">
+    <value>运行已回滚，但 {0} 无法回滚，因此已写入其中的行会保留。请重新比较以查看目标的当前状态。</value>
+  </data>
+</root>

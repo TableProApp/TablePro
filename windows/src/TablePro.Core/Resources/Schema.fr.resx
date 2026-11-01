@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="OptionAutoIncrement" xml:space="preserve">
+    <value>Prochain auto-incrément</value>
+  </data>
+  <data name="OptionCharset" xml:space="preserve">
+    <value>Jeu de caractères</value>
+  </data>
+  <data name="OptionCollation" xml:space="preserve">
+    <value>Classement</value>
+  </data>
+  <data name="OptionComment" xml:space="preserve">
+    <value>Commentaire</value>
+  </data>
+  <data name="OptionCompression" xml:space="preserve">
+    <value>Compression</value>
+  </data>
+  <data name="OptionDataCompression" xml:space="preserve">
+    <value>Compression des données</value>
+  </data>
+  <data name="OptionEngine" xml:space="preserve">
+    <value>Moteur</value>
+  </data>
+  <data name="OptionFilegroup" xml:space="preserve">
+    <value>Groupe de fichiers</value>
+  </data>
+  <data name="OptionFillFactor" xml:space="preserve">
+    <value>Facteur de remplissage</value>
+  </data>
+  <data name="OptionLockEscalation" xml:space="preserve">
+    <value>Escalade de verrous</value>
+  </data>
+  <data name="OptionLogging" xml:space="preserve">
+    <value>Journalisation</value>
+  </data>
+  <data name="OptionPctFree" xml:space="preserve">
+    <value>Pourcentage libre</value>
+  </data>
+  <data name="OptionPersistence" xml:space="preserve">
+    <value>Persistance</value>
+  </data>
+  <data name="OptionPrimaryKey" xml:space="preserve">
+    <value>Clé primaire</value>
+  </data>
+  <data name="OptionRowFormat" xml:space="preserve">
+    <value>Format de ligne</value>
+  </data>
+  <data name="OptionRowMovement" xml:space="preserve">
+    <value>Déplacement de lignes</value>
+  </data>
+  <data name="OptionSamplingKey" xml:space="preserve">
+    <value>Clé d’échantillonnage</value>
+  </data>
+  <data name="OptionSortingKey" xml:space="preserve">
+    <value>Clé de tri</value>
+  </data>
+  <data name="OptionStorageParameters" xml:space="preserve">
+    <value>Paramètres de stockage</value>
+  </data>
+  <data name="OptionStrict" xml:space="preserve">
+    <value>Strict</value>
+  </data>
+  <data name="OptionTablespace" xml:space="preserve">
+    <value>Espace de table</value>
+  </data>
+  <data name="OptionWithoutRowid" xml:space="preserve">
+    <value>Sans rowid</value>
+  </data>
+</root>

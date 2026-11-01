@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="CannotDeleteFirst" xml:space="preserve">
+    <value>Cette connexion ne peut pas vider une table et y importer des données dans une même transaction ; elle ne peut donc pas supprimer d’abord les lignes existantes.</value>
+  </data>
+  <data name="CannotMatchRows" xml:space="preserve">
+    <value>Cette connexion ne peut pas faire correspondre les lignes importées aux lignes existantes.</value>
+  </data>
+  <data name="ChooseMatchKey" xml:space="preserve">
+    <value>Choisissez la clé sur laquelle les lignes sont mises en correspondance.</value>
+  </data>
+  <data name="ColumnMappedTwice" xml:space="preserve">
+    <value>Chaque colonne ne peut être associée qu’à un seul champ.</value>
+  </data>
+  <data name="ColumnNamesUnique" xml:space="preserve">
+    <value>Les noms de colonnes doivent être uniques.</value>
+  </data>
+  <data name="CouldNotReadExistingRows" xml:space="preserve">
+    <value>Impossible de déterminer quelles lignes figurent déjà dans la table.</value>
+  </data>
+  <data name="DeleteFirstCannotMatch" xml:space="preserve">
+    <value>« Supprimer d’abord les lignes existantes » vide la table, aucune ligne ne pourrait donc correspondre. Désactivez cette option ou importez en mode « Insérer ».</value>
+  </data>
+  <data name="IncludeAtLeastOneColumn" xml:space="preserve">
+    <value>Incluez au moins une colonne.</value>
+  </data>
+  <data name="IncludedColumnNeedsName" xml:space="preserve">
+    <value>Chaque colonne incluse doit avoir un nom.</value>
+  </data>
+  <data name="IncludedColumnNeedsType" xml:space="preserve">
+    <value>Chaque colonne incluse doit avoir un type.</value>
+  </data>
+  <data name="KeyMatchedSeveralRows" xml:space="preserve">
+    <value>La clé {0} correspond à {1} lignes, la ligne n’a donc pas été écrite.</value>
+  </data>
+  <data name="KeyNeedsValuePerColumn" xml:space="preserve">
+    <value>Chaque clé doit avoir une valeur par colonne de clé.</value>
+  </data>
+  <data name="KeyValueMissing" xml:space="preserve">
+    <value>Cette ligne n’a pas de valeur pour la colonne de clé {0}, elle ne peut donc pas être mise en correspondance.</value>
+  </data>
+  <data name="MapAtLeastOneField" xml:space="preserve">
+    <value>Associez au moins un champ à une colonne.</value>
+  </data>
+  <data name="NoFieldMapped" xml:space="preserve">
+    <value>Aucun champ du fichier n’est associé à une colonne de cette table.</value>
+  </data>
+  <data name="RollbackAlsoFailed" xml:space="preserve">
+    <value>L’annulation de la transaction a également échoué : {0}</value>
+  </data>
+  <data name="ScriptErrorLine" xml:space="preserve">
+    <value>Ligne {0} : {1}</value>
+  </data>
+  <data name="SqlFileIsScript" xml:space="preserve">
+    <value>Un fichier SQL est exécuté comme un script, il n’est pas lu comme des lignes.</value>
+  </data>
+</root>

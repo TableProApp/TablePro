@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AwsProfileMissing" xml:space="preserve">
+    <value>AWS profili {0}, %USERPROFILE%\.aws\config veya credentials içinde yok.</value>
+  </data>
+  <data name="AwsProfileNoCredentials" xml:space="preserve">
+    <value>AWS profili {0} kimlik bilgisi vermedi: {1}</value>
+  </data>
+  <data name="AwsProfileNoCredentialsSso" xml:space="preserve">
+    <value>AWS profili {0} kimlik bilgisi vermedi: {1} “aws sso login --profile {0}” komutunu çalıştırıp yeniden bağlanın.</value>
+  </data>
+  <data name="EnterAccessKey" xml:space="preserve">
+    <value>Erişim anahtarı kimliğini ve gizli erişim anahtarını girin.</value>
+  </data>
+  <data name="EnterIamUser" xml:space="preserve">
+    <value>IAM belirtecinin oturum açacağı veritabanı kullanıcısını girin.</value>
+  </data>
+  <data name="EntraFailed" xml:space="preserve">
+    <value>Microsoft Entra ID oturum açma başarısız oldu: {0}</value>
+  </data>
+  <data name="EntraIntegratedSqlServerOnly" xml:space="preserve">
+    <value>Tümleşik Entra oturum açma yalnızca SQL Server için kullanılabilir.</value>
+  </data>
+  <data name="GcloudScope" xml:space="preserve">
+    <value>gcloud oturumu Cloud SQL oturum açmaya izin vermiyor. gcloud auth application-default login komutunu --scopes olmadan yeniden çalıştırın.</value>
+  </data>
+  <data name="GoogleFailed" xml:space="preserve">
+    <value>Google Cloud IAM oturum açma başarısız oldu: {0}</value>
+  </data>
+  <data name="GoogleRefused" xml:space="preserve">
+    <value>Google kimlik bilgilerini reddetti: {0} gcloud auth application-default login komutunu çalıştırın veya hizmet hesabı anahtarını denetleyin, ardından yeniden bağlanın.</value>
+  </data>
+  <data name="KeyFileUnreadable" xml:space="preserve">
+    <value>Hizmet hesabı anahtar dosyası {0} okunamıyor: {1}</value>
+  </data>
+  <data name="KeyNotJson" xml:space="preserve">
+    <value>Hizmet hesabı anahtarı geçerli bir JSON değil.</value>
+  </data>
+  <data name="KeyWrongType" xml:space="preserve">
+    <value>Anahtar bir hizmet hesabı anahtarı değil, "{0}" türünde bir kimlik bilgisi.</value>
+  </data>
+  <data name="NoAdc" xml:space="preserve">
+    <value>Google uygulama varsayılan kimlik bilgileri bulunamadı. gcloud auth application-default login komutunu çalıştırıp yeniden bağlanın.</value>
+  </data>
+  <data name="NoSignInToken" xml:space="preserve">
+    <value>{0} oturum açma belirteci kullanmıyor.</value>
+  </data>
+  <data name="PemKey" xml:space="preserve">
+    <value>Bu bir PEM özel anahtarı. Google Cloud'un hizmet hesabı için oluşturduğu JSON anahtar dosyasını kullanın.</value>
+  </data>
+  <data name="RedshiftNotIssued" xml:space="preserve">
+    <value>AWS, Redshift kimlik bilgilerini vermedi: {0}</value>
+  </data>
+  <data name="RedshiftNoUser" xml:space="preserve">
+    <value>AWS, Redshift kullanıcısı ve parolası olmadan yanıt verdi.</value>
+  </data>
+  <data name="ServiceAccountKeyRequired" xml:space="preserve">
+    <value>Hizmet hesabı anahtarını girin: JSON dosyasının yolunu veya JSON'un kendisini.</value>
+  </data>
+  <data name="ServicePrincipalIncomplete" xml:space="preserve">
+    <value>Hizmet sorumlusu için dizin (kiracı) kimliği, uygulama (istemci) kimliği ve istemci gizli anahtarı gerekir.</value>
+  </data>
+  <data name="UnknownCredentialType" xml:space="preserve">
+    <value>bilinmeyen</value>
+  </data>
+</root>

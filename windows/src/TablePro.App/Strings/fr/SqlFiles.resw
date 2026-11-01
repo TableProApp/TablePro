@@ -1,0 +1,408 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AlreadyLinked" xml:space="preserve">
+    <value>«&#160;{0}&#160;» est déjà lié</value>
+  </data>
+  <data name="ChangedFilesIn" xml:space="preserve">
+    <value>Fichiers modifiés dans «&#160;{0}&#160;»</value>
+  </data>
+  <data name="ChangesMode" xml:space="preserve">
+    <value>Modifications</value>
+  </data>
+  <data name="Collapsed" xml:space="preserve">
+    <value>Réduit</value>
+  </data>
+  <data name="CommitButton" xml:space="preserve">
+    <value>Valider</value>
+  </data>
+  <data name="CommitDialogTitle" xml:space="preserve">
+    <value>Valider</value>
+  </data>
+  <data name="CommitFailedInline" xml:space="preserve">
+    <value>Impossible de valider</value>
+  </data>
+  <data name="CommitFailedTitle" xml:space="preserve">
+    <value>Impossible de valider</value>
+  </data>
+  <data name="CommitMenu" xml:space="preserve">
+    <value>Valider…</value>
+  </data>
+  <data name="CommitMessageHeader" xml:space="preserve">
+    <value>Message</value>
+  </data>
+  <data name="CommitMessagePlaceholder" xml:space="preserve">
+    <value>Décrivez la modification</value>
+  </data>
+  <data name="CommitVersion" xml:space="preserve">
+    <value>Commit {0}</value>
+  </data>
+  <data name="Committed" xml:space="preserve">
+    <value>Validé</value>
+  </data>
+  <data name="ContentMode" xml:space="preserve">
+    <value>Contenu</value>
+  </data>
+  <data name="CopyPath" xml:space="preserve">
+    <value>Copier le chemin</value>
+  </data>
+  <data name="CopyQuery" xml:space="preserve">
+    <value>Copier la requête</value>
+  </data>
+  <data name="CopyRelativePath" xml:space="preserve">
+    <value>Copier le chemin relatif</value>
+  </data>
+  <data name="CreateButton" xml:space="preserve">
+    <value>Créer</value>
+  </data>
+  <data name="CreateFailedTitle" xml:space="preserve">
+    <value>Impossible de créer le fichier</value>
+  </data>
+  <data name="CurrentVersion" xml:space="preserve">
+    <value>Version actuelle</value>
+  </data>
+  <data name="DeleteButton" xml:space="preserve">
+    <value>Déplacer vers la Corbeille</value>
+  </data>
+  <data name="DeleteFailedTitle" xml:space="preserve">
+    <value>Impossible de déplacer vers la Corbeille</value>
+  </data>
+  <data name="DeleteMessage" xml:space="preserve">
+    <value>«&#160;{0}&#160;» sera déplacé vers la Corbeille. Ses versions enregistrées sont conservées.</value>
+  </data>
+  <data name="DeleteTitle" xml:space="preserve">
+    <value>Déplacer vers la Corbeille&#160;?</value>
+  </data>
+  <data name="Description" xml:space="preserve">
+    <value>Description</value>
+  </data>
+  <data name="DetailsExplanation" xml:space="preserve">
+    <value>Enregistré dans l’en-tête du fichier sous forme de lignes -- @name, -- @keyword et -- @description, que l’application macOS lit également.</value>
+  </data>
+  <data name="DiffLayout" xml:space="preserve">
+    <value>Disposition des différences</value>
+  </data>
+  <data name="DiffSideBySide" xml:space="preserve">
+    <value>Côte à côte</value>
+  </data>
+  <data name="DiffUnified" xml:space="preserve">
+    <value>Unifié</value>
+  </data>
+  <data name="DiscardChangesMenu" xml:space="preserve">
+    <value>Abandonner les modifications…</value>
+  </data>
+  <data name="DiscardFailedTitle" xml:space="preserve">
+    <value>Impossible d’abandonner les modifications</value>
+  </data>
+  <data name="DiscardMessage" xml:space="preserve">
+    <value>Les modifications non indexées de «&#160;{0}&#160;» seront perdues. Une copie est conservée dans son historique des versions.</value>
+  </data>
+  <data name="DiscardTitle" xml:space="preserve">
+    <value>Abandonner les modifications&#160;?</value>
+  </data>
+  <data name="EditDetailsMenu" xml:space="preserve">
+    <value>Modifier les détails…</value>
+  </data>
+  <data name="EditDetailsTitle" xml:space="preserve">
+    <value>Modifier les détails</value>
+  </data>
+  <data name="EmptyState" xml:space="preserve">
+    <value>Liez un dossier de fichiers .sql pour les ouvrir, les renommer et les suivre ici. Les fichiers restent à leur emplacement.</value>
+  </data>
+  <data name="Expanded" xml:space="preserve">
+    <value>Développé</value>
+  </data>
+  <data name="GitAdded" xml:space="preserve">
+    <value>Ajouté</value>
+  </data>
+  <data name="GitCommandFailed" xml:space="preserve">
+    <value>Git s’est arrêté avec le message ci-dessous.</value>
+  </data>
+  <data name="GitConflicted" xml:space="preserve">
+    <value>En conflit</value>
+  </data>
+  <data name="GitModified" xml:space="preserve">
+    <value>Modifié</value>
+  </data>
+  <data name="GitOutputTooLarge" xml:space="preserve">
+    <value>Git a produit plus de sortie que TablePro ne peut en lire.</value>
+  </data>
+  <data name="GitPartlyStaged" xml:space="preserve">
+    <value>{0}, partiellement indexé</value>
+  </data>
+  <data name="GitPullDiverged" xml:space="preserve">
+    <value>La branche et sa branche amont ont chacune des commits que l’autre n’a pas. Terminez ce pull dans un client Git.</value>
+  </data>
+  <data name="GitRenamed" xml:space="preserve">
+    <value>Renommé</value>
+  </data>
+  <data name="GitStaged" xml:space="preserve">
+    <value>{0}, indexé</value>
+  </data>
+  <data name="GitTimedOut" xml:space="preserve">
+    <value>Git n’a pas répondu à temps.</value>
+  </data>
+  <data name="GitUnavailable" xml:space="preserve">
+    <value>Git n’est pas installé. Installez Git for Windows pour utiliser Git dans les dossiers liés.</value>
+  </data>
+  <data name="GitUntracked" xml:space="preserve">
+    <value>Non suivi</value>
+  </data>
+  <data name="HistoryTitle" xml:space="preserve">
+    <value>Historique de {0}</value>
+  </data>
+  <data name="HistoryWindowTitle" xml:space="preserve">
+    <value>Historique de {0} - TablePro</value>
+  </data>
+  <data name="InsertIntoEditor" xml:space="preserve">
+    <value>Insérer dans l’éditeur</value>
+  </data>
+  <data name="KeepsLatestSnapshots_One" xml:space="preserve">
+    <value>TablePro conserve la dernière version enregistrée d’un fichier.</value>
+  </data>
+  <data name="KeepsLatestSnapshots_Other" xml:space="preserve">
+    <value>TablePro conserve les {0} dernières versions enregistrées d’un fichier.</value>
+  </data>
+  <data name="Keyword" xml:space="preserve">
+    <value>Mot-clé</value>
+  </data>
+  <data name="KeywordPlaceholder" xml:space="preserve">
+    <value>À saisir dans l’éditeur pour insérer cette requête</value>
+  </data>
+  <data name="LinkFolder" xml:space="preserve">
+    <value>Lier un dossier de fichiers SQL</value>
+  </data>
+  <data name="ListName" xml:space="preserve">
+    <value>Fichiers SQL</value>
+  </data>
+  <data name="LoadingVersions" xml:space="preserve">
+    <value>Chargement des versions…</value>
+  </data>
+  <data name="MoveToRecycleBinMenu" xml:space="preserve">
+    <value>Déplacer vers la Corbeille…</value>
+  </data>
+  <data name="NameAlreadyExists" xml:space="preserve">
+    <value>Un fichier portant ce nom existe déjà ici.</value>
+  </data>
+  <data name="NameEmpty" xml:space="preserve">
+    <value>Saisissez un nom.</value>
+  </data>
+  <data name="NameInvalidCharacters" xml:space="preserve">
+    <value>Un nom de fichier ne peut pas contenir \ / : * ? " &lt; &gt; ou |.</value>
+  </data>
+  <data name="NameReserved" xml:space="preserve">
+    <value>Windows réserve ce nom à un périphérique.</value>
+  </data>
+  <data name="NewFileMenu" xml:space="preserve">
+    <value>Nouveau fichier</value>
+  </data>
+  <data name="NewFileTitle" xml:space="preserve">
+    <value>Nouveau fichier SQL</value>
+  </data>
+  <data name="NoChangesFrom" xml:space="preserve">
+    <value>Aucune modification par rapport à {0}.</value>
+  </data>
+  <data name="NoSearchMatch" xml:space="preserve">
+    <value>Aucun fichier SQL ne correspond à la recherche.</value>
+  </data>
+  <data name="NotARepository" xml:space="preserve">
+    <value>Ce dossier n’est pas dans un dépôt Git.</value>
+  </data>
+  <data name="NothingToCommitMessage" xml:space="preserve">
+    <value>Aucun fichier de «&#160;{0}&#160;» ne comporte de modifications.</value>
+  </data>
+  <data name="NothingToCommitTitle" xml:space="preserve">
+    <value>Rien à valider</value>
+  </data>
+  <data name="NothingToPublishMessage" xml:space="preserve">
+    <value>Vous n’avez aucune requête enregistrée à publier.</value>
+  </data>
+  <data name="NothingToPublishTitle" xml:space="preserve">
+    <value>Rien à publier</value>
+  </data>
+  <data name="OnlyInConnection" xml:space="preserve">
+    <value>Uniquement dans {0}</value>
+  </data>
+  <data name="OnlyVersion" xml:space="preserve">
+    <value>Il s’agit de la seule version&#160;: il n’y a rien à comparer.</value>
+  </data>
+  <data name="OpenFailedTitle" xml:space="preserve">
+    <value>Impossible d’ouvrir le fichier</value>
+  </data>
+  <data name="OpenInEditor" xml:space="preserve">
+    <value>Ouvrir dans l’éditeur</value>
+  </data>
+  <data name="OpenInFileExplorer" xml:space="preserve">
+    <value>Ouvrir dans l’Explorateur de fichiers</value>
+  </data>
+  <data name="OpenInNewTab" xml:space="preserve">
+    <value>Ouvrir dans un nouvel onglet</value>
+  </data>
+  <data name="PublishButton" xml:space="preserve">
+    <value>Publier</value>
+  </data>
+  <data name="PublishFailedTitle" xml:space="preserve">
+    <value>Impossible de publier dans la bibliothèque de l’équipe</value>
+  </data>
+  <data name="PublishMessage_One" xml:space="preserve">
+    <value>Tous les membres de votre équipe verront votre requête enregistrée. Cela remplace les requêtes enregistrées que vous avez publiées auparavant.</value>
+  </data>
+  <data name="PublishMessage_Other" xml:space="preserve">
+    <value>Tous les membres de votre équipe verront vos {0} requêtes enregistrées. Cela remplace les requêtes enregistrées que vous avez publiées auparavant.</value>
+  </data>
+  <data name="PublishTitle" xml:space="preserve">
+    <value>Publier les requêtes enregistrées pour votre équipe&#160;?</value>
+  </data>
+  <data name="PublishToTeamMenu" xml:space="preserve">
+    <value>Publier les requêtes enregistrées pour l’équipe…</value>
+  </data>
+  <data name="PublishedBy" xml:space="preserve">
+    <value>Publiée par {0}</value>
+  </data>
+  <data name="Published_One" xml:space="preserve">
+    <value>{0} requête enregistrée publiée pour votre équipe</value>
+  </data>
+  <data name="Published_Other" xml:space="preserve">
+    <value>{0} requêtes enregistrées publiées pour votre équipe</value>
+  </data>
+  <data name="Publishing" xml:space="preserve">
+    <value>Publication…</value>
+  </data>
+  <data name="PullFailedTitle" xml:space="preserve">
+    <value>Échec du pull de «&#160;{0}&#160;»</value>
+  </data>
+  <data name="PullMenu" xml:space="preserve">
+    <value>Tirer (pull)</value>
+  </data>
+  <data name="Pulled" xml:space="preserve">
+    <value>Pull de «&#160;{0}&#160;» effectué</value>
+  </data>
+  <data name="PushFailedTitle" xml:space="preserve">
+    <value>Échec du push de «&#160;{0}&#160;»</value>
+  </data>
+  <data name="PushMenu" xml:space="preserve">
+    <value>Envoyer (push)</value>
+  </data>
+  <data name="Pushed" xml:space="preserve">
+    <value>Push de «&#160;{0}&#160;» effectué</value>
+  </data>
+  <data name="RefreshTeamLibrary" xml:space="preserve">
+    <value>Actualiser la bibliothèque d’équipe</value>
+  </data>
+  <data name="RenameFailedTitle" xml:space="preserve">
+    <value>Impossible de renommer</value>
+  </data>
+  <data name="RenameMenu" xml:space="preserve">
+    <value>Renommer…</value>
+  </data>
+  <data name="ResolveConflictFirst" xml:space="preserve">
+    <value>Résolvez le conflit dans un client Git avant de valider ce fichier.</value>
+  </data>
+  <data name="RestoreButton" xml:space="preserve">
+    <value>Restaurer</value>
+  </data>
+  <data name="RestoreConfirmMessage" xml:space="preserve">
+    <value>Le fichier contient des modifications qui ne figurent dans aucune version enregistrée ni aucun commit. La restauration les remplace&#160;; elles sont d’abord conservées en tant que version enregistrée.</value>
+  </data>
+  <data name="RestoreConfirmTitle" xml:space="preserve">
+    <value>Remplacer le texte actuel&#160;?</value>
+  </data>
+  <data name="RestoreFailed" xml:space="preserve">
+    <value>La version n’a pas pu être restaurée.</value>
+  </data>
+  <data name="RestoreFailedTitle" xml:space="preserve">
+    <value>Impossible de restaurer</value>
+  </data>
+  <data name="SaveDetailsFailedTitle" xml:space="preserve">
+    <value>Impossible d’enregistrer les détails</value>
+  </data>
+  <data name="SavedVersion" xml:space="preserve">
+    <value>Version enregistrée</value>
+  </data>
+  <data name="SearchPlaceholder" xml:space="preserve">
+    <value>Rechercher des fichiers SQL</value>
+  </data>
+  <data name="SelectVersion" xml:space="preserve">
+    <value>Sélectionnez une version.</value>
+  </data>
+  <data name="ShowInFileExplorer" xml:space="preserve">
+    <value>Afficher dans l’Explorateur de fichiers</value>
+  </data>
+  <data name="ShowsLatestCommits_One" xml:space="preserve">
+    <value>Affichage du dernier commit.</value>
+  </data>
+  <data name="ShowsLatestCommits_Other" xml:space="preserve">
+    <value>Affichage des {0} derniers commits.</value>
+  </data>
+  <data name="StatusCommitting" xml:space="preserve">
+    <value>Validation…</value>
+  </data>
+  <data name="StatusNotFound" xml:space="preserve">
+    <value>Introuvable</value>
+  </data>
+  <data name="StatusPulling" xml:space="preserve">
+    <value>Pull en cours…</value>
+  </data>
+  <data name="StatusPushing" xml:space="preserve">
+    <value>Push en cours…</value>
+  </data>
+  <data name="TeamEmpty" xml:space="preserve">
+    <value>Votre équipe n’a encore publié aucune requête enregistrée.</value>
+  </data>
+  <data name="TeamLibraryHeader" xml:space="preserve">
+    <value>BIBLIOTHÈQUE D’ÉQUIPE</value>
+  </data>
+  <data name="TeamRefreshFailedTitle" xml:space="preserve">
+    <value>Impossible d’actualiser la bibliothèque d’équipe</value>
+  </data>
+  <data name="TooLargeToCompare_One" xml:space="preserve">
+    <value>Ce fichier dépasse {0} ligne&#160;: ses modifications ne sont donc pas affichées. Passez à Contenu pour le lire.</value>
+  </data>
+  <data name="TooLargeToCompare_Other" xml:space="preserve">
+    <value>Ce fichier dépasse {0} lignes&#160;: ses modifications ne sont donc pas affichées. Passez à Contenu pour le lire.</value>
+  </data>
+  <data name="TurnOff" xml:space="preserve">
+    <value>Désactiver</value>
+  </data>
+  <data name="TurnOn" xml:space="preserve">
+    <value>Activer</value>
+  </data>
+  <data name="TurnedBackOn" xml:space="preserve">
+    <value>«&#160;{0}&#160;» réactivé</value>
+  </data>
+  <data name="UncommittedChanges" xml:space="preserve">
+    <value>Modifications non validées</value>
+  </data>
+  <data name="UnlinkButton" xml:space="preserve">
+    <value>Dissocier</value>
+  </data>
+  <data name="UnlinkFolderMenu" xml:space="preserve">
+    <value>Dissocier le dossier…</value>
+  </data>
+  <data name="UnlinkMessage" xml:space="preserve">
+    <value>«&#160;{0}&#160;» ne sera plus affiché. Ses fichiers restent sur le disque.</value>
+  </data>
+  <data name="UnlinkTitle" xml:space="preserve">
+    <value>Dissocier le dossier&#160;?</value>
+  </data>
+  <data name="VersionHistoryMenu" xml:space="preserve">
+    <value>Historique des versions…</value>
+  </data>
+  <data name="VersionReadFailed" xml:space="preserve">
+    <value>Cette version n’a pas pu être lue.</value>
+  </data>
+  <data name="VersionsReadFailed" xml:space="preserve">
+    <value>Les versions n’ont pas pu être lues.</value>
+  </data>
+</root>

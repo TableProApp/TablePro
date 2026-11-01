@@ -1,0 +1,565 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="CopyActionAppend" xml:space="preserve">
+    <value>Ajouter des lignes à</value>
+  </data>
+  <data name="CopyActionCreate" xml:space="preserve">
+    <value>Créer</value>
+  </data>
+  <data name="CopyActionEmptyAndFill" xml:space="preserve">
+    <value>Vider et remplir</value>
+  </data>
+  <data name="CopyActionReplace" xml:space="preserve">
+    <value>Remplacer</value>
+  </data>
+  <data name="CopyActionSkip" xml:space="preserve">
+    <value>Ignorer</value>
+  </data>
+  <data name="CopyCannotConnect" xml:space="preserve">
+    <value>Impossible de se connecter à {0}</value>
+  </data>
+  <data name="CopyContentData" xml:space="preserve">
+    <value>Données uniquement</value>
+  </data>
+  <data name="CopyContentHeader" xml:space="preserve">
+    <value>Copier</value>
+  </data>
+  <data name="CopyContentStructure" xml:space="preserve">
+    <value>Structure uniquement</value>
+  </data>
+  <data name="CopyContentStructureAndData" xml:space="preserve">
+    <value>Structure et données</value>
+  </data>
+  <data name="CopyCrossEngineNote" xml:space="preserve">
+    <value>{0} et {1} utilisent des moteurs différents&#160;: les types de colonnes sont donc convertis. Vérifiez-les avant de copier.</value>
+  </data>
+  <data name="CopyFailedTitle" xml:space="preserve">
+    <value>Échec de la copie</value>
+  </data>
+  <data name="CopyFinishedTitle" xml:space="preserve">
+    <value>Copie terminée</value>
+  </data>
+  <data name="CopyFinishedWithProblemsTitle" xml:space="preserve">
+    <value>Copie terminée avec des problèmes</value>
+  </data>
+  <data name="CopyKindFunction" xml:space="preserve">
+    <value>fonction</value>
+  </data>
+  <data name="CopyKindMaterializedView" xml:space="preserve">
+    <value>vue matérialisée</value>
+  </data>
+  <data name="CopyKindProcedure" xml:space="preserve">
+    <value>procédure</value>
+  </data>
+  <data name="CopyKindSequence" xml:space="preserve">
+    <value>séquence</value>
+  </data>
+  <data name="CopyKindTable" xml:space="preserve">
+    <value>table</value>
+  </data>
+  <data name="CopyKindView" xml:space="preserve">
+    <value>vue</value>
+  </data>
+  <data name="CopyObjectsCopied_One" xml:space="preserve">
+    <value>{0} objet copié. {1}</value>
+  </data>
+  <data name="CopyObjectsCopied_Other" xml:space="preserve">
+    <value>{0} objets copiés. {1}</value>
+  </data>
+  <data name="CopyObjectsFrom" xml:space="preserve">
+    <value>Objets de {0}</value>
+  </data>
+  <data name="CopyObjectsTitle" xml:space="preserve">
+    <value>Copier des objets</value>
+  </data>
+  <data name="CopyOnError" xml:space="preserve">
+    <value>En cas d’erreur</value>
+  </data>
+  <data name="CopyOnErrorSkip" xml:space="preserve">
+    <value>Ignorer l’objet en échec et continuer</value>
+  </data>
+  <data name="CopyOnErrorStop" xml:space="preserve">
+    <value>S’arrêter au premier échec</value>
+  </data>
+  <data name="CopyOutcomeCopied" xml:space="preserve">
+    <value>Copié</value>
+  </data>
+  <data name="CopyOutcomeFailed" xml:space="preserve">
+    <value>Échec</value>
+  </data>
+  <data name="CopyOutcomeNameRows_One" xml:space="preserve">
+    <value>{1}, {0:N0} ligne</value>
+  </data>
+  <data name="CopyOutcomeNameRows_Other" xml:space="preserve">
+    <value>{1}, {0:N0} lignes</value>
+  </data>
+  <data name="CopyOutcomeSkipped" xml:space="preserve">
+    <value>Ignoré</value>
+  </data>
+  <data name="CopyOutcomeStopped" xml:space="preserve">
+    <value>Arrêté</value>
+  </data>
+  <data name="CopyPhaseCopyingRows" xml:space="preserve">
+    <value>Copie des lignes de {0}</value>
+  </data>
+  <data name="CopyPhaseCreating" xml:space="preserve">
+    <value>Création de {0}</value>
+  </data>
+  <data name="CopyPhaseDropping" xml:space="preserve">
+    <value>Suppression de {0}</value>
+  </data>
+  <data name="CopyPhaseFinishing" xml:space="preserve">
+    <value>Finalisation</value>
+  </data>
+  <data name="CopyPhaseIndexing" xml:space="preserve">
+    <value>Indexation de {0}</value>
+  </data>
+  <data name="CopyPhaseLinkingKeys" xml:space="preserve">
+    <value>Ajout des clés de {0}</value>
+  </data>
+  <data name="CopyPhasePreparing" xml:space="preserve">
+    <value>Préparation</value>
+  </data>
+  <data name="CopyPolicyAppend" xml:space="preserve">
+    <value>Y ajouter les lignes</value>
+  </data>
+  <data name="CopyPolicyHeader" xml:space="preserve">
+    <value>Lorsque la cible contient déjà un objet portant ce nom</value>
+  </data>
+  <data name="CopyPolicyReplace" xml:space="preserve">
+    <value>Le remplacer</value>
+  </data>
+  <data name="CopyPolicySkip" xml:space="preserve">
+    <value>L’ignorer</value>
+  </data>
+  <data name="CopyProgressName" xml:space="preserve">
+    <value>Progression de la copie</value>
+  </data>
+  <data name="CopyProgressTitle" xml:space="preserve">
+    <value>Copie en cours</value>
+  </data>
+  <data name="CopyReviewButton" xml:space="preserve">
+    <value>Copier</value>
+  </data>
+  <data name="CopyReviewTitle" xml:space="preserve">
+    <value>Copier vers {0}</value>
+  </data>
+  <data name="CopyRowsCopiedTo_One" xml:space="preserve">
+    <value>{0:N0} ligne copiée vers {1}.</value>
+  </data>
+  <data name="CopyRowsCopiedTo_Other" xml:space="preserve">
+    <value>{0:N0} lignes copiées vers {1}.</value>
+  </data>
+  <data name="CopyRowsCopied_One" xml:space="preserve">
+    <value>{0:N0} ligne copiée</value>
+  </data>
+  <data name="CopyRowsCopied_Other" xml:space="preserve">
+    <value>{0:N0} lignes copiées</value>
+  </data>
+  <data name="CopySelectNone" xml:space="preserve">
+    <value>Ne rien sélectionner</value>
+  </data>
+  <data name="CopyStoppedTitle" xml:space="preserve">
+    <value>Copie arrêtée</value>
+  </data>
+  <data name="CopyTargetSchema" xml:space="preserve">
+    <value>Schéma cible</value>
+  </data>
+  <data name="CopyThisConnection" xml:space="preserve">
+    <value>{0} (cette connexion)</value>
+  </data>
+  <data name="CopyTo" xml:space="preserve">
+    <value>Copier vers</value>
+  </data>
+  <data name="GenCannotReadTable" xml:space="preserve">
+    <value>Impossible de lire la table</value>
+  </data>
+  <data name="GenColumns" xml:space="preserve">
+    <value>Colonnes</value>
+  </data>
+  <data name="GenDateFrom" xml:space="preserve">
+    <value>Du</value>
+  </data>
+  <data name="GenDateTo" xml:space="preserve">
+    <value>Au</value>
+  </data>
+  <data name="GenDecimalPlaces" xml:space="preserve">
+    <value>Décimales</value>
+  </data>
+  <data name="GenFixIssues" xml:space="preserve">
+    <value>Corrigez ces problèmes avant de générer</value>
+  </data>
+  <data name="GenGenerate" xml:space="preserve">
+    <value>Générer</value>
+  </data>
+  <data name="GenGenerator" xml:space="preserve">
+    <value>Générateur</value>
+  </data>
+  <data name="GenInsert" xml:space="preserve">
+    <value>Insérer</value>
+  </data>
+  <data name="GenInsertConfirmMessage_One" xml:space="preserve">
+    <value>Insérer {0:N0} ligne générée dans {1}&#160;?</value>
+  </data>
+  <data name="GenInsertConfirmMessage_Other" xml:space="preserve">
+    <value>Insérer {0:N0} lignes générées dans {1}&#160;?</value>
+  </data>
+  <data name="GenInsertConfirmTitle" xml:space="preserve">
+    <value>Insérer des lignes&#160;?</value>
+  </data>
+  <data name="GenInserted_One" xml:space="preserve">
+    <value>{0:N0} ligne insérée dans {1}.</value>
+  </data>
+  <data name="GenInserted_Other" xml:space="preserve">
+    <value>{0:N0} lignes insérées dans {1}.</value>
+  </data>
+  <data name="GenListValues" xml:space="preserve">
+    <value>Valeurs, une par ligne</value>
+  </data>
+  <data name="GenLongest" xml:space="preserve">
+    <value>Longueur maximale</value>
+  </data>
+  <data name="GenMaximum" xml:space="preserve">
+    <value>Maximum</value>
+  </data>
+  <data name="GenMinimum" xml:space="preserve">
+    <value>Minimum</value>
+  </data>
+  <data name="GenNewSeed" xml:space="preserve">
+    <value>Nouvelle graine</value>
+  </data>
+  <data name="GenNewSeedTip" xml:space="preserve">
+    <value>Nouvelle graine&#160;: la même graine et les mêmes paramètres donnent toujours les mêmes lignes</value>
+  </data>
+  <data name="GenNoGenerator" xml:space="preserve">
+    <value>Aucun générateur ne peut remplir ce type.</value>
+  </data>
+  <data name="GenNullValues" xml:space="preserve">
+    <value>Valeurs NULL</value>
+  </data>
+  <data name="GenOpenAsSql" xml:space="preserve">
+    <value>Ouvrir en SQL</value>
+  </data>
+  <data name="GenPattern" xml:space="preserve">
+    <value>Modèle</value>
+  </data>
+  <data name="GenPatternHelp" xml:space="preserve">
+    <value># correspond à un chiffre, ? à une lettre, * à l’un ou l’autre, et \ rend littéral le caractère suivant.</value>
+  </data>
+  <data name="GenPreview" xml:space="preserve">
+    <value>Aperçu</value>
+  </data>
+  <data name="GenPreviewName" xml:space="preserve">
+    <value>Aperçu des premières lignes</value>
+  </data>
+  <data name="GenPreviewNote" xml:space="preserve">
+    <value>Les premières lignes sur {0:N0}. Les colonnes laissées au serveur ne sont pas affichées.</value>
+  </data>
+  <data name="GenPreviewWaiting" xml:space="preserve">
+    <value>L’aperçu s’affiche dès que les paramètres ne présentent plus de problème.</value>
+  </data>
+  <data name="GenProgressTitle" xml:space="preserve">
+    <value>Génération des lignes</value>
+  </data>
+  <data name="GenProgress_One" xml:space="preserve">
+    <value>{1:N0} sur {0:N0} ligne</value>
+  </data>
+  <data name="GenProgress_Other" xml:space="preserve">
+    <value>{1:N0} sur {0:N0} lignes</value>
+  </data>
+  <data name="GenReadOnlyMessage" xml:space="preserve">
+    <value>Le Mode sécurisé est en Lecture seule sur cette connexion&#160;: aucune ligne ne peut donc être insérée.</value>
+  </data>
+  <data name="GenReadOnlyTitle" xml:space="preserve">
+    <value>Connexion en lecture seule</value>
+  </data>
+  <data name="GenReferenceNote" xml:space="preserve">
+    <value>Prend une valeur de la clé référencée.</value>
+  </data>
+  <data name="GenReferenceSampledNote_One" xml:space="preserve">
+    <value>Prend une valeur de {1}, échantillonnée parmi {0:N0} de ses lignes. Toutes les colonnes de la clé proviennent de la même ligne.</value>
+  </data>
+  <data name="GenReferenceSampledNote_Other" xml:space="preserve">
+    <value>Prend une valeur de {1}, échantillonnée parmi {0:N0} de ses lignes. Toutes les colonnes de la clé proviennent de la même ligne.</value>
+  </data>
+  <data name="GenRows" xml:space="preserve">
+    <value>Lignes</value>
+  </data>
+  <data name="GenSeed" xml:space="preserve">
+    <value>Graine</value>
+  </data>
+  <data name="GenServerDefaultNote" xml:space="preserve">
+    <value>Omise de chaque INSERT&#160;: la colonne prend donc sa valeur par défaut ou NULL.</value>
+  </data>
+  <data name="GenServerFillsNote" xml:space="preserve">
+    <value>Le serveur remplit lui-même cette colonne.</value>
+  </data>
+  <data name="GenShortest" xml:space="preserve">
+    <value>Longueur minimale</value>
+  </data>
+  <data name="GenStart" xml:space="preserve">
+    <value>Début</value>
+  </data>
+  <data name="GenStep" xml:space="preserve">
+    <value>Incrément</value>
+  </data>
+  <data name="GenStoppedAfter_One" xml:space="preserve">
+    <value>Arrêté après {0:N0} ligne&#160;; elle reste dans {1}.</value>
+  </data>
+  <data name="GenStoppedAfter_Other" xml:space="preserve">
+    <value>Arrêté après {0:N0} lignes&#160;; elles restent dans {1}.</value>
+  </data>
+  <data name="GenStoppedMessage_One" xml:space="preserve">
+    <value>{1}
+
+{0:N0} ligne a été insérée avant l’erreur et reste dans la table.</value>
+  </data>
+  <data name="GenStoppedMessage_Other" xml:space="preserve">
+    <value>{1}
+
+{0:N0} lignes ont été insérées avant l’erreur et restent dans la table.</value>
+  </data>
+  <data name="GenStoppedTitle" xml:space="preserve">
+    <value>Génération de lignes arrêtée</value>
+  </data>
+  <data name="GenTitle" xml:space="preserve">
+    <value>Générer des lignes pour {0}</value>
+  </data>
+  <data name="GenTrueValues" xml:space="preserve">
+    <value>Valeurs vraies</value>
+  </data>
+  <data name="GenUuidVersion" xml:space="preserve">
+    <value>Version</value>
+  </data>
+  <data name="GenUuidVersion4" xml:space="preserve">
+    <value>Version 4 (aléatoire)</value>
+  </data>
+  <data name="GenUuidVersion7" xml:space="preserve">
+    <value>Version 7 (ordonnée dans le temps)</value>
+  </data>
+  <data name="GenVocabularyNote" xml:space="preserve">
+    <value>Produit des valeurs de type {0} à partir d’un vocabulaire fixe, identiques pour une graine donnée dans toutes les versions de TablePro.</value>
+  </data>
+  <data name="GeneratorBoolean" xml:space="preserve">
+    <value>Booléen</value>
+  </data>
+  <data name="GeneratorCity" xml:space="preserve">
+    <value>Ville</value>
+  </data>
+  <data name="GeneratorCountry" xml:space="preserve">
+    <value>Pays</value>
+  </data>
+  <data name="GeneratorDate" xml:space="preserve">
+    <value>Date</value>
+  </data>
+  <data name="GeneratorDateTime" xml:space="preserve">
+    <value>Date et heure</value>
+  </data>
+  <data name="GeneratorDecimalRange" xml:space="preserve">
+    <value>Plage décimale</value>
+  </data>
+  <data name="GeneratorEmail" xml:space="preserve">
+    <value>E-mail</value>
+  </data>
+  <data name="GeneratorFirstName" xml:space="preserve">
+    <value>Prénom</value>
+  </data>
+  <data name="GeneratorFullName" xml:space="preserve">
+    <value>Nom complet</value>
+  </data>
+  <data name="GeneratorIntegerRange" xml:space="preserve">
+    <value>Plage de nombres</value>
+  </data>
+  <data name="GeneratorJson" xml:space="preserve">
+    <value>JSON</value>
+  </data>
+  <data name="GeneratorLastName" xml:space="preserve">
+    <value>Nom de famille</value>
+  </data>
+  <data name="GeneratorList" xml:space="preserve">
+    <value>Liste de valeurs</value>
+  </data>
+  <data name="GeneratorPattern" xml:space="preserve">
+    <value>Modèle</value>
+  </data>
+  <data name="GeneratorPhone" xml:space="preserve">
+    <value>Numéro de téléphone</value>
+  </data>
+  <data name="GeneratorReference" xml:space="preserve">
+    <value>Valeur référencée</value>
+  </data>
+  <data name="GeneratorSequence" xml:space="preserve">
+    <value>Séquence</value>
+  </data>
+  <data name="GeneratorServerDefault" xml:space="preserve">
+    <value>Valeur par défaut du serveur</value>
+  </data>
+  <data name="GeneratorStreetAddress" xml:space="preserve">
+    <value>Adresse postale</value>
+  </data>
+  <data name="GeneratorText" xml:space="preserve">
+    <value>Texte</value>
+  </data>
+  <data name="GeneratorTime" xml:space="preserve">
+    <value>Heure</value>
+  </data>
+  <data name="GeneratorUuid" xml:space="preserve">
+    <value>UUID</value>
+  </data>
+  <data name="JoinAddFilter" xml:space="preserve">
+    <value>Ajouter un filtre</value>
+  </data>
+  <data name="JoinAddSort" xml:space="preserve">
+    <value>Ajouter un tri</value>
+  </data>
+  <data name="JoinAscending" xml:space="preserve">
+    <value>Croissant</value>
+  </data>
+  <data name="JoinCannotReadTables" xml:space="preserve">
+    <value>Impossible de lire les tables</value>
+  </data>
+  <data name="JoinClearQuery" xml:space="preserve">
+    <value>Effacer la requête</value>
+  </data>
+  <data name="JoinColumn" xml:space="preserve">
+    <value>Colonne</value>
+  </data>
+  <data name="JoinConditionFor" xml:space="preserve">
+    <value>Condition de jointure pour {0}</value>
+  </data>
+  <data name="JoinCopySql" xml:space="preserve">
+    <value>Copier le SQL</value>
+  </data>
+  <data name="JoinCrossJoin" xml:space="preserve">
+    <value>Jointure croisée (sans condition)</value>
+  </data>
+  <data name="JoinDescending" xml:space="preserve">
+    <value>Décroissant</value>
+  </data>
+  <data name="JoinFilterTables" xml:space="preserve">
+    <value>Filtrer les tables</value>
+  </data>
+  <data name="JoinGeneratedSql" xml:space="preserve">
+    <value>SQL généré</value>
+  </data>
+  <data name="JoinHintCrossJoined_One" xml:space="preserve">
+    <value>Aucune clé étrangère ne relie {1} aux tables qui la précèdent&#160;: elle fait donc l’objet d’une jointure croisée.</value>
+  </data>
+  <data name="JoinHintCrossJoined_Other" xml:space="preserve">
+    <value>Aucune clé étrangère ne relie {1} aux tables qui les précèdent&#160;: elles font donc l’objet d’une jointure croisée.</value>
+  </data>
+  <data name="JoinHintStart" xml:space="preserve">
+    <value>Choisissez les tables à joindre. Leurs clés étrangères deviennent les conditions de jointure.</value>
+  </data>
+  <data name="JoinKindFull" xml:space="preserve">
+    <value>Jointure complète</value>
+  </data>
+  <data name="JoinKindInner" xml:space="preserve">
+    <value>Jointure interne</value>
+  </data>
+  <data name="JoinKindLeft" xml:space="preserve">
+    <value>Jointure gauche</value>
+  </data>
+  <data name="JoinKindRight" xml:space="preserve">
+    <value>Jointure droite</value>
+  </data>
+  <data name="JoinNoTables" xml:space="preserve">
+    <value>Ce schéma ne contient aucune table à joindre.</value>
+  </data>
+  <data name="JoinOpenInQueryTab" xml:space="preserve">
+    <value>Ouvrir dans un onglet de requête</value>
+  </data>
+  <data name="JoinOperator" xml:space="preserve">
+    <value>Opérateur</value>
+  </data>
+  <data name="JoinPickSecondTable" xml:space="preserve">
+    <value>Choisissez une deuxième table à joindre.</value>
+  </data>
+  <data name="JoinReadingTables" xml:space="preserve">
+    <value>Lecture des tables…</value>
+  </data>
+  <data name="JoinReadingTablesProgress" xml:space="preserve">
+    <value>Lecture des tables… {0}/{1}</value>
+  </data>
+  <data name="JoinReloadTables" xml:space="preserve">
+    <value>Recharger les tables</value>
+  </data>
+  <data name="JoinRemoveFilter" xml:space="preserve">
+    <value>Supprimer le filtre</value>
+  </data>
+  <data name="JoinRemoveSort" xml:space="preserve">
+    <value>Supprimer le tri</value>
+  </data>
+  <data name="JoinRemoveTable" xml:space="preserve">
+    <value>Supprimer {0}</value>
+  </data>
+  <data name="JoinSecondValue" xml:space="preserve">
+    <value>Deuxième valeur</value>
+  </data>
+  <data name="JoinSectionFilters" xml:space="preserve">
+    <value>Filtres</value>
+  </data>
+  <data name="JoinSectionJoins" xml:space="preserve">
+    <value>Jointures</value>
+  </data>
+  <data name="JoinSectionSort" xml:space="preserve">
+    <value>Tri</value>
+  </data>
+  <data name="JoinSelectColumn" xml:space="preserve">
+    <value>Sélectionner {0}.{1}</value>
+  </data>
+  <data name="JoinShowingTables_One" xml:space="preserve">
+    <value>{1} table affichée sur {0}</value>
+  </data>
+  <data name="JoinShowingTables_Other" xml:space="preserve">
+    <value>{1} tables affichées sur {0}</value>
+  </data>
+  <data name="JoinSortDirection" xml:space="preserve">
+    <value>Sens du tri</value>
+  </data>
+  <data name="JoinSqlPlaceholder" xml:space="preserve">
+    <value>-- Choisissez une table pour commencer.</value>
+  </data>
+  <data name="JoinTabTitle" xml:space="preserve">
+    <value>Générateur de jointures</value>
+  </data>
+  <data name="JoinTableCount_One" xml:space="preserve">
+    <value>{0} table</value>
+  </data>
+  <data name="JoinTableCount_Other" xml:space="preserve">
+    <value>{0} tables</value>
+  </data>
+  <data name="JoinTryAgain" xml:space="preserve">
+    <value>Réessayer</value>
+  </data>
+  <data name="JoinTypeFor" xml:space="preserve">
+    <value>Type de jointure pour {0}</value>
+  </data>
+  <data name="JoinValueFrom" xml:space="preserve">
+    <value>De</value>
+  </data>
+  <data name="JoinValueTo" xml:space="preserve">
+    <value>À</value>
+  </data>
+  <data name="JoinZoomIn" xml:space="preserve">
+    <value>Zoom avant</value>
+  </data>
+  <data name="JoinZoomOut" xml:space="preserve">
+    <value>Zoom arrière</value>
+  </data>
+  <data name="Starting" xml:space="preserve">
+    <value>Démarrage…</value>
+  </data>
+</root>

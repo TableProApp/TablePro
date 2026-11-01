@@ -1,0 +1,285 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="Blocking" xml:space="preserve">
+    <value>{0} 會封鎖共用連線直到資料抵達。請使用非封鎖形式，例如 LPOP 或不帶 BLOCK 的 XREAD。</value>
+  </data>
+  <data name="Bytes_One" xml:space="preserve">
+    <value>{0} 位元組</value>
+  </data>
+  <data name="Bytes_Other" xml:space="preserve">
+    <value>{0} 位元組</value>
+  </data>
+  <data name="CannotStoreNull" xml:space="preserve">
+    <value>Redis 無法儲存 NULL。請改為輸入空值。</value>
+  </data>
+  <data name="CannotStoreNullValue" xml:space="preserve">
+    <value>Redis 無法將 NULL 儲存為值。請改為輸入空值。</value>
+  </data>
+  <data name="ClientReply" xml:space="preserve">
+    <value>CLIENT REPLY 會停止每個索引標籤等待的回覆。</value>
+  </data>
+  <data name="ClusterDatabaseOption" xml:space="preserve">
+    <value>Redis Cluster 只提供資料庫 0。請清除資料庫編號，或使用獨立模式。</value>
+  </data>
+  <data name="ClusterDatabaseZero" xml:space="preserve">
+    <value>Redis Cluster 只提供資料庫 0。</value>
+  </data>
+  <data name="CommandNotFinished" xml:space="preserve">
+    <value>指令未在 {0} 秒內完成。</value>
+  </data>
+  <data name="ConnectionState" xml:space="preserve">
+    <value>{0} 會變更共用連線的登入或狀態。請改為變更連線的設定。</value>
+  </data>
+  <data name="CrossSlot" xml:space="preserve">
+    <value>排入佇列的指令涉及多個雜湊槽中的鍵，叢集無法在一個交易中執行。請為這些鍵指定共同的 {hash tag}，使它們落在同一個槽中。</value>
+  </data>
+  <data name="CurrentValue" xml:space="preserve">
+    <value>（目前的值）</value>
+  </data>
+  <data name="CursorRestarted" xml:space="preserve">
+    <value>游標指向叢集中已不存在的節點，因此掃描從第一個主要節點重新開始。</value>
+  </data>
+  <data name="DatabaseSelected_One" xml:space="preserve">
+    <value>已選取資料庫 {1}，{0} 個鍵。</value>
+  </data>
+  <data name="DatabaseSelected_Other" xml:space="preserve">
+    <value>已選取資料庫 {1}，{0} 個鍵。</value>
+  </data>
+  <data name="DbBrowseWith" xml:space="preserve">
+    <value># 瀏覽方式：{0}</value>
+  </data>
+  <data name="DbHeader" xml:space="preserve">
+    <value># Redis 資料庫：{0}</value>
+  </data>
+  <data name="DbKeys" xml:space="preserve">
+    <value># 鍵：{0}</value>
+  </data>
+  <data name="DbTypes_One" xml:space="preserve">
+    <value># 類型分布（抽樣 {0} 個鍵）：</value>
+  </data>
+  <data name="DbTypes_Other" xml:space="preserve">
+    <value># 類型分布（抽樣 {0} 個鍵）：</value>
+  </data>
+  <data name="EmptyCommand" xml:space="preserve">
+    <value>指令為空。</value>
+  </data>
+  <data name="FieldsComment" xml:space="preserve">
+    <value>欄位名稱對應值的 JSON 物件</value>
+  </data>
+  <data name="HashFieldGone" xml:space="preserve">
+    <value>雜湊欄位「{0}」已不存在，因此未儲存任何內容。</value>
+  </data>
+  <data name="HashRowNeedsField" xml:space="preserve">
+    <value>新的雜湊列需要欄位名稱。</value>
+  </data>
+  <data name="IndexComment" xml:space="preserve">
+    <value>從頭開始的位置，從 0 起算</value>
+  </data>
+  <data name="IsSentinel" xml:space="preserve">
+    <value>這是 Redis Sentinel，不是資料節點，因此只回應 SENTINEL 指令。請將連線模式設為 sentinel，並將此位址列入 Sentinel 節點。</value>
+  </data>
+  <data name="JsonNeedsPath" xml:space="preserve">
+    <value>新的 JSON 成員需要路徑，例如 $.name。</value>
+  </data>
+  <data name="JsonPathFixed" xml:space="preserve">
+    <value>JSON 成員的路徑無法編輯。請刪除該成員，並在新路徑下新增值。</value>
+  </data>
+  <data name="JsonTextComment" xml:space="preserve">
+    <value>JSON 文字</value>
+  </data>
+  <data name="KeyGone" xml:space="preserve">
+    <value>鍵「{0}」已不存在。</value>
+  </data>
+  <data name="KeyNameComment" xml:space="preserve">
+    <value>鍵的名稱</value>
+  </data>
+  <data name="KeyNameNotText" xml:space="preserve">
+    <value>此鍵的名稱不是文字，因此無法在格線中定位。</value>
+  </data>
+  <data name="KeyTypeNotEditable" xml:space="preserve">
+    <value>鍵「{0}」的類型無法在格線中編輯。請在查詢編輯器中用指令變更。</value>
+  </data>
+  <data name="KeyTypeNotShown" xml:space="preserve">
+    <value>鍵「{0}」的類型無法在格線中顯示。請在查詢編輯器中用指令讀取。</value>
+  </data>
+  <data name="LengthComment" xml:space="preserve">
+    <value>字串的位元組數，或集合的元素數</value>
+  </data>
+  <data name="ListOneNode" xml:space="preserve">
+    <value>請以 host:port 的形式列出至少一個要連線的節點。</value>
+  </data>
+  <data name="ListPositionFixed" xml:space="preserve">
+    <value>清單元素的位置無法編輯。請刪除該元素後重新新增值。</value>
+  </data>
+  <data name="NewKeyNeedsName" xml:space="preserve">
+    <value>新鍵需要名稱。</value>
+  </data>
+  <data name="NextCursor" xml:space="preserve">
+    <value>下一個游標：{0}</value>
+  </data>
+  <data name="NoListPosition" xml:space="preserve">
+    <value>該列沒有清單位置，因此無法定位。</value>
+  </data>
+  <data name="NoServer" xml:space="preserve">
+    <value>未連線 Redis 伺服器。</value>
+  </data>
+  <data name="NotACluster" xml:space="preserve">
+    <value>此伺服器未在叢集模式下執行。請將連線模式設為獨立模式，或將叢集模式指向以 cluster-enabled yes 啟動的節點。</value>
+  </data>
+  <data name="NotAScore" xml:space="preserve">
+    <value>「{0}」不是分數。分數是數字、inf 或 -inf。</value>
+  </data>
+  <data name="NotClientId" xml:space="preserve">
+    <value>「{0}」不是 Redis 用戶端 ID。</value>
+  </data>
+  <data name="NotDatabaseNumber" xml:space="preserve">
+    <value>「{0}」不是 Redis 資料庫編號。請使用 0 這樣的數字或 db0 這樣的名稱。</value>
+  </data>
+  <data name="NotHost" xml:space="preserve">
+    <value>「{0}」不是 host 或 host:port。</value>
+  </data>
+  <data name="NotMode" xml:space="preserve">
+    <value>「{0}」不是 Redis 連線模式。請使用 standalone、sentinel 或 cluster。</value>
+  </data>
+  <data name="NotRun" xml:space="preserve">
+    <value>未執行</value>
+  </data>
+  <data name="NoWhereElements" xml:space="preserve">
+    <value>Redis 沒有 WHERE 子句。請使用篩選規則，或在查詢編輯器中使用帶 MATCH 的 SCAN。</value>
+  </data>
+  <data name="NoWhereKeys" xml:space="preserve">
+    <value>Redis 沒有 WHERE 子句。請用 user:* 這樣的模式篩選 Key 欄，或依 Type 篩選。</value>
+  </data>
+  <data name="OnlyKeyTypeCounted" xml:space="preserve">
+    <value>伺服器只計算鍵和類型篩選條件。</value>
+  </data>
+  <data name="PartialSlots" xml:space="preserve">
+    <value>{1} 個雜湊槽中有 {0} 個在另一個拒絕之前已執行各自的部分；這些變更仍然生效。</value>
+  </data>
+  <data name="PartOfCluster" xml:space="preserve">
+    <value>此伺服器屬於 Redis Cluster，因此對其不擁有的鍵的要求會失敗。請將連線模式設為叢集，並將此位址列入叢集節點。</value>
+  </data>
+  <data name="PathComment" xml:space="preserve">
+    <value>成員的 JSONPath</value>
+  </data>
+  <data name="ReadOnlyNoDisconnect" xml:space="preserve">
+    <value>此連線為唯讀，因此未中斷用戶端連線。</value>
+  </data>
+  <data name="ReadOnlyNotSent" xml:space="preserve">
+    <value>此連線為唯讀，因此未傳送 {0}。</value>
+  </data>
+  <data name="RenameEmpty" xml:space="preserve">
+    <value>鍵只能重新命名為非空白文字。</value>
+  </data>
+  <data name="RowHasNo" xml:space="preserve">
+    <value>該列沒有{0}，因此無法定位。</value>
+  </data>
+  <data name="SaveSomeFailed" xml:space="preserve">
+    <value>Redis 已執行儲存，但部分指令失敗，其餘指令仍然生效：{0}</value>
+  </data>
+  <data name="ScanComplete" xml:space="preserve">
+    <value>游標 0：掃描已完成。</value>
+  </data>
+  <data name="Seconds_One" xml:space="preserve">
+    <value>{0} 秒</value>
+  </data>
+  <data name="Seconds_Other" xml:space="preserve">
+    <value>{0} 秒</value>
+  </data>
+  <data name="SelectInMulti" xml:space="preserve">
+    <value>此處無法在 MULTI 中將 SELECT 排入佇列。請在 MULTI 之前選取資料庫。</value>
+  </data>
+  <data name="SelectOneNumber" xml:space="preserve">
+    <value>SELECT 只接受一個資料庫編號，例如 SELECT 1</value>
+  </data>
+  <data name="SentinelThroughTunnel" xml:space="preserve">
+    <value>通道只轉送一個位址，而 Sentinel 指定的節點位於伺服器自己的網路中，因此 Sentinel 模式無法透過通道執行。請直接連線到資料節點，或關閉通道。</value>
+  </data>
+  <data name="SentinelToSentinel" xml:space="preserve">
+    <value>Sentinel 解析到了另一個 Sentinel，而不是資料節點。請檢查 Sentinel 設定中的主要群組名稱。</value>
+  </data>
+  <data name="SlotsPartiallySaved" xml:space="preserve">
+    <value>{1} 個雜湊槽中有 {0} 個已儲存並保持生效；下一個失敗：{2}</value>
+  </data>
+  <data name="SortedSetMemberGone" xml:space="preserve">
+    <value>有序集合成員「{0}」已不存在，因此未儲存任何內容。</value>
+  </data>
+  <data name="StreamEntriesFixed" xml:space="preserve">
+    <value>串流項目新增後無法變更。請刪除該項目並新增項目。</value>
+  </data>
+  <data name="StreamFieldsNotObject" xml:space="preserve">
+    <value>串流項目的欄位必須是 JSON 物件：{0}</value>
+  </data>
+  <data name="StreamFieldsObject" xml:space="preserve">
+    <value>串流欄位必須是 JSON 物件，例如 {"field": "value"}。</value>
+  </data>
+  <data name="StreamIdComment" xml:space="preserve">
+    <value>新增時留空，由伺服器指派</value>
+  </data>
+  <data name="StreamNeedsFields" xml:space="preserve">
+    <value>新的串流項目需要以 JSON 物件提供欄位，例如 {"name": "value"}。</value>
+  </data>
+  <data name="StreamNeedsOneField" xml:space="preserve">
+    <value>串流項目至少需要一個欄位。</value>
+  </data>
+  <data name="StringHoldsOneValue" xml:space="preserve">
+    <value>字串鍵只保存一個值。請編輯該值，而不是新增列。</value>
+  </data>
+  <data name="Subscription" xml:space="preserve">
+    <value>{0} 會將連線變為訊息串流，編輯器無法顯示。請使用 redis-cli。</value>
+  </data>
+  <data name="TtlComment" xml:space="preserve">
+    <value>距鍵過期的秒數；不過期則為 -1 或 NULL</value>
+  </data>
+  <data name="TtlInvalid" xml:space="preserve">
+    <value>TTL 必須是大於 0 的整秒數，或用 -1 或 NULL 表示不過期。</value>
+  </data>
+  <data name="TtlNoExpiry" xml:space="preserve">
+    <value>-1（不過期）</value>
+  </data>
+  <data name="TtlNoKey" xml:space="preserve">
+    <value>-2（鍵不存在）</value>
+  </data>
+  <data name="TypeComment" xml:space="preserve">
+    <value>新增鍵時為 string、hash、list、set 或 zset</value>
+  </data>
+  <data name="TypeNotAddable" xml:space="preserve">
+    <value>無法在格線中新增 {0} 鍵。請在查詢編輯器中用指令新增。</value>
+  </data>
+  <data name="Unknown" xml:space="preserve">
+    <value>未知</value>
+  </data>
+  <data name="ValueComment" xml:space="preserve">
+    <value>字串的值，或集合前幾個元素的預覽</value>
+  </data>
+  <data name="ValueInListNotEditable" xml:space="preserve">
+    <value>無法在鍵清單中編輯 {0} 鍵的值。請開啟該鍵以編輯其元素。</value>
+  </data>
+  <data name="WhatHashField" xml:space="preserve">
+    <value>雜湊欄位</value>
+  </data>
+  <data name="WhatJsonPath" xml:space="preserve">
+    <value>JSON 路徑</value>
+  </data>
+  <data name="WhatSetMember" xml:space="preserve">
+    <value>集合成員</value>
+  </data>
+  <data name="WhatSortedSetMember" xml:space="preserve">
+    <value>有序集合成員</value>
+  </data>
+  <data name="WhatStreamId" xml:space="preserve">
+    <value>串流項目 ID</value>
+  </data>
+</root>

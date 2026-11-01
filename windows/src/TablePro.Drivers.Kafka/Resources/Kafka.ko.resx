@@ -1,0 +1,159 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AppendOnly" xml:space="preserve">
+    <value>Kafka 토픽은 추가 전용이므로 메시지를 편집하거나 삭제할 수 없습니다. 행을 추가해 새 메시지를 생성하거나, 압축 토픽에서는 해당 키에 대해 툼스톤(null 값)을 생성하세요.</value>
+  </data>
+  <data name="AtLeastOne" xml:space="preserve">
+    <value>{0}은(는) 1 이상이어야 합니다.</value>
+  </data>
+  <data name="DescribeNeeds" xml:space="preserve">
+    <value>DESCRIBE에는 GROUP 또는 TOPIC이 필요합니다.</value>
+  </data>
+  <data name="DescribeNeedsName" xml:space="preserve">
+    <value>DESCRIBE에는 이름이 필요합니다.</value>
+  </data>
+  <data name="DescribeUnsupported" xml:space="preserve">
+    <value>DESCRIBE {0}은(는) 지원되지 않습니다. GROUP 또는 TOPIC을 사용해 보세요.</value>
+  </data>
+  <data name="DropTakesOne" xml:space="preserve">
+    <value>DROP TOPIC은 토픽 이름 하나만 받습니다.</value>
+  </data>
+  <data name="EmptyStatement" xml:space="preserve">
+    <value>문이 비어 있습니다.</value>
+  </data>
+  <data name="FromNeeds" xml:space="preserve">
+    <value>FROM에는 NEWEST, OLDEST, OFFSET, TIME, ANCHOR 또는 TAIL이 필요합니다.</value>
+  </data>
+  <data name="GroupNotDeletable_One" xml:space="preserve">
+    <value>소비자 그룹 {1}은(는) {2} 상태이며 멤버가 {0}명입니다. Kafka는 멤버가 없는 그룹만 삭제합니다. 먼저 해당 소비자를 중지하세요.</value>
+  </data>
+  <data name="GroupNotDeletable_Other" xml:space="preserve">
+    <value>소비자 그룹 {1}은(는) {2} 상태이며 멤버가 {0}명입니다. Kafka는 멤버가 없는 그룹만 삭제합니다. 먼저 해당 소비자를 중지하세요.</value>
+  </data>
+  <data name="GroupNote_One" xml:space="preserve">
+    <value>그룹 {1}은(는) {2} 상태이며 멤버가 {0}명입니다.</value>
+  </data>
+  <data name="GroupNote_Other" xml:space="preserve">
+    <value>그룹 {1}은(는) {2} 상태이며 멤버가 {0}명입니다.</value>
+  </data>
+  <data name="HeadersJson" xml:space="preserve">
+    <value>헤더는 {"trace":"abc"}와 같은 JSON 개체여야 합니다.</value>
+  </data>
+  <data name="NeedsKeyValue" xml:space="preserve">
+    <value>{0}에는 cleanup.policy=compact처럼 키=값이 필요합니다.</value>
+  </data>
+  <data name="NeedsOffsetList" xml:space="preserve">
+    <value>{0}에는 partition:offset 목록이 필요합니다.</value>
+  </data>
+  <data name="NeedsTopicKeyword" xml:space="preserve">
+    <value>{0}에는 TOPIC과 토픽 이름이 필요합니다.</value>
+  </data>
+  <data name="NeedsTopicName" xml:space="preserve">
+    <value>{0}에는 토픽 이름이 필요합니다.</value>
+  </data>
+  <data name="NeedsValue" xml:space="preserve">
+    <value>{0}에는 값이 필요합니다.</value>
+  </data>
+  <data name="NeedsWholeNumber" xml:space="preserve">
+    <value>{0}에는 {1}이(가) 아닌 정수가 필요합니다.</value>
+  </data>
+  <data name="NoConsumerGroup" xml:space="preserve">
+    <value>이름이 {0}인 소비자 그룹이 없습니다.</value>
+  </data>
+  <data name="NoPartition" xml:space="preserve">
+    <value>토픽 {0}에 파티션 {1}이(가) 없습니다.</value>
+  </data>
+  <data name="NoSuchColumn" xml:space="preserve">
+    <value>Kafka 메시지에는 {0} 열이 없습니다.</value>
+  </data>
+  <data name="NotACommand" xml:space="preserve">
+    <value>{0}은(는) Kafka 명령이 아닙니다. CONSUME, TAIL, PRODUCE, SHOW, DESCRIBE, CREATE 또는 DROP을 사용해 보세요.</value>
+  </data>
+  <data name="NotATime" xml:space="preserve">
+    <value>{0}은(는) 시간이 아닙니다.</value>
+  </data>
+  <data name="NotATimeHint" xml:space="preserve">
+    <value>{0}은(는) 시간이 아닙니다. epoch 이후의 밀리초 또는 ISO 8601 시각을 사용하세요.</value>
+  </data>
+  <data name="NotOffsetPair" xml:space="preserve">
+    <value>{0}은(는) partition:offset 쌍이 아닙니다.</value>
+  </data>
+  <data name="NoTopic" xml:space="preserve">
+    <value>이름이 {0}인 토픽이 없습니다.</value>
+  </data>
+  <data name="NotPartitionNumber" xml:space="preserve">
+    <value>{0}은(는) 파티션 번호가 아닙니다.</value>
+  </data>
+  <data name="NotSaslMechanism" xml:space="preserve">
+    <value>{0}은(는) SASL 메커니즘이 아닙니다. PLAIN, SCRAM-SHA-256 또는 SCRAM-SHA-512를 사용하세요.</value>
+  </data>
+  <data name="NotSecurityProtocol" xml:space="preserve">
+    <value>{0}은(는) Kafka 보안 프로토콜이 아닙니다. PLAINTEXT, SSL, SASL_PLAINTEXT 또는 SASL_SSL을 사용하세요.</value>
+  </data>
+  <data name="NotStartPosition" xml:space="preserve">
+    <value>{0}은(는) 시작 위치가 아닙니다. NEWEST, OLDEST, OFFSET, TIME, ANCHOR 또는 TAIL을 사용하세요.</value>
+  </data>
+  <data name="OffsetAssigned" xml:space="preserve">
+    <value>메시지의 오프셋은 브로커가 할당합니다. 오프셋을 비워 두세요.</value>
+  </data>
+  <data name="PageTooLarge" xml:space="preserve">
+    <value>이 페이지를 표시하려면 파티션 {1}개에서 메시지를 {0:N0}개 넘게 읽어야 합니다. 더 적은 파티션을 읽거나 FROM OFFSET 또는 FROM TIME으로 해당 행에 더 가까운 곳에서 시작하세요.</value>
+  </data>
+  <data name="PartitionNeedsNumber" xml:space="preserve">
+    <value>PARTITION에는 파티션 번호가 하나 이상 필요합니다.</value>
+  </data>
+  <data name="ProduceNeedsValueOrKey" xml:space="preserve">
+    <value>PRODUCE에는 VALUE 또는 KEY가 하나 이상 필요합니다.</value>
+  </data>
+  <data name="RangeBetween" xml:space="preserve">
+    <value>{0}은(는) {1}에서 {2} 사이여야 합니다.</value>
+  </data>
+  <data name="ServerVersion_One" xml:space="preserve">
+    <value>Apache Kafka, 브로커 {0}개(librdkafka {1})</value>
+  </data>
+  <data name="ServerVersion_Other" xml:space="preserve">
+    <value>Apache Kafka, 브로커 {0}개(librdkafka {1})</value>
+  </data>
+  <data name="ShowNeeds" xml:space="preserve">
+    <value>SHOW에는 TOPICS, BROKERS, GROUPS 또는 CLUSTER가 필요합니다.</value>
+  </data>
+  <data name="ShowUnsupported" xml:space="preserve">
+    <value>SHOW {0}은(는) 지원되지 않습니다. TOPICS, BROKERS, GROUPS 또는 CLUSTER를 사용해 보세요.</value>
+  </data>
+  <data name="StoppedPartial" xml:space="preserve">
+    <value>{0:0}초 후 일부 파티션을 다 읽지 못한 채 중지했습니다. 표시된 행은 도착한 메시지입니다.</value>
+  </data>
+  <data name="TakesNothingAfter" xml:space="preserve">
+    <value>{0} 뒤에는 아무것도 올 수 없는데 {1}이(가) 입력되었습니다.</value>
+  </data>
+  <data name="TimestampComment" xml:space="preserve">
+    <value>생산자 또는 브로커 시간(UTC)입니다.</value>
+  </data>
+  <data name="TopicCreated" xml:space="preserve">
+    <value>토픽 {0}을(를) 만들었습니다.</value>
+  </data>
+  <data name="TopicDeleted" xml:space="preserve">
+    <value>토픽 {0}을(를) 삭제했습니다.</value>
+  </data>
+  <data name="Unexpected" xml:space="preserve">
+    <value>{1} 문에 예상치 못한 {0}이(가) 있습니다.</value>
+  </data>
+  <data name="UnexpectedInTail" xml:space="preserve">
+    <value>TAIL 문에 예상치 못한 {0}이(가) 있습니다. TAIL은 LIMIT과 PARTITION을 받습니다.</value>
+  </data>
+  <data name="ValueComment" xml:space="preserve">
+    <value>Null은 툼스톤이며, 빈 값은 빈 메시지입니다.</value>
+  </data>
+</root>

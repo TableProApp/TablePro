@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="CannotDeleteFirst" xml:space="preserve">
+    <value>This connection cannot empty a table and import into it in one transaction, so it cannot delete the existing rows first.</value>
+  </data>
+  <data name="CannotMatchRows" xml:space="preserve">
+    <value>This connection cannot match imported rows against existing ones.</value>
+  </data>
+  <data name="ChooseMatchKey" xml:space="preserve">
+    <value>Choose the key the rows are matched on.</value>
+  </data>
+  <data name="ColumnMappedTwice" xml:space="preserve">
+    <value>Each column can be mapped from only one field.</value>
+  </data>
+  <data name="ColumnNamesUnique" xml:space="preserve">
+    <value>Column names must be unique.</value>
+  </data>
+  <data name="CouldNotReadExistingRows" xml:space="preserve">
+    <value>Could not read which rows are already in the table.</value>
+  </data>
+  <data name="DeleteFirstCannotMatch" xml:space="preserve">
+    <value>Delete existing rows first empties the table, so no row would match. Turn it off, or import as Insert.</value>
+  </data>
+  <data name="IncludeAtLeastOneColumn" xml:space="preserve">
+    <value>Include at least one column.</value>
+  </data>
+  <data name="IncludedColumnNeedsName" xml:space="preserve">
+    <value>Every included column needs a name.</value>
+  </data>
+  <data name="IncludedColumnNeedsType" xml:space="preserve">
+    <value>Every included column needs a type.</value>
+  </data>
+  <data name="KeyMatchedSeveralRows" xml:space="preserve">
+    <value>The key {0} matched {1} rows, so the row was not written.</value>
+    <comment>{0} lists the key, such as id = 7; {1} is a row count, always more than one.</comment>
+  </data>
+  <data name="KeyNeedsValuePerColumn" xml:space="preserve">
+    <value>Every key needs one value per key column.</value>
+  </data>
+  <data name="KeyValueMissing" xml:space="preserve">
+    <value>This row has no value for the key column {0}, so it cannot be matched.</value>
+    <comment>{0} is a column name.</comment>
+  </data>
+  <data name="MapAtLeastOneField" xml:space="preserve">
+    <value>Map at least one field to a column.</value>
+  </data>
+  <data name="NoFieldMapped" xml:space="preserve">
+    <value>No field in the file is mapped to a column of this table.</value>
+  </data>
+  <data name="RollbackAlsoFailed" xml:space="preserve">
+    <value>The transaction rollback also failed: {0}</value>
+    <comment>{0} is the database's error message for the failed rollback.</comment>
+  </data>
+  <data name="ScriptErrorLine" xml:space="preserve">
+    <value>Line {0}: {1}</value>
+    <comment>{0} is a line number, {1} the database's error message.</comment>
+  </data>
+  <data name="SqlFileIsScript" xml:space="preserve">
+    <value>A SQL file is run as a script, not read as rows.</value>
+  </data>
+</root>

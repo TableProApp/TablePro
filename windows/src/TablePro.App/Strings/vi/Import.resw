@@ -1,0 +1,372 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AcceptsNullFieldName" xml:space="preserve">
+    <value>{0} chấp nhận null</value>
+  </data>
+  <data name="CannotCreateTable" xml:space="preserve">
+    <value>Engine này không thể tạo bảng đó từ ứng dụng.</value>
+  </data>
+  <data name="CannotImportYetTitle" xml:space="preserve">
+    <value>Chưa thể nhập</value>
+  </data>
+  <data name="CannotReadFileTitle" xml:space="preserve">
+    <value>Không thể đọc tệp này</value>
+  </data>
+  <data name="ColumnForFieldName" xml:space="preserve">
+    <value>Cột cho {0}</value>
+  </data>
+  <data name="ColumnNameForFieldName" xml:space="preserve">
+    <value>Tên cột cho {0}</value>
+  </data>
+  <data name="CreateAllColumns" xml:space="preserve">
+    <value>Tạo tất cả các cột</value>
+  </data>
+  <data name="CreateAndImport" xml:space="preserve">
+    <value>Tạo và nhập</value>
+  </data>
+  <data name="CreateFieldName" xml:space="preserve">
+    <value>Tạo {0}</value>
+  </data>
+  <data name="CreateTableFailedTitle" xml:space="preserve">
+    <value>Không thể tạo bảng</value>
+  </data>
+  <data name="CreateTableReviewTitle" xml:space="preserve">
+    <value>Tạo bảng để nhập</value>
+  </data>
+  <data name="DefaultSqlFieldName" xml:space="preserve">
+    <value>SQL mặc định cho {0}</value>
+  </data>
+  <data name="DefaultSqlPlaceholder" xml:space="preserve">
+    <value>SQL mặc định</value>
+  </data>
+  <data name="DefaultSqlToolTip" xml:space="preserve">
+    <value>Phần SQL sau DEFAULT. Giá trị văn bản cần có dấu nháy riêng.</value>
+  </data>
+  <data name="DelimiterComma" xml:space="preserve">
+    <value>Dấu phẩy</value>
+  </data>
+  <data name="DelimiterDetect" xml:space="preserve">
+    <value>Tự phát hiện</value>
+  </data>
+  <data name="DelimiterHeader" xml:space="preserve">
+    <value>Dấu phân cách</value>
+  </data>
+  <data name="DelimiterPipe" xml:space="preserve">
+    <value>Dấu sổ đứng</value>
+  </data>
+  <data name="DelimiterSemicolon" xml:space="preserve">
+    <value>Dấu chấm phẩy</value>
+  </data>
+  <data name="DelimiterTab" xml:space="preserve">
+    <value>Tab</value>
+  </data>
+  <data name="DisableForeignKeyChecks" xml:space="preserve">
+    <value>Tắt kiểm tra khóa ngoại</value>
+  </data>
+  <data name="DisableForeignKeyChecksToolTip" xml:space="preserve">
+    <value>Tạm thời tắt ràng buộc khóa ngoại trong quá trình nhập. Hữu ích khi nhập dữ liệu có phụ thuộc vòng.</value>
+  </data>
+  <data name="EnterNewTableName" xml:space="preserve">
+    <value>Nhập tên cho bảng mới.</value>
+  </data>
+  <data name="ErrorLine" xml:space="preserve">
+    <value>Dòng {0}: {1}</value>
+  </data>
+  <data name="ExistingTable" xml:space="preserve">
+    <value>Bảng hiện có {0}</value>
+  </data>
+  <data name="FieldTypeBoolean" xml:space="preserve">
+    <value>Boolean</value>
+  </data>
+  <data name="FieldTypeInteger" xml:space="preserve">
+    <value>Số nguyên</value>
+  </data>
+  <data name="FieldTypeJson" xml:space="preserve">
+    <value>JSON</value>
+  </data>
+  <data name="FieldTypeReal" xml:space="preserve">
+    <value>Số thực</value>
+  </data>
+  <data name="FieldTypeText" xml:space="preserve">
+    <value>Văn bản</value>
+  </data>
+  <data name="FirstRowIsHeader" xml:space="preserve">
+    <value>Dòng đầu tiên là tiêu đề</value>
+  </data>
+  <data name="FirstRows" xml:space="preserve">
+    <value>Các dòng đầu tiên</value>
+  </data>
+  <data name="HeaderColumn" xml:space="preserve">
+    <value>Cột</value>
+  </data>
+  <data name="HeaderDefault" xml:space="preserve">
+    <value>Mặc định</value>
+  </data>
+  <data name="HeaderField" xml:space="preserve">
+    <value>Trường</value>
+  </data>
+  <data name="HeaderKey" xml:space="preserve">
+    <value>Khóa</value>
+  </data>
+  <data name="HeaderNull" xml:space="preserve">
+    <value>Null</value>
+  </data>
+  <data name="ImportAllFields" xml:space="preserve">
+    <value>Nhập tất cả các trường</value>
+  </data>
+  <data name="ImportFailedTitle" xml:space="preserve">
+    <value>Nhập thất bại</value>
+  </data>
+  <data name="ImportFieldName" xml:space="preserve">
+    <value>Nhập {0}</value>
+  </data>
+  <data name="ImportFileTitle" xml:space="preserve">
+    <value>Nhập {0}</value>
+  </data>
+  <data name="ImportIntoHeader" xml:space="preserve">
+    <value>Nhập vào</value>
+  </data>
+  <data name="ImportSqlFileTitle" xml:space="preserve">
+    <value>Nhập tệp SQL</value>
+  </data>
+  <data name="ImportStoppedRowsKept" xml:space="preserve">
+    <value>{0}
+
+Các dòng đã lưu trước thời điểm này vẫn được giữ trong bảng.</value>
+  </data>
+  <data name="ImportStoppedTitle" xml:space="preserve">
+    <value>Đã dừng nhập</value>
+  </data>
+  <data name="ImportedRows_One" xml:space="preserve">
+    <value>Đã nhập {0:N0} dòng vào {1}.</value>
+  </data>
+  <data name="ImportedRows_Other" xml:space="preserve">
+    <value>Đã nhập {0:N0} dòng vào {1}.</value>
+  </data>
+  <data name="ImportedWithSkipped" xml:space="preserve">
+    <value>{0} {1}</value>
+  </data>
+  <data name="Importing" xml:space="preserve">
+    <value>Đang nhập…</value>
+  </data>
+  <data name="ImportingRows_One" xml:space="preserve">
+    <value>Đang nhập… {0:N0} dòng</value>
+  </data>
+  <data name="ImportingRows_Other" xml:space="preserve">
+    <value>Đang nhập… {0:N0} dòng</value>
+  </data>
+  <data name="ImportingSqlTitle" xml:space="preserve">
+    <value>Đang nhập SQL</value>
+  </data>
+  <data name="MatchByName" xml:space="preserve">
+    <value>Khớp theo tên</value>
+  </data>
+  <data name="MatchByPosition" xml:space="preserve">
+    <value>Khớp theo vị trí</value>
+  </data>
+  <data name="MatchColumns" xml:space="preserve">
+    <value>Khớp cột</value>
+  </data>
+  <data name="NewTable" xml:space="preserve">
+    <value>Bảng mới</value>
+  </data>
+  <data name="NewTableName" xml:space="preserve">
+    <value>Tên bảng mới</value>
+  </data>
+  <data name="NoFields" xml:space="preserve">
+    <value>Tệp không có trường nào để nhập.</value>
+  </data>
+  <data name="NoTransactionsToolTip" xml:space="preserve">
+    <value>Cơ sở dữ liệu này chạy từng câu lệnh riêng lẻ.</value>
+  </data>
+  <data name="NullTextHeader" xml:space="preserve">
+    <value>Văn bản null</value>
+  </data>
+  <data name="NullTextToolTip" xml:space="preserve">
+    <value>Giá trị được nhập thành null, chẳng hạn NULL hoặc \N. Trường trống luôn được nhập thành null.</value>
+  </data>
+  <data name="OnErrorHeader" xml:space="preserve">
+    <value>Khi có lỗi</value>
+  </data>
+  <data name="OnErrorSkipAndContinue" xml:space="preserve">
+    <value>Bỏ qua và tiếp tục</value>
+  </data>
+  <data name="OnErrorStopAndCommit" xml:space="preserve">
+    <value>Dừng và commit</value>
+  </data>
+  <data name="OnErrorStopAndRollback" xml:space="preserve">
+    <value>Dừng và rollback</value>
+  </data>
+  <data name="PreviewNote" xml:space="preserve">
+    <value>{0}; {1}</value>
+  </data>
+  <data name="PrimaryKeyFieldName" xml:space="preserve">
+    <value>{0} là khóa chính</value>
+  </data>
+  <data name="ReadOnlyCannotImportSql" xml:space="preserve">
+    <value>Chế độ an toàn của kết nối này là Chỉ đọc, nên không thể nhập tệp SQL.</value>
+  </data>
+  <data name="RecordsSkipped_One" xml:space="preserve">
+    <value>{0:N0} bản ghi không có trường nào được ánh xạ và đã bị bỏ qua.</value>
+  </data>
+  <data name="RecordsSkipped_Other" xml:space="preserve">
+    <value>{0:N0} bản ghi không có trường nào được ánh xạ và đã bị bỏ qua.</value>
+  </data>
+  <data name="RowsShown_One" xml:space="preserve">
+    <value>hiển thị {0:N0}</value>
+  </data>
+  <data name="RowsShown_Other" xml:space="preserve">
+    <value>hiển thị {0:N0}</value>
+  </data>
+  <data name="Skip" xml:space="preserve">
+    <value>Bỏ qua</value>
+  </data>
+  <data name="SqlFileSummary" xml:space="preserve">
+    <value>Chạy mọi câu lệnh trong {0} ({1:N0} KB) trên {2}.</value>
+  </data>
+  <data name="SqlImportedSkipped_One" xml:space="preserve">
+    <value>Đã nhập {1}: {0:N0} câu lệnh trong {2:N1} giây, {3:N0} bị bỏ qua.</value>
+  </data>
+  <data name="SqlImportedSkipped_Other" xml:space="preserve">
+    <value>Đã nhập {1}: {0:N0} câu lệnh trong {2:N1} giây, {3:N0} bị bỏ qua.</value>
+  </data>
+  <data name="SqlImported_One" xml:space="preserve">
+    <value>Đã nhập {1}: {0:N0} câu lệnh trong {2:N1} giây.</value>
+  </data>
+  <data name="SqlImported_Other" xml:space="preserve">
+    <value>Đã nhập {1}: {0:N0} câu lệnh trong {2:N1} giây.</value>
+  </data>
+  <data name="Starting" xml:space="preserve">
+    <value>Đang khởi động…</value>
+  </data>
+  <data name="StatementsFailedTitle_One" xml:space="preserve">
+    <value>{0:N0} câu lệnh thất bại</value>
+  </data>
+  <data name="StatementsFailedTitle_Other" xml:space="preserve">
+    <value>{0:N0} câu lệnh thất bại</value>
+  </data>
+  <data name="StatementsKept_One" xml:space="preserve">
+    <value>Câu lệnh trước đó đã được giữ lại.</value>
+  </data>
+  <data name="StatementsKept_Other" xml:space="preserve">
+    <value>{0:N0} câu lệnh trước đó đã được giữ lại.</value>
+  </data>
+  <data name="StatementsRunSkipped_One" xml:space="preserve">
+    <value>Đã chạy {0:N0} câu lệnh, bỏ qua {1:N0}</value>
+  </data>
+  <data name="StatementsRunSkipped_Other" xml:space="preserve">
+    <value>Đã chạy {0:N0} câu lệnh, bỏ qua {1:N0}</value>
+  </data>
+  <data name="StatementsRun_One" xml:space="preserve">
+    <value>Đã chạy {0:N0} câu lệnh</value>
+  </data>
+  <data name="StatementsRun_Other" xml:space="preserve">
+    <value>Đã chạy {0:N0} câu lệnh</value>
+  </data>
+  <data name="StoppedImporting" xml:space="preserve">
+    <value>Đã dừng nhập {0}.</value>
+  </data>
+  <data name="TrimSpaces" xml:space="preserve">
+    <value>Cắt khoảng trắng</value>
+  </data>
+  <data name="TypeOfFieldName" xml:space="preserve">
+    <value>Kiểu của {0}</value>
+  </data>
+  <data name="TypesFromRows_One" xml:space="preserve">
+    <value>kiểu lấy từ dòng đầu tiên</value>
+  </data>
+  <data name="TypesFromRows_Other" xml:space="preserve">
+    <value>kiểu lấy từ {0:N0} dòng đầu tiên</value>
+  </data>
+  <data name="WrapInTransaction" xml:space="preserve">
+    <value>Bọc trong giao dịch (BEGIN/COMMIT)</value>
+  </data>
+  <data name="WrapInTransactionToolTip" xml:space="preserve">
+    <value>Chạy mọi câu lệnh trong một giao dịch, nên khi có lỗi, những gì quá trình nhập đã thay đổi sẽ được hoàn tác. Cơ sở dữ liệu tự commit CREATE, ALTER và DROP ngay khi chạy, chẳng hạn MySQL, sẽ giữ lại các câu lệnh đó và mọi thứ trước chúng.</value>
+  </data>
+  <data name="ImportAsHeader" xml:space="preserve">
+    <value>Nhập dưới dạng</value>
+  </data>
+  <data name="WriteModeInsert" xml:space="preserve">
+    <value>Chèn</value>
+  </data>
+  <data name="WriteModeUpdate" xml:space="preserve">
+    <value>Cập nhật</value>
+  </data>
+  <data name="WriteModeUpsert" xml:space="preserve">
+    <value>Chèn hoặc cập nhật</value>
+  </data>
+  <data name="WriteModeSkipExisting" xml:space="preserve">
+    <value>Chèn, bỏ qua hàng đã có</value>
+  </data>
+  <data name="WriteModeToolTip" xml:space="preserve">
+    <value>Cập nhật thay đổi các hàng có khóa nằm trong tệp. Chèn hoặc cập nhật thêm cả các hàng còn lại, còn Chèn, bỏ qua hàng đã có chỉ thêm các hàng có khóa chưa có trong bảng. Các cột không được ánh xạ giữ nguyên giá trị.</value>
+  </data>
+  <data name="MatchOnHeader" xml:space="preserve">
+    <value>Đối chiếu theo</value>
+  </data>
+  <data name="MatchKeyPrimary" xml:space="preserve">
+    <value>Khóa chính ({0})</value>
+  </data>
+  <data name="MatchKeyIndex" xml:space="preserve">
+    <value>{0} ({1})</value>
+  </data>
+  <data name="ProblemNoKey" xml:space="preserve">
+    <value>Bảng này không có khóa chính hay chỉ mục duy nhất để đối chiếu các hàng.</value>
+  </data>
+  <data name="ProblemUnmappedKey" xml:space="preserve">
+    <value>Hãy ánh xạ một trường vào {0} để đối chiếu các hàng theo nó.</value>
+  </data>
+  <data name="ProblemNothingToUpdate" xml:space="preserve">
+    <value>Hãy ánh xạ một trường vào một cột ngoài khóa để có dữ liệu cần cập nhật.</value>
+  </data>
+  <data name="UseSavedMapping" xml:space="preserve">
+    <value>Dùng ánh xạ đã lưu</value>
+  </data>
+  <data name="RestoredSavedMapping" xml:space="preserve">
+    <value>Đã khôi phục ánh xạ đã lưu cho {0}.</value>
+  </data>
+  <data name="ImportedMatching" xml:space="preserve">
+    <value>Đã nhập vào {0}. Khớp: {1:N0}, cập nhật: {2:N0}, chèn: {3:N0}, bỏ qua: {4:N0}.</value>
+  </data>
+  <data name="EncodingHeader" xml:space="preserve">
+    <value>Mã hóa</value>
+    <comment>Header of the SQL import's text encoding picker.</comment>
+  </data>
+  <data name="EncodingToolTip" xml:space="preserve">
+    <value>Cách đọc các byte của tệp. Bản dump khai báo mã hóa bằng SET NAMES hoặc client_encoding sẽ bắt đầu với mã hóa đó; dấu thứ tự byte luôn được ưu tiên.</value>
+    <comment>Tooltip of the encoding picker. SET NAMES and client_encoding are SQL and stay untranslated.</comment>
+  </data>
+  <data name="DeleteExistingRows" xml:space="preserve">
+    <value>Xóa các dòng hiện có trước</value>
+    <comment>Check box in the import sheet that empties the table before the rows are imported.</comment>
+  </data>
+  <data name="DeleteExistingRowsToolTip" xml:space="preserve">
+    <value>Làm trống bảng và nhập tệp trong một giao dịch, nên nếu có lỗi thì các dòng cũ vẫn được giữ nguyên. Chỉ chế độ Chèn mới dùng được, vì sẽ không còn dòng nào để đối chiếu.</value>
+    <comment>Tooltip of the Delete existing rows first check box. Insert is the import mode of that name.</comment>
+  </data>
+  <data name="ImportStoppedNothingChanged" xml:space="preserve">
+    <value>{0}
+
+Việc nhập chạy trong một giao dịch, nên bảng được giữ nguyên như cũ.</value>
+    <comment>Error message when an import that emptied the table first fails. {0} is the error's own message.</comment>
+  </data>
+  <data name="RowsInTransactionToolTip" xml:space="preserve">
+    <value>Ghi mọi dòng trong một giao dịch, nên nếu có dòng nào lỗi, bảng vẫn giữ nguyên như cũ. Tắt để commit từng lô ngay khi ghi.</value>
+  </data>
+  <data name="BatchesCommitNote" xml:space="preserve">
+    <value>Kết nối này không thể gói cả lần nhập vào một giao dịch, nên cứ mỗi {0:N0} dòng được commit riêng và khi có lỗi, các dòng trước đó vẫn được giữ lại.</value>
+  </data>
+</root>

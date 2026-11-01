@@ -1,0 +1,414 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AiAssistant" xml:space="preserve">
+    <value>AI 助理</value>
+  </data>
+  <data name="AssistantButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>AI 助理</value>
+  </data>
+  <data name="BadgeReadOnly" xml:space="preserve">
+    <value>唯讀</value>
+  </data>
+  <data name="CloseSidePaneButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>關閉</value>
+  </data>
+  <data name="CloseSidePaneButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>關閉</value>
+  </data>
+  <data name="CloseTabMessage" xml:space="preserve">
+    <value>{0}關閉將會捨棄這些變更。</value>
+  </data>
+  <data name="CloseTabTitle" xml:space="preserve">
+    <value>關閉分頁？</value>
+  </data>
+  <data name="CloseWindowTitle" xml:space="preserve">
+    <value>要關閉此視窗嗎？</value>
+  </data>
+  <data name="CloseWithoutSaving" xml:space="preserve">
+    <value>關閉而不儲存</value>
+  </data>
+  <data name="ConnectedTo" xml:space="preserve">
+    <value>已連線到 {0}</value>
+  </data>
+  <data name="CopyConnectMessage" xml:space="preserve">
+    <value>請輸入密碼以複製到此連線。</value>
+  </data>
+  <data name="CopyConnectTitle" xml:space="preserve">
+    <value>連線到 {0}</value>
+  </data>
+  <data name="CountBillions" xml:space="preserve">
+    <value>{0:0.#}B</value>
+  </data>
+  <data name="CountMillions" xml:space="preserve">
+    <value>{0:0.#}M</value>
+  </data>
+  <data name="CountThousands" xml:space="preserve">
+    <value>{0:0.#}K</value>
+  </data>
+  <data name="Create" xml:space="preserve">
+    <value>建立</value>
+  </data>
+  <data name="CreateTableAddColumn" xml:space="preserve">
+    <value>新增欄位</value>
+  </data>
+  <data name="CreateTableButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>建立資料表</value>
+  </data>
+  <data name="CreateTableButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>建立資料表</value>
+  </data>
+  <data name="CreateTableColumnPlaceholder" xml:space="preserve">
+    <value>欄位</value>
+  </data>
+  <data name="CreateTableKey" xml:space="preserve">
+    <value>鍵</value>
+  </data>
+  <data name="CreateTableName" xml:space="preserve">
+    <value>資料表名稱</value>
+  </data>
+  <data name="CreateTableReviewTitle" xml:space="preserve">
+    <value>建立資料表</value>
+  </data>
+  <data name="CreateTableTitle" xml:space="preserve">
+    <value>建立資料表</value>
+  </data>
+  <data name="DatabaseBox.PlaceholderText" xml:space="preserve">
+    <value>資料庫</value>
+  </data>
+  <data name="DatabaseBox.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>資料庫</value>
+  </data>
+  <data name="Drop" xml:space="preserve">
+    <value>刪除</value>
+  </data>
+  <data name="DropTitle" xml:space="preserve">
+    <value>刪除 {0}？</value>
+  </data>
+  <data name="DumpExported_One" xml:space="preserve">
+    <value>已將 {0} 個物件匯出至 {1}。</value>
+  </data>
+  <data name="DumpExported_Other" xml:space="preserve">
+    <value>已將 {0} 個物件匯出至 {1}。</value>
+  </data>
+  <data name="DumpExporting" xml:space="preserve">
+    <value>正在匯出 {0}…</value>
+  </data>
+  <data name="DumpIncludeData" xml:space="preserve">
+    <value>包含資料</value>
+  </data>
+  <data name="DumpMessage" xml:space="preserve">
+    <value>將 {0} 中每個資料表和檢視表的結構寫入 SQL 檔案。</value>
+  </data>
+  <data name="DumpTitle" xml:space="preserve">
+    <value>匯出資料庫</value>
+  </data>
+  <data name="ExportColumns_One" xml:space="preserve">
+    <value>{0} 個欄位</value>
+  </data>
+  <data name="ExportColumns_Other" xml:space="preserve">
+    <value>{0} 個欄位</value>
+  </data>
+  <data name="ExportCompression" xml:space="preserve">
+    <value>壓縮</value>
+  </data>
+  <data name="ExportCompressionTip" xml:space="preserve">
+    <value>所有 Parquet 讀取器都支援 Snappy。Zstd 檔案較小，但需要支援它的讀取器。</value>
+  </data>
+  <data name="ExportEllipsis" xml:space="preserve">
+    <value>匯出…</value>
+  </data>
+  <data name="ExportFailed" xml:space="preserve">
+    <value>匯出失敗</value>
+  </data>
+  <data name="ExportFormat" xml:space="preserve">
+    <value>格式</value>
+  </data>
+  <data name="ExportFormatExcel" xml:space="preserve">
+    <value>Excel 活頁簿</value>
+  </data>
+  <data name="ExportIncludeColumnNames" xml:space="preserve">
+    <value>包含欄位名稱</value>
+  </data>
+  <data name="ExportRowsPerGroup" xml:space="preserve">
+    <value>每個群組的列數</value>
+  </data>
+  <data name="ExportRowsPerGroupTip" xml:space="preserve">
+    <value>群組越大壓縮效果越好，但讀取時需要更多記憶體</value>
+  </data>
+  <data name="ExportSummary_One" xml:space="preserve">
+    <value>{0:N0} 列，{1}</value>
+  </data>
+  <data name="ExportSummary_Other" xml:space="preserve">
+    <value>{0:N0} 列，{1}</value>
+  </data>
+  <data name="Favorites" xml:space="preserve">
+    <value>我的最愛</value>
+  </data>
+  <data name="FavoritesButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>我的最愛</value>
+  </data>
+  <data name="GridCopyAs" xml:space="preserve">
+    <value>複製為</value>
+  </data>
+  <data name="GridCopyAsInList" xml:space="preserve">
+    <value>IN 清單</value>
+  </data>
+  <data name="GridCopyAsWhereClause" xml:space="preserve">
+    <value>WHERE 子句</value>
+  </data>
+  <data name="GridCopyColumnName" xml:space="preserve">
+    <value>複製欄位名稱</value>
+  </data>
+  <data name="GridCopyWithHeaders" xml:space="preserve">
+    <value>複製（含標題）</value>
+  </data>
+  <data name="HistoryButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>查詢歷史</value>
+  </data>
+  <data name="KindCollection" xml:space="preserve">
+    <value>集合</value>
+  </data>
+  <data name="KindFunction" xml:space="preserve">
+    <value>函式</value>
+  </data>
+  <data name="KindKey" xml:space="preserve">
+    <value>鍵</value>
+  </data>
+  <data name="KindMaterializedView" xml:space="preserve">
+    <value>具體化檢視表</value>
+  </data>
+  <data name="KindProcedure" xml:space="preserve">
+    <value>預存程序</value>
+  </data>
+  <data name="KindSequence" xml:space="preserve">
+    <value>序列</value>
+  </data>
+  <data name="KindTable" xml:space="preserve">
+    <value>資料表</value>
+  </data>
+  <data name="KindTopic" xml:space="preserve">
+    <value>主題</value>
+  </data>
+  <data name="KindTrigger" xml:space="preserve">
+    <value>觸發器</value>
+  </data>
+  <data name="KindView" xml:space="preserve">
+    <value>檢視</value>
+  </data>
+  <data name="MenuBrowseKeys" xml:space="preserve">
+    <value>瀏覽鍵</value>
+  </data>
+  <data name="MenuBuildJoinQuery" xml:space="preserve">
+    <value>建立聯結查詢</value>
+  </data>
+  <data name="MenuCheckForUpdates.Text" xml:space="preserve">
+    <value>檢查更新…</value>
+  </data>
+  <data name="MenuCollapse" xml:space="preserve">
+    <value>摺疊</value>
+  </data>
+  <data name="MenuCompare.Text" xml:space="preserve">
+    <value>比較與同步</value>
+  </data>
+  <data name="MenuCopyName" xml:space="preserve">
+    <value>複製名稱</value>
+  </data>
+  <data name="MenuCopyObjects.Text" xml:space="preserve">
+    <value>複製物件…</value>
+  </data>
+  <data name="MenuCopyQualifiedName" xml:space="preserve">
+    <value>複製完整名稱</value>
+  </data>
+  <data name="MenuCopyToConnection" xml:space="preserve">
+    <value>複製到連線…</value>
+  </data>
+  <data name="MenuDataRewind.Text" xml:space="preserve">
+    <value>資料回溯</value>
+  </data>
+  <data name="MenuDebug" xml:space="preserve">
+    <value>偵錯</value>
+  </data>
+  <data name="MenuDisconnect.Text" xml:space="preserve">
+    <value>中斷連線</value>
+  </data>
+  <data name="MenuErDiagram.Text" xml:space="preserve">
+    <value>ER 圖</value>
+  </data>
+  <data name="MenuExpand" xml:space="preserve">
+    <value>展開</value>
+  </data>
+  <data name="MenuExportData" xml:space="preserve">
+    <value>匯出資料</value>
+  </data>
+  <data name="MenuExportDatabase.Text" xml:space="preserve">
+    <value>匯出資料庫</value>
+  </data>
+  <data name="MenuGenerateRows" xml:space="preserve">
+    <value>產生列…</value>
+  </data>
+  <data name="MenuGenerateSql" xml:space="preserve">
+    <value>產生 SQL</value>
+  </data>
+  <data name="MenuJoinBuilder.Text" xml:space="preserve">
+    <value>聯結產生器</value>
+  </data>
+  <data name="MenuOpenQuickly.Text" xml:space="preserve">
+    <value>快速打開</value>
+  </data>
+  <data name="MenuQueryInNewTab" xml:space="preserve">
+    <value>在新分頁中查詢</value>
+  </data>
+  <data name="MenuRunSqlFile.Text" xml:space="preserve">
+    <value>執行 SQL 檔案</value>
+  </data>
+  <data name="MenuSearchDatabase.Text" xml:space="preserve">
+    <value>搜尋資料庫</value>
+  </data>
+  <data name="MenuServerDashboard.Text" xml:space="preserve">
+    <value>伺服器儀表板</value>
+  </data>
+  <data name="MenuSettings.Text" xml:space="preserve">
+    <value>設定</value>
+  </data>
+  <data name="MenuShowDefinition" xml:space="preserve">
+    <value>顯示定義</value>
+  </data>
+  <data name="MenuStructure" xml:space="preserve">
+    <value>結構</value>
+  </data>
+  <data name="MoreButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>更多</value>
+  </data>
+  <data name="MoreButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>更多</value>
+  </data>
+  <data name="NewQuery" xml:space="preserve">
+    <value>新增查詢</value>
+  </data>
+  <data name="NewQueryButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>新增查詢</value>
+  </data>
+  <data name="QueryHistory" xml:space="preserve">
+    <value>查詢歷史</value>
+  </data>
+  <data name="QuitTitle" xml:space="preserve">
+    <value>結束 TablePro？</value>
+  </data>
+  <data name="QuitWithoutSaving" xml:space="preserve">
+    <value>結束而不儲存</value>
+  </data>
+  <data name="RefreshButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>重新整理</value>
+  </data>
+  <data name="RefreshButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>重新整理（在側邊欄中按 F5）</value>
+  </data>
+  <data name="RenameNewName" xml:space="preserve">
+    <value>新名稱</value>
+  </data>
+  <data name="RenameTitle" xml:space="preserve">
+    <value>重新命名 {0}</value>
+  </data>
+  <data name="SchemaBox.PlaceholderText" xml:space="preserve">
+    <value>綱要</value>
+  </data>
+  <data name="SchemaBox.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>綱要</value>
+  </data>
+  <data name="SearchTables" xml:space="preserve">
+    <value>搜尋資料表</value>
+  </data>
+  <data name="SectionCollections" xml:space="preserve">
+    <value>集合</value>
+  </data>
+  <data name="SectionFunctions" xml:space="preserve">
+    <value>函式</value>
+  </data>
+  <data name="SectionKeys" xml:space="preserve">
+    <value>鍵</value>
+  </data>
+  <data name="SectionMaterializedViews" xml:space="preserve">
+    <value>具體化檢視表</value>
+  </data>
+  <data name="SectionProcedures" xml:space="preserve">
+    <value>預存程序</value>
+  </data>
+  <data name="SectionSequences" xml:space="preserve">
+    <value>序列</value>
+  </data>
+  <data name="SectionTables" xml:space="preserve">
+    <value>資料表</value>
+  </data>
+  <data name="SectionTopics" xml:space="preserve">
+    <value>主題</value>
+  </data>
+  <data name="SectionTriggers" xml:space="preserve">
+    <value>觸發器</value>
+  </data>
+  <data name="SectionViews" xml:space="preserve">
+    <value>檢視表</value>
+  </data>
+  <data name="SidebarNamespaceAccessibleName" xml:space="preserve">
+    <value>命名空間 {0}</value>
+  </data>
+  <data name="SidePaneAssistant" xml:space="preserve">
+    <value>助理</value>
+  </data>
+  <data name="SidePaneDataRewind" xml:space="preserve">
+    <value>資料回溯</value>
+  </data>
+  <data name="SidePaneHistory" xml:space="preserve">
+    <value>歷程記錄</value>
+  </data>
+  <data name="SidePaneSqlFiles" xml:space="preserve">
+    <value>SQL 檔案</value>
+  </data>
+  <data name="SidebarItemAccessibleName" xml:space="preserve">
+    <value>{0} {1}</value>
+  </data>
+  <data name="SqlFileType" xml:space="preserve">
+    <value>SQL 檔案</value>
+  </data>
+  <data name="SqlFilesButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>SQL 檔案</value>
+  </data>
+  <data name="SqlFilesButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>SQL 檔案</value>
+  </data>
+  <data name="StatementFailed" xml:space="preserve">
+    <value>陳述式執行失敗</value>
+  </data>
+  <data name="SwitchDatabaseButton" xml:space="preserve">
+    <value>切換</value>
+  </data>
+  <data name="SwitchDatabaseFailed" xml:space="preserve">
+    <value>無法切換資料庫</value>
+  </data>
+  <data name="SwitchDatabaseMessage" xml:space="preserve">
+    <value>有未儲存變更的已開啟分頁將會關閉。</value>
+  </data>
+  <data name="SwitchDatabaseTitle" xml:space="preserve">
+    <value>切換資料庫？</value>
+  </data>
+  <data name="Truncate" xml:space="preserve">
+    <value>清空</value>
+  </data>
+  <data name="TruncateTitle" xml:space="preserve">
+    <value>要清空 {0} 嗎？</value>
+  </data>
+  <data name="WindowTitle" xml:space="preserve">
+    <value>{0} - TablePro</value>
+  </data>
+</root>

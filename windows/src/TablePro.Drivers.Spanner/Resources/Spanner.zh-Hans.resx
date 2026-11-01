@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="MissingDatabase" xml:space="preserve">
+    <value>Spanner 需要数据库：请将 projects/p/instances/i/databases/d 输入为主机，或设置 project 和 instance 选项以及数据库。</value>
+  </data>
+  <data name="MissingInstance" xml:space="preserve">
+    <value>Spanner 需要实例：请将 projects/p/instances/i/databases/d 输入为主机，或设置 project 和 instance 选项以及数据库。</value>
+  </data>
+  <data name="MissingProject" xml:space="preserve">
+    <value>Spanner 需要项目：请将 projects/p/instances/i/databases/d 输入为主机，或设置 project 和 instance 选项以及数据库。</value>
+  </data>
+  <data name="NoSchemaChangeInTransaction" xml:space="preserve">
+    <value>Spanner 无法在事务中更改架构。请先执行 COMMIT 或 ROLLBACK。</value>
+  </data>
+  <data name="NotADatabasePath" xml:space="preserve">
+    <value>“{0}”不是 Spanner 数据库路径，例如 projects/my-project/instances/my-instance/databases/my-db。</value>
+  </data>
+  <data name="PostgreSqlDialect" xml:space="preserve">
+    <value>此 Spanner 数据库使用 PostgreSQL 方言，Windows 版 TablePro 尚不支持。GoogleSQL 数据库可以正常使用。</value>
+  </data>
+  <data name="SchemaChangeApplied" xml:space="preserve">
+    <value>已通过 UpdateDatabaseDdl 应用架构更改。</value>
+  </data>
+</root>

@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="EmptyBody" xml:space="preserve">
+    <value>{0} phản hồi với nội dung trống.</value>
+  </data>
+  <data name="KeyOverHttp" xml:space="preserve">
+    <value>Khóa API chỉ được gửi qua http thường tới chính máy tính này. Hãy dùng địa chỉ https.</value>
+  </data>
+  <data name="ModelNotFound" xml:space="preserve">
+    <value>{0} không nhận ra mô hình hoặc địa chỉ đó</value>
+  </data>
+  <data name="NeedsApiKey" xml:space="preserve">
+    <value>{0} cần có khóa API.</value>
+  </data>
+  <data name="RateLimited" xml:space="preserve">
+    <value>{0} đang giới hạn tốc độ yêu cầu</value>
+  </data>
+  <data name="RefusedKey" xml:space="preserve">
+    <value>{0} đã từ chối khóa API</value>
+  </data>
+  <data name="RefusedRequest" xml:space="preserve">
+    <value>{0} đã từ chối yêu cầu</value>
+  </data>
+  <data name="ServerError" xml:space="preserve">
+    <value>{0} gặp lỗi máy chủ</value>
+  </data>
+  <data name="StoppedReply" xml:space="preserve">
+    <value>{0} đã dừng câu trả lời: {1}</value>
+  </data>
+  <data name="UnknownError" xml:space="preserve">
+    <value>lỗi không xác định</value>
+  </data>
+  <data name="Unreachable" xml:space="preserve">
+    <value>Không thể kết nối tới {0} tại {1}: {2}</value>
+  </data>
+  <data name="UnreadableEvent" xml:space="preserve">
+    <value>{0} đã gửi một sự kiện mà ứng dụng không đọc được.</value>
+  </data>
+  <data name="UnreadableJson" xml:space="preserve">
+    <value>{0} phản hồi bằng JSON mà ứng dụng không đọc được.</value>
+  </data>
+  <data name="WithStatus" xml:space="preserve">
+    <value>{0} (HTTP {1}).</value>
+  </data>
+  <data name="WithStatusDetail" xml:space="preserve">
+    <value>{0} (HTTP {1}): {2}</value>
+  </data>
+</root>

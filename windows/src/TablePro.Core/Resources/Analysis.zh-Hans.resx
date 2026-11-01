@@ -1,0 +1,189 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="CharAmpersand" xml:space="preserve">
+    <value>和号</value>
+  </data>
+  <data name="CharApostrophe" xml:space="preserve">
+    <value>单引号</value>
+  </data>
+  <data name="CharAsterisk" xml:space="preserve">
+    <value>星号</value>
+  </data>
+  <data name="CharAtSign" xml:space="preserve">
+    <value>at 符号</value>
+  </data>
+  <data name="CharBackslash" xml:space="preserve">
+    <value>反斜杠</value>
+  </data>
+  <data name="CharBacktick" xml:space="preserve">
+    <value>反引号</value>
+  </data>
+  <data name="CharCaret" xml:space="preserve">
+    <value>脱字符</value>
+  </data>
+  <data name="CharColon" xml:space="preserve">
+    <value>冒号</value>
+  </data>
+  <data name="CharComma" xml:space="preserve">
+    <value>逗号</value>
+  </data>
+  <data name="CharDollarSign" xml:space="preserve">
+    <value>美元符号</value>
+  </data>
+  <data name="CharEqualsSign" xml:space="preserve">
+    <value>等号</value>
+  </data>
+  <data name="CharExclamationMark" xml:space="preserve">
+    <value>感叹号</value>
+  </data>
+  <data name="CharGreaterThanSign" xml:space="preserve">
+    <value>大于号</value>
+  </data>
+  <data name="CharHyphen" xml:space="preserve">
+    <value>连字符</value>
+  </data>
+  <data name="CharLeftCurlyBracket" xml:space="preserve">
+    <value>左花括号</value>
+  </data>
+  <data name="CharLeftParenthesis" xml:space="preserve">
+    <value>左括号</value>
+  </data>
+  <data name="CharLeftSquareBracket" xml:space="preserve">
+    <value>左方括号</value>
+  </data>
+  <data name="CharLessThanSign" xml:space="preserve">
+    <value>小于号</value>
+  </data>
+  <data name="CharNumberSign" xml:space="preserve">
+    <value>井号</value>
+  </data>
+  <data name="CharPercentSign" xml:space="preserve">
+    <value>百分号</value>
+  </data>
+  <data name="CharPeriod" xml:space="preserve">
+    <value>句点</value>
+  </data>
+  <data name="CharPlusSign" xml:space="preserve">
+    <value>加号</value>
+  </data>
+  <data name="CharQuestionMark" xml:space="preserve">
+    <value>问号</value>
+  </data>
+  <data name="CharQuotationMark" xml:space="preserve">
+    <value>双引号</value>
+  </data>
+  <data name="CharRightCurlyBracket" xml:space="preserve">
+    <value>右花括号</value>
+  </data>
+  <data name="CharRightParenthesis" xml:space="preserve">
+    <value>右括号</value>
+  </data>
+  <data name="CharRightSquareBracket" xml:space="preserve">
+    <value>右方括号</value>
+  </data>
+  <data name="CharSlash" xml:space="preserve">
+    <value>斜杠</value>
+  </data>
+  <data name="CharTilde" xml:space="preserve">
+    <value>波浪号</value>
+  </data>
+  <data name="CharVerticalBar" xml:space="preserve">
+    <value>竖线</value>
+  </data>
+  <data name="CurlyQuote" xml:space="preserve">
+    <value>弯引号（{0}）。SQL 需要直引号（{1}）。</value>
+  </data>
+  <data name="FullWidthPunctuation" xml:space="preserve">
+    <value>全角{0}（{1}）。SQL 需要 ASCII {0}（{2}）。</value>
+  </data>
+  <data name="FullWidthSemicolon" xml:space="preserve">
+    <value>全角分号（U+FF1B）。SQL 只把 ; 当作语句分隔符。</value>
+  </data>
+  <data name="FullWidthWord" xml:space="preserve">
+    <value>全角字母或数字。SQL 需要 ASCII {0}。</value>
+  </data>
+  <data name="HoverAliasOfCommonTableExpression" xml:space="preserve">
+    <value>{0}：公用表表达式 {1} 的别名</value>
+  </data>
+  <data name="HoverAliasOfSubquery" xml:space="preserve">
+    <value>{0}：子查询的别名</value>
+  </data>
+  <data name="HoverAliasOfTable" xml:space="preserve">
+    <value>{0}：表 {1} 的别名</value>
+  </data>
+  <data name="HoverAliasOfTableFunction" xml:space="preserve">
+    <value>{0}：表函数 {1} 的别名</value>
+  </data>
+  <data name="HoverAliasOfView" xml:space="preserve">
+    <value>{0}：视图 {1} 的别名</value>
+  </data>
+  <data name="HoverColumn" xml:space="preserve">
+    <value>列 {0}</value>
+  </data>
+  <data name="HoverCommonTableExpression" xml:space="preserve">
+    <value>公用表表达式 {0}</value>
+  </data>
+  <data name="HoverMoreColumns_One" xml:space="preserve">
+    <value>还有 {0} 个</value>
+  </data>
+  <data name="HoverMoreColumns_Other" xml:space="preserve">
+    <value>还有 {0} 个</value>
+  </data>
+  <data name="HoverSubquery" xml:space="preserve">
+    <value>子查询 {0}</value>
+  </data>
+  <data name="HoverTable" xml:space="preserve">
+    <value>表 {0}</value>
+  </data>
+  <data name="HoverTableFunction" xml:space="preserve">
+    <value>表函数 {0}</value>
+  </data>
+  <data name="HoverView" xml:space="preserve">
+    <value>视图 {0}</value>
+  </data>
+  <data name="NoClosingBrace" xml:space="preserve">
+    <value>没有匹配的右花括号</value>
+  </data>
+  <data name="NoClosingBracket" xml:space="preserve">
+    <value>没有匹配的右方括号</value>
+  </data>
+  <data name="NoClosingParenthesis" xml:space="preserve">
+    <value>没有匹配的右圆括号</value>
+  </data>
+  <data name="NonAsciiSpace" xml:space="preserve">
+    <value>非 ASCII 空格（{0}）。SQL 需要 ASCII 空格（U+0020）。</value>
+  </data>
+  <data name="NoOpeningBracket" xml:space="preserve">
+    <value>没有匹配的左括号</value>
+  </data>
+  <data name="UnknownColumn" xml:space="preserve">
+    <value>表“{0}”没有列“{1}”。</value>
+  </data>
+  <data name="UnknownQualifier" xml:space="preserve">
+    <value>未知的表或别名“{0}”。</value>
+  </data>
+  <data name="UnknownTable" xml:space="preserve">
+    <value>未知的表“{0}”。</value>
+  </data>
+  <data name="UnterminatedComment" xml:space="preserve">
+    <value>注释未闭合</value>
+  </data>
+  <data name="UnterminatedQuotedName" xml:space="preserve">
+    <value>带引号的名称未闭合</value>
+  </data>
+  <data name="UnterminatedString" xml:space="preserve">
+    <value>字符串未闭合</value>
+  </data>
+</root>

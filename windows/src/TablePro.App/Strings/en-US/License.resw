@@ -1,0 +1,343 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="Activate" xml:space="preserve">
+    <value>Activate</value>
+    <comment>Button that activates the license key typed above it (verb).</comment>
+  </data>
+  <data name="BuyLicense" xml:space="preserve">
+    <value>Buy a License</value>
+  </data>
+  <data name="CopyKey" xml:space="preserve">
+    <value>Copy Key</value>
+    <comment>Button that copies the license key.</comment>
+  </data>
+  <data name="Deactivate" xml:space="preserve">
+    <value>Deactivate</value>
+    <comment>Confirmation button (verb).</comment>
+  </data>
+  <data name="DeactivateButton" xml:space="preserve">
+    <value>Deactivate on This PC…</value>
+    <comment>Button that gives up this computer's seat on the license.</comment>
+  </data>
+  <data name="DeactivateMessage" xml:space="preserve">
+    <value>Paid features stop on this PC right away. You can activate this license again later.</value>
+  </data>
+  <data name="DeactivateTitle" xml:space="preserve">
+    <value>Deactivate this license?</value>
+  </data>
+  <data name="DeviceCount" xml:space="preserve">
+    <value>{0} of {1} devices</value>
+    <comment>{0} is the number of activated devices, {1} the license's limit.</comment>
+  </data>
+  <data name="DevicesHeader" xml:space="preserve">
+    <value>Devices</value>
+  </data>
+  <data name="ErrorActivationLimit" xml:space="preserve">
+    <value>This license has reached its activation limit. Remove a device from your account, then activate again.</value>
+  </data>
+  <data name="ErrorDecoding" xml:space="preserve">
+    <value>Could not read the server response. Try again in a moment.</value>
+  </data>
+  <data name="ErrorExpired" xml:space="preserve">
+    <value>This license has expired. Renew it to continue using paid features.</value>
+  </data>
+  <data name="ErrorInvalidKey" xml:space="preserve">
+    <value>That doesn't look like a valid license key. Check for typos and try again.</value>
+  </data>
+  <data name="ErrorKeyFormat" xml:space="preserve">
+    <value>Invalid license key format. Check for typos and try again.</value>
+  </data>
+  <data name="ErrorMachineMismatch" xml:space="preserve">
+    <value>This license was activated on a different computer. Activate it here to use paid features.</value>
+  </data>
+  <data name="ErrorNetwork" xml:space="preserve">
+    <value>Could not reach the license server. Check your internet connection and try again.</value>
+  </data>
+  <data name="ErrorNotActivated" xml:space="preserve">
+    <value>This machine is not activated for this license.</value>
+  </data>
+  <data name="ErrorSeatUnconfirmed" xml:space="preserve">
+    <value>The license server could not be reached, so that seat may stay in use until it expires.</value>
+  </data>
+  <data name="ErrorServer" xml:space="preserve">
+    <value>Something went wrong (error {0}). Try again in a moment.</value>
+    <comment>{0} is an HTTP status code.</comment>
+  </data>
+  <data name="ErrorSuspended" xml:space="preserve">
+    <value>This license has been suspended. Contact support for help.</value>
+  </data>
+  <data name="ErrorVerification" xml:space="preserve">
+    <value>License verification failed. Try updating the app to the latest version.</value>
+  </data>
+  <data name="ExpiresOn" xml:space="preserve">
+    <value>Expires {0}</value>
+    <comment>{0} is a date.</comment>
+  </data>
+  <data name="FeatureCompareSync" xml:space="preserve">
+    <value>Compare &amp; Sync</value>
+  </data>
+  <data name="FeatureCompareSyncDescription" xml:space="preserve">
+    <value>Compare structure or data between two connections and generate the sync script.</value>
+  </data>
+  <data name="FeatureDataRewind" xml:space="preserve">
+    <value>Data Rewind</value>
+  </data>
+  <data name="FeatureDataRewindDescription" xml:space="preserve">
+    <value>Restore the previous values of rows you already saved.</value>
+  </data>
+  <data name="FeatureEncryptedExport" xml:space="preserve">
+    <value>Encrypted Export</value>
+  </data>
+  <data name="FeatureEncryptedExportDescription" xml:space="preserve">
+    <value>Export connections with encrypted credentials.</value>
+  </data>
+  <data name="FeatureResultCharts" xml:space="preserve">
+    <value>Result Charts</value>
+  </data>
+  <data name="FeatureResultChartsDescription" xml:space="preserve">
+    <value>Turn loaded query results into bar, line, and area charts.</value>
+  </data>
+  <data name="FeatureTeamLibrary" xml:space="preserve">
+    <value>Team Library</value>
+  </data>
+  <data name="FeatureTeamLibraryDescription" xml:space="preserve">
+    <value>Share connections and saved queries with your team through your account. Passwords are never included.</value>
+  </data>
+  <data name="Included" xml:space="preserve">
+    <value>Included</value>
+    <comment>Shown beside a plan the current license includes.</comment>
+  </data>
+  <data name="IncludesEverything" xml:space="preserve">
+    <value>Includes everything in {0}.</value>
+    <comment>{0} is a lower plan's name.</comment>
+  </data>
+  <data name="KeyPlaceholder" xml:space="preserve">
+    <value>License key or invite code</value>
+    <comment>Placeholder of the box a license key or a team invite code is typed into.</comment>
+  </data>
+  <data name="LandingMessage" xml:space="preserve">
+    <value>Everything else keeps working without a license, with nothing counting down.</value>
+  </data>
+  <data name="LandingTitle" xml:space="preserve">
+    <value>Unlock the paid features</value>
+    <comment>Heading on the license page when no license is active.</comment>
+  </data>
+  <data name="LastUsed" xml:space="preserve">
+    <value>Last used {0}</value>
+    <comment>{0} is a date.</comment>
+  </data>
+  <data name="LearnMore" xml:space="preserve">
+    <value>Learn More About Licensing</value>
+  </data>
+  <data name="LicenseKey" xml:space="preserve">
+    <value>License key</value>
+  </data>
+  <data name="LicenseKeyHidden" xml:space="preserve">
+    <value>License key, hidden</value>
+    <comment>Screen reader text for the masked license key.</comment>
+  </data>
+  <data name="LoadingDevices" xml:space="preserve">
+    <value>Loading devices…</value>
+  </data>
+  <data name="LoadingTeam" xml:space="preserve">
+    <value>Loading team…</value>
+  </data>
+  <data name="ManageAccount" xml:space="preserve">
+    <value>Manage Account</value>
+    <comment>Link to the account page on tablepro.app.</comment>
+  </data>
+  <data name="ManageDevices" xml:space="preserve">
+    <value>Manage Devices</value>
+    <comment>Link to the account page listing the devices a license is activated on.</comment>
+  </data>
+  <data name="MemberCount" xml:space="preserve">
+    <value>{0} of {1} members</value>
+    <comment>{0} is the number of members, {1} the team's seats.</comment>
+  </data>
+  <data name="NoDevices" xml:space="preserve">
+    <value>No devices are activated on this license.</value>
+  </data>
+  <data name="NoMembers" xml:space="preserve">
+    <value>Nobody has joined this team yet.</value>
+  </data>
+  <data name="NoticeExpiredMessage" xml:space="preserve">
+    <value>Renew it to use paid features again. Everything else keeps working.</value>
+  </data>
+  <data name="NoticeExpiredTitle" xml:space="preserve">
+    <value>License Expired</value>
+  </data>
+  <data name="NoticeExpiresInDays" xml:space="preserve">
+    <value>This license expires in {0} days.</value>
+    <comment>{0} is a number of days, from 2 to 7.</comment>
+  </data>
+  <data name="NoticeExpiresToday" xml:space="preserve">
+    <value>This license expires today.</value>
+  </data>
+  <data name="NoticeExpiresTomorrow" xml:space="preserve">
+    <value>This license expires tomorrow.</value>
+  </data>
+  <data name="NoticeExpiringTitle" xml:space="preserve">
+    <value>License Expiring Soon</value>
+  </data>
+  <data name="NoticeNotRecognizedMessage" xml:space="preserve">
+    <value>The server no longer knows this license key.</value>
+  </data>
+  <data name="NoticeNotRecognizedTitle" xml:space="preserve">
+    <value>License Not Recognized</value>
+  </data>
+  <data name="NoticeRemovedMessage" xml:space="preserve">
+    <value>This PC no longer holds a seat.</value>
+  </data>
+  <data name="NoticeRemovedTitle" xml:space="preserve">
+    <value>License Removed</value>
+  </data>
+  <data name="NoticeSuspendedMessage" xml:space="preserve">
+    <value>Get in touch and we will sort it out.</value>
+  </data>
+  <data name="NoticeSuspendedTitle" xml:space="preserve">
+    <value>License Suspended</value>
+  </data>
+  <data name="NoticeValidationMessage" xml:space="preserve">
+    <value>TablePro has not reached the license server in 30 days, so paid features are paused.</value>
+  </data>
+  <data name="NoticeValidationTitle" xml:space="preserve">
+    <value>Could Not Check This License</value>
+  </data>
+  <data name="OneTime" xml:space="preserve">
+    <value>One-time</value>
+    <comment>A license bought once that never expires.</comment>
+  </data>
+  <data name="PageTitle" xml:space="preserve">
+    <value>License</value>
+    <comment>Settings page and navigation item for the TablePro license.</comment>
+  </data>
+  <data name="PlanTitle" xml:space="preserve">
+    <value>{0} Plan</value>
+    <comment>{0} is a plan name, Starter or Team.</comment>
+  </data>
+  <data name="Release" xml:space="preserve">
+    <value>Release</value>
+    <comment>Confirmation button that frees a device's seat (verb).</comment>
+  </data>
+  <data name="ReleaseAutomation" xml:space="preserve">
+    <value>Release the seat on {0}</value>
+    <comment>Screen reader name of the Release button. {0} is a device name.</comment>
+  </data>
+  <data name="ReleaseButton" xml:space="preserve">
+    <value>Release…</value>
+    <comment>Button that frees another device's seat (verb).</comment>
+  </data>
+  <data name="ReleaseMessage" xml:space="preserve">
+    <value>That device keeps working until its next check, within 7 days, and then paid features pause there.</value>
+  </data>
+  <data name="ReleaseTitle" xml:space="preserve">
+    <value>Release the seat on “{0}”?</value>
+    <comment>{0} is a device name.</comment>
+  </data>
+  <data name="RenewLicense" xml:space="preserve">
+    <value>Renew License</value>
+  </data>
+  <data name="RoleAdmin" xml:space="preserve">
+    <value>Admin</value>
+    <comment>Role on a team license.</comment>
+  </data>
+  <data name="RoleMember" xml:space="preserve">
+    <value>Member</value>
+    <comment>Role on a team license.</comment>
+  </data>
+  <data name="RoleOwner" xml:space="preserve">
+    <value>Owner</value>
+    <comment>Role on a team license.</comment>
+  </data>
+  <data name="RoleYou" xml:space="preserve">
+    <value>{0} (You)</value>
+    <comment>{0} is a role on the team, marking the license owner's row.</comment>
+  </data>
+  <data name="TeamHeader" xml:space="preserve">
+    <value>Team</value>
+    <comment>Heading of the team roster.</comment>
+  </data>
+  <data name="TeamSeatsFooter" xml:space="preserve">
+    <value>Seats on a team license are managed on tablepro.app.</value>
+  </data>
+  <data name="ThisDevice" xml:space="preserve">
+    <value>This PC</value>
+    <comment>Marks the computer the app is running on in the device list.</comment>
+  </data>
+  <data name="TierStarter" xml:space="preserve">
+    <value>Starter</value>
+    <comment>Name of the Starter plan.</comment>
+  </data>
+  <data name="TierTeam" xml:space="preserve">
+    <value>Team</value>
+    <comment>Name of the Team plan.</comment>
+  </data>
+  <data name="TryAgain" xml:space="preserve">
+    <value>Try Again</value>
+  </data>
+  <data name="UpgradePlan" xml:space="preserve">
+    <value>Upgrade Plan</value>
+  </data>
+  <data name="GatePlanRequirement" xml:space="preserve">
+    <value>{0} requires the {1} plan</value>
+    <comment>Headline of a paid feature that is locked. {0} is the feature, {1} the plan name.</comment>
+  </data>
+  <data name="GateExpired" xml:space="preserve">
+    <value>Your license has expired</value>
+  </data>
+  <data name="GateValidationFailed" xml:space="preserve">
+    <value>License validation failed</value>
+  </data>
+  <data name="GateValidationFailedMessage" xml:space="preserve">
+    <value>Connect to the internet to verify your license.</value>
+  </data>
+  <data name="GateActivate" xml:space="preserve">
+    <value>Activate License…</value>
+    <comment>Button that opens the License page to enter a key.</comment>
+  </data>
+  <data name="GateRetry" xml:space="preserve">
+    <value>Retry Validation</value>
+  </data>
+  <data name="GatePurchase" xml:space="preserve">
+    <value>Purchase License</value>
+  </data>
+  <data name="ViewLicense" xml:space="preserve">
+    <value>View License</value>
+  </data>
+  <data name="NotNow" xml:space="preserve">
+    <value>Not Now</value>
+  </data>
+  <data name="PromptNeedsLicense" xml:space="preserve">
+    <value>{0} needs a {1} license</value>
+    <comment>Title of the prompt when a paid feature is used without a license. {0} is the feature, {1} the plan name.</comment>
+  </data>
+  <data name="RewindPromptMessage" xml:space="preserve">
+    <value>Restore the previous values of rows you already saved. Saves are kept on this PC for 7 days, encrypted, and never leave it.</value>
+  </data>
+  <data name="RewindNeedsLicense" xml:space="preserve">
+    <value>Restoring a save that already committed needs a Starter license.</value>
+  </data>
+  <data name="IncludeCredentials" xml:space="preserve">
+    <value>Include Credentials</value>
+    <comment>Export option that is locked without a license.</comment>
+  </data>
+  <data name="IncludeCredentialsCaption" xml:space="preserve">
+    <value>Off by default. Turn it on to encrypt saved passwords with a passphrase.</value>
+  </data>
+  <data name="OpensPricing" xml:space="preserve">
+    <value>Opens the TablePro pricing page</value>
+    <comment>Accessibility hint of the plan badge.</comment>
+  </data>
+</root>

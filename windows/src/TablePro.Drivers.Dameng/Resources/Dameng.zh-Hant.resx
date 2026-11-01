@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="InstallHint" xml:space="preserve">
+    <value>請安裝達夢的 64 位元 DM8 用戶端（eco.dameng.com），它會註冊 ODBC 驅動程式；或使用 odbcDriver 選項指定另一個已安裝的驅動程式。</value>
+  </data>
+  <data name="NoSourcePrivilege" xml:space="preserve">
+    <value>達夢未傳回 {0} 的原始碼；此登入可能沒有讀取它的權限。</value>
+  </data>
+  <data name="NotASessionId" xml:space="preserve">
+    <value>「{0}」不是達夢工作階段 ID。</value>
+  </data>
+  <data name="SslPathRequired" xml:space="preserve">
+    <value>達夢使用用戶端憑證加密：請將 SSL_PATH 選項設為存放憑證的目錄（如憑證受保護，還需設定 SSL_PWD）。</value>
+  </data>
+  <data name="VerifyIdentityUnsupported" xml:space="preserve">
+    <value>達夢的 TLS 會依 SSL_PATH 中的 CA 檢查伺服器憑證，但從不將其與主機名稱比對。請選擇「驗證 CA」，或使用 SSH 通道。</value>
+  </data>
+</root>

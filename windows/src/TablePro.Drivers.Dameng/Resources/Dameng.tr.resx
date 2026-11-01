@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="InstallHint" xml:space="preserve">
+    <value>ODBC sürücüsünü kaydeden 64 bit DM8 istemcisini Dameng'den (eco.dameng.com) yükleyin veya odbcDriver seçeneğiyle yüklü başka bir sürücü belirtin.</value>
+  </data>
+  <data name="NoSourcePrivilege" xml:space="preserve">
+    <value>Dameng, {0} için kaynak döndürmedi; oturum açan kullanıcının bunu okuma ayrıcalığı olmayabilir.</value>
+  </data>
+  <data name="NotASessionId" xml:space="preserve">
+    <value>"{0}" bir Dameng oturum kimliği değil.</value>
+  </data>
+  <data name="SslPathRequired" xml:space="preserve">
+    <value>Dameng istemci sertifikalarıyla şifreler: SSL_PATH seçeneğini bunları içeren dizine ayarlayın (korunuyorlarsa SSL_PWD seçeneğini de).</value>
+  </data>
+  <data name="VerifyIdentityUnsupported" xml:space="preserve">
+    <value>Dameng'in TLS'si sunucu sertifikasını SSL_PATH içindeki CA'ya göre denetler ancak ana bilgisayar adıyla hiçbir zaman eşleştirmez. CA Doğrula seçeneğini seçin veya bir SSH tüneli kullanın.</value>
+  </data>
+</root>

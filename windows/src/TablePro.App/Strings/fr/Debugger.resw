@@ -1,0 +1,138 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="BreakpointGutter.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Activer/désactiver le point d’arrêt</value>
+  </data>
+  <data name="CallStackHeader.Text" xml:space="preserve">
+    <value>Pile des appels</value>
+  </data>
+  <data name="ContinueButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Continuer</value>
+  </data>
+  <data name="ContinueButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Continuer (F5)</value>
+  </data>
+  <data name="DebugButton" xml:space="preserve">
+    <value>Déboguer</value>
+  </data>
+  <data name="EntryPoint" xml:space="preserve">
+    <value>Point d’entrée</value>
+  </data>
+  <data name="FrameAtLine" xml:space="preserve">
+    <value>{0}  ligne {1}</value>
+  </data>
+  <data name="FrameLevel" xml:space="preserve">
+    <value>Cadre {0}</value>
+  </data>
+  <data name="NoArguments" xml:space="preserve">
+    <value>Cette routine n’accepte aucun argument.</value>
+  </data>
+  <data name="OutputBox.PlaceholderText" xml:space="preserve">
+    <value>Les notifications et les lignes DBMS_OUTPUT s’affichent ici</value>
+  </data>
+  <data name="OutputBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Sortie du débogage</value>
+  </data>
+  <data name="OutputParameter" xml:space="preserve">
+    <value>Sortie</value>
+  </data>
+  <data name="OutputTab.Text" xml:space="preserve">
+    <value>Sortie</value>
+  </data>
+  <data name="RemoveAllBreakpointsButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Supprimer tous les points d’arrêt</value>
+  </data>
+  <data name="RemoveAllBreakpointsButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Supprimer tous les points d’arrêt (Ctrl+Shift+F9)</value>
+  </data>
+  <data name="ResultTab.Text" xml:space="preserve">
+    <value>Résultat</value>
+  </data>
+  <data name="SafeModeBlocks" xml:space="preserve">
+    <value>Le mode sécurisé bloque les écritures sur cette connexion et la routine peut modifier des données&#160;: elle ne peut donc pas être déboguée ici.</value>
+  </data>
+  <data name="SourceList.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Source de la routine</value>
+  </data>
+  <data name="StackList.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Pile des appels</value>
+  </data>
+  <data name="StartDialogTitle" xml:space="preserve">
+    <value>Déboguer {0}</value>
+  </data>
+  <data name="StatusCantDebug" xml:space="preserve">
+    <value>Débogage impossible</value>
+  </data>
+  <data name="StatusPreparing" xml:space="preserve">
+    <value>Préparation…</value>
+  </data>
+  <data name="StepIntoButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Pas à pas détaillé</value>
+  </data>
+  <data name="StepIntoButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Pas à pas détaillé (F11)</value>
+  </data>
+  <data name="StepOutButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Pas à pas sortant</value>
+  </data>
+  <data name="StepOutButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Pas à pas sortant (Shift+F11)</value>
+  </data>
+  <data name="StepOverButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Pas à pas principal</value>
+  </data>
+  <data name="StepOverButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Pas à pas principal (F10)</value>
+  </data>
+  <data name="StopButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Arrêter le débogage</value>
+  </data>
+  <data name="StopButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Arrêter le débogage (Shift+F5)</value>
+  </data>
+  <data name="TabTitle" xml:space="preserve">
+    <value>Débogage {0}</value>
+  </data>
+  <data name="ToggleBreakpointButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Activer/désactiver le point d’arrêt</value>
+  </data>
+  <data name="ToggleBreakpointButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Activer/désactiver le point d’arrêt sur la ligne sélectionnée (F9)</value>
+  </data>
+  <data name="TypeColumn.Text" xml:space="preserve">
+    <value>Type</value>
+  </data>
+  <data name="ValueColumn.Text" xml:space="preserve">
+    <value>Valeur</value>
+  </data>
+  <data name="VariableColumn.Text" xml:space="preserve">
+    <value>Variable</value>
+  </data>
+  <data name="VariableKindArgument" xml:space="preserve">
+    <value>Argument</value>
+  </data>
+  <data name="VariableKindConstant" xml:space="preserve">
+    <value>Constante</value>
+  </data>
+  <data name="VariableKindLocal" xml:space="preserve">
+    <value>Local</value>
+  </data>
+  <data name="VariableKindPackage" xml:space="preserve">
+    <value>Package</value>
+  </data>
+  <data name="VariablesList.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Variables</value>
+  </data>
+</root>

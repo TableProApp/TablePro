@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="ActivationLimit" xml:space="preserve">
+    <value>已達到啟用次數上限。</value>
+  </data>
+  <data name="EmptyResponse" xml:space="preserve">
+    <value>授權伺服器傳回了空白回應。</value>
+  </data>
+  <data name="KeyEmpty" xml:space="preserve">
+    <value>授權金鑰為空白。</value>
+  </data>
+  <data name="MachineMismatch" xml:space="preserve">
+    <value>此授權是為另一台電腦核發的。</value>
+  </data>
+  <data name="RequestFailed" xml:space="preserve">
+    <value>要求失敗。</value>
+  </data>
+  <data name="SeatUnconfirmed" xml:space="preserve">
+    <value>無法連線至授權伺服器，因此該席位可能仍在使用中。</value>
+  </data>
+</root>

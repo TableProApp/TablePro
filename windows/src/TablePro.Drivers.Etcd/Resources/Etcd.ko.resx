@@ -1,0 +1,177 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AuthDisabled" xml:space="preserve">
+    <value>인증이 비활성화되었습니다.</value>
+  </data>
+  <data name="AuthEnabled" xml:space="preserve">
+    <value>인증이 활성화되었습니다.</value>
+  </data>
+  <data name="ChangeHasNoKey" xml:space="preserve">
+    <value>etcd 행은 키로 식별되는데 이 변경 사항에는 키가 없습니다.</value>
+  </data>
+  <data name="Compacted" xml:space="preserve">
+    <value>리비전 {0}을(를) 압축했습니다.</value>
+  </data>
+  <data name="CompactionNeedsRevision" xml:space="preserve">
+    <value>compaction에는 리비전이 필요합니다.</value>
+  </data>
+  <data name="ConcurrentChange" xml:space="preserve">
+    <value>저장하는 동안 다른 클라이언트가 이 키를 변경하여 아무것도 저장되지 않았습니다. 새로 고친 후 다시 시도하세요.</value>
+  </data>
+  <data name="DescribeKey" xml:space="preserve">
+    <value>버전 {0}, 리비전 {1}</value>
+  </data>
+  <data name="DescribeKeyWithLease" xml:space="preserve">
+    <value>버전 {0}, 리비전 {1}, 임대 {2}</value>
+  </data>
+  <data name="EmptyCommand" xml:space="preserve">
+    <value>etcd 명령이 비어 있습니다.</value>
+  </data>
+  <data name="EmptyKey" xml:space="preserve">
+    <value>etcd 키는 비워 둘 수 없습니다.</value>
+  </data>
+  <data name="HttpStatus" xml:space="preserve">
+    <value>etcd가 HTTP {0}을(를) 반환했습니다: {1}</value>
+  </data>
+  <data name="InvalidLeaseId" xml:space="preserve">
+    <value>잘못된 임대 ID: {0}</value>
+  </data>
+  <data name="KeepsColumn" xml:space="preserve">
+    <value>{0}은(는) etcd가 직접 관리합니다. 키, 값, 임대만 변경할 수 있습니다.</value>
+  </data>
+  <data name="KeyAlreadyExists" xml:space="preserve">
+    <value>키 {0}이(가) 이미 존재하므로 아무것도 저장되지 않았습니다. 대신 해당 행을 편집하세요.</value>
+  </data>
+  <data name="KeyChangedSinceRead" xml:space="preserve">
+    <value>키 {0}이(가) 읽은 후 변경되어 아무것도 저장되지 않았습니다. 새로 고친 후 다시 시도하세요.</value>
+  </data>
+  <data name="KeyGoneStatement" xml:space="preserve">
+    <value>더 이상 존재하지 않는 키 {0}</value>
+  </data>
+  <data name="LeaseComment" xml:space="preserve">
+    <value>키가 연결된 임대로, etcdctl처럼 16진수로 표시됩니다.</value>
+  </data>
+  <data name="LeaseExpired" xml:space="preserve">
+    <value>임대가 만료되었거나 부여된 적이 없습니다.</value>
+  </data>
+  <data name="LeaseGrantTtl" xml:space="preserve">
+    <value>lease grant에는 정수 초 단위의 TTL이 필요합니다.</value>
+  </data>
+  <data name="LeaseRefreshed" xml:space="preserve">
+    <value>임대 {0}을(를) 한 번 갱신했습니다(TTL {1}초). 계속 유지하려면 etcdctl처럼 이를 반복하는 클라이언트가 필요합니다.</value>
+  </data>
+  <data name="LeaseRevoked" xml:space="preserve">
+    <value>임대 {0}이(가) 해지되었습니다.</value>
+  </data>
+  <data name="NeedsKey" xml:space="preserve">
+    <value>{0}에는 키가 필요합니다.</value>
+  </data>
+  <data name="NeedsLeaseId" xml:space="preserve">
+    <value>{0}에는 임대 ID가 필요합니다.</value>
+  </data>
+  <data name="NeedsRoleName" xml:space="preserve">
+    <value>{0}에는 역할 이름이 필요합니다.</value>
+  </data>
+  <data name="NeedsSubcommand" xml:space="preserve">
+    <value>{0}에는 하위 명령이 필요합니다: {1}.</value>
+  </data>
+  <data name="NeedsUserAndRole" xml:space="preserve">
+    <value>{0}에는 사용자 이름과 역할이 필요합니다.</value>
+  </data>
+  <data name="NeedsUserName" xml:space="preserve">
+    <value>{0}에는 사용자 이름이 필요합니다.</value>
+  </data>
+  <data name="NegativeLimit" xml:space="preserve">
+    <value>--limit과 --rev는 음수일 수 없습니다.</value>
+  </data>
+  <data name="NoApiAt" xml:space="preserve">
+    <value>{0}에서 etcd v3 API를 찾을 수 없습니다. 연결이 피어 포트 2380이 아닌 클라이언트 포트(기본값 2379)를 가리키도록 하세요.</value>
+  </data>
+  <data name="NoKeepAliveAnswer" xml:space="preserve">
+    <value>etcd가 keep-alive 응답을 보내지 않았습니다.</value>
+  </data>
+  <data name="NotGateway" xml:space="preserve">
+    <value>서버가 응답했지만 etcd v3 JSON 게이트웨이가 아닙니다.</value>
+  </data>
+  <data name="NoToken" xml:space="preserve">
+    <value>etcd에 로그인했지만 토큰이 반환되지 않았습니다.</value>
+  </data>
+  <data name="OrderFlag" xml:space="preserve">
+    <value>--order는 ASCEND 또는 DESCEND여야 합니다.</value>
+  </data>
+  <data name="PrefixAndFromKey" xml:space="preserve">
+    <value>--prefix와 --from-key는 함께 사용할 수 없습니다.</value>
+  </data>
+  <data name="PutNeedsKeyAndValue" xml:space="preserve">
+    <value>put에는 키와 값이 필요합니다.</value>
+  </data>
+  <data name="PutTakesOne" xml:space="preserve">
+    <value>put은 키 하나와 값 하나를 받습니다. 공백이 있는 값은 따옴표로 묶으세요.</value>
+  </data>
+  <data name="RenameSourceGone" xml:space="preserve">
+    <value>키 {0}이(가) 더 이상 존재하지 않으므로 이름을 바꿀 수 없습니다.</value>
+  </data>
+  <data name="RoleCreated" xml:space="preserve">
+    <value>역할 {0}을(를) 만들었습니다.</value>
+  </data>
+  <data name="RoleDeleted" xml:space="preserve">
+    <value>역할 {0}을(를) 삭제했습니다.</value>
+  </data>
+  <data name="RoleGranted" xml:space="preserve">
+    <value>{1}에게 역할 {0}을(를) 부여했습니다.</value>
+  </data>
+  <data name="RoleRevoked" xml:space="preserve">
+    <value>{1}에게서 역할 {0}을(를) 회수했습니다.</value>
+  </data>
+  <data name="SignInRefused" xml:space="preserve">
+    <value>etcd가 사용자 이름 또는 암호를 거부했습니다: {0}</value>
+  </data>
+  <data name="SortByFlag" xml:space="preserve">
+    <value>--sort-by는 KEY, VERSION, CREATE, MOD 또는 VALUE여야 합니다.</value>
+  </data>
+  <data name="TimeoutNumber" xml:space="preserve">
+    <value>--timeout은 초 단위 숫자여야 합니다.</value>
+  </data>
+  <data name="TimeoutRange" xml:space="preserve">
+    <value>--timeout은 0초에서 {0}초 사이여야 합니다.</value>
+  </data>
+  <data name="UnknownCommand" xml:space="preserve">
+    <value>알 수 없는 명령: {0}.</value>
+  </data>
+  <data name="UnknownCommandTry" xml:space="preserve">
+    <value>알 수 없는 명령: {0}. get, put, del, watch, lease, member, endpoint 또는 compaction을 사용해 보세요.</value>
+  </data>
+  <data name="UnreadableResponse" xml:space="preserve">
+    <value>etcd가 {0}에 대해 TablePro가 읽을 수 없는 응답을 반환했습니다.</value>
+  </data>
+  <data name="UserCreated" xml:space="preserve">
+    <value>사용자 {0}을(를) 만들었습니다.</value>
+  </data>
+  <data name="UserDeleted" xml:space="preserve">
+    <value>사용자 {0}을(를) 삭제했습니다.</value>
+  </data>
+  <data name="VersionComment" xml:space="preserve">
+    <value>키가 만들어진 후 변경된 횟수입니다.</value>
+  </data>
+  <data name="Watched" xml:space="preserve">
+    <value>{0:0.#}초 동안 감시하여 이벤트 {1:N0}개를 확인했습니다.</value>
+  </data>
+  <data name="WholeNumber" xml:space="preserve">
+    <value>{0}은(는) 정수여야 합니다.</value>
+  </data>
+  <data name="WithRevision" xml:space="preserve">
+    <value>{0}(리비전 {1})</value>
+  </data>
+</root>

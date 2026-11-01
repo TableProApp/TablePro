@@ -1,0 +1,126 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AlreadyExists" xml:space="preserve">
+    <value>{0} 已存在於目標中。</value>
+  </data>
+  <data name="CannotCreateTables" xml:space="preserve">
+    <value>{0} 無法從 TablePro 建立資料表，因此只有已存在的資料表會接收列。</value>
+  </data>
+  <data name="CannotExpressChange" xml:space="preserve">
+    <value>{0} 無法表達此變更。</value>
+  </data>
+  <data name="ColumnNotInTarget" xml:space="preserve">
+    <value>{0}：目標資料表沒有此欄位，因此不會複製。</value>
+  </data>
+  <data name="DefaultLeftOut" xml:space="preserve">
+    <value>{0}：預設值 {1} 沒有對應項，因此不予保留。</value>
+  </data>
+  <data name="DefinitionHasNoRows" xml:space="preserve">
+    <value>{0} 不是資料表，因此沒有可複製的列。</value>
+  </data>
+  <data name="DefinitionOtherEngine" xml:space="preserve">
+    <value>{0} 是為 {1} 撰寫的 SQL，{2} 無法照原樣執行。</value>
+  </data>
+  <data name="ForeignKeyFailed" xml:space="preserve">
+    <value>無法建立外部索引鍵 {0}：{1}</value>
+  </data>
+  <data name="ForeignKeyLeftOut" xml:space="preserve">
+    <value>外部索引鍵 {0} 指向目標中不存在的 {1}，因此不予複製。</value>
+  </data>
+  <data name="ForeignKeyNotAdded" xml:space="preserve">
+    <value>由於 {1} 未複製，外部索引鍵 {0} 未新增。</value>
+  </data>
+  <data name="IndexFailed" xml:space="preserve">
+    <value>無法建立索引 {0}：{1}</value>
+  </data>
+  <data name="NoSourceDefinition" xml:space="preserve">
+    <value>來源未傳回 {0} 的定義。</value>
+  </data>
+  <data name="NoTableToAddRows" xml:space="preserve">
+    <value>目標中沒有可新增列的資料表 {0}。</value>
+  </data>
+  <data name="NotFinished" xml:space="preserve">
+    <value>未完成，因為複製在先前的一次失敗處已停止。</value>
+  </data>
+  <data name="SequenceBecomesIdentity" xml:space="preserve">
+    <value>{0}：其序列預設值變為識別欄位。</value>
+  </data>
+  <data name="ServerWritten" xml:space="preserve">
+    <value>{0}：該欄位由伺服器寫入，因此不複製其值。</value>
+  </data>
+  <data name="SqlServerIdentityDropped" xml:space="preserve">
+    <value>{0}：SQL Server 拒絕向識別欄位寫入複製的值，因此建立時不帶 IDENTITY。</value>
+  </data>
+  <data name="SqlServerIdentityLeftOut" xml:space="preserve">
+    <value>{0}：SQL Server 會自行為其識別欄位編號，因此不使用來源中的值。</value>
+  </data>
+  <data name="StoppedBeforeFinished" xml:space="preserve">
+    <value>在完成前已停止。</value>
+  </data>
+  <data name="TargetCannotChangeStructure" xml:space="preserve">
+    <value>目標無法從 TablePro 變更其結構。</value>
+  </data>
+  <data name="TargetCannotCreate" xml:space="preserve">
+    <value>目標無法建立它。</value>
+  </data>
+  <data name="TargetHasOtherObject" xml:space="preserve">
+    <value>目標中已有一個名為 {0} 的物件，且它不是資料表。</value>
+  </data>
+  <data name="TargetReadOnly" xml:space="preserve">
+    <value>目標連線為唯讀，因此無法寫入任何內容。</value>
+  </data>
+  <data name="TypeAsText" xml:space="preserve">
+    <value>{0}：{1} 變為 {2}，以文字形式儲存。</value>
+  </data>
+  <data name="TypeCutTo255" xml:space="preserve">
+    <value>{0}：{1} 變為 {2}，截斷為 255 個字元以便作為鍵的一部分。</value>
+  </data>
+  <data name="TypeCutTo4000" xml:space="preserve">
+    <value>{0}：{1} 變為 {2}，截斷為 4,000 個字元以便作為鍵的一部分。</value>
+  </data>
+  <data name="TypeCutTo450" xml:space="preserve">
+    <value>{0}：{1} 變為 {2}，截斷為 450 個字元以便作為鍵的一部分。</value>
+  </data>
+  <data name="TypeEnumerationAsText" xml:space="preserve">
+    <value>{0}：{1} 變為 {2}，以文字形式儲存，不含其允許值清單。</value>
+  </data>
+  <data name="TypeJsonAsText" xml:space="preserve">
+    <value>{0}：{1} 變為 {2}，以文字形式保留。</value>
+  </data>
+  <data name="TypeNoBoolean" xml:space="preserve">
+    <value>{0}：{1} 變為 {2}，因為此 Oracle 版本沒有 BOOLEAN。</value>
+  </data>
+  <data name="TypeNoEquivalent" xml:space="preserve">
+    <value>{0}：{1} 變為 {2}，以文字形式儲存，因為沒有對應型別。</value>
+  </data>
+  <data name="TypeNoTime" xml:space="preserve">
+    <value>{0}：{1} 變為 {2}，因為 Oracle 沒有 TIME。</value>
+  </data>
+  <data name="TypeRowVersionAsBytes" xml:space="preserve">
+    <value>{0}：{1} 變為 {2}，伺服器的列版本以位元組形式複製。</value>
+  </data>
+  <data name="TypeTimeZoneDropped" xml:space="preserve">
+    <value>{0}：{1} 變為 {2}，不含時區。</value>
+  </data>
+  <data name="TypeUtc" xml:space="preserve">
+    <value>{0}：{1} 變為 {2}，時間採用 UTC。</value>
+  </data>
+  <data name="TypeUtcNoTimeZone" xml:space="preserve">
+    <value>{0}：{1} 變為 {2}，時間採用 UTC，因為 DATETIME 不儲存時區。</value>
+  </data>
+  <data name="UnknownTypeSystem" xml:space="preserve">
+    <value>複製到其他引擎需要 TablePro 能轉換的型別系統，而 TablePro 不了解 {0} 的型別系統。請複製到同類型的目標。</value>
+  </data>
+</root>

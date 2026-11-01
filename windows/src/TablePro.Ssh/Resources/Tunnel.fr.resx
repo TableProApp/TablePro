@@ -1,0 +1,201 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AskPassMissing" xml:space="preserve">
+    <value>L’assistant de mot de passe SSH est absent de {0}. Réinstallez TablePro.</value>
+  </data>
+  <data name="BatchScript" xml:space="preserve">
+    <value>{0} est un script batch, que Windows exécuterait via cmd.exe. Indiquez plutôt le chemin du fichier .exe du programme.</value>
+  </data>
+  <data name="CloudflaredNotFound" xml:space="preserve">
+    <value>cloudflared est introuvable. Installez-le avec « winget install Cloudflare.cloudflared », ou indiquez son chemin dans les paramètres Cloudflare Tunnel de la connexion.</value>
+  </data>
+  <data name="CloudflareSignIn" xml:space="preserve">
+    <value>Cloudflare Access demande une connexion dans le navigateur. Connectez-vous sur {0}, puis reconnectez-vous.</value>
+  </data>
+  <data name="CloudflareTokenRequired" xml:space="preserve">
+    <value>L’ID et le secret du jeton de service sont obligatoires.</value>
+  </data>
+  <data name="CloudSqlKeyRequired" xml:space="preserve">
+    <value>Une clé de compte de service est obligatoire. Collez le JSON de la clé dans les paramètres Cloud SQL de la connexion.</value>
+  </data>
+  <data name="CloudSqlProxyName" xml:space="preserve">
+    <value>Le Cloud SQL Auth Proxy</value>
+  </data>
+  <data name="CloudSqlProxyNotFound" xml:space="preserve">
+    <value>cloud-sql-proxy est introuvable. Installez-le avec « gcloud components install cloud-sql-proxy », ou indiquez son chemin dans les paramètres Cloud SQL de la connexion.</value>
+  </data>
+  <data name="CommandNotFound" xml:space="preserve">
+    <value>{0} est introuvable. Indiquez son chemin complet dans la connexion.</value>
+  </data>
+  <data name="CouldNotStart" xml:space="preserve">
+    <value>Impossible de démarrer {0} : {1}</value>
+  </data>
+  <data name="DatabaseHostEmpty" xml:space="preserve">
+    <value>L’hôte de la base de données est vide.</value>
+  </data>
+  <data name="DatabaseHostUnsafe" xml:space="preserve">
+    <value>L’hôte de la base de données « {0} » contient des caractères que ssh n’accepte pas.</value>
+  </data>
+  <data name="FixedPortInUse" xml:space="preserve">
+    <value>Un autre programme écoute déjà sur le port local {0}. Choisissez un autre port, ou laissez le champ vide.</value>
+  </data>
+  <data name="HelperCouldNotListen" xml:space="preserve">
+    <value>{0} n’a pas pu écouter sur le port local {1}.</value>
+  </data>
+  <data name="HelperExitedEarly" xml:space="preserve">
+    <value>{0} s’est arrêté avant l’ouverture de son port local.</value>
+  </data>
+  <data name="HelperTimedOut" xml:space="preserve">
+    <value>{0} n’a pas ouvert son port local à temps.</value>
+  </data>
+  <data name="JumpHostEmpty" xml:space="preserve">
+    <value>L’hôte de rebond est vide.</value>
+  </data>
+  <data name="JumpHostUnsafe" xml:space="preserve">
+    <value>L’hôte de rebond « {0} » contient des caractères que ssh n’accepte pas.</value>
+  </data>
+  <data name="NoFreePort" xml:space="preserve">
+    <value>Aucun port local n’était libre pour le tunnel.</value>
+  </data>
+  <data name="NotAProxyOrHelper" xml:space="preserve">
+    <value>La connexion n’utilise ni proxy ni programme de tunnel.</value>
+  </data>
+  <data name="NotHttpProxy" xml:space="preserve">
+    <value>Le proxy n’a pas répondu comme un proxy HTTP.</value>
+  </data>
+  <data name="NotSocks5" xml:space="preserve">
+    <value>Le proxy n’a pas répondu comme un proxy SOCKS5.</value>
+  </data>
+  <data name="NotSsh" xml:space="preserve">
+    <value>La connexion n’utilise pas SSH.</value>
+  </data>
+  <data name="PortOutOfRange" xml:space="preserve">
+    <value>Un port est compris entre 1 et 65535.</value>
+  </data>
+  <data name="ProxyClosed" xml:space="preserve">
+    <value>Le proxy a fermé la connexion.</value>
+  </data>
+  <data name="ProxyConnectFailed" xml:space="preserve">
+    <value>Impossible de se connecter via le proxy à l’adresse {0}. {1}</value>
+  </data>
+  <data name="ProxyCouldNotConnect" xml:space="preserve">
+    <value>Le proxy n’a pas pu se connecter à {0}:{1} : {2}.</value>
+  </data>
+  <data name="ProxyIncomplete" xml:space="preserve">
+    <value>La configuration du proxy est incomplète. Saisissez un hôte et un port de proxy.</value>
+  </data>
+  <data name="ProxyLocalPortFailed" xml:space="preserve">
+    <value>Impossible d’ouvrir un port local pour le proxy : {0}</value>
+  </data>
+  <data name="ProxyNeedsLogin" xml:space="preserve">
+    <value>Le proxy exige un nom d’utilisateur et un mot de passe.</value>
+  </data>
+  <data name="ProxyNoMethod" xml:space="preserve">
+    <value>Le proxy n’accepte aucune des méthodes de connexion proposées.</value>
+  </data>
+  <data name="ProxyRejectedLogin" xml:space="preserve">
+    <value>Le proxy a refusé le nom d’utilisateur et le mot de passe.</value>
+  </data>
+  <data name="ProxyReplyTooLong" xml:space="preserve">
+    <value>La réponse du proxy était trop longue.</value>
+  </data>
+  <data name="ProxyTimedOut" xml:space="preserve">
+    <value>Délai dépassé lors de la connexion via le proxy à l’adresse {0}. Vérifiez que le proxy est joignable et que les identifiants sont corrects.</value>
+  </data>
+  <data name="ProxyUnreachable" xml:space="preserve">
+    <value>Impossible de joindre le proxy à l’adresse {0}. {1}</value>
+  </data>
+  <data name="ProxyUnreadableReply" xml:space="preserve">
+    <value>Le proxy a envoyé une réponse que TablePro ne peut pas lire.</value>
+  </data>
+  <data name="ProxyUnsupportedMethod" xml:space="preserve">
+    <value>Le proxy a demandé une méthode de connexion que TablePro ne prend pas en charge.</value>
+  </data>
+  <data name="Socks5CredentialsTooLong" xml:space="preserve">
+    <value>Un nom d’utilisateur et un mot de passe SOCKS5 font chacun au plus 255 octets.</value>
+  </data>
+  <data name="Socks5HostTooLong" xml:space="preserve">
+    <value>Le nom d’hôte {0} est trop long pour un proxy SOCKS5.</value>
+  </data>
+  <data name="SocksAddressTypeNotSupported" xml:space="preserve">
+    <value>type d’adresse non pris en charge</value>
+  </data>
+  <data name="SocksCommandNotSupported" xml:space="preserve">
+    <value>commande non prise en charge</value>
+  </data>
+  <data name="SocksConnectionRefused" xml:space="preserve">
+    <value>connexion refusée</value>
+  </data>
+  <data name="SocksError" xml:space="preserve">
+    <value>erreur {0}</value>
+  </data>
+  <data name="SocksGeneralFailure" xml:space="preserve">
+    <value>échec général</value>
+  </data>
+  <data name="SocksHostUnreachable" xml:space="preserve">
+    <value>hôte inaccessible</value>
+  </data>
+  <data name="SocksNetworkUnreachable" xml:space="preserve">
+    <value>réseau inaccessible</value>
+  </data>
+  <data name="SocksNotAllowed" xml:space="preserve">
+    <value>non autorisé par les règles du proxy</value>
+  </data>
+  <data name="SocksTimedOut" xml:space="preserve">
+    <value>délai dépassé</value>
+  </data>
+  <data name="SshClosed" xml:space="preserve">
+    <value>Le tunnel SSH via {0} s’est fermé.</value>
+  </data>
+  <data name="SshFailed" xml:space="preserve">
+    <value>ssh n’a pas pu ouvrir de tunnel via {0}.</value>
+  </data>
+  <data name="SshHostEmpty" xml:space="preserve">
+    <value>L’hôte SSH est vide.</value>
+  </data>
+  <data name="SshHostKeyMismatch" xml:space="preserve">
+    <value>La clé d’hôte de {0} ne correspond pas à celle de known_hosts. Vérifiez-la auprès de l’administrateur du serveur, puis supprimez l’ancienne entrée.</value>
+  </data>
+  <data name="SshHostNotFound" xml:space="preserve">
+    <value>L’hôte SSH {0} est introuvable.</value>
+  </data>
+  <data name="SshHostUnsafe" xml:space="preserve">
+    <value>L’hôte SSH « {0} » contient des caractères que ssh n’accepte pas.</value>
+  </data>
+  <data name="SshLocalPort" xml:space="preserve">
+    <value>ssh n’a pas pu écouter sur l’extrémité locale du tunnel.</value>
+  </data>
+  <data name="SshLoginRejected" xml:space="preserve">
+    <value>Le serveur SSH {0} a refusé la connexion.</value>
+  </data>
+  <data name="SshNotFound" xml:space="preserve">
+    <value>ssh.exe est introuvable. Installez le client OpenSSH depuis Paramètres &gt; Système &gt; Fonctionnalités facultatives.</value>
+  </data>
+  <data name="SshTimedOut" xml:space="preserve">
+    <value>Le tunnel SSH via {0} ne s’est pas ouvert à temps.</value>
+  </data>
+  <data name="SshUnreachable" xml:space="preserve">
+    <value>Impossible de joindre le serveur SSH {0}.</value>
+  </data>
+  <data name="SshUserEmpty" xml:space="preserve">
+    <value>L’utilisateur SSH est vide.</value>
+  </data>
+  <data name="SshUserUnsafe" xml:space="preserve">
+    <value>L’utilisateur SSH « {0} » contient des caractères que ssh n’accepte pas.</value>
+  </data>
+  <data name="TunnelCommandName" xml:space="preserve">
+    <value>La commande de tunnel</value>
+  </data>
+</root>

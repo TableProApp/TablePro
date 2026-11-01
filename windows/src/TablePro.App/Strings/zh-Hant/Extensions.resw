@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AddExtension" xml:space="preserve">
+    <value>加入擴充功能…</value>
+  </data>
+  <data name="ApprovedTestAgain" xml:space="preserve">
+    <value>擴充功能已核准。再次選擇「測試」以連線。</value>
+  </data>
+  <data name="ChooseAgainRecovery" xml:space="preserve">
+    <value>編輯連線時重新選擇擴充功能的檔案。</value>
+  </data>
+  <data name="ControlCharacterInPath" xml:space="preserve">
+    <value>清單中某個擴充功能的路徑包含換行字元或其他控制字元。</value>
+  </data>
+  <data name="CouldNotLoad" xml:space="preserve">
+    <value>無法載入擴充功能「{0}」。</value>
+  </data>
+  <data name="CouldNotLoadList" xml:space="preserve">
+    <value>無法載入此連線的 SQLite 擴充功能。</value>
+  </data>
+  <data name="Duplicate" xml:space="preserve">
+    <value>「{0}」在清單中出現了多次。</value>
+  </data>
+  <data name="DuplicateRecovery" xml:space="preserve">
+    <value>移除第二個項目。</value>
+  </data>
+  <data name="EntryPointLabel" xml:space="preserve">
+    <value>進入點</value>
+  </data>
+  <data name="EntryPointNotFound" xml:space="preserve">
+    <value>該檔案沒有名為 {0} 的函式。</value>
+  </data>
+  <data name="EntryPointNotFoundRecovery" xml:space="preserve">
+    <value>輸入擴充功能文件中指明的進入點。</value>
+  </data>
+  <data name="EntryPointPlaceholder" xml:space="preserve">
+    <value>預設進入點</value>
+  </data>
+  <data name="EntryPointTooltip" xml:space="preserve">
+    <value>要呼叫的初始化函式。留空則使用 SQLite 從檔案名稱推斷的函式。</value>
+  </data>
+  <data name="FileLabel" xml:space="preserve">
+    <value>擴充功能檔案</value>
+  </data>
+  <data name="FileNotFound" xml:space="preserve">
+    <value>「{0}」處沒有檔案。</value>
+  </data>
+  <data name="FileWithEntryPoint" xml:space="preserve">
+    <value>{0}（進入點 {1}）</value>
+  </data>
+  <data name="Footer" xml:space="preserve">
+    <value>每次在這部電腦上開啟資料庫檔案時依此順序載入。擴充功能以完整存取你電腦的權限執行，因此只加入你信任的檔案。</value>
+  </data>
+  <data name="Header" xml:space="preserve">
+    <value>擴充功能</value>
+  </data>
+  <data name="InitializationFailed" xml:space="preserve">
+    <value>擴充功能啟動失敗：{0}</value>
+  </data>
+  <data name="InvalidEntryPoint" xml:space="preserve">
+    <value>「{0}」不是有效的進入點名稱。</value>
+  </data>
+  <data name="InvalidEntryPointRecovery" xml:space="preserve">
+    <value>使用 C 函式的名稱（例如 sqlite3_vec_init），或留空。</value>
+  </data>
+  <data name="LoadingNotClosed" xml:space="preserve">
+    <value>SQLite 在載入後沒有再次關閉擴充功能載入。</value>
+  </data>
+  <data name="LoadingUnavailable" xml:space="preserve">
+    <value>SQLite 不允許在此連線上載入擴充功能。</value>
+  </data>
+  <data name="MalformedList" xml:space="preserve">
+    <value>已儲存的擴充功能清單不是 TablePro 可讀取的格式。</value>
+  </data>
+  <data name="MissingDependencyRecovery" xml:space="preserve">
+    <value>缺少此擴充功能所需的 DLL。請將隨附的 DLL 放在與擴充功能相同的資料夾中。</value>
+  </data>
+  <data name="MissingPath" xml:space="preserve">
+    <value>清單中的某個擴充功能沒有檔案。</value>
+  </data>
+  <data name="MoveDown" xml:space="preserve">
+    <value>下移</value>
+  </data>
+  <data name="MoveUp" xml:space="preserve">
+    <value>上移</value>
+  </data>
+  <data name="NoExtensions" xml:space="preserve">
+    <value>無擴充功能</value>
+  </data>
+  <data name="NotAFile" xml:space="preserve">
+    <value>「{0}」不是檔案。</value>
+  </data>
+  <data name="NotApproved" xml:space="preserve">
+    <value>此連線會載入未在這部電腦上核准的 SQLite 擴充功能。</value>
+  </data>
+  <data name="NotApprovedRecovery" xml:space="preserve">
+    <value>從 TablePro 歡迎視窗連線以檢視它們。</value>
+  </data>
+  <data name="PathTooLong" xml:space="preserve">
+    <value>路徑「{0}」太長。</value>
+  </data>
+  <data name="PromptConfirm" xml:space="preserve">
+    <value>載入擴充功能</value>
+  </data>
+  <data name="PromptIntro" xml:space="preserve">
+    <value>連線「{0}」會載入未在這部電腦上加入的 SQLite 擴充功能：</value>
+  </data>
+  <data name="PromptTitle" xml:space="preserve">
+    <value>載入擴充功能</value>
+  </data>
+  <data name="PromptWarning" xml:space="preserve">
+    <value>擴充功能在 TablePro 內執行，擁有完整存取你電腦的權限。僅在你信任這些檔案時才載入。</value>
+  </data>
+  <data name="RelativePath" xml:space="preserve">
+    <value>「{0}」不是完整路徑。</value>
+  </data>
+  <data name="RelativePathRecovery" xml:space="preserve">
+    <value>請重新選擇檔案，或輸入完整路徑，例如 C:\Tools\extension.dll。</value>
+  </data>
+  <data name="RemoveExtension" xml:space="preserve">
+    <value>移除擴充功能</value>
+  </data>
+  <data name="Unreadable" xml:space="preserve">
+    <value>無法讀取已儲存的清單。加入擴充功能將會取代它。</value>
+  </data>
+  <data name="WrongArchitectureRecovery" xml:space="preserve">
+    <value>請使用為這部電腦處理器建置的擴充功能版本。</value>
+  </data>
+</root>

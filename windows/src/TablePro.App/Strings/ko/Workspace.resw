@@ -1,0 +1,414 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AiAssistant" xml:space="preserve">
+    <value>AI 어시스턴트</value>
+  </data>
+  <data name="AssistantButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>AI 어시스턴트</value>
+  </data>
+  <data name="BadgeReadOnly" xml:space="preserve">
+    <value>읽기 전용</value>
+  </data>
+  <data name="CloseSidePaneButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>닫기</value>
+  </data>
+  <data name="CloseSidePaneButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>닫기</value>
+  </data>
+  <data name="CloseTabMessage" xml:space="preserve">
+    <value>{0} 닫으면 변경 사항이 폐기됩니다.</value>
+  </data>
+  <data name="CloseTabTitle" xml:space="preserve">
+    <value>탭을 닫으시겠습니까?</value>
+  </data>
+  <data name="CloseWindowTitle" xml:space="preserve">
+    <value>이 창을 닫으시겠습니까?</value>
+  </data>
+  <data name="CloseWithoutSaving" xml:space="preserve">
+    <value>저장하지 않고 닫기</value>
+  </data>
+  <data name="ConnectedTo" xml:space="preserve">
+    <value>{0}에 연결됨</value>
+  </data>
+  <data name="CopyConnectMessage" xml:space="preserve">
+    <value>이 연결로 복사하려면 암호를 입력하세요.</value>
+  </data>
+  <data name="CopyConnectTitle" xml:space="preserve">
+    <value>{0}에 연결</value>
+  </data>
+  <data name="CountBillions" xml:space="preserve">
+    <value>{0:0.#}B</value>
+  </data>
+  <data name="CountMillions" xml:space="preserve">
+    <value>{0:0.#}M</value>
+  </data>
+  <data name="CountThousands" xml:space="preserve">
+    <value>{0:0.#}K</value>
+  </data>
+  <data name="Create" xml:space="preserve">
+    <value>생성</value>
+  </data>
+  <data name="CreateTableAddColumn" xml:space="preserve">
+    <value>열 추가</value>
+  </data>
+  <data name="CreateTableButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>테이블 생성</value>
+  </data>
+  <data name="CreateTableButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>테이블 생성</value>
+  </data>
+  <data name="CreateTableColumnPlaceholder" xml:space="preserve">
+    <value>열</value>
+  </data>
+  <data name="CreateTableKey" xml:space="preserve">
+    <value>키</value>
+  </data>
+  <data name="CreateTableName" xml:space="preserve">
+    <value>테이블 이름</value>
+  </data>
+  <data name="CreateTableReviewTitle" xml:space="preserve">
+    <value>테이블 생성</value>
+  </data>
+  <data name="CreateTableTitle" xml:space="preserve">
+    <value>테이블 생성</value>
+  </data>
+  <data name="DatabaseBox.PlaceholderText" xml:space="preserve">
+    <value>데이터베이스</value>
+  </data>
+  <data name="DatabaseBox.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>데이터베이스</value>
+  </data>
+  <data name="Drop" xml:space="preserve">
+    <value>삭제</value>
+  </data>
+  <data name="DropTitle" xml:space="preserve">
+    <value>{0}을(를) 삭제하시겠습니까?</value>
+  </data>
+  <data name="DumpExported_One" xml:space="preserve">
+    <value>객체 {0}개를 {1}(으)로 내보냈습니다.</value>
+  </data>
+  <data name="DumpExported_Other" xml:space="preserve">
+    <value>객체 {0}개를 {1}(으)로 내보냈습니다.</value>
+  </data>
+  <data name="DumpExporting" xml:space="preserve">
+    <value>{0} 내보내는 중…</value>
+  </data>
+  <data name="DumpIncludeData" xml:space="preserve">
+    <value>데이터 포함</value>
+  </data>
+  <data name="DumpMessage" xml:space="preserve">
+    <value>{0}에 있는 모든 테이블과 뷰의 구조를 SQL 파일에 씁니다.</value>
+  </data>
+  <data name="DumpTitle" xml:space="preserve">
+    <value>데이터베이스 내보내기</value>
+  </data>
+  <data name="ExportColumns_One" xml:space="preserve">
+    <value>{0}개 열</value>
+  </data>
+  <data name="ExportColumns_Other" xml:space="preserve">
+    <value>{0}개 열</value>
+  </data>
+  <data name="ExportCompression" xml:space="preserve">
+    <value>압축</value>
+  </data>
+  <data name="ExportCompressionTip" xml:space="preserve">
+    <value>Snappy는 모든 Parquet 리더에서 지원됩니다. Zstd는 더 작지만 Zstd를 지원하도록 빌드된 리더가 필요합니다.</value>
+  </data>
+  <data name="ExportEllipsis" xml:space="preserve">
+    <value>내보내기…</value>
+  </data>
+  <data name="ExportFailed" xml:space="preserve">
+    <value>내보내기 실패</value>
+  </data>
+  <data name="ExportFormat" xml:space="preserve">
+    <value>형식</value>
+  </data>
+  <data name="ExportFormatExcel" xml:space="preserve">
+    <value>Excel 통합 문서</value>
+  </data>
+  <data name="ExportIncludeColumnNames" xml:space="preserve">
+    <value>열 이름 포함</value>
+  </data>
+  <data name="ExportRowsPerGroup" xml:space="preserve">
+    <value>그룹당 행 수</value>
+  </data>
+  <data name="ExportRowsPerGroupTip" xml:space="preserve">
+    <value>그룹이 클수록 압축률은 좋아지지만 읽을 때 메모리를 더 많이 사용합니다</value>
+  </data>
+  <data name="ExportSummary_One" xml:space="preserve">
+    <value>{0:N0}행, {1}</value>
+  </data>
+  <data name="ExportSummary_Other" xml:space="preserve">
+    <value>{0:N0}행, {1}</value>
+  </data>
+  <data name="Favorites" xml:space="preserve">
+    <value>즐겨찾기</value>
+  </data>
+  <data name="FavoritesButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>즐겨찾기</value>
+  </data>
+  <data name="GridCopyAs" xml:space="preserve">
+    <value>형식으로 복사</value>
+  </data>
+  <data name="GridCopyAsInList" xml:space="preserve">
+    <value>IN 목록</value>
+  </data>
+  <data name="GridCopyAsWhereClause" xml:space="preserve">
+    <value>WHERE 절</value>
+  </data>
+  <data name="GridCopyColumnName" xml:space="preserve">
+    <value>열 이름 복사</value>
+  </data>
+  <data name="GridCopyWithHeaders" xml:space="preserve">
+    <value>헤더와 함께 복사</value>
+  </data>
+  <data name="HistoryButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>쿼리 기록</value>
+  </data>
+  <data name="KindCollection" xml:space="preserve">
+    <value>컬렉션</value>
+  </data>
+  <data name="KindFunction" xml:space="preserve">
+    <value>함수</value>
+  </data>
+  <data name="KindKey" xml:space="preserve">
+    <value>키</value>
+  </data>
+  <data name="KindMaterializedView" xml:space="preserve">
+    <value>구체화된 뷰</value>
+  </data>
+  <data name="KindProcedure" xml:space="preserve">
+    <value>프로시저</value>
+  </data>
+  <data name="KindSequence" xml:space="preserve">
+    <value>시퀀스</value>
+  </data>
+  <data name="KindTable" xml:space="preserve">
+    <value>테이블</value>
+  </data>
+  <data name="KindTopic" xml:space="preserve">
+    <value>토픽</value>
+  </data>
+  <data name="KindTrigger" xml:space="preserve">
+    <value>트리거</value>
+  </data>
+  <data name="KindView" xml:space="preserve">
+    <value>뷰</value>
+  </data>
+  <data name="MenuBrowseKeys" xml:space="preserve">
+    <value>키 둘러보기</value>
+  </data>
+  <data name="MenuBuildJoinQuery" xml:space="preserve">
+    <value>조인 쿼리 작성</value>
+  </data>
+  <data name="MenuCheckForUpdates.Text" xml:space="preserve">
+    <value>업데이트 확인…</value>
+  </data>
+  <data name="MenuCollapse" xml:space="preserve">
+    <value>접기</value>
+  </data>
+  <data name="MenuCompare.Text" xml:space="preserve">
+    <value>비교 및 동기화</value>
+  </data>
+  <data name="MenuCopyName" xml:space="preserve">
+    <value>이름 복사</value>
+  </data>
+  <data name="MenuCopyObjects.Text" xml:space="preserve">
+    <value>객체 복사…</value>
+  </data>
+  <data name="MenuCopyQualifiedName" xml:space="preserve">
+    <value>정규화된 이름 복사</value>
+  </data>
+  <data name="MenuCopyToConnection" xml:space="preserve">
+    <value>연결로 복사…</value>
+  </data>
+  <data name="MenuDataRewind.Text" xml:space="preserve">
+    <value>데이터 되감기</value>
+  </data>
+  <data name="MenuDebug" xml:space="preserve">
+    <value>디버그</value>
+  </data>
+  <data name="MenuDisconnect.Text" xml:space="preserve">
+    <value>연결 해제</value>
+  </data>
+  <data name="MenuErDiagram.Text" xml:space="preserve">
+    <value>ER 다이어그램</value>
+  </data>
+  <data name="MenuExpand" xml:space="preserve">
+    <value>펼치기</value>
+  </data>
+  <data name="MenuExportData" xml:space="preserve">
+    <value>데이터 내보내기</value>
+  </data>
+  <data name="MenuExportDatabase.Text" xml:space="preserve">
+    <value>데이터베이스 내보내기</value>
+  </data>
+  <data name="MenuGenerateRows" xml:space="preserve">
+    <value>행 생성…</value>
+  </data>
+  <data name="MenuGenerateSql" xml:space="preserve">
+    <value>SQL 생성</value>
+  </data>
+  <data name="MenuJoinBuilder.Text" xml:space="preserve">
+    <value>조인 빌더</value>
+  </data>
+  <data name="MenuOpenQuickly.Text" xml:space="preserve">
+    <value>빠르게 열기</value>
+  </data>
+  <data name="MenuQueryInNewTab" xml:space="preserve">
+    <value>새 탭에서 쿼리</value>
+  </data>
+  <data name="MenuRunSqlFile.Text" xml:space="preserve">
+    <value>SQL 파일 실행</value>
+  </data>
+  <data name="MenuSearchDatabase.Text" xml:space="preserve">
+    <value>데이터베이스 검색</value>
+  </data>
+  <data name="MenuServerDashboard.Text" xml:space="preserve">
+    <value>서버 대시보드</value>
+  </data>
+  <data name="MenuSettings.Text" xml:space="preserve">
+    <value>설정</value>
+  </data>
+  <data name="MenuShowDefinition" xml:space="preserve">
+    <value>정의 표시</value>
+  </data>
+  <data name="MenuStructure" xml:space="preserve">
+    <value>구조</value>
+  </data>
+  <data name="MoreButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>더 보기</value>
+  </data>
+  <data name="MoreButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>더 보기</value>
+  </data>
+  <data name="NewQuery" xml:space="preserve">
+    <value>새 쿼리</value>
+  </data>
+  <data name="NewQueryButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>새 쿼리</value>
+  </data>
+  <data name="QueryHistory" xml:space="preserve">
+    <value>쿼리 기록</value>
+  </data>
+  <data name="QuitTitle" xml:space="preserve">
+    <value>TablePro를 종료하시겠습니까?</value>
+  </data>
+  <data name="QuitWithoutSaving" xml:space="preserve">
+    <value>저장하지 않고 종료</value>
+  </data>
+  <data name="RefreshButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>새로 고침</value>
+  </data>
+  <data name="RefreshButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>새로 고침(사이드바에서 F5)</value>
+  </data>
+  <data name="RenameNewName" xml:space="preserve">
+    <value>새 이름</value>
+  </data>
+  <data name="RenameTitle" xml:space="preserve">
+    <value>{0} 이름 변경</value>
+  </data>
+  <data name="SchemaBox.PlaceholderText" xml:space="preserve">
+    <value>스키마</value>
+  </data>
+  <data name="SchemaBox.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>스키마</value>
+  </data>
+  <data name="SearchTables" xml:space="preserve">
+    <value>테이블 검색</value>
+  </data>
+  <data name="SectionCollections" xml:space="preserve">
+    <value>컬렉션</value>
+  </data>
+  <data name="SectionFunctions" xml:space="preserve">
+    <value>함수</value>
+  </data>
+  <data name="SectionKeys" xml:space="preserve">
+    <value>키</value>
+  </data>
+  <data name="SectionMaterializedViews" xml:space="preserve">
+    <value>구체화된 뷰</value>
+  </data>
+  <data name="SectionProcedures" xml:space="preserve">
+    <value>프로시저</value>
+  </data>
+  <data name="SectionSequences" xml:space="preserve">
+    <value>시퀀스</value>
+  </data>
+  <data name="SectionTables" xml:space="preserve">
+    <value>테이블</value>
+  </data>
+  <data name="SectionTopics" xml:space="preserve">
+    <value>토픽</value>
+  </data>
+  <data name="SectionTriggers" xml:space="preserve">
+    <value>트리거</value>
+  </data>
+  <data name="SectionViews" xml:space="preserve">
+    <value>뷰</value>
+  </data>
+  <data name="SidebarNamespaceAccessibleName" xml:space="preserve">
+    <value>네임스페이스 {0}</value>
+  </data>
+  <data name="SidePaneAssistant" xml:space="preserve">
+    <value>어시스턴트</value>
+  </data>
+  <data name="SidePaneDataRewind" xml:space="preserve">
+    <value>데이터 되감기</value>
+  </data>
+  <data name="SidePaneHistory" xml:space="preserve">
+    <value>기록</value>
+  </data>
+  <data name="SidePaneSqlFiles" xml:space="preserve">
+    <value>SQL 파일</value>
+  </data>
+  <data name="SidebarItemAccessibleName" xml:space="preserve">
+    <value>{0} {1}</value>
+  </data>
+  <data name="SqlFileType" xml:space="preserve">
+    <value>SQL 파일</value>
+  </data>
+  <data name="SqlFilesButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>SQL 파일</value>
+  </data>
+  <data name="SqlFilesButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>SQL 파일</value>
+  </data>
+  <data name="StatementFailed" xml:space="preserve">
+    <value>문을 실행하지 못했습니다</value>
+  </data>
+  <data name="SwitchDatabaseButton" xml:space="preserve">
+    <value>전환</value>
+  </data>
+  <data name="SwitchDatabaseFailed" xml:space="preserve">
+    <value>데이터베이스를 전환할 수 없습니다</value>
+  </data>
+  <data name="SwitchDatabaseMessage" xml:space="preserve">
+    <value>저장되지 않은 변경 사항이 있는 열린 탭이 닫힙니다.</value>
+  </data>
+  <data name="SwitchDatabaseTitle" xml:space="preserve">
+    <value>데이터베이스를 전환하시겠습니까?</value>
+  </data>
+  <data name="Truncate" xml:space="preserve">
+    <value>비우기</value>
+  </data>
+  <data name="TruncateTitle" xml:space="preserve">
+    <value>{0}을(를) 비우시겠습니까?</value>
+  </data>
+  <data name="WindowTitle" xml:space="preserve">
+    <value>{0} - TablePro</value>
+  </data>
+</root>

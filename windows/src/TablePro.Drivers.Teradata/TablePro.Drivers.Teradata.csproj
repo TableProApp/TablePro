@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>$(TableProTargetFramework)</TargetFramework>
+    <RootNamespace>TablePro.Drivers.Teradata</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../TablePro.Core/TablePro.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Teradata.Client.Provider" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="TablePro.Drivers.Analytics.Tests" />
+  </ItemGroup>
+</Project>

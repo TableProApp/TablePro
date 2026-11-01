@@ -1,0 +1,255 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="CategoryApp" xml:space="preserve">
+    <value>Uygulama</value>
+  </data>
+  <data name="CategoryConnections" xml:space="preserve">
+    <value>Bağlantılar</value>
+  </data>
+  <data name="CategoryDataGrid" xml:space="preserve">
+    <value>Veri Tablosu</value>
+  </data>
+  <data name="CategoryEditor" xml:space="preserve">
+    <value>Düzenleyici ve Sorgu</value>
+  </data>
+  <data name="CategoryNavigation" xml:space="preserve">
+    <value>Gezinme</value>
+  </data>
+  <data name="CommandCloseAllTabs" xml:space="preserve">
+    <value>Tüm Sekmeleri Kapat</value>
+  </data>
+  <data name="CommandCloseOtherTabs" xml:space="preserve">
+    <value>Diğer Sekmeleri Kapat</value>
+  </data>
+  <data name="CommandCloseTab" xml:space="preserve">
+    <value>Sekmeyi Kapat</value>
+  </data>
+  <data name="CommandDisconnect" xml:space="preserve">
+    <value>Bağlantıyı Kes</value>
+  </data>
+  <data name="CommandErDiagram" xml:space="preserve">
+    <value>ER Diyagramı</value>
+  </data>
+  <data name="CommandExecuteAllStatements" xml:space="preserve">
+    <value>Tüm İfadeleri Çalıştır</value>
+  </data>
+  <data name="CommandExecuteQuery" xml:space="preserve">
+    <value>Geçerli İfadeyi Çalıştır</value>
+  </data>
+  <data name="CommandExplainQuery" xml:space="preserve">
+    <value>Sorguyu Açıkla</value>
+  </data>
+  <data name="CommandExportDatabase" xml:space="preserve">
+    <value>Veritabanını Dışa Aktar</value>
+  </data>
+  <data name="CommandFind" xml:space="preserve">
+    <value>Bul</value>
+  </data>
+  <data name="CommandFindAndReplace" xml:space="preserve">
+    <value>Bul ve Değiştir</value>
+  </data>
+  <data name="CommandFindNext" xml:space="preserve">
+    <value>Sonrakini Bul</value>
+  </data>
+  <data name="CommandFindPrevious" xml:space="preserve">
+    <value>Öncekini Bul</value>
+  </data>
+  <data name="CommandFocusObjectList" xml:space="preserve">
+    <value>Nesne Listesine Odaklan</value>
+  </data>
+  <data name="CommandFocusSidebarSearch" xml:space="preserve">
+    <value>Kenar Çubuğu Filtresine Odaklan</value>
+  </data>
+  <data name="CommandFormatQuery" xml:space="preserve">
+    <value>Sorguyu Biçimlendir</value>
+  </data>
+  <data name="CommandGoToDefinition" xml:space="preserve">
+    <value>Tanıma Git</value>
+  </data>
+  <data name="CommandManageConnections" xml:space="preserve">
+    <value>Bağlantıları Yönet</value>
+  </data>
+  <data name="CommandNewTab" xml:space="preserve">
+    <value>Yeni Sekme</value>
+  </data>
+  <data name="CommandNextQueryIssue" xml:space="preserve">
+    <value>Sonraki Sorgu Sorunu</value>
+  </data>
+  <data name="CommandOpenSettings" xml:space="preserve">
+    <value>Ayarlar</value>
+  </data>
+  <data name="CommandPreviousQueryIssue" xml:space="preserve">
+    <value>Önceki Sorgu Sorunu</value>
+  </data>
+  <data name="CommandQuickSwitcher" xml:space="preserve">
+    <value>Hızlı Aç</value>
+  </data>
+  <data name="CommandRenameSymbol" xml:space="preserve">
+    <value>Sembolü Yeniden Adlandır</value>
+  </data>
+  <data name="CommandRunSqlFile" xml:space="preserve">
+    <value>SQL Dosyasını Çalıştır</value>
+  </data>
+  <data name="CommandSaveFile" xml:space="preserve">
+    <value>Dosyayı Kaydet</value>
+  </data>
+  <data name="CommandSearchDatabase" xml:space="preserve">
+    <value>Veritabanında Ara</value>
+  </data>
+  <data name="CommandServerDashboard" xml:space="preserve">
+    <value>Sunucu Panosu</value>
+  </data>
+  <data name="CommandShowFavoritesList" xml:space="preserve">
+    <value>Sık Kullanılanları Göster</value>
+  </data>
+  <data name="CommandShowNextTab" xml:space="preserve">
+    <value>Sonraki Sekmeyi Göster</value>
+  </data>
+  <data name="CommandShowPreviousTab" xml:space="preserve">
+    <value>Önceki Sekmeyi Göster</value>
+  </data>
+  <data name="CommandShowQuickInfo" xml:space="preserve">
+    <value>Hızlı Bilgiyi Göster</value>
+  </data>
+  <data name="CommandToggleAssistant" xml:space="preserve">
+    <value>Asistanı Aç/Kapat</value>
+  </data>
+  <data name="CommandToggleComment" xml:space="preserve">
+    <value>Yorumu Aç/Kapat</value>
+  </data>
+  <data name="CommandToggleHistory" xml:space="preserve">
+    <value>Geçmişi Aç/Kapat</value>
+  </data>
+  <data name="CommandToggleSqlFiles" xml:space="preserve">
+    <value>SQL Dosyalarını Aç/Kapat</value>
+  </data>
+  <data name="CommandToggleTableBrowser" xml:space="preserve">
+    <value>Kenar Çubuğunu Aç/Kapat</value>
+  </data>
+  <data name="ConflictCommand" xml:space="preserve">
+    <value>{0} zaten {2} bölümünde "{1}" tarafından kullanılıyor.</value>
+  </data>
+  <data name="ConflictNeedsModifier" xml:space="preserve">
+    <value>Bir kısayol, işlev tuşu değilse Ctrl veya Alt içermelidir. Shift bunlara eklenebilir ancak tek başına kısayol oluşturamaz.</value>
+  </data>
+  <data name="ConflictReserved" xml:space="preserve">
+    <value>{0}, "{1}" için ayrılmıştır ve atanamaz.</value>
+  </data>
+  <data name="ConflictSystemReserved" xml:space="preserve">
+    <value>{0} Windows tarafından ayrılmıştır ve atanamaz.</value>
+  </data>
+  <data name="RecorderHelpText" xml:space="preserve">
+    <value>Kısayol kaydetmek için basın. Esc iptal eder, Backspace temizler.</value>
+  </data>
+  <data name="RecorderPrompt" xml:space="preserve">
+    <value>Kısayola basın</value>
+  </data>
+  <data name="RecorderRecording" xml:space="preserve">
+    <value>Kaydediliyor</value>
+  </data>
+  <data name="ReservedAddRow" xml:space="preserve">
+    <value>Satır Ekle</value>
+  </data>
+  <data name="ReservedCloseWindow" xml:space="preserve">
+    <value>Pencereyi Kapat</value>
+  </data>
+  <data name="ReservedContextMenu" xml:space="preserve">
+    <value>Bağlam Menüsü</value>
+  </data>
+  <data name="ReservedCopyWithHeaders" xml:space="preserve">
+    <value>Başlıklarla Kopyala</value>
+  </data>
+  <data name="ReservedCycleWindows" xml:space="preserve">
+    <value>Pencereler Arasında Dolaş</value>
+  </data>
+  <data name="ReservedDeleteWordBackward" xml:space="preserve">
+    <value>Önceki Kelimeyi Sil</value>
+  </data>
+  <data name="ReservedDeleteWordForward" xml:space="preserve">
+    <value>Sonraki Kelimeyi Sil</value>
+  </data>
+  <data name="ReservedDuplicateLine" xml:space="preserve">
+    <value>Satırı Çoğalt</value>
+  </data>
+  <data name="ReservedMenuBar" xml:space="preserve">
+    <value>Menü Çubuğu</value>
+  </data>
+  <data name="ReservedMoveToBeginningOfDocument" xml:space="preserve">
+    <value>Belgenin Başına Git</value>
+  </data>
+  <data name="ReservedMoveToEndOfDocument" xml:space="preserve">
+    <value>Belgenin Sonuna Git</value>
+  </data>
+  <data name="ReservedMoveToNextParagraph" xml:space="preserve">
+    <value>Sonraki Paragrafa Git</value>
+  </data>
+  <data name="ReservedMoveToPreviousParagraph" xml:space="preserve">
+    <value>Önceki Paragrafa Git</value>
+  </data>
+  <data name="ReservedMoveWordLeft" xml:space="preserve">
+    <value>Bir Kelime Sola Git</value>
+  </data>
+  <data name="ReservedMoveWordRight" xml:space="preserve">
+    <value>Bir Kelime Sağa Git</value>
+  </data>
+  <data name="ReservedNextProblem" xml:space="preserve">
+    <value>Sonraki Sorun</value>
+  </data>
+  <data name="ReservedPreviousProblem" xml:space="preserve">
+    <value>Önceki Sorun</value>
+  </data>
+  <data name="ReservedPrintScreen" xml:space="preserve">
+    <value>Print Screen</value>
+  </data>
+  <data name="ReservedQuickInfo" xml:space="preserve">
+    <value>Hızlı Bilgi</value>
+  </data>
+  <data name="ReservedSaveChanges" xml:space="preserve">
+    <value>Değişiklikleri Kaydet</value>
+  </data>
+  <data name="ReservedSecurityOptions" xml:space="preserve">
+    <value>Güvenlik Seçenekleri</value>
+  </data>
+  <data name="ReservedSelectTab" xml:space="preserve">
+    <value>{0}. Sekmeyi Seç</value>
+  </data>
+  <data name="ReservedSelectToBeginningOfDocument" xml:space="preserve">
+    <value>Belgenin Başına Kadar Seç</value>
+  </data>
+  <data name="ReservedSelectToEndOfDocument" xml:space="preserve">
+    <value>Belgenin Sonuna Kadar Seç</value>
+  </data>
+  <data name="ReservedSelectWordLeft" xml:space="preserve">
+    <value>Soldaki Kelimeyi Seç</value>
+  </data>
+  <data name="ReservedSelectWordRight" xml:space="preserve">
+    <value>Sağdaki Kelimeyi Seç</value>
+  </data>
+  <data name="ReservedShowCompletions" xml:space="preserve">
+    <value>Tamamlamaları Göster</value>
+  </data>
+  <data name="ReservedStartMenu" xml:space="preserve">
+    <value>Başlat Menüsü</value>
+  </data>
+  <data name="ReservedSwitchApps" xml:space="preserve">
+    <value>Uygulamalar Arasında Geçiş Yap</value>
+  </data>
+  <data name="ReservedTaskManager" xml:space="preserve">
+    <value>Görev Yöneticisi</value>
+  </data>
+  <data name="ReservedWindowMenu" xml:space="preserve">
+    <value>Pencere Menüsü</value>
+  </data>
+</root>

@@ -1,0 +1,201 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AskPassMissing" xml:space="preserve">
+    <value>{0} 中缺少 SSH 密码辅助程序。请重新安装 TablePro。</value>
+  </data>
+  <data name="BatchScript" xml:space="preserve">
+    <value>{0} 是批处理脚本，Windows 会通过 cmd.exe 运行它。请改为提供该程序 .exe 的路径。</value>
+  </data>
+  <data name="CloudflaredNotFound" xml:space="preserve">
+    <value>找不到 cloudflared。请使用“winget install Cloudflare.cloudflared”安装，或在连接的 Cloudflare Tunnel 设置中指定其路径。</value>
+  </data>
+  <data name="CloudflareSignIn" xml:space="preserve">
+    <value>Cloudflare Access 需要在浏览器中登录。请在 {0} 登录，然后重新连接。</value>
+  </data>
+  <data name="CloudflareTokenRequired" xml:space="preserve">
+    <value>需要服务令牌 ID 和密钥。</value>
+  </data>
+  <data name="CloudSqlKeyRequired" xml:space="preserve">
+    <value>需要服务账号密钥。请将密钥的 JSON 粘贴到连接的 Cloud SQL 设置中。</value>
+  </data>
+  <data name="CloudSqlProxyName" xml:space="preserve">
+    <value>Cloud SQL Auth Proxy</value>
+  </data>
+  <data name="CloudSqlProxyNotFound" xml:space="preserve">
+    <value>找不到 cloud-sql-proxy。请使用“gcloud components install cloud-sql-proxy”安装，或在连接的 Cloud SQL 设置中指定其路径。</value>
+  </data>
+  <data name="CommandNotFound" xml:space="preserve">
+    <value>找不到 {0}。请在连接中提供其完整路径。</value>
+  </data>
+  <data name="CouldNotStart" xml:space="preserve">
+    <value>无法启动 {0}：{1}</value>
+  </data>
+  <data name="DatabaseHostEmpty" xml:space="preserve">
+    <value>数据库主机为空。</value>
+  </data>
+  <data name="DatabaseHostUnsafe" xml:space="preserve">
+    <value>数据库主机“{0}”包含 ssh 不接受的字符。</value>
+  </data>
+  <data name="FixedPortInUse" xml:space="preserve">
+    <value>另一个程序已在监听本地端口 {0}。请选择其他端口，或将其留空。</value>
+  </data>
+  <data name="HelperCouldNotListen" xml:space="preserve">
+    <value>{0} 无法监听本地端口 {1}。</value>
+  </data>
+  <data name="HelperExitedEarly" xml:space="preserve">
+    <value>{0} 在打开本地端口之前已退出。</value>
+  </data>
+  <data name="HelperTimedOut" xml:space="preserve">
+    <value>{0} 未能及时打开本地端口。</value>
+  </data>
+  <data name="JumpHostEmpty" xml:space="preserve">
+    <value>跳板主机为空。</value>
+  </data>
+  <data name="JumpHostUnsafe" xml:space="preserve">
+    <value>跳板主机“{0}”包含 ssh 不接受的字符。</value>
+  </data>
+  <data name="NoFreePort" xml:space="preserve">
+    <value>没有可供隧道使用的空闲本地端口。</value>
+  </data>
+  <data name="NotAProxyOrHelper" xml:space="preserve">
+    <value>该连接未使用代理或隧道辅助程序。</value>
+  </data>
+  <data name="NotHttpProxy" xml:space="preserve">
+    <value>该代理未以 HTTP 代理的方式响应。</value>
+  </data>
+  <data name="NotSocks5" xml:space="preserve">
+    <value>该代理未以 SOCKS5 代理的方式响应。</value>
+  </data>
+  <data name="NotSsh" xml:space="preserve">
+    <value>该连接未使用 SSH。</value>
+  </data>
+  <data name="PortOutOfRange" xml:space="preserve">
+    <value>端口必须介于 1 到 65535 之间。</value>
+  </data>
+  <data name="ProxyClosed" xml:space="preserve">
+    <value>代理关闭了连接。</value>
+  </data>
+  <data name="ProxyConnectFailed" xml:space="preserve">
+    <value>无法通过位于 {0} 的代理连接。{1}</value>
+  </data>
+  <data name="ProxyCouldNotConnect" xml:space="preserve">
+    <value>代理无法连接到 {0}:{1}：{2}。</value>
+  </data>
+  <data name="ProxyIncomplete" xml:space="preserve">
+    <value>代理配置不完整。请输入代理主机和端口。</value>
+  </data>
+  <data name="ProxyLocalPortFailed" xml:space="preserve">
+    <value>无法为代理打开本地端口：{0}</value>
+  </data>
+  <data name="ProxyNeedsLogin" xml:space="preserve">
+    <value>代理需要用户名和密码。</value>
+  </data>
+  <data name="ProxyNoMethod" xml:space="preserve">
+    <value>代理不接受所提供的任何登录方式。</value>
+  </data>
+  <data name="ProxyRejectedLogin" xml:space="preserve">
+    <value>代理拒绝了用户名和密码。</value>
+  </data>
+  <data name="ProxyReplyTooLong" xml:space="preserve">
+    <value>代理的响应过长。</value>
+  </data>
+  <data name="ProxyTimedOut" xml:space="preserve">
+    <value>通过位于 {0} 的代理连接超时。请检查代理是否可访问以及凭据是否正确。</value>
+  </data>
+  <data name="ProxyUnreachable" xml:space="preserve">
+    <value>无法连接位于 {0} 的代理。{1}</value>
+  </data>
+  <data name="ProxyUnreadableReply" xml:space="preserve">
+    <value>代理发送了 TablePro 无法读取的响应。</value>
+  </data>
+  <data name="ProxyUnsupportedMethod" xml:space="preserve">
+    <value>代理要求使用 TablePro 不支持的登录方式。</value>
+  </data>
+  <data name="Socks5CredentialsTooLong" xml:space="preserve">
+    <value>SOCKS5 用户名和密码各自最多 255 字节。</value>
+  </data>
+  <data name="Socks5HostTooLong" xml:space="preserve">
+    <value>主机名 {0} 对 SOCKS5 代理来说太长。</value>
+  </data>
+  <data name="SocksAddressTypeNotSupported" xml:space="preserve">
+    <value>不支持该地址类型</value>
+  </data>
+  <data name="SocksCommandNotSupported" xml:space="preserve">
+    <value>不支持该命令</value>
+  </data>
+  <data name="SocksConnectionRefused" xml:space="preserve">
+    <value>连接被拒绝</value>
+  </data>
+  <data name="SocksError" xml:space="preserve">
+    <value>错误 {0}</value>
+  </data>
+  <data name="SocksGeneralFailure" xml:space="preserve">
+    <value>一般性故障</value>
+  </data>
+  <data name="SocksHostUnreachable" xml:space="preserve">
+    <value>主机不可达</value>
+  </data>
+  <data name="SocksNetworkUnreachable" xml:space="preserve">
+    <value>网络不可达</value>
+  </data>
+  <data name="SocksNotAllowed" xml:space="preserve">
+    <value>代理规则不允许</value>
+  </data>
+  <data name="SocksTimedOut" xml:space="preserve">
+    <value>超时</value>
+  </data>
+  <data name="SshClosed" xml:space="preserve">
+    <value>通过 {0} 的 SSH 隧道已关闭。</value>
+  </data>
+  <data name="SshFailed" xml:space="preserve">
+    <value>ssh 无法通过 {0} 打开隧道。</value>
+  </data>
+  <data name="SshHostEmpty" xml:space="preserve">
+    <value>SSH 主机为空。</value>
+  </data>
+  <data name="SshHostKeyMismatch" xml:space="preserve">
+    <value>{0} 的主机密钥与 known_hosts 中的不一致。请向服务器管理员核实，然后删除旧条目。</value>
+  </data>
+  <data name="SshHostNotFound" xml:space="preserve">
+    <value>找不到 SSH 主机 {0}。</value>
+  </data>
+  <data name="SshHostUnsafe" xml:space="preserve">
+    <value>SSH 主机“{0}”包含 ssh 不接受的字符。</value>
+  </data>
+  <data name="SshLocalPort" xml:space="preserve">
+    <value>ssh 无法在隧道的本地端监听。</value>
+  </data>
+  <data name="SshLoginRejected" xml:space="preserve">
+    <value>SSH 服务器 {0} 拒绝了登录。</value>
+  </data>
+  <data name="SshNotFound" xml:space="preserve">
+    <value>找不到 ssh.exe。请从“设置 &gt; 系统 &gt; 可选功能”安装 OpenSSH 客户端。</value>
+  </data>
+  <data name="SshTimedOut" xml:space="preserve">
+    <value>通过 {0} 的 SSH 隧道未能及时打开。</value>
+  </data>
+  <data name="SshUnreachable" xml:space="preserve">
+    <value>无法连接 SSH 服务器 {0}。</value>
+  </data>
+  <data name="SshUserEmpty" xml:space="preserve">
+    <value>SSH 用户为空。</value>
+  </data>
+  <data name="SshUserUnsafe" xml:space="preserve">
+    <value>SSH 用户“{0}”包含 ssh 不接受的字符。</value>
+  </data>
+  <data name="TunnelCommandName" xml:space="preserve">
+    <value>隧道命令</value>
+  </data>
+</root>

@@ -1,0 +1,126 @@
+<UserControl
+    x:Class="TablePro.App.Views.QueryTabView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:TablePro.App.Controls"
+    xmlns:editor="using:TablePro.App.Controls.Editor"
+    xmlns:grid="using:TablePro.App.Controls.DataGrid">
+
+    <Grid x:Name="Root">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" MinHeight="80" />
+            <RowDefinition Height="8" />
+            <RowDefinition x:Name="ResultsRow" Height="320" MinHeight="64" />
+        </Grid.RowDefinitions>
+
+        <!--  Toolbar  -->
+        <Grid Padding="8,6" ColumnSpacing="4" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,0,0,1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <StackPanel Orientation="Horizontal" Spacing="4">
+                <SplitButton x:Uid="/Query/RunButton" x:Name="RunButton" Click="OnRunClicked">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <FontIcon FontSize="14" Glyph="&#xE768;" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+                        <TextBlock x:Uid="/Query/RunLabel" />
+                    </StackPanel>
+                    <SplitButton.Flyout>
+                        <MenuFlyout Placement="BottomEdgeAlignedLeft">
+                            <MenuFlyoutItem x:Uid="/Query/RunCurrentItem" Click="OnRunCurrent" KeyboardAcceleratorTextOverride="Ctrl+Enter">
+                                <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE768;" /></MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                            <MenuFlyoutItem x:Uid="/Query/RunAllItem" Click="OnRunAll" KeyboardAcceleratorTextOverride="F5">
+                                <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE7C8;" /></MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                            <MenuFlyoutItem x:Uid="/Query/ExplainItem" x:Name="ExplainItem" Click="OnExplain" KeyboardAcceleratorTextOverride="Ctrl+Shift+E">
+                                <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE9D9;" /></MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                            <MenuFlyoutItem x:Uid="/Query/ExplainAnalyzeItem" x:Name="ExplainAnalyzeItem" Click="OnExplainAnalyze">
+                                <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE916;" /></MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                        </MenuFlyout>
+                    </SplitButton.Flyout>
+                </SplitButton>
+                <Button x:Uid="/Query/StopButton" Style="{StaticResource ToolbarButtonStyle}" Command="{x:Bind ViewModel.StopCommand}">
+                    <FontIcon FontSize="14" Glyph="&#xE71A;" />
+                </Button>
+                <AppBarSeparator />
+                <Button x:Uid="/Query/FormatButton" x:Name="FormatButton" Style="{StaticResource ToolbarButtonStyle}" Click="OnFormat">
+                    <FontIcon FontSize="14" Glyph="&#xE8E4;" />
+                </Button>
+                <Button x:Uid="/Query/OpenFileButton" Style="{StaticResource ToolbarButtonStyle}" Click="OnOpenFile">
+                    <FontIcon FontSize="14" Glyph="&#xE8E5;" />
+                </Button>
+                <Button x:Uid="/Query/SaveFileButton" Style="{StaticResource ToolbarButtonStyle}" Click="OnSaveFile">
+                    <FontIcon FontSize="14" Glyph="&#xE74E;" />
+                </Button>
+                <Button x:Uid="/Query/SaveFavoriteButton" Style="{StaticResource ToolbarButtonStyle}" Click="OnSaveFavorite">
+                    <FontIcon FontSize="14" Glyph="&#xE734;" />
+                </Button>
+            </StackPanel>
+            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                <TextBlock x:Name="VimStatusText" Style="{StaticResource StatusTextStyle}" FontFamily="{StaticResource CodeFontFamily}" Visibility="Collapsed" />
+                <ProgressRing Width="16" Height="16" IsActive="{x:Bind ViewModel.IsRunning, Mode=OneWay}" />
+                <TextBlock Style="{StaticResource StatusTextStyle}" Text="{x:Bind ViewModel.StatusText, Mode=OneWay}" MaxWidth="420" TextTrimming="CharacterEllipsis" />
+            </StackPanel>
+        </Grid>
+
+        <editor:SqlEditor x:Name="Editor" Grid.Row="1" />
+
+        <controls:PaneSplitter Grid.Row="2" Orientation="Horizontal" TargetIndex="3" Invert="True" />
+
+        <!--  Results  -->
+        <Grid Grid.Row="3" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,1,0,0">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+            <Grid Padding="4,0,8,0" ColumnSpacing="8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <SelectorBar x:Name="ResultTabs" SelectionChanged="OnResultTabChanged" />
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
+                    <TextBlock x:Name="ResultSummary" Style="{StaticResource StatusTextStyle}" Margin="0,0,8,0" />
+                    <ToggleButton x:Uid="/Query/ChartToggle" x:Name="ChartToggle" Style="{StaticResource DefaultToggleButtonStyle}" Padding="8,5" Click="OnChartToggled">
+                        <FontIcon FontSize="14" Glyph="&#xE9D2;" />
+                    </ToggleButton>
+                    <ToggleButton x:Uid="/Query/MapToggle" x:Name="MapToggle" Style="{StaticResource DefaultToggleButtonStyle}" Padding="8,5" Click="OnMapToggled" Visibility="Collapsed">
+                        <FontIcon FontSize="14" Glyph="&#xE707;" />
+                    </ToggleButton>
+                    <Button x:Uid="/Query/ExportButton" x:Name="ExportButton" Style="{StaticResource ToolbarButtonStyle}" Click="OnExportResult">
+                        <FontIcon FontSize="14" Glyph="&#xEDE1;" />
+                    </Button>
+                </StackPanel>
+            </Grid>
+
+            <grid:DataGridView x:Name="ResultGrid" Grid.Row="1" />
+            <controls:ProFeatureGate x:Name="ChartGate" Grid.Row="1" Feature="ResultCharts" Visibility="Collapsed">
+                <controls:ResultChart x:Name="Chart" />
+            </controls:ProFeatureGate>
+            <controls:ResultMap x:Name="Map" Grid.Row="1" Visibility="Collapsed" />
+            <controls:QueryPlanView x:Name="PlanView" Grid.Row="1" Visibility="Collapsed" />
+
+            <ScrollViewer x:Name="MessagePanel" Grid.Row="1" Visibility="Collapsed" Padding="16,12">
+                <StackPanel Spacing="12">
+                    <InfoBar x:Uid="/Query/ErrorBar" x:Name="ErrorBar" IsOpen="False" IsClosable="False" Severity="Error">
+                        <InfoBar.ActionButton>
+                            <Button x:Uid="/Query/FixWithAiButton" Click="OnFixWithAi" />
+                        </InfoBar.ActionButton>
+                    </InfoBar>
+                    <TextBlock x:Name="MessageText" TextWrapping="Wrap" IsTextSelectionEnabled="True" FontFamily="{StaticResource CodeFontFamily}" FontSize="12" />
+                </StackPanel>
+            </ScrollViewer>
+
+            <StackPanel x:Name="EmptyState" Grid.Row="1" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="6">
+                <FontIcon FontSize="28" Glyph="&#xE9F9;" Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+                <TextBlock x:Uid="/Query/EmptyTitle" Style="{StaticResource BodyStrongTextBlockStyle}" HorizontalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                <TextBlock x:Uid="/Query/EmptyHint" Style="{StaticResource CaptionTextBlockStyle}" HorizontalAlignment="Center" Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+            </StackPanel>
+        </Grid>
+    </Grid>
+</UserControl>

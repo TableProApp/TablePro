@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="CategoryApp" xml:space="preserve">
+    <value>앱</value>
+  </data>
+  <data name="CategoryConnections" xml:space="preserve">
+    <value>연결</value>
+  </data>
+  <data name="CategoryDataGrid" xml:space="preserve">
+    <value>데이터 그리드</value>
+  </data>
+  <data name="CategoryEditor" xml:space="preserve">
+    <value>편집기 및 쿼리</value>
+  </data>
+  <data name="CategoryNavigation" xml:space="preserve">
+    <value>탐색</value>
+  </data>
+  <data name="ConflictCommand" xml:space="preserve">
+    <value>{0}은(는) 이미 {2}의 "{1}"에서 사용 중입니다.</value>
+  </data>
+  <data name="ConflictNeedsModifier" xml:space="preserve">
+    <value>기능 키가 아니면 단축키에는 Ctrl 또는 Alt가 필요합니다. Shift는 함께 사용할 수 있지만 단독으로는 단축키가 될 수 없습니다.</value>
+  </data>
+  <data name="ConflictReserved" xml:space="preserve">
+    <value>{0}은(는) "{1}"용으로 예약되어 있어 할당할 수 없습니다.</value>
+  </data>
+  <data name="ConflictSystemReserved" xml:space="preserve">
+    <value>{0}은(는) Windows에서 예약되어 있어 할당할 수 없습니다.</value>
+  </data>
+  <data name="NotAShortcut" xml:space="preserve">
+    <value>'{0}'은(는) 바로 가기 키가 아닙니다.</value>
+  </data>
+  <data name="UnknownCommand" xml:space="preserve">
+    <value>'{0}' 바로 가기 명령이 없습니다.</value>
+  </data>
+</root>

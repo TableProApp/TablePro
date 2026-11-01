@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AwsProfileMissing" xml:space="preserve">
+    <value>AWS 設定檔 {0} 不在 %USERPROFILE%\.aws\config 或 credentials 中。</value>
+  </data>
+  <data name="AwsProfileNoCredentials" xml:space="preserve">
+    <value>AWS 設定檔 {0} 未提供認證：{1}</value>
+  </data>
+  <data name="AwsProfileNoCredentialsSso" xml:space="preserve">
+    <value>AWS 設定檔 {0} 未提供認證：{1} 請執行「aws sso login --profile {0}」，然後重新連線。</value>
+  </data>
+  <data name="EnterAccessKey" xml:space="preserve">
+    <value>請輸入存取金鑰 ID 和祕密存取金鑰。</value>
+  </data>
+  <data name="EnterIamUser" xml:space="preserve">
+    <value>請輸入 IAM 權杖用於登入的資料庫使用者。</value>
+  </data>
+  <data name="EntraFailed" xml:space="preserve">
+    <value>Microsoft Entra ID 登入失敗：{0}</value>
+  </data>
+  <data name="EntraIntegratedSqlServerOnly" xml:space="preserve">
+    <value>整合式 Entra 登入僅適用於 SQL Server。</value>
+  </data>
+  <data name="GcloudScope" xml:space="preserve">
+    <value>gcloud 登入不允許登入 Cloud SQL。請重新執行 gcloud auth application-default login，不要加上 --scopes。</value>
+  </data>
+  <data name="GoogleFailed" xml:space="preserve">
+    <value>Google Cloud IAM 登入失敗：{0}</value>
+  </data>
+  <data name="GoogleRefused" xml:space="preserve">
+    <value>Google 拒絕了認證：{0} 請執行 gcloud auth application-default login 或檢查服務帳戶金鑰，然後重新連線。</value>
+  </data>
+  <data name="KeyFileUnreadable" xml:space="preserve">
+    <value>無法讀取服務帳戶金鑰檔案 {0}：{1}</value>
+  </data>
+  <data name="KeyNotJson" xml:space="preserve">
+    <value>服務帳戶金鑰不是有效的 JSON。</value>
+  </data>
+  <data name="KeyWrongType" xml:space="preserve">
+    <value>該金鑰是「{0}」認證，而不是服務帳戶金鑰。</value>
+  </data>
+  <data name="NoAdc" xml:space="preserve">
+    <value>找不到 Google 應用程式預設認證。請執行 gcloud auth application-default login，然後重新連線。</value>
+  </data>
+  <data name="NoSignInToken" xml:space="preserve">
+    <value>{0} 不使用登入權杖。</value>
+  </data>
+  <data name="PemKey" xml:space="preserve">
+    <value>這是 PEM 私密金鑰。請使用 Google Cloud 為服務帳戶建立的 JSON 金鑰檔案。</value>
+  </data>
+  <data name="RedshiftNotIssued" xml:space="preserve">
+    <value>AWS 未核發 Redshift 認證：{0}</value>
+  </data>
+  <data name="RedshiftNoUser" xml:space="preserve">
+    <value>AWS 的回應中沒有 Redshift 使用者和密碼。</value>
+  </data>
+  <data name="ServiceAccountKeyRequired" xml:space="preserve">
+    <value>請輸入服務帳戶金鑰：其 JSON 檔案的路徑，或 JSON 內容本身。</value>
+  </data>
+  <data name="ServicePrincipalIncomplete" xml:space="preserve">
+    <value>服務主體需要目錄（租用戶）ID、應用程式（用戶端）ID 和用戶端密碼。</value>
+  </data>
+  <data name="UnknownCredentialType" xml:space="preserve">
+    <value>未知</value>
+  </data>
+</root>

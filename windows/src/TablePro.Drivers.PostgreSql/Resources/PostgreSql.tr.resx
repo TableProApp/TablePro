@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="Abandoned" xml:space="preserve">
+    <value>Yordam sunucuda durdurulamadı.</value>
+  </data>
+  <data name="AbandonedRunning" xml:space="preserve">
+    <value>{0} sunucu işlemi hâlâ çalışıyor ve kilitlerini tutuyor olabilir.</value>
+  </data>
+  <data name="AbandonedSession" xml:space="preserve">
+    <value>Sunucu oturumu hâlâ çalışıyor ve kilitlerini tutuyor olabilir.</value>
+  </data>
+  <data name="AbandonedWaiting" xml:space="preserve">
+    <value>{0} sunucu işlemi hâlâ bir hata ayıklayıcı bekliyor ve kilitlerini tutuyor olabilir. Sonlandırmak için SELECT pldbg_attach_to_port({1}) çalıştırın ve döndürdüğü sayıyı pldbg_abort_target'a geçirin.</value>
+  </data>
+  <data name="CannotStepOut" xml:space="preserve">
+    <value>PL/pgSQL hata ayıklayıcısı bir yordamdan dışarı adımlayamaz.</value>
+  </data>
+  <data name="DefaultNotReadable" xml:space="preserve">
+    <value>Bu sunucu {0} için varsayılan değeri gösteremiyor, bu nedenle bir değer girin.</value>
+  </data>
+  <data name="ExtensionMissing" xml:space="preserve">
+    <value>PL/pgSQL hata ayıklayıcısı "{0}" içinde yüklü değil.</value>
+  </data>
+  <data name="ExtensionMissingDetail" xml:space="preserve">
+    <value>Bir süper kullanıcıdan bu veritabanında CREATE EXTENSION pldbgapi çalıştırmasını isteyin.</value>
+  </data>
+  <data name="HidesDebuggerNotice" xml:space="preserve">
+    <value>Bu yordam client_min_messages değerini {0} olarak ayarlıyor; bu, hata ayıklayıcının başlarken kullandığı bildirimi gizler.</value>
+  </data>
+  <data name="HidesDebuggerNoticeDetail" xml:space="preserve">
+    <value>Ayıklamak için yordamdan SET client_min_messages ifadesini kaldırın.</value>
+  </data>
+  <data name="Interrupted" xml:space="preserve">
+    <value>Hata ayıklayıcının oturumu beklerken kesildi, bu nedenle yordam durduruldu ve işlenmemiş değişiklikleri geri alındı. Bunun nedeni bir iptal veya sunucunun transaction_timeout ayarı olabilir.</value>
+  </data>
+  <data name="LimitsTransactionTime" xml:space="preserve">
+    <value>Bu yordam transaction_timeout değerini {0} olarak ayarlıyor; bu, yordam bir kesme noktasında beklerken onu sonlandırır.</value>
+  </data>
+  <data name="LimitsTransactionTimeDetail" xml:space="preserve">
+    <value>Ayıklamak için yordamdan SET transaction_timeout ifadesini kaldırın.</value>
+  </data>
+  <data name="NoDefault" xml:space="preserve">
+    <value>{0} için varsayılan değer yok.</value>
+  </data>
+  <data name="NoOverloads" xml:space="preserve">
+    <value>{0} için ayıklanabilecek bir PL/pgSQL aşırı yüklemesi yok.</value>
+  </data>
+  <data name="NoOverloadsDetail" xml:space="preserve">
+    <value>Yalnızca çok biçimli, record veya trigger imzası olmayan PL/pgSQL fonksiyonları ve prosedürleri ayıklanabilir.</value>
+  </data>
+  <data name="NotAStorageParameter" xml:space="preserve">
+    <value>"{0}" bir depolama parametresi değil. Her birini name=value biçiminde yazın.</value>
+  </data>
+  <data name="NotDebuggable" xml:space="preserve">
+    <value>Yalnızca PL/pgSQL fonksiyonları ve prosedürleri ayıklanabilir.</value>
+  </data>
+  <data name="NotOwner" xml:space="preserve">
+    <value>{0} yalnızca sahibi veya bir süper kullanıcı tarafından ayıklanabilir.</value>
+  </data>
+  <data name="NotPaused" xml:space="preserve">
+    <value>Yordam duraklatılmadı.</value>
+  </data>
+  <data name="PseudoTypeParameter" xml:space="preserve">
+    <value>Çok biçimli veya record parametreleri olan yordamlar ayıklanamaz.</value>
+  </data>
+  <data name="RoutineNotFound" xml:space="preserve">
+    <value>{0} artık mevcut değil.</value>
+  </data>
+  <data name="RunNoteFunction" xml:space="preserve">
+    <value>Yordamın yaptığı değişiklikler yordam bittiğinde işlenir. Durdur bunları geri alır.</value>
+  </data>
+  <data name="RunNoteProcedure" xml:space="preserve">
+    <value>Prosedürün yaptığı değişiklikler, prosedür işlediğinde veya bittiğinde işlenir. Durdur, işlenmemiş olanları geri alır.</value>
+  </data>
+  <data name="ServerPackageMissing" xml:space="preserve">
+    <value>Bu sunucuda PL/pgSQL hata ayıklayıcısı yok.</value>
+  </data>
+  <data name="ServerPackageMissingDetail" xml:space="preserve">
+    <value>Sunucuya bu PostgreSQL sürümü için pldebugger paketini yükleyin, ardından bu veritabanında CREATE EXTENSION pldbgapi çalıştırın.</value>
+  </data>
+  <data name="SharedMemoryUnavailable" xml:space="preserve">
+    <value>Sunucu hata ayıklayıcıyı başlatamadı.</value>
+  </data>
+  <data name="SharedMemoryUnavailableDetail" xml:space="preserve">
+    <value>plugin_debugger'ı shared_preload_libraries'e ekleyin ve sunucuyu yeniden başlatın.</value>
+  </data>
+  <data name="Stopped" xml:space="preserve">
+    <value>Yordam durduruldu ve işlenmemiş değişiklikleri geri alındı.</value>
+  </data>
+  <data name="Unavailable" xml:space="preserve">
+    <value>Bu bağlantı PL/pgSQL hata ayıklayıcısını çalıştıramaz.</value>
+  </data>
+</root>

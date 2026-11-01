@@ -1,0 +1,565 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="CopyActionAppend" xml:space="preserve">
+    <value>Satır ekle</value>
+  </data>
+  <data name="CopyActionCreate" xml:space="preserve">
+    <value>Oluştur</value>
+  </data>
+  <data name="CopyActionEmptyAndFill" xml:space="preserve">
+    <value>Boşalt ve doldur</value>
+  </data>
+  <data name="CopyActionReplace" xml:space="preserve">
+    <value>Değiştir</value>
+  </data>
+  <data name="CopyActionSkip" xml:space="preserve">
+    <value>Atla</value>
+  </data>
+  <data name="CopyCannotConnect" xml:space="preserve">
+    <value>{0} bağlantısına bağlanılamıyor</value>
+  </data>
+  <data name="CopyContentData" xml:space="preserve">
+    <value>Yalnızca veri</value>
+  </data>
+  <data name="CopyContentHeader" xml:space="preserve">
+    <value>Kopyala</value>
+  </data>
+  <data name="CopyContentStructure" xml:space="preserve">
+    <value>Yalnızca yapı</value>
+  </data>
+  <data name="CopyContentStructureAndData" xml:space="preserve">
+    <value>Yapı ve veri</value>
+  </data>
+  <data name="CopyCrossEngineNote" xml:space="preserve">
+    <value>{0} ve {1} farklı motorlar olduğundan sütun türleri dönüştürülür. Kopyalamadan önce bunları kontrol edin.</value>
+  </data>
+  <data name="CopyFailedTitle" xml:space="preserve">
+    <value>Kopyalama başarısız oldu</value>
+  </data>
+  <data name="CopyFinishedTitle" xml:space="preserve">
+    <value>Kopyalama tamamlandı</value>
+  </data>
+  <data name="CopyFinishedWithProblemsTitle" xml:space="preserve">
+    <value>Kopyalama sorunlarla tamamlandı</value>
+  </data>
+  <data name="CopyKindFunction" xml:space="preserve">
+    <value>fonksiyon</value>
+  </data>
+  <data name="CopyKindMaterializedView" xml:space="preserve">
+    <value>materyalize görünüm</value>
+  </data>
+  <data name="CopyKindProcedure" xml:space="preserve">
+    <value>prosedür</value>
+  </data>
+  <data name="CopyKindSequence" xml:space="preserve">
+    <value>sequence</value>
+  </data>
+  <data name="CopyKindTable" xml:space="preserve">
+    <value>tablo</value>
+  </data>
+  <data name="CopyKindView" xml:space="preserve">
+    <value>görünüm</value>
+  </data>
+  <data name="CopyObjectsCopied_One" xml:space="preserve">
+    <value>{0} nesne kopyalandı. {1}</value>
+  </data>
+  <data name="CopyObjectsCopied_Other" xml:space="preserve">
+    <value>{0} nesne kopyalandı. {1}</value>
+  </data>
+  <data name="CopyObjectsFrom" xml:space="preserve">
+    <value>{0} bağlantısındaki nesneler</value>
+  </data>
+  <data name="CopyObjectsTitle" xml:space="preserve">
+    <value>Nesneleri Kopyala</value>
+  </data>
+  <data name="CopyOnError" xml:space="preserve">
+    <value>Hata durumunda</value>
+  </data>
+  <data name="CopyOnErrorSkip" xml:space="preserve">
+    <value>Başarısız nesneyi atla ve devam et</value>
+  </data>
+  <data name="CopyOnErrorStop" xml:space="preserve">
+    <value>İlk hatada dur</value>
+  </data>
+  <data name="CopyOutcomeCopied" xml:space="preserve">
+    <value>Kopyalandı</value>
+  </data>
+  <data name="CopyOutcomeFailed" xml:space="preserve">
+    <value>Başarısız</value>
+  </data>
+  <data name="CopyOutcomeNameRows_One" xml:space="preserve">
+    <value>{1}, {0:N0} satır</value>
+  </data>
+  <data name="CopyOutcomeNameRows_Other" xml:space="preserve">
+    <value>{1}, {0:N0} satır</value>
+  </data>
+  <data name="CopyOutcomeSkipped" xml:space="preserve">
+    <value>Atlandı</value>
+  </data>
+  <data name="CopyOutcomeStopped" xml:space="preserve">
+    <value>Durduruldu</value>
+  </data>
+  <data name="CopyPhaseCopyingRows" xml:space="preserve">
+    <value>{0} satırları kopyalanıyor</value>
+  </data>
+  <data name="CopyPhaseCreating" xml:space="preserve">
+    <value>{0} oluşturuluyor</value>
+  </data>
+  <data name="CopyPhaseDropping" xml:space="preserve">
+    <value>{0} kaldırılıyor</value>
+  </data>
+  <data name="CopyPhaseFinishing" xml:space="preserve">
+    <value>Tamamlanıyor</value>
+  </data>
+  <data name="CopyPhaseIndexing" xml:space="preserve">
+    <value>{0} indeksleniyor</value>
+  </data>
+  <data name="CopyPhaseLinkingKeys" xml:space="preserve">
+    <value>{0} anahtarları ekleniyor</value>
+  </data>
+  <data name="CopyPhasePreparing" xml:space="preserve">
+    <value>Hazırlanıyor</value>
+  </data>
+  <data name="CopyPolicyAppend" xml:space="preserve">
+    <value>Satırları ona ekle</value>
+  </data>
+  <data name="CopyPolicyHeader" xml:space="preserve">
+    <value>Hedefte aynı adda bir nesne zaten varsa</value>
+  </data>
+  <data name="CopyPolicyReplace" xml:space="preserve">
+    <value>Onu değiştir</value>
+  </data>
+  <data name="CopyPolicySkip" xml:space="preserve">
+    <value>Onu atla</value>
+  </data>
+  <data name="CopyProgressName" xml:space="preserve">
+    <value>Kopyalama ilerlemesi</value>
+  </data>
+  <data name="CopyProgressTitle" xml:space="preserve">
+    <value>Kopyalanıyor</value>
+  </data>
+  <data name="CopyReviewButton" xml:space="preserve">
+    <value>Kopyala</value>
+  </data>
+  <data name="CopyReviewTitle" xml:space="preserve">
+    <value>{0} bağlantısına kopyala</value>
+  </data>
+  <data name="CopyRowsCopiedTo_One" xml:space="preserve">
+    <value>{0:N0} satır {1} bağlantısına kopyalandı.</value>
+  </data>
+  <data name="CopyRowsCopiedTo_Other" xml:space="preserve">
+    <value>{0:N0} satır {1} bağlantısına kopyalandı.</value>
+  </data>
+  <data name="CopyRowsCopied_One" xml:space="preserve">
+    <value>{0:N0} satır kopyalandı</value>
+  </data>
+  <data name="CopyRowsCopied_Other" xml:space="preserve">
+    <value>{0:N0} satır kopyalandı</value>
+  </data>
+  <data name="CopySelectNone" xml:space="preserve">
+    <value>Hiçbirini Seçme</value>
+  </data>
+  <data name="CopyStoppedTitle" xml:space="preserve">
+    <value>Kopyalama durduruldu</value>
+  </data>
+  <data name="CopyTargetSchema" xml:space="preserve">
+    <value>Hedef şema</value>
+  </data>
+  <data name="CopyThisConnection" xml:space="preserve">
+    <value>{0} (bu bağlantı)</value>
+  </data>
+  <data name="CopyTo" xml:space="preserve">
+    <value>Şuraya kopyala</value>
+  </data>
+  <data name="GenCannotReadTable" xml:space="preserve">
+    <value>Tablo okunamıyor</value>
+  </data>
+  <data name="GenColumns" xml:space="preserve">
+    <value>Sütunlar</value>
+  </data>
+  <data name="GenDateFrom" xml:space="preserve">
+    <value>Başlangıç</value>
+  </data>
+  <data name="GenDateTo" xml:space="preserve">
+    <value>Bitiş</value>
+  </data>
+  <data name="GenDecimalPlaces" xml:space="preserve">
+    <value>Ondalık basamak</value>
+  </data>
+  <data name="GenFixIssues" xml:space="preserve">
+    <value>Oluşturmadan önce bunları düzeltin</value>
+  </data>
+  <data name="GenGenerate" xml:space="preserve">
+    <value>Oluştur</value>
+  </data>
+  <data name="GenGenerator" xml:space="preserve">
+    <value>Oluşturucu</value>
+  </data>
+  <data name="GenInsert" xml:space="preserve">
+    <value>Ekle</value>
+  </data>
+  <data name="GenInsertConfirmMessage_One" xml:space="preserve">
+    <value>{1} tablosuna oluşturulan {0:N0} satır eklensin mi?</value>
+  </data>
+  <data name="GenInsertConfirmMessage_Other" xml:space="preserve">
+    <value>{1} tablosuna oluşturulan {0:N0} satır eklensin mi?</value>
+  </data>
+  <data name="GenInsertConfirmTitle" xml:space="preserve">
+    <value>Satırlar eklensin mi?</value>
+  </data>
+  <data name="GenInserted_One" xml:space="preserve">
+    <value>{1} tablosuna {0:N0} satır eklendi.</value>
+  </data>
+  <data name="GenInserted_Other" xml:space="preserve">
+    <value>{1} tablosuna {0:N0} satır eklendi.</value>
+  </data>
+  <data name="GenListValues" xml:space="preserve">
+    <value>Değerler, her satıra bir tane</value>
+  </data>
+  <data name="GenLongest" xml:space="preserve">
+    <value>En uzun</value>
+  </data>
+  <data name="GenMaximum" xml:space="preserve">
+    <value>Maksimum</value>
+  </data>
+  <data name="GenMinimum" xml:space="preserve">
+    <value>Minimum</value>
+  </data>
+  <data name="GenNewSeed" xml:space="preserve">
+    <value>Yeni çekirdek</value>
+  </data>
+  <data name="GenNewSeedTip" xml:space="preserve">
+    <value>Yeni çekirdek: aynı çekirdek ve ayarlar her zaman aynı satırları üretir</value>
+  </data>
+  <data name="GenNoGenerator" xml:space="preserve">
+    <value>Bu türü dolduracak oluşturucu yok.</value>
+  </data>
+  <data name="GenNullValues" xml:space="preserve">
+    <value>NULL değerler</value>
+  </data>
+  <data name="GenOpenAsSql" xml:space="preserve">
+    <value>SQL Olarak Aç</value>
+  </data>
+  <data name="GenPattern" xml:space="preserve">
+    <value>Desen</value>
+  </data>
+  <data name="GenPatternHelp" xml:space="preserve">
+    <value># bir rakam, ? bir harf, * ikisinden biri anlamına gelir; \ sonraki karakteri olduğu gibi kullanır.</value>
+  </data>
+  <data name="GenPreview" xml:space="preserve">
+    <value>Önizleme</value>
+  </data>
+  <data name="GenPreviewName" xml:space="preserve">
+    <value>İlk satırların önizlemesi</value>
+  </data>
+  <data name="GenPreviewNote" xml:space="preserve">
+    <value>{0:N0} satırın ilkleri. Sunucuya bırakılan sütunlar gösterilmez.</value>
+  </data>
+  <data name="GenPreviewWaiting" xml:space="preserve">
+    <value>Ayarlarda sorun kalmadığında önizleme görünür.</value>
+  </data>
+  <data name="GenProgressTitle" xml:space="preserve">
+    <value>Satırlar Oluşturuluyor</value>
+  </data>
+  <data name="GenProgress_One" xml:space="preserve">
+    <value>{1:N0} / {0:N0} satır</value>
+  </data>
+  <data name="GenProgress_Other" xml:space="preserve">
+    <value>{1:N0} / {0:N0} satır</value>
+  </data>
+  <data name="GenReadOnlyMessage" xml:space="preserve">
+    <value>Bu bağlantıda Güvenli Mod Salt Okunur olarak ayarlı, bu yüzden satır eklenemez.</value>
+  </data>
+  <data name="GenReadOnlyTitle" xml:space="preserve">
+    <value>Salt okunur bağlantı</value>
+  </data>
+  <data name="GenReferenceNote" xml:space="preserve">
+    <value>Başvurulan anahtarın bir değerini alır.</value>
+  </data>
+  <data name="GenReferenceSampledNote_One" xml:space="preserve">
+    <value>{1} tablosunun {0:N0} satırından örneklenen bir değer alır. Anahtarın her sütunu aynı satırdan gelir.</value>
+  </data>
+  <data name="GenReferenceSampledNote_Other" xml:space="preserve">
+    <value>{1} tablosunun {0:N0} satırından örneklenen bir değer alır. Anahtarın her sütunu aynı satırdan gelir.</value>
+  </data>
+  <data name="GenRows" xml:space="preserve">
+    <value>Satırlar</value>
+  </data>
+  <data name="GenSeed" xml:space="preserve">
+    <value>Çekirdek</value>
+  </data>
+  <data name="GenServerDefaultNote" xml:space="preserve">
+    <value>Her INSERT ifadesinin dışında bırakılır, böylece sütun varsayılan değerini veya NULL alır.</value>
+  </data>
+  <data name="GenServerFillsNote" xml:space="preserve">
+    <value>Bu sütunu sunucu kendisi doldurur.</value>
+  </data>
+  <data name="GenShortest" xml:space="preserve">
+    <value>En kısa</value>
+  </data>
+  <data name="GenStart" xml:space="preserve">
+    <value>Başlangıç</value>
+  </data>
+  <data name="GenStep" xml:space="preserve">
+    <value>Adım</value>
+  </data>
+  <data name="GenStoppedAfter_One" xml:space="preserve">
+    <value>{0:N0} satırdan sonra durduruldu; satır {1} tablosunda kalır.</value>
+  </data>
+  <data name="GenStoppedAfter_Other" xml:space="preserve">
+    <value>{0:N0} satırdan sonra durduruldu; satırlar {1} tablosunda kalır.</value>
+  </data>
+  <data name="GenStoppedMessage_One" xml:space="preserve">
+    <value>{1}
+
+Bundan önce {0:N0} satır eklendi ve tabloda kalır.</value>
+  </data>
+  <data name="GenStoppedMessage_Other" xml:space="preserve">
+    <value>{1}
+
+Bundan önce {0:N0} satır eklendi ve tabloda kalır.</value>
+  </data>
+  <data name="GenStoppedTitle" xml:space="preserve">
+    <value>Satır Oluşturma durduruldu</value>
+  </data>
+  <data name="GenTitle" xml:space="preserve">
+    <value>{0} için Satır Oluştur</value>
+  </data>
+  <data name="GenTrueValues" xml:space="preserve">
+    <value>Doğru değerler</value>
+  </data>
+  <data name="GenUuidVersion" xml:space="preserve">
+    <value>Sürüm</value>
+  </data>
+  <data name="GenUuidVersion4" xml:space="preserve">
+    <value>Sürüm 4 (rastgele)</value>
+  </data>
+  <data name="GenUuidVersion7" xml:space="preserve">
+    <value>Sürüm 7 (zaman sıralı)</value>
+  </data>
+  <data name="GenVocabularyNote" xml:space="preserve">
+    <value>Sabit bir sözcük dağarcığından {0} değerleri üretir; aynı çekirdek TablePro'nun her sürümünde aynı sonucu verir.</value>
+  </data>
+  <data name="GeneratorBoolean" xml:space="preserve">
+    <value>Boolean</value>
+  </data>
+  <data name="GeneratorCity" xml:space="preserve">
+    <value>Şehir</value>
+  </data>
+  <data name="GeneratorCountry" xml:space="preserve">
+    <value>Ülke</value>
+  </data>
+  <data name="GeneratorDate" xml:space="preserve">
+    <value>Tarih</value>
+  </data>
+  <data name="GeneratorDateTime" xml:space="preserve">
+    <value>Tarih ve Saat</value>
+  </data>
+  <data name="GeneratorDecimalRange" xml:space="preserve">
+    <value>Ondalık Aralık</value>
+  </data>
+  <data name="GeneratorEmail" xml:space="preserve">
+    <value>E-posta</value>
+  </data>
+  <data name="GeneratorFirstName" xml:space="preserve">
+    <value>Ad</value>
+  </data>
+  <data name="GeneratorFullName" xml:space="preserve">
+    <value>Ad Soyad</value>
+  </data>
+  <data name="GeneratorIntegerRange" xml:space="preserve">
+    <value>Sayı Aralığı</value>
+  </data>
+  <data name="GeneratorJson" xml:space="preserve">
+    <value>JSON</value>
+  </data>
+  <data name="GeneratorLastName" xml:space="preserve">
+    <value>Soyad</value>
+  </data>
+  <data name="GeneratorList" xml:space="preserve">
+    <value>Değer Listesi</value>
+  </data>
+  <data name="GeneratorPattern" xml:space="preserve">
+    <value>Desen</value>
+  </data>
+  <data name="GeneratorPhone" xml:space="preserve">
+    <value>Telefon Numarası</value>
+  </data>
+  <data name="GeneratorReference" xml:space="preserve">
+    <value>Başvurulan Değer</value>
+  </data>
+  <data name="GeneratorSequence" xml:space="preserve">
+    <value>Sequence</value>
+  </data>
+  <data name="GeneratorServerDefault" xml:space="preserve">
+    <value>Sunucu Varsayılanı</value>
+  </data>
+  <data name="GeneratorStreetAddress" xml:space="preserve">
+    <value>Sokak Adresi</value>
+  </data>
+  <data name="GeneratorText" xml:space="preserve">
+    <value>Metin</value>
+  </data>
+  <data name="GeneratorTime" xml:space="preserve">
+    <value>Zaman</value>
+  </data>
+  <data name="GeneratorUuid" xml:space="preserve">
+    <value>UUID</value>
+  </data>
+  <data name="JoinAddFilter" xml:space="preserve">
+    <value>Filtre Ekle</value>
+  </data>
+  <data name="JoinAddSort" xml:space="preserve">
+    <value>Sıralama Ekle</value>
+  </data>
+  <data name="JoinAscending" xml:space="preserve">
+    <value>Artan</value>
+  </data>
+  <data name="JoinCannotReadTables" xml:space="preserve">
+    <value>Tablolar okunamıyor</value>
+  </data>
+  <data name="JoinClearQuery" xml:space="preserve">
+    <value>Sorguyu temizle</value>
+  </data>
+  <data name="JoinColumn" xml:space="preserve">
+    <value>Sütun</value>
+  </data>
+  <data name="JoinConditionFor" xml:space="preserve">
+    <value>{0} için birleştirme koşulu</value>
+  </data>
+  <data name="JoinCopySql" xml:space="preserve">
+    <value>SQL'i Kopyala</value>
+  </data>
+  <data name="JoinCrossJoin" xml:space="preserve">
+    <value>Çapraz birleştirme (koşulsuz)</value>
+  </data>
+  <data name="JoinDescending" xml:space="preserve">
+    <value>Azalan</value>
+  </data>
+  <data name="JoinFilterTables" xml:space="preserve">
+    <value>Tabloları filtrele</value>
+  </data>
+  <data name="JoinGeneratedSql" xml:space="preserve">
+    <value>Oluşturulan SQL</value>
+  </data>
+  <data name="JoinHintCrossJoined_One" xml:space="preserve">
+    <value>{1} tablosunu önceki tablolara bağlayan yabancı anahtar yok, bu yüzden çapraz birleştirilir.</value>
+  </data>
+  <data name="JoinHintCrossJoined_Other" xml:space="preserve">
+    <value>{1} tablolarını önceki tablolara bağlayan yabancı anahtar yok, bu yüzden çapraz birleştirilirler.</value>
+  </data>
+  <data name="JoinHintStart" xml:space="preserve">
+    <value>Birleştirilecek tabloları seçin. Yabancı anahtarları birleştirme koşulu olur.</value>
+  </data>
+  <data name="JoinKindFull" xml:space="preserve">
+    <value>Tam Birleştirme</value>
+  </data>
+  <data name="JoinKindInner" xml:space="preserve">
+    <value>İç Birleştirme</value>
+  </data>
+  <data name="JoinKindLeft" xml:space="preserve">
+    <value>Sol Birleştirme</value>
+  </data>
+  <data name="JoinKindRight" xml:space="preserve">
+    <value>Sağ Birleştirme</value>
+  </data>
+  <data name="JoinNoTables" xml:space="preserve">
+    <value>Bu şemada birleştirilecek tablo yok.</value>
+  </data>
+  <data name="JoinOpenInQueryTab" xml:space="preserve">
+    <value>Sorgu Sekmesinde Aç</value>
+  </data>
+  <data name="JoinOperator" xml:space="preserve">
+    <value>Operatör</value>
+  </data>
+  <data name="JoinPickSecondTable" xml:space="preserve">
+    <value>Birleştirmek için ikinci bir tablo seçin.</value>
+  </data>
+  <data name="JoinReadingTables" xml:space="preserve">
+    <value>Tablolar okunuyor…</value>
+  </data>
+  <data name="JoinReadingTablesProgress" xml:space="preserve">
+    <value>Tablolar okunuyor… {0}/{1}</value>
+  </data>
+  <data name="JoinReloadTables" xml:space="preserve">
+    <value>Tabloları yeniden yükle</value>
+  </data>
+  <data name="JoinRemoveFilter" xml:space="preserve">
+    <value>Filtreyi kaldır</value>
+  </data>
+  <data name="JoinRemoveSort" xml:space="preserve">
+    <value>Sıralamayı kaldır</value>
+  </data>
+  <data name="JoinRemoveTable" xml:space="preserve">
+    <value>{0} Öğesini Kaldır</value>
+  </data>
+  <data name="JoinSecondValue" xml:space="preserve">
+    <value>İkinci değer</value>
+  </data>
+  <data name="JoinSectionFilters" xml:space="preserve">
+    <value>Filtreler</value>
+  </data>
+  <data name="JoinSectionJoins" xml:space="preserve">
+    <value>Birleştirmeler</value>
+  </data>
+  <data name="JoinSectionSort" xml:space="preserve">
+    <value>Sıralama</value>
+  </data>
+  <data name="JoinSelectColumn" xml:space="preserve">
+    <value>{0}.{1} sütununu seç</value>
+  </data>
+  <data name="JoinShowingTables_One" xml:space="preserve">
+    <value>{0} tablodan {1} tanesi gösteriliyor</value>
+  </data>
+  <data name="JoinShowingTables_Other" xml:space="preserve">
+    <value>{0} tablodan {1} tanesi gösteriliyor</value>
+  </data>
+  <data name="JoinSortDirection" xml:space="preserve">
+    <value>Sıralama yönü</value>
+  </data>
+  <data name="JoinSqlPlaceholder" xml:space="preserve">
+    <value>-- Başlamak için bir tablo seçin.</value>
+  </data>
+  <data name="JoinTabTitle" xml:space="preserve">
+    <value>Birleştirme Oluşturucu</value>
+  </data>
+  <data name="JoinTableCount_One" xml:space="preserve">
+    <value>{0} tablo</value>
+  </data>
+  <data name="JoinTableCount_Other" xml:space="preserve">
+    <value>{0} tablo</value>
+  </data>
+  <data name="JoinTryAgain" xml:space="preserve">
+    <value>Tekrar Dene</value>
+  </data>
+  <data name="JoinTypeFor" xml:space="preserve">
+    <value>{0} için birleştirme türü</value>
+  </data>
+  <data name="JoinValueFrom" xml:space="preserve">
+    <value>Başlangıç</value>
+  </data>
+  <data name="JoinValueTo" xml:space="preserve">
+    <value>Bitiş</value>
+  </data>
+  <data name="JoinZoomIn" xml:space="preserve">
+    <value>Yakınlaştır</value>
+  </data>
+  <data name="JoinZoomOut" xml:space="preserve">
+    <value>Uzaklaştır</value>
+  </data>
+  <data name="Starting" xml:space="preserve">
+    <value>Başlatılıyor…</value>
+  </data>
+</root>

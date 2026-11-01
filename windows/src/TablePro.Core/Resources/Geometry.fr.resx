@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="CappedRows_One" xml:space="preserve">
+    <value>{0:N0} ligne dépasse la limite d’affichage.</value>
+  </data>
+  <data name="CappedRows_Other" xml:space="preserve">
+    <value>{0:N0} lignes dépassent la limite d’affichage.</value>
+  </data>
+  <data name="DrawingPoints_One" xml:space="preserve">
+    <value>Affichage de {0:N0} point à partir des colonnes de latitude et de longitude.</value>
+  </data>
+  <data name="DrawingPoints_Other" xml:space="preserve">
+    <value>Affichage de {0:N0} points à partir des colonnes de latitude et de longitude.</value>
+  </data>
+  <data name="DrawingShapes_One" xml:space="preserve">
+    <value>Affichage de {0:N0} forme.</value>
+  </data>
+  <data name="DrawingShapes_Other" xml:space="preserve">
+    <value>Affichage de {0:N0} formes.</value>
+  </data>
+  <data name="DrawingShapesInSrid_One" xml:space="preserve">
+    <value>Affichage de {0:N0} forme dans le SRID {1}.</value>
+  </data>
+  <data name="DrawingShapesInSrid_Other" xml:space="preserve">
+    <value>Affichage de {0:N0} formes dans le SRID {1}.</value>
+  </data>
+  <data name="DrawingShapesNoSrid_One" xml:space="preserve">
+    <value>Affichage de {0:N0} forme sans SRID, lue comme longitude et latitude.</value>
+  </data>
+  <data name="DrawingShapesNoSrid_Other" xml:space="preserve">
+    <value>Affichage de {0:N0} formes sans SRID, lues comme longitude et latitude.</value>
+  </data>
+  <data name="DroppedParts_One" xml:space="preserve">
+    <value>{0:N0} partie d’une géométrie multiple ne peut pas être affichée et est omise.</value>
+  </data>
+  <data name="DroppedParts_Other" xml:space="preserve">
+    <value>{0:N0} parties de géométries multiples ne peuvent pas être affichées et sont omises.</value>
+  </data>
+  <data name="EmptyCoordinatesNull" xml:space="preserve">
+    <value>Toutes les latitudes ou longitudes de ces colonnes sont nulles.</value>
+  </data>
+  <data name="EmptyGeometriesNull" xml:space="preserve">
+    <value>Toutes les géométries de cette colonne sont vides ou nulles.</value>
+  </data>
+  <data name="EmptyNoSridOutOfRange" xml:space="preserve">
+    <value>Cette colonne n’a pas de SRID et ses coordonnées sortent des plages de longitude et de latitude : la carte ne peut donc pas les placer.</value>
+  </data>
+  <data name="EmptyNothingDrawable" xml:space="preserve">
+    <value>Rien dans cette colonne ne peut être affiché. Les coordonnées sortent de la plage de leur système de coordonnées, ou une ligne ou un anneau a trop peu de points.</value>
+  </data>
+  <data name="EmptyUnreadable_One" xml:space="preserve">
+    <value>{0:N0} valeur de cette colonne n’est pas dans un format lisible par la carte. La grille l’affiche toujours telle que la base de données l’a renvoyée.</value>
+  </data>
+  <data name="EmptyUnreadable_Other" xml:space="preserve">
+    <value>{0:N0} valeurs de cette colonne ne sont pas dans un format lisible par la carte. La grille les affiche toujours telles que la base de données les a renvoyées.</value>
+  </data>
+  <data name="EmptyUnsupportedSrid" xml:space="preserve">
+    <value>La carte ne peut pas placer le SRID {0}. Elle lit la longitude et la latitude, comme le SRID 4326, ainsi que Web Mercator. Interrogez ST_Transform(geom, 4326) pour voir ces formes.</value>
+  </data>
+  <data name="EmptyUnsupportedTypes" xml:space="preserve">
+    <value>Cette colonne contient {0}, que la carte ne peut pas afficher.</value>
+  </data>
+  <data name="OtherSridRows_One" xml:space="preserve">
+    <value>{0:N0} ligne dans un autre système de coordonnées n’est pas affichée.</value>
+  </data>
+  <data name="OtherSridRows_Other" xml:space="preserve">
+    <value>{0:N0} lignes dans d’autres systèmes de coordonnées ne sont pas affichées.</value>
+  </data>
+  <data name="UnreadableRows_One" xml:space="preserve">
+    <value>{0:N0} ligne n’a pas pu être lue.</value>
+  </data>
+  <data name="UnreadableRows_Other" xml:space="preserve">
+    <value>{0:N0} lignes n’ont pas pu être lues.</value>
+  </data>
+  <data name="UnsupportedTypeRows_One" xml:space="preserve">
+    <value>{0:N0} ligne utilise {1}, qui ne peut pas être affiché.</value>
+  </data>
+  <data name="UnsupportedTypeRows_Other" xml:space="preserve">
+    <value>{0:N0} lignes utilisent {1}, qui ne peut pas être affiché.</value>
+  </data>
+</root>

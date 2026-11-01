@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="NoColumnToFilter" xml:space="preserve">
+    <value>필터링할 {0} 열이 없습니다.</value>
+  </data>
+  <data name="OperatorBetween" xml:space="preserve">
+    <value>사이</value>
+  </data>
+  <data name="OperatorContains" xml:space="preserve">
+    <value>포함</value>
+  </data>
+  <data name="OperatorEndsWith" xml:space="preserve">
+    <value>다음으로 끝남</value>
+  </data>
+  <data name="OperatorIn" xml:space="preserve">
+    <value>목록에 있음</value>
+  </data>
+  <data name="OperatorIsEmpty" xml:space="preserve">
+    <value>비어 있음</value>
+  </data>
+  <data name="OperatorIsNotEmpty" xml:space="preserve">
+    <value>비어 있지 않음</value>
+  </data>
+  <data name="OperatorIsNotNull" xml:space="preserve">
+    <value>NULL이 아님</value>
+  </data>
+  <data name="OperatorIsNull" xml:space="preserve">
+    <value>NULL임</value>
+  </data>
+  <data name="OperatorNotContains" xml:space="preserve">
+    <value>포함하지 않음</value>
+  </data>
+  <data name="OperatorNotIn" xml:space="preserve">
+    <value>목록에 없음</value>
+  </data>
+  <data name="OperatorStartsWith" xml:space="preserve">
+    <value>다음으로 시작</value>
+  </data>
+  <data name="RawWhereUnsupported" xml:space="preserve">
+    <value>{0}은(는) 원시 WHERE 절을 실행할 수 없습니다. 대신 필터 규칙을 사용하세요.</value>
+  </data>
+</root>

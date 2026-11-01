@@ -1,0 +1,201 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AskPassMissing" xml:space="preserve">
+    <value>SSH 암호 도우미가 {0}에 없습니다. TablePro를 다시 설치하세요.</value>
+  </data>
+  <data name="BatchScript" xml:space="preserve">
+    <value>{0}은(는) Windows가 cmd.exe로 실행하는 배치 스크립트입니다. 대신 프로그램의 .exe 경로를 입력하세요.</value>
+  </data>
+  <data name="CloudflaredNotFound" xml:space="preserve">
+    <value>cloudflared를 찾을 수 없습니다. “winget install Cloudflare.cloudflared”로 설치하거나 연결의 Cloudflare Tunnel 설정에서 경로를 지정하세요.</value>
+  </data>
+  <data name="CloudflareSignIn" xml:space="preserve">
+    <value>Cloudflare Access에 브라우저 로그인이 필요합니다. {0}에서 로그인한 다음 다시 연결하세요.</value>
+  </data>
+  <data name="CloudflareTokenRequired" xml:space="preserve">
+    <value>서비스 토큰 ID와 비밀이 필요합니다.</value>
+  </data>
+  <data name="CloudSqlKeyRequired" xml:space="preserve">
+    <value>서비스 계정 키가 필요합니다. 연결의 Cloud SQL 설정에 키의 JSON을 붙여 넣으세요.</value>
+  </data>
+  <data name="CloudSqlProxyName" xml:space="preserve">
+    <value>Cloud SQL Auth Proxy</value>
+  </data>
+  <data name="CloudSqlProxyNotFound" xml:space="preserve">
+    <value>cloud-sql-proxy를 찾을 수 없습니다. “gcloud components install cloud-sql-proxy”로 설치하거나 연결의 Cloud SQL 설정에서 경로를 지정하세요.</value>
+  </data>
+  <data name="CommandNotFound" xml:space="preserve">
+    <value>{0}을(를) 찾을 수 없습니다. 연결에 전체 경로를 입력하세요.</value>
+  </data>
+  <data name="CouldNotStart" xml:space="preserve">
+    <value>{0}을(를) 시작할 수 없습니다: {1}</value>
+  </data>
+  <data name="DatabaseHostEmpty" xml:space="preserve">
+    <value>데이터베이스 호스트가 비어 있습니다.</value>
+  </data>
+  <data name="DatabaseHostUnsafe" xml:space="preserve">
+    <value>데이터베이스 호스트 "{0}"에 ssh에서 허용하지 않는 문자가 있습니다.</value>
+  </data>
+  <data name="FixedPortInUse" xml:space="preserve">
+    <value>다른 프로그램이 이미 로컬 포트 {0}에서 수신 대기 중입니다. 다른 포트를 선택하거나 비워 두세요.</value>
+  </data>
+  <data name="HelperCouldNotListen" xml:space="preserve">
+    <value>{0}이(가) 로컬 포트 {1}에서 수신 대기할 수 없습니다.</value>
+  </data>
+  <data name="HelperExitedEarly" xml:space="preserve">
+    <value>{0}이(가) 로컬 포트를 열기 전에 종료되었습니다.</value>
+  </data>
+  <data name="HelperTimedOut" xml:space="preserve">
+    <value>{0}이(가) 제시간에 로컬 포트를 열지 않았습니다.</value>
+  </data>
+  <data name="JumpHostEmpty" xml:space="preserve">
+    <value>점프 호스트가 비어 있습니다.</value>
+  </data>
+  <data name="JumpHostUnsafe" xml:space="preserve">
+    <value>점프 호스트 "{0}"에 ssh에서 허용하지 않는 문자가 있습니다.</value>
+  </data>
+  <data name="NoFreePort" xml:space="preserve">
+    <value>터널에 사용할 수 있는 로컬 포트가 없습니다.</value>
+  </data>
+  <data name="NotAProxyOrHelper" xml:space="preserve">
+    <value>이 연결은 프록시나 터널 도우미를 사용하지 않습니다.</value>
+  </data>
+  <data name="NotHttpProxy" xml:space="preserve">
+    <value>프록시가 HTTP 프록시로 응답하지 않았습니다.</value>
+  </data>
+  <data name="NotSocks5" xml:space="preserve">
+    <value>프록시가 SOCKS5 프록시로 응답하지 않았습니다.</value>
+  </data>
+  <data name="NotSsh" xml:space="preserve">
+    <value>이 연결은 SSH를 사용하지 않습니다.</value>
+  </data>
+  <data name="PortOutOfRange" xml:space="preserve">
+    <value>포트는 1에서 65535 사이여야 합니다.</value>
+  </data>
+  <data name="ProxyClosed" xml:space="preserve">
+    <value>프록시가 연결을 닫았습니다.</value>
+  </data>
+  <data name="ProxyConnectFailed" xml:space="preserve">
+    <value>{0}의 프록시를 통해 연결할 수 없습니다. {1}</value>
+  </data>
+  <data name="ProxyCouldNotConnect" xml:space="preserve">
+    <value>프록시가 {0}:{1}에 연결할 수 없습니다: {2}.</value>
+  </data>
+  <data name="ProxyIncomplete" xml:space="preserve">
+    <value>프록시 구성이 완료되지 않았습니다. 프록시 호스트와 포트를 입력하세요.</value>
+  </data>
+  <data name="ProxyLocalPortFailed" xml:space="preserve">
+    <value>프록시용 로컬 포트를 열 수 없습니다: {0}</value>
+  </data>
+  <data name="ProxyNeedsLogin" xml:space="preserve">
+    <value>프록시에 사용자 이름과 암호가 필요합니다.</value>
+  </data>
+  <data name="ProxyNoMethod" xml:space="preserve">
+    <value>프록시가 제공된 로그인 방법을 하나도 허용하지 않습니다.</value>
+  </data>
+  <data name="ProxyRejectedLogin" xml:space="preserve">
+    <value>프록시가 사용자 이름과 암호를 거부했습니다.</value>
+  </data>
+  <data name="ProxyReplyTooLong" xml:space="preserve">
+    <value>프록시의 응답이 너무 깁니다.</value>
+  </data>
+  <data name="ProxyTimedOut" xml:space="preserve">
+    <value>{0}의 프록시를 통해 연결하는 동안 시간이 초과되었습니다. 프록시에 연결할 수 있는지, 자격 증명이 올바른지 확인하세요.</value>
+  </data>
+  <data name="ProxyUnreachable" xml:space="preserve">
+    <value>{0}의 프록시에 연결할 수 없습니다. {1}</value>
+  </data>
+  <data name="ProxyUnreadableReply" xml:space="preserve">
+    <value>프록시가 TablePro에서 읽을 수 없는 응답을 보냈습니다.</value>
+  </data>
+  <data name="ProxyUnsupportedMethod" xml:space="preserve">
+    <value>프록시가 TablePro에서 지원하지 않는 로그인 방법을 요청했습니다.</value>
+  </data>
+  <data name="Socks5CredentialsTooLong" xml:space="preserve">
+    <value>SOCKS5 사용자 이름과 암호는 각각 최대 255바이트입니다.</value>
+  </data>
+  <data name="Socks5HostTooLong" xml:space="preserve">
+    <value>호스트 이름 {0}이(가) SOCKS5 프록시에 비해 너무 깁니다.</value>
+  </data>
+  <data name="SocksAddressTypeNotSupported" xml:space="preserve">
+    <value>지원하지 않는 주소 유형</value>
+  </data>
+  <data name="SocksCommandNotSupported" xml:space="preserve">
+    <value>지원하지 않는 명령</value>
+  </data>
+  <data name="SocksConnectionRefused" xml:space="preserve">
+    <value>연결이 거부됨</value>
+  </data>
+  <data name="SocksError" xml:space="preserve">
+    <value>오류 {0}</value>
+  </data>
+  <data name="SocksGeneralFailure" xml:space="preserve">
+    <value>일반 오류</value>
+  </data>
+  <data name="SocksHostUnreachable" xml:space="preserve">
+    <value>호스트에 연결할 수 없음</value>
+  </data>
+  <data name="SocksNetworkUnreachable" xml:space="preserve">
+    <value>네트워크에 연결할 수 없음</value>
+  </data>
+  <data name="SocksNotAllowed" xml:space="preserve">
+    <value>프록시 규칙에서 허용하지 않음</value>
+  </data>
+  <data name="SocksTimedOut" xml:space="preserve">
+    <value>시간 초과</value>
+  </data>
+  <data name="SshClosed" xml:space="preserve">
+    <value>{0}을(를) 통한 SSH 터널이 닫혔습니다.</value>
+  </data>
+  <data name="SshFailed" xml:space="preserve">
+    <value>ssh가 {0}을(를) 통한 터널을 열 수 없습니다.</value>
+  </data>
+  <data name="SshHostEmpty" xml:space="preserve">
+    <value>SSH 호스트가 비어 있습니다.</value>
+  </data>
+  <data name="SshHostKeyMismatch" xml:space="preserve">
+    <value>{0}의 호스트 키가 known_hosts에 있는 키와 일치하지 않습니다. 서버 관리자에게 확인한 다음 이전 항목을 제거하세요.</value>
+  </data>
+  <data name="SshHostNotFound" xml:space="preserve">
+    <value>SSH 호스트 {0}을(를) 찾을 수 없습니다.</value>
+  </data>
+  <data name="SshHostUnsafe" xml:space="preserve">
+    <value>SSH 호스트 "{0}"에 ssh에서 허용하지 않는 문자가 있습니다.</value>
+  </data>
+  <data name="SshLocalPort" xml:space="preserve">
+    <value>ssh가 터널의 로컬 쪽에서 수신 대기할 수 없습니다.</value>
+  </data>
+  <data name="SshLoginRejected" xml:space="preserve">
+    <value>SSH 서버 {0}이(가) 로그인을 거부했습니다.</value>
+  </data>
+  <data name="SshNotFound" xml:space="preserve">
+    <value>ssh.exe를 찾을 수 없습니다. 설정 &gt; 시스템 &gt; 선택적 기능에서 OpenSSH 클라이언트를 설치하세요.</value>
+  </data>
+  <data name="SshTimedOut" xml:space="preserve">
+    <value>{0}을(를) 통한 SSH 터널이 제시간에 열리지 않았습니다.</value>
+  </data>
+  <data name="SshUnreachable" xml:space="preserve">
+    <value>SSH 서버 {0}에 연결할 수 없습니다.</value>
+  </data>
+  <data name="SshUserEmpty" xml:space="preserve">
+    <value>SSH 사용자가 비어 있습니다.</value>
+  </data>
+  <data name="SshUserUnsafe" xml:space="preserve">
+    <value>SSH 사용자 "{0}"에 ssh에서 허용하지 않는 문자가 있습니다.</value>
+  </data>
+  <data name="TunnelCommandName" xml:space="preserve">
+    <value>터널 명령</value>
+  </data>
+</root>

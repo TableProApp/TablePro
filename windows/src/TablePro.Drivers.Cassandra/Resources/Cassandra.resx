@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="BadConsistencyLevel" xml:space="preserve">
+    <value>{0} is not a consistency level a connection can use. Use LOCAL_ONE, ONE, QUORUM, LOCAL_QUORUM, EACH_QUORUM, ALL, TWO, THREE or ANY.</value>
+    <comment>{0} is the consistency level entered. The listed names are CQL keywords.</comment>
+  </data>
+  <data name="CannotChangePrimaryKey" xml:space="preserve">
+    <value>Cassandra cannot change the primary key column {0}. Delete the row and add it again with the new key.</value>
+    <comment>{0} is a column name.</comment>
+  </data>
+  <data name="ChooseKeyspace" xml:space="preserve">
+    <value>Choose a keyspace for {0}.</value>
+    <comment>{0} is a table name.</comment>
+  </data>
+  <data name="ClientRules_One" xml:space="preserve">
+    <value>{0} filter rule CQL cannot evaluate was applied to the rows read, page by page.</value>
+    <comment>{0} is the number of filter rules.</comment>
+  </data>
+  <data name="ClientRules_Other" xml:space="preserve">
+    <value>{0} filter rules CQL cannot evaluate were applied to the rows read, page by page.</value>
+    <comment>{0} is the number of filter rules.</comment>
+  </data>
+  <data name="ClientRulesNoAllowFiltering_One" xml:space="preserve">
+    <value>{0} filter rule was applied to the rows read, page by page, because CQL filters other columns only with ALLOW FILTERING. Set allowFiltering=true in the connection's options to filter on the server.</value>
+    <comment>{0} is the number of filter rules. ALLOW FILTERING is CQL; allowFiltering=true is an option.</comment>
+  </data>
+  <data name="ClientRulesNoAllowFiltering_Other" xml:space="preserve">
+    <value>{0} filter rules were applied to the rows read, page by page, because CQL filters other columns only with ALLOW FILTERING. Set allowFiltering=true in the connection's options to filter on the server.</value>
+    <comment>{0} is the number of filter rules. ALLOW FILTERING is CQL; allowFiltering=true is an option.</comment>
+  </data>
+  <data name="CounterColumns" xml:space="preserve">
+    <value>Counter columns change only by increments. Run UPDATE ... SET c = c + n in the editor.</value>
+    <comment>UPDATE ... SET c = c + n is CQL and stays as it is.</comment>
+  </data>
+  <data name="EnterPrimaryKeyValue" xml:space="preserve">
+    <value>Enter a value for the primary key column {0}.</value>
+    <comment>{0} is a column name.</comment>
+  </data>
+  <data name="KeyspacesNeedsAccessKey" xml:space="preserve">
+    <value>Amazon Keyspaces needs an access key ID (user name) and a secret access key (password).</value>
+  </data>
+  <data name="KeyspacesNeedsRegion" xml:space="preserve">
+    <value>Set the AWS region for Amazon Keyspaces in the connection's options (awsRegion).</value>
+  </data>
+  <data name="KeyspacesNeedsTls" xml:space="preserve">
+    <value>Amazon Keyspaces signs logins only over TLS. Set SSL to Required or stricter.</value>
+  </data>
+  <data name="KeyspacesSignInUnavailable" xml:space="preserve">
+    <value>Amazon Keyspaces sign-in "{0}" is not available on Windows yet. Use an access key.</value>
+    <comment>{0} is the sign-in mode entered in the options.</comment>
+  </data>
+  <data name="NoKeyspace" xml:space="preserve">
+    <value>No keyspace named {0} was found.</value>
+    <comment>{0} is a keyspace name.</comment>
+  </data>
+  <data name="NoOffset" xml:space="preserve">
+    <value>CQL has no OFFSET, and reaching row {0:N0} would read {1:N0} rows first. Page forward from the start or filter by the partition key.</value>
+    <comment>{0} is the row number asked for, {1} the rows that would be read first.</comment>
+  </data>
+  <data name="NoTableOrView" xml:space="preserve">
+    <value>No table or view named {0} was found.</value>
+    <comment>{0} is a table name.</comment>
+  </data>
+  <data name="PrimaryKeyNotLoaded" xml:space="preserve">
+    <value>The row's value for the primary key column {0} is not loaded, so the row cannot be found.</value>
+    <comment>{0} is a column name.</comment>
+  </data>
+  <data name="PrimaryKeyUnreadable" xml:space="preserve">
+    <value>The primary key of {0} could not be read, so its rows cannot be changed.</value>
+    <comment>{0} is a table name.</comment>
+  </data>
+  <data name="QueryCancelledServerMayFinish" xml:space="preserve">
+    <value>Query cancelled. The server may still finish it.</value>
+  </data>
+  <data name="RawConditionAnd" xml:space="preserve">
+    <value>CQL joins conditions only with AND, so the raw condition must match as well as the rules.</value>
+  </data>
+  <data name="SigV4NoNonce" xml:space="preserve">
+    <value>Amazon Keyspaces sent a SigV4 challenge without a nonce.</value>
+  </data>
+  <data name="SortNotApplied" xml:space="preserve">
+    <value>Cassandra returns rows in token order and sorts only within one partition, so the sort was not applied.</value>
+  </data>
+  <data name="StoppedAfterScanning" xml:space="preserve">
+    <value>Stopped after reading {0:N0} rows to fill the page. Filter by the partition key to search the whole table.</value>
+    <comment>{0} is the number of rows read.</comment>
+  </data>
+  <data name="UdtAsJson" xml:space="preserve">
+    <value>User-defined type values are written as JSON through fromJson(), not bound as objects.</value>
+  </data>
+</root>

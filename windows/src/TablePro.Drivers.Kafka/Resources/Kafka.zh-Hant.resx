@@ -1,0 +1,159 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AppendOnly" xml:space="preserve">
+    <value>Kafka 主題只能附加：訊息無法編輯或刪除。新增一列以產生新訊息，或在壓縮主題上為其鍵產生墓碑訊息（null 值）。</value>
+  </data>
+  <data name="AtLeastOne" xml:space="preserve">
+    <value>{0} 必須至少為 1。</value>
+  </data>
+  <data name="DescribeNeeds" xml:space="preserve">
+    <value>DESCRIBE 需要 GROUP 或 TOPIC。</value>
+  </data>
+  <data name="DescribeNeedsName" xml:space="preserve">
+    <value>DESCRIBE 需要一個名稱。</value>
+  </data>
+  <data name="DescribeUnsupported" xml:space="preserve">
+    <value>不支援 DESCRIBE {0}。請嘗試 GROUP 或 TOPIC。</value>
+  </data>
+  <data name="DropTakesOne" xml:space="preserve">
+    <value>DROP TOPIC 只接受一個主題名稱。</value>
+  </data>
+  <data name="EmptyStatement" xml:space="preserve">
+    <value>陳述式為空。</value>
+  </data>
+  <data name="FromNeeds" xml:space="preserve">
+    <value>FROM 需要 NEWEST、OLDEST、OFFSET、TIME、ANCHOR 或 TAIL。</value>
+  </data>
+  <data name="GroupNotDeletable_One" xml:space="preserve">
+    <value>取用者群組 {1} 處於 {2} 狀態，有 {0} 個成員。Kafka 只刪除沒有成員的群組；請先停止其取用者。</value>
+  </data>
+  <data name="GroupNotDeletable_Other" xml:space="preserve">
+    <value>取用者群組 {1} 處於 {2} 狀態，有 {0} 個成員。Kafka 只刪除沒有成員的群組；請先停止其取用者。</value>
+  </data>
+  <data name="GroupNote_One" xml:space="preserve">
+    <value>群組 {1} 處於 {2} 狀態，有 {0} 個成員。</value>
+  </data>
+  <data name="GroupNote_Other" xml:space="preserve">
+    <value>群組 {1} 處於 {2} 狀態，有 {0} 個成員。</value>
+  </data>
+  <data name="HeadersJson" xml:space="preserve">
+    <value>標頭必須是 JSON 物件，例如 {"trace":"abc"}。</value>
+  </data>
+  <data name="NeedsKeyValue" xml:space="preserve">
+    <value>{0} 需要「鍵=值」，例如 cleanup.policy=compact。</value>
+  </data>
+  <data name="NeedsOffsetList" xml:space="preserve">
+    <value>{0} 需要 partition:offset 清單。</value>
+  </data>
+  <data name="NeedsTopicKeyword" xml:space="preserve">
+    <value>{0} 需要 TOPIC 和一個主題名稱。</value>
+  </data>
+  <data name="NeedsTopicName" xml:space="preserve">
+    <value>{0} 需要一個主題名稱。</value>
+  </data>
+  <data name="NeedsValue" xml:space="preserve">
+    <value>{0} 需要一個值。</value>
+  </data>
+  <data name="NeedsWholeNumber" xml:space="preserve">
+    <value>{0} 需要整數，而不是 {1}。</value>
+  </data>
+  <data name="NoConsumerGroup" xml:space="preserve">
+    <value>沒有名為 {0} 的取用者群組。</value>
+  </data>
+  <data name="NoPartition" xml:space="preserve">
+    <value>主題 {0} 沒有分割區 {1}。</value>
+  </data>
+  <data name="NoSuchColumn" xml:space="preserve">
+    <value>Kafka 訊息沒有 {0} 欄。</value>
+  </data>
+  <data name="NotACommand" xml:space="preserve">
+    <value>{0} 不是 Kafka 指令。請嘗試 CONSUME、TAIL、PRODUCE、SHOW、DESCRIBE、CREATE 或 DROP。</value>
+  </data>
+  <data name="NotATime" xml:space="preserve">
+    <value>{0} 不是時間。</value>
+  </data>
+  <data name="NotATimeHint" xml:space="preserve">
+    <value>{0} 不是時間。請使用自紀元以來的毫秒數或 ISO 8601 時刻。</value>
+  </data>
+  <data name="NotOffsetPair" xml:space="preserve">
+    <value>{0} 不是 partition:offset 配對。</value>
+  </data>
+  <data name="NoTopic" xml:space="preserve">
+    <value>沒有名為 {0} 的主題。</value>
+  </data>
+  <data name="NotPartitionNumber" xml:space="preserve">
+    <value>{0} 不是分割區編號。</value>
+  </data>
+  <data name="NotSaslMechanism" xml:space="preserve">
+    <value>{0} 不是 SASL 機制。請使用 PLAIN、SCRAM-SHA-256 或 SCRAM-SHA-512。</value>
+  </data>
+  <data name="NotSecurityProtocol" xml:space="preserve">
+    <value>{0} 不是 Kafka 安全性通訊協定。請使用 PLAINTEXT、SSL、SASL_PLAINTEXT 或 SASL_SSL。</value>
+  </data>
+  <data name="NotStartPosition" xml:space="preserve">
+    <value>{0} 不是起始位置。請使用 NEWEST、OLDEST、OFFSET、TIME、ANCHOR 或 TAIL。</value>
+  </data>
+  <data name="OffsetAssigned" xml:space="preserve">
+    <value>訊息的位移由代理程式指派；請將位移留空。</value>
+  </data>
+  <data name="PageTooLarge" xml:space="preserve">
+    <value>此頁需要跨 {1} 個分割區讀取超過 {0:N0} 則訊息。請讀取較少的分割區，或使用 FROM OFFSET 或 FROM TIME 從較接近這些列的位置開始。</value>
+  </data>
+  <data name="PartitionNeedsNumber" xml:space="preserve">
+    <value>PARTITION 至少需要一個分割區編號。</value>
+  </data>
+  <data name="ProduceNeedsValueOrKey" xml:space="preserve">
+    <value>PRODUCE 至少需要 VALUE 或 KEY。</value>
+  </data>
+  <data name="RangeBetween" xml:space="preserve">
+    <value>{0} 必須介於 {1} 和 {2} 之間。</value>
+  </data>
+  <data name="ServerVersion_One" xml:space="preserve">
+    <value>Apache Kafka，{0} 個代理程式（librdkafka {1}）</value>
+  </data>
+  <data name="ServerVersion_Other" xml:space="preserve">
+    <value>Apache Kafka，{0} 個代理程式（librdkafka {1}）</value>
+  </data>
+  <data name="ShowNeeds" xml:space="preserve">
+    <value>SHOW 需要 TOPICS、BROKERS、GROUPS 或 CLUSTER。</value>
+  </data>
+  <data name="ShowUnsupported" xml:space="preserve">
+    <value>不支援 SHOW {0}。請嘗試 TOPICS、BROKERS、GROUPS 或 CLUSTER。</value>
+  </data>
+  <data name="StoppedPartial" xml:space="preserve">
+    <value>{0:0} 秒後停止，部分分割區未讀完；顯示的列是已收到的內容。</value>
+  </data>
+  <data name="TakesNothingAfter" xml:space="preserve">
+    <value>{0} 後面不能有任何內容，但提供了 {1}。</value>
+  </data>
+  <data name="TimestampComment" xml:space="preserve">
+    <value>生產者或代理程式的時間，採用 UTC。</value>
+  </data>
+  <data name="TopicCreated" xml:space="preserve">
+    <value>已建立主題 {0}。</value>
+  </data>
+  <data name="TopicDeleted" xml:space="preserve">
+    <value>已刪除主題 {0}。</value>
+  </data>
+  <data name="Unexpected" xml:space="preserve">
+    <value>{1} 陳述式中出現非預期的 {0}。</value>
+  </data>
+  <data name="UnexpectedInTail" xml:space="preserve">
+    <value>TAIL 陳述式中出現非預期的 {0}。TAIL 接受 LIMIT 和 PARTITION。</value>
+  </data>
+  <data name="ValueComment" xml:space="preserve">
+    <value>Null 表示墓碑訊息；空值表示空訊息。</value>
+  </data>
+</root>

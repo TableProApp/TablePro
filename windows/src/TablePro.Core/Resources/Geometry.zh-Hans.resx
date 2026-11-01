@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="CappedRows_One" xml:space="preserve">
+    <value>有 {0:N0} 行超出绘制上限。</value>
+  </data>
+  <data name="CappedRows_Other" xml:space="preserve">
+    <value>有 {0:N0} 行超出绘制上限。</value>
+  </data>
+  <data name="DrawingPoints_One" xml:space="preserve">
+    <value>正在根据纬度和经度列绘制 {0:N0} 个点。</value>
+  </data>
+  <data name="DrawingPoints_Other" xml:space="preserve">
+    <value>正在根据纬度和经度列绘制 {0:N0} 个点。</value>
+  </data>
+  <data name="DrawingShapes_One" xml:space="preserve">
+    <value>正在绘制 {0:N0} 个图形。</value>
+  </data>
+  <data name="DrawingShapes_Other" xml:space="preserve">
+    <value>正在绘制 {0:N0} 个图形。</value>
+  </data>
+  <data name="DrawingShapesInSrid_One" xml:space="preserve">
+    <value>正在绘制 SRID {1} 中的 {0:N0} 个图形。</value>
+  </data>
+  <data name="DrawingShapesInSrid_Other" xml:space="preserve">
+    <value>正在绘制 SRID {1} 中的 {0:N0} 个图形。</value>
+  </data>
+  <data name="DrawingShapesNoSrid_One" xml:space="preserve">
+    <value>正在绘制 {0:N0} 个没有 SRID 的图形，按经度和纬度读取。</value>
+  </data>
+  <data name="DrawingShapesNoSrid_Other" xml:space="preserve">
+    <value>正在绘制 {0:N0} 个没有 SRID 的图形，按经度和纬度读取。</value>
+  </data>
+  <data name="DroppedParts_One" xml:space="preserve">
+    <value>多部分几何图形中有 {0:N0} 个部分无法绘制，已略去。</value>
+  </data>
+  <data name="DroppedParts_Other" xml:space="preserve">
+    <value>多部分几何图形中有 {0:N0} 个部分无法绘制，已略去。</value>
+  </data>
+  <data name="EmptyCoordinatesNull" xml:space="preserve">
+    <value>这些列中的纬度或经度全部为 null。</value>
+  </data>
+  <data name="EmptyGeometriesNull" xml:space="preserve">
+    <value>此列中的几何图形全部为空或 null。</value>
+  </data>
+  <data name="EmptyNoSridOutOfRange" xml:space="preserve">
+    <value>此列没有 SRID，且坐标超出经纬度范围，因此地图无法定位。</value>
+  </data>
+  <data name="EmptyNothingDrawable" xml:space="preserve">
+    <value>此列中没有可绘制的内容。坐标超出其坐标系范围，或者某条线或环的点太少。</value>
+  </data>
+  <data name="EmptyUnreadable_One" xml:space="preserve">
+    <value>此列中有 {0:N0} 个值的格式地图无法读取。网格仍按数据库返回的原样显示。</value>
+  </data>
+  <data name="EmptyUnreadable_Other" xml:space="preserve">
+    <value>此列中有 {0:N0} 个值的格式地图无法读取。网格仍按数据库返回的原样显示。</value>
+  </data>
+  <data name="EmptyUnsupportedSrid" xml:space="preserve">
+    <value>地图无法定位 SRID {0}。地图读取经纬度（如 SRID 4326）和 Web Mercator。请查询 ST_Transform(geom, 4326) 来查看这些图形。</value>
+  </data>
+  <data name="EmptyUnsupportedTypes" xml:space="preserve">
+    <value>此列包含地图无法绘制的 {0}。</value>
+  </data>
+  <data name="OtherSridRows_One" xml:space="preserve">
+    <value>其他坐标系中的 {0:N0} 行未绘制。</value>
+  </data>
+  <data name="OtherSridRows_Other" xml:space="preserve">
+    <value>其他坐标系中的 {0:N0} 行未绘制。</value>
+  </data>
+  <data name="UnreadableRows_One" xml:space="preserve">
+    <value>有 {0:N0} 行无法读取。</value>
+  </data>
+  <data name="UnreadableRows_Other" xml:space="preserve">
+    <value>有 {0:N0} 行无法读取。</value>
+  </data>
+  <data name="UnsupportedTypeRows_One" xml:space="preserve">
+    <value>有 {0:N0} 行使用无法绘制的 {1}。</value>
+  </data>
+  <data name="UnsupportedTypeRows_Other" xml:space="preserve">
+    <value>有 {0:N0} 行使用无法绘制的 {1}。</value>
+  </data>
+</root>

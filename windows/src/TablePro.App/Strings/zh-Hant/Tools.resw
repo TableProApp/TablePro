@@ -1,0 +1,565 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="CopyActionAppend" xml:space="preserve">
+    <value>新增列至</value>
+  </data>
+  <data name="CopyActionCreate" xml:space="preserve">
+    <value>建立</value>
+  </data>
+  <data name="CopyActionEmptyAndFill" xml:space="preserve">
+    <value>清空並填入</value>
+  </data>
+  <data name="CopyActionReplace" xml:space="preserve">
+    <value>取代</value>
+  </data>
+  <data name="CopyActionSkip" xml:space="preserve">
+    <value>略過</value>
+  </data>
+  <data name="CopyCannotConnect" xml:space="preserve">
+    <value>無法連線到 {0}</value>
+  </data>
+  <data name="CopyContentData" xml:space="preserve">
+    <value>僅資料</value>
+  </data>
+  <data name="CopyContentHeader" xml:space="preserve">
+    <value>複製</value>
+  </data>
+  <data name="CopyContentStructure" xml:space="preserve">
+    <value>僅結構</value>
+  </data>
+  <data name="CopyContentStructureAndData" xml:space="preserve">
+    <value>結構和資料</value>
+  </data>
+  <data name="CopyCrossEngineNote" xml:space="preserve">
+    <value>{0} 和 {1} 是不同的引擎，因此欄位類型會經過轉換。請在複製前檢查。</value>
+  </data>
+  <data name="CopyFailedTitle" xml:space="preserve">
+    <value>複製失敗</value>
+  </data>
+  <data name="CopyFinishedTitle" xml:space="preserve">
+    <value>複製完成</value>
+  </data>
+  <data name="CopyFinishedWithProblemsTitle" xml:space="preserve">
+    <value>複製完成，但有問題</value>
+  </data>
+  <data name="CopyKindFunction" xml:space="preserve">
+    <value>函式</value>
+  </data>
+  <data name="CopyKindMaterializedView" xml:space="preserve">
+    <value>具體化檢視表</value>
+  </data>
+  <data name="CopyKindProcedure" xml:space="preserve">
+    <value>預存程序</value>
+  </data>
+  <data name="CopyKindSequence" xml:space="preserve">
+    <value>序列</value>
+  </data>
+  <data name="CopyKindTable" xml:space="preserve">
+    <value>資料表</value>
+  </data>
+  <data name="CopyKindView" xml:space="preserve">
+    <value>檢視</value>
+  </data>
+  <data name="CopyObjectsCopied_One" xml:space="preserve">
+    <value>已複製 {0} 個物件。{1}</value>
+  </data>
+  <data name="CopyObjectsCopied_Other" xml:space="preserve">
+    <value>已複製 {0} 個物件。{1}</value>
+  </data>
+  <data name="CopyObjectsFrom" xml:space="preserve">
+    <value>來自 {0} 的物件</value>
+  </data>
+  <data name="CopyObjectsTitle" xml:space="preserve">
+    <value>複製物件</value>
+  </data>
+  <data name="CopyOnError" xml:space="preserve">
+    <value>發生錯誤時</value>
+  </data>
+  <data name="CopyOnErrorSkip" xml:space="preserve">
+    <value>略過失敗的物件並繼續</value>
+  </data>
+  <data name="CopyOnErrorStop" xml:space="preserve">
+    <value>在第一次失敗時停止</value>
+  </data>
+  <data name="CopyOutcomeCopied" xml:space="preserve">
+    <value>已複製</value>
+  </data>
+  <data name="CopyOutcomeFailed" xml:space="preserve">
+    <value>失敗</value>
+  </data>
+  <data name="CopyOutcomeNameRows_One" xml:space="preserve">
+    <value>{1}，{0:N0} 列</value>
+  </data>
+  <data name="CopyOutcomeNameRows_Other" xml:space="preserve">
+    <value>{1}，{0:N0} 列</value>
+  </data>
+  <data name="CopyOutcomeSkipped" xml:space="preserve">
+    <value>已略過</value>
+  </data>
+  <data name="CopyOutcomeStopped" xml:space="preserve">
+    <value>已停止</value>
+  </data>
+  <data name="CopyPhaseCopyingRows" xml:space="preserve">
+    <value>正在複製 {0} 的列</value>
+  </data>
+  <data name="CopyPhaseCreating" xml:space="preserve">
+    <value>正在建立 {0}</value>
+  </data>
+  <data name="CopyPhaseDropping" xml:space="preserve">
+    <value>正在刪除 {0}</value>
+  </data>
+  <data name="CopyPhaseFinishing" xml:space="preserve">
+    <value>正在完成</value>
+  </data>
+  <data name="CopyPhaseIndexing" xml:space="preserve">
+    <value>正在為 {0} 建立索引</value>
+  </data>
+  <data name="CopyPhaseLinkingKeys" xml:space="preserve">
+    <value>正在新增 {0} 的鍵</value>
+  </data>
+  <data name="CopyPhasePreparing" xml:space="preserve">
+    <value>正在準備</value>
+  </data>
+  <data name="CopyPolicyAppend" xml:space="preserve">
+    <value>新增列至該物件</value>
+  </data>
+  <data name="CopyPolicyHeader" xml:space="preserve">
+    <value>當目標已有同名物件時</value>
+  </data>
+  <data name="CopyPolicyReplace" xml:space="preserve">
+    <value>取代該物件</value>
+  </data>
+  <data name="CopyPolicySkip" xml:space="preserve">
+    <value>略過該物件</value>
+  </data>
+  <data name="CopyProgressName" xml:space="preserve">
+    <value>複製進度</value>
+  </data>
+  <data name="CopyProgressTitle" xml:space="preserve">
+    <value>正在複製</value>
+  </data>
+  <data name="CopyReviewButton" xml:space="preserve">
+    <value>複製</value>
+  </data>
+  <data name="CopyReviewTitle" xml:space="preserve">
+    <value>複製到 {0}</value>
+  </data>
+  <data name="CopyRowsCopiedTo_One" xml:space="preserve">
+    <value>已將 {0:N0} 列複製到 {1}。</value>
+  </data>
+  <data name="CopyRowsCopiedTo_Other" xml:space="preserve">
+    <value>已將 {0:N0} 列複製到 {1}。</value>
+  </data>
+  <data name="CopyRowsCopied_One" xml:space="preserve">
+    <value>已複製 {0:N0} 列</value>
+  </data>
+  <data name="CopyRowsCopied_Other" xml:space="preserve">
+    <value>已複製 {0:N0} 列</value>
+  </data>
+  <data name="CopySelectNone" xml:space="preserve">
+    <value>全部不選</value>
+  </data>
+  <data name="CopyStoppedTitle" xml:space="preserve">
+    <value>複製已停止</value>
+  </data>
+  <data name="CopyTargetSchema" xml:space="preserve">
+    <value>目標綱要</value>
+  </data>
+  <data name="CopyThisConnection" xml:space="preserve">
+    <value>{0}（此連線）</value>
+  </data>
+  <data name="CopyTo" xml:space="preserve">
+    <value>複製到</value>
+  </data>
+  <data name="GenCannotReadTable" xml:space="preserve">
+    <value>無法讀取資料表</value>
+  </data>
+  <data name="GenColumns" xml:space="preserve">
+    <value>欄位</value>
+  </data>
+  <data name="GenDateFrom" xml:space="preserve">
+    <value>從</value>
+  </data>
+  <data name="GenDateTo" xml:space="preserve">
+    <value>到</value>
+  </data>
+  <data name="GenDecimalPlaces" xml:space="preserve">
+    <value>小數位數</value>
+  </data>
+  <data name="GenFixIssues" xml:space="preserve">
+    <value>請先修正下列問題再產生</value>
+  </data>
+  <data name="GenGenerate" xml:space="preserve">
+    <value>產生</value>
+  </data>
+  <data name="GenGenerator" xml:space="preserve">
+    <value>產生器</value>
+  </data>
+  <data name="GenInsert" xml:space="preserve">
+    <value>插入</value>
+  </data>
+  <data name="GenInsertConfirmMessage_One" xml:space="preserve">
+    <value>要將 {0:N0} 列產生的資料插入 {1} 嗎？</value>
+  </data>
+  <data name="GenInsertConfirmMessage_Other" xml:space="preserve">
+    <value>要將 {0:N0} 列產生的資料插入 {1} 嗎？</value>
+  </data>
+  <data name="GenInsertConfirmTitle" xml:space="preserve">
+    <value>插入列？</value>
+  </data>
+  <data name="GenInserted_One" xml:space="preserve">
+    <value>已將 {0:N0} 列插入 {1}。</value>
+  </data>
+  <data name="GenInserted_Other" xml:space="preserve">
+    <value>已將 {0:N0} 列插入 {1}。</value>
+  </data>
+  <data name="GenListValues" xml:space="preserve">
+    <value>值，每行一個</value>
+  </data>
+  <data name="GenLongest" xml:space="preserve">
+    <value>最長</value>
+  </data>
+  <data name="GenMaximum" xml:space="preserve">
+    <value>最大值</value>
+  </data>
+  <data name="GenMinimum" xml:space="preserve">
+    <value>最小值</value>
+  </data>
+  <data name="GenNewSeed" xml:space="preserve">
+    <value>新種子</value>
+  </data>
+  <data name="GenNewSeedTip" xml:space="preserve">
+    <value>新種子：相同的種子和設定一律產生相同的列</value>
+  </data>
+  <data name="GenNoGenerator" xml:space="preserve">
+    <value>沒有產生器可以填入此類型。</value>
+  </data>
+  <data name="GenNullValues" xml:space="preserve">
+    <value>NULL 值</value>
+  </data>
+  <data name="GenOpenAsSql" xml:space="preserve">
+    <value>以 SQL 開啟</value>
+  </data>
+  <data name="GenPattern" xml:space="preserve">
+    <value>模式</value>
+  </data>
+  <data name="GenPatternHelp" xml:space="preserve">
+    <value># 代表數字，? 代表字母，* 代表兩者皆可，\ 會讓下一個字元成為字面值。</value>
+  </data>
+  <data name="GenPreview" xml:space="preserve">
+    <value>預覽</value>
+  </data>
+  <data name="GenPreviewName" xml:space="preserve">
+    <value>前幾列的預覽</value>
+  </data>
+  <data name="GenPreviewNote" xml:space="preserve">
+    <value>{0:N0} 列中的前幾列。交由伺服器處理的欄位不會顯示。</value>
+  </data>
+  <data name="GenPreviewWaiting" xml:space="preserve">
+    <value>設定沒有問題後就會顯示預覽。</value>
+  </data>
+  <data name="GenProgressTitle" xml:space="preserve">
+    <value>正在產生列</value>
+  </data>
+  <data name="GenProgress_One" xml:space="preserve">
+    <value>{1:N0} / {0:N0} 列</value>
+  </data>
+  <data name="GenProgress_Other" xml:space="preserve">
+    <value>{1:N0} / {0:N0} 列</value>
+  </data>
+  <data name="GenReadOnlyMessage" xml:space="preserve">
+    <value>此連線的安全模式為唯讀，因此無法插入任何列。</value>
+  </data>
+  <data name="GenReadOnlyTitle" xml:space="preserve">
+    <value>唯讀連線</value>
+  </data>
+  <data name="GenReferenceNote" xml:space="preserve">
+    <value>從參考的鍵中取值。</value>
+  </data>
+  <data name="GenReferenceSampledNote_One" xml:space="preserve">
+    <value>從 {1} 取值，取樣自其 {0:N0} 列。鍵的每個欄位都來自同一列。</value>
+  </data>
+  <data name="GenReferenceSampledNote_Other" xml:space="preserve">
+    <value>從 {1} 取值，取樣自其 {0:N0} 列。鍵的每個欄位都來自同一列。</value>
+  </data>
+  <data name="GenRows" xml:space="preserve">
+    <value>列</value>
+  </data>
+  <data name="GenSeed" xml:space="preserve">
+    <value>種子</value>
+  </data>
+  <data name="GenServerDefaultNote" xml:space="preserve">
+    <value>不包含在任何 INSERT 中，因此此欄位會採用其預設值或 NULL。</value>
+  </data>
+  <data name="GenServerFillsNote" xml:space="preserve">
+    <value>伺服器會自行填入此欄位。</value>
+  </data>
+  <data name="GenShortest" xml:space="preserve">
+    <value>最短</value>
+  </data>
+  <data name="GenStart" xml:space="preserve">
+    <value>起始值</value>
+  </data>
+  <data name="GenStep" xml:space="preserve">
+    <value>遞增量</value>
+  </data>
+  <data name="GenStoppedAfter_One" xml:space="preserve">
+    <value>已在 {0:N0} 列後停止；已寫入的列會保留在 {1} 中。</value>
+  </data>
+  <data name="GenStoppedAfter_Other" xml:space="preserve">
+    <value>已在 {0:N0} 列後停止；已寫入的列會保留在 {1} 中。</value>
+  </data>
+  <data name="GenStoppedMessage_One" xml:space="preserve">
+    <value>{1}
+
+在此之前已插入 {0:N0} 列，這些列會保留在資料表中。</value>
+  </data>
+  <data name="GenStoppedMessage_Other" xml:space="preserve">
+    <value>{1}
+
+在此之前已插入 {0:N0} 列，這些列會保留在資料表中。</value>
+  </data>
+  <data name="GenStoppedTitle" xml:space="preserve">
+    <value>產生列已停止</value>
+  </data>
+  <data name="GenTitle" xml:space="preserve">
+    <value>為 {0} 產生列</value>
+  </data>
+  <data name="GenTrueValues" xml:space="preserve">
+    <value>True 值</value>
+  </data>
+  <data name="GenUuidVersion" xml:space="preserve">
+    <value>版本</value>
+  </data>
+  <data name="GenUuidVersion4" xml:space="preserve">
+    <value>版本 4（隨機）</value>
+  </data>
+  <data name="GenUuidVersion7" xml:space="preserve">
+    <value>版本 7（依時間排序）</value>
+  </data>
+  <data name="GenVocabularyNote" xml:space="preserve">
+    <value>從固定詞彙產生{0}值，在每個 TablePro 版本中，相同的種子都會產生相同的值。</value>
+  </data>
+  <data name="GeneratorBoolean" xml:space="preserve">
+    <value>布林值</value>
+  </data>
+  <data name="GeneratorCity" xml:space="preserve">
+    <value>城市</value>
+  </data>
+  <data name="GeneratorCountry" xml:space="preserve">
+    <value>國家/地區</value>
+  </data>
+  <data name="GeneratorDate" xml:space="preserve">
+    <value>日期</value>
+  </data>
+  <data name="GeneratorDateTime" xml:space="preserve">
+    <value>日期和時間</value>
+  </data>
+  <data name="GeneratorDecimalRange" xml:space="preserve">
+    <value>小數範圍</value>
+  </data>
+  <data name="GeneratorEmail" xml:space="preserve">
+    <value>電子郵件</value>
+  </data>
+  <data name="GeneratorFirstName" xml:space="preserve">
+    <value>名字</value>
+  </data>
+  <data name="GeneratorFullName" xml:space="preserve">
+    <value>全名</value>
+  </data>
+  <data name="GeneratorIntegerRange" xml:space="preserve">
+    <value>數字範圍</value>
+  </data>
+  <data name="GeneratorJson" xml:space="preserve">
+    <value>JSON</value>
+  </data>
+  <data name="GeneratorLastName" xml:space="preserve">
+    <value>姓氏</value>
+  </data>
+  <data name="GeneratorList" xml:space="preserve">
+    <value>值清單</value>
+  </data>
+  <data name="GeneratorPattern" xml:space="preserve">
+    <value>模式</value>
+  </data>
+  <data name="GeneratorPhone" xml:space="preserve">
+    <value>電話號碼</value>
+  </data>
+  <data name="GeneratorReference" xml:space="preserve">
+    <value>參考值</value>
+  </data>
+  <data name="GeneratorSequence" xml:space="preserve">
+    <value>序列</value>
+  </data>
+  <data name="GeneratorServerDefault" xml:space="preserve">
+    <value>伺服器預設值</value>
+  </data>
+  <data name="GeneratorStreetAddress" xml:space="preserve">
+    <value>街道地址</value>
+  </data>
+  <data name="GeneratorText" xml:space="preserve">
+    <value>文字</value>
+  </data>
+  <data name="GeneratorTime" xml:space="preserve">
+    <value>時間</value>
+  </data>
+  <data name="GeneratorUuid" xml:space="preserve">
+    <value>UUID</value>
+  </data>
+  <data name="JoinAddFilter" xml:space="preserve">
+    <value>新增篩選</value>
+  </data>
+  <data name="JoinAddSort" xml:space="preserve">
+    <value>新增排序</value>
+  </data>
+  <data name="JoinAscending" xml:space="preserve">
+    <value>升序</value>
+  </data>
+  <data name="JoinCannotReadTables" xml:space="preserve">
+    <value>無法讀取資料表</value>
+  </data>
+  <data name="JoinClearQuery" xml:space="preserve">
+    <value>清除查詢</value>
+  </data>
+  <data name="JoinColumn" xml:space="preserve">
+    <value>欄位</value>
+  </data>
+  <data name="JoinConditionFor" xml:space="preserve">
+    <value>{0} 的聯結條件</value>
+  </data>
+  <data name="JoinCopySql" xml:space="preserve">
+    <value>複製 SQL</value>
+  </data>
+  <data name="JoinCrossJoin" xml:space="preserve">
+    <value>交叉聯結（無條件）</value>
+  </data>
+  <data name="JoinDescending" xml:space="preserve">
+    <value>降序</value>
+  </data>
+  <data name="JoinFilterTables" xml:space="preserve">
+    <value>篩選資料表</value>
+  </data>
+  <data name="JoinGeneratedSql" xml:space="preserve">
+    <value>產生的 SQL</value>
+  </data>
+  <data name="JoinHintCrossJoined_One" xml:space="preserve">
+    <value>沒有外鍵將 {1} 連結到其前面的資料表，因此會以交叉聯結處理。</value>
+  </data>
+  <data name="JoinHintCrossJoined_Other" xml:space="preserve">
+    <value>沒有外鍵將 {1} 連結到其前面的資料表，因此會以交叉聯結處理。</value>
+  </data>
+  <data name="JoinHintStart" xml:space="preserve">
+    <value>選擇要聯結的資料表。它們的外鍵會成為聯結條件。</value>
+  </data>
+  <data name="JoinKindFull" xml:space="preserve">
+    <value>完整聯結</value>
+  </data>
+  <data name="JoinKindInner" xml:space="preserve">
+    <value>內部聯結</value>
+  </data>
+  <data name="JoinKindLeft" xml:space="preserve">
+    <value>左聯結</value>
+  </data>
+  <data name="JoinKindRight" xml:space="preserve">
+    <value>右聯結</value>
+  </data>
+  <data name="JoinNoTables" xml:space="preserve">
+    <value>此綱要沒有可聯結的資料表。</value>
+  </data>
+  <data name="JoinOpenInQueryTab" xml:space="preserve">
+    <value>在查詢分頁中開啟</value>
+  </data>
+  <data name="JoinOperator" xml:space="preserve">
+    <value>運算子</value>
+  </data>
+  <data name="JoinPickSecondTable" xml:space="preserve">
+    <value>再選擇一個資料表進行聯結。</value>
+  </data>
+  <data name="JoinReadingTables" xml:space="preserve">
+    <value>正在讀取資料表…</value>
+  </data>
+  <data name="JoinReadingTablesProgress" xml:space="preserve">
+    <value>正在讀取資料表… {0}/{1}</value>
+  </data>
+  <data name="JoinReloadTables" xml:space="preserve">
+    <value>重新載入資料表</value>
+  </data>
+  <data name="JoinRemoveFilter" xml:space="preserve">
+    <value>移除篩選</value>
+  </data>
+  <data name="JoinRemoveSort" xml:space="preserve">
+    <value>移除排序</value>
+  </data>
+  <data name="JoinRemoveTable" xml:space="preserve">
+    <value>移除{0}</value>
+  </data>
+  <data name="JoinSecondValue" xml:space="preserve">
+    <value>第二個值</value>
+  </data>
+  <data name="JoinSectionFilters" xml:space="preserve">
+    <value>篩選條件</value>
+  </data>
+  <data name="JoinSectionJoins" xml:space="preserve">
+    <value>聯結</value>
+  </data>
+  <data name="JoinSectionSort" xml:space="preserve">
+    <value>排序</value>
+  </data>
+  <data name="JoinSelectColumn" xml:space="preserve">
+    <value>選取 {0}.{1}</value>
+  </data>
+  <data name="JoinShowingTables_One" xml:space="preserve">
+    <value>顯示 {1}/{0} 個資料表</value>
+  </data>
+  <data name="JoinShowingTables_Other" xml:space="preserve">
+    <value>顯示 {1}/{0} 個資料表</value>
+  </data>
+  <data name="JoinSortDirection" xml:space="preserve">
+    <value>排序方向</value>
+  </data>
+  <data name="JoinSqlPlaceholder" xml:space="preserve">
+    <value>-- 選擇一個資料表以開始。</value>
+  </data>
+  <data name="JoinTabTitle" xml:space="preserve">
+    <value>聯結產生器</value>
+  </data>
+  <data name="JoinTableCount_One" xml:space="preserve">
+    <value>{0} 個資料表</value>
+  </data>
+  <data name="JoinTableCount_Other" xml:space="preserve">
+    <value>{0} 個資料表</value>
+  </data>
+  <data name="JoinTryAgain" xml:space="preserve">
+    <value>重試</value>
+  </data>
+  <data name="JoinTypeFor" xml:space="preserve">
+    <value>{0} 的聯結類型</value>
+  </data>
+  <data name="JoinValueFrom" xml:space="preserve">
+    <value>從</value>
+  </data>
+  <data name="JoinValueTo" xml:space="preserve">
+    <value>到</value>
+  </data>
+  <data name="JoinZoomIn" xml:space="preserve">
+    <value>放大</value>
+  </data>
+  <data name="JoinZoomOut" xml:space="preserve">
+    <value>縮小</value>
+  </data>
+  <data name="Starting" xml:space="preserve">
+    <value>正在啟動…</value>
+  </data>
+</root>

@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="BooleanProperty" xml:space="preserve">
+    <value>{0} là thuộc tính boolean, nên chỉ khớp với true hoặc false, không khớp với {1}.</value>
+  </data>
+  <data name="ComparesNumbersAndDates" xml:space="preserve">
+    <value>Weaviate chỉ so sánh số và ngày bằng {0}, và {1} không thuộc loại nào trong hai loại đó.</value>
+  </data>
+  <data name="DateProperty" xml:space="preserve">
+    <value>{0} là thuộc tính ngày, và {1} không phải là dấu thời gian RFC 3339, chẳng hạn 2024-01-31T00:00:00Z.</value>
+  </data>
+  <data name="InNeedsValue" xml:space="preserve">
+    <value>IN trên {0} cần ít nhất một giá trị.</value>
+  </data>
+  <data name="MatchesTextOnly" xml:space="preserve">
+    <value>Weaviate so khớp văn bản bằng {0}, và {1} không phải là thuộc tính văn bản.</value>
+  </data>
+  <data name="NotValidName" xml:space="preserve">
+    <value>{0} không phải là tên Weaviate hợp lệ.</value>
+  </data>
+  <data name="NumericProperty" xml:space="preserve">
+    <value>{0} là thuộc tính số, và {1} không phải là số.</value>
+  </data>
+  <data name="ObjectIdUnknown" xml:space="preserve">
+    <value>Không biết ID của đối tượng, nên không thể xác định đối tượng đó.</value>
+  </data>
+  <data name="RawFilterShape" xml:space="preserve">
+    <value>Bộ lọc Weaviate thô là một đối tượng where, chẳng hạn { path: ["title"] operator: Like valueText: "*a*" }.</value>
+  </data>
+</root>

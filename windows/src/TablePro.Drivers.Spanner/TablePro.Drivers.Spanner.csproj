@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>$(TableProTargetFramework)</TargetFramework>
+    <RootNamespace>TablePro.Drivers.Spanner</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../TablePro.Core/TablePro.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Google.Cloud.Spanner.Data" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="TablePro.Drivers.Warehouse.Tests" />
+  </ItemGroup>
+</Project>

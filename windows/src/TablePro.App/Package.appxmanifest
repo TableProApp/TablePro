@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The MSIX identity. Only a build with -p:TableProPackage=msix reads this file; the default build is unpackaged.
+  The build stamps Identity Version from $(TableProPackageVersion) and Publisher from $(TableProPublisher), so the
+  values here are what a local package gets. The OID in the default Publisher marks the package as unsigned, which
+  Windows 11 installs with Add-AppxPackage -AllowUnsigned.
+-->
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:desktop6="http://schemas.microsoft.com/appx/manifest/desktop/windows10/6"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  IgnorableNamespaces="uap desktop6 rescap">
+
+  <Identity
+    Name="TableProApp.TablePro"
+    Publisher="CN=TablePro Development, OID.2.25.311729368913984317654407730594956997722=1"
+    Version="0.1.0.0" />
+
+  <Properties>
+    <DisplayName>TablePro</DisplayName>
+    <PublisherDisplayName>TablePro</PublisherDisplayName>
+    <Logo>Assets\Package\StoreLogo.png</Logo>
+    <!--
+      The package reads and writes %LOCALAPPDATA%\TablePro itself, not a per-package copy, so moving between the zip
+      install and the MSIX keeps connections, settings and history, as the unpackaged build has always kept them.
+    -->
+    <desktop6:FileSystemWriteVirtualization>disabled</desktop6:FileSystemWriteVirtualization>
+  </Properties>
+
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.19041.0" MaxVersionTested="10.0.26100.0" />
+  </Dependencies>
+
+  <Resources>
+    <Resource Language="x-generate" />
+  </Resources>
+
+  <Applications>
+    <Application Id="App" Executable="$targetnametoken$.exe" EntryPoint="$targetentrypoint$">
+      <uap:VisualElements
+        DisplayName="TablePro"
+        Description="A native database client for PostgreSQL, MySQL, SQL Server, SQLite, DuckDB, Redis, MongoDB and more."
+        BackgroundColor="transparent"
+        Square150x150Logo="Assets\Package\Square150x150Logo.png"
+        Square44x44Logo="Assets\Package\Square44x44Logo.png">
+        <uap:DefaultTile Wide310x150Logo="Assets\Package\Wide310x150Logo.png" ShortName="TablePro" />
+        <uap:SplashScreen Image="Assets\Package\SplashScreen.png" />
+      </uap:VisualElements>
+    </Application>
+  </Applications>
+
+  <Capabilities>
+    <rescap:Capability Name="runFullTrust" />
+    <rescap:Capability Name="unvirtualizedResources" />
+  </Capabilities>
+</Package>

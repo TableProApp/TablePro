@@ -1,0 +1,315 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AccessReadOnly" xml:space="preserve">
+    <value>唯讀</value>
+  </data>
+  <data name="AccessReadWrite" xml:space="preserve">
+    <value>讀取和寫入，每次寫入前詢問</value>
+  </data>
+  <data name="ActionClientAdded" xml:space="preserve">
+    <value>已新增用戶端</value>
+  </data>
+  <data name="ActionClientRemoved" xml:space="preserve">
+    <value>已移除用戶端</value>
+  </data>
+  <data name="ActionClientRevoked" xml:space="preserve">
+    <value>已撤銷用戶端</value>
+  </data>
+  <data name="ActionPairingApproved" xml:space="preserve">
+    <value>已核准配對</value>
+  </data>
+  <data name="ActionPairingDenied" xml:space="preserve">
+    <value>已婉拒配對</value>
+  </data>
+  <data name="ActionPairingRequest" xml:space="preserve">
+    <value>配對要求</value>
+  </data>
+  <data name="ActionSignInRefused" xml:space="preserve">
+    <value>登入遭拒</value>
+  </data>
+  <data name="ActionTokenCollected" xml:space="preserve">
+    <value>已領取權杖</value>
+  </data>
+  <data name="ActivityHeading" xml:space="preserve">
+    <value>活動</value>
+  </data>
+  <data name="ActivityListName" xml:space="preserve">
+    <value>MCP 活動</value>
+  </data>
+  <data name="ActivityNote_One" xml:space="preserve">
+    <value>每次工具呼叫、配對和用戶端變更都會在 mcp-audit.db 中保留 {0} 天。陳述式僅以 SHA-256 摘要保存，絕不保存文字；陳述式本身記錄在查詢歷史記錄中。</value>
+  </data>
+  <data name="ActivityNote_Other" xml:space="preserve">
+    <value>每次工具呼叫、配對和用戶端變更都會在 mcp-audit.db 中保留 {0} 天。陳述式僅以 SHA-256 摘要保存，絕不保存文字；陳述式本身記錄在查詢歷史記錄中。</value>
+  </data>
+  <data name="AddClient" xml:space="preserve">
+    <value>新增用戶端</value>
+  </data>
+  <data name="AddClientTitle" xml:space="preserve">
+    <value>新增 MCP 用戶端</value>
+  </data>
+  <data name="AddClientTooltip" xml:space="preserve">
+    <value>為無法配對的用戶端手動發行權杖</value>
+  </data>
+  <data name="AllClients" xml:space="preserve">
+    <value>所有用戶端</value>
+  </data>
+  <data name="Allow" xml:space="preserve">
+    <value>允許</value>
+  </data>
+  <data name="CategoryAdmin" xml:space="preserve">
+    <value>用戶端變更</value>
+  </data>
+  <data name="CategoryAll" xml:space="preserve">
+    <value>所有活動</value>
+  </data>
+  <data name="CategoryAuth" xml:space="preserve">
+    <value>配對與登入</value>
+  </data>
+  <data name="CategoryFilterName" xml:space="preserve">
+    <value>活動類型</value>
+  </data>
+  <data name="CategoryTools" xml:space="preserve">
+    <value>工具呼叫</value>
+  </data>
+  <data name="ChangeClientFailed" xml:space="preserve">
+    <value>無法變更用戶端</value>
+  </data>
+  <data name="ClearLog" xml:space="preserve">
+    <value>清除記錄</value>
+  </data>
+  <data name="ClearLogConfirmMessage" xml:space="preserve">
+    <value>所有已記錄的呼叫、配對和用戶端變更都會被刪除。已配對的用戶端會保留其存取權。</value>
+  </data>
+  <data name="ClearLogConfirmTitle" xml:space="preserve">
+    <value>要清除 MCP 活動記錄嗎？</value>
+  </data>
+  <data name="ClearLogFailed" xml:space="preserve">
+    <value>無法清除記錄</value>
+  </data>
+  <data name="ClientFilterName" xml:space="preserve">
+    <value>用戶端</value>
+  </data>
+  <data name="Copied" xml:space="preserve">
+    <value>已複製</value>
+  </data>
+  <data name="CopyToken" xml:space="preserve">
+    <value>複製權杖</value>
+  </data>
+  <data name="CreateToken" xml:space="preserve">
+    <value>建立權杖</value>
+  </data>
+  <data name="CreateTokenFailed" xml:space="preserve">
+    <value>無法建立權杖</value>
+  </data>
+  <data name="Deny" xml:space="preserve">
+    <value>拒絕</value>
+  </data>
+  <data name="ExpiredOn" xml:space="preserve">
+    <value>已於 {0:d} 到期</value>
+  </data>
+  <data name="ExpiresOn" xml:space="preserve">
+    <value>有效至 {0:d}</value>
+  </data>
+  <data name="ExpiryIn30Days" xml:space="preserve">
+    <value>30 天後</value>
+  </data>
+  <data name="ExpiryIn90Days" xml:space="preserve">
+    <value>90 天後</value>
+  </data>
+  <data name="ExpiryInAYear" xml:space="preserve">
+    <value>一年後</value>
+  </data>
+  <data name="ExpiryNever" xml:space="preserve">
+    <value>永不</value>
+  </data>
+  <data name="FormAccessHeader" xml:space="preserve">
+    <value>存取權限</value>
+  </data>
+  <data name="FormAccessNote" xml:space="preserve">
+    <value>每個連線的「外部用戶端」層級仍然適用；用戶端獲得的權限絕不會超過其允許的範圍。</value>
+  </data>
+  <data name="FormClientNameHeader" xml:space="preserve">
+    <value>用戶端名稱</value>
+  </data>
+  <data name="FormClientNamePlaceholder" xml:space="preserve">
+    <value>例如 Claude Desktop</value>
+  </data>
+  <data name="FormConnectionsHeader" xml:space="preserve">
+    <value>連線</value>
+  </data>
+  <data name="FormExpiryHeader" xml:space="preserve">
+    <value>權杖到期</value>
+  </data>
+  <data name="FormNoConnections" xml:space="preserve">
+    <value>目前沒有任何連線允許 MCP 用戶端存取。</value>
+  </data>
+  <data name="FormRequestMessage" xml:space="preserve">
+    <value>「{0}」要求透過 TablePro 的 MCP 伺服器使用你已儲存的連線。這台電腦上的任何程式都能以任何名稱提出要求，因此請只在你剛在該應用程式中開始配對時才允許。</value>
+  </data>
+  <data name="FormScopeAll" xml:space="preserve">
+    <value>所有連線</value>
+  </data>
+  <data name="FormScopeTicked" xml:space="preserve">
+    <value>僅限下方勾選的連線</value>
+  </data>
+  <data name="IntegrityBroken_One" xml:space="preserve">
+    <value>項目 {1} 已在 TablePro 外部遭到變更或移除；在其之前的 {0:N0} 個項目完好無損。</value>
+  </data>
+  <data name="IntegrityBroken_Other" xml:space="preserve">
+    <value>項目 {1} 已在 TablePro 外部遭到變更或移除；在其之前的 {0:N0} 個項目完好無損。</value>
+  </data>
+  <data name="IntegrityIntactShowingLatest_One" xml:space="preserve">
+    <value>已保留 {0:N0} 個項目。每個項目的雜湊都會鏈結到前一個項目，且鏈結完整。顯示最新的 {1} 個。</value>
+  </data>
+  <data name="IntegrityIntactShowingLatest_Other" xml:space="preserve">
+    <value>已保留 {0:N0} 個項目。每個項目的雜湊都會鏈結到前一個項目，且鏈結完整。顯示最新的 {1} 個。</value>
+  </data>
+  <data name="IntegrityIntact_One" xml:space="preserve">
+    <value>已保留 {0:N0} 個項目。每個項目的雜湊都會鏈結到前一個項目，且鏈結完整。</value>
+  </data>
+  <data name="IntegrityIntact_Other" xml:space="preserve">
+    <value>已保留 {0:N0} 個項目。每個項目的雜湊都會鏈結到前一個項目，且鏈結完整。</value>
+  </data>
+  <data name="LastUsed" xml:space="preserve">
+    <value>上次使用 {0:g}</value>
+  </data>
+  <data name="ListSeparator" xml:space="preserve">
+    <value>、</value>
+  </data>
+  <data name="NeverUsed" xml:space="preserve">
+    <value>從未使用</value>
+  </data>
+  <data name="NoClients" xml:space="preserve">
+    <value>尚未有任何用戶端配對。</value>
+  </data>
+  <data name="NoExpiry" xml:space="preserve">
+    <value>無到期日</value>
+  </data>
+  <data name="NothingLogged" xml:space="preserve">
+    <value>尚無任何記錄。</value>
+  </data>
+  <data name="OutcomeDeclined" xml:space="preserve">
+    <value>已婉拒</value>
+  </data>
+  <data name="OutcomeDenied" xml:space="preserve">
+    <value>已拒絕</value>
+  </data>
+  <data name="OutcomeFailed" xml:space="preserve">
+    <value>失敗</value>
+  </data>
+  <data name="OutcomeRefused" xml:space="preserve">
+    <value>已拒絕存取</value>
+  </data>
+  <data name="OutcomeSucceeded" xml:space="preserve">
+    <value>成功</value>
+  </data>
+  <data name="PairedClientsHeading" xml:space="preserve">
+    <value>已配對的用戶端</value>
+  </data>
+  <data name="PairedClientsNote" xml:space="preserve">
+    <value>用戶端會向 TablePro 要求存取權來進行配對；你在對話方塊中核准後，用戶端就會取得專屬的權杖。每個權杖僅以 SHA-256 雜湊保存在 Windows 認證管理員中。撤銷用戶端後，其下一個要求就會遭到拒絕。</value>
+  </data>
+  <data name="PairedSummary" xml:space="preserve">
+    <value>配對於 {0:g} · {1} · 權杖 {2}…</value>
+  </data>
+  <data name="PairingApprovalTitle" xml:space="preserve">
+    <value>要允許 MCP 用戶端嗎？</value>
+  </data>
+  <data name="PairingHint" xml:space="preserve">
+    <value>用戶端以 POST {0} 開始配對，並從 /v1/integrations/exchange 領取權杖。</value>
+  </data>
+  <data name="PairingHintServerOff" xml:space="preserve">
+    <value>開啟伺服器以讓用戶端配對。</value>
+  </data>
+  <data name="ReachAllConnections" xml:space="preserve">
+    <value>所有連線</value>
+  </data>
+  <data name="ReachConnectionCount_One" xml:space="preserve">
+    <value>{0} 個連線</value>
+  </data>
+  <data name="ReachConnectionCount_Other" xml:space="preserve">
+    <value>{0} 個連線</value>
+  </data>
+  <data name="ReachDeletedConnection" xml:space="preserve">
+    <value>已刪除的連線</value>
+  </data>
+  <data name="ReachNoConnections" xml:space="preserve">
+    <value>沒有連線</value>
+  </data>
+  <data name="ReadActivityFailed" xml:space="preserve">
+    <value>無法讀取 MCP 活動記錄</value>
+  </data>
+  <data name="ReadClientsFailed" xml:space="preserve">
+    <value>無法讀取已配對的用戶端</value>
+  </data>
+  <data name="RemoveClientName" xml:space="preserve">
+    <value>移除{0}</value>
+  </data>
+  <data name="RemoveConfirmMessage" xml:space="preserve">
+    <value>其授權及認證管理員中的權杖雜湊將被刪除。其過去的活動會保留在記錄中。</value>
+  </data>
+  <data name="RemoveConfirmTitle" xml:space="preserve">
+    <value>要移除「{0}」嗎？</value>
+  </data>
+  <data name="Revoke" xml:space="preserve">
+    <value>撤銷</value>
+  </data>
+  <data name="RevokeClientName" xml:space="preserve">
+    <value>撤銷{0}</value>
+  </data>
+  <data name="RevokeConfirmMessage" xml:space="preserve">
+    <value>此用戶端的下一個要求將遭到拒絕。它會以「已撤銷」狀態保留在清單中；重新配對即可恢復其存取權。</value>
+  </data>
+  <data name="RevokeConfirmTitle" xml:space="preserve">
+    <value>要撤銷「{0}」嗎？</value>
+  </data>
+  <data name="StatementDigest" xml:space="preserve">
+    <value>陳述式 SHA-256 {0}</value>
+  </data>
+  <data name="StatusActive" xml:space="preserve">
+    <value>使用中</value>
+  </data>
+  <data name="StatusExpired" xml:space="preserve">
+    <value>已過期</value>
+  </data>
+  <data name="StatusRevoked" xml:space="preserve">
+    <value>已撤銷</value>
+  </data>
+  <data name="StatusTokenMissing" xml:space="preserve">
+    <value>權杖遺失</value>
+  </data>
+  <data name="TokenCopyMessage" xml:space="preserve">
+    <value>請立即複製「{0}」的權杖。TablePro 只保存其雜湊，因此無法再次顯示。</value>
+  </data>
+  <data name="TokenCreatedTitle" xml:space="preserve">
+    <value>已建立權杖</value>
+  </data>
+  <data name="TokenHeader" xml:space="preserve">
+    <value>權杖</value>
+  </data>
+  <data name="UnknownCaller" xml:space="preserve">
+    <value>未知的呼叫者</value>
+  </data>
+  <data name="WriteApprovalMessage" xml:space="preserve">
+    <value>已連線到 TablePro MCP 伺服器的「{0}」要求在 {1} 上執行以下內容。</value>
+  </data>
+  <data name="WriteApprovalMessageUnnamed" xml:space="preserve">
+    <value>一個已連線到 TablePro MCP 伺服器的用戶端要求在 {0} 上執行以下內容。</value>
+  </data>
+  <data name="WriteApprovalTitle" xml:space="preserve">
+    <value>MCP 用戶端要求執行陳述式</value>
+  </data>
+</root>

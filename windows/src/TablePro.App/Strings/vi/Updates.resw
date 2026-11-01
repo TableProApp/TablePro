@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AutoCheckDescription" xml:space="preserve">
+    <value>Kiểm tra phiên bản mới mỗi ngày một lần.</value>
+  </data>
+  <data name="AutoCheckTitle" xml:space="preserve">
+    <value>Tự động kiểm tra cập nhật</value>
+  </data>
+  <data name="AvailableVersion" xml:space="preserve">
+    <value>Đã có TablePro {0}. Bạn đang dùng {1}.</value>
+  </data>
+  <data name="BetaDescription" xml:space="preserve">
+    <value>Bản beta ra mắt trước bản phát hành ổn định và có thể còn chưa hoàn thiện.</value>
+  </data>
+  <data name="BetaTitle" xml:space="preserve">
+    <value>Nhận bản cập nhật beta</value>
+  </data>
+  <data name="CheckNow" xml:space="preserve">
+    <value>Kiểm tra ngay</value>
+  </data>
+  <data name="CheckTitle" xml:space="preserve">
+    <value>Kiểm tra cập nhật</value>
+  </data>
+  <data name="ErrorChecksumMismatch" xml:space="preserve">
+    <value>Bản cập nhật đã tải xuống không khớp với checksum được công bố cùng bản phát hành. Chưa có gì được cài đặt.</value>
+  </data>
+  <data name="ErrorFeedTooLarge" xml:space="preserve">
+    <value>Nguồn cấp cập nhật lớn hơn dự kiến.</value>
+  </data>
+  <data name="ErrorHttpsOnly" xml:space="preserve">
+    <value>Bản cập nhật chỉ được tải xuống qua HTTPS.</value>
+  </data>
+  <data name="ErrorNoInstallScript" xml:space="preserve">
+    <value>Bản cập nhật không có script cài đặt.</value>
+  </data>
+  <data name="ImportantUpdateTitle" xml:space="preserve">
+    <value>Bản cập nhật quan trọng</value>
+  </data>
+  <data name="InstallAndRestart" xml:space="preserve">
+    <value>Cài đặt và khởi động lại</value>
+  </data>
+  <data name="InstallFailedTitle" xml:space="preserve">
+    <value>Không thể cài đặt bản cập nhật</value>
+  </data>
+  <data name="Later" xml:space="preserve">
+    <value>Để sau</value>
+  </data>
+  <data name="MenuCheckForUpdates" xml:space="preserve">
+    <value>Kiểm tra cập nhật…</value>
+  </data>
+  <data name="MenuUpdateAvailable" xml:space="preserve">
+    <value>Có bản cập nhật…</value>
+  </data>
+  <data name="RestartToUpdate" xml:space="preserve">
+    <value>Khởi động lại để cập nhật</value>
+  </data>
+  <data name="SettingsTitle" xml:space="preserve">
+    <value>Cập nhật</value>
+  </data>
+  <data name="SkipThisVersion" xml:space="preserve">
+    <value>Bỏ qua phiên bản này</value>
+  </data>
+  <data name="StatusAvailable" xml:space="preserve">
+    <value>Có bản cập nhật mới.</value>
+  </data>
+  <data name="StatusChecking" xml:space="preserve">
+    <value>Đang kiểm tra cập nhật…</value>
+  </data>
+  <data name="StatusDisabled" xml:space="preserve">
+    <value>Bản dựng này đã tắt cập nhật.</value>
+  </data>
+  <data name="StatusDownloading" xml:space="preserve">
+    <value>Đang tải xuống bản cập nhật: {0:P0}</value>
+  </data>
+  <data name="StatusFailed" xml:space="preserve">
+    <value>Kiểm tra cập nhật không thành công: {0}</value>
+  </data>
+  <data name="StatusInstalling" xml:space="preserve">
+    <value>Đang khởi động trình cài đặt…</value>
+  </data>
+  <data name="StatusLastChecked" xml:space="preserve">
+    <value>Lần kiểm tra gần nhất: {0:g}.</value>
+  </data>
+  <data name="StatusStore" xml:space="preserve">
+    <value>Microsoft Store giữ cho TablePro luôn được cập nhật.</value>
+  </data>
+  <data name="StatusUpToDate" xml:space="preserve">
+    <value>TablePro {0} là phiên bản mới nhất.</value>
+  </data>
+  <data name="StatusVersion" xml:space="preserve">
+    <value>TablePro {0}.</value>
+  </data>
+  <data name="UpdateAvailableTitle" xml:space="preserve">
+    <value>Có bản cập nhật</value>
+  </data>
+  <data name="VersionTitle" xml:space="preserve">
+    <value>TablePro {0}</value>
+  </data>
+</root>

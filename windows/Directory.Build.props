@@ -1,0 +1,31 @@
+<Project>
+  <PropertyGroup>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <AnalysisLevel>latest-recommended</AnalysisLevel>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <!-- Roslyn only reports unused usings (IDE0005) on build when documentation is generated. -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+    <Deterministic>true</Deterministic>
+    <InvariantGlobalization>false</InvariantGlobalization>
+    <!-- English sits in each main assembly, so an English UI never probes for a satellite. -->
+    <NeutralLanguage>en-US</NeutralLanguage>
+    <!-- The languages the app ships (AppLanguages.All). Package satellites in any other language would only mix a
+         third language into messages, and the libraries' own satellites are built for exactly these. -->
+    <SatelliteResourceLanguages>en-US;fr;ko;tr;vi;zh-Hans;zh-Hant</SatelliteResourceLanguages>
+    <Company>TablePro</Company>
+    <Product>TablePro</Product>
+    <Copyright>TablePro contributors. AGPL-3.0-or-later.</Copyright>
+    <Version>0.1.0</Version>
+    <!-- Libraries share one framework so the WinUI app and the tests reference them unchanged. -->
+    <TableProTargetFramework>net10.0</TableProTargetFramework>
+    <TableProWindowsTargetFramework>net10.0-windows10.0.26100.0</TableProWindowsTargetFramework>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(MSBuildProjectName.EndsWith(`.Tests`))' != 'true'">
+    <IsAotCompatible Condition="'$(UseWinUI)' != 'true'">true</IsAotCompatible>
+  </PropertyGroup>
+</Project>

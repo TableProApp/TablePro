@@ -1,0 +1,315 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AccessReadOnly" xml:space="preserve">
+    <value>Chỉ đọc</value>
+  </data>
+  <data name="AccessReadWrite" xml:space="preserve">
+    <value>Đọc và ghi, hỏi trước mỗi lần ghi</value>
+  </data>
+  <data name="ActionClientAdded" xml:space="preserve">
+    <value>Đã thêm client</value>
+  </data>
+  <data name="ActionClientRemoved" xml:space="preserve">
+    <value>Đã gỡ client</value>
+  </data>
+  <data name="ActionClientRevoked" xml:space="preserve">
+    <value>Đã thu hồi client</value>
+  </data>
+  <data name="ActionPairingApproved" xml:space="preserve">
+    <value>Đã chấp thuận ghép nối</value>
+  </data>
+  <data name="ActionPairingDenied" xml:space="preserve">
+    <value>Đã từ chối ghép nối</value>
+  </data>
+  <data name="ActionPairingRequest" xml:space="preserve">
+    <value>Yêu cầu ghép nối</value>
+  </data>
+  <data name="ActionSignInRefused" xml:space="preserve">
+    <value>Đăng nhập bị từ chối</value>
+  </data>
+  <data name="ActionTokenCollected" xml:space="preserve">
+    <value>Đã nhận token</value>
+  </data>
+  <data name="ActivityHeading" xml:space="preserve">
+    <value>Hoạt động</value>
+  </data>
+  <data name="ActivityListName" xml:space="preserve">
+    <value>Hoạt động MCP</value>
+  </data>
+  <data name="ActivityNote_One" xml:space="preserve">
+    <value>Mọi lệnh gọi công cụ, lần ghép nối và thay đổi client đều được lưu {0} ngày trong mcp-audit.db. Câu lệnh được lưu dưới dạng mã băm SHA-256, không bao giờ dưới dạng văn bản; lịch sử truy vấn chứa chính các câu lệnh đó.</value>
+  </data>
+  <data name="ActivityNote_Other" xml:space="preserve">
+    <value>Mọi lệnh gọi công cụ, lần ghép nối và thay đổi client đều được lưu {0} ngày trong mcp-audit.db. Câu lệnh được lưu dưới dạng mã băm SHA-256, không bao giờ dưới dạng văn bản; lịch sử truy vấn chứa chính các câu lệnh đó.</value>
+  </data>
+  <data name="AddClient" xml:space="preserve">
+    <value>Thêm client</value>
+  </data>
+  <data name="AddClientTitle" xml:space="preserve">
+    <value>Thêm client MCP</value>
+  </data>
+  <data name="AddClientTooltip" xml:space="preserve">
+    <value>Cấp token thủ công cho client không thể ghép nối</value>
+  </data>
+  <data name="AllClients" xml:space="preserve">
+    <value>Tất cả client</value>
+  </data>
+  <data name="Allow" xml:space="preserve">
+    <value>Cho phép</value>
+  </data>
+  <data name="CategoryAdmin" xml:space="preserve">
+    <value>Thay đổi client</value>
+  </data>
+  <data name="CategoryAll" xml:space="preserve">
+    <value>Tất cả hoạt động</value>
+  </data>
+  <data name="CategoryAuth" xml:space="preserve">
+    <value>Ghép nối và đăng nhập</value>
+  </data>
+  <data name="CategoryFilterName" xml:space="preserve">
+    <value>Loại hoạt động</value>
+  </data>
+  <data name="CategoryTools" xml:space="preserve">
+    <value>Lệnh gọi công cụ</value>
+  </data>
+  <data name="ChangeClientFailed" xml:space="preserve">
+    <value>Không thể thay đổi client</value>
+  </data>
+  <data name="ClearLog" xml:space="preserve">
+    <value>Xóa nhật ký</value>
+  </data>
+  <data name="ClearLogConfirmMessage" xml:space="preserve">
+    <value>Mọi lệnh gọi, lần ghép nối và thay đổi client đã ghi sẽ bị xóa. Các client đã ghép nối vẫn giữ quyền truy cập.</value>
+  </data>
+  <data name="ClearLogConfirmTitle" xml:space="preserve">
+    <value>Xóa nhật ký hoạt động MCP?</value>
+  </data>
+  <data name="ClearLogFailed" xml:space="preserve">
+    <value>Không thể xóa nhật ký</value>
+  </data>
+  <data name="ClientFilterName" xml:space="preserve">
+    <value>Client</value>
+  </data>
+  <data name="Copied" xml:space="preserve">
+    <value>Đã sao chép</value>
+  </data>
+  <data name="CopyToken" xml:space="preserve">
+    <value>Sao chép token</value>
+  </data>
+  <data name="CreateToken" xml:space="preserve">
+    <value>Tạo token</value>
+  </data>
+  <data name="CreateTokenFailed" xml:space="preserve">
+    <value>Không thể tạo token</value>
+  </data>
+  <data name="Deny" xml:space="preserve">
+    <value>Từ chối</value>
+  </data>
+  <data name="ExpiredOn" xml:space="preserve">
+    <value>hết hạn {0:d}</value>
+  </data>
+  <data name="ExpiresOn" xml:space="preserve">
+    <value>đến {0:d}</value>
+  </data>
+  <data name="ExpiryIn30Days" xml:space="preserve">
+    <value>Sau 30 ngày</value>
+  </data>
+  <data name="ExpiryIn90Days" xml:space="preserve">
+    <value>Sau 90 ngày</value>
+  </data>
+  <data name="ExpiryInAYear" xml:space="preserve">
+    <value>Sau một năm</value>
+  </data>
+  <data name="ExpiryNever" xml:space="preserve">
+    <value>Không bao giờ</value>
+  </data>
+  <data name="FormAccessHeader" xml:space="preserve">
+    <value>Quyền truy cập</value>
+  </data>
+  <data name="FormAccessNote" xml:space="preserve">
+    <value>Mức Ứng dụng bên ngoài của từng kết nối vẫn được áp dụng; client không bao giờ nhận được nhiều quyền hơn mức đó cho phép.</value>
+  </data>
+  <data name="FormClientNameHeader" xml:space="preserve">
+    <value>Tên client</value>
+  </data>
+  <data name="FormClientNamePlaceholder" xml:space="preserve">
+    <value>Ví dụ: Claude Desktop</value>
+  </data>
+  <data name="FormConnectionsHeader" xml:space="preserve">
+    <value>Kết nối</value>
+  </data>
+  <data name="FormExpiryHeader" xml:space="preserve">
+    <value>Token hết hạn</value>
+  </data>
+  <data name="FormNoConnections" xml:space="preserve">
+    <value>Chưa có kết nối nào cho phép client MCP truy cập.</value>
+  </data>
+  <data name="FormRequestMessage" xml:space="preserve">
+    <value>“{0}” yêu cầu dùng các kết nối đã lưu của bạn thông qua máy chủ MCP của TablePro. Bất kỳ chương trình nào trên máy tính này cũng có thể yêu cầu dưới bất kỳ tên nào, vì vậy chỉ cho phép nếu bạn vừa bắt đầu ghép nối trong ứng dụng đó.</value>
+  </data>
+  <data name="FormScopeAll" xml:space="preserve">
+    <value>Tất cả kết nối</value>
+  </data>
+  <data name="FormScopeTicked" xml:space="preserve">
+    <value>Chỉ những kết nối được chọn bên dưới</value>
+  </data>
+  <data name="IntegrityBroken_One" xml:space="preserve">
+    <value>Mục {1} đã bị thay đổi hoặc xóa bên ngoài TablePro; {0:N0} mục trước đó vẫn nguyên vẹn.</value>
+  </data>
+  <data name="IntegrityBroken_Other" xml:space="preserve">
+    <value>Mục {1} đã bị thay đổi hoặc xóa bên ngoài TablePro; {0:N0} mục trước đó vẫn nguyên vẹn.</value>
+  </data>
+  <data name="IntegrityIntactShowingLatest_One" xml:space="preserve">
+    <value>Đang lưu {0:N0} mục. Mã băm của mỗi mục liên kết với mục trước đó, và chuỗi vẫn nguyên vẹn. Đang hiển thị {1} mục mới nhất.</value>
+  </data>
+  <data name="IntegrityIntactShowingLatest_Other" xml:space="preserve">
+    <value>Đang lưu {0:N0} mục. Mã băm của mỗi mục liên kết với mục trước đó, và chuỗi vẫn nguyên vẹn. Đang hiển thị {1} mục mới nhất.</value>
+  </data>
+  <data name="IntegrityIntact_One" xml:space="preserve">
+    <value>Đang lưu {0:N0} mục. Mã băm của mỗi mục liên kết với mục trước đó, và chuỗi vẫn nguyên vẹn.</value>
+  </data>
+  <data name="IntegrityIntact_Other" xml:space="preserve">
+    <value>Đang lưu {0:N0} mục. Mã băm của mỗi mục liên kết với mục trước đó, và chuỗi vẫn nguyên vẹn.</value>
+  </data>
+  <data name="LastUsed" xml:space="preserve">
+    <value>dùng lần cuối {0:g}</value>
+  </data>
+  <data name="ListSeparator" xml:space="preserve">
+    <value>, </value>
+  </data>
+  <data name="NeverUsed" xml:space="preserve">
+    <value>chưa dùng bao giờ</value>
+  </data>
+  <data name="NoClients" xml:space="preserve">
+    <value>Chưa có client nào ghép nối.</value>
+  </data>
+  <data name="NoExpiry" xml:space="preserve">
+    <value>không hết hạn</value>
+  </data>
+  <data name="NothingLogged" xml:space="preserve">
+    <value>Chưa có gì được ghi lại.</value>
+  </data>
+  <data name="OutcomeDeclined" xml:space="preserve">
+    <value>Bị khước từ</value>
+  </data>
+  <data name="OutcomeDenied" xml:space="preserve">
+    <value>Đã từ chối</value>
+  </data>
+  <data name="OutcomeFailed" xml:space="preserve">
+    <value>Thất bại</value>
+  </data>
+  <data name="OutcomeRefused" xml:space="preserve">
+    <value>Không được chấp nhận</value>
+  </data>
+  <data name="OutcomeSucceeded" xml:space="preserve">
+    <value>Thành công</value>
+  </data>
+  <data name="PairedClientsHeading" xml:space="preserve">
+    <value>Client đã ghép nối</value>
+  </data>
+  <data name="PairedClientsNote" xml:space="preserve">
+    <value>Client ghép nối bằng cách yêu cầu TablePro cấp quyền truy cập; bạn chấp thuận trong một hộp thoại và client nhận được token riêng. Chỉ mã SHA-256 của mỗi token được lưu, trong Trình quản lý thông tin xác thực của Windows. Thu hồi một client sẽ từ chối nó ngay từ yêu cầu tiếp theo.</value>
+  </data>
+  <data name="PairedSummary" xml:space="preserve">
+    <value>Đã ghép nối {0:g} · {1} · token {2}…</value>
+  </data>
+  <data name="PairingApprovalTitle" xml:space="preserve">
+    <value>Cho phép client MCP?</value>
+  </data>
+  <data name="PairingHint" xml:space="preserve">
+    <value>Client bắt đầu ghép nối bằng POST {0} và nhận token từ /v1/integrations/exchange.</value>
+  </data>
+  <data name="PairingHintServerOff" xml:space="preserve">
+    <value>Hãy bật máy chủ để cho phép client ghép nối.</value>
+  </data>
+  <data name="ReachAllConnections" xml:space="preserve">
+    <value>tất cả kết nối</value>
+  </data>
+  <data name="ReachConnectionCount_One" xml:space="preserve">
+    <value>{0} kết nối</value>
+  </data>
+  <data name="ReachConnectionCount_Other" xml:space="preserve">
+    <value>{0} kết nối</value>
+  </data>
+  <data name="ReachDeletedConnection" xml:space="preserve">
+    <value>một kết nối đã bị xóa</value>
+  </data>
+  <data name="ReachNoConnections" xml:space="preserve">
+    <value>không có kết nối</value>
+  </data>
+  <data name="ReadActivityFailed" xml:space="preserve">
+    <value>Không thể đọc nhật ký hoạt động MCP</value>
+  </data>
+  <data name="ReadClientsFailed" xml:space="preserve">
+    <value>Không thể đọc danh sách client đã ghép nối</value>
+  </data>
+  <data name="RemoveClientName" xml:space="preserve">
+    <value>Gỡ {0}</value>
+  </data>
+  <data name="RemoveConfirmMessage" xml:space="preserve">
+    <value>Quyền đã cấp và mã băm của token trong Trình quản lý thông tin xác thực sẽ bị xóa. Hoạt động trước đây của nó vẫn được giữ trong nhật ký.</value>
+  </data>
+  <data name="RemoveConfirmTitle" xml:space="preserve">
+    <value>Gỡ “{0}”?</value>
+  </data>
+  <data name="Revoke" xml:space="preserve">
+    <value>Thu hồi</value>
+  </data>
+  <data name="RevokeClientName" xml:space="preserve">
+    <value>Thu hồi {0}</value>
+  </data>
+  <data name="RevokeConfirmMessage" xml:space="preserve">
+    <value>Client sẽ bị từ chối ngay từ yêu cầu tiếp theo. Nó vẫn nằm trong danh sách với trạng thái đã thu hồi; hãy ghép nối lại để cấp lại quyền truy cập.</value>
+  </data>
+  <data name="RevokeConfirmTitle" xml:space="preserve">
+    <value>Thu hồi “{0}”?</value>
+  </data>
+  <data name="StatementDigest" xml:space="preserve">
+    <value>SHA-256 của câu lệnh {0}</value>
+  </data>
+  <data name="StatusActive" xml:space="preserve">
+    <value>Đang hoạt động</value>
+  </data>
+  <data name="StatusExpired" xml:space="preserve">
+    <value>Hết hạn</value>
+  </data>
+  <data name="StatusRevoked" xml:space="preserve">
+    <value>Đã thu hồi</value>
+  </data>
+  <data name="StatusTokenMissing" xml:space="preserve">
+    <value>Thiếu token</value>
+  </data>
+  <data name="TokenCopyMessage" xml:space="preserve">
+    <value>Hãy sao chép token cho “{0}” ngay bây giờ. TablePro chỉ giữ mã băm của nó, nên không thể hiển thị lại.</value>
+  </data>
+  <data name="TokenCreatedTitle" xml:space="preserve">
+    <value>Đã tạo token</value>
+  </data>
+  <data name="TokenHeader" xml:space="preserve">
+    <value>Token</value>
+  </data>
+  <data name="UnknownCaller" xml:space="preserve">
+    <value>Bên gọi không xác định</value>
+  </data>
+  <data name="WriteApprovalMessage" xml:space="preserve">
+    <value>“{0}”, đang kết nối với máy chủ MCP của TablePro, yêu cầu chạy câu lệnh này trên {1}.</value>
+  </data>
+  <data name="WriteApprovalMessageUnnamed" xml:space="preserve">
+    <value>Một client đang kết nối với máy chủ MCP của TablePro yêu cầu chạy câu lệnh này trên {0}.</value>
+  </data>
+  <data name="WriteApprovalTitle" xml:space="preserve">
+    <value>Một client MCP muốn chạy câu lệnh</value>
+  </data>
+</root>

@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AuthFailed" xml:space="preserve">
+    <value>Authentication failed. {0}</value>
+    <comment>{0} is a sentence saying which permissions the token needs.</comment>
+  </data>
+  <data name="AuthFailedWith" xml:space="preserve">
+    <value>{0}. {1}</value>
+    <comment>{0} is Cloudflare's own error message, {1} a sentence saying which permissions the token needs.</comment>
+  </data>
+  <data name="CheckTokenAndAccount" xml:space="preserve">
+    <value>Check the API token and account ID.</value>
+  </data>
+  <data name="ColumnsNotRecognized" xml:space="preserve">
+    <value>{0} returned columns TablePro does not recognize: {1}.</value>
+    <comment>{0} is a statement such as DESCRIBE, {1} a comma-separated list of column names.</comment>
+  </data>
+  <data name="D1AuthHint" xml:space="preserve">
+    <value>The API token needs the D1 Read permission, and D1 Edit to change data, for this account.</value>
+  </data>
+  <data name="D1Stats" xml:space="preserve">
+    <value>D1 read {0:N0} rows and wrote {1:N0} rows in {2:0.###} ms.</value>
+    <comment>{0} rows read, {1} rows written, {2} milliseconds.</comment>
+  </data>
+  <data name="EmptyBody" xml:space="preserve">
+    <value>empty body</value>
+    <comment>Shown in place of a response body that has no text.</comment>
+  </data>
+  <data name="EmptyResult" xml:space="preserve">
+    <value>Cloudflare returned an empty result.</value>
+  </data>
+  <data name="EnterAccountId" xml:space="preserve">
+    <value>Enter the Cloudflare account ID in the Host field.</value>
+  </data>
+  <data name="EnterApiToken" xml:space="preserve">
+    <value>Enter a Cloudflare API token in the Password field.</value>
+  </data>
+  <data name="EnterD1Database" xml:space="preserve">
+    <value>Enter the D1 database name or ID in the Database field.</value>
+  </data>
+  <data name="EnterR2Bucket" xml:space="preserve">
+    <value>Enter the R2 bucket name in the Database field.</value>
+  </data>
+  <data name="HttpStatus" xml:space="preserve">
+    <value>Cloudflare returned HTTP {0}: {1}</value>
+    <comment>{0} is an HTTP status code, {1} the start of the response body.</comment>
+  </data>
+  <data name="KeyedChangeInBatch" xml:space="preserve">
+    <value>a keyed change in the batch</value>
+    <comment>Stands in for the statement in a message that a save changed an unexpected number of rows.</comment>
+  </data>
+  <data name="NoD1Database" xml:space="preserve">
+    <value>No D1 database named '{0}' exists in this account.</value>
+    <comment>{0} is a database name.</comment>
+  </data>
+  <data name="NotACloudflareEngine" xml:space="preserve">
+    <value>{0} is not a Cloudflare engine.</value>
+    <comment>{0} is an engine name.</comment>
+  </data>
+  <data name="R2AuthHint" xml:space="preserve">
+    <value>The API token needs the R2 SQL, R2 Data Catalog and R2 Storage permissions for this account.</value>
+  </data>
+  <data name="R2NoOffset" xml:space="preserve">
+    <value>R2 SQL returns at most {0:N0} rows per query and has no OFFSET, so rows past {0:N0} cannot be paged to. Narrow the rows with a filter or sort instead.</value>
+    <comment>{0} is the most rows R2 SQL returns from one query.</comment>
+  </data>
+  <data name="R2ReadOnly" xml:space="preserve">
+    <value>R2 SQL is read-only. Change the Iceberg table with a writer such as Spark or PyIceberg.</value>
+  </data>
+  <data name="R2StoppedAt" xml:space="preserve">
+    <value>Stopped at {0:N0} rows, the most R2 SQL returns from one query.</value>
+    <comment>{0} is the most rows R2 SQL returns from one query.</comment>
+  </data>
+  <data name="RateLimited" xml:space="preserve">
+    <value>Cloudflare is rate limiting this token. Try again shortly.</value>
+  </data>
+  <data name="RateLimitedRetryAfter" xml:space="preserve">
+    <value>Cloudflare is rate limiting this token. Retry after {0:0} seconds.</value>
+    <comment>{0} is a number of seconds.</comment>
+  </data>
+  <data name="Unreadable" xml:space="preserve">
+    <value>Cloudflare returned a response TablePro could not read (HTTP {0}): {1}</value>
+    <comment>{0} is an HTTP status code, {1} the start of the response body.</comment>
+  </data>
+</root>

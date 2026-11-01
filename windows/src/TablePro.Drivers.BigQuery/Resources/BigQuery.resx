@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="EstimatedScan" xml:space="preserve">
+    <value>Estimated scan: {0}.</value>
+    <comment>{0} is a size, such as 1.2 GB.</comment>
+  </data>
+  <data name="EstimatedScanWithLimit" xml:space="preserve">
+    <value>Estimated scan: {0} (limit {1}).</value>
+    <comment>{0} is the estimated size, {1} the maxBytesBilled limit.</comment>
+  </data>
+  <data name="NeedsProjectId" xml:space="preserve">
+    <value>BigQuery needs a project ID. Enter it as the database.</value>
+  </data>
+  <data name="NoComparableColumn" xml:space="preserve">
+    <value>The row has no column BigQuery can compare, so it cannot be changed safely. Name key columns in the keyColumns option.</value>
+  </data>
+  <data name="NotAByteCount" xml:space="preserve">
+    <value>maxBytesBilled "{0}" is not a byte count such as 10000000000 or 10GB.</value>
+    <comment>{0} is the value entered for the maxBytesBilled option.</comment>
+  </data>
+  <data name="NotConnected" xml:space="preserve">
+    <value>The BigQuery session is not connected.</value>
+  </data>
+  <data name="OverLimit" xml:space="preserve">
+    <value>Not run: the query would scan {0}, over the maxBytesBilled limit of {1}.</value>
+    <comment>{0} is the estimated size, {1} the maxBytesBilled limit.</comment>
+  </data>
+</root>

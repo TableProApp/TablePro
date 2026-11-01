@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>$(TableProTargetFramework)</TargetFramework>
+    <RootNamespace>TablePro.Ssh</RootNamespace>
+    <!-- The source-generated Job Object P/Invoke stubs pass the limit struct by pointer. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\TablePro.Core\TablePro.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Sign-in tokens: Entra ID for Azure Database, and the AWS profile chain (static keys, roles, SSO) for RDS IAM. -->
+    <PackageReference Include="Azure.Identity" />
+    <PackageReference Include="AWSSDK.SecurityToken" />
+    <PackageReference Include="AWSSDK.SSO" />
+    <PackageReference Include="AWSSDK.SSOOIDC" />
+    <!-- Redshift issues a user and a temporary password; Cloud SQL takes an OAuth access token. -->
+    <PackageReference Include="AWSSDK.Redshift" />
+    <PackageReference Include="AWSSDK.RedshiftServerless" />
+    <PackageReference Include="Google.Apis.Auth" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="TablePro.Ssh.Tests" />
+  </ItemGroup>
+</Project>

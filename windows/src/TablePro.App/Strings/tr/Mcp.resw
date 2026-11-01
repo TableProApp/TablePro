@@ -1,0 +1,315 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AccessReadOnly" xml:space="preserve">
+    <value>Salt okunur</value>
+  </data>
+  <data name="AccessReadWrite" xml:space="preserve">
+    <value>Okuma ve yazma, her yazmadan önce sorulur</value>
+  </data>
+  <data name="ActionClientAdded" xml:space="preserve">
+    <value>İstemci eklendi</value>
+  </data>
+  <data name="ActionClientRemoved" xml:space="preserve">
+    <value>İstemci kaldırıldı</value>
+  </data>
+  <data name="ActionClientRevoked" xml:space="preserve">
+    <value>İstemcinin erişimi iptal edildi</value>
+  </data>
+  <data name="ActionPairingApproved" xml:space="preserve">
+    <value>Eşleştirme onaylandı</value>
+  </data>
+  <data name="ActionPairingDenied" xml:space="preserve">
+    <value>Eşleştirme reddedildi</value>
+  </data>
+  <data name="ActionPairingRequest" xml:space="preserve">
+    <value>Eşleştirme isteği</value>
+  </data>
+  <data name="ActionSignInRefused" xml:space="preserve">
+    <value>Oturum açma reddedildi</value>
+  </data>
+  <data name="ActionTokenCollected" xml:space="preserve">
+    <value>Token alındı</value>
+  </data>
+  <data name="ActivityHeading" xml:space="preserve">
+    <value>Etkinlik</value>
+  </data>
+  <data name="ActivityListName" xml:space="preserve">
+    <value>MCP etkinliği</value>
+  </data>
+  <data name="ActivityNote_One" xml:space="preserve">
+    <value>Her araç çağrısı, eşleştirme ve istemci değişikliği mcp-audit.db içinde {0} gün saklanır. İfadeler hiçbir zaman metin olarak değil, SHA-256 özeti olarak saklanır; ifadelerin kendisi sorgu geçmişindedir.</value>
+  </data>
+  <data name="ActivityNote_Other" xml:space="preserve">
+    <value>Her araç çağrısı, eşleştirme ve istemci değişikliği mcp-audit.db içinde {0} gün saklanır. İfadeler hiçbir zaman metin olarak değil, SHA-256 özeti olarak saklanır; ifadelerin kendisi sorgu geçmişindedir.</value>
+  </data>
+  <data name="AddClient" xml:space="preserve">
+    <value>İstemci ekle</value>
+  </data>
+  <data name="AddClientTitle" xml:space="preserve">
+    <value>MCP istemcisi ekle</value>
+  </data>
+  <data name="AddClientTooltip" xml:space="preserve">
+    <value>Eşleştirme yapamayan bir istemci için elle token oluşturun</value>
+  </data>
+  <data name="AllClients" xml:space="preserve">
+    <value>Tüm istemciler</value>
+  </data>
+  <data name="Allow" xml:space="preserve">
+    <value>İzin Ver</value>
+  </data>
+  <data name="CategoryAdmin" xml:space="preserve">
+    <value>İstemci değişiklikleri</value>
+  </data>
+  <data name="CategoryAll" xml:space="preserve">
+    <value>Tüm etkinlikler</value>
+  </data>
+  <data name="CategoryAuth" xml:space="preserve">
+    <value>Eşleştirme ve oturum açma</value>
+  </data>
+  <data name="CategoryFilterName" xml:space="preserve">
+    <value>Etkinlik türü</value>
+  </data>
+  <data name="CategoryTools" xml:space="preserve">
+    <value>Araç çağrıları</value>
+  </data>
+  <data name="ChangeClientFailed" xml:space="preserve">
+    <value>İstemci değiştirilemedi</value>
+  </data>
+  <data name="ClearLog" xml:space="preserve">
+    <value>Günlüğü temizle</value>
+  </data>
+  <data name="ClearLogConfirmMessage" xml:space="preserve">
+    <value>Günlüğe kaydedilen her çağrı, eşleştirme ve istemci değişikliği silinir. Eşleştirilmiş istemciler erişimlerini korur.</value>
+  </data>
+  <data name="ClearLogConfirmTitle" xml:space="preserve">
+    <value>MCP etkinlik günlüğü temizlensin mi?</value>
+  </data>
+  <data name="ClearLogFailed" xml:space="preserve">
+    <value>Günlük temizlenemedi</value>
+  </data>
+  <data name="ClientFilterName" xml:space="preserve">
+    <value>İstemci</value>
+  </data>
+  <data name="Copied" xml:space="preserve">
+    <value>Kopyalandı</value>
+  </data>
+  <data name="CopyToken" xml:space="preserve">
+    <value>Token kopyala</value>
+  </data>
+  <data name="CreateToken" xml:space="preserve">
+    <value>Token oluştur</value>
+  </data>
+  <data name="CreateTokenFailed" xml:space="preserve">
+    <value>Token oluşturulamadı</value>
+  </data>
+  <data name="Deny" xml:space="preserve">
+    <value>Reddet</value>
+  </data>
+  <data name="ExpiredOn" xml:space="preserve">
+    <value>süresi {0:d} tarihinde doldu</value>
+  </data>
+  <data name="ExpiresOn" xml:space="preserve">
+    <value>{0:d} tarihine kadar</value>
+  </data>
+  <data name="ExpiryIn30Days" xml:space="preserve">
+    <value>30 gün içinde</value>
+  </data>
+  <data name="ExpiryIn90Days" xml:space="preserve">
+    <value>90 gün içinde</value>
+  </data>
+  <data name="ExpiryInAYear" xml:space="preserve">
+    <value>Bir yıl içinde</value>
+  </data>
+  <data name="ExpiryNever" xml:space="preserve">
+    <value>Asla</value>
+  </data>
+  <data name="FormAccessHeader" xml:space="preserve">
+    <value>Erişim</value>
+  </data>
+  <data name="FormAccessNote" xml:space="preserve">
+    <value>Her bağlantının Harici istemciler düzeyi yine geçerlidir; bir istemci hiçbir zaman bu düzeyin izin verdiğinden fazlasını alamaz.</value>
+  </data>
+  <data name="FormClientNameHeader" xml:space="preserve">
+    <value>İstemci adı</value>
+  </data>
+  <data name="FormClientNamePlaceholder" xml:space="preserve">
+    <value>Örneğin, Claude Desktop</value>
+  </data>
+  <data name="FormConnectionsHeader" xml:space="preserve">
+    <value>Bağlantılar</value>
+  </data>
+  <data name="FormExpiryHeader" xml:space="preserve">
+    <value>Token süresi</value>
+  </data>
+  <data name="FormNoConnections" xml:space="preserve">
+    <value>Henüz hiçbir bağlantı MCP istemcilerine izin vermiyor.</value>
+  </data>
+  <data name="FormRequestMessage" xml:space="preserve">
+    <value>"{0}", kayıtlı bağlantılarınızı TablePro'nun MCP sunucusu üzerinden kullanmak istiyor. Bu bilgisayardaki herhangi bir program herhangi bir adla istekte bulunabilir; bu nedenle yalnızca o uygulamada eşleştirmeyi az önce başlattıysanız izin verin.</value>
+  </data>
+  <data name="FormScopeAll" xml:space="preserve">
+    <value>Tüm bağlantılar</value>
+  </data>
+  <data name="FormScopeTicked" xml:space="preserve">
+    <value>Yalnızca aşağıda işaretlenenler</value>
+  </data>
+  <data name="IntegrityBroken_One" xml:space="preserve">
+    <value>{1} numaralı kayıt TablePro dışında değiştirildi veya kaldırıldı; ondan önceki {0:N0} kayıt sağlam.</value>
+  </data>
+  <data name="IntegrityBroken_Other" xml:space="preserve">
+    <value>{1} numaralı kayıt TablePro dışında değiştirildi veya kaldırıldı; ondan önceki {0:N0} kayıt sağlam.</value>
+  </data>
+  <data name="IntegrityIntactShowingLatest_One" xml:space="preserve">
+    <value>{0:N0} kayıt saklanıyor. Her kaydın karması bir öncekine zincirlenir ve zincir sağlam. Son {1} kayıt gösteriliyor.</value>
+  </data>
+  <data name="IntegrityIntactShowingLatest_Other" xml:space="preserve">
+    <value>{0:N0} kayıt saklanıyor. Her kaydın karması bir öncekine zincirlenir ve zincir sağlam. Son {1} kayıt gösteriliyor.</value>
+  </data>
+  <data name="IntegrityIntact_One" xml:space="preserve">
+    <value>{0:N0} kayıt saklanıyor. Her kaydın karması bir öncekine zincirlenir ve zincir sağlam.</value>
+  </data>
+  <data name="IntegrityIntact_Other" xml:space="preserve">
+    <value>{0:N0} kayıt saklanıyor. Her kaydın karması bir öncekine zincirlenir ve zincir sağlam.</value>
+  </data>
+  <data name="LastUsed" xml:space="preserve">
+    <value>son kullanım {0:g}</value>
+  </data>
+  <data name="ListSeparator" xml:space="preserve">
+    <value>, </value>
+  </data>
+  <data name="NeverUsed" xml:space="preserve">
+    <value>hiç kullanılmadı</value>
+  </data>
+  <data name="NoClients" xml:space="preserve">
+    <value>Henüz hiçbir istemci eşleştirilmedi.</value>
+  </data>
+  <data name="NoExpiry" xml:space="preserve">
+    <value>süresiz</value>
+  </data>
+  <data name="NothingLogged" xml:space="preserve">
+    <value>Henüz günlüğe kaydedilen bir şey yok.</value>
+  </data>
+  <data name="OutcomeDeclined" xml:space="preserve">
+    <value>Geri çevrildi</value>
+  </data>
+  <data name="OutcomeDenied" xml:space="preserve">
+    <value>Reddedildi</value>
+  </data>
+  <data name="OutcomeFailed" xml:space="preserve">
+    <value>Başarısız</value>
+  </data>
+  <data name="OutcomeRefused" xml:space="preserve">
+    <value>Kabul edilmedi</value>
+  </data>
+  <data name="OutcomeSucceeded" xml:space="preserve">
+    <value>Başarılı</value>
+  </data>
+  <data name="PairedClientsHeading" xml:space="preserve">
+    <value>Eşleştirilmiş istemciler</value>
+  </data>
+  <data name="PairedClientsNote" xml:space="preserve">
+    <value>Bir istemci, TablePro'dan erişim isteyerek eşleşir; siz bunu bir iletişim kutusunda onaylarsınız ve istemci kendine ait bir token alır. Her token'ın yalnızca SHA-256 değeri Windows Kimlik Bilgileri Yöneticisi'nde saklanır. Bir istemcinin erişimini iptal etmek, sonraki isteğinde onu geri çevirir.</value>
+  </data>
+  <data name="PairedSummary" xml:space="preserve">
+    <value>Eşleştirildi: {0:g} · {1} · token {2}…</value>
+  </data>
+  <data name="PairingApprovalTitle" xml:space="preserve">
+    <value>MCP istemcisine izin verilsin mi?</value>
+  </data>
+  <data name="PairingHint" xml:space="preserve">
+    <value>İstemciler eşleştirmeyi POST {0} ile başlatır ve token'larını /v1/integrations/exchange adresinden alır.</value>
+  </data>
+  <data name="PairingHintServerOff" xml:space="preserve">
+    <value>İstemcilerin eşleşebilmesi için sunucuyu açın.</value>
+  </data>
+  <data name="ReachAllConnections" xml:space="preserve">
+    <value>tüm bağlantılar</value>
+  </data>
+  <data name="ReachConnectionCount_One" xml:space="preserve">
+    <value>{0} bağlantı</value>
+  </data>
+  <data name="ReachConnectionCount_Other" xml:space="preserve">
+    <value>{0} bağlantı</value>
+  </data>
+  <data name="ReachDeletedConnection" xml:space="preserve">
+    <value>silinmiş bir bağlantı</value>
+  </data>
+  <data name="ReachNoConnections" xml:space="preserve">
+    <value>bağlantı yok</value>
+  </data>
+  <data name="ReadActivityFailed" xml:space="preserve">
+    <value>MCP etkinlik günlüğü okunamadı</value>
+  </data>
+  <data name="ReadClientsFailed" xml:space="preserve">
+    <value>Eşleştirilmiş istemciler okunamadı</value>
+  </data>
+  <data name="RemoveClientName" xml:space="preserve">
+    <value>{0} Öğesini Kaldır</value>
+  </data>
+  <data name="RemoveConfirmMessage" xml:space="preserve">
+    <value>İstemcinin izni ve Kimlik Bilgileri Yöneticisi'ndeki token karması silinir. Geçmiş etkinliği günlükte kalır.</value>
+  </data>
+  <data name="RemoveConfirmTitle" xml:space="preserve">
+    <value>“{0}” kaldırılsın mı?</value>
+  </data>
+  <data name="Revoke" xml:space="preserve">
+    <value>İptal Et</value>
+  </data>
+  <data name="RevokeClientName" xml:space="preserve">
+    <value>{0} erişimini iptal et</value>
+  </data>
+  <data name="RevokeConfirmMessage" xml:space="preserve">
+    <value>İstemci sonraki isteğinde geri çevrilir. Listede iptal edilmiş olarak kalır; erişimi geri vermek için yeniden eşleştirin.</value>
+  </data>
+  <data name="RevokeConfirmTitle" xml:space="preserve">
+    <value>“{0}” erişimi iptal edilsin mi?</value>
+  </data>
+  <data name="StatementDigest" xml:space="preserve">
+    <value>İfade SHA-256 {0}</value>
+  </data>
+  <data name="StatusActive" xml:space="preserve">
+    <value>Etkin</value>
+  </data>
+  <data name="StatusExpired" xml:space="preserve">
+    <value>Süresi Doldu</value>
+  </data>
+  <data name="StatusRevoked" xml:space="preserve">
+    <value>İptal Edildi</value>
+  </data>
+  <data name="StatusTokenMissing" xml:space="preserve">
+    <value>Token eksik</value>
+  </data>
+  <data name="TokenCopyMessage" xml:space="preserve">
+    <value>"{0}" için token'ı şimdi kopyalayın. TablePro yalnızca karmasını sakladığından onu bir daha gösteremez.</value>
+  </data>
+  <data name="TokenCreatedTitle" xml:space="preserve">
+    <value>Token oluşturuldu</value>
+  </data>
+  <data name="TokenHeader" xml:space="preserve">
+    <value>Token</value>
+  </data>
+  <data name="UnknownCaller" xml:space="preserve">
+    <value>Bilinmeyen çağıran</value>
+  </data>
+  <data name="WriteApprovalMessage" xml:space="preserve">
+    <value>TablePro'nun MCP sunucusuna bağlı "{0}", bunu {1} üzerinde çalıştırmak istiyor.</value>
+  </data>
+  <data name="WriteApprovalMessageUnnamed" xml:space="preserve">
+    <value>TablePro'nun MCP sunucusuna bağlı bir istemci, bunu {0} üzerinde çalıştırmak istiyor.</value>
+  </data>
+  <data name="WriteApprovalTitle" xml:space="preserve">
+    <value>Bir MCP istemcisi bir ifade çalıştırmak istiyor</value>
+  </data>
+</root>

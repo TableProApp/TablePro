@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="BundleCycle" xml:space="preserve">
+    <value>참조 “{0}”이(가) 자기 자신 안에 있습니다</value>
+  </data>
+  <data name="BundleDuplicateReference" xml:space="preserve">
+    <value>참조 “{0}”이(가) 두 번 이상 사용되었습니다</value>
+  </data>
+  <data name="BundleEmptyReference" xml:space="preserve">
+    <value>참조가 비어 있는 항목이 있습니다</value>
+  </data>
+  <data name="BundleMissingTarget" xml:space="preserve">
+    <value>“{0}”이(가) 파일에 없는 “{1}”을(를) 참조합니다</value>
+  </data>
+  <data name="BundleOrphanCredentials" xml:space="preserve">
+    <value>“{0}”의 암호가 파일의 어떤 연결에도 속하지 않습니다</value>
+  </data>
+  <data name="BundleTooDeep" xml:space="preserve">
+    <value>참조 “{0}”이(가) 너무 깊게 중첩되어 있습니다</value>
+  </data>
+  <data name="EncryptedCorrupt" xml:space="preserve">
+    <value>암호화된 파일이 손상되었거나 불완전합니다.</value>
+  </data>
+  <data name="EncryptionVersionUnsupported" xml:space="preserve">
+    <value>지원하지 않는 암호화 버전 {0}입니다. 이 파일을 열려면 TablePro를 업데이트하세요.</value>
+  </data>
+  <data name="GroupContainsItself" xml:space="preserve">
+    <value>그룹은 자기 자신을 포함할 수 없습니다.</value>
+  </data>
+  <data name="GroupIntoSubgroup" xml:space="preserve">
+    <value>그룹을 자신의 하위 그룹 안으로 이동할 수 없습니다.</value>
+  </data>
+  <data name="ImportedConnectionName" xml:space="preserve">
+    <value>가져온 연결</value>
+  </data>
+  <data name="ImportedGroupName" xml:space="preserve">
+    <value>가져옴</value>
+  </data>
+  <data name="IncorrectPassphrase" xml:space="preserve">
+    <value>암호 구문이 올바르지 않습니다.</value>
+  </data>
+  <data name="NewerFormat" xml:space="preserve">
+    <value>이 파일을 열려면 최신 버전의 TablePro가 필요합니다(형식 버전 {0}).</value>
+  </data>
+  <data name="NoDriverFor" xml:space="preserve">
+    <value>Windows용 TablePro에는 {0} 드라이버가 없습니다.</value>
+  </data>
+  <data name="NotAnExport" xml:space="preserve">
+    <value>이 파일은 올바른 TablePro 내보내기 파일이 아닙니다.</value>
+  </data>
+  <data name="NotAnExportBecause" xml:space="preserve">
+    <value>이 파일은 올바른 TablePro 내보내기 파일이 아닙니다. {0}.</value>
+  </data>
+  <data name="ParseFailed" xml:space="preserve">
+    <value>연결 파일을 구문 분석하지 못했습니다: {0}</value>
+  </data>
+  <data name="PassphraseRequired" xml:space="preserve">
+    <value>이 파일은 암호화되어 있어 암호 구문이 필요합니다.</value>
+  </data>
+  <data name="PasswordsNeedEncryption" xml:space="preserve">
+    <value>저장된 암호는 암호화된 파일로만 내보낼 수 있습니다.</value>
+  </data>
+</root>

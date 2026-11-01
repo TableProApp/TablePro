@@ -1,0 +1,502 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AlreadyLinked" xml:space="preserve">
+    <value>"{0}" is already linked</value>
+    <comment>Notification. {0} is a folder name.</comment>
+  </data>
+  <data name="ChangedFilesIn" xml:space="preserve">
+    <value>Changed files in "{0}"</value>
+    <comment>Heading in the commit dialog. {0} is a folder name.</comment>
+  </data>
+  <data name="ChangesMode" xml:space="preserve">
+    <value>Changes</value>
+    <comment>Tab of the version history that shows a version's differences from the one before it (noun).</comment>
+  </data>
+  <data name="Collapsed" xml:space="preserve">
+    <value>Collapsed</value>
+    <comment>Screen reader state of a folder row whose contents are hidden.</comment>
+  </data>
+  <data name="CommitButton" xml:space="preserve">
+    <value>Commit</value>
+    <comment>Primary button of the commit dialog (verb, the Git command). Keep Git's own term if your locale's Git tools do.</comment>
+  </data>
+  <data name="CommitDialogTitle" xml:space="preserve">
+    <value>Commit</value>
+    <comment>Title of the commit dialog (the Git command). Keep Git's own term if your locale's Git tools do.</comment>
+  </data>
+  <data name="CommitFailedInline" xml:space="preserve">
+    <value>Couldn't commit</value>
+    <comment>Error banner title inside the commit dialog.</comment>
+  </data>
+  <data name="CommitFailedTitle" xml:space="preserve">
+    <value>Couldn't Commit</value>
+    <comment>Error dialog title.</comment>
+  </data>
+  <data name="CommitMenu" xml:space="preserve">
+    <value>Commit…</value>
+    <comment>Context menu item (the Git command). Keep Git's own term if your locale's Git tools do.</comment>
+  </data>
+  <data name="CommitMessageHeader" xml:space="preserve">
+    <value>Message</value>
+    <comment>Header of the commit message box.</comment>
+  </data>
+  <data name="CommitMessagePlaceholder" xml:space="preserve">
+    <value>Describe the change</value>
+  </data>
+  <data name="CommitVersion" xml:space="preserve">
+    <value>Commit {0}</value>
+    <comment>Title of a version from Git history that has no message. {0} is the short commit hash.</comment>
+  </data>
+  <data name="Committed" xml:space="preserve">
+    <value>Committed</value>
+    <comment>Notification after a Git commit was made.</comment>
+  </data>
+  <data name="ContentMode" xml:space="preserve">
+    <value>Content</value>
+    <comment>Tab of the version history that shows a version's full text (noun).</comment>
+  </data>
+  <data name="CopyPath" xml:space="preserve">
+    <value>Copy Path</value>
+    <comment>Context menu item.</comment>
+  </data>
+  <data name="CopyQuery" xml:space="preserve">
+    <value>Copy Query</value>
+    <comment>Context menu item that copies the SQL text.</comment>
+  </data>
+  <data name="CopyRelativePath" xml:space="preserve">
+    <value>Copy Relative Path</value>
+    <comment>Context menu item.</comment>
+  </data>
+  <data name="CreateButton" xml:space="preserve">
+    <value>Create</value>
+    <comment>Primary button of the New SQL File dialog (verb).</comment>
+  </data>
+  <data name="CreateFailedTitle" xml:space="preserve">
+    <value>Couldn't Create the File</value>
+  </data>
+  <data name="CurrentVersion" xml:space="preserve">
+    <value>Current version</value>
+    <comment>The file as it is on disk now, at the top of the version history.</comment>
+  </data>
+  <data name="DeleteButton" xml:space="preserve">
+    <value>Move to Recycle Bin</value>
+    <comment>Primary button of the delete confirmation. Use the name Windows uses for the Recycle Bin in your language.</comment>
+  </data>
+  <data name="DeleteFailedTitle" xml:space="preserve">
+    <value>Couldn't Move to the Recycle Bin</value>
+  </data>
+  <data name="DeleteMessage" xml:space="preserve">
+    <value>"{0}" will be moved to the Recycle Bin. Its saved versions are kept.</value>
+    <comment>{0} is a file name.</comment>
+  </data>
+  <data name="DeleteTitle" xml:space="preserve">
+    <value>Move to Recycle Bin?</value>
+  </data>
+  <data name="Description" xml:space="preserve">
+    <value>Description</value>
+    <comment>Header of the box for a short description of the saved query.</comment>
+  </data>
+  <data name="DetailsExplanation" xml:space="preserve">
+    <value>Saved in the file's header as -- @name, -- @keyword and -- @description lines, which the macOS app reads too.</value>
+    <comment>-- @name, -- @keyword and -- @description are SQL comment markers written into the file and stay untranslated.</comment>
+  </data>
+  <data name="DiffLayout" xml:space="preserve">
+    <value>Diff layout</value>
+    <comment>Screen reader name of the Unified / Side by side choice.</comment>
+  </data>
+  <data name="DiffSideBySide" xml:space="preserve">
+    <value>Side by side</value>
+    <comment>Diff layout: old and new text in two columns.</comment>
+  </data>
+  <data name="DiffUnified" xml:space="preserve">
+    <value>Unified</value>
+    <comment>Diff layout: removed and added lines in one column.</comment>
+  </data>
+  <data name="DiscardChangesMenu" xml:space="preserve">
+    <value>Discard Changes…</value>
+    <comment>Context menu item.</comment>
+  </data>
+  <data name="DiscardFailedTitle" xml:space="preserve">
+    <value>Couldn't Discard Changes</value>
+  </data>
+  <data name="DiscardMessage" xml:space="preserve">
+    <value>The changes to "{0}" that are not staged will be lost. A copy is kept in its version history.</value>
+    <comment>{0} is a file name. "staged" is the Git term for changes added to the index.</comment>
+  </data>
+  <data name="DiscardTitle" xml:space="preserve">
+    <value>Discard Changes?</value>
+  </data>
+  <data name="EditDetailsMenu" xml:space="preserve">
+    <value>Edit Details…</value>
+    <comment>Context menu item that edits a file's name, keyword and description.</comment>
+  </data>
+  <data name="EditDetailsTitle" xml:space="preserve">
+    <value>Edit Details</value>
+    <comment>Dialog title.</comment>
+  </data>
+  <data name="EmptyState" xml:space="preserve">
+    <value>Link a folder of .sql files to open, rename and track them here. The files stay where they are.</value>
+    <comment>.sql is a file extension and stays as is.</comment>
+  </data>
+  <data name="Expanded" xml:space="preserve">
+    <value>Expanded</value>
+    <comment>Screen reader state of a folder row whose contents are shown.</comment>
+  </data>
+  <data name="GitAdded" xml:space="preserve">
+    <value>Added</value>
+    <comment>Git state of a file, read by screen readers and shown as a tooltip.</comment>
+  </data>
+  <data name="GitCommandFailed" xml:space="preserve">
+    <value>Git stopped with the message below.</value>
+    <comment>Git's own output follows this sentence, untranslated.</comment>
+  </data>
+  <data name="GitConflicted" xml:space="preserve">
+    <value>Conflicted</value>
+    <comment>Git state of a file with a merge conflict.</comment>
+  </data>
+  <data name="GitModified" xml:space="preserve">
+    <value>Modified</value>
+    <comment>Git state of a file.</comment>
+  </data>
+  <data name="GitOutputTooLarge" xml:space="preserve">
+    <value>Git printed more output than TablePro can read.</value>
+  </data>
+  <data name="GitPartlyStaged" xml:space="preserve">
+    <value>{0}, partly staged</value>
+    <comment>{0} is a Git state such as "Modified". "staged" is the Git term for changes added to the index.</comment>
+  </data>
+  <data name="GitPullDiverged" xml:space="preserve">
+    <value>The branch and its upstream branch each have commits the other lacks. Finish this pull in a Git client.</value>
+  </data>
+  <data name="GitRenamed" xml:space="preserve">
+    <value>Renamed</value>
+    <comment>Git state of a file.</comment>
+  </data>
+  <data name="GitStaged" xml:space="preserve">
+    <value>{0}, staged</value>
+    <comment>{0} is a Git state such as "Modified". "staged" is the Git term for changes added to the index.</comment>
+  </data>
+  <data name="GitTimedOut" xml:space="preserve">
+    <value>Git did not respond in time.</value>
+  </data>
+  <data name="GitUnavailable" xml:space="preserve">
+    <value>Git is not installed. Install Git for Windows to use Git in linked folders.</value>
+    <comment>"Git for Windows" is a product name.</comment>
+  </data>
+  <data name="GitUntracked" xml:space="preserve">
+    <value>Untracked</value>
+    <comment>Git state of a file Git does not track yet.</comment>
+  </data>
+  <data name="HistoryTitle" xml:space="preserve">
+    <value>{0} History</value>
+    <comment>Title bar text of the version history window. {0} is a file name.</comment>
+  </data>
+  <data name="HistoryWindowTitle" xml:space="preserve">
+    <value>{0} History - TablePro</value>
+    <comment>Window title shown in the taskbar. {0} is a file name.</comment>
+  </data>
+  <data name="InsertIntoEditor" xml:space="preserve">
+    <value>Insert into Editor</value>
+    <comment>Context menu item that inserts the query at the cursor.</comment>
+  </data>
+  <data name="KeepsLatestSnapshots_One" xml:space="preserve">
+    <value>TablePro keeps the latest {0} saved version of a file.</value>
+    <comment>{0} is how many saved versions are kept.</comment>
+  </data>
+  <data name="KeepsLatestSnapshots_Other" xml:space="preserve">
+    <value>TablePro keeps the latest {0} saved versions of a file.</value>
+    <comment>{0} is how many saved versions are kept.</comment>
+  </data>
+  <data name="Keyword" xml:space="preserve">
+    <value>Keyword</value>
+    <comment>Header of the box for a short word that inserts the query when typed in the editor.</comment>
+  </data>
+  <data name="KeywordPlaceholder" xml:space="preserve">
+    <value>Typed in the editor to insert this query</value>
+  </data>
+  <data name="LinkFolder" xml:space="preserve">
+    <value>Link a folder of SQL files</value>
+    <comment>Tooltip and screen reader name of an icon button.</comment>
+  </data>
+  <data name="ListName" xml:space="preserve">
+    <value>SQL files</value>
+    <comment>Screen reader name of the list of linked folders and files.</comment>
+  </data>
+  <data name="LoadingVersions" xml:space="preserve">
+    <value>Loading versions…</value>
+  </data>
+  <data name="MoveToRecycleBinMenu" xml:space="preserve">
+    <value>Move to Recycle Bin…</value>
+    <comment>Context menu item. Use the name Windows uses for the Recycle Bin in your language.</comment>
+  </data>
+  <data name="NameAlreadyExists" xml:space="preserve">
+    <value>A file with this name already exists here.</value>
+  </data>
+  <data name="NameEmpty" xml:space="preserve">
+    <value>Enter a name.</value>
+  </data>
+  <data name="NameInvalidCharacters" xml:space="preserve">
+    <value>A file name cannot contain \ / : * ? " &lt; &gt; or |.</value>
+    <comment>The characters listed are the ones Windows forbids in file names; keep them exactly.</comment>
+  </data>
+  <data name="NameReserved" xml:space="preserve">
+    <value>Windows reserves this name for a device.</value>
+  </data>
+  <data name="NewFileMenu" xml:space="preserve">
+    <value>New File</value>
+    <comment>Context menu item.</comment>
+  </data>
+  <data name="NewFileTitle" xml:space="preserve">
+    <value>New SQL File</value>
+    <comment>Dialog title.</comment>
+  </data>
+  <data name="NoChangesFrom" xml:space="preserve">
+    <value>No changes from {0}.</value>
+    <comment>{0} is the title of the version compared with, such as "Current version" or a commit message.</comment>
+  </data>
+  <data name="NoSearchMatch" xml:space="preserve">
+    <value>No SQL file matches the search.</value>
+  </data>
+  <data name="NotARepository" xml:space="preserve">
+    <value>This folder is not in a Git repository.</value>
+  </data>
+  <data name="NothingToCommitMessage" xml:space="preserve">
+    <value>No file in "{0}" has changes.</value>
+    <comment>{0} is a folder name.</comment>
+  </data>
+  <data name="NothingToCommitTitle" xml:space="preserve">
+    <value>Nothing to Commit</value>
+  </data>
+  <data name="NothingToPublishMessage" xml:space="preserve">
+    <value>You have no saved queries to publish.</value>
+  </data>
+  <data name="NothingToPublishTitle" xml:space="preserve">
+    <value>Nothing to Publish</value>
+  </data>
+  <data name="OnlyInConnection" xml:space="preserve">
+    <value>Only in {0}</value>
+    <comment>Check menu item: list this folder only for one connection. {0} is the connection name.</comment>
+  </data>
+  <data name="OnlyVersion" xml:space="preserve">
+    <value>This is the only version, so there is nothing to compare it with.</value>
+  </data>
+  <data name="OpenFailedTitle" xml:space="preserve">
+    <value>Couldn't Open the File</value>
+  </data>
+  <data name="OpenInEditor" xml:space="preserve">
+    <value>Open in Editor</value>
+    <comment>Button that opens the selected version's text in a new query tab.</comment>
+  </data>
+  <data name="OpenInFileExplorer" xml:space="preserve">
+    <value>Open in File Explorer</value>
+    <comment>Context menu item. Use the name Windows uses for File Explorer in your language.</comment>
+  </data>
+  <data name="OpenInNewTab" xml:space="preserve">
+    <value>Open in New Tab</value>
+    <comment>Context menu item.</comment>
+  </data>
+  <data name="PublishButton" xml:space="preserve">
+    <value>Publish</value>
+    <comment>Primary button of the publish confirmation (verb).</comment>
+  </data>
+  <data name="PublishFailedTitle" xml:space="preserve">
+    <value>Couldn't Publish to the Team Library</value>
+  </data>
+  <data name="PublishMessage_One" xml:space="preserve">
+    <value>Everyone on your team will see your {0} saved query. This replaces the saved queries you published before.</value>
+    <comment>{0} is the number of saved queries being published.</comment>
+  </data>
+  <data name="PublishMessage_Other" xml:space="preserve">
+    <value>Everyone on your team will see your {0} saved queries. This replaces the saved queries you published before.</value>
+    <comment>{0} is the number of saved queries being published.</comment>
+  </data>
+  <data name="PublishTitle" xml:space="preserve">
+    <value>Publish Saved Queries to Your Team?</value>
+  </data>
+  <data name="PublishToTeamMenu" xml:space="preserve">
+    <value>Publish Saved Queries to Team…</value>
+    <comment>Context menu item on the Team Library heading.</comment>
+  </data>
+  <data name="PublishedBy" xml:space="preserve">
+    <value>Published by {0}</value>
+    <comment>Tooltip of a team query. {0} is the name of the person who published it.</comment>
+  </data>
+  <data name="Published_One" xml:space="preserve">
+    <value>Published {0} saved query to your team</value>
+    <comment>Notification. {0} is the number of saved queries published.</comment>
+  </data>
+  <data name="Published_Other" xml:space="preserve">
+    <value>Published {0} saved queries to your team</value>
+    <comment>Notification. {0} is the number of saved queries published.</comment>
+  </data>
+  <data name="Publishing" xml:space="preserve">
+    <value>Publishing…</value>
+    <comment>Disabled menu item shown while publishing runs.</comment>
+  </data>
+  <data name="PullFailedTitle" xml:space="preserve">
+    <value>Couldn't Pull "{0}"</value>
+    <comment>Error dialog title. {0} is a folder name. "Pull" is the Git command.</comment>
+  </data>
+  <data name="PullMenu" xml:space="preserve">
+    <value>Pull</value>
+    <comment>Context menu item (the Git command). Keep Git's own term if your locale's Git tools do.</comment>
+  </data>
+  <data name="Pulled" xml:space="preserve">
+    <value>Pulled "{0}"</value>
+    <comment>Notification after a Git pull. {0} is a folder name.</comment>
+  </data>
+  <data name="PushFailedTitle" xml:space="preserve">
+    <value>Couldn't Push "{0}"</value>
+    <comment>Error dialog title. {0} is a folder name. "Push" is the Git command.</comment>
+  </data>
+  <data name="PushMenu" xml:space="preserve">
+    <value>Push</value>
+    <comment>Context menu item (the Git command). Keep Git's own term if your locale's Git tools do.</comment>
+  </data>
+  <data name="Pushed" xml:space="preserve">
+    <value>Pushed "{0}"</value>
+    <comment>Notification after a Git push. {0} is a folder name.</comment>
+  </data>
+  <data name="RefreshTeamLibrary" xml:space="preserve">
+    <value>Refresh Team Library</value>
+    <comment>Context menu item.</comment>
+  </data>
+  <data name="RenameFailedTitle" xml:space="preserve">
+    <value>Couldn't Rename</value>
+  </data>
+  <data name="RenameMenu" xml:space="preserve">
+    <value>Rename…</value>
+    <comment>Context menu item (verb).</comment>
+  </data>
+  <data name="ResolveConflictFirst" xml:space="preserve">
+    <value>Resolve the conflict in a Git client before committing this file.</value>
+  </data>
+  <data name="RestoreButton" xml:space="preserve">
+    <value>Restore</value>
+    <comment>Button that puts the selected version back into the file (verb).</comment>
+  </data>
+  <data name="RestoreConfirmMessage" xml:space="preserve">
+    <value>The file has changes that are not in any saved version or commit. Restoring replaces them; they are kept as a saved version first.</value>
+  </data>
+  <data name="RestoreConfirmTitle" xml:space="preserve">
+    <value>Replace the current text?</value>
+  </data>
+  <data name="RestoreFailed" xml:space="preserve">
+    <value>The version could not be restored.</value>
+  </data>
+  <data name="RestoreFailedTitle" xml:space="preserve">
+    <value>Couldn't Restore</value>
+  </data>
+  <data name="SaveDetailsFailedTitle" xml:space="preserve">
+    <value>Couldn't Save the Details</value>
+  </data>
+  <data name="SavedVersion" xml:space="preserve">
+    <value>Saved version</value>
+    <comment>Title of a version TablePro kept when the file was saved.</comment>
+  </data>
+  <data name="SearchPlaceholder" xml:space="preserve">
+    <value>Search SQL files</value>
+  </data>
+  <data name="SelectVersion" xml:space="preserve">
+    <value>Select a version.</value>
+  </data>
+  <data name="ShowInFileExplorer" xml:space="preserve">
+    <value>Show in File Explorer</value>
+    <comment>Context menu item. Use the name Windows uses for File Explorer in your language.</comment>
+  </data>
+  <data name="ShowsLatestCommits_One" xml:space="preserve">
+    <value>Showing the latest {0} commit.</value>
+    <comment>{0} is how many Git commits are listed.</comment>
+  </data>
+  <data name="ShowsLatestCommits_Other" xml:space="preserve">
+    <value>Showing the latest {0} commits.</value>
+    <comment>{0} is how many Git commits are listed.</comment>
+  </data>
+  <data name="StatusCommitting" xml:space="preserve">
+    <value>Committing…</value>
+    <comment>Short status beside a folder while a Git commit runs.</comment>
+  </data>
+  <data name="StatusNotFound" xml:space="preserve">
+    <value>Not found</value>
+    <comment>Short status beside a linked folder that no longer exists on disk.</comment>
+  </data>
+  <data name="StatusPulling" xml:space="preserve">
+    <value>Pulling…</value>
+    <comment>Short status beside a folder while a Git pull runs.</comment>
+  </data>
+  <data name="StatusPushing" xml:space="preserve">
+    <value>Pushing…</value>
+    <comment>Short status beside a folder while a Git push runs.</comment>
+  </data>
+  <data name="TeamEmpty" xml:space="preserve">
+    <value>Your team has not published any saved queries yet.</value>
+  </data>
+  <data name="TeamLibraryHeader" xml:space="preserve">
+    <value>TEAM LIBRARY</value>
+    <comment>Section heading in the SQL files list, written in capitals where the script has them.</comment>
+  </data>
+  <data name="TeamRefreshFailedTitle" xml:space="preserve">
+    <value>Couldn't Refresh the Team Library</value>
+  </data>
+  <data name="TooLargeToCompare_One" xml:space="preserve">
+    <value>This file is longer than {0} line, so its changes are not shown. Switch to Content to read it.</value>
+    <comment>{0} is the most lines a comparison handles. "Content" is the name of the tab beside "Changes"; use the same word.</comment>
+  </data>
+  <data name="TooLargeToCompare_Other" xml:space="preserve">
+    <value>This file is longer than {0} lines, so its changes are not shown. Switch to Content to read it.</value>
+    <comment>{0} is the most lines a comparison handles. "Content" is the name of the tab beside "Changes"; use the same word.</comment>
+  </data>
+  <data name="TurnOff" xml:space="preserve">
+    <value>Turn Off</value>
+    <comment>Context menu item that stops listing and watching a linked folder (verb).</comment>
+  </data>
+  <data name="TurnOn" xml:space="preserve">
+    <value>Turn On</value>
+    <comment>Context menu item that lists and watches a linked folder again (verb).</comment>
+  </data>
+  <data name="TurnedBackOn" xml:space="preserve">
+    <value>Turned "{0}" back on</value>
+    <comment>Notification. {0} is a folder name.</comment>
+  </data>
+  <data name="UncommittedChanges" xml:space="preserve">
+    <value>Uncommitted changes</value>
+    <comment>Part of a version's details line in the version history.</comment>
+  </data>
+  <data name="UnlinkButton" xml:space="preserve">
+    <value>Unlink</value>
+    <comment>Primary button of the unlink confirmation (verb).</comment>
+  </data>
+  <data name="UnlinkFolderMenu" xml:space="preserve">
+    <value>Unlink Folder…</value>
+    <comment>Context menu item.</comment>
+  </data>
+  <data name="UnlinkMessage" xml:space="preserve">
+    <value>"{0}" will no longer be listed. Its files stay on disk.</value>
+    <comment>{0} is a folder name.</comment>
+  </data>
+  <data name="UnlinkTitle" xml:space="preserve">
+    <value>Unlink Folder?</value>
+  </data>
+  <data name="VersionHistoryMenu" xml:space="preserve">
+    <value>Version History…</value>
+    <comment>Context menu item.</comment>
+  </data>
+  <data name="VersionReadFailed" xml:space="preserve">
+    <value>This version could not be read.</value>
+  </data>
+  <data name="VersionsReadFailed" xml:space="preserve">
+    <value>The versions could not be read.</value>
+  </data>
+</root>

@@ -1,0 +1,709 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AccessKeyIdHeader" xml:space="preserve">
+    <value>ID de clé d’accès</value>
+  </data>
+  <data name="AccessKeyIdOptionalHeader" xml:space="preserve">
+    <value>ID de clé d’accès (facultatif)</value>
+  </data>
+  <data name="AccessKeyRequired" xml:space="preserve">
+    <value>Saisissez l’ID de clé d’accès.</value>
+  </data>
+  <data name="AccountHeader" xml:space="preserve">
+    <value>Compte</value>
+  </data>
+  <data name="AccountIdHeader" xml:space="preserve">
+    <value>ID de compte</value>
+  </data>
+  <data name="AclUserHeader" xml:space="preserve">
+    <value>Utilisateur ACL (facultatif)</value>
+  </data>
+  <data name="AiAllow" xml:space="preserve">
+    <value>Autoriser</value>
+  </data>
+  <data name="AiAsk" xml:space="preserve">
+    <value>Demander à chaque fois</value>
+  </data>
+  <data name="AiHeader" xml:space="preserve">
+    <value>Assistant IA</value>
+  </data>
+  <data name="AiNever" xml:space="preserve">
+    <value>Jamais</value>
+  </data>
+  <data name="ApiKeyHeader" xml:space="preserve">
+    <value>Clé API</value>
+  </data>
+  <data name="ApiTokenHeader" xml:space="preserve">
+    <value>Jeton API</value>
+  </data>
+  <data name="AuthTokenHeader" xml:space="preserve">
+    <value>Jeton d’authentification</value>
+  </data>
+  <data name="AuthenticationHeader" xml:space="preserve">
+    <value>Authentification</value>
+  </data>
+  <data name="AutomaticPlaceholder" xml:space="preserve">
+    <value>Automatique</value>
+  </data>
+  <data name="AwsAccessKeyNote" xml:space="preserve">
+    <value>Signe un jeton RDS de 15 minutes avec la clé à chaque nouvelle connexion. Le secret est stocké dans le Gestionnaire d’identification Windows.</value>
+  </data>
+  <data name="AwsEndpointHeader" xml:space="preserve">
+    <value>Point de terminaison RDS (facultatif)</value>
+  </data>
+  <data name="AwsExecutablePlaceholder" xml:space="preserve">
+    <value>aws.exe du PATH si vide</value>
+  </data>
+  <data name="AwsProfileHeader" xml:space="preserve">
+    <value>Nom du profil</value>
+  </data>
+  <data name="AwsProfileNote" xml:space="preserve">
+    <value>Lit le profil depuis %USERPROFILE%\.aws\config et credentials, y compris les rôles assumés et credential_process.</value>
+  </data>
+  <data name="AwsRegionHeader" xml:space="preserve">
+    <value>Région AWS</value>
+  </data>
+  <data name="AwsRegionPlaceholder" xml:space="preserve">
+    <value>Déduite du nom d’hôte RDS si vide</value>
+  </data>
+  <data name="AwsSsoNote" xml:space="preserve">
+    <value>Utilise la session IAM Identity Center que «&#160;aws sso login&#160;» a laissée dans le cache.</value>
+  </data>
+  <data name="BigQueryKeyFileHeader" xml:space="preserve">
+    <value>JSON du compte de service (vide&#160;: connexion gcloud)</value>
+  </data>
+  <data name="BootstrapServerHeader" xml:space="preserve">
+    <value>Serveur d’amorçage</value>
+  </data>
+  <data name="BrowseButton" xml:space="preserve">
+    <value>Parcourir…</value>
+  </data>
+  <data name="CatalogHeader" xml:space="preserve">
+    <value>Catalogue</value>
+  </data>
+  <data name="ClientIdHeader" xml:space="preserve">
+    <value>ID client</value>
+  </data>
+  <data name="ClientSecretHeader" xml:space="preserve">
+    <value>Secret client</value>
+  </data>
+  <data name="CloudSqlAdcNote" xml:space="preserve">
+    <value>Exécutez d’abord «&#160;gcloud auth application-default login&#160;», ou définissez GOOGLE_APPLICATION_CREDENTIALS.</value>
+  </data>
+  <data name="CloudSqlAuthAdc" xml:space="preserve">
+    <value>Identifiants par défaut de l’application</value>
+  </data>
+  <data name="CloudSqlAuthHeader" xml:space="preserve">
+    <value>Identifiants</value>
+  </data>
+  <data name="CloudSqlAuthKey" xml:space="preserve">
+    <value>Clé du compte de service</value>
+  </data>
+  <data name="CloudSqlIam" xml:space="preserve">
+    <value>Utiliser l’authentification IAM de la base de données</value>
+  </data>
+  <data name="CloudSqlIamNote" xml:space="preserve">
+    <value>Avec l’authentification IAM de la base de données, indiquez le principal IAM comme utilisateur&#160;; le mot de passe n’est pas utilisé. Le proxy écoute uniquement sur 127.0.0.1.</value>
+  </data>
+  <data name="CloudSqlInstanceHeader" xml:space="preserve">
+    <value>Nom de connexion de l’instance</value>
+  </data>
+  <data name="CloudSqlInstanceNote" xml:space="preserve">
+    <value>Vous trouverez cette information sur la page de présentation de l’instance dans la console Google Cloud.</value>
+  </data>
+  <data name="CloudSqlKeyHeader" xml:space="preserve">
+    <value>Clé du compte de service (JSON)</value>
+  </data>
+  <data name="CloudSqlPrivateIp" xml:space="preserve">
+    <value>Se connecter via une adresse IP privée</value>
+  </data>
+  <data name="CloudflareAuthBrowser" xml:space="preserve">
+    <value>Connexion via le navigateur</value>
+  </data>
+  <data name="CloudflareAuthToken" xml:space="preserve">
+    <value>Jeton de service</value>
+  </data>
+  <data name="CloudflareHostHeader" xml:space="preserve">
+    <value>Nom d’hôte de l’application Access</value>
+  </data>
+  <data name="CloudflareHostRequired" xml:space="preserve">
+    <value>Saisissez d’abord le nom d’hôte de l’application Access.</value>
+  </data>
+  <data name="CloudflareLan" xml:space="preserve">
+    <value>Exposer au réseau local (écoute sur 0.0.0.0)</value>
+  </data>
+  <data name="CloudflareLoginFailed" xml:space="preserve">
+    <value>Échec de cloudflared access login&#160;: {0}</value>
+  </data>
+  <data name="CloudflareNote" xml:space="preserve">
+    <value>Un jeton de service nécessite une stratégie Access avec une règle Service Auth&#160;; sinon, Cloudflare demande quand même une connexion via le navigateur.</value>
+  </data>
+  <data name="CloudflareSignInButton" xml:space="preserve">
+    <value>Se connecter avec le navigateur…</value>
+  </data>
+  <data name="CloudflareSignedIn" xml:space="preserve">
+    <value>Connecté à Cloudflare Access.</value>
+  </data>
+  <data name="CloudflareSigningIn" xml:space="preserve">
+    <value>Terminez la connexion dans votre navigateur…</value>
+  </data>
+  <data name="CloudflaredDidNotStart" xml:space="preserve">
+    <value>cloudflared n’a pas démarré.</value>
+  </data>
+  <data name="CloudflaredNotFound" xml:space="preserve">
+    <value>cloudflared est introuvable. Installez-le avec «&#160;winget install Cloudflare.cloudflared&#160;», ou indiquez son chemin.</value>
+  </data>
+  <data name="ColorBlue" xml:space="preserve">
+    <value>Bleu</value>
+  </data>
+  <data name="ColorGray" xml:space="preserve">
+    <value>Gris</value>
+  </data>
+  <data name="ColorGreen" xml:space="preserve">
+    <value>Vert</value>
+  </data>
+  <data name="ColorLabel" xml:space="preserve">
+    <value>Couleur</value>
+  </data>
+  <data name="ColorOrange" xml:space="preserve">
+    <value>Orange</value>
+  </data>
+  <data name="ColorPink" xml:space="preserve">
+    <value>Rose</value>
+  </data>
+  <data name="ColorPurple" xml:space="preserve">
+    <value>Violet</value>
+  </data>
+  <data name="ColorRed" xml:space="preserve">
+    <value>Rouge</value>
+  </data>
+  <data name="ColorYellow" xml:space="preserve">
+    <value>Jaune</value>
+  </data>
+  <data name="CommandHeader" xml:space="preserve">
+    <value>Commande</value>
+  </data>
+  <data name="CommandMethodCustom" xml:space="preserve">
+    <value>Commande personnalisée</value>
+  </data>
+  <data name="CommandMethodSsm" xml:space="preserve">
+    <value>Session AWS SSM</value>
+  </data>
+  <data name="CommandNote" xml:space="preserve">
+    <value>{port} est le port local choisi par TablePro&#160;; {host} et {remotePort} sont ceux de la base de données. La commande est exécutée comme un programme avec ses arguments, jamais via un shell.</value>
+  </data>
+  <data name="DatabaseHeader" xml:space="preserve">
+    <value>Base de données</value>
+  </data>
+  <data name="DatabaseIdHeader" xml:space="preserve">
+    <value>ID ou nom de la base de données</value>
+  </data>
+  <data name="DatabaseIndexHeader" xml:space="preserve">
+    <value>Index de base de données</value>
+  </data>
+  <data name="DatabasePathHeader" xml:space="preserve">
+    <value>Chemin de la base de données</value>
+  </data>
+  <data name="DatabaseUserHeader" xml:space="preserve">
+    <value>Utilisateur de la base de données</value>
+  </data>
+  <data name="DefaultDatabaseHeader" xml:space="preserve">
+    <value>Base de données par défaut</value>
+  </data>
+  <data name="EditConnectionTitle" xml:space="preserve">
+    <value>Modifier {0}</value>
+  </data>
+  <data name="ElastiCacheIamNote" xml:space="preserve">
+    <value>Signe un jeton ElastiCache de 15 minutes avec vos identifiants AWS à chaque nouvelle connexion et l’envoie comme mot de passe de l’utilisateur via TLS. L’authentification IAM doit être activée pour l’utilisateur.</value>
+  </data>
+  <data name="ElastiCacheNameHeader" xml:space="preserve">
+    <value>Nom du cache / ID du groupe de réplication</value>
+  </data>
+  <data name="ElastiCacheNameRequired" xml:space="preserve">
+    <value>Saisissez le nom du cache ElastiCache (ID du groupe de réplication) pour utiliser l’authentification IAM.</value>
+  </data>
+  <data name="EngineHeader" xml:space="preserve">
+    <value>Base de données</value>
+  </data>
+  <data name="EntraClientHeader" xml:space="preserve">
+    <value>ID d’application (client)</value>
+  </data>
+  <data name="EntraClientOptionalHeader" xml:space="preserve">
+    <value>ID d’application (client) (facultatif)</value>
+  </data>
+  <data name="EntraClientRequired" xml:space="preserve">
+    <value>Saisissez l’ID d’application (client) du principal de service.</value>
+  </data>
+  <data name="EntraDefault" xml:space="preserve">
+    <value>Par défaut (Azure CLI, Visual Studio, environnement)</value>
+  </data>
+  <data name="EntraDeviceCode" xml:space="preserve">
+    <value>Code d’appareil</value>
+  </data>
+  <data name="EntraDeviceCodeNote" xml:space="preserve">
+    <value>Le code est copié dans le Presse-papiers et la page de connexion s’ouvre&#160;; collez-y le code.</value>
+  </data>
+  <data name="EntraIntegrated" xml:space="preserve">
+    <value>Intégrée (compte Windows)</value>
+  </data>
+  <data name="EntraInteractive" xml:space="preserve">
+    <value>Interactive (navigateur)</value>
+  </data>
+  <data name="EntraLoginHintHeader" xml:space="preserve">
+    <value>Compte (indication de connexion, facultatif)</value>
+  </data>
+  <data name="EntraManagedIdentity" xml:space="preserve">
+    <value>Identité managée</value>
+  </data>
+  <data name="EntraModeHeader" xml:space="preserve">
+    <value>Identifiant Entra</value>
+  </data>
+  <data name="EntraNote" xml:space="preserve">
+    <value>Se connecte avec Microsoft Entra ID et actualise le jeton à l’ouverture des connexions.</value>
+  </data>
+  <data name="EntraServicePrincipal" xml:space="preserve">
+    <value>Principal de service</value>
+  </data>
+  <data name="EntraTenantHeader" xml:space="preserve">
+    <value>ID de l’annuaire (locataire)</value>
+  </data>
+  <data name="EntraTenantPlaceholder" xml:space="preserve">
+    <value>Facultatif, pour un annuaire à locataire unique</value>
+  </data>
+  <data name="EntraTenantRequired" xml:space="preserve">
+    <value>Saisissez l’ID de l’annuaire (locataire) du principal de service.</value>
+  </data>
+  <data name="EntraUserHeader" xml:space="preserve">
+    <value>Utilisateur ou groupe Entra</value>
+  </data>
+  <data name="ExecutablePathHeader" xml:space="preserve">
+    <value>Chemin de l’exécutable</value>
+  </data>
+  <data name="ExecutablePathPlaceholder" xml:space="preserve">
+    <value>Recherché dans le PATH si vide</value>
+  </data>
+  <data name="FileHeader" xml:space="preserve">
+    <value>Fichier</value>
+  </data>
+  <data name="FileRequired" xml:space="preserve">
+    <value>Choisissez un fichier de base de données.</value>
+  </data>
+  <data name="GroupHeader" xml:space="preserve">
+    <value>Groupe</value>
+  </data>
+  <data name="GssDisabled" xml:space="preserve">
+    <value>Désactivé</value>
+  </data>
+  <data name="GssEncryptionHeader" xml:space="preserve">
+    <value>Chiffrement GSS</value>
+  </data>
+  <data name="GssPreferred" xml:space="preserve">
+    <value>Préféré</value>
+  </data>
+  <data name="GssRequired" xml:space="preserve">
+    <value>Requis</value>
+  </data>
+  <data name="HostHeader" xml:space="preserve">
+    <value>Hôte</value>
+  </data>
+  <data name="HostRequired" xml:space="preserve">
+    <value>Saisissez le nom d’hôte du serveur.</value>
+  </data>
+  <data name="IamUserRequired" xml:space="preserve">
+    <value>Saisissez l’utilisateur de la base de données avec lequel le jeton IAM se connecte.</value>
+  </data>
+  <data name="JumpHostsHeader" xml:space="preserve">
+    <value>Hôtes de rebond</value>
+  </data>
+  <data name="JumpHostsPlaceholder" xml:space="preserve">
+    <value>user@bastion:22, facultatif</value>
+  </data>
+  <data name="KerberosNote" xml:space="preserve">
+    <value>Se connecte avec le ticket Kerberos de votre session Windows. L’hôte doit être le nom du serveur, et non une adresse IP, pour que le ticket soit trouvé.</value>
+  </data>
+  <data name="KerberosServiceHeader" xml:space="preserve">
+    <value>Nom du service Kerberos</value>
+  </data>
+  <data name="KerberosSpnHeader" xml:space="preserve">
+    <value>Principal du serveur (SPN)</value>
+  </data>
+  <data name="KerberosSpnPlaceholder" xml:space="preserve">
+    <value>Facultatif, le gssapi_principal_name du serveur</value>
+  </data>
+  <data name="KeyspaceHeader" xml:space="preserve">
+    <value>Keyspace</value>
+  </data>
+  <data name="KubeContextHeader" xml:space="preserve">
+    <value>Contexte</value>
+  </data>
+  <data name="KubeNamespaceHeader" xml:space="preserve">
+    <value>Espace de noms</value>
+  </data>
+  <data name="KubeResourceHeader" xml:space="preserve">
+    <value>Ressource</value>
+  </data>
+  <data name="KubectlExecutablePlaceholder" xml:space="preserve">
+    <value>kubectl.exe du PATH si vide</value>
+  </data>
+  <data name="LocalPortHeader" xml:space="preserve">
+    <value>Port local</value>
+  </data>
+  <data name="ManagedIdentityClientHeader" xml:space="preserve">
+    <value>ID client de l’identité managée (facultatif)</value>
+  </data>
+  <data name="McpBlocked" xml:space="preserve">
+    <value>Bloqué</value>
+  </data>
+  <data name="McpHeader" xml:space="preserve">
+    <value>Clients externes (MCP)</value>
+  </data>
+  <data name="McpReadOnly" xml:space="preserve">
+    <value>Lecture seule</value>
+  </data>
+  <data name="McpReadWrite" xml:space="preserve">
+    <value>Lecture et écriture, chaque écriture approuvée</value>
+  </data>
+  <data name="MethodHeader" xml:space="preserve">
+    <value>Méthode</value>
+  </data>
+  <data name="NamePlaceholder" xml:space="preserve">
+    <value>Production</value>
+  </data>
+  <data name="NameRequired" xml:space="preserve">
+    <value>Donnez un nom à la connexion.</value>
+  </data>
+  <data name="NamespaceDatabaseHeader" xml:space="preserve">
+    <value>Espace de noms/base de données</value>
+  </data>
+  <data name="NewConnectionTitle" xml:space="preserve">
+    <value>Nouvelle connexion</value>
+  </data>
+  <data name="NoGroup" xml:space="preserve">
+    <value>Aucun groupe</value>
+  </data>
+  <data name="OptionalPlaceholder" xml:space="preserve">
+    <value>Facultatif</value>
+  </data>
+  <data name="OptionsHeader" xml:space="preserve">
+    <value>Options supplémentaires de la chaîne de connexion</value>
+  </data>
+  <data name="OptionsPlaceholder" xml:space="preserve">
+    <value>une paire clé=valeur par ligne</value>
+  </data>
+  <data name="PasswordHeader" xml:space="preserve">
+    <value>Mot de passe</value>
+  </data>
+  <data name="PasswordOrApiKeyHeader" xml:space="preserve">
+    <value>Mot de passe ou clé API</value>
+  </data>
+  <data name="PasswordUnusedHeader" xml:space="preserve">
+    <value>Mot de passe (non utilisé)</value>
+  </data>
+  <data name="PortHeader" xml:space="preserve">
+    <value>Port</value>
+  </data>
+  <data name="ProjectHeader" xml:space="preserve">
+    <value>Projet</value>
+  </data>
+  <data name="ProxyHostHeader" xml:space="preserve">
+    <value>Hôte du proxy</value>
+  </data>
+  <data name="ProxyNote" xml:space="preserve">
+    <value>Laissez l’utilisateur vide pour vous connecter sans authentification. Le proxy résout le nom d’hôte de la base de données. Le mot de passe est stocké dans le Gestionnaire d’identification Windows.</value>
+  </data>
+  <data name="ProxyPasswordHeader" xml:space="preserve">
+    <value>Mot de passe du proxy</value>
+  </data>
+  <data name="ProxyTypeHeader" xml:space="preserve">
+    <value>Type de proxy</value>
+  </data>
+  <data name="ProxyUserHeader" xml:space="preserve">
+    <value>Utilisateur du proxy</value>
+  </data>
+  <data name="RedisClusterHostsHeader" xml:space="preserve">
+    <value>Nœuds d’amorçage du cluster</value>
+  </data>
+  <data name="RedisModeCluster" xml:space="preserve">
+    <value>Cluster</value>
+  </data>
+  <data name="RedisModeHeader" xml:space="preserve">
+    <value>Mode de connexion</value>
+  </data>
+  <data name="RedisModeSentinel" xml:space="preserve">
+    <value>Sentinel</value>
+  </data>
+  <data name="RedisModeStandalone" xml:space="preserve">
+    <value>Autonome</value>
+  </data>
+  <data name="RedisNodesNote" xml:space="preserve">
+    <value>Séparez les nœuds par des virgules, au format hôte:port. L’hôte ci-dessus en fait partie.</value>
+  </data>
+  <data name="RedisPrimaryGroupHeader" xml:space="preserve">
+    <value>Nom du groupe principal</value>
+  </data>
+  <data name="RedisSentinelHostsHeader" xml:space="preserve">
+    <value>Nœuds Sentinel</value>
+  </data>
+  <data name="RedisSentinelPasswordHeader" xml:space="preserve">
+    <value>Mot de passe Sentinel</value>
+  </data>
+  <data name="RedisSentinelUserHeader" xml:space="preserve">
+    <value>Nom d’utilisateur Sentinel</value>
+  </data>
+  <data name="RedisSeparatorHeader" xml:space="preserve">
+    <value>Séparateur de clé</value>
+  </data>
+  <data name="RegionHeader" xml:space="preserve">
+    <value>Région</value>
+  </data>
+  <data name="SafeModeAlert" xml:space="preserve">
+    <value>Alerte</value>
+  </data>
+  <data name="SafeModeAlertFull" xml:space="preserve">
+    <value>Alerte (complète)</value>
+  </data>
+  <data name="SafeModeHeader" xml:space="preserve">
+    <value>Mode sécurisé</value>
+  </data>
+  <data name="SafeModeReadOnly" xml:space="preserve">
+    <value>Lecture seule</value>
+  </data>
+  <data name="SafeModeSafe" xml:space="preserve">
+    <value>Mode sécurisé</value>
+  </data>
+  <data name="SafeModeSafeFull" xml:space="preserve">
+    <value>Mode sécurisé (complet)</value>
+  </data>
+  <data name="SafeModeSilent" xml:space="preserve">
+    <value>Silencieux</value>
+  </data>
+  <data name="SaslPasswordHeader" xml:space="preserve">
+    <value>Mot de passe SASL</value>
+  </data>
+  <data name="SaslUserHeader" xml:space="preserve">
+    <value>Utilisateur SASL (facultatif)</value>
+  </data>
+  <data name="SavePassword" xml:space="preserve">
+    <value>Enregistrer le mot de passe dans le Gestionnaire d’identification Windows</value>
+  </data>
+  <data name="SecretAccessKeyHeader" xml:space="preserve">
+    <value>Clé d’accès secrète</value>
+  </data>
+  <data name="SectionAdvanced" xml:space="preserve">
+    <value>Avancé</value>
+  </data>
+  <data name="SectionGeneral" xml:space="preserve">
+    <value>Général</value>
+  </data>
+  <data name="SectionNetwork" xml:space="preserve">
+    <value>Réseau</value>
+  </data>
+  <data name="SectionSsl" xml:space="preserve">
+    <value>SSL</value>
+  </data>
+  <data name="ServiceAccountJsonHeader" xml:space="preserve">
+    <value>JSON du compte de service</value>
+  </data>
+  <data name="ServiceNameHeader" xml:space="preserve">
+    <value>Nom du service</value>
+  </data>
+  <data name="SignInAwsAccessKey" xml:space="preserve">
+    <value>AWS IAM (clé d’accès)</value>
+  </data>
+  <data name="SignInAwsProfile" xml:space="preserve">
+    <value>AWS IAM (profil)</value>
+  </data>
+  <data name="SignInAwsSso" xml:space="preserve">
+    <value>AWS IAM (SSO)</value>
+  </data>
+  <data name="SignInEntra" xml:space="preserve">
+    <value>Microsoft Entra ID</value>
+  </data>
+  <data name="SignInKerberos" xml:space="preserve">
+    <value>Kerberos (GSSAPI)</value>
+  </data>
+  <data name="SignInPassword" xml:space="preserve">
+    <value>Mot de passe</value>
+  </data>
+  <data name="SignInSqlServer" xml:space="preserve">
+    <value>Authentification SQL Server</value>
+  </data>
+  <data name="SignInWindows" xml:space="preserve">
+    <value>Authentification Windows</value>
+  </data>
+  <data name="SnowflakeKeyFileHeader" xml:space="preserve">
+    <value>Fichier de clé privée (connexion par paire de clés)</value>
+  </data>
+  <data name="SshAuthAgent" xml:space="preserve">
+    <value>Agent SSH</value>
+  </data>
+  <data name="SshAuthPassword" xml:space="preserve">
+    <value>Mot de passe</value>
+  </data>
+  <data name="SshAuthPrivateKey" xml:space="preserve">
+    <value>Clé privée</value>
+  </data>
+  <data name="SshHostHeader" xml:space="preserve">
+    <value>Hôte SSH</value>
+  </data>
+  <data name="SshKeyHeader" xml:space="preserve">
+    <value>Clé privée</value>
+  </data>
+  <data name="SshNote" xml:space="preserve">
+    <value>TablePro exécute le client OpenSSH fourni avec Windows&#160;: vos fichiers ~/.ssh/config, known_hosts et votre agent s’appliquent.</value>
+  </data>
+  <data name="SshSecretHeader" xml:space="preserve">
+    <value>Mot de passe ou phrase secrète de la clé</value>
+  </data>
+  <data name="SshUserHeader" xml:space="preserve">
+    <value>Utilisateur SSH</value>
+  </data>
+  <data name="SslDisabled" xml:space="preserve">
+    <value>Désactivé</value>
+  </data>
+  <data name="SslModeHeader" xml:space="preserve">
+    <value>Mode SSL</value>
+  </data>
+  <data name="SslNote" xml:space="preserve">
+    <value>Préféré chiffre la connexion lorsque le serveur le propose. Les modes Vérifier contrôlent le certificat du serveur dans le magasin de certificats Windows, et Vérifier l’identité contrôle aussi le nom d’hôte. Les connexions IAM et Entra sont toujours chiffrées.</value>
+  </data>
+  <data name="SslPreferred" xml:space="preserve">
+    <value>Préféré</value>
+  </data>
+  <data name="SslRequired" xml:space="preserve">
+    <value>Requis (sans vérification)</value>
+  </data>
+  <data name="SslVerifyCa" xml:space="preserve">
+    <value>Vérifier la CA</value>
+  </data>
+  <data name="SslVerifyIdentity" xml:space="preserve">
+    <value>Vérifier l’identité</value>
+  </data>
+  <data name="SsmProfileHeader" xml:space="preserve">
+    <value>Profil</value>
+  </data>
+  <data name="SsmTargetHeader" xml:space="preserve">
+    <value>Cible</value>
+  </data>
+  <data name="StartupHeader" xml:space="preserve">
+    <value>Exécuter à la connexion</value>
+  </data>
+  <data name="TestButton" xml:space="preserve">
+    <value>Tester</value>
+  </data>
+  <data name="TestSucceeded" xml:space="preserve">
+    <value>Connecté à {0} {1}</value>
+  </data>
+  <data name="Testing" xml:space="preserve">
+    <value>Test…</value>
+  </data>
+  <data name="TimeoutHeader" xml:space="preserve">
+    <value>Délai d’expiration de la connexion (secondes)</value>
+  </data>
+  <data name="TransportCloudSql" xml:space="preserve">
+    <value>Cloud SQL Auth Proxy</value>
+  </data>
+  <data name="TransportCloudSqlSummary" xml:space="preserve">
+    <value>Exécute Google Cloud SQL Auth Proxy pour un nom de connexion d’instance.</value>
+  </data>
+  <data name="TransportCloudflare" xml:space="preserve">
+    <value>Cloudflare Tunnel</value>
+  </data>
+  <data name="TransportCloudflareSummary" xml:space="preserve">
+    <value>Exécute cloudflared pour une application Cloudflare Access.</value>
+  </data>
+  <data name="TransportCommand" xml:space="preserve">
+    <value>Commande de tunnel</value>
+  </data>
+  <data name="TransportCommandSummary" xml:space="preserve">
+    <value>Exécute une commande qui transfère un port local, comme kubectl port-forward.</value>
+  </data>
+  <data name="TransportDirect" xml:space="preserve">
+    <value>Direct</value>
+  </data>
+  <data name="TransportDirectSummary" xml:space="preserve">
+    <value>Se connecte directement à l’hôte et au port.</value>
+  </data>
+  <data name="TransportHeader" xml:space="preserve">
+    <value>Se connecter via</value>
+  </data>
+  <data name="TransportProxy" xml:space="preserve">
+    <value>Proxy</value>
+  </data>
+  <data name="TransportProxySummary" xml:space="preserve">
+    <value>Passe par un proxy SOCKS5 ou HTTP, qui résout aussi le nom d’hôte de la base de données.</value>
+  </data>
+  <data name="TransportSsh" xml:space="preserve">
+    <value>Tunnel SSH</value>
+  </data>
+  <data name="TransportSshSummary" xml:space="preserve">
+    <value>Transfère un port local via un serveur SSH avec le client OpenSSH fourni avec Windows.</value>
+  </data>
+  <data name="UrlHeader" xml:space="preserve">
+    <value>URL</value>
+  </data>
+  <data name="LibSqlUrlHeader" xml:space="preserve">
+    <value>URL ou chemin file:</value>
+    <comment>Field label for a libSQL or Turso connection: a server URL, or file: followed by a local database path. Keep "file:" as is.</comment>
+  </data>
+  <data name="UserHeader" xml:space="preserve">
+    <value>Utilisateur</value>
+  </data>
+  <data name="UserOptionalHeader" xml:space="preserve">
+    <value>Utilisateur (facultatif)</value>
+  </data>
+  <data name="WillRunLabel" xml:space="preserve">
+    <value>Sera exécutée</value>
+  </data>
+  <data name="WindowsAuthNote" xml:space="preserve">
+    <value>Se connecte avec votre compte Windows, via Kerberos lorsque le domaine le propose.</value>
+  </data>
+  <data name="RedisHostHeader" xml:space="preserve">
+    <value>Hôte ou premier nœud</value>
+  </data>
+  <data name="SignInGoogleAdc" xml:space="preserve">
+    <value>Google Cloud IAM (identifiants par défaut)</value>
+  </data>
+  <data name="SignInGoogleServiceAccount" xml:space="preserve">
+    <value>Google Cloud IAM (compte de service)</value>
+  </data>
+  <data name="GoogleServiceAccountKeyHeader" xml:space="preserve">
+    <value>Clé du compte de service</value>
+  </data>
+  <data name="GoogleServiceAccountKeyPlaceholder" xml:space="preserve">
+    <value>Chemin du fichier ou JSON collé</value>
+  </data>
+  <data name="GoogleServiceAccountKeyRequired" xml:space="preserve">
+    <value>Saisissez la clé du compte de service : le chemin de son fichier JSON, ou le JSON lui-même.</value>
+  </data>
+  <data name="GoogleIamUserHeader" xml:space="preserve">
+    <value>Utilisateur IAM de la base de données</value>
+  </data>
+  <data name="GoogleAdcNote" xml:space="preserve">
+    <value>Se connecte avec un jeton IAM Cloud SQL issu des identifiants enregistrés par « gcloud auth application-default login », de GOOGLE_APPLICATION_CREDENTIALS ou du serveur de métadonnées. Saisissez l'utilisateur IAM tel que Cloud SQL l'affiche.</value>
+  </data>
+  <data name="GoogleServiceAccountNote" xml:space="preserve">
+    <value>Se connecte avec un jeton IAM Cloud SQL pour le compte de service. Saisissez l'utilisateur IAM tel que Cloud SQL l'affiche.</value>
+  </data>
+  <data name="RedshiftUserHeader" xml:space="preserve">
+    <value>Utilisateur de la base de données (facultatif)</value>
+  </data>
+  <data name="RedshiftEndpointHeader" xml:space="preserve">
+    <value>Point de terminaison Redshift (facultatif)</value>
+  </data>
+  <data name="RedshiftIamNote" xml:space="preserve">
+    <value>AWS délivre un utilisateur et un mot de passe temporaires pour le cluster ou le groupe de travail Serverless indiqué par l'hôte. Laissez l'utilisateur vide pour vous connecter avec votre identité IAM. Saisissez le point de terminaison Redshift uniquement si l'hôte est une redirection de port locale.</value>
+  </data>
+</root>

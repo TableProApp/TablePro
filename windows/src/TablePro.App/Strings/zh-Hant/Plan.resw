@@ -1,0 +1,366 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AccessibleActualTime" xml:space="preserve">
+    <value>實際耗時 {0}</value>
+  </data>
+  <data name="AccessibleCost" xml:space="preserve">
+    <value>成本 {0}</value>
+  </data>
+  <data name="AccessibleOnRelation" xml:space="preserve">
+    <value>在 {0} 上</value>
+  </data>
+  <data name="AccessibleRows_One" xml:space="preserve">
+    <value>{0} 列</value>
+  </data>
+  <data name="AccessibleRows_Other" xml:space="preserve">
+    <value>{0} 列</value>
+  </data>
+  <data name="AccessibleSeparator" xml:space="preserve">
+    <value>，</value>
+  </data>
+  <data name="AccessibleWarnings_One" xml:space="preserve">
+    <value>警告：{0}</value>
+  </data>
+  <data name="AccessibleWarnings_Other" xml:space="preserve">
+    <value>警告：{0}</value>
+  </data>
+  <data name="ActualEstimatedRowsHeader" xml:space="preserve">
+    <value>實際 / 估算列數</value>
+  </data>
+  <data name="ActualSection" xml:space="preserve">
+    <value>實際</value>
+  </data>
+  <data name="ActualTimeHeader.Text" xml:space="preserve">
+    <value>實際耗時</value>
+  </data>
+  <data name="BarMetricSelfCost" xml:space="preserve">
+    <value>自身成本</value>
+  </data>
+  <data name="BarMetricSelfTime" xml:space="preserve">
+    <value>自身耗時</value>
+  </data>
+  <data name="Baseline" xml:space="preserve">
+    <value>基準</value>
+  </data>
+  <data name="CaptureTime" xml:space="preserve">
+    <value>{0:T}</value>
+  </data>
+  <data name="CaptureTimeAnalyzed" xml:space="preserve">
+    <value>{0:T}，已分析</value>
+  </data>
+  <data name="ChangeAdded" xml:space="preserve">
+    <value>新增</value>
+  </data>
+  <data name="ChangeChanged" xml:space="preserve">
+    <value>已變更</value>
+  </data>
+  <data name="ChangeRemoved" xml:space="preserve">
+    <value>移除</value>
+  </data>
+  <data name="ChangeRowName" xml:space="preserve">
+    <value>{0}: {1}</value>
+  </data>
+  <data name="ColumnChange" xml:space="preserve">
+    <value>變更</value>
+  </data>
+  <data name="ColumnMetric" xml:space="preserve">
+    <value>指標</value>
+  </data>
+  <data name="CompareMode.Text" xml:space="preserve">
+    <value>比較</value>
+  </data>
+  <data name="ComparedAsTextMessage" xml:space="preserve">
+    <value>其中一個執行計畫無法解析為樹狀結構，因此將逐行比較這兩次執行。</value>
+  </data>
+  <data name="ComparedAsTextTitle" xml:space="preserve">
+    <value>已以文字比較</value>
+  </data>
+  <data name="ComparisonCaption" xml:space="preserve">
+    <value>基準來自 {0}，目前來自 {1}</value>
+  </data>
+  <data name="ComparisonName" xml:space="preserve">
+    <value>執行計畫比較</value>
+  </data>
+  <data name="CopyButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>複製執行計畫文字</value>
+  </data>
+  <data name="CopyButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>複製伺服器傳回的執行計畫文字</value>
+  </data>
+  <data name="CopyCreateIndexButton" xml:space="preserve">
+    <value>複製 CREATE INDEX</value>
+  </data>
+  <data name="CopyOperation" xml:space="preserve">
+    <value>複製操作</value>
+  </data>
+  <data name="CopyStepDetails" xml:space="preserve">
+    <value>複製步驟詳細資訊</value>
+  </data>
+  <data name="CopyStepDetailsButton" xml:space="preserve">
+    <value>複製步驟詳細資訊</value>
+  </data>
+  <data name="CostHeader.Text" xml:space="preserve">
+    <value>成本</value>
+  </data>
+  <data name="Current" xml:space="preserve">
+    <value>目前</value>
+  </data>
+  <data name="DiagramActualRows" xml:space="preserve">
+    <value>實際 {0:N0}</value>
+  </data>
+  <data name="DiagramMode.Text" xml:space="preserve">
+    <value>圖表</value>
+  </data>
+  <data name="DiagramName" xml:space="preserve">
+    <value>執行計畫圖表</value>
+  </data>
+  <data name="DiagramRows_One" xml:space="preserve">
+    <value>{0:N0} 列</value>
+  </data>
+  <data name="DiagramRows_Other" xml:space="preserve">
+    <value>{0:N0} 列</value>
+  </data>
+  <data name="DifferentStatementTitle" xml:space="preserve">
+    <value>基準解釋的是不同的陳述式</value>
+  </data>
+  <data name="EstimatedRowsHeader" xml:space="preserve">
+    <value>列</value>
+  </data>
+  <data name="FieldChange" xml:space="preserve">
+    <value>{0}: {1} → {2}</value>
+  </data>
+  <data name="FitButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>調整執行計畫以符合視窗</value>
+  </data>
+  <data name="FitButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>調整執行計畫以符合視窗</value>
+  </data>
+  <data name="LabelActualRows" xml:space="preserve">
+    <value>實際列數</value>
+  </data>
+  <data name="LabelActualTime" xml:space="preserve">
+    <value>實際耗時</value>
+  </data>
+  <data name="LabelAlias" xml:space="preserve">
+    <value>別名</value>
+  </data>
+  <data name="LabelCost" xml:space="preserve">
+    <value>成本</value>
+  </data>
+  <data name="LabelLoops" xml:space="preserve">
+    <value>迴圈次數</value>
+  </data>
+  <data name="LabelMissingIndex" xml:space="preserve">
+    <value>缺少的索引</value>
+  </data>
+  <data name="LabelRows" xml:space="preserve">
+    <value>列</value>
+  </data>
+  <data name="LabelSchema" xml:space="preserve">
+    <value>綱要</value>
+  </data>
+  <data name="LabelShare" xml:space="preserve">
+    <value>佔比</value>
+  </data>
+  <data name="LabelStartup" xml:space="preserve">
+    <value>啟動</value>
+  </data>
+  <data name="LabelTable" xml:space="preserve">
+    <value>資料表</value>
+  </data>
+  <data name="LabelTime" xml:space="preserve">
+    <value>時間</value>
+  </data>
+  <data name="LabelTotalRows" xml:space="preserve">
+    <value>總列數</value>
+  </data>
+  <data name="LabelValue" xml:space="preserve">
+    <value>{0}: {1}</value>
+  </data>
+  <data name="LabelWarning" xml:space="preserve">
+    <value>警告</value>
+  </data>
+  <data name="LabelWidth" xml:space="preserve">
+    <value>寬度</value>
+  </data>
+  <data name="MetricActualLoops" xml:space="preserve">
+    <value>實際迴圈次數</value>
+  </data>
+  <data name="MetricActualRows" xml:space="preserve">
+    <value>實際列數</value>
+  </data>
+  <data name="MetricActualStartupTime" xml:space="preserve">
+    <value>實際啟動時間</value>
+  </data>
+  <data name="MetricActualTotalTime" xml:space="preserve">
+    <value>實際總時間</value>
+  </data>
+  <data name="MetricBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>長條指標</value>
+  </data>
+  <data name="MetricBox.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>長條所測量的項目</value>
+  </data>
+  <data name="MetricEstimatedRows" xml:space="preserve">
+    <value>估算列數</value>
+  </data>
+  <data name="MetricEstimatedStartupCost" xml:space="preserve">
+    <value>估算啟動成本</value>
+  </data>
+  <data name="MetricEstimatedTotalCost" xml:space="preserve">
+    <value>估算總成本</value>
+  </data>
+  <data name="MetricEstimatedWidth" xml:space="preserve">
+    <value>估算寬度</value>
+  </data>
+  <data name="MissingIndex" xml:space="preserve">
+    <value>缺少的索引</value>
+  </data>
+  <data name="MissingIndexImpact" xml:space="preserve">
+    <value>缺少的索引，估計影響 {0:0.#}%</value>
+  </data>
+  <data name="Modes.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>執行計畫檢視</value>
+  </data>
+  <data name="NoStepChanged" xml:space="preserve">
+    <value>沒有步驟變更。</value>
+  </data>
+  <data name="NoStepSelected" xml:space="preserve">
+    <value>未選取步驟</value>
+  </data>
+  <data name="NoStepSelectedHint" xml:space="preserve">
+    <value>選擇執行計畫中的一個步驟，查看它做了什麼。</value>
+  </data>
+  <data name="NothingToCompareMessage" xml:space="preserve">
+    <value>變更查詢或綱要後再次解釋，這次執行就會成為基準。</value>
+  </data>
+  <data name="NothingToCompareTitle" xml:space="preserve">
+    <value>尚無可比較的項目</value>
+  </data>
+  <data name="OperationHeader.Text" xml:space="preserve">
+    <value>操作</value>
+  </data>
+  <data name="RawMode.Text" xml:space="preserve">
+    <value>原始</value>
+  </data>
+  <data name="RawText.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>執行計畫文字</value>
+  </data>
+  <data name="RowsHeader.Text" xml:space="preserve">
+    <value>列</value>
+  </data>
+  <data name="SeverityCritical" xml:space="preserve">
+    <value>嚴重成本</value>
+  </data>
+  <data name="SeverityHigh" xml:space="preserve">
+    <value>高成本</value>
+  </data>
+  <data name="SeverityLow" xml:space="preserve">
+    <value>低成本</value>
+  </data>
+  <data name="SeverityModerate" xml:space="preserve">
+    <value>中等成本</value>
+  </data>
+  <data name="StepChangesHeading" xml:space="preserve">
+    <value>步驟變更</value>
+  </data>
+  <data name="StepDetailsName" xml:space="preserve">
+    <value>執行計畫步驟詳細資訊</value>
+  </data>
+  <data name="SummaryEstimatedRows" xml:space="preserve">
+    <value>估算列數</value>
+  </data>
+  <data name="SummaryExecutionTime" xml:space="preserve">
+    <value>執行時間</value>
+  </data>
+  <data name="SummaryName" xml:space="preserve">
+    <value>執行計畫摘要</value>
+  </data>
+  <data name="SummaryNodeCount" xml:space="preserve">
+    <value>節點數</value>
+  </data>
+  <data name="SummaryPlanningTime" xml:space="preserve">
+    <value>規劃時間</value>
+  </data>
+  <data name="SummaryTotalCost" xml:space="preserve">
+    <value>成本</value>
+  </data>
+  <data name="TimingsAnalyzed" xml:space="preserve">
+    <value>已分析的執行計畫 · {0}</value>
+  </data>
+  <data name="TimingsCost" xml:space="preserve">
+    <value>成本 {0}</value>
+  </data>
+  <data name="TimingsEstimated" xml:space="preserve">
+    <value>估算的執行計畫 · {0}</value>
+  </data>
+  <data name="TimingsExecution" xml:space="preserve">
+    <value>執行 {0}</value>
+  </data>
+  <data name="TimingsPlanning" xml:space="preserve">
+    <value>規劃 {0}</value>
+  </data>
+  <data name="TimingsSteps_One" xml:space="preserve">
+    <value>1 個步驟</value>
+  </data>
+  <data name="TimingsSteps_Other" xml:space="preserve">
+    <value>{0:N0} 個步驟</value>
+  </data>
+  <data name="Tree.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>執行計畫步驟</value>
+  </data>
+  <data name="TreeMode.Text" xml:space="preserve">
+    <value>樹狀</value>
+  </data>
+  <data name="UnparsedBar.Message" xml:space="preserve">
+    <value>此執行計畫無法解析為樹狀結構，因此以伺服器傳回的原樣顯示。</value>
+  </data>
+  <data name="ValueChanged" xml:space="preserve">
+    <value>已變更</value>
+  </data>
+  <data name="VerdictFaster" xml:space="preserve">
+    <value>比基準快 {0:0.#} 倍</value>
+  </data>
+  <data name="VerdictShapeChanged" xml:space="preserve">
+    <value>計劃結構已改變</value>
+  </data>
+  <data name="VerdictSlower" xml:space="preserve">
+    <value>比基準慢 {0:0.#} 倍</value>
+  </data>
+  <data name="VerdictUnchanged" xml:space="preserve">
+    <value>沒有可測量的變化</value>
+  </data>
+  <data name="VerdictValuesChanged" xml:space="preserve">
+    <value>計劃結構相同，數值不同</value>
+  </data>
+  <data name="WarningsTitle_One" xml:space="preserve">
+    <value>警告</value>
+  </data>
+  <data name="WarningsTitle_Other" xml:space="preserve">
+    <value>警告</value>
+  </data>
+  <data name="ZoomInButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>放大</value>
+  </data>
+  <data name="ZoomInButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>放大 (Ctrl+滑鼠滾輪)</value>
+  </data>
+  <data name="ZoomOutButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>縮小</value>
+  </data>
+  <data name="ZoomOutButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>縮小 (Ctrl+滑鼠滾輪)</value>
+  </data>
+</root>
