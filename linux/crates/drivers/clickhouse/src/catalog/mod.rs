@@ -5,6 +5,7 @@ mod table_definition;
 
 use clickhouse::query::Query;
 use tablepro_core::DriverError;
+use tablepro_core::ddl::ddl_sql::parenthesized;
 use tablepro_core::meta::{IndexInfo, RowIdentity, TableEstimate};
 
 pub(crate) use clickhouse_column_row::ClickHouseColumnRow;
@@ -86,11 +87,13 @@ pub(crate) async fn fetch_indexes(calls: &CallClient, table: &CatalogTable) -> R
     for row in &skipping.rows {
         let row = CatalogRow(row);
         let (name, expression) = (row.text(0)?, row.text(1)?);
+        // A multi-column index lists its expressions bare: `n, lower(s)`.
         let definition = format!(
-            "ALTER TABLE {}.{} ADD INDEX {} {expression} TYPE {} GRANULARITY {}",
+            "CREATE INDEX {} ON {}.{} {} TYPE {} GRANULARITY {}",
+            quote(&name),
             quote(&table.database),
             quote(&table.name),
-            quote(&name),
+            parenthesized(&expression),
             row.text(2)?,
             row.optional_u64(3)?.unwrap_or(1)
         );

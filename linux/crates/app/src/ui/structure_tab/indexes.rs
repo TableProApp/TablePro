@@ -11,7 +11,7 @@ use tablepro_core::meta::IndexKey;
 
 use super::columns::gate;
 use super::index_object::IndexObject;
-use super::{IndexesInput, StructureTabSender};
+use super::{IndexesInput, StructureTab, StructureTabOutput, StructureTabSender};
 
 fn index_badge(label: &str, accent_class: &str) -> gtk::Label {
     let badge = gtk::Label::builder().label(label).valign(gtk::Align::Center).build();
@@ -64,39 +64,44 @@ pub(super) fn build_index_row(
     });
     row.add_suffix(&remove_button);
 
-    if idx.definition.is_some() {
-        row.add_suffix(&statement_menu(object, sender));
+    if let Some(definition) = &idx.definition {
+        row.add_suffix(&statement_menu(format!("{definition};"), sender));
     }
 
     row
 }
 
-/// Show and copy the statement that creates the index, which only an
-/// index the table already has carries.
-fn statement_menu(object: &IndexObject, sender: &StructureTabSender) -> gtk::MenuButton {
+// Read-only, so it bypasses the model's edit lock: a save in flight must not refuse a copy.
+fn statement_menu(statement: String, sender: &StructureTabSender) -> gtk::MenuButton {
     let menu = gio::Menu::new();
     menu.append(
-        Some(&crate::i18n::gettext("Show _CREATE INDEX")),
+        Some(&crate::i18n::gettext("_Show CREATE INDEX")),
         Some("index.show-create"),
     );
     menu.append(
         Some(&crate::i18n::gettext("_Copy CREATE INDEX")),
         Some("index.copy-create"),
     );
-    let actions = gio::SimpleActionGroup::new();
-    let entry = |name: &str, message: fn(IndexObject) -> IndexesInput| {
-        let (index, sender) = (object.downgrade(), sender.clone());
+    let entry = |name: &str, act: fn(&StructureTab, String)| {
+        let (statement, sender) = (statement.clone(), sender.clone());
         gio::ActionEntry::<gio::SimpleActionGroup>::builder(name)
             .activate(move |_, _, _| {
-                if let Some(index) = index.upgrade() {
-                    sender.input(message(index));
+                if let Some(tab) = sender.tab() {
+                    act(&tab, statement.clone());
                 }
             })
             .build()
     };
+    let actions = gio::SimpleActionGroup::new();
     actions.add_action_entries([
-        entry("show-create", IndexesInput::ShowStatement),
-        entry("copy-create", IndexesInput::CopyStatement),
+        entry("show-create", |tab, sql| {
+            tab.emit_output(StructureTabOutput::OpenInEditor(sql));
+        }),
+        entry("copy-create", |tab, sql| {
+            crate::ui::clipboard::copy_text(tab, sql, |message| {
+                tab.emit_output(StructureTabOutput::ShowToast(message.to_owned()));
+            });
+        }),
     ]);
     let button = gtk::MenuButton::builder()
         .icon_name(crate::ui::icons::VIEW_MORE)

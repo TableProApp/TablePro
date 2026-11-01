@@ -348,10 +348,13 @@ impl Connection for MssqlConnection {
     ) -> Result<TableDefinition, DriverError> {
         let relation = self.relation(table);
         let table = table.clone();
+        let major_version = self.dialect.major_version();
         self.read(
             options,
             read_op(move |client, watch| {
-                Box::pin(async move { metadata::fetch_table_definition(client, watch, &table, &relation).await })
+                Box::pin(async move {
+                    metadata::fetch_table_definition(client, watch, &table, &relation, major_version).await
+                })
             }),
         )
         .await

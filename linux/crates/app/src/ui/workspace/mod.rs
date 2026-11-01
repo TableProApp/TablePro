@@ -604,7 +604,6 @@ pub(crate) enum WorkspaceInput {
         schema: Option<String>,
         table: String,
     },
-    /// SQL the user asked to see, in a new editor tab of its own.
     OpenInEditor(String),
     DropTablePrompt {
         schema: Option<String>,

@@ -118,9 +118,47 @@ fn column_line<'a>(create_statement: &'a str, column: &str) -> Option<&'a str> {
     printed_names(column).iter().find_map(|printed| {
         let head = format!("\n  {printed} ");
         let start = create_statement.find(&head)? + 3;
-        let rest = create_statement.get(start..)?;
-        let line = rest.split('\n').next()?;
+        let line = entry(create_statement.get(start..)?);
         Some(line.strip_suffix(',').unwrap_or(line))
+    })
+}
+
+// The server escapes a line break in a string but prints one in a name as it is.
+fn entry(text: &str) -> &str {
+    let mut quote: Option<char> = None;
+    let mut escaped = false;
+    for (position, character) in text.char_indices() {
+        match quote {
+            Some('\'') if escaped => escaped = false,
+            Some('\'') if character == '\\' => escaped = true,
+            Some(open) if character == open => quote = None,
+            Some(_) => {}
+            None if character == '\n' => return &text[..position],
+            None if matches!(character, '`' | '"' | '\'') => quote = Some(character),
+            None => {}
+        }
+    }
+    text
+}
+
+// An index's own line keeps options the catalogue tables do not all list: INVISIBLE, COMMENT,
+// WITH PARSER, IGNORED, a vector index's M and DISTANCE. CREATE INDEX takes them after the keys.
+pub(crate) fn index_statement(create_statement: &str, table: &str, index: &str) -> Option<String> {
+    const KINDS: [(&str, &str); 5] = [
+        ("KEY", "INDEX"),
+        ("UNIQUE KEY", "UNIQUE INDEX"),
+        ("FULLTEXT KEY", "FULLTEXT INDEX"),
+        ("SPATIAL KEY", "SPATIAL INDEX"),
+        ("VECTOR KEY", "VECTOR INDEX"),
+    ];
+    printed_names(index).iter().find_map(|printed| {
+        KINDS.iter().find_map(|(key, kind)| {
+            let head = format!("\n  {key} {printed} ");
+            let start = create_statement.find(&head)? + head.len();
+            let line = entry(create_statement.get(start..)?).trim_end();
+            let rest = line.strip_suffix(',').unwrap_or(line).trim_end();
+            Some(format!("CREATE {kind} {printed} ON {table} {rest}"))
+        })
     })
 }
 
@@ -183,6 +221,55 @@ mod tests {
             "KEY_COLUMN_USAGE",
             values.iter().map(|text| Value::Text((*text).to_owned())).collect(),
         )
+    }
+
+    #[test]
+    fn an_index_line_becomes_its_create_index() {
+        let create = "CREATE TABLE `t` (\n  `id` int NOT NULL,\n  `KEY x` text,\n  PRIMARY KEY (`id`),\n  \
+                      UNIQUE KEY `u` (`id` DESC,`b`(10)) USING HASH,\n  KEY `a``b c` ((lower(`b`))) COMMENT 'x\\ny' \
+                      /*!80000 INVISIBLE */,\n  FULLTEXT KEY `f` (`b`) /*!50100 WITH PARSER `ngram` */ ,\n  \
+                      SPATIAL KEY `g` (`p`)\n) ENGINE=InnoDB";
+        let statement = |index: &str| index_statement(create, "`d`.`t`", index);
+
+        assert_eq!(
+            statement("u").as_deref(),
+            Some("CREATE UNIQUE INDEX `u` ON `d`.`t` (`id` DESC,`b`(10)) USING HASH")
+        );
+        assert_eq!(
+            statement("a`b c").as_deref(),
+            Some("CREATE INDEX `a``b c` ON `d`.`t` ((lower(`b`))) COMMENT 'x\\ny' /*!80000 INVISIBLE */")
+        );
+        assert_eq!(
+            statement("f").as_deref(),
+            Some("CREATE FULLTEXT INDEX `f` ON `d`.`t` (`b`) /*!50100 WITH PARSER `ngram` */")
+        );
+        assert_eq!(
+            statement("g").as_deref(),
+            Some("CREATE SPATIAL INDEX `g` ON `d`.`t` (`p`)")
+        );
+        assert_eq!(statement("x"), None);
+        assert_eq!(statement("PRIMARY"), None);
+    }
+
+    #[test]
+    fn a_line_break_in_a_name_stays_in_its_entry() {
+        let create = "CREATE TABLE `t` (\n  `a\nb` int DEFAULT '7',\n  KEY `k\n2` (`a\nb`),\n  KEY `next` (`id`)\n)";
+
+        assert_eq!(
+            index_statement(create, "`d`.`t`", "k\n2").as_deref(),
+            Some("CREATE INDEX `k\n2` ON `d`.`t` (`a\nb`)")
+        );
+        assert_eq!(quoted_default(create, "a\nb").as_deref(), Some("7"));
+    }
+
+    #[test]
+    fn an_ansi_quoted_index_line_keeps_its_quotes() {
+        let create = "CREATE TABLE \"t\" (\n  \"id\" int,\n  KEY \"k\" (\"id\")\n)";
+
+        assert_eq!(
+            index_statement(create, "`d`.`t`", "k").as_deref(),
+            Some("CREATE INDEX \"k\" ON `d`.`t` (\"id\")")
+        );
     }
 
     #[test]

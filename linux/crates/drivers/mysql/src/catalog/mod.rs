@@ -21,8 +21,8 @@ pub(crate) use mysql_column_row::{MySqlColumnRow, columns_sql};
 pub(crate) use mysql_extra::{ExtraGenerated, MySqlExtra};
 pub(crate) use table_definition::{
     COLUMN_ENGINE_ATTRIBUTES_SQL, ColumnCheck, INBOUND_FOREIGN_KEYS_SQL, ListedSrid, MARIADB_COLUMN_CHECKS_SQL,
-    MARIADB_GEOMETRY_SRIDS_SQL, column_checks, geometry_srids, inbound_foreign_keys, place_column_checks,
-    printed_names, quoted_default,
+    MARIADB_GEOMETRY_SRIDS_SQL, column_checks, geometry_srids, inbound_foreign_keys, index_statement,
+    place_column_checks, printed_names, quoted_default,
 };
 pub(crate) use table_options::{ListedOptions, table_options};
 
@@ -44,7 +44,7 @@ use tablepro_core::value::Value;
 
 use crate::flavour::MySqlFlavour;
 use crate::mysql_timestamp_mode::MySqlTimestampMode;
-pub(crate) use escaped_expression::unescape_expression;
+use escaped_expression::unescape_expression;
 use mysql_column_type::scan;
 
 /// The catalogue's facts that decide a kind, apart from the rest of the

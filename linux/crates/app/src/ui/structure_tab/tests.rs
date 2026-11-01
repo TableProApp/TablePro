@@ -1963,8 +1963,7 @@ fn email_index(name: &str, definition: Option<&str>) -> tablepro_core::IndexInfo
     }
 }
 
-/// An index the table has offers its statement to copy or open; one
-/// only drafted in the tab has none to offer.
+// The copy runs while a save from the window holds the draft, which refuses edits.
 #[gtk4::test]
 fn a_saved_index_shows_and_copies_its_create_statement() {
     let statement = "CREATE UNIQUE INDEX users_email ON public.users USING btree (email)";
@@ -1984,6 +1983,11 @@ fn a_saved_index_shows_and_copies_its_create_statement() {
         .tab()
         .send(IndexesInput::AddIndex(email_index("users_email_draft", None)));
     drain_main_context();
+    let _saving = harness
+        .tracker()
+        .begin_save()
+        .expect("a save")
+        .expect("the drafted index is pending");
 
     let menus: Vec<gtk::Widget> = descendants(harness.tab())
         .into_iter()
