@@ -2,12 +2,14 @@
 //! tab. Every statement projects built-in types only, so none of them
 //! makes tokio-postgres look a type up with a named statement.
 
+mod definitions;
 mod estimate;
 mod foreign_keys;
 mod identity;
 mod indexes;
 mod objects;
 
+pub(crate) use definitions::fetch_object_definition;
 pub(crate) use estimate::table_estimate;
 pub(crate) use foreign_keys::{fetch_foreign_keys, fetch_outbound_foreign_keys};
 pub(crate) use identity::row_identity;
@@ -177,6 +179,9 @@ mod tests {
         for (name, sql) in [
             ("schemas", objects::SCHEMAS_SQL.to_owned()),
             ("objects", objects::OBJECTS_SQL.to_owned()),
+            ("function definitions", definitions::FUNCTIONS_SQL.to_owned()),
+            ("sequence definition", definitions::SEQUENCE_SQL.to_owned()),
+            ("trigger definition", definitions::TRIGGER_SQL.to_owned()),
             ("identity", identity::IDENTITY_SQL.to_owned()),
             ("indexes", indexes::INDEXES_SQL.to_owned()),
             ("index statements", indexes::INDEX_STATEMENTS_SQL.to_owned()),

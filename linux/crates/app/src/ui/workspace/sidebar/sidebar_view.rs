@@ -4,16 +4,17 @@ use std::sync::Arc;
 
 use gtk4::prelude::*;
 use gtk4::{gio, glib};
-use tablepro_core::meta::TableRef;
+use tablepro_core::meta::{ObjectInfo, TableRef};
 use tablepro_session::runtime::Tasks;
 
 use super::object_key::ObjectKey;
+use super::object_target::ObjectTarget;
 use super::sidebar_affordances::SidebarAffordances;
 use super::sidebar_event::SidebarEvent;
 use super::sidebar_index::SidebarIndex;
 use super::sidebar_menu::{
-    DROP_TABLE, EDIT_STRUCTURE, IMPORT_CSV, NEW_TABLE, OPEN_IN_NEW_TAB, SHOW_CREATE_TABLE, SHOW_DIAGRAM,
-    SHOW_SCHEMA_DIAGRAM, offers,
+    DROP_TABLE, EDIT_STRUCTURE, IMPORT_CSV, NEW_TABLE, OPEN_IN_NEW_TAB, SHOW_CREATE_TABLE, SHOW_DEFINITION,
+    SHOW_DIAGRAM, SHOW_SCHEMA_DIAGRAM, offers,
 };
 use super::sidebar_model::{RowsAsked, RowsWorkedOut, Search, SidebarModel};
 use super::tree_node::TreeNode;
@@ -182,9 +183,13 @@ impl SidebarView {
         (self.inner.events)(SidebarEvent::OpenInNewTab(table));
     }
 
+    pub(crate) fn show_definition(&self, object: ObjectInfo) {
+        (self.inner.events)(SidebarEvent::ShowDefinition(object));
+    }
+
     /// Whether the session lists `table`, searched for or not.
     pub(crate) fn lists(&self, table: &TableRef) -> bool {
-        self.inner.model.kind_of(table).is_some()
+        self.inner.model.kind_of(&ObjectTarget::Rows(table.clone())).is_some()
     }
 
     /// The schema whose tables hold `table`, and where among them.
@@ -227,22 +232,29 @@ impl SidebarView {
 }
 
 impl SidebarInner {
-    /// Run a table action whose target came through GAction: a target of
-    /// the wrong shape, or for a table the list no longer has, does
+    /// Run an object action whose target came through GAction: a target
+    /// of the wrong shape, or for an object the list no longer has, does
     /// nothing.
     fn act_on(&self, action: &str, target: Option<&glib::Variant>) {
-        let Some(ObjectKey(table)) = target.and_then(ObjectKey::from_variant) else {
-            tracing::warn!(action, "a sidebar action came without a table");
+        let Some(ObjectKey(target)) = target.and_then(ObjectKey::from_variant) else {
+            tracing::warn!(action, "a sidebar action came without an object");
             return;
         };
-        let Some(kind) = self.model.kind_of(&table) else {
-            tracing::warn!(action, "a sidebar action named a table the list no longer has");
+        let Some(kind) = self.model.kind_of(&target) else {
+            tracing::warn!(action, "a sidebar action named an object the list no longer has");
             return;
         };
         if !offers(action, kind, self.affordances.get()) {
-            tracing::warn!(action, "a sidebar action the table or the connection does not offer");
+            tracing::warn!(action, "a sidebar action the object or the connection does not offer");
             return;
         }
+        let table = match target {
+            ObjectTarget::Definition(object) => {
+                (self.events)(SidebarEvent::ShowDefinition(object));
+                return;
+            }
+            ObjectTarget::Rows(table) => table,
+        };
         let event = match action {
             OPEN_IN_NEW_TAB => SidebarEvent::OpenInNewTab(table),
             EDIT_STRUCTURE => SidebarEvent::EditStructure(table),
@@ -340,6 +352,7 @@ fn install_actions(inner: &Rc<SidebarInner>) {
         SHOW_CREATE_TABLE,
         IMPORT_CSV,
         DROP_TABLE,
+        SHOW_DEFINITION,
     ] {
         let action = gio::SimpleAction::new(name, Some(&ObjectKey::variant_type()));
         let view = Rc::downgrade(inner);

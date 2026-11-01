@@ -33,7 +33,7 @@ pub(crate) static CAPABILITIES: DriverCapabilities = DriverCapabilities {
     script_execution: ScriptExecution::NativeBatch,
     commit_resolution: CommitResolutionSupport::Unavailable,
     row_count_estimate: EstimateQuality::Statistics,
-    object_kinds: &[ObjectKind::Table, ObjectKind::View],
+    object_kinds: &[ObjectKind::Table, ObjectKind::View, ObjectKind::Trigger],
     database_required: false,
     network_options: &[],
     statement_stop: StatementStop::Server,

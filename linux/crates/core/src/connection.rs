@@ -13,7 +13,9 @@ use crate::error::DriverError;
 use crate::foreign_key_info::ForeignKeyInfo;
 use crate::keyspace::{KeyListing, KeyPage, KeyScan, KeyWindow};
 use crate::link_watch::LinkState;
-use crate::meta::{IndexInfo, ObjectInfo, ObjectScope, RowIdentity, SchemaInfo, TableEstimate, TableRef};
+use crate::meta::{
+    IndexInfo, ObjectDefinition, ObjectInfo, ObjectScope, RowIdentity, SchemaInfo, TableEstimate, TableRef,
+};
 use crate::query_result::QueryResult;
 use crate::read_statement::ReadStatement;
 use crate::result_sink::ResultSink;
@@ -100,6 +102,19 @@ pub trait Connection: Send + Sync {
     async fn fetch_character_sets(&self, _options: CallOptions) -> Result<Vec<CharacterSet>, DriverError> {
         Err(DriverError::Unsupported {
             feature: UnsupportedFeature::CharacterSets,
+        })
+    }
+
+    /// Every overload of a routine's name, one after another, where the
+    /// engine lets a name have several. `None` when the object is gone or
+    /// the login cannot read its text, which servers do not tell apart.
+    async fn fetch_object_definition(
+        &self,
+        _object: &ObjectInfo,
+        _options: CallOptions,
+    ) -> Result<Option<ObjectDefinition>, DriverError> {
+        Err(DriverError::Unsupported {
+            feature: UnsupportedFeature::ObjectDefinitions,
         })
     }
 

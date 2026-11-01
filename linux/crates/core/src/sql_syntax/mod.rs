@@ -1,5 +1,6 @@
 mod builtin_snippet;
 mod catalog_change;
+mod created_object;
 mod credential_rules;
 mod errors;
 mod grammar;
@@ -18,6 +19,7 @@ mod statement_tokens;
 
 pub use builtin_snippet::{BuiltinSnippet, builtin_snippets};
 pub use catalog_change::{changes_catalog, may_change_database, used_database};
+pub use created_object::{holds_client_directive, mysql_program_script, qualify_created_name, terminated};
 pub use credential_rules::CredentialRules;
 pub use errors::{ExpressionSyntaxError, TypeSyntaxError};
 pub use grammar::SqlGrammar;

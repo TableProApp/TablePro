@@ -44,6 +44,10 @@ pub(crate) fn for_session(flavour: MySqlFlavour, limits: &SessionLimits) -> Vec<
     statements
 }
 
+/// sqlx's handshake asks for `IGNORE_SPACE`, which the mysql client does
+/// not, so an editor session takes the server's own mode back.
+pub(crate) const EDITOR_SQL_MODE_STATEMENT: &str = "SET SESSION sql_mode = @@GLOBAL.sql_mode";
+
 /// The session's statement bound, or the server's "no limit" for
 /// `None`. MySQL bounds only read-only SELECTs, in milliseconds; MariaDB
 /// bounds every statement, in seconds.

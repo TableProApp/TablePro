@@ -1,11 +1,12 @@
 //! The catalogue reads behind the sidebar, the grid and the structure
 //! tab. Every one is a bound query over information_schema, so a table
-//! name never becomes SQL.
+//! name never becomes SQL, but for `SHOW CREATE`, which takes no
+//! parameter: it gets a name the catalogue listed, quoted by the dialect.
 
 use std::collections::HashMap;
 
 use futures_util::TryStreamExt;
-use sqlx::mysql::MySqlConnection;
+use sqlx::mysql::{MySqlConnection, MySqlDatabaseError};
 use sqlx::{AssertSqlSafe, Executor as _, Row as _};
 use tablepro_core::column::{ColumnDefault, ColumnInfo, ColumnKind, SqlExpression, TemporalZone};
 use tablepro_core::ddl::{
@@ -14,10 +15,11 @@ use tablepro_core::ddl::{
 };
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::meta::{
-    IndexInfo, IndexKey, ObjectInfo, ObjectKind, ObjectScope, RowCountEstimate, RowIdentity, SchemaInfo, TableEstimate,
-    TableRef,
+    EditorRefusal, IndexInfo, IndexKey, ObjectDefinition, ObjectInfo, ObjectKind, ObjectScope, RowCountEstimate,
+    RowIdentity, SchemaInfo, TableEstimate, TableRef,
 };
-use tablepro_core::{DriverError, ForeignKeyInfo, Value};
+use tablepro_core::sql_syntax::{mysql_program_script, terminated};
+use tablepro_core::{DriverError, ForeignKeyInfo, UnsupportedFeature, Value};
 
 use crate::catalog::{
     CHARACTER_SETS_SQL, COLLATIONS_SQL, COLUMN_COMPARISONS_SQL, COLUMN_ENGINE_ATTRIBUTES_SQL, CatalogCells,
@@ -121,54 +123,186 @@ pub(crate) async fn list_databases(
     Ok(databases)
 }
 
-const TABLES_IN_SCHEMA_SQL: &str = "\
-SELECT TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE FROM information_schema.TABLES
-WHERE TABLE_SCHEMA = COALESCE(?, DATABASE()) ORDER BY TABLE_NAME";
-const ROUTINES_IN_SCHEMA_SQL: &str = "\
-SELECT ROUTINE_SCHEMA, ROUTINE_NAME, ROUTINE_TYPE FROM information_schema.ROUTINES
-WHERE ROUTINE_SCHEMA = COALESCE(?, DATABASE()) ORDER BY ROUTINE_NAME";
+/// Tables, views and sequences, routines and triggers in one read. Each
+/// name is made `utf8mb4_bin`: the catalogue tables collate their names
+/// differently from one version to the next, which a UNION can refuse.
+/// TRIGGERS is narrowed by `EVENT_OBJECT_SCHEMA`, the one MariaDB reads
+/// a single schema's trigger files for; by `TRIGGER_SCHEMA` it reads
+/// every schema's.
+const OBJECTS_IN_SCHEMA_SQL: &str = "\
+SELECT CONVERT(TABLE_SCHEMA USING utf8mb4) COLLATE utf8mb4_bin, CONVERT(TABLE_NAME USING utf8mb4) COLLATE utf8mb4_bin,
+       CONVERT(TABLE_TYPE USING utf8mb4) COLLATE utf8mb4_bin, NULL
+FROM information_schema.TABLES WHERE TABLE_SCHEMA = COALESCE(?, DATABASE())
+UNION ALL
+SELECT CONVERT(ROUTINE_SCHEMA USING utf8mb4) COLLATE utf8mb4_bin, CONVERT(ROUTINE_NAME USING utf8mb4) COLLATE utf8mb4_bin,
+       CONVERT(ROUTINE_TYPE USING utf8mb4) COLLATE utf8mb4_bin, NULL
+FROM information_schema.ROUTINES WHERE ROUTINE_SCHEMA = COALESCE(?, DATABASE())
+UNION ALL
+SELECT CONVERT(TRIGGER_SCHEMA USING utf8mb4) COLLATE utf8mb4_bin, CONVERT(TRIGGER_NAME USING utf8mb4) COLLATE utf8mb4_bin,
+       'TRIGGER', CONVERT(EVENT_OBJECT_TABLE USING utf8mb4) COLLATE utf8mb4_bin
+FROM information_schema.TRIGGERS WHERE EVENT_OBJECT_SCHEMA = COALESCE(?, DATABASE())
+ORDER BY 1, 2, 4";
 /// The schemas MySQL keeps for itself stay out of "all schemas".
-const ALL_TABLES_SQL: &str = "\
-SELECT TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE FROM information_schema.TABLES
-WHERE TABLE_SCHEMA NOT IN ('mysql', 'information_schema', 'performance_schema', 'sys')
-ORDER BY TABLE_SCHEMA, TABLE_NAME";
-const ALL_ROUTINES_SQL: &str = "\
-SELECT ROUTINE_SCHEMA, ROUTINE_NAME, ROUTINE_TYPE FROM information_schema.ROUTINES
-WHERE ROUTINE_SCHEMA NOT IN ('mysql', 'information_schema', 'performance_schema', 'sys')
-ORDER BY ROUTINE_SCHEMA, ROUTINE_NAME";
+const ALL_OBJECTS_SQL: &str = "\
+SELECT CONVERT(TABLE_SCHEMA USING utf8mb4) COLLATE utf8mb4_bin, CONVERT(TABLE_NAME USING utf8mb4) COLLATE utf8mb4_bin,
+       CONVERT(TABLE_TYPE USING utf8mb4) COLLATE utf8mb4_bin, NULL
+FROM information_schema.TABLES WHERE TABLE_SCHEMA NOT IN ('mysql', 'information_schema', 'performance_schema', 'sys')
+UNION ALL
+SELECT CONVERT(ROUTINE_SCHEMA USING utf8mb4) COLLATE utf8mb4_bin, CONVERT(ROUTINE_NAME USING utf8mb4) COLLATE utf8mb4_bin,
+       CONVERT(ROUTINE_TYPE USING utf8mb4) COLLATE utf8mb4_bin, NULL
+FROM information_schema.ROUTINES WHERE ROUTINE_SCHEMA NOT IN ('mysql', 'information_schema', 'performance_schema', 'sys')
+UNION ALL
+SELECT CONVERT(TRIGGER_SCHEMA USING utf8mb4) COLLATE utf8mb4_bin, CONVERT(TRIGGER_NAME USING utf8mb4) COLLATE utf8mb4_bin,
+       'TRIGGER', CONVERT(EVENT_OBJECT_TABLE USING utf8mb4) COLLATE utf8mb4_bin
+FROM information_schema.TRIGGERS WHERE EVENT_OBJECT_SCHEMA NOT IN ('mysql', 'information_schema', 'performance_schema', 'sys')
+ORDER BY 1, 2, 4";
 
-/// Tables, views and sequences, then routines. Two reads rather than a
-/// UNION, because the two catalogue tables collate their names
-/// differently and a UNION of them can refuse to sort.
 pub(crate) async fn list_objects(
     connection: &mut MySqlConnection,
     flavour: MySqlFlavour,
     scope: &ObjectScope,
 ) -> Result<Vec<ObjectInfo>, DriverError> {
-    let (tables_sql, routines_sql, binds): (_, _, Vec<Option<&str>>) = match scope {
-        ObjectScope::DefaultSchema => (TABLES_IN_SCHEMA_SQL, ROUTINES_IN_SCHEMA_SQL, vec![None]),
-        ObjectScope::Schema(name) => (TABLES_IN_SCHEMA_SQL, ROUTINES_IN_SCHEMA_SQL, vec![Some(name.as_str())]),
-        ObjectScope::AllSchemas => (ALL_TABLES_SQL, ALL_ROUTINES_SQL, Vec::new()),
+    let (sql, binds) = match scope {
+        ObjectScope::DefaultSchema => (OBJECTS_IN_SCHEMA_SQL, vec![None; 3]),
+        ObjectScope::Schema(name) => (OBJECTS_IN_SCHEMA_SQL, vec![Some(name.as_str()); 3]),
+        ObjectScope::AllSchemas => (ALL_OBJECTS_SQL, Vec::new()),
     };
     let mut objects = Vec::new();
-    for (sql, table) in [(tables_sql, "TABLES"), (routines_sql, "ROUTINES")] {
-        for row in catalog_rows(connection, flavour, sql, table, &binds).await? {
-            let kind = match row.text(2)?.as_deref() {
-                Some("BASE TABLE" | "SYSTEM VERSIONED" | "TEMPORARY") => ObjectKind::Table,
-                Some("VIEW" | "SYSTEM VIEW") => ObjectKind::View,
-                Some("SEQUENCE") => ObjectKind::Sequence,
-                Some("FUNCTION") => ObjectKind::Function,
-                Some("PROCEDURE") => ObjectKind::Procedure,
-                _ => continue,
-            };
-            objects.push(ObjectInfo {
-                schema: row.text(0)?,
-                name: row.required_text(1)?,
-                kind,
-            });
-        }
+    for row in catalog_rows(connection, flavour, sql, "TABLES", &binds).await? {
+        let kind = match row.text(2)?.as_deref() {
+            Some("BASE TABLE" | "SYSTEM VERSIONED" | "TEMPORARY") => ObjectKind::Table,
+            Some("VIEW" | "SYSTEM VIEW") => ObjectKind::View,
+            Some("SEQUENCE") => ObjectKind::Sequence,
+            Some("FUNCTION") => ObjectKind::Function,
+            Some("PROCEDURE") => ObjectKind::Procedure,
+            Some("TRIGGER") => ObjectKind::Trigger,
+            _ => continue,
+        };
+        objects.push(ObjectInfo {
+            schema: row.text(0)?,
+            name: row.required_text(1)?,
+            kind,
+            parent_table: row.text(3)?,
+        });
     }
     Ok(objects)
+}
+
+/// What the server answers `SHOW CREATE` for an object that is not
+/// there: a missing routine (1305), trigger (1360), sequence or database
+/// (1146), a trigger's database on MySQL (1049), or a table where a
+/// sequence was (4089, MariaDB).
+const NOT_THERE: [u16; 5] = [1305, 1360, 1146, 1049, 4089];
+
+/// What a new editor tab runs with: the server's own `sql_mode`, and the
+/// collation `SET NAMES utf8mb4` gives, which this session sent too.
+const EDITOR_SETTINGS_SQL: &str = "SELECT @@GLOBAL.sql_mode, @@SESSION.collation_connection";
+/// The same, and a trigger's table, which its name alone does not say.
+const TRIGGER_SETTINGS_SQL: &str = "\
+SELECT @@GLOBAL.sql_mode, @@SESSION.collation_connection,
+       (SELECT EVENT_OBJECT_TABLE FROM information_schema.TRIGGERS
+        WHERE EVENT_OBJECT_SCHEMA = COALESCE(?, DATABASE()) AND TRIGGER_NAME = ?)";
+
+/// The text names neither the object's database nor a trigger's table's,
+/// so it runs in a tab moved to the object's database. A routine or a
+/// trigger reads its body under the `sql_mode` and connection collation
+/// it was made with; when those are not what an editor tab runs with,
+/// the text does not open there.
+pub(crate) async fn fetch_object_definition(
+    connection: &mut MySqlConnection,
+    dialect: &MySqlDialect,
+    object: &ObjectInfo,
+) -> Result<Option<ObjectDefinition>, DriverError> {
+    let flavour = dialect.flavour();
+    let (show, column) = match object.kind {
+        ObjectKind::Function => ("FUNCTION", "Create Function"),
+        ObjectKind::Procedure => ("PROCEDURE", "Create Procedure"),
+        ObjectKind::Sequence => ("SEQUENCE", "Create Table"),
+        ObjectKind::Trigger => ("TRIGGER", "SQL Original Statement"),
+        _ => {
+            return Err(DriverError::Unsupported {
+                feature: UnsupportedFeature::ObjectDefinitions,
+            });
+        }
+    };
+    let editor = match object.kind {
+        // SHOW CREATE SEQUENCE carries no settings.
+        ObjectKind::Sequence => None,
+        ObjectKind::Trigger => {
+            let binds = [object.schema.as_deref(), Some(object.name.as_str())];
+            let rows = catalog_rows(connection, flavour, TRIGGER_SETTINGS_SQL, "TRIGGERS", &binds).await?;
+            let Some(row) = rows.first() else {
+                return Ok(None);
+            };
+            // Dropped and made again on another table since the list was read.
+            if row.text(2)? != object.parent_table {
+                return Ok(None);
+            }
+            Some((row.text(0)?, row.text(1)?))
+        }
+        _ => {
+            let rows = catalog_rows(connection, flavour, EDITOR_SETTINGS_SQL, "SESSION", &[]).await?;
+            rows.first()
+                .map(|row| Ok::<_, DriverError>((row.text(0)?, row.text(1)?)))
+                .transpose()?
+        }
+    };
+    let sql = format!(
+        "SHOW CREATE {show} {}",
+        dialect.qualify(&TableRef::new(object.schema.clone(), object.name.clone()))
+    );
+    let row = match connection.fetch_one(sqlx::raw_sql(AssertSqlSafe(sql))).await {
+        Ok(row) => row,
+        Err(error) if not_there(&error) => return Ok(None),
+        Err(error) => return Err(map_error(&error, flavour)),
+    };
+    // NULL when the login may not read the routine's body.
+    let Some(sql) = text_column(&row, column)? else {
+        return Ok(None);
+    };
+    let Some(editor) = editor else {
+        return Ok(Some(ObjectDefinition {
+            sql: terminated(&sql),
+            database: object.schema.clone(),
+            refusal: None,
+        }));
+    };
+    let made_under = (
+        text_column(&row, "sql_mode")?,
+        text_column(&row, "collation_connection")?,
+    );
+    let (sql, refusal) = match mysql_program_script(&sql) {
+        _ if made_under != editor => (terminated(&sql), Some(EditorRefusal::OtherSettings)),
+        Some(script) => (script, None),
+        None => (terminated(&sql), Some(EditorRefusal::SplitsApart)),
+    };
+    Ok(Some(ObjectDefinition {
+        sql,
+        database: object.schema.clone(),
+        refusal,
+    }))
+}
+
+fn text_column(row: &sqlx::mysql::MySqlRow, column: &str) -> Result<Option<String>, DriverError> {
+    let decode = |detail: String| DriverError::Decode {
+        column: column.to_owned(),
+        detail,
+    };
+    let bytes: Option<&[u8]> = row
+        .try_get_unchecked(column)
+        .map_err(|error| decode(error.to_string()))?;
+    bytes
+        .map(|bytes| String::from_utf8(bytes.to_vec()).map_err(|error| decode(error.to_string())))
+        .transpose()
+}
+
+fn not_there(error: &sqlx::Error) -> bool {
+    let sqlx::Error::Database(database) = error else {
+        return false;
+    };
+    database
+        .try_downcast_ref::<MySqlDatabaseError>()
+        .is_some_and(|mysql| NOT_THERE.contains(&mysql.number()))
 }
 
 async fn column_rows(

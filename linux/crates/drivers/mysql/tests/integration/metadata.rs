@@ -3,12 +3,14 @@
 use tablepro_core::column::{BoolStorage, ColumnKind, IntegerKind, IntegerWidth};
 use tablepro_core::ddl::{ColumnVisibility, GeneratedStorage, IdentityStyle, TableOptions};
 use tablepro_core::dialect::{BindTarget, LikeForm, SqlDialect};
-use tablepro_core::meta::{ObjectKind, ObjectScope};
+use tablepro_core::meta::{EditorRefusal, ObjectInfo, ObjectKind, ObjectScope};
 use tablepro_core::statement::StatementBuilder;
-use tablepro_core::{Connection, RowLimit, Value};
+use tablepro_core::{Connection, DriverError, RowLimit, Value};
 use tablepro_test_fixtures::MysqlFlavour;
 
-use crate::support::{CALL, FLAVOURS, connect, connect_root, rows, setup, start, table, within};
+use crate::support::{
+    CALL, FLAVOURS, connect, connect_root, rows, run_ok, session, session_scalar, setup, start, table, within,
+};
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires docker"]
@@ -527,6 +529,176 @@ async fn the_servers_databases_are_listed_for_a_query_tab() {
         assert!(!other.is_default && !other.is_system, "{flavour:?}: {other:?}");
         let system = find("information_schema").expect("information_schema");
         assert!(system.is_system, "{flavour:?}: {system:?}");
+        connection.close().await.expect("a close");
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn routines_sequences_and_triggers_are_listed_with_their_definitions() {
+    for flavour in FLAVOURS {
+        let fixture = start(flavour).await;
+        let connection = connect(&fixture, false).await;
+        let mut statements = vec![
+            "CREATE TABLE orders (id int PRIMARY KEY, total int)",
+            "CREATE TABLE audit (id int PRIMARY KEY)",
+            "CREATE FUNCTION add_tax(amount int) RETURNS int DETERMINISTIC RETURN amount * 2",
+            "CREATE PROCEDURE clear_audit() DELETE FROM audit",
+            "CREATE TRIGGER orders_total BEFORE INSERT ON orders FOR EACH ROW SET NEW.total = NEW.total + 1000",
+        ];
+        if flavour == MysqlFlavour::Mariadb {
+            statements.push("CREATE SEQUENCE invoice_numbers START WITH 100 INCREMENT BY 5");
+        }
+        setup(connection.as_ref(), &statements).await;
+
+        let objects = connection
+            .list_objects(&ObjectScope::DefaultSchema, within(CALL))
+            .await
+            .expect("the objects");
+        let find = |name: &str| {
+            objects
+                .iter()
+                .find(|object| object.name == name)
+                .unwrap_or_else(|| panic!("{name} listed on {flavour:?}"))
+        };
+        assert_eq!(find("orders").kind, ObjectKind::Table);
+        assert_eq!(find("add_tax").kind, ObjectKind::Function);
+        assert_eq!(find("clear_audit").kind, ObjectKind::Procedure);
+        let trigger = find("orders_total");
+        assert_eq!(
+            trigger,
+            &ObjectInfo::trigger(Some("tablepro".to_owned()), "orders_total", "orders")
+        );
+        let everything = connection
+            .list_objects(&ObjectScope::AllSchemas, within(CALL))
+            .await
+            .expect("every schema's objects");
+        assert!(everything.contains(trigger) && everything.contains(find("add_tax")));
+
+        let mut expected = vec![
+            (find("add_tax"), "amount * 2"),
+            (find("clear_audit"), "DELETE FROM audit"),
+            (trigger, "NEW.total + 1000"),
+        ];
+        if flavour == MysqlFlavour::Mariadb {
+            assert_eq!(find("invoice_numbers").kind, ObjectKind::Sequence);
+            expected.push((find("invoice_numbers"), "start with 100"));
+        }
+        for (object, body) in expected {
+            let definition = connection
+                .fetch_object_definition(object, within(CALL))
+                .await
+                .expect("the definition")
+                .unwrap_or_else(|| panic!("{} has a definition on {flavour:?}", object.name));
+            assert!(
+                definition.sql.to_lowercase().contains(&body.to_lowercase()),
+                "{} on {flavour:?}: {}",
+                object.name,
+                definition.sql
+            );
+            assert!(definition.sql.ends_with(';'), "{}", definition.sql);
+            // The workspace session that ran the setup adds STRICT_ALL_TABLES
+            // to the server's sql_mode, which an editor tab keeps as it is.
+            let refusal = (object.kind != ObjectKind::Sequence).then_some(EditorRefusal::OtherSettings);
+            assert_eq!(definition.refusal, refusal, "{} on {flavour:?}", object.name);
+            assert_eq!(
+                definition.database.as_deref(),
+                Some("tablepro"),
+                "SHOW CREATE names no database, so the text runs in the object's"
+            );
+        }
+
+        connection.close().await.expect("a close");
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn a_routine_definition_runs_again_in_an_editor_session() {
+    for flavour in FLAVOURS {
+        let fixture = start(flavour).await;
+        let connection = connect(&fixture, false).await;
+        setup(
+            connection.as_ref(),
+            &[
+                "CREATE TABLE plain (id int)",
+                "CREATE TABLE other (id int)",
+                "CREATE TRIGGER stamp BEFORE INSERT ON plain FOR EACH ROW SET NEW.id = NEW.id",
+            ],
+        )
+        .await;
+        let editor = session(connection.as_ref()).await;
+        run_ok(
+            editor.as_ref(),
+            "CREATE FUNCTION add_tax(amount int) RETURNS int DETERMINISTIC \
+             BEGIN DECLARE doubled int; SET doubled = amount * 2; RETURN doubled; END",
+        )
+        .await;
+        let read = |name: &str, kind| {
+            let connection = connection.clone();
+            let object = ObjectInfo::new(Some("tablepro".to_owned()), name, kind);
+            async move {
+                connection
+                    .fetch_object_definition(&object, within(CALL))
+                    .await
+                    .expect("the definition")
+                    .expect("a definition")
+            }
+        };
+        let add_tax = read("add_tax", ObjectKind::Function).await;
+        assert_eq!(
+            session_scalar(editor.as_ref(), "SELECT @@sql_mode = @@GLOBAL.sql_mode").await,
+            "1",
+            "an editor tab runs under the server's own sql_mode on {flavour:?}"
+        );
+        assert_eq!(
+            add_tax.refusal, None,
+            "made in an editor tab, it opens in one on {flavour:?}"
+        );
+        assert!(add_tax.sql.starts_with("DELIMITER ;;\n"), "{}", add_tax.sql);
+
+        run_ok(editor.as_ref(), "DROP FUNCTION add_tax").await;
+        run_ok(editor.as_ref(), &add_tax.sql).await;
+        assert_eq!(
+            session_scalar(editor.as_ref(), "SELECT add_tax(21)").await,
+            "42",
+            "on {flavour:?}"
+        );
+
+        run_ok(editor.as_ref(), "SET sql_mode = 'ANSI_QUOTES'").await;
+        run_ok(editor.as_ref(), "CREATE PROCEDURE quoted() SELECT \"id\" FROM plain").await;
+        assert_eq!(
+            read("quoted", ObjectKind::Procedure).await.refusal,
+            Some(EditorRefusal::OtherSettings),
+            "\"id\" names a column only under ANSI_QUOTES on {flavour:?}"
+        );
+        let moved = ObjectInfo::trigger(Some("tablepro".to_owned()), "stamp", "other");
+        let answer = connection.fetch_object_definition(&moved, within(CALL)).await;
+        assert!(
+            matches!(answer, Ok(None)),
+            "a trigger of the name on another table: {answer:?}"
+        );
+
+        let gone = [
+            ObjectInfo::new(Some("tablepro".to_owned()), "no_such", ObjectKind::Function),
+            ObjectInfo::new(Some("tablepro".to_owned()), "no_such", ObjectKind::Procedure),
+            ObjectInfo::trigger(Some("tablepro".to_owned()), "no_such", "orders"),
+            ObjectInfo::trigger(Some("no_such_database".to_owned()), "orders_total", "orders"),
+        ];
+        for object in gone {
+            let answer = connection.fetch_object_definition(&object, within(CALL)).await;
+            assert!(matches!(answer, Ok(None)), "{object:?} on {flavour:?}: {answer:?}");
+        }
+        if flavour == MysqlFlavour::Mariadb {
+            let table = ObjectInfo::new(Some("tablepro".to_owned()), "plain", ObjectKind::Sequence);
+            let answer = connection.fetch_object_definition(&table, within(CALL)).await;
+            assert!(matches!(answer, Ok(None)), "a table where a sequence was: {answer:?}");
+        }
+        let table_object = ObjectInfo::new(Some("tablepro".to_owned()), "add_tax", ObjectKind::Table);
+        assert!(matches!(
+            connection.fetch_object_definition(&table_object, within(CALL)).await,
+            Err(DriverError::Unsupported { .. })
+        ));
         connection.close().await.expect("a close");
     }
 }

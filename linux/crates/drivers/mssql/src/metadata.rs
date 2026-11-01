@@ -4,16 +4,20 @@
 //! way the server does everywhere else.
 
 use tablepro_core::ddl::{InboundForeignKey, ReferentialAction, TableDefinition};
+use tablepro_core::dialect::SqlDialect;
 use tablepro_core::meta::{
-    IndexInfo, IndexKey, ObjectInfo, ObjectKind, ObjectScope, RowCountEstimate, RowIdentity, SchemaInfo, TableEstimate,
-    TableRef,
+    EditorRefusal, IndexInfo, IndexKey, ObjectDefinition, ObjectInfo, ObjectKind, ObjectScope, RowCountEstimate,
+    RowIdentity, SchemaInfo, TableEstimate, TableRef,
 };
-use tablepro_core::{ColumnInfo, DriverError, ForeignKeyInfo, Value};
+use tablepro_core::sql_syntax::{SqlGrammar, holds_client_directive, qualify_created_name};
+use tablepro_core::{ColumnInfo, DriverError, ForeignKeyInfo, UnsupportedFeature, Value};
+use tiberius::ColumnData;
 
 use crate::catalog::{
     COLUMNS_SQL, Cells, INBOUND_FOREIGN_KEYS_SQL, MssqlColumnRow, PRIMARY_KEY_SQL, column_definition, column_info,
     inbound_foreign_keys, primary_key,
 };
+use crate::dialect::MssqlDialect;
 use crate::in_band_request::{Interrupt, Watch};
 use crate::index_statements::fetch_index_statements;
 use crate::physical::MssqlClient;
@@ -33,9 +37,54 @@ const DATABASES_SQL: &str = "SELECT d.name, \
         CAST(CASE WHEN d.database_id <= 4 THEN 1 ELSE 0 END AS int) \
     FROM sys.databases d WHERE d.state = 0 AND HAS_DBACCESS(d.name) = 1 ORDER BY d.name";
 
-const OBJECTS_SQL: &str = "SELECT SCHEMA_NAME(o.schema_id), o.name, RTRIM(o.type) \
+/// One read for the objects and their triggers. `{objects}` and
+/// `{triggers}` narrow each half to a schema. `parent_class` 1 keeps the
+/// triggers of tables and views, not the database's DDL triggers.
+const OBJECTS_SQL: &str = "SELECT SCHEMA_NAME(o.schema_id), o.name, RTRIM(o.type), NULL \
     FROM sys.objects o \
-    WHERE o.type IN ('U', 'V', 'SO', 'FN', 'IF', 'TF', 'FS', 'FT', 'P', 'PC') AND o.is_ms_shipped = 0";
+    WHERE o.type IN ('U', 'V', 'SO', 'FN', 'IF', 'TF', 'FS', 'FT', 'P', 'PC') AND o.is_ms_shipped = 0{objects} \
+    UNION ALL \
+    SELECT SCHEMA_NAME(p.schema_id), t.name, 'TR', p.name \
+    FROM sys.triggers t JOIN sys.objects p ON p.object_id = t.parent_id \
+    WHERE t.parent_class = 1 AND t.is_ms_shipped = 0{triggers} \
+    ORDER BY 1, 2, 4";
+
+/// A module's text with what tells why it may have none: a CLR one
+/// keeps its code in an assembly, and an encrypted one keeps it hidden.
+/// Then the two SET options the module was made under, which decide how
+/// its body reads, and this session's, which a new editor tab shares: the
+/// login sets both and neither session changes them.
+const ROUTINE_DEFINITION_SQL: &str = "SELECT OBJECT_DEFINITION(o.object_id), RTRIM(o.type), \
+        CAST(OBJECTPROPERTY(o.object_id, 'IsEncrypted') AS int), \
+        CAST(m.uses_ansi_nulls AS int), CAST(m.uses_quoted_identifier AS int), \
+        CAST(SESSIONPROPERTY('ANSI_NULLS') AS int), CAST(SESSIONPROPERTY('QUOTED_IDENTIFIER') AS int) \
+    FROM sys.objects o LEFT JOIN sys.sql_modules m ON m.object_id = o.object_id \
+    WHERE o.schema_id = SCHEMA_ID(COALESCE(@P1, SCHEMA_NAME())) AND o.name = @P2 AND RTRIM(o.type) IN ({types})";
+
+const TRIGGER_DEFINITION_SQL: &str = "SELECT OBJECT_DEFINITION(t.object_id), RTRIM(t.type), \
+        CAST(OBJECTPROPERTY(t.object_id, 'IsEncrypted') AS int), \
+        CAST(m.uses_ansi_nulls AS int), CAST(m.uses_quoted_identifier AS int), \
+        CAST(SESSIONPROPERTY('ANSI_NULLS') AS int), CAST(SESSIONPROPERTY('QUOTED_IDENTIFIER') AS int) \
+    FROM sys.triggers t JOIN sys.objects p ON p.object_id = t.parent_id \
+    LEFT JOIN sys.sql_modules m ON m.object_id = t.object_id \
+    WHERE t.parent_class = 1 AND t.name = @P2 AND p.name = @P3 \
+      AND p.schema_id = SCHEMA_ID(COALESCE(@P1, SCHEMA_NAME()))";
+
+/// The module types whose code is a .NET assembly, not SQL.
+const CLR_TYPES: [&str; 4] = ["FS", "FT", "PC", "TA"];
+
+/// The catalogue gives the numbers in the sequence's own type, which can
+/// be wider than any integer here, so they come as text.
+/// The type as declared: an alias type by its schema and name, which
+/// `system_type_id` would give as the built-in type under it.
+const SEQUENCE_SQL: &str = "SELECT CASE WHEN t.is_user_defined = 1 \
+            THEN QUOTENAME(SCHEMA_NAME(t.schema_id)) + N'.' + QUOTENAME(t.name) ELSE t.name END, \
+        CAST(s.start_value AS nvarchar(64)), \
+        CAST(s.increment AS nvarchar(64)), CAST(s.minimum_value AS nvarchar(64)), \
+        CAST(s.maximum_value AS nvarchar(64)), CAST(s.is_cycling AS int), CAST(s.is_cached AS int), \
+        CAST(s.cache_size AS bigint), CAST(s.precision AS int) \
+    FROM sys.sequences s JOIN sys.types t ON t.user_type_id = s.user_type_id \
+    WHERE s.schema_id = SCHEMA_ID(COALESCE(@P1, SCHEMA_NAME())) AND s.name = @P2";
 
 const INDEXES_SQL: &str = "SELECT i.name, CAST(i.is_unique AS int), CAST(i.is_primary_key AS int), c.name, \
         CAST(ic.is_descending_key AS int), i.filter_definition \
@@ -109,29 +158,168 @@ pub(crate) async fn list_objects(
     watch: &Watch,
     scope: &ObjectScope,
 ) -> Result<Vec<ObjectInfo>, Interrupt> {
-    let (sql, params) = match scope {
-        ObjectScope::DefaultSchema => (format!("{OBJECTS_SQL} AND o.schema_id = SCHEMA_ID()"), Vec::new()),
+    let (objects, triggers, params) = match scope {
+        ObjectScope::DefaultSchema => (
+            " AND o.schema_id = SCHEMA_ID()",
+            " AND p.schema_id = SCHEMA_ID()",
+            Vec::new(),
+        ),
         ObjectScope::Schema(schema) => (
-            format!("{OBJECTS_SQL} AND o.schema_id = SCHEMA_ID(@P1)"),
+            " AND o.schema_id = SCHEMA_ID(@P1)",
+            " AND p.schema_id = SCHEMA_ID(@P1)",
             vec![text_param(schema)],
         ),
-        ObjectScope::AllSchemas => (OBJECTS_SQL.to_owned(), Vec::new()),
+        ObjectScope::AllSchemas => ("", "", Vec::new()),
     };
-    let sql = format!("{sql} ORDER BY 1, 2");
+    let sql = OBJECTS_SQL
+        .replace("{objects}", objects)
+        .replace("{triggers}", triggers);
     let rows = catalogue_rows(client, watch, &sql, &params).await?;
-    let mut objects = Vec::with_capacity(rows.len());
+    let mut listed = Vec::with_capacity(rows.len());
     for row in &rows {
         let cells = Cells::new(row, "sys.objects");
         let Some(kind) = cells.text(2).as_deref().and_then(object_kind) else {
             continue;
         };
-        objects.push(ObjectInfo {
+        listed.push(ObjectInfo {
             schema: cells.text(0),
             name: cells.required_text(1)?,
             kind,
+            parent_table: cells.text(3),
         });
     }
-    Ok(objects)
+    Ok(listed)
+}
+
+/// A dropped object has no row, and one whose text the login may not
+/// read has a NULL text: both give `None`, which the server leaves no
+/// way to tell apart. The text is kept as written, so a name written
+/// without its schema is given it.
+pub(crate) async fn fetch_object_definition(
+    client: &mut MssqlClient,
+    watch: &Watch,
+    dialect: &MssqlDialect,
+    object: &ObjectInfo,
+) -> Result<Option<ObjectDefinition>, Interrupt> {
+    let schema = optional_text_param(object.schema.as_deref());
+    let name = text_param(&object.name);
+    let (sql, params) = match (object.kind, object.parent_table.as_deref()) {
+        (ObjectKind::Function, _) => (
+            ROUTINE_DEFINITION_SQL.replace("{types}", "'FN', 'IF', 'TF', 'FS', 'FT'"),
+            vec![schema, name],
+        ),
+        (ObjectKind::Procedure, _) => (
+            ROUTINE_DEFINITION_SQL.replace("{types}", "'P', 'PC'"),
+            vec![schema, name],
+        ),
+        (ObjectKind::Trigger, Some(table)) => {
+            (TRIGGER_DEFINITION_SQL.to_owned(), vec![schema, name, text_param(table)])
+        }
+        (ObjectKind::Sequence, _) => return sequence_definition(client, watch, dialect, object).await,
+        _ => {
+            return Err(Interrupt::Failed(DriverError::Unsupported {
+                feature: UnsupportedFeature::ObjectDefinitions,
+            }));
+        }
+    };
+    let rows = catalogue_rows(client, watch, &sql, &params).await?;
+    let Some(row) = rows.first() else {
+        return Ok(None);
+    };
+    let cells = Cells::new(row, "OBJECT_DEFINITION");
+    let Some(text) = cells.text(0) else {
+        let feature = if cells.text(1).is_some_and(|code| CLR_TYPES.contains(&code.as_str())) {
+            UnsupportedFeature::ClrRoutine
+        } else if cells.flag(2) {
+            UnsupportedFeature::EncryptedDefinition
+        } else {
+            return Ok(None);
+        };
+        return Err(Interrupt::Failed(DriverError::Unsupported { feature }));
+    };
+    let refusal = if holds_client_directive(&text, SqlGrammar::MsSql) {
+        Some(EditorRefusal::SplitsApart)
+    } else if cells.flag(3) != cells.flag(5) || cells.flag(4) != cells.flag(6) {
+        Some(EditorRefusal::OtherSettings)
+    } else {
+        None
+    };
+    let sql = match object.schema.as_deref() {
+        Some(schema) => qualify_created_name(&text, SqlGrammar::MsSql, &dialect.quote_identifier(schema)),
+        None => text,
+    };
+    Ok(Some(ObjectDefinition {
+        sql,
+        database: None,
+        refusal,
+    }))
+}
+
+/// SQL Server has no function that prints a sequence, so the statement
+/// is built from the catalogue.
+async fn sequence_definition(
+    client: &mut MssqlClient,
+    watch: &Watch,
+    dialect: &MssqlDialect,
+    object: &ObjectInfo,
+) -> Result<Option<ObjectDefinition>, Interrupt> {
+    let params = [optional_text_param(object.schema.as_deref()), text_param(&object.name)];
+    let rows = catalogue_rows(client, watch, SEQUENCE_SQL, &params).await?;
+    let Some(row) = rows.first() else {
+        return Ok(None);
+    };
+    let qualified = dialect.qualify(&TableRef::new(object.schema.clone(), object.name.clone()));
+    let sequence = SequenceRow::from_cells(&Cells::new(row, "sys.sequences")).map_err(Interrupt::Failed)?;
+    Ok(Some(ObjectDefinition {
+        sql: sequence_statement(&qualified, &sequence),
+        database: None,
+        refusal: None,
+    }))
+}
+
+struct SequenceRow {
+    type_name: String,
+    start: String,
+    increment: String,
+    minimum: String,
+    maximum: String,
+    cycles: bool,
+    cached: bool,
+    cache_size: Option<i64>,
+    precision: i64,
+}
+
+impl SequenceRow {
+    fn from_cells(cells: &Cells<'_>) -> Result<Self, DriverError> {
+        Ok(Self {
+            type_name: cells.required_text(0)?,
+            start: cells.required_text(1)?,
+            increment: cells.required_text(2)?,
+            minimum: cells.required_text(3)?,
+            maximum: cells.required_text(4)?,
+            cycles: cells.flag(5),
+            cached: cells.flag(6),
+            cache_size: cells.int(7),
+            precision: cells.int(8).unwrap_or(0),
+        })
+    }
+}
+
+fn sequence_statement(qualified: &str, row: &SequenceRow) -> String {
+    let data_type = match row.type_name.as_str() {
+        "decimal" | "numeric" => format!("{}({})", row.type_name, row.precision),
+        other => other.to_owned(),
+    };
+    let cycle = if row.cycles { "CYCLE" } else { "NO CYCLE" };
+    let cache = match (row.cached, row.cache_size) {
+        (true, Some(size)) => format!("CACHE {size}"),
+        (true, None) => "CACHE".to_owned(),
+        (false, _) => "NO CACHE".to_owned(),
+    };
+    format!(
+        "CREATE SEQUENCE {qualified} AS {data_type} START WITH {} INCREMENT BY {} MINVALUE {} MAXVALUE {} {cycle} {cache};",
+        row.start, row.increment, row.minimum, row.maximum
+    )
 }
 
 fn object_kind(code: &str) -> Option<ObjectKind> {
@@ -141,8 +329,13 @@ fn object_kind(code: &str) -> Option<ObjectKind> {
         "SO" => Some(ObjectKind::Sequence),
         "FN" | "IF" | "TF" | "FS" | "FT" => Some(ObjectKind::Function),
         "P" | "PC" => Some(ObjectKind::Procedure),
+        "TR" => Some(ObjectKind::Trigger),
         _ => None,
     }
+}
+
+fn optional_text_param(text: Option<&str>) -> ColumnData<'static> {
+    ColumnData::String(text.map(|text| text.to_owned().into()))
 }
 
 async fn column_rows(
@@ -338,6 +531,43 @@ mod tests {
         Value::Text(value.to_owned())
     }
 
+    fn sequence(type_name: &str) -> SequenceRow {
+        SequenceRow {
+            type_name: type_name.to_owned(),
+            start: "100".to_owned(),
+            increment: "5".to_owned(),
+            minimum: "1".to_owned(),
+            maximum: "9999".to_owned(),
+            cycles: false,
+            cached: true,
+            cache_size: Some(20),
+            precision: 18,
+        }
+    }
+
+    #[test]
+    fn a_sequence_statement_names_every_catalogue_setting() {
+        assert_eq!(
+            sequence_statement("[dbo].[invoices]", &sequence("bigint")),
+            "CREATE SEQUENCE [dbo].[invoices] AS bigint START WITH 100 INCREMENT BY 5 MINVALUE 1 MAXVALUE 9999 \
+             NO CYCLE CACHE 20;"
+        );
+        let alias = sequence_statement("[dbo].[invoices]", &sequence("[sales].[InvoiceId]"));
+        assert!(alias.contains(" AS [sales].[InvoiceId] START WITH"), "{alias}");
+    }
+
+    #[test]
+    fn a_sequence_statement_keeps_precision_cycling_and_the_default_cache() {
+        let mut row = sequence("numeric");
+        row.cycles = true;
+        row.cache_size = None;
+        let statement = sequence_statement("[s]", &row);
+        assert!(statement.contains("AS numeric(18) "), "{statement}");
+        assert!(statement.ends_with(" CYCLE CACHE;"), "{statement}");
+        row.cached = false;
+        assert!(sequence_statement("[s]", &row).ends_with(" CYCLE NO CACHE;"));
+    }
+
     #[test]
     fn referential_actions_map_to_keywords() {
         assert_eq!(referential_action("CASCADE"), Some(ReferentialAction::Cascade));
@@ -352,8 +582,9 @@ mod tests {
         assert_eq!(object_kind("U"), Some(ObjectKind::Table));
         assert_eq!(object_kind("SO"), Some(ObjectKind::Sequence));
         assert_eq!(object_kind("IF"), Some(ObjectKind::Function));
+        assert_eq!(object_kind("TR"), Some(ObjectKind::Trigger));
         assert_eq!(object_kind("PC"), Some(ObjectKind::Procedure));
-        assert_eq!(object_kind("TR"), None);
+        assert_eq!(object_kind("D"), None);
     }
 
     #[test]

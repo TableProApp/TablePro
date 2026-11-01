@@ -1,7 +1,7 @@
 //! What the catalogue says, and SQL the dialect builds against it.
 
 use tablepro_core::column::{ColumnKind, TemporalZone, TextLength};
-use tablepro_core::meta::{IndexKey, ObjectKind, ObjectScope, RowCountEstimate, RowIdentity};
+use tablepro_core::meta::{IndexKey, ObjectInfo, ObjectKind, ObjectScope, RowCountEstimate, RowIdentity};
 use tablepro_core::statement::StatementBuilder;
 use tablepro_core::{Connection, FilterOp, FilterRule, FilterSet, FilterValue, RowLimit, Value, build_filter};
 
@@ -295,6 +295,59 @@ async fn clickhouse_ilike_is_case_insensitive() {
         matching(connection.as_ref(), &name, rule(FilterOp::Ilike, "aLP%")).await,
         ["Alpha"]
     );
+    connection.close().await.expect("a close");
+}
+
+#[tokio::test]
+#[ignore = "requires docker"]
+async fn a_user_function_lists_with_its_create_statement() {
+    let fixture = start().await;
+    let connection = connect(&fixture, false).await;
+    let function = unique("fn");
+    setup(
+        connection.as_ref(),
+        &[&format!("CREATE FUNCTION {function} AS (x) -> x * 7")],
+    )
+    .await;
+
+    let objects = connection
+        .list_objects(&ObjectScope::DefaultSchema, within(CALL))
+        .await
+        .expect("the objects");
+    let listed = objects
+        .iter()
+        .find(|object| object.name == function)
+        .expect("the function");
+    assert_eq!(listed.kind, ObjectKind::Function);
+    assert!(listed.parent_table.is_none());
+    assert!(objects.iter().all(|object| object.kind != ObjectKind::Trigger));
+
+    let definition = connection
+        .fetch_object_definition(listed, within(CALL))
+        .await
+        .expect("the definition")
+        .expect("a stored statement");
+    let text = &definition.sql;
+    assert!(
+        text.starts_with("CREATE FUNCTION") && text.contains(&function) && text.contains("* 7"),
+        "{text}"
+    );
+    assert!(text.ends_with(';'), "{text}");
+    assert_eq!(definition.database, None);
+
+    let gone = ObjectInfo::new(None, "no_such_function", ObjectKind::Function);
+    assert_eq!(
+        connection
+            .fetch_object_definition(&gone, within(CALL))
+            .await
+            .expect("an answer"),
+        None
+    );
+    let table = ObjectInfo::new(Some(DATABASE.to_owned()), "t", ObjectKind::Table);
+    assert!(matches!(
+        connection.fetch_object_definition(&table, within(CALL)).await,
+        Err(tablepro_core::DriverError::Unsupported { .. })
+    ));
     connection.close().await.expect("a close");
 }
 
