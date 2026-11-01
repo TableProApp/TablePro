@@ -408,7 +408,7 @@ targets:
       - package: Sparkle
       - package: Yams
       - package: TableProCore
-        products: [TableProAnalytics, TableProAutocomplete, TableProConnectionLibrary, TableProGeometry, TableProGoogleCloud, TableProImport, TableProLogRedaction, TableProNumberFormatting, TableProRedisCore, TableProSQLGrammar, TableProSQLVocabulary, TableProSSHTransport, TableProSyncTransport, TableProTabular, TableProTabularIO, TableProTheme]
+        products: [TableProAnalytics, TableProAutocomplete, TableProConnectionLibrary, TableProGeometry, TableProGoogleCloud, TableProImport, TableProInfluxDBCore, TableProLogRedaction, TableProNumberFormatting, TableProRedisCore, TableProSQLGrammar, TableProSQLVocabulary, TableProSSHTransport, TableProSyncTransport, TableProTabular, TableProTabularIO, TableProTheme]
       - package: TableProMacCore
         products: [TableProMCP, TableProSSHConfig, TableProUtilities]
     # Writes nothing for a version CHANGELOG.md has no section for, so a 0.0.0-dev build ships no notes.
@@ -1307,6 +1307,15 @@ targets:
       - package: TableProCore
         product: TableProWeaviateCore
 
+  InfluxDBDriverPlugin:
+    templates: [DriverPlugin]
+    templateAttributes:
+      folder: InfluxDBDriverPlugin
+      principalClass: InfluxDBPlugin
+    dependencies:
+      - package: TableProCore
+        product: TableProInfluxDBCore
+
 # Every plugin is in exactly one of BundledPlugins (embedded in the app) and RegistryPlugins (each
 # release publishes it); scripts/ci/check-plugin-manifest.py enforces it. AllPlugins compiles both.
 aggregateTargets:
@@ -1344,6 +1353,7 @@ aggregateTargets:
       - EtcdDriverPlugin
       - FirebaseDriverPlugin
       - HanaDriver
+      - InfluxDBDriverPlugin
       - KafkaDriverPlugin
       - KingbaseESDriverPlugin
       - LibSQLDriverPlugin

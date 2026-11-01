@@ -3025,6 +3025,10 @@
         }
       }
     },
+    "%@ cannot run this filter on that column." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "%@ cannot start with a dash or contain spaces" : {
       "localizations" : {
         "fr" : {
@@ -4039,6 +4043,10 @@
     },
     "%@ is not a Vault address. Use a URL such as https://vault.example.com:8200." : {
 
+    },
+    "%@ is not available on this server. It accepts %@." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "%@ is read-only, so nothing can be written to it." : {
       "localizations" : {
@@ -37500,6 +37508,10 @@
           }
         }
       }
+    },
+    "Choose a database or bucket first." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Choose a folder containing .sql files" : {
       "localizations" : {
@@ -93920,6 +93932,34 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "InfluxDB %@ is not supported. Connect to InfluxDB 2 or 3." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "InfluxDB 2 needs an organization. Set it in the connection settings." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "InfluxDB has no views." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "InfluxDB points cannot be edited in TablePro." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "InfluxDB reads this Flux script as one that writes or reaches outside the database, which TablePro's check did not see, so it was not run." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "InfluxDB refused the token: %@" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "InfluxDB refused the token." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Info" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -96089,6 +96129,10 @@
           }
         }
       }
+    },
+    "Invalid InfluxDB address: %@" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Invalid JSON" : {
       "localizations" : {
@@ -121802,6 +121846,10 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "Not connected to InfluxDB." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Not connected to Memcached" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -129421,6 +129469,10 @@
           }
         }
       }
+    },
+    "Organization" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Other" : {
       "localizations" : {
@@ -154158,6 +154210,10 @@
           }
         }
       }
+    },
+    "Run one InfluxQL statement at a time, with no ; inside it." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Run one statement, or on SQL Server a whole script. Reads need tools:read; anything that writes needs tools:write and is subject to the connection's Safe Mode, which asks the user to approve it. DROP and TRUNCATE go through confirm_destructive_operation instead. Statements that read or write files, or run server-side code, are refused. Send one statement per call, except on SQL Server, where a script runs batch by batch at its GO lines and result_sets lists every result set when there is more than one." : {
       "localizations" : {
@@ -190838,6 +190894,10 @@
         }
       }
     },
+    "The server did not say which InfluxDB version it runs." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The server does not accept encrypted connections but TablePro is configured to require TLS." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -200837,6 +200897,9 @@
         }
       }
     },
+    "Time series database" : {
+
+    },
     "Time spent waiting" : {
       "localizations" : {
         "fr" : {
@@ -205301,6 +205364,10 @@
     },
     "Unexpected character “%@”." : {
 
+    },
+    "Unexpected InfluxDB response: %@" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Unexpected reply from Memcached: %@" : {
       "extractionState" : "manual",
