@@ -99,7 +99,7 @@ internal enum CompareSQLLiteral {
     /// name falls back to the driver's own spelling rather than guessing at one.
     internal static func binaryStyle(for databaseType: DatabaseType) -> BinaryStyle {
         switch databaseType {
-        case .mysql, .mariadb, .tidb, .databend, .oceanbase, .sqlite, .clickhouse, .libsql, .turso,
+        case .mysql, .mariadb, .tidb, .databend, .oceanbase, .starrocks, .sqlite, .clickhouse, .libsql, .turso,
              .cloudflareD1:
             return .bitString
         case .duckdb:

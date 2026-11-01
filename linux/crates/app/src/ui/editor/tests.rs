@@ -2,7 +2,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use tablepro_core::column::{ColumnType, ResultColumn};
-use tablepro_core::{DriverError, EditorSession, ResultEvent, TransactionState, Truncation, Value};
+use tablepro_core::{DriverError, EditorSession, QueryTimeout, ResultEvent, TransactionState, Truncation, Value};
 use tablepro_session::Session;
 use tablepro_session::fakes::{FakeConnector, FakeCredentialSource};
 use tablepro_session::operation::DefaultDeadlines;
@@ -28,10 +28,20 @@ fn session_with(fake: Arc<FakeEditorSession>, tasks: Tasks) -> Arc<Session> {
     session_on(fake, tasks, ConnectionScript::default())
 }
 
-fn session_on(fake: Arc<FakeEditorSession>, tasks: Tasks, mut script: ConnectionScript) -> Arc<Session> {
+fn session_on(fake: Arc<FakeEditorSession>, tasks: Tasks, script: ConnectionScript) -> Arc<Session> {
+    session_timing_out(fake, tasks, script, QueryTimeout::Preference)
+}
+
+fn session_timing_out(
+    fake: Arc<FakeEditorSession>,
+    tasks: Tasks,
+    mut script: ConnectionScript,
+    editor_timeout: QueryTimeout,
+) -> Arc<Session> {
     let editor: Arc<dyn EditorSession> = fake;
     script.open_editor_session.always(FakeReply::ok(editor));
-    let request = FakeConnector::request().expect("a request");
+    let mut request = FakeConnector::request().expect("a request");
+    request.workspace_settings = request.workspace_settings.with_editor_timeout(editor_timeout);
     let (pending, _) = FakeConnector::pending_session(request, script);
     Session::start(
         pending,
@@ -511,6 +521,26 @@ fn stop_cancels_the_running_statement() {
         2,
         "the second statement has no line"
     );
+}
+
+#[gtk4::test]
+fn the_connection_query_timeout_wins_over_the_preference() {
+    let mut runs = Replies::default();
+    runs.always(FakeRun::until_stopped());
+    let settings = MemorySettings::new();
+    settings.get().set_query_timeout_secs(3600).expect("the preference");
+    let harness = build_editor_on(settings, runs, "SELECT pg_sleep(60)", |_| None);
+    harness.active.replace(session_timing_out(
+        harness.fake.clone(),
+        harness.runtime.tasks(),
+        ConnectionScript::default(),
+        QueryTimeout::After(Duration::from_millis(200)),
+    ));
+
+    harness.editor.run();
+
+    wait_until(WAIT, || !harness.editor.is_running()).expect("the connection's timeout to end the run");
+    assert_eq!(harness.editor.imp().results.n_entries(), 1);
 }
 
 #[gtk4::test]

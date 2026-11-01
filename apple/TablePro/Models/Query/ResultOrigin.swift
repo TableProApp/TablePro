@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 
 /// Where one result set's rows came from, captured when its statement ran.
 ///
@@ -29,6 +30,9 @@ struct ResultOrigin: Equatable {
     /// first is safe to write to, so the two cannot share a representation.
     var keysResolved: Bool
 
+    // Nil for a table, before the driver answers, and on an engine that never does.
+    var viewRowEditing: PluginViewRowEditing?
+
     init(
         tableName: String? = nil,
         schemaName: String? = nil,
@@ -37,7 +41,8 @@ struct ResultOrigin: Equatable {
         isEditable: Bool = false,
         isView: Bool = false,
         objectType: TableInfo.TableType? = nil,
-        keysResolved: Bool = false
+        keysResolved: Bool = false,
+        viewRowEditing: PluginViewRowEditing? = nil
     ) {
         self.tableName = tableName
         self.schemaName = schemaName
@@ -47,6 +52,7 @@ struct ResultOrigin: Equatable {
         self.isView = isView
         self.objectType = objectType
         self.keysResolved = keysResolved
+        self.viewRowEditing = viewRowEditing
     }
 }
 
@@ -54,7 +60,7 @@ struct ResultOrigin: Equatable {
 /// every case carries the sentence shown to the user.
 enum ResultEditRefusal: Equatable {
     case unknownTable
-    case view
+    case view(PluginViewReadOnlyReason?)
     case databaseMoved
     case keysUnresolved
 
@@ -62,24 +68,65 @@ enum ResultEditRefusal: Equatable {
         switch self {
         case .unknownTable:
             return String(localized: "These rows cannot be edited because TablePro cannot tell which table they came from.")
-        case .view:
-            return String(localized: "These rows come from a view, which cannot be edited.")
+        case .view(let reason):
+            return Self.viewMessage(reason)
         case .databaseMoved:
             return String(localized: "These rows came from another database than the one this tab is now using.")
         case .keysUnresolved:
             return String(localized: "TablePro has not looked up this table's key columns, so it cannot tell which row an edit would change.")
         }
     }
+
+    private static func viewMessage(_ reason: PluginViewReadOnlyReason?) -> String {
+        switch reason {
+        case .notUpdatable:
+            return String(localized: "These rows come from a view the server cannot write through.")
+        case .writesRunTriggers:
+            return String(localized: "These rows come from a view whose writes run rules or triggers, so an edit may not change the row shown.")
+        case .readsSeveralTables:
+            return String(localized: "These rows come from a view that reads more than one table, so an edit cannot target one row.")
+        case .baseTableHidden:
+            return String(localized: "These rows come from a view whose table or key is hidden from this connection, so an edit cannot target one row.")
+        case .baseTableHasNoKey:
+            return String(localized: "These rows come from a view whose table has no primary key, so an edit could change more than one row.")
+        case .keyNotExposed:
+            return String(localized: "These rows come from a view that does not show every primary key column of its table, so an edit could change more than one row.")
+        case .couldNotCheck:
+            return String(localized: "These rows come from a view TablePro could not check, so it cannot tell which row an edit would change.")
+        case nil:
+            return String(localized: "These rows come from a view, which cannot be edited.")
+        @unknown default:
+            return String(localized: "These rows come from a view, which cannot be edited.")
+        }
+    }
+
+    // A stale answer must not key a write on whatever keys the tab holds now.
+    static func forView(answer: PluginViewRowEditing?, keyedOn primaryKeyColumns: [String]) -> ResultEditRefusal? {
+        if answer?.writeTarget(keyedOn: primaryKeyColumns) != nil { return nil }
+        if case .readOnly(let reason)? = answer { return .view(reason) }
+        return .view(nil)
+    }
 }
 
-/// The single decision about whether a result's rows may be written back.
-///
-/// It is pure so the rule can be tested without a coordinator, and it is fail-closed: a result
-/// with no captured origin refuses rather than borrowing the tab's current table.
+extension PluginViewRowEditing {
+    func writeTarget(keyedOn primaryKeyColumns: [String]) -> PluginViewWriteTarget? {
+        guard let target = writeTarget, !target.keyColumns.isEmpty, target.keyColumns == primaryKeyColumns else {
+            return nil
+        }
+        return target
+    }
+}
+
+// Fail-closed: a result with no captured origin refuses rather than borrowing the tab's current table.
 enum ResultEditability {
     static func refusal(for origin: ResultOrigin?, currentDatabaseName: String) -> ResultEditRefusal? {
         guard let origin else { return .unknownTable }
-        if origin.isView { return .view }
+        // A query tab learns its relation is a view only from the driver's answer.
+        if origin.isView || origin.viewRowEditing != nil {
+            guard (origin.objectType ?? .view) == .view else { return .view(nil) }
+            let refusal = ResultEditRefusal.forView(answer: origin.viewRowEditing, keyedOn: origin.primaryKeyColumns)
+            if let refusal { return refusal }
+        }
         guard origin.isEditable, let tableName = origin.tableName, !tableName.isEmpty else {
             return .unknownTable
         }

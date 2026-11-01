@@ -8,6 +8,7 @@ use futures_util::TryStreamExt;
 use sqlx::mysql::MySqlConnection;
 use sqlx::{AssertSqlSafe, Executor as _, Row as _};
 use tablepro_core::column::{ColumnDefault, ColumnInfo, ColumnKind, SqlExpression, TemporalZone};
+use tablepro_core::ddl::ddl_sql::parenthesized;
 use tablepro_core::ddl::{
     CharacterSet, ColumnDefinition, InboundForeignKey, OutboundForeignKey, PrimaryKeyConstraint, ReferentialAction,
     TableDefinition, TableOptions, TableSource, UnmodeledAttribute,
@@ -24,7 +25,7 @@ use crate::catalog::{
     ColumnCheck, FULL_COLLATION_NAMES_SQL, FULL_COLLATIONS_SQL, INBOUND_FOREIGN_KEYS_SQL, ListedOptions, ListedSrid,
     MARIADB_COLUMN_CHECKS_SQL, MARIADB_GEOMETRY_SRIDS_SQL, MySqlColumnRow, TableComparisons, character_sets,
     column_checks, column_comparisons, column_definition, column_info, columns_sql, compares_alike, geometry_srids,
-    inbound_foreign_keys, place_column_checks, quoted_default, table_options,
+    inbound_foreign_keys, place_column_checks, quoted_default, table_options, unescape_expression,
 };
 use crate::decode::decode_row;
 use crate::dialect::MySqlDialect;
@@ -203,12 +204,12 @@ pub(crate) async fn fetch_columns(
 /// MySQL 8.0.13 and later name a functional key part in EXPRESSION;
 /// MariaDB has no such column, and no functional key parts.
 const MYSQL_INDEXES_SQL: &str = "\
-SELECT INDEX_NAME, NON_UNIQUE, COLUMN_NAME, COLLATION, EXPRESSION
+SELECT INDEX_NAME, NON_UNIQUE, COLUMN_NAME, COLLATION, EXPRESSION, INDEX_TYPE, SUB_PART
 FROM information_schema.STATISTICS
 WHERE TABLE_SCHEMA = COALESCE(?, DATABASE()) AND TABLE_NAME = ?
 ORDER BY INDEX_NAME = 'PRIMARY' DESC, INDEX_NAME, SEQ_IN_INDEX";
 const MARIADB_INDEXES_SQL: &str = "\
-SELECT INDEX_NAME, NON_UNIQUE, COLUMN_NAME, COLLATION, NULL AS EXPRESSION
+SELECT INDEX_NAME, NON_UNIQUE, COLUMN_NAME, COLLATION, NULL AS EXPRESSION, INDEX_TYPE, SUB_PART
 FROM information_schema.STATISTICS
 WHERE TABLE_SCHEMA = COALESCE(?, DATABASE()) AND TABLE_NAME = ?
 ORDER BY INDEX_NAME = 'PRIMARY' DESC, INDEX_NAME, SEQ_IN_INDEX";
@@ -224,33 +225,97 @@ pub(crate) async fn fetch_indexes(
         false => MARIADB_INDEXES_SQL,
     };
     let rows = catalog_rows(connection, flavour, sql, "STATISTICS", &table_binds(table)).await?;
-    let mut indexes: Vec<IndexInfo> = Vec::new();
+    let mut indexes: Vec<(IndexInfo, String, Vec<String>)> = Vec::new();
     for row in rows {
         let name = row.required_text(0)?;
         let descending = row.text(3)?.as_deref() == Some("D");
-        let key = match (row.text(2)?, row.text(4)?) {
-            (Some(column), _) => IndexKey::Column {
-                name: column,
-                descending,
-            },
-            (None, Some(expression)) => IndexKey::Expression {
-                sql: expression,
-                descending,
-            },
+        let (key, part) = match (row.text(2)?, row.text(4)?) {
+            (Some(column), _) => {
+                let prefix = row.number(6)?.map(|length| format!("({length})")).unwrap_or_default();
+                let part = format!("{}{prefix}", dialect.quote_identifier(&column));
+                (
+                    IndexKey::Column {
+                        name: column,
+                        descending,
+                    },
+                    part,
+                )
+            }
+            (None, Some(expression)) => {
+                let part = parenthesized(&unescape_expression(&expression));
+                (
+                    IndexKey::Expression {
+                        sql: expression,
+                        descending,
+                    },
+                    part,
+                )
+            }
             (None, None) => continue,
         };
-        match indexes.last_mut().filter(|index| index.name == name) {
-            Some(index) => index.keys.push(key),
-            None => indexes.push(IndexInfo {
-                unique: row.number(1)? == Some(0),
-                primary: name == "PRIMARY",
-                name,
-                keys: vec![key],
-                predicate: None,
-            }),
+        let part = match descending {
+            true => format!("{part} DESC"),
+            false => part,
+        };
+        match indexes.last_mut().filter(|(index, ..)| index.name == name) {
+            Some((index, _, parts)) => {
+                index.keys.push(key);
+                parts.push(part);
+            }
+            None => indexes.push((
+                IndexInfo {
+                    unique: row.number(1)? == Some(0),
+                    primary: name == "PRIMARY",
+                    name,
+                    keys: vec![key],
+                    predicate: None,
+                    definition: None,
+                },
+                row.text(5)?.unwrap_or_default(),
+                vec![part],
+            )),
         }
     }
-    Ok(indexes)
+    Ok(indexes
+        .into_iter()
+        .map(|(mut index, index_type, parts)| {
+            index.definition = create_index(dialect, table, &index, &index_type, &parts);
+            index
+        })
+        .collect())
+}
+
+/// The CREATE INDEX for an index STATISTICS lists, with the prefix
+/// length a TEXT or BLOB key needs, the kind a full-text or spatial
+/// index is made with, and the access method, since a MEMORY table
+/// would otherwise make a B-tree index as a hash. The primary key is
+/// only ever a constraint.
+fn create_index(
+    dialect: &MySqlDialect,
+    table: &TableRef,
+    index: &IndexInfo,
+    index_type: &str,
+    parts: &[String],
+) -> Option<String> {
+    if index.primary {
+        return None;
+    }
+    let kind = match index_type {
+        "FULLTEXT" => "FULLTEXT ",
+        "SPATIAL" => "SPATIAL ",
+        _ if index.unique => "UNIQUE ",
+        _ => "",
+    };
+    let method = match index_type {
+        "BTREE" | "HASH" => format!(" USING {index_type}"),
+        _ => String::new(),
+    };
+    Some(format!(
+        "CREATE {kind}INDEX {} ON {} ({}){method}",
+        dialect.quote_identifier(&index.name),
+        dialect.qualify(table),
+        parts.join(", ")
+    ))
 }
 
 const FOREIGN_KEYS_SQL: &str = "\
@@ -747,6 +812,7 @@ mod tests {
             unique,
             primary: name == "PRIMARY",
             predicate: None,
+            definition: None,
         }
     }
 

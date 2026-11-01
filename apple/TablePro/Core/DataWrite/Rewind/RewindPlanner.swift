@@ -43,7 +43,7 @@ struct RewindPlanner {
         var rows: [RewindRowPlan] = []
         var restorable: [RowWriteOperation] = []
         for operation in record.operations {
-            if let refusal = operation.refusal {
+            if let refusal = record.refusal(of: operation) {
                 rows.append(
                     RewindRowPlan(
                         id: UUID(), operation: operation,
@@ -85,10 +85,12 @@ struct RewindPlanner {
 
     // MARK: - Classification
 
+    private var readsThroughView: Bool { record.writtenThroughView == true }
+
     private func classify(_ operation: RowWriteOperation, current: RewindCurrentRow?) -> RewindRowOutcome {
         switch operation.kind {
         case .update:
-            guard let current else { return .rowMissing }
+            guard let current else { return readsThroughView ? .notReversible(.rowLeftView) : .rowMissing }
             guard let postImage = operation.postImage, let preImage = operation.preImage else {
                 return .notReversible(.serverComputedValue)
             }
@@ -103,7 +105,8 @@ struct RewindPlanner {
             if current != nil { return .rowAlreadyPresent }
             return .willRestore
         case .insert:
-            guard let current else { return .alreadyRestored }
+            // Read back through a view, a row its filter no longer shows is still in the table.
+            guard let current else { return readsThroughView ? .notReversible(.rowLeftView) : .alreadyRestored }
             guard let postImage = operation.postImage else { return .notReversible(.serverAssignedKey) }
             guard matches(current, postImage, absent: operation.postImageAbsentColumns, on: operation) else {
                 return .changedSinceSave

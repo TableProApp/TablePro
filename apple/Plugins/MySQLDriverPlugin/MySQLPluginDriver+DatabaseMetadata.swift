@@ -13,6 +13,8 @@ import TableProPluginKit
 internal extension MySQLPluginDriver {
     func fetchDatabaseMetadata(_ database: String) async throws -> PluginDatabaseMetadata {
         let isSystem = systemDatabaseNamesForConnectionType.contains(database)
+        // A StarRocks catalog is sized only by scanning the lake behind it.
+        guard !flavor.isStarRocks else { return PluginDatabaseMetadata(name: database, isSystemDatabase: isSystem) }
         guard serverHasInformationSchema else {
             return try await tableStatusMetadata(of: database, isSystem: isSystem)
         }
@@ -38,6 +40,11 @@ internal extension MySQLPluginDriver {
 
     func fetchAllDatabaseMetadata() async throws -> [PluginDatabaseMetadata] {
         let systemDatabases = systemDatabaseNamesForConnectionType
+        guard !flavor.isStarRocks else {
+            return try await fetchDatabases().map {
+                PluginDatabaseMetadata(name: $0, isSystemDatabase: systemDatabases.contains($0))
+            }
+        }
         guard serverHasInformationSchema else {
             var metadata: [PluginDatabaseMetadata] = []
             for database in try await fetchDatabases() {
@@ -79,6 +86,7 @@ internal extension MySQLPluginDriver {
     /// 10.10+ reports `utf8mb4_uca1400_ai_ci`, which no `COLLATION_NAME` matches.
     func allTablesMetadataSQL(schema: String?) -> String? {
         guard !flavor.isDatabend else { return DatabendCatalog.allTablesMetadataSQL }
+        guard !flavor.isStarRocks else { return nil }
         guard serverHasInformationSchema else { return Self.tableStatusStatement(database: effectiveSchema(schema)) }
         return literalSpelling.respelled("""
         SELECT

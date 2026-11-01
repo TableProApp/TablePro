@@ -995,6 +995,7 @@ mod mcp {
             safe_mode: SafeModeLevel::Off,
             external_access: access,
             ai_policy: tablepro_core::AiPolicy::Ask,
+            query_timeout_secs: None,
             auth_mode: AuthMode::Password,
             ssh: None,
             last_opened_at: None,

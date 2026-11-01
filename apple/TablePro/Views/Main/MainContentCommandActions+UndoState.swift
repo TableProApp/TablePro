@@ -20,11 +20,10 @@ extension StructureEditingSession: StructureUndoHistory {}
 
 extension CreateTableDraft: StructureUndoHistory {}
 
-// Users & Roles, the diagram and the structure editor keep their own histories; everything else registers on the
-// window's undo manager. Availability, title and command resolve through the same branch so they cannot disagree.
+// Users & Roles, the diagram and the structure editor keep their own histories; everything else uses the browse one.
 extension MainContentCommandActions {
     private var windowUndoManager: UndoManager? {
-        coordinator?.contentWindow?.undoManager
+        coordinator?.browseUndoManager
     }
 
     // A Create Table tab keeps its view mode at Data, so it is asked for by tab type.

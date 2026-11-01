@@ -76,7 +76,7 @@ fn build_update_binds_every_value_and_names_the_row() {
         &columns,
         &by_id(),
         &[Value::Int(7)],
-        &[(1, Value::Text("new".to_owned()))],
+        &[(1, CellInput::Value(Value::Text("new".to_owned())))],
     )
     .expect("the update");
 
@@ -100,15 +100,25 @@ fn an_update_of_partition_scoped_columns_alone_names_only_the_partition() {
     };
     let key = [Value::Int(7), Value::Text("ada".to_owned())];
 
-    let shared =
-        build_update(&dialect, &table(), &columns, &identity, &key, &[(2, Value::Int(3))]).expect("the update");
+    let shared = build_update(
+        &dialect,
+        &table(),
+        &columns,
+        &identity,
+        &key,
+        &[(2, CellInput::Value(Value::Int(3)))],
+    )
+    .expect("the update");
     let mixed = build_update(
         &dialect,
         &table(),
         &columns,
         &identity,
         &key,
-        &[(1, Value::Text("grace".to_owned())), (2, Value::Int(3))],
+        &[
+            (1, CellInput::Value(Value::Text("grace".to_owned()))),
+            (2, CellInput::Value(Value::Int(3))),
+        ],
     )
     .expect("the update");
 
@@ -137,7 +147,7 @@ fn build_update_null_key_renders_is_null_without_marker() {
         &columns,
         &identity,
         &[Value::Int(7), Value::Null],
-        &[(1, Value::Text("new".to_owned()))],
+        &[(1, CellInput::Value(Value::Text("new".to_owned())))],
     )
     .expect("the update");
 
@@ -159,7 +169,7 @@ fn build_update_undecodable_key_is_error() {
         &columns(),
         &by_id(),
         &[undecodable()],
-        &[(1, Value::Text("new".to_owned()))],
+        &[(1, CellInput::Value(Value::Text("new".to_owned())))],
     )
     .expect_err("an unreadable key");
 
@@ -344,7 +354,7 @@ fn build_update_engine_row_id_uses_part_columns_and_targets() {
         &columns(),
         &identity,
         &key,
-        &[(1, Value::Text("new".to_owned()))],
+        &[(1, CellInput::Value(Value::Text("new".to_owned())))],
     )
     .expect("the update");
 
@@ -376,7 +386,7 @@ fn positional_markers_bind_assignments_before_the_key() {
         &columns(),
         &identity,
         &[Value::Int(7), Value::Int(3)],
-        &[(1, Value::Text("new".to_owned()))],
+        &[(1, CellInput::Value(Value::Text("new".to_owned())))],
     )
     .expect("the update");
 
@@ -410,9 +420,101 @@ fn a_value_of_the_wrong_type_is_refused_before_it_reaches_the_server() {
         &columns(),
         &by_id(),
         &[Value::Int(7)],
-        &[(0, Value::Text("not a number".to_owned()))],
+        &[(0, CellInput::Value(Value::Text("not a number".to_owned())))],
     )
     .expect_err("text into an integer column");
 
     assert!(matches!(error, BuildSqlError::Bind(_)), "{error:?}");
+}
+
+fn now() -> CellInput {
+    let dialect = TestDialect::exact();
+    let stamp = ColumnType {
+        name: "timestamp".to_owned(),
+        kind: ColumnKind::Timestamp {
+            fractional_digits: None,
+            zone: crate::column::TemporalZone::Naive,
+        },
+        catalog: None,
+        dynamic_storage: false,
+        read_form: ReadForm::Native,
+    };
+    let expression = crate::edit::typed_cell_expression(&dialect, &stamp, "now()").expect("NOW() on a timestamp");
+    CellInput::Expression(expression)
+}
+
+#[test]
+fn an_expression_is_written_into_the_update_and_never_bound() {
+    let dialect = TestDialect::exact();
+
+    let statement = build_update(
+        &dialect,
+        &table(),
+        &columns(),
+        &by_id(),
+        &[Value::Int(7)],
+        &[(1, now()), (2, CellInput::Value(Value::Int(3)))],
+    )
+    .expect("the update");
+
+    assert_eq!(
+        statement.sql(),
+        r#"UPDATE "public"."users" SET "name" = NOW(), "tenant" = $1 WHERE "id" = $2"#
+    );
+    assert_eq!(statement.params().len(), 2);
+    assert_eq!(statement.params()[0].value(), &Value::Int(3));
+}
+
+#[test]
+fn an_expression_is_written_into_the_insert_between_bound_values() {
+    let dialect = TestDialect::exact().with_markers(TestMarkers::Positional);
+
+    let statement = build_insert(
+        &dialect,
+        &table(),
+        &columns(),
+        &[CellInput::Value(Value::Int(1)), now(), CellInput::Value(Value::Int(3))],
+    )
+    .expect("the insert");
+
+    assert_eq!(
+        statement.sql(),
+        r#"INSERT INTO "public"."users" ("id", "name", "tenant") VALUES (?, NOW(), ?)"#
+    );
+    let values: Vec<_> = statement.params().iter().map(|param| param.value().clone()).collect();
+    assert_eq!(values, vec![Value::Int(1), Value::Int(3)]);
+}
+
+#[test]
+fn a_default_in_an_update_is_written_only_where_the_engine_parses_it() {
+    let assignments = [(1, CellInput::Default)];
+
+    let statement = build_update(
+        &TestDialect::exact(),
+        &table(),
+        &columns(),
+        &by_id(),
+        &[Value::Int(7)],
+        &assignments,
+    )
+    .expect("the update");
+    assert_eq!(
+        statement.sql(),
+        r#"UPDATE "public"."users" SET "name" = DEFAULT WHERE "id" = $1"#
+    );
+
+    let refused = build_update(
+        &TestDialect::exact().without_update_default(),
+        &table(),
+        &columns(),
+        &by_id(),
+        &[Value::Int(7)],
+        &assignments,
+    );
+    assert_eq!(
+        refused,
+        Err(BuildSqlError::ServerComputedValue {
+            name: "name".to_owned()
+        })
+    );
 }

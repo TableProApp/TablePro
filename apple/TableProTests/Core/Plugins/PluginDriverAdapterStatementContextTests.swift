@@ -91,6 +91,15 @@ struct PluginDriverAdapterStatementContextTests {
         #expect(driver.contexts.map { $0.readOnly } == [false])
     }
 
+    @Test("A Cypher read is marked, so the driver sends it in Bolt's read mode, and a write is not")
+    func cypherReadIsMarked() async throws {
+        let driver = ContextRecordingDriver()
+        let adapter = makeAdapter(.neo4j, driver: driver)
+        _ = try await adapter.executeUserQuery(query: "MATCH (n:Person) RETURN n LIMIT 5", rowCap: nil, parameters: nil)
+        _ = try await adapter.executeUserQuery(query: "MATCH (n) DETACH DELETE n", rowCap: nil, parameters: nil)
+        #expect(driver.contexts.map { $0.readOnly } == [true, false])
+    }
+
     /// A SQL driver ignores the flag, so its statements are not classified for it.
     @Test("A SQL read is not marked")
     func sqlReadIsNotMarked() async throws {
