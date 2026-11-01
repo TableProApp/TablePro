@@ -10,12 +10,35 @@ extension MainSplitViewController: GridRowCopyCommandResponding {}
 
 // Fallback responders; paste: must be here, or AppKit disables Paste and the disabled item swallows Cmd+V window-wide.
 extension MainSplitViewController {
+    // Agent mode draws no tab history, so Undo runs the window's own manager, as `NSWindow.undo(_:)` would.
     @objc func undo(_ sender: Any?) {
+        guard contentMode == .browse else {
+            view.window?.undoManager?.undo()
+            return
+        }
         commandActions?.undoChange()
     }
 
     @objc func redo(_ sender: Any?) {
+        guard contentMode == .browse else {
+            view.window?.undoManager?.redo()
+            return
+        }
         commandActions?.redoChange()
+    }
+
+    var undoTitle: String {
+        guard contentMode == .browse else {
+            return view.window?.undoManager?.undoMenuItemTitle ?? String(localized: "Undo")
+        }
+        return commandActions?.resolvedUndoTitle ?? String(localized: "Undo")
+    }
+
+    var redoTitle: String {
+        guard contentMode == .browse else {
+            return view.window?.undoManager?.redoMenuItemTitle ?? String(localized: "Redo")
+        }
+        return commandActions?.resolvedRedoTitle ?? String(localized: "Redo")
     }
 
     @objc func copy(_ sender: Any?) {

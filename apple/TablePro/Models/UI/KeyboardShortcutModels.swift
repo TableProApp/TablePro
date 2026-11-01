@@ -59,7 +59,6 @@ enum ShortcutCategory: String, Codable, CaseIterable, Identifiable {
 
 // MARK: - Shortcut Action
 
-/// All customizable keyboard shortcut actions
 enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
     // Connections
     case manageConnections
@@ -659,8 +658,7 @@ struct KeyboardSettings: Codable, Equatable {
 
     // MARK: - Default Shortcuts
 
-    /// Default shortcuts, applied when the user has no override. An action absent
-    /// from this map has no default and shows as unassigned until the user binds it.
+    // An action absent here shows as unassigned until the user binds it.
     static let defaultShortcuts: [ShortcutAction: BoundKey] = [
         // Connections
         .newConnection: .character("n", command: true),

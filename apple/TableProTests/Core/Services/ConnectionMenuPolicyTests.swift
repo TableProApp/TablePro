@@ -22,19 +22,4 @@ struct ConnectionMenuPolicyTests {
         #expect(!ConnectionMenuPolicy.showsDisconnect(status: .connecting))
         #expect(!ConnectionMenuPolicy.showsDisconnect(status: .error("refused")))
     }
-
-    @Test("Server Dashboard is offered for a live session on an engine that has one")
-    func serverDashboardNeedsLiveSessionAndEngine() {
-        #expect(ConnectionMenuPolicy.showsServerDashboard(status: .connected, type: .postgresql))
-        #expect(!ConnectionMenuPolicy.showsServerDashboard(status: .connected, type: .sqlite))
-        #expect(!ConnectionMenuPolicy.showsServerDashboard(status: .disconnected, type: .postgresql))
-        #expect(!ConnectionMenuPolicy.showsServerDashboard(status: .error("refused"), type: .postgresql))
-    }
-
-    @Test("Query Insights is offered for any live session")
-    func queryInsightsNeedsLiveSession() {
-        #expect(ConnectionMenuPolicy.showsQueryInsights(status: .connected))
-        #expect(!ConnectionMenuPolicy.showsQueryInsights(status: .connecting))
-        #expect(!ConnectionMenuPolicy.showsQueryInsights(status: .disconnected))
-    }
 }

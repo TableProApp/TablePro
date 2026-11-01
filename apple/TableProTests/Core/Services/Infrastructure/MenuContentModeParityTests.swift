@@ -221,6 +221,57 @@ struct MenuContentModeParityTests {
         }
     }
 
+    // Each was lit in Agent mode and acted on the browse tab, grid, sidebar selection or sheet the mode hides.
+    @Test("Agent mode dims the commands that act on hidden browse content", arguments: [
+        #selector(MainSplitViewController.createNewTable(_:)),
+        #selector(MainSplitViewController.showTableStructure(_:)),
+        #selector(MainSplitViewController.executeQuery(_:)),
+        #selector(MainSplitViewController.duplicateRow(_:)),
+        #selector(MainSplitViewController.copy(_:)),
+        #selector(MainSplitViewController.paste(_:)),
+        #selector(MainSplitViewController.delete(_:)),
+        #selector(MainSplitViewController.closeOtherTabs(_:)),
+        #selector(MainSplitViewController.closeAllTabs(_:)),
+        #selector(MainSplitViewController.goToNextPage(_:)),
+        #selector(MainSplitViewController.toggleFilterBar(_:)),
+        #selector(MainSplitViewController.focusResults(_:)),
+        #selector(MainSplitViewController.exportQueryResults(_:)),
+        #selector(MainSplitViewController.backupDatabase(_:)),
+        #selector(MainSplitViewController.createNewDatabase(_:)),
+        #selector(MainSplitViewController.editCurrentSchema(_:)),
+        #selector(MainSplitViewController.showQueryInsights(_:)),
+    ])
+    func agentModeDimsHiddenContentCommands(command: Selector) {
+        var browse = Self.capableMenuContext(.browse)
+        var agent = Self.capableMenuContext(.agent)
+        browse.isAgentMode = false
+        agent.isAgentMode = true
+        #expect(MainSplitViewController.isEnabled(command, context: browse), "\(NSStringFromSelector(command)) is dim while browsing")
+        #expect(!MainSplitViewController.isEnabled(command, context: agent), "\(NSStringFromSelector(command)) stayed lit in Agent mode")
+    }
+
+    // Everything a browse command could ask for, so only the mode can dim it.
+    private static func capableMenuContext(_ contentMode: ConnectionWorkspaceContentMode) -> MenuValidationContext {
+        var context = menuContext(contentMode)
+        context.canCreateTable = true
+        context.canCreateDatabase = true
+        context.canShowTableStructure = true
+        context.hasQueryText = true
+        context.hasRowSelection = true
+        context.hasTableSelection = true
+        context.hasResultRows = true
+        context.canPasteRows = true
+        context.canDropSelectedTables = true
+        context.canCloseOtherTabs = true
+        context.canCloseAllTabs = true
+        context.canNavigatePages = true
+        context.canUseTableResultCommands = true
+        context.canFocusResults = true
+        context.supportsBackup = true
+        context.canCreateSchema = true
+        return context
+    }
+
     /// Named rather than left to the equality above, which two disabled answers would also satisfy.
     @Test("The window's own commands still answer in Agent mode")
     func theWindowsCommandsAnswerInAgentMode() {

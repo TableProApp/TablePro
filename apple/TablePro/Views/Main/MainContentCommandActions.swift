@@ -667,6 +667,15 @@ final class MainContentCommandActions: ObservableObject {
             closeTab(id: selected.id)
             return
         }
+        closeWorkspace()
+    }
+
+    // What Close does with no tab on screen: the container, else the connection.
+    func closeWorkspace() {
+        guard let coordinator else {
+            Task { await closeWindowAwaiting() }
+            return
+        }
         if let entry = WorkspaceCloseAction.closableEntry(
             connectionId: connectionId,
             container: coordinator.tabManager.visibleContainer
