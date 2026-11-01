@@ -526,6 +526,25 @@ struct ProtobufSchemaDecoderTests {
         #expect(throws: BinaryValueDecodeError.self) { try Self.text("1201ff", schema: editions, message: "ue.M") }
     }
 
+    @Test("A declared message or packed field whose bytes do not parse refuses the value, as protoc does")
+    func malformedDeclaredFields() throws {
+        let schema = try ProtobufSchema.parse(Data("""
+            syntax = "proto3";
+            package n;
+            message Inner { int32 a = 1; }
+            message Inner2 { string s = 1; }
+            message M { Inner inner = 1; repeated int32 p = 2; Inner2 g = 3; }
+            """.utf8))
+        // protoc --decode=n.M fails "Failed to parse input." on each of these.
+        for fixture in ["0a0108", "1203ffffff", "0a03ff0101"] {
+            #expect(throws: BinaryValueDecodeError.self, "\(fixture)") {
+                try Self.text(fixture, schema: schema, message: "n.M")
+            }
+        }
+        // protoc --decode=n.M of 1a020801: a wire type the nested field does not declare is only unknown.
+        #expect(try Self.text("1a020801", schema: schema, message: "n.M") == "g {\n  1: 1\n}\n")
+    }
+
     @Test("The package qualifies the definitions written before it too")
     func packageAfterMessage() throws {
         let schema = try ProtobufSchema.parse(Data("""

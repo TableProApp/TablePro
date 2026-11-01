@@ -265,7 +265,7 @@ internal enum ProtobufSchemaDecoder {
                 }
             case .scalar, .enumeration:
                 if field.isRepeated {
-                    for occurrence in found { appendRepeated(field, occurrence, to: &level) }
+                    for occurrence in found { try appendRepeated(field, occurrence, to: &level) }
                 } else if let last = found.last {
                     // Last wins first: `count: 5` then `count: 0` leaves an implicit field at its default.
                     if !asMapEntry, !field.hasPresence, holdsDefault(last.payload, type: field.type) { return }
@@ -290,19 +290,12 @@ internal enum ProtobufSchemaDecoder {
                 case .varint, .fixed64, .fixed32: return nil
                 }
             }
-            let start = budget
-            do {
-                let members = try self.members(of: windows, message: nested, depth: depth + 1, asMapEntry: false)
-                if case .group = field.type {
-                    level.fields.append(ProtobufTypedField(name: nested.shortName, typeName: "group", value: .message(members)))
-                } else {
-                    level.fields.append(typed(field, .message(members)))
-                }
-            } catch let error as BinaryValueDecodeError where error.kind == .invalidUTF8 {
-                throw error
-            } catch {
-                budget = start
-                level.unknown += found
+            // A declared message that does not parse fails the value, as it fails protoc's parse.
+            let members = try self.members(of: windows, message: nested, depth: depth + 1, asMapEntry: false)
+            if case .group = field.type {
+                level.fields.append(ProtobufTypedField(name: nested.shortName, typeName: "group", value: .message(members)))
+            } else {
+                level.fields.append(typed(field, .message(members)))
             }
         }
 
@@ -321,9 +314,7 @@ internal enum ProtobufSchemaDecoder {
                 do {
                     let members = try self.members(of: [window], message: entry, depth: depth + 1, asMapEntry: true)
                     entries.append((mapKey(members, entry: entry), typed(field, .message(members))))
-                } catch let error as BinaryValueDecodeError where error.kind == .invalidUTF8 {
-                    throw error
-                } catch {
+                } catch is MapEntryRejected {
                     budget = start
                     level.unknown.append(occurrence)
                 }
@@ -334,7 +325,7 @@ internal enum ProtobufSchemaDecoder {
             level.fields += sorted.map { $0.element.field }
         }
 
-        private mutating func appendRepeated(_ field: ProtobufFieldDescriptor, _ occurrence: Occurrence, to level: inout Level) {
+        private mutating func appendRepeated(_ field: ProtobufFieldDescriptor, _ occurrence: Occurrence, to level: inout Level) throws {
             guard case .lengthDelimited(let window) = occurrence.payload,
                   field.type != .scalar(.string), field.type != .scalar(.bytes) else {
                 level.fields.append(typed(field, value(occurrence.payload, field: field)))
@@ -350,10 +341,7 @@ internal enum ProtobufSchemaDecoder {
                     isCut = true
                     break
                 }
-                guard let item = try? Self.packedItem(&reader, type: field.type) else {
-                    level.unknown.append(occurrence)
-                    return
-                }
+                let item = try Self.packedItem(&reader, type: field.type)
                 remaining -= 1
                 if case .varint(let raw) = item, case .enumeration(let name) = field.type, !isDeclared(raw, enumeration: name) {
                     undeclared.append(Occurrence(number: field.number, payload: item, position: occurrence.position))

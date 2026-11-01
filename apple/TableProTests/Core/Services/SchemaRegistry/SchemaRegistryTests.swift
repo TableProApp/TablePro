@@ -249,6 +249,40 @@ struct SchemaRegistryTests {
         #expect(host == "other.example.com")
     }
 
+    private final class HeldTransport: Sendable {
+        let gate = AsyncGate()
+        let calls = OSAllocatedUnfairLock(initialState: 0)
+        let active = OSAllocatedUnfairLock(initialState: (now: 0, most: 0))
+
+        var transport: SchemaRegistryClient.Transport {
+            { [self] request in
+                calls.withLock { $0 += 1 }
+                active.withLock { $0 = (now: $0.now + 1, most: max($0.most, $0.now + 1)) }
+                await gate.wait()
+                active.withLock { $0.now -= 1 }
+                let response = HTTPURLResponse(url: request.url!, statusCode: 404, httpVersion: nil, headerFields: nil)!
+                return (Data(#"{"message":"not here"}"#.utf8), response)
+            }
+        }
+    }
+
+    @Test("A page naming thousands of IDs queues a bounded number of fetches and runs a few at a time")
+    @MainActor
+    func prefetchIsBounded() async throws {
+        let held = HeldTransport()
+        let connection = UUID()
+        let cache = SchemaRegistryCache(resolveEndpoint: Resolver(Self.endpoint).resolve, transport: held.transport)
+        cache.prefetch(connectionID: connection, schemaIDs: Set(UInt32(1)...5_000), retryingFailures: false)
+
+        await held.gate.arrived(SchemaRegistryCache.maxConcurrentFetches)
+        #expect(held.calls.withLock { $0 } == SchemaRegistryCache.maxConcurrentFetches)
+        await held.gate.open()
+        try await waitUntil { held.calls.withLock { $0 } == SchemaRegistryCache.maxPendingFetches }
+        try await waitUntil { held.active.withLock { $0.now } == 0 }
+        #expect(held.active.withLock { $0.most } == SchemaRegistryCache.maxConcurrentFetches)
+        #expect(held.calls.withLock { $0 } == SchemaRegistryCache.maxPendingFetches)
+    }
+
     @Test("A connection with no registry URL says so instead of fetching")
     @MainActor
     func noEndpoint() async {

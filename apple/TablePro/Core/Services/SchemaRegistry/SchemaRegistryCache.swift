@@ -17,6 +17,11 @@ internal final class SchemaRegistryCache: Sendable {
     static let didChange = Notification.Name("com.TablePro.schemaRegistryCache.didChange")
     static let connectionIDKey = "connectionID"
 
+    // A page of values can name thousands of IDs that are only bytes starting with zero, so fetches are bounded.
+    static let maxConcurrentFetches = 4
+    static let maxPendingFetches = 256
+    static let maxFailures = 1_024
+
     private struct Key: Hashable {
         let endpoint: SchemaRegistryEndpoint
         let schemaID: UInt32
@@ -42,6 +47,7 @@ internal final class SchemaRegistryCache: Sendable {
     private let resolveEndpoint: EndpointResolver
     private let transport: SchemaRegistryClient.Transport
     private let failureLifetime: Duration
+    private let limiter = FetchLimiter(limit: SchemaRegistryCache.maxConcurrentFetches)
 
     init(
         failureLifetime: Duration = .seconds(30),
@@ -88,11 +94,16 @@ internal final class SchemaRegistryCache: Sendable {
         let (changed, pending) = state.withLock { state -> (Bool, [Task<Lookup, Never>]) in
             let changed = adopt(endpoint, for: connectionID, in: &state)
             guard let endpoint else { return (changed, []) }
-            let pending = schemaIDs.compactMap { schemaID -> Task<Lookup, Never>? in
+            pruneFailures(in: &state)
+            var pending: [Task<Lookup, Never>] = []
+            for schemaID in schemaIDs.sorted() {
                 let key = Key(endpoint: endpoint, schemaID: schemaID)
-                if let running = state.inFlight[key] { return running }
-                guard usable(state.entries[key], retryingFailures: retryingFailures) == nil else { return nil }
-                return start(key, in: &state)
+                if let running = state.inFlight[key] {
+                    pending.append(running)
+                } else if usable(state.entries[key], retryingFailures: retryingFailures) == nil,
+                          state.inFlight.count < Self.maxPendingFetches {
+                    pending.append(start(key, in: &state))
+                }
             }
             return (changed, pending)
         }
@@ -157,7 +168,9 @@ internal final class SchemaRegistryCache: Sendable {
 
     private func start(_ key: Key, in state: inout State) -> Task<Lookup, Never> {
         let client = SchemaRegistryClient(endpoint: key.endpoint, transport: transport)
+        let limiter = limiter
         let task = Task<Lookup, Never> {
+            await limiter.acquire()
             let result: Lookup
             do {
                 result = .success(try await client.schema(id: key.schemaID))
@@ -166,6 +179,7 @@ internal final class SchemaRegistryCache: Sendable {
             } catch {
                 result = .failure(SchemaRegistryError(reason: error.localizedDescription))
             }
+            await limiter.release()
             self.finish(key, with: result)
             return result
         }
@@ -183,7 +197,51 @@ internal final class SchemaRegistryCache: Sendable {
         }
     }
 
+    // Garbage prefixes would otherwise leave one failure each for the session.
+    private func pruneFailures(in state: inout State) {
+        let now = ContinuousClock.now
+        var failures: [(key: Key, at: ContinuousClock.Instant)] = []
+        for (key, entry) in state.entries {
+            guard case .failed(_, let at) = entry else { continue }
+            if now - at >= failureLifetime {
+                state.entries[key] = nil
+            } else {
+                failures.append((key, at))
+            }
+        }
+        guard failures.count > Self.maxFailures else { return }
+        for failure in failures.sorted(by: { $0.at < $1.at }).prefix(failures.count - Self.maxFailures) {
+            state.entries[failure.key] = nil
+        }
+    }
+
     private static func post(_ connectionID: UUID) {
         NotificationCenter.default.post(name: didChange, object: nil, userInfo: [connectionIDKey: connectionID])
+    }
+}
+
+private actor FetchLimiter {
+    private let limit: Int
+    private var running = 0
+    private var waiting: [CheckedContinuation<Void, Never>] = []
+
+    init(limit: Int) {
+        self.limit = limit
+    }
+
+    func acquire() async {
+        guard running >= limit else {
+            running += 1
+            return
+        }
+        await withCheckedContinuation { waiting.append($0) }
+    }
+
+    func release() {
+        guard !waiting.isEmpty else {
+            running -= 1
+            return
+        }
+        waiting.removeFirst().resume()
     }
 }
