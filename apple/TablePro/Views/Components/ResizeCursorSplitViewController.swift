@@ -109,11 +109,16 @@ internal class ResizeCursorSplitViewController: NSSplitViewController {
     }
 
     private var resizeCursor: NSCursor {
+        .dividerResize(isVertical: splitView.isVertical)
+    }
+}
+
+internal extension NSCursor {
+    // `isVertical` as NSSplitView means it: a vertical divider resizes left and right.
+    static func dividerResize(isVertical: Bool) -> NSCursor {
         if #available(macOS 15.0, *) {
-            return splitView.isVertical
-                ? .columnResize(directions: [.left, .right])
-                : .rowResize(directions: [.up, .down])
+            return isVertical ? .columnResize(directions: [.left, .right]) : .rowResize(directions: [.up, .down])
         }
-        return splitView.isVertical ? .resizeLeftRight : .resizeUpDown
+        return isVertical ? .resizeLeftRight : .resizeUpDown
     }
 }
