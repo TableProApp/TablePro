@@ -61,6 +61,17 @@ internal enum AvroDecoder {
         }
     }
 
+    // The payload behind a Schema Registry prefix the caller has read, so a datum that starts with zero stays a datum.
+    static func decodeRegistryPayload(
+        _ body: Data,
+        schema: AvroSchema,
+        maxValues: Int = .max,
+        maxValuesRead: Int = AvroDecoder.maxValuesRead
+    ) throws -> MessagePackValue {
+        if let raw = rawBytes(Data(body), schema: schema) { return raw }
+        return try datum(body, schema: schema, limits: (maxValues, maxValuesRead))
+    }
+
     private static func rawBytes(_ body: Data, schema: AvroSchema) -> MessagePackValue? {
         switch schema.resolve(schema.root) {
         case .bytes:

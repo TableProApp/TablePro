@@ -24,7 +24,7 @@ internal enum ProtobufTextWriter {
         }
     }
 
-    private static func write(
+    static func write(
         _ fields: [ProtobufField],
         into output: inout String,
         multiLine: Bool,
@@ -113,6 +113,7 @@ internal enum ProtobufTreeBuilder {
                 ))
                 break
             }
+            nodeCount += 1
             let name = String(field.number)
             children.append(node(
                 key: name,
@@ -126,7 +127,8 @@ internal enum ProtobufTreeBuilder {
         return children
     }
 
-    private static func node(
+    // The caller counts the node itself.
+    static func node(
         key: String,
         keyPath: String,
         path: TreeNodePath,
@@ -134,7 +136,6 @@ internal enum ProtobufTreeBuilder {
         formats: TreeSummaryFormats,
         nodeCount: inout Int
     ) -> ProtobufTreeNode {
-        nodeCount += 1
         switch value {
         case .message(let members), .group(let members):
             let children = makeChildren(members, keyPath: keyPath, path: path, formats: formats, nodeCount: &nodeCount)

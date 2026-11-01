@@ -955,6 +955,9 @@
     "“%@” is not a usable Avro schema." : {
 
     },
+    "“%@” is not a usable Protobuf schema." : {
+
+    },
     "\"%@\" is not a valid %@. Example: %@" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -15251,6 +15254,9 @@
         }
       }
     },
+    "A comment is never closed." : {
+
+    },
     "A comparison is already running." : {
       "localizations" : {
         "fr" : {
@@ -16011,6 +16017,9 @@
           }
         }
       }
+    },
+    "A message is never closed." : {
+
     },
     "A MongoDB field has no type, default or nullability to change. Only its name can change." : {
       "extractionState" : "manual",
@@ -17000,6 +17009,9 @@
           }
         }
       }
+    },
+    "A string is never closed." : {
+
     },
     "A string literal is missing its closing quote." : {
       "extractionState" : "manual",
@@ -24221,6 +24233,9 @@
     "An auto-increment column takes its values from a sequence, so it cannot also have a default." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "An enum is never closed." : {
+
     },
     "An enum's labels in declaration order" : {
       "localizations" : {
@@ -38592,6 +38607,9 @@
       }
     },
     "Choose Schema" : {
+
+    },
+    "Choose the .proto file or descriptor set the values in this column were written with." : {
 
     },
     "Choose the Avro schema the values in this column were written with." : {
@@ -109214,6 +109232,9 @@
         }
       }
     },
+    "Messages are nested too deeply." : {
+
+    },
     "Metadata" : {
       "localizations" : {
         "fr" : {
@@ -138565,6 +138586,12 @@
         }
       }
     },
+    "Protobuf (%@)" : {
+
+    },
+    "Protobuf Schema…" : {
+
+    },
     "Protocol" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -157165,6 +157192,16 @@
         }
       }
     },
+    "Schema %lld could not be read from the Schema Registry. %@ Showing the stored bytes." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Schema %1$lld could not be read from the Schema Registry. %2$@ Showing the stored bytes."
+          }
+        }
+      }
+    },
     "Schema and table privileges in this database are only visible when the connection is using it." : {
       "localizations" : {
         "fr" : {
@@ -157663,6 +157700,9 @@
         }
       }
     },
+    "Schema Registry" : {
+
+    },
     "Schema Registry framing: schema ID %lld" : {
 
     },
@@ -157675,6 +157715,18 @@
           }
         }
       }
+    },
+    "Schema Registry Password" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Schema Registry URL" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Schema Registry User" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Schema response was empty." : {
       "extractionState" : "manual",
@@ -179759,6 +179811,9 @@
         }
       }
     },
+    "TablePro could not reach the Schema Registry: %@" : {
+
+    },
     "TablePro could not read the database's own name from the connection." : {
       "localizations" : {
         "fr" : {
@@ -185312,6 +185367,9 @@
         }
       }
     },
+    "The connection names no Schema Registry URL. Add one in the connection's settings." : {
+
+    },
     "The connection stopped responding." : {
       "localizations" : {
         "fr" : {
@@ -186264,6 +186322,9 @@
         }
       }
     },
+    "The descriptor set names an unknown field type %llu." : {
+
+    },
     "The destination has no table named %@" : {
       "localizations" : {
         "fr" : {
@@ -186886,9 +186947,18 @@
         }
       }
     },
+    "The file defines more than one message. Choose the one this column holds." : {
+
+    },
+    "The file defines no message." : {
+
+    },
     "The file does not declare a theme format version." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "The file ends in the middle of a statement." : {
+
     },
     "The file goes back to its last committed version. You can't undo this action." : {
       "localizations" : {
@@ -187018,6 +187088,12 @@
     "The file is larger than any Avro schema." : {
 
     },
+    "The file is larger than any schema." : {
+
+    },
+    "The file is neither a .proto file nor a descriptor set." : {
+
+    },
     "The file is not a JSON object." : {
 
     },
@@ -187037,6 +187113,9 @@
           }
         }
       }
+    },
+    "The file is too large." : {
+
     },
     "The file is too large. A theme file can be at most %@." : {
       "extractionState" : "manual",
@@ -190565,16 +190644,44 @@
     "The schema changes staged in this diagram will be lost." : {
 
     },
+    "The schema defines more messages than TablePro reads." : {
+
+    },
     "The schema defines type %@ twice." : {
 
     },
     "The schema has a type that is not a name, an object or a union." : {
 
     },
+    "The schema imports more files than TablePro reads." : {
+
+    },
     "The schema is not valid JSON." : {
 
     },
+    "The schema is still being fetched." : {
+
+    },
     "The schema names type %@ before defining it." : {
+
+    },
+    "The Schema Registry answered %lld: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "The Schema Registry answered %1$lld: %2$@"
+          }
+        }
+      }
+    },
+    "The Schema Registry names a schema type TablePro does not read: %@." : {
+
+    },
+    "The Schema Registry's answer is larger than any schema." : {
+
+    },
+    "The Schema Registry's answer is not a schema." : {
 
     },
     "The script already ran. Compare again to see where the target stands." : {
@@ -193123,6 +193230,9 @@
         }
       }
     },
+    "The text at byte %lld is not valid UTF-8." : {
+
+    },
     "The text could not be parsed as JSON." : {
       "localizations" : {
         "fr" : {
@@ -193789,6 +193899,9 @@
           }
         }
       }
+    },
+    "The value does not start with the Schema Registry prefix: a zero byte and a schema ID." : {
+
     },
     "The value ends early, at byte %lld." : {
 
@@ -198495,6 +198608,9 @@
       }
     },
     "This Mac no longer has the schema chosen for this column, so the stored bytes show. Choose it again with Display As > Avro Schema…" : {
+
+    },
+    "This Mac no longer has the schema chosen for this column, so the stored bytes show. Choose it again with Display As > Protobuf Schema…" : {
 
     },
     "This Mac no longer holds a seat." : {
@@ -205349,6 +205465,9 @@
         }
       }
     },
+    "Unexpected “%@” in the .proto file." : {
+
+    },
     "Unexpected %@ in a CONSUME statement." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -205372,6 +205491,9 @@
           }
         }
       }
+    },
+    "Unexpected character “%@”." : {
+
     },
     "Unexpected InfluxDB response: %@" : {
       "extractionState" : "manual",
@@ -214396,6 +214518,9 @@
           }
         }
       }
+    },
+    "Which message are the values?" : {
+
     },
     "Whitespace in text" : {
       "localizations" : {

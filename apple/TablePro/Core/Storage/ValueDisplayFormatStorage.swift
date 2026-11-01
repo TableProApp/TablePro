@@ -19,10 +19,16 @@ internal final class ValueDisplayFormatStorage: TableScopedSettingsStore {
 
     private let store: KeyValueStore
     private let schemas: AvroSchemaStore
+    private let protobufSchemas: ProtobufSchemaStore
 
-    init(defaults: KeyValueStore = AppStorageEnvironment.shared.defaults, schemas: AvroSchemaStore = .shared) {
+    init(
+        defaults: KeyValueStore = AppStorageEnvironment.shared.defaults,
+        schemas: AvroSchemaStore = .shared,
+        protobufSchemas: ProtobufSchemaStore = .shared
+    ) {
         store = defaults
         self.schemas = schemas
+        self.protobufSchemas = protobufSchemas
     }
 
     func save(_ formats: [String: ValueDisplayFormat], for scope: TableScope) {
@@ -108,14 +114,20 @@ internal final class ValueDisplayFormatStorage: TableScopedSettingsStore {
 
     // A schema file lives as long as a saved format names it.
     private func sweepSchemas() {
-        guard !schemas.storedIDs.isEmpty else { return }
-        var named: Set<String> = []
+        guard !schemas.storedIDs.isEmpty || !protobufSchemas.storedIDs.isEmpty else { return }
+        var avro: Set<String> = []
+        var protobuf: Set<String> = []
         for key in store.keys(withPrefix: Self.keyPrefix) where key.hasSuffix(Self.addedSuffix) {
             for name in (Self.names(store.dataValue(forKey: key)) ?? [:]).values {
-                if case .avro(let schemaID)? = ValueDisplayFormat(rawValue: name) { named.insert(schemaID) }
+                switch ValueDisplayFormat(rawValue: name) {
+                case .avro(let schemaID)?: avro.insert(schemaID)
+                case .protobufSchema(let schemaID, _)?: protobuf.insert(schemaID)
+                default: break
+                }
             }
         }
-        schemas.removeAll(except: named)
+        schemas.removeAll(except: avro)
+        protobufSchemas.removeAll(except: protobuf)
     }
 
     @discardableResult

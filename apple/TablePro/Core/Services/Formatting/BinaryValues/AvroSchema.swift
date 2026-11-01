@@ -58,21 +58,27 @@ internal struct AvroSchema: Equatable, Sendable {
     // Named types whose values take no bytes, worked out once: walking a shared type on every check is exponential.
     let zeroByteNames: Set<String>
 
-    static func parse(_ text: String) throws -> AvroSchema {
-        let json: Any
-        do {
-            json = try JSONSerialization.jsonObject(with: Data(text.utf8), options: [.fragmentsAllowed])
-        } catch {
-            throw AvroSchemaError(reason: String(localized: "The schema is not valid JSON."))
-        }
+    // A Schema Registry schema can name types another subject defines; `references` are those, each before its users.
+    static func parse(_ text: String, references: [String] = []) throws -> AvroSchema {
         var parser = Parser()
-        let root = try parser.type(json, namespace: nil)
+        for reference in references {
+            _ = try parser.type(try json(reference), namespace: nil)
+        }
+        let root = try parser.type(try json(text), namespace: nil)
         return AvroSchema(
             root: root,
             namedTypes: parser.namedTypes,
             fingerprint: fingerprint(of: canonicalForm(root)),
             zeroByteNames: zeroByteNames(parser.completed)
         )
+    }
+
+    private static func json(_ text: String) throws -> Any {
+        do {
+            return try JSONSerialization.jsonObject(with: Data(text.utf8), options: [.fragmentsAllowed])
+        } catch {
+            throw AvroSchemaError(reason: String(localized: "The schema is not valid JSON."))
+        }
     }
 
     // In the order definitions finish, so every name a type refers to is settled before it, except its own and its

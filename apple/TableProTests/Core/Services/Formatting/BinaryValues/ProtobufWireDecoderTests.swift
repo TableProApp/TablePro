@@ -8,9 +8,10 @@ import Testing
 
 @testable import TablePro
 
-/// Fixtures written by `protoc --encode` (libprotoc 36.2). Each expectation is what
-/// `protoc --decode_raw` printed for the same bytes, except that UTF-8 text keeps its characters.
+// Each expectation is what `protoc --decode_raw` (libprotoc 36.2) printed for the same bytes, except that UTF-8 text
+// keeps its characters.
 struct ProtobufWireDecoderTests {
+    // protoc --encode of a message setting every wire type, a nested and a repeated message, and field 1000.
     private static let order = "089601120774657374696e671a0908011205636166c3a925070000002909000000000000003206038e029ea7053a"
         + "030001ff400348ffffffffffffffffff01516e861bf0f92109405d0000c03f6202080262050803120178c03eb5b8f0fe2d"
 
@@ -59,6 +60,7 @@ struct ProtobufWireDecoderTests {
         5: "end"
 
         """
+        // protoc --encode of a proto2 message with a group between two fields.
         #expect(try Self.text("0801131a08687474703a2f2f782002142a03656e64") == expected)
         let message = try ProtobufWireDecoder.decode(BinaryFixture.data("0801131a08687474703a2f2f782002142a03656e64"))
         #expect(message.fields[1].value == .group([
@@ -102,6 +104,23 @@ struct ProtobufWireDecoderTests {
     func budget() throws {
         let message = try ProtobufWireDecoder.decode(BinaryFixture.data(Self.order), maxValues: 2)
         #expect(ProtobufTextWriter.text(message.fields, multiLine: false) == #"1: 150 2: "testing" …"#)
+    }
+
+    @Test("A length-delimited value spends the caller's budget and leaves the rest of it")
+    func lengthDelimitedBudget() {
+        // Hand-written: `1: 1`, `1: 2`, `1: 3`.
+        let window = BinaryValueReader(BinaryFixture.data("080108020803"))
+        var budget = 2
+        let value = ProtobufWireDecoder.lengthDelimited(window, depth: 0, budget: &budget)
+        #expect(value == .message([
+            ProtobufField(number: 1, value: .varint(1)),
+            ProtobufField(number: 1, value: .varint(2)),
+            ProtobufField(number: 0, value: .truncated),
+        ]))
+        #expect(budget == 0)
+        var roomy = 10
+        _ = ProtobufWireDecoder.lengthDelimited(window, depth: 0, budget: &roomy)
+        #expect(roomy == 7)
     }
 
     @Test("The tree keys fields by number and badges their wire type")

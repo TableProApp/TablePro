@@ -689,7 +689,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
         let parameterStyle = driverType.parameterStyle
         let schemes = driverType.urlSchemes
         let primaryScheme = schemes.first ?? driverType.databaseTypeId.lowercased()
-        let additionalConnectionFields = driverType.additionalConnectionFields.filter {
+        let pluginFields = driverType.additionalConnectionFields.filter {
             // Kafka releases before the shared timeout setting exposed a second control under
             // this id. An installed old bundle still registers its metadata over the curated
             // snapshot, so retire the field here too while its saved value migrates in the model.
@@ -701,6 +701,13 @@ final class PluginMetadataRegistry: @unchecked Sendable {
         // struct default. Cannot read these from driverType directly: stale plugins without
         // the property crash with EXC_BAD_INSTRUCTION (missing witness table entry).
         let existingSnapshot = snapshot(forRegisteredTypeId: driverType.databaseTypeId)
+
+        // The app reads the Schema Registry fields itself, so an older bundle keeps the curated ones.
+        let declared = Set(pluginFields.map(\.id))
+        let additionalConnectionFields = pluginFields
+            + (existingSnapshot?.connection.additionalConnectionFields ?? []).filter {
+                SchemaRegistryConnectionField.all.contains($0.id) && !declared.contains($0.id)
+            }
 
         return PluginMetadataSnapshot(
             displayName: driverType.databaseDisplayName,
