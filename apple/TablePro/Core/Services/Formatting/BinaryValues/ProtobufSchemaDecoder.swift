@@ -137,6 +137,7 @@ internal enum ProtobufSchemaDecoder {
                 let field = message.field(number: occurrence.number)
                 switch field.map({ match(occurrence.payload, field: $0) }) ?? .mismatched {
                 case .accepted:
+                    if let field { try verifyUTF8(occurrence.payload, field: field) }
                     accepted[occurrence.number, default: []].append(occurrence)
                 case .undeclaredEnumValue where asMapEntry:
                     throw MapEntryRejected()
@@ -256,11 +257,11 @@ internal enum ProtobufSchemaDecoder {
                     return
                 }
                 if !field.isRepeated {
-                    appendMessage(field, nested, found, to: &level, depth: depth)
+                    try appendMessage(field, nested, found, to: &level, depth: depth)
                 } else if nested.isMapEntry {
-                    appendMapEntries(field, nested, found, to: &level, depth: depth)
+                    try appendMapEntries(field, nested, found, to: &level, depth: depth)
                 } else {
-                    for occurrence in found { appendMessage(field, nested, [occurrence], to: &level, depth: depth) }
+                    for occurrence in found { try appendMessage(field, nested, [occurrence], to: &level, depth: depth) }
                 }
             case .scalar, .enumeration:
                 if field.isRepeated {
@@ -268,7 +269,7 @@ internal enum ProtobufSchemaDecoder {
                 } else if let last = found.last {
                     // Last wins first: `count: 5` then `count: 0` leaves an implicit field at its default.
                     if !asMapEntry, !field.hasPresence, holdsDefault(last.payload, type: field.type) { return }
-                    level.fields.append(typed(field, value(last.payload, type: field.type)))
+                    level.fields.append(typed(field, value(last.payload, field: field)))
                 }
             case .unresolved:
                 level.unknown += found
@@ -282,7 +283,7 @@ internal enum ProtobufSchemaDecoder {
             _ found: [Occurrence],
             to level: inout Level,
             depth: Int
-        ) {
+        ) throws {
             let windows = found.compactMap { occurrence -> BinaryValueReader? in
                 switch occurrence.payload {
                 case .lengthDelimited(let window), .group(let window): return window
@@ -297,6 +298,8 @@ internal enum ProtobufSchemaDecoder {
                 } else {
                     level.fields.append(typed(field, .message(members)))
                 }
+            } catch let error as BinaryValueDecodeError where error.kind == .invalidUTF8 {
+                throw error
             } catch {
                 budget = start
                 level.unknown += found
@@ -310,7 +313,7 @@ internal enum ProtobufSchemaDecoder {
             _ found: [Occurrence],
             to level: inout Level,
             depth: Int
-        ) {
+        ) throws {
             var entries: [(key: MapKey, field: ProtobufTypedField)] = []
             for occurrence in found {
                 guard case .lengthDelimited(let window) = occurrence.payload else { continue }
@@ -318,6 +321,8 @@ internal enum ProtobufSchemaDecoder {
                 do {
                     let members = try self.members(of: [window], message: entry, depth: depth + 1, asMapEntry: true)
                     entries.append((mapKey(members, entry: entry), typed(field, .message(members))))
+                } catch let error as BinaryValueDecodeError where error.kind == .invalidUTF8 {
+                    throw error
                 } catch {
                     budget = start
                     level.unknown.append(occurrence)
@@ -332,7 +337,7 @@ internal enum ProtobufSchemaDecoder {
         private mutating func appendRepeated(_ field: ProtobufFieldDescriptor, _ occurrence: Occurrence, to level: inout Level) {
             guard case .lengthDelimited(let window) = occurrence.payload,
                   field.type != .scalar(.string), field.type != .scalar(.bytes) else {
-                level.fields.append(typed(field, value(occurrence.payload, type: field.type)))
+                level.fields.append(typed(field, value(occurrence.payload, field: field)))
                 return
             }
             var reader = window
@@ -431,12 +436,21 @@ internal enum ProtobufSchemaDecoder {
             }
         }
 
-        // A string that is not UTF-8 prints escaped, as protoc prints a proto2 string.
-        private func value(_ payload: Occurrence.Payload, type: ProtobufFieldType) -> ProtobufTypedValue {
-            guard case .lengthDelimited(let window) = payload else { return .scalar(scalarText(payload, type: type)) }
+        // Every occurrence, as protoc checks each one it parses, the ones a later value replaces included.
+        private func verifyUTF8(_ payload: Occurrence.Payload, field: ProtobufFieldDescriptor) throws {
+            guard field.validatesUTF8, field.type == .scalar(.string), case .lengthDelimited(let window) = payload else { return }
             var reader = window
             let data = (try? reader.readBytes(reader.remaining)) ?? Data()
-            if type == .scalar(.string), let text = String(data: data, encoding: .utf8) { return .string(text) }
+            guard String(data: data, encoding: .utf8) == nil else { return }
+            throw BinaryValueDecodeError(kind: .invalidUTF8, offset: window.offset)
+        }
+
+        // An unverified string that is not UTF-8 prints escaped, as protoc prints a proto2 string.
+        private func value(_ payload: Occurrence.Payload, field: ProtobufFieldDescriptor) -> ProtobufTypedValue {
+            guard case .lengthDelimited(let window) = payload else { return .scalar(scalarText(payload, type: field.type)) }
+            var reader = window
+            let data = (try? reader.readBytes(reader.remaining)) ?? Data()
+            if field.type == .scalar(.string), let text = String(data: data, encoding: .utf8) { return .string(text) }
             return .bytes(data)
         }
 

@@ -21,6 +21,7 @@ internal struct BinaryValueDecodeError: Error, Equatable, Sendable {
         case invalidLength
         case otherSchema(fingerprint: UInt64)
         case notFramed
+        case invalidUTF8
     }
 
     let kind: Kind
@@ -62,6 +63,8 @@ internal struct BinaryValueDecodeError: Error, Equatable, Sendable {
             return String(format: String(localized: "The length at byte %lld is negative."), offset)
         case .notFramed:
             return String(localized: "The value does not start with the Schema Registry prefix: a zero byte and a schema ID.")
+        case .invalidUTF8:
+            return String(format: String(localized: "The text at byte %lld is not valid UTF-8."), offset)
         case .otherSchema(let fingerprint):
             return String(
                 format: String(localized: "The value was written with the schema whose fingerprint is %@, not this column's."),

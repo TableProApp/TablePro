@@ -501,6 +501,50 @@ struct ProtobufSchemaDecoderTests {
             == "foo {\n  v: 1\n}\nbar {\n  v: 2\n}\nbar {\n  v: 3\n}\n")
     }
 
+    @Test("A verified string that is not UTF-8 refuses the whole value, as protoc does, and an unverified one prints escaped")
+    func stringValidation() throws {
+        let proto3 = try ProtobufSchema.parse(Data("""
+            syntax = "proto3";
+            package u;
+            message Inner { string s = 1; }
+            message M { string s = 1; Inner inner = 2; repeated string r = 3; map<string, int32> m = 4; }
+            """.utf8))
+        // protoc --decode=u.M fails "contains invalid UTF-8 data" on each of these.
+        for fixture in ["0a01ff", "12030a01ff", "1a01ff", "22050a01ff1001", "0a01ff0a0141"] {
+            #expect(throws: BinaryValueDecodeError.self, "\(fixture)") {
+                try Self.text(fixture, schema: proto3, message: "u.M")
+            }
+        }
+        let proto2 = try ProtobufSchema.parse(Data("syntax = \"proto2\"; message M { optional string s = 1; }".utf8))
+        #expect(try Self.text("0a01ff", schema: proto2, message: "M") == "s: \"\\377\"\n")
+        let editions = try ProtobufSchema.parse(Data("""
+            edition = "2023";
+            package ue;
+            message M { string s = 1 [features.utf8_validation = NONE]; string v = 2; }
+            """.utf8))
+        #expect(try Self.text("0a01ff", schema: editions, message: "ue.M") == "s: \"\\377\"\n")
+        #expect(throws: BinaryValueDecodeError.self) { try Self.text("1201ff", schema: editions, message: "ue.M") }
+    }
+
+    @Test("The package qualifies the definitions written before it too")
+    func packageAfterMessage() throws {
+        let schema = try ProtobufSchema.parse(Data("""
+            syntax = "proto2";
+            message A { optional B b = 1; }
+            package x;
+            message B { optional int32 v = 1; }
+            """.utf8))
+        #expect(schema.messageNames == ["x.A", "x.B"])
+        // protoc --decode=x.A of 0a020807
+        #expect(try Self.text("0a020807", schema: schema, message: "x.A") == "b {\n  v: 7\n}\n")
+    }
+
+    @Test("A .proto file saved with a UTF-8 byte order mark reads as protoc reads it")
+    func byteOrderMark() throws {
+        let schema = try ProtobufSchema.parse(Data([0xEF, 0xBB, 0xBF]) + Data("syntax = \"proto3\"; message Q { int32 a = 1; }".utf8))
+        #expect(try Self.text("0805", schema: schema, message: "Q") == "a: 5\n")
+    }
+
     @Test("A cell spends its budget inside a field the schema does not name")
     func unknownFieldBudget() throws {
         let schema = try ProtobufSchema.parse(Data(Self.budgetProto.utf8))

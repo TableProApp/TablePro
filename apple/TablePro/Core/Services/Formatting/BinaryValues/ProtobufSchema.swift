@@ -28,6 +28,8 @@ internal struct ProtobufFieldDescriptor: Equatable, Sendable {
     let oneofIndex: Int?
     // Without presence, a field holding its default is not printed.
     let hasPresence: Bool
+    // protoc refuses the whole value when such a string is not UTF-8.
+    let validatesUTF8: Bool
 }
 
 internal struct ProtobufMessageDescriptor: Equatable, Sendable {
@@ -179,6 +181,7 @@ internal enum ProtobufSyntax: Sendable {
 internal struct ProtobufFeatureOverrides: Equatable, Sendable {
     var implicitPresence: Bool?
     var closedEnum: Bool?
+    var validatesUTF8: Bool?
 }
 
 internal struct ProtobufFileDefinition: Sendable {
@@ -228,11 +231,13 @@ private struct ProtobufFeatures {
     let syntax: ProtobufSyntax
     var implicitPresence: Bool
     var closedEnum: Bool
+    var validatesUTF8: Bool
 
     init(syntax: ProtobufSyntax) {
         self.syntax = syntax
         implicitPresence = syntax == .proto3
         closedEnum = syntax == .proto2
+        validatesUTF8 = syntax != .proto2
     }
 
     func applying(_ overrides: ProtobufFeatureOverrides?) -> ProtobufFeatures {
@@ -240,6 +245,7 @@ private struct ProtobufFeatures {
         var result = self
         if let implicitPresence = overrides.implicitPresence { result.implicitPresence = implicitPresence }
         if let closedEnum = overrides.closedEnum { result.closedEnum = closedEnum }
+        if let validatesUTF8 = overrides.validatesUTF8 { result.validatesUTF8 = validatesUTF8 }
         return result
     }
 }
@@ -294,7 +300,8 @@ private struct ProtobufTypeResolver {
         case .named(let reference):
             type = resolve(reference, scope: scope)
         }
-        let isImplicit = features.applying(field.features).implicitPresence && !field.isOptional
+        let fieldFeatures = features.applying(field.features)
+        let isImplicit = fieldFeatures.implicitPresence && !field.isOptional
         let isMessage: Bool
         switch type {
         case .message, .group: isMessage = true
@@ -306,7 +313,8 @@ private struct ProtobufTypeResolver {
             type: type,
             isRepeated: field.isRepeated,
             oneofIndex: field.oneofIndex,
-            hasPresence: !field.isRepeated && (field.oneofIndex != nil || isMessage || !isImplicit)
+            hasPresence: !field.isRepeated && (field.oneofIndex != nil || isMessage || !isImplicit),
+            validatesUTF8: fieldFeatures.validatesUTF8
         )
     }
 
@@ -405,7 +413,7 @@ internal enum ProtobufDescriptorSetParser {
         return nil
     }
 
-    // options.features: FeatureSet.field_presence = 1 (2 is IMPLICIT), enum_type = 2 (2 is CLOSED).
+    // FeatureSet: field_presence = 1 (2 IMPLICIT), enum_type = 2 (2 CLOSED), utf8_validation = 4 (3 NONE).
     private static func features(_ entries: [(Int, Value)], options: Int, features: Int) throws -> ProtobufFeatureOverrides {
         guard let optionBytes = bytes(entries, options),
               let featureBytes = bytes(try fields(optionBytes), features) else { return ProtobufFeatureOverrides() }
@@ -413,6 +421,7 @@ internal enum ProtobufDescriptorSetParser {
         var overrides = ProtobufFeatureOverrides()
         if let presence = varint(set, 1), (1...3).contains(presence) { overrides.implicitPresence = presence == 2 }
         if let enumType = varint(set, 2), (1...2).contains(enumType) { overrides.closedEnum = enumType == 2 }
+        if let validation = varint(set, 4), (2...3).contains(validation) { overrides.validatesUTF8 = validation == 2 }
         return overrides
     }
 

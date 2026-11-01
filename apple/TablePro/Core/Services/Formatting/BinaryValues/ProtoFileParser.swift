@@ -26,7 +26,7 @@ internal enum ProtoFileParser {
         static func tokens(_ text: String) throws -> [Token] {
             let scalars = Array(text.unicodeScalars)
             var tokens: [Token] = []
-            var index = 0
+            var index = scalars.first == "\u{FEFF}" ? 1 : 0
             while index < scalars.count {
                 guard tokens.count < ProtoFileParser.maxTokens else { throw error(String(localized: "The file is too large.")) }
                 let scalar = scalars[index]
@@ -103,7 +103,7 @@ internal enum ProtoFileParser {
 
         mutating func file() throws -> ProtobufFileDefinition {
             var file = ProtobufFileDefinition()
-            var package = ""
+            let package = packageName()
             while let token = peek() {
                 switch token {
                 case .identifier("syntax"):
@@ -113,9 +113,7 @@ internal enum ProtoFileParser {
                     file.syntax = .editions
                     try skipStatement()
                 case .identifier("package"):
-                    advance()
-                    package = try identifier()
-                    try expect(";")
+                    try skipStatement()
                 case .identifier("import"):
                     try skipStatement()
                 case .identifier("option"):
@@ -138,6 +136,21 @@ internal enum ProtoFileParser {
             file.allMessages = messages
             file.allEnums = enums
             return file
+        }
+
+        // It qualifies every definition in the file, those written before it too.
+        private func packageName() -> String {
+            var depth = 0
+            for index in tokens.indices {
+                switch tokens[index] {
+                case .symbol("{"): depth += 1
+                case .symbol("}"): depth -= 1
+                case .identifier("package") where depth == 0 && index + 1 < tokens.count:
+                    if case .identifier(let name) = tokens[index + 1] { return name }
+                default: break
+                }
+            }
+            return ""
         }
 
         private mutating func message(scope: String, depth: Int) throws -> String {
@@ -312,6 +325,8 @@ internal enum ProtoFileParser {
                 overrides.implicitPresence = false
             case ("features.enum_type", "CLOSED"): overrides.closedEnum = true
             case ("features.enum_type", "OPEN"): overrides.closedEnum = false
+            case ("features.utf8_validation", "VERIFY"): overrides.validatesUTF8 = true
+            case ("features.utf8_validation", "NONE"): overrides.validatesUTF8 = false
             default: break
             }
         }
