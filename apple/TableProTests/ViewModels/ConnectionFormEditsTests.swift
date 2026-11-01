@@ -18,7 +18,8 @@ struct ConnectionFormEditsTests {
         queryTimeoutSeconds: Int? = nil,
         completionIdentifierCase: SQLIdentifierCase = .default,
         additionalFields: [String: String] = [:],
-        ownedAdditionalFieldIDs: Set<String> = []
+        ownedAdditionalFieldIDs: Set<String> = [],
+        maskingRules: [MaskingRule] = []
     ) -> ConnectionFormEdits {
         ConnectionFormEdits(
             name: "Edited",
@@ -51,8 +52,31 @@ struct ConnectionFormEditsTests {
             startupCommands: nil,
             localOnly: false,
             additionalFields: additionalFields,
-            ownedAdditionalFieldIDs: ownedAdditionalFieldIDs
+            ownedAdditionalFieldIDs: ownedAdditionalFieldIDs,
+            maskingRules: maskingRules
         )
+    }
+
+    @Test("The form saves masking rules and removing every rule clears them, beside the driver's own fields")
+    func maskingRulesAreSaved() {
+        var original = populatedConnection()
+        original.additionalFields["sslmode"] = "require"
+        let rules = [MaskingRule(pattern: "*.email", style: .email)]
+
+        let saved = edits(
+            additionalFields: ["sslmode": "require"],
+            ownedAdditionalFieldIDs: ConnectionFormEdits.appManagedAdditionalFieldIDs,
+            maskingRules: rules
+        ).applied(to: original)
+        #expect(saved.maskingRules == rules)
+        #expect(saved.additionalFields["sslmode"] == "require")
+
+        let cleared = edits(
+            additionalFields: ["sslmode": "require"],
+            ownedAdditionalFieldIDs: ConnectionFormEdits.appManagedAdditionalFieldIDs
+        ).applied(to: saved)
+        #expect(cleared.maskingRules.isEmpty)
+        #expect(cleared.additionalFields[DatabaseConnection.maskingRulesKey] == nil)
     }
 
     private func populatedConnection() -> DatabaseConnection {

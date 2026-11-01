@@ -15,6 +15,7 @@ extension MainContentCoordinator {
             saveLastFilters(of: tab)
             if tab.tabType.isTransient {
                 RoutineDebugSessions.shared.endSession(forTab: id, window: contentWindow)
+                LiveMessageSessions.shared.end(tabId: id)
             } else {
                 RecentlyClosedTabStore.shared.push(tab: tab, connection: connection)
             }

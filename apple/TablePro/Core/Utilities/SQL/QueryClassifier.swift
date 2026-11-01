@@ -1014,6 +1014,8 @@ private extension QueryClassifier {
             return worstRequest(typesenseClassification)
         case .weaviate:
             return worstRequest(weaviateClassification)
+        case .memcached:
+            return worstRequest(memcachedClassification)
         case .firestore, .firebaseRealtimeDatabase:
             return worstRequest { firebaseClassification($0, databaseType: databaseType) }
         case .bigtable:

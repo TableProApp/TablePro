@@ -4330,6 +4330,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "Cards" : {
+
+    },
     "Cart" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -12942,6 +12945,9 @@
     "Layers" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "Layout" : {
+
     },
     "Leaf" : {
       "extractionState" : "manual",

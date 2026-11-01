@@ -55,7 +55,7 @@ extension MainContentCoordinator {
         case .usersRoles:
             usersRolesActions?.refresh()
             return
-        case .query, .table, .createTable, .routineDebug:
+        case .query, .table, .createTable, .routineDebug, .liveMessages:
             break
         }
         if tab.display.resultsViewMode == .structure {

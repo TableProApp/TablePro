@@ -7,12 +7,7 @@ import AppKit
 import Combine
 import SwiftUI
 
-/// The inspected row's fields.
-///
-/// A `List` and not a `Form`. Measured at the pane's width: `List` is lazy and stays lazy with rows
-/// of differing heights, holding 336 subviews and about 135ms to first display whether the row has
-/// 100 columns or 2000. `Form(.formStyle(.grouped))` builds every row eagerly, four subviews each,
-/// and costs 525ms at 2000. A wide table would have paid that on every selection change.
+// A List, not a Form: measured lazy at 336 subviews and ~135ms for 100 or 2000 columns; a grouped Form costs 525ms at 2000.
 internal struct InspectorFieldListView: View {
     @ObservedObject internal var editState: MultiRowEditState
     internal let isEditable: Bool
@@ -26,14 +21,11 @@ internal struct InspectorFieldListView: View {
 
     @State private var searchText = ""
     @State private var showsModifiedOnly = false
-    @State private var expandedFieldID: UUID?
     @StateObject private var tabStops = InspectorTabStopRegistry()
     @FocusState private var focusedField: UUID?
 
     var body: some View {
-        /// Resolved once per pass. `editState.fields` is observed, so the body runs on every
-        /// keystroke in every field, and filtering inside `List` as well as inside the keyboard
-        /// handlers walked the whole column list several times over for each one.
+        // Once per pass: the body runs on every keystroke, and filtering per use walked every column several times.
         let fields = visibleFields
         return VStack(spacing: 0) {
             filterBar
@@ -45,16 +37,13 @@ internal struct InspectorFieldListView: View {
             }
         }
         .onChange(of: editState.fields.map(\.columnName)) { _ in
-            expandedFieldID = nil
             focusedField = nil
         }
     }
 
     // MARK: - Filtering
 
-    /// Always visible rather than bolted above the list on some modes and not others. A row of two
-    /// hundred columns is unreadable without it, and a control that is the only way to reach a
-    /// field cannot be conditional.
+    // Always visible: on a row of two hundred columns it is the only way to reach a field.
     private var filterBar: some View {
         HStack(spacing: 6) {
             NativeSearchField(
@@ -76,12 +65,7 @@ internal struct InspectorFieldListView: View {
         .padding(.vertical, 5)
     }
 
-    /// Whether this field accepts a change at all.
-    ///
-    /// One answer, read by the editor, by the value menu and by the keyboard shortcuts alike. A
-    /// PHP-serialized value cannot be round-tripped without PHP, so the field is presented but never
-    /// mutated: every Set Value command would overwrite the serialized payload with something the app
-    /// cannot rebuild. Bytes decoded under a binary format have no writer back either.
+    // One answer for the editor, the value menu and the shortcuts. PHP-serialized and decoded binary values have no writer back.
     internal static func isFieldEditable(
         _ field: FieldEditState,
         kind: FieldEditorKind,
@@ -135,9 +119,7 @@ internal struct InspectorFieldListView: View {
                     ))
             }
         }
-        /// `.plain`, not `.inset`: the inset style spends a hard 16pt per side before any
-        /// `listRowInsets` is consulted, so the pane's content sat at 24pt while its own header sat
-        /// at 10. `.plain` lands at half of `intercellSpacing` and can be corrected onto the edge.
+        // `.plain`, not `.inset`: the inset style spends 16pt per side before `listRowInsets`, which no inset can undo.
         .listStyle(.plain)
         .splitItemGlassBackground()
         .modifier(InspectorFieldKeyShortcuts(
@@ -157,13 +139,13 @@ internal struct InspectorFieldListView: View {
             isModified: field.hasEdit || field.hasCommittedEdit,
             isPrimaryKey: field.isPrimaryKey,
             isForeignKey: field.isForeignKey,
-            isExpanded: expandedFieldID == field.id,
+            isExpanded: editState.expandedColumn == field.columnIndex,
             commands: commands,
             isPendingExpression: field.isPendingExpression,
             onSetValue: { editState.setValue($0, at: field.columnIndex) },
             onRemoveField: offersFieldRemoval ? { editState.removeField(at: field.columnIndex) } : nil,
             onToggleExpand: FieldEditorContent.canExpand(kind: kind, state: FieldValueState.resolve(field))
-                ? { expandedFieldID = expandedFieldID == field.id ? nil : field.id }
+                ? { editState.toggleExpansion(ofColumn: field.columnIndex) }
                 : nil,
             onPopOut: { onPopOut?(field, $0, kind) },
             onTabStopChange: { [tabStops] in tabStops.record($0, for: field.id) },
@@ -183,11 +165,7 @@ internal struct InspectorFieldListView: View {
             columnName: field.columnName,
             columnType: field.columnTypeEnum,
             isLongText: field.isLongText,
-            /// The getter reads the store, not the `state` resolved above. That value is a copy
-            /// taken when this context was built, so a getter closing over it answers whatever the
-            /// field held during that render, and an `onChange` action, which belongs to the
-            /// render that registered it, is a render behind again. An editor comparing its text
-            /// against that answer sees the value it had just replaced and puts it back (#3051).
+            // Reads the store, not `state`: a copy from this render made editors put back the value just replaced (#3051).
             value: isEditable
                 ? Binding(
                     get: { editState.currentText(at: columnIndex) },
@@ -207,21 +185,19 @@ internal struct InspectorFieldListView: View {
 
     // MARK: - Keyboard
 
-    /// Tab is intercepted because the key view loop inside a SwiftUI `List` has one stop, measured.
-    /// Ignored at either end so the key falls through and focus can leave the list, not wrap.
+    // A List's key view loop has one stop, measured. Ignored at either end so focus leaves the list instead of wrapping.
     private func moveFocus(within fields: [FieldEditState], forward: Bool) -> KeyPressResultCompat {
         guard !fields.isEmpty else { return .ignored }
         let order = fields.map(\.id)
         tabStops.forget(allBut: order)
-        /// With Full Keyboard Access on, the controls of a field showing a map are key views.
+        // With Full Keyboard Access on, the controls of a field showing a map are key views.
         let skipped = NSApplication.shared.isFullKeyboardAccessEnabled ? [] : tabStops.fieldsWithoutTabStop
         let destination = Self.focusDestination(from: focusedField, in: order, forward: forward, skipping: skipped)
         focusedField = destination
         return destination == nil ? .ignored : .handled
     }
 
-    /// The field Tab lands on, or nil to let the key leave the list. A field with nothing to focus
-    /// is passed over, so focus is never sent where no view can take it.
+    // Nil lets the key leave the list. A field with nothing to focus is passed over.
     internal static func focusDestination(
         from current: UUID?,
         in order: [UUID],
@@ -251,8 +227,7 @@ internal struct InspectorFieldListView: View {
         return .handled
     }
 
-    /// Control-Option-N and Control-Option-D do only what the field's menu offers. Unhandled, the key goes on
-    /// to the next responder rather than staging a NULL the column refuses.
+    // Only what the field's menu offers; otherwise the key goes on rather than staging a NULL the column refuses.
     internal static func stateShortcutCommand(for key: Character, offered: [SetValueCommand]) -> SetValueCommand? {
         let command: SetValueCommand
         switch key {
@@ -264,8 +239,7 @@ internal struct InspectorFieldListView: View {
     }
 }
 
-/// Fields whose editor holds nothing Tab can land on. A reference that publishes nothing, so a
-/// field reporting in does not redraw the list.
+// Fields with nothing Tab can land on. Publishes nothing, so a field reporting in does not redraw the list.
 @MainActor
 internal final class InspectorTabStopRegistry: ObservableObject {
     internal private(set) var fieldsWithoutTabStop: Set<UUID> = []
@@ -278,15 +252,13 @@ internal final class InspectorTabStopRegistry: ObservableObject {
         }
     }
 
-    /// Field ids are reissued on every selection change, so the old ones are dropped.
+    // Field ids are reissued on every selection change.
     internal func forget(allBut fieldIDs: [UUID]) {
         fieldsWithoutTabStop.formIntersection(fieldIDs)
     }
 }
 
-/// `onKeyPress` is macOS 14, and `KeyPress` cannot appear outside the check, so the handlers
-/// are gated as a pair. Tab still moves focus on macOS 13 through the responder chain; what is
-/// lost there is the Control-Option state shortcut, which the field's own menu also offers.
+// `onKeyPress` is macOS 14. On 13 Tab still moves focus through the responder chain; the field's menu covers the shortcuts.
 private struct InspectorFieldKeyShortcuts: ViewModifier {
     let moveFocus: (Bool) -> KeyPressResultCompat
     let applyStateShortcut: (Character) -> KeyPressResultCompat
@@ -310,7 +282,7 @@ private struct InspectorFieldKeyShortcuts: ViewModifier {
     }
 }
 
-/// Mirrors `KeyPress.Result`, which is macOS 14, so the handlers can be declared outside the check.
+// Mirrors macOS 14's `KeyPress.Result`, so the handlers can be declared outside the check.
 internal enum KeyPressResultCompat {
     case handled
     case ignored

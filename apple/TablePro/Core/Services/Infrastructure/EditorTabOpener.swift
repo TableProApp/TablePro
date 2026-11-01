@@ -104,8 +104,8 @@ internal enum EditorTabOpener {
                 databaseName: payload.databaseName ?? openingDatabaseName,
                 schemaName: payload.schemaName
             )
-        case .routineDebug:
-            // A payload cannot carry a live session; the coordinator opens debug tabs itself.
+        case .routineDebug, .liveMessages:
+            // A payload cannot carry a live session; the coordinator opens these tabs itself.
             return
         }
     }
