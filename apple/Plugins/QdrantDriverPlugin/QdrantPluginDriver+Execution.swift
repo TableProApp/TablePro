@@ -71,11 +71,13 @@ extension QdrantPluginDriver {
         let route = QdrantPathEncoding.segments(of: request.path) ?? []
         if let points = QdrantPoint.list(fromResponse: response.json), !points.isEmpty || route.contains("points") {
             let name = route.count >= 2 && route[0] == "collections" ? Self.collectionName(in: request.path) : nil
-            let collection = name.flatMap(rememberedCollection)
+            let known = name.flatMap(rememberedCollection)
+            // Typed by the points that came back as well, so an export of a fresh query keeps numbers numbers.
+            let typed = (known ?? QdrantCollection(name: name ?? "", vectors: [], payloadFields: [])).including(points)
             return render(
                 points,
-                columns: QdrantPoint.columns(of: points, collection: collection),
-                collection: collection ?? QdrantCollection(name: name ?? "", vectors: [], payloadFields: []),
+                columns: QdrantPoint.columns(of: points, collection: known),
+                collection: typed,
                 started: started
             )
         }
