@@ -751,6 +751,7 @@ extension DatabaseManager {
         // Before the tunnel goes: a debug target whose client vanishes keeps its locks until someone aborts it.
         await RoutineDebugSessions.shared.stopAll(connectionId: sessionId, tabsCloseAfter: true)
         defer { RoutineDebugSessions.shared.reopenAdmission(for: sessionId) }
+        LiveMessageSessions.shared.end(connectionId: sessionId)
 
         tabStatePersister?.persistTabState(for: sessionId)
         if origin == .userRequested {

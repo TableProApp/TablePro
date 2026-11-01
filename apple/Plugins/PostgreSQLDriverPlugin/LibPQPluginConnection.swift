@@ -628,6 +628,39 @@ final class LibPQPluginConnection: @unchecked Sendable {
         typeNames.merge(names)
     }
 
+    // MARK: - Notifications
+
+    // Waits at most `waitMicroseconds` on the queue, so a NOTIFY sent on this session gets its turn between waits.
+    func nextNotifications(waitMicroseconds: Int64) async throws -> [LibPQNotification] {
+        try await pluginDispatchAsync(on: queue) { [self] in
+            guard !isShuttingDown, let conn = connectionHandle else { throw LibPQPluginError.notConnected }
+            var received = Self.drainNotifications(conn)
+            guard received.isEmpty else { return received }
+            let socket = PQsocket(conn)
+            guard socket >= 0 else { throw connectionError(from: conn) }
+            let deadline = pg_usec_time_t(Int64(PQgetCurrentTimeUSec()) + waitMicroseconds)
+            guard PQsocketPoll(socket, 1, 0, deadline) >= 0 else { throw connectionError(from: conn) }
+            guard PQconsumeInput(conn) != 0, PQstatus(conn) == CONNECTION_OK else {
+                stateLock.withLock { _hasLostConnection = true }
+                throw connectionError(from: conn)
+            }
+            received = Self.drainNotifications(conn)
+            return received
+        }
+    }
+
+    private static func drainNotifications(_ conn: OpaquePointer) -> [LibPQNotification] {
+        var received: [LibPQNotification] = []
+        while let notify = PQnotifies(conn) {
+            received.append(LibPQNotification(
+                channel: String(cString: notify.pointee.relname),
+                payload: notify.pointee.extra.map { String(cString: $0) } ?? ""
+            ))
+            PQfreemem(notify)
+        }
+        return received
+    }
+
     // MARK: - Query Cancellation
 
     func cancelCurrentQuery() {

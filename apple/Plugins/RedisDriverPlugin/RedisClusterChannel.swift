@@ -76,6 +76,11 @@ final class RedisClusterChannel: RedisCommandChannel, @unchecked Sendable {
 
     var supportsDatabaseSelection: Bool { servedDatabaseCount > 1 }
 
+    /// Any node: the cluster bus delivers every classic PUBLISH to every node's subscribers.
+    func pubSubConnection() -> RedisPluginConnection? {
+        lock.withLock { connections.values.lazy.compactMap { $0 as? RedisPluginConnection }.first }
+    }
+
     private var servedDatabaseCount: Int {
         lock.lock()
         defer { lock.unlock() }

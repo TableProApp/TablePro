@@ -37,7 +37,7 @@ internal enum PendingChangeKind: Equatable, Hashable, Sendable {
         case .usersRoles:
             return hasPrincipalChanges ? .principals : nil
         case .query, .table, .erDiagram, .serverDashboard, .insights, .tableHealth, .objectSource, .versionHistory,
-             .tableListing, .routineDebug:
+             .tableListing, .routineDebug, .liveMessages:
             return contentKind(
                 hasDataChanges: hasDataChanges,
                 hasStructureChanges: hasStructureChanges,

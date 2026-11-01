@@ -304,6 +304,11 @@ final class LibPQDriverCore: @unchecked Sendable {
         libpqConnection?.observeServerNotices(observer)
     }
 
+    func nextNotifications(waitMicroseconds: Int64) async throws -> [LibPQNotification] {
+        guard let connection = libpqConnection else { throw LibPQPluginError.notConnected }
+        return try await connection.nextNotifications(waitMicroseconds: waitMicroseconds)
+    }
+
     func cancelQueryKeepingReply() {
         libpqConnection?.requestServerCancelKeepingReply()
     }
