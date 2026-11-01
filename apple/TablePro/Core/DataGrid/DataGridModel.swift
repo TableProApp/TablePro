@@ -270,22 +270,6 @@ final class DataGridModel: ObservableObject {
             store.valueFilter = remapped
         }
         store.displayFormats = formats
-        redrawFormatted([column], in: current)
-    }
-
-    // Columns whose format is unchanged now decode values they showed as stored bytes, as when a lost Avro schema is
-    // chosen again: a value filter picked from those bytes follows them, the way a format change carries it.
-    func redisplay(_ changed: [DataGridColumn]) {
-        let current = rows
-        for column in changed {
-            if let remapped = remappedValueFilter(column: column, from: nil, to: displayFormat(for: column), in: current) {
-                store.valueFilter = remapped
-            }
-        }
-        redrawFormatted(changed, in: current)
-    }
-
-    private func redrawFormatted(_ changed: [DataGridColumn], in current: TableRows) {
         display.cache.removeAll()
         if store.valueFilter.isActive {
             order = resolveOrder(in: current)
@@ -293,8 +277,7 @@ final class DataGridModel: ObservableObject {
             displayRevision &+= 1
             mountedView?.apply(.reload)
         } else {
-            let positions = IndexSet(changed.compactMap { columns.displayPosition(of: $0.id) })
-            mountedView?.apply(.rowsUpdated(IndexSet(0..<rowCount), columns: positions.isEmpty ? nil : positions))
+            mountedView?.apply(.rowsUpdated(IndexSet(0..<rowCount), columns: columns.displayPosition(of: column.id).map { IndexSet(integer: $0) }))
         }
         refreshFind()
     }

@@ -108,27 +108,6 @@ struct DataGridDisplayCacheTests {
         #expect(grid.text(row: 0) == Self.rawBinaryText)
     }
 
-    @Test("A schema this Mac lost, chosen again, redraws the cells it left as hex and carries their value filter over")
-    func schemaReturnsToTheGrid() throws {
-        let grid = DisplayGrid(Self.binaryRows)
-        let column = try #require(grid.model.columns.column(at: 0))
-        let text = #"{"type":"fixed","name":"F"# + UUID().uuidString.filter(\.isLetter) + #"","size":16}"#
-        grid.model.setDisplayFormat(.avro(schemaID: AvroSchemaStore.schemaID(of: text)), for: column)
-        #expect(grid.text(row: 0) == Self.rawBinaryText)
-        var filter = GridValueFilterState()
-        filter.set(ColumnValueFilter(selectedValues: [Self.rawBinaryText], includesNull: false), columnName: "id", forColumn: 0)
-        grid.model.setValueFilter(filter)
-
-        _ = try AvroSchemaStore.shared.add(text)
-        #expect(grid.text(row: 0) == Self.rawBinaryText)
-
-        grid.model.redisplay([column])
-        let decoded = "\"" + Self.rawBinaryText + "\""
-        #expect(grid.text(row: 0) == decoded)
-        #expect(grid.model.store.valueFilter.filter(forColumn: 0)?.selectedValues == [decoded])
-        #expect(grid.model.rowCount == 1)
-    }
-
     @Test("A display format is kept in the grid's store, where its owner reads it")
     func displayFormatIsWrittenToTheStore() throws {
         let grid = DisplayGrid(Self.binaryRows)
