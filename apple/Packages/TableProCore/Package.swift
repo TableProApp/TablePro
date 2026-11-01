@@ -156,7 +156,7 @@ let package = Package(
         ),
         .target(
             name: "TableProTrinoCore",
-            dependencies: ["TableProSQLGrammar"],
+            dependencies: ["TableProSQLGrammar", "TableProTLSClientIdentity"],
             path: "Sources/TableProTrinoCore"
         ),
         .target(

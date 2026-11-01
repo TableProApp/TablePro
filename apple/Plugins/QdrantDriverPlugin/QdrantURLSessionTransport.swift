@@ -214,9 +214,14 @@ private final class QdrantTaskDelegate: NSObject, URLSessionTaskDelegate, @unche
                 SecTrustSetPolicies(trust, SecPolicyCreateBasicX509())
             }
             var error: CFError?
-            guard !SecTrustEvaluateWithError(trust, &error) else { return nil }
-            let detail = error.map { CFErrorCopyDescription($0) as String } ?? ""
-            return String(format: String(localized: "The server's certificate is not trusted. %@"), detail)
+            guard SecTrustEvaluateWithError(trust, &error) else {
+                let detail = error.map { CFErrorCopyDescription($0) as String } ?? ""
+                return String(format: String(localized: "The server's certificate is not trusted. %@"), detail)
+            }
+            guard tls.verification != .caOnly || ServerCertificatePurpose.leafPermitsServerAuthentication(trust) else {
+                return String(localized: "The server's certificate is not issued for a server, so it cannot prove the server's identity.")
+            }
+            return nil
         }
     }
 }

@@ -1,5 +1,6 @@
 import Foundation
 import Security
+import TableProTLSClientIdentity
 
 public struct TrinoHeaderFields: Sendable, Equatable {
     private let storage: [String: String]
@@ -394,6 +395,9 @@ struct TrinoTLSChallengeHandler {
         var error: CFError?
         guard SecTrustEvaluateWithError(serverTrust, &error) else {
             return .refuse(Self.failureKind(of: error), message: error.map { CFErrorCopyDescription($0) as String } ?? "")
+        }
+        if tls.mode == .caOnly, !ServerCertificatePurpose.leafPermitsServerAuthentication(serverTrust) {
+            return .refuse(.untrustedCertificate, message: "The server's certificate is not issued for a server.")
         }
         return TrinoChallengeAnswer(disposition: .useCredential, credential: URLCredential(trust: serverTrust))
     }

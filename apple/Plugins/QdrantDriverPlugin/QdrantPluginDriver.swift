@@ -94,8 +94,12 @@ internal final class QdrantPluginDriver: PluginDatabaseDriver, @unchecked Sendab
             return cached
         }
         let collection = try await requireClient().collection(named: name)
-        lock.withLock { cachedCollections[name] = collection }
+        remember(collection)
         return collection
+    }
+
+    func remember(_ collection: QdrantCollection) {
+        lock.withLock { cachedCollections[collection.name] = collection }
     }
 
     // A write moves points between pages and may add payload keys.

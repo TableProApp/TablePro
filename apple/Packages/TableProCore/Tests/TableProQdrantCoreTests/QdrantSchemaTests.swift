@@ -80,14 +80,29 @@ struct QdrantSchemaTests {
             ]
         )
         let types = Dictionary(uniqueKeysWithValues: QdrantSchema.columns(for: collection).map { ($0.name, $0.type) })
-        #expect(types["tags"] == "array")
-        #expect(types["mixed"] == "json")
+        #expect(types["tags"] == "json(keyword)")
+        #expect(types["mixed"] == "json(keyword)")
         #expect(types["city"] == "keyword")
         #expect(collection.fieldType(ofColumn: "tags") == .keyword)
         let condition = try QdrantFilterBuilder.condition(
             for: QdrantFilterSpec(column: "tags", op: "=", value: "42"), collection: collection
         )
         #expect(canonical(condition) == #"{"key":"\"tags\"","match":{"value":"42"}}"#)
+    }
+
+    @Test("A page's points widen a sampled type without adding columns the table did not open with")
+    func pageWidensTypes() throws {
+        let collection = QdrantCollection.parse(
+            name: "docs",
+            info: info(vectors: ["size": 2], payloadSchema: ["tags": ["data_type": "keyword"]]),
+            sample: [try point(#"{"id":1,"payload":{"tags":"a","note":"x"}}"#)]
+        )
+        let page = [try point(#"{"id":101,"payload":{"tags":["a","b"],"note":["y"],"late":1}}"#)]
+        let typed = collection.including(page, addingKeys: false)
+        let types = Dictionary(uniqueKeysWithValues: QdrantSchema.columns(for: typed).map { ($0.name, $0.type) })
+        #expect(types["tags"] == "json(keyword)")
+        #expect(types["note"] == "json")
+        #expect(types["late"] == nil)
     }
 
     @Test("A named vector called size is not mistaken for the unnamed vector's dimension")

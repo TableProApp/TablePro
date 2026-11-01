@@ -5,7 +5,7 @@ import Testing
 struct QdrantRowWriteTests {
     private let types: [String: String] = [
         "id": "id", "city": "keyword", "count": "integer", "pop": "float", "active": "bool",
-        "note": "string", "meta": "object", "payload.id": "keyword",
+        "note": "string", "meta": "object", "payload.id": "keyword", "tags": "json(keyword)",
         "vector": "vector(2)", "vector.text": "multivector", "vector.sp": "sparse_vector"
     ]
 
@@ -13,6 +13,7 @@ struct QdrantRowWriteTests {
         try QdrantRowWriter.writes(
             collection: "docs",
             changes: changes,
+            serverVersion: "1.20.0",
             typeName: { types[$0] },
             newID: { "00000000-0000-0000-0000-000000000001" }
         ).map(\.request.text)
@@ -85,6 +86,31 @@ struct QdrantRowWriteTests {
         #expect(refusal(idChange)?.rowIndex == 5)
     }
 
+    @Test("An indexed field that holds lists takes a JSON list, or one value of the index's type")
+    func indexedListValues() throws {
+        let change = QdrantRowChange(kind: .update, rowIndex: 0, id: "7", cells: [QdrantCell(column: "tags", text: #"["a","b"]"#)])
+        #expect(try writes([change]) == [
+            "POST /collections/docs/points/payload?wait=true\n" + #"{"payload":{"tags":["a","b"]},"points":[7]}"#
+        ])
+        let single = QdrantRowChange(kind: .update, rowIndex: 0, id: "7", cells: [QdrantCell(column: "tags", text: "42")])
+        #expect(try writes([single]) == [
+            "POST /collections/docs/points/payload?wait=true\n" + #"{"payload":{"tags":"42"},"points":[7]}"#
+        ])
+    }
+
+    @Test("A server that would overwrite a taken id gets no grid insert")
+    func insertNeedsConditionalUpsert() {
+        let change = QdrantRowChange(kind: .insert, rowIndex: 6, id: nil, cells: [QdrantCell(column: "city", text: "Hanoi")])
+        for version in ["1.14.1", nil] as [String?] {
+            #expect(throws: QdrantRowRefusal.self) {
+                _ = try QdrantRowWriter.writes(collection: "docs", changes: [change], serverVersion: version, typeName: { types[$0] })
+            }
+        }
+        #expect(QdrantServerVersion.insertsWithoutOverwrite("1.15.0"))
+        #expect(QdrantServerVersion.insertsWithoutOverwrite("2.0.1-dev"))
+        #expect(!QdrantServerVersion.insertsWithoutOverwrite("1.9.7"))
+    }
+
     @Test("An insert carries its vectors, keeps an existing id untouched, and first checks that the id is free")
     func insert() throws {
         let change = QdrantRowChange(kind: .insert, rowIndex: 0, id: nil, cells: [
@@ -95,11 +121,11 @@ struct QdrantRowWriteTests {
             QdrantCell(column: "vector", text: "[1,2]")
         ])
         let write = try #require(try QdrantRowWriter.writes(
-            collection: "docs", changes: [change], typeName: { types[$0] },
+            collection: "docs", changes: [change], serverVersion: "1.20.0", typeName: { types[$0] },
             newID: { "00000000-0000-0000-0000-000000000001" }
         ).first)
         #expect(write.request.text == "PUT /collections/docs/points?wait=true\n"
-            + #"{"points":[{"id":"00000000-0000-0000-0000-000000000001","payload":{"active":true,"city":"Hanoi"},"vector":{"":[1,2]}}],"update_mode":"insert_only"}"#)
+            + #"{"points":[{"id":"00000000-0000-0000-0000-000000000001","payload":{"active":true,"city":"Hanoi"},"vector":{"":[1,2]}}],"update_filter":{"must":[{"has_id":[]}]}}"#)
         #expect(write.mustFindNothing?.text == "POST /collections/docs/points\n"
             + #"{"ids":["00000000-0000-0000-0000-000000000001"],"with_payload":false,"with_vector":false}"#)
     }

@@ -21,6 +21,8 @@ public final class QdrantPagingCache: @unchecked Sendable {
         }
     }
 
+    // A boundary that moved means points were added or removed before it, so every cursor past it
+    // now starts its page at the wrong row.
     public func storeCursor(_ cursor: Any, at offset: Int, key: String) {
         lock.withLock {
             if cursors[key] == nil {
@@ -28,6 +30,9 @@ public final class QdrantPagingCache: @unchecked Sendable {
                 if order.count > Self.maxQueries {
                     cursors[order.removeFirst()] = nil
                 }
+            }
+            if let known = cursors[key]?[offset], QdrantJSON.displayText(known) != QdrantJSON.displayText(cursor) {
+                cursors[key] = cursors[key]?.filter { $0.key < offset }
             }
             cursors[key, default: [:]][offset] = cursor
         }

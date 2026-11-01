@@ -130,7 +130,7 @@ let writes = try QdrantRowWriter.writes(collection: name, changes: [
     QdrantRowChange(kind: .insert, rowIndex: 2, id: nil, cells: [
         QdrantCell(column: "id", text: "999"), QdrantCell(column: "city", text: "new"), QdrantCell(column: "vector", text: "[1, 2]")
     ])
-], typeName: { types[$0] })
+], serverVersion: client.serverVersion, typeName: { types[$0] })
 for write in writes {
     if let lookup = write.mustFindNothing {
         check(QdrantPoint.list(fromResponse: try await run(lookup.text).json)?.isEmpty == true, "insert lookup finds a free id")
@@ -139,8 +139,11 @@ for write in writes {
 }
 let taken = try QdrantRowWriter.writes(collection: name, changes: [
     QdrantRowChange(kind: .insert, rowIndex: 0, id: nil, cells: [QdrantCell(column: "id", text: "3")])
-], typeName: { types[$0] })
+], serverVersion: client.serverVersion, typeName: { types[$0] })
 check(QdrantPoint.list(fromResponse: try await run(taken[0].mustFindNothing?.text).json)?.count == 1, "insert lookup finds a taken id")
+_ = try await run(taken[0].request.text)
+let untouched = QdrantPoint.list(fromResponse: try await run(#"POST \#(base)/points {"ids":[3],"with_payload":true,"with_vector":true}"#).json)
+check(untouched?.first?.cell(for: "city") == "odd" && untouched?.first?.cell(for: "vector") == "[3,1]", "insert leaves a taken id untouched")
 
 let after = try await run(#"POST \#(base)/points {"ids":[1,2,999],"with_payload":true,"with_vector":true}"#)
 let byID = Dictionary(uniqueKeysWithValues: (QdrantPoint.list(fromResponse: after.json) ?? []).map { ($0.idText ?? "", $0) })
@@ -150,7 +153,7 @@ check(byID["2"] == nil, "delete")
 check(byID["999"]?.cell(for: "city") == "new" && byID["999"]?.cell(for: "vector") == "[1,2]", "insert with vector")
 let cleared = try QdrantRowWriter.writes(collection: name, changes: [
     QdrantRowChange(kind: .update, rowIndex: 0, id: "1", cells: [QdrantCell(column: "vector.sp", text: nil)])
-], typeName: { types[$0] })
+], serverVersion: client.serverVersion, typeName: { types[$0] })
 _ = try await run(cleared[0].request.text)
 let afterClear = QdrantPoint.list(fromResponse: try await run(#"POST \#(base)/points {"ids":[1],"with_vector":true}"#).json)
 check(afterClear?.first?.cell(for: "vector.sp") == nil, "NULL removes a vector")

@@ -142,7 +142,7 @@ extension QdrantPluginDriver {
                       deletedRowIndices: deletedRowIndices, insertedRowIndices: insertedRowIndices)
         }
         do {
-            return try QdrantRowWriter.writes(collection: table, changes: tracked) { column in
+            return try QdrantRowWriter.writes(collection: table, changes: tracked, serverVersion: serverVersion) { column in
                 typeNames[column] ?? known.flatMap { QdrantSchema.knownTypeName(of: column, in: $0) }
             }.map { write in
                 PluginRowWrite(

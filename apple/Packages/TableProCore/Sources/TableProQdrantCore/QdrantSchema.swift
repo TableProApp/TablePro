@@ -137,10 +137,11 @@ public struct QdrantPayloadField: Sendable, Equatable {
         self.holdsScalars = holdsScalars
     }
 
-    // What a cell holds and is written back as. An indexed field holding lists keeps them lists.
-    public var cellType: QdrantFieldType {
-        guard isIndexed, holdsLists else { return type }
-        return holdsScalars ? .json : .array
+    // What a cell holds and is written back as. An indexed field that holds lists is `json(<type>)`,
+    // which the grid edits as JSON and a save writes as a list, or as one value of the index's type.
+    public var cellTypeName: String {
+        guard isIndexed, holdsLists else { return type.rawValue }
+        return QdrantCellType(element: type, allowsList: true).name
     }
 }
 
@@ -182,8 +183,8 @@ public struct QdrantCollection: Sendable, Equatable {
         field(ofColumn: column)?.type
     }
 
-    public func cellType(ofColumn column: String) -> QdrantFieldType? {
-        field(ofColumn: column)?.cellType
+    public func cellTypeName(ofColumn column: String) -> String? {
+        field(ofColumn: column)?.cellTypeName
     }
 
     private func field(ofColumn column: String) -> QdrantPayloadField? {
@@ -191,13 +192,16 @@ public struct QdrantCollection: Sendable, Equatable {
         return payloadFields.first { $0.name == key }
     }
 
-    public func including(_ points: [QdrantPoint]) -> QdrantCollection {
+    // A page's points widen the types a sample guessed, so a list first seen on page 2 is not saved as
+    // text. `addingKeys` is false for a grid page, whose columns stay the ones the table opened with.
+    public func including(_ points: [QdrantPoint], addingKeys: Bool = true) -> QdrantCollection {
         var fields = payloadFields
         var position = Dictionary(uniqueKeysWithValues: fields.enumerated().map { ($1.name, $0) })
         for point in points {
             for key in point.payloadKeys {
                 let observed = point.payload[key].flatMap(QdrantFieldType.observed)
                 guard let index = position[key] else {
+                    guard addingKeys else { continue }
                     position[key] = fields.count
                     fields.append(QdrantPayloadField(
                         name: key, type: observed ?? .json, isIndexed: false, hasTypedValue: observed != nil
@@ -312,7 +316,7 @@ public enum QdrantSchema {
     public static func columns(for collection: QdrantCollection) -> [QdrantColumn] {
         var columns = [QdrantColumn(name: idColumn, type: "id", isPrimaryKey: true)]
         columns += collection.payloadFields.map {
-            QdrantColumn(name: column(forPayloadKey: $0.name), type: $0.cellType.rawValue, isPrimaryKey: false)
+            QdrantColumn(name: column(forPayloadKey: $0.name), type: $0.cellTypeName, isPrimaryKey: false)
         }
         columns += collection.vectors.map { QdrantColumn(name: $0.column, type: $0.typeName, isPrimaryKey: false) }
         return columns
@@ -329,7 +333,7 @@ public enum QdrantSchema {
         if let spec = collection.vectors.first(where: { $0.column == column }) {
             return spec.typeName
         }
-        return collection.cellType(ofColumn: column)?.rawValue
+        return collection.cellTypeName(ofColumn: column)
     }
 }
 
@@ -347,5 +351,31 @@ public enum QdrantKeyPath {
             return inner.contains("\"") ? nil : String(inner)
         }
         return path.contains(where: { ".[]\"".contains($0) }) ? nil : path
+    }
+}
+
+public struct QdrantCellType: Sendable, Equatable {
+    public let element: QdrantFieldType
+    public let allowsList: Bool
+
+    public init(element: QdrantFieldType, allowsList: Bool = false) {
+        self.element = element
+        self.allowsList = allowsList
+    }
+
+    public init?(name: String) {
+        let lower = name.lowercased().trimmingCharacters(in: .whitespaces)
+        if lower.hasPrefix("json("), lower.hasSuffix(")"),
+           let element = QdrantFieldType(rawValue: String(lower.dropFirst("json(".count).dropLast())) {
+            self.init(element: element, allowsList: true)
+        } else if let element = QdrantFieldType(rawValue: lower) {
+            self.init(element: element)
+        } else {
+            return nil
+        }
+    }
+
+    public var name: String {
+        allowsList ? "json(\(element.rawValue))" : element.rawValue
     }
 }

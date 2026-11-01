@@ -34,9 +34,20 @@ public struct QdrantRowChange: Sendable, Equatable {
 public struct QdrantRowWrite: Sendable, Equatable {
     public let request: QdrantConsoleRequest
     public let rowIndex: Int
-    // A read that must find no point before the write runs: `insert_only` answers success and writes
-    // nothing when the id is taken.
+    // A read that must find no point before the write runs: an insert that leaves a taken id alone
+    // still answers success, so without it the save would report a row it never added.
     public let mustFindNothing: QdrantConsoleRequest?
+}
+
+public enum QdrantServerVersion {
+    // Measured: 1.15.5 and later honor `update_filter`; 1.13.6 and 1.14.1 ignore it and overwrite the
+    // point. `update_mode: insert_only` is ignored the same way on 1.16.3.
+    public static func insertsWithoutOverwrite(_ version: String?) -> Bool {
+        guard let version else { return false }
+        let parts = version.split(separator: ".").prefix(2).map { Int($0.prefix { $0.isNumber }) ?? 0 }
+        guard parts.count == 2 else { return false }
+        return parts[0] > 1 || (parts[0] == 1 && parts[1] >= 15)
+    }
 }
 
 public struct QdrantRowRefusal: Error, LocalizedError, Equatable, Sendable {
@@ -50,13 +61,21 @@ public enum QdrantRowWriter {
     public static func writes(
         collection: String,
         changes: [QdrantRowChange],
+        serverVersion: String?,
         typeName: (String) -> String?,
         newID: () -> String = { UUID().uuidString.lowercased() }
     ) throws -> [QdrantRowWrite] {
         let points = "/collections/\(QdrantPathEncoding.segment(collection))/points"
+        let insertsSafely = QdrantServerVersion.insertsWithoutOverwrite(serverVersion)
         var writes: [QdrantRowWrite] = []
         for change in changes {
             do {
+                if change.kind == .insert, !insertsSafely {
+                    throw Reason(text: String(
+                        format: String(localized: "Qdrant %@ overwrites a point that already has the id. Insert it from the REST editor, or upgrade Qdrant to 1.15 or later."),
+                        serverVersion ?? "?"
+                    ))
+                }
                 writes += try self.writes(for: change, points: points, typeName: typeName, newID: newID)
             } catch let error as QdrantValueError {
                 throw QdrantRowRefusal(rowIndex: change.rowIndex, reason: error.errorDescription ?? "")
@@ -88,7 +107,7 @@ public enum QdrantRowWriter {
             let point: [String: Any] = ["id": id, "vector": values.vectors, "payload": values.payload]
             let lookup = try request("POST", points, ["ids": [id], "with_payload": false, "with_vector": false])
             return [QdrantRowWrite(
-                request: try request("PUT", "\(points)?wait=true", ["points": [point], "update_mode": "insert_only"]),
+                request: try request("PUT", "\(points)?wait=true", ["points": [point], "update_filter": Self.matchesNoPoint]),
                 rowIndex: change.rowIndex,
                 mustFindNothing: lookup
             )]
@@ -114,6 +133,9 @@ public enum QdrantRowWriter {
         }
     }
 
+    // An upsert updates only existing points this filter matches, and it matches none.
+    private static var matchesNoPoint: [String: Any] { ["must": [["has_id": [Any]()]]] }
+
     private struct TypedValues {
         var payload: [String: Any] = [:]
         var vectors: [String: Any] = [:]
@@ -133,9 +155,9 @@ public enum QdrantRowWriter {
                 }
                 continue
             }
-            guard let fieldType = QdrantFieldType(rawValue: type.lowercased()) else { throw unknownType(cell.column) }
+            guard let cellType = QdrantCellType(name: type) else { throw unknownType(cell.column) }
             let key = QdrantSchema.payloadKey(forColumn: cell.column)
-            values.payload[key] = try cell.text.map { try QdrantValue.payload($0, type: fieldType, column: cell.column) } ?? NSNull()
+            values.payload[key] = try cell.text.map { try QdrantValue.payload($0, cellType: cellType, column: cell.column) } ?? NSNull()
         }
         return values
     }

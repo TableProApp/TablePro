@@ -50,8 +50,12 @@ extension QdrantPluginDriver {
                 offset: request.offset, limit: request.limit, cache: paging
             )
         }
-        let columns = QdrantSchema.columns(for: collection).map(\.name)
-        return render(points, columns: columns, collection: collection, started: started)
+        let typed = collection.including(points, addingKeys: false)
+        if typed != collection {
+            remember(typed)
+        }
+        let columns = QdrantSchema.columns(for: typed).map(\.name)
+        return render(points, columns: columns, collection: typed, started: started)
     }
 
     private func executeConsole(

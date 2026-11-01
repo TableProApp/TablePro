@@ -37,6 +37,19 @@ struct QdrantClientTests {
         #expect(transport.recorded.count == before + 2)
     }
 
+    @Test("When a re-read boundary moves, the cursors past it are dropped instead of starting pages at the wrong row")
+    func movedBoundaryDropsLaterCursors() {
+        let cache = QdrantPagingCache()
+        cache.storeCursor(NSNumber(value: 101), at: 100, key: "k")
+        cache.storeCursor(NSNumber(value: 201), at: 200, key: "k")
+        cache.storeCursor(NSNumber(value: 101), at: 100, key: "k")
+        #expect(cache.nearestCursor(at: 200, key: "k").offset == 200)
+        cache.storeCursor(NSNumber(value: 102), at: 100, key: "k")
+        let nearest = cache.nearestCursor(at: 200, key: "k")
+        #expect(nearest.offset == 100)
+        #expect((nearest.cursor as? NSNumber)?.intValue == 102)
+    }
+
     @Test("An offset past the end answers an empty page")
     func pastEnd() async throws {
         let client = makeClient(transport: scrollingTransport(count: 5))
