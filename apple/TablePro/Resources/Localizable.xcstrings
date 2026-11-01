@@ -186267,7 +186267,38 @@
         }
       }
     },
+    "The dump is replayed into this database, and the change cannot be undone. A backup TablePro wrote overwrites each object it names. The restore stops at the first error and keeps what ran before it." : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le dump est rejoué dans cette base de données, et la modification est irréversible. Une sauvegarde écrite par TablePro écrase chaque objet qu’elle nomme. La restauration s’arrête à la première erreur et conserve ce qui s’est exécuté avant."
+          }
+        }
+      }
+    },
+    "The dump is replayed into this database, and the change cannot be undone. Objects that already exist are kept, not replaced, and the dump's data is added to them. The restore carries on past errors, such as a key that already exists." : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le dump est rejoué dans cette base de données, et la modification est irréversible. Les objets existants sont conservés, et non remplacés, et les données du dump y sont ajoutées. La restauration se poursuit malgré les erreurs, comme une clé qui existe déjà."
+          }
+        }
+      }
+    },
+    "The dump is replayed into this database, and the change cannot be undone. The restore stops at the first error, such as a key or object that already exists. If the dump is one transaction, as every backup TablePro writes is, none of it is kept. Otherwise what ran before the error stays." : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le dump est rejoué dans cette base de données, et la modification est irréversible. La restauration s’arrête à la première erreur, comme une clé ou un objet qui existe déjà. Si le dump tient en une seule transaction, comme toute sauvegarde écrite par TablePro, rien n’en est conservé. Sinon, ce qui s’est exécuté avant l’erreur reste en place."
+          }
+        }
+      }
+    },
     "The dump is replayed into this database. Objects it names are overwritten and the change cannot be undone." : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -186278,6 +186309,7 @@
       }
     },
     "The dump is replayed into this database. Objects that already exist are kept, not replaced, and the dump's data is added to them. The change cannot be undone." : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
