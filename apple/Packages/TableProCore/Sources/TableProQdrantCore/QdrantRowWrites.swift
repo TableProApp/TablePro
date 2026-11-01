@@ -159,9 +159,9 @@ public enum QdrantRowWriter {
                 }
                 continue
             }
-            guard let cellType = QdrantCellType(name: type) else { throw unknownType(cell.column) }
+            guard let fieldType = QdrantFieldType(rawValue: type.lowercased()) else { throw unknownType(cell.column) }
             let key = QdrantSchema.payloadKey(forColumn: cell.column)
-            values.payload[key] = try cell.text.map { try QdrantValue.payload($0, cellType: cellType, column: cell.column) } ?? NSNull()
+            values.payload[key] = try cell.text.map { try QdrantValue.payload($0, type: fieldType, column: cell.column) } ?? NSNull()
         }
         return values
     }

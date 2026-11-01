@@ -57,13 +57,6 @@ public enum QdrantValue {
         return value
     }
 
-    public static func payload(_ text: String, cellType: QdrantCellType, column: String) throws -> Any {
-        if cellType.allowsList, let list = QdrantJSON.parse(text) as? [Any] {
-            return list
-        }
-        return try payload(text, type: cellType.element, column: column)
-    }
-
     public static func payload(_ text: String, type: QdrantFieldType, column: String) throws -> Any {
         switch type {
         case .keyword, .text, .string, .uuid, .datetime:

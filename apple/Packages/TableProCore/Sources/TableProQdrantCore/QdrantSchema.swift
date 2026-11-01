@@ -55,6 +55,17 @@ public enum QdrantFieldType: String, Sendable, Equatable, CaseIterable {
         }
     }
 
+    func stores(_ stored: QdrantFieldType) -> Bool {
+        switch self {
+        case .keyword, .text, .uuid, .datetime, .string: return stored == .string
+        case .integer: return stored == .integer
+        case .float: return stored == .float || stored == .integer
+        case .bool: return stored == .bool
+        case .geo: return stored == .object
+        case .object, .array, .json: return stored == self
+        }
+    }
+
     func merged(with other: QdrantFieldType) -> QdrantFieldType {
         if self == other { return self }
         if Set([self, other]) == [.integer, .float] { return .float }
@@ -113,35 +124,34 @@ public struct QdrantVectorSpec: Sendable, Equatable {
 
 public struct QdrantPayloadField: Sendable, Equatable {
     public let name: String
-    // What a filter compares: an index types each element of a list, so this is the element's type.
+    // The index's type for an indexed field, which filters use; the sampled type otherwise.
     public let type: QdrantFieldType
     public let isIndexed: Bool
     // False while every sampled value was null, so the first real value sets the type outright.
     public let hasTypedValue: Bool
-    public let holdsLists: Bool
-    public let holdsScalars: Bool
+    // What the sampled points actually store. An index does not constrain it: a keyword index
+    // still lets a point hold 42 or a list.
+    public let storedType: QdrantFieldType?
 
     public init(
         name: String,
         type: QdrantFieldType,
         isIndexed: Bool,
         hasTypedValue: Bool = true,
-        holdsLists: Bool = false,
-        holdsScalars: Bool = false
+        storedType: QdrantFieldType? = nil
     ) {
         self.name = name
         self.type = type
         self.isIndexed = isIndexed
         self.hasTypedValue = hasTypedValue
-        self.holdsLists = holdsLists
-        self.holdsScalars = holdsScalars
+        self.storedType = storedType
     }
 
-    // What a cell holds and is written back as. An indexed field that holds lists is `json(<type>)`,
-    // which the grid edits as JSON and a save writes as a list, or as one value of the index's type.
+    // What a cell holds and is written back as, so a value saves as the type it was stored with.
+    // The index's name stands in only when every value seen fits it.
     public var cellTypeName: String {
-        guard isIndexed, holdsLists else { return type.rawValue }
-        return QdrantCellType(element: type, allowsList: true).name
+        guard isIndexed, let storedType else { return type.rawValue }
+        return type.stores(storedType) ? type.rawValue : storedType.rawValue
     }
 }
 
@@ -214,8 +224,7 @@ public struct QdrantCollection: Sendable, Equatable {
                 if field.isIndexed {
                     fields[index] = QdrantPayloadField(
                         name: key, type: field.type, isIndexed: true,
-                        holdsLists: field.holdsLists || observed == .array,
-                        holdsScalars: field.holdsScalars || observed != .array
+                        storedType: field.storedType.map { $0.merged(with: observed) } ?? observed
                     )
                     continue
                 }
@@ -352,31 +361,5 @@ public enum QdrantKeyPath {
             return inner.contains("\"") ? nil : String(inner)
         }
         return path.contains(where: { ".[]\"".contains($0) }) ? nil : path
-    }
-}
-
-public struct QdrantCellType: Sendable, Equatable {
-    public let element: QdrantFieldType
-    public let allowsList: Bool
-
-    public init(element: QdrantFieldType, allowsList: Bool = false) {
-        self.element = element
-        self.allowsList = allowsList
-    }
-
-    public init?(name: String) {
-        let lower = name.lowercased().trimmingCharacters(in: .whitespaces)
-        if lower.hasPrefix("json("), lower.hasSuffix(")"),
-           let element = QdrantFieldType(rawValue: String(lower.dropFirst("json(".count).dropLast())) {
-            self.init(element: element, allowsList: true)
-        } else if let element = QdrantFieldType(rawValue: lower) {
-            self.init(element: element)
-        } else {
-            return nil
-        }
-    }
-
-    public var name: String {
-        allowsList ? "json(\(element.rawValue))" : element.rawValue
     }
 }

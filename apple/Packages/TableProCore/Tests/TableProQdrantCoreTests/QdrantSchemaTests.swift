@@ -67,22 +67,26 @@ struct QdrantSchemaTests {
         #expect(QdrantSchema.column(forPayloadKey: "payload.id") == "payload.payload.id")
     }
 
-    @Test("An indexed field holding lists stays a list in its cell, while filters compare its elements")
+    @Test("A cell is typed by what points store; the index names it only when every value fits")
     func indexedLists() throws {
         let collection = QdrantCollection.parse(
             name: "docs",
             info: info(vectors: ["size": 2], payloadSchema: [
-                "tags": ["data_type": "keyword"], "mixed": ["data_type": "keyword"], "city": ["data_type": "keyword"]
+                "tags": ["data_type": "keyword"], "mixed": ["data_type": "keyword"], "city": ["data_type": "keyword"],
+                "code": ["data_type": "keyword"], "price": ["data_type": "float"], "fresh": ["data_type": "integer"]
             ]),
             sample: [
-                try point(#"{"id":1,"payload":{"tags":["a","b"],"mixed":["a"],"city":"Berlin"}}"#),
-                try point(#"{"id":2,"payload":{"tags":["c"],"mixed":"b"}}"#)
+                try point(#"{"id":1,"payload":{"tags":["a","b"],"mixed":["a"],"city":"Berlin","code":42,"price":3}}"#),
+                try point(#"{"id":2,"payload":{"tags":["c"],"mixed":"b","price":2.5}}"#)
             ]
         )
         let types = Dictionary(uniqueKeysWithValues: QdrantSchema.columns(for: collection).map { ($0.name, $0.type) })
-        #expect(types["tags"] == "json(keyword)")
-        #expect(types["mixed"] == "json(keyword)")
+        #expect(types["tags"] == "array")
+        #expect(types["mixed"] == "json")
         #expect(types["city"] == "keyword")
+        #expect(types["code"] == "integer")
+        #expect(types["price"] == "float")
+        #expect(types["fresh"] == "integer")
         #expect(collection.indexType(ofColumn: "tags") == .keyword)
         let condition = try QdrantFilterBuilder.condition(
             for: QdrantFilterSpec(column: "tags", op: "=", value: "42"), collection: collection
@@ -100,7 +104,7 @@ struct QdrantSchemaTests {
         let page = [try point(#"{"id":101,"payload":{"tags":["a","b"],"note":["y"],"late":1}}"#)]
         let typed = collection.including(page, addingKeys: false)
         let types = Dictionary(uniqueKeysWithValues: QdrantSchema.columns(for: typed).map { ($0.name, $0.type) })
-        #expect(types["tags"] == "json(keyword)")
+        #expect(types["tags"] == "json")
         #expect(types["note"] == "json")
         #expect(types["late"] == nil)
     }

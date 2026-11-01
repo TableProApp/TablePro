@@ -82,9 +82,7 @@ public extension QdrantClient {
         cache: QdrantPagingCache
     ) async throws -> [QdrantPoint] {
         let key = "\(collection)\u{0}\(filter.flatMap { try? QdrantJSON.text($0) } ?? "")"
-        if offset > 0 {
-            cache.revalidate(collection: collection, pointCount: try await count(collection: collection, filter: nil))
-        }
+        cache.revalidate(collection: collection, pointCount: try await count(collection: collection, filter: nil))
         var (position, cursor) = cache.nearestCursor(at: offset, key: key)
         while position < offset {
             try Task.checkCancellation()

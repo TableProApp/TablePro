@@ -5,7 +5,7 @@ import Testing
 struct QdrantRowWriteTests {
     private let types: [String: String] = [
         "id": "id", "city": "keyword", "count": "integer", "pop": "float", "active": "bool",
-        "note": "string", "meta": "object", "payload.id": "keyword", "tags": "json(keyword)",
+        "note": "string", "meta": "object", "payload.id": "keyword", "mixed": "json",
         "vector": "vector(2)", "vector.text": "multivector", "vector.sp": "sparse_vector"
     ]
 
@@ -86,16 +86,16 @@ struct QdrantRowWriteTests {
         #expect(refusal(idChange)?.rowIndex == 5)
     }
 
-    @Test("An indexed field that holds lists takes a JSON list, or one value of the index's type")
-    func indexedListValues() throws {
-        let change = QdrantRowChange(kind: .update, rowIndex: 0, id: "7", cells: [QdrantCell(column: "tags", text: #"["a","b"]"#)])
-        #expect(try writes([change]) == [
-            "POST /collections/docs/points/payload?wait=true\n" + #"{"payload":{"tags":["a","b"]},"points":[7]}"#
-        ])
-        let single = QdrantRowChange(kind: .update, rowIndex: 0, id: "7", cells: [QdrantCell(column: "tags", text: "42")])
-        #expect(try writes([single]) == [
-            "POST /collections/docs/points/payload?wait=true\n" + #"{"payload":{"tags":"42"},"points":[7]}"#
-        ])
+    @Test("A json column saves the JSON its cell spells, so a quoted string stays a string")
+    func jsonColumnValues() throws {
+        func written(_ text: String) throws -> String? {
+            try writes([QdrantRowChange(kind: .update, rowIndex: 0, id: "7", cells: [QdrantCell(column: "mixed", text: text)])]).first
+        }
+        let prefix = "POST /collections/docs/points/payload?wait=true\n"
+        #expect(try written(#""42""#) == prefix + #"{"payload":{"mixed":"42"},"points":[7]}"#)
+        #expect(try written("42") == prefix + #"{"payload":{"mixed":42},"points":[7]}"#)
+        #expect(try written(#""[]""#) == prefix + #"{"payload":{"mixed":"[]"},"points":[7]}"#)
+        #expect(try written(#"["a"]"#) == prefix + #"{"payload":{"mixed":["a"]},"points":[7]}"#)
     }
 
     @Test("A duplicated row's default marker asks for a new id instead of failing as one")
