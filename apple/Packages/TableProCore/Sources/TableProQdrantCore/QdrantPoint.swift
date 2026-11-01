@@ -66,7 +66,9 @@ public struct QdrantPoint: @unchecked Sendable {
     // A column holding `"42"` in one point and `42` in another is typed `json`, so its strings keep their
     // quotes: without them both cells read 42 and a save would turn the string into a number.
     public func cell(for column: String, quotesText: Bool) -> String? {
-        guard quotesText, let text = payload[QdrantSchema.payloadKey(forColumn: column)] as? String else {
+        guard quotesText, !QdrantSchema.isPointColumn(column),
+              let text = payload[QdrantSchema.payloadKey(forColumn: column)] as? String
+        else {
             return cell(for: column)
         }
         return (try? JSONSerialization.data(withJSONObject: text, options: [.fragmentsAllowed, .withoutEscapingSlashes]))

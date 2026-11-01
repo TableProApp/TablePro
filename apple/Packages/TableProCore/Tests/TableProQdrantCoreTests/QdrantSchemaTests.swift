@@ -122,6 +122,19 @@ struct QdrantSchemaTests {
         #expect(QdrantSchema.columns(for: collection).first { $0.name == "tags" }?.type == "array")
     }
 
+    @Test("A payload key named score never stands in for the similarity score column")
+    func scoreColumnIsThePoints() throws {
+        let hit = try point(#"{"id":1,"score":0.75,"payload":{"score":"high"}}"#)
+        let collection = QdrantCollection(name: "docs", vectors: [], payloadFields: [
+            QdrantPayloadField(name: "score", type: .json, isIndexed: false)
+        ])
+        let columns = QdrantPoint.columns(of: [hit], collection: collection)
+        #expect(columns == ["id", "score", "payload.score"])
+        #expect(QdrantSchema.typeName(of: "score", in: collection) == "float")
+        #expect(QdrantSchema.typeName(of: "payload.score", in: collection) == "json")
+        #expect(hit.row(columns: columns, quotingTextIn: ["score", "payload.score"]) == ["1", "0.75", #""high""#])
+    }
+
     @Test("A json column keeps a string's quotes, so 42 and \"42\" read apart")
     func jsonCellsQuoteText() throws {
         let text = try point(#"{"id":1,"payload":{"mixed":"42"}}"#)

@@ -198,7 +198,9 @@ public struct QdrantCollection: Sendable, Equatable {
         field(ofColumn: column)?.cellTypeName
     }
 
+    // `id`, `score` and the vectors are the point's own; a payload key of that name is `payload.<key>`.
     private func field(ofColumn column: String) -> QdrantPayloadField? {
+        guard !QdrantSchema.isPointColumn(column) else { return nil }
         let key = QdrantSchema.payloadKey(forColumn: column)
         return payloadFields.first { $0.name == key }
     }
@@ -298,6 +300,10 @@ public enum QdrantSchema {
         return collections.compactMap { $0["name"] as? String }.sorted()
     }
 
+    public static func isPointColumn(_ column: String) -> Bool {
+        column == idColumn || column == scoreColumn || isVectorColumn(column)
+    }
+
     public static func isVectorColumn(_ column: String) -> Bool {
         column == vectorColumn || column.hasPrefix("\(vectorColumn).")
     }
@@ -333,8 +339,8 @@ public enum QdrantSchema {
     }
 
     public static func typeName(of column: String, in collection: QdrantCollection) -> String {
-        if let known = knownTypeName(of: column, in: collection) { return known }
         if column == scoreColumn { return QdrantFieldType.float.rawValue }
+        if let known = knownTypeName(of: column, in: collection) { return known }
         return isVectorColumn(column) ? "vector" : QdrantFieldType.json.rawValue
     }
 
