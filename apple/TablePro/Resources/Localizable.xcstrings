@@ -940,6 +940,9 @@
         }
       }
     },
+    "“%@” is not a usable Avro schema." : {
+
+    },
     "\"%@\" is not a valid %@. Example: %@" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -3384,6 +3387,10 @@
         }
       }
     },
+    "%@ during the Bolt handshake. If the server requires TLS, turn on SSL." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "%@ failed" : {
       "comment" : "Failure count, %@ is a count",
       "localizations" : {
@@ -3534,6 +3541,9 @@
     "%@ has no public procedure or function to start from." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "%@ has no recorded reads." : {
+
     },
     "%@ holds a document or an array, and this text is not valid JSON." : {
       "extractionState" : "manual",
@@ -6934,6 +6944,12 @@
         }
       }
     },
+    "%1$@ dead rows, %2$@ live. Last vacuumed %3$@." : {
+
+    },
+    "%1$@ dead rows, %2$@ live. Never vacuumed." : {
+
+    },
     "%1$@ does not apply to a %2$@." : {
       "localizations" : {
         "fr" : {
@@ -6981,6 +6997,9 @@
           }
         }
       }
+    },
+    "%1$@ has never been scanned. It takes %2$@." : {
+
     },
     "%1$@ has no equivalent here, so the values arrive as %2$@." : {
       "localizations" : {
@@ -7081,6 +7100,9 @@
 
     },
     "%1$@ is a light theme, so %2$@ is used." : {
+
+    },
+    "%1$@ is covered by %2$@." : {
 
     },
     "%1$@ is not a level %2$@ accepts. Use one of %3$@." : {
@@ -7243,6 +7265,9 @@
       }
     },
     "%1$@ of more than %2$@ rows" : {
+
+    },
+    "%1$@ on (%2$@) has no index, so deletes and updates on the referenced table scan this one." : {
 
     },
     "%1$@ on %2$@" : {
@@ -10472,6 +10497,14 @@
         }
       }
     },
+    "%lld constraint(s) added" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "%lld constraint(s) removed" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "%lld dims" : {
 
     },
@@ -10499,6 +10532,14 @@
           }
         }
       }
+    },
+    "%lld index(es) added" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "%lld index(es) removed" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "%lld inside" : {
       "localizations" : {
@@ -10552,6 +10593,14 @@
     },
     "%lld keys" : {
 
+    },
+    "%lld label(s) added" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "%lld label(s) removed" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "%lld large object values were longer than 64 MiB and were cut short." : {
       "extractionState" : "manual",
@@ -10707,6 +10756,14 @@
     },
     "%lld new columns" : {
 
+    },
+    "%lld node(s) created" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "%lld node(s) deleted" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "%lld objects" : {
       "localizations" : {
@@ -11151,6 +11208,18 @@
     },
     "%lld properties" : {
 
+    },
+    "%lld property value(s) set" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "%lld relationship(s) created" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "%lld relationship(s) deleted" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "%lld roles own database objects" : {
       "localizations" : {
@@ -11756,6 +11825,10 @@
         }
       }
     },
+    "%lld system update(s)" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "%lld table%@ to export" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -12266,6 +12339,9 @@
           }
         }
       }
+    },
+    "^[%lld finding](inflect: true)" : {
+
     },
     "^[%lld line](inflect: true)" : {
       "localizations" : {
@@ -15527,6 +15603,9 @@
     "A field needs a type." : {
 
     },
+    "A field of record %@ has no name or type." : {
+
+    },
     "A file" : {
       "localizations" : {
         "fr" : {
@@ -15829,6 +15908,9 @@
           }
         }
       }
+    },
+    "A map has no \"values\"." : {
+
     },
     "A map needs a geometry or geography column. This result has none." : {
       "localizations" : {
@@ -16287,6 +16369,9 @@
         }
       }
     },
+    "A record, enum or fixed type has no name." : {
+
+    },
     "A record's id cannot be edited." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -16477,6 +16562,9 @@
       }
     },
     "A saved query with this name exists." : {
+
+    },
+    "A schema object has no \"type\"." : {
 
     },
     "A schema with this name already exists." : {
@@ -24020,6 +24108,9 @@
         }
       }
     },
+    "An array has no \"items\"." : {
+
+    },
     "An attribute value must name exactly one type" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -29697,6 +29788,15 @@
         }
       }
     },
+    "Avro (%@)" : {
+
+    },
+    "Avro Schema…" : {
+
+    },
+    "Avro single-object encoding: schema fingerprint %@" : {
+
+    },
     "AWS answered without the Redshift user and password." : {
 
     },
@@ -31262,6 +31362,9 @@
     "Binary values limit must be between 1 and 1,048,576 KB." : {
 
     },
+    "Bloated Tables" : {
+
+    },
     "Block" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -32409,6 +32512,26 @@
     },
     "Byte %lld does not start a valid field." : {
 
+    },
+    "Byte %lld picks entry %lld, which the schema does not have." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Byte %1$lld picks entry %2$lld, which the schema does not have."
+          }
+        }
+      }
+    },
+    "Byte %lld refers back to item %lld, which comes later or not at all." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Byte %1$lld refers back to item %2$lld, which comes later or not at all."
+          }
+        }
+      }
     },
     "Byte 0x%@ at offset %lld is not valid here." : {
       "localizations" : {
@@ -38359,6 +38482,12 @@
           }
         }
       }
+    },
+    "Choose Schema" : {
+
+    },
+    "Choose the Avro schema the values in this column were written with." : {
+
     },
     "Choose the base type." : {
 
@@ -50741,6 +50870,9 @@
         }
       }
     },
+    "Copy Fix SQL" : {
+
+    },
     "Copy ID" : {
       "localizations" : {
         "fr" : {
@@ -52367,6 +52499,10 @@
         }
       }
     },
+    "Could not connect to Neo4j: %@" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Could not connect to the database: %@" : {
 
     },
@@ -53517,6 +53653,9 @@
           }
         }
       }
+    },
+    "Could Not Read Table Health" : {
+
     },
     "Could not read the AppRole secret ID file: %@" : {
 
@@ -72527,6 +72666,9 @@
         }
       }
     },
+    "Enum %@ has no symbols." : {
+
+    },
     "Enum Type" : {
       "localizations" : {
         "fr" : {
@@ -83406,6 +83548,9 @@
         }
       }
     },
+    "Fixed type %@ has no size." : {
+
+    },
     "Flag" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -84174,6 +84319,9 @@
           }
         }
       }
+    },
+    "Foreign Keys Without an Index" : {
+
     },
     "Foreign Table" : {
       "localizations" : {
@@ -87060,6 +87208,9 @@
           }
         }
       }
+    },
+    "Graph database queried with Cypher" : {
+
     },
     "Gray" : {
       "localizations" : {
@@ -93531,6 +93682,15 @@
         }
       }
     },
+    "Index usage counts since the server started at %@." : {
+
+    },
+    "Index usage counts since the statistics were first collected; they have never been reset." : {
+
+    },
+    "Index usage counts since the statistics were last reset at %@." : {
+
+    },
     "Indexed columns in order" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -99243,6 +99403,9 @@
         }
       }
     },
+    "Lakehouse analytics, MySQL protocol" : {
+
+    },
     "Language %@" : {
       "localizations" : {
         "fr" : {
@@ -104675,6 +104838,9 @@
           }
         }
       }
+    },
+    "Loading table health…" : {
+
     },
     "Loading team…" : {
       "localizations" : {
@@ -112602,6 +112768,14 @@
         }
       }
     },
+    "Neo4j cannot query the name %@ because it contains \\u." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Neo4j has no views." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Nested field path" : {
       "localizations" : {
         "fr" : {
@@ -116610,6 +116784,9 @@
         }
       }
     },
+    "No findings." : {
+
+    },
     "No foreign key links %@ to the tables before it, so it is cross joined." : {
 
     },
@@ -118120,6 +118297,9 @@
           }
         }
       }
+    },
+    "No primary key. Replace column_name with the columns that identify a row." : {
+
     },
     "No privileges" : {
       "localizations" : {
@@ -119741,6 +119921,9 @@
           }
         }
       }
+    },
+    "No table in this database has a recorded read or write since the server started, so an unread index cannot be told from an uncounted one." : {
+
     },
     "No Table Selected" : {
       "localizations" : {
@@ -121488,6 +121671,10 @@
           }
         }
       }
+    },
+    "Not connected to Neo4j." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Not connected to Redis" : {
       "extractionState" : "manual",
@@ -126810,6 +126997,9 @@
           }
         }
       }
+    },
+    "Open Fix in Editor" : {
+
     },
     "Open in Agent Mode" : {
       "localizations" : {
@@ -132531,6 +132721,9 @@
           }
         }
       }
+    },
+    "Performance Schema is off, so the server records no index reads." : {
+
     },
     "period" : {
       "extractionState" : "manual",
@@ -143447,6 +143640,9 @@
         }
       }
     },
+    "Record %@ has no fields list." : {
+
+    },
     "Record Access" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -143811,6 +144007,9 @@
       }
     },
     "Redshift Endpoint" : {
+
+    },
+    "Redundant Indexes" : {
 
     },
     "Ref Columns" : {
@@ -157157,6 +157356,9 @@
         }
       }
     },
+    "Schema Registry framing: schema ID %lld" : {
+
+    },
     "Schema Registry framing: schema ID %lld, message index %@" : {
       "localizations" : {
         "en" : {
@@ -159679,6 +159881,9 @@
     "Select a column" : {
 
     },
+    "Select a database in the sidebar to check its tables." : {
+
+    },
     "Select a definition to edit it" : {
 
     },
@@ -159711,6 +159916,9 @@
           }
         }
       }
+    },
+    "Select a finding to preview the SQL that fixes it." : {
+
     },
     "Select a Library" : {
       "localizations" : {
@@ -177780,6 +177988,15 @@
         }
       }
     },
+    "Table Health" : {
+
+    },
+    "Table health is available for PostgreSQL, MySQL and MariaDB." : {
+
+    },
+    "Table Health Not Available" : {
+
+    },
     "Table Info" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -180736,6 +180953,9 @@
         }
       }
     },
+    "Tables Without a Primary Key" : {
+
+    },
     "Tables, views, and functions owned by this role will be deleted." : {
       "localizations" : {
         "fr" : {
@@ -182751,6 +182971,10 @@
           }
         }
       }
+    },
+    "The %@ filter is not available for Neo4j." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "The %@ line in ~/.ssh/config does not accept the token %@." : {
       "extractionState" : "manual",
@@ -186421,7 +186645,13 @@
     "The file is larger than %@, too large for a rules file." : {
 
     },
+    "The file is larger than any Avro schema." : {
+
+    },
     "The file is not a JSON object." : {
+
+    },
+    "The file is not UTF-8 text." : {
 
     },
     "The file is not valid JSON." : {
@@ -186718,6 +186948,9 @@
     "The gcloud login does not allow Cloud SQL sign-in. Run gcloud auth application-default login again, without --scopes." : {
 
     },
+    "The global_instrumentation consumer is disabled, so the server records no index reads." : {
+
+    },
     "the group coordinator is not available" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -186743,6 +186976,9 @@
       }
     },
     "The group end at byte %lld matches no group start." : {
+
+    },
+    "The header names version %lld, which this format does not have." : {
 
     },
     "The host cannot be passed to FreeTDS. Use a host name or an IP address, without spaces, brackets, “=”, “;” or “#”." : {
@@ -187040,6 +187276,9 @@
       }
     },
     "The left result stopped at the row cap and is compared on the %@ rows it holds. A row past the cap can show as only on the right." : {
+
+    },
+    "The length at byte %lld is negative." : {
 
     },
     "The license has been suspended." : {
@@ -189159,6 +189398,10 @@
         }
       }
     },
+    "The query was cancelled." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The query was stopped by closing its connection, because MySQL before 5.0 cannot stop a query any other way. The session's open transaction, table locks and variables were discarded. Run the statements again." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -189470,6 +189713,12 @@
     "The row has no loaded values to be found by." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "The row no longer shows through the view, so it cannot be checked before writing." : {
+
+    },
+    "The row was deleted through a view, which may not show every column of its table." : {
+
     },
     "The row's loaded values are missing, so it cannot be found again." : {
       "extractionState" : "manual",
@@ -189943,6 +190192,18 @@
     "The schema changes staged in this diagram will be lost." : {
 
     },
+    "The schema defines type %@ twice." : {
+
+    },
+    "The schema has a type that is not a name, an object or a union." : {
+
+    },
+    "The schema is not valid JSON." : {
+
+    },
+    "The schema names type %@ before defining it." : {
+
+    },
     "The script already ran. Compare again to see where the target stands." : {
       "localizations" : {
         "fr" : {
@@ -190228,6 +190489,10 @@
         }
       }
     },
+    "the server closed the connection" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The server computes this column, so it is left out." : {
 
     },
@@ -190278,6 +190543,10 @@
           }
         }
       }
+    },
+    "The server does not speak Bolt 4.2 to 5.4. Neo4j 4.2 or later is required." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "The server ended the session." : {
       "localizations" : {
@@ -190507,6 +190776,14 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "The server sent a %d-byte message, which is over the limit." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The server sent a message this client does not understand (%@)." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The server sent an unexpected message and the connection was reset. Run the query again." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -190580,6 +190857,10 @@
           }
         }
       }
+    },
+    "the server's certificate does not cover the hostname you connected to" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "The server's socket file on this Mac. SELECT @@socket in the mysql client shows it." : {
 
@@ -193174,6 +193455,9 @@
         }
       }
     },
+    "The value was written with the schema whose fingerprint is %@, not this column's." : {
+
+    },
     "The values this save replaced are no longer being kept." : {
       "localizations" : {
         "fr" : {
@@ -193233,6 +193517,9 @@
           }
         }
       }
+    },
+    "The wait/io/table/sql/handler instrument is disabled, so the server records no index reads." : {
+
     },
     "The workbook has no worksheet to read." : {
       "extractionState" : "manual",
@@ -193812,6 +194099,27 @@
           }
         }
       }
+    },
+    "These rows come from a view TablePro could not check, so it cannot tell which row an edit would change." : {
+
+    },
+    "These rows come from a view that does not show every primary key column of its table, so an edit could change more than one row." : {
+
+    },
+    "These rows come from a view that reads more than one table, so an edit cannot target one row." : {
+
+    },
+    "These rows come from a view the server cannot write through." : {
+
+    },
+    "These rows come from a view whose table has no primary key, so an edit could change more than one row." : {
+
+    },
+    "These rows come from a view whose table or key is hidden from this connection, so an edit cannot target one row." : {
+
+    },
+    "These rows come from a view whose writes run rules or triggers, so an edit may not change the row shown." : {
+
     },
     "These rows come from a view, which cannot be edited." : {
       "localizations" : {
@@ -197791,6 +198099,9 @@
         }
       }
     },
+    "This Mac no longer has the schema chosen for this column, so the stored bytes show. Choose it again with Display As > Avro Schema…" : {
+
+    },
     "This Mac no longer holds a seat." : {
       "localizations" : {
         "fr" : {
@@ -198372,6 +198683,10 @@
         }
       }
     },
+    "this port speaks HTTP; use the Bolt port, usually 7687" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "This private key belongs to a security key (FIDO), which TablePro signs with only through an SSH agent. Choose SSH Agent and add the key to it." : {
 
     },
@@ -198775,6 +199090,10 @@
         }
       }
     },
+    "This server did not identify as StarRocks. Check the host and the MySQL port of its frontend." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "This server has no credential. Add its token in Settings > Integrations." : {
       "extractionState" : "stale",
       "localizations" : {
@@ -199166,6 +199485,9 @@
           }
         }
       }
+    },
+    "This SQL is a preview. TablePro never runs it; review it in the editor and run it yourself." : {
+
     },
     "This statement changed %1$d rows where at most %2$d was expected." : {
       "localizations" : {
@@ -202376,6 +202698,9 @@
           }
         }
       }
+    },
+    "track_counts is off, so the server records no table or index activity." : {
+
     },
     "Tradeoffs" : {
       "localizations" : {
@@ -206741,6 +207066,9 @@
           }
         }
       }
+    },
+    "Unused Indexes" : {
+
     },
     "Up to Date" : {
 

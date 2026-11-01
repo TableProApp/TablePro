@@ -228,7 +228,7 @@ public enum SQLNonCodeSpan {
         grammar: SQLLexicalGrammar
     ) -> Bool {
         if character == SqlLexer.dash {
-            guard SqlLexer.startsDashComment(
+            guard !grammar.contains(.withoutDashComments), SqlLexer.startsDashComment(
                 text,
                 at: index,
                 length: length,

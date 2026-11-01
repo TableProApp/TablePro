@@ -33,7 +33,8 @@ struct MenuValidationContext: Equatable {
     var isQueryTab = false
     var hasResultRows = false
     var canExportDataDictionary = false
-    var isCurrentTabEditable = false
+    var canInsertRows = false
+    var canDeleteRows = false
     // Add and Duplicate Row stage DEFAULT from the table schema; result metadata alone stages NULL the server refuses for identity.
     var isCurrentTabSchemaResolved = false
     var canRestorePreviousValues = false
@@ -63,7 +64,7 @@ struct MenuValidationContext: Equatable {
     // An engine with no drop DDL for the object must not offer Delete, or the app invents SQL it cannot run.
     var canDropSelectedTables = false
     // Without the row check Delete stayed lit with no selection and fell through to the sidebar's drop path, doing nothing.
-    var canDeleteSelectedRows: Bool { isCurrentTabEditable && hasRowSelection }
+    var canDeleteSelectedRows: Bool { canDeleteRows && hasRowSelection }
     // AppKit sends the key equivalent anyway, so enabling over a handler that bails at its first guard swallows Cmd+V silently.
     var canPasteRows = false
     var canCloseOtherTabs = false
@@ -122,6 +123,7 @@ struct MenuValidationContext: Equatable {
     var supportsRestore = false
     var supportsServerDashboard = false
     var supportsUserManagement = false
+    var supportsTableHealth = false
     var supportsSchemaSwitching = false
     // Same rule as the editor bar, so the menu cannot run a statement the bar's button refuses.
     var supportsExplain = false
@@ -230,7 +232,7 @@ extension MainSplitViewController: NSMenuItemValidation {
             return context.isConnected && context.isQueryTab
 
         case #selector(addRow(_:)), #selector(duplicateRow(_:)):
-            return context.isConnected && context.isCurrentTabEditable && !context.isReadOnly
+            return context.isConnected && context.canInsertRows && !context.isReadOnly
                 && context.isCurrentTabSchemaResolved
         case #selector(restorePreviousValues(_:)):
             return context.isConnected && context.canRestorePreviousValues && !context.isReadOnly
@@ -287,6 +289,8 @@ extension MainSplitViewController: NSMenuItemValidation {
             return context.isConnected && context.supportsUserManagement
         case #selector(showQueryInsights(_:)):
             return context.isConnected
+        case #selector(showTableHealth(_:)):
+            return context.isConnected && context.supportsTableHealth
 
         case #selector(toggleFilterBar(_:)):
             return context.isConnected && context.canUseTableResultCommands
@@ -462,6 +466,9 @@ extension MainSplitViewController: NSMenuItemValidation {
         #selector(importData(_:)),
         #selector(importDataFormat(_:)),
         #selector(showServerDashboard(_:)),
+        #selector(showUsersAndRoles(_:)),
+        #selector(showQueryInsights(_:)),
+        #selector(showTableHealth(_:)),
         #selector(navigateBack(_:)),
         #selector(navigateForward(_:)),
         #selector(moveTabToConnection(_:)),
@@ -593,7 +600,8 @@ extension MainSplitViewController: NSMenuItemValidation {
             isQueryTab: actions.isQueryTab,
             hasResultRows: actions.hasResultRows,
             canExportDataDictionary: actions.canExportDataDictionary,
-            isCurrentTabEditable: actions.isCurrentTabEditable,
+            canInsertRows: actions.currentTabAllows(.insert),
+            canDeleteRows: actions.currentTabAllows(.delete),
             isCurrentTabSchemaResolved: actions.isCurrentTabSchemaResolved,
             canRestorePreviousValues: actions.canRestorePreviousValues,
             canInsertDocument: actions.canInsertDocument,
@@ -664,6 +672,7 @@ extension MainSplitViewController: NSMenuItemValidation {
             supportsRestore: actions.supportsRestore,
             supportsServerDashboard: actions.supportsServerDashboard,
             supportsUserManagement: actions.supportsUserManagement,
+            supportsTableHealth: actions.supportsTableHealth,
             supportsSchemaSwitching: actions.supportsSchemaSwitching,
             supportsExplain: actions.supportsExplain,
             supportsFormatting: actions.supportsFormatting,

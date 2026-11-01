@@ -19,7 +19,8 @@ struct RowWriteOperationBuilderTests {
         insertedRowIDs: Set<RowID> = [],
         primaryKeyColumns: [String] = ["id"],
         generatedColumns: Set<String> = [],
-        containsTableOperation: Bool = false
+        containsTableOperation: Bool = false,
+        writesThroughView: Bool = false
     ) -> [RowWriteOperation] {
         RowWriteOperationBuilder.operations(
             from: changes,
@@ -30,7 +31,8 @@ struct RowWriteOperationBuilderTests {
             columns: columns,
             primaryKeyColumns: primaryKeyColumns,
             generatedColumns: generatedColumns,
-            containsTableOperation: containsTableOperation
+            containsTableOperation: containsTableOperation,
+            writesThroughView: writesThroughView
         )
     }
 
@@ -109,6 +111,14 @@ struct RowWriteOperationBuilderTests {
             containsTableOperation: true
         )
         #expect(result.first?.refusal == .destructiveTableOperation)
+    }
+
+    @Test("A delete through a view stores a refusal every shipped build can read")
+    func deleteThroughViewIsRefused() {
+        let change = RowChange(rowID: .existing(0), type: .delete, originalRow: ["7", "Ada", "2026-01-01"])
+        let result = operations(changes: [change], deletedRowIDs: [.existing(0)], writesThroughView: true)
+
+        #expect(result.first?.refusal == .identityNotPreservable)
     }
 
     @Test("A delete keeps the whole row")

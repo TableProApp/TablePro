@@ -155,17 +155,19 @@ extension QueryExecutionCoordinator {
         /// Captured now, while the result this decision was made against is still the active one.
         let cachedMetadata: ParsedSchemaMetadata? = needsMetadataFetch ? nil : ParsedSchemaMetadata.cached(
             rows: parent.tabSessionRegistry.tableRows(for: tabId),
-            primaryKeyColumns: tab.tableContext.primaryKeyColumns
+            context: tab.tableContext
         )
 
+        let readsView = tab.tableContext.knowsView(named: tableName)
         let boundValues = BoundParameterValues(values: parameters)
         let failureOutput = ServerOutputBox()
         let grammar = parent.lexicalGrammar
         let parameterizedTask = Task { [weak self, parent] in
             guard let self else { return }
 
-            if let tableName, !tableName.isEmpty { parent.prefetchForeignKeys(scope: scope) }
-            let schemaTask = QueryExecutor.schemaFetch(tableName: needsMetadataFetch ? tableName : nil, scope: scope)
+            let schemaTask = parent.startSchemaFetch(
+                tableName, uncached: needsMetadataFetch, isView: readsView, scope: scope
+            )
 
             do {
                 let (fetchResult, tableEdits) = try await DatabaseManager.shared.withScopedDriver(

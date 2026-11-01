@@ -30,7 +30,8 @@ enum RowWriteOperationBuilder {
         primaryKeyColumns: [String],
         generatedColumns: Set<String>,
         containsTableOperation: Bool,
-        rowsWithUnloadedValues: Set<RowID> = []
+        rowsWithUnloadedValues: Set<RowID> = [],
+        writesThroughView: Bool = false
     ) -> [RowWriteOperation] {
         changes.compactMap { change in
             switch change.type {
@@ -46,7 +47,8 @@ enum RowWriteOperationBuilder {
                     change, target: target, columns: columns,
                     primaryKeyColumns: primaryKeyColumns,
                     containsTableOperation: containsTableOperation,
-                    hasUnloadedValues: rowsWithUnloadedValues.contains(change.rowID)
+                    hasUnloadedValues: rowsWithUnloadedValues.contains(change.rowID),
+                    throughView: writesThroughView
                 )
             case .insert:
                 guard insertedRowIDs.contains(change.rowID) else { return nil }
@@ -121,10 +123,13 @@ enum RowWriteOperationBuilder {
         columns: [String],
         primaryKeyColumns: [String],
         containsTableOperation: Bool,
-        hasUnloadedValues: Bool
+        hasUnloadedValues: Bool,
+        throughView: Bool
     ) -> RowWriteOperation {
         let refusal: RewindRefusal? = {
             if containsTableOperation { return .destructiveTableOperation }
+            // A case every shipped build can read, so one that predates the view flag still refuses.
+            if throughView { return .identityNotPreservable }
             guard let originalRow = change.originalRow else { return .noPrimaryKey }
             if primaryKeyColumns.isEmpty { return .noPrimaryKey }
             // A value the page left on the server was larger than the inline limit and never read.

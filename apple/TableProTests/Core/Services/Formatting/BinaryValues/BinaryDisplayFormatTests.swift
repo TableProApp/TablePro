@@ -10,7 +10,7 @@ import Testing
 
 @MainActor
 struct BinaryDisplayFormatTests {
-    /// `HEX(UUID_TO_BIN('6ccd780c-baba-1026-9564-5b8c656024db', 1))` on MySQL 8.4.
+    // `HEX(UUID_TO_BIN('6ccd780c-baba-1026-9564-5b8c656024db', 1))` on MySQL 8.4.
     private static let swappedStored = BinaryFixture.data("1026BABA6CCD780C95645B8C656024DB")
     private static let blob = ColumnType.blob(rawType: "BINARY(16)")
 
@@ -130,5 +130,49 @@ struct BinaryDisplayFormatTests {
         }
         #expect(text == "1: 150\n")
         #expect(note?.contains("42") == true)
+    }
+
+    @Test("igbinary and Avro render in the cell, and a broken value falls back to hex")
+    func igbinaryAndAvroRender() throws {
+        let blob = ColumnType.blob(rawType: "BLOB")
+        let igbinary = BinaryFixture.data("000000021705506f696e7414011101780601")
+        #expect(CellDisplayFormatter.format(.bytes(igbinary), columnType: blob, displayFormat: .igbinary)
+            == #"O:5:"Point":1:{s:1:"x";i:1;}"#)
+        #expect(CellDisplayFormatter.format(.bytes(BinaryFixture.data("0000000211")), columnType: blob, displayFormat: .igbinary)
+            == "0x0000000211")
+
+        let schemaID = try AvroSchemaStore.shared.add(#"{"type":"record","name":"Reading","fields":[{"name":"id","type":"long"}]}"#)
+        let avro = ValueDisplayFormat.avro(schemaID: schemaID)
+        #expect(avro.displayName.contains("Reading"))
+        #expect(CellDisplayFormatter.format(.bytes(BinaryFixture.data("54")), columnType: blob, displayFormat: avro) == #"{"id":42}"#)
+        #expect(CellDisplayFormatter.format(.bytes(BinaryFixture.data("80")), columnType: blob, displayFormat: avro) == "0x80")
+    }
+
+    @Test("The viewer shows igbinary in the PHP tree and Avro with its frame's schema ID")
+    func igbinaryAndAvroDocuments() throws {
+        let igbinary = BinaryValueDecoding.document(BinaryFixture.data("000000020607"), format: .igbinary)
+        guard case .decoded(.php, let text, nil) = igbinary else {
+            Issue.record("expected a decoded PHP tree")
+            return
+        }
+        #expect(text == "i:7;")
+
+        let schemaID = try AvroSchemaStore.shared.add(#"{"type":"array","items":"int"}"#)
+        let framed = BinaryValueDecoding.document(BinaryFixture.data("000000002a020200"), format: .avro(schemaID: schemaID))
+        guard case .decoded(.json, _, let note) = framed else {
+            Issue.record("expected a decoded JSON tree")
+            return
+        }
+        #expect(note?.contains("42") == true)
+    }
+
+    @Test("An Avro column whose schema is gone says so, rather than calling the value invalid, and the cell stays hex")
+    func avroSchemaMissing() {
+        let format = BinaryValueFormat.avro(schemaID: String(repeating: "0", count: 32))
+        guard case .missingSchema = BinaryValueDecoding.document(Data([0x02]), format: format) else {
+            Issue.record("expected a missing schema")
+            return
+        }
+        #expect(BinaryValueDecoding.text(Data([0x02]), format: format) == nil)
     }
 }
