@@ -166,6 +166,7 @@ private extension TabType {
         case .erDiagram: "erDiagram"
         case .serverDashboard: "serverDashboard"
         case .insights: "insights"
+        case .tableHealth: "tableHealth"
         case .usersRoles: "usersRoles"
         case .objectSource: "objectSource"
         case .versionHistory: "versionHistory"

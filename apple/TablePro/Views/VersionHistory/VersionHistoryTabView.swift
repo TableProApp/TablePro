@@ -34,7 +34,7 @@ internal struct VersionHistoryTabView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .themeBackground(.windowBackdrop, native: Color(nsColor: .textBackgroundColor))
             .task { await viewModel.loadList() }
-            .onReceive(AppEvents.shared.versionHistoryRefreshRequested) { requestedTabId in
+            .onReceive(AppEvents.shared.tabRefreshRequested) { requestedTabId in
                 guard requestedTabId == tabId else { return }
                 viewModel.reload()
             }
