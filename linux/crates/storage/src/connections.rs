@@ -42,6 +42,11 @@ pub struct SavedConnection {
     /// starts at.
     #[serde(default)]
     pub ai_policy: AiPolicy,
+    /// The editor's query timeout here, in seconds, zero for none. A file
+    /// written before it existed, like a connection that never set one,
+    /// leaves it out and follows the one in Preferences.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub query_timeout_secs: Option<u32>,
     #[serde(default)]
     pub auth_mode: AuthMode,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -876,6 +881,7 @@ mod tests {
             safe_mode: tablepro_core::SafeModeLevel::Off,
             external_access: tablepro_core::ExternalAccess::ReadOnly,
             ai_policy: tablepro_core::AiPolicy::Ask,
+            query_timeout_secs: None,
             auth_mode: AuthMode::Password,
             ssh: None,
             last_opened_at: Some(Utc::now()),
@@ -904,6 +910,7 @@ mod tests {
             safe_mode: tablepro_core::SafeModeLevel::Off,
             external_access: tablepro_core::ExternalAccess::ReadOnly,
             ai_policy: tablepro_core::AiPolicy::Ask,
+            query_timeout_secs: None,
             auth_mode: AuthMode::Password,
             ssh: None,
             last_opened_at: None,

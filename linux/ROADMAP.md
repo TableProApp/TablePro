@@ -18,6 +18,7 @@ The app runs on GNOME 50 ([ADR 0015](docs/decisions/0015-gnome-50-platform-floor
 | Test before saving | Test connects once and reports, then disconnects |
 | Passwords | Kept in the Secret Service; a prompt asks when one is missing or refused, with Remember Password |
 | Safe Mode | A level per connection, set in the connect dialog or the main menu while connected and saved back to the connection. Off asks before DROP, TRUNCATE, and DELETE or UPDATE without WHERE. Confirm Writes also asks before every other write from the editor, a grid save, a structure save, a CSV import or Drop Table, showing the SQL and the connection, with Cancel the default. Read-Only refuses every editor statement that does not read, and opens the connection read-only: SQLite, DuckDB and ClickHouse refuse writes at the engine, PostgreSQL and MySQL run in read-only transactions, SQL Server relies on the login, with the app's own reads in a rolled-back transaction, and Cassandra and ScyllaDB rely on the login. A statement is a read only when its engine's grammar shows it reads, each statement of a script on its own. Moving to or from Read-Only reconnects the window |
+| Query timeout per connection | Custom Query Timeout in the connect dialog sets the editor's timeout for that connection in place of the one in Preferences, from the next connect; 0 turns it off. The app's own calls keep their fixed limits: 15 seconds for metadata, 60 for a page or a count, 120 for a row save or a CSV import, none for a schema change or an export, and on the server 60 for a table-tab statement and 10 for a lock wait |
 | Database files | SQLite and DuckDB: choose a file, create a new one, open one from Files or a terminal, where the file's header picks the engine, find a moved one with Locate, and choose read-only or read-write for one on a network or FUSE filesystem |
 | Kerberos for SQL Server | From the ticket cache, in the Flatpak through the KCM socket |
 | Health and reconnect | A banner while the connection is lost, reconnect with a backoff from 5 to 60 seconds, and metadata, page and count reads replayed once after it; writes are never replayed |
@@ -164,7 +165,6 @@ Not built yet, in no order.
 
 ### Connections
 
-- A statement timeout per connection. Today one preference covers editor runs. Other calls have fixed limits: 15 seconds for metadata, 60 for a page or a count, 120 for a row save or a CSV import, and none for a schema change or an export; the server also stops any table-tab statement at 60 seconds and a lock wait at 10.
 - Kerberos against a service outside the client's realm, which needs an SPN override in tiberius.
 
 ### Browse, edit and structure
