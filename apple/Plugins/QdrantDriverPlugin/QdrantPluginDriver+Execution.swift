@@ -96,17 +96,21 @@ extension QdrantPluginDriver {
         collection: QdrantCollection,
         started: Date
     ) -> PluginQueryResult {
-        PluginQueryResult(
+        let typeNames = columns.map { QdrantSchema.typeName(of: $0, in: collection) }
+        return PluginQueryResult(
             columns: columns,
-            columnTypeNames: columns.map { QdrantSchema.typeName(of: $0, in: collection) },
-            rows: points.map(cells(columns: columns)),
+            columnTypeNames: typeNames,
+            rows: points.map(cells(columns: columns, typeNames: typeNames)),
             rowsAffected: 0,
             executionTime: Date().timeIntervalSince(started)
         )
     }
 
-    private func cells(columns: [String]) -> (QdrantPoint) -> [PluginCellValue] {
-        { point in point.row(columns: columns).map { $0.map(PluginCellValue.text) ?? .null } }
+    private func cells(columns: [String], typeNames: [String]) -> (QdrantPoint) -> [PluginCellValue] {
+        let jsonColumns = Set(zip(columns, typeNames).filter { $0.1 == QdrantFieldType.json.rawValue }.map(\.0))
+        return { point in
+            point.row(columns: columns, quotingTextIn: jsonColumns).map { $0.map(PluginCellValue.text) ?? .null }
+        }
     }
 
     private func renderJSON(_ response: QdrantHTTPResponse, started: Date) -> PluginQueryResult {
@@ -165,13 +169,14 @@ extension QdrantPluginDriver {
             collection = collection.including(points)
         }
         let columns = QdrantSchema.columns(for: collection).map(\.name)
+        let typeNames = columns.map { QdrantSchema.typeName(of: $0, in: collection) }
         continuation.yield(.header(PluginStreamHeader(
             columns: columns,
-            columnTypeNames: columns.map { QdrantSchema.typeName(of: $0, in: collection) },
+            columnTypeNames: typeNames,
             estimatedRowCount: collection.pointsCount
         )))
         for try await points in client.pointPages(collection: name, pageSize: Self.exportPageSize) {
-            continuation.yield(.rows(points.map(cells(columns: columns))))
+            continuation.yield(.rows(points.map(cells(columns: columns, typeNames: typeNames))))
         }
     }
 }

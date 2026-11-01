@@ -18,6 +18,8 @@ final class RecordingTransport: QdrantTransport, @unchecked Sendable {
     func cancelAll() {}
 
     var recorded: [QdrantHTTPRequest] { lock.withLock { requests } }
+
+    var scrolls: [QdrantHTTPRequest] { recorded.filter { $0.url.path.hasSuffix("/points/scroll") } }
 }
 
 func jsonResponse(_ object: Any, status: Int = 200) -> QdrantHTTPResponse {
@@ -45,6 +47,9 @@ func scrollResponse(_ ids: [Int], next: Int?) -> QdrantHTTPResponse {
 // Integer ids 1...count, answering `scroll` from `offset` (an id) the way Qdrant does.
 func scrollingTransport(count: Int) -> RecordingTransport {
     RecordingTransport { request in
+        if request.url.path.hasSuffix("/points/count") {
+            return jsonResponse(["result": ["count": count], "status": "ok"])
+        }
         let body = bodyObject(request)
         let limit = body["limit"] as? Int ?? 10
         let start = body["offset"] as? Int ?? 1

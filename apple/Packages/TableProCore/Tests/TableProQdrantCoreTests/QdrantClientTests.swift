@@ -14,8 +14,8 @@ struct QdrantClientTests {
 
         #expect(first.compactMap(\.idText) == (1...10).map(String.init))
         #expect(second.compactMap(\.idText) == (11...20).map(String.init))
-        #expect(transport.recorded.count == 2)
-        #expect(bodyObject(transport.recorded[1])["offset"] as? Int == 11)
+        #expect(transport.scrolls.count == 2)
+        #expect(bodyObject(transport.scrolls[1])["offset"] as? Int == 11)
     }
 
     @Test("A jump walks ids only and keeps every cursor it passes, so a nearby jump starts from one")
@@ -26,15 +26,15 @@ struct QdrantClientTests {
 
         let page = try await client.scrollPage(collection: "docs", filter: nil, offset: 20_000, limit: 10, cache: cache)
         #expect(page.compactMap(\.idText) == (20_001...20_010).map(String.init))
-        let walks = transport.recorded.dropLast().map(bodyObject)
+        let walks = transport.scrolls.dropLast().map(bodyObject)
         #expect(walks.map { $0["limit"] as? Int } == [10_000, 10_000])
         #expect(walks.allSatisfy { $0["with_payload"] as? Bool == false && $0["with_vector"] as? Bool == false })
 
-        let before = transport.recorded.count
+        let before = transport.scrolls.count
         let nearby = try await client.scrollPage(collection: "docs", filter: nil, offset: 15_000, limit: 10, cache: cache)
         #expect(nearby.first?.idText == "15001")
-        #expect(bodyObject(transport.recorded[before])["offset"] as? Int == 10_001)
-        #expect(transport.recorded.count == before + 2)
+        #expect(bodyObject(transport.scrolls[before])["offset"] as? Int == 10_001)
+        #expect(transport.scrolls.count == before + 2)
     }
 
     @Test("When a re-read boundary moves, the cursors past it are dropped instead of starting pages at the wrong row")
@@ -48,6 +48,17 @@ struct QdrantClientTests {
         let nearest = cache.nearestCursor(at: 200, key: "k")
         #expect(nearest.offset == 100)
         #expect((nearest.cursor as? NSNumber)?.intValue == 102)
+    }
+
+    @Test("A changed point count drops the collection's cursors, so a page after another client's delete starts at the right row")
+    func pointCountDropsCursors() {
+        let cache = QdrantPagingCache()
+        cache.revalidate(collection: "docs", pointCount: 400)
+        cache.storeCursor(NSNumber(value: 101), at: 100, key: "docs\u{0}")
+        cache.revalidate(collection: "docs", pointCount: 400)
+        #expect(cache.nearestCursor(at: 100, key: "docs\u{0}").offset == 100)
+        cache.revalidate(collection: "docs", pointCount: 399)
+        #expect(cache.nearestCursor(at: 100, key: "docs\u{0}").offset == 0)
     }
 
     @Test("An offset past the end answers an empty page")

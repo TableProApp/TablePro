@@ -88,6 +88,9 @@ public enum QdrantFilterBuilder {
         }
         let op = filter.op.uppercased()
         if filter.column == QdrantSchema.idColumn {
+            if op == "CONTAINS" || op == "NOT CONTAINS" {
+                return idContains(op: op, value: filter.value)
+            }
             return try idCondition(op: op, value: filter.value)
         }
         guard let key = QdrantKeyPath.quoted(QdrantSchema.payloadKey(forColumn: filter.column)) else {
@@ -162,7 +165,10 @@ public enum QdrantFilterBuilder {
         private func anyType(equalTo value: String) -> [String: Any] {
             let trimmed = value.trimmingCharacters(in: .whitespaces)
             var options = [match(value)]
-            if let number = QdrantValue.number(trimmed) {
+            // A range also finds 42.0, but a double rounds an integer past 2^53, so a larger one matches exactly.
+            if let integer = QdrantValue.integer(trimmed), integer.magnitude > 1 << 53 {
+                options.append(match(NSNumber(value: integer)))
+            } else if let number = QdrantValue.number(trimmed) {
                 options.append(["key": key, "range": ["gte": NSNumber(value: number), "lte": NSNumber(value: number)]])
             }
             if let flag = QdrantValue.bool(trimmed) {
@@ -257,6 +263,12 @@ public enum QdrantFilterBuilder {
         default:
             throw QdrantFilterError.unsupportedOperator(op)
         }
+    }
+
+    // Ids have no substring search, so only a whole id is found; Search All Rows still runs on the other columns.
+    private static func idContains(op: String, value: String) -> [String: Any] {
+        let found: [Any] = QdrantPointID.json(from: value).map { [$0] } ?? []
+        return op == "NOT CONTAINS" ? negated([["has_id": found]]) : ["has_id": found]
     }
 
     private static func list(_ value: String, column: String) throws -> [String] {

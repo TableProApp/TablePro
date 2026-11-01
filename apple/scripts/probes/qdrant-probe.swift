@@ -81,6 +81,10 @@ check(p0.first?.idText == "1" && p1.first?.idText == "101" && p2.count == 50 && 
 let jump = try await client.scrollPage(collection: name, filter: nil, offset: 170, limit: 10, cache: QdrantPagingCache())
 check(jump.map { $0.idText ?? "" } == (171...180).map(String.init), "jump walks to offset")
 check(try await client.scrollPage(collection: name, filter: nil, offset: 400, limit: 10, cache: cache).isEmpty, "past end")
+_ = try await run(#"POST \#(base)/points/delete?wait=true {"points":[50]}"#)
+let shifted = try await client.scrollPage(collection: name, filter: nil, offset: 100, limit: 2, cache: cache)
+check(shifted.map { $0.idText ?? "" } == ["102", "103"], "a page after another client's delete starts at the right row")
+_ = try await run(#"PUT \#(base)/points?wait=true {"points":[{"id":50,"vector":[50,1],"payload":{"city":"even","body":"Hello World 50","f":50.5,"n":50,"meta":{"source":"doc50.pdf"},"a.b":"dotted","when":"2024-01-01T00:50:00Z"}}]}"#)
 
 func filtered(_ specs: [QdrantFilterSpec], _ mode: String = "AND") async throws -> Int {
     let filter = try QdrantFilterBuilder.filter(specs, logicMode: mode, collection: collection)
@@ -92,6 +96,11 @@ check(try await filtered([QdrantFilterSpec(column: "n", op: ">", value: "190"), 
 check(try await filtered([QdrantFilterSpec(column: "n", op: "<", value: "3"), QdrantFilterSpec(column: "n", op: ">", value: "198")], "OR") == 4, "or")
 check(try await filtered([QdrantFilterSpec(column: "body", op: "CONTAINS", value: "world")]) == 250, "contains without a text index matches words")
 check(try await filtered([QdrantFilterSpec(column: "id", op: "IN", value: "1,2,3")]) == 3, "has_id")
+let searchAll = [
+    QdrantFilterSpec(column: "id", op: "CONTAINS", value: "Berlin"),
+    QdrantFilterSpec(column: "city", op: "CONTAINS", value: "even")
+]
+check(try await filtered(searchAll, "OR") == 125, "search all rows skips the id column")
 check(try await filtered([QdrantFilterSpec(column: "n", op: "IN", value: "1,2,300")]) == 2, "match any")
 check(try await filtered([QdrantFilterSpec(column: "f", op: "IN", value: "1.5, 2.5")]) == 2, "IN on floats")
 check(try await filtered([QdrantFilterSpec(column: "f", op: "NOT IN", value: "1.5")]) == 249, "NOT IN on floats")

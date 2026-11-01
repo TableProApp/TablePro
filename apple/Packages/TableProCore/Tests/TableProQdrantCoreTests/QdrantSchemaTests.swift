@@ -118,6 +118,16 @@ struct QdrantSchemaTests {
         #expect(QdrantSchema.columns(for: collection).first { $0.name == "tags" }?.type == "array")
     }
 
+    @Test("A json column keeps a string's quotes, so 42 and \"42\" read apart")
+    func jsonCellsQuoteText() throws {
+        let text = try point(#"{"id":1,"payload":{"mixed":"42"}}"#)
+        let number = try point(#"{"id":2,"payload":{"mixed":42}}"#)
+        #expect(text.row(columns: ["mixed"], quotingTextIn: ["mixed"]) == [#""42""#])
+        #expect(number.row(columns: ["mixed"], quotingTextIn: ["mixed"]) == ["42"])
+        #expect(text.row(columns: ["mixed"], quotingTextIn: []) == ["42"])
+        #expect(try QdrantValue.payload(#""42""#, type: .json, column: "mixed") as? String == "42")
+    }
+
     @Test("A named vector called size is not mistaken for the unnamed vector's dimension")
     func vectorNamedSize() {
         let collection = QdrantCollection.parse(

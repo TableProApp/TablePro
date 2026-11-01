@@ -63,6 +63,16 @@ public struct QdrantPoint: @unchecked Sendable {
         return (vector as? [String: Any])?[name]
     }
 
+    // A column holding `"42"` in one point and `42` in another is typed `json`, so its strings keep their
+    // quotes: without them both cells read 42 and a save would turn the string into a number.
+    public func cell(for column: String, quotesText: Bool) -> String? {
+        guard quotesText, let text = payload[QdrantSchema.payloadKey(forColumn: column)] as? String else {
+            return cell(for: column)
+        }
+        return (try? JSONSerialization.data(withJSONObject: text, options: [.fragmentsAllowed, .withoutEscapingSlashes]))
+            .flatMap { String(data: $0, encoding: .utf8) }
+    }
+
     public func cell(for column: String) -> String? {
         if column == QdrantSchema.idColumn {
             return idText
@@ -78,6 +88,10 @@ public struct QdrantPoint: @unchecked Sendable {
 
     public func row(columns: [String]) -> [String?] {
         columns.map(cell(for:))
+    }
+
+    public func row(columns: [String], quotingTextIn jsonColumns: Set<String>) -> [String?] {
+        columns.map { cell(for: $0, quotesText: jsonColumns.contains($0)) }
     }
 
     public static func columns(of points: [QdrantPoint], collection: QdrantCollection?) -> [String] {

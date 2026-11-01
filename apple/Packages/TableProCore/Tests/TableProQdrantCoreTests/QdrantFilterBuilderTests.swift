@@ -25,6 +25,8 @@ struct QdrantFilterBuilderTests {
         #expect(try condition("note", "=", "1")
             == #"{"should":[{"key":"\"note\"","match":{"value":"1"}},{"key":"\"note\"","range":{"gte":1,"lte":1}},{"key":"\"note\"","match":{"value":true}}]}"#)
         #expect(try condition("note", "=", "Berlin") == #"{"key":"\"note\"","match":{"value":"Berlin"}}"#)
+        #expect(try condition("count", "=", "9007199254740993")
+            == #"{"should":[{"key":"\"count\"","match":{"value":"9007199254740993"}},{"key":"\"count\"","match":{"value":9007199254740993}}]}"#)
     }
 
     @Test("A key holding a dot stays one top-level key, and one holding a quote is refused")
@@ -109,6 +111,8 @@ struct QdrantFilterBuilderTests {
         #expect(try condition("id", "IN", "1, \(uuid)") == #"{"has_id":[1,"\#(uuid)"]}"#)
         #expect(try condition("id", "!=", "1") == #"{"must_not":[{"has_id":[1]}]}"#)
         #expect(throws: QdrantFilterError.notAPointID(value: "abc")) { try condition("id", "=", "abc") }
+        #expect(try condition("id", "CONTAINS", "7") == #"{"has_id":[7]}"#)
+        #expect(try condition("id", "CONTAINS", "Berlin") == #"{"has_id":[]}"#)
     }
 
     @Test("Vectors cannot be filtered and unsupported operators say so")
