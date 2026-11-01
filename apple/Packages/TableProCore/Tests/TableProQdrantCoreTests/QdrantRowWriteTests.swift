@@ -142,6 +142,8 @@ struct QdrantRowWriteTests {
     func payloadValues() throws {
         #expect(try QdrantValue.payload("42", type: .keyword, column: "c") as? String == "42")
         #expect(try QdrantValue.payload("0", type: .bool, column: "c") as? Bool == false)
+        #expect((try QdrantValue.payload("9007199254740993", type: .float, column: "c") as? NSNumber)?.int64Value == 9_007_199_254_740_993)
+        #expect((try QdrantValue.payload("2.5", type: .float, column: "c") as? NSNumber)?.doubleValue == 2.5)
         #expect(try QdrantValue.payload(#"["a"]"#, type: .array, column: "c") as? [String] == ["a"])
         #expect(try QdrantValue.payload("42", type: .json, column: "c") as? Int == 42)
         #expect(try QdrantValue.payload("plain", type: .json, column: "c") as? String == "plain")

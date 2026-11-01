@@ -65,6 +65,8 @@ public enum QdrantValue {
             guard let value = integer(text) else { throw QdrantValueError.notAnInteger(column: column, value: text) }
             return NSNumber(value: value)
         case .float:
+            // A float column also holds integers, and a double rounds one past 2^53.
+            if let value = integer(text) { return NSNumber(value: value) }
             guard let value = number(text) else { throw QdrantValueError.notANumber(column: column, value: text) }
             return NSNumber(value: value)
         case .bool:
