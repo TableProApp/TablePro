@@ -895,8 +895,49 @@ struct QueryClassifierNonSqlTests {
         #expect(QueryClassifier.isWriteQuery("mutation { delete { Article } }", databaseType: .weaviate))
         #expect(QueryClassifier.isWriteQuery("POST /v1/objects {}", databaseType: .weaviate))
         #expect(QueryClassifier.classifyTier("DELETE /v1/objects/abc", databaseType: .weaviate) == .destructive)
+        #expect(QueryClassifier.classifyTier("DELETE /v1/schema/Article", databaseType: .weaviate) == .destructive)
+        #expect(QueryClassifier.classifyTier("DELETE\t/v1/schema/Article", databaseType: .weaviate) == .destructive)
+        let mutation = "POST /v1/graphql {\n\"query\": \"mutation { delete { Article } }\" }"
+        #expect(QueryClassifier.isWriteQuery(mutation, databaseType: .weaviate))
         let search = "WEAVIATE_SEARCH:e30="
         #expect(!QueryClassifier.isWriteQuery(search, databaseType: .weaviate))
+    }
+
+    @Test("Qdrant reads are safe, POST searches read, and point deletes are destructive")
+    func qdrantTiers() {
+        #expect(!QueryClassifier.isWriteQuery("QDRANT_BROWSE:e30=", databaseType: .qdrant))
+        #expect(!QueryClassifier.isWriteQuery("GET /collections", databaseType: .qdrant))
+        #expect(!QueryClassifier.isWriteQuery("POST /collections/docs/points/query\n{\"limit\": 3}", databaseType: .qdrant))
+        #expect(!QueryClassifier.isWriteQuery("POST /collections/docs/points/scroll {}", databaseType: .qdrant))
+        #expect(!QueryClassifier.isWriteQuery("POST /collections/docs/points {\"ids\": [1]}", databaseType: .qdrant))
+        #expect(QueryClassifier.classifyTier("PUT /collections/docs/points?wait=true\n{}", databaseType: .qdrant) == .write)
+        #expect(QueryClassifier.classifyTier("POST /collections/docs/points/payload?wait=true {}", databaseType: .qdrant) == .write)
+        #expect(QueryClassifier.classifyTier("POST /collections/docs/points/delete?wait=true {}", databaseType: .qdrant) == .destructive)
+        #expect(QueryClassifier.classifyTier("POST /collections/docs/points/payload/clear {}", databaseType: .qdrant) == .destructive)
+        #expect(QueryClassifier.classifyTier("POST /collections/docs/points/batch {}", databaseType: .qdrant) == .destructive)
+        #expect(QueryClassifier.classifyTier("DELETE /collections/docs", databaseType: .qdrant) == .destructive)
+        #expect(QueryClassifier.classifyTier(
+            "PUT /collections/docs/points/payload?wait=true\n{\"payload\":{},\"filter\":{}}", databaseType: .qdrant
+        ) == .destructive)
+        #expect(QueryClassifier.classifyTier(
+            "POST /collections/docs/cluster {\"drop_sharding_key\":{\"shard_key\":\"a\"}}", databaseType: .qdrant
+        ) == .destructive)
+        #expect(QueryClassifier.classifyTier("POST /collections/aliases {\"actions\":[]}", databaseType: .qdrant) == .destructive)
+        #expect(QueryClassifier.isWriteQuery("POST /collections/docs/points/query/../delete {}", databaseType: .qdrant))
+        #expect(!QueryClassifier.isWriteQuery("POST /collections/docs/facet {\"key\": \"city\"}", databaseType: .qdrant))
+        #expect(QueryClassifier.classifyTier("DELETE\t/collections/docs", databaseType: .qdrant) == .destructive)
+        #expect(!QueryClassifier.isWriteQuery("POST /collections/docs/points/query {\n\"limit\": 3}", databaseType: .qdrant))
+    }
+
+    @Test("A Qdrant snapshot reaches the server's disk")
+    func qdrantSnapshots() {
+        #expect(QueryClassifier.reachesFilesystemOrExecutesCode(
+            "POST /collections/docs/snapshots", databaseType: .qdrant
+        ))
+        #expect(QueryClassifier.reachesFilesystemOrExecutesCode(
+            "PUT /collections/docs/snapshots/recover {\"location\": \"file:///etc\"}", databaseType: .qdrant
+        ))
+        #expect(!QueryClassifier.reachesFilesystemOrExecutesCode("GET /collections", databaseType: .qdrant))
     }
 
     @Test("Memcached reads are safe, stores write, and delete and flush_all are destructive")

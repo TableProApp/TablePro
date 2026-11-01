@@ -3573,6 +3573,10 @@
         }
       }
     },
+    "%@ holds a list in %d points, and Qdrant sorts such a point once per value. Sort by a field that holds one value per point." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "%@ holds an empty key, which the MongoDB client library will not insert. Set it to NULL, then set it on the saved document." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -3596,6 +3600,30 @@
           }
         }
       }
+    },
+    "%@ holds booleans, so it takes true or false, not %@." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "%@ holds geo points, written as {\"lon\": 13.4, \"lat\": 52.5}." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "%@ holds integers, and %@ is not one." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "%@ holds JSON arrays, written as [1, 2, 3]." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "%@ holds JSON objects, written as {\"key\": \"value\"}." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "%@ holds numbers, and %@ is not a number." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "%@ holds text in some rows and documents or arrays in others, so this value could be either. Change it with a query." : {
       "extractionState" : "manual",
@@ -3701,6 +3729,10 @@
         }
       }
     },
+    "%@ is a multivector, written as arrays of numbers such as [[0.1, 0.2], [0.3, 0.4]]." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "%@ is a numeric field, and %@ is not a number." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -3735,6 +3767,10 @@
         }
       }
     },
+    "%@ is a sparse vector, written as {\"indices\": [1, 5], \"values\": [0.2, 0.7]}." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "%@ is a system collection. Its fields cannot be renamed or removed." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -3758,6 +3794,10 @@
           }
         }
       }
+    },
+    "%@ is a vector, written as an array of numbers such as [0.1, 0.2]." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "%@ is a view. Rename or remove the field in the collection it reads." : {
       "extractionState" : "manual",
@@ -3994,6 +4034,10 @@
           }
         }
       }
+    },
+    "%@ is not a point id. Qdrant ids are unsigned integers or UUIDs." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "%@ is not a Redis database index." : {
       "extractionState" : "manual",
@@ -16265,6 +16309,10 @@
         }
       }
     },
+    "A point's id cannot change. Insert a new row with the new id instead." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "a query" : {
       "localizations" : {
         "fr" : {
@@ -16393,6 +16441,10 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "A raw filter for Qdrant is a JSON condition, such as {\"key\": \"city\", \"match\": {\"value\": \"Berlin\"}}." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "A raw Firestore filter is a JSON Filter object, such as %@." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -16508,6 +16560,9 @@
           }
         }
       }
+    },
+    "A row with this key already exists, so the insert would not add one." : {
+
     },
     "A row with this primary key already exists. Edit that row instead." : {
       "extractionState" : "manual",
@@ -71912,6 +71967,10 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "Enter a request like GET /collections or POST /collections/docs/points/query." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Enter a request like: GET /collections" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -121849,6 +121908,10 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "Not connected to Qdrant." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Not connected to Redis" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -128339,6 +128402,9 @@
           }
         }
       }
+    },
+    "Open-source vector search engine" : {
+
     },
     "Opening the connection" : {
       "localizations" : {
@@ -139327,6 +139393,54 @@
           }
         }
       }
+    },
+    "Qdrant %@ overwrites a point that already has the id. Insert it from the REST editor, or upgrade Qdrant to 1.15 or later." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Qdrant answered a count without a number." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Qdrant answered with something other than HTTP." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Qdrant cannot filter on %@, because a key holding a double quote has no path it accepts." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Qdrant cannot filter on %@." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Qdrant cannot filter with %@." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Qdrant cannot sort by %@." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Qdrant compares %@ as a 64-bit float, which cannot hold %@ exactly." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Qdrant does not support views." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Qdrant lists points by id in ascending order only." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Qdrant returned HTTP %d." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Qdrant sorts by one field at a time. Remove the sort from the other columns." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Queries" : {
       "comment" : "A section header for the list of queries in the favorites tab.",
@@ -179837,6 +179951,10 @@
     "TablePro does not have Local Network access, so it cannot reach the SSH server at %@." : {
 
     },
+    "TablePro does not know what %@ holds. Reload the collection, then save again." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "TablePro does not run a pre-connect script on its own." : {
 
     },
@@ -191121,6 +191239,14 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "The server's certificate is not issued for a server, so it cannot prove the server's identity." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The server's certificate is not trusted. %@" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The server's socket file on this Mac. SELECT @@socket in the mysql client shows it." : {
 
     },
@@ -199147,6 +199273,10 @@
           }
         }
       }
+    },
+    "This row has no point id, so Qdrant cannot tell which point to change." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "This row has no value for the key column %@, so it cannot be matched." : {
 

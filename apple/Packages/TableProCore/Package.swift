@@ -37,6 +37,7 @@ let package = Package(
         .library(name: "TableProGoogleCloud", targets: ["TableProGoogleCloud"]),
         .library(name: "TableProSpannerCore", targets: ["TableProSpannerCore"]),
         .library(name: "TableProWeaviateCore", targets: ["TableProWeaviateCore"]),
+        .library(name: "TableProQdrantCore", targets: ["TableProQdrantCore"]),
         .library(name: "TableProInfluxDBCore", targets: ["TableProInfluxDBCore"]),
         .library(name: "TableProNeo4jCore", targets: ["TableProNeo4jCore"]),
         .library(name: "TableProFirebaseCore", targets: ["TableProFirebaseCore"]),
@@ -156,7 +157,7 @@ let package = Package(
         ),
         .target(
             name: "TableProTrinoCore",
-            dependencies: ["TableProSQLGrammar"],
+            dependencies: ["TableProSQLGrammar", "TableProTLSClientIdentity"],
             path: "Sources/TableProTrinoCore"
         ),
         .target(
@@ -194,6 +195,12 @@ let package = Package(
             name: "TableProWeaviateCore",
             dependencies: [],
             path: "Sources/TableProWeaviateCore"
+        ),
+        .target(
+            name: "TableProQdrantCore",
+            dependencies: [],
+            path: "Sources/TableProQdrantCore",
+            swiftSettings: pluginCoreSettings
         ),
         .target(
             name: "TableProInfluxDBCore",
@@ -318,6 +325,12 @@ let package = Package(
             name: "TableProTeradataCoreTests",
             dependencies: ["TableProTeradataCore"],
             path: "Tests/TableProTeradataCoreTests"
+        ),
+        .testTarget(
+            name: "TableProQdrantCoreTests",
+            dependencies: ["TableProQdrantCore"],
+            path: "Tests/TableProQdrantCoreTests",
+            swiftSettings: pluginCoreSettings
         ),
         .testTarget(
             name: "TableProInfluxDBCoreTests",

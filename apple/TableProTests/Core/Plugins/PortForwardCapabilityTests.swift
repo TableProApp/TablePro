@@ -33,7 +33,7 @@ struct PortForwardCapabilityTests {
 
     @Test(
         "a self-hosted HTTP engine offers every transport that forwards a port",
-        arguments: [DatabaseType.weaviate, .typesense, .elasticsearch]
+        arguments: [DatabaseType.weaviate, .qdrant, .typesense, .elasticsearch]
     )
     func httpEnginesOfferPortForwards(type: DatabaseType) {
         #expect(manager.supportsSSH(for: type))

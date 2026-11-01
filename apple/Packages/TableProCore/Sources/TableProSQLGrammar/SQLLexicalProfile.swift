@@ -339,6 +339,7 @@ public struct SQLLexicalProfile: Sendable, Hashable {
             "Elasticsearch": commandLineFamily,
             "Typesense": commandLineFamily,
             "Weaviate": commandLineFamily,
+            "Qdrant": commandLineFamily,
             "Memcached": commandLineFamily,
             "Kafka": commandLineFamily,
             "Firestore": commandLineFamily,

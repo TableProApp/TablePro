@@ -54,6 +54,7 @@ extension DatabaseType {
     static let trino = DatabaseType(rawValue: "Trino")
     static let presto = DatabaseType(rawValue: "Presto")
     static let weaviate = DatabaseType(rawValue: "Weaviate")
+    static let qdrant = DatabaseType(rawValue: "Qdrant")
     static let memcached = DatabaseType(rawValue: "Memcached")
     static let influxdb = DatabaseType(rawValue: "InfluxDB")
     static let bigtable = DatabaseType(rawValue: "Bigtable")

@@ -53,7 +53,7 @@ enum CatalogChangeClassifier {
 
     // InfluxDB has no DDL: a write is what creates a measurement, so any statement that is not a read may change the list.
     private static let documentStoreTypes: Set<DatabaseType> = [
-        .mongodb, .elasticsearch, .typesense, .weaviate, .etcd, .firestore, .firebaseRealtimeDatabase, .bigtable, .neo4j,
+        .mongodb, .elasticsearch, .typesense, .weaviate, .qdrant, .etcd, .firestore, .firebaseRealtimeDatabase, .bigtable, .neo4j,
         .influxdb,
     ]
 }

@@ -5,6 +5,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProQdrantCore
 import TableProRedisCore
 import TableProSQLGrammar
 import TableProUtilities
@@ -1017,6 +1018,8 @@ private extension QueryClassifier {
             return worstRequest(typesenseClassification)
         case .weaviate:
             return worstRequest(weaviateClassification)
+        case .qdrant:
+            return worstRequest(qdrantClassification)
         case .memcached:
             return worstRequest(memcachedClassification)
         case .firestore, .firebaseRealtimeDatabase:
@@ -1088,11 +1091,11 @@ private extension QueryClassifier {
     /// followed by a JSON body, and the body is the caller's data: scanning the whole statement
     /// let `POST /collections/c/documents/import` carrying `"note": "/multi_search"` in a field
     /// read as a search, which is a read-only mode and MCP gate bypass. A URL path holds no raw
-    /// space, so the path ends at the first one: that keeps a body written on the header line out
-    /// of it, and stops `POST /collections/c /multi_search` from ending in a read path.
+    /// whitespace, so the path ends at the first one: that keeps a body written on the header line
+    /// out of it, and stops `POST /collections/c /multi_search` from ending in a read path.
     static func typesenseRequestLine(_ trimmed: String) -> (verb: String, path: String) {
-        let header = trimmed.split(separator: "\n", maxSplits: 1).first.map(String.init) ?? ""
-        let parts = header.split(separator: " ", maxSplits: 1, omittingEmptySubsequences: true)
+        let header = trimmed.firstIndex(where: \.isNewline).map { String(trimmed[..<$0]) } ?? trimmed
+        let parts = header.split(maxSplits: 1, omittingEmptySubsequences: true, whereSeparator: \.isWhitespace)
         guard let verb = parts.first else { return ("", "/") }
         guard parts.count == 2 else { return (String(verb).uppercased(), "/") }
 
@@ -1162,12 +1165,15 @@ private extension QueryClassifier {
     /// The driver takes a body from the rest of the request line as well as from the lines below
     /// it, so the gate has to read the same two places.
     static func weaviateConsoleBody(_ trimmed: String) -> String {
-        let lines = trimmed.split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: false)
-        let header = lines.first.map(String.init) ?? ""
-        let following = lines.count > 1 ? String(lines[1]) : ""
+        let newline = trimmed.firstIndex(where: \.isNewline)
+        let header = newline.map { trimmed[..<$0] } ?? trimmed[...]
+        let following = newline.map { trimmed[trimmed.index(after: $0)...] } ?? ""
         let parts = header.split(maxSplits: 2, omittingEmptySubsequences: true, whereSeparator: \.isWhitespace)
-        let inline = parts.count > 2 ? String(parts[2]) : ""
-        return inline.isEmpty ? following : inline
+        let inline = parts.count > 2 ? parts[2] : ""
+        return [inline, following]
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .joined(separator: "\n")
     }
 
     static func weaviateClassification(_ trimmed: String) -> QueryClassification {
@@ -1208,6 +1214,21 @@ private extension QueryClassifier {
             return .safe
         }
         return QueryClassification(tier: .write, reachesFilesystemOrExecutesCode: false)
+    }
+
+    // The driver runs what `QdrantConsoleParser` parses, so the gate reads the same request.
+    static func qdrantClassification(_ trimmed: String) -> QueryClassification {
+        if QdrantOperations.isTagged(trimmed) {
+            return .safe
+        }
+        guard let request = QdrantConsoleParser.parse(trimmed) else { return .safe }
+        let kind = request.kind
+        let tier: QueryTier = switch kind.tier {
+        case .read: .safe
+        case .write: .write
+        case .remove: .destructive
+        }
+        return QueryClassification(tier: tier, reachesFilesystemOrExecutesCode: kind.touchesServerFiles)
     }
 
     /// A grid page is a tagged spec and anything else a request line read the way the driver reads

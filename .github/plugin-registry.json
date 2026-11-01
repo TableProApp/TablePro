@@ -70,6 +70,9 @@
     "ParquetExport": {
       "name": "Parquet Export"
     },
+    "QdrantDriverPlugin": {
+      "name": "Qdrant Driver"
+    },
     "SnowflakeDriverPlugin": {
       "name": "Snowflake Driver"
     },

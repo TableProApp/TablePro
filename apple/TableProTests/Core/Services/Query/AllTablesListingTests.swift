@@ -28,7 +28,7 @@ struct AllTablesListingTests {
     }
 
     @Test("An engine that only highlights like MongoDB or Redis gets no shell command", arguments: [
-        DatabaseType.elasticsearch, .typesense, .weaviate, .etcd, .memcached, .cassandra
+        DatabaseType.elasticsearch, .typesense, .weaviate, .qdrant, .etcd, .memcached, .cassandra
     ])
     func noListingForOtherEngines(databaseType: DatabaseType) {
         #expect(AllTablesListing.statement(databaseType: databaseType, pluginListing: nil) == nil)
