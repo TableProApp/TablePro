@@ -235,14 +235,18 @@ pub(crate) async fn fetch_object_definition(
         ),
         false => (None, None),
     };
-    let sql = match context {
-        (Some(mode), Some(collation)) => in_session_of(&sql, &mode, &collation),
-        _ => terminated(&sql),
+    let (sql, opens_in_editor) = match context {
+        (Some(mode), Some(collation)) => {
+            let script = in_session_of(&sql, &mode, &collation);
+            let splits = splits_back(&script, &sql);
+            (script, splits)
+        }
+        _ => (terminated(&sql), true),
     };
     Ok(Some(ObjectDefinition {
         sql,
         database: object.schema.clone(),
-        opens_in_editor: true,
+        opens_in_editor,
     }))
 }
 
@@ -272,6 +276,16 @@ fn in_session_of(create: &str, sql_mode: &str, collation: &str) -> String {
         string_literal(sql_mode),
         string_literal(collation)
     )
+}
+
+/// Whether the editor splits `script` back into its four statements, the
+/// third `create`. It reads with backslash escapes on, so a body made
+/// under `NO_BACKSLASH_ESCAPES` that ends a string in `\` would run the
+/// lines after it into the statement.
+fn splits_back(script: &str, create: &str) -> bool {
+    let create = create.trim_end().trim_end_matches(';').trim_end();
+    let split = crate::script_split::texts(script);
+    split.len() == 4 && split.get(2) == Some(&create)
 }
 
 /// Mode and collation names are letters, digits, `_` and `,`.
@@ -824,6 +838,18 @@ mod tests {
     use tablepro_core::column::{ColumnDefault, ColumnType};
 
     use super::*;
+
+    #[test]
+    fn a_body_the_editor_would_read_otherwise_does_not_open_there() {
+        let plain = "CREATE PROCEDURE `p`() SELECT 'a'";
+        let escaped = "CREATE PROCEDURE `p`() SELECT '\\'";
+
+        assert!(splits_back(&in_session_of(plain, "", "utf8mb4_bin"), plain));
+        assert!(!splits_back(
+            &in_session_of(escaped, "NO_BACKSLASH_ESCAPES", "utf8mb4_bin"),
+            escaped
+        ));
+    }
 
     #[test]
     fn a_routine_runs_between_its_own_settings_and_the_sessions() {
