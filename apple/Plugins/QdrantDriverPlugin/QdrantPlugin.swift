@@ -39,7 +39,7 @@ final class QdrantPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let defaultGroupName = "default"
     static let tableEntityName = "Collections"
     static let containerEntityName = "Cluster"
-    static let immutableColumns: [String] = [QdrantSchema.idColumn, QdrantSchema.vectorColumn]
+    static let immutableColumns: [String] = [QdrantSchema.idColumn]
     static let defaultPrimaryKeyColumn: String? = QdrantSchema.idColumn
     static let structureColumnFields: [StructureColumnField] = [.name, .type, .nullable]
     static let sqlDialect: SQLDialectDescriptor? = nil
@@ -64,14 +64,7 @@ func qdrantConnectionFields() -> [ConnectionField] {
             fieldType: .secure,
             section: .authentication,
             hidesPassword: true
-        ).withHidesUsername(true),
-        ConnectionField(
-            id: QdrantFieldID.skipTLSVerify,
-            label: String(localized: "Skip TLS Verification"),
-            defaultValue: "false",
-            fieldType: .toggle,
-            section: .advanced
-        )
+        ).withHidesUsername(true)
     ]
 }
 
@@ -98,6 +91,13 @@ let qdrantCompletions: [CompletionEntry] = [
         POST /collections/docs/points/count
         {"exact": true}
         """
+    ),
+    CompletionEntry(
+        label: "POST /facet",
+        insertText: """
+        POST /collections/docs/facet
+        {"key": "city"}
+        """
     )
 ]
 
@@ -107,5 +107,5 @@ let qdrantColumnTypes: [String: [String]] = [
     "Boolean": ["bool"],
     "Date": ["datetime"],
     "Structured": ["geo", "object", "array", "json"],
-    "Vector": ["vector", "sparse_vector"]
+    "Vector": ["vector", "multivector", "sparse_vector"]
 ]

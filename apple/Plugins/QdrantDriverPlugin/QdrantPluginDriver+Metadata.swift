@@ -1,5 +1,4 @@
 import Foundation
-import os
 import TableProPluginKit
 import TableProQdrantCore
 
@@ -17,8 +16,7 @@ extension QdrantPluginDriver {
     }
 
     func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] {
-        let collection = try await collection(table, refresh: true)
-        return QdrantSchema.columns(for: collection).map { column in
+        QdrantSchema.columns(for: try await collection(table, refresh: true)).map { column in
             PluginColumnInfo(
                 name: column.name,
                 dataType: column.type,
@@ -29,30 +27,21 @@ extension QdrantPluginDriver {
     }
 
     func fetchImmutableColumns(table: String, schema: String?) async throws -> Set<String> {
-        Set(QdrantSchema.immutableColumns(for: try await collection(table)))
+        [QdrantSchema.idColumn]
     }
 
     func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] {
-        let collection = try await collection(table)
-        var indexes = [
-            PluginIndexInfo(
-                name: QdrantSchema.idColumn,
-                columns: [QdrantSchema.idColumn],
-                isUnique: true,
-                isPrimary: true,
-                type: "PRIMARY KEY"
-            )
-        ]
-        indexes += collection.payloadFields.filter(\.isIndexed).map { field in
-            PluginIndexInfo(
-                name: field.name,
-                columns: [field.name],
-                isUnique: false,
-                isPrimary: false,
-                type: field.type.rawValue
-            )
+        let collection = try await requireClient().collectionInfo(named: table)
+        let primary = PluginIndexInfo(
+            name: QdrantSchema.idColumn,
+            columns: [QdrantSchema.idColumn],
+            isUnique: true,
+            isPrimary: true,
+            type: "PRIMARY KEY"
+        )
+        return [primary] + collection.indexes.map { index in
+            PluginIndexInfo(name: index.path, columns: [index.path], isUnique: false, isPrimary: false, type: index.type)
         }
-        return indexes
     }
 
     func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] {
@@ -60,7 +49,7 @@ extension QdrantPluginDriver {
     }
 
     func fetchTableDDL(table: String, schema: String?) async throws -> String {
-        try await collection(table, refresh: true).info
+        try await requireClient().collectionInfo(named: table).info
     }
 
     func fetchViewDefinition(view: String, schema: String?) async throws -> String {
@@ -72,7 +61,7 @@ extension QdrantPluginDriver {
     }
 
     func fetchApproximateRowCount(table: String, schema: String?) async throws -> Int? {
-        try await collection(table, refresh: true).pointsCount
+        try await requireClient().collectionInfo(named: table).pointsCount
     }
 
     func fetchFilteredRowCount(table: String, queryFilters: [PluginQueryFilter], logicMode: String) async throws -> Int? {
@@ -101,8 +90,7 @@ extension QdrantPluginDriver {
         )
     }
 
-    /// Qdrant orders by one payload key only, so the first sortable column wins. The id is the
-    /// order a page already has, and a vector has no order.
+    // Every sort column travels with the page, so one Qdrant cannot honor is refused instead of dropped.
     func buildFilteredQuery(
         table: String,
         schema: String?,
@@ -114,17 +102,15 @@ extension QdrantPluginDriver {
         offset: Int,
         columnKinds: [String: PluginColumnKind]
     ) -> String? {
-        let sort = sortColumns.lazy.compactMap { sort -> QdrantSortSpec? in
-            guard sort.columnIndex >= 0, sort.columnIndex < columns.count else { return nil }
-            let column = columns[sort.columnIndex]
-            guard column != QdrantSchema.idColumn, !QdrantSchema.isVectorColumn(column) else { return nil }
-            return QdrantSortSpec(column: column, ascending: sort.ascending)
-        }.first
+        let sorts = sortColumns.compactMap { sort -> QdrantSortSpec? in
+            guard columns.indices.contains(sort.columnIndex) else { return nil }
+            return QdrantSortSpec(column: columns[sort.columnIndex], ascending: sort.ascending)
+        }
         return QdrantBrowseQuery.encode(QdrantBrowseRequest(
             collection: table,
             offset: offset,
             limit: limit,
-            sort: sort,
+            sorts: sorts,
             filters: specs(filters),
             logicMode: logicMode
         ))
@@ -136,66 +122,82 @@ extension QdrantPluginDriver {
         }
     }
 
-    func generateStatements(
+    // Typed by what the grid read each column as, so a cache a console write or a reconnect cleared
+    // can never turn a number into text.
+    func generateRowWrites(
         table: String,
+        schema: String?,
+        columns: [String],
+        primaryKeyColumns: [String],
+        changes: [PluginRowChange],
+        insertedRowData: [Int: [PluginCellValue]],
+        deletedRowIndices: Set<Int>,
+        insertedRowIndices: Set<Int>,
+        context: PluginRowWriteContext
+    ) throws -> [PluginRowWrite]? {
+        let known = rememberedCollection(table)
+        let typeNames = context.columnTypeNames
+        let tracked = changes.compactMap { change in
+            rowChange(change, columns: columns, insertedRowData: insertedRowData,
+                      deletedRowIndices: deletedRowIndices, insertedRowIndices: insertedRowIndices)
+        }
+        do {
+            return try QdrantRowWriter.writes(collection: table, changes: tracked) { column in
+                typeNames[column] ?? known.flatMap { QdrantSchema.knownTypeName(of: column, in: $0) }
+            }.map { write in
+                PluginRowWrite(
+                    statement: write.request.text,
+                    rowIndices: [write.rowIndex],
+                    lookup: write.mustFindNothing.map {
+                        PluginRowLookup(query: $0.text, parameters: [], rowCount: 0, pinsRows: false)
+                    }
+                )
+            }
+        } catch let refusal as QdrantRowRefusal {
+            throw PluginRowWriteRefusal(rowIndex: refusal.rowIndex, reason: refusal.reason)
+        }
+    }
+
+    func generateRowWrites(
+        table: String,
+        schema: String?,
         columns: [String],
         primaryKeyColumns: [String],
         changes: [PluginRowChange],
         insertedRowData: [Int: [PluginCellValue]],
         deletedRowIndices: Set<Int>,
         insertedRowIndices: Set<Int>
-    ) -> [(statement: String, parameters: [PluginCellValue])]? {
-        let collection = rememberedCollection(table)
-            ?? QdrantCollection(name: table, vectors: [], payloadFields: [])
-        let tracked = changes.compactMap { change in
-            trackedChange(
-                change,
-                columns: columns,
-                insertedRowData: insertedRowData,
-                deletedRowIndices: deletedRowIndices,
-                insertedRowIndices: insertedRowIndices
-            )
-        }
-        let batch = QdrantStatementGenerator.generate(collection: collection, changes: tracked)
-        for skipped in batch.skipped {
-            Self.logger.warning(
-                "Skipped a \(skipped.kind.rawValue, privacy: .public) on \(table, privacy: .private): \(skipped.reason.rawValue, privacy: .public)"
-            )
-        }
-        return batch.requests.map { (QdrantWriteCodec.encode($0), []) }
+    ) throws -> [PluginRowWrite]? {
+        try generateRowWrites(
+            table: table, schema: schema, columns: columns, primaryKeyColumns: primaryKeyColumns, changes: changes,
+            insertedRowData: insertedRowData, deletedRowIndices: deletedRowIndices,
+            insertedRowIndices: insertedRowIndices, context: PluginRowWriteContext()
+        )
     }
 
-    private func trackedChange(
+    private func rowChange(
         _ change: PluginRowChange,
         columns: [String],
         insertedRowData: [Int: [PluginCellValue]],
         deletedRowIndices: Set<Int>,
         insertedRowIndices: Set<Int>
-    ) -> QdrantTrackedChange? {
+    ) -> QdrantRowChange? {
         switch change.type {
         case .insert:
             guard insertedRowIndices.contains(change.rowIndex) else { return nil }
-            var values: [String: String?] = [:]
+            let cells: [QdrantCell]
             if let row = insertedRowData[change.rowIndex] {
-                for (index, column) in columns.enumerated() where index < row.count {
-                    guard let text = row[index].asText else { continue }
-                    values[column] = text
-                }
+                cells = zip(columns, row).map { QdrantCell(column: $0, text: $1.asText) }
             } else {
-                for cell in change.cellChanges {
-                    guard let text = cell.newValue.asText else { continue }
-                    values[cell.columnName] = text
-                }
+                cells = change.cellChanges.map { QdrantCell(column: $0.columnName, text: $0.newValue.asText) }
             }
-            return QdrantTrackedChange(kind: .insert, id: values[QdrantSchema.idColumn] ?? nil, values: values)
+            return QdrantRowChange(kind: .insert, rowIndex: change.rowIndex, id: nil, cells: cells)
         case .update:
-            let cells = change.cellChanges.map {
-                QdrantCellChange(column: $0.columnName, newText: $0.newValue.asText)
-            }
-            return QdrantTrackedChange(kind: .update, id: pointID(from: change, columns: columns), cellChanges: cells)
+            let cells = change.cellChanges.map { QdrantCell(column: $0.columnName, text: $0.newValue.asText) }
+            return QdrantRowChange(kind: .update, rowIndex: change.rowIndex, id: pointID(from: change, columns: columns), cells: cells)
         case .delete:
             guard deletedRowIndices.contains(change.rowIndex) else { return nil }
-            return QdrantTrackedChange(kind: .delete, id: pointID(from: change, columns: columns))
+            return QdrantRowChange(kind: .delete, rowIndex: change.rowIndex, id: pointID(from: change, columns: columns))
         }
     }
 

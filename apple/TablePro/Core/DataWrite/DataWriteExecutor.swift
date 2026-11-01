@@ -289,13 +289,16 @@ enum DataWriteExecutor {
         logger.error(
             "Lookup on '\(table, privacy: .private(mask: .hash))' found \(rows.count, privacy: .public) rows, expected \(lookup.rowCount, privacy: .public)"
         )
-        throw DataWriteError.changeRefused(
-            table: table,
-            kind: step.rowKind,
-            reason: rows.count < lookup.rowCount
-                ? String(localized: "No row holds the values it was loaded with. Another client may have changed or deleted it.")
-                : String(localized: "Other rows hold exactly the same values, so the change cannot reach this row alone.")
-        )
+        let reason: String
+        if lookup.rowCount == 0 {
+            // A lookup that expects no row is an insert checking its key is free.
+            reason = String(localized: "A row with this key already exists, so the insert would not add one.")
+        } else if rows.count < lookup.rowCount {
+            reason = String(localized: "No row holds the values it was loaded with. Another client may have changed or deleted it.")
+        } else {
+            reason = String(localized: "Other rows hold exactly the same values, so the change cannot reach this row alone.")
+        }
+        throw DataWriteError.changeRefused(table: table, kind: step.rowKind, reason: reason)
     }
 
     // The row may have moved between the lookup and the write, or another row may now hold its old values, so a save

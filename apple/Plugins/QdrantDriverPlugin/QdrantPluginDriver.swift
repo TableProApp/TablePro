@@ -10,7 +10,7 @@ internal final class QdrantPluginDriver: PluginDatabaseDriver, @unchecked Sendab
     private let lock = NSLock()
     private var client: QdrantClient?
     private var cachedCollections: [String: QdrantCollection] = [:]
-    let cursors = QdrantCursorCache()
+    let paging = QdrantPagingCache()
     let queryTimeout = HttpQueryTimeoutBox()
 
     init(config: DriverConnectionConfig) {
@@ -36,8 +36,6 @@ internal final class QdrantPluginDriver: PluginDatabaseDriver, @unchecked Sendab
             usesTLS: config.ssl.isEnabled,
             fields: config.additionalFields
         )
-        let skipTLS = settings.skipTLSVerify
-            || (config.ssl.isEnabled && !config.ssl.verifiesCertificate)
         let deadline = PluginConnectDeadline(milliseconds: PluginConnectTimeout.milliseconds(
             in: config.additionalFields,
             default: Int(HttpQueryTimeout().requestTimeoutInterval * 1_000)
@@ -47,7 +45,7 @@ internal final class QdrantPluginDriver: PluginDatabaseDriver, @unchecked Sendab
             settings: settings,
             transport: URLSessionQdrantTransport(
                 resourceTimeout: HttpQueryTimeout.sessionResourceTimeout,
-                skipTLSVerify: skipTLS
+                tls: config.ssl.isEnabled ? try QdrantTLS.make(from: config.ssl) : .systemDefault
             ),
             timeout: { timeout.requestTimeoutInterval }
         )
@@ -56,7 +54,7 @@ internal final class QdrantPluginDriver: PluginDatabaseDriver, @unchecked Sendab
             self.client = client
             cachedCollections.removeAll()
         }
-        cursors.removeAll()
+        paging.removeAll()
     }
 
     func disconnect() {
@@ -65,7 +63,7 @@ internal final class QdrantPluginDriver: PluginDatabaseDriver, @unchecked Sendab
             client = nil
             cachedCollections.removeAll()
         }
-        cursors.removeAll()
+        paging.removeAll()
     }
 
     func ping() async throws {
@@ -100,10 +98,10 @@ internal final class QdrantPluginDriver: PluginDatabaseDriver, @unchecked Sendab
         return collection
     }
 
-    /// A write moves rows between pages and may add payload keys, so both caches start over.
+    // A write moves points between pages and may add payload keys.
     func forgetAfterWrite() {
         lock.withLock { cachedCollections.removeAll() }
-        cursors.removeAll()
+        paging.removeAll()
     }
 
     func defaultExportQuery(table: String) -> String? {

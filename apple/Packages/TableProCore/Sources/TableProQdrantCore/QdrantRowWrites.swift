@@ -1,0 +1,164 @@
+import Foundation
+
+public struct QdrantCell: Sendable, Equatable {
+    public let column: String
+    public let text: String?
+
+    public init(column: String, text: String?) {
+        self.column = column
+        self.text = text
+    }
+}
+
+public struct QdrantRowChange: Sendable, Equatable {
+    public enum Kind: Sendable, Equatable {
+        case insert
+        case update
+        case delete
+    }
+
+    public let kind: Kind
+    public let rowIndex: Int
+    public let id: String?
+    // An insert's every column, or an update's changed cells.
+    public let cells: [QdrantCell]
+
+    public init(kind: Kind, rowIndex: Int, id: String?, cells: [QdrantCell] = []) {
+        self.kind = kind
+        self.rowIndex = rowIndex
+        self.id = id
+        self.cells = cells
+    }
+}
+
+public struct QdrantRowWrite: Sendable, Equatable {
+    public let request: QdrantConsoleRequest
+    public let rowIndex: Int
+    // A read that must find no point before the write runs: `insert_only` answers success and writes
+    // nothing when the id is taken.
+    public let mustFindNothing: QdrantConsoleRequest?
+}
+
+public struct QdrantRowRefusal: Error, LocalizedError, Equatable, Sendable {
+    public let rowIndex: Int
+    public let reason: String
+
+    public var errorDescription: String? { reason }
+}
+
+public enum QdrantRowWriter {
+    public static func writes(
+        collection: String,
+        changes: [QdrantRowChange],
+        typeName: (String) -> String?,
+        newID: () -> String = { UUID().uuidString.lowercased() }
+    ) throws -> [QdrantRowWrite] {
+        let points = "/collections/\(QdrantPathEncoding.segment(collection))/points"
+        var writes: [QdrantRowWrite] = []
+        for change in changes {
+            do {
+                writes += try self.writes(for: change, points: points, typeName: typeName, newID: newID)
+            } catch let error as QdrantValueError {
+                throw QdrantRowRefusal(rowIndex: change.rowIndex, reason: error.errorDescription ?? "")
+            } catch let reason as Reason {
+                throw QdrantRowRefusal(rowIndex: change.rowIndex, reason: reason.text)
+            }
+        }
+        return writes
+    }
+
+    private struct Reason: Error {
+        let text: String
+    }
+
+    private static func writes(
+        for change: QdrantRowChange,
+        points: String,
+        typeName: (String) -> String?,
+        newID: () -> String
+    ) throws -> [QdrantRowWrite] {
+        switch change.kind {
+        case .delete:
+            let id = try pointID(change.id)
+            return [try write("POST", "\(points)/delete?wait=true", ["points": [id]], change)]
+        case .insert:
+            let idText = change.cells.first { $0.column == QdrantSchema.idColumn }?.text.flatMap { $0.isEmpty ? nil : $0 }
+            let id = try pointID(idText ?? newID())
+            let values = try typedValues(change.cells.filter { $0.text != nil }, typeName: typeName)
+            let point: [String: Any] = ["id": id, "vector": values.vectors, "payload": values.payload]
+            let lookup = try request("POST", points, ["ids": [id], "with_payload": false, "with_vector": false])
+            return [QdrantRowWrite(
+                request: try request("PUT", "\(points)?wait=true", ["points": [point], "update_mode": "insert_only"]),
+                rowIndex: change.rowIndex,
+                mustFindNothing: lookup
+            )]
+        case .update:
+            let id = try pointID(change.id)
+            guard !change.cells.contains(where: { $0.column == QdrantSchema.idColumn }) else {
+                throw Reason(text: String(localized: "A point's id cannot change. Insert a new row with the new id instead."))
+            }
+            let values = try typedValues(change.cells, typeName: typeName)
+            var writes: [QdrantRowWrite] = []
+            if !values.payload.isEmpty {
+                writes.append(try write("POST", "\(points)/payload?wait=true", ["payload": values.payload, "points": [id]], change))
+            }
+            if !values.vectors.isEmpty {
+                let body: [String: Any] = ["points": [["id": id, "vector": values.vectors]]]
+                writes.append(try write("PUT", "\(points)/vectors?wait=true", body, change))
+            }
+            if !values.clearedVectors.isEmpty {
+                let body: [String: Any] = ["points": [id], "vector": values.clearedVectors]
+                writes.append(try write("POST", "\(points)/vectors/delete?wait=true", body, change))
+            }
+            return writes
+        }
+    }
+
+    private struct TypedValues {
+        var payload: [String: Any] = [:]
+        var vectors: [String: Any] = [:]
+        var clearedVectors: [String] = []
+    }
+
+    private static func typedValues(_ cells: [QdrantCell], typeName: (String) -> String?) throws -> TypedValues {
+        var values = TypedValues()
+        for cell in cells where cell.column != QdrantSchema.idColumn {
+            guard let type = typeName(cell.column) else { throw unknownType(cell.column) }
+            if let name = QdrantSchema.vectorName(ofColumn: cell.column) {
+                guard let kind = QdrantVectorSpec.kind(ofTypeName: type) else { throw unknownType(cell.column) }
+                if let text = cell.text {
+                    values.vectors[name] = try QdrantValue.vector(text, kind: kind, column: cell.column)
+                } else {
+                    values.clearedVectors.append(name)
+                }
+                continue
+            }
+            guard let fieldType = QdrantFieldType(rawValue: type.lowercased()) else { throw unknownType(cell.column) }
+            let key = QdrantSchema.payloadKey(forColumn: cell.column)
+            values.payload[key] = try cell.text.map { try QdrantValue.payload($0, type: fieldType, column: cell.column) } ?? NSNull()
+        }
+        return values
+    }
+
+    private static func unknownType(_ column: String) -> Reason {
+        Reason(text: String(format: String(localized: "TablePro does not know what %@ holds. Reload the collection, then save again."), column))
+    }
+
+    private static func pointID(_ text: String?) throws -> Any {
+        guard let text, !text.isEmpty else {
+            throw Reason(text: String(localized: "This row has no point id, so Qdrant cannot tell which point to change."))
+        }
+        guard let id = QdrantPointID.json(from: text) else {
+            throw Reason(text: String(QdrantFilterError.notAPointID(value: text).errorDescription ?? ""))
+        }
+        return id
+    }
+
+    private static func write(_ method: String, _ path: String, _ body: [String: Any], _ change: QdrantRowChange) throws -> QdrantRowWrite {
+        QdrantRowWrite(request: try request(method, path, body), rowIndex: change.rowIndex, mustFindNothing: nil)
+    }
+
+    private static func request(_ method: String, _ path: String, _ body: [String: Any]) throws -> QdrantConsoleRequest {
+        QdrantConsoleRequest(method: method, path: path, body: try QdrantJSON.text(body))
+    }
+}

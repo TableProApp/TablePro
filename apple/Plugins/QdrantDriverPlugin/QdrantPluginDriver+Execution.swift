@@ -39,18 +39,15 @@ extension QdrantPluginDriver {
         let collection = try await collection(request.collection)
         let filter = try QdrantFilterBuilder.filter(request.filters, logicMode: request.logicMode, collection: collection)
         let points: [QdrantPoint]
-        if let sort = request.sort {
-            points = try await client.query(
-                collection: request.collection,
-                body: QdrantBrowseQuery.queryBody(for: request, filter: filter, sort: sort)
-            )
-        } else {
+        switch try QdrantSortPlan.resolve(request.sorts) {
+        case .byID:
             points = try await client.scrollPage(
-                collection: request.collection,
-                filter: filter,
-                offset: request.offset,
-                limit: request.limit,
-                cache: cursors
+                collection: request.collection, filter: filter, offset: request.offset, limit: request.limit, cache: paging
+            )
+        case .byPayload(let column, let key, let ascending):
+            points = try await client.sortedPage(
+                collection: request.collection, filter: filter, column: column, key: key, ascending: ascending,
+                offset: request.offset, limit: request.limit, cache: paging
             )
         }
         let columns = QdrantSchema.columns(for: collection).map(\.name)
@@ -63,16 +60,17 @@ extension QdrantPluginDriver {
         started: Date
     ) async throws -> PluginQueryResult {
         let response = try await client.execute(request)
-        if !request.isRead {
+        if request.kind.tier != .read {
             forgetAfterWrite()
         }
-        if let points = QdrantPoint.list(fromResponse: response.json), !points.isEmpty {
-            let name = Self.collectionName(in: request.path)
+        // An empty point list is a grid with no rows, which is what a save's existence check counts.
+        let route = QdrantPathEncoding.segments(of: request.path) ?? []
+        if let points = QdrantPoint.list(fromResponse: response.json), !points.isEmpty || route.contains("points") {
+            let name = route.count >= 2 && route[0] == "collections" ? Self.collectionName(in: request.path) : nil
             let collection = name.flatMap(rememberedCollection)
-            let columns = QdrantPoint.columns(of: points, collection: collection)
             return render(
                 points,
-                columns: columns,
+                columns: QdrantPoint.columns(of: points, collection: collection),
                 collection: collection ?? QdrantCollection(name: name ?? "", vectors: [], payloadFields: []),
                 started: started
             )
@@ -95,10 +93,14 @@ extension QdrantPluginDriver {
         PluginQueryResult(
             columns: columns,
             columnTypeNames: columns.map { QdrantSchema.typeName(of: $0, in: collection) },
-            rows: points.map { point in point.row(columns: columns).map { $0.map(PluginCellValue.text) ?? .null } },
+            rows: points.map(cells(columns: columns)),
             rowsAffected: 0,
             executionTime: Date().timeIntervalSince(started)
         )
+    }
+
+    private func cells(columns: [String]) -> (QdrantPoint) -> [PluginCellValue] {
+        { point in point.row(columns: columns).map { $0.map(PluginCellValue.text) ?? .null } }
     }
 
     private func renderJSON(_ response: QdrantHTTPResponse, started: Date) -> PluginQueryResult {
@@ -120,8 +122,7 @@ extension QdrantPluginDriver {
 
     // MARK: - Export
 
-    /// Walks the collection a page at a time instead of buffering it whole, which the protocol's
-    /// default `streamRows` would do by running `execute` once.
+    // The protocol's default `streamRows` runs `execute` once and buffers the whole collection.
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
         AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
             let task = Task {
@@ -146,14 +147,14 @@ extension QdrantPluginDriver {
         }
     }
 
+    // The grid's columns come from a sample; an export carries every key, so it first reads payloads
+    // alone, which skips the vectors that make up most of a page.
     private func streamCollection(
         _ name: String,
         continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
     ) async throws {
         let client = try requireClient()
         var collection = try await collection(name, refresh: true)
-        // The grid's columns come from a sample; an export has to carry every key, so it reads
-        // payloads alone first, which skips the vectors that make up most of a page.
         for try await points in client.pointPages(collection: name, pageSize: Self.exportPageSize, withVector: false) {
             collection = collection.including(points)
         }
@@ -164,9 +165,7 @@ extension QdrantPluginDriver {
             estimatedRowCount: collection.pointsCount
         )))
         for try await points in client.pointPages(collection: name, pageSize: Self.exportPageSize) {
-            continuation.yield(.rows(points.map { point in
-                point.row(columns: columns).map { $0.map(PluginCellValue.text) ?? .null }
-            }))
+            continuation.yield(.rows(points.map(cells(columns: columns))))
         }
     }
 }

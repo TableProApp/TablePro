@@ -55,16 +55,22 @@ private final class LookupDriver: PluginDriverStub, @unchecked Sendable {
 }
 
 struct DataWriteExecutorLookupTests {
-    private func step(_ sql: String, rowCount: Int = 1, check: Bool = true) -> DataWriteStep {
+    private func step(
+        _ sql: String,
+        rowCount: Int = 1,
+        check: Bool = true,
+        rowKind: RowWriteKind = .delete,
+        pinsRows: Bool = true
+    ) -> DataWriteStep {
         DataWriteStep(
             kind: .rowWrite,
             statement: ParameterizedStatement(sql: sql, parameters: ["a"]),
             tableName: "events",
-            rowKind: .delete,
+            rowKind: rowKind,
             lookup: RowLookup(
                 query: ParameterizedStatement(sql: "LOOKUP \(sql)", parameters: ["a"]),
                 rowCount: rowCount,
-                pinsRows: true,
+                pinsRows: pinsRows,
                 check: check ? ParameterizedStatement(sql: "CHECK \(sql)", parameters: ["a"]) : nil
             )
         )
@@ -111,6 +117,20 @@ struct DataWriteExecutorLookupTests {
 
         await #expect(throws: DataWriteError.self) {
             try await run([step("only")], on: driver)
+        }
+        #expect(driver.writes.isEmpty)
+    }
+
+    @Test("An insert whose key a row already holds refuses the save, saying the key is taken, before anything is written")
+    func takenKeyRefusesInsertBeforeAnyWrite() async {
+        let driver = LookupDriver(found: [1])
+
+        await #expect(throws: DataWriteError.changeRefused(
+            table: "events",
+            kind: .insert,
+            reason: String(localized: "A row with this key already exists, so the insert would not add one.")
+        )) {
+            try await run([step("INSERT keyed", rowCount: 0, check: false, rowKind: .insert, pinsRows: false)], on: driver)
         }
         #expect(driver.writes.isEmpty)
     }

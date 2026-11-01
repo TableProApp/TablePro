@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #
-# Run TableProQdrantCore against a live Qdrant node: cursor paging, every filter kind, order_by,
-# set-payload, insert_only inserts with no vector, delete, truncate, export and drop. The probe
-# creates and drops a collection named tablepro_probe.
+# Run TableProQdrantCore against a live Qdrant node: cursor paging, every filter kind, sorting with
+# keyless points, typed payload and vector writes, the insert id check, facet, export, truncate and
+# drop. The probe creates and drops a collection named tablepro_probe.
 #
 # Usage:
 #   scripts/probes/check-qdrant.sh [host] [port]

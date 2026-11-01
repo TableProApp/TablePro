@@ -2,21 +2,12 @@ import Foundation
 
 public struct QdrantScrollPage: @unchecked Sendable {
     public let points: [QdrantPoint]
-    /// The id the next page starts from, `nil` once the collection is exhausted.
+    // Nil once the collection is exhausted.
     public let nextCursor: Any?
-}
-
-public enum QdrantCursorLookup: @unchecked Sendable {
-    /// Scroll from this id; `nil` is the start of the collection.
-    case at(Any?)
-    /// The collection ends before the requested offset.
-    case pastEnd
 }
 
 public final class QdrantClient: @unchecked Sendable {
     public static let sampleSize = 100
-    /// How many ids one request skips while walking to a page no cursor is held for.
-    public static let skipBatchSize = 1_000
 
     public let settings: QdrantConnectionSettings
     private let transport: QdrantTransport
@@ -43,28 +34,31 @@ public final class QdrantClient: @unchecked Sendable {
     }
 
     public func connect(requestTimeout: @Sendable () -> TimeInterval) async throws {
-        let root = try await send(method: "GET", path: "/", timeoutInterval: requestTimeout())
-        try throwIfFailed(root)
-        if let json = QdrantJSON.dictionary(root.json), let found = json["version"] as? String {
+        let root = try await checked(send(method: "GET", path: "/", timeoutInterval: requestTimeout()))
+        if let found = (root.json as? [String: Any])?["version"] as? String {
             lock.withLock { version = found }
         }
-        try throwIfFailed(try await send(method: "GET", path: "/collections", timeoutInterval: requestTimeout()))
+        _ = try await checked(send(method: "GET", path: "/collections", timeoutInterval: requestTimeout()))
     }
 
-    /// `/healthz` answers without the key, so a revoked key would leave the session looking live.
+    // `/healthz` answers without the key, so a revoked key would leave the session looking live.
     public func ping() async throws {
-        try throwIfFailed(try await send(method: "GET", path: "/collections"))
+        _ = try await checked(send(method: "GET", path: "/collections"))
     }
 
     public func collectionNames() async throws -> [String] {
-        let response = try await send(method: "GET", path: "/collections")
-        try throwIfFailed(response)
-        return QdrantSchema.collectionNames(from: response.json)
+        QdrantSchema.collectionNames(from: try await checked(send(method: "GET", path: "/collections")).json)
     }
 
+    // The config and indexed fields alone: enough for a row count, the DDL and the index list.
+    public func collectionInfo(named name: String) async throws -> QdrantCollection {
+        let info = try await checked(send(method: "GET", path: collectionPath(name)))
+        return QdrantCollection.parse(name: name, info: info.json)
+    }
+
+    // Fields nobody indexed are only visible in the points, so a sample of them fills in the columns.
     public func collection(named name: String) async throws -> QdrantCollection {
-        let info = try await send(method: "GET", path: collectionPath(name))
-        try throwIfFailed(info)
+        let info = try await checked(send(method: "GET", path: collectionPath(name)))
         let sample = try await scroll(
             collection: name,
             body: ["limit": Self.sampleSize, "with_payload": true, "with_vector": false]
@@ -98,50 +92,28 @@ public final class QdrantClient: @unchecked Sendable {
         return count
     }
 
-    /// Walks to the cursor of `offset` from the nearest one already known, reading ids only.
-    public func cursor(
-        collection: String,
-        filter: [String: Any]?,
-        offset: Int,
-        from known: (offset: Int, cursor: Any?)
-    ) async throws -> QdrantCursorLookup {
-        var position = known.offset
-        var cursor = known.cursor
-        while position < offset {
-            try Task.checkCancellation()
-            let step = min(offset - position, Self.skipBatchSize)
-            let page = try await scroll(
-                collection: collection,
-                body: QdrantBrowseQuery.scrollBody(filter: filter, limit: step, cursor: cursor, withData: false)
-            )
-            position += page.points.count
-            guard let next = page.nextCursor else { return .pastEnd }
-            cursor = next
-        }
-        return .at(cursor)
-    }
-
     public func execute(_ request: QdrantConsoleRequest) async throws -> QdrantHTTPResponse {
-        let response = try await send(method: request.method, path: request.path, body: request.body.map { Data($0.utf8) })
-        try throwIfFailed(response)
-        return response
-    }
-
-    public func send(method: String, path: String, body: Data? = nil) async throws -> QdrantHTTPResponse {
-        try await send(method: method, path: path, body: body, timeoutInterval: timeout())
+        try await checked(send(method: request.method, path: request.path, body: request.body.map { Data($0.utf8) }))
     }
 
     private func post(_ path: String, _ body: [String: Any]) async throws -> QdrantHTTPResponse {
-        let response = try await send(method: "POST", path: path, body: try QdrantJSON.data(body))
-        try throwIfFailed(response)
-        return response
+        try await checked(send(method: "POST", path: path, body: try QdrantJSON.data(body)))
     }
 
     private func collectionPath(_ name: String) -> String {
         "/collections/\(QdrantPathEncoding.segment(name))"
     }
 
-    private func send(method: String, path: String, body: Data? = nil, timeoutInterval: TimeInterval) async throws -> QdrantHTTPResponse {
+    private func send(method: String, path: String, body: Data? = nil) async throws -> QdrantHTTPResponse {
+        try await send(method: method, path: path, body: body, timeoutInterval: timeout())
+    }
+
+    private func send(
+        method: String,
+        path: String,
+        body: Data? = nil,
+        timeoutInterval: TimeInterval
+    ) async throws -> QdrantHTTPResponse {
         guard let url = QdrantPathEncoding.resolve(path, against: try settings.baseURL()) else {
             throw QdrantError.configuration(String(format: String(localized: "Invalid path: %@"), path))
         }
@@ -159,9 +131,10 @@ public final class QdrantClient: @unchecked Sendable {
         ))
     }
 
-    public func throwIfFailed(_ response: QdrantHTTPResponse) throws {
+    private func checked(_ response: QdrantHTTPResponse) throws -> QdrantHTTPResponse {
         guard (200..<300).contains(response.statusCode) else {
             throw QdrantError.from(status: response.statusCode, body: response.body)
         }
+        return response
     }
 }

@@ -11,38 +11,24 @@ public struct QdrantConsoleRequest: Sendable, Equatable {
         self.body = body
     }
 
-    /// The POST endpoints that only read. Retrieving points by id is a POST to `/points` itself.
-    static let readSuffixes: [[String]] = [
-        ["points"], ["points", "scroll"], ["points", "search"], ["points", "query"], ["points", "count"],
-        ["points", "recommend"], ["points", "discover"], ["points", "facet"],
-        ["points", "search", "batch"], ["points", "query", "batch"], ["points", "recommend", "batch"],
-        ["points", "discover", "batch"], ["points", "search", "groups"], ["points", "query", "groups"],
-        ["points", "recommend", "groups"], ["points", "search", "matrix", "pairs"],
-        ["points", "search", "matrix", "offsets"]
-    ]
-
-    public var isRead: Bool {
-        if method == "GET" || method == "HEAD" { return true }
-        guard method == "POST" else { return false }
-        let route = path.split(separator: "?", maxSplits: 1).first.map(String.init) ?? path
-        let segments = route.split(separator: "/").map { $0.lowercased() }
-        guard segments.count >= 3, segments[0] == "collections" else { return false }
-        return Self.readSuffixes.contains { Array(segments.dropFirst(2)) == $0 }
+    // What the review sheet shows, the classifier tiers and the driver runs are this one string.
+    public var text: String {
+        guard let body else { return "\(method) \(path)" }
+        return "\(method) \(path)\n\(body)"
     }
+
+    public var kind: QdrantRequestKind { QdrantRequestKind.of(method: method, path: path) }
 }
 
-/// One REST request typed in the editor: `METHOD /path`, then an optional JSON body on the same
-/// line or on the lines below it.
+// `METHOD /path`, then an optional JSON body that may start on the request line and go on below it.
 public enum QdrantConsoleParser {
     static let methods: Set<String> = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"]
 
     public static func parse(_ input: String) -> QdrantConsoleRequest? {
         let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
-        let lines = trimmed.split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: false)
-        guard let header = lines.first else { return nil }
-        let following = lines.count > 1
-            ? String(lines[1]).trimmingCharacters(in: .whitespacesAndNewlines)
-            : ""
+        let newline = trimmed.firstIndex(where: \.isNewline)
+        let header = newline.map { trimmed[..<$0] } ?? trimmed[...]
+        let following = newline.map { trimmed[trimmed.index(after: $0)...] } ?? ""
 
         let parts = header.split(maxSplits: 2, omittingEmptySubsequences: true, whereSeparator: \.isWhitespace)
         guard parts.count >= 2 else { return nil }
@@ -50,9 +36,57 @@ public enum QdrantConsoleParser {
         guard methods.contains(method) else { return nil }
         let path = String(parts[1])
         guard path.hasPrefix("/"), !path.hasPrefix("//") else { return nil }
-        let inline = parts.count > 2 ? String(parts[2]).trimmingCharacters(in: .whitespacesAndNewlines) : ""
-        let body = inline.isEmpty ? following : inline
+        let inline = parts.count > 2 ? parts[2] : ""
+        let body = [inline, following]
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .joined(separator: "\n")
         return QdrantConsoleRequest(method: method, path: path, body: body.isEmpty ? nil : body)
+    }
+}
+
+public struct QdrantRequestKind: Sendable, Equatable {
+    public enum Tier: Sendable, Equatable {
+        case read
+        case write
+        case remove
+    }
+
+    public let tier: Tier
+    // A snapshot is written to the server's disk, and recovering one fetches a URL from the server.
+    public let touchesServerFiles: Bool
+
+    public init(tier: Tier, touchesServerFiles: Bool) {
+        self.tier = tier
+        self.touchesServerFiles = touchesServerFiles
+    }
+
+    // The POSTs under `/collections/<name>/` that only read. Retrieving points by id is a POST to `points`.
+    static let readRoutes: Set<[String]> = [
+        ["points"], ["points", "scroll"], ["points", "search"], ["points", "query"], ["points", "count"],
+        ["points", "recommend"], ["points", "discover"], ["facet"],
+        ["points", "search", "batch"], ["points", "query", "batch"], ["points", "recommend", "batch"],
+        ["points", "discover", "batch"], ["points", "search", "groups"], ["points", "query", "groups"],
+        ["points", "recommend", "groups"], ["points", "search", "matrix", "pairs"],
+        ["points", "search", "matrix", "offsets"]
+    ]
+
+    public static func of(method: String, path: String) -> QdrantRequestKind {
+        let verb = method.uppercased()
+        guard let route = QdrantPathEncoding.segments(of: path) else {
+            return QdrantRequestKind(tier: .write, touchesServerFiles: true)
+        }
+        let touchesServerFiles = route.contains("snapshots")
+        if verb == "GET" || verb == "HEAD" {
+            return QdrantRequestKind(tier: .read, touchesServerFiles: touchesServerFiles)
+        }
+        let subroute = route.count >= 3 && route[0] == "collections" ? Array(route.dropFirst(2)) : []
+        if verb == "POST", readRoutes.contains(subroute) {
+            return QdrantRequestKind(tier: .read, touchesServerFiles: touchesServerFiles)
+        }
+        // A batch can carry deletes, and a POST ending in `delete` or `clear` removes points or payload.
+        let removes = verb == "DELETE" || route.last == "delete" || route.last == "clear" || subroute == ["points", "batch"]
+        return QdrantRequestKind(tier: removes ? .remove : .write, touchesServerFiles: touchesServerFiles)
     }
 }
 
@@ -67,10 +101,25 @@ public enum QdrantPathEncoding {
         value.addingPercentEncoding(withAllowedCharacters: allowed) ?? value
     }
 
-    /// The path keeps its own query string (`?wait=true`): assigning it whole to `URLComponents.path`
-    /// would encode the `?` and send the request to a path that does not exist.
+    // Decoded and lowercased; nil for a dot segment, which would move the request to a route other than
+    // the one it reads as.
+    public static func segments(of path: String) -> [String]? {
+        guard let requested = URLComponents(string: path) else { return nil }
+        let segments = requested.percentEncodedPath.split(separator: "/").map { String($0) }
+        var decoded: [String] = []
+        for segment in segments {
+            guard let text = segment.removingPercentEncoding, text != ".", text != "..", !text.contains("/") else {
+                return nil
+            }
+            decoded.append(text.lowercased())
+        }
+        return decoded
+    }
+
+    // Assigning the path whole to `URLComponents.path` would encode the `?` of `?wait=true`.
     public static func resolve(_ path: String, against base: URL) -> URL? {
         guard path.hasPrefix("/"), !path.hasPrefix("//"), !path.contains("://"),
+              segments(of: path) != nil,
               var components = URLComponents(url: base, resolvingAgainstBaseURL: false),
               let requested = URLComponents(string: path)
         else { return nil }
@@ -83,14 +132,12 @@ public enum QdrantPathEncoding {
 public enum QdrantOperations {
     public static let exportTag = "QDRANT_EXPORT:"
 
-    /// The console request that removes one collection. Plain request text, so the confirmation shows
-    /// it verbatim and the query classifier tiers it destructive by its verb.
     public static func deleteCollection(named name: String, objectType: String) -> String? {
         guard objectType.uppercased() == "TABLE", !name.isEmpty else { return nil }
         return "DELETE /collections/\(QdrantPathEncoding.segment(name))"
     }
 
-    /// An empty filter matches every point, which keeps the collection and its config.
+    // An empty filter matches every point and keeps the collection with its config and indexes.
     public static func deleteAllPoints(collection: String) -> String? {
         guard !collection.isEmpty else { return nil }
         return "POST /collections/\(QdrantPathEncoding.segment(collection))/points/delete?wait=true\n{\"filter\":{}}"
@@ -107,5 +154,9 @@ public enum QdrantOperations {
               !collection.isEmpty
         else { return nil }
         return collection
+    }
+
+    public static func isTagged(_ query: String) -> Bool {
+        query.hasPrefix(QdrantBrowseQuery.tag) || query.hasPrefix(exportTag)
     }
 }

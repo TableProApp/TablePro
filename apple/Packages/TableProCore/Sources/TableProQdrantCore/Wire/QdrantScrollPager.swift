@@ -1,18 +1,18 @@
 import Foundation
 
-/// The grid asks for a page by row offset and `scroll` answers with the id the next page starts
-/// from. This remembers that id for every page already read, so paging forward costs one request
-/// and a jump costs one id-only walk from the nearest page before it.
-public final class QdrantCursorCache: @unchecked Sendable {
+// `scroll` pages by point id, so a row offset is reached by walking ids from the nearest cursor
+// already known. Every cursor a walk passes is kept, so paging on or jumping nearby costs one request.
+public final class QdrantPagingCache: @unchecked Sendable {
     private static let maxQueries = 32
 
     private let lock = NSLock()
     private var cursors: [String: [Int: Any]] = [:]
     private var order: [String] = []
+    private var checkedSorts: Set<String> = []
 
     public init() {}
 
-    public func nearest(at offset: Int, key: String) -> (offset: Int, cursor: Any?) {
+    public func nearestCursor(at offset: Int, key: String) -> (offset: Int, cursor: Any?) {
         lock.withLock {
             guard let known = cursors[key],
                   let best = known.keys.filter({ $0 <= offset }).max()
@@ -21,7 +21,7 @@ public final class QdrantCursorCache: @unchecked Sendable {
         }
     }
 
-    public func store(_ cursor: Any, at offset: Int, key: String) {
+    public func storeCursor(_ cursor: Any, at offset: Int, key: String) {
         lock.withLock {
             if cursors[key] == nil {
                 order.append(key)
@@ -33,51 +33,57 @@ public final class QdrantCursorCache: @unchecked Sendable {
         }
     }
 
+    public func isSortChecked(_ key: String) -> Bool {
+        lock.withLock { checkedSorts.contains(key) }
+    }
+
+    public func markSortChecked(_ key: String) {
+        lock.withLock { _ = checkedSorts.insert(key) }
+    }
+
     public func removeAll() {
         lock.withLock {
             cursors.removeAll()
             order.removeAll()
+            checkedSorts.removeAll()
         }
     }
 }
 
 public extension QdrantClient {
+    static let walkBatchSize = 10_000
+
     func scrollPage(
         collection: String,
         filter: [String: Any]?,
         offset: Int,
         limit: Int,
-        cache: QdrantCursorCache
+        cache: QdrantPagingCache
     ) async throws -> [QdrantPoint] {
-        let filterKey = filter.flatMap { try? QdrantJSON.text($0) } ?? ""
-        let key = "\(collection)\u{0}\(filterKey)"
-        let start: Any?
-        switch try await cursor(
-            collection: collection,
-            filter: filter,
-            offset: offset,
-            from: cache.nearest(at: offset, key: key)
-        ) {
-        case .pastEnd:
-            return []
-        case .at(let cursor):
-            start = cursor
-            if offset > 0, let cursor {
-                cache.store(cursor, at: offset, key: key)
-            }
+        let key = "\(collection)\u{0}\(filter.flatMap { try? QdrantJSON.text($0) } ?? "")"
+        var (position, cursor) = cache.nearestCursor(at: offset, key: key)
+        while position < offset {
+            try Task.checkCancellation()
+            let page = try await scroll(
+                collection: collection,
+                body: Self.scrollBody(filter: filter, limit: min(offset - position, Self.walkBatchSize), cursor: cursor, withData: false)
+            )
+            guard let next = page.nextCursor else { return [] }
+            position += page.points.count
+            cursor = next
+            cache.storeCursor(next, at: position, key: key)
         }
         let page = try await scroll(
             collection: collection,
-            body: QdrantBrowseQuery.scrollBody(filter: filter, limit: limit, cursor: start, withData: true)
+            body: Self.scrollBody(filter: filter, limit: limit, cursor: cursor, withData: true)
         )
         if let next = page.nextCursor {
-            cache.store(next, at: offset + page.points.count, key: key)
+            cache.storeCursor(next, at: offset + page.points.count, key: key)
         }
         return page.points
     }
 
-    /// Every point of a collection a page at a time, for export. Without vectors it reads payloads only,
-    /// which is how an export learns every payload key before it writes its header.
+    // Without vectors this reads payloads only, which is how an export learns every key before its header.
     func pointPages(
         collection: String,
         pageSize: Int,
@@ -91,7 +97,7 @@ public extension QdrantClient {
                         try Task.checkCancellation()
                         let page = try await self.scroll(
                             collection: collection,
-                            body: QdrantBrowseQuery.scrollBody(
+                            body: Self.scrollBody(
                                 filter: nil, limit: max(pageSize, 1), cursor: cursor, withData: true, withVector: withVector
                             )
                         )
@@ -107,5 +113,26 @@ public extension QdrantClient {
             }
             continuation.onTermination = { @Sendable _ in task.cancel() }
         }
+    }
+
+    static func scrollBody(
+        filter: [String: Any]?,
+        limit: Int,
+        cursor: Any?,
+        withData: Bool,
+        withVector: Bool? = nil
+    ) -> [String: Any] {
+        var body: [String: Any] = [
+            "limit": limit,
+            "with_payload": withData,
+            "with_vector": withVector ?? withData
+        ]
+        if let filter {
+            body["filter"] = filter
+        }
+        if let cursor {
+            body["offset"] = cursor
+        }
+        return body
     }
 }

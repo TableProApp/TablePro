@@ -7,12 +7,13 @@ public enum QdrantError: Error, LocalizedError, Equatable, Sendable {
     case authentication(String)
     case api(status: Int, message: String)
     case malformedResponse(String)
+    case unsupported(String)
     case cancelled
 
     public var errorDescription: String? {
         switch self {
         case .configuration(let detail), .transport(let detail), .malformedResponse(let detail),
-             .authentication(let detail):
+             .authentication(let detail), .unsupported(let detail):
             return detail
         case .notConnected:
             return String(localized: "Not connected to Qdrant.")
@@ -32,7 +33,7 @@ public enum QdrantError: Error, LocalizedError, Equatable, Sendable {
         return .api(status: status, message: message)
     }
 
-    /// Qdrant puts the reason in `status.error`; a proxy in front of it may answer with plain text.
+    // A proxy in front of Qdrant may answer with plain text instead of `status.error`.
     public static func apiMessage(from body: Data) -> String? {
         guard let json = try? JSONSerialization.jsonObject(with: body) else {
             let text = String(data: body, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -43,11 +44,10 @@ public enum QdrantError: Error, LocalizedError, Equatable, Sendable {
            let error = status["error"] as? String, !error.isEmpty {
             return error
         }
-        if let error = object["error"] as? String, !error.isEmpty {
-            return error
-        }
-        if let message = object["message"] as? String, !message.isEmpty {
-            return message
+        for key in ["error", "message"] {
+            if let text = object[key] as? String, !text.isEmpty {
+                return text
+            }
         }
         return nil
     }

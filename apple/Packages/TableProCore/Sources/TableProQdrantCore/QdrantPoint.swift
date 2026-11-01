@@ -1,8 +1,7 @@
 import Foundation
 
-/// A point id is an unsigned integer or a UUID, and Qdrant refuses one in the other's form, so the
-/// grid's text is turned back into the kind it came from.
 public enum QdrantPointID {
+    // Qdrant refuses an integer id spelled as a string and the other way round.
     public static func json(from text: String) -> Any? {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
@@ -12,16 +11,12 @@ public enum QdrantPointID {
         guard UUID(uuidString: trimmed) != nil else { return nil }
         return trimmed.lowercased()
     }
-
-    public static func text(_ value: Any?) -> String? {
-        QdrantJSON.displayText(value)
-    }
 }
 
 public struct QdrantPoint: @unchecked Sendable {
     public let id: Any?
     public let payload: [String: Any]
-    /// `nil` when the request left vectors out; an array for an unnamed vector; a map by name otherwise.
+    // Nil when the request left vectors out, an array for an unnamed vector alone, a map by name otherwise.
     public let vector: Any?
     public let score: Double?
 
@@ -32,7 +27,7 @@ public struct QdrantPoint: @unchecked Sendable {
         self.score = score
     }
 
-    public var idText: String? { QdrantPointID.text(id) }
+    public var idText: String? { QdrantJSON.displayText(id) }
 
     public var payloadKeys: [String] { payload.keys.sorted() }
 
@@ -47,8 +42,7 @@ public struct QdrantPoint: @unchecked Sendable {
         )
     }
 
-    /// The point list of any read endpoint: `scroll` and `query` wrap it in `points`, retrieve and the
-    /// older `search` answer the array itself. `nil` when the result is not a list of points.
+    // `scroll` and `query` wrap the list in `points`; retrieve and `search` answer the array itself.
     public static func list(fromResponse json: Any?) -> [QdrantPoint]? {
         guard let result = (json as? [String: Any])?["result"] else { return nil }
         let items: [Any]
@@ -63,13 +57,9 @@ public struct QdrantPoint: @unchecked Sendable {
         return points.count == items.count ? points : nil
     }
 
-    public func vectorValue(for column: String) -> Any? {
-        guard let vector else { return nil }
-        if column == QdrantSchema.vectorColumn {
-            if vector is [Any] { return vector }
-            return (vector as? [String: Any])?[""]
-        }
-        let name = String(column.dropFirst(QdrantSchema.vectorColumn.count + 1))
+    public func vectorValue(forColumn column: String) -> Any? {
+        guard let vector, let name = QdrantSchema.vectorName(ofColumn: column) else { return nil }
+        if name.isEmpty, vector is [Any] { return vector }
         return (vector as? [String: Any])?[name]
     }
 
@@ -78,7 +68,7 @@ public struct QdrantPoint: @unchecked Sendable {
             return idText
         }
         if QdrantSchema.isVectorColumn(column) {
-            return QdrantJSON.displayText(vectorValue(for: column))
+            return QdrantJSON.displayText(vectorValue(forColumn: column))
         }
         if column == QdrantSchema.scoreColumn {
             return score.map { String($0) }
@@ -90,7 +80,6 @@ public struct QdrantPoint: @unchecked Sendable {
         columns.map(cell(for:))
     }
 
-    /// The columns a console result shows: what came back, in the order the collection lists it.
     public static func columns(of points: [QdrantPoint], collection: QdrantCollection?) -> [String] {
         var columns = [QdrantSchema.idColumn]
         if points.contains(where: { $0.score != nil }) {
@@ -101,18 +90,14 @@ public struct QdrantPoint: @unchecked Sendable {
         columns += declared.filter { returned.contains($0) && !columns.contains($0) }
         columns += returned.subtracting(declared).subtracting(columns).sorted()
 
-        var vectorColumns: [String] = []
+        var vectorColumns: Set<String> = []
         for point in points {
             if point.vector is [Any] {
-                vectorColumns.append(QdrantSchema.vectorColumn)
+                vectorColumns.insert(QdrantSchema.vectorColumn)
             } else if let named = point.vector as? [String: Any] {
-                vectorColumns += named.keys.map { "\(QdrantSchema.vectorColumn).\($0)" }
+                vectorColumns.formUnion(named.keys.map { QdrantVectorSpec(name: $0, kind: .dense(size: nil)).column })
             }
         }
-        var seen = Set(columns)
-        for column in vectorColumns.sorted() where seen.insert(column).inserted {
-            columns.append(column)
-        }
-        return columns
+        return columns + vectorColumns.subtracting(columns).sorted()
     }
 }

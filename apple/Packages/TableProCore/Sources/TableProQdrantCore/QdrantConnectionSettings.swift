@@ -2,7 +2,6 @@ import Foundation
 
 public enum QdrantFieldID {
     public static let apiKey = "qdApiKey"
-    public static let skipTLSVerify = "qdSkipTLSVerify"
 }
 
 public struct QdrantConnectionSettings: Sendable, Equatable {
@@ -12,14 +11,12 @@ public struct QdrantConnectionSettings: Sendable, Equatable {
     public let port: Int
     public let usesTLS: Bool
     public let apiKey: String
-    public let skipTLSVerify: Bool
 
-    public init(host: String, port: Int, usesTLS: Bool, apiKey: String, skipTLSVerify: Bool) {
+    public init(host: String, port: Int, usesTLS: Bool, apiKey: String) {
         self.host = host.trimmingCharacters(in: .whitespacesAndNewlines)
         self.port = port
         self.usesTLS = usesTLS
         self.apiKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        self.skipTLSVerify = skipTLSVerify
     }
 
     public static func parse(
@@ -33,15 +30,12 @@ public struct QdrantConnectionSettings: Sendable, Equatable {
             host: resolvedHost.isEmpty ? "localhost" : resolvedHost,
             port: port > 0 ? port : defaultPort,
             usesTLS: usesTLS,
-            apiKey: fields[QdrantFieldID.apiKey] ?? "",
-            skipTLSVerify: fields[QdrantFieldID.skipTLSVerify] == "true"
+            apiKey: fields[QdrantFieldID.apiKey] ?? ""
         )
         _ = try settings.baseURL()
         return settings
     }
 
-    /// Qdrant reads the key from `api-key`, and also accepts it as a bearer token; the dedicated
-    /// header is the one both a self-hosted node and Qdrant Cloud document.
     public var headers: [String: String] {
         apiKey.isEmpty ? [:] : ["api-key": apiKey]
     }

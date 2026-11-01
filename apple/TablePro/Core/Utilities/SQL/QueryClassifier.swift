@@ -5,6 +5,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProQdrantCore
 import TableProRedisCore
 import TableProSQLGrammar
 import TableProUtilities
@@ -1087,11 +1088,11 @@ private extension QueryClassifier {
     /// followed by a JSON body, and the body is the caller's data: scanning the whole statement
     /// let `POST /collections/c/documents/import` carrying `"note": "/multi_search"` in a field
     /// read as a search, which is a read-only mode and MCP gate bypass. A URL path holds no raw
-    /// space, so the path ends at the first one: that keeps a body written on the header line out
-    /// of it, and stops `POST /collections/c /multi_search` from ending in a read path.
+    /// whitespace, so the path ends at the first one: that keeps a body written on the header line
+    /// out of it, and stops `POST /collections/c /multi_search` from ending in a read path.
     static func typesenseRequestLine(_ trimmed: String) -> (verb: String, path: String) {
-        let header = trimmed.split(separator: "\n", maxSplits: 1).first.map(String.init) ?? ""
-        let parts = header.split(separator: " ", maxSplits: 1, omittingEmptySubsequences: true)
+        let header = trimmed.firstIndex(where: \.isNewline).map { String(trimmed[..<$0]) } ?? trimmed
+        let parts = header.split(maxSplits: 1, omittingEmptySubsequences: true, whereSeparator: \.isWhitespace)
         guard let verb = parts.first else { return ("", "/") }
         guard parts.count == 2 else { return (String(verb).uppercased(), "/") }
 
@@ -1161,12 +1162,15 @@ private extension QueryClassifier {
     /// The driver takes a body from the rest of the request line as well as from the lines below
     /// it, so the gate has to read the same two places.
     static func weaviateConsoleBody(_ trimmed: String) -> String {
-        let lines = trimmed.split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: false)
-        let header = lines.first.map(String.init) ?? ""
-        let following = lines.count > 1 ? String(lines[1]) : ""
+        let newline = trimmed.firstIndex(where: \.isNewline)
+        let header = newline.map { trimmed[..<$0] } ?? trimmed[...]
+        let following = newline.map { trimmed[trimmed.index(after: $0)...] } ?? ""
         let parts = header.split(maxSplits: 2, omittingEmptySubsequences: true, whereSeparator: \.isWhitespace)
-        let inline = parts.count > 2 ? String(parts[2]) : ""
-        return inline.isEmpty ? following : inline
+        let inline = parts.count > 2 ? parts[2] : ""
+        return [inline, following]
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .joined(separator: "\n")
     }
 
     static func weaviateClassification(_ trimmed: String) -> QueryClassification {
@@ -1209,42 +1213,19 @@ private extension QueryClassifier {
         return QueryClassification(tier: .write, reachesFilesystemOrExecutesCode: false)
     }
 
-    /// POSTs under `/collections/<name>/` that only read. Retrieving points by id is a POST to `points`.
-    static let qdrantReadRoutes: Set<[String]> = [
-        ["POINTS"], ["POINTS", "SCROLL"], ["POINTS", "SEARCH"], ["POINTS", "QUERY"], ["POINTS", "COUNT"],
-        ["POINTS", "RECOMMEND"], ["POINTS", "DISCOVER"], ["POINTS", "FACET"],
-        ["POINTS", "SEARCH", "BATCH"], ["POINTS", "QUERY", "BATCH"], ["POINTS", "RECOMMEND", "BATCH"],
-        ["POINTS", "DISCOVER", "BATCH"], ["POINTS", "SEARCH", "GROUPS"], ["POINTS", "QUERY", "GROUPS"],
-        ["POINTS", "RECOMMEND", "GROUPS"], ["POINTS", "SEARCH", "MATRIX", "PAIRS"],
-        ["POINTS", "SEARCH", "MATRIX", "OFFSETS"],
-    ]
-
-    /// A snapshot is written to the server's disk, and recovering one fetches a URL from the server.
-    /// A batch can carry deletes, and a POST ending in `delete` or `clear` removes points or payload.
+    // The driver runs what `QdrantConsoleParser` parses, so the gate reads the same request.
     static func qdrantClassification(_ trimmed: String) -> QueryClassification {
-        if trimmed.hasPrefix("QDRANT_BROWSE:") || trimmed.hasPrefix("QDRANT_EXPORT:") {
+        if QdrantOperations.isTagged(trimmed) {
             return .safe
         }
-        let (verb, path) = typesenseRequestLine(trimmed)
-        guard !verb.isEmpty else { return .safe }
-        guard let route = typesenseRoute(of: path) else {
-            return QueryClassification(tier: .write, reachesFilesystemOrExecutesCode: true)
+        guard let request = QdrantConsoleParser.parse(trimmed) else { return .safe }
+        let kind = request.kind
+        let tier: QueryTier = switch kind.tier {
+        case .read: .safe
+        case .write: .write
+        case .remove: .destructive
         }
-        let reachesFilesystem = route.contains("SNAPSHOTS")
-        if verb == "GET" || verb == "HEAD" {
-            return QueryClassification(tier: .safe, reachesFilesystemOrExecutesCode: reachesFilesystem)
-        }
-        let isCollectionRoute = route.count >= 3 && route[0] == "COLLECTIONS"
-        let subroute = isCollectionRoute ? Array(route.dropFirst(2)) : []
-        if verb == "POST", isCollectionRoute, qdrantReadRoutes.contains(subroute) {
-            return QueryClassification(tier: .safe, reachesFilesystemOrExecutesCode: reachesFilesystem)
-        }
-        let removes = verb == "DELETE"
-            || route.last == "DELETE" || route.last == "CLEAR" || subroute == ["POINTS", "BATCH"]
-        return QueryClassification(
-            tier: removes ? .destructive : .write,
-            reachesFilesystemOrExecutesCode: reachesFilesystem
-        )
+        return QueryClassification(tier: tier, reachesFilesystemOrExecutesCode: kind.touchesServerFiles)
     }
 
     /// A grid page is a tagged spec and anything else a request line read the way the driver reads

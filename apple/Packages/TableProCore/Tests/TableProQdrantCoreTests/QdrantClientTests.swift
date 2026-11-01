@@ -7,7 +7,7 @@ struct QdrantClientTests {
     func pagingForward() async throws {
         let transport = scrollingTransport(count: 25)
         let client = makeClient(transport: transport)
-        let cache = QdrantCursorCache()
+        let cache = QdrantPagingCache()
 
         let first = try await client.scrollPage(collection: "docs", filter: nil, offset: 0, limit: 10, cache: cache)
         let second = try await client.scrollPage(collection: "docs", filter: nil, offset: 10, limit: 10, cache: cache)
@@ -18,24 +18,29 @@ struct QdrantClientTests {
         #expect(bodyObject(transport.recorded[1])["offset"] as? Int == 11)
     }
 
-    @Test("A jump with no cursor walks ids only, then reads the page")
+    @Test("A jump walks ids only and keeps every cursor it passes, so a nearby jump starts from one")
     func jump() async throws {
-        let transport = scrollingTransport(count: 25)
+        let transport = scrollingTransport(count: 25_000)
         let client = makeClient(transport: transport)
+        let cache = QdrantPagingCache()
 
-        let page = try await client.scrollPage(collection: "docs", filter: nil, offset: 20, limit: 10, cache: QdrantCursorCache())
+        let page = try await client.scrollPage(collection: "docs", filter: nil, offset: 20_000, limit: 10, cache: cache)
+        #expect(page.compactMap(\.idText) == (20_001...20_010).map(String.init))
+        let walks = transport.recorded.dropLast().map(bodyObject)
+        #expect(walks.map { $0["limit"] as? Int } == [10_000, 10_000])
+        #expect(walks.allSatisfy { $0["with_payload"] as? Bool == false && $0["with_vector"] as? Bool == false })
 
-        #expect(page.compactMap(\.idText) == (21...25).map(String.init))
-        let walk = bodyObject(transport.recorded[0])
-        #expect(walk["limit"] as? Int == 20)
-        #expect(walk["with_payload"] as? Bool == false)
-        #expect(walk["with_vector"] as? Bool == false)
+        let before = transport.recorded.count
+        let nearby = try await client.scrollPage(collection: "docs", filter: nil, offset: 15_000, limit: 10, cache: cache)
+        #expect(nearby.first?.idText == "15001")
+        #expect(bodyObject(transport.recorded[before])["offset"] as? Int == 10_001)
+        #expect(transport.recorded.count == before + 2)
     }
 
     @Test("An offset past the end answers an empty page")
     func pastEnd() async throws {
         let client = makeClient(transport: scrollingTransport(count: 5))
-        let page = try await client.scrollPage(collection: "docs", filter: nil, offset: 10, limit: 10, cache: QdrantCursorCache())
+        let page = try await client.scrollPage(collection: "docs", filter: nil, offset: 10, limit: 10, cache: QdrantPagingCache())
         #expect(page.isEmpty)
     }
 
@@ -59,19 +64,76 @@ struct QdrantClientTests {
             _ = try await client.collection(named: "nope")
         }
         #expect(transport.recorded.first?.headers["api-key"] == "secret")
+        #expect(QdrantError.from(status: 401, body: Data("Invalid api-key".utf8)) == .authentication("Invalid api-key"))
     }
 
-    @Test("A rejected key is an authentication error")
-    func authentication() {
-        let error = QdrantError.from(status: 401, body: Data("Invalid api-key".utf8))
-        #expect(error == .authentication("Invalid api-key"))
+    @Test("Collection info is one GET, without the payload sample the columns need")
+    func infoOnly() async throws {
+        let transport = RecordingTransport { _ in
+            jsonResponse(["result": ["points_count": 12, "config": ["params": ["vectors": ["size": 2]]]], "status": "ok"])
+        }
+        let collection = try await makeClient(transport: transport).collectionInfo(named: "docs")
+        #expect(collection.pointsCount == 12)
+        #expect(transport.recorded.map(\.method) == ["GET"])
+    }
+}
+
+// Ordered points 1...6 by `price`, then 7...9 without a price.
+struct QdrantSortedPagerTests {
+    private func transport(listed: Int = 0) -> RecordingTransport {
+        RecordingTransport { request in
+            let body = bodyObject(request)
+            let text = canonical(body)
+            switch request.url.path {
+            case "/collections/docs/points/count":
+                if text.contains("values_count") { return jsonResponse(["result": ["count": listed]]) }
+                return jsonResponse(["result": ["count": 6]])
+            case "/collections/docs/points/query":
+                let offset = body["offset"] as? Int ?? 0
+                let limit = body["limit"] as? Int ?? 10
+                let ids = Array((1...6).dropFirst(offset).prefix(limit))
+                return jsonResponse(["result": ["points": ids.map { ["id": $0, "payload": ["price": $0]] }]])
+            case "/collections/docs/points/scroll":
+                let limit = body["limit"] as? Int ?? 10
+                let start = body["offset"] as? Int ?? 7
+                let ids = Array(start..<min(start + limit, 10))
+                return scrollResponse(ids, next: start + limit <= 9 ? start + limit : nil)
+            default:
+                return jsonResponse(["status": ["error": "unexpected \(request.url.path)"]], status: 404)
+            }
+        }
     }
 
-    @Test("A request path keeps its query string")
-    func pathResolution() throws {
-        let base = try #require(URL(string: "http://localhost:6333"))
-        let url = QdrantPathEncoding.resolve("/collections/docs/points?wait=true", against: base)
-        #expect(url?.absoluteString == "http://localhost:6333/collections/docs/points?wait=true")
-        #expect(QdrantPathEncoding.resolve("//evil.example/x", against: base) == nil)
+    private func page(_ client: QdrantClient, offset: Int, limit: Int, cache: QdrantPagingCache) async throws -> [String] {
+        try await client.sortedPage(
+            collection: "docs", filter: nil, column: "price", key: "\"price\"", ascending: true,
+            offset: offset, limit: limit, cache: cache
+        ).compactMap(\.idText)
+    }
+
+    @Test("Points with a value come first in order, then the points without one, and every point is reachable")
+    func orderedThenRemainder() async throws {
+        let transport = transport()
+        let client = makeClient(transport: transport)
+        let cache = QdrantPagingCache()
+
+        #expect(try await page(client, offset: 0, limit: 4, cache: cache) == ["1", "2", "3", "4"])
+        #expect(try await page(client, offset: 4, limit: 4, cache: cache) == ["5", "6", "7", "8"])
+        #expect(try await page(client, offset: 8, limit: 4, cache: cache) == ["9"])
+
+        let query = try #require(transport.recorded.first { $0.url.path.hasSuffix("/query") })
+        #expect(canonical(bodyObject(query)["query"] ?? [:]) == #"{"order_by":{"direction":"asc","key":"\"price\""}}"#)
+        let remainder = try #require(transport.recorded.first { $0.url.path.hasSuffix("/scroll") })
+        #expect(canonical(bodyObject(remainder)["filter"] ?? [:])
+            == #"{"must":[{"must_not":[{"key":"\"price\"","range":{}}]}]}"#)
+        #expect(transport.recorded.filter { canonical(bodyObject($0)).contains("values_count") }.count == 1)
+    }
+
+    @Test("A field holding a list in some point is refused, since Qdrant would show that point once per value")
+    func listedValuesRefused() async throws {
+        let client = makeClient(transport: transport(listed: 2))
+        await #expect(throws: QdrantError.self) {
+            _ = try await page(client, offset: 0, limit: 4, cache: QdrantPagingCache())
+        }
     }
 }

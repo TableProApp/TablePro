@@ -895,6 +895,10 @@ struct QueryClassifierNonSqlTests {
         #expect(QueryClassifier.isWriteQuery("mutation { delete { Article } }", databaseType: .weaviate))
         #expect(QueryClassifier.isWriteQuery("POST /v1/objects {}", databaseType: .weaviate))
         #expect(QueryClassifier.classifyTier("DELETE /v1/objects/abc", databaseType: .weaviate) == .destructive)
+        #expect(QueryClassifier.classifyTier("DELETE /v1/schema/Article", databaseType: .weaviate) == .destructive)
+        #expect(QueryClassifier.classifyTier("DELETE\t/v1/schema/Article", databaseType: .weaviate) == .destructive)
+        let mutation = "POST /v1/graphql {\n\"query\": \"mutation { delete { Article } }\" }"
+        #expect(QueryClassifier.isWriteQuery(mutation, databaseType: .weaviate))
         let search = "WEAVIATE_SEARCH:e30="
         #expect(!QueryClassifier.isWriteQuery(search, databaseType: .weaviate))
     }
@@ -913,6 +917,9 @@ struct QueryClassifierNonSqlTests {
         #expect(QueryClassifier.classifyTier("POST /collections/docs/points/batch {}", databaseType: .qdrant) == .destructive)
         #expect(QueryClassifier.classifyTier("DELETE /collections/docs", databaseType: .qdrant) == .destructive)
         #expect(QueryClassifier.isWriteQuery("POST /collections/docs/points/query/../delete {}", databaseType: .qdrant))
+        #expect(!QueryClassifier.isWriteQuery("POST /collections/docs/facet {\"key\": \"city\"}", databaseType: .qdrant))
+        #expect(QueryClassifier.classifyTier("DELETE\t/collections/docs", databaseType: .qdrant) == .destructive)
+        #expect(!QueryClassifier.isWriteQuery("POST /collections/docs/points/query {\n\"limit\": 3}", databaseType: .qdrant))
     }
 
     @Test("A Qdrant snapshot reaches the server's disk")

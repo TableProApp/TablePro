@@ -1,7 +1,6 @@
 import Foundation
 
-/// The type a payload column holds. The first seven are Qdrant's payload index schemas; the rest
-/// are read off sampled values for a field nobody indexed.
+// The first seven are Qdrant's payload index schemas; the rest are read off sampled values.
 public enum QdrantFieldType: String, Sendable, Equatable, CaseIterable {
     case keyword
     case integer
@@ -18,6 +17,13 @@ public enum QdrantFieldType: String, Sendable, Equatable, CaseIterable {
 
     public var isOrdered: Bool {
         self == .integer || self == .float || self == .datetime
+    }
+
+    public var holdsText: Bool {
+        switch self {
+        case .keyword, .text, .string, .uuid, .array, .json: return true
+        default: return false
+        }
     }
 
     public static func indexed(_ schema: Any?) -> QdrantFieldType? {
@@ -49,8 +55,6 @@ public enum QdrantFieldType: String, Sendable, Equatable, CaseIterable {
         }
     }
 
-    /// An integer column that also holds a fraction reads as a float; anything else that disagrees is
-    /// mixed JSON, written back as whatever the cell parses to.
     func merged(with other: QdrantFieldType) -> QdrantFieldType {
         if self == other { return self }
         if Set([self, other]) == [.integer, .float] { return .float }
@@ -59,17 +63,51 @@ public enum QdrantFieldType: String, Sendable, Equatable, CaseIterable {
 }
 
 public struct QdrantVectorSpec: Sendable, Equatable {
-    /// `nil` for the collection's single unnamed vector.
-    public let name: String?
-    public let isSparse: Bool
+    public enum Kind: Sendable, Equatable {
+        case dense(size: Int?)
+        case multi
+        case sparse
+    }
 
-    public init(name: String?, isSparse: Bool = false) {
+    // Empty for the collection's unnamed vector, which Qdrant also accepts under the name "".
+    public let name: String
+    public let kind: Kind
+
+    public init(name: String, kind: Kind) {
         self.name = name
-        self.isSparse = isSparse
+        self.kind = kind
     }
 
     public var column: String {
-        name.map { "\(QdrantSchema.vectorColumn).\($0)" } ?? QdrantSchema.vectorColumn
+        name.isEmpty ? QdrantSchema.vectorColumn : "\(QdrantSchema.vectorColumn).\(name)"
+    }
+
+    public var typeName: String {
+        switch kind {
+        case .dense(let size?): return "vector(\(size))"
+        case .dense: return "vector"
+        case .multi: return "multivector"
+        case .sparse: return "sparse_vector"
+        }
+    }
+
+    public static func kind(ofTypeName typeName: String) -> Kind? {
+        let lower = typeName.lowercased().trimmingCharacters(in: .whitespaces)
+        switch lower {
+        case "sparse_vector": return .sparse
+        case "multivector": return .multi
+        case "vector": return .dense(size: nil)
+        default:
+            guard lower.hasPrefix("vector("), lower.hasSuffix(")") else { return nil }
+            return .dense(size: Int(lower.dropFirst("vector(".count).dropLast()))
+        }
+    }
+
+    static func dense(name: String, config: [String: Any]) -> QdrantVectorSpec {
+        if config["multivector_config"] is [String: Any] {
+            return QdrantVectorSpec(name: name, kind: .multi)
+        }
+        return QdrantVectorSpec(name: name, kind: .dense(size: config["size"] as? Int))
     }
 }
 
@@ -77,7 +115,7 @@ public struct QdrantPayloadField: Sendable, Equatable {
     public let name: String
     public let type: QdrantFieldType
     public let isIndexed: Bool
-    /// False while every value seen was null, so the first real value sets the type outright.
+    // False while every sampled value was null, so the first real value sets the type outright.
     public let hasTypedValue: Bool
 
     public init(name: String, type: QdrantFieldType, isIndexed: Bool, hasTypedValue: Bool = true) {
@@ -88,10 +126,21 @@ public struct QdrantPayloadField: Sendable, Equatable {
     }
 }
 
+public struct QdrantPayloadIndex: Sendable, Equatable {
+    public let path: String
+    public let type: String
+
+    public init(path: String, type: String) {
+        self.path = path
+        self.type = type
+    }
+}
+
 public struct QdrantCollection: Sendable, Equatable {
     public let name: String
     public let vectors: [QdrantVectorSpec]
     public let payloadFields: [QdrantPayloadField]
+    public let indexes: [QdrantPayloadIndex]
     public let pointsCount: Int?
     public let info: String
 
@@ -99,25 +148,23 @@ public struct QdrantCollection: Sendable, Equatable {
         name: String,
         vectors: [QdrantVectorSpec],
         payloadFields: [QdrantPayloadField],
+        indexes: [QdrantPayloadIndex] = [],
         pointsCount: Int? = nil,
         info: String = "{}"
     ) {
         self.name = name
         self.vectors = vectors
         self.payloadFields = payloadFields
+        self.indexes = indexes
         self.pointsCount = pointsCount
         self.info = info
     }
 
-    public func fieldType(of column: String) -> QdrantFieldType? {
+    public func fieldType(ofColumn column: String) -> QdrantFieldType? {
         let key = QdrantSchema.payloadKey(forColumn: column)
         return payloadFields.first { $0.name == key }?.type
     }
 
-    public var vectorColumns: [String] { vectors.map(\.column) }
-
-    /// The collection with every payload key `points` hold that it lacks, typed by their values. An
-    /// indexed field keeps the index's type.
     public func including(_ points: [QdrantPoint]) -> QdrantCollection {
         var fields = payloadFields
         var position = Dictionary(uniqueKeysWithValues: fields.enumerated().map { ($1.name, $0) })
@@ -137,36 +184,47 @@ public struct QdrantCollection: Sendable, Equatable {
                 fields[index] = QdrantPayloadField(name: key, type: type, isIndexed: false)
             }
         }
-        return QdrantCollection(name: name, vectors: vectors, payloadFields: fields, pointsCount: pointsCount, info: info)
+        return QdrantCollection(
+            name: name, vectors: vectors, payloadFields: fields, indexes: indexes, pointsCount: pointsCount, info: info
+        )
     }
 
-    /// `GET /collections/{name}` answers the config and the indexed payload fields; the fields nobody
-    /// indexed are only visible in the points themselves, so a sample of them fills the rest in.
-    public static func parse(name: String, info json: Any?, sample: [QdrantPoint]) -> QdrantCollection {
+    // `payload_schema` keys are JSON paths: only a top-level key is a column, while a nested path such as
+    // `metadata.source` or `tags[]` stays an index on the column that holds it.
+    public static func parse(name: String, info json: Any?, sample: [QdrantPoint] = []) -> QdrantCollection {
         let result = (json as? [String: Any])?["result"] as? [String: Any] ?? [:]
         let params = ((result["config"] as? [String: Any])?["params"] as? [String: Any]) ?? [:]
 
         var vectors: [QdrantVectorSpec] = []
-        if let named = params["vectors"] as? [String: Any] {
-            if named["size"] != nil {
-                vectors.append(QdrantVectorSpec(name: nil))
+        if let config = params["vectors"] as? [String: Any] {
+            if config["size"] != nil {
+                vectors.append(.dense(name: "", config: config))
             } else {
-                vectors += named.keys.sorted().map { QdrantVectorSpec(name: $0) }
+                vectors += config.keys.sorted().map { key in
+                    .dense(name: key, config: config[key] as? [String: Any] ?? [:])
+                }
             }
         }
         if let sparse = params["sparse_vectors"] as? [String: Any] {
-            vectors += sparse.keys.sorted().map { QdrantVectorSpec(name: $0, isSparse: true) }
+            vectors += sparse.keys.sorted().map { QdrantVectorSpec(name: $0, kind: .sparse) }
         }
 
-        let indexed = result["payload_schema"] as? [String: Any] ?? [:]
-        let fields = indexed.keys.sorted().compactMap { key in
-            QdrantFieldType.indexed(indexed[key]).map { QdrantPayloadField(name: key, type: $0, isIndexed: true) }
+        let schema = result["payload_schema"] as? [String: Any] ?? [:]
+        var indexes: [QdrantPayloadIndex] = []
+        var fields: [QdrantPayloadField] = []
+        for path in schema.keys.sorted() {
+            guard let type = QdrantFieldType.indexed(schema[path]) else { continue }
+            indexes.append(QdrantPayloadIndex(path: path, type: type.rawValue))
+            if let key = QdrantKeyPath.topLevelKey(ofIndexPath: path), !fields.contains(where: { $0.name == key }) {
+                fields.append(QdrantPayloadField(name: key, type: type, isIndexed: true))
+            }
         }
 
         return QdrantCollection(
             name: name,
             vectors: vectors,
             payloadFields: fields,
+            indexes: indexes,
             pointsCount: result["points_count"] as? Int,
             info: (try? QdrantJSON.text(result, pretty: true)) ?? "{}"
         ).including(sample)
@@ -183,6 +241,7 @@ public enum QdrantSchema {
     public static let idColumn = "id"
     public static let vectorColumn = "vector"
     public static let scoreColumn = "score"
+    static let payloadPrefix = "payload."
 
     public static func collectionNames(from json: Any?) -> [String] {
         let result = (json as? [String: Any])?["result"] as? [String: Any]
@@ -194,10 +253,14 @@ public enum QdrantSchema {
         column == vectorColumn || column.hasPrefix("\(vectorColumn).")
     }
 
-    static let payloadPrefix = "payload."
+    public static func vectorName(ofColumn column: String) -> String? {
+        if column == vectorColumn { return "" }
+        guard column.hasPrefix("\(vectorColumn).") else { return nil }
+        return String(column.dropFirst(vectorColumn.count + 1))
+    }
 
-    /// A payload key may be `id`, `score` or `vector`, which name the point's own columns, so such a
-    /// key shows as `payload.<key>` and maps back to its key wherever a column is read or written.
+    // A payload key named `id`, `score` or `vector...` would take a point column's name, so it shows as
+    // `payload.<key>` and maps back wherever a column is read or written.
     public static func isReserved(_ key: String) -> Bool {
         key == idColumn || key == scoreColumn || isVectorColumn(key)
     }
@@ -212,28 +275,43 @@ public enum QdrantSchema {
         return isReserved(key) ? key : column
     }
 
-    public static func immutableColumns(for collection: QdrantCollection) -> [String] {
-        [idColumn] + collection.vectorColumns
-    }
-
     public static func columns(for collection: QdrantCollection) -> [QdrantColumn] {
         var columns = [QdrantColumn(name: idColumn, type: "id", isPrimaryKey: true)]
         columns += collection.payloadFields.map {
             QdrantColumn(name: column(forPayloadKey: $0.name), type: $0.type.rawValue, isPrimaryKey: false)
         }
-        columns += collection.vectors.map {
-            QdrantColumn(name: $0.column, type: $0.isSparse ? "sparse_vector" : "vector", isPrimaryKey: false)
-        }
+        columns += collection.vectors.map { QdrantColumn(name: $0.column, type: $0.typeName, isPrimaryKey: false) }
         return columns
     }
 
     public static func typeName(of column: String, in collection: QdrantCollection) -> String {
+        if let known = knownTypeName(of: column, in: collection) { return known }
+        if column == scoreColumn { return QdrantFieldType.float.rawValue }
+        return isVectorColumn(column) ? "vector" : QdrantFieldType.json.rawValue
+    }
+
+    public static func knownTypeName(of column: String, in collection: QdrantCollection) -> String? {
         if column == idColumn { return "id" }
-        if column == scoreColumn { return "float" }
         if let spec = collection.vectors.first(where: { $0.column == column }) {
-            return spec.isSparse ? "sparse_vector" : "vector"
+            return spec.typeName
         }
-        if isVectorColumn(column) { return "vector" }
-        return collection.fieldType(of: column)?.rawValue ?? QdrantFieldType.json.rawValue
+        return collection.fieldType(ofColumn: column)?.rawValue
+    }
+}
+
+public enum QdrantKeyPath {
+    // Qdrant reads a filter key as a JSON path, so `a.b` would address a nested field. Quoting keeps
+    // any top-level key whole; a key holding a double quote has no spelling Qdrant accepts.
+    public static func quoted(_ key: String) -> String? {
+        guard !key.contains("\"") else { return nil }
+        return "\"\(key)\""
+    }
+
+    public static func topLevelKey(ofIndexPath path: String) -> String? {
+        if path.count >= 2, path.hasPrefix("\""), path.hasSuffix("\"") {
+            let inner = path.dropFirst().dropLast()
+            return inner.contains("\"") ? nil : String(inner)
+        }
+        return path.contains(where: { ".[]\"".contains($0) }) ? nil : path
     }
 }

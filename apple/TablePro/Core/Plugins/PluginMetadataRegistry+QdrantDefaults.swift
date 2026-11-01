@@ -32,6 +32,7 @@ extension PluginMetadataRegistry {
                     supportsDropIndex: false,
                     supportsModifyPrimaryKey: false,
                     supportsOpportunisticTLS: false,
+                    verifiesServerWithSystemTrust: true,
                     supportsPrincipalConnectionLimit: false
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
@@ -40,7 +41,7 @@ extension PluginMetadataRegistry {
                     tableEntityName: "Collections",
                     containerEntityName: "Cluster",
                     defaultPrimaryKeyColumn: "id",
-                    immutableColumns: ["id", "vector"],
+                    immutableColumns: ["id"],
                     systemDatabaseNames: [],
                     systemSchemaNames: [],
                     fileExtensions: [],
@@ -87,6 +88,13 @@ private let qdrantCompletions: [CompletionEntry] = [
         POST /collections/docs/points/count
         {"exact": true}
         """
+    ),
+    CompletionEntry(
+        label: "POST /facet",
+        insertText: """
+        POST /collections/docs/facet
+        {"key": "city"}
+        """
     )
 ]
 
@@ -96,7 +104,7 @@ private let qdrantColumnTypes: [String: [String]] = [
     "Boolean": ["bool"],
     "Date": ["datetime"],
     "Structured": ["geo", "object", "array", "json"],
-    "Vector": ["vector", "sparse_vector"]
+    "Vector": ["vector", "multivector", "sparse_vector"]
 ]
 
 private func qdrantConnectionFields() -> [ConnectionField] {
@@ -108,13 +116,6 @@ private func qdrantConnectionFields() -> [ConnectionField] {
             fieldType: .secure,
             section: .authentication,
             hidesPassword: true
-        ).withHidesUsername(true),
-        ConnectionField(
-            id: "qdSkipTLSVerify",
-            label: String(localized: "Skip TLS Verification"),
-            defaultValue: "false",
-            fieldType: .toggle,
-            section: .advanced
-        )
+        ).withHidesUsername(true)
     ]
 }
