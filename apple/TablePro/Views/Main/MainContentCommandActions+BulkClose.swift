@@ -96,9 +96,16 @@ extension MainContentCommandActions {
 
     // Save cannot reach off-screen grid edits, staged principals or table drafts; those tabs stay open and the alert says so.
     private func unsavedWorkMessage(for victims: [QueryTab]) -> String {
-        guard let coordinator,
-              victims.contains(where: { coordinator.savability(of: $0) == .mountedOnly })
-        else {
+        Self.unsavedWorkMessage(keepsTabsOpen: holdsWorkOnlyItsTabCanSave(among: victims))
+    }
+
+    func holdsWorkOnlyItsTabCanSave(among victims: [QueryTab]) -> Bool {
+        guard let coordinator else { return false }
+        return victims.contains { coordinator.savability(of: $0) == .mountedOnly }
+    }
+
+    static func unsavedWorkMessage(keepsTabsOpen: Bool) -> String {
+        guard keepsTabsOpen else {
             return String(localized: "Your changes will be lost if you don't save them.")
         }
         return String(
@@ -107,6 +114,15 @@ extension MainContentCommandActions {
             Tabs whose changes can only be saved from the tab itself stay open.
             """
         )
+    }
+
+    // Closing the connection takes every tab, so Save has to reach each one; false keeps the connection open.
+    func saveEveryTabsWork() async -> Bool {
+        guard let coordinator else { return true }
+        coordinator.commitActiveGridEdit()
+        let tabs = coordinator.tabManager.tabs
+        let saved = await saveVictims(tabs)
+        return tabs.allSatisfy { saved.contains($0.id) } && !coordinator.hasAnyUnsavedWork()
     }
 
     // A victim it cannot save keeps its tab, a file conflict too: the conflict sheet is one window-level slot with no queue.
