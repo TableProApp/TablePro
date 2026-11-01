@@ -302,6 +302,31 @@ struct SchemaRegistryTests {
         #expect(transport.requests.withLock { $0.count } == 1)
     }
 
+    @Test("A grid hears of a registry switch before it happens, while the old schemas still answer")
+    @MainActor
+    func beforeSwitch() async throws {
+        let resolver = Resolver(Self.endpoint)
+        let connection = UUID()
+        let cache = SchemaRegistryCache(resolveEndpoint: resolver.resolve, transport: RecordedTransport().transport)
+        _ = await cache.schema(connectionID: connection, schemaID: 1)
+        var calls = 0
+        #expect(!cache.prefetch(connectionID: connection, schemaIDs: [1], retryingFailures: true) { calls += 1 })
+        #expect(calls == 0)
+
+        resolver.current.withLock { $0 = SchemaRegistryEndpoint(fields: [SchemaRegistryConnectionField.url: "https://other.example.com"]) }
+        var oldStillAnswered = false
+        let switched = cache.prefetch(connectionID: connection, schemaIDs: [1], retryingFailures: true) {
+            calls += 1
+            if case .success? = cache.cachedSchema(connectionID: connection, schemaID: 1) { oldStillAnswered = true }
+        }
+        #expect(switched)
+        #expect(calls == 1)
+        #expect(oldStillAnswered)
+        if case .success? = cache.cachedSchema(connectionID: connection, schemaID: 1) {
+            Issue.record("expected the new registry's schema to be unread")
+        }
+    }
+
     @Test("A connection with no registry URL says so instead of fetching")
     @MainActor
     func noEndpoint() async {

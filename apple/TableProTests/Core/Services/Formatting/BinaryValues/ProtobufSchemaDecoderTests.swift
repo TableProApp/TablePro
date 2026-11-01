@@ -609,6 +609,32 @@ struct ProtobufSchemaDecoderTests {
         }
     }
 
+    @Test("A sint32 wider than 32 bits is cut to 32 before ZigZag, as protoc reads one a sint64 writer sent")
+    func wideSint32() throws {
+        let schema = try ProtobufSchema.parse(Data("syntax = \"proto3\"; message M { sint32 n = 1; }".utf8))
+        // protoc --decode=M of 088280808010
+        #expect(try Self.text("088280808010", schema: schema, message: "M") == "n: 1\n")
+    }
+
+    @Test("Features written as one aggregate option apply like dotted ones")
+    func aggregateFeatures() throws {
+        let schema = try ProtobufSchema.parse(Data("""
+            edition = "2023";
+            package ag;
+            option features = { message_encoding: DELIMITED, field_presence: IMPLICIT };
+            message Inner { int32 n = 1; }
+            message M {
+              Inner inner = 1;
+              int32 z = 2;
+              string t = 3 [features = { utf8_validation: NONE }];
+              int32 e = 4 [features = { field_presence: EXPLICIT }];
+            }
+            """.utf8))
+        // protoc --decode=ag.M of 0b08070c10001a01ff2000
+        #expect(try Self.text("0b08070c10001a01ff2000", schema: schema, message: "ag.M")
+            == "inner {\n  n: 7\n}\nt: \"\\377\"\ne: 0\n")
+    }
+
     @Test("The package qualifies the definitions written before it too")
     func packageAfterMessage() throws {
         let schema = try ProtobufSchema.parse(Data("""

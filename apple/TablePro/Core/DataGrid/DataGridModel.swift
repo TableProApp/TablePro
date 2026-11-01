@@ -404,8 +404,61 @@ final class DataGridModel: ObservableObject {
             wanted[connectionID] = ids
         }
         for (connectionID, ids) in wanted {
-            schemaRegistry.prefetch(connectionID: connectionID, schemaIDs: ids, retryingFailures: retryingFailures)
+            var shown: [Int: [Int: String]] = [:]
+            let switched = schemaRegistry.prefetch(connectionID: connectionID, schemaIDs: ids, retryingFailures: retryingFailures) {
+                shown = filteredRegistryText(of: connectionID, in: current)
+            }
+            if switched { followRegistrySwitch(shown, in: current) }
         }
+    }
+
+    // What each row passing a filter on this connection's registry columns shows now, read before a switch changes it.
+    private func filteredRegistryText(of connectionID: UUID, in current: TableRows) -> [Int: [Int: String]] {
+        let databaseType = configuration.traits.databaseType
+        var shown: [Int: [Int: String]] = [:]
+        for (dataIndex, format) in store.displayFormats.enumerated() where format == .schemaRegistry(connectionID: connectionID) {
+            guard let filter = store.valueFilter.filter(forColumn: dataIndex) else { continue }
+            let type = dataIndex < current.columnTypes.count ? current.columnTypes[dataIndex] : nil
+            for (rowIndex, row) in current.rows.enumerated() where dataIndex < row.values.count && row.values[dataIndex] != .null {
+                let text = GridDisplayOrderResolver.displayValue(
+                    row.values[dataIndex], columnType: type, displayFormat: format, databaseType: databaseType
+                )
+                if filter.selectedValues.contains(text) { shown[dataIndex, default: [:]][rowIndex] = text }
+            }
+        }
+        return shown
+    }
+
+    // A switched registry reads the same bytes differently, so the rows a filter kept stay kept under their new text.
+    private func followRegistrySwitch(_ shown: [Int: [Int: String]], in current: TableRows) {
+        let databaseType = configuration.traits.databaseType
+        for (dataIndex, rows) in shown {
+            guard let existing = store.valueFilter.filter(forColumn: dataIndex), dataIndex < current.columns.count else { continue }
+            let type = dataIndex < current.columnTypes.count ? current.columnTypes[dataIndex] : nil
+            let format = displayFormatAt(dataIndex)
+            var selected = existing.selectedValues
+            for (rowIndex, old) in rows where rowIndex < current.rows.count {
+                let new = GridDisplayOrderResolver.displayValue(
+                    current.rows[rowIndex].values[dataIndex], columnType: type, displayFormat: format, databaseType: databaseType
+                )
+                guard new != old else { continue }
+                selected.remove(old)
+                selected.insert(new)
+            }
+            guard selected != existing.selectedValues else { continue }
+            var filter = store.valueFilter
+            filter.set(
+                ColumnValueFilter(selectedValues: selected, includesNull: existing.includesNull),
+                columnName: current.columns[dataIndex],
+                forColumn: dataIndex
+            )
+            store.valueFilter = filter
+        }
+    }
+
+    private func displayFormatAt(_ dataIndex: Int) -> ValueDisplayFormat? {
+        let formats = store.displayFormats
+        return dataIndex < formats.count ? formats[dataIndex] : nil
     }
 
     private static func schemaID(of value: PluginCellValue, holdsBytes: Bool) -> UInt32? {

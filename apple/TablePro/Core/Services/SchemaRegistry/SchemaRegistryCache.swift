@@ -77,10 +77,16 @@ internal final class SchemaRegistryCache: Sendable {
         }
     }
 
-    // A full reload retries failures at once; anything else waits out the failure lifetime.
+    // A reload retries failures at once. `beforeSwitch` runs while the old endpoint still answers, before it is replaced.
     @MainActor
-    func prefetch(connectionID: UUID, schemaIDs: Set<UInt32>, retryingFailures: Bool) {
-        guard !schemaIDs.isEmpty else { return }
+    @discardableResult
+    func prefetch(
+        connectionID: UUID,
+        schemaIDs: Set<UInt32>,
+        retryingFailures: Bool,
+        beforeSwitch: () -> Void = {}
+    ) -> Bool {
+        guard !schemaIDs.isEmpty else { return false }
         let allLoaded = state.withLock { state -> Bool in
             guard case .configured(let endpoint)? = state.endpoints[connectionID] else { return false }
             return schemaIDs.allSatisfy {
@@ -89,8 +95,9 @@ internal final class SchemaRegistryCache: Sendable {
             }
         }
         // Resolving reads the Keychain, so a batch that needs nothing new skips it unless a reload asked to look again.
-        if allLoaded, !retryingFailures { return }
+        if allLoaded, !retryingFailures { return false }
         let endpoint = resolveEndpoint(connectionID)
+        if state.withLock({ Self.isSwitch(from: $0.endpoints[connectionID], to: endpoint) }) { beforeSwitch() }
         let (changed, pending) = state.withLock { state -> (Bool, [Task<Lookup, Never>]) in
             let changed = adopt(endpoint, for: connectionID, in: &state)
             guard let endpoint else { return (changed, []) }
@@ -108,7 +115,7 @@ internal final class SchemaRegistryCache: Sendable {
             return (changed, pending)
         }
         if changed { Self.post(connectionID) }
-        guard !pending.isEmpty else { return }
+        guard !pending.isEmpty else { return changed }
         Task {
             var loaded = false
             for task in pending {
@@ -116,6 +123,7 @@ internal final class SchemaRegistryCache: Sendable {
             }
             if loaded { Self.post(connectionID) }
         }
+        return changed
     }
 
     @MainActor
@@ -143,12 +151,15 @@ internal final class SchemaRegistryCache: Sendable {
     }
 
     private func adopt(_ endpoint: SchemaRegistryEndpoint?, for connectionID: UUID, in state: inout State) -> Bool {
-        let resolved: Resolved = endpoint.map { .configured($0) } ?? .unconfigured
-        let previous = state.endpoints.updateValue(resolved, forKey: connectionID)
-        switch (previous, resolved) {
-        case (nil, _), (.unconfigured?, .unconfigured):
+        let previous = state.endpoints.updateValue(endpoint.map { .configured($0) } ?? .unconfigured, forKey: connectionID)
+        return Self.isSwitch(from: previous, to: endpoint)
+    }
+
+    private static func isSwitch(from previous: Resolved?, to endpoint: SchemaRegistryEndpoint?) -> Bool {
+        switch (previous, endpoint) {
+        case (nil, _), (.unconfigured?, nil):
             return false
-        case (.configured(let old)?, .configured(let new)):
+        case (.configured(let old)?, let new?):
             return old != new
         default:
             return true

@@ -315,10 +315,27 @@ internal enum ProtoFileParser {
             return false
         }
 
-        // `features.field_presence = IMPLICIT` and `features.enum_type = CLOSED`, as a statement or a field option.
+        // `features.field_presence = IMPLICIT` or `features = { field_presence: IMPLICIT }`, as a statement or a field option.
         private func feature(at index: Int, into overrides: inout ProtobufFeatureOverrides) {
-            guard index + 2 < tokens.count, case .identifier(let name) = tokens[index], tokens[index + 1] == .symbol("="),
-                  case .identifier(let value) = tokens[index + 2] else { return }
+            guard index + 2 < tokens.count, case .identifier(let name) = tokens[index], tokens[index + 1] == .symbol("=") else { return }
+            if name == "features", tokens[index + 2] == .symbol("{") {
+                var cursor = index + 3
+                while cursor + 2 < tokens.count, tokens[cursor] != .symbol("}") {
+                    if case .identifier(let key) = tokens[cursor], tokens[cursor + 1] == .symbol(":"),
+                       case .identifier(let value) = tokens[cursor + 2] {
+                        Self.apply("features.\(key)", value, into: &overrides)
+                        cursor += 3
+                    } else {
+                        cursor += 1
+                    }
+                }
+                return
+            }
+            guard case .identifier(let value) = tokens[index + 2] else { return }
+            Self.apply(name, value, into: &overrides)
+        }
+
+        private static func apply(_ name: String, _ value: String, into overrides: inout ProtobufFeatureOverrides) {
             switch (name, value) {
             case ("features.field_presence", "IMPLICIT"): overrides.implicitPresence = true
             case ("features.field_presence", "EXPLICIT"), ("features.field_presence", "LEGACY_REQUIRED"):

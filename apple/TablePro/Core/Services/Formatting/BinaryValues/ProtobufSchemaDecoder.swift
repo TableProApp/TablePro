@@ -511,7 +511,10 @@ internal enum ProtobufSchemaDecoder {
             case .scalar(.int64): return String(Int64(bitPattern: raw))
             case .scalar(.uint32): return String(UInt32(truncatingIfNeeded: raw))
             case .scalar(.uint64): return String(raw)
-            case .scalar(.sint32): return String(Int32(truncatingIfNeeded: ProtobufWireDecoder.zigzag(raw)))
+            case .scalar(.sint32):
+                // Truncated before the ZigZag step, as protoc reads a value a sint64 writer sent.
+                let bits = UInt32(truncatingIfNeeded: raw)
+                return String(Int32(bitPattern: (bits >> 1) ^ (0 &- (bits & 1))))
             case .scalar(.sint64): return String(ProtobufWireDecoder.zigzag(raw))
             case .scalar(.bool): return raw != 0 ? "true" : "false"
             case .enumeration(let name):
