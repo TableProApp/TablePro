@@ -62,6 +62,7 @@ The app runs on GNOME 50 ([ADR 0015](docs/decisions/0015-gnome-50-platform-floor
 | Capability | Detail |
 |---|---|
 | Table definition | Columns, indexes, foreign keys and column comments |
+| Index statements | Show CREATE INDEX and Copy CREATE INDEX on each index the table has: the server's own text on PostgreSQL, SQLite and DuckDB, and written from the catalog on MySQL, MariaDB, SQL Server, ClickHouse (as ALTER TABLE ADD INDEX), Cassandra and ScyllaDB. An index with no statement of its own, such as a MySQL primary key or a ClickHouse sorting key, offers none |
 | Changes | Create, rename and drop tables; add, drop and rename columns, and change their type, nullability, default, comment, primary key and auto-increment; add and drop indexes (column keys, unique, descending) and foreign keys. ClickHouse creates no tables, indexes or foreign keys and changes no primary key or auto-increment; SQL Server changes no auto-increment; SQLite keeps no column comments; Cassandra and ScyllaDB take no default or NOT NULL, and rename only key columns |
 | Review | The SQL is previewed, and a save that loses data or can stop halfway is reviewed before it runs |
 | SQLite rebuilds | Changes SQLite cannot ALTER rebuild the table in one transaction, keeping its rows, indexes, triggers, the views and triggers that name it and its AUTOINCREMENT counter, with foreign keys checked before commit. SQLite itself checks the views and triggers made again; a trigger that lists a dropped column or inserts by position is refused before Save |
@@ -172,7 +173,6 @@ Not built yet, in no order.
 - Time and timestamp pickers. Dates have a calendar; times and timestamps are typed.
 - Save the column order per table.
 - Functions, procedures, sequences and triggers in the sidebar. The drivers already list the first three.
-- The CREATE INDEX statement for one index. Show CREATE TABLE lists them after the table on PostgreSQL, SQL Server and SQLite (with the triggers on SQLite).
 - Reorder columns in the structure tab by dragging, with the ALTER previewed.
 
 ### Release and project

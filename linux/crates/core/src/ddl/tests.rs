@@ -70,6 +70,7 @@ fn index(name: &str, columns: &[&str]) -> IndexInfo {
         unique: false,
         primary: false,
         predicate: None,
+        definition: None,
     }
 }
 

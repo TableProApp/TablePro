@@ -128,6 +128,10 @@ async fn expression_desc_partial_index_keys() {
         ]
     );
     assert!(!partial.can_identify_rows());
+    assert_eq!(
+        partial.definition.as_deref(),
+        Some("CREATE UNIQUE INDEX t_label ON public.t USING btree (lower(label) DESC, id) WHERE (id > 0)")
+    );
     assert!(
         indexes
             .iter()
