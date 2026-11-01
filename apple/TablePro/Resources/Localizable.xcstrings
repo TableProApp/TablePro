@@ -656,6 +656,18 @@
         }
       }
     },
+    "'%@' is not a valid key: a key is 1 to 250 bytes with no spaces or control characters" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "'%@' is not a valid number here" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "'%@' is not a valid regular expression" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "'%@' is not a valid regular expression." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -4313,6 +4325,8 @@
       }
     },
     "%@ must be a whole number." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -15850,6 +15864,14 @@
         }
       }
     },
+    "A key cannot be renamed. Add a row with the new key instead." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "A key is 1 to 250 bytes with no spaces or control characters." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "A key needs a name." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -16328,6 +16350,10 @@
           }
         }
       }
+    },
+    "A quoted value is missing its closing quote" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "A quoted value is missing its closing quote." : {
       "extractionState" : "manual",
@@ -52499,6 +52525,10 @@
         }
       }
     },
+    "Could not connect to Memcached: %@" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Could not connect to Neo4j: %@" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -71777,6 +71807,10 @@
         }
       }
     },
+    "Enter a Memcached command" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Enter a name for the new table." : {
       "localizations" : {
         "fr" : {
@@ -71962,6 +71996,10 @@
     },
     "Enter at least one value for %@." : {
 
+    },
+    "Enter at least one value to filter with %@" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Enter at least one value to filter with %@." : {
       "extractionState" : "manual",
@@ -74450,6 +74488,9 @@
       }
     },
     "Everything selected was already in your library." : {
+
+    },
+    "Evictions" : {
 
     },
     "Exact value" : {
@@ -89147,6 +89188,9 @@
         }
       }
     },
+    "Hit Ratio" : {
+
+    },
     "Holds a bidirectional control, which can change the order the text is shown in" : {
 
     },
@@ -92392,6 +92436,9 @@
           }
         }
       }
+    },
+    "In-memory key-value cache" : {
+
     },
     "Inactive" : {
       "localizations" : {
@@ -98921,6 +98968,14 @@
           }
         }
       }
+    },
+    "Keys listed with lru_crawler metadump" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Keys listed with stats cachedump, which returns a capped sample per slab class" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Keys only" : {
       "extractionState" : "manual",
@@ -108639,6 +108694,30 @@
           }
         }
       }
+    },
+    "Memcached can only filter by Key" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Memcached cannot filter keys with %@" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Memcached closed the connection" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Memcached did not answer in time" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Memcached has no views" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Memcached rejected the username or password" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Memory" : {
       "extractionState" : "manual",
@@ -121657,6 +121736,10 @@
       }
     },
     "Not connected to Firebase." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Not connected to Memcached" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
@@ -197421,6 +197504,10 @@
         }
       }
     },
+    "This item expired while the grid was open. Refresh to see whether it still exists." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "This item no longer exists." : {
       "localizations" : {
         "fr" : {
@@ -198276,6 +198363,10 @@
         }
       }
     },
+    "This Memcached server requires a username and password" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "This operation is not supported" : {
       "localizations" : {
         "fr" : {
@@ -198924,6 +199015,10 @@
           }
         }
       }
+    },
+    "This row's key cannot be addressed from the grid." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "This row's key cannot be matched, so it cannot be checked before writing." : {
       "localizations" : {
@@ -199753,6 +199848,10 @@
           }
         }
       }
+    },
+    "This TTL is too large for Memcached." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "This user can grant this privilege to others." : {
       "localizations" : {
@@ -204988,6 +205087,10 @@
         }
       }
     },
+    "Unexpected reply from Memcached: %@" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Unexpected response from the SSO portal for profile \"%@\"." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -206839,6 +206942,10 @@
         }
       }
     },
+    "Unsupported Memcached command: %@" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Unsupported MongoDB method: %@" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -207964,6 +208071,10 @@
           }
         }
       }
+    },
+    "Usage: %@" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Use" : {
       "extractionState" : "stale",

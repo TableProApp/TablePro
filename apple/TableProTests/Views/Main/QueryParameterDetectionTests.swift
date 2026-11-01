@@ -14,7 +14,7 @@ extension GlobalStateSuites {
             arguments: [
                 (DatabaseType.mysql, true), (.postgresql, true), (.sqlite, true),
                 (.elasticsearch, false), (.typesense, false), (.weaviate, false), (.mongodb, false),
-                (.redis, false), (.etcd, false), (.surrealdb, false), (.kafka, false)
+                (.redis, false), (.etcd, false), (.memcached, false), (.surrealdb, false), (.kafka, false)
             ]
         )
         func onlySQLBindsNamedParameters(type: DatabaseType, binds: Bool) {
