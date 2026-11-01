@@ -21,8 +21,8 @@ pub(crate) use mysql_column_row::{MySqlColumnRow, columns_sql};
 pub(crate) use mysql_extra::{ExtraGenerated, MySqlExtra};
 pub(crate) use table_definition::{
     COLUMN_ENGINE_ATTRIBUTES_SQL, ColumnCheck, INBOUND_FOREIGN_KEYS_SQL, ListedSrid, MARIADB_COLUMN_CHECKS_SQL,
-    MARIADB_GEOMETRY_SRIDS_SQL, column_checks, geometry_srids, inbound_foreign_keys, index_statement,
-    place_column_checks, printed_names, quoted_default,
+    MARIADB_GEOMETRY_SRIDS_SQL, column_checks, geometry_srids, has_mode, hides_index_options, inbound_foreign_keys,
+    index_statement, place_column_checks, printed_names, quoted_default, without_backslash_escapes,
 };
 pub(crate) use table_options::{ListedOptions, table_options};
 

@@ -180,6 +180,84 @@ pub(crate) fn index_statement(create_statement: &str, table: &str, index: &str) 
     })
 }
 
+// SHOW CREATE TABLE leaves USING, COMMENT and visibility out under these modes, so an index's
+// element no longer says all of it.
+pub(crate) fn hides_index_options(sql_mode: &str) -> bool {
+    const MODES: [&str; 7] = [
+        "ANSI",
+        "NO_KEY_OPTIONS",
+        "ORACLE",
+        "MSSQL",
+        "DB2",
+        "POSTGRESQL",
+        "MAXDB",
+    ];
+    sql_mode.split(',').any(|mode| MODES.contains(&mode.trim()))
+}
+
+pub(crate) fn has_mode(sql_mode: &str, mode: &str) -> bool {
+    sql_mode.split(',').any(|set| set.trim() == mode)
+}
+
+// SHOW CREATE TABLE escapes with backslashes, which an editor under NO_BACKSLASH_ESCAPES reads as
+// themselves. Each string is written the way that mode reads it; a NUL has no such spelling.
+pub(crate) fn without_backslash_escapes(sql: &str) -> Option<String> {
+    let mut out = String::with_capacity(sql.len());
+    let mut characters = sql.chars().peekable();
+    let mut quote: Option<char> = None;
+    while let Some(character) = characters.next() {
+        match quote {
+            Some('\'') => match character {
+                '\\' => {
+                    let decoded = match characters.next()? {
+                        '0' => return None,
+                        'b' => '\u{8}',
+                        'n' => '\n',
+                        'r' => '\r',
+                        't' => '\t',
+                        'Z' => '\u{1a}',
+                        '%' => {
+                            out.push('\\');
+                            '%'
+                        }
+                        '_' => {
+                            out.push('\\');
+                            '_'
+                        }
+                        other => other,
+                    };
+                    match decoded {
+                        '\'' => out.push_str("''"),
+                        other => out.push(other),
+                    }
+                }
+                '\'' if characters.peek() == Some(&'\'') => {
+                    characters.next();
+                    out.push_str("''");
+                }
+                '\'' => {
+                    quote = None;
+                    out.push(character);
+                }
+                other => out.push(other),
+            },
+            Some(open) => {
+                if character == open {
+                    quote = None;
+                }
+                out.push(character);
+            }
+            None => {
+                if matches!(character, '\'' | '`' | '"') {
+                    quote = Some(character);
+                }
+                out.push(character);
+            }
+        }
+    }
+    Some(out)
+}
+
 /// The quoted DEFAULT on the column's line of SHOW CREATE TABLE, without
 /// its quotes. The server prints a TIMESTAMP default there as wall time
 /// in the session's zone, where MySQL's `COLUMN_DEFAULT` keeps the text
@@ -289,6 +367,31 @@ mod tests {
             index_statement(create, "`d`.`t`", "k").as_deref(),
             Some("CREATE INDEX \"k\" ON `d`.`t` (\"id\")")
         );
+    }
+
+    #[test]
+    fn a_statement_reads_the_same_without_backslash_escapes() {
+        let statement = "CREATE INDEX `k\\` ON `d`.`t` ((concat(`b`,_utf8mb4'it\\'s \\\\ x\\ny'))) \
+                         COMMENT 'a''b \\\\ c\\%'";
+
+        assert_eq!(
+            without_backslash_escapes(statement).as_deref(),
+            Some("CREATE INDEX `k\\` ON `d`.`t` ((concat(`b`,_utf8mb4'it''s \\ x\ny'))) COMMENT 'a''b \\ c\\%'")
+        );
+        assert_eq!(without_backslash_escapes("COMMENT 'a\\0b'"), None);
+    }
+
+    #[test]
+    fn modes_that_trim_show_create_hide_index_options() {
+        assert!(hides_index_options(
+            "REAL_AS_FLOAT,PIPES_AS_CONCAT,ANSI_QUOTES,IGNORE_SPACE,ANSI"
+        ));
+        assert!(hides_index_options("NO_KEY_OPTIONS"));
+        assert!(!hides_index_options("ANSI_QUOTES,STRICT_ALL_TABLES"));
+        assert!(has_mode(
+            "STRICT_ALL_TABLES,NO_BACKSLASH_ESCAPES",
+            "NO_BACKSLASH_ESCAPES"
+        ));
     }
 
     #[test]

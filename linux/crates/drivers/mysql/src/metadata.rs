@@ -24,7 +24,8 @@ use crate::catalog::{
     ColumnCheck, FULL_COLLATION_NAMES_SQL, FULL_COLLATIONS_SQL, INBOUND_FOREIGN_KEYS_SQL, ListedOptions, ListedSrid,
     MARIADB_COLUMN_CHECKS_SQL, MARIADB_GEOMETRY_SRIDS_SQL, MySqlColumnRow, TableComparisons, character_sets,
     column_checks, column_comparisons, column_definition, column_info, columns_sql, compares_alike, geometry_srids,
-    inbound_foreign_keys, index_statement, place_column_checks, quoted_default, table_options,
+    has_mode, hides_index_options, inbound_foreign_keys, index_statement, place_column_checks, quoted_default,
+    table_options, without_backslash_escapes,
 };
 use crate::decode::decode_row;
 use crate::dialect::MySqlDialect;
@@ -511,9 +512,17 @@ pub(crate) async fn fetch_table_definition(
         }
     }
     let mut indexes = fetch_indexes(connection, dialect, table).await?;
-    let qualified = dialect.qualify(table);
-    for index in indexes.iter_mut().filter(|index| !index.primary) {
-        index.definition = index_statement(&create_statement, &qualified, &index.name);
+    let (printed_in, editors_read_in) = sql_modes(connection, dialect).await?;
+    if !hides_index_options(&printed_in) {
+        let qualified = dialect.qualify(table);
+        let escapes = !has_mode(&editors_read_in, "NO_BACKSLASH_ESCAPES");
+        for index in indexes.iter_mut().filter(|index| !index.primary) {
+            index.definition =
+                index_statement(&create_statement, &qualified, &index.name).and_then(|statement| match escapes {
+                    true => Some(statement),
+                    false => without_backslash_escapes(&statement),
+                });
+        }
     }
     let primary_key = indexes
         .iter()
@@ -686,6 +695,22 @@ async fn engine_attributes(
 
 /// The table's own DDL as the server prints it. SHOW cannot take a
 /// parameter, so the name goes in quoted by the dialect.
+// The mode this session printed SHOW CREATE TABLE in, and the one an editor session starts in.
+async fn sql_modes(connection: &mut MySqlConnection, dialect: &MySqlDialect) -> Result<(String, String), DriverError> {
+    let row = connection
+        .fetch_one(sqlx::raw_sql("SELECT @@SESSION.sql_mode, @@GLOBAL.sql_mode"))
+        .await
+        .map_err(|error| map_error(&error, dialect.flavour()))?;
+    let text = |index: usize| -> Result<String, DriverError> {
+        let bytes: &[u8] = row.try_get_unchecked(index).map_err(|error| DriverError::Decode {
+            column: "sql_mode".to_owned(),
+            detail: error.to_string(),
+        })?;
+        Ok(String::from_utf8_lossy(bytes).into_owned())
+    };
+    Ok((text(0)?, text(1)?))
+}
+
 async fn show_create(
     connection: &mut MySqlConnection,
     dialect: &MySqlDialect,

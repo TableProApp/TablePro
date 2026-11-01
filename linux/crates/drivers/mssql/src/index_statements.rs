@@ -22,7 +22,7 @@ fn index_options_sql(major_version: u32) -> String {
         "SELECT i.name, i.type_desc, CAST(i.is_unique AS int), i.filter_definition, i.fill_factor, \
                 CAST(i.is_padded AS int), CAST(i.ignore_dup_key AS int), CAST(s.no_recompute AS int), \
                 CAST(s.is_incremental AS int), CAST(i.allow_row_locks AS int), CAST(i.allow_page_locks AS int), \
-                {sequential}, CAST(i.is_disabled AS int), ds.name, RTRIM(ds.type) \
+                {sequential}, CAST(i.is_disabled AS int), ds.name, RTRIM(ds.type), CAST(i.has_filter AS int) \
          FROM sys.indexes i \
          JOIN sys.stats s ON s.object_id = i.object_id AND s.stats_id = i.index_id \
          JOIN sys.data_spaces ds ON ds.data_space_id = i.data_space_id \
@@ -41,11 +41,20 @@ const INDEX_COLUMNS_SQL: &str = "SELECT i.name, c.name, CAST(ic.is_included_colu
     ORDER BY i.index_id, ic.index_column_id";
 
 // A disabled index has no partitions, so its compression is not known.
-const INDEX_PARTITIONS_SQL: &str = "SELECT i.name, p.partition_number, p.data_compression_desc \
-    FROM sys.indexes i \
-    JOIN sys.partitions p ON p.object_id = i.object_id AND p.index_id = i.index_id \
-    WHERE i.object_id = OBJECT_ID(@P1) AND i.type IN (1, 2) \
-    ORDER BY i.index_id, p.partition_number";
+fn index_partitions_sql(major_version: u32) -> String {
+    // XML_COMPRESSION came with SQL Server 2022.
+    let xml = match major_version >= 16 {
+        true => "p.xml_compression_desc",
+        false => "'OFF'",
+    };
+    format!(
+        "SELECT i.name, p.partition_number, p.data_compression_desc, {xml} \
+         FROM sys.indexes i \
+         JOIN sys.partitions p ON p.object_id = i.object_id AND p.index_id = i.index_id \
+         WHERE i.object_id = OBJECT_ID(@P1) AND i.type IN (1, 2) \
+         ORDER BY i.index_id, p.partition_number"
+    )
+}
 
 pub(crate) async fn fetch_index_statements(
     client: &mut MssqlClient,
@@ -57,7 +66,7 @@ pub(crate) async fn fetch_index_statements(
     let params = [text_param(relation)];
     let options = catalogue_rows(client, watch, &index_options_sql(major_version), &params).await?;
     let columns = catalogue_rows(client, watch, INDEX_COLUMNS_SQL, &params).await?;
-    let partitions = catalogue_rows(client, watch, INDEX_PARTITIONS_SQL, &params).await?;
+    let partitions = catalogue_rows(client, watch, &index_partitions_sql(major_version), &params).await?;
     let rows = CatalogRows {
         options: &options,
         columns: &columns,
@@ -85,7 +94,8 @@ struct CatalogRows<'a> {
 struct IndexParts {
     included: Vec<String>,
     partitioned_by: Option<String>,
-    compression: Vec<(i64, String)>,
+    data_compression: Vec<(i64, String)>,
+    xml_compression: Vec<(i64, String)>,
 }
 
 fn statements(
@@ -110,7 +120,8 @@ fn statements(
         let cells = Cells::new(row, "sys.partitions");
         let entry = parts.entry(cells.required_text(0)?).or_default();
         let number = cells.int(1).unwrap_or_default();
-        entry.compression.push((number, cells.required_text(2)?));
+        entry.data_compression.push((number, cells.required_text(2)?));
+        entry.xml_compression.push((number, cells.required_text(3)?));
     }
     let mut statements = HashMap::new();
     for row in rows.options {
@@ -119,6 +130,10 @@ fn statements(
         let Some(index) = indexes.iter().find(|index| index.name == name) else {
             continue;
         };
+        // Without VIEW DEFINITION the filter reads NULL, and the index would come back unfiltered.
+        if cells.flag(15) && cells.text(3).is_none() {
+            continue;
+        }
         let parts = parts.remove(&name).unwrap_or_default();
         statements.insert(name, statement(dialect, relation, index, &cells, &parts)?);
     }
@@ -149,7 +164,8 @@ fn statement(
         sql.push_str(&format!(" WHERE {filter}"));
     }
     let mut options = with_options(cells);
-    options.extend(compression(&parts.compression));
+    options.extend(compression("DATA_COMPRESSION", "NONE", &parts.data_compression));
+    options.extend(compression("XML_COMPRESSION", "OFF", &parts.xml_compression));
     if !options.is_empty() {
         sql.push_str(&format!(" WITH ({})", options.join(", ")));
     }
@@ -189,7 +205,7 @@ fn with_options(cells: &Cells<'_>) -> Vec<String> {
 }
 
 // One setting covers an index whose partitions agree; ON PARTITIONS names the rest.
-fn compression(partitions: &[(i64, String)]) -> Vec<String> {
+fn compression(option: &str, default: &str, partitions: &[(i64, String)]) -> Vec<String> {
     let mut kinds: Vec<&str> = Vec::new();
     for (_, kind) in partitions {
         if !kinds.contains(&kind.as_str()) {
@@ -197,18 +213,19 @@ fn compression(partitions: &[(i64, String)]) -> Vec<String> {
         }
     }
     match kinds.as_slice() {
-        [] | ["NONE"] => Vec::new(),
-        [kind] => vec![format!("DATA_COMPRESSION = {kind}")],
+        [] => Vec::new(),
+        [kind] if *kind == default => Vec::new(),
+        [kind] => vec![format!("{option} = {kind}")],
         _ => kinds
             .iter()
-            .filter(|kind| **kind != "NONE")
+            .filter(|kind| **kind != default)
             .map(|kind| {
                 let numbers: Vec<String> = partitions
                     .iter()
                     .filter(|(_, other)| other == kind)
                     .map(|(number, _)| number.to_string())
                     .collect();
-                format!("DATA_COMPRESSION = {kind} ON PARTITIONS ({})", numbers.join(", "))
+                format!("{option} = {kind} ON PARTITIONS ({})", numbers.join(", "))
             })
             .collect(),
     }
@@ -247,6 +264,7 @@ mod tests {
         filter: Option<&'static str>,
         flags: [i64; 9],
         space: (&'static str, &'static str),
+        filtered: bool,
     }
 
     const PLAIN: Facts = Facts {
@@ -256,6 +274,7 @@ mod tests {
         // fill, pad, ignore_dup_key, no_recompute, incremental, row locks, page locks, sequential, disabled
         flags: [0, 0, 0, 0, 0, 1, 1, 0, 0],
         space: ("PRIMARY", "FG"),
+        filtered: false,
     };
 
     fn row(name: &str, facts: Facts) -> Vec<Value> {
@@ -266,14 +285,18 @@ mod tests {
             facts.filter.map_or(Value::Null, text),
         ];
         row.extend(facts.flags.iter().map(|flag| Value::Int(*flag)));
-        row.extend([text(facts.space.0), text(facts.space.1)]);
+        row.extend([
+            text(facts.space.0),
+            text(facts.space.1),
+            Value::Int(i64::from(facts.filtered)),
+        ]);
         row
     }
 
-    fn partition_rows(index: &str, kinds: &[&str]) -> Vec<Vec<Value>> {
+    fn partition_rows(index: &str, kinds: &[(&str, &str)]) -> Vec<Vec<Value>> {
         (1..)
             .zip(kinds)
-            .map(|(number, kind)| vec![text(index), Value::Int(number), text(kind)])
+            .map(|(number, (data, xml))| vec![text(index), Value::Int(number), text(data), text(xml)])
             .collect()
     }
 
@@ -309,6 +332,7 @@ mod tests {
                 "ix_filt",
                 Facts {
                     filter: Some("([a]>(0) AND [b]<>N'x''y')"),
+                    filtered: true,
                     ..PLAIN
                 },
             ),
@@ -351,11 +375,11 @@ mod tests {
         ];
 
         let partitions = [
-            partition_rows("cx_pt", &["NONE", "NONE", "NONE"]),
-            partition_rows("ix_filt", &["NONE"]),
-            partition_rows("ux_opts", &["PAGE"]),
-            partition_rows("ix_ppc", &["PAGE", "NONE", "ROW"]),
-            partition_rows("we]ird", &["NONE"]),
+            partition_rows("cx_pt", &[("NONE", "OFF"), ("NONE", "OFF"), ("NONE", "OFF")]),
+            partition_rows("ix_filt", &[("NONE", "OFF")]),
+            partition_rows("ux_opts", &[("PAGE", "ON")]),
+            partition_rows("ix_ppc", &[("PAGE", "OFF"), ("NONE", "OFF"), ("ROW", "ON")]),
+            partition_rows("we]ird", &[("NONE", "OFF")]),
         ]
         .concat();
         let rows = CatalogRows {
@@ -380,12 +404,13 @@ mod tests {
             statement("ux_opts"),
             "CREATE UNIQUE NONCLUSTERED INDEX [ux_opts] ON [dbo].[t] ([c], [d]) WITH (PAD_INDEX = ON, \
              FILLFACTOR = 80, IGNORE_DUP_KEY = ON, STATISTICS_NORECOMPUTE = ON, ALLOW_PAGE_LOCKS = OFF, \
-             OPTIMIZE_FOR_SEQUENTIAL_KEY = ON, DATA_COMPRESSION = PAGE) ON [PRIMARY]"
+             OPTIMIZE_FOR_SEQUENTIAL_KEY = ON, DATA_COMPRESSION = PAGE, XML_COMPRESSION = ON) ON [PRIMARY]"
         );
         assert_eq!(
             statement("ix_ppc"),
             "CREATE NONCLUSTERED INDEX [ix_ppc] ON [dbo].[t] ([a]) WITH (STATISTICS_INCREMENTAL = ON, \
-             DATA_COMPRESSION = PAGE ON PARTITIONS (1), DATA_COMPRESSION = ROW ON PARTITIONS (3)) ON [ps]([k])"
+             DATA_COMPRESSION = PAGE ON PARTITIONS (1), DATA_COMPRESSION = ROW ON PARTITIONS (3), \
+             XML_COMPRESSION = ON ON PARTITIONS (3)) ON [ps]([k])"
         );
         assert_eq!(
             statement("ix_dis"),
@@ -396,6 +421,27 @@ mod tests {
             statement("we]ird"),
             "CREATE NONCLUSTERED INDEX [we]]ird] ON [dbo].[t] ([f]) WITH (ALLOW_ROW_LOCKS = OFF) ON [fg2]"
         );
+    }
+
+    #[test]
+    fn a_filter_the_user_may_not_read_withholds_the_statement() {
+        let indexes = [index("ix_hidden", &[("a", false)])];
+        let options = [row(
+            "ix_hidden",
+            Facts {
+                filtered: true,
+                ..PLAIN
+            },
+        )];
+        let rows = CatalogRows {
+            options: &options,
+            columns: &[],
+            partitions: &[],
+        };
+
+        let statements = statements(&MssqlDialect::new(16), "[dbo].[t]", &indexes, &rows).expect("the statements");
+
+        assert!(statements.is_empty());
     }
 
     #[test]
@@ -414,8 +460,10 @@ mod tests {
     }
 
     #[test]
-    fn sql_server_2017_reads_no_sequential_key_flag() {
+    fn older_servers_read_no_newer_catalog_columns() {
         assert!(!index_options_sql(14).contains("optimize_for_sequential_key"));
         assert!(index_options_sql(15).contains("i.optimize_for_sequential_key"));
+        assert!(!index_partitions_sql(15).contains("xml_compression"));
+        assert!(index_partitions_sql(16).contains("p.xml_compression_desc"));
     }
 }
