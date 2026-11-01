@@ -12,8 +12,10 @@ import Foundation
 import TableProPluginKit
 import Testing
 
+private let rawEmails: Set<String> = ["jane@example.com", "john@example.com", "ann@example.com", "bob@example.com"]
+
 private func leaks(_ rows: TableRows) -> Bool {
-    rows.rows.contains { row in row.values.contains { $0.asText?.contains("@example.com") == true } }
+    rows.rows.contains { row in row.values.contains { $0.asText.map(rawEmails.contains) == true } }
 }
 
 struct MaskingTableRowsTests {
