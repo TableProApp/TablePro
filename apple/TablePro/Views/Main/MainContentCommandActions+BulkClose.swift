@@ -61,6 +61,22 @@ extension MainContentCommandActions {
         )
     }
 
+    // What Close does with no tab on screen: the container, else the connection.
+    func closeWorkspace() {
+        guard let coordinator else {
+            Task { await closeWindowAwaiting() }
+            return
+        }
+        if let entry = WorkspaceCloseAction.closableEntry(
+            connectionId: connectionId,
+            container: coordinator.tabManager.visibleContainer
+        ) {
+            Task { await WorkspaceCloseAction.close(entry.workspace) }
+            return
+        }
+        Task { await ConnectionCloseAction.close(connectionId: connectionId) }
+    }
+
     // A list edit, not a window close: the window hosts every connection, so closing all tabs leaves this one empty.
     private func runBatchClose(kind: BatchCloseKind) async {
         guard let coordinator else { return }
@@ -121,8 +137,9 @@ extension MainContentCommandActions {
         guard let coordinator else { return true }
         coordinator.commitActiveGridEdit()
         let tabs = coordinator.tabManager.tabs
+        guard !tabs.isEmpty else { return await saveSelectedTabWork() }
         let saved = await saveVictims(tabs)
-        return tabs.allSatisfy { saved.contains($0.id) } && !coordinator.hasAnyUnsavedWork()
+        return tabs.allSatisfy { saved.contains($0.id) }
     }
 
     // A victim it cannot save keeps its tab, a file conflict too: the conflict sheet is one window-level slot with no queue.
