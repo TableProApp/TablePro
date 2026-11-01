@@ -1,31 +1,30 @@
 /// A database object the sidebar can show.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ObjectInfo {
     pub schema: Option<String>,
     pub name: String,
     pub kind: ObjectKind,
-    /// The table a trigger fires on. `None` for every other kind.
-    pub table: Option<String>,
+    /// The table a trigger fires on, in the trigger's schema. PostgreSQL
+    /// names triggers per table, so two can share a name.
+    pub parent_table: Option<String>,
 }
 
 impl ObjectInfo {
-    /// An object that belongs to no table.
     pub fn new(schema: Option<String>, name: impl Into<String>, kind: ObjectKind) -> Self {
         Self {
             schema,
             name: name.into(),
             kind,
-            table: None,
+            parent_table: None,
         }
     }
 
-    /// A trigger on `table`, in the table's schema.
     pub fn trigger(schema: Option<String>, name: impl Into<String>, table: impl Into<String>) -> Self {
         Self {
             schema,
             name: name.into(),
             kind: ObjectKind::Trigger,
-            table: Some(table.into()),
+            parent_table: Some(table.into()),
         }
     }
 }
@@ -79,8 +78,7 @@ impl ObjectKind {
         matches!(self, Self::Key(_))
     }
 
-    /// Whether its definition is SQL to read rather than rows to page:
-    /// a routine, a sequence or a trigger.
+    /// Whether it opens as SQL to read rather than rows to page.
     pub fn has_definition(self) -> bool {
         matches!(self, Self::Function | Self::Procedure | Self::Sequence | Self::Trigger)
     }
@@ -140,7 +138,7 @@ mod tests {
         let function = ObjectInfo::new(Some("public".to_owned()), "audit", ObjectKind::Function);
 
         assert_eq!(trigger.kind, ObjectKind::Trigger);
-        assert_eq!(trigger.table.as_deref(), Some("orders"));
-        assert_eq!(function.table, None);
+        assert_eq!(trigger.parent_table.as_deref(), Some("orders"));
+        assert_eq!(function.parent_table, None);
     }
 }

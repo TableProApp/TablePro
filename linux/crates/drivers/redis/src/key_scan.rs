@@ -43,7 +43,7 @@ pub(crate) async fn scan_keys(link: &Link, scan: &KeyScan, stop: &StopRequest) -
                 schema: None,
                 name: key_text(name),
                 kind: ObjectKind::Key(kind),
-                table: None,
+                parent_table: None,
             });
         }
     }

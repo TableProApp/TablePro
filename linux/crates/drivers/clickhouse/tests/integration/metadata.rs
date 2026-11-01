@@ -319,26 +319,29 @@ async fn a_user_function_lists_with_its_create_statement() {
         .find(|object| object.name == function)
         .expect("the function");
     assert_eq!(listed.kind, ObjectKind::Function);
-    assert!(listed.table.is_none());
+    assert!(listed.parent_table.is_none());
     assert!(objects.iter().all(|object| object.kind != ObjectKind::Trigger));
 
-    let text = connection
+    let definition = connection
         .fetch_object_definition(listed, within(CALL))
         .await
-        .expect("the definition");
+        .expect("the definition")
+        .expect("a stored statement");
+    let text = &definition.sql;
     assert!(
         text.starts_with("CREATE FUNCTION") && text.contains(&function) && text.contains("* 7"),
         "{text}"
     );
     assert!(text.ends_with(';'), "{text}");
+    assert_eq!(definition.database, None);
 
     let gone = ObjectInfo::new(None, "no_such_function", ObjectKind::Function);
     assert_eq!(
         connection
             .fetch_object_definition(&gone, within(CALL))
             .await
-            .expect("empty"),
-        ""
+            .expect("an answer"),
+        None
     );
     let table = ObjectInfo::new(Some(DATABASE.to_owned()), "t", ObjectKind::Table);
     assert!(matches!(

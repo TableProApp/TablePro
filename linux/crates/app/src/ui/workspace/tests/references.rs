@@ -54,7 +54,7 @@ fn serving_tables(script: &mut ConnectionScript) {
                 schema: None,
                 name: name.to_owned(),
                 kind: ObjectKind::Table,
-                table: None,
+                parent_table: None,
             })
             .collect(),
     ));

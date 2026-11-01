@@ -52,6 +52,10 @@ pub enum UnsupportedFeature {
     DatabaseSwitching,
     /// The SQL that defines a routine, a sequence or a trigger.
     ObjectDefinitions,
+    /// The SQL of a SQL Server routine whose code is a .NET assembly.
+    ClrRoutine,
+    /// The SQL of a SQL Server module created `WITH ENCRYPTION`.
+    EncryptedDefinition,
     /// A command the editor cannot run, because it stops the one reply
     /// per command the editor reads, such as `SUBSCRIBE`.
     EditorCommand {
@@ -85,6 +89,8 @@ impl fmt::Display for UnsupportedFeature {
             Self::CharacterSets => f.write_str("character sets"),
             Self::DatabaseSwitching => f.write_str("database switching"),
             Self::ObjectDefinitions => f.write_str("object definitions"),
+            Self::ClrRoutine => f.write_str("the SQL of a CLR routine"),
+            Self::EncryptedDefinition => f.write_str("the SQL of an encrypted module"),
             Self::EditorCommand { command } => write!(f, "{command} in the editor"),
         }
     }

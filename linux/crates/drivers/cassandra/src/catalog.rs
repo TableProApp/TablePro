@@ -160,7 +160,7 @@ pub(crate) async fn list_objects(
             schema: Some(keyspace),
             name,
             kind,
-            table: None,
+            parent_table: None,
         })
         .collect();
     objects.sort_by(|a, b| (&a.schema, &a.name).cmp(&(&b.schema, &b.name)));

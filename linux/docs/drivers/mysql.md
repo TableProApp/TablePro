@@ -147,6 +147,12 @@ The structure tab edits a table's default character set and collation, converts 
 - A column takes CHARACTER SET and COLLATE only when its type holds text: `CHAR`, `VARCHAR`, the `TEXT` types, `ENUM` and `SET`, in any spelling the type parser takes, such as `character varying(64)` or `VARCHAR (64)`. A national spelling (`NCHAR`, `NVARCHAR`) refuses CHARACTER SET, so none is written for it.
 - A restated `ON UPDATE CURRENT_TIMESTAMP`, and a `CURRENT_TIMESTAMP` default as the catalogue read it, take the precision of the column's type, since MySQL refuses any other (1294, 1067). A default the user typed goes as written.
 
+## Definitions
+
+The sidebar's objects, routines and triggers come from one `UNION ALL` over `information_schema`, every name converted to `utf8mb4_bin`, since the catalogue tables collate their names differently from one version to the next. TRIGGERS is narrowed by `EVENT_OBJECT_SCHEMA`: MariaDB then reads one schema's trigger files, where by `TRIGGER_SCHEMA` it reads every schema's.
+
+A definition is the server's `SHOW CREATE`, which names neither the object's database nor a trigger's table's, so Open in Editor moves the tab to the object's database before the text runs. An object that is not there answers 1305, 1360, 1146, 1049 or, on MariaDB, 4089 (a table where the sequence was), and reads as gone.
+
 ## Editor sessions
 
 - The editor sends one statement per run. Text with several statements is split where the mysql client splits it, at each `;` or at the delimiter a `DELIMITER` line sets, and goes one statement per round trip. Sent whole, the server starts each next statement as soon as the last one's result is written, read or not, so a stop could not keep it from running. A `/*!` or `/*M!` comment is code to the split, as it is to the mysql client, so each `/*!40101 ... */;` line of a dump is a statement of its own and a `/*!50100 PARTITION BY ... */` stays with its table.

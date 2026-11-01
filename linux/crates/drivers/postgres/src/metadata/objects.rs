@@ -29,7 +29,7 @@ FROM (
     SELECT c.relnamespace, t.tgname::text, 'tg', c.relname::text
     FROM pg_catalog.pg_trigger t
     JOIN pg_catalog.pg_class c ON c.oid = t.tgrelid
-    WHERE NOT t.tgisinternal
+    WHERE NOT t.tgisinternal AND t.tgparentid = 0
 ) o
 JOIN pg_catalog.pg_namespace n ON n.oid = o.namespace
 WHERE NOT pg_catalog.pg_is_other_temp_schema(n.oid)
@@ -95,12 +95,11 @@ pub(crate) async fn list_objects(client: &Client, scope: &ObjectScope) -> Result
         let Some(kind) = object_kind(&code) else {
             continue;
         };
-        let schema = Some(row.try_get(0).map_err(&field)?);
-        let name: String = row.try_get(1).map_err(&field)?;
-        let table: Option<String> = row.try_get(3).map_err(&field)?;
-        objects.push(match (kind, table) {
-            (ObjectKind::Trigger, Some(table)) => ObjectInfo::trigger(schema, name, table),
-            (kind, _) => ObjectInfo::new(schema, name, kind),
+        objects.push(ObjectInfo {
+            schema: Some(row.try_get(0).map_err(&field)?),
+            name: row.try_get(1).map_err(&field)?,
+            kind,
+            parent_table: row.try_get(3).map_err(&field)?,
         });
     }
     Ok(objects)

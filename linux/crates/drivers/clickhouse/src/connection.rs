@@ -7,7 +7,9 @@ use async_trait::async_trait;
 use tablepro_core::column::ColumnInfo;
 use tablepro_core::ddl::{InboundForeignKey, OutboundForeignKey, TableDefinition};
 use tablepro_core::dialect::SqlDialect;
-use tablepro_core::meta::{IndexInfo, ObjectInfo, ObjectScope, RowIdentity, SchemaInfo, TableEstimate, TableRef};
+use tablepro_core::meta::{
+    IndexInfo, ObjectDefinition, ObjectInfo, ObjectScope, RowIdentity, SchemaInfo, TableEstimate, TableRef,
+};
 use tablepro_core::statement::Statement;
 use tablepro_core::{
     CallOptions, CommitResolution, CommitToken, Connection, DriverError, EditorSession, EditorSessionOptions,
@@ -281,7 +283,11 @@ impl Connection for ClickHouseConnection {
         .await
     }
 
-    async fn fetch_object_definition(&self, object: &ObjectInfo, options: CallOptions) -> Result<String, DriverError> {
+    async fn fetch_object_definition(
+        &self,
+        object: &ObjectInfo,
+        options: CallOptions,
+    ) -> Result<Option<ObjectDefinition>, DriverError> {
         let object = object.clone();
         self.workspace_read(options, move |calls| async move {
             metadata::fetch_object_definition(&calls, &object).await

@@ -59,8 +59,7 @@ pub(crate) fn objects_sql(schema_sql: &str) -> String {
     )
 }
 
-/// A trigger's own text, found by its table too, since the name alone
-/// is only unique within a schema.
+/// By the table too, which the sidebar names a trigger by.
 pub(crate) fn trigger_sql(schema_sql: &str) -> String {
     format!(
         "SELECT sql FROM {schema_sql}.sqlite_schema \

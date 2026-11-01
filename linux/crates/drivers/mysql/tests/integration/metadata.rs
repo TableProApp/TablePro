@@ -559,12 +559,19 @@ async fn routines_sequences_and_triggers_are_listed_with_their_definitions() {
                 .find(|object| object.name == name)
                 .unwrap_or_else(|| panic!("{name} listed on {flavour:?}"))
         };
+        assert_eq!(find("orders").kind, ObjectKind::Table);
         assert_eq!(find("add_tax").kind, ObjectKind::Function);
         assert_eq!(find("clear_audit").kind, ObjectKind::Procedure);
         let trigger = find("orders_total");
-        assert_eq!(trigger.kind, ObjectKind::Trigger);
-        assert_eq!(trigger.table.as_deref(), Some("orders"));
-        assert_eq!(trigger.schema.as_deref(), Some("tablepro"));
+        assert_eq!(
+            trigger,
+            &ObjectInfo::trigger(Some("tablepro".to_owned()), "orders_total", "orders")
+        );
+        let everything = connection
+            .list_objects(&ObjectScope::AllSchemas, within(CALL))
+            .await
+            .expect("every schema's objects");
+        assert!(everything.contains(trigger) && everything.contains(find("add_tax")));
 
         let mut expected = vec![
             (find("add_tax"), "amount * 2"),
@@ -579,21 +586,37 @@ async fn routines_sequences_and_triggers_are_listed_with_their_definitions() {
             let definition = connection
                 .fetch_object_definition(object, within(CALL))
                 .await
-                .expect("the definition");
+                .expect("the definition")
+                .unwrap_or_else(|| panic!("{} has a definition on {flavour:?}", object.name));
             assert!(
-                definition.to_lowercase().contains(&body.to_lowercase()),
-                "{} on {flavour:?}: {definition}",
-                object.name
+                definition.sql.to_lowercase().contains(&body.to_lowercase()),
+                "{} on {flavour:?}: {}",
+                object.name,
+                definition.sql
+            );
+            assert!(definition.sql.ends_with(';'), "{}", definition.sql);
+            assert_eq!(
+                definition.database.as_deref(),
+                Some("tablepro"),
+                "SHOW CREATE names no database, so the text runs in the object's"
             );
         }
 
-        let mut elsewhere = trigger.clone();
-        elsewhere.table = Some("audit".to_owned());
-        let missing = connection
-            .fetch_object_definition(&elsewhere, within(CALL))
-            .await
-            .expect("an answer");
-        assert_eq!(missing, "", "a trigger on another table is not this trigger");
+        let gone = [
+            ObjectInfo::new(Some("tablepro".to_owned()), "no_such", ObjectKind::Function),
+            ObjectInfo::new(Some("tablepro".to_owned()), "no_such", ObjectKind::Procedure),
+            ObjectInfo::trigger(Some("tablepro".to_owned()), "no_such", "orders"),
+            ObjectInfo::trigger(Some("no_such_database".to_owned()), "orders_total", "orders"),
+        ];
+        for object in gone {
+            let answer = connection.fetch_object_definition(&object, within(CALL)).await;
+            assert!(matches!(answer, Ok(None)), "{object:?} on {flavour:?}: {answer:?}");
+        }
+        if flavour == MysqlFlavour::Mariadb {
+            let table = ObjectInfo::new(Some("tablepro".to_owned()), "orders", ObjectKind::Sequence);
+            let answer = connection.fetch_object_definition(&table, within(CALL)).await;
+            assert!(matches!(answer, Ok(None)), "a table where a sequence was: {answer:?}");
+        }
         let table_object = ObjectInfo::new(trigger.schema.clone(), "orders", ObjectKind::Table);
         assert!(matches!(
             connection.fetch_object_definition(&table_object, within(CALL)).await,

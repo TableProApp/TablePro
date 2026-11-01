@@ -438,49 +438,59 @@ async fn triggers_listed_per_schema_with_their_stored_text() {
         .iter()
         .find(|object| object.kind == ObjectKind::Trigger)
         .unwrap();
-    assert_eq!(
-        (
-            main_trigger.name.as_str(),
-            main_trigger.table.as_deref(),
-            main_trigger.schema.as_deref()
-        ),
-        ("audit", Some("people"), None)
-    );
+    assert_eq!(main_trigger, &ObjectInfo::trigger(None, "audit", "people"));
     let archived_trigger = archived
         .iter()
         .find(|object| object.kind == ObjectKind::Trigger)
         .unwrap();
     assert_eq!(
-        (archived_trigger.table.as_deref(), archived_trigger.schema.as_deref()),
-        (Some("old"), Some("archive"))
+        archived_trigger,
+        &ObjectInfo::trigger(Some("archive".to_owned()), "audit", "old")
     );
     assert!(
         main_objects
             .iter()
             .filter(|object| object.kind != ObjectKind::Trigger)
-            .all(|object| object.table.is_none())
+            .all(|object| object.parent_table.is_none())
     );
 
-    let main_text = connection.fetch_object_definition(main_trigger, call()).await.unwrap();
+    let main_text = connection
+        .fetch_object_definition(main_trigger, call())
+        .await
+        .unwrap()
+        .expect("the trigger's text");
+    assert_eq!(main_text.database, None);
     assert!(
-        main_text.starts_with("CREATE TRIGGER audit AFTER INSERT ON people"),
-        "{main_text}"
+        main_text.sql.starts_with("CREATE TRIGGER audit AFTER INSERT ON people"),
+        "{}",
+        main_text.sql
     );
-    assert!(
-        main_text.contains("new person") && main_text.ends_with(';'),
-        "{main_text}"
-    );
+    assert!(main_text.sql.ends_with("END;"), "{}", main_text.sql);
     let archived_text = connection
         .fetch_object_definition(archived_trigger, call())
         .await
-        .unwrap();
+        .unwrap()
+        .expect("the trigger's text");
     assert!(
-        archived_text.contains("AFTER DELETE ON old") && archived_text.contains("gone"),
-        "{archived_text}"
+        archived_text
+            .sql
+            .starts_with("CREATE TRIGGER \"archive\".audit AFTER DELETE ON old"),
+        "{}",
+        archived_text.sql
     );
 
+    // Run from the main schema, as an editor tab runs it, the text makes
+    // the trigger where it was.
+    query(connection.as_ref(), "DROP TRIGGER archive.audit").await;
+    query(connection.as_ref(), &archived_text.sql).await;
+    let again = connection
+        .list_objects(&ObjectScope::Schema("archive".to_owned()), call())
+        .await
+        .unwrap();
+    assert!(again.contains(archived_trigger), "{again:?}");
+
     let missing = ObjectInfo::trigger(None, "audit", "log");
-    assert_eq!(connection.fetch_object_definition(&missing, call()).await.unwrap(), "");
+    assert_eq!(connection.fetch_object_definition(&missing, call()).await.unwrap(), None);
     let table = ObjectInfo::new(None, "people", ObjectKind::Table);
     assert!(matches!(
         connection.fetch_object_definition(&table, call()).await,

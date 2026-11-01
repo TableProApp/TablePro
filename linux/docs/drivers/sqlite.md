@@ -109,6 +109,10 @@ SQLite always numbers its rowid column, a lone `INTEGER PRIMARY KEY` not declare
 
 SQLite's pragmas do not report a foreign key's constraint name, so the definition reads it from the CREATE TABLE text, and a key declared without one is named `fk_<table>_<n>` after its position.
 
+## Definitions
+
+The sidebar lists every schema's triggers, each with the table it fires on. A trigger's definition is its text from `sqlite_schema`, which SQLite stores without the schema before the trigger's name. For a trigger in an attached or temporary schema the driver puts it back (`CREATE TRIGGER "archive".audit ...`), so the text run from any tab makes the trigger where it was: the table after `ON` takes the trigger's schema.
+
 ## Editor sessions
 
 - A script is split where SQLite itself would end a statement, so the semicolons inside a trigger body do not end it. Text the splitter cannot finish, such as an unterminated string, goes to SQLite whole, so the error is SQLite's own. The splitter is tested against `sqlite3_complete` (`tests/script_plan_matches_sqlite3_complete.rs`).

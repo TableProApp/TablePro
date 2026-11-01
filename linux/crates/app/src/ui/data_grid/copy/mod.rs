@@ -341,8 +341,9 @@ fn show_row_json(grid: &DataGrid) {
     };
     let parent = grid.clone().upcast::<gtk::Widget>();
     let tasks = config.tasks.clone();
+    let settings = config.settings.clone();
     glib::spawn_future_local(async move {
-        present_row_json(parent, tasks, request).await;
+        present_row_json(parent, tasks, Some(settings), request).await;
     });
 }
 

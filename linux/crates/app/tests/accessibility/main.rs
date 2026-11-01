@@ -290,7 +290,7 @@ fn open_structure(window: &adw::ApplicationWindow) -> Result<(), String> {
             .find(|popover| popover.is_visible());
         menu.is_some()
     })?;
-    let table = (Some("public".to_owned()), TABLE.to_owned()).to_variant();
+    let table = (Some("public".to_owned()), TABLE.to_owned(), "rows", None::<String>).to_variant();
     let menu = menu.ok_or("no menu")?;
     menu.activate_action("sidebar.edit-structure", Some(&table))
         .map_err(|error| format!("sidebar.edit-structure: {error}"))?;
@@ -456,7 +456,7 @@ fn one_table() -> ConnectionScript {
         schema: Some("public".to_owned()),
         name: TABLE.to_owned(),
         kind: ObjectKind::Table,
-        table: None,
+        parent_table: None,
     }]));
     script.fetch_columns.always(FakeReply::ok(columns.clone()));
     script.fetch_indexes.always(FakeReply::ok(Vec::new()));

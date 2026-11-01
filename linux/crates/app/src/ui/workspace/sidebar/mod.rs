@@ -6,6 +6,7 @@ mod catalog_watch;
 mod connection_tree;
 mod key_listing;
 mod object_key;
+mod object_target;
 mod sidebar_affordances;
 mod sidebar_event;
 mod sidebar_index;

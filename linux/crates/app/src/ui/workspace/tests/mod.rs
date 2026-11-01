@@ -1,5 +1,6 @@
 mod assistant;
 mod close_tab;
+mod definitions;
 mod diagram;
 mod keys;
 mod large_catalog;

@@ -2,13 +2,14 @@ use std::sync::Arc;
 
 use gtk4::glib;
 use gtk4::subclass::prelude::*;
-use tablepro_core::meta::{KeyKind, ObjectInfo, ObjectKind, TableRef};
+use tablepro_core::meta::{KeyKind, ObjectKind};
 
+use super::object_target::ObjectTarget;
 use super::sidebar_index::{IndexEntry, SidebarIndex};
 use super::sidebar_object_imp as imp;
 
 glib::wrapper! {
-    /// One table, view or key as a sidebar list holds it. It reads its
+    /// One object as a sidebar list holds it. It reads its
     /// entry of the list's index rather than copying it: the tree makes
     /// one for every row of a schema it opens. It never changes: a new
     /// index replaces every object.
@@ -31,40 +32,26 @@ impl SidebarObject {
 
     /// Always found: `new` is the only way to build one, from an entry
     /// its index holds.
-    pub(crate) fn table_ref(&self) -> TableRef {
-        self.row()
-            .map_or_else(|| TableRef::unqualified(String::new()), |row| row.table.clone())
+    pub(crate) fn target(&self) -> ObjectTarget {
+        self.row().map_or_else(
+            || ObjectTarget::Rows(tablepro_core::meta::TableRef::unqualified(String::new())),
+            |row| ObjectTarget::of(&row.object),
+        )
     }
 
     pub(crate) fn kind(&self) -> ObjectKind {
-        self.row().map_or(ObjectKind::Table, |row| row.kind)
+        self.row().map_or(ObjectKind::Table, |row| row.object.kind)
     }
 
-    /// The table a trigger fires on.
-    pub(crate) fn owner(&self) -> Option<String> {
-        self.row().and_then(|row| row.owner.clone())
-    }
-
-    /// The object as its driver listed it, for a definition to be read.
-    pub(crate) fn object_info(&self) -> ObjectInfo {
-        let table = self.table_ref();
-        ObjectInfo {
-            schema: table.schema,
-            name: table.name,
-            kind: self.kind(),
-            table: self.owner(),
-        }
-    }
-
-    /// What the row's tooltip calls the object. A trigger is named
-    /// after its table, whose name it shares a namespace with.
+    /// What the row's tooltip calls the object.
     pub(crate) fn qualified_name(&self) -> String {
-        let table = self.table_ref();
-        [table.schema, self.owner(), Some(table.name)]
-            .into_iter()
-            .flatten()
-            .collect::<Vec<_>>()
-            .join(".")
+        let Some(row) = self.row() else {
+            return String::new();
+        };
+        match &row.object.schema {
+            Some(schema) => format!("{schema}.{}", row.object.name),
+            None => row.object.name.clone(),
+        }
     }
 
     /// The name says what the row is; the icon only tells a view from a
@@ -112,15 +99,14 @@ impl SidebarObject {
     pub(crate) fn type_label(&self) -> Option<String> {
         match self.kind() {
             ObjectKind::Key(kind) => Some(crate::ui::key_tab::key_kind_name(kind)),
-            ObjectKind::Trigger => self.owner(),
-            _ => None,
+            _ => self.row().and_then(|row| row.object.parent_table.clone()),
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use tablepro_core::meta::{ObjectInfo, SchemaInfo};
+    use tablepro_core::meta::{ObjectInfo, SchemaInfo, TableRef};
 
     use super::*;
 
@@ -131,7 +117,7 @@ mod tests {
                 schema: schema.map(str::to_owned),
                 name: (*name).to_owned(),
                 kind: *kind,
-                table: None,
+                parent_table: None,
             })
             .collect();
         let main = SchemaInfo {
@@ -146,7 +132,7 @@ mod tests {
     fn object(index: &Arc<SidebarIndex>, name: &str) -> SidebarObject {
         let entry = (0..)
             .map_while(|at| Some((at, index.entry(at)?)))
-            .find(|(_, entry)| entry.table.name == name)
+            .find(|(_, entry)| entry.object.name == name)
             .map(|(at, _)| at)
             .unwrap_or_else(|| panic!("no entry named {name}"));
         SidebarObject::new(index, entry)
@@ -168,8 +154,11 @@ mod tests {
 
         assert_eq!(table.name(), "Users");
         assert_eq!(table.qualified_name(), "public.Users");
-        assert_eq!(table.table_ref(), TableRef::new(Some("public".to_owned()), "Users"));
-        assert_eq!(view.table_ref(), TableRef::unqualified("notes"));
+        assert_eq!(
+            table.target(),
+            ObjectTarget::Rows(TableRef::new(Some("public".to_owned()), "Users"))
+        );
+        assert_eq!(view.target(), ObjectTarget::Rows(TableRef::unqualified("notes")));
         assert_eq!(view.qualified_name(), "notes");
         assert_eq!(table.icon_name(), "view-grid-symbolic");
         assert_eq!(totals.icon_name(), "view-paged-symbolic");
@@ -187,7 +176,7 @@ mod tests {
             schema: None,
             name: name.to_owned(),
             kind: ObjectKind::Key(kind),
-            table: None,
+            parent_table: None,
         };
         let index = Arc::new(SidebarIndex::keys(
             &[key("session:1", KeyKind::Hash), key("session:2", KeyKind::SortedSet)],
@@ -226,8 +215,8 @@ mod tests {
         assert!(!icons.contains("view-grid-symbolic"), "none looks like a table");
         assert_eq!(rows[0].type_label(), None);
         assert_eq!(rows[3].type_label().as_deref(), Some("orders"));
-        assert_eq!(rows[3].qualified_name(), "public.orders.audit");
-        assert_eq!(rows[3].object_info(), objects[3]);
-        assert_eq!(rows[0].object_info(), objects[0]);
+        assert_eq!(rows[3].qualified_name(), "public.audit");
+        assert_eq!(rows[3].target(), ObjectTarget::Definition(objects[3].clone()));
+        assert_eq!(rows[0].target(), ObjectTarget::Definition(objects[0].clone()));
     }
 }

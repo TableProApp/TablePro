@@ -5,7 +5,7 @@ use tablepro_core::ddl::{DdlDialect, IdentityStyle, TableDraft, diff_table};
 use tablepro_core::dialect::{BindTarget, LikeForm};
 use tablepro_core::meta::{ObjectInfo, ObjectKind, ObjectScope, RowIdentity, TableRef};
 use tablepro_core::statement::StatementBuilder;
-use tablepro_core::{DriverError, RowLimit, Value};
+use tablepro_core::{DriverError, RowLimit, UnsupportedFeature, Value};
 use tablepro_driver_mssql::MssqlDialect;
 
 use crate::support::{CALL, columns, connect, dbo, rows, scalar, setup, start, statement, within};
@@ -350,8 +350,9 @@ async fn routines_sequences_and_triggers_are_listed_with_their_definitions() {
             "CREATE TABLE dbo.orders (id int PRIMARY KEY, total int)",
             "CREATE TABLE dbo.audit (id int PRIMARY KEY)",
             "CREATE FUNCTION dbo.add_tax(@amount int) RETURNS int AS BEGIN RETURN @amount * 2 END",
-            "CREATE PROCEDURE dbo.clear_audit AS DELETE FROM dbo.audit",
-            "CREATE TRIGGER dbo.orders_total ON dbo.orders AFTER INSERT AS UPDATE dbo.orders SET total = total + 1000",
+            "CREATE PROCEDURE clear_audit AS DELETE FROM dbo.audit",
+            "CREATE PROCEDURE dbo.hidden WITH ENCRYPTION AS SELECT 1",
+            "CREATE TRIGGER orders_total ON orders AFTER INSERT AS UPDATE dbo.orders SET total = total + 1000",
             "CREATE SEQUENCE dbo.invoice_numbers AS bigint START WITH 100 INCREMENT BY 5 CYCLE CACHE 20",
         ],
     )
@@ -371,9 +372,24 @@ async fn routines_sequences_and_triggers_are_listed_with_their_definitions() {
     assert_eq!(find("clear_audit").kind, ObjectKind::Procedure);
     assert_eq!(find("invoice_numbers").kind, ObjectKind::Sequence);
     let trigger = find("orders_total");
-    assert_eq!(trigger.kind, ObjectKind::Trigger);
-    assert_eq!(trigger.table.as_deref(), Some("orders"));
-    assert_eq!(trigger.schema.as_deref(), Some("dbo"));
+    assert_eq!(trigger, &ObjectInfo::trigger(Some("dbo".to_owned()), "orders_total", "orders"));
+    assert!(
+        objects
+            .iter()
+            .filter(|object| object.kind != ObjectKind::Trigger)
+            .all(|object| object.parent_table.is_none())
+    );
+    let definition = |object: &ObjectInfo| {
+        let connection = &connection;
+        let object = object.clone();
+        async move {
+            connection
+                .fetch_object_definition(&object, within(CALL))
+                .await
+                .expect("the definition")
+                .unwrap_or_else(|| panic!("{} has a definition", object.name))
+        }
+    };
 
     for (object, body) in [
         (find("add_tax"), "@amount * 2"),
@@ -381,28 +397,51 @@ async fn routines_sequences_and_triggers_are_listed_with_their_definitions() {
         (trigger, "total + 1000"),
         (find("invoice_numbers"), "START WITH 100 INCREMENT BY 5"),
     ] {
-        let definition = connection
-            .fetch_object_definition(object, within(CALL))
-            .await
-            .expect("the definition");
-        assert!(definition.contains(body), "{}: {definition}", object.name);
+        let found = definition(object).await;
+        assert!(found.sql.contains(body), "{}: {}", object.name, found.sql);
+        assert_eq!(found.database, None);
     }
-    let sequence = connection
-        .fetch_object_definition(find("invoice_numbers"), within(CALL))
-        .await
-        .expect("the sequence");
+    let sequence = definition(find("invoice_numbers")).await.sql;
     assert!(
-        sequence.contains("AS bigint") && sequence.contains(" CYCLE CACHE 20;"),
+        sequence.starts_with("CREATE SEQUENCE [dbo].[invoice_numbers] AS bigint")
+            && sequence.contains(" CYCLE CACHE 20;"),
         "{sequence}"
     );
+    let procedure = definition(find("clear_audit")).await.sql;
+    assert!(
+        procedure.starts_with("CREATE PROCEDURE [dbo].clear_audit AS"),
+        "a name written without its schema is given it: {procedure}"
+    );
+    let on_orders = definition(trigger).await.sql;
+    assert!(
+        on_orders.starts_with("CREATE TRIGGER [dbo].orders_total ON [dbo].orders AFTER INSERT"),
+        "{on_orders}"
+    );
+    setup(connection.as_ref(), &["DROP TRIGGER dbo.orders_total"]).await;
+    setup(connection.as_ref(), &[on_orders.as_str()]).await;
+    let again = connection
+        .list_objects(&ObjectScope::DefaultSchema, within(CALL))
+        .await
+        .expect("the objects");
+    assert!(again.contains(trigger), "the text made the trigger again where it was");
 
     let mut elsewhere = trigger.clone();
-    elsewhere.table = Some("audit".to_owned());
+    elsewhere.parent_table = Some("audit".to_owned());
     let missing = connection
         .fetch_object_definition(&elsewhere, within(CALL))
         .await
         .expect("an answer");
-    assert_eq!(missing, "", "a trigger on another table is not this trigger");
+    assert_eq!(missing, None, "a trigger on another table is not this trigger");
+    let hidden = connection.fetch_object_definition(find("hidden"), within(CALL)).await;
+    assert!(
+        matches!(
+            hidden,
+            Err(DriverError::Unsupported {
+                feature: UnsupportedFeature::EncryptedDefinition
+            })
+        ),
+        "{hidden:?}"
+    );
     let table_object = ObjectInfo::new(trigger.schema.clone(), "orders", ObjectKind::Table);
     assert!(matches!(
         connection.fetch_object_definition(&table_object, within(CALL)).await,

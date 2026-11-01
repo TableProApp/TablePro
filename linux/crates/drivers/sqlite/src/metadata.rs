@@ -13,9 +13,10 @@ use tablepro_core::ddl::{
     SchemaObjectKind, TableDefinition, TableSource,
 };
 use tablepro_core::meta::{
-    EngineRowId, IndexInfo, IndexKey, ObjectInfo, ObjectKind, ObjectScope, RowCountEstimate, RowIdentity, SchemaInfo,
-    TableEstimate, TableRef,
+    EngineRowId, IndexInfo, IndexKey, ObjectDefinition, ObjectInfo, ObjectKind, ObjectScope, RowCountEstimate,
+    RowIdentity, SchemaInfo, TableEstimate, TableRef,
 };
+use tablepro_core::sql_syntax::{SqlGrammar, qualify_created_name, terminated};
 use tablepro_core::{DriverError, ForeignKeyInfo, ServerCode, ServerDiagnostics, UnsupportedFeature};
 
 use crate::catalog::{
@@ -86,33 +87,36 @@ pub(crate) async fn list_objects(
     Ok(objects)
 }
 
-/// SQLite keeps the text it was given, so a trigger's definition is
-/// that statement as written.
+/// SQLite keeps a trigger's text as it was written, less the schema
+/// before its name, which an attached or temporary trigger needs back to
+/// be made where it is.
 pub(crate) async fn fetch_object_definition(
     connection: &mut SqlxConnection,
     object: &ObjectInfo,
-) -> Result<String, DriverError> {
-    if object.kind != ObjectKind::Trigger {
+) -> Result<Option<ObjectDefinition>, DriverError> {
+    let (ObjectKind::Trigger, Some(table)) = (object.kind, object.parent_table.as_deref()) else {
         return Err(DriverError::Unsupported {
             feature: UnsupportedFeature::ObjectDefinitions,
         });
-    }
-    let Some(table) = object.table.as_deref() else {
-        return Ok(String::new());
     };
     let schema = object.schema.as_deref().filter(|schema| !schema.is_empty());
-    let schema_sql = quote(schema.unwrap_or(MAIN_SCHEMA));
-    let sql: Option<Option<String>> = sqlx::query_scalar(AssertSqlSafe(catalog::trigger_sql(&schema_sql)))
-        .bind(object.name.as_str())
-        .bind(table)
-        .fetch_optional(&mut *connection)
-        .await
-        .map_err(map_error)?;
-    Ok(sql.flatten().map(|sql| terminated(&sql)).unwrap_or_default())
-}
-
-fn terminated(sql: &str) -> String {
-    format!("{};", sql.trim_end().trim_end_matches(';'))
+    let sql: Option<Option<String>> =
+        sqlx::query_scalar(AssertSqlSafe(catalog::trigger_sql(&quote(schema.unwrap_or(MAIN_SCHEMA)))))
+            .bind(object.name.as_str())
+            .bind(table)
+            .fetch_optional(&mut *connection)
+            .await
+            .map_err(map_error)?;
+    Ok(sql.flatten().map(|sql| {
+        let sql = match schema.filter(|schema| *schema != MAIN_SCHEMA) {
+            Some(schema) => qualify_created_name(&sql, SqlGrammar::Sqlite, &quote(schema)),
+            None => sql,
+        };
+        ObjectDefinition {
+            sql: terminated(&sql),
+            database: None,
+        }
+    }))
 }
 
 pub(crate) async fn fetch_columns(

@@ -1,12 +1,12 @@
-use tablepro_core::meta::{ObjectInfo, ObjectKind};
+use tablepro_core::meta::{ObjectDefinition, ObjectInfo, ObjectKind};
+use tablepro_core::sql_syntax::terminated;
 use tablepro_core::{DriverError, UnsupportedFeature};
 use tokio_postgres::Client;
 
 use super::{decode_error, text_rows};
 
-/// Every overload of the name, in a stable order. `prokind` keeps a
-/// function and a procedure of the same name apart, and leaves out
-/// aggregates, which `pg_get_functiondef` refuses.
+/// `prokind` keeps a function and a procedure of one name apart, and
+/// leaves out aggregates, which `pg_get_functiondef` refuses.
 pub(super) const FUNCTIONS_SQL: &str = "\
 SELECT pg_catalog.pg_get_functiondef(p.oid)::text
 FROM pg_catalog.pg_proc p
@@ -20,8 +20,9 @@ SELECT pg_catalog.quote_ident(s.schemaname) || '.' || pg_catalog.quote_ident(s.s
 FROM pg_catalog.pg_sequences s
 WHERE s.schemaname::text = $1 AND s.sequencename::text = $2";
 
+/// Not pretty-printed, so the table is always named with its schema.
 pub(super) const TRIGGER_SQL: &str = "\
-SELECT pg_catalog.pg_get_triggerdef(t.oid, true)::text
+SELECT pg_catalog.pg_get_triggerdef(t.oid, false)::text
 FROM pg_catalog.pg_trigger t
 JOIN pg_catalog.pg_class c ON c.oid = t.tgrelid
 JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
@@ -38,44 +39,47 @@ struct SequenceFacts {
     cycle: bool,
 }
 
-pub(crate) async fn fetch_object_definition(client: &Client, object: &ObjectInfo) -> Result<String, DriverError> {
-    let unsupported = || DriverError::Unsupported {
-        feature: UnsupportedFeature::ObjectDefinitions,
-    };
-    if !object.kind.has_definition() {
-        return Err(unsupported());
-    }
-    let Some(schema) = object.schema.as_deref() else {
-        return Ok(String::new());
-    };
+/// Every text names the object with its schema, so it runs in any tab.
+pub(crate) async fn fetch_object_definition(
+    client: &Client,
+    object: &ObjectInfo,
+) -> Result<Option<ObjectDefinition>, DriverError> {
+    let schema = object.schema.as_deref().unwrap_or_default();
     let name = object.name.as_str();
-    match object.kind {
-        ObjectKind::Function => function_definitions(client, schema, name, "f").await,
-        ObjectKind::Procedure => function_definitions(client, schema, name, "p").await,
-        ObjectKind::Sequence => sequence_definition(client, schema, name).await,
-        ObjectKind::Trigger => match object.table.as_deref() {
-            Some(table) => trigger_definition(client, schema, name, table).await,
-            None => Ok(String::new()),
-        },
-        _ => Err(unsupported()),
-    }
+    let sql = match (object.kind, object.parent_table.as_deref()) {
+        (ObjectKind::Function, _) => function_definitions(client, schema, name, "f").await?,
+        (ObjectKind::Procedure, _) => function_definitions(client, schema, name, "p").await?,
+        (ObjectKind::Sequence, _) => sequence_definition(client, schema, name).await?,
+        (ObjectKind::Trigger, Some(table)) => trigger_definition(client, schema, name, table).await?,
+        _ => {
+            return Err(DriverError::Unsupported {
+                feature: UnsupportedFeature::ObjectDefinitions,
+            });
+        }
+    };
+    Ok(sql.map(|sql| ObjectDefinition { sql, database: None }))
 }
 
-async fn function_definitions(client: &Client, schema: &str, name: &str, prokind: &str) -> Result<String, DriverError> {
+async fn function_definitions(
+    client: &Client,
+    schema: &str,
+    name: &str,
+    prokind: &str,
+) -> Result<Option<String>, DriverError> {
     let field = decode_error("pg_proc");
     let mut definitions = Vec::new();
     for row in text_rows(client, FUNCTIONS_SQL, &[schema, name, prokind]).await? {
         let text: Option<String> = row.try_get(0).map_err(&field)?;
         definitions.extend(text.map(|text| terminated(&text)));
     }
-    Ok(definitions.join("\n\n"))
+    Ok((!definitions.is_empty()).then(|| definitions.join("\n\n")))
 }
 
-async fn sequence_definition(client: &Client, schema: &str, name: &str) -> Result<String, DriverError> {
+async fn sequence_definition(client: &Client, schema: &str, name: &str) -> Result<Option<String>, DriverError> {
     let field = decode_error("pg_sequences");
     let rows = text_rows(client, SEQUENCE_SQL, &[schema, name]).await?;
     let Some(row) = rows.first() else {
-        return Ok(String::new());
+        return Ok(None);
     };
     let facts = SequenceFacts {
         qualified_name: row.try_get(0).map_err(&field)?,
@@ -87,22 +91,22 @@ async fn sequence_definition(client: &Client, schema: &str, name: &str) -> Resul
         cache: row.try_get(6).map_err(&field)?,
         cycle: row.try_get(7).map_err(&field)?,
     };
-    Ok(create_sequence(&facts))
+    Ok(Some(create_sequence(&facts)))
 }
 
-async fn trigger_definition(client: &Client, schema: &str, name: &str, table: &str) -> Result<String, DriverError> {
+async fn trigger_definition(
+    client: &Client,
+    schema: &str,
+    name: &str,
+    table: &str,
+) -> Result<Option<String>, DriverError> {
     let field = decode_error("pg_trigger");
     let rows = text_rows(client, TRIGGER_SQL, &[schema, name, table]).await?;
     let text: Option<String> = match rows.first() {
         Some(row) => row.try_get(0).map_err(&field)?,
         None => None,
     };
-    Ok(text.map(|text| terminated(&text)).unwrap_or_default())
-}
-
-/// The server's text ends in a newline or not, depending on the function.
-fn terminated(text: &str) -> String {
-    format!("{};", text.trim_end().trim_end_matches(';'))
+    Ok(text.map(|text| terminated(&text)))
 }
 
 fn create_sequence(facts: &SequenceFacts) -> String {
@@ -139,14 +143,5 @@ mod tests {
             create_sequence(&facts),
             "CREATE SEQUENCE public.\"Orders Seq\"\n    AS integer\n    INCREMENT BY -2\n    MINVALUE -100\n    MAXVALUE 50\n    START WITH 5\n    CACHE 3\n    CYCLE;"
         );
-    }
-
-    #[test]
-    fn a_definition_ends_in_one_semicolon() {
-        assert_eq!(
-            terminated("CREATE FUNCTION f()\n$function$\n"),
-            "CREATE FUNCTION f()\n$function$;"
-        );
-        assert_eq!(terminated("CREATE TRIGGER t ON x;"), "CREATE TRIGGER t ON x;");
     }
 }

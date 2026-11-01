@@ -46,7 +46,7 @@ fn object(name: &str, kind: ObjectKind) -> ObjectInfo {
         schema: Some("public".to_owned()),
         name: name.to_owned(),
         kind,
-        table: None,
+        parent_table: None,
     }
 }
 
@@ -301,7 +301,7 @@ fn a_schema_prefix_is_matched_without_case() {
         schema: Some("sales".to_owned()),
         name: "orders".to_owned(),
         kind: ObjectKind::Table,
-        table: None,
+        parent_table: None,
     }]));
     let harness = connected_with(
         script,
@@ -366,7 +366,7 @@ fn a_database_prefix_lists_the_schemas_objects() {
         schema: Some("sales".to_owned()),
         name: "invoices".to_owned(),
         kind: ObjectKind::Table,
-        table: None,
+        parent_table: None,
     }]));
     let harness = connected_with(
         script,
@@ -388,7 +388,7 @@ fn a_schema_and_table_prefix_lists_the_tables_columns() {
         schema: Some("sales".to_owned()),
         name: "invoices".to_owned(),
         kind: ObjectKind::Table,
-        table: None,
+        parent_table: None,
     }]));
     script
         .fetch_columns

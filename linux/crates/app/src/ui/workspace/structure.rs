@@ -323,7 +323,7 @@ impl WorkspaceModel {
             let message = match settled(result) {
                 Ok((definition, dialect)) => match create_table_sql(&definition, &*dialect) {
                     Ok(Some(sql)) => {
-                        input.deliver(WorkspaceInput::ShowCreateTableLoaded(sql));
+                        input.deliver(WorkspaceInput::OpenSqlInEditor { sql, database: None });
                         return;
                     }
                     Ok(None) => crate::i18n::gettext_f("Table {table} has no columns.", &[("table", &table)]),

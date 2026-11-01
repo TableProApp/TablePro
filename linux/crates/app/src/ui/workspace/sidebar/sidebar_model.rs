@@ -7,6 +7,7 @@ use gtk4::gio;
 use gtk4::prelude::*;
 use tablepro_core::meta::{ObjectKind, TableRef};
 
+use super::object_target::ObjectTarget;
 use super::sidebar_index::{SidebarIndex, search_key};
 use super::sidebar_list::{Entries, SidebarList};
 use super::store_sync;
@@ -177,7 +178,7 @@ impl SidebarModel {
                 .then(|| held.get(&section.title).cloned())
                 .flatten()
                 .unwrap_or_else(|| TreeNode::schema(&section.title, None));
-            node.set_schema_name(index.entry(run.start).and_then(|entry| entry.table.schema.clone()));
+            node.set_schema_name(index.entry(run.start).and_then(|entry| entry.object.schema.clone()));
             if let Some(rows) = node.rows() {
                 rows.show(&index, Entries::Run(run.start, run.end));
             }
@@ -218,16 +219,11 @@ impl SidebarModel {
         self.answered.get() == self.asked.get()
     }
 
-    /// The kind of `table` when it is listed at all, searched for or not.
-    pub(crate) fn kind_of(&self, table: &TableRef) -> Option<ObjectKind> {
+    /// The kind of `target` when it is listed at all, searched for or not.
+    pub(crate) fn kind_of(&self, target: &ObjectTarget) -> Option<ObjectKind> {
         let index = self.shown.borrow();
-        let entry = index.find(table)?;
-        index.entry(entry).map(|entry| entry.kind)
-    }
-
-    /// Whether the list on show holds the routine, sequence or trigger.
-    pub(crate) fn lists_definition(&self, object: &tablepro_core::meta::ObjectInfo) -> bool {
-        self.shown.borrow().find_definition(object).is_some()
+        let entry = index.find(target)?;
+        index.entry(entry).map(|entry| entry.object.kind)
     }
 
     /// The schema whose tables hold `table`, and where among them.
@@ -245,7 +241,7 @@ impl SidebarModel {
         table: &TableRef,
         list: fn(&TreeNode) -> Option<super::sidebar_list::SidebarList>,
     ) -> Option<(TreeNode, u32)> {
-        let entry = self.shown.borrow().find(table)?;
+        let entry = self.shown.borrow().find(&ObjectTarget::Rows(table.clone()))?;
         let store = &self.schemas;
         (0..store.n_items())
             .filter_map(|at| store.item(at).and_downcast::<TreeNode>())
@@ -285,7 +281,7 @@ mod tests {
             schema: Some(schema.to_owned()),
             name: name.to_owned(),
             kind: ObjectKind::Table,
-            table: None,
+            parent_table: None,
         }
     }
 
@@ -475,16 +471,17 @@ mod tests {
         replace(&model, &[object("public", "users"), routine.clone(), view], &[]);
 
         assert_eq!(listed(&model.schemas())[0].1.len(), 3);
+        let rows = |name: &str| ObjectTarget::Rows(TableRef::new(Some("public".to_owned()), name));
+        assert_eq!(model.kind_of(&rows("refresh")), None);
         assert_eq!(
-            model.kind_of(&TableRef::new(Some("public".to_owned()), "refresh")),
+            model.kind_of(&ObjectTarget::Definition(routine)),
+            Some(ObjectKind::Function)
+        );
+        assert_eq!(
+            model.kind_of(&ObjectTarget::Definition(object("public", "users"))),
             None
         );
-        assert!(model.lists_definition(&routine));
-        assert!(!model.lists_definition(&object("public", "users")));
-        assert_eq!(
-            model.kind_of(&TableRef::new(Some("public".to_owned()), "active_users")),
-            Some(ObjectKind::View)
-        );
+        assert_eq!(model.kind_of(&rows("active_users")), Some(ObjectKind::View));
     }
 
     #[gtk4::test]

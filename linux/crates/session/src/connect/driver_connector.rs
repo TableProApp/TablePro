@@ -272,7 +272,7 @@ mod tests {
             schema: Some("public".to_owned()),
             name: "orders".to_owned(),
             kind: ObjectKind::Table,
-            table: None,
+            parent_table: None,
         }]));
         script
     }

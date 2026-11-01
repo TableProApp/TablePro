@@ -113,7 +113,7 @@ impl Reader<'_> {
                     schema: Some(database.to_owned()),
                     name: name.to_owned(),
                     kind,
-                    table: None,
+                    parent_table: None,
                 })
             })
             .collect();

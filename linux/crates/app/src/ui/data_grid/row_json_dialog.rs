@@ -1,18 +1,20 @@
+use std::rc::Rc;
 use std::sync::Arc;
 
 use gtk4 as gtk;
 use gtk4::prelude::*;
 use libadwaita as adw;
 use libadwaita::prelude::*;
-use sourceview5::prelude::*;
 use tablepro_core::Value;
 use tablepro_core::column::ResultColumn;
 use tablepro_core::export::EncodeError;
 use tablepro_session::runtime::Tasks;
+use tablepro_storage::AppSettings;
 
 use crate::services::grid::RowSnapshot;
 use crate::ui::clipboard::{ClipboardFormat, ClipboardPayload};
 use crate::ui::format::{format_thousands, plural_count};
+use crate::ui::source_dialog::{SourceText, cut, more_bytes, source_dialog};
 
 /// Longer text is cut in the dialog: the view lays out every character
 /// it holds, and a value of megabytes would stall it.
@@ -86,11 +88,8 @@ fn shown(value: Value, shortened: &mut bool) -> Value {
     Value::Array(kept)
 }
 
-/// `text` cut at a character boundary after `SHOWN_CHARS` characters,
-/// saying how much is left out, or `None` when it fits.
 fn shorten(text: &str) -> Option<String> {
-    let (end, _) = text.char_indices().nth(SHOWN_CHARS)?;
-    Some(format!("{}{}", &text[..end], more_bytes((text.len() - end) as u64)))
+    cut(text, SHOWN_CHARS)
 }
 
 /// The hex the grid writes for binary, cut after `SHOWN_BYTES` bytes.
@@ -104,23 +103,15 @@ fn shorten_bytes(bytes: &[u8]) -> Option<String> {
     ))
 }
 
-fn more_bytes(more: u64) -> String {
-    crate::i18n::ngettext_f(
-        "… ({count} more byte)",
-        "… ({count} more bytes)",
-        plural_count(more),
-        &[("count", &format_thousands(more))],
-    )
-}
-
 /// Render the row off the GTK thread, then show it over `parent`.
 pub(crate) async fn present_row_json(
     parent: gtk::Widget,
     tasks: Tasks,
+    settings: Option<Rc<AppSettings>>,
     request: RowJsonRequest,
 ) -> Option<adw::Dialog> {
     let dialog = match tasks.spawn_blocking_task(move || render(request)).await {
-        Ok(Ok(rendered)) => row_json_dialog(rendered),
+        Ok(Ok(rendered)) => row_json_dialog(rendered, settings.as_ref()),
         Ok(Err(refused)) => refused_alert(&refused).upcast(),
         Err(failure) => {
             tracing::warn!(%failure, "a row could not be rendered as JSON");
@@ -146,73 +137,24 @@ fn refused_alert(refused: &EncodeError) -> adw::AlertDialog {
     alert
 }
 
-fn row_json_dialog(json: RowJson) -> adw::Dialog {
+fn row_json_dialog(json: RowJson, settings: Option<&Rc<AppSettings>>) -> adw::Dialog {
     let RowJson { full, shown, shortened } = json;
-    let buffer = sourceview5::Buffer::new(None);
-    if let Some(lang) = sourceview5::LanguageManager::default().language("json") {
-        buffer.set_language(Some(&lang));
-    }
-    let scheme_name = if adw::StyleManager::default().is_dark() {
-        "Adwaita-dark"
-    } else {
-        "Adwaita"
+    let text = SourceText {
+        title: crate::i18n::gettext("Row as JSON"),
+        language: "json",
+        label: crate::i18n::gettext("Row as JSON"),
+        shown,
+        copied: ClipboardPayload {
+            text: full,
+            format: ClipboardFormat::Json,
+            rows: 1,
+            skipped: 0,
+            cells: None,
+        },
+        cut_note: shortened.then(|| crate::i18n::gettext("Long values are shortened here. Copy includes them in full.")),
+        size: (560, 480),
     };
-    buffer.set_style_scheme(sourceview5::StyleSchemeManager::default().scheme(scheme_name).as_ref());
-    buffer.set_text(&shown);
-    let view = sourceview5::View::with_buffer(&buffer);
-    view.set_editable(false);
-    view.set_monospace(true);
-    view.set_show_line_numbers(true);
-    view.set_top_margin(8);
-    view.set_left_margin(8);
-    let scrolled = gtk::ScrolledWindow::builder().child(&view).vexpand(true).build();
-
-    let copy_button = gtk::Button::from_icon_name(crate::ui::icons::EDIT_COPY);
-    crate::ui::a11y::describe_icon_button(&copy_button, &crate::i18n::gettext("Copy"), None);
-    let payload = ClipboardPayload {
-        text: full,
-        format: ClipboardFormat::Json,
-        rows: 1,
-        skipped: 0,
-        cells: None,
-    };
-    let toasts = adw::ToastOverlay::new();
-    toasts.set_child(Some(&scrolled));
-    let shown_on = toasts.downgrade();
-    copy_button.connect_clicked(move |button| {
-        let shown_on = shown_on.clone();
-        crate::ui::clipboard::copy_payload(button, payload.clone(), move |message| {
-            if let Some(toasts) = shown_on.upgrade() {
-                toasts.add_toast(crate::ui::plain_toast(message));
-            }
-        });
-    });
-    let header = adw::HeaderBar::new();
-    header.pack_end(&copy_button);
-    let banner = adw::Banner::new(&crate::i18n::gettext(
-        "Long values are shortened here. Copy includes them in full.",
-    ));
-    banner.set_revealed(shortened);
-    let toolbar = adw::ToolbarView::new();
-    toolbar.add_top_bar(&header);
-    toolbar.add_top_bar(&banner);
-    toolbar.set_content(Some(&toasts));
-
-    let dialog = adw::Dialog::builder()
-        .title(crate::i18n::gettext("Row as JSON"))
-        .content_width(560)
-        .content_height(480)
-        .child(&toolbar)
-        .build();
-    // GtkSourceView before 5.21 never frees a view that has drawn its line
-    // numbers, so the closed dialog takes the row's text back.
-    let shown_in = view.downgrade();
-    dialog.connect_closed(move |_| {
-        if let Some(view) = shown_in.upgrade() {
-            view.set_buffer(Some(&sourceview5::Buffer::new(None)));
-        }
-    });
-    dialog
+    source_dialog(text, settings).dialog
 }
 
 #[cfg(test)]
@@ -247,7 +189,7 @@ mod tests {
 
         let dialog = finish_on_main(
             Duration::from_secs(10),
-            present_row_json(window.clone().upcast(), runtime.tasks(), request),
+            present_row_json(window.clone().upcast(), runtime.tasks(), None, request),
         )
         .expect("the render to end")
         .expect("the dialog");
@@ -358,7 +300,7 @@ mod tests {
 
         let dialog = finish_on_main(
             Duration::from_secs(10),
-            present_row_json(window.clone().upcast(), runtime.tasks(), request),
+            present_row_json(window.clone().upcast(), runtime.tasks(), None, request),
         )
         .expect("the render to end")
         .expect("a dialog");
@@ -378,11 +320,14 @@ mod tests {
     fn a_closed_dialog_lets_go_of_the_row() {
         adw::init().expect("libadwaita initialises under the test backend");
         let window = OwnedWindow::presented(adw::Window::new());
-        let dialog = row_json_dialog(RowJson {
-            full: r#"{"id": 1}"#.to_owned(),
-            shown: r#"{"id": 1}"#.to_owned(),
-            shortened: false,
-        });
+        let dialog = row_json_dialog(
+            RowJson {
+                full: r#"{"id": 1}"#.to_owned(),
+                shown: r#"{"id": 1}"#.to_owned(),
+                shortened: false,
+            },
+            None,
+        );
         dialog.present(Some(&*window));
         let view = first_descendant_of_type::<sourceview5::View>(&dialog).expect("the text");
         wait_until(Duration::from_secs(10), || view.is_mapped()).expect("the dialog on screen");

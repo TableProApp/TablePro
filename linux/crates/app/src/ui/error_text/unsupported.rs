@@ -49,6 +49,10 @@ pub(super) fn unsupported_message(feature: UnsupportedFeature) -> String {
         UnsupportedFeature::CharacterSets => gettext("This database has no character sets to pick from."),
         UnsupportedFeature::DatabaseSwitching => gettext("This connection cannot switch to another database."),
         UnsupportedFeature::ObjectDefinitions => gettext("This database cannot show the object's definition."),
+        UnsupportedFeature::ClrRoutine => {
+            gettext("This routine runs code from a .NET assembly, so the server has no SQL for it.")
+        }
+        UnsupportedFeature::EncryptedDefinition => gettext("The server keeps this object's definition encrypted."),
         UnsupportedFeature::EditorCommand { command } => gettext_f(
             "{command} cannot run in the editor: it turns the connection into a stream the editor cannot show.",
             &[("command", command)],
@@ -88,6 +92,8 @@ mod tests {
             UnsupportedFeature::CharacterSets,
             UnsupportedFeature::DatabaseSwitching,
             UnsupportedFeature::ObjectDefinitions,
+            UnsupportedFeature::ClrRoutine,
+            UnsupportedFeature::EncryptedDefinition,
             UnsupportedFeature::EditorCommand { command: "MONITOR" },
         ];
 

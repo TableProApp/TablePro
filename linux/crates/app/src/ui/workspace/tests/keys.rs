@@ -20,7 +20,7 @@ fn key(name: &str, kind: KeyKind) -> ObjectInfo {
         schema: None,
         name: name.to_owned(),
         kind: ObjectKind::Key(kind),
-        table: None,
+        parent_table: None,
     }
 }
 

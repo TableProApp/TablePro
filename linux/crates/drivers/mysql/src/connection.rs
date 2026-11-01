@@ -7,7 +7,9 @@ use sqlx::Executor as _;
 use tablepro_core::column::ColumnInfo;
 use tablepro_core::ddl::{CharacterSet, InboundForeignKey, OutboundForeignKey, TableDefinition};
 use tablepro_core::dialect::SqlDialect;
-use tablepro_core::meta::{IndexInfo, ObjectInfo, ObjectScope, RowIdentity, SchemaInfo, TableEstimate, TableRef};
+use tablepro_core::meta::{
+    IndexInfo, ObjectDefinition, ObjectInfo, ObjectScope, RowIdentity, SchemaInfo, TableEstimate, TableRef,
+};
 use tablepro_core::statement::Statement;
 use tablepro_core::{
     CallOptions, CommitResolution, CommitToken, Connection, DriverError, EditorSession, EditorSessionOptions,
@@ -290,7 +292,11 @@ impl Connection for MysqlConnection {
         .await
     }
 
-    async fn fetch_object_definition(&self, object: &ObjectInfo, options: CallOptions) -> Result<String, DriverError> {
+    async fn fetch_object_definition(
+        &self,
+        object: &ObjectInfo,
+        options: CallOptions,
+    ) -> Result<Option<ObjectDefinition>, DriverError> {
         let object = object.clone();
         let dialect = *self.dialect;
         self.read(

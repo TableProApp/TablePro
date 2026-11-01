@@ -42,6 +42,7 @@ mod saved_queries_dialog;
 mod session_target;
 mod session_window;
 mod shell;
+mod source_dialog;
 mod ssh_inputs;
 mod ssh_section;
 mod structure_tab;

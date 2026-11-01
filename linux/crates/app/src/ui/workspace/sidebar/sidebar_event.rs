@@ -14,6 +14,5 @@ pub(crate) enum SidebarEvent {
     NewTable(Option<String>),
     /// This schema's ER diagram, or the default one's.
     ShowDiagram(Option<String>),
-    /// The SQL that defines a routine, a sequence or a trigger.
     ShowDefinition(ObjectInfo),
 }

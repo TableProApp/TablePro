@@ -125,6 +125,9 @@ pub(crate) struct WorkspaceModel {
     /// The last schema read the sidebar asked for; an older one landing
     /// late is not shown.
     sidebar_read: u64,
+    definition_reads: u64,
+    /// The Show Definition read in flight, which a newer one supersedes.
+    definition_read: Option<definitions::DefinitionRead>,
     /// Whether every schema's list has landed once. Until then the
     /// sidebar shows the default schema's.
     all_schemas_listed: bool,
@@ -597,14 +600,12 @@ pub(crate) enum WorkspaceInput {
     ShowDiagram {
         schema: Option<String>,
     },
-    /// Read and show the SQL that defines a routine, a sequence or a
-    /// trigger.
     ShowDefinition(tablepro_core::meta::ObjectInfo),
     DefinitionLoaded {
+        read: u64,
         object: tablepro_core::meta::ObjectInfo,
-        sql: String,
+        result: Result<Option<tablepro_core::meta::ObjectDefinition>, tablepro_session::OperationError>,
     },
-    OpenDefinitionInEditor(String),
     EditStructureTab {
         schema: Option<String>,
         table: String,
@@ -613,7 +614,12 @@ pub(crate) enum WorkspaceInput {
         schema: Option<String>,
         table: String,
     },
-    ShowCreateTableLoaded(String),
+    /// SQL to work on in a new editor tab, moved to `database` when the
+    /// text only runs there.
+    OpenSqlInEditor {
+        sql: String,
+        database: Option<String>,
+    },
     DropTablePrompt {
         schema: Option<String>,
         table: String,
@@ -829,6 +835,8 @@ impl Workspace {
             sidebar,
             catalog_schemas: Arc::from([]),
             sidebar_read: 0,
+            definition_reads: 0,
+            definition_read: None,
             all_schemas_listed: false,
             reconnect_banner: imp.reconnect_banner.get(),
             transaction_banner: imp.transaction_banner.get(),
@@ -1275,11 +1283,10 @@ impl WorkspaceModel {
             WorkspaceInput::NewTableTab { schema } => self.on_new_table_tab(schema),
             WorkspaceInput::ShowDiagram { schema } => self.show_diagram(schema, Vec::new()),
             WorkspaceInput::ShowDefinition(object) => self.on_show_definition(object),
-            WorkspaceInput::DefinitionLoaded { object, sql } => self.on_definition_loaded(&object, &sql),
-            WorkspaceInput::OpenDefinitionInEditor(sql) => self.open_editor_tab(Some(sql)),
+            WorkspaceInput::DefinitionLoaded { read, object, result } => self.on_definition_loaded(read, &object, result),
             WorkspaceInput::EditStructureTab { schema, table } => self.on_edit_structure_tab(schema, table),
             WorkspaceInput::ShowCreateTableForExisting { schema, table } => self.on_show_create_table(schema, table),
-            WorkspaceInput::ShowCreateTableLoaded(sql) => self.open_editor_tab(Some(sql)),
+            WorkspaceInput::OpenSqlInEditor { sql, database } => self.open_sql_in_editor(sql, database),
             WorkspaceInput::DropTablePrompt { schema, table } => self.on_drop_table_prompt(schema, table),
             WorkspaceInput::DropTableChecked { table, referencing } => self.on_drop_table_checked(table, &referencing),
             WorkspaceInput::DropTableConfirmed { schema, table } => self.on_drop_table_confirmed(schema, table),
