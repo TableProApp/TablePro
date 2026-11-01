@@ -1262,6 +1262,15 @@ targets:
       - package: TableProCore
         product: TableProWeaviateCore
 
+  InfluxDBDriverPlugin:
+    templates: [DriverPlugin]
+    templateAttributes:
+      folder: InfluxDBDriverPlugin
+      principalClass: InfluxDBPlugin
+    dependencies:
+      - package: TableProCore
+        product: TableProInfluxDBCore
+
 # Every plugin is in exactly one of BundledPlugins (embedded in the app) and RegistryPlugins (each
 # release publishes it); scripts/ci/check-plugin-manifest.py enforces it. AllPlugins compiles both.
 aggregateTargets:
@@ -1299,6 +1308,7 @@ aggregateTargets:
       - EtcdDriverPlugin
       - FirebaseDriverPlugin
       - HanaDriver
+      - InfluxDBDriverPlugin
       - KafkaDriverPlugin
       - KingbaseESDriverPlugin
       - LibSQLDriverPlugin

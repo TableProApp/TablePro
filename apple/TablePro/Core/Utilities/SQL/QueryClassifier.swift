@@ -1017,6 +1017,8 @@ private extension QueryClassifier {
             return worstRequest { firebaseClassification($0, databaseType: databaseType) }
         case .bigtable:
             return worstRequest(bigtableClassification)
+        case .influxdb:
+            return influxDBClassification(sql)
         default:
             return nil
         }

@@ -4015,6 +4015,10 @@
     "%@ is not a Vault address. Use a URL such as https://vault.example.com:8200." : {
 
     },
+    "%@ is not available on this server. It accepts %@." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "%@ is read-only, so nothing can be written to it." : {
       "localizations" : {
         "fr" : {
@@ -37321,6 +37325,10 @@
           }
         }
       }
+    },
+    "Choose a database or bucket first." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Choose a folder containing .sql files" : {
       "localizations" : {
@@ -93665,6 +93673,22 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "InfluxDB 2 needs an organization. Set it in the connection settings." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "InfluxDB has no views." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "InfluxDB refused the token: %@" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "InfluxDB refused the token." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Info" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -95834,6 +95858,10 @@
           }
         }
       }
+    },
+    "Invalid InfluxDB address: %@" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Invalid JSON" : {
       "localizations" : {
@@ -121453,6 +121481,10 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "Not connected to InfluxDB." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Not connected to MongoDB" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -129061,6 +129093,10 @@
           }
         }
       }
+    },
+    "Organization" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Other" : {
       "localizations" : {
@@ -204594,6 +204630,10 @@
           }
         }
       }
+    },
+    "Unexpected InfluxDB response: %@" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Unexpected response from the SSO portal for profile \"%@\"." : {
       "extractionState" : "manual",
