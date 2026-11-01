@@ -279,16 +279,15 @@ internal enum ProtobufSchemaDecoder {
             return dropped
         }
 
-        // protoc parses a member before a later one replaces it, so a malformed one still fails the value.
-        private func parseDiscarded(_ dropped: [Occurrence], of message: ProtobufMessageDescriptor, depth: Int) throws {
+        // protoc parses a member a later one replaces, so a broken one fails the value; this spends the shared budget.
+        private mutating func parseDiscarded(_ dropped: [Occurrence], of message: ProtobufMessageDescriptor, depth: Int) throws {
             for occurrence in dropped {
                 guard let field = message.field(number: occurrence.number) else { continue }
                 switch (field.type, occurrence.payload) {
                 case (.message(let name), .lengthDelimited(let window)), (.message(let name), .group(let window)),
                      (.group(let name), .group(let window)):
-                    guard let nested = schema.messages[name] else { continue }
-                    var probe = self
-                    _ = try probe.members(of: [window], message: nested, depth: depth + 1, asMapEntry: false)
+                    guard let nested = schema.messages[name], budget > 0 else { continue }
+                    _ = try members(of: [window], message: nested, depth: depth + 1, asMapEntry: false)
                 default:
                     continue
                 }

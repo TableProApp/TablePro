@@ -648,6 +648,34 @@ struct ProtobufSchemaDecoderTests {
         #expect(try Self.text("0a06080110011009", schema: schema, message: "me.M") == "1 {\n  1: 1\n  2: 9\n}\n")
     }
 
+    @Test("A map's message values stay length-prefixed in a file that sets DELIMITED")
+    func delimitedFileKeepsMapValuesLengthPrefixed() throws {
+        let schema = try ProtobufSchema.parse(Data("""
+            edition = "2023";
+            package dm;
+            option features.message_encoding = DELIMITED;
+            message Child { int32 n = 1; }
+            message M { map<string, Child> m = 1; }
+            """.utf8))
+        // protoc --decode=dm.M of 0a070a016112020805
+        #expect(try Self.text("0a070a016112020805", schema: schema, message: "dm.M")
+            == "m {\n  key: \"a\"\n  value {\n    n: 5\n  }\n}\n")
+    }
+
+    @Test("Parsing a replaced oneof member spends the cell's budget instead of a fresh one")
+    func discardedOneofSpendsBudget() throws {
+        let schema = try ProtobufSchema.parse(Data("""
+            syntax = "proto3";
+            package ob;
+            message Inner { repeated int32 v = 1; }
+            message M { oneof c { Inner a = 1; int32 b = 2; } }
+            """.utf8))
+        // Hand-written: `a` holding a hundred unpacked `v: 1`, then `b: 7`.
+        let fixture = "0ac801" + String(repeating: "0801", count: 100) + "1007"
+        let message = try ProtobufSchemaDecoder.decode(BinaryFixture.data(fixture), schema: schema, message: "ob.M", maxValues: 5)
+        #expect(ProtobufSchemaTextWriter.text(message.fields, multiLine: false) == "b: 7")
+    }
+
     @Test("The package qualifies the definitions written before it too")
     func packageAfterMessage() throws {
         let schema = try ProtobufSchema.parse(Data("""

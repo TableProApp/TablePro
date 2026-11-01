@@ -113,12 +113,11 @@ internal final class SchemaRegistryCache: Sendable {
         }
         if changed { Self.post(connectionID) }
         guard !pending.isEmpty else { return changed }
-        Task {
-            var loaded = false
-            for task in pending {
-                if case .success = await task.value { loaded = true }
+        // One notice per schema as it lands, so a slow lookup holds back no other; the grid coalesces them.
+        for task in pending {
+            Task {
+                if case .success = await task.value { Self.post(connectionID) }
             }
-            if loaded { Self.post(connectionID) }
         }
         return changed
     }

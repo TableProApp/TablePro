@@ -330,6 +330,31 @@ struct SchemaRegistryTests {
         }
     }
 
+    @Test("A loaded schema is announced at once, not after a slower one in the same batch")
+    @MainActor
+    func loadsAreAnnouncedOneByOne() async throws {
+        let gate = AsyncGate()
+        let recorded = RecordedTransport()
+        let slow: SchemaRegistryClient.Transport = { request in
+            if request.url?.lastPathComponent == "99999" { await gate.wait() }
+            return try await recorded.transport(request)
+        }
+        let connection = UUID()
+        let cache = SchemaRegistryCache(resolveEndpoint: Resolver(Self.endpoint).resolve, transport: slow)
+        let (changes, observer) = Self.changes(for: connection)
+        defer { NotificationCenter.default.removeObserver(observer) }
+
+        cache.prefetch(connectionID: connection, schemaIDs: [1, 99_999], retryingFailures: false)
+        var iterator = changes.makeAsyncIterator()
+        _ = await iterator.next()
+        guard case .success? = cache.cachedSchema(connectionID: connection, schemaID: 1) else {
+            Issue.record("expected schema 1 while 99999 is still being fetched")
+            return
+        }
+        #expect(cache.cachedSchema(connectionID: connection, schemaID: 99_999) == nil)
+        await gate.open()
+    }
+
     @Test("A connection with no registry URL says so instead of fetching")
     @MainActor
     func noEndpoint() async {

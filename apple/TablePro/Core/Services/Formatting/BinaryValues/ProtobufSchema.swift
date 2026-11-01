@@ -159,7 +159,9 @@ internal struct ProtobufSchema: Equatable, Sendable {
             let features = scopes.messages[name] ?? ProtobufFeatures(syntax: .proto2)
             resolved[name] = ProtobufMessageDescriptor(
                 fullName: name,
-                fields: message.fields.map { resolver.resolve($0, scope: name, features: features) },
+                fields: message.fields.map {
+                    resolver.resolve($0, scope: name, features: features, inMapEntry: message.isMapEntry)
+                },
                 nestedMessages: message.nestedMessages,
                 isMapEntry: message.isMapEntry
             )
@@ -300,7 +302,12 @@ private struct ProtobufTypeResolver {
     let enumNames: Set<String>
     let mapEntryNames: Set<String>
 
-    func resolve(_ field: ProtobufFieldDefinition, scope: String, features: ProtobufFeatures) -> ProtobufFieldDescriptor {
+    func resolve(
+        _ field: ProtobufFieldDefinition,
+        scope: String,
+        features: ProtobufFeatures,
+        inMapEntry: Bool
+    ) -> ProtobufFieldDescriptor {
         let type: ProtobufFieldType
         switch field.type {
         case .scalar(let scalar):
@@ -325,11 +332,11 @@ private struct ProtobufTypeResolver {
             oneofIndex: field.oneofIndex,
             hasPresence: !field.isRepeated && (field.oneofIndex != nil || isMessage || !isImplicit),
             validatesUTF8: fieldFeatures.validatesUTF8,
-            isDelimited: isDelimited(type, features: fieldFeatures)
+            isDelimited: !inMapEntry && isDelimited(type, features: fieldFeatures)
         )
     }
 
-    // A map's entries stay length-prefixed whatever the file sets.
+    // A map's entries, and the messages they hold, stay length-prefixed whatever the file sets.
     private func isDelimited(_ type: ProtobufFieldType, features: ProtobufFeatures) -> Bool {
         guard features.delimitedMessages, case .message(let name) = type else { return false }
         return !mapEntryNames.contains(name)
