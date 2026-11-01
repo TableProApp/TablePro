@@ -1967,8 +1967,11 @@ fn email_index(name: &str, definition: Option<&str>) -> tablepro_core::IndexInfo
 #[gtk4::test]
 fn a_saved_index_shows_and_copies_its_create_statement() {
     let statement = "CREATE UNIQUE INDEX users_email ON public.users USING btree (email)";
-    let mut table = definition("email");
-    table.indexes = vec![email_index("users_email", Some(statement))];
+    let table = TableDefinition {
+        columns: vec![integer_column("id", true), integer_column("email", false)],
+        indexes: vec![email_index("users_email", Some(statement))],
+        ..definition("id")
+    };
     let mut script = postgres_script();
     script.fetch_table_definition.always(FakeReply::ok(table));
     let harness = Harness::open(StructureMode::Edit, script, []);
