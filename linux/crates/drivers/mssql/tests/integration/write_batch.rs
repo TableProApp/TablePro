@@ -3,7 +3,7 @@
 
 use std::time::Duration;
 
-use tablepro_core::edit::parse_literal_text;
+use tablepro_core::edit::{CellInput, parse_literal_text};
 use tablepro_core::meta::TableRef;
 use tablepro_core::save::{ChangeSet, RowChange, RowUpdate, plan_save};
 use tablepro_core::{CallOptions, DriverError, ErrorCategory, Value, WriteBatch};
@@ -22,7 +22,7 @@ async fn update_label(connection: &dyn tablepro_core::Connection, table: &TableR
     let changes = ChangeSet {
         changes: vec![RowChange::Update(RowUpdate {
             key: vec![key],
-            assignments: vec![(label, Value::Text("changed".to_owned()))],
+            assignments: vec![(label, CellInput::Value(Value::Text("changed".to_owned())))],
         })],
     };
     plan_save(connection.dialect().as_ref(), table, &columns, &identity, &changes)
@@ -53,7 +53,7 @@ async fn edited_xml_cell_saves() {
     let changes = ChangeSet {
         changes: vec![RowChange::Update(RowUpdate {
             key: vec![Value::Int(1)],
-            assignments: vec![(1, edited)],
+            assignments: vec![(1, CellInput::Value(edited))],
         })],
     };
     let save = plan_save(connection.dialect().as_ref(), &table, &columns, &identity, &changes)
@@ -93,7 +93,7 @@ async fn datetime_key_with_a_third_of_a_millisecond_saves() {
     let changes = ChangeSet {
         changes: vec![RowChange::Update(RowUpdate {
             key: vec![key],
-            assignments: vec![(1, Value::Text("changed".to_owned()))],
+            assignments: vec![(1, CellInput::Value(Value::Text("changed".to_owned())))],
         })],
     };
     let save = plan_save(connection.dialect().as_ref(), &table, &columns, &identity, &changes)
@@ -239,4 +239,26 @@ async fn statement_deadline_before_commit_rolls_back_trancount_zero() {
         Value::Int(0)
     );
     assert_eq!(scalar(connection.as_ref(), "SELECT @@TRANCOUNT").await, Value::Int(0));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn every_cell_expression_is_evaluated_by_the_server() {
+    let fixture = start().await;
+    let connection = connect(&fixture, false).await;
+    setup(
+        connection.as_ref(),
+        &[
+            "CREATE TABLE dbo.stamps (id int PRIMARY KEY, seen datetime2, legacy datetime, at_offset datetimeoffset, \
+             day date, clock time, defaulted datetime2 DEFAULT '2000-01-01')",
+            "INSERT INTO dbo.stamps (id) VALUES (1)",
+        ],
+    )
+    .await;
+
+    let checked = tablepro_test_support::check_cell_expressions(connection.as_ref(), &dbo("stamps"), || within(CALL))
+        .await
+        .expect("every expression saves");
+
+    assert_eq!(checked, 24);
 }

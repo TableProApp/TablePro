@@ -530,7 +530,7 @@ pub(super) fn rename(id: i64, from: &str, to: &str) -> TrackerEdit {
         row_key: key(id),
         col: 1,
         original: Value::Text(from.to_owned()),
-        value: Value::Text(to.to_owned()),
+        value: tablepro_core::edit::CellInput::Value(Value::Text(to.to_owned())),
     }
 }
 

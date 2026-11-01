@@ -168,6 +168,17 @@ extension MainContentCoordinator {
         }
     }
 
+    // Beside a load's rows: the foreign key prefetch for any table, the schema read when the cache misses.
+    func startSchemaFetch(
+        _ tableName: String?,
+        uncached: Bool,
+        isView: Bool,
+        scope: DatabaseScope
+    ) -> Task<FetchedTableSchema, Error>? {
+        if let tableName, !tableName.isEmpty { prefetchForeignKeys(scope: scope) }
+        return QueryExecutor.schemaFetch(tableName: uncached ? tableName : nil, isView: isView, scope: scope)
+    }
+
     /// The table a tab's Table Info describes, or nil on a tab with no table of its own, such as a
     /// query. The load's task key, the load and the read all ask this one question, so they agree on
     /// which tabs have Table Info and on when a retarget makes the cached numbers another table's.

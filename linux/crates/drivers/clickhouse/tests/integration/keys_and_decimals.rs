@@ -1,6 +1,7 @@
 //! Values that only survive a round trip when every digit and byte is
 //! kept: wide numbers, sub-second keys and keys that are not UTF-8.
 
+use tablepro_core::edit::CellInput;
 use tablepro_core::save::{ChangeSet, RowChange, RowUpdate};
 use tablepro_core::value::{SqlDecimal, Temporal};
 use tablepro_core::{Connection, RowLimit, Value};
@@ -11,7 +12,7 @@ async fn edit(connection: &dyn Connection, name: &str, key: Vec<Value>, column: 
     let changes = ChangeSet {
         changes: vec![RowChange::Update(RowUpdate {
             key,
-            assignments: vec![(column, value)],
+            assignments: vec![(column, CellInput::Value(value))],
         })],
     };
     let batch = planned(connection, &table(name), &changes).await;

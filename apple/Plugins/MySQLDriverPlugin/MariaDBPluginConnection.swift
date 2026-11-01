@@ -932,8 +932,9 @@ final class MariaDBPluginConnection: @unchecked Sendable {
     }
 
     private func binaryStringsAreText(in query: String, flavor: MySQLServerFlavor) -> Bool {
-        MySQLServerVersion.labelsShowTextAsBinary(banner: serverVersion(), flavor: flavor)
-            && mysqlStatementListsServerMetadata(query)
+        flavor.labelsTextResultsAsBinary
+            || (MySQLServerVersion.labelsShowTextAsBinary(banner: serverVersion(), flavor: flavor)
+                && mysqlStatementListsServerMetadata(query))
     }
 
     private func runTextStatement(

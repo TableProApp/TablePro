@@ -144,6 +144,19 @@ struct CascadeDeleteRoot: Equatable, Sendable {
         )
     }
 
+    // Rows deleted through a view are its table's rows, and only a table is referenced by a foreign key.
+    func onBaseTable(of target: PluginViewWriteTarget) -> CascadeDeleteRoot {
+        let shown = columns.indices.filter { target.baseColumnNames[columns[$0]] != nil }
+        return CascadeDeleteRoot(
+            table: target.baseTable.name,
+            columns: shown.compactMap { target.baseColumnNames[columns[$0]] },
+            primaryKeyColumns: target.baseKeyColumns,
+            rows: rows.map { row in shown.compactMap { row.indices.contains($0) ? row[$0] : nil } },
+            isComplete: isComplete,
+            editedColumns: Set(editedColumns.compactMap { target.baseColumnNames[$0] })
+        )
+    }
+
     // An edit to a key column of this table changes which rows the delete reaches.
     func editsKeyColumns(of keys: [ReferencingKey], tableNames: CascadeTableNames) -> Bool {
         let name = tableNames.key(table)

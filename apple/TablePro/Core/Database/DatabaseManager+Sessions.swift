@@ -442,8 +442,10 @@ extension DatabaseManager {
             }
         } else if driver is PluginDriverAdapter {
             let grouping = pm?.schema.databaseGroupingStrategy ?? .byDatabase
+            let browsesSchemas = grouping == .bySchema || grouping == .hierarchicalSchema
             let sessionStartedAt = session(for: connectionId)?.connectedAt
-            let adapter = try await sessionDriverGate.withExclusiveAccess(connectionId) {
+            // Read inside the gate: a pinned operation queued behind the switch can move the driver.
+            let schema = try await sessionDriverGate.withExclusiveAccess(connectionId) {
                 try await trackOperation(sessionId: connectionId) {
                     try Task.checkCancellation()
                     guard session(for: connectionId)?.connectedAt == sessionStartedAt else {
@@ -456,14 +458,17 @@ extension DatabaseManager {
                     if grouping == .bySchema {
                         await resetSchema(on: adapter, to: pm?.schema.defaultSchemaName)
                     }
-                    return adapter
+                    return adapter.currentSchema
                 }
             }
             updateSession(connectionId) { session in
                 session.browseDatabase = database
-                if grouping == .bySchema {
-                    session.browseSchema = adapter.currentSchema
+                if browsesSchemas {
+                    session.browseSchema = schema
                 }
+            }
+            if persist, browsesSchemas {
+                appSettingsStorage.saveLastSchema(schema, for: connectionId)
             }
         }
 

@@ -4,6 +4,7 @@
 use std::sync::Arc;
 
 use tablepro_core::column::{BoolStorage, ColumnKind, FloatWidth, TemporalZone};
+use tablepro_core::edit::CellInput;
 use tablepro_core::save::{ChangeSet, RowChange, RowUpdate, plan_save};
 use tablepro_core::value::Temporal;
 use tablepro_core::{Connection, Value};
@@ -92,7 +93,7 @@ async fn edit_by_max_id(connection: &Arc<dyn Connection>, id_type: &str, id: Val
     let changes = ChangeSet {
         changes: vec![RowChange::Update(RowUpdate {
             key: vec![read[0][0].clone()],
-            assignments: vec![(label, Value::Text("after".to_owned()))],
+            assignments: vec![(label, CellInput::Value(Value::Text("after".to_owned())))],
         })],
     };
     let dialect = connection.dialect();
@@ -315,5 +316,30 @@ async fn decoded_variants_match_catalog_kinds() {
             );
         }
         connection.close().await.expect("a close");
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn every_cell_expression_is_evaluated_by_the_server() {
+    for flavour in FLAVOURS {
+        let fixture = start(flavour).await;
+        let connection = connect(&fixture, false).await;
+        setup(
+            connection.as_ref(),
+            &[
+                "CREATE TABLE stamps (id int PRIMARY KEY, seen datetime(6) NULL, stamp timestamp NULL, day date NULL, \
+                 clock time NULL, defaulted datetime NULL DEFAULT '2000-01-01 00:00:00')",
+                "INSERT INTO stamps (id) VALUES (1)",
+            ],
+        )
+        .await;
+
+        let checked =
+            tablepro_test_support::check_cell_expressions(connection.as_ref(), &table("stamps"), || within(CALL))
+                .await
+                .unwrap_or_else(|error| panic!("{flavour:?}: {error}"));
+
+        assert_eq!(checked, 16, "{flavour:?}");
     }
 }

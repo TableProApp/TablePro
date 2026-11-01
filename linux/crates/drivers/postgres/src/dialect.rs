@@ -9,6 +9,7 @@ use tablepro_core::dialect::{
     BindError, BindTarget, DatabaseLayout, DialectCapabilities, InsertConflict, KeysetDirection, LiteralError,
     Placeholder, SqlDialect,
 };
+use tablepro_core::edit::{CellExpression, MomentKind};
 use tablepro_core::export::value_to_text;
 use tablepro_core::meta::{EngineRowId, EngineRowIdPart};
 use tablepro_core::sql_syntax::{
@@ -55,6 +56,25 @@ impl SqlDialect for PgDialect {
 
     fn grammar(&self) -> SqlGrammar {
         SqlGrammar::PostgreSql
+    }
+
+    fn cell_expressions(&self) -> &'static [CellExpression] {
+        const MOMENT: &[MomentKind] = &[MomentKind::Timestamp];
+        const DATE: &[MomentKind] = &[MomentKind::Date];
+        const TIME: &[MomentKind] = &[MomentKind::Time];
+        const EXPRESSIONS: &[CellExpression] = &[
+            CellExpression::new("now()", MOMENT, &[]),
+            CellExpression::new("CURRENT_TIMESTAMP", MOMENT, &[]),
+            CellExpression::new("LOCALTIMESTAMP", MOMENT, &[]),
+            CellExpression::new("CURRENT_DATE", DATE, &[]),
+            CellExpression::new("CURRENT_TIME", TIME, &[]),
+            CellExpression::new("LOCALTIME", TIME, &[]),
+        ];
+        EXPRESSIONS
+    }
+
+    fn update_sets_default(&self) -> bool {
+        true
     }
 
     fn quote_identifier(&self, name: &str) -> String {
