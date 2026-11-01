@@ -603,7 +603,8 @@ struct MainMenuValidationTests {
     func readOnlyBlocksMutations() {
         var context = MenuValidationContext()
         context.isConnected = true
-        context.isCurrentTabEditable = true
+        context.canInsertRows = true
+        context.canDeleteRows = true
         context.isCurrentTabSchemaResolved = true
         context.hasTableSelection = true
         context.canTruncateSelectedTables = true
@@ -782,6 +783,8 @@ struct MainMenuValidationTests {
         context.supportsContainerSwitching = true
         context.supportsServerDashboard = true
         context.supportsUserManagement = true
+        context.canInsertRows = true
+        context.canDeleteRows = true
         context.supportsTableHealth = true
         context.isCurrentTabEditable = true
         context.isCurrentTabSchemaResolved = true

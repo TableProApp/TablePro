@@ -409,6 +409,8 @@ protocol DatabaseDriver: AnyObject, Sendable {
         schema: String?
     ) async throws -> PluginConcurrentRefreshAvailability?
 
+    func fetchViewRowEditing(view: String, schema: String?) async throws -> PluginViewRowEditing?
+
     // MARK: - Table Options
 
     /// Nil where the engine has no table options.
@@ -911,6 +913,8 @@ extension DatabaseDriver {
     ) async throws -> PluginConcurrentRefreshAvailability? {
         nil
     }
+
+    func fetchViewRowEditing(view: String, schema: String?) async throws -> PluginViewRowEditing? { nil }
 
     func fetchTableOptions(tableName: String) async throws -> TableOptions? { nil }
 
