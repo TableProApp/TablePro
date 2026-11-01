@@ -635,6 +635,19 @@ struct ProtobufSchemaDecoderTests {
             == "inner {\n  n: 7\n}\nt: \"\\377\"\ne: 0\n")
     }
 
+    @Test("A map entry keeps its last value: a closed enum number it does not declare rejects it only when left standing")
+    func mapEntryLastValueWins() throws {
+        let schema = try ProtobufSchema.parse(Data("""
+            syntax = "proto2";
+            package me;
+            enum E { A = 0; B = 1; }
+            message M { map<int32, E> m = 1; }
+            """.utf8))
+        // protoc --decode=me.M of 0a06080110091001, then of 0a06080110011009.
+        #expect(try Self.text("0a06080110091001", schema: schema, message: "me.M") == "m {\n  key: 1\n  value: B\n}\n")
+        #expect(try Self.text("0a06080110011009", schema: schema, message: "me.M") == "1 {\n  1: 1\n  2: 9\n}\n")
+    }
+
     @Test("The package qualifies the definitions written before it too")
     func packageAfterMessage() throws {
         let schema = try ProtobufSchema.parse(Data("""

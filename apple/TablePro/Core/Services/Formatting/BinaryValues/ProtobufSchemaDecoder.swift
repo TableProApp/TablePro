@@ -68,6 +68,8 @@ internal enum ProtobufSchemaDecoder {
             case fixed32(UInt32)
             case lengthDelimited(BinaryValueReader)
             case group(BinaryValueReader)
+            // A rejected map entry, kept as protoc writes it back: its last key and value.
+            case entry([Occurrence])
         }
 
         let number: Int
@@ -82,7 +84,10 @@ internal enum ProtobufSchemaDecoder {
     }
 
     // protoc moves a map entry whose closed enum value is undeclared to the unknown fields whole.
-    private struct MapEntryRejected: Error {}
+    // `kept` is what protoc writes back for the entry; nil keeps its bytes as they came.
+    private struct MapEntryRejected: Error {
+        let kept: [Occurrence]?
+    }
 
     private struct Level {
         var fields: [ProtobufTypedField] = []
@@ -138,18 +143,25 @@ internal enum ProtobufSchemaDecoder {
                 }
             }
             var accepted: [Int: [Occurrence]] = [:]
+            var lastInEntry: [Int: (occurrence: Occurrence, match: Match)] = [:]
             for occurrence in occurrences {
                 let field = message.field(number: occurrence.number)
-                switch field.map({ match(occurrence.payload, field: $0) }) ?? .mismatched {
+                let result = field.map { match(occurrence.payload, field: $0) } ?? .mismatched
+                if asMapEntry, result != .mismatched { lastInEntry[occurrence.number] = (occurrence, result) }
+                switch result {
                 case .accepted:
                     if let field { try verifyUTF8(occurrence.payload, field: field) }
                     accepted[occurrence.number, default: []].append(occurrence)
                 case .undeclaredEnumValue where asMapEntry:
-                    throw MapEntryRejected()
+                    break
                 case .mismatched, .undeclaredEnumValue:
                     // A map entry drops what it does not declare.
                     if !asMapEntry { level.unknown.append(occurrence) }
                 }
+            }
+            // Last wins in an entry too: only an undeclared closed enum number left standing rejects it.
+            if lastInEntry.values.contains(where: { $0.match == .undeclaredEnumValue }) {
+                throw MapEntryRejected(kept: lastInEntry.keys.sorted().compactMap { lastInEntry[$0]?.occurrence })
             }
             try parseDiscarded(keepLastOneofMember(&accepted, message: message), of: message, depth: depth)
             var numbers = Set(accepted.keys)
@@ -164,7 +176,7 @@ internal enum ProtobufSchemaDecoder {
                 }
             }
             // An entry that cannot hold a value goes to the unknown fields whole, as protoc's parse would fail.
-            if asMapEntry, !level.unknown.isEmpty { throw MapEntryRejected() }
+            if asMapEntry, !level.unknown.isEmpty { throw MapEntryRejected(kept: nil) }
             var fields = level.fields
             let unknown = level.unknown.enumerated().sorted {
                 ($0.element.position, $0.offset) < ($1.element.position, $1.offset)
@@ -327,7 +339,7 @@ internal enum ProtobufSchemaDecoder {
             let windows = found.compactMap { occurrence -> BinaryValueReader? in
                 switch occurrence.payload {
                 case .lengthDelimited(let window), .group(let window): return window
-                case .varint, .fixed64, .fixed32: return nil
+                case .varint, .fixed64, .fixed32, .entry: return nil
                 }
             }
             // A declared message that does not parse fails the value, as it fails protoc's parse.
@@ -354,9 +366,11 @@ internal enum ProtobufSchemaDecoder {
                 do {
                     let members = try self.members(of: [window], message: entry, depth: depth + 1, asMapEntry: true)
                     entries.append((mapKey(members, entry: entry), typed(field, .message(members))))
-                } catch is MapEntryRejected {
+                } catch let rejected as MapEntryRejected {
                     budget = start
-                    level.unknown.append(occurrence)
+                    level.unknown.append(rejected.kept.map {
+                        Occurrence(number: occurrence.number, payload: .entry($0), position: occurrence.position)
+                    } ?? occurrence)
                 }
             }
             let sorted = entries.enumerated().sorted { lhs, rhs in
@@ -405,17 +419,23 @@ internal enum ProtobufSchemaDecoder {
         }
 
         private mutating func raw(_ occurrence: Occurrence, depth: Int) throws -> ProtobufTypedField {
-            let value: ProtobufFieldValue
-            switch occurrence.payload {
-            case .varint(let raw): value = .varint(raw)
-            case .fixed64(let raw): value = .fixed64(raw)
-            case .fixed32(let raw): value = .fixed32(raw)
+            ProtobufTypedField(
+                name: String(occurrence.number), typeName: nil, value: .unknown(try rawValue(occurrence.payload, depth: depth))
+            )
+        }
+
+        private mutating func rawValue(_ payload: Occurrence.Payload, depth: Int) throws -> ProtobufFieldValue {
+            switch payload {
+            case .varint(let raw): return .varint(raw)
+            case .fixed64(let raw): return .fixed64(raw)
+            case .fixed32(let raw): return .fixed32(raw)
             case .lengthDelimited(let window):
-                value = ProtobufWireDecoder.lengthDelimited(window, depth: depth, budget: &budget)
+                return ProtobufWireDecoder.lengthDelimited(window, depth: depth, budget: &budget)
             case .group(let window):
-                value = .group(try ProtobufWireDecoder.fields(in: window, depth: depth + 1, budget: &budget))
+                return .group(try ProtobufWireDecoder.fields(in: window, depth: depth + 1, budget: &budget))
+            case .entry(let kept):
+                return .message(try kept.map { ProtobufField(number: $0.number, value: try rawValue($0.payload, depth: depth + 1)) })
             }
-            return ProtobufTypedField(name: String(occurrence.number), typeName: nil, value: .unknown(value))
         }
 
         private func mapKey(_ members: [ProtobufTypedField], entry: ProtobufMessageDescriptor) -> MapKey {
@@ -448,7 +468,7 @@ internal enum ProtobufSchemaDecoder {
             case .fixed64(let raw): return raw == 0
             case .fixed32(let raw): return raw == 0
             case .lengthDelimited(let window): return window.remaining == 0
-            case .group: return false
+            case .group, .entry: return false
             }
         }
 
@@ -501,7 +521,7 @@ internal enum ProtobufSchemaDecoder {
             case .varint(let raw): return varintText(raw, type: type) ?? String(raw)
             case .fixed64(let raw): return fixed64Text(raw, type: type) ?? String(raw)
             case .fixed32(let raw): return fixed32Text(raw, type: type) ?? String(raw)
-            case .lengthDelimited, .group: return ""
+            case .lengthDelimited, .group, .entry: return ""
             }
         }
 

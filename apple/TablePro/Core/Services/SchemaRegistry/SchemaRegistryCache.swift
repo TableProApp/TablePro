@@ -15,6 +15,8 @@ internal final class SchemaRegistryCache: Sendable {
 
     // Posted once per batch that loaded a schema, and when a connection's endpoint changed.
     static let didChange = Notification.Name("com.TablePro.schemaRegistryCache.didChange")
+    // Posted on the main actor while the old endpoint still answers, so every grid can note what its filters show.
+    static let willSwitch = Notification.Name("com.TablePro.schemaRegistryCache.willSwitch")
     static let connectionIDKey = "connectionID"
 
     // A page of values can name thousands of IDs that are only bytes starting with zero, so fetches are bounded.
@@ -77,15 +79,10 @@ internal final class SchemaRegistryCache: Sendable {
         }
     }
 
-    // A reload retries failures at once. `beforeSwitch` runs while the old endpoint still answers, before it is replaced.
+    // A reload retries failures at once; anything else waits out the failure lifetime. True when the endpoint switched.
     @MainActor
     @discardableResult
-    func prefetch(
-        connectionID: UUID,
-        schemaIDs: Set<UInt32>,
-        retryingFailures: Bool,
-        beforeSwitch: () -> Void = {}
-    ) -> Bool {
+    func prefetch(connectionID: UUID, schemaIDs: Set<UInt32>, retryingFailures: Bool) -> Bool {
         guard !schemaIDs.isEmpty else { return false }
         let allLoaded = state.withLock { state -> Bool in
             guard case .configured(let endpoint)? = state.endpoints[connectionID] else { return false }
@@ -97,7 +94,7 @@ internal final class SchemaRegistryCache: Sendable {
         // Resolving reads the Keychain, so a batch that needs nothing new skips it unless a reload asked to look again.
         if allLoaded, !retryingFailures { return false }
         let endpoint = resolveEndpoint(connectionID)
-        if state.withLock({ Self.isSwitch(from: $0.endpoints[connectionID], to: endpoint) }) { beforeSwitch() }
+        announceSwitch(to: endpoint, for: connectionID)
         let (changed, pending) = state.withLock { state -> (Bool, [Task<Lookup, Never>]) in
             let changed = adopt(endpoint, for: connectionID, in: &state)
             guard let endpoint else { return (changed, []) }
@@ -129,6 +126,7 @@ internal final class SchemaRegistryCache: Sendable {
     @MainActor
     func schema(connectionID: UUID, schemaID: UInt32) async -> Lookup {
         let endpoint = resolveEndpoint(connectionID)
+        announceSwitch(to: endpoint, for: connectionID)
         let (changed, pending, cached) = state.withLock { state -> (Bool, Task<Lookup, Never>?, Lookup?) in
             let changed = adopt(endpoint, for: connectionID, in: &state)
             guard let endpoint else { return (changed, nil, .failure(Self.noEndpoint)) }
@@ -153,6 +151,12 @@ internal final class SchemaRegistryCache: Sendable {
     private func adopt(_ endpoint: SchemaRegistryEndpoint?, for connectionID: UUID, in state: inout State) -> Bool {
         let previous = state.endpoints.updateValue(endpoint.map { .configured($0) } ?? .unconfigured, forKey: connectionID)
         return Self.isSwitch(from: previous, to: endpoint)
+    }
+
+    @MainActor
+    private func announceSwitch(to endpoint: SchemaRegistryEndpoint?, for connectionID: UUID) {
+        guard state.withLock({ Self.isSwitch(from: $0.endpoints[connectionID], to: endpoint) }) else { return }
+        NotificationCenter.default.post(name: Self.willSwitch, object: nil, userInfo: [Self.connectionIDKey: connectionID])
     }
 
     private static func isSwitch(from previous: Resolved?, to endpoint: SchemaRegistryEndpoint?) -> Bool {

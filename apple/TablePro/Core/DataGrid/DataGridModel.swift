@@ -60,6 +60,8 @@ final class DataGridModel: ObservableObject {
     private let schemaRegistry: SchemaRegistryCache
     private var schemaObservers: Set<AnyCancellable> = []
     private var staleSchemaColumns: Set<Int> = []
+    // Per connection, per data index: what each row a filter kept showed before its registry switched.
+    private var registrySwitchSnapshots: [UUID: [Int: [RowID: String]]] = [:]
 
     init(
         store: any DataGridStateStore = InMemoryDataGridStateStore(),
@@ -328,6 +330,13 @@ final class DataGridModel: ObservableObject {
                 }
             }
             .store(in: &schemaObservers)
+        // Delivered where it is posted, the main actor, before the switch it announces.
+        center.publisher(for: SchemaRegistryCache.willSwitch)
+            .sink { [weak self] notification in
+                guard let connectionID = notification.userInfo?[SchemaRegistryCache.connectionIDKey] as? UUID else { return }
+                MainActor.assumeIsolated { self?.registryWillSwitch(connectionID) }
+            }
+            .store(in: &schemaObservers)
         center.publisher(for: AvroSchemaStore.didRestoreSchema)
             .receive(on: DispatchQueue.main)
             .sink { [weak self] notification in
@@ -365,6 +374,7 @@ final class DataGridModel: ObservableObject {
 
     private func redrawStaleSchemaColumns() {
         let current = rows
+        followRegistrySwitches(in: current)
         let stale = staleSchemaColumns.filter { $0 < current.columns.count }
         staleSchemaColumns = []
         guard !stale.isEmpty else { return }
@@ -404,47 +414,55 @@ final class DataGridModel: ObservableObject {
             wanted[connectionID] = ids
         }
         for (connectionID, ids) in wanted {
-            var shown: [Int: [Int: String]] = [:]
-            let switched = schemaRegistry.prefetch(connectionID: connectionID, schemaIDs: ids, retryingFailures: retryingFailures) {
-                shown = filteredRegistryText(of: connectionID, in: current)
+            if schemaRegistry.prefetch(connectionID: connectionID, schemaIDs: ids, retryingFailures: retryingFailures) {
+                followRegistrySwitches(in: current)
             }
-            if switched { followRegistrySwitch(shown, in: current) }
         }
     }
 
-    // What each row passing a filter on this connection's registry columns shows now, read before a switch changes it.
-    private func filteredRegistryText(of connectionID: UUID, in current: TableRows) -> [Int: [Int: String]] {
+    private func registryWillSwitch(_ connectionID: UUID) {
+        let current = rows
         let databaseType = configuration.traits.databaseType
-        var shown: [Int: [Int: String]] = [:]
         for (dataIndex, format) in store.displayFormats.enumerated() where format == .schemaRegistry(connectionID: connectionID) {
             guard let filter = store.valueFilter.filter(forColumn: dataIndex) else { continue }
             let type = dataIndex < current.columnTypes.count ? current.columnTypes[dataIndex] : nil
-            for (rowIndex, row) in current.rows.enumerated() where dataIndex < row.values.count && row.values[dataIndex] != .null {
+            var shown: [RowID: String] = [:]
+            for row in current.rows where dataIndex < row.values.count && row.values[dataIndex] != .null {
                 let text = GridDisplayOrderResolver.displayValue(
                     row.values[dataIndex], columnType: type, displayFormat: format, databaseType: databaseType
                 )
-                if filter.selectedValues.contains(text) { shown[dataIndex, default: [:]][rowIndex] = text }
+                if filter.selectedValues.contains(text) { shown[row.id] = text }
             }
+            if !shown.isEmpty { registrySwitchSnapshots[connectionID, default: [:]][dataIndex] = shown }
         }
-        return shown
     }
 
     // A switched registry reads the same bytes differently, so the rows a filter kept stay kept under their new text.
-    private func followRegistrySwitch(_ shown: [Int: [Int: String]], in current: TableRows) {
+    private func followRegistrySwitches(in current: TableRows) {
+        guard !registrySwitchSnapshots.isEmpty else { return }
+        let snapshots = registrySwitchSnapshots
+        registrySwitchSnapshots = [:]
         let databaseType = configuration.traits.databaseType
-        for (dataIndex, rows) in shown {
+        let rowsByID = Dictionary(current.rows.map { ($0.id, $0) }) { first, _ in first }
+        for (dataIndex, shown) in snapshots.values.flatMap({ $0 }) {
             guard let existing = store.valueFilter.filter(forColumn: dataIndex), dataIndex < current.columns.count else { continue }
             let type = dataIndex < current.columnTypes.count ? current.columnTypes[dataIndex] : nil
             let format = displayFormatAt(dataIndex)
-            var selected = existing.selectedValues
-            for (rowIndex, old) in rows where rowIndex < current.rows.count {
+            var removed = Set<String>()
+            var added = Set<String>()
+            for (rowID, old) in shown {
+                guard let row = rowsByID[rowID], dataIndex < row.values.count else { continue }
                 let new = GridDisplayOrderResolver.displayValue(
-                    current.rows[rowIndex].values[dataIndex], columnType: type, displayFormat: format, databaseType: databaseType
+                    row.values[dataIndex], columnType: type, displayFormat: format, databaseType: databaseType
                 )
-                guard new != old else { continue }
-                selected.remove(old)
-                selected.insert(new)
+                if new != old {
+                    removed.insert(old)
+                    added.insert(new)
+                }
             }
+            var selected = existing.selectedValues
+            selected.subtract(removed)
+            selected.formUnion(added)
             guard selected != existing.selectedValues else { continue }
             var filter = store.valueFilter
             filter.set(

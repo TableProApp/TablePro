@@ -302,26 +302,29 @@ struct SchemaRegistryTests {
         #expect(transport.requests.withLock { $0.count } == 1)
     }
 
-    @Test("A grid hears of a registry switch before it happens, while the old schemas still answer")
+    @Test("Every grid hears of a registry switch before it happens, while the old schemas still answer")
     @MainActor
-    func beforeSwitch() async throws {
+    func willSwitch() async throws {
         let resolver = Resolver(Self.endpoint)
         let connection = UUID()
         let cache = SchemaRegistryCache(resolveEndpoint: resolver.resolve, transport: RecordedTransport().transport)
         _ = await cache.schema(connectionID: connection, schemaID: 1)
-        var calls = 0
-        #expect(!cache.prefetch(connectionID: connection, schemaIDs: [1], retryingFailures: true) { calls += 1 })
-        #expect(calls == 0)
+        let heard = OSAllocatedUnfairLock(initialState: (calls: 0, oldStillAnswered: false))
+        let observer = NotificationCenter.default.addObserver(forName: SchemaRegistryCache.willSwitch, object: nil, queue: nil) {
+            guard $0.userInfo?[SchemaRegistryCache.connectionIDKey] as? UUID == connection else { return }
+            let answered: Bool
+            if case .success? = cache.cachedSchema(connectionID: connection, schemaID: 1) { answered = true } else { answered = false }
+            heard.withLock { $0 = (calls: $0.calls + 1, oldStillAnswered: answered) }
+        }
+        defer { NotificationCenter.default.removeObserver(observer) }
+
+        #expect(!cache.prefetch(connectionID: connection, schemaIDs: [1], retryingFailures: true))
+        #expect(heard.withLock { $0.calls } == 0)
 
         resolver.current.withLock { $0 = SchemaRegistryEndpoint(fields: [SchemaRegistryConnectionField.url: "https://other.example.com"]) }
-        var oldStillAnswered = false
-        let switched = cache.prefetch(connectionID: connection, schemaIDs: [1], retryingFailures: true) {
-            calls += 1
-            if case .success? = cache.cachedSchema(connectionID: connection, schemaID: 1) { oldStillAnswered = true }
-        }
-        #expect(switched)
-        #expect(calls == 1)
-        #expect(oldStillAnswered)
+        #expect(cache.prefetch(connectionID: connection, schemaIDs: [1], retryingFailures: true))
+        #expect(heard.withLock { $0.calls } == 1)
+        #expect(heard.withLock { $0.oldStillAnswered })
         if case .success? = cache.cachedSchema(connectionID: connection, schemaID: 1) {
             Issue.record("expected the new registry's schema to be unread")
         }
