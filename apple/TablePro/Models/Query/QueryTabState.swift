@@ -16,6 +16,7 @@ enum TabType: Equatable, Codable, Hashable {
     case serverDashboard
     case usersRoles
     case insights
+    case tableHealth
     case objectSource
     case versionHistory
     // Read-only grid of one database's or schema's tables, rebuilt from the catalog on each load, never from saved SQL.

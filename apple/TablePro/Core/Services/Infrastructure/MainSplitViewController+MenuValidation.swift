@@ -123,6 +123,7 @@ struct MenuValidationContext: Equatable {
     var supportsRestore = false
     var supportsServerDashboard = false
     var supportsUserManagement = false
+    var supportsTableHealth = false
     var supportsSchemaSwitching = false
     // Same rule as the editor bar, so the menu cannot run a statement the bar's button refuses.
     var supportsExplain = false
@@ -288,6 +289,8 @@ extension MainSplitViewController: NSMenuItemValidation {
             return context.isConnected && context.supportsUserManagement
         case #selector(showQueryInsights(_:)):
             return context.isConnected
+        case #selector(showTableHealth(_:)):
+            return context.isConnected && context.supportsTableHealth
 
         case #selector(toggleFilterBar(_:)):
             return context.isConnected && context.canUseTableResultCommands
@@ -463,6 +466,9 @@ extension MainSplitViewController: NSMenuItemValidation {
         #selector(importData(_:)),
         #selector(importDataFormat(_:)),
         #selector(showServerDashboard(_:)),
+        #selector(showUsersAndRoles(_:)),
+        #selector(showQueryInsights(_:)),
+        #selector(showTableHealth(_:)),
         #selector(navigateBack(_:)),
         #selector(navigateForward(_:)),
         #selector(moveTabToConnection(_:)),
@@ -666,6 +672,7 @@ extension MainSplitViewController: NSMenuItemValidation {
             supportsRestore: actions.supportsRestore,
             supportsServerDashboard: actions.supportsServerDashboard,
             supportsUserManagement: actions.supportsUserManagement,
+            supportsTableHealth: actions.supportsTableHealth,
             supportsSchemaSwitching: actions.supportsSchemaSwitching,
             supportsExplain: actions.supportsExplain,
             supportsFormatting: actions.supportsFormatting,
