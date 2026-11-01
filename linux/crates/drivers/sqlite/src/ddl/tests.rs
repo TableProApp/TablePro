@@ -93,6 +93,7 @@ fn index(name: &str, column: &str) -> IndexInfo {
         unique: false,
         primary: false,
         predicate: None,
+        definition: None,
     }
 }
 
@@ -265,6 +266,7 @@ fn plan_create_table_composite_key_index_and_foreign_key() {
         unique: true,
         primary: false,
         predicate: Some("sku IS NOT NULL".to_owned()),
+        definition: None,
     }];
     draft.foreign_keys = vec![ForeignKeyInfo {
         on_delete: Some(ReferentialAction::Cascade),

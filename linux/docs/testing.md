@@ -172,6 +172,7 @@ Every case but the last plans through `connection.dialect().ddl()` and runs the 
 - `failed_ddl_batch_outcome_matches_ddl_atomicity` sends two plans whose second statement the server rejects, and checks the outcome against `ddl_writes`: `RolledBack` and nothing applied, or `PartiallyApplied` and the first plan applied.
 - `create_table_script_recreates_the_table` drops a table and runs its `create_table_script`, which has to bring back the same column definitions and index keys.
 - `structure_changes_keep_rows_and_indexes` fills an indexed table, then changes a default and a nullability. The rows and the index have to come through, which on SQLite means through the table rebuild.
+- `index_statement_recreates_the_index` drops an index and runs the CREATE INDEX statement it was read with, which has to make the same index again.
 - `builtin_snippets_run_as_written` takes the SQL editor's built-in snippets for the connection's grammar, fills their table, index, column and value stops, with the row's `id` too on CQL, which finds a row only by its key, and keeps the rest as written (`tablepro_test_support::expand_snippet`), and runs each one through an editor session as the editor splits it: one statement each, all completing.
 
 The PostgreSQL, MySQL, SQL Server, ClickHouse, SQLite and DuckDB targets run it, and the MySQL target runs it on MariaDB as well. SQLite and DuckDB pass `docker: false`, so their cases run in the unit suite.

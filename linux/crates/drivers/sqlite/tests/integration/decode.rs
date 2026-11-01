@@ -2,6 +2,7 @@
 //! column says, and go back the same way.
 
 use tablepro_core::column::{ColumnKind, FloatWidth, IntegerKind, IntegerWidth};
+use tablepro_core::edit::CellInput;
 use tablepro_core::meta::TableRef;
 use tablepro_core::save::{ChangeSet, RowChange, RowUpdate, plan_save};
 use tablepro_core::{RowLimit, Value};
@@ -107,10 +108,10 @@ async fn strict_table_round_trip() {
         changes: vec![RowChange::Update(RowUpdate {
             key: vec![row[0].clone()],
             assignments: vec![
-                (1, Value::Int(i64::MIN)),
-                (2, Value::Float64(-0.25)),
-                (3, Value::Text("ü'".to_owned())),
-                (4, Value::Bytes(vec![1, 2, 3])),
+                (1, CellInput::Value(Value::Int(i64::MIN))),
+                (2, CellInput::Value(Value::Float64(-0.25))),
+                (3, CellInput::Value(Value::Text("ü'".to_owned()))),
+                (4, CellInput::Value(Value::Bytes(vec![1, 2, 3]))),
             ],
         })],
     };
@@ -181,4 +182,26 @@ async fn a_date_column_keeps_the_spelling_it_was_written_with() {
     assert!(matches!(columns[1].column_type.kind, ColumnKind::Timestamp { .. }));
     assert_eq!(report.rows_affected, [Some(1)]);
     connection.close().await.unwrap();
+}
+
+#[tokio::test]
+async fn every_cell_expression_is_evaluated_by_the_engine() {
+    let file = TestFile::new().await;
+    let connection = file.open().await;
+    apply(
+        connection.as_ref(),
+        &[
+            "CREATE TABLE stamps (id INTEGER PRIMARY KEY, seen DATETIME, stamp TIMESTAMP, day DATE, clock TIME)",
+            "INSERT INTO stamps (id) VALUES (1)",
+        ],
+    )
+    .await
+    .unwrap();
+
+    let checked =
+        tablepro_test_support::check_cell_expressions(connection.as_ref(), &TableRef::unqualified("stamps"), call)
+            .await
+            .expect("every expression saves");
+
+    assert_eq!(checked, 10);
 }

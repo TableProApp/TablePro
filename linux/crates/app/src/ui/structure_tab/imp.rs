@@ -131,6 +131,9 @@ impl ObjectImpl for StructureTab {
                 Signal::builder("alert")
                     .param_types([String::static_type(), String::static_type()])
                     .build(),
+                Signal::builder("open-in-editor")
+                    .param_types([String::static_type()])
+                    .build(),
             ]
         })
     }

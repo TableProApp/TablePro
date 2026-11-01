@@ -171,7 +171,7 @@ fn an_unbound_gutter_cell_stops_following_its_row() {
         row_key: key(2),
         col: 1,
         original: text("B"),
-        value: text("edited"),
+        value: CellInput::Value(text("edited")),
     });
     row.bump_revision();
 

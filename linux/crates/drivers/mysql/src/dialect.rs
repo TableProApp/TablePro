@@ -8,6 +8,7 @@ use tablepro_core::dialect::{
     BindError, BindTarget, DatabaseLayout, DialectCapabilities, InsertConflict, KeysetDirection, LikeCase, LikeForm,
     LiteralError, Placeholder, SqlDialect,
 };
+use tablepro_core::edit::{CellExpression, MomentKind};
 use tablepro_core::export::value_to_text;
 use tablepro_core::meta::{EngineRowId, EngineRowIdPart};
 use tablepro_core::sql_syntax::{
@@ -80,6 +81,32 @@ impl SqlDialect for MySqlDialect {
 
     fn grammar(&self) -> SqlGrammar {
         SqlGrammar::MySql
+    }
+
+    fn cell_expressions(&self) -> &'static [CellExpression] {
+        const MOMENT: &[MomentKind] = &[MomentKind::Timestamp];
+        const DATE: &[MomentKind] = &[MomentKind::Date];
+        const TIME: &[MomentKind] = &[MomentKind::Time];
+        const EXPRESSIONS: &[CellExpression] = &[
+            CellExpression::new(
+                "NOW()",
+                MOMENT,
+                &["LOCALTIMESTAMP", "LOCALTIMESTAMP()", "LOCALTIME", "LOCALTIME()"],
+            ),
+            CellExpression::new("CURRENT_TIMESTAMP", MOMENT, &["CURRENT_TIMESTAMP()"]),
+            // Not NOW(): it reads the clock as the row is written and ignores SET TIMESTAMP.
+            CellExpression::new("SYSDATE()", MOMENT, &[]),
+            CellExpression::new("UTC_TIMESTAMP()", MOMENT, &[]),
+            CellExpression::new("CURDATE()", DATE, &["CURRENT_DATE", "CURRENT_DATE()"]),
+            CellExpression::new("UTC_DATE()", DATE, &[]),
+            CellExpression::new("CURTIME()", TIME, &["CURRENT_TIME", "CURRENT_TIME()"]),
+            CellExpression::new("UTC_TIME()", TIME, &[]),
+        ];
+        EXPRESSIONS
+    }
+
+    fn update_sets_default(&self) -> bool {
+        true
     }
 
     fn quote_identifier(&self, name: &str) -> String {

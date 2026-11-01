@@ -1,8 +1,10 @@
-use tablepro_core::Value;
+use tablepro_core::column::ColumnType;
+use tablepro_core::dialect::SqlDialect;
 use tablepro_core::edit::{
     CellInput, EditContext, EditParseError, EditText, EmptyInputMeaning, edit_text, empty_input_meaning, is_unchanged,
-    parse_edit_text,
+    parse_edit_text, typed_cell_expression,
 };
+use tablepro_core::{ColumnInfo, Value};
 
 use super::{GridColumn, GridRowId};
 use crate::services::tracker_edit::TrackerEdit;
@@ -35,26 +37,53 @@ pub fn edit_context(row: &GridRowId) -> EditContext {
     }
 }
 
+/// The text an editor opens with for `input`.
+pub fn opening_text(input: &CellInput, column_type: &ColumnType) -> EditText {
+    match input {
+        CellInput::Value(value) => edit_text(value, column_type),
+        CellInput::Default => EditText::Editable(String::new()),
+        CellInput::Expression(expression) => EditText::Editable(expression.sql.to_owned()),
+    }
+}
+
 /// The text an editor ends with, as an edit of the row it began on.
 /// Text left as the editor opened it is no edit: NULL and the empty
 /// string open as the same empty field, and must not turn into each other.
-pub fn commit_edit(column: &GridColumn, start: &EditStart, input: &str) -> CommitResult {
+/// Text that names one of `dialect`'s expressions for the column is that
+/// expression, which no value of the column is spelled as.
+pub fn commit_edit(
+    column: &GridColumn,
+    start: &EditStart,
+    input: &str,
+    dialect: Option<&dyn SqlDialect>,
+) -> CommitResult {
     let Some(catalog) = column.catalog.as_ref() else {
         return CommitResult::Unchanged;
     };
-    let opened_with = match &start.original {
-        CellInput::Value(value) => edit_text(value, &catalog.column_type),
-        CellInput::Default => EditText::Editable(String::new()),
-    };
+    let opened_with = opening_text(&start.original, &catalog.column_type);
     if matches!(&opened_with, EditText::Editable(text) if text == input) {
         return CommitResult::Unchanged;
     }
-    match parse_edit_text(input, catalog, edit_context(&start.row)) {
+    match parse_cell_text(input, catalog, &start.row, dialect) {
         Ok(parsed) => commit_input(column, start, parsed),
         Err(error) => {
             tracing::debug!(%error, column = %catalog.name, "refused an edit");
             CommitResult::Rejected(error)
         }
+    }
+}
+
+/// What `text` typed or pasted into a cell of `row` is: one of
+/// `dialect`'s expressions for the column, else a value of it.
+pub fn parse_cell_text(
+    text: &str,
+    column: &ColumnInfo,
+    row: &GridRowId,
+    dialect: Option<&dyn SqlDialect>,
+) -> Result<CellInput, EditParseError> {
+    match dialect.and_then(|dialect| typed_cell_expression(dialect, &column.column_type, text)) {
+        Some(expression) => Ok(CellInput::Expression(expression)),
+        None => parse_edit_text(text, column, edit_context(row)),
     }
 }
 
@@ -64,6 +93,7 @@ pub fn commit_input(column: &GridColumn, start: &EditStart, input: CellInput) ->
     let unchanged = match (&start.original, &input) {
         (CellInput::Value(original), CellInput::Value(value)) => is_unchanged(original, value, column.value_type()),
         (CellInput::Default, CellInput::Default) => true,
+        (CellInput::Expression(original), CellInput::Expression(expression)) => original == expression,
         _ => false,
     };
     if unchanged {
@@ -75,16 +105,12 @@ pub fn commit_input(column: &GridColumn, start: &EditStart, input: CellInput) ->
             col: column.index,
             input,
         }),
-        (GridRowId::Persisted(row_key), CellInput::Value(value)) => CommitResult::Edit(TrackerEdit::Cell {
+        (GridRowId::Persisted(row_key), value) => CommitResult::Edit(TrackerEdit::Cell {
             row_key: row_key.clone(),
             col: column.index,
             original: start.read.clone(),
             value,
         }),
-        (GridRowId::Persisted(_), CellInput::Default) => {
-            tracing::error!("a saved row's cell was given the server's default");
-            CommitResult::Unchanged
-        }
         (GridRowId::Result | GridRowId::Unkeyed, _) => CommitResult::Unchanged,
     }
 }
@@ -148,7 +174,7 @@ mod tests {
 
     fn value_of(result: CommitResult) -> Option<CellInput> {
         match result {
-            CommitResult::Edit(TrackerEdit::Cell { value, .. }) => Some(CellInput::Value(value)),
+            CommitResult::Edit(TrackerEdit::Cell { value, .. }) => Some(value),
             CommitResult::Edit(TrackerEdit::DraftCell { input, .. }) => Some(input),
             _ => None,
         }
@@ -160,16 +186,16 @@ mod tests {
         let stamped = column("timestamp", false, Some("now()"));
 
         assert_eq!(
-            commit_edit(&text, &saved(Value::Null), ""),
+            commit_edit(&text, &saved(Value::Null), "", None),
             CommitResult::Unchanged,
             "an untouched NULL became the empty string"
         );
         assert_eq!(
-            commit_edit(&stamped, &draft(CellInput::Default), ""),
+            commit_edit(&stamped, &draft(CellInput::Default), "", None),
             CommitResult::Unchanged
         );
         assert_eq!(
-            value_of(commit_edit(&text, &saved(Value::Null), "a")),
+            value_of(commit_edit(&text, &saved(Value::Null), "a", None)),
             Some(CellInput::Value(Value::Text("a".into())))
         );
     }
@@ -181,20 +207,20 @@ mod tests {
         let stamped = column("timestamp", false, Some("now()"));
 
         assert_eq!(
-            value_of(commit_edit(&text, &saved(Value::Text("a".into())), "")),
+            value_of(commit_edit(&text, &saved(Value::Text("a".into())), "", None)),
             Some(CellInput::Value(Value::Text(String::new())))
         );
         assert_eq!(
-            value_of(commit_edit(&stamp, &saved(Value::Int(1)), "")),
+            value_of(commit_edit(&stamp, &saved(Value::Int(1)), "", None)),
             Some(CellInput::Value(Value::Null))
         );
         assert_eq!(
-            value_of(commit_edit(&stamped, &draft(CellInput::Value(Value::Int(1))), "")),
+            value_of(commit_edit(&stamped, &draft(CellInput::Value(Value::Int(1))), "", None)),
             Some(CellInput::Default),
             "a new row leaves an empty cell to the server"
         );
         assert_eq!(
-            commit_edit(&stamped, &saved(Value::Int(1)), ""),
+            commit_edit(&stamped, &saved(Value::Int(1)), "", None),
             CommitResult::Rejected(EditParseError::Required),
             "an UPDATE cannot ask for the default"
         );
@@ -209,7 +235,7 @@ mod tests {
             original: CellInput::Value(Value::Text("old".into())),
         };
 
-        let result = commit_edit(&text, &start, "new");
+        let result = commit_edit(&text, &start, "new", None);
 
         assert_eq!(
             result,
@@ -217,10 +243,10 @@ mod tests {
                 row_key: RowKey::from_pk_values(&[Value::Int(1)]).expect("a key"),
                 col: 1,
                 original: Value::Text("read".into()),
-                value: Value::Text("new".into()),
+                value: CellInput::Value(Value::Text("new".into())),
             })
         );
-        assert_eq!(commit_edit(&text, &start, "old"), CommitResult::Unchanged);
+        assert_eq!(commit_edit(&text, &start, "old", None), CommitResult::Unchanged);
     }
 
     #[test]
@@ -228,7 +254,7 @@ mod tests {
         let integer = column("integer", false, None);
 
         assert_eq!(
-            commit_edit(&integer, &saved(Value::Int(1)), "thirty"),
+            commit_edit(&integer, &saved(Value::Int(1)), "thirty", None),
             CommitResult::Rejected(EditParseError::InvalidInteger)
         );
     }
@@ -242,12 +268,13 @@ mod tests {
             original: CellInput::Value(Value::Text("a".into())),
         };
 
-        assert_eq!(commit_edit(&text, &start, "b"), CommitResult::Unchanged);
+        assert_eq!(commit_edit(&text, &start, "b", None), CommitResult::Unchanged);
         assert_eq!(
             commit_edit(
                 &result_only("c", ColumnKind::Other),
                 &saved(Value::Text("a".into())),
-                "b"
+                "b",
+                None
             ),
             CommitResult::Unchanged,
             "a column the catalogue does not know"
@@ -276,5 +303,56 @@ mod tests {
             empty_placeholder(&result_only("c", ColumnKind::Other), &saved_row),
             None
         );
+    }
+
+    fn postgres() -> tablepro_driver_postgres::PgDialect {
+        tablepro_driver_postgres::PgDialect::new(&tablepro_core::ServerInfo::new("PostgreSQL", "18.0", 18, 0, 0))
+    }
+
+    #[test]
+    fn an_expression_typed_into_a_cell_that_takes_it_is_staged_as_one() {
+        let dialect = postgres();
+        let stamp = column("timestamp", true, None);
+
+        let staged = value_of(commit_edit(&stamp, &saved(Value::Null), " NOW() ", Some(&dialect)));
+
+        let Some(CellInput::Expression(expression)) = staged else {
+            panic!("NOW() was not staged as an expression: {staged:?}");
+        };
+        assert_eq!(expression.sql, "now()");
+        assert_eq!(
+            commit_edit(
+                &stamp,
+                &draft(CellInput::Expression(expression)),
+                "now()",
+                Some(&dialect)
+            ),
+            CommitResult::Unchanged,
+            "an expression left as it opened"
+        );
+    }
+
+    #[test]
+    fn an_expression_the_column_does_not_take_stays_text() {
+        let dialect = postgres();
+
+        assert_eq!(
+            value_of(commit_edit(
+                &column("text", true, None),
+                &saved(Value::Null),
+                "now()",
+                Some(&dialect)
+            )),
+            Some(CellInput::Value(Value::Text("now()".into())))
+        );
+        assert!(matches!(
+            commit_edit(
+                &column("date", true, None),
+                &saved(Value::Null),
+                "now()",
+                Some(&dialect)
+            ),
+            CommitResult::Rejected(_)
+        ));
     }
 }

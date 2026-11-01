@@ -49,6 +49,8 @@ fn cell_menu_counterpart(header_action: &str) -> &str {
         "grid.sort-column-descending" => "grid.sort-descending",
         "grid.hide-column-at" => "grid.hide-column",
         "grid.size-column-to-fit" => "grid.size-to-fit",
+        "grid.move-column-left-at" => "grid.move-column-left",
+        "grid.move-column-right-at" => "grid.move-column-right",
         "grid.copy-column-name-at" => "grid.copy-column-name",
         other => other,
     }
@@ -65,7 +67,7 @@ fn every_header_action_is_in_the_cell_menus_column_submenu() {
     let in_cell = action_names(&menu);
     let header_actions = menu_actions(&header);
 
-    assert_eq!(header_actions.len(), 7, "{header_actions:?}");
+    assert_eq!(header_actions.len(), 9, "{header_actions:?}");
     for (action, column) in &header_actions {
         assert!(column.is_none_or(|column| column == 1), "{action} names another column");
         let counterpart = cell_menu_counterpart(action.as_str());

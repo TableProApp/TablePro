@@ -31,7 +31,7 @@ impl CellOverlay {
     pub fn shown(self, fetched: Value) -> Value {
         match self.pending {
             Some(CellInput::Value(value)) => value,
-            Some(CellInput::Default) => Value::Null,
+            Some(CellInput::Default | CellInput::Expression(_)) => Value::Null,
             None => fetched,
         }
     }

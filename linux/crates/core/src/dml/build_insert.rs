@@ -10,7 +10,8 @@ use super::BuildSqlError;
 /// The INSERT for one row.
 ///
 /// A `Default` cell is left out of the statement, so the server applies
-/// its own default or next number. A generated column is never written,
+/// its own default or next number. An `Expression` cell is written as
+/// its engine spells it. A generated column is never written,
 /// because the server computes it. Every other value is written, an
 /// auto-increment column's included: a value given for one is a key the
 /// caller means to keep, and the caller leaves out the identities an
@@ -36,13 +37,15 @@ pub fn build_insert(
     let mut names = Vec::new();
     let mut markers = Vec::new();
     for (column, cell) in columns.iter().zip(cells) {
-        let Some(value) = cell.value() else {
-            continue;
-        };
         if column.is_generated {
             continue;
         }
-        markers.push(builder.bind(dialect, value.clone(), BindTarget::Column(column))?);
+        let marker = match cell {
+            CellInput::Default => continue,
+            CellInput::Value(value) => builder.bind(dialect, value.clone(), BindTarget::Column(column))?,
+            CellInput::Expression(expression) => expression.sql.to_owned(),
+        };
+        markers.push(marker);
         names.push(dialect.quote_identifier(&column.name));
     }
 

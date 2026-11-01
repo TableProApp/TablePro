@@ -495,7 +495,10 @@ impl SqlEditor {
         let run = ScriptRun {
             batches,
             policy,
-            statement_timeout: deps.settings.query_timeout(),
+            statement_timeout: session
+                .workspace_settings()
+                .editor_timeout
+                .resolve(deps.settings.query_timeout()),
             row_limit: RowLimit::EDITOR_DEFAULT,
             run_row_limit: RUN_ROW_LIMIT,
         };
