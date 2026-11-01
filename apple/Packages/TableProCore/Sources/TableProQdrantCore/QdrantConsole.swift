@@ -71,12 +71,20 @@ public struct QdrantRequestKind: Sendable, Equatable {
         ["points", "search", "matrix", "offsets"]
     ]
 
+    // `/snapshots`, `/collections/{name}/snapshots` and `/collections/{name}/shards/{id}/snapshots`, by
+    // position, so a collection that is itself named `snapshots` is not one.
+    static func touchesSnapshots(_ route: [String]) -> Bool {
+        if route.first == "snapshots" { return true }
+        guard route.count >= 3, route[0] == "collections" else { return false }
+        return route[2] == "snapshots" || (route.count >= 5 && route[2] == "shards" && route[4] == "snapshots")
+    }
+
     public static func of(method: String, path: String) -> QdrantRequestKind {
         let verb = method.uppercased()
         guard let route = QdrantPathEncoding.segments(of: path) else {
             return QdrantRequestKind(tier: .write, touchesServerFiles: true)
         }
-        let touchesServerFiles = route.contains("snapshots")
+        let touchesServerFiles = touchesSnapshots(route)
         if verb == "GET" || verb == "HEAD" {
             return QdrantRequestKind(tier: .read, touchesServerFiles: touchesServerFiles)
         }

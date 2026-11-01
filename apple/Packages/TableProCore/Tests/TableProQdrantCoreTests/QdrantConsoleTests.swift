@@ -44,6 +44,9 @@ struct QdrantConsoleTests {
         let dotted = QdrantRequestKind.of(method: "POST", path: "/collections/docs/points/query/../delete")
         #expect(dotted == QdrantRequestKind(tier: .write, touchesServerFiles: true))
         #expect(QdrantPathEncoding.segments(of: "/collections/%2e%2e/x") == nil)
+        #expect(!QdrantRequestKind.of(method: "POST", path: "/collections/snapshots/points/query").touchesServerFiles)
+        #expect(QdrantRequestKind.of(method: "POST", path: "/snapshots").touchesServerFiles)
+        #expect(QdrantRequestKind.of(method: "PUT", path: "/collections/docs/shards/0/snapshots/recover").touchesServerFiles)
     }
 
     @Test("A request path keeps its query string and never leaves the node")

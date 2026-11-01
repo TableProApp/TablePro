@@ -98,6 +98,14 @@ struct QdrantRowWriteTests {
         ])
     }
 
+    @Test("A duplicated row's default marker asks for a new id instead of failing as one")
+    func duplicatedRowGetsNewID() throws {
+        let change = QdrantRowChange(kind: .insert, rowIndex: 0, id: nil, cells: [
+            QdrantCell(column: "id", text: "__DEFAULT__"), QdrantCell(column: "city", text: "Hanoi")
+        ])
+        #expect(try writes([change]).first?.contains(#""id":"00000000-0000-0000-0000-000000000001""#) == true)
+    }
+
     @Test("A server that would overwrite a taken id gets no grid insert")
     func insertNeedsConditionalUpsert() {
         let change = QdrantRowChange(kind: .insert, rowIndex: 6, id: nil, cells: [QdrantCell(column: "city", text: "Hanoi")])

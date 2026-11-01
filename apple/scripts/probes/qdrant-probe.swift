@@ -50,6 +50,7 @@ var points: [[String: Any]] = []
 for i in 1...250 {
     var payload: [String: Any] = ["city": i % 2 == 0 ? "even" : "odd", "body": "Hello World \(i)", "f": Double(i) + 0.5]
     if i <= 200 { payload["n"] = i }
+    if i <= 100 { payload["when"] = String(format: "2024-01-01T%02d:%02d:00Z", i / 60, i % 60) }
     if i == 7 { payload["note"] = NSNull() }
     if i == 8 { payload["note"] = "" }
     payload["meta"] = ["source": "doc\(i).pdf"]
@@ -57,7 +58,7 @@ for i in 1...250 {
     points.append(["id": i, "vector": ["": [Double(i), 1]], "payload": payload])
 }
 _ = try await run("PUT \(base)/points?wait=true\n" + (try QdrantJSON.text(["points": points])))
-for (field, schema) in [("n", "integer"), ("f", "float"), ("city", "keyword"), ("meta.source", "keyword")] {
+for (field, schema) in [("n", "integer"), ("f", "float"), ("when", "datetime"), ("city", "keyword"), ("meta.source", "keyword")] {
     _ = try await run(#"PUT \#(base)/index?wait=true {"field_name":"\#(field)","field_schema":"\#(schema)"}"#)
 }
 
@@ -105,6 +106,14 @@ func sorted(_ offset: Int, _ limit: Int, ascending: Bool = false) async throws -
 check(try await sorted(5, 3) == ["195", "194", "193"], "order_by with offset")
 check(try await sorted(198, 4) == ["2", "1", "201", "202"], "points without the key follow the ordered ones")
 check(try await sorted(248, 10) == ["249", "250"], "every point reachable when sorted")
+let byDate = { (offset: Int, limit: Int) in
+    try await client.sortedPage(
+        collection: name, filter: nil, column: "when", key: "\"when\"", ascending: false,
+        offset: offset, limit: limit, cache: cache
+    ).map { $0.idText ?? "" }
+}
+check(try await byDate(0, 2) == ["100", "99"], "datetime sort orders by date")
+check(try await byDate(99, 3) == ["1", "101", "102"], "datetime sort puts undated points after")
 _ = try await run(#"POST \#(base)/points/payload?wait=true {"payload":{"n":[1,2]},"points":[3]}"#)
 do {
     _ = try await client.sortedPage(collection: name, filter: nil, column: "n", key: "\"n\"", ascending: true, offset: 0, limit: 5, cache: QdrantPagingCache())

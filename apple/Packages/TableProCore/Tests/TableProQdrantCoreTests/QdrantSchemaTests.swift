@@ -105,6 +105,20 @@ struct QdrantSchemaTests {
         #expect(types["late"] == nil)
     }
 
+    @Test("A sampled list filters by the type of its elements, so 42 matches the string it holds")
+    func sampledListElements() throws {
+        let collection = QdrantCollection.parse(
+            name: "docs", info: info(vectors: ["size": 2]),
+            sample: [try point(#"{"id":1,"payload":{"tags":["42","a"],"ranks":[1,2]}}"#)]
+        )
+        func condition(_ column: String, _ value: String) throws -> String {
+            canonical(try QdrantFilterBuilder.condition(for: QdrantFilterSpec(column: column, op: "=", value: value), collection: collection))
+        }
+        #expect(try condition("tags", "42") == #"{"key":"\"tags\"","match":{"value":"42"}}"#)
+        #expect(try condition("ranks", "2") == #"{"key":"\"ranks\"","match":{"value":2}}"#)
+        #expect(QdrantSchema.columns(for: collection).first { $0.name == "tags" }?.type == "array")
+    }
+
     @Test("A named vector called size is not mistaken for the unnamed vector's dimension")
     func vectorNamedSize() {
         let collection = QdrantCollection.parse(
