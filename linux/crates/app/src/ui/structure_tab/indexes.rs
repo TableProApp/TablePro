@@ -71,7 +71,7 @@ pub(super) fn build_index_row(
     row
 }
 
-// Read-only, so it bypasses the model's edit lock: a save in flight must not refuse a copy.
+// Changes nothing, so it skips the edit lock; the page still dims while the table is read again.
 fn statement_menu(statement: String, sender: &StructureTabSender) -> gtk::MenuButton {
     let menu = gio::Menu::new();
     menu.append(
