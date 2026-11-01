@@ -79,6 +79,15 @@ struct RowGridLayoutTests {
         #expect(calls == 2)
     }
 
+    @Test("The key column takes at most its share of the viewport, and only the key column shrinks")
+    func keyColumnLimitedByViewport() {
+        let layout = RowGridLayout(order: [0, 1], widths: [300, 200])
+        #expect(layout.limitingKeyColumn(toViewportWidth: 400).widths == [160, 200])
+        #expect(layout.limitingKeyColumn(toViewportWidth: 1_000).widths == [300, 200])
+        #expect(layout.limitingKeyColumn(toViewportWidth: 0).widths == [300, 200])
+        #expect(RowGridLayout(order: [], widths: []).limitingKeyColumn(toViewportWidth: 400).widths.isEmpty)
+    }
+
     @Test("Only the first line counts, with room for the ellipsis that marks the rest")
     func firstLineWithEllipsis() {
         #expect(RowGridLayout.measuredText("first line\nsecond") == "first line…")
@@ -105,6 +114,9 @@ struct RowGridTextMeasureTests {
         ("日本語のテキストと中文", false),
         ("Ünïcødé ẞtraße", false),
         ("NULL", false),
+        ("TrackId", true),
+        ("PlaylistId", true),
+        ("InvoiceLineId", true),
         ("AlbumId", true),
         ("UnitPrice", true),
         ("MediaTypeId", true),

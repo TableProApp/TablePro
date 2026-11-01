@@ -40,6 +40,15 @@ nonisolated struct RowGridLayout: Equatable, Sendable {
         return RowGridLayout(order: order, widths: widths)
     }
 
+    // A key column wider than this share of the screen would leave no room to scroll the others past it.
+    static let keyColumnViewportShare: CGFloat = 0.4
+
+    func limitingKeyColumn(toViewportWidth viewportWidth: CGFloat) -> RowGridLayout {
+        let limit = (viewportWidth * Self.keyColumnViewportShare).rounded(.down)
+        guard let keyWidth = widths.first, limit > 0, keyWidth > limit else { return self }
+        return RowGridLayout(order: order, widths: [limit] + widths.dropFirst())
+    }
+
     static func displayOrder(columnCount: Int, keyColumn: Int?) -> [Int] {
         let columns = Array(0..<columnCount)
         guard let keyColumn, columns.contains(keyColumn) else { return columns }
@@ -91,7 +100,7 @@ struct RowGrid<Row: View>: View {
     @ScaledMetric(relativeTo: .subheadline) private var maximumWidth: CGFloat = 320
     @ScaledMetric(relativeTo: .subheadline) private var horizontalPadding: CGFloat = 12
     @ScaledMetric(relativeTo: .subheadline) private var verticalPadding: CGFloat = 10
-    @State private var layout: RowGridLayout?
+    @State private var computedLayout: (key: LayoutKey, layout: RowGridLayout)?
     @State private var viewport = RowGridViewport(width: 0, leadingInset: 0)
 
     private var layoutKey: LayoutKey {
@@ -116,32 +125,42 @@ struct RowGrid<Row: View>: View {
     }
 
     var body: some View {
+        let layout = currentLayout.limitingKeyColumn(toViewportWidth: viewport.width)
         ScrollView([.horizontal, .vertical]) {
-            // For one pass after the columns change, the layout still describes the old ones.
-            if let layout, layout.order.count == columns.count {
-                grid(layout, width: max(layout.totalWidth, viewport.width))
-            }
+            grid(layout, width: max(layout.totalWidth, viewport.width))
         }
         .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
         .defaultScrollAnchor(.topLeading, for: .alignment)
         .buttonStyle(.plain)
-        .onGeometryChange(for: RowGridViewport.self) { proxy in
-            RowGridViewport(
-                width: proxy.size.width - proxy.safeAreaInsets.leading - proxy.safeAreaInsets.trailing,
-                leadingInset: proxy.safeAreaInsets.leading
-            )
-        } action: { viewport = $0 }
+        // Changes only on a resize or an inset change, so scrolling runs no body pass. The container is the
+        // visible width; the insets are where the scroll view reaches under a sidebar or into the safe area.
+        .onScrollGeometryChange(for: RowGridViewport.self) { geometry in
+            RowGridViewport(width: geometry.containerSize.width, leadingInset: geometry.contentInsets.leading)
+        } action: { _, newViewport in
+            viewport = newViewport
+        }
         // Reads only the key: the closure's other captures belong to the previous body.
         .onChange(of: layoutKey, initial: true) { _, key in
-            let measure = RowGridTextMeasure(dynamicTypeSize: key.dynamicTypeSize)
-            layout = RowGridLayout.make(
-                columnNames: key.columnNames,
-                rows: key.sample,
-                keyColumn: key.keyColumn,
-                metrics: key.metrics,
-                measure: measure.width(of:isHeader:)
-            )
+            computedLayout = (key, Self.makeLayout(key))
         }
+    }
+
+    // Until onChange stores the layout for these inputs, it is measured here, so no pass draws an empty grid.
+    private var currentLayout: RowGridLayout {
+        let key = layoutKey
+        if let computedLayout, computedLayout.key == key { return computedLayout.layout }
+        return Self.makeLayout(key)
+    }
+
+    private static func makeLayout(_ key: LayoutKey) -> RowGridLayout {
+        let measure = RowGridTextMeasure(dynamicTypeSize: key.dynamicTypeSize)
+        return RowGridLayout.make(
+            columnNames: key.columnNames,
+            rows: key.sample,
+            keyColumn: key.keyColumn,
+            metrics: key.metrics,
+            measure: measure.width(of:isHeader:)
+        )
     }
 
     private func grid(_ layout: RowGridLayout, width: CGFloat) -> some View {
@@ -259,12 +278,13 @@ private struct RowGridCell: ViewModifier {
             let inset = style.pinnedInset
             // Offset in the render pass, so a sideways scroll moves no state and rebuilds no row.
             content
-                .background(Color(.systemBackground))
+                // Reaches over the leading inset, so cells scrolled past the key never show beside it.
+                .background(Color(.systemBackground).padding(.leading, -inset))
                 .overlay(alignment: .trailing) {
                     Rectangle().fill(Color(.separator)).frame(width: style.hairline)
                 }
                 .visualEffect { content, proxy in
-                    content.offset(x: max(0, inset - proxy.frame(in: .scrollView).minX))
+                    content.offset(x: max(0, -proxy.frame(in: .scrollView).minX))
                 }
                 .zIndex(1)
         } else {
