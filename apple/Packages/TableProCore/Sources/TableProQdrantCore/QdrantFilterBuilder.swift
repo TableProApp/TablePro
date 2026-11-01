@@ -93,7 +93,7 @@ public enum QdrantFilterBuilder {
         guard let key = QdrantKeyPath.quoted(QdrantSchema.payloadKey(forColumn: filter.column)) else {
             throw QdrantFilterError.keyNotAddressable(column: filter.column)
         }
-        let field = Field(column: filter.column, key: key, type: collection.fieldType(ofColumn: filter.column) ?? .json)
+        let field = Field(column: filter.column, key: key, type: collection.indexType(ofColumn: filter.column))
 
         switch op {
         case "=":
@@ -131,9 +131,12 @@ public enum QdrantFilterBuilder {
     private struct Field {
         let column: String
         let key: String
-        let type: QdrantFieldType
+        // The payload index's type. Nil for a field nobody indexed, whose points may hold `"42"`, `42`
+        // or a list of either, so a value there matches every type its text can spell.
+        let type: QdrantFieldType?
 
         func equality(_ value: String) throws -> [String: Any] {
+            guard let type else { return anyType(equalTo: value) }
             switch type {
             case .keyword, .text, .string, .uuid:
                 return match(value)
@@ -150,14 +153,22 @@ public enum QdrantFilterBuilder {
             case .float, .datetime:
                 return try range(op: "=", bounds: ["gte": value, "lte": value])
             case .array, .json:
-                let trimmed = value.trimmingCharacters(in: .whitespaces)
-                if let number = QdrantValue.integer(trimmed) { return match(NSNumber(value: number)) }
-                if trimmed == "true" || trimmed == "false" { return match(trimmed == "true") }
-                if QdrantValue.number(trimmed) != nil { return try range(op: "=", bounds: ["gte": value, "lte": value]) }
-                return match(value)
+                return anyType(equalTo: value)
             case .geo, .object:
                 throw QdrantFilterError.wholeValueNotMatchable(column: column, type: type.rawValue)
             }
+        }
+
+        private func anyType(equalTo value: String) -> [String: Any] {
+            let trimmed = value.trimmingCharacters(in: .whitespaces)
+            var options = [match(value)]
+            if let number = QdrantValue.number(trimmed) {
+                options.append(["key": key, "range": ["gte": NSNumber(value: number), "lte": NSNumber(value: number)]])
+            }
+            if let flag = QdrantValue.bool(trimmed) {
+                options.append(match(flag))
+            }
+            return options.count == 1 ? options[0] : ["should": options]
         }
 
         // Qdrant's `match.any` takes strings alone or integers alone; anything else is one `should`.
@@ -177,7 +188,7 @@ public enum QdrantFilterBuilder {
         }
 
         func range(op: String, bounds: [String: String]) throws -> [String: Any] {
-            guard type.isOrdered || type == .json || type == .array else {
+            if let type, !type.isOrdered, type != .json, type != .array {
                 throw QdrantFilterError.comparisonNeedsNumberOrDate(column: column, op: op)
             }
             var range: [String: Any] = [:]
@@ -187,7 +198,7 @@ public enum QdrantFilterBuilder {
                     range[bound] = trimmed
                 } else if let number = QdrantValue.number(trimmed) {
                     range[bound] = NSNumber(value: number)
-                } else if type.isOrdered {
+                } else if type?.isOrdered == true {
                     throw QdrantValueError.notANumber(column: column, value: text)
                 } else {
                     range[bound] = trimmed
@@ -198,7 +209,7 @@ public enum QdrantFilterBuilder {
 
         // Without a full-text index Qdrant still matches the words, lowercased.
         func textMatch(_ value: String) throws -> [String: Any] {
-            guard type.holdsText else {
+            if let type, !type.holdsText {
                 throw QdrantFilterError.textMatchNeedsText(column: column, type: type.rawValue)
             }
             return ["key": key, "match": ["text": value]]
@@ -210,7 +221,7 @@ public enum QdrantFilterBuilder {
         }
 
         var isBlank: [String: Any] {
-            guard type.holdsText else { return isEmpty }
+            if let type, !type.holdsText { return isEmpty }
             return ["should": [isEmpty, match("")]]
         }
 

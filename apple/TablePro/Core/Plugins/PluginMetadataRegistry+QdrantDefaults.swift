@@ -34,7 +34,6 @@ extension PluginMetadataRegistry {
                     supportsOpportunisticTLS: false,
                     verifiesServerWithSystemTrust: true,
                     columnsAreSampled: true,
-                    filtersTypedByReadRows: true,
                     supportsPrincipalConnectionLimit: false
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(

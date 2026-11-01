@@ -53,6 +53,9 @@ for i in 1...250 {
     if i <= 100 { payload["when"] = String(format: "2024-01-01T%02d:%02d:00Z", i / 60, i % 60) }
     if i == 7 { payload["note"] = NSNull() }
     if i == 8 { payload["note"] = "" }
+    if i == 10 { payload["mixed"] = "42" }
+    if i == 11 { payload["mixed"] = 42 }
+    if i == 12 { payload["mixed"] = ["42"] }
     payload["meta"] = ["source": "doc\(i).pdf"]
     payload["a.b"] = "dotted"
     points.append(["id": i, "vector": ["": [Double(i), 1]], "payload": payload])
@@ -96,6 +99,8 @@ check(try await filtered([QdrantFilterSpec(column: "n", op: "IS NULL", value: ""
 check(try await filtered([QdrantFilterSpec(column: "note", op: "IS NULL", value: "")]) == 249, "IS NULL counts null and missing")
 check(try await filtered([QdrantFilterSpec(column: "note", op: "IS EMPTY", value: "")]) == 250, "IS EMPTY adds the empty string")
 check(try await filtered([QdrantFilterSpec(column: "a.b", op: "=", value: "dotted")]) == 250, "dotted top-level key")
+check(try await filtered([QdrantFilterSpec(column: "mixed", op: "=", value: "42")]) == 3, "an unindexed value matches as text, number and list")
+check(try await filtered([QdrantFilterSpec(column: "mixed", op: "NOT IN", value: "42, 7")]) == 247, "NOT IN excludes every spelling")
 
 func sorted(_ offset: Int, _ limit: Int, ascending: Bool = false) async throws -> [String] {
     try await client.sortedPage(

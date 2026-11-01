@@ -61,11 +61,12 @@ let sampleCollection = QdrantCollection(
         QdrantPayloadField(name: "body", type: .text, isIndexed: true),
         QdrantPayloadField(name: "pop", type: .float, isIndexed: true),
         QdrantPayloadField(name: "seen", type: .datetime, isIndexed: true),
+        QdrantPayloadField(name: "rank", type: .integer, isIndexed: true),
+        QdrantPayloadField(name: "flag", type: .bool, isIndexed: true),
+        QdrantPayloadField(name: "home", type: .geo, isIndexed: true),
         QdrantPayloadField(name: "count", type: .integer, isIndexed: false),
-        QdrantPayloadField(name: "active", type: .bool, isIndexed: false),
         QdrantPayloadField(name: "note", type: .string, isIndexed: false),
         QdrantPayloadField(name: "tags", type: .array, isIndexed: false),
-        QdrantPayloadField(name: "home", type: .geo, isIndexed: false),
         QdrantPayloadField(name: "a.b", type: .string, isIndexed: false)
     ]
 )

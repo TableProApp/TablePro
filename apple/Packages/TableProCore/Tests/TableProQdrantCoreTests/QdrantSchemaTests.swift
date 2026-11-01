@@ -45,7 +45,7 @@ struct QdrantSchemaTests {
         )
         #expect(QdrantSchema.columns(for: collection).map(\.name) == ["id", "a.b", "rank", "metadata", "tags", "vector"])
         #expect(collection.indexes.map(\.path) == ["\"a.b\"", "metadata.source", "rank", "tags[]"])
-        #expect(collection.fieldType(ofColumn: "metadata") == .object)
+        #expect(QdrantSchema.typeName(of: "metadata", in: collection) == "object")
     }
 
     @Test("A payload key named like a point column shows as payload.<key> and maps back")
@@ -83,7 +83,7 @@ struct QdrantSchemaTests {
         #expect(types["tags"] == "json(keyword)")
         #expect(types["mixed"] == "json(keyword)")
         #expect(types["city"] == "keyword")
-        #expect(collection.fieldType(ofColumn: "tags") == .keyword)
+        #expect(collection.indexType(ofColumn: "tags") == .keyword)
         let condition = try QdrantFilterBuilder.condition(
             for: QdrantFilterSpec(column: "tags", op: "=", value: "42"), collection: collection
         )
@@ -105,17 +105,16 @@ struct QdrantSchemaTests {
         #expect(types["late"] == nil)
     }
 
-    @Test("A sampled list filters by the type of its elements, so 42 matches the string it holds")
-    func sampledListElements() throws {
+    @Test("Only an index types a filter; a sampled field's type never decides what a value matches")
+    func filtersIgnoreSampledTypes() throws {
         let collection = QdrantCollection.parse(
-            name: "docs", info: info(vectors: ["size": 2]),
-            sample: [try point(#"{"id":1,"payload":{"tags":["42","a"],"ranks":[1,2]}}"#)]
+            name: "docs", info: info(vectors: ["size": 2], payloadSchema: ["rank": ["data_type": "integer"]]),
+            sample: [try point(#"{"id":1,"payload":{"tags":["42","a"],"mixed":"42","rank":1}}"#),
+                     try point(#"{"id":2,"payload":{"mixed":["42"]}}"#)]
         )
-        func condition(_ column: String, _ value: String) throws -> String {
-            canonical(try QdrantFilterBuilder.condition(for: QdrantFilterSpec(column: column, op: "=", value: value), collection: collection))
-        }
-        #expect(try condition("tags", "42") == #"{"key":"\"tags\"","match":{"value":"42"}}"#)
-        #expect(try condition("ranks", "2") == #"{"key":"\"ranks\"","match":{"value":2}}"#)
+        #expect(collection.indexType(ofColumn: "rank") == .integer)
+        #expect(collection.indexType(ofColumn: "tags") == nil)
+        #expect(collection.indexType(ofColumn: "mixed") == nil)
         #expect(QdrantSchema.columns(for: collection).first { $0.name == "tags" }?.type == "array")
     }
 
@@ -134,8 +133,8 @@ struct QdrantSchemaTests {
         let collection = QdrantCollection.parse(name: "docs", info: info(vectors: ["size": 2]), sample: sample)
         let widened = collection.including([try point(#"{"id":2,"payload":{"late":true,"rank":3}}"#)])
         #expect(widened.payloadFields.map(\.name) == ["city", "rank", "late"])
-        #expect(widened.fieldType(ofColumn: "rank") == .integer)
-        #expect(widened.fieldType(ofColumn: "late") == .bool)
+        #expect(QdrantSchema.typeName(of: "rank", in: widened) == "integer")
+        #expect(QdrantSchema.typeName(of: "late", in: widened) == "bool")
     }
 
     @Test("Named, multi and sparse vectors each get a column typed by their kind")

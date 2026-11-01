@@ -31,7 +31,8 @@ public extension QdrantClient {
         }
 
         let checkKey = "\(collection)\u{0}\(key)\u{0}\((try? QdrantJSON.text(ordered)) ?? "")"
-        if !cache.isSortChecked(checkKey) {
+        // Rechecked on every first page, so a refresh sees a list another client stored since.
+        if offset == 0 || !cache.isSortChecked(checkKey) {
             // A field with no range index matches no point, so without asking Qdrant to order by it
             // every point would land in the remainder and the page would look sorted by id.
             _ = try await query(collection: collection, body: orderBody(offset: 0, limit: 1, withData: false))

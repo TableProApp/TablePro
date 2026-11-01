@@ -55,11 +55,6 @@ public enum QdrantFieldType: String, Sendable, Equatable, CaseIterable {
         }
     }
 
-    static func elementType(of value: Any?) -> QdrantFieldType? {
-        guard let items = value as? [Any] else { return nil }
-        return items.compactMap(observed).reduce(nil) { merged, type in merged.map { $0.merged(with: type) } ?? type }
-    }
-
     func merged(with other: QdrantFieldType) -> QdrantFieldType {
         if self == other { return self }
         if Set([self, other]) == [.integer, .float] { return .float }
@@ -125,8 +120,6 @@ public struct QdrantPayloadField: Sendable, Equatable {
     public let hasTypedValue: Bool
     public let holdsLists: Bool
     public let holdsScalars: Bool
-    // The type of a sampled list's elements, so `tags = 42` on `["42"]` matches the string it holds.
-    public let elementType: QdrantFieldType?
 
     public init(
         name: String,
@@ -134,8 +127,7 @@ public struct QdrantPayloadField: Sendable, Equatable {
         isIndexed: Bool,
         hasTypedValue: Bool = true,
         holdsLists: Bool = false,
-        holdsScalars: Bool = false,
-        elementType: QdrantFieldType? = nil
+        holdsScalars: Bool = false
     ) {
         self.name = name
         self.type = type
@@ -143,11 +135,6 @@ public struct QdrantPayloadField: Sendable, Equatable {
         self.hasTypedValue = hasTypedValue
         self.holdsLists = holdsLists
         self.holdsScalars = holdsScalars
-        self.elementType = elementType
-    }
-
-    public var filterType: QdrantFieldType {
-        type == .array ? elementType ?? .json : type
     }
 
     // What a cell holds and is written back as. An indexed field that holds lists is `json(<type>)`,
@@ -192,8 +179,9 @@ public struct QdrantCollection: Sendable, Equatable {
         self.info = info
     }
 
-    public func fieldType(ofColumn column: String) -> QdrantFieldType? {
-        field(ofColumn: column)?.filterType
+    // Only an index states a field's type; a sample guesses it from 100 points.
+    public func indexType(ofColumn column: String) -> QdrantFieldType? {
+        field(ofColumn: column).flatMap { $0.isIndexed ? $0.type : nil }
     }
 
     public func cellTypeName(ofColumn column: String) -> String? {
@@ -213,13 +201,11 @@ public struct QdrantCollection: Sendable, Equatable {
         for point in points {
             for key in point.payloadKeys {
                 let observed = point.payload[key].flatMap(QdrantFieldType.observed)
-                let elements = QdrantFieldType.elementType(of: point.payload[key])
                 guard let index = position[key] else {
                     guard addingKeys else { continue }
                     position[key] = fields.count
                     fields.append(QdrantPayloadField(
-                        name: key, type: observed ?? .json, isIndexed: false, hasTypedValue: observed != nil,
-                        elementType: elements
+                        name: key, type: observed ?? .json, isIndexed: false, hasTypedValue: observed != nil
                     ))
                     continue
                 }
@@ -234,10 +220,7 @@ public struct QdrantCollection: Sendable, Equatable {
                     continue
                 }
                 let type = field.hasTypedValue ? field.type.merged(with: observed) : observed
-                let elementType = [field.elementType, elements].compactMap { $0 }.reduce(nil) { merged, next in
-                    merged.map { $0.merged(with: next) } ?? next
-                }
-                fields[index] = QdrantPayloadField(name: key, type: type, isIndexed: false, elementType: elementType)
+                fields[index] = QdrantPayloadField(name: key, type: type, isIndexed: false)
             }
         }
         return QdrantCollection(
