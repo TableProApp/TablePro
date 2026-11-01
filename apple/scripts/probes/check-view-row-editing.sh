@@ -639,8 +639,10 @@ one_line() {
 
 echo "Checking view row editing on $ENGINE at $HOST:$PORT"
 echo "Answers"
+VIEWS=()
+while IFS='|' read -r view _; do VIEWS+=("$view"); done <<< "$EXPECTED"
 ANSWERS="$(PROBE_ENGINE="$ENGINE" PROBE_CATALOG="$WORK/catalog.sh" "$WORK/harness/harness" \
-    "$CONTAINER" "$HARNESS_OPTION" $(printf '%s\n' "$EXPECTED" | cut -d '|' -f 1) 2> "$WORK/harness.log")"
+    "$CONTAINER" "$HARNESS_OPTION" "${VIEWS[@]}" 2> "$WORK/harness.log")"
 [ -s "$WORK/harness.log" ] && sed 's/^/  harness: /' "$WORK/harness.log"
 EDITABLE=""
 while IFS='|' read -r view expected; do
