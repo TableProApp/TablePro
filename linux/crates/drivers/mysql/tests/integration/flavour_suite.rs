@@ -527,3 +527,69 @@ async fn caching_sha2_without_tls_uses_rsa() {
     connection.close().await.expect("a close");
     root.close().await.expect("a close");
 }
+
+/// Each index's statement, run after the index is dropped, makes the
+/// same index again: a full-text index, a prefix on a TEXT column, and
+/// on MySQL a functional key part with a quoted literal. A B-tree on a
+/// MEMORY table, whose default is a hash, says USING BTREE.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn index_statements_recreate_their_indexes() {
+    for flavour in FLAVOURS {
+        let fixture = start(flavour).await;
+        let connection = connect(&fixture, false).await;
+        let mut statements = vec![
+            "CREATE TABLE notes (id int PRIMARY KEY, title varchar(50), body text)",
+            "CREATE TABLE cache (id int PRIMARY KEY, k int, INDEX cache_k USING BTREE (k)) ENGINE=MEMORY",
+            "CREATE UNIQUE INDEX notes_title ON notes (title DESC, id)",
+            "CREATE INDEX notes_body ON notes (body(12))",
+            "CREATE FULLTEXT INDEX notes_search ON notes (title, body)",
+        ];
+        if flavour == MysqlFlavour::Mysql {
+            statements.push("CREATE INDEX notes_tagged ON notes ((concat(title, 'it''s')))");
+        }
+        setup(connection.as_ref(), &statements).await;
+        let cache = crate::support::table("cache");
+        let cache_index = connection
+            .fetch_indexes(&cache, within(CALL))
+            .await
+            .expect("the indexes")
+            .into_iter()
+            .find(|index| index.name == "cache_k")
+            .expect("cache_k");
+        assert_eq!(
+            cache_index.definition.as_deref(),
+            Some("CREATE INDEX `cache_k` ON `tablepro`.`cache` (`k`) USING BTREE"),
+            "{flavour:?}: a MEMORY table keeps its B-tree"
+        );
+        let table = crate::support::table("notes");
+        let indexes = connection
+            .fetch_indexes(&table, within(CALL))
+            .await
+            .expect("the indexes");
+
+        assert_eq!(
+            indexes
+                .iter()
+                .find(|index| index.primary)
+                .map(|index| &index.definition),
+            Some(&None),
+            "{flavour:?}: the primary key is a constraint"
+        );
+        for index in indexes.iter().filter(|index| !index.primary) {
+            let statement = index.definition.clone().expect("a statement");
+            let drop = format!("DROP INDEX `{}` ON `notes`", index.name);
+            setup(connection.as_ref(), &[drop.as_str(), statement.as_str()]).await;
+            let remade = connection
+                .fetch_indexes(&table, within(CALL))
+                .await
+                .expect("the indexes");
+            assert_eq!(
+                remade.iter().find(|remade| remade.name == index.name),
+                Some(index),
+                "{flavour:?}: {statement}"
+            );
+        }
+        connection.close().await.expect("a close");
+    }
+}

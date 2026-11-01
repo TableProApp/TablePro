@@ -82,11 +82,7 @@ impl SqlDialect for ClickHouseDialect {
     }
 
     fn quote_identifier(&self, name: &str) -> String {
-        let mut quoted = String::with_capacity(name.len() + 2);
-        quoted.push('`');
-        escape_into(name, &mut quoted);
-        quoted.push('`');
-        quoted
+        quote(name)
     }
 
     fn placeholder(&self, ordinal: usize, value: Value, target: BindTarget<'_>) -> Result<Placeholder, BindError> {
@@ -222,6 +218,14 @@ impl SqlDialect for ClickHouseDialect {
     fn key_probe(&self, table_sql: &str, predicate_sql: &str) -> String {
         format!("SELECT count() FROM (SELECT 1 FROM {table_sql} WHERE {predicate_sql} LIMIT 2)")
     }
+}
+
+pub(crate) fn quote(name: &str) -> String {
+    let mut quoted = String::with_capacity(name.len() + 2);
+    quoted.push('`');
+    escape_into(name, &mut quoted);
+    quoted.push('`');
+    quoted
 }
 
 fn escape_into(text: &str, out: &mut String) {

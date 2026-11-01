@@ -653,6 +653,7 @@ mod tests {
             unique: false,
             primary: false,
             predicate: Some("([sku] IS NOT NULL)".to_owned()),
+            definition: None,
         }];
         draft.foreign_keys = vec![tablepro_core::ForeignKeyInfo {
             name: "lines_order_fk".to_owned(),

@@ -338,3 +338,67 @@ async fn like_escape_matches_literal_underscore_and_percent() {
         Value::Text("x".to_owned())
     );
 }
+
+/// Each index's statement, run after the index is dropped, makes the
+/// same index again: clustered, filtered with INCLUDE columns, and a
+/// UNIQUE constraint. A columnstore index has no statement.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn index_statements_recreate_their_indexes() {
+    let fixture = start().await;
+    let connection = connect(&fixture, false).await;
+    setup(
+        connection.as_ref(),
+        &[
+            "CREATE TABLE dbo.ledger (id int NOT NULL CONSTRAINT ledger_pk PRIMARY KEY NONCLUSTERED, \
+             code nvarchar(20) NOT NULL CONSTRAINT ledger_code UNIQUE, [a&b] int, amount int, note nvarchar(50))",
+            "CREATE CLUSTERED INDEX ledger_amount ON dbo.ledger (amount DESC)",
+            "CREATE NONCLUSTERED INDEX ledger_open ON dbo.ledger (code, id DESC) INCLUDE ([a&b], note) \
+             WHERE amount > 0",
+            "CREATE NONCLUSTERED COLUMNSTORE INDEX ledger_columns ON dbo.ledger (amount)",
+        ],
+    )
+    .await;
+    let table = dbo("ledger");
+    let indexes = connection
+        .fetch_indexes(&table, within(CALL))
+        .await
+        .expect("the indexes");
+
+    assert!(
+        indexes
+            .iter()
+            .filter(|index| index.primary || index.name == "ledger_columns")
+            .all(|index| index.definition.is_none()),
+        "{indexes:#?}"
+    );
+    let open = indexes
+        .iter()
+        .find(|index| index.name == "ledger_open")
+        .expect("ledger_open");
+    assert_eq!(
+        open.definition.as_deref(),
+        Some(
+            "CREATE NONCLUSTERED INDEX [ledger_open] ON [dbo].[ledger] ([code], [id] DESC) \
+             INCLUDE ([a&b], [note]) WHERE ([amount]>(0))"
+        )
+    );
+    for index in indexes.iter().filter(|index| index.definition.is_some()) {
+        let statement = index.definition.clone().unwrap_or_default();
+        let drop = match index.name.as_str() {
+            "ledger_code" => "ALTER TABLE dbo.ledger DROP CONSTRAINT ledger_code".to_owned(),
+            name => format!("DROP INDEX [{name}] ON dbo.ledger"),
+        };
+        setup(connection.as_ref(), &[drop.as_str(), statement.as_str()]).await;
+        let remade = connection
+            .fetch_indexes(&table, within(CALL))
+            .await
+            .expect("the indexes");
+        assert_eq!(
+            remade.iter().find(|remade| remade.name == index.name),
+            Some(index),
+            "{statement}"
+        );
+    }
+    connection.close().await.expect("a close");
+}
