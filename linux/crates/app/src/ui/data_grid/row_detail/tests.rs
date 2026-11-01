@@ -343,7 +343,7 @@ fn the_values_redraw_when_the_row_changes() {
         row_key: key(1),
         col: 1,
         original: Value::Text("A".into()),
-        value: Value::Text("changed".into()),
+        value: CellInput::Value(Value::Text("changed".into())),
     });
     grid.grid.apply_delta(&delta);
     drain_main_context();

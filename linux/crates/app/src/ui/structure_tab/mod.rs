@@ -355,6 +355,14 @@ impl StructureTab {
         )
     }
 
+    pub fn connect_open_in_editor<F: Fn(&Self, String) + 'static>(&self, f: F) -> glib::SignalHandlerId {
+        self.connect_closure(
+            "open-in-editor",
+            false,
+            glib::closure_local!(move |tab: &Self, sql: String| f(tab, sql)),
+        )
+    }
+
     /// A read of the table's definition started or ended.
     pub fn connect_loading_changed<F: Fn(&Self, bool) + 'static>(&self, f: F) -> glib::SignalHandlerId {
         self.connect_closure(
@@ -385,6 +393,7 @@ impl StructureTab {
             StructureTabOutput::ShowToast(text) => self.emit_by_name::<()>("toast", &[&text]),
             StructureTabOutput::ShowAlert { title, body } => self.emit_by_name::<()>("alert", &[&title, &body]),
             StructureTabOutput::LoadingChanged(loading) => self.emit_by_name::<()>("loading-changed", &[&loading]),
+            StructureTabOutput::OpenInEditor(sql) => self.emit_by_name::<()>("open-in-editor", &[&sql]),
         }
     }
 }
@@ -472,6 +481,8 @@ pub(crate) enum StructureTabOutput {
     },
     /// A read of the definition started or ended, for the tab bar.
     LoadingChanged(bool),
+    /// SQL the user asked to see in an editor tab.
+    OpenInEditor(String),
 }
 
 impl StructureModel {

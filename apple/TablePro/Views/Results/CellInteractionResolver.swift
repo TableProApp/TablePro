@@ -99,7 +99,7 @@ internal struct CellInteractionResolver {
         case .phpSerialized:
             return .viewPhpSerialized
         case .raw, .text, .uuid, .uuidSwappedTime, .unixTimestamp, .unixTimestampMillis, .messagePack, .protobuf,
-             .none:
+             .igbinary, .avro, .none:
             return plainText(for: context, isReadOnly: isReadOnly)
         }
     }

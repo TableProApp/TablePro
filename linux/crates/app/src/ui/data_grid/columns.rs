@@ -448,12 +448,14 @@ impl DataGrid {
         self.imp().columns.borrow_mut().handlers.extend(handlers);
     }
 
-    /// A column moved, went or came back: the layout keeps it, and a
-    /// search counts only the columns on screen, in their order.
+    /// A column moved, went or came back: the layout keeps it, a search
+    /// counts only the columns on screen, in their order, and the focused
+    /// column may have gained or lost a neighbour to move past.
     fn columns_moved(&self) {
         self.keep_filler_last();
         self.record_layout();
         self.find_rows_changed();
+        self.refresh_actions();
     }
 
     // GTK drops a header dragged onto the filler after it, and lets the
@@ -565,6 +567,53 @@ impl DataGrid {
             false => return,
         };
         self.set_column_width(index, Some(width));
+    }
+
+    /// Move the column past the next column on screen, as a header drag
+    /// would, so the table keeps the order. Left and right are on screen,
+    /// which in a right-to-left locale is the reverse of the view's order.
+    pub(super) fn move_column(&self, index: usize, left: bool) {
+        let Some((column, destination)) = self.move_destination(index, left) else {
+            self.column_view().error_bell();
+            return;
+        };
+        let focused = self
+            .focused_cell()
+            .and_then(|cell| Some((cell.position()?, cell.column())));
+        self.column_view().insert_column(destination, &column);
+        if let Some((position, column)) = focused {
+            self.focus_cell(position, column);
+        }
+    }
+
+    pub(super) fn can_move_column(&self, index: usize, left: bool) -> bool {
+        self.move_destination(index, left).is_some()
+    }
+
+    /// The column and the position that puts it past its neighbour, which
+    /// skips hidden columns and is never the filler.
+    fn move_destination(&self, index: usize, left: bool) -> Option<(gtk::ColumnViewColumn, u32)> {
+        let (column, filler) = {
+            let set = self.imp().columns.borrow();
+            (set.view_column(index)?.clone(), set.filler.clone())
+        };
+        let columns = self.column_view().columns();
+        let at =
+            (0..columns.n_items()).find(|position| columns.item(*position).as_ref() == Some(column.upcast_ref()))?;
+        let shown = |position: &u32| {
+            columns
+                .item(*position)
+                .and_downcast::<gtk::ColumnViewColumn>()
+                .is_some_and(|other| other.is_visible() && Some(&other) != filler.as_ref())
+        };
+        let toward_start = left != (self.direction() == gtk::TextDirection::Rtl);
+        // `insert_column` takes the column out first, so the neighbour's
+        // own position puts it on the far side either way.
+        let destination = match toward_start {
+            true => (0..at).rev().find(shown),
+            false => (at + 1..columns.n_items()).find(shown),
+        }?;
+        Some((column, destination))
     }
 
     /// The data columns on screen, in the order the user arranged them.

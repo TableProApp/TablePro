@@ -13,6 +13,7 @@ internal struct MySQLFlavorMismatchError: Error, Equatable {
         case databendNeedsItsOwnType
         case notDatabend
         case notOceanBase
+        case notStarRocks
     }
 
     let kind: Kind
@@ -27,6 +28,8 @@ extension MySQLFlavorMismatchError: PluginDriverError {
             return String(localized: "This server did not identify as Databend. Check the host and port of its MySQL handler.")
         case .notOceanBase:
             return String(localized: "This server did not identify as OceanBase. Check the host and port of its MySQL mode tenant.")
+        case .notStarRocks:
+            return String(localized: "This server did not identify as StarRocks. Check the host and the MySQL port of its frontend.")
         }
     }
 }
@@ -38,6 +41,8 @@ extension MySQLPluginDriver {
             return .databend
         case MySQLServerFlavor.oceanbaseVariant:
             return .oceanbase(version: nil)
+        case MySQLServerFlavor.starrocksVariant:
+            return .starrocks
         default:
             return .mysql
         }
@@ -66,6 +71,17 @@ extension MySQLPluginDriver {
 
         if bannerFlavor.isDatabend {
             throw MySQLFlavorMismatchError(kind: .databendNeedsItsOwnType)
+        }
+
+        if variant == MySQLServerFlavor.starrocksVariant {
+            guard try await probeSucceeds(
+                MySQLFlavorResolution.starrocksProbe,
+                on: connection,
+                deadline: deadline
+            ) else {
+                throw MySQLFlavorMismatchError(kind: .notStarRocks)
+            }
+            return .starrocks
         }
 
         if variant == MySQLServerFlavor.oceanbaseVariant {

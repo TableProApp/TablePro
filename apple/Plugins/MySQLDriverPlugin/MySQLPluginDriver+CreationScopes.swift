@@ -9,7 +9,7 @@ import TableProPluginKit
 
 internal extension MySQLPluginDriver {
     func fetchRoutineCreationScope(_ routine: PluginRoutineInfo) async throws -> PluginStatementScope? {
-        guard !flavor.isDatabend, serverHasInformationSchema else { return nil }
+        guard flavor.hasMySQLObjectCatalogs, serverHasInformationSchema else { return nil }
         let exactSchema = await schemaNamesAreCaseSensitive()
         let query = MySQLObjectQueries.routineCreationSettings(
             schema: routineSchema(routine.schema),
@@ -22,7 +22,7 @@ internal extension MySQLPluginDriver {
     }
 
     func fetchTriggerCreationScope(_ trigger: PluginTriggerInfo) async throws -> PluginStatementScope? {
-        guard !flavor.isDatabend, holdsForServer(MySQLServerVersion.hasTriggerCatalog(banner:flavor:)) else {
+        guard flavor.hasMySQLObjectCatalogs, holdsForServer(MySQLServerVersion.hasTriggerCatalog(banner:flavor:)) else {
             return nil
         }
         let query = MySQLObjectQueries.triggerCreationSettings(schema: routineSchema(trigger.schema), name: trigger.name)
@@ -31,7 +31,7 @@ internal extension MySQLPluginDriver {
     }
 
     func fetchEventCreationScope(_ event: PluginEventInfo) async throws -> PluginStatementScope? {
-        guard !flavor.isDatabend, holdsForServer(MySQLServerVersion.hasPartitionAndEventCatalogs(banner:flavor:)) else {
+        guard flavor.hasMySQLObjectCatalogs, holdsForServer(MySQLServerVersion.hasPartitionAndEventCatalogs(banner:flavor:)) else {
             return nil
         }
         let exactSchema = await schemaNamesAreCaseSensitive()

@@ -8,7 +8,7 @@ import Foundation
 @testable import TablePro
 import Testing
 
-/// What a binary cell is handed to the inspector as: one character per stored byte.
+// What a binary cell is handed to the inspector as: one character per stored byte.
 private func binaryText(hex: String) -> String {
     var bytes: [UInt8] = []
     var rest = Substring(hex)
@@ -23,9 +23,9 @@ private enum GeometrySample {
     static let wkbPoint = "0101000000000000000000F03F0000000000000040"
     static let ewkbPoint = "0101000020E6100000000000000000F03F0000000000000040"
     static let geoJsonPoint = #"{"type":"Point","coordinates":[-122.4194,37.7749]}"#
-    /// A GeoPackage blob: the `GP` header and SRS id ahead of the same WKB point.
+    // A GeoPackage blob: the `GP` header and SRS id ahead of the same WKB point.
     static let geoPackagePoint = "47500001E6100000" + wkbPoint
-    /// A SpatiaLite blob: start byte, byte order, SRID, bounding box, then the point and an end byte.
+    // A SpatiaLite blob: start byte, byte order, SRID, bounding box, then the point and an end byte.
     static let spatiaLitePoint = "0001E6100000"
         + "000000000000F03F0000000000000040000000000000F03F0000000000000040"
         + "7C01000000000000000000F03F0000000000000040FE"
@@ -65,14 +65,21 @@ struct FieldEditorResolverTests {
 
     @Test("A binary decoder format on a binary column opens the decoded viewer")
     func binaryDecoderFormat() {
-        let kind = FieldEditorResolver.resolve(
-            for: .blob(rawType: "BLOB"),
-            isLongText: false,
-            originalValue: "\u{82}",
-            displayFormatOverride: .protobuf,
-            isBinaryValue: true
-        )
-        #expect(kind == .binaryValue(.protobuf))
+        let schemaID = String(repeating: "b", count: 32)
+        let formats: [(ValueDisplayFormat, BinaryValueFormat)] = [
+            (.protobuf, .protobuf), (.messagePack, .messagePack), (.igbinary, .igbinary),
+            (.avro(schemaID: schemaID), .avro(schemaID: schemaID)),
+        ]
+        for (format, expected) in formats {
+            let kind = FieldEditorResolver.resolve(
+                for: .blob(rawType: "BLOB"),
+                isLongText: false,
+                originalValue: "\u{82}",
+                displayFormatOverride: format,
+                isBinaryValue: true
+            )
+            #expect(kind == .binaryValue(expected), "\(format)")
+        }
         let null = FieldEditorResolver.resolve(
             for: .blob(rawType: "BLOB"),
             isLongText: false,
@@ -295,15 +302,15 @@ struct FieldEditorResolverTests {
         }
     }
 
-    /// PostgreSQL hands the raw EWKB hex over as text when its `ST_AsEWKT` rewrite fails.
+    // PostgreSQL hands the raw EWKB hex over as text when its `ST_AsEWKT` rewrite fails.
     @Test("EWKB hex text in a spatial column resolves to the geometry field")
     func spatialEwkbHexTextResolvesToGeometry() {
         #expect(resolveSpatial(GeometrySample.ewkbPoint) == geometry(.multiLine, .spatialColumn))
         #expect(resolveSpatial(GeometrySample.wkbPoint) == geometry(.multiLine, .spatialColumn))
     }
 
-    /// The JSON rule used to answer first, so a spatial column holding GeoJSON was a JSON field
-    /// and nothing downstream knew it was a geometry.
+    // The JSON rule used to answer first, so a spatial column holding GeoJSON was a JSON field
+    // and nothing downstream knew it was a geometry.
     @Test("JSON-shaped geometry in a spatial column is a geometry field over the JSON editor")
     func spatialJsonShapedValueKeepsTheJsonEditor() {
         let values = [
@@ -329,7 +336,7 @@ struct FieldEditorResolverTests {
         }
     }
 
-    /// SQL Server, Oracle and Teradata send text no reader takes, and MySQL falls back to `0x` hex.
+    // SQL Server, Oracle and Teradata send text no reader takes, and MySQL falls back to `0x` hex.
     @Test("Spatial text no reader takes keeps the editor it had")
     func unreadableSpatialTextKeepsItsEditor() {
         #expect(resolveSpatial("0xE61000000101000000000000000000F03F0000000000000040") == .singleLine)
@@ -350,8 +357,8 @@ struct FieldEditorResolverTests {
         }
     }
 
-    /// WKB type 8 is CIRCULARSTRING and 10 is CURVEPOLYGON. The reader names the type from the
-    /// header, so the Map segment can say which one it cannot draw, as it does for text.
+    // WKB type 8 is CIRCULARSTRING and 10 is CURVEPOLYGON. The reader names the type from the
+    // header, so the Map segment can say which one it cannot draw, as it does for text.
     @Test("WKB of a type the map cannot draw is still a geometry field over the hex editor")
     func unsupportedBinaryTypeIsStillGeometry() {
         let zero = "0000000000000000"
@@ -370,8 +377,8 @@ struct FieldEditorResolverTests {
         }
     }
 
-    /// The field was a text field over the Latin-1 spelling of the bytes, where one keystroke
-    /// staged that string over the blob.
+    // The field was a text field over the Latin-1 spelling of the bytes, where one keystroke
+    // staged that string over the blob.
     @Test("Bytes in a spatial column that are not WKB get the hex editor, never a text field")
     func unreadableBinarySpatialIsHex() {
         let blobs = [
@@ -388,8 +395,8 @@ struct FieldEditorResolverTests {
         #expect(resolveSpatial(nil, isBinaryValue: true) == .blobHex)
     }
 
-    /// The text readers never see a blob: its bytes can spell WKT, and the hex of a short one is a
-    /// valid geohash.
+    // The text readers never see a blob: its bytes can spell WKT, and the hex of a short one is a
+    // valid geohash.
     @Test("A binary cell is read as bytes, not as the text its bytes spell")
     func binarySpatialIsNotReadAsText() {
         #expect(resolveSpatial("POINT(1 2)", isBinaryValue: true) == .blobHex)
@@ -421,8 +428,8 @@ struct FieldEditorResolverTests {
         }
     }
 
-    /// The sniffing reader takes each of these for a point. A JSON column is held to GeoJSON, or
-    /// every pair of numbers and every document with `lat` and `lon` would open on a map.
+    // The sniffing reader takes each of these for a point. A JSON column is held to GeoJSON, or
+    // every pair of numbers and every document with `lat` and `lon` would open on a map.
     @Test("JSON that is not GeoJSON stays a JSON field")
     func jsonThatIsNotGeoJsonStaysJson() {
         let values = [
@@ -487,8 +494,8 @@ struct FieldEditorResolverTests {
 
     // MARK: - Large geometry values
 
-    /// No reader accepts this after any opening, so a large value that still resolves to a
-    /// geometry field was classified by how it opens, not read in full.
+    // No reader accepts this after any opening, so a large value that still resolves to a
+    // geometry field was classified by how it opens, not read in full.
     private static let unreadableTail = String(repeating: "x", count: 2_000_000)
 
     @Test("A large spatial value is classified by how it opens")
@@ -598,8 +605,8 @@ struct FieldEditorResolverImageTests {
         #expect(kind == .image(.svg))
     }
 
-    /// The image branch runs before the blob branch, or a PNG in a BLOB column would only ever be
-    /// a hex dump in the inspector while the grid popover drew it.
+    // The image branch runs before the blob branch, or a PNG in a BLOB column would only ever be
+    // a hex dump in the inspector while the grid popover drew it.
     @Test("PNG bytes in a blob column resolve to the image editor")
     func pngBlobResolvesToImage() throws {
         let value = try #require(String(data: encodedPng(), encoding: .isoLatin1))
@@ -670,11 +677,11 @@ struct FieldEditorResolverImageTests {
         #expect(kind == .arrayElements(element: .scalar, values: []))
     }
 
-    /// `jsonb[]` and `jsonb[][]` are one type in PostgreSQL's catalog and any array column may
-    /// carry a dimension prefix, so the declared type cannot rule either out on a given row. The
-    /// text editor over the raw literal is the lossless fallback, as it is in the grid, and which
-    /// text editor is the value's own length talking: both literals here sit under
-    /// `multiLineValueThreshold`.
+    // `jsonb[]` and `jsonb[][]` are one type in PostgreSQL's catalog and any array column may
+    // carry a dimension prefix, so the declared type cannot rule either out on a given row. The
+    // text editor over the raw literal is the lossless fallback, as it is in the grid, and which
+    // text editor is the value's own length talking: both literals here sit under
+    // `multiLineValueThreshold`.
     @Test("A literal the element list cannot represent falls back to the text editor")
     func unrepresentableArrayFallsBackToText() {
         #expect(
@@ -693,8 +700,8 @@ struct FieldEditorResolverImageTests {
         )
     }
 
-    /// An engine whose list literal is not PostgreSQL's reaches the same gate and fails it, so the
-    /// classifier's engine-blind `[]` rule cannot hand another driver's value to this editor.
+    // An engine whose list literal is not PostgreSQL's reaches the same gate and fails it, so the
+    // classifier's engine-blind `[]` rule cannot hand another driver's value to this editor.
     @Test("A list literal from another engine does not reach the element editor")
     func foreignListLiteralFallsBackToText() {
         let kind = FieldEditorResolver.resolve(
@@ -705,9 +712,9 @@ struct FieldEditorResolverImageTests {
         #expect(kind == .singleLine)
     }
 
-    /// The parse is also what scopes the editor to the engines whose arrays are written this way:
-    /// the classifier's `[]` rule takes no engine, and a document store's `object[]` classifies the
-    /// same, so a field with no literal to read must not be offered a list that commits `{…}`.
+    // The parse is also what scopes the editor to the engines whose arrays are written this way:
+    // the classifier's `[]` rule takes no engine, and a document store's `object[]` classifies the
+    // same, so a field with no literal to read must not be offered a list that commits `{…}`.
     @Test("An array column with no value keeps the plain editor")
     func absentArrayValueKeepsPlainEditor() {
         #expect(
@@ -720,8 +727,8 @@ struct FieldEditorResolverImageTests {
         )
     }
 
-    /// The labels arrive separately in `TableRows.columnEnumValues` and are injected into the type
-    /// before the inspector resolves it, so they have to reach the element inside the array.
+    // The labels arrive separately in `TableRows.columnEnumValues` and are injected into the type
+    // before the inspector resolves it, so they have to reach the element inside the array.
     @Test("An enum array carries its declared labels into the element editor")
     func enumArrayCarriesItsLabels() {
         let labels = ["sad", "ok", "happy"]
@@ -734,8 +741,8 @@ struct FieldEditorResolverImageTests {
         )
     }
 
-    /// An empty array literal is itself valid JSON, so resolving the array before the JSON branch
-    /// is what keeps `{}` out of the JSON editor.
+    // An empty array literal is itself valid JSON, so resolving the array before the JSON branch
+    // is what keeps `{}` out of the JSON editor.
     @Test("An empty array opens the element editor rather than the JSON editor")
     func emptyArrayResolvesToElements() {
         let kind = FieldEditorResolver.resolve(

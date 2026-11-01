@@ -36,6 +36,12 @@ macro_rules! ddl_conformance_suite {
         $crate::__conformance_case! {
             $docker,
             $engine as ConformanceEngine,
+            index_statement_recreates_the_index,
+            $crate::conformance::cases::ddl::index_statement_recreates_the_index::<$engine>
+        }
+        $crate::__conformance_case! {
+            $docker,
+            $engine as ConformanceEngine,
             builtin_snippets_run_as_written,
             $crate::conformance::cases::snippets::builtin_snippets_run_as_written::<$engine>
         }

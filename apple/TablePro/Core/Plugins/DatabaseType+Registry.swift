@@ -175,7 +175,7 @@ extension DatabaseType {
                 Preferred tries TLS first, falls back to plain. Matches psql and DataGrip defaults. \
                 Required by AWS RDS, Cloud SQL, Heroku, Supabase, Neon.
                 """)
-        case "KingbaseES":
+        case "KingbaseES", "StarRocks":
             return String(localized: "Preferred tries TLS first, falls back to plain.")
         case _ where pluginTypeId == "MySQL":
             return String(localized: """

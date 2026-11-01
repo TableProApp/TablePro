@@ -101,6 +101,10 @@ pub(super) fn build_reason(error: &BuildSqlError) -> String {
             "field {field} has a dot in its name or starts with $, so it can only be changed in the editor",
             &[("field", name)],
         ),
+        BuildSqlError::ServerComputedValue { name } => gettext_f(
+            "column {column} cannot be set to a value the server computes on this database",
+            &[("column", name)],
+        ),
         BuildSqlError::Bind(bind) => bind_reason(bind),
         BuildSqlError::NoRowIdentity
         | BuildSqlError::ReadOnlyRows

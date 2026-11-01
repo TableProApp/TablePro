@@ -4823,6 +4823,18 @@ msgstr "_Sửa cấu trúc"
 msgid "Show _CREATE TABLE"
 msgstr "_Hiện CREATE TABLE"
 
+#: crates/app/src/ui/structure_tab/indexes.rs
+msgid "Show _CREATE INDEX"
+msgstr "_Hiện CREATE INDEX"
+
+#: crates/app/src/ui/structure_tab/indexes.rs
+msgid "_Copy CREATE INDEX"
+msgstr "Sao _chép CREATE INDEX"
+
+#: crates/app/src/ui/structure_tab/indexes.rs
+msgid "Index Options"
+msgstr "Tùy chọn chỉ mục"
+
 #: crates/app/src/ui/workspace/sidebar/sidebar_menu.rs
 msgid "_Import CSV…"
 msgstr "_Nhập CSV…"

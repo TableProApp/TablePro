@@ -9,7 +9,7 @@ use super::RowDetailPane;
 use crate::services::change_tracker::CellState;
 use crate::services::grid::{GridColumn, auto_filled_sentinel, display_text};
 use crate::ui::data_grid::tracked_values::cell_description;
-use crate::ui::data_grid::{DataGrid, GridRow, TrackedValues};
+use crate::ui::data_grid::{DataGrid, GridRow, ServerValue, TrackedValues};
 use crate::ui::handler_guard::HandlerGuard;
 
 /// The data columns in the order the fields list shows them: the ones on
@@ -42,11 +42,12 @@ pub struct FieldValue {
 
 pub fn field_value(tracked: &TrackedValues, row: &GridRow, column: &GridColumn) -> FieldValue {
     let mark = tracked.mark(row, column.index);
-    let (text, placeholder, null) = tracked.with_value(row, column.index, |value, default| match (default, value) {
-        (true, _) if column.auto_filled() => (auto_filled_sentinel(), true, false),
-        (true, _) => ("DEFAULT".to_owned(), true, false),
-        (false, Value::Null) => ("NULL".to_owned(), true, true),
-        (false, value) => {
+    let (text, placeholder, null) = tracked.with_value(row, column.index, |value, computed| match (computed, value) {
+        (Some(ServerValue::Default), _) if column.auto_filled() => (auto_filled_sentinel(), true, false),
+        (Some(ServerValue::Default), _) => ("DEFAULT".to_owned(), true, false),
+        (Some(ServerValue::Expression(expression)), _) => (expression.sql.to_owned(), true, false),
+        (None, Value::Null) => ("NULL".to_owned(), true, true),
+        (None, value) => {
             let mut scratch = String::new();
             let shown = display_text(value, &column.column_type, &mut scratch);
             (shown.text.to_owned(), shown.placeholder, false)

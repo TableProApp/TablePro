@@ -76,6 +76,7 @@ struct ShortcutUniquenessTests {
         ShortcutAction.showTablesList, .showFavoritesList, .restorePreviousValues,
         .newAgentSession, .openAgentSession, .closeAgentSession, .deleteAgentSession, .newAIConversation,
         .copyPath, .copyRelativePath, .setCellsToValue, .pinTab,
+        .showServerDashboard, .showQueryInsights,
     ])
     func newlyRebindableCommandsAreListable(action: ShortcutAction) {
         #expect(!action.displayName.isEmpty)

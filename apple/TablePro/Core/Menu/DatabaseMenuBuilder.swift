@@ -5,10 +5,7 @@
 
 import AppKit
 
-/// "Open Database" and "Close Tabs for Other Databases" read Database or Schema
-/// depending on what the driver switches between. That is a closed two-string set
-/// driven by `ContainerSwitchTarget`, not an interpolated driver name, because
-/// System Settings binds an App Shortcut to a menu item's exact literal title.
+// Database-or-Schema titles are a closed set, never interpolated: System Settings binds an App Shortcut to the exact title.
 @MainActor
 enum DatabaseMenuBuilder {
     static func build(keyboard: KeyboardSettings) -> NSMenuItem {
@@ -64,10 +61,7 @@ enum DatabaseMenuBuilder {
                 String(localized: "Search Database…"),
                 action: #selector(MainSplitViewController.searchDatabase(_:))
             ),
-            /// The sidebar's own Copy To and Duplicate Database, mirrored so both are reachable
-            /// from the keyboard. The menu acts on the database being browsed, which is what a
-            /// command with no clicked row can mean. Spelled exactly as the sidebar and the sheet
-            /// spell it: one command carrying two names reads as two commands.
+            // Mirrors the sidebar, acting on the browsed database; one command with two names reads as two.
             MenuItemFactory.item(
                 String(localized: "Copy To…"),
                 action: #selector(MainSplitViewController.copyObjectsToDatabase(_:))
@@ -85,8 +79,7 @@ enum DatabaseMenuBuilder {
                 String(localized: "Edit View Definition…"),
                 action: #selector(MainSplitViewController.editViewDefinition(_:))
             ),
-            /// The sidebar's own per-object commands, mirrored so each is reachable from the menu
-            /// bar and the keyboard, and spelled exactly as the sidebar spells them.
+            // The sidebar's per-object commands, spelled as the sidebar spells them.
             MenuItemFactory.item(
                 String(localized: "Show DDL"),
                 action: #selector(MainSplitViewController.showObjectDDL(_:))
@@ -133,7 +126,9 @@ enum DatabaseMenuBuilder {
             ),
             MenuItemFactory.item(
                 String(localized: "Server Dashboard"),
-                action: #selector(MainSplitViewController.showServerDashboard(_:))
+                action: #selector(MainSplitViewController.showServerDashboard(_:)),
+                shortcut: .showServerDashboard,
+                keyboard: keyboard
             ),
             MenuItemFactory.item(
                 String(localized: "Users & Roles"),
@@ -141,12 +136,16 @@ enum DatabaseMenuBuilder {
             ),
             MenuItemFactory.item(
                 String(localized: "Query Insights"),
-                action: #selector(MainSplitViewController.showQueryInsights(_:))
+                action: #selector(MainSplitViewController.showQueryInsights(_:)),
+                shortcut: .showQueryInsights,
+                keyboard: keyboard
+            ),
+            MenuItemFactory.item(
+                String(localized: "Table Health"),
+                action: #selector(MainSplitViewController.showTableHealth(_:))
             ),
             MenuItemFactory.separator,
-            /// No ellipsis: the HIG reserves one for an action that needs more information before
-            /// it can complete, and this needs none. It validates to disabled for every connection
-            /// whose driver holds no file, which is all of them but the embedded engines.
+            // No ellipsis: the HIG keeps one for a command that asks for more input, and this asks for none.
             MenuItemFactory.item(
                 String(localized: "Release File Lock"),
                 action: #selector(MainSplitViewController.releaseFileLock(_:))
