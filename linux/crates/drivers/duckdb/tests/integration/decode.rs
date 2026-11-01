@@ -162,3 +162,26 @@ async fn a_union_in_a_table_reads_as_a_value_with_no_literal() {
     }
     connection.close().await.unwrap();
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn every_cell_expression_is_evaluated_by_the_engine() {
+    let file = TestFile::new();
+    let connection = file.open().await;
+    apply(
+        connection.as_ref(),
+        &[
+            "CREATE TABLE stamps (id INTEGER PRIMARY KEY, seen TIMESTAMP, seen_tz TIMESTAMPTZ, day DATE, clock TIME, \
+             defaulted TIMESTAMP DEFAULT TIMESTAMP '2000-01-01')",
+            "INSERT INTO stamps (id) VALUES (1)",
+        ],
+    )
+    .await
+    .expect("the table");
+
+    let checked =
+        tablepro_test_support::check_cell_expressions(connection.as_ref(), &TableRef::unqualified("stamps"), call)
+            .await
+            .expect("every expression saves");
+
+    assert_eq!(checked, 3);
+}

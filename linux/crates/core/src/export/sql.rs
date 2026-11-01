@@ -248,6 +248,7 @@ fn row_insert(
             Some(CellInput::Default) => continue,
             Some(CellInput::Value(Value::Null)) | None if !dialect.insert_names_null_cells() => continue,
             Some(CellInput::Value(value)) => dialect.literal(value, &column.column_type)?,
+            Some(CellInput::Expression(expression)) => expression.sql.to_owned(),
             None => "NULL".to_owned(),
         };
         writes_numbered |= column.is_auto_increment;
@@ -287,7 +288,7 @@ fn document_fields(
     let mut fields = Vec::with_capacity(columns.len());
     for (index, column) in columns.iter().enumerate() {
         let value = match cells.get(index) {
-            Some(CellInput::Default) | None => continue,
+            Some(CellInput::Default | CellInput::Expression(_)) | None => continue,
             Some(CellInput::Value(value)) => dialect.literal(value, &column.column_type)?,
         };
         fields.push((column.name.clone(), value));
@@ -516,6 +517,17 @@ mod tests {
         let sql = insert_one(&TestDialect::default(), &TableRef::unqualified("t"), &columns, cells);
 
         assert_eq!(sql, "INSERT INTO \"t\" (\"name\") VALUES ('x');");
+    }
+
+    #[test]
+    fn render_inserts_writes_an_expression_as_its_sql() {
+        let columns = [column("id", false), column("created_at", false)];
+        let expression = crate::edit::CellExpression::new("NOW()", &[crate::edit::MomentKind::Timestamp], &[]);
+        let cells = vec![CellInput::Value(Value::Int(1)), CellInput::Expression(expression)];
+
+        let sql = insert_one(&TestDialect::default(), &TableRef::unqualified("t"), &columns, cells);
+
+        assert_eq!(sql, "INSERT INTO \"t\" (\"id\", \"created_at\") VALUES (1, NOW());");
     }
 
     #[test]

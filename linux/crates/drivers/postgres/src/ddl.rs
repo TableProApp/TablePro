@@ -756,6 +756,7 @@ mod tests {
             unique: true,
             primary: false,
             predicate: None,
+            definition: None,
         }];
         draft.foreign_keys = vec![ForeignKeyInfo {
             name: "lines_order_fk".to_owned(),
@@ -1005,6 +1006,7 @@ mod tests {
             unique: false,
             primary: false,
             predicate: None,
+            definition: None,
         }];
 
         let plan = alter(&original, |draft| {
@@ -1020,6 +1022,7 @@ mod tests {
                 unique: false,
                 primary: false,
                 predicate: Some("nickname IS NOT NULL".to_owned()),
+                definition: None,
             });
         });
 

@@ -1,5 +1,6 @@
 use crate::column::{ColumnInfo, ColumnType, SqlExpression};
 use crate::ddl::DdlDialect;
+use crate::edit::CellExpression;
 use crate::filter::{Combinator, FilterOp, operators_for};
 use crate::meta::{EngineRowId, EngineRowIdPart, TableRef};
 use crate::sql_syntax::{ExpressionSyntaxError, HistoryRecording, SqlGrammar, TypeSyntaxError};
@@ -258,5 +259,16 @@ pub trait SqlDialect: Send + Sync + std::fmt::Debug {
     /// only needs to know whether it is exactly one.
     fn key_probe(&self, table_sql: &str, predicate_sql: &str) -> String {
         format!("SELECT COUNT(*) FROM (SELECT 1 AS one FROM {table_sql} WHERE {predicate_sql} LIMIT 2) AS probe")
+    }
+
+    /// The expressions a cell may be set to, each one run against the
+    /// engine for the column kinds it lists.
+    fn cell_expressions(&self) -> &'static [CellExpression] {
+        &[]
+    }
+
+    /// Whether `UPDATE ... SET c = DEFAULT` parses.
+    fn update_sets_default(&self) -> bool {
+        false
     }
 }

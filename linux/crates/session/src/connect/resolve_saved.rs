@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use secrecy::SecretString;
 use tablepro_core::credentials::CredentialInteraction;
 use tablepro_core::{
-    AuthMode, Credentials, DriverError, DriverRegistry, FileEndpoint, NetworkEndpoint, WorkspaceSettings,
+    AuthMode, Credentials, DriverError, DriverRegistry, FileEndpoint, NetworkEndpoint, QueryTimeout, WorkspaceSettings,
 };
 use tablepro_ssh::{SshAuth, SshConfig, SshDestination};
 use tablepro_storage::{CredentialDemand, SavedConnection, SavedSshAuth, SavedSshConfig};
@@ -66,7 +66,8 @@ fn saved_request(saved: &SavedConnection, drivers: &DriverRegistry) -> Result<Co
         },
         driver,
         target,
-        workspace_settings: WorkspaceSettings::workspace(saved.safe_mode.blocks_writes()),
+        workspace_settings: WorkspaceSettings::workspace(saved.safe_mode.blocks_writes())
+            .with_editor_timeout(QueryTimeout::from_seconds(saved.query_timeout_secs)),
         safe_mode: saved.safe_mode,
     })
 }
@@ -135,6 +136,7 @@ mod tests {
             safe_mode: tablepro_core::SafeModeLevel::ReadOnly,
             external_access: tablepro_core::ExternalAccess::ReadOnly,
             ai_policy: tablepro_core::AiPolicy::Ask,
+            query_timeout_secs: None,
             auth_mode: AuthMode::Password,
             ssh,
             last_opened_at: None,
@@ -269,6 +271,44 @@ mod tests {
             ConnectError::Keyring(KeyringError::SecretNotStored {
                 kind: SecretKind::DatabasePassword
             })
+        );
+    }
+
+    #[tokio::test]
+    async fn the_connection_query_timeout_reaches_the_session_settings() {
+        let resolve = |seconds: Option<u32>| async move {
+            let mut saved = saved(None);
+            saved.query_timeout_secs = seconds;
+            let vault = Arc::new(FakeSecretVault::new());
+            vault
+                .store(
+                    saved.id,
+                    SecretKind::DatabasePassword,
+                    &SecretString::from("db"),
+                    "label",
+                )
+                .await
+                .unwrap();
+            let credentials = KeyringCredentials::for_saved(vault, &saved);
+            resolve_saved(
+                &saved,
+                &drivers(),
+                &credentials,
+                CredentialInteraction::Unattended,
+                CredentialDemand::default(),
+            )
+            .await
+            .unwrap()
+            .request
+            .workspace_settings
+            .editor_timeout
+        };
+
+        assert_eq!(resolve(None).await, QueryTimeout::Preference);
+        assert_eq!(resolve(Some(0)).await, QueryTimeout::Off);
+        assert_eq!(
+            resolve(Some(300)).await,
+            QueryTimeout::After(std::time::Duration::from_secs(300))
         );
     }
 

@@ -19,6 +19,7 @@ extension DatabaseType {
     static let tidb = DatabaseType(rawValue: "TiDB")
     static let databend = DatabaseType(rawValue: "Databend")
     static let oceanbase = DatabaseType(rawValue: "OceanBase")
+    static let starrocks = DatabaseType(rawValue: "StarRocks")
     static let postgresql = DatabaseType(rawValue: "PostgreSQL")
     static let sqlite = DatabaseType(rawValue: "SQLite")
     static let redshift = DatabaseType(rawValue: "Redshift")
@@ -57,6 +58,7 @@ extension DatabaseType {
     static let firestore = DatabaseType(rawValue: "Firestore")
     static let firebaseRealtimeDatabase = DatabaseType(rawValue: "Firebase Realtime Database")
     static let kafka = DatabaseType(rawValue: "Kafka")
+    static let neo4j = DatabaseType(rawValue: "Neo4j")
     static let sapHana = DatabaseType(rawValue: "SAP HANA")
 }
 

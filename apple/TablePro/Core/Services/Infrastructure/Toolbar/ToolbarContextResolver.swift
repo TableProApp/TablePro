@@ -69,8 +69,8 @@ internal enum ToolbarContextResolver {
             String(localized: "Create Table")
         case .usersRoles:
             String(localized: "Apply Changes")
-        case .query, .table, .erDiagram, .serverDashboard, .insights, .objectSource, .versionHistory, .tableListing,
-             .routineDebug, .liveMessages, nil:
+        case .query, .table, .erDiagram, .serverDashboard, .insights, .tableHealth, .objectSource, .versionHistory,
+             .tableListing, .routineDebug, .liveMessages, nil:
             String(localized: "Save Changes")
         }
     }
@@ -110,7 +110,7 @@ internal enum ToolbarContextResolver {
             return [MainWindowToolbar.refresh]
         case .objectSource where key.stagesObjectChanges:
             return []
-        case .serverDashboard, .insights, .objectSource, .versionHistory, .tableListing:
+        case .serverDashboard, .insights, .tableHealth, .objectSource, .versionHistory, .tableListing:
             /// None of these can stage a change, so the commit control could only ever be dim.
             return [MainWindowToolbar.saveChanges]
         case .routineDebug, .liveMessages:
@@ -121,19 +121,7 @@ internal enum ToolbarContextResolver {
         }
     }
 
-    /// The items that act on the browse content, which Agent mode does not mount.
-    ///
-    /// Two of them leave the titlebar there; the rest are opt-in from the customization palette, so a
-    /// user who put one back would otherwise have a live button over a surface that is not on screen:
-    /// Refresh with no grid to reload, Query History flipping a persisted flag for a drawer that is
-    /// not mounted and that then sprang open on the way back to browsing, New Tab opening a tab
-    /// behind the conversation, and the commit control over a gate frozen at the moment the mode
-    /// changed.
-    ///
-    /// Stated once rather than as a term in thirteen arms, because it is one rule. The menu bar's
-    /// `browseContentSelectors` is the same list in its own vocabulary, and
-    /// `MenuContentModeParityTests` derives this one back out of the toolbar and holds the two
-    /// together, so an item added here without a menu twin fails rather than ships.
+    // Agent mode mounts no browse content. `MenuContentModeParityTests` holds these to the menu bar's `agentModeSelectors`.
     private static let browseContentIdentifiers: Set<NSToolbarItem.Identifier> = [
         MainWindowToolbar.refresh,
         MainWindowToolbar.saveChanges,

@@ -300,6 +300,7 @@ fn index_info(entry: &Document) -> Option<IndexInfo> {
         name,
         keys,
         predicate,
+        definition: None,
     })
 }
 

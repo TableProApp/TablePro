@@ -11,6 +11,7 @@ pub(crate) use clickhouse_column_row::ClickHouseColumnRow;
 pub(crate) use table_definition::fetch_table_definition;
 
 use crate::call_client::CallClient;
+use crate::dialect::quote;
 use crate::key_expression::{columns_in_key_order, index_keys};
 use crate::result_reader::{CatalogRow, read_table};
 use clickhouse_column_row::COLUMN_SELECT;
@@ -76,19 +77,30 @@ pub(crate) async fn fetch_indexes(calls: &CallClient, table: &CatalogTable) -> R
             unique: false,
             primary: true,
             predicate: None,
+            definition: None,
         });
     }
-    let sql = "SELECT name, expr FROM system.data_skipping_indices \
+    let sql = "SELECT name, expr, type_full, granularity FROM system.data_skipping_indices \
                WHERE database = {db:String} AND table = {tbl:String} ORDER BY name";
     let skipping = read_table(table.bind(calls.raw(sql)?), None).await?;
     for row in &skipping.rows {
         let row = CatalogRow(row);
+        let (name, expression) = (row.text(0)?, row.text(1)?);
+        let definition = format!(
+            "ALTER TABLE {}.{} ADD INDEX {} {expression} TYPE {} GRANULARITY {}",
+            quote(&table.database),
+            quote(&table.name),
+            quote(&name),
+            row.text(2)?,
+            row.optional_u64(3)?.unwrap_or(1)
+        );
         indexes.push(IndexInfo {
-            name: row.text(0)?,
-            keys: index_keys(&row.text(1)?),
+            keys: index_keys(&expression),
+            name,
             unique: false,
             primary: false,
             predicate: None,
+            definition: Some(definition),
         });
     }
     Ok(indexes)

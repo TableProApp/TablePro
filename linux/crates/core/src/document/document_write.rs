@@ -73,14 +73,14 @@ pub(crate) fn update(
     columns: &[ColumnInfo],
     identity: &RowIdentity,
     key: &[Value],
-    assignments: &[(usize, Value)],
+    assignments: &[(usize, CellInput)],
 ) -> Result<Statement, BuildSqlError> {
     if assignments.is_empty() {
         return Err(BuildSqlError::NothingToUpdate);
     }
     let mut params = ShellParams::new();
     let mut set = Vec::with_capacity(assignments.len());
-    for (index, value) in assignments {
+    for (index, input) in assignments {
         let column = columns.get(*index).ok_or(BuildSqlError::UnknownKeyColumn {
             name: index.to_string(),
         })?;
@@ -89,6 +89,11 @@ pub(crate) fn update(
                 name: column.name.clone(),
             });
         }
+        let Some(value) = input.value() else {
+            return Err(BuildSqlError::ServerComputedValue {
+                name: column.name.clone(),
+            });
+        };
         set.push((column.name.clone(), params.bind(value.clone(), Some(column))?));
     }
     let filter = key_filter(columns, identity, key, &mut params)?;

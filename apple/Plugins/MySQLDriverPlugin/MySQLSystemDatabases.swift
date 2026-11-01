@@ -29,6 +29,8 @@ nonisolated internal enum MySQLSystemDatabases {
             return MySQLServerFlavor.databend.systemDatabaseNames
         case MySQLServerFlavor.oceanbaseVariant:
             return MySQLServerFlavor.oceanbase(version: nil).systemDatabaseNames
+        case MySQLServerFlavor.starrocksVariant:
+            return MySQLServerFlavor.starrocks.systemDatabaseNames
         default:
             return mysql
         }

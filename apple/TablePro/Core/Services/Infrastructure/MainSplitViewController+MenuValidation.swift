@@ -33,7 +33,8 @@ struct MenuValidationContext: Equatable {
     var isQueryTab = false
     var hasResultRows = false
     var canExportDataDictionary = false
-    var isCurrentTabEditable = false
+    var canInsertRows = false
+    var canDeleteRows = false
     // Add and Duplicate Row stage DEFAULT from the table schema; result metadata alone stages NULL the server refuses for identity.
     var isCurrentTabSchemaResolved = false
     var canRestorePreviousValues = false
@@ -63,7 +64,7 @@ struct MenuValidationContext: Equatable {
     // An engine with no drop DDL for the object must not offer Delete, or the app invents SQL it cannot run.
     var canDropSelectedTables = false
     // Without the row check Delete stayed lit with no selection and fell through to the sidebar's drop path, doing nothing.
-    var canDeleteSelectedRows: Bool { isCurrentTabEditable && hasRowSelection }
+    var canDeleteSelectedRows: Bool { canDeleteRows && hasRowSelection }
     // AppKit sends the key equivalent anyway, so enabling over a handler that bails at its first guard swallows Cmd+V silently.
     var canPasteRows = false
     var canCloseOtherTabs = false
@@ -122,6 +123,7 @@ struct MenuValidationContext: Equatable {
     var supportsRestore = false
     var supportsServerDashboard = false
     var supportsUserManagement = false
+    var supportsTableHealth = false
     var supportsSchemaSwitching = false
     // Same rule as the editor bar, so the menu cannot run a statement the bar's button refuses.
     var supportsExplain = false
@@ -146,7 +148,12 @@ struct MenuValidationContext: Equatable {
 extension MainSplitViewController: NSMenuItemValidation {
     // Nil: not this window's call. An unhandled selector stays lit (Clear Selection did); MenuValidationCoverageTests catches it.
     static func resolvedEnablement(_ selector: Selector, context: MenuValidationContext) -> Bool? {
-        if context.isAgentMode, browseContentSelectors.contains(selector) { return false }
+        guard let answer = ownEnablement(selector, context: context) else { return nil }
+        guard context.isAgentMode else { return answer }
+        return answer && agentModeSelectors.contains(selector)
+    }
+
+    private static func ownEnablement(_ selector: Selector, context: MenuValidationContext) -> Bool? {
         if let find = isFindCommandEnabled(selector, context: context) { return find }
         if let query = isQueryCommandEnabled(selector, context: context) { return query }
         if let chooser = isContainerCommandEnabled(selector, context: context) { return chooser }
@@ -231,7 +238,7 @@ extension MainSplitViewController: NSMenuItemValidation {
             return context.isConnected && context.isQueryTab
 
         case #selector(addRow(_:)), #selector(duplicateRow(_:)):
-            return context.isConnected && context.isCurrentTabEditable && !context.isReadOnly
+            return context.isConnected && context.canInsertRows && !context.isReadOnly
                 && context.isCurrentTabSchemaResolved
         case #selector(restorePreviousValues(_:)):
             return context.isConnected && context.canRestorePreviousValues && !context.isReadOnly
@@ -288,6 +295,8 @@ extension MainSplitViewController: NSMenuItemValidation {
             return context.isConnected && context.supportsUserManagement
         case #selector(showQueryInsights(_:)):
             return context.isConnected
+        case #selector(showTableHealth(_:)):
+            return context.isConnected && context.supportsTableHealth
         case #selector(openLiveMessages(_:)):
             return context.isConnected && !context.isAgentMode && context.canOpenLiveMessages
 
@@ -384,6 +393,9 @@ extension MainSplitViewController: NSMenuItemValidation {
             return context.isConnected && !context.isReadOnly && context.canCreateSchema
         case #selector(createTableFolder(_:)):
             return context.isConnected && context.canCreateTableFolder
+        // The schema submenu adds this only for an editable schema; reaching here still needs a writable session.
+        case #selector(editCurrentSchema(_:)):
+            return context.isConnected && !context.isReadOnly
         default:
             return nil
         }
@@ -445,36 +457,36 @@ extension MainSplitViewController: NSMenuItemValidation {
         }
     }
 
-    // Agent mode does not mount browse content. MenuContentModeParityTests derives this set from the toolbar.
-    private static let browseContentSelectors: Set<Selector> = [
-        #selector(refreshDatabase(_:)),
-        #selector(saveDocument(_:)),
-        #selector(discardChanges(_:)),
-        #selector(addRow(_:)),
-        #selector(restorePreviousValues(_:)),
-        #selector(editDocument(_:)),
-        #selector(insertDocument(_:)),
-        #selector(previewSQL(_:)),
-        #selector(toggleResults(_:)),
-        #selector(toggleQueryHistory(_:)),
-        #selector(newEditorTab(_:)),
-        #selector(openQuickSwitcher(_:)),
-        #selector(exportTables(_:)),
-        #selector(exportDataDictionary(_:)),
-        // Both spellings of one command; one without the other leaves the format list live over a dim leaf.
-        #selector(importData(_:)),
-        #selector(importDataFormat(_:)),
-        #selector(showServerDashboard(_:)),
-        #selector(navigateBack(_:)),
-        #selector(navigateForward(_:)),
-        #selector(moveTabToConnection(_:)),
-        #selector(searchDatabase(_:)),
-        #selector(buildJoinQuery(_:)),
-        #selector(pinResult(_:)),
-        #selector(compareResult(_:)),
-        #selector(showPreviousResult(_:)),
-        #selector(showNextResult(_:)),
-        #selector(closeResultTab(_:)),
+    // Agent mode mounts no browse content, so the window answers there only for the window, the connection and the conversation.
+    static let agentModeSelectors: Set<Selector> = [
+        #selector(switchConnection(_:)),
+        #selector(closeConnection(_:)),
+        #selector(setSafeModeLevel(_:)),
+        #selector(releaseFileLock(_:)),
+        #selector(openContainerSwitcher(_:)),
+        #selector(openSchemaSwitcher(_:)),
+        #selector(switchToSchema(_:)),
+        #selector(switchSessionContext(_:)),
+        #selector(setFavoriteDatabaseEnvironment(_:)),
+        #selector(removeFavoriteDatabase(_:)),
+        #selector(setContentModeFromMenu(_:)),
+        #selector(toggleContentModeFromMenu(_:)),
+        #selector(newAgentSession(_:)),
+        #selector(openAgentSession(_:)),
+        #selector(closeAgentSession(_:)),
+        #selector(deleteAgentSession(_:)),
+        #selector(newAIConversation(_:)),
+        #selector(switchAIConversation(_:)),
+        #selector(clearAIConversations(_:)),
+        #selector(focusAssistant(_:)),
+        #selector(focusInspector(_:)),
+        #selector(toggleWorkspaceRail(_:)),
+        #selector(showPreviousWorkspace(_:)),
+        #selector(showNextWorkspace(_:)),
+        #selector(switchToRecentTab(_:)),
+        #selector(switchToLeastRecentTab(_:)),
+        #selector(undo(_:)),
+        #selector(redo(_:)),
     ]
 
     // A command this window does not own stays enabled, which keeps `performClose:` and the system's own items working.
@@ -560,6 +572,18 @@ extension MainSplitViewController: NSMenuItemValidation {
         }
     }
 
+    // Only the connection-level facts, read the way `menuValidationContext` reads them, so a connection off screen can be asked.
+    func menuValidationContext(forHosted connectionId: UUID) -> MenuValidationContext? {
+        guard let workspace = workspaces.workspace(for: connectionId) else { return nil }
+        var context = MenuValidationContext()
+        context.hasSelectedWorkspace = true
+        context.isConnected = Self.isConnected(phase: workspace.phase, pane: workspace.resolvedPane)
+        context.isAgentMode = workspace.resolvedContentMode == .agent
+        context.supportsServerDashboard = workspace.sessionState?.coordinator.commandActions?
+            .supportsServerDashboard ?? false
+        return context
+    }
+
     // Rail facts and Focus Assistant come from the window: off the connection they dimmed with no coordinator or in Agent mode.
     var menuValidationContext: MenuValidationContext {
         let conversations = assistantConversationModel
@@ -596,7 +620,8 @@ extension MainSplitViewController: NSMenuItemValidation {
             isQueryTab: actions.isQueryTab,
             hasResultRows: actions.hasResultRows,
             canExportDataDictionary: actions.canExportDataDictionary,
-            isCurrentTabEditable: actions.isCurrentTabEditable,
+            canInsertRows: actions.currentTabAllows(.insert),
+            canDeleteRows: actions.currentTabAllows(.delete),
             isCurrentTabSchemaResolved: actions.isCurrentTabSchemaResolved,
             canRestorePreviousValues: actions.canRestorePreviousValues,
             canInsertDocument: actions.canInsertDocument,
@@ -656,8 +681,8 @@ extension MainSplitViewController: NSMenuItemValidation {
             canSearchDatabase: actions.canSearchDatabase,
             canBuildJoinQuery: actions.canBuildJoinQuery,
             hasMaintenanceOperations: !actions.maintenanceOperations.isEmpty,
-            canUndo: actions.canUndo,
-            canRedo: actions.canRedo,
+            canUndo: contentMode == .browse ? actions.canUndo : agentUndoManager?.canUndo == true,
+            canRedo: contentMode == .browse ? actions.canRedo : agentUndoManager?.canRedo == true,
             hasEditorForFind: EditorEventRouter.shared.keyWindowHasEditor,
             hasSelectionForFind: EditorEventRouter.shared.keyWindowEditorHasSelectionForFind,
             hasActiveGridFind: actions.hasActiveGridFind,
@@ -667,6 +692,7 @@ extension MainSplitViewController: NSMenuItemValidation {
             supportsRestore: actions.supportsRestore,
             supportsServerDashboard: actions.supportsServerDashboard,
             supportsUserManagement: actions.supportsUserManagement,
+            supportsTableHealth: actions.supportsTableHealth,
             supportsSchemaSwitching: actions.supportsSchemaSwitching,
             supportsExplain: actions.supportsExplain,
             supportsFormatting: actions.supportsFormatting,
@@ -741,9 +767,9 @@ extension MainSplitViewController: NSMenuItemValidation {
         case #selector(toggleWorkspaceRail(_:)):
             setTitle(isWorkspaceRailEnabled ? "Hide Connections" : "Show Connections", on: menuItem)
         case #selector(undo(_:)):
-            setResolvedTitle(commandActions?.resolvedUndoTitle ?? String(localized: "Undo"), on: menuItem)
+            setResolvedTitle(undoTitle, on: menuItem)
         case #selector(redo(_:)):
-            setResolvedTitle(commandActions?.resolvedRedoTitle ?? String(localized: "Redo"), on: menuItem)
+            setResolvedTitle(redoTitle, on: menuItem)
         case #selector(toggleFilterBar(_:)):
             setTitle(commandActions?.isFilterBarVisible == true ? "Hide Filter Bar" : "Show Filter Bar", on: menuItem)
         case #selector(toggleQueryHistory(_:)):
@@ -797,6 +823,7 @@ extension MainSplitViewController: NSMenuItemValidation {
 
     // The mode is in `representedObject`, so enablement needs the item, not the selector the shared table keys on.
     private func canShowResultView(_ menuItem: NSMenuItem) -> Bool {
+        guard contentMode == .browse else { return false }
         guard let raw = menuItem.representedObject as? String,
               let mode = ResultsViewMode(rawValue: raw) else { return false }
         return commandActions?.availableResultsViewModes.contains(mode) ?? false

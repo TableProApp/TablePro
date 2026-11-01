@@ -207,6 +207,8 @@ internal extension MainSplitViewController {
             return "person.2"
         case .insights:
             return "chart.bar"
+        case .tableHealth:
+            return "stethoscope"
         case .objectSource:
             return "curlybraces.square"
         case .versionHistory:
